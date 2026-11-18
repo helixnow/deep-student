@@ -1,3 +1,4 @@
+import { syncGovernance } from '../../backup/api.ts';
 /**
  * L20-sync 插件本体（可移植）：入口按平台在 `index.ts` / `mobile.ts` 之间选择。
  *
@@ -112,7 +113,7 @@ export function createSyncPlugin(options: SyncPluginOptions = {}): HostPlugin {
     ],
   },
   inject: options.platforms?.includes('mobile')
-    ? ['storage', 'paths', 'notes', 'syncProvider', 'secrets', 'vfsDatabase', 'syncSupport', 'vfsRepo', 'mastery']
+    ? ['storage', 'sqliteRuntime', 'paths', 'notes', 'nativeCompression', 'mobileSyncGovernance', 'syncProvider', 'secrets', 'vfsDatabase', 'syncSupport', 'vfsRepo', 'mastery']
     : ['storage', 'paths', 'notes', 'backup', 'syncProvider', 'secrets', 'vfsDatabase', 'syncSupport', 'nativeCompression', 'vfsRepo', 'mastery'],
   apply(context) {
     const ctx = context as SyncContext;
@@ -148,8 +149,8 @@ export function createSyncPlugin(options: SyncPluginOptions = {}): HostPlugin {
         run => runSync(ctx, localSyncPorts(), direction, config ?? null, strategy ?? null, run, options.platforms?.includes('mobile'))),
       runSyncWithProgress: (direction, config, strategy, signal) => runUntilCallerOrPluginStops(signal, disposed.signal,
         run => runSyncWithProgress(ctx, localSyncPorts(), direction, config ?? null, strategy ?? null, run, options.platforms?.includes('mobile'))),
-      markBlobDeleted: (config, hash, path, size) => markBlobDeletedCommand(ctx, ctx.backup.syncCommandPorts().limiter, ctx.syncSupport.tombstones, config, hash, path, size),
-      markAssetDeleted: (config, key, size) => markAssetDeletedCommand(ctx, ctx.backup.syncCommandPorts().limiter, ctx.syncSupport.tombstones, config, key, size),
+      markBlobDeleted: (config, hash, path, size) => markBlobDeletedCommand(ctx, syncGovernance(ctx).syncCommandPorts().limiter, ctx.syncSupport.tombstones, config, hash, path, size),
+      markAssetDeleted: (config, key, size) => markAssetDeletedCommand(ctx, syncGovernance(ctx).syncCommandPorts().limiter, ctx.syncSupport.tombstones, config, key, size),
       listUnsyncedItems: config => listUnsyncedItemsCommand(ctx, ctx.syncSupport.tombstones, config),
       resetDefaultAfterLocalPurge: () => purgeReset.resetDefaultAfterLocalPurge(),
       importSyncData: (path, strategy) => importSyncDataCommand(ctx, path, strategy ?? null),

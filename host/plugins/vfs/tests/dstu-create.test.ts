@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestHost, type TestHost } from '../../../kernel/testing.ts';
 import { createStorageService } from '../../../platform/storage/service.ts';
 import type { DatabaseHandle } from '../../../platform/storage/api.ts';
@@ -50,6 +50,17 @@ describe('dstu_create', { timeout: 30_000 }, () => {
     options,
   });
   const createFolder = (title: string) => invoke<VfsFolder>('dstu_folder_create', { title });
+
+  it('replays one incoming share without recreating its note or folder membership', async () => {
+    const share = { type: 'note', name: 'Shared text', content: 'original', metadata: { incomingShareId: '56748dc2-deeb-4a2a-b342-b2336acd71b6' } } as const;
+    const first = await create(share);
+    const retry = await create({ ...share, name: 'Retried' });
+    expect(retry.id).toBe(first.id);
+    expect(retry.name).toBe('Shared text');
+    expect(conn.pluck<number>('SELECT COUNT(*) FROM folder_items WHERE item_id=?1', [first.id])).toBe(1);
+    const other = await create({ ...share, metadata: { incomingShareId: '17701aeb-beeb-4ec8-8069-93ac16597717' } });
+    expect(other.id).not.toBe(first.id);
+  });
 
   it('creates notes with tags, folder membership, resources and a created event', async () => {
     const folder = await createFolder('数学');
@@ -191,6 +202,15 @@ describe('dstu_create', { timeout: 30_000 }, () => {
     expect(normalized.root.children[0].id).toHaveLength(10);
   });
 
+  it('does not publish an attachment when its durable write fails', async () => {
+    const write = vi.spyOn(host.ctx.vfsRepo.blobs, 'persistBlob').mockRejectedValueOnce(new Error('disk full'));
+    try {
+      await expect(create({ type: 'file', name: 'pending.pdf', fileBase64: 'YWJj' }))
+        .rejects.toBe('Failed to store blob: disk full');
+      expect(conn.pluck<number>('SELECT count(*) FROM files WHERE file_name = ?', ['pending.pdf'])).toBe(0);
+    } finally { write.mockRestore(); }
+  });
+
   it('stores base64 and staged files and images as blobs with folder membership', async () => {
     const folder = await createFolder('附件');
     const base64 = Buffer.from('hello world').toString('base64');
@@ -214,6 +234,12 @@ describe('dstu_create', { timeout: 30_000 }, () => {
     expect(conn.get<{ folder_id: string; item_type: string }>(
       'SELECT folder_id, item_type FROM folder_items WHERE item_id = ?1 AND deleted_at IS NULL',
       [file.id])).toMatchObject({ folder_id: folder.id, item_type: 'file' });
+
+    const membership = conn.pluck<string>('SELECT id FROM folder_items WHERE item_id=?1', [file.id]);
+    const retry = await create({ type: 'file', name: 'retry.txt', fileBase64: base64, metadata: { mimeType: 'text/plain', folderId: folder.id } });
+    expect(retry.id).toBe(file.id);
+    expect(conn.pluck<number>('SELECT ref_count FROM blobs WHERE hash=?1', [fileRow!.sha256])).toBe(1);
+    expect(conn.pluck<string>('SELECT id FROM folder_items WHERE item_id=?1', [file.id])).toBe(membership);
 
     const image = await create({
       type: 'image', name: '照片', fileBase64: Buffer.from('img').toString('base64'),

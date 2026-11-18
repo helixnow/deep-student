@@ -12,16 +12,16 @@ import {
   writeJsonToTemp,
   JsonWriteError,
 } from './files.ts';
+import { MAX_APKG_ARCHIVE_BYTES } from './apkg-import-types.ts';
 import { ApkgImporterService } from './apkg-importer.ts';
 import { requireFsrsTransactionOwner } from './fsrs-owner.ts';
 import type { NativeCompression } from '../../../platform/native/api.ts';
-import type { FileManagerPathsService } from '../../../platform/storage/api.ts';
 import { serializeApkgImportResult } from './apkg-types.ts';
 import { localStamp } from './time.ts';
 import { ankiLocalRuntime } from './local-runtime.ts';
 import * as ankiConnect from './anki-connect.ts';
 
-import type { AnkiPluginRuntime } from './plugin-runtime.ts';
+import { ankiMediaDirectory, type AnkiPluginRuntime } from './plugin-runtime.ts';
 import {
   isAppErrorValue,
   messages,
@@ -31,18 +31,11 @@ import {
 
 export function createMediaHandlers(rt: AnkiPluginRuntime): Record<string, CommandHandler> {
   const { ctx, db } = rt;
-  // apkg_import.rs:88-91,308-311 `file_manager.get_writable_app_data_dir().join("anki_media")`: the active slot,
-  // with no fallback relocation (RF-W07-persistent-app-data-no-silent-relocation).
-  const ankiMediaDir = () => {
-    const fileManager = ctx.reflect.get('fileManagerPaths', false) as FileManagerPathsService | undefined;
-    const appDataDir = fileManager?.getPersistentAppDataDir() ?? path.dirname(ctx.storage.pathOf('mistakes'));
-    return path.join(appDataDir, 'anki_media');
-  };
   return {
       // ---------------------------------------------------------------- 媒体与文件
       read_anki_media: async (args) => {
         const { path: target } = args as { path: string };
-        const mediaRoot = ankiMediaDir();
+        const mediaRoot = ankiMediaDirectory(ctx);
         try {
           return await readAnkiMediaIn(mediaRoot, target);
         } catch (error) {
@@ -55,12 +48,12 @@ export function createMediaHandlers(rt: AnkiPluginRuntime): Record<string, Comma
 
       import_apkg_to_library: async (args) => {
         const { path: rawPath } = args as { path: string };
-        const mediaDir = ankiMediaDir();
+        const mediaDir = ankiMediaDirectory(ctx);
         let result: ReturnType<ApkgImporterService['importPath']>;
         try {
           // Rust `apkg_import.rs` 先校验路径，失败仍走命令错误转换；不能把
           // AppError 裸抛到内核（会被当作 handler panic，前端 Promise 不 settle）。
-          const validatedPath = await validateApkgPath(rawPath);
+          const readPicked = ankiLocalRuntime().readPickedArchive;
           const service = new ApkgImporterService({
             db: db(),
             openDatabase: (filePath) => ctx.storage.openFile(filePath),
@@ -71,7 +64,12 @@ export function createMediaHandlers(rt: AnkiPluginRuntime): Record<string, Comma
             compression: (ctx.get('nativeCompression') as NativeCompression | undefined) ?? null,
             logger: ctx.logger,
           });
-          result = await service.withReviewEnqueue().importPathAsync(validatedPath, null);
+          service.withReviewEnqueue();
+          if (readPicked && rawPath.startsWith(ctx.app.dataDir + '/tmp/dialog-picks/')) {
+            result = await service.importBytesAsync(await readPicked(rawPath, MAX_APKG_ARCHIVE_BYTES), path.basename(rawPath));
+          } else {
+            result = await service.importPathAsync(await validateApkgPath(rawPath), null);
+          }
         } catch (error) {
           if (isAppErrorValue(error)) throw new CommandError(error);
           throw new CommandError(

@@ -206,6 +206,19 @@ export class MobileShell {
       this.reply(callbacks, false, encodeBody(error instanceof Error ? error.message : String(error)));
       return;
     }
+    if (message.cmd === 'mobile_export_picked_document' && message.payload.contentType === 'application/json') {
+      void Promise.resolve().then(async () => {
+        const { path } = JSON.parse(message.payload.data as string) as { path?: string };
+        if (typeof path !== 'string' || !/^\/deep-student\/tmp\/dialog-saves\/[a-f0-9-]+\/[^/\\\\]+\.apkg$/i.test(path)) {
+          throw new Error('Expected a selected APKG export');
+        }
+        const result = await this.options.onExportFile?.(path, path.split('/').pop()!);
+        if (!result) throw new Error('System export unavailable');
+        return result.method === 'cancelled' ? null : result;
+      }).then(value => this.reply(callbacks, true, encodeBody(value)),
+        (error: Error) => this.reply(callbacks, false, encodeBody(error.message)));
+      return;
+    }
     if (message.cmd.startsWith('plugin:dialog|')) {
       this.handleDialogCommand(message);
       return;

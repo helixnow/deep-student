@@ -1,3 +1,4 @@
+import { syncGovernance } from '../../backup/api.ts';
 /** D2 shared-permit command shells; backup owns the only coordinator instance. */
 import { CommandError } from '../../../kernel/api.ts';
 import type { SyncContext } from './dependencies.ts';
@@ -11,7 +12,7 @@ function stringError(error: unknown): CommandError {
     : new CommandError(error instanceof Error ? error.message : String(error));
 }
 function tryPermit(ctx: SyncContext, busyMessage: string) {
-  try { return ctx.backup.tryAcquireOperation('sync'); }
+  try { return syncGovernance(ctx).tryAcquireOperation('sync'); }
   catch (error) {
     if (isOperationGuardError(error) && error.reason === 'busy') throw new CommandError(busyMessage);
     throw stringError(error);
@@ -21,7 +22,7 @@ export async function importSyncDataCommand(ctx: SyncContext, inputPath: string,
   ctx.logger('sync').info(`[data_governance] 导入同步数据: path=${inputPath}`);
   assertNotInMaintenance(ctx);
   let permit;
-  try { permit = await ctx.backup.acquireOperation('sync', 60_000); }
+  try { permit = await syncGovernance(ctx).acquireOperation('sync', 60_000); }
   catch (error) { throw stringError(error); }
   try { return await importSyncData(ctx.storage, ctx.paths, inputPath, strategy, ctx.mastery, ctx.logger('sync')); }
   finally { permit.release(); }

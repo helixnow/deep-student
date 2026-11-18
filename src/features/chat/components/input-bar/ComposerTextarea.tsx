@@ -11,6 +11,7 @@
  * 语音插入与聚焦控制等父级逻辑都依赖这些 refs。
  */
 
+import { isAndroid } from '@/utils/platform';
 import React, { useCallback, useEffect, useRef } from 'react';
 import type { UseSkillSlashCommandsReturn } from './SkillSlashPopover';
 import { shouldHandleSkillSlashKey } from './SkillSlashPopover';
@@ -166,8 +167,8 @@ export const ComposerTextarea: React.FC<ComposerTextareaProps> = ({
             }, 0);
           }}
           onChange={(e) => {
-            // 🔧 IME 合成期间跳过 store 更新，仅移动端 WKWebView 需要（桌面端受控组件会阻止输入）
-            if (!isComposingRef.current || !isMobile) {
+            // Gboard updates the composing word on each key. Keep the controlled value in sync.
+            if (!isComposingRef.current || !isMobile || isAndroid()) {
               onInputChange(e.target.value);
             }
             setTimeout(() => {

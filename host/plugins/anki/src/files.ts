@@ -78,12 +78,24 @@ export function isInsideRoot(root: string, target: string): boolean {
   return relative === '' ? true : relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
+/** Imported card rows can carry the absolute slot path of the device on which the APKG was opened. */
+export function resolveSyncedAnkiMedia(mediaRoot: string, reference: string): string {
+  const match = /(?:^|[\\/])slots[\\/]slot[AB][\\/]anki_media[\\/]([^\\/:]+)$/.exec(reference);
+  if (!match || match[1] === '.' || match[1] === '..') return reference;
+  const root = canonicalize(mediaRoot);
+  const local = canonicalize(path.join(mediaRoot, match[1]!));
+  if (!root || !local || !isInsideRoot(root, local)) {
+    throw commandError('Validation', '只能读取已导入的卡片媒体', APKG_ERROR_INVALID_INPUT);
+  }
+  return local;
+}
+
 /** `src/cmd/apkg_import.rs:270-301` 的同步实现（`read_anki_media_in`）。 */
 export async function readAnkiMediaIn(mediaRoot: string, targetPath: string): Promise<string> {
   const notAllowed = () => commandError('Validation', '只能读取已导入的卡片媒体', APKG_ERROR_INVALID_INPUT);
   const root = canonicalize(mediaRoot);
   if (root === null) throw notAllowed();
-  const target = canonicalize(targetPath.trim());
+  const target = canonicalize(resolveSyncedAnkiMedia(mediaRoot, targetPath.trim()));
   if (target === null || !isInsideRoot(root, target)) throw notAllowed();
   const mime = ankiMediaMime(target);
   if (mime === null) throw notAllowed();

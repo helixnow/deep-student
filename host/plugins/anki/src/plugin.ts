@@ -26,7 +26,7 @@ import { configureCriticLogger } from './anki-critic.ts';
 import { configureDocumentProcessingLogger } from './document-processing.ts';
 import { configureFsrsFeedbackLogger } from './anki-fsrs-feedback.ts';
 import { nowRfc3339 } from './time.ts';
-import { messages, validationFailure, type AnkiPluginRuntime } from './plugin-runtime.ts';
+import { ankiMediaDirectory, messages, validationFailure, type AnkiPluginRuntime } from './plugin-runtime.ts';
 import { ankiLocalRuntime, setAnkiLocalRuntime, type AnkiLocalRuntime } from './local-runtime.ts';
 import { registerAnkiStartupRecovery } from './startup-recovery.ts';
 import { createMediaHandlers } from './plugin-handlers-media.ts';
@@ -134,7 +134,7 @@ export function createAnkiPlugin(options: AnkiPluginOptions = {}): HostPlugin {
       ...(options.platforms === undefined ? {} : { platforms: options.platforms }),
       commands: [...COMMANDS],
     },
-    inject: ['paths', 'storage'],
+    inject: options.platforms?.includes('mobile') ? ['paths', 'storage', 'files', 'sqliteRuntime'] : ['paths', 'storage'],
     apply(ctx) {
       setAnkiLocalRuntime(options.localRuntime?.(ctx) ?? null);
       ctx.effect(() => () => setAnkiLocalRuntime(null));
@@ -150,7 +150,7 @@ export function applyAnkiPlugin(ctx: Context): void {
     const service = new AnkiHostService(ctx, {
       db,
       tempDir: ctx.paths.os.temp,
-      mediaDir: path.join(path.dirname(ctx.storage.pathOf('mistakes')), 'anki_media'),
+      mediaDir: ankiMediaDirectory(ctx),
       openDatabase: (filePath) => ctx.storage.openFile(filePath),
       closeDatabase: (handle) => ctx.storage.close(handle),
       fsrsOwner: () => requireFsrsTransactionOwner(ctx),
@@ -171,6 +171,7 @@ export function applyAnkiPlugin(ctx: Context): void {
     configureFsrsFeedbackLogger(ctx.logger);
 
     const exportRuntime = (): ApkgExportRuntime => ({
+      mediaRoot: ankiMediaDirectory(ctx),
       logger: ctx.logger,
       openDatabase: (filePath) => ctx.storage.openFile(filePath),
       closeDatabase: (handle) => ctx.storage.close(handle),

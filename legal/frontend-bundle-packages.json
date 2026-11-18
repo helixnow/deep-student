@@ -1,6 +1,6 @@
 {
   "generatedBy": "scripts/licenses/collect-frontend-bundle-packages.mjs",
-  "packageLockSha256": "c744368f035904809ff24aa0e082ea553573d76ba8e863192f69bb90c5dc9ff2",
+  "packageLockSha256": "76060519f101cb89d3034f5edc3652af418757db0234f010f6ea804b28eb599b",
   "packages": [
     {
       "path": "node_modules/@babel/runtime",
@@ -636,6 +636,13 @@
     {
       "path": "node_modules/@milkdown/utils",
       "version": "7.22.1",
+      "via": [
+        "bundle"
+      ]
+    },
+    {
+      "path": "node_modules/@milkdown/utils/node_modules/nanoid",
+      "version": "6.0.2",
       "via": [
         "bundle"
       ]
@@ -1844,6 +1851,13 @@
     {
       "path": "node_modules/json-stringify-pretty-compact",
       "version": "4.0.0",
+      "via": [
+        "bundle"
+      ]
+    },
+    {
+      "path": "node_modules/jsqr",
+      "version": "1.4.0",
       "via": [
         "bundle"
       ]

@@ -1,4 +1,15 @@
 {
+  "incomingShare": {
+    "title": "Receive share",
+    "library": "Save to library",
+    "chat": "Add to chat",
+    "close": "Close",
+    "noteName": "Shared text.md",
+    "openChat": "Open a chat and try again.",
+    "attachError": "Could not attach this item.",
+    "unreadable": "This share has no readable image, PDF or text.",
+    "storageError": "Could not store this share on the device."
+  },
   "app": {
     "name": "Deep Student",
     "title": "Deep Student",

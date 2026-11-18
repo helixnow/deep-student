@@ -180,6 +180,17 @@ export async function createSqliteRuntime(deps: SqliteRuntimeDeps = {}): Promise
     exists: path => pool.getFileNames().includes(path),
     unlink: (path) => { pool.unlink(path); },
     exportFile: path => pool.exportFile(path),
+    importTemporaryDb(path, bytes) {
+      if (pool.getFileNames().includes(path)) throw new Error('Temporary database already exists');
+      // The upstream byte-array overload is synchronous; only its callback overload is async.
+      try {
+        const written: unknown = pool.importDb(path, bytes);
+        if (written !== bytes.length) throw new Error('Incomplete temporary SQLite database');
+      } catch (error) {
+        if (pool.getFileNames().includes(path)) pool.unlink(path);
+        throw error;
+      }
+    },
     importDb,
     migrations,
   };

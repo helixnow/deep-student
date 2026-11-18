@@ -11,12 +11,9 @@ import {
   DESKTOP_CAPABILITIES, validateConfig,
   type PlatformStorageCapabilities, type RuntimeCloudStorageConfig, type SyncProviderService,
 } from '../../sync-providers/api.ts';
-import {
-  CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE,
-  SecureStoreError,
-  type CloudStorageCredentials,
-  type SecretsService,
-} from '../../../platform/secrets/api.ts';
+import { CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT_CODE, SecureStoreError } from '../../../platform/secrets/errors.ts';
+import type { CloudStorageCredentials, SecretsService } from '../../../platform/secrets/api.ts';
+
 import type { CloudConfigService, CloudConfigPublishArgs } from '../../../platform/errors/cloud-config-api.ts';
 import type {
   CloudConfigPublishResponse, CloudConfigSsotResponse,
@@ -125,6 +122,7 @@ export function loadCloudConfigSsot(
 }
 
 export interface HydrateDeps {
+  readonly capabilities?: PlatformStorageCapabilities;
   readonly settings: CloudConfigSettingsStore | null;
   readonly secrets: SecretsService | null;
   readonly dataDir: string;
@@ -139,7 +137,7 @@ export async function hydrateCloudConfig(
   let persisted: SafeCloudStorageConfig | null = null;
   if (deps.settings !== null) {
     try {
-      persisted = loadCloudConfigSsot(deps.settings);
+      persisted = loadCloudConfigSsot(deps.settings, deps.capabilities);
     } catch (error) {
       if (!(error instanceof CloudConfigSsotError && error.code === CLOUD_CONFIG_NOT_CONFIGURED_CODE)) {
         deps.warn(`读取后端云配置 SSOT 失败（清空 IPC 配置并 fail-closed）: ${messageOf(error)}`);
@@ -177,7 +175,7 @@ export async function loadHydratedCloudConfigSsot(
   if (deps.settings === null) return null;
   let persisted: SafeCloudStorageConfig;
   try {
-    persisted = loadCloudConfigSsot(deps.settings);
+    persisted = loadCloudConfigSsot(deps.settings, deps.capabilities);
   } catch (error) {
     if (error instanceof CloudConfigSsotError && error.code === CLOUD_CONFIG_NOT_CONFIGURED_CODE) return null;
     throw error;
@@ -254,6 +252,7 @@ export async function testConnectionDraft(
   deps: {
     readonly secrets: SecretsService | null;
     readonly provider: SyncProviderService | null;
+    readonly capabilities?: PlatformStorageCapabilities;
   },
 ): Promise<CloudConfigDraftTestResponse> {
   if (deps.secrets === null) {
@@ -270,7 +269,7 @@ export async function testConnectionDraft(
 
   let config: SafeCloudStorageConfig;
   try {
-    config = validateAndNormalize(args.config);
+    config = validateAndNormalize(args.config, deps.capabilities);
   } catch (error) {
     if (error instanceof CloudConfigSsotError) throw error.toCommandError();
     throw error;
@@ -353,6 +352,7 @@ function configuredView(config: SafeCloudStorageConfig): CloudConfigSsotResponse
 const UNCONFIGURED_VIEW: CloudConfigSsotResponse = { configured: false };
 
 export interface CloudConfigServiceDeps {
+  readonly capabilities?: PlatformStorageCapabilities;
   readonly settings: SettingsStore;
   readonly secrets: SecretsService;
   readonly dataDir: string;
@@ -385,7 +385,7 @@ export function createCloudConfigService(deps: CloudConfigServiceDeps): CloudCon
   const service: CloudConfigService = {
     async save(config: SafeCloudStorageConfig): Promise<CloudConfigSsotResponse> {
       try {
-        return configuredView(saveCloudConfigSsot(deps.settings, validateAndNormalize(parseSafeCloudStorageConfig(config))));
+        return configuredView(saveCloudConfigSsot(deps.settings, parseSafeCloudStorageConfig(config), deps.capabilities));
       } catch (error) {
         if (error instanceof CloudConfigSsotError) throw error.toCommandError();
         throw error;
@@ -394,7 +394,7 @@ export function createCloudConfigService(deps: CloudConfigServiceDeps): CloudCon
 
     async get(): Promise<CloudConfigSsotResponse> {
       try {
-        return configuredView(loadCloudConfigSsot(deps.settings));
+        return configuredView(loadCloudConfigSsot(deps.settings, deps.capabilities));
       } catch (error) {
         if (error instanceof CloudConfigSsotError) {
           if (error.code === CLOUD_CONFIG_NOT_CONFIGURED_CODE) return UNCONFIGURED_VIEW;
@@ -460,7 +460,7 @@ export function createCloudConfigService(deps: CloudConfigServiceDeps): CloudCon
       }
       let config: SafeCloudStorageConfig;
       try {
-        config = validateAndNormalize(parseSafeCloudStorageConfig(args.config));
+        config = validateAndNormalize(parseSafeCloudStorageConfig(args.config), deps.capabilities);
       } catch (error) {
         if (error instanceof CloudConfigSsotError) throw error.toCommandError();
         throw error;
@@ -494,7 +494,7 @@ export function createCloudConfigService(deps: CloudConfigServiceDeps): CloudCon
       }
       let saved: SafeCloudStorageConfig;
       try {
-        saved = saveCloudConfigSsot(deps.settings, config);
+        saved = saveCloudConfigSsot(deps.settings, config, deps.capabilities);
       } catch (error) {
         try {
           await secure.abortStagedCloudCredentials(stagedGeneration);

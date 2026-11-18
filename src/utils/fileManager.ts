@@ -203,6 +203,11 @@ export const fileManager = {
   },
 
   async saveFromSource(options: SaveSourceOptions): Promise<{ canceled: boolean; path?: string }> {
+    if (usesAndroidSaf()) {
+      const name = options.defaultFileName || options.sourcePath.split('/').pop() || 'export.bin';
+      const saved = await invoke<{ path?: string } | null>('mobile_export_resource', { path: options.sourcePath, name });
+      return saved === null ? { canceled: true } : { canceled: false, path: saved.path };
+    }
     const destPath = await dialogSave({
       title: options.title,
       defaultPath: buildDefaultPath(options),
@@ -259,13 +264,13 @@ export const fileManager = {
   async saveBinaryFile(options: SaveBinaryOptions): Promise<{ canceled: boolean; path?: string }> {
     if (usesAndroidSaf()) {
       const fileName = options.defaultFileName || 'deep-student-export';
-      const saved = await invoke<{ method: string } | null>('mobile_save_document', options.data, {
+      const saved = await invoke<{ method: string; path?: string } | null>('mobile_save_document', options.data, {
         headers: {
           'x-file-name': encodeURIComponent(fileName),
           'x-file-mime': options.mimeType ?? 'application/octet-stream',
         },
       });
-      return saved === null ? { canceled: true } : { canceled: false, path: fileName };
+      return saved === null ? { canceled: true } : { canceled: false, path: saved.path ?? fileName };
     }
     const destPath = await dialogSave({
       title: options.title,

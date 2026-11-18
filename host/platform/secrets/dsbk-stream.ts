@@ -60,7 +60,7 @@ export interface DsbkEncryptParams {
 const defaultDescribe = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /** `stream_chunk_nonce`：prefix7 ‖ counter_be32 ‖ final_flag。 */
-function chunkNonce(prefix: Uint8Array, counter: number, isFinal: boolean): Uint8Array {
+export function chunkNonce(prefix: Uint8Array, counter: number, isFinal: boolean): Uint8Array {
   const nonce = new Uint8Array(12);
   nonce.set(prefix.subarray(0, 7), 0);
   new DataView(nonce.buffer).setUint32(7, counter >>> 0, false);

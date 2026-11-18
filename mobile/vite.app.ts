@@ -69,7 +69,7 @@ function appHtml(mobile: string): Plugin {
   return {
     name: 'dstu-mobile-app-html',
     resolveId: id => id === 'virtual:dstu-app-entry' ? '\0dstu-app-entry' : null,
-    load: id => id === '\0dstu-app-entry' ? `import ${JSON.stringify(join(mobile, '../src/main.tsx'))};` : null,
+    load: id => id === '\0dstu-app-entry' ? `import ${JSON.stringify(join(mobile, '../src/main.tsx'))}; export { mountIncomingShares } from ${JSON.stringify(join(mobile, 'src/shell/incoming-share.tsx'))};` : null,
     configureServer(server) {
       server.middlewares.use((req, _res, next) => {
         if (req.url === '/' || req.url?.startsWith('/index.html') || req.url?.startsWith('/?')) req.url = `/app.html${req.url.includes('?') ? req.url.slice(req.url.indexOf('?')) : ''}`;
@@ -143,6 +143,7 @@ export function appConfig(mobile: string, repo: string): UserConfig {
   const tailwindConfig = loadConfig(join(repo, 'tailwind.config.js'));
   // Tailwind 的 content 是相对仓库根的 glob；从 mobile/ 运行时换成绝对路径（`!` 排除项保留前缀）。
   const content = tailwindConfig.content.map(glob => (glob.startsWith('!') ? `!${join(repo, glob.slice(1))}` : join(repo, glob)));
+  content.push(join(mobile, 'src/shell/**/*.tsx'));
   return {
     publicDir: join(repo, 'public'),
     // Frontend plugins use the root's Vite types; mobile has an isolated Vite/Rollup install.

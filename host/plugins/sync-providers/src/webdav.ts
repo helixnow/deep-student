@@ -5,7 +5,7 @@
  * line; the only substitution is `reqwest` -> `ctx.http` (see http.ts).
  */
 
-import { sha256Hasher } from './hashing.ts';
+import { sha256Hasher, sha256Hex } from './hashing.ts';
 import { decodeUtf8Lossy } from '../../../platform/util/portable.ts';
 import { toBase64 } from '../../../platform/crypto/encoding.ts';
 import { createDirAll, openFile, randomTempName, renameOver, statFile } from './fsutil.ts';
@@ -70,6 +70,8 @@ export function encodePathSegment(segment: string): string {
 }
 
 export interface WebDavStorageOptions {
+  /** Mobile native HTTP bridges require a replayable byte body. */
+  bufferedUploads?: boolean;
   /**
    * Rust `DEEP_STUDENT_WEBDAV_RATE_LIMIT` (webdav.rs:107-125): plugin config `webdavRateLimit`,
    * filled from the environment by the desktop composition root. Absent = Nutstore default.
@@ -80,6 +82,7 @@ export interface WebDavStorageOptions {
 }
 
 export class WebDavStorage extends CloudStorageBase {
+  private readonly bufferedUploads: boolean;
   private readonly baseUrl: URL;
   private readonly username: string;
   private readonly password: string;
@@ -90,6 +93,7 @@ export class WebDavStorage extends CloudStorageBase {
 
   constructor(config: WebDavConfig, root: string, options: WebDavStorageOptions = {}) {
     super();
+    this.bufferedUploads = options.bufferedUploads === true;
     if (!config.endpoint.trim()) throw new CloudStorageError('Validation', 'WebDAV endpoint 不能为空');
     let url: URL;
     try { url = new URL(config.endpoint.trim()); }
@@ -452,6 +456,12 @@ export class WebDavStorage extends CloudStorageBase {
   }
 
   override async putFile(key: string, localPath: string, progress?: UploadProgressCallback | null): Promise<string> {
+    if (this.bufferedUploads) {
+      const bytes = await fs.readFile(localPath);
+      await this.put(key, bytes);
+      progress?.(bytes.length, bytes.length);
+      return sha256Hex(bytes);
+    }
     await this.ensureDirectory(this.root);
     const slash = key.lastIndexOf('/');
     if (slash >= 0) {

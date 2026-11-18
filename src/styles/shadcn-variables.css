@@ -421,3 +421,14 @@
   font-family: "Times New Roman", Times, serif;
   letter-spacing: -0.02em;
 }
+
+/* Android WebView can report a fine primary pointer even when Gboard and
+   touch are in use. Give these controls their own non-overlapping hit boxes. */
+:root.is-android {
+  --control-height-touch: 48px;
+}
+.is-android .native-touch-target {
+  min-height: var(--touch-target-size);
+  min-width: var(--touch-target-size);
+  justify-content: center;
+}

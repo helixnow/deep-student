@@ -1,3 +1,4 @@
+import type { Context } from '@deepseek-ai/cordis';
 import type {
   AssetScanResponse, AssetTypeInfo, AssetVerifyErrorResponse, BackupJobResultPayload,
   BackupInfoResponse, BackupJobStartResponse, BackupJobSummary, DataGovernanceOperationKind, DataGovernanceOperationSnapshot,
@@ -242,4 +243,9 @@ declare module '@deepseek-ai/cordis' {
     /** L21：云配置 SSOT 与事务化凭据发布（F4 命令注入点）。 */
     cloudConfig: CloudConfigService;
   }
+}
+
+export type SyncGovernance = Pick<BackupService, 'hydrateCloudConfig' | 'acquireOperation' | 'tryAcquireOperation' | 'syncCommandPorts'>;
+export function syncGovernance(ctx: Context): SyncGovernance {
+  return (ctx.reflect?.get('mobileSyncGovernance', false) as SyncGovernance | undefined) ?? ctx.backup;
 }

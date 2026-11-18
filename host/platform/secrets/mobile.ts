@@ -1,6 +1,8 @@
+import { mobileLocalRuntime } from '../files/mobile-local-runtime.ts';
+import { createMobileSyncCrypto, type MobileCipherFileCache } from '../storage-mobile/sync-crypto.ts';
 /**
  * OPFS SecureStore: AES-GCM ciphertext and a file-only seed, not OS-keychain protection.
- * API-key CryptoService uses portable AES-GCM; desktop backup/publication remain unavailable.
+ * Sync encryption shares the desktop wire formats. Native keychain publication is desktop-only.
  */
 import { definePlugin } from '../../kernel/core.ts';
 import { isFileNotFound, type FilesService } from '../files/api.ts';
@@ -12,11 +14,14 @@ import type { SecretsService, SecureStore } from './api.ts';
 import { isSensitiveKey } from './sensitive-key.ts';
 import { isEncryptedFormat, openMobileCrypto } from './crypto.ts';
 
+import { CloudCredentialStore } from './cloud-credential-store.ts';
+import { cloudEncryptionPasswordTooShort, cloudEncryptionPasswordTooWeak } from './cloud-credentials.ts';
+
 function unsupported(): never {
   throw new Error('UNSUPPORTED_ON_PLATFORM: secrets.desktopCrypto is not available on mobile');
 }
 
-export function createMobileSecrets(files: FilesService, crypto: Crypto, base: string): SecretsService {
+export function createMobileSecrets(files: FilesService, crypto: Crypto, base: string, cache?: () => MobileCipherFileCache): SecretsService {
   const cryptoServices = new Map<string, ReturnType<typeof openMobileCrypto>>();
   const openCrypto: SecretsService['openCrypto'] = dir => {
     let service = cryptoServices.get(dir);
@@ -47,9 +52,11 @@ export function createMobileSecrets(files: FilesService, crypto: Crypto, base: s
     const dir = posix.join(root, '.secure');
     const pathOf = (key: string) => posix.join(dir, `${key.replace(/[/\\]/g, '_')}.enc`);
     const ensureEnabled = () => { if (options.enabled === false) throw new Error('SecureStore is disabled'); };
-    const store: SecureStore = {
-      secureDir: dir, enabled: options.enabled !== false,
-      async saveSecret(key, value) {
+    class MobileStore extends CloudCredentialStore implements SecureStore {
+      protected warnCloud(message: string) { console.warn(message); }
+      readonly secureDir = dir;
+      readonly enabled = options.enabled !== false;
+      async saveSecret(key: string, value: string) {
         ensureEnabled();
         const master = await keyFor(dir);
         const iv = crypto.randomBytes(12);
@@ -57,46 +64,36 @@ export function createMobileSecrets(files: FilesService, crypto: Crypto, base: s
         const bytes = new Uint8Array(iv.length + encrypted.length);
         bytes.set(iv); bytes.set(encrypted, iv.length);
         await files.writeAtomic(pathOf(key), bytes);
-      },
-      async getSecret(key) {
+      }
+      async getSecret(key: string) {
         ensureEnabled();
         if (!await files.exists(pathOf(key))) return null;
         const bytes = await files.readBytes(pathOf(key));
         return utf8Decode(await crypto.aesGcmDecrypt({ key: await keyFor(dir), iv: bytes.subarray(0, 12), ciphertext: bytes.subarray(12) }), { fatal: true });
-      },
-      async deleteSecret(key) { await files.rm(pathOf(key), { force: true }); },
+      }
+      async deleteSecret(key: string) { await files.rm(pathOf(key), { force: true }); }
       async listSensitiveKeys() {
         try {
           const entries = await files.readDir(dir);
           return new Set(entries.filter(entry => entry.kind === 'file' && entry.name.endsWith('.enc')).map(entry => entry.name.slice(0, -4)));
         } catch (error) {
           if (!isFileNotFound(error)) throw error;
-          return new Set();
+          return new Set<string>();
         }
-      },
-      async isAvailable() { try { ensureEnabled(); await keyFor(dir); return true; } catch { return false; } },
-      async keystoreProtectionStatus() { return { supported: false, enabled: false, seedInKeystore: false }; },
-      async setKeystoreProtection(enabled) { if (enabled) unsupported(); },
-      saveCloudCredentials: unsupported, getCloudCredentials: unsupported, updateCloudCredentials: unsupported,
-      cloudCredentialStatus: unsupported, clearCloudEncryptionPassword: unsupported, deleteCloudCredentials: unsupported,
-      cloudCredentialsActiveGeneration: unsupported, writeStagedCloudCredentials: unsupported,
-      commitStagedCloudCredentials: unsupported, abortStagedCloudCredentials: unsupported, deleteCloudCredentialsTransactional: unsupported,
-    };
-    return store;
+      }
+      async isAvailable() { try { ensureEnabled(); await keyFor(dir); return true; } catch { return false; } }
+      async keystoreProtectionStatus() { return { supported: false, enabled: false, seedInKeystore: false }; }
+      async setKeystoreProtection(enabled: boolean) { if (enabled) unsupported(); }
+    }
+    return new MobileStore();
   };
   return {
     openStore, openFallbackStore: options => openStore(base, options), isSensitiveKey, keystoreSupported: () => false,
     validateBackupSeedFile: unsupported, resolveSeedFilePlaintext: unsupported, resealSeedFileForCurrentPlatform: unsupported,
     seedFingerprint: seed => sha256HexSync('deep-student.key_seed.fingerprint.v1' + seed),
     openCrypto, isEncryptedFormat, deriveStaticKey: sha256Sync,
-    cloudEncryptionPasswordTooShort: unsupported, cloudEncryptionPasswordTooWeak: unsupported,
-    backup: {
-      encryptBackup: unsupported, decryptBackup: unsupported, encryptBackupFile: unsupported, decryptBackupFile: unsupported,
-      encryptBackupStream: unsupported, decryptBackupStream: unsupported, isEncryptedBackup: unsupported,
-      dsbkFirstChunkSpeculativePrefixLen: unsupported, planFirstChunkTrial: unsupported, trialDecryptFirstChunk: unsupported,
-      createFileCipherSession: unsupported, createPasswordVerifier: unsupported, checkPasswordVerifier: unsupported,
-      encryptedRootMemory: unsupported, encryptedRootFingerprint: unsupported,
-    },
+    cloudEncryptionPasswordTooShort, cloudEncryptionPasswordTooWeak,
+    backup: createMobileSyncCrypto(files, crypto, cache),
     publication: { journalPath: unsupported, rollbackDir: unsupported, writeJournal: unsupported, removeJournal: unsupported, recover: unsupported },
   };
 }
@@ -104,5 +101,5 @@ export function createMobileSecrets(files: FilesService, crypto: Crypto, base: s
 export default definePlugin({
   meta: { id: 'dstu.platform.secrets', provides: ['secrets'], platforms: ['mobile'] },
   inject: ['files', 'crypto', 'paths'],
-  apply(ctx) { ctx.reflect.provide('secrets', createMobileSecrets(ctx.files, ctx.crypto, ctx.paths.appDataDir)); },
+  apply(ctx) { ctx.reflect.provide('secrets', createMobileSecrets(ctx.files, ctx.crypto, ctx.paths.appDataDir, () => mobileLocalRuntime(ctx))); },
 });

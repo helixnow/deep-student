@@ -28,6 +28,8 @@ describe('mobile staged uploads', () => {
     const staged = tree.views().vfs.takeStagedUpload(id);
     expect([...staged.readBounded(3)]).toEqual([1, 2, 3]);
     staged.dispose();
+    expect(tree.exists(staged.path())).toBe(false);
+    expect(() => staged.readBounded(3)).toThrow();
     const incomplete = beginMobileStagedUpload('b.pdf', 3);
     expect(() => tree.views().vfs.takeStagedUpload(incomplete)).toThrow('Upload incomplete');
     const aborted = beginMobileStagedUpload('c.pdf', 3);
@@ -104,6 +106,62 @@ describe('mobile local runtime', () => {
     expect(r.readText('/deep-student/notes_assets/b.txt')).toBe('hello');
     r.removeForce('/deep-student/notes_assets/b.txt');
     expect(r.exists('/deep-student/notes_assets/b.txt')).toBe(false);
+  });
+
+  it('indexes a stored file without reading its bytes and bounds an fd read to the requested range', async () => {
+    const path = '/deep-student/slots/slotA/attachments/lecture';
+    const data = Uint8Array.of(10, 20, 30, 40);
+    const disk = new Map([[path, data]]);
+    const files = fakeFiles(disk) as FilesService;
+    const reads: Array<[number | undefined, number | undefined]> = [];
+    files.openLocalSnapshot = async () => ({
+      size: data.length, modifiedMs: 1500,
+      read(start, end) { reads.push([start, end]); return data.slice(start, end); },
+    });
+    const tree = new MobileLocalRuntime('/deep-student', () => files);
+    await tree.startHydration();
+    expect(tree.fileLen(path)).toBe(4);
+    expect(tree.statShape(path).mtimeMs).toBe(1500);
+    const fd = tree.openFd(path, 'r');
+    expect(reads).toEqual([]);
+    const bytes = new Uint8Array(2);
+    expect(tree.readFd(fd, bytes, 0, 2, 1)).toBe(2);
+    tree.closeFd(fd);
+    expect([...bytes]).toEqual([20, 30]);
+    expect(reads).toEqual([[1, 3]]);
+  });
+
+  it('keeps open readers on the original file when both path and version change', async () => {
+    const a = '/deep-student/slots/slotA/attachments/book';
+    const b = a + '-renamed';
+    const bytes = Uint8Array.of(10, 20, 30, 40);
+    const disk = new Map([[a, bytes]]);
+    const files = fakeFiles(disk) as FilesService;
+    files.writeAtomic = files.writeBytes;
+    files.stat = async path => ({ kind: 'file', size: disk.get(path)!.length, modifiedMs: 1, createdMs: null, unixMode: null });
+    files.openLocalSnapshot = async path => {
+      const version = disk.get(path)!;
+      return { size: version.length, modifiedMs: 1, read(start, end) {
+        if (disk.get(path) !== version) throw new Error('Invalidated disk snapshot');
+        return version.slice(start, end);
+      } };
+    };
+    const tree = new MobileLocalRuntime('/deep-student', () => files);
+    await tree.startHydration();
+    const fs = tree.views().providerFiles;
+    const handle = await fs.open(a, 'r');
+    const chunks = fs.readChunks(a, 2)[Symbol.asyncIterator]();
+    expect((await chunks.next()).value).toEqual(bytes.slice(0, 2));
+    await fs.rename(a, b);
+    await fs.writeFile(b, Uint8Array.of(99));
+    expect((await handle.stat()).size).toBe(4);
+    const old = new Uint8Array(4);
+    expect((await handle.read(old, 0, old.length, null)).bytesRead).toBe(4);
+    expect(old).toEqual(bytes);
+    expect((await chunks.next()).value).toEqual(bytes.slice(2));
+    expect((await chunks.next()).done).toBe(true);
+    await handle.close();
+    expect(await fs.readFile(b)).toEqual(Uint8Array.of(99));
   });
 
   it('hydrates files from OPFS on demand', async () => {

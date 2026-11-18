@@ -5,7 +5,7 @@
  * 两种页面（{@link shouldMountApp}）：
  * - 诊断页（index.html 的 `#status`）：默认 / `--mode diagnostics` 构建、`?diagnostics=1`、或页面没有 `#root`，
  *   只显示 Host 启动结果（Playwright 用例与性能数据测的是它）；
- * - 完整前端（`--mode app`，app.html 的 `#root`）：`bootMobileShell()` resolve 之后动态加载仓库根的 `src/main.tsx`。
+ * - 完整前端（`--mode app`，app.html 的 `#root`）：桥就绪后并行加载前端与启动 Host，首屏仍经过数据恢复预检。
  */
 import './shell/webview-compat.ts';
 import { installTauriBridge } from '../../electron/preload/bridge.ts';
@@ -425,28 +425,17 @@ function render(app: MobileApp): void {
   document.body.dataset.ready = 'true';
 }
 
-/** 完整前端：Host 就绪、桥已装好之后才求值 `src/main.tsx`（它在模块顶层就会 `invoke`）。 */
-async function mountApp(): Promise<void> {
-  // 条件在构建期替换成常量：非 app 构建里整个 import 被删掉，前端闭包（React、Tailwind CSS…）不进诊断产物。
-  if (import.meta.env.MODE === 'app') {
-    // The new Android WebView origin cannot see the old app's localStorage.
-    // Restore the SQLite copy before React applies the theme; a local choice wins.
-    if (isNativeAndroid()) {
-      try {
-        if (localStorage.getItem('dstu-theme-mode') === null && localStorage.getItem('aimm-theme-mode') === null) {
-          const mode = await invoke<string | null>('get_setting', { key: 'theme' });
-          if (mode === 'light' || mode === 'dark' || mode === 'auto') {
-            localStorage.setItem('dstu-theme-mode', mode);
-          }
-        }
-      } catch (error) {
-        // A restricted recovery Host has no settings command. It must still show its recovery page.
-        console.warn('[mobile] Could not restore the saved theme:', error);
-      }
+async function restoreAndroidTheme(): Promise<void> {
+  if (!isNativeAndroid()) return;
+  try {
+    if (localStorage.getItem('dstu-theme-mode') !== null || localStorage.getItem('aimm-theme-mode') !== null) return;
+    const mode = await invoke<string | null>('get_setting', { key: 'theme' });
+    if (mode === 'light' || mode === 'dark' || mode === 'auto') {
+      localStorage.setItem('dstu-theme-mode', mode);
     }
-    await import('virtual:dstu-app-entry');
+  } catch (error) {
+    console.warn('[mobile] Could not restore the saved theme:', error);
   }
-  document.body.dataset.ready = 'true';
 }
 
 const fail = (error: unknown) => {
@@ -454,9 +443,17 @@ const fail = (error: unknown) => {
   document.body.dataset.ready = 'failed';
 };
 
+// bootMobileShell installs the bridge synchronously. serveHostCore queues early
+// commands until storage, migrations and startup recovery have finished.
 globalThis.__dstuMobile = bootMobileShell();
-if (shouldMountApp({ mode: import.meta.env.MODE, search: location.search, hasRoot: document.getElementById('root') !== null })) {
-  globalThis.__dstuMobile.then(mountApp).catch(fail);
+if (import.meta.env.MODE === 'app' && shouldMountApp({ mode: import.meta.env.MODE, search: location.search, hasRoot: document.getElementById('root') !== null })) {
+  const theme = restoreAndroidTheme();
+  Promise.all([globalThis.__dstuMobile, theme, import('virtual:dstu-app-entry')])
+    .then(([, , app]) => {
+      if (isNativeAndroid()) app.mountIncomingShares();
+      document.body.dataset.ready = 'true';
+    })
+    .catch(fail);
 } else {
   globalThis.__dstuMobile.then(render, fail);
 }

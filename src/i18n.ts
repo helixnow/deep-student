@@ -57,10 +57,11 @@ const CORE_NS = new Set(['common', 'sidebar']);
 // 官网演示的构建（vite.demo.config.ts）由演示入口按语言把全部文案整包加进来（src/demo/locales），
 // 这里既不打包按命名空间拆开的语言包，也不在启动后补载另一种语言
 const IS_DEMO_BUILD = import.meta.env.VITE_DS_DEMO === '1';
+const IS_MOBILE_BUILD = import.meta.env.VITE_DS_PLATFORM === 'mobile';
 
 // Vite glob 延迟导入：匹配所有 locale JSON 文件
 // 每个条目是 () => Promise<module>，在调用时才加载对应 chunk
-const localeModules: Record<string, () => Promise<unknown>> = IS_DEMO_BUILD
+const localeModules: Record<string, () => Promise<unknown>> = IS_DEMO_BUILD || IS_MOBILE_BUILD
   ? {}
   : import.meta.glob('./locales/**/*.json');
 
@@ -164,6 +165,19 @@ async function loadDeferredNamespaces(lang: string): Promise<void> {
   const prefix = `./locales/${resolvedLang}/`;
   const tasks: Promise<void>[] = [];
 
+  if (IS_MOBILE_BUILD && !IS_DEMO_BUILD) {
+    // Each local HTTPS request crosses Android's WebView asset handler.
+    // The grouped modules contain the same production namespace JSON.
+    const bundle = resolvedLang === 'zh-CN' ? import('./demo/locales/zh-CN') : import('./demo/locales/en-US');
+    tasks.push(bundle.then(({ default: resources }) => {
+      for (const [ns, data] of Object.entries(resources)) {
+        if (CORE_NS.has(ns) || state.loadedNamespaces.has(ns)) continue;
+        i18n.addResourceBundle(resolvedLang, ns, data, true, true);
+        state.loadedNamespaces.add(ns);
+      }
+    }));
+  }
+
   for (const [path, loader] of Object.entries(localeModules)) {
     if (!path.startsWith(prefix)) continue;
     // ./locales/zh-CN/settings.json -> settings
@@ -199,9 +213,12 @@ function requestDeferredNamespaces(lang: string): void {
   });
 }
 
+if (typeof document !== 'undefined' && i18n.language) document.documentElement.lang = normalizeSupportedLanguage(i18n.language);
+
 // 必须在首个异步加载开始前监听，避免用户在启动加载期间切换语言时漏掉事件。
 i18n.on('languageChanged', (newLang) => {
   const normalized = normalizeSupportedLanguage(newLang);
+  if (typeof document !== 'undefined') document.documentElement.lang = normalized;
   if (!IS_DEMO_BUILD) requestDeferredNamespaces(normalized);
 
   if (newLang !== normalized) {

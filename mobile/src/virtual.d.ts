@@ -4,7 +4,7 @@ interface ImportMetaEnv {
   readonly VITE_DSTU_APP_VERSION?: string;
 }
 
-declare module 'virtual:dstu-app-entry' {}
+declare module 'virtual:dstu-app-entry' { export function mountIncomingShares(): void; }
 
 declare module 'virtual:dstu-profile/mobile' {
   import type { HostPlugin } from '../../host/kernel/api.ts';

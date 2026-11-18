@@ -61,9 +61,9 @@ import {
 // ============================================================================
 
 const coarseSolidTouchTargetClass =
-  '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]';
+  'native-touch-target [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:min-w-[var(--touch-target-size)]';
 // 宽度由内容决定的触发器（带文字标签）只抬高度，避免 min-w 干扰 truncate
-const coarseSolidTouchHeightClass = '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]';
+const coarseSolidTouchHeightClass = 'native-touch-target [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]';
 const iconButtonClass = cn(
   'inline-flex items-center justify-center h-9 w-9 rounded-[var(--radius-shell-control)] text-[color:var(--button-utility-foreground)] transition-colors hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] active:bg-[color:var(--button-utility-active)]',
   coarseSolidTouchTargetClass
@@ -73,7 +73,7 @@ const studyUiButtonBaseClassName =
 const studyUiButtonSizeIconClassName =
   'h-[var(--button-icon-size)] w-[var(--button-icon-size)] rounded-[var(--button-radius)]';
 const studyUiSendButtonSizeClass =
-  'h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)] [@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!w-[var(--touch-target-size)]';
+  'native-touch-target h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)] [@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!w-[var(--touch-target-size)]';
 const studyUiBlackActionButtonClass =
   '!border-black !bg-black hover:!bg-black active:!bg-black !text-white';
 const studyUiSendButtonEmptyStateClass =
@@ -782,7 +782,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
             onClick={onStop}
             disabled={!canAbort}
             // 移动端与发送按钮同为 44px 触控目标；桌面保持 32px 视觉
-            className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 max-md:!w-11 max-md:!h-11 [@media(pointer:coarse)]:!w-[var(--touch-target-size)] [@media(pointer:coarse)]:!h-[var(--touch-target-size)] !rounded-full shadow-sm')}
+            className={cn(studyUiBlackActionButtonClass, 'native-touch-target !w-8 !h-8 max-md:!w-11 max-md:!h-11 [@media(pointer:coarse)]:!w-[var(--touch-target-size)] [@media(pointer:coarse)]:!h-[var(--touch-target-size)] !rounded-full shadow-sm')}
             aria-label={canAbort
               ? t('analysis:input_bar.actions.stop')
               : t('chatV2:inputBar.stopping')}

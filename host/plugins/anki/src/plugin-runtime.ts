@@ -3,7 +3,8 @@
  */
 import { CommandError, type Context } from '../../../kernel/api.ts';
 import type {} from '../../../platform/paths/api.ts';
-import { StorageError } from '../../../platform/storage/api.ts';
+import { hostPath as path } from '../../../platform/util/path.ts';
+import { StorageError, type FileManagerPathsService } from '../../../platform/storage/api.ts';
 import type {
   CustomAnkiTemplate,
   CreateTemplateRequest,
@@ -19,6 +20,12 @@ import type { AnkiCard } from '../../../../contracts/ipc/generated/_shared.ts';
 import { AnkiCardDecodeError } from './anki-cards.ts';
 
 import type { DatabaseHandle } from '../../../platform/storage/api.ts';
+
+export function ankiMediaDirectory(ctx: Context): string {
+  const manager = ctx.reflect.get('fileManagerPaths', false) as FileManagerPathsService | undefined;
+  const base = manager?.getPersistentAppDataDir() ?? path.dirname(ctx.storage.pathOf('mistakes'));
+  return path.join(base, 'anki_media');
+}
 
 export interface AnkiPluginRuntime {
   ctx: Context;

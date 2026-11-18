@@ -8,11 +8,20 @@ export async function sealBackupSecrets(
   const secret = new TextEncoder().encode(password);
   let derived: Uint8Array | undefined;
   const keyFor: DsbkKeyFor = async (salt, m, t, p) => {
-    // This is read from an untrusted archive header. Bound memory and work before allocating it.
-    if (m < 8 * p || m > 256 * 1024 || t < 1 || t > 10 || p < 1 || p > 8) throw new Error('Unsupported backup Argon2id parameters');
-    return derived = await argon2idAsync(secret, salt, { m, t, p, dkLen: 32, version: 0x13 });
+    return derived = await deriveMobileBackupKey(secret, salt, m, t, p);
   };
-  const deps: DsbkStreamDeps = {
+  const deps = mobileDsbkDeps(crypto);
+  try {
+    if (encrypt) await encryptDsbkStream(input, output, { salt: crypto.randomBytes(16), m: 65536, t: 3, p: 4 }, keyFor, deps);
+    else await decryptDsbkStream(input, output, keyFor, deps);
+  } finally {
+    secret.fill(0);
+    derived?.fill(0);
+  }
+}
+
+export function mobileDsbkDeps(crypto: CryptoService): DsbkStreamDeps {
+  return {
     randomBytes: length => crypto.randomBytes(length),
     aead: {
       seal: (key, iv, plaintext) => crypto.aesGcmEncrypt({ key, iv, plaintext }),
@@ -22,11 +31,9 @@ export async function sealBackupSecrets(
       },
     },
   };
-  try {
-    if (encrypt) await encryptDsbkStream(input, output, { salt: crypto.randomBytes(16), m: 65536, t: 3, p: 4 }, keyFor, deps);
-    else await decryptDsbkStream(input, output, keyFor, deps);
-  } finally {
-    secret.fill(0);
-    derived?.fill(0);
-  }
+}
+
+export async function deriveMobileBackupKey(secret: Uint8Array, salt: Uint8Array, m: number, t: number, p: number) {
+  if (![m, t, p].every(Number.isSafeInteger) || m < 8 * p || m > 256 * 1024 || t < 1 || t > 10 || p < 1 || p > 8) throw new Error('Unsupported backup Argon2id parameters');
+  return argon2idAsync(secret, salt, { m, t, p, dkLen: 32, version: 0x13 });
 }

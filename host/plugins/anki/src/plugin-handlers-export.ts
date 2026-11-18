@@ -32,7 +32,7 @@ import { getTemplateById } from '../repository/templates.ts';
 import { listCardsForDocument, listCardsForTask, getCardsByIds } from '../repository/anki-cards.ts';
 
 import { readAnkiConnectSyncOptions, requireSettingsOwner } from './settings-owner.ts';
-import type { AnkiPluginRuntime } from './plugin-runtime.ts';
+import { ankiMediaDirectory, type AnkiPluginRuntime } from './plugin-runtime.ts';
 import {
   dbFailure,
   messages,
@@ -84,7 +84,12 @@ function batchNoteToCard(
 
 export function createExportHandlers(rt: AnkiPluginRuntime): Record<string, CommandHandler> {
   const { ctx, db, now, runApkgExport, attachFsrsProgress, loadApkgTemplate, downloadsDir, decodeExportCards } = rt;
+  const persistedPath = async (path: string) => {
+    await ankiLocalRuntime().persistFile?.(path);
+    return path;
+  };
   const exportRuntime = (): ApkgExportRuntime => ({
+    mediaRoot: ankiMediaDirectory(ctx),
     logger: ctx.logger,
     openDatabase: (filePath) => ctx.storage.openFile(filePath),
     closeDatabase: (handle) => ctx.storage.close(handle),
@@ -137,7 +142,7 @@ export function createExportHandlers(rt: AnkiPluginRuntime): Record<string, Comm
           noteType: string;
         };
         const cards = decodeCardArg('export_cards_as_apkg', 'selectedCards', () => decodeExportCards(selectedCards));
-        return runApkgExport(cards, deckName, noteType, null);
+        return persistedPath(runApkgExport(cards, deckName, noteType, null));
       },
 
       export_cards_as_apkg_with_template: async (args) => {
@@ -149,7 +154,7 @@ export function createExportHandlers(rt: AnkiPluginRuntime): Record<string, Comm
         };
         const cards = decodeCardArg(
           'export_cards_as_apkg_with_template', 'selectedCards', () => decodeExportCards(selectedCards));
-        return runApkgExport(cards, deckName, noteType, templateId ?? null);
+        return persistedPath(runApkgExport(cards, deckName, noteType, templateId ?? null));
       },
 
       export_multi_template_apkg: async (args) => {
@@ -232,6 +237,7 @@ export function createExportHandlers(rt: AnkiPluginRuntime): Record<string, Comm
           validationFailure(messages(error));
         }
 
+        await persistedPath(stagedOutputPath);
         let resolvedPath = stagedOutputPath;
         if (targetUri !== null) {
           try {
@@ -297,7 +303,7 @@ export function createExportHandlers(rt: AnkiPluginRuntime): Record<string, Comm
 
         const deckName = request.deckName?.trim() ? request.deckName : 'ChatAnki';
         const noteType = request.noteType?.trim() ? request.noteType : 'Basic';
-        const filePath = runApkgExport(cards, deckName, noteType, request.templateId ?? null);
+        const filePath = await persistedPath(runApkgExport(cards, deckName, noteType, request.templateId ?? null));
         const sizeBytes = ankiLocalRuntime().stat(filePath).size;
         return { filePath, sizeBytes, format: 'apkg' };
       },
@@ -368,7 +374,7 @@ export function createExportHandlers(rt: AnkiPluginRuntime): Record<string, Comm
         } catch (error) {
           throwApp('FileSystem', `导出APKG失败: ${messages(error)}`);
         }
-        return outputPath;
+        return persistedPath(outputPath);
       },
 
       batch_export_cards: async (args) => {
@@ -384,7 +390,7 @@ export function createExportHandlers(rt: AnkiPluginRuntime): Record<string, Comm
 
         switch (format) {
           case 'apkg':
-            return runApkgExport(cards, deckName, noteType, templateId);
+            return persistedPath(runApkgExport(cards, deckName, noteType, templateId));
           case 'json': {
             let jsonContent: string;
             try {

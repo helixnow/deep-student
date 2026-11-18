@@ -51,7 +51,7 @@ export interface NoteRepository {
   getNoteContent(id: string, conn?: SqlExecutor): string | null;
   getNoteWithContent(id: string, conn?: SqlExecutor): [VfsNote, string] | null;
   createNote(params: CreateNoteParams, conn?: SqlExecutor): VfsNote;
-  createNoteInFolder(params: CreateNoteParams, folderId: string | null, conn?: SqlExecutor): VfsNote;
+  createNoteInFolder(params: CreateNoteParams, folderId: string | null, conn?: SqlExecutor, noteId?: string): VfsNote;
   updateNote(id: string, params: UpdateNoteParams, conn?: SqlExecutor): VfsNote;
   updateNoteMetadata(id: string, params: NoteMetadataUpdate, conn?: SqlExecutor): VfsNote;
   listNotes(search: string | null, limit: number, offset: number, conn?: SqlExecutor): VfsNote[];

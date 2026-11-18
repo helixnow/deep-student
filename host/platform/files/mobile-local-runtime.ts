@@ -1,3 +1,6 @@
+import type { LocalFs as ProviderFiles } from '../../plugins/sync-providers/src/local-fs.ts';
+import { handleZipSink } from '../../plugins/sync-providers/src/local-fs.ts';
+import { ZipWriter } from '../zip/core/index.ts';
 /**
  * Mobile implementation of the synchronous local-runtime ports used by `vfs`, `vfs-repos`, `notes`,
  * `qbank`, `anki`, `sync` and `chat`.
@@ -6,7 +9,7 @@
  * Host has only the asynchronous `ctx.files` (OPFS). This module bridges the two with an in-memory
  * virtual tree:
  *
- * - the tree hydrates in the background from OPFS on plugin startup (`slots/`, `notes_assets/`,
+ * - the tree indexes disk-backed File snapshots in the background on plugin startup (`slots/`, `notes_assets/`,
  *   `chat_v2_temp/`, `chat_v2_artifacts/`, `textbooks/`, `recovery/`, `tmp/`, `attachments/`);
  * - every synchronous probe (`exists`, `isFile`, `isDir`, `fileLen`, `readFileSync`/`readBytes`,
  *   `readText`, `readDir`, `stat`, ...) is answered from that tree without touching the network;
@@ -21,7 +24,7 @@
  * previous default ports, so those commands keep their explicit degradation.
  */
 import type { Context } from '@deepseek-ai/cordis';
-import type { DirEntry, FilesService, FileKind } from './api.ts';
+import type { DirEntry, FilesService, FileKind, LocalFileSnapshot } from './api.ts';
 import { isVirtualUri } from '../storage/file-names.ts';
 import type { LocalRuntime as VfsLocalRuntime, LocalStats as VfsLocalStats, LocalBigStats as VfsLocalBigStats,
   LocalDirent as VfsLocalDirent, LocalAsyncHandle as VfsLocalAsyncHandle, LocalPath as VfsLocalPath } from '../../plugins/vfs/src/local-runtime.ts';
@@ -91,16 +94,28 @@ export function takeMobileStagedUpload(uploadId: string, tree: MobileLocalRuntim
   stagedUploads.delete(uploadId);
   if (entry.received !== entry.total) throw new Error(`Upload incomplete: received ${entry.received} of ${entry.total} bytes`);
   const path = tree.resolvePath(`tmp/staged_uploads/${uploadId}.part`);
-  tree.writeBytes(path, concatenate(entry.chunks, entry.received));
+  let state: 'memory' | 'file' | 'disposed' = 'memory';
   return {
-    path: () => path,
+    path: () => {
+      if (state === 'memory') {
+        tree.writeBytes(path, concatenate(entry.chunks, entry.received));
+        state = 'file';
+        entry.chunks.length = 0;
+      }
+      return path;
+    },
     name: () => entry.name,
     size: () => entry.received,
     readBounded: maxBytes => {
       if (entry.received > maxBytes) throw new Error(`File too large: ${entry.received} > ${maxBytes}`);
-      return tree.readBytes(path);
+      if (state === 'disposed') throw ENOENT(path);
+      return state === 'file' ? tree.readBytes(path) : concatenate(entry.chunks, entry.received);
     },
-    dispose: () => tree.removeForce(path),
+    dispose: () => {
+      if (state === 'file') tree.removeForce(path);
+      state = 'disposed';
+      entry.chunks.length = 0;
+    },
   };
 }
 
@@ -111,6 +126,9 @@ export interface MobileLocalRuntimeBundle {
   readonly qbank: QbankLocalRuntime;
   readonly anki: AnkiLocalRuntime;
   readonly sync: SyncLocalRuntime;
+  readonly providerFiles: ProviderFiles;
+  flushPending(): Promise<void>;
+  loadPersistedFile(path: string): Promise<void>;
   readonly vfsRepos: VfsReposLocalRuntime;
   readonly chat: ChatLocalFs;
 }
@@ -121,9 +139,15 @@ export interface MobileLocalRuntimeOptions {
   readonly log?: { warn(message: string): void; debug?(message: string): void };
 }
 
+type Content = Uint8Array | LocalFileSnapshot;
+const contentSize = (content: Content) => content instanceof Uint8Array ? content.byteLength : content.size;
+const readContent = (content: Content, start?: number, end?: number) =>
+  content instanceof Uint8Array ? content.slice(start, end) : content.read(start, end);
+
 interface FileNode {
   readonly kind: 'file';
-  data: Uint8Array;
+  data: Content;
+  readers: number;
   mtimeMs: number;
 }
 
@@ -138,7 +162,8 @@ interface OpenHandle {
   readonly path: string;
   readonly mode: 'read' | 'write' | 'append';
   position: number;
-  readonly data?: Uint8Array;
+  readonly data?: Content;
+  readonly reader?: FileNode;
 }
 
 function unavailable(operation: string): never {
@@ -258,12 +283,30 @@ export class MobileLocalRuntime {
     }
   }
 
-  private setFile(path: string, data: Uint8Array, localMutation = true): void {
+  // OPFS File snapshots become unreadable when their entry is replaced. Readers of the
+  // same version share one node; detach its bytes only while that version is still in use.
+  private preserveReaders(node: Node | undefined): void {
+    if (node?.kind === 'file' && node.readers && !(node.data instanceof Uint8Array)) {
+      node.data = readContent(node.data);
+    }
+  }
+
+  private setFile(path: string, data: Content, localMutation = true): FileNode {
     this.ensureDirs(dirname(path));
     const existing = this.nodes.get(path);
+    this.preserveReaders(existing);
     const mtimeMs = existing?.mtimeMs ?? Date.now();
-    this.nodes.set(path, { kind: 'file', data, mtimeMs });
+    const node: FileNode = { kind: 'file', readers: 0, data, mtimeMs: data instanceof Uint8Array ? mtimeMs : data.modifiedMs };
+    this.nodes.set(path, node);
     if (localMutation) this.locallyWritten.add(path);
+    return node;
+  }
+
+  private async releasePersistedBytes(path: string, node: FileNode): Promise<void> {
+    const files = this.service;
+    if (!files?.openLocalSnapshot || this.nodes.get(path) !== node) return;
+    const snapshot = await files.openLocalSnapshot(path);
+    if (this.nodes.get(path) === node) node.data = snapshot;
   }
 
   private node(path: string): Node {
@@ -347,8 +390,8 @@ export class MobileLocalRuntime {
           if (entry.kind !== 'file') continue;
           if (this.locallyWritten.has(path)) continue;
           try {
-            const bytes = await files.readBytes(entry.path);
-            if (!this.locallyWritten.has(path)) this.setFile(path, bytes, false);
+            const content = files.openLocalSnapshot ? await files.openLocalSnapshot(entry.path) : await files.readBytes(entry.path);
+            if (!this.locallyWritten.has(path)) this.setFile(path, content, false);
           } catch (error) {
             this.log?.warn(`mobile local runtime could not hydrate ${entry.path}: ${
               error instanceof Error ? error.message : String(error)}`);
@@ -378,20 +421,20 @@ export class MobileLocalRuntime {
 
   fileLen(path: string): number {
     const node = this.nodes.get(this.resolvePath(path));
-    return node?.kind === 'file' ? node.data.byteLength : 0;
+    return node?.kind === 'file' ? contentSize(node.data) : 0;
   }
 
   readBytes(path: string): Uint8Array {
-    return this.fileNode(path).data.slice();
+    return readContent(this.fileNode(path).data);
   }
 
   readText(path: string): string {
-    return decodeUtf8(this.fileNode(path).data);
+    return decodeUtf8(this.readBytes(path));
   }
 
   statPath(path: string | Uint8Array): Node & { size: number; mtimeMs: number } {
     const node = this.node(this.resolvePath(path));
-    return Object.assign(node, { size: node.kind === 'file' ? node.data.byteLength : 0 });
+    return Object.assign(node, { size: node.kind === 'file' ? contentSize(node.data) : 0 });
   }
 
   readDirNames(path: string): string[] {
@@ -417,13 +460,15 @@ export class MobileLocalRuntime {
   writeBytes(path: string, bytes: Uint8Array, options?: { readonly exclusive?: boolean }): void {
     const target = this.resolvePath(path);
     if (options?.exclusive === true && this.nodes.has(target)) throw EEXIST(target);
-    this.setFile(target, bytes.slice());
+    const node = this.setFile(target, bytes.slice());
     this.enqueue(async () => {
-      await this.service?.writeBytes(target, bytes, { createParents: true, ...(options?.exclusive === true ? { exclusive: true } : {}) });
+      if (options?.exclusive) await this.service?.writeBytes(target, bytes, { createParents: true, exclusive: true });
+      else await this.service?.writeAtomic(target, bytes, { createParents: true });
+      await this.releasePersistedBytes(target, node);
     });
   }
 
-  private writeDurableFile(path: string, bytes: Uint8Array, sha256: string): Promise<void> {
+  private writeDurableFile(path: string, bytes: Uint8Array, sha256?: string): Promise<void> {
     const target = this.resolvePath(path);
     const operation = this.flushChain.then(async () => {
       const service = this.service;
@@ -431,7 +476,7 @@ export class MobileLocalRuntime {
       const existing = await service.exists(target) ? await service.stat(target) : null;
       if (existing && existing.kind !== 'file') throw EISDIR(target);
       let matches = false;
-      if (existing?.size === bytes.byteLength) {
+      if (sha256 && existing?.size === bytes.byteLength) {
         const hash = createHasherSync('SHA-256');
         const reader = (await service.openRead(target)).getReader();
         try {
@@ -443,10 +488,15 @@ export class MobileLocalRuntime {
           matches = hash.digestHex() === sha256;
         } finally { reader.releaseLock(); }
       }
-      if (!matches) await service.writeAtomic(target, bytes, { createParents: true });
+      if (!matches) {
+        // The old node is visible to synchronous open() until durable publication completes.
+        const old = this.nodes.get(target);
+        if (old?.kind === 'file' && !(old.data instanceof Uint8Array)) old.data = readContent(old.data);
+        await service.writeAtomic(target, bytes, { createParents: true });
+      }
       const persisted = await service.stat(target);
       if (persisted.kind !== 'file' || persisted.size !== bytes.byteLength) throw new Error(`Mobile asset was not completely persisted: ${target}`);
-      this.setFile(target, bytes);
+      await this.releasePersistedBytes(target, this.setFile(target, bytes));
     });
     // Other staged writes can proceed after a failed upload; the caller still sees the rejection.
     this.flushChain = operation.catch(() => undefined);
@@ -461,12 +511,13 @@ export class MobileLocalRuntime {
     const target = this.resolvePath(path);
     const existing = this.nodes.get(target);
     const next = existing?.kind === 'file'
-      ? concatenate([existing.data, bytes], existing.data.byteLength + bytes.byteLength)
+      ? concatenate([readContent(existing.data), bytes], contentSize(existing.data) + bytes.byteLength)
       : bytes.slice();
-    this.setFile(target, next);
+    const node = this.setFile(target, next);
     this.enqueue(async () => {
       if (existing?.kind === 'file') await this.service?.append(target, bytes, { createParents: true });
       else await this.service?.writeBytes(target, next, { createParents: true });
+      await this.releasePersistedBytes(target, node);
     });
   }
 
@@ -475,6 +526,7 @@ export class MobileLocalRuntime {
     const node = this.nodes.get(target);
     if (node === undefined) throw ENOENT(target);
     if (node.kind === 'directory') throw EISDIR(target);
+    this.preserveReaders(this.nodes.get(target));
     this.nodes.delete(target);
     this.locallyWritten.add(target);
     this.enqueue(async () => { await this.service?.rm(target, { force: true }); });
@@ -484,6 +536,7 @@ export class MobileLocalRuntime {
     const target = this.resolvePath(path);
     this.dirNode(target);
     if (this.childNames(target).length > 0) throw ENOTEMPTY(target);
+    this.preserveReaders(this.nodes.get(target));
     this.nodes.delete(target);
     this.locallyWritten.add(target);
     this.enqueue(async () => { await this.service?.rm(target, { recursive: false, force: true }); });
@@ -493,13 +546,18 @@ export class MobileLocalRuntime {
     const target = this.resolvePath(path);
     const prefix = target === '/' ? '/' : `${target}/`;
     for (const key of [...this.nodes.keys()]) {
-      if (key === target || key.startsWith(prefix)) { this.nodes.delete(key); this.locallyWritten.add(key); }
+      if (key === target || key.startsWith(prefix)) {
+        this.preserveReaders(this.nodes.get(key));
+        this.nodes.delete(key);
+        this.locallyWritten.add(key);
+      }
     }
     this.enqueue(async () => { await this.service?.rm(target, { recursive: true, force: true }); });
   }
 
   removeForce(path: string): void {
     const target = this.resolvePath(path);
+    this.preserveReaders(this.nodes.get(target));
     this.nodes.delete(target);
     this.locallyWritten.add(target);
     this.enqueue(async () => { await this.service?.rm(target, { force: true }); });
@@ -514,6 +572,7 @@ export class MobileLocalRuntime {
       throw ENOENT(target);
     }
     if (node.kind === 'file') {
+      this.preserveReaders(node);
       this.nodes.delete(target);
       this.locallyWritten.add(target);
       this.enqueue(async () => { await this.service?.rm(target, { force: true }); });
@@ -521,6 +580,7 @@ export class MobileLocalRuntime {
     }
     if (options.recursive === true) { this.removeDirAll(target); return; }
     if (this.childNames(target).length > 0) throw ENOTEMPTY(target);
+    this.preserveReaders(this.nodes.get(target));
     this.nodes.delete(target);
     this.locallyWritten.add(target);
     this.enqueue(async () => {
@@ -541,21 +601,35 @@ export class MobileLocalRuntime {
       const moves = [...this.nodes.entries()].filter(([key]) => key === source || key.startsWith(prefix));
       for (const [key] of moves) this.nodes.delete(key);
       for (const [key, value] of moves) {
+        this.preserveReaders(this.nodes.get(target + key.slice(source.length)));
         this.nodes.set(`${target}${key.slice(source.length)}`, value);
         this.locallyWritten.add(`${target}${key.slice(source.length)}`);
       }
     } else {
+      this.preserveReaders(this.nodes.get(target));
       this.nodes.delete(source);
       this.nodes.set(target, node);
     }
-    this.enqueue(async () => { await this.service?.rename(source, target, { overwrite: true, createParents: true }); });
+    // OPFS invalidates a File snapshot after its underlying entry moves.
+    const moved = [...this.nodes.entries()].filter(([key, value]) =>
+      (key === target || key.startsWith(target + '/')) && value.kind === 'file');
+    for (const [, value] of moved) if (value.kind === 'file' && !(value.data instanceof Uint8Array)) {
+      value.data = readContent(value.data);
+    }
+    this.enqueue(async () => {
+      await this.service?.rename(source, target, { overwrite: true, createParents: true });
+      for (const [key, value] of moved) if (value.kind === 'file') await this.releasePersistedBytes(key, value);
+    });
   }
 
   copyFile(from: string, to: string): void {
-    const source = this.fileNode(from).data.slice();
+    const source = this.readBytes(from);
     const target = this.resolvePath(to);
-    this.setFile(target, source);
-    this.enqueue(async () => { await this.service?.copyFile(this.resolvePath(from), target, { overwrite: true, createParents: true }); });
+    const node = this.setFile(target, source);
+    this.enqueue(async () => {
+      await this.service?.copyFile(this.resolvePath(from), target, { overwrite: true, createParents: true });
+      await this.releasePersistedBytes(target, node);
+    });
   }
 
   /** `mkdtemp`: caller passes the prefix; the random component is appended. */
@@ -577,9 +651,12 @@ export class MobileLocalRuntime {
     if (node?.kind === 'directory') throw EISDIR(target);
     const fd = this.nextFd++;
     const writing = flags.includes('w') || flags.includes('a');
+    const reader = !writing && node?.kind === 'file' ? node : undefined;
+    if (reader) reader.readers++;
     this.handles.set(fd, {
+      reader,
       path: target, mode: writing ? (flags.includes('a') ? 'append' : 'write') : 'read', position: 0,
-      data: node?.kind === 'file' ? node.data : new Uint8Array(0),
+      data: writing ? (node?.kind === 'file' ? node.data : new Uint8Array(0)) : undefined,
     });
     return fd;
   }
@@ -587,31 +664,32 @@ export class MobileLocalRuntime {
   readFd(fd: number, buffer: Uint8Array, offset: number, length: number, position: number | null): number {
     const handle = this.handles.get(fd);
     if (handle === undefined) throw ioError('EBADF', `EBADF: bad file descriptor, read`);
-    const data = handle.data ?? new Uint8Array(0);
+    const data = handle.reader?.data ?? handle.data ?? new Uint8Array(0);
     const start = position ?? handle.position;
-    if (start >= data.byteLength) return 0;
-    const count = Math.min(length, data.byteLength - start);
-    buffer.set(data.subarray(start, start + count), offset);
+    if (start >= contentSize(data)) return 0;
+    const count = Math.min(length, contentSize(data) - start);
+    buffer.set(data instanceof Uint8Array ? data.subarray(start, start + count) : data.read(start, start + count), offset);
     if (position === null) handle.position += count;
     return count;
   }
 
-  writeFd(fd: number, buffer: Uint8Array, offset: number, length: number): number {
+  writeFd(fd: number, buffer: Uint8Array, offset: number, length: number, position: number | null = null): number {
     const handle = this.handles.get(fd);
     if (handle === undefined) throw ioError('EBADF', `EBADF: bad file descriptor, write`);
     if (handle.mode === 'read') throw ioError('EBADF', 'EBADF: bad file descriptor, write');
     const chunk = buffer.slice(offset, offset + length);
-    const handleData = handle.data ?? new Uint8Array(0);
+    const handleData = !handle.data ? new Uint8Array(0) : handle.data instanceof Uint8Array ? handle.data : handle.data.read();
     const next = handle.mode === 'append'
       ? concatenate([handleData, chunk], handleData.byteLength + chunk.byteLength)
       : (() => {
-        const required = handle.position + chunk.byteLength;
+        const start = position ?? handle.position;
+        const required = start + chunk.byteLength;
         const out = new Uint8Array(Math.max(required, handleData.byteLength));
         out.set(handleData, 0);
-        out.set(chunk, handle.position);
+        out.set(chunk, start);
         return out;
       })();
-    if (handle.mode === 'write') handle.position += chunk.byteLength;
+    if (handle.mode === 'write' && position === null) handle.position += chunk.byteLength;
     this.setFile(handle.path, next);
     this.handles.set(fd, { ...handle, data: next });
     return length;
@@ -620,22 +698,27 @@ export class MobileLocalRuntime {
   closeFd(fd: number): void {
     const handle = this.handles.get(fd);
     this.handles.delete(fd);
+    if (handle?.reader) handle.reader.readers--;
     if (handle === undefined || handle.mode === 'read' || handle.data === undefined) return;
     const target = handle.path;
-    const bytes = handle.data.slice();
-    this.enqueue(async () => { await this.service?.writeBytes(target, bytes, { createParents: true }); });
+    const bytes = readContent(handle.data);
+    const node = this.fileNode(target);
+    this.enqueue(async () => {
+      await this.service?.writeBytes(target, bytes, { createParents: true });
+      await this.releasePersistedBytes(target, node);
+    });
   }
 
   statFd(fd: number) {
     const handle = this.handles.get(fd);
     if (handle === undefined) throw ioError('EBADF', 'EBADF: bad file descriptor, fstat');
-    return this.statShape(handle.path);
+    return this.statShape(handle.path, undefined, handle.reader);
   }
 
   async openAsync(path: string, flags: string): Promise<VfsLocalAsyncHandle> {
     const fd = this.openFd(path, flags);
     return {
-      stat: async () => this.statShape(path),
+      stat: async () => this.statFd(fd),
       read: async (buffer, offset = 0, length = buffer.byteLength, position = null) => ({
         bytesRead: this.readFd(fd, buffer, offset, length, position),
       }),
@@ -645,11 +728,11 @@ export class MobileLocalRuntime {
 
   // ------------------------------------------------------------------ stat shapes
 
-  statShape(path: string | Uint8Array, kindOverride?: FileKind) {
+  statShape(path: string | Uint8Array, kindOverride?: FileKind, openedNode?: FileNode) {
     const target = this.resolvePath(path);
-    const node = this.nodes.get(target);
+    const node = openedNode ?? this.nodes.get(target);
     const kind: FileKind = kindOverride ?? node?.kind ?? (() => { throw ENOENT(target); })();
-    const size = node?.kind === 'file' ? node.data.byteLength : 0;
+    const size = node?.kind === 'file' ? contentSize(node.data) : 0;
     const mtimeMs = node?.mtimeMs ?? 0;
     return {
       kind,
@@ -718,8 +801,8 @@ export class MobileLocalRuntime {
       mkdtemp: prefix => tree.makeTempDir(prefix),
       statBig: async path => bigStat(path) as unknown as VfsLocalBigStats,
       open: (path, flags) => tree.openAsync(path, flags),
-      writeFile: async (path, data) => { tree.writeBytes(path, data); },
-      readFileBounded: async (path, maxBytes) => tree.readBytes(path).slice(0, maxBytes + 1),
+      writeFile: (path, data) => tree.writeDurableFile(path, data),
+      readFileBounded: async (path, maxBytes) => readContent(tree.fileNode(path).data, 0, maxBytes + 1),
       rm: async (path, options) => { tree.removePath(path, options); },
       deviceIdEnv: () => null,
       takeStagedUpload: uploadId => takeMobileStagedUpload(uploadId, tree),
@@ -741,7 +824,7 @@ export class MobileLocalRuntime {
         const service = tree.service;
         if (!service) throw new Error('Mobile asset storage is unavailable');
         const entry = await service.stat(target);
-        if (entry.kind !== 'file' || entry.size !== tree.fileNode(target).data.byteLength) {
+        if (entry.kind !== 'file' || entry.size !== tree.fileLen(target)) {
           throw new Error('Mobile asset was not completely persisted');
         }
       },
@@ -793,7 +876,7 @@ export class MobileLocalRuntime {
       },
       deflateRaw: bytes => pako.deflateRaw(bytes),
       mkdirpAsync: async path => { tree.mkdirp(path); },
-      writeFileAsync: async (path, bytes) => { tree.writeBytes(path, bytes); },
+      writeFileAsync: (path, bytes) => tree.writeDurableFile(path, bytes),
       renameAsync: async (from, to) => { tree.rename(from, to); },
       copyFileVerified: async (source, target) => {
         if (isVirtualUri(source)) unavailable(`copy ${source}`);
@@ -817,7 +900,11 @@ export class MobileLocalRuntime {
         if (tree.readBundledText !== undefined) return tree.readBundledText(name);
         return unavailable(`read bundled ${name}`);
       },
-      writeFile: async (path, text) => { tree.writeText(path, text); },
+      writeFile: (path, text) => tree.writeDurableFile(path, encodeUtf8(text)),
+      async persistFile(path) {
+        const bytes = tree.readBytes(path);
+        await tree.writeDurableFile(path, bytes, createHasherSync('SHA-256').update(bytes).digestHex());
+      },
       mkdirpAsync: async path => { tree.mkdirp(path); },
       removeAsync: async path => { tree.removeForce(path); },
       copyFileVerified: async (source, target) => {
@@ -851,7 +938,7 @@ export class MobileLocalRuntime {
       statBig: async path => bigStat(path) as SyncLocalBigStats,
       rename: async (from, to) => { tree.rename(from, to); },
       rm: async (path, options) => { tree.removePath(path, options); },
-      writeFile: async (path, data) => { tree.writeBytes(path, data); },
+      writeFile: (path, data) => tree.writeDurableFile(path, data),
       open: async (path, flags): Promise<SyncLocalAsyncHandle> => {
         const fd = tree.openFd(path, flags);
         return { close: async () => { tree.closeFd(fd); } };
@@ -943,7 +1030,86 @@ export class MobileLocalRuntime {
       removeDirForce: path => tree.removeDirAll(path),
     };
 
-    return { vfs, notes, qbank, anki, sync, vfsRepos, chat };
+    const providerFiles: ProviderFiles = {
+      constants: { O_APPEND: 1024, O_CREAT: 64, O_WRONLY: 1 },
+      tmpDir: sync.tmpDir, mkdtemp: sync.mkdtemp,
+      async mkdir(path) { tree.mkdirp(path); return undefined; },
+      async stat(path) { return stat(path); },
+      async lstat(path) { return stat(path); },
+      async readFile(path) { return tree.readBytes(path); },
+      writeFile: (path, bytes) => tree.writeDurableFile(path, bytes),
+      async copyFile(from, to) { await tree.writeDurableFile(to, tree.readBytes(from)); },
+      async link(from, to) {
+        if (tree.exists(to)) throw EEXIST(to);
+        const bytes = tree.readBytes(from);
+        const files = tree.service;
+        if (!files) throw new Error('Mobile storage is unavailable');
+        await tree.flushChain;
+        await files.writeBytes(to, bytes, { exclusive: true, createParents: true });
+        if ((await files.stat(to)).size !== bytes.length) throw new Error('Incomplete mobile file copy');
+        const path = tree.resolvePath(to);
+        await tree.releasePersistedBytes(path, tree.setFile(path, bytes));
+      },
+      async rename(from, to) { tree.rename(from, to); await tree.flushChain; },
+      async unlink(path) { tree.unlink(path); await tree.flushChain; },
+      async rm(path, options) { tree.removePath(path, options); await tree.flushChain; },
+      async rmdir(path) { tree.removePath(path); await tree.flushChain; },
+      async readdir(path) { return tree.readDirNames(path); },
+      async *readChunks(path, chunkSize) {
+        if (!Number.isSafeInteger(chunkSize) || chunkSize <= 0) throw new RangeError('Invalid chunk size');
+        const fd = tree.openFd(path, 'r');
+        try {
+          const { size } = tree.statFd(fd);
+          for (let offset = 0; offset < size; offset += chunkSize) {
+            const chunk = new Uint8Array(Math.min(chunkSize, size - offset));
+            tree.readFd(fd, chunk, 0, chunk.length, offset);
+            yield chunk;
+          }
+        } finally { tree.closeFd(fd); }
+      },
+      async open(path, flags = 'r') {
+        const mode = typeof flags === 'number' ? (flags & 1024 ? 'a' : flags & 1 ? 'w' : 'r') : flags;
+        const fd = tree.openFd(path, mode);
+        const writable = mode.includes('w') || mode.includes('a');
+        let closed = false;
+        return {
+          stat: async () => tree.statFd(fd),
+          async read(buffer, offset = 0, length = buffer.length - offset, position = null) {
+            return { bytesRead: tree.readFd(fd, buffer, offset, length, position) };
+          },
+          async write(bytes, offset = 0, length = bytes.length - offset, position = null) {
+            return { bytesWritten: tree.writeFd(fd, bytes, offset, length, position) };
+          },
+          async writeFile(bytes) { tree.writeFd(fd, bytes, 0, bytes.length, null); },
+          async sync() { if (writable) await tree.writeDurableFile(path, tree.readBytes(path)); },
+          async close() {
+            if (closed) return;
+            closed = true;
+            if (writable) tree.handles.delete(fd);
+            else tree.closeFd(fd);
+            if (writable) await tree.writeDurableFile(path, tree.readBytes(path));
+          },
+        };
+      },
+      async createZipWriter(path) {
+        const handle = await providerFiles.open(path, 'wx');
+        const zip = new ZipWriter(handleZipSink(handle));
+        return {
+          async addFile(name, source) { await zip.addStream(name, providerFiles.readChunks(source, 256 * 1024)); },
+          async finish() { try { return await zip.finish(); } finally { await handle.close(); } },
+          async abort() { try { await handle.close(); } finally { await providerFiles.rm(path, { force: true }); } },
+        };
+      },
+    };
+    return {
+      vfs, notes, qbank, anki, sync, providerFiles, vfsRepos, chat,
+      flushPending: () => tree.flushChain,
+      async loadPersistedFile(path) {
+        if (!tree.service) throw new Error('Mobile storage is unavailable');
+        const target = tree.resolvePath(path);
+        tree.setFile(target, tree.service.openLocalSnapshot ? await tree.service.openLocalSnapshot(target) : await tree.service.readBytes(target));
+      },
+    };
   }
 
   // ------------------------------------------------------------------ helpers exposed for tests

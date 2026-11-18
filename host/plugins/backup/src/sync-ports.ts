@@ -18,9 +18,8 @@ import {
   type AuditLogEntry,
 } from '../repository/audit.ts';
 import { loadHydratedCloudConfigSsot } from './cloud-config.ts';
-import {
-  OperationGuardError, type OperationAcquireOutcome, type OperationGuard, type Operations,
-} from './operations.ts';
+import { OperationGuardError } from './operation-errors.ts';
+import type { OperationAcquireOutcome, OperationGuard, Operations } from './operations.ts';
 
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -50,7 +49,7 @@ export function syncAuditLog(request: SyncAuditRequest): AuditLogEntry {
   }
 }
 
-export function createSyncCommandPorts(ctx: Context, operations: Operations): BackupSyncCommandPorts {
+export function createSyncCommandPorts(ctx: Context, operations: Pick<Operations, 'tryAcquire' | 'acquireWithTimeout'>): BackupSyncCommandPorts {
   const warn = (message: string): void => { ctx.logger('backup').warn(message); };
 
   return {

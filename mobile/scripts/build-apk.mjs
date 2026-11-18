@@ -210,6 +210,7 @@ function verifyReleaseSignature(sdk, apk, env) {
 const APP_ID = 'com.deepstudent.app';
 const APP_NAME = 'Deep Student';
 const ANDROID_PERMISSIONS = [
+  'android.permission.CAMERA',
   'android.permission.RECORD_AUDIO',
   'android.permission.MODIFY_AUDIO_SETTINGS',
   'android.permission.POST_NOTIFICATIONS',
@@ -271,6 +272,18 @@ function patchAndroidManifest(android) {
       'Pomodoro alarm receiver');
   }
 
+  for (const action of ['SEND', 'SEND_MULTIPLE']) {
+    if (!text.includes('android.intent.action.' + action + '"')) {
+      const filter = '<intent-filter><action android:name="android.intent.action.' + action +
+        '" /><category android:name="android.intent.category.DEFAULT" /><data android:mimeType="image/*" /><data android:mimeType="application/pdf" />' +
+        (action === 'SEND' ? '<data android:mimeType="text/plain" />' : '') + '</intent-filter>';
+      text = replaceRequired(text, /<\/activity>/, filter + '\n        </activity>', 'Android incoming share');
+    }
+  }
+
+  if (!text.includes('android.hardware.camera')) {
+    text = replaceRequired(text, /<application\b/, '<uses-feature android:name="android.hardware.camera" android:required="false" />\n    <application', 'optional camera');
+  }
   const declared = new Set([...text.matchAll(/<uses-permission[^>]*android:name=(["'])([^"']+)\1/g)].map(match => match[2]));
   const missing = ANDROID_PERMISSIONS.filter(permission => !declared.has(permission));
   if (missing.length > 0) {

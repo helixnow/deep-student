@@ -54,6 +54,10 @@
       "module": "../plugins/anki/mobile.ts"
     },
     {
+      "id": "dstu.mobile.cloud-config",
+      "module": "../plugins/backup/mobile.ts"
+    },
+    {
       "id": "dstu.mobile.web-search",
       "module": "../plugins/browser/mobile-search.ts"
     },
