@@ -89,7 +89,7 @@
     ],
     [
       "import",
-      "./locales/zh-CN",
+      "../locales/bundles/zh-CN",
       true
     ],
     [
