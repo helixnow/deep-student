@@ -126,6 +126,7 @@ export type DailySprintLaunchSource =
   | 'desktop-agenda'
   | 'mobile-banner'
   | 'today-hint'
+  | 'todo-today'
   | 'extra-batch'
   | 'programmatic';
 

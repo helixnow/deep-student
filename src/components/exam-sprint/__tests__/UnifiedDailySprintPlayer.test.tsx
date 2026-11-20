@@ -338,6 +338,10 @@ describe('UnifiedDailySprintPlayer', () => {
     expect(EMOJI_RE.test(container.textContent ?? '')).toBe(false);
     expect(screen.getByTestId('sprint-modality-badge').textContent).toBe('闪卡');
     expect(screen.getByTestId('sprint-progress-ordinal').textContent).toBe('1 / 3');
+    expect(screen.getByTestId('sprint-progress-bar').getAttribute('aria-valuenow')).toBe('0');
+    expect(screen.getByTestId('sprint-stage-transition').getAttribute('data-item-kind')).toBe('fsrs_card');
+    expect(screen.getByTestId('sprint-stage-transition').className).toContain('motion-reduce:animate-none');
+    expect(screen.getByTestId('sprint-shortcut-hint').textContent).toContain('翻面揭晓');
     expect(screen.getByTestId('sprint-cloze-masked')).toBeTruthy();
 
     // Space reveals FSRS Cloze card
@@ -363,6 +367,12 @@ describe('UnifiedDailySprintPlayer', () => {
     await waitFor(() => {
       expect(screen.getByTestId('sprint-mistake-stage')).toBeTruthy();
     });
+    expect(screen.getByTestId('sprint-stage-transition').getAttribute('data-item-kind')).toBe(
+      'mistake_question',
+    );
+    expect(screen.getByTestId('sprint-shortcut-hint').textContent).toContain('A–D');
+    expect(screen.getByTestId('sprint-shortcut-hint').textContent).toContain('核对答案');
+    expect(screen.getByTestId('sprint-progress-bar').getAttribute('aria-valuenow')).toBe('1');
     expect(screen.getByTestId('sprint-variant-badge').textContent).toContain('AI 变式');
     expect(screen.getByTestId('sprint-progress-ordinal').textContent).toBe('2 / 3');
     expect(EMOJI_RE.test(container.textContent ?? '')).toBe(false);

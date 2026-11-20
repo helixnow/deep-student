@@ -15,6 +15,7 @@ import {
     CheckCircle,
     Star,
     Columns,
+    CircleNotch,
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { TranslationStreamRenderer } from '../../translation/TranslationStreamRenderer';
@@ -125,6 +126,11 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
         <Copy size={16} />
     );
 
+    const isMac =
+        typeof navigator !== 'undefined' && /mac/i.test(navigator.platform || navigator.userAgent || '');
+    const translateShortcut = isMac ? '⌘ + Enter' : 'Ctrl + Enter';
+    const hasSourceText = sourceText.trim().length > 0;
+
     return (
         <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 bg-foreground/[0.015] relative group/target">
             {/* 桌面右上轻量悬浮动作组（消除独立二级顶栏横线，空态仅保留对照切换） */}
@@ -197,13 +203,23 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             <CommonTooltip content={justCopied ? t('translation:target_section.copied') : t('translation:target_section.copy')}>
                                 <DsButton
                                     variant="ghost"
-                                    size="icon"
+                                    size={justCopied ? 'sm' : 'icon'}
                                     onClick={handleCopy}
                                     disabled={isTranslating}
-                                    aria-label={t('translation:target_section.copy')}
-                                    className={cn(COARSE_HIT, "w-7 h-7 text-muted-foreground hover:text-foreground")}
+                                    aria-label={justCopied ? t('translation:target_section.copied') : t('translation:target_section.copy')}
+                                    data-testid="translation-copy-btn"
+                                    className={cn(
+                                        COARSE_HIT,
+                                        'h-7 transition-all duration-150 motion-reduce:transition-none active:scale-95 motion-reduce:active:scale-100',
+                                        justCopied
+                                            ? 'w-auto px-2 gap-1 bg-success/10 text-success hover:bg-success/15 hover:text-success'
+                                            : 'w-7 text-muted-foreground hover:text-foreground'
+                                    )}
                                 >
                                     {copyIcon}
+                                    {justCopied && (
+                                        <span className="text-2xs font-medium">{t('translation:target_section.copied_short')}</span>
+                                    )}
                                 </DsButton>
                             </CommonTooltip>
                             <CommonTooltip content={t('translation:target_section.export')}>
@@ -322,7 +338,24 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                         />
                     </div>
                 ) : (
-                    <div className="flex-1 min-h-0 flex flex-col" ref={setContentWrap}>
+                    <div className="flex-1 min-h-0 flex flex-col relative" ref={setContentWrap}>
+                        {/* 流式翻译实时状态胶囊 */}
+                        {isTranslating && (
+                            <div
+                                data-testid="translation-streaming-pill"
+                                role="status"
+                                aria-live="polite"
+                                className="pointer-events-none absolute top-3 left-4 z-10 inline-flex items-center gap-1.5 rounded-full border border-primary/25 bg-background/85 backdrop-blur-md px-2.5 py-1 text-2xs font-medium text-primary shadow-xs"
+                            >
+                                <CircleNotch size={12} className="animate-spin motion-reduce:animate-none shrink-0" aria-hidden="true" />
+                                <span className="tabular-nums">
+                                    {targetCharCount === 0
+                                        ? t('translation:target_section.streaming_preparing')
+                                        : t('translation:target_section.streaming_live', { count: targetCharCount })}
+                                </span>
+                            </div>
+                        )}
+
                         <div className="flex-1 min-h-0 overflow-hidden">
                             <TranslationStreamRenderer
                                 content={translatedText}
@@ -331,6 +364,20 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                 showStats={false}
                             />
                         </div>
+
+                        {/* 空态学习者引导副提示：区分尚未输入原文与原文已就绪可快捷键翻译 */}
+                        {!translatedText && !isTranslating && (
+                            <div
+                                data-testid="translation-empty-hint"
+                                className="pointer-events-none absolute inset-x-4 bottom-5 flex justify-center"
+                            >
+                                <span className="rounded-full border border-border/35 bg-background/75 backdrop-blur-sm px-3 py-1 text-2xs text-muted-foreground/80">
+                                    {hasSourceText
+                                        ? t('translation:target_section.ready_to_translate', { shortcut: translateShortcut })
+                                        : t('translation:target_section.empty_subhint')}
+                                </span>
+                            </div>
+                        )}
 
                         {/* 悬浮状态条：评分 + 字数 */}
                         {translatedText && !isTranslating && (

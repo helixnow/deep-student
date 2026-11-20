@@ -499,11 +499,9 @@ export function AppShellChrome(props: AppShellChromeProps) {
                     })();
                     return;
                   }
-                  if (currentView === 'settings') {
-                    // 已在设置页面，直接通过事件切换到数据治理标签
-                    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'data-governance' });
-                  } else {
-                    setPendingSettingsTab('data-governance');
+                  setPendingSettingsTab('data-governance');
+                  dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'data-governance' });
+                  if (!workbenchActive) {
                     setCurrentView('settings');
                   }
                 }}
@@ -591,7 +589,10 @@ export function AppShellChrome(props: AppShellChromeProps) {
           onConfigure={() => {
             dismissWelcomeOnboarding();
             setPendingSettingsTab('apis');
-            setCurrentView('settings');
+            dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'apis' });
+            if (!workbenchActive) {
+              setCurrentView('settings');
+            }
           }}
           onSkip={dismissWelcomeOnboarding}
         />

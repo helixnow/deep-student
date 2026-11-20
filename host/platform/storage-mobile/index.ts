@@ -58,6 +58,7 @@ import { MobileBackupCancelled, MobileBackupService, type MobileBackupSelection 
 import { beginMobileStagedUpload, appendMobileStagedUpload, abortMobileStagedUpload } from '../files/mobile-local-runtime.ts';
 import { catalog } from '../../plugins/backup/src/asset-catalog.ts';
 import { FileError, type FilesService } from '../files/api.ts';
+import type { SecretsService } from '../secrets/api.ts';
 import { cleanupMobileAuditLogs, queryMobileAuditLogs } from './audit.ts';
 import { AppError } from '../errors/api.ts';
 import { posix } from '../util/path.ts';
@@ -591,21 +592,36 @@ export default definePlugin<{ recoveryOnly?: boolean }>({
       return { job_id: job.id, kind: 'export', status: 'queued', message: 'ZIP 导出任务已启动，请通过 backup-job-progress 事件监听进度' };
     };
 
-    ctx.commands.register('data_governance_export_zip', (args) => guard(() => {
-      if (args.useStoredCloudEncryptionPassword && !args.encryptionPassword) throw new CommandError('移动端无法读取已保存的云端备份密码，请显式输入密码');
+    const resolveCloudBackupPassword = async (explicit: unknown, useStored: unknown): Promise<string | undefined> => {
+      const trimmedExplicit = typeof explicit === 'string' && explicit.trim().length > 0 ? explicit : undefined;
+      if (trimmedExplicit) return trimmedExplicit;
+      if (useStored !== true) return undefined;
+      const secrets = ctx.get('secrets') as SecretsService | undefined;
+      if (!secrets) throw new CommandError('未找到已保存的云端加密密码，请先在云存储设置中保存密码或手动输入');
+      const stored = await secrets.openFallbackStore().getCloudCredentials();
+      const storedPassword = typeof stored?.encryptionPassword === 'string' && stored.encryptionPassword.trim().length > 0
+        ? stored.encryptionPassword
+        : undefined;
+      if (!storedPassword) throw new CommandError('未找到已保存的云端加密密码，请先在云存储设置中保存密码或手动输入');
+      return storedPassword;
+    };
+
+    ctx.commands.register('data_governance_export_zip', (args) => guard(async () => {
+      const password = await resolveCloudBackupPassword(args.encryptionPassword, args.useStoredCloudEncryptionPassword);
       const outputPath = typeof args.outputPath === 'string' && args.outputPath.startsWith('/') ? args.outputPath : null;
-      return startExport(String(args.backupId), outputPath, false, true, typeof args.encryptionPassword === 'string' ? args.encryptionPassword : undefined,
+      return startExport(String(args.backupId), outputPath, false, true, password,
         undefined, typeof args.compressionLevel === 'number' ? args.compressionLevel : undefined);
     }));
 
-    ctx.commands.register('data_governance_backup_and_export_zip', (args) => guard(() => {
+    ctx.commands.register('data_governance_backup_and_export_zip', (args) => guard(async () => {
+      const password = await resolveCloudBackupPassword(args.encryptionPassword, args.useStoredCloudEncryptionPassword);
       const outputPath = typeof args.outputPath === 'string' && args.outputPath.startsWith('/') ? args.outputPath : null;
-      return startExport(`backup-${ctx.crypto.randomUUID()}`, outputPath, true, args.addToBackupList === true, typeof args.encryptionPassword === 'string' ? args.encryptionPassword : undefined,
+      return startExport(`backup-${ctx.crypto.randomUUID()}`, outputPath, true, args.addToBackupList === true, password,
         selectedBackup(args, args.useTiered === true), typeof args.compressionLevel === 'number' ? args.compressionLevel : undefined);
     }));
 
-    ctx.commands.register('data_governance_import_zip', (args) => guard(() => {
-      if (args.useStoredCloudEncryptionPassword && !args.password) throw new CommandError('移动端无法读取已保存的云端备份密码，请显式输入密码');
+    ctx.commands.register('data_governance_import_zip', (args) => guard(async () => {
+      const password = await resolveCloudBackupPassword(args.password, args.useStoredCloudEncryptionPassword);
       const jobs = backupService().jobs;
       const job = jobs.create('import');
       void (async () => {
@@ -613,7 +629,7 @@ export default definePlugin<{ recoveryOnly?: boolean }>({
         job.update({ status: 'running', phase: 'scan', progress: 5, message: '正在解压 ZIP 备份', cancellable: !picker });
         let passedPicker = !picker;
         const result = await backupService().importArchive(String(args.zipPath), typeof args.backupId === 'string' ? args.backupId : null,
-          typeof args.password === 'string' ? args.password : undefined, false, () => {
+          password, false, () => {
             job.check();
             if (!passedPicker) {
               passedPicker = true;

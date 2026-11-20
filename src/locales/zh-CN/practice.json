@@ -587,7 +587,11 @@
     "aiExplanationSaved": "AI 解析已保存，可随时查看",
     "explanationSaveFailed": "写入解析失败",
     "aiRegenerate": "重新生成",
-    "practiceThisQuestion": "做这道题"
+    "practiceThisQuestion": "做这道题",
+    "clearFilters": "清空筛选",
+    "filteredCount": "匹配 {{count}} 题",
+    "collapseExplanation": "收起解析",
+    "expandExplanation": "展开全文"
   },
   "answerSheet": {
     "answered": "已答",
@@ -676,6 +680,7 @@
     "noReference": "暂无参考答案",
     "noQuestions": "暂无题目",
     "addImage": "添加作答图片",
+    "takePhoto": "拍照作答",
     "removeImage": "移除图片 {{n}}",
     "imageMissing": "无法读取试卷图片",
     "deleteRecord": "删除这条练习记录？",
@@ -688,7 +693,22 @@
     "keepOrder": "确认当前顺序",
     "inProgress": "有未完成练习",
     "notStarted": "可开始练习",
-    "lastResult": "最近成绩 {{correct}} / {{total}}"
+    "lastResult": "最近成绩 {{correct}} / {{total}}",
+    "selectedOption": "已选",
+    "multiChoiceHint": "可多选",
+    "inlineNavHint": "← → 切题 · Enter 下一题",
+    "inlineReviewNavHint": "← → 切题"
+  },
+  "reviewView": {
+    "searchPlaceholder": "搜索错题内容或题号...",
+    "clearSearch": "清空搜索",
+    "clearFilters": "清空筛选",
+    "noFilterMatch": "没有符合筛选条件的错题",
+    "noFilterMatchHint": "尝试更换搜索词或清空难度筛选",
+    "noPracticeYetTitle": "还没有错题记录",
+    "noPracticeYetDesc": "完成练习后，答错的题目会自动整理到这里，方便针对性查漏补缺。",
+    "startFirstPractice": "去开始练习",
+    "masteredBadge": "已掌握 {{count}} 题"
   },
   "session": {
     "exitTitle": "离开当前练习？",

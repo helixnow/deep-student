@@ -2,7 +2,7 @@
  * 跨题目集的「到期错题复习」：首页 / 待办 / 学习桌面里点「错题复习 N」直接开始复习，
  * 不必先去资源库逐个题目集找「更多 › 复习计划」。
  *
- * 复用 SM-2 复习会话（reviewPlanStore + ReviewSession）；会话 examId 用固定键标记为跨题目集，
+ * 复用 FSRS 错题复习会话（reviewPlanStore + ReviewSession）；会话 examId 用固定键标记为跨题目集，
  * 各题目集窗口里的复习面板据此识别「不是本题目集的会话」而不去接管。
  */
 import { invoke } from '@tauri-apps/api/core';

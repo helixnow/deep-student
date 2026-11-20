@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import katex from 'katex';
 import {
   CaretRight,
   Check,
@@ -106,12 +107,28 @@ function isNumericLike(val: unknown): boolean {
   return false;
 }
 
+function renderKatexHtml(latex: string, displayMode: boolean): string | null {
+  const trimmed = latex.trim();
+  if (!trimmed) return null;
+  try {
+    return katex.renderToString(trimmed, {
+      displayMode,
+      throwOnError: false,
+      strict: false,
+      trust: false,
+    });
+  } catch {
+    return null;
+  }
+}
+
 /**
- * 轻量内联 Markdown 渲染（支持 **粗体**、`代码`、[链接](url) 与换行列表，严格无 Emoji）
+ * 轻量内联 Markdown 渲染（支持公式 $$...$$ / $...$ / \(...\) / \[...\]、**粗体**、`代码`、[链接](url)，严格无 Emoji）
  */
 function renderInlineMarkdown(text: string): React.ReactNode {
   const parts: React.ReactNode[] = [];
-  const regex = /(\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))/g;
+  const regex =
+    /(\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\((.+?)\\\)|(?<!\$)\$(?!\$)([^$\n]+?)(?<!\$)\$(?!\$)|\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -119,31 +136,59 @@ function renderInlineMarkdown(text: string): React.ReactNode {
     if (match.index > lastIndex) {
       parts.push(text.slice(lastIndex, match.index));
     }
-    if (match[2] !== undefined) {
+    const blockLatex = match[2] ?? match[3];
+    const inlineLatex = match[4] ?? match[5];
+    if (blockLatex !== undefined) {
+      const html = renderKatexHtml(blockLatex, true);
+      if (html) {
+        parts.push(
+          <span
+            key={match.index}
+            className="my-1 block overflow-x-auto"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />,
+        );
+      } else {
+        parts.push(match[0]);
+      }
+    } else if (inlineLatex !== undefined) {
+      const html = renderKatexHtml(inlineLatex, false);
+      if (html) {
+        parts.push(
+          <span
+            key={match.index}
+            className="inline-block align-baseline"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />,
+        );
+      } else {
+        parts.push(match[0]);
+      }
+    } else if (match[6] !== undefined) {
       parts.push(
         <strong key={match.index} className="font-semibold text-foreground">
-          {match[2]}
+          {match[6]}
         </strong>,
       );
-    } else if (match[3] !== undefined) {
+    } else if (match[7] !== undefined) {
       parts.push(
         <code
           key={match.index}
           className="rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em] text-foreground"
         >
-          {match[3]}
+          {match[7]}
         </code>,
       );
-    } else if (match[4] !== undefined && match[5] !== undefined) {
+    } else if (match[8] !== undefined && match[9] !== undefined) {
       parts.push(
         <a
           key={match.index}
-          href={match[5]}
+          href={match[9]}
           target="_blank"
           rel="noopener noreferrer"
           className="font-medium text-primary underline underline-offset-2"
         >
-          {match[4]}
+          {match[8]}
         </a>,
       );
     }
@@ -426,6 +471,329 @@ const DetailsContainer: React.FC<{
       {open && (
         <div className="border-t border-border/35 px-3 py-2.5 space-y-2">
           {renderValue(childrenValue, 'details-body')}
+        </div>
+      )}
+    </div>
+  );
+};
+
+function formatChartTick(val: number): string {
+  if (!Number.isFinite(val)) return '0';
+  if (Number.isInteger(val)) return String(val);
+  return Number(val.toFixed(1)).toString();
+}
+
+const BarChartView: React.FC<{
+  labels: string[];
+  series: ParsedSeries[];
+  unit: string;
+}> = ({ labels, series, unit }) => {
+  const { t } = useTranslation('generativeUi');
+  const [hoveredRow, setHoveredRow] = useState<number | null>(null);
+  const allValues = series.flatMap((s) => s.values);
+  const maxVal = Math.max(1, ...allValues, 0);
+  const rawAria = t('openuiLang.barChartAria', { defaultValue: '柱状图' });
+  const barAriaLabel =
+    rawAria && rawAria !== 'openuiLang.barChartAria' ? rawAria : '柱状图';
+
+  return (
+    <div
+      data-openui-component="BarChart"
+      role="group"
+      aria-label={barAriaLabel}
+      className="rounded-lg border border-border/35 bg-card/40 p-3 space-y-3"
+    >
+      {series.length > 1 && (
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          {series.map((s, sIdx) => (
+            <span key={s.name} className="inline-flex items-center gap-1.5">
+              <span
+                className="h-1.5 w-1.5 rounded-full"
+                style={{ background: CHART_COLORS[sIdx % CHART_COLORS.length] }}
+              />
+              <span>{s.name}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="space-y-1.5">
+        {labels.map((label, lIdx) => {
+          const isHovered = hoveredRow === lIdx;
+          return (
+            <div
+              key={`${lIdx}-${label}`}
+              data-chart-bar-row={lIdx}
+              data-hovered={isHovered ? 'true' : 'false'}
+              onMouseEnter={() => setHoveredRow(lIdx)}
+              onMouseLeave={() => setHoveredRow((prev) => (prev === lIdx ? null : prev))}
+              className={cn(
+                '-mx-1.5 space-y-1 rounded-md px-1.5 py-1 transition-colors',
+                isHovered && 'bg-muted/45',
+              )}
+            >
+              <div className="flex items-baseline justify-between gap-3 text-xs">
+                <span
+                  className={cn(
+                    'min-w-0 truncate transition-colors',
+                    isHovered ? 'font-medium text-foreground' : 'text-muted-foreground',
+                  )}
+                >
+                  {label}
+                </span>
+                <span className="shrink-0 text-right font-mono tabular-nums font-medium text-foreground">
+                  {series
+                    .map((s) => `${s.values[lIdx] ?? 0}${unit ? ` ${unit}` : ''}`)
+                    .join(' / ')}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                {series.map((s, sIdx) => {
+                  const v = s.values[lIdx] ?? 0;
+                  const pct = Math.max(2, Math.min(100, Math.round((v / maxVal) * 100)));
+                  return (
+                    <div
+                      key={`${s.name}-${sIdx}`}
+                      className="h-2 w-full overflow-hidden rounded-full bg-muted/60"
+                    >
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${pct}%`,
+                          background: CHART_COLORS[sIdx % CHART_COLORS.length],
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const LineChartView: React.FC<{
+  labels: string[];
+  series: ParsedSeries[];
+  unit: string;
+}> = ({ labels, series, unit }) => {
+  const { t } = useTranslation('generativeUi');
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+
+  const allValues = series.flatMap((s) => s.values);
+  const minVal = allValues.length > 0 ? Math.min(0, ...allValues) : 0;
+  const rawMax = allValues.length > 0 ? Math.max(...allValues) : 1;
+  const maxVal = rawMax <= minVal ? minVal + 1 : rawMax;
+  const midVal = (maxVal + minVal) / 2;
+
+  const width = 480;
+  const height = 152;
+  const padLeft = 38;
+  const padRight = 16;
+  const padTop = 14;
+  const padBottom = 18;
+  const plotWidth = width - padLeft - padRight;
+  const plotHeight = height - padTop - padBottom;
+
+  const maxPointCount = Math.max(1, labels.length, ...series.map((s) => s.values.length));
+
+  const getPointX = (idx: number, count: number): number =>
+    count <= 1 ? padLeft + plotWidth / 2 : padLeft + (idx / (count - 1)) * plotWidth;
+
+  const getPointY = (val: number): number =>
+    padTop + plotHeight - ((val - minVal) / (maxVal - minVal)) * plotHeight;
+
+  const yTicks = [
+    { key: 'max', value: maxVal, y: padTop },
+    { key: 'mid', value: midVal, y: padTop + plotHeight / 2 },
+    { key: 'min', value: minVal, y: padTop + plotHeight },
+  ] as const;
+
+  const activeX =
+    activeIndex !== null ? Math.round(getPointX(activeIndex, maxPointCount)) : null;
+
+  const rawLineAria = t('openuiLang.lineChartAria', { defaultValue: '折线图' });
+  const lineAriaLabel =
+    rawLineAria && rawLineAria !== 'openuiLang.lineChartAria' ? rawLineAria : '折线图';
+  const rawHint = t('openuiLang.chartReadoutHint', {
+    defaultValue: '悬停或聚焦数据点查看数值',
+  });
+  const readoutHint =
+    rawHint && rawHint !== 'openuiLang.chartReadoutHint'
+      ? rawHint
+      : '悬停或聚焦数据点查看数值';
+
+  return (
+    <div
+      data-openui-component="LineChart"
+      className="rounded-lg border border-border/35 bg-card/40 p-3 space-y-2.5"
+    >
+      {series.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-3">
+            {series.map((s, sIdx) => (
+              <span key={s.name} className="inline-flex items-center gap-1.5">
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: CHART_COLORS[sIdx % CHART_COLORS.length] }}
+                />
+                <span>{s.name}</span>
+              </span>
+            ))}
+          </div>
+          {unit && <span>{unit}</span>}
+        </div>
+      )}
+
+      <div
+        data-chart-tooltip=""
+        data-active={activeIndex !== null ? 'true' : 'false'}
+        aria-live="polite"
+        className="flex min-h-[22px] flex-wrap items-center justify-between gap-2 rounded-md bg-muted/35 px-2.5 py-1 text-2xs"
+      >
+        {activeIndex !== null ? (
+          <>
+            <span className="font-medium text-foreground">
+              {labels[activeIndex] ?? `#${activeIndex + 1}`}
+            </span>
+            <div className="flex flex-wrap items-center gap-2.5 font-mono tabular-nums text-foreground">
+              {series.map((s, sIdx) => {
+                const val = s.values[activeIndex];
+                if (val === undefined) return null;
+                return (
+                  <span key={s.name} className="inline-flex items-center gap-1">
+                    <span
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ background: CHART_COLORS[sIdx % CHART_COLORS.length] }}
+                    />
+                    <span className="text-muted-foreground">{s.name}:</span>
+                    <span className="font-semibold">
+                      {val}
+                      {unit ? ` ${unit}` : ''}
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <span className="text-muted-foreground">{readoutHint}</span>
+        )}
+      </div>
+
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-36 w-full overflow-visible"
+        role="img"
+        aria-label={lineAriaLabel}
+        onMouseLeave={() => setActiveIndex(null)}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            setActiveIndex(null);
+          }
+        }}
+      >
+        {yTicks.map((tick) => (
+          <g key={tick.key}>
+            <line
+              data-chart-gridline={tick.key}
+              x1={padLeft}
+              y1={tick.y}
+              x2={width - padRight}
+              y2={tick.y}
+              stroke="hsl(var(--border))"
+              strokeOpacity={0.55}
+              strokeDasharray={tick.key === 'min' ? undefined : '3 3'}
+              strokeWidth={1}
+            />
+            <text
+              data-chart-y-tick={tick.key}
+              x={padLeft - 6}
+              y={tick.y + 3}
+              textAnchor="end"
+              className="fill-muted-foreground font-mono text-2xs tabular-nums"
+            >
+              {formatChartTick(tick.value)}
+            </text>
+          </g>
+        ))}
+
+        {activeX !== null && (
+          <line
+            data-chart-hover-line=""
+            x1={activeX}
+            y1={padTop}
+            x2={activeX}
+            y2={padTop + plotHeight}
+            stroke="hsl(var(--primary))"
+            strokeOpacity={0.5}
+            strokeDasharray="3 3"
+            strokeWidth={1}
+          />
+        )}
+
+        {series.map((s, sIdx) => {
+          const count = Math.max(1, s.values.length);
+          const points = s.values
+            .map((v, idx) => `${Math.round(getPointX(idx, count))},${Math.round(getPointY(v))}`)
+            .join(' ');
+          return (
+            <polyline
+              key={s.name}
+              fill="none"
+              stroke={CHART_COLORS[sIdx % CHART_COLORS.length]}
+              strokeWidth={2}
+              points={points}
+            />
+          );
+        })}
+
+        {series.map((s, sIdx) => {
+          const count = Math.max(1, s.values.length);
+          return s.values.map((v, idx) => {
+            const cx = Math.round(getPointX(idx, count));
+            const cy = Math.round(getPointY(v));
+            const isActive = activeIndex === idx;
+            const pointLabel = labels[idx] ?? `#${idx + 1}`;
+            return (
+              <circle
+                key={`${s.name}-pt-${idx}`}
+                data-chart-point=""
+                data-series-index={sIdx}
+                data-point-index={idx}
+                cx={cx}
+                cy={cy}
+                r={isActive ? 4.5 : 3}
+                fill={CHART_COLORS[sIdx % CHART_COLORS.length]}
+                stroke="hsl(var(--background))"
+                strokeWidth={1.5}
+                tabIndex={0}
+                aria-label={`${pointLabel} ${s.name}: ${v}${unit ? ` ${unit}` : ''}`}
+                className="cursor-pointer outline-none"
+                onMouseEnter={() => setActiveIndex(idx)}
+                onFocus={() => setActiveIndex(idx)}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    setActiveIndex((prev) => Math.min(maxPointCount - 1, (prev ?? idx) + 1));
+                  } else if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    setActiveIndex((prev) => Math.max(0, (prev ?? idx) - 1));
+                  }
+                }}
+              />
+            );
+          });
+        })}
+      </svg>
+
+      {labels.length > 0 && (
+        <div className="flex items-center justify-between pl-9 pr-3 text-2xs tabular-nums text-muted-foreground">
+          {labels.map((label, idx) => (
+            <span key={`${idx}-${label}`}>{label}</span>
+          ))}
         </div>
       )}
     </div>
@@ -1213,60 +1581,7 @@ export const OpenUILangRenderer: React.FC<OpenUILangRendererProps> = ({
         const labels = Array.isArray(rawLabels) ? rawLabels.map(toDisplayString) : [];
         const series = extractSeriesList(rawSeries);
         const unit = rawUnit ? toDisplayString(rawUnit) : '';
-        const allValues = series.flatMap((s) => s.values);
-        const maxVal = Math.max(1, ...allValues, 0);
-
-        return (
-          <div
-            data-openui-component="BarChart"
-            className="rounded-lg border border-border/35 bg-card/40 p-3 space-y-3"
-          >
-            {series.length > 1 && (
-              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                {series.map((s, sIdx) => (
-                  <span key={s.name} className="inline-flex items-center gap-1.5">
-                    <span
-                      className="h-1.5 w-1.5 rounded-full"
-                      style={{ background: CHART_COLORS[sIdx % CHART_COLORS.length] }}
-                    />
-                    <span>{s.name}</span>
-                  </span>
-                ))}
-              </div>
-            )}
-            <div className="space-y-2">
-              {labels.map((label, lIdx) => (
-                <div key={`${lIdx}-${label}`} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className="font-mono tabular-nums font-medium text-foreground">
-                      {series
-                        .map((s) => `${s.values[lIdx] ?? 0}${unit ? ` ${unit}` : ''}`)
-                        .join(' / ')}
-                    </span>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    {series.map((s, sIdx) => {
-                      const v = s.values[lIdx] ?? 0;
-                      const pct = Math.max(2, Math.min(100, Math.round((v / maxVal) * 100)));
-                      return (
-                        <div key={`${s.name}-${sIdx}`} className="h-2 w-full overflow-hidden rounded-full bg-muted/60">
-                          <div
-                            className="h-full rounded-full transition-all"
-                            style={{
-                              width: `${pct}%`,
-                              background: CHART_COLORS[sIdx % CHART_COLORS.length],
-                            }}
-                          />
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
+        return <BarChartView labels={labels} series={series} unit={unit} />;
       }
 
       case 'LineChart': {
@@ -1276,76 +1591,7 @@ export const OpenUILangRenderer: React.FC<OpenUILangRendererProps> = ({
         const labels = Array.isArray(rawLabels) ? rawLabels.map(toDisplayString) : [];
         const series = extractSeriesList(rawSeries);
         const unit = rawUnit ? toDisplayString(rawUnit) : '';
-        const allValues = series.flatMap((s) => s.values);
-        const minVal = Math.min(0, ...allValues);
-        const maxVal = Math.max(minVal + 1, ...allValues);
-        const width = 480;
-        const height = 140;
-        const padX = 24;
-        const padY = 16;
-
-        return (
-          <div
-            data-openui-component="LineChart"
-            className="rounded-lg border border-border/35 bg-card/40 p-3 space-y-2.5"
-          >
-            {series.length > 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                <div className="flex flex-wrap items-center gap-3">
-                  {series.map((s, sIdx) => (
-                    <span key={s.name} className="inline-flex items-center gap-1.5">
-                      <span
-                        className="h-1.5 w-1.5 rounded-full"
-                        style={{ background: CHART_COLORS[sIdx % CHART_COLORS.length] }}
-                      />
-                      <span>{s.name}</span>
-                    </span>
-                  ))}
-                </div>
-                {unit && <span>{unit}</span>}
-              </div>
-            )}
-            <svg
-              viewBox={`0 0 ${width} ${height}`}
-              className="h-36 w-full overflow-visible"
-              role="img"
-              aria-label={t('openuiLang.lineChartAria')}
-            >
-              {series.map((s, sIdx) => {
-                const count = Math.max(1, s.values.length);
-                const points = s.values
-                  .map((v, idx) => {
-                    const x =
-                      count === 1
-                        ? width / 2
-                        : padX + (idx / (count - 1)) * (width - padX * 2);
-                    const y =
-                      height -
-                      padY -
-                      ((v - minVal) / (maxVal - minVal)) * (height - padY * 2);
-                    return `${Math.round(x)},${Math.round(y)}`;
-                  })
-                  .join(' ');
-                return (
-                  <polyline
-                    key={s.name}
-                    fill="none"
-                    stroke={CHART_COLORS[sIdx % CHART_COLORS.length]}
-                    strokeWidth={2}
-                    points={points}
-                  />
-                );
-              })}
-            </svg>
-            {labels.length > 0 && (
-              <div className="flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">
-                {labels.map((label, idx) => (
-                  <span key={`${idx}-${label}`}>{label}</span>
-                ))}
-              </div>
-            )}
-          </div>
-        );
+        return <LineChartView labels={labels} series={series} unit={unit} />;
       }
 
       // ======================================================================
@@ -1577,8 +1823,47 @@ export const OpenUILangRenderer: React.FC<OpenUILangRendererProps> = ({
         );
       }
 
-      default:
-        return null;
+      default: {
+        // 未知组件不再静默丢弃：尽量提取其中的子节点或文字内容做优雅降级展示
+        const fallbackChildren = node.args
+          .map((arg, idx) => {
+            if (isOpenUIComponentNode(arg)) {
+              return (
+                <React.Fragment key={`${keyPrefix}-fb-${idx}`}>
+                  {renderValue(arg, `${keyPrefix}-fb-${idx}`)}
+                </React.Fragment>
+              );
+            }
+            if (Array.isArray(arg)) {
+              const nested = arg.filter(isOpenUIComponentNode);
+              if (nested.length > 0) {
+                return (
+                  <div key={`${keyPrefix}-fb-arr-${idx}`} className="space-y-1.5">
+                    {nested.map((child, childIdx) => (
+                      <React.Fragment key={`${keyPrefix}-fb-arr-${idx}-${childIdx}`}>
+                        {renderValue(child, `${keyPrefix}-fb-arr-${idx}-${childIdx}`)}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                );
+              }
+            }
+            const text = toDisplayString(arg).trim();
+            if (!text) return null;
+            return <div key={`${keyPrefix}-fb-txt-${idx}`}>{renderMarkdownBlocks(text)}</div>;
+          })
+          .filter(Boolean);
+        if (fallbackChildren.length === 0) return null;
+        return (
+          <div
+            data-openui-component={node.name}
+            data-openui-fallback="true"
+            className="space-y-1.5 rounded-md border border-border/35 bg-card/30 px-3 py-2 text-sm text-foreground/90"
+          >
+            {fallbackChildren}
+          </div>
+        );
+      }
     }
   };
 

@@ -129,12 +129,12 @@ interface TooltipContentProps {
 }
 
 const TooltipContent: React.FC<TooltipContentProps> = ({ data, date }) => {
-  const { t } = useTranslation('stats');
+  const { t, i18n } = useTranslation('stats');
 
   const formatDate = (dateStr: string) => {
     const d = new Date(`${dateStr}T00:00:00`);
     if (Number.isNaN(d.getTime())) return dateStr;
-    return d.toLocaleDateString(undefined, {
+    return d.toLocaleDateString(i18n.language || undefined, {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -199,7 +199,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
   className,
   onDateClick,
 }) => {
-  const { t } = useTranslation('stats');
+  const { t, i18n } = useTranslation('stats');
 
   // Store hooks
   const heatmapData = useActivityHeatmap();
@@ -327,7 +327,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
             <DsButton
               variant="ghost"
               size="icon"
-              className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+              className="h-7 w-7"
               onClick={handlePrevYear}
               aria-label={String(selectedYear - 1)}
             >
@@ -339,7 +339,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
             <DsButton
               variant="ghost"
               size="icon"
-              className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+              className="h-7 w-7"
               onClick={handleNextYear}
               disabled={selectedYear >= new Date().getFullYear()}
               aria-label={String(selectedYear + 1)}
@@ -372,11 +372,20 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
         />
       </div>
 
-      {/* 全年无数据：空态引导提示条（不影响热力图本身渲染） */}
+      {/* 全年无数据或初期起步：正向鼓励提示条（不影响热力图本身渲染） */}
       {stats.totalCount === 0 && (
-        <div className="mb-4 flex items-start gap-2 rounded-md border border-border/40 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          <Info size={14} className="mt-0.5 shrink-0 opacity-60" />
-          <span>{t('heatmapChart.emptyHint')}</span>
+        <div className="ui-rise-in motion-reduce:animate-none mb-4 flex items-start gap-2 rounded-md border border-primary/15 bg-primary/[0.04] px-3 py-2 text-xs text-muted-foreground">
+          <Info size={14} className="mt-0.5 shrink-0 text-primary/70" />
+          <div className="flex flex-col gap-0.5">
+            <span className="font-medium text-foreground">{t('heatmapChart.emptyTitle')}</span>
+            <span>{t('heatmapChart.emptyHint')}</span>
+          </div>
+        </div>
+      )}
+      {stats.totalCount > 0 && stats.activeDays <= 3 && (
+        <div className="ui-rise-in motion-reduce:animate-none mb-4 flex items-center gap-2 rounded-md border border-[color:hsl(var(--success))]/20 bg-[color:hsl(var(--success))]/[0.05] px-3 py-2 text-xs text-muted-foreground">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[color:hsl(var(--success))]" aria-hidden="true" />
+          <span>{t('heatmapChart.earlyHint', { count: stats.activeDays })}</span>
         </div>
       )}
 
@@ -408,6 +417,22 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
             const isoDate = normalizeDateKey(key);
             const activityData = dataByKey.get(key) ?? null;
             const isToday = key === todayKey;
+            const parsedDate = new Date(`${isoDate}T00:00:00`);
+            const readableDate = Number.isNaN(parsedDate.getTime())
+              ? isoDate
+              : parsedDate.toLocaleDateString(i18n.language || undefined, {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                });
+            const cellAria =
+              activityData && activityData.count > 0
+                ? t('heatmapChart.cellAriaActive', {
+                    date: readableDate,
+                    count: activityData.count,
+                    rate: percentOf(activityData.correct_count, activityData.count),
+                  })
+                : t('heatmapChart.cellAriaEmpty', { date: readableDate });
 
             return (
               <CommonTooltip
@@ -420,8 +445,10 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
               >
                 <rect
                   {...props}
+                  tabIndex={isToday || (activityData !== null && activityData.count > 0) ? 0 : -1}
+                  aria-label={cellAria}
                   className={cn(
-                    'cursor-pointer transition-all duration-150',
+                    'cursor-pointer transition-all duration-150 outline-none focus-visible:stroke-primary focus-visible:stroke-2 motion-reduce:transition-none',
                     'hover:stroke-foreground/60 hover:stroke-[1.5px]',
                     isToday && 'stroke-success stroke-2'
                   )}
@@ -437,18 +464,23 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
       </div>
 
       {/* 图例 */}
-      <div className="mt-3 flex items-center justify-end gap-2 border-t border-border/40 pt-3">
-        <span className="text-xs text-muted-foreground/70">{t('heatmapChart.legendLess')}</span>
-        <div className="flex gap-1">
-          {panelColors.map((color, index) => (
-            <div
-              key={index}
-              className="h-2.5 w-2.5 rounded-sm"
-              style={{ backgroundColor: color }}
-            />
-          ))}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border/40 pt-3">
+        <span className="text-2xs font-mono text-muted-foreground/65">
+          {t('heatmapChart.legendScale')}
+        </span>
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs text-muted-foreground/70">{t('heatmapChart.legendLess')}</span>
+          <div className="flex gap-1">
+            {panelColors.map((color, index) => (
+              <div
+                key={index}
+                className="h-2.5 w-2.5 rounded-sm"
+                style={{ backgroundColor: color }}
+              />
+            ))}
+          </div>
+          <span className="text-xs text-muted-foreground/70">{t('heatmapChart.legendMore')}</span>
         </div>
-        <span className="text-xs text-muted-foreground/70">{t('heatmapChart.legendMore')}</span>
       </div>
 
     </div>

@@ -126,7 +126,7 @@
     "sessionModeHint": "A continuous session keeps context from previous runs, useful for tasks that need memory; a new session each run uses fewer tokens",
     "modelHint": "Leave empty to use the default chat model; see Settings → Models for available model IDs",
     "catchUpHint": "\"Run each missed occurrence\" replays every missed run; for agent tasks this means several AI calls in a row, so choose carefully",
-    "advancedHint": "Failed runs are retried automatically after the backoff delay; runs exceeding the timeout are terminated and counted as failed",
+    "advancedHint": "Failed runs wait briefly before retrying automatically (backoff); runs exceeding the time limit stop and count as failed",
     "history": {
       "title": "Run history",
       "toggleAria": "Run history ({{count}})",
@@ -202,7 +202,7 @@
     "model": "Model configuration ID",
     "defaultModel": "Use default model",
     "retries": "Failure retries",
-    "retryBackoff": "Retry delay seconds",
+    "retryBackoff": "Retry wait seconds (backoff)",
     "timeout": "Timeout seconds",
     "prompt": "Task instructions",
     "advanced": "Retries & timeout",
@@ -211,11 +211,11 @@
     "promptRequired": "Enter task instructions",
     "promptTooLong": "Instructions are limited to 4,000 characters",
     "timeInvalid": "Enter a valid 24-hour time",
-    "timezoneInvalid": "Enter a valid IANA time zone",
+    "timezoneInvalid": "Enter a valid time zone (e.g. America/New_York)",
     "intervalInvalid": "Interval must be between 5 and 1,440 minutes",
     "dayOfMonthInvalid": "Day of month must be between 1 and 31",
     "retriesInvalid": "Retries must be between 0 and 10",
-    "backoffInvalid": "Retry delay must be between 5 and 86,400 seconds",
+    "backoffInvalid": "Retry wait must be between 5 and 86,400 seconds",
     "timeoutInvalid": "Timeout must be between 30 and 3,600 seconds",
     "showAll": "All history ({{total}})",
     "showLess": "Show less",
@@ -310,7 +310,7 @@
         "interval": "Interval must be between 5 and 1,440 minutes",
         "onceDate": "Date cannot be earlier than today",
         "onceTimePassed": "That time has already passed today — pick a later time or date",
-        "timezone": "Choose a valid IANA time zone",
+        "timezone": "Choose a valid time zone (e.g. America/New_York)",
         "weekday": "Select at least one weekday"
       },
       "describe": {
@@ -388,9 +388,17 @@
     "mistakes": "Mistakes {{count}}",
     "notes": "Notes {{count}}",
     "title": "{{count}} items due for review today",
-    "subtitle": "Spaced repetition plan is ready",
+    "subtitle": "FSRS smart reviews and today's todos in one place",
     "withOverdue": "{{overdue}} of them are overdue",
-    "action": "Review"
+    "action": "Review",
+    "hubTitle": "Today's Study Hub",
+    "hubTotal": "{{count}} due today",
+    "cardsLabel": "Due Cards",
+    "mistakesLabel": "Mistake FSRS",
+    "notesLabel": "Review Notes",
+    "todosLabel": "Todos Today",
+    "openItem": "Go",
+    "clearTag": "Clear"
   },
   "actions": {
     "quickAddPlaceholder": "Add a todo, try \"essay tomorrow !high\"...",
@@ -493,6 +501,11 @@
     "noMatchingLists": "No matching lists",
     "todayClear": "All clear for today",
     "todayClearHint": "Enjoy the moment, or plan ahead in Upcoming.",
+    "todayAllDoneHint": "Every task planned for today is done. Take a breather, or leave a light starting note for tomorrow.",
+    "todayCompletedBadge": "{{count}} completed today",
+    "planUpcoming": "Plan upcoming",
+    "reviewCompleted": "View completed",
+    "addFirstToday": "Add first task for today",
     "upcomingClear": "Nothing due in the next 7 days",
     "upcomingClearHint": "Use quick add to leave a note for your future self.",
     "overdueClear": "No overdue tasks",
@@ -677,7 +690,8 @@
       "abandonConfirmShort": "Abandon?",
       "skipBreakKey": "Skip Break (B)",
       "noiseOnKey": "Enable ambient sound (M)",
-      "noiseOffKey": "Disable ambient sound (M)"
+      "noiseOffKey": "Disable ambient sound (M)",
+      "spaceShortcutHint": "Space to toggle"
     },
     "miniWindow": {
       "close": "Return to main window",
@@ -717,12 +731,16 @@
       "today": "Today",
       "hourDist": "By hour",
       "peakHour": "Peak {{hour}}:00",
-      "hourDetail": "{{hour}}:00 · {{minutes}} min"
+      "hourDetail": "{{hour}}:00 · {{minutes}} min",
+      "legendLess": "Less",
+      "legendMore": "More",
+      "legendScale": "15 / 30 / 60+ min"
     },
     "stats": {
       "todayLabel": "Today",
       "pomodoroUnit": "pomodoros",
       "todayCount": "{{value}} pomodoros today",
+      "todayGoalBadge": "{{done}}/{{goal}} pomodoros today",
       "focusLabel": "Focused",
       "minutes": "{{value}} min",
       "hours": "{{value}} h",
@@ -837,7 +855,10 @@
     "selectMode": "Select"
   },
   "quickAdd": {
-    "removeToken": "Remove"
+    "removeToken": "Remove",
+    "focusShortcutHint": "Press N to quick add",
+    "continuousHint": "Enter to keep adding · Esc to finish",
+    "addedStreak": "Added {{count}} in a row"
   },
   "agent": {
     "list_not_activated": "Target list was not activated",

@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { ShieldCheck, Clock, CaretDown, CaretUp, ChatCircleText, Check, X, Warning } from '@phosphor-icons/react';
+import { ShieldCheck, Clock, CaretDown, CaretUp, ChatCircleText, Check, X, Warning, Pause, Play } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -72,6 +72,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
   // hover 暂停服务鼠标用户；键盘交互暂停服务键盘/屏幕阅读器用户（焦点离开审批栏后恢复）
   const [hoverPaused, setHoverPaused] = useState(false);
   const [interactPaused, setInteractPaused] = useState(false);
+  const [manualPaused, setManualPaused] = useState(false);
   // a11y：sr-only live region 播报内容（出现/临近超时/暂停）
   const [liveMessage, setLiveMessage] = useState('');
   // 同步互斥锁：state 更新是异步的，快速双击会让两次点击都读到 isResponding=false，
@@ -87,7 +88,21 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
       }
     };
   }, []);
-  const isCountdownPaused = hoverPaused || interactPaused;
+  const isCountdownPaused = manualPaused || hoverPaused || interactPaused;
+
+  const handleToggleCountdownPause = useCallback(() => {
+    if (isCountdownPaused) {
+      setManualPaused(false);
+      setHoverPaused(false);
+      setInteractPaused(false);
+      if (touchPauseTimerRef.current !== null) {
+        clearTimeout(touchPauseTimerRef.current);
+        touchPauseTimerRef.current = null;
+      }
+    } else {
+      setManualPaused(true);
+    }
+  }, [isCountdownPaused]);
 
   const isResolved = Boolean(interaction.resolvedStatus);
   // 倒计时归零 = 后端权威超时已经（或即将）触发。前端不代发拒绝（否则超时会被
@@ -170,6 +185,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
     setRejectReason('');
     setHoverPaused(false);
     setInteractPaused(false);
+    setManualPaused(false);
     setIsScopeExpanded(false);
     respondingRef.current = false;
   }, [interaction.toolCallId, interaction.timeoutSeconds]);
@@ -290,12 +306,12 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
     }
   }, [remainingSeconds, isCountdownPaused, hasResponded, isResolved, t]);
 
-  // a11y 播报：键盘交互触发的暂停（hover 暂停不播报，避免鼠标划过刷屏）
+  // a11y 播报：键盘交互或手动触发的暂停（hover 暂停不播报，避免鼠标划过刷屏）
   useEffect(() => {
-    if (interactPaused) {
+    if (interactPaused || manualPaused) {
       setLiveMessage(t('approval.aria.countdownPaused'));
     }
-  }, [interactPaused, t]);
+  }, [interactPaused, manualPaused, t]);
 
   // a11y 播报：本地倒计时归零，等待后端超时判定
   useEffect(() => {
@@ -381,26 +397,57 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             <span>{t('approval.timedOutWaiting')}</span>
           </div>
         ) : (
-          <div
-            role="timer"
-            className={cn(
-              'ml-auto flex items-center gap-1 text-xs shrink-0 transition-colors duration-150',
-              remainingSeconds <= 10 && !isCountdownPaused
-                ? 'font-medium text-warning'
-                : 'text-muted-foreground',
-            )}
-            aria-label={
-              isCountdownPaused
-                ? t('approval.aria.countdownPaused')
-                : t('approval.aria.autoRejectCountdown', { seconds: remainingSeconds })
-            }
-          >
-            <Clock size={14} aria-hidden="true" />
-            <span aria-hidden="true" className="tabular-nums">{remainingSeconds}s</span>
-            {isCountdownPaused && (
-              <span aria-hidden="true" className="text-2xs">
-                {t('approval.countdownPaused')}
-              </span>
+          <div className="ml-auto flex items-center gap-1.5 shrink-0">
+            <div
+              role="timer"
+              className={cn(
+                'flex items-center gap-1 text-xs shrink-0 transition-colors duration-150',
+                remainingSeconds <= 10 && !isCountdownPaused
+                  ? 'font-medium text-warning'
+                  : 'text-muted-foreground',
+              )}
+              aria-label={
+                isCountdownPaused
+                  ? t('approval.aria.countdownPaused')
+                  : t('approval.aria.autoRejectCountdown', { seconds: remainingSeconds })
+              }
+            >
+              <Clock size={14} aria-hidden="true" />
+              <span aria-hidden="true" className="tabular-nums">{remainingSeconds}s</span>
+              {isCountdownPaused && (
+                <span aria-hidden="true" className="text-2xs">
+                  {t('approval.countdownPaused')}
+                </span>
+              )}
+            </div>
+            {interaction.timeoutSeconds > 0 && !hasResponded && (
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid="approval-countdown-toggle"
+                disabled={isResponding}
+                aria-pressed={isCountdownPaused}
+                aria-label={
+                  isCountdownPaused
+                    ? t('approval.resumeCountdown')
+                    : t('approval.pauseCountdown')
+                }
+                onClick={handleToggleCountdownPause}
+                className="!h-auto gap-0.5 rounded border border-border/50 bg-background/70 px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+              >
+                {isCountdownPaused ? (
+                  <>
+                    <Play size={10} weight="fill" aria-hidden="true" />
+                    <span>{t('approval.resumeShort')}</span>
+                  </>
+                ) : (
+                  <>
+                    <Pause size={10} weight="fill" aria-hidden="true" />
+                    <span>{t('approval.pauseShort')}</span>
+                  </>
+                )}
+              </DsButton>
             )}
           </div>
         )}

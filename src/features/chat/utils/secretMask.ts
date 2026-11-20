@@ -23,11 +23,17 @@
 export type SecretKind =
   | 'openai' // sk-...（DeepSeek / OpenAI / Anthropic 风格）
   | 'bearer' // Authorization: Bearer ...
-  | 'github_pat' // ghp_... / github_pat_...
-  | 'aws_access_key' // AKIA...
+  | 'github_pat' // gh[pousr]_... / github_pat_...
+  | 'aws_access_key' // AKIA... / ASIA...
   | 'slack' // xox[baprs]-...
   | 'google_api_key' // AIza...
   | 'huggingface' // hf_...
+  | 'groq' // gsk_...
+  | 'perplexity' // pplx-...
+  | 'xai' // xai-...
+  | 'tavily' // tvly-...
+  | 'gitlab_pat' // glpat-...
+  | 'stripe' // (sk|rk)_(live|test)_...
   | 'assignment'; // api_key=... / token: "..." / password=...
 
 /** 单个命中片段（原文下标区间为 [start, end)） */
@@ -56,8 +62,8 @@ export interface SecretMaskResult {
 /** 统一遮蔽符：不泄漏原始长度/内容 */
 const MASK = '••••';
 
-/** 最短可能命中的敏感串长度（`token=` 6 + 12 位值 = 18），更短的文本直接短路 */
-const MIN_SECRET_LENGTH = 18;
+/** 最短可能命中的敏感串长度（`xoxb-` 5 + 10 位值 = 15），更短的文本直接短路 */
+const MIN_SECRET_LENGTH = 15;
 
 interface SecretRule {
   kind: SecretKind;
@@ -80,29 +86,35 @@ const RULES: readonly SecretRule[] = [
     pattern: /(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{16,}/g,
     keepPrefix: /^sk-[A-Za-z0-9_-]{0,2}/,
   },
+  // Stripe secret / restricted key（sk_live_ / sk_test_ / rk_live_ / rk_test_）
+  {
+    kind: 'stripe',
+    pattern: /(?<![A-Za-z0-9_-])(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,}/g,
+    keepPrefix: /^(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{0,2}/,
+  },
   // HTTP Authorization: Bearer <token>
   {
     kind: 'bearer',
     pattern: /(?<![A-Za-z0-9_-])Bearer\s+[A-Za-z0-9._~+/=-]{16,}/g,
     keepPrefix: /^Bearer\s+[A-Za-z0-9._~+/=-]{0,2}/,
   },
-  // GitHub classic personal access token
+  // GitHub classic / OAuth / user-to-server / server-to-server / refresh tokens（gh[pousr]_）
   {
     kind: 'github_pat',
-    pattern: /(?<![A-Za-z0-9_])ghp_[A-Za-z0-9]{20,}/g,
-    keepPrefix: /^(?:ghp_|github_pat_)[A-Za-z0-9_]{0,2}/,
+    pattern: /(?<![A-Za-z0-9_])gh[pousr]_[A-Za-z0-9]{20,}/g,
+    keepPrefix: /^(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{0,2}/,
   },
   // GitHub fine-grained personal access token
   {
     kind: 'github_pat',
     pattern: /(?<![A-Za-z0-9_])github_pat_[A-Za-z0-9_]{20,}/g,
-    keepPrefix: /^(?:ghp_|github_pat_)[A-Za-z0-9_]{0,2}/,
+    keepPrefix: /^(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{0,2}/,
   },
-  // AWS access key id（AKIA + 16 位大写字母/数字）
+  // AWS access key id（AKIA 长期密钥 / ASIA STS 临时密钥 + 16 位大写字母/数字）
   {
     kind: 'aws_access_key',
-    pattern: /(?<![A-Za-z0-9])AKIA[0-9A-Z]{16}/g,
-    keepPrefix: /^AKIA[0-9A-Z]{0,2}/,
+    pattern: /(?<![A-Za-z0-9])A(?:KIA|SIA)[0-9A-Z]{16}(?![A-Za-z0-9])/g,
+    keepPrefix: /^A(?:KIA|SIA)[0-9A-Z]{0,2}/,
   },
   // Slack token
   {
@@ -121,6 +133,36 @@ const RULES: readonly SecretRule[] = [
     kind: 'huggingface',
     pattern: /(?<![A-Za-z0-9_])hf_[A-Za-z0-9]{20,}/g,
     keepPrefix: /^hf_[A-Za-z0-9]{0,2}/,
+  },
+  // Groq API key（gsk_...）
+  {
+    kind: 'groq',
+    pattern: /(?<![A-Za-z0-9_])gsk_[A-Za-z0-9]{20,}/g,
+    keepPrefix: /^gsk_[A-Za-z0-9]{0,2}/,
+  },
+  // Perplexity API key（pplx-...）
+  {
+    kind: 'perplexity',
+    pattern: /(?<![A-Za-z0-9_-])pplx-[A-Za-z0-9_-]{16,}/g,
+    keepPrefix: /^pplx-[A-Za-z0-9_-]{0,2}/,
+  },
+  // xAI API key（xai-...）
+  {
+    kind: 'xai',
+    pattern: /(?<![A-Za-z0-9_-])xai-[A-Za-z0-9_-]{16,}/g,
+    keepPrefix: /^xai-[A-Za-z0-9_-]{0,2}/,
+  },
+  // Tavily API key（tvly-...）
+  {
+    kind: 'tavily',
+    pattern: /(?<![A-Za-z0-9_-])tvly-[A-Za-z0-9_-]{16,}/g,
+    keepPrefix: /^tvly-[A-Za-z0-9_-]{0,2}/,
+  },
+  // GitLab personal access token（glpat-...）
+  {
+    kind: 'gitlab_pat',
+    pattern: /(?<![A-Za-z0-9_-])glpat-[A-Za-z0-9_-]{16,}/g,
+    keepPrefix: /^glpat-[A-Za-z0-9_-]{0,2}/,
   },
   // 通用赋值式：api_key=... / token: "..." / password = ...（忽略大小写）
   // 值要求 ≥ 12 位「类 token 字符」，避免把普通短语/中文误判为密钥。

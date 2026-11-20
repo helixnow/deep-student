@@ -7,6 +7,16 @@ import { resolve } from 'node:path';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+const keyboardState = vi.hoisted(() => ({
+  shown: false,
+  inset: 0,
+}));
+
+vi.mock('@/hooks/useKeyboardHeight', () => ({
+  useIsKeyboardShown: () => keyboardState.shown,
+  useKeyboardInset: () => keyboardState.inset,
+}));
+
 import {
   MobileEditorToolbar,
   computeViewportBottomOffset,
@@ -49,6 +59,8 @@ function actionOrder(): string[] {
 }
 
 afterEach(() => {
+  keyboardState.shown = false;
+  keyboardState.inset = 0;
   cleanup();
 });
 
@@ -308,11 +320,52 @@ describe('MobileEditorToolbar', () => {
     expect(screen.getByTestId('mobile-editor-toolbar').getAttribute('data-collapsed')).toBeNull();
   });
 
+  it('Android adjustResize 键盘弹出期间（keyboardInset=0, isKeyboardShown=true）既不误折叠也不双重抬升', () => {
+    keyboardState.shown = true;
+    keyboardState.inset = 0;
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 800,
+    });
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: {
+        offsetTop: 0,
+        height: 500,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      },
+    });
+
+    const commands = mockCommands();
+    render(<MobileEditorToolbar commands={commands} visible collapsed />);
+
+    const toolbar = screen.getByTestId('mobile-editor-toolbar');
+    expect(toolbar.getAttribute('data-collapsed')).toBeNull();
+    expect(toolbar.style.getPropertyValue('--mobile-toolbar-keyboard-offset')).toBe('0px');
+    expect(document.documentElement.style.getPropertyValue('--mobile-toolbar-keyboard-offset')).toBe('0px');
+  });
+
+  it('iOS overlay 键盘弹出期间按 keyboardInset 抬升且忽略 collapsed', () => {
+    keyboardState.shown = true;
+    keyboardState.inset = 320;
+
+    const commands = mockCommands();
+    render(<MobileEditorToolbar commands={commands} visible collapsed />);
+
+    const toolbar = screen.getByTestId('mobile-editor-toolbar');
+    expect(toolbar.getAttribute('data-collapsed')).toBeNull();
+    expect(toolbar.style.getPropertyValue('--mobile-toolbar-keyboard-offset')).toBe('320px');
+  });
 });
 
 describe('computeViewportBottomOffset', () => {
   const originalInnerHeight = window.innerHeight;
   const originalVV = window.visualViewport;
+  const originalClientHeightDescriptor = Object.getOwnPropertyDescriptor(
+    document.documentElement,
+    'clientHeight',
+  );
 
   afterEach(() => {
     Object.defineProperty(window, 'innerHeight', {
@@ -323,6 +376,27 @@ describe('computeViewportBottomOffset', () => {
       configurable: true,
       value: originalVV,
     });
+    if (originalClientHeightDescriptor) {
+      Object.defineProperty(document.documentElement, 'clientHeight', originalClientHeightDescriptor);
+    } else {
+      delete (document.documentElement as { clientHeight?: number }).clientHeight;
+    }
+  });
+
+  it('Android adjustResize 下 clientHeight > 0 且已缩小时取 Math.min(innerHeight, clientHeight)', () => {
+    Object.defineProperty(window, 'innerHeight', {
+      configurable: true,
+      value: 800,
+    });
+    Object.defineProperty(document.documentElement, 'clientHeight', {
+      configurable: true,
+      value: 500,
+    });
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: { offsetTop: 0, height: 500 },
+    });
+    expect(computeViewportBottomOffset()).toBe(0);
   });
 
   it('无 visualViewport 时返回 0', () => {

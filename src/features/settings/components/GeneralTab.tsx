@@ -378,9 +378,11 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
 
         {isAndroidMobileShell() && invoke && <AndroidFeatureFlagsSection invoke={invoke} />}
 
-        <div className="mt-8">
-          <AnkiConnectSettingsSection />
-        </div>
+        {!isMobilePlatform() && (
+          <div className="mt-8">
+            <AnkiConnectSettingsSection />
+          </div>
+        )}
 
         <RendererCapabilitiesSection />
 
@@ -461,10 +463,14 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
           )}
         </SettingsGroup>
 
-        <SettingsGroup
-          title={t('settings:cards.developer_options_title')}
-          className="mt-8"
-        >
+        <details className="mt-8 rounded-2xl border border-border/40 bg-muted/20 px-4 py-3" open={debugLogEnabled}>
+          <summary className="cursor-pointer select-none text-sm font-medium text-muted-foreground hover:text-foreground">
+            {t('settings:cards.developer_options_title')}
+          </summary>
+          <SettingsGroup
+            title=""
+            className="mt-4"
+          >
           <SettingRow
             title={t('settings:developer.topbar_top_margin.title')}
             description={t('settings:developer.topbar_top_margin.desc')}
@@ -775,7 +781,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               </div>
             </SettingRow>
           )}
-        </SettingsGroup>
+          </SettingsGroup>
+        </details>
 
         <SettingsGroup
           title={t('common:legal.settingsSection.title')}

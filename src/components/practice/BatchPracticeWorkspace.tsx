@@ -563,6 +563,7 @@ export default function BatchPracticeWorkspace({
   };
   const onAnswerPrimaryAction = usePracticeShortcuts(shortcutOptions);
 
+  const firstUnansweredIndex = questions.findIndex((q) => !answers[q.id]);
   const sheet = (
     <div className="space-y-3">
       <div className="flex items-center justify-between font-mono text-xs tabular-nums text-muted-foreground">
@@ -572,6 +573,37 @@ export default function BatchPracticeWorkspace({
         <span>
           {t('batch.unansweredCount', { count: questions.length - Object.keys(answers).length })}
         </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
+        {!attempt ? (
+          <>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-sm bg-primary/70" aria-hidden="true" />
+              {t('answerSheet.answered')}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-sm border border-border bg-muted/70" aria-hidden="true" />
+              {t('answerSheet.unanswered')}
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-sm bg-success/75" aria-hidden="true" />
+              {t('editor.correct')}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-sm bg-destructive/75" aria-hidden="true" />
+              {t('editor.wrong')}
+            </span>
+          </>
+        )}
+        {marked.length > 0 && (
+          <span className="inline-flex items-center gap-1">
+            <BookmarkSimple size={11} weight="fill" className="text-warning" aria-hidden="true" />
+            {t('answerSheet.marked')}
+          </span>
+        )}
       </div>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(40px,1fr))] gap-1.5">
         {filteredIndices.map((i) => {
@@ -589,13 +621,13 @@ export default function BatchPracticeWorkspace({
                 setSheetOpen(false);
               }}
               className={cn(
-                'relative !h-9 [@media(pointer:coarse)]:!h-11 !min-w-9 !rounded-lg border border-border/45 bg-foreground/[0.02] font-mono text-xs tabular-nums text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground',
+                'ui-press relative min-h-[var(--touch-target-size)] sm:min-h-9 !min-w-9 !px-0 !rounded-lg border border-border/45 bg-foreground/[0.02] font-mono text-xs tabular-nums text-muted-foreground transition-colors motion-reduce:transition-none hover:bg-foreground/[0.05] hover:text-foreground',
                 answers[q.id] && !attempt && 'border-primary/40 bg-primary/[0.08] text-primary',
                 r?.is_correct === true && 'border-success/40 bg-success/[0.08] text-success',
                 r?.is_correct === false && 'border-destructive/35 bg-destructive/[0.06] text-destructive',
                 (r?.status === 'pending' || r?.status === 'failed') &&
                   'border-warning/40 bg-warning/[0.08] text-warning',
-                index === i && 'ring-1 ring-primary text-foreground font-semibold',
+                index === i && 'ring-2 ring-primary bg-primary/[0.10] text-foreground font-semibold',
               )}
             >
               {i + 1}
@@ -878,21 +910,23 @@ export default function BatchPracticeWorkspace({
               {question.options.map((option) => {
                 const userSelected = (answers[question.id] ?? '').includes(option.key);
                 const isOptionCorrect = (question.answer ?? '').toUpperCase().includes(option.key.toUpperCase());
+                const isMulti = question.questionType === 'multiple_choice' || question.questionType === 'indefinite_choice';
                 return (
                   <div
                     key={option.key}
                     className={cn(
-                      'flex items-start gap-3 rounded-xl border px-4 py-3 text-sm transition-colors',
+                      'flex items-start gap-3 rounded-xl border px-4 py-3 text-sm transition-colors motion-reduce:transition-none',
                       isOptionCorrect
-                        ? 'border-success/40 bg-success/[0.06]'
+                        ? 'border-success/45 bg-success/[0.07]'
                         : userSelected
-                          ? 'border-destructive/35 bg-destructive/[0.05]'
+                          ? 'border-destructive/40 bg-destructive/[0.06]'
                           : 'border-border/45 bg-card/60',
                     )}
                   >
                     <span
                       className={cn(
-                        'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border font-mono text-xs font-medium',
+                        'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center border font-mono text-xs font-medium',
+                        isMulti ? 'rounded-md' : 'rounded-full',
                         isOptionCorrect
                           ? 'border-success bg-success text-success-foreground'
                           : userSelected
@@ -904,6 +938,25 @@ export default function BatchPracticeWorkspace({
                     </span>
                     <div className="min-w-0 flex-1 pt-0.5 leading-relaxed">
                       <MarkdownRenderer content={option.content} />
+                    </div>
+                    <div className="mt-0.5 flex shrink-0 items-center gap-1.5">
+                      {userSelected && (
+                        <span
+                          className={cn(
+                            'rounded-pill px-2 py-0.5 text-2xs font-medium',
+                            isOptionCorrect
+                              ? 'bg-success/15 text-success'
+                              : 'bg-destructive/15 text-destructive',
+                          )}
+                        >
+                          {t('batch.selectedOption')}
+                        </span>
+                      )}
+                      {isOptionCorrect ? (
+                        <Check size={16} weight="bold" className="text-success" aria-hidden="true" />
+                      ) : userSelected ? (
+                        <X size={16} weight="bold" className="text-destructive" aria-hidden="true" />
+                      ) : null}
                     </div>
                   </div>
                 );
@@ -944,36 +997,49 @@ export default function BatchPracticeWorkspace({
                 </DsButton>
               </>
             ) : (
-              <div className="space-y-4 border-t pt-4">
-                <p
+              <div className="ui-rise-in motion-reduce:animate-none space-y-4 border-t border-border/45 pt-4">
+                <div
                   className={cn(
-                    'text-sm font-medium',
+                    'flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm font-medium',
                     result?.is_correct === true
-                      ? 'text-success'
+                      ? 'border-success/35 bg-success/[0.07] text-success'
                       : result?.is_correct === false
-                        ? 'text-destructive'
-                        : 'text-warning',
+                        ? 'border-destructive/30 bg-destructive/[0.05] text-destructive'
+                        : 'border-warning/35 bg-warning/[0.07] text-warning',
                   )}
                 >
-                  {t(`batch.result.${result?.status ?? 'pending'}`)}
-                  {result?.score != null && ` · ${result.score}/100`}
-                </p>
+                  {result?.is_correct === true ? (
+                    <Check size={16} weight="bold" className="shrink-0" aria-hidden="true" />
+                  ) : result?.is_correct === false ? (
+                    <X size={16} weight="bold" className="shrink-0" aria-hidden="true" />
+                  ) : result?.status === 'pending' ? (
+                    <CircleNotch size={15} className="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                  ) : null}
+                  <span>
+                    {t(`batch.result.${result?.status ?? 'pending'}`)}
+                    {result?.score != null && ` · ${result.score}/100`}
+                  </span>
+                </div>
                 {result && (!result.source_available || liveSourceAvailable[question.id] === false) && (
                   <p className="text-xs text-muted-foreground">{t('batch.sourceUnavailable')}</p>
                 )}
-                <div>
-                  <h4 className="mb-2 text-sm font-medium">{t('batch.yourAnswer')}</h4>
-                  {imageAnswer ? (
-                    <ImageAnswerDisplay images={imageAnswer.images} text={imageAnswer.text} />
-                  ) : (
-                    <p className="whitespace-pre-wrap break-words text-sm">
-                      {practiceAnswerText(question, answers[question.id] ?? '') || t('batch.result.unanswered')}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <h4 className="mb-2 text-sm font-medium">{t('paper.answer')}</h4>
-                  <MarkdownRenderer content={paperAnswer(current) || t('batch.noReference')} />
+                <div className={cn(!imageAnswer ? 'grid gap-3 sm:grid-cols-2' : 'space-y-3')}>
+                  <div className="min-w-0 rounded-xl border border-border/40 bg-card/40 p-3.5">
+                    <h4 className="mb-1.5 text-xs font-medium text-muted-foreground">{t('batch.yourAnswer')}</h4>
+                    {imageAnswer ? (
+                      <ImageAnswerDisplay images={imageAnswer.images} text={imageAnswer.text} />
+                    ) : (
+                      <p className="whitespace-pre-wrap break-words text-sm text-foreground">
+                        {practiceAnswerText(question, answers[question.id] ?? '') || t('batch.result.unanswered')}
+                      </p>
+                    )}
+                  </div>
+                  <div className="min-w-0 rounded-xl border border-border/40 bg-card/40 p-3.5">
+                    <h4 className="mb-1.5 text-xs font-medium text-muted-foreground">{t('paper.answer')}</h4>
+                    <div className="text-sm font-medium text-foreground">
+                      <MarkdownRenderer content={paperAnswer(current) || t('batch.noReference')} />
+                    </div>
+                  </div>
                 </div>
                 <QuestionExplanation
                   key={`${attempt.id}:${question.id}`}
@@ -1062,24 +1128,35 @@ export default function BatchPracticeWorkspace({
             size="sm"
             disabled={busy || uploading || navigating || previousIndex == null}
             onClick={() => previousIndex != null && void navigate(previousIndex)}
-            className="!h-8 !px-3 [@media(pointer:coarse)]:!min-h-11 text-muted-foreground hover:text-foreground"
+            className="text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft size={15} />
             {t('editor.prevQuestion')}
           </DsButton>
-          <button
-            type="button"
-            onClick={() => setSheetOpen(!sheetOpen)}
-            className="rounded-md px-2.5 py-1 font-mono text-xs tabular-nums text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground"
-          >
-            {index + 1} / {questions.length}
-          </button>
+          <div className="flex flex-col items-center gap-0.5">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              aria-expanded={sheetOpen}
+              aria-label={t('batch.answerSheet')}
+              onClick={() => setSheetOpen(!sheetOpen)}
+              className="!px-2.5 font-mono text-xs tabular-nums text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground"
+            >
+              <ListNumbers size={14} aria-hidden="true" />
+              {index + 1} / {questions.length}
+            </DsButton>
+            {!isSmallScreen && (
+              <span className="hidden lg:inline text-2xs text-muted-foreground/60">
+                {attempt ? t('batch.inlineReviewNavHint') : t('batch.inlineNavHint')}
+              </span>
+            )}
+          </div>
           <DsButton
             variant="ghost"
             size="sm"
             disabled={busy || uploading || navigating || nextIndex == null}
             onClick={() => nextIndex != null && void navigate(nextIndex)}
-            className="!h-8 !px-3 [@media(pointer:coarse)]:!min-h-11 text-foreground hover:bg-foreground/[0.04]"
+            className="text-foreground hover:bg-foreground/[0.04]"
           >
             {t('editor.nextQuestion')}
             <ArrowRight size={15} />
@@ -1106,7 +1183,7 @@ export default function BatchPracticeWorkspace({
               total: questions.length,
             })}
           </p>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className={cn('mt-2 text-sm', firstUnansweredIndex >= 0 ? 'text-warning' : 'text-muted-foreground')}>
             {t('batch.unansweredCount', { count: questions.length - Object.keys(answers).length })}
           </p>
         </DsDialogBody>
@@ -1114,6 +1191,18 @@ export default function BatchPracticeWorkspace({
           <DsButton variant="ghost" onClick={() => setConfirmOpen(false)}>
             {t('common:cancel')}
           </DsButton>
+          {firstUnansweredIndex >= 0 && (
+            <DsButton
+              variant="outline"
+              disabled={busy || uploading || navigating}
+              onClick={() => {
+                setConfirmOpen(false);
+                void navigate(firstUnansweredIndex);
+              }}
+            >
+              {t('mockExam.jumpToUnanswered')}
+            </DsButton>
+          )}
           <DsButton disabled={busy || uploading} onClick={() => void submit()}>
             <PaperPlaneRight size={16} />
             {t('batch.submit')}

@@ -38,6 +38,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import {
   useReviewPlanStore,
+  type ReviewPlan,
   type ReviewQuality,
   type ReviewSessionQuestion,
 } from '@/stores/reviewPlanStore';
@@ -45,8 +46,11 @@ import { getReviewQuestionTypeMeta } from '@/components/review/reviewQuestionTyp
 import {
   REVIEW_QUALITY_BY_KEY,
   REVIEW_RATING_QUALITY,
+  formatReviewInterval,
   reviewIntervalLabels,
+  type ReviewRatingKey,
 } from '@/components/review/reviewRatingPreview';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import {
   parseMatchingData,
   parseOrderingData,
@@ -84,6 +88,7 @@ interface SessionStats {
 interface RatingButtonProps {
   /** 按作答对错给出的建议评分：加描边强调，空格 / 回车即选它 */
   suggested?: boolean;
+  ratingKey: ReviewRatingKey;
   quality: ReviewQuality;
   label: string;
   sublabel: string;
@@ -96,8 +101,52 @@ interface RatingButtonProps {
 }
 
 // ============================================================================
-// 评分：FSRS 四档（D2）。间隔预演由后端随计划返回，见 review/reviewRatingPreview.ts
+// 评分：FSRS 四档（D2）。优先读取后端随计划返回的真实 FSRS 间隔预演，
+// 缺失时按当前计划进度给出 FSRS 对齐的下次复习间隔提示。
 // ============================================================================
+
+const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+const EDITABLE_ANCESTOR_SELECTOR = [
+  '[contenteditable=""]',
+  '[contenteditable="true"]',
+  '[contenteditable="plaintext-only"]',
+  '[contenteditable]:not([contenteditable="false"])',
+  '[role="textbox"]',
+].join(', ');
+
+function isEditableElement(target: EventTarget | null): boolean {
+  if (!target || typeof (target as HTMLElement).tagName !== 'string') return false;
+  const el = target as HTMLElement;
+  if (EDITABLE_TAGS.has(el.tagName) || el.isContentEditable) return true;
+  return typeof el.closest === 'function' && Boolean(el.closest(EDITABLE_ANCESTOR_SELECTOR));
+}
+
+function resolveReviewIntervals(
+  t: (key: string, options: { count: number }) => string,
+  plan: ReviewPlan,
+): Record<ReviewRatingKey, string> {
+  if (plan.rating_previews) {
+    return reviewIntervalLabels(t, plan);
+  }
+  if (plan.repetitions <= 0 || plan.status === 'new' || plan.interval_days <= 0) {
+    return {
+      again: formatReviewInterval(t, 1),
+      hard: formatReviewInterval(t, 6),
+      good: formatReviewInterval(t, 10),
+      easy: formatReviewInterval(t, 4 * 1440),
+    };
+  }
+  const baseDays = Math.max(1, plan.interval_days);
+  const hardDays = Math.max(1, Math.round(baseDays * 1.2));
+  const goodDays = Math.max(hardDays + 1, Math.round(baseDays * 2.2));
+  const easyDays = Math.max(goodDays + 1, Math.round(baseDays * 3.2));
+  return {
+    again: formatReviewInterval(t, 10),
+    hard: formatReviewInterval(t, hardDays * 1440),
+    good: formatReviewInterval(t, goodDays * 1440),
+    easy: formatReviewInterval(t, easyDays * 1440),
+  };
+}
 
 // ============================================================================
 // 选择题选项
@@ -276,6 +325,7 @@ const renderStructuredAnswer = (
 
 
 const RatingButton: React.FC<RatingButtonProps> = ({
+  ratingKey,
   label,
   sublabel,
   icon,
@@ -290,6 +340,8 @@ const RatingButton: React.FC<RatingButtonProps> = ({
     onClick={onClick}
     disabled={disabled}
     aria-keyshortcuts={shortcutKey}
+    data-testid={`review-rating-${ratingKey}`}
+    data-interval={sublabel || undefined}
     data-suggested={suggested || undefined}
     className={cn(
       'relative !p-2 !h-auto min-h-11 !rounded-md flex-col !items-center !gap-1',
@@ -302,13 +354,20 @@ const RatingButton: React.FC<RatingButtonProps> = ({
     )}
   >
     {shortcutKey && (
-      <kbd className="absolute top-1.5 right-1.5 hidden sm:inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded border border-current/30 text-[10px] font-mono leading-none opacity-50">
+      <kbd className="absolute top-1.5 right-1.5 hidden sm:inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded border border-current/30 text-2xs font-mono leading-none opacity-55">
         {shortcutKey}
       </kbd>
     )}
     <div className="text-current">{icon}</div>
     <span className="text-sm font-semibold">{label}</span>
-    {sublabel ? <span className="text-[10px] font-medium tabular-nums opacity-70">{sublabel}</span> : null}
+    {sublabel ? (
+      <span
+        data-testid={`review-interval-${ratingKey}`}
+        className="font-mono text-xs font-medium tabular-nums opacity-85"
+      >
+        {sublabel}
+      </span>
+    ) : null}
   </DsButton>
 );
 
@@ -406,18 +465,24 @@ const CompletionStats: React.FC<CompletionStatsProps> = ({
         </svg>
       </div>
 
-      {/* 标题 */}
+      {/* 标题与 FSRS 排期反馈 */}
       <h2 className="text-lg font-semibold text-foreground mb-1">
         {performanceMessage.title}
       </h2>
-      <p className="text-sm text-muted-foreground mb-5">{performanceMessage.message}</p>
+      <p className="max-w-md text-sm text-muted-foreground mb-3">{performanceMessage.message}</p>
+      <p
+        data-testid="review-complete-schedule-note"
+        className="mb-5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs text-primary"
+      >
+        {t('review:complete.scheduleNote', { count: stats.completed })}
+      </p>
 
       {/* 统计卡片 */}
       <div className="grid grid-cols-3 gap-2 w-full max-w-md mb-5">
         <Card className="p-3 text-center bg-success/10 border-success/20">
           <CheckCircle size={16} className="text-success mx-auto mb-1" />
           <p className="text-lg font-semibold tabular-nums text-success">
-            {stats.correct}
+            {stats.correct} / {stats.completed}
           </p>
           <p className="text-xs text-muted-foreground">
             {t('review:complete.correct')}
@@ -621,20 +686,21 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
     if (!session.isActive || !currentItem || belongsToOtherExam || isActive === false) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 输入控件聚焦或带修饰键时不拦截
-      const target = e.target as HTMLElement | null;
+      // 输入法组合中、长按重复、或带修饰键（Ctrl/Meta/Alt）时不拦截
+      if (e.defaultPrevented || e.repeat || isComposingKeyEvent(e)) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // 焦点或事件目标在 <input> / <textarea> / [contenteditable="true"] 等可编辑控件内时自动屏蔽
       if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.isContentEditable)
+        isEditableElement(e.target) ||
+        (typeof document !== 'undefined' && isEditableElement(document.activeElement))
       ) {
         return;
       }
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      const isSpace = e.key === ' ' || e.key === 'Spacebar' || e.code === 'Space';
 
       if (!showAnswer) {
-        if (e.key === ' ' || e.key === 'Enter') {
+        if (isSpace || e.key === 'Enter') {
           e.preventDefault();
           setShowAnswer(true);
         } else if (e.key === 'ArrowRight') {
@@ -657,7 +723,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
       if (e.key in qualityByKey) {
         e.preventDefault();
         void handleRate(qualityByKey[e.key]);
-      } else if (e.key === ' ' || e.key === 'Enter') {
+      } else if (isSpace || e.key === 'Enter') {
         e.preventDefault();
         void handleRate(suggestedQuality ?? REVIEW_RATING_QUALITY.good);
       }
@@ -756,22 +822,30 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
     );
   }
 
-  // 如果没有活动会话或没有题目
+  // 如果没有活动会话或没有题目（空态视觉引导）
   if (!session.isActive || !currentItem) {
     return (
       <div
+        data-testid="review-session-empty"
         className={cn(
-          'flex flex-col items-center justify-center min-h-[60vh]',
+          'flex min-h-[60vh] flex-col items-center justify-center gap-3 p-6 text-center',
           className
         )}
       >
-        <p className="text-muted-foreground">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-success/10">
+          <CheckCircle size={28} weight="duotone" className="text-success" aria-hidden="true" />
+        </div>
+        <p className="text-base font-semibold text-foreground">
           {t('review:session.noItems')}
         </p>
+        <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+          {t('review:session.noItemsHint')}
+        </p>
         <DsButton
-          variant="ghost"
+          variant="outline"
+          size="sm"
           onClick={handleClose}
-          className="mt-4 [@media(pointer:coarse)]:!min-h-11"
+          className="native-touch-target mt-2 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
         >
           {t('common:close')}
         </DsButton>
@@ -788,9 +862,8 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
   // 结构化题型的答案对照降级显示（不适用时为 null，回退 Markdown answer）
   const structuredAnswer = question ? renderStructuredAnswer(question, t) : null;
 
-  // 四档评分的预估间隔（当前题的 plan 参数变化时重算）
-  // FSRS 预演由后端随计划返回：「1分钟 / 6分钟 / 10分钟 / 3天」（D2）
-  const intervalPreview = reviewIntervalLabels(t, plan);
+  // 四档评分的预估间隔（优先采用后端 FSRS rating_previews，缺省时按当前计划进度给出 FSRS 间隔提示）
+  const intervalPreview = resolveReviewIntervals(t, plan);
 
   return (
     <div className={cn('flex flex-col h-full bg-background', className)}>
@@ -1043,6 +1116,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             )}
             <div className="grid grid-cols-4 gap-2">
               <RatingButton
+                ratingKey="again"
                 quality={REVIEW_RATING_QUALITY.again}
                 label={t('review:rating.again')}
                 sublabel={intervalPreview.again}
@@ -1054,6 +1128,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 suggested={suggestedQuality === REVIEW_RATING_QUALITY.again}
               />
               <RatingButton
+                ratingKey="hard"
                 quality={REVIEW_RATING_QUALITY.hard}
                 label={t('review:rating.hard')}
                 sublabel={intervalPreview.hard}
@@ -1064,6 +1139,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 shortcutKey="2"
               />
               <RatingButton
+                ratingKey="good"
                 quality={REVIEW_RATING_QUALITY.good}
                 label={t('review:rating.good')}
                 sublabel={intervalPreview.good}
@@ -1075,6 +1151,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 suggested={suggestedQuality === REVIEW_RATING_QUALITY.good}
               />
               <RatingButton
+                ratingKey="easy"
                 quality={REVIEW_RATING_QUALITY.easy}
                 label={t('review:rating.easy')}
                 sublabel={intervalPreview.easy}

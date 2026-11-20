@@ -23,9 +23,23 @@ interface AppViewStateOptions {
  * `startTransition` 内提交，切换方向与视图同批更新。视图切换的诊断日志也在此收口。
  * W38：从 App.tsx 原样搬出；`isDemoShell` 的演示壳收窄判定不变。
  */
+function resolveInitialViewFromShortcut(): CurrentView {
+  if (typeof window === 'undefined') return 'chat-v2';
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const shortcut = params.get('shortcut');
+    if (shortcut === 'library') return 'learning-hub';
+    if (shortcut === 'review') return 'flashcards';
+    if (shortcut === 'chat') return 'chat-v2';
+  } catch {
+    /* ignore malformed location */
+  }
+  return 'chat-v2';
+}
+
 export function useAppViewState({ isSmallScreen, isDemoShell }: AppViewStateOptions) {
   const viewEntries = useSlot<ShellViewContribution>('views');
-  const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');
+  const [currentView, setCurrentViewRaw] = useState<CurrentView>(() => resolveInitialViewFromShortcut());
   const activeView = viewEntries.find(entry => entry.key === currentView)?.value;
   const activeShell = activeView?.shell;
   // Stable navigation callbacks read the latest registry without invalidating all
@@ -35,16 +49,16 @@ export function useAppViewState({ isSmallScreen, isDemoShell }: AppViewStateOpti
   // 视图切换方向（仅 <768px 的层滑动画消费；桌面是纵向淡入淡出无方向语义）。
   // 访问栈模型：目标是栈内已有视图 → 「返回」(-1)，未见过的新视图 → 「前进」(+1)。
   // 在 setCurrentView 内与视图切换同批 setState，保证动画首帧方向即正确。
-  const viewNavStackRef = useRef<CurrentView[]>(['chat-v2']);
+  const viewNavStackRef = useRef<CurrentView[]>([currentView]);
   const [viewNavDirection, setViewNavDirection] = useState<1 | -1>(1);
-  const currentViewRef = useRef<CurrentView>('chat-v2');
+  const currentViewRef = useRef<CurrentView>(currentView);
   const isSmallScreenRef = useRef(isSmallScreen);
   const viewSwitchStartRef = useRef<{ from: CurrentView; to: CurrentView; startTime: number } | null>(null);
 
   // 🚀 性能优化：追踪已访问的页面，只渲染访问过的页面
   // 使用 Map<view, timestamp> 实现 LRU 淘汰，避免保活视图无限增长
   const [visitedViews, setVisitedViews] = useState<Map<CurrentView, number>>(
-    () => new Map<CurrentView, number>([['chat-v2', Date.now()]])
+    () => new Map<CurrentView, number>([[currentView, Date.now()]])
   );
 
   useEffect(() => {

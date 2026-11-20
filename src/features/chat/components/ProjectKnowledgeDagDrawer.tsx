@@ -435,7 +435,7 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
             <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-0.5">
               <span className="inline-flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-success" />
-                <span>可执行就绪</span>
+                <span>现在可做</span>
                 <strong
                   data-testid="dag-ready-count"
                   className="font-mono tabular-nums text-foreground"
@@ -445,7 +445,7 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
               </span>
               <span className="inline-flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-warning" />
-                <span>前置阻塞</span>
+                <span>等待前置步骤</span>
                 <strong
                   data-testid="dag-blocked-count"
                   className="font-mono tabular-nums text-foreground"
@@ -480,7 +480,7 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
       <section className="p-4 border-b border-border/35 flex flex-col gap-2.5">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold text-foreground">
-            任务依赖拓扑（DAG）
+            学习步骤顺序
           </h3>
           <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
             共 {enrichedTodos.length} 项
@@ -598,7 +598,7 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
       <section className="p-4 flex flex-col gap-3">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-semibold text-foreground">
-            关联课堂笔记（乐观锁保护）
+            关联课堂笔记
           </h3>
           <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
             {notes.length} 条

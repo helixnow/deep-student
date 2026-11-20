@@ -127,6 +127,10 @@ describe('SprintSettlementScreen', () => {
 
     expect(container.textContent).toContain('闪卡 18 · 错题 6 · 导图 4');
     expect(container.textContent).toContain('含 3 道 AI 变式');
+    expect(container.textContent).toContain('一次通过 24 / 28');
+    expect(screen.getByTestId('settlement-encouragement').textContent).toBe(
+      zhReview.examSprint.settlement.encourageStrong,
+    );
     expect(container.textContent).toContain('定积分换元法');
     expect(container.textContent).toContain('78%');
     expect(screen.getByTestId('settlement-deferred-note').textContent).toContain('16');

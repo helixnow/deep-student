@@ -381,6 +381,50 @@ function useClampedMenuFrame(anchor: SelectionMenuAnchor | null) {
   return { ref, frame };
 }
 
+export const PDF_SMALL_VIEWPORT_QUERY = '(max-width: 767.98px)';
+const COARSE_POINTER_QUERY = '(pointer: coarse)';
+
+export function matchesPdfMediaQuery(query: string): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia(query).matches
+  );
+}
+
+export function subscribePdfMediaQuery(
+  query: string,
+  listener: (matches: boolean) => void,
+): () => void {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    return () => {};
+  }
+  const mq = window.matchMedia(query);
+  const onChange = () => listener(mq.matches);
+  if (typeof mq.addEventListener === 'function') {
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }
+  if (typeof mq.addListener === 'function') {
+    mq.addListener(onChange);
+    return () => mq.removeListener(onChange);
+  }
+  return () => {};
+}
+
+export function shouldShowPdfStudyShortcuts(options: {
+  isPreviewToolbar: boolean;
+  isSmallViewport: boolean;
+  isCoarsePointer: boolean;
+  toolbarWidth: number;
+}): boolean {
+  return (
+    !options.isPreviewToolbar &&
+    !options.isSmallViewport &&
+    options.toolbarWidth >= (options.isCoarsePointer ? 520 : 390)
+  );
+}
+
 const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   data,
   url,
@@ -428,26 +472,21 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 复制为 viewer 内建动作，不依赖高亮落盘或上层回调；只要文本层可选，
   // 划词菜单就应可用。翻译/出题/制卡/做笔记/引用到对话走共享层 SelectionToolbar。
 
-  // ========== 响应式环境检测（<640 内联子屏 / coarse 触控） ==========
-  // 断点设计意图：<640 为「内联子屏」形态；640-767 保留压缩桌面形态
-  // （App shell 移动切换点是 768）。查询用 (max-width: 639.98px)，与本文件
-  // CSS 断点完全同式（此前的 not (min-width) 为 MQ4 语法，旧 WebView 不支持）。
+  // ========== 响应式环境检测（<768 移动视口 / coarse 触控） ==========
+  // 断点设计意图：与 App shell 移动切换点（768px）统一对齐，查询用 (max-width: 767.98px)
+  // （避免 MQ4 not (min-width) 旧 WebView 不支持），让 640–767px 大屏手机与小平板进入清爽移动形态。
   const [isSmallViewport, setIsSmallViewport] = useState<boolean>(() =>
-    typeof window !== 'undefined' && window.matchMedia('(max-width: 639.98px)').matches
+    matchesPdfMediaQuery(PDF_SMALL_VIEWPORT_QUERY)
   );
   const [isCoarsePointer, setIsCoarsePointer] = useState<boolean>(() =>
-    typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+    matchesPdfMediaQuery(COARSE_POINTER_QUERY)
   );
   useEffect(() => {
-    const smallMq = window.matchMedia('(max-width: 639.98px)');
-    const coarseMq = window.matchMedia('(pointer: coarse)');
-    const onSmallChange = () => setIsSmallViewport(smallMq.matches);
-    const onCoarseChange = () => setIsCoarsePointer(coarseMq.matches);
-    smallMq.addEventListener('change', onSmallChange);
-    coarseMq.addEventListener('change', onCoarseChange);
+    const unsubscribeSmall = subscribePdfMediaQuery(PDF_SMALL_VIEWPORT_QUERY, setIsSmallViewport);
+    const unsubscribeCoarse = subscribePdfMediaQuery(COARSE_POINTER_QUERY, setIsCoarsePointer);
     return () => {
-      smallMq.removeEventListener('change', onSmallChange);
-      coarseMq.removeEventListener('change', onCoarseChange);
+      unsubscribeSmall();
+      unsubscribeCoarse();
     };
   }, []);
   const isMobileLike = isSmallViewport || isCoarsePointer;
@@ -657,7 +696,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
   const [toolbarWidth, setToolbarWidth] = useState(0);
   const isPreviewToolbar = toolbarVariant === 'preview';
-  const showStudyShortcuts = !isPreviewToolbar && toolbarWidth >= (isCoarsePointer ? 520 : 390);
+  const showStudyShortcuts =
+    !isPreviewToolbar && !isSmallViewport && toolbarWidth >= (isCoarsePointer ? 520 : 390);
   const [showMoreMenu, setShowMoreMenu] = useState<boolean>(false);
   const [showPaperGuideMenu, setShowPaperGuideMenu] = useState<boolean>(false);
   const [regionCaptureActive, setRegionCaptureActive] = useState<boolean>(false);

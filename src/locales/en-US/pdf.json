@@ -362,5 +362,9 @@
     "backlink_flashcard": "{{count}} Card",
     "backlink_note": "{{count}} Note",
     "backlinks_popover_title": "Page Backlinks"
+  },
+  "mobile_ocr_notice": {
+    "title": "OCR on Mobile Devices",
+    "description": "System local OCR engines are only supported on desktop. On mobile, please configure and use a cloud OCR service or a multimodal vision model for scanned PDFs and image recognition."
   }
 }

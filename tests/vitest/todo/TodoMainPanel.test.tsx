@@ -182,4 +182,77 @@ describe('TodoMainPanel', () => {
       expect(row()).not.toHaveAttribute('data-focused');
     });
   });
+
+  describe('today empty-state accomplishment feedback', () => {
+    it('shows completed count badge, warm hint, and next-step actions when all today tasks are done', () => {
+      useTodoStore.setState({
+        lists: [{ id: 'list-1', title: 'Inbox', sortOrder: 0, isDefault: true, isFavorite: false, createdAt: '', updatedAt: '' }],
+        activeListId: 'list-1',
+        filter: {
+          view: 'today',
+          search: '',
+          priorityFilter: null,
+          showCompleted: false,
+          sortBy: 'manual',
+        },
+        items: [
+          {
+            id: 'done-today-1',
+            todoListId: 'list-1',
+            title: '背完 50 个单词',
+            status: 'completed',
+            priority: 'none',
+            tagsJson: '[]',
+            sortOrder: 0,
+            attachmentsJson: '[]',
+            createdAt: '',
+            updatedAt: '',
+          },
+          {
+            id: 'done-today-2',
+            todoListId: 'list-1',
+            title: '完成线代第一章',
+            status: 'completed',
+            priority: 'high',
+            tagsJson: '[]',
+            sortOrder: 1,
+            attachmentsJson: '[]',
+            createdAt: '',
+            updatedAt: '',
+          },
+        ] as any,
+      });
+
+      render(<TodoMainPanel />);
+
+      expect(screen.getByText('todo:empty.todayClear')).toBeInTheDocument();
+      expect(screen.getByTestId('todo-today-all-done-badge')).toBeInTheDocument();
+      expect(screen.getByText('todo:empty.todayAllDoneHint')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'todo:empty.planUpcoming' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'todo:empty.reviewCompleted' })).toBeInTheDocument();
+    });
+
+    it('shows fresh empty state with quick-add focus button when today has zero tasks', () => {
+      useTodoStore.setState({
+        lists: [{ id: 'list-1', title: 'Inbox', sortOrder: 0, isDefault: true, isFavorite: false, createdAt: '', updatedAt: '' }],
+        activeListId: 'list-1',
+        filter: {
+          view: 'today',
+          search: '',
+          priorityFilter: null,
+          showCompleted: false,
+          sortBy: 'manual',
+        },
+        items: [],
+      });
+
+      render(<TodoMainPanel />);
+
+      expect(screen.queryByTestId('todo-today-all-done-badge')).toBeNull();
+      expect(screen.getByText('todo:empty.todayClearHint')).toBeInTheDocument();
+      const addFirstBtn = screen.getByRole('button', { name: 'todo:empty.addFirstToday' });
+      fireEvent.click(addFirstBtn);
+      expect(document.activeElement).toBe(document.querySelector('[data-todo-quick-add]'));
+    });
+  });
 });

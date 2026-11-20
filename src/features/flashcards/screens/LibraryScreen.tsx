@@ -28,6 +28,8 @@ import {
 import { DsButton } from '@/components/ui/DsButton';
 import { AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem } from '@/components/ui/app-menu/AppMenu';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { cn } from '@/utils/cn';
 import { UiPresence } from '@/components/ui/UiPresence';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
@@ -142,11 +144,13 @@ export const LibraryScreen: React.FC = () => {
     void refresh();
   }, [refresh]);
 
-  useEffect(() => {
-    const onRefresh = () => void useFlashcardsLibraryStore.getState().refresh();
-    window.addEventListener(FSRS_LIBRARY_REFRESH_EVENT, onRefresh);
-    return () => window.removeEventListener(FSRS_LIBRARY_REFRESH_EVENT, onRefresh);
+  const onRefreshEvent = useCallback(() => {
+    void useFlashcardsLibraryStore.getState().refresh();
   }, []);
+  useEventRegistry(
+    [{ target: 'window', type: FSRS_LIBRARY_REFRESH_EVENT, listener: onRefreshEvent }],
+    [onRefreshEvent],
+  );
 
   // 即时搜索：输入停顿后自动提交；显式搜索（回车 / 按钮）会同步 query 从而取消定时器。
   useEffect(() => {
@@ -715,15 +719,29 @@ export const LibraryScreen: React.FC = () => {
         >
           {FILTER_OPTIONS.map((option) => {
             const count = filterCounts.get(option) ?? 0;
+            const dotTone =
+              option === 'due'
+                ? 'bg-emerald-500'
+                : option === 'new'
+                  ? 'bg-primary'
+                  : option === 'learning'
+                    ? 'bg-amber-500'
+                    : null;
             return (
               <button
                 key={option}
                 type="button"
-                className="fc-lib-chip"
+                className="fc-lib-chip active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
                 data-active={statusFilter === option ? 'true' : undefined}
                 aria-pressed={statusFilter === option}
                 onClick={() => setStatusFilter(option)}
               >
+                {dotTone && count > 0 ? (
+                  <span
+                    aria-hidden="true"
+                    className={cn('h-1.5 w-1.5 shrink-0 rounded-full', dotTone)}
+                  />
+                ) : null}
                 {translate(`library.filter.${option}`)}
                 {option !== 'all' && count > 0 ? (
                   <span className="fc-lib-chip-count font-mono tabular-nums">{count}</span>

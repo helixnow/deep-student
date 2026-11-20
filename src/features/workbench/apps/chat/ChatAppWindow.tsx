@@ -177,7 +177,7 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
               先导骨架同形态，二段加载期间内容区视觉连续无跳变 */}
           <Suspense fallback={<ChatWindowSkeleton />}>
             {/* isSuspended：background 窗壳层已停绘，流式提交暂停（缓冲不丢） */}
-            <ChatV2Page streamPreset={streamPreset} isSuspended={isSuspended} />
+            <ChatV2Page allowReadingLayout streamPreset={streamPreset} isSuspended={isSuspended} />
           </Suspense>
         </div>
       </WorkbenchSidebarLayout>

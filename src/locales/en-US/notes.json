@@ -756,6 +756,8 @@
     "find_invalid_regex": "Invalid regular expression",
     "outline_expand": "Expand section",
     "outline_collapse": "Collapse section",
+    "outline_expand_all": "Expand all sections",
+    "outline_collapse_all": "Collapse all sections",
     "conflict_compare": "Compare",
     "conflict_compare_hide": "Hide comparison",
     "conflict_diff_title": "My version vs remote version",
@@ -1021,7 +1023,9 @@
     "discard_retained_draft": "Discard retained draft",
     "stats": {
       "reading_label": "Reading time",
-      "reading_value": "~{{minutes}} min"
+      "reading_value": "~{{minutes}} min",
+      "chars_value": "{{count}} chars",
+      "summary": "{{count}} chars · ~{{minutes}} min"
     },
     "toolbar": {
       "bold": "Bold",
@@ -1091,7 +1095,8 @@
       "save_failed": "Save failed",
       "conflict": "Conflict detected — refreshed to latest (use “Restore my version” in the notification)",
       "retry": "Retry",
-      "auto_save": "Auto save"
+      "auto_save": "Auto save",
+      "auto_saved": "Auto-saved"
     },
     "placeholder": {
       "default": "Start writing...",
@@ -2263,5 +2268,13 @@
     "synced_tooltip": "Synced to current Study Space deck",
     "excerpt_source_prefix": "Excerpt from",
     "default_deck": "Inline Note Cards"
+  },
+  "workspace": {
+    "emptyNewMindmap": "New mind map",
+    "recentSectionTitle": "Continue recent",
+    "resumeItem": "Resume: {{title}}",
+    "hintQuickSwitch": "Quick switch & search",
+    "hintToggleSidebar": "Toggle file sidebar",
+    "searchMatchCount": "{{count}} matches"
   }
 }

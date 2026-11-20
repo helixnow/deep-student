@@ -161,9 +161,14 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   const skipCurrent = useFsrsReviewStore((state) => state.skipCurrent);
   const retryBatchSession = useFsrsReviewStore((state) => state.retryBatchSession);
   const endSession = useFsrsReviewStore((state) => state.endSession);
+  const setScreen = useFsrsReviewStore((state) => state.setScreen);
   const loadDue = useFsrsReviewStore((state) => state.loadDue);
   const startDueSession = useFsrsReviewStore((state) => state.startDueSession);
   const exitSession = onExit ?? endSession;
+  const openLibraryFromSummary = React.useCallback(() => {
+    endSession();
+    setScreen?.('library');
+  }, [endSession, setScreen]);
 
   const [editing, setEditing] = React.useState(false);
   const [draftFront, setDraftFront] = React.useState('');
@@ -497,7 +502,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         <Warning size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-destructive" />
         <div className="min-w-0 space-y-0.5 text-left">
           <p className="text-xs font-medium text-destructive">{errorTitle(t, errorKind)}</p>
-          <p className="break-words text-[11px] text-destructive/90">{error}</p>
+          <p className="break-words text-2xs text-destructive/90">{error}</p>
         </div>
       </div>
       {errorKind === 'rate' && lastRated && flipped ? (
@@ -591,6 +596,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         onBack={exitSession}
         hideChromeActions={mobileChrome}
         onContinue={continueWithDue}
+        onOpenLibrary={onExit ? undefined : openLibraryFromSummary}
         errorBanner={errorBanner}
       />
     );
@@ -681,7 +687,11 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         </DsButton>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 text-xs tabular-nums">
           {sessionStreak >= STREAK_BADGE_THRESHOLD ? (
-            <span key={sessionStreak} className="wb-fc-chip wb-fc-chip--streak" title={t('review.streakTitle')}>
+            <span
+              key={sessionStreak}
+              className="wb-fc-chip wb-fc-chip--streak motion-reduce:animate-none"
+              title={t('review.streakTitle')}
+            >
               <Lightning size={11} weight="fill" aria-hidden="true" />
               {t('review.streak', { count: sessionStreak })}
             </span>
@@ -714,7 +724,10 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             </span>
           ) : null}
           <span className="wb-fc-chip wb-fc-chip--due" title={t('review.remainingTitle', { count: remainingCount })}>
-            {t('review.ratedCount', { count: sessionRatedCount, defaultValue: '已评 {{count}}' })}
+            {t('review.ratedRemaining', {
+              rated: sessionRatedCount,
+              left: remainingCount,
+            })}
           </span>
           <span
             className="wb-fc-chip wb-fc-chip--timer"
@@ -949,6 +962,41 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             onShowAnswer={handleFlip}
             onRate={handleRateClick}
           />
+          {!mobileChrome ? (
+            <div
+              data-testid="fc-review-shortcut-hint"
+              className="wb-fc-shortcut-hint justify-center"
+              aria-hidden="true"
+            >
+              {!flipped ? (
+                <span>
+                  <kbd className="wb-fc-keycap">Space</kbd>
+                  {t('review.shortcutFlip')}
+                </span>
+              ) : (
+                <>
+                  <span>
+                    <kbd className="wb-fc-keycap">1–4</kbd>
+                    {t('review.shortcutRate')}
+                  </span>
+                  <span className="wb-fc-shortcut-sep">·</span>
+                  <span>
+                    <kbd className="wb-fc-keycap">Space</kbd>
+                    {t('review.shortcutGood')}
+                  </span>
+                </>
+              )}
+              {lastReview ? (
+                <>
+                  <span className="wb-fc-shortcut-sep">·</span>
+                  <span>
+                    <kbd className="wb-fc-keycap">Z</kbd>
+                    {t('review.shortcutUndo')}
+                  </span>
+                </>
+              ) : null}
+            </div>
+          ) : null}
         </>
       ) : null}
       {errorBanner}

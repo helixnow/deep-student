@@ -322,4 +322,47 @@ describe('ReviewSessionScreen interactions', () => {
     expect(screen.getByRole('button', { name: '良好' })).toBeEnabled();
     expect(useFsrsReviewStore.getState().queueIndex).toBe(0);
   });
+
+  it('surfaces desktop shortcut hints, Good default rhythm cue, and completion recall/library guidance', () => {
+    useFsrsReviewStore.setState({
+      queue: [{ id: 'state-1', ankiCardId: 'anki-1', front: 'Q1', back: 'A1' }],
+      queueIndex: 0,
+      flipped: false,
+      lastReview: { logId: 'log-prev', cardStateId: 'state-0', queueIndex: 0 },
+    });
+
+    const view = render(<ReviewSessionScreen />);
+    const preFlipHint = screen.getByTestId('fc-review-shortcut-hint');
+    expect(preFlipHint).toHaveTextContent('Space');
+    expect(preFlipHint).toHaveTextContent('review.shortcutFlip');
+    expect(preFlipHint).toHaveTextContent('Z');
+
+    fireEvent.keyDown(window, { key: ' ', code: 'Space' });
+    const postFlipHint = screen.getByTestId('fc-review-shortcut-hint');
+    expect(postFlipHint).toHaveTextContent('1–4');
+    expect(postFlipHint).toHaveTextContent('review.shortcutGood');
+
+    const goodBtn = screen.getByRole('button', { name: '良好' });
+    expect(goodBtn).toHaveAttribute('data-default-rhythm', 'true');
+    expect(goodBtn).toHaveAttribute('aria-keyshortcuts', '3 Space');
+    expect(goodBtn.className).toContain('motion-reduce:transition-none');
+
+    // Transition to completed summary with 0 remaining due -> shows recall rate, encouragement, and library CTA
+    act(() => {
+      useFsrsReviewStore.setState({
+        queueIndex: 1,
+        sessionRatedCount: 4,
+        sessionRatingCounts: { 1: 1, 2: 0, 3: 2, 4: 1 },
+        remainingDueAfterSession: 0,
+      });
+    });
+    view.rerender(<ReviewSessionScreen />);
+
+    expect(screen.getByTestId('fc-session-recall-rate')).toHaveTextContent('75%');
+    expect(screen.getByTestId('fc-session-encourage')).toHaveTextContent(
+      'review.summaryEncourageSteady',
+    );
+    fireEvent.click(screen.getByTestId('fc-summary-open-library'));
+    expect(useFsrsReviewStore.getState().screen).toBe('library');
+  });
 });

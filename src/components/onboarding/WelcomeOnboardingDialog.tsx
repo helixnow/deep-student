@@ -221,7 +221,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
     {
       icon: <Cards size={18} weight="duotone" className="text-orange-500/80" />,
       titleKey: 'welcome_onboarding.feature_anki_title',
-      // ★ 2026-07-08：修正文案——实际复习调度为 SM-2（reviewPlanStore），并非 FSRS
+      // 闪卡与错题复习统一采用 FSRS 智能间隔重复调度
       descKey: 'welcome_onboarding.feature_anki_desc',
     },
   ];

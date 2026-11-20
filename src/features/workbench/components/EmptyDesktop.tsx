@@ -26,6 +26,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import {
   AppWindow,
+  ChatCircleText,
   ClockCounterClockwise,
   FolderOpen,
   Keyboard,
@@ -34,6 +35,7 @@ import {
   SquaresFour,
 } from '@phosphor-icons/react';
 import { isMacOS } from '@/utils/platform';
+import { DsButton } from '@/components/ui/DsButton';
 import { workbenchBus } from '../core/workbenchBus';
 import { WallpaperReplica } from '../core/liquidGlassLens';
 import { useMenuBarAutohide } from './menuBarAutohideStore';
@@ -155,6 +157,10 @@ export const EmptyDesktop: React.FC<EmptyDesktopProps> = React.memo(({
     workbenchBus.launch({ typeId, reason: 'api' });
   }, []);
 
+  const openChat = useCallback(() => {
+    launch('chat');
+  }, [launch]);
+
   const openPrimary = useCallback(() => {
     launch('files');
   }, [launch]);
@@ -204,7 +210,11 @@ export const EmptyDesktop: React.FC<EmptyDesktopProps> = React.memo(({
           role="group"
           aria-label={t('workbench:emptyDesktop.actionsLabel')}
         >
-          <button type="button" className="wb-empty-cta" onClick={openPrimary}>
+          <DsButton type="button" variant="ghost" className="wb-empty-cta" onClick={openChat}>
+            <ChatCircleText size={18} weight="duotone" aria-hidden="true" />
+            {t('workbench:emptyDesktop.actionChat')}
+          </DsButton>
+          <button type="button" className="wb-empty-cta wb-empty-cta-secondary" onClick={openPrimary}>
             <FolderOpen size={18} weight="duotone" aria-hidden="true" />
             {t('workbench:emptyDesktop.actionFiles')}
           </button>

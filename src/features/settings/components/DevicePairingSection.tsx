@@ -292,7 +292,7 @@ export function DevicePairingSection({
         setStatus('已从二维码图片识别配对码，请输入 6 位 PIN 完成接入');
         return;
       }
-      setError('未能从所选图片中识别出 DSPAIR1 同步配对码，请优先导入本应用下载的 SVG 二维码或直接粘贴配对码文本。');
+      setError('未能从所选图片中识别出同步配对码，请优先导入本应用导出的二维码图片或直接粘贴配对码文本。');
     } catch (e) {
       setError(`读取二维码图片失败：${getErrorMessage(e)}`);
     }
@@ -449,7 +449,7 @@ export function DevicePairingSection({
                     className="max-w-xs font-mono tabular-nums tracking-widest"
                   />
                   <p className="text-xs text-muted-foreground/80">
-                    配对码采用 PBKDF2-SHA256 + AES-256-GCM 加密，仅凭二维码无法反解，需在新设备输入同一 6 位 PIN。
+                    配对码采用端到端加密保护，仅凭二维码无法反解，需在新设备输入同一 6 位 PIN。
                   </p>
                 </div>
 

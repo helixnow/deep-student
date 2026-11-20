@@ -834,7 +834,11 @@
       "contextMenuHint": "Create new file",
       "searchNoResults": "No results for \"{{query}}\"",
       "searchHint": "Try a different keyword, or clear the search to go back",
-      "clearSearch": "Clear Search"
+      "clearSearch": "Clear Search",
+      "importFiles": "Import Files…",
+      "browseAllFiles": "Browse All Files",
+      "searchAllFiles": "Search All Files",
+      "supportedFormatsHint": "Drop PDF, Word, PPT, EPUB, Markdown, or images to import"
     },
     "undo": "Undo",
     "movedToTrash": "Moved to Trash",
@@ -866,6 +870,8 @@
     },
     "dragDrop": {
       "overlayText": "Drop files here to import",
+      "overlayTextInFolder": "Drop to import into \"{{folder}}\"",
+      "barHint": "Drop to",
       "importSuccess": "Imported {{count}} files",
       "importPartial": "{{success}} imported, {{failed}} failed",
       "importFailed": "File import failed",
@@ -1826,5 +1832,56 @@
     "mountSuccess": "Mounted to \"{{name}}\"",
     "unmountSuccess": "Unmounted from Study Space",
     "noSpacesAvailable": "No Study Spaces available yet. Create one in the Chat sidebar first."
+  },
+  "handoutReader": {
+    "defaultCourseName": "In-depth Study Handout",
+    "estimatedRead": "Est. read",
+    "minutesUnit": "min",
+    "sectionMinutes": "{{count}} min",
+    "readingProgress": "Progress",
+    "readingProgressBarAria": "Handout reading progress",
+    "checkpointScore": "Quiz score",
+    "exportMarkdown": "Export Markdown",
+    "exportedMarkdown": "Exported Markdown",
+    "saveToNote": "Save to Notes",
+    "savedToNote": "Saved to Notes",
+    "printView": "Print View",
+    "toggledPrintView": "Switched print view",
+    "dismissFeedback": "Dismiss",
+    "tocAria": "Table of contents",
+    "tocTitle": "Contents",
+    "filterTitle": "Filter by difficulty",
+    "filterAria": "Difficulty filter",
+    "filterAll": "All sections",
+    "emptyFiltered": "No sections at this difficulty",
+    "askCompanion": "Ask companion",
+    "markRead": "Mark as read",
+    "completedRead": "Completed",
+    "jumpToTime": "Jump to {{time}}",
+    "jumpedToTime": "Jumped to {{time}}",
+    "notePrefix": "Note: ",
+    "derivationPrefix": "Derivation: ",
+    "diagramPrefix": "Diagram: ",
+    "figurePrefix": "Figure (timestamp",
+    "figureSuffix": "): ",
+    "figureDefaultCaption": "Board snapshot",
+    "checkpointHeader": "Concept Checkpoint",
+    "correct": "Correct",
+    "wrong": "Incorrect",
+    "correctOptionBadge": "Correct answer",
+    "explanationPrefix": "Explanation: ",
+    "difficulty": {
+      "foundation": "Foundation",
+      "intermediate": "Intermediate",
+      "olympiad": "Challenge"
+    },
+    "callout": {
+      "theorem": "Theorem",
+      "definition": "Definition",
+      "lemma": "Lemma",
+      "corollary": "Corollary",
+      "pitfall": "Common Pitfall",
+      "example": "Worked Example"
+    }
   }
 }

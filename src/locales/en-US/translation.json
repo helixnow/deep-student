@@ -31,13 +31,18 @@
     "export": "Export",
     "export_title": "Export Translation",
     "copied": "Copied to clipboard",
+    "copied_short": "Copied",
     "exported": "Translation exported",
     "edit": "Edit Translation",
     "edit_saved": "Translation edits saved",
     "listen": "Listen",
     "stop_listen": "Stop Listening",
     "maximize": "Maximize Translation Result",
-    "restore": "Restore Split View"
+    "restore": "Restore Split View",
+    "empty_subhint": "Supports streaming academic translation, paragraph alignment, and custom glossaries",
+    "ready_to_translate": "Source text ready — click Translate or press {{shortcut}}",
+    "streaming_preparing": "Connecting to model and analyzing context…",
+    "streaming_live": "Streaming translation · {{count}} chars"
   },
   "source_section": {
     "title": "Text to Translate",

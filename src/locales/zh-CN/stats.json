@@ -14,7 +14,33 @@
     },
     "legend": {
       "less": "少",
-      "more": "多"
+      "more": "多",
+      "durationScale": "分档：<15 / 15–45 / 45–90 / 90+ 分钟",
+      "activityScale": "按单日活动量 4 档色阶",
+      "activityScalePeak": "按单日峰值（{{peak}} 次）分 4 档",
+      "durationLevel0": "无学习时长记录",
+      "durationLevel1": "不到 15 分钟",
+      "durationLevel2": "15–45 分钟",
+      "durationLevel3": "45–90 分钟",
+      "durationLevel4": "90 分钟以上",
+      "activityLevel0": "无学习活动",
+      "activityLevel1": "轻度活跃",
+      "activityLevel2": "中度活跃",
+      "activityLevel3": "高度活跃",
+      "activityLevel4": "峰值活跃"
+    },
+    "tooltip": {
+      "activitiesCount": "{{count}} 次活动",
+      "cellAriaActivity": "{{date}}：{{count}} 次学习活动",
+      "cellAriaActivityEmpty": "{{date}}：无活动记录",
+      "cellAriaDuration": "{{date}}：学习时长 {{duration}}",
+      "cellAriaDurationEmpty": "{{date}}：无学习时长记录"
+    },
+    "onboarding": {
+      "zeroTitle": "点亮你的第一格学习足迹",
+      "zeroActivityHint": "每一次提问、记笔记、翻阅教材或复习卡片，都会在这里留下成长的印记。",
+      "zeroDurationHint": "保持专注阅读或练习，系统会自动记录你在场投入的每一分钟。",
+      "earlyStreakHint": "已点亮 {{count}} 天学习足迹，保持节奏，好习惯正在稳步扎根。"
     },
     "details": {
       "chatSessions": "会话",
@@ -76,9 +102,14 @@
     "correctRate": "正确率",
     "questionUnit": "{{count}} 题",
     "noRecord": "暂无学习记录",
+    "emptyTitle": "从第一道题开启你的做题热力图",
     "emptyHint": "开始做题后，这里会记录你的每日学习活跃度",
+    "earlyHint": "已累计活跃 {{count}} 天，每次练习都在巩固长期记忆。",
     "legendLess": "少",
-    "legendMore": "多"
+    "legendMore": "多",
+    "legendScale": "按每日做题量分档",
+    "cellAriaActive": "{{date}}：做题 {{count}} 道，正确率 {{rate}}%",
+    "cellAriaEmpty": "{{date}}：暂无学习记录"
   },
   "trendChart": {
     "title": "学习趋势",

@@ -2,12 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { GradingDiagnostics } from '@/api/practiceApi';
 import { useTranslation } from 'react-i18next';
-import { ArrowClockwise, CaretDown, CaretUp, Lightbulb, WarningCircle } from '@phosphor-icons/react';
+import { ArrowClockwise, CaretDown, Lightbulb, WarningCircle } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { MarkdownRenderer, StreamingMarkdownRenderer } from '@/features/chat/components/renderers';
+import { useMotionPresence } from '@/hooks/useMotionPresence';
 import { useQbankAiGrading } from '@/hooks/useQbankAiGrading';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { cn } from '@/lib/utils';
 import { AiExplanationWriteButton } from './AiExplanationWriteButton';
 import { resolveAiExplanationWrite, toExplanationText } from './aiExplanation';
 import { GradingDiagnosticsView } from './GradingDiagnosticsView';
@@ -34,6 +36,8 @@ export function QuestionExplanation({
   const { t } = useTranslation('practice');
   const ai = useQbankAiGrading();
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const presence = useMotionPresence(expanded, { exitMs: 200, enter: 'transition' });
+  const isShown = defaultExpanded && expanded ? true : presence.shown;
   const [savedExplanation, setSavedExplanation] = useState<string | null>(null);
   const [savedDraft, setSavedDraft] = useState<{ feedback: string; diagnostics?: GradingDiagnostics } | null>(null);
   const canonical = savedExplanation ?? explanation;
@@ -85,11 +89,17 @@ export function QuestionExplanation({
             size="sm"
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}
-            className="!h-auto !px-0 text-primary [@media(pointer:coarse)]:!min-h-11"
+            className="!px-1.5 text-primary hover:bg-primary/10"
           >
             <Lightbulb size={16} />
             {expanded ? t('editor.collapseExplanation') : t('editor.viewExplanation')}
-            {expanded ? <CaretUp size={14} /> : <CaretDown size={14} />}
+            <CaretDown
+              size={14}
+              className={cn(
+                'transition-transform duration-200 motion-reduce:transition-none',
+                expanded && 'rotate-180',
+              )}
+            />
           </DsButton>
         )}
         {onRefreshQuestion && (
@@ -98,9 +108,9 @@ export function QuestionExplanation({
             size="sm"
             disabled={ai.state.isGrading}
             onClick={() => void generate()}
-            className="!h-auto text-info [@media(pointer:coarse)]:!min-h-11"
+            className="text-info hover:bg-info/10"
           >
-            <ArrowClockwise size={14} className={ai.state.isGrading ? 'animate-spin' : undefined} />
+            <ArrowClockwise size={14} className={ai.state.isGrading ? 'animate-spin motion-reduce:animate-none' : undefined} />
             {ai.state.isGrading ? t('editor.aiAnalyzing') : t('editor.aiAnalysis')}
           </DsButton>
         )}
@@ -117,34 +127,44 @@ export function QuestionExplanation({
         </p>
       )}
       <GradingDiagnosticsView diagnostics={ai.state.diagnostics} />
-      {expanded && (
-        <div className="space-y-3 border-l-2 border-border/65 pl-3.5 text-sm leading-relaxed text-foreground/85">
-          {canonical?.trim() && <MarkdownRenderer content={canonical} />}
-          {showFeedback && (
-            <div className="space-y-2">
-              {(ai.state.error || ai.state.cancelled) && <p className="text-xs text-warning">{t('batch.feedbackDraft')}</p>}
-              {canonical?.trim() && <h4 className="text-xs font-medium text-muted-foreground">{t('editor.aiAnalysis')}</h4>}
-              <StreamingMarkdownRenderer content={toExplanationText(feedback)} isStreaming={ai.state.isGrading} />
-              {allowExplanationWrite && onRefreshQuestion && !ai.state.isGrading && !ai.state.error && !ai.state.cancelled && (
-                <AiExplanationWriteButton
-                  questionId={questionId}
-                  explanation={canonical}
-                  aiText={feedback}
-                  onWritten={async () => {
-                    await onRefreshQuestion(questionId);
-                    setSavedExplanation(null);
-                  }}
-                />
+      {presence.mounted && (
+        <div
+          aria-hidden={presence.exiting ? true : undefined}
+          className={cn(
+            'grid transition-[grid-template-rows,opacity] duration-200 ease-standard motion-reduce:transition-none',
+            isShown ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
+          )}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="space-y-3 border-l-2 border-primary/35 pl-3.5 pt-0.5 text-sm leading-relaxed text-foreground/85">
+              {canonical?.trim() && <MarkdownRenderer content={canonical} />}
+              {showFeedback && (
+                <div className="space-y-2">
+                  {(ai.state.error || ai.state.cancelled) && <p className="text-xs text-warning">{t('batch.feedbackDraft')}</p>}
+                  {canonical?.trim() && <h4 className="text-xs font-medium text-muted-foreground">{t('editor.aiAnalysis')}</h4>}
+                  <StreamingMarkdownRenderer content={toExplanationText(feedback)} isStreaming={ai.state.isGrading} />
+                  {allowExplanationWrite && onRefreshQuestion && !ai.state.isGrading && !ai.state.error && !ai.state.cancelled && (
+                    <AiExplanationWriteButton
+                      questionId={questionId}
+                      explanation={canonical}
+                      aiText={feedback}
+                      onWritten={async () => {
+                        await onRefreshQuestion(questionId);
+                        setSavedExplanation(null);
+                      }}
+                    />
+                  )}
+                </div>
+              )}
+              {savedDraft && !ai.state.feedback && (
+                <details className="space-y-2 border-t border-border/40 pt-2">
+                  <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">{t('batch.feedbackDraft')}</summary>
+                  {savedDraft.feedback && <MarkdownRenderer content={toExplanationText(savedDraft.feedback)} />}
+                  <GradingDiagnosticsView diagnostics={savedDraft.diagnostics} />
+                </details>
               )}
             </div>
-          )}
-          {savedDraft && !ai.state.feedback && (
-            <details className="space-y-2 border-t border-border/40 pt-2">
-              <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">{t('batch.feedbackDraft')}</summary>
-              {savedDraft.feedback && <MarkdownRenderer content={toExplanationText(savedDraft.feedback)} />}
-              <GradingDiagnosticsView diagnostics={savedDraft.diagnostics} />
-            </details>
-          )}
+          </div>
         </div>
       )}
     </section>

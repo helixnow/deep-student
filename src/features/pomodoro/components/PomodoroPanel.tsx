@@ -81,8 +81,8 @@ const ExtendChips: React.FC<{
           title={t('pomodoro.controls.extendTitle', { count: minutes })}
           aria-label={t('pomodoro.controls.extendTitle', { count: minutes })}
           className={cn(
-            'gap-0 !px-2 text-xs font-medium tabular-nums transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-w-11',
-            touch ? 'h-11 flex-shrink-0 !px-3 text-xs' : 'h-6 [@media(pointer:coarse)]:!h-11',
+            'gap-0 !rounded-full !px-2.5 text-xs font-medium tabular-nums transition-[transform,background-color,border-color,color] duration-150 ease-standard active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100',
+            touch ? 'h-11 flex-shrink-0 !px-3 text-xs' : 'h-6',
             className,
           )}
         >
@@ -149,20 +149,15 @@ const HeroRing: React.FC<{
           strokeDasharray={HERO_RING_CIRCUMFERENCE}
           strokeDashoffset={offset}
           className={cn(
-            'motion-reduce:transition-none',
+            '[transition:stroke-dashoffset_1000ms_linear,stroke_200ms_cubic-bezier(0.22,1,0.36,1),opacity_200ms_cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
             paused && 'opacity-50',
             idle && 'opacity-0',
           )}
-          style={{
-            // 秒级更新间的平滑衔接（状态过渡）；阶段色切换 200ms 缓动
-            transition:
-              'stroke-dashoffset 1s linear, stroke 200ms cubic-bezier(0.22,1,0.36,1), opacity 200ms cubic-bezier(0.22,1,0.36,1)',
-          }}
         />
       </svg>
       {/* 中心模式图标（随阶段语义色，150ms 微交互过渡） */}
       <span
-        className="absolute inset-0 flex items-center justify-center transition-colors duration-150 ease-standard"
+        className="absolute inset-0 flex items-center justify-center transition-colors duration-150 ease-standard motion-reduce:transition-none"
         style={{ color: idle ? 'hsl(var(--muted-foreground))' : accent }}
       >
         {children}
@@ -531,6 +526,17 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
       : t('pomodoro.stats.hours', { value: (m / 60).toFixed(1) });
   };
 
+  const panelRootRef = useRef<HTMLDivElement>(null);
+
+  /** 按钮因阶段切换卸载后若焦点掉回 body，收回到面板根节点以保持 Space/B/M 连贯可用 */
+  const keepPanelFocusAlive = useCallback(() => {
+    requestAnimationFrame(() => {
+      if (typeof document !== 'undefined' && document.activeElement === document.body) {
+        panelRootRef.current?.focus({ preventScroll: true });
+      }
+    });
+  }, []);
+
   const handleTogglePlay = useCallback(() => {
     if (mode === 'idle') {
       start();
@@ -539,7 +545,13 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
     } else {
       resume();
     }
-  }, [mode, status, start, pause, resume]);
+    keepPanelFocusAlive();
+  }, [mode, status, start, pause, resume, keepPanelFocusAlive]);
+
+  const handleSkipBreak = useCallback(() => {
+    skipBreak();
+    keepPanelFocusAlive();
+  }, [skipBreak, keepPanelFocusAlive]);
 
   // ==== 放弃确认（内联二次确认，非弹窗）====
   // 专注阶段进度会被记为 interrupted，误触成本高 → 停止先变确认态；
@@ -571,7 +583,8 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
     }
     cancelStopConfirm();
     stop(true);
-  }, [mode, confirmingStop, clearConfirmTimer, cancelStopConfirm, stop]);
+    keepPanelFocusAlive();
+  }, [mode, confirmingStop, clearConfirmTimer, cancelStopConfirm, stop, keepPanelFocusAlive]);
 
   // 阶段切换（含自然完成）后残留的确认态失效
   useEffect(() => {
@@ -610,36 +623,27 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
   // 严格模式下专注阶段隐藏暂停（store 同样拦截，双保险）
   const pauseLocked = settings.strictMode && mode === 'work' && status === 'running';
 
-  // ==== 键盘快捷键（仅面板自身聚焦时生效；沉浸模式有自己的处理器）====
+  // ==== 键盘快捷键（面板内任意位置聚焦或点击后生效；沉浸模式有自己的处理器）====
   // Space = 开始/暂停/继续；B = 跳过休息；M = 环境音开关。
-  // 不在 document 全局抢键：待办列表 j/k 聚焦行的 Space/x 完成不能被番茄钟偷走。
-  // 输入场景（可编辑元素 / 组合输入 / 修饰键）一律放行不拦截。
-  const panelRootRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const isEditableTarget = (target: EventTarget | null): boolean => {
-      if (!(target instanceof HTMLElement)) return false;
-      if (target.isContentEditable) return true;
-      const tag = target.tagName;
-      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
+  // 挂在带 tabIndex={-1} 的面板根节点合成事件上：既不全局抢走待办列表 j/k 行的 Space，
+  // 又保证点击计时环/空白区域后焦点落在面板内，空格启停随时响应。
+  const handlePanelKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
       if (isImmersive) return;
-      if (e.defaultPrevented || e.isComposing || e.repeat) return;
+      if (e.defaultPrevented || e.nativeEvent.isComposing || e.repeat) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (isEditableTarget(e.target)) return;
-      // 焦点必须落在本面板内，才处理番茄钟快捷键（避免抢待办 Space）
-      const root = panelRootRef.current;
-      if (!root || !(e.target instanceof Node) || !root.contains(e.target)) {
-        return;
-      }
-      // 焦点在按钮上时空格是原生激活语义，不重复触发；
-      // 焦点在滑杆/开关等 ARIA 控件上时空格属于控件交互，同样放行
-      if (
-        e.key === ' ' &&
-        e.target instanceof HTMLElement &&
-        e.target.closest('button, [role="slider"], [role="switch"], [role="checkbox"]')
-      ) {
-        return;
+      const target = e.target;
+      if (target instanceof HTMLElement) {
+        if (target.isContentEditable) return;
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        // 焦点在按钮或 ARIA 控件上时空格归原生控件交互，避免重复触发
+        if (
+          e.key === ' ' &&
+          target.closest('button, [role="slider"], [role="switch"], [role="checkbox"], [role="radio"]')
+        ) {
+          return;
+        }
       }
 
       const s = usePomodoroStore.getState();
@@ -652,19 +656,20 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
         } else {
           s.resume();
         }
+        keepPanelFocusAlive();
       } else if (e.key === 'b' || e.key === 'B') {
         if (s.mode === 'short_break' || s.mode === 'long_break') {
           e.preventDefault();
           s.skipBreak();
+          keepPanelFocusAlive();
         }
       } else if (e.key === 'm' || e.key === 'M') {
         e.preventDefault();
         s.setNoiseEnabled(!s.noiseEnabled);
       }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [isImmersive]);
+    },
+    [isImmersive, keepPanelFocusAlive],
+  );
 
   const getModeInfo = (): ModeInfo => {
     switch (mode) {
@@ -851,19 +856,43 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
     </div>
   );
 
-  /** 移动横滑区次要按钮统一 44px 触控标准 */
-  const mobileIconBtnClass = '!h-11 !w-11 flex-shrink-0 transition-colors duration-150 ease-standard';
+  /** 移动横滑区次要按钮统一 44px 触控标准 + 按压阻尼 */
+  const mobileIconBtnClass =
+    '!h-11 !w-11 flex-shrink-0 transition-[transform,background-color,border-color,color] duration-150 ease-standard active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100';
+  const desktopIconBtnClass =
+    '!h-7 !w-7 transition-[transform,background-color,border-color,color] duration-150 ease-standard active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100';
+
+  const panelSurfaceClass = (() => {
+    switch (mode) {
+      case 'work':
+        return 'border-t border-[color:hsl(var(--primary))]/20 bg-[color:hsl(var(--primary))]/[0.025]';
+      case 'short_break':
+        return 'border-t border-[color:hsl(var(--success))]/25 bg-[color:hsl(var(--success))]/[0.035]';
+      case 'long_break':
+        return 'border-t border-[color:hsl(var(--info))]/25 bg-[color:hsl(var(--info))]/[0.035]';
+      default:
+        return 'border-t border-[color:var(--shell-workspace-border)] bg-transparent';
+    }
+  })();
+
+  const ctaAccentClass = !isRunning
+    ? mode === 'short_break'
+      ? '!border-[color:hsl(var(--success))]/35 !bg-[color:hsl(var(--success))]/10 !text-[color:hsl(var(--success))] hover:!bg-[color:hsl(var(--success))]/15'
+      : mode === 'long_break'
+        ? '!border-[color:hsl(var(--info))]/35 !bg-[color:hsl(var(--info))]/10 !text-[color:hsl(var(--info))] hover:!bg-[color:hsl(var(--info))]/15'
+        : '!border-primary/30 !bg-primary/10 !text-primary hover:!bg-primary/15'
+    : '';
 
   // ==== 停止 / 放弃确认（内联二次确认，随处复用）====
-  const abandonConfirmLabel = t('pomodoro.controls.abandonConfirm', '放弃本次专注？');
-  const abandonLabel = t('pomodoro.controls.abandon', '放弃');
-  const keepGoingLabel = t('pomodoro.controls.keepGoing', '继续专注');
+  const abandonConfirmLabel = t('pomodoro.controls.abandonConfirm');
+  const abandonLabel = t('pomodoro.controls.abandon');
+  const keepGoingLabel = t('pomodoro.controls.keepGoing');
   const renderStopControl = (touch: boolean) => {
     if (mode === 'idle') return null;
     if (confirmingStop) {
       return (
         <span
-          className="ui-rise-in inline-flex flex-shrink-0 items-center gap-1"
+          className="ui-rise-in motion-reduce:animate-none inline-flex flex-shrink-0 items-center gap-1"
           role="alertdialog"
           aria-label={abandonConfirmLabel}
         >
@@ -882,8 +911,8 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             title={abandonLabel}
             aria-label={abandonLabel}
             className={cn(
-              '!px-2.5 text-xs font-medium text-[color:hsl(var(--destructive))] transition-colors duration-150 ease-standard',
-              touch ? 'h-11 flex-shrink-0' : 'h-6 [@media(pointer:coarse)]:!h-11',
+              '!px-2.5 text-xs font-medium text-[color:hsl(var(--destructive))] transition-[transform,background-color,border-color,color] duration-150 ease-standard active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100',
+              touch ? 'h-11 flex-shrink-0' : 'h-6',
             )}
           >
             {abandonLabel}
@@ -895,8 +924,8 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             title={keepGoingLabel}
             aria-label={keepGoingLabel}
             className={cn(
-              '!px-2 text-xs transition-colors duration-150 ease-standard',
-              touch ? 'h-11 flex-shrink-0' : 'h-6 [@media(pointer:coarse)]:!h-11',
+              '!px-2 text-xs transition-[transform,background-color,border-color,color] duration-150 ease-standard active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100',
+              touch ? 'h-11 flex-shrink-0' : 'h-6',
             )}
           >
             {keepGoingLabel}
@@ -912,21 +941,21 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
         onClick={handleStop}
         title={t('pomodoro.controls.stop')}
         aria-label={t('pomodoro.controls.stop')}
-        className={touch ? mobileIconBtnClass : '!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11'}
+        className={touch ? mobileIconBtnClass : desktopIconBtnClass}
       >
         <Square size={touch ? 16 : 14} />
       </DsButton>
     );
   };
 
-  // ==== 空闲态时长快捷预设（点选即改工作时长；内联自定义走设置滑杆）====
+  // ==== 空闲态时长快捷预设胶囊（点选即改工作时长；内联自定义走设置滑杆）====
   const workMinutes = Math.round(settings.workDuration / 60);
   const renderDurationPresets = (touch: boolean) =>
     mode === 'idle' && !settings.countUp ? (
       <span
         className="inline-flex flex-shrink-0 items-center gap-1"
         role="group"
-        aria-label={t('pomodoro.presets.label', '时长快捷预设')}
+        aria-label={t('pomodoro.presets.label')}
       >
         {DURATION_PRESETS.map((minutes) => (
           <DsButton
@@ -934,27 +963,21 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             variant="ghost"
             size="sm"
             onClick={() => updateSettings({ workDuration: minutes * 60 })}
-            title={t('pomodoro.presets.setTitle', {
-              count: minutes,
-              defaultValue: '将专注时长设为 {{count}} 分钟',
-            })}
-            aria-label={t('pomodoro.presets.setTitle', {
-              count: minutes,
-              defaultValue: '将专注时长设为 {{count}} 分钟',
-            })}
+            title={t('pomodoro.presets.setTitle', { count: minutes })}
+            aria-label={t('pomodoro.presets.setTitle', { count: minutes })}
             aria-pressed={workMinutes === minutes}
             className={cn(
-              'gap-0 !px-2 font-mono text-xs tabular-nums transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-w-11',
-              touch ? 'h-11 flex-shrink-0 !px-3' : 'h-6 [@media(pointer:coarse)]:!h-11',
+              'gap-0 !rounded-full !px-2.5 font-mono text-xs tabular-nums transition-[transform,background-color,border-color,color] duration-150 ease-standard active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100',
+              touch ? 'h-11 flex-shrink-0 !px-3' : 'h-6',
               workMinutes === minutes
-                ? 'font-semibold text-primary'
-                : 'text-muted-foreground hover:text-foreground',
+                ? '!border-primary/30 !bg-primary/12 font-semibold !text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
             )}
           >
             {minutes}
           </DsButton>
         ))}
-        <span className="text-[10px] text-muted-foreground/60">{t('pomodoro.settings.minutesUnit')}</span>
+        <span className="text-2xs text-muted-foreground/60">{t('pomodoro.settings.minutesUnit')}</span>
       </span>
     ) : null;
 
@@ -1004,7 +1027,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               onValueChange={([v]) => updateSettings({ noiseVolume: (v ?? 0) / 100 })}
               aria-label={t('pomodoro.settings.noiseVolume')}
             />
-            <span className="w-8 text-right font-mono text-[10px] tabular-nums text-muted-foreground">
+            <span className="w-8 text-right font-mono text-2xs tabular-nums text-muted-foreground">
               {Math.round(settings.noiseVolume * 100)}%
             </span>
           </span>
@@ -1018,7 +1041,13 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
     // 面板是 Todo 中屏最底部元素：预留移动端安全区，避免手势条遮挡统计行（桌面端变量为 0）
     <div
       ref={panelRootRef}
-      className="flex-shrink-0 pb-[var(--mobile-safe-area-bottom,0px)]"
+      tabIndex={-1}
+      data-pomodoro-mode={mode}
+      onKeyDown={handlePanelKeyDown}
+      className={cn(
+        'flex-shrink-0 pb-[var(--mobile-safe-area-bottom,0px)] outline-none transition-colors duration-300 ease-standard motion-reduce:transition-none',
+        panelSurfaceClass,
+      )}
     >
       {/* 内联展开区（设置/统计）：面板向上「长出」，不走浮层（宿主提供子屏时按钮直开子屏，此区不会被触发） */}
       {inlineExpandArea}
@@ -1071,7 +1100,10 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                   onClick={handleTogglePlay}
                   title={isRunning ? t('pomodoro.controls.pause') : mode === 'idle' ? t('pomodoro.controls.startFocus') : t('pomodoro.controls.resume')}
                   aria-label={isRunning ? t('pomodoro.controls.pause') : mode === 'idle' ? t('pomodoro.controls.startFocus') : t('pomodoro.controls.resume')}
-                  className="h-11 min-w-[2.75rem] gap-1.5 !px-4 text-sm transition-colors duration-150 ease-standard"
+                  className={cn(
+                    'h-11 min-w-[2.75rem] gap-1.5 !px-4 text-sm transition-[transform,background-color,border-color,color] duration-150 ease-standard active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100',
+                    ctaAccentClass,
+                  )}
                 >
                   <IconSwap
                     active={isRunning}
@@ -1123,10 +1155,10 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                   </span>
                 )}
               </div>
-              <div className="ui-rise-in h-1 overflow-hidden rounded-full bg-[color:var(--shell-workspace-border)]">
+              <div className="ui-rise-in motion-reduce:animate-none h-1 overflow-hidden rounded-full bg-[color:var(--shell-workspace-border)]">
                 <div
                   className={cn(
-                    'h-full rounded-full transition-all duration-1000 ease-linear',
+                    'h-full rounded-full transition-[width,background-color] duration-1000 ease-linear motion-reduce:transition-none',
                     modeInfo.progressClass,
                   )}
                   style={{ width: `${progress * 100}%` }}
@@ -1137,7 +1169,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
 
           {/* 行 3：次要操作横滑区（运行中常显；空闲态由 ⋯ 展开），全部 ≥44px 触控 */}
           {(mode !== 'idle' || mobileMoreOpen) && (
-            <div className="scrollbar-none ui-rise-in -mx-1 flex items-center gap-1 overflow-x-auto px-1">
+            <div className="scrollbar-none ui-rise-in motion-reduce:animate-none -mx-1 flex items-center gap-1 overflow-x-auto px-1">
               {renderStopControl(true)}
               {renderDurationPresets(true)}
               {isCountUpWork && isRunning && (
@@ -1147,7 +1179,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                   onClick={() => completeCurrentSession()}
                   title={t('pomodoro.controls.finish')}
                   aria-label={t('pomodoro.controls.finish')}
-                  className="h-11 flex-shrink-0 gap-1.5 !px-3 text-xs transition-colors duration-150 ease-standard"
+                  className="h-11 flex-shrink-0 gap-1.5 !px-3 text-xs transition-[transform,background-color,border-color,color] duration-150 ease-standard active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100"
                 >
                   <CheckCircle size={16} />
                   <span>{t('pomodoro.controls.finish')}</span>
@@ -1158,7 +1190,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
                   variant="ghost"
                   size="icon"
                   iconOnly
-                  onClick={() => skipBreak()}
+                  onClick={handleSkipBreak}
                   title={t('pomodoro.controls.skipBreak')}
                   aria-label={t('pomodoro.controls.skipBreak')}
                   className={mobileIconBtnClass}
@@ -1275,7 +1307,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               onClick={() => completeCurrentSession()}
               title={t('pomodoro.controls.finish')}
               aria-label={t('pomodoro.controls.finish')}
-              className="h-7 gap-1.5 !px-3 text-xs transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11"
+              className="h-7 gap-1.5 !border-[color:hsl(var(--success))]/35 !bg-[color:hsl(var(--success))]/10 !px-3 text-xs !text-[color:hsl(var(--success))] transition-[transform,background-color,border-color,color] duration-150 ease-standard hover:!bg-[color:hsl(var(--success))]/15 active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100"
             >
               <CheckCircle size={14} />
               <span>{t('pomodoro.controls.finish')}</span>
@@ -1288,9 +1320,12 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               variant={mode === 'idle' || !isRunning ? 'primary' : 'utility'}
               size="sm"
               onClick={handleTogglePlay}
-              title={isRunning ? t('pomodoro.controls.pauseSpace') : mode === 'idle' ? t('pomodoro.controls.startSpace') : t('pomodoro.controls.resumeSpace', '继续 (Space)')}
+              title={isRunning ? t('pomodoro.controls.pauseSpace') : mode === 'idle' ? t('pomodoro.controls.startSpace') : t('pomodoro.controls.resumeSpace')}
               aria-label={isRunning ? t('pomodoro.controls.pause') : mode === 'idle' ? t('pomodoro.controls.startFocus') : t('pomodoro.controls.resume')}
-              className="h-7 gap-1.5 !px-3 text-xs transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11"
+              className={cn(
+                'h-7 gap-1.5 !px-3 text-xs transition-[transform,background-color,border-color,color] duration-150 ease-standard active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100',
+                ctaAccentClass,
+              )}
             >
               <IconSwap
                 active={isRunning}
@@ -1319,10 +1354,10 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               variant="ghost"
               size="icon"
               iconOnly
-              onClick={() => skipBreak()}
+              onClick={handleSkipBreak}
               title={t('pomodoro.controls.skipBreakKey')}
               aria-label={t('pomodoro.controls.skipBreakKey')}
-              className="!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+              className={desktopIconBtnClass}
             >
               <SkipForward size={14} />
             </DsButton>
@@ -1340,7 +1375,8 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             title={noiseEnabled ? t('pomodoro.controls.noiseOffKey') : t('pomodoro.controls.noiseOnKey')}
             aria-label={noiseEnabled ? t('pomodoro.controls.noiseOffKey') : t('pomodoro.controls.noiseOnKey')}
             className={cn(
-              'relative !h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
+              desktopIconBtnClass,
+              'relative',
               noiseEnabled && 'text-primary',
             )}
           >
@@ -1360,15 +1396,15 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               onClick={() => setImmersive(true)}
               title={t('pomodoro.controls.enterImmersive')}
               aria-label={t('pomodoro.controls.enterImmersive')}
-              className="!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+              className={desktopIconBtnClass}
             >
               <ArrowsOut size={14} />
             </DsButton>
           )}
 
           {/* 统计趋势 / 设置（移动端交给宿主页 inline 子屏，桌面端切换面板内联展开区） */}
-          {renderStatsControl('!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', 14)}
-          {renderSettingsControl('!h-7 !w-7 transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', 14)}
+          {renderStatsControl(desktopIconBtnClass, 14)}
+          {renderSettingsControl(desktopIconBtnClass, 14)}
         </div>
       </div>
       )}
@@ -1383,10 +1419,18 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
         </div>
       )}
 
-      {/* 今日统计 + 每日目标 + 连续达标：极简行内 tabular-nums 状态条，以 `·` 分隔 */}
+      {/* 今日已完成番茄计数徽标 + 每日目标 + 连续达标：行内状态条 */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-4 pb-2.5 font-mono text-xs tabular-nums text-muted-foreground sm:px-6">
         <span
-          className="inline-flex items-center gap-1.5"
+          data-testid="pomodoro-today-badge"
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 transition-colors duration-200 motion-reduce:transition-none',
+            goalReached
+              ? 'border-[color:hsl(var(--success))]/30 bg-[color:hsl(var(--success))]/10 text-[color:hsl(var(--success))]'
+              : todayCount > 0
+                ? 'border-primary/20 bg-primary/[0.06] text-foreground'
+                : 'border-[color:var(--shell-workspace-border)] bg-muted/35 text-muted-foreground',
+          )}
           title={
             settings.dailyGoal > 0
               ? goalReached
@@ -1401,21 +1445,23 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
           <span
             aria-hidden="true"
             className={cn(
-              'h-1.5 w-1.5 shrink-0 rounded-full transition-transform duration-200',
+              'h-1.5 w-1.5 shrink-0 rounded-full transition-transform duration-200 motion-reduce:transition-none',
               goalReached
                 ? 'bg-[color:hsl(var(--success))]'
-                : 'bg-[color:hsl(var(--warning))]',
-              celebrate && 'scale-125',
+                : todayCount > 0
+                  ? 'bg-primary'
+                  : 'bg-[color:hsl(var(--warning))]',
+              celebrate && 'scale-125 motion-reduce:scale-100',
             )}
           />
           <span>
             {t('pomodoro.stats.todayLabel')}{' '}
-            <strong className="font-medium text-foreground">
+            <strong className="font-semibold text-current">
               <span key={todayCount} className="pomodoro-num-roll">
                 {todayCount}
               </span>
               {settings.dailyGoal > 0 && (
-                <span className="font-normal text-muted-foreground">/{settings.dailyGoal}</span>
+                <span className="font-normal opacity-75">/{settings.dailyGoal}</span>
               )}
             </strong>{' '}
             {t('pomodoro.stats.pomodoroUnit')}
@@ -1457,6 +1503,14 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
               {t('pomodoro.stats.interrupted', { value: todayStats.interruptedCount })}
             </span>
           </>
+        )}
+        {!pauseLocked && (
+          <span
+            data-testid="pomodoro-space-hint"
+            className="ml-auto hidden items-center rounded border border-border/50 bg-muted/35 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground/65 sm:inline-flex [@media(pointer:coarse)]:hidden"
+          >
+            {t('pomodoro.controls.spaceShortcutHint')}
+          </span>
         )}
       </div>
     </div>

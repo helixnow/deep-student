@@ -23,16 +23,35 @@ const OPENAI_KEY = `sk-${'Ab0_-'.repeat(6)}`;
 const BEARER_TOKEN = 'eyJhbGciOiJIUzI1NiJ9';
 /** GitHub classic PAT：ghp_ + 36 位 */
 const GHP_TOKEN = `ghp_${'a'.repeat(36)}`;
+/** GitHub OAuth / user / server / refresh tokens：gh[ousr]_ + 24 位 */
+const GHO_TOKEN = 'gho_' + 'B'.repeat(24);
+const GHU_TOKEN = 'ghu_' + 'c'.repeat(24);
+const GHS_TOKEN = 'ghs_' + 'D'.repeat(24);
+const GHR_TOKEN = 'ghr_' + 'e'.repeat(24);
 /** GitHub fine-grained PAT：github_pat_ + 25 位（运行时拼接，避免静态 secret scanning 误报） */
 const GITHUB_FINE_PAT = 'github_pat_' + 'A1b2C3d4E5f6G7h8I9j0K';
-/** AWS access key id：AKIA + 16 位大写字母/数字（拼接，避免静态误报） */
+/** AWS access key id：AKIA / ASIA + 16 位大写字母/数字（拼接，避免静态误报） */
 const AWS_KEY = 'AKIA' + 'IOSFODNN7EXAMPLE';
+const AWS_STS_KEY = 'ASIA' + 'IOSFODNN7EXAMPLE';
 /** Slack bot token（拼接，避免静态误报） */
 const SLACK_TOKEN = 'xoxb-' + '1234567890-abcdefghij';
 /** Google API key：AIza + 35 位（拼接，避免静态误报；提交里不得出现完整字面量） */
 const GOOGLE_KEY = 'AIza' + 'SyA' + '1'.repeat(32);
 /** Hugging Face token：hf_ + 24 位 */
 const HF_TOKEN = `hf_${'a'.repeat(24)}`;
+/** Groq API key：gsk_ + 24 位 */
+const GROQ_KEY = 'gsk_' + 'K9m2P4q6R8s0T2v4W6x8Y0z2';
+/** Perplexity API key：pplx- + 24 位 */
+const PPLX_KEY = 'pplx-' + 'a1b2c3d4e5f6g7h8i9j0k1l2';
+/** xAI API key：xai- + 24 位 */
+const XAI_KEY = 'xai-' + 'Z9y8X7w6V5u4T3s2R1q0P9o8';
+/** Tavily API key：tvly- + 24 位 */
+const TAVILY_KEY = 'tvly-' + 'dev-1234567890abcdefghij';
+/** GitLab PAT：glpat- + 20 位 */
+const GITLAB_PAT = 'glpat-' + 'AbCdEfGhIjKlMnOpQrSt';
+/** Stripe live/test secret & restricted keys（拼接，避免静态误报） */
+const STRIPE_SK_LIVE = 'sk_' + 'live_' + '51NabCdEfGhIjKlMnOpQrStUv';
+const STRIPE_RK_TEST = 'rk_' + 'test_' + '99XyZwVuTsRqPoNmLkJiHgFe';
 
 // ============================================================================
 // 各 pattern 正例
@@ -92,6 +111,71 @@ describe('maskSecrets - 各 pattern 正例', () => {
     expect(result.count).toBe(1);
     expect(result.masked).toBe('HF_TOKEN=hf_aa••••');
   });
+
+  it('识别 GitHub OAuth / App / Refresh 系列令牌（gho_ / ghu_ / ghs_ / ghr_）', () => {
+    for (const [raw, expectedPrefix] of [
+      [GHO_TOKEN, 'gho_BB••••'],
+      [GHU_TOKEN, 'ghu_cc••••'],
+      [GHS_TOKEN, 'ghs_DD••••'],
+      [GHR_TOKEN, 'ghr_ee••••'],
+    ] as const) {
+      const result = maskSecrets(`gh token ${raw} end`);
+      expect(result.count).toBe(1);
+      expect(result.masked).toBe(`gh token ${expectedPrefix} end`);
+    }
+  });
+
+  it('识别 ASIA AWS STS 临时访问密钥', () => {
+    const result = maskSecrets(`aws_sts = ${AWS_STS_KEY}`);
+    expect(result.count).toBe(1);
+    expect(result.masked).toBe('aws_sts = ASIAIO••••');
+    expect(result.masked).not.toContain('IOSFODNN7EXAMPLE');
+  });
+
+  it('识别 Groq gsk_ 密钥', () => {
+    const result = maskSecrets(`GROQ_API_KEY=${GROQ_KEY}`);
+    expect(result.count).toBe(1);
+    expect(result.masked).toBe('GROQ_API_KEY=gsk_K9••••');
+    expect(result.masked).not.toContain(GROQ_KEY);
+  });
+
+  it('识别 Perplexity pplx- 密钥', () => {
+    const result = maskSecrets(`perplexity: ${PPLX_KEY}`);
+    expect(result.count).toBe(1);
+    expect(result.masked).toBe('perplexity: pplx-a1••••');
+    expect(result.masked).not.toContain(PPLX_KEY);
+  });
+
+  it('识别 xAI xai- 密钥', () => {
+    const result = maskSecrets(`xai key ${XAI_KEY}`);
+    expect(result.count).toBe(1);
+    expect(result.masked).toBe('xai key xai-Z9••••');
+    expect(result.masked).not.toContain(XAI_KEY);
+  });
+
+  it('识别 Tavily tvly- 密钥', () => {
+    const result = maskSecrets(`tavily=${TAVILY_KEY}`);
+    expect(result.count).toBe(1);
+    expect(result.masked).toBe('tavily=tvly-de••••');
+    expect(result.masked).not.toContain(TAVILY_KEY);
+  });
+
+  it('识别 GitLab glpat- 个人访问令牌', () => {
+    const result = maskSecrets(`gitlab: ${GITLAB_PAT}`);
+    expect(result.count).toBe(1);
+    expect(result.masked).toBe('gitlab: glpat-Ab••••');
+    expect(result.masked).not.toContain(GITLAB_PAT);
+  });
+
+  it('识别 Stripe sk_live_ / rk_test_ 密钥', () => {
+    const liveRes = maskSecrets(`stripe=${STRIPE_SK_LIVE}`);
+    expect(liveRes.count).toBe(1);
+    expect(liveRes.masked).toBe('stripe=sk_live_51••••');
+
+    const rkRes = maskSecrets(`restricted=${STRIPE_RK_TEST}`);
+    expect(rkRes.count).toBe(1);
+    expect(rkRes.masked).toBe('restricted=rk_test_99••••');
+  });
 });
 
 // ============================================================================
@@ -146,6 +230,8 @@ describe('maskSecrets - 反例（不误伤）', () => {
     ['赋值但值太短', 'secret: short'],
     ['空字符串', ''],
     ['中文标点', '密钥是「sk-短」这种格式。'],
+    ['短新平台前缀', 'gsk_short pplx-123 xai-abc tvly-dev glpat-123 sk_live_short gho_123 ASIA12345'],
+    ['单词内嵌前缀不误伤', `mygsk_${'a'.repeat(24)} sub_glpat-${'b'.repeat(20)}`],
   ];
 
   it.each(negativeCases)('%s 不命中', (_name, text) => {
@@ -191,9 +277,22 @@ describe('maskSecrets - 多次命中与幂等性', () => {
   });
 
   it('幂等：脱敏后再脱敏 count=0 且内容不变', () => {
-    const text = `key=${OPENAI_KEY} bearer=Bearer ${BEARER_TOKEN} pwd=password="abcdefghijklmnop"`;
+    const text = [
+      `key=${OPENAI_KEY}`,
+      `bearer=Bearer ${BEARER_TOKEN}`,
+      `pwd=password="abcdefghijklmnop"`,
+      GHO_TOKEN,
+      AWS_STS_KEY,
+      GROQ_KEY,
+      PPLX_KEY,
+      XAI_KEY,
+      TAVILY_KEY,
+      GITLAB_PAT,
+      STRIPE_SK_LIVE,
+      STRIPE_RK_TEST,
+    ].join(' ');
     const first = maskSecrets(text);
-    expect(first.count).toBeGreaterThan(0);
+    expect(first.count).toBe(12);
 
     const second = maskSecrets(first.masked);
     expect(second.count).toBe(0);

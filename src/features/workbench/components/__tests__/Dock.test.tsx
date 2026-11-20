@@ -544,4 +544,24 @@ describe('autohide', () => {
     expect(screen.queryByTestId('wb-dock-hotzone')).not.toBeInTheDocument();
     expect(screen.getByTestId('wb-dock')).not.toHaveAttribute('data-hidden');
   });
+
+  it('收起态渲染柔和可见的轻胶囊提示条与无障碍提示，点击可立即唤出并在展开后收起提示条', () => {
+    setDockPinned(['chat']);
+    render(<Dock autohide />);
+    const dock = screen.getByTestId('wb-dock');
+    const hotzone = screen.getByTestId('wb-dock-hotzone');
+    const pill = screen.getByTestId('wb-dock-autohide-pill');
+
+    expect(dock).toHaveAttribute('data-hidden', 'true');
+    expect(hotzone).toHaveAttribute('data-collapsed', 'true');
+    expect(hotzone.getAttribute('aria-label')).toContain('程序坞');
+    expect(hotzone.getAttribute('title')).toContain('程序坞');
+    expect(pill).toBeInTheDocument();
+
+    // 点击底缘胶囊提示条可无需等待悬停延迟立即唤出 Dock
+    fireEvent.click(hotzone);
+    expect(dock).not.toHaveAttribute('data-hidden');
+    expect(hotzone).toHaveAttribute('data-collapsed', 'false');
+    expect(screen.queryByTestId('wb-dock-autohide-pill')).not.toBeInTheDocument();
+  });
 });

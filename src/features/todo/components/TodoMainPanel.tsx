@@ -12,8 +12,7 @@
  * 子组件拆分在 ./main/ 目录（行、详情、四象限、改期菜单等）。
  */
 
-import { loadTodayLearning, type TodayLearning } from '@/features/learning-today/todayLearning';
-import { openTodayReviewTarget } from '@/features/learning-today/openTodayReview';
+import { TodayStudySummaryCard } from '@/features/learning-today';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -26,8 +25,6 @@ import {
   ListChecks,
   MagnifyingGlass,
   SortAscending,
-  ArrowRight,
-  Brain,
   X,
 } from '@phosphor-icons/react';
 import {
@@ -250,56 +247,6 @@ export const MobileDetailOverlay: React.FC<{
 };
 
 // ============================================================================
-// ReviewLinkCard — 复习计划联动卡（今天视图顶部，仅当有到期复习时显示）
-// ============================================================================
-
-const ReviewLinkCard: React.FC = () => {
-  const { t } = useTranslation(['todo']);
-  // 与首页「今日学习」同一口径：卡片 + 错题 + 笔记（旧实现只算 SM-2 错题复习）
-  const [today, setToday] = useState<TodayLearning | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void loadTodayLearning().then((value) => { if (!cancelled) setToday(value); }).catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-
-  const total = today ? today.cards + today.mistakes + today.notes : 0;
-  if (!today || total <= 0) return null;
-
-  const open = () => {
-    openTodayReviewTarget(today.cards > 0 ? 'cards' : today.mistakes > 0 ? 'mistakes' : 'notes');
-  };
-  const parts = [
-    today.cards > 0 && t('todo:reviewLink.cards', { defaultValue: '卡片 {{count}}', count: today.cards }),
-    today.mistakes > 0 && t('todo:reviewLink.mistakes', { defaultValue: '错题 {{count}}', count: today.mistakes }),
-    today.notes > 0 && t('todo:reviewLink.notes', { defaultValue: '笔记 {{count}}', count: today.notes }),
-  ].filter(Boolean).join(' · ');
-
-  return (
-    <button
-      onClick={open}
-      className={cn(
-        'group flex w-full items-center gap-2.5 border-b border-border/20 px-4 py-2 text-left transition-colors duration-150 sm:px-6',
-        'hover:bg-[color:var(--interactive-hover)]',
-      )}
-    >
-      <Brain size={15} className="flex-shrink-0 text-[color:hsl(var(--info))]" />
-      <span className="min-w-0 flex-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="font-mono text-xs font-medium tabular-nums text-foreground">
-          {t('todo:reviewLink.title', { count: total })}
-        </span>
-        <span className="font-mono text-xs tabular-nums text-muted-foreground">{parts}</span>
-      </span>
-      <span className="flex flex-shrink-0 items-center gap-0.5 text-xs text-muted-foreground transition-colors group-hover:text-foreground">
-        {t('todo:reviewLink.action')}
-        <ArrowRight size={12} />
-      </span>
-    </button>
-  );
-};
-
-// ============================================================================
 // TodoMainPanel
 // ============================================================================
 
@@ -340,6 +287,8 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   const setSearch = useTodoStore((s) => s.setSearch);
   const setShowCompleted = useTodoStore((s) => s.setShowCompleted);
   const setSortBy = useTodoStore((s) => s.setSortBy);
+  const setViewFilter = useTodoStore((s) => s.setViewFilter);
+  const counts = useTodoStore((s) => s.counts);
 
   const activeList = lists.find((l) => l.id === activeListId);
   const selectedItem = items.find((i) => i.id === selectedItemId);
@@ -788,7 +737,12 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     }
   })();
 
-  // 空态按视图差异化：清零类视图用庆祝语气。
+  const isTodayAllDone =
+    !filter.search.trim() && filter.view === 'today' && completedCount > 0 && pendingCount === 0;
+  const isTodayFreshEmpty =
+    !filter.search.trim() && filter.view === 'today' && completedCount === 0 && pendingCount === 0;
+
+  // 空态按视图差异化：清零类视图用庆祝语气；今日全部完成时附带完成数与衔接行动。
   const emptyState = (() => {
     if (filter.search.trim()) {
       return {
@@ -803,7 +757,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
         return {
           icon: CheckCircle,
           title: t('todo:empty.todayClear'),
-          hint: t('todo:empty.todayClearHint'),
+          hint: isTodayAllDone ? t('todo:empty.todayAllDoneHint') : t('todo:empty.todayClearHint'),
           celebratory: true,
         };
       case 'overdue':
@@ -899,7 +853,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 })}
               >
                 <span
-                  className="h-full rounded-full bg-[color:hsl(var(--success))] transition-all duration-500"
+                  className="h-full rounded-full bg-[color:hsl(var(--success))] transition-all duration-500 motion-reduce:transition-none"
                   style={{
                     width: `${Math.round((completedCount / (pendingCount + completedCount)) * 100)}%`,
                   }}
@@ -1100,27 +1054,85 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               </>
             )}
 
-            {/* B2 复习联动：今天视图顶部展示到期复习入口 */}
-            {filter.view === 'today' && <ReviewLinkCard />}
+            {/* 统一「今日学习汇总」：在今日视图完整聚合四路到期项，在收件箱有待复习项时主动提示并支持一键直达 */}
+            {(filter.view === 'today' || (filter.view === 'all' && !filter.search.trim())) && (
+              <TodayStudySummaryCard
+                inTodayTodoView={filter.view === 'today'}
+                todoDueCount={filter.view === 'today' ? pendingCount : counts?.todayCount ?? 0}
+                onOpenTodos={() => {
+                  if (filter.view !== 'today') {
+                    setViewFilter('today');
+                    return;
+                  }
+                  const quickInput = panelRootRef.current?.querySelector<HTMLInputElement>('input[type="text"]');
+                  quickInput?.focus();
+                }}
+              />
+            )}
 
             {isLoadingItems ? (
               <div className="flex items-center justify-center py-20">
                 <CircleNotch size={24} className="animate-spin text-muted-foreground/60" />
               </div>
             ) : filteredItems.length === 0 ? (
-              <div className="study-shell-empty-state m-4 sm:m-6 ui-rise-in">
+              <div className="study-shell-empty-state m-4 sm:m-6 ui-rise-in motion-reduce:animate-none">
                 <div
                   className={cn(
                     'study-shell-empty-state__icon',
                     // 清零类空态：一次性亮色 scale 弹跳（无 confetti，reduced-motion 下退化）
                     emptyState.celebratory &&
-                      '!text-[color:hsl(var(--success))] todo-celebrate-pop',
+                      '!text-[color:hsl(var(--success))] todo-celebrate-pop motion-reduce:animate-none',
                   )}
                 >
                   <emptyState.icon size={24} weight={emptyState.celebratory ? 'fill' : 'regular'} />
                 </div>
                 <h3 className="study-shell-empty-state__title">{emptyState.title}</h3>
+                {isTodayAllDone && (
+                  <span
+                    data-testid="todo-today-all-done-badge"
+                    className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-[color:hsl(var(--success))]/25 bg-[color:hsl(var(--success))]/10 px-2.5 py-0.5 font-mono text-xs font-medium tabular-nums text-[color:hsl(var(--success))]"
+                  >
+                    <CheckCircle size={12} weight="fill" aria-hidden="true" />
+                    {t('todo:empty.todayCompletedBadge', { count: completedCount })}
+                  </span>
+                )}
                 <p className="study-shell-empty-state__description">{emptyState.hint}</p>
+                {isTodayAllDone && (
+                  <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                    <DsButton
+                      variant="utility"
+                      size="sm"
+                      onClick={() => setViewFilter('upcoming')}
+                      className="gap-1.5 text-xs transition-[transform,background-color,border-color,color] duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
+                    >
+                      <Calendar size={14} />
+                      {t('todo:empty.planUpcoming')}
+                    </DsButton>
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowCompleted(true)}
+                      className="gap-1.5 text-xs transition-[transform,background-color,border-color,color] duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
+                    >
+                      <ListChecks size={14} />
+                      {t('todo:empty.reviewCompleted')}
+                    </DsButton>
+                  </div>
+                )}
+                {isTodayFreshEmpty && (
+                  <div className="mt-3 flex items-center justify-center">
+                    <DsButton
+                      variant="utility"
+                      size="sm"
+                      onClick={() => {
+                        document.querySelector<HTMLInputElement>('[data-todo-quick-add]')?.focus();
+                      }}
+                      className="gap-1.5 text-xs transition-[transform,background-color,border-color,color] duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
+                    >
+                      {t('todo:empty.addFirstToday')}
+                    </DsButton>
+                  </div>
+                )}
               </div>
             ) : isManualSortView ? (
               <DndContext

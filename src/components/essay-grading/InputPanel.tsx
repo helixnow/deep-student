@@ -134,20 +134,20 @@ const OcrStatusBadge: React.FC<{ img: UploadedImage }> = ({ img }) => {
         aria-label={t('essay_grading:ocr_status.retrying')}
       >
         <CircleNotch size={13} className="text-amber-300 animate-spin motion-reduce:animate-none" />
-        <span className="text-[10px] text-amber-300 mt-0.5 leading-none">{t('essay_grading:ocr_status.retrying')}</span>
+        <span className="text-2xs text-amber-300 mt-0.5 leading-none">{t('essay_grading:ocr_status.retrying')}</span>
       </div>
     );
   }
   if (img.ocrStatus === 'timeout') {
     return (
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-amber-500/85 text-[10px] text-white text-center leading-tight rounded-b-md px-0.5">
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-amber-500/85 text-2xs text-white text-center leading-tight rounded-b-md px-0.5">
         {t('essay_grading:ocr_status.timeout')}
       </div>
     );
   }
   if (img.ocrStatus === 'error') {
     return (
-      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-destructive/85 text-destructive-foreground text-[10px] text-center leading-tight rounded-b-md px-0.5">
+      <div className="pointer-events-none absolute bottom-0 left-0 right-0 bg-destructive/85 text-destructive-foreground text-2xs text-center leading-tight rounded-b-md px-0.5">
         {t('essay_grading:ocr_status.error')}
       </div>
     );
@@ -573,7 +573,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             </span>
             <span className="font-medium">{t('essay_grading:topic.toggle_label')}</span>
             {hasTopicContent && (
-              <span className="inline-flex items-center rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[10px] text-primary">
+              <span className="inline-flex items-center rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-2xs text-primary">
                 {topicImageCount > 0
                   ? t('essay_grading:topic.image_count', { count: topicImageCount })
                   : t('essay_grading:topic.filled')}
@@ -696,32 +696,39 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           className="flex-1 min-h-0 flex flex-col relative"
         >
           {showEmptyState && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none px-6">
-              <div className="text-center space-y-3">
+            <div className="ui-rise-in motion-reduce:animate-none absolute inset-0 z-10 flex flex-col items-center justify-center pointer-events-none px-6">
+              <div className="text-center space-y-3 max-w-sm">
+                <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full border border-border/45 bg-muted/25 text-muted-foreground/75">
+                  <PenNib size={18} aria-hidden="true" />
+                </div>
                 <div>
-                  <h3 className="text-sm font-medium text-foreground/70 leading-normal">{t('essay_grading:empty_state.title')}</h3>
-                  <p className="text-xs text-muted-foreground/50 mt-1 max-w-[260px] leading-relaxed">{t('essay_grading:empty_state.description')}</p>
+                  <h3 className="text-sm font-medium text-foreground/85 leading-normal">{t('essay_grading:empty_state.title')}</h3>
+                  <p className="text-xs text-muted-foreground/80 mt-1 max-w-[280px] mx-auto leading-relaxed">{t('essay_grading:empty_state.description')}</p>
+                </div>
+                {/* 交付物预期：告知学生将获得逐句批注、评分与范文 */}
+                <div className="inline-flex items-center rounded-pill border border-border/35 bg-muted/25 px-3 py-1 text-2xs text-muted-foreground/80">
+                  {t('essay_grading:empty_state.deliverables_hint')}
                 </div>
                 {/* 三途径提示：输入/粘贴 · 拖拽 · 上传 */}
-                <div className="flex items-center justify-center gap-2 text-[11px] text-muted-foreground/45 flex-wrap">
+                <div className="flex items-center justify-center gap-2 text-2xs text-muted-foreground/65 flex-wrap">
                   <span className="inline-flex items-center gap-1">
-                    <ClipboardText size={12} />
+                    <ClipboardText size={12} aria-hidden="true" />
                     {t('essay_grading:empty_state.paste_hint')}
                   </span>
                   <span aria-hidden="true">·</span>
                   <span className="inline-flex items-center gap-1">
-                    <UploadSimple size={12} />
+                    <UploadSimple size={12} aria-hidden="true" />
                     {/* 移动端无拖拽交互，改用"导入/粘贴"文案 */}
                     <span className="sm:hidden">{t('essay_grading:empty_state.drop_hint_mobile')}</span>
                     <span className="hidden sm:inline">{t('essay_grading:empty_state.drop_hint')}</span>
                   </span>
                 </div>
-                <div className="flex items-center justify-center gap-2 flex-wrap">
-                  <DsButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="pointer-events-auto text-xs text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)] border border-border/30 transition-colors duration-150 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3">
+                <div className="flex items-center justify-center gap-2 flex-wrap pt-0.5">
+                  <DsButton variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} className="pointer-events-auto text-xs text-foreground/80 hover:text-foreground">
                     <Image size={14} />
                     {t('essay_grading:empty_state.ocr_hint')}
                   </DsButton>
-                  <DsButton variant="ghost" size="sm" onClick={handleFillSample} className="pointer-events-auto text-xs text-primary/80 hover:text-primary hover:bg-primary/10 border border-primary/25 transition-colors duration-150 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3">
+                  <DsButton variant="ghost" size="sm" onClick={handleFillSample} className="pointer-events-auto text-xs text-primary hover:text-primary hover:bg-primary/10 border border-primary/30 transition-colors duration-150 motion-reduce:transition-none">
                     <Sparkle size={14} />
                     {t('essay_grading:workbench.sample.fill_button')}
                   </DsButton>
@@ -760,34 +767,49 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 />
               </div>
             )}
-            <div className={cn(
-              "flex min-w-0 items-center gap-2 transition-opacity duration-200 motion-reduce:transition-none",
-              charCount > 0 || hasClearableContent ? "opacity-100" : "opacity-0 group-hover/source:opacity-100"
-            )}>
-              <span className={cn("min-w-0 truncate text-xs tabular-nums transition-colors duration-150", limitTone)}>
-                {t('essay_grading:stats.han_chars')}: {textStats.hanChars.toLocaleString()}
-                {' · '}
-                {t('essay_grading:stats.english_words')}: {textStats.englishWords.toLocaleString()}
-                <span className="hidden xl:inline">
-                  {' · '}
-                  {t('essay_grading:workbench.stats.paragraphs')}: {textStats.paragraphCount.toLocaleString()}
-                  {' · '}
-                  {t('essay_grading:stats.punctuation_total')}: {textStats.punctuationTotal.toLocaleString()}
+            <div
+              className={cn(
+                'flex min-w-0 items-center gap-2 transition-opacity duration-200 motion-reduce:transition-none',
+                charCount > 0 || hasClearableContent ? 'opacity-100' : 'opacity-55 group-hover/source:opacity-100',
+              )}
+              data-essay-word-stats
+            >
+              <div className="flex min-w-0 items-center gap-x-2.5 gap-y-0.5 truncate text-xs text-muted-foreground tabular-nums">
+                <span className="inline-flex items-baseline gap-1 shrink-0">
+                  <span>{t('essay_grading:stats.han_chars')}</span>
+                  <span className="font-mono font-medium text-foreground/85">{textStats.hanChars.toLocaleString()}</span>
                 </span>
-                {' · '}
-                {charCount.toLocaleString()} / {ESSAY_MAX_CHARS.toLocaleString()}
-                <span className="hidden sm:inline"> {t('essay_grading:stats.characters')}</span>
-              </span>
+                <span className="text-border" aria-hidden="true">·</span>
+                <span className="inline-flex items-baseline gap-1 shrink-0">
+                  <span>{t('essay_grading:stats.english_words')}</span>
+                  <span className="font-mono font-medium text-foreground/85">{textStats.englishWords.toLocaleString()}</span>
+                </span>
+                <span className="hidden lg:inline-flex items-baseline gap-1 shrink-0">
+                  <span className="text-border mr-1" aria-hidden="true">·</span>
+                  <span>{t('essay_grading:workbench.stats.paragraphs')}</span>
+                  <span className="font-mono font-medium text-foreground/80">{textStats.paragraphCount.toLocaleString()}</span>
+                </span>
+                <span className="hidden xl:inline-flex items-baseline gap-1 shrink-0">
+                  <span className="text-border mr-1" aria-hidden="true">·</span>
+                  <span>{t('essay_grading:stats.punctuation_total')}</span>
+                  <span className="font-mono text-foreground/75">{textStats.punctuationTotal.toLocaleString()}</span>
+                </span>
+                <span className={cn('hidden sm:inline-flex items-baseline gap-1 shrink-0 font-mono transition-colors duration-150 motion-reduce:transition-none', limitTone)}>
+                  <span className="text-border mr-1" aria-hidden="true">·</span>
+                  <span>{charCount.toLocaleString()} / {ESSAY_MAX_CHARS.toLocaleString()}</span>
+                  <span className="hidden xl:inline font-sans">{t('essay_grading:stats.characters')}</span>
+                </span>
+              </div>
               {hasClearableContent && !isGrading && (
                 <div className="hidden md:flex items-center">
                   {desktopClearConfirm.armed ? (
-                    <DsButton variant="destructive" size="sm" onClick={desktopClearConfirm.handleClick} className={cn(COARSE_HIT_SM, "!h-6 px-2 text-xs transition-colors duration-150")}>
+                    <DsButton variant="destructive" size="sm" onClick={desktopClearConfirm.handleClick} className={cn(COARSE_HIT_SM, "!h-6 px-2 text-xs transition-colors duration-150 motion-reduce:transition-none")}>
                       <Trash size={12} />
                       {t('essay_grading:confirm.clear')}
                     </DsButton>
                   ) : (
                     <CommonTooltip content={t('essay_grading:actions.clear')}>
-                      <DsButton variant="ghost" size="icon" iconOnly onClick={desktopClearConfirm.handleClick} aria-label={t('common:aria.clear_content')} className={cn(COARSE_HIT_SM, "!h-6 !w-6 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors duration-150")}>
+                      <DsButton variant="ghost" size="icon" iconOnly onClick={desktopClearConfirm.handleClick} aria-label={t('common:aria.clear_content')} className={cn(COARSE_HIT_SM, "!h-6 !w-6 text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 transition-colors duration-150 motion-reduce:transition-none")}>
                         <Trash size={14} />
                       </DsButton>
                     </CommonTooltip>
@@ -801,25 +823,26 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           <div className="hidden md:flex items-center gap-2 shrink-0">
             {isGrading ? (
               desktopCancelConfirm.armed ? (
-                <DsButton variant="destructive" size="sm" onClick={desktopCancelConfirm.handleClick} className="transition-colors duration-150 [@media(pointer:coarse)]:!min-h-11">
+                <DsButton variant="destructive" size="sm" onClick={desktopCancelConfirm.handleClick} className="transition-colors duration-150 motion-reduce:transition-none">
                   {t('essay_grading:confirm.cancel')}
                 </DsButton>
               ) : (
-                <DsButton variant="ghost" size="sm" onClick={desktopCancelConfirm.handleClick} className="text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150 [@media(pointer:coarse)]:!min-h-11">
+                <DsButton variant="ghost" size="sm" onClick={desktopCancelConfirm.handleClick} className="text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150 motion-reduce:transition-none">
                   <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" />
                   {t('common:cancel')}
                 </DsButton>
               )
             ) : (
-              <DsButton
-                variant="primary"
-                size="sm"
-                onClick={onGrade}
-                disabled={!canGrade}
-                className="[@media(pointer:coarse)]:!min-h-11"
-              >
-                {t('essay_grading:actions.grade')}
-              </DsButton>
+              <CommonTooltip content={t('essay_grading:actions.grade_shortcut_hint')}>
+                <DsButton
+                  variant="primary"
+                  size="sm"
+                  onClick={onGrade}
+                  disabled={!canGrade}
+                >
+                  {t('essay_grading:actions.grade')}
+                </DsButton>
+              </CommonTooltip>
             )}
           </div>
         </div>

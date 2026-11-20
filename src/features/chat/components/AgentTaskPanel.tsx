@@ -180,6 +180,19 @@ export const AgentTaskPanel: React.FC<Props> = ({
   className,
 }) => {
   const { t } = useTranslation('chatV2');
+  const tr = useCallback(
+    (key: string, defaultValue: string, vars?: Record<string, string | number>) => {
+      const translated = t(key, { defaultValue, ...vars });
+      if (translated && translated !== key && translated !== `chatV2:${key}`) {
+        return translated;
+      }
+      if (!vars) return defaultValue;
+      return defaultValue.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) =>
+        vars[k] !== undefined ? String(vars[k]) : '',
+      );
+    },
+    [t],
+  );
   const [expanded, setExpanded] = useState(false);
   const [openArtifactId, setOpenArtifactId] = useState<string | null>(null);
   const [dagDrawerOpen, setDagDrawerOpen] = useState(false);
@@ -267,14 +280,17 @@ export const AgentTaskPanel: React.FC<Props> = ({
           detail: { content: payload.prompt, autoSend: false },
         }),
       );
-      showGlobalNotification('info', '已将就绪任务填入输入框');
+      showGlobalNotification(
+        'info',
+        tr('agentPanel.dagTaskDispatched', '已将就绪任务填入输入框'),
+      );
     },
-    [chatStore],
+    [chatStore, tr],
   );
 
   const dagPlanData = useMemo(() => {
     const planId = sessionId ? `plan-${sessionId}` : 'plan-session';
-    const planHeading = title || '当前会话执行计划';
+    const planHeading = title || tr('agentPanel.currentSessionPlan', '当前会话执行计划');
     const resolvedSteps = steps.map((step, idx) => {
       const id = step.id || `step-${idx + 1}`;
       const nativeCompleted = step.status === 'completed';
@@ -313,7 +329,7 @@ export const AgentTaskPanel: React.FC<Props> = ({
       todos,
       notes: [],
     };
-  }, [steps, title, sessionId, dagCompletedOverrides]);
+  }, [steps, title, sessionId, dagCompletedOverrides, tr]);
 
   // ── 产物架（会话级 registry：generative-ui / anki-cards / note / file）──
   // 折叠态也参与：有产物但无计划/运行时，面板同样出现（pill 显示「产物 N」）
@@ -621,7 +637,7 @@ export const AgentTaskPanel: React.FC<Props> = ({
                     onClick={() => setDagDrawerOpen((prev) => !prev)}
                     className="inline-flex items-center gap-1 rounded border border-border/35 bg-background/60 px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
                   >
-                    <span>DAG 拓扑视图</span>
+                    <span>{tr('agentPanel.dagTopologyView', 'DAG 拓扑视图')}</span>
                   </button>
                 </div>
               )}

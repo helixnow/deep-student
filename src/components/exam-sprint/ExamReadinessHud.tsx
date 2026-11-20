@@ -330,6 +330,13 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
     );
   }
 
+  const cardsBreakdownCount = readiness.breakdown.fsrsDueCount + readiness.breakdown.fsrsNewCount;
+  const breakdownParts = [
+    cardsBreakdownCount > 0 ? t('examSprint.hud.breakdownCards', { count: cardsBreakdownCount }) : null,
+    readiness.breakdown.mistakeDueCount > 0 ? t('examSprint.hud.breakdownMistakes', { count: readiness.breakdown.mistakeDueCount }) : null,
+    readiness.breakdown.mindmapWeakCount > 0 ? t('examSprint.hud.breakdownMindmap', { count: readiness.breakdown.mindmapWeakCount }) : null,
+  ].filter((part): part is string => Boolean(part));
+
   return (
     <>
       <section
@@ -365,11 +372,34 @@ export const ExamReadinessHud: React.FC<ExamReadinessHudProps> = ({ variant, cla
           </button>
         </div>
 
+        {(breakdownParts.length > 0 || readiness.newIntakeFrozen || (hasSprintItems && readiness.deferredBacklogCount > 0)) ? (
+          <div
+            data-testid="hud-mobile-breakdown"
+            className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground"
+          >
+            {breakdownParts.length > 0 ? (
+              <span className="font-mono tabular-nums text-foreground/85">
+                {breakdownParts.join(' · ')}
+              </span>
+            ) : null}
+            {readiness.newIntakeFrozen ? (
+              <span className="text-warning">{t('examSprint.hud.frozenIntake')}</span>
+            ) : hasSprintItems && readiness.deferredBacklogCount > 0 ? (
+              <span data-testid="hud-mobile-deferred">
+                {t('examSprint.hud.deferredHint', {
+                  selected: readiness.selectedSprintCount,
+                  count: readiness.deferredBacklogCount,
+                })}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+
         <button
           type="button"
           data-testid="hud-mobile-sprint-cta"
           onClick={() => openDailySprint({ source: 'mobile-banner' })}
-          className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-mono text-sm font-medium tabular-nums text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 active:opacity-80"
+          className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-mono text-sm font-medium tabular-nums text-primary-foreground transition-colors hover:bg-primary/90 active:scale-[0.98] active:opacity-90 motion-reduce:transition-none motion-reduce:active:scale-100"
         >
           <Play size={15} weight="fill" aria-hidden="true" />
           <span>{ctaText}</span>

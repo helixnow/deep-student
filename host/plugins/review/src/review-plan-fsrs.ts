@@ -169,8 +169,9 @@ export function schedulePlanReview(
 /** 评分按钮上的间隔预演（「1 分钟 / 6 分钟 / 10 分钟 / 3 天」）。 */
 export function planRatingPreviews(
   plan: ReviewPlan, stored: ReviewPlanFsrsState | null | undefined, nowMs: number,
+  config?: FsrsSchedulerConfig,
 ): ReviewPlanRatingPreviews {
-  const [again, hard, good, easy] = schedulePlanAllRatings(plan, stored, nowMs).map(outcome => ({
+  const [again, hard, good, easy] = schedulePlanAllRatings(plan, stored, nowMs, config).map(outcome => ({
     interval_minutes: outcome.intervalMinutes,
     next_review_date: outcome.nextReviewDate,
   }));

@@ -131,8 +131,9 @@ export const SprintMindmapClozeStage: React.FC<SprintMindmapClozeStageProps> = (
       <div
         onClick={!revealed ? onReveal : undefined}
         className={cn(
-          'rounded-xl border border-border/35 bg-card p-5 transition-colors',
-          !revealed && 'cursor-pointer hover:bg-card/90',
+          'rounded-xl border bg-card p-5 transition-[border-color,background-color,transform] duration-150 ease-standard motion-reduce:transition-none',
+          !revealed && 'cursor-pointer border-border/35 hover:border-border/60 hover:bg-card/90 active:scale-[0.996] motion-reduce:active:scale-100',
+          revealed && 'border-emerald-500/25',
         )}
       >
         <SprintBreadcrumbHeader
@@ -145,7 +146,7 @@ export const SprintMindmapClozeStage: React.FC<SprintMindmapClozeStageProps> = (
 
         {item.siblingHints.length > 0 ? (
           <div className="mb-4 space-y-1.5">
-            <div className="text-[11px] font-medium text-muted-foreground">
+            <div className="text-2xs font-medium text-muted-foreground">
               {t('examSprint.player.siblingContext')}
             </div>
             <div className="flex flex-wrap items-center gap-1.5" data-testid="sprint-mindmap-siblings">
@@ -184,7 +185,7 @@ export const SprintMindmapClozeStage: React.FC<SprintMindmapClozeStageProps> = (
                     <span
                       key={idx}
                       data-testid="sprint-mindmap-revealed-span"
-                      className="mx-0.5 inline-flex items-center rounded border border-primary/30 bg-primary/[0.12] px-1.5 py-0.5 font-medium text-primary"
+                      className="mx-0.5 inline-flex items-center rounded border border-primary/30 bg-primary/[0.12] px-1.5 py-0.5 font-medium text-primary animate-chat-fade-in motion-reduce:animate-none"
                     >
                       {seg.text}
                     </span>
@@ -194,7 +195,7 @@ export const SprintMindmapClozeStage: React.FC<SprintMindmapClozeStageProps> = (
         </div>
 
         {revealed && (item.noteExcerpt || hasStructuredEvidence) ? (
-          <div className="mt-4 space-y-3 border-t border-border/35 pt-3 text-xs leading-relaxed text-muted-foreground">
+          <div className="mt-4 space-y-3 border-t border-border/35 pt-3 text-xs leading-relaxed text-muted-foreground animate-chat-rise-in motion-reduce:animate-none">
             {item.noteExcerpt ? (
               <div>
                 <div className="mb-1 font-medium text-foreground/80">

@@ -25,6 +25,17 @@
     "search_engines_list": "搜索引擎列表",
     "global_search_settings": "全局搜索配置"
   },
+  "models_tab": {
+    "core_learning_title": "核心学习模型",
+    "core_learning_desc": "日常对话答疑、制卡复习与错题批改最常用的模型，配置这几项即可顺畅开始学习",
+    "ocr_and_rag_title": "拍题识别与知识库检索",
+    "ocr_and_rag_desc": "用于试卷与讲义图片文字识别，以及个人资料库的语义搜索",
+    "specialized_title": "更多专项模型设置",
+    "specialized_desc": "按需为 AI 出题、划词翻译、语音听写、生图、长对话摘要与检索精排单独指定模型；留空时会自动回退到核心模型",
+    "specialized_configured_badge": "已配置 {{configured}}/{{total}}",
+    "expand_specialized": "展开配置",
+    "collapse_specialized": "收起"
+  },
   "voice_input": {
     "title": "听写",
     "description": "这里负责听写快捷键、词典、历史记录与运行时诊断。ASR 模型分配在“设置 > 模型”，提供方密钥在“设置 > 模型服务 / APIs”，使用统计在“统计”页查看。",
@@ -1063,7 +1074,7 @@
       "advanced": "高级字段",
       "advanced_hint": "支持 reasoning_effort、tools、skills；skills 会按创建时内容快照注入。permissions / context_inheritance 暂不支持并会被拒绝。",
       "raw_title": "文件内容",
-      "raw_hint": "该文件无法结构化解析，以原始文本方式编辑（需包含闭合的 --- frontmatter 与合法 name）。"
+      "raw_hint": "该文件暂无法按表单解析，当前以纯文本方式编辑（请保留文件开头闭合的 --- 头部配置区与合法的 name 名称）。"
     },
     "delete": {
       "inline_confirm": "删除后立即生效且无法恢复，确认删除该档案？",
@@ -1575,9 +1586,9 @@
     "chat_title_model_label": "标题/标签生成模型",
     "chat_title_model_hint": "用于生成聊天标题与智能标签提取，建议使用理解能力强且速度快的模型。若不设置，将默认使用对话模型。",
     "memory_decision_model_label": "记忆决策模型",
-    "memory_decision_model_hint": "用于智能写入记忆时判断去重/更新/追加，建议使用快速轻量的模型。若不设置，将默认使用功能增强模型。",
+    "memory_decision_model_hint": "用于自动整理学习记忆时判断新增、更新或去重，建议选择响应快速的轻量模型。留空时默认使用对话模型。",
     "compaction_model_label": "上下文压缩模型",
-    "compaction_model_hint": "长对话接近上下文上限时，用于生成锚定摘要（压缩）的专用模型，建议选择便宜且长上下文的模型。若不设置，将默认使用当前对话模型。",
+    "compaction_model_hint": "当超长对话接近长度上限时，用于自动提炼阶段总结以延续对话。建议选择支持长文本的轻量模型；留空时默认使用当前对话模型。",
     "batch_create_success": "成功创建 {{count}} 个API配置",
     "batch_create_failed": "批量创建API配置失败",
     "auto_assign_success": "一键分配完成，模型分配已自动应用",
@@ -1869,7 +1880,7 @@
     "framing": {
       "json_lines": "JSON Lines"
     },
-    "backend_disabled_hint": "后端 MCP 功能未启用，请在 Cargo.toml 中开启 mcp 特性后重试。",
+    "backend_disabled_hint": "当前运行环境未启用本地 MCP 服务，请在桌面端设置中检查后重试。",
     "load_config_failed": "加载配置失败: {{error}}",
     "save_model_assignment_failed": "保存模型分配失败: {{error}}",
     "vendor_not_found": "未找到供应商",
@@ -2141,15 +2152,15 @@
     "model2_desc": "用于题目解答和对话交互，可以选择任意类型的模型",
     "research_desc": "已废弃：深度研究模型不再使用",
     "embedding_desc": "用于将文档转换为向量嵌入，支持RAG知识库检索功能",
-    "reranker_desc": "用于对RAG检索结果进行重排序，提高相关性（可选配置）",
+    "reranker_desc": "对知识库搜索结果做二次精选排序，让最相关的学习资料排在前面（可选）",
     "summary_desc": "已废弃：总结模型不再使用",
     "exam_sheet_ocr_desc": "专门用于题目集识别的OCR处理，推荐使用DeepSeek-OCR等专业OCR模型。",
     "translation_desc": "专门用于文本翻译功能，建议使用理解和语言转换能力强的模型。如果未选择，将使用\"对话模型\"。",
     "translation_display_mode_desc": "聊天里选中文字翻译时的显示方式：短语对照展示原文与译文的逐段对应；流式译文只输出译文，边译边显示。",
     "qbank_ai_grading_desc": "用于题库中的 AI 评判与 AI 解析。若未配置，将回退使用\"对话模型\"。",
     "voice_input_asr_desc": "用于语音输入与音视频转写（字幕、检索、讲义）。这里会展示所有具备 ASR 能力的模型，暂不支持的提供方会标记为“即将支持”；转写成功后只插入文本，不会自动发送。",
-    "image_generation_desc": "用于 Chat V2 内置生图工具。请选择支持 OpenAI 兼容 /images/generations 的模型，生成结果会保存到 VFS。",
-    "vl_reranker_desc": "用于对多模态 RAG 检索结果进行重排序，提高图文混合检索的相关性（可选配置）",
+    "image_generation_desc": "用于对话中生成学习插图、概念图与题目配图，生成结果会自动保存到学习文件库。",
+    "vl_reranker_desc": "对包含配图与扫描页的知识库搜索结果做图文精选排序，提升找图与找讲义准确度（可选）",
     "bing_rss_desc": "无需 API Key 的内置基础搜索源。公共端点可能限流，适合作为 Best Effort 默认源。",
     "google_cse_desc": "Google 自定义搜索引擎 API，提供准确全面的网页搜索。",
     "serpapi_desc": "封装 Google、Bing 等多个引擎的聚合搜索 API。",
@@ -2454,7 +2465,7 @@
     "title": "Lance 向量表优化",
     "description": "合并碎片文件、清理旧版本、提升查询性能",
     "chat_table": "聊天记录表",
-    "vfs_table": "文件系统表",
+    "vfs_table": "学习文件库索引表",
     "optimize_all": "优化所有表",
     "optimize": "优化",
     "optimizing": "优化中...",
@@ -2523,7 +2534,7 @@
     "strategy_hint": "策略（该引擎生效，默认回退default）"
   },
   "mcp_policy": {
-    "advertise_all": "广告所有工具 (不推荐)",
+    "advertise_all": "向模型暴露全部工具（不推荐）",
     "whitelist_mode_hint": "关闭时使用白名单模式，只允许指定的安全工具",
     "whitelist_label": "允许的工具 (白名单)",
     "blacklist_label": "禁用的工具 (黑名单)",
@@ -2824,20 +2835,20 @@
   },
   "data_governance": {
     "backup_tiers": {
-      "core_label": "核心数据 (P0)",
-      "core_desc": "聊天记录(chat_v2.db)、虚拟文件系统(vfs.db)、主数据库(含卡片/设置等)",
-      "important_label": "重要数据 (P1)",
-      "important_desc": "包含 P0 + LLM使用统计(llm_usage.db)、笔记附件(notes_assets/)",
-      "rebuildable_label": "可重建数据 (P2)",
-      "rebuildable_desc": "包含 P0-P1 + 向量索引(lance/)，可通过重新索引恢复",
-      "large_assets_label": "大型资产 (P3)",
-      "large_assets_desc": "包含 P0-P2 + 图片/文档/视频等媒体文件"
+      "core_label": "核心数据（必选推荐）",
+      "core_desc": "聊天记录、学习文件库目录、闪卡与错题记录及系统设置",
+      "important_label": "重要数据（推荐勾选）",
+      "important_desc": "包含核心数据，并附带 AI 用量统计与笔记图片附件",
+      "rebuildable_label": "可重建数据（按需勾选）",
+      "rebuildable_desc": "包含核心与重要数据，并附带知识库检索索引（丢失后可重新生成）",
+      "large_assets_label": "大型媒体文件（体积较大）",
+      "large_assets_desc": "包含以上全部内容，并附带图片、文档、音视频等大体积学习资料"
     },
     "asset_types": {
       "images": "图片",
       "notes_assets": "笔记附件",
       "documents": "文档",
-      "vfs_blobs": "VFS 存储",
+      "vfs_blobs": "文件库原始文件",
       "subjects": "学科资源",
       "workspaces": "工作空间",
       "audio": "音频",
@@ -3250,7 +3261,7 @@
   "byok": {
     "cardTitle": "一键 API Key 自动配置",
     "cardSubtitle": "粘贴单个 API Key，自动识别服务商、探测可用模型并配置知识库向量索引",
-    "collapsedPrompt": "粘贴单个 API Key，10 秒自动填满模型槽位与向量维度",
+    "collapsedPrompt": "粘贴一个 API Key，10 秒自动配置好对话、识别与检索模型",
     "expandAction": "快速配置",
     "collapseAction": "收起",
     "keyInputAriaLabel": "API Key",
@@ -3272,8 +3283,8 @@
     "probedCountBadge": "发现 {{count}} 个模型",
     "steps": {
       "detect": "识别服务商",
-      "probe": "探测模型与维度",
-      "assign": "分配 8 项槽位"
+      "probe": "检测可用模型",
+      "assign": "自动分配模型"
     },
     "roles": {
       "primary_chat": "主力对话与推理",
@@ -3290,7 +3301,7 @@
       "fullReadyTitle": "已完成全部模型与向量索引配置",
       "fullReadySummary": "已启用 {{modelCount}} 个核心模型，填满 {{slotCount}} 个能力槽位，并绑定 {{dimension}} 维文本向量索引。",
       "chatOnlyTitle": "对话与学习模型已就绪（未检测到向量模型）",
-      "chatOnlyDescription": "已自动分配 {{slotCount}} 个对话与专项槽位。当前服务商未提供 Embeddings 接口，知识库将以关键词检索（FTS）运行；您可随时补充硅基流动或 OpenAI Key 开启语义向量检索。",
+      "chatOnlyDescription": "已自动分配 {{slotCount}} 项对话与学习模型。当前服务商暂未提供语义检索模型，资料库将先使用关键词检索；你随时可以补充支持向量模型的 Key 开启语义搜索。",
       "enterAppCta": "开始使用"
     },
     "errors": {

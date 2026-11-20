@@ -23,9 +23,11 @@
   "confirmConflictResolveDescription": "\"{{strategy}}\" will be applied, overwriting the other version's data. This cannot be undone. We recommend creating a local backup first.",
   "confirmConflictBatchResolveDescription": "{{strategy}} will be applied to {{count}} conflicts, replacing the other versions. This cannot be undone.",
   "experimentalBadgeTooltip": "Experimental feature. We recommend backing up your data first.",
+  "syncVsBackupTitle": "Multi-Device Sync vs Full Cloud Backup",
+  "syncVsBackupDesc": "Use Sync below for everyday multi-device study (merges notes, flashcards, and review progress). Use Full Backup in Cloud Storage Settings when switching devices or archiving snapshots.",
   "autoSync": {
     "label": "Auto Sync",
-    "description": "Off by default. When enabled, a bidirectional sync (keep-latest strategy) runs at the selected interval; failures back off exponentially. When the cloud is not configured, a password is missing, or the sync lease is held by another device, the run is silently skipped without error popups.",
+    "description": "Off by default. When enabled, a bidirectional sync (keeping the latest edits) runs at your chosen interval and retries automatically with a gradual delay if a run fails. When the cloud is not configured, a password is missing, or another device is currently syncing, the run is silently skipped without error popups.",
     "intervalLabel": "Sync interval",
     "interval": {
       "15m": "Every 15 minutes",
@@ -36,10 +38,10 @@
     "neverRan": "Never ran",
     "outcome": {
       "success": "Succeeded",
-      "failure": "Failed (will retry with backoff)",
+      "failure": "Failed (will retry automatically)",
       "skippedUnconfigured": "Skipped: cloud not configured or password missing",
       "skippedBusy": "Skipped: another sync is in progress",
-      "skippedLeaseHeld": "Skipped: sync lease held by another device"
+      "skippedLeaseHeld": "Skipped: another device is currently syncing"
     },
     "consecutiveFailures": "{{count}} consecutive failures"
   },
@@ -67,7 +69,7 @@
   "cloud_time": "Cloud Updated",
   "data_diff": "Data Difference",
   "select_strategy": "Select Resolution Strategy",
-  "migration_required": "A schema mismatch was detected. Run the database migration before syncing.",
+  "migration_required": "Local and cloud database structure versions differ. Restart the app to complete the automatic upgrade before syncing.",
   "conflict_resolution": "Sync Conflict Resolution",
   "conflict_description": "Conflicts were detected between local and cloud data. Select a resolution strategy.",
   "no_conflicts": "No data conflicts were detected.",
@@ -126,8 +128,8 @@
     "undoable_hint": "You can act with confidence: before bulk resolution or a database-wide policy override, the affected records are automatically snapshotted on this device (never uploaded). If something goes wrong, roll back with one click in the Automatic Snapshots section below."
   },
   "conflict_type": {
-    "schema_mismatch": "Schema Version Mismatch",
-    "schema_mismatch_desc": "Local and cloud database schema versions differ, migration needed",
+    "schema_mismatch": "Database Version Mismatch",
+    "schema_mismatch_desc": "Local and cloud database structure versions differ; update both devices first",
     "data_conflict": "Data Version Conflict",
     "data_conflict_desc": "Both local and cloud have data modifications with conflicts",
     "checksum_mismatch": "Checksum Mismatch",
@@ -149,7 +151,7 @@
     "manual_desc": "Review and resolve each conflicting record individually"
   },
   "detail_labels": {
-    "schema_version": "Schema Version:",
+    "schema_version": "Structure Version:",
     "data_version": "Data Version:",
     "update_time": "Updated:",
     "checksum": "Checksum:"
@@ -158,8 +160,8 @@
     "legacyPlaintextRejected": "The cloud directory still contains unencrypted data uploaded before encryption was enabled. To keep end-to-end encryption from being bypassed, this sync stopped without reading that data. To fix it: temporarily clear the encryption password in the cloud sync settings, run one download sync to merge the cloud data into this device, then empty that cloud directory (or switch to a new one), set the password again, and run a full upload.",
     "encryptionPasswordMissing": "The cloud data is end-to-end encrypted, but no encryption password is set on this device. Enter the password that was used when encryption was first enabled in the cloud sync settings, then try again.",
     "wrongEncryptionPassword": "The cloud data could not be decrypted: the encryption password is incorrect (or the cloud data is corrupted). Update the password in the cloud sync settings to match your other devices and try again; every device connected to the same cloud directory must use the same encryption password.",
-    "leaseHeld": "Another device is syncing to the same cloud directory. This run stopped safely to prevent concurrent writes from corrupting sync state. Wait for that device to finish, then retry. If it crashed, the lease will be reclaimed automatically after its timeout; retry later and do not overwrite cloud sync files manually.",
-    "leaseHeldSelf": "The previous sync on this device did not finish normally (for example, the app was closed or restarted during sync), so its lease in the cloud is only released automatically at {{expiresAt}}. No other device is syncing: retry after that time and do not overwrite cloud sync files manually. If another instance of the app on this device is syncing, wait for it to finish.",
+    "leaseHeld": "Another device is currently syncing to the same cloud folder. This sync stopped safely to avoid simultaneous writes corrupting your data. Wait for the other device to finish and try again. If it closed unexpectedly, the cloud sync lock clears automatically after a few minutes—retry later and do not edit cloud sync files manually.",
+    "leaseHeldSelf": "The previous sync on this device did not finish normally (for example, the app closed or restarted mid-sync), so its cloud sync lock will clear automatically at {{expiresAt}}. No other device is syncing: retry after that time and do not edit cloud sync files manually. If another window on this device is syncing, wait for it to finish.",
     "technicalDetail": "Technical detail:"
   },
   "unsynced": {

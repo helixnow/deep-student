@@ -40,6 +40,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -328,6 +329,32 @@ public class DeepStudentNativePlugin extends Plugin {
         return true;
     }
 
+    private static String normalizeIncomingMimeType(String rawMime) {
+        if (rawMime == null) return null;
+        int semicolon = rawMime.indexOf(';');
+        String stripped = semicolon >= 0 ? rawMime.substring(0, semicolon) : rawMime;
+        String normalized = stripped.trim().toLowerCase(Locale.ROOT);
+        return normalized.isEmpty() ? null : normalized;
+    }
+
+    private static boolean isSupportedIncomingMimeType(String mime) {
+        if (mime == null) return false;
+        if (mime.startsWith("image/") || mime.startsWith("audio/") || mime.startsWith("video/")) {
+            return true;
+        }
+        switch (mime) {
+            case "application/pdf":
+            case "text/plain":
+            case "text/markdown":
+            case "text/x-markdown":
+            case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+            case "application/epub+zip":
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private JSObject resumeIncoming(JSObject share) throws org.json.JSONException {
         if (!share.optBoolean("receiving")) return share;
         String id = share.getString("id");
@@ -339,10 +366,10 @@ public class DeepStudentNativePlugin extends Plugin {
                 String fileId = item.getString("id");
                 Uri uri = Uri.parse(item.getString("uri"));
                 File target = incomingFile(fileId);
-                String mime = item.optString("mime", null);
-                if (mime == null) mime = getContext().getContentResolver().getType(uri);
+                String mime = normalizeIncomingMimeType(item.optString("mime", null));
+                if (mime == null) mime = normalizeIncomingMimeType(getContext().getContentResolver().getType(uri));
                 if (mime == null) throw new IOException("Missing shared file type");
-                if (!(mime.startsWith("image/") || mime.equals("application/pdf"))) continue;
+                if (!isSupportedIncomingMimeType(mime)) continue;
                 if (!item.has("name")) {
                     item.put("name", documentName(uri)).put("mime", mime);
                     if (!pendingShares().edit().putString(id, share.toString()).commit()) throw new IOException("Cannot journal incoming file");

@@ -118,3 +118,36 @@ export function useCanvasWheelMode(): [CanvasWheelMode, (mode: CanvasWheelMode) 
   const setMode = useCallback((next: CanvasWheelMode) => setCanvasWheelMode(next), []);
   return [mode, setMode];
 }
+
+// ============================================================================
+// 画布底部快捷键轻提示胶囊：展开（默认） / 收起
+// ============================================================================
+
+export type CanvasShortcutHintMode = 'expanded' | 'collapsed';
+
+const shortcutHintModePreference = createStoredPreference<CanvasShortcutHintMode>(
+  'mindmap:canvas-shortcut-hint',
+  'expanded',
+  (raw): raw is CanvasShortcutHintMode => raw === 'expanded' || raw === 'collapsed',
+);
+
+export function getCanvasShortcutHintMode(): CanvasShortcutHintMode {
+  return shortcutHintModePreference.get();
+}
+
+export function setCanvasShortcutHintMode(mode: CanvasShortcutHintMode): void {
+  shortcutHintModePreference.set(mode);
+}
+
+export function useCanvasShortcutHintMode(): [
+  CanvasShortcutHintMode,
+  (mode: CanvasShortcutHintMode) => void,
+] {
+  const mode = useSyncExternalStore(
+    shortcutHintModePreference.subscribe,
+    shortcutHintModePreference.get,
+    () => shortcutHintModePreference.defaultValue,
+  );
+  const setMode = useCallback((next: CanvasShortcutHintMode) => setCanvasShortcutHintMode(next), []);
+  return [mode, setMode];
+}

@@ -18,7 +18,11 @@ import { MOBILE_APP_DATA_DIR } from '../../host/platform/storage-mobile/restore-
 import { MOBILE_DIAGNOSTICS_PLUGIN_ID } from './diagnostics-id.ts';
 import { HostWorkerSupervisor } from './shell/host-supervisor.ts';
 import { MobileShell } from './shell/mobile-shell.ts';
-import { requestPersistentStorage } from './shell/persistent-storage.ts';
+import {
+  mountPersistentStorageWarningBanner,
+  reportPersistentStorageStatus,
+  requestPersistentStorage,
+} from './shell/persistent-storage.ts';
 import { installPagePlatform, mobileBridgeInit } from './shell/platform.ts';
 import { shouldMountApp } from './shell/page-mode.ts';
 import { pickBackupFile } from './shell/backup-picker.ts';
@@ -380,7 +384,10 @@ async function bootMobileShell(): Promise<MobileApp> {
       document.body.dataset.ready = 'failed';
     },
   });
-  void requestPersistentStorage(navigator.storage, message => console.warn(message));
+  persistentStorageResult = requestPersistentStorage(navigator.storage, message => console.warn(message)).then((granted) => {
+    reportPersistentStorageStatus(granted);
+    return granted;
+  });
   supervisor.start();
   installTauriBridge(shell.bridgeTransport(), mobileBridgeInit());
   installPagePlatform();
@@ -443,6 +450,8 @@ const fail = (error: unknown) => {
   document.body.dataset.ready = 'failed';
 };
 
+let persistentStorageResult: Promise<boolean | null> = Promise.resolve(null);
+
 // bootMobileShell installs the bridge synchronously. serveHostCore queues early
 // commands until storage, migrations and startup recovery have finished.
 globalThis.__dstuMobile = bootMobileShell();
@@ -451,6 +460,9 @@ if (import.meta.env.MODE === 'app' && shouldMountApp({ mode: import.meta.env.MOD
   Promise.all([globalThis.__dstuMobile, theme, import('virtual:dstu-app-entry')])
     .then(([, , app]) => {
       if (isNativeAndroid()) app.mountIncomingShares();
+      void persistentStorageResult.then((granted) => {
+        if (granted === false) mountPersistentStorageWarningBanner();
+      });
       document.body.dataset.ready = 'true';
     })
     .catch(fail);

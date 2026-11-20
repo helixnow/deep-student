@@ -40,6 +40,8 @@ export interface SessionSummaryProps {
   onBack: () => void;
   /** 剩余到期 > 0 时的「继续复习」入口（重新 loadDue 并开新一轮） */
   onContinue?: () => void;
+  /** 今日清零后前往卡片库挑选牌组或入队新卡的次级引导 */
+  onOpenLibrary?: () => void;
   errorBanner?: React.ReactNode;
   /** Mobile host already provides back, undo and resume. */
   hideChromeActions?: boolean;
@@ -60,6 +62,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
   onResume,
   onBack,
   onContinue,
+  onOpenLibrary,
   errorBanner,
   hideChromeActions = false,
 }) => {
@@ -68,12 +71,14 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
   const showSummary = ratedCount > 0;
   const showContinue = Boolean(onContinue) && remainingDue != null && remainingDue > 0;
   const maxCount = Math.max(1, ...DIST_ROWS.map(({ rating }) => ratingCounts[rating]));
+  const passedCount = ratingCounts[2] + ratingCounts[3] + ratingCounts[4];
+  const recallPct = ratedCount > 0 ? Math.round((passedCount / ratedCount) * 100) : 0;
 
   return (
     <CustomScrollArea
       className="wb-fc-summary h-full min-h-0"
     >
-      <div className="flex min-h-full flex-col items-center justify-center gap-4 p-6 text-center">
+      <div className="flex min-h-full flex-col items-center justify-center gap-4 p-6 text-center animate-chat-rise-in motion-reduce:animate-none">
       <div className={empty ? 'wb-fc-summary-icon wb-fc-summary-icon--empty' : 'wb-fc-summary-icon'}>
         {empty ? (
           <CardsThree size={34} weight="duotone" aria-hidden="true" />
@@ -83,26 +88,42 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
       </div>
       <div className="space-y-1">
         <p className="text-sm font-medium text-foreground">{headline}</p>
-        {/* 完成态的「干得漂亮，本轮小结如下」只是复述标题，下方小结本身就是内容；空态保留指引 */}
-        {empty && <p className="text-xs text-muted-foreground">{t('review.emptyHint')}</p>}
+        {empty ? (
+          <p className="text-xs text-muted-foreground">{t('review.emptyHint')}</p>
+        ) : showSummary ? (
+          <p
+            data-testid="fc-session-encourage"
+            className="max-w-sm text-xs text-muted-foreground"
+          >
+            {recallPct >= 80
+              ? t('review.summaryEncourageHigh')
+              : t('review.summaryEncourageSteady')}
+          </p>
+        ) : null}
       </div>
 
       {showSummary ? (
         <div className="wb-fc-summary-panel">
           <div className="wb-fc-summary-stats">
             <div className="wb-fc-summary-stat">
-              <span className="wb-fc-summary-stat-value">{ratedCount}</span>
+              <span className="wb-fc-summary-stat-value font-mono tabular-nums">{ratedCount}</span>
               <span className="wb-fc-summary-stat-label">{t('review.statRated')}</span>
+            </div>
+            <div className="wb-fc-summary-stat">
+              <span className="wb-fc-summary-stat-value font-mono tabular-nums" data-testid="fc-session-recall-rate">
+                {recallPct}%
+              </span>
+              <span className="wb-fc-summary-stat-label">{t('review.statRecall')}</span>
             </div>
             {elapsedMs != null ? (
               <div className="wb-fc-summary-stat">
-                <span className="wb-fc-summary-stat-value">{formatDuration(elapsedMs)}</span>
+                <span className="wb-fc-summary-stat-value font-mono tabular-nums">{formatDuration(elapsedMs)}</span>
                 <span className="wb-fc-summary-stat-label">{t('review.statTime')}</span>
               </div>
             ) : null}
             {bestStreak > 1 ? (
               <div className="wb-fc-summary-stat">
-                <span className="wb-fc-summary-stat-value">
+                <span className="wb-fc-summary-stat-value font-mono tabular-nums">
                   <Lightning size={13} weight="fill" aria-hidden="true" className="wb-fc-summary-stat-bolt" />
                   {bestStreak}
                 </span>
@@ -118,11 +139,11 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
                   <span className="wb-fc-dist-label">{t(labelKey)}</span>
                   <span className="wb-fc-dist-bar">
                     <span
-                      className={`wb-fc-dist-fill ${toneClass}`}
+                      className={`wb-fc-dist-fill ${toneClass} motion-reduce:transition-none`}
                       style={{ width: `${Math.round((count / maxCount) * 100)}%` }}
                     />
                   </span>
-                  <span className="wb-fc-dist-count">{count}</span>
+                  <span className="wb-fc-dist-count font-mono tabular-nums">{count}</span>
                 </div>
               );
             })}
@@ -140,21 +161,24 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
           <DsButton
             type="button"
             variant="default"
-            className="[@media(pointer:coarse)]:!min-h-11"
+            aria-label={t('session.undo')}
+            aria-keyshortcuts="Z"
             disabled={busy}
             onClick={onUndo}
+            className="active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
           >
             <ArrowCounterClockwise size={16} />
-            {t('session.undo')}
+            <span>{t('session.undo')}</span>
+            <kbd aria-hidden="true" className="wb-fc-keycap">Z</kbd>
           </DsButton>
         ) : null}
         {canResume && !hideChromeActions ? (
           <DsButton
             type="button"
             variant="default"
-            className="[@media(pointer:coarse)]:!min-h-11"
             disabled={busy}
             onClick={onResume}
+            className="active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
           >
             <Play size={16} />
             {t('session.resume')}
@@ -164,19 +188,31 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
           <DsButton
             type="button"
             variant="primary"
-            className="[@media(pointer:coarse)]:!min-h-11"
             disabled={busy}
             onClick={onContinue}
+            className="active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
           >
             <Play size={16} />
             {t('session.continueReview', { count: remainingDue })}
+          </DsButton>
+        ) : !hideChromeActions && onOpenLibrary ? (
+          <DsButton
+            type="button"
+            variant="default"
+            disabled={busy}
+            onClick={onOpenLibrary}
+            data-testid="fc-summary-open-library"
+            className="active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
+          >
+            <CardsThree size={16} />
+            {t('today.goLibrary')}
           </DsButton>
         ) : null}
         {!hideChromeActions && <DsButton
           type="button"
           variant={showContinue ? 'default' : 'primary'}
-          className="[@media(pointer:coarse)]:!min-h-11"
           onClick={onBack}
+          className="active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
         >
           {t('session.backToday')}
         </DsButton>}

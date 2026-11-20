@@ -35,10 +35,10 @@
       "operatingFallback": "Working"
     },
     "errors": {
-      "controlOff": "Agent desktop control is off (desktop.workbenchAgentControl=off)",
-      "controlOffHint": "Set AI assistant control to Background or Follow; domain tools can still write data",
-      "osDisabled": "Study desktop mode is off",
-      "osDisabledHint": "Enable OS/desktop mode first; use domain tools for data writes",
+      "controlOff": "AI desktop control is turned off. You can adjust automatic window arrangement in Settings.",
+      "controlOffHint": "Set AI assistant desktop control to Background or Follow in Settings to restore window orchestration; content changes can still be saved directly.",
+      "osDisabled": "Study Desktop is turned off",
+      "osDisabledHint": "Turn on Study Desktop in Settings first; you can still edit and save study content directly in the current view.",
       "launchFailed": "Could not open the app window",
       "launchFailedHint": "Desktop mode is not ready or the app is not registered",
       "abortedByControlOff": "Control turned off; operation aborted",
@@ -74,13 +74,13 @@
         "invalidReplacement": "Search and replacement values must be text",
         "fullReadUnsupported": "The long-note editor cannot safely read the full text",
         "saveConfirmUnsupported": "The editor cannot confirm saves",
-        "contentChanged": "The note changed in the meantime; concurrency check failed",
+        "contentChanged": "This note was updated elsewhere. Please refresh and try again.",
         "replaceVerifyFailed": "Content check failed after replacing the full text",
         "replaceRejected": "The editor rejected the full-text replacement",
         "fullWriteUnsupported": "The long-note editor cannot safely write the full text",
-        "setMarkdownRejected": "The editor rejected setMarkdown",
-        "setMarkdownVerifyFailed": "Content check failed after setMarkdown",
-        "setMarkdownFailed": "setMarkdown failed",
+        "setMarkdownRejected": "The editor could not apply the updated note content",
+        "setMarkdownVerifyFailed": "Could not verify the updated note content",
+        "setMarkdownFailed": "Failed to update note content",
         "emptyInsert": "Nothing to insert",
         "anchorUnresolved": "Could not resolve the anchor",
         "anchorUnresolvedNamed": "Could not resolve the anchor \"{{anchor}}\"",
@@ -93,12 +93,12 @@
         "suggestionNotCreatedReason": "Edit suggestion was not created: {{reason}}",
         "unknownReason": "unknown reason",
         "suggestionSubmittedItem": "Suggestion submitted: {{label}}",
-        "suggestionSubmitted": "Edit suggestion submitted; waiting for the user to accept or reject it in the diff panel",
+        "suggestionSubmitted": "Edit suggestion submitted; review and confirm or dismiss it in the comparison panel",
         "readFailed": "Could not read the current note content",
-        "missingResourceId": "Missing resourceId; cannot locate the note editor",
-        "editorNotMounted": "The note editor is not mounted (window not open or not ready); use the backend data path or open_app note first",
+        "missingResourceId": "Missing note identifier; cannot locate the note window",
+        "editorNotMounted": "The note window is not open or ready yet; open the note first and try again",
         "destructiveWriteFailed": "Rewrite failed",
-        "unsupportedOp": "Unsupported op: {{kind}}",
+        "unsupportedOp": "Unsupported action: {{kind}}",
         "windowedWriteFailed": "Writing the long note failed",
         "contentUnchanged": "The editor did not confirm any content change",
         "partialItem": "{{label}} (partial)",
@@ -107,7 +107,7 @@
         "abortedPartial": "Operation interrupted; partial results returned",
         "appliedInWindowSaveFailed": "Content applied in the window, but autosave failed: {{error}}",
         "suggestionStepsPending": "Edit suggestion submitted; later steps have not run yet: {{steps}}",
-        "savedSuggestionPending": "Earlier content was saved; the edit suggestion is waiting for the user to accept or reject it in the diff panel",
+        "savedSuggestionPending": "Earlier changes were saved; review and confirm or dismiss the edit suggestion in the comparison panel",
         "appliedAndSaved": "Applied live and saved",
         "stepsIncomplete": "Some steps did not complete: {{steps}}",
         "remainingAborted": "Remaining steps were aborted",
@@ -215,21 +215,32 @@
     "appName": "Study Desktop",
     "desktopRename": "Rename Desktop…",
     "desktopNameInputLabel": "Desktop name",
-    "flashcardsDue": "{{count}} flashcards due",
-    "tasksRunning": "{{count}} card tasks running",
-    "automations": "Open scheduled tasks: {{enabled}} enabled, {{running}} running, {{failed}} recently failed",
-    "automationsTitle": "Scheduled tasks",
+    "flashcardsDue": "Due flashcards: {{count}} ready to review (click to start)",
+    "tasksRunning": "Card generation: {{count}} tasks running (click to view progress)",
+    "automations": "Scheduled study tasks: {{enabled}} enabled, {{running}} running, {{failed}} recently failed (click to manage)",
+    "automationsTitle": "Scheduled study tasks",
     "automationsEnabledShort": "{{count}} enabled",
+    "automationsRunningShort": "{{count}} running",
     "automationsNextRun": "next run {{relative}}",
     "automationsFailedShort": "{{count}} recently failed",
+    "automationsIdleHint": "Scheduled study tasks · none active (click to set up reminders)",
+    "automationsClickHint": "click to manage",
     "automationsRelativeSoon": "soon",
     "automationsRelativeMinutes": "in {{count}} min",
     "automationsRelativeHours": "in {{count}} h",
     "automationsRelativeDays": "in {{count}} d",
-    "pomodoroFocus": "Focus remaining {{time}}",
-    "pomodoroBreakRemaining": "Break remaining {{time}}",
-    "pomodoroFocusElapsed": "Focused {{time}}",
-    "pomodoroPaused": "Paused {{time}}",
+    "pomodoroFocus": "Pomodoro: Focus remaining {{time}} (click to open)",
+    "pomodoroBreakRemaining": "Pomodoro: Break remaining {{time}} (click to open)",
+    "pomodoroFocusElapsed": "Pomodoro: Focused {{time}} (click to open)",
+    "pomodoroPaused": "Pomodoro: Paused {{time}} (click to resume or view)",
+    "pomodoroTagFocus": "Focus",
+    "pomodoroTagBreak": "Break",
+    "pomodoroTagPaused": "Paused",
+    "flashcardsTag": "Due",
+    "tasksTag": "Cards",
+    "automationsTagRunning": "Running",
+    "automationsTagFailed": "Alert",
+    "automationsTagActive": "Auto",
     "pomodoroIdle": "Not started",
     "pomodoroWork": "Focusing",
     "pomodoroBreak": "On break",
@@ -331,7 +342,8 @@
     "noWindows": "No windows",
     "running": "Running",
     "apps": "All Apps",
-    "showAllWindows": "Show All Windows"
+    "showAllWindows": "Show All Windows",
+    "autohideHint": "Dock is auto-hidden — move pointer to the bottom edge or click here to reveal"
   },
   "resourceHome": {
     "newExam": "New question set",
@@ -396,7 +408,30 @@
     "sectionChat": "Chats",
     "searching": "Searching…",
     "resultCount": "{{count}} results",
-    "resultCount_one": "{{count}} result"
+    "resultCount_one": "{{count}} result",
+    "clearSearch": "Clear search",
+    "askAi": "Ask in AI Chat",
+    "searchKeywords": {
+      "chat": "chat conversation ask ai assistant",
+      "files": "files library resources textbooks documents pdf",
+      "note": "notes mindmap mind map outline markdown md",
+      "notes": "notes mindmap mind map outline markdown md",
+      "textbook": "textbook book reading pdf",
+      "exam": "exam questions practice quiz test",
+      "translation": "translation translate bilingual dictionary",
+      "essay": "essay grading writing review feedback",
+      "flashcards": "flashcards cards review memory anki fsrs",
+      "taskDashboard": "anki card generation deck tasks",
+      "todo": "todo tasks agenda schedule checklist reminders",
+      "pomodoro": "pomodoro focus timer countdown",
+      "media": "media video audio lecture recording transcript subtitles",
+      "settings": "settings preferences configuration theme shortcuts",
+      "skills": "skills tools plugins mcp agent",
+      "templates": "templates card template layout",
+      "sandbox": "sandbox preview code html",
+      "browser": "browser web page",
+      "aiDashboard": "ai dashboard statistics analytics overview report"
+    }
   },
   "window": {
     "close": "Close",
@@ -563,16 +598,24 @@
     },
     "tricks": {
       "title": "Modifier tricks",
-      "drag": "Drag a window: larger snap zones; drop on the top edge for top half",
+      "drag": "Drag a window: wider edge and corner snap zones; drop on top edge for top half",
       "dragGesture": "drag",
-      "tileMenu": "Zoom hover menu: middle column becomes top half / fill / bottom half",
+      "tileMenu": "Hover green zoom button: show top half / fill / bottom half options",
       "tileMenuGesture": "hover zoom",
-      "zoom": "Classic zoom: fill desktop / restore",
+      "zoom": "Click green zoom button: fill desktop or restore size",
       "zoomGesture": "click zoom",
       "closeAll": "Close all windows of this app",
       "closeAllGesture": "click close",
       "minimizeAll": "Minimize all windows of this app",
       "minimizeAllGesture": "click minimize"
+    },
+    "studyGlobal": {
+      "title": "Global search & study flow",
+      "search": "Search apps, commands, and study materials",
+      "settings": "Open system settings",
+      "quickLook": "Quick-preview selected item in Files (press again to close)",
+      "spaceKey": "Space",
+      "escapeExit": "Exit immersive mode, window overview, or current popover"
     }
   },
   "wallpaper": {
@@ -717,7 +760,7 @@
     "mode": {
       "title": "Study Desktop (default)",
       "desc": "When on, use the windowed Study Desktop. Turning it off restores Classic layout as a compatibility mode; the desktop snapshot is kept.",
-      "migratedNotice": "Study Desktop is enabled. You can switch back to Classic mode in Settings."
+      "migratedNotice": "Study Desktop is ready. You can switch interface modes anytime in Settings."
     },
     "performanceProfile": {
       "title": "Performance Profile",
@@ -793,11 +836,11 @@
     },
     "devPanel": {
       "title": "Diagnostics Panel",
-      "desc": "Shows scheduler diagnostics on the desktop: window lifecycles, memory budget and frame timing. Off by default in development; start with npm run dev:tauri:diag or ?wbDiag=1."
+      "desc": "Shows live window status, memory usage, and frame smoothness on the desktop when diagnostics mode is enabled."
     },
     "browserEnabled": {
       "title": "Built-in Browser",
-      "desc": "Open a dedicated browser window on the study desktop (pages run in an isolated WebView). Study Desktop must be enabled first.",
+      "desc": "Open a dedicated browser window on the Study Desktop (pages run in an isolated environment). Study Desktop must be enabled first.",
       "needWorkbench": "Enable Study Desktop first to change built-in browser options."
     },
     "browserNetworkMode": {
@@ -818,7 +861,7 @@
       "off": "Off",
       "background": "Background",
       "follow": "Follow",
-      "offDesc": "Read-only list/query still allowed; open, close, commands, and staging are blocked. Data writes may still go through the backend without opening windows or staging.",
+      "offDesc": "View window status only without opening, closing, or arranging windows; saving study content still works normally.",
       "backgroundDesc": "Allows control without stealing focus: stage in open windows, or apply final state with a Dock hint.",
       "followDesc": "Auto-opens and focuses target windows so the assistant's actions play in the foreground."
     },
@@ -830,8 +873,8 @@
       "demo": "Demo"
     },
     "browserCdpWindows": {
-      "title": "Windows CDP acceleration (advanced)",
-      "desc": "Windows only. Opens a remote debugging port for stronger automation; extra attack surface — off by default."
+      "title": "Enhanced browser automation (advanced)",
+      "desc": "Windows only. Enables local automation support for smoother web actions; off by default for security."
     },
     "browserAdvanced": "Advanced (Browser)",
     "browserPolicyDisabled": "Built-in browser is disabled by policy."
@@ -862,7 +905,7 @@
     "gatedHint": "The page window stays closed while this feature is disabled. Enable the built-in browser in Settings if your build supports it."
   },
   "devPanel": {
-    "title": "Workbench Diagnostics",
+    "title": "Desktop Diagnostics",
     "expand": "Expand panel",
     "collapse": "Collapse panel",
     "windows": "Windows",
@@ -894,10 +937,10 @@
     "minimizedTag": "Minimized",
     "close": "Close panel",
     "firstFrame": "{{value}}→first frame",
-    "acrNoTransactions": "(no active transactions)",
-    "acrNoPresence": "(no active presence)",
-    "acrNoReceipts": "(no receipts yet · shown once StageManager is connected)",
-    "acrNoDomainEvents": "(no domain events yet)"
+    "acrNoTransactions": "(no active desktop tasks)",
+    "acrNoPresence": "(no active window control)",
+    "acrNoReceipts": "(no operation records yet)",
+    "acrNoDomainEvents": "(no recent update events)"
   },
   "notesWorkspace": {
     "title": "Notes",
@@ -1223,7 +1266,7 @@
     "language": "Language",
     "lines": "Lines",
     "characters": "Characters",
-    "iframeNotice": "Restricted iframe; scripts are disabled.",
+    "iframeNotice": "Previewed in an isolated environment; dynamic scripts are disabled by default.",
     "emptyHint": "Open a code block in chat to preview it.",
     "mobileHint": "Mobile focuses on preview; use the desktop app for the full workbench.",
     "closed": "Closed",

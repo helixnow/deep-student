@@ -1,6 +1,6 @@
 {
   "title": "Review Plan",
-  "subtitle": "Spaced repetition for efficient memory",
+  "subtitle": "FSRS smart spaced repetition · review right before you forget",
   "unknownQuestion": "Unknown question",
   "interval": "Interval",
   "days": " days",
@@ -55,13 +55,13 @@
 
   "setup": {
     "title": "No review plans yet",
-    "description": "Create review plans for this question bank and the spaced repetition system will schedule your daily reviews automatically.",
+    "description": "Once review plans are created, FSRS estimates your memory stability from each attempt and schedules reviews right before you forget.",
     "createAll": "Create plans for all questions"
   },
 
   "empty": {
     "title": "All Done!",
-    "description": "You've completed all your review tasks. Keep it up, more content awaits tomorrow!",
+    "description": "Today's due questions are all consolidated. FSRS has scheduled your upcoming reviews — see you tomorrow!",
     "masteredChip": "{{count}} mastered",
     "viewCalendar": "View review history"
   },
@@ -76,7 +76,8 @@
   },
 
   "session": {
-    "noItems": "No items to review",
+    "noItems": "All caught up on due questions",
+    "noItemsHint": "FSRS smart scheduling will bring questions back right before you forget, and new mistakes from practice join automatically.",
     "submitFailed": "Could not save the review. Please try again.",
     "submitFailedTitle": "Could not save review",
     "exitTitle": "End this review session?",
@@ -128,7 +129,7 @@
   },
 
   "rating": {
-    "prompt": "How well did you know this?",
+    "prompt": "How easily did you recall this? (Sets the next review interval)",
     "again": "Again",
     "againDesc": "<1 min",
     "hard": "Hard",
@@ -141,16 +142,18 @@
 
   "complete": {
     "excellent": "Excellent!",
-    "excellentMsg": "Outstanding performance, keep it up!",
+    "excellentMsg": "Sharp recall! FSRS has stretched the intervals on these questions so you spend less time re-drilling.",
     "good": "Well Done!",
-    "goodMsg": "Keep going, you're making progress!",
+    "goodMsg": "Solid progress! Recalled items move to longer intervals while shaky ones return sooner.",
     "keepGoing": "Keep Going!",
-    "keepGoingMsg": "A few more reviews and you'll get better!",
+    "keepGoingMsg": "Catching shaky spots is the whole point — FSRS will bring tough ones back sooner until they stick.",
     "needsPractice": "Needs More Practice",
-    "needsPracticeMsg": "Don't give up, practice makes perfect!",
+    "needsPracticeMsg": "No worries — tricky questions take a few short cycles. FSRS has scheduled quick follow-ups to lock them in.",
+    "reviewed": "Reviewed",
     "correct": "Correct",
     "accuracy": "Accuracy",
     "time": "Time",
+    "scheduleNote": "Reviewed {{count}} questions · FSRS has scheduled each next optimal review",
     "reviewAgain": "Review Again",
     "finish": "Finish"
   },
@@ -263,10 +266,10 @@
   },
 
   "tips": {
-    "sm2Title": "What is Spaced Repetition?",
-    "sm2Desc": "Spaced repetition is a scientifically proven learning technique that reinforces long-term memory by reviewing at optimal intervals. The system automatically adjusts your next review time based on your performance.",
-    "ratingTitle": "How to Rate?",
-    "ratingDesc": "Rate based on how easily you recalled the answer: Again (completely forgot), Hard (barely recalled), Good (recalled with some effort), Easy (instantly recalled)."
+    "sm2Title": "How Does FSRS Smart Spaced Repetition Work?",
+    "sm2Desc": "FSRS estimates each question's memory stability (how long it sticks) and difficulty from your recall ratings, scheduling the next review right before you forget — fewer repeats on easy items, timely practice on tough ones.",
+    "ratingTitle": "How to Choose a Rating?",
+    "ratingDesc": "Pick by how easily you recalled the answer: Again (forgot or missed — short retry) · Hard (recalled with effort) · Good (recalled smoothly) · Easy (instant and confident)."
   },
   "insightConfirm": {
     "title": "Save this insight?",
@@ -343,11 +346,19 @@
       "cancelConfig": "Cancel",
       "examDayMarker": "Exam day",
       "deferredHint": "{{selected}} high-yield items selected; {{count}} deferred",
-      "frozenIntake": "Pre-exam buffer · new intake paused"
+      "frozenIntake": "Pre-exam buffer · new intake paused",
+      "breakdownCards": "Cards {{count}}",
+      "breakdownMistakes": "Mistakes {{count}}",
+      "breakdownMindmap": "MindMap {{count}}"
     },
     "player": {
       "dialogLabel": "Unified Daily Sprint",
       "exitLabel": "Exit sprint",
+      "progressAriaLabel": "Sprint progress",
+      "shortcutSelectOption": "select option",
+      "shortcutCheck": "check",
+      "shortcutReveal": "reveal",
+      "shortcutSource": "source",
       "loading": "Building today's sprint queue...",
       "loadFailed": "Failed to build daily sprint",
       "retry": "Retry",
@@ -428,6 +439,10 @@
       "completedBreakdown": "Cards {{cards}} · Mistakes {{mistakes}} · Map {{mindmaps}}",
       "variantsSolvedNote": "Includes {{count}} AI variants",
       "metricFirstPass": "First-Pass Recall",
+      "firstPassDetail": "{{passed}} / {{total}} passed",
+      "encourageTargetMet": "Target readiness reached — keep this steady pace into exam day.",
+      "encourageStrong": "Strong first-pass recall — high-yield items now move to longer intervals.",
+      "encourageSteady": "Tough spots were caught right before forgetting — short follow-ups will lock them in.",
       "conceptsHeading": "Concept Mastery Receipt",
       "outcome": {
         "improved": "Improved",

@@ -1,10 +1,10 @@
 /**
  * 统一「今日学习」：一处汇总三条复习线的到期量，所有「今日」入口共用同一口径。
- * 此前首页 / 待办卡只算 SM-2 错题复习，工作台 AI 仪表盘只算 FSRS 卡片，数字互相对不上，
+ * 此前首页 / 待办卡只算错题复习，工作台 AI 仪表盘只算 FSRS 卡片，数字互相对不上，
  * 笔记的复习日期则只是装饰。
  *
  * - cards：FSRS 到期卡片（fsrs_get_stats.due）
- * - mistakes：错题复习（review_plan_get_stats.due_today，包含已到期的分钟级学习步和逾期计划）
+ * - mistakes：FSRS 错题复习（review_plan_get_stats.due_today，包含已到期的分钟级学习步和逾期计划）
  * - notes：study_review_date ≤ 今天 的笔记
  */
 import { invoke } from '@tauri-apps/api/core';

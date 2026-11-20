@@ -12,9 +12,10 @@
  * R1-14：todo://changed 经 registerDomainListener；详情面板编辑中延迟 reload。
  */
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus } from '@phosphor-icons/react';
+import { APP_EVENTS, addAppEventListener } from '@/events';
 import { cn } from '@/lib/utils';
 import { ShellViewSwitch } from '@/components/ui/ShellViewSwitch';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -43,6 +44,8 @@ interface TodoContentViewProps {
 const DETAIL_PANEL_SELECTOR = '[data-todo-detail-panel]';
 const RELOAD_RETRY_MS = 400;
 const RELOAD_MAX_ATTEMPTS = 25;
+/** 与 learning-today/openTodayReview 共用的智能视图信标键（避免新增跨 feature import） */
+const TODO_PENDING_SMART_VIEW_KEY = 'todo.pendingSmartView';
 
 function isDetailPanelFocused(): boolean {
   if (typeof document === 'undefined') return false;
@@ -127,9 +130,36 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   }, []);
   const useMobileLayout = isSmallScreen && !inWorkbenchWindow;
 
+  const consumePendingSmartView = useCallback((): boolean => {
+    try {
+      const pending = localStorage.getItem(TODO_PENDING_SMART_VIEW_KEY);
+      if (pending === 'today') {
+        localStorage.removeItem(TODO_PENDING_SMART_VIEW_KEY);
+        closeDesktopTrash();
+        setTrashOpen(false);
+        setWorkspaceView('todos');
+        setViewFilter('today');
+        return true;
+      }
+    } catch {
+      // localStorage 不可用时静默降级
+    }
+    return false;
+  }, [closeDesktopTrash, setViewFilter, setWorkspaceView]);
+
   useEffect(() => {
-    initialize();
-  }, [initialize]);
+    void Promise.resolve(initialize()).finally(() => {
+      consumePendingSmartView();
+    });
+  }, [initialize, consumePendingSmartView]);
+
+  useEffect(() => {
+    return addAppEventListener(APP_EVENTS.NAVIGATE_TO_VIEW, (detail) => {
+      if (detail?.view === 'todo') {
+        consumePendingSmartView();
+      }
+    });
+  }, [consumePendingSmartView]);
 
   useEffect(() => {
     if (initialView) setWorkspaceView(initialView);

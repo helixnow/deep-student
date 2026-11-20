@@ -243,4 +243,86 @@ describe('OpenUILangRenderer', () => {
     expect(thoroughBtn).toBeDisabled();
     expect(screen.getByTestId('openui-note-input')).toHaveValue('Use cached index');
   });
+
+  it('renders inline and block LaTeX formulas via KaTeX inside TextContent', () => {
+    const dsl = `
+      root = Card("Physics", [body])
+      body = TextContent("Energy is $E = mc^2$ and integral $$\\int_0^1 x^2 dx = \\frac{1}{3}$$")
+    `;
+    const { container } = render(<OpenUILangRenderer source={dsl} />);
+    expect(container.querySelectorAll('.katex').length).toBeGreaterThanOrEqual(2);
+    expect(container.textContent).not.toContain('$E = mc^2$');
+  });
+
+  it('gracefully falls back instead of silently dropping unknown components', () => {
+    const dsl = `
+      root = Stack([mystery])
+      mystery = FutureFormulaBlock("Euler identity", "e^{i\\pi} + 1 = 0")
+    `;
+    render(<OpenUILangRenderer source={dsl} />);
+    expect(screen.getByText('Euler identity')).toBeInTheDocument();
+  });
+
+  it('renders LineChart Y-axis ticks, horizontal gridlines, focus/hover reference line & live readout, and BarChart aria-label & row hover', () => {
+    const dsl = `
+      root = Stack([lineChart, barChart])
+      lineChart = LineChart(["Mon", "Tue", "Wed"], [Series("Accuracy", [60, 80, 100]), Series("Recall", [50, 70, 90])], "%")
+      barChart = BarChart(["Algebra", "Calculus"], [Series("Mastered", [24, 36])], "cards")
+    `;
+    const { container } = render(<OpenUILangRenderer source={dsl} />);
+
+    // 1. LineChart Y-axis max/mid/min ticks & horizontal gridlines
+    const lineChartEl = container.querySelector('[data-openui-component="LineChart"]')!;
+    expect(lineChartEl).not.toBeNull();
+    const maxTick = lineChartEl.querySelector('[data-chart-y-tick="max"]');
+    const midTick = lineChartEl.querySelector('[data-chart-y-tick="mid"]');
+    const minTick = lineChartEl.querySelector('[data-chart-y-tick="min"]');
+    expect(maxTick?.textContent).toBe('100');
+    expect(midTick?.textContent).toBe('50');
+    expect(minTick?.textContent).toBe('0');
+
+    expect(lineChartEl.querySelectorAll('[data-chart-gridline]')).toHaveLength(3);
+    expect(lineChartEl.querySelector('[data-chart-hover-line]')).toBeNull();
+
+    const tooltip = lineChartEl.querySelector('[data-chart-tooltip]')!;
+    expect(tooltip).toHaveAttribute('data-active', 'false');
+
+    // 2. Hover & keyboard focus on data points updates live tooltip & reference line
+    const points = lineChartEl.querySelectorAll<SVGCircleElement>('[data-chart-point]');
+    expect(points).toHaveLength(6);
+    expect(points[0]).toHaveAttribute('tabindex', '0');
+
+    // Hover point index 1 ("Tue")
+    fireEvent.mouseEnter(points[1]);
+    expect(tooltip).toHaveAttribute('data-active', 'true');
+    expect(tooltip.textContent).toContain('Tue');
+    expect(tooltip.textContent).toContain('80 %');
+    expect(tooltip.textContent).toContain('70 %');
+    expect(lineChartEl.querySelector('[data-chart-hover-line]')).not.toBeNull();
+
+    // Keyboard focus point index 2 ("Wed")
+    fireEvent.focus(points[2]);
+    expect(tooltip.textContent).toContain('Wed');
+    expect(tooltip.textContent).toContain('100 %');
+    expect(tooltip.textContent).toContain('90 %');
+
+    // Mouse leave clears active state
+    const svg = lineChartEl.querySelector('svg[role="img"]')!;
+    fireEvent.mouseLeave(svg);
+    expect(tooltip).toHaveAttribute('data-active', 'false');
+    expect(lineChartEl.querySelector('[data-chart-hover-line]')).toBeNull();
+
+    // 3. BarChart aria-label, tabular-nums readout & row hover highlight
+    const barChartEl = container.querySelector('[data-openui-component="BarChart"]')!;
+    expect(barChartEl).toHaveAttribute('aria-label', '柱状图');
+    const firstRow = barChartEl.querySelector('[data-chart-bar-row="0"]')!;
+    expect(firstRow).toHaveAttribute('data-hovered', 'false');
+
+    fireEvent.mouseEnter(firstRow);
+    expect(firstRow).toHaveAttribute('data-hovered', 'true');
+    expect(firstRow.className).toContain('bg-muted/45');
+
+    fireEvent.mouseLeave(firstRow);
+    expect(firstRow).toHaveAttribute('data-hovered', 'false');
+  });
 });

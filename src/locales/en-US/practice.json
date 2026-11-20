@@ -587,7 +587,11 @@
     "aiExplanationSaved": "AI explanation saved and available anytime",
     "explanationSaveFailed": "Could not save explanation",
     "aiRegenerate": "Regenerate",
-    "practiceThisQuestion": "Practice this"
+    "practiceThisQuestion": "Practice this",
+    "clearFilters": "Clear filters",
+    "filteredCount": "{{count}} matched",
+    "collapseExplanation": "Hide explanation",
+    "expandExplanation": "Read more"
   },
   "answerSheet": {
     "answered": "Answered",
@@ -676,6 +680,7 @@
     "noReference": "No reference answer",
     "noQuestions": "No questions",
     "addImage": "Add answer image",
+    "takePhoto": "Take photo",
     "removeImage": "Remove image {{n}}",
     "imageMissing": "Cannot read paper image",
     "deleteRecord": "Delete this practice record?",
@@ -688,7 +693,22 @@
     "keepOrder": "Confirm current order",
     "inProgress": "Practice in progress",
     "notStarted": "Ready to practice",
-    "lastResult": "Latest result {{correct}} / {{total}}"
+    "lastResult": "Latest result {{correct}} / {{total}}",
+    "selectedOption": "Selected",
+    "multiChoiceHint": "Select all that apply",
+    "inlineNavHint": "← → Navigate · Enter Next",
+    "inlineReviewNavHint": "← → Navigate"
+  },
+  "reviewView": {
+    "searchPlaceholder": "Search mistakes...",
+    "clearSearch": "Clear search",
+    "clearFilters": "Clear filters",
+    "noFilterMatch": "No mistakes match the current filters",
+    "noFilterMatchHint": "Try another search term or clear difficulty filters",
+    "noPracticeYetTitle": "No mistakes recorded yet",
+    "noPracticeYetDesc": "Questions you miss during practice will automatically appear here for targeted review.",
+    "startFirstPractice": "Start practicing",
+    "masteredBadge": "{{count}} mastered"
   },
   "session": {
     "exitTitle": "Leave this practice session?",

@@ -729,6 +729,8 @@
     "find_invalid_regex": "无效正则表达式",
     "outline_expand": "展开分组",
     "outline_collapse": "折叠分组",
+    "outline_expand_all": "展开全部章节",
+    "outline_collapse_all": "折叠全部章节",
     "conflict_compare": "对比",
     "conflict_compare_hide": "收起对比",
     "conflict_diff_title": "我的版本 vs 远端版本",
@@ -948,7 +950,9 @@
     "discard_retained_draft": "丢弃保留草稿",
     "stats": {
       "reading_label": "阅读时间",
-      "reading_value": "约 {{minutes}} 分钟"
+      "reading_value": "约 {{minutes}} 分钟",
+      "chars_value": "{{count}} 字",
+      "summary": "{{count}} 字 · 约 {{minutes}} 分钟"
     },
     "toolbar": {
       "bold": "粗体",
@@ -1018,7 +1022,8 @@
       "save_failed": "保存失败",
       "conflict": "检测到冲突，已刷新为最新版本（见通知中的「恢复我的版本」）",
       "retry": "重试",
-      "auto_save": "自动保存"
+      "auto_save": "自动保存",
+      "auto_saved": "已自动保存"
     },
     "placeholder": {
       "default": "开始书写...",
@@ -2262,5 +2267,13 @@
     "synced_tooltip": "已同步至当前学习空间闪卡组",
     "excerpt_source_prefix": "摘自",
     "default_deck": "笔记内联卡"
+  },
+  "workspace": {
+    "emptyNewMindmap": "新建思维导图",
+    "recentSectionTitle": "继续最近学习",
+    "resumeItem": "继续：{{title}}",
+    "hintQuickSwitch": "快速切换与搜索",
+    "hintToggleSidebar": "展开或收起目录栏",
+    "searchMatchCount": "匹配 {{count}} 项"
   }
 }

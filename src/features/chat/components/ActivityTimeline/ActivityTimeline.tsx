@@ -62,6 +62,7 @@ import {
   isInteractiveActivityItem,
   LIVE_ACTIVITY_VISIBLE_ROWS,
   sliceLiveActivityWindow,
+  formatTurnActivitySummary,
   summarizeTurnActivity,
   type LiveActivityItem,
 } from './liveActivityEngine';
@@ -1397,7 +1398,7 @@ const ToolGroupNodeContent: React.FC<ToolGroupNodeContentProps> = ({ node, isFir
             data-testid="timeline-turn-activity-summary"
             className="activity-timeline-status truncate font-mono tabular-nums text-muted-foreground/70"
           >
-            {turnActivitySummary.summaryText}
+            {formatTurnActivitySummary(turnActivitySummary, t)}
           </span>
         )}
         <span className="activity-timeline-status text-muted-foreground/70">{groupStatus}</span>

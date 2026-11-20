@@ -14,6 +14,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { useIsKeyboardShown, useKeyboardInset } from '@/hooks/useKeyboardHeight';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import {
   Plus,
@@ -149,8 +150,10 @@ function computeViewportBottomOffset(): number {
   if (typeof window === 'undefined') return 0;
   const vv = window.visualViewport;
   if (!vv) return 0;
+  const clientHeight = typeof document !== 'undefined' ? document.documentElement?.clientHeight ?? 0 : 0;
+  const baseHeight = clientHeight > 0 ? Math.min(window.innerHeight, clientHeight) : window.innerHeight;
   // 布局视口底边到 visualViewport 底边的距离（键盘占用高度）
-  return Math.max(0, Math.round(window.innerHeight - (vv.offsetTop + vv.height)));
+  return Math.max(0, Math.round(baseHeight - (vv.offsetTop + vv.height)));
 }
 
 /** 阻止按压把焦点从编辑器抢走：iOS/Android 走 touch/pointer，桌面走 mouse */
@@ -167,6 +170,9 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
 }) => {
   const { t } = useTranslation(['notes']);
   const [bottomOffset, setBottomOffset] = useState(0);
+  const keyboardInset = useKeyboardInset();
+  const isKeyboardShown = useIsKeyboardShown();
+  const effectiveBottomOffset = isKeyboardShown ? keyboardInset : bottomOffset;
   const [insertOpen, setInsertOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [, refreshCommands] = useState(0);
@@ -228,7 +234,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
   useLayoutEffect(() => {
     if (!visible || typeof document === 'undefined') return;
     const rootStyle = document.documentElement.style;
-    rootStyle.setProperty('--mobile-toolbar-keyboard-offset', `${bottomOffset}px`);
+    rootStyle.setProperty('--mobile-toolbar-keyboard-offset', `${effectiveBottomOffset}px`);
     const toolbar = rootRef.current;
     const updateHeight = () => rootStyle.setProperty('--mobile-toolbar-height', `${toolbar?.offsetHeight ?? 52}px`);
     updateHeight();
@@ -240,7 +246,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
       rootStyle.removeProperty('--mobile-toolbar-keyboard-offset');
       rootStyle.removeProperty('--mobile-toolbar-height');
     };
-  }, [visible, bottomOffset, insertOpen, expanded]);
+  }, [visible, effectiveBottomOffset, insertOpen, expanded]);
 
   if (!visible) return null;
 
@@ -497,8 +503,8 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
   // 与 suggestOverlay.ts 的 body 挂载范式一致；不改 MobileSlidingLayout 的 transform 机制。
   if (typeof document === 'undefined') return null;
 
-  // 键盘弹出期间忽略滚动收起（输入中需要常驻的格式化入口）
-  const isCollapsed = collapsed && bottomOffset === 0;
+  // 键盘弹出期间忽略滚动收起（输入中需要常驻的格式化入口；Android adjustResize 下 effectiveBottomOffset=0 仍不收起）
+  const isCollapsed = collapsed && effectiveBottomOffset === 0 && !isKeyboardShown;
 
   return createPortal(
     <div
@@ -514,7 +520,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
       data-inserting={insertOpen ? 'true' : undefined}
       style={
         {
-          '--mobile-toolbar-keyboard-offset': `${bottomOffset}px`,
+          '--mobile-toolbar-keyboard-offset': `${effectiveBottomOffset}px`,
         } as React.CSSProperties
       }
     >
@@ -565,6 +571,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
           aria-label={expanded ? tr('notes:mobileToolbar.collapse', '收起工具栏') : tr('notes:mobileToolbar.expand', '展开全部工具')}
           aria-expanded={expanded}
           onMouseDown={preventFocusSteal}
+          onPointerDown={preventFocusSteal}
           onClick={() => { setExpanded((value) => !value); setInsertOpen(false); }}>
           {expanded ? <CaretDown size={ICON_SIZE} aria-hidden /> : <CaretUp size={ICON_SIZE} aria-hidden />}
         </button>

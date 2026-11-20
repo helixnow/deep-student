@@ -4,7 +4,7 @@
  * 媒体引用 + 课程学习技能（mediaChat.ts）；制卡 = CardForge 直接制卡（mediaCards.ts，
  * 对话里定制作为次要入口）；本课台账 = media_study_ledger；进度 = media_progress_get。
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CardsThree,
@@ -107,6 +107,28 @@ function useStartChat(meta: MediaTabMeta, resourceId: string) {
   return { starting, start };
 }
 
+type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
+
+function interpolateFallback(template: string, vars?: Record<string, unknown>): string {
+  if (!vars) return template;
+  return template.replace(/\{\{\s*([^}\s]+)\s*\}\}/g, (match, k: string) => {
+    const val = vars[k];
+    return val === undefined || val === null ? match : String(val);
+  });
+}
+
+function resolveText(
+  t: TranslateFn | undefined,
+  key: string,
+  defaultValue: string,
+  vars?: Record<string, unknown>,
+): string {
+  if (!t) return interpolateFallback(defaultValue, vars);
+  return t(key, { defaultValue, ...vars });
+}
+
+const CHAPTER_SEEK_FEEDBACK_MS = 1200;
+
 // ============================================================================
 // 讲义
 // ============================================================================
@@ -114,8 +136,10 @@ function useStartChat(meta: MediaTabMeta, resourceId: string) {
 /** 根据当前媒体课程的标题、章节列表与字幕片段构建结构化 HandoutDocument */
 export function buildMediaHandoutDocument(
   ctx: Pick<MediaStudyCompanionRenderContext, 'fileName' | 'chapters' | 'segments'>,
+  t?: TranslateFn,
 ): HandoutDocument {
-  const cleanTitle = ctx.fileName.replace(/\.[^.]+$/, '') || ctx.fileName || '课程精读讲义';
+  const defaultTitle = resolveText(t, 'mediaStudio:handout.defaultCourseTitle', '课程精读讲义');
+  const cleanTitle = ctx.fileName.replace(/\.[^.]+$/, '') || ctx.fileName || defaultTitle;
   const doneSegments = ctx.segments.filter((seg) => seg.status === 'done' && seg.text.trim());
 
   const sections: HandoutSection[] =
@@ -126,16 +150,33 @@ export function buildMediaHandoutDocument(
             (seg) => seg.startMs >= chapter.seconds * 1000 && seg.startMs < nextChapterSeconds * 1000,
           );
           const effectiveSegments = chapterSegments.length > 0 ? chapterSegments : doneSegments.slice(0, 3);
+          const timeStr = formatMediaRefTimestamp(chapter.seconds);
           const summaryText =
             effectiveSegments.map((seg) => seg.text.trim()).join(' ') ||
-            `本节围绕「${chapter.title}」展开核心概念与关键推导梳理。`;
+            resolveText(
+              t,
+              'mediaStudio:handout.chapterSummaryFallback',
+              '本节围绕「{{title}}」展开核心概念与关键推导梳理。',
+              { title: chapter.title },
+            );
           const keyPointText =
-            effectiveSegments[0]?.text.trim() || `掌握「${chapter.title}」的核心定义、推导脉络与适用边界。`;
+            effectiveSegments[0]?.text.trim() ||
+            resolveText(
+              t,
+              'mediaStudio:handout.chapterKeyPointFallback',
+              '掌握「{{title}}」的核心定义、推导脉络与适用边界。',
+              { title: chapter.title },
+            );
 
           const blocks: HandoutContentBlock[] = [
             {
               type: 'lead',
-              text: `时间锚点 ${formatMediaRefTimestamp(chapter.seconds)} · ${chapter.title}`,
+              text: resolveText(
+                t,
+                'mediaStudio:handout.chapterLead',
+                '时间锚点 {{time}} · {{title}}',
+                { time: timeStr, title: chapter.title },
+              ),
             },
             {
               type: 'para',
@@ -144,20 +185,43 @@ export function buildMediaHandoutDocument(
             {
               type: 'callout',
               kind: index % 2 === 0 ? 'theorem' : 'definition',
-              title: `${chapter.title} · 重点提炼`,
+              title: resolveText(
+                t,
+                'mediaStudio:handout.chapterCalloutTitle',
+                '{{title}} · 重点提炼',
+                { title: chapter.title },
+              ),
               text: keyPointText,
             },
             {
               type: 'checkpoint',
               id: `media-cp-${index + 1}`,
-              question: `关于「${chapter.title}」，下列哪项最符合本节课程的核心要点？`,
+              question: resolveText(
+                t,
+                'mediaStudio:handout.chapterQuestion',
+                '关于「{{title}}」，下列哪项最符合本节课程的核心要点？',
+                { title: chapter.title },
+              ),
               options: [
                 keyPointText,
-                '仅凭直觉忽略前置假设与推导边界条件',
-                '跳过时间锚点对应的关键步骤直接套用结论',
+                resolveText(
+                  t,
+                  'mediaStudio:handout.chapterDistractor1',
+                  '仅凭直觉忽略前置假设与推导边界条件',
+                ),
+                resolveText(
+                  t,
+                  'mediaStudio:handout.chapterDistractor2',
+                  '跳过时间锚点对应的关键步骤直接套用结论',
+                ),
               ],
               answerIndex: 0,
-              explanation: `本节在 ${formatMediaRefTimestamp(chapter.seconds)} 处重点阐述了「${chapter.title}」：${keyPointText}`,
+              explanation: resolveText(
+                t,
+                'mediaStudio:handout.chapterExplanation',
+                '本节在 {{time}} 处重点阐述了「{{title}}」：{{point}}',
+                { time: timeStr, title: chapter.title, point: keyPointText },
+              ),
             },
           ];
 
@@ -166,52 +230,111 @@ export function buildMediaHandoutDocument(
             heading: chapter.title,
             difficulty: index === 0 ? 'foundation' : index === ctx.chapters.length - 1 ? 'olympiad' : 'intermediate',
             estimatedMinutes: 5,
+            anchorSeconds: chapter.seconds,
             blocks,
           };
         })
       : [
           {
             id: 'media-sec-1',
-            heading: `${cleanTitle} · 核心精要`,
+            heading: resolveText(
+              t,
+              'mediaStudio:handout.singleHeading',
+              '{{title}} · 核心精要',
+              { title: cleanTitle },
+            ),
             difficulty: 'foundation',
             estimatedMinutes: 6,
             blocks: [
               {
                 type: 'lead',
-                text: `${cleanTitle} 课程全文核心脉络导读`,
+                text: resolveText(
+                  t,
+                  'mediaStudio:handout.singleLead',
+                  '{{title}} 课程全文核心脉络导读',
+                  { title: cleanTitle },
+                ),
               },
               {
                 type: 'para',
                 text:
                   doneSegments.map((seg) => seg.text.trim()).join(' ') ||
-                  `${cleanTitle} 的核心概念、推导过程与重点归纳。`,
+                  resolveText(
+                    t,
+                    'mediaStudio:handout.singleSummaryFallback',
+                    '{{title}} 的核心概念、推导过程与重点归纳。',
+                    { title: cleanTitle },
+                  ),
               },
               {
                 type: 'callout',
                 kind: 'definition',
-                title: `${cleanTitle} · 核心要点`,
-                text: doneSegments[0]?.text.trim() || `梳理「${cleanTitle}」的关键定义与知识框架。`,
+                title: resolveText(
+                  t,
+                  'mediaStudio:handout.singleCalloutTitle',
+                  '{{title}} · 核心要点',
+                  { title: cleanTitle },
+                ),
+                text:
+                  doneSegments[0]?.text.trim() ||
+                  resolveText(
+                    t,
+                    'mediaStudio:handout.singleKeyPointFallback',
+                    '梳理「{{title}}」的关键定义与知识框架。',
+                    { title: cleanTitle },
+                  ),
               },
               {
                 type: 'checkpoint',
                 id: 'media-cp-1',
-                question: `关于「${cleanTitle}」，下列哪项准确概括了本课的核心内容？`,
+                question: resolveText(
+                  t,
+                  'mediaStudio:handout.singleQuestion',
+                  '关于「{{title}}」，下列哪项准确概括了本课的核心内容？',
+                  { title: cleanTitle },
+                ),
                 options: [
-                  doneSegments[0]?.text.trim() || `掌握「${cleanTitle}」的核心定义与推导方法`,
-                  '忽略课程核心推导逻辑与边界条件',
-                  '无需结合上下文直接跳过概念辨析',
+                  doneSegments[0]?.text.trim() ||
+                    resolveText(
+                      t,
+                      'mediaStudio:handout.singleOptionFallback',
+                      '掌握「{{title}}」的核心定义与推导方法',
+                      { title: cleanTitle },
+                    ),
+                  resolveText(
+                    t,
+                    'mediaStudio:handout.singleDistractor1',
+                    '忽略课程核心推导逻辑与边界条件',
+                  ),
+                  resolveText(
+                    t,
+                    'mediaStudio:handout.singleDistractor2',
+                    '无需结合上下文直接跳过概念辨析',
+                  ),
                 ],
                 answerIndex: 0,
-                explanation: `结合课程转写内容，应重点掌握：${doneSegments[0]?.text.trim() || cleanTitle}`,
+                explanation: resolveText(
+                  t,
+                  'mediaStudio:handout.singleExplanation',
+                  '结合课程转写内容，应重点掌握：{{point}}',
+                  { point: doneSegments[0]?.text.trim() || cleanTitle },
+                ),
               },
             ],
           },
         ];
 
   return {
-    title: `${cleanTitle} · 精读讲义`,
+    title: resolveText(t, 'mediaStudio:handout.docTitle', '{{title}} · 精读讲义', {
+      title: cleanTitle,
+    }),
     courseName: cleanTitle,
-    summary: `共 ${sections.length} 个核心章节，融合课堂时间锚点摘要、重点提炼与随堂自测。`,
+    summary: resolveText(
+      t,
+      'mediaStudio:handout.docSummary',
+      '共 {{count}} 个核心章节，融合课堂时间锚点摘要、重点提炼与随堂自测。',
+      { count: sections.length },
+    ),
     estimatedMinutes: sections.length * 5,
     difficulty: 'intermediate',
     sections,
@@ -228,6 +351,12 @@ export const MediaHandoutTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; 
   });
   const [notes, setNotes] = useState<MediaRelatedNote[] | null>(null);
   const [showInlineReader, setShowInlineReader] = useState(false);
+  const [justSeekedIndex, setJustSeekedIndex] = useState<number | null>(null);
+  const seekTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (seekTimerRef.current !== null) window.clearTimeout(seekTimerRef.current);
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -245,9 +374,23 @@ export const MediaHandoutTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; 
   const canShowInlineReader =
     ctx.chapters.length > 0 || Boolean(result) || Boolean(notes && notes.length > 0);
 
+  const { fileName, chapters, segments } = ctx;
   const handoutDoc = useMemo(
-    () => buildMediaHandoutDocument(ctx),
-    [ctx.fileName, ctx.chapters, ctx.segments],
+    () => buildMediaHandoutDocument({ fileName, chapters, segments }, t),
+    [chapters, fileName, segments, t],
+  );
+
+  const handleChapterSeek = useCallback(
+    (index: number, seconds: number) => {
+      ctx.seekTo(seconds);
+      setJustSeekedIndex(index);
+      if (seekTimerRef.current !== null) window.clearTimeout(seekTimerRef.current);
+      seekTimerRef.current = window.setTimeout(() => {
+        setJustSeekedIndex((prev) => (prev === index ? null : prev));
+        seekTimerRef.current = null;
+      }, CHAPTER_SEEK_FEEDBACK_MS);
+    },
+    [ctx],
   );
 
   const handleOpenOrSaveHandoutNote = useCallback<
@@ -267,7 +410,9 @@ export const MediaHandoutTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; 
     }
     showGlobalNotification(
       'info',
-      '正在生成讲义笔记，完成后将自动关联至本课讲义列表',
+      t('mediaStudio:handout.generatingAutoLink', {
+        defaultValue: '正在生成讲义笔记，完成后将自动关联至本课讲义列表',
+      }),
     );
     return false;
   }, [ctx.hasTranscript, generate, notes, result, running, t]);
@@ -319,10 +464,18 @@ export const MediaHandoutTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; 
               onClick={() => setShowInlineReader((prev) => !prev)}
               aria-expanded={showInlineReader}
               data-testid="toggle-inline-handout-reader"
-              className="gap-1.5 self-start border border-border/35"
+              className="gap-1.5 self-start border border-border/35 active:scale-[0.98] motion-reduce:transition-none motion-reduce:transform-none"
             >
               <Notebook size={14} aria-hidden="true" />
-              <span>{showInlineReader ? '收起内联讲义阅读器' : '内联讲义阅读器'}</span>
+              <span>
+                {showInlineReader
+                  ? t('mediaStudio:handout.inlineReaderClose', {
+                      defaultValue: '收起内联讲义阅读器',
+                    })
+                  : t('mediaStudio:handout.inlineReaderOpen', {
+                      defaultValue: '内联讲义阅读器',
+                    })}
+              </span>
             </DsButton>
           ) : null}
         </div>
@@ -332,10 +485,11 @@ export const MediaHandoutTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; 
       </div>
 
       {canShowInlineReader && showInlineReader ? (
-        <div className={sectionClass}>
+        <div className={cn(sectionClass, 'ui-rise-in motion-reduce:animate-none')}>
           <HandoutReaderView
             document={handoutDoc}
             onSaveToNote={handleOpenOrSaveHandoutNote}
+            onSeekTimestamp={ctx.seekTo}
           />
         </div>
       ) : null}
@@ -349,25 +503,48 @@ export const MediaHandoutTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; 
             {ctx.chapters.map((chapter, index) => {
               const current = index === ctx.currentChapterIndex;
               const passed = index < ctx.currentChapterIndex;
+              const justSeeked = index === justSeekedIndex;
               return (
                 <li key={`${chapter.seconds}-${index}`}>
                   <DsButton
                     variant="ghost"
                     size="sm"
-                    onClick={() => ctx.seekTo(chapter.seconds)}
+                    onClick={() => handleChapterSeek(index, chapter.seconds)}
                     aria-current={current ? 'true' : undefined}
+                    data-seek-active={justSeeked ? 'true' : undefined}
                     className={cn(
-                      '!h-auto w-full !justify-start gap-2.5 !py-1.5 text-left',
-                      current && 'bg-primary/10',
+                      '!h-auto w-full !justify-start gap-2.5 !py-1.5 text-left active:scale-[0.99] motion-reduce:transition-none motion-reduce:transform-none',
+                      justSeeked
+                        ? 'bg-success/10 ring-1 ring-inset ring-success/30'
+                        : current && 'bg-primary/10',
                     )}
                   >
-                    <span className={cn('shrink-0 font-mono text-xs tabular-nums', current ? 'text-primary' : 'text-muted-foreground')}>
+                    <span
+                      className={cn(
+                        'shrink-0 font-mono text-xs tabular-nums transition-colors duration-150 motion-reduce:transition-none',
+                        justSeeked
+                          ? 'text-success'
+                          : current
+                            ? 'text-primary'
+                            : 'text-muted-foreground',
+                      )}
+                    >
                       {formatMediaRefTimestamp(chapter.seconds)}
                     </span>
-                    <span className={cn('min-w-0 flex-1 whitespace-normal text-sm', passed ? 'text-muted-foreground' : 'text-foreground')}>
+                    <span className={cn('min-w-0 flex-1 whitespace-normal text-sm', passed && !justSeeked ? 'text-muted-foreground' : 'text-foreground')}>
                       {chapter.title}
                     </span>
-                    {passed ? <Check size={13} className="shrink-0 text-muted-foreground" aria-hidden="true" /> : null}
+                    {justSeeked ? (
+                      <span
+                        data-testid={`media-chapter-seek-feedback-${index}`}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/15 px-1.5 py-0.5 text-2xs font-medium text-success ui-fade-in motion-reduce:animate-none"
+                      >
+                        <Check size={11} aria-hidden="true" />
+                        <span>{t('mediaStudio:chapters.jumped', { defaultValue: '已定位' })}</span>
+                      </span>
+                    ) : passed ? (
+                      <Check size={13} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+                    ) : null}
                   </DsButton>
                 </li>
               );
@@ -442,20 +619,36 @@ export function buildMiniChatCompanionReply(
     anchor: MiniChatContextAnchor | null;
     presetId?: string;
   },
+  t?: TranslateFn,
 ): string {
   const nowSeconds = Math.max(0, Math.floor(ctx.getCurrentTime()));
   const timeLabel = formatMediaRefTimestamp(nowSeconds);
   const chapIdx = chapterIndexAt(ctx.chapters, nowSeconds);
   const chapterTitle = chapIdx >= 0 ? ctx.chapters[chapIdx]?.title ?? null : null;
   const headerContext = chapterTitle
-    ? `当前时间点 ${timeLabel}（章节：${chapterTitle}）`
-    : `当前时间点 ${timeLabel}（${courseName}）`;
+    ? resolveText(
+        t,
+        'mediaStudio:miniChat.headerWithChapter',
+        '当前时间点 {{time}}（章节：{{chapter}}）',
+        { time: timeLabel, chapter: chapterTitle },
+      )
+    : resolveText(
+        t,
+        'mediaStudio:miniChat.headerWithCourse',
+        '当前时间点 {{time}}（{{course}}）',
+        { time: timeLabel, course: courseName },
+      );
 
   const doneSegments = ctx.segments.filter(
     (seg) => seg.status === 'done' && seg.text.trim().length > 0,
   );
   if (!ctx.hasTranscript || doneSegments.length === 0) {
-    return `${headerContext}尚无可用字幕转写。请先在「字幕」分区完成课程转写以获取基于原话的即时速答，或点击右上角「迁入主会话」携带时间锚点发起完整提问。`;
+    return resolveText(
+      t,
+      'mediaStudio:miniChat.noTranscript',
+      '{{header}}尚无可用字幕转写。请先在「字幕」分区完成课程转写以获取基于原话的即时速答，或点击右上角「迁入主会话」携带时间锚点发起完整提问。',
+      { header: headerContext },
+    );
   }
 
   const fromMs = Math.max(0, nowSeconds - MINI_CHAT_WINDOW_RADIUS_SECONDS) * 1000;
@@ -470,29 +663,72 @@ export function buildMiniChatCompanionReply(
       return distA - distB;
     })[0];
     const nearestHint = nearest
-      ? `最近相关原话位于 [${formatMediaRefTimestamp(Math.floor(nearest.startMs / 1000))}]：「${nearest.text.trim()}」。`
+      ? resolveText(
+          t,
+          'mediaStudio:miniChat.nearestHint',
+          '最近相关原话位于 [{{time}}]：「{{text}}」。',
+          {
+            time: formatMediaRefTimestamp(Math.floor(nearest.startMs / 1000)),
+            text: nearest.text.trim(),
+          },
+        )
       : '';
-    return `${headerContext}前后 ${MINI_CHAT_WINDOW_RADIUS_SECONDS} 秒内暂无课程对白。${nearestHint}可定位到对应讲解片段后重试，或点击右上角「迁入主会话」发起完整深度追问。`;
+    return resolveText(
+      t,
+      'mediaStudio:miniChat.noNearbySpeech',
+      '{{header}}前后 {{window}} 秒内暂无课程对白。{{nearestHint}}可定位到对应讲解片段后重试，或点击右上角「迁入主会话」发起完整深度追问。',
+      {
+        header: headerContext,
+        window: MINI_CHAT_WINDOW_RADIUS_SECONDS,
+        nearestHint,
+      },
+    );
   }
 
+  const sep = resolveText(t, 'mediaStudio:miniChat.excerptSeparator', '；');
   const excerptLines = nearbySegments
     .slice(0, 4)
     .map(
       (seg) =>
         `[${formatMediaRefTimestamp(Math.floor(seg.startMs / 1000))}] ${seg.text.trim()}`,
     )
-    .join('；');
+    .join(sep);
 
-  let focusLead = '结合当前时间窗内的课程原话要点梳理：';
+  let focusLead = resolveText(
+    t,
+    'mediaStudio:miniChat.focusDefault',
+    '结合当前时间窗内的课程原话要点梳理：',
+  );
   if (payload.presetId === 'explain_paragraph') {
-    focusLead = '围绕当前段落原话的核心概念梳理：';
+    focusLead = resolveText(
+      t,
+      'mediaStudio:miniChat.focusExplain',
+      '围绕当前段落原话的核心概念梳理：',
+    );
   } else if (payload.presetId === 'derive_formula') {
-    focusLead = '结合当前时刻讲解的推导脉络梳理：';
+    focusLead = resolveText(
+      t,
+      'mediaStudio:miniChat.focusDerive',
+      '结合当前时刻讲解的推导脉络梳理：',
+    );
   } else if (payload.presetId === 'generate_variant') {
-    focusLead = '紧扣当前时间点考查要点的迁移提示：';
+    focusLead = resolveText(
+      t,
+      'mediaStudio:miniChat.focusVariant',
+      '紧扣当前时间点考查要点的迁移提示：',
+    );
   }
 
-  return `${headerContext} · ${focusLead}${excerptLines}。如需展开完整公式推导、变式演练或多轮深入探讨，可点击右上角「迁入主会话」发起完整深度追问。`;
+  return resolveText(
+    t,
+    'mediaStudio:miniChat.replyBody',
+    '{{header}} · {{focus}}{{excerpts}}。如需展开完整公式推导、变式演练或多轮深入探讨，可点击右上角「迁入主会话」发起完整深度追问。',
+    {
+      header: headerContext,
+      focus: focusLead,
+      excerpts: excerptLines,
+    },
+  );
 }
 
 export const MediaAskTab: React.FC<{
@@ -545,9 +781,9 @@ export const MediaAskTab: React.FC<{
     }) => {
       const latestSeconds = Math.max(0, Math.floor(ctx.getCurrentTime()));
       setPlayheadSeconds((prev) => (prev === latestSeconds ? prev : latestSeconds));
-      return buildMiniChatCompanionReply(ctx, name, payload);
+      return buildMiniChatCompanionReply(ctx, name, payload, t);
     },
-    [ctx, name],
+    [ctx, name, t],
   );
 
   return (

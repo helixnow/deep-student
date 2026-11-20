@@ -50,8 +50,17 @@ function ShareDialog({ share, onRetry, onDone }: { share: IncomingShare; onRetry
   const { injectToChat } = useVfsContextInject();
   const progressKey = 'dstu-incoming-share:' + share.id;
   const [progress] = useState<ImportProgress>(() => {
-    const saved = localStorage.getItem(progressKey);
-    return saved ? JSON.parse(saved) : { nodes: {}, attached: [] };
+    try {
+      const saved = localStorage.getItem(progressKey);
+      if (!saved) return { nodes: {}, attached: [] };
+      const parsed = JSON.parse(saved) as Partial<ImportProgress>;
+      return {
+        nodes: parsed && typeof parsed.nodes === 'object' && parsed.nodes ? parsed.nodes : {},
+        attached: Array.isArray(parsed?.attached) ? parsed.attached : [],
+      };
+    } catch {
+      return { nodes: {}, attached: [] };
+    }
   });
   function remember(key: string, { id, name, type }: SavedNode) {
     progress.nodes[key] = { id, name, type };
@@ -108,10 +117,29 @@ function ShareDialog({ share, onRetry, onDone }: { share: IncomingShare; onRetry
     {share.files?.map(file => <p key={file.id} className="break-all">{file.name}</p>)}
     {share.text && <p className="line-clamp-3 break-all">{share.text}</p>}
     {(error || share.error || !hasContent) && <p role="alert">{error || t(share.error === 'storage' ? 'incomingShare.storageError' : 'incomingShare.unreadable')}</p>}
-    <div className="flex flex-wrap gap-2 [&>button]:min-h-12 [&>button]:min-w-12 [&>button]:px-2">
-      {share.canRetry && <button disabled={busy} onClick={() => void perform('retry')}>{t('actions.retry')}</button>}
-      {hasContent && <><button disabled={busy} onClick={() => void perform('library')}>{t('incomingShare.library')}</button><button disabled={busy} onClick={() => void perform('chat')}>{t('incomingShare.chat')}</button></>}
-      <button disabled={busy} onClick={() => void perform('cancel')}>{t('incomingShare.close')}</button>
+    <div className="flex flex-wrap justify-end gap-2 pt-1">
+      {share.canRetry && (
+        <button type="button" disabled={busy} onClick={() => void perform('retry')}
+          className="min-h-11 rounded-lg border border-border bg-secondary px-3.5 text-sm font-medium text-secondary-foreground disabled:opacity-50">
+          {t('actions.retry')}
+        </button>
+      )}
+      {hasContent && (
+        <>
+          <button type="button" disabled={busy} onClick={() => void perform('library')}
+            className="min-h-11 rounded-lg border border-border bg-secondary px-3.5 text-sm font-medium text-secondary-foreground disabled:opacity-50">
+            {t('incomingShare.library')}
+          </button>
+          <button type="button" disabled={busy} onClick={() => void perform('chat')}
+            className="min-h-11 rounded-lg bg-primary px-3.5 text-sm font-medium text-primary-foreground disabled:opacity-50">
+            {t('incomingShare.chat')}
+          </button>
+        </>
+      )}
+      <button type="button" disabled={busy} onClick={() => void perform('cancel')}
+        className="min-h-11 rounded-lg px-3.5 text-sm text-muted-foreground hover:bg-muted disabled:opacity-50">
+        {t('incomingShare.close')}
+      </button>
     </div>
   </dialog>;
 }

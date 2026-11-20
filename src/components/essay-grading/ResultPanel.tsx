@@ -143,6 +143,21 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
     [isGrading, gradingResult]
   );
 
+  // 首个字符返回前的冷静等待计时：避免学生面对空白流式区域误以为卡死
+  const isWaitingFirstChunk = isGrading && charCount === 0;
+  const [waitingSeconds, setWaitingSeconds] = useState(0);
+  useEffect(() => {
+    if (!isWaitingFirstChunk) {
+      setWaitingSeconds(0);
+      return;
+    }
+    setWaitingSeconds(0);
+    const id = setInterval(() => {
+      setWaitingSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isWaitingFirstChunk]);
+
   const showEmptyState = !gradingResult && !isGrading && !error;
   // 有结果后标题行并入分段 Tab 行，省出一整行给正文
   const headerInTabs = Boolean(gradingResult);
@@ -289,7 +304,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   );
 
   return (
-    <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 overflow-hidden transition-all duration-200">
+    <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 overflow-hidden transition-all duration-200 motion-reduce:transition-none">
       {!headerInTabs && (
         <div className="flex h-[41px] shrink-0 items-center justify-between border-b border-border/35 px-3 [@media(pointer:coarse)]:h-11 sm:px-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -307,7 +322,31 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
       <div className="flex-1 min-h-0 flex flex-col relative" ref={ref}>
         {!headerInTabs && banners}
 
-        {showEmptyState ? (
+        {isWaitingFirstChunk ? (
+          <div
+            data-testid="essay-grading-waiting-card"
+            role="status"
+            aria-live="polite"
+            className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 px-6 text-center select-none ui-rise-in motion-reduce:animate-none"
+          >
+            <div className="flex h-11 w-11 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-primary">
+              <CircleNotch size={20} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            </div>
+            <div className="text-sm font-medium text-foreground/85">
+              {gradingPhase ? t(`essay_grading:progress.phase_${gradingPhase}`) : t('essay_grading:progress.phase_annotating')}
+            </div>
+            <p className="text-xs text-muted-foreground/80 leading-relaxed max-w-xs">
+              {waitingSeconds >= 8
+                ? t('essay_grading:progress.waiting_deep_hint')
+                : t('essay_grading:progress.waiting_calm_hint')}
+            </p>
+            {waitingSeconds > 0 && (
+              <span className="rounded-full border border-border/40 bg-muted/30 px-2.5 py-0.5 font-mono text-2xs tabular-nums text-muted-foreground">
+                {t('essay_grading:progress.elapsed_seconds', { seconds: waitingSeconds })}
+              </span>
+            )}
+          </div>
+        ) : showEmptyState ? (
           /* 空状态 - 未开始批改时的居中引导 */
           <div className="flex-1 min-h-0 flex flex-col items-center justify-center gap-3 px-6 text-center select-none">
             <div className="flex h-11 w-11 items-center justify-center rounded-full border border-border/40 bg-muted/20">
@@ -318,6 +357,9 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
             </div>
             <div className="text-xs text-muted-foreground/50 leading-relaxed max-w-[260px]">
               {t('essay_grading:result_empty.description')}
+            </div>
+            <div className="inline-flex items-center rounded-full border border-border/35 bg-muted/25 px-3 py-1 text-2xs text-muted-foreground/75">
+              {t('essay_grading:empty_state.deliverables_hint')}
             </div>
           </div>
         ) : (

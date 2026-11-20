@@ -445,8 +445,10 @@
   },
   "openuiLang": {
     "lineChartAria": "Line chart",
+    "barChartAria": "Bar chart",
+    "chartReadoutHint": "Hover or focus a data point to inspect values",
     "generating": "Generating UI…",
-    "empty": "Empty OpenUI block",
+    "empty": "Interactive card has no displayable content",
     "notePlaceholder": "Add a note (optional)",
     "confirm": "Confirm"
   }

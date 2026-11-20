@@ -206,7 +206,35 @@ const ShortcutCheatsheetComponent: React.FC = () => {
   if (!rendered) return null;
 
   const groups = listWorkbenchShortcutGroups();
-  const altCap = isMacShortcutPlatform() ? '⌥' : 'Alt';
+  const isMac = isMacShortcutPlatform();
+  const altCap = isMac ? '⌥' : 'Alt';
+  const modCap = isMac ? '⌘' : 'Ctrl';
+  const globalStudyShortcuts: ReadonlyArray<{
+    id: string;
+    descKey: string;
+    parts: string[];
+  }> = [
+    {
+      id: 'search',
+      descKey: 'workbench:cheatsheet.studyGlobal.search',
+      parts: [modCap, 'K'],
+    },
+    {
+      id: 'settings',
+      descKey: 'workbench:cheatsheet.studyGlobal.settings',
+      parts: [modCap, ','],
+    },
+    {
+      id: 'quick-look',
+      descKey: 'workbench:cheatsheet.studyGlobal.quickLook',
+      parts: [t('workbench:cheatsheet.studyGlobal.spaceKey')],
+    },
+    {
+      id: 'escape-exit',
+      descKey: 'workbench:cheatsheet.studyGlobal.escapeExit',
+      parts: ['Esc'],
+    },
+  ];
 
   return (
     <div className="wb-cheat-root" data-wb-cheat-open={open ? 'true' : 'false'}>
@@ -268,6 +296,28 @@ const ShortcutCheatsheetComponent: React.FC = () => {
               </ul>
             </section>
           ))}
+
+          {/* 全局搜索与学习效率：统一搜索、设置、空格快速预览与 Esc 退出 */}
+          <section
+            className="wb-cheat-group"
+            aria-label={t('workbench:cheatsheet.studyGlobal.title')}
+          >
+            <h3 className="wb-cheat-group-title">
+              {t('workbench:cheatsheet.studyGlobal.title')}
+            </h3>
+            <ul className="wb-cheat-rows">
+              {globalStudyShortcuts.map((item) => (
+                <li
+                  key={item.id}
+                  className="wb-cheat-row"
+                  data-wb-cheat-global={item.id}
+                >
+                  <span className="wb-cheat-desc">{t(item.descKey)}</span>
+                  <Keycaps parts={item.parts} />
+                </li>
+              ))}
+            </ul>
+          </section>
 
           {/* 修饰键技巧：⌥ + 指针手势的隐藏行为（不进 keydown 注册表） */}
           <section

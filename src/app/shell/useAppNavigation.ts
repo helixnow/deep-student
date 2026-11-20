@@ -22,6 +22,7 @@ import { resolveShellView } from '@/ui-plugins/official/shell/navigation';
 import { requestLearningHubIntent } from '@/features/learning-hub/navigation/pendingLearningHubIntent';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
 
 interface AppNavigationOptions {
   workbenchActive: boolean;
@@ -197,11 +198,10 @@ export function useAppNavigation({
   // 🎯 P0-01 修复: 监听命令面板导航事件
   // 🎯 P1-04 修复: 监听 GLOBAL_SHORTCUT_SETTINGS 等事件
   const handleShortcutSettings = useCallback(() => {
+    setPendingSettingsTab('shortcuts');
     setCurrentView('settings');
-    // 触发设置页面跳转到快捷键 tab
-    setTimeout(() => {
-      dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'shortcuts' });
-    }, 100);
+    // 立即派发一次供学习桌面桥接打开设置窗；经典壳下设置页挂载后也会消费 pendingSettingsTab
+    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'shortcuts' });
   }, [setCurrentView]);
 
   useCommandEvents(

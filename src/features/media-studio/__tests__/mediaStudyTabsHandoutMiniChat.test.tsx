@@ -27,8 +27,14 @@ vi.mock('react-i18next', async (importOriginal) => {
   return {
     ...actual,
     useTranslation: () => ({
-      t: (key: string, options?: Record<string, unknown>) =>
-        options ? `${key} ${JSON.stringify(options)}` : key,
+      t: (key: string, options?: Record<string, unknown>) => {
+        if (options && typeof options.defaultValue === 'string') {
+          return options.defaultValue.replace(/\{\{\s*(\w+)\s*\}\}/g, (_match, name: string) =>
+            options[name] !== undefined && options[name] !== null ? String(options[name]) : '',
+          );
+        }
+        return options ? `${key} ${JSON.stringify(options)}` : key;
+      },
       i18n: { resolvedLanguage: 'zh-CN', language: 'zh-CN' },
     }),
   };

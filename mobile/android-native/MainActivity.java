@@ -2,6 +2,8 @@ package com.deepstudent.app;
 
 import android.os.Bundle;
 import androidx.activity.OnBackPressedCallback;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
@@ -13,6 +15,10 @@ public class MainActivity extends BridgeActivity {
     static volatile boolean inForeground;
     private boolean launchedFromShare;
     private String launchShareId;
+    private int lastSafeTop;
+    private int lastSafeBottom;
+    private int lastSafeLeft;
+    private int lastSafeRight;
 
     String shareIdFor(android.content.Intent intent) {
         if (intent == getIntent() && launchedFromShare) return launchShareId;
@@ -35,6 +41,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(LegacyDataPlugin.class);
         super.onCreate(savedInstanceState);
         if (getPreferencesValue()) applyImmersiveMode(true);
+        installSafeAreaInsetsListener();
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
@@ -59,6 +66,31 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         inForeground = true;
+        pushSafeAreaToWebView();
+    }
+
+    private void installSafeAreaInsetsListener() {
+        if (getWindow() == null || getWindow().getDecorView() == null) return;
+        ViewCompat.setOnApplyWindowInsetsListener(getWindow().getDecorView(), (view, insets) -> {
+            Insets bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+            );
+            float density = Math.max(1f, getResources().getDisplayMetrics().density);
+            lastSafeTop = Math.round(bars.top / density);
+            lastSafeBottom = Math.round(bars.bottom / density);
+            lastSafeLeft = Math.round(bars.left / density);
+            lastSafeRight = Math.round(bars.right / density);
+            pushSafeAreaToWebView();
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(getWindow().getDecorView());
+    }
+
+    private void pushSafeAreaToWebView() {
+        if (getBridge() == null || getBridge().getWebView() == null) return;
+        final String js = "window.__DEEP_STUDENT_SET_SAFE_AREA__?.("
+            + lastSafeTop + "," + lastSafeBottom + "," + lastSafeLeft + "," + lastSafeRight + ");";
+        getBridge().getWebView().post(() -> getBridge().getWebView().evaluateJavascript(js, null));
     }
 
     @Override

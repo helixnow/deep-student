@@ -277,7 +277,7 @@
       "collapse": "收起"
     },
     "secretMask": {
-      "detected": "已隐藏 {{count}} 处疑似密钥/令牌",
+      "detected": "已遮挡 {{count}} 处疑似密钥（仅隐藏屏幕显示，如已发送请尽快重置）",
       "show": "显示原文",
       "hide": "隐藏原文"
     },
@@ -926,13 +926,13 @@
         "templateNotFound": "模板不存在。请选择其他模板或先导入模板。",
         "templateLoadFailed": "模板读取失败。请重试或重新导入模板。",
         "startFailed": "启动制卡失败。请重试或调整模板/设置。",
-        "pipelineTimeout": "生成耗时过长，已停止自动更新。可稍后用 chatanki_status 查询或重新生成。",
+        "pipelineTimeout": "生成耗时过长，已停止自动更新。可稍后在「闪卡 → 制卡任务」查看进度或重新生成。",
         "contextRefInvalid": "附件引用数据无效，请移除并重新添加附件后重试。",
         "generationFailed": "自动生成失败，且没有产出可用卡片。请检查模型配置或错误详情。",
         "partialSegmentsFailed": "部分分段失败。请在面板中重试失败分段。",
-        "waitInvalidArgs": "chatanki_wait 需要 ankiBlockId 或 documentId，请补充后重试。",
-        "waitNotFound": "尚未找到卡片块，请稍等或用 documentId 调用 chatanki_status。",
-        "waitTimeout": "等待超时。可稍后用 chatanki_status 查询，或延长超时时间重试。",
+        "waitInvalidArgs": "缺少制卡任务标识，请重新发起制卡或稍后重试。",
+        "waitNotFound": "尚未找到对应的卡片任务，请稍候或在「闪卡 → 制卡任务」中查看。",
+        "waitTimeout": "等待超时，后台可能仍在处理。可稍后在「闪卡 → 制卡任务」查看进度，或重新生成。",
         "documentIdRequired": "缺少 documentId，请补充制卡文档 ID 后重试。",
         "databaseUnavailable": "卡片数据库当前不可用，请稍后重试。",
         "updateArgsRequired": "更新卡片需要 cardId、expectedVersion 和至少一个修改字段。",
@@ -1256,6 +1256,7 @@
   },
   "page": {
     "sessions": "会话列表",
+    "archivedSessionsEntry": "已归档会话",
     "newSession": "新建会话",
     "newSessionInGroup": "在 {{groupName}} 中新建会话",
     "noSessions": "暂无会话",
@@ -1549,7 +1550,26 @@
     "showFullCommand": "展开完整命令",
     "hideFullCommand": "收起完整命令",
     "stepDetailExpand": "展开步骤详情",
-    "stepDetailCollapse": "收起步骤详情"
+    "stepDetailCollapse": "收起步骤详情",
+    "dagTopologyView": "DAG 拓扑视图",
+    "dagTaskDispatched": "已将就绪任务填入输入框",
+    "currentSessionPlan": "当前会话执行计划"
+  },
+  "turnDiff": {
+    "title": "本轮修改审阅",
+    "fileCount": "{{count}} 个文件",
+    "fileCount_one": "{{count}} 个文件",
+    "fileCount_other": "{{count}} 个文件",
+    "revertedBadge": "已回滚 (Reverted)",
+    "redoAll": "恢复本轮全部修改 (Redo)",
+    "revertAll": "一键回滚本轮修改",
+    "redoFile": "恢复 (Redo)",
+    "revertFile": "回滚此文件",
+    "kind": {
+      "modified": "已修改",
+      "created": "新建",
+      "deleted": "已删除"
+    }
   },
   "shellOutput": {
     "title": "本地命令",
@@ -1573,6 +1593,19 @@
     }
   },
   "timeline": {
+    "summary": {
+      "files": "修改 {{count}} 个文件",
+      "files_one": "修改 {{count}} 个文件",
+      "files_other": "修改 {{count}} 个文件",
+      "explored": "查阅资料",
+      "commands": "执行 {{count}} 条命令",
+      "commands_one": "执行 {{count}} 条命令",
+      "commands_other": "执行 {{count}} 条命令",
+      "researched": "调研检索",
+      "subagents": "协作 {{count}} 个子任务",
+      "subagents_one": "协作 {{count}} 个子任务",
+      "subagents_other": "协作 {{count}} 个子任务"
+    },
     "thinking": {
       "inProgress": "正在思考 {{seconds}} 秒…",
       "completed": "已思考用时 {{seconds}} 秒",
@@ -1917,7 +1950,7 @@
       },
       "shortHints": {
         "cautious": "中高风险逐项确认",
-        "relaxed": "中低风险静默执行，仅 High 审批",
+        "relaxed": "常规操作自动执行，高风险操作逐项确认",
         "full_access": "宿主机文件与网络完全访问",
         "danger_full_access": "本地 shell 无任何限制"
       },
@@ -1940,6 +1973,11 @@
       "fallbackSummary": "模型准备执行写操作",
       "tool": "工具",
       "countdown": "{{seconds}} 秒后自动拒绝",
+      "countdownPausedStatus": "已暂停（剩余 {{seconds}} 秒）",
+      "pauseCountdown": "暂停倒计时",
+      "resumeCountdown": "继续倒计时",
+      "pauseShort": "暂停",
+      "resumeShort": "继续",
       "timedOut": "已超时，计划已自动拒绝",
       "approve": "确认执行",
       "reject": "拒绝"
@@ -2000,6 +2038,10 @@
       "externalMcpUnenforced": "外部 MCP·本地沙箱不生效"
     },
     "countdownPaused": "已暂停",
+    "pauseCountdown": "暂停倒计时",
+    "resumeCountdown": "继续倒计时",
+    "pauseShort": "暂停",
+    "resumeShort": "继续",
     "aria": {
       "requested": "工具 {{tool}} 等待审批，{{seconds}} 秒后将自动拒绝",
       "countdownWarning": "还剩 {{seconds}} 秒，超时将自动拒绝",
@@ -2232,27 +2274,27 @@
     "title": "工作区",
     "toggle": "工作区面板",
     "noActive": "无活跃工作区",
-    "agents": "Agent ({{count}})",
-    "messages": "消息",
+    "agents": "并行助手 ({{count}})",
+    "messages": "任务进展",
     "addAgent": "添加",
-    "noAgents": "暂无 Agent",
-    "noWorkers": "暂无 Worker",
+    "noAgents": "暂无并行助手",
+    "noWorkers": "暂无并行助手",
     "defaultName": "协作任务",
-    "coordinator": "协调者",
-    "workers": "Worker",
-    "workersCount": "Worker（{{count}}）",
-    "messagesCount": "消息（{{count}}）",
+    "coordinator": "总控助手",
+    "workers": "并行助手",
+    "workersCount": "并行助手（{{count}}）",
+    "messagesCount": "任务进展（{{count}}）",
     "viewFull": "查看完整",
     "loadError": "加载失败",
     "refreshFailed": "刷新失败",
     "online": "网络已恢复，正在同步工作区...",
     "offline": "网络已断开，部分操作不可用",
-    "noMessages": "暂无消息",
+    "noMessages": "暂无任务进展",
     "missingSession": "缺少当前会话，无法同步工作区",
     "task": "任务",
     "response": "响应",
-    "moreMessages": "还有 {{count}} 条消息",
-    "failedHint": "该代理执行失败。展开下方会话输出或点击“查看完整会话”了解失败原因。",
+    "moreMessages": "还有 {{count}} 条进展",
+    "failedHint": "该助手未能完成任务。展开下方会话输出或点击“查看完整会话”了解原因。",
     "elapsed": {
       "runningHint": "运行耗时（实时）",
       "finalHint": "总耗时（近似）"
@@ -2264,8 +2306,8 @@
       "cancelled": "{{count}} 已取消"
     },
     "agent": {
-      "coordinator": "协调者",
-      "worker": "执行者",
+      "coordinator": "总控助手",
+      "worker": "并行助手",
       "you": "你"
     },
     "status": {
@@ -2274,8 +2316,8 @@
       "agentsCount": "参与者（{{count}}）",
       "noAgents": "暂无参与者",
       "agentsDone": "已完成",
-      "recentMessages": "最近消息",
-      "recentMessagesCount": "最近消息（{{count}}）",
+      "recentMessages": "最近进展",
+      "recentMessagesCount": "最近进展（{{count}}）",
       "createdAt": "创建于",
       "historicalWorkspace": "历史工作区",
       "workspaceSwitched": "工作区已切换",
@@ -2295,23 +2337,23 @@
       "retry": "重试"
     },
     "createAgent": {
-      "title": "创建 Agent",
-      "description": "选择一个技能并分配任务给新的 Agent",
+      "title": "添加并行助手",
+      "description": "选择一个技能并分配任务给新的并行助手",
       "skill": "选择技能",
       "selectSkill": "请选择一个技能",
       "task": "初始任务",
       "taskOptional": "可选",
-      "taskPlaceholder": "描述你希望 Agent 执行的任务...",
-      "taskHint": "如果提供任务，Agent 将自动开始执行",
+      "taskPlaceholder": "描述你希望并行助手执行的任务...",
+      "taskHint": "如果提供任务，并行助手将自动开始执行",
       "cancel": "取消",
       "create": "创建",
       "creating": "创建中...",
-      "noSession": "无法确定当前会话，无法创建 Agent",
+      "noSession": "无法确定当前会话，无法添加并行助手",
       "noSkills": "暂无可用技能",
-      "error": "创建 Agent 失败"
+      "error": "添加并行助手失败"
     },
     "subagent": {
-      "title": "子代理",
+      "title": "并行助手",
       "idle": "等待中",
       "running": "执行中",
       "completed": "已完成",
@@ -2330,28 +2372,28 @@
       "broadcast": "广播"
     },
     "log": {
-      "title": "工作区日志",
-      "copy": "复制日志",
-      "moreMessages": "还有 {{count}} 条更早的消息"
+      "title": "任务进展记录",
+      "copy": "复制记录",
+      "moreMessages": "还有 {{count}} 条更早的进展"
     },
-    "adapterSetupFailed": "代理适配器设置失败: {{agent}}",
+    "adapterSetupFailed": "助手连接初始化失败: {{agent}}",
     "unableToResolveSessionId": "无法解析工作区命令的请求者会话 ID",
-    "workerStartFailed": "Worker \"{{name}}\" 启动失败: {{error}}",
-    "coordinatorAwakened": "主代理已被子代理 {{agent}} 唤醒，继续执行中...",
-    "subagentRetry": "子代理 {{agent}} 未发送结果，正在重新触发...",
-    "subagentRetryExhausted": "子代理 {{agent}} 多次重试后仍未产出结果",
-    "subagentRetryExhaustedTitle": "子代理多次重试后仍未产出结果",
-    "subagentRetryDefault": "子代理完成任务但未发送结果消息，正在重新触发...",
-    "subagentRetryFailed": "子代理重试失败",
-    "subagentRetryResolved": "子代理已重新发送结果",
-    "subagentRetryTitle": "子代理重试",
-    "subagentWakeNotice": "后台子代理 {{agent}} 已完成，唤醒主代理处理结果",
+    "workerStartFailed": "并行助手 \"{{name}}\" 启动失败: {{error}}",
+    "coordinatorAwakened": "总控助手已收到 {{agent}} 的进展，继续处理中...",
+    "subagentRetry": "并行助手 {{agent}} 未发送结果，正在重新触发...",
+    "subagentRetryExhausted": "并行助手 {{agent}} 多次重试后仍未产出结果",
+    "subagentRetryExhaustedTitle": "并行助手多次重试后仍未产出结果",
+    "subagentRetryDefault": "并行助手完成任务但未发送结果消息，正在重新触发...",
+    "subagentRetryFailed": "并行助手重试失败",
+    "subagentRetryResolved": "并行助手已重新发送结果",
+    "subagentRetryTitle": "并行助手重试",
+    "subagentWakeNotice": "并行助手 {{agent}} 已完成，唤醒总控助手汇总结果",
     "warning": {
-      "inbox_full_rejected": "子代理 {{agent}} 收件箱已满，新消息被拒绝，请等待其完成后重试",
-      "run_agent_conflict_requeue_failed": "子代理 {{agent}} 正在运行，部分任务消息未能重新入队，请等待完成后手动重试",
-      "run_agent_requeue_failed": "子代理 {{agent}} 的部分任务消息未能重新入队，请稍后手动重试该任务",
+      "inbox_full_rejected": "并行助手 {{agent}} 收件箱已满，新消息被拒绝，请等待其完成后重试",
+      "run_agent_conflict_requeue_failed": "并行助手 {{agent}} 正在运行，部分任务消息未能重新入队，请等待完成后手动重试",
+      "run_agent_requeue_failed": "并行助手 {{agent}} 的部分任务消息未能重新入队，请稍后手动重试该任务",
       "retry_limit_exceeded": "消息重试次数已达上限（{{retry}}/{{max}}）",
-      "agent_cancelled": "子代理 {{agent}} 的执行已被取消"
+      "agent_cancelled": "并行助手 {{agent}} 的执行已被取消"
     },
     "cancelled": "已请求停止执行",
     "cancelNoop": "当前没有可取消的执行",
@@ -2365,10 +2407,10 @@
     "refresh": "刷新",
     "dispatch": {
       "title": "派发任务",
-      "desc": "将任务派发给指定 Worker 并触发执行",
+      "desc": "将任务交给指定并行助手并开始处理",
       "target": "目标",
       "task": "任务内容",
-      "placeholder": "描述需要该 Worker 执行的任务...",
+      "placeholder": "描述需要该并行助手执行的任务...",
       "empty": "请输入任务内容",
       "noSender": "无法确定派发者会话",
       "offline": "离线状态下无法派发任务",
@@ -2645,18 +2687,18 @@
     },
     "event": {
       "title": "后台事件",
-      "ariaLabel": "Super-agent 后台事件",
+      "ariaLabel": "总控助手任务进展",
       "count": "{{count}} 条",
       "count_one": "{{count}} 条",
       "generic": "收到新的后台事件",
       "untitledWorker": "未命名任务",
       "worker": {
         "completed": "Worker「{{title}}」已完成",
-        "failed": "Worker「{{title}}」执行失败",
-        "cancelled": "Worker「{{title}}」已取消",
-        "interrupted": "Worker「{{title}}」已中断",
-        "timeout": "Worker「{{title}}」已超时",
-        "message": "Worker「{{title}}」发来新消息"
+        "failed": "并行助手「{{title}}」执行失败",
+        "cancelled": "并行助手「{{title}}」已取消",
+        "interrupted": "并行助手「{{title}}」已中断",
+        "timeout": "并行助手「{{title}}」已超时",
+        "message": "并行助手「{{title}}」发来新进展"
       },
       "external": "外部事件 · {{source}}",
       "externalNoSource": "外部事件",
@@ -2709,8 +2751,10 @@
   },
   "openuiLang": {
     "lineChartAria": "折线图",
+    "barChartAria": "柱状图",
+    "chartReadoutHint": "悬停或聚焦数据点查看数值",
     "generating": "正在生成界面…",
-    "empty": "空白 OpenUI 组件块",
+    "empty": "交互卡片暂未生成内容",
     "notePlaceholder": "补充说明（可选）",
     "confirm": "确认"
   },
@@ -2769,6 +2813,47 @@
     "actions": {
       "reviewDeck": "复习本空间闪卡",
       "enterSpace": "进入空间"
+    }
+  },
+  "miniChat": {
+    "pillTitle": "伴读小窗",
+    "expandAria": "展开伴读小窗",
+    "regionAria": "伴读悬浮小窗",
+    "headerTitle": "伴读即时问答",
+    "promoteButton": "迁入主会话",
+    "minimizeAria": "最小化伴读小窗",
+    "minimizeHint": "最小化伴读小窗（Esc）",
+    "emptyHint": "已就绪，点击下方快捷指令或直接提问当前阅读内容",
+    "clearAnchorAria": "移除上下文锚点",
+    "noAnchor": "当前未绑定上下文锚点",
+    "snippetPrefix": "摘录：{{snippet}}",
+    "inputPlaceholder": "针对当前锚点提问...",
+    "inputNoAnchorPlaceholder": "输入伴读问题，按 Enter 发送...",
+    "inputAria": "伴读提问输入框",
+    "sendAria": "发送伴读提问",
+    "sendButton": "发送",
+    "sendingButton": "思考中...",
+    "anchorPrefix": "【{{label}}】",
+    "replyFailed": "伴读响应失败，请点击右上角「迁入主会话」继续提问。",
+    "anchorKinds": {
+      "pdf_page": "PDF 页码",
+      "video_timestamp": "视频时间点",
+      "question_id": "题目锚点",
+      "handout_section": "讲义章节"
+    },
+    "presets": {
+      "explain_paragraph": {
+        "label": "解释当前段落",
+        "prompt": "请结合当前上下文，用直观易懂的方式解释当前段落的核心概念与逻辑脉络。"
+      },
+      "derive_formula": {
+        "label": "推导此步公式",
+        "prompt": "请逐步推导当前位置的公式，写明每一步使用的定理或恒等变形条件。"
+      },
+      "generate_variant": {
+        "label": "出一道变式题",
+        "prompt": "请围绕当前锚点考查的知识点，命制一道难度相当的变式训练题并附简要解析。"
+      }
     }
   }
 }

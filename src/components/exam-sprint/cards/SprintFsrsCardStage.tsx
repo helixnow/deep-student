@@ -184,8 +184,9 @@ export const SprintFsrsCardStage: React.FC<SprintFsrsCardStageProps> = ({
       <div
         onClick={!revealed ? onReveal : undefined}
         className={cn(
-          'rounded-xl border border-border/35 bg-card p-5 transition-colors',
-          !revealed && 'cursor-pointer hover:bg-card/90',
+          'rounded-xl border bg-card p-5 transition-[border-color,background-color,transform] duration-150 ease-standard motion-reduce:transition-none',
+          !revealed && 'cursor-pointer border-border/35 hover:border-border/60 hover:bg-card/90 active:scale-[0.996] motion-reduce:active:scale-100',
+          revealed && 'border-primary/25',
         )}
       >
         {compound.hasBreadcrumb ? (
@@ -199,7 +200,7 @@ export const SprintFsrsCardStage: React.FC<SprintFsrsCardStageProps> = ({
           <div className="mb-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
             <span className="truncate">{item.deckName}</span>
             {item.triage.conceptTags.length > 0 ? (
-              <span className="truncate font-mono text-[11px] tabular-nums text-muted-foreground">
+              <span className="truncate font-mono text-2xs tabular-nums text-muted-foreground">
                 {item.triage.conceptTags.slice(0, 2).join(' · ')}
               </span>
             ) : null}
@@ -220,7 +221,7 @@ export const SprintFsrsCardStage: React.FC<SprintFsrsCardStageProps> = ({
               targetClozeIndex={Number(item.fields._occlusion_target) || 1}
             />
             {revealed && (compound.proseBlocks.length > 0 || hasStructuredEvidence) ? (
-              <div className="space-y-3 border-t border-border/35 pt-3 text-sm">
+              <div className="space-y-3 border-t border-border/35 pt-3 text-sm animate-chat-rise-in motion-reduce:animate-none">
                 {compound.proseBlocks.map((block, idx) => (
                   <SprintMathOrPlainText key={idx} text={block} />
                 ))}
@@ -255,7 +256,7 @@ export const SprintFsrsCardStage: React.FC<SprintFsrsCardStageProps> = ({
                   <span
                     key={idx}
                     data-testid="sprint-cloze-revealed"
-                    className="mx-0.5 inline-flex items-center rounded border border-primary/30 bg-primary/[0.12] px-1.5 py-0.5 font-medium text-primary"
+                    className="mx-0.5 inline-flex items-center rounded border border-primary/30 bg-primary/[0.12] px-1.5 py-0.5 font-medium text-primary animate-chat-fade-in motion-reduce:animate-none"
                   >
                     {token.text}
                   </span>
@@ -263,7 +264,7 @@ export const SprintFsrsCardStage: React.FC<SprintFsrsCardStageProps> = ({
               })}
             </p>
             {revealed && (hasDistinctClozeProse || hasStructuredEvidence) ? (
-              <div className="space-y-3 border-t border-border/35 pt-3 text-sm text-muted-foreground">
+              <div className="space-y-3 border-t border-border/35 pt-3 text-sm text-muted-foreground animate-chat-rise-in motion-reduce:animate-none">
                 {hasDistinctClozeProse
                   ? compound.proseBlocks.map((block, idx) => (
                       <SprintMathOrPlainText key={idx} text={block} />
@@ -287,7 +288,7 @@ export const SprintFsrsCardStage: React.FC<SprintFsrsCardStageProps> = ({
               showRenderIssues={false}
             />
             {revealed && hasStructuredEvidence ? (
-              <div className="border-t border-border/35 pt-3">
+              <div className="border-t border-border/35 pt-3 animate-chat-rise-in motion-reduce:animate-none">
                 <SprintCompoundEvidenceBlocks
                   personalNote={compound.personalNote}
                   excerpts={compound.excerpts}
@@ -301,7 +302,7 @@ export const SprintFsrsCardStage: React.FC<SprintFsrsCardStageProps> = ({
           <div className="space-y-4">
             <SprintMathOrPlainText text={compound.displayFront} className="text-base font-medium" />
             {revealed ? (
-              <div className="space-y-3.5 border-t border-border/35 pt-4">
+              <div className="space-y-3.5 border-t border-border/35 pt-4 animate-chat-rise-in motion-reduce:animate-none">
                 {compound.proseBlocks.length > 0 ? (
                   <div className="space-y-1.5">
                     <div className="text-xs font-medium text-muted-foreground">

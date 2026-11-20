@@ -320,21 +320,43 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
       {autohide && (
         <div
           data-testid="wb-dock-hotzone"
-          aria-hidden
-          // 两种状态都接管底缘 4px：隐藏时负责弹出；弹出后指针没上移到 Dock
-          // 就离开底缘时负责收起（macOS 同语义；热区与弹出的 Dock 纵向不重叠，
-          // 上移到 Dock 时由 Dock 的 pointerenter 清掉收起计时器，不会误收）
-          className="wb-dock-hotzone pointer-events-auto absolute inset-x-0 bottom-0 h-1"
+          data-collapsed={hidden ? 'true' : 'false'}
+          aria-hidden={!hidden || undefined}
+          aria-label={hidden ? t('workbench:dock.autohideHint') : undefined}
+          title={hidden ? t('workbench:dock.autohideHint') : undefined}
+          // 两种状态都接管底缘热区：收起态渲染柔和可见的轻胶囊提示条（避免纯透明盲区），
+          // 支持悬停延迟弹出或点击即刻唤出；弹出后退回 4px 透明热区，指针没上移到 Dock
+          // 就离开底缘时负责收起（macOS 同语义；热区与弹出的 Dock 纵向不重叠）
+          className={cn(
+            'wb-dock-hotzone group pointer-events-auto absolute inset-x-0 bottom-0 flex items-end justify-center',
+            hidden ? 'h-2 cursor-pointer pb-0.5' : 'h-1',
+          )}
+          onClick={
+            hidden
+              ? () => {
+                  clearAutohideTimers();
+                  revealDock();
+                }
+              : undefined
+          }
           onPointerEnter={scheduleReveal}
           onPointerLeave={() => {
-            // 未满 reveal 延迟即离开热区 → 取消弹出，防 4px 热区误触闪现
+            // 未满 reveal 延迟即离开热区 → 取消弹出，防热区误触闪现
             if (revealTimerRef.current) {
               window.clearTimeout(revealTimerRef.current);
               revealTimerRef.current = 0;
             }
             scheduleConceal();
           }}
-        />
+        >
+          {hidden && (
+            <span
+              data-testid="wb-dock-autohide-pill"
+              aria-hidden="true"
+              className="wb-dock-autohide-pill pointer-events-none h-1 w-14 rounded-full bg-foreground/30 shadow-sm ring-1 ring-background/25 backdrop-blur-sm opacity-75 transition-[opacity,transform] duration-200 group-hover:scale-x-125 group-hover:opacity-100 motion-safe:animate-pulse"
+            />
+          )}
+        </div>
       )}
       <div
         ref={dockRef}

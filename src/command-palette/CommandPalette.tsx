@@ -32,6 +32,7 @@ import {
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { DsButton } from '@/components/ui/DsButton';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useCommandPalette } from './CommandPaletteProvider';
@@ -169,6 +170,7 @@ export function CommandPalette() {
   
   // 获取最近使用的命令
   const recentCommands = useMemo(() => {
+    void isOpen;
     const recentIds = commandHistory.getRecentCommandIds(10);
     const commands: Command[] = [];
     for (const id of recentIds) {
@@ -182,6 +184,7 @@ export function CommandPalette() {
   
   // 获取收藏的命令
   const favoriteCommands = useMemo(() => {
+    void favoritesVersion;
     const favoriteIds = commandFavorites.getAll();
     const commands: Command[] = [];
     for (const id of favoriteIds) {
@@ -206,7 +209,11 @@ export function CommandPalette() {
 
   // 资源直达搜索（文件 + 会话），仅在搜索模式且输入 ≥2 字符时启用
   const resourceSearchEnabled = isOpen && viewMode === 'search' && query.trim().length >= 2;
-  const { fileResults, sessionResults } = useResourceSearch(query, resourceSearchEnabled);
+  const { fileResults, sessionResults, loading: resourceLoading } = useResourceSearch(
+    query,
+    resourceSearchEnabled,
+  );
+  const isResourceSearching = resourceSearchEnabled && Boolean(resourceLoading);
 
   // 将资源结果转为即时命令（不进入注册表，执行时直接调用 execute）
   const fileCommands = useMemo<Command[]>(() => {
@@ -265,6 +272,14 @@ export function CommandPalette() {
     });
     return result;
   }, [groupedCommands]);
+
+  // 结果列表缩短时（如取消收藏末项或异步结果收窄）钳制 selectedIndex，避免高亮落空
+  useEffect(() => {
+    setSelectedIndex((prev) => {
+      if (flatCommands.length === 0) return 0;
+      return Math.min(prev, flatCommands.length - 1);
+    });
+  }, [flatCommands.length]);
   
   // 打开时聚焦输入框并重置状态
   useEffect(() => {
@@ -353,8 +368,33 @@ export function CommandPalette() {
     e.stopPropagation();
     commandFavorites.toggle(commandId);
   }, []);
+
+  // 清空搜索词并将焦点归还搜索框（无结果恢复动作）
+  const handleClearSearch = useCallback(() => {
+    setQuery('');
+    setSelectedIndex(0);
+    inputRef.current?.focus();
+  }, []);
+
+  // 直达 AI 对话提问（无结果恢复动作）
+  const handleAskAi = useCallback(() => {
+    if (commandRegistry.getById('nav.goto.chat-v2')) {
+      commandHistory.record('nav.goto.chat-v2');
+      void executeCommand('nav.goto.chat-v2');
+      return;
+    }
+    close();
+    deps.navigate('chat-v2');
+  }, [executeCommand, close, deps]);
+
+  // 从最近/收藏空态切回全部命令视图
+  const handleBrowseAll = useCallback(() => {
+    setViewMode('search');
+    setSelectedIndex(0);
+    inputRef.current?.focus();
+  }, []);
   
-  // 选中项变化时滚动到可见（仅键盘导航时触发，避免鼠标滚动回弹）
+  // 选中项变化时即时滚动到可见（仅键盘导航时触发，不设 smooth 避免长按 ↑↓ 橡皮筋滞后）
   useEffect(() => {
     if (!listRef.current || !isKeyboardNavRef.current) return;
     
@@ -365,12 +405,18 @@ export function CommandPalette() {
     if (selectedElement) {
       selectedElement.scrollIntoView({
         block: 'nearest',
-        behavior: 'smooth',
       });
     }
     // 重置标记
     isKeyboardNavRef.current = false;
   }, [selectedIndex]);
+
+  // 搜索词或视图模式切换时复位列表滚动位置
+  useEffect(() => {
+    if (listRef.current) {
+      listRef.current.scrollTop = 0;
+    }
+  }, [query, viewMode]);
   
   /**
    * Tab：只把焦点圈在面板内，不再一刀切吞掉。
@@ -435,6 +481,7 @@ export function CommandPalette() {
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
+        if (flatCommands.length === 0) break;
         isKeyboardNavRef.current = true;
         setSelectedIndex((prev) => 
           prev < flatCommands.length - 1 ? prev + 1 : 0
@@ -443,6 +490,7 @@ export function CommandPalette() {
         
       case 'ArrowUp':
         e.preventDefault();
+        if (flatCommands.length === 0) break;
         isKeyboardNavRef.current = true;
         setSelectedIndex((prev) => 
           prev > 0 ? prev - 1 : flatCommands.length - 1
@@ -516,7 +564,10 @@ export function CommandPalette() {
     >
       <div 
         ref={containerRef}
-        className={cn('command-palette-container', isSmallScreen && 'command-palette-container-mobile')}
+        className={cn(
+          'command-palette-container motion-reduce:animate-none',
+          isSmallScreen && 'command-palette-container-mobile',
+        )}
         data-state={presence.exiting ? 'closed' : 'open'}
         onKeyDown={handleKeyDown}
       >
@@ -537,7 +588,10 @@ export function CommandPalette() {
             <input
               ref={inputRef}
               type="search"
-              className="command-palette-input"
+              className={cn(
+                'command-palette-input motion-reduce:transition-none [&::-webkit-search-cancel-button]:hidden',
+                query.length > 0 && 'pr-8',
+              )}
               placeholder={sessionSearchOnly
                 ? t('command_palette:session_search_placeholder', 'Search sessions...')
                 : t('command_palette:search_placeholder')}
@@ -553,6 +607,20 @@ export function CommandPalette() {
               aria-expanded={hasResults}
               aria-activedescendant={activeOptionId}
             />
+            {query.length > 0 && (
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="icon"
+                data-testid="command-palette-input-clear"
+                aria-label={t('command_palette:clear_search')}
+                title={t('command_palette:clear_search')}
+                onClick={handleClearSearch}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 lg:h-6 lg:w-6 rounded-md border-transparent bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors motion-reduce:transition-none"
+              >
+                <X size={14} />
+              </DsButton>
+            )}
           </div>
           {/* 模式切换按钮 */}
           {!sessionSearchOnly ? <div className="command-palette-mode-buttons">
@@ -618,119 +686,213 @@ export function CommandPalette() {
           fullHeight={false}
         >
           {flatCommands.length === 0 ? (
-            <div className="command-palette-empty">
-              {viewMode === 'recent'
-                ? t('command_palette:no_recent')
-                : viewMode === 'favorites'
-                ? t('command_palette:no_favorites')
-                : t('command_palette:no_results')}
-            </div>
-          ) : (
-            Array.from(groupedCommands.entries()).map(([category, commands]) => {
-              // 处理特殊分组标签
-              let categoryLabel: string;
-              if (category === 'recent') {
-                categoryLabel = t('command_palette:mode_recent');
-              } else if (category === 'favorites') {
-                categoryLabel = t('command_palette:mode_favorites');
-              } else if (category === 'files') {
-                categoryLabel = t('command_palette:resource_files');
-              } else if (category === 'sessions') {
-                categoryLabel = t('command_palette:resource_sessions');
-              } else {
-                categoryLabel = t(
-                  `command_palette:categories.${category}`,
-                  { defaultValue: CATEGORY_LABELS[category as CommandCategory] || category }
-                );
-              }
-
-              return (
-                <div
-                  key={category}
-                  className="command-palette-group"
-                  role="group"
-                  aria-labelledby={groupLabelId(category)}
-                >
-                  <div className="command-palette-group-label" id={groupLabelId(category)}>
-                    {categoryLabel}
-                  </div>
-                  {commands.map((command) => {
-                    const flatIndex = currentFlatIndex++;
-                    const isSelected = flatIndex === selectedIndex;
-                    const isEnabled = !command.isEnabled || command.isEnabled(deps);
-                    const Icon = command.icon;
-                    const isResource = command.id.startsWith(RESOURCE_COMMAND_PREFIX);
-
-                    return (
-                      <div
-                        key={command.id}
-                        id={optionId(flatIndex)}
-                        data-index={flatIndex}
-                        className={cn(
-                          'command-palette-item',
-                          isSelected && 'command-palette-item-selected',
-                          !isEnabled && 'command-palette-item-disabled'
-                        )}
-                        onClick={() => isEnabled && handleCommandClick(command)}
-                        onMouseEnter={() => setSelectedIndex(flatIndex)}
-                        role="option"
-                        aria-selected={isSelected}
-                        aria-disabled={!isEnabled}
-                      >
-                        <div className="command-palette-item-left">
-                          {Icon && <Icon className="command-palette-item-icon" size={16} />}
-                          <span className="command-palette-item-name">
-                            {isResource ? command.name : t(`command_palette:commands.${command.id}`, command.name)}
-                          </span>
-                          {command.description && (
-                            <span className="command-palette-item-description">
-                              {isResource ? command.description : t(`command_palette:descriptions.${command.id}`, command.description)}
-                            </span>
-                          )}
-                        </div>
-                        {/* 收藏按钮（资源直达项为动态结果，不支持收藏） */}
-                        {!isResource && (
-                          <button
-                            type="button"
-                            className={cn(
-                              'command-palette-item-favorite',
-                              commandFavorites.isFavorite(command.id) && 'command-palette-item-favorite-active'
-                            )}
-                            onClick={(e) => handleToggleFavorite(command.id, e)}
-                            title={commandFavorites.isFavorite(command.id)
-                              ? t('command_palette:unfavorite')
-                              : t('command_palette:favorite')
-                            }
-                            // 图标按钮：读屏可访问名 = 收藏/取消收藏 + 命令名
-                            aria-label={`${commandFavorites.isFavorite(command.id)
-                              ? t('command_palette:unfavorite')
-                              : t('command_palette:favorite')} — ${command.name}`}
-                            aria-pressed={commandFavorites.isFavorite(command.id)}
-                          >
-                            {commandFavorites.isFavorite(command.id) ? (
-                              <Star size={14} className="fill-current" />
-                            ) : (
-                              <StarHalf size={14} />
-                            )}
-                          </button>
-                        )}
-                        {/* 显示有效快捷键（优先使用自定义快捷键） */}
-                        {!isResource && !isSmallScreen && (() => {
-                          const effectiveShortcut = shortcutManager.getShortcut(command.id);
-                          return effectiveShortcut ? (
-                            <div className="command-palette-item-shortcut">
-                              {formatShortcut(effectiveShortcut)}
-                            </div>
-                          ) : null;
-                        })()}
-                      </div>
-                    );
-                  })}
+            isResourceSearching ? (
+              <div
+                className="command-palette-empty"
+                role="status"
+                data-testid="command-palette-searching"
+              >
+                {t('command_palette:resource_searching')}
+              </div>
+            ) : sessionSearchOnly && query.trim().length < 2 ? (
+              <div
+                className="command-palette-empty"
+                role="status"
+                data-testid="command-palette-session-min-chars"
+              >
+                {t('command_palette:session_search_min_chars')}
+              </div>
+            ) : (
+              <div
+                className="command-palette-empty flex flex-col items-center justify-center gap-1.5"
+                role="status"
+                data-testid="command-palette-empty"
+              >
+                <div className="font-medium text-foreground/85">
+                  {viewMode === 'recent'
+                    ? t('command_palette:no_recent')
+                    : viewMode === 'favorites'
+                      ? t('command_palette:no_favorites')
+                      : t('command_palette:no_results')}
                 </div>
-              );
-            })
+                {viewMode === 'search' && query.trim().length > 0 ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      {t('command_palette:no_results_hint')}
+                    </p>
+                    <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2">
+                      <DsButton
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        data-testid="command-palette-clear-search"
+                        onClick={handleClearSearch}
+                        className="h-auto lg:h-7 px-3 py-1.5 text-xs rounded-lg border-border/60 bg-background/80 text-foreground hover:bg-muted active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 motion-reduce:transition-none motion-reduce:active:scale-100"
+                      >
+                        {t('command_palette:clear_search')}
+                      </DsButton>
+                      {!sessionSearchOnly && (
+                        <DsButton
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          data-testid="command-palette-ask-ai"
+                          onClick={handleAskAi}
+                          className="h-auto lg:h-7 gap-1.5 px-3 py-1.5 text-xs rounded-lg border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 motion-reduce:transition-none motion-reduce:active:scale-100"
+                        >
+                          <ChatCenteredText size={14} />
+                          <span>{t('command_palette:ask_ai')}</span>
+                        </DsButton>
+                      )}
+                    </div>
+                  </>
+                ) : viewMode === 'recent' || viewMode === 'favorites' ? (
+                  <div className="mt-2">
+                    <DsButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-testid="command-palette-browse-all"
+                      onClick={handleBrowseAll}
+                      className="h-auto lg:h-7 px-3 py-1.5 text-xs rounded-lg border-border/60 bg-background/80 text-foreground hover:bg-muted active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 motion-reduce:transition-none motion-reduce:active:scale-100"
+                    >
+                      {t('command_palette:browse_all_commands')}
+                    </DsButton>
+                  </div>
+                ) : null}
+              </div>
+            )
+          ) : (
+            <>
+              {Array.from(groupedCommands.entries()).map(([category, commands]) => {
+                // 处理特殊分组标签
+                let categoryLabel: string;
+                if (category === 'recent') {
+                  categoryLabel = t('command_palette:mode_recent');
+                } else if (category === 'favorites') {
+                  categoryLabel = t('command_palette:mode_favorites');
+                } else if (category === 'files') {
+                  categoryLabel = t('command_palette:resource_files');
+                } else if (category === 'sessions') {
+                  categoryLabel = t('command_palette:resource_sessions');
+                } else {
+                  categoryLabel = t(
+                    `command_palette:categories.${category}`,
+                    { defaultValue: CATEGORY_LABELS[category as CommandCategory] || category }
+                  );
+                }
+
+                return (
+                  <div
+                    key={category}
+                    className="command-palette-group"
+                    role="group"
+                    aria-labelledby={groupLabelId(category)}
+                  >
+                    <div className="command-palette-group-label" id={groupLabelId(category)}>
+                      {categoryLabel}
+                    </div>
+                    {commands.map((command) => {
+                      const flatIndex = currentFlatIndex++;
+                      const isSelected = flatIndex === selectedIndex;
+                      const isEnabled = !command.isEnabled || command.isEnabled(deps);
+                      const Icon = command.icon;
+                      const isResource = command.id.startsWith(RESOURCE_COMMAND_PREFIX);
+
+                      return (
+                        <div
+                          key={command.id}
+                          id={optionId(flatIndex)}
+                          data-index={flatIndex}
+                          className={cn(
+                            'command-palette-item motion-reduce:transition-none',
+                            isSelected && 'command-palette-item-selected',
+                            !isEnabled && 'command-palette-item-disabled'
+                          )}
+                          onClick={() => isEnabled && handleCommandClick(command)}
+                          onMouseEnter={() => setSelectedIndex(flatIndex)}
+                          role="option"
+                          aria-selected={isSelected}
+                          aria-disabled={!isEnabled}
+                        >
+                          <div className="command-palette-item-left">
+                            {Icon && <Icon className="command-palette-item-icon" size={16} />}
+                            <span className="command-palette-item-name">
+                              {isResource ? command.name : t(`command_palette:commands.${command.id}`, command.name)}
+                            </span>
+                            {command.description && (
+                              <span className="command-palette-item-description">
+                                {isResource ? command.description : t(`command_palette:descriptions.${command.id}`, command.description)}
+                              </span>
+                            )}
+                          </div>
+                          {/* 收藏按钮（资源直达项为动态结果，不支持收藏） */}
+                          {!isResource && (
+                            <button
+                              type="button"
+                              className={cn(
+                                'command-palette-item-favorite motion-reduce:transition-none',
+                                commandFavorites.isFavorite(command.id) && 'command-palette-item-favorite-active'
+                              )}
+                              onClick={(e) => handleToggleFavorite(command.id, e)}
+                              title={commandFavorites.isFavorite(command.id)
+                                ? t('command_palette:unfavorite')
+                                : t('command_palette:favorite')
+                              }
+                              // 图标按钮：读屏可访问名 = 收藏/取消收藏 + 命令名
+                              aria-label={`${commandFavorites.isFavorite(command.id)
+                                ? t('command_palette:unfavorite')
+                                : t('command_palette:favorite')} — ${command.name}`}
+                              aria-pressed={commandFavorites.isFavorite(command.id)}
+                            >
+                              {commandFavorites.isFavorite(command.id) ? (
+                                <Star size={14} className="fill-current" />
+                              ) : (
+                                <StarHalf size={14} />
+                              )}
+                            </button>
+                          )}
+                          {/* 显示有效快捷键（优先使用自定义快捷键） */}
+                          {!isResource && !isSmallScreen && (() => {
+                            const effectiveShortcut = shortcutManager.getShortcut(command.id);
+                            return effectiveShortcut ? (
+                              <div className="command-palette-item-shortcut">
+                                {formatShortcut(effectiveShortcut)}
+                              </div>
+                            ) : null;
+                          })()}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              {isResourceSearching && (
+                <div
+                  className="px-3 py-2 text-xs text-muted-foreground"
+                  role="status"
+                  data-testid="command-palette-searching-more"
+                >
+                  {t('command_palette:resource_searching')}
+                </div>
+              )}
+            </>
           )}
         </CustomScrollArea>
+
+        {query.trim().length > 0 && (
+          <div
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            data-testid="command-palette-result-status"
+          >
+            {isResourceSearching
+              ? t('command_palette:resource_searching')
+              : t('command_palette:result_count', { count: flatCommands.length })}
+          </div>
+        )}
         
         {/* 底部提示（键盘操作提示，仅桌面显示） */}
         {!isSmallScreen && (
@@ -740,15 +902,27 @@ export function CommandPalette() {
             <span>{t('command_palette:hint_navigate')}</span>
           </div>
           <div className="command-palette-hint">
-            <span className="command-palette-hint-key">
+            <span className="command-palette-hint-key" aria-hidden="true">
               <ArrowElbowDownLeft size={12} />
             </span>
             <span>{t('command_palette:hint_execute')}</span>
           </div>
           <div className="command-palette-hint">
+            <span className="command-palette-hint-key">Tab</span>
+            <span>{t('command_palette:hint_switch')}</span>
+          </div>
+          <div className="command-palette-hint">
             <span className="command-palette-hint-key">Esc</span>
             <span>{t('command_palette:hint_close')}</span>
           </div>
+          {query.trim().length > 0 && !isResourceSearching && (
+            <span
+              data-testid="command-palette-footer-count"
+              className="ml-auto font-mono tabular-nums text-xs text-muted-foreground"
+            >
+              {t('command_palette:result_count', { count: flatCommands.length })}
+            </span>
+          )}
         </div>
         )}
       </div>

@@ -2,7 +2,7 @@ import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Key, Package, ArrowSquareOut, Check, Shield } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { isAndroid } from '@/utils/platform';
+import { isMobilePlatform } from '@/utils/platform';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { DsButton } from '@/components/ui/DsButton';
@@ -45,7 +45,7 @@ export function PresetServerSelector({
   const [pendingPreset, setPendingPreset] = useState<PresetMcpServer | null>(null);
   const [pendingApiKey, setPendingApiKey] = useState('');
   const [enableOauth, setEnableOauth] = useState(false);
-  const oauthSupported = !isAndroid();
+  const oauthSupported = !isMobilePlatform();
   const addPresetBtnRef = useRef<HTMLButtonElement | null>(null);
   const selectorPanelRef = useRef<HTMLDivElement | null>(null);
 

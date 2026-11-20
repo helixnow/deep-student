@@ -5,7 +5,9 @@
  * 每条冲突用 side-by-side 展示 local / cloud 两份数据，让用户选择：
  * - 保留本地：云端值被丢弃（落败方保留在冲突表做留痕）
  * - 采用云端：本地值被覆盖
- * - 手动合并：编辑 JSON，写回作为最终值
+ * - 手动合并：默认展示人类可读的字段级差异对比表（支持逐字段点选采用本机/云端值，
+ *   以及一键全部保留本机/全部采用云端），原始 JSON 编辑器折叠进 `<details>` 高级区，
+ *   非对象或非法 JSON 时自动展开回退。
  *
  * 这是 简洁风格"冲突副本"的替代方案——在行级 LWW 架构下
  * 让用户能看到并手动决策原本会被 LWW 丢弃的数据。
@@ -14,7 +16,7 @@
 import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle, PencilSimple, CircleNotch, Trash } from '@phosphor-icons/react';
+import { CheckCircle, PencilSimple, CircleNotch, Trash, CaretRight } from '@phosphor-icons/react';
 import * as DataGovernanceApi from '@/api/dataGovernance';
 import type { RecordConflictRow, SyncSnapshotBatchRow } from '@/api/dataGovernance';
 import { getDatabaseDisplayName } from '@/types/dataGovernance';
@@ -25,6 +27,7 @@ import { GroupTitle } from '../settingsTabPrimitives';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { cn } from '@/lib/utils';
 
 interface ConflictPair {
   databaseName: string;
@@ -32,6 +35,20 @@ interface ConflictPair {
   recordId: string;
   locals: RecordConflictRow[];
   clouds: RecordConflictRow[];
+}
+
+export interface ConflictFieldDiffRow {
+  key: string;
+  localPresent: boolean;
+  localValue: unknown;
+  cloudPresent: boolean;
+  cloudValue: unknown;
+  mergedPresent: boolean;
+  mergedValue: unknown;
+  hasDiff: boolean;
+  matchesLocal: boolean;
+  matchesCloud: boolean;
+  selectedSource: 'local' | 'cloud' | 'both' | 'custom';
 }
 
 function groupConflicts(rows: RecordConflictRow[]): ConflictPair[] {
@@ -65,6 +82,143 @@ function tryFormatJson(s: string): string {
 }
 
 /**
+ * 尝试将 JSON 文本解析为普通键值对对象（排除 null、数组与原始类型）。
+ */
+export function parseConflictPlainObject(raw?: string | null): Record<string, unknown> | null {
+  if (typeof raw !== 'string') return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function canonicalizeValue(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalizeValue(item)).join(',')}]`;
+  }
+  const entries = Object.keys(value as Record<string, unknown>)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalizeValue((value as Record<string, unknown>)[key])}`);
+  return `{${entries.join(',')}}`;
+}
+
+export function areConflictFieldValuesEqual(
+  aPresent: boolean,
+  aValue: unknown,
+  bPresent: boolean,
+  bValue: unknown,
+): boolean {
+  if (aPresent !== bPresent) return false;
+  if (!aPresent) return true;
+  return canonicalizeValue(aValue) === canonicalizeValue(bValue);
+}
+
+export function formatConflictFieldValue(
+  present: boolean,
+  value: unknown,
+  absentLabel: string,
+  emptyLabel: string,
+): string {
+  if (!present) return absentLabel;
+  if (value === null) return 'null';
+  if (value === '') return emptyLabel;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+/**
+ * 构建本机版本、云端版本与当前合并对象之间的字段级差异行（差异字段置顶）。
+ */
+export function buildConflictFieldDiffs(
+  localObj: Record<string, unknown> | undefined,
+  cloudObj: Record<string, unknown> | undefined,
+  mergedObj: Record<string, unknown>,
+): ConflictFieldDiffRow[] {
+  const keySet = new Set<string>();
+  if (localObj) {
+    for (const k of Object.keys(localObj)) keySet.add(k);
+  }
+  if (cloudObj) {
+    for (const k of Object.keys(cloudObj)) keySet.add(k);
+  }
+  for (const k of Object.keys(mergedObj)) keySet.add(k);
+
+  const rows: ConflictFieldDiffRow[] = Array.from(keySet).map((key) => {
+    const localPresent = localObj ? Object.prototype.hasOwnProperty.call(localObj, key) : false;
+    const localValue = localPresent && localObj ? localObj[key] : undefined;
+    const cloudPresent = cloudObj ? Object.prototype.hasOwnProperty.call(cloudObj, key) : false;
+    const cloudValue = cloudPresent && cloudObj ? cloudObj[key] : undefined;
+    const mergedPresent = Object.prototype.hasOwnProperty.call(mergedObj, key);
+    const mergedValue = mergedPresent ? mergedObj[key] : undefined;
+
+    const hasDiff =
+      localObj !== undefined && cloudObj !== undefined
+        ? !areConflictFieldValuesEqual(localPresent, localValue, cloudPresent, cloudValue)
+        : true;
+
+    const matchesLocal =
+      localObj !== undefined &&
+      areConflictFieldValuesEqual(mergedPresent, mergedValue, localPresent, localValue);
+    const matchesCloud =
+      cloudObj !== undefined &&
+      areConflictFieldValuesEqual(mergedPresent, mergedValue, cloudPresent, cloudValue);
+
+    let selectedSource: ConflictFieldDiffRow['selectedSource'] = 'custom';
+    if (matchesLocal && matchesCloud) {
+      selectedSource = 'both';
+    } else if (matchesLocal) {
+      selectedSource = 'local';
+    } else if (matchesCloud) {
+      selectedSource = 'cloud';
+    }
+
+    return {
+      key,
+      localPresent,
+      localValue,
+      cloudPresent,
+      cloudValue,
+      mergedPresent,
+      mergedValue,
+      hasDiff,
+      matchesLocal,
+      matchesCloud,
+      selectedSource,
+    };
+  });
+
+  // 存在差异的字段优先排在顶部，方便学习者一眼定位冲突内容
+  return rows.sort((a, b) => Number(b.hasDiff) - Number(a.hasDiff));
+}
+
+export function applyFieldChoiceToMergedObject(
+  mergedObj: Record<string, unknown>,
+  sourceObj: Record<string, unknown>,
+  fieldKey: string,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...mergedObj };
+  if (Object.prototype.hasOwnProperty.call(sourceObj, fieldKey)) {
+    next[fieldKey] = sourceObj[fieldKey];
+  } else {
+    delete next[fieldKey];
+  }
+  return next;
+}
+
+/**
  * 本地化展示冲突检出时间。
  *
  * `detected_at` 来自 SQLite `datetime('now')`，格式为不带时区标记的 UTC
@@ -95,6 +249,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
   const [resolvingKey, setResolvingKey] = useState<string | null>(null);
   const [mergeEditing, setMergeEditing] = useState<string | null>(null);
   const [mergeText, setMergeText] = useState('');
+  const [rawJsonOpen, setRawJsonOpen] = useState(false);
   const [purging, setPurging] = useState(false);
   // [R11-history] 自动快照批次（批量解决/库级策略覆盖前系统自动创建，可单批回退）
   const [snapshotBatches, setSnapshotBatches] = useState<SyncSnapshotBatchRow[]>([]);
@@ -189,6 +344,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
         showGlobalNotification('success', t('data:governance.conflict_resolved', { table: p.tableName, record: p.recordId }));
         setMergeEditing(null);
         setMergeText('');
+        setRawJsonOpen(false);
         await refresh();
       } catch (e: unknown) {
         showGlobalNotification('error', t('data:governance.conflict_resolve_failed', { error: getErrorMessage(e) }));
@@ -207,6 +363,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
     const base = latestCloud?.data_json ?? latestLocal?.data_json ?? '{}';
     setMergeEditing(key);
     setMergeText(tryFormatJson(base));
+    setRawJsonOpen(false);
   }, []);
 
   const handleBulkResolve = useCallback(async (
@@ -340,7 +497,55 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
     } finally {
       setPurging(false);
     }
-  }, [refresh]);
+  }, [refresh, t]);
+
+  const absentFieldLabel = t('data:governance.merge_field_absent');
+  const emptyFieldLabel = t('data:governance.merge_field_empty');
+
+  const renderSideSnapshotContent = (
+    dataJson: string,
+    counterpartJson?: string,
+  ) => {
+    const parsedObj = parseConflictPlainObject(dataJson);
+    const counterpartObj = counterpartJson ? parseConflictPlainObject(counterpartJson) : null;
+    const keys = parsedObj ? Object.keys(parsedObj) : [];
+
+    if (!parsedObj || keys.length === 0) {
+      return (
+        <pre className="whitespace-pre-wrap break-words">
+          {tryFormatJson(dataJson)}
+        </pre>
+      );
+    }
+
+    return (
+      <dl className="space-y-1">
+        {keys.map((fieldKey) => {
+          const val = parsedObj[fieldKey];
+          const counterpartPresent = counterpartObj
+            ? Object.prototype.hasOwnProperty.call(counterpartObj, fieldKey)
+            : false;
+          const isDiff = counterpartObj
+            ? !areConflictFieldValuesEqual(true, val, counterpartPresent, counterpartObj[fieldKey])
+            : false;
+          return (
+            <div
+              key={fieldKey}
+              className={cn(
+                'rounded px-1.5 py-1 text-xs leading-relaxed',
+                isDiff ? 'bg-amber-500/10 text-foreground' : 'text-foreground/85',
+              )}
+            >
+              <dt className="font-mono text-2xs text-muted-foreground">{fieldKey}</dt>
+              <dd className="whitespace-pre-wrap break-words">
+                {formatConflictFieldValue(true, val, absentFieldLabel, emptyFieldLabel)}
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+    );
+  };
 
   return (
     <section className="min-w-0">
@@ -422,6 +627,27 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
           const isEditing = mergeEditing === key;
           const latestLocal = p.locals[p.locals.length - 1];
           const latestCloud = p.clouds[p.clouds.length - 1];
+
+          const localParsed = latestLocal ? parseConflictPlainObject(latestLocal.data_json) : undefined;
+          const cloudParsed = latestCloud ? parseConflictPlainObject(latestCloud.data_json) : undefined;
+          const mergedParsed = isEditing ? parseConflictPlainObject(mergeText) : null;
+          const canUseStructuredDiff =
+            isEditing &&
+            localParsed !== null &&
+            cloudParsed !== null &&
+            Boolean(localParsed || cloudParsed) &&
+            mergedParsed !== null;
+          const fieldDiffRows =
+            canUseStructuredDiff && mergedParsed
+              ? buildConflictFieldDiffs(
+                  localParsed ?? undefined,
+                  cloudParsed ?? undefined,
+                  mergedParsed,
+                )
+              : [];
+          const diffCount = fieldDiffRows.filter((row) => row.hasDiff).length;
+          const effectiveRawOpen = !canUseStructuredDiff || rawJsonOpen;
+
           return (
             <div
               key={key}
@@ -466,7 +692,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     disabled={isResolving || isEditing}
                     className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                   >
-                     <PencilSimple size={12} className="mr-1" />
+                    <PencilSimple size={12} className="mr-1" />
                     {t('data:governance.manual_merge')}
                   </DsButton>
                 </div>
@@ -479,9 +705,13 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     {latestLocal?.detected_at && <span className="ml-1">{formatDetectedAt(latestLocal.detected_at)}</span>}
                   </div>
                   <CustomScrollArea className="h-40">
-                    <pre className="whitespace-pre-wrap break-words">
-                      {latestLocal ? tryFormatJson(latestLocal.data_json) : t('data:governance.none')}
-                    </pre>
+                    {latestLocal ? (
+                      renderSideSnapshotContent(latestLocal.data_json, latestCloud?.data_json)
+                    ) : (
+                      <pre className="whitespace-pre-wrap break-words">
+                        {t('data:governance.none')}
+                      </pre>
+                    )}
                   </CustomScrollArea>
                   {!latestLocal && (
                     <div className="mt-1 text-muted-foreground">
@@ -507,25 +737,238 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                         )}
                       </div>
                       <CustomScrollArea className="h-40">
-                        <pre className="whitespace-pre-wrap break-words">
-                          {tryFormatJson(cloud.data_json)}
-                        </pre>
+                        {renderSideSnapshotContent(cloud.data_json, latestLocal?.data_json)}
                       </CustomScrollArea>
                     </div>
                   ))}
                 </div>
               </div>
               {isEditing && (
-                <div className="space-y-2 pt-2 border-t border-border/30">
+                <div className="space-y-3 pt-2 border-t border-border/30">
                   <div className="text-xs text-muted-foreground">
                     {t('data:governance.merge_hint')}
                   </div>
-                  <Textarea
-                    className="scroll-area--native h-32 w-full text-xs font-mono"
-                    value={mergeText}
-                    onChange={(e) => setMergeText(e.target.value)}
-                    spellCheck={false}
-                  />
+
+                  {canUseStructuredDiff && mergedParsed ? (
+                    <div
+                      className="rounded-lg border border-border/40 bg-background/60 p-3 space-y-2.5"
+                      data-testid="conflict-field-diff-table"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="space-y-0.5">
+                          <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                            <span>{t('data:governance.merge_diff_title')}</span>
+                            <span
+                              className={cn(
+                                'rounded-full px-2 py-0.5 text-2xs font-medium',
+                                diffCount > 0
+                                  ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                  : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+                              )}
+                            >
+                              {diffCount > 0
+                                ? t('data:governance.merge_diff_count', { count: diffCount })
+                                : t('data:governance.merge_all_same')}
+                            </span>
+                          </div>
+                          <p className="text-2xs text-muted-foreground">
+                            {t('data:governance.merge_diff_desc')}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          <DsButton
+                            variant="outline"
+                            size="sm"
+                            disabled={!localParsed}
+                            onClick={() => {
+                              if (localParsed) {
+                                setMergeText(JSON.stringify(localParsed, null, 2));
+                              }
+                            }}
+                            className="h-7 text-xs max-md:min-h-11"
+                          >
+                            {t('data:governance.merge_select_all_local')}
+                          </DsButton>
+                          <DsButton
+                            variant="outline"
+                            size="sm"
+                            disabled={!cloudParsed}
+                            onClick={() => {
+                              if (cloudParsed) {
+                                setMergeText(JSON.stringify(cloudParsed, null, 2));
+                              }
+                            }}
+                            className="h-7 text-xs max-md:min-h-11"
+                          >
+                            {t('data:governance.merge_select_all_cloud')}
+                          </DsButton>
+                        </div>
+                      </div>
+
+                      <div className="overflow-x-auto rounded-md border border-border/30">
+                        <table className="w-full border-collapse text-xs">
+                          <thead>
+                            <tr className="border-b border-border/30 bg-muted/40 text-left text-2xs text-muted-foreground">
+                              <th className="py-1.5 px-2.5 font-medium w-1/4">
+                                {t('data:governance.merge_field_col')}
+                              </th>
+                              <th className="py-1.5 px-2.5 font-medium w-[37.5%]">
+                                {t('data:governance.merge_local_col')}
+                              </th>
+                              <th className="py-1.5 px-2.5 font-medium w-[37.5%]">
+                                {t('data:governance.merge_cloud_col')}
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/20">
+                            {fieldDiffRows.map((fieldRow) => (
+                              <tr
+                                key={fieldRow.key}
+                                data-testid={`conflict-diff-row-${fieldRow.key}`}
+                                data-has-diff={fieldRow.hasDiff ? 'true' : 'false'}
+                                className={cn(
+                                  fieldRow.hasDiff
+                                    ? 'bg-amber-500/[0.06]'
+                                    : 'bg-transparent opacity-80',
+                                )}
+                              >
+                                <td className="py-2 px-2.5 align-top">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="font-mono font-medium text-foreground break-all">
+                                      {fieldRow.key}
+                                    </span>
+                                    <span
+                                      className={cn(
+                                        'rounded px-1.5 py-0.5 text-2xs font-medium',
+                                        fieldRow.selectedSource === 'custom'
+                                          ? 'bg-primary/15 text-primary'
+                                          : fieldRow.hasDiff
+                                            ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                            : 'bg-muted text-muted-foreground',
+                                      )}
+                                    >
+                                      {fieldRow.selectedSource === 'custom'
+                                        ? t('data:governance.merge_custom_badge')
+                                        : fieldRow.hasDiff
+                                          ? t('data:governance.merge_diff_badge')
+                                          : t('data:governance.merge_same_badge')}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-1.5 px-2 align-top">
+                                  <DsButton
+                                    type="button"
+                                    variant="ghost"
+                                    disabled={!localParsed}
+                                    aria-label={t('data:governance.merge_use_local_field', { field: fieldRow.key })}
+                                    aria-pressed={fieldRow.matchesLocal}
+                                    onClick={() => {
+                                      if (!localParsed) return;
+                                      const next = applyFieldChoiceToMergedObject(
+                                        mergedParsed,
+                                        localParsed,
+                                        fieldRow.key,
+                                      );
+                                      setMergeText(JSON.stringify(next, null, 2));
+                                    }}
+                                    className={cn(
+                                      '!h-auto w-full justify-start whitespace-normal rounded-md border px-2.5 py-1.5 text-left font-normal transition-colors',
+                                      !localParsed && 'cursor-not-allowed opacity-50',
+                                      fieldRow.matchesLocal
+                                        ? 'border-primary/60 bg-primary/10 text-foreground'
+                                        : 'border-border/30 bg-background/40 text-muted-foreground hover:border-border/60 hover:text-foreground',
+                                    )}
+                                  >
+                                    <div className="whitespace-pre-wrap break-words">
+                                      {formatConflictFieldValue(
+                                        fieldRow.localPresent,
+                                        fieldRow.localValue,
+                                        absentFieldLabel,
+                                        emptyFieldLabel,
+                                      )}
+                                    </div>
+                                  </DsButton>
+                                </td>
+                                <td className="py-1.5 px-2 align-top">
+                                  <DsButton
+                                    type="button"
+                                    variant="ghost"
+                                    disabled={!cloudParsed}
+                                    aria-label={t('data:governance.merge_use_cloud_field', { field: fieldRow.key })}
+                                    aria-pressed={fieldRow.matchesCloud}
+                                    onClick={() => {
+                                      if (!cloudParsed) return;
+                                      const next = applyFieldChoiceToMergedObject(
+                                        mergedParsed,
+                                        cloudParsed,
+                                        fieldRow.key,
+                                      );
+                                      setMergeText(JSON.stringify(next, null, 2));
+                                    }}
+                                    className={cn(
+                                      '!h-auto w-full justify-start whitespace-normal rounded-md border px-2.5 py-1.5 text-left font-normal transition-colors',
+                                      !cloudParsed && 'cursor-not-allowed opacity-50',
+                                      fieldRow.matchesCloud
+                                        ? 'border-primary/60 bg-primary/10 text-foreground'
+                                        : 'border-border/30 bg-background/40 text-muted-foreground hover:border-border/60 hover:text-foreground',
+                                    )}
+                                  >
+                                    <div className="whitespace-pre-wrap break-words">
+                                      {formatConflictFieldValue(
+                                        fieldRow.cloudPresent,
+                                        fieldRow.cloudValue,
+                                        absentFieldLabel,
+                                        emptyFieldLabel,
+                                      )}
+                                    </div>
+                                  </DsButton>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-800 dark:text-amber-200"
+                      data-testid="conflict-raw-json-fallback-hint"
+                    >
+                      {t('data:governance.merge_raw_json_fallback_hint')}
+                    </div>
+                  )}
+
+                  <details
+                    open={effectiveRawOpen}
+                    data-testid="conflict-raw-json-details"
+                    className="rounded-md border border-border/30 bg-muted/20 px-2.5 py-1.5"
+                  >
+                    <summary
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (canUseStructuredDiff) {
+                          setRawJsonOpen((prev) => !prev);
+                        }
+                      }}
+                      className="flex cursor-pointer list-none items-center gap-1.5 py-1 text-xs font-medium text-muted-foreground select-none hover:text-foreground"
+                    >
+                      <CaretRight
+                        size={12}
+                        className={cn('transition-transform', effectiveRawOpen && 'rotate-90')}
+                      />
+                      <span>{t('data:governance.merge_raw_json_summary')}</span>
+                    </summary>
+                    <div className="pt-2 pb-1">
+                      <Textarea
+                        data-testid="conflict-raw-json-textarea"
+                        className="scroll-area--native h-32 w-full text-xs font-mono"
+                        value={mergeText}
+                        onChange={(e) => setMergeText(e.target.value)}
+                        spellCheck={false}
+                      />
+                    </div>
+                  </details>
+
                   <div className="flex gap-2 justify-end">
                     <DsButton
                       variant="outline"
@@ -533,6 +976,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                       onClick={() => {
                         setMergeEditing(null);
                         setMergeText('');
+                        setRawJsonOpen(false);
                       }}
                       className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                     >

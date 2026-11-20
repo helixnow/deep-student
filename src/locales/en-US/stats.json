@@ -14,7 +14,33 @@
     },
     "legend": {
       "less": "Less",
-      "more": "More"
+      "more": "More",
+      "durationScale": "Scale: <15 / 15–45 / 45–90 / 90+ min",
+      "activityScale": "4 levels by daily activity",
+      "activityScalePeak": "4 levels up to daily peak ({{peak}})",
+      "durationLevel0": "No study time",
+      "durationLevel1": "Under 15 min",
+      "durationLevel2": "15–45 min",
+      "durationLevel3": "45–90 min",
+      "durationLevel4": "90+ min",
+      "activityLevel0": "No activity",
+      "activityLevel1": "Light activity",
+      "activityLevel2": "Moderate activity",
+      "activityLevel3": "High activity",
+      "activityLevel4": "Peak activity"
+    },
+    "tooltip": {
+      "activitiesCount": "{{count}} activities",
+      "cellAriaActivity": "{{date}}: {{count}} learning activities",
+      "cellAriaActivityEmpty": "{{date}}: No activity",
+      "cellAriaDuration": "{{date}}: Study time {{duration}}",
+      "cellAriaDurationEmpty": "{{date}}: No study time recorded"
+    },
+    "onboarding": {
+      "zeroTitle": "Light up your first study square",
+      "zeroActivityHint": "Every question asked, note edited, textbook opened, or card reviewed leaves a mark of your growth here.",
+      "zeroDurationHint": "Stay focused on reading or practice and every active minute you invest will be recorded here.",
+      "earlyStreakHint": "{{count}} study days lit up — keep your pace, a steady habit is taking root."
     },
     "details": {
       "chatSessions": "Sessions",
@@ -76,9 +102,14 @@
     "correctRate": "Accuracy",
     "questionUnit": "{{count}}",
     "noRecord": "No learning records",
+    "emptyTitle": "Start your practice heatmap with one question",
     "emptyHint": "Start answering questions and your daily learning activity will be tracked here",
+    "earlyHint": "Active on {{count}} days so far — every practice session strengthens long-term retention.",
     "legendLess": "Less",
-    "legendMore": "More"
+    "legendMore": "More",
+    "legendScale": "Scaled by daily questions",
+    "cellAriaActive": "{{date}}: {{count}} questions, {{rate}}% accuracy",
+    "cellAriaEmpty": "{{date}}: No learning records"
   },
   "trendChart": {
     "title": "Learning Trend",

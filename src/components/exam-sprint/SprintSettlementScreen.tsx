@@ -1,6 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, Play } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/utils/cn';
 import {
   formatReadinessPercent,
@@ -37,8 +39,9 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
 }) => {
   const { t } = useTranslation('review');
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
+  const onWindowKeyDown = useCallback(
+    (rawEvent: Event) => {
+      const event = rawEvent as KeyboardEvent;
       if (event.isComposing || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       if (
@@ -53,10 +56,13 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
         event.preventDefault();
         onFinish();
       }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onFinish]);
+    },
+    [onFinish],
+  );
+  useEventRegistry(
+    [{ target: 'window', type: 'keydown', listener: onWindowKeyDown }],
+    [onWindowKeyDown],
+  );
 
   const isScheduled =
     settlement.readinessAfter.phase !== 'unscheduled'
@@ -116,17 +122,35 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
     deferredBacklogCount ?? settlement.readinessAfter.deferredBacklogCount ?? 0,
   );
   const visibleConcepts = settlement.conceptDeltas.slice(0, 5);
+  const encouragementText =
+    settlement.totalCompleted <= 0
+      ? null
+      : settlement.readinessAfter.predictedExamRetrievability !== null && afterRatio >= targetRatio
+        ? t('examSprint.settlement.encourageTargetMet')
+        : firstPassRatio >= 0.8
+          ? t('examSprint.settlement.encourageStrong')
+          : t('examSprint.settlement.encourageSteady');
 
   return (
     <div
-      className="mx-auto flex w-full max-w-2xl flex-col gap-5 py-4"
+      className="mx-auto flex w-full max-w-2xl flex-col gap-5 py-4 animate-chat-rise-in motion-reduce:animate-none"
       data-testid="sprint-settlement-screen"
     >
-      <div className="flex items-center gap-2">
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {t('examSprint.settlement.eyebrow')}
-        </span>
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2">
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {t('examSprint.settlement.eyebrow')}
+          </span>
+        </div>
+        {encouragementText ? (
+          <p
+            data-testid="settlement-encouragement"
+            className="text-sm leading-relaxed text-foreground/90"
+          >
+            {encouragementText}
+          </p>
+        ) : null}
       </div>
 
       <section className="rounded-xl border border-border/35 bg-card p-5">
@@ -178,14 +202,14 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
           </div>
         )}
 
-        <div className="relative mt-4 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div className="relative mt-4 h-2 w-full overflow-hidden rounded-full bg-muted">
           <div
-            className="absolute inset-y-0 left-0 bg-primary/45 transition-all"
+            className="absolute inset-y-0 left-0 bg-primary/45 transition-[width] duration-500 ease-standard motion-reduce:transition-none"
             style={{ width: `${baseWidthPct}%` }}
           />
           {gainWidthPct > 0 ? (
             <div
-              className="absolute inset-y-0 bg-emerald-500 transition-all"
+              className="absolute inset-y-0 bg-emerald-500 transition-[left,width] duration-500 ease-standard motion-reduce:transition-none"
               style={{ left: `${baseWidthPct}%`, width: `${gainWidthPct}%` }}
             />
           ) : null}
@@ -224,7 +248,7 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
           >
             {settlement.totalCompleted}
           </span>
-          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+          <span className="font-mono text-2xs tabular-nums text-muted-foreground">
             {t('examSprint.settlement.completedBreakdown', {
               cards: settlement.byKind.fsrsCards,
               mistakes: settlement.byKind.mistakes,
@@ -232,7 +256,7 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
             })}
           </span>
           {settlement.byKind.variantsSolved > 0 ? (
-            <span className="font-mono text-[11px] tabular-nums text-primary">
+            <span className="font-mono text-2xs tabular-nums text-primary">
               {t('examSprint.settlement.variantsSolvedNote', {
                 count: settlement.byKind.variantsSolved,
               })}
@@ -250,6 +274,14 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
           >
             {firstPassDisplay}
           </span>
+          {settlement.totalCompleted > 0 ? (
+            <span className="font-mono text-2xs tabular-nums text-muted-foreground">
+              {t('examSprint.settlement.firstPassDetail', {
+                passed: settlement.passedCount,
+                total: settlement.totalCompleted,
+              })}
+            </span>
+          ) : null}
         </div>
       </section>
 
@@ -262,31 +294,46 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
             {t('examSprint.settlement.conceptsHeading')}
           </div>
           <ul className="divide-y divide-border/35">
-            {visibleConcepts.map((concept) => (
-              <li
-                key={concept.concept}
-                className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
-              >
-                <div className="flex min-w-0 items-center gap-2">
-                  <span
-                    className={cn(
-                      'h-1.5 w-1.5 shrink-0 rounded-full',
-                      getConceptOutcomeDotClass(concept.outcome),
-                    )}
-                    aria-hidden="true"
-                  />
-                  <span className="truncate text-sm text-foreground">{concept.concept}</span>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className="text-xs text-muted-foreground">
-                    {t(`examSprint.settlement.outcome.${concept.outcome}`)}
-                  </span>
-                  <span className="font-mono text-xs font-semibold tabular-nums text-foreground">
-                    {formatWholePercent(concept.scoreAfter) ?? '0%'}
-                  </span>
-                </div>
-              </li>
-            ))}
+            {visibleConcepts.map((concept) => {
+              const scorePct = Math.max(0, Math.min(100, Math.round((concept.scoreAfter ?? 0) * 100)));
+              return (
+                <li
+                  key={concept.concept}
+                  className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span
+                      className={cn(
+                        'h-1.5 w-1.5 shrink-0 rounded-full',
+                        getConceptOutcomeDotClass(concept.outcome),
+                      )}
+                      aria-hidden="true"
+                    />
+                    <span className="truncate text-sm text-foreground">{concept.concept}</span>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2.5">
+                    <span className="text-xs text-muted-foreground">
+                      {t(`examSprint.settlement.outcome.${concept.outcome}`)}
+                    </span>
+                    <span
+                      aria-hidden="true"
+                      className="hidden h-1.5 w-12 overflow-hidden rounded-full bg-muted sm:inline-block"
+                    >
+                      <span
+                        className={cn(
+                          'block h-full rounded-full transition-[width] duration-300 ease-standard motion-reduce:transition-none',
+                          getConceptOutcomeDotClass(concept.outcome),
+                        )}
+                        style={{ width: `${scorePct}%` }}
+                      />
+                    </span>
+                    <span className="w-9 text-right font-mono text-xs font-semibold tabular-nums text-foreground">
+                      {formatWholePercent(concept.scoreAfter) ?? '0%'}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </section>
       ) : null}
@@ -302,24 +349,33 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
 
       <div className="flex flex-wrap items-center justify-end gap-2.5 pt-1">
         {effectiveDeferredCount > 0 && onExtraSprint ? (
-          <button
+          <DsButton
             type="button"
+            variant="default"
             data-testid="settlement-extra-sprint"
             onClick={() => onExtraSprint(10)}
-            className="inline-flex min-h-[44px] max-sm:min-h-[48px] items-center gap-1.5 rounded-lg border border-border/35 bg-card px-4 py-2.5 font-mono text-sm font-medium tabular-nums text-foreground transition-colors hover:bg-muted/60 active:scale-95 active:opacity-80"
+            className="!h-auto min-h-[44px] max-sm:min-h-[48px] gap-1.5 rounded-lg px-4 py-2.5 font-mono text-sm font-medium tabular-nums active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
           >
             <Play size={14} weight="bold" aria-hidden="true" />
             <span>{t('examSprint.settlement.extraTenMinutes')}</span>
-          </button>
+          </DsButton>
         ) : null}
-        <button
+        <DsButton
           type="button"
+          variant="primary"
           data-testid="settlement-finish-button"
+          aria-keyshortcuts="Enter Space"
           onClick={onFinish}
-          className="inline-flex min-h-[44px] max-sm:min-h-[48px] items-center justify-center rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 active:opacity-80"
+          className="!h-auto min-h-[44px] max-sm:min-h-[48px] gap-2 rounded-lg !border-transparent !bg-primary px-5 py-2.5 text-sm font-medium !text-primary-foreground hover:!bg-primary/90 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
         >
-          {t('examSprint.settlement.finishReturn')}
-        </button>
+          <span>{t('examSprint.settlement.finishReturn')}</span>
+          <kbd
+            aria-hidden="true"
+            className="hidden rounded border border-primary-foreground/25 bg-primary-foreground/15 px-1.5 py-0.5 font-mono text-2xs font-normal sm:inline-block"
+          >
+            Enter
+          </kbd>
+        </DsButton>
       </div>
     </div>
   );

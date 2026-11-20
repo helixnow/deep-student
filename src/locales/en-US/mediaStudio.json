@@ -97,7 +97,31 @@
     "listTitle": "Handouts for this lecture",
     "empty": "No handouts yet",
     "untitled": "Untitled handout",
-    "wordHint": "You can export a note to Word from the note editor."
+    "wordHint": "You can export a note to Word from the note editor.",
+    "inlineReaderOpen": "Inline Handout Reader",
+    "inlineReaderClose": "Hide Inline Reader",
+    "generatingAutoLink": "Generating handout note; it will link to this lecture once ready",
+    "defaultCourseTitle": "Lecture Study Handout",
+    "docTitle": "{{title}} · Study Handout",
+    "docSummary": "{{count}} core sections combining timestamped summaries, key takeaways, and checkpoints.",
+    "chapterLead": "Timestamp {{time}} · {{title}}",
+    "chapterSummaryFallback": "Covers core concepts and key derivations of \"{{title}}\".",
+    "chapterKeyPointFallback": "Master the core definitions, derivations, and conditions of \"{{title}}\".",
+    "chapterCalloutTitle": "{{title}} · Key Takeaways",
+    "chapterQuestion": "Regarding \"{{title}}\", which statement best captures the key point of this section?",
+    "chapterDistractor1": "Rely on intuition while ignoring assumptions and boundary conditions",
+    "chapterDistractor2": "Skip the key derivation steps at this timestamp and apply the formula blindly",
+    "chapterExplanation": "At {{time}}, this section highlights \"{{title}}\": {{point}}",
+    "singleHeading": "{{title}} · Core Essentials",
+    "singleLead": "Core lecture overview for {{title}}",
+    "singleSummaryFallback": "Core concepts, derivations, and summary of {{title}}.",
+    "singleCalloutTitle": "{{title}} · Key Points",
+    "singleKeyPointFallback": "Review key definitions and structure of \"{{title}}\".",
+    "singleQuestion": "Regarding \"{{title}}\", which statement accurately summarizes the core of this lecture?",
+    "singleOptionFallback": "Master the core definitions and derivation methods of \"{{title}}\"",
+    "singleDistractor1": "Ignore the core derivation logic and boundary conditions",
+    "singleDistractor2": "Skip conceptual distinctions without context",
+    "singleExplanation": "Based on the lecture transcript, focus on: {{point}}"
   },
   "ask": {
     "intro": "Opens a new chat with this lecture attached and the Course study skill on. Answers come from the transcript with citations you can jump to.",
@@ -202,7 +226,21 @@
     "empty": "No cards or questions from this lecture yet. Use the buttons above to make some."
   },
   "chapters": {
-    "title": "Chapters {{current}}/{{total}}"
+    "title": "Chapters {{current}}/{{total}}",
+    "jumped": "Jumped"
+  },
+  "miniChat": {
+    "headerWithChapter": "At {{time}} (Chapter: {{chapter}})",
+    "headerWithCourse": "At {{time}} ({{course}})",
+    "noTranscript": "{{header}} — no transcript available yet. Transcribe or import subtitles in the Transcript tab for instant grounded answers, or click \"Promote to main chat\" in the top-right to ask with the timestamp.",
+    "nearestHint": "Nearest spoken line is at [{{time}}]: \"{{text}}\". ",
+    "noNearbySpeech": "{{header}} — no spoken lines within ±{{window}}s. {{nearestHint}}Seek to the relevant part and try again, or click \"Promote to main chat\" for a full follow-up.",
+    "focusDefault": "Key points from the transcript around this timestamp: ",
+    "focusExplain": "Core concepts from this segment: ",
+    "focusDerive": "Derivation steps around this moment: ",
+    "focusVariant": "Transfer and practice pointers for this moment: ",
+    "excerptSeparator": "; ",
+    "replyBody": "{{header}} · {{focus}}{{excerpts}}. Click \"Promote to main chat\" in the top-right for full derivations, variant problems, or multi-turn discussion."
   },
   "interop": {
     "auto_excerpt": "Auto-Excerpt",

@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowClockwise, CheckCircle, CircleNotch, WarningCircle, X } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import { Z_INDEX } from '@/config/zIndex';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/utils/cn';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
@@ -158,6 +160,21 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
     sprintBudgetMinutesOverride,
   );
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [pressedRating, setPressedRating] = useState<SprintRating | null>(null);
+  const pressTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (pressTimerRef.current !== null) window.clearTimeout(pressTimerRef.current);
+  }, []);
+
+  const flashRating = useCallback((rating: SprintRating) => {
+    if (pressTimerRef.current !== null) window.clearTimeout(pressTimerRef.current);
+    setPressedRating(rating);
+    pressTimerRef.current = window.setTimeout(() => {
+      setPressedRating(null);
+      pressTimerRef.current = null;
+    }, 220);
+  }, []);
 
   const sessionStartedAtRef = useRef<number>(Date.now());
   const itemStartedAtRef = useRef<number>(Date.now());
@@ -351,6 +368,7 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
       if (phase.kind !== 'active' || !currentEntry || !currentItem || !revealed
         || submittingRating || ratedEntryRef.current === currentEntry.entryKey) return;
       ratedEntryRef.current = currentEntry.entryKey;
+      flashRating(rating);
       setSubmittingRating(true);
 
       const elapsedMs = Math.max(50, Date.now() - itemStartedAtRef.current);
@@ -429,6 +447,7 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
       currentEntry,
       currentItem,
       cursor,
+      flashRating,
       phase,
       queue,
       revealed,
@@ -438,10 +457,9 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
     ],
   );
 
-  useEffect(() => {
-    if (phase.kind === 'settled') return undefined;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
+  const onWindowKeyDown = useCallback(
+    (rawEvent: Event) => {
+      const event = rawEvent as KeyboardEvent;
       if (isComposingKeyEvent(event) || event.defaultPrevented || event.repeat) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
 
@@ -456,9 +474,10 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
         target
         && (target.tagName === 'INPUT'
           || target.tagName === 'TEXTAREA'
-           || target.tagName === 'SELECT'
-           || target.isContentEditable
-           || (typeof target.closest === 'function' && target.closest('[contenteditable]:not([contenteditable="false"]), [role="textbox"]')))
+          || target.tagName === 'SELECT'
+          || target.isContentEditable
+          || (typeof target.closest === 'function'
+            && target.closest('[contenteditable]:not([contenteditable="false"]), [role="textbox"]')))
       ) {
         return;
       }
@@ -512,23 +531,28 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
         event.preventDefault();
         void handleRate(suggestedRating);
       }
-    };
+    },
+    [
+      currentItem,
+      handleExitRequest,
+      handleRate,
+      handleReveal,
+      handleRevealAnchor,
+      handleToggleOption,
+      phase.kind,
+      primarySourceAnchor,
+      revealed,
+      submittingRating,
+      suggestedRating,
+    ],
+  );
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    currentItem,
-    handleExitRequest,
-    handleRate,
-    handleReveal,
-    handleRevealAnchor,
-    handleToggleOption,
-    phase.kind,
-    primarySourceAnchor,
-    revealed,
-    submittingRating,
-    suggestedRating,
-  ]);
+  useEventRegistry(
+    phase.kind !== 'settled'
+      ? [{ target: 'window', type: 'keydown', listener: onWindowKeyDown }]
+      : [],
+    [phase.kind, onWindowKeyDown],
+  );
 
   const activePlan =
     phase.kind === 'active' || phase.kind === 'settling' || phase.kind === 'settled' || phase.kind === 'empty'
@@ -576,6 +600,15 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
     [currentItem],
   );
 
+  const modalityDotClass = useMemo(() => {
+    if (!currentItem) return 'bg-primary';
+    if (currentItem.kind === 'mindmap_cloze') return 'bg-emerald-500';
+    if (currentItem.kind === 'mistake_question') {
+      return currentItem.isVariant ? 'bg-primary' : 'bg-amber-500';
+    }
+    return 'bg-primary';
+  }, [currentItem]);
+
   const progressPct =
     queue.length > 0 ? Math.min(100, Math.round((cursor / queue.length) * 100)) : 0;
 
@@ -588,36 +621,43 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
       data-split-docked={splitDocked ? 'true' : undefined}
       style={{ zIndex: Z_INDEX.modal }}
       className={cn(
-        'fixed inset-0 z-[70] flex flex-col bg-background/95 backdrop-blur-sm transition-all',
+        'fixed inset-0 z-modal flex flex-col bg-background/95 backdrop-blur-sm transition-all motion-reduce:transition-none',
         splitDocked && 'sm:left-auto sm:w-[min(560px,50vw)] sm:border-l sm:border-border/35 sm:shadow-2xl',
       )}
     >
       <header className="shrink-0 border-b border-border/35 bg-background/80 pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between gap-3 px-4">
-          <button
+          <DsButton
             type="button"
+            variant="ghost"
+            iconOnly
             data-testid="sprint-player-exit"
             aria-label={t('examSprint.player.exitLabel')}
             onClick={handleExitRequest}
-            className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-lg border border-transparent text-muted-foreground transition-colors hover:border-border/35 hover:bg-muted/50 hover:text-foreground active:scale-95 active:opacity-80"
+            className="min-h-[44px] min-w-[44px] shrink-0 rounded-lg active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
           >
             <X size={18} aria-hidden="true" />
-          </button>
+          </DsButton>
 
           {phase.kind === 'active' && currentItem && activePlan ? (
-            <div className="flex min-w-0 flex-1 flex-col items-center gap-1">
+            <div className="flex min-w-0 flex-1 flex-col items-center gap-1.5">
               <div className="flex max-w-full flex-wrap items-center justify-center gap-1.5 text-xs">
                 <span
+                  key={`${currentItem.kind}:${currentItem.kind === 'mistake_question' && currentItem.isVariant ? 'variant' : 'base'}`}
                   data-testid="sprint-modality-badge"
-                  className="rounded-md border border-border/35 bg-card px-2 py-0.5 font-medium text-foreground"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border/35 bg-card px-2 py-0.5 font-medium text-foreground animate-chat-fade-in motion-reduce:animate-none"
                 >
-                  {modalityBadgeLabel}
+                  <span
+                    aria-hidden="true"
+                    className={cn('h-1.5 w-1.5 shrink-0 rounded-full', modalityDotClass)}
+                  />
+                  <span>{modalityBadgeLabel}</span>
                 </span>
 
                 {currentEntry?.requeuedOnce ? (
                   <span
                     data-testid="sprint-requeued-badge"
-                    className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400"
+                    className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400"
                   >
                     {t('examSprint.player.requeuedBadge')}
                   </span>
@@ -652,9 +692,17 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
                 ) : null}
               </div>
 
-              <div className="h-0.5 w-full max-w-xs overflow-hidden rounded-full bg-muted">
+              <div
+                role="progressbar"
+                aria-label={t('examSprint.player.progressAriaLabel')}
+                aria-valuemin={0}
+                aria-valuemax={queue.length}
+                aria-valuenow={cursor}
+                data-testid="sprint-progress-bar"
+                className="h-1 w-full max-w-xs overflow-hidden rounded-full bg-muted"
+              >
                 <div
-                  className="h-full bg-primary transition-all duration-200"
+                  className="h-full rounded-full bg-primary transition-[width] duration-300 ease-standard motion-reduce:transition-none"
                   style={{ width: `${progressPct}%` }}
                 />
               </div>
@@ -677,7 +725,11 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5">
         {phase.kind === 'loading' || phase.kind === 'settling' ? (
           <div className="flex h-full min-h-[260px] flex-col items-center justify-center gap-3 text-center">
-            <CircleNotch size={24} className="animate-spin text-muted-foreground" aria-hidden="true" />
+            <CircleNotch
+              size={24}
+              className="animate-spin text-muted-foreground motion-reduce:animate-none"
+              aria-hidden="true"
+            />
             <p className="text-sm text-muted-foreground">
               {phase.kind === 'settling'
                 ? t('examSprint.settlement.settling')
@@ -692,8 +744,9 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
             </p>
             <p className="break-words text-xs text-muted-foreground">{phase.message}</p>
             <div className="mt-1 flex items-center gap-2">
-              <button
+              <DsButton
                 type="button"
+                variant="primary"
                 onClick={() => {
                   if (phase.settlementRetry) {
                     void runSettlement(phase.settlementRetry.plan, phase.settlementRetry.records);
@@ -701,18 +754,19 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
                     setReloadNonce((n) => n + 1);
                   }
                 }}
-                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground active:scale-95 active:opacity-80"
+                className="!h-auto min-h-[44px] gap-1.5 rounded-lg !border-transparent !bg-primary px-4 py-2 text-xs font-medium !text-primary-foreground hover:!bg-primary/90 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
               >
                 <ArrowClockwise size={14} aria-hidden="true" />
                 <span>{t('examSprint.player.retry')}</span>
-              </button>
-              <button
+              </DsButton>
+              <DsButton
                 type="button"
+                variant="default"
                 onClick={onClose}
-                className="inline-flex min-h-[44px] items-center rounded-lg border border-border/35 px-4 py-2 text-xs font-medium text-foreground active:scale-95 active:opacity-80"
+                className="!h-auto min-h-[44px] rounded-lg px-4 py-2 text-xs font-medium active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
               >
                 {t('examSprint.player.close')}
-              </button>
+              </DsButton>
             </div>
           </div>
         ) : phase.kind === 'empty' ? (
@@ -722,13 +776,14 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
               {t('examSprint.player.emptyTitle')}
             </p>
             <p className="text-xs text-muted-foreground">{t('examSprint.player.emptyHint')}</p>
-            <button
+            <DsButton
               type="button"
+              variant="default"
               onClick={onClose}
-              className="mt-1 inline-flex min-h-[44px] items-center rounded-lg border border-border/35 bg-card px-4 py-2 text-xs font-medium text-foreground active:scale-95 active:opacity-80"
+              className="mt-1 !h-auto min-h-[44px] rounded-lg px-4 py-2 text-xs font-medium active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
             >
               {t('examSprint.player.close')}
-            </button>
+            </DsButton>
           </div>
         ) : phase.kind === 'settled' ? (
           <SprintSettlementScreen
@@ -741,7 +796,12 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
             }}
           />
         ) : currentItem ? (
-          <>
+          <div
+            key={currentEntry?.entryKey ?? currentItem.sprintItemId}
+            data-testid="sprint-stage-transition"
+            data-item-kind={currentItem.kind}
+            className="animate-chat-rise-in motion-reduce:animate-none"
+          >
             {currentItem.kind === 'fsrs_card' ? (
               <SprintFsrsCardStage
                 item={currentItem}
@@ -780,7 +840,7 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
                 onRevealAnchor={(anchor) => void handleRevealAnchor(anchor)}
               />
             )}
-          </>
+          </div>
         ) : null}
       </div>
 
@@ -788,11 +848,13 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
         <footer className="shrink-0 border-t border-border/35 bg-background/90 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           <div className="mx-auto max-w-2xl">
             {!revealed ? (
-              <button
+              <DsButton
                 type="button"
+                variant="primary"
                 data-testid="sprint-reveal-button"
+                aria-keyshortcuts="Space"
                 onClick={handleReveal}
-                className="flex min-h-[44px] max-sm:min-h-[48px] w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:scale-95 active:opacity-80"
+                className="flex !h-auto min-h-[44px] max-sm:min-h-[48px] w-full items-center justify-center gap-2 rounded-lg !border-transparent !bg-primary px-4 py-2.5 text-sm font-medium !text-primary-foreground transition-all hover:!bg-primary/90 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
               >
                 <span>
                   {currentItem.kind === 'mistake_question'
@@ -801,54 +863,141 @@ export const UnifiedDailySprintPlayer: React.FC<UnifiedDailySprintPlayerProps> =
                       : t('examSprint.player.revealAnalysis')
                     : t('examSprint.player.revealAnswer')}
                 </span>
-              </button>
+              </DsButton>
             ) : (
               <div
-                className="grid grid-cols-4 gap-2"
+                className="grid grid-cols-4 gap-2 animate-chat-fade-in motion-reduce:animate-none"
                 role="group"
                 aria-label={t('rating.prompt')}
                 data-testid="sprint-rating-bar"
               >
                 {(
                   [
-                    { rating: 1 as const, labelKey: 'examSprint.player.rating.again', tone: 'rose' },
-                    { rating: 2 as const, labelKey: 'examSprint.player.rating.hard', tone: 'amber' },
-                    { rating: 3 as const, labelKey: 'examSprint.player.rating.good', tone: 'emerald' },
-                    { rating: 4 as const, labelKey: 'examSprint.player.rating.easy', tone: 'primary' },
+                    {
+                      rating: 1 as const,
+                      labelKey: 'examSprint.player.rating.again',
+                      tone: 'rose',
+                      dotClass: 'bg-rose-500',
+                      interactiveTone:
+                        'hover:!border-rose-500/40 hover:!bg-rose-500/10 data-[pressed=true]:!border-rose-500/50 data-[pressed=true]:!bg-rose-500/15',
+                    },
+                    {
+                      rating: 2 as const,
+                      labelKey: 'examSprint.player.rating.hard',
+                      tone: 'amber',
+                      dotClass: 'bg-amber-500',
+                      interactiveTone:
+                        'hover:!border-amber-500/40 hover:!bg-amber-500/10 data-[pressed=true]:!border-amber-500/50 data-[pressed=true]:!bg-amber-500/15',
+                    },
+                    {
+                      rating: 3 as const,
+                      labelKey: 'examSprint.player.rating.good',
+                      tone: 'emerald',
+                      dotClass: 'bg-emerald-500',
+                      interactiveTone:
+                        'hover:!border-emerald-500/40 hover:!bg-emerald-500/10 data-[pressed=true]:!border-emerald-500/50 data-[pressed=true]:!bg-emerald-500/15',
+                    },
+                    {
+                      rating: 4 as const,
+                      labelKey: 'examSprint.player.rating.easy',
+                      tone: 'primary',
+                      dotClass: 'bg-primary',
+                      interactiveTone:
+                        'hover:!border-primary/40 hover:!bg-primary/10 data-[pressed=true]:!border-primary/50 data-[pressed=true]:!bg-primary/15',
+                    },
                   ] as const
-                ).map(({ rating, labelKey, tone }) => {
+                ).map(({ rating, labelKey, tone, dotClass, interactiveTone }) => {
                   const isSuggested = suggestedRating === rating;
                   return (
-                    <button
+                    <DsButton
                       key={rating}
                       type="button"
+                      variant="ghost"
                       disabled={submittingRating}
                       data-testid={`sprint-rate-${rating}`}
                       data-suggested={isSuggested ? 'true' : undefined}
+                      data-pressed={pressedRating === rating ? 'true' : undefined}
+                      aria-keyshortcuts={isSuggested ? `${rating} Space` : String(rating)}
                       onClick={() => void handleRate(rating)}
                       className={cn(
-                        'flex min-h-[44px] max-sm:min-h-[48px] flex-col items-center justify-center rounded-lg border px-2 py-1.5 text-xs transition-colors active:scale-95 active:opacity-80 disabled:opacity-50',
+                        'flex !h-auto min-h-[44px] max-sm:min-h-[48px] flex-col items-center justify-center gap-0.5 rounded-lg border px-2 py-1.5 text-xs transition-all active:scale-[0.98] disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100',
                         isSuggested && tone === 'emerald'
-                          && 'border-emerald-500/45 bg-emerald-500/12 text-foreground',
+                          && '!border-emerald-500/45 !bg-emerald-500/12 !text-foreground',
                         isSuggested && tone === 'rose'
-                          && 'border-rose-500/45 bg-rose-500/12 text-foreground',
-                        !isSuggested && 'border-border/35 bg-card hover:bg-muted/60 text-foreground',
+                          && '!border-rose-500/45 !bg-rose-500/12 !text-foreground',
+                        !isSuggested && '!border-border/35 !bg-card !text-foreground',
+                        interactiveTone,
                       )}
                     >
-                      <span className="flex items-center gap-1 font-medium">
-                        <kbd className="font-mono text-[10px] tabular-nums text-muted-foreground">
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <span
+                          aria-hidden="true"
+                          className={cn('h-1.5 w-1.5 shrink-0 rounded-full opacity-80', dotClass)}
+                        />
+                        <kbd className="font-mono text-2xs tabular-nums text-muted-foreground">
                           {rating}
                         </kbd>
                         <span>{t(labelKey)}</span>
                       </span>
-                      <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+                      <span className="font-mono text-2xs tabular-nums text-muted-foreground">
                         {previewIntervals?.[rating] ?? ''}
                       </span>
-                    </button>
+                    </DsButton>
                   );
                 })}
               </div>
             )}
+
+            <div
+              data-testid="sprint-shortcut-hint"
+              aria-hidden="true"
+              className="mt-2 hidden items-center justify-center gap-2 text-2xs text-muted-foreground/75 sm:flex"
+            >
+              {!revealed ? (
+                currentItem.kind === 'mistake_question'
+                && getMistakeEffectiveOptionKeys(currentItem).length > 0 ? (
+                  <>
+                    <span>
+                      <kbd className="rounded border border-border/50 bg-muted/40 px-1.5 py-0.5 font-mono text-2xs">
+                        A–D
+                      </kbd>{' '}
+                      {t('examSprint.player.shortcutSelectOption')}
+                    </span>
+                    <span>·</span>
+                    <span>
+                      <kbd className="rounded border border-border/50 bg-muted/40 px-1.5 py-0.5 font-mono text-2xs">
+                        Space
+                      </kbd>{' '}
+                      {t('examSprint.player.shortcutCheck')}
+                    </span>
+                  </>
+                ) : (
+                  <span>
+                    <kbd className="rounded border border-border/50 bg-muted/40 px-1.5 py-0.5 font-mono text-2xs">
+                      Space
+                    </kbd>{' '}
+                    {t('examSprint.player.shortcutReveal')}
+                  </span>
+                )
+              ) : (
+                <>
+                  <span>{t('keyboard.ratingHint')}</span>
+                  <span>·</span>
+                  <span>{t('keyboard.spaceSuggested')}</span>
+                </>
+              )}
+              {primarySourceAnchor ? (
+                <>
+                  <span>·</span>
+                  <span>
+                    <kbd className="rounded border border-border/50 bg-muted/40 px-1.5 py-0.5 font-mono text-2xs">
+                      O
+                    </kbd>{' '}
+                    {t('examSprint.player.shortcutSource')}
+                  </span>
+                </>
+              ) : null}
+            </div>
           </div>
         </footer>
       ) : null}
