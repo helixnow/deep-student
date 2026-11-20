@@ -277,6 +277,7 @@
     "editQuestion": "Edit question",
     "noContent": "No content",
     "searchPlaceholder": "Search questions...",
+    "filteredCount": "{{count}} matched",
     "deselectAll": "Deselect all",
     "selectAll": "Select all",
     "selectedCount": "{{count}} selected",

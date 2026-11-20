@@ -108,6 +108,8 @@ export interface NewLibraryCardInput {
   front: string;
   back: string;
   tags?: string[];
+  /** 可选目标牌组（如 `英语::词汇`）；留空为未分组 */
+  deckName?: string;
   /** 建完立刻进入复习队列（默认 true，否则新卡不会出现在到期队列里） */
   enqueue?: boolean;
 }
@@ -407,9 +409,10 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
 
     bulkDelete: (cardIds) => runBulkMutation(cardIds, (card) => deleteAnkiCard(card.id)),
 
-    createCard: async ({ front, back, tags = [], enqueue = true }) => {
+    createCard: async ({ front, back, tags = [], deckName, enqueue = true }) => {
       const trimmedFront = front.trim();
       const trimmedBack = back.trim();
+      const trimmedDeck = deckName?.trim();
       if (!trimmedFront || !trimmedBack) {
         set({ actionError: i18n.t('flashcards:library.create.incomplete') });
         return false;
@@ -419,6 +422,17 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
         const { ankiApiAdapter } = await import('@/services/ankiApiAdapter');
         const response = await ankiApiAdapter.saveAnkiCards({
           cards: [{ front: trimmedFront, back: trimmedBack, tags, images: [] }],
+          ...(trimmedDeck
+            ? {
+                options: {
+                  deck_name: trimmedDeck,
+                  note_type: 'Basic',
+                  enable_images: false,
+                  max_cards_per_source: 1,
+                  max_cards_per_mistake: 1,
+                },
+              }
+            : {}),
         });
         const savedId = response.savedIds?.[0]
           ?? response.cardIdMappings?.[0]?.persistedId

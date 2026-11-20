@@ -137,6 +137,7 @@ export const LibraryScreen: React.FC = () => {
   const filtersId = useId();
   const [draftFront, setDraftFront] = useState('');
   const [draftBack, setDraftBack] = useState('');
+  const [draftDeck, setDraftDeck] = useState('');
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const bulkDisarmTimer = useRef<number | null>(null);
 
@@ -212,8 +213,13 @@ export const LibraryScreen: React.FC = () => {
   }, [items, statusCounts]);
 
   const deckOptions = useMemo(() => flattenDeckTree(buildDeckTree(decks ?? [])), [decks]);
-  // 只有一个牌组时筛选没有意义；已选中的牌组即使被删空也保留下拉，方便切回全部
-  const showDeckFilter = (decks?.length ?? 0) >= 2 || deckFilter !== null;
+  const namedDeckPaths = useMemo(
+    () => deckOptions.map((node) => node.path).filter((path) => path.length > 0),
+    [deckOptions],
+  );
+  // 存在具名牌组、≥2 个分组或已选中牌组时展示牌组筛选，确保新建首个牌组后立即可按牌组筛选
+  const showDeckFilter =
+    (decks?.length ?? 0) >= 2 || namedDeckPaths.length > 0 || deckFilter !== null;
   const deckFilterMissing = deckFilter !== null && !deckOptions.some((node) => node.path === deckFilter);
 
   const selectedCards = useMemo(
@@ -426,17 +432,29 @@ export const LibraryScreen: React.FC = () => {
 
   // ---------- 新建 / 导入 ----------
   const draftValid = draftFront.trim().length > 0 && draftBack.trim().length > 0;
+  const openComposerWithDefaultDeck = useCallback(() => {
+    setDraftDeck((prev) => {
+      if (prev.trim()) return prev;
+      return deckFilter && deckFilter !== DECK_FILTER_ALL ? deckFilter : '';
+    });
+    setComposerOpen(true);
+  }, [deckFilter]);
 
   const handleSubmitDraft = useCallback(() => {
     if (!draftValid || creating) return;
-    void createCard({ front: draftFront, back: draftBack }).then((ok) => {
+    const targetDeck = draftDeck.trim();
+    void createCard({
+      front: draftFront,
+      back: draftBack,
+      ...(targetDeck ? { deckName: targetDeck } : {}),
+    }).then((ok) => {
       if (!ok) return;
       setDraftFront('');
       setDraftBack('');
       setComposerOpen(false);
       showGlobalNotification('success', translate('library.create.success'));
     });
-  }, [draftValid, creating, createCard, draftFront, draftBack, translate]);
+  }, [draftValid, creating, createCard, draftFront, draftBack, draftDeck, translate]);
 
   const handleImportApkg = useCallback(() => {
     if (importing) return;
@@ -504,7 +522,7 @@ export const LibraryScreen: React.FC = () => {
         <FloppyDisk size={20} />
       </DsButton>
     ) : <>
-      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('library.create.new')} onClick={() => setComposerOpen(true)}>
+      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('library.create.new')} onClick={openComposerWithDefaultDeck}>
         <Plus size={20} />
       </DsButton>
       <AppMenu>
@@ -532,6 +550,21 @@ export const LibraryScreen: React.FC = () => {
         <label className="flex flex-col gap-2 text-sm font-medium">
           {t('library.create.backLabel')}
           <textarea rows={5} value={draftBack} onChange={(event) => setDraftBack(event.target.value)} placeholder={t('library.create.backPlaceholder')} className="w-full resize-y rounded-md border border-border bg-background p-3 text-base font-normal" />
+        </label>
+        <label className="flex flex-col gap-2 text-sm font-medium">
+          {t('library.create.deckLabel')}
+          <Input
+            value={draftDeck}
+            onChange={(event) => setDraftDeck(event.target.value)}
+            list={`${filtersId}-deck-suggestions`}
+            placeholder={t('library.create.deckPlaceholder')}
+            className="h-11 text-base font-normal"
+          />
+          <datalist id={`${filtersId}-deck-suggestions`}>
+            {namedDeckPaths.map((path) => (
+              <option key={path} value={path} />
+            ))}
+          </datalist>
         </label>
         <p className="text-xs text-muted-foreground">{t(creating ? 'library.create.saving' : 'library.create.hint')}</p>
         {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
@@ -577,7 +610,10 @@ export const LibraryScreen: React.FC = () => {
         variant={composerOpen ? 'default' : 'primary'}
         iconOnly={isSmallScreen}
         aria-label={composerOpen ? translate('library.create.cancel') : translate('library.create.new')}
-        onClick={() => setComposerOpen((open) => !open)}
+        onClick={() => {
+          if (composerOpen) setComposerOpen(false);
+          else openComposerWithDefaultDeck();
+        }}
         aria-expanded={composerOpen}
         className="fc-lib-create-cta text-sm"
       >
@@ -695,6 +731,20 @@ export const LibraryScreen: React.FC = () => {
             placeholder={translate('library.create.backPlaceholder')}
             className="h-10 text-sm [@media(pointer:coarse)]:!h-11"
           />
+          <Input
+            aria-label={translate('library.create.deckLabel')}
+            value={draftDeck}
+            onChange={(event) => setDraftDeck(event.target.value)}
+            list={`${filtersId}-deck-suggestions`}
+            placeholder={translate('library.create.deckPlaceholder')}
+            className="h-10 text-sm [@media(pointer:coarse)]:!h-11"
+            data-testid="fc-lib-create-deck"
+          />
+          <datalist id={`${filtersId}-deck-suggestions`}>
+            {namedDeckPaths.map((path) => (
+              <option key={path} value={path} />
+            ))}
+          </datalist>
           <div className="fc-lib-composer-actions">
             <DsButton
               type="button"

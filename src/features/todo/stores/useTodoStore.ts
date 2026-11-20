@@ -212,6 +212,9 @@ interface TodoState {
   // 逾期未完成数（侧栏角标）
   overdueCount: number;
 
+  // 今日已完成数（当「今天」视图 hide completed 时用于维持「今日任务全部完成」暖空态）
+  todayCompletedCount: number;
+
   // 侧栏计数快照（与后端 todo_counts_snapshot / F9 契约；后端未落地时保持 null）
   counts: TodoCountsSnapshot | null;
 
@@ -522,15 +525,33 @@ export const useTodoStore = create<TodoState>((set, get) => {
         return;
       }
       const selectedItemId = get().selectedItemId;
+      const isTodayView = state.filter.view === 'today';
       set({
         items,
+        ...(isTodayView && state.filter.showCompleted
+          ? { todayCompletedCount: items.filter((item) => item.status === 'completed').length }
+          : {}),
         selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
           ? selectedItemId
           : null,
       });
+      if (isTodayView && !state.filter.showCompleted && items.length === 0) {
+        void syncTodayCompletedFromOverview();
+      }
       scheduleCountsRefresh();
     } catch {
       // 静默校准失败不打扰用户（乐观状态已经可用，下次显式刷新会纠正）
+    }
+  };
+
+  const syncTodayCompletedFromOverview = async (): Promise<void> => {
+    try {
+      const overview = await api.getTodoStatsOverview(1);
+      if (typeof overview?.completedToday === 'number' && Number.isFinite(overview.completedToday)) {
+        set({ todayCompletedCount: overview.completedToday });
+      }
+    } catch {
+      // 统计接口不可用或失败时静默保留本地乐观计数
     }
   };
 
@@ -543,6 +564,7 @@ export const useTodoStore = create<TodoState>((set, get) => {
   quickAddPreset: null,
 
   overdueCount: 0,
+  todayCompletedCount: 0,
   counts: null,
 
   trashLists: [],
@@ -812,6 +834,8 @@ export const useTodoStore = create<TodoState>((set, get) => {
     }
 
     const completing = target.status !== 'completed';
+    const affectsTodayCompleted =
+      get().filter.view === 'today' || (Boolean(target.dueDate) && (target.dueDate as string) <= localToday());
     // 与 updateItem 共用同一条目写序号：快速连翻/翻转+保存交错时旧响应不覆盖新状态
     const opSeq = acquireItemOp(itemId);
     set((s) => ({
@@ -825,6 +849,9 @@ export const useTodoStore = create<TodoState>((set, get) => {
             }
           : i
       ),
+      ...(affectsTodayCompleted
+        ? { todayCompletedCount: Math.max(0, s.todayCompletedCount + (completing ? 1 : -1)) }
+        : {}),
       error: null,
     }));
 
@@ -858,6 +885,9 @@ export const useTodoStore = create<TodoState>((set, get) => {
         items: isLatestItemOp(itemId, opSeq)
           ? s.items.map((i) => (i.id === itemId ? target : i))
           : s.items,
+        ...(affectsTodayCompleted && isLatestItemOp(itemId, opSeq)
+          ? { todayCompletedCount: Math.max(0, s.todayCompletedCount + (completing ? -1 : 1)) }
+          : {}),
         error: notifyError(e),
       }));
     } finally {
@@ -1090,16 +1120,23 @@ export const useTodoStore = create<TodoState>((set, get) => {
     const requestVersion = get().itemsRequestVersion + 1;
     set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
-      const items = await api.listTodayItems(get().filter.showCompleted);
+      const showCompleted = get().filter.showCompleted;
+      const items = await api.listTodayItems(showCompleted);
       if (get().itemsRequestVersion !== requestVersion) return;
       const selectedItemId = get().selectedItemId;
       set({
         items,
+        ...(showCompleted
+          ? { todayCompletedCount: items.filter((item) => item.status === 'completed').length }
+          : {}),
         isLoadingItems: false,
         selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
           ? selectedItemId
           : null,
       });
+      if (!showCompleted && items.length === 0) {
+        void syncTodayCompletedFromOverview();
+      }
     } catch (e) {
       if (get().itemsRequestVersion !== requestVersion) return;
       set({ error: notifyError(e), isLoadingItems: false });
@@ -1355,6 +1392,13 @@ export const useTodoStore = create<TodoState>((set, get) => {
     const nowIso = new Date().toISOString();
     const { view, showCompleted } = get().filter;
     const keepCompleted = view === 'completed' || showCompleted;
+    const today = localToday();
+    const newlyCompletedTodayCount = prevItems.filter(
+      (i) =>
+        affected.has(i.id) &&
+        i.status !== 'completed' &&
+        (view === 'today' || (Boolean(i.dueDate) && (i.dueDate as string) <= today)),
+    ).length;
     set((s) => ({
       items: keepCompleted
         ? s.items.map((i) =>
@@ -1363,6 +1407,9 @@ export const useTodoStore = create<TodoState>((set, get) => {
               : i,
           )
         : s.items.filter((i) => !affected.has(i.id)),
+      ...(newlyCompletedTodayCount > 0
+        ? { todayCompletedCount: s.todayCompletedCount + newlyCompletedTodayCount }
+        : {}),
       selectedItemId:
         !keepCompleted && s.selectedItemId && affected.has(s.selectedItemId)
           ? null
@@ -1381,7 +1428,12 @@ export const useTodoStore = create<TodoState>((set, get) => {
       return result;
     } catch (e) {
       restoreItemsSnapshot(prevItems, affected);
-      set({ error: notifyError(e) });
+      set((s) => ({
+        ...(newlyCompletedTodayCount > 0
+          ? { todayCompletedCount: Math.max(0, s.todayCompletedCount - newlyCompletedTodayCount) }
+          : {}),
+        error: notifyError(e),
+      }));
       return null;
     } finally {
       endWrite();
@@ -1582,7 +1634,12 @@ export const useTodoStore = create<TodoState>((set, get) => {
   refreshStatsOverview: async (days = 30) => {
     try {
       const statsOverview = await api.getTodoStatsOverview(days);
-      set({ statsOverview });
+      set({
+        statsOverview,
+        ...(typeof statsOverview?.completedToday === 'number' && Number.isFinite(statsOverview.completedToday)
+          ? { todayCompletedCount: statsOverview.completedToday }
+          : {}),
+      });
       return statsOverview;
     } catch {
       // 统计视图属增强信息：失败静默，调用方按 null 降级

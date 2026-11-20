@@ -15,7 +15,7 @@
   top: 18px;
   right: 0;
   left: 0;
-  width: 292px;
+  width: 316px;
   /* 窄桌面（<412px 工作区）下钳到非负，避免负 max-width 布局未定义行为 */
   max-width: max(180px, calc(100% - 412px));
   margin-inline: auto;
@@ -71,19 +71,27 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   margin-top: 8px;
   pointer-events: auto;
+}
+
+.wb-empty-cta-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
 }
 
 .wb-empty-cta {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  padding: 8px 13px;
+  min-height: 38px;
+  padding: 8px 10px;
   border: 1px solid color-mix(in hsl, hsl(var(--primary)) 42%, hsl(var(--border)) 58%);
   border-radius: 10px;
   background: color-mix(in hsl, hsl(var(--primary)) 14%, transparent 86%);
@@ -91,6 +99,7 @@
   font: inherit;
   font-size: 13px;
   font-weight: 600;
+  white-space: nowrap;
   color: var(--text-primary, hsl(var(--foreground)));
   transition:
     transform 160ms var(--wb-ease-out, ease-out),
