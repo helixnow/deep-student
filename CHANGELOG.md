@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.20.7](https://github.com/helixnow/deep-student/compare/v0.20.6...v0.20.7) (2026-11-21)
+
+
+### Features
+
+* **mobile:** polish mobile WebUI layout, data governance, and interactive empty state ([fc038eb](https://github.com/helixnow/deep-student/commit/fc038eb58b1d677dd9b17e481d40a64cca0171c5))
+* **ux:** deep learner experience polish across desktop, mobile, webui, and study apps ([431edcd](https://github.com/helixnow/deep-student/commit/431edcd9bb8516ac08673daae87eefd382a13ef5))
+
+
+### Bug Fixes
+
+* **notes:** subscribe useNoteTags to dstu.watch so header tag edits refresh TagFilter ([e248dd2](https://github.com/helixnow/deep-student/commit/e248dd23bb56e6990f72e42ad5b9dd0496dd0581))
+* **qa:** resolve all P2/P3 defects found by automated browser QA fleet ([5e2f856](https://github.com/helixnow/deep-student/commit/5e2f856174960ed9a920b65451ef08df6b851767))
+* **qa-r2:** resolve all 15 P1/P2/P3 defects found by Round-2 adversarial QA fleet ([d933233](https://github.com/helixnow/deep-student/commit/d9332339ad82e110268d7cef6bf0721b0d0d5637))
+* **workbench:** measure unscaled offsetHeight before getBoundingClientRect when clamping DesktopContextMenu ([e8a3606](https://github.com/helixnow/deep-student/commit/e8a3606840ce213c255a72d883a36271ecbfcd62))
+
 ## [0.20.6](https://github.com/helixnow/deep-student/compare/v0.20.5...v0.20.6) (2026-11-18)
 
 
