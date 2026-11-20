@@ -1846,47 +1846,49 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       {/* 页签文字在 <640px 被 `hidden sm:inline` 收掉，只剩图标。
           每个 trigger 必须带 aria-label，否则移动端读屏（VoiceOver / TalkBack）
           只会念「按钮」，8 个页签互相无法区分。 */}
-      <TabsList
-        aria-label={t('data:governance.tabs_nav_label')}
-        className="scrollbar-none mb-4 flex h-auto min-h-11 w-full max-w-full justify-start overflow-x-auto"
-      >
-        <TabsTrigger value="overview" aria-label={t('data:governance.tab_overview')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
-          <Gauge className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('data:governance.tab_overview')}</span>
-        </TabsTrigger>
-        <TabsTrigger value="recovery" aria-label={t('data:governance.tab_recovery')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
-          <ShieldCheck className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('data:governance.tab_recovery')}</span>
-        </TabsTrigger>
-        <TabsTrigger value="archive" aria-label={t('data:governance.tab_archive')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
-          <Archive className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('data:governance.tab_archive')}</span>
-        </TabsTrigger>
-        <TabsTrigger value="backup" aria-label={t('data:governance.tab_backup')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
-          <HardDrive className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('data:governance.tab_backup')}</span>
-        </TabsTrigger>
-        <TabsTrigger value="sync" aria-label={t('data:governance.tab_sync')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
-          <Cloud className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('data:governance.tab_sync')}</span>
-        </TabsTrigger>
-        <TabsTrigger value="audit" aria-label={t('data:governance.tab_audit')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
-          <FileText className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('data:governance.tab_audit')}</span>
-        </TabsTrigger>
-        <TabsTrigger value="cache" aria-label={t('data:governance.tab_cache')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
-          <Image className="h-4 w-4" />
-          <span className="hidden sm:inline">{t('data:governance.tab_cache')}</span>
-        </TabsTrigger>
-        {/* Debug 页签只在开发构建出现：生产里它的控件全部 disabled，
-            对用户是一个「点得到但什么都不能做」的死页签，移动端尤其误导。 */}
-        {debugTabEnabled && (
-          <TabsTrigger value="debug" aria-label={t('data:governance.debug_tab_title')} className="flex min-h-11 min-w-11 shrink-0 items-center gap-1 text-muted-foreground sm:min-h-0 sm:min-w-0 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
-            <Bug className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('data:governance.debug_tab_title')}</span>
+      <div className="mb-4">
+        <TabsList
+          aria-label={t('data:governance.tabs_nav_label')}
+          className="grid h-auto w-full grid-cols-4 gap-1.5 rounded-none border-b border-border/40 bg-transparent px-0 pb-3 sm:flex sm:flex-wrap sm:justify-start"
+        >
+          <TabsTrigger value="overview" aria-label={t('data:governance.tab_overview')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11">
+            <Gauge className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate text-xs">{t('data:governance.tab_overview')}</span>
           </TabsTrigger>
-        )}
-      </TabsList>
+          <TabsTrigger value="recovery" aria-label={t('data:governance.tab_recovery')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11">
+            <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate text-xs">{t('data:governance.tab_recovery')}</span>
+          </TabsTrigger>
+          <TabsTrigger value="archive" aria-label={t('data:governance.tab_archive')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11">
+            <Archive className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate text-xs">{t('data:governance.tab_archive')}</span>
+          </TabsTrigger>
+          <TabsTrigger value="backup" aria-label={t('data:governance.tab_backup')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11">
+            <HardDrive className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate text-xs">{t('data:governance.tab_backup')}</span>
+          </TabsTrigger>
+          <TabsTrigger value="sync" aria-label={t('data:governance.tab_sync')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11">
+            <Cloud className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate text-xs">{t('data:governance.tab_sync')}</span>
+          </TabsTrigger>
+          <TabsTrigger value="audit" aria-label={t('data:governance.tab_audit')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11">
+            <FileText className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate text-xs">{t('data:governance.tab_audit')}</span>
+          </TabsTrigger>
+          <TabsTrigger value="cache" aria-label={t('data:governance.tab_cache')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11">
+            <Image className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate text-xs">{t('data:governance.tab_cache')}</span>
+          </TabsTrigger>
+          {/* Debug 页签只在开发构建出现：生产里它的控件全部 disabled，
+              对用户是一个「点得到但什么都不能做」的死页签，移动端尤其误导。 */}
+          {debugTabEnabled && (
+            <TabsTrigger value="debug" aria-label={t('data:governance.debug_tab_title')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11">
+              <Bug className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate text-xs">{t('data:governance.debug_tab_title')}</span>
+            </TabsTrigger>
+          )}
+        </TabsList>
+      </div>
 
       <TabsContent value="overview">
         {readShellPlatform()?.kind === 'mobile' && <SecurityStatusIndicator className="mb-4" />}

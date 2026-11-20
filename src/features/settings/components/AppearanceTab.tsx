@@ -12,7 +12,8 @@ import { ThemeVariantPicker } from './ThemeVariantPicker';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { saveSetting } from '@/utils/settingsApi';
-import { isMacOS, isMobilePlatform } from '@/utils/platform';
+import { isMacOS, isMobilePlatform, isWebUiShell } from '@/utils/platform';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { applySidebarTranslucency } from '@/utils/sidebarTranslucency';
 import type { ThemeMode, ThemePalette } from '@/hooks/useTheme';
 import {
@@ -106,6 +107,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   invoke,
 }) => {
   const { t } = useTranslation(['settings']);
+  const { isSmallScreen } = useBreakpoint();
+  const isWebUi = isWebUiShell();
   const [macosNativeFontSmoothingEnabled, setMacosNativeFontSmoothingEnabled] = useState<boolean | null>(null);
   const [sidebarTranslucent, setSidebarTranslucent] = useState<boolean | null>(null);
   const [pointerCursorEnabled, setPointerCursorEnabled] = useState<boolean | null>(null);
@@ -466,7 +469,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               />
             </SettingRow>
 
-            {isMacOS() && (
+            {isMacOS() && !isWebUi && (
               <SwitchRow
                 title={t('settings:theme.font_smoothing_title')}
                 description={t('settings:theme.font_smoothing_description')}
@@ -478,7 +481,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               />
             )}
 
-            {!isMobilePlatform() && (
+            {!isMobilePlatform() && !isWebUi && (
               <SwitchRow
                 title={t('settings:theme.sidebar_translucent_title')}
                 description={t('settings:theme.sidebar_translucent_description')}
@@ -490,7 +493,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               />
             )}
 
-            {!isMobilePlatform() && (
+            {!isMobilePlatform() && !isWebUi && (
               <SwitchRow
                 title={t('settings:theme.pointer_cursor_title')}
                 description={t('settings:theme.pointer_cursor_description')}
@@ -512,6 +515,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               }}
             />
 
+            {!isWebUi && (
             <SettingRow
               title={t('settings:zoom.title')}
               description={zoomLoading ? t('settings:zoom.loading') : t('settings:zoom.status_current', { value: formatZoomLabel(uiZoom) })}
@@ -534,7 +538,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                     size="sm"
                     disabled={zoomSaving || Math.abs(uiZoom - DEFAULT_UI_ZOOM) < 0.0001}
                     onClick={handleZoomReset}
-                    className="min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
+                    className="rounded-xl border-border/70 bg-background/60 px-3 min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                   >
                     {zoomSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                     {t('settings:zoom.reset')}
@@ -546,6 +550,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                 </div>
               )}
             </SettingRow>
+            )}
 
             <SettingRow
               title={t('settings:font.title')}
@@ -558,7 +563,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   size="sm"
                   disabled={fontSaving || uiFont === DEFAULT_UI_FONT}
                   onClick={handleFontReset}
-                  className="min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
+                  className="rounded-xl border-border/70 bg-background/60 px-3 min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                 >
                   {fontSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                   {t('settings:font.reset')}
@@ -597,7 +602,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   size="sm"
                   disabled={fontSizeSaving || Math.abs(uiFontSize - DEFAULT_UI_FONT_SIZE) < 0.0001}
                   onClick={handleFontSizeReset}
-                  className="min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
+                  className="rounded-xl border-border/70 bg-background/60 px-3 min-h-11 md:min-h-0 [@media(pointer:coarse)]:!min-h-11"
                 >
                   {fontSizeSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                   {t('settings:font.size_reset')}
@@ -605,7 +610,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               </div>
             </SettingRow>
 
-            {!isMobilePlatform() && (
+            {!isMobilePlatform() && !(isWebUi && isSmallScreen) && (
               <SettingRow
                 title={t('settings:theme.thread_width_ratio_title')}
                 description={t('settings:theme.thread_width_ratio_description')}

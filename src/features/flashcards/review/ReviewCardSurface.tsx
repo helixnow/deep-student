@@ -276,7 +276,10 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
                 interactiveFrame
                 onFrameClick={disabled ? undefined : onFlip}
                 onFrameWheel={handleFrameWheel}
-                className={cn('flex min-h-0 flex-1', templateMode ? 'flex-col' : 'items-center justify-center')}
+                className={cn(
+                  'flex min-h-0 flex-1',
+                  templateMode ? (contentFits ? 'flex-col justify-center' : 'flex-col') : 'items-center justify-center',
+                )}
               />
             </div>
             <span className="wb-fc-card-flip-hint" aria-hidden="true">

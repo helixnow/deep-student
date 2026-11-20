@@ -22,7 +22,7 @@ import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { useQueueSettings } from '@/features/chat/queue/useQueueSettings';
 import { debugMasterSwitch } from '@/debug-panel/debugMasterSwitch';
-import { isAndroid, isAndroidMobileShell, isMobilePlatform } from '@/utils/platform';
+import { isAndroid, isAndroidMobileShell, isMobilePlatform, isWebUiShell } from '@/utils/platform';
 import { getDefaultConfig, configFromPreset, type CopyFilterConfig } from '@/features/chat/hooks/useDevShowRawRequest';
 import {
   ensureSystemNotificationPermission,
@@ -91,8 +91,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
   const { mode, loading: queueModeLoading, setMode } = useQueueSettings();
   const [notificationPolicy, setNotificationPolicy] = useState<SystemNotificationPolicy>(() => getSystemNotificationPolicy());
   const [quickAssistantConfig, setQuickAssistantConfig] = useState<QuickAssistantConfig | null>(null);
-  // P1-11：快速助手（系统快捷小窗）仅桌面端 Rust 实现，移动平台隐藏整块假入口
-  const quickAssistantSupported = !isMobilePlatform();
+  // P1-11：快速助手（系统快捷小窗）与桌面系统授权仅桌面端原生 Rust 实现，移动平台与 WebUI 隐藏假入口
+  const quickAssistantSupported = !isMobilePlatform() && !isWebUiShell();
   // #472: 沉浸式全屏（隐藏状态栏 / 导航栏）仅 Android 原生实现
   const immersiveModeSupported = isAndroidImmersiveModeSupported();
   const [immersiveMode, setImmersiveMode] = useState<boolean | null>(null);
@@ -368,7 +368,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
-                className="[@media(pointer:coarse)]:!min-h-11"
+                className="rounded-xl border-border/70 bg-background/60 px-3 text-foreground hover:bg-muted/50 [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => setShowAgreementPreview(true)}
               >
                 {t('settings:developer.preview_agreement.button')}
@@ -378,7 +378,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
 
         {isAndroidMobileShell() && invoke && <AndroidFeatureFlagsSection invoke={invoke} />}
 
-        {!isMobilePlatform() && (
+        {!isMobilePlatform() && !isWebUiShell() && (
           <div className="mt-8">
             <AnkiConnectSettingsSection />
           </div>

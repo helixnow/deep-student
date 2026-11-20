@@ -124,7 +124,7 @@ export const TodayStudySummaryCard: React.FC<TodayStudySummaryCardProps> = ({
             size="sm"
             data-testid="today-summary-sprint"
             onClick={() => openDailySprint({ source: 'todo-today' })}
-            className="native-touch-target h-7 gap-1 rounded-full border border-primary/30 bg-primary/10 px-2.5 font-mono text-xs font-medium tabular-nums text-primary hover:bg-primary/15 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+            className="native-touch-target min-h-10 w-full justify-center gap-1.5 rounded-xl border border-primary/35 bg-primary/12 px-3 font-mono text-xs font-medium tabular-nums text-primary hover:bg-primary/18 sm:h-7 sm:min-h-0 sm:w-auto sm:rounded-full sm:px-2.5 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
           >
             <Play size={11} weight="fill" aria-hidden="true" />
             <span>{t('review:examSprint.hud.startCta', { minutes: estimatedSprintMinutes })}</span>

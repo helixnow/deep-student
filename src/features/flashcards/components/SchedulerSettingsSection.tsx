@@ -304,7 +304,7 @@ export const SchedulerSettingsSection: React.FC = () => {
                 size="sm"
                 disabled={saving || !dirty}
                 onClick={() => void handleSave()}
-                className="text-xs"
+                className="rounded-xl border-primary/40 bg-primary/15 px-4 text-xs font-medium text-primary hover:bg-primary/25 disabled:border-border/50 disabled:bg-muted/40 disabled:text-muted-foreground"
               >
                 {t('settings.scheduler.save')}
               </DsButton>

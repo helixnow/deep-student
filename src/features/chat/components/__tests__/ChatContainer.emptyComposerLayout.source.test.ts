@@ -124,4 +124,11 @@ describe('ChatContainer empty composer layout source contract', () => {
     expect(inputBarUiSource).toContain('--unified-input-keyboard-inset');
     expect(inputBarUiSource).toContain('keyboardInsetPx');
   });
+
+  it('keeps mobile empty state quiet by default and reveals TodayReviewHint via centered logo toggle', () => {
+    expect(containerSource).toContain('useTodayReviewHintAvailability(shouldAutoFocusMobileEmptyComposer)');
+    expect(containerSource).toContain('emptyStateCardAvailable={shouldAutoFocusMobileEmptyComposer && mobileReviewHintAvailability.hasContent}');
+    expect(containerSource).toContain('renderEmptyStateCard={shouldAutoFocusMobileEmptyComposer ? renderMobileTodayReviewHint : undefined}');
+    expect(containerSource).toContain('<TodayReviewHint embedded />');
+  });
 });

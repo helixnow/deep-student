@@ -12,6 +12,7 @@ import { SettingSection } from './SettingsCommon';
 import { SettingRow, GroupTitle } from './settingsTabPrimitives';
 import { PrivacyPolicyDialog } from '@/components/legal/PrivacyPolicyDialog';
 import VERSION_INFO from '@/version';
+import { isWebUiShell } from '@/utils/platform';
 import { useAppUpdater, getUpdateChannel, setUpdateChannel, type UpdateChannel, getUpdateFrequency, setUpdateFrequency, type UpdateFrequency, getUpdateFrequencyDays, setUpdateFrequencyDays, getNoRemind, setNoRemind } from '@/hooks/useAppUpdater';
 import ReactMarkdown from 'react-markdown';
 
@@ -87,6 +88,7 @@ const AboutActionRow = ({
 
 export const AboutTab: React.FC = () => {
   const { t } = useTranslation(['common', 'settings']);
+  const showDesktopUpdater = !isWebUiShell();
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const updater = useAppUpdater();
   const [channel, setChannel] = useState<UpdateChannel>(getUpdateChannel);
@@ -132,30 +134,42 @@ export const AboutTab: React.FC = () => {
           <div className="md:w-2/3">
             <GroupTitle title={t('acknowledgements.developer.title')} />
             <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
-              <SettingRow title={t('acknowledgements.developer.fields.developer')}>
+              <SettingRow
+                title={t('acknowledgements.developer.fields.developer')}
+                className="!flex-row !items-center !justify-between gap-3"
+                controlClassName="!w-auto"
+              >
                 <span className="text-sm text-foreground/90">DeepStudent Team</span>
               </SettingRow>
-            <SettingRow title={t('acknowledgements.developer.fields.version')}>
+            <SettingRow
+              title={t('acknowledgements.developer.fields.version')}
+              className="!flex-row !items-center !justify-between gap-3"
+              controlClassName="!w-auto"
+            >
               <div className="flex items-center gap-2">
                 <span className="text-sm font-mono text-foreground/90 whitespace-nowrap">
                   {VERSION_INFO.FULL_VERSION}
                   <span className="text-muted-foreground/50 ml-1.5 text-xs">{VERSION_INFO.GIT_HASH}</span>
                 </span>
-                <DsButton
-                  variant="outline"
-                  size="sm"
-                  onClick={() => updater.checkForUpdate(false)}
-                  disabled={updater.checking}
-                  className="flex-shrink-0 whitespace-nowrap"
-                >
-                  <ArrowClockwise size={12} className={`mr-1 ${updater.checking ? 'animate-spin' : ''}`} />
-                  {updater.checking
-                    ? t('about.update.checking')
-                    : t('about.update.check')}
-                </DsButton>
+                {showDesktopUpdater && (
+                  <DsButton
+                    variant="outline"
+                    size="sm"
+                    onClick={() => updater.checkForUpdate(false)}
+                    disabled={updater.checking}
+                    className="flex-shrink-0 whitespace-nowrap rounded-xl border-border/70 bg-background/60 px-3 text-foreground hover:bg-muted/50"
+                  >
+                    <ArrowClockwise size={12} className={`mr-1 ${updater.checking ? 'animate-spin' : ''}`} />
+                    {updater.checking
+                      ? t('about.update.checking')
+                      : t('about.update.check')}
+                  </DsButton>
+                )}
               </div>
             </SettingRow>
 
+            {showDesktopUpdater && (
+            <>
             <SettingRow
               title={t('about.update.channel')}
               description={channel === 'experimental'
@@ -189,6 +203,7 @@ export const AboutTab: React.FC = () => {
                     variant="outline"
                     size="sm"
                     onClick={handleResetNoRemind}
+                    className="rounded-xl border-border/70 bg-background/60 px-3 text-foreground"
                   >
                     {t('about.update.frequencyReEnable')}
                   </DsButton>
@@ -218,6 +233,8 @@ export const AboutTab: React.FC = () => {
                 )}
               </div>
             </SettingRow>
+            </>
+            )}
 
             {/* 已是最新版本提示 */}
             {updater.upToDate && !updater.available && (
@@ -376,10 +393,18 @@ export const AboutTab: React.FC = () => {
                 </p>
               </div>
             )}
-            <SettingRow title={t('acknowledgements.developer.fields.license')}>
+            <SettingRow
+              title={t('acknowledgements.developer.fields.license')}
+              className="!flex-row !items-center !justify-between gap-3"
+              controlClassName="!w-auto"
+            >
               <span className="text-sm text-foreground/90">AGPL-3.0-or-later</span>
             </SettingRow>
-            <SettingRow title={t('acknowledgements.developer.fields.platforms')}>
+            <SettingRow
+              title={t('acknowledgements.developer.fields.platforms')}
+              className="!flex-row !items-center !justify-between gap-3"
+              controlClassName="!w-auto text-right"
+            >
               <span className="text-sm text-foreground/90">
                 {t('acknowledgements.developer.values.platforms', 'Windows / macOS / iPadOS / Android')}
               </span>

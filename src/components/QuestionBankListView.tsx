@@ -421,13 +421,21 @@ const QuestionListRow: React.FC<{
   const typeMeta = getQuestionTypeMeta(question.questionType);
   
   return (
-    <DsButton
-      variant="ghost" size="sm"
+    <div
+      role="button"
+      tabIndex={0}
       data-agent-entity={`exam:${question.id}`}
       onClick={(e) => { if (isEditMode) { onSelect?.(!isSelected, e.shiftKey); } else { onClick(); } }}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          if (isEditMode) { onSelect?.(!isSelected, e.shiftKey); } else { onClick(); }
+        }
+      }}
       style={staggerStyle(listIndex)}
       className={cn(
-        'ui-rise-in group w-full !justify-start gap-3.5 !px-3 !py-2.5 !h-auto !rounded-lg transition-colors motion-reduce:transition-none motion-reduce:animate-none',
+        'ui-rise-in group flex w-full cursor-pointer items-center justify-start gap-3.5 rounded-lg px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:animate-none',
         // 长列表渲染优化：视口外行跳过渲染（记忆上次尺寸避免滚动条跳动）
         '[content-visibility:auto] [contain-intrinsic-size:auto_44px]',
         !isSelected && 'hover:bg-foreground/[0.035]',
@@ -470,8 +478,12 @@ const QuestionListRow: React.FC<{
             {t(`practice:${DIFFICULTY_CONFIG[question.difficulty].labelKey}`)}
           </span>
         )}
-        {question.isFavorite && !actionProps.onToggleFavorite && (
-          <Star size={13} className="fill-warning text-warning" />
+        {question.isFavorite && (
+          <Star
+            size={13}
+            weight="fill"
+            className={cn('fill-warning text-warning', actionProps.onToggleFavorite && 'sm:hidden')}
+          />
         )}
         {hasAttempt && (
           <div className={cn(
@@ -481,14 +493,16 @@ const QuestionListRow: React.FC<{
             {isCorrect ? <Check size={10} /> : <X size={10} />}
           </div>
         )}
-        {/* hover 浮现快捷操作：收藏 / 编辑 / 删除（非编辑模式） */}
+        {/* hover 浮现快捷操作：收藏 / 编辑 / 删除（窄屏隐藏行内 4 按钮，避免挤占题干可读宽度） */}
         {!isEditMode && (
-          <RowHoverActions question={question} onEdit={onEdit} {...actionProps} />
+          <div className="hidden sm:contents">
+            <RowHoverActions question={question} onEdit={onEdit} {...actionProps} />
+          </div>
         )}
       </div>
       
       <CaretRight size={14} className="text-muted-foreground/0 group-hover:text-muted-foreground/50 [@media(pointer:coarse)]:text-muted-foreground/40 transition-colors flex-shrink-0" />
-    </DsButton>
+    </div>
   );
 };
 
@@ -1261,8 +1275,8 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       {/* 单行/1.5行紧凑轻顶栏：搜索 + 内联不折行状态/难度/题型筛选 + 视图/管理操作 */}
       <div className="flex-shrink-0 border-b border-border/35 bg-background/95 px-3 sm:px-4 py-2 backdrop-blur-sm">
         <div className="flex flex-wrap lg:flex-nowrap items-center gap-x-2 gap-y-1.5">
-          {/* 左侧：紧凑搜索框 */}
-          <div className="order-1 relative flex-1 sm:flex-initial sm:w-52 lg:w-56 min-w-[140px] max-w-xs">
+          {/* 左侧：紧凑搜索框（窄屏独占首行全宽，避免被工具按钮挤成 ~100px） */}
+          <div className="order-1 relative basis-full sm:basis-auto sm:flex-initial sm:w-52 lg:w-56 min-w-0 sm:max-w-xs">
             <MagnifyingGlass size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
             <Input
               type="search"
@@ -1464,13 +1478,13 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
 
             {stats && (
               <DsButton
-                variant="ghost"
+                variant="primary"
                 size="sm"
                 onClick={() => handleQuestionClick(0)}
-                className="!h-7 !px-2.5 !py-0 [@media(pointer:coarse)]:!h-11 text-xs text-primary hover:bg-primary/10 gap-1 flex-shrink-0"
+                className="!h-7 !px-2.5 !py-0 [@media(pointer:coarse)]:!h-11 rounded-lg border-primary/40 bg-primary/15 text-xs font-medium text-primary hover:bg-primary/25 gap-1 flex-shrink-0"
               >
                 <Play size={12} weight="fill" />
-                <span className="hidden sm:inline">{t('practice:questionBank.startPractice')}</span>
+                <span>{t('practice:questionBank.startPractice')}</span>
               </DsButton>
             )}
           </div>

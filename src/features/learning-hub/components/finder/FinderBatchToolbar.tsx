@@ -16,6 +16,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import {
@@ -102,11 +103,21 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
 
   const allSelected = selectedCount === totalCount && totalCount > 0;
 
-  // 📱 触屏设备：底部工具栏是移动端主要操作入口（多选/排序/批量操作），
+  // 📱 触屏与小屏移动壳：底部工具栏是移动端主要操作入口（多选/排序/批量操作），
   // 放大触控目标（契约第 6 条）；桌面保持原紧凑尺寸。
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
-  const smallIconBtnClass = isTouchPrimary ? '!h-11 !w-11 !p-2.5' : '!h-6 !w-6 !p-1';
-  const actionIconBtnClass = isTouchPrimary ? '!h-11 !w-11' : 'h-7 w-7';
+  const { isSmallScreen } = useBreakpoint();
+  const isTouchOrSmall = isTouchPrimary || isSmallScreen;
+  const smallIconBtnClass = isTouchPrimary
+    ? '!h-11 !w-11 !p-2.5'
+    : isSmallScreen
+      ? '!h-9 !w-9 !p-1.5'
+      : '!h-6 !w-6 !p-1';
+  const actionIconBtnClass = isTouchPrimary
+    ? '!h-11 !w-11'
+    : isSmallScreen
+      ? '!h-9 !w-9'
+      : 'h-7 w-7';
 
   // 📱 Android 返回键：排序菜单（AppMenu 自绘浮层）打开时先关闭菜单（契约第 4 条）
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
@@ -122,6 +133,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
     <div 
       className={cn(
         "relative -mr-px flex items-center gap-1.5 px-3 border-t text-sm h-10 shrink-0 overflow-hidden",
+        "max-md:h-auto max-md:min-h-11 max-md:py-1",
         // 📱 触屏：底部工具栏贴屏幕底，留出手势导航安全区；多选态在平板窄侧栏下允许换行并收紧左右内边距，避免按钮溢出到右侧内容面板
         "[@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-wrap [@media(pointer:coarse)]:px-2 [@media(pointer:coarse)]:py-1 [@media(pointer:coarse)]:pb-[var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px))]",
         "bg-[color:var(--shell-toolbar-surface,var(--background))]",
@@ -142,12 +154,12 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
 
         {/* 视图切换按钮组 - 在有选中项时可能被隐藏 */}
         {onViewModeChange && !hasSelection && (
-          <div className="flex items-center bg-muted/50 rounded p-0.5 gap-0.5 shrink-0">
+          <div className="flex items-center bg-muted/50 rounded-lg p-0.5 gap-0.5 shrink-0">
             <DsButton variant="ghost" size="icon" iconOnly onClick={() => onViewModeChange('grid')} className={cn(smallIconBtnClass, viewMode === 'grid' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')} title={t('finder.viewMode.grid')} aria-label={t('finder.viewMode.grid')} aria-pressed={viewMode === 'grid'}>
-              <SquaresFour size={isTouchPrimary ? 18 : 14} />
+              <SquaresFour size={isTouchOrSmall ? 18 : 14} />
             </DsButton>
             <DsButton variant="ghost" size="icon" iconOnly onClick={() => onViewModeChange('list')} className={cn(smallIconBtnClass, viewMode === 'list' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground')} title={t('finder.viewMode.list')} aria-label={t('finder.viewMode.list')} aria-pressed={viewMode === 'list'}>
-              <List size={isTouchPrimary ? 18 : 14} />
+              <List size={isTouchOrSmall ? 18 : 14} />
             </DsButton>
           </div>
         )}
@@ -170,7 +182,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
             aria-label={multiSelectMode ? t('multiSelect.exit') : t('multiSelect.enable')}
             aria-pressed={multiSelectMode}
           >
-            <ListChecks size={isTouchPrimary ? 18 : 14} />
+            <ListChecks size={isTouchOrSmall ? 18 : 14} />
           </DsButton>
         )}
 
@@ -186,7 +198,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
                 title={t('finder.sort.title')}
                 aria-label={t('finder.sort.title')}
               >
-                {sortOrder === 'asc' ? <SortAscending size={isTouchPrimary ? 18 : 14} /> : <SortDescending size={isTouchPrimary ? 18 : 14} />}
+                {sortOrder === 'asc' ? <SortAscending size={isTouchOrSmall ? 18 : 14} /> : <SortDescending size={isTouchOrSmall ? 18 : 14} />}
               </DsButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={170}>

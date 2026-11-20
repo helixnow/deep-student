@@ -17,8 +17,8 @@ import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { usePhoneLandscape } from '@/hooks/useBreakpoint';
 import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import { cn } from '@/utils/cn';
-import { isMacOS, isMobilePlatform } from '@/utils/platform';
-import { useMobileHeaderContextSafe, useMobileHeaderNav } from './MobileHeaderContext';
+import { isMacOS, isMobilePlatform, isWebUiShell } from '@/utils/platform';
+import { useMobileHeaderContextSafe, useMobileHeaderNav, type MobileHeaderConfig } from './MobileHeaderContext';
 import { useMobileLayoutSafe } from './MobileLayoutContext';
 
 export interface MobileProgressiveBlurBarProps {
@@ -103,6 +103,8 @@ export interface UnifiedMobileHeaderProps {
   fallbackTitle?: string;
   /** 是否启用 4 层阶梯渐进模糊垫层（默认启用） */
   progressiveBlur?: boolean;
+  /** 独立全屏浮层（如错题复习）直接传入顶栏配置，不依赖外部 MobileHeaderProvider */
+  configOverride?: MobileHeaderConfig;
 }
 
 export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
@@ -114,11 +116,12 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
   style,
   fallbackTitle,
   progressiveBlur = true,
+  configOverride,
 }) => {
   const { t } = useTranslation(['common']);
   const isPhoneLandscape = usePhoneLandscape();
   const ctx = useMobileHeaderContextSafe();
-  const config = ctx?.config ?? {
+  const config = configOverride ?? ctx?.config ?? {
     title: '',
     titleNode: undefined,
     subtitle: undefined,
@@ -159,10 +162,10 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
   }
 
   // 手机横屏优先使用 max(12px, env(safe-area-inset-left/right)) 避让刘海与圆角；
-  // macOS 桌面窗口拉窄（< 768）则让出红绿灯宽度；其余竖屏走标准安全区变量。
+  // 仅 macOS 原生桌面壳拉窄（< 768，排除浏览器 WebUI）才让出红绿灯宽度；其余竖屏走标准安全区变量。
   const paddingLeft = isPhoneLandscape
     ? 'max(12px, env(safe-area-inset-left))'
-    : !isMobilePlatform() && isMacOS()
+    : !isMobilePlatform() && !isWebUiShell() && isMacOS()
       ? `${DESKTOP_SHELL.macTrafficLightsSpacer}px`
       : 'calc(0.75rem + var(--mobile-safe-area-left, 0px))';
   const paddingRight = isPhoneLandscape

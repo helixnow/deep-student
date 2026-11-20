@@ -33,6 +33,7 @@ import { StudySpaceBadgeStrip } from '@/components/study-space/StudySpaceBadgeSt
 import { useActiveStudySpace } from '@/components/study-space/useActiveStudySpace';
 import { useSpaceAutoScope } from '@/components/study-space/useSpaceAutoScope';
 import { DsButton } from '@/components/ui/DsButton';
+import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
 import { Input } from '@/components/ui/shad/Input';
 import {
   AppMenu,
@@ -575,7 +576,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                     active || isActiveSpaceHighlight,
                     cn(
                       'group gap-2.5',
-                      hasGroupMenu ? '!pr-20' : '!pr-12',
+                      hasGroupMenu ? '!pr-[76px]' : '!pr-11',
                       isActiveSpaceHighlight && 'border border-border/35 bg-[var(--surface-elevated)]',
                     ),
                   )
@@ -591,14 +592,21 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             }
           >
             {isInboxRow ? (
-              <span className={unified ? mobileDrawerRowIconWrapClassName : 'inline-flex items-center'}>
+              <span className={unified ? 'flex w-[var(--md-row-icon,22px)] shrink-0 items-center justify-center text-[color:var(--shell-navigation-foreground)]' : 'inline-flex items-center'}>
                 <Tray
                   size={15}
                   className={unified ? undefined : 'h-[15px] w-[15px] shrink-0 text-[color:var(--sidebar-foreground)]'}
                 />
               </span>
+            ) : unified ? (
+              <span className="flex w-[var(--md-row-icon,22px)] shrink-0 items-center justify-center text-[color:var(--shell-navigation-foreground)]">
+                <FolderSimple
+                  size={16}
+                  style={group?.color ? { color: group.color } : undefined}
+                />
+              </span>
             ) : (
-              <span className={cn('inline-flex shrink-0 items-center gap-1.5', unified && mobileDrawerRowIconWrapClassName)}>
+              <span className="inline-flex shrink-0 items-center gap-1.5">
                 <span
                   aria-hidden="true"
                   className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-primary)]"
@@ -606,7 +614,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                 />
                 <FolderSimple
                   size={16}
-                  className={unified ? undefined : 'h-4 w-4 shrink-0 text-[color:var(--sidebar-foreground)]'}
+                  className="h-4 w-4 shrink-0 text-[color:var(--sidebar-foreground)]"
                 />
               </span>
             )}
@@ -626,12 +634,17 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               ) : null}
               <span
                 data-testid={isInboxRow ? 'sidebar-inbox-count' : group ? `space-session-count-${group.id}` : undefined}
-                className="font-mono text-xs tabular-nums text-[var(--text-secondary)]"
+                className={cn(
+                  'font-mono tabular-nums',
+                  unified
+                    ? 'text-[length:var(--font-size-ui)] leading-none text-[color:var(--shell-navigation-muted)]'
+                    : 'text-xs text-[var(--text-secondary)]',
+                )}
               >
                 {folderSessionCount}
               </span>
               <CaretRight
-                size={14}
+                size={unified ? 16 : 14}
                 className={cn(
                   'shrink-0 text-[color:var(--sidebar-muted)] transition-transform duration-150 ease-[var(--dropdown-ease)] motion-reduce:transition-none',
                   isExpanded && 'rotate-90'
@@ -639,7 +652,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               />
             </span>
           </DsButton>
-          <div className="absolute right-0.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+          <div className={cn('absolute top-1/2 flex -translate-y-1/2 items-center', unified ? 'right-0 -space-x-1.5' : 'right-0.5 gap-0.5')}>
             <DsButton
               variant="ghost"
               size="icon"
@@ -649,7 +662,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               title={createSessionLabel}
               onClick={() => handleCreateSessionInFolder(id)}
             >
-              <Plus size={15} />
+              <Plus size={unified ? 18 : 15} />
             </DsButton>
             {hasGroupMenu && group && (
               <AppMenu>
@@ -662,7 +675,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
                     aria-label={t('page.groupActions')}
                     title={t('page.groupActions')}
                   >
-                    <DotsThree size={18} className="text-muted-foreground/80" />
+                    <DotsThree size={unified ? 20 : 16} className="text-muted-foreground/80" />
                   </DsButton>
                 </AppMenuTrigger>
                 <AppMenuContent align="end" width={200}>
@@ -698,6 +711,20 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             )}
           </div>
         </div>
+
+        {/* 移动端活跃课题状态条：直接内嵌到该课题行下方，不再游离在收件箱上方并重复课题名 */}
+        {unified && isActiveSpaceHighlight && activeSpace && group ? (
+          <StudySpaceBadgeStrip
+            hideName
+            space={activeSpace}
+            onEditSpace={
+              editableGroupIds.has(group.id)
+                ? () => onEditGroup(group)
+                : undefined
+            }
+            className="ml-4 rounded-xl border border-[color:var(--shell-navigation-border)] bg-[color:var(--interactive-hover)]"
+          />
+        ) : null}
 
         {/* 分组归档行内确认条（替代模态确认框） */}
         {group && pendingArchiveGroupId === group.id && (
@@ -742,7 +769,15 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
           )}
         >
-          <div className={cn('space-y-0.5 overflow-hidden pl-4', !isExpanded && 'pointer-events-none')}>
+          <div
+            className={cn(
+              'space-y-0.5 overflow-hidden',
+              unified
+                ? 'ml-4 border-l border-[color:var(--shell-navigation-border)] pl-2'
+                : 'pl-4',
+              !isExpanded && 'pointer-events-none',
+            )}
+          >
             {onSessionDragEnd ? (
               <div className="space-y-0.5">
                 {nonPinnedSessions.map((session) => (
@@ -814,7 +849,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     const ungroupedFolder = shouldShowInboxRow && (ungroupedNonPinned.length > 0 || !isSearching) ? (
       <div
         data-testid="sidebar-inbox-pinned"
-        className="border-b border-border/35 pb-1.5"
+        className={unified ? 'pb-0.5' : 'border-b border-border/35 pb-1.5'}
       >
         {renderFolderRow(
           'ungrouped',
@@ -870,10 +905,10 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
               title={t('page.createGroup')}
               className="lg:!h-10 lg:!w-10 -my-2 shrink-0 text-muted-foreground/80"
             >
-              <Plus size={15} />
+              <Plus size={unified ? 18 : 15} />
             </DsButton>
           </div>
-          {activeSpace && activeGroupForStrip ? (
+          {!unified && activeSpace && activeGroupForStrip ? (
             <StudySpaceBadgeStrip
               space={activeSpace}
               onEditSpace={
@@ -942,12 +977,18 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
 
   // 侧栏内联搜索框（接通 ChatV2Page 的 searchQuery 过滤链路，替代原先被 void 的死状态）
   // 右侧过滤菜单：子代理会话显隐等过滤选项（后续可扩展排序策略）
-  const renderSearchInput = () => (
-    <div className="flex items-center gap-1 px-3">
+  const renderSearchInput = (unified = false) => (
+    <div
+      data-mobile-drawer-search={unified ? '' : undefined}
+      className={cn('flex items-center', unified ? 'gap-2 px-0.5' : 'gap-1 px-3')}
+    >
       <div className="relative min-w-0 flex-1">
         <MagnifyingGlass
           size={18}
-          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[color:var(--sidebar-muted)]"
+          className={cn(
+            'pointer-events-none absolute top-1/2 -translate-y-1/2 text-[color:var(--sidebar-muted)]',
+            unified ? 'left-3.5' : 'left-4',
+          )}
           aria-hidden="true"
         />
         <Input
@@ -963,7 +1004,9 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           placeholder={t('page.searchPlaceholder')}
           aria-label={t('page.searchPlaceholder')}
           className={cn(
-            'h-11 min-h-0 w-full rounded-xl border border-border/80 bg-muted/50 pl-11 pr-10 text-[16px] shadow-none',
+            unified
+              ? 'h-11 min-h-0 w-full rounded-xl border border-[color:var(--shell-navigation-border)] bg-[color:var(--interactive-hover)] pl-10 pr-9 text-[16px] shadow-none'
+              : 'h-11 min-h-0 w-full rounded-xl border border-border/80 bg-muted/50 pl-11 pr-10 text-[16px] shadow-none',
             // coarse 指针下 16px 防 iOS 聚焦自动放大
             '[@media(pointer:coarse)]:text-[16px]',
             'text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted)]',
@@ -979,31 +1022,39 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             aria-label={t('page.clearSearch')}
             onClick={() => handleSearchChange('')}
           >
-            <X size={12} />
+            <X size={14} />
           </DsButton>
         )}
       </div>
       <SidebarFilterMenu
         t={t}
-        triggerClassName="!h-9 !w-9 shrink-0 text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]"
+        triggerClassName={cn(
+          'shrink-0 text-[color:var(--sidebar-muted)] hover:text-[color:var(--sidebar-foreground)]',
+          unified
+            ? '!h-11 !w-11 !rounded-xl border border-[color:var(--shell-navigation-border)] bg-[color:var(--interactive-hover)] [&_svg]:size-5'
+            : '!h-9 !w-9',
+        )}
       />
     </div>
   );
 
   const renderUnifiedMobileSidebarHeader = React.useCallback(() => (
-    <p
+    <div
       data-mobile-sidebar-fixed-region="top"
-      className="min-w-0 truncate text-[22px] font-bold leading-none text-foreground"
+      className="flex min-w-0 items-center gap-2.5"
     >
-      DeepStudent
-    </p>
+      <DeepStudentMark className="size-[26px] shrink-0" />
+      <p className="min-w-0 truncate text-[20px] font-semibold leading-none tracking-[-0.02em] text-foreground">
+        DeepStudent
+      </p>
+    </div>
   ), []);
 
   const buildSessionSidebarBody = (unified: boolean, includeUnifiedHeader = true) => {
     const shouldShowSearch = !unified || sessions.length >= 6 || searchQuery.length > 0;
     const shouldRenderUnifiedHeader = unified && includeUnifiedHeader;
     const body = (
-      <div className={cn('space-y-2.5 pb-1', unified ? (shouldRenderUnifiedHeader ? 'pt-2' : 'pt-3') : 'pt-1')}>
+      <div className={cn('space-y-2.5 pb-1', unified ? (shouldRenderUnifiedHeader ? 'pt-1.5' : 'pt-1') : 'pt-1')}>
         {shouldRenderUnifiedHeader ? renderUnifiedMobileSidebarHeader() : null}
         {!unified ? (
           <nav aria-label={t('page.primaryNavigation')} className="space-y-0.5">
@@ -1011,7 +1062,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             {renderPrimaryItem('session-browser', t('browser.allSessions'), SquaresFour, viewMode === 'browser', handleOpenBrowser, false)}
           </nav>
         ) : null}
-        {!isInitialLoading && shouldShowSearch && renderSearchInput()}
+        {!isInitialLoading && shouldShowSearch && renderSearchInput(unified)}
         {renderStudySidebarContent(unified)}
       </div>
     );

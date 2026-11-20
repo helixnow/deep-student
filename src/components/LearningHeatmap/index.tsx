@@ -365,7 +365,8 @@ export function LearningHeatmap({
     [maxCount, metric]
   );
 
-  const contentWidth = grid.weeks.length * step - gap;
+  // 右侧额外留白，确保末月标签（如「11月」）及今日单元格外光环不被横向滚动容器裁切
+  const contentWidth = grid.weeks.length * step - gap + 28;
 
   // 初始滚动到最新日期
   useLayoutEffect(() => {
@@ -544,6 +545,7 @@ export function LearningHeatmap({
           size="compact"
           ariaLabel={t('heatmap.metric.label')}
           value={metric}
+          itemClassName="min-h-8 sm:min-h-0"
           onValueChange={(next) => {
             setMetric(next);
             setHover(null);
@@ -644,7 +646,7 @@ export function LearningHeatmap({
           viewportRef={scrollRef}
           viewportProps={{ onScroll: clearHover }}
           className="lh-scroll min-w-0 flex-1"
-          viewportClassName="pb-1.5"
+          viewportClassName="px-1 pb-2"
           orientation="horizontal"
         >
           {loading ? (

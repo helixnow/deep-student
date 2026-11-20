@@ -131,9 +131,10 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
           </span>
         </div>
         <DsButton
-          variant="ghost"
+          variant="primary"
           size="sm"
           data-testid="byok-expand-button"
+          className="shrink-0 rounded-xl border-primary/35 bg-primary/12 px-3 font-medium text-primary hover:bg-primary/20"
           onClick={() => {
             setUserToggledCollapse(true);
             setIsCollapsed(false);

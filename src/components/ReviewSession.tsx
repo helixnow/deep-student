@@ -76,6 +76,8 @@ interface ReviewSessionProps {
   isActive?: boolean;
   onClose?: () => void;
   onComplete?: (stats: SessionStats) => void;
+  /** 宿主已渲染统一顶栏返回按钮时，省略进度条左侧重复的关闭按钮 */
+  hideExitButton?: boolean;
 }
 
 interface SessionStats {
@@ -541,6 +543,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
   isActive,
   onClose,
   onComplete,
+  hideExitButton = false,
 }) => {
   const { t } = useTranslation(['review', 'common']);
 
@@ -867,9 +870,12 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
 
   return (
     <div className={cn('flex flex-col h-full bg-background', className)}>
-      {/* 顶部导航栏（窄屏：进度条弹性宽度，计时可折叠） */}
-      <div className="flex-shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50">
-        {exitArmed ? (
+      {/* 顶部进度条：进度条全宽伸展，衔接左右计数与计时，消除多余留白 */}
+      <div className={cn(
+        'flex-shrink-0 flex items-center justify-between gap-3 px-4 border-b border-border/40',
+        hideExitButton ? 'py-2' : 'py-2.5',
+      )}>
+        {hideExitButton ? null : exitArmed ? (
           <DsButton
             variant="warning"
             size="sm"
@@ -893,88 +899,89 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
           </DsButton>
         )}
 
-        {/* 进度指示器 */}
-        <div className="flex min-w-0 flex-1 items-center justify-center gap-3">
-          <span className="shrink-0 text-sm font-medium tabular-nums">
+        {/* 进度指示器（全宽填充，避免短条悬在中间） */}
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span className="shrink-0 font-mono text-xs font-medium tabular-nums text-muted-foreground">
             {progress.current} / {progress.total}
           </span>
-          <div className="min-w-0 flex-1 max-w-[8rem]">
+          <div className="min-w-0 flex-1">
             <Progress
               value={(session.currentIndex / progress.total) * 100}
-              className="h-1.5 [&>.bar]:duration-300 [&>.bar]:ease-standard"
+              className="h-1.5 rounded-full [&>.bar]:duration-300 [&>.bar]:ease-standard"
             />
           </div>
         </div>
 
-        {/* 计时器：<sm 折叠为图标，点按展开 */}
+        {/* 计时器：紧凑常显时间，点击可切换 */}
         <button
           type="button"
           onClick={() => setTimerExpanded((v) => !v)}
           aria-label={`${t('review:complete.time')}: ${formatTime(elapsedTime)}`}
           aria-expanded={timerExpanded}
-          className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-md text-sm text-muted-foreground tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:pointer-events-none sm:min-h-0"
+          className="flex min-h-9 shrink-0 items-center gap-1 rounded-lg px-1.5 font-mono text-xs text-muted-foreground tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:pointer-events-none sm:min-h-0"
         >
-          <Clock size={16} />
-          <span className={cn(!timerExpanded && 'hidden', 'sm:inline')}>
-            {formatTime(elapsedTime)}
-          </span>
+          <Clock size={15} />
+          <span>{formatTime(elapsedTime)}</span>
         </button>
       </div>
 
-      {/* 状态栏 */}
-      <div className="flex-shrink-0 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-4 py-2 bg-muted/30">
-        <Badge
-          variant="secondary"
-          className={cn(
-            'text-xs',
-            plan.is_difficult
-              ? 'bg-warning/10 text-warning'
-              : 'bg-primary/10 text-primary'
-          )}
-        >
-          {plan.is_difficult
-            ? t('review:status.difficult')
-            : t(`review:status.${plan.status}`, plan.status)}
-        </Badge>
-        {question && (
-          <Badge
-            variant="secondary"
-            className="gap-1 bg-muted text-xs text-muted-foreground"
-          >
-            <TypeIcon size={12} />
-            {t(typeMeta.labelKey)}
-          </Badge>
-        )}
-        {plan.status === 'new' && plan.interval_days === 0 && plan.total_reviews === 0 ? (
-          <span className="text-xs text-muted-foreground">
-            {t('review:firstStudy')}
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground">
-            {t('review:interval')}: {plan.interval_days}
-            {t('review:days')}
-          </span>
-        )}
-        {plan.total_reviews > 0 && (
-          <span className="text-xs text-muted-foreground">
-            {t('review:totalReviews')}: {plan.total_reviews}
-            {t('review:times')}
-          </span>
-        )}
-      </div>
-
-      {/* 卡片内容区（切题时轻入场，key 驱动重挂载） */}
-      <CustomScrollArea className="min-h-0 flex-1" viewportClassName="px-4 py-6">
+      {/* 卡片内容区：短题居中偏上留白自然，长题可平滑滚动 */}
+      <CustomScrollArea className="min-h-0 flex-1" viewportClassName="h-full">
+        <div className="flex min-h-full flex-col justify-center px-4 py-5 pb-10">
         <Card
           key={`${session.startTime ?? 0}-${session.currentIndex}`}
-          className="ui-rise-in max-w-2xl mx-auto p-4 shadow-sm"
+          className="ui-rise-in w-full max-w-2xl mx-auto rounded-2xl border border-border/60 bg-[color:var(--surface-elevated)]/75 p-5 shadow-none"
         >
+          {/* 卡片内嵌元信息头：合并原独立灰条，减少顶栏叠层 */}
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-3">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Badge
+                variant="secondary"
+                className={cn(
+                  'rounded-md px-2 py-0.5 text-xs font-medium',
+                  plan.is_difficult
+                    ? 'bg-warning/15 text-warning'
+                    : 'bg-primary/15 text-primary'
+                )}
+              >
+                {plan.is_difficult
+                  ? t('review:status.difficult')
+                  : t(`review:status.${plan.status}`, plan.status)}
+              </Badge>
+              {question && (
+                <Badge
+                  variant="secondary"
+                  className="gap-1 rounded-md bg-muted/70 px-2 py-0.5 text-xs text-muted-foreground"
+                >
+                  <TypeIcon size={12} />
+                  {t(typeMeta.labelKey)}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              {plan.status === 'new' && plan.interval_days === 0 && plan.total_reviews === 0 ? (
+                <span>{t('review:firstStudy')}</span>
+              ) : (
+                <span className="tabular-nums">
+                  {t('review:interval')}: {plan.interval_days}
+                  {t('review:days')}
+                </span>
+              )}
+              {plan.total_reviews > 0 && (
+                <span className="tabular-nums">
+                  · {t('review:totalReviews')}: {plan.total_reviews}
+                  {t('review:times')}
+                </span>
+              )}
+            </div>
+          </div>
+
           {/* 题目内容 */}
-          <div className="mb-4">
+          <div className="mb-1">
             <h3 className="text-xs font-medium text-muted-foreground mb-2">
               {t('review:card.question')}
             </h3>
-            <div className="prose prose-sm dark:prose-invert max-w-none text-base leading-relaxed">
+            <div className="prose prose-base dark:prose-invert max-w-none text-lg font-medium leading-relaxed text-foreground">
               <MarkdownRenderer
                 content={question?.content || t('review:unknownQuestion')}
               />
@@ -992,13 +999,13 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
               <textarea
                 value={draftAnswer}
                 onChange={(event) => setDraftAnswer(event.target.value)}
-                rows={2}
+                rows={4}
                 aria-label={t('review:answerFirst.yourAnswer', { defaultValue: '你的答案' })}
                 placeholder={t('review:answerFirst.placeholder', { defaultValue: '先写下你的答案再看（可选，会记进复习记录）' })}
-                className="mt-3 w-full resize-y rounded-md border border-border/60 bg-transparent px-3 py-2 text-sm outline-none focus:border-ring"
+                className="mt-4 min-h-[112px] w-full resize-none rounded-xl border border-border/60 bg-background/60 px-3.5 py-3 text-base leading-relaxed text-foreground placeholder:text-muted-foreground/70 outline-none transition-colors focus:border-primary/50 focus:bg-background"
               />
             ) : draftAnswer.trim() ? (
-              <div className="mt-3 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm" data-testid="review-your-answer">
+              <div className="mt-4 rounded-xl border border-border/60 bg-background/50 px-3.5 py-3 text-sm" data-testid="review-your-answer">
                 <h3 className="mb-1 text-xs font-medium text-muted-foreground">
                   {t('review:answerFirst.yourAnswer', { defaultValue: '你的答案' })}
                 </h3>
@@ -1012,7 +1019,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             className={cn(
               'grid transition-[grid-template-rows,opacity] duration-200 ease-standard motion-reduce:transition-none',
               showAnswer
-                ? 'grid-rows-[1fr] opacity-100 border-t border-border/50 pt-4'
+                ? 'mt-4 grid-rows-[1fr] opacity-100 border-t border-border/50 pt-4'
                 : 'grid-rows-[0fr] opacity-0'
             )}
           >
@@ -1025,7 +1032,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                     <h3 className="text-xs font-medium text-success mb-2">
                       {t('review:card.answer')}
                     </h3>
-                    <div className="p-3 rounded-md bg-success/5 border border-success/20 text-foreground">
+                    <div className="p-3.5 rounded-xl bg-success/5 border border-success/20 text-foreground">
                       {structuredAnswer ?? (
                         <MarkdownRenderer content={question?.answer || ''} />
                       )}
@@ -1039,7 +1046,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                     <h3 className="text-xs font-medium text-primary mb-2">
                       {t('review:card.explanation')}
                     </h3>
-                    <div className="p-3 rounded-md bg-primary/5 border border-primary/20 text-muted-foreground text-sm">
+                    <div className="p-3.5 rounded-xl bg-primary/5 border border-primary/20 text-muted-foreground text-sm">
                       <MarkdownRenderer
                         content={question.explanation}
                       />
@@ -1051,28 +1058,28 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             </div>
           </div>
         </Card>
+        </div>
       </CustomScrollArea>
 
-      {/* 底部操作区（移动端手势导航安全区） */}
-      <div className="flex-shrink-0 border-t border-border/50 bg-muted/20 p-4 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]">
+      {/* 底部操作区（清晰主次层级 + 移动端手势导航安全区） */}
+      <div className="flex-shrink-0 border-t border-border/45 bg-[color:var(--surface-elevated)]/65 px-4 py-3 pb-[calc(0.875rem+var(--mobile-safe-area-bottom,0px))]">
         {!showAnswer ? (
-          /* 显示答案按钮（窄屏主按钮弹性铺满，拇指可达） */
-          <div className="mx-auto flex max-w-lg items-center justify-center gap-3">
+          /* 显示答案主操作 + 跳过次操作 */
+          <div className="mx-auto flex max-w-2xl items-center gap-3">
             <DsButton
               variant="outline"
               onClick={handleSkip}
-              className="min-h-11 shrink-0 gap-2 [@media(pointer:coarse)]:!min-h-12"
+              className="min-h-12 shrink-0 gap-2 rounded-xl border-border/70 bg-background/50 px-4 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
             >
-              <SkipForward size={16} />
+              <SkipForward size={17} />
               {t('review:action.skip')}
             </DsButton>
             <DsButton
               variant="primary"
-              size="sm"
               onClick={() => setShowAnswer(true)}
-              className="min-h-11 flex-1 gap-2 min-w-[160px] sm:flex-initial [@media(pointer:coarse)]:!min-h-12"
+              className="min-h-12 flex-1 gap-2 rounded-xl border-primary/40 bg-primary/15 px-5 font-medium text-primary hover:bg-primary/25 hover:text-primary"
             >
-              <Eye size={16} />
+              <Eye size={17} />
               {userAnswer
                 ? t('review:action.checkAnswer', { defaultValue: '核对答案' })
                 : t('review:action.showAnswer')}

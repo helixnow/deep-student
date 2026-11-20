@@ -163,7 +163,7 @@ export const DeckReviewPanel: React.FC<{ decks: readonly AnkiLibraryDeckCount[] 
                   disabled={busyPath !== null}
                   aria-label={t('today.decks.reviewAria', { name, count: dueCount })}
                   onClick={() => void startDeck(node, 'due')}
-                  className="wb-fcx-deck-action font-mono tabular-nums active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
+                  className="wb-fcx-deck-action rounded-lg border-primary/35 bg-primary/12 px-2.5 font-mono font-medium text-primary tabular-nums hover:bg-primary/20 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
                 >
                   <Play size={12} weight="fill" aria-hidden="true" />
                   {t('today.decks.review', { count: dueCount })}
@@ -176,7 +176,7 @@ export const DeckReviewPanel: React.FC<{ decks: readonly AnkiLibraryDeckCount[] 
                   disabled={busyPath !== null}
                   aria-label={t('today.decks.learnNewAria', { name, count: newCount })}
                   onClick={() => void startDeck(node, 'new')}
-                  className="wb-fcx-deck-action font-mono tabular-nums active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
+                  className="wb-fcx-deck-action rounded-lg border-border/65 bg-background/50 px-2.5 font-mono text-foreground tabular-nums hover:bg-muted/40 active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
                 >
                   {t('today.decks.learnNew', { count: newCount })}
                 </DsButton>

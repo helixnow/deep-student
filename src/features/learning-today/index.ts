@@ -18,7 +18,12 @@ export {
   loadTodayTodoCount,
   useTodayTodoCount,
 } from './todayTodoCount';
-export { TodayReviewHint } from './TodayReviewHint';
+export {
+  TodayReviewHint,
+  useTodayReviewHintAvailability,
+  type TodayReviewHintAvailability,
+  type TodayReviewHintProps,
+} from './TodayReviewHint';
 export {
   TodayStudySummaryCard,
   type TodayStudySummaryCardProps,

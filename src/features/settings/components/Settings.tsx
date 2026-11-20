@@ -15,7 +15,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
 import { useVendorModels } from '@/hooks/useVendorModels';
 import { consumePendingSettingsRoute } from '@/utils/pendingSettingsTab';
-import { isMobilePlatform } from '@/utils/platform';
+import { isMobilePlatform, isWebUiShell } from '@/utils/platform';
 import '@/command-palette/styles/shortcut-settings.css';
 import type { AutomationListen } from './automationSettingsApi';
 import { useSlot } from '@/ui-kernel/react';
@@ -75,8 +75,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   const { t } = useTranslation(['settings', 'common']);
   const { t: navigationT } = useTranslation(['settings', 'common', 'data', 'workbench']);
   const sectionEntries = useSlot<SettingsSection>('settings.sections');
-  const isMobile = isMobilePlatform();
   const { isSmallScreen } = useBreakpoint();
+  const isMobile = isMobilePlatform() || (isWebUiShell() && isSmallScreen);
   // 移动端设置以全屏 sheet 承载；桌面端继续使用独立工作区页面。
   const effectiveMobilePanelMode = isSmallScreen;
   const isTauriEnvironment = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);

@@ -31,7 +31,13 @@ export const SettingsVirtualList: React.FC<SettingsVirtualListProps> = ({
   const shouldVirtualize = !disabled && Boolean(scrollElement) && items.length > threshold;
 
   if (!shouldVirtualize || !scrollElement) {
-    return <div className={className}>{items.map((item) => item.render())}</div>;
+    return (
+      <div className={className}>
+        {items.map((item) => (
+          <React.Fragment key={item.key}>{item.render()}</React.Fragment>
+        ))}
+      </div>
+    );
   }
 
   return (

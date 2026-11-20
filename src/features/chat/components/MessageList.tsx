@@ -35,6 +35,7 @@ import {
 } from './messageListScrollRegistry';
 import { ArrowDown } from '@phosphor-icons/react';
 import { ThreadEmptyStateShell } from './ui/ThreadEmptyStateShell';
+import { MobileEmptyStateToggle } from './ui/MobileEmptyStateToggle';
 import { ThreadContentShell } from './ui/ThreadContentShell';
 import { MessageSearchBar } from './MessageSearchBar';
 import { useMessageSearch } from '../hooks/useMessageSearch';
@@ -235,6 +236,14 @@ export interface MessageListProps {
   overscan?: number;
   /** 🆕 强制显示空态（用于空态预览） */
   forceEmptyPreview?: boolean;
+  /** 移动端空态：存在可展开的今日冲刺/复习卡片时启用点击 Logo 切换 */
+  emptyStateCardAvailable?: boolean;
+  /** 移动端空态：是否存在今日到期任务（控制角标轻主色强调） */
+  emptyStateCardAccent?: boolean;
+  /** 移动端空态：切换会话时自动收起卡片的重置键 */
+  emptyStateCardResetKey?: string | null;
+  /** 移动端空态：点击居中 Logo 后替换欢迎语展示的卡片渲染器 */
+  renderEmptyStateCard?: () => React.ReactNode;
 }
 
 // ============================================================================
@@ -256,6 +265,10 @@ const MessageListInner: React.FC<MessageListProps> = ({
   estimatedItemSize = DEFAULT_ESTIMATED_ITEM_SIZE,
   overscan = 5,
   forceEmptyPreview = false,
+  emptyStateCardAvailable = false,
+  emptyStateCardAccent = false,
+  emptyStateCardResetKey = null,
+  renderEmptyStateCard,
 }) => {
   // 📊 细粒度打点：组件函数开始执行
   const instanceIdRef = useRef(Math.random().toString(36).slice(2, 8));
@@ -1168,6 +1181,16 @@ const MessageListInner: React.FC<MessageListProps> = ({
         : localizedVariant
       : fallback;
 
+    const emptyStateBrandIcon = (
+      <img
+        src="/logo-black.svg"
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        className="h-9 w-9 select-none brightness-0 invert-[0.55] transition-[filter] duration-200 hover:invert-[0.4]"
+      />
+    );
+
     return (
       <div
         className={cn(
@@ -1177,23 +1200,26 @@ const MessageListInner: React.FC<MessageListProps> = ({
       >
         <CustomScrollArea
           className="min-h-0 flex-1"
-          viewportClassName="px-4 pb-16 pt-3 overscroll-contain md:px-8 md:pb-8 md:pt-4"
+          viewportClassName="px-4 py-4 overscroll-contain md:px-8 md:pb-8 md:pt-4"
           hideTrackWhenIdle
         >
-          <ThreadEmptyStateShell
-            title={emptyStatePrimaryAction}
-            brandIcon={
-              <img
-                src="/logo-black.svg"
-                alt=""
-                aria-hidden="true"
-                draggable={false}
-                className="h-9 w-9 select-none brightness-0 invert-[0.55] transition-[filter] duration-200 hover:invert-[0.4]"
-              />
-            }
-            brandIconClassName="border-0 bg-transparent shadow-none"
-            contentClassName={isSmallScreen ? 'py-10' : 'py-16'}
-          />
+          {emptyStateCardAvailable && renderEmptyStateCard ? (
+            <MobileEmptyStateToggle
+              title={emptyStatePrimaryAction}
+              brandIcon={emptyStateBrandIcon}
+              renderCard={renderEmptyStateCard}
+              hasAccent={emptyStateCardAccent}
+              resetKey={emptyStateCardResetKey}
+              contentClassName={isSmallScreen ? 'py-4' : 'py-16'}
+            />
+          ) : (
+            <ThreadEmptyStateShell
+              title={emptyStatePrimaryAction}
+              brandIcon={emptyStateBrandIcon}
+              brandIconClassName="border-0 bg-transparent shadow-none"
+              contentClassName={isSmallScreen ? 'py-4' : 'py-16'}
+            />
+          )}
         </CustomScrollArea>
       </div>
     );
@@ -1516,7 +1542,11 @@ export const MessageList = memo(MessageListInner, (prevProps, nextProps) => {
     prevProps.emptyStateGroupName === nextProps.emptyStateGroupName &&
     prevProps.estimatedItemSize === nextProps.estimatedItemSize &&
     prevProps.overscan === nextProps.overscan &&
-    prevProps.forceEmptyPreview === nextProps.forceEmptyPreview
+    prevProps.forceEmptyPreview === nextProps.forceEmptyPreview &&
+    prevProps.emptyStateCardAvailable === nextProps.emptyStateCardAvailable &&
+    prevProps.emptyStateCardAccent === nextProps.emptyStateCardAccent &&
+    prevProps.emptyStateCardResetKey === nextProps.emptyStateCardResetKey &&
+    prevProps.renderEmptyStateCard === nextProps.renderEmptyStateCard
   );
 });
 

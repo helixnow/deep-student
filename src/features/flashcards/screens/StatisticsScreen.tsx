@@ -32,7 +32,7 @@ import { MemoryCurvePanel } from '../components/MemoryCurvePanel';
 import { RetentionInsightsPanel } from '../components/RetentionInsightsPanel';
 import { ReviewHeatmap } from '../components/ReviewHeatmap';
 import { SchedulerSettingsSection } from '../components/SchedulerSettingsSection';
-import type { FsrsRating } from '../store/fsrsReviewStore';
+import { useFsrsReviewStore, type FsrsRating } from '../store/fsrsReviewStore';
 import { useFlashcardsMobileChrome } from '../useFlashcardsMobileChrome';
 
 const DAILY_WINDOW_DAYS = 14;
@@ -266,9 +266,12 @@ export const StatisticsScreen: React.FC = () => {
     [i18n.language],
   );
 
+  const setScreen = useFsrsReviewStore((state) => state.setScreen);
+  const backToToday = useCallback(() => setScreen('today'), [setScreen]);
   const mobileChrome = useFlashcardsMobileChrome({
     title: t('statistics.title'),
-  }, [t]);
+    onBack: backToToday,
+  }, [t, backToToday]);
 
   return (
     <div className="wb-fc-screen">

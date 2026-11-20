@@ -304,12 +304,15 @@
 }
 
 .wb-tm-sort-select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
   appearance: none;
   height: 26px;
-  padding: 0 22px 0 8px;
+  padding: 0 24px 0 8px;
   border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
   border-radius: var(--radius-shell-control, 8px);
-  background: color-mix(in hsl, hsl(var(--foreground)) 4%, transparent 96%);
+  background-color: color-mix(in hsl, hsl(var(--foreground)) 4%, transparent 96%);
+  background-image: none;
   color: hsl(var(--foreground));
   font-size: var(--font-size-sm);
   cursor: pointer;
@@ -325,6 +328,12 @@
   right: 7px;
   pointer-events: none;
   color: hsl(var(--muted-foreground));
+}
+
+.wb-tm-sort-trigger {
+  height: 28px;
+  min-height: 28px;
+  gap: 6px;
 }
 
 /* 视图切换 */
@@ -1292,9 +1301,14 @@
   }
 
   .wb-tm-card-actions {
+    opacity: 1;
     flex-wrap: wrap;
     gap: 6px;
     justify-content: space-around;
+  }
+
+  .wb-tm-chip-divider {
+    display: none;
   }
 
   .wb-tm-toolbar-row {
@@ -1304,6 +1318,39 @@
 
   .wb-tm-toolbar-search {
     flex-basis: 100%;
+  }
+
+  .wb-tm-toolbar-spacer {
+    display: none;
+  }
+
+  .wb-tm-toolbar-count {
+    margin-right: auto;
+  }
+
+  .wb-tm-sort-trigger {
+    height: 30px;
+    min-height: 30px;
+    padding: 0 10px;
+  }
+
+  .wb-tm-view-toggle-btn {
+    width: 28px;
+    height: 24px;
+  }
+
+  @media (pointer: coarse) {
+    .wb-tm-sort-trigger {
+      height: 44px;
+      min-height: 44px;
+      padding: 0 12px;
+      font-size: var(--font-size-ui);
+    }
+
+    .wb-tm-view-toggle-btn {
+      width: 40px;
+      height: 38px;
+    }
   }
 
   .wb-tm-export-list-grid {

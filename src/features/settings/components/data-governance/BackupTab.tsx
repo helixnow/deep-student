@@ -826,7 +826,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             size="sm"
             onClick={handleBackupAndExport}
             disabled={loading || isBackupRunning}
-            className="[@media(pointer:coarse)]:!h-11"
+            className="rounded-xl border-primary/40 bg-primary/15 px-4 font-medium text-primary hover:bg-primary/25 [@media(pointer:coarse)]:!h-11"
           >
             {isBackupRunning ? (
               <CircleNotch size={16} className="mr-2 animate-spin" />
@@ -843,7 +843,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               setShowImportPasswordDialog(true);
             }}
             disabled={loading || isBackupRunning}
-            className="[@media(pointer:coarse)]:!h-11"
+            className="rounded-xl border-border/70 bg-background/60 px-4 text-foreground hover:bg-background/90 [@media(pointer:coarse)]:!h-11"
           >
             <Upload className="h-4 w-4 mr-1.5" />
             {t('data:governance.import_button')}

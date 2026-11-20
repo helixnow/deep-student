@@ -26,6 +26,8 @@ import {
 import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
+import { isMobilePlatform, isWebUiShell } from '@/utils/platform';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { SettingRow, GroupTitle } from './settingsTabPrimitives';
 import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -188,13 +190,13 @@ function StatusBar({
       </div>
       <DsButton
         type="button"
-        variant="outline"
+        variant="primary"
         size="sm"
         onClick={onRequestAccess}
         disabled={requestingAccess}
-        className="[@media(pointer:coarse)]:!min-h-11"
+        className="shrink-0 rounded-xl border-primary/40 bg-primary/12 px-3 font-medium text-primary hover:bg-primary/20 [@media(pointer:coarse)]:!min-h-11"
       >
-        {requestingAccess ?           <CircleNotch size={14} className="animate-spin" /> : null}
+        {requestingAccess ? <CircleNotch size={14} className="animate-spin" /> : null}
         {t('settings:voice_input.request_access', { defaultValue: 'Request microphone access' })}
       </DsButton>
     </div>
@@ -334,6 +336,7 @@ interface VoiceInputSettingsSectionProps {
 
 export function VoiceInputSettingsSection({ assignedModel, embedded = false }: VoiceInputSettingsSectionProps) {
   const { t } = useTranslation(['settings', 'common']);
+  const { isSmallScreen } = useBreakpoint();
   const [config, setConfig] = useState<VoiceInputConfig>(DEFAULT_VOICE_INPUT_CONFIG);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -539,6 +542,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
     );
   }
 
+  const showDesktopHotkeyControls = !isMobilePlatform() && !(isWebUiShell() && isSmallScreen);
   const vocabularyCount = parseVocabularyDraft(vocabularyDraft).length;
   const activeHotkeyMode = config.hotkeyMode ?? DEFAULT_VOICE_INPUT_CONFIG.hotkeyMode;
   const assignedLabel =
@@ -561,7 +565,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               variant="outline"
               size="sm"
               onClick={() => openSettingsTab('models')}
-              className="[@media(pointer:coarse)]:!min-h-11"
+              className="rounded-lg border-border/65 bg-background/50 px-2.5 text-foreground hover:bg-muted/50 [@media(pointer:coarse)]:!min-h-11"
             >
               <GearSix size={14} />
               {t('settings:voice_input.open_model_settings', { defaultValue: 'Open Model Assignments' })}
@@ -571,7 +575,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               variant="outline"
               size="sm"
               onClick={() => openSettingsTab('apis')}
-              className="[@media(pointer:coarse)]:!min-h-11"
+              className="rounded-lg border-border/65 bg-background/50 px-2.5 text-foreground hover:bg-muted/50 [@media(pointer:coarse)]:!min-h-11"
             >
               <Wrench size={14} />
               {t('settings:voice_input.open_api_settings', { defaultValue: 'Open API Settings' })}
@@ -581,7 +585,7 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
               variant="outline"
               size="sm"
               onClick={() => openSettingsTab('statistics')}
-              className="[@media(pointer:coarse)]:!min-h-11"
+              className="rounded-lg border-border/65 bg-background/50 px-2.5 text-foreground hover:bg-muted/50 [@media(pointer:coarse)]:!min-h-11"
             >
               <ChartBar size={14} />
               {t('settings:voice_input.open_usage_statistics', { defaultValue: 'Open Usage Statistics' })}
@@ -609,6 +613,8 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
         </SettingRow>
         <ModelStatusHint assignedModel={assignedModel} t={t} />
 
+        {showDesktopHotkeyControls && (
+        <>
         <SettingRow
           title={t('settings:voice_input.trigger_mode_title', { defaultValue: 'Trigger Mode' })}
           description={t('settings:voice_input.trigger_mode_description', {
@@ -639,6 +645,8 @@ export function VoiceInputSettingsSection({ assignedModel, embedded = false }: V
             className="w-40 [@media(pointer:coarse)]:h-11"
           />
         </SettingRow>
+        </>
+        )}
 
         <SettingRow
           title={t('settings:voice_input.max_duration_ms', { defaultValue: 'Max Duration (ms)' })}

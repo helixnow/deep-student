@@ -137,17 +137,7 @@ export const LearningHubPage: React.FC = () => {
             <div className="study-shell-panel h-full min-h-0 overflow-hidden">
               {tabs.length > 0 ? (
                 <div className="flex h-full min-h-0 flex-col overflow-hidden safe-area-bottom">
-                  {/* ★ 移动端标签页栏：多 tab 可见、可切换、可关闭（修复"标签黑洞"） */}
-                  <TabBar
-                    tabs={tabs}
-                    setTabs={setTabs}
-                    activeTabId={activeTabId}
-                    onSwitch={switchTab}
-                    onClose={closeTabWithSplit}
-                    onTogglePin={togglePinTab}
-                    onCloseOthers={closeOtherTabs}
-                    onCloseRight={closeTabsToRight}
-                  />
+                  {/* 移动端详情页由 UnifiedMobileHeader 承载返回与标题，不再叠加桌面多标签栏 */}
                   <div className="flex-1 min-h-0 overflow-hidden">
                     <TabPanelContainer
                       tabs={tabs}

@@ -163,6 +163,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
                 ]}
                 size="sm"
                 variant="outline"
+                className="w-auto min-w-[96px]"
                 width={130}
               />
 
@@ -178,6 +179,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
                 ]}
                 size="sm"
                 variant="outline"
+                className="w-auto min-w-[96px]"
                 width={130}
               />
 

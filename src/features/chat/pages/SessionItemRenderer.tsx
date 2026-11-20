@@ -417,7 +417,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
         onTogglePin={() => { void togglePinSession(session.id, !pinned, session.metadata); }}
         onRequestDelete={() => requestDeleteConfirmation(session.id)}
       >
-      <AppMenu mode="context">
+      <AppMenu mode="context" className="flex w-full">
         <AppMenuTrigger asChild>
           <div
             ref={drag?.setNodeRef}

@@ -4,7 +4,8 @@
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, SquaresFour, Rows, CaretDown, X } from '@phosphor-icons/react';
+import { MagnifyingGlass, SquaresFour, Rows, X } from '@phosphor-icons/react';
+import { AppSelect } from '@/components/ui/app-menu';
 import { cn } from '@/lib/utils';
 import type {
   TemplateLibraryQuery,
@@ -108,24 +109,22 @@ export const TemplateToolbar: React.FC<TemplateToolbarProps> = ({
         </span>
 
         <div className="wb-tm-sort">
-          <label className="wb-tm-sort-label" htmlFor="wb-tm-sort-select">
+          <span className="wb-tm-sort-label" id="wb-tm-sort-label">
             {t('templateMgmt.sort_label')}
-          </label>
-          <div className="wb-tm-sort-select-wrap">
-            <select
-              id="wb-tm-sort-select"
-              className="wb-tm-sort-select"
-              value={query.sortOrder}
-              onChange={(e) => onSortOrderChange(e.target.value as TemplateSortOrder)}
-            >
-              {SORT_ORDERS.map((order) => (
-                <option key={order} value={order}>
-                  {t(`templateMgmt.sort_${order}`)}
-                </option>
-              ))}
-            </select>
-            <CaretDown size={11} className="wb-tm-sort-caret" aria-hidden />
-          </div>
+          </span>
+          <AppSelect
+            ariaLabel={t('templateMgmt.sort_label')}
+            value={query.sortOrder}
+            onValueChange={(value) => onSortOrderChange(value as TemplateSortOrder)}
+            size="sm"
+            align="end"
+            width={150}
+            className="wb-tm-sort-trigger w-auto rounded-lg border-border/60 bg-foreground/[0.04] px-2.5 text-xs font-normal"
+            options={SORT_ORDERS.map((order) => ({
+              value: order,
+              label: t(`templateMgmt.sort_${order}`),
+            }))}
+          />
         </div>
 
         <div className="wb-tm-view-toggle" role="group" aria-label={t('templateMgmt.view_toggle_aria')}>
