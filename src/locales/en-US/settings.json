@@ -421,6 +421,8 @@
     "pinned_label": "Recommended",
     "model_count_badge": "{{count}}",
     "provider_type": "Vendor",
+    "builtin_siliconflow_notes": "Built-in template for SiliconFlow. Please enter your API Key.",
+    "builtin_codex_notes": "OpenAI Codex subscription access via ChatGPT OAuth. Sign in with ChatGPT instead of entering an API key.",
     "base_url": "Base URL",
     "api_key": "API Key",
     "api_key_saved": "Saved",

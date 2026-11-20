@@ -1010,7 +1010,13 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                       <div className="text-xs font-medium text-muted-foreground">
                         <span>{t('settings:vendor_panel.notes')}</span>
                       </div>
-                      <div className="text-sm text-foreground leading-relaxed">{selectedVendor.notes}</div>
+                      <div className="text-sm text-foreground leading-relaxed">
+                        {selectedVendor.notes === 'Built-in template for SiliconFlow. Please enter your API Key.'
+                          ? t('settings:vendor_panel.builtin_siliconflow_notes')
+                          : selectedVendor.notes === 'OpenAI Codex subscription access via ChatGPT OAuth. Sign in with ChatGPT instead of entering an API key.'
+                            ? t('settings:vendor_panel.builtin_codex_notes')
+                            : selectedVendor.notes}
+                      </div>
                     </div>
                   )}
 

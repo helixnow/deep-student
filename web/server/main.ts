@@ -69,7 +69,9 @@ const PUBLIC_PWA_PATHS = new Set([
 
 const SECURITY_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
-  'Referrer-Policy': 'no-referrer',
+  // 同源下保留 Origin/Referer（避免 Chromium 提交同源登录表单时发送 Origin: null 被 CSRF 拦截），
+  // 跨站仍完全不透传 Referer（避免泄漏 URL 内的访问令牌）。
+  'Referrer-Policy': 'same-origin',
   'X-Frame-Options': 'SAMEORIGIN',
 };
 
@@ -102,12 +104,24 @@ export interface RunningWebServer {
   close(): Promise<void>;
 }
 
-function renderLoginGateHtml(errorText = ''): string {
+const VALID_SHORTCUTS = new Set(['chat', 'library', 'review']);
+
+function sanitizeShortcutParam(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  return VALID_SHORTCUTS.has(trimmed) ? trimmed : null;
+}
+
+function renderLoginGateHtml(errorText = '', shortcut: string | null = null): string {
   const escapedError = errorText
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+  const safeShortcut = sanitizeShortcutParam(shortcut);
+  const shortcutHiddenInput = safeShortcut
+    ? `\n    <input type="hidden" name="shortcut" value="${safeShortcut}" />`
+    : '';
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -292,7 +306,7 @@ function renderLoginGateHtml(errorText = ''): string {
     <p>输入服务端终端输出的访问令牌以连接宿主服务</p>
     <label for="ds-token-input" class="sr-only">访问令牌</label>
     <label for="ds-token-input" class="field-label" aria-hidden="true">访问令牌</label>
-    <input id="ds-token-input" type="password" name="token" placeholder="访问令牌" autocomplete="current-password" autofocus required />
+    <input id="ds-token-input" type="password" name="token" placeholder="访问令牌" autocomplete="current-password" autofocus required />${shortcutHiddenInput}
     <button id="ds-web-token-submit" type="submit">验证并进入</button>
     <div id="ds-web-token-error" class="err" role="alert" aria-live="polite">${escapedError}</div>
   </form>
@@ -747,16 +761,21 @@ export async function startWebServer(options: StartWebServerOptions = {}): Promi
         const rawBody = await readSmallTextBody(req);
         const contentType = req.headers['content-type'] ?? '';
         let submitted = '';
+        let submittedShortcut: string | null = sanitizeShortcutParam(url.searchParams.get('shortcut'));
         if (contentType.includes('application/json')) {
           try {
-            const parsed = JSON.parse(rawBody) as { token?: unknown };
+            const parsed = JSON.parse(rawBody) as { token?: unknown; shortcut?: unknown };
             if (typeof parsed.token === 'string') submitted = parsed.token.trim();
+            if (typeof parsed.shortcut === 'string') {
+              submittedShortcut = sanitizeShortcutParam(parsed.shortcut) ?? submittedShortcut;
+            }
           } catch (error) {
             void error;
           }
         } else {
           const params = new URLSearchParams(rawBody);
           submitted = (params.get('token') ?? '').trim();
+          submittedShortcut = sanitizeShortcutParam(params.get('shortcut')) ?? submittedShortcut;
         }
         if (auth.token !== null && !constantTimeEquals(submitted, auth.token)) {
           rateLimiter.recordFailure(clientAddress);
@@ -765,7 +784,7 @@ export async function startWebServer(options: StartWebServerOptions = {}): Promi
             res.end(JSON.stringify({ error: 'Invalid access token' }));
           } else {
             res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8' });
-            res.end(renderLoginGateHtml('访问令牌无效，请核对后重试'));
+            res.end(renderLoginGateHtml('访问令牌无效，请核对后重试', submittedShortcut));
           }
           return;
         }
@@ -777,7 +796,8 @@ export async function startWebServer(options: StartWebServerOptions = {}): Promi
           res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ ok: true }));
         } else {
-          res.writeHead(303, { Location: '/' });
+          const redirectTarget = submittedShortcut ? `/?shortcut=${submittedShortcut}` : '/';
+          res.writeHead(303, { Location: redirectTarget });
           res.end();
         }
         return;
@@ -807,7 +827,7 @@ export async function startWebServer(options: StartWebServerOptions = {}): Promi
         const acceptsHtml = (req.headers.accept ?? '').includes('text/html') && !pathname.startsWith('/api/');
         if (acceptsHtml) {
           res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-          res.end(renderLoginGateHtml());
+          res.end(renderLoginGateHtml('', sanitizeShortcutParam(url.searchParams.get('shortcut'))));
           return;
         }
         res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });

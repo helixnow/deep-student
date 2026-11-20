@@ -421,6 +421,8 @@
     "pinned_label": "推荐",
     "model_count_badge": "{{count}}",
     "provider_type": "提供商",
+    "builtin_siliconflow_notes": "SiliconFlow（硅基流动）内置模板，填入您的 API 密钥即可开始使用。",
+    "builtin_codex_notes": "通过 ChatGPT OAuth 使用 OpenAI Codex 订阅访问，请直接登录 ChatGPT 而无需填写 API 密钥。",
     "base_url": "接口地址",
     "api_key": "API 密钥",
     "api_key_saved": "已保存",

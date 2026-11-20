@@ -885,9 +885,9 @@ describe('Deep Student WebUI + PWA Server Gateway', () => {
     expect(missingWasm.status).toBe(404);
     expect(missingWasm.headers.get('cache-control')).toBe('no-store');
 
-    // 基线安全头对静态响应与 404 一视同仁
+    // 基线安全头对静态响应与 404 一视同仁（same-origin 跨站不泄漏令牌，同时同源登录表单保留 Origin）
     expect(missingAsset.headers.get('x-content-type-options')).toBe('nosniff');
-    expect(missingAsset.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(missingAsset.headers.get('referrer-policy')).toBe('same-origin');
     expect(missingAsset.headers.get('x-frame-options')).toBe('SAMEORIGIN');
 
     // 无扩展名的 SPA 路由仍然回落到 index.html 逻辑（此 dist 里没有 index.html，故 404）

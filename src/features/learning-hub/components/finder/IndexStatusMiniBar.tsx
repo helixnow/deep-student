@@ -37,7 +37,7 @@ export const IndexStatusMiniBar: React.FC<IndexStatusMiniBarProps> = ({
   collapsed = false,
   onOpenIndexStatus,
 }) => {
-  const { t } = useTranslation('learningHub');
+  const { t, i18n } = useTranslation('learningHub');
   const readiness = useEmbeddingReadiness();
   const [summary, setSummary] = useState<MiniSummary | null>(null);
   const [batchProgress, setBatchProgress] = useState<number | null>(null);
@@ -185,12 +185,25 @@ export const IndexStatusMiniBar: React.FC<IndexStatusMiniBarProps> = ({
     toneClass = 'text-warning';
   }
 
+  const embeddingTooltip = (() => {
+    if (!embeddingBlocked) return undefined;
+    const rawReason = readiness?.reason?.trim();
+    if (!rawReason) return t('indexMiniBar.embeddingMissingTooltip');
+    if (
+      rawReason.includes('未配置默认嵌入维度') ||
+      (!i18n.language.toLowerCase().startsWith('zh') && /[\u4e00-\u9fff]/.test(rawReason))
+    ) {
+      return t('indexMiniBar.embeddingMissingTooltip');
+    }
+    return rawReason;
+  })();
+
   const button = (
     <button
       type="button"
       onClick={embeddingBlocked ? openEmbeddingSettings : onOpenIndexStatus}
       aria-label={label}
-      title={embeddingBlocked ? (readiness?.reason ?? undefined) : undefined}
+      title={embeddingTooltip}
       className={cn(
         'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] leading-none transition-colors',
         '[@media(pointer:coarse)]:!min-h-11',

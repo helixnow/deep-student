@@ -1250,7 +1250,8 @@
     "indexingWithProgress": "Indexing {{progress}}%",
     "failed": "{{count}} failed to index",
     "pending": "{{count}} pending index",
-    "embeddingMissing": "Knowledge base off · set up embeddings"
+    "embeddingMissing": "Knowledge base off · set up embeddings",
+    "embeddingMissingTooltip": "No default embedding dimension configured. Set a default dimension in Settings > Model Assignments > Embedding Dimensions."
   },
   "indexStatus": {
     "introTitle": "Knowledge index",

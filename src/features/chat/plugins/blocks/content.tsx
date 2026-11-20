@@ -43,6 +43,8 @@ type ContentBlockBaseProps = Pick<BlockComponentProps, 'block' | 'isStreaming'> 
   secretsRevealed?: boolean;
   /** 切换「显示原文 / 隐藏原文」 */
   onToggleSecrets?: () => void;
+  /** 是否为用户消息（用于禁用原始 HTML 解析并保留字面文本） */
+  isUserMessage?: boolean;
 };
 
 /**
@@ -74,6 +76,29 @@ const SecretMaskNotice: React.FC<{
   );
 };
 
+/**
+ * 对用户消息中位于代码块/行内代码之外的原始 HTML 标签（如 `<script>` / `<img>` / `<!--...-->`）
+ * 做字符实体转义，避免 Markdown 管线的 rehypeRaw 将其解析为真实 DOM：
+ * - 防止 `<script>alert(1)</script>` 被消毒器整段剥离导致气泡变空白；
+ * - 防止 `<img src=...>` 渲染成真实节点触发外部网络请求；
+ * - 保留代码围栏、行内代码与常规 Markdown / LaTeX（如 `a < b`）。
+ */
+export function escapeHtmlTagsInUserMarkdown(raw: string): string {
+  if (!raw || !raw.includes('<')) return raw;
+  const codeSegments = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]+`)/g;
+  const htmlTagPattern = /<!--[\s\S]*?-->|<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>]*?)?\/?>/g;
+  return raw
+    .split(codeSegments)
+    .map((segment, index) => {
+      // 奇数下标是正则捕获组命中的代码块/行内代码，原样保留
+      if (index % 2 === 1) return segment;
+      return segment.replace(htmlTagPattern, (tag) =>
+        tag.replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+      );
+    })
+    .join('');
+}
+
 const ContentBlockBase: React.FC<ContentBlockBaseProps> = ({
   block,
   isStreaming,
@@ -82,10 +107,15 @@ const ContentBlockBase: React.FC<ContentBlockBaseProps> = ({
   hiddenSecretCount,
   secretsRevealed,
   onToggleSecrets,
+  isUserMessage,
 }) => {
   const content = block.content || '';
-  // 命中脱敏时用 masked 文本（默认）或原文（用户点「显示原文」后）渲染
-  const displayContent = maskedContent ?? content;
+  // 命中脱敏时用 masked 文本（默认）或原文（用户点「显示原文」后）渲染；
+  // 用户消息再做一层非代码块 HTML 标签转义，保证字面可见且绝不触发真实 DOM 资源加载。
+  const rawDisplayContent = maskedContent ?? content;
+  const displayContent = isUserMessage
+    ? escapeHtmlTagsInUserMarkdown(rawDisplayContent)
+    : rawDisplayContent;
   const showSecretNotice = (hiddenSecretCount ?? 0) > 0 && onToggleSecrets != null;
 
   // P2-5：不再在这里额外挂 makeCitationRemarkPlugin。
@@ -220,6 +250,7 @@ const ContentBlockWithStore: React.FC<BlockComponentProps> = ({ block, isStreami
         hiddenSecretCount={hiddenSecretCount}
         secretsRevealed={secretsRevealed}
         onToggleSecrets={hiddenSecretCount > 0 ? toggleSecrets : undefined}
+        isUserMessage={message?.role === 'user'}
       />
     </CitationSourceContext.Provider>
   );

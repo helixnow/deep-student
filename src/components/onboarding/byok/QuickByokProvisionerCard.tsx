@@ -252,10 +252,13 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                     handlePasteApiKey(text);
                   }
                 }}
-                className="pr-9 font-mono text-xs"
+                className="pr-11 font-mono text-xs"
               />
-              <button
+              <DsButton
                 type="button"
+                variant="ghost"
+                size="icon"
+                iconOnly
                 tabIndex={-1}
                 aria-label={
                   revealed
@@ -263,10 +266,10 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                     : t('settings:byok.showKey', { defaultValue: 'Show API key' })
                 }
                 onClick={() => setRevealed((prev) => !prev)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:text-foreground transition-colors"
+                className="absolute right-0.5 top-1/2 -translate-y-1/2 !h-8 !w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground"
               >
                 {revealed ? <EyeSlash size={15} /> : <Eye size={15} />}
-              </button>
+              </DsButton>
             </div>
 
             <button

@@ -122,8 +122,8 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
     <div 
       className={cn(
         "relative -mr-px flex items-center gap-1.5 px-3 border-t text-sm h-10 shrink-0 overflow-hidden",
-        // 📱 触屏：底部工具栏贴屏幕底，留出手势导航安全区；多选态按钮多时允许换行避免横向溢出
-        "[@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-wrap [@media(pointer:coarse)]:pb-[var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px))]",
+        // 📱 触屏：底部工具栏贴屏幕底，留出手势导航安全区；多选态在平板窄侧栏下允许换行并收紧左右内边距，避免按钮溢出到右侧内容面板
+        "[@media(pointer:coarse)]:h-auto [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:flex-wrap [@media(pointer:coarse)]:px-2 [@media(pointer:coarse)]:py-1 [@media(pointer:coarse)]:pb-[var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px))]",
         "bg-[color:var(--shell-toolbar-surface,var(--background))]",
         className
       )}
@@ -231,8 +231,8 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
         </div>
       )}
 
-      {/* 右侧操作区域 - 使用 shrink-0 防止被压缩 */}
-      <div className="flex items-center gap-0.5 ml-auto shrink-0">
+      {/* 右侧操作区域：在平板窄栏（768px）多选态下允许自动换行，不越界溢出到相邻内容区 */}
+      <div className="flex flex-wrap items-center justify-end gap-0.5 ml-auto min-w-0 max-w-full">
         {/* 批量操作按钮 - 仅在有选中项时显示 */}
         {hasSelection && (
           <>

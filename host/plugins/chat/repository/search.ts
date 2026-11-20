@@ -17,29 +17,91 @@ export function searchSessions(db: SqlExecutor, query: string, limit: number, in
       )) ${VISIBLE_SESSION_FILTER} ORDER BY updated_at DESC LIMIT ?2`, [pattern, limit]), log));
 }
 
+function escapeHtmlForSnippet(text: string): string {
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+function buildLikeSnippet(content: string, query: string, radius = 48): string {
+  const lowerContent = content.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const matchIdx = lowerContent.indexOf(lowerQuery);
+  if (matchIdx < 0) {
+    const head = content.slice(0, radius * 2);
+    return escapeHtmlForSnippet(head) + (content.length > head.length ? '...' : '');
+  }
+  const start = Math.max(0, matchIdx - radius);
+  const end = Math.min(content.length, matchIdx + query.length + radius);
+  const prefix = start > 0 ? '...' : '';
+  const suffix = end < content.length ? '...' : '';
+  const before = escapeHtmlForSnippet(content.slice(start, matchIdx));
+  const hit = escapeHtmlForSnippet(content.slice(matchIdx, matchIdx + query.length));
+  const after = escapeHtmlForSnippet(content.slice(matchIdx + query.length, end));
+  return `${prefix}${before}<mark>${hit}</mark>${after}${suffix}`;
+}
+
 export function searchContent(db: SqlExecutor, query: string, limit: number, dateFrom: string | null = null,
   dateTo: string | null = null, sessionId: string | null = null, includeArchived = false, log?: ChatLogger): ContentSearchResult[] {
   const trimmed = rustTrim(query);
   if (!trimmed) return [];
   const fts = trimmed.split(/\p{White_Space}+/u).map(token => `"${token.replaceAll('"', '""')}"`).join(' ');
   const status = includeArchived ? "s.persist_status IN ('active', 'archived')" : "s.persist_status = 'active'";
-  return databaseOperation(() => db.all<ContentSearchResult>(`SELECT s.id AS sessionId, s.title AS sessionTitle,
-    m.id AS messageId, b.id AS blockId, m.role AS role,
-    snippet(chat_v2_content_fts, 0, X'02', X'03', '...', 40) AS snippet, s.updated_at AS updatedAt
-    FROM chat_v2_content_fts fts JOIN chat_v2_blocks b ON fts.rowid = b.rowid
-    JOIN chat_v2_messages m ON b.message_id = m.id JOIN chat_v2_sessions s ON m.session_id = s.id
-    WHERE chat_v2_content_fts MATCH ?1 AND ${status}
-      AND (?2 IS NULL OR julianday(s.updated_at) >= julianday(?2))
-      AND (?3 IS NULL OR julianday(s.updated_at) <= julianday(?3))
-      AND (?4 IS NULL OR s.id = ?4) ORDER BY bm25(chat_v2_content_fts) LIMIT ?5`,
-  [fts, dateFrom, dateTo, sessionId, limit]).flatMap(row => {
-    if (typeof row.snippet !== 'string' || typeof row.role !== 'string' || typeof row.updatedAt !== 'string') {
-      log?.warn('[ChatV2Repo] Search row error: ' + String(row.blockId));
-      return [];
+  return databaseOperation(() => {
+    const ftsHits = db.all<ContentSearchResult>(`SELECT s.id AS sessionId, s.title AS sessionTitle,
+      m.id AS messageId, b.id AS blockId, m.role AS role,
+      snippet(chat_v2_content_fts, 0, X'02', X'03', '...', 40) AS snippet, s.updated_at AS updatedAt
+      FROM chat_v2_content_fts fts JOIN chat_v2_blocks b ON fts.rowid = b.rowid
+      JOIN chat_v2_messages m ON b.message_id = m.id JOIN chat_v2_sessions s ON m.session_id = s.id
+      WHERE chat_v2_content_fts MATCH ?1 AND ${status}
+        AND (?2 IS NULL OR julianday(s.updated_at) >= julianday(?2))
+        AND (?3 IS NULL OR julianday(s.updated_at) <= julianday(?3))
+        AND (?4 IS NULL OR s.id = ?4) ORDER BY bm25(chat_v2_content_fts) LIMIT ?5`,
+    [fts, dateFrom, dateTo, sessionId, limit]).flatMap(row => {
+      if (typeof row.snippet !== 'string' || typeof row.role !== 'string' || typeof row.updatedAt !== 'string') {
+        log?.warn('[ChatV2Repo] Search row error: ' + String(row.blockId));
+        return [];
+      }
+      return [{ ...row, snippet: escapeHtmlForSnippet(row.snippet).replaceAll('\x02', '<mark>').replaceAll('\x03', '</mark>') }];
+    });
+
+    if (ftsHits.length >= limit) return ftsHits;
+
+    // FTS5 unicode61 无中文分词，对连续 CJK 子串兜底走 LIKE 匹配（保留同一返回契约与 <mark> 高亮格式）
+    const remaining = limit - ftsHits.length;
+    const seenBlocks = new Set(ftsHits.map(item => item.blockId));
+    const likePattern = `%${trimmed.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`;
+    const fallbackRows = db.all<ContentSearchResult & { content?: string }>(`SELECT s.id AS sessionId, s.title AS sessionTitle,
+      m.id AS messageId, b.id AS blockId, m.role AS role,
+      b.content AS content, s.updated_at AS updatedAt
+      FROM chat_v2_blocks b
+      JOIN chat_v2_messages m ON b.message_id = m.id JOIN chat_v2_sessions s ON m.session_id = s.id
+      WHERE b.block_type IN ('content', 'thinking') AND b.content LIKE ?1 ESCAPE '\\' AND ${status}
+        AND (?2 IS NULL OR julianday(s.updated_at) >= julianday(?2))
+        AND (?3 IS NULL OR julianday(s.updated_at) <= julianday(?3))
+        AND (?4 IS NULL OR s.id = ?4) ORDER BY s.updated_at DESC LIMIT ?5`,
+    [likePattern, dateFrom, dateTo, sessionId, remaining + seenBlocks.size]);
+
+    const merged = [...ftsHits];
+    for (const row of fallbackRows) {
+      if (merged.length >= limit) break;
+      if (seenBlocks.has(row.blockId)) continue;
+      if (typeof row.content !== 'string' || typeof row.role !== 'string' || typeof row.updatedAt !== 'string') continue;
+      seenBlocks.add(row.blockId);
+      merged.push({
+        sessionId: row.sessionId,
+        sessionTitle: row.sessionTitle,
+        messageId: row.messageId,
+        blockId: row.blockId,
+        role: row.role,
+        snippet: buildLikeSnippet(row.content, trimmed),
+        updatedAt: row.updatedAt,
+      });
     }
-    return [{ ...row, snippet: row.snippet.replaceAll('&', '&amp;').replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll('\x02', '<mark>').replaceAll('\x03', '</mark>') }];
-  }));
+    return merged;
+  });
 }
 
 export function rebuildContentFts(db: SqlExecutor): number {

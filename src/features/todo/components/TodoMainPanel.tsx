@@ -561,9 +561,10 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
         return;
       }
       // 焦点在按钮/菜单/弹层内时不做列表导航（Space/Enter 会双重触发）；
-      // 但 / 与 n 这类无冲突入口仍然放行
+      // 注意工作台窗口外壳（[data-wb-window]）自身带 role="dialog"，不应屏蔽窗口内列表导航；
+      // / 与 n 这类无冲突入口仍然放行
       const inControl = Boolean(
-        target?.closest('button, [role="menu"], [role="dialog"], [role="listbox"]'),
+        target?.closest('button, [role="menu"], [role="dialog"]:not([data-wb-window]), [role="listbox"]'),
       );
       const isListNavKey = [
         'j', 'k', 'ArrowDown', 'ArrowUp', ' ', 'x', 'Enter', 'Delete', 'Backspace',
