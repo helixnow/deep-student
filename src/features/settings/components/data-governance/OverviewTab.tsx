@@ -68,36 +68,36 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   const auditDegraded = Boolean(healthCheck && !healthCheck.audit_log_healthy);
 
   return (
-    <div className="space-y-8">
-      {/* 全局状态 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 rounded-2xl bg-muted px-4 py-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Database className="h-4 w-4" />
-            {t('data:governance.global_version')}
+    <div className="space-y-5 sm:space-y-7">
+      {/* 全局状态：移动端 2×2 紧凑 Bento 指标格，桌面端 4 列横排 */}
+      <div className="grid grid-cols-2 md:grid-cols-4 overflow-hidden rounded-2xl bg-muted [&>*]:border-border/45 [&>*:nth-child(even)]:border-l [&>*:nth-child(n+3)]:border-t md:[&>*]:border-t-0 md:[&>*+*]:border-l">
+        <div className="min-w-0 space-y-1 px-3.5 py-3 sm:px-4 sm:py-3.5">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Database className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{t('data:governance.global_version')}</span>
           </div>
-          <div className="text-2xl font-semibold tabular-nums text-foreground">
+          <div className="truncate text-lg sm:text-xl font-semibold tabular-nums text-foreground">
             v{migrationStatus?.global_version ?? '-'}
           </div>
         </div>
 
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Gauge className="h-4 w-4" />
-            {t('data:governance.health_status')}
+        <div className="min-w-0 space-y-1 px-3.5 py-3 sm:px-4 sm:py-3.5">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Gauge className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{t('data:governance.health_status')}</span>
           </div>
-          <div className="flex items-center gap-2 h-8">
+          <div className="flex items-center gap-1.5 pt-0.5">
             {healthCheck?.overall_healthy ? (
               <>
-                <CheckCircle className="h-5 w-5 text-success" />
-                <span className="text-success font-medium">
+                <CheckCircle className="h-4 w-4 shrink-0 text-success" weight="fill" />
+                <span className="text-base sm:text-lg font-semibold text-success">
                   {t('data:governance.healthy')}
                 </span>
               </>
             ) : (
               <>
-                <Warning className="h-5 w-5 text-warning" />
-                <span className="text-warning font-medium">
+                <Warning className="h-4 w-4 shrink-0 text-warning" weight="fill" />
+                <span className="text-base sm:text-lg font-semibold text-warning">
                   {t('data:governance.needs_attention')}
                 </span>
               </>
@@ -105,28 +105,28 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
         </div>
 
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <HardDrive className="h-4 w-4" />
-            {t('data:governance.databases')}
+        <div className="min-w-0 space-y-1 px-3.5 py-3 sm:px-4 sm:py-3.5">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <HardDrive className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{t('data:governance.databases')}</span>
           </div>
-          <div className="flex items-baseline gap-2">
-            <div className="text-2xl font-semibold tabular-nums text-foreground">
+          <div className="flex items-baseline gap-1.5">
+            <div className="text-lg sm:text-xl font-semibold tabular-nums text-foreground">
               {healthCheck?.initialized_count ?? 0}/{healthCheck?.total_databases ?? 0}
             </div>
-            <span className="text-xs text-muted-foreground">
+            <span className="truncate text-xs text-muted-foreground">
               {t('data:governance.initialized')}
             </span>
           </div>
         </div>
 
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <ArrowsLeftRight className="h-4 w-4" />
-            {t('data:governance.pending_migrations_label')}
+        <div className="min-w-0 space-y-1 px-3.5 py-3 sm:px-4 sm:py-3.5">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <ArrowsLeftRight className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{t('data:governance.pending_migrations_label')}</span>
           </div>
-          <div className="flex items-baseline gap-2">
-            <div className={`text-2xl font-semibold tabular-nums ${
+          <div className="flex items-baseline gap-1.5">
+            <div className={`text-lg sm:text-xl font-semibold tabular-nums ${
               hasPendingMigrations
                 ? 'text-warning' 
                 : 'text-foreground'
@@ -134,7 +134,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               {pendingMigrationCount}
             </div>
             {hasPendingMigrations && (
-              <span className="text-xs text-warning">
+              <span className="truncate text-xs text-warning">
                 {t('data:governance.pending_migrations_restart_needed')}
               </span>
             )}
@@ -142,51 +142,66 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
       </div>
 
-      {onOpenSync && (
-        <div className="rounded-2xl bg-muted p-4" data-testid="overview-qr-sync-card">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="mt-0.5 rounded-md bg-primary/10 p-2 text-primary">
-                <QrCode className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 space-y-1">
-                <p className="text-sm font-medium text-foreground">
-                  {t('data:governance.qr_sync_overview_title')}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t('data:governance.qr_sync_overview_desc')}
-                </p>
+      {/* 快捷操作入口组：紧凑间距 + 统一图标徽章与实体描边按钮 */}
+      {(onOpenSync || onOpenArchive) && (
+        <div className="grid grid-cols-1 gap-3">
+          {onOpenSync && (
+            <div className="rounded-2xl bg-muted p-4" data-testid="overview-qr-sync-card">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="mt-0.5 rounded-xl bg-primary/12 p-2 text-primary">
+                    <QrCode className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      {t('data:governance.qr_sync_overview_title')}
+                    </p>
+                    <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                      {t('data:governance.qr_sync_overview_desc')}
+                    </p>
+                  </div>
+                </div>
+                <DsButton
+                  variant="outline"
+                  size="sm"
+                  onClick={onOpenSync}
+                  className="shrink-0 rounded-xl border-primary/40 bg-primary/12 px-3.5 font-medium text-primary hover:bg-primary/20"
+                >
+                  <QrCode className="h-3.5 w-3.5" />
+                  {t('data:governance.qr_sync_overview_action')}
+                </DsButton>
               </div>
             </div>
-            <DsButton variant="outline" size="sm" onClick={onOpenSync} className="shrink-0">
-              <QrCode className="h-3.5 w-3.5" />
-              {t('data:governance.qr_sync_overview_action')}
-            </DsButton>
-          </div>
-        </div>
-      )}
+          )}
 
-      {onOpenArchive && (
-        <div className="rounded-2xl bg-muted p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="mt-0.5 rounded-md bg-muted/40 p-2 text-muted-foreground">
-                <Archive className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 space-y-1">
-                <p className="text-sm font-medium text-foreground">
-                  {t('data:governance.archive_overview_title')}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {t('data:governance.archive_overview_desc')}
-                </p>
+          {onOpenArchive && (
+            <div className="rounded-2xl bg-muted p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="mt-0.5 rounded-xl border border-border/40 bg-background/60 p-2 text-foreground/80">
+                    <Archive className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      {t('data:governance.archive_overview_title')}
+                    </p>
+                    <p className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                      {t('data:governance.archive_overview_desc')}
+                    </p>
+                  </div>
+                </div>
+                <DsButton
+                  variant="outline"
+                  size="sm"
+                  onClick={onOpenArchive}
+                  className="shrink-0 rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-background/90"
+                >
+                  <Archive className="h-3.5 w-3.5" />
+                  {t('data:governance.archive_overview_action')}
+                </DsButton>
               </div>
             </div>
-            <DsButton variant="outline" size="sm" onClick={onOpenArchive} className="shrink-0">
-              <Archive className="h-3.5 w-3.5" />
-              {t('data:governance.archive_overview_action')}
-            </DsButton>
-          </div>
+          )}
         </div>
       )}
 
@@ -201,6 +216,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 size="sm"
                 onClick={onVerifyLatestBackup}
                 disabled={loading || isVerifying}
+                className="rounded-xl border-border/70 bg-background/60 px-3 text-foreground hover:bg-muted/50"
               >
                 {isVerifying ? (
                   <Spinner className="h-3.5 w-3.5 mr-1.5 animate-spin" />
@@ -348,7 +364,13 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           description={t('data:governance.database_status_desc')}
           actions={
             <>
-              <DsButton variant="outline" size="sm" onClick={onRunHealthCheck} disabled={loading}>
+              <DsButton
+                variant="outline"
+                size="sm"
+                onClick={onRunHealthCheck}
+                disabled={loading}
+                className="rounded-xl border-border/70 bg-background/60 px-3 text-foreground hover:bg-muted/50"
+              >
                 <Shield className="h-3.5 w-3.5 mr-1.5" />
                 {t('data:governance.run_health_check')}
               </DsButton>
@@ -455,79 +477,72 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </CustomScrollArea>
         </div>
 
-        <div className="space-y-2 rounded-2xl bg-muted p-4 md:hidden">
+        <div className="divide-y divide-border/40 overflow-hidden rounded-2xl bg-muted md:hidden">
           {healthCheckDatabases.map((db) => (
-            <div key={db.id} className="space-y-3 rounded-md border border-border/40 bg-background/50 p-3">
-              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                <span className="min-w-0 truncate text-sm font-medium">
+            <div key={db.id} className="space-y-2 px-4 py-3">
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <span className="min-w-0 truncate text-sm font-medium text-foreground">
                   {getDatabaseDisplayName(db.id, t)}
                 </span>
                 {db.is_healthy ? (
-                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-success/10 px-2 py-0.5 text-xs text-success">
+                  <div className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-success/10 px-2 py-0.5 text-xs text-success">
                     <CheckCircle className="h-3 w-3 shrink-0" />
                     {t('data:governance.healthy')}
                   </div>
                 ) : db.pending_count > 0 ? (
-                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-warning/10 px-2 py-0.5 text-xs text-warning">
+                  <div className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-warning/10 px-2 py-0.5 text-xs text-warning">
                     <Warning className="h-3 w-3 shrink-0" />
                     {t('data:governance.pending_migration_status')}
                   </div>
                 ) : (
-                  <div className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-destructive/10 px-2 py-0.5 text-xs text-destructive">
+                  <div className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full bg-destructive/10 px-2 py-0.5 text-xs text-destructive">
                     <XCircle className="h-3 w-3 shrink-0" />
                     {t('data:governance.unhealthy')}
                   </div>
                 )}
               </div>
 
-              <dl className="grid grid-cols-2 gap-3 text-sm">
-                <div className="min-w-0">
-                  <dt className="text-caption text-muted-foreground">{t('data:governance.version')}</dt>
-                  <dd className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
-                    <span className="whitespace-nowrap rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
-                      v{db.schema_version}
-                    </span>
-                    {db.pending_count > 0 && (
-                      <>
-                        <span className="text-xs text-muted-foreground">→</span>
-                        <span className="whitespace-nowrap rounded bg-warning/15 px-1.5 py-0.5 font-mono text-xs text-warning">
-                          v{db.target_version}
-                        </span>
-                        <span className="text-xs text-warning">
-                          ({db.pending_count}{t('data:governance.pending_count_unit')})
-                        </span>
-                      </>
-                    )}
-                  </dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-caption text-muted-foreground">{t('data:governance.dependencies')}</dt>
-                  <dd className="mt-1">
-                    {db.dependencies_met ? (
-                      <CheckCircle className="h-4 w-4 text-success/70" />
-                    ) : (
-                      <Warning className="h-4 w-4 text-warning/70" />
-                    )}
-                  </dd>
-                </div>
-              </dl>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1">
+                  <span>{t('data:governance.version')}</span>
+                  <span className="rounded bg-background/60 px-1.5 py-0.5 font-mono text-foreground/80">
+                    v{db.schema_version}
+                  </span>
+                  {db.pending_count > 0 && (
+                    <>
+                      <span>→</span>
+                      <span className="rounded bg-warning/15 px-1.5 py-0.5 font-mono text-warning">
+                        v{db.target_version}
+                      </span>
+                      <span className="text-warning">
+                        ({db.pending_count}{t('data:governance.pending_count_unit')})
+                      </span>
+                    </>
+                  )}
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span>{t('data:governance.dependencies')}</span>
+                  {db.dependencies_met ? (
+                    <CheckCircle className="h-3.5 w-3.5 text-success/80" />
+                  ) : (
+                    <Warning className="h-3.5 w-3.5 text-warning/80" />
+                  )}
+                </span>
+              </div>
 
               {(db.issues?.length ?? 0) > 0 && (
-                <div className="border-t border-border/40 pt-2">
-                  <p className="mb-1 text-caption text-muted-foreground">{t('data:governance.issues')}</p>
-                  <div className="space-y-0.5">
-                    {db.issues?.map((issue, idx) => (
-                      <p key={idx} className="break-words text-xs text-destructive">
-                        {issue}
-                      </p>
-                    ))}
-                  </div>
+                <div className="space-y-0.5 pt-1">
+                  {db.issues?.map((issue, idx) => (
+                    <p key={idx} className="break-words text-xs text-destructive">
+                      {issue}
+                    </p>
+                  ))}
                 </div>
               )}
             </div>
           ))}
           {(!healthCheck || healthCheckDatabases.length === 0) && (
-            <div className="rounded-md border border-border/40 py-8 text-center text-muted-foreground">
+            <div className="py-8 text-center text-sm text-muted-foreground">
               {loading ? (
                 <div className="flex items-center justify-center gap-2">
                   <Spinner className="h-4 w-4 animate-spin" />

@@ -12,6 +12,7 @@ import {
   Wrench,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { isMobilePlatform, isWebUiShell } from '@/utils/platform';
 import { DsButton } from '@/components/ui/DsButton';
 import type { SkillDefinition, SkillPackageFile, SkillPackageSource, SkillTrustStatus } from '@/features/chat/skills/types';
 import { getSkillEmbeddedToolLabels, getSkillPermissionSummary } from '@/features/chat/skills/packageMetadata';
@@ -195,22 +196,22 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
         </Chip>
         {canToggleTrust && trust === 'untrusted' && (
           <DsButton
-            variant="ghost"
+            variant="primary"
             size="sm"
             onClick={handleTrustToggle}
             title={t('skills:package.trust_effect_trusted')}
-            className="!h-auto !px-1.5 !py-0.5 max-lg:!h-9 max-lg:!px-2 [@media(pointer:coarse)]:!min-h-11 text-2xs text-primary hover:underline"
+            className="!h-auto !rounded-full border-primary/40 bg-primary/12 !px-2.5 !py-1 max-lg:!h-8 max-lg:!px-3 [@media(pointer:coarse)]:!min-h-11 text-xs font-medium text-primary hover:bg-primary/20"
           >
             {t('skills:package.trust_enable')}
           </DsButton>
         )}
         {canToggleTrust && trust === 'trusted' && source === 'external' && (
           <DsButton
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={handleTrustToggle}
             title={t('skills:package.trust_effect_untrusted')}
-            className="!h-auto !px-1.5 !py-0.5 max-lg:!h-9 max-lg:!px-2 [@media(pointer:coarse)]:!min-h-11 text-2xs text-muted-foreground hover:underline"
+            className="!h-auto !rounded-full border-border/60 bg-background/50 !px-2.5 !py-1 max-lg:!h-8 max-lg:!px-3 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground"
           >
             {t('skills:package.trust_revoke')}
           </DsButton>
@@ -269,7 +270,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
         </div>
       )}
 
-      {skill.packageRoot && (
+      {skill.packageRoot && !isWebUiShell() && !isMobilePlatform() && (
         <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground/70">
           <FolderOpen size={12} className="flex-shrink-0" />
           <span className="truncate font-mono">{skill.packageRoot}</span>

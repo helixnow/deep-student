@@ -989,13 +989,13 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
           style={{ paddingBottom: 'calc(0.5rem + var(--mobile-safe-area-bottom, 0px))' }}
           data-media-import-bar=""
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <DsButton
               variant="primary"
               onClick={importer.pick}
               disabled={importer.importing}
               data-media-import=""
-              className="flex-1 gap-1.5"
+              className="min-h-11 flex-1 gap-1.5 rounded-xl border-primary/40 bg-primary/15 font-medium text-primary hover:bg-primary/25 hover:text-primary"
             >
               {importer.importing
                 ? <CircleNotch size={16} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
@@ -1003,10 +1003,10 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
               {t('mediaStudio:import.button')}
             </DsButton>
             <DsButton
-              variant="ghost"
+              variant="outline"
               onClick={() => setBilibiliMode({ kind: 'create' })}
               data-media-bilibili=""
-              className="shrink-0 gap-1.5"
+              className="min-h-11 shrink-0 gap-1.5 rounded-xl border-border/70 bg-background/50 px-4 text-foreground hover:bg-muted/60"
             >
               <Television size={16} aria-hidden="true" />
               {t('mediaStudio:import.bilibili')}

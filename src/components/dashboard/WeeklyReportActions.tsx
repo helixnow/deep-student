@@ -5,7 +5,7 @@
  */
 import React, { Suspense, lazy, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChartLineUp, ChatCircleText, NotePencil } from '@phosphor-icons/react';
+import { ChartLineUp, ChatCircleText, NotePencil, X } from '@phosphor-icons/react';
 import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -97,22 +97,33 @@ export const WeeklyReportActions: React.FC<{ compact?: boolean }> = ({ compact =
             className="flex max-h-[min(80vh,760px)] w-[min(720px,calc(100vw-32px))] max-w-none flex-col p-0"
             aria-labelledby="weekly-report-preview-title"
           >
-            <DialogHeader className="border-b border-border/40 px-5 py-4">
-              <DialogTitle id="weekly-report-preview-title">{preview.title}</DialogTitle>
+            <DialogHeader className="flex flex-row items-center justify-between gap-2 space-y-0 border-b border-border/40 px-5 py-3.5">
+              <DialogTitle id="weekly-report-preview-title" className="min-w-0 truncate">{preview.title}</DialogTitle>
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                onClick={() => setPreview(null)}
+                aria-label={tr('common:close', { defaultValue: '关闭' })}
+                className="shrink-0 text-muted-foreground hover:text-foreground"
+              >
+                <X size={16} aria-hidden="true" />
+              </DsButton>
             </DialogHeader>
             {/* 聊天同款 Markdown 排版（段距 / 列表 / 表格）挂在 .chat-v2 作用域下 */}
             <div
-              className="chat-v2 min-h-0 flex-1 overflow-y-auto px-5 py-3"
+              className="chat-v2 min-h-0 flex-1 overflow-y-auto px-5 pt-3 pb-6"
               style={{ '--chat-body-font-size': '1rem', '--chat-md-line-height': '1.65' } as React.CSSProperties}
             >
               <Suspense fallback={<pre className="whitespace-pre-wrap text-sm text-muted-foreground">{preview.markdown}</pre>}>
                 <MarkdownRenderer content={preview.markdown} className="text-ui text-foreground" />
               </Suspense>
             </div>
-            <DialogFooter className="mt-0 border-t border-border/40 px-5 py-3">
+            <DialogFooter className="mt-0 flex-row justify-end gap-2 border-t border-border/40 px-5 py-3">
               <DsButton
-                variant="ghost"
+                variant="outline"
                 onClick={() => { const report = preview; setPreview(null); reviewWithAi(report); }}
+                className="rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-muted/50"
               >
                 <ChatCircleText size={15} aria-hidden="true" />
                 {tr('weekly_report.chat', { defaultValue: '与 AI 复盘' })}
@@ -120,6 +131,7 @@ export const WeeklyReportActions: React.FC<{ compact?: boolean }> = ({ compact =
               <DsButton
                 variant="primary"
                 onClick={() => { const report = preview; setPreview(null); saveReport(report); }}
+                className="rounded-xl border-primary/40 bg-primary/15 px-3.5 font-medium text-primary hover:bg-primary/25"
               >
                 <NotePencil size={15} aria-hidden="true" />
                 {tr('weekly_report.save_as_note', { defaultValue: '存为笔记…' })}

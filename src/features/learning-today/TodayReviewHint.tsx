@@ -4,9 +4,10 @@
  * 有作答记录后第二行给出薄弱知识点（一键讲练）与本周周报。
  * 还没有任何卡片、错题和作答记录的新用户，显示一行「三步走通」引导（可关）。
  */
-import React, { useEffect, useState, useSyncExternalStore } from 'react';
+import React, { useEffect, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Books, Cards, ListChecks, Notebook, Play, WarningDiamond, X } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
 import { openDailySprint, useSprintLauncherSnapshot } from '@/components/exam-sprint';
 import { WeakConceptsStrip, useWeakConcepts } from '@/components/dashboard/WeakConceptsStrip';
 import { WeeklyReportActions } from '@/components/dashboard/WeeklyReportActions';
@@ -16,6 +17,7 @@ import { useTodayTodoCount } from './todayTodoCount';
 
 const WEAK_CONCEPTS_ON_HOME = 3;
 const STARTER_DISMISSED_KEY = 'learningToday.starterDismissed';
+const starterDismissedListeners = new Set<() => void>();
 
 function readStarterDismissed(): boolean {
   try {
@@ -25,13 +27,75 @@ function readStarterDismissed(): boolean {
   }
 }
 
-export const TodayReviewHint: React.FC = () => {
+function subscribeStarterDismissed(listener: () => void): () => void {
+  starterDismissedListeners.add(listener);
+  return () => {
+    starterDismissedListeners.delete(listener);
+  };
+}
+
+function dismissStarterGlobally(): void {
+  try {
+    localStorage.setItem(STARTER_DISMISSED_KEY, '1');
+  } catch {
+    /* 偏好写入失败只影响下次是否再显示 */
+  }
+  for (const listener of starterDismissedListeners) {
+    listener();
+  }
+}
+
+export interface TodayReviewHintAvailability {
+  /** 是否存在可展示的今日待复习 / 薄弱点 / 周报 / 新手三步内容 */
+  hasContent: boolean;
+  /** 是否存在今天到期的卡片、错题、笔记或待办 */
+  hasDueItems: boolean;
+}
+
+/**
+ * 订阅 TodayReviewHint 是否有可展示内容，供移动端空态 Logo 徽标与切换入口判断使用。
+ */
+export function useTodayReviewHintAvailability(enabled = true): TodayReviewHintAvailability {
+  const today = useSyncExternalStore(subscribeTodayLearning, getTodayLearningSnapshot, getTodayLearningSnapshot);
+  const todoDueCount = useTodayTodoCount();
+  const weak = useWeakConcepts(WEAK_CONCEPTS_ON_HOME);
+  const starterDismissed = useSyncExternalStore(subscribeStarterDismissed, readStarterDismissed, () => false);
+
+  useEffect(() => {
+    if (enabled) {
+      void refreshTodayLearning();
+    }
+  }, [enabled]);
+
+  if (!enabled) {
+    return { hasContent: false, hasDueItems: false };
+  }
+
+  const dueCount = today.cards + today.mistakes + today.notes + todoDueCount;
+  const hasWeak = Boolean(weak && weak.length > 0);
+  const isNewLearner =
+    today.cardsTotal === 0 && today.plansTotal === 0 && dueCount === 0 && weak !== null && !hasWeak;
+  const showStarter = isNewLearner && !starterDismissed;
+  const hasHistory = (today.cardsTotal ?? 0) > 0 || (today.plansTotal ?? 0) > 0;
+
+  return {
+    hasContent: showStarter || dueCount > 0 || hasWeak || hasHistory,
+    hasDueItems: dueCount > 0,
+  };
+}
+
+export interface TodayReviewHintProps {
+  /** 嵌入到空态切换容器中时移除顶部外边距 */
+  embedded?: boolean;
+}
+
+export const TodayReviewHint: React.FC<TodayReviewHintProps> = ({ embedded = false }) => {
   const { t } = useTranslation('data');
   const today = useSyncExternalStore(subscribeTodayLearning, getTodayLearningSnapshot, getTodayLearningSnapshot);
   const todoDueCount = useTodayTodoCount();
   const { readiness: sprintReadiness } = useSprintLauncherSnapshot();
   const weak = useWeakConcepts(WEAK_CONCEPTS_ON_HOME);
-  const [starterDismissed, setStarterDismissed] = useState(readStarterDismissed);
+  const starterDismissed = useSyncExternalStore(subscribeStarterDismissed, readStarterDismissed, () => false);
   useEffect(() => { void refreshTodayLearning(); }, []);
 
   const items = [
@@ -47,11 +111,16 @@ export const TodayReviewHint: React.FC = () => {
 
   if (showStarter) {
     const dismiss = () => {
-      setStarterDismissed(true);
-      try { localStorage.setItem(STARTER_DISMISSED_KEY, '1'); } catch { /* 偏好写入失败只影响下次是否再显示 */ }
+      dismissStarterGlobally();
     };
     return (
-      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-1 gap-y-1 text-xs text-muted-foreground" data-testid="today-starter">
+      <div
+        className={cn(
+          !embedded && 'mt-3',
+          'flex flex-wrap items-center justify-center gap-x-1 gap-y-1 text-xs text-muted-foreground'
+        )}
+        data-testid="today-starter"
+      >
         <span className="font-medium text-foreground">{t('today_center.starter_title', { defaultValue: '第一次用？三步走通' })}</span>
         <span>{t('today_center.starter_steps', { defaultValue: '导入资料 → 在资料菜单里选「用这份资料制卡」→ 每天回这里复习' })}</span>
         <button
@@ -88,40 +157,79 @@ export const TodayReviewHint: React.FC = () => {
           Math.min(15, Math.ceil((today.cards * 15 + today.mistakes * 40 + today.notes * 30) / 60)),
         );
 
+  const metricsGridClassName =
+    items.length === 1
+      ? 'grid-cols-1'
+      : items.length === 2
+        ? 'grid-cols-2'
+        : items.length === 3
+          ? 'grid-cols-3'
+          : 'grid-cols-2 sm:grid-cols-4';
+
   return (
-    <div className="mt-3 flex flex-col items-center gap-1" data-testid="today-review-hint">
-      {items.length > 0 && (
-        <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-1 text-xs text-muted-foreground">
+    <div
+      className={cn(
+        !embedded && 'mt-3',
+        'w-full max-w-[680px] mx-auto overflow-hidden rounded-2xl border border-border/55 bg-[color:var(--surface-elevated)]/85'
+      )}
+      data-testid="today-review-hint"
+    >
+      {/* 顶行：主冲刺行动按钮（或状态标） + 右侧本周周报 */}
+      <div className="flex items-center justify-between gap-2 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
           {totalDueItems > 0 ? (
             <button
               type="button"
               data-testid="today-sprint-cta"
               onClick={() => openDailySprint({ source: 'today-hint' })}
-              className="mr-1 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/[0.08] px-2.5 py-0.5 font-mono text-xs font-medium tabular-nums text-primary transition-colors hover:bg-primary/[0.15] active:scale-95 active:opacity-80 [@media(pointer:coarse)]:min-h-[44px]"
+              className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-primary/35 bg-primary/[0.12] px-3 py-1 font-mono text-xs font-medium tabular-nums text-primary transition-colors hover:bg-primary/[0.18] active:opacity-80"
             >
               <Play size={12} weight="fill" aria-hidden="true" />
-              <span>{t('review:examSprint.hud.startCta', { minutes: estimatedSprintMinutes })}</span>
+              <span className="truncate">{t('review:examSprint.hud.startCta', { minutes: estimatedSprintMinutes })}</span>
             </button>
-          ) : null}
-          <span className="mr-1">{t('today_center.hint_title', { defaultValue: '今日待复习' })}</span>
+          ) : items.length > 0 ? (
+            <span className="text-xs font-medium text-foreground">
+              {t('today_center.hint_title', { defaultValue: '今日待复习' })}
+            </span>
+          ) : (
+            <span className="text-xs font-medium text-muted-foreground">
+              {t('today_center.overview_title', { defaultValue: '学习概览' })}
+            </span>
+          )}
+        </div>
+        <div className="shrink-0">
+          <WeeklyReportActions compact />
+        </div>
+      </div>
+
+      {/* 中段：等宽 KPI 宫格（按实际项数自动 1/2/3/4 列，杜绝折行孤立项） */}
+      {items.length > 0 && (
+        <div className={cn('grid divide-x divide-border/40 border-t border-border/40', metricsGridClassName)}>
           {items.map((item) => (
             <button
               key={item.key}
               type="button"
               onClick={item.onClick}
-              className="native-touch-target inline-flex items-center gap-1 rounded-full px-2 py-0.5 transition-colors hover:bg-[var(--interactive-hover)] hover:text-foreground [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+              className="group/metric flex min-h-[54px] min-w-0 flex-col items-center justify-center gap-0.5 px-2 py-2 text-center transition-colors hover:bg-[var(--interactive-hover)]"
             >
-              {item.icon}
-              <span>{item.label}</span>
-              <span className="tabular-nums font-medium text-foreground">{item.count}</span>
+              <span className="font-mono text-lg font-semibold leading-tight tabular-nums text-foreground">
+                {item.count}
+              </span>
+              <span className="inline-flex max-w-full items-center gap-1 text-xs leading-none text-muted-foreground transition-colors group-hover/metric:text-foreground">
+                <span className="shrink-0 opacity-80">{item.icon}</span>
+                <span className="truncate">{item.label}</span>
+              </span>
             </button>
           ))}
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-center gap-x-1 gap-y-1">
-        <WeakConceptsStrip concepts={weak} limit={WEAK_CONCEPTS_ON_HOME} className="mt-0 justify-center" />
-        <WeeklyReportActions compact />
-      </div>
+
+      {/* 底条：薄弱知识点一键讲练（有数据时显示） */}
+      {hasWeak && (
+        <div className="border-t border-border/40 bg-background/30 px-3 py-2">
+          <WeakConceptsStrip concepts={weak} limit={WEAK_CONCEPTS_ON_HOME} className="mt-0 justify-start" />
+        </div>
+      )}
     </div>
   );
 };

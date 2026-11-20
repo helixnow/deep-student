@@ -101,6 +101,37 @@
   display: none;
 }
 
+@media (max-width: 767.98px) {
+  .wb-at-list-toolbar {
+    flex-wrap: wrap;
+    overflow-x: visible;
+    gap: 8px;
+    padding: 8px 0 10px;
+  }
+
+  .wb-at-list-toolbar > [role='radiogroup'] {
+    flex-basis: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .wb-at-list-toolbar-spacer {
+    display: none;
+  }
+
+  .wb-at-list-search {
+    flex: 1 1 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .wb-at-list-mobile-actions {
+    flex-shrink: 0;
+    margin-left: auto;
+  }
+}
+
 .wb-at-list-head {
   display: flex;
   align-items: center;

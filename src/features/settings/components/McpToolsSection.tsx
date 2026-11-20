@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { Plus, WifiSlash, CaretRight } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { isMobilePlatform } from '@/utils/platform';
+import { isMobilePlatform, isWebUiShell } from '@/utils/platform';
 import { isBuiltinServer } from '@/mcp/builtinMcpServer';
 import { SettingSection } from './SettingsCommon';
 import { GroupTitle } from './settingsTabPrimitives';
@@ -335,7 +335,7 @@ export function McpToolsSection({
           </div>
         </section>
 
-        {!isMobilePlatform() && <McpDangerZoneSection />}
+        {!isMobilePlatform() && !isWebUiShell() && <McpDangerZoneSection />}
 
         {/* Prompts & Resources 详情（可选展示） */}
         {(promptsCount > 0 || resourcesCount > 0) && (

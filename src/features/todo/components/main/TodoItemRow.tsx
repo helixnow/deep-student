@@ -775,8 +775,8 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
       ) : (
       <button
         onClick={handleToggleClick}
-        // 触屏：透明 padding 扩大命中到 ≥44px，负 margin 保持布局不变；按压微缩放提供弹性触感
-        className="flex-shrink-0 rounded-full transition-transform duration-150 ease-out active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] focus-visible:ring-offset-1 motion-reduce:transition-none motion-reduce:active:scale-100 [@media(pointer:coarse)]:p-3 [@media(pointer:coarse)]:-m-3"
+        // 触屏与窄屏：透明 padding 扩大命中到 ≥44px，负 margin 保持布局不变；按压微缩放提供弹性触感
+        className="flex-shrink-0 rounded-full transition-transform duration-150 ease-out active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] focus-visible:ring-offset-1 motion-reduce:transition-none motion-reduce:active:scale-100 max-md:p-3 max-md:-m-3 [@media(pointer:coarse)]:p-3 [@media(pointer:coarse)]:-m-3"
         aria-label={isCompleted ? t('todo:actions.markPending') : t('todo:actions.markCompleted')}
       >
         {showCheckFilled ? (

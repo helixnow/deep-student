@@ -462,6 +462,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               variant="outline"
               size="sm"
               onClick={onToggleCloudSettingsEditor}
+              className="rounded-xl border-border/70 bg-background/60 px-3 text-foreground hover:bg-muted/50"
             >
               <Cloud size={14} className="mr-1.5" />
               {t("data:governance.open_cloud_settings")}
@@ -481,9 +482,10 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             </p>
             <div className="pl-6 pt-1">
               <DsButton
-                variant="outline"
+                variant="primary"
                 size="sm"
                 onClick={() => onSetCloudSettingsEditorOpen(true)}
+                className="rounded-xl border-primary/40 bg-primary/12 px-3.5 font-medium text-primary hover:bg-primary/20"
               >
                 {t("data:governance.cloud_sync_configure_now")}
               </DsButton>
@@ -558,10 +560,11 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
             <div className="flex flex-wrap gap-2">
               <DsButton
-                variant="outline"
+                variant="primary"
                 size="sm"
                 onClick={() => onRunSync("bidirectional", syncStrategy)}
                 disabled={loading || syncRunning}
+                className="rounded-xl border-primary/40 bg-primary/15 px-3.5 font-medium text-primary hover:bg-primary/25"
               >
                 <ArrowsLeftRight size={14} className="mr-1.5" />
                 {t("data:governance.sync_bidirectional")}
@@ -571,6 +574,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 size="sm"
                 onClick={() => onRunSync("upload", syncStrategy)}
                 disabled={loading || syncRunning}
+                className="rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-background/90"
               >
                 <Upload size={14} className="mr-1.5" />
                 {t("data:governance.sync_upload")}
@@ -580,6 +584,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 size="sm"
                 onClick={() => onRunSync("download", syncStrategy)}
                 disabled={loading || syncRunning}
+                className="rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-background/90"
               >
                 <Download size={14} className="mr-1.5" />
                 {t("data:governance.sync_download")}

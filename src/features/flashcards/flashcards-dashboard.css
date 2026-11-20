@@ -1059,6 +1059,11 @@ span.wb-fcx-deck-toggle {
     padding: 2px 8px;
   }
 
+  .wb-fcx-memory-figure dt {
+    white-space: normal;
+    line-height: 1.3;
+  }
+
   .wb-fcx-memory-figure p {
     display: none;
   }

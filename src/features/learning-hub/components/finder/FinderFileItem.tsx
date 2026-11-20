@@ -325,7 +325,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
     <div
       className={cn(
         "group relative flex flex-col items-center p-2 cursor-default select-none",
-        "box-border w-[88px] max-w-[88px] h-[100px] shrink-0",
+        "box-border w-full max-w-[108px] md:w-[88px] md:max-w-[88px] h-[104px] shrink-0",
         // ui-press-coarse：触屏按压缩放反馈（仅 pointer:coarse 生效，桌面不变）
         "ui-press-coarse transition-opacity duration-100 ease-out",
         isDragging && "opacity-40",
@@ -400,7 +400,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
           />
         ) : (
           <span className={cn(
-            'mx-auto block w-fit max-w-full rounded px-1 py-0.5 text-xs leading-tight font-normal line-clamp-2 break-words',
+            'mx-auto block w-fit max-w-full rounded px-1 text-xs leading-[1.35] font-normal line-clamp-2 break-words',
             isSelected ? 'bg-primary text-primary-foreground' : 'text-foreground/85'
           )}>
             {shownName}
@@ -473,7 +473,7 @@ export const SortableFinderFileItem = React.memo(function SortableFinderFileItem
       data-agent-entity={`files:${id}`}
       role="option"
       aria-selected={props.isSelected}
-      className={props.viewMode === 'grid' ? 'w-[88px] max-w-[88px] min-w-0' : 'h-full'}
+      className={props.viewMode === 'grid' ? 'flex w-full max-w-[108px] justify-center md:block md:w-[88px] md:max-w-[88px] min-w-0' : 'h-full'}
     >
       <FinderFileItem
         {...props}

@@ -563,7 +563,12 @@ export function FinderFileList({
     if (!viewport) return;
     const virtualizer = viewMode === 'list' ? listVirtualizer : gridVirtualizer;
     if (Math.abs((virtualizer.scrollOffset ?? 0) - viewport.scrollTop) > 1) {
-      viewport.dispatchEvent(new Event('scroll'));
+      // 推迟到 microtask 派发 scroll，避免 @tanstack/react-virtual 的 flushSync 在 React 生命周期内触发告警
+      queueMicrotask(() => {
+        if (viewportRef.current === viewport) {
+          viewport.dispatchEvent(new Event('scroll'));
+        }
+      });
     }
   });
   // 指针类型变化（如外接鼠标插拔）时使缓存的行高测量失效
@@ -1352,7 +1357,7 @@ export function FinderFileList({
         ref={scrollAreaRef}
         viewportRef={viewportRef}
         className="h-full min-h-0 flex-1 bg-background outline-none"
-        viewportClassName="py-3 pr-3 pl-1.5 sm:pl-3"
+        viewportClassName="py-3 px-3"
         onClick={handleContainerClick}
         onDoubleClick={handleContainerDoubleClick}
         onContextMenu={handleContainerContextMenu}
@@ -1382,12 +1387,17 @@ export function FinderFileList({
                 return (
                   <div
                     key={virtualRow.key}
-                    className="absolute top-0 left-0 right-0 grid gap-2 justify-items-start"
+                    className={cn(
+                      'absolute top-0 left-0 right-0 grid gap-2',
+                      isSmallScreen ? 'justify-items-center' : 'justify-items-start',
+                    )}
                     style={{
                       // 与列表模式一致：用 transform 定位虚拟行，避免 top 变化触发布局
                       transform: `translateY(${virtualRow.start}px)`,
                       height: `${GRID_ROW_HEIGHT}px`,
-                      gridTemplateColumns: `repeat(${gridColumns}, ${GRID_ITEM_WIDTH}px)`,
+                      gridTemplateColumns: isSmallScreen
+                        ? `repeat(${gridColumns}, minmax(0, 1fr))`
+                        : `repeat(${gridColumns}, ${GRID_ITEM_WIDTH}px)`,
                     }}
                   >
                     {rowItems.map(item => (

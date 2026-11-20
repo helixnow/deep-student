@@ -530,7 +530,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                             {t('skills:editor.skill_type_composite')}
                           </DsButton>
                         </div>
-                        <p className="text-2xs text-muted-foreground/60">
+                        <p className="hidden text-2xs text-muted-foreground/60 sm:block">
                           {t('skills:editor.skill_type_hint')}
                         </p>
                       </div>
@@ -576,20 +576,21 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                 </CustomScrollArea>
 
                 {/* 左侧底部：操作按钮 */}
-                <div className="flex-none px-5 py-4 border-t border-border/20 flex items-center gap-2 bg-background relative z-10 sm:px-6 lg:px-7">
+                <div className="flex-none px-5 py-4 border-t border-border/20 flex items-center gap-2.5 bg-background relative z-10 sm:px-6 lg:px-7">
                   <DsButton
                     type="button"
-                    variant="ghost"
+                    variant="outline"
                     onClick={handleCloseRequest}
                     disabled={isSaving}
-                    className="flex-1 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
+                    className="flex-1 rounded-xl border-border/70 bg-background/60 text-foreground hover:bg-muted/50 [@media(pointer:coarse)]:!min-h-11"
                   >
                     {t('common:actions.cancel')}
                   </DsButton>
                   <DsButton
                     type="submit"
+                    variant="primary"
                     disabled={isSaving}
-                    className="flex-1 shadow-md hover:shadow-lg transition-colors [@media(pointer:coarse)]:!min-h-11"
+                    className="flex-1 rounded-xl border-primary/40 bg-primary/15 font-medium text-primary hover:bg-primary/25 transition-colors [@media(pointer:coarse)]:!min-h-11"
                   >
                     {isSaving
                       ? t('common:actions.saving')

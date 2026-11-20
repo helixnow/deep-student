@@ -1591,10 +1591,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
   const browsePracticeButton = browseMode && onPracticeQuestion ? (
     <DsButton
-      variant="ghost"
+      variant="primary"
       size="sm"
       onClick={() => onPracticeQuestion(currentQuestion.id)}
-      className="ml-auto !h-auto !px-2 !py-1 text-xs text-primary hover:bg-primary/10"
+      className="ml-auto !h-auto rounded-lg border-primary/40 bg-primary/15 !px-2.5 !py-1 text-xs font-medium text-primary hover:bg-primary/25"
     >
       <PaperPlaneRight size={14} />
       {t('editor.practiceThisQuestion')}

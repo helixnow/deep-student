@@ -451,19 +451,20 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
   const initialLoading = loading && !summary;
 
   return (
-    <div className={cn('flex w-full flex-col gap-6', className)}>
-      {/* 工具栏：说明 + 时间范围 + 刷新 */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className={cn('flex w-full flex-col gap-4 sm:gap-6', className)}>
+      {/* 工具栏：说明 + 时间范围 */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
         <p className="text-[13px] text-muted-foreground">
           {t('data:statistics_section_subtitle')}
         </p>
-        <div className="flex items-center gap-1.5">
+        <div className="flex w-full items-center gap-1.5 sm:w-auto">
           <SegmentedControl<RangeDays>
             ariaLabel={t('data:charts_panel.range_label')}
             value={rangeDays}
             onValueChange={setRangeDays}
             options={rangeOptions}
-            itemClassName="[@media(pointer:coarse)]:!min-h-11"
+            className="w-full sm:w-auto"
+            itemClassName="flex-1 justify-center sm:flex-initial [@media(pointer:coarse)]:!min-h-11"
           />
         </div>
       </div>
@@ -472,7 +473,12 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
         <div className={cn(GROUP_BOX_CLASS, 'flex flex-col items-center gap-2 py-12')}>
           <p className="text-sm text-muted-foreground">{t('llm_usage:no_data_or_load_failed')}</p>
           <p className="max-w-full truncate px-6 font-mono text-xs text-muted-foreground/50">{error}</p>
-          <DsButton variant="outline" size="sm" onClick={loadLlmData} className="mt-1 [@media(pointer:coarse)]:!min-h-11">
+          <DsButton
+            variant="outline"
+            size="sm"
+            onClick={loadLlmData}
+            className="mt-1 rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-muted/50 [@media(pointer:coarse)]:!min-h-11"
+          >
             <ArrowsClockwise size={13} className="mr-1.5" />
             {t('llm_usage:actions.retry')}
           </DsButton>
@@ -581,17 +587,19 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
           <Group
             title={t('llm_usage:activity_trend')}
             right={
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
                 <div className="flex items-center gap-3">
                   <LegendChip color="hsl(var(--primary))" label={t('llm_usage:tokens')} />
                   <LegendChip color="hsl(var(--success))" label={t('llm_usage:sessions')} />
                 </div>
                 <SegmentedControl<RangeDays>
                   ariaLabel={t('data:charts_panel.trend_range_label')}
-                      value={trendRange}
+                  value={trendRange}
                   onValueChange={setTrendRange}
+                  size="compact"
                   options={rangeOptions}
-                  itemClassName="[@media(pointer:coarse)]:!min-h-11"
+                  className="w-full sm:w-auto"
+                  itemClassName="flex-1 justify-center sm:flex-initial [@media(pointer:coarse)]:!min-h-11"
                 />
               </div>
             }

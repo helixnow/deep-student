@@ -85,6 +85,8 @@ export const LibraryScreen: React.FC = () => {
   const { isSmallScreen } = useBreakpoint();
   const translate = t as Translate;
   const startBatchSession = useFsrsReviewStore((s) => s.startBatchSession);
+  const setScreen = useFsrsReviewStore((s) => s.setScreen);
+  const backToToday = useCallback(() => setScreen('today'), [setScreen]);
 
   const items = useFlashcardsLibraryStore((state) => state.items);
   const total = useFlashcardsLibraryStore((state) => state.total);
@@ -516,7 +518,7 @@ export const LibraryScreen: React.FC = () => {
   const mobileChrome = useFlashcardsMobileChrome({
     title: t(composerOpen ? 'library.create.new' : 'library.title'),
     subtitle: composerOpen ? undefined : loading ? t('library.loading') : totalLabel,
-    onBack: composerOpen ? closeComposer : undefined,
+    onBack: composerOpen ? closeComposer : backToToday,
     rightActions: composerOpen ? (
       <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('library.create.save')} disabled={!draftValid || creating} onClick={handleSubmitDraft}>
         <FloppyDisk size={20} />
@@ -536,7 +538,7 @@ export const LibraryScreen: React.FC = () => {
         </AppMenuContent>
       </AppMenu>
     </>,
-  }, [t, composerOpen, loading, total, closeComposer, draftValid, creating, handleSubmitDraft, handleOpenOcclusionBuilder, importing, handleImportApkg, exporting, handleExportApkg, exportLabel]);
+  }, [t, composerOpen, loading, total, closeComposer, backToToday, draftValid, creating, handleSubmitDraft, handleOpenOcclusionBuilder, importing, handleImportApkg, exporting, handleExportApkg, exportLabel]);
 
   // A phone composer is a subpage of the library: keep its draft/list state here,
   // while the host owns the title, back and save action.

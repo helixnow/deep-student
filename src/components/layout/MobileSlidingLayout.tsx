@@ -21,9 +21,10 @@ import { cn } from '@/lib/utils';
 import { useMobileLayoutSafe } from './MobileLayoutContext';
 import { MobileInFlowHeader } from './UnifiedMobileHeader';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
 import { MobileUnifiedDrawerProvider } from './MobileDrawerContext';
 import { MobileSidebarNavigation } from './MobileSidebarNavigation';
-import { isMacOS, isMobilePlatform } from '@/utils/platform';
+import { isMacOS, isMobilePlatform, isWebUiShell } from '@/utils/platform';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { Z_INDEX } from '@/config/zIndex';
 import type { CurrentView } from '@/types/navigation';
@@ -33,12 +34,15 @@ export type ScreenPosition = 'left' | 'center' | 'right';
 
 /** 与聊天主页抽屉同款的应用标题；未传入 drawerHeader 的页面共用 */
 const DEFAULT_DRAWER_BRAND = (
-  <p
+  <div
     data-mobile-sidebar-fixed-region="top"
-    className="min-w-0 truncate text-[22px] font-bold leading-none text-foreground"
+    className="flex min-w-0 items-center gap-2.5"
   >
-    DeepStudent
-  </p>
+    <DeepStudentMark className="size-[26px] shrink-0" />
+    <p className="min-w-0 truncate text-[20px] font-semibold leading-none tracking-[-0.02em] text-foreground">
+      DeepStudent
+    </p>
+  </div>
 );
 
 /**
@@ -893,58 +897,56 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
                   {showDrawerChrome ? (
                     <div
                       data-mobile-drawer-chrome
-                      className="shrink-0 border-b border-[color:var(--shell-navigation-border)] bg-[color:var(--shell-navigation-surface)] pt-[calc(0.5rem+var(--mobile-safe-area-top,0px))]"
+                      className="shrink-0 bg-[color:var(--shell-navigation-surface)] pt-[calc(0.625rem+var(--mobile-safe-area-top,0px))] pb-0.5"
                       // macOS 桌面窗口拉窄时抽屉贴着窗口左上角：品牌行下移到红绿灯下方，避免叠字
-                      style={!isMobilePlatform() && isMacOS() ? { paddingTop: '1.75rem' } : undefined}
+                      style={!isMobilePlatform() && !isWebUiShell() && isMacOS() ? { paddingTop: '1.75rem' } : undefined}
                     >
-                      <header className="flex h-11 items-center justify-between gap-3 px-3 pl-[calc(1rem+var(--mobile-safe-area-left,0px))]">
+                      <header className="flex h-11 items-center justify-between gap-2 px-3 pl-[calc(0.875rem+var(--mobile-safe-area-left,0px))]">
                         <div className="min-w-0 flex-1">
                           {drawerHeader ?? DEFAULT_DRAWER_BRAND}
                         </div>
-                        <MobileSidebarNavigation
-                          settingsOnly
-                          onNavigate={closeSidebarAfterAppNavigation}
-                        />
                       </header>
                     </div>
                   ) : null}
                   {sidebarFixedContent ? (
                     <div
                       data-mobile-drawer-fixed
-                      className="shrink-0 px-2 py-1 pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))]"
+                      className="shrink-0 px-2.5 py-1 pl-[calc(0.625rem+var(--mobile-safe-area-left,0px))]"
                     >
                       {sidebarFixedContent}
                     </div>
                   ) : null}
-                  <CustomScrollArea
-                    className="scrollbar-none min-h-0 flex-1"
-                  // OverlayScrollbars 会清零 viewport padding；安全区/键盘避让放内层
-                  viewportClassName="h-full w-full min-h-0"
-                >
-                  {/* 抽屉贴屏幕左缘：横屏刘海/挖孔机型需要叠加左侧安全区。
-                      底部同时避让软键盘（--keyboard-inset：iOS overlay 键盘 >0，
-                      Android adjustResize ≈0，键盘收起恒 0）：抽屉内含搜索等输入
-                      入口，聚焦时保证列表尾部可滚出键盘遮挡区 */}
-                  <div
-                    className="px-2 py-1 pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))] pb-[calc(0.5rem+max(var(--mobile-safe-area-bottom,0px),var(--keyboard-inset,0px)))]"
-                  >
-                    <div data-mobile-drawer-page className="min-h-0">
-                      {sidebar}
-                    </div>
+                  <div data-mobile-drawer-scroll="" className="min-h-0 flex-1 overflow-hidden">
+                    <CustomScrollArea
+                      className="scrollbar-none h-full min-h-0"
+                      // OverlayScrollbars 会清零 viewport padding；安全区/键盘避让放内层
+                      viewportClassName="h-full w-full min-h-0"
+                    >
+                      {/* 抽屉贴屏幕左缘：横屏刘海/挖孔机型需要叠加左侧安全区。
+                          底部同时避让软键盘（--keyboard-inset：iOS overlay 键盘 >0，
+                          Android adjustResize ≈0，键盘收起恒 0）：抽屉内含搜索等输入
+                          入口，聚焦时保证列表尾部可滚出键盘遮挡区 */}
+                      <div
+                        className="px-2.5 py-1.5 pl-[calc(0.625rem+var(--mobile-safe-area-left,0px))] pb-[calc(1rem+max(var(--mobile-safe-area-bottom,0px),var(--keyboard-inset,0px)))]"
+                      >
+                        <div data-mobile-drawer-page className="min-h-0">
+                          {sidebar}
+                        </div>
+                      </div>
+                    </CustomScrollArea>
                   </div>
-                  </CustomScrollArea>
-                  {/* 六宫格应用启动器：固定在所有侧栏（抽屉）底部，不随列表滚动。
-                      底部避让安全区；键盘弹出时由滚动区内层 padding 处理避让，
-                      启动器条保持钉在抽屉底缘 */}
+                  {/* 等宽 4×2 悬浮应用 Dock：7 项工作区 + 设置共 8 格完全等宽等高，消除尺寸割裂 */}
                   {showSidebarAppNavigation ? (
                     <div
                       data-mobile-drawer-launcher
-                      className="shrink-0 border-t border-[color:var(--shell-navigation-border)] bg-[color:var(--shell-navigation-surface)] px-2 pt-1 pl-[calc(0.5rem+var(--mobile-safe-area-left,0px))] pb-[calc(0.25rem+var(--mobile-safe-area-bottom,0px))]"
+                      className="shrink-0 bg-[color:var(--shell-navigation-surface)] px-2.5 pt-1 pl-[calc(0.625rem+var(--mobile-safe-area-left,0px))] pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))]"
                     >
-                      <MobileSidebarNavigation
-                        hideSettings
-                        onNavigate={closeSidebarAfterAppNavigation}
-                      />
+                      <div className="rounded-2xl border border-[color:var(--shell-navigation-border)] bg-[color:var(--surface-elevated)] p-1.5">
+                        <MobileSidebarNavigation
+                          includeSettingsTile
+                          onNavigate={closeSidebarAfterAppNavigation}
+                        />
+                      </div>
                     </div>
                   ) : null}
                 </>

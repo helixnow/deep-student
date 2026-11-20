@@ -16,7 +16,7 @@ import { GroupTitle } from './settingsTabPrimitives';
 import { Switch } from '@/components/ui/shad/Switch';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
-import { isMobilePlatform } from '@/utils/platform';
+import { isMobilePlatform, isWebUiShell } from '@/utils/platform';
 import { inputShellClass } from '@/components/ui/shad/inputShell';
 import {
   useAutomationStore,
@@ -450,7 +450,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
   const desktopUnavailable = invoke === null;
   // 「关闭窗口后驻留后台」只在桌面端实现（lib.rs CloseRequested 拦截）；移动端系统会冻结
   // 后台应用，开关毫无作用——不展示开关，改为如实说明任务只在应用打开时运行。
-  const backgroundKeepAliveUnsupported = isMobilePlatform();
+  const backgroundKeepAliveUnsupported = isMobilePlatform() || isWebUiShell();
 
   useEffect(() => {
     if (desktopUnavailable) return;

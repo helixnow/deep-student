@@ -235,7 +235,7 @@ export const TodayScreen: React.FC = () => {
   const showDoneState = doneToday > 0 && !libraryEmpty;
 
   const mobileChrome = useFlashcardsMobileChrome({
-    title: t('today.title'),
+    title: t('sidebar:navigation.flashcards', '闪卡'),
     rightActions: <>
       <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('today.startReview')} disabled={loading || dueCards.length === 0} onClick={startDueSession}>
         <Play size={20} />
@@ -394,12 +394,25 @@ export const TodayScreen: React.FC = () => {
                 </p>
               ) : null}
               {!loading && extraNewCount > 0 ? (
-                <div className="mt-1.5 flex flex-wrap items-center gap-1.5" data-testid="fc-today-learn-more">
-                  <DsButton type="button" variant="default" size="sm" disabled={extraBusy} onClick={() => void learnExtraNew()}>
+                <div className="mt-2 flex flex-wrap items-center gap-2" data-testid="fc-today-learn-more">
+                  <DsButton
+                    type="button"
+                    variant="default"
+                    size="sm"
+                    disabled={extraBusy}
+                    onClick={() => void learnExtraNew()}
+                    className="rounded-xl border-primary/35 bg-primary/12 px-3 font-medium text-primary hover:bg-primary/20"
+                  >
                     <Play size={13} weight="fill" aria-hidden="true" />
                     {t('today.learnMore', { count: extraNewCount })}
                   </DsButton>
-                  <DsButton type="button" variant="ghost" size="sm" onClick={() => setScreen('settings')}>
+                  <DsButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setScreen('settings')}
+                    className="rounded-xl border-border/65 bg-background/50 px-3 text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                  >
                     {t('today.adjustDailyLimit')}
                   </DsButton>
                 </div>

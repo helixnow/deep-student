@@ -680,7 +680,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
           <DsButton
             variant="outline"
             onClick={onOpenTemplateManagement}
-            className="w-full justify-center h-11"
+            className="w-full justify-center h-11 rounded-xl border-border/70 bg-background/50 text-foreground hover:bg-muted/40"
           >
             {t('taskDashboard.openTemplateLib')}
           </DsButton>
@@ -768,17 +768,21 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
               })}
             />
 
-            <div className="flex-1" />
+            <div className="wb-at-list-toolbar-spacer flex-1" />
 
             {/* 搜索框 */}
-            <div className="relative max-w-[200px] flex-shrink-0">
-              <MagnifyingGlass size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground/30" />
+            <div className="wb-at-list-search relative max-w-[200px] flex-shrink-0">
+              <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
               <Input
                 type="search"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder={t('taskDashboard.searchPlaceholder')}
-                className="h-7 border-transparent bg-transparent pl-7 pr-7 text-sm [@media(pointer:coarse)]:h-[var(--touch-target-size)]"
+                className={`h-7 pl-7 pr-7 text-sm [@media(pointer:coarse)]:h-[var(--touch-target-size)] ${
+                  isSmallScreen
+                    ? 'h-9 w-full rounded-lg border border-border/60 bg-muted/25 pl-8'
+                    : 'border-transparent bg-transparent'
+                }`}
               />
               {search && (
                 <DsButton variant="ghost" size="icon" iconOnly onClick={() => setSearch('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 !h-auto !w-auto !p-0 text-muted-foreground/40 hover:text-muted-foreground" aria-label={t('common:clear', { defaultValue: 'Clear' })}>
@@ -789,13 +793,28 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
 
             {/* 移动端：排序 / 刷新 / 恢复卡住任务（桌面在页头工具条） */}
             {isSmallScreen && (
-              <div className="flex items-center gap-1">
-                <DsButton size="sm" variant="utility" onClick={cycleSort} aria-label={sortLabel} title={sortLabel}>
+              <div className="wb-at-list-mobile-actions flex items-center gap-1.5">
+                <DsButton
+                  size="sm"
+                  variant="utility"
+                  onClick={cycleSort}
+                  aria-label={sortLabel}
+                  title={sortLabel}
+                  className="rounded-lg border-border/60 bg-background/50 px-2.5 text-muted-foreground"
+                >
                   <ArrowsDownUp size={14} />
                   <span className="text-xs">{sortLabel}</span>
                 </DsButton>
                 {/* 触屏无 hover tooltip，纯图标无从得知含义——补文案（工具条 flex-wrap 可换行不溢出） */}
-                <DsButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} aria-label={t('taskDashboard.recoverStuck')} title={t('taskDashboard.recoverStuckHint')}>
+                <DsButton
+                  size="sm"
+                  variant="utility"
+                  onClick={handleRecover}
+                  disabled={recovering}
+                  aria-label={t('taskDashboard.recoverStuck')}
+                  title={t('taskDashboard.recoverStuckHint')}
+                  className="rounded-lg border-border/60 bg-background/50 px-2.5 text-muted-foreground"
+                >
                   {recovering
                     ? <CircleNotch size={14} className="animate-spin" />
                     : <ArrowCounterClockwise size={14} />}

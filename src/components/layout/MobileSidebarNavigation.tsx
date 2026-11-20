@@ -46,6 +46,8 @@ interface MobileSidebarNavigationProps {
   settingsOnly?: boolean;
   /** Omit settings from the scrollable navigation when it is rendered in the header/footer. */
   hideSettings?: boolean;
+  /** Render settings as the 8th equal-size tile inside the 4x2 mobile dock grid. */
+  includeSettingsTile?: boolean;
   /**
    * @deprecated 现在只有「嵌在统一滚动抽屉内」这一种形态（旧版 pinned 底栏
    * 分支已删除），该 prop 不再被读取，保留仅为兼容既有调用方。
@@ -57,6 +59,7 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
   onNavigate,
   className,
   settingsOnly = false,
+  includeSettingsTile = false,
 }) => {
   const { t, i18n } = useTranslation(['sidebar', 'common']);
   const currentView = useViewStore((state) => state.currentView);
@@ -113,24 +116,40 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
         iconOnly
         data-mobile-shell="sidebar-settings"
         className={cn(
-          // !h-11 !w-11 = 44px：触控目标底线（同导航格口径）
-          'shell-icon-button !h-11 !w-11 !rounded-full shrink-0 text-muted-foreground',
+          'shell-icon-button !h-11 !w-11 !rounded-xl shrink-0 text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)]',
           className,
         )}
         aria-label={settingsItem.fallback === undefined ? t(settingsItem.labelKey) : t(settingsItem.labelKey, settingsItem.fallback)}
         onClick={() => handleNavigate(settingsItem.viewId as CurrentView)}
       >
-        {renderNavigationIcon(settingsItem.origin, settingsItem.owner, settingsItem.id, SettingsIcon, { className: 'size-5' })}
+        {renderNavigationIcon(settingsItem.origin, settingsItem.owner, settingsItem.id, SettingsIcon, { className: 'size-[18px]' })}
       </DsButton>
     );
   }
+
+  const dockTileClassName = (isActive: boolean) => cn(
+    // 统一 4×2 等宽等高移动端 Dock 磁贴：56px 高度配 22px 图标 + 13px 标签，与 330px 侧栏宽度成自然比例
+    'group/dock-tile flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl px-1 py-2',
+    'text-[13px] font-medium leading-none',
+    'outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring select-none',
+    isActive
+      ? 'bg-[color:hsl(var(--primary)/0.14)] text-[color:var(--shell-navigation-foreground)] ring-1 ring-inset ring-[color:hsl(var(--primary)/0.28)]'
+      : 'text-[color:var(--shell-navigation-muted)] hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]',
+  );
+
+  const settingsLabel = settingsItem
+    ? (settingsItem.fallback === undefined ? t(settingsItem.labelKey) : t(settingsItem.labelKey, settingsItem.fallback))
+    : '';
+  const isSettingsActive = settingsItem
+    ? isNavEntryActive(resolveShellView(settingsItem.viewId as CurrentView, viewEntries), currentCanonicalView)
+    : false;
 
   return (
     <nav
       data-mobile-shell="sidebar-nav"
       data-mobile-app-launcher=""
       aria-label={t('common:navigation_label')}
-      className={cn('grid grid-cols-3 gap-x-0.5 gap-y-0', className)}
+      className={cn('grid gap-1', includeSettingsTile ? 'grid-cols-4' : 'grid-cols-3', className)}
     >
       {launcherItems.map(({ id, owner, origin, view, icon: Icon, name, ariaLabel }) => {
         const isActive = isNavEntryActive(resolveShellView(view, viewEntries), currentCanonicalView);
@@ -141,20 +160,37 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
             aria-label={ariaLabel}
             aria-current={isActive ? 'page' : undefined}
             onClick={() => handleNavigate(view)}
-            className={cn(
-              // min-h-11 = 44px：达到 Apple HIG / Material 触控目标底线（移动端 root 16px 下 rem 标称生效）
-              // 注意不要用 text-sm：typography.css 把 .text-sm 重定义为 --font-size-sm(12px)
-              'flex min-h-11 flex-row items-center gap-1.5 rounded-md px-1.5',
-              'text-[14px] leading-none text-[color:var(--shell-navigation-muted)]',
-              'outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
-              isActive && 'bg-[color:hsl(var(--primary)/0.1)] text-[color:var(--shell-navigation-foreground)]',
-            )}
+            className={dockTileClassName(isActive)}
           >
-            {renderNavigationIcon(origin, owner, id, Icon, { className: 'size-[25px] shrink-0' })}
-            <span className="min-w-0 truncate">{name}</span>
+            {renderNavigationIcon(origin, owner, id, Icon, {
+              className: cn(
+                'size-[22px] shrink-0 transition-colors duration-150',
+                isActive ? 'text-primary' : 'text-[color:var(--shell-navigation-muted)] group-hover/dock-tile:text-[color:var(--shell-navigation-foreground)]',
+              ),
+            })}
+            <span className="max-w-full truncate">{name}</span>
           </button>
         );
       })}
+      {includeSettingsTile && settingsItem ? (
+        <button
+          key={`${settingsItem.owner}/${settingsItem.id}`}
+          type="button"
+          data-mobile-shell="sidebar-settings"
+          aria-label={settingsLabel}
+          aria-current={isSettingsActive ? 'page' : undefined}
+          onClick={() => handleNavigate(settingsItem.viewId as CurrentView)}
+          className={dockTileClassName(isSettingsActive)}
+        >
+          {renderNavigationIcon(settingsItem.origin, settingsItem.owner, settingsItem.id, settingsItem.icon, {
+            className: cn(
+              'size-[22px] shrink-0 transition-colors duration-150',
+              isSettingsActive ? 'text-primary' : 'text-[color:var(--shell-navigation-muted)] group-hover/dock-tile:text-[color:var(--shell-navigation-foreground)]',
+            ),
+          })}
+          <span className="max-w-full truncate">{settingsLabel}</span>
+        </button>
+      ) : null}
     </nav>
   );
 };

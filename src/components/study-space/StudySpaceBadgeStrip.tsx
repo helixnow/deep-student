@@ -15,6 +15,8 @@ export interface StudySpaceBadgeStripProps {
   onEditSpace?: () => void;
   onOpenFolder?: () => void;
   onReviewDeck?: () => void;
+  /** 紧贴在当前活跃课题行下方时省略重复课题名 */
+  hideName?: boolean;
   className?: string;
 }
 
@@ -23,6 +25,7 @@ export const StudySpaceBadgeStrip: React.FC<StudySpaceBadgeStripProps> = ({
   onEditSpace,
   onOpenFolder,
   onReviewDeck,
+  hideName = false,
   className,
 }) => {
   const { t } = useTranslation('chatV2');
@@ -83,6 +86,30 @@ export const StudySpaceBadgeStrip: React.FC<StudySpaceBadgeStripProps> = ({
       : `${space.dailyBudgetMinutes}m`;
   })();
 
+  const metricsNodes = (
+    <>
+      {countdown ? (
+        <span className="inline-flex items-center gap-1 rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-foreground">
+          <span
+            aria-hidden="true"
+            className={cn('h-1.5 w-1.5 shrink-0 rounded-full', countdown.dotColorClass)}
+          />
+          <span>{countdown.label}</span>
+        </span>
+      ) : null}
+
+      <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+        {budgetLabel}
+      </span>
+
+      {hideName ? <span aria-hidden="true" className="text-muted-foreground/45">·</span> : null}
+
+      <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+        {retentionPercent}%
+      </span>
+    </>
+  );
+
   return (
     <div
       data-testid="study-space-badge-strip"
@@ -92,14 +119,18 @@ export const StudySpaceBadgeStrip: React.FC<StudySpaceBadgeStripProps> = ({
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        <span
-          aria-hidden="true"
-          className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-primary)]"
-          style={space.color ? { backgroundColor: space.color } : undefined}
-        />
-        <span className="truncate font-medium text-foreground" title={cleanName}>
-          {cleanName}
-        </span>
+        {!hideName ? (
+          <>
+            <span
+              aria-hidden="true"
+              className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--brand-primary)]"
+              style={space.color ? { backgroundColor: space.color } : undefined}
+            />
+            <span className="truncate font-medium text-foreground" title={cleanName}>
+              {cleanName}
+            </span>
+          </>
+        ) : null}
 
         {space.rootFolderId ? (
           <span
@@ -110,28 +141,18 @@ export const StudySpaceBadgeStrip: React.FC<StudySpaceBadgeStripProps> = ({
             <span className="hidden sm:inline">{kbScopedLabel}</span>
           </span>
         ) : null}
+
+        {hideName ? (
+          <div className="flex min-w-0 items-center gap-1.5">
+            {metricsNodes}
+          </div>
+        ) : null}
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
-        {countdown ? (
-          <span className="inline-flex items-center gap-1 rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-foreground">
-            <span
-              aria-hidden="true"
-              className={cn('h-1.5 w-1.5 shrink-0 rounded-full', countdown.dotColorClass)}
-            />
-            <span>{countdown.label}</span>
-          </span>
-        ) : null}
+        {!hideName ? metricsNodes : null}
 
-        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-          {budgetLabel}
-        </span>
-
-        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-          {retentionPercent}%
-        </span>
-
-        <div className="flex items-center gap-0.5 border-l border-border/35 pl-1">
+        <div className={cn('flex items-center gap-0.5', !hideName && 'border-l border-border/35 pl-1')}>
           <DsButton
             variant="ghost"
             size="icon"

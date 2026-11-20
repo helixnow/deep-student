@@ -1195,7 +1195,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
   const headerSubtitle = useMemo(() => {
     if (isSmallScreen) {
-      return undefined;
+      if (screenPosition === 'right' && (editorOpen || rightPanelOpen)) {
+        return undefined;
+      }
+      return t('skills:management.skills_count', { count: allSkills.length });
     }
     // 右侧面板打开时不显示副标题
     if (screenPosition === 'right' && (editorOpen || rightPanelOpen)) {
@@ -1208,7 +1211,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
       return defaultSkills.map(s => s.name).join(', ');
     }
     return undefined;
-  }, [defaultSkills, t, screenPosition, editorOpen, rightPanelOpen, isSmallScreen]);
+  }, [allSkills.length, defaultSkills, t, screenPosition, editorOpen, rightPanelOpen, isSmallScreen]);
 
   // 判断是否在编辑器视图
   const isEditorView = screenPosition === 'right' && (editorOpen || rightPanelOpen);
@@ -1360,10 +1363,80 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
   // ========== 渲染主内容 ==========
   const renderMainContent = () => {
+    const mobileOverflowMenu = (
+      <AppMenu>
+        <AppMenuTrigger asChild>
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className={cn(
+              'text-muted-foreground',
+              inTitlebar
+                ? TITLEBAR_ICON_CONTROL_CLASS
+                : isSmallScreen
+                  ? '!h-11 !w-11 !rounded-xl border border-border/60 bg-[color:var(--surface-muted)] text-foreground'
+                  : '!h-7 !w-7',
+            )}
+            aria-label={t('common:more')}
+            title={t('common:more')}
+          >
+            <DotsThree size={20} weight="bold" />
+          </DsButton>
+        </AppMenuTrigger>
+        <AppMenuContent align="end" width={224}>
+          <AppMenuItem
+            icon={<Storefront size={16} />}
+            onClick={() => setTapBrowserOpen((v) => !v)}
+          >
+            {t('skills:tap.entry')}
+          </AppMenuItem>
+          <AppMenuItem
+            icon={<CloudArrowDown size={16} className={cn(updateChecking && 'animate-pulse')} />}
+            disabled={updateChecking}
+            onClick={() => void handleCheckUpdates()}
+          >
+            {t('skills:management.check_updates')}
+          </AppMenuItem>
+          <AppMenuItem icon={<Package size={16} />} onClick={handleImportZipClick}>
+            {t('skills:management.import_zip')}
+          </AppMenuItem>
+          <AppMenuItem icon={<Upload size={16} />} onClick={handleImportClick}>
+            {t('skills:management.import')}
+          </AppMenuItem>
+          <AppMenuItem
+            icon={<Download size={16} />}
+            disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
+            onClick={handleExportAll}
+          >
+            {t('skills:management.export_all_short')}
+          </AppMenuItem>
+          <AppMenuItem
+            icon={<UploadSimple size={16} />}
+            disabled={allSkills.filter(s => !s.isBuiltin && s.location === 'global').length === 0}
+            onClick={() => void handleExportTap()}
+          >
+            {t('skills:management.export_tap')}
+          </AppMenuItem>
+        </AppMenuContent>
+      </AppMenu>
+    );
+
+    const hiddenFileInput = (
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={SKILL_FILE_ACCEPT}
+        multiple
+        onChange={handleImportFile}
+        className="hidden"
+      />
+    );
+
     // 工具栏第一行（面包屑/计数 + 动作条）：桌面端有全局顶栏槽位时 portal 上移，
-    // 页内不再重复渲染；第二行（搜索 + 位置筛选）始终页内保留
+    // 移动端已将计数合入 UnifiedMobileHeader 副标题、将「⋯」合入搜索同行，不再占独立一行
     const toolbarPrimaryRow = (
-        <div className={cn("flex items-center gap-4", isSmallScreen ? "justify-between" : "justify-between", toolbarPortalTarget && 'pointer-events-auto min-w-0 flex-1')}>
+        <div className={cn("flex items-center gap-4 justify-between", toolbarPortalTarget && 'pointer-events-auto min-w-0 flex-1')}>
           <div className={cn('flex min-w-0 items-center gap-2 text-muted-foreground', inTitlebar ? 'text-xs' : 'text-sm')}>
             {/* 标题不收缩：右侧动作条占满时 truncate 会把标题压成 0 宽，只剩「/ 62 个」 */}
             <span className={cn(inTitlebar ? TITLEBAR_TITLE_CLASS : 'font-medium text-foreground truncate', 'shrink-0')}>{t('skills:management.all_skills')}</span>
@@ -1372,14 +1445,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           </div>
 
           <div className="flex items-center gap-1 flex-shrink-0">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={SKILL_FILE_ACCEPT}
-              multiple
-              onChange={handleImportFile}
-              className="hidden"
-/>
+            {!isSmallScreen && hiddenFileInput}
             
             {/* 新建按钮：移动端在应用顶栏，桌面端保留在此 */}
             {!isSmallScreen && (
@@ -1470,57 +1536,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                 </DsButton>
               </>
             ) : (
-              /* 移动端 / 非 wide 档窗口：七个次级操作横排必溢出 → 收进「⋯」溢出菜单，
-                 主操作（搜索/筛选在下一行，新建在应用顶栏或本行首）保持直达 */
-              <AppMenu>
-                <AppMenuTrigger asChild>
-                  <DsButton
-                    variant="ghost"
-                    size="icon"
-                    iconOnly
-                    className={cn('text-muted-foreground', inTitlebar ? TITLEBAR_ICON_CONTROL_CLASS : isSmallScreen ? '!h-11 !w-11' : '!h-7 !w-7')}
-                    aria-label={t('common:more')}
-                    title={t('common:more')}
-                  >
-                    <DotsThree size={22} weight="bold" />
-                  </DsButton>
-                </AppMenuTrigger>
-                <AppMenuContent align="end" width={224}>
-                  <AppMenuItem
-                    icon={<Storefront size={16} />}
-                    onClick={() => setTapBrowserOpen((v) => !v)}
-                  >
-                    {t('skills:tap.entry')}
-                  </AppMenuItem>
-                  <AppMenuItem
-                    icon={<CloudArrowDown size={16} className={cn(updateChecking && 'animate-pulse')} />}
-                    disabled={updateChecking}
-                    onClick={() => void handleCheckUpdates()}
-                  >
-                    {t('skills:management.check_updates')}
-                  </AppMenuItem>
-                  <AppMenuItem icon={<Package size={16} />} onClick={handleImportZipClick}>
-                    {t('skills:management.import_zip')}
-                  </AppMenuItem>
-                  <AppMenuItem icon={<Upload size={16} />} onClick={handleImportClick}>
-                    {t('skills:management.import')}
-                  </AppMenuItem>
-                  <AppMenuItem
-                    icon={<Download size={16} />}
-                    disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
-                    onClick={handleExportAll}
-                  >
-                    {t('skills:management.export_all_short')}
-                  </AppMenuItem>
-                  <AppMenuItem
-                    icon={<UploadSimple size={16} />}
-                    disabled={allSkills.filter(s => !s.isBuiltin && s.location === 'global').length === 0}
-                    onClick={() => void handleExportTap()}
-                  >
-                    {t('skills:management.export_tap')}
-                  </AppMenuItem>
-                </AppMenuContent>
-              </AppMenu>
+              /* 移动端 / 非 wide 档窗口：七个次级操作横排必溢出 → 收进「⋯」溢出菜单 */
+              mobileOverflowMenu
             )}
           </div>
         </div>
@@ -1534,23 +1551,33 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             toolbarPortalTarget,
           )
         : null}
-      <div className={cn('study-shell-toolbar flex-shrink-0 px-5 sm:px-8 lg:px-10', toolbarPortalTarget ? 'py-2' : 'py-3 space-y-3')}>
-        {!toolbarPortalTarget && toolbarPrimaryRow}
-        <div className={cn("flex items-center gap-3", isSmallScreen && "flex-col items-stretch")}>
-          <div className={cn("relative flex-1", !isSmallScreen && "max-w-xs")}>
-            <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
-            <Input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={t('skills:selector.searchPlaceholder')}
-              data-skills-search
-              className={cn(
-                'border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3',
-                // 移动端加高到触控目标标准，桌面保持紧凑；粗指针设备（如 iPad 横屏）同样加高
-                isSmallScreen ? 'h-11 text-sm' : 'h-8 text-xs [@media(pointer:coarse)]:!h-11',
-              )}
-/>
+      <div className={cn(
+        'study-shell-toolbar flex-shrink-0',
+        isSmallScreen
+          ? 'px-4 py-2.5 space-y-2'
+          : cn('px-5 sm:px-8 lg:px-10', toolbarPortalTarget ? 'py-2' : 'py-3 space-y-3'),
+      )}>
+        {!toolbarPortalTarget && !isSmallScreen && toolbarPrimaryRow}
+        {isSmallScreen && hiddenFileInput}
+        <div className={cn("flex items-center gap-2", isSmallScreen ? "flex-col items-stretch" : "gap-3")}>
+          <div className={cn("flex items-center gap-2", !isSmallScreen && "flex-1 max-w-xs")}>
+            <div className="relative flex-1 min-w-0">
+              <MagnifyingGlass size={isSmallScreen ? 16 : 14} className={cn("absolute top-1/2 -translate-y-1/2 text-muted-foreground/60", isSmallScreen ? "left-3" : "left-2.5")} />
+              <Input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={t('skills:selector.searchPlaceholder')}
+                data-skills-search
+                className={cn(
+                  'bg-[color:var(--surface-muted)] pr-3',
+                  isSmallScreen
+                    ? 'h-11 rounded-xl border border-border/60 pl-9 text-base shadow-none'
+                    : 'h-8 border-transparent pl-8 text-xs [@media(pointer:coarse)]:!h-11',
+                )}
+              />
+            </div>
+            {isSmallScreen && mobileOverflowMenu}
           </div>
 
           <SegmentedControl<typeof locationFilter>
@@ -1560,13 +1587,11 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             size="compact"
             className={cn(
               'flex items-center gap-1 overflow-x-auto scrollbar-none [&_.study-shell-segmented-thumb]:border-transparent',
-              isSmallScreen && '-mx-1 px-1',
+              isSmallScreen && '!border-0 !bg-transparent !p-0 gap-1.5',
             )}
             itemClassName={isSmallScreen
-              // 移动端加大纵向点击区，接近触控目标标准（对齐制卡任务页做法）
-              // 粗指针设备（如 iPad 横屏走桌面分支）用 !min-h-11 兜底触控高度，
-              // 需带 ! 以覆盖 .study-shell-segmented-button 的 min-height: 0
-              ? '!h-auto !px-3 !py-2 text-sm font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-11'
+              // 移动端降为轻盈次级芯片条，与下方「学习精选 / 全部 / 系统」主分页拉开主次层级，同时保证 ≥36px 舒适点击高度
+              ? '!h-auto !min-h-9 !rounded-full !px-3 !py-1.5 text-xs font-medium whitespace-nowrap'
               : '!h-auto !px-2.5 !py-1 text-xs font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3'}
             options={locationTabs
               .filter((tab) => tab.id === 'all' || locationCounts[tab.id] > 0)
@@ -1583,7 +1608,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                       <span>{tab.label}</span>
                       <span
                         className={cn(
-                          'ml-0.5 text-2xs opacity-60',
+                          'ml-0.5 text-2xs tabular-nums opacity-60',
                           isActiveTab && 'opacity-100 font-bold',
                         )}
                       >
@@ -1593,7 +1618,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   ),
                 };
               })}
-/>
+          />
         </div>
       </div>
 
@@ -1602,7 +1627,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         viewportRef={listViewportRef}
         viewportClassName="pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))] sm:pb-[calc(1.5rem+var(--mobile-safe-area-bottom,0px))]"
       >
-        <div className="px-5 pt-5 sm:px-8 sm:pt-7 lg:px-10">
+        <div className={cn(isSmallScreen ? 'px-4 pt-3' : 'px-5 pt-5 sm:px-8 sm:pt-7 lg:px-10')}>
           {/* 技能源浏览器 / 上游更新确认：列表顶部内联展开（非模态，不遮挡页面） */}
           {tapBrowserOpen && (
             <SkillTapBrowser onClose={() => setTapBrowserOpen(false)} />

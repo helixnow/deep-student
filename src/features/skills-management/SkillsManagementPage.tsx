@@ -65,7 +65,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       if (!slot) {
         slot = document.createElement('div');
         slot.setAttribute('data-skills-audience-slot', 'true');
-        slot.className = 'pt-2';
+        slot.className = 'pt-1 sm:pt-2';
         toolbar.appendChild(slot);
       }
       setToolbarMountEl((prev) => (prev === slot ? prev : slot));
@@ -189,7 +189,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
 
   const categoryToolbarContent = (
     <div
-      className="flex flex-wrap items-center justify-between gap-2 border-t border-border/30 pt-2.5"
+      className="flex flex-wrap items-center justify-between gap-2 sm:border-t sm:border-border/30 sm:pt-2.5"
       data-testid="skills-audience-filter-bar"
     >
       <SegmentedControl<SkillAudienceCategory>
@@ -197,8 +197,8 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
         value={activeCategory}
         onValueChange={setActiveCategory}
         size="compact"
-        className="flex items-center gap-1 overflow-x-auto scrollbar-none [&_.study-shell-segmented-thumb]:border-transparent"
-        itemClassName="!h-auto !px-2.5 !py-1 text-xs font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!px-3"
+        className="flex w-full items-center gap-1 overflow-x-auto scrollbar-none sm:w-auto [&_.study-shell-segmented-thumb]:border-transparent"
+        itemClassName="!h-auto !min-h-9 flex-1 justify-center !px-2.5 !py-1.5 text-xs font-medium whitespace-nowrap sm:!min-h-0 sm:flex-initial sm:!px-2.5 sm:!py-1 [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)] [@media(pointer:coarse)]:!px-2.5"
         options={[
           {
             value: 'learning',
@@ -256,7 +256,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
           },
         ]}
       />
-      <p className="text-xs text-muted-foreground/75">{categoryHint}</p>
+      <p className="hidden text-xs text-muted-foreground/75 sm:block">{categoryHint}</p>
     </div>
   );
 

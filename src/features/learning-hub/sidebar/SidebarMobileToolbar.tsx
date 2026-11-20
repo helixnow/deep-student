@@ -70,7 +70,6 @@ export function SidebarMobileToolbar({
   handleNewMindMap,
   isTrashView,
   handleEmptyTrash,
-  items,
 }: SidebarMobileToolbarProps) {
   return (
     <div
@@ -205,10 +204,6 @@ export function SidebarMobileToolbar({
             </DsButton>
           )}
           <div className="flex-1" />
-          {/* 项目数显示 */}
-          <span className="text-xs text-muted-foreground">
-            {items.length}
-          </span>
         </>
       )}
     </div>

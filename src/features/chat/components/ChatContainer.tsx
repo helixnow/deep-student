@@ -11,7 +11,7 @@
 
 // 确保 Chat V2 初始化（样式 + 插件注册）
 import '../init';
-import { TodayReviewHint } from '@/features/learning-today/TodayReviewHint';
+import { TodayReviewHint, useTodayReviewHintAvailability } from '@/features/learning-today';
 
 import React, { useEffect, useMemo, useRef } from 'react';
 import type { StoreApi } from 'zustand';
@@ -47,6 +47,9 @@ import { isStoreSubagentSession } from '../core/subagentSession';
 // ============================================================================
 // Props 定义
 // ============================================================================
+
+// 移动端空态点击居中 Logo 展开的冲刺/复习卡片渲染器（模块级常量，保证 MessageList memo 稳定）
+const renderMobileTodayReviewHint = () => <TodayReviewHint embedded />;
 
 export interface ChatContainerProps {
   /** 会话 ID */
@@ -243,6 +246,13 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   // 🆕 2026-01-20: 工作区状态恢复（刷新页面后自动恢复）
   useWorkspaceRestore({ currentSessionId: sessionId, enabled: true });
 
+  const shouldUseEmptyComposerLayout = effectiveShowInputBar && (forceEmptyPreview || messageCount === 0);
+  const shouldUseDesktopEmptyComposerLayout = shouldUseEmptyComposerLayout && !isMobile;
+  const shouldAutoFocusMobileEmptyComposer = shouldUseEmptyComposerLayout && isMobile;
+
+  // 移动端空会话：订阅今日冲刺/待复习卡片可用性；默认隐藏卡片，仅在居中 Logo 角标提示并由点击切换
+  const mobileReviewHintAvailability = useTodayReviewHintAvailability(shouldAutoFocusMobileEmptyComposer);
+
   // 🆕 Canvas 上下文引用管理 - 白板功能已移除
   // useCanvasContextRef({ store });
 
@@ -268,10 +278,6 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       </div>
     );
   }
-
-  const shouldUseEmptyComposerLayout = effectiveShowInputBar && (forceEmptyPreview || messageCount === 0);
-  const shouldUseDesktopEmptyComposerLayout = shouldUseEmptyComposerLayout && !isMobile;
-  const shouldAutoFocusMobileEmptyComposer = shouldUseEmptyComposerLayout && isMobile;
 
   const renderMessageList = ({
     className: messageListSlotClassName,
@@ -301,6 +307,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         store={store}
         emptyStateGroupName={resolvedEmptyStateGroupName}
         forceEmptyPreview={forceEmptyPreview}
+        emptyStateCardAvailable={shouldAutoFocusMobileEmptyComposer && mobileReviewHintAvailability.hasContent}
+        emptyStateCardAccent={mobileReviewHintAvailability.hasDueItems}
+        emptyStateCardResetKey={displayedSessionId}
+        renderEmptyStateCard={shouldAutoFocusMobileEmptyComposer ? renderMobileTodayReviewHint : undefined}
       />
     </div>
   );
@@ -389,13 +399,6 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
           {/* 模式插件 Footer */}
           {renderFooter()}
-
-          {/* 手机空会话：今日待复习 / 薄弱点 / 周报贴在输入栏上方（桌面在空态输入框下方） */}
-          {shouldAutoFocusMobileEmptyComposer && (
-            <div className="flex-shrink-0 px-4 pb-1">
-              <TodayReviewHint />
-            </div>
-          )}
 
           {/* 🆕 工具审批卡片已移至 InputBarV2 内部，作为浮动面板渲染，避免遮挡问题 */}
 

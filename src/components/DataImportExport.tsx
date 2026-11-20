@@ -1480,13 +1480,14 @@ ${resolvedPath}`);
             </p>
             <div className="space-y-2">
               {exportTierOptions.map((option) => (
-                // 触屏：整行 label 是命中区，升到 44px 触控标准（checkbox 本体 16px 不足）
-                <label key={option.id} className="flex items-start gap-3 [@media(pointer:coarse)]:min-h-11">
+                // 整行 label 是命中区，保证触屏与窄屏下的 44px 舒适点击热区
+                <label key={option.id} className="flex min-h-11 cursor-pointer items-start gap-3 py-1">
                   <Checkbox
                     checked={exportBackupTiers.includes(option.id)}
                     onCheckedChange={() => toggleExportTier(option.id)}
                     disabled={isExporting}
-/>
+                    className="mt-0.5"
+                  />
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{option.label}</p>
                     <p className="text-xs text-muted-foreground">{option.desc}</p>
@@ -1496,7 +1497,13 @@ ${resolvedPath}`);
             </div>
           </CardContent>
             <CardFooter>
-              <DsButton variant="ghost" size="sm" onClick={handleExport} disabled={isExporting} className="[@media(pointer:coarse)]:!min-h-11">
+              <DsButton
+                variant="primary"
+                size="sm"
+                onClick={handleExport}
+                disabled={isExporting}
+                className="rounded-xl border-primary/35 bg-primary/15 px-4 font-medium text-primary hover:bg-primary/25 [@media(pointer:coarse)]:!min-h-11"
+              >
                 {isExporting ? t('data:actions.exporting') : t('data:actions.export_button')}
               </DsButton>
             </CardFooter>
@@ -1565,7 +1572,13 @@ ${resolvedPath}`);
               <CardDescription>{t('data:actions.import_description')}</CardDescription>
             </CardHeader>
             <CardFooter>
-              <DsButton variant="ghost" size="sm" onClick={handleImportZipBackup} disabled={isExporting} className="[@media(pointer:coarse)]:!min-h-11">
+              <DsButton
+                variant="outline"
+                size="sm"
+                onClick={handleImportZipBackup}
+                disabled={isExporting}
+                className="rounded-xl border-border/70 bg-background/60 px-4 text-foreground hover:bg-background/90 [@media(pointer:coarse)]:!min-h-11"
+              >
                 {isExporting && restoreProgress ? (
                   <><SpinnerGap size={16} className="mr-1.5 animate-spin" />{t('data:governance.restore_in_progress')}</>
                 ) : (
@@ -1599,9 +1612,9 @@ ${resolvedPath}`);
             </CardHeader>
             <CardFooter>
               <DsButton 
-                variant="ghost" 
+                variant="outline" 
                 size="sm" 
-                className="[@media(pointer:coarse)]:!min-h-11"
+                className="rounded-xl border-border/70 bg-background/60 px-4 text-foreground hover:bg-background/90 [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => {
                   // 触发父组件的导入对话对话框
                   dispatchAppEvent(APP_EVENTS.OPEN_IMPORT_CONVERSATION);

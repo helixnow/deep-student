@@ -164,7 +164,7 @@ function DialogPortal({
   if (!targetContainer) return null;
 
   return createPortal(
-    <AnimatePresence mode="wait">
+    <AnimatePresence>
       {open && children}
     </AnimatePresence>,
     targetContainer
@@ -197,6 +197,7 @@ export function DialogContent({
     <DialogPortal open={ctx.open} containerSelector={containerSelector}>
       {/* Overlay - 实色遮罩，无高斯模糊。颜色随主题切换。 */}
       <motion.div
+        key="dialog-overlay"
         className={cn(
           'inset-0 bg-[color:var(--overlay)]',
           positionClass,
@@ -213,6 +214,7 @@ export function DialogContent({
       />
       {/* Content wrapper - 居中容器；键盘弹出时顶部对齐并补偿被遮挡区域 */}
       <motion.div
+        key="dialog-content-wrapper"
         className={cn(
           "inset-0 flex items-center justify-center p-4 sm:p-6 pointer-events-none",
           positionClass

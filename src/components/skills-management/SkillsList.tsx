@@ -131,7 +131,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
   }
 
   return (
-    <div className={cn('grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5', className)}>
+    <div className={cn('grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 lg:gap-5', className)}>
       {skills.map((skill) => {
         const isDefaultEnabled = defaultSkillIds.includes(skill.id);
         const isSelected = selectedSkillId === skill.id;
@@ -155,7 +155,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
               }
             }}
             className={cn(
-              'study-shell-secondary-card group relative flex flex-col p-4',
+              'study-shell-secondary-card group relative flex flex-col rounded-2xl p-3.5 sm:p-4',
               // ui-press：触控按压反馈（独立 scale 属性，不干扰 framer layout transform）
               'ui-press transition-[border-color,box-shadow] duration-200',
               isSelected && 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)]',
@@ -189,10 +189,10 @@ export const SkillsList: React.FC<SkillsListProps> = ({
             }}
           >
             {/* 顶部区域：标题与操作 */}
-            <div className="flex items-start justify-between gap-3 mb-2">
-              <div className={cn('min-w-0 flex-1 flex flex-col gap-1', isDisabledSkill && 'opacity-60')}>
+            <div className="mb-1.5 flex items-start justify-between gap-2.5 sm:mb-2">
+              <div className={cn('min-w-0 flex-1 flex flex-col gap-0.5', isDisabledSkill && 'opacity-60')}>
                 <div className="flex items-center gap-1.5">
-                  <h3 className="font-medium text-sm text-foreground truncate leading-tight">
+                  <h3 className="truncate text-base font-medium leading-snug text-foreground sm:text-sm sm:leading-tight">
                     {getLocalizedSkillName(skill.id, skill.name, t)}
                   </h3>
                   {/* 收藏按钮 - hover 或已收藏时显示;触屏常显（触控目标经负 margin 扩大且不撑高行） */}
@@ -206,16 +206,16 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                   </DsButton>
                 </div>
                 
-                {/* 元信息行：版本与作者 */}
-                <div className="flex items-center gap-2 text-xs text-muted-foreground/60 h-4">
-                  {skill.version && <span>v{skill.version}</span>}
-                  {skill.author && (
-                     <>
-                     <span className="w-0.5 h-0.5 rounded-full bg-border" />
-                       <span className="truncate max-w-[80px]">{skill.author}</span>
-                     </>
-                  )}
-                </div>
+                {/* 元信息行：有版本或作者时才渲染，避免空行拉高卡片 */}
+                {(skill.version || skill.author) && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground/65">
+                    {skill.version && <span className="tabular-nums">v{skill.version}</span>}
+                    {skill.version && skill.author && <span className="h-0.5 w-0.5 rounded-full bg-border" />}
+                    {skill.author && (
+                      <span className="max-w-[120px] truncate">{skill.author}</span>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* 右上角操作区 */}
@@ -244,16 +244,16 @@ export const SkillsList: React.FC<SkillsListProps> = ({
               </div>
             </div>
 
-            {/* 内容描述 */}
-            <div className={cn('flex-1 min-h-[3rem]', isDisabledSkill && 'opacity-60')}>
-              <p className="text-xs text-muted-foreground/80 leading-relaxed line-clamp-3">
+            {/* 内容描述：移动端收敛为 2 行，提升一屏浏览效率 */}
+            <div className={cn('flex-1 sm:min-h-[3rem]', isDisabledSkill && 'opacity-60')}>
+              <p className="text-ui text-muted-foreground/80 leading-relaxed line-clamp-2 sm:text-xs sm:line-clamp-3">
                 {getLocalizedSkillDescription(skill.id, skill.description, t) || t('skills:management.no_description')}
               </p>
             </div>
 
             {/* 底部标签栏 */}
-            <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-[color:var(--shell-workspace-border)]">
-              <div className={cn('flex min-w-0 items-center gap-2', isDisabledSkill && 'opacity-60')}>
+            <div className="mt-2.5 flex items-center justify-between gap-2 border-t border-[color:var(--shell-workspace-border)] pt-2.5 sm:mt-3 sm:pt-3">
+              <div className={cn('flex min-w-0 items-center gap-1.5 sm:gap-2', isDisabledSkill && 'opacity-60')}>
                 {/* 位置标签 */}
                 <SkillPackageSummary skill={skill} variant="card" />
 
@@ -281,7 +281,12 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  className="!h-auto !px-1.5 !py-1 max-lg:!h-11 max-lg:!px-2.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5 text-xs text-muted-foreground/60 hover:text-foreground"
+                  className={cn(
+                    '!h-auto !rounded-lg !px-2.5 !py-1 max-lg:!h-9 max-lg:!px-2.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5 text-xs font-medium',
+                    isDisabledSkill
+                      ? 'border-primary/35 bg-primary/10 text-primary hover:bg-primary/20'
+                      : 'border-border/60 bg-background/40 text-muted-foreground hover:text-foreground',
+                  )}
                   onClick={() => setSkillDisabled(skill.id, !isDisabledSkill)}
                   title={
                     isDisabledSkill
@@ -298,14 +303,14 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                     ? t('skills:package.enable')
                     : t('skills:package.disable')}
                 </DsButton>
-                <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground/60 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit')} aria-label={t('common:actions.edit')}>
-                  <Pencil size={14} />
+                <DsButton variant="ghost" size="icon" iconOnly className="!h-9 !w-9 !p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground/70 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit')} aria-label={t('common:actions.edit')}>
+                  <Pencil size={15} />
                 </DsButton>
 
                 <AppMenu>
                   <AppMenuTrigger asChild>
-                    <DsButton variant="ghost" size="icon" iconOnly className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground/60 hover:text-foreground" aria-label={t('common:more')}>
-                      <DotsThree size={14} />
+                    <DsButton variant="ghost" size="icon" iconOnly className="!h-9 !w-9 !p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground/70 hover:text-foreground" aria-label={t('common:more')}>
+                      <DotsThree size={16} />
                     </DsButton>
                   </AppMenuTrigger>
                   <AppMenuContent align="end" width={180}>

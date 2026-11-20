@@ -4,7 +4,9 @@ import { useTranslation } from 'react-i18next';
 import { CheckCircle, CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { ReviewSession } from '@/components/ReviewSession';
+import { UnifiedMobileHeader } from '@/components/layout';
 import { Z_INDEX } from '@/config/zIndex';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { BACK_PRIORITY, registerBackHandler } from '@/app/navigation/androidBackCoordinator';
 import { useReviewPlanStore } from '@/stores/reviewPlanStore';
@@ -21,6 +23,7 @@ type Phase =
 /** 跨题目集的到期错题复习：挂在应用根部，经典壳 / 学习桌面 / 手机端共用。 */
 export const DueMistakesReviewOverlay: React.FC = () => {
   const { t } = useTranslation(['review', 'common']);
+  const { isSmallScreen } = useBreakpoint();
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
   const startSession = useReviewPlanStore((state) => state.startSession);
   const endSession = useReviewPlanStore((state) => state.endSession);
@@ -87,10 +90,15 @@ export const DueMistakesReviewOverlay: React.FC = () => {
   );
 
   const title = t('review:dueAll.title', { defaultValue: '错题复习' });
+  const baseSubtitle = t('review:dueAll.subtitle', { defaultValue: '所有题目集里今天到期的错题' });
+  const mobileSubtitle =
+    phase.kind === 'ready' && phase.missing > 0
+      ? t('review:dueAll.skipped', { count: phase.missing, defaultValue: '已跳过 {{count}} 道已删除的题' })
+      : baseSubtitle;
 
   return createPortal(
     <div
-      className="fixed inset-0 flex items-center justify-center bg-black/40 p-0 sm:p-6"
+      className="fixed inset-0 flex items-center justify-center bg-black/40 p-0 md:p-6"
       style={{ zIndex: Z_INDEX.modal }}
       data-testid="due-mistakes-review"
     >
@@ -100,21 +108,39 @@ export const DueMistakesReviewOverlay: React.FC = () => {
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className="flex h-full w-full flex-col overflow-hidden bg-background pt-[var(--mobile-safe-area-top)] outline-none sm:h-[min(860px,calc(100dvh-6rem))] sm:w-[min(920px,calc(100vw-3rem))] sm:rounded-xl sm:border sm:border-border sm:pt-0 sm:shadow-xl"
+        className="flex h-full w-full flex-col overflow-hidden bg-background outline-none md:h-[min(860px,calc(100dvh-6rem))] md:w-[min(920px,calc(100vw-3rem))] md:rounded-xl md:border md:border-border md:shadow-xl"
       >
-        <div className="flex flex-shrink-0 items-baseline gap-2 border-b border-border/50 px-4 py-2.5">
-          <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-          <span className="truncate text-xs text-muted-foreground">
-            {t('review:dueAll.subtitle', { defaultValue: '所有题目集里今天到期的错题' })}
-          </span>
-          {phase.kind === 'ready' && phase.missing > 0 && (
-            <span className="ml-auto flex-shrink-0 text-xs text-muted-foreground">
-              {t('review:dueAll.skipped', { count: phase.missing, defaultValue: '已跳过 {{count}} 道已删除的题' })}
+        {isSmallScreen ? (
+          <UnifiedMobileHeader
+            className="relative shrink-0"
+            configOverride={{
+              title,
+              subtitle: mobileSubtitle,
+              showBackArrow: true,
+              onMenuClick: close,
+            }}
+          />
+        ) : (
+          <div className="flex flex-shrink-0 items-baseline gap-2 border-b border-border/50 px-4 py-2.5">
+            <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+            <span className="truncate text-xs text-muted-foreground">
+              {baseSubtitle}
             </span>
-          )}
-        </div>
+            {phase.kind === 'ready' && phase.missing > 0 && (
+              <span className="ml-auto flex-shrink-0 text-xs text-muted-foreground">
+                {t('review:dueAll.skipped', { count: phase.missing, defaultValue: '已跳过 {{count}} 道已删除的题' })}
+              </span>
+            )}
+          </div>
+        )}
         {phase.kind === 'ready' ? (
-          <ReviewSession examId={DUE_MISTAKES_SESSION_KEY} isActive onClose={close} className="min-h-0 flex-1" />
+          <ReviewSession
+            examId={DUE_MISTAKES_SESSION_KEY}
+            isActive
+            onClose={close}
+            hideExitButton={isSmallScreen}
+            className="min-h-0 flex-1"
+          />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
             {phase.kind === 'loading' && (

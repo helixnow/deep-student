@@ -378,7 +378,13 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
             data-bilibili-link-input=""
           />
           {!fixedLink && (
-            <DsButton type="submit" variant="ghost" size="sm" disabled={!input.trim() || busy} className="shrink-0 gap-1.5">
+            <DsButton
+              type="submit"
+              variant="outline"
+              size="sm"
+              disabled={!input.trim() || busy}
+              className="shrink-0 gap-1.5 rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-muted/50"
+            >
               {probing ? <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
               {t('learningHub:mediaBilibili.parse')}
             </DsButton>
@@ -576,11 +582,24 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
       </DsDialogBody>
       <DsDialogFooter>
         {batch ? (
-          <DsButton variant="ghost" size="sm" onClick={requestStop} disabled={stopRequested} data-bilibili-stop="">
+          <DsButton
+            variant="outline"
+            size="sm"
+            onClick={requestStop}
+            disabled={stopRequested}
+            data-bilibili-stop=""
+            className="rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground"
+          >
             {stopRequested ? t('learningHub:mediaBilibili.stopping') : t('learningHub:mediaBilibili.stop')}
           </DsButton>
         ) : (
-          <DsButton variant="ghost" size="sm" onClick={() => onOpenChange(false)} disabled={importing}>
+          <DsButton
+            variant="outline"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            disabled={importing}
+            className="rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-muted/50"
+          >
             {t('common:cancel')}
           </DsButton>
         )}
@@ -589,7 +608,7 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
           size="sm"
           onClick={() => void handleImport()}
           disabled={!canImport}
-          className="gap-1.5"
+          className="gap-1.5 rounded-xl border-primary/40 bg-primary/15 px-4 font-medium text-primary hover:bg-primary/25 disabled:border-border/50 disabled:bg-muted/40 disabled:text-muted-foreground"
           data-bilibili-confirm=""
         >
           {importing ? <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : null}
