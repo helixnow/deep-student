@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Features
 
+* **data:** consolidate legacy data-management view into stats hub and migrate maintenance to data governance ([9098211](https://github.com/helixnow/deep-student/commit/90982116932b4f4e56cebbf8f8b43fe5ac923446))
 * **mobile:** polish mobile WebUI layout, data governance, and interactive empty state ([fc038eb](https://github.com/helixnow/deep-student/commit/fc038eb58b1d677dd9b17e481d40a64cca0171c5))
 * **ux:** deep learner experience polish across desktop, mobile, webui, and study apps ([431edcd](https://github.com/helixnow/deep-student/commit/431edcd9bb8516ac08673daae87eefd382a13ef5))
 
