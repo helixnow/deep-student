@@ -74,12 +74,11 @@ describe('font size scale closure contract', () => {
 
   it('keeps the mobile drawer readability floors while following the scale', () => {
     const responsive = readSource('src/styles/responsive-utilities.css');
-    // 分组标题地板 14px；导航行与搜索框地板 16px（iOS WKWebView 聚焦
-    // <16px 输入框会自动放大页面），放大档跟随 --font-size-scale。
-    expect(responsive).toContain('font-size: max(14px, var(--font-size-base)) !important;');
-    expect(
-      responsive.match(/font-size: max\(16px, var\(--font-size-lg\)\) !important;/g),
-    ).toHaveLength(2);
+    // 移动统一抽屉启用 inline-size 容器查询并保持可读下限（meta/dock ≥14px，行字号 ≥17.5px）
+    expect(responsive).toContain('container-type: inline-size;');
+    expect(responsive).toContain('--md-meta-size: clamp(14px, 4.3cqi, 16px);');
+    expect(responsive).toContain('--md-row-size: clamp(17.5px, 5.4cqi, 20px);');
+    expect(responsive).toContain('--md-dock-label: clamp(14px, 4.3cqi, 16px);');
   });
 
   it('keeps the hand-written .text-ui rule from shadowing the Tailwind utility', () => {

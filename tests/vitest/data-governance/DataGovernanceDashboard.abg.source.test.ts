@@ -41,7 +41,7 @@ describe('DataGovernanceDashboard A+B+G coexistence contract', () => {
     const tabTriggers = dashboardSource.match(/<TabsTrigger[\s\S]*?<\/TabsTrigger>/g) ?? [];
 
     for (const trigger of tabTriggers) {
-      expect(trigger).toContain('min-h-11 min-w-11');
+      expect(trigger).toContain('min-h-9 min-w-0');
       expect(trigger).toContain('[@media(pointer:coarse)]:!min-h-11');
       expect(trigger).toContain('[@media(pointer:coarse)]:!min-w-11');
     }

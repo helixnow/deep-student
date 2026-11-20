@@ -11,11 +11,11 @@ describe('OverviewTab icon source contract', () => {
 
     expect(overviewSource).toContain("} from '@phosphor-icons/react';");
     expect(overviewSource).not.toContain("from 'lucide-react'");
-    expect(overviewSource).toContain('<Database className="h-4 w-4" />');
-    expect(overviewSource).toContain('<Gauge className="h-4 w-4" />');
-    expect(overviewSource).toContain('<CheckCircle className="h-5 w-5 text-success" />');
-    expect(overviewSource).toContain('<HardDrive className="h-4 w-4" />');
-    expect(overviewSource).toContain('<ArrowsLeftRight className="h-4 w-4" />');
+    expect(overviewSource).toContain('<Database className="h-3.5 w-3.5 shrink-0" />');
+    expect(overviewSource).toContain('<Gauge className="h-3.5 w-3.5 shrink-0" />');
+    expect(overviewSource).toContain('<CheckCircle className="h-4 w-4 shrink-0 text-success" weight="fill" />');
+    expect(overviewSource).toContain('<HardDrive className="h-3.5 w-3.5 shrink-0" />');
+    expect(overviewSource).toContain('<ArrowsLeftRight className="h-3.5 w-3.5 shrink-0" />');
     expect(overviewSource).toContain('<Shield className="h-3.5 w-3.5 mr-1.5" />');
   });
 });

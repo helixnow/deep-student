@@ -28,7 +28,7 @@ describe('GeneralTab structure contract', () => {
       'utf8'
     );
 
-    expect(source).toContain("title={t('settings:cards.developer_options_title')}");
+    expect(source).toContain("{t('settings:cards.developer_options_title')}");
     expect(source).toContain("settings:developer.debug_log_switch.title");
     expect(source).toContain("settings:developer.show_raw_request.title");
     expect(source).toContain("settings:developer.persist_logs.title");

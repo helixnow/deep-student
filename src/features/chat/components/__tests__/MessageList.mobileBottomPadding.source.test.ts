@@ -9,7 +9,8 @@ import { describe, expect, it } from 'vitest';
 const source = readFileSync(path.join(process.cwd(), 'src/features/chat/components/MessageList.tsx'), 'utf8');
 
 describe('MessageList mobile bottom padding', () => {
-  it('reserves room under the last line for the floating scroll-to-bottom button', () => {
-    expect(source).toContain('viewportClassName="px-4 pb-16 pt-3 overscroll-contain md:px-8 md:pb-8 md:pt-4"');
+  it('keeps symmetric empty-state mobile viewport padding and dynamic non-empty bottom clearance', () => {
+    expect(source).toContain('viewportClassName="px-4 py-4 overscroll-contain md:px-8 md:pb-8 md:pt-4"');
+    expect(source).toContain('function measureInputBarOverlapPx(viewport: HTMLElement): number');
   });
 });

@@ -88,6 +88,17 @@ export function consumePendingSettingsTab(): SettingsTabId | null {
   return consumePendingSettingsRoute()?.tab ?? null;
 }
 
+export function openDataGovernanceSettings(dataGovernanceTab = 'overview'): void {
+  const route: PendingSettingsRoute = {
+    tab: 'data-governance',
+    dataGovernanceTab,
+  };
+
+  setPendingSettingsRoute(route);
+  dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
+  dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, route);
+}
+
 export function openArchivedSessionsSettings(): void {
   const route: PendingSettingsRoute = {
     tab: 'data-governance',

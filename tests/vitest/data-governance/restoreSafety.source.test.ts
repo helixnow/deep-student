@@ -2,28 +2,27 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const source = readFileSync(
+const governanceSource = readFileSync(
+  resolve(process.cwd(), 'src/features/settings/components/DataGovernanceDashboard.tsx'),
+  'utf8',
+);
+const dataGatewaySource = readFileSync(
   resolve(process.cwd(), 'src/components/DataImportExport.tsx'),
   'utf8',
 );
 
-describe('DataImportExport restore safety contract', () => {
-  it('maps the VFS full selection to important and includes its assets', () => {
-    expect(source).toMatch(
-      /tier === 'vfs_full'\)\s*\{\s*mapped\.add\('important'\)/,
-    );
-    expect(source).toContain(
-      "exportBackupTiers.includes('large_files') || exportBackupTiers.includes('vfs_full')",
-    );
+describe('DataGovernance restore safety & DataImportExport consolidation contract', () => {
+  it('routes standalone data-management backup/sync actions to DataGovernanceDashboard instead of duplicating legacy ZIP restore', () => {
+    expect(dataGatewaySource).toContain("openDataGovernanceSettings('backup')");
+    expect(dataGatewaySource).toContain("openDataGovernanceSettings('sync')");
+    expect(dataGatewaySource).not.toContain('importConversationSnapshot');
   });
 
-  it('keeps the frontend write barrier after a restart-required restore', () => {
-    expect(source).toContain(
+  it('keeps the frontend write barrier after a restart-required restore in DataGovernanceDashboard', () => {
+    expect(governanceSource).toContain(
       "requireMaintenanceRestart(t('common:maintenance.recovery_required'))",
     );
-    expect(source).toContain('if (!restoreRequiresRestart) {');
-    expect(source).toContain(
-      'if (maintenanceModeEntered && !restoreRequiresRestart) {',
-    );
+    expect(governanceSource).toContain('cloudApi.isImportedArchiveSlotRestorable(stats)');
+    expect(governanceSource).toContain('if (event.result?.requires_restart) {');
   });
 });

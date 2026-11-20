@@ -148,10 +148,15 @@ describe('globalSearchProviders — debounce & abort', () => {
     expect(dstuSearchMock).toHaveBeenCalledWith('alge', {
       limit: expect.any(Number),
     });
-    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).toHaveBeenCalledTimes(2);
     expect(invokeMock).toHaveBeenCalledWith('chat_v2_search_content', {
       query: 'alge',
       limit: 30,
+    });
+    expect(invokeMock).toHaveBeenCalledWith('chat_v2_search_sessions', {
+      query: 'alge',
+      limit: expect.any(Number),
+      includeArchived: false,
     });
 
     expect(result.current.fileResults).toHaveLength(1);

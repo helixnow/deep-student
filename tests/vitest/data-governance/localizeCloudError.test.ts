@@ -175,23 +175,21 @@ describe('localizeCloudStorageError', () => {
       cloud.indexOf('const performRestore = useCallback'),
       cloud.indexOf('const handleRestore = useCallback'),
     );
-    const local = readFileSync(
-      resolve(process.cwd(), 'src/components/DataImportExport.tsx'),
+    const importIdx = cloudRestore.indexOf('importZip(');
+    const restoreIdx = cloudRestore.indexOf('restoreBackup(');
+    const kindIdx = cloudRestore.indexOf('isImportedArchiveSlotRestorable');
+    expect(importIdx).toBeGreaterThan(-1);
+    expect(restoreIdx).toBeGreaterThan(importIdx);
+    expect(kindIdx).toBeGreaterThan(importIdx);
+    expect(kindIdx).toBeLessThan(restoreIdx);
+
+    // Local ZIP restore is consolidated in DataGovernanceDashboard
+    const governance = readFileSync(
+      resolve(process.cwd(), 'src/features/settings/components/DataGovernanceDashboard.tsx'),
       'utf-8',
     );
-    const localImport = local.slice(
-      local.indexOf('const runImportZipBackup'),
-      local.indexOf('const handleImportZipBackup'),
-    );
-    for (const src of [cloudRestore, localImport]) {
-      const importIdx = src.indexOf('importZip(');
-      const restoreIdx = src.indexOf('restoreBackup(');
-      const kindIdx = src.indexOf('isImportedArchiveSlotRestorable');
-      expect(importIdx).toBeGreaterThan(-1);
-      expect(restoreIdx).toBeGreaterThan(importIdx);
-      expect(kindIdx).toBeGreaterThan(importIdx);
-      expect(kindIdx).toBeLessThan(restoreIdx);
-    }
+    expect(governance).toContain('cloudApi.isImportedArchiveSlotRestorable(stats)');
+    expect(governance).toContain('if (backupId && resultSuccess && importedArchiveIsRestorable)');
   });
 
   it('looks up cloud versions and refuses known portable packages before download', () => {

@@ -64,6 +64,7 @@ vi.mock('@/components/legal/PrivacyPolicyDialog', () => ({
 
 vi.mock('@/components/ui/DeepStudentLogo', () => ({
   DeepStudentLogo: () => <div data-testid="deepstudent-logo" />,
+  DeepStudentMark: () => <div data-testid="deepstudent-mark" />,
 }));
 
 vi.mock('@/components/ui/SiliconFlowLogo', () => ({

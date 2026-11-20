@@ -35,7 +35,7 @@ describe('desktop shell sidebar collapse contract', () => {
 
     expect(currentViewIndex).toBeGreaterThanOrEqual(0);
     expect(desktopNavigationWidthIndex).toBeGreaterThan(currentViewIndex);
-    expect(appSource).toContain("const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');");
+    expect(appSource).toContain("const [currentView, setCurrentViewRaw] = useState<CurrentView>(() => resolveInitialViewFromShortcut());");
     expect(layoutSource).toContain('const desktopNavigationWidth = workbenchActive');
     expect(layoutSource).not.toMatch(/\bcurrentView\b/);
   });
