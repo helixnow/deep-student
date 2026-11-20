@@ -158,11 +158,25 @@ function ensureStyles(): void {
       line-height: 1.35;
     }
     .ds-webui-offline-desc {
-      margin: 0 0 18px;
+      margin: 0 0 14px;
       font-size: 14px;
       line-height: 1.55;
       color: hsl(var(--muted-foreground, 220 6% 42%));
       word-break: break-word;
+    }
+    .ds-webui-offline-tips {
+      margin: 0 0 18px;
+      padding: 12px 14px 12px 28px;
+      border-radius: 8px;
+      border: 1px solid hsl(var(--border, 0 0% 88%) / 0.35);
+      background: hsl(var(--background, 40 20% 99%) / 0.55);
+      color: hsl(var(--muted-foreground, 220 6% 42%));
+      font-size: 13px;
+      line-height: 1.55;
+      box-sizing: border-box;
+    }
+    .ds-webui-offline-tips li + li {
+      margin-top: 6px;
     }
     .ds-webui-offline-retry {
       width: 100%;
@@ -269,8 +283,12 @@ export function showReconnecting(attempt: number, nextRetryMs: number, onRetryNo
   clearTopPillTimer();
   const pill = ensureTopPill();
   const seconds = (Math.max(0, nextRetryMs) / 1000).toFixed(1);
-  fillTopPill(pill, 'warning', `与服务器连接已断开，正在重连（第 ${attempt} 次，${seconds}s）`, {
-    label: '立即重连',
+  const message =
+    attempt >= 2
+      ? `与服务器连接已断开，正在重连（第 ${attempt} 次，${seconds}s）· 请检查电脑端桌面服务与同一 Wi-Fi`
+      : `与服务器连接已断开，正在重连（第 ${attempt} 次，${seconds}s）`;
+  fillTopPill(pill, 'warning', message, {
+    label: '立即重试',
     onClick: onRetryNow,
   });
 }
@@ -281,8 +299,8 @@ export function showOfflineWaiting(onRetryNow: () => void): void {
   ensureStyles();
   clearTopPillTimer();
   const pill = ensureTopPill();
-  fillTopPill(pill, 'warning', '网络已断开，恢复在线后将自动重连', {
-    label: '立即重连',
+  fillTopPill(pill, 'warning', '网络已断开，恢复在线后将自动重连 · 请确认手机与电脑在同一 Wi-Fi 且电脑端服务已开启', {
+    label: '立即重试',
     onClick: onRetryNow,
   });
 }
@@ -314,12 +332,21 @@ export function hideConnectionBanner(): void {
 
 let offlineOverlay: HTMLDivElement | null = null;
 let offlineRetryHandler: (() => void) | null = null;
+let offlineOnlineListenerAttached = false;
+
+function handleOfflineOverlayOnline(): void {
+  offlineRetryHandler?.();
+}
 
 /** 初始握手失败（离线 / 宿主不可达）时的整屏闸门；网络恢复后由 bootstrap 关闭。 */
 export function showOfflineBootOverlay(onRetry: () => void): void {
   if (!hasDom()) return;
   ensureStyles();
   offlineRetryHandler = onRetry;
+  if (!offlineOnlineListenerAttached) {
+    window.addEventListener('online', handleOfflineOverlayOnline);
+    offlineOnlineListenerAttached = true;
+  }
   if (offlineOverlay && offlineOverlay.isConnected) return;
 
   const overlay = document.createElement('div');
@@ -346,24 +373,43 @@ export function showOfflineBootOverlay(onRetry: () => void): void {
 
   const desc = document.createElement('p');
   desc.className = 'ds-webui-offline-desc';
-  desc.textContent = 'WebUI 需要连接远端 Deep Student 服务以加载学习数据。网络恢复后将自动进入应用。';
+  desc.textContent = '请按以下步骤快速检查连接状态，网络恢复在线后将自动重连进入学习桌面：';
+
+  const tips = document.createElement('ul');
+  tips.className = 'ds-webui-offline-tips';
+  tips.dataset.testid = 'ds-webui-offline-tips';
+  for (const itemText of [
+    '确认电脑端 Deep Student 桌面服务已开启并保持运行（电脑未休眠）',
+    '确认手机或平板与电脑连接在同一 Wi-Fi / 局域网下',
+    '若刚切换热点或路由器，请重新核对电脑端显示的访问地址',
+  ]) {
+    const li = document.createElement('li');
+    li.textContent = itemText;
+    tips.appendChild(li);
+  }
 
   const retry = document.createElement('button');
   retry.type = 'button';
   retry.className = 'ds-webui-offline-retry';
-  retry.textContent = '立即重试连接';
+  retry.dataset.testid = 'ds-webui-offline-retry';
+  retry.textContent = '立即重试';
   retry.addEventListener('click', (event) => {
     event.preventDefault();
     offlineRetryHandler?.();
   });
 
-  card.append(statusRow, divider, title, desc, retry);
+  card.append(statusRow, divider, title, desc, tips, retry);
   overlay.appendChild(card);
   document.body.appendChild(overlay);
   offlineOverlay = overlay;
 }
 
 export function hideOfflineBootOverlay(): void {
+  if (offlineOnlineListenerAttached && typeof window !== 'undefined') {
+    window.removeEventListener('online', handleOfflineOverlayOnline);
+    offlineOnlineListenerAttached = false;
+  }
+  offlineRetryHandler = null;
   if (offlineOverlay) {
     offlineOverlay.remove();
     offlineOverlay = null;

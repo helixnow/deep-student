@@ -362,5 +362,9 @@
     "backlink_flashcard": "{{count}} 闪卡",
     "backlink_note": "{{count}} 笔记",
     "backlinks_popover_title": "本页关联引用"
+  },
+  "mobile_ocr_notice": {
+    "title": "移动端 OCR 识别说明",
+    "description": "系统本地 OCR 引擎仅支持桌面端运行。在移动端阅读扫描版文档或识别图片时，建议配置并使用云端 OCR 或多模态视觉模型。"
   }
 }

@@ -18,7 +18,10 @@ import {
   Lightning,
   List,
   MagnifyingGlass,
+  X,
 } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import { useImeSafeControlledValue } from '@/components/ui/shad/useImeSafeControlledValue';
 import { cn } from '../../../lib/utils';
 import { appRegistry } from '../core/appRegistry';
 import { workbenchBus } from '../core/workbenchBus';
@@ -88,6 +91,18 @@ function useRegistryVersion(): number {
   return version;
 }
 
+function resolveAppSearchKeywords(
+  app: AppDefinition,
+  t: (key: string, fallback: string) => string,
+): string {
+  // 仅针对真实注册应用（workbench:apps.*）读取多语言/别名检索词，
+  // 保持合成测试应用（如 workbench:app.skills）的纯名称匹配契约不变。
+  if (!app.nameKey.startsWith('workbench:apps.')) return '';
+  const suffix = app.nameKey.slice('workbench:apps.'.length).split('.')[0];
+  if (!suffix) return '';
+  return t(`workbench:appsPanel.searchKeywords.${suffix}`, '').toLowerCase();
+}
+
 function filterApps(apps: AppDefinition[], query: string, t: (key: string, fallback: string) => string) {
   const q = query.trim().toLowerCase();
   const sorted = [...apps].sort((a, b) => {
@@ -96,10 +111,27 @@ function filterApps(apps: AppDefinition[], query: string, t: (key: string, fallb
     return na.localeCompare(nb, undefined, { sensitivity: 'base' });
   });
   if (!q) return sorted;
-  return sorted.filter((app) => {
+
+  const matched: Array<{ app: AppDefinition; rank: number }> = [];
+  for (const app of sorted) {
     const name = t(app.nameKey, app.typeId).toLowerCase();
-    return name.includes(q) || app.typeId.toLowerCase().includes(q);
-  });
+    const typeId = app.typeId.toLowerCase();
+    if (name === q || typeId === q) {
+      matched.push({ app, rank: 0 });
+    } else if (name.startsWith(q) || typeId.startsWith(q)) {
+      matched.push({ app, rank: 1 });
+    } else if (name.includes(q) || typeId.includes(q)) {
+      matched.push({ app, rank: 2 });
+    } else {
+      const keywords = resolveAppSearchKeywords(app, t);
+      if (keywords && keywords.includes(q)) {
+        matched.push({ app, rank: 3 });
+      }
+    }
+  }
+
+  matched.sort((a, b) => a.rank - b.rank);
+  return matched.map((entry) => entry.app);
 }
 
 function itemTestId(item: GlobalSearchItem): string {
@@ -144,6 +176,8 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const prevFocusRef = useRef<HTMLElement | null>(null);
+  const skipFocusReturnRef = useRef(false);
+  const isKeyboardNavRef = useRef(false);
 
   // 液态玻璃透镜：入场 320ms 真折射读出透镜感，之后自动降级静态毛玻璃
   // （Chromium + full 档；其余环境由 wb-glass-lens 的 CSS 回退普通玻璃）。
@@ -201,18 +235,22 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
         }
       },
       openApp: (typeId) => {
+        skipFocusReturnRef.current = true;
         workbenchBus.launch({ typeId, reason: 'api' });
         closeAppsPanel();
       },
       openCommand: (id) => {
+        skipFocusReturnRef.current = true;
         closeAppsPanel();
         void commandPalette?.executeCommand(id);
       },
       openDstu: (node) => {
+        skipFocusReturnRef.current = true;
         closeAppsPanel();
         openDstuInWorkbench(node);
       },
       openChat: (sessionId) => {
+        skipFocusReturnRef.current = true;
         closeAppsPanel();
         openChatInWorkbench(sessionId);
       },
@@ -348,6 +386,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
 
   useEffect(() => {
     if (!open) return undefined;
+    skipFocusReturnRef.current = false;
     prevFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const id = window.setTimeout(() => {
@@ -357,7 +396,9 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
       window.clearTimeout(id);
       const prev = prevFocusRef.current;
       prevFocusRef.current = null;
-      if (prev && prev.isConnected) prev.focus({ preventScroll: true });
+      const skipReturn = skipFocusReturnRef.current;
+      skipFocusReturnRef.current = false;
+      if (!skipReturn && prev && prev.isConnected) prev.focus({ preventScroll: true });
     };
   }, [open]);
 
@@ -403,12 +444,33 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   }, [items]);
 
   useEffect(() => {
-    if (!open || !rendered) return;
+    if (!open || !rendered || !isKeyboardNavRef.current) return;
+    isKeyboardNavRef.current = false;
     const el = listRef.current?.querySelector<HTMLElement>(
       `[data-wb-apps-index="${activeIndex}"]`,
     );
     el?.scrollIntoView({ block: 'nearest' });
   }, [activeIndex, open, rendered, viewMode, items]);
+
+  useEffect(() => {
+    if (listRef.current) {
+      listRef.current.scrollTop = 0;
+    }
+  }, [query, viewMode]);
+
+  const handleClearSearch = useCallback(() => {
+    setQuery('');
+    setActiveIndex(0);
+    searchRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  const searchInputProps = useImeSafeControlledValue<HTMLInputElement>({
+    value: query,
+    onChange: (e) => {
+      setQuery(e.target.value);
+      setActiveIndex(0);
+    },
+  });
 
   // Scroll edge effect（对标 macOS）：视口上/下仍有隐藏内容时，
   // 该侧边缘内容溶解进玻璃，维持浮层与内容层的分离感。
@@ -446,6 +508,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
+      isKeyboardNavRef.current = true;
       if (gridNav) {
         const cols = getGridColumnCount(listRef.current?.querySelector('.wb-apps-grid') ?? null);
         setActiveIndex((i) => wrapIndex(i + cols, items.length));
@@ -456,6 +519,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
+      isKeyboardNavRef.current = true;
       if (gridNav) {
         const cols = getGridColumnCount(listRef.current?.querySelector('.wb-apps-grid') ?? null);
         setActiveIndex((i) => wrapIndex(i - cols, items.length));
@@ -468,6 +532,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
       if (targetIsSearch) return;
       if (!gridNav) return;
       e.preventDefault();
+      isKeyboardNavRef.current = true;
       setActiveIndex((i) => wrapIndex(i + 1, items.length));
       return;
     }
@@ -475,24 +540,27 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
       if (targetIsSearch) return;
       if (!gridNav) return;
       e.preventDefault();
+      isKeyboardNavRef.current = true;
       setActiveIndex((i) => wrapIndex(i - 1, items.length));
       return;
     }
     if (e.key === 'Home') {
       if (targetIsSearch) return;
       e.preventDefault();
+      isKeyboardNavRef.current = true;
       setActiveIndex(0);
       return;
     }
     if (e.key === 'End') {
       if (targetIsSearch) return;
       e.preventDefault();
+      isKeyboardNavRef.current = true;
       setActiveIndex(items.length - 1);
       return;
     }
     if (e.key === 'Enter') {
       const target = e.target as HTMLElement | null;
-      if (target?.closest('button.wb-apps-item')) return;
+      if (target !== searchRef.current && target?.closest('button')) return;
       e.preventDefault();
       activateItem(items[activeIndex]);
     }
@@ -661,13 +729,9 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
           <input
             ref={searchRef}
             type="search"
-            className="wb-apps-search"
+            className="wb-apps-search [&::-webkit-search-cancel-button]:hidden"
             data-testid="wb-apps-search"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setActiveIndex(0);
-            }}
+            {...searchInputProps}
             placeholder={t('workbench:appsPanel.searchPlaceholder')}
             aria-label={t('workbench:appsPanel.searchPlaceholder')}
             aria-controls="wb-apps-listbox"
@@ -675,6 +739,20 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
             autoComplete="off"
             spellCheck={false}
           />
+          {query.length > 0 && (
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="icon"
+              data-testid="wb-apps-search-clear"
+              aria-label={t('workbench:appsPanel.clearSearch')}
+              title={t('workbench:appsPanel.clearSearch')}
+              onClick={handleClearSearch}
+              className="lg:h-5 lg:w-5 rounded-full border-transparent bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors motion-reduce:transition-none"
+            >
+              <X size={13} />
+            </DsButton>
+          )}
         </div>
 
         <CustomScrollArea
@@ -701,6 +779,31 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
               <span className="wb-apps-empty-hint">
                 {t('workbench:appsPanel.emptyHint')}
               </span>
+              <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2">
+                <DsButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  data-testid="wb-apps-empty-clear"
+                  onClick={handleClearSearch}
+                  className="h-auto lg:h-7 px-3 py-1.5 text-xs rounded-lg border-border/60 bg-background/70 text-foreground hover:bg-muted/70 active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 motion-reduce:transition-none motion-reduce:active:scale-100"
+                >
+                  {t('workbench:appsPanel.clearSearch')}
+                </DsButton>
+                {launchableApps.some((a) => a.typeId === 'chat') && (
+                  <DsButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    data-testid="wb-apps-empty-ask-ai"
+                    onClick={() => host.openApp('chat')}
+                    className="h-auto lg:h-7 gap-1.5 px-3 py-1.5 text-xs rounded-lg border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 motion-reduce:transition-none motion-reduce:active:scale-100"
+                  >
+                    <ChatCenteredText size={14} />
+                    <span>{t('workbench:appsPanel.askAi')}</span>
+                  </DsButton>
+                )}
+              </div>
             </div>
           ) : !searching ? (
             <ul
@@ -784,7 +887,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
 
         <div className="wb-apps-footer">
           <span className="wb-apps-footer-hint">
-            <kbd>↑↓←→</kbd>
+            <kbd>{!searching && viewMode === 'grid' ? '↑↓←→' : '↑↓'}</kbd>
             {t('workbench:appsPanel.hintSelect')}
           </span>
           <span className="wb-apps-footer-hint">
@@ -795,6 +898,16 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
             <kbd>Esc</kbd>
             {t('workbench:appsPanel.hintClose')}
           </span>
+          {searching && !loading ? (
+            <span
+              data-testid="wb-apps-footer-count"
+              className="ml-auto font-mono tabular-nums text-2xs"
+            >
+              {t('workbench:appsPanel.resultCount', '{{count}} results', {
+                count: items.length,
+              })}
+            </span>
+          ) : null}
         </div>
       </div>
     </div>

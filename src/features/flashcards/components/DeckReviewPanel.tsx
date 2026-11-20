@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { Books, CaretDown, CaretRight, FolderSimple, Play } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import type { AnkiLibraryDeckCount } from '@/types';
+import { cn } from '@/utils/cn';
 import { useFsrsReviewStore } from '../store/fsrsReviewStore';
 import { buildDeckTree, type DeckTreeNode } from '../library/deckTree';
 import { toReviewContent } from '../library/libraryView';
@@ -111,7 +112,7 @@ export const DeckReviewPanel: React.FC<{ decks: readonly AnkiLibraryDeckCount[] 
           return (
             <li
               key={node.path || '::ungrouped'}
-              className="wb-fcx-deck"
+              className="wb-fcx-deck group rounded-md px-1.5 -mx-1.5 transition-colors duration-150 ease-standard hover:bg-foreground/[0.035] focus-within:bg-foreground/[0.035] motion-reduce:transition-none"
               style={{ '--deck-depth': node.depth } as React.CSSProperties}
             >
               {node.children.length > 0 ? (
@@ -132,14 +133,27 @@ export const DeckReviewPanel: React.FC<{ decks: readonly AnkiLibraryDeckCount[] 
               )}
               <div className="wb-fcx-deck-main">
                 <span className="wb-fcx-deck-name" title={node.path || name}>{name}</span>
-                <span className="wb-fcx-deck-counts">
-                  {node.due > 0 || node.new > 0
-                    ? [
-                        node.due > 0 ? t('today.decks.due', { count: node.due }) : null,
-                        node.new > 0 ? t('today.decks.new', { count: node.new }) : null,
-                      ].filter(Boolean).join(' · ')
-                    : t('today.decks.nothingDue')}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    aria-hidden="true"
+                    className={cn(
+                      'h-1.5 w-1.5 shrink-0 rounded-full',
+                      node.due > 0
+                        ? 'bg-emerald-500'
+                        : node.new > 0
+                          ? 'bg-primary'
+                          : 'bg-muted-foreground/35',
+                    )}
+                  />
+                  <span className="wb-fcx-deck-counts font-mono tabular-nums">
+                    {node.due > 0 || node.new > 0
+                      ? [
+                          node.due > 0 ? t('today.decks.due', { count: node.due }) : null,
+                          node.new > 0 ? t('today.decks.new', { count: node.new }) : null,
+                        ].filter(Boolean).join(' · ')
+                      : t('today.decks.nothingDue')}
+                  </span>
+                </div>
               </div>
               {node.due > 0 ? (
                 <DsButton
@@ -149,7 +163,7 @@ export const DeckReviewPanel: React.FC<{ decks: readonly AnkiLibraryDeckCount[] 
                   disabled={busyPath !== null}
                   aria-label={t('today.decks.reviewAria', { name, count: dueCount })}
                   onClick={() => void startDeck(node, 'due')}
-                  className="wb-fcx-deck-action"
+                  className="wb-fcx-deck-action font-mono tabular-nums active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
                 >
                   <Play size={12} weight="fill" aria-hidden="true" />
                   {t('today.decks.review', { count: dueCount })}
@@ -162,7 +176,7 @@ export const DeckReviewPanel: React.FC<{ decks: readonly AnkiLibraryDeckCount[] 
                   disabled={busyPath !== null}
                   aria-label={t('today.decks.learnNewAria', { name, count: newCount })}
                   onClick={() => void startDeck(node, 'new')}
-                  className="wb-fcx-deck-action"
+                  className="wb-fcx-deck-action font-mono tabular-nums active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
                 >
                   {t('today.decks.learnNew', { count: newCount })}
                 </DsButton>

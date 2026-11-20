@@ -277,7 +277,7 @@
       "collapse": "Collapse"
     },
     "secretMask": {
-      "detected": "{{count}} possible secret(s) hidden",
+      "detected": "{{count}} possible secret(s) hidden on screen (still sent to the model; rotate if exposed)",
       "show": "Show original",
       "hide": "Hide original"
     },
@@ -926,13 +926,13 @@
         "templateNotFound": "Template not found. Choose another template or import it before retrying.",
         "templateLoadFailed": "Failed to load the template. Retry or re-import the template.",
         "startFailed": "Failed to start card generation. Retry or adjust your template/settings.",
-        "pipelineTimeout": "Generation took too long and stopped updating. Use chatanki_status later or retry the run.",
+        "pipelineTimeout": "Generation took too long and stopped updating. Check progress under Flashcards → Card Tasks or retry.",
         "contextRefInvalid": "Attachment references are invalid. Remove and reattach the files, then retry.",
         "generationFailed": "Automatic generation failed without producing usable cards. Check the model configuration or error details.",
         "partialSegmentsFailed": "Some segments failed. Use retry in the panel to re-run failed segments.",
-        "waitInvalidArgs": "chatanki_wait needs an ankiBlockId or documentId. Re-run the tool with one of them.",
-        "waitNotFound": "The cards block isn't available yet. Wait a moment or call chatanki_status with the documentId.",
-        "waitTimeout": "Timed out waiting for completion. Try chatanki_status later or retry with a longer timeout.",
+        "waitInvalidArgs": "Card task identifier is missing. Please restart card generation and retry.",
+        "waitNotFound": "The cards block isn't ready yet. Wait a moment or check Flashcards → Card Tasks.",
+        "waitTimeout": "Timed out waiting for completion. Check Flashcards → Card Tasks later or retry.",
         "documentIdRequired": "documentId is required. Provide the card document ID and retry.",
         "databaseUnavailable": "The card database is unavailable. Try again later.",
         "updateArgsRequired": "Updating a card requires cardId, expectedVersion, and at least one changed field.",
@@ -1256,6 +1256,7 @@
   },
   "page": {
     "sessions": "Sessions",
+    "archivedSessionsEntry": "Archived sessions",
     "newSession": "New Session",
     "newSessionInGroup": "New session in {{groupName}}",
     "noSessions": "No sessions",
@@ -1549,7 +1550,26 @@
     "showFullCommand": "Show full command",
     "hideFullCommand": "Hide full command",
     "stepDetailExpand": "Show step details",
-    "stepDetailCollapse": "Hide step details"
+    "stepDetailCollapse": "Hide step details",
+    "dagTopologyView": "DAG Topology",
+    "dagTaskDispatched": "Ready task inserted into input",
+    "currentSessionPlan": "Current session execution plan"
+  },
+  "turnDiff": {
+    "title": "Turn Changes Review",
+    "fileCount": "{{count}} files",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} files",
+    "revertedBadge": "Reverted",
+    "redoAll": "Redo All Changes",
+    "revertAll": "Revert All Changes",
+    "redoFile": "Redo",
+    "revertFile": "Revert File",
+    "kind": {
+      "modified": "Modified",
+      "created": "Created",
+      "deleted": "Deleted"
+    }
   },
   "shellOutput": {
     "title": "Local command",
@@ -1573,6 +1593,19 @@
     }
   },
   "timeline": {
+    "summary": {
+      "files_one": "{{count}} file",
+      "files_other": "{{count}} files",
+      "files": "{{count}} files",
+      "explored": "Explored",
+      "commands_one": "Ran {{count}} command",
+      "commands_other": "Ran {{count}} commands",
+      "commands": "Ran {{count}} commands",
+      "researched": "Researched",
+      "subagents_one": "Used {{count}} subagent",
+      "subagents_other": "Used {{count}} subagents",
+      "subagents": "Used {{count}} subagents"
+    },
     "thinking": {
       "inProgress": "Thinking for {{seconds}}s…",
       "completed": "Thought for {{seconds}}s",
@@ -1940,6 +1973,11 @@
       "fallbackSummary": "The model is ready to run write tools",
       "tool": "Tool",
       "countdown": "Auto-reject in {{seconds}}s",
+      "countdownPausedStatus": "Paused ({{seconds}}s left)",
+      "pauseCountdown": "Pause countdown",
+      "resumeCountdown": "Resume countdown",
+      "pauseShort": "Pause",
+      "resumeShort": "Resume",
       "timedOut": "Timed out — plan auto-rejected",
       "approve": "Confirm & run",
       "reject": "Reject"
@@ -2000,6 +2038,10 @@
       "externalMcpUnenforced": "external MCP / local sandbox not enforced"
     },
     "countdownPaused": "Paused",
+    "pauseCountdown": "Pause countdown",
+    "resumeCountdown": "Resume countdown",
+    "pauseShort": "Pause",
+    "resumeShort": "Resume",
     "aria": {
       "requested": "Tool {{tool}} is awaiting approval and will be rejected automatically in {{seconds}} seconds",
       "countdownWarning": "{{seconds}} seconds left before automatic rejection",
@@ -2232,27 +2274,27 @@
     "title": "Workspace",
     "toggle": "Workspace Panel",
     "noActive": "No active workspace",
-    "agents": "Agents ({{count}})",
-    "messages": "Messages",
+    "agents": "Parallel Assistants ({{count}})",
+    "messages": "Task Progress",
     "addAgent": "Add",
-    "noAgents": "No agents",
-    "noWorkers": "No workers",
+    "noAgents": "No parallel assistants",
+    "noWorkers": "No parallel assistants",
     "defaultName": "Collaboration Task",
-    "coordinator": "Coordinator",
-    "workers": "Workers",
-    "workersCount": "Workers ({{count}})",
-    "messagesCount": "Messages ({{count}})",
+    "coordinator": "Lead Assistant",
+    "workers": "Parallel Assistants",
+    "workersCount": "Parallel Assistants ({{count}})",
+    "messagesCount": "Task Progress ({{count}})",
     "viewFull": "View Full",
     "loadError": "Load failed",
     "refreshFailed": "Refresh failed",
     "online": "Network restored, syncing workspace...",
     "offline": "Network disconnected, some operations unavailable",
-    "noMessages": "No messages",
+    "noMessages": "No task updates yet",
     "missingSession": "Missing current session, unable to sync workspace",
     "task": "Task",
     "response": "Response",
-    "moreMessages": "{{count}} more messages",
-    "failedHint": "This agent failed. Expand the session output below or choose “View Full Session” to see why.",
+    "moreMessages": "{{count}} more updates",
+    "failedHint": "This assistant could not finish the task. Expand the session output below or choose “View Full Session” to see why.",
     "elapsed": {
       "runningHint": "Elapsed time (live)",
       "finalHint": "Total elapsed time (approximate)"
@@ -2264,8 +2306,8 @@
       "cancelled": "{{count}} cancelled"
     },
     "agent": {
-      "coordinator": "Coordinator",
-      "worker": "Worker",
+      "coordinator": "Lead Assistant",
+      "worker": "Parallel Assistant",
       "you": "you"
     },
     "status": {
@@ -2274,8 +2316,8 @@
       "agentsCount": "Participants ({{count}})",
       "noAgents": "No participants",
       "agentsDone": "done",
-      "recentMessages": "Recent Messages",
-      "recentMessagesCount": "Recent Messages ({{count}})",
+      "recentMessages": "Recent Progress",
+      "recentMessagesCount": "Recent Progress ({{count}})",
       "createdAt": "Created at",
       "historicalWorkspace": "Historical Workspace",
       "workspaceSwitched": "Workspace Switched",
@@ -2295,23 +2337,23 @@
       "retry": "Retry"
     },
     "createAgent": {
-      "title": "Create Agent",
-      "description": "Select a skill and assign a task to a new agent",
+      "title": "Add Parallel Assistant",
+      "description": "Select a skill and assign a task to a new parallel assistant",
       "skill": "Select Skill",
       "selectSkill": "Please select a skill",
       "task": "Initial Task",
       "taskOptional": "Optional",
-      "taskPlaceholder": "Describe the task you want the agent to perform...",
-      "taskHint": "If a task is provided, the agent will start automatically",
+      "taskPlaceholder": "Describe the task you want this parallel assistant to perform...",
+      "taskHint": "If a task is provided, the parallel assistant will start automatically",
       "cancel": "Cancel",
       "create": "Create",
       "creating": "Creating...",
-      "noSession": "Unable to determine current session, cannot create agent",
+      "noSession": "Unable to determine current session, cannot add parallel assistant",
       "noSkills": "No available skills",
-      "error": "Failed to create agent"
+      "error": "Failed to add parallel assistant"
     },
     "subagent": {
-      "title": "Subagent",
+      "title": "Parallel Assistant",
       "idle": "Idle",
       "running": "Running",
       "completed": "Completed",
@@ -2330,28 +2372,28 @@
       "broadcast": "Broadcast"
     },
     "log": {
-      "title": "Workspace Log",
+      "title": "Task Progress Log",
       "copy": "Copy Log",
-      "moreMessages": "{{count}} more earlier messages"
+      "moreMessages": "{{count}} earlier updates"
     },
-    "adapterSetupFailed": "Adapter setup failed for agent: {{agent}}",
+    "adapterSetupFailed": "Assistant connection setup failed: {{agent}}",
     "unableToResolveSessionId": "Unable to resolve requester session ID for workspace command",
-    "workerStartFailed": "Worker \"{{name}}\" failed to start: {{error}}",
-    "coordinatorAwakened": "Coordinator awakened by subagent {{agent}}, continuing...",
-    "subagentRetry": "Subagent {{agent}} did not send a result, re-triggering...",
-    "subagentRetryExhausted": "Subagent {{agent}} produced no result after multiple retries",
-    "subagentRetryExhaustedTitle": "Subagent produced no result after multiple retries",
-    "subagentRetryDefault": "Subagent completed the task but did not send a result message, re-triggering...",
-    "subagentRetryFailed": "Subagent retry failed",
-    "subagentRetryResolved": "Subagent has resent the result",
-    "subagentRetryTitle": "Subagent Retry",
-    "subagentWakeNotice": "Background subagent {{agent}} finished; waking main agent to process the result",
+    "workerStartFailed": "Parallel assistant \"{{name}}\" failed to start: {{error}}",
+    "coordinatorAwakened": "Lead assistant received progress from {{agent}}, continuing...",
+    "subagentRetry": "Parallel assistant {{agent}} did not send a result, re-triggering...",
+    "subagentRetryExhausted": "Parallel assistant {{agent}} produced no result after multiple retries",
+    "subagentRetryExhaustedTitle": "Parallel assistant produced no result after multiple retries",
+    "subagentRetryDefault": "Parallel assistant completed the task but did not send a result message, re-triggering...",
+    "subagentRetryFailed": "Parallel assistant retry failed",
+    "subagentRetryResolved": "Parallel assistant has resent the result",
+    "subagentRetryTitle": "Parallel Assistant Retry",
+    "subagentWakeNotice": "Parallel assistant {{agent}} finished; waking lead assistant to summarize results",
     "warning": {
-      "inbox_full_rejected": "Agent {{agent}} inbox is full; new messages were rejected. Wait for it to finish and retry.",
-      "run_agent_conflict_requeue_failed": "Agent {{agent}} is already running and some task messages could not be re-queued. Wait for completion, then retry manually.",
-      "run_agent_requeue_failed": "Some task messages for agent {{agent}} could not be re-queued. Retry the task manually later.",
+      "inbox_full_rejected": "Parallel assistant {{agent}} inbox is full; new messages were rejected. Wait for it to finish and retry.",
+      "run_agent_conflict_requeue_failed": "Parallel assistant {{agent}} is already running and some task messages could not be re-queued. Wait for completion, then retry manually.",
+      "run_agent_requeue_failed": "Some task messages for parallel assistant {{agent}} could not be re-queued. Retry the task manually later.",
       "retry_limit_exceeded": "Message retry limit reached ({{retry}}/{{max}})",
-      "agent_cancelled": "Agent {{agent}} execution was cancelled"
+      "agent_cancelled": "Parallel assistant {{agent}} execution was cancelled"
     },
     "cancelled": "Stop request sent",
     "cancelNoop": "Nothing to cancel (may already be idle)",
@@ -2365,10 +2407,10 @@
     "refresh": "Refresh",
     "dispatch": {
       "title": "Dispatch Task",
-      "desc": "Dispatch a task to the specified Worker and trigger execution",
+      "desc": "Assign a task to the selected parallel assistant and start execution",
       "target": "Target",
       "task": "Task Content",
-      "placeholder": "Describe the task you want this Worker to perform...",
+      "placeholder": "Describe the task you want this parallel assistant to perform...",
       "empty": "Please enter task content",
       "noSender": "Cannot determine sender session",
       "offline": "Cannot dispatch tasks while offline",
@@ -2644,24 +2686,24 @@
       "resumeNoCount": "Continue with pending events"
     },
     "event": {
-      "title": "Background events",
-      "ariaLabel": "Super-agent background events",
+      "title": "Task progress",
+      "ariaLabel": "Lead assistant task progress",
       "count": "{{count}} events",
       "count_one": "{{count}} event",
-      "generic": "New background event received",
+      "generic": "New task update received",
       "untitledWorker": "Untitled task",
       "worker": {
-        "completed": "Worker \"{{title}}\" completed",
-        "failed": "Worker \"{{title}}\" failed",
-        "cancelled": "Worker \"{{title}}\" was cancelled",
-        "interrupted": "Worker \"{{title}}\" was interrupted",
-        "timeout": "Worker \"{{title}}\" timed out",
-        "message": "New message from worker \"{{title}}\""
+        "completed": "Parallel assistant \"{{title}}\" completed",
+        "failed": "Parallel assistant \"{{title}}\" failed",
+        "cancelled": "Parallel assistant \"{{title}}\" was cancelled",
+        "interrupted": "Parallel assistant \"{{title}}\" was interrupted",
+        "timeout": "Parallel assistant \"{{title}}\" timed out",
+        "message": "New progress from parallel assistant \"{{title}}\""
       },
       "external": "External event · {{source}}",
       "externalNoSource": "External event",
       "view": "View",
-      "viewWorkerAria": "View the full session of worker \"{{title}}\"",
+      "viewWorkerAria": "View the full session of parallel assistant \"{{title}}\"",
       "showRaw": "Show original",
       "hideRaw": "Hide original"
     }
@@ -2709,8 +2751,10 @@
   },
   "openuiLang": {
     "lineChartAria": "Line chart",
+    "barChartAria": "Bar chart",
+    "chartReadoutHint": "Hover or focus a data point to inspect values",
     "generating": "Generating UI…",
-    "empty": "Empty OpenUI block",
+    "empty": "Interactive card has no displayable content",
     "notePlaceholder": "Add a note (optional)",
     "confirm": "Confirm"
   },
@@ -2769,6 +2813,47 @@
     "actions": {
       "reviewDeck": "Review Space Cards",
       "enterSpace": "Enter Space"
+    }
+  },
+  "miniChat": {
+    "pillTitle": "Companion Chat",
+    "expandAria": "Expand companion chat",
+    "regionAria": "Floating companion chat",
+    "headerTitle": "Instant Companion Q&A",
+    "promoteButton": "Promote to Main Chat",
+    "minimizeAria": "Minimize companion chat",
+    "minimizeHint": "Minimize companion chat (Esc)",
+    "emptyHint": "Ready — pick a quick prompt below or ask directly about what you are reading",
+    "clearAnchorAria": "Remove context anchor",
+    "noAnchor": "No context anchor bound",
+    "snippetPrefix": "Excerpt: {{snippet}}",
+    "inputPlaceholder": "Ask about the current anchor...",
+    "inputNoAnchorPlaceholder": "Type a question and press Enter...",
+    "inputAria": "Companion question input",
+    "sendAria": "Send companion question",
+    "sendButton": "Send",
+    "sendingButton": "Thinking...",
+    "anchorPrefix": "[{{label}}] ",
+    "replyFailed": "Companion reply failed. Click \"Promote to Main Chat\" in the top right to continue.",
+    "anchorKinds": {
+      "pdf_page": "PDF Page",
+      "video_timestamp": "Video Timestamp",
+      "question_id": "Question Anchor",
+      "handout_section": "Handout Section"
+    },
+    "presets": {
+      "explain_paragraph": {
+        "label": "Explain paragraph",
+        "prompt": "Based on the current context, explain the core concepts and logical flow of this paragraph clearly."
+      },
+      "derive_formula": {
+        "label": "Derive formula",
+        "prompt": "Derive the formula at the current position step by step, stating the theorem or identity used in each step."
+      },
+      "generate_variant": {
+        "label": "Create practice variant",
+        "prompt": "Create a practice question of similar difficulty targeting the same concept at this anchor, with a brief solution."
+      }
     }
   }
 }

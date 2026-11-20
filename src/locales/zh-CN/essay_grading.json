@@ -114,7 +114,8 @@
     "view_history": "查看历史轮次",
     "retry": "重试",
     "cancel_confirm_title": "取消批改",
-    "cancel_confirm_message": "确定要取消当前批改吗？已生成的内容将不会保存。"
+    "cancel_confirm_message": "确定要取消当前批改吗？已生成的内容将不会保存。",
+    "grade_shortcut_hint": "开始批改 (Ctrl/Cmd + Enter)"
   },
   "stats": {
     "characters": "字符数",
@@ -159,7 +160,10 @@
     "phase_annotating": "批注中",
     "phase_scoring": "评分中",
     "phase_polishing": "润色中",
-    "phase_model_essay": "生成范文中"
+    "phase_model_essay": "生成范文中",
+    "waiting_calm_hint": "AI 正在通读全文并结合评分标准审阅，马上开始输出批注...",
+    "waiting_deep_hint": "正在深入推敲立意结构与语言细节，请稍候...",
+    "elapsed_seconds": "已用时 {{seconds}}s"
   },
   "errors": {
     "empty_text": "请输入待批改的作文",
@@ -254,7 +258,8 @@
       "pass": "及格",
       "fail": "不及格"
     },
-    "parse_failed": "评分解析失败，请查看下方批改正文"
+    "parse_failed": "评分解析失败，请查看下方批改正文",
+    "rate_label": "得分率"
   },
   "markers": {
     "apply": "应用修改",
@@ -325,7 +330,8 @@
     "drop_hint": "拖拽或粘贴图片",
     "drop_hint_mobile": "导入或粘贴图片",
     "ocr_hint": "导入图片识别",
-    "ocr_supported": "支持 PNG/JPG/WEBP，最多 {{max}} 张"
+    "ocr_supported": "支持 PNG/JPG/WEBP，最多 {{max}} 张",
+    "deliverables_hint": "逐句批注 · 分项评分 · 润色与参考范文"
   },
   "notes": {
     "note_title": "作文批改：{{title}}（第 {{round}} 轮）"

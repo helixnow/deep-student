@@ -6,12 +6,13 @@
  */
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Books, Cards, Notebook, Play, WarningDiamond, X } from '@phosphor-icons/react';
+import { Books, Cards, ListChecks, Notebook, Play, WarningDiamond, X } from '@phosphor-icons/react';
 import { openDailySprint, useSprintLauncherSnapshot } from '@/components/exam-sprint';
 import { WeakConceptsStrip, useWeakConcepts } from '@/components/dashboard/WeakConceptsStrip';
 import { WeeklyReportActions } from '@/components/dashboard/WeeklyReportActions';
 import { getTodayLearningSnapshot, refreshTodayLearning, subscribeTodayLearning } from './todayLearningStore';
 import { openResourceLibrary, openTodayReviewTarget } from './openTodayReview';
+import { useTodayTodoCount } from './todayTodoCount';
 
 const WEAK_CONCEPTS_ON_HOME = 3;
 const STARTER_DISMISSED_KEY = 'learningToday.starterDismissed';
@@ -27,6 +28,7 @@ function readStarterDismissed(): boolean {
 export const TodayReviewHint: React.FC = () => {
   const { t } = useTranslation('data');
   const today = useSyncExternalStore(subscribeTodayLearning, getTodayLearningSnapshot, getTodayLearningSnapshot);
+  const todoDueCount = useTodayTodoCount();
   const { readiness: sprintReadiness } = useSprintLauncherSnapshot();
   const weak = useWeakConcepts(WEAK_CONCEPTS_ON_HOME);
   const [starterDismissed, setStarterDismissed] = useState(readStarterDismissed);
@@ -36,6 +38,7 @@ export const TodayReviewHint: React.FC = () => {
     { key: 'cards', count: today.cards, icon: <Cards size={14} aria-hidden="true" />, label: t('today_center.cards_due', { defaultValue: '到期卡片' }), onClick: () => openTodayReviewTarget('cards') },
     { key: 'mistakes', count: today.mistakes, icon: <WarningDiamond size={14} aria-hidden="true" />, label: t('today_center.mistakes_due', { defaultValue: '错题复习' }), onClick: () => openTodayReviewTarget('mistakes') },
     { key: 'notes', count: today.notes, icon: <Notebook size={14} aria-hidden="true" />, label: t('today_center.notes_due', { defaultValue: '待复习笔记' }), onClick: () => openTodayReviewTarget('notes') },
+    { key: 'todos', count: todoDueCount, icon: <ListChecks size={14} aria-hidden="true" />, label: t('today_center.todo_due', { defaultValue: '今日待办' }), onClick: () => openTodayReviewTarget('todos') },
   ].filter((item) => item.count > 0);
   const hasWeak = Boolean(weak && weak.length > 0);
   // 只有两项总数都确实读到且为 0 才算新用户：读取失败（缺省）时不打扰

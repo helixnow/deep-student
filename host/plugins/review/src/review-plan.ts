@@ -11,6 +11,7 @@ import { utcNow } from './clock.ts';
 import { errorText } from './errors.ts';
 import { addLocalDays, localDateKey } from './local-date.ts';
 import { planRatingPreviews, schedulePlanReview, type PlanFsrsOutcome } from './review-plan-fsrs.ts';
+import type { FsrsSchedulerConfig } from './fsrs-types.ts';
 import type {
   BatchCreateResult, DueReviewsFilter, DueReviewsResult, ProcessReviewResult, ReviewHistory,
   ReviewPlan, ReviewPlanStatus, ReviewStats, CalendarHeatmapData,
@@ -242,6 +243,7 @@ export class ReviewPlanService {
   private readonly config: ReviewPlanServiceConfig;
   private readonly warn: (message: string) => void;
   private readonly info: (message: string) => void;
+  private readonly loadFsrsConfig?: () => FsrsSchedulerConfig;
 
   constructor(
     db: DatabaseHandle,
@@ -250,6 +252,7 @@ export class ReviewPlanService {
     config: ReviewPlanServiceConfig = defaultReviewPlanConfig(),
     warn: (message: string) => void = () => undefined,
     info: (message: string) => void = () => undefined,
+    loadFsrsConfig?: () => FsrsSchedulerConfig,
   ) {
     this.db = db;
     this.repos = repos;
@@ -257,6 +260,17 @@ export class ReviewPlanService {
     this.config = config;
     this.warn = warn;
     this.info = info;
+    this.loadFsrsConfig = loadFsrsConfig;
+  }
+
+  private resolveFsrsConfig(): FsrsSchedulerConfig | undefined {
+    if (!this.loadFsrsConfig) return undefined;
+    try {
+      return this.loadFsrsConfig();
+    } catch (error) {
+      this.warn(`[ReviewPlanService] FSRS scheduler config unavailable, using default: ${errorText(error)}`);
+      return undefined;
+    }
   }
 
   // ---------------------------------------------------------------- create
@@ -378,7 +392,8 @@ export class ReviewPlanService {
     }
     // D2：调度改用 FSRS（与闪卡同一实现，见 review-plan-fsrs.ts）；SM-2 遗留状态在这里惰性换算。
     const nowMs = utcNow().ms;
-    const fsrsOutcome = schedulePlanReview(plan, this.fsrsStateOf(plan.id), quality, nowMs);
+    const fsrsConfig = this.resolveFsrsConfig();
+    const fsrsOutcome = schedulePlanReview(plan, this.fsrsStateOf(plan.id), quality, nowMs, fsrsConfig);
     const newInterval = fsrsOutcome.intervalDays;
     const newEase = fsrsOutcome.easeFactor;
     const passed = fsrsOutcome.passed;
@@ -515,9 +530,10 @@ export class ReviewPlanService {
       }
     }
     const nowMs = utcNow().ms;
+    const fsrsConfig = this.resolveFsrsConfig();
     return {
       ...result,
-      plans: result.plans.map(plan => ({ ...plan, rating_previews: planRatingPreviews(plan, states?.get(plan.id), nowMs) })),
+      plans: result.plans.map(plan => ({ ...plan, rating_previews: planRatingPreviews(plan, states?.get(plan.id), nowMs, fsrsConfig) })),
     };
   }
 

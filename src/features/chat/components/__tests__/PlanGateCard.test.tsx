@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { PlanGateCard } from '../PlanGateCard';
 
 const invokeMock = vi.fn();
@@ -170,5 +170,82 @@ describe('PlanGateCard', () => {
     unmount();
     await waitFor(() => expect(trigger).toHaveFocus());
     trigger.remove();
+  });
+
+  it('allows pausing and resuming the countdown, freezing auto-reject while paused', async () => {
+    vi.useFakeTimers();
+    try {
+      render(
+        <PlanGateCard
+          sessionId="sess_1"
+          request={{
+            planId: 'plan_pause',
+            toolCallId: 'call_pause',
+            toolName: 'builtin-note_delete',
+            summary: 'Delete a note',
+            timeoutSeconds: 3,
+          }}
+        />,
+      );
+
+      const toggleBtn = screen.getByTestId('plan-gate-countdown-toggle');
+      expect(toggleBtn).toHaveAttribute('aria-pressed', 'false');
+      expect(screen.getByTestId('plan-gate-countdown')).toHaveTextContent('3');
+
+      // Advance 1s -> remaining becomes 2
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(screen.getByTestId('plan-gate-countdown')).toHaveTextContent('2');
+
+      // Click pause -> countdown freezes even after 5 seconds
+      fireEvent.click(toggleBtn);
+      expect(toggleBtn).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('plan-gate-countdown')).toHaveTextContent('已暂停');
+
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      expect(invokeMock).not.toHaveBeenCalled();
+      expect(screen.getByTestId('plan-gate-countdown')).toHaveTextContent('2');
+
+      // Click resume -> remaining counts down to 0 and triggers timeout auto-reject
+      fireEvent.click(toggleBtn);
+      expect(toggleBtn).toHaveAttribute('aria-pressed', 'false');
+
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(1000);
+      });
+
+      expect(invokeMock).toHaveBeenCalledWith('chat_v2_plan_gate_respond', {
+        sessionId: 'sess_1',
+        planId: 'plan_pause',
+        toolCallId: 'call_pause',
+        approved: false,
+        reason: 'timeout',
+      });
+      expect(screen.queryByTestId('plan-gate-countdown-toggle')).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('hides the countdown toggle when timeoutSeconds <= 0', () => {
+    render(
+      <PlanGateCard
+        sessionId="sess_1"
+        request={{
+          planId: 'plan_no_timeout',
+          toolCallId: 'call_no_timeout',
+          toolName: 'builtin-note_delete',
+          summary: 'No timeout',
+          timeoutSeconds: 0,
+        }}
+      />,
+    );
+    expect(screen.queryByTestId('plan-gate-countdown-toggle')).not.toBeInTheDocument();
   });
 });

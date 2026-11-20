@@ -364,33 +364,49 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
           </span>
         </div>
       ) : heatmapWeeks ? (
-        <div className="flex justify-center gap-[3px] py-1">
-          {heatmapWeeks.map((week, wi) => (
-            <div key={wi} className="flex flex-col gap-[3px]">
-              {week.map((d, di) =>
-                d ? (
-                  <CommonTooltip key={d.date} content={<span className="tabular-nums">{dayDetail(d)}</span>} position="top">
-                      {/* tap 选中：触屏无 hover，选中后数值显示在图表下方明细行 */}
-                      <button
-                        type="button"
-                        aria-label={dayDetail(d)}
-                        aria-pressed={selectedDate === d.date}
-                        onClick={() =>
-                          setSelectedDate((prev) => (prev === d.date ? null : d.date))
-                        }
-                        className={cn(
-                          'h-2.5 w-2.5 [@media(pointer:coarse)]:h-3.5 [@media(pointer:coarse)]:w-3.5 rounded-[2px] border-0 p-0 transition-colors duration-150 ease-standard',
-                          HEAT_CLASSES[heatLevel(d.focusSeconds)],
-                          selectedDate === d.date && 'ring-1 ring-primary ring-offset-1',
-                        )}
-                      />
-                  </CommonTooltip>
-                ) : (
-                  <div key={`pad-${wi}-${di}`} className="h-2.5 w-2.5 [@media(pointer:coarse)]:h-3.5 [@media(pointer:coarse)]:w-3.5" />
-                ),
-              )}
-            </div>
-          ))}
+        <div>
+          <div className="flex justify-center gap-[3px] py-1">
+            {heatmapWeeks.map((week, wi) => (
+              <div key={wi} className="flex flex-col gap-[3px]">
+                {week.map((d, di) =>
+                  d ? (
+                    <CommonTooltip key={d.date} content={<span className="tabular-nums">{dayDetail(d)}</span>} position="top">
+                        {/* tap 选中：触屏无 hover，选中后数值显示在图表下方明细行 */}
+                        <button
+                          type="button"
+                          aria-label={dayDetail(d)}
+                          aria-pressed={selectedDate === d.date}
+                          onClick={() =>
+                            setSelectedDate((prev) => (prev === d.date ? null : d.date))
+                          }
+                          className={cn(
+                            'h-2.5 w-2.5 [@media(pointer:coarse)]:h-3.5 [@media(pointer:coarse)]:w-3.5 rounded-[2px] border-0 p-0 transition-colors duration-150 ease-standard motion-reduce:transition-none',
+                            HEAT_CLASSES[heatLevel(d.focusSeconds)],
+                            selectedDate === d.date && 'ring-1 ring-primary ring-offset-1',
+                          )}
+                        />
+                    </CommonTooltip>
+                  ) : (
+                    <div key={`pad-${wi}-${di}`} className="h-2.5 w-2.5 [@media(pointer:coarse)]:h-3.5 [@media(pointer:coarse)]:w-3.5" />
+                  ),
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="mt-1.5 flex items-center justify-between gap-2 font-mono text-2xs tabular-nums text-muted-foreground/60">
+            <span>{t('pomodoro.statsPopover.legendScale')}</span>
+            <span className="inline-flex items-center gap-1">
+              <span>{t('pomodoro.statsPopover.legendLess')}</span>
+              {HEAT_CLASSES.map((cls, level) => (
+                <span
+                  key={level}
+                  aria-hidden="true"
+                  className={cn('h-2 w-2 rounded-[2px]', cls)}
+                />
+              ))}
+              <span>{t('pomodoro.statsPopover.legendMore')}</span>
+            </span>
+          </div>
         </div>
       ) : (
         <div className="flex h-24 items-end gap-[2px]">

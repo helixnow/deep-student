@@ -14,7 +14,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { CheckCircle, XCircle, Warning, CircleNotch, Clock, CaretDown, CaretUp } from '@phosphor-icons/react';
+import { CheckCircle, XCircle, Warning, CircleNotch, Clock, CaretDown, CaretUp, Pause, Play } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -52,6 +52,7 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
   const [busy, setBusy] = useState(false);
   const [remaining, setRemaining] = useState(request.timeoutSeconds);
   const [timedOut, setTimedOut] = useState(false);
+  const [countdownPaused, setCountdownPaused] = useState(false);
   const [isArgsExpanded, setIsArgsExpanded] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const rejectButtonRef = useRef<HTMLButtonElement>(null);
@@ -91,6 +92,7 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
   useEffect(() => {
     setRemaining(request.timeoutSeconds);
     setTimedOut(false);
+    setCountdownPaused(false);
     setIsArgsExpanded(false);
     timeoutFiredRef.current = false;
   }, [request.toolCallId, request.timeoutSeconds]);
@@ -99,7 +101,7 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
   // 此前仅递减不触发，文案承诺「自动拒绝」但前端不执行，UI 会停在 0 秒仍可点击。
   // （不放在 setState updater 里：updater 需保持纯函数，StrictMode 下会被双调用）
   useEffect(() => {
-    if (busy || request.timeoutSeconds <= 0) return;
+    if (busy || request.timeoutSeconds <= 0 || countdownPaused) return;
 
     if (remaining <= 0) {
       if (!timeoutFiredRef.current) {
@@ -114,7 +116,7 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
       setRemaining((prev) => Math.max(0, prev - 1));
     }, 1000);
     return () => window.clearTimeout(timer);
-  }, [remaining, busy, request.timeoutSeconds, respond]);
+  }, [remaining, busy, request.timeoutSeconds, countdownPaused, respond]);
 
   // 非模态焦点管理：初始焦点移入卡片（拒绝按钮），卸载时恢复；
   // 不注册全局键盘监听、不做 Tab 陷阱（用户可自由 Tab 出卡片）。
@@ -151,7 +153,8 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
   const titleId = `plan-gate-title-${request.planId}`;
   const descId = `plan-gate-desc-${request.planId}`;
   const countdownId = `plan-gate-countdown-${request.planId}`;
-  const isCountdownUrgent = remaining <= COUNTDOWN_URGENT_THRESHOLD && remaining > 0 && !timedOut;
+  const isCountdownUrgent =
+    remaining <= COUNTDOWN_URGENT_THRESHOLD && remaining > 0 && !timedOut && !countdownPaused;
 
   return (
     <div
@@ -174,23 +177,60 @@ export const PlanGateCard: React.FC<PlanGateCardProps> = ({
         <span id={titleId} className="text-sm font-medium truncate">
           {t('authority.planGate.title')}
         </span>
-        <div
-          id={countdownId}
-          className={cn(
-            'ml-auto flex shrink-0 items-center gap-1 text-xs transition-colors duration-150',
-            isCountdownUrgent || timedOut ? 'font-medium text-warning' : 'text-muted-foreground',
-          )}
-          role="status"
-          aria-live="polite"
-          data-testid="plan-gate-countdown"
-        >
-          <Clock size={14} aria-hidden="true" />
-          {timedOut ? (
-            <span>{t('authority.planGate.timedOut')}</span>
-          ) : (
-            <span className="tabular-nums">
-              {t('authority.planGate.countdown', { seconds: remaining })}
-            </span>
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          <div
+            id={countdownId}
+            className={cn(
+              'flex shrink-0 items-center gap-1 text-xs transition-colors duration-150',
+              isCountdownUrgent || timedOut ? 'font-medium text-warning' : 'text-muted-foreground',
+            )}
+            role="status"
+            aria-live="polite"
+            data-testid="plan-gate-countdown"
+          >
+            <Clock size={14} aria-hidden="true" />
+            {timedOut ? (
+              <span>{t('authority.planGate.timedOut')}</span>
+            ) : countdownPaused ? (
+              <span className="tabular-nums">
+                {t('authority.planGate.countdownPausedStatus', {
+                  seconds: remaining,
+                  defaultValue: '已暂停（剩余 {{seconds}} 秒）',
+                })}
+              </span>
+            ) : (
+              <span className="tabular-nums">
+                {t('authority.planGate.countdown', { seconds: remaining })}
+              </span>
+            )}
+          </div>
+          {!timedOut && !busy && request.timeoutSeconds > 0 && (
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              data-testid="plan-gate-countdown-toggle"
+              aria-pressed={countdownPaused}
+              aria-label={
+                countdownPaused
+                  ? t('authority.planGate.resumeCountdown', { defaultValue: '继续倒计时' })
+                  : t('authority.planGate.pauseCountdown', { defaultValue: '暂停倒计时' })
+              }
+              onClick={() => setCountdownPaused((prev) => !prev)}
+              className="!h-auto shrink-0 gap-1 rounded border border-border/50 bg-background/70 px-1.5 py-0.5 text-2xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              {countdownPaused ? (
+                <>
+                  <Play size={10} weight="fill" aria-hidden="true" />
+                  <span>{t('authority.planGate.resumeShort', { defaultValue: '继续' })}</span>
+                </>
+              ) : (
+                <>
+                  <Pause size={10} weight="fill" aria-hidden="true" />
+                  <span>{t('authority.planGate.pauseShort', { defaultValue: '暂停' })}</span>
+                </>
+              )}
+            </DsButton>
           )}
         </div>
       </div>

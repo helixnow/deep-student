@@ -2,13 +2,14 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { snapshot, openTodayReviewTarget, openResourceLibrary, weakState } = vi.hoisted(() => ({
+const { snapshot, openTodayReviewTarget, openResourceLibrary, weakState, todoState } = vi.hoisted(() => ({
   snapshot: { cards: 0, mistakes: 0, notes: 0, dueNotes: [] as unknown[] } as {
     cards: number; mistakes: number; notes: number; dueNotes: unknown[]; cardsTotal?: number; plansTotal?: number;
   },
   openTodayReviewTarget: vi.fn(),
   openResourceLibrary: vi.fn(),
   weakState: { value: [] as Array<{ conceptKey: string; score: number; total: number; wrongCount: number }> | null },
+  todoState: { count: 0 },
 }));
 vi.mock('../todayLearningStore', () => ({
   getTodayLearningSnapshot: () => snapshot,
@@ -16,6 +17,7 @@ vi.mock('../todayLearningStore', () => ({
   refreshTodayLearning: async () => {},
 }));
 vi.mock('../openTodayReview', () => ({ openTodayReviewTarget, openResourceLibrary }));
+vi.mock('../todayTodoCount', () => ({ useTodayTodoCount: () => todoState.count }));
 vi.mock('@/components/dashboard/WeakConceptsStrip', () => ({
   useWeakConcepts: () => weakState.value,
   WeakConceptsStrip: ({ concepts }: { concepts?: Array<{ conceptKey: string }> | null }) =>
@@ -32,6 +34,7 @@ describe('TodayReviewHint', () => {
     vi.clearAllMocks();
     Object.assign(snapshot, { cards: 0, mistakes: 0, notes: 0, cardsTotal: undefined, plansTotal: undefined });
     weakState.value = [];
+    todoState.count = 0;
     localStorage.removeItem('learningToday.starterDismissed');
   });
 
@@ -64,11 +67,13 @@ describe('TodayReviewHint', () => {
 
   it('sends each due line to its own review instead of a generic page', () => {
     Object.assign(snapshot, { cards: 2, mistakes: 3, notes: 1 });
+    todoState.count = 4;
     render(<TodayReviewHint />);
     fireEvent.click(screen.getByText('错题复习'));
     fireEvent.click(screen.getByText('到期卡片'));
     fireEvent.click(screen.getByText('待复习笔记'));
-    expect(openTodayReviewTarget.mock.calls).toEqual([['mistakes'], ['cards'], ['notes']]);
+    fireEvent.click(screen.getByText('今日待办'));
+    expect(openTodayReviewTarget.mock.calls).toEqual([['mistakes'], ['cards'], ['notes'], ['todos']]);
   });
 
   it('surfaces weak spots and the weekly report on the chat home even on a day with nothing due', () => {

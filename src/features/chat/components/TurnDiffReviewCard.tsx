@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // 2. 第三方库（按字母序）
 import { ArrowCounterClockwise, ArrowClockwise, CaretDown, CaretRight, FileCode } from '@phosphor-icons/react';
+import { useTranslation } from 'react-i18next';
 // 3. @/ 路径别名
 import { cn } from '@/utils/cn';
 
@@ -470,6 +471,20 @@ export const TurnDiffReviewCard: React.FC<TurnDiffReviewCardProps> = ({
   defaultExpanded = true,
   className,
 }) => {
+  const { t } = useTranslation('chatV2');
+  const tr = useCallback(
+    (key: string, defaultValue: string, vars?: Record<string, string | number>) => {
+      const translated = t(key, { defaultValue, ...vars });
+      if (translated && translated !== key && translated !== `chatV2:${key}`) {
+        return translated;
+      }
+      if (!vars) return defaultValue;
+      return defaultValue.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k: string) =>
+        vars[k] !== undefined ? String(vars[k]) : '',
+      );
+    },
+    [t],
+  );
   const diffCacheRef = useRef<Map<string, CachedDiffRecord>>(new Map());
   const latestPropEntriesRef = useRef<TurnFileDiffEntry[]>(entries);
   latestPropEntriesRef.current = entries;
@@ -689,10 +704,12 @@ export const TurnDiffReviewCard: React.FC<TurnDiffReviewCardProps> = ({
     return null;
   }
 
+  const titleLabel = tr('turnDiff.title', '本轮修改审阅');
+
   return (
     <section
       data-testid="turn-diff-review-card"
-      aria-label="本轮修改审阅"
+      aria-label={titleLabel}
       className={cn(
         'rounded-lg border border-border/35 bg-card/60 text-foreground',
         className,
@@ -709,13 +726,13 @@ export const TurnDiffReviewCard: React.FC<TurnDiffReviewCardProps> = ({
             )}
           />
           <span className="text-xs font-medium text-foreground">
-            本轮修改审阅
+            {titleLabel}
           </span>
           <span
             data-testid="turn-diff-file-count"
             className="font-mono tabular-nums text-xs text-muted-foreground"
           >
-            {totals.totalFiles} 个文件
+            {tr('turnDiff.fileCount', '{{count}} 个文件', { count: totals.totalFiles })}
           </span>
           <span
             data-testid="turn-diff-total-additions"
@@ -734,7 +751,7 @@ export const TurnDiffReviewCard: React.FC<TurnDiffReviewCardProps> = ({
               data-testid="turn-diff-all-reverted-badge"
               className="rounded border border-border/35 bg-muted/50 px-1.5 py-0.5 text-xs text-muted-foreground"
             >
-              已回滚 (Reverted)
+              {tr('turnDiff.revertedBadge', '已回滚 (Reverted)')}
             </span>
           )}
         </div>
@@ -749,7 +766,7 @@ export const TurnDiffReviewCard: React.FC<TurnDiffReviewCardProps> = ({
                 className="inline-flex items-center gap-1 rounded border border-border/35 bg-background/80 px-2 py-1 text-xs text-foreground transition-colors hover:bg-muted"
               >
                 <ArrowClockwise size={12} />
-                <span>恢复本轮全部修改 (Redo)</span>
+                <span>{tr('turnDiff.redoAll', '恢复本轮全部修改 (Redo)')}</span>
               </button>
             ) : null
           ) : (
@@ -760,7 +777,7 @@ export const TurnDiffReviewCard: React.FC<TurnDiffReviewCardProps> = ({
               className="inline-flex items-center gap-1 rounded border border-border/35 bg-background/80 px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
             >
               <ArrowCounterClockwise size={12} />
-              <span>一键回滚本轮修改</span>
+              <span>{tr('turnDiff.revertAll', '一键回滚本轮修改')}</span>
             </button>
           )}
         </div>
@@ -820,7 +837,7 @@ export const TurnDiffReviewCard: React.FC<TurnDiffReviewCardProps> = ({
                     {entry.path}
                   </span>
                   <span className="shrink-0 rounded border border-border/35 px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                    {KIND_LABELS[entry.kind]}
+                    {tr(`turnDiff.kind.${entry.kind}`, KIND_LABELS[entry.kind])}
                   </span>
                   <span className="shrink-0 font-mono tabular-nums text-success">
                     +{entry.additions}
@@ -837,7 +854,7 @@ export const TurnDiffReviewCard: React.FC<TurnDiffReviewCardProps> = ({
                         data-testid={`turn-diff-reverted-status-${entry.id}`}
                         className="rounded border border-border/35 bg-muted/40 px-1.5 py-0.5 text-xs text-muted-foreground"
                       >
-                        已回滚 (Reverted)
+                        {tr('turnDiff.revertedBadge', '已回滚 (Reverted)')}
                       </span>
                       {canRedoSingle && (
                         <button
@@ -847,7 +864,7 @@ export const TurnDiffReviewCard: React.FC<TurnDiffReviewCardProps> = ({
                           className="inline-flex items-center gap-1 rounded border border-border/35 px-2 py-0.5 text-xs text-foreground transition-colors hover:bg-muted"
                         >
                           <ArrowClockwise size={11} />
-                          <span>恢复 (Redo)</span>
+                          <span>{tr('turnDiff.redoFile', '恢复 (Redo)')}</span>
                         </button>
                       )}
                     </>
@@ -859,7 +876,7 @@ export const TurnDiffReviewCard: React.FC<TurnDiffReviewCardProps> = ({
                       className="inline-flex items-center gap-1 rounded border border-border/35 px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                     >
                       <ArrowCounterClockwise size={11} />
-                      <span>回滚此文件</span>
+                      <span>{tr('turnDiff.revertFile', '回滚此文件')}</span>
                     </button>
                   )}
                 </div>

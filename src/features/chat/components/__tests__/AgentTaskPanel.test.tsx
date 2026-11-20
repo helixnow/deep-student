@@ -1091,4 +1091,32 @@ describe('AgentTaskPanel', () => {
       window.removeEventListener('CHAT_OPEN_ATTACHMENT_PREVIEW', onPreview);
     }
   });
+
+  it('localizes DAG topology toggle label and ready-task dispatch notification via chatV2 keys', () => {
+    const store = createMockStore({
+      sessionId: 'sess-dag-i18n',
+      blocks: new Map([
+        [
+          'todo-dag-i18n',
+          {
+            toolName: 'todo_init',
+            toolOutput: {
+              title: '',
+              steps: [{ id: 's1', description: '整理错题本', status: 'running' }],
+            },
+          },
+        ],
+      ]),
+      activeBlockIds: new Set(),
+    });
+
+    render(<AgentTaskPanel store={store as unknown as StoreApi<any>} />);
+    fireEvent.click(screen.getByRole('button', { name: /整理错题本/i }));
+
+    const dagBtn = screen.getByTestId('toggle-project-knowledge-dag-drawer');
+    expect(dagBtn).toHaveTextContent('DAG 拓扑视图');
+    fireEvent.click(dagBtn);
+
+    expect(screen.getByTestId('project-knowledge-dag-drawer')).toHaveTextContent('当前会话执行计划');
+  });
 });

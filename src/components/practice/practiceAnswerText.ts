@@ -1,8 +1,13 @@
 import type { Question } from '@/api/questionBankApi';
 import { decodeUserAnswer } from '@/api/questionBankApi';
 import { parseMatchingData, parseOrderingData } from '@/components/question-types/structured';
+import i18n from '@/i18n';
 
 export function practiceAnswerText(question: Question, raw: string): string {
+  const trimmed = raw.trim();
+  if (question.questionType === 'true_false' && (trimmed === 'true' || trimmed === 'false')) {
+    return i18n.t(`practice:batch.${trimmed}`);
+  }
   const decoded = decodeUserAnswer(question.questionType, raw);
   if (decoded?.type === 'fill_blank') return decoded.blanks.map((text, i) => `${i + 1}. ${text}`).join('\n');
   if (decoded?.type === 'matching') {

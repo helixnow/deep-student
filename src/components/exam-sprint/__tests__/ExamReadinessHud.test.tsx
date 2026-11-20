@@ -97,6 +97,8 @@ describe('ExamReadinessHud', () => {
     const mobileEl = screen.getByTestId('exam-readiness-hud-mobile');
     expect(mobileEl.textContent).toContain('D-18');
     expect(mobileEl.textContent).toContain('预测提取率 86.4%');
+    expect(screen.getByTestId('hud-mobile-breakdown').textContent).toContain('闪卡 16 · 错题 4 · 导图 2');
+    expect(screen.getByTestId('hud-mobile-deferred').textContent).toContain('18');
     const mobileCta = screen.getByTestId('hud-mobile-sprint-cta');
     expect(mobileCta.textContent).toContain('开始今日冲刺 · 预计 12 分钟');
     expect(mobileCta.className).toContain('min-h-[48px]');

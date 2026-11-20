@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Image as ImagePlus, CircleNotch, X } from '@phosphor-icons/react';
+import { Camera, Check, Image as ImagePlus, CircleNotch, X } from '@phosphor-icons/react';
+import { isMobilePlatform } from '@/utils/platform';
 import type { Question } from '@/api/questionBankApi';
 import {
   decodeUserAnswer,
@@ -43,6 +44,7 @@ interface Props {
 export function PracticeAnswerInput({ question, value, onChange, onUploadingChange, onPrimaryAction }: Props) {
   const { t } = useTranslation('practice');
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const uploadRef = useRef(false);
   const latest = useRef({ value, onChange });
@@ -88,6 +90,7 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
       setUploading(false);
       onUploadingChange?.(false);
       if (fileRef.current) fileRef.current.value = '';
+      if (cameraRef.current) cameraRef.current.value = '';
     }
   };
 
@@ -95,15 +98,19 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
     <div className="space-y-3">
       {question.options?.length ? (
         <div className="space-y-2.5" data-practice-choice>
+          {multiple && (
+            <p className="text-xs text-muted-foreground">{t('batch.multiChoiceHint')}</p>
+          )}
           {question.options.map((option) => {
             const checked = multiple ? text.includes(option.key) : text === option.key;
             return (
               <label
                 key={option.key}
                 className={cn(
-                  'group flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition-all',
+                  'ui-press group flex min-h-[var(--touch-target-size)] cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition-[background-color,border-color,box-shadow,transform] duration-150 motion-reduce:transition-none',
+                  'focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1',
                   checked
-                    ? 'border-primary/45 bg-primary/[0.06]'
+                    ? 'border-primary/60 bg-primary/[0.08] shadow-soft'
                     : 'border-border/45 bg-card/60 hover:border-border/80 hover:bg-foreground/[0.03]',
                 )}
               >
@@ -123,8 +130,10 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
                   }}
                 />
                 <span
+                  aria-hidden="true"
                   className={cn(
-                    'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border font-mono text-xs font-medium transition-colors',
+                    'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center border font-mono text-xs font-medium transition-colors duration-150 motion-reduce:transition-none',
+                    multiple ? 'rounded-md' : 'rounded-full',
                     checked
                       ? 'border-primary bg-primary text-primary-foreground'
                       : 'border-border/60 bg-background/80 text-muted-foreground group-hover:border-border',
@@ -135,6 +144,15 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
                 <div className="min-w-0 flex-1 pt-0.5 text-sm leading-relaxed text-foreground">
                   <MarkdownRenderer content={option.content} />
                 </div>
+                <Check
+                  size={15}
+                  weight="bold"
+                  aria-hidden="true"
+                  className={cn(
+                    'mt-1 shrink-0 text-primary transition-opacity duration-150 motion-reduce:transition-none',
+                    checked ? 'opacity-100' : 'opacity-0',
+                  )}
+                />
               </label>
             );
           })}
@@ -147,9 +165,10 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
               <label
                 key={answer}
                 className={cn(
-                  'flex min-h-11 flex-1 cursor-pointer items-center gap-3 rounded-xl border px-4 py-2.5 text-sm transition-all',
+                  'ui-press flex min-h-[var(--touch-target-size)] flex-1 cursor-pointer items-center gap-3 rounded-xl border px-4 py-2.5 text-sm transition-[background-color,border-color,box-shadow,transform] duration-150 motion-reduce:transition-none',
+                  'focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1',
                   checked
-                    ? 'border-primary/45 bg-primary/[0.06] font-medium text-foreground'
+                    ? 'border-primary/60 bg-primary/[0.08] font-medium text-foreground shadow-soft'
                     : 'border-border/45 bg-card/60 text-foreground/85 hover:border-border/80 hover:bg-foreground/[0.03]',
                 )}
               >
@@ -163,7 +182,7 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
                 <span
                   aria-hidden="true"
                   className={cn(
-                    'flex h-6 w-6 shrink-0 items-center justify-center rounded-md border font-mono text-xs font-medium transition-colors',
+                    'flex h-6 w-6 shrink-0 items-center justify-center rounded-full border font-mono text-xs font-medium transition-colors duration-150 motion-reduce:transition-none',
                     checked
                       ? 'border-primary bg-primary text-primary-foreground'
                       : 'border-border/60 bg-background/80 text-muted-foreground',
@@ -171,7 +190,16 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
                 >
                   {answer === 'true' ? 'T' : 'F'}
                 </span>
-                <span>{t(`batch.${answer}`)}</span>
+                <span className="flex-1">{t(`batch.${answer}`)}</span>
+                <Check
+                  size={15}
+                  weight="bold"
+                  aria-hidden="true"
+                  className={cn(
+                    'shrink-0 text-primary transition-opacity duration-150 motion-reduce:transition-none',
+                    checked ? 'opacity-100' : 'opacity-0',
+                  )}
+                />
               </label>
             );
           })}
@@ -201,20 +229,22 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
       ) : question.questionType === 'numeric' && !images.length ? (
         <Input
           aria-label={t('batch.yourAnswer')}
+          placeholder={t('editor.numeric.placeholder')}
           value={text}
           onChange={event => updateText(event.target.value)}
           onKeyDown={onPrimaryAction}
           inputMode="decimal"
           autoComplete="off"
-          className="h-11 w-full rounded-xl border border-border/50 bg-foreground/[0.02] px-3.5 font-mono text-base tabular-nums outline-none transition-colors focus-visible:border-primary/45 focus-visible:bg-background focus-visible:ring-0"
+          className="h-11 w-full rounded-xl border border-border/50 bg-foreground/[0.02] px-3.5 font-mono text-base tabular-nums outline-none transition-colors motion-reduce:transition-none focus-visible:border-primary/45 focus-visible:bg-background focus-visible:ring-0"
         />
       ) : (
         <textarea
           aria-label={t('batch.yourAnswer')}
+          placeholder={t('editor.answerPlaceholder')}
           value={text}
           onChange={(event) => updateText(event.target.value)}
           rows={question.questionType === 'numeric' ? 2 : 7}
-          className="w-full resize-y rounded-xl border border-border/50 bg-foreground/[0.02] p-3.5 text-sm leading-relaxed outline-none transition-colors focus:border-primary/45 focus:bg-background"
+          className="w-full resize-y rounded-xl border border-border/50 bg-foreground/[0.02] p-3.5 text-sm leading-relaxed outline-none transition-colors motion-reduce:transition-none placeholder:text-muted-foreground/50 focus:border-primary/45 focus:bg-background"
         />
       )}
       {!!images.length && <AnswerImageStrip images={images} readOnly />}
@@ -237,15 +267,25 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
         </div>
       )}
       {isSubjectiveQuestionType(question.questionType) && (
-        <>
+        <div className="flex flex-wrap items-center gap-2">
           <input
             ref={fileRef}
             type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
+            accept="image/png,image/jpeg,image/webp,image/gif,image/heic,image/heif"
             multiple
             className="hidden"
             onChange={(event) => void upload(event.target.files)}
           />
+          {isMobilePlatform() && (
+            <input
+              ref={cameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(event) => void upload(event.target.files)}
+            />
+          )}
           <DsButton
             variant="outline"
             size="sm"
@@ -253,13 +293,24 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
             onClick={() => fileRef.current?.click()}
           >
             {uploading ? (
-              <CircleNotch size={16} className="animate-spin" />
+              <CircleNotch size={16} className="animate-spin motion-reduce:animate-none" />
             ) : (
               <ImagePlus size={16} />
             )}
             {t('batch.addImage')}
           </DsButton>
-        </>
+          {isMobilePlatform() && (
+            <DsButton
+              variant="outline"
+              size="sm"
+              disabled={uploading || !canAddImageAnswerImage(images.length)}
+              onClick={() => cameraRef.current?.click()}
+            >
+              <Camera size={16} />
+              {t('batch.takePhoto')}
+            </DsButton>
+          )}
+        </div>
       )}
     </div>
   );

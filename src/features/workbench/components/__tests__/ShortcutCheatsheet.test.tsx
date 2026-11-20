@@ -61,7 +61,7 @@ describe('渲染与 aria', () => {
     expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('键盘快捷键');
   });
 
-  it('渲染全部分组标题（顺序 = 平铺/移动/导航/管理/帮助 + 修饰键技巧）', () => {
+  it('渲染全部分组标题（顺序 = 平铺/移动/导航/管理/帮助 + 全局搜索与学习效率 + 修饰键技巧）', () => {
     render(<ShortcutCheatsheet />);
     openSheet();
 
@@ -74,8 +74,33 @@ describe('渲染与 aria', () => {
       '切换与导航',
       '窗口管理',
       '帮助',
+      '全局搜索与学习效率',
       '修饰键技巧',
     ]);
+  });
+
+  it('全局搜索与学习效率区块：展示统一搜索、设置、快速预览与退出键帽并跟随平台修饰键', () => {
+    setWorkbenchShortcutPlatformOverride(true);
+    render(<ShortcutCheatsheet />);
+    openSheet();
+
+    const globalCaps = (id: string) =>
+      Array.from(
+        document.querySelectorAll(`[data-wb-cheat-global="${id}"] kbd.wb-cheat-key`),
+      ).map((el) => el.textContent);
+
+    expect(globalCaps('search')).toEqual(['⌘', 'K']);
+    expect(globalCaps('settings')).toEqual(['⌘', ',']);
+    expect(globalCaps('quick-look')).toEqual(['空格']);
+    expect(globalCaps('escape-exit')).toEqual(['Esc']);
+
+    setWorkbenchShortcutPlatformOverride(false);
+    act(() => {
+      useWorkbenchOverlay.getState().closeCheatsheet();
+    });
+    openSheet();
+    expect(globalCaps('search')).toEqual(['Ctrl', 'K']);
+    expect(globalCaps('settings')).toEqual(['Ctrl', ',']);
   });
 
   it('修饰键技巧区块：⌥ 扩热区等隐藏行为成行展示，键帽跟随平台符号', () => {

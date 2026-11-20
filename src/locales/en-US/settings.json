@@ -25,6 +25,17 @@
     "search_engines_list": "Search Engines",
     "global_search_settings": "Global Search Settings"
   },
+  "models_tab": {
+    "core_learning_title": "Core Study Models",
+    "core_learning_desc": "Everyday models for chat tutoring, flashcards, and grading—set these up to start studying right away",
+    "ocr_and_rag_title": "Question OCR & Knowledge Retrieval",
+    "ocr_and_rag_desc": "Powers exam/handout text recognition and semantic search across your study library",
+    "specialized_title": "More Specialized Model Settings",
+    "specialized_desc": "Optionally assign dedicated models for question authoring, translation, dictation, image generation, long-chat summarization, and search reranking",
+    "specialized_configured_badge": "{{configured}}/{{total}} configured",
+    "expand_specialized": "Show settings",
+    "collapse_specialized": "Hide"
+  },
   "voice_input": {
     "title": "Dictation",
     "description": "This is where dictation shortcut behavior, vocabulary hints, history, and runtime diagnostics live. ASR model assignment belongs to Settings > Models, provider credentials belong to Settings > APIs, and usage is tracked in Statistics.",
@@ -1063,7 +1074,7 @@
       "advanced": "Advanced fields",
       "advanced_hint": "Supports reasoning_effort, tools and skills. Skills are injected from a creation-time content snapshot. permissions / context_inheritance are unsupported and rejected.",
       "raw_title": "File content",
-      "raw_hint": "This file could not be parsed into the form, so you are editing the raw text (it must contain closed --- frontmatter and a valid name)."
+      "raw_hint": "This file could not be loaded into the form, so you are editing plain text (keep the closing --- header block and a valid name)."
     },
     "delete": {
       "inline_confirm": "Deleting takes effect immediately and cannot be undone. Delete this profile?",
@@ -1575,9 +1586,9 @@
     "chat_title_model_label": "Title/Tag Generation Model",
     "chat_title_model_hint": "Used for generating chat titles and intelligent tag extraction. Recommend models with strong comprehension and fast speed. Defaults to second model if unset.",
     "memory_decision_model_label": "Memory Decision Model",
-    "memory_decision_model_hint": "Used for smart memory write deduplication/update/append decisions. Recommend a fast and lightweight model. Defaults to the enhanced model if unset.",
+    "memory_decision_model_hint": "Decides whether to add, update, or deduplicate study memories. A fast, lightweight model works best; falls back to the chat model when empty.",
     "compaction_model_label": "Context Compaction Model",
-    "compaction_model_hint": "Dedicated model for generating anchored summaries when long conversations approach the context limit. Recommend a cheap long-context model. Defaults to the current chat model if unset.",
+    "compaction_model_hint": "Summarizes earlier turns when a long conversation approaches its length limit. A lightweight long-context model is recommended; falls back to the chat model when empty.",
     "batch_create_success": "Successfully created {{count}} API configurations",
     "batch_create_failed": "Failed to batch create API configurations",
     "auto_assign_success": "Auto-assignment completed, model assignments have been applied",
@@ -1869,7 +1880,7 @@
     "framing": {
       "json_lines": "JSON Lines"
     },
-    "backend_disabled_hint": "Backend MCP feature is not enabled. Please enable the mcp feature in Cargo.toml and retry.",
+    "backend_disabled_hint": "Local MCP service is not available in this environment. Check desktop settings and retry.",
     "load_config_failed": "Failed to load configuration: {{error}}",
     "save_model_assignment_failed": "Failed to save model assignment: {{error}}",
     "vendor_not_found": "Vendor not found",
@@ -2141,15 +2152,15 @@
     "model2_desc": "Used for question answering and conversation interaction, can select any type of model",
     "research_desc": "Deprecated. Deep Research model is no longer used.",
     "embedding_desc": "Used to convert documents to vector embeddings, supports RAG knowledge base retrieval functionality",
-    "reranker_desc": "Used to rerank RAG retrieval results to improve relevance (optional configuration)",
+    "reranker_desc": "Re-orders knowledge base search hits so the most relevant study materials appear first (optional)",
     "summary_desc": "Deprecated. Summary model is no longer used.",
     "exam_sheet_ocr_desc": "Dedicated for OCR processing in question set recognition, recommend using professional OCR models such as DeepSeek-OCR.",
     "translation_desc": "Specialized for text translation features, recommend models with strong understanding and language conversion capabilities. If not selected, will use \"Second Model\".",
     "translation_display_mode_desc": "How translations of selected chat text are presented. Aligned shows phrase-by-phrase source/target pairs; Streaming outputs only the translation, token by token.",
     "qbank_ai_grading_desc": "Used for AI grading and AI analysis in question banks. If not configured, it falls back to \"Second Model\".",
     "voice_input_asr_desc": "Used for voice input and audio/video transcription (subtitles, search, handouts). All ASR-capable models stay visible here; unsupported providers are shown as coming soon, and transcripts are inserted without auto-send.",
-    "image_generation_desc": "Used by the built-in Chat V2 image generation tool. Pick a model that supports the OpenAI-compatible /images/generations API. Results are saved to VFS.",
-    "vl_reranker_desc": "Used to rerank multimodal RAG retrieval results, improving relevance for mixed image-text retrieval (optional configuration)",
+    "image_generation_desc": "Generates study illustrations, concept diagrams, and question figures in chat, saving them to your study file library.",
+    "vl_reranker_desc": "Re-orders mixed image-and-text search hits to improve accuracy on slides and scanned pages (optional)",
     "bing_rss_desc": "A built-in basic search source that needs no API key. The public endpoint may rate-limit requests and is provided on a best-effort basis.",
     "google_cse_desc": "Google Custom Search API for accurate and comprehensive web search.",
     "serpapi_desc": "An aggregation API wrapping Google, Bing, and other search engines.",
@@ -2454,7 +2465,7 @@
     "title": "Lance Vector Table Optimization",
     "description": "Compact files, prune old versions, improve query performance",
     "chat_table": "Chat History Table",
-    "vfs_table": "VFS Table",
+    "vfs_table": "Study File Library Table",
     "optimize_all": "Optimize All Tables",
     "optimize": "Optimize",
     "optimizing": "Optimizing...",
@@ -2523,7 +2534,7 @@
     "strategy_hint": "Strategy (applies to this engine, defaults to 'default')"
   },
   "mcp_policy": {
-    "advertise_all": "Advertise All Tools (Not Recommended)",
+    "advertise_all": "Expose All Tools to Model (Not Recommended)",
     "whitelist_mode_hint": "When disabled, uses whitelist mode, only allowing specified safe tools",
     "whitelist_label": "Allowed Tools (Whitelist)",
     "blacklist_label": "Disabled Tools (Blacklist)",
@@ -2824,20 +2835,20 @@
   },
   "data_governance": {
     "backup_tiers": {
-      "core_label": "Core Data (P0)",
-      "core_desc": "Chat history(chat_v2.db), VFS(vfs.db), Main DB(cards/settings)",
-      "important_label": "Important Data (P1)",
-      "important_desc": "P0 + LLM usage stats(llm_usage.db), Note attachments(notes_assets/)",
-      "rebuildable_label": "Rebuildable Data (P2)",
-      "rebuildable_desc": "P0-P1 + Vector index(lance/), can be rebuilt via re-indexing",
-      "large_assets_label": "Large Assets (P3)",
-      "large_assets_desc": "P0-P2 + Images/Documents/Videos and other media files"
+      "core_label": "Core Data (Essential)",
+      "core_desc": "Chat history, study file library catalog, flashcards, mistakes, and settings",
+      "important_label": "Important Data (Recommended)",
+      "important_desc": "Includes Core Data plus AI usage statistics and note attachments",
+      "rebuildable_label": "Rebuildable Data (Optional)",
+      "rebuildable_desc": "Includes Core & Important Data plus knowledge search indexes (can be regenerated)",
+      "large_assets_label": "Large Assets (Media Files)",
+      "large_assets_desc": "Includes everything above plus images, documents, audio/video, and other large study files"
     },
     "asset_types": {
       "images": "Images",
       "notes_assets": "Note Attachments",
       "documents": "Documents",
-      "vfs_blobs": "VFS Storage",
+      "vfs_blobs": "File Library Originals",
       "subjects": "Subject Resources",
       "workspaces": "Workspaces",
       "audio": "Audio",
@@ -3290,7 +3301,7 @@
       "fullReadyTitle": "Models and Vector Index Configured",
       "fullReadySummary": "Enabled {{modelCount}} core models, populated {{slotCount}} slots, and bound {{dimension}}-dim vector index.",
       "chatOnlyTitle": "Chat & Study Models Ready (No Embedding Model Found)",
-      "chatOnlyDescription": "Populated {{slotCount}} chat and specialist slots. This provider has no Embeddings endpoint, so Library RAG will run in keyword FTS mode until an embedding key is added.",
+      "chatOnlyDescription": "Assigned {{slotCount}} chat and study model slots automatically. This provider does not offer a semantic embedding model yet, so your library will use keyword search for now; you can add an embedding-capable key anytime to unlock semantic search.",
       "enterAppCta": "Start Learning"
     },
     "errors": {

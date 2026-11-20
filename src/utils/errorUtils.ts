@@ -260,6 +260,15 @@ export function detectThinkingBudgetError(error: unknown): {
  */
 function sanitizeErrorMessage(message: string): string {
   let out = message || '';
+  if (/^\s*UNSUPPORTED_ON_PLATFORM\s*:/i.test(out)) {
+    const detail = out.replace(/^\s*UNSUPPORTED_ON_PLATFORM\s*:\s*/i, '').trim();
+    return i18n.t('common:utils.errors.unsupported_on_platform', {
+      defaultValue: detail
+        ? `当前设备暂不支持此功能（${detail}），请在桌面端使用。`
+        : '当前设备暂不支持此功能，请在桌面端使用。',
+      detail,
+    });
+  }
   // 1) 脱敏常见的 Cargo/Crates 源码路径（index.crates.io/.../crate-x.y.z/src/...）
   out = out.replace(/\/?[A-Za-z]:?[^\s]*?index\.crates\.io[^\s]*/gi, '[crates-src]');
   // 2) 脱敏常见的用户主目录路径（/Users/<name>/..., C:\\Users\\<name>\\...）

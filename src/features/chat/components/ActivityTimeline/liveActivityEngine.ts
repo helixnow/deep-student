@@ -576,6 +576,47 @@ export function summarizeTurnActivity(items: readonly LiveActivityItem[]): TurnA
   };
 }
 
+export function formatTurnActivitySummary(
+  summary: TurnActivitySummary,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const segments: string[] = [];
+  if (summary.filesChanged > 0) {
+    const base = t('timeline.summary.files', {
+      count: summary.filesChanged,
+      defaultValue: summary.filesChanged === 1 ? '1 file' : `${summary.filesChanged} files`,
+    });
+    if (summary.linesAdded > 0 || summary.linesDeleted > 0) {
+      segments.push(`${base} +${summary.linesAdded}/-${summary.linesDeleted}`);
+    } else {
+      segments.push(base);
+    }
+  }
+  if (summary.exploredCount > 0) {
+    segments.push(t('timeline.summary.explored', { defaultValue: 'Explored' }));
+  }
+  if (summary.commandsRun > 0) {
+    segments.push(
+      t('timeline.summary.commands', {
+        count: summary.commandsRun,
+        defaultValue: summary.commandsRun === 1 ? 'Ran 1 command' : `Ran ${summary.commandsRun} commands`,
+      }),
+    );
+  }
+  if (summary.researchedCount > 0) {
+    segments.push(t('timeline.summary.researched', { defaultValue: 'Researched' }));
+  }
+  if (summary.subagentsUsed > 0) {
+    segments.push(
+      t('timeline.summary.subagents', {
+        count: summary.subagentsUsed,
+        defaultValue: summary.subagentsUsed === 1 ? 'Used 1 subagent' : `Used ${summary.subagentsUsed} subagents`,
+      }),
+    );
+  }
+  return segments.join(' · ');
+}
+
 // ============================================================================
 // 4. 最小扫光时长锁（1000ms 静态导航工具 / 300ms 可展开工具）
 // ============================================================================

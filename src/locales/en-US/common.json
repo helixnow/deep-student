@@ -3512,6 +3512,7 @@
       "import_not_implemented": "Import feature not implemented",
       "upload_failed": "Upload failed",
       "unknown_error_occurred": "An unknown error occurred",
+      "unsupported_on_platform": "This feature is not supported on this device. Please use the desktop app.",
       "unserializable_error": "An unserializable error occurred",
       "tts_unavailable": "Text-to-speech unavailable",
       "tts_not_supported": "Text-to-speech not supported in current environment"

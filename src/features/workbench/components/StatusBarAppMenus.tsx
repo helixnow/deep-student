@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { appRegistry } from '../core/appRegistry';
 import { useWindowStore } from '../core/windowStore';
 import { useWorkbenchOverlay } from '../core/shortcuts';
+import { useAppsPanelOpen } from './appsPanelStore';
 import { StatusBarMenu } from './StatusBarMenu';
 import { MenuBarRows, menuBarWindows, useAppMenuRows, useMenuBarTranslate } from './MenuBarRows';
 
@@ -54,15 +55,16 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({ onOpenChan
   const windowButtonRef = useRef<HTMLButtonElement | null>(null);
   const { windowId: focusedWindowId, typeId: focusedTypeId } = useFocusedApp();
   const exposeOpen = useWorkbenchOverlay((s) => s.exposeOpen);
+  const appsPanelOpen = useAppsPanelOpen();
 
   useEffect(() => {
     onOpenChange?.(openMenu !== null);
   }, [openMenu, onOpenChange]);
 
   useEffect(() => {
-    // Exposé 打开时收起菜单（与学习中心 / 品牌菜单同语义）
-    if (exposeOpen) setOpenMenu(null);
-  }, [exposeOpen]);
+    // Exposé 或统一搜索面板（⌘K）打开时收起菜单（与学习中心 / 品牌菜单同语义）
+    if (exposeOpen || appsPanelOpen) setOpenMenu(null);
+  }, [exposeOpen, appsPanelOpen]);
 
   const closeMenus = useCallback(() => setOpenMenu(null), []);
   const focusedDef = focusedTypeId ? appRegistry.get(focusedTypeId) : undefined;

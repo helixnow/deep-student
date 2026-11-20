@@ -174,6 +174,9 @@ function HeatmapTooltip({ hover, metric }: { hover: HoverState; metric: Learning
       >
         <div className="lh-tooltip-header">
           <span className="lh-tooltip-date">{formatDate(dateKey, i18n.language)}</span>
+          {studySeconds > 0 && (
+            <span className="lh-tooltip-badge">{formatStudyDuration(studySeconds, t)}</span>
+          )}
         </div>
         {studySeconds > 0 ? (
           <div className="lh-tooltip-details">
@@ -181,6 +184,12 @@ function HeatmapTooltip({ hover, metric }: { hover: HoverState; metric: Learning
               <span>{t('heatmap.duration.label')}</span>
               <span className="lh-tooltip-value">{formatStudyDuration(studySeconds, t)}</span>
             </div>
+            {count > 0 && (
+              <div className="lh-tooltip-row">
+                <span>{t('heatmap.stats.totalActivities')}</span>
+                <span className="lh-tooltip-value">{t('heatmap.tooltip.activitiesCount', { count })}</span>
+              </div>
+            )}
           </div>
         ) : (
           <div className="lh-tooltip-empty">{t('heatmap.duration.noRecord')}</div>
@@ -198,7 +207,11 @@ function HeatmapTooltip({ hover, metric }: { hover: HoverState; metric: Learning
     >
       <div className="lh-tooltip-header">
         <span className="lh-tooltip-date">{formatDate(dateKey, i18n.language)}</span>
-        {count > 0 && <span className="lh-tooltip-badge">{count}</span>}
+        {count > 0 && (
+          <span className="lh-tooltip-badge">
+            {t('heatmap.tooltip.activitiesCount', { count })}
+          </span>
+        )}
       </div>
       {count > 0 && activity ? (
         <div className="lh-tooltip-details">
@@ -209,6 +222,12 @@ function HeatmapTooltip({ hover, metric }: { hover: HoverState; metric: Learning
                 <span className="lh-tooltip-value">{activity.details[key]}</span>
               </div>
             ) : null
+          )}
+          {studySeconds > 0 && (
+            <div className="lh-tooltip-row">
+              <span>{t('heatmap.duration.label')}</span>
+              <span className="lh-tooltip-value">{formatStudyDuration(studySeconds, t)}</span>
+            </div>
           )}
         </div>
       ) : (
@@ -277,7 +296,7 @@ export function LearningHeatmap({
   showStats = true,
   hideTitle = false,
 }: LearningHeatmapProps) {
-  const { t } = useTranslation('stats');
+  const { t, i18n } = useTranslation('stats');
   const {
     data,
     loading,
@@ -293,6 +312,7 @@ export function LearningHeatmap({
   const [metric, setMetric] = useState<LearningHeatmapMetric>('activity');
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<HoverState | null>(null);
 
   // 📱 触屏：格子/间距放大便于点按；tooltip 改为点击显示（无 hover）
@@ -303,6 +323,15 @@ export function LearningHeatmap({
 
   const grid = useMemo(() => buildGrid(months), [months]);
   const todayKey = toDateKey(grid.today);
+  const orderedDateKeys = useMemo(
+    () =>
+      grid.weeks.flatMap((week) =>
+        week.filter((day) => day <= grid.today).map((day) => toDateKey(day)),
+      ),
+    [grid],
+  );
+  const [focusedDateKey, setFocusedDateKey] = useState<string>(() => todayKey);
+  const activeFocusDateKey = orderedDateKeys.includes(focusedDateKey) ? focusedDateKey : todayKey;
 
   // 日期 → 活动索引
   const byDate = useMemo(() => {
@@ -380,6 +409,77 @@ export function LearningHeatmap({
 
   const clearHover = useCallback(() => setHover(null), []);
 
+  const cellAriaLabel = useCallback(
+    (dateKey: string) => {
+      const formattedDate = formatDate(dateKey, i18n.language);
+      const act = byDate.get(dateKey);
+      if (metric === 'duration') {
+        const secs = act?.studySeconds ?? 0;
+        return secs > 0
+          ? t('heatmap.tooltip.cellAriaDuration', {
+              date: formattedDate,
+              duration: formatStudyDuration(secs, t),
+            })
+          : t('heatmap.tooltip.cellAriaDurationEmpty', { date: formattedDate });
+      }
+      const cnt = act?.count ?? 0;
+      return cnt > 0
+        ? t('heatmap.tooltip.cellAriaActivity', { date: formattedDate, count: cnt })
+        : t('heatmap.tooltip.cellAriaActivityEmpty', { date: formattedDate });
+    },
+    [byDate, i18n.language, metric, t],
+  );
+
+  // 键盘聚焦漫游：Roving tabIndex + 方向键按天/按周移动，聚焦即显示精确日期与读数
+  const handleGridFocus = useCallback(
+    (e: React.FocusEvent<HTMLDivElement>) => {
+      const target = e.target as HTMLElement;
+      const dateKey = target.dataset?.date;
+      if (!dateKey) return;
+      setFocusedDateKey(dateKey);
+      showTooltipFor(target, dateKey);
+    },
+    [showTooltipFor],
+  );
+
+  const handleGridBlur = useCallback(
+    (e: React.FocusEvent<HTMLDivElement>) => {
+      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+        clearHover();
+      }
+    },
+    [clearHover],
+  );
+
+  const handleGridKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if (e.key === 'Escape') {
+        if (hover) {
+          e.preventDefault();
+          clearHover();
+        }
+        return;
+      }
+      const deltaMap: Record<string, number> = {
+        ArrowLeft: -7,
+        ArrowRight: 7,
+        ArrowUp: -1,
+        ArrowDown: 1,
+      };
+      const delta = deltaMap[e.key];
+      if (delta === undefined || orderedDateKeys.length === 0) return;
+      const curIdx = orderedDateKeys.indexOf(activeFocusDateKey);
+      const baseIdx = curIdx >= 0 ? curIdx : orderedDateKeys.length - 1;
+      const nextIdx = Math.min(orderedDateKeys.length - 1, Math.max(0, baseIdx + delta));
+      const nextKey = orderedDateKeys[nextIdx];
+      if (!nextKey) return;
+      e.preventDefault();
+      setFocusedDateKey(nextKey);
+      gridRef.current?.querySelector<HTMLElement>(`[data-date="${nextKey}"]`)?.focus();
+    },
+    [activeFocusDateKey, clearHover, hover, orderedDateKeys],
+  );
+
   // 📱 触屏：点格子显示 tooltip，再点同格或空白处关闭
   const handleGridClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -419,7 +519,7 @@ export function LearningHeatmap({
           variant="ghost"
           size="sm"
           onClick={refresh}
-          className="!px-3 !py-1.5 !h-auto [@media(pointer:coarse)]:!min-h-11 text-xs font-medium hover:bg-[var(--interactive-hover)]"
+          className="!px-3 !py-1.5 !h-auto text-xs font-medium hover:bg-[var(--interactive-hover)]"
         >
           <ArrowsClockwise size={12} />
           {t('heatmap.retry')}
@@ -427,6 +527,8 @@ export function LearningHeatmap({
       </div>
     );
   }
+
+  const currentActiveDays = metric === 'duration' ? studyDays : activeDays;
 
   return (
     <div className={cn('flex flex-col', className)}>
@@ -471,21 +573,18 @@ export function LearningHeatmap({
             >
               <span className="font-mono tabular-nums">
                 {t('heatmap.duration.currentStreak', {
-                  defaultValue: '连续 {{count}} 天',
                   count: durationSummary.currentStreak,
                 })}
               </span>
               <span className="h-2.5 w-px bg-border/35" />
               <span className="font-mono tabular-nums">
                 {t('heatmap.duration.longestStreak', {
-                  defaultValue: '最长连续 {{count}} 天',
                   count: durationSummary.longestStreak,
                 })}
               </span>
               <span className="h-2.5 w-px bg-border/35" />
               <span className="font-mono tabular-nums">
                 {t('heatmap.duration.last7Active', {
-                  defaultValue: '近 7 日活跃 {{count}}/7 天',
                   count: durationSummary.last7DaysActiveDays,
                 })}
               </span>
@@ -498,6 +597,32 @@ export function LearningHeatmap({
             <StatsCard icon={<Lightning size={16} />} label={t('heatmap.stats.maxDaily')} value={maxCount} />
           </div>
         )
+      )}
+
+      {/* 新用户初期 0 天 / 1–3 天正向鼓励条 */}
+      {!loading && currentActiveDays === 0 && (
+        <div
+          data-testid="heatmap-onboarding-banner"
+          className="ui-rise-in motion-reduce:animate-none mb-4 flex flex-col gap-0.5 rounded-lg border border-primary/15 bg-primary/[0.04] px-3.5 py-2.5"
+        >
+          <span className="text-xs font-medium text-foreground">
+            {t('heatmap.onboarding.zeroTitle')}
+          </span>
+          <span className="text-xs text-muted-foreground">
+            {metric === 'duration'
+              ? t('heatmap.onboarding.zeroDurationHint')
+              : t('heatmap.onboarding.zeroActivityHint')}
+          </span>
+        </div>
+      )}
+      {!loading && currentActiveDays > 0 && currentActiveDays <= 3 && (
+        <div
+          data-testid="heatmap-onboarding-banner"
+          className="ui-rise-in motion-reduce:animate-none mb-4 flex items-center gap-2 rounded-lg border border-[color:hsl(var(--success))]/20 bg-[color:hsl(var(--success))]/[0.05] px-3 py-2 text-xs text-muted-foreground"
+        >
+          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[color:hsl(var(--success))]" aria-hidden="true" />
+          <span>{t('heatmap.onboarding.earlyStreakHint', { count: currentActiveDays })}</span>
+        </div>
       )}
 
       {/* 热力图主体：左侧固定星期标签 + 右侧可横滚网格 */}
@@ -537,6 +662,7 @@ export function LearningHeatmap({
 
               {/* 网格 */}
               <div
+                ref={gridRef}
                 className="lh-grid"
                 style={{
                   gridTemplateRows: `repeat(7, ${cell}px)`,
@@ -546,7 +672,10 @@ export function LearningHeatmap({
                 onMouseOver={handleGridOver}
                 onMouseLeave={clearHover}
                 onClick={handleGridClick}
-                role="img"
+                onFocus={handleGridFocus}
+                onBlur={handleGridBlur}
+                onKeyDown={handleGridKeyDown}
+                role="group"
                 aria-label={
                   metric === 'duration'
                     ? t('heatmap.duration.totalAria', { duration: formatStudyDuration(totalStudySeconds, t) })
@@ -562,7 +691,12 @@ export function LearningHeatmap({
                     return (
                       <div
                         key={dateKey}
-                        className={cn('lh-cell', dateKey === todayKey && 'is-today')}
+                        tabIndex={dateKey === activeFocusDateKey ? 0 : -1}
+                        aria-label={cellAriaLabel(dateKey)}
+                        className={cn(
+                          'lh-cell outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 motion-reduce:transition-none',
+                          dateKey === todayKey && 'is-today',
+                        )}
                         data-level={levelOf(byDate.get(dateKey))}
                         data-date={dateKey}
                       />
@@ -578,19 +712,44 @@ export function LearningHeatmap({
         </CustomScrollArea>
       </div>
 
-      {/* 图例 */}
+      {/* 图例 + 分档刻度说明 */}
       {showLegend && !loading && (
         <div
-          className="flex items-center justify-end gap-2 mt-3 px-1"
+          className="mt-3 flex flex-wrap items-center justify-between gap-2 px-1"
           title={metric === 'duration' ? t('heatmap.duration.legendHint') : undefined}
         >
-          <span className="lh-legend-label">{t('heatmap.legend.less', 'Less')}</span>
-          <div className="flex" style={{ gap }}>
-            {[0, 1, 2, 3, 4].map(level => (
-              <div key={level} className="lh-cell lh-cell-static" data-level={level} />
-            ))}
+          <span
+            data-testid="heatmap-legend-caption"
+            className="text-2xs font-mono tabular-nums text-muted-foreground/70"
+          >
+            {metric === 'duration'
+              ? t('heatmap.legend.durationScale')
+              : maxCount > 0
+                ? t('heatmap.legend.activityScalePeak', { peak: maxCount })
+                : t('heatmap.legend.activityScale')}
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="lh-legend-label">{t('heatmap.legend.less')}</span>
+            <div className="flex" style={{ gap }}>
+              {[0, 1, 2, 3, 4].map(level => {
+                const levelLabel = t(
+                  metric === 'duration'
+                    ? `heatmap.legend.durationLevel${level}`
+                    : `heatmap.legend.activityLevel${level}`,
+                );
+                return (
+                  <div
+                    key={level}
+                    className="lh-cell"
+                    data-level={level}
+                    title={levelLabel}
+                    aria-label={levelLabel}
+                  />
+                );
+              })}
+            </div>
+            <span className="lh-legend-label">{t('heatmap.legend.more')}</span>
           </div>
-          <span className="lh-legend-label">{t('heatmap.legend.more', 'More')}</span>
         </div>
       )}
     </div>

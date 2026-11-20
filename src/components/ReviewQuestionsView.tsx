@@ -6,16 +6,19 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
+import { Input } from '@/components/ui/shad/Input';
 import {
+  BookOpen,
   Cards,
   Check,
+  MagnifyingGlass,
+  Play,
   X,
   CaretRight as CaretRight,
   Trash as Trash,
   ArrowsClockwise as ArrowClockwise,
   Lightning as Lightning,
   Trophy as Award,
-  Warning as Warning,
 } from '@phosphor-icons/react';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { getReviewQuestionTypeMeta } from '@/components/review/reviewQuestionTypeMeta';
@@ -23,6 +26,8 @@ import { ERROR_CAUSE_STYLE, getErrorCauses } from '@/components/review/errorCaus
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { generateCardsFromText } from '@/features/anki/generateCardsFromText';
 import { CardMathText } from '@/features/flashcards/cardMathPreview';
+import { useMotionPresence } from '@/hooks/useMotionPresence';
+import { practiceAnswerText } from '@/components/practice/practiceAnswerText';
 import { useTranslation, Trans } from 'react-i18next';
 import type { Question, QuestionBankStats, Difficulty } from '@/api/questionBankApi';
 import './ReviewQuestionsView.css';
@@ -79,15 +84,45 @@ const DIFFICULTY_CONFIG: Record<Difficulty, { color: string }> = {
   very_hard: { color: 'text-destructive' },
 };
 
+const DIFFICULTY_ORDER: readonly Difficulty[] = ['easy', 'medium', 'hard', 'very_hard'];
+
+/** 展开错题对比时，将客观题选项字母或结构化作答还原为学生易读文本 */
+function formatMistakeAnswerDisplay(
+  question: Question,
+  raw: string | null | undefined,
+  trueFalseLabels: { true: string; false: string },
+): string {
+  const trimmed = (raw ?? '').trim();
+  if (!trimmed) return '';
+  if (question.questionType === 'true_false' && (trimmed === 'true' || trimmed === 'false')) {
+    return trueFalseLabels[trimmed];
+  }
+  if (question.options && question.options.length > 0) {
+    const normalizedKeys = trimmed
+      .toUpperCase()
+      .replace(/[,，\s]+/g, '')
+      .split('');
+    const matched = question.options.filter((opt) =>
+      normalizedKeys.includes(opt.key.toUpperCase()),
+    );
+    if (matched.length > 0 && matched.length === normalizedKeys.length) {
+      return matched.map((opt) => `${opt.key}. ${opt.content}`).join('\n');
+    }
+  }
+  return practiceAnswerText(question, trimmed);
+}
+
 /**
- * 错题统计卡片
+ * 错题统计卡片（难度分布胶囊支持点击筛选）
  */
 const ReviewStatsCard: React.FC<{
   reviewQuestions: Question[];
   totalQuestions: number;
   stats?: QuestionBankStats;
-}> = ({ reviewQuestions, totalQuestions, stats }) => {
-  const { t } = useTranslation(['review']);
+  difficultyFilter?: Difficulty | 'all';
+  onDifficultyToggle?: (difficulty: Difficulty) => void;
+}> = ({ reviewQuestions, stats, difficultyFilter = 'all', onDifficultyToggle }) => {
+  const { t } = useTranslation(['review', 'practice']);
   // 计算复习相关统计
   const reviewCount = reviewQuestions.length;
   const totalAttempts = reviewQuestions.reduce((sum, q) => sum + (q.attemptCount || 0), 0);
@@ -108,6 +143,13 @@ const ReviewStatsCard: React.FC<{
   const progressPercent = (masteredCount + reviewCount) > 0 
     ? (masteredCount / (masteredCount + reviewCount)) * 100 
     : 100;
+
+  const dotClass: Record<Difficulty, string> = {
+    easy: 'bg-success',
+    medium: 'bg-warning',
+    hard: 'bg-destructive/80',
+    very_hard: 'bg-destructive',
+  };
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs">
@@ -137,33 +179,32 @@ const ReviewStatsCard: React.FC<{
         </div>
       </div>
 
-      {/* 难度分布 - 简化 */}
+      {/* 难度分布 - 可交互快速筛选胶囊 */}
       {reviewCount > 0 && (
-        <div className="hidden md:flex items-center gap-2 font-mono text-xs tabular-nums">
-          {byDifficulty.easy > 0 && (
-            <span className="flex items-center gap-1 text-success">
-              <span className="h-1.5 w-1.5 rounded-full bg-success" />
-              {byDifficulty.easy}
-            </span>
-          )}
-          {byDifficulty.medium > 0 && (
-            <span className="flex items-center gap-1 text-warning">
-              <span className="h-1.5 w-1.5 rounded-full bg-warning" />
-              {byDifficulty.medium}
-            </span>
-          )}
-          {byDifficulty.hard > 0 && (
-            <span className="flex items-center gap-1 text-destructive/80">
-              <span className="h-1.5 w-1.5 rounded-full bg-destructive/80" />
-              {byDifficulty.hard}
-            </span>
-          )}
-          {byDifficulty.very_hard > 0 && (
-            <span className="flex items-center gap-1 text-destructive">
-              <span className="h-1.5 w-1.5 rounded-full bg-destructive" />
-              {byDifficulty.very_hard}
-            </span>
-          )}
+        <div className="hidden md:flex items-center gap-1 font-mono text-xs tabular-nums">
+          {DIFFICULTY_ORDER.map((diff) => {
+            const count = byDifficulty[diff] ?? 0;
+            const active = difficultyFilter === diff;
+            if (count <= 0 && !active) return null;
+            return (
+              <DsButton
+                key={diff}
+                variant="ghost"
+                size="sm"
+                aria-pressed={active}
+                onClick={() => onDifficultyToggle?.(diff)}
+                className={cn(
+                  '!h-6 !px-2 !py-0 !rounded-pill gap-1 text-xs transition-colors motion-reduce:transition-none',
+                  DIFFICULTY_CONFIG[diff].color,
+                  active ? 'bg-foreground/[0.08] ring-1 ring-border font-semibold' : 'hover:bg-foreground/[0.04]',
+                )}
+              >
+                <span className={cn('h-1.5 w-1.5 rounded-full', dotClass[diff])} aria-hidden="true" />
+                <span className="font-sans text-2xs">{t(`review:questions.difficulty.${diff}`)}</span>
+                <span>{count}</span>
+              </DsButton>
+            );
+          })}
         </div>
       )}
     </div>
@@ -184,7 +225,8 @@ const ReviewQuestionCard: React.FC<{
   onToggleExpand: () => void;
   onRedo?: () => void;
 }> = ({ question, originalIndex, isSelected, isExpanded, onSelect, onToggleExpand, onRedo }) => {
-  const { t } = useTranslation(['review']);
+  const { t } = useTranslation(['review', 'practice']);
+  const presence = useMotionPresence(isExpanded, { exitMs: 200, enter: 'transition' });
   const attemptCount = question.attemptCount || 0;
   const correctCount = question.correctCount || 0;
   const errorRate = attemptCount > 0 ? ((attemptCount - correctCount) / attemptCount * 100).toFixed(0) : '100';
@@ -208,7 +250,19 @@ const ReviewQuestionCard: React.FC<{
   }, [question.lastAttemptAt, t]);
 
   const [explanationExpanded, setExplanationExpanded] = useState(false);
-  const hasUserAnswer = Boolean(question.userAnswer?.trim());
+  const trueFalseLabels = useMemo(
+    () => ({ true: t('practice:batch.true'), false: t('practice:batch.false') }),
+    [t],
+  );
+  const formattedUserAnswer = useMemo(
+    () => formatMistakeAnswerDisplay(question, question.userAnswer, trueFalseLabels),
+    [question, trueFalseLabels],
+  );
+  const formattedCorrectAnswer = useMemo(
+    () => formatMistakeAnswerDisplay(question, question.answer, trueFalseLabels),
+    [question, trueFalseLabels],
+  );
+  const hasUserAnswer = Boolean(formattedUserAnswer);
   const stemText = question.content || question.ocrText || '';
   const explanationText = question.explanation?.trim() || '';
   const isLongExplanation = explanationText.length > 220 || explanationText.split('\n').length > 4;
@@ -216,12 +270,12 @@ const ReviewQuestionCard: React.FC<{
   return (
     <div
       className={cn(
-        'rounded-md transition-colors',
+        'rounded-lg border border-transparent transition-colors motion-reduce:transition-none',
         // 长列表渲染优化：视口外卡片跳过渲染（记忆上次尺寸避免滚动条跳动）
         '[content-visibility:auto] [contain-intrinsic-size:auto_52px]',
-        isSelected && 'bg-warning/10',
-        !isSelected && isExpanded && 'bg-muted/30',
-        !isSelected && !isExpanded && 'hover:bg-accent'
+        isSelected && 'bg-warning/10 border-warning/25',
+        !isSelected && isExpanded && 'bg-muted/35 border-border/45',
+        !isSelected && !isExpanded && 'hover:bg-accent/70 hover:border-border/35'
       )}
     >
       <div className="group flex items-center gap-2 px-2 py-1.5 [@media(pointer:coarse)]:min-h-11">
@@ -284,7 +338,7 @@ const ReviewQuestionCard: React.FC<{
           {errorCauses.length > 0 && (
             <span
               className={cn(
-                'hidden sm:inline-flex shrink-0 items-center rounded-pill px-1.5 py-0.5 text-[10px] font-medium',
+                'hidden sm:inline-flex shrink-0 items-center rounded-pill px-1.5 py-0.5 text-2xs font-medium',
                 ERROR_CAUSE_STYLE[errorCauses[0]]
               )}
             >
@@ -302,7 +356,7 @@ const ReviewQuestionCard: React.FC<{
           <CaretRight
             size={16}
             className={cn(
-              'shrink-0 transition-transform duration-200 ease-standard',
+              'shrink-0 transition-transform duration-200 ease-standard motion-reduce:transition-none',
               isExpanded
                 ? 'rotate-90 text-muted-foreground/60'
                 : 'text-muted-foreground/0 group-hover:text-muted-foreground/60 [@media(pointer:coarse)]:text-muted-foreground/40'
@@ -311,16 +365,17 @@ const ReviewQuestionCard: React.FC<{
         </button>
       </div>
 
-      {/* 内联展开：我的答案 vs 正确答案对比 + 快速重做（grid-rows 展开动画） */}
-      <div
-        className={cn(
-          'grid transition-[grid-template-rows,opacity] duration-200 ease-standard motion-reduce:transition-none',
-          isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
-        )}
-      >
-        <div className="min-h-0 overflow-hidden">
-          {isExpanded && (
-            <div className="rqv-math px-2 pb-2 pt-0.5 sm:pl-[4.5rem]">
+      {/* 内联展开：我的答案 vs 正确答案对比 + 快速重做（grid-rows 平滑展开/收起动画） */}
+      {presence.mounted && (
+        <div
+          aria-hidden={presence.exiting ? true : undefined}
+          className={cn(
+            'grid transition-[grid-template-rows,opacity] duration-200 ease-standard motion-reduce:transition-none',
+            presence.shown ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'
+          )}
+        >
+          <div className="min-h-0 overflow-hidden">
+            <div className="rqv-math px-2 pb-2.5 pt-0.5 sm:pl-[4.5rem]">
               {/* 错因标签完整列表（窄屏行内只显示首个，这里补全） */}
               {errorCauses.length > 0 && (
                 <div className="mb-2 flex flex-wrap items-center gap-1.5">
@@ -328,7 +383,7 @@ const ReviewQuestionCard: React.FC<{
                     <span
                       key={cause}
                       className={cn(
-                        'inline-flex items-center rounded-pill px-1.5 py-0.5 text-[10px] font-medium',
+                        'inline-flex items-center rounded-pill px-1.5 py-0.5 text-2xs font-medium',
                         ERROR_CAUSE_STYLE[cause]
                       )}
                     >
@@ -349,7 +404,7 @@ const ReviewQuestionCard: React.FC<{
                     hasUserAnswer ? 'text-foreground/90 underline decoration-destructive/45 decoration-wavy underline-offset-4' : 'italic text-muted-foreground'
                   )}>
                     {hasUserAnswer
-                      ? <CardMathText text={question.userAnswer ?? ''} />
+                      ? <CardMathText text={formattedUserAnswer} />
                       : t('review:questions.noAnswerRecorded')}
                   </p>
                 </div>
@@ -361,10 +416,10 @@ const ReviewQuestionCard: React.FC<{
                   </p>
                   <p className={cn(
                     'text-sm leading-relaxed break-words whitespace-pre-wrap',
-                    question.answer?.trim() ? 'font-medium text-foreground' : 'italic text-muted-foreground'
+                    formattedCorrectAnswer ? 'font-medium text-foreground' : 'italic text-muted-foreground'
                   )}>
-                    {question.answer?.trim()
-                      ? <CardMathText text={question.answer.trim()} />
+                    {formattedCorrectAnswer
+                      ? <CardMathText text={formattedCorrectAnswer} />
                       : t('review:questions.noContent')}
                   </p>
                 </div>
@@ -385,18 +440,19 @@ const ReviewQuestionCard: React.FC<{
                     <CardMathText text={explanationText} />
                   </p>
                   {isLongExplanation && (
-                    <button
-                      type="button"
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
                         setExplanationExpanded((prev) => !prev);
                       }}
-                      className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                      className="mt-1 !px-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
                     >
                       {explanationExpanded
-                        ? t('review:questions.collapseExplanation', { defaultValue: '收起解析' })
-                        : t('review:questions.expandExplanation', { defaultValue: '展开全文' })}
-                    </button>
+                        ? t('practice:questionBank.collapseExplanation')
+                        : t('practice:questionBank.expandExplanation')}
+                    </DsButton>
                   )}
                 </div>
               )}
@@ -408,7 +464,7 @@ const ReviewQuestionCard: React.FC<{
                     variant="warning"
                     size="sm"
                     onClick={onRedo}
-                    className="gap-1.5 !h-auto min-h-8 [@media(pointer:coarse)]:!min-h-[44px] !px-2.5 !py-1 text-xs"
+                    className="gap-1.5 text-xs"
                   >
                     <ArrowClockwise size={13} />
                     {t('review:questions.redo')}
@@ -416,27 +472,69 @@ const ReviewQuestionCard: React.FC<{
                 </div>
               )}
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
 
 /**
- * 空状态
+ * 零错题空状态（区分「尚未练习」与「已全部掌握」两种学生情境）
  */
-const EmptyState: React.FC = () => {
-  const { t } = useTranslation(['review']);
+const EmptyState: React.FC<{
+  hasPracticedAny: boolean;
+  hasQuestions: boolean;
+  masteredCount: number;
+  onStartFirstPractice?: () => void;
+}> = ({ hasPracticedAny, hasQuestions, masteredCount, onStartFirstPractice }) => {
+  const { t } = useTranslation(['review', 'practice']);
   return (
-    <div className="flex h-full flex-col items-center justify-center py-12">
-      <div className="mb-3 rounded-md bg-muted p-2">
-        <Award className="h-7 w-7 text-muted-foreground" />
+    <div className="ui-rise-in motion-reduce:animate-none flex h-full flex-col items-center justify-center px-6 py-12 text-center">
+      <div className={cn(
+        'mb-3.5 flex h-12 w-12 items-center justify-center rounded-xl border',
+        hasPracticedAny
+          ? 'border-success/25 bg-success/10 text-success'
+          : 'border-border/50 bg-muted/60 text-muted-foreground',
+      )}>
+        {hasPracticedAny ? <Award className="h-6 w-6" /> : <BookOpen className="h-6 w-6" />}
       </div>
-      <h3 className="mb-1 text-sm font-medium">{t('review:questions.emptyTitle')}</h3>
-      <p className="max-w-sm text-center text-sm text-muted-foreground">
-        <Trans i18nKey="review:questions.emptyDesc" components={{ br: <br /> }} />
-      </p>
+      <h3 className="mb-1.5 text-sm font-medium text-foreground">
+        {hasPracticedAny ? t('review:questions.emptyTitle') : t('practice:reviewView.noPracticeYetTitle')}
+      </h3>
+      {hasPracticedAny ? (
+        <p className="max-w-sm text-sm text-muted-foreground">
+          <Trans i18nKey="review:questions.emptyDesc" components={{ br: <br /> }} />
+        </p>
+      ) : (
+        <p className="max-w-sm text-xs leading-relaxed text-muted-foreground">
+          {t('practice:reviewView.noPracticeYetDesc')}
+        </p>
+      )}
+      {hasPracticedAny && masteredCount > 0 && (
+        <span className="mt-3 inline-flex items-center gap-1.5 rounded-pill border border-success/25 bg-success/10 px-2.5 py-0.5 font-mono text-xs tabular-nums text-success">
+          <Check size={12} weight="bold" aria-hidden="true" />
+          {t('practice:reviewView.masteredBadge', { count: masteredCount })}
+        </span>
+      )}
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        {!hasPracticedAny && hasQuestions && onStartFirstPractice && (
+          <DsButton variant="primary" size="sm" onClick={onStartFirstPractice}>
+            <Play size={13} weight="fill" />
+            {t('practice:reviewView.startFirstPractice')}
+          </DsButton>
+        )}
+        <DsButton
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            void import('@/features/learning-hub/mistakeBook/mistakeBookNavigation')
+              .then(({ openMistakeBook }) => openMistakeBook());
+          }}
+        >
+          {t('review:questions.allMistakes')}
+        </DsButton>
+      </div>
     </div>
   );
 };
@@ -457,6 +555,9 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   // 排序方式：默认题目顺序 / 错误次数降序 / 最近错误在前
   const [sortBy, setSortBy] = useState<ReviewSortBy>('default');
+  // 筛选状态：搜索词 + 难度筛选
+  const [searchQuery, setSearchQuery] = useState('');
+  const [difficultyFilter, setDifficultyFilter] = useState<Difficulty | 'all'>('all');
   // 行内二次确认（无模态框）：首次点击进入待确认态，4s 后自动回退
   const [armedAction, setArmedAction] = useState<'delete' | 'reset' | null>(null);
   const armTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -503,6 +604,31 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
     }
     return list;
   }, [reviewQuestions, sortBy]);
+
+  const trimmedSearch = searchQuery.trim().toLowerCase();
+  const hasActiveFilters = Boolean(trimmedSearch || difficultyFilter !== 'all');
+
+  const filteredReviewQuestions = useMemo(() => {
+    if (!hasActiveFilters) return sortedReviewQuestions;
+    return sortedReviewQuestions.filter((q) => {
+      if (difficultyFilter !== 'all' && q.difficulty !== difficultyFilter) return false;
+      if (trimmedSearch) {
+        const stem = (q.content || q.ocrText || '').toLowerCase();
+        const label = (q.questionLabel || '').toLowerCase();
+        if (!stem.includes(trimmedSearch) && !label.includes(trimmedSearch)) return false;
+      }
+      return true;
+    });
+  }, [sortedReviewQuestions, hasActiveFilters, difficultyFilter, trimmedSearch]);
+
+  const clearReviewFilters = useCallback(() => {
+    setSearchQuery('');
+    setDifficultyFilter('all');
+  }, []);
+
+  const handleDifficultyToggle = useCallback((difficulty: Difficulty) => {
+    setDifficultyFilter((prev) => (prev === difficulty ? 'all' : difficulty));
+  }, []);
 
   // 生成卡片：把选中的错题送进现有制卡链路（CardForge 批次任务）
   const [isGeneratingCards, setIsGeneratingCards] = useState(false);
@@ -563,15 +689,26 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
     });
   }, [disarm]);
 
-  // 全选/取消全选
+  // 全选/取消全选（在筛选激活时作用于当前可见错题列表）
+  const allVisibleSelected = filteredReviewQuestions.length > 0
+    && filteredReviewQuestions.every((q) => selectedIds.has(q.id));
   const toggleSelectAll = useCallback(() => {
     disarm();
-    if (selectedIds.size === reviewQuestions.length) {
-      setSelectedIds(new Set());
+    if (allVisibleSelected) {
+      setSelectedIds((prev) => {
+        if (!hasActiveFilters) return new Set();
+        const next = new Set(prev);
+        for (const q of filteredReviewQuestions) next.delete(q.id);
+        return next;
+      });
     } else {
-      setSelectedIds(new Set(reviewQuestions.map(q => q.id)));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const q of filteredReviewQuestions) next.add(q.id);
+        return next;
+      });
     }
-  }, [selectedIds.size, reviewQuestions, disarm]);
+  }, [allVisibleSelected, filteredReviewQuestions, hasActiveFilters, disarm]);
 
   // 重置选中题目进度
   const handleResetProgress = useCallback(async () => {
@@ -622,7 +759,16 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
 
   // 空状态
   if (reviewQuestions.length === 0) {
-    return <EmptyState />;
+    const masteredCount = stats?.mastered ?? questions.filter((q) => q.status === 'mastered').length;
+    const hasPracticedAny = masteredCount > 0 || questions.some((q) => (q.attemptCount || 0) > 0);
+    return (
+      <EmptyState
+        hasPracticedAny={hasPracticedAny}
+        hasQuestions={questions.length > 0}
+        masteredCount={masteredCount}
+        onStartFirstPractice={onQuestionClick && questions.length > 0 ? () => onQuestionClick(0) : undefined}
+      />
+    );
   }
 
   return (
@@ -633,6 +779,8 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
           reviewQuestions={reviewQuestions}
           totalQuestions={questions.length}
           stats={stats}
+          difficultyFilter={difficultyFilter}
+          onDifficultyToggle={handleDifficultyToggle}
         />
 
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
@@ -643,7 +791,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
                 variant="warning"
                 size="sm"
                 onClick={onStartReview}
-                className="w-full justify-center sm:w-auto [@media(pointer:coarse)]:!min-h-[44px]"
+                className="w-full justify-center sm:w-auto"
               >
                 <Lightning size={14} />
                 {t('review:questions.startReview', { count: reviewQuestions.length })}
@@ -657,7 +805,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
               disabled={Boolean(generateCardsDisabledReason) || isGeneratingCards}
               title={generateCardsDisabledReason ?? undefined}
               aria-describedby={generateCardsDisabledReason ? 'review-generate-cards-reason' : undefined}
-              className="w-full justify-center sm:w-auto [@media(pointer:coarse)]:!min-h-[44px]"
+              className="w-full justify-center sm:w-auto"
             >
               <Cards size={14} />
               {isGeneratingCards
@@ -690,7 +838,6 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
             <SegmentedControl<ReviewSortBy>
               ariaLabel={t('review:questions.sortLabel')}
               size="compact"
-              itemClassName="[@media(pointer:coarse)]:!min-h-11"
               value={sortBy}
               onValueChange={setSortBy}
               options={[
@@ -699,8 +846,14 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
                 { value: 'recent', label: t('review:questions.sortByRecent') },
               ]}
             />
-            <DsButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!px-2 !py-1 !h-auto [@media(pointer:coarse)]:!min-h-[44px] text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
-              {selectedIds.size === reviewQuestions.length ? t('review:questions.cancel') : t('review:questions.selectAll')}
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={toggleSelectAll}
+              disabled={filteredReviewQuestions.length === 0}
+              className="!px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+            >
+              {allVisibleSelected ? t('review:questions.cancel') : t('review:questions.selectAll')}
             </DsButton>
 
             {selectedIds.size > 0 && (
@@ -716,11 +869,11 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
                   disabled={isOperating || !onResetProgress}
                   title={armedAction === 'reset' ? t('practice:questionBank.confirmResetDescDetail', { count: selectedIds.size }) : undefined}
                   className={cn(
-                    '!h-auto min-h-8 !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs disabled:opacity-50',
+                    '!px-2 text-xs disabled:opacity-50',
                     armedAction !== 'reset' && 'text-info hover:bg-info/10',
                   )}
                 >
-                  <ArrowClockwise className={cn('w-3 h-3', isOperating && 'animate-spin')} />
+                  <ArrowClockwise className={cn('w-3 h-3', isOperating && 'animate-spin motion-reduce:animate-none')} />
                   {armedAction === 'reset'
                     ? t('review:questions.confirmReset', { count: selectedIds.size })
                     : t('review:questions.reset')}
@@ -735,7 +888,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
                   disabled={isOperating || !onDelete}
                   title={armedAction === 'delete' ? t('practice:questionBank.confirmDeleteDesc', { count: selectedIds.size }) : undefined}
                   className={cn(
-                    '!h-auto min-h-8 !px-2 !py-1 [@media(pointer:coarse)]:!min-h-[44px] text-xs disabled:opacity-50',
+                    '!px-2 text-xs disabled:opacity-50',
                     armedAction !== 'delete' && 'text-destructive hover:bg-destructive/10',
                   )}
                 >
@@ -748,24 +901,93 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
             )}
           </div>
         </div>
+
+        {/* 轻量错题检索条：支持关键词/题号过滤 + 一键清空筛选 */}
+        {reviewQuestions.length >= 2 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative min-w-0 flex-1 sm:max-w-xs">
+              <MagnifyingGlass
+                size={14}
+                className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60"
+                aria-hidden="true"
+              />
+              <Input
+                type="search"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape' && searchQuery) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSearchQuery('');
+                  }
+                }}
+                placeholder={t('practice:reviewView.searchPlaceholder')}
+                className="h-8 bg-muted/30 pl-8 pr-7 text-xs border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 sm:text-sm"
+              />
+              {searchQuery && (
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  onClick={() => setSearchQuery('')}
+                  aria-label={t('practice:reviewView.clearSearch')}
+                  className="absolute right-0.5 top-1/2 -translate-y-1/2 !h-7 !w-7 text-muted-foreground hover:text-foreground"
+                >
+                  <X size={12} />
+                </DsButton>
+              )}
+            </div>
+            {hasActiveFilters && (
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono text-2xs tabular-nums text-muted-foreground">
+                  {t('practice:questionBank.filteredCount', { count: filteredReviewQuestions.length })}
+                </span>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearReviewFilters}
+                  className="!h-7 !px-2 text-xs text-primary hover:bg-primary/10 gap-1"
+                >
+                  <X size={12} />
+                  {t('practice:reviewView.clearFilters')}
+                </DsButton>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 错题列表 - 紧凑布局 */}
       <CustomScrollArea className="flex-1" viewportClassName="px-4 pb-4">
-        <div className="space-y-0.5 pt-1">
-          {sortedReviewQuestions.map((q) => (
-            <ReviewQuestionCard
-              key={q.id}
-              question={q}
-              originalIndex={originalIndexMap.get(q.id) || 0}
-              isSelected={selectedIds.has(q.id)}
-              isExpanded={expandedId === q.id}
-              onSelect={(selected) => toggleSelect(q.id, selected)}
-              onToggleExpand={() => handleToggleExpand(q.id)}
-              onRedo={onQuestionClick ? () => handleRedoQuestion(q.id) : undefined}
-            />
-          ))}
-        </div>
+        {filteredReviewQuestions.length === 0 ? (
+          <div className="ui-rise-in motion-reduce:animate-none flex flex-col items-center justify-center py-14 text-center text-muted-foreground">
+            <MagnifyingGlass size={26} className="mb-2.5 opacity-40" aria-hidden="true" />
+            <p className="text-sm text-foreground/80">{t('practice:reviewView.noFilterMatch')}</p>
+            <p className="mt-1 text-xs text-muted-foreground/75">{t('practice:reviewView.noFilterMatchHint')}</p>
+            {hasActiveFilters && (
+              <DsButton variant="outline" size="sm" className="mt-3.5" onClick={clearReviewFilters}>
+                <X size={14} />
+                {t('practice:reviewView.clearFilters')}
+              </DsButton>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-0.5 pt-1">
+            {filteredReviewQuestions.map((q) => (
+              <ReviewQuestionCard
+                key={q.id}
+                question={q}
+                originalIndex={originalIndexMap.get(q.id) || 0}
+                isSelected={selectedIds.has(q.id)}
+                isExpanded={expandedId === q.id}
+                onSelect={(selected) => toggleSelect(q.id, selected)}
+                onToggleExpand={() => handleToggleExpand(q.id)}
+                onRedo={onQuestionClick ? () => handleRedoQuestion(q.id) : undefined}
+              />
+            ))}
+          </div>
+        )}
       </CustomScrollArea>
     </div>
   );

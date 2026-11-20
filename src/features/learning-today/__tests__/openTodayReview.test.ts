@@ -13,7 +13,7 @@ vi.mock('@/features/flashcards/store/fsrsReviewStore', () => ({
   useFsrsReviewStore: { getState: () => flashcards },
 }));
 
-import { openResourceLibrary, openTodayReviewTarget } from '../openTodayReview';
+import { TODO_PENDING_SMART_VIEW_KEY, openResourceLibrary, openTodayReviewTarget } from '../openTodayReview';
 import { closeDueMistakesReview, isDueMistakesReviewOpen } from '../dueMistakesReview';
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -91,6 +91,28 @@ describe('openTodayReviewTarget', () => {
     expect(isDueMistakesReviewOpen()).toBe(true);
     expect(launch).not.toHaveBeenCalled();
     expect(navigations).toEqual([]);
+  });
+
+  it('activates the Todo Today smart view on the study desktop', async () => {
+    isEnabled.mockReturnValue(true);
+    openTodayReviewTarget('todos');
+    await flush();
+    expect(activateDetailed).toHaveBeenCalledWith(expect.objectContaining({
+      typeId: 'todo',
+      action: 'showView',
+      payload: { view: 'today' },
+      fallbackLaunch: expect.objectContaining({ typeId: 'todo' }),
+    }));
+    expect(navigations).toEqual([]);
+  });
+
+  it('sets the pending Today smart-view beacon and navigates to todo in the classic shell', async () => {
+    isEnabled.mockReturnValue(false);
+    localStorage.removeItem(TODO_PENDING_SMART_VIEW_KEY);
+    openTodayReviewTarget('todos');
+    await flush();
+    expect(localStorage.getItem(TODO_PENDING_SMART_VIEW_KEY)).toBe('today');
+    expect(navigations).toEqual([{ view: 'todo' }]);
   });
 });
 

@@ -3455,6 +3455,7 @@
       "import_not_implemented": "导入功能尚未实现",
       "upload_failed": "上传失败",
       "unknown_error_occurred": "发生了未知错误",
+      "unsupported_on_platform": "当前设备暂不支持此功能，请在桌面端使用。",
       "unserializable_error": "发生了无法序列化的错误",
       "tts_unavailable": "语音合成不可用",
       "tts_not_supported": "当前环境不支持语音合成"

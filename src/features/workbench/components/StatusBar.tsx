@@ -28,7 +28,7 @@ import {
 } from '@phosphor-icons/react';
 import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
 import { WindowControls } from '@/components/WindowControls';
-import { toggleAppsPanel } from './appsPanelStore';
+import { toggleAppsPanel, useAppsPanelOpen } from './appsPanelStore';
 import { useDesktopName } from './desktopNameStore';
 import { StatusBarBrandMenu } from './StatusBarBrandMenu';
 import { StatusBarAppMenus } from './StatusBarAppMenus';
@@ -224,8 +224,9 @@ const StatusBarComponent: React.FC = () => {
 
   // 番茄钟详情只在 flyout 打开时由叶子订阅 timeLeft，避免 1Hz 刷整棵 StatusBar
   const exposeOpen = useWorkbenchOverlay((s) => s.exposeOpen);
+  const appsPanelOpen = useAppsPanelOpen();
 
-  useFocusReturn(centerOpen);
+  const { skipNextReturn } = useFocusReturn(centerOpen);
 
   const closeCenter = useCallback(
     () => setCenterPhase((p) => (p === 'open' ? 'closing' : p)),
@@ -426,12 +427,20 @@ const StatusBarComponent: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Exposé 打开时收起全部菜单栏浮层（此前品牌菜单会残留在 Exposé 之上）
-    if (exposeOpen) {
+    // Exposé 或统一搜索面板（⌘K）打开时收起全部菜单栏浮层
+    if (exposeOpen || appsPanelOpen) {
       closeCenter();
       closeBrandMenu();
     }
-  }, [exposeOpen, closeCenter, closeBrandMenu]);
+  }, [exposeOpen, appsPanelOpen, closeCenter, closeBrandMenu]);
+
+  useEffect(() => {
+    // 其它顶栏菜单（聚焦应用/窗口/时钟/阶段）展开时收起学习中心与品牌菜单，保证互斥
+    if (appMenusOpen || clockOpen || stageMenuOpen) {
+      closeCenter();
+      closeBrandMenu();
+    }
+  }, [appMenusOpen, clockOpen, stageMenuOpen, closeCenter, closeBrandMenu]);
 
   // 离场相位：播完 wb-kf-window-close 再真正卸载（jsdom 无动画也走同一定时器）
   useEffect(() => {
@@ -500,11 +509,40 @@ const StatusBarComponent: React.FC = () => {
 
   const runAndClose = useCallback(
     (fn: () => void) => () => {
+      skipNextReturn();
       closeCenter();
       fn();
     },
-    [closeCenter],
+    [closeCenter, skipNextReturn],
   );
+
+  const handleFlyoutKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') {
+      return;
+    }
+    const items = getFocusable(panel);
+    if (items.length === 0) return;
+    e.preventDefault();
+    const active = document.activeElement as HTMLElement | null;
+    const idx = active ? items.indexOf(active) : -1;
+    if (e.key === 'Home') {
+      items[0]?.focus({ preventScroll: true });
+      return;
+    }
+    if (e.key === 'End') {
+      items[items.length - 1]?.focus({ preventScroll: true });
+      return;
+    }
+    const nextIdx =
+      e.key === 'ArrowDown'
+        ? (idx + 1 + items.length) % items.length
+        : idx <= 0
+          ? items.length - 1
+          : idx - 1;
+    items[nextIdx]?.focus({ preventScroll: true });
+  }, []);
 
   const handleDragMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if ((!macChrome && !winChromeInset) || event.button !== 0) return;
@@ -657,6 +695,7 @@ const StatusBarComponent: React.FC = () => {
               aria-modal="true"
               aria-labelledby={titleId}
               tabIndex={-1}
+              onKeyDown={handleFlyoutKeyDown}
             >
               <WallpaperReplica hostRef={panelRef} enabled />
               <h2 id={titleId} className="wb-menubar-flyout-title">

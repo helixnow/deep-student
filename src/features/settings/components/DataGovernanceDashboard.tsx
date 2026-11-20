@@ -2009,7 +2009,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       <TabsContent value="cache">
         <div className="space-y-8">
           <MediaCacheSection />
-          <LanceOptimizationPanel />
+          {readShellPlatform()?.kind !== 'mobile' && <LanceOptimizationPanel />}
         </div>
       </TabsContent>
 

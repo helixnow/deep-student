@@ -1,15 +1,18 @@
 /**
  * 模型分配 Tab 组件
  * 从 Settings.tsx 拆分，包含完整的模型分配功能
- * 简洁风格：简洁、无边框、hover 效果
+ * 简洁风格 + 渐进披露：常显「核心学习模型」与「拍题识别与知识库检索」，
+ * 低频专项槽位收起在可一键展开的「更多专项模型设置」中并展示「已配置 X/Y」徽标。
  */
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
+import { CaretDown } from '@phosphor-icons/react';
 import { SettingSection, settingsQuietInteractiveRowClassName } from './SettingsCommon';
 import { GroupTitle } from './settingsTabPrimitives';
 import { UnifiedModelSelector } from '@/components/shared/UnifiedModelSelector';
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { DimensionManagement } from './DimensionManagement';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -204,8 +207,23 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
     .filter(([id]) => (id ? isOpenCodeGoConfig(findApi(id)) : model2IsOpenCodeGo))
     .map(([, label]) => label);
   const [ocrEngineConfigured, setOcrEngineConfigured] = useState(false);
+  const [specializedExpanded, setSpecializedExpanded] = useState(false);
   // 未编入向量索引的构建（mobile-slim）：嵌入维度/模型绑定没有任何效果，换成说明
   const vectorIndexUnavailable = isVectorIndexUnavailable(useEmbeddingReadiness());
+
+  // 专项模型槽位已配置统计（8 项专项能力，不含非模型槽位 translation_display_mode）
+  const specializedSlotValues = [
+    config.qbank_ai_generation_model_config_id,
+    config.translation_model_config_id,
+    config.voice_input_asr_model_config_id,
+    config.image_generation_model_config_id,
+    config.memory_decision_model_config_id,
+    config.compaction_model_config_id,
+    config.rerankerModelConfigId,
+    config.vl_reranker_model_config_id,
+  ];
+  const specializedConfiguredCount = specializedSlotValues.filter((val) => Boolean(val && val.trim())).length;
+  const specializedTotalCount = specializedSlotValues.length;
 
   // 获取 OCR 引擎配置状态
   useEffect(() => {
@@ -243,221 +261,275 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
         dataTourId="model-assignment" 
         hideHeader
       >
-        {/* 1. 基础核心模型 */}
-        <div>
-          <GroupTitle title={t('settings:groups.core_models')} />
-          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
-            <ModelAssignmentRow
-              title={t('settings:cards.model2_title')}
-              description={t('settings:descriptions.model2_desc')}
-              value={config.model2ConfigId}
-              field="model2_config_id"
-              configKey="model2ConfigId"
-              models={toUnifiedModelInfo(getAllEnabledApis(config.model2ConfigId))}
-              placeholder={t('settings:api.select_model')}
-              notificationKey={notify('model2_saved')}
-              onSave={handleSave}
-              setConfig={setConfig}
-            />
-            {(model2IsOpenCodeGo || goNonAgentFeatures.length > 0) && (
-              <p className="px-1 pt-2 text-xs text-muted-foreground" data-testid="opencode-go-model2-notice">
-                {goNonAgentFeatures.length > 0
-                  ? t('settings:vendor_panel.opencode_go.non_agent_notice', {
-                      features: goNonAgentFeatures.join(t('settings:vendor_panel.opencode_go.list_separator')),
-                    })
-                  : t('settings:vendor_panel.opencode_go.model2_notice')}
-              </p>
+        {/* 1. 常显：核心学习模型（主力对话、快速辅助、闪卡制卡、错题批改） */}
+        <div data-testid="core-study-models-section">
+          <GroupTitle
+            title={t('settings:models_tab.core_learning_title')}
+            description={t('settings:models_tab.core_learning_desc')}
+          />
+          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4">
+            <div className="space-y-px">
+              <ModelAssignmentRow
+                title={t('settings:cards.model2_title')}
+                description={t('settings:descriptions.model2_desc')}
+                value={config.model2ConfigId}
+                field="model2_config_id"
+                configKey="model2ConfigId"
+                models={toUnifiedModelInfo(getAllEnabledApis(config.model2ConfigId))}
+                placeholder={t('settings:api.select_model')}
+                notificationKey={notify('model2_saved')}
+                onSave={handleSave}
+                setConfig={setConfig}
+              />
+              {(model2IsOpenCodeGo || goNonAgentFeatures.length > 0) && (
+                <p className="px-2 pb-1.5 pt-1 text-xs text-muted-foreground" data-testid="opencode-go-model2-notice">
+                  {goNonAgentFeatures.length > 0
+                    ? t('settings:vendor_panel.opencode_go.non_agent_notice', {
+                        features: goNonAgentFeatures.join(t('settings:vendor_panel.opencode_go.list_separator')),
+                      })
+                    : t('settings:vendor_panel.opencode_go.model2_notice')}
+                </p>
+              )}
+              <ModelAssignmentRow
+                title={t('settings:api_config.chat_title_model_label')}
+                description={t('settings:api_config.chat_title_model_hint')}
+                value={config.chat_title_model_config_id}
+                field="chat_title_model_config_id"
+                configKey="chat_title_model_config_id"
+                models={toUnifiedModelInfo(getAllEnabledApis(config.chat_title_model_config_id))}
+                placeholder={t('settings:api.select_model')}
+                notificationKey={notify('chat_title_saved')}
+                onSave={handleSave}
+                setConfig={setConfig}
+              />
+              <ModelAssignmentRow
+                title={t('settings:api.anki_card_title')}
+                description={t('settings:api.anki_card_description')}
+                value={config.ankiCardModelConfigId}
+                field="anki_card_model_config_id"
+                configKey="ankiCardModelConfigId"
+                models={toUnifiedModelInfo(getAllEnabledApis(config.ankiCardModelConfigId))}
+                placeholder={t('settings:api.select_model')}
+                notificationKey={notify('model_saved')}
+                onSave={handleSave}
+                setConfig={setConfig}
+              />
+              <ModelAssignmentRow
+                title={t('settings:cards.qbank_ai_grading_model_title')}
+                description={t('settings:descriptions.qbank_ai_grading_desc')}
+                value={config.qbank_ai_grading_model_config_id}
+                field="qbank_ai_grading_model_config_id"
+                configKey="qbank_ai_grading_model_config_id"
+                models={toUnifiedModelInfo(getAllEnabledApis(config.qbank_ai_grading_model_config_id))}
+                placeholder={t('settings:api.select_model')}
+                notificationKey={notify('qbank_ai_grading_saved')}
+                onSave={handleSave}
+                setConfig={setConfig}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* 2. 常显：拍题识别（多模态/OCR）与知识库检索向量 */}
+        <div className="mt-8 space-y-6" data-testid="core-ocr-rag-section">
+          <GroupTitle
+            title={t('settings:models_tab.ocr_and_rag_title')}
+            description={t('settings:models_tab.ocr_and_rag_desc')}
+          />
+          <OcrEngineCard
+            apiConfigs={apiConfigs}
+            toUnifiedModelInfo={toUnifiedModelInfo}
+            getAllEnabledApis={getAllEnabledApis}
+          />
+          <div>
+            {vectorIndexUnavailable ? (
+              <VectorIndexUnavailableNotice />
+            ) : (
+              <DimensionManagement apiConfigs={apiConfigs} getEmbeddingApis={getEmbeddingApis} />
             )}
           </div>
-        </div></div>
+        </div>
 
-        {/* 2. 功能增强模型 */}
-        <div>
-          <GroupTitle title={t('settings:groups.feature_models')} />
-          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
-            <ModelAssignmentRow
-              title={t('settings:api.anki_card_title')}
-              description={t('settings:api.anki_card_description')}
-              value={config.ankiCardModelConfigId}
-              field="anki_card_model_config_id"
-              configKey="ankiCardModelConfigId"
-              models={toUnifiedModelInfo(getAllEnabledApis(config.ankiCardModelConfigId))}
-              placeholder={t('settings:api.select_model')}
-              notificationKey={notify('model_saved')}
-              onSave={handleSave}
-              setConfig={setConfig}
-            />
-            <ModelAssignmentRow
-              title={t('settings:cards.qbank_ai_grading_model_title')}
-              description={t('settings:descriptions.qbank_ai_grading_desc')}
-              value={config.qbank_ai_grading_model_config_id}
-              field="qbank_ai_grading_model_config_id"
-              configKey="qbank_ai_grading_model_config_id"
-              models={toUnifiedModelInfo(getAllEnabledApis(config.qbank_ai_grading_model_config_id))}
-              placeholder={t('settings:api.select_model')}
-              notificationKey={notify('qbank_ai_grading_saved')}
-              onSave={handleSave}
-              setConfig={setConfig}
-            />
-            <ModelAssignmentRow
-              title={t('settings:cards.qbank_ai_generation_model_title')}
-              description={t('settings:descriptions.qbank_ai_generation_desc')}
-              value={config.qbank_ai_generation_model_config_id}
-              field="qbank_ai_generation_model_config_id"
-              configKey="qbank_ai_generation_model_config_id"
-              models={toUnifiedModelInfo(getAllEnabledApis(config.qbank_ai_generation_model_config_id))}
-              placeholder={t('settings:api.select_model')}
-              notificationKey={notify('qbank_ai_generation_saved')}
-              onSave={handleSave}
-              setConfig={setConfig}
-            />
-            <ModelAssignmentRow
-              title={t('settings:api_config.chat_title_model_label')}
-              description={t('settings:api_config.chat_title_model_hint')}
-              value={config.chat_title_model_config_id}
-              field="chat_title_model_config_id"
-              configKey="chat_title_model_config_id"
-              models={toUnifiedModelInfo(getAllEnabledApis(config.chat_title_model_config_id))}
-              placeholder={t('settings:api.select_model')}
-              notificationKey={notify('chat_title_saved')}
-              onSave={handleSave}
-              setConfig={setConfig}
-            />
-            <ModelAssignmentRow
-              title={t('settings:cards.translation_model_title')}
-              description={t('settings:descriptions.translation_desc')}
-              value={config.translation_model_config_id}
-              field="translation_model_config_id"
-              configKey="translation_model_config_id"
-              models={toUnifiedModelInfo(getAllEnabledApis(config.translation_model_config_id))}
-              placeholder={t('settings:api.select_model')}
-              notificationKey={notify('translation_saved')}
-              onSave={handleSave}
-              setConfig={setConfig}
-            />
-            <TranslationDisplayModeRow
-              title={t('settings:cards.translation_display_mode_title')}
-              description={t('settings:descriptions.translation_display_mode_desc')}
-              value={config.translation_display_mode}
-              alignedLabel={t('settings:cards.translation_display_mode_aligned')}
-              streamingLabel={t('settings:cards.translation_display_mode_streaming')}
-              onSave={handleSave}
-              setConfig={setConfig}
-            />
-            <ModelAssignmentRow
-              title={t('settings:api_config.memory_decision_model_label')}
-              description={t('settings:api_config.memory_decision_model_hint')}
-              value={config.memory_decision_model_config_id}
-              field="memory_decision_model_config_id"
-              configKey="memory_decision_model_config_id"
-              models={toUnifiedModelInfo(getAllEnabledApis(config.memory_decision_model_config_id))}
-              placeholder={t('settings:api.select_model')}
-              notificationKey={notify('memory_decision_saved')}
-              onSave={handleSave}
-              setConfig={setConfig}
-            />
-            <ModelAssignmentRow
-              title={t('settings:api_config.compaction_model_label')}
-              description={t('settings:api_config.compaction_model_hint')}
-              value={config.compaction_model_config_id}
-              field="compaction_model_config_id"
-              configKey="compaction_model_config_id"
-              models={toUnifiedModelInfo(getAllEnabledApis(config.compaction_model_config_id))}
-              placeholder={t('settings:api.select_model')}
-              notificationKey={notify('compaction_model_saved')}
-              onSave={handleSave}
-              setConfig={setConfig}
-            />
-            <ModelAssignmentRow
-              title={t('settings:cards.image_generation_model_title', 'Image generation model')}
-              description={t('settings:descriptions.image_generation_desc', 'Used by the built-in image generation tool in Chat V2.')}
-              value={config.image_generation_model_config_id}
-              field="image_generation_model_config_id"
-              configKey="image_generation_model_config_id"
-              models={toUnifiedModelInfo(getImageGenerationApis(config.image_generation_model_config_id))}
-              placeholder={t('settings:placeholders.no_image_generation_model', 'No image generation model available')}
-              notificationKey={notify('image_generation_saved')}
-              noModelsMessage={t('settings:placeholders.no_image_generation_model', 'No image generation model available')}
-              onSave={handleSave}
-              setConfig={setConfig}
-            />
-          </div>
-        </div></div>
-
-        <div>
-          <GroupTitle title={t('settings:groups.voice_input')} />
-          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
-            <ModelAssignmentRow
-              title={t('settings:cards.voice_input_asr_title')}
-              description={t('settings:descriptions.voice_input_asr_desc')}
-              value={config.voice_input_asr_model_config_id}
-              field="voice_input_asr_model_config_id"
-              configKey="voice_input_asr_model_config_id"
-              models={toUnifiedModelInfo(getAsrApis(config.voice_input_asr_model_config_id))}
-              placeholder={t('settings:placeholders.no_voice_input_asr', 'No ASR model available')}
-              notificationKey={notify('voice_input_asr_saved')}
-              noModelsMessage={t(
-                'settings:placeholders.no_voice_input_asr',
-                'No ASR model available'
+        {/* 3. 渐进折叠：更多专项模型设置（含「已配置 X/Y」数量徽标） */}
+        <div className="mt-8" data-testid="specialized-models-section">
+          <div className="rounded-2xl bg-muted">
+            <DsButton
+              type="button"
+              variant="ghost"
+              data-testid="specialized-models-toggle"
+              aria-expanded={specializedExpanded}
+              aria-controls="specialized-models-panel"
+              onClick={() => setSpecializedExpanded((prev) => !prev)}
+              className={cn(
+                '!h-auto w-full justify-between gap-3 whitespace-normal rounded-2xl !border-0 !bg-transparent px-4 py-3.5 text-left font-normal transition-colors',
+                settingsQuietInteractiveRowClassName,
               )}
-              onSave={handleSave}
-              setConfig={setConfig}
-            />
-          </div>
-        </div></div>
+            >
+              <div className="min-w-0 flex-1 space-y-0.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">
+                    {t('settings:models_tab.specialized_title')}
+                  </span>
+                  <span
+                    data-testid="specialized-models-badge"
+                    className={cn(
+                      'rounded-full px-2 py-0.5 text-xs font-medium tabular-nums',
+                      specializedConfiguredCount > 0
+                        ? 'bg-primary/15 text-primary'
+                        : 'bg-background/70 text-muted-foreground',
+                    )}
+                  >
+                    {t('settings:models_tab.specialized_configured_badge', {
+                      configured: specializedConfiguredCount,
+                      total: specializedTotalCount,
+                    })}
+                  </span>
+                </div>
+                <p className="text-xs leading-relaxed text-muted-foreground/80">
+                  {t('settings:models_tab.specialized_desc')}
+                </p>
+              </div>
+              <div className="flex flex-shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <span>
+                  {specializedExpanded
+                    ? t('settings:models_tab.collapse_specialized')
+                    : t('settings:models_tab.expand_specialized')}
+                </span>
+                <CaretDown
+                  size={14}
+                  className={cn(
+                    'transition-transform duration-200',
+                    specializedExpanded && 'rotate-180',
+                  )}
+                />
+              </div>
+            </DsButton>
 
-        {/* 3. RAG 与知识库 */}
-        <div>
-          <GroupTitle title={t('settings:groups.rag_models')} />
-          <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4"><div className="space-y-px">
-            <ModelAssignmentRow
-              title={t('settings:cards.reranker_title')}
-              description={t('settings:descriptions.reranker_desc')}
-              value={config.rerankerModelConfigId}
-              field="reranker_model_config_id"
-              configKey="rerankerModelConfigId"
-              models={toUnifiedModelInfo(
-                getRerankerApis(config.rerankerModelConfigId)
-                  .filter((model) => supportsKnowledgeModelCapability(model, 'text_reranker'))
-              )}
-              placeholder={t('settings:placeholders.no_reranker')}
-              notificationKey={notify('reranker_saved')}
-              onSave={handleSave}
-              setConfig={setConfig}
-            />
-            <ModelAssignmentRow
-              title={t('settings:cards.vl_reranker_title')}
-              description={t('settings:descriptions.vl_reranker_desc')}
-              value={config.vl_reranker_model_config_id}
-              field="vl_reranker_model_config_id"
-              configKey="vl_reranker_model_config_id"
-              models={toUnifiedModelInfo(
-                getRerankerApis(config.vl_reranker_model_config_id)
-                  .filter((model) => supportsKnowledgeModelCapability(model, 'vl_reranker'))
-              )}
-              placeholder={t('settings:placeholders.select_vl_reranker')}
-              notificationKey={notify('vl_reranker_saved')}
-              onSave={handleSave}
-              setConfig={setConfig}
-            />
+            {specializedExpanded && (
+              <div
+                id="specialized-models-panel"
+                data-testid="specialized-models-panel"
+                className="border-t border-border/30 px-3 py-3 sm:px-4 space-y-px"
+              >
+                <ModelAssignmentRow
+                  title={t('settings:cards.qbank_ai_generation_model_title')}
+                  description={t('settings:descriptions.qbank_ai_generation_desc')}
+                  value={config.qbank_ai_generation_model_config_id}
+                  field="qbank_ai_generation_model_config_id"
+                  configKey="qbank_ai_generation_model_config_id"
+                  models={toUnifiedModelInfo(getAllEnabledApis(config.qbank_ai_generation_model_config_id))}
+                  placeholder={t('settings:api.select_model')}
+                  notificationKey={notify('qbank_ai_generation_saved')}
+                  onSave={handleSave}
+                  setConfig={setConfig}
+                />
+                <ModelAssignmentRow
+                  title={t('settings:cards.translation_model_title')}
+                  description={t('settings:descriptions.translation_desc')}
+                  value={config.translation_model_config_id}
+                  field="translation_model_config_id"
+                  configKey="translation_model_config_id"
+                  models={toUnifiedModelInfo(getAllEnabledApis(config.translation_model_config_id))}
+                  placeholder={t('settings:api.select_model')}
+                  notificationKey={notify('translation_saved')}
+                  onSave={handleSave}
+                  setConfig={setConfig}
+                />
+                <TranslationDisplayModeRow
+                  title={t('settings:cards.translation_display_mode_title')}
+                  description={t('settings:descriptions.translation_display_mode_desc')}
+                  value={config.translation_display_mode}
+                  alignedLabel={t('settings:cards.translation_display_mode_aligned')}
+                  streamingLabel={t('settings:cards.translation_display_mode_streaming')}
+                  onSave={handleSave}
+                  setConfig={setConfig}
+                />
+                <ModelAssignmentRow
+                  title={t('settings:cards.voice_input_asr_title')}
+                  description={t('settings:descriptions.voice_input_asr_desc')}
+                  value={config.voice_input_asr_model_config_id}
+                  field="voice_input_asr_model_config_id"
+                  configKey="voice_input_asr_model_config_id"
+                  models={toUnifiedModelInfo(getAsrApis(config.voice_input_asr_model_config_id))}
+                  placeholder={t('settings:placeholders.no_voice_input_asr', 'No ASR model available')}
+                  notificationKey={notify('voice_input_asr_saved')}
+                  noModelsMessage={t(
+                    'settings:placeholders.no_voice_input_asr',
+                    'No ASR model available'
+                  )}
+                  onSave={handleSave}
+                  setConfig={setConfig}
+                />
+                <ModelAssignmentRow
+                  title={t('settings:cards.image_generation_model_title', 'Image generation model')}
+                  description={t('settings:descriptions.image_generation_desc', 'Used by the built-in image generation tool in Chat V2.')}
+                  value={config.image_generation_model_config_id}
+                  field="image_generation_model_config_id"
+                  configKey="image_generation_model_config_id"
+                  models={toUnifiedModelInfo(getImageGenerationApis(config.image_generation_model_config_id))}
+                  placeholder={t('settings:placeholders.no_image_generation_model', 'No image generation model available')}
+                  notificationKey={notify('image_generation_saved')}
+                  noModelsMessage={t('settings:placeholders.no_image_generation_model', 'No image generation model available')}
+                  onSave={handleSave}
+                  setConfig={setConfig}
+                />
+                <ModelAssignmentRow
+                  title={t('settings:api_config.memory_decision_model_label')}
+                  description={t('settings:api_config.memory_decision_model_hint')}
+                  value={config.memory_decision_model_config_id}
+                  field="memory_decision_model_config_id"
+                  configKey="memory_decision_model_config_id"
+                  models={toUnifiedModelInfo(getAllEnabledApis(config.memory_decision_model_config_id))}
+                  placeholder={t('settings:api.select_model')}
+                  notificationKey={notify('memory_decision_saved')}
+                  onSave={handleSave}
+                  setConfig={setConfig}
+                />
+                <ModelAssignmentRow
+                  title={t('settings:api_config.compaction_model_label')}
+                  description={t('settings:api_config.compaction_model_hint')}
+                  value={config.compaction_model_config_id}
+                  field="compaction_model_config_id"
+                  configKey="compaction_model_config_id"
+                  models={toUnifiedModelInfo(getAllEnabledApis(config.compaction_model_config_id))}
+                  placeholder={t('settings:api.select_model')}
+                  notificationKey={notify('compaction_model_saved')}
+                  onSave={handleSave}
+                  setConfig={setConfig}
+                />
+                <ModelAssignmentRow
+                  title={t('settings:cards.reranker_title')}
+                  description={t('settings:descriptions.reranker_desc')}
+                  value={config.rerankerModelConfigId}
+                  field="reranker_model_config_id"
+                  configKey="rerankerModelConfigId"
+                  models={toUnifiedModelInfo(
+                    getRerankerApis(config.rerankerModelConfigId)
+                      .filter((model) => supportsKnowledgeModelCapability(model, 'text_reranker'))
+                  )}
+                  placeholder={t('settings:placeholders.no_reranker')}
+                  notificationKey={notify('reranker_saved')}
+                  onSave={handleSave}
+                  setConfig={setConfig}
+                />
+                <ModelAssignmentRow
+                  title={t('settings:cards.vl_reranker_title')}
+                  description={t('settings:descriptions.vl_reranker_desc')}
+                  value={config.vl_reranker_model_config_id}
+                  field="vl_reranker_model_config_id"
+                  configKey="vl_reranker_model_config_id"
+                  models={toUnifiedModelInfo(
+                    getRerankerApis(config.vl_reranker_model_config_id)
+                      .filter((model) => supportsKnowledgeModelCapability(model, 'vl_reranker'))
+                  )}
+                  placeholder={t('settings:placeholders.select_vl_reranker')}
+                  notificationKey={notify('vl_reranker_saved')}
+                  onSave={handleSave}
+                  setConfig={setConfig}
+                />
+              </div>
+            )}
           </div>
-          
-          <div className="mt-8">
-             {vectorIndexUnavailable ? (
-               <VectorIndexUnavailableNotice />
-             ) : (
-               <DimensionManagement apiConfigs={apiConfigs} getEmbeddingApis={getEmbeddingApis} />
-             )}
-          </div>
-        </div></div>
-
-        {/* 4. 其他配置 */}
-        <div className="mt-8">
-           <OcrEngineCard
-             apiConfigs={apiConfigs}
-             toUnifiedModelInfo={toUnifiedModelInfo}
-             getAllEnabledApis={getAllEnabledApis}
-           />
         </div>
 
         {/* 配置状态概览 */}

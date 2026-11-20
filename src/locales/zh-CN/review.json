@@ -1,6 +1,6 @@
 {
   "title": "复习计划",
-  "subtitle": "间隔重复，高效记忆",
+  "subtitle": "FSRS 智能间隔重复 · 在快要遗忘时精准巩固",
   "unknownQuestion": "未知题目",
   "interval": "间隔",
   "days": "天",
@@ -55,13 +55,13 @@
 
   "setup": {
     "title": "还没有复习计划",
-    "description": "为本题目集的题目创建复习计划后，系统会按间隔重复算法自动安排每天的复习内容。",
+    "description": "为本题目集开启复习计划后，FSRS 会根据每次作答的回忆表现估算记忆稳固度，在即将遗忘前自动安排复习。",
     "createAll": "为全部题目创建复习计划"
   },
 
   "empty": {
     "title": "全部完成！",
-    "description": "你已经完成了所有的复习任务。继续保持，明天还有新的复习内容等着你！",
+    "description": "今天的到期题目已全部巩固完毕，FSRS 已为你排好后续复习节奏，明天见！",
     "masteredChip": "已掌握 {{count}} 题",
     "viewCalendar": "查看复习记录"
   },
@@ -76,7 +76,8 @@
   },
 
   "session": {
-    "noItems": "没有需要复习的内容",
+    "noItems": "今天待复习的题目已全部清零",
+    "noItemsHint": "FSRS 智能排期会在你快要遗忘前再次提醒；平时练习答错的题目也会自动加入复习队列。",
     "submitFailed": "保存复习记录失败，请重试",
     "submitFailedTitle": "无法保存复习记录",
     "exitTitle": "结束复习会话？",
@@ -128,7 +129,7 @@
   },
 
   "rating": {
-    "prompt": "你对这道题的掌握程度如何？",
+    "prompt": "回忆这道题有多轻松？（将决定下次复习间隔）",
     "again": "重来",
     "againDesc": "<1分钟",
     "hard": "困难",
@@ -141,16 +142,18 @@
 
   "complete": {
     "excellent": "太棒了！",
-    "excellentMsg": "你的表现非常出色，继续保持！",
+    "excellentMsg": "回忆准确度很高！FSRS 已拉长这些题目的复习间隔，帮你省下重复刷题的时间。",
     "good": "做得不错！",
-    "goodMsg": "继续努力，你正在进步！",
+    "goodMsg": "掌握得很稳！答对的题已顺延到更长周期，薄弱题会在近期再次巩固。",
     "keepGoing": "继续加油！",
-    "keepGoingMsg": "多复习几次，你会越来越好的！",
+    "keepGoingMsg": "把卡壳的题抓出来正是复习的价值——系统已缩短难点间隔，多见几次就能记牢。",
     "needsPractice": "需要更多练习",
-    "needsPracticeMsg": "别灰心，熟能生巧！",
+    "needsPracticeMsg": "别担心，易混题多忘几次很正常，FSRS 已安排短间隔帮你小步快跑巩固。",
+    "reviewed": "完成题数",
     "correct": "正确",
     "accuracy": "正确率",
     "time": "用时",
+    "scheduleNote": "本轮共复习 {{count}} 题 · FSRS 已按你的回忆表现排好下次最佳复习时间",
     "reviewAgain": "再复习一次",
     "finish": "完成"
   },
@@ -263,10 +266,10 @@
   },
 
   "tips": {
-    "sm2Title": "什么是间隔重复？",
-    "sm2Desc": "间隔重复是一种科学的记忆方法，通过在最佳时间点复习来加强长期记忆。系统会根据你的表现自动调整下次复习时间。",
-    "ratingTitle": "如何评分？",
-    "ratingDesc": "根据你回忆答案的难易程度选择：重来（完全忘记）、困难（勉强想起）、良好（稍加思考想起）、简单（立刻想起）。"
+    "sm2Title": "什么是 FSRS 智能间隔重复？",
+    "sm2Desc": "FSRS 会根据你每次回忆的难易度，估算每道题的「记忆稳固度」（预计能记多久）与「题目难度」，在你快要遗忘的那一刻安排下次复习——熟题少刷、难题多练。",
+    "ratingTitle": "如何选择四档评分？",
+    "ratingDesc": "按回忆的轻松程度选：重来（没想起或答错，短间隔重练）· 困难（费劲才想起）· 良好（稍加思考想起）· 简单（秒答且非常笃定）。"
   },
   "insightConfirm": {
     "title": "沉淀这条灵感？",
@@ -343,11 +346,19 @@
       "cancelConfig": "取消",
       "examDayMarker": "考试日",
       "deferredHint": "已智能精选 {{selected}} 项，其余 {{count}} 项按优先级平滑顺延",
-      "frozenIntake": "考前缓冲期 · 暂停普通新卡"
+      "frozenIntake": "考前缓冲期 · 暂停普通新卡",
+      "breakdownCards": "闪卡 {{count}}",
+      "breakdownMistakes": "错题 {{count}}",
+      "breakdownMindmap": "导图 {{count}}"
     },
     "player": {
       "dialogLabel": "今日冲刺复习",
       "exitLabel": "退出冲刺",
+      "progressAriaLabel": "冲刺进度",
+      "shortcutSelectOption": "选答案",
+      "shortcutCheck": "核对答案",
+      "shortcutReveal": "翻面揭晓",
+      "shortcutSource": "溯源",
       "loading": "正在编排今日高收益冲刺队列…",
       "loadFailed": "无法加载今日冲刺队列",
       "retry": "重试",
@@ -428,6 +439,10 @@
       "completedBreakdown": "闪卡 {{cards}} · 错题 {{mistakes}} · 导图 {{mindmaps}}",
       "variantsSolvedNote": "含 {{count}} 道 AI 变式",
       "metricFirstPass": "一次提取率",
+      "firstPassDetail": "一次通过 {{passed}} / {{total}}",
+      "encourageTargetMet": "已达到考前目标提取率，保持当前节奏即可稳步应考。",
+      "encourageStrong": "一次提取表现扎实，高收益条目已顺延至更长复习周期。",
+      "encourageSteady": "薄弱点已在遗忘临界点被及时拦住，短间隔复现会帮你记牢。",
       "conceptsHeading": "知识点掌握度更新",
       "outcome": {
         "improved": "稳步提升",

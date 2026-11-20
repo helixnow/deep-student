@@ -114,7 +114,8 @@
     "view_history": "View History",
     "retry": "Retry",
     "cancel_confirm_title": "Cancel Grading",
-    "cancel_confirm_message": "Are you sure you want to cancel? Generated content will not be saved."
+    "cancel_confirm_message": "Are you sure you want to cancel? Generated content will not be saved.",
+    "grade_shortcut_hint": "Start grading (Ctrl/Cmd + Enter)"
   },
   "stats": {
     "characters": "Characters",
@@ -159,7 +160,10 @@
     "phase_annotating": "Annotating",
     "phase_scoring": "Scoring",
     "phase_polishing": "Polishing",
-    "phase_model_essay": "Writing model essay"
+    "phase_model_essay": "Writing model essay",
+    "waiting_calm_hint": "Reading your essay against the rubric — annotations will appear shortly...",
+    "waiting_deep_hint": "Analyzing structure, arguments, and phrasing in depth — hang tight...",
+    "elapsed_seconds": "{{seconds}}s elapsed"
   },
   "errors": {
     "empty_text": "Please enter the essay to be graded",
@@ -254,7 +258,8 @@
       "pass": "Pass",
       "fail": "Fail"
     },
-    "parse_failed": "Failed to parse the score. Please refer to the grading details below."
+    "parse_failed": "Failed to parse the score. Please refer to the grading details below.",
+    "rate_label": "Score rate"
   },
   "markers": {
     "apply": "Apply",
@@ -325,7 +330,8 @@
     "drop_hint": "Drag & drop or paste images",
     "drop_hint_mobile": "Import or paste images",
     "ocr_hint": "Import images",
-    "ocr_supported": "Supports PNG/JPG/WEBP, up to {{max}} images"
+    "ocr_supported": "Supports PNG/JPG/WEBP, up to {{max}} images",
+    "deliverables_hint": "Inline annotations · Rubric scores · Polish & model essay"
   },
   "notes": {
     "note_title": "Essay Grading: {{title}} (Round {{round}})"

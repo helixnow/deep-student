@@ -126,7 +126,7 @@
     "sessionModeHint": "连续会话会保留此前运行的上下文，适合需要记忆的任务；每次独立更省 token",
     "modelHint": "留空使用默认对话模型；可在 设置 → 模型 查看可用模型 ID",
     "catchUpHint": "逐次补跑会把错过的每一次都补齐执行；对 Agent 任务意味着连续多次 AI 调用，请谨慎选择",
-    "advancedHint": "运行失败时按退避间隔自动重试；超过超时时间的运行会被终止并计为失败",
+    "advancedHint": "运行失败时会自动等待片刻再重试（退避重试）；超过超时时间仍未完成则自动停止并计为失败",
     "history": {
       "title": "运行历史",
       "toggleAria": "运行历史（{{count}} 条）",
@@ -202,7 +202,7 @@
     "model": "模型配置 ID",
     "defaultModel": "使用默认模型",
     "retries": "失败重试",
-    "retryBackoff": "重试退避秒数",
+    "retryBackoff": "重试等待秒数（退避间隔）",
     "timeout": "超时秒数",
     "prompt": "任务说明",
     "advanced": "重试与超时",
@@ -211,11 +211,11 @@
     "promptRequired": "请填写任务说明",
     "promptTooLong": "任务说明最多 4000 字符",
     "timeInvalid": "请输入有效的 24 小时时间",
-    "timezoneInvalid": "请输入有效的 IANA 时区",
+    "timezoneInvalid": "请输入有效的时区名称（如 Asia/Shanghai）",
     "intervalInvalid": "间隔需为 5–1440 分钟",
     "dayOfMonthInvalid": "日期需为 1–31 之间",
     "retriesInvalid": "重试次数需为 0–10 次",
-    "backoffInvalid": "重试退避需为 5–86400 秒",
+    "backoffInvalid": "重试等待时间需为 5–86400 秒",
     "timeoutInvalid": "超时需为 30–3600 秒",
     "showAll": "全部历史（{{total}}）",
     "showLess": "收起历史",
@@ -310,7 +310,7 @@
         "interval": "间隔需为 5–1440 分钟",
         "onceDate": "日期不能早于今天",
         "onceTimePassed": "该时刻今天已过，请选择更晚的时间或日期",
-        "timezone": "请选择有效的 IANA 时区",
+        "timezone": "请选择有效的时区名称（如 Asia/Shanghai）",
         "weekday": "请至少选择一个星期"
       },
       "describe": {
@@ -388,9 +388,17 @@
     "mistakes": "错题 {{count}}",
     "notes": "笔记 {{count}}",
     "title": "今日有 {{count}} 项待复习",
-    "subtitle": "间隔复习计划已就绪",
+    "subtitle": "FSRS 智能复习与今日待办一处汇总",
     "withOverdue": "其中 {{overdue}} 题已逾期",
-    "action": "去复习"
+    "action": "去复习",
+    "hubTitle": "今日学习汇总",
+    "hubTotal": "共 {{count}} 项待完成",
+    "cardsLabel": "到期闪卡",
+    "mistakesLabel": "错题 FSRS",
+    "notesLabel": "待复习笔记",
+    "todosLabel": "今日待办",
+    "openItem": "直达",
+    "clearTag": "已清零"
   },
   "actions": {
     "quickAddPlaceholder": "添加待办，试试「明天交作业 !高」...",
@@ -493,6 +501,11 @@
     "noMatchingLists": "没有匹配的列表",
     "todayClear": "今日待办已清零",
     "todayClearHint": "享受当下，或去「即将到期」提前规划。",
+    "todayAllDoneHint": "今天的计划已稳稳落地，休息片刻，或顺手为明天留个轻松的起点。",
+    "todayCompletedBadge": "今日已完成 {{count}} 项",
+    "planUpcoming": "规划即将到期",
+    "reviewCompleted": "查看已完成",
+    "addFirstToday": "添加今日第一项",
     "upcomingClear": "未来 7 天没有安排",
     "upcomingClearHint": "用快速添加给未来的自己留个备忘。",
     "overdueClear": "没有逾期任务",
@@ -677,7 +690,8 @@
       "abandonConfirmShort": "放弃？",
       "skipBreakKey": "跳过休息 (B)",
       "noiseOnKey": "开启环境音 (M)",
-      "noiseOffKey": "关闭环境音 (M)"
+      "noiseOffKey": "关闭环境音 (M)",
+      "spaceShortcutHint": "Space 启停"
     },
     "miniWindow": {
       "close": "收回到主窗口",
@@ -717,12 +731,16 @@
       "today": "今日",
       "hourDist": "时段分布",
       "peakHour": "高峰 {{hour}}:00",
-      "hourDetail": "{{hour}}:00 · {{minutes}} 分钟"
+      "hourDetail": "{{hour}}:00 · {{minutes}} 分钟",
+      "legendLess": "少",
+      "legendMore": "多",
+      "legendScale": "15 / 30 / 60+ 分钟"
     },
     "stats": {
       "todayLabel": "今日",
       "pomodoroUnit": "个番茄",
       "todayCount": "今日 {{value}} 个番茄",
+      "todayGoalBadge": "今日 {{done}}/{{goal}} 个番茄",
       "focusLabel": "专注",
       "minutes": "{{value}} 分钟",
       "hours": "{{value}} 小时",
@@ -837,7 +855,10 @@
     "selectMode": "选择"
   },
   "quickAdd": {
-    "removeToken": "移除"
+    "removeToken": "移除",
+    "focusShortcutHint": "按 N 快速添加待办",
+    "continuousHint": "Enter 连续添加 · Esc 收起",
+    "addedStreak": "已连续添加 {{count}} 项"
   },
   "agent": {
     "list_not_activated": "目标清单未激活",

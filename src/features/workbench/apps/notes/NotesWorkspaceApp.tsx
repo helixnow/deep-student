@@ -32,6 +32,7 @@ import { getMindMapStoreForInstance } from '@/features/mindmap/store';
 import { exportResourceById } from '@/features/learning-hub/utils/exportResource';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { DsButton } from '@/components/ui/DsButton';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import {
   NOTES_WORKSPACE_COMMAND_EVENT,
@@ -521,9 +522,12 @@ interface WorkspacePaneProps {
   onTitleChange: (key: string, title: string) => void;
   onSaveStateChange: (key: string, state: SaveState) => void;
   onCreateNote?: () => void;
+  onCreateMindmap?: () => void;
   onOpenSearch?: () => void;
   onImport?: () => void;
   onAskAgent?: () => void;
+  recentResources?: readonly DstuNode[];
+  onOpenRecent?: (node: DstuNode) => void;
 }
 
 const TREE_SKELETON_ROWS: Array<{ indent: number; width: string }> = [
@@ -543,11 +547,14 @@ const WorkspacePane: React.FC<WorkspacePaneProps> = ({
   onTitleChange,
   onSaveStateChange,
   onCreateNote,
+  onCreateMindmap,
   onOpenSearch,
   onImport,
   onAskAgent,
+  recentResources,
+  onOpenRecent,
 }) => {
-  const { t } = useTranslation('workbench');
+  const { t } = useTranslation(['workbench', 'notes']);
   const active = tabs.find((tab) => tab.key === activeKey) ?? null;
   const modKey = isMacOS() ? '⌘' : 'Ctrl+';
   // 只挂载当前 + 最近 1 个标签的完整编辑器：后台标签不再用 hidden 常驻整份 Crepe，
@@ -598,32 +605,73 @@ const WorkspacePane: React.FC<WorkspacePaneProps> = ({
                 {t('workbench:notesWorkspace.empty.paneTitle')}
               </p>
               <div className="nes-empty-pane__actions">
-                <button
-                  type="button"
+                <DsButton
+                  variant="outline"
+                  size="sm"
                   className="nes-action"
                   onClick={() => onCreateNote?.()}
                 >
                   <FileText size={14} aria-hidden />
                   {t('workbench:notesWorkspace.empty.paneNewNote')}
-                </button>
-                <button
-                  type="button"
+                </DsButton>
+                {onCreateMindmap && (
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    className="nes-action nes-action--ghost"
+                    onClick={() => onCreateMindmap()}
+                  >
+                    <TreeStructure size={14} aria-hidden />
+                    {t('notes:workspace.emptyNewMindmap')}
+                  </DsButton>
+                )}
+                <DsButton
+                  variant="ghost"
+                  size="sm"
                   className="nes-action nes-action--ghost"
                   onClick={() => onOpenSearch?.()}
                 >
                   <MagnifyingGlass size={14} aria-hidden />
                   {t('workbench:notesWorkspace.empty.paneOpenSearch')}
-                </button>
-                <button type="button" className="nes-action nes-action--ghost" onClick={onImport}>
+                </DsButton>
+                <DsButton variant="ghost" size="sm" className="nes-action nes-action--ghost" onClick={onImport}>
                   <FileArrowUp size={14} aria-hidden />
                   {t('workbench:notesWorkspace.empty.paneImport', 'Import notes')}
-                </button>
-                <button type="button" className="nes-action nes-action--ghost" onClick={onAskAgent}>
+                </DsButton>
+                <DsButton variant="ghost" size="sm" className="nes-action nes-action--ghost" onClick={onAskAgent}>
                   <Robot size={14} aria-hidden />
                   {t('workbench:notesWorkspace.empty.paneAskAgent', 'Ask Agent')}
-                </button>
+                </DsButton>
               </div>
+              {recentResources && recentResources.length > 0 && onOpenRecent && (
+                <div
+                  className="flex w-full max-w-xs flex-col gap-1 border-t border-border/50 pt-3 text-left"
+                  data-testid="notes-empty-recents"
+                >
+                  <p className="px-2 text-2xs font-medium text-muted-foreground/70">
+                    {t('notes:workspace.recentSectionTitle')}
+                  </p>
+                  {recentResources.map((node) => (
+                    <DsButton
+                      key={`${node.type}:${node.id}`}
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-full justify-start gap-2 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150 motion-reduce:transition-none"
+                      onClick={() => onOpenRecent(node)}
+                    >
+                      <ResourceGlyph type={node.type === 'mindmap' ? 'mindmap' : 'note'} id={node.id} size={14} />
+                      <span className="truncate">
+                        {t('notes:workspace.resumeItem', { title: node.name })}
+                      </span>
+                    </DsButton>
+                  ))}
+                </div>
+              )}
               <ul className="nes-empty-pane__hints">
+                <li className="nes-empty-pane__hint">
+                  <kbd className="nes-kbd">{modKey}P</kbd>
+                  <span>{t('notes:workspace.hintQuickSwitch')}</span>
+                </li>
                 <li className="nes-empty-pane__hint">
                   <kbd className="nes-kbd">{modKey}O</kbd>
                   <span>{t('workbench:notesWorkspace.empty.hintQuickOpen')}</span>
@@ -631,6 +679,10 @@ const WorkspacePane: React.FC<WorkspacePaneProps> = ({
                 <li className="nes-empty-pane__hint">
                   <kbd className="nes-kbd">{modKey}N</kbd>
                   <span>{t('workbench:notesWorkspace.empty.hintNewNote')}</span>
+                </li>
+                <li className="nes-empty-pane__hint">
+                  <kbd className="nes-kbd">{modKey}\</kbd>
+                  <span>{t('notes:workspace.hintToggleSidebar')}</span>
                 </li>
               </ul>
             </div>
@@ -1002,6 +1054,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const persistedState = persistedStateRef.current;
   const hostRef = useRef<HTMLDivElement>(null);
   const explorerRef = useRef<HTMLElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   // 拖/缩/settle 期间冻结工作区动画/过渡（CSS 定向规则见 NotesWorkspaceApp.css）
   useDragRenderPause(hostRef, renderThrottleMs);
   const [resources, setResources] = useState<DstuNode[]>([]);
@@ -2041,6 +2094,28 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     return recents;
   }, [navHistory.entries, resources]);
 
+  // 空工作区欢迎页「继续最近学习」：优先会话访问历史，不足 4 条时按最近更新时间补齐
+  const welcomeRecentResources = useMemo(() => {
+    const seen = new Set<string>();
+    const combined: DstuNode[] = [];
+    for (const node of recentSearchResources) {
+      const key = `${node.type}:${node.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      combined.push(node);
+      if (combined.length >= 4) return combined;
+    }
+    const sortedByUpdated = [...resources].sort((a, b) => b.updatedAt - a.updatedAt);
+    for (const node of sortedByUpdated) {
+      const key = `${node.type}:${node.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      combined.push(node);
+      if (combined.length >= 4) break;
+    }
+    return combined;
+  }, [recentSearchResources, resources]);
+
   const openWorkspaceSearchResult = useCallback(async (
     node: DstuNode,
     context?: { mode: NotesSearchMode; query: string },
@@ -2564,14 +2639,77 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         <div className="notes-search">
           <MagnifyingGlass size={14} aria-hidden />
           <input
+            ref={searchInputRef}
             className="notes-search-input"
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (isComposingKeyEvent(event)) return;
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                if (query) {
+                  setQuery('');
+                } else {
+                  event.currentTarget.blur();
+                }
+                return;
+              }
+              if (event.key === 'ArrowDown') {
+                if (learningView === 'tree' && treeItems.length > 0) {
+                  event.preventDefault();
+                  const firstId = treeItems[0].id;
+                  selectTreeItem(firstId);
+                  const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+                    ? CSS.escape(firstId)
+                    : firstId;
+                  const row = explorerRef.current?.querySelector<HTMLElement>(
+                    `.notes-tree-host [role="treeitem"][data-nwt-id="${escaped}"]`,
+                  ) ?? explorerRef.current?.querySelector<HTMLElement>('.notes-tree-host [role="treeitem"]');
+                  row?.focus();
+                  return;
+                }
+                const firstAction = explorerRef.current?.querySelector<HTMLElement>('.notes-tree-host button');
+                if (firstAction) {
+                  event.preventDefault();
+                  firstAction.focus();
+                }
+                return;
+              }
+              if (event.key === 'Enter' && query.trim() && filteredResources.length > 0) {
+                event.preventDefault();
+                void openWorkspaceSearchResult(filteredResources[0]);
+              }
+            }}
             placeholder={t('notesWorkspace.search.placeholder', 'Search files...')}
             aria-label={t('notesWorkspace.search.aria', 'Search files')}
           />
-          {query && <IconButton label={t('notesWorkspace.search.clear', 'Clear search')} onClick={() => setQuery('')}><X size={12} /></IconButton>}
+          {query.trim() && (
+            <span
+              className="shrink-0 text-2xs tabular-nums text-muted-foreground/70"
+              data-testid="notes-search-match-count"
+              aria-live="polite"
+            >
+              {t('notes:workspace.searchMatchCount', { count: filteredResources.length })}
+            </span>
+          )}
+          {query && (
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className="notes-icon-button h-6 w-6 shrink-0"
+              aria-label={t('notesWorkspace.search.clear', 'Clear search')}
+              title={t('notesWorkspace.search.clear', 'Clear search')}
+              onClick={() => {
+                setQuery('');
+                searchInputRef.current?.focus();
+              }}
+            >
+              <X size={12} />
+            </DsButton>
+          )}
         </div>
         <TagFilter
           selectedTags={selectedTags}
@@ -2717,9 +2855,31 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         <div className="notes-tree-host" aria-live="polite">
           {learningView !== 'tree' ? (
             loading && resources.length === 0 ? <p className="p-3 text-xs">{t('notes:editor.windowing.loading_note')}</p>
-              : loadError && resources.length === 0 ? <div className="p-3 text-xs" role="alert">{loadError}<button type="button" onClick={() => void loadResources({ blocking: true })}>{t('common:retry')}</button></div>
-                : <NoteLearningViews notes={filteredResources} view={learningView} activeId={activeTab?.id}
-                  onOpen={(node) => { void openWorkspaceSearchResult(node); }} />
+              : loadError && resources.length === 0 ? <div className="p-3 text-xs" role="alert">{loadError}<DsButton variant="ghost" size="sm" onClick={() => void loadResources({ blocking: true })}>{t('common:retry')}</DsButton></div>
+                : filteredResources.length === 0 && (query.trim() || selectedTags.length > 0) ? (
+                  <div className="nes-tree-empty notes-tree-message" data-state="empty">
+                    <p className="nes-tree-empty__message">
+                      {t('notesWorkspace.tree.noMatches', {
+                        defaultValue: 'No files match "{{query}}"',
+                        query: query || selectedTags.join(', '),
+                      })}
+                    </p>
+                    <DsButton
+                      variant="outline"
+                      size="sm"
+                      className="nes-action"
+                      onClick={() => {
+                        setQuery('');
+                        setSelectedTags([]);
+                        searchInputRef.current?.focus();
+                      }}
+                    >
+                      {t('notesWorkspace.tree.showAll', 'Show all files')}
+                    </DsButton>
+                  </div>
+                )
+                  : <NoteLearningViews notes={filteredResources} view={learningView} activeId={activeTab?.id}
+                    onOpen={(node) => { void openWorkspaceSearchResult(node); }} />
           ) : <>
           {loading && !hasTreeItems ? (
             <div
@@ -2774,13 +2934,18 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                         query: query || selectedTags.join(', '),
                       })}
                     </p>
-                    <button
-                      type="button"
+                    <DsButton
+                      variant="outline"
+                      size="sm"
                       className="nes-action"
-                      onClick={() => { setQuery(''); setSelectedTags([]); }}
+                      onClick={() => {
+                        setQuery('');
+                        setSelectedTags([]);
+                        searchInputRef.current?.focus();
+                      }}
                     >
                       {t('notesWorkspace.tree.showAll', 'Show all files')}
-                    </button>
+                    </DsButton>
                   </>
                 ) : (
                   <>
@@ -2914,9 +3079,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                 onTitleChange={updateTabTitle}
                 onSaveStateChange={updateTabSaveState}
                 onCreateNote={() => { void createResource('note'); }}
+                onCreateMindmap={() => { void createResource('mindmap'); }}
                 onOpenSearch={() => openSearchOverlay('quick-open')}
                 onImport={() => setLibraryDialog({ open: true, tab: 'import' })}
                 onAskAgent={() => { void openQuickAssistantWindow().catch((error) => showGlobalNotification('error', String(error))); }}
+                recentResources={welcomeRecentResources}
+                onOpenRecent={(node) => { void openWorkspaceSearchResult(node); }}
               />
             </Panel>
             {splitTab && (
@@ -2948,9 +3116,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                     onTitleChange={updateTabTitle}
                     onSaveStateChange={updateTabSaveState}
                     onCreateNote={() => { void createResource('note'); }}
+                    onCreateMindmap={() => { void createResource('mindmap'); }}
                     onOpenSearch={() => openSearchOverlay('quick-open')}
                     onImport={() => setLibraryDialog({ open: true, tab: 'import' })}
                     onAskAgent={() => { void openQuickAssistantWindow().catch((error) => showGlobalNotification('error', String(error))); }}
+                    recentResources={welcomeRecentResources}
+                    onOpenRecent={(node) => { void openWorkspaceSearchResult(node); }}
                   />
                 </Panel>
               </>

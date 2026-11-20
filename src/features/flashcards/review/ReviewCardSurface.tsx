@@ -233,13 +233,21 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
           data-side={side}
           data-enter={enterAnim === 'none' ? undefined : enterAnim}
           className={cn(
-            'wb-fc-card relative min-h-[16rem] min-w-0 flex-1 cursor-pointer',
-            !templateMode && 'rounded-[20px] border border-border/50 bg-card shadow-[0_18px_40px_-20px_rgba(15,23,42,0.12)]',
+            'wb-fc-card relative min-h-[16rem] min-w-0 flex-1 cursor-pointer transition-[border-color,box-shadow,transform] duration-150 ease-standard motion-reduce:transition-none',
+            !templateMode && 'rounded-[20px] border bg-card shadow-shell',
+            !templateMode && !flipped && 'border-border/55 hover:border-border/85 active:scale-[0.996] motion-reduce:active:scale-100',
+            !templateMode && flipped && 'border-primary/25 ring-1 ring-primary/[0.08]',
             'text-center',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-            disabled && 'cursor-default opacity-70',
+            disabled && 'cursor-default opacity-70 active:scale-100',
           )}
         >
+          {!templateMode && flipped ? (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-10 top-0 h-0.5 rounded-full bg-primary/35 animate-chat-fade-in motion-reduce:animate-none"
+            />
+          ) : null}
           <div
             ref={contentRef}
             className={cn('wb-fc-card-content flex min-h-full flex-col', !templateMode && 'px-6 py-8 sm:px-10 sm:py-10')}

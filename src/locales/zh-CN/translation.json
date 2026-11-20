@@ -31,13 +31,18 @@
     "export": "导出",
     "export_title": "导出翻译结果",
     "copied": "已复制到剪贴板",
+    "copied_short": "已复制",
     "exported": "翻译结果已导出",
     "edit": "编辑译文",
     "edit_saved": "译文修改已保存",
     "listen": "朗读",
     "stop_listen": "停止朗读",
     "maximize": "最大化翻译结果",
-    "restore": "恢复双栏布局"
+    "restore": "恢复双栏布局",
+    "empty_subhint": "支持学术流式译文、逐段对照校对与术语表约束",
+    "ready_to_translate": "原文已就绪，点击「翻译」或按 {{shortcut}} 开始",
+    "streaming_preparing": "正在连接模型并解析语境…",
+    "streaming_live": "正在实时生成译文 · {{count}} 字符"
   },
   "source_section": {
     "title": "待翻译文本",

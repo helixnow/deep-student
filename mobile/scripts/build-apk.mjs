@@ -272,13 +272,28 @@ function patchAndroidManifest(android) {
       'Pomodoro alarm receiver');
   }
 
+  const shareMimeTypes = [
+    'image/*',
+    'application/pdf',
+    'text/plain',
+    'text/markdown',
+    'text/x-markdown',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/epub+zip',
+    'audio/*',
+    'video/*',
+  ];
+  text = text.replace(
+    /[ \t]*<intent-filter>\s*<action android:name="android\.intent\.action\.SEND(?:_MULTIPLE)?"\s*\/>[\s\S]*?<\/intent-filter>\r?\n?/g,
+    '',
+  );
+  const shareMimeData = shareMimeTypes.map(mime => `<data android:mimeType="${mime}" />`).join('');
   for (const action of ['SEND', 'SEND_MULTIPLE']) {
-    if (!text.includes('android.intent.action.' + action + '"')) {
-      const filter = '<intent-filter><action android:name="android.intent.action.' + action +
-        '" /><category android:name="android.intent.category.DEFAULT" /><data android:mimeType="image/*" /><data android:mimeType="application/pdf" />' +
-        (action === 'SEND' ? '<data android:mimeType="text/plain" />' : '') + '</intent-filter>';
-      text = replaceRequired(text, /<\/activity>/, filter + '\n        </activity>', 'Android incoming share');
-    }
+    const filter =
+      `<intent-filter><action android:name="android.intent.action.${action}" />` +
+      `<category android:name="android.intent.category.DEFAULT" />` +
+      `${shareMimeData}</intent-filter>`;
+    text = replaceRequired(text, /<\/activity>/, `        ${filter}\n        </activity>`, 'Android incoming share');
   }
 
   if (!text.includes('android.hardware.camera')) {

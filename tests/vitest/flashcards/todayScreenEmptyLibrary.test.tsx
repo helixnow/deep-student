@@ -125,6 +125,9 @@ describe('TodayScreen progress and empty states', () => {
 
     await waitFor(() => expect(screen.getByText('100%')).toBeInTheDocument());
     expect(screen.getByText(zhFlashcards.today.allDone)).toBeInTheDocument();
+    expect(
+      screen.getByText(zhFlashcards.today.allDoneHint.replace('{{count}}', '7')),
+    ).toBeInTheDocument();
     expect(screen.queryByText(zhFlashcards.today.libraryEmpty)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: zhFlashcards.today.goLibrary })).toBeInTheDocument();
   });

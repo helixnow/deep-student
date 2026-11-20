@@ -33,6 +33,15 @@ describe('WorkbenchEventBridge classic navigation events (previously dead in wor
     expect(launch).toHaveBeenCalledWith(expect.objectContaining({ typeId: 'exam', instanceKey: 'exam_1' }));
   });
 
+  it('opens the settings window for SETTINGS_NAVIGATE_TAB and NAVIGATE_TO_VIEW{view:"settings"}', () => {
+    render(<WorkbenchEventBridge />);
+    fire('SETTINGS_NAVIGATE_TAB', { tab: 'apis' });
+    expect(launch).toHaveBeenCalledWith(expect.objectContaining({ typeId: 'settings' }));
+    launch.mockReset();
+    fire('NAVIGATE_TO_VIEW', { view: 'settings' });
+    expect(launch).toHaveBeenCalledWith(expect.objectContaining({ typeId: 'settings' }));
+  });
+
   it('opens the resource window for NAVIGATE_TO_VIEW{openResource} and ignores plain view switches', () => {
     render(<WorkbenchEventBridge />);
     fire('NAVIGATE_TO_VIEW', { view: 'learning-hub' });

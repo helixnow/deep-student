@@ -35,10 +35,10 @@
       "operatingFallback": "AI 正在操作"
     },
     "errors": {
-      "controlOff": "Agent 桌面操控已关闭（desktop.workbenchAgentControl=off）",
-      "controlOffHint": "将设置「AI 助手操控」改为「后台」或「跟随」即可；数据修改也可改用领域工具",
-      "osDisabled": "桌面模式未开启",
-      "osDisabledHint": "请先开启 OS/桌面模式；数据修改请改用领域工具",
+      "controlOff": "AI 桌面操控已关闭，可在设置中调整桌面窗口自动编排方式",
+      "controlOffHint": "在设置中将「AI 助手操控」改为「后台」或「跟随」即可恢复窗口联动；关闭期间仍可直接保存学习内容",
+      "osDisabled": "学习桌面未开启",
+      "osDisabledHint": "请先在设置中开启「学习桌面」；当前界面下仍可直接编辑和保存学习内容",
       "launchFailed": "无法打开应用窗口",
       "launchFailedHint": "桌面模式未就绪或应用未注册",
       "abortedByControlOff": "操控已关闭，操作已中止",
@@ -215,21 +215,32 @@
     "appName": "学习桌面",
     "desktopRename": "重命名桌面…",
     "desktopNameInputLabel": "桌面名称",
-    "flashcardsDue": "{{count}} 张到期闪卡",
-    "tasksRunning": "{{count}} 个制卡任务进行中",
-    "automations": "打开定时任务：{{enabled}} 个启用，{{running}} 个运行中，{{failed}} 个最近失败",
-    "automationsTitle": "定时任务",
+    "flashcardsDue": "到期闪卡：{{count}} 张待复习（点击立即复习）",
+    "tasksRunning": "制卡任务：{{count}} 个进行中（点击查看进度）",
+    "automations": "定时学习任务：{{enabled}} 个已启用，{{running}} 个运行中，{{failed}} 个最近失败（点击管理）",
+    "automationsTitle": "定时学习任务",
     "automationsEnabledShort": "{{count}} 个启用",
+    "automationsRunningShort": "{{count}} 个运行中",
     "automationsNextRun": "下次运行 {{relative}}",
     "automationsFailedShort": "{{count}} 个最近失败",
+    "automationsIdleHint": "定时学习任务 · 暂未开启（点击设置自动复习或提醒）",
+    "automationsClickHint": "点击管理",
     "automationsRelativeSoon": "即将开始",
     "automationsRelativeMinutes": "{{count}} 分钟后",
     "automationsRelativeHours": "{{count}} 小时后",
     "automationsRelativeDays": "{{count}} 天后",
-    "pomodoroFocus": "专注剩余 {{time}}",
-    "pomodoroBreakRemaining": "休息剩余 {{time}}",
-    "pomodoroFocusElapsed": "已专注 {{time}}",
-    "pomodoroPaused": "已暂停 {{time}}",
+    "pomodoroFocus": "番茄钟：专注剩余 {{time}}（点击打开番茄钟）",
+    "pomodoroBreakRemaining": "番茄钟：休息剩余 {{time}}（点击打开番茄钟）",
+    "pomodoroFocusElapsed": "番茄钟：已专注 {{time}}（点击打开番茄钟）",
+    "pomodoroPaused": "番茄钟：已暂停 {{time}}（点击继续或查看）",
+    "pomodoroTagFocus": "专注",
+    "pomodoroTagBreak": "休息",
+    "pomodoroTagPaused": "已暂停",
+    "flashcardsTag": "待复习",
+    "tasksTag": "制卡中",
+    "automationsTagRunning": "运行中",
+    "automationsTagFailed": "需关注",
+    "automationsTagActive": "自动",
     "pomodoroIdle": "未开始",
     "pomodoroWork": "专注中",
     "pomodoroBreak": "休息中",
@@ -331,7 +342,8 @@
     "noWindows": "暂无窗口",
     "running": "运行中",
     "apps": "全部应用",
-    "showAllWindows": "显示全部窗口"
+    "showAllWindows": "显示全部窗口",
+    "autohideHint": "程序坞已自动收起，指针移至底部边缘或点击此处即可唤出"
   },
   "resourceHome": {
     "newExam": "新建题目集",
@@ -396,7 +408,30 @@
     "sectionChat": "聊天",
     "searching": "正在搜索…",
     "resultCount": "{{count}} 个结果",
-    "resultCount_one": "{{count}} 个结果"
+    "resultCount_one": "{{count}} 个结果",
+    "clearSearch": "清空搜索",
+    "askAi": "前往 AI 对话提问",
+    "searchKeywords": {
+      "chat": "对话 聊天 问答 ai assistant",
+      "files": "资源库 文件 资料 教材 文档 pdf library",
+      "note": "笔记 思维导图 脑图 大纲 markdown md note mindmap",
+      "notes": "笔记 思维导图 脑图 大纲 markdown md note mindmap",
+      "textbook": "教材 课本 书籍 阅读 pdf book",
+      "exam": "题目集 刷题 试卷 练习 测验 quiz practice",
+      "translation": "翻译 双语 外语 词典 translate",
+      "essay": "作文批改 写作 润色 批改 writing",
+      "flashcards": "闪卡 记忆 卡片 复习 anki fsrs cards",
+      "taskDashboard": "制卡 任务 牌组 anki deck",
+      "todo": "待办 日程 计划 清单 提醒 任务 task agenda",
+      "pomodoro": "番茄钟 专注 计时 倒计时 focus timer",
+      "media": "音视频 视频 音频 网课 讲座 录音 转写 字幕 video audio",
+      "settings": "设置 偏好 配置 主题 快捷键 preferences config",
+      "skills": "技能 工具 插件 mcp agent",
+      "templates": "模板 卡片模板 样式 card template",
+      "sandbox": "沙箱 预览 代码 html preview",
+      "browser": "浏览器 网页 搜索 web",
+      "aiDashboard": "仪表盘 统计 数据 概览 学习报告 dashboard stats"
+    }
   },
   "window": {
     "close": "关闭",
@@ -563,16 +598,24 @@
     },
     "tricks": {
       "title": "修饰键技巧",
-      "drag": "拖拽窗口：扩大贴边/角热区；拖到顶缘变为上半屏",
+      "drag": "拖拽窗口：扩大贴边与四角吸附热区；拖到顶缘平铺上半屏",
       "dragGesture": "拖拽",
-      "tileMenu": "绿灯悬停菜单：中列变为上半屏 / 填满 / 下半屏",
+      "tileMenu": "悬停窗口绿灯：展开上半屏 / 填满桌面 / 下半屏选项",
       "tileMenuGesture": "悬停绿灯",
-      "zoom": "传统缩放：填满桌面 / 还原",
+      "zoom": "点按窗口绿灯：填满桌面或恢复原尺寸",
       "zoomGesture": "点按绿灯",
       "closeAll": "关闭该应用的全部窗口",
       "closeAllGesture": "点按红灯",
       "minimizeAll": "最小化该应用的全部窗口",
       "minimizeAllGesture": "点按黄灯"
+    },
+    "studyGlobal": {
+      "title": "全局搜索与学习效率",
+      "search": "搜索应用、命令与学习资料",
+      "settings": "打开系统设置",
+      "quickLook": "在资源库中快速预览选中资料（再按关闭）",
+      "spaceKey": "空格",
+      "escapeExit": "退出沉浸模式、窗口俯瞰或关闭当前弹层"
     }
   },
   "wallpaper": {
@@ -717,7 +760,7 @@
     "mode": {
       "title": "学习桌面（默认）",
       "desc": "开启后使用窗口化学习桌面；关闭后切回经典布局作为兼容模式，桌面布局快照会保留。",
-      "migratedNotice": "已启用学习桌面，可在设置切回经典模式"
+      "migratedNotice": "学习桌面已就绪，随时可在设置中切换界面模式"
     },
     "performanceProfile": {
       "title": "性能档位",
@@ -793,11 +836,11 @@
     },
     "devPanel": {
       "title": "诊断面板",
-      "desc": "在桌面上显示窗口生命周期、内存预算与帧耗时等调度诊断信息。开发版默认关闭；需用 npm run dev:tauri:diag，或 URL 加 ?wbDiag=1 启动后才可用。"
+      "desc": "在桌面上显示窗口状态、内存占用与画面流畅度等运行指标，仅在开启诊断模式后可用。"
     },
     "browserEnabled": {
       "title": "内置浏览器",
-      "desc": "在学习桌面中打开独立浏览器窗口（页面在隔离 WebView 中运行）。需先启用学习桌面。",
+      "desc": "在学习桌面中打开独立浏览器窗口（网页在安全隔离环境中运行）。需先启用学习桌面。",
       "needWorkbench": "请先启用学习桌面，才能打开内置浏览器相关选项。"
     },
     "browserNetworkMode": {
@@ -818,7 +861,7 @@
       "off": "关闭",
       "background": "后台",
       "follow": "跟随",
-      "offDesc": "只读允许列出/查询窗口；打开、关闭、指令与演出一律拒绝。数据修改可走后端直写，不会开窗或演出。",
+      "offDesc": "仅查看窗口状态，不自动打开、关闭或编排窗口；关闭期间学习内容的保存不受影响。",
       "backgroundDesc": "允许操控但不抢焦点：可在已开窗口演出，或直落终态并在 Dock 提示。",
       "followDesc": "自动开窗并聚焦跟随：助手操作时会把目标窗口带到前台演出。"
     },
@@ -830,8 +873,8 @@
       "demo": "演示"
     },
     "browserCdpWindows": {
-      "title": "Windows CDP 加速（高级）",
-      "desc": "仅 Windows。启用远程调试端口以增强自动化；有额外安全面，默认关闭。"
+      "title": "浏览器自动化增强（高级）",
+      "desc": "仅 Windows 可用。开启本地辅助连接以提升网页自动化体验，默认关闭以保障安全。"
     },
     "browserAdvanced": "高级（浏览器）",
     "browserPolicyDisabled": "当前策略禁用了内置浏览器。"
@@ -862,7 +905,7 @@
     "gatedHint": "功能关闭时不会打开网页窗口；可在设置中启用内置浏览器（若当前版本支持）。"
   },
   "devPanel": {
-    "title": "Workbench 诊断",
+    "title": "桌面运行诊断",
     "expand": "展开面板",
     "collapse": "折叠面板",
     "windows": "窗口",
@@ -894,10 +937,10 @@
     "minimizedTag": "最小化",
     "close": "关闭面板",
     "firstFrame": "{{value}}→首帧",
-    "acrNoTransactions": "（无活跃 transaction）",
-    "acrNoPresence": "（无活跃 presence）",
-    "acrNoReceipts": "（尚无回执 · StageManager 接线后可见）",
-    "acrNoDomainEvents": "（尚无域事件）"
+    "acrNoTransactions": "（当前无进行中的联动任务）",
+    "acrNoPresence": "（当前无窗口处于操控中）",
+    "acrNoReceipts": "（暂无操作记录）",
+    "acrNoDomainEvents": "（暂无近期更新事件）"
   },
   "notesWorkspace": {
     "title": "笔记",
@@ -1223,7 +1266,7 @@
     "language": "语言",
     "lines": "行数",
     "characters": "字符",
-    "iframeNotice": "受限 iframe，脚本已禁用。",
+    "iframeNotice": "已在安全隔离环境中预览，动态脚本默认停用。",
     "emptyHint": "在聊天中打开代码块即可预览。",
     "mobileHint": "移动端以预览为主，完整工作台建议在桌面端使用。",
     "closed": "已收起",

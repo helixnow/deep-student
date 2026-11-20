@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { useTranslation } from "react-i18next";
-import { TextAlignLeft, Calendar, CaretRight, Tag, Clock, X, Plus, PencilSimple, Check, Books } from "@phosphor-icons/react";
+import { TextAlignLeft, Calendar, CaretRight, Tag, Clock, X, Plus, PencilSimple, Check, Books, ArrowsInLineVertical, ArrowsOutLineVertical } from "@phosphor-icons/react";
 import { useNotesOptional } from "./NotesContext";
 import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { Separator } from "@/components/ui/shad/Separator";
@@ -131,6 +131,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     const [collapsedKeys, setCollapsedKeys] = useState<Set<string>>(new Set());
     // 大纲行 DOM（滚动跟随时把高亮行滚入面板可视区）
     const outlineRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+    const outlineButtonRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
     const tagInputRef = useRef<HTMLInputElement>(null);
     const tagTriggerRef = useRef<HTMLButtonElement>(null);
     const renameTriggerRefs = useRef(new Map<string, HTMLButtonElement>());
@@ -371,6 +372,68 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         });
         return map;
     }, [headings]);
+
+    const collapsibleKeys = useMemo(
+        () => headings.filter((heading) => hasChildrenById.get(heading.id)).map((heading) => heading.collapseKey),
+        [headings, hasChildrenById],
+    );
+
+    const allOutlineCollapsed = collapsibleKeys.length > 0 && collapsibleKeys.every((key) => collapsedKeys.has(key));
+
+    const toggleCollapseAll = useCallback(() => {
+        setCollapsedKeys((prev) => {
+            const everyCollapsed = collapsibleKeys.length > 0 && collapsibleKeys.every((key) => prev.has(key));
+            return everyCollapsed ? new Set() : new Set(collapsibleKeys);
+        });
+    }, [collapsibleKeys]);
+
+    const handleOutlineItemKeyDown = useCallback((
+        event: React.KeyboardEvent<HTMLButtonElement>,
+        index: number,
+        heading: OutlineHeading,
+        hasChildren: boolean,
+        isCollapsed: boolean,
+    ) => {
+        if (isComposingKeyEvent(event)) return;
+        const focusByIndex = (nextIndex: number) => {
+            const target = visibleHeadings[nextIndex];
+            if (!target) return;
+            outlineButtonRefs.current.get(target.id)?.focus();
+        };
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            focusByIndex(Math.min(visibleHeadings.length - 1, index + 1));
+        } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            focusByIndex(Math.max(0, index - 1));
+        } else if (event.key === 'Home') {
+            event.preventDefault();
+            focusByIndex(0);
+        } else if (event.key === 'End') {
+            event.preventDefault();
+            focusByIndex(visibleHeadings.length - 1);
+        } else if (event.key === 'ArrowLeft') {
+            if (hasChildren && !isCollapsed) {
+                event.preventDefault();
+                toggleCollapsed(heading.collapseKey);
+            } else if (heading.level > 1) {
+                for (let cursor = index - 1; cursor >= 0; cursor -= 1) {
+                    if (visibleHeadings[cursor].level < heading.level) {
+                        event.preventDefault();
+                        focusByIndex(cursor);
+                        break;
+                    }
+                }
+            }
+        } else if (event.key === 'ArrowRight' && hasChildren) {
+            event.preventDefault();
+            if (isCollapsed) {
+                toggleCollapsed(heading.collapseKey);
+            } else {
+                focusByIndex(Math.min(visibleHeadings.length - 1, index + 1));
+            }
+        }
+    }, [toggleCollapsed, visibleHeadings]);
 
     const handleHeadingClick = (heading: { id: string; text: string; searchText: string; level: number; occurrence: number }) => {
         setActiveHeadingId(heading.id);
@@ -849,21 +912,42 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
 
             {/* Outline Section：B04 大纲直达——视觉顺序优先于元数据/统计 */}
             <div className="notes-context-outline order-first flex-1 flex flex-col min-h-0">
-                <div className="px-3 pt-3 pb-1">
-                    <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                        <TextAlignLeft className="w-3.5 h-3.5" />
-                        {t('notes:context.outline')}
+                <div className="px-3 pt-3 pb-1 flex items-center gap-1.5">
+                    <h3 className="text-xs font-medium text-muted-foreground flex flex-1 items-center gap-1.5 min-w-0">
+                        <TextAlignLeft className="w-3.5 h-3.5 shrink-0" />
+                        <span className="truncate">{t('notes:context.outline')}</span>
                         {headings.length > 0 && (
-                            <span className="ml-auto text-[10px] font-mono tabular-nums font-normal text-muted-foreground/60">
+                            <span className="ml-auto text-2xs font-mono tabular-nums font-normal text-muted-foreground/60">
                                 {headings.length}
                             </span>
                         )}
                     </h3>
+                    {collapsibleKeys.length > 0 && (
+                        <DsButton
+                            variant="ghost"
+                            size="sm"
+                            iconOnly
+                            className="!h-5 !w-5 !min-w-0 shrink-0 text-muted-foreground/70 hover:text-foreground transition-colors duration-150 motion-reduce:transition-none"
+                            onClick={toggleCollapseAll}
+                            aria-label={allOutlineCollapsed
+                                ? t('notes:editorV2.outline_expand_all')
+                                : t('notes:editorV2.outline_collapse_all')}
+                            title={allOutlineCollapsed
+                                ? t('notes:editorV2.outline_expand_all')
+                                : t('notes:editorV2.outline_collapse_all')}
+                        >
+                            {allOutlineCollapsed ? (
+                                <ArrowsOutLineVertical className="w-3.5 h-3.5" aria-hidden="true" />
+                            ) : (
+                                <ArrowsInLineVertical className="w-3.5 h-3.5" aria-hidden="true" />
+                            )}
+                        </DsButton>
+                    )}
                 </div>
                 <CustomScrollArea className="flex-1">
                     <div className="px-3 pb-3 pt-0 space-y-0.5">
                         {headings.length > 0 ? (
-                            visibleHeadings.map((heading) => {
+                            visibleHeadings.map((heading, index) => {
                                 const isActive = activeHeadingId === heading.id;
                                 const hasChildren = hasChildrenById.get(heading.id) ?? false;
                                 const isCollapsed = collapsedKeys.has(heading.collapseKey);
@@ -903,7 +987,10 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                                     : t('notes:editorV2.outline_collapse', { defaultValue: '折叠分组' })}
                                             >
                                                 <CaretRight
-                                                    className={cn("w-3 h-3", !isCollapsed && "rotate-90")}
+                                                    className={cn(
+                                                        "w-3 h-3 transition-transform duration-150 ease-out motion-reduce:transition-none",
+                                                        !isCollapsed && "rotate-90",
+                                                    )}
                                                     aria-hidden="true"
                                                 />
                                             </DsButton>
@@ -911,6 +998,10 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                             <span className="w-4 shrink-0 [@media(pointer:coarse)]:w-11" aria-hidden="true" />
                                         )}
                                         <DsButton
+                                            ref={(el) => {
+                                                if (el) outlineButtonRefs.current.set(heading.id, el);
+                                                else outlineButtonRefs.current.delete(heading.id);
+                                            }}
                                             variant="ghost" size="sm"
                                             className={cn(
                                                 "!h-auto !w-auto min-w-0 flex-1 !flex-col !items-start !justify-start gap-0 !rounded-sm !px-1 !py-1 !text-left text-xs hover:!bg-transparent",
@@ -929,6 +1020,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                                     ),
                                             )}
                                             onClick={() => handleHeadingClick(heading)}
+                                            onKeyDown={(event) => handleOutlineItemKeyDown(event, index, heading, hasChildren, isCollapsed)}
                                             title={heading.text}
                                             aria-current={isActive ? 'true' : undefined}
                                         >

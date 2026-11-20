@@ -2,6 +2,7 @@ import '../styles/mcp-preset-oauth.css';
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { isMobilePlatform } from '@/utils/platform';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { DsButton } from '@/components/ui/DsButton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
@@ -233,12 +234,15 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
   // 新增服务器入口：移动端走右滑面板（与编辑同一表单，index=null 即创建模式，
   // 保存出口在统一顶栏 Check）；桌面维持 McpToolsSection 的行内新建表单不变
   const handleCreateMcpTool = () => {
+    const mobilePlatform = isMobilePlatform();
     setMcpToolModal({
       open: true,
       index: null,
       mode: 'form',
       jsonInput: '',
-      draft: { id: '', name: '', transportType: 'stdio', command: 'npx', args: [], env: {}, cwd: '', framing: 'jsonl' },
+      draft: mobilePlatform
+        ? { id: '', name: '', transportType: 'streamable_http', endpoint: '', fetch: { type: 'streamable_http', url: '' }, env: {} }
+        : { id: '', name: '', transportType: 'stdio', command: 'npx', args: [], env: {}, cwd: '', framing: 'jsonl' },
       error: null,
     });
     if (isSmallScreen) {

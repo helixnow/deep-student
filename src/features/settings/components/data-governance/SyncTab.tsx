@@ -270,6 +270,19 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         </div>
       </div>
 
+      {/* 同步 vs 云端整包备份心智区分提示 */}
+      <div className="rounded-xl border border-border/50 bg-muted/40 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+        <div className="font-medium text-foreground mb-1">
+          {t("sync:syncVsBackupTitle", { defaultValue: "多端同步 vs 云端整包备份" })}
+        </div>
+        <p>
+          {t("sync:syncVsBackupDesc", {
+            defaultValue:
+              "日常跨设备学习请使用下方「同步」（双向合并笔记、闪卡与复习记录）；换新设备或留存完整历史快照时，再使用「云存储设置」里的整包备份与恢复。",
+          })}
+        </p>
+      </div>
+
       {/* 数据库同步状态 */}
       <section className="min-w-0">
         <GroupTitle

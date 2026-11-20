@@ -6,6 +6,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import {
+  Archive,
   Atom,
   BookOpen,
   Bookmark,
@@ -82,6 +83,7 @@ import {
   AppMenuTrigger,
 } from '@/components/ui/app-menu/AppMenu';
 import { showArchiveSessionToast } from '@/features/chat/utils/archiveSessionToast';
+import { openArchivedSessionsSettings } from '@/utils/pendingSettingsTab';
 import {
   markSessionSidebarIndicatorSeen,
   useSessionSidebarIndicators,
@@ -1433,6 +1435,19 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
                       }}
                     />
                   ) : null}
+                  {!sidebarCollapsed ? (
+                    <DsButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openArchivedSessionsSettings()}
+                      className="mt-1 !h-auto w-full justify-start gap-2 rounded-lg !border-0 !bg-transparent px-2.5 py-1.5 text-left text-xs font-normal text-muted-foreground transition-colors hover:!bg-muted/60 hover:text-foreground"
+                      data-testid="sidebar-archived-sessions-entry"
+                    >
+                      <Archive size={14} className="shrink-0 opacity-75" />
+                      <span className="truncate">{t('chatV2:page.archivedSessionsEntry', { defaultValue: '已归档会话' })}</span>
+                    </DsButton>
+                  ) : null}
                 </div>
               </nav>
             ) : null}
@@ -1442,39 +1457,44 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
 
       {navigationScope === 'full' && settingsNavItem ? (
       <div className="mt-auto shrink-0 px-2 pb-3 pt-1" data-no-drag>
-        <div className="relative flex justify-start">
-          <AppMenu className="flex w-full">
-            <AppMenuTrigger asChild>
-              <SidebarRow
-                rowType="nav"
-                aria-label={t(settingsNavItem.labelKey)}
-                aria-current={currentView === settingsNavItem.viewId ? 'page' : undefined}
-                isActive={currentView === settingsNavItem.viewId}
-                data-tour-id={`nav-${settingsNavItem.viewId}`}
-                leftSlot={renderNavigationIcon(settingsNavItem.origin, settingsNavItem.owner, settingsNavItem.id, SettingsNavIcon, { className: 'size-[18px]', strokeWidth: 2 })}
-              >
-                <SidebarRowLabel>{t(settingsNavItem.labelKey)}</SidebarRowLabel>
-              </SidebarRow>
-            </AppMenuTrigger>
-            <AppMenuContent align="start" width={224}>
-              <AppMenuGroup>
-                <AppMenuItem
-                  icon={renderNavigationIcon(settingsNavItem.origin, settingsNavItem.owner, settingsNavItem.id, SettingsNavIcon, { className: 'size-4', strokeWidth: 2 })}
-                  onClick={() => handleViewChange(settingsNavItem.viewId as CurrentView)}
-                >
-                  {t(settingsNavItem.labelKey)}
-                </AppMenuItem>
-                <AppMenuItem
-                  icon={<Desktop size={16} />}
-                  onClick={handleWorkbenchModeAction}
-                >
-                  {workbenchModeEnabled
+        <div className="relative flex items-center gap-1">
+          <div className="min-w-0 flex-1">
+            <SidebarRow
+              rowType="nav"
+              aria-label={t(settingsNavItem.labelKey)}
+              aria-current={currentView === settingsNavItem.viewId ? 'page' : undefined}
+              isActive={currentView === settingsNavItem.viewId}
+              data-tour-id={`nav-${settingsNavItem.viewId}`}
+              onClick={() => handleViewChange(settingsNavItem.viewId as CurrentView)}
+              leftSlot={renderNavigationIcon(settingsNavItem.origin, settingsNavItem.owner, settingsNavItem.id, SettingsNavIcon, { className: 'size-[18px]', strokeWidth: 2 })}
+            >
+              <SidebarRowLabel>{t(settingsNavItem.labelKey)}</SidebarRowLabel>
+            </SidebarRow>
+          </div>
+          {!sidebarCollapsed && !isMobilePlatform() ? (
+            <CommonTooltip
+              content={
+                workbenchModeEnabled
+                  ? t('sidebar:navigation.hide_workbench_mode', { defaultValue: 'Hide Study Desktop' })
+                  : t('sidebar:navigation.show_workbench_mode', { defaultValue: 'Show Study Desktop' })
+              }
+              position="top"
+            >
+              <DsButton
+                variant="ghost"
+                size="icon"
+                className="h-9 w-9 shrink-0 rounded-lg text-muted-foreground hover:text-foreground"
+                aria-label={
+                  workbenchModeEnabled
                     ? t('sidebar:navigation.hide_workbench_mode', { defaultValue: 'Hide Study Desktop' })
-                    : t('sidebar:navigation.show_workbench_mode', { defaultValue: 'Show Study Desktop' })}
-                </AppMenuItem>
-              </AppMenuGroup>
-            </AppMenuContent>
-          </AppMenu>
+                    : t('sidebar:navigation.show_workbench_mode', { defaultValue: 'Show Study Desktop' })
+                }
+                onClick={handleWorkbenchModeAction}
+              >
+                <Desktop size={17} />
+              </DsButton>
+            </CommonTooltip>
+          ) : null}
 
           {shouldShowUpdateBadge ? (
             <button

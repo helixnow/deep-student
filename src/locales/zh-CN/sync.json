@@ -23,9 +23,11 @@
   "confirmConflictResolveDescription": "将应用「{{strategy}}」策略，这会覆盖另一版本的数据且无法撤销。建议先创建本地备份再继续。",
   "confirmConflictBatchResolveDescription": "将对 {{count}} 个冲突应用“{{strategy}}”。这会覆盖另一版本且无法撤销。",
   "experimentalBadgeTooltip": "实验性功能，建议先备份数据再使用。",
+  "syncVsBackupTitle": "多端同步 vs 云端整包备份",
+  "syncVsBackupDesc": "日常跨设备学习请使用下方「同步」（双向合并笔记、闪卡与复习记录）；换新设备或留存完整历史快照时，再使用「云存储设置」里的整包备份与恢复。",
   "autoSync": {
     "label": "自动同步",
-    "description": "默认关闭。开启后按所选间隔自动执行双向同步（保留最新策略）；失败按指数退避重试。云端未配置、缺少密码或同步租约被其他设备占用时会静默跳过本轮，不会弹出错误打扰。",
+    "description": "默认关闭。开启后按所选间隔自动执行双向同步（优先保留最新修改），偶发网络失败会自动延后重试。云端未配置、缺少密码或其他设备正在同步时会静默跳过本轮，不会弹出错误打扰。",
     "intervalLabel": "同步间隔",
     "interval": {
       "15m": "每 15 分钟",
@@ -36,10 +38,10 @@
     "neverRan": "尚未运行",
     "outcome": {
       "success": "成功",
-      "failure": "失败（将按退避间隔重试）",
+      "failure": "失败（将自动延后重试）",
       "skippedUnconfigured": "已跳过：云端未配置或缺少密码",
       "skippedBusy": "已跳过：另一个同步正在进行",
-      "skippedLeaseHeld": "已跳过：同步租约被其他设备占用"
+      "skippedLeaseHeld": "已跳过：另一台设备正在同步"
     },
     "consecutiveFailures": "连续失败 {{count}} 次"
   },
@@ -67,7 +69,7 @@
   "cloud_time": "云端更新",
   "data_diff": "数据差异",
   "select_strategy": "选择解决策略",
-  "migration_required": "检测到 Schema 版本不匹配，请先执行数据库迁移后再同步。",
+  "migration_required": "检测到两端数据库结构版本不一致，请先重启应用完成自动升级后再同步。",
   "conflict_resolution": "同步冲突解决",
   "conflict_description": "检测到本地和云端数据存在冲突，请选择解决策略。",
   "no_conflicts": "没有检测到数据冲突。",
@@ -126,8 +128,8 @@
     "undoable_hint": "放心操作：批量解决和库级策略覆盖执行前，系统都会先在本机自动快照受影响的记录（不上云）。误操作后可在下方「自动快照」区一键回退。"
   },
   "conflict_type": {
-    "schema_mismatch": "Schema 版本不匹配",
-    "schema_mismatch_desc": "本地和云端的数据库结构版本不同，需要进行迁移",
+    "schema_mismatch": "数据库结构版本不一致",
+    "schema_mismatch_desc": "本地和云端的应用数据库结构版本不同，请先升级到一致版本",
     "data_conflict": "数据版本冲突",
     "data_conflict_desc": "本地和云端都有数据修改，存在冲突",
     "checksum_mismatch": "校验和不匹配",
@@ -149,7 +151,7 @@
     "manual_desc": "逐个查看和选择每条冲突记录的解决方式"
   },
   "detail_labels": {
-    "schema_version": "Schema 版本:",
+    "schema_version": "结构版本:",
     "data_version": "数据版本:",
     "update_time": "更新时间:",
     "checksum": "Checksum:"
@@ -158,8 +160,8 @@
     "legacyPlaintextRejected": "云端目录里还留有启用加密之前上传的未加密旧数据。为防止端到端加密被绕过，本次同步已停止，不会读取这部分数据。处理办法：先在云同步设置中暂时清除加密密码，执行一次下载同步把云端数据合并到本地；然后清空该云端目录（或改用新目录），重新设置密码后再做一次完整上传。",
     "encryptionPasswordMissing": "云端数据是端到端加密的，但本机还没有填写加密密码。请到云同步设置中填入首次启用加密时设置的密码，然后重试。",
     "wrongEncryptionPassword": "无法解密云端数据：加密密码不正确（或云端数据已损坏）。请到云同步设置中改成与其他设备一致的密码后重试；连接同一云端目录的所有设备必须使用同一个加密密码。",
-    "leaseHeld": "另一台设备正在同步到同一云端目录。为避免并发写入损坏同步状态，本轮已安全停止。请等待对方完成后重试；若对方已异常退出，租约会在超时后自动回收，请稍后再试，不要手工覆盖云端同步文件。",
-    "leaseHeldSelf": "本机上一次同步没有正常结束（例如同步进行中关闭或重启了应用），云端遗留的同步租约要到 {{expiresAt}} 才会自动回收。这不是其他设备在同步：请在该时间之后重试，不要手工覆盖云端同步文件。若本机另有一个应用实例正在同步，请等它完成。",
+    "leaseHeld": "另一台设备正在同步到同一云端目录。为避免同时写入损坏数据，本轮同步已安全停止。请等待另一台设备完成后重试；若对方异常退出，同步占用保护会在几分钟后自动解除，请稍后再试，不要手动修改云端同步文件。",
+    "leaseHeldSelf": "本机上一次同步未正常结束（例如同步途中关闭或重启了应用），云端的同步占用保护将在 {{expiresAt}} 自动解除。这不是其他设备在同步：请在该时间之后重试，不要手动修改云端同步文件。若本机另有一个应用窗口正在同步，请等它完成。",
     "technicalDetail": "技术详情："
   },
   "unsynced": {

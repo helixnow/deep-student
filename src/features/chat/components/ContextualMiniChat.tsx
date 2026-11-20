@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowUpRight,
   ArrowsInSimple,
@@ -7,7 +8,9 @@ import {
   Sparkle,
   X,
 } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/utils/cn';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // ============================================================================
 // 类型与契约定义
@@ -85,22 +88,26 @@ export const DEFAULT_MINI_CHAT_PRESETS: MiniChatPresetAction[] = [
 
 const ANCHOR_KIND_META: Record<
   MiniChatContextAnchor['kind'],
-  { badgeText: string; dotClass: string }
+  { badgeKey: string; defaultBadge: string; dotClass: string }
 > = {
   pdf_page: {
-    badgeText: 'PDF 页码',
+    badgeKey: 'miniChat.anchorKinds.pdf_page',
+    defaultBadge: 'PDF 页码',
     dotClass: 'bg-info',
   },
   video_timestamp: {
-    badgeText: '视频时间点',
+    badgeKey: 'miniChat.anchorKinds.video_timestamp',
+    defaultBadge: '视频时间点',
     dotClass: 'bg-success',
   },
   question_id: {
-    badgeText: '题目锚点',
+    badgeKey: 'miniChat.anchorKinds.question_id',
+    defaultBadge: '题目锚点',
     dotClass: 'bg-warning',
   },
   handout_section: {
-    badgeText: '讲义章节',
+    badgeKey: 'miniChat.anchorKinds.handout_section',
+    defaultBadge: '讲义章节',
     dotClass: 'bg-primary',
   },
 };
@@ -121,35 +128,68 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
   onMinimizedChange,
   className,
 }) => {
+  const { t } = useTranslation('chatV2');
   const [isMinimized, setIsMinimized] = useState<boolean>(defaultMinimized);
   const [boundAnchor, setBoundAnchor] = useState<MiniChatContextAnchor | null>(anchor);
   const [messages, setMessages] = useState<MiniChatMessage[]>(initialMessages);
   const [inputValue, setInputValue] = useState<string>('');
+  const [isSending, setIsSending] = useState<boolean>(false);
   const messageListRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const pillButtonRef = useRef<HTMLButtonElement | null>(null);
+  const userToggledRef = useRef<boolean>(false);
   const prevMessageCountRef = useRef<number>(initialMessages.length);
+  const usesDefaultPresets = presets === DEFAULT_MINI_CHAT_PRESETS;
 
   // 当外部传入的新锚点变化时自动同步绑定
   useEffect(() => {
     setBoundAnchor(anchor);
   }, [anchor]);
 
-  // 当新增消息时自动滚动消息流到底部（兼容 jsdom 中 scrollTo 未定义的情况）
+  // 胶囊 ↔ 展开面板切换后，将焦点平滑移交至输入框或胶囊按钮（首屏被动挂载不抢焦点）
   useEffect(() => {
-    if (messages.length > prevMessageCountRef.current && !isMinimized) {
-      const container = messageListRef.current;
-      if (container) {
-        if (typeof container.scrollTo === 'function') {
-          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
-        } else {
-          container.scrollTop = container.scrollHeight;
-        }
+    if (!userToggledRef.current) return undefined;
+    const raf = requestAnimationFrame(() => {
+      if (isMinimized) {
+        pillButtonRef.current?.focus({ preventScroll: true });
+      } else {
+        inputRef.current?.focus({ preventScroll: true });
       }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [isMinimized]);
+
+  // 当新增消息或从最小化重新展开时自动滚动消息流到底部（兼容 jsdom 中 scrollTo 未定义与减动效偏好）
+  useEffect(() => {
+    if (isMinimized) return;
+    const container = messageListRef.current;
+    if (!container) {
+      prevMessageCountRef.current = messages.length;
+      return;
+    }
+    const hasNewMessage = messages.length > prevMessageCountRef.current;
+    if (hasNewMessage) {
+      const prefersReduced =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (typeof container.scrollTo === 'function') {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: prefersReduced ? 'auto' : 'smooth',
+        });
+      } else {
+        container.scrollTop = container.scrollHeight;
+      }
+    } else if (userToggledRef.current && messages.length > 0) {
+      container.scrollTop = container.scrollHeight;
     }
     prevMessageCountRef.current = messages.length;
   }, [messages.length, isMinimized]);
 
   const handleToggleMinimize = useCallback(
     (nextState: boolean) => {
+      userToggledRef.current = true;
       setIsMinimized(nextState);
       onMinimizedChange?.(nextState);
     },
@@ -195,6 +235,10 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
         setMessages((prev) => [...prev, assistantMsg]);
       };
 
+      const fallbackErrMsg = t('miniChat.replyFailed', {
+        defaultValue: '伴读响应失败，请点击右上角「迁入主会话」继续提问。',
+      });
+
       try {
         const result = onSendMessage?.({
           text: trimmed,
@@ -202,46 +246,71 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
           presetId,
         });
         if (result && typeof (result as Promise<MiniChatReplyResult>).then === 'function') {
+          setIsSending(true);
           void (result as Promise<MiniChatReplyResult>)
             .then(appendAssistantReply)
             .catch((err: unknown) => {
-              const errMsg =
-                err instanceof Error
-                  ? err.message
-                  : '伴读响应失败，请点击右上角「迁入主会话」继续提问。';
+              const errMsg = err instanceof Error ? err.message : fallbackErrMsg;
               appendAssistantReply(errMsg);
+            })
+            .finally(() => {
+              setIsSending(false);
             });
         } else {
           appendAssistantReply(result as MiniChatReplyResult);
         }
       } catch (err: unknown) {
-        const errMsg =
-          err instanceof Error
-            ? err.message
-            : '伴读响应失败，请点击右上角「迁入主会话」继续提问。';
+        const errMsg = err instanceof Error ? err.message : fallbackErrMsg;
         appendAssistantReply(errMsg);
       }
     },
-    [boundAnchor, onSendMessage],
+    [boundAnchor, onSendMessage, t],
   );
 
   const handlePresetClick = useCallback(
     (preset: MiniChatPresetAction) => {
-      const contextualPrefix = boundAnchor ? `【${boundAnchor.label}】` : '';
-      appendAndDispatchMessage(`${contextualPrefix}${preset.promptTemplate}`, preset.id);
+      if (isSending) return;
+      const localizedPrompt = usesDefaultPresets
+        ? t(`miniChat.presets.${preset.id}.prompt`, { defaultValue: preset.promptTemplate })
+        : preset.promptTemplate;
+      const contextualPrefix = boundAnchor
+        ? t('miniChat.anchorPrefix', {
+            label: boundAnchor.label,
+            defaultValue: '【{{label}}】',
+          })
+        : '';
+      appendAndDispatchMessage(`${contextualPrefix}${localizedPrompt}`, preset.id);
     },
-    [boundAnchor, appendAndDispatchMessage],
+    [boundAnchor, appendAndDispatchMessage, isSending, t, usesDefaultPresets],
   );
 
   const handleSubmitForm = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
-      if (!inputValue.trim()) return;
+      if (!inputValue.trim() || isSending) return;
       appendAndDispatchMessage(inputValue);
       setInputValue('');
     },
-    [inputValue, appendAndDispatchMessage],
+    [inputValue, isSending, appendAndDispatchMessage],
   );
+
+  const handlePanelKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLElement>) => {
+      if (isComposingKeyEvent(e)) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleToggleMinimize(true);
+      }
+    },
+    [handleToggleMinimize],
+  );
+
+  const handleInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && isComposingKeyEvent(e)) {
+      e.preventDefault();
+    }
+  }, []);
 
   const handlePromote = useCallback(() => {
     onPromoteToMainChat?.({
@@ -255,47 +324,56 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
     return (
       <div
         data-testid="contextual-mini-chat-pill"
-        className={cn('inline-flex items-center', className)}
+        className={cn(
+          'inline-flex items-center motion-safe:animate-chat-fade-in motion-reduce:animate-none',
+          className,
+        )}
       >
-        <button
+        <DsButton
+          ref={pillButtonRef}
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => handleToggleMinimize(false)}
-          aria-label="展开伴读小窗"
-          className="inline-flex items-center gap-2.5 px-3.5 py-2 rounded-full border border-border/35 bg-card text-foreground shadow-sm hover:bg-muted/50 transition-colors"
+          aria-label={t('miniChat.expandAria', { defaultValue: '展开伴读小窗' })}
+          className="h-auto gap-2.5 rounded-full border-border/35 bg-card px-3.5 py-2 text-foreground shadow-sm hover:bg-muted/50 active:scale-[0.98] transition-[background-color,border-color,color,transform,box-shadow] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
         >
           <span
             data-testid="mini-chat-unread-pulse"
             className={cn(
               'w-1.5 h-1.5 rounded-full shrink-0',
-              unreadCount > 0 ? 'bg-success animate-pulse' : 'bg-primary',
+              unreadCount > 0 ? 'bg-success animate-pulse motion-reduce:animate-none' : 'bg-primary',
             )}
           />
           <ChatCircleText className="w-3.5 h-3.5 text-primary" />
-          <span className="text-xs font-medium">伴读小窗</span>
+          <span className="text-xs font-medium">
+            {t('miniChat.pillTitle', { defaultValue: '伴读小窗' })}
+          </span>
           {boundAnchor && (
-            <span className="text-[11px] text-muted-foreground max-w-[140px] truncate">
+            <span className="text-xs text-muted-foreground max-w-[140px] truncate">
               {boundAnchor.label}
             </span>
           )}
           {unreadCount > 0 && (
             <span
               data-testid="mini-chat-unread-count"
-              className="px-1.5 py-0.5 text-[11px] font-mono tabular-nums rounded-full bg-success/15 text-success"
+              className="px-1.5 py-0.5 text-2xs font-mono tabular-nums rounded-full bg-success/15 text-success"
             >
               {unreadCount}
             </span>
           )}
-        </button>
+        </DsButton>
       </div>
     );
   }
 
   return (
     <section
-      aria-label="伴读悬浮小窗"
+      aria-label={t('miniChat.regionAria', { defaultValue: '伴读悬浮小窗' })}
       data-testid="contextual-mini-chat"
+      onKeyDown={handlePanelKeyDown}
       className={cn(
-        'w-full max-w-sm rounded-xl border border-border/35 bg-card text-card-foreground shadow-lg flex flex-col overflow-hidden',
+        'w-full max-w-sm rounded-xl border border-border/35 bg-card text-card-foreground shadow-lg flex flex-col overflow-hidden motion-safe:animate-chat-rise-in motion-reduce:animate-none transition-shadow duration-200 ease-standard motion-reduce:transition-none',
         className,
       )}
     >
@@ -304,31 +382,36 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
           <span className="text-xs font-semibold text-foreground truncate">
-            伴读即时问答
+            {t('miniChat.headerTitle', { defaultValue: '伴读即时问答' })}
           </span>
-          <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
+          <span className="text-xs font-mono tabular-nums text-muted-foreground">
             ({messages.length})
           </span>
         </div>
 
         <div className="flex items-center gap-1">
-          <button
+          <DsButton
             type="button"
+            variant="ghost"
+            size="sm"
             onClick={handlePromote}
             data-testid="promote-to-main-chat-btn"
-            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border border-border/35 bg-background hover:bg-muted/60 text-foreground transition-colors"
+            className="h-auto lg:h-auto gap-1 px-2 py-1 text-xs font-medium rounded border-border/35 bg-background hover:bg-muted/60 text-foreground active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
           >
-            <span>迁入主会话</span>
+            <span>{t('miniChat.promoteButton', { defaultValue: '迁入主会话' })}</span>
             <ArrowUpRight className="w-3 h-3" />
-          </button>
-          <button
+          </DsButton>
+          <DsButton
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={() => handleToggleMinimize(true)}
-            aria-label="最小化伴读小窗"
-            className="p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
+            aria-label={t('miniChat.minimizeAria', { defaultValue: '最小化伴读小窗' })}
+            title={t('miniChat.minimizeHint', { defaultValue: '最小化伴读小窗（Esc）' })}
+            className="lg:h-6 lg:w-6 rounded border-transparent bg-transparent hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none"
           >
             <ArrowsInSimple className="w-3.5 h-3.5" />
-          </button>
+          </DsButton>
         </div>
       </header>
 
@@ -336,13 +419,18 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
       <div
         ref={messageListRef}
         data-testid="mini-chat-message-list"
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
         className="flex-1 min-h-[160px] max-h-[260px] overflow-y-auto p-3 flex flex-col gap-2.5"
       >
         {messages.length === 0 ? (
           <div className="my-auto text-center py-6 px-3 flex flex-col items-center gap-1.5">
             <Sparkle className="w-4 h-4 text-muted-foreground" />
             <p className="text-xs text-muted-foreground">
-              已就绪，点击下方快捷指令或直接提问当前阅读内容
+              {t('miniChat.emptyHint', {
+                defaultValue: '已就绪，点击下方快捷指令或直接提问当前阅读内容',
+              })}
             </p>
           </div>
         ) : (
@@ -350,14 +438,14 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
             <div
               key={msg.id}
               className={cn(
-                'flex flex-col gap-1 rounded-lg px-3 py-2 text-xs leading-relaxed',
+                'flex flex-col gap-1 rounded-lg px-3 py-2 text-xs leading-relaxed motion-safe:animate-chat-rise-in motion-reduce:animate-none',
                 msg.role === 'user'
                   ? 'bg-primary/10 text-foreground self-end max-w-[90%]'
                   : 'bg-muted/40 text-foreground self-start max-w-[92%] border border-border/35',
               )}
             >
               {msg.anchor && (
-                <div className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+                <div className="inline-flex items-center gap-1 text-2xs text-muted-foreground">
                   <span
                     className={cn(
                       'w-1.5 h-1.5 rounded-full',
@@ -375,16 +463,24 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
 
       {/* 快捷指令预设栏 */}
       <div className="px-3 py-2 border-t border-border/35 bg-muted/10 flex flex-wrap items-center gap-1.5">
-        {presets.map((preset) => (
-          <button
-            key={preset.id}
-            type="button"
-            onClick={() => handlePresetClick(preset)}
-            className="px-2 py-1 text-[11px] rounded-md border border-border/35 bg-background hover:bg-muted/60 text-foreground transition-colors"
-          >
-            {preset.label}
-          </button>
-        ))}
+        {presets.map((preset) => {
+          const presetLabel = usesDefaultPresets
+            ? t(`miniChat.presets.${preset.id}.label`, { defaultValue: preset.label })
+            : preset.label;
+          return (
+            <DsButton
+              key={preset.id}
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={isSending}
+              onClick={() => handlePresetClick(preset)}
+              className="h-auto lg:h-auto px-2.5 py-1 text-xs rounded-md border-border/35 bg-background hover:bg-muted/60 text-foreground active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
+            >
+              {presetLabel}
+            </DsButton>
+          );
+        })}
       </div>
 
       {/* 迷你输入框上方的上下文锚点胶囊 + 输入表单 */}
@@ -401,53 +497,74 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
                   ANCHOR_KIND_META[boundAnchor.kind].dotClass,
                 )}
               />
-              <span className="text-[11px] text-muted-foreground shrink-0">
-                {ANCHOR_KIND_META[boundAnchor.kind].badgeText}
+              <span className="text-xs text-muted-foreground shrink-0">
+                {t(ANCHOR_KIND_META[boundAnchor.kind].badgeKey, {
+                  defaultValue: ANCHOR_KIND_META[boundAnchor.kind].defaultBadge,
+                })}
               </span>
               <span className="h-3 w-px bg-border/35 shrink-0" />
               <span className="font-mono tabular-nums font-medium text-foreground truncate">
                 {boundAnchor.label}
               </span>
             </div>
-            <button
+            <DsButton
               type="button"
+              variant="ghost"
+              size="icon"
               onClick={handleClearBoundAnchor}
-              aria-label="移除上下文锚点"
-              className="text-muted-foreground hover:text-foreground shrink-0"
+              aria-label={t('miniChat.clearAnchorAria', { defaultValue: '移除上下文锚点' })}
+              className="lg:h-5 lg:w-5 rounded-full border-transparent bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50 shrink-0 transition-colors motion-reduce:transition-none"
             >
               <X className="w-3 h-3" />
-            </button>
+            </DsButton>
           </div>
         ) : (
-          <div className="text-[11px] text-muted-foreground px-1">
-            当前未绑定上下文锚点
+          <div className="text-xs text-muted-foreground px-1">
+            {t('miniChat.noAnchor', { defaultValue: '当前未绑定上下文锚点' })}
           </div>
         )}
 
         {boundAnchor?.snippet && (
-          <p className="text-[11px] text-muted-foreground line-clamp-1 px-2 border-l-2 border-primary/40">
-            摘录：{boundAnchor.snippet}
+          <p className="text-xs text-muted-foreground line-clamp-1 px-2 border-l-2 border-primary/40">
+            {t('miniChat.snippetPrefix', {
+              snippet: boundAnchor.snippet,
+              defaultValue: '摘录：{{snippet}}',
+            })}
           </p>
         )}
 
         <form onSubmit={handleSubmitForm} className="flex items-center gap-1.5">
           <input
+            ref={inputRef}
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            placeholder="针对当前锚点提问..."
-            aria-label="伴读提问输入框"
-            className="flex-1 min-w-0 px-2.5 py-1.5 text-xs rounded-md border border-border/35 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            onKeyDown={handleInputKeyDown}
+            placeholder={
+              boundAnchor
+                ? t('miniChat.inputPlaceholder', { defaultValue: '针对当前锚点提问...' })
+                : t('miniChat.inputNoAnchorPlaceholder', {
+                    defaultValue: '输入伴读问题，按 Enter 发送...',
+                  })
+            }
+            aria-label={t('miniChat.inputAria', { defaultValue: '伴读提问输入框' })}
+            className="flex-1 min-w-0 px-2.5 py-1.5 text-xs rounded-md border border-border/35 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-shadow duration-150 motion-reduce:transition-none"
           />
-          <button
+          <DsButton
             type="submit"
-            aria-label="发送伴读提问"
-            disabled={!inputValue.trim()}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground disabled:opacity-50 transition-opacity"
+            variant="ghost"
+            size="sm"
+            aria-label={t('miniChat.sendAria', { defaultValue: '发送伴读提问' })}
+            disabled={!inputValue.trim() || isSending}
+            className="h-auto lg:h-auto gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border-transparent !bg-primary !text-primary-foreground hover:!bg-primary/90 active:scale-[0.98] disabled:opacity-50 transition-[background-color,opacity,transform] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
           >
             <PaperPlaneRight className="w-3 h-3" />
-            <span>发送</span>
-          </button>
+            <span>
+              {isSending
+                ? t('miniChat.sendingButton', { defaultValue: '思考中...' })
+                : t('miniChat.sendButton', { defaultValue: '发送' })}
+            </span>
+          </DsButton>
         </form>
       </div>
     </section>

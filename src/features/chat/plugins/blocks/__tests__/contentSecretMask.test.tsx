@@ -67,7 +67,9 @@ describe('content 正文块 - 用户消息展示级脱敏', () => {
 
     expect(renderedText()).toBe(MASKED_TEXT);
     expect(renderedText()).not.toContain('abcdefghijklmnopqrstuv');
-    expect(screen.getByText('已隐藏 1 处疑似密钥/令牌')).toBeInTheDocument();
+    expect(
+      screen.getByText('已遮挡 1 处疑似密钥（仅隐藏屏幕显示，如已发送请尽快重置）'),
+    ).toBeInTheDocument();
 
     const showButton = screen.getByRole('button', { name: '显示原文' });
     expect(showButton).toHaveAttribute('aria-pressed', 'false');
@@ -93,7 +95,9 @@ describe('content 正文块 - 用户消息展示级脱敏', () => {
     const text = `第一处 sk-${'a'.repeat(20)} 第二处 ghp_${'b'.repeat(24)}`;
     renderContent(text);
 
-    expect(screen.getByText('已隐藏 2 处疑似密钥/令牌')).toBeInTheDocument();
+    expect(
+      screen.getByText('已遮挡 2 处疑似密钥（仅隐藏屏幕显示，如已发送请尽快重置）'),
+    ).toBeInTheDocument();
     expect(renderedText()).not.toContain('a'.repeat(20));
     expect(renderedText()).not.toContain('b'.repeat(24));
   });
@@ -120,7 +124,7 @@ describe('content 正文块 - 用户消息展示级脱敏', () => {
     renderContent(SECRET_TEXT);
 
     expect(renderedText()).toBe(SECRET_TEXT);
-    expect(screen.queryByText(/已隐藏/)).toBeNull();
+    expect(screen.queryByText(/已遮挡/)).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
   });
 
@@ -129,7 +133,7 @@ describe('content 正文块 - 用户消息展示级脱敏', () => {
     renderContent(text);
 
     expect(renderedText()).toBe(text);
-    expect(screen.queryByText(/已隐藏/)).toBeNull();
+    expect(screen.queryByText(/已遮挡/)).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
   });
 });

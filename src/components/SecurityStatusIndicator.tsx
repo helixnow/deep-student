@@ -42,18 +42,18 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
 
   if (loading) {
     return (
-      <div className={`flex items-center space-x-2 p-3 bg-gray-50 rounded-lg ${className}`}>
-        <ArrowClockwise size={16} className="animate-spin text-gray-500" />
-        <span className="text-sm text-gray-600">{t('securityStatus.checking')}</span>
+      <div className={`flex items-center space-x-2 p-3 bg-muted/50 rounded-lg ${className}`}>
+        <ArrowClockwise size={16} className="animate-spin text-muted-foreground" />
+        <span className="text-sm text-muted-foreground">{t('securityStatus.checking')}</span>
       </div>
     );
   }
 
   if (!status) {
     return (
-      <div className={`flex items-center space-x-2 p-3 bg-red-50 rounded-lg ${className}`}>
-        <Warning size={16} className="text-red-500" />
-        <span className="flex-1 text-sm text-red-600">{t('securityStatus.unavailable')}</span>
+      <div className={`flex items-center space-x-2 p-3 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-lg ${className}`}>
+        <Warning size={16} className="text-red-500 dark:text-red-400" />
+        <span className="flex-1 text-sm text-red-700 dark:text-red-300">{t('securityStatus.unavailable')}</span>
         <DsButton variant="ghost" size="icon" iconOnly onClick={loadSecurityStatus} title={t('securityStatus.refresh')} aria-label={t('securityStatus.refresh')}>
           <ArrowClockwise size={16} />
         </DsButton>
@@ -64,24 +64,34 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
   const usesPrivateFiles = status.storage_kind === 'private_files';
   const getStatusIcon = () => {
     if (!status.keychain_available) {
-      return <Warning size={16} className="text-yellow-500" />;
+      return <Warning size={16} className="text-amber-500 dark:text-amber-400" />;
     }
     if (status.migration_completed) {
-      return <CheckCircle size={16} className="text-green-500" />;
+      return <CheckCircle size={16} className="text-emerald-500 dark:text-emerald-400" />;
     }
-    return <Shield size={16} className="text-blue-500" />;
+    return <Shield size={16} className="text-blue-500 dark:text-blue-400" />;
   };
 
-  const getStatusColor = () => {
-    if (!status.keychain_available) return 'yellow';
-    if (status.migration_completed) return 'green';
-    return 'blue';
-  };
-
-  const statusColor = getStatusColor();
-  const bgClass = `bg-${statusColor}-50`;
-  const textClass = `text-${statusColor}-700`;
-  const borderClass = `border-${statusColor}-200`;
+  const statusTone = !status.keychain_available
+    ? {
+        bg: 'bg-amber-50 dark:bg-amber-950/30',
+        text: 'text-amber-800 dark:text-amber-200',
+        border: 'border-amber-200 dark:border-amber-900/50',
+      }
+    : status.migration_completed
+      ? {
+          bg: 'bg-emerald-50 dark:bg-emerald-950/30',
+          text: 'text-emerald-800 dark:text-emerald-200',
+          border: 'border-emerald-200 dark:border-emerald-900/50',
+        }
+      : {
+          bg: 'bg-blue-50 dark:bg-blue-950/30',
+          text: 'text-blue-800 dark:text-blue-200',
+          border: 'border-blue-200 dark:border-blue-900/50',
+        };
+  const bgClass = statusTone.bg;
+  const textClass = statusTone.text;
+  const borderClass = statusTone.border;
 
   return (
     <div className={`p-4 border rounded-lg ${bgClass} ${borderClass} ${className}`}>
@@ -142,16 +152,16 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
           
           {/* 警告信息 */}
           {status.warnings && status.warnings.length > 0 && (
-            <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
-              <div className="font-medium text-yellow-800 mb-1">{t('securityStatus.warnings_title')}</div>
+            <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded text-xs">
+              <div className="font-medium text-amber-800 dark:text-amber-200 mb-1">{t('securityStatus.warnings_title')}</div>
               {status.warnings.map((warning, index) => (
-                <div key={index} className="text-yellow-700">• {warning}</div>
+                <div key={index} className="text-amber-700 dark:text-amber-300">• {warning}</div>
               ))}
             </div>
           )}
           
           {!status.keychain_available && (
-            <div className="mt-3 text-xs text-yellow-700">
+            <div className="mt-3 text-xs text-amber-700 dark:text-amber-300">
               {usesPrivateFiles ? t('securityStatus.private_files_storage') : (
                 <>
                   <div className="font-medium mb-1">{t('securityStatus.fallback_title')}</div>

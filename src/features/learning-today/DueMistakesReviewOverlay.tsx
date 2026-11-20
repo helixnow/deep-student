@@ -148,7 +148,7 @@ export const DueMistakesReviewOverlay: React.FC = () => {
             {phase.kind !== 'loading' && (
               <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5">
                 {phase.kind === 'empty' && (
-                  <DsButton variant="ghost" size="sm" onClick={openAllMistakes}>
+                  <DsButton variant="outline" size="sm" onClick={openAllMistakes}>
                     {t('review:dueAll.openMistakeBook', { defaultValue: '查看全部错题' })}
                   </DsButton>
                 )}

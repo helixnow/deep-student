@@ -296,12 +296,22 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
           </div>
         </div>
 
-        {/* 等级徽章 - 语义色轻量胶囊 */}
-        <div className={cn(
-          'px-2.5 py-1 rounded-full text-xs font-medium tracking-wide',
-          GRADE_BADGE_CLASS[score.grade] ?? GRADE_BADGE_CLASS.fail
-        )}>
-          {t(`score.grade.${score.grade}`)}
+        {/* 等级徽章 + 得分率胶囊 */}
+        <div className="flex flex-col items-end gap-1.5">
+          <div className={cn(
+            'px-2.5 py-1 rounded-full text-xs font-medium tracking-wide',
+            GRADE_BADGE_CLASS[score.grade] ?? GRADE_BADGE_CLASS.fail
+          )}>
+            {t(`score.grade.${score.grade}`)}
+          </div>
+          {Number.isFinite(score.maxTotal) && score.maxTotal > 0 && (
+            <span
+              data-testid="score-card-rate"
+              className="text-2xs font-mono tabular-nums text-muted-foreground/80"
+            >
+              {t('score.rate_label')} {Math.round(percentage)}%
+            </span>
+          )}
         </div>
       </div>
 

@@ -98,6 +98,8 @@ export interface HandoutSection {
   heading: string;
   difficulty?: HandoutDifficulty;
   estimatedMinutes?: number;
+  /** 可选课堂时间轴锚点（秒），供网课学习室一键跳回视频对应时刻 */
+  anchorSeconds?: number;
   blocks: HandoutBlock[];
 }
 

@@ -19,6 +19,7 @@ import { Package, Plug } from '@phosphor-icons/react';
 
 import type { SettingsSectionRegistration, SettingsSectionRenderProps } from '@/ui-kernel/contracts/settings';
 import { useOptionalUiKernel } from '@/ui-kernel/react';
+import { isMobilePlatform } from '@/utils/platform';
 
 import type { PluginManagerController } from './controller';
 import type { PluginErrorBudgetView } from './reasons';
@@ -66,9 +67,8 @@ export function createPluginManagerSection({
     order,
     titleKey: PLUGIN_MANAGER_NAVIGATION.titleKey,
     placement: 'main',
-    // 刻意在桌面和移动端均展示；不同于仅桌面的微信渠道页。
-    // 配置/同意沿用 DsDialog 的移动 bottom sheet 与统一返回键。
-    visible: () => true,
+    // 窄屏桌面和 WebUI 仍支持插件管理；仅 Capacitor 原生移动端（未装配 dstu.plugins）隐藏，避免进入即报错。
+    visible: () => !isMobilePlatform(),
     component: function PluginManagerSettingsSection(renderProps?: Partial<SettingsSectionRenderProps>) {
       const kernel = useOptionalUiKernel();
       // 渠道插件（微信 iLink Bot）的回复模型选择复用设置页的统一模型清单；

@@ -445,8 +445,10 @@
   },
   "openuiLang": {
     "lineChartAria": "折线图",
+    "barChartAria": "柱状图",
+    "chartReadoutHint": "悬停或聚焦数据点查看数值",
     "generating": "正在生成界面…",
-    "empty": "空白 OpenUI 组件块",
+    "empty": "交互卡片暂未生成内容",
     "notePlaceholder": "补充说明（可选）",
     "confirm": "确认"
   }

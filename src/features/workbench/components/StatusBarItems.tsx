@@ -11,6 +11,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChartBar, Robot, Stack, Timer } from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
 import { workbenchBus } from '../core/workbenchBus';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import type { AutomationSummary } from '@/features/settings/components/automationSettingsApi';
@@ -96,10 +97,18 @@ const PomodoroStatusItem: React.FC = () => {
       : isCountUpWork
         ? t('menubar.pomodoroFocusElapsed', { time: pomodoroTime })
         : t('menubar.pomodoroFocus', { time: pomodoroTime });
+  const pomodoroTag = paused
+    ? t('menubar.pomodoroTagPaused')
+    : isBreak
+      ? t('menubar.pomodoroTagBreak')
+      : t('menubar.pomodoroTagFocus');
   return (
     <button
       type="button"
-      className="wb-menubar-item"
+      className={cn(
+        'wb-menubar-item',
+        paused ? 'bg-muted/40' : isBreak ? 'bg-emerald-500/10' : 'bg-primary/10',
+      )}
       data-testid="wb-menubar-pomodoro"
       data-wb-status-item="pomodoro"
       data-status={paused ? 'paused' : isBreak ? 'break' : 'focus'}
@@ -108,6 +117,13 @@ const PomodoroStatusItem: React.FC = () => {
       onClick={() => launchApp('pomodoro')}
     >
       <Timer size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
+      <span
+        className="wb-menubar-item-tag hidden lg:inline text-2xs opacity-80"
+        data-testid="wb-menubar-pomodoro-tag"
+        aria-hidden="true"
+      >
+        {pomodoroTag}
+      </span>
       <span className="wb-menubar-item-value">{pomodoroTime}</span>
     </button>
   );
@@ -134,29 +150,53 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({
   const flashcardsLabel = t('menubar.flashcardsDue', { count: dueCount });
   const tasksLabel = t('menubar.tasksRunning', { count: taskCount });
 
-  const automationCount = automation?.runningCount
-    ? automation.runningCount
-    : automation?.failedCount
-      ? automation.failedCount
-      : automation?.enabledCount ?? 0;
+  const runningCount = automation?.runningCount ?? 0;
+  const failedCount = automation?.failedCount ?? 0;
+  const enabledCount = automation?.enabledCount ?? 0;
+  const automationCount = runningCount
+    ? runningCount
+    : failedCount
+      ? failedCount
+      : enabledCount;
+  const automationHasActivity = runningCount > 0 || failedCount > 0 || enabledCount > 0;
 
-  // tooltip："3 个启用 · 下次运行 2 小时后 · 1 个最近失败"式摘要
+  // tooltip：前缀语义标题 + 运行/启用/下次执行/异常摘要 + 点击操作提示
   const automationRelative = automation?.nextRunAt
     ? formatAutomationRelative(automation.nextRunAt, (key, options) => String(t(key, options)))
     : null;
-  const automationTitle = automation
+  const automationTitle = automationHasActivity
     ? [
-        t('menubar.automationsEnabledShort', { count: automation.enabledCount }),
+        t('menubar.automationsTitle'),
+        runningCount > 0 ? t('menubar.automationsRunningShort', { count: runningCount }) : null,
+        t('menubar.automationsEnabledShort', { count: enabledCount }),
         automationRelative
           ? t('menubar.automationsNextRun', { relative: automationRelative })
           : null,
-        automation.failedCount > 0
-          ? t('menubar.automationsFailedShort', { count: automation.failedCount })
+        failedCount > 0
+          ? t('menubar.automationsFailedShort', { count: failedCount })
           : null,
+        t('menubar.automationsClickHint'),
       ]
         .filter(Boolean)
         .join(' · ')
-    : t('menubar.automationsTitle');
+    : t('menubar.automationsIdleHint');
+
+  const automationAriaLabel = automationHasActivity
+    ? t('menubar.automations', {
+        enabled: enabledCount,
+        running: runningCount,
+        failed: failedCount,
+      })
+    : t('menubar.automationsIdleHint');
+
+  const automationTag =
+    runningCount > 0
+      ? t('menubar.automationsTagRunning')
+      : failedCount > 0
+        ? t('menubar.automationsTagFailed')
+        : enabledCount > 0
+          ? t('menubar.automationsTagActive')
+          : null;
 
   return (
     <>
@@ -165,7 +205,7 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({
       {dueCount > 0 ? (
         <button
           type="button"
-          className="wb-menubar-item"
+          className="wb-menubar-item bg-amber-500/10"
           data-testid="wb-menubar-flashcards"
           data-wb-status-item="flashcards"
           aria-label={flashcardsLabel}
@@ -173,6 +213,13 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({
           onClick={launchFlashcardsDue}
         >
           <Stack size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
+          <span
+            className="wb-menubar-item-tag hidden lg:inline text-2xs opacity-80"
+            data-testid="wb-menubar-flashcards-tag"
+            aria-hidden="true"
+          >
+            {t('menubar.flashcardsTag')}
+          </span>
           <span className="wb-menubar-item-value">{dueCount}</span>
         </button>
       ) : null}
@@ -180,7 +227,7 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({
       {taskCount > 0 ? (
         <button
           type="button"
-          className="wb-menubar-item"
+          className="wb-menubar-item bg-primary/10"
           data-testid="wb-menubar-anki-tasks"
           data-wb-status-item="ankiTasks"
           aria-label={tasksLabel}
@@ -188,34 +235,58 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({
           onClick={() => launchApp('taskDashboard')}
         >
           <ChartBar size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
+          <span
+            className="wb-menubar-item-tag hidden lg:inline text-2xs opacity-80"
+            data-testid="wb-menubar-anki-tasks-tag"
+            aria-hidden="true"
+          >
+            {t('menubar.tasksTag')}
+          </span>
           <span className="wb-menubar-item-value">{taskCount}</span>
         </button>
       ) : null}
 
       <button
         type="button"
-        className="wb-menubar-item"
+        className={cn(
+          'wb-menubar-item',
+          runningCount > 0
+            ? 'bg-primary/10'
+            : failedCount > 0
+              ? 'bg-destructive/10'
+              : undefined,
+        )}
         data-testid="wb-menubar-automations"
         data-wb-status-item="automations"
-        data-status={automation?.runningCount ? 'running' : automation?.failedCount ? 'error' : 'idle'}
-        aria-label={t('menubar.automations', {
-          enabled: automation?.enabledCount ?? 0,
-          running: automation?.runningCount ?? 0,
-          failed: automation?.failedCount ?? 0,
-        })}
+        data-status={runningCount > 0 ? 'running' : failedCount > 0 ? 'error' : 'idle'}
+        aria-label={automationAriaLabel}
         title={automationTitle}
         onClick={launchAutomations}
       >
         <span
           className="wb-menubar-automation-iconwrap"
-          data-pulse={(automation?.runningCount ?? 0) > 0 ? 'true' : undefined}
+          data-pulse={runningCount > 0 ? 'true' : undefined}
           aria-hidden
         >
           <Robot size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
-          {(automation?.failedCount ?? 0) > 0 ? (
+          {failedCount > 0 ? (
             <span className="wb-menubar-automation-dot" data-testid="wb-menubar-automations-failed-dot" />
           ) : null}
         </span>
+        {automationTag ? (
+          <span
+            className={cn(
+              'wb-menubar-item-tag text-2xs',
+              runningCount > 0 || failedCount > 0
+                ? 'hidden lg:inline opacity-85'
+                : 'hidden xl:inline opacity-75',
+            )}
+            data-testid="wb-menubar-automations-tag"
+            aria-hidden="true"
+          >
+            {automationTag}
+          </span>
+        ) : null}
         {automationCount > 0 ? <span className="wb-menubar-item-value">{automationCount}</span> : null}
       </button>
     </>

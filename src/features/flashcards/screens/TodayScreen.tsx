@@ -16,6 +16,7 @@ import {
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { ExamReadinessHud } from '@/components/exam-sprint';
+import { cn } from '@/utils/cn';
 import { cardDisplayFront } from '../cardDisplay';
 import { CardMathText } from '../cardMathPreview';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -160,6 +161,7 @@ export const TodayScreen: React.FC = () => {
   }, [loadDue, loadStats]);
 
   // 他窗评分 / 库操作后保持计数新鲜（去抖合并连发事件）
+  const reloadActivity = activity.reload;
   useEffect(() => {
     let timer: number | null = null;
     const unsubscribe = subscribeFlashcardsDueRefresh(() => {
@@ -168,14 +170,14 @@ export const TodayScreen: React.FC = () => {
         timer = null;
         void loadDue();
         void loadStats();
-        activity.reload(true);
+        reloadActivity(true);
       }, 200);
     });
     return () => {
       unsubscribe();
       if (timer != null) window.clearTimeout(timer);
     };
-  }, [loadDue, loadStats, activity.reload]);
+  }, [loadDue, loadStats, reloadActivity]);
 
 
   const dateLabel = useMemo(
@@ -300,20 +302,53 @@ export const TodayScreen: React.FC = () => {
             <div className="wb-fcx-hero-main">
               <div className="wb-fcx-counts">
                 <div className="wb-fcx-count" data-tone="due">
-                  <div className="wb-fcx-count-label">{t('today.statDue')}</div>
-                  <div className="wb-fcx-count-value">
+                  <div className="wb-fcx-count-label flex items-center gap-1.5">
+                    <span
+                      aria-hidden="true"
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500"
+                    />
+                    <span>{t('today.statDue')}</span>
+                  </div>
+                  <div
+                    className={cn(
+                      'wb-fcx-count-value font-mono tabular-nums',
+                      !loading && displayDueCount > 0 && 'text-emerald-700 dark:text-emerald-400',
+                    )}
+                  >
                     <CountValue value={loading ? null : displayDueCount} />
                   </div>
                 </div>
                 <div className="wb-fcx-count" data-tone="new">
-                  <div className="wb-fcx-count-label">{t('today.statNew')}</div>
-                  <div className="wb-fcx-count-value">
+                  <div className="wb-fcx-count-label flex items-center gap-1.5">
+                    <span
+                      aria-hidden="true"
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary"
+                    />
+                    <span>{t('today.statNew')}</span>
+                  </div>
+                  <div
+                    className={cn(
+                      'wb-fcx-count-value font-mono tabular-nums',
+                      (stats?.newCount ?? 0) > 0 && 'text-primary',
+                    )}
+                  >
                     <CountValue value={stats?.newCount ?? null} />
                   </div>
                 </div>
                 <div className="wb-fcx-count" data-tone="learning">
-                  <div className="wb-fcx-count-label">{t('today.statLearning')}</div>
-                  <div className="wb-fcx-count-value">
+                  <div className="wb-fcx-count-label flex items-center gap-1.5">
+                    <span
+                      aria-hidden="true"
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
+                    />
+                    <span>{t('today.statLearning')}</span>
+                  </div>
+                  <div
+                    className={cn(
+                      'wb-fcx-count-value font-mono tabular-nums',
+                      (learningCount ?? 0) > 0 && 'text-amber-700 dark:text-amber-400',
+                    )}
+                  >
                     <CountValue value={learningCount} />
                   </div>
                 </div>
@@ -401,7 +436,12 @@ export const TodayScreen: React.FC = () => {
                       ? t('today.libraryEmptyHint')
                       : pendingEnqueue > 0 && !showDoneState
                         ? t('today.pendingEnqueueHint', { defaultValue: '新生成的卡片先放在卡片库的「待入队」里，加入复习后才会出现在每天的复习中。' })
-                        : t('today.emptyHint')}
+                        : showDoneState
+                          ? t('today.allDoneHint', {
+                              count: doneToday,
+                              defaultValue: t('today.emptyHint'),
+                            })
+                          : t('today.emptyHint')}
                   </p>
                 </div>
                 <div className="wb-fcx-empty-actions">
@@ -444,13 +484,22 @@ export const TodayScreen: React.FC = () => {
                   {dueCards.map((card) => (
                     <li
                       key={card.id}
-                      className="wb-fc-row"
+                      className="wb-fc-row transition-colors duration-150 hover:bg-foreground/[0.025] motion-reduce:transition-none"
                       data-agent-entity={`flashcards:${card.id}`}
                     >
-                      <div className="wb-fc-row-front">
-                        {cardDisplayFront(card)
-                          ? <CardMathText text={cardDisplayFront(card)} inline />
-                          : t('card.untitled')}
+                      <div className="wb-fc-row-front flex items-center gap-2">
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            'h-1.5 w-1.5 shrink-0 rounded-full',
+                            card.lastReviewMs === null ? 'bg-primary/80' : 'bg-emerald-500/80',
+                          )}
+                        />
+                        <span className="min-w-0 truncate">
+                          {cardDisplayFront(card)
+                            ? <CardMathText text={cardDisplayFront(card)} inline />
+                            : t('card.untitled')}
+                        </span>
                       </div>
                       {card.tags && card.tags.length > 0 ? (
                         <div className="wb-fc-tags">

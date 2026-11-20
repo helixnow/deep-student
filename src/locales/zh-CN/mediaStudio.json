@@ -95,7 +95,31 @@
     "listTitle": "本课讲义",
     "empty": "还没有讲义",
     "untitled": "未命名讲义",
-    "wordHint": "在笔记里可导出为 Word。"
+    "wordHint": "在笔记里可导出为 Word。",
+    "inlineReaderOpen": "内联讲义阅读器",
+    "inlineReaderClose": "收起内联讲义阅读器",
+    "generatingAutoLink": "正在生成讲义笔记，完成后将自动关联至本课讲义列表",
+    "defaultCourseTitle": "课程精读讲义",
+    "docTitle": "{{title}} · 精读讲义",
+    "docSummary": "共 {{count}} 个核心章节，融合课堂时间锚点摘要、重点提炼与随堂自测。",
+    "chapterLead": "时间锚点 {{time}} · {{title}}",
+    "chapterSummaryFallback": "本节围绕「{{title}}」展开核心概念与关键推导梳理。",
+    "chapterKeyPointFallback": "掌握「{{title}}」的核心定义、推导脉络与适用边界。",
+    "chapterCalloutTitle": "{{title}} · 重点提炼",
+    "chapterQuestion": "关于「{{title}}」，下列哪项最符合本节课程的核心要点？",
+    "chapterDistractor1": "仅凭直觉忽略前置假设与推导边界条件",
+    "chapterDistractor2": "跳过时间锚点对应的关键步骤直接套用结论",
+    "chapterExplanation": "本节在 {{time}} 处重点阐述了「{{title}}」：{{point}}",
+    "singleHeading": "{{title}} · 核心精要",
+    "singleLead": "{{title}} 课程全文核心脉络导读",
+    "singleSummaryFallback": "{{title}} 的核心概念、推导过程与重点归纳。",
+    "singleCalloutTitle": "{{title}} · 核心要点",
+    "singleKeyPointFallback": "梳理「{{title}}」的关键定义与知识框架。",
+    "singleQuestion": "关于「{{title}}」，下列哪项准确概括了本课的核心内容？",
+    "singleOptionFallback": "掌握「{{title}}」的核心定义与推导方法",
+    "singleDistractor1": "忽略课程核心推导逻辑与边界条件",
+    "singleDistractor2": "无需结合上下文直接跳过概念辨析",
+    "singleExplanation": "结合课程转写内容，应重点掌握：{{point}}"
   },
   "ask": {
     "intro": "新开一个对话，自动附上这节课并启用「课程学习」技能：回答基于字幕，带可跳转的时间引用。",
@@ -202,7 +226,21 @@
     "empty": "这节课还没有产出卡片或题目：用上面的按钮制卡、出题。"
   },
   "chapters": {
-    "title": "章节 {{current}}/{{total}}"
+    "title": "章节 {{current}}/{{total}}",
+    "jumped": "已定位"
+  },
+  "miniChat": {
+    "headerWithChapter": "当前时间点 {{time}}（章节：{{chapter}}）",
+    "headerWithCourse": "当前时间点 {{time}}（{{course}}）",
+    "noTranscript": "{{header}}尚无可用字幕转写。请先在「字幕」分区完成课程转写以获取基于原话的即时速答，或点击右上角「迁入主会话」携带时间锚点发起完整提问。",
+    "nearestHint": "最近相关原话位于 [{{time}}]：「{{text}}」。",
+    "noNearbySpeech": "{{header}}前后 {{window}} 秒内暂无课程对白。{{nearestHint}}可定位到对应讲解片段后重试，或点击右上角「迁入主会话」发起完整深度追问。",
+    "focusDefault": "结合当前时间窗内的课程原话要点梳理：",
+    "focusExplain": "围绕当前段落原话的核心概念梳理：",
+    "focusDerive": "结合当前时刻讲解的推导脉络梳理：",
+    "focusVariant": "紧扣当前时间点考查要点的迁移提示：",
+    "excerptSeparator": "；",
+    "replyBody": "{{header}} · {{focus}}{{excerpts}}。如需展开完整公式推导、变式演练或多轮深入探讨，可点击右上角「迁入主会话」发起完整深度追问。"
   },
   "interop": {
     "auto_excerpt": "划选即入图",

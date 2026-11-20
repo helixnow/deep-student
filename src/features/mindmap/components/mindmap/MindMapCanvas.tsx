@@ -41,8 +41,13 @@ import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { CanvasContextMenu } from './CanvasContextMenu';
 import { MobileNodeToolbar, type MobileToolbarPanel } from './MobileNodeToolbar';
 import { UiPresence } from '@/components/ui/UiPresence';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { CanvasZoomIndicator } from './CanvasZoomIndicator';
+import { CanvasShortcutHintPill } from './CanvasShortcutHintPill';
 import { MindMapResourcePicker } from './MindMapResourcePicker';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { prefersReducedMotion } from '@/styles/motion-springs';
+import { isMacOS } from '@/utils/platform';
 import { findNodeById, findParentNode, isDescendantOf } from '../../utils/node/find';
 import { NODE_LOCATE_REQUEST_TTL_MS } from '../../utils/nodeTarget';
 import {
@@ -176,10 +181,12 @@ export interface MindMapCanvasProps {
   initialViewport?: { x: number; y: number; zoom: number } | null;
   /** Increment to start an association from the focused/selected node. */
   associationModeRequest?: number;
+  /** 打开/切换快捷键帮助面板 */
+  onToggleShortcutHelp?: () => void;
 }
 
 const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasProps>(function MindMapCanvasInner(
-  { initialViewport = null, associationModeRequest = 0 },
+  { initialViewport = null, associationModeRequest = 0, onToggleShortcutHelp },
   ref,
 ) {
   ensureInitialized();

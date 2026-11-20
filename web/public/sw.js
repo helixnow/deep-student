@@ -51,6 +51,9 @@ const BYPASS_PREFIXES = [
   '/__wb_interaction_trace',
 ];
 
+const VALID_PWA_SHORTCUTS = new Set(['chat', 'library', 'review']);
+const PENDING_SHORTCUT_STORAGE_KEY = 'ds_webui_pending_shortcut';
+
 const OFFLINE_FALLBACK_HTML = `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -106,7 +109,7 @@ const OFFLINE_FALLBACK_HTML = `<!doctype html>
     }
     .card {
       width: 100%;
-      max-width: 400px;
+      max-width: 420px;
       padding: 24px;
       border-radius: 12px;
       background: hsl(var(--card));
@@ -140,10 +143,23 @@ const OFFLINE_FALLBACK_HTML = `<!doctype html>
       line-height: 1.4;
     }
     p {
-      margin: 0 0 20px;
+      margin: 0 0 14px;
       font-size: 14px;
       color: hsl(var(--muted-foreground));
       line-height: 1.55;
+    }
+    .tips {
+      margin: 0 0 18px;
+      padding: 12px 14px 12px 28px;
+      border-radius: 8px;
+      border: 1px solid hsl(var(--border) / 0.35);
+      background: hsl(var(--background) / 0.45);
+      color: hsl(var(--muted-foreground));
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .tips li + li {
+      margin-top: 6px;
     }
     button {
       width: 100%;
@@ -157,8 +173,12 @@ const OFFLINE_FALLBACK_HTML = `<!doctype html>
       font-weight: 500;
       cursor: pointer;
     }
-    button:hover {
+    button:hover:not(:disabled) {
       background: var(--button-primary-surface-hover);
+    }
+    button:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
     }
     button:focus-visible {
       outline: 2px solid hsl(var(--ring));
@@ -174,11 +194,90 @@ const OFFLINE_FALLBACK_HTML = `<!doctype html>
     </div>
     <hr class="divider" />
     <h1>当前无法连接 Deep Student 宿主服务</h1>
-    <p>请确认宿主进程已启动且本地网络连接正常后，点击下方按钮重试。</p>
-    <button type="button" onclick="window.location.reload()">重新加载</button>
+    <p>请按以下步骤快速检查连接状态，网络恢复在线后将自动重连：</p>
+    <ul class="tips" data-testid="ds-sw-offline-tips">
+      <li>确认电脑端 Deep Student 桌面服务已开启并保持运行（电脑未休眠）</li>
+      <li>确认手机或平板与电脑连接在同一 Wi-Fi / 局域网下</li>
+      <li>若刚切换热点或路由器，请重新核对电脑端显示的访问地址</li>
+    </ul>
+    <button id="ds-sw-offline-retry" type="button">立即重试</button>
   </main>
+  <script>
+    (function () {
+      function persistShortcut() {
+        try {
+          var s = new URLSearchParams(window.location.search).get('shortcut');
+          if (s === 'chat' || s === 'library' || s === 'review') {
+            window.sessionStorage.setItem('${PENDING_SHORTCUT_STORAGE_KEY}', s);
+          }
+        } catch (e) {}
+      }
+      persistShortcut();
+      var retrying = false;
+      var btn = document.getElementById('ds-sw-offline-retry');
+      function retryNow() {
+        if (retrying) return;
+        retrying = true;
+        persistShortcut();
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '正在重试连接…';
+        }
+        window.location.reload();
+      }
+      if (btn) {
+        btn.addEventListener('click', retryNow);
+      }
+      window.addEventListener('online', function () {
+        persistShortcut();
+        fetch('/api/health', { method: 'GET', cache: 'no-store', credentials: 'same-origin' })
+          .then(function () { retryNow(); })
+          .catch(function () { retryNow(); });
+      });
+    })();
+  </script>
 </body>
 </html>`;
+
+function readValidShortcutFromUrl(url) {
+  const raw = (url.searchParams.get('shortcut') || '').trim().toLowerCase();
+  return VALID_PWA_SHORTCUTS.has(raw) ? raw : null;
+}
+
+/**
+ * 导航请求命中服务端 401 登录闸门且携带合法 PWA 快捷入口（`?shortcut=chat|library|review`）时，
+ * 注入轻量渐进增强脚本：先将 shortcut 存入 sessionStorage，并优先通过同源 JSON 会话接口认证后
+ * 原地进入目标快捷入口，避免服务端表单 `303 -> /` 跳转丢失 `?shortcut=`。
+ */
+async function preserveShortcutThroughLoginGate(response, shortcut) {
+  if (
+    !shortcut ||
+    !response ||
+    response.status !== 401 ||
+    !/\btext\/html\b/i.test(response.headers.get('content-type') || '')
+  ) {
+    return response;
+  }
+  const html = await response.text();
+  if (!html.includes('</body>')) {
+    return new Response(html, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    });
+  }
+  const injectedScript = `<script>(function(){try{window.sessionStorage.setItem(${JSON.stringify(PENDING_SHORTCUT_STORAGE_KEY)},${JSON.stringify(shortcut)});}catch(e){}var form=document.getElementById('ds-web-token-form');var input=document.getElementById('ds-token-input');var btn=document.getElementById('ds-web-token-submit');var err=document.getElementById('ds-web-token-error');if(!form||!input||typeof window.fetch!=='function')return;form.addEventListener('submit',function(ev){ev.preventDefault();ev.stopImmediatePropagation();var token=(input.value||'').trim();if(!token){if(err)err.textContent='访问令牌无效，请核对后重试';input.focus();return;}if(btn){btn.disabled=true;btn.textContent='正在验证…';}input.disabled=true;if(err)err.textContent='';window.fetch('/api/auth/session',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({token:token})}).then(function(res){if(res.ok){var next=new URL(window.location.href);next.searchParams.delete('token');next.searchParams.set('shortcut',${JSON.stringify(shortcut)});window.location.replace(next.pathname+next.search+next.hash);return;}if(err)err.textContent=res.status===429?'尝试次数过多，请稍后再试':'访问令牌无效，请核对后重试';}).catch(function(){if(err)err.textContent='无法连接桌面服务，请检查电脑端服务与同一 Wi-Fi 后重试';}).finally(function(){if(btn){btn.disabled=false;btn.textContent='验证并进入';}input.disabled=false;});},true);})();</script>`;
+  const nextHtml = html.replace('</body>', `${injectedScript}</body>`);
+  const responseHeaders = {
+    'Content-Type': response.headers.get('content-type') || 'text/html; charset=utf-8',
+    'Cache-Control': response.headers.get('cache-control') || 'no-store',
+  };
+  return new Response(nextHtml, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: responseHeaders,
+  });
+}
 
 /** 只缓存完整、非 HTML 的 200 响应（导航请求本身除外）：登录闸门/错误页冒充静态资源被缓存会让应用彻底打不开。 */
 function isCacheableResponse(response, navigation = false) {
@@ -333,6 +432,11 @@ self.addEventListener('fetch', (event) => {
             const cacheKey = request.mode === 'navigate' && (url.pathname === '/' || url.pathname === '/index.html')
               ? '/' : request;
             cacheResponse(event, cache, cacheKey, response);
+          } else if (request.mode === 'navigate') {
+            const shortcut = readValidShortcutFromUrl(url);
+            if (shortcut) {
+              return await preserveShortcutThroughLoginGate(response, shortcut);
+            }
           }
           return response;
         } catch (err) {

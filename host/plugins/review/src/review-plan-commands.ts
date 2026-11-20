@@ -9,19 +9,29 @@ import type { Context } from '@deepseek-ai/cordis';
 import { CommandError } from '../../../kernel/api.ts';
 import type { VfsReposService } from '../../vfs-repos/api.ts';
 import { errorText } from './errors.ts';
+import { DEFAULT_DECK_ID, defaultSchedulerConfig } from './fsrs-types.ts';
+import { loadSchedulerConfig } from '../repository/fsrs.ts';
 import { ReviewPlanService, defaultReviewPlanConfig } from './review-plan.ts';
 import type { DueReviewsFilter } from './review-plan-types.ts';
 
 function service(ctx: Context): ReviewPlanService {
   const repos = ctx.get('vfsRepo') as VfsReposService | undefined;
   if (repos === undefined) throw new Error('vfsRepo service is not available');
+  const warn = (message: string) => ctx.logger('review').warn(message);
   return new ReviewPlanService(
     ctx.storage.database('vfs'),
     repos,
     ctx.mastery,
     defaultReviewPlanConfig(),
-    message => ctx.logger('review').warn(message),
+    warn,
     message => ctx.logger('review').info(message),
+    () => {
+      try {
+        return loadSchedulerConfig(ctx.storage.database('mistakes'), DEFAULT_DECK_ID, warn);
+      } catch {
+        return defaultSchedulerConfig();
+      }
+    },
   );
 }
 

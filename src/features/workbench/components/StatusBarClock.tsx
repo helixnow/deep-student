@@ -26,6 +26,7 @@ import {
   getTodoAgendaSnapshot,
   subscribeTodoAgenda,
 } from '../apps/system/todoAgendaSource';
+import { useAppsPanelOpen } from './appsPanelStore';
 import { formatLocalDateKey } from './DesktopAgendaWidget';
 
 /** 与学习中心 flyout 同步：wb-kf-window-close(90ms) 播完再卸载 + 小余量 */
@@ -197,22 +198,55 @@ export const StatusBarClock: React.FC<StatusBarClockProps> = ({ onOpenChange }) 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
   const exposeOpen = useWorkbenchOverlay((s) => s.exposeOpen);
+  const appsPanelOpen = useAppsPanelOpen();
   useLiquidGlassLens(panelRef, open, { staticOnly: true });
-  useFocusReturn(open);
+  const { skipNextReturn } = useFocusReturn(open);
 
   const close = useCallback(() => setPhase((p) => (p === 'open' ? 'closing' : p)), []);
+  const handleNavigate = useCallback(() => {
+    skipNextReturn();
+    close();
+  }, [skipNextReturn, close]);
   const toggle = useCallback(
     () => setPhase((p) => (p === 'open' ? 'closing' : 'open')),
     [],
   );
+
+  const handleFlyoutKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') {
+      return;
+    }
+    const items = getFocusable(panel);
+    if (items.length === 0) return;
+    e.preventDefault();
+    const active = document.activeElement as HTMLElement | null;
+    const idx = active ? items.indexOf(active) : -1;
+    if (e.key === 'Home') {
+      items[0]?.focus({ preventScroll: true });
+      return;
+    }
+    if (e.key === 'End') {
+      items[items.length - 1]?.focus({ preventScroll: true });
+      return;
+    }
+    const nextIdx =
+      e.key === 'ArrowDown'
+        ? (idx + 1 + items.length) % items.length
+        : idx <= 0
+          ? items.length - 1
+          : idx - 1;
+    items[nextIdx]?.focus({ preventScroll: true });
+  }, []);
 
   useEffect(() => {
     onOpenChange?.(phase !== 'closed');
   }, [phase, onOpenChange]);
 
   useEffect(() => {
-    if (exposeOpen) close();
-  }, [exposeOpen, close]);
+    if (exposeOpen || appsPanelOpen) close();
+  }, [exposeOpen, appsPanelOpen, close]);
 
   useEffect(() => {
     if (phase !== 'closing') return undefined;
@@ -306,12 +340,13 @@ export const StatusBarClock: React.FC<StatusBarClockProps> = ({ onOpenChange }) 
             aria-modal="true"
             aria-labelledby={titleId}
             tabIndex={-1}
+            onKeyDown={handleFlyoutKeyDown}
           >
             <WallpaperReplica hostRef={panelRef} enabled={open} />
             <h2 id={titleId} className="wb-menubar-flyout-title">
               {t('menubar.agendaTitle')}
             </h2>
-            <ClockAgendaList onNavigate={close} />
+            <ClockAgendaList onNavigate={handleNavigate} />
           </div>
         </>
       ) : null}

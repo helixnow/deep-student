@@ -412,9 +412,9 @@ export const ImmersiveFocusMode: React.FC<{
     !chromeVisible && 'opacity-0 pointer-events-none'
   );
 
-  // 统一控制按钮语言：次级 = 描边卡片圆钮，主级 = 语义实心圆钮（无 hover scale）
+  // 统一控制按钮语言：次级 = 描边卡片圆钮，主级 = 语义实心圆钮（带按压阻尼反馈）
   const secondaryControlClass =
-    'flex items-center justify-center w-12 h-12 rounded-full border border-border bg-card text-muted-foreground transition-colors duration-150 hover:text-foreground hover:bg-[var(--interactive-hover)] motion-reduce:transition-none';
+    'flex items-center justify-center w-12 h-12 rounded-full border border-border bg-card text-muted-foreground transition-[transform,background-color,border-color,color] duration-150 hover:text-foreground hover:bg-[var(--interactive-hover)] active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100';
 
   return (
     <motion.div
@@ -486,14 +486,35 @@ export const ImmersiveFocusMode: React.FC<{
             {modeInfo.label}
           </span>
           {completedPomodorosToday > 0 && (
-            <span className="hidden rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground sm:inline">
-              {t('pomodoro.stats.todayCount', { value: completedPomodorosToday })}
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-mono text-xs tabular-nums transition-colors duration-200 motion-reduce:transition-none',
+                settings.dailyGoal > 0 && completedPomodorosToday >= settings.dailyGoal
+                  ? 'border-[color:hsl(var(--success))]/30 bg-[color:hsl(var(--success))]/10 text-[color:hsl(var(--success))]'
+                  : 'border-border/60 bg-muted text-muted-foreground',
+              )}
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  'h-1.5 w-1.5 shrink-0 rounded-full',
+                  settings.dailyGoal > 0 && completedPomodorosToday >= settings.dailyGoal
+                    ? 'bg-[color:hsl(var(--success))]'
+                    : 'bg-primary',
+                )}
+              />
+              {settings.dailyGoal > 0
+                ? t('pomodoro.stats.todayGoalBadge', {
+                    done: completedPomodorosToday,
+                    goal: settings.dailyGoal,
+                  })
+                : t('pomodoro.stats.todayCount', { value: completedPomodorosToday })}
             </span>
           )}
           {streakDays > 1 && (
             <span className="hidden items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground sm:flex">
               <Flame size={12} weight="fill" className="text-warning" />
-              {t('pomodoro.stats.streakDays', { value: streakDays, defaultValue: '连续专注 {{value}} 天' })}
+              {t('pomodoro.stats.streakDays', { value: streakDays })}
             </span>
           )}
         </div>
@@ -622,7 +643,7 @@ export const ImmersiveFocusMode: React.FC<{
             {isCountUpWork && status === 'running' && (
               <button
                 onClick={() => completeCurrentSession()}
-                className="flex items-center justify-center w-16 h-16 rounded-full bg-success text-success-foreground shadow-lg hover:bg-success/90 transition-colors duration-150 motion-reduce:transition-none"
+                className="flex items-center justify-center w-16 h-16 rounded-full bg-success text-success-foreground shadow-lg hover:bg-success/90 transition-[transform,background-color] duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
                 title={t('pomodoro.controls.finish')}
                 aria-label={t('pomodoro.controls.finish')}
               >
@@ -635,7 +656,7 @@ export const ImmersiveFocusMode: React.FC<{
               <button
                 onClick={handleTogglePlay}
                 className={cn(
-                  'flex items-center justify-center w-16 h-16 rounded-full transition-colors duration-150 motion-reduce:transition-none',
+                  'flex items-center justify-center w-16 h-16 rounded-full transition-[transform,background-color,border-color,color] duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100',
                   status === 'running'
                     ? 'border border-border bg-card text-foreground hover:bg-[var(--interactive-hover)]'
                     : 'bg-primary text-primary-foreground shadow-lg hover:bg-primary/90'

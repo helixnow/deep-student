@@ -1,16 +1,34 @@
 /**
  * skills-management feature 公共出口。
  *
- * 实现体目前仍位于历史路径 `components/skills-management`（约 2000 行页面 +
- * 编辑器/列表/Tap 浏览器等子组件）。为完成 feature 目录与历史目录的关系收敛，
- * 采取「转导出」而非物理搬迁（改动面最小、零行为风险）：
- * - 调用方（Workbench 窗口、legacy lazy 路由）一律从本入口引入；
- * - 后续若做物理迁移，只需改这一处的 re-export 源。
+ * 在历史 `components/skills-management` 实现之上增加面向学习者的分类过滤与排序层：
+ * - `SkillsManagementPage`：默认展示「学习精选」，支持切换「全部技能 / 系统与扩展」；
+ * - `SkillsList`：默认按学习工作流权重排序并支持 `audienceCategory` 过滤；
+ * - `skillCategories`：导出分类判定与排序纯函数，供列表与测试直接复用。
  */
+
+export { SkillsManagementPage } from './SkillsManagementPage';
+export type { SkillsManagementPageProps } from './SkillsManagementPage';
+
+export { SkillsList } from './SkillsList';
+export type { SkillsListProps } from './SkillsList';
+
 export {
-  SkillsManagementPage,
+  CURATED_LEARNING_SKILL_ORDER,
+  SYSTEM_AND_EXTENSION_SKILL_IDS,
+  classifySkillAudience,
+  getLearnerSkillSortRank,
+  sortSkillsForLearner,
+  filterAndSortSkillsForLearner,
+} from './skillCategories';
+export type {
+  SkillAudienceCategory,
+  ResolvedSkillCategory,
+  ClassifySkillInput,
+} from './skillCategories';
+
+export {
   SkillsSidebar,
-  SkillsList,
   SkillEditorModal,
   SkillDeleteConfirm,
 } from '@/components/skills-management';
@@ -18,6 +36,5 @@ export {
 export type {
   SkillEditorModalProps,
   SkillFormData,
-  SkillsListProps,
   SkillDeleteConfirmProps,
 } from '@/components/skills-management';

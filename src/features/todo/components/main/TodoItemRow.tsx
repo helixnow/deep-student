@@ -775,8 +775,8 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
       ) : (
       <button
         onClick={handleToggleClick}
-        // 触屏：透明 padding 扩大命中到 ≥44px，负 margin 保持布局不变
-        className="flex-shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] focus-visible:ring-offset-1 [@media(pointer:coarse)]:p-3 [@media(pointer:coarse)]:-m-3"
+        // 触屏：透明 padding 扩大命中到 ≥44px，负 margin 保持布局不变；按压微缩放提供弹性触感
+        className="flex-shrink-0 rounded-full transition-transform duration-150 ease-out active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] focus-visible:ring-offset-1 motion-reduce:transition-none motion-reduce:active:scale-100 [@media(pointer:coarse)]:p-3 [@media(pointer:coarse)]:-m-3"
         aria-label={isCompleted ? t('todo:actions.markPending') : t('todo:actions.markCompleted')}
       >
         {showCheckFilled ? (
@@ -794,14 +794,14 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
         ) : (
           <div
             className={cn(
-              'flex h-5 w-5 items-center justify-center rounded-full border-[1.5px] transition-colors duration-150',
+              'flex h-5 w-5 items-center justify-center rounded-full border-[1.5px] transition-colors duration-150 motion-reduce:transition-none',
               PRIORITY_CHECKBOX_CLASS[item.priority as TodoPriority] ?? PRIORITY_CHECKBOX_CLASS.none,
             )}
           >
             <Check
               size={12}
               className={cn(
-                'opacity-0 transition-opacity group-hover:opacity-40 group-focus-within:opacity-40',
+                'opacity-0 transition-opacity duration-150 group-hover:opacity-40 group-focus-within:opacity-40 motion-reduce:transition-none',
                 PRIORITY_CHECK_ICON_CLASS[item.priority as TodoPriority] ?? PRIORITY_CHECK_ICON_CLASS.none,
               )}
             />
@@ -822,12 +822,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
           />
         ) : (
           <div
-            className={cn(
-              'truncate text-sm transition-all duration-150',
-              isCompleted || completing
-                ? 'text-muted-foreground line-through'
-                : 'font-medium text-foreground',
-            )}
+            className="min-w-0 truncate text-sm"
             title={onRename && !isCompleted ? t('todo:actions.editTitleHint') : undefined}
             onDoubleClick={(e) => {
               if (!onRename || isCompleted) return;
@@ -835,7 +830,17 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
               setIsEditing(true);
             }}
           >
-            {item.title}
+            <span
+              className={cn(
+                'relative inline-block max-w-full truncate align-bottom transition-[color,opacity] duration-200 ease-out motion-reduce:transition-none',
+                "after:pointer-events-none after:absolute after:left-0 after:right-0 after:top-1/2 after:h-[1.5px] after:-translate-y-1/2 after:origin-left after:rounded-full after:bg-muted-foreground/55 after:transition-transform after:duration-200 after:ease-out motion-reduce:after:transition-none",
+                isCompleted || completing
+                  ? 'text-muted-foreground/75 line-through decoration-transparent after:scale-x-100'
+                  : 'font-medium text-foreground after:scale-x-0',
+              )}
+            >
+              {item.title}
+            </span>
           </div>
         )}
 
@@ -954,12 +959,12 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
             {tags.length > 0 && (
               <div className="flex gap-1.5 text-xs text-muted-foreground/80">
                 {tags.slice(0, 3).map((tag) => (
-                  <span key={tag} className="rounded bg-foreground/[0.04] px-1.5 py-px text-[11px]">
+                  <span key={tag} className="rounded bg-foreground/[0.04] px-1.5 py-px text-2xs">
                     {tag}
                   </span>
                 ))}
                 {tags.length > 3 && (
-                  <span className="rounded bg-foreground/[0.04] px-1.5 py-px font-mono text-[11px] tabular-nums">
+                  <span className="rounded bg-foreground/[0.04] px-1.5 py-px font-mono text-2xs tabular-nums">
                     +{tags.length - 3}
                   </span>
                 )}

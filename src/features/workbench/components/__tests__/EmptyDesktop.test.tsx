@@ -48,6 +48,12 @@ describe('引导卡渲染', () => {
 });
 
 describe('主 CTA', () => {
+  it('点击主 CTA「新建对话」→ launch chat', () => {
+    render(<EmptyDesktop />);
+    fireEvent.click(screen.getByRole('button', { name: /新建对话/ }));
+    expect(launchSpy).toHaveBeenCalledWith({ typeId: 'chat', reason: 'api' });
+  });
+
   it('点击主 CTA「打开资源库」→ launch files', () => {
     render(<EmptyDesktop />);
     fireEvent.click(screen.getByRole('button', { name: /打开资源库/ }));

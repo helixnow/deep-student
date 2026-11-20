@@ -1,6 +1,7 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { isMobilePlatform } from '@/utils/platform';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { AppSelect } from '@/components/ui/app-menu';
@@ -249,7 +250,9 @@ export function renderMcpToolEditorEmbedded({
                   }}
                     placeholder={t('settings:mcp_descriptions.transport_type')}
                     options={[
-                      { value: 'stdio', label: t('settings:mcp.transport.stdio') },
+                      ...(!isMobilePlatform() || transport === 'stdio'
+                        ? [{ value: 'stdio', label: t('settings:mcp.transport.stdio') }]
+                        : []),
                       { value: 'websocket', label: t('settings:mcp.transport.websocket') },
                       { value: 'sse', label: t('settings:mcp.transport.sse') },
                       { value: 'streamable_http', label: t('settings:mcp.transport.streamable_http') },

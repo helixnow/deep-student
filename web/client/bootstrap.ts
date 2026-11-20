@@ -528,10 +528,116 @@ export function showWebShellDialog(options: WebShellDialogOptions): Promise<bool
   });
 }
 
+export type WebPwaShortcut = 'chat' | 'library' | 'review';
+
+export const PENDING_PWA_SHORTCUT_KEY = 'ds_webui_pending_shortcut';
+
+const VALID_PWA_SHORTCUTS = new Set<WebPwaShortcut>(['chat', 'library', 'review']);
+
+/** 解析并校验合法的 PWA 快捷入口查询参数（`?shortcut=chat|library|review`）。 */
+export function parseWebPwaShortcut(
+  input: string | URL | URLSearchParams | null | undefined,
+): WebPwaShortcut | null {
+  if (!input) return null;
+  try {
+    let raw: string | null = null;
+    if (input instanceof URLSearchParams) {
+      raw = input.get('shortcut');
+    } else if (input instanceof URL) {
+      raw = input.searchParams.get('shortcut');
+    } else if (typeof input === 'string') {
+      if (input.includes('?') || input.includes('=')) {
+        const qIdx = input.indexOf('?');
+        const hashIdx = input.indexOf('#');
+        const queryPart =
+          qIdx >= 0
+            ? input.slice(qIdx + 1, hashIdx >= 0 && hashIdx > qIdx ? hashIdx : undefined)
+            : input.slice(0, hashIdx >= 0 ? hashIdx : undefined);
+        raw = new URLSearchParams(queryPart).get('shortcut');
+      } else {
+        raw = input;
+      }
+    }
+    const normalized = raw?.trim().toLowerCase() ?? '';
+    return VALID_PWA_SHORTCUTS.has(normalized as WebPwaShortcut)
+      ? (normalized as WebPwaShortcut)
+      : null;
+  } catch (error) {
+    void error;
+    return null;
+  }
+}
+
+function readSessionPendingShortcut(): WebPwaShortcut | null {
+  try {
+    if (typeof window === 'undefined' || typeof window.sessionStorage?.getItem !== 'function') {
+      return null;
+    }
+    return parseWebPwaShortcut(window.sessionStorage.getItem(PENDING_PWA_SHORTCUT_KEY));
+  } catch (error) {
+    void error;
+    return null;
+  }
+}
+
+function writeSessionPendingShortcut(shortcut: WebPwaShortcut | null): void {
+  try {
+    if (typeof window === 'undefined') return;
+    if (shortcut) {
+      window.sessionStorage?.setItem?.(PENDING_PWA_SHORTCUT_KEY, shortcut);
+    } else {
+      window.sessionStorage?.removeItem?.(PENDING_PWA_SHORTCUT_KEY);
+    }
+  } catch (error) {
+    void error;
+  }
+}
+
+function ensureUrlHasShortcut(shortcut: WebPwaShortcut): void {
+  try {
+    if (typeof window === 'undefined' || typeof window.history?.replaceState !== 'function') return;
+    const href = window.location?.href;
+    if (!href) return;
+    const url = new URL(href);
+    url.searchParams.delete('token');
+    if (url.searchParams.get('shortcut') === shortcut) return;
+    url.searchParams.set('shortcut', shortcut);
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  } catch (error) {
+    void error;
+  }
+}
+
+/**
+ * 恢复因服务端鉴权跳转（如 `POST /api/auth/session` `303 -> /`）或离线重载暂存的合法 `shortcut` 参数。
+ * 若当前 URL 已含合法 `shortcut`，立即清理暂存位避免后续普通刷新重复触发。
+ */
+export function restorePendingPwaShortcut(): WebPwaShortcut | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    const current = parseWebPwaShortcut(window.location?.href ?? window.location?.search);
+    if (current) {
+      writeSessionPendingShortcut(null);
+      return current;
+    }
+    const pending = readSessionPendingShortcut();
+    if (!pending) return null;
+    writeSessionPendingShortcut(null);
+    ensureUrlHasShortcut(pending);
+    return pending;
+  } catch (error) {
+    void error;
+    return null;
+  }
+}
+
 export async function ensureAuthenticated(): Promise<void> {
   if (typeof window === 'undefined' || typeof document === 'undefined' || typeof fetch !== 'function') {
     return;
   }
+
+  const shortcutBeforeCheck =
+    parseWebPwaShortcut(window.location?.href ?? window.location?.search) ?? readSessionPendingShortcut();
 
   try {
     const check = await fetch('/api/health', {
@@ -540,10 +646,20 @@ export async function ensureAuthenticated(): Promise<void> {
       cache: 'no-store',
     });
     if (check.status !== 401) {
+      if (shortcutBeforeCheck) {
+        writeSessionPendingShortcut(null);
+        ensureUrlHasShortcut(shortcutBeforeCheck);
+      }
       return;
     }
   } catch {
     return;
+  }
+
+  const shortcutToPreserve =
+    shortcutBeforeCheck ?? parseWebPwaShortcut(window.location?.href ?? window.location?.search);
+  if (shortcutToPreserve) {
+    writeSessionPendingShortcut(shortcutToPreserve);
   }
 
   ensureWebShellStyles();
@@ -574,7 +690,7 @@ export async function ensureAuthenticated(): Promise<void> {
 
     const subtitle = document.createElement('p');
     subtitle.className = 'ds-web-shell-subtitle';
-    subtitle.textContent = '输入服务端终端输出的访问令牌以连接宿主服务';
+    subtitle.textContent = '输入电脑端终端或桌面服务显示的访问令牌以连接学习桌面';
 
     const label = document.createElement('label');
     label.htmlFor = 'ds-web-token-input';
@@ -632,14 +748,19 @@ export async function ensureAuthenticated(): Promise<void> {
       })
         .then((res) => {
           if (res.ok) {
+            writeSessionPendingShortcut(null);
+            if (shortcutToPreserve) {
+              ensureUrlHasShortcut(shortcutToPreserve);
+            }
             overlay.remove();
             resolve();
             return;
           }
-          errorEl.textContent = '访问令牌无效，请核对后重试';
+          errorEl.textContent =
+            res.status === 429 ? '尝试次数过多，请稍后再试' : '访问令牌无效，请核对后重试';
         })
         .catch(() => {
-          errorEl.textContent = '网络连接失败，请重试';
+          errorEl.textContent = '无法连接桌面服务，请确认电脑端服务已开启且手机与电脑在同一 Wi-Fi 后立即重试';
         })
         .finally(() => {
           if (overlay.isConnected) {
@@ -870,6 +991,8 @@ export function installPwaSupport(options: { onFilesOpened?: (paths: string[]) =
         const reloadOnce = () => {
           if (reloaded) return;
           reloaded = true;
+          const pending = parseWebPwaShortcut(window.location?.href ?? window.location?.search);
+          if (pending) writeSessionPendingShortcut(pending);
           window.location.reload();
         };
 
@@ -925,6 +1048,7 @@ export interface BootstrappedWebClient {
 
 export function bootstrapWebClient(): BootstrappedWebClient {
   stripUrlAuthToken();
+  let bootShortcut = restorePendingPwaShortcut();
 
   const params = new URLSearchParams(window.location.search);
   const explicitShell = params.get('shell');
@@ -1218,6 +1342,11 @@ export function bootstrapWebClient(): BootstrappedWebClient {
     socket.addEventListener('open', () => {
       wsOpen = true;
       const recovered = reconnectAttempt > 0;
+      if (!hasEverOpened && bootShortcut) {
+        writeSessionPendingShortcut(null);
+        ensureUrlHasShortcut(bootShortcut);
+        bootShortcut = null;
+      }
       hasEverOpened = true;
       reconnectAttempt = 0;
       if (reconnectTimer !== null) {

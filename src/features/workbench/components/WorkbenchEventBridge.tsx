@@ -26,7 +26,8 @@
 import React, { useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import i18n from 'i18next';
-import { APP_EVENTS, addAppEventListener } from '@/events/app';
+import { APP_EVENTS, addAppEventListener, type SettingsNavigateTabDetail } from '@/events/app';
+import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { workbenchBus } from '../core/workbenchBus';
 import type { LaunchPlacement } from '../core/types';
 import { useWindowStore } from '../core/windowStore';
@@ -349,6 +350,10 @@ export const WorkbenchEventBridge: React.FC = () => {
       const detail = (e as CustomEvent<{ view?: string; openResource?: string }>).detail;
       const openResource = detail?.openResource;
       if (typeof openResource !== 'string' || !openResource.trim()) {
+        if (detail?.view === 'settings') {
+          workbenchBus.launch({ typeId: 'settings', reason: 'api' });
+          return;
+        }
         // 社区插件视图（ctx.ui.navigate / kernel.navigation.navigate(viewKey)）→ 对应插件应用窗口
         const pluginAppTypeId = resolvePluginViewAppTypeId(detail?.view);
         if (pluginAppTypeId) workbenchBus.launch({ typeId: pluginAppTypeId, reason: 'api' });
@@ -357,6 +362,41 @@ export const WorkbenchEventBridge: React.FC = () => {
       const resourceId = openResource.trim().replace(/^\/+/, '');
       if (resourceId) launchResourceWindow(resourceId);
     };
+
+    // 设置直达事件（欢迎引导、维护模式横幅、模型就绪提示、快捷键 ⌘, 等）：
+    // 先写入 pendingSettingsRoute 供设置窗冷挂载消费，再确保设置单例窗打开/聚焦。
+    const onSettingsNavigateTab = (detail: SettingsNavigateTabDetail) => {
+      if (detail?.tab) {
+        setPendingSettingsRoute({
+          tab: detail.tab,
+          ...(detail.dataGovernanceTab ? { dataGovernanceTab: detail.dataGovernanceTab } : {}),
+        });
+      }
+      workbenchBus.launch({ typeId: 'settings', reason: 'api' });
+    };
+
+    const onNavigateToTab = (detail: { tabName?: string }) => {
+      const tabName = detail?.tabName;
+      if (tabName === 'settings') {
+        workbenchBus.launch({ typeId: 'settings', reason: 'api' });
+      }
+    };
+
+    // PWA 主屏快捷入口（/?shortcut=chat|library|review）在学习桌面启动时直接打开对应应用
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const shortcut = params.get('shortcut');
+      if (shortcut === 'chat' || shortcut === 'library' || shortcut === 'review') {
+        const typeId = shortcut === 'chat' ? 'chat' : shortcut === 'library' ? 'files' : 'flashcards';
+        workbenchBus.launch({ typeId, reason: 'api' });
+        params.delete('shortcut');
+        const nextSearch = params.toString();
+        const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
+        window.history.replaceState(window.history.state, '', nextUrl);
+      }
+    } catch {
+      /* 忽略受限 URL 环境 */
+    }
 
     // OPEN_NOTES（如插件卡片「去笔记里试试」）：经典壳切到资源库，学习桌面打开/聚焦笔记工作区
     const onOpenNotes = () => {
@@ -400,6 +440,8 @@ export const WorkbenchEventBridge: React.FC = () => {
     window.addEventListener('navigateToEssay', onNavigateToEssay);
     window.addEventListener('navigateToExamSheet', onNavigateToExamSheet);
     window.addEventListener('NAVIGATE_TO_VIEW', onNavigateToView);
+    const disposeSettingsNavigateTab = addAppEventListener(APP_EVENTS.SETTINGS_NAVIGATE_TAB, onSettingsNavigateTab);
+    const disposeNavigateToTab = addAppEventListener(APP_EVENTS.NAVIGATE_TO_TAB, onNavigateToTab);
     const disposeOpenNotes = addAppEventListener(APP_EVENTS.OPEN_NOTES, onOpenNotes);
     window.addEventListener('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE', onNavigateToKnowledgeBase);
     return () => {
@@ -416,6 +458,8 @@ export const WorkbenchEventBridge: React.FC = () => {
       window.removeEventListener('navigateToEssay', onNavigateToEssay);
       window.removeEventListener('navigateToExamSheet', onNavigateToExamSheet);
       window.removeEventListener('NAVIGATE_TO_VIEW', onNavigateToView);
+      disposeSettingsNavigateTab();
+      disposeNavigateToTab();
       disposeOpenNotes();
       window.removeEventListener('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE', onNavigateToKnowledgeBase);
     };

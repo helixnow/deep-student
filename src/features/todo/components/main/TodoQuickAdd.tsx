@@ -84,6 +84,8 @@ export const TodoQuickAdd: React.FC<{
   const [suppressDefaultDue, setSuppressDefaultDue] = useState(false);
   /** 添加成功微动效（加号弹跳转绿），animation key 触发重播 */
   const [addedFlash, setAddedFlash] = useState(0);
+  /** 单次聚焦会话内连续添加条数（失焦或按 Esc 收起时归零） */
+  const [streakAddedCount, setStreakAddedCount] = useState(0);
   const flashTimerRef = useRef<number | null>(null);
 
   // 自然语言解析（如「明天交作业 !高」），结果以 chip 预览，提交时应用
@@ -168,6 +170,7 @@ export const TodoQuickAdd: React.FC<{
       // 保持展开与焦点：Enter 连续添加；Esc 收起。
       // 点「添加」按钮提交时焦点在按钮上，这里统一拉回输入框
       document.querySelector<HTMLInputElement>('[data-todo-quick-add]')?.focus();
+      setStreakAddedCount((n) => n + 1);
       setAddedFlash((n) => n + 1);
       if (flashTimerRef.current !== null) window.clearTimeout(flashTimerRef.current);
       flashTimerRef.current = window.setTimeout(() => {
@@ -180,14 +183,18 @@ export const TodoQuickAdd: React.FC<{
   }, [title, parsed, priority, dueDate, suppressDefaultDue, defaultDueDate, targetListId, resolvedList, createItem, updateItem]);
 
   const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
       // IME 组词中的 Enter/Esc 属于输入法交互（如拼音上屏），不触发提交/收起
       if (e.nativeEvent.isComposing) return;
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
-        handleSubmit();
+        void handleSubmit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setIsExpanded(false);
+        setStreakAddedCount(0);
+        e.currentTarget.blur();
       }
-      if (e.key === 'Escape') setIsExpanded(false);
     },
     [handleSubmit],
   );
@@ -203,7 +210,13 @@ export const TodoQuickAdd: React.FC<{
       parsed.listName || parsed.estimatedPomodoros);
 
   return (
-    <div>
+    <div
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          setStreakAddedCount(0);
+        }
+      }}
+    >
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 px-4 py-2.5 sm:flex-nowrap sm:px-6">
         <Plus
           size={16}
@@ -223,6 +236,15 @@ export const TodoQuickAdd: React.FC<{
           data-todo-quick-add
           className="order-2 min-w-0 flex-1 border-0 bg-transparent placeholder:text-muted-foreground/50 focus-visible:ring-0 sm:order-none"
         />
+        {!isExpanded && !title.trim() && (
+          <kbd
+            title={t('todo:quickAdd.focusShortcutHint')}
+            aria-label={t('todo:quickAdd.focusShortcutHint')}
+            className="hidden flex-shrink-0 items-center rounded border border-border/60 bg-muted/40 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground/70 sm:inline-flex [@media(pointer:coarse)]:hidden"
+          >
+            N
+          </kbd>
+        )}
         {/* 手机端把解析结果换到下一行，避免 chips 与输入框/提交按钮互相挤压。 */}
         {hasChips && (
           <div className="scrollbar-none order-4 flex w-full min-w-0 flex-wrap items-center gap-1.5 pl-[1.65rem] sm:order-none sm:w-auto sm:max-w-[45%] sm:flex-shrink sm:flex-nowrap sm:overflow-x-auto sm:pl-0">
@@ -330,7 +352,7 @@ export const TodoQuickAdd: React.FC<{
             variant="shell"
             size="sm"
             onClick={handleSubmit}
-            className="order-3 h-7 flex-shrink-0 text-xs sm:order-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-4"
+            className="order-3 h-7 flex-shrink-0 text-xs transition-[transform,background-color,border-color,color] duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100 sm:order-none"
           >
             {t('todo:actions.add')}
           </DsButton>
@@ -344,7 +366,7 @@ export const TodoQuickAdd: React.FC<{
             value={priority}
             onValueChange={setPriority}
             size="compact"
-            itemClassName="!h-auto !px-2 !py-1 text-xs font-medium [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3"
+            itemClassName="!h-auto !px-2 !py-1 text-xs font-medium [@media(pointer:coarse)]:!px-3"
             options={(['none', 'low', 'medium', 'high', 'urgent'] as TodoPriority[]).map((p) => {
               const config = PRIORITY_CONFIG[p];
               const isActive = priority === p;
@@ -358,15 +380,29 @@ export const TodoQuickAdd: React.FC<{
             })}
           />
 
-          <div className="flex items-center gap-1.5 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2 py-1 [@media(pointer:coarse)]:min-h-11">
+          <div className="flex items-center gap-1.5 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2 py-1 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]">
             <Calendar size={14} className="text-muted-foreground" />
             <Input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="cursor-pointer bg-transparent border-0 focus-visible:ring-0 text-xs h-auto min-h-0 p-0 w-auto [@media(pointer:coarse)]:!min-h-11"
+              className="cursor-pointer bg-transparent border-0 focus-visible:ring-0 text-xs h-auto min-h-0 p-0 w-auto [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
             />
           </div>
+
+          {streakAddedCount > 0 && (
+            <span
+              data-testid="todo-quickadd-streak"
+              aria-live="polite"
+              className="ui-rise-in motion-reduce:animate-none inline-flex items-center rounded-full border border-[color:hsl(var(--success))]/25 bg-[color:hsl(var(--success))]/10 px-2 py-0.5 font-mono text-2xs font-medium tabular-nums text-[color:hsl(var(--success))]"
+            >
+              {t('todo:quickAdd.addedStreak', { count: streakAddedCount })}
+            </span>
+          )}
+
+          <span className="ml-auto hidden font-mono text-2xs text-muted-foreground/60 sm:inline [@media(pointer:coarse)]:hidden">
+            {t('todo:quickAdd.continuousHint')}
+          </span>
         </div>
       )}
     </div>

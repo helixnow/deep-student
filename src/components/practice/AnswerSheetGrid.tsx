@@ -11,6 +11,7 @@ import React, { useCallback, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
 import { BookmarkSimple } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import { useQuestionBankStore } from '@/stores/questionBankStore';
 import {
   QBANK_FOCUS_EVENT,
@@ -95,19 +96,19 @@ export const AnswerSheetGrid: React.FC<AnswerSheetGridProps> = ({
           const marked = markedIds?.has(id) ?? false;
           const isCurrent = currentQuestionId === id;
           return (
-            <button
+            <DsButton
               key={id}
-              type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => handleNavigate(id)}
               aria-label={t('answerSheet.jumpTo', { index: idx + 1 })}
               aria-current={isCurrent ? 'true' : undefined}
               className={cn(
-                'relative flex min-h-11 items-center justify-center rounded-md border text-sm font-medium tabular-nums',
-                'ui-press transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                'ui-press relative min-h-[var(--touch-target-size)] !px-0 rounded-md border text-sm font-medium tabular-nums transition-colors motion-reduce:transition-none',
                 answered
-                  ? 'border-success/30 bg-success/15 text-success'
-                  : 'border-border/60 bg-muted/60 text-muted-foreground hover:bg-[var(--interactive-hover)]',
-                isCurrent && 'ring-2 ring-primary',
+                  ? 'border-success/35 bg-success/15 text-success hover:bg-success/20'
+                  : 'border-border/60 bg-muted/60 text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground',
+                isCurrent && 'ring-2 ring-primary bg-primary/[0.08] font-semibold text-foreground',
               )}
             >
               {idx + 1}
@@ -118,12 +119,12 @@ export const AnswerSheetGrid: React.FC<AnswerSheetGridProps> = ({
                   className="absolute right-0.5 top-0.5 text-warning"
                 />
               )}
-            </button>
+            </DsButton>
           );
         })}
       </div>
 
-      <p className="text-[11px] text-muted-foreground">{t('answerSheet.jumpHint')}</p>
+      <p className="text-2xs text-muted-foreground">{t('answerSheet.jumpHint')}</p>
     </div>
   );
 };

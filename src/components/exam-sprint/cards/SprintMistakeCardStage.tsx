@@ -142,7 +142,7 @@ export const SprintMistakeCardStage: React.FC<SprintMistakeCardStageProps> = ({
                 {item.examName}
               </span>
             ) : null}
-            <span className="rounded border border-border/35 bg-muted/40 px-2 py-0.5 text-[11px]">
+            <span className="rounded border border-border/35 bg-muted/40 px-2 py-0.5 text-2xs">
               {questionTypeLabel}
             </span>
           </div>
@@ -178,7 +178,7 @@ export const SprintMistakeCardStage: React.FC<SprintMistakeCardStageProps> = ({
                   aria-pressed={isSelected}
                   onClick={() => onSelectOptionKey(option.key)}
                   className={cn(
-                    'flex min-h-[44px] w-full items-start gap-3 rounded-lg border px-3.5 py-2.5 text-left text-sm transition-colors active:scale-95 active:opacity-80 disabled:cursor-default disabled:active:scale-100',
+                    'flex min-h-[44px] w-full items-start gap-3 rounded-lg border px-3.5 py-2.5 text-left text-sm transition-all duration-150 ease-standard active:scale-[0.985] active:opacity-90 disabled:cursor-default disabled:active:scale-100 motion-reduce:transition-none motion-reduce:active:scale-100',
                     !revealed && !isSelected && 'border-border/35 bg-background/50 hover:bg-muted/50',
                     !revealed && isSelected && 'border-primary/50 bg-primary/[0.08] text-foreground',
                     isCorrectOption && 'border-emerald-500/40 bg-emerald-500/10 text-foreground',
@@ -250,7 +250,7 @@ export const SprintMistakeCardStage: React.FC<SprintMistakeCardStageProps> = ({
         ) : null}
 
         {revealed ? (
-          <div className="mt-4 space-y-3 border-t border-border/35 pt-4">
+          <div className="mt-4 space-y-3 border-t border-border/35 pt-4 animate-chat-rise-in motion-reduce:animate-none">
             {objectiveMatched !== null ? (
               <div
                 data-testid="sprint-mistake-feedback"
@@ -313,7 +313,7 @@ export const SprintMistakeCardStage: React.FC<SprintMistakeCardStageProps> = ({
                   data-testid="sprint-compare-original"
                   aria-expanded={originalExpanded}
                   onClick={() => setOriginalExpanded((prev) => !prev)}
-                  className="flex min-h-[44px] w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground active:scale-95 active:opacity-80"
+                  className="flex min-h-[44px] w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs font-medium text-muted-foreground transition-colors hover:text-foreground active:scale-[0.99] active:opacity-90 motion-reduce:transition-none motion-reduce:active:scale-100"
                 >
                   <span>{t('examSprint.player.compareOriginal')}</span>
                   {originalExpanded ? (
@@ -323,7 +323,7 @@ export const SprintMistakeCardStage: React.FC<SprintMistakeCardStageProps> = ({
                   )}
                 </button>
                 {originalExpanded ? (
-                  <div className="space-y-2 border-t border-border/35 px-3 py-2.5 text-xs text-muted-foreground">
+                  <div className="space-y-2 border-t border-border/35 px-3 py-2.5 text-xs text-muted-foreground animate-chat-fade-in motion-reduce:animate-none">
                     <SprintMathOrPlainText text={item.originalPromptPreview} className="text-xs" />
                     {item.originalAnswerPreview ? (
                       <div className="pt-1 font-mono tabular-nums text-foreground">
