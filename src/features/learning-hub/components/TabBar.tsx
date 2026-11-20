@@ -280,8 +280,8 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
         title={tab.dstuPath}
         className={cn(
           // Tahoe Finder tab strip: one continuous row with a single active capsule.
-          // 触屏 pr-12：为常显的「更多 + 关闭」两个入口留出空间
-          'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 hover:pr-7 h-[30px] [@media(pointer:coarse)]:h-[38px] [@media(pointer:coarse)]:pr-12 rounded-lg cursor-default select-none my-[3px]',
+          // 触屏 pr-[76px]：为常显的「更多（36px） + 关闭」两个入口留出充足空间，互不重叠
+          'group/tab relative flex items-center gap-1.5 pl-2.5 pr-1.5 hover:pr-7 h-[30px] [@media(pointer:coarse)]:h-[38px] [@media(pointer:coarse)]:pr-[76px] rounded-lg cursor-default select-none my-[3px]',
           // 触屏热区补足 44px：上下各伸出 3px（吃掉 my-[3px]）；用上下两条伪元素而非整面
           // after:-inset-y；「更多/关闭」按钮以 z-[1] 在各自列内压过这两条切换热区
           '[@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:inset-x-0 [@media(pointer:coarse)]:before:bottom-full [@media(pointer:coarse)]:before:h-[3px] [@media(pointer:coarse)]:before:content-[""]',
@@ -316,7 +316,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
         )}
         
         {/* 触屏常显「更多」入口：长按被 dnd-kit 250ms 拖拽抢占，
-            标签菜单（固定/关闭其他/分屏等）需要显式按钮（对齐 FinderFileItem N-4 范式） */}
+            标签菜单（固定/关闭其他/分屏等）需要显式按钮，且自身盒模型 ≥36×36px（避免粗指针触控死角） */}
         {isTouchPrimary && (
           <span
             role="button"
@@ -329,15 +329,11 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
               setCtxMenu({ x: rect.left, y: rect.bottom + 4 });
             }}
             className={cn(
-              'absolute right-6 top-1/2 -translate-y-1/2 z-[1] rounded-md bg-inherit p-[3px] opacity-60',
+              'absolute right-9 top-1/2 -translate-y-1/2 z-[1] inline-flex h-9 w-9 items-center justify-center rounded-md bg-inherit opacity-70',
               'hover:bg-[var(--foreground)]/10 active:bg-[var(--foreground)]/15',
-              // 热区高度补足 44px（视觉 20px + 上下各 12px，正好到标签栏上下边缘）；
-              // 只向左/上/下扩展，右侧到自身边缘为止，避免与右侧关闭按钮热区重叠；
-              // z-[1] 让上下 3px 条带处压过标签自身的 before/after 切换热区（本按钮仅触屏渲染）
-              'before:absolute before:-inset-y-[12px] before:-left-[8px] before:right-0 before:content-[""]',
             )}
           >
-            <DotsThree size={14} weight="bold" />
+            <DotsThree size={16} weight="bold" />
           </span>
         )}
 

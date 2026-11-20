@@ -1250,7 +1250,8 @@
     "indexingWithProgress": "索引中 {{progress}}%",
     "failed": "{{count}} 项索引失败",
     "pending": "{{count}} 项待索引",
-    "embeddingMissing": "知识库未启用 · 配置嵌入模型"
+    "embeddingMissing": "知识库未启用 · 配置嵌入模型",
+    "embeddingMissingTooltip": "未配置默认嵌入维度。请在「设置 > 模型分配 > 嵌入维度管理」中设置默认维度。"
   },
   "indexStatus": {
     "introTitle": "知识库索引",

@@ -60,9 +60,16 @@ export interface SessionSearchItem {
   snippet: string;
 }
 
-/** FTS snippet 可能包含高亮标记，纯文本展示时去掉 */
+/** FTS snippet 可能包含 <b> / <mark> 高亮标记与 HTML 实体，纯文本展示时还原并剥离 */
 export function stripSnippetMarkers(snippet: string): string {
-  return snippet.replace(/<\/?b>/g, '').replace(/\s+/g, ' ').trim();
+  return snippet
+    .replace(/<\/?(?:b|mark)>/gi, '')
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function scoreByRank(index: number): number {
@@ -101,12 +108,25 @@ export async function fetchChatSearchResults(
   limit = CHAT_RESULT_LIMIT,
 ): Promise<SessionSearchItem[]> {
   if (signal.aborted) return [];
-  const hits = await invoke<ContentSearchHit[]>('chat_v2_search_content', {
-    query,
-    limit: 30,
-  });
+  const [contentResult, sessionResult] = await Promise.allSettled([
+    invoke<ContentSearchHit[]>('chat_v2_search_content', {
+      query,
+      limit: 30,
+    }),
+    invoke<Array<{ id: string; title?: string | null; description?: string | null }>>('chat_v2_search_sessions', {
+      query,
+      limit,
+      includeArchived: false,
+    }),
+  ]);
   if (signal.aborted) return [];
-  if (!Array.isArray(hits)) return [];
+
+  const hits = contentResult.status === 'fulfilled' && Array.isArray(contentResult.value)
+    ? contentResult.value
+    : [];
+  const titleSessions = sessionResult.status === 'fulfilled' && Array.isArray(sessionResult.value)
+    ? sessionResult.value
+    : [];
 
   const sessionResults: SessionSearchItem[] = [];
   const seen = new Set<string>();
@@ -119,6 +139,16 @@ export async function fetchChatSearchResults(
       snippet: stripSnippetMarkers(item.snippet),
     });
     if (sessionResults.length >= limit) break;
+  }
+  for (const session of titleSessions) {
+    if (sessionResults.length >= limit) break;
+    if (!session?.id || seen.has(session.id)) continue;
+    seen.add(session.id);
+    sessionResults.push({
+      sessionId: session.id,
+      title: session.title || '',
+      snippet: session.description ? stripSnippetMarkers(session.description) : '',
+    });
   }
   return sessionResults;
 }

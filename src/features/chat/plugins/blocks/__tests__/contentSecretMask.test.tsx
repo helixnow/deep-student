@@ -30,7 +30,7 @@ vi.mock('@/features/chat/hooks/useChatStore', () => ({
   useMessageBlocks: () => [],
 }));
 
-import { ContentBlock } from '../content';
+import { ContentBlock, escapeHtmlTagsInUserMarkdown } from '../content';
 
 const SECRET_TEXT = '我的 key 是 ' + 'sk-' + 'abcdefghijklmnopqrstuv' + ' 请勿外传';
 const MASKED_TEXT = '我的 key 是 sk-ab•••• 请勿外传';
@@ -100,6 +100,16 @@ describe('content 正文块 - 用户消息展示级脱敏', () => {
     ).toBeInTheDocument();
     expect(renderedText()).not.toContain('a'.repeat(20));
     expect(renderedText()).not.toContain('b'.repeat(24));
+  });
+
+  it('用户消息转义非代码块 HTML 标签（script/img 保留字面文本且不解析为 DOM）', () => {
+    expect(escapeHtmlTagsInUserMarkdown('<script>alert(1)</script>')).toBe(
+      '&lt;script&gt;alert(1)&lt;/script&gt;',
+    );
+    expect(escapeHtmlTagsInUserMarkdown('图 <img src=x onerror=alert(1)> 与 `<img src=y>`')).toBe(
+      '图 &lt;img src=x onerror=alert(1)&gt; 与 `<img src=y>`',
+    );
+    expect(escapeHtmlTagsInUserMarkdown('比较 a < b 且 c > d')).toBe('比较 a < b 且 c > d');
   });
 
   it('块内容变化后重置「显示原文」状态（回到默认脱敏）', () => {

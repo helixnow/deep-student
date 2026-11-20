@@ -111,6 +111,10 @@ export function TreeRow({
     disabled: !canMove || renaming,
     data: { item },
   });
+  // useSortable({ disabled: true }) 会写入 aria-disabled="true"，
+  // 但禁用拖拽排序不等于目录行（及其内部重命名输入框）被禁用，必须剥离以免误导屏幕阅读器与 ARIA 工具。
+  const { 'aria-disabled': _sortableAriaDisabled, ...sortableAttributes } = attributes;
+  void _sortableAriaDisabled;
 
   useEffect(() => {
     if (renaming) {
@@ -245,7 +249,7 @@ export function TreeRow({
       onTouchEnd={cancelLongPress}
       onTouchCancel={cancelLongPress}
       onTouchMove={onTouchMove}
-      {...attributes}
+      {...sortableAttributes}
       {...(renaming ? {} : listeners)}
       // Keep tree semantics; sortable attributes default role="button".
       role="treeitem"

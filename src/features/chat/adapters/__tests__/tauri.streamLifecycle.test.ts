@@ -155,6 +155,9 @@ describe('tauri/sessionEvents + errors + requestHelpers', () => {
     expect(typeof normalized).toBe('string');
     expect(normalized.length).toBeGreaterThan(0);
     expect(normalizeStreamTerminalError(undefined)).toMatch(/Load failed|加载失败/i);
+    expect(
+      normalizeStreamTerminalError('LLM error: 没有可用的文本或多模态生成模型'),
+    ).not.toContain('LLM error:');
   });
 
   it('classifies retryable Anki terminal blocks and canvas note ids', () => {

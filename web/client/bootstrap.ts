@@ -2018,18 +2018,31 @@ export function bootstrapWebClient(): BootstrappedWebClient {
     true,
   );
 
-  // 网络恢复 / 回到前台：立刻重连，不等退避计时器；明确离线时清理后台重连定时器
+  // 网络恢复 / 回到前台：立刻重连，不等退避计时器；明确离线时立刻断开半开连接并展示断网提示
   window.addEventListener('online', triggerImmediateReconnect);
   window.addEventListener('offline', () => {
     if (reconnectTimer !== null) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
-    if (!wsOpen) {
-      reconnectAttempt = Math.max(1, reconnectAttempt);
-      if (hasEverOpened) showOfflineWaiting(triggerImmediateReconnect);
-      else if (!authProbeInFlight) showOfflineBootOverlay(triggerImmediateReconnect);
+    // 浏览器明确断网时 TCP/WS 常处于半开态（wsOpen 仍为 true）；主动回收半开连接并立刻给出离线反馈
+    if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+      const stale = ws;
+      ws = null;
+      wsOpen = false;
+      serverEventToClient.clear();
+      replayedListeners.clear();
+      for (const rec of activeListeners.values()) rec.serverEventId = undefined;
+      rejectPendingInvokes('网络已断开，请重试', stale);
+      try {
+        stale.close();
+      } catch {
+        /* 忽略半开连接关闭异常 */
+      }
     }
+    reconnectAttempt = Math.max(1, reconnectAttempt);
+    if (hasEverOpened) showOfflineWaiting(triggerImmediateReconnect);
+    else if (!authProbeInFlight) showOfflineBootOverlay(triggerImmediateReconnect);
   });
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && !wsOpen && !isBrowserOffline()) triggerImmediateReconnect();

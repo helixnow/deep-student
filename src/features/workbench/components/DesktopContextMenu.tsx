@@ -349,17 +349,30 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
 
   // ---- 开合副作用：定位钳制 / 焦点管理 / 全局兜底监听 ----
 
+  const anchorRef = useRef(anchor);
+  anchorRef.current = anchor;
+
   useLayoutEffect(() => {
     if (!anchor) return;
     setOpenSub(null);
+    const clampToViewport = () => {
+      const activeAnchor = anchorRef.current;
+      if (!activeAnchor) return;
+      const el = panelRef.current;
+      const rect = el?.getBoundingClientRect();
+      const w = (rect && rect.width > 0 ? Math.ceil(rect.width) : 0) || el?.offsetWidth || MENU_FALLBACK_W;
+      const h = (rect && rect.height > 0 ? Math.ceil(rect.height) : 0) || el?.offsetHeight || MENU_FALLBACK_H;
+      const nextLeft = Math.max(MENU_EDGE_PAD, Math.min(activeAnchor.x, desktopSize.w - w - MENU_EDGE_PAD));
+      const nextTop = Math.max(MENU_EDGE_PAD, Math.min(activeAnchor.y, desktopSize.h - h - MENU_EDGE_PAD));
+      setPos((prev) => (prev.left === nextLeft && prev.top === nextTop ? prev : { left: nextLeft, top: nextTop }));
+    };
+    clampToViewport();
     const el = panelRef.current;
-    const w = el?.offsetWidth || MENU_FALLBACK_W;
-    const h = el?.offsetHeight || MENU_FALLBACK_H;
-    setPos({
-      left: Math.max(MENU_EDGE_PAD, Math.min(anchor.x, desktopSize.w - w - MENU_EDGE_PAD)),
-      top: Math.max(MENU_EDGE_PAD, Math.min(anchor.y, desktopSize.h - h - MENU_EDGE_PAD)),
-    });
-  }, [anchor, desktopSize]);
+    if (!el || typeof ResizeObserver !== 'function') return undefined;
+    const ro = new ResizeObserver(clampToViewport);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [anchor, renderedAnchor, desktopSize]);
 
   useEffect(() => {
     if (!open) return undefined;

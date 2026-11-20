@@ -137,6 +137,28 @@ function sanitizeIds(itemIds: string[]): string[] {
   return out;
 }
 
+/**
+ * 加载清单条目并在隐藏已完成顶层项时保留「未完成父任务」下的已完成子任务：
+ * 这样详情面板的子任务清单能继续展示/取消勾选已完成子任务，父行徽标也能真实显示 `1/2` 而非退化为 `0/1`。
+ */
+async function fetchListItemsRetainingActiveSubtasks(
+  listId: string,
+  includeCompleted: boolean,
+): Promise<TodoItem[]> {
+  if (includeCompleted) {
+    return api.listTodoItems(listId, true);
+  }
+  const allItems = await api.listTodoItems(listId, true);
+  const activeParentIds = new Set(
+    allItems.filter((item) => item.status !== 'completed' && !item.parentId).map((item) => item.id),
+  );
+  return allItems.filter(
+    (item) =>
+      item.status !== 'completed' ||
+      (Boolean(item.parentId) && activeParentIds.has(item.parentId as string)),
+  );
+}
+
 /** 新建/移动的 item 是否（大致）属于当前视图；拿不准的场景返回 false，交给后台静默校准 */
 function itemBelongsToCurrentView(
   item: TodoItem,
@@ -511,7 +533,10 @@ export const useTodoStore = create<TodoState>((set, get) => {
           case 'all':
           default:
             if (state.activeListId) {
-              items = await api.listTodoItems(state.activeListId, state.filter.showCompleted);
+              items = await fetchListItemsRetainingActiveSubtasks(
+                state.activeListId,
+                state.filter.showCompleted,
+              );
             }
             break;
         }
@@ -719,7 +744,7 @@ export const useTodoStore = create<TodoState>((set, get) => {
     const requestVersion = get().itemsRequestVersion + 1;
     set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
-      const items = await api.listTodoItems(listId, includeCompleted);
+      const items = await fetchListItemsRetainingActiveSubtasks(listId, includeCompleted);
       if (get().itemsRequestVersion !== requestVersion) return;
       const selectedItemId = get().selectedItemId;
       set({
@@ -861,11 +886,16 @@ export const useTodoStore = create<TodoState>((set, get) => {
       if (isLatestItemOp(itemId, opSeq)) {
         set((s) => {
           const { view, showCompleted } = s.filter;
-          // 勾选后是否仍属于当前视图（completed 视图只留已完成；其他视图按 showCompleted）
+          // 勾选后是否仍属于当前视图（completed 视图只留已完成；其他视图按 showCompleted；
+          // 但隶属未完成父任务的已完成子任务需留在 items 中，保证详情页可见可撤且父行进度为 1/2 而非 0/1）
+          const isSubtaskOfActiveParent = Boolean(
+            updated.parentId &&
+              s.items.some((candidate) => candidate.id === updated.parentId && candidate.status !== 'completed'),
+          );
           const stillVisible =
             view === 'completed'
               ? updated.status === 'completed'
-              : updated.status !== 'completed' || showCompleted;
+              : updated.status !== 'completed' || showCompleted || isSubtaskOfActiveParent;
           return {
             items: stillVisible
               ? s.items.map((i) => (i.id === itemId ? updated : i))

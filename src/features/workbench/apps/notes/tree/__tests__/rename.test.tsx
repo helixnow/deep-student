@@ -140,6 +140,7 @@ describe('NotesWorkspaceTree rename', () => {
     row.focus();
     fireEvent.keyDown(row, { key: 'F2' });
 
+    expect(row).not.toHaveAttribute('aria-disabled', 'true');
     const input = screen.getByRole('textbox', { name: '重命名' });
     fireEvent.change(input, { target: { value: 'From F2' } });
     fireEvent.keyDown(input, { key: 'Enter' });
