@@ -44,14 +44,13 @@ describe('chat v2 mobile sidebar layer contract', () => {
     expect(mobileLayoutSource).toContain('sidebarFixedContent?: ReactNode');
     expect(mobileLayoutSource).toContain('data-mobile-drawer-fixed');
     expect(mobileLayoutSource).toContain('data-mobile-drawer-page');
-    // 抽屉顶部 chrome 只承载设置入口（settingsOnly），品牌行 + 齿轮
+    // 抽屉顶部 chrome 承载品牌行（设置入口合并至底部 4×2 等宽 Dock）
     const chromeBlock = mobileLayoutSource.match(/data-mobile-drawer-chrome[\s\S]*?<CustomScrollArea/)?.[0] ?? '';
-    expect(chromeBlock).toContain('MobileSidebarNavigation');
-    expect(chromeBlock).toContain('settingsOnly');
-    // 六宫格启动器钉在抽屉底缘（滚动区之外的 shrink-0 兄弟节点），不随列表滚动
-    const launcherBlock = mobileLayoutSource.match(/data-mobile-drawer-launcher[\s\S]*?<\/div>/)?.[0] ?? '';
+    expect(chromeBlock).toContain('drawerHeader ?? DEFAULT_DRAWER_BRAND');
+    // 4×2 悬浮应用 Dock 钉在抽屉底缘（滚动区之外的 shrink-0 兄弟节点），不随列表滚动
+    const launcherBlock = mobileLayoutSource.match(/data-mobile-drawer-launcher[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? '';
     expect(launcherBlock).toContain('MobileSidebarNavigation');
-    expect(launcherBlock).toContain('hideSettings');
+    expect(launcherBlock).toContain('includeSettingsTile');
     expect(mobileLayoutSource.indexOf('data-mobile-drawer-launcher')).toBeGreaterThan(
       mobileLayoutSource.indexOf('</CustomScrollArea>'),
     );
@@ -91,8 +90,7 @@ describe('chat v2 mobile sidebar layer contract', () => {
     expect(sessionSidebarSource).not.toContain("aria-label={t('common:close')}");
     expect(sessionSidebarSource).not.toContain('<Plus size={17} weight="regular" />');
     expect(mobileLayoutSource).toContain('data-mobile-drawer-chrome');
-    expect(mobileLayoutSource).toContain('settingsOnly');
-    expect(mobileLayoutSource).toContain('hideSettings');
+    expect(mobileLayoutSource).toContain('includeSettingsTile');
     expect(mobileLayoutSource).toContain('showContentOverlay = true');
     expect(mobileLayoutSource).toContain('drawerHeader ?? DEFAULT_DRAWER_BRAND');
     expect(mobileLayoutSource).not.toContain('showSettingsFooter &&');

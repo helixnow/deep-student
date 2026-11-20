@@ -220,10 +220,10 @@ describe('plugin view apps (learning desktop)', () => {
     expect(windowsOf(TYPE_ID)).toHaveLength(1);
   });
 
-  it('ignores NAVIGATE_TO_VIEW for views that are not plugin apps', () => {
+  it('ignores NAVIGATE_TO_VIEW for views that are not plugin or built-in workbench apps', () => {
     stopMirror = mirrorPluginViewApps(kernel);
     render(<WorkbenchEventBridge />);
-    act(() => { window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'settings' } })); });
+    act(() => { window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'data-management' } })); });
     expect(Object.keys(useWindowStore.getState().windows)).toHaveLength(0);
   });
 

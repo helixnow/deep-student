@@ -397,7 +397,7 @@ describe('WorkbenchSettingsSection', () => {
     ).toBeGreaterThan(0);
     expect(screen.getByRole('radio', { name: '仅 HTTPS 公网' })).toBeDisabled();
     expect(screen.getByRole('radio', { name: '允许公网 HTTP（需确认）' })).toBeDisabled();
-    expect(screen.queryByRole('switch', { name: 'Windows CDP 加速（高级）' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: '浏览器自动化增强（高级）' })).not.toBeInTheDocument();
   });
 
   it('persists browser settings and settings-changed when workbenchMode is on', async () => {
@@ -432,7 +432,7 @@ describe('WorkbenchSettingsSection', () => {
       });
 
       fireEvent.click(screen.getByRole('button', { name: '高级（浏览器）' }));
-      const cdpSwitch = await screen.findByRole('switch', { name: 'Windows CDP 加速（高级）' });
+      const cdpSwitch = await screen.findByRole('switch', { name: '浏览器自动化增强（高级）' });
       expect(cdpSwitch).toHaveAttribute('aria-checked', 'false');
       fireEvent.click(cdpSwitch);
       await waitFor(() => {
@@ -485,7 +485,7 @@ describe('WorkbenchSettingsSection', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: '高级（浏览器）' }));
-    expect(screen.getByRole('switch', { name: 'Windows CDP 加速（高级）' })).toHaveAttribute(
+    expect(screen.getByRole('switch', { name: '浏览器自动化增强（高级）' })).toHaveAttribute(
       'aria-checked',
       'true',
     );

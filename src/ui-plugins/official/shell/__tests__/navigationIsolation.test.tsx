@@ -72,15 +72,13 @@ it('keeps the real desktop sidebar, labels and other entries alive when a commun
   expect(screen.getByRole('button', { name: '资源库' })).toBeTruthy();
 });
 
-it('isolates both desktop settings trigger and menu icons without swallowing the settings action', async () => {
+it('isolates the desktop settings trigger icon without swallowing the direct settings navigation action', async () => {
   await contribute('settings');
   const navigate = vi.fn();
   render(<UiKernelProvider kernel={kernel}><ModernSidebar currentView="chat-v2" onViewChange={navigate} /></UiKernelProvider>);
   const trigger = screen.getByRole('button', { name: 'community:bad-icon' });
+  expect(trigger.querySelector('svg')).toBeNull();
   fireEvent.click(trigger);
-  const action = await screen.findByRole('menuitem', { name: 'community:bad-icon' });
-  expect(action.querySelector('svg')).toBeNull();
-  fireEvent.click(action);
   expect(navigate).toHaveBeenCalledWith('todo');
   expect(screen.getByText('DeepStudent')).toBeTruthy();
 });

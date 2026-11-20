@@ -828,7 +828,10 @@ describe('ModernSidebar shell navigation', () => {
     expect(within(conversationNav).queryByRole('button', { name: '对话会话 1' })).not.toBeInTheDocument();
 
     const expandButton = within(conversationNav).getByRole('button', { name: '展开显示' });
-    expect(within(conversationNav).getAllByRole('button').at(-1)).toBe(expandButton);
+    const navButtons = within(conversationNav)
+      .getAllByRole('button')
+      .filter((btn) => btn.getAttribute('data-testid') !== 'sidebar-archived-sessions-entry');
+    expect(navButtons.at(-1)).toBe(expandButton);
     expect(expandButton.querySelector('svg')).toBeNull();
     expect(expandButton.className).not.toContain('hover:');
     expect(expandButton).toHaveClass('text-left');
@@ -843,7 +846,10 @@ describe('ModernSidebar shell navigation', () => {
     expect(await within(conversationNav).findByRole('button', { name: '对话会话 3' })).toBeInTheDocument();
     expect(within(conversationNav).getByRole('button', { name: '对话会话 1' })).toBeInTheDocument();
     const collapseButton = within(conversationNav).getByRole('button', { name: '折叠显示' });
-    expect(within(conversationNav).getAllByRole('button').at(-1)).toBe(collapseButton);
+    const expandedNavButtons = within(conversationNav)
+      .getAllByRole('button')
+      .filter((btn) => btn.getAttribute('data-testid') !== 'sidebar-archived-sessions-entry');
+    expect(expandedNavButtons.at(-1)).toBe(collapseButton);
     expect(collapseButton.querySelector('svg')).toBeNull();
     expect(collapseButton.className).not.toContain('hover:');
     expect(collapseButton).toHaveClass('text-left');
