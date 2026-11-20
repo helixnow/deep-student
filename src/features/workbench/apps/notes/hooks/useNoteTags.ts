@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { dstu } from '@/dstu';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { NotesAPI } from '@/utils/notesApi';
 
@@ -82,6 +83,17 @@ export function useNoteTags(autoLoad = true): UseNoteTagsResult {
       : [],
     [autoLoad, onTagsChanged],
   );
+
+  // 任何入口（页头标签栏 / 属性页 / NotesContext / Agent）写回笔记元数据都会经 dstu.watch
+  // 广播 note updated/created/deleted 事件；在此订阅即可实时刷新侧栏标签筛选列表。
+  useEffect(() => {
+    if (!autoLoad) return undefined;
+    return dstu.watch('*', (event) => {
+      if (event.type !== 'updated' && event.type !== 'created' && event.type !== 'deleted') return;
+      if (event.node && event.node.type !== 'note') return;
+      void refresh();
+    });
+  }, [autoLoad, refresh]);
 
   return { tags, loading, error, refresh };
 }
