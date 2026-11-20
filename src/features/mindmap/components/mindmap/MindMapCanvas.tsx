@@ -2363,6 +2363,13 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
             </DsButton>
           </div>
         )}
+        {/* 桌面端左下角快捷键轻提示胶囊（支持一键折叠/展开，随背诵态自动切换提示） */}
+        {!isCoarsePointer && (
+          <CanvasShortcutHintPill
+            reciteMode={reciteMode}
+            onOpenShortcuts={onToggleShortcutHelp}
+          />
+        )}
         {/* 小图（≤10 节点）一屏可尽收，隐藏 MiniMap 减少 chrome 与每帧刷新（E02 C12）；
             导出时 exporters 已按类名排除，无需在此判断 isExporting */}
         {layoutNodes.length > 10 && (

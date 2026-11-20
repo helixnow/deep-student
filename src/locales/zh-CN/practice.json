@@ -277,6 +277,7 @@
     "editQuestion": "编辑题目",
     "noContent": "暂无内容",
     "searchPlaceholder": "搜索题目...",
+    "filteredCount": "匹配 {{count}} 题",
     "deselectAll": "取消全选",
     "selectAll": "全选",
     "selectedCount": "已选 {{count}}",

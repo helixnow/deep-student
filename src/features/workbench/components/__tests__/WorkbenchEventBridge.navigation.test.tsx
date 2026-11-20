@@ -2,10 +2,18 @@ import React from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { launch, activate } = vi.hoisted(() => ({ launch: vi.fn(), activate: vi.fn(async () => true) }));
+const { launch, activate, isEnabled, getApp } = vi.hoisted(() => ({
+  launch: vi.fn(),
+  activate: vi.fn(async () => true),
+  isEnabled: vi.fn(() => true),
+  getApp: vi.fn((typeId: string) =>
+    typeId === 'flashcards' || typeId === 'chat' || typeId === 'files' ? { typeId } : undefined,
+  ),
+}));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
-vi.mock('../../core/workbenchBus', () => ({ workbenchBus: { launch, activate } }));
+vi.mock('../../core/workbenchBus', () => ({ workbenchBus: { launch, activate, isEnabled } }));
+vi.mock('../../core/appRegistry', () => ({ appRegistry: { get: getApp } }));
 vi.mock('../../core/windowStore', () => ({
   useWindowStore: { getState: () => ({ windows: {}, focusStack: [], focusWindow: vi.fn() }) },
 }));
@@ -20,9 +28,19 @@ vi.mock('@/features/chat/core/session/sessionManager', () => ({ sessionManager: 
 vi.mock('../../hooks/useWorkbenchA11y', () => ({ announceWorkbench: vi.fn() }));
 vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: vi.fn() }));
 
+import { notifyWorkbenchHostChanged } from '@/shared/workbenchHost';
 import WorkbenchEventBridge from '../WorkbenchEventBridge';
 
-afterEach(() => { cleanup(); launch.mockReset(); activate.mockClear(); });
+afterEach(() => {
+  cleanup();
+  launch.mockReset();
+  activate.mockClear();
+  isEnabled.mockReset().mockReturnValue(true);
+  getApp.mockReset().mockImplementation((typeId: string) =>
+    typeId === 'flashcards' || typeId === 'chat' || typeId === 'files' ? { typeId } : undefined,
+  );
+  window.history.replaceState(null, '', '/');
+});
 
 const fire = (type: string, detail: unknown) => act(() => { window.dispatchEvent(new CustomEvent(type, { detail })); });
 
@@ -95,6 +113,24 @@ describe('WorkbenchEventBridge pdf-ref:open (sole handler for known resource ids
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('waits until workbenchBus is enabled before consuming ?shortcut=review', () => {
+    window.history.replaceState(null, '', '/?shortcut=review');
+    isEnabled.mockReturnValue(false);
+    launch.mockReturnValue('win-flashcards-1');
+
+    render(<WorkbenchEventBridge />);
+    expect(launch).not.toHaveBeenCalled();
+    expect(new URLSearchParams(window.location.search).get('shortcut')).toBe('review');
+
+    isEnabled.mockReturnValue(true);
+    act(() => {
+      notifyWorkbenchHostChanged();
+    });
+
+    expect(launch).toHaveBeenCalledWith({ typeId: 'flashcards', reason: 'api' });
+    expect(new URLSearchParams(window.location.search).has('shortcut')).toBe(false);
   });
 
   it('leaves legacy refs (no sourceId, or an id without a resource prefix) to the chat page', () => {

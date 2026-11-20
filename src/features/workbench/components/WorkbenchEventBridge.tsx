@@ -28,6 +28,8 @@ import { invoke } from '@tauri-apps/api/core';
 import i18n from 'i18next';
 import { APP_EVENTS, addAppEventListener, type SettingsNavigateTabDetail } from '@/events/app';
 import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
+import { subscribeWorkbenchHost } from '@/shared/workbenchHost';
+import { appRegistry } from '../core/appRegistry';
 import { workbenchBus } from '../core/workbenchBus';
 import type { LaunchPlacement } from '../core/types';
 import { useWindowStore } from '../core/windowStore';
@@ -382,20 +384,42 @@ export const WorkbenchEventBridge: React.FC = () => {
       }
     };
 
-    // PWA 主屏快捷入口（/?shortcut=chat|library|review）在学习桌面启动时直接打开对应应用
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const shortcut = params.get('shortcut');
-      if (shortcut === 'chat' || shortcut === 'library' || shortcut === 'review') {
+    // PWA 主屏快捷入口（/?shortcut=chat|library|review）在学习桌面启动时直接打开对应应用。
+    // LazyAgentBridge 与 LazyWorkbenchDesktop 拆在不同 chunk：WorkbenchEventBridge 挂载时
+    // workbenchBus 可能尚未 setEnabled(true)；仅在 bus 就绪且 launch 返回有效窗口 id 后才消费并清理 URL。
+    let disposeShortcutHostWatch: (() => void) | null = null;
+    const tryConsumePendingPwaShortcut = (): boolean => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const shortcut = params.get('shortcut');
+        if (shortcut !== 'chat' && shortcut !== 'library' && shortcut !== 'review') {
+          return true;
+        }
         const typeId = shortcut === 'chat' ? 'chat' : shortcut === 'library' ? 'files' : 'flashcards';
-        workbenchBus.launch({ typeId, reason: 'api' });
+        if (!workbenchBus.isEnabled() || !appRegistry.get(typeId)) {
+          return false;
+        }
+        const launchedId = workbenchBus.launch({ typeId, reason: 'api' });
+        if (!launchedId) {
+          return false;
+        }
         params.delete('shortcut');
         const nextSearch = params.toString();
         const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ''}${window.location.hash}`;
         window.history.replaceState(window.history.state, '', nextUrl);
+        return true;
+      } catch {
+        /* 忽略受限 URL 环境 */
+        return true;
       }
-    } catch {
-      /* 忽略受限 URL 环境 */
+    };
+    if (!tryConsumePendingPwaShortcut()) {
+      disposeShortcutHostWatch = subscribeWorkbenchHost(() => {
+        if (tryConsumePendingPwaShortcut() && disposeShortcutHostWatch) {
+          disposeShortcutHostWatch();
+          disposeShortcutHostWatch = null;
+        }
+      });
     }
 
     // OPEN_NOTES（如插件卡片「去笔记里试试」）：经典壳切到资源库，学习桌面打开/聚焦笔记工作区
@@ -461,6 +485,7 @@ export const WorkbenchEventBridge: React.FC = () => {
       disposeSettingsNavigateTab();
       disposeNavigateToTab();
       disposeOpenNotes();
+      disposeShortcutHostWatch?.();
       window.removeEventListener('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE', onNavigateToKnowledgeBase);
     };
   }, []);

@@ -19,6 +19,7 @@ import { dstu, updatedAtToVersionToken, type DstuNode } from '@/dstu';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
 import { NoteLearningRelations } from '@/features/notes/components/NoteLearningRelations';
 import { NoteCustomPropsEditor } from './NoteCustomPropsEditor';
+import { notifyNoteTagsChanged } from './hooks/useNoteTags';
 import { NoteOriginRow } from '@/features/notes/components/NoteOriginRow';
 import { getNodeProps } from './parseTagQuery';
 import './NoteCustomPropsEditor.css';
@@ -147,6 +148,7 @@ export const NotesPropertiesTab: React.FC<NotesPropertiesTabProps> = ({
       throw new Error(result.error.toUserMessage());
     }
     setTags(newTags);
+    notifyNoteTagsChanged();
     // 后端已推进 updated_at：读取新版本刷新基线，避免连续写回自造冲突
     const refreshed = await dstu.get(note.path);
     if (refreshed.ok) versionRef.current = updatedAtToVersionToken(refreshed.value.updatedAt);

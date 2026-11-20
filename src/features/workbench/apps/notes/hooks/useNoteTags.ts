@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { NotesAPI } from '@/utils/notesApi';
+
+export const NOTE_TAGS_CHANGED_EVENT = 'notes:tags-changed';
+
+export function notifyNoteTagsChanged(): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(NOTE_TAGS_CHANGED_EVENT));
+}
 
 export interface NoteTagItem {
   name: string;
@@ -62,6 +70,18 @@ export function useNoteTags(autoLoad = true): UseNoteTagsResult {
       sequenceRef.current += 1;
     };
   }, [autoLoad, refresh]);
+
+  const onTagsChanged = useCallback(() => {
+    if (!autoLoad) return;
+    void refresh();
+  }, [autoLoad, refresh]);
+
+  useEventRegistry(
+    autoLoad
+      ? [{ target: 'window', type: NOTE_TAGS_CHANGED_EVENT, listener: onTagsChanged }]
+      : [],
+    [autoLoad, onTagsChanged],
+  );
 
   return { tags, loading, error, refresh };
 }

@@ -945,10 +945,16 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             {t(typeMeta.labelKey)}
           </Badge>
         )}
-        <span className="text-xs text-muted-foreground">
+        {plan.status === 'new' && plan.interval_days === 0 && plan.total_reviews === 0 ? (
+          <span className="text-xs text-muted-foreground">
+            {t('review:firstStudy')}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">
             {t('review:interval')}: {plan.interval_days}
-          {t('review:days')}
-        </span>
+            {t('review:days')}
+          </span>
+        )}
         {plan.total_reviews > 0 && (
           <span className="text-xs text-muted-foreground">
             {t('review:totalReviews')}: {plan.total_reviews}

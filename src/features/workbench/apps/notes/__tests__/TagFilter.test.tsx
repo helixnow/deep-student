@@ -11,6 +11,7 @@ vi.mock('@/utils/notesApi', () => ({
 }));
 
 import { groupTagsByPrefix, TagFilter } from '../TagFilter';
+import { notifyNoteTagsChanged } from '../hooks/useNoteTags';
 
 describe('TagFilter', () => {
   beforeEach(() => {
@@ -60,6 +61,17 @@ describe('TagFilter', () => {
     await waitFor(() => expect(listTags).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { expanded: false }));
     expect(await screen.findByRole('button', { name: 'math' })).toBeInTheDocument();
+  });
+
+  it('refreshes tags automatically when notifyNoteTagsChanged is dispatched', async () => {
+    listTags.mockResolvedValueOnce(['math']).mockResolvedValueOnce(['math', 'chemistry']);
+    render(<TagFilter selectedTags={[]} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
+    expect(await screen.findByRole('button', { name: 'math' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'chemistry' })).not.toBeInTheDocument();
+
+    notifyNoteTagsChanged();
+    expect(await screen.findByRole('button', { name: 'chemistry' })).toBeInTheDocument();
   });
 
   it('hides internal metadata tags returned by the notes API', async () => {

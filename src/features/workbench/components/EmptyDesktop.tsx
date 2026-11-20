@@ -210,24 +210,32 @@ export const EmptyDesktop: React.FC<EmptyDesktopProps> = React.memo(({
           role="group"
           aria-label={t('workbench:emptyDesktop.actionsLabel')}
         >
-          <DsButton type="button" variant="ghost" className="wb-empty-cta" onClick={openChat}>
-            <ChatCircleText size={18} weight="duotone" aria-hidden="true" />
-            {t('workbench:emptyDesktop.actionChat')}
-          </DsButton>
-          <button type="button" className="wb-empty-cta wb-empty-cta-secondary" onClick={openPrimary}>
-            <FolderOpen size={18} weight="duotone" aria-hidden="true" />
-            {t('workbench:emptyDesktop.actionFiles')}
-          </button>
-          {restoreAvailable && onRestoreSession ? (
-            <button
+          <div className="wb-empty-cta-row">
+            <DsButton type="button" variant="ghost" className="wb-empty-cta !h-auto" onClick={openChat}>
+              <ChatCircleText size={18} weight="duotone" aria-hidden="true" />
+              {t('workbench:emptyDesktop.actionChat')}
+            </DsButton>
+            <DsButton
               type="button"
-              className="wb-empty-cta wb-empty-cta-secondary"
+              variant="ghost"
+              className="wb-empty-cta wb-empty-cta-secondary !h-auto"
+              onClick={openPrimary}
+            >
+              <FolderOpen size={18} weight="duotone" aria-hidden="true" />
+              {t('workbench:emptyDesktop.actionFiles')}
+            </DsButton>
+          </div>
+          {restoreAvailable && onRestoreSession ? (
+            <DsButton
+              type="button"
+              variant="ghost"
+              className="wb-empty-cta wb-empty-cta-secondary !h-auto"
               data-testid="wb-empty-restore-session"
               onClick={onRestoreSession}
             >
               <ClockCounterClockwise size={18} weight="duotone" aria-hidden="true" />
               {restoreLabel}
-            </button>
+            </DsButton>
           ) : null}
         </div>
 

@@ -289,6 +289,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   const setSortBy = useTodoStore((s) => s.setSortBy);
   const setViewFilter = useTodoStore((s) => s.setViewFilter);
   const counts = useTodoStore((s) => s.counts);
+  const todayCompletedCount = useTodoStore((s) => s.todayCompletedCount);
 
   const activeList = lists.find((l) => l.id === activeListId);
   const selectedItem = items.find((i) => i.id === selectedItemId);
@@ -737,10 +738,20 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     }
   })();
 
+  const effectiveTodayCompletedCount =
+    filter.view === 'today' && !filter.showCompleted && !filter.priorityFilter
+      ? Math.max(completedCount, todayCompletedCount)
+      : completedCount;
   const isTodayAllDone =
-    !filter.search.trim() && filter.view === 'today' && completedCount > 0 && pendingCount === 0;
+    !filter.search.trim() &&
+    filter.view === 'today' &&
+    effectiveTodayCompletedCount > 0 &&
+    pendingCount === 0;
   const isTodayFreshEmpty =
-    !filter.search.trim() && filter.view === 'today' && completedCount === 0 && pendingCount === 0;
+    !filter.search.trim() &&
+    filter.view === 'today' &&
+    effectiveTodayCompletedCount === 0 &&
+    pendingCount === 0;
 
   // 空态按视图差异化：清零类视图用庆祝语气；今日全部完成时附带完成数与衔接行动。
   const emptyState = (() => {
@@ -1093,7 +1104,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                     className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-[color:hsl(var(--success))]/25 bg-[color:hsl(var(--success))]/10 px-2.5 py-0.5 font-mono text-xs font-medium tabular-nums text-[color:hsl(var(--success))]"
                   >
                     <CheckCircle size={12} weight="fill" aria-hidden="true" />
-                    {t('todo:empty.todayCompletedBadge', { count: completedCount })}
+                    {t('todo:empty.todayCompletedBadge', { count: effectiveTodayCompletedCount })}
                   </span>
                 )}
                 <p className="study-shell-empty-state__description">{emptyState.hint}</p>
