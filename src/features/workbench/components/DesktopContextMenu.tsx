@@ -359,9 +359,10 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
       const activeAnchor = anchorRef.current;
       if (!activeAnchor) return;
       const el = panelRef.current;
+      // 优先读 offsetWidth / offsetHeight（不受进场 transform: scale(0.95) 缩水影响）
       const rect = el?.getBoundingClientRect();
-      const w = (rect && rect.width > 0 ? Math.ceil(rect.width) : 0) || el?.offsetWidth || MENU_FALLBACK_W;
-      const h = (rect && rect.height > 0 ? Math.ceil(rect.height) : 0) || el?.offsetHeight || MENU_FALLBACK_H;
+      const w = el?.offsetWidth || (rect && rect.width > 0 ? Math.ceil(rect.width) : 0) || MENU_FALLBACK_W;
+      const h = el?.offsetHeight || (rect && rect.height > 0 ? Math.ceil(rect.height) : 0) || MENU_FALLBACK_H;
       const nextLeft = Math.max(MENU_EDGE_PAD, Math.min(activeAnchor.x, desktopSize.w - w - MENU_EDGE_PAD));
       const nextTop = Math.max(MENU_EDGE_PAD, Math.min(activeAnchor.y, desktopSize.h - h - MENU_EDGE_PAD));
       setPos((prev) => (prev.left === nextLeft && prev.top === nextTop ? prev : { left: nextLeft, top: nextTop }));
