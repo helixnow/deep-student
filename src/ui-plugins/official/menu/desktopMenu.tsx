@@ -8,7 +8,6 @@ import {
   CalendarBlank,
   ChatCircleDots,
   CirclesFour,
-  Compass,
   Desktop,
   Drop,
   FolderOpen,
@@ -118,15 +117,11 @@ export const officialDesktopMenuEntries: readonly SlotEntry<AppMenuContribution>
       testId: 'wb-desk-menu-widgets', run: () => c.setWidgetsVisible(!c.widgetsVisible),
     },
   ]),
-  official('desktop:help', 40, ({ t, workbench, closeMenu, replayTour }) => [
+  official('desktop:help', 40, ({ t, workbench, closeMenu }) => [
     separator('help-separator'),
     {
       id: 'shortcuts', icon: <Keyboard size={15} weight="duotone" />, label: t('workbench:desktopMenu.shortcuts'), shortcut: workbench.cheatsheetShortcut,
       testId: 'wb-desk-menu-shortcuts', closeOnRun: false, run: () => { closeMenu(); workbench.openCheatsheet(); },
-    },
-    {
-      id: 'replay-tour', icon: <Compass size={15} weight="duotone" />, label: t('workbench:desktopMenu.replayTour'), testId: 'wb-desk-menu-replay-tour',
-      closeOnRun: false, run: () => { closeMenu(); replayTour(); },
     },
     { id: 'settings', icon: <GearSix size={15} weight="duotone" />, label: t('workbench:desktopMenu.settings'), run: () => workbench.launchAppFrom('settings', 'command') },
   ]),

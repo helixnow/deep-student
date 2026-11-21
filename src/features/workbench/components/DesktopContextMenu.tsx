@@ -36,7 +36,6 @@ import { toggleShowDesktop as toggleShowDesktopShared } from '../hooks/showDeskt
 import { WALLPAPER_PRESETS, type WallpaperConfig } from './WallpaperLayer';
 import { OPEN_WALLPAPER_MANAGER_EVENT } from './WallpaperManagerDialog';
 import { logWallpaperDiag } from '../core/wallpaperDiagnostics';
-import { replayEmptyDesktopTour } from './EmptyDesktop';
 import { useAppMenuRows } from './appMenuHost';
 import { ActionItem, DeskMenuRow } from './DeskMenuItems';
 import './DesktopContextMenu.css';
@@ -469,7 +468,6 @@ const DesktopContextMenuComponent: React.FC<DesktopContextMenuProps> = ({
     arrangeWindows: arrangeDesktopWindows,
     tileAllWindows: tileAllDesktopWindows,
     toggleExpose: () => useWorkbenchOverlay.getState().toggleExpose(),
-    replayTour: replayEmptyDesktopTour,
     openWallpaperManager: () => {
       try {
         window.dispatchEvent(new CustomEvent(OPEN_WALLPAPER_MANAGER_EVENT));

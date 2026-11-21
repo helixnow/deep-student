@@ -131,15 +131,6 @@
             "submenu": false
           },
           {
-            "label": "重新查看引导",
-            "testId": "wb-desk-menu-replay-tour",
-            "shortcut": null,
-            "disabled": false,
-            "checked": null,
-            "danger": false,
-            "submenu": false
-          },
-          {
             "label": "桌面设置…",
             "testId": null,
             "shortcut": null,
@@ -534,15 +525,6 @@
             "label": "键盘快捷键",
             "testId": "wb-desk-menu-shortcuts",
             "shortcut": "?",
-            "disabled": false,
-            "checked": null,
-            "danger": false,
-            "submenu": false
-          },
-          {
-            "label": "重新查看引导",
-            "testId": "wb-desk-menu-replay-tour",
-            "shortcut": null,
             "disabled": false,
             "checked": null,
             "danger": false,
