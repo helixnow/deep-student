@@ -1,0 +1,234 @@
+{
+  "version": "0.20.7",
+  "generatedAt": "2026-11-21T09:47:39.152Z",
+  "chapters": {
+    "workbench": {
+      "title": "学习桌面",
+      "caption": "多窗口并排协作：左侧 AI 对话与制卡产物，中间 FSRS-6 闪卡今日复习，右侧日历与 AI 学习简报同屏联动。",
+      "desktop": {
+        "light": "workbench-desktop-light.webp",
+        "dark": "workbench-desktop-dark.webp"
+      }
+    },
+    "chat": {
+      "title": "AI 对话与会话管理",
+      "caption": "《机器学习系统》第 3 章精读示例：带 PDF 页码引用徽章、资料检索块与学习产物联动。",
+      "desktop": {
+        "light": "chat-desktop-light.webp",
+        "dark": "chat-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "chat-mobile-light.webp",
+        "dark": "chat-mobile-dark.webp"
+      }
+    },
+    "research-memory": {
+      "title": "深度调研与智能记忆",
+      "caption": "联网深度调研与长期学习记忆示例：多步检索来源溯源与学习空间记忆管理。",
+      "desktop": {
+        "light": "research-memory-desktop-light.webp",
+        "dark": "research-memory-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "research-memory-mobile-light.webp",
+        "dark": "research-memory-mobile-dark.webp"
+      }
+    },
+    "learning-hub": {
+      "title": "资源库",
+      "caption": "学习资料统一管理示例：PDF 教材、讲义笔记、学科文件夹与知识库索引状态。",
+      "desktop": {
+        "light": "learning-hub-desktop-light.webp",
+        "dark": "learning-hub-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "learning-hub-mobile-light.webp",
+        "dark": "learning-hub-mobile-dark.webp"
+      }
+    },
+    "reading-translation": {
+      "title": "文档阅读与翻译",
+      "caption": "论文精读与双语对照翻译示例：原文排版、逐段译文与划词即时提问联动。",
+      "desktop": {
+        "light": "reading-translation-desktop-light.webp",
+        "dark": "reading-translation-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "reading-translation-mobile-light.webp",
+        "dark": "reading-translation-mobile-dark.webp"
+      }
+    },
+    "media": {
+      "title": "音视频",
+      "caption": "网课与讲座陪学示例：带时间戳的字幕轴、重点摘录与图文讲义整理。",
+      "desktop": {
+        "light": "media-desktop-light.webp",
+        "dark": "media-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "media-mobile-light.webp",
+        "dark": "media-mobile-dark.webp"
+      }
+    },
+    "paper-search": {
+      "title": "论文搜索",
+      "caption": "学术论文检索示例：多库联合搜索、摘要速览与一键入库精读。",
+      "desktop": {
+        "light": "paper-search-desktop-light.webp",
+        "dark": "paper-search-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "paper-search-mobile-light.webp",
+        "dark": "paper-search-mobile-dark.webp"
+      }
+    },
+    "notes": {
+      "title": "笔记",
+      "caption": "双链 Markdown 笔记示例：数学公式、反向链接、大纲导航与属性面板。",
+      "desktop": {
+        "light": "notes-desktop-light.webp",
+        "dark": "notes-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "notes-mobile-light.webp",
+        "dark": "notes-mobile-dark.webp"
+      }
+    },
+    "mindmap": {
+      "title": "思维导图",
+      "caption": "高等数学微分中值定理导图示例：多色分支结构、大纲双视图与背诵遮挡。",
+      "desktop": {
+        "light": "mindmap-desktop-light.webp",
+        "dark": "mindmap-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "mindmap-mobile-light.webp",
+        "dark": "mindmap-mobile-dark.webp"
+      }
+    },
+    "essay": {
+      "title": "作文批改",
+      "caption": "雅思 / 考研英语作文批改示例：逐句红蓝批注、分项评分与范文润色对比。",
+      "desktop": {
+        "light": "essay-desktop-light.webp",
+        "dark": "essay-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "essay-mobile-light.webp",
+        "dark": "essay-mobile-dark.webp"
+      }
+    },
+    "productivity": {
+      "title": "待办、番茄钟与命令面板",
+      "caption": "学习计划与专注节奏示例：四象限待办清单、番茄钟计时与学习统计。",
+      "desktop": {
+        "light": "productivity-desktop-light.webp",
+        "dark": "productivity-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "productivity-mobile-light.webp",
+        "dark": "productivity-mobile-dark.webp"
+      }
+    },
+    "question-bank": {
+      "title": "题目集与练习",
+      "caption": "高等数学题目集示例：15 道精选题目、掌握度统计、题型筛选与错题复习。",
+      "desktop": {
+        "light": "question-bank-desktop-light.webp",
+        "dark": "question-bank-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "question-bank-mobile-light.webp",
+        "dark": "question-bank-mobile-dark.webp"
+      }
+    },
+    "anki": {
+      "title": "Anki 制卡与模板",
+      "caption": "对话式制卡与模板示例：正面/反面实时预览、牌组归档与 .apkg 导出。",
+      "desktop": {
+        "light": "anki-desktop-light.webp",
+        "dark": "anki-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "anki-mobile-light.webp",
+        "dark": "anki-mobile-dark.webp"
+      }
+    },
+    "flashcards": {
+      "title": "闪卡复习",
+      "caption": "FSRS-6 每日复习示例：今日待复习进度环、新卡与复习队列统计。",
+      "desktop": {
+        "light": "flashcards-desktop-light.webp",
+        "dark": "flashcards-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "flashcards-mobile-light.webp",
+        "dark": "flashcards-mobile-dark.webp"
+      }
+    },
+    "models": {
+      "title": "模型与供应商配置",
+      "caption": "15 家预置模型服务与本机 Ollama 示例：已配置硅基流动、DeepSeek 与月之暗面并分配全套槽位。",
+      "desktop": {
+        "light": "models-desktop-light.webp",
+        "dark": "models-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "models-mobile-light.webp",
+        "dark": "models-mobile-dark.webp"
+      }
+    },
+    "skills-mcp": {
+      "title": "技能与 MCP 扩展",
+      "caption": "58 个内置技能与 MCP 服务器管理示例：技能分组启用与外部工具连接状态。",
+      "desktop": {
+        "light": "skills-mcp-desktop-light.webp",
+        "dark": "skills-mcp-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "skills-mcp-mobile-light.webp",
+        "dark": "skills-mcp-mobile-dark.webp"
+      }
+    },
+    "data-sync": {
+      "title": "数据管理与云同步",
+      "caption": "数据治理与备份示例：近一周本地备份列表、分层归档与自动备份策略。",
+      "desktop": {
+        "light": "data-sync-desktop-light.webp",
+        "dark": "data-sync-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "data-sync-mobile-light.webp",
+        "dark": "data-sync-mobile-dark.webp"
+      }
+    },
+    "plugin-workshop": {
+      "title": "AI 插件工坊与插件管理",
+      "caption": "插件工坊与统一管理示例：自然语言创作栏、3 个自制/社区学习插件卡片、5 组内置能力与渠道插件。",
+      "desktop": {
+        "light": "plugin-workshop-desktop-light.webp",
+        "dark": "plugin-workshop-desktop-dark.webp"
+      }
+    },
+    "mobile": {
+      "title": "移动端指南",
+      "caption": "手机端单手对话与学习卡片流示例：专为 390px 触屏优化的对话、检索与复习体验。",
+      "mobile": {
+        "light": "mobile-mobile-light.webp",
+        "dark": "mobile-mobile-dark.webp"
+      }
+    },
+    "webui-pwa": {
+      "title": "WebUI 与 PWA 自托管",
+      "caption": "浏览器自托管工作台示例：电脑浏览器完整学习桌面，手机浏览器自动切换移动端自适应壳。",
+      "desktop": {
+        "light": "webui-pwa-desktop-light.webp",
+        "dark": "webui-pwa-desktop-dark.webp"
+      },
+      "mobile": {
+        "light": "webui-pwa-mobile-light.webp",
+        "dark": "webui-pwa-mobile-dark.webp"
+      }
+    }
+  }
+}
