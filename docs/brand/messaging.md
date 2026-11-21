@@ -2,7 +2,7 @@
 
 > 官网（ds-web）、宣传片（video 分支）、README（中英）三处文案的唯一事实来源。
 > 改任何一处对外文案前先对照本文；本文与代码冲突时以代码为准，并回头修正本文。
-> 更新日期：2026-10-06（按 v0.10.3 核对）
+> 更新日期：2026-11-21（按 v0.20.7 核对）
 
 ## 1. 定位
 
@@ -15,6 +15,7 @@
 
 - 口号里的「我」是 DeepStudent 的学习 Agent。第一人称只用在口号，正文一律用第三人称「它 / Agent」。
 - 主角是 **Agent**，资料是它工作的对象，不是卖点本身。不要再写成「围绕资料问答的工具」。
+- 架构底座（v0.20.x 起）：已从上一代 Tauri 2 / Rust（`0.11.x`）切换至 **Electron 45（桌面端）+ Capacitor 8.6（移动端）+ WebUI & PWA + Cordis 4 双内核插件架构**（100% TypeScript + Hybrid N-API / WASI-WASM 原生引擎）。
 - 首屏标准组合（官网首屏、README 标题下，两处逐字一致）：
 
   > **只专注学习本身就够了，剩下的都交给我。**
@@ -31,28 +32,33 @@
 
 说一句话，它去写笔记、建思维导图、出题、制卡、排复习、建待办、做调研。
 
-- 每个应用都有 Agent 读写工具：笔记、思维导图、题目集、闪卡 / FSRS、待办、作文批改、翻译、模板、设置、备份（`docs/Agent工具面总览.md` §2）
-- 操作学习桌面窗口：打开应用、观察界面、执行动作（`builtin-workbench_*`）
+- 每个应用都有 Agent 读写工具：笔记、思维导图、题目集、闪卡 / FSRS-6、待办、作文批改、翻译、模板、设置、备份（`docs/Agent工具面总览.md` §2）
+- 操作学习桌面窗口：打开应用、观察界面、执行动作（`builtin-workbench_*`），支持学习流阶段预设与 AI 控制中心
+- 生成式 UI：在对话中通过 `openui-lang`、结构化生成式 UI 与高保真 HTML 交互沙箱直接渲染交互式讲解组件、图表与可视化演示
 - 调研模式：检索、阅读文献、成稿写入笔记；论文下载入库并建立索引
-- 音视频学习：网课 / 录音转写为带时间戳字幕，回答引用到具体时刻（`[媒体@id:mm:ss]`），可整理成图文讲义
+- 音视频学习：网课 / 录音转写为带时间戳字幕，B 站链接导入与应用内播放，课中检查点、单课台账与章节化图文讲义，回答引用到具体时刻（`[媒体@id:mm:ss]`）
 - 浏览器自动化（Windows / macOS）、沙箱本地 shell、生成 Word / PPT / Excel 文件
 
 ### ② 可托付 —— 长任务自动推进，每一步可审批、可撤销
 
-- 目标模式跨轮自动续跑；子代理并行；定时自动化（`builtin-automation_*`）
-- 操作按 Low / Medium / High 分级审批；Ask / Plan / Craft 三种权限模式
-- 改动可撤销：笔记改动渐隐标注并留「撤销本次修改」，学习桌面操作带撤销令牌（`builtin-workbench_undo`）
-- 回答带出处：引用可回溯到原文页码、句子或导图节点
+- 目标模式跨轮自动续跑；子代理与 Super 会话（实验性）并行推进；定时自动化（`builtin-automation_*`）
+- 操作按执行档位（谨慎 / 宽松 / 完全访问）与 Low / Medium / High 风险分级审批；学习桌面提供「紧急断电」开关
+- 改动可撤销：笔记改动支持逐组 / Hunk Diff 审阅与撤销，对话支持回合级 Diff 审阅与一键回退，学习桌面操作带撤销令牌（`builtin-workbench_undo`）
+- 回答带出处：引用可回溯到原文 PDF 页码（`pdfref://` 跨应用反链）、讲义节点或音视频时间戳
 
 ### ③ 懂你，可扩展
 
-- 记忆与学习者画像：记住薄弱点和学习习惯，后续回答会参考
-- 56 个内置技能，可安装、可自己写；接入 MCP；13 家预置模型服务商，可按功能分配模型
-- 同一问题可让多个模型同时作答
+- 记忆与学习空间：记住薄弱点和学习习惯，支持按学习空间隔离长期记忆
+- **58 个内置技能**（8 个工作流技能 + 50 个渐进披露工具组，桌面端插件工坊动态追加 `dstu-plugin-development`），支持社区技能市场与 MCP 外部工具
+- **AI 插件工坊与 `.dstuplugin`**：在应用内用自然语言由 AI 编写、Host 托管 `esbuild` 编译、隔离试装载修复并热加载新应用/选区按钮/AI 工具，支持版本回滚与导出分享（同进程运行，无物理沙箱，需如实披露边界）
+- **15 家预置模型服务商**（含 DeepSeek 官方应用 API 9 项能力、OpenCode Go、Codex、Mistral 等）+ 一键 API Key 自动配置，支持多模型并行作答
+- 渠道扩展：内置微信 iLink Bot（`ilinkbot`，v0.20.7 处于预览 / 接入中阶段，已完成桌面端扫码绑定与长轮询，远程任务桥与图片批处理正在接入中，对外务必如实标注）
 
-### 底座 —— 数据在本机，开源可核对
+### 底座 —— 数据在本机，多端可达，开源可核对
 
-- 资料、笔记、聊天记录默认存本机；调用模型、外部搜索、MCP、云同步时相应请求才会离开本机（措辞沿用官网 privacy 区块，不得写成「完全离线」）
+- 资料、笔记、聊天记录与索引默认存本机（SQLite + LanceDB / Android OPFS）；调用模型、外部搜索、MCP、云同步或错误报告时相应请求才会离开本机（不得写成「完全离线」）
+- 云同步（实验性，Sync V5 引擎）：桌面端与桌面浏览器访问的自托管 WebUI 支持 WebDAV / S3 / 实验性 FTP，Android 原生端仅支持 WebDAV；支持 6 位 PIN 二维码设备配对（`DSPAIR1`）与 FSRS 复习计划原子同步
+- 三大运行形态：桌面端（Electron 45）、移动端（Capacitor 8.6 Android / iOS 源码构建）、自托管 WebUI & PWA（Node.js 24+）
 - AGPL-3.0-or-later
 
 ## 3. 硬数字
@@ -61,14 +67,17 @@
 
 | 项 | 当前值 | 核对方式 |
 |---|---|---|
-| 内置技能 | **56**（对外写「56 个」或「50 多个」，不写 40+） | `builtinSkills`（8，`src/features/chat/skills/builtin/index.ts`）+ `builtinToolSkills`（48，`builtin-tools/index.ts`）；browser-tools 仅 Win/macOS，其他平台 55 |
-| 预置模型服务商 | **13** | `src-tauri/src/llm_manager/builtin_vendors.rs` 的 12 家 + Gemini（`scripts/gemini-model-registry.json` 注入） |
-| 联网搜索引擎 | **8**（Bing RSS 免费默认 + Google CSE / SerpAPI / Tavily / Brave / SearXNG / 智谱 / 博查） | `src-tauri/src/tools/web_search.rs` 的 `build_provider`；用户指南 03 章同为 8 |
-| OCR 引擎 | 6（DeepSeek-OCR、PaddleOCR-VL 1.5、PaddleOCR-VL 旧版、GLM-4.6V、通用多模态模型、系统 OCR） | `src-tauri/src/ocr_adapters/types.rs` 的 `OcrEngineType` |
-| 翻译领域预设 | 7 | 翻译应用预设 |
-| 平台 | macOS（Apple Silicon / Intel）、Windows x64、Linux x86_64（deb / rpm / AppImage）、Android ARM64；iOS 仅源码构建 | `.github/workflows/reusable-build-*.yml`；Linux **没有** arm64 |
+| 内置技能 | **58**（静态 8 工作流 + 50 工具组；Linux / 移动 / WebUI 为 49 工具组不含 `browser-tools`；桌面端插件工坊动态追加 `dstu-plugin-development`） | `src/features/chat/skills/builtin/index.ts`（8）+ `builtin-tools/index.ts`（50）+ `src/app/pluginWorkshop.ts` |
+| 预置模型服务商 | **15**（SiliconFlow、OpenCode Go 固定置顶前 2 位；手动添加类型下拉共 19 项） | `host/plugins/llm/src/data/builtin_catalog.ts`（14）+ `gemini_model_registry.ts`（1） |
+| 联网搜索引擎 | **9**（Bing RSS 免费默认 + Google CSE / SerpAPI / Tavily / Brave / SearXNG / 智谱 / 博查 / DeepSeek 官方搜索）+ 2 条 Fetch 抓取路径 | `host/plugins/mcp/src/web-search-providers.ts` & `EngineSettingsSection.tsx` |
+| OCR 引擎 | **6**（DeepSeek-OCR、PaddleOCR-VL-1.5、PaddleOCR-VL、GLM-4.6V、通用多模态模型、系统 OCR） | `host/plugins/llm/src/ocr_runtime.ts` & `ocr/types.ts` |
+| 题目集题型 / 练习模式 | **13 种题型**（AI 出题支持 8 种）/ **9 种练习模式**（5 基础 + 4 高级） | `src/api/questionBankApi.ts` & `PracticeLauncher.tsx` |
+| 闪卡与题库间隔重复 | **FSRS-6**（正式版默认，闪卡与题库统一调度算法）；**FSRS-7** 为桌面端 CLI 隔离试跑脚本（设置界面无开关） | `host/plugins/review/src/{review-plan-fsrs,fsrs7}.ts` & `scripts/fsrs-eval/desktop.mjs` |
+| 学习桌面官方应用 | **16 个**（开启内置浏览器后 **17 个**，含新增「AI 仪表盘」「插件工坊」）+ 自动镜像第三方插件页 | `src/features/workbench/apps/registerAll.ts` |
+| 翻译领域预设 | **7** | `src/components/translation/PromptPanel.tsx` & `host/plugins/translation` |
+| 平台与安装包 | macOS 13+（Apple Silicon / Intel `.dmg`）、Windows 10+ x64（`.exe`）、Linux x86_64（**仅 `.deb` / `.AppImage`，无 `.rpm`、无 arm64**）、Android 7.0+ ARM64（`.apk`）、自托管 WebUI & PWA（Node.js 24+）；iOS 15+ 仅源码构建 | `.github/workflows/reusable-build-*.yml` & `electron/electron-builder.config.cjs` |
 | 许可证 | AGPL-3.0-or-later | `package.json` |
-| 官网 / 文档 | https://deepstudent.cn ・ https://deepstudent.cn/docs/ | |
+| 官网 / 文档 | https://deepstudent.cn ・ https://deepstudent.cn/user-guide/ | |
 
 ## 4. 术语表
 
@@ -78,6 +87,7 @@
 |---|---|---|
 | 学习桌面 | Study Desktop | OS 模式、Workbench mode、工作台模式 |
 | 学习 Agent / Agent | study agent / agent | AI 助手（泛称时可用「AI」） |
+| 学习空间 | Study Space | （旧称「课题分组」已升级为学习空间） |
 | 资源库 | Files | 学习中心、学习资源、学习资源中心、Learning Hub |
 | 对话 | Chat | |
 | 笔记 | Notes | |
@@ -90,8 +100,9 @@
 | 翻译 | Translation | |
 | 待办 / 番茄钟 | Todo / Pomodoro | |
 | 技能 | Skills | |
+| 插件工坊 | Plugin Workshop | |
 
-- 「音视频 / Media」是应用名（0.10.2 起为独立应用，经典侧栏与 Dock 里都有；v0.10.1 里还在资源库内）。应用列表、导航一律用应用名；正文描述这项能力时可写「音视频学习」。
+- 「音视频 / Media」是应用名（经典侧栏与 Dock 里都有）。应用列表、导航一律用应用名；正文描述这项能力时可写「音视频学习」。
 
 ## 5. 文案语体
 
@@ -107,34 +118,19 @@
 
 | 渠道 | 口号位置 | 结构要求 |
 |---|---|---|
-| README（中英） | 标题与 Logo 下第一行 | 首屏一张静态主图（学习桌面 + Agent 正在操作）→ Agent 一节 → 各应用 → 安装 → 开发者区。截图真机重拍，中英文界面各一套 |
+| README（中英） | 标题与 Logo 下第一行 | 首屏一张静态主图（学习桌面 + Agent 正在操作）→ Agent 一节 → 各应用 → 安装 → 架构跃迁与开发者区。截图真机重拍，中英文界面各一套 |
 | 官网 | 首屏主标题 | 学习桌面之后第一节讲 Agent；应用列表放后面 |
 | 宣传片 | 片尾 Logo 下 | 字幕主语写「它」，让观众意识到动作是 Agent 做的；数字按 §3 |
 
-## 7. 待修正的不一致
+## 7. 变更与校准记录
 
-### 2026-10-05 复查
+### 2026-11-21 复查（v0.20.7）
 
-- [x] 本文：联网搜索引擎 7 → 8（漏了默认免费的 Bing RSS）；补 OCR 引擎 6；音视频改按应用名「音视频 / Media」；首屏标准组合按 README / 官网实际文案统一
-- [x] README：搜索引擎 8、音视频按应用名、架构图应用层补音视频、功能模块 23 → 26、「路线图」链接改为「项目历程」、Agent 导语改书面语（docs/readme-refresh）
-- [x] 官网：首页去掉「共用同一份数据」「而不是通用聊天」，题库 → 题目集，英文 Files / Study Desktop，首屏主张与 README 一致，站点默认描述改为学习 Agent；关于页重写、项目历程补到 v0.10；指南 04 / 11 标题；首页各区块按 §5 改书面语（ds-web feat/messaging-agent）
-- [x] 用户指南：第 04 章「资源库」、第 11 章「题目集与练习」，只改标题与互链文字，文件名与官网 slug 不变
-- [x] 应用内：命令面板 `nav.goto.learning-hub` 改为「跳转到资源库 / Go to Files」，搜索仍认「学习中心 / hub」
-- [x] 宣传片：video 分支推到 origin（139a2f14a）
-- [ ] 发布：README（docs/readme-refresh PR）；官网（ds-web PR，合并前用「main 8f9f164c0 + demo/site-i18n-hide」重出演示镜像，否则英文页演示退回中文界面）
-- [x] 宣传片 v6：经典侧栏 5 → 6 项（加「音视频」，video 分支 6b2836dfb）；第二幕翻译与调研之间加 10 秒音视频镜头（全部应用 → 音视频 → B 站链接导入 5 个分 P → 应用内播放、字幕逐句高亮 → 点字幕跳转），全片 2:30 → 2:40（2ebf5c585）；locale 同步 main（5768e4d75）；成片 video/out/deep-student-pv-2026-10-06-v6.mp4（1080p 160s）。二审 v6.1（4a71d257f）：全部应用网格按真实排序 6×3、封面与课件标题不再重叠、字幕起止避开播放页、播放节奏放慢；AI 仪表盘图标同步应用（839b65ad2，此前是对话图标的拷贝）；成片 video/out/deep-student-pv-2026-10-06-v6.1.mp4。新增字幕：「网课和讲座，它陪你一起学。」/「粘贴 B 站链接即导入字幕，视频无需下载，在应用内播放。」；「点一句字幕，回到那一刻。」/「字幕随播放逐句高亮；它回答中引用的时刻同样可点击跳转。」
-- [x] 官网（ds-web feat/messaging-agent，未推送）：应用列表加「音视频」并链第 19 章（6b5349a）；首页新增音视频一节，标题沿用宣传片字幕「网课和讲座，它陪你一起学。」（6b5349a）；用户指南全量同步到 d66f9511c 并新增第 19 章 /user-guide/media（8741030）；项目历程补 v0.10.2 / v0.10.3（15024af）
-- [ ] 0.10.2 发版后（余项）：演示镜像经典侧栏 5 → 6 项并补音视频剧本（之后官网功能轮播可加音视频场景）；FSRS-6 写进 README / 官网首页 / 本文
+- [x] 本文：全面核对并更新至 v0.20.7（Electron 45 / Capacitor 8.6 / WebUI & PWA / Cordis 4、15 家预置供应商、58 个静态内置技能、9 个搜索引擎、6 个 OCR 引擎、13 题型 / 9 练习模式、FSRS-6 与 FSRS-7 桌面试跑边界、AI 插件工坊、生成式 UI、Sync V5、微信 iLink Bot 预览状态、Linux 移除 `.rpm`）
+- [x] 用户指南（`docs/user-guide/`）：全部 19 章按 v0.20.7 代码核对更新，新增 `20-AI插件工坊与插件管理.md` 与 `21-WebUI与PWA自托管.md`，更新 `README.md`
+- [x] 官网（`ds-web`）：同步 21 章用户指南，更新首页中英双语消息表、`what-is-deepstudent.md`、`about.md`、`timeline.md`、`A-Q.md`、`download.md`、`llms.txt`，新增 `developers.md`
+- [ ] 待 `v0.20.x` 转正 `Latest` 后：重新触发 Demo Publish 同步演示镜像，并重跑 `gen-features-live.mjs` 与 `gen-share-images.mjs` 刷新官网截图；核对 `README.md` / `README_CN.md` 中「13 家模型服务商」→「15 家」及 WebUI S3/FTP 表述
 
-### 截至 2026-10-04
+### 2026-10-05 / 10-06 历史复查（已归档）
 
-- [x] 宣传片：片尾副标题（含「12 家」）删除；片尾口号换成 §1 口号；字幕第四版改为 Agent 视角（video 分支 c63a4d0e0）；画面内界面文案同步 main 的 locale（ffaf1cd8b）
-- [x] 宣传片：成片重新渲染（video/out/deep-student-pv-2026-10-04-v4.mp4，1080p 150s；video 分支 48b9dd0d7 修复复数键渲染中断）
-- [x] 宣传片：跟进闪卡合并（经典壳侧栏去掉 Anki / 模板两项）与技能 56，重渲染为 video/out/deep-student-pv-2026-10-04-v5.mp4（video 分支 139a2f14a）
-- [ ] 官网 promo/（30 秒短片，未提交）核心概念仍是「统一数据层」旧口径，待定
-- [x] 官网首屏换口号与品类、新增 Agent 一节、站内自有文案「知识导图」→「思维导图」（ds-web 分支 feat/messaging-agent 1b6eb65，未合并）
-- [x] 官网：用户指南「知识导图」→「思维导图」、第 08 章改名（本仓库 8ec65cd21），ds-web 同步与英文应用名对齐（feat/messaging-agent 604fd26，未合并）
-- [x] 官网：演示镜像换成主仓库本地构建，首屏海报 / 功能截图 / 分享卡（og-2026-10-agent.png）重出（ds-web feat/messaging-agent ca69373，未合并）；闪卡合并后按 main 8f9f164c0 再出一版（4691551）
-- [x] README：事实与术语全部更正、中英重写（docs/readme-refresh 分支）；中英截图各 8 张均已真机重拍（docs/readme-refresh 6d3d04ce1，未合并）；跟进音视频学习与闪卡合并：新增中英 media 图，中文主图 / 对话图按新输入框重拍（384b11775）
-- [x] 应用内：Agent 控制中心「题库 / Question bank」→「题目集 / Exam Set」（ea02573b2）
-- [x] 应用内：`learningHub.json`（桌面快捷方式，宣传片画面里可见）与 `mcp.json` 的工具名仍写「知识导图」→「思维导图」（ea02573b2；模型侧 skill 描述里作为同义词保留）
+- [x] v0.10.x 阶段：完成音视频独立应用与 B 站导入口径统一、FSRS-6 排程、「知识导图 → 思维导图」「题库 → 题目集」「学习资源中心 → 资源库」全仓术语对齐，以及宣传片 v6 / v6.1 与官网演示镜像首次打通
