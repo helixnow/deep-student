@@ -4,6 +4,9 @@
  */
 export function toBundles(modules: Record<string, Record<string, unknown>>): Record<string, Record<string, unknown>> {
   return Object.fromEntries(
-    Object.entries(modules).map(([path, data]) => [path.replace(/^.*\/locales\/[^/]+\//, '').replace(/\.json$/, ''), data]),
+    Object.entries(modules).map(([path, data]) => [
+      path.replace(/^.*\/(?:zh-CN|en-US)\//, '').replace(/\.json$/, ''),
+      data,
+    ]),
   );
 }

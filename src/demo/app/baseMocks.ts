@@ -83,6 +83,28 @@ export function installDemoAppMocks(pack: DemoAppPack): void {
           return { enabled: false, sessionId: null, workspaceId: null, pendingInbox: 0 };
         case 'super_session_get_settings':
           return { instructions: '' };
+        case 'plugin:host|call': {
+          const service = String(args.service ?? '');
+          const method = String(args.method ?? '');
+          if (service === 'pluginWorkshop') {
+            if (method === 'developmentSkill') {
+              return {
+                id: 'plugin-workshop-dev',
+                name: 'plugin-workshop-dev',
+                title: 'AI 插件工坊开发技能',
+                description: 'Build DeepStudent .dstuplugin extensions',
+                markdown: '---\nname: plugin-workshop-dev\ndescription: Build DeepStudent .dstuplugin extensions\n---\n\n# Plugin Workshop\n',
+              };
+            }
+            if (method === 'list' || method === 'listCandidates') return [];
+          }
+          if (service === 'examSprint') return null;
+          return null;
+        }
+        case 'plugin:manager|list':
+          return { revision: 'demo-empty', safeMode: false, plugins: [] };
+        case 'plugin_list':
+          return [];
         case 'plugin:clipboard-manager|write_text':
           // 交给浏览器剪贴板回退路径
           throw new Error('Use browser clipboard');
