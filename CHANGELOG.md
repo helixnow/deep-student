@@ -10,6 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.20.8](https://github.com/helixnow/deep-student/compare/v0.20.7...v0.20.8) (2026-11-21)
+
+
+### Features
+
+* **docs:** 新增用户指南多端实景截图脚本、插件工坊演示包并修复演示语言包路径 ([a5b06c0](https://github.com/helixnow/deep-student/commit/a5b06c06f0358f0c6bd6858dbf4f12f0265531b2))
+* **workbench:** 移除学习桌面默认「你的学习桌面 / 快速上手」引导卡片及失效重放入口 ([3a8a7e6](https://github.com/helixnow/deep-student/commit/3a8a7e6b918dec028a6eb9753f0f45bd594e4900))
+
 ## [0.20.7](https://github.com/helixnow/deep-student/compare/v0.20.6...v0.20.7) (2026-11-21)
 
 
