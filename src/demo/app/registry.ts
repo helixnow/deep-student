@@ -24,6 +24,7 @@ export const DEMO_APPS: DemoAppEntry[] = [
   { id: 'models', height: 660, pack: () => import('./packs/models') },
   { id: 'skills-mcp', height: 640, pack: () => import('./packs/skills-mcp') },
   { id: 'data-sync', height: 660, pack: () => import('./packs/data-sync') },
+  { id: 'plugin-workshop', height: 680, pack: () => import('./packs/plugin-workshop') },
 ];
 
 /**

@@ -97,6 +97,7 @@ export type SettingsTabId =
   | 'params'
   | 'search'
   | 'mcp'
+  | 'plugins'
   | 'statistics'
   | 'automation'
   | 'data-governance'

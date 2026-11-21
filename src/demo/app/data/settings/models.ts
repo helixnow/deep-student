@@ -26,6 +26,7 @@ interface VendorSeed {
 
 const VENDOR_SEEDS: VendorSeed[] = [
   { id: 'builtin-siliconflow', name: 'SiliconFlow', providerType: 'siliconflow', baseUrl: 'https://api.siliconflow.cn/v1', websiteUrl: 'https://cloud.siliconflow.cn', configured: true },
+  { id: 'builtin-opencode-go', name: 'OpenCode Go', providerType: 'opencode_go', baseUrl: 'https://opencode.ai/zen/go/v1', websiteUrl: 'https://opencode.ai', notes: '仅建议用于学习 Agent 对话' },
   { id: 'builtin-deepseek', name: 'DeepSeek', providerType: 'deepseek', baseUrl: 'https://api.deepseek.com/v1', websiteUrl: 'https://deepseek.com', configured: true, maxTokensLimit: 393_216 },
   { id: 'builtin-qwen', name: '通义千问', providerType: 'qwen', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', websiteUrl: 'https://bailian.console.aliyun.com' },
   { id: 'builtin-zhipu', name: '智谱AI', providerType: 'zhipu', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', websiteUrl: 'https://open.bigmodel.cn' },
@@ -35,6 +36,7 @@ const VENDOR_SEEDS: VendorSeed[] = [
   { id: 'builtin-openai', name: 'OpenAI', providerType: 'openai', baseUrl: 'https://api.openai.com/v1', websiteUrl: 'https://platform.openai.com', apiProtocol: 'openai_responses' },
   { id: 'builtin-openai-codex', name: 'Codex', providerType: 'openai_codex', baseUrl: 'https://chatgpt.com/backend-api/codex', websiteUrl: 'https://chatgpt.com/codex', authMode: 'openai_codex_oauth', apiProtocol: 'openai_responses' },
   { id: 'builtin-anthropic', name: 'Anthropic', providerType: 'anthropic', baseUrl: 'https://api.anthropic.com/v1', websiteUrl: 'https://platform.claude.com', apiProtocol: 'anthropic_messages' },
+  { id: 'builtin-mistral', name: 'Mistral', providerType: 'mistral', baseUrl: 'https://api.mistral.ai/v1', websiteUrl: 'https://console.mistral.ai', apiProtocol: 'openai_responses' },
   { id: 'builtin-nvidia', name: 'NVIDIA', providerType: 'nvidia', baseUrl: 'https://integrate.api.nvidia.com/v1', websiteUrl: 'https://build.nvidia.com/nim' },
   { id: 'builtin-mimo', name: 'Xiaomi MiMo', providerType: 'mimo', baseUrl: 'https://api.xiaomimimo.com/v1', websiteUrl: 'https://platform.xiaomimimo.com' },
   { id: 'builtin-gemini', name: 'Google Gemini', providerType: 'google', baseUrl: 'https://generativelanguage.googleapis.com', websiteUrl: 'https://aistudio.google.com', apiProtocol: 'google_generate_content' },
