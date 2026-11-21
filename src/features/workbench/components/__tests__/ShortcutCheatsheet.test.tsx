@@ -13,7 +13,6 @@ import {
   WORKBENCH_SHORTCUT_FEEDBACK_EVENT,
 } from '../../core/shortcuts';
 import { ShortcutCheatsheet, CHEATSHEET_EXIT_MS } from '../ShortcutCheatsheet';
-import { EMPTY_DESKTOP_ONBOARDING_KEY } from '../EmptyDesktop';
 
 function resetOverlay() {
   useWorkbenchOverlay.setState({
@@ -186,16 +185,6 @@ describe('关闭路径', () => {
     openSheet();
 
     fireEvent.click(screen.getByLabelText('关闭'));
-    expect(useWorkbenchOverlay.getState().cheatsheetOpen).toBe(false);
-  });
-
-  it('底部「重新播放快速上手」：清 tour 消隐位并关闭速查表', () => {
-    localStorage.setItem(EMPTY_DESKTOP_ONBOARDING_KEY, '1');
-    render(<ShortcutCheatsheet />);
-    openSheet();
-
-    fireEvent.click(screen.getByTestId('wb-cheat-replay-tour'));
-    expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBeNull();
     expect(useWorkbenchOverlay.getState().cheatsheetOpen).toBe(false);
   });
 

@@ -116,8 +116,6 @@ export interface AppMenuDesktop {
   /** Tiles the visible windows, most recently focused first. */
   tileAllWindows(): void;
   toggleExpose(): void;
-  /** Shows the empty-desktop tour again. */
-  replayTour(): void;
   openWallpaperManager(): void;
   /** Saves a preset as the wallpaper. */
   setWallpaperPreset(presetId: string): void;

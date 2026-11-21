@@ -155,7 +155,7 @@ describe('app.menu: Dock item and desktop right-click menus (FE-B9)', () => {
     const onClose = await openDesktop(k);
 
     const labels = deskLabels(deskPanel());
-    expect(labels).toHaveLength(20);
+    expect(labels).toHaveLength(19);
     expect(labels.slice(12, 17)).toEqual(['---', 'Sort', 'Other wallpaper', 'Note · new', '---']);
     const sort = screen.getByTestId('example-sort');
     expect(sort.parentElement?.className).toBe('wb-desk-menu-subwrap');
@@ -229,7 +229,7 @@ describe('app.menu: Dock item and desktop right-click menus (FE-B9)', () => {
     cleanup();
 
     const onClose = await openDesktop(k);
-    expect(deskLabels(deskPanel())).toHaveLength(17);
+    expect(deskLabels(deskPanel())).toHaveLength(16);
     expect(k.errors.list('example.broken-desktop-rows').map((report) => [report.entryId, report.phase])).toContainEqual(['desktop-broken', 'render']);
     fireEvent.click(screen.getByTestId('example-desk-throws'));
     fireEvent.click(screen.getByTestId('example-desk-nested-throws'));

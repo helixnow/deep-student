@@ -30,7 +30,6 @@ import {
 import { WallpaperReplica } from '../core/liquidGlassLens';
 import { useFocusReturn } from '../hooks/useWorkbenchA11y';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { replayEmptyDesktopTour } from './EmptyDesktop';
 import './ShortcutCheatsheet.css';
 
 /** 关闭后保留 DOM 播放退场动画的时长（与 CSS --wb-cheat-duration 对齐） */
@@ -347,18 +346,6 @@ const ShortcutCheatsheetComponent: React.FC = () => {
           <span>
             {t(isMacShortcutPlatform() ? 'workbench:cheatsheet.hintMac' : 'workbench:cheatsheet.hint')}
           </span>
-          {/* 空桌面 tour 再入口：清持久化消隐位并复位 tour（桌面清空时重现） */}
-          <button
-            type="button"
-            className="wb-cheat-replay-tour wb-focus-ring"
-            data-testid="wb-cheat-replay-tour"
-            onClick={() => {
-              replayEmptyDesktopTour();
-              closeCheatsheet();
-            }}
-          >
-            {t('workbench:cheatsheet.replayTour')}
-          </button>
         </div>
       </div>
     </div>

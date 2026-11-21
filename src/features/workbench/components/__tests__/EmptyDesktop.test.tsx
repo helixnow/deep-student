@@ -1,172 +1,36 @@
 /**
- * EmptyDesktop 测试：4 步 tour、跳过（会话）与不再显示（持久化）、
- * 速查表再入口（replayEmptyDesktopTour）、菜单栏 autohide 时跳过 statusBar 步。
+ * EmptyDesktop 测试：默认保持空桌面干净，不渲染引导卡片；
+ * 仅在存在可恢复快照时渲染轻量的「恢复上次桌面」胶囊。
  */
 import React from 'react';
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 
-import { workbenchBus } from '../../core/workbenchBus';
-import {
-  EmptyDesktop,
-  EMPTY_DESKTOP_ONBOARDING_KEY,
-  replayEmptyDesktopTour,
-} from '../EmptyDesktop';
-import {
-  resetMenuBarAutohideForTests,
-  useMenuBarAutohideStore,
-} from '../menuBarAutohideStore';
+import { EmptyDesktop } from '../EmptyDesktop';
 
-let launchSpy: ReturnType<typeof vi.spyOn>;
-
-beforeEach(() => {
-  localStorage.clear();
-  resetMenuBarAutohideForTests();
-  launchSpy = vi.spyOn(workbenchBus, 'launch').mockReturnValue(null);
-});
-
-afterEach(() => {
-  launchSpy.mockRestore();
-  resetMenuBarAutohideForTests();
-});
-
-describe('引导卡渲染', () => {
-  it('渲染标题 / 单主 CTA / tour', () => {
-    render(<EmptyDesktop />);
-    expect(screen.getByText('你的学习桌面')).toBeTruthy();
-    expect(screen.getByRole('group', { name: '快速开始' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /打开资源库/ })).toBeTruthy();
-    expect(screen.getByTestId('wb-empty-tour')).toBeTruthy();
-    expect(screen.getByTestId('wb-empty-tour')).toHaveAttribute('data-tour-step', 'dock');
-  });
-
-  it('整层用 wb-empty-desktop 类（基线 pointer-events:none，不挡桌面右键）', () => {
+describe('空桌面渲染', () => {
+  it('默认不渲染引导卡片与快速上手 tour', () => {
     const { container } = render(<EmptyDesktop />);
-    expect(container.querySelector('.wb-empty-desktop')).toBeTruthy();
-    expect(container.querySelector('.wb-empty-cta-block')).toBeTruthy();
-  });
-});
-
-describe('主 CTA', () => {
-  it('点击主 CTA「新建对话」→ launch chat', () => {
-    render(<EmptyDesktop />);
-    fireEvent.click(screen.getByRole('button', { name: /新建对话/ }));
-    expect(launchSpy).toHaveBeenCalledWith({ typeId: 'chat', reason: 'api' });
-  });
-
-  it('点击主 CTA「打开资源库」→ launch files', () => {
-    render(<EmptyDesktop />);
-    fireEvent.click(screen.getByRole('button', { name: /打开资源库/ }));
-    expect(launchSpy).toHaveBeenCalledWith({ typeId: 'files', reason: 'api' });
-  });
-});
-
-describe('4 步 tour', () => {
-  it('下一步推进步骤；完成写入不再显示', () => {
-    render(<EmptyDesktop />);
-    const tour = screen.getByTestId('wb-empty-tour');
-    expect(tour).toHaveAttribute('data-tour-step', 'dock');
-    expect(screen.getByTestId('wb-empty-tour-progress').textContent).toMatch(/1/);
-
-    fireEvent.click(screen.getByTestId('wb-empty-tour-next'));
-    expect(tour).toHaveAttribute('data-tour-step', 'search');
-    expect(screen.getByTestId('wb-empty-tour-progress').textContent).toMatch(/2/);
-
-    fireEvent.click(screen.getByTestId('wb-empty-tour-next'));
-    expect(tour).toHaveAttribute('data-tour-step', 'statusBar');
-
-    fireEvent.click(screen.getByTestId('wb-empty-tour-next'));
-    expect(tour).toHaveAttribute('data-tour-step', 'agent');
-    expect(screen.getByTestId('wb-empty-tour-next').textContent).toMatch(/完成/);
-
-    fireEvent.click(screen.getByTestId('wb-empty-tour-next'));
-    expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
-    expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBe('1');
-  });
-
-  it('不再显示 → 整张引导卡收起（Dock / 右键菜单仍能开资源库）并写入 localStorage', () => {
-    const { container } = render(<EmptyDesktop />);
-    fireEvent.click(screen.getByTestId('wb-empty-tour-dont-show'));
-    expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
+    expect(container.firstChild).toBeNull();
     expect(screen.queryByText('你的学习桌面')).toBeNull();
-    expect(container.firstChild).toBeNull();
-    expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBe('1');
-  });
-
-  it('跳过仅本会话隐藏，不写入持久化', () => {
-    const { unmount } = render(<EmptyDesktop />);
-    fireEvent.click(screen.getByTestId('wb-empty-tour-skip'));
     expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
-    expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBeNull();
-
-    unmount();
-    render(<EmptyDesktop />);
-    expect(screen.getByTestId('wb-empty-tour')).toBeTruthy();
   });
 
-  it('已关闭过 → 重新挂载不渲染引导卡', () => {
-    localStorage.setItem(EMPTY_DESKTOP_ONBOARDING_KEY, '1');
-    const { container } = render(<EmptyDesktop />);
-    expect(container.firstChild).toBeNull();
-  });
-
-  it('已关闭过且有可恢复快照 → 只留「恢复上次桌面」胶囊', () => {
-    localStorage.setItem(EMPTY_DESKTOP_ONBOARDING_KEY, '1');
+  it('有可恢复快照时只渲染「恢复上次桌面」胶囊并保持 pointer-events 穿透容器', () => {
     const onRestoreSession = vi.fn();
-    render(<EmptyDesktop restoreAvailable restoreWindowCount={2} onRestoreSession={onRestoreSession} />);
+    const { container } = render(
+      <EmptyDesktop restoreAvailable restoreWindowCount={2} onRestoreSession={onRestoreSession} />,
+    );
+    expect(container.querySelector('.wb-empty-desktop')).toBeTruthy();
     expect(screen.queryByText('你的学习桌面')).toBeNull();
-    expect(screen.queryByRole('button', { name: /打开资源库/ })).toBeNull();
-    fireEvent.click(screen.getByTestId('wb-empty-restore-session'));
-    expect(onRestoreSession).toHaveBeenCalled();
+    const btn = screen.getByTestId('wb-empty-restore-session');
+    expect(btn.textContent).toBeTruthy();
+    fireEvent.click(btn);
+    expect(onRestoreSession).toHaveBeenCalledTimes(1);
   });
 
-  it('tour 进行中不再重复 Dock 说明（第一步已讲）', () => {
-    const { container } = render(<EmptyDesktop />);
-    expect(container.querySelector('.wb-empty-hint')).toBeNull();
-  });
-});
-
-describe('再入口（速查表「重新播放快速上手」）', () => {
-  it('不再显示后 replayEmptyDesktopTour → 清持久化位并复位到第一步', () => {
-    render(<EmptyDesktop />);
-    fireEvent.click(screen.getByTestId('wb-empty-tour-dont-show'));
-    expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
-    expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBe('1');
-
-    act(() => {
-      replayEmptyDesktopTour();
-    });
-    expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBeNull();
-    const tour = screen.getByTestId('wb-empty-tour');
-    expect(tour).toHaveAttribute('data-tour-step', 'dock');
-  });
-
-  it('会话跳过后 replay 同样复位', () => {
-    render(<EmptyDesktop />);
-    fireEvent.click(screen.getByTestId('wb-empty-tour-skip'));
-    expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
-
-    act(() => {
-      replayEmptyDesktopTour();
-    });
-    expect(screen.getByTestId('wb-empty-tour')).toBeTruthy();
-  });
-});
-
-describe('隐藏状态项规避', () => {
-  it('菜单栏 autohide 开启时跳过 statusBar 步（3 步：dock → search → agent）', () => {
-    act(() => {
-      useMenuBarAutohideStore.getState().setSettingEnabled(true);
-    });
-    render(<EmptyDesktop />);
-    const tour = screen.getByTestId('wb-empty-tour');
-    expect(screen.getByTestId('wb-empty-tour-progress').textContent).toMatch(/1 \/ 3/);
-
-    fireEvent.click(screen.getByTestId('wb-empty-tour-next'));
-    expect(tour).toHaveAttribute('data-tour-step', 'search');
-
-    fireEvent.click(screen.getByTestId('wb-empty-tour-next'));
-    expect(tour).toHaveAttribute('data-tour-step', 'agent');
-    expect(screen.getByTestId('wb-empty-tour-next').textContent).toMatch(/完成/);
+  it('缺少 onRestoreSession 回调时不渲染胶囊', () => {
+    const { container } = render(<EmptyDesktop restoreAvailable restoreWindowCount={2} />);
+    expect(container.firstChild).toBeNull();
   });
 });
