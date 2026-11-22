@@ -5,7 +5,7 @@
 import { Plugin, PluginKey, TextSelection } from '@milkdown/prose/state';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import type { EditorView } from '@milkdown/prose/view';
-import { $prose } from '@milkdown/utils';
+import { $prose } from '@milkdown/kit/utils';
 
 import { handleMentionLinkClick } from './click';
 import { detectMentionTrigger, shouldSkipMentionContext } from './detectTrigger';

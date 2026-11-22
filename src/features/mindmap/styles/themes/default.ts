@@ -51,6 +51,7 @@ export const defaultTheme: IStyleTheme = {
     strokeWidth: 1.5,
   },
   palette: DEFAULT_LIGHT_PALETTE,
+  useBranchPalette: false,
   canvas: {
     background: '#F4F6F5',
   },

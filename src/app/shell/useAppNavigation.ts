@@ -17,7 +17,14 @@ import { useShellNavigationEvents } from '@/app/hooks/useShellNavigationEvents';
 import { useCrossFeatureHandoffs } from '@/app/hooks/useCrossFeatureHandoffs';
 import { useViewScrollRestoration } from '@/app/hooks/useViewScrollRestoration';
 import { ensureKeyboardTracking, shouldBlockMobileNavigation } from '@/hooks/useKeyboardHeight';
-import { BACK_PRIORITY, installAndroidBackBridge, registerBackHandler } from '@/app/navigation/androidBackCoordinator';
+import {
+  BACK_PRIORITY,
+  installAndroidBackBridge,
+  installBrowserBackBridge,
+  registerBackHandler,
+  registerUnifiedBackRunner,
+  registerUnifiedForwardRunner,
+} from '@/app/navigation/androidBackCoordinator';
 import { resolveShellView } from '@/ui-plugins/official/shell/navigation';
 import { requestLearningHubIntent } from '@/features/learning-hub/navigation/pendingLearningHubIntent';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -140,17 +147,49 @@ export function useAppNavigation({
     unifiedGoForward,
   } = useUnifiedNavigation(currentView, setCurrentView, workbenchActive);
 
-  // 🤖 Android 系统返回键接管（A-5）：
+  // 🤖 Android 系统返回键接管（A-5） + Web/PWA History API popstate 协同：
   // overlay 由协调器内部 handler/Escape 兜底处理；这里注册最低优先级的导航 fallback。
   useEffect(() => {
     installAndroidBackBridge();
+    const disposeBrowserBack = installBrowserBackBridge();
     // ⌨️ 键盘 inset 追踪全局启动（残留#4）：不依赖首个 hook 订阅者（InputBarUI
     // 在 chat-v2 内，冷启动直达其他视图时可能尚未挂载），在壳层建立视口基线，
     // 保证 --keyboard-inset 在任何视图聚焦输入前就有定义且基线正确。
     ensureKeyboardTracking();
+    return disposeBrowserBack;
   }, []);
-  const unifiedGoBackRef = useRef({ canGoBack: unifiedCanGoBack, goBack: unifiedGoBack });
-  unifiedGoBackRef.current = { canGoBack: unifiedCanGoBack, goBack: unifiedGoBack };
+  const unifiedGoBackRef = useRef({
+    canGoBack: unifiedCanGoBack,
+    goBack: unifiedGoBack,
+    canGoForward: unifiedCanGoForward,
+    goForward: unifiedGoForward,
+  });
+  unifiedGoBackRef.current = {
+    canGoBack: unifiedCanGoBack,
+    goBack: unifiedGoBack,
+    canGoForward: unifiedCanGoForward,
+    goForward: unifiedGoForward,
+  };
+  useEffect(() => {
+    const unregisterBack = registerUnifiedBackRunner(() => {
+      if (unifiedGoBackRef.current.canGoBack) {
+        unifiedGoBackRef.current.goBack();
+        return true;
+      }
+      return false;
+    });
+    const unregisterForward = registerUnifiedForwardRunner(() => {
+      if (unifiedGoBackRef.current.canGoForward) {
+        unifiedGoBackRef.current.goForward();
+        return true;
+      }
+      return false;
+    });
+    return () => {
+      if (typeof unregisterBack === 'function') unregisterBack();
+      if (typeof unregisterForward === 'function') unregisterForward();
+    };
+  }, []);
   useEffect(() => {
     return registerBackHandler(() => {
       if (unifiedGoBackRef.current.canGoBack) {

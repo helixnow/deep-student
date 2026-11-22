@@ -8,9 +8,8 @@ export { NotesContextPanel } from './NotesContextPanel';
 export { NotesLibraryManager } from './NotesLibraryManager';
 export { AIDiffPanel } from './AIDiffPanel';
 
-// Context
-export { useNotes, useNotesOptional, NotesProvider } from './NotesContext';
-export type { CanvasAIStatus, CanvasNoteMetadata, CanvasModeState, LearningHubContent } from './NotesContext';
+// NotesProvider / NotesContext（1,879 行旧上下文双轨代码）已于 2026-11 确认零挂载、零消费方后退役删除；
+// 全部笔记视图与面板统一走 DSTU-first 协议。
 
 // DndFileTree 组件已于 2026-08 零挂载删除（workbench 笔记树独立实现，见
 // src/features/workbench/apps/notes/tree/）；树数据类型迁至 notesUtils（见下方导出）。
@@ -169,3 +168,9 @@ export type {
   NodeType,
   ReferenceData,
 } from './notesUtils';
+
+// AI 编辑控制注册表（chat Generative UI 消费）
+export {
+  getLastRegisteredNoteId,
+  subscribeLastRegisteredNoteId,
+} from './aiEditControlRegistry';

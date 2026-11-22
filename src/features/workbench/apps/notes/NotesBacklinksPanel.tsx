@@ -129,17 +129,24 @@ export interface NotesBacklinksPanelProps {
    */
   onRefresh?: () => void;
   /**
+   * 统一右侧栏「大纲」页签：当前笔记的独立大纲视图（提供时显示在页签最左侧）。
+   * 未提供时保持原有 3 页签行为以向后兼容。
+   */
+  outlineContent?: React.ReactNode;
+  /**
    * 统一右侧栏：提供时头部渲染「属性 / 链接」页签，属性页显示该内容。
    * 与笔记内嵌属性浮层互斥（宿主应同时隐藏内嵌浮层）。
    */
   propertiesContent?: React.ReactNode;
-  /** 统一右侧栏第三页签「图谱」：当前笔记的局部链接图（提供时显示页签）。 */
+  /** 统一右侧栏「图谱」页签：当前笔记的局部链接图（提供时显示页签）。 */
   graphContent?: React.ReactNode;
   requestedTab?: NotesBacklinksTabRequest | null;
+  /** 面板当前真实生效页签变化时通知宿主，供快捷键/命令面板判断切换目标。 */
+  onActiveTabChange?: (tab: PanelTab) => void;
   className?: string;
 }
 
-type PanelTab = 'properties' | 'links' | 'graph';
+export type PanelTab = 'outline' | 'properties' | 'links' | 'graph';
 
 export interface NotesBacklinksTabRequest {
   tab: PanelTab;
@@ -151,7 +158,9 @@ const PANEL_TAB_STORAGE_KEY = 'notes-backlinks-panel:active-tab';
 function readInitialPanelTab(): PanelTab {
   try {
     const raw = window.localStorage.getItem(PANEL_TAB_STORAGE_KEY);
-    return raw === 'properties' || raw === 'links' || raw === 'graph' ? raw : 'links';
+    return raw === 'outline' || raw === 'properties' || raw === 'links' || raw === 'graph'
+      ? raw
+      : 'links';
   } catch {
     return 'links';
   }
@@ -161,16 +170,18 @@ export function useRequestedPanelTab(
   hasPropertiesTab: boolean,
   requestedTab: NotesBacklinksTabRequest | null | undefined,
   hasGraphTab = false,
+  hasOutlineTab = false,
 ): readonly [PanelTab, (tab: PanelTab) => void] {
   const [activeTab, setActiveTab] = useState<PanelTab>(readInitialPanelTab);
   useEffect(() => {
     const tabAvailable = requestedTab?.tab === 'links'
+      || (requestedTab?.tab === 'outline' && hasOutlineTab)
       || (requestedTab?.tab === 'properties' && hasPropertiesTab)
       || (requestedTab?.tab === 'graph' && hasGraphTab);
     if (requestedTab && tabAvailable) {
       setActiveTab(requestedTab.tab);
     }
-  }, [hasGraphTab, hasPropertiesTab, requestedTab?.requestId, requestedTab?.tab]);
+  }, [hasGraphTab, hasOutlineTab, hasPropertiesTab, requestedTab?.requestId, requestedTab?.tab]);
   const switchTab = useCallback((tab: PanelTab) => {
     setActiveTab(tab);
     try {
@@ -595,20 +606,32 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
   onClose,
   onCreateFromUnresolved,
   onRefresh,
+  outlineContent,
   propertiesContent,
   graphContent,
   requestedTab,
+  onActiveTabChange,
   className,
 }) => {
   const { t } = useTranslation('workbench');
+  const hasOutlineTab = outlineContent !== undefined;
   const hasPropertiesTab = propertiesContent !== undefined;
   const hasGraphTab = graphContent !== undefined;
-  const hasExtraTabs = hasPropertiesTab || hasGraphTab;
-  const [activeTab, switchTab] = useRequestedPanelTab(hasPropertiesTab, requestedTab, hasGraphTab);
-  const resolvedTab: PanelTab = (activeTab === 'properties' && hasPropertiesTab)
+  const hasExtraTabs = hasOutlineTab || hasPropertiesTab || hasGraphTab;
+  const [activeTab, switchTab] = useRequestedPanelTab(
+    hasPropertiesTab,
+    requestedTab,
+    hasGraphTab,
+    hasOutlineTab,
+  );
+  const resolvedTab: PanelTab = (activeTab === 'outline' && hasOutlineTab)
+    || (activeTab === 'properties' && hasPropertiesTab)
     || (activeTab === 'graph' && hasGraphTab)
     ? activeTab
     : 'links';
+  useEffect(() => {
+    onActiveTabChange?.(resolvedTab);
+  }, [onActiveTabChange, resolvedTab]);
   const [loadState, setLoadState] = useState<RelationshipsLoadState>({ status: 'idle' });
   const [mentionsState, setMentionsState] = useState<MentionsLoadState>({ status: 'idle' });
   const [candidateLimit, setCandidateLimit] = useState(BACKLINK_CANDIDATE_LIMIT);
@@ -1151,6 +1174,13 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
     : null;
   const contextRadius = moreContext ? CONTEXT_RADIUS_EXPANDED : CONTEXT_RADIUS_DEFAULT;
   const panelTitle = t('notesWorkspace.backlinks.title');
+  const outlineTabLabel = t('notesWorkspace.backlinks.tabOutline', { defaultValue: '大纲' });
+  const propertiesTabLabel = t('notesWorkspace.backlinks.tabProperties', { defaultValue: '属性' });
+  const linksTabLabel = t('notesWorkspace.backlinks.tabLinks', { defaultValue: '链接' });
+  const graphTabLabel = t('notesWorkspace.backlinks.tabGraph', { defaultValue: '图谱' });
+  const closeButtonLabel = hasExtraTabs
+    ? t('notesWorkspace.backlinks.closePanel', { defaultValue: '关闭面板' })
+    : t('notesWorkspace.backlinks.close');
   const openLinkedNoteLabel = (title: string) => t('notesWorkspace.backlinks.openLinkedNote', { title },);
   const createNoteLabel = (title: string) => t('notesWorkspace.backlinks.createFromUnresolved', { title },);
   const convertMentionLabel = (title: string) => t('notesWorkspace.backlinks.convertMention', {
@@ -1208,18 +1238,34 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
             onKeyDown={onTabListKeyDown}
             aria-label={t('notesWorkspace.backlinks.panelAria', { defaultValue: '笔记信息面板' })}
           >
+            {hasOutlineTab && (
+              <button
+                type="button"
+                role="tab"
+                id={`${titleId}-tab-outline`}
+                className="notes-backlinks-panel-tab"
+                title={outlineTabLabel}
+                aria-selected={resolvedTab === 'outline'}
+                aria-controls={`${titleId}-panel-outline`}
+                tabIndex={resolvedTab === 'outline' ? 0 : -1}
+                onClick={() => switchTab('outline')}
+              >
+                <span className="min-w-0 truncate">{outlineTabLabel}</span>
+              </button>
+            )}
             {hasPropertiesTab && (
               <button
                 type="button"
                 role="tab"
                 id={`${titleId}-tab-properties`}
                 className="notes-backlinks-panel-tab"
+                title={propertiesTabLabel}
                 aria-selected={resolvedTab === 'properties'}
                 aria-controls={`${titleId}-panel-properties`}
                 tabIndex={resolvedTab === 'properties' ? 0 : -1}
                 onClick={() => switchTab('properties')}
               >
-                {t('notesWorkspace.backlinks.tabProperties', { defaultValue: '属性' })}
+                <span className="min-w-0 truncate">{propertiesTabLabel}</span>
               </button>
             )}
             <button
@@ -1227,12 +1273,13 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
               role="tab"
               id={`${titleId}-tab-links`}
               className="notes-backlinks-panel-tab"
+              title={linksTabLabel}
               aria-selected={resolvedTab === 'links'}
               aria-controls={`${titleId}-panel-links`}
               tabIndex={resolvedTab === 'links' ? 0 : -1}
               onClick={() => switchTab('links')}
             >
-              {t('notesWorkspace.backlinks.tabLinks', { defaultValue: '链接' })}
+              <span className="min-w-0 truncate">{linksTabLabel}</span>
             </button>
             {hasGraphTab && (
               <button
@@ -1240,12 +1287,13 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
                 role="tab"
                 id={`${titleId}-tab-graph`}
                 className="notes-backlinks-panel-tab"
+                title={graphTabLabel}
                 aria-selected={resolvedTab === 'graph'}
                 aria-controls={`${titleId}-panel-graph`}
                 tabIndex={resolvedTab === 'graph' ? 0 : -1}
                 onClick={() => switchTab('graph')}
               >
-                {t('notesWorkspace.backlinks.tabGraph', { defaultValue: '图谱' })}
+                <span className="min-w-0 truncate">{graphTabLabel}</span>
               </button>
             )}
           </div>
@@ -1260,8 +1308,8 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
             type="button"
             className="notes-backlinks-panel-icon-button"
             onClick={onClose}
-            aria-label={t('notesWorkspace.backlinks.close')}
-            title={t('notesWorkspace.backlinks.close')}
+            aria-label={closeButtonLabel}
+            title={closeButtonLabel}
           >
             <X size={16} aria-hidden="true" />
           </button>
@@ -1275,7 +1323,18 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
         </div>
       )}
 
-      {/* Keep property drafts mounted when switching tabs; hidden panels leave the focus order. */}
+      {/* Keep outline & property drafts mounted when switching tabs; hidden panels leave the focus order. */}
+      {hasOutlineTab && (
+        <div
+          id={`${titleId}-panel-outline`}
+          className="notes-backlinks-panel-outline"
+          role="tabpanel"
+          hidden={resolvedTab !== 'outline'}
+          aria-labelledby={`${titleId}-tab-outline`}
+        >
+          {outlineContent}
+        </div>
+      )}
       {hasPropertiesTab && (
         <div
           id={`${titleId}-panel-properties`}

@@ -305,6 +305,8 @@
     "mastery_unset": "未设置掌握状态",
     "overdue": "已逾期",
     "today": "今天",
+    "review_due_overdue": "已到期复习（{{date}}）· 完成本次复习：",
+    "review_due_today": "今日待复习 · 完成本次复习：",
     "review_done": {
       "label": "复习完成",
       "menu": "复习完成后下次什么时候再看",
@@ -1778,6 +1780,7 @@
     "rename_tag_across_confirm_action": "全库重命名",
     "documentTitle": "笔记标题",
     "breadcrumbs": "笔记路径",
+    "collapsed_breadcrumbs": "展开省略的路径层级",
     "history": "历史版本",
     "add_tags": "添加标签...",
     "manage_tags": "管理标签",
@@ -1846,8 +1849,11 @@
       "danger": "危险",
       "info": "信息"
     },
-    "cycleType": "切换 Callout 类型",
-    "toggleFold": "折叠或展开"
+    "cycleType": "切换提示块类型",
+    "pickerLabel": "选择提示块类型",
+    "toggleFold": "折叠或展开",
+    "editTitle": "编辑标题",
+    "titleInput": "提示块标题"
   },
   "wikilink": {
     "noCandidates": "无候选笔记",
@@ -1857,6 +1863,8 @@
     "headingHint": "标题模式：链接到「{{target}}」中的标题",
     "previewLoading": "加载中…",
     "previewEmpty": "（空笔记）",
+    "previewError": "无法加载预览内容",
+    "unresolvedHint": "「{{target}}」尚未创建，点击新建笔记",
     "ambiguousTitle_one": "「{{target}}」命中 {{count}} 篇同名笔记，点击选择",
     "ambiguousTitle_other": "「{{target}}」命中 {{count}} 篇同名笔记，点击选择",
     "cacheTruncated": "笔记数量超过 {{max}} 条上限，超出部分的双链可能显示为未解析"
@@ -2253,13 +2261,40 @@
     "chat": "来自对话",
     "resource": "来自资料",
     "resource_page": "来自资料 · 第 {{page}} 页",
+    "resource_chapter": "来自资料 · {{chapter}}",
+    "resource_locator": "来自资料 · {{locator}}",
     "open": "回到来源"
   },
   "selection": {
     "group": "更多",
+    "highlight": "荧光笔高亮",
+    "cloze": "挖空制卡",
+    "askAi": "问 AI",
+    "count": "已选 {{count}} 字",
+    "count_one": "已选 {{count}} 字",
+    "count_other": "已选 {{count}} 字",
     "excerptToMindmap": "摘录到导图",
     "excerptToMindmapSent": "已摘录；若导图没有变化，请打开思维导图并开启「划选即入图」后重试",
     "excerptToMindmapFailed": "摘录失败：当前笔记未就绪"
+  },
+  "sourceMode": {
+    "toggle": "Markdown 源码",
+    "exit": "返回可视化编辑",
+    "badge": "Markdown 源码",
+    "aria_label": "Markdown 源码编辑器",
+    "line_count": "{{count}} 行",
+    "line_count_one": "{{count}} 行",
+    "line_count_other": "{{count}} 行",
+    "readonly": "只读"
+  },
+  "outline": {
+    "floating_toc": "目录"
+  },
+  "bannerQueue": {
+    "more": "还有 {{count}} 条通知",
+    "more_one": "还有 {{count}} 条通知",
+    "more_other": "还有 {{count}} 条通知",
+    "collapse": "收起其余通知"
   },
   "inlineCards": {
     "badge_qa": "问答卡",

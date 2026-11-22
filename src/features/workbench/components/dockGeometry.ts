@@ -28,6 +28,17 @@ export interface DockIconRect {
 
 export type DockIconRectMap = Readonly<Record<string, DockIconRect>>;
 
+/** 最小化窗口槽位在 dockGeometry / 放大项中的统一键前缀 */
+export const MINIMIZED_DOCK_ITEM_PREFIX = '__min__:';
+
+export function getMinimizedDockItemKey(windowId: string): string {
+  return `${MINIMIZED_DOCK_ITEM_PREFIX}${windowId}`;
+}
+
+export function isMinimizedDockItemKey(key: string): boolean {
+  return key.startsWith(MINIMIZED_DOCK_ITEM_PREFIX);
+}
+
 const EPSILON = 0.5;
 
 export type DockGeometryMeasurer = () => Record<string, DockIconRect>;

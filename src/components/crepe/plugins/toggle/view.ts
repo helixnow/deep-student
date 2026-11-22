@@ -1,7 +1,7 @@
 import type { Node } from '@milkdown/prose/model'
 import { Plugin } from '@milkdown/prose/state'
 import type { EditorView, NodeView, NodeViewConstructor } from '@milkdown/prose/view'
-import { $prose, $view } from '@milkdown/utils'
+import { $prose, $view } from '@milkdown/kit/utils'
 import i18next from 'i18next'
 
 import { TOGGLE_TYPE } from './marker'

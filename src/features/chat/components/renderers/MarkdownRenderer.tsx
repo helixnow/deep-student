@@ -495,7 +495,7 @@ const MathScrollShell: React.FC<{ displayMode: boolean; children: React.ReactNod
     {children}
   </ScrollArea>
 ) : (
-  <>{children}</>
+  <span className="math-inline-scroll">{children}</span>
 );
 
 const LazyMath: React.FC<{

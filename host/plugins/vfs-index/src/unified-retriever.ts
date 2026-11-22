@@ -23,7 +23,7 @@ import {
   modelFingerprintWithTransport, type VfsIndexProfile,
 } from '../repository/embedding-dim.ts';
 import {
-  activeSegmentRowIds, blobRelativePath, getResource, lexicalCandidateRows,
+  activeSegmentRowIds, blobRelativePath, getResource, isSourceSoftDeleted, lexicalCandidateRows,
   pageTextForUnit, resolveRetrievalMountScope, resourceFolderId, sourceDisplayTitle,
   type RetrievalMountScope,
 } from '../repository/retrieval.ts';
@@ -629,6 +629,7 @@ export async function executeFtsRoute(
   const seen = new Set<string>();
   for (const { index, score } of ranked) {
     const row = rows[index]!;
+    if (row.sourceId !== null && isSourceSoftDeleted(db, row.sourceId)) continue;
     const resourceMetadata = parseResourceMetadata(row.resourceMetadataJson);
     const title = displayTitle(resourceMetadata)
       ?? (row.sourceId === null ? null : sourceDisplayTitle(db, row.sourceId));
@@ -741,6 +742,7 @@ export async function lanceRowsToHits(
       && !row.source_id.startsWith('res_')
       ? row.source_id
       : resource.sourceId ?? row.source_id;
+    if (sourceId !== null && isSourceSoftDeleted(db, sourceId)) continue;
     const resourceMetadata = parseResourceMetadata(resource.metadataJson);
     const title = displayTitle(resourceMetadata)
       ?? (sourceId === null ? null : sourceDisplayTitle(db, sourceId));

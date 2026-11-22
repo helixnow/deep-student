@@ -1,4 +1,5 @@
 import React, { Suspense } from 'react';
+import { requestFlashcardsDueRefresh } from '@/events/flashcards';
 import {
   closeDailySprint,
   refreshSprintReadiness,
@@ -26,6 +27,7 @@ export const DailySprintHost: React.FC = () => {
         onClose={() => closeDailySprint()}
         onSettled={() => {
           void refreshSprintReadiness();
+          requestFlashcardsDueRefresh();
         }}
       />
     </Suspense>

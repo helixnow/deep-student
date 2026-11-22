@@ -12,6 +12,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { dispatchTypedEvent } from '@/events';
+import type { AnkiLibraryCard, AnkiLibraryListResponse } from '@/types';
 import type { SemanticAnchor } from '@/ui-kernel/contracts/interop';
 import type { MindMapExcerptSlot, MindMapNode } from '../types';
 import {
@@ -21,6 +22,7 @@ import {
   safeSerializeAnchor,
 } from '../utils/nodeAnchors';
 import { isSafeImageSrc } from '../utils/imageSanitize';
+import { loadReciteStats, smoothedErrorRate } from '../utils/reciteStats';
 
 export const DS_MINDMAP_FLASHCARD_PROJECTED_EVENT = 'ds:mindmap-flashcard-projected';
 
@@ -52,6 +54,17 @@ export interface MindMapCardProjectionSink {
   }) => Promise<void> | void;
 }
 
+export type MindMapNodeMasteryStatus = 'due' | 'struggling' | 'learning' | 'mastered';
+
+export interface MindMapNodeMasteryEntry {
+  status: MindMapNodeMasteryStatus;
+  dueAt?: string;
+  lapses?: number;
+  cardId: string;
+}
+
+export type MindMapMasterySummary = Record<string, MindMapNodeMasteryEntry>;
+
 interface FsrsEnqueueStateItem {
   id: string;
   ankiCardId?: string;
@@ -62,6 +75,47 @@ interface FsrsEnqueueResponse {
   states?: FsrsEnqueueStateItem[];
 }
 
+interface FsrsDueCardRow {
+  id?: string;
+  cardStateId?: string;
+  ankiCardId?: string;
+  anki_card_id?: string;
+  state?: number;
+  stability?: number | null;
+  reps?: number;
+  lapses?: number;
+  dueMs?: number | null;
+  suspended?: boolean;
+  leech?: boolean;
+  extraFields?: Record<string, string>;
+  extra_fields?: Record<string, string>;
+}
+
+interface FsrsMemoryCardRow {
+  cardStateId?: string;
+  id?: string;
+  ankiCardId?: string;
+  anki_card_id?: string;
+  state?: number;
+  stability?: number | null;
+  reps?: number;
+  lapses?: number;
+  dueMs?: number | null;
+  lastRating?: number | null;
+  extraFields?: Record<string, string>;
+  extra_fields?: Record<string, string>;
+}
+
+interface FsrsMemoryOverviewRow {
+  recent?: FsrsMemoryCardRow[];
+}
+
+const LIBRARY_QUERY_PAGE_SIZE = 200;
+const LIBRARY_QUERY_MAX_PAGES = 5;
+const RECITE_STRUGGLING_ERROR_RATE = 0.55;
+const RECITE_MASTERED_ERROR_RATE = 0.25;
+const FSRS_MASTERED_STABILITY_DAYS = 7;
+
 const projectionSinks: MindMapCardProjectionSink[] = [];
 /** mapId -> Map<nodeId, signature>（用于对账跳过未变更节点与检测取消投影的节点） */
 const projectedSignaturesByMap = new Map<string, Map<string, string>>();
@@ -70,6 +124,8 @@ const enqueuedCardIds = new Set<string>();
 /** ankiCardId -> fsrs_card_states.id（用于取消投影时挂起卡片而不销毁复习历史） */
 const fsrsStateIdByCardId = new Map<string, string>();
 const persistenceByCardId = new Map<string, Promise<void>>();
+/** mapId -> 正在进行的 FSRS stateId 预热 Promise，供取消投影共享等待 */
+const warmupByMapId = new Map<string, Promise<void>>();
 
 /** A toggle-off must wait for an in-flight save/enqueue, otherwise it can leave a live orphan card. */
 function persistInOrder(id: string, action: () => Promise<void>): Promise<void> {
@@ -281,6 +337,134 @@ function dispatchProjectionDomEvent(
   }
 }
 
+function extractNodeIdForMindMap(
+  cardId: string,
+  mapId: string,
+  extraFields?: Record<string, string> | null,
+): string | null {
+  const projectedPrefix = `card_mm_${mapId}_`;
+  if (cardId.startsWith(projectedPrefix) && cardId.length > projectedPrefix.length) {
+    return cardId.slice(projectedPrefix.length);
+  }
+  const recitePrefix = `card_mm_recite_${mapId}_`;
+  if (cardId.startsWith(recitePrefix) && cardId.length > recitePrefix.length) {
+    return cardId.slice(recitePrefix.length);
+  }
+  if (extraFields) {
+    const sourceMapId = extraFields.SourceMindMapId?.trim();
+    const sourceNodeId = extraFields.SourceNodeId?.trim();
+    if (sourceMapId === mapId && sourceNodeId) {
+      return sourceNodeId;
+    }
+  }
+  return null;
+}
+
+function cacheFsrsStateId(cardId: string | undefined, stateId: string | null | undefined): void {
+  const cleanCardId = cardId?.trim();
+  const cleanStateId = stateId?.trim();
+  if (!cleanCardId || !cleanStateId) return;
+  fsrsStateIdByCardId.set(cleanCardId, cleanStateId);
+  enqueuedCardIds.add(cleanCardId);
+}
+
+async function queryMindMapLibraryCards(
+  mapId: string,
+  targetCardIds?: ReadonlySet<string>,
+): Promise<{ ok: boolean; complete: boolean; cards: AnkiLibraryCard[] }> {
+  const cards: AnkiLibraryCard[] = [];
+  const seenIds = new Set<string>();
+  let complete = false;
+  try {
+    for (let page = 1; page <= LIBRARY_QUERY_MAX_PAGES; page += 1) {
+      const response = await invoke<AnkiLibraryListResponse | null>('list_anki_library_cards', {
+        request: {
+          search: 'mindmap-card',
+          page,
+          pageSize: LIBRARY_QUERY_PAGE_SIZE,
+        },
+      });
+      if (!response || !Array.isArray(response.items)) {
+        return { ok: false, complete: false, cards };
+      }
+      for (const item of response.items) {
+        if (!item || typeof item.id !== 'string' || seenIds.has(item.id)) continue;
+        seenIds.add(item.id);
+        const matchesMap =
+          item.documentId === mapId ||
+          item.sourceId === mapId ||
+          item.sourceRef?.id === mapId ||
+          extractNodeIdForMindMap(item.id, mapId, item.extra_fields ?? item.fields) !== null ||
+          Boolean(targetCardIds?.has(item.id));
+        if (matchesMap) {
+          cacheFsrsStateId(item.id, item.stateId);
+          cards.push(item);
+        }
+      }
+      const foundAllTargets =
+        targetCardIds !== undefined &&
+        targetCardIds.size > 0 &&
+        Array.from(targetCardIds).every((id) => seenIds.has(id));
+      const reachedEnd =
+        response.items.length < LIBRARY_QUERY_PAGE_SIZE ||
+        (typeof response.total === 'number' && page * LIBRARY_QUERY_PAGE_SIZE >= response.total);
+      if (foundAllTargets || reachedEnd) {
+        complete = true;
+        break;
+      }
+    }
+    return { ok: true, complete, cards };
+  } catch {
+    return { ok: false, complete: false, cards };
+  }
+}
+
+async function lookupFsrsStateIdFromReviewCommands(cardId: string): Promise<string | null> {
+  const [dueRows, overview] = await Promise.all([
+    invoke<FsrsDueCardRow[] | null>('fsrs_get_due', { limit: 500, readOnly: true }).catch(() => null),
+    invoke<FsrsMemoryOverviewRow | null>('fsrs_get_memory_overview', { recentLimit: 200 }).catch(() => null),
+  ]);
+  if (Array.isArray(dueRows)) {
+    for (const row of dueRows) {
+      const ankiCardId = row?.ankiCardId ?? row?.anki_card_id;
+      const stateId = row?.id ?? row?.cardStateId;
+      cacheFsrsStateId(ankiCardId, stateId);
+    }
+  }
+  if (overview && Array.isArray(overview.recent)) {
+    for (const row of overview.recent) {
+      const ankiCardId = row?.ankiCardId ?? row?.anki_card_id;
+      const stateId = row?.cardStateId ?? row?.id;
+      cacheFsrsStateId(ankiCardId, stateId);
+    }
+  }
+  return fsrsStateIdByCardId.get(cardId) ?? null;
+}
+
+/**
+ * 异步预热指定导图的 FSRS `stateId` 缓存，防止重启后内存表为空导致取消投影无法直接挂起。
+ */
+export async function hydrateMindMapProjectedFlashcardStates(
+  mapId: string,
+  cardIds?: readonly string[],
+): Promise<void> {
+  const cleanMapId = mapId.trim();
+  if (!cleanMapId) return;
+  const targetSet = cardIds && cardIds.length > 0 ? new Set(cardIds) : undefined;
+  const run = async () => {
+    await queryMindMapLibraryCards(cleanMapId, targetSet);
+  };
+  const promise = run();
+  warmupByMapId.set(cleanMapId, promise);
+  try {
+    await promise;
+  } finally {
+    if (warmupByMapId.get(cleanMapId) === promise) {
+      warmupByMapId.delete(cleanMapId);
+    }
+  }
+}
+
 async function defaultPersistUpsert(
   payload: MindMapProjectedFlashcardPayload,
   isInitialInsert: boolean,
@@ -325,7 +509,18 @@ async function defaultPersistUpsert(
     response.cardIdMappings?.[0]?.persistedId ??
     payload.id;
   const wasNewlyInserted = (response.savedIds ?? []).includes(persistedId);
-  const existingFsrsStateId = fsrsStateIdByCardId.get(persistedId);
+  let existingFsrsStateId = fsrsStateIdByCardId.get(persistedId);
+  if (!existingFsrsStateId && isInitialInsert && !wasNewlyInserted) {
+    const inflightWarmup = warmupByMapId.get(payload.mapId);
+    if (inflightWarmup) {
+      await inflightWarmup.catch(() => undefined);
+      existingFsrsStateId = fsrsStateIdByCardId.get(persistedId);
+    }
+    if (!existingFsrsStateId) {
+      await queryMindMapLibraryCards(payload.mapId, new Set([persistedId]));
+      existingFsrsStateId = fsrsStateIdByCardId.get(persistedId);
+    }
+  }
 
   // 仅在首次新建或尚未入队时调用 fsrs_enqueue_cards；若此前被挂起则恢复，绝不重置已有 FSRS 进度
   if (existingFsrsStateId && isInitialInsert) {
@@ -342,14 +537,64 @@ async function defaultPersistUpsert(
   }
 }
 
+async function resolveCardRemovalDecision(params: {
+  id: string;
+  mapId: string;
+  nodeId: string;
+}): Promise<{ action: 'suspend'; stateId: string } | { action: 'delete' } | { action: 'keep' }> {
+  const cachedStateId = fsrsStateIdByCardId.get(params.id);
+  if (cachedStateId) {
+    return { action: 'suspend', stateId: cachedStateId };
+  }
+
+  const inflightWarmup = warmupByMapId.get(params.mapId);
+  if (inflightWarmup) {
+    await inflightWarmup.catch(() => undefined);
+    const warmedStateId = fsrsStateIdByCardId.get(params.id);
+    if (warmedStateId) {
+      return { action: 'suspend', stateId: warmedStateId };
+    }
+  }
+
+  const libraryResult = await queryMindMapLibraryCards(params.mapId, new Set([params.id]));
+  const hydratedStateId = fsrsStateIdByCardId.get(params.id);
+  if (hydratedStateId) {
+    return { action: 'suspend', stateId: hydratedStateId };
+  }
+
+  const matchedCard = libraryResult.cards.find((card) => card.id === params.id);
+  if (matchedCard) {
+    const hasReviewHistory =
+      Boolean(matchedCard.stateId) ||
+      matchedCard.enqueued === true ||
+      matchedCard.suspended === true ||
+      Boolean(matchedCard.latestReview) ||
+      (typeof matchedCard.state === 'number' && matchedCard.state > 0);
+    return hasReviewHistory ? { action: 'keep' } : { action: 'delete' };
+  }
+
+  const fallbackStateId = await lookupFsrsStateIdFromReviewCommands(params.id);
+  if (fallbackStateId) {
+    return { action: 'suspend', stateId: fallbackStateId };
+  }
+
+  // 仅当 matchedCard 明确被查到且确认无任何 FSRS 状态与复习记录时才允许删除；
+  // 未查到目标卡（可能因 >1000 卡分页截断、用户移除标签或后端不可达）时一律保守 keep，绝不物理误删。
+  return { action: 'keep' };
+}
+
 async function defaultPersistRemove(params: {
   id: string;
   mapId: string;
   nodeId: string;
 }): Promise<void> {
-  const stateId = fsrsStateIdByCardId.get(params.id);
-  if (stateId) {
-    await invoke('fsrs_suspend_card', { cardStateId: stateId }).catch(() => undefined);
+  const decision = await resolveCardRemovalDecision(params);
+  if (decision.action === 'suspend') {
+    await invoke('fsrs_suspend_card', { cardStateId: decision.stateId }).catch(() => undefined);
+    return;
+  }
+  if (decision.action === 'keep') {
+    console.warn('[MindMapCardProjection::remove] kept card to avoid losing unverified FSRS history:', params.id);
     return;
   }
   const { ankiApiAdapter } = await import('@/services/ankiApiAdapter');
@@ -452,9 +697,9 @@ export function reconcileMindMapProjectedFlashcards(
 }
 
 /**
- * 文档加载完成时建立内存投影基线（零 IPC 调用）：
+ * 文档加载完成时建立内存投影基线，并异步预热后端 FSRS `stateId` 映射：
  * 记录已持久化 `isFlashcard` 节点的签名，使加载后的首次文本微调走原地更新（保留 FSRS 进度），
- * 加载后直接取消勾选或删除节点时能准确触发挂起/移除。
+ * 加载后直接取消勾选或删除节点时能准确挂起 FSRS 而不误删历史复习曲线。
  */
 export function seedMindMapProjectedFlashcardsBaseline(
   mapId: string | null,
@@ -462,14 +707,259 @@ export function seedMindMapProjectedFlashcardsBaseline(
 ): void {
   if (!mapId || !root) return;
   const baseline = new Map<string, string>();
+  const cardIds: string[] = [];
   for (const card of collectProjectedFlashcards(mapId, root)) {
     baseline.set(card.nodeId, payloadSignature(card));
     enqueuedCardIds.add(card.id);
+    cardIds.push(card.id);
   }
   if (baseline.size > 0) {
     projectedSignaturesByMap.set(mapId, baseline);
+    if (projectionSinks.length === 0) {
+      swallowProjection(hydrateMindMapProjectedFlashcardStates(mapId, cardIds));
+    }
   } else {
     projectedSignaturesByMap.delete(mapId);
+  }
+}
+
+interface AggregatedFsrsSignal {
+  cardId: string;
+  state?: number | null;
+  stability?: number | null;
+  reps?: number;
+  lapses?: number;
+  dueMs?: number | null;
+  isDue?: boolean;
+  suspended?: boolean;
+  leech?: boolean;
+  lastRating?: number | null;
+}
+
+interface ReciteNodeSignal {
+  attempts: number;
+  misses: number;
+  maxErrorRate: number;
+}
+
+const MASTERY_SEVERITY: Record<MindMapNodeMasteryStatus, number> = {
+  struggling: 3,
+  due: 2,
+  learning: 1,
+  mastered: 0,
+};
+
+function summarizeReciteStatsByNode(mindmapId: string): Map<string, ReciteNodeSignal> {
+  const result = new Map<string, ReciteNodeSignal>();
+  const stats = loadReciteStats(mindmapId);
+  for (const [nodeId, byBlank] of Object.entries(stats)) {
+    if (!byBlank || typeof byBlank !== 'object') continue;
+    let attempts = 0;
+    let misses = 0;
+    let maxErrorRate = 0;
+    for (const stat of Object.values(byBlank)) {
+      if (!stat || typeof stat.attempts !== 'number' || stat.attempts <= 0) continue;
+      attempts += stat.attempts;
+      misses += typeof stat.misses === 'number' && stat.misses > 0 ? stat.misses : 0;
+      const rate = smoothedErrorRate(stat);
+      if (rate > maxErrorRate) maxErrorRate = rate;
+    }
+    if (attempts > 0) {
+      result.set(nodeId, { attempts, misses, maxErrorRate });
+    }
+  }
+  return result;
+}
+
+function classifyFsrsAndReciteStatus(
+  fsrs: AggregatedFsrsSignal,
+  recite: ReciteNodeSignal | undefined,
+  nowMs: number,
+): MindMapNodeMasteryStatus {
+  const lapses = fsrs.lapses ?? 0;
+  const reciteStruggling = Boolean(recite && recite.maxErrorRate >= RECITE_STRUGGLING_ERROR_RATE);
+  if (
+    fsrs.leech === true ||
+    lapses >= 2 ||
+    fsrs.state === 3 ||
+    fsrs.lastRating === 1 ||
+    reciteStruggling
+  ) {
+    return 'struggling';
+  }
+  const dueByClock =
+    typeof fsrs.dueMs === 'number' &&
+    Number.isFinite(fsrs.dueMs) &&
+    fsrs.dueMs <= nowMs &&
+    fsrs.state !== 0;
+  if ((fsrs.isDue === true && fsrs.state !== 0) || dueByClock) {
+    return 'due';
+  }
+  const stableEnough =
+    fsrs.stability == null
+      ? typeof fsrs.dueMs === 'number' &&
+        Number.isFinite(fsrs.dueMs) &&
+        fsrs.dueMs - nowMs >= FSRS_MASTERED_STABILITY_DAYS * 86_400_000 &&
+        lapses === 0
+      : fsrs.stability >= FSRS_MASTERED_STABILITY_DAYS;
+  if (fsrs.state === 2 && stableEnough && lapses === 0) {
+    return 'mastered';
+  }
+  return 'learning';
+}
+
+function mergeSignal(
+  existing: AggregatedFsrsSignal | undefined,
+  incoming: AggregatedFsrsSignal,
+): AggregatedFsrsSignal {
+  if (!existing) return incoming;
+  return {
+    cardId: existing.cardId,
+    state: incoming.state ?? existing.state,
+    stability: incoming.stability ?? existing.stability,
+    reps: incoming.reps ?? existing.reps,
+    lapses: incoming.lapses ?? existing.lapses,
+    dueMs: incoming.dueMs ?? existing.dueMs,
+    isDue: existing.isDue || incoming.isDue,
+    suspended: incoming.suspended ?? existing.suspended,
+    leech: existing.leech || incoming.leech,
+    lastRating: incoming.lastRating ?? existing.lastRating,
+  };
+}
+
+/**
+ * 汇总整张导图各节点的掌握度（融合后端 FSRS 卡片状态与本地背诵错误率）。
+ * 返回按 `nodeId` 映射的掌握度摘要；无后端或异常时安全降级为空对象，绝不抛错。
+ */
+export async function loadMindMapMasterySummary(
+  mindmapId: string,
+): Promise<MindMapMasterySummary> {
+  const cleanMapId = mindmapId?.trim();
+  if (!cleanMapId) return {};
+
+  try {
+    const nowMs = Date.now();
+    const reciteByNode = summarizeReciteStatsByNode(cleanMapId);
+
+    const [libraryResult, dueRows, overview] = await Promise.all([
+      queryMindMapLibraryCards(cleanMapId).catch(() => ({
+        ok: false,
+        complete: false,
+        cards: [] as AnkiLibraryCard[],
+      })),
+      invoke<FsrsDueCardRow[] | null>('fsrs_get_due', { limit: 500, readOnly: true }).catch(() => null),
+      invoke<FsrsMemoryOverviewRow | null>('fsrs_get_memory_overview', { recentLimit: 200 }).catch(() => null),
+    ]);
+
+    const signalsByCardId = new Map<string, { nodeId: string; signal: AggregatedFsrsSignal }>();
+
+    const upsertSignal = (
+      cardId: string | undefined,
+      extraFields: Record<string, string> | undefined | null,
+      signal: Omit<AggregatedFsrsSignal, 'cardId'>,
+    ) => {
+      if (!cardId) return;
+      const nodeId = extractNodeIdForMindMap(cardId, cleanMapId, extraFields);
+      if (!nodeId) return;
+      const prev = signalsByCardId.get(cardId);
+      signalsByCardId.set(cardId, {
+        nodeId,
+        signal: mergeSignal(prev?.signal, { cardId, ...signal }),
+      });
+    };
+
+    for (const card of libraryResult.cards) {
+      if (!card.enqueued && !card.stateId) continue;
+      upsertSignal(card.id, card.extra_fields ?? card.fields, {
+        state: card.state,
+        dueMs: card.dueMs,
+        isDue: card.isDue,
+        suspended: card.suspended,
+        lastRating: card.latestReview?.rating ?? null,
+      });
+    }
+
+    if (Array.isArray(dueRows)) {
+      for (const row of dueRows) {
+        const cardId = row?.ankiCardId ?? row?.anki_card_id;
+        cacheFsrsStateId(cardId, row?.id ?? row?.cardStateId);
+        upsertSignal(cardId, row?.extraFields ?? row?.extra_fields, {
+          state: row?.state,
+          stability: row?.stability,
+          reps: row?.reps,
+          lapses: row?.lapses,
+          dueMs: row?.dueMs,
+          isDue: row?.suspended !== true && row?.state !== 0,
+          suspended: row?.suspended,
+          leech: row?.leech,
+        });
+      }
+    }
+
+    if (overview && Array.isArray(overview.recent)) {
+      for (const row of overview.recent) {
+        const cardId = row?.ankiCardId ?? row?.anki_card_id;
+        cacheFsrsStateId(cardId, row?.cardStateId ?? row?.id);
+        upsertSignal(cardId, row?.extraFields ?? row?.extra_fields, {
+          state: row?.state,
+          stability: row?.stability,
+          reps: row?.reps,
+          lapses: row?.lapses,
+          dueMs: row?.dueMs,
+          lastRating: row?.lastRating,
+        });
+      }
+    }
+
+    const summary: MindMapMasterySummary = {};
+
+    for (const { nodeId, signal } of signalsByCardId.values()) {
+      if (signal.suspended === true) continue;
+      const recite = reciteByNode.get(nodeId);
+      const status = classifyFsrsAndReciteStatus(signal, recite, nowMs);
+      const dueAt =
+        typeof signal.dueMs === 'number' && Number.isFinite(signal.dueMs) && signal.dueMs > 0
+          ? new Date(signal.dueMs).toISOString()
+          : undefined;
+      const lapses =
+        typeof signal.lapses === 'number' && Number.isFinite(signal.lapses)
+          ? signal.lapses
+          : recite && recite.misses > 0
+            ? recite.misses
+            : undefined;
+      const entry: MindMapNodeMasteryEntry = {
+        status,
+        ...(dueAt ? { dueAt } : {}),
+        ...(lapses !== undefined ? { lapses } : {}),
+        cardId: signal.cardId,
+      };
+      const existing = summary[nodeId];
+      if (
+        !existing ||
+        MASTERY_SEVERITY[entry.status] > MASTERY_SEVERITY[existing.status]
+      ) {
+        summary[nodeId] = entry;
+      }
+    }
+
+    for (const [nodeId, recite] of reciteByNode.entries()) {
+      if (summary[nodeId]) continue;
+      let status: MindMapNodeMasteryStatus = 'learning';
+      if (recite.maxErrorRate >= RECITE_STRUGGLING_ERROR_RATE) {
+        status = 'struggling';
+      } else if (recite.attempts >= 2 && recite.maxErrorRate <= RECITE_MASTERED_ERROR_RATE) {
+        status = 'mastered';
+      }
+      summary[nodeId] = {
+        status,
+        ...(recite.misses > 0 ? { lapses: recite.misses } : {}),
+        cardId: buildMindMapFlashcardId(cleanMapId, nodeId),
+      };
+    }
+
+    return summary;
+  } catch {
+    return {};
   }
 }
 
@@ -480,4 +970,5 @@ export function __resetMindMapCardProjectionForTests(): void {
   enqueuedCardIds.clear();
   fsrsStateIdByCardId.clear();
   persistenceByCardId.clear();
+  warmupByMapId.clear();
 }

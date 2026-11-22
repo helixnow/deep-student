@@ -79,6 +79,38 @@ function isCheckedMenuItem(item: HTMLElement): boolean {
   );
 }
 
+/** 识别直接或间接会渲染 <button> 的 React 节点，防止 <button> 嵌套 <button>（validateDOMNesting）。 */
+function isButtonLikeElement(node: React.ReactNode): boolean {
+  if (!React.isValidElement(node)) return false;
+  if (node.type === 'button') return true;
+  if (typeof node.type === 'function' || (typeof node.type === 'object' && node.type !== null)) {
+    const comp = node.type as {
+      displayName?: string;
+      name?: string;
+      render?: { displayName?: string; name?: string };
+    };
+    const name = comp.displayName || comp.name || comp.render?.displayName || comp.render?.name || '';
+    if (/button/i.test(name)) return true;
+  }
+  return false;
+}
+
+function containsButtonLikeElement(node: React.ReactNode): boolean {
+  let found = false;
+  React.Children.forEach(node, (child) => {
+    if (found || !React.isValidElement<{ children?: React.ReactNode }>(child)) return;
+    if (isButtonLikeElement(child)) {
+      found = true;
+      return;
+    }
+    const props = child.props;
+    if (props?.children !== undefined && containsButtonLikeElement(props.children)) {
+      found = true;
+    }
+  });
+  return found;
+}
+
 // ============ Root Component ============
 
 export interface AppMenuProps {
@@ -192,9 +224,18 @@ export interface AppMenuTriggerProps extends React.HTMLAttributes<HTMLElement> {
 export const AppMenuTrigger = React.forwardRef<HTMLElement, AppMenuTriggerProps>(
   ({ asChild, children, className, onClick, onContextMenu, onKeyDown, ...rest }, ref) => {
   const ctx = React.useContext(AppMenuContext);
-  const Comp = (asChild ? Slot : 'button') as React.ElementType;
-  
   if (!ctx) return <>{children}</>;
+
+  // 防止双 <button> 嵌套：
+  // 1. 显式 asChild 或单子元素本身就是按钮（<button>/<DsButton>）时，通过 Slot 合并到子元素；
+  // 2. 非 asChild 且内部包含按钮（或 context 模式容器）时，退化为非 button 容器元素，避免 <button> 包裹 <button>/<div>。
+  const childCount = React.Children.count(children);
+  const singleValidChild = childCount === 1 && React.isValidElement(children) ? children : null;
+  const autoSlot = !asChild && singleValidChild !== null && isButtonLikeElement(singleValidChild);
+  const useSlot = Boolean(asChild) || autoSlot;
+  const hasNestedButton = !useSlot && containsButtonLikeElement(children);
+  const useNonButtonWrapper = !useSlot && (hasNestedButton || ctx.mode === 'context');
+  const Comp = (useSlot ? Slot : useNonButtonWrapper ? (ctx.mode === 'context' ? 'div' : 'span') : 'button') as React.ElementType;
 
   const handleClick = (e: React.MouseEvent) => {
     onClick?.(e as React.MouseEvent<HTMLElement>);
@@ -256,13 +297,13 @@ export const AppMenuTrigger = React.forwardRef<HTMLElement, AppMenuTriggerProps>
     <Comp
       ref={ref}
       id={ctx.menuId + '-trigger'}
-      type={asChild ? undefined : 'button'}
+      type={useSlot || useNonButtonWrapper ? undefined : 'button'}
       aria-haspopup="menu"
       aria-expanded={ctx.open}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
       onKeyDown={handleTriggerKeyDown}
-      className={cn('app-menu-trigger', className)}
+      className={cn('app-menu-trigger', useNonButtonWrapper && ctx.mode !== 'context' && 'inline-flex', className)}
       {...rest}
     >
       {children}
@@ -728,30 +769,18 @@ export interface AppMenuItemProps extends React.ButtonHTMLAttributes<HTMLButtonE
 }
 
 export const AppMenuItem = React.forwardRef<HTMLButtonElement, AppMenuItemProps>(
-  ({ className, icon, children, shortcut, destructive, disabled, checked, suffix, onClick, tabIndex = -1, ...rest }, ref) => {
+  ({ className, icon, children, shortcut, destructive, disabled, checked, suffix, onClick, onKeyDown, type = 'button', tabIndex = -1, ...rest }, ref) => {
     const ctx = React.useContext(AppMenuContext);
-    
-    return (
-      <button
-        ref={ref}
-        role="menuitem"
-        disabled={disabled}
-        tabIndex={tabIndex}
-        className={cn(
-          'app-menu-item',
-          destructive && 'app-menu-item-destructive',
-          disabled && 'app-menu-item-disabled',
-          checked && 'app-menu-item-checked',
-          className
-        )}
-        onClick={(event) => {
-          if (disabled) return;
-          onClick?.(event);
-          if (event.defaultPrevented) return;
-          ctx?.setOpen(false);
-        }}
-        {...rest}
-      >
+    const hasNestedButton = containsButtonLikeElement(children) || containsButtonLikeElement(suffix);
+    const itemClassName = cn(
+      'app-menu-item',
+      destructive && 'app-menu-item-destructive',
+      disabled && 'app-menu-item-disabled',
+      checked && 'app-menu-item-checked',
+      className
+    );
+    const inner = (
+      <>
         {icon && <span className="app-menu-item-icon">{icon}</span>}
         <span className="app-menu-item-content">{children}</span>
         {checked !== undefined && (
@@ -761,6 +790,56 @@ export const AppMenuItem = React.forwardRef<HTMLButtonElement, AppMenuItemProps>
         )}
         {suffix && <span className="app-menu-item-suffix">{suffix}</span>}
         {shortcut && <span className="app-menu-item-shortcut">{shortcut}</span>}
+      </>
+    );
+
+    if (hasNestedButton) {
+      return (
+        <div
+          ref={ref as unknown as React.Ref<HTMLDivElement>}
+          role="menuitem"
+          aria-disabled={disabled || undefined}
+          tabIndex={tabIndex}
+          className={itemClassName}
+          onClick={(event) => {
+            if (disabled) return;
+            onClick?.(event as unknown as React.MouseEvent<HTMLButtonElement>);
+            if (event.defaultPrevented) return;
+            ctx?.setOpen(false);
+          }}
+          onKeyDown={(event) => {
+            onKeyDown?.(event as unknown as React.KeyboardEvent<HTMLButtonElement>);
+            if (event.defaultPrevented || disabled) return;
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              event.currentTarget.click();
+            }
+          }}
+          {...(rest as unknown as React.HTMLAttributes<HTMLDivElement>)}
+        >
+          {inner}
+        </div>
+      );
+    }
+
+    return (
+      <button
+        ref={ref}
+        type={type}
+        role="menuitem"
+        disabled={disabled}
+        tabIndex={tabIndex}
+        className={itemClassName}
+        onClick={(event) => {
+          if (disabled) return;
+          onClick?.(event);
+          if (event.defaultPrevented) return;
+          ctx?.setOpen(false);
+        }}
+        onKeyDown={onKeyDown}
+        {...rest}
+      >
+        {inner}
       </button>
     );
   }

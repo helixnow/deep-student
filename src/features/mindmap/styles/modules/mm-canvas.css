@@ -1,0 +1,192 @@
+/* ============================================
+   画布背景、ReactFlow 控件、MiniMap、模式开关与导出态
+   ============================================ */
+
+/* stylelint-disable selector-class-pattern */
+
+/* --- 背景 --- */
+.mindmap-container .react-flow__background {
+  background-color: var(--mm-bg);
+}
+
+.mindmap-container .react-flow {
+  animation: content-fade-in var(--mm-dur-enter, 150ms) var(--mm-ease-enter, ease-out) both;
+}
+
+/* --- 导出模式 (.mm-exporting) --- */
+.mm-exporting * {
+  /* stylelint-disable-next-line declaration-no-important */
+  transition: none !important;
+  /* stylelint-disable-next-line declaration-no-important */
+  animation: none !important;
+}
+
+.mindmap-container.mm-exporting .mm-node-actions,
+.mindmap-container.mm-exporting .mm-collapse-btn:not(.is-collapsed) {
+  display: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* --- ReactFlow 控件面板（悬浮玻璃胶囊，尊重 data-wb-material 降级） --- */
+.mindmap-container .react-flow__controls {
+  background: color-mix(in srgb, var(--mm-bg-elevated) 84%, transparent);
+  backdrop-filter: var(--wb-glass-blur, none);
+  border: 1px solid color-mix(in srgb, var(--mm-border) 78%, transparent);
+  border-radius: 10px;
+  box-shadow: var(--mm-shadow-dock);
+  overflow: hidden;
+  margin: 12px;
+}
+
+.mindmap-container .react-flow__controls-button {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--mm-border) 65%, transparent);
+  color: var(--mm-text-secondary);
+  width: 28px;
+  height: 28px;
+}
+
+.mindmap-container .react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.mindmap-container .react-flow__controls-button:hover {
+  background: var(--mm-bg-hover);
+  color: var(--mm-text);
+}
+
+.mindmap-container .react-flow__controls-button svg {
+  fill: currentcolor;
+}
+
+/* --- 右下角画布集成控制胶囊 --- */
+.mm-canvas-mode-switch {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--mm-border) 78%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--mm-bg-elevated) 84%, transparent);
+  backdrop-filter: var(--wb-glass-blur, none);
+  box-shadow: var(--mm-shadow-dock);
+  user-select: none;
+}
+
+.mm-canvas-mode-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 24px;
+  min-width: 48px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--mm-text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color var(--mm-hover-transition, 120ms ease),
+    color var(--mm-hover-transition, 120ms ease);
+}
+
+.mm-canvas-mode-button:hover {
+  background: var(--mm-bg-hover);
+  color: var(--mm-text);
+}
+
+.mm-canvas-mode-button.is-active {
+  background: var(--mm-primary-soft);
+  color: var(--mm-edge-active, var(--mm-primary));
+  font-weight: 600;
+}
+
+.mm-canvas-mode-select .react-flow__pane {
+  cursor: crosshair;
+}
+
+.mm-canvas-mode-pan .react-flow__pane {
+  cursor: grab;
+}
+
+.mm-canvas-mode-pan .react-flow__pane.dragging {
+  cursor: grabbing;
+}
+
+/* --- MiniMap --- */
+.mindmap-container .react-flow__minimap {
+  background: color-mix(in srgb, var(--mm-bg-elevated) 84%, transparent);
+  backdrop-filter: var(--wb-glass-blur, none);
+  border: 1px solid color-mix(in srgb, var(--mm-border) 78%, transparent);
+  border-radius: 10px;
+  box-shadow: var(--mm-shadow-dock);
+  opacity: 0.88;
+  margin: 12px;
+  margin-bottom: 52px;
+}
+
+/* --- 提示栏与演示退出钮 --- */
+.card-hint-bar {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  background: var(--mm-bg-elevated);
+  border: 1px solid var(--mm-border);
+  border-radius: var(--mm-radius-popup, 8px);
+  box-shadow: var(--mm-popover-shadow);
+  font-size: 12px;
+  color: var(--mm-text-muted);
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.card-hint-bar kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  background: var(--mm-bg-hover);
+  border: 1px solid var(--mm-border);
+  border-radius: 3px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  color: var(--mm-text-secondary);
+}
+
+.mm-presentation-exit {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: 12px;
+  z-index: 30;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  justify-content: center;
+  border: 1px solid var(--mm-border);
+  border-radius: var(--mm-radius-row, 6px);
+  background: color-mix(in srgb, var(--mm-bg-elevated) 88%, transparent);
+  backdrop-filter: var(--wb-glass-blur, none);
+  color: var(--mm-text-secondary);
+  box-shadow: var(--mm-shadow);
+}
+
+/* stylelint-enable selector-class-pattern */

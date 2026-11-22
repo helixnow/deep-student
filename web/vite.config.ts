@@ -292,6 +292,7 @@ export default defineConfig({
   build: {
     outDir: WEB_DIST_STAGING_DIR,
     emptyOutDir: true,
+    assetsInlineLimit: 16384,
     reportCompressedSize: false,
     sourcemap: false,
     target: 'esnext',

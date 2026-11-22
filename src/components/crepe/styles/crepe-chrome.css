@@ -1,0 +1,959 @@
+/**
+ * Crepe Editor Chrome & Interactive Controls
+ *
+ * Slash menu (+ custom scrollbar), Bubble Toolbar (including labelled &
+ * .host-actions learning buttons), Link Tooltip, Notes Top Chrome/Toolbar,
+ * Block Handle, Block Menu, Drag State, Drop Indicator, Drop Cursor,
+ * Gap Cursor, and Block Selection.
+ */
+
+/* ===== Shared Popup Entrance Animation ===== */
+@keyframes crepe-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.crepe-editor-wrapper [data-milkdown-menu],
+.crepe-editor-wrapper [data-milkdown-toolbar],
+.crepe-editor-wrapper .toolbar,
+.crepe-editor-wrapper .milkdown-toolbar,
+.crepe-editor-wrapper .milkdown-slash-menu {
+  animation: crepe-fade-in var(--notes-popup-enter-duration, 150ms) var(--notes-popup-enter-easing, ease-out);
+}
+
+/* ===== Slash Menu ===== */
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu {
+  z-index: 50;
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup, 12px);
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 15%));
+  overflow-x: hidden;
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .tab-group {
+  padding: 6px 8px 0;
+  border-bottom-color: hsl(var(--border));
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .tab-group ul {
+  padding: 4px 6px;
+  gap: 4px;
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .tab-group ul li {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  border-radius: var(--notes-popup-item-radius, 4px);
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .tab-group li:hover {
+  background: hsl(var(--accent));
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .tab-group li.selected {
+  /* Subtle positioning pill instead of heavy solid brand fill */
+  background: hsl(var(--foreground) / 7%);
+  color: hsl(var(--foreground));
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .menu-groups {
+  padding: 4px 8px 8px;
+
+  /* Shrink dynamically above mobile soft keyboard (aligned with wikilink/mention) */
+  max-height: min(280px, calc(100dvh - var(--mobile-toolbar-keyboard-offset, 0px) - 120px));
+  overflow: hidden auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+
+/* Custom slash menu scrollbar */
+.crepe-editor-wrapper .milkdown-slash-menu .ds-slash-scroll-viewport {
+  padding-right: calc(var(--scrollbar-interaction-size, 10px) + 4px);
+  scrollbar-width: none;
+  /* stylelint-disable-next-line property-no-vendor-prefix */
+  -ms-overflow-style: none;
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .ds-slash-scroll-viewport::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .ds-slash-scroll-track {
+  position: absolute;
+  right: 2px;
+  width: var(--scrollbar-interaction-size, 10px);
+  border-radius: 9999px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  z-index: 1;
+}
+
+:where(.crepe-editor-wrapper) .milkdown-slash-menu .ds-slash-scroll-track[data-enabled='true'][data-visible='true'] {
+  opacity: 1;
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .ds-slash-scroll-thumb {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  min-height: min(var(--scrollbar-thumb-min-size, 40px), 100%);
+  border-radius: 9999px;
+  pointer-events: auto;
+  background: transparent;
+  touch-action: none;
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .ds-slash-scroll-thumb::before {
+  content: '';
+  position: absolute;
+  inset: 0 var(--scrollbar-thumb-inset, 3px);
+  border-radius: inherit;
+  background: var(--scrollbar-thumb);
+  transition: background-color var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+:where(.crepe-editor-wrapper) .milkdown-slash-menu .ds-slash-scroll-track:hover .ds-slash-scroll-thumb::before {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .ds-slash-scroll-thumb:active::before {
+  background: var(--scrollbar-thumb-active);
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .menu-groups .menu-group h6 {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 6px 8px 4px;
+  color: hsl(var(--muted-foreground));
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .menu-group + .menu-group::before {
+  background: hsl(var(--border));
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .menu-groups .menu-group li {
+  min-width: 180px;
+  min-height: 30px;
+  padding: 4px 8px;
+  gap: 10px;
+  border-radius: 6px;
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .menu-groups .menu-group li > span {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.3;
+  color: hsl(var(--foreground));
+}
+
+.crepe-editor-wrapper .milkdown-slash-menu .menu-groups .menu-group li svg {
+  width: 18px;
+  height: 18px;
+  color: hsl(var(--muted-foreground));
+  fill: hsl(var(--muted-foreground));
+}
+
+:where(.crepe-editor-wrapper) .milkdown-slash-menu .menu-groups .menu-group li:hover,
+:where(.crepe-editor-wrapper) .milkdown-slash-menu .menu-groups .menu-group li.hover,
+:where(.crepe-editor-wrapper) .milkdown-slash-menu .menu-groups .menu-group li.active {
+  background: hsl(var(--foreground) / 6%);
+  color: hsl(var(--foreground));
+}
+
+:where(.crepe-editor-wrapper) .milkdown-slash-menu .menu-groups .menu-group li.active svg {
+  color: hsl(var(--foreground));
+  fill: hsl(var(--foreground));
+}
+
+/* ===== Bubble Toolbar ===== */
+.crepe-editor-wrapper .milkdown .milkdown-toolbar {
+  --crepe-color-outline: transparent;
+  --crepe-color-surface-low: transparent;
+  --crepe-color-line: transparent;
+  --crepe-color-border: transparent;
+
+  z-index: 50;
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup, 12px);
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 15%));
+  contain: layout style;
+  will-change: transform;
+  pointer-events: auto;
+  padding: 3px;
+  gap: 1px;
+  align-items: center;
+}
+
+/* Formatting & action icon buttons */
+.crepe-editor-wrapper .milkdown-toolbar button.toolbar-item,
+.crepe-editor-wrapper .milkdown-toolbar .toolbar-item {
+  appearance: none;
+  box-sizing: border-box;
+  font: inherit;
+  color: hsl(var(--foreground) / 72%);
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  margin: 0;
+  padding: 5px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+/* Reset group decoration only; buttons retain native semantics & focus rings */
+.crepe-editor-wrapper .milkdown-toolbar .group,
+.crepe-editor-wrapper .milkdown-toolbar .menu-group,
+.crepe-editor-wrapper .milkdown-toolbar .button-group {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.crepe-editor-wrapper .milkdown-toolbar button:focus-visible,
+.crepe-editor-wrapper .milkdown-toolbar .toolbar-item:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.crepe-editor-wrapper .milkdown-toolbar .toolbar-item svg {
+  color: hsl(var(--foreground) / 68%);
+  fill: currentcolor;
+  width: 16px;
+  height: 16px;
+  display: block;
+  flex-shrink: 0;
+}
+
+.crepe-editor-wrapper .milkdown-toolbar .toolbar-item svg[fill='none'] {
+  fill: none;
+  stroke: currentcolor;
+}
+
+.crepe-editor-wrapper .milkdown-toolbar .toolbar-item:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.crepe-editor-wrapper .milkdown-toolbar .toolbar-item:hover svg {
+  color: hsl(var(--foreground));
+}
+
+.crepe-editor-wrapper .milkdown-toolbar .toolbar-item.active {
+  background: hsl(var(--primary) / 10%);
+  color: hsl(var(--primary));
+}
+
+.crepe-editor-wrapper .milkdown-toolbar .toolbar-item.active svg {
+  color: hsl(var(--primary));
+}
+
+.crepe-editor-wrapper .milkdown-toolbar .divider {
+  display: block;
+  background: hsl(var(--border));
+  margin: 0 4px;
+  width: 1px;
+  height: 18px;
+  align-self: center;
+  flex: 0 0 auto;
+}
+
+/* Labelled & host-actions learning buttons (Highlight / Cloze / Ask AI / Add to Chat) */
+.crepe-editor-wrapper .milkdown-toolbar .toolbar-item:has(.crepe-toolbar-labelled) {
+  width: auto;
+  max-width: 168px;
+  padding: 0 8px;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.crepe-editor-wrapper .milkdown-toolbar .crepe-toolbar-labelled {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* stylelint-disable selector-class-pattern */
+.crepe-editor-wrapper .milkdown-toolbar .crepe-toolbar-labelled__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.crepe-editor-wrapper .milkdown-toolbar .crepe-toolbar-labelled__icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.crepe-editor-wrapper .milkdown-toolbar .crepe-toolbar-labelled__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: hsl(var(--foreground) / 86%);
+  letter-spacing: 0.01em;
+}
+
+:where(.crepe-editor-wrapper) .milkdown-toolbar .toolbar-item:hover .crepe-toolbar-labelled__text {
+  color: hsl(var(--foreground));
+}
+
+:where(.crepe-editor-wrapper) .milkdown-toolbar .toolbar-item.active .crepe-toolbar-labelled__text {
+  color: hsl(var(--primary));
+}
+/* stylelint-enable selector-class-pattern */
+
+.crepe-editor-wrapper .milkdown-toolbar .host-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 2px;
+}
+
+/* Subtle accent polish on learning/AI host action buttons */
+:where(.crepe-editor-wrapper) .milkdown-toolbar .toolbar-item[data-toolbar-item='ask-ai']:hover,
+:where(.crepe-editor-wrapper) .milkdown-toolbar .toolbar-item[data-toolbar-item='add-to-chat']:hover {
+  background: hsl(var(--primary) / 10%);
+  color: hsl(var(--primary));
+}
+
+:where(.crepe-editor-wrapper) .milkdown-toolbar .toolbar-item[data-toolbar-item='ask-ai']:hover svg,
+:where(.crepe-editor-wrapper) .milkdown-toolbar .toolbar-item[data-toolbar-item='add-to-chat']:hover svg {
+  color: hsl(var(--primary));
+}
+
+:where(.crepe-editor-wrapper) .milkdown-toolbar .toolbar-item[data-toolbar-item='highlight']:hover,
+:where(.crepe-editor-wrapper) .milkdown-toolbar .toolbar-item[data-toolbar-item='cloze']:hover {
+  background: hsl(var(--warning) / 14%);
+  color: hsl(var(--foreground));
+}
+
+/* Generic toolbar fallback (avoids broad [class*="toolbar"] attribute key) */
+.crepe-editor-wrapper [data-milkdown-toolbar],
+.crepe-editor-wrapper .toolbar:not(.milkdown-toolbar, .notes-editor-toolbar) {
+  z-index: 50;
+  background: hsl(var(--popover));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup, 12px);
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 15%));
+  padding: 0.25rem;
+  display: flex;
+  gap: 0.125rem;
+}
+
+.crepe-editor-wrapper [data-milkdown-toolbar] button,
+.crepe-editor-wrapper .toolbar:not(.notes-editor-toolbar) button {
+  background: transparent;
+  color: hsl(var(--foreground) / 70%);
+  border: none;
+  border-radius: var(--notes-popup-item-radius, 4px);
+  padding: 0.375rem;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.crepe-editor-wrapper [data-milkdown-toolbar] button:hover,
+.crepe-editor-wrapper .toolbar:not(.notes-editor-toolbar) button:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.crepe-editor-wrapper [data-milkdown-toolbar] button[data-active='true'],
+.crepe-editor-wrapper [data-milkdown-toolbar] button.active {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.crepe-editor-wrapper [data-milkdown-toolbar] svg {
+  color: inherit;
+  fill: currentcolor;
+}
+
+.crepe-editor-wrapper [data-milkdown-toolbar] .divider,
+.crepe-editor-wrapper [data-milkdown-toolbar] hr {
+  background: hsl(var(--border));
+  width: 1px;
+  height: 1.25rem;
+  margin: 0 0.25rem;
+}
+
+/* ===== Link Tooltip ===== */
+.crepe-editor-wrapper .link-tooltip,
+.crepe-editor-wrapper [data-milkdown-tooltip],
+.crepe-editor-wrapper .milkdown .milkdown-link-preview,
+.crepe-editor-wrapper .milkdown .milkdown-link-edit {
+  z-index: 50;
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup, 12px);
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 15%));
+  padding: 0.5rem;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-link-preview > .link-preview,
+.crepe-editor-wrapper .milkdown .milkdown-link-edit > .link-edit {
+  background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+  height: auto;
+  padding: 0;
+}
+
+.crepe-editor-wrapper .link-tooltip input,
+.crepe-editor-wrapper [data-milkdown-tooltip] input,
+.crepe-editor-wrapper .milkdown .milkdown-link-edit input {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-popup-item-radius, 4px);
+  padding: 0.25rem 0.5rem;
+}
+
+/* ===== Notes Top Chrome & Header Toolbar ===== */
+.notes-editor-header-section {
+  min-height: 36px;
+  border-bottom: 1px solid transparent;
+  background: hsl(var(--background) / 96%);
+  transition: border-color 150ms ease;
+}
+
+.notes-crepe-shell[data-scrolled] .notes-editor-header-section {
+  border-bottom-color: hsl(var(--border) / 80%);
+}
+
+.notes-crepe-shell[data-scrolled] .notes-editor-header-section[data-chrome-portaled] {
+  border-bottom-color: transparent;
+}
+
+.notes-editor-chrome-row {
+  min-height: 35px;
+  container: notes-chrome / inline-size;
+}
+
+.notes-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.notes-editor-toolbar-inline {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+@container notes-chrome (width <= 640px) {
+  .notes-editor-toolbar-inline {
+    display: none;
+  }
+}
+
+.notes-editor-toolbar-divider {
+  width: 1px;
+  height: 1rem;
+  margin: 0 0.25rem;
+  flex: 0 0 auto;
+  background: hsl(var(--border));
+}
+
+.notes-editor-toolbar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: none;
+  border-radius: var(--notes-popup-item-radius, 4px);
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-editor-toolbar button:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.notes-editor-toolbar button:focus-visible,
+.notes-toolbar-overflow-item:focus-visible,
+.crepe-editor-wrapper button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+/* Keep focus ring inside horizontally clipped inline toolbar strip */
+.notes-editor-toolbar .notes-editor-toolbar-inline button:focus-visible {
+  outline-offset: -2px;
+}
+
+.notes-editor-toolbar button.active,
+.notes-editor-toolbar button[data-active='true'] {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.notes-editor-toolbar button[aria-pressed='true'],
+.notes-toolbar-overflow-item[aria-checked='true'] {
+  color: hsl(var(--primary));
+  background: var(--interactive-selected);
+}
+
+.notes-editor-toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.notes-toolbar-overflow {
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup, 12px);
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 15%));
+}
+
+.notes-toolbar-overflow-item {
+  display: flex;
+  width: 100%;
+  height: 1.875rem;
+  align-items: center;
+  gap: 0.5rem;
+  border: 0;
+  border-radius: var(--notes-popup-item-radius, 4px);
+  padding: 0 0.5rem;
+  background: transparent;
+  color: inherit;
+  font-size: 0.75rem;
+  text-align: left;
+  transition: background-color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-toolbar-overflow-item:hover {
+  background: hsl(var(--accent));
+}
+
+.notes-toolbar-overflow-item kbd {
+  margin-left: auto;
+  color: hsl(var(--muted-foreground) / 72%);
+  font-family: inherit;
+  font-size: 10px;
+}
+
+.notes-document-meta {
+  transition: opacity var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-document-meta-saved {
+  opacity: 0.5;
+}
+
+.notes-document-header:hover .notes-document-meta-saved,
+.notes-document-header:focus-within .notes-document-meta-saved {
+  opacity: 1;
+}
+
+.notes-save-status-dot {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentcolor;
+  opacity: 0.55;
+}
+
+.notes-save-status-dot[data-status='saving'] {
+  animation: notes-save-pulse 1.2s ease-in-out infinite;
+}
+
+.notes-save-status-dot[data-status='failed'],
+.notes-save-status-dot[data-status='conflict'] {
+  opacity: 1;
+}
+
+.notes-properties-overlay {
+  border-radius: var(--notes-radius-popup, 12px);
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 15%));
+}
+
+@keyframes notes-save-pulse {
+  50% {
+    opacity: 0.2;
+  }
+}
+
+.mask-linear-fade {
+  mask-image: linear-gradient(to right, black calc(100% - 24px), transparent);
+}
+
+/* ===== Block Handle (lives in .notes-column left gutter) ===== */
+.crepe-editor-wrapper .milkdown .milkdown-block-handle {
+  --crepe-color-solid: hsl(var(--foreground));
+  --crepe-color-icon: hsl(var(--foreground));
+  --icon-color: hsl(var(--foreground));
+
+  color: hsl(var(--foreground));
+  transition:
+    opacity var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    color var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: grab;
+  user-select: none;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+/* Keep layout box measurable for BlockProvider positioning before reveal */
+.crepe-editor-wrapper .milkdown .milkdown-block-handle:not([data-show='true']) {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-block-handle:active {
+  cursor: grabbing;
+}
+
+.crepe-editor-wrapper .milkdown-block-handle .operation-item {
+  border-radius: var(--notes-radius-row, 6px);
+  width: 26px;
+  height: 26px;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: transparent;
+  color: hsl(var(--foreground) / 70%);
+  transition:
+    background-color var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    color var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.crepe-editor-wrapper .milkdown-block-handle .operation-item:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+/* Drag handle button needs touch-action: none for pointer capture */
+.crepe-editor-wrapper .milkdown-block-handle .operation-item:nth-child(2) {
+  touch-action: none;
+  cursor: grab;
+}
+
+:where(.crepe-editor-wrapper) .milkdown-block-handle .operation-item:nth-child(2):active {
+  cursor: grabbing;
+}
+
+.crepe-editor-wrapper .milkdown-block-handle .operation-item svg {
+  width: 18px;
+  height: 18px;
+  fill: hsl(var(--foreground) / 70%);
+  color: hsl(var(--foreground) / 70%);
+  stroke: hsl(var(--foreground) / 70%);
+  opacity: 1;
+  visibility: visible;
+}
+
+.crepe-editor-wrapper .milkdown-block-handle .operation-item svg :is(path, circle, line, rect) {
+  fill: hsl(var(--foreground) / 75%);
+  stroke: hsl(var(--foreground) / 75%);
+}
+
+.dark .crepe-editor-wrapper .milkdown-block-handle .operation-item svg,
+.dark .crepe-editor-wrapper .milkdown-block-handle .operation-item svg * {
+  fill: hsl(var(--foreground));
+  color: hsl(var(--foreground));
+  stroke: hsl(var(--foreground));
+}
+
+.crepe-editor-wrapper .milkdown-block-handle .operation-item:hover {
+  background: var(--interactive-hover, hsl(var(--accent)));
+}
+
+.crepe-editor-wrapper .milkdown-block-handle .operation-item:hover svg,
+.crepe-editor-wrapper .milkdown-block-handle .operation-item:hover svg * {
+  fill: hsl(var(--foreground));
+  color: hsl(var(--foreground));
+  stroke: hsl(var(--foreground));
+}
+
+.crepe-editor-wrapper .milkdown-block-handle .operation-item.active {
+  background: hsl(var(--primary));
+}
+
+.crepe-editor-wrapper .milkdown-block-handle .operation-item.active svg,
+.crepe-editor-wrapper .milkdown-block-handle .operation-item.active svg * {
+  fill: hsl(var(--primary-foreground));
+  color: hsl(var(--primary-foreground));
+  stroke: hsl(var(--primary-foreground));
+}
+
+/* ===== Block Context Menu (.crepe-block-menu) ===== */
+.crepe-block-menu {
+  position: fixed;
+  z-index: var(--z-popover, 1200);
+  width: 248px;
+  max-height: min(380px, calc(100vh - 16px));
+  max-height: min(380px, calc(100dvh - 16px));
+  overflow-y: auto;
+  padding: 5px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup, 12px);
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: var(--notes-popover-shadow, 0 8px 24px hsl(var(--shadow-base) / 14%));
+  animation: crepe-fade-in var(--notes-popup-enter-duration, 150ms) var(--notes-popup-enter-easing, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+/* stylelint-disable selector-class-pattern */
+.crepe-block-menu__label {
+  padding: 5px 8px 3px;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.crepe-block-menu button {
+  display: flex;
+  width: 100%;
+  min-height: 30px;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  text-align: left;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.crepe-block-menu button:hover,
+.crepe-block-menu button:focus-visible,
+.crepe-block-menu button[data-active='true'] {
+  outline: none;
+  background: hsl(var(--foreground) / 6%);
+}
+
+.crepe-block-menu button[data-destructive='true'] {
+  color: hsl(var(--destructive));
+}
+
+.crepe-block-menu__icon {
+  flex-shrink: 0;
+  color: hsl(var(--foreground) / 60%);
+}
+
+.crepe-block-menu button[data-destructive='true'] .crepe-block-menu__icon {
+  color: currentcolor;
+}
+
+.crepe-block-menu__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crepe-block-menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.crepe-block-menu__separator {
+  height: 1px;
+  margin: 4px;
+  background: hsl(var(--border));
+}
+/* stylelint-enable selector-class-pattern */
+
+/* ===== Drag State ===== */
+/* stylelint-disable selector-class-pattern */
+.crepe-editor-wrapper[data-dragging='true'],
+.crepe-editor-wrapper[data-dragging='true'] .milkdown,
+.crepe-editor-wrapper .milkdown[data-dragging='true'],
+.crepe-editor-wrapper .milkdown[data-dragging='true'] .ProseMirror {
+  cursor: grabbing;
+}
+
+.crepe-editor-wrapper[data-dragging='true'] .ProseMirror {
+  cursor: grabbing;
+  user-select: none;
+}
+
+/* Hide floating overlays during block drag */
+.crepe-editor-wrapper[data-dragging='true'] .milkdown-block-handle,
+.crepe-editor-wrapper[data-dragging='true'] .milkdown-toolbar,
+.crepe-editor-wrapper[data-dragging='true'] .milkdown-slash-menu,
+.crepe-editor-wrapper[data-dragging='true'] .milkdown-link-tooltip,
+.crepe-editor-wrapper[data-dragging='true'] .milkdown-table-tooltip {
+  display: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ===== Manual Block Drop Indicator ===== */
+.crepe-drop-indicator {
+  position: absolute;
+  height: 2px;
+  pointer-events: none;
+  z-index: 100;
+  border-radius: 999px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-1px) scaleX(0.97);
+  transform-origin: center;
+  transition:
+    top 90ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    left 90ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    width 90ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity 70ms ease-out,
+    transform 100ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    visibility 0s linear 100ms;
+  will-change: opacity, transform;
+}
+
+.crepe-drop-indicator[data-visible='true'] {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-1px) scaleX(1);
+  transition-delay: 0s;
+}
+
+:root:not(.dark) .crepe-drop-indicator {
+  background: hsl(var(--primary));
+  box-shadow: 0 1px 2px hsl(var(--primary) / 22%);
+}
+
+:root.dark .crepe-drop-indicator {
+  background: hsl(var(--primary));
+  box-shadow: 0 1px 2px hsl(var(--primary) / 28%);
+}
+
+/* ===== ProseMirror Drop Cursor (overrides plugin JS inline style) ===== */
+.ProseMirror-dropcursor {
+  position: absolute;
+  z-index: 100;
+  pointer-events: none;
+  border-radius: 1px;
+  /* stylelint-disable declaration-no-important */
+  height: 2px !important;
+  width: 100% !important;
+  left: 0 !important;
+  right: 0 !important;
+  /* stylelint-enable declaration-no-important */
+}
+
+:root:not(.dark) .ProseMirror-dropcursor {
+  /* stylelint-disable-next-line declaration-no-important */
+  background: hsl(var(--primary)) !important;
+  box-shadow: 0 0 4px hsl(var(--primary) / 50%);
+}
+
+:root.dark .ProseMirror-dropcursor {
+  /* stylelint-disable-next-line declaration-no-important */
+  background: hsl(var(--primary)) !important;
+  box-shadow: 0 0 6px hsl(var(--primary) / 45%);
+}
+
+/* ===== Gap Cursor ===== */
+.crepe-editor-wrapper .ProseMirror-gapcursor {
+  display: none;
+  pointer-events: none;
+  position: absolute;
+}
+
+.crepe-editor-wrapper .ProseMirror-gapcursor::after {
+  content: '';
+  display: block;
+  position: absolute;
+  top: -2px;
+  width: 20px;
+  border-top: 2px solid hsl(var(--primary));
+  animation: prosemirror-cursor-blink 1.1s steps(2, start) infinite;
+}
+
+@keyframes prosemirror-cursor-blink {
+  to {
+    visibility: hidden;
+  }
+}
+
+.crepe-editor-wrapper .ProseMirror-focused .ProseMirror-gapcursor {
+  display: block;
+}
+
+/* ===== Block Selection (Esc block selection plugin) ===== */
+.crepe-editor-wrapper .ProseMirror .ds-block-selected {
+  background: hsl(var(--primary) / 12%);
+  border-radius: 4px;
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 12%);
+}
+
+.crepe-editor-wrapper .ProseMirror.ds-block-selecting {
+  caret-color: transparent;
+}
+
+.crepe-editor-wrapper .milkdown .ProseMirror.ds-block-selecting ::selection {
+  background: transparent;
+}
+
+/* Text-format bubble toolbar does not apply during block-level selection */
+:where(.crepe-editor-wrapper) .milkdown:has(.ProseMirror[data-block-selected]) .milkdown-toolbar {
+  display: none;
+}
+/* stylelint-enable selector-class-pattern */

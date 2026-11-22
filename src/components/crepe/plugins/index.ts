@@ -39,8 +39,10 @@ import { typedPlaceholderPlugin } from './typedPlaceholder';
 import { listItemHasCheckedPlugin } from './listItemHasChecked';
 import { columnsPlugin } from './columns';
 import { inlineCardsPlugin } from './inlineCards';
+import { highlightPlugin } from './highlight';
 import { canonicalDocumentPlugin } from '../canonicalDocument';
 import { crepeExecuteCommand, crepeCommandBindingsPlugin } from '../commandRegistry';
+import { installMilkdownCtxCompat } from '../milkdownCtxCompat';
 import type { CrepePluginsOptions } from './options';
 
 // Prism 核心必须先导入，组件依赖全局 Prism 对象
@@ -135,6 +137,10 @@ export const officialEditorExtensionEntries: readonly SlotEntry<EditorExtensionC
   officialEntry('editor:inline-cards', 220, ({ options }) => (
     options.inlineCards ? inlineCardsPlugin(options.inlineCards) : null
   )),
+  // 荧光笔高亮（==text==，Live Preview 折叠定界符 + Mod-Shift-H；默认关闭，笔记编辑器按需开启）
+  officialEntry('editor:highlight', 230, ({ options }) => (
+    options.highlight ? highlightPlugin() : null
+  )),
 ];
 
 for (const entry of officialEditorExtensionEntries) editorContributions.announce({ slot: 'editor.extensions', entry });
@@ -153,9 +159,11 @@ export const applyCrepePlugins = (
   purpose: EditorPurpose = 'editor',
 ): void => {
   // RUST-FIX(RF-W18-diff-extension-purpose): omitted purposes means ['editor'].
-  for (const group of resolveEditorExtensionGroups(
+  const groups = resolveEditorExtensionGroups(
     editorEntriesForPurpose(entries, purpose), { options, purpose }, onError,
-  )) crepe.editor.use(group);
+  );
+  installMilkdownCtxCompat(crepe.editor?.ctx);
+  for (const group of groups) crepe.editor.use(group);
 };
 
 /**

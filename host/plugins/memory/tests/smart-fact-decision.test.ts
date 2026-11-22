@@ -85,8 +85,9 @@ describe('R5-M1 fact write through production commands', () => {
     const low = await smart(current);
     expect(low).toMatchObject({ noteId: original.noteId, event: 'NONE', downgraded: true });
     expect(service(current).read(original.noteId)!.content).toBe('我喜欢图解');
-    expect(current.db.pluck<number>("SELECT COUNT(*) FROM memory_audit_log WHERE operation='write_smart'"))
-      .toBe(0);
+    expect(current.db.all<{ event: string; extra_json: string | null }>(
+      "SELECT event, extra_json FROM memory_audit_log WHERE operation='write_smart'",
+    )).toEqual([{ event: 'NONE', extra_json: '{"downgraded":true}' }]);
     confidence = 0.9;
     target = 'note_outside_candidates';
     const foreign = await smart(current);

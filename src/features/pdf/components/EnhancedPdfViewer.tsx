@@ -2788,9 +2788,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
   // 文档加载失败
   const handleDocumentLoadError = useCallback((error: Error) => {
-    console.error('PDF load error:', error);
     setIsLoading(false);
     const classified = classifyPdfLoadError(error);
+    if (classified.kind === 'invalid' || classified.kind === 'password') {
+      console.warn('PDF load error:', error);
+    } else {
+      console.error('PDF load error:', error);
+    }
     const diagnostic = getErrorMessage(error);
     switch (classified.kind) {
       case 'password':

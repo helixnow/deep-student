@@ -143,8 +143,21 @@ export async function startCommunityUiPlugins(
     log: console,
   });
   let stopped = false;
-  /** Set by a v2 manifest with `safeMode: true`: community UI is never loaded in a safe-mode session. */
-  let safeMode = false;
+  /** Set by a v2 manifest with `safeMode: true` (or Web `?safeMode=1`): community UI is never loaded in a safe-mode session. */
+  const urlSafeMode = (() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const v = p.get('safeMode') ?? p.get('safe_mode');
+      return v === '1' || v === 'true';
+    } catch {
+      return false;
+    }
+  })();
+  let safeMode = urlSafeMode;
+  if (urlSafeMode) {
+    kernel.hostStatus.update({ plugins: [], degraded: [], safeMode: true });
+  }
   const unlisteners: (() => void)[] = [];
   const sync = (manifest: UiManifestEntry[]) => {
     if (stopped) return;
@@ -182,7 +195,7 @@ export async function startCommunityUiPlugins(
   const applyHostManifest = (manifest: UiHostManifest) => {
     if (stopped) return;
     // RUST-FIX(RF-W17-safe-mode-community-ui): safe-mode 会话只保留官方 UI，社区条目不装、已装的卸载
-    safeMode = manifest.safeMode === true;
+    safeMode = manifest.safeMode === true || urlSafeMode;
     kernel.hostStatus.update({ plugins: manifest.plugins, degraded: manifest.degraded, safeMode });
     recordPluginAgentTools(manifest.plugins.filter(plugin => plugin.origin === 'community'));
     // In safe mode this is an empty list, so an already loaded community UI is unloaded as well.

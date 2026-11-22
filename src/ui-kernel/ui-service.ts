@@ -559,6 +559,7 @@ export class UiService extends Service {
         scope?.assertActive('dnd.subscribeAutoExcerpt');
         return this._revocable('ui.dnd.autoExcerpt', () => dnd.subscribeAutoExcerpt(listener));
       },
+      hasAutoExcerptListeners: (): boolean => dnd.hasAutoExcerptListeners(),
     };
   }
 

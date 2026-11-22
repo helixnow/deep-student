@@ -31,6 +31,10 @@ import {
   useMenuBarAutohideStore,
 } from '../menuBarAutohideStore';
 import { closeAppsPanel, isAppsPanelOpen } from '../appsPanelStore';
+import {
+  GLASS_CLARITY_STORAGE_KEY,
+  resetLiquidGlassAppearanceForTests,
+} from '../../core/liquidGlassAppearanceStore';
 
 const { invokeMock, startDraggingMock, toggleMaximizeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(async () => [] as unknown),
@@ -108,6 +112,7 @@ beforeEach(async () => {
   useWorkbenchOverlay.setState({ exposeOpen: false });
   resetWindowStoreForTests();
   resetMenuBarAutohideForTests();
+  resetLiquidGlassAppearanceForTests();
 });
 
 afterEach(() => {
@@ -125,6 +130,9 @@ afterEach(() => {
   useWorkbenchOverlay.setState({ exposeOpen: false });
   resetWindowStoreForTests();
   resetMenuBarAutohideForTests();
+  resetLiquidGlassAppearanceForTests();
+  localStorage.removeItem('dstu-theme-mode');
+  document.documentElement.classList.remove('dark');
 });
 
 describe('formatStatusBarTime', () => {
@@ -839,5 +847,159 @@ describe('StatusBar autohide', () => {
 
     fireEvent.click(screen.getByTestId('wb-menubar-center'));
     expect(bar.hasAttribute('data-hidden')).toBe(false);
+  });
+});
+
+describe('StatusBar 菜单栏横滑切换与键盘 ←/→ 循环', () => {
+  it('未展开菜单时鼠标划过触发器不会自动展开；展开后 0ms 无缝横滑切换全部 5 个菜单', () => {
+    render(<StatusBar />);
+    const brand = screen.getByTestId('wb-menubar-brand');
+    const app = screen.getByTestId('wb-menubar-appmenu');
+    const win = screen.getByTestId('wb-menubar-windowmenu');
+    const center = screen.getByTestId('wb-menubar-center');
+    const clock = screen.getByTestId('wb-menubar-clock');
+
+    // 未展开时划过不打开
+    fireEvent.pointerEnter(app);
+    expect(app).toHaveAttribute('aria-expanded', 'false');
+
+    // 点击展开品牌菜单，再依次横滑相邻触发器 0ms 切换
+    fireEvent.click(brand);
+    expect(brand).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('wb-menubar-menu-backdrop')).toBeInTheDocument();
+
+    fireEvent.pointerEnter(app);
+    expect(brand).toHaveAttribute('aria-expanded', 'false');
+    expect(app).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('wb-menubar-appmenu-panel')).toBeInTheDocument();
+
+    fireEvent.pointerEnter(win);
+    expect(app).toHaveAttribute('aria-expanded', 'false');
+    expect(win).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('wb-menubar-windowmenu-panel')).toBeInTheDocument();
+
+    fireEvent.pointerEnter(center);
+    expect(win).toHaveAttribute('aria-expanded', 'false');
+    expect(center).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('wb-menubar-flyout')).toBeInTheDocument();
+
+    fireEvent.pointerEnter(clock);
+    expect(center).toHaveAttribute('aria-expanded', 'false');
+    expect(clock).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.queryByTestId('wb-menubar-flyout')).toBeNull();
+    expect(screen.getByTestId('wb-menubar-clock-flyout')).toBeInTheDocument();
+  });
+
+  it('展开后支持键盘 ArrowRight / ArrowLeft 循环切换与 Escape 关闭（不拦截通透度滑块左右键）', () => {
+    render(<StatusBar />);
+    const brand = screen.getByTestId('wb-menubar-brand');
+    const app = screen.getByTestId('wb-menubar-appmenu');
+    const win = screen.getByTestId('wb-menubar-windowmenu');
+    const center = screen.getByTestId('wb-menubar-center');
+    const clock = screen.getByTestId('wb-menubar-clock');
+
+    fireEvent.click(brand);
+    expect(brand).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(app).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(win).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(center).toHaveAttribute('aria-expanded', 'true');
+
+    // 焦点在通透度 range 滑块上时，ArrowRight 不切换菜单
+    const slider = screen.getByTestId('wb-cc-clarity-slider');
+    fireEvent.keyDown(slider, { key: 'ArrowRight' });
+    expect(center).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(clock).toHaveAttribute('aria-expanded', 'true');
+
+    // 从时钟继续右移循环回品牌菜单；左移再回时钟
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(brand).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    expect(clock).toHaveAttribute('aria-expanded', 'true');
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(clock).toHaveAttribute('aria-expanded', 'false');
+  });
+});
+
+describe('StatusBar macOS 27 控制中心 2×2 玻璃网格与通透度滑块', () => {
+  it('渲染 2×2 快捷玻璃磁贴：支持自动隐藏程序坞/菜单栏、深浅色外观与壁纸快速切换', async () => {
+    render(<StatusBar />);
+    fireEvent.click(screen.getByTestId('wb-menubar-center'));
+
+    expect(screen.getByTestId('wb-menubar-cc-grid')).toBeInTheDocument();
+    const dockTile = screen.getByTestId('wb-cc-tile-dock-autohide');
+    const menubarTile = screen.getByTestId('wb-cc-tile-menubar-autohide');
+    const themeTile = screen.getByTestId('wb-cc-tile-theme');
+    const wallpaperTile = screen.getByTestId('wb-cc-tile-wallpaper');
+
+    // 1. 自动隐藏程序坞
+    expect(dockTile).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(dockTile);
+    expect(dockTile).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('save_setting', {
+        key: 'desktop.workbenchDockAutohide',
+        value: 'true',
+      }),
+    );
+
+    // 2. 自动隐藏菜单栏
+    expect(menubarTile).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(menubarTile);
+    expect(menubarTile).toHaveAttribute('aria-pressed', 'true');
+    expect(useMenuBarAutohideStore.getState().settingEnabled).toBe(true);
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('save_setting', {
+        key: MENUBAR_AUTOHIDE_SETTING_KEY,
+        value: 'true',
+      }),
+    );
+
+    // 3. 深浅色外观切换
+    const wasDark = document.documentElement.classList.contains('dark');
+    fireEvent.click(themeTile);
+    expect(document.documentElement.classList.contains('dark')).toBe(!wasDark);
+
+    // 4. 桌面壁纸快速切换
+    fireEvent.click(wallpaperTile);
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        'save_setting',
+        expect.objectContaining({
+          key: 'desktop.workbenchWallpaper',
+        }),
+      ),
+    );
+  });
+
+  it('拖动 Liquid Glass 通透度滑块实时更新百分比、持久化并调节 :root 玻璃 CSS 变量', () => {
+    render(<StatusBar />);
+    fireEvent.click(screen.getByTestId('wb-menubar-center'));
+
+    const slider = screen.getByTestId('wb-cc-clarity-slider') as HTMLInputElement;
+    const readout = screen.getByTestId('wb-cc-clarity-value');
+    expect(slider.value).toBe('55');
+    expect(readout.textContent).toBe('55%');
+
+    fireEvent.change(slider, { target: { value: '88' } });
+    expect(slider.value).toBe('88');
+    expect(readout.textContent).toBe('88%');
+    expect(localStorage.getItem(GLASS_CLARITY_STORAGE_KEY)).toBe('88');
+    expect(document.documentElement.style.getPropertyValue('--wb-glass-clarity')).toBe('88');
+    expect(document.documentElement.style.getPropertyValue('--wb-dock-bg')).toContain(
+      'hsl(var(--card) /',
+    );
+    expect(document.documentElement.style.getPropertyValue('--wb-menubar-bg')).toContain(
+      'hsl(var(--card) /',
+    );
   });
 });

@@ -23,6 +23,25 @@
  */
 
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { addTypedEventListener } from '@/events';
+import {
+  getBrowserHistoryTracking,
+  isBrowserHistorySyncEnabled,
+  isHandlingBrowserPopState,
+  notifyPageHistoryStepBack,
+  notifyPageHistoryStepForward,
+  setBrowserHistoryTracking,
+  setHandlingBrowserPopState,
+  syncBrowserHistoryState,
+} from '@/utils/browserHistoryBridge';
+
+export {
+  isBrowserHistorySyncEnabled,
+  isHandlingBrowserPopState,
+  notifyPageHistoryStepBack,
+  notifyPageHistoryStepForward,
+  syncBrowserHistoryState,
+};
 
 export type BackHandler = () => boolean;
 
@@ -204,4 +223,101 @@ declare global {
 /** 暴露给 Android native 的同步入口（模块加载即生效） */
 export function installAndroidBackBridge(): void {
   window.__DEEP_STUDENT_HANDLE_BACK__ = handleAndroidBack;
+}
+
+// ==================== Web / PWA History API 协同 ====================
+
+let unifiedBackRunner: (() => boolean) | null = null;
+let unifiedForwardRunner: (() => boolean) | null = null;
+
+/** 注册应用级统一后退执行器（供 useViewLayer 等页面的 onBack 复用，优先返回来源页）。 */
+export function registerUnifiedBackRunner(runner: () => boolean): () => void {
+  unifiedBackRunner = runner;
+  return () => {
+    if (unifiedBackRunner === runner) unifiedBackRunner = null;
+  };
+}
+
+/** 注册应用级统一前进执行器（供浏览器前进按钮 popstate 复用）。 */
+export function registerUnifiedForwardRunner(runner: () => boolean): () => void {
+  unifiedForwardRunner = runner;
+  return () => {
+    if (unifiedForwardRunner === runner) unifiedForwardRunner = null;
+  };
+}
+
+/** 优先执行应用级 unifiedGoBack()；若无历史则返回 false，由调用方兜底回 chat-v2。 */
+export function runUnifiedBack(): boolean {
+  if (!unifiedBackRunner) return false;
+  try {
+    return unifiedBackRunner();
+  } catch (err) {
+    debugLog.error('[AndroidBack] unifiedBackRunner threw:', err);
+    return false;
+  }
+}
+
+/** 执行应用级 unifiedGoForward()。 */
+export function runUnifiedForward(): boolean {
+  if (!unifiedForwardRunner) return false;
+  try {
+    return unifiedForwardRunner();
+  } catch (err) {
+    debugLog.error('[AndroidBack] unifiedForwardRunner threw:', err);
+    return false;
+  }
+}
+
+/**
+ * 为 Web / PWA 环境安装 popstate 监听：
+ * 系统返回键 / 浏览器后退优先走 handleAndroidBack()（先关浮层，再退回上一学习视图），
+ * 防止一次返回手势直接退出 PWA。返回清理函数。
+ */
+export function installBrowserBackBridge(): () => void {
+  if (!isBrowserHistorySyncEnabled()) {
+    return () => undefined;
+  }
+
+  return addTypedEventListener<unknown>('popstate', (_detail, rawEvent) => {
+    const event = rawEvent as unknown as PopStateEvent;
+    const rawState = event.state as { __dsNav?: unknown; view?: unknown; index?: unknown } | null;
+    const isDsState = Boolean(rawState && rawState.__dsNav === true);
+    const targetIndex = isDsState && typeof rawState?.index === 'number' ? rawState.index : null;
+    const before = getBrowserHistoryTracking();
+
+    if (targetIndex !== null && targetIndex > before.index) {
+      setHandlingBrowserPopState(true);
+      try {
+        if (runUnifiedForward()) {
+          setBrowserHistoryTracking(
+            typeof rawState?.view === 'string' ? rawState.view : before.view,
+            targetIndex,
+          );
+        }
+      } finally {
+        setHandlingBrowserPopState(false);
+      }
+      return;
+    }
+
+    const stepBefore = before.stepBackCount;
+    setHandlingBrowserPopState(true);
+    let consumed = false;
+    try {
+      consumed = handleAndroidBack();
+    } finally {
+      setHandlingBrowserPopState(false);
+    }
+    if (!consumed) return;
+
+    const after = getBrowserHistoryTracking();
+    const didStepPageBack = after.stepBackCount > stepBefore;
+    if (!didStepPageBack) {
+      // 由浮层或视图内子历史消费（未弹掉应用级页面栈）：补回当前栈项，确保下次返回继续生效。
+      syncBrowserHistoryState('push', after.view, after.index);
+    } else if (!isDsState && after.index > 0) {
+      // 浏览器已退到站外基线，但应用内仍有剩余可退视图：补一条守卫项避免下次直接退出 PWA。
+      syncBrowserHistoryState('push', after.view, after.index);
+    }
+  });
 }

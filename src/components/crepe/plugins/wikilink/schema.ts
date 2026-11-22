@@ -5,7 +5,7 @@
  * 利用 remark-stringify 的 html handler 原样输出，避免 text 路径下的 `\[` 转义（Milkdown#1278）。
  */
 
-import { $nodeSchema } from '@milkdown/utils';
+import { $nodeSchema } from '@milkdown/kit/utils';
 
 import { formatWikiLink } from './format';
 

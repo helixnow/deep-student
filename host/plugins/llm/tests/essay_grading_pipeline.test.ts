@@ -203,10 +203,11 @@ describe('pipeline.rs', () => {
     expect(injected.toLowerCase().includes('ignore all previous')).toBe(false);
     // 正常用法不受影响
     const normal = sanitizeUserInput(
-      'Some people disregard the environment. We should not ignore all distractions.',
+      'Some people disregard the environment. We should not ignore all distractions. Do not ignore the previous failure.',
       2000,
     );
     expect(normal.includes('[filtered]')).toBe(false);
+    expect(normal).toContain('ignore the previous failure');
   });
 
   // ★ 收敛后的中文过滤：需要"动词+指令对象"同现，正当论述不再被误伤

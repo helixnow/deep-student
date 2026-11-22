@@ -1,4 +1,4 @@
-import { $remark } from '@milkdown/utils'
+import { $remark } from '@milkdown/kit/utils'
 import type { Processor } from 'unified'
 import type { Options, Handle } from 'mdast-util-to-markdown'
 import type { MarkdownNode } from '@milkdown/transformer'

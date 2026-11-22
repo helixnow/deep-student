@@ -38,6 +38,62 @@ interface ClozeToken {
 const CLOZE_TOKEN_RE = /\{\{c\d+::([\s\S]*?)(?:::([\s\S]*?))?\}\}/gi;
 const HTML_TAG_RE = /<\/?[a-z][\s\S]*?>/i;
 
+function countUnescapedSingleDollars(input: string): number {
+  let count = 0;
+  for (let i = 0; i < input.length; i += 1) {
+    if (input[i] === '\\') {
+      i += 1;
+      continue;
+    }
+    if (input[i] === '$') {
+      if (input[i + 1] === '$') {
+        i += 1;
+        continue;
+      }
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function normalizeClozeMathTokens(tokens: ClozeToken[]): ClozeToken[] {
+  let inInlineDollar = false;
+  return tokens.map((token) => {
+    if (token.kind === 'text') {
+      let text = token.text;
+      if (inInlineDollar) {
+        const leadingCloseIdx = text.search(/(?<!\\)\$(?!\$)/);
+        if (leadingCloseIdx >= 0) {
+          const beforeClose = text.slice(0, leadingCloseIdx).trim();
+          const afterClose = text.slice(leadingCloseIdx + 1);
+          text = beforeClose.length > 0 ? `$${beforeClose}$${afterClose}` : afterClose;
+          inInlineDollar = false;
+        }
+      }
+      if (countUnescapedSingleDollars(text) % 2 === 1) {
+        const lastDollar = text.lastIndexOf('$');
+        const prefixBeforeDollar = text.slice(0, lastDollar);
+        const tailAfterDollar = text.slice(lastDollar + 1).trim();
+        text = tailAfterDollar.length > 0 ? `${prefixBeforeDollar}$${tailAfterDollar}$` : prefixBeforeDollar;
+        inInlineDollar = true;
+      }
+      return { ...token, text };
+    }
+    if (inInlineDollar) {
+      const inner = token.text.trim();
+      const alreadyDelimited =
+        (inner.startsWith('$') && inner.endsWith('$'))
+        || (inner.startsWith('\\(') && inner.endsWith('\\)'))
+        || (inner.startsWith('\\[') && inner.endsWith('\\]'));
+      return {
+        ...token,
+        text: alreadyDelimited || inner.length === 0 ? token.text : `$${token.text}$`,
+      };
+    }
+    return token;
+  });
+}
+
 function parsePlainClozeTokens(source: string): ClozeToken[] | null {
   if (!CLOZE_TOKEN_RE.test(source)) return null;
   CLOZE_TOKEN_RE.lastIndex = 0;
@@ -67,7 +123,7 @@ function parsePlainClozeTokens(source: string): ClozeToken[] | null {
       hint: null,
     });
   }
-  return tokens.length > 0 ? tokens : null;
+  return tokens.length > 0 ? normalizeClozeMathTokens(tokens) : null;
 }
 
 export function parseSprintOcclusionData(fields: Record<string, string>): OcclusionSpec | null {
@@ -236,10 +292,11 @@ export const SprintFsrsCardStage: React.FC<SprintFsrsCardStageProps> = ({
           </div>
         ) : plainClozeTokens ? (
           <div className="space-y-4">
-            <p className="whitespace-pre-wrap break-words text-base leading-relaxed text-foreground">
+            <div className="whitespace-pre-wrap break-words text-base leading-relaxed text-foreground">
               {plainClozeTokens.map((token, idx) => {
                 if (token.kind === 'text') {
-                  return <React.Fragment key={idx}>{token.text}</React.Fragment>;
+                  if (!token.text) return null;
+                  return <SprintMathOrPlainText key={idx} text={token.text} inline />;
                 }
                 if (!revealed) {
                   return (
@@ -248,7 +305,11 @@ export const SprintFsrsCardStage: React.FC<SprintFsrsCardStageProps> = ({
                       data-testid="sprint-cloze-masked"
                       className="mx-0.5 inline-flex items-center rounded border border-primary/30 bg-primary/10 px-2 py-0.5 font-mono text-sm text-primary"
                     >
-                      {token.hint ? `[${token.hint}]` : '[ ... ]'}
+                      {token.hint ? (
+                        <SprintMathOrPlainText text={`[${token.hint}]`} inline />
+                      ) : (
+                        '[ ... ]'
+                      )}
                     </span>
                   );
                 }
@@ -258,11 +319,11 @@ export const SprintFsrsCardStage: React.FC<SprintFsrsCardStageProps> = ({
                     data-testid="sprint-cloze-revealed"
                     className="mx-0.5 inline-flex items-center rounded border border-primary/30 bg-primary/[0.12] px-1.5 py-0.5 font-medium text-primary animate-chat-fade-in motion-reduce:animate-none"
                   >
-                    {token.text}
+                    <SprintMathOrPlainText text={token.text} inline />
                   </span>
                 );
               })}
-            </p>
+            </div>
             {revealed && (hasDistinctClozeProse || hasStructuredEvidence) ? (
               <div className="space-y-3 border-t border-border/35 pt-3 text-sm text-muted-foreground animate-chat-rise-in motion-reduce:animate-none">
                 {hasDistinctClozeProse

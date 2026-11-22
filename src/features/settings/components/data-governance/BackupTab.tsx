@@ -6,6 +6,7 @@
  */
 
 import { readShellPlatform } from '@/ui-kernel/services/shell-platform';
+import { isWebUiShell } from '@/utils/platform';
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -197,7 +198,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   lastAutoVerifyResult,
 }) => {
   const { t } = useTranslation(['data', 'common', 'settings', 'cloudStorage']);
-  const isMobile = readShellPlatform()?.kind === 'mobile';
+  // 后台调度只由桌面主进程提供；手机 WebUI 连接桌面宿主，不应误隐藏自动备份配置。
+  const isNativeMobile = !isWebUiShell() && readShellPlatform()?.kind === 'mobile';
   const [selectedBackup, setSelectedBackup] = useState<string | null>(null);
 
   // 备份设置状态
@@ -852,8 +854,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         </div>
       </section>
 
-      {/* 后台调度只由桌面主进程提供。 */}
-      {!isMobile && <section className="min-w-0">
+      {/* 后台调度只由桌面主进程提供（手机 WebUI 连接桌面宿主时仍显示）。 */}
+      {!isNativeMobile && <section className="min-w-0">
         <GroupTitle
           title={t('data:governance.backup_settings')}
           description={t('data:governance.backup_settings_desc')}

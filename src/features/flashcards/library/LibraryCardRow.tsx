@@ -2,11 +2,12 @@
  * 卡片库单行：hover 浮现操作、状态徽标、行内展开详情 + 原地编辑 + 行内删除确认。
  * 所有交互均内联，无任何弹窗。
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowCounterClockwise,
   ArrowSquareOut,
+  BracketsCurly,
   CaretDown,
   Eraser,
   Pause,
@@ -22,7 +23,7 @@ import { Textarea } from '@/components/ui/shad/Textarea';
 import { AnkiCardPreviewPanel } from '@/components/anki/AnkiCardPreviewPanel';
 import { useAnkiTemplateLoader } from '@/hooks/useAnkiTemplateLoader';
 import type { AnkiLibraryCard, AnkiLibraryCardPatch } from '@/types';
-import { hasValidCloze } from '../cloze';
+import { hasValidCloze, insertClozeDeletion, nextClozeIndex } from '../cloze';
 import { CardMathText } from '../cardMathPreview';
 import { dispatchOpenMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
 import { cardMediaSourceTexts, findCardMediaSource } from './cardMediaSource';
@@ -146,6 +147,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
   const [draftTags, setDraftTags] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const editFrontRef = useRef<HTMLTextAreaElement | null>(null);
   // 重置进度的行内二次确认（超时自动解除武装）
   const [resetArmed, setResetArmed] = useState(false);
   // 展开内容按需挂载：收起时延迟卸载，让高度过渡先播完。
@@ -222,6 +224,23 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
   const ratingKey = typeof card.latestReview?.rating === 'number'
     ? RATING_LABEL_KEY[card.latestReview.rating]
     : undefined;
+
+  const handleInsertCloze = useCallback(() => {
+    const textarea = editFrontRef.current;
+    const { nextValue, nextSelectionStart, nextSelectionEnd } = insertClozeDeletion(
+      draftFront,
+      textarea?.selectionStart,
+      textarea?.selectionEnd,
+      translate('library.create.clozePlaceholder', { defaultValue: '挖空内容' }),
+    );
+    setDraftFront(nextValue);
+    requestAnimationFrame(() => {
+      const el = editFrontRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+    });
+  }, [draftFront, translate]);
 
   const beginEdit = useCallback(() => {
     setDraftFront(editValues.front);
@@ -463,16 +482,34 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
             {editing ? (
               <div className="fc-lib-edit">
                 <div>
-                  <label className="fc-lib-edit-label" htmlFor={`fc-lib-front-${card.id}`}>
-                    {translate('library.editFront')}
-                  </label>
+                  <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                    <label className="fc-lib-edit-label !mb-0" htmlFor={`fc-lib-front-${card.id}`}>
+                      {translate('library.editFront')}
+                    </label>
+                    <DsButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={saving}
+                      onClick={handleInsertCloze}
+                      className="min-h-[32px] gap-1 text-xs [@media(pointer:coarse)]:!min-h-11"
+                    >
+                      <BracketsCurly size={13} aria-hidden="true" />
+                      <span>
+                        {translate('library.create.insertCloze', { defaultValue: '插入挖空' })}
+                        {' '}
+                        <code className="font-mono">{`{{c${nextClozeIndex(draftFront)}::...}}`}</code>
+                      </span>
+                    </DsButton>
+                  </div>
                   <Textarea
+                    ref={editFrontRef}
                     id={`fc-lib-front-${card.id}`}
                     value={draftFront}
                     rows={3}
                     disabled={saving}
                     onChange={(event) => setDraftFront(event.target.value)}
-                    className="min-h-[56px] text-sm"
+                    className="min-h-[56px] text-base sm:text-sm"
                   />
                 </div>
                 <div>
@@ -485,7 +522,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                     rows={3}
                     disabled={saving}
                     onChange={(event) => setDraftBack(event.target.value)}
-                    className="min-h-[56px] text-sm"
+                    className="min-h-[56px] text-base sm:text-sm"
                   />
                 </div>
                 <div>
@@ -497,7 +534,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                     value={draftTags}
                     disabled={saving}
                     onChange={(event) => setDraftTags(event.target.value)}
-                    className="h-8 text-sm [@media(pointer:coarse)]:!h-11"
+                    className="h-9 text-base sm:h-8 sm:text-sm [@media(pointer:coarse)]:!h-11"
                   />
                 </div>
                 {editError ? (

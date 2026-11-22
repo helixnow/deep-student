@@ -1,0 +1,415 @@
+/* ============================================
+   浮层分区排布：FormatDock / SearchPopover / Breadcrumb / 设置面板
+   ============================================ */
+
+/* 顶部浮层水平 + 垂直防碰撞分区（全部相对 `.mm-content-stage` 内容区定位，天然位于文档流横幅下方）：
+   - Breadcrumb：画布左上 top: 12px; left: 12px (z-index: 20)
+   - AssociationHint：画布居中 top: 12px (z-index: 25)
+   - FormatDock：内容区居中 top: 12px (z-index: 44)，搜索/关联提示/窄屏面包屑存在时自动下移避让
+   - SearchPopover：内容区右上 top: 12px; right: 12px (z-index: 46)
+   - SettingsPopover：Portal fixed 锚定在工具栏按钮下方 (z-index: 1000) */
+
+.mm-format-dock {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 24px);
+  z-index: 44;
+  background: color-mix(in srgb, var(--mm-bg-elevated) 88%, transparent);
+  backdrop-filter: var(--wb-glass-blur, none);
+  border: 1px solid color-mix(in srgb, var(--mm-border) 82%, transparent);
+  border-radius: 10px;
+  box-shadow: var(--mm-shadow-dock);
+  transition: top var(--mm-dur-structure, 150ms) ease;
+}
+
+/* 窄容器下同时存在画布面包屑时，格式条自动下移避让左上角面包屑 */
+@container mm-root (max-width: 960px) {
+  .mm-content-stage:has(.mm-canvas-breadcrumb) > .mm-format-dock {
+    top: 48px;
+  }
+}
+
+/* 内容区同时存在搜索条或关联线提示时，格式条自动下移至 56px 避让，零重叠 */
+.mm-content-stage:has(.mm-search-popover) > .mm-format-dock,
+.mm-content-stage:has(.mm-association-hint) > .mm-format-dock {
+  top: 56px;
+}
+
+/* --- 局部搜索条（内容区右上分区，z-index 高于 FormatDock） --- */
+.mm-search-popover {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 46;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: min(520px, calc(100% - 24px));
+  min-height: 34px;
+  padding: 3px 4px 3px 8px;
+  color: var(--mm-text);
+  background: color-mix(in srgb, var(--mm-bg-elevated) 90%, transparent);
+  backdrop-filter: var(--wb-glass-blur, none);
+  border: 1px solid color-mix(in srgb, var(--mm-border) 82%, transparent);
+  border-radius: 10px;
+  box-shadow: var(--mm-popover-shadow);
+}
+
+.mm-search-input {
+  min-width: 80px;
+  height: 26px;
+  flex: 1;
+  padding: 0 4px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--mm-text);
+  font-size: 13px;
+  box-shadow: none;
+}
+
+.mm-search-input:focus-visible {
+  box-shadow: none;
+}
+
+.mm-search-mode,
+.mm-search-results,
+.mm-search-navigation {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.mm-search-mode {
+  height: 24px;
+  overflow: hidden;
+  border-radius: var(--mm-radius-control, 5px);
+  background: var(--mm-bg-hover);
+  font-size: 11px;
+}
+
+.mm-search-mode-button {
+  height: 24px;
+  padding: 0 7px;
+  border-radius: 0;
+  font-size: 11px;
+}
+
+.mm-search-divider {
+  width: 1px;
+  height: 14px;
+  background: var(--mm-border);
+}
+
+.mm-search-results {
+  gap: 4px;
+  color: var(--mm-text-muted);
+  font-size: 11px;
+}
+
+.mm-search-navigation {
+  gap: 1px;
+}
+
+.mm-search-nav-button,
+.mm-search-close {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  justify-content: center;
+  border-radius: var(--mm-radius-control, 5px);
+  color: var(--mm-text-secondary);
+}
+
+.mm-search-nav-button:hover,
+.mm-search-close:hover {
+  background: var(--mm-bg-hover);
+}
+
+/* --- 画布面包屑（左上分区，工具栏已入文档流故紧贴画布 top: 12px） --- */
+.mm-canvas-breadcrumb {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: min(420px, 60vw);
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--mm-border) 75%, transparent);
+  border-radius: 8px;
+  color: var(--mm-text-secondary);
+  background: color-mix(in srgb, var(--mm-bg-elevated) 86%, transparent);
+  backdrop-filter: var(--wb-glass-blur, none);
+  box-shadow: var(--mm-shadow-sm);
+  font-size: 12px;
+  user-select: none;
+}
+
+/* FormatBar Portal 浮层继承 `.mindmap-container` 令牌并保持 elevated 背景表面 */
+.mindmap-container.mm-format-popover {
+  background: var(--mm-bg-elevated);
+  color: var(--mm-text);
+  border-color: var(--mm-border);
+  box-shadow: var(--mm-popover-shadow);
+}
+
+/* --- 结构与样式设置面板 --- */
+.mm-settings-popover {
+  width: 296px;
+  max-height: min(680px, calc(100vh - 64px));
+  max-height: min(680px, calc(100dvh - 64px));
+  border: 1px solid var(--mm-border);
+  border-radius: var(--mm-radius-popup, 8px);
+  color: var(--mm-text);
+  background: var(--mm-bg-elevated);
+  box-shadow: var(--mm-popover-shadow);
+}
+
+.mm-settings-popover-viewport {
+  max-height: inherit;
+}
+
+.mm-panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  padding: 0 4px 5px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.mm-panel-current {
+  color: var(--mm-text-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.mm-structure-section {
+  margin-bottom: 8px;
+}
+
+.mm-structure-section:last-child {
+  margin-bottom: 0;
+}
+
+.mm-panel-section-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 4px;
+  color: var(--mm-text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.mm-structure-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+}
+
+.mm-structure-preset {
+  position: relative;
+  width: 100%;
+  height: 38px;
+  border: 1px solid transparent;
+  border-radius: var(--mm-radius-control, 5px);
+  color: var(--mm-text-muted);
+  transition:
+    background-color var(--mm-hover-transition, 120ms ease),
+    color var(--mm-hover-transition, 120ms ease);
+}
+
+.mm-structure-preset:hover {
+  color: var(--mm-text);
+  background: var(--mm-bg-hover);
+}
+
+.mm-structure-preset.is-active {
+  color: var(--mm-primary);
+  background: var(--mm-primary-soft);
+}
+
+.mm-structure-check {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  display: flex;
+  color: var(--mm-primary);
+}
+
+.mm-panel-hint {
+  padding: 7px 4px 1px;
+  border-top: 1px solid var(--mm-border);
+  color: var(--mm-text-muted);
+  font-size: 11px;
+  text-align: left;
+}
+
+.mm-style-panel,
+.mm-node-style-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mm-style-heading,
+.mm-style-label {
+  color: var(--mm-text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.mm-style-heading {
+  margin: 0 0 5px;
+  padding: 0 2px;
+}
+
+.mm-theme-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2px;
+}
+
+.mm-theme-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 28px;
+  padding: 0 7px;
+  border-radius: var(--mm-radius-control, 5px);
+  color: var(--mm-text-secondary);
+  font-size: 12px;
+  transition:
+    background-color var(--mm-hover-transition, 120ms ease),
+    color var(--mm-hover-transition, 120ms ease);
+}
+
+.mm-theme-option:hover,
+.mm-theme-option.is-active {
+  color: var(--mm-text);
+  background: var(--mm-bg-hover);
+}
+
+.mm-theme-option.is-active {
+  color: var(--mm-primary);
+}
+
+.mm-panel-separator {
+  height: 1px;
+  background: var(--mm-border);
+}
+
+.mm-font-size-control,
+.mm-style-button-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mm-font-size-control {
+  width: fit-content;
+  height: 26px;
+  padding: 0 4px;
+  border-radius: var(--mm-radius-control, 5px);
+  color: var(--mm-text-muted);
+  background: var(--mm-bg-hover);
+}
+
+.mm-font-size-input {
+  width: 42px;
+  height: 24px;
+  border: 0;
+  outline: 0;
+  color: var(--mm-text);
+  background: transparent;
+  font-size: 12px;
+  text-align: center;
+}
+
+.mm-style-icon-button {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  justify-content: center;
+  border-radius: var(--mm-radius-control, 5px);
+  color: var(--mm-text-muted);
+}
+
+.mm-style-icon-button:hover,
+.mm-style-icon-button.is-active {
+  color: var(--mm-text);
+  background: var(--mm-bg-hover);
+}
+
+.mm-style-icon-button.is-active {
+  color: var(--mm-primary);
+}
+
+.mm-style-color-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.mm-style-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mm-style-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--mm-border);
+  border-radius: 50%;
+  transition:
+    border-color var(--mm-hover-transition, 120ms ease),
+    box-shadow var(--mm-hover-transition, 120ms ease);
+}
+
+/* 透明棋盘格色块：纯 CSS 线性渐变，无 1px 偏移且随当前主题语义色自适应 */
+.mm-style-swatch-transparent {
+  background-color: var(--mm-bg-elevated);
+  background-image:
+    linear-gradient(45deg, var(--mm-border) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--mm-border) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--mm-border) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--mm-border) 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+}
+
+/* 暗色模式下使用更清晰的 --mm-border-strong 增强棋盘格对比度 */
+.dark .mm-style-swatch-transparent,
+:root.dark .mm-style-swatch-transparent {
+  background-image:
+    linear-gradient(45deg, var(--mm-border-strong) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--mm-border-strong) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--mm-border-strong) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--mm-border-strong) 75%);
+}
+
+.mm-style-swatch:hover,
+.mm-style-swatch.is-active {
+  border-color: var(--mm-text-secondary);
+  box-shadow: inset 0 0 0 2px var(--mm-bg-elevated);
+}
+
+.mm-style-empty {
+  padding: 10px 4px;
+  color: var(--mm-text-muted);
+  font-size: 11px;
+  text-align: left;
+}

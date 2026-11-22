@@ -907,7 +907,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -917,7 +917,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -927,7 +927,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -937,7 +937,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -947,7 +947,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -957,7 +957,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -967,7 +967,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -977,7 +977,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -987,7 +987,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -1007,7 +1007,7 @@
     "className": null,
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -1067,7 +1067,7 @@
     "className": null,
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -1087,7 +1087,7 @@
     "className": "language-math",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -1097,7 +1097,7 @@
     "className": "language-math",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -1107,7 +1107,7 @@
     "className": "language-math",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -1147,7 +1147,7 @@
     "className": "language-math",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -1157,7 +1157,7 @@
     "className": "language-math",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -1167,7 +1167,7 @@
     "className": "language-math",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -1177,7 +1177,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -1187,7 +1187,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -1197,7 +1197,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -1237,7 +1237,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -1247,7 +1247,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -1257,7 +1257,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -1267,7 +1267,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -1277,7 +1277,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -1287,7 +1287,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -1327,7 +1327,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -1337,7 +1337,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -1347,7 +1347,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -2887,7 +2887,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -2897,7 +2897,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -2907,7 +2907,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -2917,7 +2917,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -2927,7 +2927,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -2937,7 +2937,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -2947,7 +2947,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -2957,7 +2957,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -2967,7 +2967,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -2987,7 +2987,7 @@
     "className": null,
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -3047,7 +3047,7 @@
     "className": null,
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -3067,7 +3067,7 @@
     "className": "language-math",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -3077,7 +3077,7 @@
     "className": "language-math",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -3087,7 +3087,7 @@
     "className": "language-math",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -3127,7 +3127,7 @@
     "className": "language-math",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -3137,7 +3137,7 @@
     "className": "language-math",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -3147,7 +3147,7 @@
     "className": "language-math",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -3157,7 +3157,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -3167,7 +3167,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -3177,7 +3177,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -3217,7 +3217,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -3227,7 +3227,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -3237,7 +3237,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -3247,7 +3247,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -3257,7 +3257,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -3267,7 +3267,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -3307,7 +3307,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -3317,7 +3317,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -3327,7 +3327,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -4867,7 +4867,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -4877,7 +4877,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -4887,7 +4887,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -4897,7 +4897,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -4907,7 +4907,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -4917,7 +4917,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -4927,7 +4927,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -4937,7 +4937,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -4947,7 +4947,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -4967,7 +4967,7 @@
     "className": null,
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -5027,7 +5027,7 @@
     "className": null,
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -5047,7 +5047,7 @@
     "className": "language-math",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -5057,7 +5057,7 @@
     "className": "language-math",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -5067,7 +5067,7 @@
     "className": "language-math",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -5107,7 +5107,7 @@
     "className": "language-math",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -5117,7 +5117,7 @@
     "className": "language-math",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -5127,7 +5127,7 @@
     "className": "language-math",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -5137,7 +5137,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -5147,7 +5147,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -5157,7 +5157,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -5197,7 +5197,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -5207,7 +5207,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -5217,7 +5217,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -5227,7 +5227,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -5237,7 +5237,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -5247,7 +5247,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -5287,7 +5287,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -5297,7 +5297,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -5307,7 +5307,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -6847,7 +6847,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -6857,7 +6857,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -6867,7 +6867,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -6877,7 +6877,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -6887,7 +6887,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -6897,7 +6897,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -6907,7 +6907,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -6917,7 +6917,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -6927,7 +6927,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -6947,7 +6947,7 @@
     "className": null,
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -7007,7 +7007,7 @@
     "className": null,
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -7027,7 +7027,7 @@
     "className": "language-math",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -7037,7 +7037,7 @@
     "className": "language-math",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -7047,7 +7047,7 @@
     "className": "language-math",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -7087,7 +7087,7 @@
     "className": "language-math",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -7097,7 +7097,7 @@
     "className": "language-math",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -7107,7 +7107,7 @@
     "className": "language-math",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -7117,7 +7117,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -7127,7 +7127,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -7137,7 +7137,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -7177,7 +7177,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -7187,7 +7187,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -7197,7 +7197,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -7207,7 +7207,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -7217,7 +7217,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -7227,7 +7227,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -7267,7 +7267,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": false,
@@ -7277,7 +7277,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": false,
@@ -7287,7 +7287,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": false,
@@ -8827,7 +8827,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -8837,7 +8837,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -8847,7 +8847,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -8857,7 +8857,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -8867,7 +8867,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -8877,7 +8877,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -8887,7 +8887,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -8897,7 +8897,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -8907,7 +8907,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -8927,7 +8927,7 @@
     "className": null,
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -8987,7 +8987,7 @@
     "className": null,
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -9007,7 +9007,7 @@
     "className": "language-math",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -9017,7 +9017,7 @@
     "className": "language-math",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -9027,7 +9027,7 @@
     "className": "language-math",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -9067,7 +9067,7 @@
     "className": "language-math",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -9077,7 +9077,7 @@
     "className": "language-math",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -9087,7 +9087,7 @@
     "className": "language-math",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -9097,7 +9097,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -9107,7 +9107,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -9117,7 +9117,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -9157,7 +9157,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -9167,7 +9167,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -9177,7 +9177,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -9187,7 +9187,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -9197,7 +9197,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -9207,7 +9207,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -9247,7 +9247,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -9257,7 +9257,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -9267,7 +9267,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -10807,7 +10807,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -10817,7 +10817,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -10827,7 +10827,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -10837,7 +10837,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -10847,7 +10847,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -10857,7 +10857,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -10867,7 +10867,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -10877,7 +10877,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -10887,7 +10887,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -10907,7 +10907,7 @@
     "className": null,
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -10967,7 +10967,7 @@
     "className": null,
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -10987,7 +10987,7 @@
     "className": "language-math",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -10997,7 +10997,7 @@
     "className": "language-math",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -11007,7 +11007,7 @@
     "className": "language-math",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -11047,7 +11047,7 @@
     "className": "language-math",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -11057,7 +11057,7 @@
     "className": "language-math",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -11067,7 +11067,7 @@
     "className": "language-math",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -11077,7 +11077,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -11087,7 +11087,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -11097,7 +11097,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -11137,7 +11137,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -11147,7 +11147,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -11157,7 +11157,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -11167,7 +11167,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -11177,7 +11177,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -11187,7 +11187,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -11227,7 +11227,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -11237,7 +11237,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -11247,7 +11247,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -12787,7 +12787,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -12797,7 +12797,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -12807,7 +12807,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -12817,7 +12817,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -12827,7 +12827,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -12837,7 +12837,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -12847,7 +12847,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -12857,7 +12857,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -12867,7 +12867,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -12887,7 +12887,7 @@
     "className": null,
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -12947,7 +12947,7 @@
     "className": null,
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -12967,7 +12967,7 @@
     "className": "language-math",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -12977,7 +12977,7 @@
     "className": "language-math",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -12987,7 +12987,7 @@
     "className": "language-math",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -13027,7 +13027,7 @@
     "className": "language-math",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -13037,7 +13037,7 @@
     "className": "language-math",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -13047,7 +13047,7 @@
     "className": "language-math",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -13057,7 +13057,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -13067,7 +13067,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -13077,7 +13077,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -13117,7 +13117,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -13127,7 +13127,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -13137,7 +13137,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -13147,7 +13147,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -13157,7 +13157,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -13167,7 +13167,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -13207,7 +13207,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -13217,7 +13217,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -13227,7 +13227,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -14767,7 +14767,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -14777,7 +14777,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -14787,7 +14787,7 @@
     "className": "math math-inline",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -14797,7 +14797,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -14807,7 +14807,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -14817,7 +14817,7 @@
     "className": "math math-inline",
     "inline": false,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -14827,7 +14827,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -14837,7 +14837,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -14847,7 +14847,7 @@
     "className": "math math-inline",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -14867,7 +14867,7 @@
     "className": null,
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -14927,7 +14927,7 @@
     "className": null,
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -14947,7 +14947,7 @@
     "className": "language-math",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -14957,7 +14957,7 @@
     "className": "language-math",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -14967,7 +14967,7 @@
     "className": "language-math",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -15007,7 +15007,7 @@
     "className": "language-math",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -15017,7 +15017,7 @@
     "className": "language-math",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -15027,7 +15027,7 @@
     "className": "language-math",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -15037,7 +15037,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -15047,7 +15047,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -15057,7 +15057,7 @@
     "className": "language-latex",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -15097,7 +15097,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -15107,7 +15107,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -15117,7 +15117,7 @@
     "className": "language-latex",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -15127,7 +15127,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -15137,7 +15137,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -15147,7 +15147,7 @@
     "className": "language-MATH",
     "inline": null,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,
@@ -15187,7 +15187,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "x + 1\n",
-    "output": "<span><b data-display=\"false\">x + 1</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">x + 1</b></span></span>"
   },
   {
     "demo": true,
@@ -15197,7 +15197,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "\\frac{a}{b}\n",
-    "output": "<span><b data-display=\"false\">\\frac{a}{b}</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">\\frac{a}{b}</b></span></span>"
   },
   {
     "demo": true,
@@ -15207,7 +15207,7 @@
     "className": "language-MATH",
     "inline": true,
     "source": "first\nsecond\n",
-    "output": "<span><b data-display=\"false\">first\nsecond</b></span>"
+    "output": "<span class=\"math-inline-scroll\"><span><b data-display=\"false\">first\nsecond</b></span></span>"
   },
   {
     "demo": true,

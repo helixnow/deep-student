@@ -8,11 +8,12 @@
  * 删除确认 3.5s 未二次点击自动复原；点击操作条外任意位置或 Escape 关闭。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CopySimple, Check, ArrowCounterClockwise, PencilSimple, Trash, X } from '@phosphor-icons/react';
+import { CopySimple, Check, ArrowCounterClockwise, BookmarkSimple, PencilSimple, Trash, X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 export interface MessageTouchActionBarProps {
@@ -27,6 +28,8 @@ export interface MessageTouchActionBarProps {
   onCopy: () => Promise<void>;
   onEdit?: () => void;
   onRetry?: () => Promise<void>;
+  /** 保存为 VFS 笔记（助手消息长按操作条直出） */
+  onSaveAsNote?: () => Promise<void>;
   onDelete: () => Promise<void>;
   /** 关闭操作条（外点 / Escape / 操作完成后调用） */
   onClose: () => void;
@@ -43,6 +46,7 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
   onCopy,
   onEdit,
   onRetry,
+  onSaveAsNote,
   onDelete,
   onClose,
 }) => {
@@ -51,6 +55,7 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
 
   const [copied, setCopied] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [isSavingNote, setIsSavingNote] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteArmed, setDeleteArmed] = useState(false);
 
@@ -90,23 +95,25 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
   }, [open]);
 
   // 外点关闭（pointerdown：触摸滚动/拖选不产生 mousedown）+ Escape 关闭
-  useEffect(() => {
-    if (!open) return;
-    const handlePointerDown = (e: PointerEvent) => {
-      const target = e.target as Node | null;
-      if (target && rootRef.current?.contains(target)) return;
-      onClose();
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [open, onClose]);
+  const handleDocumentPointerDown = useCallback((e: Event) => {
+    const target = (e as PointerEvent).target as Node | null;
+    if (target && rootRef.current?.contains(target)) return;
+    onClose();
+  }, [onClose]);
+
+  const handleDocumentKeyDown = useCallback((e: Event) => {
+    if ((e as KeyboardEvent).key === 'Escape') onClose();
+  }, [onClose]);
+
+  useEventRegistry(
+    open
+      ? [
+          { target: 'document', type: 'pointerdown', listener: handleDocumentPointerDown },
+          { target: 'document', type: 'keydown', listener: handleDocumentKeyDown },
+        ]
+      : [],
+    [open, handleDocumentPointerDown, handleDocumentKeyDown],
+  );
 
   const handleCopy = useCallback(async () => {
     if (copied) return;
@@ -140,6 +147,17 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
       onClose();
     }
   }, [onRetry, isLocked, isRetrying, onClose]);
+
+  const handleSaveAsNote = useCallback(async () => {
+    if (!onSaveAsNote || isSavingNote) return;
+    setIsSavingNote(true);
+    try {
+      await onSaveAsNote();
+    } finally {
+      setIsSavingNote(false);
+      onClose();
+    }
+  }, [onSaveAsNote, isSavingNote, onClose]);
 
   // 行内两步删除：第一次点击进入红色「确认删除」，超时自动复原
   const handleDelete = useCallback(async () => {
@@ -213,6 +231,21 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
             >
               <PencilSimple className="h-4 w-4" />
               <span>{t('messageItem.actions.edit')}</span>
+            </DsButton>
+          )}
+
+          {!isUser && onSaveAsNote && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className={barButtonClassName}
+              onClick={handleSaveAsNote}
+              disabled={isSavingNote}
+              tabIndex={open ? 0 : -1}
+              aria-label={t('messageItem.actions.saveAsNote')}
+            >
+              <BookmarkSimple className="h-4 w-4 shrink-0" />
+              <span className="truncate">{t('messageItem.actions.saveAsNoteShort', { defaultValue: '存笔记' })}</span>
             </DsButton>
           )}
 

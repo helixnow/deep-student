@@ -8,7 +8,7 @@
  * 详见 docs/revamp/02-wikilink.md
  */
 
-import type { MilkdownPlugin } from '@milkdown/ctx';
+import type { MilkdownPlugin } from '@milkdown/kit/ctx';
 
 import { createWikilinkAutocompletePlugin } from './autocomplete';
 import { wikilinkInputRule } from './inputRule';

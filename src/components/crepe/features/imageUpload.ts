@@ -11,6 +11,8 @@ import { extractFileName, extractFileExtension } from '../../../utils/fileManage
 import { emitImageUploadDebug } from '@/shared/debug/channels/crepeImageUpload';
 import { showGlobalNotification } from '../../UnifiedNotification';
 import { convertHeicToJpeg, describeHeicConversionError, HeicConversionError, isHeicFile, sniffHeicMime } from '../../../utils/heicConversion';
+import { isAndroidMobileShell, isWebUiShell } from '../../../utils/platform';
+import { pickWebViewFiles } from '../../../utils/pickWebViewFiles';
 
 /**
  * 通过后端命令获取图片的 base64 数据
@@ -445,15 +447,28 @@ export async function readLocalImageFile(path: string): Promise<File> {
 }
 
 /**
- * 使用 Tauri dialog 选择图片文件
- * 在 Tauri 环境下替代浏览器原生 file input
- * 经 readLocalImageFile（read_file_bytes IPC）读取，兼容 Android content:// URI
+ * 检查是否可使用 Tauri 原生文件选择对话框（WebUI / Android WebView 走浏览器 `<input type="file">`）
  */
-export const pickImageWithTauriDialog = async (): Promise<File | null> => {
-  // 检查是否在 Tauri 环境
-  if (!isTauriEnv()) {
-    console.warn('[imageUpload] Not in Tauri environment, cannot use native dialog');
-    return null;
+const canUseNativeTauriDialog = (): boolean =>
+  isTauriEnv() && !isWebUiShell() && !isAndroidMobileShell();
+
+/**
+ * 使用浏览器 `<input type="file" accept="image/*">` 选择单张图片
+ */
+export const pickImageWithBrowserInput = async (signal?: AbortSignal): Promise<File | null> => {
+  if (typeof document === 'undefined') return null;
+  const files = await pickWebViewFiles(false, 'image/*', { signal });
+  return files[0] ?? null;
+};
+
+/**
+ * 选择本地图片文件：
+ * - 原生桌面 Tauri 环境走 Tauri dialog + `readLocalImageFile`（兼容 content:// URI）；
+ * - WebUI / 浏览器 / Android 移动壳回退到 `<input type="file" accept="image/*">`，不再静默返回 null。
+ */
+export const pickImageWithTauriDialog = async (signal?: AbortSignal): Promise<File | null> => {
+  if (!canUseNativeTauriDialog()) {
+    return pickImageWithBrowserInput(signal);
   }
   
   try {

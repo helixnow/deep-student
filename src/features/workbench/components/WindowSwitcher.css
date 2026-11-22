@@ -352,6 +352,43 @@
   opacity: 0.85;
 }
 
+/* 底部进阶快捷键微提示（Q 关闭 / H 最小化 / ↓ 应用俯瞰） */
+.wb-switcher-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 4px;
+  font-size: 10.5px;
+  line-height: 1;
+  color: var(--text-muted, hsl(var(--muted-foreground)));
+  opacity: 0.78;
+}
+
+.wb-switcher-shortcut-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wb-switcher-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid hsl(var(--foreground) / 16%);
+  background: hsl(var(--foreground) / 8%);
+  color: var(--text-primary, hsl(var(--foreground)));
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
 /* ==========================================================================
  * 降级：minimal 材质档 / 系统 reduced-motion → 动效时长归零、滚动不平滑
  * （0ms 动画仍会触发 animationend，退出阶段收尾逻辑不受影响）

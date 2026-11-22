@@ -8,8 +8,9 @@
  * 交互：↑↓/Home/End 移动、Enter 走按钮原生激活、Esc/Tab/点外/窗口失焦关闭；
  * 打开聚焦首个菜单项、关闭焦点还给锚点按钮；液体玻璃透镜与右键菜单同 hook。
  */
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import './DesktopContextMenu.css';
 
@@ -26,6 +27,10 @@ export interface StatusBarMenuProps {
   label: string;
   onClose: () => void;
   testId?: string;
+  /** 由顶栏统一渲染共享外部点击层时关闭本地 backdrop，避免遮挡相邻菜单触发器 */
+  hideBackdrop?: boolean;
+  /** 切换到相邻顶栏菜单时 0ms 即时卸载且不抢回焦点 */
+  instantExit?: boolean;
   children: React.ReactNode;
 }
 
@@ -35,12 +40,16 @@ export const StatusBarMenu: React.FC<StatusBarMenuProps> = ({
   label,
   onClose,
   testId,
+  hideBackdrop = false,
+  instantExit = false,
   children,
 }) => {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const prevFocusRef = useRef<HTMLElement | null>(null);
+  const instantExitRef = useRef(instantExit);
+  instantExitRef.current = instantExit;
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-  // 离场相位：open→false 时先播 wb-desk-menu 的 closing 动画再卸载
+  // 离场相位：open→false 时先播 wb-desk-menu 的 closing 动画再卸载（相邻菜单切换时 0ms 瞬切）
   const [closing, setClosing] = useState(false);
   const wasOpenRef = useRef(false);
   const mounted = open || closing;
@@ -52,9 +61,13 @@ export const StatusBarMenu: React.FC<StatusBarMenuProps> = ({
       setClosing(false);
       return undefined;
     }
-    // 从已打开状态收起才播离场；初始 closed 不播
+    // 从已打开状态收起才播离场；初始 closed 或相邻切换直接卸载
     if (!wasOpenRef.current) return undefined;
     wasOpenRef.current = false;
+    if (instantExitRef.current) {
+      setClosing(false);
+      return undefined;
+    }
     setClosing(true);
     const timer = window.setTimeout(() => setClosing(false), 100);
     return () => window.clearTimeout(timer);
@@ -75,18 +88,31 @@ export const StatusBarMenu: React.FC<StatusBarMenuProps> = ({
       return undefined;
     }
     place();
-    // 打开期间跟随视口变化重定位（拖窗/缩放后菜单不脱锚）
-    window.addEventListener('resize', place);
-    window.addEventListener('scroll', place, true);
-    return () => {
-      window.removeEventListener('resize', place);
-      window.removeEventListener('scroll', place, true);
-    };
+    return undefined;
   }, [open, closing, place]);
 
-  // 焦点：打开时记录前一焦点并聚焦首个菜单项（macOS 菜单键盘语义）；关闭时归还
+  // 打开期间跟随视口变化重定位 + Esc / 窗口失焦关闭
+  const openEvents = useMemo(() => {
+    if (!open) return [];
+    const onDocKeyDown: EventListener = (event) => {
+      const e = event as KeyboardEvent;
+      if (e.key === 'Escape') onClose();
+    };
+    const onWindowBlur: EventListener = () => onClose();
+    return [
+      { target: 'window' as const, type: 'resize', listener: place },
+      { target: 'window' as const, type: 'scroll', listener: place, options: true },
+      { target: 'document' as const, type: 'keydown', listener: onDocKeyDown },
+      { target: 'window' as const, type: 'blur', listener: onWindowBlur },
+    ];
+  }, [open, onClose, place]);
+
+  useEventRegistry(openEvents, [openEvents]);
+
+  // 焦点：打开时记录前一焦点并聚焦首个菜单项（macOS 菜单键盘语义）；关闭时归还（切相邻菜单时不抢焦）
   useEffect(() => {
     if (!open) return undefined;
+    const anchor = anchorRef.current;
     prevFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const firstItem = panelRef.current?.querySelector<HTMLButtonElement>(
@@ -96,25 +122,11 @@ export const StatusBarMenu: React.FC<StatusBarMenuProps> = ({
     return () => {
       const prev = prevFocusRef.current;
       prevFocusRef.current = null;
+      if (instantExitRef.current) return;
       if (prev && prev.isConnected) prev.focus({ preventScroll: true });
-      else anchorRef.current?.focus({ preventScroll: true });
+      else anchor?.focus({ preventScroll: true });
     };
   }, [open, anchorRef]);
-
-  // Esc / 窗口失焦关闭（与桌面右键菜单同兜底）
-  useEffect(() => {
-    if (!open) return undefined;
-    const onDocKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    const onWindowBlur = () => onClose();
-    document.addEventListener('keydown', onDocKeyDown);
-    window.addEventListener('blur', onWindowBlur);
-    return () => {
-      document.removeEventListener('keydown', onDocKeyDown);
-      window.removeEventListener('blur', onWindowBlur);
-    };
-  }, [open, onClose]);
 
   const onPanelKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const items = Array.from(
@@ -160,16 +172,18 @@ export const StatusBarMenu: React.FC<StatusBarMenuProps> = ({
 
   return createPortal(
     <>
-      <div
-        className="wb-desk-menu-backdrop"
-        style={{ position: 'fixed' }}
-        aria-hidden="true"
-        onPointerDown={open ? onClose : undefined}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          if (open) onClose();
-        }}
-      />
+      {!hideBackdrop ? (
+        <div
+          className="wb-desk-menu-backdrop"
+          style={{ position: 'fixed' }}
+          aria-hidden="true"
+          onPointerDown={open ? onClose : undefined}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            if (open) onClose();
+          }}
+        />
+      ) : null}
       <div
         ref={panelRef}
         className="wb-desk-menu wb-glass-lens"

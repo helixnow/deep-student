@@ -453,5 +453,53 @@ describe('computeViewportBottomOffset', () => {
       listeners.get('resize')?.forEach((fn) => fn());
     });
     expect(toolbar.style.getPropertyValue('--mobile-toolbar-keyboard-offset')).toBe('400px');
+    expect(toolbar).toHaveAttribute('data-keyboard-open', 'true');
+  });
+
+  it('点第二次「+」关闭插入条并同步收起 data-expanded，不强制保持展开', () => {
+    render(<MobileEditorToolbar commands={mockCommands()} visible />);
+    const toolbar = screen.getByTestId('mobile-editor-toolbar');
+
+    fireEvent.click(byAction('insert-toggle'));
+    expect(toolbar).toHaveAttribute('data-inserting', 'true');
+    expect(toolbar).toHaveAttribute('data-expanded', 'true');
+
+    fireEvent.click(byAction('insert-toggle'));
+    expect(toolbar).not.toHaveAttribute('data-inserting');
+    expect(toolbar).not.toHaveAttribute('data-expanded');
+    expect(screen.queryByTestId('mobile-editor-toolbar-insert-row')).not.toBeInTheDocument();
+  });
+
+  it('支持 inline-code / inline-math / math 快捷按钮并触发回调', () => {
+    const commands: MobileEditorToolbarCommands = {
+      ...mockCommands(),
+      toggleInlineCode: vi.fn(),
+      insertInlineMath: vi.fn(),
+      insertMath: vi.fn(),
+    };
+    render(<MobileEditorToolbar commands={commands} visible activeStates={{ code: true }} />);
+
+    const codeBtn = byAction('code');
+    expect(codeBtn).toHaveAttribute('data-active', 'true');
+    fireEvent.click(codeBtn);
+    expect(commands.toggleInlineCode).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(byAction('insert-toggle'));
+    fireEvent.click(byAction('inline-math'));
+    expect(commands.insertInlineMath).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(byAction('insert-toggle'));
+    fireEvent.click(byAction('math'));
+    expect(commands.insertMath).toHaveBeenCalledTimes(1);
+  });
+
+  it('键盘弹起时通过 data-keyboard-open 样式清零 padding-bottom 避免底部安全区空白缝', () => {
+    keyboardState.shown = true;
+    keyboardState.inset = 280;
+    render(<MobileEditorToolbar commands={mockCommands()} visible />);
+    expect(screen.getByTestId('mobile-editor-toolbar')).toHaveAttribute('data-keyboard-open', 'true');
+
+    const css = readFileSync(resolve(__dirname, '../MobileEditorToolbar.css'), 'utf8');
+    expect(css).toMatch(/\.mobile-editor-toolbar\[data-keyboard-open='true'\]\s*\{[^}]*padding-bottom:\s*0/);
   });
 });

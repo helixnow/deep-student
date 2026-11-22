@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef,
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { CaretLeft, CaretRight, ChartLineDown } from '@phosphor-icons/react';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cardDisplayFront } from '../cardDisplay';
 import { FSRS_STATS_REFRESH_EVENT, subscribeFlashcardsDueRefresh } from '../events';
 import {
@@ -660,16 +661,22 @@ export const MemoryCurvePanel: React.FC = () => {
     mountedRef.current = true;
     void load();
     const onRefresh = () => void load();
-    window.addEventListener(FSRS_STATS_REFRESH_EVENT, onRefresh);
     const unsubscribeDue = subscribeFlashcardsDueRefresh(onRefresh);
     return () => {
       mountedRef.current = false;
       requestIdRef.current += 1;
       historyRequestRef.current += 1;
-      window.removeEventListener(FSRS_STATS_REFRESH_EVENT, onRefresh);
       unsubscribeDue();
     };
   }, [load]);
+
+  const onStatsRefresh = useCallback(() => {
+    void load();
+  }, [load]);
+  useEventRegistry(
+    [{ target: 'window', type: FSRS_STATS_REFRESH_EVENT, listener: onStatsRefresh }],
+    [onStatsRefresh],
+  );
 
   const open = useCallback((cardStateId: string) => {
     setSelected(cardStateId);
@@ -707,12 +714,14 @@ export const MemoryCurvePanel: React.FC = () => {
           <>
             <dl className="wb-fcx-memory-figures">
               <div className="wb-fcx-memory-figure">
-                <dt>{t('stats.memory.averageLabel')}</dt>
+                <dt title={t('stats.memory.averageLabel')}>{t('stats.memory.averageLabel')}</dt>
                 <dd>{overview.averageRetrievability == null ? '—' : percent(overview.averageRetrievability)}</dd>
                 <p>{t('stats.memory.averageHint', { count: overview.memorizedCount })}</p>
               </div>
               <div className="wb-fcx-memory-figure">
-                <dt>{t('stats.memory.trueRetentionLabel', { days: trueRetention?.windowDays ?? 30 })}</dt>
+                <dt title={t('stats.memory.trueRetentionLabel', { days: trueRetention?.windowDays ?? 30 })}>
+                  {t('stats.memory.trueRetentionLabel', { days: trueRetention?.windowDays ?? 30 })}
+                </dt>
                 <dd>{trueRetention && trueRetention.reviews > 0 ? percent(trueRetention.passed / trueRetention.reviews) : '—'}</dd>
                 <p>
                   {trueRetention && trueRetention.reviews > 0
@@ -721,7 +730,7 @@ export const MemoryCurvePanel: React.FC = () => {
                 </p>
               </div>
               <div className="wb-fcx-memory-figure">
-                <dt>{t('stats.memory.desiredLabel')}</dt>
+                <dt title={t('stats.memory.desiredLabel')}>{t('stats.memory.desiredLabel')}</dt>
                 <dd>{percent(overview.desiredRetention)}</dd>
                 <p>{t('stats.memory.desiredHint')}</p>
               </div>

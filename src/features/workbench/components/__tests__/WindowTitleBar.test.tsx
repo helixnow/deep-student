@@ -85,16 +85,30 @@ describe('三键 aria 标签', () => {
     expect(screen.getByRole('button', { name: '进入沉浸模式' })).toBeTruthy();
   });
 
-  it('按住 ⌥ 时三键提示切换为批量 / 传统 zoom 语义，松开恢复', () => {
-    renderBar({ displayMode: 'maximized' });
+  it('按住 ⌥ 时三键提示切换为批量 / 传统 zoom 语义，绿灯实时切换为 + 符号，松开与失焦恢复', () => {
+    const { container } = renderBar({ displayMode: 'maximized' });
+    expect(container.querySelector('[data-wb-zoom-glyph="restore"]')).toBeTruthy();
+    expect(container.querySelector('[data-wb-zoom-glyph="plus"]')).toBeNull();
+
     fireEvent.keyDown(window, { key: 'Alt' });
     expect(screen.getByRole('button', { name: '关闭该应用全部窗口' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '最小化该应用全部窗口' })).toBeTruthy();
-    // ⌥ 语义下绿灯回到传统 zoom：managed 态 = 还原窗口
+    // ⌥ 语义下绿灯回到传统 zoom：managed 态 = 还原窗口，符号切为经典 macOS +
     expect(screen.getByRole('button', { name: '还原窗口' })).toBeTruthy();
+    expect(container.querySelector('[data-wb-zoom-glyph="plus"]')).toBeTruthy();
+    expect(container.querySelector('[data-wb-zoom-glyph="restore"]')).toBeNull();
+
     fireEvent.keyUp(window, { key: 'Alt' });
     expect(screen.getByRole('button', { name: '关闭窗口' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '进入沉浸模式' })).toBeTruthy();
+    expect(container.querySelector('[data-wb-zoom-glyph="plus"]')).toBeNull();
+    expect(container.querySelector('[data-wb-zoom-glyph="restore"]')).toBeTruthy();
+
+    // 窗口失焦兜底还原
+    fireEvent.keyDown(window, { key: 'Alt' });
+    expect(container.querySelector('[data-wb-zoom-glyph="plus"]')).toBeTruthy();
+    fireEvent.blur(window);
+    expect(container.querySelector('[data-wb-zoom-glyph="plus"]')).toBeNull();
   });
 
   it('三键点击各自回调且不触发 zoom（stopPropagation）', () => {
@@ -259,12 +273,12 @@ describe('长标题溢出', () => {
 });
 
 describe('双击标题栏（按设置分发）', () => {
-  it('默认 zoom：双击空白区触发 zoom 并生成涟漪', () => {
+  it('默认 zoom：双击空白区触发 zoom 且不生成 Material 涟漪', () => {
     const { container, props } = renderBar();
     const bar = container.querySelector('[data-wb-titlebar]') as HTMLElement;
     fireEvent.doubleClick(bar, { clientX: 60, clientY: 12 });
     expect(props.onZoom).toHaveBeenCalledTimes(1);
-    expect(container.querySelector('.wb-title-ripple')).toBeTruthy();
+    expect(container.querySelector('.wb-title-ripple')).toBeNull();
   });
 
   it('设置为 minimize：双击触发最小化而非 zoom', () => {

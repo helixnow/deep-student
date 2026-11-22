@@ -251,6 +251,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
   const [showPreview, setShowPreview] = useState(false);
   const [showOptional, setShowOptional] = useState(false);
   const [showSourceViewer, setShowSourceViewer] = useState(false);
+  const [markAsMistake, setMarkAsMistake] = useState(false);
   // 内联放弃确认条（替代原 DsAlertDialog 模态确认）
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [contentTouched, setContentTouched] = useState(false);
@@ -289,6 +290,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
       setContentTouched(false);
       setLastAddedOptionIndex(null);
       setShowSourceViewer(false);
+      setMarkAsMistake(false);
       // 创建模式：解析/笔记默认折叠，保持表单紧凑
       setShowOptional(false);
     } else if (question) {
@@ -311,13 +313,15 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
       setContentTouched(false);
       setLastAddedOptionIndex(null);
       setShowSourceViewer(false);
+      setMarkAsMistake(false);
       // 编辑模式：已有解析/笔记内容时自动展开选填区
       setShowOptional(Boolean(initialData.explanation || initialData.userNote));
     }
   }, [question, mode]);
 
-  const isDirty = initialDataRef.current !== null
-    && JSON.stringify(editData) !== JSON.stringify(initialDataRef.current);
+  const isDirty = (initialDataRef.current !== null
+    && JSON.stringify(editData) !== JSON.stringify(initialDataRef.current))
+    || markAsMistake;
 
   const questionSource = useMemo(() => getQuestionSourceRefs(question), [question]);
   const sourceRefCount = questionSource.sourceRefs.length + questionSource.answerSourceRefs.length;
@@ -690,6 +694,24 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           ai_score: raw.ai_score as number | undefined,
           ai_graded_at: raw.ai_graded_at as string | undefined,
         };
+        if (markAsMistake && newQuestion.id) {
+          await invoke('qbank_update_question', {
+            request: {
+              question_id: newQuestion.id,
+              params: { status: 'review' },
+              record_history: false,
+            },
+          });
+          newQuestion.status = 'review';
+          try {
+            await invoke('review_plan_create', {
+              questionId: newQuestion.id,
+              examId,
+            });
+          } catch {
+            // FSRS 复习计划创建失败不阻断建题成功
+          }
+        }
         await onCreate?.(newQuestion);
         onCancel();
         return;
@@ -697,6 +719,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
 
       if (!question) return;
 
+      const shouldMarkReview = markAsMistake && question.status !== 'review';
       await invoke('qbank_update_question', {
         request: {
           question_id: question.id,
@@ -710,6 +733,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             difficulty: editData.difficulty || null,
             tags: editData.tags.length > 0 ? editData.tags : null,
             user_note: editData.userNote || null,
+            ...(shouldMarkReview ? { status: 'review' } : {}),
             images: editData.images.length > 0
               ? editData.images
               : (question?.images?.length ? [] : null),
@@ -717,6 +741,17 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           record_history: true,
         },
       });
+
+      if (shouldMarkReview && sourceExamId) {
+        try {
+          await invoke('review_plan_get_or_create', {
+            questionId: question.id,
+            examId: sourceExamId,
+          });
+        } catch {
+          // FSRS 复习计划创建失败不阻断保存
+        }
+      }
 
       const updatedQuestion: Question = {
         ...question,
@@ -728,6 +763,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
         difficulty: editData.difficulty || undefined,
         tags: editData.tags,
         userNote: editData.userNote || undefined,
+        ...(shouldMarkReview ? { status: 'review' as const } : {}),
         images: editData.images,
         structured_data: structuredPayload as unknown as QuestionStructuredData | null,
       };
@@ -740,7 +776,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
     } finally {
       setIsSaving(false);
     }
-  }, [question, editData, onSave, onCancel, mode, examId, onCreate, t, validateStructured, buildStructuredPayload, buildAnswerPayload]);
+  }, [question, editData, onSave, onCancel, mode, examId, onCreate, t, validateStructured, buildStructuredPayload, buildAnswerPayload, markAsMistake, sourceExamId]);
 
   const handleCancelRequest = useCallback(() => {
     if (!isDirty || isSaving) {
@@ -1257,6 +1293,26 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             </div>
           )}
         </div>
+
+        {/* 直接标为错题并加入 FSRS 复习 */}
+        {(mode === 'create' || (question && question.status !== 'review')) && (
+          <label
+            data-testid="inline-editor-mark-mistake"
+            className="flex cursor-pointer items-center gap-2 rounded-lg border border-border/40 bg-muted/15 px-3 py-2 text-xs text-foreground/90 transition-colors hover:bg-muted/30 [@media(pointer:coarse)]:min-h-11"
+          >
+            <input
+              type="checkbox"
+              checked={markAsMistake}
+              onChange={(e) => setMarkAsMistake(e.target.checked)}
+              className="h-4 w-4 shrink-0 accent-primary"
+            />
+            <span>
+              {t('exam_sheet:questionBank.create.markAsMistake', {
+                defaultValue: '直接标为错题并加入 FSRS 复习',
+              })}
+            </span>
+          </label>
+        )}
 
         {/* 实时预览（页脚切换；复用 LatexText 渲染公式，单题编辑无虚拟列表性能顾虑） */}
         {showPreview && (

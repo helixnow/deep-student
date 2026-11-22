@@ -97,6 +97,9 @@ import {
   type PersistedTileMargins,
 } from '../core/persistedSettings';
 import { logWallpaperDiag } from '../core/wallpaperDiagnostics';
+import { useOptionalSlot } from '@/ui-kernel/react';
+import { SlotOutlet } from '@/ui-kernel/outlet';
+import type { DesktopWidgetSize } from '@/ui-kernel/contracts/surfaces';
 
 // 仅诊断参数启动时开启交互时间线采集（普通 dev 默认关）
 if (isWorkbenchDiagnosticsRequested()) {
@@ -284,6 +287,7 @@ export const WorkbenchDesktop: React.FC = () => {
   const [widgetAgenda, setWidgetAgenda] = useState(true);
   const [widgetBriefing, setWidgetBriefing] = useState(true);
   const [devPanel, setDevPanel] = useState(false);
+  const contributedWidgets = useOptionalSlot('desktop.widgets');
   /**
    * 「恢复上次桌面」次级 CTA 的可用性：仅在关闭自动恢复、且启动时确有快照的
    * 冷启动首屏提供。不翻转 restoreSession 默认值（老用户不会突然被恢复一屏窗口）。
@@ -655,14 +659,33 @@ export const WorkbenchDesktop: React.FC = () => {
       >
         {/* 桌面组件可关：关掉后窄工作区不再被日程与 AI 简报组件挤占。
             两组件收进右上角纵列（.wb-desktop-widget-column），简报不再与桌面图标重叠 */}
-        {hydrated && desktopWidgets && (widgetAgenda || widgetBriefing) && (
+        {hydrated && desktopWidgets && (widgetAgenda || widgetBriefing || (contributedWidgets?.length ?? 0) > 0) && (
           <div className="wb-desktop-widget-column">
             {widgetAgenda && <DesktopAgendaWidget />}
             {widgetBriefing && <DesktopAiBriefingWidget />}
+            <SlotOutlet
+              name="desktop.widgets"
+              render={(entry) => {
+                const size: DesktopWidgetSize = entry.value.size ?? 'md';
+                const maxHeight = size === 'sm' ? 160 : size === 'lg' ? 420 : 280;
+                const Component = entry.value.component;
+                return (
+                  <section
+                    role="region"
+                    aria-label={entry.value.title}
+                    data-testid="wb-desktop-plugin-widget"
+                    className="pointer-events-auto wb-glass wb-glass-highlight overflow-auto rounded-2xl p-3"
+                    style={{ maxHeight }}
+                  >
+                    <Component size={size} />
+                  </section>
+                );
+              }}
+            />
           </div>
         )}
         {/* 桌面快捷方式图标层：与资源库「桌面」视图共用 desktopStore，双向同步 */}
-        {hydrated && <DesktopShortcutsLayer />}
+        {hydrated && <DesktopShortcutsLayer desktopRef={workAreaRef} />}
         {hydrated && orderedWindows.length === 0 && (
           <EmptyDesktop
             restoreAvailable={restorableSnapshot !== null}

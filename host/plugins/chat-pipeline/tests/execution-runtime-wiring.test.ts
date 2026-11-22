@@ -125,5 +125,9 @@ describe('composeExecution wires the pipeline.rs owner capabilities', () => {
     expect(memory.extractAndStoreMemory).toHaveBeenNthCalledWith(2, '多变体用户输入足够长了', '回答');
     post.triggerAutoMemoryExtraction(execution({ options: { autoMemoryExtraction: false } } as never));
     expect(memory.extractAndStoreMemory).toHaveBeenCalledTimes(2);
+    const cancelled = new AbortController();
+    cancelled.abort();
+    post.triggerAutoMemoryExtraction(execution({ cancellationToken: () => cancelled.signal } as never));
+    expect(memory.extractAndStoreMemory).toHaveBeenCalledTimes(2);
   });
 });

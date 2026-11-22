@@ -39,7 +39,7 @@ describe('mind map node actions interaction contract', () => {
   });
 
   it('resolves theme through the dark-mode aware hook instead of a memoized get', () => {
-    expect(branchNodeSource).toContain('useMindMapTheme(styleId)');
+    expect(branchNodeSource).toContain('useMindMapTheme(styleId');
     expect(branchNodeSource).not.toContain('useMemo(() => StyleRegistry.get');
   });
 });

@@ -64,7 +64,7 @@ export function createMediaHandlers(rt: AnkiPluginRuntime): Record<string, Comma
             compression: (ctx.get('nativeCompression') as NativeCompression | undefined) ?? null,
             logger: ctx.logger,
           });
-          service.withReviewEnqueue();
+          service.withReviewEnqueue().withDeduplicateExisting();
           if (readPicked && rawPath.startsWith(ctx.app.dataDir + '/tmp/dialog-picks/')) {
             result = await service.importBytesAsync(await readPicked(rawPath, MAX_APKG_ARCHIVE_BYTES), path.basename(rawPath));
           } else {

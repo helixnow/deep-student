@@ -15,14 +15,21 @@ const MAX_TITLE = 80;
 
 export type NoteOrigin =
   | { kind: 'chat'; sessionId: string; messageId?: string; title?: string }
-  | { kind: 'resource'; resourceId: string; page?: number; title?: string; quote?: string };
+  | { kind: 'resource'; resourceId: string; page?: number; locator?: string; title?: string; quote?: string };
 
 const clip = (value: string | undefined) => (value && value.length > MAX_TITLE ? `${value.slice(0, MAX_TITLE - 1)}…` : value);
 
 export function serializeNoteOrigin(origin: NoteOrigin): string {
   return JSON.stringify(origin.kind === 'chat'
     ? { kind: 'chat', sessionId: origin.sessionId, messageId: origin.messageId, title: clip(origin.title) }
-    : { kind: 'resource', resourceId: origin.resourceId, page: origin.page, title: clip(origin.title), quote: origin.quote?.slice(0, 160) });
+    : {
+      kind: 'resource',
+      resourceId: origin.resourceId,
+      page: origin.page,
+      ...(origin.locator ? { locator: clip(origin.locator) } : {}),
+      title: clip(origin.title),
+      quote: origin.quote?.slice(0, 160),
+    });
 }
 
 export function parseNoteOrigin(raw: unknown): NoteOrigin | null {
@@ -35,7 +42,15 @@ export function parseNoteOrigin(raw: unknown): NoteOrigin | null {
     }
     if (value.kind === 'resource' && typeof value.resourceId === 'string' && value.resourceId) {
       const page = typeof value.page === 'number' && Number.isInteger(value.page) && value.page > 0 ? value.page : undefined;
-      return { kind: 'resource', resourceId: value.resourceId, page, title, quote: typeof value.quote === 'string' ? value.quote.slice(0, 160) : undefined };
+      const locator = typeof value.locator === 'string' && value.locator.trim() ? value.locator.trim() : undefined;
+      return {
+        kind: 'resource',
+        resourceId: value.resourceId,
+        page,
+        ...(locator ? { locator } : {}),
+        title,
+        quote: typeof value.quote === 'string' ? value.quote.slice(0, 160) : undefined,
+      };
     }
   } catch { /* 畸形值视为无来源 */ }
   return null;

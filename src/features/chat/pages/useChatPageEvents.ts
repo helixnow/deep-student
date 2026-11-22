@@ -41,6 +41,7 @@ import {
 import { resolveMediaResourceName } from '../components/MediaCitationBadge';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+const WORKBENCH_HANDLED_ATTACHMENT_TYPES = new Set(['note', 'file', 'textbook', 'mindmap']);
 
 export interface UseChatPageEventsDeps {
   notesContext: { openCanvasWithNote?: (noteId: string) => void } | null;
@@ -263,7 +264,13 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       title: string;
     }>;
 
-    const { id, type, title } = customEvent.detail;
+    const { id, type, title } = customEvent.detail ?? {};
+    if (!id) return;
+    // Workbench 下这些资源由 WorkbenchEventBridge 在对应桌面应用窗中打开（如 NotesWorkspaceApp），
+    // 对话侧若再打开右侧面板会挂载重复的编辑器/阅读器实例。
+    if (workbenchBus.isEnabled() && WORKBENCH_HANDLED_ATTACHMENT_TYPES.has(type)) {
+      return;
+    }
     console.log('[ChatV2Page] CHAT_OPEN_ATTACHMENT_PREVIEW received:', customEvent.detail);
 
     // 同一份资料再次打开（如点正文里的「第4页」徽章）时调用方只给通用标题「PDF」，

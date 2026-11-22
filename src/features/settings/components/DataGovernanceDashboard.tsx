@@ -40,6 +40,7 @@ import { SettingSection } from './SettingsCommon';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { readShellPlatform } from '@/ui-kernel/services/shell-platform';
+import { isAndroidMobileShell, isWebUiShell } from '@/utils/platform';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import * as cloudApi from '@/utils/cloudStorageApi';
 import { localizeCloudStorageError } from './data-governance/localizeCloudError';
@@ -1176,7 +1177,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }
 
     try {
-      const savePath = readShellPlatform()?.kind === 'mobile' ? '' : await save({
+      const useNativeMobilePicker = !isWebUiShell() && isAndroidMobileShell();
+      const savePath = useNativeMobilePicker ? '' : await save({
         title: t('data:governance.save_zip'),
         defaultPath: `backup-${new Date().toISOString().slice(0, 10)}.zip`,
         filters: [{ name: 'ZIP', extensions: ['zip'] }],
@@ -1244,8 +1246,9 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }
 
     try {
-      // 让用户选择保存路径
-      const savePath = readShellPlatform()?.kind === 'mobile' ? '' : await save({
+      // 让用户选择保存路径（仅原生 Android 移动壳跳过桌面保存对话框，手机 WebUI 仍走浏览器保存导出）
+      const useNativeMobilePicker = !isWebUiShell() && isAndroidMobileShell();
+      const savePath = useNativeMobilePicker ? '' : await save({
         title: t('data:governance.save_zip'),
         defaultPath: `backup-${new Date().toISOString().slice(0, 10)}.zip`,
         filters: [{ name: 'ZIP', extensions: ['zip'] }],
@@ -1294,8 +1297,9 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }
 
     try {
-      // 让用户选择 ZIP 文件
-      const selected = readShellPlatform()?.kind === 'mobile' ? 'mobile-picker:' : await open({
+      // 让用户选择 ZIP 文件（仅原生 Android 移动壳使用 'mobile-picker:'，手机 WebUI 走浏览器文件选择与上传暂存）
+      const useNativeMobilePicker = !isWebUiShell() && isAndroidMobileShell();
+      const selected = useNativeMobilePicker ? 'mobile-picker:' : await open({
         title: t('data:governance.select_zip'),
         multiple: false,
         filters: [{ name: 'ZIP', extensions: ['zip'] }],
@@ -1842,57 +1846,60 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     };
   }, []); // 仅在挂载时执行一次
 
+  const tabTriggerClassName =
+    'inline-flex shrink-0 min-h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-border/45 bg-muted/40 px-3 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start [@media(pointer:coarse)]:!min-h-11';
+  const isNativeMobile = !isWebUiShell() && readShellPlatform()?.kind === 'mobile';
+
   const content = (
     <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as DashboardTab)}>
-      {/* 页签文字在 <640px 被 `hidden sm:inline` 收掉，只剩图标。
-          每个 trigger 必须带 aria-label，否则移动端读屏（VoiceOver / TalkBack）
-          只会念「按钮」，8 个页签互相无法区分。 */}
-      <div className="mb-4">
+      {/* 移动端（如 390px）改为单行可横滑 tab strip，避免 7-8 个页签被 grid-cols-4 挤压截断；
+          每个 trigger 保留 aria-label 与完整文字，兼顾可读性与读屏无障碍。 */}
+      <div className="mb-4 -mx-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:overflow-visible sm:px-0">
         <TabsList
           aria-label={t('data:governance.tabs_nav_label')}
-          className="grid h-auto w-full grid-cols-4 gap-1.5 rounded-none border-b border-border/40 bg-transparent px-0 pb-3 sm:flex sm:flex-wrap sm:justify-start"
+          className="inline-flex h-auto w-max min-w-full flex-nowrap items-center justify-start gap-1.5 rounded-none border-b border-border/40 bg-transparent px-0 pb-3 sm:flex sm:w-full sm:flex-wrap"
         >
-          <TabsTrigger value="overview" aria-label={t('data:governance.tab_overview')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
+          <TabsTrigger value="overview" aria-label={t('data:governance.tab_overview')} className={tabTriggerClassName}>
             <Gauge className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate text-xs">{t('data:governance.tab_overview')}</span>
+            <span className="whitespace-nowrap text-xs">{t('data:governance.tab_overview')}</span>
           </TabsTrigger>
-          <TabsTrigger value="recovery" aria-label={t('data:governance.tab_recovery')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
+          <TabsTrigger value="recovery" aria-label={t('data:governance.tab_recovery')} className={tabTriggerClassName}>
             <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate text-xs">{t('data:governance.tab_recovery')}</span>
+            <span className="whitespace-nowrap text-xs">{t('data:governance.tab_recovery')}</span>
           </TabsTrigger>
-          <TabsTrigger value="archive" aria-label={t('data:governance.tab_archive')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
+          <TabsTrigger value="archive" aria-label={t('data:governance.tab_archive')} className={tabTriggerClassName}>
             <Archive className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate text-xs">{t('data:governance.tab_archive')}</span>
+            <span className="whitespace-nowrap text-xs">{t('data:governance.tab_archive')}</span>
           </TabsTrigger>
-          <TabsTrigger value="backup" aria-label={t('data:governance.tab_backup')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
+          <TabsTrigger value="backup" aria-label={t('data:governance.tab_backup')} className={tabTriggerClassName}>
             <HardDrive className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate text-xs">{t('data:governance.tab_backup')}</span>
+            <span className="whitespace-nowrap text-xs">{t('data:governance.tab_backup')}</span>
           </TabsTrigger>
-          <TabsTrigger value="sync" aria-label={t('data:governance.tab_sync')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
+          <TabsTrigger value="sync" aria-label={t('data:governance.tab_sync')} className={tabTriggerClassName}>
             <Cloud className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate text-xs">{t('data:governance.tab_sync')}</span>
+            <span className="whitespace-nowrap text-xs">{t('data:governance.tab_sync')}</span>
           </TabsTrigger>
-          <TabsTrigger value="audit" aria-label={t('data:governance.tab_audit')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
+          <TabsTrigger value="audit" aria-label={t('data:governance.tab_audit')} className={tabTriggerClassName}>
             <FileText className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate text-xs">{t('data:governance.tab_audit')}</span>
+            <span className="whitespace-nowrap text-xs">{t('data:governance.tab_audit')}</span>
           </TabsTrigger>
-          <TabsTrigger value="cache" aria-label={t('data:governance.tab_cache')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
+          <TabsTrigger value="cache" aria-label={t('data:governance.tab_cache')} className={tabTriggerClassName}>
             <Image className="h-3.5 w-3.5 shrink-0" />
-            <span className="truncate text-xs">{t('data:governance.tab_cache')}</span>
+            <span className="whitespace-nowrap text-xs">{t('data:governance.tab_cache')}</span>
           </TabsTrigger>
           {/* Debug 页签只在开发构建出现：生产里它的控件全部 disabled，
               对用户是一个「点得到但什么都不能做」的死页签，移动端尤其误导。 */}
           {debugTabEnabled && (
-            <TabsTrigger value="debug" aria-label={t('data:governance.debug_tab_title')} className="flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-xl border border-border/45 bg-muted/40 px-2 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start sm:px-3 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
+            <TabsTrigger value="debug" aria-label={t('data:governance.debug_tab_title')} className={tabTriggerClassName}>
               <Bug className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate text-xs">{t('data:governance.debug_tab_title')}</span>
+              <span className="whitespace-nowrap text-xs">{t('data:governance.debug_tab_title')}</span>
             </TabsTrigger>
           )}
         </TabsList>
       </div>
 
       <TabsContent value="overview">
-        {readShellPlatform()?.kind === 'mobile' && <SecurityStatusIndicator className="mb-4" />}
+        {isNativeMobile && <SecurityStatusIndicator className="mb-4" />}
         <OverviewTab
           migrationStatus={migrationStatus}
           healthCheck={healthCheck}
@@ -2015,7 +2022,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       <TabsContent value="cache">
         <div className="space-y-8">
           <MediaCacheSection />
-          {readShellPlatform()?.kind !== 'mobile' && <LanceOptimizationPanel />}
+          {!isNativeMobile && <LanceOptimizationPanel />}
         </div>
       </TabsContent>
 

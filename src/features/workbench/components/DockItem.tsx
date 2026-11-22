@@ -27,6 +27,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../../lib/utils';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { appRegistry } from '../core/appRegistry';
 import { subscribeAppBadgeChanged } from '../core/badgeBus';
 import { useWindowStore } from '../core/windowStore';
@@ -38,7 +39,7 @@ import { useMaterialTier } from '../core/materialTier';
 import { prefetchFrozenWindows } from '../core/wakePrefetchIntent';
 import { requestMinimizeAnimated } from '../hooks/useWindowLifecycleAnim';
 import { DockWindowList } from './DockWindowList';
-import { useDockPinnedDragReorder } from './DockPinnedStore';
+import { useDockPinnedDragReorder, useDockRunningDragToPin } from './DockPinnedStore';
 import { dockLongPressTolerancePx } from './dockGestures';
 // ACR 4.0（A5 跨界最小接线）：agent 后台完成角标（样式在 agent-visuals.css）
 import { useDockAgentBadge } from '../agent/visuals/dockBadgeStore';
@@ -140,10 +141,39 @@ export interface DockItemProps extends React.HTMLAttributes<HTMLDivElement> {
   buttonRef?: (el: HTMLButtonElement | null) => void;
   /** 图标按钮获得焦点（Dock 更新 roving 活动项） */
   onItemFocus?: () => void;
+  /** Dock 级 0ms Tooltip 会话是否接管当前项 */
+  tipManaged?: boolean;
+  /** 当前项的 Tooltip 是否处于激活显示态 */
+  tipActive?: boolean;
+  /** 指针进入图标槽位（通知 Dock Tooltip 会话） */
+  onTipPointerEnter?: () => void;
+  /** 指针离开图标槽位（通知 Dock Tooltip 会话） */
+  onTipPointerLeave?: () => void;
 }
 
 export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
-  ({ typeId, tabIndex = 0, buttonRef, onItemFocus, className, children: _children, onPointerDown, onPointerEnter, onPointerMove, onPointerUp, onPointerLeave, onPointerCancel, ...rest }, forwardedRef) => {
+  (
+    {
+      typeId,
+      tabIndex = 0,
+      buttonRef,
+      onItemFocus,
+      tipManaged,
+      tipActive,
+      onTipPointerEnter,
+      onTipPointerLeave,
+      className,
+      children: _children,
+      onPointerDown,
+      onPointerEnter,
+      onPointerMove,
+      onPointerUp,
+      onPointerLeave,
+      onPointerCancel,
+      ...rest
+    },
+    forwardedRef,
+  ) => {
     const { t } = useTranslation();
     useRegistryVersion();
 
@@ -172,8 +202,9 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
     const [listOpen, setListOpen] = React.useState(false);
     const wrapRef = React.useRef<HTMLDivElement | null>(null);
     const innerButtonRef = React.useRef<HTMLButtonElement | null>(null);
-    // O6：固定区拖拽排序（一行接线；非固定项返回空对象）
+    // O6 / Liquid Glass：固定区拖拽排序（含拖离取消固定）+ 运行区拖入自动固定
     const pinnedDrag = useDockPinnedDragReorder(typeId);
+    const runningDrag = useDockRunningDragToPin(typeId);
 
     // ---- 长按图标出窗口列表（P2）----
     // 参考 WindowTitleBar 绿灯长按基建：计时器 + 移动阈值取消 + pointerup 清理。
@@ -267,14 +298,13 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
     }, [listOpen, wins.length]);
 
     // 外部点击关闭弹层（DockItem 自身区域不算外部，避免按钮再点击时先关后开的抖动）
-    React.useEffect(() => {
-      if (!listOpen) return;
-      const onDocPointerDown = (event: PointerEvent) => {
-        if (!wrapRef.current?.contains(event.target as Node)) setListOpen(false);
-      };
-      document.addEventListener('pointerdown', onDocPointerDown);
-      return () => document.removeEventListener('pointerdown', onDocPointerDown);
-    }, [listOpen]);
+    const onDocPointerDown = React.useCallback((event: Event) => {
+      if (!wrapRef.current?.contains(event.target as Node)) setListOpen(false);
+    }, []);
+    useEventRegistry(
+      listOpen ? [{ target: 'document', type: 'pointerdown', listener: onDocPointerDown }] : [],
+      [listOpen, onDocPointerDown],
+    );
 
     const label = def ? t(def.nameKey, def.typeId) : typeId;
 
@@ -375,12 +405,26 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
       useWorkbenchOverlay.getState().openExpose({ appTypeId: typeId });
     }, [typeId]);
 
-    const pinnedOnPointerDown =
-      'onPointerDown' in pinnedDrag ? pinnedDrag.onPointerDown : undefined;
-    const pinnedDataAttrs =
+    const dragOnPointerDown =
       'onPointerDown' in pinnedDrag
-        ? { 'data-wb-dock-pinned-id': (pinnedDrag as { 'data-wb-dock-pinned-id': string })['data-wb-dock-pinned-id'] }
-        : {};
+        ? pinnedDrag.onPointerDown
+        : 'onPointerDown' in runningDrag
+          ? runningDrag.onPointerDown
+          : undefined;
+    const dragDataAttrs =
+      'onPointerDown' in pinnedDrag
+        ? {
+            'data-wb-dock-pinned-id': (pinnedDrag as { 'data-wb-dock-pinned-id': string })[
+              'data-wb-dock-pinned-id'
+            ],
+          }
+        : 'onPointerDown' in runningDrag
+          ? {
+              'data-wb-dock-running-id': (runningDrag as { 'data-wb-dock-running-id': string })[
+                'data-wb-dock-running-id'
+              ],
+            }
+          : {};
 
     return (
       <div
@@ -388,12 +432,14 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
         data-testid={`wb-dock-item-${typeId}`}
         data-wb-dock-item-wrap=""
         data-tip-pinned={tipPinned || undefined}
+        data-tip-managed={tipManaged ? 'true' : undefined}
+        data-tip-active={tipManaged && tipActive && !listOpen ? 'true' : undefined}
         className={cn('wb-dock-item-wrap relative flex flex-col items-center', className)}
         {...rest}
-        {...pinnedDataAttrs}
+        {...dragDataAttrs}
         onPointerDown={(event) => {
           onPointerDown?.(event);
-          pinnedOnPointerDown?.(event);
+          dragOnPointerDown?.(event);
           // 新一轮按下先清掉上次长按的 click 抑制标记（长按后在 wrap 外松手时
           // click 不会发生，标记会残留到下一次交互）
           longPressFiredRef.current = false;
@@ -461,22 +507,25 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
         }}
         onPointerLeave={(event) => {
           onPointerLeave?.(event);
+          onTipPointerLeave?.();
           clearLongPress();
           if (tipPinned) scheduleTipUnpin();
         }}
         onPointerCancel={(event) => {
           onPointerCancel?.(event);
+          onTipPointerLeave?.();
           clearLongPress();
           if (tipPinned) scheduleTipUnpin();
         }}
         onPointerEnter={(event) => {
           onPointerEnter?.(event);
+          onTipPointerEnter?.();
           // 悬停即视为「即将聚焦」：该应用的 frozen 窗提前预取回 background
           // （intent 层负责 frozen 判定与同窗冷却去重，扫过 Dock 不打调度器）
           prefetchFrozenWindows(wins.map((w) => w.id));
         }}
       >
-        {/* 图标内层：data-wb-dock-mag-item 供 dockGeometry / genie 收敛点发现（无悬停放大） */}
+        {/* 图标内层：data-wb-dock-mag-item 供 dockGeometry / genie 收敛点与 60fps 连续波浪放大消费 */}
         <div className="wb-dock-mag" data-wb-dock-mag-item={typeId}>
           <div
             className="wb-dock-bounce"
@@ -545,6 +594,12 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
             className="wb-dock-indicator wb-dock-ind"
           />
         )}
+        <span
+          aria-hidden
+          className="wb-dock-drag-hint"
+          data-unpin-label={t('workbench:dock.unpin')}
+          data-pin-label={t('workbench:dock.pin')}
+        />
         {!listOpen && (
           <span aria-hidden data-testid={`wb-dock-tip-${typeId}`} className="wb-dock-tip">
             {label}

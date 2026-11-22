@@ -619,3 +619,24 @@ export function readReviewPlanHistoricalDurations(
   }
   return out;
 }
+
+export interface FallbackGroupMaterialRow {
+  id: unknown;
+  content: unknown;
+  images_json: unknown;
+  local_version: unknown;
+}
+
+export function queryFallbackGroupMaterialRows(
+  vfsDb: SqlExecutor,
+  groupId: string,
+): FallbackGroupMaterialRow[] {
+  return vfsDb.all<FallbackGroupMaterialRow>(
+    `SELECT m.id, m.content, m.images_json, m.local_version
+     FROM qbank_group_materials gm
+     JOIN qbank_materials m ON m.id = gm.material_id AND m.exam_id = gm.exam_id
+     WHERE gm.group_id = ?1 AND gm.deleted_at IS NULL AND m.deleted_at IS NULL
+     ORDER BY gm.position ASC, gm.id ASC`,
+    [groupId],
+  );
+}

@@ -29,7 +29,7 @@ vi.mock('@/features/workbench/components/WallpaperManagerDialog', () => ({
 import { WorkbenchDesktop } from '@/features/workbench/components/WorkbenchDesktop';
 import { StatusBar } from '@/features/workbench/components/StatusBar';
 import { ImmersiveHint } from '@/features/workbench/components/ImmersiveHint';
-import { EmptyDesktop, EMPTY_DESKTOP_ONBOARDING_KEY } from '@/features/workbench/components/EmptyDesktop';
+import { EmptyDesktop } from '@/features/workbench/components/EmptyDesktop';
 import { setDockPinned } from '@/features/workbench/components/Dock';
 import { appRegistry } from '@/features/workbench/core/appRegistry';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
@@ -94,7 +94,8 @@ function getDesktopRoot(): HTMLElement {
 async function mountDesktop(): Promise<HTMLElement> {
   render(<WorkbenchDesktop />);
   await waitFor(() => {
-    expect(document.querySelector('.wb-empty-desktop')).toBeTruthy();
+    expect(document.querySelector('[data-wb-desktop]')).toBeTruthy();
+    expect(screen.getByTestId('wb-dock')).toBeTruthy();
   });
   return getDesktopRoot();
 }
@@ -216,38 +217,15 @@ describe('速查表可发现性', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4) 空态与引导解耦
+// 4) 空桌面恢复胶囊（已移除旧版空桌面引导卡）
 // ---------------------------------------------------------------------------
 
-describe('空桌面与引导解耦', () => {
-  it('跳过 tour 后引导卡收起（Dock / 右键菜单仍能开资源库）；「重新查看引导」可复活 tour', () => {
-    render(<EmptyDesktop />);
-    expect(screen.getByTestId('wb-empty-tour')).toBeTruthy();
-
-    fireEvent.click(screen.getByTestId('wb-empty-tour-skip'));
+describe('空桌面与恢复胶囊', () => {
+  it('无快照时 EmptyDesktop 默认不渲染任何遮挡卡片', () => {
+    const { container } = render(<EmptyDesktop />);
+    expect(container.firstChild).toBeNull();
     expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
-    // 2026-10：tour 关掉后整张卡不再挡桌面
-    expect(screen.queryByText('打开资源库')).toBeNull();
-
-    act(() => {
-      window.dispatchEvent(new CustomEvent('workbench:empty-desktop-replay-tour'));
-    });
-    expect(screen.getByTestId('wb-empty-tour')).toBeTruthy();
-  });
-
-  it('「不再显示」永久消隐 tour 与引导卡；重播清掉持久标记', () => {
-    render(<EmptyDesktop />);
-    fireEvent.click(screen.getByTestId('wb-empty-tour-dont-show'));
-
-    expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBe('1');
-    expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
-    expect(screen.queryByText('打开资源库')).toBeNull();
-
-    act(() => {
-      window.dispatchEvent(new CustomEvent('workbench:empty-desktop-replay-tour'));
-    });
-    expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBeNull();
-    expect(screen.getByTestId('wb-empty-tour')).toBeTruthy();
+    expect(screen.queryByTestId('wb-empty-restore-session')).toBeNull();
   });
 
   it('「恢复上次桌面」次级 CTA 仅在有快照时出现', () => {

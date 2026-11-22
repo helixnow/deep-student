@@ -12,7 +12,7 @@ import qbank from '../index.ts';
 import { createMigratedStorage } from './support/storage.ts';
 import { createOpfsFiles, mobileRoots } from '../../../platform/files/opfs.ts';
 import { createFakeOpfs } from '../../../platform/files/tests/__fixtures__/fake-opfs.ts';
-import { getEnhancedStatistics, getImageStatistics } from '../src/enhanced-statistics.ts';
+import { computeLearningStatistics, getEnhancedStatistics, getImageStatistics } from '../src/enhanced-statistics.ts';
 
 const roots: string[] = [];
 
@@ -121,5 +121,79 @@ describe('src/commands.rs get_enhanced_statistics', () => {
     const result = await getEnhancedStatistics(desktopFiles(root), path.join(root, 'images'));
     expect(result.image_stats.total_files).toBe(0);
     expect(result.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?\+00:00$/);
+  });
+
+  it('aggregates_learning_records_tags_quality_and_monthly_trend_when_databases_provided', async () => {
+    const { storage, base } = await createMigratedStorage('qbank-enhanced-learning-');
+    roots.push(base);
+    try {
+      const vfs = storage.database('vfs');
+      const main = storage.database('mistakes');
+      const todayIso = new Date().toISOString();
+
+      vfs.run(`INSERT INTO resources (id, hash, type, storage_mode, data, created_at, updated_at)
+        VALUES ('res_n1', 'hash_n1', 'note', 'inline', 'body', ?1, ?1)`, [todayIso]);
+      vfs.run(`INSERT INTO notes (id, resource_id, title, tags, is_favorite, created_at, updated_at)
+        VALUES ('n1', 'res_n1', '微积分笔记', '["微积分","导数"]', 0, ?1, ?1)`, [todayIso]);
+      main.run(`INSERT INTO document_tasks (id, document_id, original_document_name, segment_index,
+          content_segment, status, anki_generation_options_json)
+        VALUES ('dt1', 'doc1', 'doc', 0, 'body', 'Completed', '{}')`);
+      main.run(`INSERT INTO anki_cards (id, task_id, front, back, tags_json, created_at, updated_at)
+        VALUES ('c1', 'dt1', 'Q', 'A', '["微积分"]', ?1, ?1)`, [todayIso]);
+
+      const result = await getEnhancedStatistics(
+        desktopFiles(base),
+        path.join(base, 'images'),
+        { vfs, main },
+      );
+
+      expect(result.basic_stats?.total_mistakes).toBe(2);
+      expect(result.basic_stats?.tag_stats).toEqual({ 微积分: 2, 导数: 1 });
+      expect(result.recent_additions).toBe(2);
+      expect(result.quality_score).toBe(100);
+      expect(result.monthly_trend?.length).toBeGreaterThanOrEqual(1);
+      expect(result.monthly_trend?.at(-1)?.count).toBe(2);
+    } finally {
+      storage.dispose();
+    }
+  });
+
+  it('buckets recent additions and monthly trend in localtime under Asia/Shanghai (BUG-03)', async () => {
+    const prevTz = process.env.TZ;
+    process.env.TZ = 'Asia/Shanghai';
+    const { storage, base } = await createMigratedStorage('qbank-enhanced-tz-');
+    roots.push(base);
+    try {
+      const vfs = storage.database('vfs');
+      const main = storage.database('mistakes');
+
+      // 2026-01-01T17:00:00Z is 2026-01-02 01:00:00+08:00 in Asia/Shanghai
+      vfs.run(`INSERT INTO resources (id, hash, type, storage_mode, data, created_at, updated_at)
+        VALUES ('res_tz1', 'hash_tz1', 'note', 'inline', 'body', '2026-01-01T17:00:00Z', '2026-01-01T17:00:00Z')`);
+      vfs.run(`INSERT INTO notes (id, resource_id, title, tags, is_favorite, created_at, updated_at)
+        VALUES ('n_tz1', 'res_tz1', '跨零点笔记', '[]', 0, '2026-01-01T17:00:00Z', '2026-01-01T17:00:00Z')`);
+
+      // 2026-01-31T17:00:00Z is 2026-02-01 01:00:00+08:00 in Asia/Shanghai
+      main.run(`INSERT INTO document_tasks (id, document_id, original_document_name, segment_index,
+          content_segment, status, anki_generation_options_json)
+        VALUES ('dt_tz', 'doc_tz', 'doc', 0, 'body', 'Completed', '{}')`);
+      main.run(`INSERT INTO anki_cards (id, task_id, front, back, tags_json, created_at, updated_at)
+        VALUES ('c_tz1', 'dt_tz', 'Q', 'A', '[]', '2026-01-31T17:00:00Z', '2026-01-31T17:00:00Z')`);
+
+      // For now = 2026-01-08 (Asia/Shanghai), recent7Start = 2026-01-02, prev7 = 2025-12-26..2026-01-01.
+      const windowStats = computeLearningStatistics(
+        { vfs, main },
+        new Date('2026-01-08T10:00:00+08:00'),
+      );
+      expect(windowStats.recent_additions).toBe(2);
+      expect(windowStats.monthly_trend).toEqual([
+        { month: '2026-01', count: 1 },
+        { month: '2026-02', count: 1 },
+      ]);
+    } finally {
+      storage.dispose();
+      if (prevTz === undefined) delete process.env.TZ;
+      else process.env.TZ = prevTz;
+    }
   });
 });

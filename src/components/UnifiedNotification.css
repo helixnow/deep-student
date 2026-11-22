@@ -16,6 +16,11 @@
   pointer-events: none;
 }
 
+/* Workbench 学习桌面激活时：避让顶部菜单栏（--wb-menubar-height 默认 40px + 12px = 52px），经典壳保持 12px */
+:root:has([data-wb-desktop]) .notification-container {
+  top: calc(var(--wb-menubar-height, 40px) + 12px);
+}
+
 /* 统一通知样式 */
 .unified-notification {
   /* Border color carries the status. Fill is a light tint of accent. */

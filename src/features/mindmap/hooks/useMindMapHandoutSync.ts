@@ -24,12 +24,12 @@ export function useMindMapHandoutSync({ mindmapId, isLoading = false }: UseMindM
     if (!mindmapId) return undefined;
 
     return addHandoutSyncRequestListener((request: HandoutSyncRequestDetail) => {
+      // 多导图同开时，非目标导图窗口必须静默忽略，严禁抢先响应 mindmap-not-open 截断目标窗口
+      if (request.mindmapId !== mindmapId) {
+        return;
+      }
       const state = storeApi.getState();
-      if (
-        isLoading
-        || request.mindmapId !== mindmapId
-        || state.mindmapId !== mindmapId
-      ) {
+      if (isLoading || state.mindmapId !== mindmapId) {
         request.respond({ ok: false, updated: 0, added: 0, reason: 'mindmap-not-open' });
         return;
       }

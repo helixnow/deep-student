@@ -1,4 +1,4 @@
-import type { Ctx } from '@milkdown/ctx';
+import type { Ctx } from '@milkdown/kit/ctx';
 import { editorViewCtx } from '@milkdown/kit/core';
 import i18next from 'i18next';
 import type { SlotEntry } from '@/ui-kernel/slots';
@@ -32,6 +32,7 @@ export interface BubbleHostAction {
   key: string;
   label: string;
   icon: string;
+  active?: (ctx: Ctx) => boolean;
   run: (selectedText: string) => void;
 }
 
@@ -50,7 +51,7 @@ export function appendBubbleHostActions(builder: ToolbarGroupBuilder, getHostAct
   for (const action of actions) host.addItem(action.key, {
     label: action.label,
     icon: action.icon,
-    active: () => false,
+    active: action.active ?? (() => false),
     onRun: (ctx) => {
       const view = ctx.get(editorViewCtx);
       const { from, to } = view.state.selection;

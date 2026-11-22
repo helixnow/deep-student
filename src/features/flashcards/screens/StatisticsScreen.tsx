@@ -17,6 +17,7 @@ import {
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { getFsrsStats } from '@/utils/chatApi';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { FsrsStats } from '@/types';
@@ -164,14 +165,14 @@ export const StatisticsScreen: React.FC = () => {
     };
   }, [load]);
 
-  useEffect(() => {
-    const onRefresh = () => {
-      void load();
-      reloadActivity(true);
-    };
-    window.addEventListener(FSRS_STATS_REFRESH_EVENT, onRefresh);
-    return () => window.removeEventListener(FSRS_STATS_REFRESH_EVENT, onRefresh);
+  const onStatsRefresh = useCallback(() => {
+    void load();
+    reloadActivity(true);
   }, [load, reloadActivity]);
+  useEventRegistry(
+    [{ target: 'window', type: FSRS_STATS_REFRESH_EVENT, listener: onStatsRefresh }],
+    [onStatsRefresh],
+  );
 
   const metrics = stats ? [
     { key: 'reviewsToday', label: t('statistics.reviewsToday'), value: stats.reviewsToday },

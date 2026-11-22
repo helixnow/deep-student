@@ -15,6 +15,10 @@ import { Dock } from '../Dock';
 import { getDockPinned, setDockPinned } from '../DockPinnedStore';
 import { closeAppsPanel, isAppsPanelOpen } from '../appsPanelStore';
 import { resetMaterialTierForTests, setMaterialTier } from '../../core/materialTier';
+import {
+  resetDockMagnificationForTests,
+  setDockMagnificationEnabled,
+} from '../../core/dockMagnificationStore';
 import { AGENT_CONTROL_DISCOVERY_SEEN_KEY } from '../AgentControlCenter';
 
 const NullApp: React.FC<AppWindowProps> = () => null;
@@ -71,6 +75,7 @@ beforeEach(() => {
   resetStore();
   setDockPinned([]);
   closeAppsPanel();
+  resetDockMagnificationForTests();
   localStorage.removeItem(AGENT_CONTROL_DISCOVERY_SEEN_KEY);
 });
 
@@ -426,24 +431,193 @@ describe('键盘可达（roving tabindex）', () => {
   });
 });
 
-describe('dock 悬停静止（无邻近放大）', () => {
+describe('dock 60fps 波浪放大、光学扫光与 0ms Tooltip 会话', () => {
+  const dispatchPointer = (
+    el: Element,
+    type: 'pointerenter' | 'pointermove' | 'pointerleave',
+    clientX: number,
+    pointerType = 'mouse',
+  ) => {
+    const event = new MouseEvent(type, {
+      bubbles: type === 'pointermove',
+      cancelable: true,
+      clientX,
+      clientY: 860,
+    });
+    Object.defineProperty(event, 'pointerType', { value: pointerType });
+    fireEvent(el, event);
+  };
+
   afterEach(() => {
     resetMaterialTierForTests();
+    resetDockMagnificationForTests();
+    vi.unstubAllGlobals();
   });
 
-  it('悬停不启动放大循环（图标保持静止），仅保留 tooltip 应用名', () => {
+  it('显式开启放大后悬停移动启动连续波浪放大与 --wb-dock-cursor-x 扫光，离场清空回弹', () => {
     setMaterialTier('full');
-    setDockPinned(['chat']);
+    setDockMagnificationEnabled(true);
+    setDockPinned(['chat', 'files']);
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
     render(<Dock />);
     const dock = screen.getByTestId('wb-dock');
-    fireEvent.pointerEnter(dock, { pointerType: 'mouse', clientX: 100 });
-    fireEvent.pointerMove(dock, { pointerType: 'mouse', clientX: 120 });
+    expect(dock).toHaveClass('wb-glass-rim');
+    expect(dock).not.toHaveClass('mb-2');
+    expect(screen.getByTestId('wb-dock-apps-button').querySelector('.wb-dock-utility-tile')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('wb-dock-agent-control-button').querySelector('.wb-dock-utility-tile'),
+    ).toBeInTheDocument();
+
+    const makeRect = (left: number, width: number): DOMRect =>
+      ({
+        left,
+        top: 840,
+        width,
+        height: 44,
+        right: left + width,
+        bottom: 884,
+        x: left,
+        y: 840,
+        toJSON: () => ({}),
+      }) as DOMRect;
+
+    const dockSpy = vi.spyOn(dock, 'getBoundingClientRect').mockReturnValue(makeRect(80, 260));
+    const chatWrap = screen.getByTestId('wb-dock-item-chat');
+    const filesWrap = screen.getByTestId('wb-dock-item-files');
+    const chatSpy = vi.spyOn(chatWrap, 'getBoundingClientRect').mockReturnValue(makeRect(100, 44));
+    const filesSpy = vi.spyOn(filesWrap, 'getBoundingClientRect').mockReturnValue(makeRect(150, 44));
+
+    try {
+      dispatchPointer(dock, 'pointermove', 122);
+
+      expect(dock).toHaveAttribute('data-wb-dock-magging', 'true');
+      expect(dock).toHaveAttribute('data-wb-dock-shimmer', 'true');
+      expect(dock.style.getPropertyValue('--wb-dock-cursor-x')).toContain('%');
+
+      const chatMag = chatWrap.querySelector<HTMLElement>('[data-wb-dock-mag-item="chat"]');
+      const filesMag = filesWrap.querySelector<HTMLElement>('[data-wb-dock-mag-item="files"]');
+      expect(chatMag?.style.transform).toContain('scale(1.38');
+      expect(filesMag?.style.transform).toContain('translate3d(');
+      expect(chatWrap.style.getPropertyValue('--wb-dock-tip-lift')).not.toBe('');
+
+      fireEvent.pointerLeave(dock);
+      expect(dock).not.toHaveAttribute('data-wb-dock-magging');
+      expect(dock).not.toHaveAttribute('data-wb-dock-shimmer');
+      expect(chatMag?.style.transform ?? '').toBe('');
+    } finally {
+      dockSpy.mockRestore();
+      chatSpy.mockRestore();
+      filesSpy.mockRestore();
+    }
+  });
+
+  it('默认（纯静态 Dock）不启动波浪放大，但仍保持扫光与静止图标', () => {
+    setMaterialTier('full');
+    setDockPinned(['chat']);
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 1;
+    });
+
+    render(<Dock />);
+    const dock = screen.getByTestId('wb-dock');
+    dispatchPointer(dock, 'pointermove', 120);
     expect(dock).not.toHaveAttribute('data-wb-dock-magging');
     const magLayer = screen
       .getByTestId('wb-dock-item-chat')
       .querySelector<HTMLElement>('[data-wb-dock-mag-item="chat"]');
     expect(magLayer?.style.transform ?? '').toBe('');
-    expect(screen.getByTestId('wb-dock-tip-chat')).toBeInTheDocument();
+  });
+
+  it('0ms 连续 Tooltip 会话：首次 ~70ms 显现，横划相邻图标 0ms 即时切换', () => {
+    vi.useFakeTimers();
+    setDockPinned(['chat', 'files']);
+    render(<Dock />);
+
+    const dock = screen.getByTestId('wb-dock');
+    const chatWrap = screen.getByTestId('wb-dock-item-chat');
+    const filesWrap = screen.getByTestId('wb-dock-item-files');
+
+    fireEvent.pointerEnter(chatWrap);
+    expect(chatWrap).not.toHaveAttribute('data-tip-active');
+
+    act(() => {
+      vi.advanceTimersByTime(70);
+    });
+    expect(dock).toHaveAttribute('data-tip-session', 'active');
+    expect(chatWrap).toHaveAttribute('data-tip-active', 'true');
+
+    // 划到相邻图标：0ms 即时切换，无需再次等待
+    fireEvent.pointerLeave(chatWrap);
+    fireEvent.pointerEnter(filesWrap);
+    expect(filesWrap).toHaveAttribute('data-tip-active', 'true');
+    expect(chatWrap).not.toHaveAttribute('data-tip-active');
+
+    // 离开 Dock 后会话重置
+    fireEvent.pointerLeave(dock);
+    expect(dock).not.toHaveAttribute('data-tip-session');
+    expect(filesWrap).not.toHaveAttribute('data-tip-active');
+  });
+});
+
+describe('最小化窗口缩略槽位', () => {
+  it('展示最多 3 张微缩玻璃窗口卡，点击直接恢复聚焦并触发 Genie restoring 相位', () => {
+    setDockPinned(['chat']);
+    const id1 = openWin('chat', 'a', '高数笔记');
+    const id2 = openWin('chat', 'b', '线性代数');
+    useWindowStore.getState().minimizeWindow(id1, true);
+    useWindowStore.getState().minimizeWindow(id2, true);
+
+    render(<Dock />);
+    expect(screen.getByTestId('wb-dock-minimized-separator')).toBeInTheDocument();
+    expect(screen.getByTestId(`wb-dock-minimized-${id1}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`wb-dock-tip-min-${id1}`)).toHaveTextContent('高数笔记');
+    expect(screen.getByTestId(`wb-dock-minimized-${id2}`)).toBeInTheDocument();
+    expect(screen.queryByTestId('wb-dock-minimized-overflow')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId(`wb-dock-minimized-button-${id1}`));
+    const state = useWindowStore.getState();
+    expect(state.windows[id1].minimized).toBe(false);
+    expect(state.focusStack[state.focusStack.length - 1]).toBe(id1);
+    expect(state.transientPhases?.[id1]).toBe('restoring');
+  });
+
+  it('超过 3 个最小化窗口时显示 +N 溢出入口并支持点击恢复', () => {
+    const ids = [
+      openWin('chat', '1', '窗口 1'),
+      openWin('chat', '2', '窗口 2'),
+      openWin('chat', '3', '窗口 3'),
+      openWin('chat', '4', '窗口 4'),
+      openWin('chat', '5', '窗口 5'),
+    ];
+    for (const id of ids) {
+      useWindowStore.getState().minimizeWindow(id, true);
+    }
+
+    render(<Dock />);
+    expect(screen.getByTestId(`wb-dock-minimized-${ids[0]}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`wb-dock-minimized-${ids[1]}`)).toBeInTheDocument();
+    expect(screen.getByTestId(`wb-dock-minimized-${ids[2]}`)).toBeInTheDocument();
+    expect(screen.queryByTestId(`wb-dock-minimized-${ids[3]}`)).not.toBeInTheDocument();
+
+    const overflowBtn = screen.getByTestId('wb-dock-minimized-overflow');
+    expect(overflowBtn).toHaveTextContent('+2');
+
+    fireEvent.click(overflowBtn);
+    const list = screen.getByTestId('wb-dock-minimized-overflow-list');
+    expect(within(list).getByTestId(`wb-dock-minimized-overflow-item-${ids[3]}`)).toHaveTextContent('窗口 4');
+    expect(within(list).getByTestId(`wb-dock-minimized-overflow-item-${ids[4]}`)).toHaveTextContent('窗口 5');
+
+    fireEvent.click(within(list).getByTestId(`wb-dock-minimized-overflow-item-${ids[4]}`));
+    const state = useWindowStore.getState();
+    expect(state.windows[ids[4]].minimized).toBe(false);
+    expect(state.focusStack[state.focusStack.length - 1]).toBe(ids[4]);
+    expect(state.transientPhases?.[ids[4]]).toBe('restoring');
   });
 });
 
@@ -545,23 +719,21 @@ describe('autohide', () => {
     expect(screen.getByTestId('wb-dock')).not.toHaveAttribute('data-hidden');
   });
 
-  it('收起态渲染柔和可见的轻胶囊提示条与无障碍提示，点击可立即唤出并在展开后收起提示条', () => {
+  it('收起态保持 macOS 原生纯净底缘热区（无呼吸条），点击可立即唤出', () => {
     setDockPinned(['chat']);
     render(<Dock autohide />);
     const dock = screen.getByTestId('wb-dock');
     const hotzone = screen.getByTestId('wb-dock-hotzone');
-    const pill = screen.getByTestId('wb-dock-autohide-pill');
 
     expect(dock).toHaveAttribute('data-hidden', 'true');
     expect(hotzone).toHaveAttribute('data-collapsed', 'true');
     expect(hotzone.getAttribute('aria-label')).toContain('程序坞');
     expect(hotzone.getAttribute('title')).toContain('程序坞');
-    expect(pill).toBeInTheDocument();
+    expect(screen.queryByTestId('wb-dock-autohide-pill')).not.toBeInTheDocument();
 
-    // 点击底缘胶囊提示条可无需等待悬停延迟立即唤出 Dock
+    // 点击底缘热区可无需等待悬停延迟立即唤出 Dock
     fireEvent.click(hotzone);
     expect(dock).not.toHaveAttribute('data-hidden');
     expect(hotzone).toHaveAttribute('data-collapsed', 'false');
-    expect(screen.queryByTestId('wb-dock-autohide-pill')).not.toBeInTheDocument();
   });
 });

@@ -8,7 +8,8 @@
     "addChild": "Add Child",
     "delete": "Delete",
     "collapse": "Collapse",
-    "expand": "Expand"
+    "expand": "Expand",
+    "close": "Close"
   },
   "placeholder": {
     "root": "Central Topic",
@@ -58,7 +59,10 @@
     "unsaved": "Unsaved",
     "saveShortcut": "Save (Cmd+S)",
     "undoDisabled": "Nothing to undo",
-    "redoDisabled": "Nothing to redo"
+    "redoDisabled": "Nothing to redo",
+    "masteryOverlay": "Mastery",
+    "masteryOverlayHint": "Show FSRS & recall mastery heatmap",
+    "quoteToChat": "Quote to AI Chat"
   },
   "preferences": {
     "classicKeymap": "Classic outline keymap",
@@ -123,12 +127,19 @@
     "imagePlaceholderNote_one": "[Image placeholder] The original topic contained {{count}} image that could not be embedded (missing resource or above the inline size limit)",
     "imagePlaceholderNote_other": "[Image placeholder] The original topic contained {{count}} images that could not be embedded (missing resource or above the inline size limit)",
     "importing": "Importing mind map…",
-    "saveAndImport": "Save & Import"
+    "saveAndImport": "Save & Import",
+    "reportTitle": "Import completed (with compatibility notes)"
   },
   "presentation": {
     "enter": "Presentation mode",
     "exit": "Exit presentation mode",
-    "exitHint": "Exit presentation mode (Esc)"
+    "exitHint": "Exit presentation mode (Esc)",
+    "hudLabel": "Branch presentation controls",
+    "overview": "Overview",
+    "overviewHint": "Back to full map overview (Home)",
+    "prevBranch": "Previous branch (←)",
+    "nextBranch": "Next branch (→ / Space)",
+    "exitShort": "Exit"
   },
   "errors": {
     "notFound": "Mind map not found"
@@ -318,7 +329,19 @@
     "bgColor": "Background color",
     "globalTheme": "Global Theme",
     "currentNodeStyle": "Current Node Style",
-    "selectNodeHint": "Select a node to customize its style"
+    "selectNodeHint": "Select a node to customize its style",
+    "fontSize": "Font size",
+    "selectedCount": "{{count}} selected",
+    "nodeAttributes": "Node attributes",
+    "priority": "Priority",
+    "clearPriority": "Clear priority",
+    "progress": "Progress",
+    "clearProgress": "Clear progress",
+    "hyperlink": "Hyperlink",
+    "invalidHref": "Please enter a valid http, https, or mailto URL",
+    "showCheckbox": "Checkbox",
+    "checkboxOn": "On",
+    "checkboxOff": "Off"
   },
   "outline": {
     "dragToMove": "Drag to move",
@@ -399,7 +422,26 @@
     "exitFocusMode": "Exit Focus Mode",
     "paneMenuLabel": "Canvas menu",
     "nodeMenuLabel": "Node menu",
-    "textStyleGroup": "Text style"
+    "textStyleGroup": "Text style",
+    "addHref": "Add link",
+    "editHref": "Edit link",
+    "clearHref": "Clear",
+    "hrefInputLabel": "Link URL",
+    "invalidHref": "Please enter a valid http, https, or mailto URL",
+    "priority": "Priority",
+    "clearPriority": "Clear priority",
+    "progress": "Progress",
+    "clearProgress": "Clear progress",
+    "toggleCheckbox": "Show checkbox",
+    "aiAssistant": "AI Assistant",
+    "aiExpand": "AI Expand Children",
+    "aiExpandPrompt": "Please expand child topics for this mind map concept:",
+    "aiSummarize": "AI Summarize Branch",
+    "aiSummarizePrompt": "Please summarize the key points of this mind map branch:",
+    "aiCloze": "AI Generate Cloze Blanks",
+    "aiClozePrompt": "Please suggest smart cloze-deletion blanks for studying this concept:",
+    "aiAsk": "Ask AI About Concept",
+    "aiAskPrompt": "Please explain this concept in depth:"
   },
   "association": {
     "add": "Add association",
@@ -434,7 +476,8 @@
     "priorityBadge": "Priority {{level}}",
     "progressLabel": "Progress {{percent}}%",
     "toggleComplete": "Toggle completed",
-    "imageAlt": "Node image"
+    "imageAlt": "Node image",
+    "previewImage": "Preview image: {{name}}"
   },
   "sheets": {
     "switcherLabel": "Switch sheet",
@@ -474,7 +517,9 @@
     "deleteWithChildrenQuestion": "Also delete {{count}} subtopics?",
     "confirmDelete": "Delete",
     "cancel": "Cancel",
-    "tapAgainToDelete": "Tap to confirm"
+    "tapAgainToDelete": "Tap to confirm",
+    "deleteSelectedNodesQuestion": "Delete the {{count}} selected nodes?",
+    "zoomResetTooltipDetail": "Current zoom; click to reset to 100% ({{fitShortcut}} to fit view)"
   },
   "recite": {
     "title": "Recite Mode",
@@ -513,10 +558,15 @@
     "missCardsDone_other": "Added {{count}} cards to review",
     "missCardsFailed": "Couldn't create cards: {{error}}",
     "missCardsDeck": "Mind map recall",
-    "missCardsTag": "mindmap-recall"
+    "missCardsTag": "mindmap-recall",
+    "blankBranchDone": "Created cloze blanks for {{count}} nodes",
+    "clearBranchBlanksDone": "Cleared cloze blanks from {{count}} nodes",
+    "missCards": "Save misses ({{count}})",
+    "missCardsDone": "Saved {{count}} missed items to Flashcards"
   },
   "clipboard": {
-    "pasteParseFailed": "Pasted content is too large or too deep to parse"
+    "pasteParseFailed": "Pasted content is too large or too deep to parse",
+    "empty": "Clipboard is empty"
   },
   "menu": {
     "groupData": "Data",
@@ -551,7 +601,9 @@
       "copiedNodes_one": "Copied {{count}} node",
       "copiedNodes_other": "Copied {{count}} nodes",
       "cutNodes_one": "Cut {{count}} node",
-      "cutNodes_other": "Cut {{count}} nodes"
+      "cutNodes_other": "Cut {{count}} nodes",
+      "copiedNodes": "Copied {{count}} node(s)",
+      "cutNodes": "Cut {{count}} node(s)"
     },
     "embed": {
       "retry": "Retry"
@@ -678,5 +730,23 @@
     "exportHandoutSuffix": "Lecture Handout",
     "exportHandoutSuccess": "Created handout note \"{{title}}\"",
     "exportHandoutFailed": "Failed to export handout: {{error}}"
+  },
+  "ai": {
+    "label": "AI",
+    "quickActions": "AI Expand / Summarize",
+    "expand": "AI Expand",
+    "expandPrompt": "Please expand the following mind map node structurally with key child topics:",
+    "summarize": "AI Summarize",
+    "summarizePrompt": "Please summarize the key takeaways of the following mind map branch:",
+    "actionDispatched": "Node context and prompt prefilled in AI Chat",
+    "actionFailed": "Failed to trigger AI action: {{error}}",
+    "nodeNotFound": "Target node not found for AI action",
+    "promptExpand": "Expand node \"{{nodeText}}\" (nodeId: {{nodeId}}) in mind map \"{{mapTitle}}\" by adding 3–5 structured key child nodes.",
+    "promptSummarize": "Summarize the key takeaways of node \"{{nodeText}}\" (nodeId: {{nodeId}}) and its subtree in mind map \"{{mapTitle}}\".",
+    "promptCloze": "Identify key concepts and suggest recitation cloze blanks for node \"{{nodeText}}\" (nodeId: {{nodeId}}) and its subtree in mind map \"{{mapTitle}}\".",
+    "promptAsk": "Explain the concept \"{{nodeText}}\" (nodeId: {{nodeId}}) in mind map \"{{mapTitle}}\" with core principles, concrete examples, and common pitfalls."
+  },
+  "common": {
+    "save": "Save"
   }
 }

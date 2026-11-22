@@ -5,14 +5,16 @@ import { MindMapGhostProposalLayer } from '../agent/MindMapGhostProposalLayer';
 export type MindMapViewNewHandle = MindMapCanvasHandle;
 export type MindMapViewNewProps = MindMapCanvasProps;
 
-export const MindMapViewNew = React.forwardRef<MindMapViewNewHandle, MindMapViewNewProps>(
-  function MindMapViewNew(props, ref) {
-    const hostRef = useRef<HTMLDivElement>(null);
-    return (
-      <div ref={hostRef} className="w-full h-full relative">
-        <MindMapCanvas ref={ref} {...props} />
-        <MindMapGhostProposalLayer hostRef={hostRef} />
-      </div>
-    );
-  },
+export const MindMapViewNew = React.memo(
+  React.forwardRef<MindMapViewNewHandle, MindMapViewNewProps>(
+    function MindMapViewNew(props, ref) {
+      const hostRef = useRef<HTMLDivElement>(null);
+      return (
+        <div ref={hostRef} className="w-full h-full relative">
+          <MindMapCanvas ref={ref} {...props} />
+          <MindMapGhostProposalLayer hostRef={hostRef} />
+        </div>
+      );
+    },
+  ),
 );

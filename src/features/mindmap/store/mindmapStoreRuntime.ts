@@ -46,6 +46,7 @@ export function createMindMapStoreRuntime(set: MindMapStoreSet, get: MindMapStor
   const SAVE_RETRY_BASE_DELAY_MS = 5000;
   let draftPersistTimer: ReturnType<typeof setTimeout> | null = null;
   let measuredFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  let measuredFirstQueuedAt: number | null = null;
   const measuredHeightsQueue = new Map<string, number>();
   const lastDraftVersionByMindmap = new Map<string, number>();
   /**
@@ -55,9 +56,21 @@ export function createMindMapStoreRuntime(set: MindMapStoreSet, get: MindMapStor
   let lastCoalesce: { key: string; at: number } | null = null;
 
   const flushMeasuredNodeHeights = () => {
+    measuredFirstQueuedAt = null;
     if (measuredHeightsQueue.size === 0) return;
     const entries = Array.from(measuredHeightsQueue.entries());
     measuredHeightsQueue.clear();
+
+    const currentHeights = get().measuredNodeHeights;
+    let hasChanges = false;
+    for (const [nodeId, height] of entries) {
+      const prev = currentHeights[nodeId];
+      if (!prev || Math.abs(prev - height) >= 1) {
+        hasChanges = true;
+        break;
+      }
+    }
+    if (!hasChanges) return;
 
     set((state) => {
       for (const [nodeId, height] of entries) {
@@ -374,6 +387,12 @@ export function createMindMapStoreRuntime(set: MindMapStoreSet, get: MindMapStor
     },
     set measuredFlushTimer(value: ReturnType<typeof setTimeout> | null) {
       measuredFlushTimer = value;
+    },
+    get measuredFirstQueuedAt(): number | null {
+      return measuredFirstQueuedAt;
+    },
+    set measuredFirstQueuedAt(value: number | null) {
+      measuredFirstQueuedAt = value;
     },
     get lastCoalesce(): { key: string; at: number } | null {
       return lastCoalesce;

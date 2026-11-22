@@ -4,6 +4,12 @@ import { SKIP_IN_HISTORY, MAX_HISTORY_LENGTH } from '../types/navigation';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 import i18n from '@/i18n';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import {
+  isHandlingBrowserPopState,
+  notifyPageHistoryStepBack,
+  notifyPageHistoryStepForward,
+  syncBrowserHistoryState,
+} from '@/utils/browserHistoryBridge';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -86,14 +92,20 @@ export function useNavigationHistory(options: UseNavigationHistoryOptions): UseN
     return false;
   }, []);
 
+  // 挂载时把初始栈底写入浏览器 history.state，供后续 popstate 识别应用根状态
+  useEffect(() => {
+    const initialEntry = historyRef.current[historyIndexRef.current];
+    syncBrowserHistoryState('replace', initialEntry?.view ?? 'chat-v2', historyIndexRef.current);
+  }, []);
+
   /**
    * 后退
    */
   const goBack = useCallback(() => {
     if (historyIndexRef.current <= 0) return;
     
-    // 防抖：避免重复点击
-    if (shouldSkipClick('back')) {
+    // 防抖：避免短时间内重复点击 UI 后退按钮；浏览器 popstate 触发时不防抖
+    if (!isHandlingBrowserPopState() && shouldSkipClick('back')) {
       console.log('[NavigationHistory] 跳过防抖期内的重复后退点击');
       return;
     }
@@ -106,6 +118,7 @@ export function useNavigationHistory(options: UseNavigationHistoryOptions): UseN
     historyIndexRef.current = newIndex;
     navigatingRef.current = true;
     lastClickRef.current = { action: 'back', timestamp: Date.now() };
+    notifyPageHistoryStepBack(entry.view, newIndex);
     
     // 恢复状态
     if (entry.restore) {
@@ -135,8 +148,8 @@ export function useNavigationHistory(options: UseNavigationHistoryOptions): UseN
   const goForward = useCallback(() => {
     if (historyIndexRef.current >= historyRef.current.length - 1) return;
     
-    // 防抖：避免重复点击
-    if (shouldSkipClick('forward')) {
+    // 防抖：避免重复点击 UI 前进按钮；浏览器 popstate 触发时不防抖
+    if (!isHandlingBrowserPopState() && shouldSkipClick('forward')) {
       console.log('[NavigationHistory] 跳过防抖期内的重复前进点击');
       return;
     }
@@ -149,6 +162,7 @@ export function useNavigationHistory(options: UseNavigationHistoryOptions): UseN
     historyIndexRef.current = newIndex;
     navigatingRef.current = true;
     lastClickRef.current = { action: 'forward', timestamp: Date.now() };
+    notifyPageHistoryStepForward(entry.view, newIndex);
     
     // 恢复状态
     if (entry.restore) {
@@ -207,6 +221,7 @@ export function useNavigationHistory(options: UseNavigationHistoryOptions): UseN
     if (replace && historyIndexRef.current >= 0) {
       // 替换模式：替换当前项
       historyRef.current[historyIndexRef.current] = newEntry;
+      syncBrowserHistoryState('replace', view, historyIndexRef.current);
       console.log('[NavigationHistory] 替换当前项:', { view, index: historyIndexRef.current });
     } else {
       // 正常模式：剪裁未来分支并追加
@@ -220,6 +235,7 @@ export function useNavigationHistory(options: UseNavigationHistoryOptions): UseN
       
       historyRef.current = updated;
       historyIndexRef.current = updated.length - 1;
+      syncBrowserHistoryState('push', view, historyIndexRef.current);
       
       console.log('[NavigationHistory] 推入新项:', { view, index: historyIndexRef.current, total: updated.length });
     }
@@ -235,6 +251,7 @@ export function useNavigationHistory(options: UseNavigationHistoryOptions): UseN
     historyIndexRef.current = 0;
     navigatingRef.current = false;
     lastClickRef.current = null;
+    syncBrowserHistoryState('replace', 'chat-v2', 0);
     forceUpdate({});
     console.log('[NavigationHistory] 清空历史');
   }, []);
@@ -286,6 +303,7 @@ export function useNavigationHistory(options: UseNavigationHistoryOptions): UseN
     
     historyRef.current = updated;
     historyIndexRef.current = updated.length - 1;
+    syncBrowserHistoryState('push', currentView, historyIndexRef.current);
     
     console.log('[NavigationHistory] 推入新项:', { view: currentView, index: historyIndexRef.current, total: updated.length });
     

@@ -63,4 +63,21 @@ describe('Android safe area store (#472)', () => {
     window.__DEEP_STUDENT_SET_SAFE_AREA__?.(999, -4, Number.NaN, 12);
     expect(platform.getAndroidSafeAreaInsets()).toEqual({ top: 200, bottom: 0, left: 0, right: 12, native: true });
   });
+
+  it('skips Android safe area injection and mobile shell identity on WebUI shell', async () => {
+    vi.stubGlobal('__DS_WEBUI__', true);
+    vi.stubGlobal('__DS_PLATFORM__', { kind: 'mobile', os: 'android' });
+    try {
+      const platform = await loadPlatform();
+      expect(platform.isWebUiShell()).toBe(true);
+      expect(platform.isAndroidMobileShell()).toBe(false);
+
+      platform.initAndroidSafeArea();
+      expect(platform.getAndroidSafeAreaInsets()).toBeNull();
+      expect(document.documentElement.style.getPropertyValue('--android-safe-area-top')).toBe('');
+      expect(window.__DEEP_STUDENT_SET_SAFE_AREA__).toBeUndefined();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

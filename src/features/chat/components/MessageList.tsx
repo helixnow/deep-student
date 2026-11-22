@@ -37,7 +37,7 @@ import { ArrowDown } from '@phosphor-icons/react';
 import { ThreadEmptyStateShell } from './ui/ThreadEmptyStateShell';
 import { MobileEmptyStateToggle } from './ui/MobileEmptyStateToggle';
 import { ThreadContentShell } from './ui/ThreadContentShell';
-import { MessageSearchBar } from './MessageSearchBar';
+import { MessageSearchBar, CHAT_OPEN_MESSAGE_SEARCH_EVENT } from './MessageSearchBar';
 import { useMessageSearch } from '../hooks/useMessageSearch';
 import { useStreamPreferences } from './renderers/StreamPreferencesContext';
 import { BlockRenderSkipContext } from './renderers/blockRenderSkip';
@@ -391,13 +391,23 @@ const MessageListInner: React.FC<MessageListProps> = ({
     }
   }, [forceEmptyPreview, isSearchOpen, messageOrder.length]);
 
+  const handleOpenSearchEvent = useCallback(() => {
+    if (forceEmptyPreview || messageOrder.length === 0) return;
+    setIsSearchOpen(true);
+  }, [forceEmptyPreview, messageOrder.length]);
+
   useEventRegistry([
     {
       target: 'window',
       type: 'keydown',
       listener: handleWindowKeyDown as EventListener,
     },
-  ], [handleWindowKeyDown]);
+    {
+      target: 'window',
+      type: CHAT_OPEN_MESSAGE_SEARCH_EVENT,
+      listener: handleOpenSearchEvent as EventListener,
+    },
+  ], [handleWindowKeyDown, handleOpenSearchEvent]);
 
   useEffect(() => {
     setActiveSearchIndex(0);

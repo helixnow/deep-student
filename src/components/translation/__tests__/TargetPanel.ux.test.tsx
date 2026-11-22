@@ -125,4 +125,18 @@ describe('TargetPanel 学习者交互体验', () => {
     expect(onCopyResult).toHaveBeenCalledTimes(1);
     expect(copyBtn.textContent).toContain('translation:target_section.copied_short');
   });
+
+  it('翻译结果区提供「存为生词闪卡」快捷按钮并触发回调与成功态反馈', async () => {
+    const onSaveAsFlashcard = vi.fn(async () => undefined);
+    renderTargetPanel({
+      sourceText: 'ephemeral',
+      translatedText: '短暂的；转瞬即逝的',
+      onSaveAsFlashcard,
+    });
+
+    const saveBtn = screen.getByTestId('translation-save-flashcard-btn');
+    fireEvent.click(saveBtn);
+    expect(onSaveAsFlashcard).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('translation-save-flashcard-mobile-btn')).toBeInTheDocument();
+  });
 });

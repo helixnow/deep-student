@@ -791,7 +791,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
                 variant="warning"
                 size="sm"
                 onClick={onStartReview}
-                className="w-full justify-center sm:w-auto"
+                className="w-full justify-center min-h-9 sm:min-h-0 sm:w-auto [@media(pointer:coarse)]:!min-h-11"
               >
                 <Lightning size={14} />
                 {t('review:questions.startReview', { count: reviewQuestions.length })}
@@ -805,7 +805,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
               disabled={Boolean(generateCardsDisabledReason) || isGeneratingCards}
               title={generateCardsDisabledReason ?? undefined}
               aria-describedby={generateCardsDisabledReason ? 'review-generate-cards-reason' : undefined}
-              className="w-full justify-center sm:w-auto"
+              className="w-full justify-center min-h-9 sm:min-h-0 sm:w-auto [@media(pointer:coarse)]:!min-h-11"
             >
               <Cards size={14} />
               {isGeneratingCards

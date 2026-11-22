@@ -1,6 +1,6 @@
 import { DOMParser, Fragment, type Node, type Schema, type Attrs } from '@milkdown/prose/model'
 import type { MarkdownNode } from '@milkdown/transformer'
-import { $nodeSchema } from '@milkdown/utils'
+import { $nodeSchema } from '@milkdown/kit/utils'
 import i18next from 'i18next'
 
 import { formatToggleMarker, TOGGLE_TYPE } from './marker'

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   findSpatialMindMapNeighbor,
   getMindMapPreferences,
+  setMindMapPreferences,
 } from '../mindmapPreferences';
 
 function rect(left: number, top: number, width = 40, height = 20): DOMRect {
@@ -30,6 +31,17 @@ describe('mindmap preferences', () => {
       canvasNavigation: 'spatial',
       descriptionPreview: 'first-line',
     });
+    // 二次读取仍须保持 classic（防止迁移后被误重置回 deep-student）
+    expect(getMindMapPreferences().keymap).toBe('classic');
+  });
+
+  it('persists classic keymap across set and repeated reads', () => {
+    setMindMapPreferences({ keymap: 'classic' });
+    expect(getMindMapPreferences().keymap).toBe('classic');
+    expect(getMindMapPreferences().keymap).toBe('classic');
+
+    setMindMapPreferences({ keymap: 'deep-student' });
+    expect(getMindMapPreferences().keymap).toBe('deep-student');
   });
 });
 

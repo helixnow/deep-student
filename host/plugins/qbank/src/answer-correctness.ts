@@ -48,53 +48,31 @@ function boolAnswer(raw: string): boolean | null {
   return null;
 }
 
+const NUMERIC_INPUT_RE =
+  /^(?:[a-zA-Z]\s*[=≈]\s*|[=≈]\s*)?([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(?:\s*\/\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?))?([\s\S]*)$/;
+const NUMERIC_UNIT_SUFFIX_RE =
+  /^(?:\s*[%°℃℉‰μΩπa-zA-Z]+(?:[·*/][a-zA-Z]+)*(?:\^[-+]?\d+|[⁻⁺]?[¹²³⁴⁵⁶⁷⁸⁹⁰]+)?|[\u4e00-\u9fff]{1,3})?$/u;
+
 export function parseNumericInput(raw: string): number | null {
-  const chars = [...fullwidth(raw).replaceAll(',', '')];
-  const digit = (char: string | undefined) => char !== undefined && /^[0-9]$/u.test(char);
-  function parseAt(start: number): [number, number] | null {
-    let i = start;
-    let token = '';
-    if (chars[i] === '+' || chars[i] === '-') token += chars[i++];
-    let seenDigit = false;
-    let seenDot = false;
-    let seenExp = false;
-    while (i < chars.length) {
-      const char = chars[i]!;
-      if (digit(char)) {
-        seenDigit = true;
-        token += char;
-        i++;
-      } else if (char === '.' && !seenDot && !seenExp) {
-        seenDot = true;
-        token += char;
-        i++;
-      } else if ((char === 'e' || char === 'E') && seenDigit && !seenExp) {
-        let j = i + 1;
-        if (chars[j] === '+' || chars[j] === '-') j++;
-        if (!digit(chars[j])) break;
-        seenExp = true;
-        token += 'e';
-        if (chars[i + 1] === '+' || chars[i + 1] === '-') token += chars[i + 1];
-        i = j;
-      } else break;
-    }
-    return seenDigit ? [Number(token), i] : null;
+  const normalized = trim(fullwidth(raw)).replace(/(?<=\d),(?=\d{3}(?:\D|$))/g, '');
+  if (!normalized) return null;
+
+  const match = NUMERIC_INPUT_RE.exec(normalized);
+  if (!match) return null;
+
+  const numerator = Number(match[1]);
+  if (!Number.isFinite(numerator)) return null;
+
+  let value = numerator;
+  if (match[2] !== undefined) {
+    const denominator = Number(match[2]);
+    if (!Number.isFinite(denominator) || denominator === 0) return null;
+    value = numerator / denominator;
+    if (!Number.isFinite(value)) return null;
   }
-  const start = chars.findIndex((char, i) => digit(char)
-    || (['+', '-', '.'].includes(char) && digit(chars[i + 1]))
-    || ((char === '+' || char === '-') && chars[i + 1] === '.' && digit(chars[i + 2])));
-  if (start < 0) return null;
-  const parsed = parseAt(start);
-  if (!parsed) return null;
-  const [value, end] = parsed;
-  let j = end;
-  while (j < chars.length && whitespace(chars[j]!)) j++;
-  if (chars[j] === '/') {
-    j++;
-    while (j < chars.length && whitespace(chars[j]!)) j++;
-    const denominator = parseAt(j);
-    if (denominator) return denominator[0] !== 0 ? value / denominator[0] : null;
-  }
+
+  const remainder = match[3]!.replace(/\p{White_Space}+$/gu, '');
+  if (!NUMERIC_UNIT_SUFFIX_RE.test(remainder)) return null;
   return value;
 }
 

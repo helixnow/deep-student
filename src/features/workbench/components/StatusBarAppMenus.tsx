@@ -46,11 +46,31 @@ const WindowMenuItems: React.FC<{
 export interface StatusBarAppMenusProps {
   /** 任一菜单开合变化时上报（autohide 打开期间保持展开用） */
   onOpenChange?: (open: boolean) => void;
+  /** 受控模式：当前顶栏激活的菜单 id（覆盖品牌/应用/窗口/控制中心/时钟） */
+  activeMenuId?: 'brand' | 'app' | 'window' | 'control-center' | 'clock' | null;
+  /** 受控模式：点击切换对应菜单 */
+  onToggleMenu?: (id: 'app' | 'window') => void;
+  /** 受控模式：顶栏已有菜单展开时指针划入相邻触发器 0ms 即时切换 */
+  onHoverMenu?: (id: 'app' | 'window') => void;
+  /** 受控模式：关闭菜单 */
+  onCloseMenu?: () => void;
 }
 
-export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({ onOpenChange }) => {
+export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({
+  onOpenChange,
+  activeMenuId,
+  onToggleMenu,
+  onHoverMenu,
+  onCloseMenu,
+}) => {
   const { t } = useTranslation('workbench');
-  const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
+  const isControlled = activeMenuId !== undefined;
+  const [internalOpenMenu, setInternalOpenMenu] = useState<OpenMenu>(null);
+  const openMenu: OpenMenu = isControlled
+    ? activeMenuId === 'app' || activeMenuId === 'window'
+      ? activeMenuId
+      : null
+    : internalOpenMenu;
   const appButtonRef = useRef<HTMLButtonElement | null>(null);
   const windowButtonRef = useRef<HTMLButtonElement | null>(null);
   const { windowId: focusedWindowId, typeId: focusedTypeId } = useFocusedApp();
@@ -63,10 +83,42 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({ onOpenChan
 
   useEffect(() => {
     // Exposé 或统一搜索面板（⌘K）打开时收起菜单（与学习中心 / 品牌菜单同语义）
-    if (exposeOpen || appsPanelOpen) setOpenMenu(null);
-  }, [exposeOpen, appsPanelOpen]);
+    if (!isControlled && (exposeOpen || appsPanelOpen)) {
+      setInternalOpenMenu(null);
+    }
+  }, [isControlled, exposeOpen, appsPanelOpen]);
 
-  const closeMenus = useCallback(() => setOpenMenu(null), []);
+  const closeMenus = useCallback(() => {
+    if (isControlled) {
+      onCloseMenu?.();
+    } else {
+      setInternalOpenMenu(null);
+    }
+  }, [isControlled, onCloseMenu]);
+
+  const handleToggle = useCallback(
+    (menu: 'app' | 'window') => {
+      if (isControlled) {
+        onToggleMenu?.(menu);
+      } else {
+        setInternalOpenMenu((m) => (m === menu ? null : menu));
+      }
+    },
+    [isControlled, onToggleMenu],
+  );
+
+  const handleHover = useCallback(
+    (menu: 'app' | 'window') => {
+      if (isControlled) {
+        onHoverMenu?.(menu);
+      } else {
+        setInternalOpenMenu((m) => (m !== null && m !== menu ? menu : m));
+      }
+    },
+    [isControlled, onHoverMenu],
+  );
+
+  const instantExit = isControlled ? activeMenuId !== null : internalOpenMenu !== null;
   const focusedDef = focusedTypeId ? appRegistry.get(focusedTypeId) : undefined;
   const appName = focusedTypeId
     ? focusedDef
@@ -87,7 +139,8 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({ onOpenChan
         aria-haspopup="menu"
         aria-expanded={openMenu === 'app'}
         title={appName}
-        onClick={() => setOpenMenu((m) => (m === 'app' ? null : 'app'))}
+        onClick={() => handleToggle('app')}
+        onPointerEnter={() => handleHover('app')}
       >
         <span className="wb-menubar-appmenu-label">{appName}</span>
       </button>
@@ -99,7 +152,8 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({ onOpenChan
         aria-haspopup="menu"
         aria-expanded={openMenu === 'window'}
         title={t('menubar.windowMenu')}
-        onClick={() => setOpenMenu((m) => (m === 'window' ? null : 'window'))}
+        onClick={() => handleToggle('window')}
+        onPointerEnter={() => handleHover('window')}
       >
         {t('menubar.windowMenu')}
       </button>
@@ -109,6 +163,8 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({ onOpenChan
         anchorRef={appButtonRef}
         label={t('menubar.appMenu', { name: appName })}
         onClose={closeMenus}
+        hideBackdrop={isControlled}
+        instantExit={instantExit}
         testId="wb-menubar-appmenu-panel"
       >
         <MenuBarRows rows={appRows} onDone={closeMenus} />
@@ -119,6 +175,8 @@ export const StatusBarAppMenus: React.FC<StatusBarAppMenusProps> = ({ onOpenChan
         anchorRef={windowButtonRef}
         label={t('menubar.windowMenu')}
         onClose={closeMenus}
+        hideBackdrop={isControlled}
+        instantExit={instantExit}
         testId="wb-menubar-windowmenu-panel"
       >
         <WindowMenuItems focusedWindowId={focusedWindowId} onDone={closeMenus} />

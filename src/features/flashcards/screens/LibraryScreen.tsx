@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  BracketsCurly,
   CaretDown,
   CaretLeft,
   CaretRight,
@@ -23,6 +24,7 @@ import {
   Trash,
   Tray,
   UploadSimple,
+  Warning,
   X,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
@@ -36,6 +38,7 @@ import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { AnkiLibraryCard, AnkiLibraryCardPatch } from '@/types';
+import { hasValidCloze, insertClozeDeletion, nextClozeIndex } from '../cloze';
 import { FSRS_LIBRARY_REFRESH_EVENT } from '../events';
 import {
   FLASHCARDS_LIBRARY_PAGE_SIZE,
@@ -50,13 +53,14 @@ import { useFlashcardsMobileChrome } from '../useFlashcardsMobileChrome';
 import {
   countDueCards,
   matchesStatusFilter,
+  parseTagsInput,
   partitionLibraryQueues,
   sortLibraryCards,
   toReviewContent,
 } from '../library/libraryView';
 import { buildDeckTree, flattenDeckTree } from '../library/deckTree';
 import '../library/library.css';
-import { exportLibraryApkg } from '../library/exportLibrary';
+import { exportLibraryApkg, exportLibraryCsv } from '../library/exportLibrary';
 import { openImageOcclusionBuilder } from '../occlusion/ImageOcclusionBuilderModal';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
@@ -127,6 +131,7 @@ export const LibraryScreen: React.FC = () => {
   const importing = useFlashcardsLibraryStore((state) => state.importing);
   const createCard = useFlashcardsLibraryStore((state) => state.createCard);
   const importApkg = useFlashcardsLibraryStore((state) => state.importApkg);
+  const importCsv = useFlashcardsLibraryStore((state) => state.importCsv);
 
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [lastAnchorId, setLastAnchorId] = useState<string | null>(null);
@@ -137,9 +142,13 @@ export const LibraryScreen: React.FC = () => {
   const [composerOpen, setComposerOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtersId = useId();
+  const [draftMode, setDraftMode] = useState<'basic' | 'cloze'>('basic');
   const [draftFront, setDraftFront] = useState('');
   const [draftBack, setDraftBack] = useState('');
   const [draftDeck, setDraftDeck] = useState('');
+  const [draftTags, setDraftTags] = useState('');
+  const mobileFrontRef = useRef<HTMLTextAreaElement | null>(null);
+  const desktopFrontRef = useRef<HTMLInputElement | null>(null);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const bulkDisarmTimer = useRef<number | null>(null);
 
@@ -433,7 +442,9 @@ export const LibraryScreen: React.FC = () => {
     : translate('library.total', { count: statusCounts?.all ?? total });
 
   // ---------- 新建 / 导入 ----------
-  const draftValid = draftFront.trim().length > 0 && draftBack.trim().length > 0;
+  const draftClozeInvalid = draftMode === 'cloze' && draftFront.trim().length > 0 && !hasValidCloze(draftFront);
+  const draftValid = draftFront.trim().length > 0
+    && (draftMode === 'cloze' ? hasValidCloze(draftFront) : draftBack.trim().length > 0);
   const openComposerWithDefaultDeck = useCallback(() => {
     setDraftDeck((prev) => {
       if (prev.trim()) return prev;
@@ -442,21 +453,42 @@ export const LibraryScreen: React.FC = () => {
     setComposerOpen(true);
   }, [deckFilter]);
 
+  const handleInsertDraftCloze = useCallback((el: HTMLTextAreaElement | HTMLInputElement | null) => {
+    const { nextValue, nextSelectionStart, nextSelectionEnd } = insertClozeDeletion(
+      draftFront,
+      el?.selectionStart,
+      el?.selectionEnd,
+      translate('library.create.clozePlaceholder', { defaultValue: '挖空内容' }),
+    );
+    setDraftMode('cloze');
+    setDraftFront(nextValue);
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+    });
+  }, [draftFront, translate]);
+
   const handleSubmitDraft = useCallback(() => {
     if (!draftValid || creating) return;
     const targetDeck = draftDeck.trim();
+    const tags = parseTagsInput(draftTags);
     void createCard({
       front: draftFront,
       back: draftBack,
+      tags,
+      noteType: draftMode === 'cloze' ? 'Cloze' : 'Basic',
       ...(targetDeck ? { deckName: targetDeck } : {}),
     }).then((ok) => {
       if (!ok) return;
       setDraftFront('');
       setDraftBack('');
+      setDraftTags('');
+      setDraftMode('basic');
       setComposerOpen(false);
       showGlobalNotification('success', translate('library.create.success'));
     });
-  }, [draftValid, creating, createCard, draftFront, draftBack, draftDeck, translate]);
+  }, [draftValid, creating, createCard, draftFront, draftBack, draftDeck, draftTags, draftMode, translate]);
 
   const handleImportApkg = useCallback(() => {
     if (importing) return;
@@ -474,6 +506,27 @@ export const LibraryScreen: React.FC = () => {
       // canceled 静默；failed 已写入 actionError 由页内错误条呈现
     });
   }, [importing, importApkg, translate]);
+
+  const handleImportCsv = useCallback(() => {
+    if (importing) return;
+    void importCsv().then((outcome) => {
+      if (outcome.status === 'imported') {
+        const message =
+          outcome.skippedRows > 0
+            ? translate('library.import.csvSuccessSkipped', {
+                count: outcome.importedCards,
+                queued: outcome.reviewEnqueued,
+                skipped: outcome.skippedRows,
+              })
+            : translate('library.import.csvSuccess', {
+                count: outcome.importedCards,
+                queued: outcome.reviewEnqueued,
+              });
+        showGlobalNotification('success', message);
+      }
+      // canceled 静默；failed 已写入 actionError 由页内错误条呈现
+    });
+  }, [importing, importCsv, translate]);
 
   // 导出：有选中导出选中，否则导出整个卡片库
   const [exporting, setExporting] = useState(false);
@@ -501,11 +554,39 @@ export const LibraryScreen: React.FC = () => {
       setExporting(false);
     }
   }, [exporting, selectedCards, translate]);
+  const handleExportCsv = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const outcome = await exportLibraryCsv(selectedCards, {
+        defaultDeck: translate('library.export.deckName'),
+        fileName: 'flashcards.csv',
+        title: translate('library.export.csvTitle'),
+      });
+      if (outcome.status === 'exported') {
+        showGlobalNotification('success', translate('library.export.success', { count: outcome.count }));
+      } else if (outcome.status === 'empty') {
+        showGlobalNotification('info', translate('library.export.empty'));
+      } else if (outcome.status === 'failed') {
+        showGlobalNotification('error', translate('library.export.failed'));
+      }
+    } catch (error: unknown) {
+      console.error('[FlashcardsLibrary] export csv failed:', error);
+      showGlobalNotification('error', translate('library.export.failed'));
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting, selectedCards, translate]);
   const exportLabel = exporting
     ? translate('library.export.running', { defaultValue: '正在导出…' })
     : selectedCards.length > 0
       ? translate('library.export.selected', { count: selectedCards.length, defaultValue: '导出选中（{{count}}）' })
       : translate('library.export.apkg', { defaultValue: '导出 .apkg' });
+  const exportCsvLabel = exporting
+    ? translate('library.export.running')
+    : selectedCards.length > 0
+      ? translate('library.export.csvSelected', { count: selectedCards.length })
+      : translate('library.export.csv');
 
   const closeComposer = useCallback(() => {
     if (!creating) setComposerOpen(false);
@@ -534,7 +615,9 @@ export const LibraryScreen: React.FC = () => {
         <AppMenuContent align="end" width={200}>
           <AppMenuItem icon={<ImageSquare size={18} />} onClick={handleOpenOcclusionBuilder} data-testid="fc-lib-new-occlusion-mobile">{t('occlusion.newCardButton')}</AppMenuItem>
           <AppMenuItem icon={<UploadSimple size={18} />} disabled={importing} onClick={handleImportApkg}>{t(importing ? 'library.import.running' : 'library.import.apkg')}</AppMenuItem>
+          <AppMenuItem icon={<UploadSimple size={18} />} disabled={importing} onClick={handleImportCsv} data-testid="fc-lib-import-csv-mobile">{t(importing ? 'library.import.running' : 'library.import.csv')}</AppMenuItem>
           <AppMenuItem icon={<DownloadSimple size={18} />} disabled={exporting} onClick={() => void handleExportApkg()} data-testid="fc-lib-export-apkg">{exportLabel}</AppMenuItem>
+          <AppMenuItem icon={<DownloadSimple size={18} />} disabled={exporting} onClick={() => void handleExportCsv()} data-testid="fc-lib-export-csv-mobile">{exportCsvLabel}</AppMenuItem>
         </AppMenuContent>
       </AppMenu>
     </>,
@@ -545,13 +628,106 @@ export const LibraryScreen: React.FC = () => {
   if (mobileChrome && composerOpen) {
     return <CustomScrollArea className="min-h-0 flex-1">
       <div className="wb-fc-screen fc-lib-mobile-composer">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div
+            role="group"
+            aria-label={translate('library.create.typeLabel', { defaultValue: '卡片类型' })}
+            className="inline-flex items-center rounded-lg border border-border/50 bg-muted/40 p-0.5"
+          >
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-pressed={draftMode === 'basic'}
+              data-testid="fc-lib-create-mode-basic"
+              onClick={() => setDraftMode('basic')}
+              className={cn(
+                'min-h-[36px] rounded-md px-3 text-xs font-medium',
+                draftMode === 'basic'
+                  ? 'bg-card text-foreground shadow-sm hover:bg-card'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {translate('library.create.typeBasic', { defaultValue: '问答卡 (Basic)' })}
+            </DsButton>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-pressed={draftMode === 'cloze'}
+              data-testid="fc-lib-create-mode-cloze"
+              onClick={() => setDraftMode('cloze')}
+              className={cn(
+                'min-h-[36px] rounded-md px-3 text-xs font-medium',
+                draftMode === 'cloze'
+                  ? 'bg-card text-foreground shadow-sm hover:bg-card'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {translate('library.create.typeCloze', { defaultValue: '挖空卡 (Cloze)' })}
+            </DsButton>
+          </div>
+          <DsButton
+            type="button"
+            variant="default"
+            size="sm"
+            data-testid="fc-lib-create-insert-cloze"
+            onClick={() => handleInsertDraftCloze(mobileFrontRef.current)}
+            className="min-h-[36px] gap-1.5 text-xs"
+          >
+            <BracketsCurly size={14} aria-hidden="true" />
+            <span>
+              {translate('library.create.insertCloze', { defaultValue: '插入挖空' })}
+              {' '}
+              <code className="font-mono">{`{{c${nextClozeIndex(draftFront)}::...}}`}</code>
+            </span>
+          </DsButton>
+        </div>
         <label className="flex flex-col gap-2 text-sm font-medium">
-          {t('library.create.frontLabel')}
-          <textarea autoFocus rows={5} value={draftFront} onChange={(event) => setDraftFront(event.target.value)} placeholder={t('library.create.frontPlaceholder')} className="w-full resize-y rounded-md border border-border bg-background p-3 text-base font-normal" />
+          {draftMode === 'cloze'
+            ? translate('library.create.clozeTextLabel', { defaultValue: '挖空正文（含 {{c1::...}}）' })
+            : t('library.create.frontLabel')}
+          <textarea
+            ref={mobileFrontRef}
+            autoFocus
+            rows={5}
+            value={draftFront}
+            onChange={(event) => setDraftFront(event.target.value)}
+            placeholder={draftMode === 'cloze'
+              ? translate('library.create.clozeFrontPlaceholder', { defaultValue: '输入正文，选中关键词点「插入挖空」生成 {{c1::...}}' })
+              : t('library.create.frontPlaceholder')}
+            className="w-full resize-y rounded-md border border-border bg-background p-3 text-base font-normal"
+          />
+        </label>
+        {draftClozeInvalid ? (
+          <p role="status" className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+            <Warning size={13} aria-hidden="true" />
+            {t('session.invalidClozeEdit')}
+          </p>
+        ) : null}
+        <label className="flex flex-col gap-2 text-sm font-medium">
+          {draftMode === 'cloze'
+            ? translate('library.create.clozeExtraLabel', { defaultValue: '补充解析（可选）' })
+            : t('library.create.backLabel')}
+          <textarea
+            rows={4}
+            value={draftBack}
+            onChange={(event) => setDraftBack(event.target.value)}
+            placeholder={draftMode === 'cloze'
+              ? translate('library.create.clozeBackPlaceholder', { defaultValue: '翻面后展示的解析或出处（可留空）' })
+              : t('library.create.backPlaceholder')}
+            className="w-full resize-y rounded-md border border-border bg-background p-3 text-base font-normal"
+          />
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium">
-          {t('library.create.backLabel')}
-          <textarea rows={5} value={draftBack} onChange={(event) => setDraftBack(event.target.value)} placeholder={t('library.create.backPlaceholder')} className="w-full resize-y rounded-md border border-border bg-background p-3 text-base font-normal" />
+          {translate('library.editTags', { defaultValue: '标签（逗号分隔）' })}
+          <Input
+            value={draftTags}
+            onChange={(event) => setDraftTags(event.target.value)}
+            placeholder={translate('library.create.tagsPlaceholder', { defaultValue: '例：高数, 重点' })}
+            data-testid="fc-lib-create-tags"
+            className="h-11 text-base font-normal"
+          />
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium">
           {t('library.create.deckLabel')}
@@ -652,6 +828,20 @@ export const LibraryScreen: React.FC = () => {
         type="button"
         variant="default"
         iconOnly={isSmallScreen}
+        aria-label={importing ? translate('library.import.running') : translate('library.import.csv')}
+        disabled={importing}
+        onClick={handleImportCsv}
+        title={translate('library.import.csvHint')}
+        className="fc-lib-create-cta text-sm"
+        data-testid="fc-lib-import-csv"
+      >
+        <UploadSimple size={18} />
+        {!isSmallScreen && (importing ? translate('library.import.running') : translate('library.import.csv'))}
+      </DsButton>
+      <DsButton
+        type="button"
+        variant="default"
+        iconOnly={isSmallScreen}
         aria-label={exportLabel}
         disabled={exporting}
         onClick={() => void handleExportApkg()}
@@ -661,6 +851,20 @@ export const LibraryScreen: React.FC = () => {
       >
         <DownloadSimple size={18} />
         {!isSmallScreen && exportLabel}
+      </DsButton>
+      <DsButton
+        type="button"
+        variant="default"
+        iconOnly={isSmallScreen}
+        aria-label={exportCsvLabel}
+        disabled={exporting}
+        onClick={() => void handleExportCsv()}
+        title={translate('library.export.csvHint')}
+        className="fc-lib-create-cta text-sm"
+        data-testid="fc-lib-export-csv"
+      >
+        <DownloadSimple size={18} />
+        {!isSmallScreen && exportCsvLabel}
       </DsButton>
     </>
   );
@@ -697,7 +901,7 @@ export const LibraryScreen: React.FC = () => {
             className="h-9 pl-8 text-sm [@media(pointer:coarse)]:!h-11"
           />
         </div>
-        {!isSmallScreen && <DsButton type="button" variant="default" aria-label={t('library.search')} onClick={handleSearchNow} className="text-sm [@media(pointer:coarse)]:!min-h-11">
+        {!isSmallScreen && <DsButton type="button" variant="default" aria-label={t('library.search')} onClick={handleSearchNow} className="text-sm">
           {t('library.search')}
         </DsButton>}
         {!mobileChrome && <div className="fc-lib-create">{creationActions}</div>}
@@ -709,7 +913,7 @@ export const LibraryScreen: React.FC = () => {
             aria-expanded={filtersOpen}
             aria-controls={filtersId}
             onClick={() => setFiltersOpen((open) => !open)}
-            className="relative"
+            className="relative min-h-[36px] min-w-[36px]"
           >
             <SlidersHorizontal size={18} />
             {statusFilter !== 'all' || deckFilter !== null || sortKey !== 'default' ? <span className="fc-lib-filter-dot" /> : null}
@@ -719,29 +923,105 @@ export const LibraryScreen: React.FC = () => {
 
       {composerOpen ? (
         <div className="fc-lib-composer">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div
+              role="group"
+              aria-label={translate('library.create.typeLabel', { defaultValue: '卡片类型' })}
+              className="inline-flex items-center rounded-lg border border-border/50 bg-muted/40 p-0.5"
+            >
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-pressed={draftMode === 'basic'}
+                data-testid="fc-lib-create-mode-basic"
+                onClick={() => setDraftMode('basic')}
+                className={cn(
+                  'min-h-[32px] rounded-md px-2.5 text-xs font-medium',
+                  draftMode === 'basic'
+                    ? 'bg-card text-foreground shadow-sm hover:bg-card'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {translate('library.create.typeBasic', { defaultValue: '问答卡 (Basic)' })}
+              </DsButton>
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-pressed={draftMode === 'cloze'}
+                data-testid="fc-lib-create-mode-cloze"
+                onClick={() => setDraftMode('cloze')}
+                className={cn(
+                  'min-h-[32px] rounded-md px-2.5 text-xs font-medium',
+                  draftMode === 'cloze'
+                    ? 'bg-card text-foreground shadow-sm hover:bg-card'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {translate('library.create.typeCloze', { defaultValue: '挖空卡 (Cloze)' })}
+              </DsButton>
+            </div>
+            <DsButton
+              type="button"
+              variant="default"
+              size="sm"
+              data-testid="fc-lib-create-insert-cloze"
+              onClick={() => handleInsertDraftCloze(desktopFrontRef.current)}
+              className="min-h-[36px] gap-1.5 text-xs"
+            >
+              <BracketsCurly size={14} aria-hidden="true" />
+              <span>
+                {translate('library.create.insertCloze', { defaultValue: '插入挖空' })}
+                {' '}
+                <code className="font-mono">{`{{c${nextClozeIndex(draftFront)}::...}}`}</code>
+              </span>
+            </DsButton>
+          </div>
           <Input
+            ref={desktopFrontRef}
             aria-label={translate('library.create.frontLabel')}
             value={draftFront}
             onChange={(event) => setDraftFront(event.target.value)}
-            placeholder={translate('library.create.frontPlaceholder')}
-            className="h-10 text-sm [@media(pointer:coarse)]:!h-11"
+            placeholder={draftMode === 'cloze'
+              ? translate('library.create.clozeFrontPlaceholder', { defaultValue: '输入正文，选中关键词点「插入挖空」生成 {{c1::...}}' })
+              : translate('library.create.frontPlaceholder')}
+            className="h-10 text-base sm:text-sm [@media(pointer:coarse)]:!h-11"
           />
+          {draftClozeInvalid ? (
+            <p role="status" className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+              <Warning size={13} aria-hidden="true" />
+              {t('session.invalidClozeEdit')}
+            </p>
+          ) : null}
           <Input
             aria-label={translate('library.create.backLabel')}
             value={draftBack}
             onChange={(event) => setDraftBack(event.target.value)}
-            placeholder={translate('library.create.backPlaceholder')}
-            className="h-10 text-sm [@media(pointer:coarse)]:!h-11"
+            placeholder={draftMode === 'cloze'
+              ? translate('library.create.clozeBackPlaceholder', { defaultValue: '翻面后展示的解析或出处（可留空）' })
+              : translate('library.create.backPlaceholder')}
+            className="h-10 text-base sm:text-sm [@media(pointer:coarse)]:!h-11"
           />
-          <Input
-            aria-label={translate('library.create.deckLabel')}
-            value={draftDeck}
-            onChange={(event) => setDraftDeck(event.target.value)}
-            list={`${filtersId}-deck-suggestions`}
-            placeholder={translate('library.create.deckPlaceholder')}
-            className="h-10 text-sm [@media(pointer:coarse)]:!h-11"
-            data-testid="fc-lib-create-deck"
-          />
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <Input
+              aria-label={translate('library.editTags', { defaultValue: '标签（逗号分隔）' })}
+              value={draftTags}
+              onChange={(event) => setDraftTags(event.target.value)}
+              placeholder={translate('library.create.tagsPlaceholder', { defaultValue: '例：高数, 重点' })}
+              className="h-10 text-base sm:text-sm [@media(pointer:coarse)]:!h-11"
+              data-testid="fc-lib-create-tags"
+            />
+            <Input
+              aria-label={translate('library.create.deckLabel')}
+              value={draftDeck}
+              onChange={(event) => setDraftDeck(event.target.value)}
+              list={`${filtersId}-deck-suggestions`}
+              placeholder={translate('library.create.deckPlaceholder')}
+              className="h-10 text-base sm:text-sm [@media(pointer:coarse)]:!h-11"
+              data-testid="fc-lib-create-deck"
+            />
+          </div>
           <datalist id={`${filtersId}-deck-suggestions`}>
             {namedDeckPaths.map((path) => (
               <option key={path} value={path} />
@@ -1050,6 +1330,17 @@ export const LibraryScreen: React.FC = () => {
                   >
                     <UploadSimple size={15} />
                     {importing ? translate('library.import.running') : translate('library.import.apkg')}
+                  </DsButton>
+                  <DsButton
+                    type="button"
+                    variant="default"
+                    disabled={importing}
+                    onClick={handleImportCsv}
+                    className="fc-lib-create-cta text-sm"
+                    data-testid="fc-lib-empty-import-csv"
+                  >
+                    <UploadSimple size={15} />
+                    {importing ? translate('library.import.running') : translate('library.import.csv')}
                   </DsButton>
                 </div>}
               </>

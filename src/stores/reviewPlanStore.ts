@@ -13,9 +13,18 @@
 import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
+import { dispatchTypedEvent } from '@/events';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 import { showGlobalNotification } from '../components/UnifiedNotification';
 import i18n from '@/i18n';
+import type { QuestionImage, QuestionMaterial } from '@/api/questionBankApi';
+
+/** 与 features/learning-today/todayLearningStore.ts 的 TODAY_LEARNING_REFRESH_EVENT 同名（避免 stores → feature 反向依赖）。 */
+const TODAY_LEARNING_REFRESH_EVENT = 'learning-today:refresh';
+
+function dispatchTodayLearningRefresh(): void {
+  dispatchTypedEvent(TODAY_LEARNING_REFRESH_EVENT);
+}
 
 // ============================================================================
 // 类型定义
@@ -158,6 +167,10 @@ export interface ReviewSessionQuestion {
    * （对象或 JSON 字符串）。可选字段，旧数据/旧调用方不受影响。
    */
   structured_data?: unknown;
+  /** 题目配图（题干图 / 选项图等） */
+  images?: QuestionImage[] | null;
+  /** 共享阅读材料 / 共用题干 */
+  materials?: QuestionMaterial[] | null;
 }
 
 /** 带题目信息的复习项 */
@@ -194,6 +207,8 @@ export interface ReviewSessionState {
   completedCount: number;
   /** 正确数量 */
   correctCount: number;
+  /** 本轮内各计划因评 Again 重入队列的次数（防止死循环） */
+  requeueCounts: Record<string, number>;
 }
 
 // ============================================================================
@@ -281,6 +296,10 @@ let statsRequestSeq = 0;
 let calendarRequestSeq = 0;
 // 会话评分提交去重：防止快速连按（键盘 1-4 连击）对同一题重复提交
 let submitInFlight = false;
+/** 单轮复习会话中同一题评 Again 最多重排进队次数（防死循环） */
+const MAX_AGAIN_REQUEUES = 2;
+/** 评 Again 后延后插入的题数间隔 */
+const AGAIN_REQUEUE_GAP = 3;
 
 // ★ 本地日期（与视图层 formatLocalDate 一致）。
 // toISOString() 是 UTC 日期，UTC+8 用户在本地 00:00-08:00 会得到前一天，
@@ -314,6 +333,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
         results: [],
         completedCount: 0,
         correctCount: 0,
+        requeueCounts: {},
       },
       calendarData: [],
       isLoading: false,
@@ -464,6 +484,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
             allPlans: [...state.allPlans, plan],
             isProcessing: false,
           }));
+          dispatchTodayLearningRefresh();
 
           return plan;
         } catch (err: unknown) {
@@ -486,6 +507,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
           await get().loadAllPlans(examId);
 
           set({ isProcessing: false });
+          dispatchTodayLearningRefresh();
           return result;
         } catch (err: unknown) {
           debugLog.error('[ReviewPlanStore] batchCreatePlans failed:', err);
@@ -507,6 +529,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
           await get().refreshStats(examId);
 
           set({ isProcessing: false });
+          dispatchTodayLearningRefresh();
           return result;
         } catch (err: unknown) {
           debugLog.error('[ReviewPlanStore] createPlansForExam failed:', err);
@@ -523,6 +546,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
             dueReviews: state.dueReviews.filter((p) => p.id !== planId),
             allPlans: state.allPlans.filter((p) => p.id !== planId),
           }));
+          dispatchTodayLearningRefresh();
         } catch (err: unknown) {
           debugLog.error('[ReviewPlanStore] deletePlan failed:', err);
           throw err;
@@ -537,6 +561,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
             dueReviews: state.dueReviews.filter((p) => p.id !== planId),
             allPlans: state.allPlans.map((p) => (p.id === planId ? plan : p)),
           }));
+          dispatchTodayLearningRefresh();
 
           return plan;
         } catch (err: unknown) {
@@ -555,6 +580,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
 
           // 刷新到期复习
           await get().loadDueReviews(get().currentExamId || undefined);
+          dispatchTodayLearningRefresh();
 
           return plan;
         } catch (err: unknown) {
@@ -569,6 +595,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
             questionId,
             examId,
           });
+          dispatchTodayLearningRefresh();
           return plan;
         } catch (err: unknown) {
           debugLog.error('[ReviewPlanStore] getOrCreatePlan failed:', err);
@@ -608,6 +635,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
             allPlans: state.allPlans.map((p) => (p.id === planId ? result.plan : p)),
             isProcessing: false,
           }));
+          dispatchTodayLearningRefresh();
 
           return result;
         } catch (err: unknown) {
@@ -645,6 +673,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
             results: [],
             completedCount: 0,
             correctCount: 0,
+            requeueCounts: {},
           },
         });
       },
@@ -661,6 +690,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
             results: [],
             completedCount: 0,
             correctCount: 0,
+            requeueCounts: {},
           },
         });
       },
@@ -708,12 +738,38 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
               },
             ];
 
+            // 评 Again（quality === 0）时重排到当前队列靠后位置，让本轮真正巩固一次（带防死循环上限）
+            const prevRequeues = state.session.requeueCounts?.[currentItem.plan.id] ?? 0;
+            const shouldRequeue = quality === 0 && prevRequeues < MAX_AGAIN_REQUEUES;
+            let nextQueue = state.session.queue;
+            let nextRequeueCounts = state.session.requeueCounts ?? {};
+            if (shouldRequeue) {
+              const requeuedItem: ReviewItemWithQuestion = {
+                ...currentItem,
+                plan: result.plan,
+              };
+              const insertAt = Math.min(
+                state.session.queue.length,
+                state.session.currentIndex + 1 + AGAIN_REQUEUE_GAP,
+              );
+              nextQueue = [
+                ...state.session.queue.slice(0, insertAt),
+                requeuedItem,
+                ...state.session.queue.slice(insertAt),
+              ];
+              nextRequeueCounts = {
+                ...nextRequeueCounts,
+                [currentItem.plan.id]: prevRequeues + 1,
+              };
+            }
+
             const newIndex = state.session.currentIndex + 1;
-            const isComplete = newIndex >= state.session.queue.length;
+            const isComplete = newIndex >= nextQueue.length;
 
             return {
               session: {
                 ...state.session,
+                queue: nextQueue,
                 currentIndex: newIndex,
                 questionStartTime: isComplete ? null : Date.now(),
                 results: newResults,
@@ -721,6 +777,7 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
                 correctCount: result.passed
                   ? state.session.correctCount + 1
                   : state.session.correctCount,
+                requeueCounts: nextRequeueCounts,
               },
             };
           });

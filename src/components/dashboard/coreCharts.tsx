@@ -14,15 +14,25 @@ import {
 } from 'recharts';
 import { DESIGN } from './design';
 import { dashboardCoreCharts, type DashboardChartProps, type DashboardStatistics } from '@/ui-plugins/official/dashboard/api';
+import {
+  getFallbackDashboardStatistics,
+  normalizeDashboardStatistics,
+  useResolvedDashboardStatistics,
+} from './coreStats';
 
 interface MonthlyTrendItem {
   month?: unknown;
   count?: unknown;
 }
 
+function effectiveStatistics(statistics: DashboardStatistics): DashboardStatistics {
+  return normalizeDashboardStatistics(statistics, getFallbackDashboardStatistics()) ?? statistics;
+}
+
 function monthlyTrendOf(statistics: DashboardStatistics) {
-  return Array.isArray(statistics.monthly_trend)
-    ? statistics.monthly_trend.map((item: MonthlyTrendItem | null | undefined) => ({
+  const resolved = effectiveStatistics(statistics);
+  return Array.isArray(resolved.monthly_trend)
+    ? resolved.monthly_trend.map((item: MonthlyTrendItem | null | undefined) => ({
         month: typeof item?.month === 'string' ? item.month : '—',
         count: Number(item?.count ?? 0) || 0,
       }))
@@ -30,7 +40,8 @@ function monthlyTrendOf(statistics: DashboardStatistics) {
 }
 
 function topTagsOf(statistics: DashboardStatistics) {
-  return Object.entries(statistics.basic_stats?.tag_stats || {})
+  const resolved = effectiveStatistics(statistics);
+  return Object.entries(resolved.basic_stats?.tag_stats || {})
     .map(([name, value]) => ({ name, value: Number(value) || 0 }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 8);
@@ -38,7 +49,8 @@ function topTagsOf(statistics: DashboardStatistics) {
 
 const DataTrendChart: React.FC<DashboardChartProps> = ({ statistics }) => {
   const { t } = useTranslation('data');
-  const monthlyTrend = useMemo(() => monthlyTrendOf(statistics), [statistics]);
+  const resolved = useResolvedDashboardStatistics(statistics) ?? statistics;
+  const monthlyTrend = useMemo(() => monthlyTrendOf(resolved), [resolved]);
   return (
     <div className="sota-chart-card">
       <h3>
@@ -66,7 +78,8 @@ const DataTrendChart: React.FC<DashboardChartProps> = ({ statistics }) => {
 
 const TopTagsChart: React.FC<DashboardChartProps> = ({ statistics }) => {
   const { t } = useTranslation('data');
-  const tags = useMemo(() => topTagsOf(statistics), [statistics]);
+  const resolved = useResolvedDashboardStatistics(statistics) ?? statistics;
+  const tags = useMemo(() => topTagsOf(resolved), [resolved]);
   return (
     <div className="sota-chart-card">
       <h3>
@@ -90,7 +103,7 @@ dashboardCoreCharts.announce({
   id: 'data-trend',
   order: 10,
   value: {
-    hasData: (statistics) => Array.isArray(statistics.monthly_trend) && statistics.monthly_trend.length > 0,
+    hasData: (statistics) => monthlyTrendOf(statistics).length > 0,
     component: DataTrendChart,
   },
 });
@@ -98,7 +111,7 @@ dashboardCoreCharts.announce({
   id: 'top-tags',
   order: 20,
   value: {
-    hasData: (statistics) => Object.keys(statistics.basic_stats?.tag_stats || {}).length > 0,
+    hasData: (statistics) => topTagsOf(statistics).length > 0,
     component: TopTagsChart,
   },
 });

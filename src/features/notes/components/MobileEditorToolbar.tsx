@@ -15,6 +15,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useIsKeyboardShown, useKeyboardInset } from '@/hooks/useKeyboardHeight';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import {
   Plus,
@@ -23,6 +24,9 @@ import {
   TextB,
   TextItalic,
   TextStrikethrough,
+  Code,
+  Function as FunctionIcon,
+  MathOperations,
   TextHOne,
   TextHTwo,
   TextHThree,
@@ -60,6 +64,8 @@ export type MobileEditorToolbarCommands = {
   toggleItalic: () => void;
   /** 可选：宿主未接线时按钮仍展示，点击为 no-op */
   toggleStrikethrough?: () => void;
+  /** 可选：行内代码切换 */
+  toggleInlineCode?: () => void;
   insertHeading: (level: 1 | 2 | 3) => void;
   toggleBulletList: () => void;
   toggleTaskList: () => void;
@@ -75,6 +81,8 @@ export type MobileEditorToolbarCommands = {
   toggleBlockquote?: () => void;
   insertLink?: () => void;
   insertCodeBlock?: () => void;
+  insertInlineMath?: () => void;
+  insertMath?: () => void;
   insertTable?: () => void;
   /**
    * 可选：打开编辑器内查找替换面板。宿主（NotesCrepeEditor）用
@@ -98,6 +106,7 @@ export type MobileEditorToolbarActiveStates = {
   bold?: boolean;
   italic?: boolean;
   strikethrough?: boolean;
+  code?: boolean;
   h1?: boolean;
   h2?: boolean;
   h3?: boolean;
@@ -139,6 +148,7 @@ const TOGGLEABLE_ACTIONS = new Set<string>([
   'bold',
   'italic',
   'strikethrough',
+  'code',
   'h1',
   'h2',
   'h3',
@@ -192,43 +202,47 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
     if (!visible) setInsertOpen(false);
   }, [visible]);
 
-  useEffect(() => {
-    if (!insertOpen) return;
-    const dismiss = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented || isComposingKeyEvent(event)) return;
-      event.preventDefault();
-      setInsertOpen(false);
-      const root = rootRef.current;
-      if (root?.querySelector('.mobile-editor-toolbar__insert-row')?.contains(document.activeElement)) {
-        root.querySelector<HTMLButtonElement>('[data-action="insert-toggle"]')?.focus();
-      }
-    };
-    document.addEventListener('keydown', dismiss);
-    return () => document.removeEventListener('keydown', dismiss);
-  }, [insertOpen]);
+  useEventRegistry(
+    insertOpen
+      ? [
+          {
+            target: 'document',
+            type: 'keydown',
+            listener: (rawEvent) => {
+              const event = rawEvent as KeyboardEvent;
+              if (event.key !== 'Escape' || event.defaultPrevented || isComposingKeyEvent(event)) return;
+              event.preventDefault();
+              setInsertOpen(false);
+              setExpanded(false);
+              const root = rootRef.current;
+              if (root?.querySelector('.mobile-editor-toolbar__insert-row')?.contains(document.activeElement)) {
+                root.querySelector<HTMLButtonElement>('[data-action="insert-toggle"]')?.focus();
+              }
+            },
+          },
+        ]
+      : [],
+    [insertOpen],
+  );
 
   useEffect(() => {
     if (!visible) return;
-
-    const update = () => {
-      setBottomOffset(computeViewportBottomOffset());
-    };
-
-    update();
-
-    const vv = window.visualViewport;
-    if (!vv) return;
-
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
-    window.addEventListener('resize', update);
-
-    return () => {
-      vv.removeEventListener('resize', update);
-      vv.removeEventListener('scroll', update);
-      window.removeEventListener('resize', update);
-    };
+    setBottomOffset(computeViewportBottomOffset());
   }, [visible]);
+
+  useEventRegistry(
+    (() => {
+      if (!visible || typeof window === 'undefined' || !window.visualViewport) return [];
+      const vv = window.visualViewport;
+      const update = () => setBottomOffset(computeViewportBottomOffset());
+      return [
+        { target: vv, type: 'resize', listener: update },
+        { target: vv, type: 'scroll', listener: update },
+        { target: 'window', type: 'resize', listener: update },
+      ];
+    })(),
+    [visible],
+  );
 
   // 把键盘遮挡高度 / 工具条高度共享给编辑器（正文 padding、slash 浮层 max-height）
   useLayoutEffect(() => {
@@ -295,6 +309,15 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
           icon: <TextStrikethrough size={ICON_SIZE} weight={ICON_WEIGHT} aria-hidden />,
           onAction: () => commands.toggleStrikethrough?.(),
         },
+        ...(commands.toggleInlineCode
+          ? [{
+              id: 'code',
+              labelKey: 'notes:mobileToolbar.inlineCode',
+              defaultLabel: '行内代码',
+              icon: <Code size={ICON_SIZE} weight={ICON_WEIGHT} aria-hidden />,
+              onAction: commands.toggleInlineCode,
+            }]
+          : []),
       ],
     },
     {
@@ -448,6 +471,24 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
           onAction: commands.insertCodeBlock,
         }]
       : []),
+    ...(commands.insertInlineMath
+      ? [{
+          id: 'inline-math',
+          labelKey: 'notes:mobileToolbar.inlineMath',
+          defaultLabel: '行内公式',
+          icon: <FunctionIcon size={ICON_SIZE} weight={ICON_WEIGHT} aria-hidden />,
+          onAction: commands.insertInlineMath,
+        }]
+      : []),
+    ...(commands.insertMath
+      ? [{
+          id: 'math',
+          labelKey: 'notes:mobileToolbar.math',
+          defaultLabel: '公式块',
+          icon: <MathOperations size={ICON_SIZE} weight={ICON_WEIGHT} aria-hidden />,
+          onAction: commands.insertMath,
+        }]
+      : []),
     ...(commands.insertTable
       ? [{
           id: 'table',
@@ -504,6 +545,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
   if (typeof document === 'undefined') return null;
 
   // 键盘弹出期间忽略滚动收起（输入中需要常驻的格式化入口；Android adjustResize 下 effectiveBottomOffset=0 仍不收起）
+  const isKeyboardOpen = isKeyboardShown || effectiveBottomOffset > 0;
   const isCollapsed = collapsed && effectiveBottomOffset === 0 && !isKeyboardShown;
 
   return createPortal(
@@ -514,6 +556,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
       aria-label={toolbarLabel}
       data-testid="mobile-editor-toolbar"
       data-collapsed={isCollapsed ? 'true' : undefined}
+      data-keyboard-open={isKeyboardOpen ? 'true' : undefined}
       aria-hidden={isCollapsed || undefined}
       {...(isCollapsed ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
       data-expanded={expanded ? 'true' : undefined}
@@ -535,6 +578,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
             onClick: () => {
               item.onAction();
               setInsertOpen(false);
+              setExpanded(false);
             },
           }))}
         </div>
@@ -550,7 +594,11 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
           data-active={insertOpen ? 'true' : undefined}
           onMouseDown={preventFocusSteal}
           onPointerDown={preventFocusSteal}
-          onClick={() => { setInsertOpen((open) => !open); setExpanded(true); }}
+          onClick={() => {
+            const next = !insertOpen;
+            setInsertOpen(next);
+            setExpanded(next);
+          }}
         >
           <Plus size={ICON_SIZE} weight={ICON_WEIGHT} aria-hidden />
         </button>

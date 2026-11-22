@@ -1594,7 +1594,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       variant="primary"
       size="sm"
       onClick={() => onPracticeQuestion(currentQuestion.id)}
-      className="ml-auto !h-auto rounded-lg border-primary/40 bg-primary/15 !px-2.5 !py-1 text-xs font-medium text-primary hover:bg-primary/25"
+      className="ml-auto min-h-9 sm:min-h-0 !h-auto rounded-lg border-primary/40 bg-primary/15 !px-3 !py-1.5 sm:!px-2.5 sm:!py-1 text-xs font-medium text-primary hover:bg-primary/25 [@media(pointer:coarse)]:!min-h-11"
     >
       <PaperPlaneRight size={14} />
       {t('editor.practiceThisQuestion')}
@@ -2338,6 +2338,164 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     );
   };
 
+  const renderUserNoteSection = () => (
+    <div>
+      {isEditingNote ? (
+        <div className="ui-rise-in space-y-2 rounded-xl border border-border/45 bg-foreground/[0.015] p-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium flex items-center gap-1.5 text-muted-foreground">
+              <Note size={14} className="text-warning" />
+              {t('editor.myNotes')}
+              {/* 自动保存指示 */}
+              {noteSaveState === 'saving' && (
+                <span className="flex items-center gap-1 text-xs text-muted-foreground font-normal">
+                  <CircleNotch size={12} className="animate-spin" />
+                  {t('editor.noteSaving')}
+                </span>
+              )}
+              {noteSaveState === 'saved' && (
+                <span className="ui-rise-in flex items-center gap-1 text-xs text-success font-normal">
+                  <Check size={12} />
+                  {t('editor.noteSaved')}
+                </span>
+              )}
+              {noteSaveState === 'error' && (
+                <span className="flex items-center gap-1 text-xs text-destructive font-normal">
+                  <WarningCircle size={12} />
+                  {t('editor.noteSaveFailed')}
+                </span>
+              )}
+            </span>
+            <DsButton
+              variant="primary"
+              size="sm"
+              onClick={handleSaveNote}
+              disabled={!onUpdateUserNote || noteSaveState === 'saving'}
+              className="!h-9 sm:!h-7 !px-2.5 text-xs [@media(pointer:coarse)]:!min-h-11"
+            >
+              {t('editor.noteDone')}
+            </DsButton>
+          </div>
+          <Textarea
+            value={noteText}
+            onChange={(e) => setNoteText(e.target.value)}
+            onBlur={handleNoteBlur}
+            placeholder={t('editor.notePlaceholder')}
+            rows={3}
+            autoFocus
+            className="resize-none rounded-lg border border-border/50 bg-background p-2.5 text-sm transition-colors focus-visible:border-primary/45 focus-visible:ring-0 [@media(pointer:coarse)]:text-[16px]"
+          />
+          <p className="text-[11px] text-muted-foreground/60">
+            {t('editor.noteAutoSaveHint')}
+          </p>
+        </div>
+      ) : currentQuestion?.userNote ? (
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsEditingNote(true)}
+          disabled={!onUpdateUserNote}
+          className="w-full !justify-start !h-auto min-h-9 [@media(pointer:coarse)]:!min-h-11 !rounded-lg !px-3 !py-2 bg-foreground/[0.025] hover:bg-foreground/[0.045] text-left"
+        >
+          <div className="space-y-1 w-full">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Note size={14} className="text-warning" />
+              <span className="font-medium text-foreground/85">{t('editor.myNotes')}</span>
+            </div>
+            <p className="text-sm text-muted-foreground line-clamp-2 text-left w-full">
+              {currentQuestion.userNote}
+            </p>
+          </div>
+        </DsButton>
+      ) : (
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => setIsEditingNote(true)}
+          disabled={!onUpdateUserNote}
+          className="!h-9 sm:!h-7 !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground gap-1.5"
+        >
+          <Note size={14} />
+          <span>+ {t('editor.myNotes')}</span>
+        </DsButton>
+      )}
+    </div>
+  );
+
+  const renderQuestionJumper = (triggerClassName?: string) => (
+    <Popover>
+      <PopoverTrigger asChild>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          aria-label={t('editor.jumpToQuestion')}
+          data-testid="qbank-editor-question-jumper"
+          className={cn(
+            '!px-3 !py-1.5 font-mono text-xs tabular-nums [@media(pointer:coarse)]:!min-h-11 hover:bg-foreground/[0.04]',
+            triggerClassName,
+          )}
+        >
+          <span className="font-medium text-foreground">{currentIndex + 1}</span>
+          <span className="text-muted-foreground">/ {totalQuestions}</span>
+          <CaretDown size={14} className="text-muted-foreground" />
+        </DsButton>
+      </PopoverTrigger>
+      <PopoverContent className="w-[min(20rem,calc(100vw-2rem))] p-3.5" align="center" side="top" sideOffset={8}>
+        {/* 搜索框 */}
+        <div className="relative mb-3">
+          <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('editor.searchPlaceholder')}
+            className="h-9 sm:h-8 pl-8 text-sm [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]"
+          />
+        </div>
+        <div className="text-xs text-muted-foreground mb-2">
+          {filteredQuestionIndices
+            ? t('editor.foundCount', { count: filteredQuestionIndices.length })
+            : t('editor.jumpToQuestion')}
+        </div>
+        <CustomScrollArea
+          className="max-h-48"
+          viewportClassName="grid grid-cols-6 sm:grid-cols-8 gap-1.5"
+          fullHeight={false}
+          onWheel={(event) => event.stopPropagation()}
+        >
+          {(filteredQuestionIndices || questions.map((_, idx) => idx)).map((idx) => {
+            const q = questions[idx];
+            const status = q.status || 'new';
+            return (
+              <DsButton
+                key={q.id}
+                variant="ghost"
+                size="icon"
+                iconOnly
+                onClick={() => { requestNavigate(idx); setSearchQuery(''); }}
+                className={cn(
+                  '!w-full !h-9 sm:!w-7 sm:!h-7 [@media(pointer:coarse)]:!w-full [@media(pointer:coarse)]:!h-11 !rounded-lg border font-mono text-xs tabular-nums [content-visibility:auto] [contain-intrinsic-size:auto_28px]',
+                  idx === currentIndex && 'border-primary bg-primary text-primary-foreground font-semibold',
+                  idx !== currentIndex && status === 'mastered' && 'border-success/35 bg-success/[0.08] text-success hover:bg-success/15',
+                  idx !== currentIndex && status === 'review' && 'border-warning/35 bg-warning/[0.08] text-warning hover:bg-warning/15',
+                  idx !== currentIndex && status === 'new' && 'border-border/45 bg-foreground/[0.02] text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground',
+                  idx !== currentIndex && status === 'in_progress' && 'border-primary/35 bg-primary/[0.08] text-primary hover:bg-primary/15',
+                )}
+              >
+                {idx + 1}
+              </DsButton>
+            );
+          })}
+        </CustomScrollArea>
+        <div className="flex items-center gap-3 mt-3 pt-2 border-t border-border/35 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-success" /> {t('editor.legendMastered')}</span>
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-warning" /> {t('editor.legendReview')}</span>
+          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/35" /> {t('editor.legendNew')}</span>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+
   // ========== 移动端滑动布局 ==========
   if (isSmallScreen) {
     const translateX = getBaseTranslate() + dragOffset;
@@ -2347,7 +2505,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         ref={containerRef}
         data-practice-shortcuts
         data-agent-qbank-editor
-        className={cn('relative h-full overflow-hidden bg-background select-none', className)}
+        className={cn('relative h-full overflow-hidden bg-background', className)}
         style={{ touchAction: 'pan-y pinch-zoom' }}
       >
         <style>{QBANK_KEYFRAMES}</style>
@@ -2576,6 +2734,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                         {/* 提交结果（含 AI 判分/解析，与桌面端共用） */}
                         {renderSubmitResultCard('mt-1')}
                         {renderExplanation()}
+                        {renderUserNoteSection()}
                       </>
                     )}
                   </div>
@@ -2601,6 +2760,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   <CaretLeft size={16} className="mr-1" />
                   {t('editor.prevQuestion')}
                 </DsButton>
+                {renderQuestionJumper('shrink-0 !h-11 border border-border/45')}
                 <DsButton
                   variant={submitResult ? 'default' : 'outline'}
                   size="sm"
@@ -2920,89 +3080,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               {!browseMode && renderExplanation()}
 
               {/* 用户笔记：未写笔记且未展开编辑时收敛为文末轻量幽灵按钮，仅已有笔记或编辑时展开 */}
-              {!browseMode && (
-                <div>
-                  {isEditingNote ? (
-                    <div className="ui-rise-in space-y-2 rounded-xl border border-border/45 bg-foreground/[0.015] p-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-medium flex items-center gap-1.5 text-muted-foreground">
-                          <Note size={14} className="text-warning" />
-                          {t('editor.myNotes')}
-                          {/* 自动保存指示 */}
-                          {noteSaveState === 'saving' && (
-                            <span className="flex items-center gap-1 text-xs text-muted-foreground font-normal">
-                              <CircleNotch size={12} className="animate-spin" />
-                              {t('editor.noteSaving')}
-                            </span>
-                          )}
-                          {noteSaveState === 'saved' && (
-                            <span className="ui-rise-in flex items-center gap-1 text-xs text-success font-normal">
-                              <Check size={12} />
-                              {t('editor.noteSaved')}
-                            </span>
-                          )}
-                          {noteSaveState === 'error' && (
-                            <span className="flex items-center gap-1 text-xs text-destructive font-normal">
-                              <WarningCircle size={12} />
-                              {t('editor.noteSaveFailed')}
-                            </span>
-                          )}
-                        </span>
-                        <DsButton
-                          variant="primary"
-                          size="sm"
-                          onClick={handleSaveNote}
-                          disabled={!onUpdateUserNote || noteSaveState === 'saving'}
-                          className="!h-7 !px-2.5 text-xs [@media(pointer:coarse)]:!min-h-11"
-                        >
-                          {t('editor.noteDone')}
-                        </DsButton>
-                      </div>
-                      <Textarea
-                        value={noteText}
-                        onChange={(e) => setNoteText(e.target.value)}
-                        onBlur={handleNoteBlur}
-                        placeholder={t('editor.notePlaceholder')}
-                        rows={3}
-                        autoFocus
-                        className="resize-none rounded-lg border border-border/50 bg-background p-2.5 text-sm transition-colors focus-visible:border-primary/45 focus-visible:ring-0 [@media(pointer:coarse)]:text-[16px]"
-                      />
-                      <p className="text-[11px] text-muted-foreground/60">
-                        {t('editor.noteAutoSaveHint')}
-                      </p>
-                    </div>
-                  ) : currentQuestion?.userNote ? (
-                    <DsButton
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setIsEditingNote(true)}
-                      disabled={!onUpdateUserNote}
-                      className="w-full !justify-start !h-auto [@media(pointer:coarse)]:!min-h-11 !rounded-lg !px-3 !py-2 bg-foreground/[0.025] hover:bg-foreground/[0.045] text-left"
-                    >
-                      <div className="space-y-1 w-full">
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Note size={14} className="text-warning" />
-                          <span className="font-medium text-foreground/85">{t('editor.myNotes')}</span>
-                        </div>
-                        <p className="text-sm text-muted-foreground line-clamp-2 text-left w-full">
-                          {currentQuestion.userNote}
-                        </p>
-                      </div>
-                    </DsButton>
-                  ) : (
-                    <DsButton
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setIsEditingNote(true)}
-                      disabled={!onUpdateUserNote}
-                      className="!h-7 !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground gap-1.5"
-                    >
-                      <Note size={14} />
-                      <span>+ {t('editor.myNotes')}</span>
-                    </DsButton>
-                  )}
-                </div>
-              )}
+              {!browseMode && renderUserNoteSection()}
             </div>
           </div>
         </div>
@@ -3024,68 +3102,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               {t('editor.prevQuestion')}
             </DsButton>
 
-            <Popover>
-              <PopoverTrigger asChild>
-                <DsButton variant="ghost" size="sm" className="!px-3 !py-1.5 font-mono text-xs tabular-nums [@media(pointer:coarse)]:!min-h-11 hover:bg-foreground/[0.04]">
-                  <span className="font-medium text-foreground">{currentIndex + 1}</span>
-                  <span className="text-muted-foreground">/ {totalQuestions}</span>
-                  <CaretDown size={14} className="text-muted-foreground" />
-                </DsButton>
-              </PopoverTrigger>
-              <PopoverContent className="w-80 p-3.5" align="center" side="top" sideOffset={8}>
-                {/* 搜索框 */}
-                <div className="relative mb-3">
-                  <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    type="search"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder={t('editor.searchPlaceholder')}
-                    className="h-8 pl-8 text-sm [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]"
-                  />
-                </div>
-                <div className="text-xs text-muted-foreground mb-2">
-                  {filteredQuestionIndices 
-                    ? t('editor.foundCount', { count: filteredQuestionIndices.length })
-                    : t('editor.jumpToQuestion')}
-                </div>
-                <CustomScrollArea
-                  className="max-h-48"
-                  viewportClassName="grid grid-cols-8 gap-1.5"
-                  fullHeight={false}
-                  onWheel={(event) => event.stopPropagation()}
-                >
-                  {(filteredQuestionIndices || questions.map((_, idx) => idx)).map((idx) => {
-                    const q = questions[idx];
-                    const status = q.status || 'new';
-                    return (
-                      <DsButton
-                        key={q.id}
-                        variant="ghost"
-                        size="icon"
-                        iconOnly
-                        onClick={() => { requestNavigate(idx); setSearchQuery(''); }}
-                        className={cn(
-                          '!w-7 !h-7 [@media(pointer:coarse)]:!w-full [@media(pointer:coarse)]:!h-11 !rounded-lg border font-mono text-xs tabular-nums [content-visibility:auto] [contain-intrinsic-size:auto_28px]',
-                          idx === currentIndex && 'border-primary bg-primary text-primary-foreground font-semibold',
-                          idx !== currentIndex && status === 'mastered' && 'border-success/35 bg-success/[0.08] text-success hover:bg-success/15',
-                          idx !== currentIndex && status === 'review' && 'border-warning/35 bg-warning/[0.08] text-warning hover:bg-warning/15',
-                          idx !== currentIndex && status === 'new' && 'border-border/45 bg-foreground/[0.02] text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground',
-                          idx !== currentIndex && status === 'in_progress' && 'border-primary/35 bg-primary/[0.08] text-primary hover:bg-primary/15',
-                        )}
-                      >
-                        {idx + 1}
-                      </DsButton>
-                    );
-                  })}
-                </CustomScrollArea>
-                <div className="flex items-center gap-3 mt-3 pt-2 border-t border-border/35 text-[10px] text-muted-foreground">
-                  <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-success" /> {t('editor.legendMastered')}</span>
-                  <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-warning" /> {t('editor.legendReview')}</span>
-                  <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/35" /> {t('editor.legendNew')}</span>
-                </div>
-              </PopoverContent>
-            </Popover>
+            {renderQuestionJumper()}
 
             <DsButton
               variant={submitResult ? 'default' : 'ghost'}

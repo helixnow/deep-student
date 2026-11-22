@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { CircleNotch, Microphone } from '@phosphor-icons/react';
+import React, { useCallback, useMemo, useRef } from 'react';
+import { CircleNotch, Microphone, X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { formatShortcut } from '@/command-palette/registry/shortcutUtils';
 
 import type { VoiceInputState } from './types';
@@ -57,22 +59,21 @@ export function VoiceInputControl({
     : t('inputBar.voiceInput.start');
   const titleLabel = coarsePointer ? tooltipLabel : `${tooltipLabel} · ${hotkeyLabel}`;
 
-  useEffect(() => {
-    if (!isRecording) {
+  const handleEscapeKeyDown = useCallback((event: Event) => {
+    const keyEvent = event as KeyboardEvent;
+    if (keyEvent.key !== 'Escape') {
       return;
     }
+    keyEvent.preventDefault();
+    onCancelRecording();
+  }, [onCancelRecording]);
 
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') {
-        return;
-      }
-      event.preventDefault();
-      onCancelRecording();
-    };
-
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [isRecording, onCancelRecording]);
+  useEventRegistry(
+    isRecording
+      ? [{ target: 'window', type: 'keydown', listener: handleEscapeKeyDown }]
+      : [],
+    [isRecording, handleEscapeKeyDown],
+  );
 
   const clearHoldTimer = () => {
     if (holdTimerRef.current !== null) {
@@ -81,9 +82,16 @@ export function VoiceInputControl({
     }
   };
 
-  const handlePointerDown = () => {
+  const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
     if (disabled || isTranscribing) {
       return;
+    }
+    if (typeof event.currentTarget.setPointerCapture === 'function' && event.pointerId !== undefined) {
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // 合成事件或不支持 pointer capture 的环境安全降级
+      }
     }
     clearHoldTimer();
     holdTimerRef.current = window.setTimeout(() => {
@@ -93,12 +101,38 @@ export function VoiceInputControl({
     }, HOLD_THRESHOLD_MS);
   };
 
-  const handlePointerUp = () => {
+  const handlePointerUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (
+      typeof event.currentTarget.hasPointerCapture === 'function' &&
+      typeof event.currentTarget.releasePointerCapture === 'function' &&
+      event.pointerId !== undefined &&
+      event.currentTarget.hasPointerCapture(event.pointerId)
+    ) {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // ignore
+      }
+    }
     clearHoldTimer();
     if (holdStartedRef.current) {
       holdStartedRef.current = false;
       onStopHoldRecording();
     }
+  };
+
+  const handlePointerLeave = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (
+      typeof event.currentTarget.hasPointerCapture === 'function' &&
+      event.pointerId !== undefined &&
+      event.currentTarget.hasPointerCapture(event.pointerId)
+    ) {
+      return;
+    }
+    if (event.pointerType === 'touch') {
+      return;
+    }
+    handlePointerUp(event);
   };
 
   const handleClick = () => {
@@ -109,7 +143,7 @@ export function VoiceInputControl({
     onToggleRecording();
   };
 
-  return (
+  const recordButton = (
     <button
       type="button"
       data-phase={state.phase}
@@ -120,10 +154,13 @@ export function VoiceInputControl({
       onClick={handleClick}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
-      onPointerLeave={handlePointerUp}
+      onPointerLeave={handlePointerLeave}
       onPointerCancel={handlePointerUp}
+      onContextMenu={(event) => {
+        if (coarsePointer) event.preventDefault();
+      }}
       className={cn(
-        'native-touch-target inline-flex h-8 items-center gap-2 rounded-full border px-2.5 text-sm font-medium transition-colors motion-reduce:transition-none',
+        'native-touch-target touch-none select-none [-webkit-touch-callout:none] inline-flex h-8 items-center gap-2 rounded-full border px-2.5 text-sm font-medium transition-colors motion-reduce:transition-none',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
         // 触屏直接给 44px 物理最小高（px 固定，不受 rem 锚点 14px 缩水影响），
         // 与输入栏其余工具按钮（发送/添加均为 44px）对齐
@@ -163,6 +200,39 @@ export function VoiceInputControl({
         </span>
       )}
     </button>
+  );
+
+  if (!isRecording) {
+    return recordButton;
+  }
+
+  const cancelLabel = t('inputBar.voiceInput.cancel', { defaultValue: '取消录音' });
+  const cancelText = t('common:actions.cancel', { defaultValue: '取消' });
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      {recordButton}
+      <DsButton
+        type="button"
+        variant="ghost"
+        size="sm"
+        data-testid="voice-input-cancel-btn"
+        aria-label={cancelLabel}
+        title={cancelLabel}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onCancelRecording();
+        }}
+        className={cn(
+          'h-8 rounded-full border px-2 text-xs font-medium',
+          'border-[color:var(--button-plain-border)] bg-[var(--button-plain-bg)] text-muted-foreground hover:bg-[var(--button-plain-hover-bg)] hover:text-foreground',
+        )}
+      >
+        <X size={13} aria-hidden="true" />
+        <span>{cancelText}</span>
+      </DsButton>
+    </span>
   );
 }
 

@@ -42,6 +42,7 @@ export const isAndroid = (): boolean => {
 };
 
 export const isAndroidMobileShell = (): boolean => {
+  if (isWebUiShell()) return false;
   const shell = readShellPlatform();
   return shell?.kind === 'mobile' && shell.os === 'android';
 };
@@ -100,8 +101,10 @@ export const initPlatformClasses = (): void => {
   // Android 通用检测
   if (isAndroid()) {
     html.classList.add('is-android');
-    // 初始化 Android 安全区域 CSS 变量
-    initAndroidSafeArea();
+    // 仅原生 Android 壳需要初始化安全区域 fallback；WebUI 浏览器直接用标准 env(safe-area-inset-*)
+    if (!isWebUiShell()) {
+      initAndroidSafeArea();
+    }
   }
 
   // 桌面平台检测
@@ -227,7 +230,7 @@ export const subscribeAndroidSafeArea = (listener: () => void): (() => void) => 
 };
 
 export const initAndroidSafeArea = (): void => {
-  if (typeof document === 'undefined') return;
+  if (typeof document === 'undefined' || isWebUiShell()) return;
 
   const root = document.documentElement;
 

@@ -395,7 +395,7 @@ export function parseScoreFromResult(result: string, mode: GradingMode): ParsedS
 
 const ZH_INJECTION_RE = /(?:忽略|无视|忘记|忘掉|抛开|不要理会)\s*(?:掉)?\s*(?:以上|上述|之前|前面|上面|所有|全部)\s*(?:的)?\s*(?:所有|全部)?\s*(?:系统)?\s*(?:指令|指示|命令|提示词|提示|prompt|规则|要求|设定|设置|约束|限制)/g;
 const EN_INJECTION_RES: readonly RegExp[] = [
-  /\b(?:ignore|disregard|forget)\s+(?:all\s+|the\s+|any\s+)?(?:above|previous|prior|earlier|preceding)\s*(?:instructions?|prompts?|rules?|messages?|directions?|text)?/gi,
+  /\b(?:ignore|disregard|forget)\s+(?:all\s+|the\s+|any\s+)?(?:above|previous|prior|earlier|preceding)\s+(?:system\s+)?(?:instructions?|prompts?|rules?|messages?|directions?|constraints?|guidelines?)\b/gi,
   /\b(?:ignore|disregard|forget)\s+(?:all\s+|the\s+|any\s+)?(?:instructions?|prompts?|system\s+prompts?)/gi,
 ];
 

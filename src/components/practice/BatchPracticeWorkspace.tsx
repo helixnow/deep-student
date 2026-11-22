@@ -19,6 +19,7 @@ import {
 import {
   practiceApi,
   newPracticeId,
+  isAnswered,
   type CreatePracticeRequest,
   type PracticeDraft,
   type PracticeAttempt,
@@ -49,11 +50,19 @@ import { practiceAnswerText } from './practiceAnswerText';
 import { paperAnswer } from './paperDocument';
 import { GradingDiagnosticsView } from './GradingDiagnosticsView';
 import { QuestionExplanation } from './QuestionExplanation';
+import { QuestionFollowUpBar } from './QuestionFollowUpBar';
 import { usePracticeShortcuts, type PracticeShortcutOptions } from './usePracticeShortcuts';
 import { PracticeShortcutHints } from './PracticeShortcutHints';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
+
+function hasAnswer(raw: string | undefined): boolean {
+  if (!isAnswered(raw)) return false;
+  const envelope = parseImageAnswerEnvelope(raw);
+  return envelope ? envelope.images.length > 0 || isAnswered(envelope.text) : true;
+}
 
 export interface BatchPracticeWorkspaceProps {
   request?: CreatePracticeRequest;
@@ -171,17 +180,20 @@ export default function BatchPracticeWorkspace({
       if (submitRef.current || busyRef.current || navigatingRef.current) throw new Error(t('batch.busy'));
       await flush();
     });
-    const handler = () => {
-      if (document.visibilityState === 'hidden') void flush().catch(() => {});
-    };
-    document.addEventListener('visibilitychange', handler);
     return () => {
       mounted.current = false;
       onFlushReady?.(null);
-      document.removeEventListener('visibilitychange', handler);
       void flush().catch(() => {});
     };
   }, [flush, onFlushReady, t]);
+
+  useEventRegistry([{
+    target: 'document',
+    type: 'visibilitychange',
+    listener: () => {
+      if (document.visibilityState === 'hidden') void flush().catch(() => {});
+    },
+  }], [flush]);
 
   const installDraft = useCallback((next: PracticeDraft) => {
     draftRef.current = next;
@@ -305,6 +317,16 @@ export default function BatchPracticeWorkspace({
     setBusy(true);
     setConfirmOpen(false);
     try {
+      const cleanEntries = Object.entries(draftRef.current.answers).filter(([, raw]) => hasAnswer(raw));
+      if (cleanEntries.length !== Object.keys(draftRef.current.answers).length) {
+        draftRef.current = {
+          ...draftRef.current,
+          answers: Object.fromEntries(cleanEntries),
+        };
+        changeRef.current += 1;
+        dirtyRef.current = true;
+        setDraft(draftRef.current);
+      }
       await flush();
       const latest = draftRef.current!;
       const result = await practiceApi.submit(latest.id, latest.revision);
@@ -419,6 +441,9 @@ export default function BatchPracticeWorkspace({
   }, [current?.id]);
   const answers = attempt?.answers ?? draft?.answers ?? {};
   const marked = attempt?.marked_ids ?? draft?.marked_ids ?? [];
+  const answeredCount = questions.filter((q) => hasAnswer(answers[q.id])).length;
+  const unansweredCount = questions.length - answeredCount;
+  const firstUnansweredIndex = questions.findIndex((q) => !hasAnswer(answers[q.id]));
   const filteredIndices = questions.flatMap((q, i) => {
     const r = results.find((r) => r.question_id === q.id);
     return filter === 'all' ||
@@ -484,7 +509,7 @@ export default function BatchPracticeWorkspace({
       mode: session.mode,
       gradingMode: 'on_submit',
       questionCount: questions.length,
-      answeredCount: Object.keys(answers).length,
+      answeredCount,
       currentQuestionId: current?.id ?? null,
       isSubmitted: Boolean(attempt),
       scoreSummary: attempt
@@ -522,7 +547,8 @@ export default function BatchPracticeWorkspace({
     const latest = draftRef.current;
     if (!latest || !current) return;
     change({
-      answers: value ? { ...latest.answers, [current.id]: value }
+      answers: hasAnswer(value)
+        ? { ...latest.answers, [current.id]: value }
         : Object.fromEntries(Object.entries(latest.answers).filter(([id]) => id !== current.id)),
     });
   };
@@ -563,15 +589,14 @@ export default function BatchPracticeWorkspace({
   };
   const onAnswerPrimaryAction = usePracticeShortcuts(shortcutOptions);
 
-  const firstUnansweredIndex = questions.findIndex((q) => !answers[q.id]);
   const sheet = (
     <div className="space-y-3">
       <div className="flex items-center justify-between font-mono text-xs tabular-nums text-muted-foreground">
         <span>
-          {t('batch.progress', { answered: Object.keys(answers).length, total: questions.length })}
+          {t('batch.progress', { answered: answeredCount, total: questions.length })}
         </span>
         <span>
-          {t('batch.unansweredCount', { count: questions.length - Object.keys(answers).length })}
+          {t('batch.unansweredCount', { count: unansweredCount })}
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground">
@@ -596,6 +621,12 @@ export default function BatchPracticeWorkspace({
               <span className="h-2 w-2 rounded-sm bg-destructive/75" aria-hidden="true" />
               {t('editor.wrong')}
             </span>
+            {results.some((r) => r.status === 'unanswered') && (
+              <span className="inline-flex items-center gap-1">
+                <span className="h-2 w-2 rounded-sm border border-border bg-muted/70" aria-hidden="true" />
+                {t('answerSheet.unanswered')}
+              </span>
+            )}
           </>
         )}
         {marked.length > 0 && (
@@ -622,7 +653,7 @@ export default function BatchPracticeWorkspace({
               }}
               className={cn(
                 'ui-press relative min-h-[var(--touch-target-size)] sm:min-h-9 !min-w-9 !px-0 !rounded-lg border border-border/45 bg-foreground/[0.02] font-mono text-xs tabular-nums text-muted-foreground transition-colors motion-reduce:transition-none hover:bg-foreground/[0.05] hover:text-foreground',
-                answers[q.id] && !attempt && 'border-primary/40 bg-primary/[0.08] text-primary',
+                hasAnswer(answers[q.id]) && !attempt && 'border-primary/40 bg-primary/[0.08] text-primary',
                 r?.is_correct === true && 'border-success/40 bg-success/[0.08] text-success',
                 r?.is_correct === false && 'border-destructive/35 bg-destructive/[0.06] text-destructive',
                 (r?.status === 'pending' || r?.status === 'failed') &&
@@ -673,7 +704,7 @@ export default function BatchPracticeWorkspace({
           title={t('common:back')}
           disabled={busy || uploading}
           onClick={() => void leave()}
-          className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground"
+          className="!h-9 !w-9 sm:!h-7 sm:!w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft size={16} />
         </DsButton>
@@ -719,7 +750,7 @@ export default function BatchPracticeWorkspace({
                 );
                 if (first >= 0) setIndex(first);
               }}
-              className="h-7 rounded-md border border-border/50 bg-background px-2 text-xs text-foreground"
+              className="h-9 sm:h-7 [@media(pointer:coarse)]:h-11 rounded-md border border-border/50 bg-background px-2 text-xs text-foreground"
             >
               {['all', 'wrong', 'unanswered', 'pending'].map((f) => (
                 <option key={f} value={f}>
@@ -769,12 +800,12 @@ export default function BatchPracticeWorkspace({
             {t(`batch.save.${saveState}`)}
           </span>
         )}
-        <DsButton variant="ghost" size="sm" onClick={() => setSheetOpen(!sheetOpen)} className="!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground">
+        <DsButton variant="ghost" size="sm" onClick={() => setSheetOpen(!sheetOpen)} className="!h-9 sm:!h-7 [@media(pointer:coarse)]:!h-11 !px-2.5 text-xs text-muted-foreground hover:text-foreground">
           <ListNumbers size={15} />
           {t('batch.answerSheet')}
         </DsButton>
         {!attempt && (
-          <DsButton size="sm" disabled={busy || uploading} onClick={() => setConfirmOpen(true)} className="!h-7 !px-2.5 text-xs">
+          <DsButton size="sm" disabled={busy || uploading} onClick={() => setConfirmOpen(true)} className="!h-9 sm:!h-7 [@media(pointer:coarse)]:!h-11 !px-2.5 text-xs">
             {busy ? (
               <CircleNotch size={14} className="animate-spin" />
             ) : (
@@ -788,7 +819,7 @@ export default function BatchPracticeWorkspace({
             variant="outline"
             size="sm"
             disabled={busy}
-            className="!h-7 !px-2.5 text-xs"
+            className="!h-9 sm:!h-7 [@media(pointer:coarse)]:!h-11 !px-2.5 text-xs"
             onClick={async () => {
               setBusy(true);
               try {
@@ -854,7 +885,7 @@ export default function BatchPracticeWorkspace({
                   aria-pressed={favorites[question.id] ?? current.is_favorite}
                   disabled={busy}
                   onClick={() => void toggleFavorite()}
-                  className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground">
+                  className="!h-9 !w-9 sm:!h-7 sm:!w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground">
                   <Star size={15} weight={(favorites[question.id] ?? current.is_favorite) ? 'fill' : 'regular'} className={(favorites[question.id] ?? current.is_favorite) ? 'text-warning' : undefined} />
                 </DsButton>
               )}
@@ -871,7 +902,7 @@ export default function BatchPracticeWorkspace({
                     })
                   }
                   className={cn(
-                    '!h-7 !px-2 text-xs',
+                    '!h-9 sm:!h-7 [@media(pointer:coarse)]:!h-11 !px-2 text-xs',
                     marked.includes(question.id) ? 'text-warning' : 'text-muted-foreground hover:text-foreground',
                   )}
                 >
@@ -983,7 +1014,7 @@ export default function BatchPracticeWorkspace({
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  disabled={busy || uploading || !answers[question.id]}
+                  disabled={busy || uploading || !hasAnswer(answers[question.id])}
                   onClick={() =>
                     change({
                       answers: Object.fromEntries(
@@ -1005,7 +1036,9 @@ export default function BatchPracticeWorkspace({
                       ? 'border-success/35 bg-success/[0.07] text-success'
                       : result?.is_correct === false
                         ? 'border-destructive/30 bg-destructive/[0.05] text-destructive'
-                        : 'border-warning/35 bg-warning/[0.07] text-warning',
+                        : result?.status === 'unanswered'
+                          ? 'border-border/50 bg-muted/40 text-muted-foreground'
+                          : 'border-warning/35 bg-warning/[0.07] text-warning',
                   )}
                 >
                   {result?.is_correct === true ? (
@@ -1030,7 +1063,7 @@ export default function BatchPracticeWorkspace({
                       <ImageAnswerDisplay images={imageAnswer.images} text={imageAnswer.text} />
                     ) : (
                       <p className="whitespace-pre-wrap break-words text-sm text-foreground">
-                        {practiceAnswerText(question, answers[question.id] ?? '') || t('batch.result.unanswered')}
+                        {(hasAnswer(answers[question.id]) ? practiceAnswerText(question, answers[question.id] ?? '') : '') || t('batch.result.unanswered')}
                       </p>
                     )}
                   </div>
@@ -1047,7 +1080,7 @@ export default function BatchPracticeWorkspace({
                   explanation={question.explanation}
                   aiFeedback={aiFeedback[question.id]}
                   defaultExpanded
-                  allowExplanationWrite={false}
+                  allowExplanationWrite={true}
                   onRefreshQuestion={canAnalyze ? refreshExplanation : undefined}
                 />
                 {result?.feedback && <MarkdownRenderer content={result.feedback} />}
@@ -1111,6 +1144,12 @@ export default function BatchPracticeWorkspace({
                     ))}
                   </div>
                 )}
+                <QuestionFollowUpBar
+                  question={question}
+                  examId={current.exam_id || attempt.scope_id}
+                  userAnswer={answers[question.id]}
+                  isCorrect={result?.is_correct}
+                />
               </div>
             )}
           </div>
@@ -1164,7 +1203,7 @@ export default function BatchPracticeWorkspace({
         </div>
       </div>
       <DsDialog
-        open={sheetOpen && typeof window !== 'undefined' && window.innerWidth < 768}
+        open={sheetOpen && isSmallScreen}
         onOpenChange={setSheetOpen}
       >
         <DsDialogHeader>
@@ -1179,12 +1218,12 @@ export default function BatchPracticeWorkspace({
         <DsDialogBody>
           <p>
             {t('batch.progress', {
-              answered: Object.keys(answers).length,
+              answered: answeredCount,
               total: questions.length,
             })}
           </p>
           <p className={cn('mt-2 text-sm', firstUnansweredIndex >= 0 ? 'text-warning' : 'text-muted-foreground')}>
-            {t('batch.unansweredCount', { count: questions.length - Object.keys(answers).length })}
+            {t('batch.unansweredCount', { count: unansweredCount })}
           </p>
         </DsDialogBody>
         <DsDialogFooter>

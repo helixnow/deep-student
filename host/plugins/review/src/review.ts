@@ -434,6 +434,7 @@ export class FsrsReviewService {
       const deleted = repo.softDeleteLog(tx, expectedLogId, cardStateId, now);
       if (deleted !== 1) throw appError('Conflict', 'review log changed while undoing the latest rating');
       repo.reanchorLatestUndoLog(tx, cardStateId, now, this.trialV7);
+      repo.unburySiblingsForUndo(tx, current.ankiCardId, cardStateId, log.createdAt, now);
       const state = repo.loadStateById(tx, cardStateId);
       if (state === null) throw appError('Database', 'state missing after undo');
       return { state, changed: true, undoneLogId: expectedLogId };
@@ -623,6 +624,7 @@ export class FsrsReviewService {
       );
       if (deleted !== 1) return { status: 'conflict', current };
       repo.reanchorLatestUndoLog(tx, record.state.id, stamp, this.trialV7);
+      repo.unburySiblingsForUndo(tx, cardId, record.state.id, latest.createdAt, stamp);
       const updatedRecord = repo.loadAgentStateRecord(tx, cardId);
       if (updatedRecord === null) throw appError('Database', 'state missing after Agent undo');
       return {
@@ -696,7 +698,7 @@ export class FsrsReviewService {
     const now = utcNow();
     const config = repo.loadSchedulerConfig(conn, DEFAULT_DECK_ID, this.warn);
     repo.ensureDefaultDeck(conn, now.rfc);
-    for (const { cardId, seed } of cards) {
+    for (const { cardId, seed, reviewLogs } of cards) {
       const outcome = repo.insertStateInTx(
         conn, cardId, seed, config.desiredRetention, now.ms, now.rfc,
       );
@@ -705,6 +707,9 @@ export class FsrsReviewService {
         continue;
       }
       summary.enqueued += 1;
+      if (reviewLogs && reviewLogs.length > 0) {
+        repo.insertImportedReviewLogsInTx(conn, outcome.id, cardId, reviewLogs, now.rfc);
+      }
       if (seed !== null) {
         if (seed.state !== 0) summary.withHistory += 1;
         if (seed.suspended) summary.suspended += 1;

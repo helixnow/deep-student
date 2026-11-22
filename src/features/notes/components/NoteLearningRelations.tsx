@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import { useTranslation } from 'react-i18next';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { addTypedEventListener } from '@/events';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { NOTE_RELATIONS_CHANGED, isNoteRelationUsable, noteRelationsService, type NoteRelation, type NoteRelationType, type NoteRelationsService } from '../noteRelations';
 import { NoteRelationPreview } from './NoteRelationPreview';
@@ -46,9 +47,9 @@ function RelationsForNote({ noteId, readOnly, service = noteRelationsService }: 
       const owner = (event as CustomEvent<{ noteId: string }>).detail?.noteId;
       if (!owner || owner === noteId) void load();
     };
-    window.addEventListener(NOTE_RELATIONS_CHANGED, refresh);
-    window.addEventListener('focus', refresh);
-    return () => { mounted.current = false; ++sequence.current; window.removeEventListener(NOTE_RELATIONS_CHANGED, refresh); window.removeEventListener('focus', refresh); };
+    const disposeChanged = addTypedEventListener<{ noteId: string }>(NOTE_RELATIONS_CHANGED, (_detail, event) => refresh(event));
+    const disposeFocus = addTypedEventListener('focus', (_detail, event) => refresh(event));
+    return () => { mounted.current = false; ++sequence.current; disposeChanged(); disposeFocus(); };
   }, [load, noteId]);
   const run = async (action: () => Promise<void>) => {
     if (busy) return;

@@ -15,7 +15,7 @@ import { Fragment } from '@milkdown/prose/model';
 import type { Node as ProseNode } from '@milkdown/prose/model';
 import { Plugin, PluginKey, Selection, TextSelection, type EditorState } from '@milkdown/prose/state';
 import { Decoration, DecorationSet, type EditorView } from '@milkdown/prose/view';
-import { $prose } from '@milkdown/utils';
+import { $prose } from '@milkdown/kit/utils';
 
 export type BlockSelectionState = { anchor: number; head: number } | null;
 

@@ -15,7 +15,6 @@ const state = vi.hoisted(() => ({
   deferReady: false,
   fireReady: null as (() => void) | null,
 }));
-vi.mock('@/features/notes/NotesContext', () => ({ useNotesOptional: () => undefined }));
 vi.mock('@/hooks/useTauriDragAndDrop', () => ({ useTauriDragAndDrop: () => ({ isDragging: false }) }));
 vi.mock('@/features/notes/components/NotesEditorHeader', () => ({
   NotesEditorHeader: ({ charCount, autoFocusTitle }: NotesEditorHeaderProps) => {

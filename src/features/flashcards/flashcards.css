@@ -335,6 +335,31 @@
   opacity: 1;
 }
 
+/* 卡面右上角音频快捷操作（APKG 重播音频）：正反面均可见，不触发翻面与滑动评分 */
+.wb-fc-card-audio-accessory {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(100% - 20px);
+}
+
+.wb-fc-card-audio-accessory .wb-fc-audio-pill {
+  color: hsl(var(--foreground));
+  background: hsl(var(--popover) / 0.92);
+  border: 1px solid hsl(var(--border) / 0.6);
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.06), 0 4px 12px hsl(var(--foreground) / 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.wb-fc-card-audio-accessory .wb-fc-audio-pill:hover {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+}
+
 /* 背面附加操作（回看课程片段）：浮在卡面左下角，与右下角的翻面提示错开 */
 .wb-fc-card-accessory {
   position: absolute;
@@ -448,11 +473,12 @@
   bottom: 8px;
   left: 50%;
   transform: translateX(-50%);
+  width: max-content;
   max-width: calc(100% - 16px);
-  white-space: nowrap;
-  color: hsl(var(--foreground) / 0.8);
-  background: hsl(var(--popover) / 0.92);
-  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.06), 0 6px 18px hsl(var(--foreground) / 0.1);
+  color: hsl(var(--foreground) / 0.85);
+  background: hsl(var(--popover) / 0.95);
+  border: 1px solid hsl(var(--border) / 0.55);
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.06), 0 6px 18px hsl(var(--foreground) / 0.12);
   backdrop-filter: blur(8px);
   animation: wb-fc-fade-up 180ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }

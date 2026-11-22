@@ -11,4 +11,3 @@ export * from './types';
 export { LayoutRegistry } from './LayoutRegistry';
 export { StyleRegistry } from './StyleRegistry';
 export { PresetRegistry } from './PresetRegistry';
-export { ComponentRegistry } from './ComponentRegistry';

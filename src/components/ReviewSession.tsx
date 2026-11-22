@@ -51,6 +51,9 @@ import {
   type ReviewRatingKey,
 } from '@/components/review/reviewRatingPreview';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { QuestionMaterialView } from '@/components/QuestionMaterialView';
+import { loadQuestionImageUrls, QUESTION_IMAGE_LOAD_ERROR } from '@/components/questionImageLoader';
 import {
   parseMatchingData,
   parseOrderingData,
@@ -586,7 +589,25 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
   // 先答再看：选择题点选、其它题型可先写下答案；翻面后按对错建议评分，作答随评分记进复习记录
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [draftAnswer, setDraftAnswer] = useState('');
+  const [questionImageUrls, setQuestionImageUrls] = useState<Record<string, string>>({});
   const currentQuestion = currentItem?.question;
+  const visibleQuestionImages = useMemo(
+    () => (currentQuestion?.images ?? []).filter((image) => image.role !== 'source'),
+    [currentQuestion?.images],
+  );
+  useEffect(() => {
+    let cancelled = false;
+    if (visibleQuestionImages.length === 0) {
+      setQuestionImageUrls({});
+      return;
+    }
+    void loadQuestionImageUrls(visibleQuestionImages).then((next) => {
+      if (!cancelled) setQuestionImageUrls(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentQuestion?.id, visibleQuestionImages]);
   const choiceOptions = currentQuestion?.options && currentQuestion.options.length > 0 ? currentQuestion.options : null;
   const correctKeys = useMemo(
     () => (choiceOptions
@@ -685,66 +706,72 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
 
   // 键盘流：空格/回车翻面，1-4 评分，→ 跳过
   // ★ 多窗口隔离：会话属于其他题目集、或宿主窗口非激活时不注册全局键盘监听，避免按键互扰
-  useEffect(() => {
+  const handleKeyDown = useCallback((event: Event) => {
     if (!session.isActive || !currentItem || belongsToOtherExam || isActive === false) return;
+    const e = event as KeyboardEvent;
+    // 输入法组合中、长按重复、或带修饰键（Ctrl/Meta/Alt）时不拦截
+    if (e.defaultPrevented || e.repeat || isComposingKeyEvent(e)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // 焦点或事件目标在 <input> / <textarea> / [contenteditable="true"] 等可编辑控件内时自动屏蔽
+    if (
+      isEditableElement(e.target) ||
+      (typeof document !== 'undefined' && isEditableElement(document.activeElement))
+    ) {
+      return;
+    }
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // 输入法组合中、长按重复、或带修饰键（Ctrl/Meta/Alt）时不拦截
-      if (e.defaultPrevented || e.repeat || isComposingKeyEvent(e)) return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      // 焦点或事件目标在 <input> / <textarea> / [contenteditable="true"] 等可编辑控件内时自动屏蔽
-      if (
-        isEditableElement(e.target) ||
-        (typeof document !== 'undefined' && isEditableElement(document.activeElement))
-      ) {
-        return;
-      }
+    const isSpace = e.key === ' ' || e.key === 'Spacebar' || e.code === 'Space';
 
-      const isSpace = e.key === ' ' || e.key === 'Spacebar' || e.code === 'Space';
-
-      if (!showAnswer) {
-        if (isSpace || e.key === 'Enter') {
+    if (!showAnswer) {
+      if (isSpace || e.key === 'Enter') {
+        e.preventDefault();
+        setShowAnswer(true);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleSkip();
+      } else if (choiceOptions && /^[a-z]$/i.test(e.key)) {
+        // 选择题：按选项字母点选
+        const key = e.key.toUpperCase();
+        if (choiceOptions.some((option) => normalizeOptionKey(option.key) === key)) {
           e.preventDefault();
-          setShowAnswer(true);
-        } else if (e.key === 'ArrowRight') {
-          e.preventDefault();
-          handleSkip();
-        } else if (choiceOptions && /^[a-z]$/i.test(e.key)) {
-          // 选择题：按选项字母点选
-          const key = e.key.toUpperCase();
-          if (choiceOptions.some((option) => normalizeOptionKey(option.key) === key)) {
-            e.preventDefault();
-            toggleOption(key);
-          }
+          toggleOption(key);
         }
-        return;
       }
+      return;
+    }
 
-      // 答案已显示：1-4 评分（映射 Again/Hard/Good/Easy）；
-      // 空格/回车 = 建议评分（作答可判对错时），否则良好（Anki 同款高频路径：一路空格过卡）
-      const qualityByKey = REVIEW_QUALITY_BY_KEY;
-      if (e.key in qualityByKey) {
-        e.preventDefault();
-        void handleRate(qualityByKey[e.key]);
-      } else if (isSpace || e.key === 'Enter') {
-        e.preventDefault();
-        void handleRate(suggestedQuality ?? REVIEW_RATING_QUALITY.good);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    // 答案已显示：1-4 评分（映射 Again/Hard/Good/Easy）；
+    // 空格/回车 = 建议评分（作答可判对错时），否则良好（Anki 同款高频路径：一路空格过卡）
+    const qualityByKey = REVIEW_QUALITY_BY_KEY;
+    if (e.key in qualityByKey) {
+      e.preventDefault();
+      void handleRate(qualityByKey[e.key]);
+    } else if (isSpace || e.key === 'Enter') {
+      e.preventDefault();
+      void handleRate(suggestedQuality ?? REVIEW_RATING_QUALITY.good);
+    }
   }, [session.isActive, currentItem, showAnswer, handleRate, handleSkip, belongsToOtherExam, isActive, choiceOptions, toggleOption, suggestedQuality]);
+
+  useEventRegistry(
+    session.isActive && currentItem && !belongsToOtherExam && isActive !== false
+      ? [{ target: 'window', type: 'keydown', listener: handleKeyDown }]
+      : [],
+    [session.isActive, currentItem, belongsToOtherExam, isActive, handleKeyDown],
+  );
 
   const finishSession = useCallback(() => {
     endSession();
     onClose?.();
   }, [endSession, onClose]);
 
-  // 完成页「再复习一次」：用同一队列重开会话（评分已持久化，重开不丢数据）
+  // 完成页「再复习一次」：按 plan.id 去重保留最新计划状态重开会话（避免 Again 重入项重复）
   const handleRestart = useCallback(() => {
     if (session.queue.length === 0) return;
-    startSession(session.queue, session.examId ?? undefined);
+    const deduped = new Map<string, typeof session.queue[number]>();
+    for (const item of session.queue) {
+      deduped.set(item.plan.id, item);
+    }
+    startSession(Array.from(deduped.values()), session.examId ?? undefined);
   }, [session.queue, session.examId, startSession]);
 
   // 中途离开会丢弃剩余队列的本地进度；已提交的评分已持久化，
@@ -981,11 +1008,43 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             <h3 className="text-xs font-medium text-muted-foreground mb-2">
               {t('review:card.question')}
             </h3>
+            {question?.materials && question.materials.length > 0 && (
+              <QuestionMaterialView
+                materials={question.materials}
+                mode="view"
+                className="mb-3"
+              />
+            )}
             <div className="prose prose-base dark:prose-invert max-w-none text-lg font-medium leading-relaxed text-foreground">
               <MarkdownRenderer
                 content={question?.content || t('review:unknownQuestion')}
               />
             </div>
+            {visibleQuestionImages.length > 0 && (
+              <div className="mt-3 space-y-2" data-testid="review-question-images">
+                {visibleQuestionImages.map((image) => {
+                  const url = questionImageUrls[image.id];
+                  if (url && url !== QUESTION_IMAGE_LOAD_ERROR) {
+                    return (
+                      <img
+                        key={image.id}
+                        src={url}
+                        alt={image.name}
+                        className="max-h-[420px] max-w-full rounded-lg border border-border/40 object-contain"
+                      />
+                    );
+                  }
+                  if (url === QUESTION_IMAGE_LOAD_ERROR) {
+                    return (
+                      <p key={image.id} className="text-xs text-destructive">
+                        {t('review:card.imageMissing', { defaultValue: '图片加载失败' })}
+                      </p>
+                    );
+                  }
+                  return null;
+                })}
+              </div>
+            )}
             {choiceOptions ? (
               <ReviewOptionList
                 options={choiceOptions}

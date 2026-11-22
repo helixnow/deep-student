@@ -4,7 +4,13 @@
  * `dstu-qbank/src/review_plan_service.rs` + `dstu-vfs/src/vfs/repos/review_plan_repo.rs`。
  */
 import type { DatabaseHandle, SqlExecutor } from '../../../platform/storage/api.ts';
-import { VfsRepositoryError, type QuestionFilters, type ReviewPlanFsrsState, type VfsReposService } from '../../vfs-repos/api.ts';
+import {
+  VfsRepositoryError,
+  type QuestionFilters,
+  type QuestionStatus,
+  type ReviewPlanFsrsState,
+  type VfsReposService,
+} from '../../vfs-repos/api.ts';
 import type { MasteryService } from '../api.ts';
 import { eventConcept } from '../repository/mastery.ts';
 import { utcNow } from './clock.ts';
@@ -19,10 +25,12 @@ import type {
 
 export interface ReviewPlanStore {
   readonly questions: {
-    getQuestion(conn: SqlExecutor, id: string): { exam_id: string; tags: string[] } | null;
+    getQuestion(conn: SqlExecutor, id: string): { exam_id: string; tags: string[]; status?: QuestionStatus } | null;
     listQuestions(
       conn: SqlExecutor, examId: string, filters: QuestionFilters, page: number, pageSize: number,
     ): { questions: readonly { id: string }[]; has_more: boolean };
+    updateQuestion?(conn: SqlExecutor, id: string, params: { status?: QuestionStatus | null }): unknown;
+    refreshStats?(conn: SqlExecutor, examId: string): unknown;
   };
   readonly reviewPlans: VfsReposService['reviewPlans'];
 }
@@ -363,6 +371,11 @@ export class ReviewPlanService {
     return this.processReviewImpl(planId, 4, null, null, null, false);
   }
 
+  /** 练习再次答错时触发 FSRS lapse：恢复激活态并将下次复习拉回今天到期。 */
+  lapseFromPractice(planId: string): ProcessReviewResult {
+    return this.processReviewImpl(planId, 0, null, null, null, false, undefined, true);
+  }
+
   private processReviewImpl(
     requestedPlanId: string,
     qualityInput: number,
@@ -371,6 +384,7 @@ export class ReviewPlanService {
     expectedUpdatedAt: string | null,
     recordMastery: boolean,
     operationId?: string,
+    reactivateSuspended = false,
   ): ProcessReviewResult {
     const quality = Math.min(5, qualityInput);
     const plan = withContext(
@@ -390,19 +404,24 @@ export class ReviewPlanService {
     } catch {
       tags = null;
     }
+    const effectivePlan = reactivateSuspended && plan.status === 'suspended'
+      ? { ...plan, status: 'learning' as const }
+      : plan;
     // D2：调度改用 FSRS（与闪卡同一实现，见 review-plan-fsrs.ts）；SM-2 遗留状态在这里惰性换算。
     const nowMs = utcNow().ms;
     const fsrsConfig = this.resolveFsrsConfig();
-    const fsrsOutcome = schedulePlanReview(plan, this.fsrsStateOf(plan.id), quality, nowMs, fsrsConfig);
+    const fsrsOutcome = schedulePlanReview(effectivePlan, this.fsrsStateOf(plan.id), quality, nowMs, fsrsConfig);
     const newInterval = fsrsOutcome.intervalDays;
     const newEase = fsrsOutcome.easeFactor;
     const passed = fsrsOutcome.passed;
     // repetitions 保持「连续答对次数」的旧语义（恢复暂停时的状态推断仍按它）。
     const newReps = passed ? plan.repetitions + 1 : 0;
     const today = localDateKey();
-    const nextReviewDate = fsrsOutcome.nextReviewDate;
+    const nextReviewDate = reactivateSuspended && !passed && fsrsOutcome.nextReviewDate > today
+      ? today
+      : fsrsOutcome.nextReviewDate;
     const { status, consecutiveFailures, isDifficult } = this.calculateFsrsStatus(
-      plan, passed, newInterval, fsrsOutcome.phase,
+      effectivePlan, passed, newInterval, fsrsOutcome.phase,
     );
     const expected = expectedUpdatedAt ?? plan.updated_at;
     const history: { value: ReviewHistory | null } = { value: null };
@@ -454,6 +473,26 @@ export class ReviewPlanService {
             time_spent_seconds: timeSpentSeconds,
           }),
         );
+        // 错题本（questions.status）与 FSRS 计划双向同步：
+        // 计划毕业 → 题目置为 mastered；评 Again/lapse → 确保题目保留在错题本（review）。
+        const targetQuestionStatus: QuestionStatus | null = status === 'graduated'
+          ? 'mastered'
+          : !passed
+            ? 'review'
+            : null;
+        if (targetQuestionStatus !== null && typeof this.repos.questions.updateQuestion === 'function') {
+          try {
+            tx.savepoint(sp => {
+              const currentQuestion = this.repos.questions.getQuestion(sp, plan.question_id);
+              if (currentQuestion !== null && currentQuestion.status !== targetQuestionStatus) {
+                this.repos.questions.updateQuestion!(sp, plan.question_id, { status: targetQuestionStatus });
+                this.repos.questions.refreshStats?.(sp, plan.exam_id);
+              }
+            });
+          } catch (error) {
+            this.warn(`[ReviewPlanService] question status sync failed for question_id=${plan.question_id}: ${errorText(error)}`);
+          }
+        }
         if (recordMastery && (tags !== null || operationId !== undefined) && this.mastery !== null && history.value !== null) {
           try {
             masteryState = this.mastery.recordQbankAnswerWithConn(
@@ -615,7 +654,17 @@ export class ReviewPlanService {
   }
 
   getOrCreatePlan(questionId: string, examId: string): ReviewPlan {
-    return this.getPlanByQuestion(questionId) ?? this.createReviewPlan(questionId, examId);
+    const existing = this.getPlanByQuestion(questionId);
+    if (existing === null) return this.createReviewPlan(questionId, examId);
+    const today = localDateKey();
+    if (
+      existing.status === 'suspended'
+      || existing.status === 'graduated'
+      || existing.next_review_date > today
+    ) {
+      return this.lapseFromPractice(existing.id).plan;
+    }
+    return existing;
   }
 
   getCalendarData(

@@ -7,12 +7,14 @@
 
 :root {
   /* 统一笔记表面与发丝线 Token（双表面 + 墨色微透明阶梯） */
-  --notes-surface-sidebar: hsl(var(--sidebar));
+  --surface-ink: hsl(var(--foreground));
+  --notes-surface-sidebar: var(--sidebar, hsl(var(--nav-background)));
   --notes-surface-paper: hsl(var(--background));
   --notes-surface-subtle: color-mix(in oklab, var(--surface-ink) 3.5%, transparent);
   --notes-surface-hover: var(--interactive-hover);
   --notes-surface-selected: var(--interactive-selected);
   --notes-hairline: color-mix(in oklab, var(--surface-ink) 7%, transparent);
+  --notes-ink: hsl(var(--foreground));
 
   /* Body */
   --notes-body-size: calc(16px * var(--font-size-scale, 1));
@@ -118,8 +120,13 @@
 
 /* 暗色：亮色值直接叠在深底上会发闷、标签会刺眼，仅调整 alpha/混合比 */
 :root.dark {
+  --surface-ink: hsl(var(--foreground));
   --notes-surface-subtle: color-mix(in oklab, var(--surface-ink) 5%, transparent);
   --notes-hairline: color-mix(in oklab, var(--surface-ink) 9%, transparent);
+  --notes-ink: hsl(0deg 0% 88%);
+  --notes-popover-shadow: 0 8px 24px hsl(var(--shadow-base) / 42%);
+  --notes-dialog-shadow: 0 16px 42px hsl(var(--shadow-base) / 54%);
+  --notes-popup-shadow: 0 4px 12px hsl(var(--shadow-base) / 38%);
 
   --notes-search-match-bg: hsl(var(--warning) / 0.32);
   --notes-search-match-ring: hsl(var(--warning) / 0.35);
@@ -252,6 +259,14 @@
   .notes-document-header .notes-doc-stats-trigger::after {
     content: none;
   }
+
+  .notes-appearance-panel {
+    max-width: calc(100vw - 16px);
+  }
+
+  .notes-appearance-panel .notes-icon-grid [role='group'] {
+    grid-template-columns: repeat(6, minmax(44px, 1fr));
+  }
 }
 
 .notes-conflict-banner {
@@ -268,4 +283,138 @@
 
 .notes-conflict-banner > span {
   flex: 1;
+}
+
+/* 暗色阅读舒适墨色：仅作用域于笔记正文，柔和纯白高光且不改动全局 --foreground */
+/* stylelint-disable selector-class-pattern */
+.notes-crepe-shell .ProseMirror,
+.notes-crepe-shell .crepe-editor-wrapper .ProseMirror {
+  /* stylelint-disable-next-line declaration-no-important */
+  color: var(--notes-ink, hsl(var(--foreground))) !important;
+}
+
+:where(.notes-crepe-shell .crepe-editor-wrapper .milkdown .ProseMirror :is(ul, ol, blockquote)),
+:where(.notes-crepe-shell .crepe-editor-wrapper .milkdown .ProseMirror li:not(:has(.label.checked, input[type='checkbox']:checked))) {
+  color: var(--notes-ink, hsl(var(--foreground)));
+}
+/* stylelint-enable selector-class-pattern */
+
+/* 选中文本字数统计浮层（Notion 风格左下角轻量胶囊） */
+.notes-selection-counter {
+  position: absolute;
+  left: 16px;
+  bottom: 14px;
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--notes-hairline, hsl(var(--border) / 60%));
+  border-radius: 999px;
+  background: color-mix(in hsl, hsl(var(--popover, var(--background))) 92%, transparent);
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 15%));
+  backdrop-filter: var(--wb-glass-blur, blur(8px));
+  pointer-events: none;
+  user-select: none;
+  animation:
+    notes-selection-counter-in var(--notes-popup-enter-duration, 150ms)
+    var(--notes-popup-enter-easing, var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)));
+}
+
+:root.dark .notes-selection-counter {
+  border-color: hsl(var(--border) / 85%);
+  background: color-mix(in hsl, hsl(var(--popover, var(--background))) 94%, hsl(var(--foreground)) 3%);
+  color: var(--notes-ink, hsl(var(--foreground)));
+}
+
+@keyframes notes-selection-counter-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 排队横幅溢出切换胶囊（紧凑显示剩余通知数） */
+.notes-banner-queue-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--notes-hairline, hsl(var(--border) / 65%));
+  border-radius: 999px;
+  background: var(--notes-surface-subtle, hsl(var(--muted) / 45%));
+  color: hsl(var(--muted-foreground));
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    border-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-banner-queue-toggle:hover {
+  background: var(--notes-surface-hover, hsl(var(--accent)));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+.notes-banner-queue-toggle:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-banner-queue-toggle[aria-expanded='true'] {
+  background: var(--notes-surface-selected, hsl(var(--accent)));
+  color: hsl(var(--foreground));
+}
+
+.notes-selection-counter[data-above-mobile-toolbar='true'] {
+  bottom: calc(12px + var(--mobile-toolbar-height, 52px) + var(--mobile-toolbar-keyboard-offset, 0px) + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+}
+
+@media (width <= 767.98px), (pointer: coarse) {
+  .notes-selection-counter {
+    left: 12px;
+    bottom: calc(12px + var(--mobile-toolbar-height, 0px) + var(--mobile-toolbar-keyboard-offset, 0px) + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+  }
+
+  .notes-selection-counter[data-above-mobile-toolbar='true'] {
+    bottom: calc(12px + var(--mobile-toolbar-height, 52px) + var(--mobile-toolbar-keyboard-offset, 0px) + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)));
+  }
+}
+
+@media (pointer: coarse) {
+  .notes-banner-queue-toggle {
+    min-height: 44px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-selection-counter {
+    animation: none;
+  }
+
+  .notes-banner-queue-toggle {
+    transition: none;
+  }
 }

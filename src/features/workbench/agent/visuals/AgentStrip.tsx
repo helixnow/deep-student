@@ -246,8 +246,11 @@ export const AgentStrip: React.FC<AgentStripProps> = ({ windowId }) => {
             : 'acting';
   // 文案不唯颜色：终态（done/aborted 短暂保留供撤销）复用 announce 文案，不再显示「正在操作」
   // reviewing 直接展示数据层 label（如「等待确认：…」），避免「AI 正在操作：等待确认：…」双前缀
+  const hasPausedPrefix = /^(已暂停|Paused)[：:]/i.test(view.label.trimStart());
   const labelText = isPaused
-    ? t('agent.core.pausedLabel', { label: view.label })
+    ? (hasPausedPrefix
+      ? view.label
+      : t('agent.core.pausedLabel', { label: view.label }))
     : view.status === 'done'
       ? t('agent.core.announceDone')
       : view.status === 'aborted'

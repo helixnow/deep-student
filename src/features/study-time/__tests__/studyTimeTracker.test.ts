@@ -3,12 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   __studyTimeTestHooks,
   flushStudyTime,
+  setStudyFocusActive,
   setStudyMediaPlaying,
   startStudyTracking,
   stopStudyTracking,
   studyTimeTick,
 } from '../studyTimeTracker';
 import { STUDY_IDLE_MS } from '../studyLog';
+import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 
 function setVisibility(state: DocumentVisibilityState) {
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
@@ -30,6 +32,7 @@ describe('study time tracker', () => {
   });
 
   afterEach(async () => {
+    usePomodoroStore.getState().stop(false);
     stopStudyTracking();
     await flushStudyTime();
     __studyTimeTestHooks.reset(base);
@@ -168,5 +171,49 @@ describe('study time tracker', () => {
     await flushStudyTime();
     expect(report.mock.calls.map(([day]) => day.seconds)).toEqual([3600, 60, 60]);
     expect(__studyTimeTestHooks.pending().size).toBe(0);
+  });
+
+  it('exempts active focus mode from idle cutoff only while visible and syncs with Pomodoro work state (BUG-18)', () => {
+    const idleNow = base + STUDY_IDLE_MS + 60_000;
+    studyTimeTick(idleNow - 15_000);
+    expect(__studyTimeTestHooks.pending().size).toBe(0);
+
+    // Focus active while visible -> exempt from 5-minute idle cutoff
+    setStudyFocusActive(true);
+    __studyTimeTestHooks.markActive(base);
+    studyTimeTick(idleNow);
+    expect(__studyTimeTestHooks.pending().get('2026-10-04')).toBe(15);
+
+    // Hidden still pauses counting even when focus is active
+    setVisibility('hidden');
+    studyTimeTick(idleNow + 15_000);
+    expect(__studyTimeTestHooks.pending().get('2026-10-04')).toBe(15);
+
+    // Reset clears focus exemption
+    setVisibility('visible');
+    __studyTimeTestHooks.reset(base);
+    studyTimeTick(idleNow);
+    expect(__studyTimeTestHooks.pending().size).toBe(0);
+
+    // Pomodoro store running work syncs study focus exemption, pause/stop clears it
+    usePomodoroStore.getState().start();
+    __studyTimeTestHooks.markActive(base);
+    studyTimeTick(idleNow + 15_000);
+    expect(__studyTimeTestHooks.pending().get('2026-10-04')).toBe(15);
+
+    usePomodoroStore.getState().pause();
+    __studyTimeTestHooks.markActive(base);
+    studyTimeTick(idleNow + 30_000);
+    expect(__studyTimeTestHooks.pending().get('2026-10-04')).toBe(15);
+
+    usePomodoroStore.getState().resume();
+    __studyTimeTestHooks.markActive(base);
+    studyTimeTick(idleNow + 45_000);
+    expect(__studyTimeTestHooks.pending().get('2026-10-04')).toBe(30);
+
+    usePomodoroStore.getState().stop(false);
+    __studyTimeTestHooks.markActive(base);
+    studyTimeTick(idleNow + 60_000);
+    expect(__studyTimeTestHooks.pending().get('2026-10-04')).toBe(30);
   });
 });

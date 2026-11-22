@@ -12,8 +12,9 @@ import { ArrowCounterClockwise } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import type { FsrsRating } from '../store/fsrsReviewStore';
 
-/** 提示条自动隐藏时长；期间随时可用 Z / 工具栏撤销 */
+/** 提示条自动隐藏时长；评「重来」带救援按钮时略延长以便点按 */
 const NUDGE_TTL_MS = 8_000;
+const AGAIN_NUDGE_TTL_MS = 11_000;
 
 const RATING_LABEL_KEYS: Record<FsrsRating, string> = {
   1: 'session.again',
@@ -54,11 +55,12 @@ export const UndoNudge: React.FC<UndoNudgeProps> = ({
       return undefined;
     }
     setShownId(receiptId);
+    const ttl = rating === 1 ? AGAIN_NUDGE_TTL_MS : NUDGE_TTL_MS;
     const timer = window.setTimeout(() => {
       setShownId((current) => (current === receiptId ? null : current));
-    }, NUDGE_TTL_MS);
+    }, ttl);
     return () => window.clearTimeout(timer);
-  }, [receiptId]);
+  }, [receiptId, rating]);
 
   if (!shownId || shownId !== receiptId) return null;
 
@@ -72,7 +74,8 @@ export const UndoNudge: React.FC<UndoNudgeProps> = ({
   return (
     <div
       role="status"
-      className="wb-fc-undo-nudge flex items-center gap-2 rounded-full py-0.5 pl-3 pr-0.5 text-xs"
+      data-testid="fc-undo-nudge"
+      className="wb-fc-undo-nudge flex flex-wrap items-center justify-center gap-1.5 rounded-2xl px-2.5 py-1 text-xs sm:rounded-full sm:py-0.5 sm:pl-3 sm:pr-1"
     >
       <span className="min-w-0 truncate">{message}</span>
       {secondaryAction}
@@ -83,7 +86,7 @@ export const UndoNudge: React.FC<UndoNudgeProps> = ({
         disabled={busy}
         onClick={onUndo}
         aria-keyshortcuts="Z"
-        className="shrink-0 gap-1.5 text-xs [@media(pointer:coarse)]:!min-h-11"
+        className="shrink-0 gap-1.5 text-xs"
       >
         <ArrowCounterClockwise size={13} aria-hidden="true" />
         {t('session.undo')}

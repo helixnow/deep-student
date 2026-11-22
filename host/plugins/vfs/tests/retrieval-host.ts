@@ -39,9 +39,26 @@ export function response(hits: FusedRetrievalHit[] = []): UnifiedRetrievalRespon
   return { result: { hits, failures: [] }, queryDerivations: [], plan: { queryModality: 'text', topK: 10, routes: [], imageFallbackChain: [] },
     capabilitySnapshot: { textEmbedding: available, multimodalEmbedding: available, textModel: available, multimodalModel: available, ocr: available } };
 }
-export function hit(id: string, score = .9): FusedRetrievalHit {
-  return { rrfScore: score, normalizedScore: score, provenance: [], hit: { identity: { resourceId: id, chunkIndex: 0, pageIndex: null }, embeddingId: `emb_${id}`,
-    text: `Text ${id}`, title: `Title ${id}`, resourceType: 'note', sourceId: `note_${id}`, folderId: null, blobHash: null, imageUrl: null, rawScore: score, metadata: null } };
+export function hit(id: string, score = .9, normalizedScore?: number): FusedRetrievalHit {
+  const norm = normalizedScore !== undefined ? normalizedScore : (score >= .05 ? score : undefined);
+  return {
+    rrfScore: score,
+    ...(norm !== undefined ? { normalizedScore: norm } : {}),
+    provenance: [],
+    hit: {
+      identity: { resourceId: id, chunkIndex: 0, pageIndex: null },
+      embeddingId: `emb_${id}`,
+      text: `Text ${id}`,
+      title: `Title ${id}`,
+      resourceType: 'note',
+      sourceId: `note_${id}`,
+      folderId: null,
+      blobHash: null,
+      imageUrl: null,
+      rawScore: score,
+      metadata: null,
+    },
+  };
 }
 export async function retrievalHost(options: {
   search?: (request: UnifiedRetrievalRequest, signal: AbortSignal | null) => Promise<UnifiedRetrievalResponse>;

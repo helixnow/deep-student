@@ -21,10 +21,10 @@
             <span .text-[12px].text-muted-foreground/60>
               "暂无待处理事项"
             <span .flex.gap-1.items-center.ml-auto>
-              <button .[@media(pointer:coarse)]:min-h-11.disabled:opacity-50.gap-1.hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.px-1.5.py-0.5.rounded.text-[12px].text-muted-foreground.transition-colors type="button">
+              <button .[@media(pointer:coarse)]:min-h-11.disabled:opacity-50.gap-1.hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.max-md:min-h-9.max-md:px-2.px-1.5.py-0.5.rounded.text-[12px].text-muted-foreground.transition-colors type="button">
                 <svg aria-hidden="true" viewBox="0 0 256 256" />
                 "本周周报"
-              <button .[@media(pointer:coarse)]:min-h-11.disabled:opacity-50.gap-1.hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.px-1.5.py-0.5.rounded.text-[12px].text-muted-foreground.transition-colors type="button">
+              <button .[@media(pointer:coarse)]:min-h-11.disabled:opacity-50.gap-1.hover:bg-[var(--interactive-hover)].hover:text-foreground.inline-flex.items-center.max-md:min-h-9.max-md:px-2.px-1.5.py-0.5.rounded.text-[12px].text-muted-foreground.transition-colors type="button">
                 <svg aria-hidden="true" viewBox="0 0 256 256" />
                 "与 AI 复盘"
           <div .flex.flex-wrap.gap-3>

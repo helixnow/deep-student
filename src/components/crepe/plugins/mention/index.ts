@@ -8,7 +8,7 @@
  * 详见 docs/revamp/08-mention.md
  */
 
-import type { MilkdownPlugin } from '@milkdown/ctx';
+import type { MilkdownPlugin } from '@milkdown/kit/ctx';
 
 import { createMentionAutocompletePlugin } from './autocomplete';
 import type { MentionPluginConfig } from './types';

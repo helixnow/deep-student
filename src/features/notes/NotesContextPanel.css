@@ -1,5 +1,11 @@
-/* NotesContextPanel — 大纲行 hover 预览与折叠箭头动效
+/* NotesContextPanel — 单一滚动容器、大纲行 hover 预览与折叠箭头动效
  * 令牌来源：src/styles/notes-typography.css（--notes-radius-* / --dropdown-ease）。 */
+
+.notes-context-scroll,
+.notes-context-properties-scroll {
+  min-height: 0;
+  overscroll-behavior-y: contain;
+}
 
 .notes-outline-row {
   border-radius: var(--notes-radius-row, 6px);

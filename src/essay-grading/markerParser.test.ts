@@ -483,5 +483,40 @@ describe('malicious / adversarial input resilience', () => {
       '<score total="6.5" max="9"><dim name="Grammatical Range &amp; Accuracy" score="6" max="9">ok</dim></score>',
     );
     expect(score?.dimensions[0]?.name).toBe('Grammatical Range & Accuracy');
+    expect(score?.total).toBe(6.5);
+  });
+
+  it('prefers the last <score> tag and reconciles sum-mode total across >= 2 dimensions (BUG-17)', () => {
+    const multiScore = parseScore(
+      '示例 <score total="10" max="100"></score> 最终：\n' +
+      '<score total="60" max="100">' +
+      '<dim name="内容" score="35" max="40">a</dim>' +
+      '<dim name="结构" score="25" max="30">b</dim>' +
+      '<dim name="语言" score="25" max="30">c</dim>' +
+      '</score>',
+    );
+    expect(multiScore?.total).toBe(85);
+    expect(multiScore?.grade).toBe('good');
+
+    // Band mode (dimensions sum of max != maxTotal) must not override total
+    const bandScore = parseScore(
+      '<score total="6.5" max="9">' +
+      '<dim name="TR" score="7" max="9">a</dim>' +
+      '<dim name="CC" score="6" max="9">b</dim>' +
+      '</score>',
+    );
+    expect(bandScore?.total).toBe(6.5);
+
+    // Streaming parser uses the same last-wins + sum reconciliation
+    const streamed = parseStreamingContent(
+      '前<score total="12" max="100"></score>后' +
+      '<score total="60" max="100">' +
+      '<dim name="内容" score="35" max="40">a</dim>' +
+      '<dim name="结构" score="25" max="30">b</dim>' +
+      '<dim name="语言" score="25" max="30">c</dim>' +
+      '</score>',
+      true,
+    );
+    expect(streamed.score?.total).toBe(85);
   });
 });

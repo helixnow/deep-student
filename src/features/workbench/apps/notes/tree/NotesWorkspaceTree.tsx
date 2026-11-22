@@ -66,6 +66,27 @@ const restrictToVerticalAxis: Modifier = ({ transform }) => {
   return { ...transform, x: 0 };
 };
 
+// Half of .nwt-caret (14px) so each indent guide aligns to its ancestor folder's caret center.
+const CARET_CENTER_OFFSET_PX = 7;
+// Matches `.nwt-tree { padding: 1px 6px 12px; }` left inset so drop indicator aligns with row content.
+const TREE_HORIZONTAL_PADDING_PX = 6;
+
+function renderIndentGuides(depth: number, showRoot: boolean) {
+  const startLevel = showRoot ? 1 : 0;
+  if (depth <= startLevel) return null;
+  return Array.from({ length: depth - startLevel }, (_, index) => {
+    const level = startLevel + index;
+    return (
+      <span
+        key={level}
+        className="nwt-indent-guide"
+        aria-hidden="true"
+        style={{ left: `${BASE_INDENT_PX + level * LEVEL_INDENT_PX + CARET_CENTER_OFFSET_PX - 0.5}px` }}
+      />
+    );
+  });
+}
+
 function collectExpandableFolderIds(
   items: readonly NotesWorkspaceTreeItem[],
 ): string[] {
@@ -122,6 +143,7 @@ export function NotesWorkspaceTree({
   const draggedDescendantsRef = useRef<ReadonlySet<string>>(new Set());
   const selectionAnchorRef = useRef<string | null>(selectedId);
   const lastLeadRef = useRef<string | null>(selectedId);
+  const pendingScrollIdRef = useRef<string | null>(null);
   const typeaheadBufferRef = useRef('');
   const typeaheadDeadlineRef = useRef(0);
 
@@ -182,14 +204,39 @@ export function NotesWorkspaceTree({
   selectionRef.current = selectionSet;
 
   // Host-driven selectedId changes (not echoes of our own onSelect calls)
-  // collapse the internal multi-selection back to the single row.
+  // collapse the internal multi-selection back to the single row and scroll
+  // the newly selected row into view once present.
   useEffect(() => {
     if (selectedId === lastLeadRef.current) return;
     lastLeadRef.current = selectedId;
     selectionAnchorRef.current = selectedId;
     setInternalSelectedIds(null);
     setFocusedId(selectedId);
+    pendingScrollIdRef.current = selectedId;
   }, [selectedId]);
+
+  useEffect(() => {
+    const targetId = pendingScrollIdRef.current;
+    if (!targetId || targetId !== selectedId) return;
+    const rowIndex = rows.findIndex((row) => row.id === targetId);
+    if (rowIndex < 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      if (pendingScrollIdRef.current === targetId) {
+        pendingScrollIdRef.current = null;
+      }
+      if (shouldVirtualizeTree) {
+        treeVirtualizer.scrollToIndex(rowIndex, { align: 'auto' });
+      } else {
+        const escaped = typeof globalThis.CSS?.escape === 'function'
+          ? globalThis.CSS.escape(targetId)
+          : targetId.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        treeRef.current
+          ?.querySelector<HTMLElement>(`[data-nwt-id="${escaped}"]`)
+          ?.scrollIntoView?.({ block: 'nearest' });
+      }
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [rows, selectedId, shouldVirtualizeTree, treeVirtualizer]);
 
   const applySelection = useCallback((ids: readonly string[], anchor: string | null) => {
     selectionAnchorRef.current = anchor;
@@ -286,10 +333,10 @@ export function NotesWorkspaceTree({
     const containerTop = tree.getBoundingClientRect().top;
     indicator.style.display = 'block';
     indicator.style.top = position === 'before'
-      ? `${overRect.top - containerTop}px`
-      : `${overRect.top + overRect.height - containerTop}px`;
+      ? `${overRect.top - containerTop + tree.scrollTop}px`
+      : `${overRect.top + overRect.height - containerTop + tree.scrollTop}px`;
     const indentLeft = Math.max(
-      BASE_INDENT_PX + depth * LEVEL_INDENT_PX,
+      TREE_HORIZONTAL_PADDING_PX + BASE_INDENT_PX + depth * LEVEL_INDENT_PX,
       DROP_INDICATOR_SIDE_GAP_PX,
     );
     indicator.style.left = `${indentLeft}px`;
@@ -417,7 +464,8 @@ export function NotesWorkspaceTree({
     }
 
     const row = rows.find((entry) => entry.id === targetId);
-    updateDropIndicator(over.rect, position, targetId, row?.depth ?? 0, invalid);
+    const indicatorDepth = row ? (showRoot ? row.depth + 1 : row.depth) : 0;
+    updateDropIndicator(over.rect, position, targetId, indicatorDepth, invalid);
   };
 
   const resetDragState = () => {
@@ -792,9 +840,11 @@ export function NotesWorkspaceTree({
                     key={row.id}
                     ref={treeVirtualizer.measureElement}
                     data-index={virtualRow.index}
+                    role="none"
                     className="absolute left-0 top-0 w-full"
                     style={{ transform: `translateY(${virtualRow.start - treeScrollMargin}px)` }}
                   >
+                    {renderIndentGuides(depth, showRoot)}
                     <TreeRow
                       item={row.item}
                       depth={depth}
@@ -832,31 +882,33 @@ export function NotesWorkspaceTree({
             // indent treat root as level 1 and first real items as level 2.
             const depth = showRoot ? row.depth + 1 : row.depth;
             return (
-              <TreeRow
-                key={row.id}
-                item={row.item}
-                depth={depth}
-                expanded={expandedSet.has(row.id)}
-                selected={selectionSet.has(row.id)}
-                active={activeId === row.id}
-                renaming={effectiveRenamingId === row.id}
-                dropInside={dropInside}
-                dropPosition={isOver ? dropPosition : null}
-                dropInvalid={isOver && dropInvalid}
-                disableDrag={disableDrag}
-                dragMember={activeDragId !== null && draggedIdSet.has(row.id)}
-                focusable={focusTargetId === row.id}
-                siblingCount={row.siblingCount}
-                indexAmongSiblings={row.indexAmongSiblings}
-                onSelect={onSelect}
-                onRowClick={handleRowClick}
-                onOpen={onOpen}
-                onToggleExpand={toggleExpandAnimated}
-                onRenameCommit={commitRename}
-                onRenameCancel={endRename}
-                onRenameStart={beginRename}
-                onContextMenu={openMenu}
-              />
+              <div key={row.id} className="nwt-row-slot" role="none">
+                {renderIndentGuides(depth, showRoot)}
+                <TreeRow
+                  item={row.item}
+                  depth={depth}
+                  expanded={expandedSet.has(row.id)}
+                  selected={selectionSet.has(row.id)}
+                  active={activeId === row.id}
+                  renaming={effectiveRenamingId === row.id}
+                  dropInside={dropInside}
+                  dropPosition={isOver ? dropPosition : null}
+                  dropInvalid={isOver && dropInvalid}
+                  disableDrag={disableDrag}
+                  dragMember={activeDragId !== null && draggedIdSet.has(row.id)}
+                  focusable={focusTargetId === row.id}
+                  siblingCount={row.siblingCount}
+                  indexAmongSiblings={row.indexAmongSiblings}
+                  onSelect={onSelect}
+                  onRowClick={handleRowClick}
+                  onOpen={onOpen}
+                  onToggleExpand={toggleExpandAnimated}
+                  onRenameCommit={commitRename}
+                  onRenameCancel={endRename}
+                  onRenameStart={beginRename}
+                  onContextMenu={openMenu}
+                />
+              </div>
             );
           })}
         </CustomScrollArea>

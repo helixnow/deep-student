@@ -44,7 +44,9 @@
     "error_tag": "错误",
     "replace_prompt": "改正下列句子中的问题：\n{{text}}",
     "error_prompt": "指出并改正下列内容中的错误：\n{{text}}",
+    "error_answer": "{{type}}：{{explanation}}",
     "saved": "已把 {{count}} 个错误点写入「作文错题」，可在题库里练习和复习",
+    "already_saved": "这些错误点已在「作文错题」中，无需重复写入",
     "none": "这次批改没有可整理的错误或改写",
     "failed": "写入错题本失败",
     "open": "去练习"

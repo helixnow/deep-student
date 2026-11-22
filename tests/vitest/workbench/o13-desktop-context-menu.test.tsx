@@ -53,7 +53,8 @@ function getDesktopRoot(): HTMLElement {
 async function mountDesktop(): Promise<HTMLElement> {
   render(<WorkbenchDesktop />);
   await waitFor(() => {
-    expect(document.querySelector('.wb-empty-desktop')).toBeTruthy();
+    expect(document.querySelector('[data-wb-desktop]')).toBeTruthy();
+    expect(screen.getByTestId('wb-dock')).toBeTruthy();
   });
   return getDesktopRoot();
 }

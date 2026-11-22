@@ -115,9 +115,9 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
   }, [reciteMode, coveredIndicesKey]);
 
   const selectionEnabled = !!onAddBlank && (reciteMode || allowSelectionActions);
-  const selectableTextStyle: React.CSSProperties | undefined = selectionEnabled
+  const selectableTextStyle: React.CSSProperties = selectionEnabled
     ? { userSelect: 'text', WebkitUserSelect: 'text' }
-    : undefined;
+    : { userSelect: 'none', WebkitUserSelect: 'none' };
 
   const openPopupForCurrentSelection = useCallback((anchor?: { x: number; y: number }): boolean => {
     selectionFrameRef.current = null;
@@ -229,16 +229,16 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
       <span
         ref={containerRef}
         className={cn(className, selectionEnabled && 'nopan nodrag')}
-        onPointerDown={handlePointerDown}
-        onPointerUp={scheduleSelectionPopup}
-        onMouseDown={handleMouseDown}
-        onMouseUp={scheduleSelectionPopup}
-        onContextMenu={handleContextMenu}
+        onPointerDown={selectionEnabled ? handlePointerDown : undefined}
+        onPointerUp={selectionEnabled ? scheduleSelectionPopup : undefined}
+        onMouseDown={selectionEnabled ? handleMouseDown : undefined}
+        onMouseUp={selectionEnabled ? scheduleSelectionPopup : undefined}
+        onContextMenu={selectionEnabled ? handleContextMenu : undefined}
         style={{
           ...style,
           cursor: selectionEnabled ? 'text' : undefined,
-          userSelect: selectionEnabled ? 'text' : undefined,
-          WebkitUserSelect: selectionEnabled ? 'text' : undefined,
+          userSelect: selectionEnabled ? 'text' : 'none',
+          WebkitUserSelect: selectionEnabled ? 'text' : 'none',
         }}
       >
         {segments.map((seg, i) => {
@@ -261,7 +261,7 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
             return (
               <span
                 key={i}
-                className="border-b border-dashed border-amber-500/70 rounded-sm px-0.5"
+                className="border-b border-dashed border-[hsl(var(--warning,38_92%_50%)/0.75)] rounded-sm px-0.5"
                 title={seg.text}
               >
                 {seg.text}
@@ -273,7 +273,12 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
             return (
               <span
                 key={i}
-                className="bg-emerald-100 dark:bg-emerald-900/30 rounded-sm px-0.5 transition-colors duration-300"
+                data-blank-state="revealed"
+                className="rounded-sm px-0.5 transition-colors duration-300 motion-reduce:transition-none"
+                style={{
+                  backgroundColor: 'hsl(var(--success, 142 71% 45%) / 0.22)',
+                  boxShadow: 'inset 0 -1.5px 0 hsl(var(--success, 142 71% 45%) / 0.85)',
+                }}
               >
                 {seg.text}
               </span>
@@ -283,12 +288,16 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
           return (
             <span
               key={i}
+              data-blank-state="covered"
               // 遮罩可键盘揭示（Tab 到遮罩 → Enter / 空格），读屏读作「揭示挖空」按钮
               role={onRevealBlank ? 'button' : undefined}
               tabIndex={onRevealBlank ? 0 : undefined}
               aria-label={onRevealBlank ? t('recite.revealBlank', { defaultValue: '揭示挖空' }) : undefined}
-              className="bg-current rounded-sm px-0.5 cursor-pointer select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--mm-warning)]"
-              style={{ color: 'var(--mm-text)', WebkitTextFillColor: 'transparent' }}
+              className="rounded-sm px-0.5 cursor-pointer select-none transition-colors duration-200 motion-reduce:transition-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--mm-warning)]"
+              style={{
+                backgroundColor: 'color-mix(in srgb, currentColor 82%, transparent)',
+                WebkitTextFillColor: 'transparent',
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 onRevealBlank?.(seg.rangeIndex);

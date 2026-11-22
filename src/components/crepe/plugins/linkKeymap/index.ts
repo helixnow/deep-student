@@ -10,12 +10,12 @@
  * 且 LinkTooltip feature 须已启用。
  */
 
-import type { Ctx } from '@milkdown/ctx';
+import type { Ctx } from '@milkdown/kit/ctx';
 import { linkTooltipAPI } from '@milkdown/kit/component/link-tooltip';
 import { keymap } from '@milkdown/prose/keymap';
 import type { Command } from '@milkdown/prose/state';
 import { TextSelection } from '@milkdown/prose/state';
-import { $prose } from '@milkdown/utils';
+import { $prose } from '@milkdown/kit/utils';
 
 import { resolveLinkKeymapAction } from './resolveLinkAction';
 

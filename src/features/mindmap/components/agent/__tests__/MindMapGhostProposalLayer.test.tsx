@@ -67,6 +67,7 @@ vi.mock('react-i18next', async () => {
   };
 });
 
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   registerMindMapStore,
   useMindMapStore,
@@ -309,5 +310,65 @@ describe('MindMapGhostProposalLayer & MindmapAgentSuggestionBar UI', () => {
       '随机变量',
     );
     expect(getAcceptedMindmapCheckpoint(MM_ID)).toBeNull();
+  });
+
+  it('shows exact failure reason without save_failed when branch accept applies 0 ops (e.g. while editing), and shows save_failed only when applied > 0 && !saved', async () => {
+    const notifyMock = vi.mocked(showGlobalNotification);
+    notifyMock.mockClear();
+
+    act(() => {
+      proposeMindmapOps({
+        mindmapId: MM_ID,
+        windowId: 'win_ui',
+        ops: [
+          {
+            kind: 'update_node',
+            anchor: { node_id: 'node_rv' },
+            payload: { patch: { text: '随机变量（新版）' } },
+            destructive: false,
+            label: '更新随机变量',
+          },
+        ],
+      });
+    });
+
+    // Lock document by entering inline editing -> accept returns { applied: 0, failed: ['导图已修改...'], saved: false }
+    act(() => {
+      useMindMapStore.setState({ editingNodeId: 'node_rv' });
+    });
+
+    render(<GhostTestHarness />);
+    const acceptBranchBtns = screen.getAllByRole('button', { name: '采纳分支' });
+    await act(async () => {
+      fireEvent.click(acceptBranchBtns[0]);
+    });
+
+    await waitFor(() => {
+      expect(notifyMock).toHaveBeenCalledWith('warning', '导图已修改，请重新生成建议', undefined);
+    });
+    expect(notifyMock).not.toHaveBeenCalledWith(
+      'warning',
+      expect.stringContaining('保存失败'),
+    );
+
+    // Clear editing lock and simulate save returning false -> applied > 0 && !saved shows save_failed
+    notifyMock.mockClear();
+    act(() => {
+      useMindMapStore.setState({
+        editingNodeId: null,
+        save: vi.fn(async () => false),
+      });
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: '采纳分支' })[0]);
+    });
+
+    await waitFor(() => {
+      expect(notifyMock).toHaveBeenCalledWith(
+        'warning',
+        '内容已应用但保存失败，请手动保存',
+      );
+    });
   });
 });

@@ -378,11 +378,11 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
               appliedSuggestionKeys={appliedSuggestionKeys}
               gradingModeId={gradingModeId}
               toolbarAccessory={headerInTabs ? (
-                <>
+                <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5 sm:flex-initial sm:flex-nowrap sm:gap-2">
                   {progressMeta}
                   {roundMeta}
                   {resultActions}
-                </>
+                </div>
               ) : undefined}
               banner={headerInTabs ? banners : undefined}
             />

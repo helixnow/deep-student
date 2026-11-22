@@ -27,6 +27,7 @@ import type { SemanticAnchor } from '@/ui-kernel/contracts/interop';
 import type { UiAnchorsHandle } from '@/ui-kernel/services/anchors';
 import { useOptionalUiKernel } from '@/ui-kernel/react';
 import { cn } from '@/utils/cn';
+import { DsButton } from '@/components/ui/DsButton';
 import { dispatchTypedEvent } from '@/events';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { MindMapExcerptSlot } from '../../types';
@@ -36,6 +37,7 @@ import {
   safeSerializeAnchor,
 } from '../../utils/nodeAnchors';
 import { openNodeRef } from '../../utils/openNodeRef';
+import { useImeCompositionGuard } from '../../hooks/useImeCompositionGuard';
 import '../../styles/mn5-excerpt.css';
 
 // ============================================================================
@@ -180,6 +182,7 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
   const [editingCardNote, setEditingCardNote] = useState(false);
   const [cardNoteDraft, setCardNoteDraft] = useState(cardNote ?? '');
   const cardNoteInputRef = useRef<HTMLTextAreaElement>(null);
+  const { onCompositionStart, onCompositionEnd, isComposingKeyEvent } = useImeCompositionGuard();
 
   const service = anchorsService !== undefined ? anchorsService : (kernel?.anchors ?? null);
 
@@ -283,9 +286,10 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
     >
       {/* 单摘录原文条 */}
       {showSingleQuote && (
-        <button
-          type="button"
-          className="mm-mn5-quote nodrag nopan"
+        <DsButton
+          variant="ghost"
+          size="sm"
+          className="mm-mn5-quote h-auto min-h-0 px-0 py-0 font-normal justify-start whitespace-normal text-left nodrag nopan"
           data-expanded={quoteExpanded ? 'true' : 'false'}
           aria-expanded={quoteExpanded}
           title={quoteExpanded ? t('mn5.collapseQuote') : t('mn5.expandQuote')}
@@ -296,16 +300,17 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
           data-testid="mm-node-excerpt-quote"
         >
           {excerptQuote}
-        </button>
+        </DsButton>
       )}
 
       {/* 复合卡片多源摘录槽（C7 §3.2） */}
       {hasCompoundSlots && (
         <div className="mm-mn5-compound-card nodrag nopan" data-testid="mm-compound-card">
           <div className="flex items-center justify-between gap-2">
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 text-[10px] font-mono tabular-nums text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]"
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="h-auto min-h-0 px-0 py-0 gap-1 text-2xs font-mono tabular-nums text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]"
               onClick={(e) => {
                 e.stopPropagation();
                 if (onToggleExpandedCard) onToggleExpandedCard();
@@ -317,11 +322,12 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
             >
               {slotsExpanded ? <CaretDown size={10} /> : <CaretRight size={10} />}
               <span>{t('mn5.compoundSlotsCount', { count: slotList.length })}</span>
-            </button>
+            </DsButton>
             {canEditCardNote && !hasCardNote && !editingCardNote && selected && (
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 text-[10px] text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]"
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className="h-auto min-h-0 px-0 py-0 gap-1 text-2xs text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]"
                 onClick={(e) => {
                   e.stopPropagation();
                   setEditingCardNote(true);
@@ -330,7 +336,7 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
               >
                 <NotePencil size={10} />
                 <span>{t('mn5.addCardNote')}</span>
-              </button>
+              </DsButton>
             )}
           </div>
 
@@ -355,19 +361,21 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
                     data-testid="mm-compound-slot"
                   >
                     <div className="flex items-center justify-between gap-1.5">
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 text-[10px] font-mono tabular-nums text-[var(--mm-celadon-pill-fg)] hover:underline"
+                      <DsButton
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto min-h-0 px-0 py-0 gap-1 text-2xs font-mono tabular-nums text-[var(--mm-celadon-pill-fg)] hover:underline"
                         onClick={(e) => handlePillClick(e, slot.anchor)}
                         title={t('mn5.revealSourceHint', { locator: slotLocator })}
                       >
                         <SourceIcon anchor={slot.anchor} />
                         <span>{slotLocator}</span>
-                      </button>
+                      </DsButton>
                       {!readonly && selected && onRemoveExcerptSlot && (
-                        <button
-                          type="button"
-                          className="inline-flex items-center justify-center w-4 h-4 rounded text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]"
+                        <DsButton
+                          variant="ghost"
+                          size="icon"
+                          className="w-4 h-4 min-h-0 min-w-0 p-0 rounded text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]"
                           onClick={(e) => {
                             e.stopPropagation();
                             onRemoveExcerptSlot(slot.id);
@@ -377,7 +385,7 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
                           data-testid="mm-remove-slot-btn"
                         >
                           <X size={9} weight="bold" />
-                        </button>
+                        </DsButton>
                       )}
                     </div>
                     {showSlotThumb && (
@@ -389,7 +397,7 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
                       />
                     )}
                     {slot.text && (
-                      <div className="text-[11px] leading-snug text-[var(--mm-text-secondary,var(--mm-text-muted))] whitespace-pre-wrap break-words line-clamp-3">
+                      <div className="text-2xs leading-snug text-[var(--mm-text-secondary,var(--mm-text-muted))] whitespace-pre-wrap break-words line-clamp-3">
                         {slot.text}
                       </div>
                     )}
@@ -412,9 +420,11 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
               placeholder={t('mn5.cardNotePlaceholder')}
               onChange={(e) => setCardNoteDraft(e.target.value)}
               onBlur={commitCardNote}
+              onCompositionStart={onCompositionStart}
+              onCompositionEnd={onCompositionEnd}
               onKeyDown={(e) => {
                 e.stopPropagation();
-                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                if (isComposingKeyEvent(e)) return;
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();
                   commitCardNote();
@@ -424,7 +434,7 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
                   setEditingCardNote(false);
                 }
               }}
-              className="w-full bg-transparent text-[11px] leading-relaxed outline-none resize-none"
+              className="w-full bg-transparent text-2xs leading-relaxed outline-none resize-none"
               data-testid="mm-node-card-note-input"
             />
           ) : (
@@ -455,9 +465,10 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
       {(bottomAnchors.length > 0 || isFlashcard || showAddCardNotePill) && (
         <div className="mm-mn5-sources" data-compact={compact ? 'true' : 'false'}>
           {isFlashcard && (
-            <button
-              type="button"
-              className="mm-mn5-flashcard-badge font-mono tabular-nums nodrag nopan"
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="mm-mn5-flashcard-badge h-auto min-h-0 px-0 py-0 font-mono tabular-nums nodrag nopan"
               title={t('mn5.flashcardBadgeHint')}
               onClick={(e) => {
                 e.stopPropagation();
@@ -468,7 +479,7 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
               <span className="mm-mn5-status-dot" aria-hidden="true" />
               <Cards size={10} weight="bold" aria-hidden />
               <span>{t('mn5.flashcardBadgeLabel')}</span>
-            </button>
+            </DsButton>
           )}
           {bottomAnchors.map((anchor, index) => {
             const locator = formatMindMapSourcePill(anchor);
@@ -480,9 +491,10 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
                 className="mm-mn5-source-pill nodrag nopan"
                 data-anchor-kind={anchor.kind}
               >
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-[3px] nodrag nopan"
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto min-h-0 px-0 py-0 gap-[3px] nodrag nopan"
                   title={title}
                   aria-label={t('mn5.revealSourceHint', { locator })}
                   onPointerDown={stopOnly}
@@ -492,14 +504,15 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
                   data-testid="mm-node-source-pill"
                 >
                   <SourceIcon anchor={anchor} />
-                  <span className="mm-mn5-source-pill-label font-mono tabular-nums text-[10px] font-medium tracking-tight">
+                  <span className="mm-mn5-source-pill-label font-mono tabular-nums text-2xs font-medium tracking-tight">
                     {locator}
                   </span>
-                </button>
+                </DsButton>
                 {canRemove && (
-                  <button
-                    type="button"
-                    className="mm-mn5-source-remove nodrag nopan"
+                  <DsButton
+                    variant="ghost"
+                    size="icon"
+                    className="mm-mn5-source-remove h-auto w-auto min-h-0 min-w-0 p-0 nodrag nopan"
                     title={t('mn5.removeSourceAnchor')}
                     aria-label={t('mn5.removeSourceAnchor')}
                     onPointerDown={stopOnly}
@@ -512,15 +525,16 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
                     }}
                   >
                     <X size={8} weight="bold" aria-hidden />
-                  </button>
+                  </DsButton>
                 )}
               </span>
             );
           })}
           {showAddCardNotePill && (
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 h-[18px] px-1.5 rounded-full border border-border/35 text-[10px] text-[var(--mm-text-muted)] hover:text-[var(--mm-text)] nodrag nopan"
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="gap-1 h-[18px] min-h-0 px-1.5 rounded-full border border-border/35 text-2xs text-[var(--mm-text-muted)] hover:text-[var(--mm-text)] nodrag nopan"
               onClick={(e) => {
                 e.stopPropagation();
                 setEditingCardNote(true);
@@ -529,7 +543,7 @@ export const NodeSourcePills: React.FC<NodeSourcePillsProps> = ({
             >
               <NotePencil size={10} />
               <span>{t('mn5.addCardNote')}</span>
-            </button>
+            </DsButton>
           )}
         </div>
       )}

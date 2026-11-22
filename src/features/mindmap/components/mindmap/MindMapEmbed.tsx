@@ -35,8 +35,10 @@ import {
   getMindMapVersionContent,
 } from '../../api';
 import { DEFAULT_LAYOUT_CONFIG, REACTFLOW_CONFIG, ROOT_NODE_STYLE, calculateBaseNodeHeight } from '../../constants';
-import { LayoutRegistry, StyleRegistry } from '../../registry';
+import { LayoutRegistry } from '../../registry';
+import type { IStyleTheme } from '../../registry/types';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
+import { useMindMapTheme } from '../../hooks/useMindMapTheme';
 import { ensureInitialized } from '../../init';
 import { nodeTypes } from './nodes';
 import { edgeTypes } from './edges';
@@ -111,11 +113,28 @@ function countNodes(node: MindMapDocument['root']): number {
 // 内部组件：ReactFlow 渲染器
 // ============================================================================
 
+type EmbedStyleTheme = IStyleTheme & { useBranchPalette?: boolean };
+
+/** 彩虹分支策略与主画布 100% 统一：优先读取主题 `useBranchPalette`，缺省仅 `colorful`/`colorful-dark` 开启 */
+export function shouldApplyEmbedBranchPalette(
+  theme?: EmbedStyleTheme | null,
+): boolean {
+  if (!theme?.palette || theme.palette.length === 0) return false;
+  if (typeof theme.useBranchPalette === 'boolean') {
+    return theme.useBranchPalette;
+  }
+  return theme.id === 'colorful' || theme.id === 'colorful-dark';
+}
+
 interface MindMapEmbedInnerProps {
   document: MindMapDocument;
   metadata: VfsMindMap | null;
   /** 引用定位到的节点（已在 document 中展开祖先） */
   targetNodeId?: string | null;
+  /** 嵌入导图绑定的主题 ID（注入所有节点 data，确保与容器 100% 同步） */
+  embedStyleId: string;
+  /** 实时响应暗色模式切换的主题对象（来自 useMindMapTheme） */
+  theme?: EmbedStyleTheme;
 }
 
 /** 预览居中目标节点时的最小缩放（整图 fit 很小时仍看得清目标） */
@@ -126,7 +145,12 @@ const EMBED_TARGET_MIN_ZOOM = 0.75;
 // 导致 memo 实质失效——每次父组件重渲染（聊天流式输出期间高频发生）都会全量重跑布局引擎。
 const EMBED_MEASURED_NODE_HEIGHTS: Record<string, number> = Object.freeze({});
 
-const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document, targetNodeId }) => {
+const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({
+  document,
+  targetNodeId,
+  embedStyleId,
+  theme,
+}) => {
   ensureInitialized();
   const { t } = useTranslation('mindmap');
   const { fitView, zoomIn, zoomOut, setCenter, getZoom } = useReactFlow();
@@ -141,7 +165,6 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document, targetN
   const layoutId = isBothLayout ? 'balanced' : 'tree';
   const layoutDirection = isBothLayout ? 'both' : 'right';
   const edgeType = 'bezier';
-  const styleId = 'default';
 
   // 切换单侧/两翼布局
   const handleToggleLayout = useCallback(() => {
@@ -188,7 +211,6 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document, targetN
       ? layoutDirection
       : layoutEngine.defaultDirection;
 
-    const theme = StyleRegistry.get(styleId) || StyleRegistry.getDefault();
     const layoutConfig = {
       ...DEFAULT_LAYOUT_CONFIG,
       direction: validDirection,
@@ -207,7 +229,7 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document, targetN
 
     const layoutResult = layoutEngine.calculate(document.root, layoutConfig, validDirection);
 
-    if (theme?.palette && theme.palette.length > 0) {
+    if (shouldApplyEmbedBranchPalette(theme) && theme?.palette) {
       const palette = theme.palette;
       const colorMap = new Map<string, string>();
       document.root.children?.forEach((child, index) => {
@@ -240,15 +262,16 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document, targetN
       });
     }
 
-    // ★ 2026-02 修复：标记所有节点为 embed 模式，禁止节点组件写入全局 store 的 measuredNodeHeights
+    // ★ 2026-02 修复：标记所有节点为 embed 模式，禁止节点组件写入全局 store 的 measuredNodeHeights；
+    //   同时注入 embedStyleId，确保节点主题与容器 100% 同步
     layoutResult.nodes.forEach(node => {
-      node.data = { ...node.data, isEmbed: true };
+      node.data = { ...node.data, isEmbed: true, embedStyleId };
       // 引用定位目标：沿用节点的选中态外观作为静态高亮
       if (targetNodeId && node.id === targetNodeId) node.selected = true;
     });
 
     return layoutResult;
-  }, [document, layoutEngine, layoutDirection, measuredNodeHeights, styleId, targetNodeId, t]);
+  }, [document, layoutEngine, layoutDirection, measuredNodeHeights, theme, targetNodeId, embedStyleId, t]);
 
   // 初始化时及布局切换后自适应视图
   useEffect(() => {
@@ -411,6 +434,7 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
   displayTitle,
   focusNodeHint,
 }) => {
+  ensureInitialized();
   const { t } = useTranslation('mindmap');
   const [state, setState] = useState<LoadState>({
     loading: true,
@@ -560,6 +584,35 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
     };
   }, [state.document, focusNodeHint]);
 
+  const embedStyleId =
+    previewDocument?.meta?.renderConfig?.styleId ||
+    state.metadata?.theme ||
+    'default';
+  const activeTheme = useMindMapTheme(embedStyleId) as EmbedStyleTheme | undefined;
+  const embedThemeVars = useMemo<React.CSSProperties | undefined>(() => {
+    if (!activeTheme) return undefined;
+    const vars: Record<string, string> = {};
+    if (activeTheme.canvas?.background) vars['--mm-bg'] = activeTheme.canvas.background;
+    if (activeTheme.edge?.stroke) vars['--mm-edge'] = activeTheme.edge.stroke;
+    if (activeTheme.edge?.strokeActive) vars['--mm-edge-active'] = activeTheme.edge.strokeActive;
+    const isExplicitDark =
+      activeTheme.id === 'dark' || Boolean(activeTheme.id?.endsWith('-dark'));
+    if (isExplicitDark) {
+      const text = activeTheme.node?.branch?.foreground;
+      const textSecondary = activeTheme.node?.leaf?.foreground;
+      const bgElevated = activeTheme.node?.branch?.background;
+      const border = activeTheme.edge?.stroke;
+      if (text) vars['--mm-text'] = text;
+      if (textSecondary) {
+        vars['--mm-text-secondary'] = textSecondary;
+        vars['--mm-text-muted'] = `color-mix(in srgb, ${textSecondary} 82%, transparent)`;
+      }
+      if (bgElevated) vars['--mm-bg-elevated'] = bgElevated;
+      if (border) vars['--mm-border'] = border;
+    }
+    return vars as React.CSSProperties;
+  }, [activeTheme]);
+
   // 打开思维导图
   const handleOpen = useCallback(() => {
     // ★ 2026-02-13 修复：版本引用时跳转到父导图，而不是跳过
@@ -659,7 +712,7 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
         'group',
         className
       )}
-      style={{ height: actualHeight }}
+      style={{ height: actualHeight, ...embedThemeVars }}
     >
       {/* ReactFlow 容器 */}
       <ReactFlowProvider>
@@ -667,17 +720,19 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
           document={previewDocument!}
           metadata={state.metadata}
           targetNodeId={targetNodeId}
+          embedStyleId={embedStyleId}
+          theme={activeTheme}
         />
       </ReactFlowProvider>
 
       {/* 标题栏 */}
       {(state.metadata || displayTitle) && (
-        <div className="absolute top-0 left-0 right-0 px-3 py-1.5 bg-gradient-to-b from-background/80 to-transparent pointer-events-none">
-          <span className="text-sm font-medium text-foreground/80 truncate">
+        <div className="absolute top-0 left-0 right-0 px-3 py-1.5 bg-gradient-to-b from-[var(--mm-bg)]/85 to-transparent pointer-events-none">
+          <span className="text-sm font-medium text-[var(--mm-text)] truncate">
             {state.metadata?.title || displayTitle}
           </span>
           {nodeCount > 0 && (
-            <span className="ml-1.5 text-xs text-muted-foreground/60">
+            <span className="ml-1.5 text-xs text-[var(--mm-text-muted)]">
               {t('embed.nodeCount', { count: nodeCount })}
             </span>
           )}

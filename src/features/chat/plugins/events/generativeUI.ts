@@ -66,10 +66,20 @@ const generativeUIEventHandler: EventHandler = {
     const intent = normalizeGenerativeUIEndIntent(rawIntent);
 
     if (intent !== null) {
+      const noteEdit =
+        result && typeof result === 'object' && 'noteEdit' in result
+          ? (result as { noteEdit?: unknown }).noteEdit
+          : undefined;
+      const researchSessionId =
+        result && typeof result === 'object' && 'researchSessionId' in result
+          ? (result as { researchSessionId?: unknown }).researchSessionId
+          : undefined;
       store.updateBlock(blockId, {
         toolOutput: {
           intent,
           isStreaming: false,
+          ...(noteEdit !== undefined ? { noteEdit } : {}),
+          ...(researchSessionId !== undefined ? { researchSessionId } : {}),
         },
       });
     }

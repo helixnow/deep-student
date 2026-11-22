@@ -5,7 +5,7 @@
  */
 import React from 'react';
 import { describe, it, expect, beforeEach, beforeAll, afterEach, vi } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, fireEvent } from '@testing-library/react';
 
 import type { AppDefinition, AppWindowProps } from '../../core/types';
 import { appRegistry } from '../../core/appRegistry';
@@ -459,5 +459,114 @@ describe('退出恢复', () => {
 
     expect(shell.style.transform).toBe(originalTransform);
     expect(shell).not.toHaveAttribute('data-expose-transform');
+  });
+});
+
+describe('最小化窗口玻璃缩略区', () => {
+  it('展示已最小化窗口卡片（含图标、标题与最小化标记），点击直接恢复聚焦并退出 Exposé', () => {
+    const visibleId = openWin('chat', 'v1', '可见对话');
+    const minId = openWin('note', 'm1', '已最小化笔记');
+    act(() => {
+      useWindowStore.getState().minimizeWindow(minId, true);
+    });
+
+    render(<ExposeOverlay />);
+    openExpose();
+
+    expect(document.querySelector(`[data-wb-expose-cell="${visibleId}"]`)).not.toBeNull();
+    const tray = document.querySelector('[data-wb-expose-minimized-tray]');
+    expect(tray).not.toBeNull();
+
+    const card = document.querySelector(`[data-wb-expose-minimized-card="${minId}"]`)!;
+    expect(card).not.toBeNull();
+    expect(card.textContent).toContain('已最小化笔记');
+    expect(card.textContent).toContain('已最小化');
+
+    fireEvent.click(card);
+
+    const store = useWindowStore.getState();
+    expect(store.windows[minId].minimized).toBe(false);
+    expect(store.focusStack[store.focusStack.length - 1]).toBe(minId);
+    expect(useWorkbenchOverlay.getState().exposeOpen).toBe(false);
+  });
+
+  it('仅存在最小化窗口时不显示空态，直接呈现最小化缩略区并默认选中首张卡片', () => {
+    const minId = openWin('note', 'm-only', '唯一最小化窗');
+    act(() => {
+      useWindowStore.getState().minimizeWindow(minId, true);
+    });
+
+    render(<ExposeOverlay />);
+    openExpose();
+
+    expect(document.querySelector('.wb-expose-empty-text')).toBeNull();
+    const card = document.querySelector(`[data-wb-expose-minimized-card="${minId}"]`);
+    expect(card).toHaveAttribute('data-selected', 'true');
+  });
+
+  it('支持方向键在主网格与最小化窗口区之间无缝导航，按 Enter 恢复选中窗', () => {
+    vi.useFakeTimers();
+    const visibleId = openWin('chat', 'v-nav', '主网格窗口');
+    const min1 = openWin('note', 'm-nav-1', '最小化一');
+    const min2 = openWin('chat', 'm-nav-2', '最小化二');
+    act(() => {
+      useWindowStore.getState().minimizeWindow(min1, true);
+      useWindowStore.getState().minimizeWindow(min2, true);
+    });
+
+    render(<ExposeOverlay />);
+    openExpose();
+    act(() => {
+      vi.advanceTimersByTime(360);
+    });
+
+    // 初始选中可见窗口
+    expect(document.querySelector(`[data-wb-expose-cell="${visibleId}"]`)).toHaveAttribute(
+      'data-selected',
+      'true',
+    );
+
+    // ArrowDown 落入最小化窗口区
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    const selectedAfterDown = document.querySelector('[data-wb-expose-minimized-card][data-selected="true"]');
+    expect(selectedAfterDown).not.toBeNull();
+
+    // ArrowRight 切换到另一张最小化卡片
+    const firstSelectedId = selectedAfterDown!.getAttribute('data-wb-expose-minimized-card');
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    const selectedAfterRight = document.querySelector('[data-wb-expose-minimized-card][data-selected="true"]');
+    const secondSelectedId = selectedAfterRight?.getAttribute('data-wb-expose-minimized-card');
+    expect(secondSelectedId).not.toBe(firstSelectedId);
+
+    // Enter 恢复并聚焦该最小化窗口
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(useWindowStore.getState().windows[secondSelectedId!].minimized).toBe(false);
+    expect(useWorkbenchOverlay.getState().exposeOpen).toBe(false);
+  });
+
+  it('App Exposé 仅展示该应用的最小化窗口', () => {
+    const chatMin = openWin('chat', 'c-min', '最小化对话');
+    const noteMin = openWin('note', 'n-min', '最小化笔记');
+    act(() => {
+      useWindowStore.getState().minimizeWindow(chatMin, true);
+      useWindowStore.getState().minimizeWindow(noteMin, true);
+    });
+
+    render(<ExposeOverlay />);
+    openExpose('chat');
+
+    expect(document.querySelector(`[data-wb-expose-minimized-card="${chatMin}"]`)).not.toBeNull();
+    expect(document.querySelector(`[data-wb-expose-minimized-card="${noteMin}"]`)).toBeNull();
+  });
+
+  it('computeExposeLayout 支持 bottomReserve 为底部最小化区预留空间', () => {
+    const items: ExposeItem[] = [
+      { id: 'a', frame: { x: 0, y: 0, w: 800, h: 600 } },
+    ];
+    const desktop = { w: 1200, h: 800 };
+    const withoutReserve = computeExposeLayout(items, desktop);
+    const withReserve = computeExposeLayout(items, desktop, { bottomReserve: 160 });
+    expect(withReserve[0].y + withReserve[0].h).toBeLessThan(desktop.h - 160);
+    expect(withReserve[0].y + withReserve[0].h).toBeLessThan(withoutReserve[0].y + withoutReserve[0].h);
   });
 });

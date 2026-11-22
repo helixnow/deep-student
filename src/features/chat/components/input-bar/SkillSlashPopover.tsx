@@ -16,6 +16,10 @@ import { Z_INDEX } from '@/config/zIndex';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useOptionalSlot } from '@/ui-kernel/react';
+import { SlotEntryScope } from '@/ui-kernel/outlet';
+import type { ChatComposerCommandContribution } from '@/ui-kernel/contracts/surfaces';
+import type { SlotEntry } from '@/ui-kernel/slots';
 import { skillRegistry, subscribeToSkillRegistry } from '../../skills/registry';
 import { isSkillDisabled, SKILL_ENABLED_CHANGED_EVENT } from '../../skills/skillEnableStorage';
 
@@ -30,6 +34,8 @@ export interface SkillSlashSuggestion {
   argumentHint?: string;
   /** 当前会话是否已激活该技能 */
   isActive: boolean;
+  /** 插件贡献的斜杠命令条目 */
+  slotEntry?: SlotEntry<ChatComposerCommandContribution>;
 }
 
 export interface UseSkillSlashCommandsOptions {
@@ -48,6 +54,11 @@ export interface SkillSlashApplyResult {
   value: string;
   /** 补全后的光标位置 */
   caret: number;
+  /** 插件贡献的斜杠命令命中信息 */
+  command?: {
+    entry: SlotEntry<ChatComposerCommandContribution>;
+    strippedInput: string;
+  };
 }
 
 export interface UseSkillSlashCommandsReturn {
@@ -77,6 +88,7 @@ export interface UseSkillSlashCommandsReturn {
  * group1 = 之前的完整令牌前缀（含空白），group2 = 当前部分令牌正文
  */
 const LEADING_SLASH_CONTEXT_RE = /^(\s*(?:\/[A-Za-z0-9][A-Za-z0-9_-]*\s+)*)\/([A-Za-z0-9_-]*)$/;
+const SLASH_COMMAND_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
 const MAX_SUGGESTIONS = 8;
 
@@ -118,6 +130,7 @@ export function useSkillSlashCommands({
   activeSkillIds,
 }: UseSkillSlashCommandsOptions): UseSkillSlashCommandsReturn {
   const { t } = useTranslation(['chatV2']);
+  const commandEntries = useOptionalSlot('chat.composer.commands');
   const [skills, setSkills] = useState(readInvocableSkills);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [dismissedQuery, setDismissedQuery] = useState<string | null>(null);
@@ -142,11 +155,36 @@ export function useSkillSlashCommands({
     if (!context) return [];
     const query = context.query.toLowerCase();
     const activeSet = new Set(activeSkillIds ?? []);
+    const atStart = inputValue.slice(0, context.tokenStart).trim() === '';
 
-    const commands = inputValue.slice(0, context.tokenStart).trim() === ''
+    const commands: Array<{
+      id: string;
+      name: string;
+      description?: string;
+      argumentHint?: string;
+      slotEntry?: SlotEntry<ChatComposerCommandContribution>;
+    }> = atStart
       ? [{ id: 'compact', name: t('chatV2:inputBar.plusMenu.compactContext') }]
       : [];
-    const ranked = [...commands, ...skills.filter(skill => skill.id !== 'compact')]
+    const contributedCommands = atStart
+      ? (commandEntries ?? []).flatMap((entry) => {
+          try {
+            const val = entry.value;
+            if (!val || typeof val.name !== 'string' || !SLASH_COMMAND_NAME_RE.test(val.name) || typeof val.label !== 'string') {
+              return [];
+            }
+            return [{
+              id: val.name,
+              name: val.label,
+              ...(typeof val.description === 'string' && val.description ? { description: val.description } : {}),
+              slotEntry: entry,
+            }];
+          } catch {
+            return [];
+          }
+        })
+      : [];
+    const ranked = [...commands, ...contributedCommands, ...skills.filter(skill => skill.id !== 'compact')]
       .map((skill) => {
         const id = skill.id.toLowerCase();
         const name = skill.name.toLowerCase();
@@ -170,7 +208,7 @@ export function useSkillSlashCommands({
       ...skill,
       isActive: activeSet.has(skill.id),
     }));
-  }, [context, skills, activeSkillIds, inputValue, t]);
+  }, [context, commandEntries, skills, activeSkillIds, inputValue, t]);
 
   // query 变化时恢复被 Esc 关闭的 popover，并复位选中索引
   const query = context?.query ?? '';
@@ -211,6 +249,17 @@ export function useSkillSlashCommands({
       if (!context) return null;
       const skill = suggestions[index ?? selectedIndex];
       if (!skill) return null;
+      if (skill.slotEntry) {
+        const before = inputValue.slice(0, context.tokenStart);
+        const rest = inputValue.slice(caretPos);
+        const after = rest.startsWith(' ') ? rest.slice(1) : rest;
+        const value = before + after;
+        return {
+          value,
+          caret: before.length,
+          command: { entry: skill.slotEntry, strippedInput: value },
+        };
+      }
       const completed = `/${skill.id} `;
       const value =
         inputValue.slice(0, context.tokenStart) + completed + inputValue.slice(caretPos);
@@ -331,7 +380,7 @@ export const SkillSlashPopover: React.FC<SkillSlashPopoverProps> = ({
       >
         {suggestions.map((skill, index) => (
           <div
-            key={skill.id}
+            key={skill.slotEntry ? `${skill.slotEntry.owner}\u0000${skill.slotEntry.id}` : skill.id}
             id={`skill-slash-option-${skill.id}`}
             ref={(el) => {
               itemRefs.current[index] = el;
@@ -352,7 +401,17 @@ export const SkillSlashPopover: React.FC<SkillSlashPopoverProps> = ({
             onMouseEnter={() => onSelectedIndexChange(index)}
           >
             <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Lightning size={14} weight="bold" />
+              {skill.slotEntry?.value.icon ? (
+                <SlotEntryScope
+                  slot="chat.composer.commands"
+                  entry={skill.slotEntry}
+                  fallback={<Lightning size={14} weight="bold" />}
+                >
+                  {React.createElement(skill.slotEntry.value.icon, { size: 14 })}
+                </SlotEntryScope>
+              ) : (
+                <Lightning size={14} weight="bold" />
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5">

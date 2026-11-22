@@ -40,6 +40,7 @@ import { UnifiedDragDropZone, DEFAULT_MAX_UPLOAD_FILE_SIZE, type FileTypeDefinit
 import type { ApiConfig } from '@/types';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { describeHeicConversionError, isHeicFile, prepareHeicFiles } from '@/utils/heicConversion';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import {
   buildQuestionSourceCoverage,
   QuestionSourceCoverage,
@@ -435,17 +436,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     return () => { disposed = true; };
   }, [selectedFiles, selectedModelId]);
 
-  useEffect(() => {
-    const reload = () => { void loadModels(); };
-    try {
-      window.addEventListener('api_configurations_changed', reload as EventListener);
-    } catch {}
-    return () => {
-      try {
-        window.removeEventListener('api_configurations_changed', reload as EventListener);
-      } catch {}
-    };
-  }, [loadModels]);
+  useEventRegistry([{
+    target: 'window',
+    type: 'api_configurations_changed',
+    listener: () => { void loadModels(); },
+  }], [loadModels]);
 
   // 流式导入事件监听
   useEffect(() => {
@@ -1137,21 +1132,37 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               >
                 {fileInputs}
                 {hasFiles ? (
-                  <DsButton
-                    variant="ghost"
-                    onClick={handleClick}
-                    data-testid="exam-uploader-add-more"
-                    className={cn(
-                      'w-full gap-1.5 border border-dashed text-muted-foreground',
-                      'hover:border-primary/50 hover:bg-primary/5 hover:text-foreground',
-                      isDragActive ? 'border-primary bg-primary/10 text-primary' : 'border-border/60',
-                    )}
-                  >
-                    <Plus size={14} />
-                    {currentCategory === 'image'
-                      ? t('exam_sheet:uploader.add_more_images')
-                      : t('exam_sheet:uploader.add_source_files')}
-                  </DsButton>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <DsButton
+                      variant="ghost"
+                      onClick={handleClick}
+                      data-testid="exam-uploader-add-more"
+                      className={cn(
+                        'min-w-0 flex-1 gap-1.5 border border-dashed text-muted-foreground min-h-9 [@media(pointer:coarse)]:!min-h-11',
+                        'hover:border-primary/50 hover:bg-primary/5 hover:text-foreground',
+                        isDragActive ? 'border-primary bg-primary/10 text-primary' : 'border-border/60',
+                      )}
+                    >
+                      <Plus size={14} />
+                      {currentCategory === 'image'
+                        ? t('exam_sheet:uploader.add_more_images')
+                        : t('exam_sheet:uploader.add_source_files')}
+                    </DsButton>
+                    {/* 移动端：选完第 1 张图后仍保留「继续拍照」，支持连续拍多页试卷 */}
+                    <DsButton
+                      variant="secondary"
+                      size="sm"
+                      data-testid="exam-uploader-take-more-photo"
+                      className="md:hidden shrink-0 gap-1.5 min-h-9 [@media(pointer:coarse)]:!min-h-11"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        cameraInputRef.current?.click();
+                      }}
+                    >
+                      <Camera size={16} />
+                      {t('exam_sheet:uploader.take_more_photo', { defaultValue: '继续拍照' })}
+                    </DsButton>
+                  </div>
                 ) : (
                   <div
                     role="button"

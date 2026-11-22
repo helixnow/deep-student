@@ -5,6 +5,8 @@ export { TodoMainPanel } from './components/TodoMainPanel';
 export { TodoContentView } from './components/TodoContentView';
 export { TodoSidebar } from './components/TodoSidebar';
 export { useTodoStore, selectSortedItems, selectVisibleItems } from './stores/useTodoStore';
+export { ensureInbox } from './api';
+export { openTodoItem } from './openTodoItem';
 export type { TodoItem, TodoList, TodoViewFilter, TodoPriority, CreateTodoItemInput, UpdateTodoItemInput } from './types';
 export type {
   TodoBatchItemsResult,

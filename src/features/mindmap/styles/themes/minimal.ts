@@ -50,6 +50,7 @@ export const minimalTheme: IStyleTheme = {
     strokeWidth: 1.35,
   },
   palette: MINIMAL_LIGHT_PALETTE,
+  useBranchPalette: false,
   canvas: {
     background: '#F6F7F9',
   },

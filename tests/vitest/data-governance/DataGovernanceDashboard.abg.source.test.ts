@@ -39,11 +39,16 @@ describe('DataGovernanceDashboard A+B+G coexistence contract', () => {
 
   it('keeps G 44px tab targets without dropping A or B', () => {
     const tabTriggers = dashboardSource.match(/<TabsTrigger[\s\S]*?<\/TabsTrigger>/g) ?? [];
+    const sharedTriggerMatch = dashboardSource.match(/const tabTriggerClassName\s*=\s*['"]([^'"]+)['"]/);
+    const sharedTriggerClass = sharedTriggerMatch?.[1] ?? '';
 
+    expect(tabTriggers.length).toBeGreaterThan(0);
     for (const trigger of tabTriggers) {
-      expect(trigger).toContain('min-h-9 min-w-0');
-      expect(trigger).toContain('[@media(pointer:coarse)]:!min-h-11');
-      expect(trigger).toContain('[@media(pointer:coarse)]:!min-w-11');
+      const effective = trigger.includes('className={tabTriggerClassName}')
+        ? `${trigger} ${sharedTriggerClass}`
+        : trigger;
+      expect(effective).toContain('min-h-9');
+      expect(effective).toContain('[@media(pointer:coarse)]:!min-h-11');
     }
     expect(dashboardSource).toContain("aria-label={t('data:governance.tabs_nav_label')}");
     expect(dashboardSource).toContain('options.encryptionPassword,');

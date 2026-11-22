@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   undoLastReview: vi.fn(),
   unsuspendCard: vi.fn(),
   updateCard: vi.fn(),
+  pickSingleFile: vi.fn(),
+  readTextFile: vi.fn(),
+  saveAnkiCards: vi.fn(),
+  invoke: vi.fn(),
 }));
 
 vi.mock('@/utils/chatApi', () => ({
@@ -26,6 +30,25 @@ vi.mock('@/utils/chatApi', () => ({
 
 vi.mock('@/features/flashcards/events', () => ({
   requestFlashcardsDueRefresh: mocks.requestRefresh,
+}));
+
+vi.mock('@/utils/fileManager', () => ({
+  isVirtualUri: () => false,
+  extractFileName: (path: string) => path.split('/').pop() ?? '',
+  fileManager: {
+    pickSingleFile: mocks.pickSingleFile,
+    readTextFile: mocks.readTextFile,
+  },
+}));
+
+vi.mock('@/services/ankiApiAdapter', () => ({
+  ankiApiAdapter: {
+    saveAnkiCards: mocks.saveAnkiCards,
+  },
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: mocks.invoke,
 }));
 
 import { useFlashcardsLibraryStore } from '@/features/flashcards/store/libraryStore';
@@ -149,5 +172,72 @@ describe('flashcards library store', () => {
     await useFlashcardsLibraryStore.getState().clearFilters();
     expect(useFlashcardsLibraryStore.getState().deckFilter).toBeNull();
     expect(mocks.listCards).toHaveBeenLastCalledWith(expect.objectContaining({ deck: undefined }));
+  });
+
+  it('imports CSV/TSV cards grouped by deck/type, enqueues FSRS states, and refreshes due queue', async () => {
+    mocks.pickSingleFile.mockResolvedValue('/tmp/cards.csv');
+    mocks.readTextFile.mockResolvedValue([
+      '\uFEFFFront,Back,Tags,Deck,Type',
+      '"Q1, line 1\nline 2","Answer 1",bio exam,Bio::Cell,Basic',
+      '"{{c1::ATP}} is energy currency",Metabolism,bio,Bio::Cell,Cloze',
+      '"InvalidEmptyBasic",,,,Basic',
+    ].join('\r\n'));
+    mocks.saveAnkiCards
+      .mockResolvedValueOnce({ savedIds: ['saved-basic'], taskId: 't-basic' })
+      .mockResolvedValueOnce({ savedIds: ['saved-cloze'], taskId: 't-cloze' });
+    mocks.invoke.mockResolvedValue({ states: [{ id: 's-1' }, { id: 's-2' }] });
+
+    const outcome = await useFlashcardsLibraryStore.getState().importCsv();
+
+    expect(outcome).toEqual({
+      status: 'imported',
+      importedCards: 2,
+      reviewEnqueued: 2,
+      skippedRows: 1,
+    });
+    expect(mocks.saveAnkiCards).toHaveBeenCalledTimes(2);
+    expect(mocks.saveAnkiCards).toHaveBeenNthCalledWith(1, {
+      cards: [{
+        front: 'Q1, line 1\nline 2',
+        back: 'Answer 1',
+        tags: ['bio', 'exam'],
+        images: [],
+      }],
+      options: {
+        deck_name: 'Bio::Cell',
+        note_type: 'Basic',
+        enable_images: false,
+        max_cards_per_source: 1,
+        max_cards_per_mistake: 1,
+      },
+    });
+    expect(mocks.saveAnkiCards).toHaveBeenNthCalledWith(2, {
+      cards: [{
+        front: '{{c1::ATP}} is energy currency',
+        back: 'Metabolism',
+        text: '{{c1::ATP}} is energy currency',
+        extra_fields: {
+          Text: '{{c1::ATP}} is energy currency',
+          Extra: 'Metabolism',
+        },
+        tags: ['bio'],
+        images: [],
+      }],
+      options: {
+        deck_name: 'Bio::Cell',
+        note_type: 'Cloze',
+        enable_images: false,
+        max_cards_per_source: 1,
+        max_cards_per_mistake: 1,
+      },
+    });
+    expect(mocks.invoke).toHaveBeenCalledWith('fsrs_enqueue_cards', {
+      ankiCardIds: ['saved-basic', 'saved-cloze'],
+    });
+    expect(mocks.requestRefresh).toHaveBeenCalledTimes(1);
+    expect(mocks.listCards).toHaveBeenCalledTimes(1);
+
+    mocks.pickSingleFile.mockResolvedValueOnce(null);
+    expect(await useFlashcardsLibraryStore.getState().importCsv()).toEqual({ status: 'canceled' });
   });
 });

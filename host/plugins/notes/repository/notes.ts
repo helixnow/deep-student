@@ -184,6 +184,13 @@ function markIndexPending(conn: SqlExecutor, resourceId: string): void {
   vfsRepoCall(() => noteResourceRepos().indexStates.markPending(conn, resourceId));
 }
 
+function disableNoteUnits(conn: SqlExecutor, noteId: string): void {
+  const resource = conn.get<{ resource_id: string }>('SELECT resource_id FROM notes WHERE id=?1', [noteId]);
+  if (resource === undefined || resource.resource_id === '') return;
+  const disabled = vfsRepoCall(() => noteResourceRepos().noteOwnerWrites.disableNoteUnitsWithConn(conn, resource.resource_id));
+  if (disabled > 0) notesLog.info(`[VFS::NoteRepo] Disabled ${disabled} index units for soft-deleted note ${noteId} (resource=${resource.resource_id})`);
+}
+
 function checkLeaseWrite(conn: SqlExecutor, noteId: string): void {
   const blocked = conn.get<{ blocked: number }>(
     'SELECT EXISTS(SELECT 1 FROM note_editor_lease_notes ln WHERE ln.note_id=?1 AND NOT EXISTS(SELECT 1 FROM note_editor_write_grants g WHERE g.token=ln.token)) AS blocked',
@@ -609,7 +616,7 @@ export const noteRepository = {
         `SELECT n.id, n.resource_id, n.title, n.tags, n.is_favorite, n.created_at, n.updated_at, n.deleted_at, n.props
          FROM notes n WHERE n.deleted_at IS NULL
            AND (n.title LIKE ?1 ESCAPE '\\' OR EXISTS (SELECT 1 FROM resources r WHERE r.id=n.resource_id AND r.data LIKE ?1 ESCAPE '\\'))
-         ORDER BY n.updated_at DESC LIMIT ?2 OFFSET ?3`, [pattern, limit, offset]).map(rowToNote);
+         ORDER BY CASE WHEN n.title LIKE ?1 ESCAPE '\\' THEN 0 ELSE 1 END, n.updated_at DESC LIMIT ?2 OFFSET ?3`, [pattern, limit, offset]).map(rowToNote);
     }
     return executor.all<NoteRow>(
       `SELECT id, resource_id, title, tags, is_favorite, created_at, updated_at, deleted_at, props
@@ -657,7 +664,7 @@ export const noteRepository = {
          COALESCE(r.data, '') AS body, n.props
        FROM notes n LEFT JOIN resources r ON r.id=n.resource_id
        WHERE n.deleted_at IS NULL AND (n.title LIKE ?1 ESCAPE '\\' OR COALESCE(r.data, '') LIKE ?1 ESCAPE '\\')
-       ORDER BY n.updated_at DESC LIMIT ?2`, [pattern, limit]).map((row) => hit(row, trimmed));
+       ORDER BY CASE WHEN n.title LIKE ?1 ESCAPE '\\' THEN 0 ELSE 1 END, n.updated_at DESC LIMIT ?2`, [pattern, limit]).map((row) => hit(row, trimmed));
   },
 
   searchNotesByTags(keyword: string | null, tags: readonly string[], limit: number, conn?: SqlExecutor): Array<[VfsNote, string | null]> {
@@ -673,6 +680,7 @@ export const noteRepository = {
       FROM notes n JOIN note_tags nt ON nt.note_id=n.id LEFT JOIN resources r ON r.id=n.resource_id
       WHERE n.deleted_at IS NULL AND LOWER(nt.tag) IN (${placeholders})`;
     const values: SqlParam[] = [...lowered];
+    let titleFallbackPattern: string | null = null;
     if (trimmedKeyword !== null) {
       const match = buildFtsMatchQuery(trimmedKeyword);
       if (match !== null) {
@@ -682,10 +690,15 @@ export const noteRepository = {
         const pattern = `%${escapeLikePattern(trimmedKeyword)}%`;
         sql += " AND (n.title LIKE ? ESCAPE '\\' OR COALESCE(r.data, '') LIKE ? ESCAPE '\\')";
         values.push(pattern, pattern);
+        titleFallbackPattern = pattern;
       }
     }
-    sql += ' GROUP BY n.id HAVING COUNT(DISTINCT LOWER(nt.tag)) = ? ORDER BY n.updated_at DESC, n.id ASC LIMIT ?';
-    values.push(lowered.length, limit);
+    sql += titleFallbackPattern === null
+      ? ' GROUP BY n.id HAVING COUNT(DISTINCT LOWER(nt.tag)) = ? ORDER BY n.updated_at DESC, n.id ASC LIMIT ?'
+      : " GROUP BY n.id HAVING COUNT(DISTINCT LOWER(nt.tag)) = ? ORDER BY CASE WHEN n.title LIKE ? ESCAPE '\\' THEN 0 ELSE 1 END, n.updated_at DESC, n.id ASC LIMIT ?";
+    values.push(lowered.length);
+    if (titleFallbackPattern !== null) values.push(titleFallbackPattern);
+    values.push(limit);
     const snippetKeyword = trimmedKeyword ?? '';
     return executor.all<HitRow>(sql, values).map((row) => hit(row, snippetKeyword));
   },
@@ -749,11 +762,26 @@ export const noteRepository = {
     // 否则正在编辑的草稿会被静默删除。
     checkLeaseWrite(executor, id);
     const now = toRfc3339Opts(nowEpochNanos(), 'Millis', true);
-    const changed = executor.run('UPDATE notes SET deleted_at=?1, updated_at=?1 WHERE id=?2 AND deleted_at IS NULL', [now, id]).changes;
-    if (changed > 0) return;
-    const exists = executor.get<{ present: number }>('SELECT 1 AS present FROM notes WHERE id=?1', [id]);
-    if (exists !== undefined) return;
-    notFound('Note', id);
+    let foundOrDeleted = false;
+    executor.exec('SAVEPOINT delete_note');
+    try {
+      const changed = executor.run('UPDATE notes SET deleted_at=?1, updated_at=?1 WHERE id=?2 AND deleted_at IS NULL', [now, id]).changes;
+      if (changed > 0) {
+        disableNoteUnits(executor, id);
+        foundOrDeleted = true;
+      } else {
+        foundOrDeleted = executor.get<{ present: number }>('SELECT 1 AS present FROM notes WHERE id=?1', [id]) !== undefined;
+      }
+      executor.exec('RELEASE delete_note');
+    } catch (error) {
+      try {
+        executor.exec('ROLLBACK TO delete_note; RELEASE delete_note');
+      } catch (rollbackError) {
+        notesLog.warnError('[VFS::NoteRepo] delete_note rollback failed', rollbackError);
+      }
+      throw error;
+    }
+    if (!foundOrDeleted) notFound('Note', id);
   },
 
   /**
@@ -763,18 +791,35 @@ export const noteRepository = {
   deleteNoteIfVersion(id: string, expectedUpdatedAt: string, conn?: SqlExecutor): void {
     const executor = connection(conn);
     const now = nextUpdatedAt(expectedUpdatedAt);
-    const changed = executor.run(
-      'UPDATE notes SET deleted_at=?1, updated_at=?1 WHERE id=?2 AND deleted_at IS NULL AND updated_at=?3',
-      [now, id, expectedUpdatedAt],
-    ).changes;
-    if (changed === 1) return;
-    const state = executor.get<{ updated_at: string; deleted_at: string | null }>(
-      'SELECT updated_at, deleted_at FROM notes WHERE id=?1', [id]);
-    if (state === undefined) notFound('Note', id);
-    if (state.deleted_at !== null) return;
+    let outcome: 'deleted' | { updated_at: string; deleted_at: string | null } | undefined;
+    executor.exec('SAVEPOINT delete_note_if_version');
+    try {
+      const changed = executor.run(
+        'UPDATE notes SET deleted_at=?1, updated_at=?1 WHERE id=?2 AND deleted_at IS NULL AND updated_at=?3',
+        [now, id, expectedUpdatedAt],
+      ).changes;
+      if (changed === 1) {
+        disableNoteUnits(executor, id);
+        outcome = 'deleted';
+      } else {
+        outcome = executor.get<{ updated_at: string; deleted_at: string | null }>(
+          'SELECT updated_at, deleted_at FROM notes WHERE id=?1', [id]);
+      }
+      executor.exec('RELEASE delete_note_if_version');
+    } catch (error) {
+      try {
+        executor.exec('ROLLBACK TO delete_note_if_version; RELEASE delete_note_if_version');
+      } catch (rollbackError) {
+        notesLog.warnError('[VFS::NoteRepo] delete_note_if_version rollback failed', rollbackError);
+      }
+      throw error;
+    }
+    if (outcome === 'deleted') return;
+    if (outcome === undefined) notFound('Note', id);
+    if (outcome.deleted_at !== null) return;
     throw new NoteDocumentError(
       'conflict',
-      `The note changed before deletion (expected ${expectedUpdatedAt}, actual ${state.updated_at}).`,
+      `The note changed before deletion (expected ${expectedUpdatedAt}, actual ${outcome.updated_at}).`,
       'notes.conflict',
     );
   },
@@ -783,14 +828,15 @@ export const noteRepository = {
     const executor = connection(conn);
     executor.exec('SAVEPOINT delete_note_with_folder_item');
     try {
-      this.deleteNote(id, executor);
+      checkLeaseWrite(executor, id);
+      const now = toRfc3339Opts(nowEpochNanos(), 'Millis', true);
+      const changed = executor.run('UPDATE notes SET deleted_at=?1, updated_at=?1 WHERE id=?2 AND deleted_at IS NULL', [now, id]).changes;
+      if (changed === 0 && executor.get<{ present: number }>('SELECT 1 AS present FROM notes WHERE id=?1', [id]) === undefined) {
+        notFound('Note', id);
+      }
       const nowStr = toRfc3339Opts(nowEpochNanos(), 'Millis', true);
       vfsRepoCall(() => noteResourceRepos().noteOwnerWrites.softDeleteNoteMembershipsWithConn(executor, id, nowStr, Date.now()));
-      const resource = executor.get<{ resource_id: string }>('SELECT resource_id FROM notes WHERE id=?1', [id]);
-      if (resource !== undefined) {
-        const disabled = vfsRepoCall(() => noteResourceRepos().noteOwnerWrites.disableNoteUnitsWithConn(executor, resource.resource_id));
-        if (disabled > 0) notesLog.info(`[VFS::NoteRepo] Disabled ${disabled} index units for soft-deleted note ${id} (resource=${resource.resource_id})`);
-      }
+      disableNoteUnits(executor, id);
       notesLog.debug(`[VFS::NoteRepo] Soft deleted note ${id} and its folder_items`);
       executor.exec('RELEASE delete_note_with_folder_item');
     } catch (error) {
@@ -809,6 +855,7 @@ export const noteRepository = {
     if (note === null) notFound('Note', id);
     noteTransaction(executor, () => this.restoreNoteWithConn(executor, id));
     try {
+      vfsRepoCall(() => noteResourceRepos().noteOwnerWrites.reenableNoteUnitsWithConn?.(executor, note.resourceId));
       markIndexPending(executor, note.resourceId);
     } catch (error) {
       notesLog.warn(`[VfsNoteRepo] Failed to mark note for re-indexing after restore: ${String(error)}`);

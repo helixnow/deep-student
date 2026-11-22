@@ -22,12 +22,44 @@ import { useWindowStore } from '@/features/workbench/core/windowStore';
 /** 最近一次写入的 noteId，避免 focusStack 无关抖动重复 updateModeState */
 let lastBoundNoteId: string | null | undefined;
 let lastBoundSessionId: string | null | undefined;
+/** 最近一次非空的笔记 ID，供用户切到对话窗口点击生成式 UI 卡片时兜底定位目标笔记 */
+let lastActiveCanvasNoteId: string | null = null;
+
+/**
+ * 解析当前桌面中活跃或最近打开的笔记 ID（先看 focusStack 聚焦窗，再看任意打开的 notes/note 窗，最后兜底最近绑定）。
+ * 注意：不影响 `modeState.canvasNoteId` 在失焦时置 null 的现有契约。
+ */
+export function resolveActiveOrLastCanvasNoteId(): string | undefined {
+  const { windows, focusStack } = useWindowStore.getState();
+  const focused = resolveFocusedNoteId(windows, focusStack);
+  if (focused) return focused;
+  for (let i = focusStack.length - 1; i >= 0; i -= 1) {
+    const win = windows[focusStack[i]!];
+    if (!win) continue;
+    if (win.typeId === 'notes') {
+      const active = getWorkspaceActiveResource(win.id);
+      if (active?.type === 'note' && active.id) return active.id;
+    } else if (win.typeId === 'note' && typeof win.instanceKey === 'string' && win.instanceKey.length > 0) {
+      return win.instanceKey;
+    }
+  }
+  for (const win of Object.values(windows)) {
+    if (win.typeId === 'notes') {
+      const active = getWorkspaceActiveResource(win.id);
+      if (active?.type === 'note' && active.id) return active.id;
+    } else if (win.typeId === 'note' && typeof win.instanceKey === 'string' && win.instanceKey.length > 0) {
+      return win.instanceKey;
+    }
+  }
+  return lastActiveCanvasNoteId ?? undefined;
+}
 
 /**
  * 将 noteId 同步到当前会话 modeState.canvasNoteId。
  * 无当前会话 / store 未就绪时静默跳过。
  */
 function bindCanvasNoteId(noteId: string | null): void {
+  if (noteId) lastActiveCanvasNoteId = noteId;
   const sessionId = sessionManager.getCurrentSessionId();
   if (lastBoundNoteId === noteId && lastBoundSessionId === sessionId) return;
   lastBoundNoteId = noteId;

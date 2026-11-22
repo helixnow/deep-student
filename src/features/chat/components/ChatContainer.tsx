@@ -13,13 +13,21 @@
 import '../init';
 import { TodayReviewHint, useTodayReviewHintAvailability } from '@/features/learning-today';
 
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import type { StoreApi } from 'zustand';
 import type { ChatStore } from '../core/types';
 import { useStore } from 'zustand';
 import { useTranslation } from 'react-i18next';
-import { Info } from '@phosphor-icons/react';
+import { ArrowLeft, Info, X } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { useViewStore } from '@/stores/viewStore';
+import type { CurrentView } from '@/types/navigation';
+import {
+  clearChatHandoffReturnView,
+  getChatHandoffReturnView,
+  subscribeChatHandoffReturnView,
+} from '@/utils/chatHandoffReturn';
 import { MessageList } from './MessageList';
 import { InputBarV2 } from './input-bar';
 import { SuperInboxPausedBanner } from '../superSession/SuperInboxPausedBanner';
@@ -48,8 +56,8 @@ import { isStoreSubagentSession } from '../core/subagentSession';
 // Props 定义
 // ============================================================================
 
-// 移动端空态点击居中 Logo 展开的冲刺/复习卡片渲染器（模块级常量，保证 MessageList memo 稳定）
-const renderMobileTodayReviewHint = () => <TodayReviewHint embedded />;
+// 空会话点击居中 Logo 展开的冲刺/复习卡片渲染器（桌面与移动统一，模块级常量保证 MessageList memo 稳定）
+const renderEmptyTodayReviewHint = () => <TodayReviewHint embedded />;
 
 export interface ChatContainerProps {
   /** 会话 ID */
@@ -248,10 +256,45 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
   const shouldUseEmptyComposerLayout = effectiveShowInputBar && (forceEmptyPreview || messageCount === 0);
   const shouldUseDesktopEmptyComposerLayout = shouldUseEmptyComposerLayout && !isMobile;
-  const shouldAutoFocusMobileEmptyComposer = shouldUseEmptyComposerLayout && isMobile;
+  // 移动端进入空会话时不强弹键盘，避免软键盘压住欢迎态与今日复习入口
+  const shouldAutoFocusMobileEmptyComposer = false;
 
-  // 移动端空会话：订阅今日冲刺/待复习卡片可用性；默认隐藏卡片，仅在居中 Logo 角标提示并由点击切换
-  const mobileReviewHintAvailability = useTodayReviewHintAvailability(shouldAutoFocusMobileEmptyComposer);
+  // 跨学习页跳 AI 时的「返回刚才的学习」胶囊状态
+  const handoffReturnView = useSyncExternalStore(
+    subscribeChatHandoffReturnView,
+    getChatHandoffReturnView,
+    () => null,
+  );
+  const currentView = useViewStore((s) => s.currentView);
+  const previousView = useViewStore((s) => s.previousView);
+  useEffect(() => {
+    if (handoffReturnView && previousView === 'chat-v2' && currentView !== 'chat-v2') {
+      clearChatHandoffReturnView();
+    }
+  }, [handoffReturnView, previousView, currentView]);
+
+  const handoffReturnViewLabel = useMemo(() => {
+    const viewLabels: Partial<Record<CurrentView, string>> = {
+      'learning-hub': t('chatV2:handoffReturn.views.learningHub', { defaultValue: '学习资源' }),
+      'pdf-reader': t('chatV2:handoffReturn.views.pdfReader', { defaultValue: 'PDF 阅读' }),
+      flashcards: t('chatV2:handoffReturn.views.flashcards', { defaultValue: '闪卡复习' }),
+      media: t('chatV2:handoffReturn.views.media', { defaultValue: '音视频学习' }),
+      todo: t('chatV2:handoffReturn.views.todo', { defaultValue: '待办' }),
+      'task-dashboard': t('chatV2:handoffReturn.views.taskDashboard', { defaultValue: '制卡任务台' }),
+      dashboard: t('chatV2:handoffReturn.views.dashboard', { defaultValue: '学习概览' }),
+    };
+    return handoffReturnView ? viewLabels[handoffReturnView] ?? null : null;
+  }, [handoffReturnView, t]);
+
+  const handleReturnToOriginView = useCallback(() => {
+    if (!handoffReturnView) return;
+    const targetView = handoffReturnView;
+    clearChatHandoffReturnView();
+    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: targetView });
+  }, [handoffReturnView]);
+
+  // 桌面与移动端空会话统一：订阅今日冲刺/待复习卡片可用性；默认隐藏卡片，仅在居中 Logo 角标提示并由点击切换
+  const reviewHintAvailability = useTodayReviewHintAvailability(shouldUseEmptyComposerLayout);
 
   // 🆕 Canvas 上下文引用管理 - 白板功能已移除
   // useCanvasContextRef({ store });
@@ -307,10 +350,10 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         store={store}
         emptyStateGroupName={resolvedEmptyStateGroupName}
         forceEmptyPreview={forceEmptyPreview}
-        emptyStateCardAvailable={shouldAutoFocusMobileEmptyComposer && mobileReviewHintAvailability.hasContent}
-        emptyStateCardAccent={mobileReviewHintAvailability.hasDueItems}
+        emptyStateCardAvailable={shouldUseEmptyComposerLayout && reviewHintAvailability.hasContent}
+        emptyStateCardAccent={reviewHintAvailability.hasDueItems}
         emptyStateCardResetKey={displayedSessionId}
-        renderEmptyStateCard={shouldAutoFocusMobileEmptyComposer ? renderMobileTodayReviewHint : undefined}
+        renderEmptyStateCard={shouldUseEmptyComposerLayout ? renderEmptyTodayReviewHint : undefined}
       />
     </div>
   );
@@ -376,6 +419,43 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         </div>
       )}
 
+      {/* 跨学习页跳 AI 后的「返回原学习现场」轻量胶囊 */}
+      {handoffReturnView && (
+        <div
+          data-slot="chat-handoff-return-bar"
+          className="flex-shrink-0 px-4 pt-2 md:px-8"
+        >
+          <ThreadContentShell className="flex items-center">
+            <div className="inline-flex max-w-full items-center gap-0.5 rounded-full border border-border/60 bg-background/90 p-0.5 shadow-sm backdrop-blur-sm">
+              <button
+                type="button"
+                onClick={handleReturnToOriginView}
+                className="inline-flex min-h-8 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium text-foreground/90 transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3"
+              >
+                <ArrowLeft size={14} weight="bold" aria-hidden="true" className="shrink-0 text-primary" />
+                <span className="truncate">
+                  {handoffReturnViewLabel
+                    ? t('chatV2:handoffReturn.buttonWithView', {
+                        defaultValue: '返回刚才的学习（{{view}}）',
+                        view: handoffReturnViewLabel,
+                      })
+                    : t('chatV2:handoffReturn.button', { defaultValue: '返回刚才的学习' })}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={clearChatHandoffReturnView}
+                aria-label={t('common:close', { defaultValue: '关闭' })}
+                title={t('common:close', { defaultValue: '关闭' })}
+                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
+              >
+                <X size={13} aria-hidden="true" />
+              </button>
+            </div>
+          </ThreadContentShell>
+        </div>
+      )}
+
       {shouldUseDesktopEmptyComposerLayout ? (
         <div className="chat-empty-composer-layout">
           <ThreadContentShell className="chat-empty-composer-layout__stack px-4 md:px-8">
@@ -388,8 +468,6 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             <SuperInboxPausedBanner sessionId={displayedSessionId} />
             <AgentTaskPanel store={store} chatStore={store} />
             {renderInputBar('chat-empty-composer-layout__input', 'empty')}
-            {/* 今日待复习（无到期内容时不渲染） */}
-            <TodayReviewHint />
           </ThreadContentShell>
         </div>
       ) : (

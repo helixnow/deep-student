@@ -17,6 +17,9 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsDialog } from '@/components/ui/DsDialog';
 import { Input } from '@/components/ui/shad/Input';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import {
   fnv1a64Hex,
   formatAnchorShortLocator,
@@ -199,6 +202,9 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
   defaultDeckName,
 }) => {
   const { t } = useTranslation('flashcards');
+  const { isSmallScreen } = useBreakpoint();
+  const isCoarsePointer = useMediaQuery('(pointer: coarse)');
+  const touchFriendlyHandles = isCoarsePointer || isSmallScreen;
   const ownerId = useId();
   const titleId = useId();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -345,10 +351,15 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
     [t],
   );
 
+  const removeBox = useCallback((boxId: string) => {
+    setBoxes((prev) => renumberBoxes(prev.filter((b) => b.id !== boxId)));
+    setSelectedBoxId((prev) => (prev === boxId ? null : prev));
+  }, []);
+
   // Support pasting PNG/JPEG/WebP from clipboard while modal is open.
-  useEffect(() => {
-    if (!open) return;
-    const handlePaste = (event: ClipboardEvent) => {
+  const handlePaste = useCallback(
+    (rawEvent: Event) => {
+      const event = rawEvent as ClipboardEvent;
       const active = document.activeElement;
       if (isEditableTarget(active)) {
         return;
@@ -359,21 +370,15 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
       if (!file || !file.type.startsWith('image/')) return;
       event.preventDefault();
       void ingestFileOrBlob(file);
-    };
-    window.addEventListener('paste', handlePaste);
-    return () => window.removeEventListener('paste', handlePaste);
-  }, [open, ingestFileOrBlob]);
-
-  const removeBox = useCallback((boxId: string) => {
-    setBoxes((prev) => renumberBoxes(prev.filter((b) => b.id !== boxId)));
-    setSelectedBoxId((prev) => (prev === boxId ? null : prev));
-  }, []);
+    },
+    [ingestFileOrBlob],
+  );
 
   // Keyboard shortcuts (`Delete` / `Backspace` / `Escape`) in capture phase so Escape removes
   // a selected box (or cancels an active draw) without letting DsDialog close the modal.
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
+  const handleKeyDown = useCallback(
+    (rawEvent: Event) => {
+      const event = rawEvent as KeyboardEvent;
       if (isComposingKeyEvent(event)) return;
       if (savingRef.current) return;
       const inTextInput = isEditableTarget(event.target);
@@ -399,10 +404,19 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
         event.stopPropagation();
         removeBox(selectedBoxId);
       }
-    };
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => document.removeEventListener('keydown', handleKeyDown, true);
-  }, [open, dragState, selectedBoxId, removeBox]);
+    },
+    [dragState, selectedBoxId, removeBox],
+  );
+
+  useEventRegistry(
+    open
+      ? [
+          { target: 'window', type: 'paste', listener: handlePaste },
+          { target: 'document', type: 'keydown', listener: handleKeyDown, options: true },
+        ]
+      : [],
+    [open, handlePaste, handleKeyDown],
+  );
 
   const resolveStageGeometry = useCallback(
     (clientX: number, clientY: number): { normX: number; normY: number; widthPx: number; heightPx: number } => {
@@ -784,9 +798,9 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
           </span>
         </header>
 
-        {/* Controls row: Mode switch + Deck name + Change image */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/35 bg-muted/20 px-5 py-2.5">
-          <div className="flex items-center gap-2">
+        {/* Controls row: Mode switch + Deck name + Change image + Delete selected box */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 border-b border-border/35 bg-muted/20 px-4 py-2.5 sm:gap-3 sm:px-5">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-muted-foreground">{t('occlusion.modeLabel')}</span>
             <div
               role="group"
@@ -803,7 +817,7 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
                     data-testid={`occlusion-mode-${candidate}`}
                     onClick={() => setMode(candidate)}
                     className={cn(
-                      'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                      'min-h-[36px] rounded-md px-3 py-1.5 text-xs font-medium transition-colors [@media(pointer:coarse)]:min-h-[44px]',
                       active
                         ? 'bg-card text-foreground shadow-sm'
                         : 'text-muted-foreground hover:text-foreground',
@@ -816,14 +830,14 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <label className="flex min-w-0 flex-1 items-center gap-1.5 text-xs text-muted-foreground sm:flex-initial">
               <span className="shrink-0">{t('occlusion.deckLabel')}</span>
               <Input
                 value={deckName}
                 onChange={(e) => setDeckName(e.target.value)}
                 placeholder={t('occlusion.deckPlaceholder')}
-                className="h-7 w-36 text-xs"
+                className="h-9 w-full min-w-[120px] text-base sm:h-8 sm:w-40 sm:text-xs [@media(pointer:coarse)]:!h-11"
                 data-testid="occlusion-deck-input"
               />
             </label>
@@ -839,12 +853,28 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
                 e.target.value = '';
               }}
             />
+            {hasImage && boxes.length > 0 ? (
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={!selectedBox || saving}
+                onClick={() => {
+                  if (selectedBox) removeBox(selectedBox.id);
+                }}
+                className="min-h-[36px] px-3 text-xs text-destructive hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
+                data-testid="occlusion-toolbar-delete-box-btn"
+              >
+                <Trash size={14} />
+                <span>{t('occlusion.deleteSelectedBox', { defaultValue: '删除选中遮挡' })}</span>
+              </DsButton>
+            ) : null}
             {hasImage ? (
               <DsButton
                 type="button"
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2.5 text-xs"
+                className="min-h-[36px] px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
                 onClick={() => fileInputRef.current?.click()}
               >
                 <UploadSimple size={14} />
@@ -855,7 +885,7 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
         </div>
 
         {/* Main Canvas Area */}
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 py-4">
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-4 sm:px-5">
           {!hasImage ? (
             <div
               role="button"
@@ -874,7 +904,7 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
                 <Plus size={18} />
               </div>
               <p className="max-w-sm text-xs text-muted-foreground">{t('occlusion.uploadPrompt')}</p>
-              <DsButton type="button" variant="default" size="sm" className="text-xs">
+              <DsButton type="button" variant="default" size="sm" className="min-h-[36px] text-xs [@media(pointer:coarse)]:!min-h-11">
                 <UploadSimple size={14} />
                 <span>{t('occlusion.chooseImage')}</span>
               </DsButton>
@@ -912,8 +942,10 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
                     const ry = box.y * 1000;
                     const rw = box.w * 1000;
                     const rh = box.h * 1000;
-                    const handleSize = 18;
+                    const handleSize = touchFriendlyHandles ? 36 : 20;
                     const half = handleSize / 2;
+                    const hitSize = touchFriendlyHandles ? 120 : 40;
+                    const hitHalf = hitSize / 2;
 
                     return (
                       <g
@@ -961,20 +993,31 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
                                 ['se', rx + rw, ry + rh, 'nwse-resize'],
                               ] as const
                             ).map(([corner, cx, cy, cursor]) => (
-                              <rect
-                                key={corner}
-                                data-testid={`occlusion-resize-${corner}`}
-                                x={cx - half}
-                                y={cy - half}
-                                width={handleSize}
-                                height={handleSize}
-                                fill="hsl(var(--card))"
-                                stroke="hsl(var(--primary))"
-                                strokeWidth={2}
-                                vectorEffect="non-scaling-stroke"
-                                style={{ cursor }}
-                                onPointerDown={(e) => handleCornerPointerDown(e, box, corner)}
-                              />
+                              <g key={corner}>
+                                <rect
+                                  data-testid={`occlusion-resize-${corner}`}
+                                  x={cx - hitHalf}
+                                  y={cy - hitHalf}
+                                  width={hitSize}
+                                  height={hitSize}
+                                  fill="transparent"
+                                  style={{ cursor }}
+                                  onPointerDown={(e) => handleCornerPointerDown(e, box, corner)}
+                                />
+                                <rect
+                                  x={cx - half}
+                                  y={cy - half}
+                                  width={handleSize}
+                                  height={handleSize}
+                                  rx={touchFriendlyHandles ? 6 : 3}
+                                  ry={touchFriendlyHandles ? 6 : 3}
+                                  fill="hsl(var(--card))"
+                                  stroke="hsl(var(--primary))"
+                                  strokeWidth={2.5}
+                                  vectorEffect="non-scaling-stroke"
+                                  className="pointer-events-none"
+                                />
+                              </g>
                             ))
                           : null}
                       </g>
@@ -1022,7 +1065,7 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
                       );
                     }}
                     placeholder={t('occlusion.boxLabelPlaceholder')}
-                    className="h-7 min-w-[160px] flex-1 text-xs"
+                    className="h-9 min-w-[160px] flex-1 text-base sm:h-8 sm:text-xs [@media(pointer:coarse)]:!h-11"
                     data-testid="occlusion-box-label-input"
                   />
                   <DsButton
@@ -1030,11 +1073,11 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
                     variant="ghost"
                     size="sm"
                     onClick={() => removeBox(selectedBox.id)}
-                    className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+                    className="min-h-[36px] px-3 text-xs text-destructive hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
                     data-testid="occlusion-delete-box-btn"
                   >
                     <Trash size={14} />
-                    <span>{t('occlusion.deleteBox')}</span>
+                    <span>{t('occlusion.deleteSelectedBox', { defaultValue: '删除选中遮挡' })}</span>
                   </DsButton>
                 </div>
               ) : (
@@ -1047,7 +1090,7 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
                 value={extraNote}
                 onChange={(e) => setExtraNote(e.target.value)}
                 placeholder={t('occlusion.extraNotePlaceholder')}
-                className="h-8 text-xs"
+                className="h-9 text-base sm:h-8 sm:text-xs [@media(pointer:coarse)]:!h-11"
                 data-testid="occlusion-extra-note-input"
               />
             </div>
@@ -1055,7 +1098,7 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
         </div>
 
         {/* Footer */}
-        <footer className="flex items-center justify-between gap-3 border-t border-border/35 bg-muted/15 px-5 py-3">
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border/35 bg-muted/15 px-4 py-3 sm:px-5">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span
               className={cn(
@@ -1076,7 +1119,7 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
               size="sm"
               disabled={saving}
               onClick={() => setOpen(false)}
-              className="text-xs"
+              className="min-h-[36px] text-xs [@media(pointer:coarse)]:!min-h-11"
             >
               {t('occlusion.cancel')}
             </DsButton>
@@ -1086,7 +1129,7 @@ export const ImageOcclusionBuilderModal: React.FC<ImageOcclusionBuilderModalProp
               size="sm"
               disabled={!canSave}
               onClick={() => void handleSave()}
-              className="text-xs"
+              className="min-h-[36px] text-xs [@media(pointer:coarse)]:!min-h-11"
               data-testid="occlusion-save-btn"
             >
               {saving ? t('occlusion.saving') : t('occlusion.saveAndEnqueue')}

@@ -4,8 +4,12 @@
  * 从后端获取聚合的学习活动数据，用于热力图展示
  */
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useEventRegistry } from './useEventRegistry';
+
+/** 与 features/study-time/studyTimeTracker.ts 的 STUDY_TIME_FLUSHED_EVENT 同名（避免 platform → feature 反向依赖）。 */
+const STUDY_TIME_FLUSHED_EVENT = 'study-time:flushed';
 
 // ============================================================================
 // 类型定义
@@ -22,6 +26,9 @@ export interface DailyActivityDetails {
   essaysCreated: number;
   ankiCardsCreated: number;
   questionsAnswered: number;
+  cardsReviewed?: number;
+  todosCompleted?: number;
+  pomodorosCompleted?: number;
 }
 
 /** 学习活动数据（热力图单元） */
@@ -61,15 +68,22 @@ export interface UseLearningHeatmapResult {
 // 工具函数
 // ============================================================================
 
-/** 获取日期范围（默认近一年） */
-function getDateRange(months: number = 12): { startDate: string; endDate: string } {
-  const end = new Date();
-  const start = new Date();
-  start.setMonth(start.getMonth() - months);
-  
+/** 按本地时区格式化 YYYY-MM-DD（避免东八区 00:00–08:00 用 toISOString 截断当日数据） */
+export function formatLocalDateYmd(date: Date): string {
+  const year = String(date.getFullYear()).padStart(4, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/** 获取日期范围（默认近一年，按本地日历日期计算） */
+export function getHeatmapDateRange(months: number = 12, now: Date = new Date()): { startDate: string; endDate: string } {
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const start = new Date(end.getFullYear(), end.getMonth() - months, end.getDate());
+
   return {
-    startDate: start.toISOString().split('T')[0],
-    endDate: end.toISOString().split('T')[0],
+    startDate: formatLocalDateYmd(start),
+    endDate: formatLocalDateYmd(end),
   };
 }
 
@@ -85,11 +99,15 @@ export function useLearningHeatmap(months: number = 12): UseLearningHeatmapResul
   const [data, setData] = useState<LearningActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestSeqRef = useRef(0);
 
-  const { startDate, endDate } = useMemo(() => getDateRange(months), [months]);
+  const { startDate, endDate } = useMemo(() => getHeatmapDateRange(months), [months]);
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (silent = false) => {
+    const reqSeq = ++requestSeqRef.current;
+    if (!silent) {
+      setLoading(true);
+    }
     setError(null);
     
     try {
@@ -97,18 +115,35 @@ export function useLearningHeatmap(months: number = 12): UseLearningHeatmapResul
         startDate,
         endDate,
       });
+      if (reqSeq !== requestSeqRef.current) return;
       setData(result);
     } catch (err: unknown) {
+      if (reqSeq !== requestSeqRef.current) return;
       console.error('[useLearningHeatmap] Failed to load data:', err);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      if (!silent && reqSeq === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [startDate, endDate]);
 
   useEffect(() => {
-    loadData();
+    void loadData(false);
   }, [loadData]);
+
+  useEventRegistry(
+    [
+      {
+        target: 'window',
+        type: STUDY_TIME_FLUSHED_EVENT,
+        listener: () => {
+          void loadData(true);
+        },
+      },
+    ],
+    [loadData],
+  );
 
   // 转换为 @uiw/react-heat-map 格式
   const heatmapData: HeatMapValue[] = useMemo(() => {
@@ -130,13 +165,15 @@ export function useLearningHeatmap(months: number = 12): UseLearningHeatmapResul
     return { totalActivities, activeDays, maxCount, totalStudySeconds, studyDays, maxStudySeconds };
   }, [data]);
 
+  const refresh = useCallback(() => loadData(false), [loadData]);
+
   return {
     data,
     heatmapData,
     loading,
     error,
     ...stats,
-    refresh: loadData,
+    refresh,
   };
 }
 

@@ -19,7 +19,7 @@ describe('CanvasShortcutHintPill', () => {
     localStorage.clear();
   });
 
-  it('编辑态展示 Tab/Enter/Space 快捷键提示，支持收起并持久化偏好', () => {
+  it('编辑态展示 Tab/Enter/F2 快捷键提示，支持收起并持久化偏好，使用容器类替代视口断点和无效 blur', () => {
     const onOpenShortcuts = vi.fn();
     render(
       <TooltipProvider>
@@ -30,16 +30,24 @@ describe('CanvasShortcutHintPill', () => {
     const pill = screen.getByTestId('mm-shortcut-hint-pill');
     expect(pill.textContent).toContain('Tab');
     expect(pill.textContent).toContain('Enter');
+    expect(pill.textContent).toContain('F2');
     expect(pill.textContent).toContain('canvasV2.hintChild');
+    expect(pill.className).toContain('mm-shortcut-hint-pill');
+    expect(pill.className).not.toContain('lg:inline-flex');
+    expect(pill.className).not.toContain('backdrop-blur-md');
 
     fireEvent.click(screen.getByTestId('mm-shortcut-hint-more'));
     expect(onOpenShortcuts).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByTestId('mm-shortcut-hint-collapse'));
     expect(screen.queryByTestId('mm-shortcut-hint-pill')).toBeNull();
-    expect(screen.getByTestId('mm-shortcut-hint-expand')).toBeTruthy();
+    const expandBtn = screen.getByTestId('mm-shortcut-hint-expand');
+    expect(expandBtn).toBeTruthy();
+    expect(expandBtn.className).not.toContain('backdrop-blur-md');
+    expect(expandBtn.parentElement?.className).toContain('mm-shortcut-hint-pill');
+    expect(expandBtn.parentElement?.className).not.toContain('lg:inline-flex');
 
-    fireEvent.click(screen.getByTestId('mm-shortcut-hint-expand'));
+    fireEvent.click(expandBtn);
     expect(screen.getByTestId('mm-shortcut-hint-pill')).toBeTruthy();
   });
 

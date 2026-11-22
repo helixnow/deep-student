@@ -80,8 +80,23 @@ export interface FsrsImportedSchedule {
   elapsedDays: number; scheduledDays: number; reps: number; lapses: number;
   dueMs: number; lastReviewMs: number | null; suspended: boolean;
 }
+/** 外部导入卡片的历史复习日志条（Anki `revlog` → `fsrs_review_logs`）。 */
+export interface FsrsImportedReviewLog {
+  rating: number;
+  stateBefore: number;
+  stateAfter: number;
+  scheduledDays: number;
+  elapsedDays: number;
+  reviewMs: number;
+  dueAfterMs: number;
+  durationMs: number | null;
+}
 /** `review.enqueueImportedCardsInTx` 的入参。 */
-export interface FsrsImportedCard { cardId: string; seed: FsrsImportedSchedule | null }
+export interface FsrsImportedCard {
+  cardId: string;
+  seed: FsrsImportedSchedule | null;
+  reviewLogs?: readonly FsrsImportedReviewLog[];
+}
 /** Rust `FsrsImportEnqueueSummary`。 */
 export interface FsrsImportEnqueueSummary {
   enqueued: number; skipped: number; withHistory: number; suspended: number;

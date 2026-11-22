@@ -58,4 +58,6 @@ it('test_token_limits', () => {
   expect(limits.getLimit('BAAI/bge-large-zh-v1.5')).toBe(Math.trunc(512 * 0.9));
   expect(limits.getLimit('BAAI/bge-m3')).toBe(Math.trunc(8192 * 0.9));
   expect(limits.getLimit('Qwen/Qwen3-Embedding-8B')).toBe(Math.trunc(32768 * 0.9));
+  expect(limits.getLimit('mistral-embed')).toBe(Math.trunc(Math.fround(Math.fround(8192) * Math.fround(0.9))));
+  expect(limits.getLimit('codestral-embed')).toBe(Math.trunc(Math.fround(Math.fround(8192) * Math.fround(0.9))));
 });

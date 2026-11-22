@@ -10,7 +10,7 @@
  * and import this module (CSS side-effect) before create().
  */
 
-import type { MilkdownPlugin } from '@milkdown/ctx';
+import type { MilkdownPlugin } from '@milkdown/kit/ctx';
 
 import { calloutFullLineInputRule, calloutInputRule } from './inputRule';
 import { calloutSchema } from './schema';

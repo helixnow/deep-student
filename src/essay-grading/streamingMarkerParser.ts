@@ -498,7 +498,7 @@ function parseConfirmedMarkers(
 // 评分解析
 // ============================================================================
 
-const SCORE_REGEX = /<score\b([^>]*)>([\s\S]*?)<\/score>/i;
+const SCORE_REGEX = /<score\b([^>]*)>([\s\S]*?)<\/score>/gi;
 // 评语惰性匹配到 </dim>，允许评语中出现 '<'（如 "a < b"）
 const DIM_REGEX = /<dim\b([^>]*)>([\s\S]*?)<\/dim>/gi;
 
@@ -507,13 +507,20 @@ const clamp = (value: number, min: number, max: number): number =>
 
 /**
  * 解析评分。
+ * - 多个 <score> 时取最后一个（与后端 pipeline.parseScoreFromResult 对齐）
  * - <score> 与 <dim> 属性均支持任意顺序（逐属性提取）
  * - 超满分统一 clamp 到 max（与后端一致），total 与 dim 都 clamp
+ * - 求和制多维度（dimensions.length >= 2 且各维满分之和等于 maxTotal）且与总分差超过 0.5 时以维度之和为准
  *
  * 供 markerParser.parseScore 复用（统一实现，避免双份逻辑漂移）。
  */
 export function parseScoreFromText(text: string): ParsedScore | null {
-  const scoreMatch = text.match(SCORE_REGEX);
+  SCORE_REGEX.lastIndex = 0;
+  let scoreMatch: RegExpExecArray | null = null;
+  let candidate: RegExpExecArray | null;
+  while ((candidate = SCORE_REGEX.exec(text)) !== null) {
+    scoreMatch = candidate;
+  }
   if (!scoreMatch) return null;
   
   const scoreAttrs = scoreMatch[1] ?? '';
@@ -544,9 +551,18 @@ export function parseScoreFromText(text: string): ParsedScore | null {
       });
     }
   }
+
+  let finalTotal = safeTotal;
+  if (dimensions.length >= 2) {
+    const dimsMaxSum = dimensions.reduce((sum, dim) => sum + dim.maxScore, 0);
+    const dimSum = dimensions.reduce((sum, dim) => sum + dim.score, 0);
+    if (Math.abs(dimsMaxSum - maxTotal) < 0.01 && Math.abs(dimSum - safeTotal) > 0.5) {
+      finalTotal = clamp(dimSum, 0, maxTotal);
+    }
+  }
   
   // 计算等级代码（组件层负责翻译）
-  const percentage = (safeTotal / maxTotal) * 100;
+  const percentage = (finalTotal / maxTotal) * 100;
   let grade: GradeCode;
   if (percentage >= 90) {
     grade = 'excellent';
@@ -558,7 +574,7 @@ export function parseScoreFromText(text: string): ParsedScore | null {
     grade = 'fail';
   }
   
-  return { total: safeTotal, maxTotal, grade, dimensions, isComplete: true };
+  return { total: finalTotal, maxTotal, grade, dimensions, isComplete: true };
 }
 
 /**
@@ -687,7 +703,7 @@ function doParseStreamingContent(text: string, isComplete: boolean): StreamingPa
   // 1. 提取代码块，避免解析代码块内的标记
   const { cleanText, codeBlocks } = extractCodeBlocks(text);
   
-  // 2. 先尝试解析评分（只解析第一个，忽略代码块内的）
+  // 2. 先尝试解析评分（多个时取最后一个，忽略代码块内的）
   const score = parseScoreFromText(cleanText);
   
   // 3. 移除评分标签和 section 标签后处理剩余内容。

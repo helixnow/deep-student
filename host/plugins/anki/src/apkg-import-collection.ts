@@ -2,14 +2,17 @@
  * 集合库 SQLite 内省与卡片展开（legacy 与现代 anki21b 共用）。
  */
 import type { DatabaseHandle } from '../../../platform/storage/api.ts';
+import type { FsrsImportedReviewLog } from '../../review/api.ts';
 import { emptyApkgMediaReport } from './apkg-types.ts';
 import type { AnkiLogger } from './logger.ts';
 import {
   cardsTableHasColumn,
   collectionObjectType,
   countCollectionCards,
+  hasRevlogTable,
   iterateLegacyCollectionCards,
   listCardsTableColumnNames,
+  listCollectionRevlogs,
   listModernDeckNames,
   listModernFields,
   listModernNotetypes,
@@ -18,8 +21,17 @@ import {
   prepareReadOnlyCollection,
   readCollectionCrt,
   readLegacyCollectionMetadata,
+  type AnkiRevlogRow,
   type LegacyCollectionCardRow,
 } from '../repository/apkg-import.ts';
+import { convertAnkiRevlogRows } from './apkg-import-fsrs.ts';
+
+declare module './apkg-import-types.ts' {
+  interface ParsedCard {
+    /** 由 Anki `revlog` 表解析的历史复习记录（缺表或无记录时省略）。 */
+    ankiRevlog?: FsrsImportedReviewLog[];
+  }
+}
 import {
   APKG_ERROR_COLLECTION_INVALID,
   APKG_ERROR_MODERN_SCHEMA,
@@ -320,6 +332,7 @@ export function parseCollectionDatabase(
       if (hasSchedColumns) hasCardData = cardsTableHasColumn(db, 'data');
       const hasNoteData = notesTableHasDataColumn(db);
 
+      const revlogsByCardId = loadCollectionRevlogs(db);
       const cards: ParsedCard[] = [];
       let materializedBytes = 0;
       let joinedCardRows = 0;
@@ -357,7 +370,7 @@ export function parseCollectionDatabase(
             if (currentGroup !== null) {
               const group = currentGroup;
               currentGroup = null;
-              flushNoteGroup(models, group, mediaPaths, cards, warnings, (count) => {
+              flushNoteGroup(models, group, mediaPaths, revlogsByCardId, cards, warnings, (count) => {
                 schedMetadataCards += count;
               }, runtime.logger);
             }
@@ -418,7 +431,7 @@ export function parseCollectionDatabase(
       if (currentGroup !== null) {
         const group = currentGroup;
         currentGroup = null;
-        flushNoteGroup(models, group, mediaPaths, cards, warnings, (count) => {
+        flushNoteGroup(models, group, mediaPaths, revlogsByCardId, cards, warnings, (count) => {
           schedMetadataCards += count;
         }, runtime.logger);
       }
@@ -465,6 +478,29 @@ export function parseCollectionDatabase(
   }
 }
 
+const REQUIRED_REVLOG_COLUMNS = ['id', 'cid', 'ease', 'ivl', 'lastIvl', 'time', 'type'] as const;
+
+function loadCollectionRevlogs(db: DatabaseHandle): Map<number, FsrsImportedReviewLog[]> {
+  const result = new Map<number, FsrsImportedReviewLog[]>();
+  if (!hasRevlogTable(db)) return result;
+  const cols = new Set(listTableColumns(db, 'revlog').map((col) => col.name));
+  if (!REQUIRED_REVLOG_COLUMNS.every((name) => cols.has(name))) return result;
+
+  const grouped = new Map<number, AnkiRevlogRow[]>();
+  for (const row of listCollectionRevlogs(db)) {
+    if (!Number.isInteger(row.ease) || row.ease < 1 || row.ease > 4) continue;
+    if (!Number.isFinite(row.id) || row.id <= 0) continue;
+    const list = grouped.get(row.cid);
+    if (list) list.push(row);
+    else grouped.set(row.cid, [row]);
+  }
+  for (const [cid, rows] of grouped) {
+    const converted = convertAnkiRevlogRows(rows);
+    if (converted.length > 0) result.set(cid, converted);
+  }
+  return result;
+}
+
 function parseNoteCardScope(noteData: string): string | undefined {
   let value: unknown;
   try {
@@ -487,6 +523,7 @@ function flushNoteGroup(
   models: ReadonlyMap<number, ModelDefinition>,
   group: PendingNoteGroup,
   mediaPaths: ReadonlyMap<string, string>,
+  revlogsByCardId: ReadonlyMap<number, FsrsImportedReviewLog[]>,
   cards: ParsedCard[],
   warnings: string[],
   onSchedMetadata: (count: number) => void,
@@ -522,6 +559,10 @@ function flushNoteGroup(
       card.back = front;
     }
     card.ankiSched = row.sched;
+    const revlogs = revlogsByCardId.get(row.cardId);
+    if (revlogs && revlogs.length > 0) {
+      card.ankiRevlog = revlogs;
+    }
     if (row.sched !== null && hasReviewProgress(row.sched)) {
       // 键名与 ANKI_SCHED_METADATA_KEYS / 导出端 card_sched_restore 保持一致
       const sched = row.sched;

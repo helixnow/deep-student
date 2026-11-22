@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 
-import { InputBarUI } from '../InputBarUI';
+import { InputBarUI, isCameraImageFile } from '../InputBarUI';
 import { createDefaultPanelStates } from '../../../core/types/common';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 
@@ -49,6 +49,23 @@ vi.mock('@/components/layout/MobileLayoutContext', () => ({
 vi.mock('@/voice-input/audio', () => ({
   blobToBase64: vi.fn(),
   startBrowserVoiceRecording: startBrowserVoiceRecordingMock,
+}));
+
+vi.mock('@/voice-input/runtimeConfig', () => ({
+  loadVoiceInputRuntimeConfig: vi.fn().mockResolvedValue({
+    maxDurationMs: 60_000,
+    insertMode: 'replace-selection',
+    hotkey: 'mod+shift+space',
+    hotkeyMode: 'hold-to-talk',
+    assignedModel: {
+      status: 'ready',
+      configId: 'voice-asr',
+      providerId: 'siliconflow',
+      providerLabel: 'SiliconFlow',
+      model: 'TeleAI/TeleSpeechASR',
+      modelLabel: 'TeleAI/TeleSpeechASR',
+    },
+  }),
 }));
 
 function renderInputBar(overrides: Partial<React.ComponentProps<typeof InputBarUI>> = {}) {
@@ -146,5 +163,13 @@ describe('InputBarUI voice input slot', () => {
     await waitFor(() => {
       expect(startBrowserVoiceRecordingMock).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('accepts common mobile camera image extensions even when MIME type is empty', () => {
+    expect(isCameraImageFile({ name: 'photo.jpg', type: '' })).toBe(true);
+    expect(isCameraImageFile({ name: 'IMG_001.HEIC', type: '' })).toBe(true);
+    expect(isCameraImageFile({ name: 'capture.webp', type: '' })).toBe(true);
+    expect(isCameraImageFile({ name: 'image.png', type: 'image/png' })).toBe(true);
+    expect(isCameraImageFile({ name: 'notes.pdf', type: '' })).toBe(false);
   });
 });

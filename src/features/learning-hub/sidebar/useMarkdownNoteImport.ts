@@ -7,8 +7,14 @@ import type { DstuNode } from '@/dstu';
 import { VfsError, VfsErrorCode, err } from '@/shared/result';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { pLimit } from '@/utils/concurrency';
-import { isAndroidMobileShell } from '@/utils/platform';
+import { isAndroidMobileShell, isWebUiShell } from '@/utils/platform';
 import { pickWebViewFiles } from '@/utils/pickWebViewFiles';
+
+const hasNativeTauriDialog = (): boolean =>
+  typeof window !== 'undefined'
+  && Boolean((window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
+  && !isWebUiShell()
+  && !isAndroidMobileShell();
 import { getFileExtension } from './sidebarConstants';
 import { dstuNodeToResourceListItem } from '../types';
 import type { LearningHubSidebarProps } from '../types';
@@ -179,7 +185,7 @@ export async function importMarkdownNoteFromDialog(
 
   try {
     let result: Awaited<ReturnType<MarkdownNoteImport['importMarkdownPathNotes']>>;
-    if (isAndroidMobileShell()) {
+    if (!hasNativeTauriDialog()) {
       // Some document providers report Markdown as application/octet-stream.
       const files = await pickWebViewFiles(true);
       if (files.length === 0) return;

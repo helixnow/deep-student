@@ -66,4 +66,39 @@ describe('NumericAnswer primary Enter action', () => {
 
     expect(onPrimaryAction).not.toHaveBeenCalled();
   });
+
+  it('uses text inputMode and inserts quick math symbols including minus and fraction slash', () => {
+    const onChange = vi.fn();
+    renderAnswer({ value: '', onChange });
+    const input = getInput();
+    expect(input).toHaveAttribute('inputmode', 'text');
+
+    const bar = screen.getByTestId('numeric-quick-symbols');
+    expect(bar).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '负号' }));
+    expect(onChange).toHaveBeenLastCalledWith('-');
+
+    fireEvent.click(screen.getByRole('button', { name: '分数斜杠' }));
+    expect(onChange).toHaveBeenLastCalledWith('/');
+
+    fireEvent.click(screen.getByRole('button', { name: '括号' }));
+    expect(onChange).toHaveBeenLastCalledWith('()');
+  });
+
+  it.each(['3.15 m', '1,009', '3/4', '-2e3', '42%', '9.8 m/s^2', '100℃', '42米'])(
+    'accepts valid numeric expression %s without marking invalid (BUG-15)',
+    (value) => {
+      renderAnswer({ value });
+      expect(getInput()).toHaveAttribute('aria-invalid', 'false');
+    },
+  );
+
+  it.each(['随便乱填 42 次', '42 瞎蒙的', '1/2/3'])(
+    'marks prose or malformed numeric input %s as invalid (BUG-15)',
+    (value) => {
+      renderAnswer({ value });
+      expect(getInput()).toHaveAttribute('aria-invalid', 'true');
+    },
+  );
 });

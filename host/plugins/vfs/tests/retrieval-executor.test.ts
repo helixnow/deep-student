@@ -50,6 +50,15 @@ it('score_thresholds_keep_top1_when_all_below_absolute_min', () => {
 it('score_thresholds_apply_relative_only_for_rrf_scale', () => {
   expect(applyScoreThresholds([scored('Doc1', .032), scored('Doc2', .016), scored('Doc3', .010)], null, .5)).toHaveLength(2);
 });
+it('score_thresholds_drop_noise_below_hard_floor_when_min_score_is_set', () => {
+  const unscored: SourceInfo = { title: 'Unscored', snippet: 'unscored text', score: null };
+  expect(applyScoreThresholds([scored('Noise1', .04), scored('Noise2', .01)], .3, .5)).toEqual([]);
+  expect(applyScoreThresholds([scored('SingleNoise', .02)], .3, .5)).toEqual([]);
+  expect(applyScoreThresholds([scored('Zero', 0)], .3, .5)).toEqual([]);
+  expect(applyScoreThresholds([scored('Noise', .02), unscored], .3, .5)).toEqual([unscored]);
+  expect(applyScoreThresholds([unscored], .3, .5)).toEqual([unscored]);
+  expect(applyScoreThresholds([scored('Doc1', .2)], .3, .5).map(s => s.title)).toEqual(['Doc1']);
+});
 it('snippet_truncation_respects_budget', () => {
   expect(truncateSnippetChars('abcdef', 4)).toEqual(['abc…', 4]);
   expect(truncateSnippetChars('abc', 10)).toEqual(['abc', 3]);

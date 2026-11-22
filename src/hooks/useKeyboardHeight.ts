@@ -31,6 +31,8 @@ import { isAndroid } from '@/utils/platform';
 
 /** 键盘判定阈值（px）：视口高度差超过该值视为键盘弹出 */
 const KEYBOARD_THRESHOLD = 150;
+/** Android adjustResize 瞬时过渡拦截窗（ms）：仅屏蔽键盘弹起/收起当帧的坐标抖动误触，不长期死锁导航 */
+const KEYBOARD_TRANSITION_GUARD_MS = 200;
 
 type Listener = () => void;
 
@@ -42,6 +44,7 @@ let keyboardHeight = 0;
 let keyboardInset = 0;
 let baselineHeight = 0;
 let baselineWidth = 0;
+let lastKeyboardTransitionAt = 0;
 const listeners = new Set<Listener>();
 
 /** 把当前 inset 同步到 document root，供纯 CSS 消费（面板 max-height 等） */
@@ -93,6 +96,7 @@ function handleViewportChange(): void {
   const nextHeight = diff > KEYBOARD_THRESHOLD ? Math.round(diff) : 0;
   if (nextHeight !== keyboardHeight) {
     keyboardHeight = nextHeight;
+    lastKeyboardTransitionAt = Date.now();
     changed = true;
   }
 
@@ -205,8 +209,7 @@ export function getLayoutViewportObscuredHeight(): number {
   if (typeof window === 'undefined') return 0;
   const vv = window.visualViewport;
   if (!vv) return 0;
-  const layoutHeight = document.documentElement.clientHeight;
-  return Math.max(0, Math.round(layoutHeight - vv.height));
+  return computeLayoutViewportObscuredHeight(vv);
 }
 
 /** 判断元素是否可编辑（input/textarea/select/contenteditable） */
@@ -225,11 +228,17 @@ export function isEditableElementFocused(): boolean {
 
 /**
  * 移动端全局导航守卫（App.tsx 侧边栏导航事件用）：
- * Android 键盘弹出/输入框聚焦期间，键盘引发的 WebView resize 会让焦点与点击
- * 落点错位，产生"正在输入却被跳转到其他页面"的误导航（#113 bug 1/3）。
- * 正常通过侧边栏导航时输入框必然已失焦，不会被误拦。
+ * 仅在 Android 键盘刚触发视口高度跃变的极短过渡窗内拦截（防止 adjustResize 坐标抖动误触）；
+ * 其余时刻用户主动点击导航项时安全收起可编辑元素焦点以关闭软键盘，不再死锁拦截导航。
  */
 export function shouldBlockMobileNavigation(): boolean {
   if (!isAndroid()) return false;
-  return isEditableElementFocused() || getKeyboardHeight() > 0;
+  const keyboardShown = getKeyboardHeight() > 0;
+  if (keyboardShown && lastKeyboardTransitionAt > 0 && Date.now() - lastKeyboardTransitionAt < KEYBOARD_TRANSITION_GUARD_MS) {
+    return true;
+  }
+  if (isEditableElementFocused() && document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur();
+  }
+  return false;
 }

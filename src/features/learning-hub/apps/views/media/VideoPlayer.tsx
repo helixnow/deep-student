@@ -23,6 +23,7 @@ import {
   CircleNotch,
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { DsButton } from '@/components/ui/DsButton';
 import { Slider } from '@/components/ui/shad/Slider';
 import { formatMediaTime } from '../previewUtils';
@@ -57,8 +58,10 @@ export interface VideoPlayerProps {
   fileName: string;
   /** 格式兼容性提示（可能无法播放的容器/编码） */
   compatibilityHint?: string;
-  /** 所属标签页是否活跃；false 时自动暂停 */
+  /** 所属标签页是否活跃；false 时自动暂停（除非开启后台听课） */
   isActive?: boolean;
+  /** 是否允许切视图后继续后台播放（后台听课模式） */
+  allowBackgroundPlayback?: boolean;
   onError: (reason?: 'timeout' | 'media') => void;
   /** 外部驱动句柄（转写面板点击跳转、引用跳转、帧截取） */
   handleRef?: React.Ref<MediaPlayerHandle>;
@@ -90,6 +93,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   fileName,
   compatibilityHint,
   isActive = true,
+  allowBackgroundPlayback = false,
   onError,
   handleRef,
   onStatusChange,
@@ -130,7 +134,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     toggleMute,
     setRate,
     toggleLoop,
-  } = useMediaPlayback<HTMLVideoElement>({ src, isActive, onError });
+  } = useMediaPlayback<HTMLVideoElement>({
+    src,
+    isActive,
+    allowBackgroundPlayback,
+    title: fileName,
+    onError,
+  });
 
   // 首帧未就绪防黑块闪烁：新源切入到首帧解码前保持透明，解码完成后平滑显现
   const [isFirstFrameReady, setIsFirstFrameReady] = useState(false);
@@ -292,24 +302,27 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   // 把控制条提前唤出，click 时读实时 state 会误判为"已可见"。
   const lastPointerTypeRef = useRef<string>('mouse');
   const controlsVisibleAtPointerDownRef = useRef(true);
-  const windowHoldCleanupRef = useRef<(() => void) | null>(null);
-
-  const clearWindowHoldListeners = useCallback(() => {
-    if (windowHoldCleanupRef.current) {
-      windowHoldCleanupRef.current();
-      windowHoldCleanupRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => clearWindowHoldListeners, [clearWindowHoldListeners]);
+  const [holdTracking, setHoldTracking] = useState(false);
 
   const handleVideoPointerUpOrCancel = useCallback(() => {
-    clearWindowHoldListeners();
+    setHoldTracking(false);
     const result = boostControllerRef.current?.endHold();
     if (result?.wasBoosting) {
       suppressNextClickRef.current = true;
     }
-  }, [clearWindowHoldListeners]);
+  }, []);
+
+  useEventRegistry(
+    holdTracking
+      ? [
+          { target: 'window', type: 'pointerup', listener: handleVideoPointerUpOrCancel, options: { once: true } },
+          { target: 'window', type: 'pointercancel', listener: handleVideoPointerUpOrCancel, options: { once: true } },
+          { target: 'window', type: 'contextmenu', listener: handleVideoPointerUpOrCancel, options: { once: true } },
+          { target: 'window', type: 'blur', listener: handleVideoPointerUpOrCancel, options: { once: true } },
+        ]
+      : [],
+    [holdTracking, handleVideoPointerUpOrCancel],
+  );
 
   const handleVideoPointerDown = useCallback(
     (event: React.PointerEvent<HTMLVideoElement>) => {
@@ -328,23 +341,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           ? mediaRef.current.playbackRate
           : rate;
       boostControllerRef.current?.startHold(currentRate);
-
-      clearWindowHoldListeners();
-      const onWindowRelease = () => {
-        handleVideoPointerUpOrCancel();
-      };
-      window.addEventListener('pointerup', onWindowRelease, { once: true });
-      window.addEventListener('pointercancel', onWindowRelease, { once: true });
-      window.addEventListener('contextmenu', onWindowRelease, { once: true });
-      window.addEventListener('blur', onWindowRelease, { once: true });
-      windowHoldCleanupRef.current = () => {
-        window.removeEventListener('pointerup', onWindowRelease);
-        window.removeEventListener('pointercancel', onWindowRelease);
-        window.removeEventListener('contextmenu', onWindowRelease);
-        window.removeEventListener('blur', onWindowRelease);
-      };
+      setHoldTracking(true);
     },
-    [showControls, isPlaying, mediaRef, rate, clearWindowHoldListeners, handleVideoPointerUpOrCancel],
+    [showControls, isPlaying, mediaRef, rate],
   );
 
   const runSingleTap = useCallback(() => {
@@ -423,15 +422,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     }
   }, []);
 
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(document.fullscreenElement === containerRef.current);
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    };
-  }, []);
+  useEventRegistry(
+    [
+      {
+        target: 'document',
+        type: 'fullscreenchange',
+        listener: () => {
+          setIsFullscreen(document.fullscreenElement === containerRef.current);
+        },
+      },
+    ],
+    [],
+  );
 
   // Android 系统返回键：全屏时先退出全屏，而不是退出预览/页面
   useEffect(() => {
@@ -525,14 +527,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     : currentTime;
   const firstFrameVisible = isFirstFrameReady || isReady;
 
-  // 窄播放器（手机竖屏 / 窄分栏）：一行放不下全部控件时收起循环与音量（触屏音量走系统按键），
-  // 避免时间文本被挤成竖排、全屏按钮被挤出画面
+  // 窄播放器（手机竖屏 / 窄分栏）：一行放不下全部控件时收起 ±10s、循环与音量（触屏已有双击左右±10s和系统音量键），
+  // 确保 390px 窄屏下播放、时间、倍速、字幕、全屏稳稳落在视口内不被挤飞
   const [isNarrow, setIsNarrow] = useState(false);
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
+    if (!el) return;
+    if (el.clientWidth > 0) {
+      setIsNarrow(el.clientWidth < NARROW_PLAYER_WIDTH);
+    }
+    if (typeof ResizeObserver === 'undefined') return;
     const ro = new ResizeObserver(([entry]) => {
-      setIsNarrow((entry?.contentRect.width ?? 0) < NARROW_PLAYER_WIDTH);
+      const width = entry?.contentRect.width ?? 0;
+      if (width > 0) {
+        setIsNarrow(width < NARROW_PLAYER_WIDTH);
+      }
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -599,11 +608,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         !controlsVisible && 'cursor-none',
       )}
     >
-      {/* 双击全屏只挂在 video 上，避免快速双击控制条按钮误触全屏；首帧就绪前隐藏防黑块闪烁 */}
+      {/* 双击全屏只挂在 video 上，避免快速双击控制条按钮误触全屏；playsInline 防止 iOS 强制原生全屏；首帧就绪前隐藏防黑块闪烁 */}
       <video
         ref={mediaRef}
         src={src}
         crossOrigin={crossOrigin}
+        playsInline
         preload="metadata"
         data-first-frame-ready={firstFrameVisible ? 'true' : 'false'}
         className={cn(
@@ -691,11 +701,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </button>
       )}
 
-      {/* 底部悬浮控制条（全屏/刘海屏下避让底部手势安全区） */}
+      {/* 底部悬浮控制条（全屏/刘海屏下避让底部手势安全区；390px 窄屏收缩边距与次级按钮防溢出） */}
       <div
         ref={controlsBarRef}
         className={cn(
-          'absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 via-black/35 to-transparent px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-10',
+          'absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 via-black/35 to-transparent pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-10',
+          isNarrow ? 'px-2' : 'px-4',
           'transition-opacity duration-150 motion-reduce:transition-none',
           controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0',
         )}
@@ -714,7 +725,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           previewCrossOrigin={crossOrigin}
         />
 
-        <div className="mt-1.5 flex items-center gap-1">
+        <div className={cn('mt-1.5 flex min-w-0 items-center', isNarrow ? 'gap-0.5' : 'gap-1')}>
           <DsButton
             variant="ghost"
             size="sm"
@@ -731,7 +742,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             }
             onClick={togglePlay}
             disabled={!isReady}
-            className={overlayButtonClass}
+            className={cn(overlayButtonClass, 'shrink-0')}
           >
             {isPlaying ? (
               <Pause size={16} weight="fill" aria-hidden="true" />
@@ -740,38 +751,47 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             )}
           </DsButton>
 
-          <DsButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            aria-label={t('learningHub:mediaPreview.skipBackward')}
-            title={t('learningHub:mediaPreview.skipBackward')}
-            onClick={() => triggerCumulativeSeek(-SKIP_SECONDS)}
-            disabled={!isReady}
-            className={overlayButtonClass}
-          >
-            <ArrowCounterClockwise size={16} aria-hidden="true" />
-          </DsButton>
+          {!isNarrow && (
+            <>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                iconOnly
+                aria-label={t('learningHub:mediaPreview.skipBackward')}
+                title={t('learningHub:mediaPreview.skipBackward')}
+                onClick={() => triggerCumulativeSeek(-SKIP_SECONDS)}
+                disabled={!isReady}
+                className={cn(overlayButtonClass, 'shrink-0')}
+              >
+                <ArrowCounterClockwise size={16} aria-hidden="true" />
+              </DsButton>
 
-          <DsButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            aria-label={t('learningHub:mediaPreview.skipForward')}
-            title={t('learningHub:mediaPreview.skipForward')}
-            onClick={() => triggerCumulativeSeek(SKIP_SECONDS)}
-            disabled={!isReady}
-            className={overlayButtonClass}
-          >
-            <ArrowClockwise size={16} aria-hidden="true" />
-          </DsButton>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                iconOnly
+                aria-label={t('learningHub:mediaPreview.skipForward')}
+                title={t('learningHub:mediaPreview.skipForward')}
+                onClick={() => triggerCumulativeSeek(SKIP_SECONDS)}
+                disabled={!isReady}
+                className={cn(overlayButtonClass, 'shrink-0')}
+              >
+                <ArrowClockwise size={16} aria-hidden="true" />
+              </DsButton>
+            </>
+          )}
 
-          <span className="ml-1.5 shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-white/90">
+          <span
+            className={cn(
+              'shrink-0 whitespace-nowrap font-mono tabular-nums text-white/90',
+              isNarrow ? 'ml-1 text-[11px]' : 'ml-1.5 text-xs',
+            )}
+          >
             {formatMediaTime(displayedCurrentTime)}
             <span className="text-white/50"> / {isReady ? formatMediaTime(duration) : '--:--'}</span>
           </span>
 
-          <div className="flex-1" />
+          <div className="min-w-0 flex-1" />
 
           {/* 音量：按钮 + hover 展开滑杆（窄播放器收起） */}
           {!isNarrow && (
@@ -858,7 +878,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 : t('learningHub:mediaPreview.fullscreen')
             }
             onClick={() => void toggleFullscreen()}
-            className={overlayButtonClass}
+            className={cn(overlayButtonClass, 'shrink-0')}
           >
             {isFullscreen ? (
               <ArrowsIn size={16} aria-hidden="true" />

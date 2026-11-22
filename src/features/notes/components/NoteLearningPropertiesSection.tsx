@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { DsButton } from '@/components/ui/DsButton';
 import { dstu, updatedAtToVersionToken, type DstuNode } from '@/dstu';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { NoteCustomPropsEditor } from '@/features/workbench/apps/notes/NoteCustomPropsEditor';
@@ -77,10 +78,10 @@ export function NoteLearningPropertiesSection({ node, readOnly = false }: { node
 
   return <section aria-label={t('learning.section_label')}>
     <NoteOriginRow node={liveNode ?? node} />
-    {loadError && <p role="alert" className="text-xs text-destructive">{loadError}
-      <button type="button" className="ml-2 underline" onClick={() => void load()}>{t('learning.reload')}</button>
+    {loadError && <p role="alert" className="px-3 py-2 text-xs text-destructive">{loadError}
+      <DsButton variant="ghost" size="sm" className="ml-2 underline" onClick={() => void load()}>{t('learning.reload')}</DsButton>
     </p>}
-    {!liveNode && !loadError && <p role="status" className="text-xs text-muted-foreground">{t('learning.loading')}</p>}
+    {!liveNode && !loadError && <p role="status" className="px-3 py-2 text-xs text-muted-foreground">{t('learning.loading')}</p>}
     {liveNode && <NoteCustomPropsEditor key={`${node.id}:${node.path}`}
       value={learningPropsFromMetadata(liveNode.metadata)} readOnly={readOnly} onChange={save} />}
     <NoteLearningRelations noteId={node.id} readOnly={readOnly} />

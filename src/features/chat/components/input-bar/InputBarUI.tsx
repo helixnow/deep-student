@@ -39,6 +39,8 @@ import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { COMPOSER_PANEL_KEYS, type AttachmentMeta, type PanelStates } from '../../core/types/common';
 import { ModelMentionPopover } from './ModelMentionPopover';
 import { SkillSlashPopover, useSkillSlashCommands } from './SkillSlashPopover';
+import { useOptionalUiKernel } from '@/ui-kernel/react';
+import { runSlotCallback } from '@/ui-kernel/outlet';
 import { ModelMentionChips } from './ModelMentionChip';
 import { ContextRefChips } from './ContextRefChips';
 import { PageRefChips } from './PageRefChips';
@@ -131,6 +133,22 @@ const COMPOSER_OVERLAY_OWNER_ID = 'input-bar-composer';
  * （加号菜单/模型菜单等），故登记泛化属性 selector，与原 closest 判定范围一致。
  */
 const COMPOSER_OWNED_OVERLAY_SELECTOR = '[data-app-menu-id]';
+
+const CAMERA_IMAGE_EXTENSIONS = new Set([
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'heic',
+  'heif',
+  'gif',
+]);
+
+export function isCameraImageFile(file: Pick<File, 'name' | 'type'>): boolean {
+  if (file.type && file.type.startsWith('image/')) return true;
+  const ext = getFileExtension(file.name);
+  return CAMERA_IMAGE_EXTENSIONS.has(ext);
+}
 
 /**
  * 调度 idle 回调的工具函数
@@ -1302,7 +1320,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
     if (!files || files.length === 0) return;
 
     const file = files[0];
-    if (!file || !file.type.startsWith('image/')) return;
+    if (!file || !isCameraImageFile(file)) return;
 
     // 使用现有的文件处理流程
     processFilesToAttachments([file]);
@@ -1525,21 +1543,73 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
     activeSkillIds,
   });
 
+  const uiKernel = useOptionalUiKernel();
+  const pendingSlashSendRef = useRef(false);
+  const [slashSendTick, setSlashSendTick] = useState(0);
+  const latestRenderedInputRef = useRef(inputValue);
+  latestRenderedInputRef.current = inputValue;
+  const liveSlashInputRef = useRef(inputValue);
+  useEffect(() => {
+    liveSlashInputRef.current = inputValue;
+  }, [inputValue]);
+
   // 补全应用：更新输入值并把光标精确落在补全令牌之后
   const applySkillSlashSelection = useCallback((index?: number) => {
     const result = skillSlash.applySelection(index);
     if (!result) return false;
+    liveSlashInputRef.current = result.value;
+    let targetCaret = result.caret;
     onInputChange(result.value);
     setComposerCaretPos(result.caret);
+    if (result.command) {
+      const { entry, strippedInput } = result.command;
+      let liveCaret = result.caret;
+      runSlotCallback(uiKernel, 'chat.composer.commands', entry, () =>
+        entry.value.run({
+          input: strippedInput,
+          ...(sessionId !== undefined ? { sessionId } : {}),
+          getInput: () => liveSlashInputRef.current,
+          setInput: (text: string) => {
+            liveSlashInputRef.current = text;
+            liveCaret = text.length;
+            targetCaret = liveCaret;
+            onInputChange(text);
+            setComposerCaretPos(liveCaret);
+          },
+          insertText: (text: string) => {
+            const current = liveSlashInputRef.current;
+            const pos = Math.max(0, Math.min(liveCaret, current.length));
+            const next = current.slice(0, pos) + text + current.slice(pos);
+            liveSlashInputRef.current = next;
+            liveCaret = pos + text.length;
+            targetCaret = liveCaret;
+            onInputChange(next);
+            setComposerCaretPos(liveCaret);
+          },
+          send: (text?: string) => {
+            pendingSlashSendRef.current = true;
+            if (text !== undefined) {
+              liveSlashInputRef.current = text;
+              targetCaret = text.length;
+              onInputChange(text);
+              setComposerCaretPos(text.length);
+            }
+            if (text === undefined || text === latestRenderedInputRef.current) {
+              setSlashSendTick((tick) => tick + 1);
+            }
+          },
+        })
+      );
+    }
     const textarea = textareaRef.current;
     if (textarea) {
       textarea.focus();
       requestAnimationFrame(() => {
-        textarea.setSelectionRange(result.caret, result.caret);
+        textarea.setSelectionRange(targetCaret, targetCaret);
       });
     }
     return true;
-  }, [skillSlash, onInputChange]);
+  }, [skillSlash, onInputChange, uiKernel, sessionId]);
 
   // ========== 面板动画状态 ==========
   // 🔧 统一使用 useDeferredOpen 实现所有面板的弹出收起动画
@@ -1951,6 +2021,12 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
       });
     }
   }, [canSendWithAttachments, disabledSend, sendBlockedReason, flushPillsAndDraftForSend, onSend, t]);
+
+  useEffect(() => {
+    if (!pendingSlashSendRef.current) return;
+    pendingSlashSendRef.current = false;
+    handleSend();
+  }, [inputValue, slashSendTick, handleSend]);
 
   const handleFloatingQueueSend = useCallback(() => {
     if (!queueEnabled || queueFull) return;

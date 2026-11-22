@@ -738,9 +738,12 @@
   margin-block-start: calc(var(--chat-md-table-gap) * 0.11);
 }
 
-/* 三线表风格：顶线、底线为粗线（反线），表头分隔线为细线（正线） */
+/* 三线表风格：顶线、底线为粗线（反线），表头分隔线为细线（正线）
+ * 宽表使用 max-content + min-width: 100% 配合列最小宽度，避免窄屏下多列表格压成 2 字竖条，
+ * 超宽时交由 TableBlockShell 的横向 ScrollArea 滚动查看。 */
 .chat-v2 .markdown-table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   border-top: 2px solid hsl(var(--border));
   border-bottom: 2px solid hsl(var(--border));
@@ -753,6 +756,8 @@
   text-align: left;
   vertical-align: top;
   line-height: 1.6;
+  min-width: 6.5rem;
+  max-width: 24rem;
 }
 
 .chat-v2 .markdown-table th {
@@ -879,6 +884,8 @@
   .chat-v2 .markdown-table td {
     padding: 0.6em 0.8em;
     font-size: 0.85em;
+    min-width: 6rem;
+    max-width: 16rem;
   }
   
   .chat-v2 .table-wrapper {
@@ -1283,6 +1290,21 @@
 .chat-v2 .markdown-content .math-scroll-area {
   max-width: 100%;
   padding-bottom: 0.25em;
+}
+
+/* 行内长公式防撑破：限制最大宽度为容器 100% 并允许横向滚动，避免 390px 下溢出视口 */
+.chat-v2 .markdown-content .math-inline-scroll {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  vertical-align: middle;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.chat-v2 .markdown-content .math-inline-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .chat-v2 .markdown-content .katex-display {

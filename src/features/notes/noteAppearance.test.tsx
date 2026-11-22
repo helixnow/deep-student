@@ -9,7 +9,6 @@ import { NotePageLayoutOptions } from './components/NotePageLayoutOptions';
 vi.mock('@/utils/notesApi', () => ({
   NotesAPI: { getPref: vi.fn(), setPref: vi.fn() },
 }));
-vi.mock('./NotesContext', () => ({ useNotesOptional: () => null }));
 vi.mock('./hooks/useTagSuggestions', () => ({
   useTagSuggestions: () => ({ suggestions: [], isLoading: false, highlightIndex: -1 }),
 }));

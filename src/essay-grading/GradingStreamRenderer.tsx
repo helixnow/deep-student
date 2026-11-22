@@ -296,18 +296,19 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
         </div>
       )}
 
-      {/* Section Tabs + Filter Bar */}
+      {/* Section Tabs + Filter Bar：390px 窄屏折行排布，4 个 Tab 独占首行不被右侧操作挤扁 */}
       {content && !hideToolbar && (tabs.length > 1 || toolbarAccessory) && (
         <div
+          data-testid="essay-grading-result-header"
           className={cn(
-            'flex shrink-0 items-center border-b',
+            'flex shrink-0 flex-wrap items-center border-b sm:flex-nowrap',
             toolbarAccessory ? 'min-h-[41px] border-border/30' : 'border-border/20',
           )}
         >
         {tabs.length > 1 ? (
         <CustomScrollArea
-          className="min-w-0 flex-1"
-          viewportClassName="flex items-center gap-1 px-4 py-1"
+          className="w-full min-w-0 sm:w-auto sm:flex-1"
+          viewportClassName="flex items-center gap-1 px-3 py-1 sm:px-4"
           orientation="horizontal"
           fullHeight={false}
         >
@@ -316,7 +317,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors duration-150 motion-reduce:transition-none whitespace-nowrap [@media(pointer:coarse)]:min-h-11",
+                "flex shrink-0 items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs rounded-md transition-colors duration-150 motion-reduce:transition-none whitespace-nowrap min-h-9 sm:min-h-0 [@media(pointer:coarse)]:min-h-11",
                 activeTab === tab.id
                   ? "bg-primary/10 text-primary font-medium"
                   : "text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
@@ -334,7 +335,12 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
           <div className="min-w-0 flex-1" />
         )}
         {toolbarAccessory && (
-          <div className="flex min-w-0 shrink-0 items-center gap-2 pl-2 pr-3 sm:pr-4">
+          <div
+            className={cn(
+              'flex min-w-0 items-center justify-between gap-2 px-3 py-1 sm:w-auto sm:shrink-0 sm:justify-end sm:py-0 sm:pl-2 sm:pr-4',
+              tabs.length > 1 ? 'w-full border-t border-border/20 sm:border-t-0' : 'shrink-0',
+            )}
+          >
             {scoreBadge}
             {toolbarAccessory}
           </div>
@@ -344,7 +350,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
 
       {contentHasInlineMarkers && !hideToolbar && activeTab === 'overview' && (
         <div className="px-4 py-1.5 border-b border-border/20 flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             {(['all', 'errors', 'suggestions', 'highlights'] as const).map((filter) => {
               const count = filterCounts[filter];
               const isZero = count === 0;

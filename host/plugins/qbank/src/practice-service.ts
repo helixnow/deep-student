@@ -419,6 +419,7 @@ export interface ManualGradeOutcome {
   attempt: PracticeAttempt;
   masteryState: unknown | null;
   wrongExamId: string | null;
+  advanceReviewPlan: boolean;
 }
 
 /** qbank_practice.rs:1060-1122 */
@@ -432,6 +433,7 @@ export function gradePracticeManually(host: PracticeServiceHost, id: string, que
       if (target.status === 'unanswered') validation('Cannot grade an unanswered question');
       let masteryState: unknown | null = null;
       let wrongExamId: string | null = null;
+      let advanceReviewPlan = false;
       if (target.submission_id !== null) {
         const live = host.questions.getQuestion(tx, questionId);
         const submission = host.questions.getSubmissionById(tx, target.submission_id);
@@ -441,6 +443,7 @@ export function gradePracticeManually(host: PracticeServiceHost, id: string, que
           const verdict = applyVerdictForPractice(host, tx, live, submission, correct, 'manual');
           masteryState = verdict.masteryState;
           if (verdict.needsReviewPlan) wrongExamId = live.exam_id;
+          else if (verdict.shouldAdvanceReviewPlan) advanceReviewPlan = true;
         }
       }
       target.is_correct = correct;
@@ -450,13 +453,15 @@ export function gradePracticeManually(host: PracticeServiceHost, id: string, que
       repo.finishJob(tx, id, questionId, now());
       refreshStatus(attempt);
       if (repo.persistAttempt(tx, attempt, now()) === 0) notFound('Practice attempt not found');
-      return { attempt, masteryState, wrongExamId };
+      return { attempt, masteryState, wrongExamId, advanceReviewPlan };
     });
     syncManual(host, result.masteryState);
     if (result.wrongExamId !== null) {
       ensureReviewPlan(host, questionId, result.wrongExamId, {
         logSuccess: false, failureLabel: 'Failed to auto-create review plan for',
       });
+    } else if (result.advanceReviewPlan) {
+      advanceDueReviewPlan(host, questionId);
     }
     return result;
   });
@@ -485,7 +490,7 @@ export function recordGradingFailure(result: import('../api.ts').PracticeResult,
 /** qbank_practice.rs:960-1011: verdict writes roll back to a savepoint on failure. */
 export function applyPracticeVerdict(host: PracticeServiceHost, tx: import('../../../platform/storage/api.ts').TransactionScope,
   questionId: string, submissionId: string | null, correct: boolean): {
-    outcome: { masteryState: unknown | null; needsReviewPlan: boolean } | null;
+    outcome: { masteryState: unknown | null; needsReviewPlan: boolean; shouldAdvanceReviewPlan: boolean } | null;
     sourceAvailable: boolean;
   } {
   return tx.savepoint(sp => {
@@ -502,16 +507,16 @@ export function applyPracticeVerdict(host: PracticeServiceHost, tx: import('../.
 
 function applyVerdictForPractice(host: PracticeServiceHost, tx: SqlExecutor, question: Question,
   submission: import('../api.ts').AnswerSubmission, correct: boolean, method: string): {
-    masteryState: unknown | null; needsReviewPlan: boolean;
+    masteryState: unknown | null; needsReviewPlan: boolean; shouldAdvanceReviewPlan: boolean;
   } {
   const outcome = host.questions.applySubmissionVerdict(tx, question.id, submission.id,
     correct, method, now());
-  if (!outcome.changed) return { masteryState: null, needsReviewPlan: false };
+  if (!outcome.changed) return { masteryState: null, needsReviewPlan: false, shouldAdvanceReviewPlan: false };
   const mastery = requireMastery(host);
   const masteryState = submission.is_correct === null
     ? mastery.recordQbankAnswerWithConn(tx, submission.id, question.id, question.tags, correct)
     : mastery.recordQbankVerdictCorrectionWithConn(tx, submission.id, question.id, question.tags, correct);
-  return { masteryState, needsReviewPlan: !correct };
+  return { masteryState, needsReviewPlan: !correct, shouldAdvanceReviewPlan: correct };
 }
 
 function syncManual(host: PracticeServiceHost, state: unknown | null): void {

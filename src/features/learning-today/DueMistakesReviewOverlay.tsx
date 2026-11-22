@@ -25,8 +25,14 @@ export const DueMistakesReviewOverlay: React.FC = () => {
   const { t } = useTranslation(['review', 'common']);
   const { isSmallScreen } = useBreakpoint();
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
+  const [exitArmed, setExitArmed] = useState(false);
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startSession = useReviewPlanStore((state) => state.startSession);
   const endSession = useReviewPlanStore((state) => state.endSession);
+
+  useEffect(() => () => {
+    if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,11 +54,48 @@ export const DueMistakesReviewOverlay: React.FC = () => {
     };
   }, [startSession]);
 
+  const disarmExit = useCallback(() => {
+    if (exitTimerRef.current) {
+      clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+    setExitArmed(false);
+  }, []);
+
   const close = useCallback(() => {
+    disarmExit();
     if (useReviewPlanStore.getState().session.examId === DUE_MISTAKES_SESSION_KEY) endSession();
     closeDueMistakesReview();
     void refreshTodayLearning();
-  }, [endSession]);
+  }, [disarmExit, endSession]);
+
+  const hasActiveRemainingSession = useCallback(() => {
+    if (phase.kind !== 'ready') return false;
+    const session = useReviewPlanStore.getState().session;
+    return (
+      session.isActive
+      && session.examId === DUE_MISTAKES_SESSION_KEY
+      && session.currentIndex < session.queue.length
+    );
+  }, [phase.kind]);
+
+  // 移动端顶栏返回按钮与物理返回键走二次确认，避免单手误触丢弃剩余队列
+  const requestExitWithConfirm = useCallback(() => {
+    if (!hasActiveRemainingSession()) {
+      close();
+      return;
+    }
+    if (!exitArmed) {
+      setExitArmed(true);
+      if (exitTimerRef.current) clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = setTimeout(() => {
+        exitTimerRef.current = null;
+        setExitArmed(false);
+      }, 4000);
+      return;
+    }
+    close();
+  }, [close, exitArmed, hasActiveRemainingSession]);
 
   // 今天没有到期的也可能有没掌握的错题：去跨题目集错题本
   const openAllMistakes = useCallback(() => {
@@ -61,11 +104,10 @@ export const DueMistakesReviewOverlay: React.FC = () => {
   }, [close]);
 
   // 自绘浮层不在 Radix 的 Escape 兜底里：Android 返回键要显式接住，否则会切走浮层下面的页面。
-  // 已提交的评分都已落库，返回只丢本地剩余队列（与「退出」同语义）。
-  const closeRef = useRef(close);
-  closeRef.current = close;
+  const requestExitRef = useRef(requestExitWithConfirm);
+  requestExitRef.current = requestExitWithConfirm;
   useEffect(() => registerBackHandler(() => {
-    closeRef.current();
+    requestExitRef.current();
     return true;
   }, BACK_PRIORITY.overlay), []);
 
@@ -111,15 +153,51 @@ export const DueMistakesReviewOverlay: React.FC = () => {
         className="flex h-full w-full flex-col overflow-hidden bg-background outline-none md:h-[min(860px,calc(100dvh-6rem))] md:w-[min(920px,calc(100vw-3rem))] md:rounded-xl md:border md:border-border md:shadow-xl"
       >
         {isSmallScreen ? (
-          <UnifiedMobileHeader
-            className="relative shrink-0"
-            configOverride={{
-              title,
-              subtitle: mobileSubtitle,
-              showBackArrow: true,
-              onMenuClick: close,
-            }}
-          />
+          <>
+            <UnifiedMobileHeader
+              className="relative shrink-0"
+              configOverride={{
+                title,
+                subtitle: mobileSubtitle,
+                showBackArrow: true,
+                onMenuClick: requestExitWithConfirm,
+              }}
+            />
+            {exitArmed ? (
+              <div
+                role="status"
+                data-testid="due-mistakes-exit-confirm"
+                className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-warning/30 bg-warning/10 px-3 py-2 text-xs text-foreground"
+              >
+                <span className="min-w-0 flex-1">
+                  {t('review:dueAll.exitConfirmHint', {
+                    defaultValue: '再按一次返回退出复习（已评题目已保存）',
+                  })}
+                </span>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <DsButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={disarmExit}
+                    className="min-h-9 px-2.5 text-xs"
+                  >
+                    {t('review:dueAll.continueReview', { defaultValue: '继续复习' })}
+                  </DsButton>
+                  <DsButton
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="due-mistakes-confirm-exit"
+                    onClick={close}
+                    className="min-h-9 border-destructive/40 px-2.5 text-xs text-destructive hover:bg-destructive/10"
+                  >
+                    {t('review:dueAll.confirmExit', { defaultValue: '确认退出' })}
+                  </DsButton>
+                </div>
+              </div>
+            ) : null}
+          </>
         ) : (
           <div className="flex flex-shrink-0 items-baseline gap-2 border-b border-border/50 px-4 py-2.5">
             <h2 className="text-sm font-semibold text-foreground">{title}</h2>

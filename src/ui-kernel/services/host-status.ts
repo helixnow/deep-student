@@ -17,6 +17,18 @@ export const CONSENT_REQUIRED = 'CONSENT_REQUIRED';
 export type UiDegradedCode = PluginLoadCode;
 
 /** 结构化的降级原因。 */
+export function isSafeModeUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const val = params.get('safeMode') ?? params.get('safe_mode');
+    return val === '1' || val === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/** 结构化的降级原因。 */
 export interface UiDegradedInfo {
   /** 可识别的错误码；旧文本（缺服务、apply 失败）没有。 */
   code?: UiDegradedCode;

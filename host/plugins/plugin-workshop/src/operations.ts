@@ -1,17 +1,18 @@
 // RUST-FIX(RF-P3-workshop-tools): user-owned generation, cancellation and retained-version recovery.
-import { cp, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { join, relative } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import JSZip from 'jszip';
 import { CommandError, type AppInfo, type PluginManagerConfigView, type PluginManagerInventory, type PluginManagerInstallResult } from '../../../kernel/api.ts';
-import type { PluginWorkshopService, WorkshopBrief, WorkshopCard, WorkshopCheck, WorkshopExport, WorkshopInstallation, WorkshopDelegationOptions, WorkshopValidationOutcome, WorkshopVerificationResult } from '../api.ts';
+import { isValidPluginId } from '../../../kernel/plugin-id.ts';
+import type { SettingsStore } from '../../../platform/settings/api.ts';
+import type { PluginWorkshopService, WorkshopBrief, WorkshopCard, WorkshopCheck, WorkshopExport, WorkshopInstallation, WorkshopDelegationOptions, WorkshopStoredData, WorkshopValidationOutcome, WorkshopVerificationResult } from '../api.ts';
 import { OPEN_PROPOSAL_STATES, WorkshopStore, installationOf, withBoundSession } from './store.ts';
 import { compileWorkshop, checkWorkshopLifecycle, sourceFiles, type WorkshopBuild } from './compiler.ts';
 import { parseDegradedReason } from '../../../kernel/plugin-load-error.ts';
 import { writeHostStderr } from '../../../kernel/kernel.ts';
 import { isManagedChild } from './paths.ts';
-import { realpath } from 'node:fs/promises';
 import { writeSourceFiles, type SourceFile } from './source.ts';
 import type { WorkshopActivationResult, WorkshopSelfCheckContext } from '../../../kernel/plugin-admin.ts';
 import { checkSettingLinks, fillSettings, normalizeWorkshopSource, versionGreater, settingValues, storeSecretSettings, type WorkshopLinkReader, type WorkshopSecretStore } from './settings.ts';
@@ -118,6 +119,9 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
   private secretStore: WorkshopSecretStore | null = null;
   /** Where card secrets go (the settings service's secure store, under the plugin's pluginSecrets key). */
   bindSecretStore(store: WorkshopSecretStore): void { this.secretStore = store; }
+  private settingsReader: (() => Pick<SettingsStore, 'listByPrefix' | 'deleteByPrefix'> | undefined) | null = null;
+  /** Optional settings store reader for listing/clearing `${pluginId}.*` entries. */
+  bindSettings(reader: () => Pick<SettingsStore, 'listByPrefix' | 'deleteByPrefix'> | undefined): void { this.settingsReader = reader; }
   /** Host process lifecycle stays with the app shell; plugin/config changes never need it. */
   bindRestart(restart: () => Promise<unknown>): void { this.restart = restart; }
   /** Read-only plugin inventory as the plugin manager shows it (state, trust, hasConfig). */
@@ -887,5 +891,79 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
     const path = join(root, 'exports', fileName);
     await writeFile(path, await archive.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));
     return { id, version, path, fileName };
+  }
+
+  private async resolvePluginStorageDir(pluginId: string): Promise<string | null> {
+    if (!isValidPluginId(pluginId)) throw new Error('WORKSHOP_INVALID: invalid plugin id');
+    const pluginsRoot = join(this.app.dataDir, 'plugins');
+    const target = join(pluginsRoot, pluginId);
+    if (!isManagedChild(pluginsRoot, target)) throw new Error('WORKSHOP_INVALID: plugin data directory outside plugins root');
+    const rel = relative(pluginsRoot, target);
+    if (rel === 'releases' || rel.startsWith('releases/') || rel.startsWith('releases\\')) {
+      throw new Error('WORKSHOP_INVALID: cannot access plugin releases directory');
+    }
+    const info = await lstat(target).catch((error: NodeJS.ErrnoException) => {
+      if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') return null;
+      throw error;
+    });
+    if (!info || info.isSymbolicLink() || !info.isDirectory()) return null;
+    const [realRoot, realTarget] = await Promise.all([realpath(pluginsRoot), realpath(target)]);
+    if (!isManagedChild(realRoot, realTarget)) throw new Error('WORKSHOP_INVALID: plugin data directory escaped plugins root');
+    const realRel = relative(realRoot, realTarget);
+    if (realRel === 'releases' || realRel.startsWith('releases/') || realRel.startsWith('releases\\')) {
+      throw new Error('WORKSHOP_INVALID: cannot access plugin releases directory');
+    }
+    return realTarget;
+  }
+
+  private async walkPluginStorageFiles(root: string): Promise<Array<{ key: string; bytes: number }>> {
+    const items: Array<{ key: string; bytes: number }> = [];
+    const walk = async (dir: string): Promise<void> => {
+      for (const entry of await readdir(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        const info = await lstat(full).catch(() => null);
+        if (!info || info.isSymbolicLink()) continue;
+        if (info.isDirectory()) {
+          const realDir = await realpath(full).catch(() => null);
+          if (realDir && isManagedChild(root, realDir)) await walk(realDir);
+        } else if (info.isFile()) {
+          items.push({ key: relative(root, full).replaceAll('\\', '/'), bytes: info.size });
+        }
+      }
+    };
+    await walk(root);
+    return items;
+  }
+
+  /** Lists Host-persisted plugin data under `<appDataDir>/plugins/<pluginId>/` and `${pluginId}.*` settings. */
+  async storedData(pluginId: string): Promise<WorkshopStoredData> {
+    const dir = await this.resolvePluginStorageDir(pluginId);
+    const fileItems = dir ? await this.walkPluginStorageFiles(dir) : [];
+    const keys = fileItems.map(item => item.key);
+    let bytes = fileItems.reduce((sum, item) => sum + item.bytes, 0);
+    const settings = this.settingsReader?.();
+    if (settings) {
+      for (const row of settings.listByPrefix(`${pluginId}.`)) {
+        keys.push(row.key);
+        bytes += Buffer.byteLength(row.key, 'utf8') + Buffer.byteLength(row.value, 'utf8');
+      }
+    }
+    return { keys: [...new Set(keys)].sort(), bytes };
+  }
+
+  /** Clears Host-persisted plugin data under `<appDataDir>/plugins/<pluginId>/` and `${pluginId}.*` settings without touching `releases/`. */
+  async clearStoredData(pluginId: string): Promise<number> {
+    const dir = await this.resolvePluginStorageDir(pluginId);
+    let removed = 0;
+    if (dir) {
+      const fileItems = await this.walkPluginStorageFiles(dir);
+      removed += fileItems.length;
+      await rm(dir, { recursive: true, force: true });
+    }
+    const settings = this.settingsReader?.();
+    if (settings) {
+      removed += settings.deleteByPrefix(`${pluginId}.`);
+    }
+    return removed;
   }
 }

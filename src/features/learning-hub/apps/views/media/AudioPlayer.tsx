@@ -38,8 +38,10 @@ export interface AudioPlayerProps {
   meta?: string;
   /** 格式兼容性提示（可能无法播放的容器/编码） */
   compatibilityHint?: string;
-  /** 所属标签页是否活跃；false 时自动暂停 */
+  /** 所属标签页是否活跃；默认允许纯音频后台续播（allowBackgroundPlayback=true） */
   isActive?: boolean;
+  /** 是否允许切视图后继续后台播放（纯音频默认 true） */
+  allowBackgroundPlayback?: boolean;
   onError: () => void;
   /** 外部驱动句柄（转写面板点击跳转、引用跳转） */
   handleRef?: React.Ref<MediaPlayerHandle>;
@@ -58,6 +60,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   meta,
   compatibilityHint,
   isActive = true,
+  allowBackgroundPlayback = true,
   onError,
   handleRef,
   onStatusChange,
@@ -87,7 +90,13 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     toggleMute,
     setRate,
     toggleLoop,
-  } = useMediaPlayback<HTMLAudioElement>({ src, isActive, onError });
+  } = useMediaPlayback<HTMLAudioElement>({
+    src,
+    isActive,
+    allowBackgroundPlayback,
+    title: fileName,
+    onError,
+  });
 
   useImperativeHandle(
     handleRef,

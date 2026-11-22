@@ -3,7 +3,6 @@ import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { useTranslation } from "react-i18next";
 import { TextAlignLeft, Calendar, CaretRight, Tag, Clock, X, Plus, PencilSimple, Check, Books, ArrowsInLineVertical, ArrowsOutLineVertical } from "@phosphor-icons/react";
-import { useNotesOptional } from "./NotesContext";
 import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { Separator } from "@/components/ui/shad/Separator";
 import { cn } from "../../lib/utils";
@@ -78,6 +77,13 @@ export interface NotesContextPanelProps {
     /** 大纲之前的附加区块（DSTU 模式；如工作区属性页的自定义键值编辑器） */
     beforeOutline?: React.ReactNode;
     /**
+     * 控制面板渲染哪些区块（默认 'all' 保持向后兼容）：
+     * - 'all'：完整上下文面板（大纲 → 附加属性 → 元数据与标签），按自然 DOM 顺序渲染；
+     * - 'outline'：仅大纲区块，撑满面板 100% 高度；
+     * - 'properties'：仅属性区块（beforeOutline + 元数据 + 标签），单一平滑滚动容器。
+     */
+    sections?: 'all' | 'outline' | 'properties';
+    /**
      * C8：大纲章节被选中后的宿主回调（窄屏时宿主据此关闭属性子页并回到正文）。
      * 定位动作仍由编辑器消费 notes:scroll-to-heading 事件完成。
      */
@@ -97,31 +103,20 @@ const formatPanelDate = (value: string | undefined, locale: string) => {
 
 export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     const { t, i18n } = useTranslation(['notes', 'common']);
+    const sections = props.sections ?? 'all';
+    const showOutline = sections === 'all' || sections === 'outline';
+    const showProperties = sections === 'all' || sections === 'properties';
     
-    // 检测是否为 DSTU 模式（通过是否传入 noteId 判断）
-    const isDstuMode = props.noteId !== undefined;
-    
-    // ========== Context 获取（可选） ==========
-    // 使用 useNotesOptional 而非 useNotes，在没有 Provider 时返回 null
-    // 这样 DSTU 模式下无需 NotesProvider 包装
-    const notesContext = useNotesOptional();
-    const contextActive = notesContext?.active;
-    const updateNoteTags = notesContext?.updateNoteTags;
-    const renameTagAcrossNotes = notesContext?.renameTagAcrossNotes;
-    
-    // ========== 数据来源判断 ==========
-    // DSTU 模式：使用传入的 props
-    // Context 模式：使用 NotesContext 的 active
-    const effectiveActive = isDstuMode
+    const effectiveActive = props.noteId !== undefined
         ? {
-            id: props.noteId!,
+            id: props.noteId,
             title: props.title || '',
             created_at: props.createdAt ? new Date(props.createdAt).toISOString() : undefined,
             updated_at: props.updatedAt ? new Date(props.updatedAt).toISOString() : undefined,
             tags: props.tags || [],
             content_md: props.content || '',
         }
-        : contextActive;
+        : null;
     
     const [headings, setHeadings] = useState<OutlineHeading[]>([]);
     const [tagInput, setTagInput] = useState("");
@@ -155,9 +150,8 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
 
     const tags = effectiveActive?.tags || [];
     const hasTags = tags.length > 0;
-    // 标签是否可编辑：DSTU 模式看是否提供 onTagsChange（只读消费者传 undefined），
-    // Context 模式看 updateNoteTags 是否可用
-    const canEditTags = isDstuMode ? Boolean(props.onTagsChange) : Boolean(updateNoteTags);
+    // 标签是否可编辑：由宿主是否传入 onTagsChange 决定（只读消费者传 undefined）
+    const canEditTags = Boolean(props.onTagsChange);
 
     // 解析标题的工具函数
     const parseHeadings = useCallback((content: string) => {
@@ -229,6 +223,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
 
     // 监听编辑器实时内容变化（300ms 防抖）
     useEffect(() => {
+        if (!showOutline) return;
         const handleContentChanged = (e: CustomEvent<{ noteId: string; content: string }>) => {
             if (e.detail.noteId !== effectiveActive?.id) return;
             
@@ -250,7 +245,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                 clearTimeout(liveContentDebounceRef.current);
             }
         };
-    }, [effectiveActive?.id]);
+    }, [effectiveActive?.id, showOutline]);
 
     // 切换笔记时重置实时内容与大纲高亮
     useEffect(() => {
@@ -267,6 +262,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     // Parse headings from active note content (支持 1-6 级标题)
     // 优先使用实时内容，否则使用保存的内容
     useEffect(() => {
+        if (!showOutline) return;
         const content = liveContent ?? effectiveActive?.content_md;
         if (!content) {
             setHeadings([]);
@@ -297,15 +293,15 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         }
 
         setHeadings(parseHeadings(content));
-    }, [liveContent, effectiveActive?.content_md, parseHeadings, largeContentThreshold, largeContentDebounceMs]);
+    }, [liveContent, effectiveActive?.content_md, parseHeadings, largeContentThreshold, largeContentDebounceMs, showOutline]);
 
     // 大纲内容变化时，若当前高亮项已不存在则清除
     useEffect(() => {
-        if (!activeHeadingId) return;
+        if (!showOutline || !activeHeadingId) return;
         if (!headings.some((h) => h.id === activeHeadingId)) {
             setActiveHeadingId(null);
         }
-    }, [headings, activeHeadingId]);
+    }, [headings, activeHeadingId, showOutline]);
 
     // 编辑器滚动跟随：高亮视口顶部附近的标题，并把大纲行滚入面板可视区
     const headingsRef = useRef(headings);
@@ -313,6 +309,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     // 点击定位后的平滑滚动窗口内不接受滚动跟随（避免高亮被"上一个标题"抢走）
     const scrollFollowSuppressedUntilRef = useRef(0);
     useEffect(() => {
+        if (!showOutline) return;
         const noteIdForScroll = effectiveActive?.id;
         if (!noteIdForScroll) return;
         return addTypedEventListener<NotesActiveHeadingDetail>(
@@ -333,14 +330,14 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                 setActiveHeadingId((prev) => (prev === matched.id ? prev : matched.id));
             },
         );
-    }, [effectiveActive?.id]);
+    }, [effectiveActive?.id, showOutline]);
 
     // 高亮行随滚动跟随时保持在面板可视区内（block: nearest 不打扰无关滚动）
     useEffect(() => {
-        if (!activeHeadingId) return;
+        if (!showOutline || !activeHeadingId) return;
         const row = outlineRowRefs.current.get(activeHeadingId);
         row?.scrollIntoView({ block: 'nearest' });
-    }, [activeHeadingId]);
+    }, [activeHeadingId, showOutline]);
 
     const toggleCollapsed = useCallback((collapseKey: string) => {
         setCollapsedKeys((prev) => {
@@ -479,8 +476,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     };
 
     const handleAddTag = async () => {
-        if (!tagInput.trim() || !effectiveActive) return;
-        if (!isDstuMode && !updateNoteTags) return;
+        if (!tagInput.trim() || !effectiveActive || !props.onTagsChange) return;
 
         const newTag = tagInput.trim();
         if (effectiveActive.tags?.includes(newTag)) {
@@ -492,18 +488,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         const newTags = [...(effectiveActive.tags || []), newTag];
 
         try {
-            if (isDstuMode) {
-                // DSTU 模式：调用 onTagsChange 回调
-                if (props.onTagsChange) {
-                    await props.onTagsChange(newTags);
-                }
-            } else {
-                // Context 模式：使用 updateNoteTags
-                if (updateNoteTags) {
-                    await updateNoteTags(effectiveActive.id, newTags);
-                }
-            }
-
+            await props.onTagsChange(newTags);
             setTagInput("");
             setIsAddingTag(false);
         } catch (error: unknown) {
@@ -513,23 +498,12 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
     };
 
     const handleRemoveTag = async (tagToRemove: string) => {
-        if (!effectiveActive) return;
-        if (!isDstuMode && !updateNoteTags) return;
+        if (!effectiveActive || !props.onTagsChange) return;
 
         const newTags = (effectiveActive.tags || []).filter(t => t !== tagToRemove);
 
         try {
-            if (isDstuMode) {
-                // DSTU 模式：调用 onTagsChange 回调
-                if (props.onTagsChange) {
-                    await props.onTagsChange(newTags);
-                }
-            } else {
-                // Context 模式：使用 updateNoteTags
-                if (updateNoteTags) {
-                    await updateNoteTags(effectiveActive.id, newTags);
-                }
-            }
+            await props.onTagsChange(newTags);
         } catch (error: unknown) {
             console.error("Failed to remove tag", error);
             showGlobalNotification('error', t('notes:context.tag_remove_failed'));
@@ -644,12 +618,8 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         try {
             // B04/R07：默认只改当前篇——局部标签编辑不再隐式影响整个文库。
             const newTags = currentTags.map(tag => (tag === oldName ? normalizedNewName : tag));
-            if (isDstuMode) {
-                if (props.onTagsChange) {
-                    await props.onTagsChange(newTags);
-                }
-            } else if (updateNoteTags) {
-                await updateNoteTags(effectiveActive.id, newTags);
+            if (props.onTagsChange) {
+                await props.onTagsChange(newTags);
             }
 
             showGlobalNotification('success', t('notes:header.rename_tag_success'));
@@ -671,31 +641,22 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         const { oldName, newName } = pending;
         setIsRenamingTag(true);
         try {
-            if (renameTagAcrossNotes) {
-                const updated = await renameTagAcrossNotes(oldName, newName, effectiveActive.id);
-                showGlobalNotification(
-                    'success',
-                    t('notes:header.rename_tag_across_success', { defaultValue: '全库标签已重命名' }),
-                    t('notes:header.rename_tag_count', { count: updated }),
-                );
-            } else {
-                const { updated, skipped, failed } = await renameTagAcrossNotesDstu(
-                    oldName,
-                    newName,
-                    effectiveActive.id,
-                );
-                const summary = t('notes:header.rename_tag_batch_summary', {
-                    defaultValue: '已更新 {{updated}} 篇，跳过 {{skipped}} 篇（有未保存修改），失败 {{failed}} 篇',
-                    updated,
-                    skipped,
-                    failed,
-                });
-                showGlobalNotification(
-                    failed > 0 ? 'warning' : 'success',
-                    t('notes:header.rename_tag_across_success', { defaultValue: '全库标签已重命名' }),
-                    summary,
-                );
-            }
+            const { updated, skipped, failed } = await renameTagAcrossNotesDstu(
+                oldName,
+                newName,
+                effectiveActive.id,
+            );
+            const summary = t('notes:header.rename_tag_batch_summary', {
+                defaultValue: '已更新 {{updated}} 篇，跳过 {{skipped}} 篇（有未保存修改），失败 {{failed}} 篇',
+                updated,
+                skipped,
+                failed,
+            });
+            showGlobalNotification(
+                failed > 0 ? 'warning' : 'success',
+                t('notes:header.rename_tag_across_success', { defaultValue: '全库标签已重命名' }),
+                summary,
+            );
         } catch (error: unknown) {
             console.error("Failed to rename tag across library", error);
             showGlobalNotification('error', t('notes:header.rename_failed'));
@@ -728,362 +689,414 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
         );
     }
 
-    return (
-        <div className="notes-context-panel flex h-full flex-col bg-background text-xs text-foreground">
-            {/* Metadata + Tags：B04 元数据后置，空白不再占据大纲之前的首屏 */}
-            <div className="order-last space-y-4 border-t border-border/35 px-3 py-3">
-                {/* Dates — compact, consistent formatting */}
-                <div className="space-y-1.5">
-                    <div className="flex min-h-7 items-center gap-2 text-muted-foreground">
-                        <Calendar className="w-3.5 h-3.5 shrink-0 opacity-70" />
-                        <span className="w-14 shrink-0 text-xs">{t('notes:context.created')}</span>
-                        <span className="text-foreground/90 tabular-nums truncate">
-                            {formatPanelDate(effectiveActive.created_at, dateLocale)}
-                        </span>
-                    </div>
-                    <div className="flex min-h-7 items-center gap-2 text-muted-foreground">
-                        <Clock className="w-3.5 h-3.5 shrink-0 opacity-70" />
-                        <span className="w-14 shrink-0 text-xs">{t('notes:context.updated')}</span>
-                        <span className="text-foreground/90 tabular-nums truncate">
-                            {formatPanelDate(effectiveActive.updated_at, dateLocale)}
-                        </span>
-                    </div>
-                </div>
-
-                {/* Tags — prominent section */}
-                <div className="space-y-2">
-                    <div className="flex items-center gap-1.5">
-                        <Tag className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                        <h3 className="text-xs font-medium text-muted-foreground">
-                            {t('notes:context.tags')}
-                        </h3>
-                        {hasTags && (
-                            <span className="ml-auto text-[10px] font-mono tabular-nums font-normal text-muted-foreground/60">
-                                {tags.length}
-                            </span>
-                        )}
-                    </div>
-
-                    {!hasTags && !isAddingTag && (
-                        <p className="pl-0.5 text-xs leading-snug text-muted-foreground/70">
-                            {t('notes:context.tags_empty_hint')}
-                        </p>
+    const outlineHeader = showOutline ? (
+        <div className="px-3 pt-3 pb-1 flex items-center gap-1.5">
+            <h3 className="text-xs font-medium text-muted-foreground flex flex-1 items-center gap-1.5 min-w-0">
+                <TextAlignLeft className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{t('notes:context.outline')}</span>
+                {headings.length > 0 && (
+                    <span className="ml-auto text-2xs font-mono tabular-nums font-normal text-muted-foreground/60">
+                        {headings.length}
+                    </span>
+                )}
+            </h3>
+            {collapsibleKeys.length > 0 && (
+                <DsButton
+                    variant="ghost"
+                    size="sm"
+                    iconOnly
+                    className="!h-5 !w-5 !min-w-0 shrink-0 text-muted-foreground/70 hover:text-foreground transition-colors duration-150 motion-reduce:transition-none"
+                    onClick={toggleCollapseAll}
+                    aria-label={allOutlineCollapsed
+                        ? t('notes:editorV2.outline_expand_all')
+                        : t('notes:editorV2.outline_collapse_all')}
+                    title={allOutlineCollapsed
+                        ? t('notes:editorV2.outline_expand_all')
+                        : t('notes:editorV2.outline_collapse_all')}
+                >
+                    {allOutlineCollapsed ? (
+                        <ArrowsOutLineVertical className="w-3.5 h-3.5" aria-hidden="true" />
+                    ) : (
+                        <ArrowsInLineVertical className="w-3.5 h-3.5" aria-hidden="true" />
                     )}
+                </DsButton>
+            )}
+        </div>
+    ) : null;
 
-                    <div className="flex flex-wrap gap-1.5 items-center">
-                        {tags.map((tag: string) => (
-                            <Badge
-                                key={tag}
-                                variant="secondary"
-                                className="notes-context-tag group h-5 gap-1 rounded-sm px-1.5 text-xs font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)]"
-                            >
-                                {canEditTags && editingTag === tag ? (
-                                    <span className="flex items-center gap-1">
-                                        <Input
-                                            className="h-4 w-20 px-1 py-0 text-[11px] [@media(pointer:coarse)]:min-h-11"
-                                            value={renameValue}
-                                            onChange={e => setRenameValue(e.target.value)}
-                                            onKeyDown={e => {
-                                                if (isComposingKeyEvent(e)) return;
-                                                if (e.key === 'Enter') {
-                                                    e.preventDefault();
-                                                    handleRenameTag();
-                                                }
-                                                if (e.key === 'Escape') {
-                                                    e.preventDefault();
-                                                    handleCancelRenameTag();
-                                                }
-                                            }}
-                                            aria-label={t('notes:header.rename_tag')}
-                                            autoFocus
-                                        />
-                                        <DsButton
-                                            variant="ghost" iconOnly size="sm"
-                                            className="relative !h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
-                                            onClick={handleRenameTag}
-                                            disabled={isRenamingTag}
-                                            aria-label={t('notes:header.confirm_rename')}
-                                        >
-                                            <Check className="w-3 h-3" aria-hidden="true" />
-                                        </DsButton>
-                                        <DsButton
-                                            variant="ghost" iconOnly size="sm"
-                                            className="relative !h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
-                                            onClick={requestRenameAcrossLibrary}
-                                            disabled={isRenamingTag}
-                                            title={t('notes:header.rename_tag_across_library', { defaultValue: '在整个文库重命名此标签' })}
-                                            aria-label={t('notes:header.rename_tag_across_library', { defaultValue: '在整个文库重命名此标签' })}
-                                        >
-                                            <Books className="w-3 h-3" aria-hidden="true" />
-                                        </DsButton>
-                                        <DsButton
-                                            variant="ghost" iconOnly size="sm"
-                                            className="relative !h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
-                                            onClick={handleCancelRenameTag}
-                                            disabled={isRenamingTag}
-                                            aria-label={t('notes:header.cancel_rename')}
-                                        >
-                                            <X className="w-3 h-3" aria-hidden="true" />
-                                        </DsButton>
-                                    </span>
-                                ) : (
-                                    <>
-                                        <span onDoubleClick={canEditTags ? () => handleStartRenameTag(tag) : undefined}>{tag}</span>
-                                        {canEditTags && (
-                                            <>
-                                                <DsButton
-                                                    variant="ghost" iconOnly size="sm"
-                                                    className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-                                                    ref={(node) => { if (node) renameTriggerRefs.current.set(tag, node); else renameTriggerRefs.current.delete(tag); }}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleStartRenameTag(tag);
-                                                    }}
-                                                    title={t('notes:header.rename_tag')}
-                                                    aria-label={`${t('notes:header.rename_tag')}: ${tag}`}
-                                                >
-                                                    <PencilSimple className="w-3 h-3" aria-hidden="true" />
-                                                </DsButton>
-                                                <DsButton
-                                                    variant="ghost" iconOnly size="sm"
-                                                    className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleRemoveTag(tag);
-                                                    }}
-                                                    aria-label={`${t('notes:context.tag_remove')} ${tag}`}
-                                                >
-                                                    <X className="w-3 h-3" aria-hidden="true" />
-                                                </DsButton>
-                                            </>
+    const outlineBody = showOutline ? (
+        <div className="px-3 pb-3 pt-0 space-y-0.5">
+            {headings.length > 0 ? (
+                visibleHeadings.map((heading, index) => {
+                    const isActive = activeHeadingId === heading.id;
+                    const hasChildren = hasChildrenById.get(heading.id) ?? false;
+                    const isCollapsed = collapsedKeys.has(heading.collapseKey);
+                    return (
+                        <div
+                            key={heading.id}
+                            ref={(el) => {
+                                if (el) outlineRowRefs.current.set(heading.id, el);
+                                else outlineRowRefs.current.delete(heading.id);
+                            }}
+                            className={cn(
+                                "notes-outline-row flex items-stretch transition-colors duration-150 motion-reduce:transition-none",
+                                isActive
+                                    ? "bg-[var(--interactive-hover)] shadow-[inset_2px_0_0_hsl(var(--primary))]"
+                                    : "hover:bg-[var(--interactive-hover)]",
+                            )}
+                        >
+                            {/* 层级缩进线：每深一级增加一条竖向导轨 */}
+                            {heading.level > 1 && Array.from({ length: heading.level - 1 }).map((_, guideIndex) => (
+                                <span
+                                    key={guideIndex}
+                                    className="w-2 shrink-0 self-stretch border-l border-border/50 ml-[3px]"
+                                    aria-hidden="true"
+                                />
+                            ))}
+                            {hasChildren ? (
+                                <DsButton
+                                    variant="ghost" iconOnly size="sm"
+                                    className="notes-outline-caret !h-auto !w-4 !min-w-0 shrink-0 self-stretch !rounded-sm !p-0 text-muted-foreground/70 hover:text-foreground hover:!bg-transparent [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!min-h-11"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleCollapsed(heading.collapseKey);
+                                    }}
+                                    aria-expanded={!isCollapsed}
+                                    aria-label={isCollapsed
+                                        ? t('notes:editorV2.outline_expand', { defaultValue: '展开分组' })
+                                        : t('notes:editorV2.outline_collapse', { defaultValue: '折叠分组' })}
+                                >
+                                    <CaretRight
+                                        className={cn(
+                                            "w-3 h-3 transition-transform duration-150 ease-out motion-reduce:transition-none",
+                                            !isCollapsed && "rotate-90",
                                         )}
-                                    </>
-                                )}
-                            </Badge>
-                        ))}
-
-                        {!canEditTags ? null : isAddingTag ? (
-                            <Input
-                                ref={tagInputRef}
-                                className="h-6 w-28 text-[11px] px-2 py-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-40"
-                                value={tagInput}
-                                placeholder={t('notes:context.add_tag')}
-                                onChange={e => setTagInput(e.target.value)}
-                                onKeyDown={e => {
-                                    if (isComposingKeyEvent(e)) return;
-                                    if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        handleAddTag();
-                                    }
-                                    if (e.key === 'Escape') {
-                                        e.preventDefault();
-                                        restoreTagFocusRef.current = true;
-                                        setIsAddingTag(false);
-                                        setTagInput("");
-                                    }
-                                }}
-                                onBlur={() => {
-                                    if (tagInput) handleAddTag();
-                                    else setIsAddingTag(false);
-                                }}
-                            />
-                        ) : (
+                                        aria-hidden="true"
+                                    />
+                                </DsButton>
+                            ) : (
+                                <span className="w-4 shrink-0 [@media(pointer:coarse)]:w-11" aria-hidden="true" />
+                            )}
                             <DsButton
-                                ref={tagTriggerRef}
+                                ref={(el) => {
+                                    if (el) outlineButtonRefs.current.set(heading.id, el);
+                                    else outlineButtonRefs.current.delete(heading.id);
+                                }}
                                 variant="ghost" size="sm"
                                 className={cn(
-                                    "relative inline-flex items-center gap-0.5 rounded-sm text-[11px] text-muted-foreground hover:text-foreground",
-                                    "px-1.5 h-6 transition-colors",
-                                    "[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-2.5"
+                                    "!h-auto !w-auto min-w-0 flex-1 !flex-col !items-start !justify-start gap-0 !rounded-sm !px-1 !py-1 !text-left text-xs hover:!bg-transparent",
+                                    "[@media(pointer:coarse)]:!py-2.5 [@media(pointer:coarse)]:!min-h-11",
+                                    heading.level === 1 && "font-medium",
+                                    isActive
+                                        ? "text-foreground font-medium"
+                                        : cn(
+                                            "hover:text-foreground",
+                                            heading.level === 1 && "text-foreground",
+                                            heading.level === 2 && "text-muted-foreground",
+                                            heading.level === 3 && "text-muted-foreground/80",
+                                            heading.level === 4 && "text-muted-foreground/70",
+                                            heading.level === 5 && "text-muted-foreground/60",
+                                            heading.level === 6 && "text-muted-foreground/50",
+                                        ),
                                 )}
-                                onClick={() => setIsAddingTag(true)}
+                                onClick={() => handleHeadingClick(heading)}
+                                onKeyDown={(event) => handleOutlineItemKeyDown(event, index, heading, hasChildren, isCollapsed)}
+                                title={heading.text}
+                                aria-current={isActive ? 'true' : undefined}
                             >
-                                <Plus className="w-3 h-3" />
-                                {t('notes:context.add_tag')}
+                                <span className="w-full min-w-0 truncate">{heading.text}</span>
+                                {heading.preview && (
+                                    <span
+                                        className="notes-outline-preview w-full min-w-0 truncate text-[10px] font-normal leading-[18px] text-muted-foreground/60"
+                                        aria-hidden="true"
+                                    >
+                                        {heading.preview}
+                                    </span>
+                                )}
                             </DsButton>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {props.beforeOutline}
-
-            <Separator />
-
-            {/* Outline Section：B04 大纲直达——视觉顺序优先于元数据/统计 */}
-            <div className="notes-context-outline order-first flex-1 flex flex-col min-h-0">
-                <div className="px-3 pt-3 pb-1 flex items-center gap-1.5">
-                    <h3 className="text-xs font-medium text-muted-foreground flex flex-1 items-center gap-1.5 min-w-0">
-                        <TextAlignLeft className="w-3.5 h-3.5 shrink-0" />
-                        <span className="truncate">{t('notes:context.outline')}</span>
-                        {headings.length > 0 && (
-                            <span className="ml-auto text-2xs font-mono tabular-nums font-normal text-muted-foreground/60">
-                                {headings.length}
-                            </span>
-                        )}
-                    </h3>
-                    {collapsibleKeys.length > 0 && (
-                        <DsButton
-                            variant="ghost"
-                            size="sm"
-                            iconOnly
-                            className="!h-5 !w-5 !min-w-0 shrink-0 text-muted-foreground/70 hover:text-foreground transition-colors duration-150 motion-reduce:transition-none"
-                            onClick={toggleCollapseAll}
-                            aria-label={allOutlineCollapsed
-                                ? t('notes:editorV2.outline_expand_all')
-                                : t('notes:editorV2.outline_collapse_all')}
-                            title={allOutlineCollapsed
-                                ? t('notes:editorV2.outline_expand_all')
-                                : t('notes:editorV2.outline_collapse_all')}
-                        >
-                            {allOutlineCollapsed ? (
-                                <ArrowsOutLineVertical className="w-3.5 h-3.5" aria-hidden="true" />
-                            ) : (
-                                <ArrowsInLineVertical className="w-3.5 h-3.5" aria-hidden="true" />
-                            )}
+                        </div>
+                    );
+                })
+            ) : props.contentStatus === 'error' ? (
+                <div className="py-5 px-1 text-center space-y-2">
+                    <p className="text-[11px] text-muted-foreground/60">
+                        {t('notes:context.content_load_failed', { defaultValue: '正文加载失败，大纲不可用。' })}
+                    </p>
+                    {props.onRetryContent && (
+                        <DsButton variant="secondary" size="sm" className="h-7 px-3 text-xs" onClick={props.onRetryContent}>
+                            {t('common:retry', { defaultValue: '重试' })}
                         </DsButton>
                     )}
                 </div>
-                <CustomScrollArea className="flex-1">
-                    <div className="px-3 pb-3 pt-0 space-y-0.5">
-                        {headings.length > 0 ? (
-                            visibleHeadings.map((heading, index) => {
-                                const isActive = activeHeadingId === heading.id;
-                                const hasChildren = hasChildrenById.get(heading.id) ?? false;
-                                const isCollapsed = collapsedKeys.has(heading.collapseKey);
-                                return (
-                                    <div
-                                        key={heading.id}
-                                        ref={(el) => {
-                                            if (el) outlineRowRefs.current.set(heading.id, el);
-                                            else outlineRowRefs.current.delete(heading.id);
-                                        }}
-                                        className={cn(
-                                            "notes-outline-row flex items-stretch transition-colors duration-150 motion-reduce:transition-none",
-                                            isActive
-                                                ? "bg-[var(--interactive-hover)] shadow-[inset_2px_0_0_hsl(var(--primary))]"
-                                                : "hover:bg-[var(--interactive-hover)]",
-                                        )}
-                                    >
-                                        {/* 层级缩进线：每深一级增加一条竖向导轨 */}
-                                        {heading.level > 1 && Array.from({ length: heading.level - 1 }).map((_, guideIndex) => (
-                                            <span
-                                                key={guideIndex}
-                                                className="w-2 shrink-0 self-stretch border-l border-border/50 ml-[3px]"
-                                                aria-hidden="true"
-                                            />
-                                        ))}
-                                        {hasChildren ? (
-                                            <DsButton
-                                                variant="ghost" iconOnly size="sm"
-                                                className="notes-outline-caret !h-auto !w-4 !min-w-0 shrink-0 self-stretch !rounded-sm !p-0 text-muted-foreground/70 hover:text-foreground hover:!bg-transparent [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!min-h-11"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    toggleCollapsed(heading.collapseKey);
-                                                }}
-                                                aria-expanded={!isCollapsed}
-                                                aria-label={isCollapsed
-                                                    ? t('notes:editorV2.outline_expand', { defaultValue: '展开分组' })
-                                                    : t('notes:editorV2.outline_collapse', { defaultValue: '折叠分组' })}
-                                            >
-                                                <CaretRight
-                                                    className={cn(
-                                                        "w-3 h-3 transition-transform duration-150 ease-out motion-reduce:transition-none",
-                                                        !isCollapsed && "rotate-90",
-                                                    )}
-                                                    aria-hidden="true"
-                                                />
-                                            </DsButton>
-                                        ) : (
-                                            <span className="w-4 shrink-0 [@media(pointer:coarse)]:w-11" aria-hidden="true" />
-                                        )}
-                                        <DsButton
-                                            ref={(el) => {
-                                                if (el) outlineButtonRefs.current.set(heading.id, el);
-                                                else outlineButtonRefs.current.delete(heading.id);
-                                            }}
-                                            variant="ghost" size="sm"
-                                            className={cn(
-                                                "!h-auto !w-auto min-w-0 flex-1 !flex-col !items-start !justify-start gap-0 !rounded-sm !px-1 !py-1 !text-left text-xs hover:!bg-transparent",
-                                                "[@media(pointer:coarse)]:!py-2.5 [@media(pointer:coarse)]:!min-h-11",
-                                                heading.level === 1 && "font-medium",
-                                                isActive
-                                                    ? "text-foreground font-medium"
-                                                    : cn(
-                                                        "hover:text-foreground",
-                                                        heading.level === 1 && "text-foreground",
-                                                        heading.level === 2 && "text-muted-foreground",
-                                                        heading.level === 3 && "text-muted-foreground/80",
-                                                        heading.level === 4 && "text-muted-foreground/70",
-                                                        heading.level === 5 && "text-muted-foreground/60",
-                                                        heading.level === 6 && "text-muted-foreground/50",
-                                                    ),
-                                            )}
-                                            onClick={() => handleHeadingClick(heading)}
-                                            onKeyDown={(event) => handleOutlineItemKeyDown(event, index, heading, hasChildren, isCollapsed)}
-                                            title={heading.text}
-                                            aria-current={isActive ? 'true' : undefined}
-                                        >
-                                            <span className="w-full min-w-0 truncate">{heading.text}</span>
-                                            {heading.preview && (
-                                                <span
-                                                    className="notes-outline-preview w-full min-w-0 truncate text-[10px] font-normal leading-[18px] text-muted-foreground/60"
-                                                    aria-hidden="true"
-                                                >
-                                                    {heading.preview}
-                                                </span>
-                                            )}
-                                        </DsButton>
-                                    </div>
-                                );
-                            })
-                        ) : props.contentStatus === 'error' ? (
-                            <div className="py-5 px-1 text-center space-y-2">
-                                <p className="text-[11px] text-muted-foreground/60">
-                                    {t('notes:context.content_load_failed', { defaultValue: '正文加载失败，大纲不可用。' })}
-                                </p>
-                                {props.onRetryContent && (
-                                    <DsButton variant="secondary" size="sm" className="h-7 px-3 text-xs" onClick={props.onRetryContent}>
-                                        {t('common:retry', { defaultValue: '重试' })}
-                                    </DsButton>
-                                )}
-                            </div>
-                        ) : props.contentStatus === 'loading' ? (
-                            <div className="py-5 px-1 text-center">
-                                <p className="text-[11px] text-muted-foreground/50">
-                                    {t('notes:context.content_loading', { defaultValue: '正在加载正文…' })}
-                                </p>
-                            </div>
-                        ) : (
-                            <div className="py-5 px-1 text-center space-y-1">
-                                <p className="text-[11px] text-muted-foreground/55">
-                                    {t('notes:context.no_headings')}
-                                </p>
-                                <p className="text-[10px] text-muted-foreground/40 leading-snug">
-                                    {t('notes:context.outline_empty_hint')}
-                                </p>
-                            </div>
-                        )}
-                    </div>
-                </CustomScrollArea>
+            ) : props.contentStatus === 'loading' ? (
+                <div className="py-5 px-1 text-center">
+                    <p className="text-[11px] text-muted-foreground/50">
+                        {t('notes:context.content_loading', { defaultValue: '正在加载正文…' })}
+                    </p>
+                </div>
+            ) : (
+                <div className="py-5 px-1 text-center space-y-1">
+                    <p className="text-[11px] text-muted-foreground/55">
+                        {t('notes:context.no_headings')}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground/40 leading-snug">
+                        {t('notes:context.outline_empty_hint')}
+                    </p>
+                </div>
+            )}
+        </div>
+    ) : null;
+
+    const metadataSection = showProperties ? (
+        <div
+            className={cn(
+                "notes-context-metadata space-y-4 px-3 py-3",
+                Boolean(props.beforeOutline) && "border-t border-border/35",
+            )}
+        >
+            {/* Dates — compact, consistent formatting */}
+            <div className="space-y-1.5">
+                <div className="flex min-h-7 items-center gap-2 text-muted-foreground">
+                    <Calendar className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                    <span className="w-14 shrink-0 text-xs">{t('notes:context.created')}</span>
+                    <span className="text-foreground/90 tabular-nums truncate">
+                        {formatPanelDate(effectiveActive.created_at, dateLocale)}
+                    </span>
+                </div>
+                <div className="flex min-h-7 items-center gap-2 text-muted-foreground">
+                    <Clock className="w-3.5 h-3.5 shrink-0 opacity-70" />
+                    <span className="w-14 shrink-0 text-xs">{t('notes:context.updated')}</span>
+                    <span className="text-foreground/90 tabular-nums truncate">
+                        {formatPanelDate(effectiveActive.updated_at, dateLocale)}
+                    </span>
+                </div>
             </div>
 
-            <DsAlertDialog
-                open={pendingGlobalRename !== null}
-                onOpenChange={(open) => { if (!open) setPendingGlobalRename(null); }}
-                icon={<Books size={20} />}
-                title={t('notes:header.rename_tag_across_library', { defaultValue: '在整个文库重命名此标签' })}
-                description={pendingGlobalRename
-                    ? t('notes:header.rename_tag_across_confirm', {
-                        defaultValue: '将把整个文库中所有「{{oldName}}」标签重命名为「{{newName}}」，并写入其他笔记。此操作影响多篇笔记。',
-                        oldName: pendingGlobalRename.oldName,
-                        newName: pendingGlobalRename.newName,
-                    })
-                    : undefined}
-                confirmText={t('notes:header.rename_tag_across_confirm_action', { defaultValue: '全库重命名' })}
-                cancelText={t('common:cancel', { defaultValue: '取消' })}
-                onConfirm={() => { void handleRenameTagAcrossLibrary(); }}
-            />
+            {/* Tags — prominent section */}
+            <div className="space-y-2">
+                <div className="flex items-center gap-1.5">
+                    <Tag className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                    <h3 className="text-xs font-medium text-muted-foreground">
+                        {t('notes:context.tags')}
+                    </h3>
+                    {hasTags && (
+                        <span className="ml-auto text-[10px] font-mono tabular-nums font-normal text-muted-foreground/60">
+                            {tags.length}
+                        </span>
+                    )}
+                </div>
+
+                {!hasTags && !isAddingTag && (
+                    <p className="pl-0.5 text-xs leading-snug text-muted-foreground/70">
+                        {t('notes:context.tags_empty_hint')}
+                    </p>
+                )}
+
+                <div className="flex flex-wrap gap-1.5 items-center">
+                    {tags.map((tag: string) => (
+                        <Badge
+                            key={tag}
+                            variant="secondary"
+                            className="notes-context-tag group h-5 gap-1 rounded-sm px-1.5 text-xs font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)]"
+                        >
+                            {canEditTags && editingTag === tag ? (
+                                <span className="flex items-center gap-1">
+                                    <Input
+                                        className="h-4 w-20 px-1 py-0 text-[11px] [@media(pointer:coarse)]:min-h-11"
+                                        value={renameValue}
+                                        onChange={e => setRenameValue(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (isComposingKeyEvent(e)) return;
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleRenameTag();
+                                            }
+                                            if (e.key === 'Escape') {
+                                                e.preventDefault();
+                                                handleCancelRenameTag();
+                                            }
+                                        }}
+                                        aria-label={t('notes:header.rename_tag')}
+                                        autoFocus
+                                    />
+                                    <DsButton
+                                        variant="ghost" iconOnly size="sm"
+                                        className="relative !h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+                                        onClick={handleRenameTag}
+                                        disabled={isRenamingTag}
+                                        aria-label={t('notes:header.confirm_rename')}
+                                    >
+                                        <Check className="w-3 h-3" aria-hidden="true" />
+                                    </DsButton>
+                                    <DsButton
+                                        variant="ghost" iconOnly size="sm"
+                                        className="relative !h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+                                        onClick={requestRenameAcrossLibrary}
+                                        disabled={isRenamingTag}
+                                        title={t('notes:header.rename_tag_across_library', { defaultValue: '在整个文库重命名此标签' })}
+                                        aria-label={t('notes:header.rename_tag_across_library', { defaultValue: '在整个文库重命名此标签' })}
+                                    >
+                                        <Books className="w-3 h-3" aria-hidden="true" />
+                                    </DsButton>
+                                    <DsButton
+                                        variant="ghost" iconOnly size="sm"
+                                        className="relative !h-4 !w-4 !min-w-0 opacity-70 hover:opacity-100 disabled:opacity-40 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+                                        onClick={handleCancelRenameTag}
+                                        disabled={isRenamingTag}
+                                        aria-label={t('notes:header.cancel_rename')}
+                                    >
+                                        <X className="w-3 h-3" aria-hidden="true" />
+                                    </DsButton>
+                                </span>
+                            ) : (
+                                <>
+                                    <span onDoubleClick={canEditTags ? () => handleStartRenameTag(tag) : undefined}>{tag}</span>
+                                    {canEditTags && (
+                                        <>
+                                            <DsButton
+                                                variant="ghost" iconOnly size="sm"
+                                                className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-70 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:opacity-100 transition-opacity [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                                                ref={(node) => { if (node) renameTriggerRefs.current.set(tag, node); else renameTriggerRefs.current.delete(tag); }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleStartRenameTag(tag);
+                                                }}
+                                                title={t('notes:header.rename_tag')}
+                                                aria-label={`${t('notes:header.rename_tag')}: ${tag}`}
+                                            >
+                                                <PencilSimple className="w-3 h-3" aria-hidden="true" />
+                                            </DsButton>
+                                            <DsButton
+                                                variant="ghost" iconOnly size="sm"
+                                                className="!h-4 !w-4 !min-w-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 hover:text-destructive transition-opacity [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleRemoveTag(tag);
+                                                }}
+                                                aria-label={`${t('notes:context.tag_remove')} ${tag}`}
+                                            >
+                                                <X className="w-3 h-3" aria-hidden="true" />
+                                            </DsButton>
+                                        </>
+                                    )}
+                                </>
+                            )}
+                        </Badge>
+                    ))}
+
+                    {!canEditTags ? null : isAddingTag ? (
+                        <Input
+                            ref={tagInputRef}
+                            className="h-6 w-28 text-[11px] px-2 py-0 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-40"
+                            value={tagInput}
+                            placeholder={t('notes:context.add_tag')}
+                            onChange={e => setTagInput(e.target.value)}
+                            onKeyDown={e => {
+                                if (isComposingKeyEvent(e)) return;
+                                if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleAddTag();
+                                }
+                                if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    restoreTagFocusRef.current = true;
+                                    setIsAddingTag(false);
+                                    setTagInput("");
+                                }
+                            }}
+                            onBlur={() => {
+                                if (tagInput) handleAddTag();
+                                else setIsAddingTag(false);
+                            }}
+                        />
+                    ) : (
+                        <DsButton
+                            ref={tagTriggerRef}
+                            variant="ghost" size="sm"
+                            className={cn(
+                                "relative inline-flex items-center gap-0.5 rounded-sm text-[11px] text-muted-foreground hover:text-foreground",
+                                "px-1.5 h-6 transition-colors",
+                                "[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-2.5"
+                            )}
+                            onClick={() => setIsAddingTag(true)}
+                        >
+                            <Plus className="w-3 h-3" />
+                            {t('notes:context.add_tag')}
+                        </DsButton>
+                    )}
+                </div>
+            </div>
+        </div>
+    ) : null;
+
+    const renameDialog = showProperties ? (
+        <DsAlertDialog
+            open={pendingGlobalRename !== null}
+            onOpenChange={(open) => { if (!open) setPendingGlobalRename(null); }}
+            icon={<Books size={20} />}
+            title={t('notes:header.rename_tag_across_library', { defaultValue: '在整个文库重命名此标签' })}
+            description={pendingGlobalRename
+                ? t('notes:header.rename_tag_across_confirm', {
+                    defaultValue: '将把整个文库中所有「{{oldName}}」标签重命名为「{{newName}}」，并写入其他笔记。此操作影响多篇笔记。',
+                    oldName: pendingGlobalRename.oldName,
+                    newName: pendingGlobalRename.newName,
+                })
+                : undefined}
+            confirmText={t('notes:header.rename_tag_across_confirm_action', { defaultValue: '全库重命名' })}
+            cancelText={t('common:cancel', { defaultValue: '取消' })}
+            onConfirm={() => { void handleRenameTagAcrossLibrary(); }}
+        />
+    ) : null;
+
+    if (sections === 'outline') {
+        return (
+            <div
+                className="notes-context-panel notes-context-panel--outline flex h-full min-h-0 flex-col bg-background text-xs text-foreground"
+                data-sections="outline"
+            >
+                <div className="notes-context-outline flex flex-1 flex-col min-h-0">
+                    {outlineHeader}
+                    <CustomScrollArea className="flex-1 min-h-0">
+                        {outlineBody}
+                    </CustomScrollArea>
+                </div>
+            </div>
+        );
+    }
+
+    if (sections === 'properties') {
+        return (
+            <div
+                className="notes-context-panel notes-context-panel--properties flex h-full min-h-0 flex-col bg-background text-xs text-foreground"
+                data-sections="properties"
+            >
+                <div className="notes-context-properties-scroll flex-1 min-h-0 overflow-y-auto overscroll-contain">
+                    {props.beforeOutline}
+                    {metadataSection}
+                </div>
+                {renameDialog}
+            </div>
+        );
+    }
+
+    return (
+        <div
+            className="notes-context-panel notes-context-panel--all flex h-full min-h-0 flex-col bg-background text-xs text-foreground"
+            data-sections="all"
+        >
+            <div className="notes-context-scroll flex-1 min-h-0 overflow-y-auto overscroll-contain">
+                {/* 自然 DOM 顺序：大纲 → 附加属性（beforeOutline）→ 元数据与标签，确保 Tab 焦序与视觉顺序一致 */}
+                <div className="notes-context-outline flex flex-col">
+                    {outlineHeader}
+                    <div className="max-h-[42vh] overflow-y-auto overscroll-contain">
+                        {outlineBody}
+                    </div>
+                </div>
+                <Separator />
+                {props.beforeOutline}
+                {metadataSection}
+            </div>
+            {renameDialog}
         </div>
     );
 };

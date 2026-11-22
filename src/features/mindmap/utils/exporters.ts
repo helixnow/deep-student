@@ -16,7 +16,8 @@ import { getNodesBounds, getViewportForBounds, type Node } from '@xyflow/react';
 import i18n from 'i18next';
 import JSZip from 'jszip';
 import { fileManager } from '@/utils/fileManager';
-import type { MindMapDocument, MindMapNode } from '../types';
+import type { MindMapDocument, MindMapNode, MindMapSummaryBrace } from '../types';
+import { sanitizeDocumentSummaries } from './summaryBraces';
 import {
   defaultMindMapStore,
   type MindMapStoreApi,
@@ -216,16 +217,34 @@ export function exportToJsonCompact(doc: MindMapDocument): string {
 // .xmind 导出（content.json 最小合法包）
 // ============================================================================
 
+interface XmindSummaryTopicJson {
+  id: string;
+  title: string;
+}
+
+interface XmindSummaryJson {
+  id: string;
+  range: string;
+  topicId: string;
+}
+
 interface XmindTopicJson {
   id: string;
   title: string;
   notes?: { plain: { content: string } };
   markers?: Array<{ markerId: string }>;
   style?: { properties: Record<string, string> };
-  children?: { attached: XmindTopicJson[] };
+  summaries?: XmindSummaryJson[];
+  children?: {
+    attached?: XmindTopicJson[];
+    summary?: XmindSummaryTopicJson[];
+  };
 }
 
-function nodeToXmindTopic(node: MindMapNode): XmindTopicJson {
+function nodeToXmindTopic(
+  node: MindMapNode,
+  summariesByParent?: ReadonlyMap<string, MindMapSummaryBrace[]>,
+): XmindTopicJson {
   const topic: XmindTopicJson = {
     id: node.id,
     title: node.text,
@@ -233,9 +252,22 @@ function nodeToXmindTopic(node: MindMapNode): XmindTopicJson {
   if (node.note) {
     topic.notes = { plain: { content: node.note } };
   }
+  const markers: Array<{ markerId: string }> = [];
   // completed → .xmind 任务 marker（与导入侧转换对称）
   if (node.completed !== undefined) {
-    topic.markers = [{ markerId: node.completed ? 'task-done' : 'task-start' }];
+    markers.push({ markerId: node.completed ? 'task-done' : 'task-start' });
+  }
+  // priority 1..6 → .xmind priority-1..6 marker（与导入侧转换对称）
+  if (
+    typeof node.priority === 'number' &&
+    Number.isInteger(node.priority) &&
+    node.priority >= 1 &&
+    node.priority <= 6
+  ) {
+    markers.push({ markerId: `priority-${node.priority}` });
+  }
+  if (markers.length > 0) {
+    topic.markers = markers;
   }
   // 最小样式映射：bgColor → 导图包主题填充色（svg:fill），
   // 让分支配色在导入目标中保留；其余样式（字体/字号等）仍不导出。
@@ -243,8 +275,63 @@ function nodeToXmindTopic(node: MindMapNode): XmindTopicJson {
     topic.style = { properties: { 'svg:fill': node.style.bgColor } };
   }
   const children = node.children || [];
-  if (children.length > 0) {
-    topic.children = { attached: children.map(nodeToXmindTopic) };
+  const attached = children.length > 0
+    ? children.map((child) => nodeToXmindTopic(child, summariesByParent))
+    : undefined;
+
+  const rawSummaries = summariesByParent?.get(node.id);
+  let xmindSummaries: XmindSummaryJson[] | undefined;
+  let summaryTopics: XmindSummaryTopicJson[] | undefined;
+  if (rawSummaries && rawSummaries.length > 0 && children.length >= 2) {
+    const indexByChildId = new Map(children.map((child, idx) => [child.id, idx]));
+    const seenRanges = new Set<string>();
+    const usedTopicIds = new Set<string>();
+    const builtSummaries: XmindSummaryJson[] = [];
+    const builtSummaryTopics: XmindSummaryTopicJson[] = [];
+
+    for (const summary of rawSummaries) {
+      const idxA = indexByChildId.get(summary.startChildId);
+      const idxB = indexByChildId.get(summary.endChildId);
+      if (idxA === undefined || idxB === undefined || idxA === idxB) continue;
+      const startIdx = Math.min(idxA, idxB);
+      const endIdx = Math.max(idxA, idxB);
+      const rangeKey = `${startIdx}:${endIdx}`;
+      if (seenRanges.has(rangeKey)) continue;
+      seenRanges.add(rangeKey);
+
+      let topicId = `${summary.id}_topic`;
+      let suffix = 1;
+      while (usedTopicIds.has(topicId)) {
+        topicId = `${summary.id}_topic_${suffix}`;
+        suffix += 1;
+      }
+      usedTopicIds.add(topicId);
+
+      builtSummaries.push({
+        id: summary.id,
+        range: `(${startIdx},${endIdx})`,
+        topicId,
+      });
+      builtSummaryTopics.push({
+        id: topicId,
+        title: summary.label,
+      });
+    }
+
+    if (builtSummaries.length > 0) {
+      xmindSummaries = builtSummaries;
+      summaryTopics = builtSummaryTopics;
+    }
+  }
+
+  if (xmindSummaries) {
+    topic.summaries = xmindSummaries;
+  }
+  if (attached || summaryTopics) {
+    topic.children = {
+      ...(attached ? { attached } : {}),
+      ...(summaryTopics ? { summary: summaryTopics } : {}),
+    };
   }
   return topic;
 }
@@ -254,10 +341,20 @@ function nodeToXmindTopic(node: MindMapNode): XmindTopicJson {
  *
  * 导出范围（与 importFromXmindZip 可无损往返的最小集合）：
  * 标题树、纯文本备注、completed → task-done / task-start marker、
+ * priority → priority-1..6 marker、summaries → 主题概要与范围、
  * 关联线 → sheet 级 relationships、节点 bgColor → 主题填充色（svg:fill）。
  * 不导出：其余样式 / 主题、图标、挖空区间、资源引用（refs）、折叠状态。
  */
 export function buildXmindContentJson(doc: MindMapDocument, title?: string): unknown[] {
+  const validSummaries = sanitizeDocumentSummaries(doc.summaries, doc.root);
+  const summariesByParent = new Map<string, MindMapSummaryBrace[]>();
+  if (validSummaries) {
+    for (const summary of validSummaries) {
+      const bucket = summariesByParent.get(summary.parentId);
+      if (bucket) bucket.push(summary);
+      else summariesByParent.set(summary.parentId, [summary]);
+    }
+  }
   const relationships = (doc.associations || []).map((assoc) => ({
     id: assoc.id,
     end1Id: assoc.source,
@@ -268,7 +365,7 @@ export function buildXmindContentJson(doc: MindMapDocument, title?: string): unk
     id: 'sheet-1',
     class: 'sheet',
     title: title || doc.root.text || 'MindMap',
-    rootTopic: nodeToXmindTopic(doc.root),
+    rootTopic: nodeToXmindTopic(doc.root, summariesByParent),
     ...(relationships.length > 0 ? { relationships } : {}),
   }];
 }

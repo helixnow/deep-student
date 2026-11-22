@@ -27,10 +27,28 @@ export const CRASH_LOOP_THRESHOLD = 3;
 /** 重载按钮冷却时长 */
 export const CRASH_COOLDOWN_MS = 5_000;
 
+const MODULE_LOAD_ERROR_RE =
+  /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Loading chunk .* failed|Duplicate export of/i;
+
+/**
+ * 判定是否为 ES Module 解析/动态导入失败类错误。
+ * 这类错误会被 React.lazy 与浏览器模块表在当前页生命周期内永久缓存，
+ * 单纯递增 resetKey 重建子树无法恢复，点击「重新加载」时必须整页刷新。
+ */
+export function isModuleLoadError(error: Error | null | undefined): boolean {
+  if (!error) return false;
+  if (error instanceof SyntaxError || error.name === 'SyntaxError' || error.name === 'ChunkLoadError') {
+    return true;
+  }
+  return MODULE_LOAD_ERROR_RE.test(error.message ?? '');
+}
+
 interface WindowErrorBoundaryProps {
   windowId?: string;
   /** 子树重建前的额外清理钩子（可选） */
   onReset?: () => void;
+  /** 模块加载/解析错误时触发整页刷新的钩子（默认 window.location.reload，便于单测注入） */
+  onFullReload?: () => void;
   children: React.ReactNode;
 }
 
@@ -156,7 +174,18 @@ export class WindowErrorBoundary extends React.Component<
   private handleReload = (): void => {
     // 双保险：disabled 按钮理论上点不到，键盘合成事件 / 测试路径仍要拦
     if (Date.now() < this.state.cooldownUntil) return;
+    const needsFullReload = isModuleLoadError(this.state.error);
     this.props.onReset?.();
+    if (needsFullReload) {
+      if (this.props.onFullReload) {
+        this.props.onFullReload();
+        return;
+      }
+      if (typeof window !== 'undefined' && typeof window.location?.reload === 'function') {
+        window.location.reload();
+        return;
+      }
+    }
     this.setState((s) => ({ error: null, resetKey: s.resetKey + 1 }));
   };
 

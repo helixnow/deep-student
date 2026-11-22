@@ -336,7 +336,7 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
           size="sm"
           onClick={() => handleToggleMinimize(false)}
           aria-label={t('miniChat.expandAria', { defaultValue: '展开伴读小窗' })}
-          className="h-auto gap-2.5 rounded-full border-border/35 bg-card px-3.5 py-2 text-foreground shadow-sm hover:bg-muted/50 active:scale-[0.98] transition-[background-color,border-color,color,transform,box-shadow] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
+          className="h-auto [@media(pointer:coarse)]:min-h-11 gap-2.5 rounded-full border-border/35 bg-card px-3.5 py-2 text-foreground shadow-sm hover:bg-muted/50 active:scale-[0.98] transition-[background-color,border-color,color,transform,box-shadow] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
         >
           <span
             data-testid="mini-chat-unread-pulse"
@@ -396,7 +396,7 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
             size="sm"
             onClick={handlePromote}
             data-testid="promote-to-main-chat-btn"
-            className="h-auto lg:h-auto gap-1 px-2 py-1 text-xs font-medium rounded border-border/35 bg-background hover:bg-muted/60 text-foreground active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
+            className="h-auto lg:h-auto [@media(pointer:coarse)]:min-h-11 gap-1 px-2 py-1 text-xs font-medium rounded border-border/35 bg-background hover:bg-muted/60 text-foreground active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
           >
             <span>{t('miniChat.promoteButton', { defaultValue: '迁入主会话' })}</span>
             <ArrowUpRight className="w-3 h-3" />
@@ -408,7 +408,7 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
             onClick={() => handleToggleMinimize(true)}
             aria-label={t('miniChat.minimizeAria', { defaultValue: '最小化伴读小窗' })}
             title={t('miniChat.minimizeHint', { defaultValue: '最小化伴读小窗（Esc）' })}
-            className="lg:h-6 lg:w-6 rounded border-transparent bg-transparent hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none"
+            className="lg:h-6 lg:w-6 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 rounded border-transparent bg-transparent hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors motion-reduce:transition-none"
           >
             <ArrowsInSimple className="w-3.5 h-3.5" />
           </DsButton>
@@ -475,7 +475,7 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
               size="sm"
               disabled={isSending}
               onClick={() => handlePresetClick(preset)}
-              className="h-auto lg:h-auto px-2.5 py-1 text-xs rounded-md border-border/35 bg-background hover:bg-muted/60 text-foreground active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
+              className="h-auto lg:h-auto [@media(pointer:coarse)]:min-h-11 px-2.5 py-1 text-xs rounded-md border-border/35 bg-background hover:bg-muted/60 text-foreground active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
             >
               {presetLabel}
             </DsButton>
@@ -513,7 +513,7 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
               size="icon"
               onClick={handleClearBoundAnchor}
               aria-label={t('miniChat.clearAnchorAria', { defaultValue: '移除上下文锚点' })}
-              className="lg:h-5 lg:w-5 rounded-full border-transparent bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50 shrink-0 transition-colors motion-reduce:transition-none"
+              className="lg:h-5 lg:w-5 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 rounded-full border-transparent bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50 shrink-0 transition-colors motion-reduce:transition-none"
             >
               <X className="w-3 h-3" />
             </DsButton>
@@ -548,7 +548,7 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
                   })
             }
             aria-label={t('miniChat.inputAria', { defaultValue: '伴读提问输入框' })}
-            className="flex-1 min-w-0 px-2.5 py-1.5 text-xs rounded-md border border-border/35 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-shadow duration-150 motion-reduce:transition-none"
+            className="flex-1 min-w-0 min-h-11 sm:min-h-0 px-2.5 py-1.5 text-base sm:text-xs rounded-md border border-border/35 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary transition-shadow duration-150 motion-reduce:transition-none"
           />
           <DsButton
             type="submit"
@@ -556,7 +556,7 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
             size="sm"
             aria-label={t('miniChat.sendAria', { defaultValue: '发送伴读提问' })}
             disabled={!inputValue.trim() || isSending}
-            className="h-auto lg:h-auto gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border-transparent !bg-primary !text-primary-foreground hover:!bg-primary/90 active:scale-[0.98] disabled:opacity-50 transition-[background-color,opacity,transform] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
+            className="h-auto min-h-11 sm:min-h-0 lg:h-auto [@media(pointer:coarse)]:min-h-11 gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border-transparent !bg-primary !text-primary-foreground hover:!bg-primary/90 active:scale-[0.98] disabled:opacity-50 transition-[background-color,opacity,transform] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
           >
             <PaperPlaneRight className="w-3 h-3" />
             <span>

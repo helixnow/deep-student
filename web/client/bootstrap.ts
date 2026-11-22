@@ -804,6 +804,50 @@ async function stageBrowserFile(file: File): Promise<string> {
   return data.path;
 }
 
+const STANDARD_IOS_SAFE_EXTENSIONS = new Set<string>([
+  '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.heic', '.heif',
+  '.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac',
+  '.mp4', '.mov', '.m4v', '.webm',
+  '.txt', '.md', '.csv', '.json', '.xml', '.html', '.htm',
+  '.zip', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+]);
+
+const PICKER_FOCUS_CANCEL_GRACE_MS = 400;
+
+function shouldSetInputAccept(exts: string[]): boolean {
+  if (exts.length === 0) return false;
+  if (detectClientOs() !== 'ios') return true;
+  // iOS / iPadOS 文件选择器遇到未知扩展名（如 .apkg / .dstu）会把整个目录置灰，
+  // 含非标准扩展名时放开 accept 由业务层校验文件名。
+  return exts.every((ext) => STANDARD_IOS_SAFE_EXTENSIONS.has(ext.toLowerCase()));
+}
+
+function copyTextViaExecCommand(text: string): boolean {
+  if (typeof document === 'undefined' || !document.body || typeof document.execCommand !== 'function') {
+    return false;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.top = '0';
+  textarea.style.left = '-9999px';
+  textarea.style.opacity = '0';
+  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  document.body.appendChild(textarea);
+  try {
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    textarea.remove();
+    previousFocus?.focus?.();
+  }
+}
+
 async function pickBrowserFiles(options: {
   multiple?: boolean;
   directory?: boolean;
@@ -824,19 +868,40 @@ async function pickBrowserFiles(options: {
         .flatMap((f) => (Array.isArray(f.extensions) ? f.extensions : []))
         .filter((ext) => ext !== '' && ext !== '*')
         .map((ext) => (ext.startsWith('.') ? ext : `.${ext}`));
-      if (exts.length > 0) input.accept = exts.join(',');
+      if (shouldSetInputAccept(exts)) input.accept = exts.join(',');
     }
 
     let settled = false;
+    let focusCancelTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearFocusFallback = () => {
+      if (focusCancelTimer !== null) {
+        clearTimeout(focusCancelTimer);
+        focusCancelTimer = null;
+      }
+      window.removeEventListener('focus', onWindowFocus);
+    };
     const finish = (value: string | string[] | null) => {
       if (settled) return;
       settled = true;
+      clearFocusFallback();
       input.remove();
       resolve(value);
+    };
+    const onWindowFocus = () => {
+      if (settled) return;
+      if (focusCancelTimer !== null) clearTimeout(focusCancelTimer);
+      // Safari 取消文件选择器时不触发 cancel 事件；延迟等待 change 窗口后再兜底解锁。
+      focusCancelTimer = setTimeout(() => {
+        focusCancelTimer = null;
+        if (!settled && (input.files?.length ?? 0) === 0) {
+          finish(null);
+        }
+      }, PICKER_FOCUS_CANCEL_GRACE_MS);
     };
 
     input.addEventListener('cancel', () => finish(null));
     input.addEventListener('change', () => {
+      clearFocusFallback();
       const selected = Array.from(input.files ?? []);
       if (selected.length === 0) {
         finish(null);
@@ -847,12 +912,14 @@ async function pickBrowserFiles(options: {
         (error: unknown) => {
           if (settled) return;
           settled = true;
+          clearFocusFallback();
           input.remove();
           reject(error);
         },
       );
     });
 
+    window.addEventListener('focus', onWindowFocus);
     document.body.appendChild(input);
     input.click();
   });
@@ -1086,6 +1153,7 @@ export function bootstrapWebClient(): BootstrappedWebClient {
   };
 
   const pendingSavesByPath = new Map<string, { exportId: string; fileName: string }>();
+  const pendingBackupExportJobs = new Map<string, string>();
   const openRidToPath = new Map<number, string>();
   const pendingOpenCallbacks = new Map<number, string>();
 
@@ -1155,35 +1223,36 @@ export function bootstrapWebClient(): BootstrappedWebClient {
     invalidateReadCache();
   });
 
+  const OUTBOUND_QUEUE_TIMEOUT_MS = 15_000;
+  const OUTBOUND_QUEUE_MAX_SIZE = 200;
+  const RESUME_HEALTH_PROBE_TIMEOUT_MS = 4_000;
+  const RESUME_HALF_OPEN_HIDDEN_MS = 25_000;
+
+  interface OutboundQueueItem {
+    payload: string | ArrayBuffer;
+    invoke?: InFlightInvoke;
+    read?: InFlightRead;
+    enqueuedAt: number;
+    timeoutId?: ReturnType<typeof setTimeout>;
+  }
+
   let ws: WebSocket | null = null;
   let wsOpen = false;
   let hasEverOpened = false;
   let reconnectAttempt = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   let authProbeInFlight = false;
+  let resumeProbeInFlight = false;
+  let hiddenAt: number | null = null;
+  let lastWsMessageAt = 0;
   // 首次登录闸门未完成前不允许任何 online/visibility 事件提前开 socket：
   // 服务端会 401 拒升级，而 socket error 会把离线闸门盖在令牌表单上。
   let authenticationReady = false;
-  const outboundQueue: Array<{
-    payload: string | ArrayBuffer;
-    invoke?: InFlightInvoke;
-    read?: InFlightRead;
-  }> = [];
+  const outboundQueue: OutboundQueueItem[] = [];
   let resolveInitialConnect!: () => void;
   const connected = new Promise<void>((resolve) => {
     resolveInitialConnect = resolve;
   });
-
-  const sendRawToServer = (frame: string | Uint8Array, invoke?: InFlightInvoke, read?: InFlightRead) => {
-    const payload = toWsPayload(frame);
-    if (ws && wsOpen && ws.readyState === WebSocket.OPEN) {
-      ws.send(payload);
-      if (invoke) inFlightInvokes.set(invoke.callback, { ...invoke, socket: ws });
-      if (read) read.socket = ws;
-    } else {
-      outboundQueue.push({ payload, invoke, read });
-    }
-  };
 
   const emitInvokeError = (entry: { callback: number; error: number }, message: string) => {
     emitToBridge({
@@ -1192,6 +1261,68 @@ export function bootstrapWebClient(): BootstrappedWebClient {
       otherId: entry.callback,
       body: encodeJsonBody(message),
     });
+  };
+
+  const rejectQueuedItem = (item: OutboundQueueItem, reason: string): void => {
+    if (item.timeoutId !== undefined) {
+      clearTimeout(item.timeoutId);
+      item.timeoutId = undefined;
+    }
+    const settled = new Set<number>();
+    const fail = (entry: { callback: number; error: number }) => {
+      if (settled.has(entry.callback) || settled.has(entry.error)) return;
+      settled.add(entry.callback);
+      settled.add(entry.error);
+      emitInvokeError(entry, reason);
+    };
+    if (item.invoke) {
+      const handler = pendingListenCallbacks.get(item.invoke.callback);
+      pendingListenCallbacks.delete(item.invoke.callback);
+      if (handler !== undefined) {
+        for (const [id, rec] of activeListeners) {
+          if (rec.handlerId === handler) activeListeners.delete(id);
+        }
+      }
+      fail(item.invoke);
+    }
+    if (item.read) {
+      inflightReads.delete(item.read.genKey);
+      inflightReadByCallback.delete(item.read.callback);
+      inflightReadByCallback.delete(item.read.error);
+      fail(item.read);
+      for (const waiter of item.read.waiters) fail(waiter);
+    }
+  };
+
+  const sendRawToServer = (frame: string | Uint8Array, invoke?: InFlightInvoke, read?: InFlightRead) => {
+    const payload = toWsPayload(frame);
+    if (ws && wsOpen && ws.readyState === WebSocket.OPEN) {
+      ws.send(payload);
+      if (invoke) inFlightInvokes.set(invoke.callback, { ...invoke, socket: ws });
+      if (read) read.socket = ws;
+    } else {
+      while (outboundQueue.length >= OUTBOUND_QUEUE_MAX_SIZE) {
+        const evicted = outboundQueue.shift()!;
+        rejectQueuedItem(evicted, '请求队列已满，连接尚未恢复，请重试');
+      }
+      const item: OutboundQueueItem = {
+        payload,
+        invoke,
+        read,
+        enqueuedAt: Date.now(),
+      };
+      if (invoke || read) {
+        item.timeoutId = setTimeout(() => {
+          item.timeoutId = undefined;
+          const idx = outboundQueue.indexOf(item);
+          if (idx >= 0) {
+            outboundQueue.splice(idx, 1);
+            rejectQueuedItem(item, '连接超时，请求未能发送，请重试');
+          }
+        }, OUTBOUND_QUEUE_TIMEOUT_MS);
+      }
+      outboundQueue.push(item);
+    }
   };
 
   /**
@@ -1374,8 +1505,17 @@ export function bootstrapWebClient(): BootstrappedWebClient {
         );
       }
       // Restore progress subscriptions before a queued command can emit events.
+      const now = Date.now();
       while (outboundQueue.length > 0) {
         const next = outboundQueue.shift()!;
+        if (next.timeoutId !== undefined) {
+          clearTimeout(next.timeoutId);
+          next.timeoutId = undefined;
+        }
+        if ((next.invoke || next.read) && now - next.enqueuedAt > OUTBOUND_QUEUE_TIMEOUT_MS) {
+          rejectQueuedItem(next, '连接超时，请求未能发送，请重试');
+          continue;
+        }
         socket.send(next.payload);
         if (next.invoke) inFlightInvokes.set(next.invoke.callback, { ...next.invoke, socket });
         if (next.read) next.read.socket = socket;
@@ -1383,6 +1523,7 @@ export function bootstrapWebClient(): BootstrappedWebClient {
     });
 
     socket.addEventListener('message', (event) => {
+      lastWsMessageAt = Date.now();
       const rawData =
         typeof event.data === 'string'
           ? event.data
@@ -1419,6 +1560,32 @@ export function bootstrapWebClient(): BootstrappedWebClient {
         // Keep the ID captured by Tauri's unlisten closure stable across reconnects.
         decoded = { ...decoded, eventId: rec.clientEventId };
       } else if (decoded.type === 'emit-js') {
+        if (decoded.event === 'backup-job-progress' && pendingBackupExportJobs.size > 0) {
+          try {
+            const payload = JSON.parse(decoded.payload) as {
+              job_id?: unknown;
+              status?: unknown;
+              result?: { success?: unknown } | null;
+            };
+            const jobId = typeof payload?.job_id === 'string' ? payload.job_id : null;
+            if (jobId && pendingBackupExportJobs.has(jobId)) {
+              const trackedPath = pendingBackupExportJobs.get(jobId)!;
+              if (payload.status === 'completed') {
+                pendingBackupExportJobs.delete(jobId);
+                if (payload.result?.success !== false) {
+                  maybeTriggerSavedExport(trackedPath);
+                } else {
+                  pendingSavesByPath.delete(trackedPath);
+                }
+              } else if (payload.status === 'failed' || payload.status === 'cancelled') {
+                pendingBackupExportJobs.delete(jobId);
+                pendingSavesByPath.delete(trackedPath);
+              }
+            }
+          } catch {
+            /* ignore malformed progress payload */
+          }
+        }
         decoded = { ...decoded, ids: decoded.ids.flatMap((id) => {
           const clientId = serverEventToClient.get(id);
           return clientId === undefined ? [] : [clientId];
@@ -1697,28 +1864,58 @@ export function bootstrapWebClient(): BootstrappedWebClient {
     if (cmd.startsWith('plugin:clipboard-manager|')) {
       const sub = cmd.slice('plugin:clipboard-manager|'.length);
       const args = parseJsonArgs(msg);
+      const clipboard = typeof navigator !== 'undefined' ? navigator.clipboard : undefined;
       if (sub === 'write_text') {
         const text = typeof args.text === 'string' ? args.text : '';
-        void navigator.clipboard.writeText(text).then(
-          () => replyLocal(msg, true, null),
-          (err: unknown) => replyLocal(msg, false, err instanceof Error ? err.message : String(err)),
-        );
+        if (clipboard && typeof clipboard.writeText === 'function') {
+          void clipboard.writeText(text).then(
+            () => replyLocal(msg, true, null),
+            (err: unknown) => {
+              if (copyTextViaExecCommand(text)) {
+                replyLocal(msg, true, null);
+              } else {
+                replyLocal(msg, false, err instanceof Error ? err.message : String(err));
+              }
+            },
+          );
+        } else if (copyTextViaExecCommand(text)) {
+          replyLocal(msg, true, null);
+        } else {
+          replyLocal(msg, false, '当前浏览器环境不支持剪贴板写入');
+        }
         return true;
       }
       if (sub === 'read_text') {
-        void navigator.clipboard.readText().then(
+        if (!clipboard || typeof clipboard.readText !== 'function') {
+          replyLocal(msg, true, '');
+          return true;
+        }
+        void clipboard.readText().then(
           (text) => replyLocal(msg, true, text),
           (err: unknown) => replyLocal(msg, false, err instanceof Error ? err.message : String(err)),
         );
         return true;
       }
       if (sub === 'clear') {
-        void navigator.clipboard.writeText('').then(
-          () => replyLocal(msg, true, null),
-          () => replyLocal(msg, true, null),
-        );
+        if (clipboard && typeof clipboard.writeText === 'function') {
+          void clipboard.writeText('').then(
+            () => replyLocal(msg, true, null),
+            () => replyLocal(msg, true, null),
+          );
+        } else {
+          replyLocal(msg, true, null);
+        }
         return true;
       }
+    }
+
+    if (cmd === 'mobile_export_picked_document') {
+      const args = parseJsonArgs(msg);
+      if (typeof args.path === 'string') {
+        maybeTriggerSavedExport(args.path);
+      }
+      replyLocal(msg, true, { method: 'download' });
+      return true;
     }
 
     if (cmd.startsWith('plugin:opener|')) {
@@ -1758,20 +1955,62 @@ export function bootstrapWebClient(): BootstrappedWebClient {
       }
       return;
     }
-    if (msg.cmd === 'save_text_to_file' || msg.cmd === 'copy_file') {
+    if (
+      msg.cmd === 'save_text_to_file' ||
+      msg.cmd === 'copy_file' ||
+      msg.cmd === 'export_multi_template_apkg'
+    ) {
       const args = parseJsonArgs(msg);
       const targetPath =
         typeof args.path === 'string'
           ? args.path
           : typeof args.destPath === 'string'
             ? args.destPath
-            : null;
+            : typeof args.outputPath === 'string'
+              ? args.outputPath
+              : typeof args.output_path === 'string'
+                ? args.output_path
+                : null;
       if (targetPath && pendingSavesByPath.has(targetPath)) {
         const origCb = msg.callback;
         const watcher = (incoming: MainToRenderer) => {
           if (incoming.type === 'result' && (incoming.callbackId === origCb || incoming.otherId === origCb)) {
             bridgeSubscribers.delete(watcher);
             if (incoming.callbackId === origCb) maybeTriggerSavedExport(targetPath);
+          }
+        };
+        bridgeSubscribers.add(watcher);
+      }
+      return;
+    }
+    if (
+      msg.cmd === 'data_governance_backup_and_export_zip' ||
+      msg.cmd === 'data_governance_export_zip'
+    ) {
+      const args = parseJsonArgs(msg);
+      const targetPath =
+        typeof args.outputPath === 'string'
+          ? args.outputPath
+          : typeof args.output_path === 'string'
+            ? args.output_path
+            : null;
+      if (targetPath && pendingSavesByPath.has(targetPath)) {
+        const origCb = msg.callback;
+        const watcher = (incoming: MainToRenderer) => {
+          if (incoming.type === 'result' && (incoming.callbackId === origCb || incoming.otherId === origCb)) {
+            bridgeSubscribers.delete(watcher);
+            if (incoming.callbackId === origCb && incoming.body.kind === 'json') {
+              try {
+                const parsed = JSON.parse(incoming.body.data) as { job_id?: unknown };
+                if (typeof parsed?.job_id === 'string') {
+                  pendingBackupExportJobs.set(parsed.job_id, targetPath);
+                }
+              } catch {
+                /* ignore malformed job response */
+              }
+            } else {
+              pendingSavesByPath.delete(targetPath);
+            }
           }
         };
         bridgeSubscribers.add(watcher);
@@ -2018,6 +2257,73 @@ export function bootstrapWebClient(): BootstrappedWebClient {
     true,
   );
 
+  const teardownStaleSocket = (stale: WebSocket, reason: string): void => {
+    if (ws === stale) {
+      ws = null;
+      wsOpen = false;
+      serverEventToClient.clear();
+      replayedListeners.clear();
+      for (const rec of activeListeners.values()) rec.serverEventId = undefined;
+    }
+    rejectPendingInvokes(reason, stale);
+    try {
+      stale.close();
+    } catch {
+      /* 忽略半开连接关闭异常 */
+    }
+  };
+
+  const probeHalfOpenSocketOnResume = async (wasHiddenMs: number): Promise<void> => {
+    if (resumeProbeInFlight || !authenticationReady || isBrowserOffline()) return;
+    const probedSocket = ws;
+    if (!probedSocket || !wsOpen) return;
+    if (probedSocket.readyState !== WebSocket.OPEN) {
+      teardownStaleSocket(probedSocket, 'WebSocket 连接已失效，正在重连');
+      triggerImmediateReconnect();
+      return;
+    }
+
+    resumeProbeInFlight = true;
+    const probeStartedAt = Date.now();
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const abortTimer = controller
+      ? setTimeout(() => controller.abort(), RESUME_HEALTH_PROBE_TIMEOUT_MS)
+      : null;
+
+    try {
+      const res = await fetch('/api/health', {
+        method: 'GET',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        ...(controller ? { signal: controller.signal } : {}),
+      });
+      if (ws !== probedSocket) return;
+      if (res.status === 401) {
+        teardownStaleSocket(probedSocket, '访问会话已过期，请重新验证');
+        void probeAuthAfterDisconnect();
+        return;
+      }
+      if (!res.ok) {
+        teardownStaleSocket(probedSocket, '服务器连接异常，正在重连');
+        scheduleReconnect();
+        return;
+      }
+      // 长时间后台挂起后 TCP/WS 往往处于半开态（readyState 仍为 OPEN）：
+      // 若期间没有收到任何 WS 帧，主动回收并立即重建连接，避免下一次点击长挂。
+      if (wasHiddenMs >= RESUME_HALF_OPEN_HIDDEN_MS && lastWsMessageAt < probeStartedAt) {
+        teardownStaleSocket(probedSocket, '后台恢复重建连接，请重试');
+        triggerImmediateReconnect();
+      }
+    } catch {
+      if (ws !== probedSocket) return;
+      teardownStaleSocket(probedSocket, '连接探活超时，正在重连');
+      scheduleReconnect();
+    } finally {
+      if (abortTimer !== null) clearTimeout(abortTimer);
+      resumeProbeInFlight = false;
+    }
+  };
+
   // 网络恢复 / 回到前台：立刻重连，不等退避计时器；明确离线时立刻断开半开连接并展示断网提示
   window.addEventListener('online', triggerImmediateReconnect);
   window.addEventListener('offline', () => {
@@ -2027,25 +2333,26 @@ export function bootstrapWebClient(): BootstrappedWebClient {
     }
     // 浏览器明确断网时 TCP/WS 常处于半开态（wsOpen 仍为 true）；主动回收半开连接并立刻给出离线反馈
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-      const stale = ws;
-      ws = null;
-      wsOpen = false;
-      serverEventToClient.clear();
-      replayedListeners.clear();
-      for (const rec of activeListeners.values()) rec.serverEventId = undefined;
-      rejectPendingInvokes('网络已断开，请重试', stale);
-      try {
-        stale.close();
-      } catch {
-        /* 忽略半开连接关闭异常 */
-      }
+      teardownStaleSocket(ws, '网络已断开，请重试');
     }
     reconnectAttempt = Math.max(1, reconnectAttempt);
     if (hasEverOpened) showOfflineWaiting(triggerImmediateReconnect);
     else if (!authProbeInFlight) showOfflineBootOverlay(triggerImmediateReconnect);
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && !wsOpen && !isBrowserOffline()) triggerImmediateReconnect();
+    if (document.visibilityState === 'hidden') {
+      hiddenAt = Date.now();
+      return;
+    }
+    if (document.visibilityState !== 'visible') return;
+    const wasHiddenMs = hiddenAt !== null ? Math.max(0, Date.now() - hiddenAt) : 0;
+    hiddenAt = null;
+    if (isBrowserOffline()) return;
+    if (!wsOpen) {
+      triggerImmediateReconnect();
+    } else {
+      void probeHalfOpenSocketOnResume(wasHiddenMs);
+    }
   });
 
   void ensureAuthenticated().then(() => {

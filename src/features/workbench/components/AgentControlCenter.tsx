@@ -228,12 +228,20 @@ export interface AgentControlDockEntryProps {
   tabIndex: number;
   buttonRef?: (element: HTMLButtonElement | null) => void;
   onFocus?: () => void;
+  tipManaged?: boolean;
+  tipActive?: boolean;
+  onTipPointerEnter?: () => void;
+  onTipPointerLeave?: () => void;
 }
 
 export function AgentControlDockEntry({
   tabIndex,
   buttonRef,
   onFocus,
+  tipManaged,
+  tipActive,
+  onTipPointerEnter,
+  onTipPointerLeave,
 }: AgentControlDockEntryProps) {
   const { t } = useTranslation('workbench');
   const [open, setOpen] = React.useState(false);
@@ -439,7 +447,12 @@ export function AgentControlDockEntry({
     <div
       data-testid={`wb-dock-item-${AGENT_CONTROL_DOCK_ID}`}
       data-wb-dock-item-wrap=""
+      data-tip-managed={tipManaged ? 'true' : undefined}
+      data-tip-active={tipManaged && tipActive && !open ? 'true' : undefined}
       className="wb-dock-item-wrap relative flex flex-col items-center"
+      onPointerEnter={onTipPointerEnter}
+      onPointerLeave={onTipPointerLeave}
+      onPointerCancel={onTipPointerLeave}
     >
       <div className="wb-dock-mag" data-wb-dock-mag-item={AGENT_CONTROL_DOCK_ID}>
         <div className="wb-dock-bounce">
@@ -462,11 +475,13 @@ export function AgentControlDockEntry({
                   aria-hidden="true"
                   className="wb-dock-item-icon pointer-events-none flex h-full w-full items-center justify-center"
                 >
-                  <img
-                    src="/app-icon.png"
-                    alt=""
-                    className="wb-agent-control-app-icon"
-                  />
+                  <span className="wb-dock-utility-tile wb-dock-utility-tile-agent">
+                    <img
+                      src="/app-icon.png"
+                      alt=""
+                      className="wb-agent-control-app-icon"
+                    />
+                  </span>
                 </span>
                 {(killSwitch.tripped || showAutomationsPausedNotice) && (
                   <span

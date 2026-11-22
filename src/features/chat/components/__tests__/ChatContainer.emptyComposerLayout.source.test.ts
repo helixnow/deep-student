@@ -107,11 +107,11 @@ describe('ChatContainer empty composer layout source contract', () => {
     expect(emptyFadeRule).toContain('content: none;');
   });
 
-  it('keeps empty mobile conversations docked at the bottom and autofocuses the keyboard-safe input', () => {
+  it('keeps empty mobile conversations docked at the bottom without forcing keyboard autofocus over the welcome state', () => {
     expect(containerSource).toContain("import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';");
     expect(containerSource).toContain('const isMobile = mobileLayout?.isMobile ??');
     expect(containerSource).toContain('const shouldUseDesktopEmptyComposerLayout = shouldUseEmptyComposerLayout && !isMobile;');
-    expect(containerSource).toContain('const shouldAutoFocusMobileEmptyComposer = shouldUseEmptyComposerLayout && isMobile;');
+    expect(containerSource).toContain('const shouldAutoFocusMobileEmptyComposer = false;');
     expect(containerSource).toContain('shouldUseDesktopEmptyComposerLayout ? (');
     expect(containerSource).toContain("renderInputBar(undefined, 'docked', shouldAutoFocusMobileEmptyComposer)");
 
@@ -125,10 +125,11 @@ describe('ChatContainer empty composer layout source contract', () => {
     expect(inputBarUiSource).toContain('keyboardInsetPx');
   });
 
-  it('keeps mobile empty state quiet by default and reveals TodayReviewHint via centered logo toggle', () => {
-    expect(containerSource).toContain('useTodayReviewHintAvailability(shouldAutoFocusMobileEmptyComposer)');
-    expect(containerSource).toContain('emptyStateCardAvailable={shouldAutoFocusMobileEmptyComposer && mobileReviewHintAvailability.hasContent}');
-    expect(containerSource).toContain('renderEmptyStateCard={shouldAutoFocusMobileEmptyComposer ? renderMobileTodayReviewHint : undefined}');
+  it('keeps both desktop and mobile empty states quiet by default and reveals TodayReviewHint via centered logo toggle', () => {
+    expect(containerSource).toContain('useTodayReviewHintAvailability(shouldUseEmptyComposerLayout)');
+    expect(containerSource).toContain('emptyStateCardAvailable={shouldUseEmptyComposerLayout && reviewHintAvailability.hasContent}');
+    expect(containerSource).toContain('renderEmptyStateCard={shouldUseEmptyComposerLayout ? renderEmptyTodayReviewHint : undefined}');
     expect(containerSource).toContain('<TodayReviewHint embedded />');
+    expect(containerSource).not.toContain('<TodayReviewHint />');
   });
 });

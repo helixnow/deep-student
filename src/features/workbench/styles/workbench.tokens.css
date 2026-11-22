@@ -26,16 +26,20 @@
 @import './motion.css';
 
 :where(:root) {
-  /* ==== 玻璃材质（薄玻璃：中 blur + 低 fill + 强 rim/sheen） ========= */
-  /* Regular fill 落在 0.15–0.35；strong 略抬以保证 Dock/菜单可读 */
-  --wb-glass-bg: hsl(var(--card) / 0.20);
-  --wb-glass-bg-strong: hsl(var(--card) / 0.28);
-  /* Regular ~16–24；附 brightness 提亮散射，减牛奶磨砂感 */
+  /* ==== 玻璃材质（macOS 27 Liquid Glass：--wb-glass-clarity 0–100 连续调节） ==== */
+  /* 0 = 磨砂护眼，55 = 平衡默认，100 = 极透液态玻璃（由 liquidGlassAppearanceStore 同步） */
+  --wb-glass-clarity: 55;
+  --wb-glass-clarity-ratio: calc(var(--wb-glass-clarity) / 100);
+  /* Regular fill 随 clarity 平滑过渡；strong 略抬以保证 Dock/菜单可读 */
+  --wb-glass-bg: hsl(var(--card) / calc(0.42 - var(--wb-glass-clarity-ratio) * 0.32));
+  --wb-glass-bg-strong: hsl(var(--card) / calc(0.54 - var(--wb-glass-clarity-ratio) * 0.36));
+  /* Regular ~12–26px；附 brightness 提亮散射，减牛奶磨砂感 */
   --wb-glass-blur: blur(18px) saturate(1.8) brightness(1.08);
   /* Dock / 中央 overlay 厚一档，仍远低于旧 42px */
   --wb-glass-blur-strong: blur(24px) saturate(1.85) brightness(1.08);
-  /* 顶缘 specular：~0.55，避免旧 0.72 塑料亮 */
-  --wb-glass-highlight: rgba(255, 255, 255, 0.55);
+  /* 液态玻璃边缘高光 rim：随 clarity 动态增强，--wb-glass-highlight 与之同源 */
+  --wb-glass-rim: rgba(255, 255, 255, calc(0.28 + var(--wb-glass-clarity-ratio) * 0.44));
+  --wb-glass-highlight: var(--wb-glass-rim);
   /* 微噪点 grain（去饱和 SVG turbulence，平铺），并入 sheen 栈；单独暴露供自定义组合 */
   --wb-glass-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='128' height='128'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='128' height='128' filter='url(%23n)' opacity='0.045'/%3E%3C/svg%3E");
   /* 多层光学栈：斜向主光泽 + 底缘折射回光 + 左右缘立体光 + grain。
@@ -161,7 +165,7 @@
   --wb-traffic-glyph: rgba(0, 0, 0, 0.55);
 
   /* ==== Dock ======================================================== */
-  --wb-dock-bg: var(--wb-glass-bg-strong);
+  --wb-dock-bg: hsl(var(--card) / calc(0.50 - var(--wb-glass-clarity-ratio) * 0.34));
   --wb-dock-blur: var(--wb-glass-blur-strong);
   --wb-dock-radius: var(--wb-radius-2xl);
   --wb-dock-border: var(--wb-glass-border);
@@ -224,10 +228,10 @@
    * the single 40px layout boundary for every window arrangement. */
   --wb-menubar-height: 40px;
 
-  /* 对标 Tahoe 透明菜单栏：fill 降到近透明（保留 blur 维持文字可读），
-   * 底缘分隔弱化；reduced/minimal 档在下方降级块单独回填实底 */
-  --wb-menubar-bg: hsl(var(--card) / 0.10);
-  --wb-menubar-border: color-mix(in hsl, hsl(var(--border)) 30%, transparent 70%);
+  /* 对标 Tahoe / macOS 27 透明菜单栏：fill 随 clarity 动态调节，底缘边界极致柔化使壁纸自然延展至顶部；
+   * reduced/minimal 档在下方降级块单独回填实底 */
+  --wb-menubar-bg: hsl(var(--card) / calc(0.26 - var(--wb-glass-clarity-ratio) * 0.22));
+  --wb-menubar-border: color-mix(in hsl, hsl(var(--border)) 12%, transparent 88%);
   --wb-menubar-sheen: var(--wb-glass-sheen);
   --wb-menubar-blur: var(--wb-glass-blur);
   --wb-menubar-fg: color-mix(in hsl, hsl(var(--foreground)) 78%, transparent 22%);
@@ -279,12 +283,14 @@
 
 /* ==== 暗色主题（对齐 theme-colors.css 的 :root.dark 机制） =========== */
 :root.dark {
-  /* 暗色 fill 略高于亮色，保图标/菜单对比；仍远薄于旧 0.50/0.64 */
-  --wb-glass-bg: hsl(var(--card) / 0.32);
-  --wb-glass-bg-strong: hsl(var(--card) / 0.42);
+  /* 暗色 fill 略高于亮色，保图标/菜单对比；仍随 --wb-glass-clarity 连续调节 */
+  --wb-glass-bg: hsl(var(--card) / calc(0.56 - var(--wb-glass-clarity-ratio) * 0.38));
+  --wb-glass-bg-strong: hsl(var(--card) / calc(0.66 - var(--wb-glass-clarity-ratio) * 0.40));
+  --wb-dock-bg: hsl(var(--card) / calc(0.62 - var(--wb-glass-clarity-ratio) * 0.38));
   --wb-glass-blur: blur(18px) saturate(1.75) brightness(0.92);
   --wb-glass-blur-strong: blur(24px) saturate(1.8) brightness(0.92);
-  --wb-glass-highlight: rgba(255, 255, 255, 0.22);
+  --wb-glass-rim: rgba(255, 255, 255, calc(0.14 + var(--wb-glass-clarity-ratio) * 0.22));
+  --wb-glass-highlight: var(--wb-glass-rim);
   --wb-glass-sheen:
     linear-gradient(
       118deg,
@@ -353,9 +359,9 @@
   --wb-menubar-fg: color-mix(in hsl, hsl(var(--foreground)) 82%, transparent 18%);
   --wb-menubar-fg-strong: hsl(var(--foreground));
   --wb-menubar-item-hover-bg: var(--interactive-hover, rgba(255, 255, 255, 0.10));
-  /* 暗色透明菜单栏：fill 略高于亮色保对比 */
-  --wb-menubar-bg: hsl(var(--card) / 0.18);
-  --wb-menubar-border: color-mix(in hsl, hsl(var(--border)) 40%, transparent 60%);
+  /* 暗色透明菜单栏：fill 略高于亮色保对比，底缘柔化 */
+  --wb-menubar-bg: hsl(var(--card) / calc(0.36 - var(--wb-glass-clarity-ratio) * 0.28));
+  --wb-menubar-border: color-mix(in hsl, hsl(var(--border)) 18%, transparent 82%);
 
   --wb-snap-stroke: color-mix(in hsl, hsl(var(--primary)) 80%, transparent 20%);
   --wb-snap-fill: hsl(var(--primary) / 0.10);
@@ -404,6 +410,7 @@
 :root[data-wb-material='reduced'] {
   --wb-glass-bg: color-mix(in hsl, hsl(var(--card)) 94%, transparent 6%);
   --wb-glass-bg-strong: color-mix(in hsl, hsl(var(--card)) 97%, transparent 3%);
+  --wb-dock-bg: var(--wb-glass-bg-strong);
   --wb-titlebar-bg: color-mix(in hsl, hsl(var(--card)) 92%, transparent 8%);
   --wb-expose-backdrop-bg: hsl(var(--background) / 0.82);
   /* 透明菜单栏在无 blur 档不可读：回填实底 */
@@ -414,6 +421,8 @@
 :root[data-wb-material='minimal'] {
   --wb-glass-bg: hsl(var(--card));
   --wb-glass-bg-strong: hsl(var(--card));
+  --wb-dock-bg: hsl(var(--card));
+  --wb-glass-rim: transparent;
   --wb-glass-highlight: transparent;
   --wb-glass-sheen: none;
   --wb-glass-grain: none;
@@ -464,6 +473,7 @@ html[data-wb-material-switching] .wb-menubar::before {
     --wb-expose-backdrop-blur: none;
     --wb-glass-bg: color-mix(in hsl, hsl(var(--card)) 94%, transparent 6%);
     --wb-glass-bg-strong: color-mix(in hsl, hsl(var(--card)) 97%, transparent 3%);
+    --wb-dock-bg: var(--wb-glass-bg-strong);
     --wb-menubar-bg: var(--wb-glass-bg);
     --wb-menubar-border: var(--wb-glass-border);
   }

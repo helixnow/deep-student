@@ -11,6 +11,7 @@ import {
   dismissMindmapSuggestion,
   rejectMindmapSuggestionBranch,
   revertLastAcceptedMindmapSuggestion,
+  type MindmapSuggestionApplyResult,
 } from '@/stores/mindmapSuggestionStore';
 import {
   CHECKPOINT_TTL_MS,
@@ -84,22 +85,22 @@ export const MindmapAgentSuggestionBar: React.FC<MindmapAgentSuggestionBarProps>
 
   const activeCheckpoint = hasSubsequentManualEdit ? null : rawCheckpoint;
 
-  const handleAcceptAll = useCallback(async () => {
-    if (!suggestion || applying) return;
-    setApplying(true);
-    try {
-      const result = await acceptMindmapSuggestion(suggestion.id, mindmapId);
-      if (!result) return;
+  const notifyApplyResult = useCallback(
+    (result: MindmapSuggestionApplyResult, options?: { showSuccess?: boolean }) => {
       if (result.failed.length > 0) {
         showGlobalNotification(
           'warning',
-          t('mindmap:agent.suggestion_bar.accept_partial', {
-            applied: result.applied,
-            failed: result.failed.length,
-          }),
-          result.failed.slice(0, 3).join('\n'),
+          result.applied === 0
+            ? result.failed[0]
+            : t('mindmap:agent.suggestion_bar.accept_partial', {
+                applied: result.applied,
+                failed: result.failed.length,
+              }),
+          result.applied === 0 && result.failed.length <= 1
+            ? undefined
+            : result.failed.slice(0, 3).join('\n'),
         );
-      } else {
+      } else if (options?.showSuccess) {
         showGlobalNotification(
           'success',
           t('mindmap:agent.suggestion_bar.accepted', {
@@ -107,13 +108,24 @@ export const MindmapAgentSuggestionBar: React.FC<MindmapAgentSuggestionBarProps>
           }),
         );
       }
-      if (!result.saved) {
+      if (result.applied > 0 && !result.saved) {
         showGlobalNotification('warning', t('mindmap:agent.suggestion_bar.save_failed'));
       }
+    },
+    [t],
+  );
+
+  const handleAcceptAll = useCallback(async () => {
+    if (!suggestion || applying) return;
+    setApplying(true);
+    try {
+      const result = await acceptMindmapSuggestion(suggestion.id, mindmapId);
+      if (!result) return;
+      notifyApplyResult(result, { showSuccess: true });
     } finally {
       setApplying(false);
     }
-  }, [suggestion, applying, mindmapId, t]);
+  }, [suggestion, applying, mindmapId, notifyApplyResult]);
 
   const handleDismissPending = useCallback(() => {
     dismissMindmapSuggestion(mindmapId);
@@ -125,22 +137,25 @@ export const MindmapAgentSuggestionBar: React.FC<MindmapAgentSuggestionBarProps>
       setApplying(true);
       try {
         const result = await acceptMindmapSuggestionBranch(suggestion.id, mindmapId, branchId);
-        if (result && !result.saved) {
-          showGlobalNotification('warning', t('mindmap:agent.suggestion_bar.save_failed'));
-        }
+        if (!result) return;
+        notifyApplyResult(result, { showSuccess: true });
       } finally {
         setApplying(false);
       }
     },
-    [suggestion, applying, mindmapId, t],
+    [suggestion, applying, mindmapId, notifyApplyResult],
   );
 
   const handleRejectBranch = useCallback(
     (branchId: string) => {
       if (!suggestion || applying) return;
       rejectMindmapSuggestionBranch(suggestion.id, mindmapId, branchId);
+      showGlobalNotification(
+        'info',
+        t('mindmap:agent.suggestion_bar.branch_rejected', '已放弃该分支建议'),
+      );
     },
-    [suggestion, applying, mindmapId],
+    [suggestion, applying, mindmapId, t],
   );
 
   const handleRevertCheckpoint = useCallback(async () => {
@@ -227,9 +242,10 @@ export const MindmapAgentSuggestionBar: React.FC<MindmapAgentSuggestionBarProps>
             </span>
           )}
           {suggestion.branches.length > 0 && (
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded-full border border-border/35 px-2 py-0.5 text-[11px] font-mono tabular-nums text-[var(--mm-text-secondary)] hover:bg-[var(--mm-celadon-pill-bg)] transition-colors"
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="h-auto rounded-full border border-border/35 px-2 py-0.5 text-2xs font-mono tabular-nums text-[var(--mm-text-secondary)] hover:bg-[var(--mm-celadon-pill-bg)] transition-colors motion-reduce:transition-none"
               aria-expanded={isBranchListExpanded}
               onClick={() => setManualExpanded(!isBranchListExpanded)}
             >
@@ -245,12 +261,12 @@ export const MindmapAgentSuggestionBar: React.FC<MindmapAgentSuggestionBarProps>
                   isBranchListExpanded && 'rotate-180',
                 )}
               />
-            </button>
+            </DsButton>
           )}
           <div className="ml-auto flex shrink-0 items-center gap-1">
             <DsButton
               variant="ghost"
-              className="ds-btn h-6 px-2 text-xs shrink-0 text-[var(--mm-primary)] hover:bg-[var(--mm-celadon-pill-bg-hover)]"
+              className="ds-btn h-6 px-2 text-xs shrink-0 text-[var(--mm-primary)] hover:bg-[var(--mm-celadon-pill-bg-hover)] transition-colors motion-reduce:transition-none"
               disabled={applying}
               onClick={() => {
                 void handleAcceptAll();
@@ -261,7 +277,7 @@ export const MindmapAgentSuggestionBar: React.FC<MindmapAgentSuggestionBarProps>
             </DsButton>
             <DsButton
               variant="ghost"
-              className="ds-btn h-6 px-2 text-xs shrink-0 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-celadon-pill-bg)]"
+              className="ds-btn h-6 px-2 text-xs shrink-0 text-[var(--mm-text-secondary)] hover:bg-[var(--mm-celadon-pill-bg)] transition-colors motion-reduce:transition-none"
               disabled={applying}
               onClick={handleDismissPending}
               aria-label={t('graph_conflict:mindmapGhost.revertAll')}
@@ -292,23 +308,24 @@ export const MindmapAgentSuggestionBar: React.FC<MindmapAgentSuggestionBarProps>
                   )}
                   aria-hidden="true"
                 />
-                <span className="shrink-0 text-[11px] text-[var(--mm-text-secondary)]">
+                <span className="shrink-0 text-2xs text-[var(--mm-text-secondary)]">
                   {formatBranchKind(branch.kind)}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[var(--mm-text)]">
                   {branch.summaryLabel}
                 </span>
                 {branch.affectedNodeCount > 1 && (
-                  <span className="shrink-0 font-mono tabular-nums text-[11px] text-[var(--mm-text-secondary)]">
+                  <span className="shrink-0 font-mono tabular-nums text-2xs text-[var(--mm-text-secondary)]">
                     {branch.kind === 'remove_subtree'
                       ? `-${branch.affectedNodeCount}`
                       : `+${branch.affectedNodeCount}`}
                   </span>
                 )}
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    type="button"
-                    className="mm-ghost-action-btn"
+                <div className="flex shrink-0 items-center gap-1 [@media(pointer:coarse)]:gap-2">
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    className="mm-ghost-action-btn motion-reduce:transition-none motion-reduce:transform-none"
                     disabled={applying}
                     onClick={() => {
                       void handleAcceptBranch(branch.branchId);
@@ -316,16 +333,17 @@ export const MindmapAgentSuggestionBar: React.FC<MindmapAgentSuggestionBarProps>
                   >
                     <Check size={12} weight="bold" className="shrink-0" />
                     <span>{t('graph_conflict:mindmapGhost.acceptBranch')}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="mm-ghost-action-btn mm-ghost-action-btn--reject"
+                  </DsButton>
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    className="mm-ghost-action-btn mm-ghost-action-btn--reject motion-reduce:transition-none motion-reduce:transform-none"
                     disabled={applying}
                     onClick={() => handleRejectBranch(branch.branchId)}
                   >
                     <X size={12} weight="bold" className="shrink-0" />
                     <span>{t('graph_conflict:mindmapGhost.rejectBranch')}</span>
-                  </button>
+                  </DsButton>
                 </div>
               </div>
             ))}
@@ -358,7 +376,7 @@ export const MindmapAgentSuggestionBar: React.FC<MindmapAgentSuggestionBarProps>
         <div className="ml-auto flex shrink-0 items-center gap-1">
           <DsButton
             variant="ghost"
-            className="ds-btn h-6 px-2 text-xs shrink-0 text-[var(--mm-primary)] hover:bg-[var(--mm-celadon-pill-bg-hover)]"
+            className="ds-btn h-6 px-2 text-xs shrink-0 text-[var(--mm-primary)] hover:bg-[var(--mm-celadon-pill-bg-hover)] transition-colors motion-reduce:transition-none"
             disabled={applying}
             onClick={() => {
               void handleRevertCheckpoint();
@@ -367,15 +385,16 @@ export const MindmapAgentSuggestionBar: React.FC<MindmapAgentSuggestionBarProps>
             <ArrowCounterClockwise size={13} className="mr-1 shrink-0" />
             <span>{t('graph_conflict:mindmapGhost.revertAll')}</span>
           </DsButton>
-          <button
-            type="button"
-            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[var(--mm-text-secondary)] hover:bg-[var(--mm-celadon-pill-bg)] transition-colors"
+          <DsButton
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 rounded-full text-[var(--mm-text-secondary)] hover:bg-[var(--mm-celadon-pill-bg)] transition-colors motion-reduce:transition-none"
             disabled={applying}
             onClick={handleDismissCheckpoint}
             aria-label={t('graph_conflict:mindmapGhost.dismissCheckpoint')}
           >
             <X size={13} />
-          </button>
+          </DsButton>
         </div>
       </div>
     );

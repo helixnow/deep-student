@@ -158,14 +158,17 @@ describe('WindowTitleBar 三键与双击', () => {
     expect(container.querySelectorAll('.wb-title-glyph')).toHaveLength(3);
   });
 
-  it('双击标题栏产生涟漪并在 animationend 后移除', () => {
-    const { container } = renderBar();
+  it('双击标题栏触发 zoom 且按住 Alt 键切换三键 data-alt-held 状态', () => {
+    const { container, props } = renderBar();
     const bar = container.querySelector('[data-wb-titlebar]')!;
+    const traffic = container.querySelector('[data-wb-traffic]')!;
     fireEvent.doubleClick(bar);
-    const ripple = container.querySelector('.wb-title-ripple');
-    expect(ripple).toBeInTheDocument();
-    fireEvent.animationEnd(ripple!);
+    expect(props.onZoom).toHaveBeenCalledTimes(1);
     expect(container.querySelector('.wb-title-ripple')).toBeNull();
+    fireEvent(window, new KeyboardEvent('keydown', { key: 'Alt' }));
+    expect(traffic).toHaveAttribute('data-alt-held', 'true');
+    fireEvent(window, new KeyboardEvent('keyup', { key: 'Alt' }));
+    expect(traffic).not.toHaveAttribute('data-alt-held');
   });
 
   it('zoom 符号随 displayMode 切换（maximized 为还原态）', () => {

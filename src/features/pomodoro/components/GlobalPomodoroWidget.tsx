@@ -2,11 +2,14 @@ import React, { useEffect, useRef, useState, useCallback, useSyncExternalStore }
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion, useMotionValue, animate } from 'framer-motion';
 import { Pause, Play, Square, Coffee, Brain, ArrowsOut, PictureInPicture, CaretLeft, CaretRight, SkipForward } from '@phosphor-icons/react';
-import { usePomodoroStore } from '../stores/usePomodoroStore';
+import { usePomodoroStore, syncPomodoroSettingsFromBackend } from '../stores/usePomodoroStore';
 import { useViewStore } from '@/stores/viewStore';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { useKeyboardInset } from '@/hooks/useKeyboardHeight';
 import { useComposerDockHeight } from '@/hooks/useComposerDockHeight';
+import { isWebUiShell } from '@/utils/platform';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { springSoft, tweenFast, motionSafe } from '@/styles/motion-springs';
@@ -171,10 +174,10 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
   // 拖拽后抑制紧随而来的 click（避免拖完误触发按钮/进入沉浸）
   const dragMovedRef = useRef(false);
 
-  // 启动时墙钟矫正：恢复持久化的进行中会话（重启期间计时照常流逝，
-  // 已超时的阶段会被立即按完成处理）
+  // 启动时墙钟矫正 + 异步拉取后端同步白名单 'pomodoro.settings'
   useEffect(() => {
     syncWallClock();
+    void syncPomodoroSettingsFromBackend();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -189,15 +192,13 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
   }, [status, tick]);
 
   // 窗口重新可见 / 聚焦 / 系统唤醒后立即矫正剩余时间
-  useEffect(() => {
-    const handleSync = () => syncWallClock();
-    document.addEventListener('visibilitychange', handleSync);
-    window.addEventListener('focus', handleSync);
-    return () => {
-      document.removeEventListener('visibilitychange', handleSync);
-      window.removeEventListener('focus', handleSync);
-    };
-  }, [syncWallClock]);
+  useEventRegistry(
+    [
+      { target: 'document', type: 'visibilitychange', listener: () => syncWallClock() },
+      { target: 'window', type: 'focus', listener: () => syncWallClock() },
+    ],
+    [syncWallClock],
+  );
 
   // ★ 3.2 置顶小窗：状态广播（每次 tick / 状态变化时同步给小窗；
   // progress / countUp 为向后兼容的可选扩展字段）
@@ -297,12 +298,12 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
     pillOffset.y = targetY;
   }, [x, y]);
 
-  useEffect(() => {
-    if (isTouchPrimary) return;
-    const onResize = () => clampIntoViewport(false);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, [isTouchPrimary, clampIntoViewport]);
+  useEventRegistry(
+    isTouchPrimary
+      ? []
+      : [{ target: 'window', type: 'resize', listener: () => clampIntoViewport(false) }],
+    [isTouchPrimary, clampIntoViewport],
+  );
 
   // 药丸右锚定，hover 展开向左增宽：吸附在左缘时展开可能探出视口，
   // 等展开过渡（200ms）走完后轻推回可视范围
@@ -418,6 +419,8 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
     () => false,
   );
   const composerDockHeight = useComposerDockHeight();
+  // 订阅键盘高度以确保持续向 :root 写入 --keyboard-inset，供触屏药丸避让软键盘
+  useKeyboardInset();
 
   const hasVisiblePomodoroHost = currentView === 'todo' || hasVisibleWindowHost;
   const showPill =
@@ -457,11 +460,11 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
             style={{
               x,
               y,
-              // 触屏上避开底部停靠的聊天输入栏 + 安全区：输入栏实际高度由输入栏侧
-              // 发布到 useComposerDockHeight（未发布时回退 96px），避免硬编码与实际高度脱节
-              // （Android env() 不可靠，统一走 --android-safe-area-bottom 兜底，SA-1 注入真实值）
+              // 触屏上避开底部停靠的聊天输入栏 + 安全区 + 软键盘高度：
+              // 输入栏实际高度由 useComposerDockHeight 发布（未发布时回退 96px），
+              // 软键盘弹出时叠加 --keyboard-inset 防止药丸被输入法遮挡
               bottom: isTouchPrimary
-                ? `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${composerDockHeight ?? '96px'})`
+                ? `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${composerDockHeight ?? '96px'} + var(--keyboard-inset, 0px))`
                 : '1.5rem',
             }}
             onMouseEnter={isTouchPrimary ? undefined : () => setHovered(true)}
@@ -574,8 +577,8 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
                 >
                   <ArrowsOut size={controlIconSize} />
                 </button>
-                {/* ★ 3.2 弹出置顶小窗（仅桌面端） */}
-                {!isTouchPrimary && (window as any).__TAURI_INTERNALS__ && (
+                {/* ★ 3.2 弹出置顶小窗（仅桌面原生壳；WebUI 壳下不支持多窗口，隐藏该按钮） */}
+                {!isTouchPrimary && !isWebUiShell() && (window as any).__TAURI_INTERNALS__ && (
                   <button
                     onClick={(e) => { void handlePopOut(e); }}
                     className={cn(controlButtonClass, 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground')}

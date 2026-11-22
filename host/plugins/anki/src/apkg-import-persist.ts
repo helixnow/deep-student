@@ -7,8 +7,10 @@ import { toRfc3339 } from '../../../platform/time/index.ts';
 import {
   insertApkgCard,
   insertApkgDocumentTask,
+  listExistingApkgCardFingerprints,
 } from '../repository/apkg-import.ts';
 import { getTemplateById, insertTemplate } from '../repository/templates.ts';
+import type {} from './apkg-import-collection.ts';
 import {
   emptyApkgMediaReport,
   type ApkgImportResult,
@@ -24,6 +26,7 @@ import {
   rustFileName,
   type ApkgImportRuntime,
   type FsrsImportEnqueueSummary,
+  type ParsedCard,
   type ParsedPackage,
   type TemplateImportCandidate,
 } from './apkg-import-types.ts';
@@ -100,6 +103,17 @@ export interface PersistPackageResult {
   warnings: string[];
 }
 
+function apkgCardFingerprintKey(
+  modelId: string,
+  noteId: string,
+  cardOrd: string,
+  front: string,
+  back: string,
+  text: string | null,
+): string {
+  return JSON.stringify([modelId, noteId, cardOrd, front, back, text]);
+}
+
 /** `persist_package`：一个 immediate 事务写入任务 + 全部卡片 +（可选）FSRS 状态。 */
 export function persistPackage(
   runtime: ApkgImportRuntime,
@@ -107,23 +121,14 @@ export function persistPackage(
   sourceName: string,
   sessionId: string | null,
   enqueueForReview: boolean,
+  deduplicateExisting = false,
 ): ApkgImportResult {
   const clock = runtime.now ?? Date.now;
-  const documentId = `apkg-${globalThis.crypto.randomUUID()}`;
+  const generatedDocumentId = `apkg-${globalThis.crypto.randomUUID()}`;
   const taskId = `apkg-task-${globalThis.crypto.randomUUID()}`;
   const nowMs = clock();
   const now = toRfc3339(BigInt(nowMs) * 1_000_000n);
   const displayName = safeSourceName(sourceName);
-  const options = JSON.stringify({
-    deck_name: parsedPackage.deckNames[0] ?? 'Imported APKG',
-    note_type: 'Imported',
-    enable_images: false,
-    max_cards_per_mistake: parsedPackage.cards.length,
-    segment_overlap_size: 0,
-    source_type: 'apkg_import',
-    imported_decks: parsedPackage.deckNames,
-  });
-  const importedCards = parsedPackage.cards.length;
   const mediaSkipped = parsedPackage.mediaSkipped;
   const mediaImported = parsedPackage.mediaImported;
   const mediaReport = parsedPackage.mediaReport;
@@ -133,54 +138,131 @@ export function persistPackage(
   const collectionCrtSecs = parsedPackage.collectionCrtSecs;
   const reviewSeeds: EnqueueSeed[] = [];
 
-  let reviewEnqueue: ApkgReviewEnqueueReport | null = null;
+  let txOutcome: {
+    documentId: string;
+    importedCards: number;
+    skippedDuplicates: number;
+    reviewEnqueue: ApkgReviewEnqueueReport | null;
+  };
   try {
-    reviewEnqueue = runtime.db.transaction((tx) => {
-      try {
-        insertApkgDocumentTask(tx, {
-          id: taskId,
-          documentId,
-          originalDocumentName: displayName,
-          optionsJson: options,
-          sessionId,
-          now,
-        });
-      } catch (error) {
-        throw databaseError(`Failed to create APKG document task: ${errorMessage(error)}`);
+    txOutcome = runtime.db.transaction((tx) => {
+      let cardsToInsert: ParsedCard[] = parsedPackage.cards;
+      let skippedDuplicates = 0;
+      let matchedDocumentId: string | null = null;
+
+      if (deduplicateExisting) {
+        const existingDocByKey = new Map<string, string>();
+        for (const existing of listExistingApkgCardFingerprints(tx)) {
+          if (existing.modelId === '' || existing.noteId === '' || existing.cardOrd === '') continue;
+          const key = apkgCardFingerprintKey(
+            existing.modelId,
+            existing.noteId,
+            existing.cardOrd,
+            existing.front,
+            existing.back,
+            existing.text,
+          );
+          if (!existingDocByKey.has(key)) {
+            existingDocByKey.set(key, existing.documentId);
+          }
+        }
+        cardsToInsert = [];
+        for (const card of parsedPackage.cards) {
+          const modelId = card.extraFields.AnkiModelId ?? '';
+          const noteId = card.extraFields.AnkiNoteId ?? '';
+          const cardOrd = card.extraFields.AnkiCardOrd ?? '';
+          if (modelId !== '' && noteId !== '' && cardOrd !== '') {
+            const key = apkgCardFingerprintKey(
+              modelId,
+              noteId,
+              cardOrd,
+              card.front,
+              card.back,
+              card.text,
+            );
+            const existingDocId = existingDocByKey.get(key);
+            if (existingDocId !== undefined) {
+              skippedDuplicates += 1;
+              if (matchedDocumentId === null) matchedDocumentId = existingDocId;
+              continue;
+            }
+          }
+          cardsToInsert.push(card);
+        }
       }
-      parsedPackage.cards.forEach((card, index) => {
-        const cardId = globalThis.crypto.randomUUID();
+
+      const importedCards = cardsToInsert.length;
+      const effectiveDocumentId = importedCards === 0 && matchedDocumentId !== null
+        ? matchedDocumentId
+        : generatedDocumentId;
+
+      if (importedCards > 0) {
+        const options = JSON.stringify({
+          deck_name: parsedPackage.deckNames[0] ?? 'Imported APKG',
+          note_type: 'Imported',
+          enable_images: false,
+          max_cards_per_mistake: importedCards,
+          segment_overlap_size: 0,
+          source_type: 'apkg_import',
+          imported_decks: parsedPackage.deckNames,
+        });
         try {
-          insertApkgCard(tx, {
-            id: cardId,
-            taskId,
-            front: card.front,
-            back: card.back,
-            text: card.text,
-            tagsJson: JSON.stringify(card.tags),
-            imagesJson: JSON.stringify(card.images),
-            cardOrderInTask: index,
+          insertApkgDocumentTask(tx, {
+            id: taskId,
+            documentId: effectiveDocumentId,
+            originalDocumentName: displayName,
+            optionsJson: options,
+            sessionId,
             now,
-            extraFieldsJson: JSON.stringify(card.extraFields),
-            templateId: card.templateId,
-            documentId,
           });
         } catch (error) {
-          throw databaseError(
-            `Failed to insert APKG card ${index + 1} of ${importedCards}: ${errorMessage(error)}`,
-          );
+          throw databaseError(`Failed to create APKG document task: ${errorMessage(error)}`);
         }
-        if (enqueueForReview) {
-          reviewSeeds.push({
-            cardId,
-            seed: card.ankiSched === null
-              ? null
-              : ankiSchedToFsrs(card.ankiSched, collectionCrtSecs, nowMs),
-          });
-        }
-        cardIds.push(cardId);
-      });
-      if (!enqueueForReview) return null;
+        cardsToInsert.forEach((card, index) => {
+          const cardId = globalThis.crypto.randomUUID();
+          try {
+            insertApkgCard(tx, {
+              id: cardId,
+              taskId,
+              front: card.front,
+              back: card.back,
+              text: card.text,
+              tagsJson: JSON.stringify(card.tags),
+              imagesJson: JSON.stringify(card.images),
+              cardOrderInTask: index,
+              now,
+              extraFieldsJson: JSON.stringify(card.extraFields),
+              templateId: card.templateId,
+              documentId: effectiveDocumentId,
+            });
+          } catch (error) {
+            throw databaseError(
+              `Failed to insert APKG card ${index + 1} of ${importedCards}: ${errorMessage(error)}`,
+            );
+          }
+          if (enqueueForReview) {
+            reviewSeeds.push({
+              cardId,
+              seed: card.ankiSched === null
+                ? null
+                : ankiSchedToFsrs(card.ankiSched, collectionCrtSecs, nowMs),
+              ...(card.ankiRevlog && card.ankiRevlog.length > 0
+                ? { reviewLogs: card.ankiRevlog }
+                : {}),
+            });
+          }
+          cardIds.push(cardId);
+        });
+      }
+
+      if (!enqueueForReview) {
+        return {
+          documentId: effectiveDocumentId,
+          importedCards,
+          skippedDuplicates,
+          reviewEnqueue: null,
+        };
+      }
       const fsrsOwner = runtime.fsrsOwner;
       if (fsrsOwner === null || fsrsOwner === undefined) {
         throw databaseError(
@@ -197,9 +279,14 @@ export function persistPackage(
         );
       }
       return {
-        enqueued: summary.enqueued,
-        withHistory: summary.withHistory,
-        suspended: summary.suspended,
+        documentId: effectiveDocumentId,
+        importedCards,
+        skippedDuplicates,
+        reviewEnqueue: {
+          enqueued: summary.enqueued,
+          withHistory: summary.withHistory,
+          suspended: summary.suspended,
+        },
       };
     }, { behavior: 'immediate' });
   } catch (error) {
@@ -207,18 +294,22 @@ export function persistPackage(
     throw databaseError(`Failed to commit APKG import transaction: ${errorMessage(error)}`);
   }
 
+  if (txOutcome.skippedDuplicates > 0) {
+    warnings.push(`跳过 ${txOutcome.skippedDuplicates} 张已存在的重复卡片`);
+  }
+
   // 模板映射导入（卡片事务成功后执行，失败不回滚卡片、只产生结构化告警）。
   const importedTemplates = importTemplateCandidates(runtime.db, templateCandidates, warnings, runtime.logger);
 
   return {
-    documentId,
-    importedCards,
+    documentId: txOutcome.documentId,
+    importedCards: txOutcome.importedCards,
     importedTemplates,
     mediaSkipped,
     mediaImported,
     mediaReport,
     warnings,
     cardIds,
-    reviewEnqueue,
+    reviewEnqueue: txOutcome.reviewEnqueue,
   };
 }

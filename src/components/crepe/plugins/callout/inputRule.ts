@@ -1,6 +1,6 @@
 import { InputRule } from '@milkdown/prose/inputrules';
 import type { EditorState, Transaction } from '@milkdown/prose/state';
-import { $inputRule } from '@milkdown/utils';
+import { $inputRule } from '@milkdown/kit/utils';
 
 import { calloutSchema } from './schema';
 import { isCalloutType, type CalloutType } from './types';

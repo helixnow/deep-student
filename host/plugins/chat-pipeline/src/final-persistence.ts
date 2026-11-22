@@ -33,6 +33,10 @@ function savedToolType(tool: string): string {
   }
 }
 
+export interface SaveResultsOptions {
+  readonly skipAutoMemoryExtraction?: boolean;
+}
+
 export class PipelineFinalPersistence {
   private readonly connection: () => DatabaseHandle;
   private readonly store: PipelineFinalStore;
@@ -42,7 +46,7 @@ export class PipelineFinalPersistence {
     this.connection = connection; this.store = store; this.effects = effects; this.log = log;
   }
 
-  async saveResults(ctx: PipelineContext): Promise<void> {
+  async saveResults(ctx: PipelineContext, options?: SaveResultsOptions): Promise<void> {
     this.log.debug(`[ChatV2::pipeline] Saving results for session=${ctx.sessionId}`);
     const db = this.connection();
     let tx: AsyncTransaction;
@@ -72,7 +76,9 @@ export class PipelineFinalPersistence {
       await this.effects.incrementResourceRefs(ids);
       this.log.debug(`[ChatV2::pipeline] Incremented refs for ${ids.length} resources after message save`);
     }
-    this.effects.triggerAutoMemoryExtraction(ctx);
+    if (!options?.skipAutoMemoryExtraction && !ctx.cancellationToken?.()?.aborted) {
+      this.effects.triggerAutoMemoryExtraction(ctx);
+    }
     this.effects.onTurnCommitted(ctx);
   }
 

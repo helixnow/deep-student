@@ -6,7 +6,7 @@
  * 合法 researchSessionId 才触发 HPIAS 事件桥 + 实时研究面板。
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { FolderSimplePlus, PushPinSimple } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
@@ -27,6 +27,17 @@ import { useHpiasEventBridge } from '@/features/generative-ui/hooks/useHpiasEven
 import { extractResearchSessionId } from '@/features/generative-ui/utils/extractResearchSessionId';
 import { buildExportMarkdownI18nLabels } from '@/features/generative-ui/utils/buildExportMarkdownI18nLabels';
 import { getCanvasNoteIdFromModeState } from '@/features/chat/adapters/tauri/requestHelpers';
+import {
+  getLastRegisteredNoteId,
+  subscribeLastRegisteredNoteId,
+} from '@/features/notes';
+import {
+  getWorkspaceActiveResource,
+  resolveActiveOrLastCanvasNoteId,
+  subscribeWorkspaceState,
+  useWindowStore,
+  type WorkbenchStoreState,
+} from '@/features/workbench';
 import {
   requestPinArtifactToCanvas,
   usePinnedArtifactStore,
@@ -55,10 +66,76 @@ function readIntentQuestion(intent: unknown): string | undefined {
   return meta?.title ?? meta?.description;
 }
 
+function extractNoteIdFromToolPayload(toolInput: unknown, toolOutput: unknown): string | undefined {
+  for (const raw of [toolInput, toolOutput]) {
+    if (!raw || typeof raw !== 'object') continue;
+    const obj = raw as Record<string, unknown>;
+    const direct = obj.noteId ?? obj.note_id;
+    if (typeof direct === 'string' && direct.length > 0) return direct;
+    const noteEdit = obj.noteEdit && typeof obj.noteEdit === 'object' ? (obj.noteEdit as Record<string, unknown>) : null;
+    const nested = noteEdit?.noteId ?? noteEdit?.note_id;
+    if (typeof nested === 'string' && nested.length > 0) return nested;
+  }
+  return undefined;
+}
+
+function selectActiveOrLastNotesWindowTarget(state: WorkbenchStoreState): string | undefined {
+  for (let i = state.focusStack.length - 1; i >= 0; i -= 1) {
+    const win = state.windows[state.focusStack[i]!];
+    if (!win) continue;
+    if (win.typeId === 'notes') return `notes:${win.id}`;
+    if (win.typeId === 'note' && typeof win.instanceKey === 'string' && win.instanceKey.length > 0) {
+      return `note:${win.instanceKey}`;
+    }
+  }
+  for (const win of Object.values(state.windows)) {
+    if (win.typeId === 'notes') return `notes:${win.id}`;
+    if (win.typeId === 'note' && typeof win.instanceKey === 'string' && win.instanceKey.length > 0) {
+      return `note:${win.instanceKey}`;
+    }
+  }
+  return undefined;
+}
+
 function GenerativeUIBlockComponent({ block, isStreaming, store }: BlockComponentProps) {
   const { t } = useTranslation('generativeUi');
   const exportMarkdownLabels = useMemo(() => buildExportMarkdownI18nLabels(t), [t]);
-  const canvasNoteId = getCanvasNoteIdFromModeState(store?.getState().modeState ?? null);
+  const modeStateNoteId = useSyncExternalStore(
+    useCallback(
+      (listener) => (typeof store?.subscribe === 'function' ? store.subscribe(listener) : () => {}),
+      [store],
+    ),
+    () => getCanvasNoteIdFromModeState(store?.getState?.().modeState ?? null),
+    () => undefined,
+  );
+  const notesWindowToken = useWindowStore(selectActiveOrLastNotesWindowTarget);
+  const workspaceActiveNoteId = useSyncExternalStore(
+    subscribeWorkspaceState,
+    () => {
+      if (notesWindowToken?.startsWith('notes:')) {
+        const winId = notesWindowToken.slice('notes:'.length);
+        const active = getWorkspaceActiveResource(winId);
+        if (active?.type === 'note' && active.id) return active.id;
+      }
+      const active = getWorkspaceActiveResource();
+      return active?.type === 'note' && active.id ? active.id : undefined;
+    },
+    () => undefined,
+  );
+  const lastRegisteredNoteId = useSyncExternalStore(
+    subscribeLastRegisteredNoteId,
+    getLastRegisteredNoteId,
+    () => undefined,
+  );
+  const windowResolvedNoteId = notesWindowToken?.startsWith('note:')
+    ? notesWindowToken.slice('note:'.length)
+    : workspaceActiveNoteId;
+  const canvasNoteId =
+    modeStateNoteId ??
+    extractNoteIdFromToolPayload(block.toolInput, block.toolOutput) ??
+    windowResolvedNoteId ??
+    resolveActiveOrLastCanvasNoteId() ??
+    lastRegisteredNoteId;
   const resolvedSessionId =
     store?.getState().sessionId || sessionManager.getCurrentSessionId() || undefined;
   const resolvedGroupId = useSessionListStore((state) =>

@@ -41,6 +41,118 @@ function normalizeBlockText(raw: string | undefined): string {
   return (raw ?? '').replace(/\r\n?/g, '\n').trim();
 }
 
+interface ReconciledHandoutNotes {
+  cardNoteChanged: boolean;
+  nextCardNote?: string;
+  noteChanged: boolean;
+  nextNote?: string;
+}
+
+/**
+ * 反向同步拆分 `cardNote` 与 `note`：
+ * 导出讲义时 `compileMindMapSubtreeToHandout` 会把 `[cardNote, note]` 以 `\n\n` 拼成同一正文；
+ * 回写时若节点原本就有 `cardNote`，必须精准剥离前缀或按段落拆分更新 `cardNote` / `note`，
+ * 避免每次往返把 `cardNote` 重复复制进 `note`。
+ */
+function reconcileHandoutNotes(
+  existingCardNoteRaw: string | undefined,
+  existingNoteRaw: string | undefined,
+  incomingRaw: string | undefined,
+): ReconciledHandoutNotes {
+  const existingCardNote = normalizeBlockText(existingCardNoteRaw);
+  const existingNote = normalizeBlockText(existingNoteRaw);
+  const incoming = normalizeBlockText(incomingRaw);
+
+  if (!incoming) {
+    return { cardNoteChanged: false, noteChanged: false };
+  }
+
+  if (!existingCardNote) {
+    return {
+      cardNoteChanged: false,
+      noteChanged: incoming !== existingNote,
+      nextNote: incoming,
+    };
+  }
+
+  const compiled = existingNote ? `${existingCardNote}\n\n${existingNote}` : existingCardNote;
+  if (incoming === compiled) {
+    return { cardNoteChanged: false, noteChanged: false };
+  }
+
+  // 1) 仅存在 `cardNote`、不存在 `note`：回写正文（含追加新行/新段）直接更新 `cardNote`，绝不误拆进 `note`
+  if (!existingNote) {
+    return {
+      cardNoteChanged: incoming !== existingCardNote,
+      nextCardNote: incoming,
+      noteChanged: false,
+    };
+  }
+
+  // 2) 回写正文以原 `cardNote` 开头（按行边界匹配，避免 "A" 误剥离 "AB"）
+  if (
+    incoming.startsWith(existingCardNote) &&
+    (incoming.length === existingCardNote.length || incoming[existingCardNote.length] === '\n')
+  ) {
+    const remainder = normalizeBlockText(incoming.slice(existingCardNote.length));
+    return {
+      cardNoteChanged: false,
+      noteChanged: remainder.length > 0 && remainder !== existingNote,
+      ...(remainder ? { nextNote: remainder } : {}),
+    };
+  }
+
+  // 3) 回写正文以原 `note` 结尾：说明用户修改了前段的 `cardNote`
+  if (
+    incoming.endsWith(existingNote) &&
+    incoming.length > existingNote.length &&
+    incoming[incoming.length - existingNote.length - 1] === '\n'
+  ) {
+    const prefix = normalizeBlockText(incoming.slice(0, incoming.length - existingNote.length));
+    if (prefix) {
+      return {
+        cardNoteChanged: prefix !== existingCardNote,
+        nextCardNote: prefix,
+        noteChanged: false,
+      };
+    }
+  }
+
+  // 4) `cardNote` 与 `note` 同时被修改：按段落切分回写
+  const cardParagraphCount = existingCardNote.split(/\n{2,}/).length;
+  const incomingParagraphs = incoming.split(/\n{2,}/);
+  if (incomingParagraphs.length > cardParagraphCount) {
+    const nextCardNote = incomingParagraphs.slice(0, cardParagraphCount).join('\n\n').trim();
+    const nextNote = incomingParagraphs.slice(cardParagraphCount).join('\n\n').trim();
+    return {
+      cardNoteChanged: nextCardNote.length > 0 && nextCardNote !== existingCardNote,
+      ...(nextCardNote ? { nextCardNote } : {}),
+      noteChanged: nextNote.length > 0 && nextNote !== existingNote,
+      ...(nextNote ? { nextNote } : {}),
+    };
+  }
+
+  // 5) 多段 `cardNote` 缩减段数且同时修改 `note`：按原 `note` 段数从末尾切分（保底最后 1 段归 `nextNote`）
+  if (incomingParagraphs.length >= 2) {
+    const noteParagraphCount = existingNote.split(/\n{2,}/).length;
+    const splitIndex = Math.max(1, incomingParagraphs.length - noteParagraphCount);
+    const nextCardNote = incomingParagraphs.slice(0, splitIndex).join('\n\n').trim();
+    const nextNote = incomingParagraphs.slice(splitIndex).join('\n\n').trim();
+    return {
+      cardNoteChanged: nextCardNote.length > 0 && nextCardNote !== existingCardNote,
+      ...(nextCardNote ? { nextCardNote } : {}),
+      noteChanged: nextNote.length > 0 && nextNote !== existingNote,
+      ...(nextNote ? { nextNote } : {}),
+    };
+  }
+
+  return {
+    cardNoteChanged: incoming !== existingCardNote,
+    nextCardNote: incoming,
+    noteChanged: false,
+  };
+}
+
 function anchorKey(anchor: SemanticAnchor): string {
   try {
     return serializeSemanticAnchor(anchor);
@@ -212,8 +324,11 @@ export function mergeHandoutDraftIntoMindMap(
 
     const nextText = normalizeInlineText(draftNode.text);
     const textChanged = nextText.length > 0 && nextText !== existing.text;
-    const nextNote = normalizeBlockText(draftNode.note);
-    const noteChanged = nextNote.length > 0 && nextNote !== (existing.note ?? '');
+    const { cardNoteChanged, nextCardNote, noteChanged, nextNote } = reconcileHandoutNotes(
+      existing.cardNote,
+      existing.note,
+      draftNode.note,
+    );
 
     const anchors = existing.anchors ? [...existing.anchors] : [];
     const knownAnchorKeys = new Set(anchors.map(anchorKey));
@@ -227,16 +342,17 @@ export function mergeHandoutDraftIntoMindMap(
       anchorsChanged = true;
     }
 
-    if (!textChanged && !noteChanged && !anchorsChanged && children.length === existing.children.length
+    if (!textChanged && !cardNoteChanged && !noteChanged && !anchorsChanged && children.length === existing.children.length
       && children.every((child, index) => child === existing.children[index])) {
       return existing;
     }
 
-    if (textChanged || noteChanged) updated += 1;
+    if (textChanged || cardNoteChanged || noteChanged) updated += 1;
 
     const next: MindMapNode = { ...existing, children };
     if (textChanged) next.text = nextText;
-    if (noteChanged) next.note = nextNote;
+    if (cardNoteChanged && nextCardNote) next.cardNote = nextCardNote;
+    if (noteChanged && nextNote) next.note = nextNote;
     if (anchorsChanged) next.anchors = anchors;
     return next;
   };

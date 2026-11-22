@@ -36,6 +36,7 @@ export interface UiExcerptDndHandle {
   ): UiDisposer;
   emitAutoExcerpt(input: ExcerptDragInput): ExcerptDragPayload | null;
   subscribeAutoExcerpt(listener: (payload: ExcerptDragPayload) => void): UiDisposer;
+  hasAutoExcerptListeners(): boolean;
 }
 
 interface ActiveDragSession {
@@ -355,6 +356,10 @@ export class ExcerptDndHub implements UiExcerptDndHandle {
     return () => {
       this.autoExcerptListeners.delete(listener);
     };
+  }
+
+  hasAutoExcerptListeners(): boolean {
+    return this.autoExcerptListeners.size > 0;
   }
 
   dispose(): void {

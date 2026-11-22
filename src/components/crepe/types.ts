@@ -4,6 +4,7 @@
  */
 
 import type { Crepe } from '@milkdown/crepe';
+import type { Ctx } from '@milkdown/kit/ctx';
 import type { AgentHighlightMeta, AgentHighlightState } from './plugins/agentHighlight';
 import type { CrepePluginsOptions } from './plugins';
 import type { CrepeFormattingState } from './formattingState';
@@ -291,6 +292,8 @@ export interface CrepeSelectionAction {
   label: string;
   /** 24×24 viewBox 的内联 SVG 字符串（与 Crepe 自带图标同规格） */
   icon: string;
+  /** 可选激活态判定；默认始终为 false */
+  active?: (ctx: Ctx) => boolean;
   run: (selectedText: string) => void;
 }
 

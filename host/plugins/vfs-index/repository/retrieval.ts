@@ -10,6 +10,7 @@ import type { LaneLogger } from '../src/logger.ts';
 import { vfsTableOwners } from './owners.ts';
 
 const MAX_FTS_SCAN = 1000;
+const NOTE_NOT_SOFT_DELETED_SQL = `NOT EXISTS (SELECT 1 FROM notes n WHERE (n.id = r.source_id OR n.resource_id = r.id) AND n.deleted_at IS NOT NULL)`;
 
 export type SqlValue = string | number | bigint | null | Uint8Array;
 
@@ -197,14 +198,18 @@ export function activeSegmentRowIds(
               (s.modality = 'text'
                AND u.text_profile_id = s.index_profile_id
                AND u.text_generation = s.generation
+               AND COALESCE(u.text_state, 'pending') <> 'disabled'
                AND (r.id IS NULL OR (r.deleted_at IS NULL
-                    AND COALESCE(r.index_state, 'pending') <> 'disabled')))
+                    AND COALESCE(r.index_state, 'pending') <> 'disabled'
+                    AND ${NOTE_NOT_SOFT_DELETED_SQL})))
               OR
               (s.modality IN ('image', 'multimodal')
                AND u.mm_profile_id = s.index_profile_id
                AND u.mm_generation = s.generation
+               AND COALESCE(u.mm_state, 'pending') <> 'disabled'
                AND (r.id IS NULL OR (r.deleted_at IS NULL
-                    AND COALESCE(r.mm_index_state, 'pending') <> 'disabled')))
+                    AND COALESCE(r.mm_index_state, 'pending') <> 'disabled'
+                    AND ${NOTE_NOT_SOFT_DELETED_SQL})))
          )`;
     const values: SqlValue[] = [...chunk, profileId, dimension];
     for (const row of db.all<Row>(sql, values)) active.add(text(row['lance_row_id']));
@@ -249,7 +254,9 @@ export function scopedVectorResourceIds(
 ): readonly string[] | null {
   if (scope === null) return requestedIds;
   const rows = db.all<Row>(`SELECT r.id FROM resources r
-    WHERE r.deleted_at IS NULL AND (
+    WHERE r.deleted_at IS NULL
+      AND ${NOTE_NOT_SOFT_DELETED_SQL}
+      AND (
       r.id IN (SELECT value FROM json_each(?2)) OR EXISTS (
         SELECT 1 FROM folder_items fi WHERE fi.deleted_at IS NULL
           AND fi.folder_id IN (SELECT value FROM json_each(?1))
@@ -493,6 +500,8 @@ export function lexicalCandidateRows(
                      AND (${segmentMatchAny})
                      AND r.deleted_at IS NULL
                      AND COALESCE(r.index_state, 'pending') <> 'disabled'
+                     AND COALESCE(u.text_state, 'pending') <> 'disabled'
+                     AND ${NOTE_NOT_SOFT_DELETED_SQL}
                      ${scopeSql}
                      AND (
                           s.index_profile_id IS NULL OR (
@@ -518,6 +527,8 @@ export function lexicalCandidateRows(
                    WHERE (${unitMatchAny})
                      AND r.deleted_at IS NULL
                      AND COALESCE(r.index_state, 'pending') <> 'disabled'
+                     AND COALESCE(u.text_state, 'pending') <> 'disabled'
+                     AND ${NOTE_NOT_SOFT_DELETED_SQL}
                      ${scopeSql}
                  )
                  ORDER BY exact_rank, match_count DESC, source_rank, rank_updated DESC, embedding_id

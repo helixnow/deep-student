@@ -3,7 +3,7 @@
  *
  * 注意：偏好为模块级单例，测试间通过 set 复位而非 reset 模块。
  */
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 import {
   getCanvasDragMode,
@@ -89,5 +89,43 @@ describe('useCanvasWheelMode', () => {
       panOnScroll: true,
       zoomOnScroll: false,
     });
+  });
+
+  it('macOS 未持久化偏好时默认 pan（双指平移），用户显式切换后持久化尊重用户选择', async () => {
+    const prevPlatform = (globalThis as Record<string, unknown>).__DS_PLATFORM__;
+    try {
+      window.localStorage.removeItem('mindmap:canvas-wheel-mode');
+      (globalThis as Record<string, unknown>).__DS_PLATFORM__ = { os: 'macos', kind: 'desktop' };
+      vi.resetModules();
+      const macMod = await import('../useCanvasDragMode');
+      expect(macMod.getDefaultCanvasWheelMode()).toBe('pan');
+      expect(macMod.getCanvasWheelMode()).toBe('pan');
+
+      // 用户显式切换为 zoom 后持久化并生效
+      macMod.setCanvasWheelMode('zoom');
+      expect(macMod.getCanvasWheelMode()).toBe('zoom');
+      expect(window.localStorage.getItem('mindmap:canvas-wheel-mode')).toBe('zoom');
+
+      // 再次冷启动仍尊重用户持久化选择
+      vi.resetModules();
+      const macModReloaded = await import('../useCanvasDragMode');
+      expect(macModReloaded.getCanvasWheelMode()).toBe('zoom');
+
+      // Windows/Linux 未保存偏好时默认 zoom
+      window.localStorage.removeItem('mindmap:canvas-wheel-mode');
+      (globalThis as Record<string, unknown>).__DS_PLATFORM__ = { os: 'windows', kind: 'desktop' };
+      vi.resetModules();
+      const winMod = await import('../useCanvasDragMode');
+      expect(winMod.getDefaultCanvasWheelMode()).toBe('zoom');
+      expect(winMod.getCanvasWheelMode()).toBe('zoom');
+    } finally {
+      if (prevPlatform === undefined) {
+        delete (globalThis as Record<string, unknown>).__DS_PLATFORM__;
+      } else {
+        (globalThis as Record<string, unknown>).__DS_PLATFORM__ = prevPlatform;
+      }
+      window.localStorage.removeItem('mindmap:canvas-wheel-mode');
+      vi.resetModules();
+    }
   });
 });

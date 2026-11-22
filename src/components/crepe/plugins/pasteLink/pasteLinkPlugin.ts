@@ -5,8 +5,8 @@
  * 本模块将插件 prepend 进 prosePluginsCtx，确保 someProp(handlePaste) 先于 clipboard。
  */
 
-import type { MilkdownPlugin } from '@milkdown/ctx';
-import { SchemaReady, prosePluginsCtx } from '@milkdown/core';
+import type { MilkdownPlugin } from '@milkdown/kit/ctx';
+import { SchemaReady, prosePluginsCtx } from '@milkdown/kit/core';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
 

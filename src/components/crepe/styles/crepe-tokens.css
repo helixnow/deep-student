@@ -1,0 +1,147 @@
+/**
+ * Crepe Design Tokens & Core Editor Surface
+ *
+ * Maps 100% of --crepe-* CSS custom properties to DeepStudent's semantic
+ * design tokens (replacing Crepe's frame.css / frame-dark.css themes).
+ * Uses --notes-ink for eye-comfort body ink in dark reading mode.
+ */
+
+:root {
+  /* ACR 4.0 fallback pulse duration (single source read via readCssTimeMs in CrepeEditor.tsx) */
+  --acr-doc-pulse-ms: 600ms;
+}
+
+/* ===== Crepe Token Mapping ===== */
+.crepe-editor-wrapper,
+.crepe-editor-wrapper .milkdown,
+.crepe-editor-wrapper .editor {
+  /* Backgrounds & surfaces */
+  --crepe-color-background: hsl(var(--background));
+  --crepe-color-on-background: var(--notes-ink, hsl(var(--foreground)));
+  --crepe-color-surface: hsl(var(--card));
+  --crepe-color-surface-low: hsl(var(--card));
+  --crepe-color-on-surface: var(--notes-ink, hsl(var(--foreground)));
+  --crepe-color-on-surface-variant: hsl(var(--foreground) / 70%);
+  --crepe-color-overlay: hsl(var(--popover));
+
+  /* Borders & outlines */
+  --crepe-color-outline: hsl(var(--muted-foreground));
+  --crepe-color-line: hsl(var(--border));
+  --crepe-color-border: hsl(var(--border));
+
+  /* Brand & semantic accents */
+  --crepe-color-primary: hsl(var(--primary));
+  --crepe-color-on-primary: hsl(var(--primary-foreground));
+  --crepe-color-secondary: hsl(var(--secondary));
+  --crepe-color-on-secondary: hsl(var(--secondary-foreground));
+  --crepe-color-solid: hsl(var(--foreground));
+  --crepe-color-inline: hsl(var(--foreground) / 70%);
+
+  /* Inverse */
+  --crepe-color-inverse: hsl(var(--accent));
+  --crepe-color-on-inverse: hsl(var(--accent-foreground));
+
+  /* Inline code stays neutral prose ink (never destructive red) */
+  --crepe-color-inline-code: var(--notes-inline-code-color, hsl(var(--foreground) / 86%));
+  --crepe-color-error: hsl(var(--destructive));
+
+  /* Interactive states */
+  --crepe-color-hover: hsl(var(--accent));
+  --crepe-color-selected: hsl(var(--accent));
+  --crepe-color-inline-area: hsl(var(--muted));
+
+  /* Shadows (always anchored on --shadow-base, never --foreground) */
+  --crepe-color-shadow: 0 0 0 transparent;
+  --crepe-shadow-1: 0 1px 2px hsl(var(--shadow-base) / 12%);
+  --crepe-shadow-2: 0 2px 8px hsl(var(--shadow-base) / 14%);
+
+  /* Unified font stacks aligned with .prose-note and --font-family */
+  --crepe-base-font-size: var(--notes-body-size, calc(16px * var(--font-size-scale, 1)));
+  --crepe-font-default: var(--notes-font-family, var(--font-family));
+  --crepe-font-title: var(--notes-font-family, var(--font-family));
+  --crepe-font-code: var(--font-mono);
+}
+
+:root.dark .crepe-editor-wrapper,
+:root.dark .crepe-editor-wrapper .milkdown,
+:root.dark .crepe-editor-wrapper .editor,
+.dark .crepe-editor-wrapper,
+.dark .crepe-editor-wrapper .milkdown,
+.dark .crepe-editor-wrapper .editor {
+  --crepe-shadow-1: 0 1px 2px hsl(var(--shadow-base) / 32%);
+  --crepe-shadow-2: 0 2px 8px hsl(var(--shadow-base) / 42%);
+}
+
+/* ===== Editor Wrapper & Ready Entrance ===== */
+.crepe-editor-wrapper {
+  width: 100%;
+  min-height: 300px;
+  position: relative;
+  overflow: visible;
+}
+
+/* Subtle rise-in once editor hydrates (matches ui-rise-in cadence, no blur) */
+.crepe-editor-wrapper .crepe-editor-container {
+  width: 100%;
+  min-height: inherit;
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    transform 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.crepe-editor-wrapper[data-ready='false'] .crepe-editor-container {
+  opacity: 0.55;
+  transform: translateY(4px);
+}
+
+/* ===== Core Milkdown & ProseMirror Surfaces ===== */
+.crepe-editor-wrapper .milkdown {
+  outline: none;
+  min-height: inherit;
+  background: transparent;
+  color: var(--notes-ink, hsl(var(--foreground)));
+  overflow: visible; /* Keep block handle visible in the left gutter */
+  position: relative;
+}
+
+.crepe-editor-wrapper .editor {
+  padding: 1rem 0;
+  min-height: inherit;
+  background: transparent;
+}
+
+.crepe-editor-wrapper .crepe,
+.crepe-editor-wrapper .crepe-drop-cursor,
+.crepe-editor-wrapper .crepe-placeholder {
+  background: transparent;
+  color: var(--notes-ink, hsl(var(--foreground)));
+}
+
+/* stylelint-disable selector-class-pattern */
+.crepe-editor-wrapper .ProseMirror {
+  outline: none;
+  min-height: inherit;
+  background: transparent;
+  color: var(--notes-ink, hsl(var(--foreground)));
+  caret-color: hsl(var(--foreground));
+  font-size: var(--notes-body-size, 16px);
+  line-height: var(--notes-body-lh, 1.5);
+}
+
+/* Ensure drop target retains usable minimum height (main editor only; never nested LaTeX inline edit) */
+.crepe-editor-wrapper .milkdown > .ProseMirror {
+  min-height: 100px;
+}
+
+/* Focus state: no persistent document frame; accent caret + selection indicate focus */
+.crepe-editor-wrapper .ProseMirror:focus,
+.crepe-editor-wrapper .ProseMirror:focus-visible {
+  outline: none;
+}
+
+.crepe-editor-wrapper .ProseMirror.ProseMirror-focused {
+  caret-color: hsl(var(--primary));
+}
+/* stylelint-enable selector-class-pattern */

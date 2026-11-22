@@ -21,9 +21,9 @@ export {
 } from './src/extractive-compaction.ts';
 import type { PipelinePersistenceStore } from './src/persistence-port.ts';
 import type { PipelineFinalStore, PipelinePostCommitEffects } from './src/persistence-port.ts';
-import type { PipelineFinalPersistence } from './src/final-persistence.ts';
+import type { PipelineFinalPersistence, SaveResultsOptions } from './src/final-persistence.ts';
 export type { PipelineFinalStore, PipelinePostCommitEffects } from './src/persistence-port.ts';
-export type { PipelineFinalPersistence } from './src/final-persistence.ts';
+export type { PipelineFinalPersistence, SaveResultsOptions } from './src/final-persistence.ts';
 import type { TextExecutionDependencies, TextTurnExecution, UnifiedTextStream } from './src/text-execution.ts';
 export type { TextExecutionDependencies, TextExecutionEffects, PreparedTextTurn, UnifiedTextStream, TextTurnExecution } from './src/text-execution.ts';
 import type { PipelinePersistence } from './src/incremental-persistence.ts';

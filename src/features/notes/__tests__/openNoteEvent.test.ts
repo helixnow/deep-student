@@ -14,6 +14,13 @@ const NOTES_OWNED_SOURCES = [
   // 卡片库 / 复习「查看出处」：要的是笔记 markdown 原文，不能进聊天画布（#482）
   'flashcards-library',
   'flashcards-review',
+  'pdf-selection',
+  'pdf-annotations',
+  'pdf-related',
+  'media-transcript',
+  'essay-grading',
+  'weekly-report',
+  'save-as-note',
 ] as const;
 
 describe('DSTU_OPEN_NOTE ownership', () => {

@@ -1,0 +1,210 @@
+/**
+ * NoteFloatingToc — Notion 风格右侧悬浮目录样式
+ *
+ * - 定位在编辑器视口右侧留白区（绝不遮挡 708px 正文版心）
+ * - 默认折叠为极简短横线轨道（H1=18px / H2=13px / H3+=9px）
+ * - hover 或 :focus-within 平滑展开浮层目录卡片
+ * - 窄容器（@container notes-shell <= 860px）与窄屏/触屏自动隐藏
+ */
+
+.notes-floating-toc {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  pointer-events: auto;
+}
+
+.notes-floating-toc-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  max-height: 55vh;
+  overflow: hidden;
+  padding: 10px 6px;
+  border-radius: var(--notes-radius-row, 6px);
+  cursor: pointer;
+  outline: none;
+  transition: opacity var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-floating-toc-rail:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+.notes-floating-toc-tick {
+  display: block;
+  width: 9px;
+  height: 2px;
+  border-radius: 9999px;
+  background: hsl(var(--muted-foreground));
+  opacity: 0.36;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    opacity var(--notes-hover-transition, 120ms ease),
+    width var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-floating-toc-tick[data-level='1'] {
+  width: 18px;
+}
+
+.notes-floating-toc-tick[data-level='2'] {
+  width: 13px;
+}
+
+.notes-floating-toc-tick[data-active='true'] {
+  background: hsl(var(--primary));
+  opacity: 1;
+}
+
+.notes-floating-toc:hover .notes-floating-toc-rail,
+.notes-floating-toc:focus-within .notes-floating-toc-rail {
+  opacity: 0;
+}
+
+.notes-floating-toc-popover {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%) translateX(6px) scale(0.98);
+  width: 224px;
+  max-height: 60vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 6px;
+  border-radius: var(--notes-radius-popup, 12px);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: var(--notes-popover-shadow, 0 8px 24px hsl(var(--shadow-base) / 14%));
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--notes-popup-enter-duration, 150ms) var(--notes-popup-enter-easing, cubic-bezier(0.22, 1, 0.36, 1)),
+    transform var(--notes-popup-enter-duration, 150ms) var(--notes-popup-enter-easing, cubic-bezier(0.22, 1, 0.36, 1)),
+    visibility 0ms linear var(--notes-popup-enter-duration, 150ms);
+}
+
+.notes-floating-toc:hover .notes-floating-toc-popover,
+.notes-floating-toc:focus-within .notes-floating-toc-popover {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(-50%) translateX(0) scale(1);
+  transition:
+    opacity var(--notes-popup-enter-duration, 150ms) var(--notes-popup-enter-easing, cubic-bezier(0.22, 1, 0.36, 1)),
+    transform var(--notes-popup-enter-duration, 150ms) var(--notes-popup-enter-easing, cubic-bezier(0.22, 1, 0.36, 1)),
+    visibility 0ms linear 0ms;
+}
+
+.notes-floating-toc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notes-floating-toc-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  height: auto;
+  min-height: 26px;
+  padding: 5px 10px 5px calc(12px + var(--toc-indent, 0px));
+  border: none;
+  border-radius: var(--notes-radius-row, 6px);
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-floating-toc-item::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 5px;
+  bottom: 5px;
+  width: 2px;
+  border-radius: 9999px;
+  background: transparent;
+  transition: background-color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-floating-toc-item:hover {
+  background: var(--notes-surface-hover, hsl(var(--accent)));
+  color: hsl(var(--foreground));
+}
+
+.notes-floating-toc-item:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.notes-floating-toc-item[data-active='true'] {
+  color: hsl(var(--foreground));
+  font-weight: 500;
+  background: var(--notes-surface-selected, hsl(var(--accent) / 70%));
+}
+
+.notes-floating-toc-item[data-active='true']::before {
+  background: hsl(var(--primary));
+}
+
+.notes-floating-toc-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 窄容器 / 窄视口 / 触屏自动隐藏，确保绝不覆盖 708px 正文列 */
+@container notes-shell (max-width: 860px) {
+  .notes-floating-toc {
+    display: none;
+  }
+}
+
+@media (width <= 1023px), (pointer: coarse) {
+  .notes-floating-toc {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-floating-toc-rail,
+  .notes-floating-toc-tick,
+  .notes-floating-toc-popover,
+  .notes-floating-toc:hover .notes-floating-toc-popover,
+  .notes-floating-toc:focus-within .notes-floating-toc-popover,
+  .notes-floating-toc-item,
+  .notes-floating-toc-item::before {
+    transition: none;
+  }
+
+  .notes-floating-toc-popover {
+    transform: translateY(-50%);
+  }
+
+  .notes-floating-toc:hover .notes-floating-toc-popover,
+  .notes-floating-toc:focus-within .notes-floating-toc-popover {
+    transform: translateY(-50%);
+  }
+}

@@ -1,7 +1,18 @@
 import JSZip from 'jszip';
 import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('@/utils/fileManager', () => ({
+  fileManager: {
+    saveBinaryFile: vi.fn(async () => ({ canceled: false })),
+    saveTextFile: vi.fn(async () => ({ canceled: false })),
+  },
+}));
+
+import type { MindMapDocument } from '../../types';
+import { exportToXmindZip } from '../exporters';
 import {
   createXmindImportReport,
+  importFromJson,
   importFromXmindZip,
   MAX_IMPORT_IMAGE_COUNT,
   MAX_IMPORT_IMAGE_INLINE_TOTAL_BYTES,
@@ -155,7 +166,7 @@ describe('importFromXmindZip', () => {
     });
   });
 
-  it('maps labels and non-task markers into note lines, priority into a text prefix', async () => {
+  it('maps labels and non-task markers into note lines, and priority-1..6 into node.priority', async () => {
     const data = await zipEntry('content.json', JSON.stringify([{
       rootTopic: {
         id: 'zen-root',
@@ -179,7 +190,8 @@ describe('importFromXmindZip', () => {
     const document = await importFromXmindZip(data);
     const rich = document.root.children[0];
 
-    expect(rich.text).toBe('[P1] Rich topic');
+    expect(rich.text).toBe('Rich topic');
+    expect(rich.priority).toBe(1);
     expect(rich.completed).toBe(true);
     // 备注 = 原始备注 + 标签附注行 + 非任务 marker 附注行
     const noteLines = (rich.note ?? '').split('\n');
@@ -188,6 +200,114 @@ describe('importFromXmindZip', () => {
     expect(noteLines[2]).toContain('flag-red');
     expect(noteLines[2]).not.toContain('task-done');
     expect(noteLines[2]).not.toContain('priority-1');
+  });
+
+  it('imports JSON .xmind summaries into native MindMapSummaryBrace entries and reports only invalid ones', async () => {
+    const data = await zipEntry('content.json', JSON.stringify([{
+      rootTopic: {
+        id: 'zen-root',
+        title: 'Course',
+        children: {
+          attached: [
+            { id: 'c0', title: 'Topic A' },
+            { id: 'c1', title: 'Topic B' },
+            { id: 'c2', title: 'Topic C' },
+          ],
+          summary: [
+            { id: 'sum-topic-1', title: 'Core Fundamentals' },
+            { id: 'sum-topic-bad', title: 'Single Child Summary' },
+          ],
+        },
+        summaries: [
+          { id: 'sum-1', range: '(0,1)', topicId: 'sum-topic-1' },
+          { id: 'sum-single', range: '(2,2)', topicId: 'sum-topic-bad' },
+        ],
+      },
+    }]));
+    const report = createXmindImportReport();
+
+    const document = await importFromXmindZip(data, report);
+
+    expect(document.summaries).toEqual([
+      {
+        id: 'sum-1',
+        parentId: 'root',
+        startChildId: 'c0',
+        endChildId: 'c1',
+        label: 'Core Fundamentals',
+      },
+    ]);
+    expect(report.droppedSummaries).toBe(1);
+  });
+
+  it('imports XML priority markers and summaries into native priority and MindMapSummaryBrace', async () => {
+    const data = await zipEntry('content.xml', `<?xml version="1.0" encoding="UTF-8"?>
+      <xmap-content xmlns="urn:xmind:xmap:xmlns:content:2.0">
+        <sheet id="sheet-1">
+          <topic id="legacy-root">
+            <title>Physics</title>
+            <children>
+              <topics type="attached">
+                <topic id="t0">
+                  <title>Mechanics</title>
+                  <marker-refs><marker-ref marker-id="priority-3" /></marker-refs>
+                </topic>
+                <topic id="t1"><title>Thermodynamics</title></topic>
+                <topic id="t2"><title>Optics</title></topic>
+              </topics>
+              <topics type="summary">
+                <topic id="s-topic"><title>Classical Physics</title></topic>
+              </topics>
+            </children>
+            <summaries>
+              <summary id="s-1" range="(0,2)" topic-id="s-topic" />
+            </summaries>
+          </topic>
+        </sheet>
+      </xmap-content>`);
+    const report = createXmindImportReport();
+
+    const document = await importFromXmindZip(data, report);
+
+    expect(document.root.children[0].text).toBe('Mechanics');
+    expect(document.root.children[0].priority).toBe(3);
+    expect(document.summaries).toEqual([
+      {
+        id: 's-1',
+        parentId: 'root',
+        startChildId: 't0',
+        endChildId: 't2',
+        label: 'Classical Physics',
+      },
+    ]);
+    expect(report.droppedSummaries).toBe(0);
+  });
+
+  it('counts droppedSummaries in XML when <topics type="summary"> exists without a <summaries> container', async () => {
+    const data = await zipEntry('content.xml', `<?xml version="1.0" encoding="UTF-8"?>
+      <xmap-content xmlns="urn:xmind:xmap:xmlns:content:2.0">
+        <sheet id="sheet-1">
+          <topic id="legacy-root">
+            <title>Physics</title>
+            <children>
+              <topics type="attached">
+                <topic id="t0"><title>A</title></topic>
+                <topic id="t1"><title>B</title></topic>
+              </topics>
+              <topics type="summary">
+                <topic id="s-1"><title>Orphan Summary 1</title></topic>
+                <topic id="s-2"><title>Orphan Summary 2</title></topic>
+              </topics>
+            </children>
+          </topic>
+        </sheet>
+      </xmap-content>`);
+    const report = createXmindImportReport();
+
+    const document = await importFromXmindZip(data, report);
+
+    expect(document.summaries).toBeUndefined();
+    expect(report.droppedSummaries).toBe(2);
   });
 
   it('maps XML labels into note lines', async () => {
@@ -369,5 +489,139 @@ describe('importFromXmindZip', () => {
       .flatMap((node) => node.images ?? [])
       .reduce((sum, image) => sum + image.src.length, 0);
     expect(totalInlineChars).toBeLessThanOrEqual(MAX_IMPORT_IMAGE_INLINE_TOTAL_BYTES);
+  });
+
+  it('round-trips bgColor, priority, completed, associations, and summaries symmetrically through .xmind export/import', async () => {
+    const sourceDoc: MindMapDocument = {
+      version: '1.0',
+      root: {
+        id: 'root',
+        text: 'Course Map',
+        children: [
+          {
+            id: 'c0',
+            text: 'Topic A',
+            priority: 2,
+            completed: true,
+            style: { bgColor: '#e8f5e9' },
+            children: [],
+          },
+          {
+            id: 'c1',
+            text: 'Topic B',
+            priority: 5,
+            completed: false,
+            style: { bgColor: 'rgb(240, 244, 255)' },
+            children: [],
+          },
+          {
+            id: 'c2',
+            text: 'Topic C',
+            children: [],
+          },
+        ],
+      },
+      associations: [
+        { id: 'assoc_1', source: 'c0', target: 'c2', label: 'relates to' },
+      ],
+      summaries: [
+        { id: 'sum_1', parentId: 'root', startChildId: 'c1', endChildId: 'c0', label: 'Core Trio' },
+      ],
+      meta: { createdAt: '2026-01-01T00:00:00.000Z' },
+    };
+
+    const bytes = await exportToXmindZip(sourceDoc);
+    const imported = await importFromXmindZip(bytes);
+
+    expect(imported.root.children[0].priority).toBe(2);
+    expect(imported.root.children[0].completed).toBe(true);
+    expect(imported.root.children[0].style?.bgColor).toBe('#e8f5e9');
+    expect(imported.root.children[1].priority).toBe(5);
+    expect(imported.root.children[1].completed).toBe(false);
+    expect(imported.root.children[1].style?.bgColor).toBe('rgb(240, 244, 255)');
+    expect(imported.summaries).toEqual([
+      { id: 'sum_1', parentId: 'root', startChildId: 'c0', endChildId: 'c1', label: 'Core Trio' },
+    ]);
+    expect(imported.associations).toHaveLength(1);
+    expect(imported.associations?.[0]).toMatchObject({
+      source: 'c0',
+      target: 'c2',
+      label: 'relates to',
+    });
+  });
+});
+
+describe('importFromJson associations sanitization', () => {
+  it('preserves valid associations while rejecting invalid endpoints, self-loops, duplicates, and unsafe styles', () => {
+    const longLabel = `  ${'A'.repeat(260)}  `;
+    const payload = {
+      version: '1.0',
+      root: {
+        id: 'root',
+        text: 'Root',
+        children: [
+          { id: 'n1', text: 'One', children: [] },
+          { id: 'n2', text: 'Two', children: [] },
+          { id: 'n3', text: 'Three', children: [] },
+        ],
+      },
+      associations: [
+        {
+          id: 'a1',
+          source: 'n1',
+          target: 'n2',
+          label: longLabel,
+          style: { stroke: '#3b82f6', strokeWidth: 2.5, strokeDasharray: '6 4' },
+        },
+        // Undirected duplicate pair (n2 <-> n1) must be dropped
+        { id: 'a2', source: 'n2', target: 'n1', label: 'dup pair' },
+        // Self-loop must be dropped
+        { id: 'a3', source: 'n1', target: 'n1', label: 'self' },
+        // Missing endpoint must be dropped
+        { id: 'a4', source: 'n1', target: 'missing' },
+        // Duplicate explicit id + missing id should still get unique id; unsafe styles stripped
+        {
+          id: 'a1',
+          source: 'n2',
+          target: 'n3',
+          label: '   ',
+          style: {
+            stroke: 'red; background: url(https://evil.test)',
+            strokeWidth: 99,
+            strokeDasharray: '6 4; evil()',
+          },
+        },
+        {
+          source: 'n1',
+          target: 'n3',
+          style: { stroke: 'rgba(10, 20, 30, 0.8)', strokeWidth: 0, strokeDasharray: '4, 2' },
+        },
+      ],
+      meta: { createdAt: '2026-01-01T00:00:00.000Z' },
+    };
+
+    const imported = importFromJson(JSON.stringify(payload));
+    expect(imported.associations).toHaveLength(3);
+    expect(imported.associations?.[0]).toEqual({
+      id: 'a1',
+      source: 'n1',
+      target: 'n2',
+      label: 'A'.repeat(240),
+      style: { stroke: '#3b82f6', strokeWidth: 2.5, strokeDasharray: '6 4' },
+    });
+    expect(imported.associations?.[1]).toMatchObject({
+      source: 'n2',
+      target: 'n3',
+    });
+    expect(imported.associations?.[1].id).not.toBe('a1');
+    expect(imported.associations?.[1].label).toBeUndefined();
+    expect(imported.associations?.[1].style).toBeUndefined();
+    expect(imported.associations?.[2]).toMatchObject({
+      source: 'n1',
+      target: 'n3',
+      style: { stroke: 'rgba(10, 20, 30, 0.8)', strokeWidth: 0, strokeDasharray: '4, 2' },
+    });
+    const ids = imported.associations?.map((a) => a.id) ?? [];
+    expect(new Set(ids).size).toBe(3);
   });
 });

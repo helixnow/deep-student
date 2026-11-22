@@ -61,6 +61,23 @@ export function useAppViewState({ isSmallScreen, isDemoShell }: AppViewStateOpti
     () => new Map<CurrentView, number>([[currentView, Date.now()]])
   );
 
+  // 消费并清理 URL 上的 ?shortcut= 参数，避免后续刷新页面时被旧快捷入口重新劫持
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.history?.replaceState !== 'function') return;
+    try {
+      const url = new URL(window.location.href);
+      if (!url.searchParams.has('shortcut')) return;
+      url.searchParams.delete('shortcut');
+      window.history.replaceState(
+        window.history.state,
+        '',
+        `${url.pathname}${url.search}${url.hash}`,
+      );
+    } catch {
+      /* ignore malformed location or sandboxed history */
+    }
+  }, []);
+
   useEffect(() => {
     isSmallScreenRef.current = isSmallScreen;
   }, [isSmallScreen]);

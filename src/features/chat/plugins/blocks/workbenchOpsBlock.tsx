@@ -11,7 +11,7 @@
  * 设计见 docs/dev/acr/DESIGN.md §3 / §4.2；规范 docs/dev/acr/STANDARDS.md。
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowSquareOut,
@@ -81,27 +81,56 @@ function isUndoExpiredError(message: string | undefined | null): boolean {
   return typeof message === 'string' && /UNDO_(NOT_FOUND|EXPIRED)/.test(message);
 }
 
-/** 从 toolInput 提取 typeId / instanceKey（兼容嵌套 target） */
+/** 从 toolInput 提取 typeId / instanceKey（兼容嵌套 target 及资源 ID 字段） */
 function extractTarget(toolInput: unknown): { typeId?: string; instanceKey?: string } {
   const input = asRecord(toolInput);
   if (!input) return {};
 
   const nested = asRecord(input.target);
-  const typeId =
+  const rawTypeId =
     asString(input.typeId) ??
     asString(input.type_id) ??
     asString(nested?.typeId) ??
     asString(nested?.type_id);
+
+  const mindmapId =
+    asString(input.mindmapId) ??
+    asString(input.mindmap_id) ??
+    asString(nested?.mindmapId) ??
+    asString(nested?.mindmap_id);
+  const noteId =
+    asString(input.noteId) ??
+    asString(input.note_id) ??
+    asString(nested?.noteId) ??
+    asString(nested?.note_id);
+  const examId =
+    asString(input.examId) ??
+    asString(input.exam_id) ??
+    asString(nested?.examId) ??
+    asString(nested?.exam_id);
+  const deckId =
+    asString(input.deckId) ??
+    asString(input.deck_id) ??
+    asString(nested?.deckId) ??
+    asString(nested?.deck_id);
 
   const instanceKey =
     asString(input.instanceKey) ??
     asString(input.instance_key) ??
     asString(input.resourceId) ??
     asString(input.resource_id) ??
+    mindmapId ??
+    noteId ??
+    examId ??
+    deckId ??
     asString(nested?.instanceKey) ??
     asString(nested?.instance_key) ??
     asString(nested?.resourceId) ??
     asString(nested?.resource_id);
+
+  const typeId =
+    rawTypeId ??
+    (mindmapId ? 'mindmap' : noteId ? 'notes' : examId ? 'exam' : deckId ? 'flashcards' : undefined);
 
   return { typeId, instanceKey };
 }
@@ -248,7 +277,6 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
     [toolName, t]
   );
 
-  const target = useMemo(() => extractTarget(block.toolInput), [block.toolInput]);
   const receipt = useMemo(() => parseReceipt(block.toolOutput), [block.toolOutput]);
   const actResult = useMemo(() => parseAgentActResult(block.toolOutput), [block.toolOutput]);
   const resultUnknown = useMemo(
@@ -262,6 +290,43 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
   const runId = sessionId && toolCallId
     ? makeAcrSessionRunId(sessionId, toolCallId)
     : undefined;
+
+  const pendingInteraction = useSyncExternalStore(
+    useCallback(
+      (onChange) => (typeof store?.subscribe === 'function' ? store.subscribe(onChange) : () => {}),
+      [store],
+    ),
+    () => store?.getState?.()?.pendingBlockingInteraction ?? null,
+    () => null,
+  );
+  const isAwaitingApproval = Boolean(
+    statusKey === 'running' &&
+    pendingInteraction?.kind === 'tool_approval' &&
+    (!('toolCallId' in pendingInteraction) ||
+      !pendingInteraction.toolCallId ||
+      !toolCallId ||
+      pendingInteraction.toolCallId === toolCallId),
+  );
+
+  const effectiveToolInput = useMemo(() => {
+    const direct = asRecord(block.toolInput);
+    if (direct && Object.keys(direct).length > 0) return direct;
+    if (isAwaitingApproval && pendingInteraction?.kind === 'tool_approval') {
+      const args = asRecord(pendingInteraction.arguments);
+      if (args && Object.keys(args).length > 0) return args;
+    }
+    if (block.isPreparing && typeof block.content === 'string') {
+      try {
+        const parsed = asRecord(JSON.parse(block.content));
+        if (parsed) return parsed;
+      } catch {
+        // Ignore partial streaming JSON while parameters are still arriving.
+      }
+    }
+    return block.toolInput;
+  }, [block.content, block.isPreparing, block.toolInput, isAwaitingApproval, pendingInteraction]);
+
+  const target = useMemo(() => extractTarget(effectiveToolInput), [effectiveToolInput]);
 
   // presence 联动：同 runId 的窗口光环状态（只读订阅，驱动 data-presence-status）
   const presenceStatus = usePresenceStore((s) => {
@@ -282,12 +347,12 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
   if (ledgerAlive) hadReversibleEntry.current = true;
 
   const progressSteps = useMemo(() => {
-    if (!block.content) return [];
+    if (block.isPreparing || !block.content) return [];
     return block.content
       .split('\n')
       .map((line) => line.trim())
       .filter(Boolean);
-  }, [block.content]);
+  }, [block.content, block.isPreparing]);
 
   // ACR 4.0（A8）：步骤流自动滚底——流式追加时跟随最新一条；
   // 用户上滚即暂停跟随，滚回底部附近恢复；prefers-reduced-motion 时瞬滚。
@@ -453,6 +518,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
   const durationMs =
     block.startedAt && block.endedAt ? block.endedAt - block.startedAt : undefined;
   const isActive = statusKey === 'running';
+  const isExecuting = isActive && !isAwaitingApproval;
 
   const statusBadgeClass = {
     running: 'bg-primary/10 text-primary',
@@ -492,13 +558,13 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
           className="flex flex-1 items-center gap-2 min-w-0 text-left [@media(pointer:coarse)]:!min-h-11"
         >
           <ToolActivitySweep
-            active={isActive}
+            active={isExecuting}
             className="h-7 w-7 shrink-0 justify-center rounded-md bg-muted/70 dark:bg-muted/40"
           >
             <Desktop size={16} className="text-muted-foreground" />
           </ToolActivitySweep>
           <div className="flex flex-col justify-center gap-0.5 min-w-0 flex-1">
-            <ToolActivitySweep active={isActive} className="min-w-0 max-w-full leading-4">
+            <ToolActivitySweep active={isExecuting} className="min-w-0 max-w-full leading-4">
               <span className="block text-xs font-medium leading-4 text-muted-foreground truncate">
                 {t('blocks.workbenchOps.title')}
                 {displayName ? (
@@ -509,6 +575,10 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             {targetSummary ? (
               <span className="text-xs leading-4 text-muted-foreground/80 truncate">
                 {t('blocks.workbenchOps.target')}: {targetSummary}
+              </span>
+            ) : block.isPreparing ? (
+              <span className="text-xs leading-4 text-muted-foreground/70 truncate">
+                {t('blocks.mcpTool.generatingArgs')}
               </span>
             ) : (
               <span className="text-xs leading-4 text-muted-foreground/70 truncate">
@@ -544,13 +614,16 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
           <span
             className={cn(
               'text-[11px] px-2 py-0.5 rounded-md flex-shrink-0',
-              statusBadgeClass
+              isAwaitingApproval ? 'bg-warning/15 text-warning' : statusBadgeClass
             )}
             data-testid="workbench-ops-status"
+            data-approval-pending={isAwaitingApproval ? 'true' : undefined}
           >
             {isActive ? (
               <TextShimmer className="text-[11px]" duration={1.5} spread={3}>
-                {t(`blocks.workbenchOps.status.${statusKey}`)}
+                {isAwaitingApproval
+                  ? t('blocks.workbenchOps.status.approval', '等待允许')
+                  : t(`blocks.workbenchOps.status.${statusKey}`)}
               </TextShimmer>
             ) : (
               t(`blocks.workbenchOps.status.${statusKey}`)
@@ -576,7 +649,7 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
       {(block.status === 'running' || block.status === 'pending' || showSteps) && (
         <div className="px-3 py-2 border-b border-border/20" data-testid="workbench-ops-steps">
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1.5">
-            {(block.status === 'running' || block.status === 'pending') && (
+            {isExecuting && (
               <PulseDot className="w-1.5 h-1.5 text-primary" />
             )}
             <span>{t('blocks.workbenchOps.steps')}</span>
@@ -602,7 +675,9 @@ const WorkbenchOpsBlock: React.FC<BlockComponentProps> = React.memo(({ block, st
             </CustomScrollArea>
           ) : (
             <TextShimmer className="text-xs text-muted-foreground" duration={1.5} spread={3}>
-              {t('blocks.workbenchOps.status.running')}
+              {isAwaitingApproval
+                ? t('blocks.workbenchOps.status.approval', '等待允许')
+                : t('blocks.workbenchOps.status.running')}
             </TextShimmer>
           )}
         </div>

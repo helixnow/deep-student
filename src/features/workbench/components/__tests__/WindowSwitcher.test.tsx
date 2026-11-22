@@ -323,3 +323,64 @@ describe('可选窗口内容缩略', () => {
     expect(rootEl()).toHaveAttribute('data-thumbs', 'true');
   });
 });
+
+describe('进阶肌肉记忆快捷键（Q / H / ↓）与底部微提示', () => {
+  it('底部渲染 Q / H / ↓ 轻量快捷键微提示', () => {
+    const a = openWin('chat', 'a', '会话 A');
+    render(<WindowSwitcher />);
+    openSession([a], 0);
+
+    const shortcuts = screen.getByTestId('wb-switcher-shortcuts');
+    expect(shortcuts.textContent).toContain('Q');
+    expect(shortcuts.textContent).toContain('H');
+    expect(shortcuts.textContent).toContain('↓');
+  });
+
+  it('按 Q 关闭当前高亮窗口并留在切换器选中下一窗口', async () => {
+    const a = openWin('chat', 'a', '会话 A');
+    const b = openWin('files', 'b', '资源库 B');
+    render(<WindowSwitcher />);
+    openSession([b, a], 0);
+
+    fireEvent.keyDown(window, { key: 'q', code: 'KeyQ', metaKey: true });
+
+    await vi.waitFor(() => {
+      expect(useWindowStore.getState().windows[b]).toBeUndefined();
+    });
+    expect(useWorkbenchOverlay.getState().switcherOpen).toBe(true);
+    expect(useWorkbenchOverlay.getState().switcherIds).toEqual([a]);
+    expect(useWorkbenchOverlay.getState().switcherIndex).toBe(0);
+  });
+
+  it('按 H 最小化当前高亮窗口且保持切换器打开', async () => {
+    const a = openWin('chat', 'a', '会话 A');
+    const b = openWin('files', 'b', '资源库 B');
+    render(<WindowSwitcher />);
+    openSession([b, a], 0);
+
+    fireEvent.keyDown(window, { key: 'h', code: 'KeyH', metaKey: true });
+
+    await vi.waitFor(() => {
+      expect(useWindowStore.getState().windows[b]?.minimized).toBe(true);
+    });
+    expect(useWorkbenchOverlay.getState().switcherOpen).toBe(true);
+    expect(document.getElementById(`wb-switcher-item-${b}`)).toHaveAttribute(
+      'data-minimized',
+      'true',
+    );
+  });
+
+  it('按 ArrowDown 直接进入当前高亮应用的 App Exposé 并退出切换器', () => {
+    const a = openWin('chat', 'a', '会话 A');
+    const b = openWin('files', 'b', '资源库 B');
+    render(<WindowSwitcher />);
+    openSession([b, a], 0);
+
+    fireEvent.keyDown(window, { key: 'ArrowDown', metaKey: true });
+
+    const overlay = useWorkbenchOverlay.getState();
+    expect(overlay.switcherOpen).toBe(false);
+    expect(overlay.exposeOpen).toBe(true);
+    expect(overlay.exposeAppTypeId).toBe('files');
+  });
+});

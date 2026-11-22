@@ -1,37 +1,47 @@
 /**
- * Dock（P5 → O5 打磨）— 底部居中悬浮启动器 / 切换器
+ * Dock（P5 → O5 → Liquid Glass 灵魂重塑）— 底部居中悬浮启动器 / 切换器
  *
- * - 固定区（DockPinnedStore，快照接线 P11）+ 运行区（store 中有窗的 typeId 去重）+ 分隔符
- * - 键盘可达：roving tabindex（←/→/Home/End 移动，Enter/Space 走原生 button 激活）
- * - autohide：prop 驱动（用户设置项，或任一窗口最大化时由桌面强制）—
- *   隐藏至底缘 4px 热区；reveal ~180ms / conceal ~150ms 防误触延迟；
- *   弹出后指针未进入 Dock 就离开底缘也会自动收起（macOS 同语义）
- *
- * O5 动效层（样式见 Dock.css）：
- * - 悬停不做邻近放大/位移：图标保持静止，仅显示 tooltip 应用名（产品裁决）。
- * - autohide 滑入用 O1 overshoot 曲线（wb-dock-slide，复合 translate(-50%, y)）。
- * - dockGeometry：每次布局来源变化（items / 显隐 / resize / 滑动结束）rAF 防抖发布
- *   各 typeId 图标 wrap 的视口坐标，供 O9 genie 最小化收敛点消费。
- *
- * 材质由 CSS 类名契约提供（wb-dock 等，P4 实现），本文件只用类名 + Tailwind 布局工具类。
+ * - 固定区（DockPinnedStore，快照接线 P11）+ 运行区（store 中有窗的 typeId 去重）
+ *   + 最小化窗口缩略槽位（最多 3 张微缩玻璃窗口卡 + `+N` 溢出入口）
+ *   + 分隔符 + 右侧统一玻璃底座的「全部应用 / AI 操控中心」入口
+ * - 60fps 连续波浪放大（dockMagnification.ts + dockMagnificationStore.ts）：
+ *   单监听器 pointermove + rAF 驱动 `.wb-dock-mag` 实时缩放、向上抬升与邻近推开，
+ *   指针离场以弹簧曲线回弹至 1.0；reduced-motion / coarse / minimal 自动禁用
+ * - 0ms 连续 Tooltip 会话：首次悬停 ~70ms 显现，Dock 内横划相邻图标 0ms 即时切换，
+ *   气泡随放大顶边自动抬升
+ * - Liquid Glass 光学细节：接入 `.wb-glass-rim` 360° 1px 镜面环 + `--wb-dock-cursor-x`
+ *   克制扫光 + 同心圆几何内边距 + 柔和底部接触投影 + 去除自动隐藏呼吸条
+ * - 键盘可达：roving tabindex（←/→/Home/End 移动）
+ * - dockGeometry：布局变化时 rAF 防抖发布各静止 wrap 的视口坐标，供 Genie 动画消费
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { SquaresFour } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '../../../lib/utils';
 import { appRegistry } from '../core/appRegistry';
 import { useWindowStore } from '../core/windowStore';
 import { getSortedWindows } from '../core/windowListCache';
-import { SquaresFour } from '@phosphor-icons/react';
+import { useMaterialTier } from '../core/materialTier';
+import { useDockMagnificationEffective } from '../core/dockMagnificationStore';
 import { WallpaperReplica } from '../core/liquidGlassLens';
 import { DockItem } from './DockItem';
 import { DockContextMenu } from './DockContextMenu';
 import { useDockPinned } from './DockPinnedStore';
 import {
   clearDockGeometry,
+  getMinimizedDockItemKey,
   publishDockIconRects,
   registerDockGeometryMeasurer,
   type DockIconRect,
 } from './dockGeometry';
+import {
+  DEFAULT_MAG_ICON_SIZE_PX,
+  DEFAULT_MAG_RADIUS_PX,
+  computeDockCursorPercent,
+  computeDockMagnification,
+} from './dockMagnification';
 import {
   APPS_DOCK_TYPE_ID,
   toggleAppsPanel,
@@ -48,10 +58,13 @@ export {
   getDockPinned,
   setDockPinned,
   toggleDockPinned,
+  pinDockItemAt,
+  unpinDockItem,
   reorderDockPinned,
   subscribeDockPinned,
   useDockPinned,
   useDockPinnedDragReorder,
+  useDockRunningDragToPin,
 } from './DockPinnedStore';
 
 export interface DockProps {
@@ -61,6 +74,15 @@ export interface DockProps {
   size?: number;
   className?: string;
 }
+
+/** 首次悬停 Tooltip 显现延迟（ms）；会话激活后横划相邻图标 0ms 即时切换 */
+export const DOCK_TOOLTIP_INITIAL_DELAY_MS = 70;
+/** 图标间隙内维持 Tooltip 会话热态的宽限时间（ms） */
+export const DOCK_TOOLTIP_SESSION_GRACE_MS = 140;
+/** 最小化窗口缩略槽位最多直接展示张数，超出归入 +N 溢出入口 */
+export const DOCK_MAX_MINIMIZED_SLOTS = 3;
+
+const MINIMIZED_OVERFLOW_DOCK_ID = '__minimized_overflow__';
 
 function useRegistryVersion(): void {
   const [, setVersion] = React.useState(0);
@@ -81,8 +103,14 @@ function rafCancel(id: number): void {
   else window.clearTimeout(id);
 }
 
-/** DockItem 图标层的发现属性（DockItem.tsx 渲染，勿改动字面量；dockGeometry 消费） */
+/** DockItem 图标层的发现属性（DockItem.tsx 渲染，勿改动字面量；dockGeometry 与放大引擎共同消费） */
 const MAG_ITEM_ATTR = 'data-wb-dock-mag-item';
+
+interface CachedMagEntry {
+  wrap: HTMLElement;
+  magEl: HTMLElement;
+  centerX: number;
+}
 
 // ---------------------------------------------------------------------------
 // Dock
@@ -98,11 +126,14 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
 
   const appsPanelOpen = useAppsPanelOpen();
   const pinned = useDockPinned();
+  const tier = useMaterialTier();
+  const {
+    effectiveEnabled: magEnabled,
+    maxScale: magMaxScale,
+    prefersReducedMotion,
+  } = useDockMagnificationEffective();
 
   // 运行区指纹：有窗口的 typeId 按最早开窗时间保序去重后 join。
-  // selector 返回原始字符串（zustand 默认 Object.is 比较）——windows 引用每次 set
-  // 都会变，但指纹只在「运行应用集合/顺序」实质变化时变，避免 move/focus/setTitle
-  // 等提交无谓重渲染整个 Dock。
   const runningKey = useWindowStore((s) => {
     const ordered = getSortedWindows(s.windows);
     const seen: string[] = [];
@@ -111,16 +142,69 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     }
     return seen.join('|');
   });
-  // 空指纹 → 空列表（''.split('|') 会产生 ['']，需规避）
   const runningTypeIds = React.useMemo(
     () => (runningKey ? runningKey.split('|') : []),
     [runningKey],
   );
 
+  // 最小化窗口指纹：收集所有 minimized === true 的窗口，按开窗顺序排布
+  const minimizedKey = useWindowStore((s) =>
+    getSortedWindows(s.windows)
+      .filter((w) => w.minimized)
+      .map((w) => `${w.id}:${w.typeId}:${w.title}`)
+      .join('|'),
+  );
+  const minimizedWindows = React.useMemo(
+    () => getSortedWindows(useWindowStore.getState().windows).filter((w) => w.minimized),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- minimizedKey 即最小化窗口数据指纹
+    [minimizedKey],
+  );
+  const visibleMinimized = minimizedWindows.slice(0, DOCK_MAX_MINIMIZED_SLOTS);
+  const overflowMinimized = minimizedWindows.slice(DOCK_MAX_MINIMIZED_SLOTS);
+
+  const [overflowOpen, setOverflowOpen] = React.useState(false);
+  const overflowWrapRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (overflowOpen && overflowMinimized.length === 0) {
+      setOverflowOpen(false);
+    }
+  }, [overflowOpen, overflowMinimized.length]);
+
+  const onOverflowOutsidePointerDown = React.useCallback((event: Event) => {
+    if (!overflowWrapRef.current?.contains(event.target as Node)) {
+      setOverflowOpen(false);
+    }
+  }, []);
+
+  const onOverflowKeyDown = React.useCallback((event: Event) => {
+    if ((event as KeyboardEvent).key === 'Escape') {
+      setOverflowOpen(false);
+    }
+  }, []);
+
+  useEventRegistry(
+    overflowOpen
+      ? [
+          { target: 'document', type: 'pointerdown', listener: onOverflowOutsidePointerDown },
+          { target: 'document', type: 'keydown', listener: onOverflowKeyDown },
+        ]
+      : [],
+    [overflowOpen, onOverflowOutsidePointerDown, onOverflowKeyDown],
+  );
+
   const runningExtra = runningTypeIds.filter((id) => !pinned.includes(id));
-  // 应用项 + 右侧固定「全部应用 / AI 操控」入口（伪 typeId，不进 appRegistry / pinned）
   const appOrderedIds = [...pinned, ...runningExtra];
-  const orderedIds = [...appOrderedIds, APPS_DOCK_TYPE_ID, AGENT_CONTROL_DOCK_ID];
+  const minimizedSlotIds = [
+    ...visibleMinimized.map((w) => getMinimizedDockItemKey(w.id)),
+    ...(overflowMinimized.length > 0 ? [MINIMIZED_OVERFLOW_DOCK_ID] : []),
+  ];
+  const orderedIds = [
+    ...appOrderedIds,
+    ...minimizedSlotIds,
+    APPS_DOCK_TYPE_ID,
+    AGENT_CONTROL_DOCK_ID,
+  ];
   const orderedKey = orderedIds.join('|');
   const normalizedSize = Number.isFinite(size) ? size : 100;
   const dockScale = Math.max(0.75, Math.min(1.25, normalizedSize / 100));
@@ -139,8 +223,13 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   const handleToolbarKeyDown = (event: React.KeyboardEvent) => {
     if (orderedIds.length === 0) return;
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    // 弹层内的 ↑/↓/Esc 自己处理；←/→ 等只在 Dock 条上生效
-    if ((event.target as HTMLElement | null)?.closest('[data-testid="wb-dock-window-list"]')) return;
+    if (
+      (event.target as HTMLElement | null)?.closest(
+        '[data-testid="wb-dock-window-list"], [data-testid="wb-dock-minimized-overflow-list"]',
+      )
+    ) {
+      return;
+    }
     event.preventDefault();
     const count = orderedIds.length;
     const currentIndex = effectiveActiveId ? orderedIds.indexOf(effectiveActiveId) : 0;
@@ -153,6 +242,66 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     setActiveId(nextId);
     itemButtonRefs.current.get(nextId)?.focus();
   };
+
+  // ---- 0ms 连续 Tooltip 会话（首次 ~70ms，Dock 内横划 0ms 即时切换）----
+  const [hoveredTipId, setHoveredTipId] = React.useState<string | null>(null);
+  const [tipSessionActive, setTipSessionActive] = React.useState(false);
+  const tipSessionActiveRef = React.useRef(false);
+  const tipOpenTimerRef = React.useRef(0);
+  const tipGraceTimerRef = React.useRef(0);
+
+  const clearTipTimers = React.useCallback(() => {
+    if (tipOpenTimerRef.current) {
+      window.clearTimeout(tipOpenTimerRef.current);
+      tipOpenTimerRef.current = 0;
+    }
+    if (tipGraceTimerRef.current) {
+      window.clearTimeout(tipGraceTimerRef.current);
+      tipGraceTimerRef.current = 0;
+    }
+  }, []);
+
+  const resetTipSession = React.useCallback(() => {
+    clearTipTimers();
+    tipSessionActiveRef.current = false;
+    setTipSessionActive(false);
+    setHoveredTipId(null);
+  }, [clearTipTimers]);
+
+  const handleTipItemEnter = React.useCallback(
+    (itemId: string) => {
+      clearTipTimers();
+      if (tipSessionActiveRef.current) {
+        setHoveredTipId(itemId);
+        return;
+      }
+      tipOpenTimerRef.current = window.setTimeout(() => {
+        tipOpenTimerRef.current = 0;
+        tipSessionActiveRef.current = true;
+        setTipSessionActive(true);
+        setHoveredTipId(itemId);
+      }, DOCK_TOOLTIP_INITIAL_DELAY_MS);
+    },
+    [clearTipTimers],
+  );
+
+  const handleTipItemLeave = React.useCallback(() => {
+    if (tipOpenTimerRef.current) {
+      window.clearTimeout(tipOpenTimerRef.current);
+      tipOpenTimerRef.current = 0;
+    }
+    if (tipGraceTimerRef.current) {
+      window.clearTimeout(tipGraceTimerRef.current);
+    }
+    tipGraceTimerRef.current = window.setTimeout(() => {
+      tipGraceTimerRef.current = 0;
+      tipSessionActiveRef.current = false;
+      setTipSessionActive(false);
+      setHoveredTipId(null);
+    }, DOCK_TOOLTIP_SESSION_GRACE_MS);
+  }, []);
+
+  React.useEffect(() => () => clearTipTimers(), [clearTipTimers]);
 
   // ---- autohide（reveal ~180ms / conceal ~150ms 防误触；离开热区取消）----
   const [revealed, setRevealed] = React.useState(!autohide);
@@ -217,7 +366,171 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
 
   const dockRef = React.useRef<HTMLDivElement | null>(null);
 
-  const handleDockPointerLeave = () => {
+  // ---- 60fps 连续波浪放大 + Specular Shimmer（单监听器 pointermove + rAF）----
+  const magRafRef = React.useRef(0);
+  const magPointerXRef = React.useRef<number | null>(null);
+  const magEntriesRef = React.useRef<CachedMagEntry[] | null>(null);
+  const magDockRectRef = React.useRef<{ left: number; width: number } | null>(null);
+  const shimmerAllowed = tier !== 'minimal' && !prefersReducedMotion;
+
+  const invalidateMagCache = React.useCallback(() => {
+    magEntriesRef.current = null;
+    magDockRectRef.current = null;
+  }, []);
+
+  const ensureMagCache = React.useCallback(() => {
+    const dock = dockRef.current;
+    if (!dock) return;
+    if (!magDockRectRef.current) {
+      const dockRect = dock.getBoundingClientRect();
+      magDockRectRef.current = { left: dockRect.left, width: dockRect.width };
+    }
+    if (!magEntriesRef.current) {
+      const entries: CachedMagEntry[] = [];
+      dock.querySelectorAll<HTMLElement>(`[${MAG_ITEM_ATTR}]`).forEach((magEl) => {
+        const wrap = magEl.closest<HTMLElement>('[data-wb-dock-item-wrap]');
+        if (!wrap) return;
+        const rect = wrap.getBoundingClientRect();
+        entries.push({
+          wrap,
+          magEl,
+          centerX: rect.left + rect.width / 2,
+        });
+      });
+      magEntriesRef.current = entries;
+    }
+  }, []);
+
+  const resetMagnification = React.useCallback(() => {
+    if (magRafRef.current) {
+      rafCancel(magRafRef.current);
+      magRafRef.current = 0;
+    }
+    magPointerXRef.current = null;
+    invalidateMagCache();
+    const dock = dockRef.current;
+    if (!dock) return;
+    dock.removeAttribute('data-wb-dock-magging');
+    dock.removeAttribute('data-wb-dock-shimmer');
+    dock.querySelectorAll<HTMLElement>(`[${MAG_ITEM_ATTR}]`).forEach((magEl) => {
+      magEl.style.transform = '';
+      const wrap = magEl.closest<HTMLElement>('[data-wb-dock-item-wrap]');
+      if (!wrap) return;
+      wrap.style.removeProperty('--wb-dock-mag-weight');
+      wrap.style.removeProperty('--wb-dock-mag-x');
+      wrap.style.removeProperty('--wb-dock-tip-lift');
+      wrap.style.removeProperty('--wb-dock-mag-z');
+    });
+  }, [invalidateMagCache]);
+
+  const flushMagnificationFrame = React.useCallback(() => {
+    magRafRef.current = 0;
+    const dock = dockRef.current;
+    const pointerX = magPointerXRef.current;
+    if (!dock || pointerX === null || hidden) return;
+
+    // 拖拽排序 / 拖入固定 / 拖离取消固定期间暂停波浪放大，避免两套 transform 冲突
+    if (dock.querySelector('[data-wb-dock-pinned-dragging]')) {
+      resetMagnification();
+      return;
+    }
+
+    ensureMagCache();
+    const dockRect = magDockRectRef.current;
+    if (shimmerAllowed && dockRect && dockRect.width > 0) {
+      const pct = computeDockCursorPercent(pointerX, dockRect.left, dockRect.width);
+      if (pct !== null) {
+        dock.style.setProperty('--wb-dock-cursor-x', `${pct.toFixed(1)}%`);
+        dock.setAttribute('data-wb-dock-shimmer', 'true');
+      }
+    }
+
+    if (!magEnabled) {
+      dock.removeAttribute('data-wb-dock-magging');
+      return;
+    }
+
+    const entries = magEntriesRef.current;
+    if (!entries || entries.length === 0) return;
+
+    const centersX = entries.map((e) => e.centerX);
+    const results = computeDockMagnification(pointerX, centersX, {
+      radius: DEFAULT_MAG_RADIUS_PX * dockScale,
+      maxScale: magMaxScale,
+      iconSize: DEFAULT_MAG_ICON_SIZE_PX * dockScale,
+    });
+
+    dock.setAttribute('data-wb-dock-magging', 'true');
+    for (let i = 0; i < entries.length; i += 1) {
+      const { wrap, magEl } = entries[i];
+      const { scale, liftY, offsetX, weight, topLiftPx } = results[i];
+      if (weight > 0.001 || Math.abs(offsetX) > 0.05) {
+        magEl.style.transform = `translate3d(${offsetX.toFixed(2)}px, ${liftY.toFixed(2)}px, 0) scale(${scale.toFixed(4)})`;
+        wrap.style.setProperty('--wb-dock-mag-weight', weight.toFixed(3));
+        wrap.style.setProperty('--wb-dock-mag-x', `${offsetX.toFixed(2)}px`);
+        wrap.style.setProperty('--wb-dock-tip-lift', `${topLiftPx.toFixed(1)}px`);
+        wrap.style.setProperty('--wb-dock-mag-z', String(2 + Math.round(weight * 8)));
+      } else {
+        magEl.style.transform = '';
+        wrap.style.removeProperty('--wb-dock-mag-weight');
+        wrap.style.removeProperty('--wb-dock-mag-x');
+        wrap.style.removeProperty('--wb-dock-tip-lift');
+        wrap.style.removeProperty('--wb-dock-mag-z');
+      }
+    }
+  }, [dockScale, ensureMagCache, hidden, magEnabled, magMaxScale, resetMagnification, shimmerAllowed]);
+
+  const scheduleMagnification = React.useCallback(
+    (clientX: number, pointerType?: string) => {
+      if (pointerType === 'touch') return;
+      if (!magEnabled && !shimmerAllowed) return;
+      magPointerXRef.current = clientX;
+      if (magRafRef.current) return;
+      let ranSync = false;
+      const id = rafSchedule(() => {
+        ranSync = true;
+        flushMagnificationFrame();
+      });
+      magRafRef.current = ranSync ? 0 : id;
+    },
+    [flushMagnificationFrame, magEnabled, shimmerAllowed],
+  );
+
+  // 布局、开关、倍率或显隐变更时清理缓存 / 回弹
+  React.useEffect(() => {
+    invalidateMagCache();
+    if (!magEnabled || hidden) {
+      resetMagnification();
+    }
+    if (hidden) {
+      resetTipSession();
+    }
+  }, [orderedKey, dockScale, magEnabled, magMaxScale, hidden, invalidateMagCache, resetMagnification, resetTipSession]);
+
+  React.useEffect(() => () => resetMagnification(), [resetMagnification]);
+
+  const handleDockPointerEnter = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (autohide) {
+      clearAutohideTimers();
+      revealDock();
+    }
+    invalidateMagCache();
+    if (Number.isFinite(event.clientX)) {
+      scheduleMagnification(event.clientX, event.pointerType);
+    }
+  };
+
+  const handleDockPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (Number.isFinite(event.clientX)) {
+      scheduleMagnification(event.clientX, event.pointerType);
+    }
+  };
+
+  const handleDockPointerLeave = (event: React.PointerEvent<HTMLDivElement>) => {
+    // 忽略从子项冒泡上来的合成 leave（仅处理真正离开 Dock 容器本身的离场）
+    if (event.target !== event.currentTarget) return;
+    resetMagnification();
+    resetTipSession();
     if (!autohide) return;
     // 焦点仍在 Dock 内（键盘用户）时不收起
     if (dockRef.current?.contains(document.activeElement)) return;
@@ -232,14 +545,14 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   };
 
   // ---- dockGeometry 发布（O9 genie 收敛点；§4 协作接口）----
-  const geometryRafRef = React.useRef(0);
+  const geometryTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const measureGeometry = React.useCallback((): Record<string, DockIconRect> => {
     const map: Record<string, DockIconRect> = {};
     dockRef.current?.querySelectorAll<HTMLElement>(`[${MAG_ITEM_ATTR}]`).forEach((el) => {
       const typeId = el.getAttribute(MAG_ITEM_ATTR);
       const wrap = el.parentElement;
       if (!typeId || !wrap) return;
-      // 测 wrap（静止锚点）
+      // 测 wrap（静止锚点，不受 .wb-dock-mag 放大 transform 污染）
       const rect = wrap.getBoundingClientRect();
       map[typeId] = { x: rect.left, y: rect.top, w: rect.width, h: rect.height };
     });
@@ -250,25 +563,30 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     publishDockIconRects(measureGeometry());
   }, [measureGeometry]);
 
-  // 挂载即登记（早于首个 rAF 发布）：之后任一次提交里开窗，opening 相位取坐标缺项时都能现场补测
+  // 挂载即登记（早于首个防抖发布）：之后任一次提交里开窗，opening 相位取坐标缺项时都能现场补测
   React.useLayoutEffect(() => registerDockGeometryMeasurer(measureGeometry), [measureGeometry]);
 
   const publishGeometrySoon = React.useCallback(() => {
-    if (geometryRafRef.current) return;
-    geometryRafRef.current = rafSchedule(() => {
-      geometryRafRef.current = 0;
+    invalidateMagCache();
+    if (geometryTimerRef.current !== null) clearTimeout(geometryTimerRef.current);
+    // 延后到 resize/布局帧结算后的独立宏任务再测，避免在首帧 rAF 里同步强制整页重排
+    geometryTimerRef.current = setTimeout(() => {
+      geometryTimerRef.current = null;
       publishGeometry();
-    });
-  }, [publishGeometry]);
+    }, 220);
+  }, [invalidateMagCache, publishGeometry]);
 
-  // 图标布局来源只有两个：items 集合（orderedKey 指纹）与 autohide 显隐（hidden）。
-  // 依赖收窄到这两者即可，无需每次渲染都 rAF 排队 + 逐图标 getBoundingClientRect；
-  // 主题/材质切换等引起的坐标变化由下方 ResizeObserver 与 transitionend 兜底补测。
   React.useEffect(() => {
     publishGeometrySoon();
   }, [orderedKey, hidden, publishGeometrySoon]);
 
-  // resize / autohide 滑动结束 → 补一次精确坐标；卸载清空 provider
+  // resize 经 useEventRegistry 注册（无裸 window.addEventListener）
+  useEventRegistry(
+    [{ target: 'window', type: 'resize', listener: publishGeometrySoon }],
+    [publishGeometrySoon],
+  );
+
+  // ResizeObserver / autohide transitionend → 补一次精确坐标；卸载清空 provider
   React.useEffect(() => {
     const dock = dockRef.current;
     if (!dock) return undefined;
@@ -279,18 +597,24 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     const observer =
       typeof ResizeObserver === 'function' ? new ResizeObserver(() => publishGeometrySoon()) : null;
     observer?.observe(dock);
-    window.addEventListener('resize', publishGeometrySoon);
     return () => {
       dock.removeEventListener('transitionend', onTransitionEnd);
       observer?.disconnect();
-      window.removeEventListener('resize', publishGeometrySoon);
-      if (geometryRafRef.current) {
-        rafCancel(geometryRafRef.current);
-        geometryRafRef.current = 0;
+      if (geometryTimerRef.current !== null) {
+        clearTimeout(geometryTimerRef.current);
+        geometryTimerRef.current = null;
       }
       clearDockGeometry();
     };
   }, [publishGeometrySoon]);
+
+  const focusDockItem = (itemId: string) => {
+    setActiveId(itemId);
+    if (autohide) {
+      clearAutohideTimers();
+      revealDock();
+    }
+  };
 
   const renderItem = (typeId: string) => (
     <DockContextMenu key={typeId} typeId={typeId}>
@@ -298,16 +622,19 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
         typeId={typeId}
         tabIndex={typeId === effectiveActiveId ? 0 : -1}
         buttonRef={registerButtonRef(typeId)}
-        onItemFocus={() => {
-          setActiveId(typeId);
-          if (autohide) {
-            clearAutohideTimers();
-            revealDock();
-          }
-        }}
+        tipManaged
+        tipActive={hoveredTipId === typeId}
+        onTipPointerEnter={() => handleTipItemEnter(typeId)}
+        onTipPointerLeave={handleTipItemLeave}
+        onItemFocus={() => focusDockItem(typeId)}
       />
     </DockContextMenu>
   );
+
+  const restoreMinimizedWindow = (windowId: string) => {
+    setOverflowOpen(false);
+    useWindowStore.getState().focusWindow(windowId);
+  };
 
   return (
     <div
@@ -324,12 +651,10 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
           aria-hidden={!hidden || undefined}
           aria-label={hidden ? t('workbench:dock.autohideHint') : undefined}
           title={hidden ? t('workbench:dock.autohideHint') : undefined}
-          // 两种状态都接管底缘热区：收起态渲染柔和可见的轻胶囊提示条（避免纯透明盲区），
-          // 支持悬停延迟弹出或点击即刻唤出；弹出后退回 4px 透明热区，指针没上移到 Dock
-          // 就离开底缘时负责收起（macOS 同语义；热区与弹出的 Dock 纵向不重叠）
+          // macOS 原生纯净底缘热区（去除呼吸条），悬停延迟唤出或点击即刻唤出
           className={cn(
-            'wb-dock-hotzone group pointer-events-auto absolute inset-x-0 bottom-0 flex items-end justify-center',
-            hidden ? 'h-2 cursor-pointer pb-0.5' : 'h-1',
+            'wb-dock-hotzone pointer-events-auto absolute inset-x-0 bottom-0',
+            hidden ? 'h-2 cursor-pointer' : 'h-1',
           )}
           onClick={
             hidden
@@ -341,22 +666,13 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
           }
           onPointerEnter={scheduleReveal}
           onPointerLeave={() => {
-            // 未满 reveal 延迟即离开热区 → 取消弹出，防热区误触闪现
             if (revealTimerRef.current) {
               window.clearTimeout(revealTimerRef.current);
               revealTimerRef.current = 0;
             }
             scheduleConceal();
           }}
-        >
-          {hidden && (
-            <span
-              data-testid="wb-dock-autohide-pill"
-              aria-hidden="true"
-              className="wb-dock-autohide-pill pointer-events-none h-1 w-14 rounded-full bg-foreground/30 shadow-sm ring-1 ring-background/25 backdrop-blur-sm opacity-75 transition-[opacity,transform] duration-200 group-hover:scale-x-125 group-hover:opacity-100 motion-safe:animate-pulse"
-            />
-          )}
-        </div>
+        />
       )}
       <div
         ref={dockRef}
@@ -367,21 +683,17 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
         data-autohide={autohide || undefined}
         data-hidden={hidden || undefined}
         data-revealing={revealing || undefined}
+        data-tip-session={tipSessionActive ? 'active' : undefined}
         data-size={Math.round(dockScale * 100)}
         style={{ '--wb-dock-scale': dockScale } as React.CSSProperties}
         className={cn(
-          'wb-dock flex items-end gap-1 py-1.5 mb-2',
-          // 水平 padding 由 Dock.css 管
-          // autohide 滑入滑出（Dock.css：overshoot 进 / 标准曲线出，复合 translate(-50%, y)）
+          'wb-dock wb-glass-rim flex items-end',
           autohide && 'wb-dock-slide',
           hidden ? 'pointer-events-none' : 'pointer-events-auto',
         )}
         onKeyDown={handleToolbarKeyDown}
-        onPointerEnter={() => {
-          if (!autohide) return;
-          clearAutohideTimers();
-          revealDock();
-        }}
+        onPointerEnter={handleDockPointerEnter}
+        onPointerMove={handleDockPointerMove}
         onPointerLeave={handleDockPointerLeave}
         onFocusCapture={() => {
           if (!autohide) return;
@@ -404,8 +716,168 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
           />
         )}
         {runningExtra.map(renderItem)}
-        {/* L4：右侧固定「全部应用」入口（不进 DEFAULT_DOCK_PINNED / appRegistry） */}
-        {appOrderedIds.length > 0 && (
+
+        {/* 最小化窗口缩略槽位：位于右侧分隔线前，展示最多 3 张微缩玻璃窗口卡 + +N 溢出入口 */}
+        {minimizedWindows.length > 0 && appOrderedIds.length > 0 && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            data-testid="wb-dock-minimized-separator"
+            className="wb-dock-separator mx-1 h-8 w-px self-center"
+          />
+        )}
+        {visibleMinimized.map((win) => {
+          const slotId = getMinimizedDockItemKey(win.id);
+          const def = appRegistry.get(win.typeId);
+          const appLabel = def ? t(def.nameKey, def.typeId) : win.typeId;
+          const cardTitle = win.title.trim() || appLabel;
+          return (
+            <div
+              key={win.id}
+              data-testid={`wb-dock-minimized-${win.id}`}
+              data-wb-dock-item-wrap=""
+              data-tip-managed="true"
+              data-tip-active={hoveredTipId === slotId ? 'true' : undefined}
+              className="wb-dock-item-wrap wb-dock-min-wrap relative flex flex-col items-center"
+              onPointerEnter={() => handleTipItemEnter(slotId)}
+              onPointerLeave={handleTipItemLeave}
+              onPointerCancel={handleTipItemLeave}
+            >
+              <div className="wb-dock-mag" data-wb-dock-mag-item={slotId}>
+                <div className="wb-dock-bounce">
+                  <DsButton
+                    ref={registerButtonRef(slotId)}
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    data-type-id={win.typeId}
+                    data-window-id={win.id}
+                    data-testid={`wb-dock-minimized-button-${win.id}`}
+                    className="wb-dock-item wb-dock-min-card group relative flex items-center justify-center outline-none"
+                    aria-label={`${cardTitle}, ${t('workbench:dock.minimized')}`}
+                    tabIndex={effectiveActiveId === slotId ? 0 : -1}
+                    onClick={() => restoreMinimizedWindow(win.id)}
+                    onFocus={() => focusDockItem(slotId)}
+                  >
+                    <span aria-hidden="true" className="wb-dock-min-card-surface">
+                      <span className="wb-dock-min-card-titlebar">
+                        <i className="wb-dock-min-dot" />
+                        <i className="wb-dock-min-dot" />
+                        <i className="wb-dock-min-dot" />
+                      </span>
+                      <span className="wb-dock-min-card-body">
+                        <span className="wb-dock-min-line wb-dock-min-line-wide" />
+                        <span className="wb-dock-min-line wb-dock-min-line-mid" />
+                      </span>
+                    </span>
+                    <span aria-hidden="true" className="wb-dock-min-card-badge">
+                      {def?.icon ?? (
+                        <span className="text-2xs font-semibold uppercase opacity-80">
+                          {win.typeId.slice(0, 1)}
+                        </span>
+                      )}
+                    </span>
+                  </DsButton>
+                </div>
+              </div>
+              <span
+                aria-hidden
+                data-testid={`wb-dock-tip-min-${win.id}`}
+                className="wb-dock-tip"
+              >
+                {cardTitle}
+              </span>
+            </div>
+          );
+        })}
+
+        {overflowMinimized.length > 0 && (
+          <div
+            ref={overflowWrapRef}
+            data-testid="wb-dock-minimized-overflow-wrap"
+            data-wb-dock-item-wrap=""
+            data-tip-managed="true"
+            data-tip-active={
+              hoveredTipId === MINIMIZED_OVERFLOW_DOCK_ID && !overflowOpen ? 'true' : undefined
+            }
+            className="wb-dock-item-wrap wb-dock-min-wrap relative flex flex-col items-center"
+            onPointerEnter={() => handleTipItemEnter(MINIMIZED_OVERFLOW_DOCK_ID)}
+            onPointerLeave={handleTipItemLeave}
+            onPointerCancel={handleTipItemLeave}
+          >
+            <div className="wb-dock-mag" data-wb-dock-mag-item={MINIMIZED_OVERFLOW_DOCK_ID}>
+              <div className="wb-dock-bounce">
+                <DsButton
+                  ref={registerButtonRef(MINIMIZED_OVERFLOW_DOCK_ID)}
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  data-testid="wb-dock-minimized-overflow"
+                  className="wb-dock-item wb-dock-min-overflow relative flex items-center justify-center outline-none"
+                  aria-label={`${t('workbench:dock.minimized')} +${overflowMinimized.length}`}
+                  aria-haspopup="menu"
+                  aria-expanded={overflowOpen}
+                  tabIndex={effectiveActiveId === MINIMIZED_OVERFLOW_DOCK_ID ? 0 : -1}
+                  onClick={() => setOverflowOpen((open) => !open)}
+                  onFocus={() => focusDockItem(MINIMIZED_OVERFLOW_DOCK_ID)}
+                >
+                  <span aria-hidden="true" className="wb-dock-min-overflow-pill">
+                    +{overflowMinimized.length}
+                  </span>
+                </DsButton>
+              </div>
+            </div>
+            {!overflowOpen && (
+              <span
+                aria-hidden
+                data-testid="wb-dock-tip-min-overflow"
+                className="wb-dock-tip"
+              >
+                {`${t('workbench:dock.minimized')} (+${overflowMinimized.length})`}
+              </span>
+            )}
+            {overflowOpen && (
+              <div
+                role="menu"
+                aria-label={t('workbench:dock.minimized')}
+                data-testid="wb-dock-minimized-overflow-list"
+                className="wb-dock-min-popover wb-glass wb-glass-rim"
+              >
+                {overflowMinimized.map((win) => {
+                  const def = appRegistry.get(win.typeId);
+                  const appLabel = def ? t(def.nameKey, def.typeId) : win.typeId;
+                  const cardTitle = win.title.trim() || appLabel;
+                  return (
+                    <DsButton
+                      key={win.id}
+                      type="button"
+                      role="menuitem"
+                      variant="ghost"
+                      size="sm"
+                      data-testid={`wb-dock-minimized-overflow-item-${win.id}`}
+                      className="wb-dock-min-popover-item"
+                      onClick={() => restoreMinimizedWindow(win.id)}
+                    >
+                      <span aria-hidden="true" className="wb-dock-min-popover-icon">
+                        {def?.icon ?? (
+                          <span className="text-2xs font-semibold uppercase">
+                            {win.typeId.slice(0, 1)}
+                          </span>
+                        )}
+                      </span>
+                      <span className="wb-dock-min-popover-title">{cardTitle}</span>
+                    </DsButton>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 右侧分隔线：分隔主应用/最小化槽位与右侧系统工具入口 */}
+        {(appOrderedIds.length > 0 || minimizedWindows.length > 0) && (
           <div
             role="separator"
             aria-orientation="vertical"
@@ -416,7 +888,12 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
         <div
           data-testid={`wb-dock-item-${APPS_DOCK_TYPE_ID}`}
           data-wb-dock-item-wrap=""
+          data-tip-managed="true"
+          data-tip-active={hoveredTipId === APPS_DOCK_TYPE_ID ? 'true' : undefined}
           className="wb-dock-item-wrap relative flex flex-col items-center"
+          onPointerEnter={() => handleTipItemEnter(APPS_DOCK_TYPE_ID)}
+          onPointerLeave={handleTipItemLeave}
+          onPointerCancel={handleTipItemLeave}
         >
           <div className="wb-dock-mag" data-wb-dock-mag-item={APPS_DOCK_TYPE_ID}>
             <div className="wb-dock-bounce">
@@ -430,19 +907,15 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
                 aria-expanded={appsPanelOpen}
                 tabIndex={effectiveActiveId === APPS_DOCK_TYPE_ID ? 0 : -1}
                 onClick={() => toggleAppsPanel()}
-                onFocus={() => {
-                  setActiveId(APPS_DOCK_TYPE_ID);
-                  if (autohide) {
-                    clearAutohideTimers();
-                    revealDock();
-                  }
-                }}
+                onFocus={() => focusDockItem(APPS_DOCK_TYPE_ID)}
               >
                 <span
                   aria-hidden
                   className="wb-dock-item-icon pointer-events-none flex h-full w-full items-center justify-center"
                 >
-                  <SquaresFour size={26} weight="duotone" />
+                  <span className="wb-dock-utility-tile wb-dock-utility-tile-apps">
+                    <SquaresFour size={20} weight="duotone" />
+                  </span>
                 </span>
               </button>
             </div>
@@ -454,13 +927,11 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
         <AgentControlDockEntry
           tabIndex={effectiveActiveId === AGENT_CONTROL_DOCK_ID ? 0 : -1}
           buttonRef={registerButtonRef(AGENT_CONTROL_DOCK_ID)}
-          onFocus={() => {
-            setActiveId(AGENT_CONTROL_DOCK_ID);
-            if (autohide) {
-              clearAutohideTimers();
-              revealDock();
-            }
-          }}
+          tipManaged
+          tipActive={hoveredTipId === AGENT_CONTROL_DOCK_ID}
+          onTipPointerEnter={() => handleTipItemEnter(AGENT_CONTROL_DOCK_ID)}
+          onTipPointerLeave={handleTipItemLeave}
+          onFocus={() => focusDockItem(AGENT_CONTROL_DOCK_ID)}
         />
       </div>
     </div>

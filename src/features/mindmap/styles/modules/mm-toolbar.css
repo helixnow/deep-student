@@ -1,0 +1,250 @@
+/* ============================================
+   顶部主工具栏、按钮交互、焦点环与容器查询
+   ============================================ */
+
+/* 文档流顶部条：零遮挡下方 9 类文档流横幅与关联线提示条，高度统一 42px */
+.mm-toolbar {
+  position: relative;
+  z-index: 30;
+  height: var(--mm-toolbar-height, 42px);
+  flex-shrink: 0;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: color-mix(in srgb, var(--mm-bg-elevated) 88%, transparent);
+  backdrop-filter: var(--wb-glass-blur, none);
+  border-bottom: 1px solid color-mix(in srgb, var(--mm-border) 75%, transparent);
+  font-size: 13px;
+}
+
+.mindmap-container.is-presentation > .mm-document-column > .mm-toolbar {
+  display: none;
+}
+
+:where(.mindmap-container, .mm-search-popover) .ds-btn,
+.mm-toolbar-button {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--mm-radius-control, 5px);
+  color: var(--mm-text);
+  background: transparent;
+  border: none;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition:
+    background-color var(--mm-hover-transition, 120ms ease),
+    color var(--mm-hover-transition, 120ms ease);
+}
+
+:where(.mindmap-container, .mm-search-popover) .ds-btn:hover,
+.mm-toolbar-button:hover {
+  background: var(--mm-bg-hover);
+}
+
+.mm-toolbar-button {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mm-toolbar-button.is-active {
+  color: var(--mm-primary);
+  background: var(--mm-primary-soft);
+}
+
+.mm-learning-group {
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px 0 6px;
+  border-left: 1px solid var(--mm-border);
+}
+
+.mm-learning-label {
+  margin-right: 2px;
+  color: var(--mm-text-muted);
+  font-size: 11px;
+}
+
+.mm-learning-button {
+  height: 28px;
+  padding: 0 7px;
+  gap: 4px;
+  flex-shrink: 0;
+  border-radius: var(--mm-radius-control, 5px);
+  color: var(--mm-text-secondary);
+  font-size: 11px;
+}
+
+.mm-learning-button.is-active {
+  color: var(--mm-text);
+  background: var(--mm-bg-hover);
+}
+
+.mm-view-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mm-view-switcher-button {
+  height: 28px;
+  padding: 0 8px;
+  gap: 5px;
+  border-radius: var(--mm-radius-control, 5px);
+  color: var(--mm-text-muted);
+  font-size: 12px;
+  background: transparent;
+}
+
+.mm-view-switcher-button:hover,
+.mm-view-switcher-button.is-active {
+  color: var(--mm-text);
+  background: var(--mm-bg-hover);
+}
+
+@media (width >= 768px) {
+  .mm-toolbar .mm-mobile-more {
+    display: none;
+  }
+}
+
+/* --- 焦点可见性（2px ring，offset 1） --- */
+:where(.mindmap-container, .mm-search-popover) .ds-btn:focus-visible,
+.mm-toolbar-button:focus-visible,
+.mm-learning-button:focus-visible,
+.mm-view-switcher-button:focus-visible,
+.mm-search-mode-button:focus-visible,
+.mm-search-nav-button:focus-visible,
+.mm-search-close:focus-visible,
+.outline-multiselect-btn:focus-visible,
+.mm-canvas-mode-button:focus-visible,
+.mm-structure-preset:focus-visible,
+.mm-theme-option:focus-visible,
+.mm-style-icon-button:focus-visible,
+.mm-style-swatch:focus-visible,
+.mm-font-size-input:focus-visible,
+.mm-action-btn:focus-visible,
+.mm-collapse-btn:focus-visible,
+.mm-presentation-exit:focus-visible,
+.action-btn:focus-visible,
+.collapse-toggle:focus-visible,
+.outline-collapse-count:focus-visible,
+.outline-empty-action:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.mm-search-mode-button:focus-visible {
+  outline-offset: -2px;
+}
+
+.action-btn:focus-visible,
+.collapse-toggle:focus-visible {
+  opacity: 1;
+}
+
+.outline-node-row .node-actions:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* --- 窄容器查询（聊天右侧面板 / 桌面窄分屏） --- */
+.mm-document-column {
+  container-type: inline-size;
+  container-name: mm-root;
+}
+
+.mm-toolbar .ds-btn,
+.mm-learning-label,
+.mm-learning-text,
+.mm-view-switcher-label {
+  white-space: nowrap;
+}
+
+.mm-toolbar > * {
+  min-width: 0;
+}
+
+/* 桌面窄分屏提前收起学习区文字标签，释放宽度避免挤出右侧「搜索 / 演示 / 更多」 */
+@container mm-root (max-width: 1080px) {
+  .mm-learning-label,
+  .mm-learning-text {
+    display: none;
+  }
+
+  .mm-learning-button {
+    padding-inline: 6px;
+  }
+}
+
+/* 窄分屏下隐藏左下快捷键胶囊与右下 MiniMap，收紧历史/学习区间距并隐藏保存文字与次要分隔线 */
+/* stylelint-disable selector-class-pattern */
+@container mm-root (max-width: 760px) {
+  .mm-shortcut-hint-pill,
+  [data-testid='mm-shortcut-hint-pill'],
+  [data-testid='mm-shortcut-hint-expand'],
+  .react-flow__minimap {
+    display: none;
+  }
+
+  .mm-toolbar {
+    gap: 4px;
+    padding-inline: 8px;
+  }
+
+  .mm-toolbar-history {
+    gap: 6px;
+  }
+
+  .mm-learning-group {
+    gap: 1px;
+    padding: 0 2px 0 4px;
+  }
+
+  .mm-toolbar :is(.mm-toolbar-history, .mm-toolbar-actions) > .w-px,
+  .mm-toolbar-save > span[aria-live] {
+    display: none;
+  }
+}
+/* stylelint-enable selector-class-pattern */
+
+@container mm-root (max-width: 520px) {
+  .mm-toolbar {
+    gap: 4px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .mm-toolbar > * {
+    flex-shrink: 0;
+  }
+
+  .mm-toolbar-history,
+  .mm-toolbar-actions {
+    gap: 2px;
+  }
+
+  .mm-toolbar :is(.mm-toolbar-history, .mm-toolbar-actions) > .w-px,
+  .mm-toolbar-save > span[aria-live],
+  .mm-view-switcher-label {
+    display: none;
+  }
+
+  .mm-toolbar :is(.ds-btn, .mm-learning-button) {
+    padding-inline: 5px;
+  }
+
+  .mm-toolbar-button {
+    width: 24px;
+  }
+
+  .mm-view-switcher-icon {
+    margin-right: 0;
+  }
+}

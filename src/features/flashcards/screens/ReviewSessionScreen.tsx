@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   ArrowClockwise,
   ArrowSquareOut,
+  BracketsCurly,
   ChatCircleText,
   DotsThree,
   FloppyDisk,
@@ -23,11 +24,14 @@ import {
   PencilSimple,
   Play,
   SkipForward,
+  SpeakerHigh,
+  Stop,
   Timer,
   Warning,
   X,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { Input } from '@/components/ui/shad/Input';
 import { AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem } from '@/components/ui/app-menu/AppMenu';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useAnkiTemplateLoader } from '@/hooks/useAnkiTemplateLoader';
@@ -35,8 +39,10 @@ import { replayCardAudio } from '@/components/anki/utils/cardMedia';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { dispatchOpenMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
 import { cn } from '@/utils/cn';
-import { hasValidCloze } from '../cloze';
+import { speak as speakTts, stop as stopTts } from '@/utils/tts';
+import { hasValidCloze, insertClozeDeletion, nextClozeIndex } from '../cloze';
 import { findReviewCardMediaSource, type CardMediaSource } from '../library/cardMediaSource';
+import { parseTagsInput } from '../library/libraryView';
 import { useSwipeRating } from '../hooks/useSwipeRating';
 import { isEditableTarget } from '../isEditableTarget';
 import { isKeyEventFromOtherModal } from '@/utils/modalKeyGuard';
@@ -49,6 +55,7 @@ import {
   isReviewSessionEmpty,
   useFsrsReviewStore,
   type FsrsRating,
+  type ReviewCard,
   type ReviewSessionErrorKind,
 } from '../store/fsrsReviewStore';
 import { RatingBar } from '../review/RatingBar';
@@ -57,9 +64,16 @@ import { SessionSummary } from '../review/SessionSummary';
 import { UndoNudge } from '../review/UndoNudge';
 import { formatDuration, useCardAnswerClock, useNow } from '../review/useSessionClock';
 import { openReviewCardSource } from '../review/openReviewCardSource';
-import { askAiAboutCard } from '../review/askAiAboutCard';
+import { askAiAboutCard, askAiAboutCards } from '../review/askAiAboutCard';
+import { getReviewCardSpeechText, hasReviewCardAudio } from '../review/cardSpeechText';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useFlashcardsMobileChrome } from '../useFlashcardsMobileChrome';
+import { useOptionalSlot, useOptionalUiKernel } from '@/ui-kernel/react';
+import { SlotEntryScope, runSlotCallback } from '@/ui-kernel/outlet';
+import type { ReviewCardActionContribution } from '@/ui-kernel/contracts/surfaces';
+import type { SlotEntry } from '@/ui-kernel/slots';
+
+const EMPTY_REVIEW_CARD_ACTIONS: readonly SlotEntry<ReviewCardActionContribution>[] = [];
 
 /** 翻面后短时间内忽略指针评分，防止翻面双击误评（键盘不受限） */
 const POINTER_RATE_GUARD_MS = 280;
@@ -134,6 +148,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   const resumeLabel = lastSuspended?.reason === 'bury' ? t('session.unbury') : t('session.resume');
   const retryBatchRequest = useFsrsReviewStore((state) => state.retryBatchRequest);
   const sessionRatedCount = useFsrsReviewStore((state) => state.sessionRatedCount);
+  const sessionAgainCardIds = useFsrsReviewStore((state) => state.sessionAgainCardIds);
   const sessionRatingCounts = useFsrsReviewStore((state) => state.sessionRatingCounts);
   const sessionStreak = useFsrsReviewStore((state) => state.sessionStreak);
   const sessionBestStreak = useFsrsReviewStore((state) => state.sessionBestStreak);
@@ -141,6 +156,25 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   const remainingDueAfterSession = useFsrsReviewStore((state) => state.remainingDueAfterSession);
   const ratingPreviews = useFsrsReviewStore((state) => state.ratingPreviews);
   const current = queue[queueIndex];
+
+  const [editing, setEditing] = React.useState(false);
+  const [editingCardId, setEditingCardId] = React.useState<string | null>(null);
+  const [draftFront, setDraftFront] = React.useState('');
+  const [draftBack, setDraftBack] = React.useState('');
+  const [draftTags, setDraftTags] = React.useState('');
+  const [draftClozeMode, setDraftClozeMode] = React.useState(false);
+  const editFrontRef = React.useRef<HTMLTextAreaElement | null>(null);
+  const editedCardIdentityRef = React.useRef<string | null>(null);
+
+  const editingCard = React.useMemo<ReviewCard | undefined>(() => {
+    if (editing && editingCardId) {
+      return queue.find((card) => card.id === editingCardId)
+        ?? lastReview?.queueSnapshot?.find((card) => card.id === editingCardId)
+        ?? current;
+    }
+    return current;
+  }, [editing, editingCardId, queue, lastReview, current]);
+
   const openSource = React.useCallback(() => {
     if (!current) return;
     void openReviewCardSource(current).then((opened) => {
@@ -150,7 +184,24 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   const askAi = React.useCallback(() => {
     if (current) askAiAboutCard(current, t);
   }, [current, t]);
-  const { template, loading: templateLoading } = useAnkiTemplateLoader(current?.templateId);
+  const uiKernel = useOptionalUiKernel();
+  const cardActionEntries = useOptionalSlot('review.cardActions') ?? EMPTY_REVIEW_CARD_ACTIONS;
+  const runContributedCardAction = React.useCallback((entry: SlotEntry<ReviewCardActionContribution>) => {
+    if (!current) return;
+    runSlotCallback(uiKernel, 'review.cardActions', entry, () =>
+      entry.value.run({
+        cardId: current.id,
+        ...(current.ankiCardId ? { noteCardId: current.ankiCardId } : {}),
+        front: isClozeReviewCard(current) && current.text ? current.text : current.front,
+        back: current.back,
+        tags: current.tags ?? [],
+        flipped,
+      })
+    );
+  }, [current, flipped, uiKernel]);
+  const { template, loading: templateLoading } = useAnkiTemplateLoader(
+    editing ? editingCard?.templateId : current?.templateId,
+  );
   const flip = useFsrsReviewStore((state) => state.flip);
   const rate = useFsrsReviewStore((state) => state.rate);
   const undoLastReview = useFsrsReviewStore((state) => state.undoLastReview);
@@ -164,16 +215,12 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   const setScreen = useFsrsReviewStore((state) => state.setScreen);
   const loadDue = useFsrsReviewStore((state) => state.loadDue);
   const startDueSession = useFsrsReviewStore((state) => state.startDueSession);
+  const startAgainCardsSession = useFsrsReviewStore((state) => state.startAgainCardsSession);
   const exitSession = onExit ?? endSession;
   const openLibraryFromSummary = React.useCallback(() => {
     endSession();
     setScreen?.('library');
   }, [endSession, setScreen]);
-
-  const [editing, setEditing] = React.useState(false);
-  const [draftFront, setDraftFront] = React.useState('');
-  const [draftBack, setDraftBack] = React.useState('');
-  const editedCardIdentityRef = React.useRef<string | null>(null);
 
   // 批次集中复习的一次性提示（每次会话开始时重置）
   const [batchNoticeDismissed, setBatchNoticeDismissed] = React.useState(false);
@@ -193,16 +240,82 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
 
   const sessionDone = isReviewSessionDone({ queue, queueIndex, loading });
   const sessionEmpty = isReviewSessionEmpty({ queue, loading });
-  const draftIsCloze = Boolean(current && isClozeReviewCard(current, template));
+  const draftTargetCard = editing ? editingCard : current;
+  const draftIsCloze = editing
+    ? draftClozeMode
+    : Boolean(current && isClozeReviewCard(current, template));
   const draftClozeInvalid = draftIsCloze && Boolean(draftFront.trim()) && !hasValidCloze(draftFront);
   const draftIsValid = Boolean(
-    current
+    draftTargetCard
     && draftFront.trim()
     && (draftIsCloze ? hasValidCloze(draftFront) : draftBack.trim()),
   );
   const flipAriaLabel = flipped
     ? t('session.showFront')
     : t('session.showBack');
+
+  // ---- TTS 朗读 & APKG 音频重播 ----
+  const [speaking, setSpeaking] = React.useState(false);
+  const speakSeqRef = React.useRef(0);
+  const speechText = React.useMemo(
+    () => getReviewCardSpeechText(current, flipped),
+    [current, flipped],
+  );
+  const hasCardAudio = React.useMemo(() => hasReviewCardAudio(current), [current]);
+  const stopSpeaking = React.useCallback(() => {
+    speakSeqRef.current += 1;
+    setSpeaking(false);
+    void stopTts();
+  }, []);
+  const handleToggleSpeak = React.useCallback(() => {
+    if (speaking) {
+      stopSpeaking();
+      return;
+    }
+    if (!speechText) {
+      showGlobalNotification('info', t('session.ttsEmpty', { defaultValue: '当前卡面没有可朗读的文字' }));
+      return;
+    }
+    const seq = ++speakSeqRef.current;
+    setSpeaking(true);
+    void speakTts(speechText)
+      .catch((err) => {
+        if (speakSeqRef.current !== seq) return;
+        const message = err instanceof Error && err.message
+          ? err.message
+          : t('session.ttsFailed', { defaultValue: '朗读不可用' });
+        showGlobalNotification('warning', message);
+      })
+      .finally(() => {
+        if (speakSeqRef.current === seq) setSpeaking(false);
+      });
+  }, [speaking, speechText, stopSpeaking, t]);
+  const handleReplayAudio = React.useCallback(() => {
+    replayCardAudio(document.querySelector('.wb-fc-card-stage') ?? document);
+  }, []);
+
+  // 本轮遗忘卡（Again）集合与最近 Again/leech 卡片（难卡救援闭环）
+  const sessionAgainCards = React.useMemo(() => {
+    if (sessionAgainCardIds.length === 0) return [];
+    const byId = new Map(queue.map((card) => [card.id, card] as const));
+    return sessionAgainCardIds
+      .map((id) => byId.get(id))
+      .filter((card): card is ReviewCard => Boolean(card));
+  }, [queue, sessionAgainCardIds]);
+  const reviewableAgainCount = React.useMemo(
+    () => sessionAgainCards.filter((card) => card.suspended !== true && card.buried !== true).length,
+    [sessionAgainCards],
+  );
+  const lastAgainCard = React.useMemo(() => {
+    if (!lastReview || lastReview.rating !== 1) return null;
+    return queue.find((card) => card.id === lastReview.cardStateId)
+      ?? lastReview.queueSnapshot?.find((card) => card.id === lastReview.cardStateId)
+      ?? null;
+  }, [lastReview, queue]);
+  const leechCard = React.useMemo(() => {
+    if (lastSuspended?.reason !== 'leech') return null;
+    return queue.find((card) => card.id === lastSuspended.cardStateId) ?? null;
+  }, [lastSuspended, queue]);
 
   // 音视频转写制成的卡：翻面后可回看讲到该知识点的片段；评「重来」后提示条里也给回看入口
   const currentMediaSource = React.useMemo(() => findReviewCardMediaSource(current), [current]);
@@ -231,6 +344,15 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
 
   // ---- 前端计时（本卡用时 + 本轮用时） ----
   const cardKey = current ? `${current.id}:${current.ankiCardId ?? ''}` : null;
+  React.useEffect(() => {
+    speakSeqRef.current += 1;
+    setSpeaking(false);
+    void stopTts();
+  }, [cardKey, flipped, editing, sessionDone]);
+  React.useEffect(() => () => {
+    speakSeqRef.current += 1;
+    void stopTts();
+  }, []);
   const clockEnabled = isActive && !loading && !templateLoading && Boolean(current) && !sessionDone && !editing && !ratingBusy;
   const now = useNow(clockEnabled);
   const getAnswerDuration = useCardAnswerClock(
@@ -277,16 +399,23 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
     const cardIdentity = current ? `${current.id}:${current.ankiCardId ?? ''}` : null;
     const cardChanged = editedCardIdentityRef.current !== cardIdentity;
     editedCardIdentityRef.current = cardIdentity;
-    if (cardChanged) setEditing(false);
+    if (cardChanged) {
+      setEditing(false);
+      setEditingCardId(null);
+    }
     if (!cardChanged && editing) return;
     if (!current) {
       setDraftFront('');
       setDraftBack('');
+      setDraftTags('');
+      setDraftClozeMode(false);
       return;
     }
     const values = getReviewCardEditValues(current, template);
     setDraftFront(values.front);
     setDraftBack(values.back);
+    setDraftTags((current.tags ?? []).join(', '));
+    setDraftClozeMode(isClozeReviewCard(current, template));
   }, [current, editing, template]);
 
   const flashRating = React.useCallback((rating: FsrsRating) => {
@@ -341,19 +470,61 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
     if (error && errorKind === 'rate') swipeReset();
   }, [error, errorKind, swipeReset]);
 
-  const beginEdit = React.useCallback(() => {
+  const beginEditForCard = React.useCallback((targetCard: ReviewCard | null | undefined) => {
     const live = useFsrsReviewStore.getState();
-    const liveCurrent = live.queue[live.queueIndex];
-    if (!liveCurrent || live.ratingBusy || templateLoading || !liveCurrent.ankiCardId) return;
-    const values = getReviewCardEditValues(liveCurrent, template);
+    if (!targetCard || live.ratingBusy || !targetCard.ankiCardId) return;
+    const targetTemplate = targetCard.id === current?.id ? template : null;
+    if (targetCard.id === current?.id && templateLoading) return;
+    const values = getReviewCardEditValues(targetCard, targetTemplate);
+    setEditingCardId(targetCard.id);
     setDraftFront(values.front);
     setDraftBack(values.back);
+    setDraftTags((targetCard.tags ?? []).join(', '));
+    setDraftClozeMode(isClozeReviewCard(targetCard, targetTemplate));
     setEditing(true);
-  }, [template, templateLoading]);
+  }, [current?.id, template, templateLoading]);
+
+  const beginEdit = React.useCallback(() => {
+    const live = useFsrsReviewStore.getState();
+    beginEditForCard(live.queue[live.queueIndex]);
+  }, [beginEditForCard]);
+
+  const cancelEdit = React.useCallback(() => {
+    setEditing(false);
+    setEditingCardId(null);
+  }, []);
+
+  const handleInsertEditCloze = React.useCallback(() => {
+    const textarea = editFrontRef.current;
+    const { nextValue, nextSelectionStart, nextSelectionEnd } = insertClozeDeletion(
+      draftFront,
+      textarea?.selectionStart,
+      textarea?.selectionEnd,
+      t('library.create.clozePlaceholder', { defaultValue: '挖空内容' }),
+    );
+    setDraftClozeMode(true);
+    setDraftFront(nextValue);
+    requestAnimationFrame(() => {
+      const el = editFrontRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(nextSelectionStart, nextSelectionEnd);
+    });
+  }, [draftFront, t]);
 
   const saveEdit = React.useCallback(async () => {
-    if (await updateCurrentCard(draftFront, draftBack, template)) setEditing(false);
-  }, [draftBack, draftFront, template, updateCurrentCard]);
+    const target = editingCard;
+    if (!target) return;
+    const saved = await updateCurrentCard(draftFront, draftBack, template, {
+      cardStateId: target.id,
+      tags: parseTagsInput(draftTags),
+      forceCloze: draftClozeMode,
+    });
+    if (saved) {
+      setEditing(false);
+      setEditingCardId(null);
+    }
+  }, [draftBack, draftClozeMode, draftFront, draftTags, editingCard, template, updateCurrentCard]);
 
   // 完成态「继续复习」：重新拉取到期队列并直接开新一轮，不必回 Today
   const continueWithDue = React.useCallback(() => {
@@ -415,7 +586,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
     }
     if (event.key.toLowerCase() === 'r' || event.code === 'KeyR') {
       event.preventDefault();
-      replayCardAudio(document.querySelector('.wb-fc-card-stage') ?? document);
+      handleReplayAudio();
       return;
     }
     if (event.key === '-' || event.code === 'Minus' || event.code === 'NumpadSubtract') {
@@ -435,6 +606,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
     flipped,
     handleFlip,
     handleRate,
+    handleReplayAudio,
     lastReview,
     loading,
     ratingBusy,
@@ -451,20 +623,24 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
-      setEditing(false);
+      cancelEdit();
       return;
     }
     if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       if (draftIsValid && !ratingBusy) void saveEdit();
     }
-  }, [draftIsValid, ratingBusy, saveEdit]);
+  }, [cancelEdit, draftIsValid, ratingBusy, saveEdit]);
 
   const handleMobileBack = React.useCallback(() => {
     if (ratingBusy) return;
-    if (editing) setEditing(false);
+    if (editing) cancelEdit();
     else exitSession();
-  }, [editing, ratingBusy, exitSession]);
+  }, [cancelEdit, editing, ratingBusy, exitSession]);
+  const ttsLabel = speaking
+    ? t('session.stopSpeak', { defaultValue: '停止朗读' })
+    : t('session.speakCard', { defaultValue: '朗读卡片' });
+  const replayAudioLabel = t('session.replayAudio', { defaultValue: '重播音频' });
   const mobileChrome = useFlashcardsMobileChrome({
     title: t(editing ? 'session.edit' : 'session.title'),
     subtitle: !editing && current && !sessionDone ? t('review.ratedRemaining', { rated: sessionRatedCount, left: remainingCount, defaultValue: '已评 {{rated}} · 剩 {{left}}' }) : undefined,
@@ -474,6 +650,19 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         <FloppyDisk size={20} />
       </DsButton>
     ) : <>
+      {current && !sessionDone && (
+        <DsButton
+          variant="ghost"
+          size="icon"
+          className="!min-h-11 !min-w-11"
+          aria-label={ttsLabel}
+          aria-pressed={speaking}
+          disabled={!speechText}
+          onClick={handleToggleSpeak}
+        >
+          {speaking ? <Stop size={20} /> : <SpeakerHigh size={20} />}
+        </DsButton>
+      )}
       <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('session.undo')} disabled={!lastReview || ratingBusy} onClick={() => void undoLastReview()}>
         <ArrowCounterClockwise size={20} />
       </DsButton>
@@ -483,8 +672,27 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         </AppMenuTrigger>
         <AppMenuContent align="end" width={200}>
           {current && <>
+            {hasCardAudio && <AppMenuItem icon={<ArrowClockwise size={18} />} onClick={handleReplayAudio}>{replayAudioLabel}</AppMenuItem>}
             <AppMenuItem icon={<ArrowSquareOut size={18} />} onClick={openSource}>{t('session.viewSource')}</AppMenuItem>
             <AppMenuItem icon={<ChatCircleText size={18} />} onClick={askAi}>{t('session.askAi')}</AppMenuItem>
+            {cardActionEntries.map((entry) => {
+              const Icon = entry.value.icon;
+              return (
+                <AppMenuItem
+                  key={`${entry.owner}\u0000${entry.id}`}
+                  icon={Icon ? (
+                    <SlotEntryScope slot="review.cardActions" entry={entry} fallback={<Lightning size={18} />}>
+                      <Icon size={18} />
+                    </SlotEntryScope>
+                  ) : (
+                    <Lightning size={18} />
+                  )}
+                  onClick={() => runContributedCardAction(entry)}
+                >
+                  {entry.value.label}
+                </AppMenuItem>
+              );
+            })}
             <AppMenuItem icon={<PencilSimple size={18} />} disabled={ratingBusy || templateLoading || !current.ankiCardId} onClick={beginEdit}>{t('session.edit')}</AppMenuItem>
             <AppMenuItem icon={<SkipForward size={18} />} disabled={ratingBusy} onClick={skipCurrent}>{t('review.skip')}</AppMenuItem>
             <AppMenuItem icon={<Moon size={18} />} disabled={ratingBusy} onClick={() => void buryCurrent()}>{t('session.bury')}</AppMenuItem>
@@ -494,7 +702,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         </AppMenuContent>
       </AppMenu>}
     </>,
-  }, [t, editing, current, sessionDone, sessionRatedCount, remainingCount, handleMobileBack, ratingBusy, draftIsValid, saveEdit, lastReview, undoLastReview, lastSuspended, resumeLabel, templateLoading, beginEdit, skipCurrent, suspendCurrent, buryCurrent, resumeLastSuspended, openSource, askAi]);
+  }, [t, editing, current, sessionDone, sessionRatedCount, remainingCount, handleMobileBack, ratingBusy, draftIsValid, saveEdit, ttsLabel, speaking, speechText, handleToggleSpeak, hasCardAudio, handleReplayAudio, replayAudioLabel, lastReview, undoLastReview, lastSuspended, resumeLabel, templateLoading, beginEdit, skipCurrent, suspendCurrent, buryCurrent, resumeLastSuspended, openSource, askAi, cardActionEntries, runContributedCardAction]);
 
   const errorBanner = error ? (
     <div role="alert" className="wb-fc-session-error flex items-start justify-between gap-3">
@@ -596,7 +804,11 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         onBack={exitSession}
         hideChromeActions={mobileChrome}
         onContinue={continueWithDue}
-        onOpenLibrary={onExit ? undefined : openLibraryFromSummary}
+        onOpenLibrary={openLibraryFromSummary}
+        againCount={sessionAgainCards.length}
+        canRetryAgain={reviewableAgainCount > 0}
+        onRetryAgain={reviewableAgainCount > 0 ? () => void startAgainCardsSession() : undefined}
+        onAskAiAgain={sessionAgainCards.length > 0 ? () => askAiAboutCards(sessionAgainCards, t) : undefined}
         errorBanner={errorBanner}
       />
     );
@@ -650,22 +862,52 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
       {lastSuspended?.reason === 'leech' ? (
         <div
           role="status"
-          className="flex items-start justify-between gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground"
+          data-testid="fc-leech-banner"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground"
         >
           <span className="flex min-w-0 items-start gap-1.5">
             <Warning size={14} aria-hidden="true" className="mt-0.5 shrink-0 text-warning" />
             {t('session.leechSuspended')}
           </span>
-          <DsButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => void resumeLastSuspended()}
-            disabled={ratingBusy}
-            className="shrink-0 [@media(pointer:coarse)]:!min-h-11"
-          >
-            {t('session.resume')}
-          </DsButton>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {leechCard ? (
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid="fc-leech-ask-ai"
+                onClick={() => askAiAboutCard(leechCard, t)}
+                className="shrink-0 gap-1 text-xs"
+              >
+                <ChatCircleText size={14} aria-hidden="true" />
+                {t('session.askAiDeep', { defaultValue: '问 AI 讲透' })}
+              </DsButton>
+            ) : null}
+            {leechCard?.ankiCardId ? (
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid="fc-leech-edit-card"
+                onClick={() => beginEditForCard(leechCard)}
+                disabled={ratingBusy}
+                className="shrink-0 gap-1 text-xs"
+              >
+                <PencilSimple size={14} aria-hidden="true" />
+                {t('session.edit')}
+              </DsButton>
+            ) : null}
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => void resumeLastSuspended()}
+              disabled={ratingBusy}
+              className="shrink-0"
+            >
+              {t('session.resume')}
+            </DsButton>
+          </div>
         </div>
       ) : null}
 
@@ -781,6 +1023,37 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           variant="ghost"
           size="sm"
           iconOnly
+          disabled={!speechText}
+          aria-pressed={speaking}
+          onClick={handleToggleSpeak}
+          aria-label={ttsLabel}
+          title={ttsLabel}
+          data-testid="fc-review-tts"
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+        >
+          {speaking ? <Stop size={16} /> : <SpeakerHigh size={16} />}
+        </DsButton>
+        {hasCardAudio ? (
+          <DsButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={handleReplayAudio}
+            aria-label={replayAudioLabel}
+            aria-keyshortcuts="R"
+            title={`${replayAudioLabel} · R`}
+            data-testid="fc-review-replay-audio-toolbar"
+            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+          >
+            <ArrowClockwise size={16} />
+          </DsButton>
+        ) : null}
+        <DsButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          iconOnly
           onClick={openSource}
           aria-label={t('session.viewSource')}
           title={t('session.viewSource')}
@@ -802,6 +1075,31 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         >
           <ChatCircleText size={16} />
         </DsButton>
+        {cardActionEntries.map((entry) => {
+          const Icon = entry.value.icon;
+          return (
+            <DsButton
+              key={`${entry.owner}\u0000${entry.id}`}
+              type="button"
+              variant="ghost"
+              size="sm"
+              iconOnly
+              onClick={() => runContributedCardAction(entry)}
+              aria-label={entry.value.label}
+              title={entry.value.label}
+              data-testid={`fc-review-action-${entry.id}`}
+              className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+            >
+              {Icon ? (
+                <SlotEntryScope slot="review.cardActions" entry={entry} fallback={<Lightning size={16} />}>
+                  <Icon size={16} />
+                </SlotEntryScope>
+              ) : (
+                <Lightning size={16} />
+              )}
+            </DsButton>
+          );
+        })}
         <DsButton
           type="button"
           variant="ghost"
@@ -866,13 +1164,69 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           onKeyDown={onEditKeyDown}
         >
           <div className="flex min-h-full flex-col gap-3 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div
+              role="group"
+              aria-label={t('library.create.typeLabel', { defaultValue: '卡片类型' })}
+              className="inline-flex items-center rounded-lg border border-border/50 bg-muted/40 p-0.5"
+            >
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-pressed={!draftClozeMode}
+                data-testid="fc-edit-mode-basic"
+                onClick={() => setDraftClozeMode(false)}
+                className={cn(
+                  'min-h-[32px] rounded-md px-2.5 text-xs font-medium',
+                  !draftClozeMode
+                    ? 'bg-card text-foreground shadow-sm hover:bg-card'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {t('library.create.typeBasic', { defaultValue: '问答卡 (Basic)' })}
+              </DsButton>
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-pressed={draftClozeMode}
+                data-testid="fc-edit-mode-cloze"
+                onClick={() => setDraftClozeMode(true)}
+                className={cn(
+                  'min-h-[32px] rounded-md px-2.5 text-xs font-medium',
+                  draftClozeMode
+                    ? 'bg-card text-foreground shadow-sm hover:bg-card'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {t('library.create.typeCloze', { defaultValue: '挖空卡 (Cloze)' })}
+              </DsButton>
+            </div>
+            <DsButton
+              type="button"
+              variant="default"
+              size="sm"
+              data-testid="fc-edit-insert-cloze"
+              onClick={handleInsertEditCloze}
+              className="min-h-[36px] gap-1.5 text-xs"
+            >
+              <BracketsCurly size={14} aria-hidden="true" />
+              <span>
+                {t('library.create.insertCloze', { defaultValue: '插入挖空' })}
+                {' '}
+                <code className="font-mono">{`{{c${nextClozeIndex(draftFront)}::...}}`}</code>
+              </span>
+            </DsButton>
+          </div>
           <label className="flex min-h-0 flex-1 flex-col gap-1.5 text-left text-xs font-medium text-muted-foreground">
             {t('session.front')}
             <textarea
+              ref={editFrontRef}
               value={draftFront}
               onChange={(event) => setDraftFront(event.target.value)}
               autoFocus
-              className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-ring [@media(pointer:coarse)]:text-[16px]"
+              className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-base font-normal text-foreground outline-none focus:border-ring sm:text-sm"
             />
           </label>
           {draftClozeInvalid ? (
@@ -886,7 +1240,17 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             <textarea
               value={draftBack}
               onChange={(event) => setDraftBack(event.target.value)}
-              className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-ring [@media(pointer:coarse)]:text-[16px]"
+              className="min-h-28 flex-1 resize-y rounded-md border border-border bg-background px-3 py-2 text-base font-normal text-foreground outline-none focus:border-ring sm:text-sm"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-left text-xs font-medium text-muted-foreground">
+            {t('library.editTags', { defaultValue: '标签（逗号分隔）' })}
+            <Input
+              value={draftTags}
+              onChange={(event) => setDraftTags(event.target.value)}
+              placeholder={t('library.create.tagsPlaceholder', { defaultValue: '例：高数, 重点' })}
+              data-testid="fc-edit-tags"
+              className="h-9 text-base font-normal sm:text-sm [@media(pointer:coarse)]:!h-11"
             />
           </label>
           {!mobileChrome && <div className="flex items-center justify-between gap-2">
@@ -900,7 +1264,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
                 type="button"
                 variant="ghost"
                 disabled={ratingBusy}
-                onClick={() => setEditing(false)}
+                onClick={cancelEdit}
                 className="[@media(pointer:coarse)]:!min-h-11"
               >
                 <X size={16} />
@@ -938,6 +1302,25 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           swipe={swipe}
           swipeEnabled={swipeEnabled}
           ratingLabel={(key) => t(key)}
+          audioAccessory={hasCardAudio ? (
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              data-testid="fc-review-replay-audio"
+              aria-label={replayAudioLabel}
+              aria-keyshortcuts="R"
+              title={`${replayAudioLabel} · R`}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+              }}
+              onClick={handleReplayAudio}
+              className="wb-fc-audio-pill min-h-[36px] gap-1.5 rounded-full px-3 text-xs"
+            >
+              <ArrowClockwise size={13} aria-hidden="true" />
+              <span>{replayAudioLabel}</span>
+            </DsButton>
+          ) : null}
           backAccessory={currentMediaSource ? renderMediaChip(currentMediaSource) : null}
         />
       )}
@@ -951,7 +1334,42 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
               rating={lastReview?.rating ?? null}
               busy={ratingBusy}
               onUndo={() => void undoLastReview()}
-              secondaryAction={lastReviewMediaSource ? renderMediaChip(lastReviewMediaSource) : null}
+              secondaryAction={lastAgainCard ? (
+                <div className="flex flex-wrap items-center gap-1">
+                  {lastReviewMediaSource ? renderMediaChip(lastReviewMediaSource) : null}
+                  <DsButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    data-testid="fc-nudge-ask-ai"
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+                    }}
+                    onClick={() => askAiAboutCard(lastAgainCard, t)}
+                    className="shrink-0 gap-1 text-xs text-primary"
+                  >
+                    <ChatCircleText size={13} aria-hidden="true" />
+                    {t('session.askAiDeep', { defaultValue: '问 AI 讲透' })}
+                  </DsButton>
+                  {lastAgainCard.ankiCardId ? (
+                    <DsButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-testid="fc-nudge-edit-card"
+                      disabled={ratingBusy}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+                      }}
+                      onClick={() => beginEditForCard(lastAgainCard)}
+                      className="shrink-0 gap-1 text-xs"
+                    >
+                      <PencilSimple size={13} aria-hidden="true" />
+                      {t('session.edit')}
+                    </DsButton>
+                  ) : null}
+                </div>
+              ) : (lastReviewMediaSource ? renderMediaChip(lastReviewMediaSource) : null)}
             />
           </div>
           <RatingBar

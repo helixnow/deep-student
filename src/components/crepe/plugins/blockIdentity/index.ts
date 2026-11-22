@@ -1,4 +1,4 @@
-import { createTimer, type MilkdownPlugin } from '@milkdown/ctx';
+import { createTimer, type MilkdownPlugin } from '@milkdown/kit/ctx';
 import { nodesCtx, schemaTimerCtx, remarkPluginsCtx, parserCtx, prosePluginsCtx, SchemaReady } from '@milkdown/kit/core';
 import { Fragment, Slice, type Node as ProseNode } from '@milkdown/prose/model';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
@@ -85,7 +85,12 @@ function identitySchema(): MilkdownPlugin {
         }];
       }));
       ctx.done(ready);
-      return () => { ctx.clearTimer(ready); };
+      return () => {
+        if (ctx.isInjected(schemaTimerCtx)) {
+          ctx.update(schemaTimerCtx, timers => timers.filter(timer => timer !== ready));
+        }
+        ctx.clearTimer(ready);
+      };
     };
   };
 }

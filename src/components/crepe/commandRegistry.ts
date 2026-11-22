@@ -1,6 +1,6 @@
-import type { Ctx } from '@milkdown/ctx';
+import type { Ctx } from '@milkdown/kit/ctx';
 import { commandsCtx, editorViewCtx } from '@milkdown/kit/core';
-import { $command, $prose } from '@milkdown/utils';
+import { $command, $prose } from '@milkdown/kit/utils';
 import type { Node as ProseNode } from '@milkdown/prose/model';
 import { EditorState, Plugin, NodeSelection, Selection, TextSelection, type Command, type Transaction } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';

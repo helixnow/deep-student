@@ -46,10 +46,6 @@ const setMarkdown = vi.fn((markdown: string) => {
 const captureSelection = vi.fn(() => ({ from: 1, to: 1 }));
 const restoreSelection = vi.fn();
 
-vi.mock('@/features/notes/NotesContext', () => ({
-  useNotesOptional: () => undefined,
-}));
-
 vi.mock('@/hooks/useTauriDragAndDrop', () => ({
   useTauriDragAndDrop: () => ({ isDragging: false }),
 }));

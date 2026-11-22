@@ -37,8 +37,11 @@ import {
   Television,
   Target,
   TreeStructure,
+  Headphones,
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
+import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -111,8 +114,26 @@ export const SIDE_LAYOUT_MIN_WIDTH = 720;
 
 /** 「到点暂停作答」偏好（默认只标记不打断） */
 const PAUSE_AT_CHECKPOINTS_KEY = 'media-study.pauseAtCheckpoints';
+/** 「后台听课」偏好（切视图时允许视频继续后台播放音频） */
+const BACKGROUND_PLAYBACK_KEY = 'media-study.backgroundPlayback';
 /** 答错的检查点在进度条上标出的回看区间：锚点前 15 秒到后 30 秒 */
 const WEAK_RANGE_AFTER_SECONDS = 30;
+
+function readBackgroundPlayback(): boolean {
+  try {
+    return window.localStorage.getItem(BACKGROUND_PLAYBACK_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeBackgroundPlayback(value: boolean): void {
+  try {
+    window.localStorage.setItem(BACKGROUND_PLAYBACK_KEY, value ? '1' : '0');
+  } catch {
+    // 存储不可用时只在本次会话生效
+  }
+}
 
 function readPauseAtCheckpoints(): boolean {
   try {
@@ -686,6 +707,18 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       });
   }, [companion, fileName, referenceToChat, resourceId, t]);
 
+  const [backgroundPlayback, setBackgroundPlaybackState] = useState(readBackgroundPlayback);
+  const toggleBackgroundPlayback = useCallback(() => {
+    setBackgroundPlaybackState((prev) => {
+      const next = !prev;
+      writeBackgroundPlayback(next);
+      return next;
+    });
+  }, []);
+  const allowBackgroundPlayback = !isVideo || backgroundPlayback;
+
+  const saveAsNoteFlow = useSaveAsNoteFlow({ openSource: 'media-transcript' });
+
   const handleCardsFromSelection = useCallback((selected: TranscriptSegment[]) => {
     void makeMediaCards({
       resourceId,
@@ -696,6 +729,48 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       t,
     });
   }, [fileName, resourceId, t]);
+
+  const handleTranslateSelection = useCallback((selected: TranscriptSegment[], selectedText?: string) => {
+    const quote = buildTranscriptQuote(resourceId, selected);
+    const snippet = (selectedText?.trim() || selected.map((s) => s.text.trim()).filter(Boolean).join('\n')).trim();
+    if (!snippet) return;
+    const title = fileName.replace(/\.[^.]+$/, '') || fileName;
+    const refPart = quote?.marker ? ` ${quote.marker}` : '';
+    const prompt = t('learningHub:mediaTranscript.translatePrompt', {
+      name: title,
+      ref: refPart,
+      text: snippet,
+      defaultValue: '请帮我查词翻译并解释以下来自《{{name}}》{{ref}} 的字幕内容（给出准确释义、重点词汇与简要例句）：\n\n{{text}}',
+    });
+    dispatchAppEvent(APP_EVENTS.PREFILL_CHAT_INPUT, {
+      content: prompt,
+      autoSend: false,
+    });
+  }, [fileName, resourceId, t]);
+
+  const handleSaveNoteFromSelection = useCallback((selected: TranscriptSegment[], selectedText?: string) => {
+    if (selected.length === 0) return;
+    const title = fileName.replace(/\.[^.]+$/, '') || fileName;
+    const startClock = formatMediaRefTimestamp(selected[0].startMs / 1000);
+    const quote = buildTranscriptQuote(resourceId, selected);
+    const bodyLines = selectedText?.trim()
+      ? [`- [${startClock}] ${selectedText.trim()}`]
+      : selected
+          .filter((s) => s.status === 'done' && s.text.trim())
+          .map((s) => `- [${formatMediaRefTimestamp(s.startMs / 1000)}] ${s.text.trim()}`);
+    if (bodyLines.length === 0) return;
+    const content = [
+      `## ${title}（${startClock}）`,
+      ...(quote?.marker ? ['', quote.marker] : []),
+      '',
+      ...bodyLines,
+    ].join('\n');
+    saveAsNoteFlow.start({
+      title: `${title} · ${startClock}`,
+      content,
+      tags: [t('learningHub:mediaTranscript.timestampNoteTag', { defaultValue: '音视频笔记' })],
+    });
+  }, [fileName, resourceId, saveAsNoteFlow, t]);
 
   // ---------------------------------------------------------------- 在音视频中学习
   // 交接：本视图暂停（保活的资源库标签不能和学习页同时出声）；正在播放时把当前位置作为
@@ -876,6 +951,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       fileName={fileName}
       compatibilityHint={compatibilityHint}
       isActive={isActive}
+      allowBackgroundPlayback={allowBackgroundPlayback}
       onError={isLink ? handleLinkStreamError : onError}
       handleRef={handleRef}
       onStatusChange={handleStatusChange}
@@ -903,6 +979,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       meta={meta}
       compatibilityHint={compatibilityHint}
       isActive={isActive}
+      allowBackgroundPlayback={allowBackgroundPlayback}
       onError={onError}
       handleRef={handleRef}
       onStatusChange={handleStatusChange}
@@ -1066,6 +1143,26 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
             data-bilibili-playback={linkEmbed ? 'embed' : 'stream'}
           >
             <span>{linkEmbed ? t('learningHub:mediaBilibili.playback.retry') : t('learningHub:mediaBilibili.playback.useEmbed')}</span>
+          </DsButton>
+        )}
+
+        {isVideo && !embedPlayback && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={toggleBackgroundPlayback}
+            aria-pressed={backgroundPlayback}
+            aria-label={t('learningHub:mediaPreview.backgroundListen', { defaultValue: '后台听课' })}
+            title={t('learningHub:mediaPreview.backgroundListenHint', { defaultValue: '切视图时继续播放音频' })}
+            data-testid="media-background-listen-toggle"
+            className={cn(
+              toolbarButtonClass,
+              'gap-1.5 px-2.5 text-xs',
+              backgroundPlayback && 'bg-primary/10 text-primary',
+            )}
+          >
+            <Headphones size={14} weight={backgroundPlayback ? 'fill' : 'regular'} aria-hidden="true" />
+            <span className="max-sm:hidden">{t('learningHub:mediaPreview.backgroundListen', { defaultValue: '后台听课' })}</span>
           </DsButton>
         )}
 
@@ -1273,6 +1370,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
                   className="min-h-0 flex-1"
                   onQuoteSelection={handleQuoteSelection}
                   onMakeCardsFromSelection={handleCardsFromSelection}
+                  onTranslateSelection={handleTranslateSelection}
+                  onSaveNoteFromSelection={handleSaveNoteFromSelection}
                   interop={transcriptInterop}
                   cueBacklinks={cueBacklinks}
                   cueBranchTints={cueBranchTints}
@@ -1368,6 +1467,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
             className={sideLayout ? 'w-[340px] shrink-0 xl:w-[380px]' : 'min-h-0 flex-1'}
             onQuoteSelection={handleQuoteSelection}
             onMakeCardsFromSelection={handleCardsFromSelection}
+            onTranslateSelection={handleTranslateSelection}
+            onSaveNoteFromSelection={handleSaveNoteFromSelection}
             interop={transcriptInterop}
             cueBacklinks={cueBacklinks}
             cueBranchTints={cueBranchTints}
@@ -1375,6 +1476,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
           />
         )}
       </div>
+
+      <SaveAsNoteFolderPicker {...saveAsNoteFlow.pickerProps} />
 
       <BilibiliLinkDialog
         open={bilibiliDialogOpen}

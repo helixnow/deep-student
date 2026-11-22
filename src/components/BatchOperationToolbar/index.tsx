@@ -32,6 +32,36 @@ interface Funnel {
   value?: any;
 }
 
+const CLOZE_CSV_PATTERN = /\{\{c\d+::[\s\S]+?\}\}/;
+
+function escapeCsvCell(value: string): string {
+  if (!/[",\r\n]/.test(value)) return value;
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+function serializeBatchCardsToCsv(selectedCards: readonly AnkiCard[], deckName: string): string {
+  const rows = ['Front,Back,Tags,Deck,Type'];
+  for (const card of selectedCards) {
+    const fields = { ...(card.fields ?? {}), ...(card.extra_fields ?? {}) };
+    const clozeCandidate =
+      card.text?.trim() || fields.Text?.trim() || card.front?.trim() || '';
+    const isCloze = CLOZE_CSV_PATTERN.test(clozeCandidate);
+    const front = isCloze ? clozeCandidate : (card.front ?? fields.Front ?? card.text ?? '');
+    const back = isCloze
+      ? (card.back ?? fields.Extra ?? fields.Back ?? '')
+      : (card.back ?? fields.Back ?? '');
+    const tags = (card.tags ?? []).map((tag) => tag.trim()).filter(Boolean).join(' ');
+    const deck = (fields._deck ?? deckName).trim();
+    const noteType = isCloze ? 'Cloze' : 'Basic';
+    rows.push(
+      [front, back, tags, deck, noteType]
+        .map((cell) => escapeCsvCell(String(cell ?? '')))
+        .join(','),
+    );
+  }
+  return `\uFEFF${rows.join('\r\n')}\r\n`;
+}
+
 export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
   cards,
   onCardsUpdate,
@@ -204,7 +234,23 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
     setIsProcessing(true);
     try {
       const selectedCards = cards.filter(c => selectedIds.has(c.id || c.front));
-      
+
+      if (format === 'csv') {
+        const content = serializeBatchCardsToCsv(selectedCards, t('batch_export_deck_name'));
+        const saveResult = await fileManager.saveTextFile({
+          title: t('export_as_csv'),
+          defaultFileName: 'anki_export.csv',
+          content,
+          filters: [{ name: 'CSV', extensions: ['csv'] }],
+        });
+        if (saveResult.canceled) {
+          showNotification(t('operation_cancelled'));
+        } else {
+          showNotification(t('batch_exported', { count: selectedCards.length, format }));
+        }
+        return;
+      }
+
       const resultPath = await ankiApiAdapter.batchExportCards({
         cards: selectedCards,
         format,
@@ -238,7 +284,8 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
         showNotification(t('batch_exported', { count: selectedCards.length, format }));
       }
     } catch (error) {
-      showNotification(t('batch_export_failed', { error: error.message }), 'error');
+      const message = error instanceof Error ? error.message : String(error);
+      showNotification(t('batch_export_failed', { error: message }), 'error');
     } finally {
       setIsProcessing(false);
     }

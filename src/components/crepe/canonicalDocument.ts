@@ -1,5 +1,5 @@
-import type { MilkdownPlugin } from '@milkdown/ctx';
-import { createTimer } from '@milkdown/ctx';
+import type { MilkdownPlugin } from '@milkdown/kit/ctx';
+import { createTimer } from '@milkdown/kit/ctx';
 import { ParserReady, parserCtx, editorStateTimerCtx } from '@milkdown/kit/core';
 import { normalizeOfficialDiffDoc } from './officialDiffAdapter';
 

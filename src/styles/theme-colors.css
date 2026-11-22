@@ -105,7 +105,7 @@
   /* popover 刻意高于 modal：crepe wikilink/mention 等编辑器弹层可能出现在
      模态内的编辑器上，必须压过模态内容（3000/3001）；低于 sheet(4000)/toast(5000)。 */
   --z-popover: 3100;
-  --z-toast: 5000;      /* = Z_INDEX.toast（通知永远压过 modal/sheet） */
+  --z-toast: 9200;      /* 高于 --wb-z-menubar(9050) / --wb-z-menubar-flyout(9150)，通知不被工作台顶栏遮挡 */
   --z-image-viewer: 6000; /* = Z_INDEX.imageViewer（全屏图片查看器） */
   --z-tooltip: 10000;   /* = Z_INDEX.tooltip */
   --z-debug: 2147483647;

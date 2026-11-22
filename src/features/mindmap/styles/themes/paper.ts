@@ -47,6 +47,7 @@ export const paperTheme: IStyleTheme = {
     strokeWidth: 1.5,
   },
   palette: PAPER_LIGHT_PALETTE,
+  useBranchPalette: false,
   canvas: {
     background: '#F5F4EE',
   },

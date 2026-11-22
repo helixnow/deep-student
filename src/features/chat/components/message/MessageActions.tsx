@@ -2,18 +2,24 @@
  * MessageActions - 消息操作按钮组件
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { CopySimple, Check, ArrowCounterClockwise, Trash, PencilSimple, BookmarkSimple, GitBranch, DotsThree, FileArrowDown, SpeakerHigh, Stop } from '@phosphor-icons/react';
+import { CopySimple, Check, ArrowCounterClockwise, Trash, PencilSimple, BookmarkSimple, Cards, CheckSquare, GitBranch, DotsThree, FileArrowDown, SpeakerHigh, Stop } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem, AppMenuSeparator } from '@/components/ui/app-menu/AppMenu';
+import { useOptionalSlot, useOptionalUiKernel } from '@/ui-kernel/react';
+import { SlotEntryScope, runSlotCallback } from '@/ui-kernel/outlet';
+import type { ChatMessageActionContribution, ChatMessageRole } from '@/ui-kernel/contracts/surfaces';
+import type { SlotEntry } from '@/ui-kernel/slots';
 import { formatTokenCount } from '../TokenUsageDisplay';
 import type { TokenUsage } from '../../core/types';
 
 export interface MessageActionsProps {
   messageId: string;
+  sessionId?: string;
+  getMessageContent?: () => string;
   isUser: boolean;
   isLocked: boolean;
   canEdit: boolean;
@@ -27,6 +33,10 @@ export interface MessageActionsProps {
   onDelete: () => Promise<void>;
   /** 🆕 保存为 VFS 笔记 */
   onSaveAsNote?: () => Promise<void>;
+  /** 🆕 将整条 AI 回复送入闪卡制作流程 */
+  onMakeCards?: () => Promise<void>;
+  /** 🆕 将整条 AI 回复创建为待办 */
+  onCreateTodo?: () => Promise<void>;
   /** 🆕 导出为 Markdown 文件 */
   onExportMarkdown?: () => Promise<void>;
   onToggleReading?: () => Promise<void>;
@@ -42,6 +52,8 @@ export interface MessageActionsProps {
 
 export const MessageActions: React.FC<MessageActionsProps> = ({
   messageId,
+  sessionId,
+  getMessageContent,
   isUser,
   isLocked,
   canEdit,
@@ -54,6 +66,8 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   onEdit,
   onDelete,
   onSaveAsNote,
+  onMakeCards,
+  onCreateTodo,
   onExportMarkdown,
   onToggleReading,
   reading,
@@ -68,6 +82,8 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   const [isResending, setIsResending] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSavingNote, setIsSavingNote] = useState(false);
+  const [isMakingCards, setIsMakingCards] = useState(false);
+  const [isCreatingTodo, setIsCreatingTodo] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isBranching, setIsBranching] = useState(false);
 
@@ -129,6 +145,28 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       setIsSavingNote(false);
     }
   }, [onSaveAsNote, isSavingNote]);
+
+  // 🆕 存为闪卡
+  const handleMakeCards = useCallback(async () => {
+    if (!onMakeCards || isMakingCards) return;
+    setIsMakingCards(true);
+    try {
+      await onMakeCards();
+    } finally {
+      setIsMakingCards(false);
+    }
+  }, [onMakeCards, isMakingCards]);
+
+  // 🆕 创建待办
+  const handleCreateTodo = useCallback(async () => {
+    if (!onCreateTodo || isCreatingTodo) return;
+    setIsCreatingTodo(true);
+    try {
+      await onCreateTodo();
+    } finally {
+      setIsCreatingTodo(false);
+    }
+  }, [onCreateTodo, isCreatingTodo]);
 
   // 🆕 导出为 Markdown
   const handleExportMarkdown = useCallback(async () => {
@@ -202,15 +240,47 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
     ? '!h-9 !w-9 rounded-full [&_svg]:h-[14px] [&_svg]:w-[14px] relative after:absolute after:-inset-1 after:rounded-full after:content-[\'\']'
     : undefined;
 
+  const kernel = useOptionalUiKernel();
+  const slotEntries = useOptionalSlot('chat.message.actions');
+  const role: ChatMessageRole = isUser ? 'user' : 'assistant';
+  const reportedFilterErrorsRef = useRef(new WeakSet<SlotEntry<unknown>>());
+  const failedFilters: Array<{ entry: SlotEntry<ChatMessageActionContribution>; error: unknown }> = [];
+  const contributedActions = (slotEntries ?? []).filter((entry) => {
+    try {
+      return !entry.value.roles || entry.value.roles.includes(role);
+    } catch (error) {
+      failedFilters.push({ entry, error });
+      return false;
+    }
+  });
+  useEffect(() => {
+    for (const { entry, error } of failedFilters) {
+      if (reportedFilterErrorsRef.current.has(entry)) continue;
+      reportedFilterErrorsRef.current.add(entry);
+      kernel?.errors.report({
+        pluginId: entry.owner,
+        origin: entry.origin,
+        version: entry.version,
+        phase: 'filter',
+        slot: 'chat.message.actions',
+        entryId: entry.id,
+        error,
+      });
+    }
+  });
+
   const showInlineCopyOnly = !compactMobile;
   const showInlineRetry = !compactMobile && !isUser && Boolean(onRetry);
   const showInlineEdit = !compactMobile && isUser && Boolean(onEdit);
   const hasSecondaryActions = Boolean(
     canDelete ||
     onSaveAsNote ||
+    onMakeCards ||
+    onCreateTodo ||
     onExportMarkdown ||
     onToggleReading ||
     onBranchSession ||
+    contributedActions.length > 0 ||
     (isUser && onResend) ||
     (!isUser && onRetry && !showInlineRetry)
   );
@@ -273,6 +343,16 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
             {t('messageItem.actions.saveAsNote')}
           </AppMenuItem>
         )}
+        {onMakeCards && (
+          <AppMenuItem onClick={handleMakeCards} disabled={isMakingCards} icon={<Cards size={16} />}>
+            {t('messageItem.actions.makeCards', { defaultValue: '存为闪卡' })}
+          </AppMenuItem>
+        )}
+        {onCreateTodo && (
+          <AppMenuItem onClick={handleCreateTodo} disabled={isCreatingTodo} icon={<CheckSquare size={16} />}>
+            {t('messageItem.actions.createTodo', { defaultValue: '创建待办' })}
+          </AppMenuItem>
+        )}
         {onExportMarkdown && (
           <AppMenuItem onClick={handleExportMarkdown} disabled={isExporting} icon={<FileArrowDown size={16} />}>
             {t('messageItem.actions.exportMarkdown')}
@@ -288,6 +368,31 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
             {t('messageItem.actions.branch')}
           </AppMenuItem>
         )}
+        {contributedActions.map((entry) => {
+          const Icon = entry.value.icon;
+          return (
+            <AppMenuItem
+              key={`${entry.owner}\u0000${entry.id}`}
+              onClick={() => {
+                runSlotCallback(kernel, 'chat.message.actions', entry, () =>
+                  entry.value.run({
+                    messageId,
+                    role,
+                    ...(sessionId !== undefined ? { sessionId } : {}),
+                    content: getMessageContent?.() ?? '',
+                  })
+                );
+              }}
+              icon={Icon ? (
+                <SlotEntryScope slot="chat.message.actions" entry={entry}>
+                  <Icon size={16} />
+                </SlotEntryScope>
+              ) : undefined}
+            >
+              {entry.value.label}
+            </AppMenuItem>
+          );
+        })}
         <AppMenuSeparator />
         {/* P1-1: 内联两步确认——「删除」→ 红色高亮「确认删除」，超时自动复原 */}
         <AppMenuItem

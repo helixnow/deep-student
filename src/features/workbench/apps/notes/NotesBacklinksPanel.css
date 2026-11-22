@@ -13,12 +13,12 @@
 
 .notes-backlinks-panel-header {
   min-height: 40px;
-  padding: 0 6px 0 8px;
+  padding: 0 6px;
   display: flex;
   flex: 0 0 auto;
   align-items: stretch;
   justify-content: space-between;
-  gap: 8px;
+  gap: 4px;
   border-bottom: 1px solid var(--notes-hairline, hsl(var(--border)));
 }
 
@@ -57,7 +57,7 @@
   display: none;
 }
 
-/* ===== 统一右侧栏页签（属性 / 链接）——下划线式，占满头部高度 ===== */
+/* ===== 统一右侧栏页签（大纲 / 属性 / 链接 / 图谱）——下划线式，占满头部高度 ===== */
 
 .notes-backlinks-panel-tabs {
   min-width: 0;
@@ -65,13 +65,18 @@
   flex: 1 1 auto;
   align-items: stretch;
   gap: 2px;
+  container-type: inline-size;
 }
 
 .notes-backlinks-panel-tab {
   position: relative;
-  padding: 0 10px;
+  min-width: 0;
+  padding: 0 7px;
   display: inline-flex;
+  flex: 0 1 auto;
   align-items: center;
+  justify-content: center;
+  overflow: hidden;
   border: 0;
   color: hsl(var(--muted-foreground));
   background: transparent;
@@ -79,6 +84,7 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
+  text-overflow: ellipsis;
   white-space: nowrap;
   cursor: pointer;
   transition: color var(--notes-hover-transition);
@@ -87,13 +93,24 @@
 .notes-backlinks-panel-tab::after {
   content: '';
   position: absolute;
-  right: 8px;
+  right: 6px;
   bottom: -1px;
-  left: 8px;
+  left: 6px;
   height: 2px;
   border-radius: 1px;
   background: transparent;
   transition: background-color var(--notes-hover-transition);
+}
+
+@container (max-width: 240px) {
+  .notes-backlinks-panel-tab {
+    padding: 0 4px;
+  }
+
+  .notes-backlinks-panel-tab::after {
+    right: 4px;
+    left: 4px;
+  }
 }
 
 .notes-backlinks-panel-tab:hover {
@@ -115,6 +132,23 @@
   border-radius: var(--notes-radius-control);
 }
 
+/* 大纲页：全高弹性容器，将 100% 面板高度交由独立大纲滚动区使用 */
+.notes-backlinks-panel-outline {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.notes-backlinks-panel-outline > .notes-context-panel {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  background: transparent;
+}
+
+/* 属性页：单一平滑滚动容器，不出现嵌套滚动条 */
 .notes-backlinks-panel-properties {
   min-height: 0;
   display: flex;
@@ -124,16 +158,18 @@
   overscroll-behavior-y: contain;
 }
 
-/* The property form and relations share one scroll region. A full-height context
- * panel would otherwise push the relation form below the clipped panel edge. */
+/* Properties content flows into the panel's single scroll region without nested scrollbars. */
 .notes-backlinks-panel-properties > .notes-context-panel {
   height: auto;
+  min-height: 0;
   flex: 0 0 auto;
+  background: transparent;
 }
 
-.notes-backlinks-panel-properties .notes-context-outline {
+.notes-backlinks-panel-properties .notes-context-scroll,
+.notes-backlinks-panel-properties .notes-context-properties-scroll {
+  overflow: visible;
   flex: 0 0 auto;
-  height: clamp(120px, 30vh, 280px);
 }
 
 .notes-backlinks-panel-properties > section {
@@ -142,8 +178,11 @@
 }
 
 /* Author display:flex rules must not override the native hidden attribute. */
-.notes-backlinks-panel > [hidden] {
-  display: none !important;
+.notes-backlinks-panel > .notes-backlinks-panel-body[hidden],
+.notes-backlinks-panel > .notes-backlinks-panel-outline[hidden],
+.notes-backlinks-panel > .notes-backlinks-panel-properties[hidden],
+.notes-backlinks-panel > .notes-backlinks-panel-graph[hidden] {
+  display: none;
 }
 
 /* 属性页内容沿用面板底色，避免 NotesContextPanel 自带 bg-background 割裂 */
@@ -163,6 +202,7 @@
 .notes-backlinks-panel-actions {
   display: flex;
   flex: 0 0 auto;
+  align-items: center;
   gap: 2px;
 }
 
@@ -231,7 +271,7 @@
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
-  color: hsl(var(--muted-foreground) / 0.75);
+  color: hsl(var(--muted-foreground) / 75%);
   background: transparent;
   font-size: 11px;
   font-weight: 500;
@@ -390,13 +430,17 @@
     height: auto;
   }
 
-  /* 属性/链接页签随 40px 头部拉伸：min-height 让头部长到 44px 命中高度 */
+  /* 属性/链接页签随 40px 头部拉伸：min-height/min-width 均满足 44px 触控热区 */
   .notes-backlinks-panel-tab {
     min-height: 44px;
+    min-width: 44px;
+    flex: 1 1 auto;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .notes-backlinks-panel-tab,
+  .notes-backlinks-panel-tab::after,
   .notes-backlinks-panel-icon-button,
   .notes-backlinks-panel-link,
   .notes-backlinks-panel-message button {

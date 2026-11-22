@@ -1797,14 +1797,25 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
 
   // ★ 错误点入错题本：改写 / 错误标记 → 「作文错题」题目集（可练习、进复习、计入掌握度）
   const [isSavingMistakes, setIsSavingMistakes] = useState(false);
+  const savingMistakesRef = useRef(false);
   const handleSaveMistakes = useCallback(async () => {
-    if (isGrading || !gradingResult || isSavingMistakes) return;
+    if (isGrading || !gradingResult || isSavingMistakes || savingMistakesRef.current) return;
+    savingMistakesRef.current = true;
     setIsSavingMistakes(true);
     try {
       const { saveEssayMistakes } = await import('../essay-grading/essayMistakes');
       const { count, examId } = await saveEssayMistakes(gradingResult);
-      if (count === 0 || !examId) {
+      if (!examId) {
         showGlobalNotification('info', t('essay_grading:mistakes.none'));
+        return;
+      }
+      if (count === 0) {
+        showGlobalNotification('info', t('essay_grading:mistakes.already_saved'), undefined, {
+          action: {
+            label: t('essay_grading:mistakes.open'),
+            onClick: () => window.dispatchEvent(new CustomEvent('navigateToExamSheet', { detail: { sessionId: examId } })),
+          },
+        });
         return;
       }
       showGlobalNotification('success', t('essay_grading:mistakes.saved', { count }), undefined, {
@@ -1817,6 +1828,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
       console.error('[EssayGrading] Save mistakes failed:', error);
       showGlobalNotification('error', t('essay_grading:mistakes.failed'));
     } finally {
+      savingMistakesRef.current = false;
       setIsSavingMistakes(false);
     }
   }, [isGrading, gradingResult, isSavingMistakes, t]);

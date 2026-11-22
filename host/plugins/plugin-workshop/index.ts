@@ -16,6 +16,7 @@ import { pluginExecution } from '../../kernel/plugin-execution.ts';
 import type { AgentToolExecutor } from '../agent-skills/api.ts';
 import type { ToolCall, ExecutionContext } from '../chat/api.ts';
 import type { HttpService } from '../../platform/http/api.ts';
+import type { SettingsStore } from '../../platform/settings/api.ts';
 import { settingUrlProblem, type WorkshopLinkReader } from './src/settings.ts';
 import { pluginSecretSettingsKey } from '../plugin-services/api.ts';
 
@@ -45,12 +46,13 @@ function linkReader(http: () => HttpService | null): WorkshopLinkReader {
 
 export default definePlugin({
   meta: { id: 'dstu.plugin-workshop', version: '1.0.0', platforms: ['desktop'], provides: ['pluginWorkshop'],
-    remote: { pluginWorkshop: ['developmentSkill', 'bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault', 'reportValidation', 'discard', 'redo', 'reduce'] } },
+    remote: { pluginWorkshop: ['developmentSkill', 'bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault', 'reportValidation', 'discard', 'redo', 'reduce', 'storedData', 'clearStoredData'] } },
   inject: ['paths', 'agentTools', 'chatSession', 'chatPipeline', 'dstuPluginInstaller'],
   async apply(ctx) {
     const operations = new WorkshopOperations({ ...ctx.app, dataDir: ctx.paths.appDataDir });
     const installer: DstuPluginInstaller = ctx.dstuPluginInstaller;
     operations.bindAdmin(installer);
+    operations.bindSettings(() => ctx.get('settings') as Pick<SettingsStore, 'listByPrefix' | 'deleteByPrefix'> | undefined);
     // App process lifecycle belongs to the shell; plugin install/config never needs a restart.
     operations.bindRestart(() => ctx.shell.request('plugin:process|restart'));
     const catalog = new WorkshopCatalog(() => installer.plugins(), undefined, name => ctx.get(name) !== undefined);
@@ -81,7 +83,7 @@ export default definePlugin({
       consumeWorkshopUiReceipt(args.pop(), 'pluginWorkshop', 'developmentSkill');
       return { ...await developmentSkillResource(args[0] === true), schemaToolIds: executor.schemaTools().map(tool => tool.id) };
     });
-    for (const method of ['bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault', 'reportValidation', 'discard', 'redo', 'reduce'] as const) {
+    for (const method of ['bindSession', 'propose', 'list', 'status', 'create', 'cancel', 'validate', 'install', 'revoke', 'restore', 'export', 'reportFault', 'reportValidation', 'discard', 'redo', 'reduce', 'storedData', 'clearStoredData'] as const) {
       facade[method] = Object.freeze(async (...args: unknown[]) => {
         const context = consumeWorkshopUiReceipt(args.pop(), 'pluginWorkshop', method);
         return (operations[method] as (...params: unknown[]) => Promise<unknown>).apply(operations, [...args, context]);

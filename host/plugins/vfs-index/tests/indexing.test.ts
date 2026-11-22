@@ -62,3 +62,41 @@ it('preserves textbook JSON-as-raw-text and existing nonstring page-field preced
   expect(extractIndexableContent('textbook', '{"extracted_text":"abc"}')).toBe('{"extracted_text":"abc"}');
   expect(extractIndexablePages('textbook', 'r', '{"pages":[{"text":null,"content":"abc"}]}')).toBeNull();
 });
+it('extracts markdown preserving code identifiers, multi-line syntax stripping, and table cell text', () => {
+  const md = [
+    '# Heading 1',
+    '## Heading 2',
+    '> Quoted line',
+    '- Bullet item',
+    '1. Ordered item',
+    '---',
+    'Inline `foo_bar_baz` and `x | y` stay intact.',
+    '',
+    '```python',
+    '# python comment inside code',
+    'def compute_eigen_val(a_b):',
+    '    return a_b * 2',
+    '```',
+    '',
+    '| Term | Meaning |',
+    '| :--- | :---: |',
+    '| Eigenvalue | Scalar factor |',
+  ].join('\n');
+  const extracted = extractIndexableContent('note', md)!;
+  expect(extracted).toContain('Heading 1');
+  expect(extracted).toContain('Heading 2');
+  expect(extracted).toContain('Quoted line');
+  expect(extracted).toContain('Bullet item');
+  expect(extracted).toContain('Ordered item');
+  expect(extracted).not.toContain('## Heading 2');
+  expect(extracted).not.toContain('> Quoted line');
+  expect(extracted).not.toContain('---');
+  expect(extracted).toContain('foo_bar_baz');
+  expect(extracted).toContain('x | y');
+  expect(extracted).toContain('# python comment inside code');
+  expect(extracted).toContain('compute_eigen_val(a_b)');
+  expect(extracted).not.toContain('```');
+  expect(extracted).toContain('Term Meaning');
+  expect(extracted).toContain('Eigenvalue Scalar factor');
+  expect(extracted).not.toContain(':---');
+});

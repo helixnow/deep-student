@@ -207,4 +207,11 @@ describe('ExamSheetUploader (streamlined layout)', () => {
     // 失败只在页内说一次，不再额外弹全局错误通知
     expect(mocks.showGlobalNotification).not.toHaveBeenCalledWith('error', expect.anything());
   });
+
+  it('keeps the take-more-photo button available after selecting the first image for multi-page capture', async () => {
+    render(<ExamSheetUploader sessionId="exam_1" onBack={() => {}} />);
+    selectFiles([new File(['img1'], 'page1.png', { type: 'image/png' })]);
+    expect(await screen.findByTestId('exam-uploader-add-more')).toBeInTheDocument();
+    expect(screen.getByTestId('exam-uploader-take-more-photo')).toBeInTheDocument();
+  });
 });

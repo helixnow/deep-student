@@ -9,7 +9,7 @@
  */
 
 import type { Node } from '@milkdown/transformer'
-import { $remark } from '@milkdown/utils'
+import { $remark } from '@milkdown/kit/utils'
 import { visit } from 'unist-util-visit'
 
 import { parseToggleMarker, TOGGLE_TYPE, type ToggleMarker } from './marker'

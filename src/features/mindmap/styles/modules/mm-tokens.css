@@ -1,0 +1,142 @@
+/* ============================================
+   思维导图 / 大纲笔记 — 语义设计令牌 (Tokens)
+   ============================================ */
+
+/* ACR 演出时长单源（mindmapDriver 经 readCssTimeMs 读取同名变量） */
+:root {
+  --mm-agent-enter-ms: 260ms;
+  --mm-agent-exit-ms: 180ms;
+  --mm-agent-updated-ms: 900ms;
+
+  /* 语义微染与幽灵建议令牌（统一派生自主题语义令牌，零硬编码色） */
+  --mm-celadon-accent: hsl(var(--primary));
+  --mm-celadon-pill-bg: hsl(var(--primary) / 9%);
+  --mm-celadon-pill-bg-hover: hsl(var(--primary) / 16%);
+  --mm-celadon-pill-fg: color-mix(in srgb, hsl(var(--primary)) 76%, hsl(var(--foreground)));
+  --mm-celadon-border: hsl(var(--primary) / 26%);
+  --mm-celadon-quote-bar: hsl(var(--primary) / 46%);
+  --mm-celadon-drop-bg: hsl(var(--primary) / 8%);
+  --mm-celadon-drop-merge-bg: hsl(var(--primary) / 14%);
+
+  /* 幽灵提案层语义令牌 */
+  --mm-ghost-bg: color-mix(in srgb, hsl(var(--card)) 88%, hsl(var(--primary)) 6%);
+  --mm-ghost-border: hsl(var(--primary) / 48%);
+  --mm-ghost-stroke: hsl(var(--primary) / 52%);
+  --mm-ghost-accent: hsl(var(--primary));
+  --mm-ghost-bar-bg: hsl(var(--primary) / 7%);
+  --mm-ghost-remove-bg: hsl(var(--destructive) / 7%);
+  --mm-ghost-remove-border: hsl(var(--destructive) / 42%);
+  --mm-ghost-remove-fg: hsl(var(--destructive));
+  --mm-ghost-shadow: 0 2px 8px hsl(var(--shadow-base) / 8%);
+}
+
+.dark,
+:root.dark {
+  --mm-celadon-pill-bg: hsl(var(--primary) / 15%);
+  --mm-celadon-pill-bg-hover: hsl(var(--primary) / 24%);
+  --mm-celadon-pill-fg: color-mix(in srgb, hsl(var(--primary)) 45%, hsl(var(--foreground)));
+  --mm-celadon-border: hsl(var(--primary) / 34%);
+  --mm-celadon-quote-bar: hsl(var(--primary) / 52%);
+  --mm-celadon-drop-bg: hsl(var(--primary) / 11%);
+  --mm-celadon-drop-merge-bg: hsl(var(--primary) / 20%);
+  --mm-ghost-bg: color-mix(in srgb, hsl(var(--card)) 90%, hsl(var(--primary)) 8%);
+  --mm-ghost-border: hsl(var(--primary) / 54%);
+  --mm-ghost-stroke: hsl(var(--primary) / 58%);
+  --mm-ghost-bar-bg: hsl(var(--primary) / 11%);
+  --mm-ghost-remove-bg: hsl(var(--destructive) / 12%);
+  --mm-ghost-remove-border: hsl(var(--destructive) / 48%);
+  --mm-ghost-shadow: 0 4px 12px hsl(var(--shadow-base) / 36%);
+}
+
+.mindmap-container {
+  /* 背景层 */
+  --mm-bg: var(--surface-root, hsl(var(--background)));
+  --mm-bg-elevated: var(--surface-elevated, hsl(var(--card)));
+  --mm-bg-hover: var(--interactive-hover, hsl(var(--accent) / 50%));
+  --mm-bg-active: var(--interactive-selected, hsl(var(--accent)));
+
+  /* 边框 */
+  --mm-border: var(--border-default, hsl(var(--border)));
+  --mm-border-strong: hsl(var(--muted-foreground) / 50%);
+
+  /* 连线 */
+  --mm-edge: hsl(var(--muted-foreground) / 45%);
+  --mm-edge-active: var(--mm-primary);
+
+  /* 阴影（严格锚定 --shadow-base，禁止回退 --foreground） */
+  --mm-shadow:
+    0 1px 3px 0 hsl(var(--shadow-base) / 10%),
+    0 1px 2px -1px hsl(var(--shadow-base) / 10%);
+  --mm-shadow-sm: 0 1px 2px 0 hsl(var(--shadow-base) / 6%);
+  --mm-shadow-dock:
+    0 8px 24px -4px hsl(var(--shadow-base) / 10%),
+    0 2px 6px -1px hsl(var(--shadow-base) / 6%);
+  --mm-popover-shadow: var(--notes-popover-shadow, 0 8px 24px hsl(var(--shadow-base) / 14%));
+  --mm-shadow-node: var(--shadow-content-subtle, 0 1px 3px hsl(var(--shadow-base) / 6%));
+  --mm-shadow-popup: var(--mm-popover-shadow);
+  --mm-shadow-drag: var(--shadow-shell-floating, 0 18px 36px hsl(var(--shadow-base) / 10%));
+
+  /* 文本 */
+  --mm-text: var(--text-primary, hsl(var(--foreground)));
+  --mm-text-secondary: var(--text-secondary, hsl(var(--muted-foreground)));
+  --mm-text-muted: var(--text-muted, hsl(var(--muted-foreground) / 70%));
+
+  /* 主色调与语义色 */
+  --mm-primary: hsl(var(--primary));
+  --mm-primary-soft: hsl(var(--primary) / 10%);
+  --mm-selection: color-mix(in hsl, var(--mm-text) 9%, var(--mm-bg));
+  --mm-selection-hover: color-mix(in hsl, var(--mm-text) 13%, var(--mm-bg));
+  --mm-warning: hsl(var(--warning));
+  --mm-warning-soft: hsl(var(--warning) / 12%);
+
+  /* FSRS 掌握度语义色 */
+  --mm-mastery-due: hsl(var(--warning));
+  --mm-mastery-struggling: hsl(var(--destructive));
+  --mm-mastery-learning: hsl(var(--primary));
+  --mm-mastery-mastered: hsl(var(--success, 152 55% 40%));
+
+  /* 圆角契约 */
+  --mm-radius-row: var(--notes-radius-row, 6px);
+  --mm-radius-control: var(--notes-radius-control, 5px);
+  --mm-radius-popup: var(--notes-radius-popup, 8px);
+  --mm-radius-pill: 999px;
+
+  /* 动效契约 */
+  --mm-hover-transition: var(--notes-hover-transition, 120ms ease);
+  --mm-dur-enter: var(--notes-popup-enter-duration, 150ms);
+  --mm-ease-enter: var(--notes-popup-enter-easing, cubic-bezier(0.16, 1, 0.3, 1));
+  --mm-dur-structure: var(--dropdown-close-dur, 150ms);
+  --mm-ease-structure: var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+
+  /* 布局尺寸 */
+  --mm-toolbar-height: 42px;
+  --mm-line-height: 28px;
+  --mm-indent-width: 28px;
+  --mm-bullet-size: 6px;
+
+  position: relative;
+  font-family: var(--font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif);
+  color: var(--mm-text);
+  background: var(--mm-bg);
+}
+
+/* 暗色模式阴影提权至 32%–48%，确保深色背景下层级与浮层边界清晰 */
+.dark .mindmap-container,
+:root.dark .mindmap-container {
+  --mm-shadow:
+    0 2px 8px 0 hsl(var(--shadow-base) / 34%),
+    0 1px 3px -1px hsl(var(--shadow-base) / 32%);
+  --mm-shadow-sm: 0 1px 3px 0 hsl(var(--shadow-base) / 32%);
+  --mm-shadow-dock:
+    0 10px 28px -6px hsl(var(--shadow-base) / 42%),
+    0 2px 8px -1px hsl(var(--shadow-base) / 34%);
+  --mm-popover-shadow: var(--notes-popover-shadow, 0 10px 28px hsl(var(--shadow-base) / 44%));
+  --mm-shadow-node: var(--shadow-content-subtle, 0 2px 6px hsl(var(--shadow-base) / 32%));
+  --mm-shadow-drag: var(--shadow-shell-floating, 0 20px 40px hsl(var(--shadow-base) / 48%));
+  --mm-mastery-mastered: hsl(var(--success, 152 58% 54%));
+}
+
+/* 借 .mindmap-container 取变量的 portal 浮层保持 fixed */
+.mindmap-container.fixed {
+  position: fixed;
+}

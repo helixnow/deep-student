@@ -12,6 +12,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Check, DotsSixVertical, SquaresFour } from '@phosphor-icons/react';
 import {
   DndContext,
   DragOverlay,
@@ -22,6 +23,8 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core';
 import { cn } from '@/lib/utils';
+import { DsButton } from '@/components/ui/DsButton';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import {
   useTouchFriendlyDndSensors,
   SHELL_SAFE_AUTO_SCROLL,
@@ -73,19 +76,107 @@ export function quadrantDropChanges(
   return changed ? changes : null;
 }
 
+const MatrixMoveMenu: React.FC<{
+  item: TodoItem;
+  currentQuadrant: EisenhowerQuadrant;
+  onMove: (item: TodoItem, target: EisenhowerQuadrant) => void;
+}> = ({ item, currentQuadrant, onMove }) => {
+  const { t } = useTranslation(['todo']);
+  const [open, setOpen] = useState(false);
+
+  return (
+    <span
+      className="flex-shrink-0 md:hidden [@media(pointer:coarse)]:inline-flex"
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <DsButton
+            variant="utility"
+            size="icon"
+            iconOnly
+            data-testid={`matrix-move-trigger-${item.id}`}
+            title={t('todo:matrix.moveToQuadrant', { defaultValue: '移动到象限' })}
+            aria-label={t('todo:matrix.moveToQuadrant', { defaultValue: '移动到象限' })}
+            className="flex-shrink-0 opacity-75 transition-opacity duration-100 !p-1.5 [@media(pointer:coarse)]:!p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+          >
+            <SquaresFour size={16} />
+          </DsButton>
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          className="w-48 rounded-[var(--radius-shell-control)] p-1.5"
+          role="menu"
+          aria-label={t('todo:matrix.moveToQuadrant', { defaultValue: '移动到象限' })}
+        >
+          {EISENHOWER_QUADRANTS.map((target) => {
+            const isCurrent = target === currentQuadrant;
+            return (
+              <DsButton
+                key={target}
+                type="button"
+                variant="ghost"
+                size="sm"
+                role="menuitemradio"
+                aria-checked={isCurrent}
+                data-testid={`matrix-move-option-${target}`}
+                onClick={() => {
+                  setOpen(false);
+                  if (!isCurrent) onMove(item, target);
+                }}
+                className="w-full justify-start gap-2 rounded-[8px] px-2.5 py-2 text-left text-xs font-normal text-foreground"
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn('h-2 w-2 shrink-0 rounded-full', QUADRANT_DOTS[target])}
+                />
+                <span className="flex-1 truncate">{t(`todo:matrix.${target}`)}</span>
+                {isCurrent && (
+                  <Check size={13} className="shrink-0 text-[color:hsl(var(--primary))]" />
+                )}
+              </DsButton>
+            );
+          })}
+        </PopoverContent>
+      </Popover>
+    </span>
+  );
+};
+
 const DraggableMatrixRow: React.FC<{
   item: TodoItem;
-  children: React.ReactNode;
+  children: (dragHandle: React.ReactNode) => React.ReactNode;
 }> = ({ item, children }) => {
+  const { t } = useTranslation(['todo']);
   // 有意不铺开 attributes（tabIndex/role）：矩阵行的键盘操作走面板级 j/k 导航，
   // 避免每行成为 Tab 停靠点并让 Enter 被 KeyboardSensor 劫持成拖拽
   const { listeners, setNodeRef, isDragging } = useDraggable({
     id: item.id,
   });
+  const dragHandle = (
+    <DsButton
+      type="button"
+      variant="ghost"
+      size="icon"
+      iconOnly
+      {...listeners}
+      onClick={(e) => e.stopPropagation()}
+      aria-label={t('todo:matrix.dragToQuadrant', { defaultValue: '拖拽移动到其他象限' })}
+      title={t('todo:matrix.dragToQuadrant', { defaultValue: '拖拽移动到其他象限' })}
+      className={cn(
+        '-ml-2 !h-6 !w-5 flex-shrink-0 touch-none cursor-grab rounded !p-0',
+        'text-muted-foreground/30 transition-colors active:cursor-grabbing',
+        'group-hover:text-muted-foreground/70 hover:!text-muted-foreground',
+      )}
+    >
+      <DotsSixVertical size={14} weight="bold" />
+    </DsButton>
+  );
   return (
     // 拖影由 DragOverlay 渲染；原位行只降透明度作占位提示，不再自身位移
-    <div ref={setNodeRef} {...listeners} className={cn(isDragging && 'opacity-30')}>
-      {children}
+    <div ref={setNodeRef} className={cn(isDragging && 'opacity-30')}>
+      {children(dragHandle)}
     </div>
   );
 };
@@ -178,6 +269,14 @@ export const MatrixBoard: React.FC<MatrixBoardProps> = ({
     [quadrants],
   );
 
+  const handleMoveToQuadrant = useCallback(
+    (item: TodoItem, targetQuadrant: EisenhowerQuadrant) => {
+      const changes = quadrantDropChanges(item, targetQuadrant);
+      if (changes) void updateItem(changes);
+    },
+    [updateItem],
+  );
+
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       setActiveItem(null);
@@ -189,10 +288,9 @@ export const MatrixBoard: React.FC<MatrixBoardProps> = ({
         (i) => i.id === String(active.id),
       );
       if (!item) return;
-      const changes = quadrantDropChanges(item, quadrant);
-      if (changes) void updateItem(changes);
+      handleMoveToQuadrant(item, quadrant);
     },
-    [quadrants, updateItem],
+    [quadrants, handleMoveToQuadrant],
   );
 
   return (
@@ -223,18 +321,28 @@ export const MatrixBoard: React.FC<MatrixBoardProps> = ({
                 ) : (
                   quadItems.map((item) => (
                     <DraggableMatrixRow key={item.id} item={item}>
-                      <TodoItemRow
-                        item={item}
-                        onToggle={onToggle}
-                        onSelect={onSelect}
-                        onDelete={onDelete}
-                        onRename={onRename}
-                        isSelected={selectedItemId === item.id}
-                        isFocused={focusedItemId === item.id}
-                        isChecked={checkedIds?.has(item.id) ?? false}
-                        onCheckToggle={onCheckToggle}
-                        checkMode={checkMode}
-                      />
+                      {(dragHandle) => (
+                        <TodoItemRow
+                          item={item}
+                          onToggle={onToggle}
+                          onSelect={onSelect}
+                          onDelete={onDelete}
+                          onRename={onRename}
+                          isSelected={selectedItemId === item.id}
+                          isFocused={focusedItemId === item.id}
+                          isChecked={checkedIds?.has(item.id) ?? false}
+                          onCheckToggle={onCheckToggle}
+                          checkMode={checkMode}
+                          dragHandle={dragHandle}
+                          trailingSlot={
+                            <MatrixMoveMenu
+                              item={item}
+                              currentQuadrant={quadrant}
+                              onMove={handleMoveToQuadrant}
+                            />
+                          }
+                        />
+                      )}
                     </DraggableMatrixRow>
                   ))
                 )}

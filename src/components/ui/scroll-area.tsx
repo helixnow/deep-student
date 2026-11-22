@@ -147,6 +147,15 @@ type ScrollAreaCssVars = {
 // 重新下发选项：每次渲染新建函数会被判成「选项已变」而触发一次完整 update（切换视口
 // data-overlayscrollbars-viewport → 整个视口子树样式重算）。函数与事件放模块级，其余选项按值 memo。
 const OVERLAY_UPDATE_OPTIONS: NonNullable<PartialOptions["update"]> = {
+  // 避免窗口 resize / 暗色切换时全部 ScrollArea 在同一同步任务里交替读写布局（Read/Write Layout Thrashing）：
+  // 库默认 resize: null（同步）与 env: [222, 666, true]（leading 同步），在 250+ 节点导图等重 DOM 场景下
+  // 会把单次视口切换拉成 >2s 长任务。关闭 env leading 并将 resize 推入单帧防抖，既保留流畅反馈又打散回流风暴。
+  debounce: {
+    mutation: [16, 66],
+    resize: [16, 66],
+    event: [33, 99],
+    env: [120, 300, false],
+  },
   // LTR 使用标准顺向流，跳过 Chromium 容易误判的坐标探测；
   // RTL 则保留方向信号，确保横向滑块与负 scrollLeft 正确映射。
   // 只有这里返回方向时库才会给视口设 noContent 做原点量测（见 scroll-overlay-stylesheet）

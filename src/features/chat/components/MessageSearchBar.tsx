@@ -1,12 +1,16 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { CaretDown, CaretUp, MagnifyingGlass, X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/utils/cn';
 import Z_INDEX from '@/config/zIndex';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+
+/** 移动端顶栏或外部菜单触发当前会话内消息搜索的事件名 */
+export const CHAT_OPEN_MESSAGE_SEARCH_EVENT = 'chat-v2:open-message-search';
 
 export interface MessageSearchBarProps {
   placement?: 'floating' | 'header';
@@ -74,11 +78,13 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
   // 两种形态都 portal 在宿主视图之外（body / 桌面壳顶栏），视图被切走
   // （visibility:hidden）时不会随之隐藏；监听全局视图切换事件收起搜索条，
   // 避免悬浮在新视图上方（对照 InputBarUI 组合面板的处理）。
-  useEffect(() => {
-    const handleViewSwitched = () => onCloseRef.current();
-    window.addEventListener('app:view-switched', handleViewSwitched);
-    return () => window.removeEventListener('app:view-switched', handleViewSwitched);
+  const handleViewSwitched = useCallback(() => {
+    onCloseRef.current();
   }, []);
+  useEventRegistry(
+    [{ target: 'window', type: 'app:view-switched', listener: handleViewSwitched }],
+    [handleViewSwitched],
+  );
 
   useEffect(() => {
     if (!activeMessageId) return;
@@ -120,7 +126,7 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
       className={cn(
         isHeaderPlacement
           ? 'relative flex h-full min-w-0 w-full items-center justify-end'
-          : 'pointer-events-none fixed right-4 top-2 z-[1101] flex w-[min(32rem,calc(100vw-2rem))] justify-end md:right-8 md:top-1',
+          : 'pointer-events-none fixed right-4 top-[max(0.5rem,env(safe-area-inset-top))] z-[1101] flex w-[min(32rem,calc(100vw-2rem))] justify-end md:right-8 md:top-1',
       )}
       style={isHeaderPlacement ? undefined : { zIndex: Z_INDEX.desktopTitlebar + 1 }}
       data-no-drag

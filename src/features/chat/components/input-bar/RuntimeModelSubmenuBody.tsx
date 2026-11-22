@@ -211,8 +211,8 @@ export const RuntimeModelSubmenuBody: React.FC<RuntimeModelSubmenuBodyProps> = (
             favorite
               ? 'text-warning opacity-100'
               : 'text-[color:var(--menu-shell-muted-foreground)] opacity-0 group-hover/model-row:opacity-100 group-focus-within/model-row:opacity-100 focus-visible:opacity-100',
-            // 触屏无 hover：星标常显，否则收藏入口不可达
-            '[@media(pointer:coarse)]:opacity-100'
+            // 触屏无 hover：星标常显且触控热区扩大到 ≥44px（--touch-target-size），避免 24px 按钮误触
+            '[@media(pointer:coarse)]:opacity-100 [@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!w-[var(--touch-target-size)] [@media(pointer:coarse)]:[&_svg]:!h-4 [@media(pointer:coarse)]:[&_svg]:!w-4'
           )}
         >
           <Star size={13} weight={favorite ? 'fill' : 'regular'} />

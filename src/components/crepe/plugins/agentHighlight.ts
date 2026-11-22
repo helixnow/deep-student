@@ -22,7 +22,7 @@ import i18next from 'i18next';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import { Decoration, DecorationSet } from '@milkdown/prose/view';
 import type { Node as ProseNode } from '@milkdown/prose/model';
-import { $prose } from '@milkdown/utils';
+import { $prose } from '@milkdown/kit/utils';
 
 export type AgentHighlightMeta =
   | { type: 'caret'; pos: number }

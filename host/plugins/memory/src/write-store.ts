@@ -431,7 +431,8 @@ export class MemoryWriteStore {
         isNew: false, confidence: decision.confidence, resourceId: null, downgraded: true,
         reason: `${decision.reason}（置信度 ${decision.confidence.toFixed(2)} 低于阈值 0.65，降级为 NONE）` };
       finalizeResult(this.host.db, reservation, output);
-      return output; // Rust deliberately has no write_smart audit on the low-confidence return.
+      this.host.auditWriteSmart(source, title, content, folderPath, output, sessionId, elapsedMs(startedAt));
+      return output;
     }
     if (reservation !== undefined) renewReservation(this.host.db, reservation);
     let output: SmartWriteOutput;

@@ -32,6 +32,11 @@
   will-change: transform;
 }
 
+/* 键盘弹起抬升时贴键盘上沿，去除多余的底部手势安全区空白缝 */
+.mobile-editor-toolbar[data-keyboard-open='true'] {
+  padding-bottom: 0;
+}
+
 /* 滚动收起：下滑阅读时滑出屏幕；visibility 延迟到位移结束，期间不可聚焦/点按 */
 .mobile-editor-toolbar[data-collapsed='true'] {
   transform: translateY(calc(100% + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))));

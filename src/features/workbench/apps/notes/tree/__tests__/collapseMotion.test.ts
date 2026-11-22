@@ -64,4 +64,32 @@ describe('animateTreeRowsExit', () => {
     animateTreeRowsExit(container, ['note_1'], commit);
     expect(commit).toHaveBeenCalledTimes(1);
   });
+
+  it('animates the enclosing .nwt-row-slot so indent guides fade out together with the row', async () => {
+    const container = document.createElement('div');
+    const slot = document.createElement('div');
+    slot.className = 'nwt-row-slot';
+    const guide = document.createElement('span');
+    guide.className = 'nwt-indent-guide';
+    const row = document.createElement('div');
+    row.setAttribute('data-nwt-id', 'note_1');
+    slot.appendChild(guide);
+    slot.appendChild(row);
+    container.appendChild(slot);
+
+    const cancel = vi.fn();
+    const slotAnimate = vi.fn(() => ({ finished: Promise.resolve(), cancel }));
+    const rowAnimate = vi.fn(() => ({ finished: Promise.resolve(), cancel }));
+    (slot as unknown as { animate: typeof slotAnimate }).animate = slotAnimate;
+    (row as unknown as { animate: typeof rowAnimate }).animate = rowAnimate;
+
+    const commit = vi.fn();
+    animateTreeRowsExit(container, ['note_1'], commit);
+
+    expect(slotAnimate).toHaveBeenCalledTimes(1);
+    expect(rowAnimate).not.toHaveBeenCalled();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
 });

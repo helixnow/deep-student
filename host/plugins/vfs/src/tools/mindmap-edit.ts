@@ -11,6 +11,82 @@ import { toolVfsDatabase, toolVfsRepos } from './tool-services.ts';
 import { recordOf, sanitizeMindmapAssociations, valueString } from './mindmap-document.ts';
 import { applyMindmapOperation, mindmapOperationToAgentOp } from './mindmap-operations.ts';
 const detail = (error: unknown) => error instanceof Error ? error.message : String(error);
+const MAX_SUMMARY_LABEL_CHARS = 240;
+
+export function sanitizeMindmapSummaries(value: unknown, log: ResourceToolContext['services']['logger']): void {
+  const doc = recordOf(value);
+  if (doc === null || !Object.hasOwn(doc, 'root')) return;
+  const childIdsByParent = new Map<string, string[]>();
+  const collect = (nodeValue: unknown, depth: number) => {
+    if (depth > 100) return;
+    const node = recordOf(nodeValue);
+    if (node === null) return;
+    const id = rustTrim(valueString(node.id) ?? '');
+    const children = Array.isArray(node.children) ? node.children : [];
+    const childIds: string[] = [];
+    for (const child of children) {
+      const childId = rustTrim(valueString(recordOf(child)?.id) ?? '');
+      if (childId !== '') childIds.push(childId);
+      collect(child, depth + 1);
+    }
+    if (id !== '') childIdsByParent.set(id, childIds);
+  };
+  collect(doc.root, 0);
+  if (!Object.hasOwn(doc, 'summaries')) return;
+  const raw = doc.summaries;
+  delete doc.summaries;
+  if (!Array.isArray(raw)) {
+    log.warn('[BuiltinResourceExecutor] mindmap summaries is not an array; dropping field');
+    return;
+  }
+  const reservedExplicitIds = new Set<string>();
+  for (const item of raw) {
+    const rawId = rustTrim(valueString(recordOf(item)?.id) ?? '');
+    if (rawId !== '') reservedExplicitIds.add(rawId);
+  }
+  const cleaned: Record<string, unknown>[] = [];
+  const seenIds = new Set<string>();
+  const seenRanges = new Set<string>();
+  for (let idx = 0; idx < raw.length; idx += 1) {
+    const item = recordOf(raw[idx]);
+    if (item === null) continue;
+    const rawId = rustTrim(valueString(item.id) ?? '');
+    const parentId = rustTrim(valueString(item.parentId) ?? '');
+    const rawStart = rustTrim(valueString(item.startChildId) ?? '');
+    const rawEnd = rustTrim(valueString(item.endChildId) ?? '');
+    if (parentId === '' || rawStart === '' || rawEnd === '') continue;
+    if (rawId !== '' && seenIds.has(rawId)) continue;
+    const childIds = childIdsByParent.get(parentId);
+    if (!childIds || childIds.length < 2) continue;
+    const idxA = childIds.indexOf(rawStart);
+    const idxB = childIds.indexOf(rawEnd);
+    if (idxA < 0 || idxB < 0 || idxA === idxB) continue;
+    const startIndex = Math.min(idxA, idxB);
+    const endIndex = Math.max(idxA, idxB);
+    const startChildId = childIds[startIndex]!;
+    const endChildId = childIds[endIndex]!;
+    const rangeKey = `${parentId}:${startChildId}:${endChildId}`;
+    if (seenRanges.has(rangeKey)) continue;
+    let id = rawId;
+    if (id === '') {
+      let suffix = idx;
+      id = `sum_${parentId}_${startIndex}_${endIndex}_${suffix}`;
+      while (seenIds.has(id) || reservedExplicitIds.has(id)) {
+        suffix += 1;
+        id = `sum_${parentId}_${startIndex}_${endIndex}_${suffix}`;
+      }
+    }
+    const rawLabel = (valueString(item.label) ?? '').replace(/\r\n?/g, ' ');
+    const trimmedLabel = rustTrim(rawLabel);
+    const label = trimmedLabel.length > MAX_SUMMARY_LABEL_CHARS
+      ? trimmedLabel.slice(0, MAX_SUMMARY_LABEL_CHARS)
+      : trimmedLabel;
+    seenIds.add(id);
+    seenRanges.add(rangeKey);
+    cleaned.push({ id, parentId, startChildId, endChildId, label });
+  }
+  if (cleaned.length > 0) doc.summaries = cleaned;
+}
 
 async function tryFrontend(ctx: ResourceToolContext, toolCallId: string, id: string, operations: unknown[]): Promise<Record<string, unknown> | null> {
   const services = ctx.services, log = services.logger;
@@ -92,9 +168,11 @@ export async function editToolMindmap(ctx: ResourceToolContext, toolCallId: stri
   if (operations === null) throw new Error("Missing or invalid 'operations' parameter (expected array)");
   const associations = args.associations == null ? null : Array.isArray(args.associations) ? structuredClone(args.associations) : undefined;
   if (associations === undefined) throw new Error("Invalid 'associations' parameter: expected an array of {source, target, label?} objects");
-  if (operations.length === 0 && associations === null) return { success: true, appliedCount: 0, totalOperations: 0 };
-  services.logger.info('[BuiltinResourceExecutor] mindmap_edit_nodes: id=%s, ops=%d, associations=%s', id, operations.length, associations?.length ?? null);
-  if (associations === null) { const frontend = await tryFrontend(ctx, toolCallId, id, operations); if (frontend !== null) return frontend; }
+  const summaries = args.summaries == null ? null : Array.isArray(args.summaries) ? structuredClone(args.summaries) : undefined;
+  if (summaries === undefined) throw new Error("Invalid 'summaries' parameter: expected an array of {parentId, startChildId, endChildId, label, id?} objects");
+  if (operations.length === 0 && associations === null && summaries === null) return { success: true, appliedCount: 0, totalOperations: 0 };
+  services.logger.info('[BuiltinResourceExecutor] mindmap_edit_nodes: id=%s, ops=%d, associations=%s, summaries=%s', id, operations.length, associations?.length ?? null, summaries?.length ?? null);
+  if (associations === null && summaries === null) { const frontend = await tryFrontend(ctx, toolCallId, id, operations); if (frontend !== null) return frontend; }
   const start = performance.now(), repo = toolVfsRepos(services).mindmaps, db = toolVfsDatabase(services).getConnSafe();
   let mindmap;
   try { mindmap = repo.getMindmap(db, id); } catch (error) { throw new Error(`Failed to get mindmap: ${detail(error)}`); }
@@ -104,7 +182,7 @@ export async function editToolMindmap(ctx: ResourceToolContext, toolCallId: stri
   if (content === null) throw new Error(`Mindmap content is empty: ${id}`);
   let doc: unknown;
   try { doc = parseSerdeJson(content); } catch (error) { throw new Error(`Failed to parse mindmap content JSON: ${detail(error)}`); }
-  let applied = 0, associationsUpdated = false;
+  let applied = 0, associationsUpdated = false, summariesUpdated = false;
   const errors: string[] = [];
   for (const [index, op] of operations.entries()) {
     const kind = valueString(recordOf(op)?.type) ?? '';
@@ -119,7 +197,17 @@ export async function editToolMindmap(ctx: ResourceToolContext, toolCallId: stri
     if (object === null) errors.push('associations failed: mindmap document is not an object');
     else { object.associations = associations; sanitizeMindmapAssociations(object, services.logger); associationsUpdated = true; }
   }
-  if (applied > 0 || associationsUpdated) {
+  if (summaries !== null) {
+    const object = recordOf(doc);
+    if (object === null) errors.push('summaries failed: mindmap document is not an object');
+    else { object.summaries = summaries; sanitizeMindmapSummaries(object, services.logger); summariesUpdated = true; }
+  } else if (applied > 0) {
+    const object = recordOf(doc);
+    if (object !== null && Object.hasOwn(object, 'summaries')) {
+      sanitizeMindmapSummaries(object, services.logger);
+    }
+  }
+  if (applied > 0 || associationsUpdated || summariesUpdated) {
     let updated;
     try { updated = repo.updateMindmap(db, id, { content: JSON.stringify(doc), expectedUpdatedAt: mindmap.updatedAt, versionSource: 'chat_edit_nodes' }); }
     catch (error) { throw new Error(`Failed to save mindmap after edit: ${detail(error)}`); }
@@ -128,9 +216,9 @@ export async function editToolMindmap(ctx: ResourceToolContext, toolCallId: stri
   }
   const durationMs = Math.floor(performance.now() - start);
   services.logger.info('[BuiltinResourceExecutor] mindmap_edit_nodes completed: id=%s, applied=%d/%d in %dms', id, applied, operations.length, durationMs);
-  const result: Record<string, unknown> = { success: errors.length === 0, appliedCount: applied, totalOperations: operations.length, associationsUpdated, durationMs,
+  const result: Record<string, unknown> = { success: errors.length === 0, appliedCount: applied, totalOperations: operations.length, associationsUpdated, summariesUpdated, durationMs,
     mode: 'backend', plane: 'backend', delegated: false, message: '导图未打开/桌面未就绪，已直接写入后端（OCC + 版本快照）', ...(errors.length === 0 ? {} : { errors }) };
-  if (applied > 0 || associationsUpdated) {
+  if (applied > 0 || associationsUpdated || summariesUpdated) {
     let finalContent: string | null;
     try { finalContent = repo.getMindmapContent(db, id); } catch { finalContent = null; }
     if (finalContent !== null) {

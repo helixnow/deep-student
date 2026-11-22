@@ -25,10 +25,6 @@ class IntersectionObserverStub implements IntersectionObserver {
 }
 vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
 
-vi.mock('@/features/notes/NotesContext', () => ({
-  useNotesOptional: () => undefined,
-}));
-
 vi.mock('@/hooks/useTauriDragAndDrop', () => ({
   useTauriDragAndDrop: () => ({ isDragging: false }),
 }));

@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const env = vi.hoisted(() => ({ mobile: false, onAction: vi.fn(), unregister: vi.fn() }));
+const env = vi.hoisted(() => ({ mobile: false, webUi: false, onAction: vi.fn(), unregister: vi.fn() }));
 
-vi.mock('../platform', () => ({ isAndroidMobileShell: () => false, isMobilePlatform: () => env.mobile }));
+vi.mock('../platform', () => ({
+  isAndroidMobileShell: () => false,
+  isMobilePlatform: () => env.mobile,
+  isWebUiShell: () => env.webUi,
+}));
 vi.mock('../shared', () => ({ isTauriRuntime: true }));
 vi.mock('@tauri-apps/plugin-notification', () => ({ onAction: env.onAction }));
 
@@ -19,6 +23,7 @@ describe('notification routing', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     env.mobile = false;
+    env.webUi = false;
     env.onAction.mockResolvedValue({ unregister: env.unregister });
   });
   afterEach(() => {
@@ -74,5 +79,18 @@ describe('notification routing', () => {
     stop();
     stop = null;
     await vi.waitFor(() => expect(env.unregister).toHaveBeenCalled());
+  });
+
+  it('on mobile WebUI skips native notification plugin and falls back to foreground routing', () => {
+    env.mobile = true;
+    env.webUi = true;
+    const handler = vi.fn();
+    stop = initNotificationRouting(handler);
+    expect(env.onAction).not.toHaveBeenCalled();
+
+    rememberNotificationTarget('review:cards');
+    window.dispatchEvent(new Event('focus'));
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith('review:cards');
   });
 });

@@ -20,6 +20,7 @@
  */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useWindowStore } from '../core/windowStore';
 import { useWorkbenchOverlay } from '../core/shortcuts';
 import { appRegistry } from '../core/appRegistry';
@@ -59,6 +60,8 @@ export interface ExposeLayoutOptions {
   gap?: number;
   /** 每格下方标题标签预留高度 */
   labelHeight?: number;
+  /** 底部保留高度（如已最小化窗口玻璃缩略区） */
+  bottomReserve?: number;
 }
 
 /**
@@ -67,6 +70,9 @@ export interface ExposeLayoutOptions {
  * 会挤进 gap 或与下一行叠约 4px。
  */
 export const EXPOSE_LABEL_SLOT = 36;
+
+/** 底部「已最小化窗口」玻璃缩略区在有最小化窗口时为上方网格预留的高度 */
+export const EXPOSE_MINIMIZED_RESERVE = 148;
 
 /**
  * 按窗口数计算行列网格；每窗在自己的格内等比缩放（保持宽高比，不放大），
@@ -83,6 +89,7 @@ export function computeExposeLayout(
   const padding = options?.padding ?? 48;
   const gap = options?.gap ?? 24;
   const labelHeight = options?.labelHeight ?? EXPOSE_LABEL_SLOT;
+  const bottomReserve = Math.max(0, options?.bottomReserve ?? 0);
 
   // 空间顺序：主序 y、次序 x（120px 行容差聚类，避免近似同行时抖动）
   const sorted = [...items].sort((a, b) => {
@@ -92,12 +99,13 @@ export function computeExposeLayout(
   });
 
   // 行列：按桌面宽高比取近方形网格
-  const aspect = desktop.h > 0 ? desktop.w / desktop.h : 1.6;
+  const innerW = desktop.w - padding * 2;
+  const innerH = Math.max(1, desktop.h - padding * 2 - bottomReserve);
+  const availStageH = Math.max(1, desktop.h - bottomReserve);
+  const aspect = availStageH > 0 ? desktop.w / availStageH : 1.6;
   const cols = Math.max(1, Math.min(n, Math.ceil(Math.sqrt(n * aspect))));
   const rows = Math.ceil(n / cols);
 
-  const innerW = desktop.w - padding * 2;
-  const innerH = desktop.h - padding * 2;
   const cellW = Math.max(1, (innerW - (cols - 1) * gap) / cols);
   const rowTotalH = Math.max(1, (innerH - (rows - 1) * gap) / rows);
   const availH = Math.max(1, rowTotalH - labelHeight);
@@ -342,6 +350,12 @@ interface TargetWithTitle extends ExposeTarget {
   title: string;
 }
 
+interface MinimizedExposeItem {
+  id: string;
+  typeId: string;
+  title: string;
+}
+
 type ExposePhase = 'entering' | 'open' | 'closing';
 
 /** 关闭态 selector 的稳定空引用：窗口变更不再触发重渲染 */
@@ -384,6 +398,7 @@ const ExposeOverlayComponent: React.FC = () => {
   const { skipNextReturn } = useFocusReturn(exposeOpen);
   const [phase, setPhase] = useState<ExposePhase>('entering');
   const [targets, setTargets] = useState<TargetWithTitle[]>([]);
+  const [minimizedItems, setMinimizedItems] = useState<MinimizedExposeItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [dissolvingId, setDissolvingId] = useState<string | null>(null);
@@ -504,12 +519,14 @@ const ExposeOverlayComponent: React.FC = () => {
     setWindowLayerInert(true);
 
     // App Exposé（P2）：exposeAppTypeId 非 null 时只俯瞰该应用的窗口。
-    // 最小化窗口两种模式统一排除：macOS App Exposé 会显示最小化窗口，
-    // 但本系统的俯瞰基于真实 DOM transform（不截图），最小化窗无可量测的
-    // 可视壳，与全局俯瞰保持一致即可（差异在快捷键定义处不另行补偿）。
-    const visibleWindows = Object.values(windows).filter(
-      (w) => !w.minimized && (exposeAppTypeId == null || w.typeId === exposeAppTypeId),
+    // 可见窗口走真实 DOM FLIP 网格；已最小化窗口不再丢弃，收进舞台底部玻璃缩略区。
+    const matchingWindows = Object.values(windows).filter(
+      (w) => exposeAppTypeId == null || w.typeId === exposeAppTypeId,
     );
+    const visibleWindows = matchingWindows.filter((w) => !w.minimized);
+    const minimizedWindows = matchingWindows
+      .filter((w) => w.minimized)
+      .sort((a, b) => b.lastFocusedAt - a.lastFocusedAt || a.id.localeCompare(b.id));
     const elements = collectWindowElements();
     const rootRect = rootRef.current?.getBoundingClientRect();
     const originX = rootRect && rootRect.width > 0 ? rootRect.left : 0;
@@ -558,7 +575,11 @@ const ExposeOverlayComponent: React.FC = () => {
     }
     dimmedRef.current = nextDimmed;
 
-    const layout = computeExposeLayout(items, desktopSize);
+    const bottomReserve =
+      minimizedWindows.length > 0
+        ? Math.min(EXPOSE_MINIMIZED_RESERVE, Math.max(0, desktopSize.h - 240))
+        : 0;
+    const layout = computeExposeLayout(items, desktopSize, { bottomReserve });
     const duration = getMotionDurationMs(rootRef.current);
 
     // 非焦点重窗降级：缩略态下玻璃模糊 / 大阴影不可辨却持续占合成内存，
@@ -606,31 +627,46 @@ const ExposeOverlayComponent: React.FC = () => {
       }
     }
 
-    const titleById = new Map(visibleWindows.map((w) => {
+    const resolveWindowTitle = (w: WorkbenchWindow): string => {
       const translate = translateRef.current;
       const fallback = appRegistry.get(w.typeId)?.nameKey;
-      const title = w.title
+      return (
+        w.title
         || (fallback ? translate(fallback, w.typeId) : '')
-        || translate('workbench:expose.untitled');
-      return [w.id, title] as const;
-    }));
+        || translate('workbench:expose.untitled')
+      );
+    };
+    const titleById = new Map(visibleWindows.map((w) => [w.id, resolveWindowTitle(w)] as const));
     const nextTargets = layout.map((tg) => ({ ...tg, title: titleById.get(tg.id) ?? '' }));
+    const nextMinimized: MinimizedExposeItem[] = minimizedWindows.map((w) => ({
+      id: w.id,
+      typeId: w.typeId,
+      title: resolveWindowTitle(w),
+    }));
     setTargets(nextTargets);
+    setMinimizedItems(nextMinimized);
 
     // aria-live：进入播报一次（所有入口统一在此，快捷键路径不再重复播报）
     if (!announcedOpenRef.current) {
       announcedOpenRef.current = true;
       announceWorkbench(
-        translateRef.current('workbench:a11y.exposeOpened', { count: visibleWindows.length }),
+        translateRef.current('workbench:a11y.exposeOpened', {
+          count: visibleWindows.length + minimizedWindows.length,
+        }),
       );
     }
 
-    // 选中：保留仍存在的选中项；否则取焦点栈顶；再否则首项
+    // 选中：保留仍存在的选中项；否则取焦点栈顶；再否则首项（含最小化区兜底）
     setSelectedId((prev) => {
-      if (prev && nextTargets.some((tg) => tg.id === prev)) return prev;
+      if (
+        prev
+        && (nextTargets.some((tg) => tg.id === prev) || nextMinimized.some((m) => m.id === prev))
+      ) {
+        return prev;
+      }
       const stack = useWindowStore.getState().focusStack;
       const focused = [...stack].reverse().find((id) => nextTargets.some((tg) => tg.id === id));
-      return focused ?? nextTargets[0]?.id ?? null;
+      return focused ?? nextTargets[0]?.id ?? nextMinimized[0]?.id ?? null;
     });
 
     // entering → open（backdrop 入场动画结束后）
@@ -682,6 +718,7 @@ const ExposeOverlayComponent: React.FC = () => {
       releaseHeavyPause();
       setRendered(false);
       setTargets([]);
+      setMinimizedItems([]);
       setSelectedId(null);
       setDissolvingId(null);
       setPhase('entering');
@@ -781,71 +818,129 @@ const ExposeOverlayComponent: React.FC = () => {
     dissolveTimerRef.current = setTimeout(settle, wait);
   }, [dissolvingId, restoreOne]);
 
-  // 键盘：方向键导航 / Enter 选中 / Esc 取消
-  useEffect(() => {
-    if (!exposeOpen) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        closeExpose();
-        return;
-      }
-      // 真实窗口尚未落到目标框时，仅保留可随时取消的 Esc。
-      if (phase !== 'open') return;
-      if (e.key === 'Tab') {
-        const dialog = hitLayerRef.current;
-        if (!dialog) return;
-        const focusables = Array.from(
-          dialog.querySelectorAll<HTMLElement>(
-            'button:not([disabled]):not([tabindex="-1"]), [href]:not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])',
-          ),
-        );
-        if (focusables.length === 0) {
-          e.preventDefault();
-          dialog.focus({ preventScroll: true });
-          return;
-        }
-        const first = focusables[0];
-        const last = focusables[focusables.length - 1];
-        const activeElement = document.activeElement;
-        const inside = activeElement instanceof Node && dialog.contains(activeElement);
-        if (e.shiftKey ? !inside || activeElement === first : !inside || activeElement === last) {
-          e.preventDefault();
-          (e.shiftKey ? last : first).focus({ preventScroll: true });
-        }
-        return;
-      }
-      if (e.key === 'Enter') {
-        const target = e.target;
-        if (target instanceof HTMLElement && target.closest('button, a, input, select, textarea')) {
-          return;
-        }
-        const id = selectedIdRef.current;
-        if (id) {
-          e.preventDefault();
-          e.stopPropagation();
-          handlePick(id);
-        }
-        return;
-      }
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight'
-        || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        e.stopPropagation();
-        setSelectedId((prev) => {
-          const ids = targets.map((tg) => tg.id);
-          if (ids.length === 0) return prev;
-          const gridCols = computeExposeCols(ids.length, desktopSize);
-          const cur = Math.max(0, ids.indexOf(prev ?? ids[0]));
-          const next = moveSelectionVisual(cur, e.key, gridCols, targets);
-          return ids[next] ?? prev;
-        });
-      }
-    };
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [exposeOpen, phase, closeExpose, handlePick, targets, desktopSize]);
+  // 键盘：方向键导航（含底部最小化窗口区上下跨越）/ Enter 选中 / Esc 取消
+  useEventRegistry(
+    exposeOpen
+      ? [
+          {
+            target: 'window',
+            type: 'keydown',
+            listener: (event) => {
+              const e = event as KeyboardEvent;
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                closeExpose();
+                return;
+              }
+              // 真实窗口尚未落到目标框时，仅保留可随时取消的 Esc。
+              if (phase !== 'open') return;
+              if (e.key === 'Tab') {
+                const dialog = hitLayerRef.current;
+                if (!dialog) return;
+                const focusables = Array.from(
+                  dialog.querySelectorAll<HTMLElement>(
+                    'button:not([disabled]):not([tabindex="-1"]), [href]:not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])',
+                  ),
+                );
+                if (focusables.length === 0) {
+                  e.preventDefault();
+                  dialog.focus({ preventScroll: true });
+                  return;
+                }
+                const first = focusables[0];
+                const last = focusables[focusables.length - 1];
+                const activeElement = document.activeElement;
+                const inside = activeElement instanceof Node && dialog.contains(activeElement);
+                if (
+                  e.shiftKey
+                    ? !inside || activeElement === first
+                    : !inside || activeElement === last
+                ) {
+                  e.preventDefault();
+                  (e.shiftKey ? last : first).focus({ preventScroll: true });
+                }
+                return;
+              }
+              if (e.key === 'Enter') {
+                const target = e.target;
+                if (target instanceof HTMLElement && target.closest('button, a, input, select, textarea')) {
+                  return;
+                }
+                const id = selectedIdRef.current;
+                if (id) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handlePick(id);
+                }
+                return;
+              }
+              if (
+                e.key === 'ArrowLeft'
+                || e.key === 'ArrowRight'
+                || e.key === 'ArrowUp'
+                || e.key === 'ArrowDown'
+              ) {
+                e.preventDefault();
+                e.stopPropagation();
+                setSelectedId((prev) => {
+                  const targetIds = targets.map((tg) => tg.id);
+                  const minIds = minimizedItems.map((m) => m.id);
+                  if (targetIds.length === 0 && minIds.length === 0) return prev;
+
+                  const minIdx = prev ? minIds.indexOf(prev) : -1;
+                  if (minIdx >= 0) {
+                    if (e.key === 'ArrowLeft') return minIds[Math.max(0, minIdx - 1)] ?? prev;
+                    if (e.key === 'ArrowRight') {
+                      return minIds[Math.min(minIds.length - 1, minIdx + 1)] ?? prev;
+                    }
+                    if (e.key === 'ArrowUp' && targetIds.length > 0) {
+                      const stageDesktop: Size = {
+                        w: desktopSize.w,
+                        h: Math.max(1, desktopSize.h - EXPOSE_MINIMIZED_RESERVE),
+                      };
+                      const gridCols = computeExposeCols(targetIds.length, stageDesktop);
+                      const lastRow = Math.floor((targetIds.length - 1) / gridCols);
+                      const rowStart = lastRow * gridCols;
+                      const rowCount = targetIds.length - rowStart;
+                      const mappedCol = Math.min(
+                        rowCount - 1,
+                        Math.floor((minIdx / Math.max(1, minIds.length)) * rowCount),
+                      );
+                      return targetIds[rowStart + mappedCol] ?? targetIds[targetIds.length - 1];
+                    }
+                    return prev;
+                  }
+
+                  if (targetIds.length === 0) return minIds[0] ?? prev;
+                  const stageDesktop: Size =
+                    minIds.length > 0
+                      ? {
+                          w: desktopSize.w,
+                          h: Math.max(1, desktopSize.h - EXPOSE_MINIMIZED_RESERVE),
+                        }
+                      : desktopSize;
+                  const gridCols = computeExposeCols(targetIds.length, stageDesktop);
+                  const cur = Math.max(0, targetIds.indexOf(prev ?? targetIds[0]));
+                  const next = moveSelectionVisual(cur, e.key, gridCols, targets);
+                  if (e.key === 'ArrowDown' && next === cur && minIds.length > 0) {
+                    const colInRow = cur % gridCols;
+                    const mappedMin = Math.min(
+                      minIds.length - 1,
+                      Math.floor((colInRow / Math.max(1, gridCols)) * minIds.length),
+                    );
+                    return minIds[mappedMin] ?? minIds[0];
+                  }
+                  return targetIds[next] ?? prev;
+                });
+              }
+            },
+            options: true,
+          },
+        ]
+      : [],
+    [exposeOpen, phase, closeExpose, handlePick, targets, minimizedItems, desktopSize],
+  );
 
   // aria-live：会话内选中项变化播报窗名（首个选中不播，进入播报已含数量）
   useEffect(() => {
@@ -853,15 +948,17 @@ const ExposeOverlayComponent: React.FC = () => {
     const prev = prevSelectedRef.current;
     prevSelectedRef.current = selectedId;
     if (!selectedId || prev === null || prev === selectedId) return;
-    const title = targets.find((tg) => tg.id === selectedId)?.title;
+    const title =
+      targets.find((tg) => tg.id === selectedId)?.title
+      ?? minimizedItems.find((m) => m.id === selectedId)?.title;
     if (title) {
       announceWorkbench(
         translateRef.current('workbench:a11y.exposeSelected', { title }),
       );
     }
-  }, [exposeOpen, selectedId, targets]);
+  }, [exposeOpen, selectedId, targets, minimizedItems]);
 
-  // 选中项变化时把焦点落到对应 pick 按钮（焦点环 + 键盘可达）
+  // 选中项变化时把焦点落到对应 pick 按钮或最小化卡片（焦点环 + 键盘可达）
   useEffect(() => {
     if (!exposeOpen || phase !== 'open') return;
     const root = rootRef.current;
@@ -870,9 +967,13 @@ const ExposeOverlayComponent: React.FC = () => {
       hitLayerRef.current?.focus({ preventScroll: true });
       return;
     }
-    const pick = root.querySelector<HTMLElement>(
-      `[data-wb-expose-cell="${selectedId}"] .wb-expose-cell-pick`,
-    );
+    const esc =
+      typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(selectedId)
+        : selectedId;
+    const pick =
+      root.querySelector<HTMLElement>(`[data-wb-expose-cell="${esc}"] .wb-expose-cell-pick`)
+      ?? root.querySelector<HTMLElement>(`[data-wb-expose-minimized-card="${esc}"]`);
     if (pick && document.activeElement !== pick) {
       try {
         pick.focus({ preventScroll: true });
@@ -880,7 +981,7 @@ const ExposeOverlayComponent: React.FC = () => {
         pick.focus();
       }
     }
-  }, [selectedId, exposeOpen, phase, targets]);
+  }, [selectedId, exposeOpen, phase, targets, minimizedItems]);
 
   if (!rendered && !exposeOpen) return null;
 
@@ -911,10 +1012,10 @@ const ExposeOverlayComponent: React.FC = () => {
         aria-label={t('workbench:expose.title')}
         onClick={() => closeExpose()}
       >
-        {targets.length === 0 && !fading && (
+        {targets.length === 0 && minimizedItems.length === 0 && !fading && (
           <div className="wb-expose-empty">
             <div className="wb-expose-empty-text" role="status">
-              {/* App Exposé 空态：目标应用没有可俯瞰的窗口（如全部已最小化） */}
+              {/* App Exposé 空态：目标应用没有可俯瞰的窗口 */}
               <span>
                 {t(exposeAppTypeId != null ? 'workbench:expose.emptyApp' : 'workbench:expose.empty')}
               </span>
@@ -994,6 +1095,77 @@ const ExposeOverlayComponent: React.FC = () => {
             </div>
           );
         })}
+        {minimizedItems.length > 0 && (
+          <section
+            className="wb-expose-minimized-tray wb-glass wb-glass-highlight"
+            data-wb-expose-minimized-tray
+            aria-label={t('workbench:dock.minimized')}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="wb-expose-minimized-header">
+              <span className="wb-expose-minimized-dot" aria-hidden="true" />
+              <span className="wb-expose-minimized-heading">
+                {t('workbench:dock.minimized')}
+              </span>
+              <span className="wb-expose-minimized-count">{minimizedItems.length}</span>
+            </div>
+            <div className="wb-expose-minimized-list" role="group" aria-label={t('workbench:dock.minimized')}>
+              {minimizedItems.map((item) => {
+                const selected = selectedId === item.id;
+                const def = appRegistry.get(item.typeId);
+                const icon = def?.icon ?? (
+                  <span className="wb-expose-minimized-icon-fallback">
+                    {(item.title || item.typeId).slice(0, 1)}
+                  </span>
+                );
+                return (
+                  <div
+                    key={item.id}
+                    role="button"
+                    tabIndex={selected ? 0 : -1}
+                    className="wb-expose-minimized-card"
+                    data-wb-expose-minimized-card={item.id}
+                    data-selected={selected ? 'true' : undefined}
+                    aria-label={`${item.title} (${t('workbench:dock.minimized')})`}
+                    aria-current={selected ? 'true' : undefined}
+                    title={item.title}
+                    onMouseEnter={() => setHoveredId(item.id)}
+                    onMouseLeave={() => setHoveredId((cur) => (cur === item.id ? null : cur))}
+                    onFocus={() => setSelectedId(item.id)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handlePick(item.id);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === ' ') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handlePick(item.id);
+                      }
+                    }}
+                  >
+                    <span className="wb-expose-minimized-thumb" aria-hidden="true">
+                      <span className="wb-expose-minimized-thumb-bar">
+                        <span className="wb-expose-minimized-thumb-dots">
+                          <i />
+                          <i />
+                          <i />
+                        </span>
+                        <span className="wb-expose-minimized-badge">
+                          {t('workbench:dock.minimized')}
+                        </span>
+                      </span>
+                      <span className="wb-expose-minimized-thumb-body">
+                        <span className="wb-expose-minimized-icon">{icon}</span>
+                      </span>
+                    </span>
+                    <span className="wb-expose-minimized-title">{item.title}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
       </div>
     </div>
   );

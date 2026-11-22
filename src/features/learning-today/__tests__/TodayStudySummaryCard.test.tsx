@@ -70,4 +70,16 @@ describe('TodayStudySummaryCard', () => {
     fireEvent.click(screen.getByTestId('today-summary-todos'));
     expect(openTodayReviewTarget).toHaveBeenCalledWith('todos');
   });
+
+  it('switches the primary CTA to due notes instead of daily sprint when only notes are due', () => {
+    Object.assign(snapshot, { cards: 0, mistakes: 0, notes: 2 });
+
+    render(<TodayStudySummaryCard inTodayTodoView todoDueCount={0} />);
+    expect(screen.queryByTestId('today-summary-sprint')).toBeNull();
+    const notesCta = screen.getByTestId('today-summary-review-notes');
+    expect(notesCta.textContent).toContain('2');
+    fireEvent.click(notesCta);
+    expect(openTodayReviewTarget).toHaveBeenCalledWith('notes');
+    expect(openDailySprint).not.toHaveBeenCalled();
+  });
 });

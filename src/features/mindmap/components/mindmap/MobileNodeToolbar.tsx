@@ -9,7 +9,7 @@
  * 动作逻辑与 CanvasContextMenu 一致（同一批 store action），
  * 颜色面板直接复用其导出的 ColorPalette。
  */
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Plus,
@@ -39,16 +39,29 @@ import {
   TextT,
   Highlighter,
   Smiley,
+  Cards,
+  Quotes,
+  Article,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
-import { useMindMapStore } from '../../store';
+import { useMindMapStore, useMindMapStoreApi } from '../../store';
 import { useMindMapIsActive } from '../../MindMapActiveContext';
+import { useMindMapDarkMode } from '../../hooks/useMindMapTheme';
+import { exportMindMapSelectionToHandoutNote } from '../../interop/handoutExport';
 import { findNodeById, findParentNode } from '../../utils/node/find';
-import { QUICK_TEXT_COLORS, QUICK_BG_COLORS } from '../../constants';
-import { ColorPalette } from './CanvasContextMenu';
+import { serializeNodesToOutlineText } from '../../utils/node/outlineText';
+import { getQuickTextColors, getQuickBgColors } from '../../constants';
+import {
+  ColorPalette,
+  copyNodesWithSystemClipboard,
+  cutNodesWithSystemClipboard,
+  pasteNodesWithSystemClipboard,
+} from './CanvasContextMenu';
 import { EmojiPicker } from '../shared/EmojiPicker';
 
 export type MobileToolbarPanel = 'style' | 'more' | null;
@@ -84,7 +97,7 @@ const PanelRow: React.FC<{
   >
     <span className="w-5 h-5 flex-shrink-0 flex items-center justify-center">{icon}</span>
     <span className="flex-1 text-left">{label}</span>
-    {active && <span className="text-[var(--mm-primary)] text-xs">✓</span>}
+    {active && <span aria-hidden="true" className="text-[var(--mm-primary)] text-xs">✓</span>}
   </DsButton>
 );
 
@@ -99,6 +112,10 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
 }) => {
   const { t } = useTranslation('mindmap');
   const isMindMapActive = useMindMapIsActive();
+  const isDark = useMindMapDarkMode();
+  const quickTextColors = useMemo(() => getQuickTextColors(isDark) as unknown as string[], [isDark]);
+  const quickBgColors = useMemo(() => getQuickBgColors(isDark) as unknown as string[], [isDark]);
+  const storeApi = useMindMapStoreApi();
   const document = useMindMapStore(s => s.document);
   const addNode = useMindMapStore(s => s.addNode);
   const deleteNode = useMindMapStore(s => s.deleteNode);
@@ -107,15 +124,57 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
   const setEditingNodeId = useMindMapStore(s => s.setEditingNodeId);
   const setEditingNoteNodeId = useMindMapStore(s => s.setEditingNoteNodeId);
   const setFocusedNodeId = useMindMapStore(s => s.setFocusedNodeId);
-  const copyNodes = useMindMapStore(s => s.copyNodes);
-  const cutNodes = useMindMapStore(s => s.cutNodes);
-  const pasteNodes = useMindMapStore(s => s.pasteNodes);
-  const clipboard = useMindMapStore(s => s.clipboard);
+  const mindmapId = useMindMapStore(s => s.mindmapId);
+  const reciteMode = useMindMapStore(s => s.reciteMode);
+  const toggleNodeFlashcard = useMindMapStore(s => s.toggleNodeFlashcard);
 
   const node = findNodeById(document.root, nodeId);
   const isRoot = nodeId === document.root.id;
   const hasChildren = !!node && node.children.length > 0;
   const isCollapsed = node?.collapsed ?? false;
+  const [exportingHandout, setExportingHandout] = useState(false);
+
+  const handleQuoteNodeToChat = useCallback(() => {
+    if (!mindmapId || !node) return;
+    const text = serializeNodesToOutlineText([node]);
+    void import('@/features/chat/context/selectionRef').then(({ selectionToChat }) =>
+      selectionToChat({
+        text,
+        source: {
+          kind: 'mindmap',
+          sourceId: mindmapId,
+          locator: `node:${nodeId}`,
+          title: document.root.text || undefined,
+        },
+      }),
+    );
+  }, [mindmapId, node, nodeId, document.root.text]);
+
+  const handleExportHandout = useCallback(() => {
+    if (!mindmapId || !node || exportingHandout) return;
+    setExportingHandout(true);
+    void exportMindMapSelectionToHandoutNote({
+      nodes: [node],
+      mindmapId,
+      mindmapTitle: document.root.text,
+      defaultNoteSuffix: t('mn5.exportHandoutSuffix', { defaultValue: '讲义' }),
+    })
+      .then((outcome) => {
+        showGlobalNotification(
+          'success',
+          t('mn5.exportHandoutSuccess', { defaultValue: '已导出讲义笔记「{{title}}」', title: outcome.noteTitle }),
+        );
+      })
+      .catch((err) => {
+        showGlobalNotification(
+          'error',
+          t('mn5.exportHandoutFailed', { defaultValue: '导出讲义笔记失败：{{error}}', error: getErrorMessage(err) }),
+        );
+      })
+      .finally(() => {
+        setExportingHandout(false);
+      });
+  }, [mindmapId, node, exportingHandout, document.root.text, t]);
 
   // Android back：面板打开时先收面板，否则取消选中关闭工具条。
   // 标签页保活时仅允许当前可见导图注册，避免隐藏实例拦截返回/误触 onClose（对齐 CanvasContextMenu）。
@@ -261,6 +320,29 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
             active={node.completed}
             onClick={closePanelThen(() => updateNode(nodeId, { completed: !node.completed }))}
           />
+          {!reciteMode && (
+            <PanelRow
+              icon={<Cards size={18} />}
+              label={t(
+                node.isFlashcard ? 'mn5.unprojectFlashcard' : 'mn5.projectAsFlashcard',
+                { defaultValue: node.isFlashcard ? '取消闪卡' : '转为闪卡' },
+              )}
+              active={Boolean(node.isFlashcard)}
+              onClick={closePanelThen(() => toggleNodeFlashcard(nodeId))}
+            />
+          )}
+          <PanelRow
+            icon={<Quotes size={18} />}
+            label={t('toolbar.quoteToChat', { defaultValue: '引用到 AI 对话' })}
+            disabled={!mindmapId}
+            onClick={closePanelThen(handleQuoteNodeToChat)}
+          />
+          <PanelRow
+            icon={<Article size={18} />}
+            label={t('mn5.exportHandout', { defaultValue: '导出讲义笔记' })}
+            disabled={!mindmapId || exportingHandout}
+            onClick={closePanelThen(handleExportHandout)}
+          />
           {hasChildren && (
             <PanelRow
               icon={isCollapsed ? <CaretRight size={18} /> : <CaretDown size={18} />}
@@ -271,19 +353,20 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
           <PanelRow
             icon={<Copy size={18} />}
             label={t('contextMenu.copy')}
-            onClick={closePanelThen(() => copyNodes([nodeId]))}
+            onClick={closePanelThen(() => copyNodesWithSystemClipboard(storeApi, [nodeId], t))}
           />
           <PanelRow
             icon={<Scissors size={18} />}
             label={t('contextMenu.cut')}
             disabled={isRoot}
-            onClick={closePanelThen(() => cutNodes([nodeId]))}
+            onClick={closePanelThen(() => cutNodesWithSystemClipboard(storeApi, [nodeId], t))}
           />
           <PanelRow
             icon={<ClipboardText size={18} />}
             label={t('contextMenu.pasteAsChild')}
-            disabled={!clipboard}
-            onClick={closePanelThen(() => pasteNodes(nodeId))}
+            onClick={closePanelThen(() => {
+              void pasteNodesWithSystemClipboard(storeApi, nodeId, t);
+            })}
           />
         </CustomScrollArea>
       )}
@@ -349,7 +432,7 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
             <span>{t('contextMenu.textColor')}</span>
           </div>
           <ColorPalette
-            colors={QUICK_TEXT_COLORS as unknown as string[]}
+            colors={quickTextColors}
             activeColor={node.style?.textColor}
             onSelect={(color) => updateNode(nodeId, { style: { ...node.style, textColor: color } })}
           />
@@ -358,7 +441,7 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
             <span>{t('contextMenu.highlight')}</span>
           </div>
           <ColorPalette
-            colors={QUICK_BG_COLORS as unknown as string[]}
+            colors={quickBgColors}
             activeColor={node.style?.bgColor}
             onSelect={(color) => updateNode(nodeId, { style: { ...node.style, bgColor: color } })}
           />

@@ -1,7 +1,7 @@
 /**
  * 文本框选区气泡：mouseup 后若有选区则弹出 BlankActionPopup（加粗 + 标记挖空）。
  */
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BlankRange } from '../types';
 import { BlankActionPopup } from '../components/shared/BlankActionPopup';
 
@@ -47,7 +47,7 @@ const MIRROR_STYLE_PROPS = [
  * 选区部分用 span 包裹后测量其相对位置，再映射回控件视口坐标。
  * 比字符宽度启发式准确（正确处理换行、CJK/西文混排、字号样式）。
  */
-function measureSelectionByMirror(
+export function measureSelectionByMirror(
   el: HTMLTextAreaElement | HTMLInputElement,
   start: number,
   end: number,
@@ -89,15 +89,23 @@ function measureSelectionByMirror(
     const markerRect = marker.getBoundingClientRect();
     if (markerRect.width === 0 && markerRect.height === 0) return null;
     const elRect = el.getBoundingClientRect();
-    // 镜像内偏移 → 控件视口坐标（扣除控件自身滚动）
-    const x = elRect.left + (markerRect.left - mirrorRect.left) + markerRect.width / 2
-      - (isInput ? el.scrollLeft : (el as HTMLTextAreaElement).scrollLeft);
-    const y = elRect.top + (markerRect.top - mirrorRect.top) - el.scrollTop;
+    // 镜像 div 挂在 body 下（未缩放），而 el 位于画布缩放子树内；
+    // 按实际视口缩放系数（elRect.width / el.offsetWidth）把镜像偏移与滚动量换算回视口坐标。
+    const rawZoom = el.offsetWidth > 0 ? elRect.width / el.offsetWidth : 1;
+    const zoom = Number.isFinite(rawZoom) && rawZoom > 0 ? rawZoom : 1;
+    const scrollLeft = isInput ? el.scrollLeft : (el as HTMLTextAreaElement).scrollLeft;
+    const localX = (markerRect.left - mirrorRect.left) + markerRect.width / 2 - scrollLeft;
+    const localY = (markerRect.top - mirrorRect.top) - el.scrollTop;
+    const x = elRect.left + localX * zoom;
+    const y = elRect.top + localY * zoom;
+    const bottom = y + markerRect.height * zoom;
     // 钳位到控件可视范围内，滚出可视区时贴边
+    const minX = Math.min(elRect.left + 4, elRect.left + elRect.width / 2);
+    const maxX = Math.max(elRect.right - 4, elRect.left + elRect.width / 2);
     return {
-      x: Math.min(Math.max(x, elRect.left + 4), elRect.right - 4),
+      x: Math.min(Math.max(x, minX), maxX),
       y: Math.min(Math.max(y, elRect.top), elRect.bottom),
-      bottom: Math.min(Math.max(y + markerRect.height, elRect.top), elRect.bottom),
+      bottom: Math.min(Math.max(bottom, elRect.top), elRect.bottom),
     };
   } finally {
     doc.body.removeChild(mirror);
@@ -112,7 +120,7 @@ function measureSelectionByMirror(
 const BELOW_ANCHOR_OFFSET = 44;
 
 function isCoarsePointerNow(): boolean {
-  return typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+  return typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)')?.matches;
 }
 
 function selectionPopupPoint(
@@ -162,6 +170,31 @@ export function useTextSelectionBubble(options: {
   const { blankedRanges, isBold, onCommitLiveText, onAddBlank, onRemoveBlank, onToggleBold } =
     options;
   const [popup, setPopup] = useState<TextSelectionBubbleState | null>(null);
+  const lastCompositionEndAtRef = useRef<number>(0);
+
+  // 气泡打开时在 document capture 阶段优先拦截 Escape：
+  // 先关闭选区气泡并阻断传播，避免 Escape 穿透到节点 textarea 误退编辑并丢弃未保存修改。
+  useEffect(() => {
+    if (!popup) return;
+    const handleCompositionEnd = () => {
+      lastCompositionEndAtRef.current = Date.now();
+    };
+    const handleEscapeCapture = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (e.isComposing || e.keyCode === 229) return;
+      if (Date.now() - lastCompositionEndAtRef.current < 100) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation?.();
+      setPopup(null);
+    };
+    document.addEventListener('compositionend', handleCompositionEnd, true);
+    document.addEventListener('keydown', handleEscapeCapture, true);
+    return () => {
+      document.removeEventListener('compositionend', handleCompositionEnd, true);
+      document.removeEventListener('keydown', handleEscapeCapture, true);
+    };
+  }, [popup]);
 
   // mouseup / touchend 共用：触屏上 selection 在 touchend 后一拍才稳定，
   // 统一延迟到下一宏任务读取，两种输入都取到最终选区。

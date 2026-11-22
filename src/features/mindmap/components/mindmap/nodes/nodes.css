@@ -1,4 +1,6 @@
-/* 节点组件级样式（锚点 / 入场动画 / 编辑态细节）
+/* stylelint-disable selector-class-pattern */
+
+/* 节点组件级样式（锚点 / 入场动画 / 编辑态细节 / FSRS 掌握度微点）
    不写入 mindmap.css，由 nodes/index.ts 统一引入。
    视觉 token 对齐 --mm-* / --notes-*，动效尊重 prefers-reduced-motion。 */
 
@@ -18,6 +20,7 @@
   opacity: 0;
   transform-origin: center;
   transition: opacity var(--notes-hover-transition, 120ms ease);
+
   /* 普通锚点默认不可连接（防误触 reparent），也不拦截节点拖拽 */
   pointer-events: none;
 }
@@ -55,6 +58,7 @@
     opacity: 0;
     transform: scale(0.6);
   }
+
   to {
     opacity: 1;
     transform: scale(1);
@@ -72,14 +76,69 @@
 .mm-node-origin-left {
   transform-origin: left center;
 }
+
 .mm-node-origin-right {
   transform-origin: right center;
 }
+
 .mm-node-origin-top {
   transform-origin: center top;
 }
+
 .mm-node-origin-bottom {
   transform-origin: center bottom;
+}
+
+/* ============================================
+   折叠子节点数胶囊（>= 100 自适应展开防裁切）
+   ============================================ */
+
+.mm-collapse-btn.is-collapsed {
+  width: auto;
+  min-width: 20px;
+  border-radius: 9999px;
+}
+
+/* ============================================
+   FSRS 掌握度语义微点（单一数据源，Wave 2 热力图开关点亮）
+   全部使用语义 token，禁止硬编码色值
+   ============================================ */
+
+.mm-mastery-dot {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  border: 1.5px solid var(--mm-bg-elevated);
+  pointer-events: none;
+  z-index: 15;
+  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 25%);
+  transition: background-color var(--notes-hover-transition, 120ms ease);
+}
+
+.dark .mm-mastery-dot,
+:root.dark .mm-mastery-dot {
+  border-color: var(--mm-bg);
+  outline: 1px solid var(--mm-border-strong);
+  box-shadow: 0 1px 4px hsl(var(--shadow-base) / 48%);
+}
+
+.mm-mastery-dot[data-mastery-status='mastered'] {
+  background-color: var(--mm-mastery-mastered, hsl(var(--success, 142 71% 45%)));
+}
+
+.mm-mastery-dot[data-mastery-status='learning'] {
+  background-color: var(--mm-mastery-learning, hsl(var(--primary)));
+}
+
+.mm-mastery-dot[data-mastery-status='due'] {
+  background-color: var(--mm-mastery-due, hsl(var(--warning, 38 92% 50%)));
+}
+
+.mm-mastery-dot[data-mastery-status='struggling'] {
+  background-color: var(--mm-mastery-struggling, hsl(var(--destructive)));
 }
 
 /* ============================================
@@ -101,6 +160,7 @@
     animation: none;
   }
 
+  .mm-mastery-dot,
   .mm-node-text {
     transition: none;
   }

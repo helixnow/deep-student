@@ -518,7 +518,238 @@
     },
     "editor.extensions": {
       "cardinality": "list",
-      "entries": []
+      "entries": [
+        {
+          "id": "editor:automd",
+          "key": null,
+          "order": 10,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:search-highlight",
+          "key": null,
+          "order": 20,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:agent-highlight",
+          "key": null,
+          "order": 30,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:paste-link",
+          "key": null,
+          "order": 40,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:callout",
+          "key": null,
+          "order": 50,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:toggle",
+          "key": null,
+          "order": 60,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:wikilink",
+          "key": null,
+          "order": 70,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:mention",
+          "key": null,
+          "order": 80,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:image-lightbox",
+          "key": null,
+          "order": 90,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:link-keymap",
+          "key": null,
+          "order": 100,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:internal-link-schema",
+          "key": null,
+          "order": 110,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:pdf-ref",
+          "key": null,
+          "order": 120,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:media-ref",
+          "key": null,
+          "order": 130,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:columns",
+          "key": null,
+          "order": 140,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:block-identity",
+          "key": null,
+          "order": 150,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:block-selection",
+          "key": null,
+          "order": 160,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:typed-placeholder",
+          "key": null,
+          "order": 170,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:canonical-document",
+          "key": null,
+          "order": 180,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:command-execute",
+          "key": null,
+          "order": 190,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:command-bindings",
+          "key": null,
+          "order": 200,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:list-item-has-checked",
+          "key": null,
+          "order": 210,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:inline-cards",
+          "key": null,
+          "order": 220,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        },
+        {
+          "id": "editor:highlight",
+          "key": null,
+          "order": 230,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "create": "ƒ"
+          }
+        }
+      ]
     },
     "editor.selectionToolbar": {
       "cardinality": "list",
@@ -526,7 +757,28 @@
     },
     "editor.slashMenu": {
       "cardinality": "list",
-      "entries": []
+      "entries": [
+        {
+          "id": "slash:callout-toggle",
+          "key": null,
+          "order": 10,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "build": "ƒ"
+          }
+        },
+        {
+          "id": "slash:editor-commands",
+          "key": null,
+          "order": 20,
+          "owner": "dstu.ui.editor",
+          "origin": "builtin",
+          "value": {
+            "build": "ƒ"
+          }
+        }
+      ]
     },
     "genui.components": {
       "cardinality": "keyed",

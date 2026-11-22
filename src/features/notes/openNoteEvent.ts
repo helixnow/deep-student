@@ -24,6 +24,16 @@ export const NOTES_OWNED_OPEN_NOTE_SOURCES = [
   // 对话界面而不是笔记，因此这两个来源必须由 Notes 侧接管。
   'flashcards-library',
   'flashcards-review',
+  // PDF 划词/批注/关联、音视频字幕、作文批改、周报与通用「保存为笔记」打开笔记：
+  // 目标均为 Notes 工作区笔记原文，Workbench 下由 WorkbenchEventBridge 路由到
+  // NotesWorkspaceApp，避免被 Chat 接管进对话画布。
+  'pdf-selection',
+  'pdf-annotations',
+  'pdf-related',
+  'media-transcript',
+  'essay-grading',
+  'weekly-report',
+  'save-as-note',
 ] as const;
 
 /** Notes 工作区自有的 open-note 事件来源 */

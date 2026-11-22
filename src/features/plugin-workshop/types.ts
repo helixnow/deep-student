@@ -17,6 +17,14 @@ export interface WorkshopInstalled {
 export type WorkshopPlace =
   | { kind: 'app'; title: string }
   | { kind: 'selectionButton' }
+  | { kind: 'pdfSelectionButton' }
+  | { kind: 'slashCommand'; command?: string }
+  | { kind: 'chatMessageAction' }
+  | { kind: 'reviewAction' }
+  | { kind: 'desktopWidget' }
+  | { kind: 'statusBarItem' }
+  | { kind: 'themeVariant' }
+  | { kind: 'dashboardWidget' }
   | { kind: 'agentTool'; title: string };
 
 /**
@@ -106,6 +114,10 @@ export interface WorkshopAdapter {
   subscribe(onChange: () => void): () => void;
   /** 「在文件夹中显示」 for an exported file, where the platform can. */
   readonly reveal?: (path: string) => Promise<void>;
+  /** Read persisted Host-side storage entries and byte size for a plugin. */
+  readonly storedData?: (pluginId: string) => Promise<{ readonly keys: readonly string[]; readonly bytes: number }>;
+  /** Clear persisted Host-side storage entries for a plugin. */
+  readonly clearStoredData?: (pluginId: string) => Promise<number>;
 }
 
 export function workshopActions(phase: WorkshopPhase): WorkshopAction[] {
@@ -126,8 +138,21 @@ export function workshopActions(phase: WorkshopPhase): WorkshopAction[] {
   }
 }
 
-/** The one thing to do with an installed work, by what it adds: open the app, try the button in notes, or say the phrase. */
+/** The one thing to do with an installed work, by what it adds: open the app, try the contributed UI slot, or say the phrase. */
 export function primaryPlace(item: Pick<WorkshopItem, 'places'>): WorkshopPlace | undefined {
   const places = item.places ?? [];
-  return places.find(place => place.kind === 'app') ?? places.find(place => place.kind === 'selectionButton') ?? places.find(place => place.kind === 'agentTool');
+  return (
+    places.find(place => place.kind === 'app')
+    ?? places.find(place => place.kind === 'selectionButton')
+    ?? places.find(place => place.kind === 'pdfSelectionButton')
+    ?? places.find(place => place.kind === 'slashCommand')
+    ?? places.find(place => place.kind === 'chatMessageAction')
+    ?? places.find(place => place.kind === 'reviewAction')
+    ?? places.find(place => place.kind === 'desktopWidget')
+    ?? places.find(place => place.kind === 'dashboardWidget')
+    ?? places.find(place => place.kind === 'statusBarItem')
+    ?? places.find(place => place.kind === 'themeVariant')
+    ?? places.find(place => place.kind === 'agentTool')
+    ?? places[0]
+  );
 }

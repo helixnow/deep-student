@@ -12,6 +12,7 @@ import { create } from 'zustand';
 import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
 import { invoke } from '@tauri-apps/api/core';
+import { dispatchTypedEvent } from '@/events';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { emitExamSheetDebug } from '@/shared/debug/channels/examSheetProcessing';
 import type {
@@ -23,6 +24,13 @@ import type {
   QuestionImage,
   QuestionStructuredData,
 } from '@/api/questionBankApi';
+
+/** 与 features/learning-today/todayLearningStore.ts 的 TODAY_LEARNING_REFRESH_EVENT 同名（避免 stores → feature 反向依赖）。 */
+const TODAY_LEARNING_REFRESH_EVENT = 'learning-today:refresh';
+
+function dispatchTodayLearningRefresh(): void {
+  dispatchTypedEvent(TODAY_LEARNING_REFRESH_EVENT);
+}
 
 // ============================================================================
 // 类型定义（基础类型从 API 层导入，Store 特有类型在此定义）
@@ -1563,6 +1571,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             newMap.set(question.id, question);
             return { questions: newMap };
           });
+          dispatchTodayLearningRefresh();
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] updateQuestion failed:', err);
           throw err;
@@ -1604,6 +1613,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
               debugLog.error('[QuestionBankStore] refreshStats after delete failed:', e)
             );
           }
+          dispatchTodayLearningRefresh();
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] deleteQuestion failed:', err);
           throw err;
@@ -1829,6 +1839,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
               authoritativeDaily,
             );
           }
+          dispatchTodayLearningRefresh();
 
           return result;
         } catch (err: unknown) {
@@ -1886,6 +1897,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
           // 刷新题目列表
           await get().loadQuestions(examId);
           set({ stats, isLoading: false });
+          dispatchTodayLearningRefresh();
         } catch (err: unknown) {
           debugLog.error('[QuestionBankStore] resetProgress failed:', err);
           set({ isLoading: false });
@@ -2315,6 +2327,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
             if (request.isCurrent() && activeSession?.id === session.id && activeSession.exam_id === session.exam_id) {
               set({ mockExamSession: normalizedSession, mockExamScoreCard: scoreCard });
             }
+            dispatchTodayLearningRefresh();
             return scoreCard;
           } catch (err: unknown) {
             debugLog.error('[QuestionBankStore] submitMockExam failed:', err);

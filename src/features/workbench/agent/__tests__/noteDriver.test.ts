@@ -29,6 +29,7 @@ import { PACING_PROFILES } from '../pacing';
 import type { AcrRunContext, AgentOp } from '../types';
 import {
   bindNoteHotPauseHooks,
+  computeCleanUndoTarget,
   computeDestructiveMarkdown,
   isNoteEditorHot,
   noteDriver,
@@ -1085,5 +1086,74 @@ describe('noteDriver apply — suggestion / clean destructive / typewriter', () 
     expect(receipt.status).toBe('failed');
     expect(receipt.suggestionPending).toBeFalsy();
     expect(receipt.message).toContain('已有一条');
+  });
+
+  it('computeCleanUndoTarget: 正常多段插入保持撤销回退到原正文', () => {
+    const base = '# 线性代数\n\n原正文';
+    const s1After = `${base}\n\n## 小节`;
+    const s2After = `${s1After}\n\n例题内容`;
+    const target = computeCleanUndoTarget(base, s2After, [
+      { before: base, after: s1After },
+      { before: s1After, after: s2After },
+    ]);
+    expect(target).toBe(base);
+  });
+
+  it('computeCleanUndoTarget: 用户在首段写入前热暂停期间手打的内容在撤销时保留', () => {
+    const runBaseline = '# 线性代数\n\n原正文';
+    const afterUserTyped = `${runBaseline}asdfgZZQA42`;
+    const afterSeg1 = `${afterUserTyped}\n\n## 相似矩阵`;
+    const afterSeg2 = `${afterSeg1}\n\n推导完成`;
+    const target = computeCleanUndoTarget(runBaseline, afterSeg2, [
+      { before: afterUserTyped, after: afterSeg1 },
+      { before: afterSeg1, after: afterSeg2 },
+    ]);
+    expect(target).toBe(afterUserTyped);
+    expect(target).toContain('ZZQA42');
+    expect(target).not.toContain('相似矩阵');
+  });
+
+  it('computeCleanUndoTarget: 用户在段间暂停手打的内容在撤销后仍完整保留', () => {
+    const base = '# 线性代数\n\n原正文';
+    const afterSeg1 = `${base}\n\n## 相似矩阵`;
+    const userInsertedBeforeSeg2 = `${base}asdfgZZQA42\n\n## 相似矩阵`;
+    const afterSeg2 = `${userInsertedBeforeSeg2}\n\n推导完成`;
+    const target = computeCleanUndoTarget(base, afterSeg2, [
+      { before: base, after: afterSeg1 },
+      { before: userInsertedBeforeSeg2, after: afterSeg2 },
+    ]);
+    expect(target).toBe(`${base}asdfgZZQA42`);
+    expect(target).toContain('ZZQA42');
+    expect(target).not.toContain('相似矩阵');
+    expect(target).not.toContain('推导完成');
+  });
+
+  it('computeCleanUndoTarget: 用户在 AI 刚插入标题末尾（尾部换行之前）打字后撤销仍完整保留用户手打', () => {
+    const base = '# 线性代数\n\n原正文\n';
+    const afterSeg1 = `${base}\n## 相似矩阵有相同的特征多项式\n`;
+    const userTypedAtHeadingEnd = `${base}\n## 相似矩阵有相同的特征多项式wqeaasdfgZZQA42\n`;
+    const afterSeg2 = `${userTypedAtHeadingEnd}\n设 A 和 B 相似，则特征多项式相同。\n`;
+    const target = computeCleanUndoTarget(base, afterSeg2, [
+      { before: base, after: afterSeg1 },
+      { before: userTypedAtHeadingEnd, after: afterSeg2 },
+    ]);
+    expect(target).toContain('原正文');
+    expect(target).toContain('wqeaasdfgZZQA42');
+    expect(target).not.toContain('相似矩阵有相同的特征多项式');
+    expect(target).not.toContain('设 A 和 B 相似');
+  });
+
+  it('computeCleanUndoTarget: 首尾空行被编辑器归一化时仍能剥离 AI 写入并保留用户文本', () => {
+    const base = '# 线性代数\n\n原正文';
+    const afterSeg1 = `${base}\n\n## 小节一\n`;
+    const userInserted = `${base}\n## 小节一\n\n用户补充ZZQA42\n`;
+    const afterSeg2 = `${userInserted}\n正文二\n`;
+    const target = computeCleanUndoTarget(base, afterSeg2, [
+      { before: base, after: afterSeg1 },
+      { before: userInserted, after: afterSeg2 },
+    ]);
+    expect(target).toContain('用户补充ZZQA42');
+    expect(target).not.toContain('小节一');
+    expect(target).not.toContain('正文二');
   });
 });
