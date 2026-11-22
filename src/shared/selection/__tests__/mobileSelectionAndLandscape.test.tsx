@@ -403,11 +403,23 @@ describe('4. computeSelectionToolbarPosition 桌面与触屏定位及双夹逼',
       expect(toolbar).not.toBeNull();
       expect(toolbar?.dataset.placement).toBe('below');
       expect(toolbar?.style.top).toBe('214px'); // 202 + 12
+      // 触屏下仍保留紧凑短标签文字，不再退化为裸图标
+      expect(toolbar?.textContent).toContain('复制');
     } finally {
       Object.defineProperty(window, 'innerWidth', { configurable: true, value: prevWidth });
       Object.defineProperty(window, 'innerHeight', { configurable: true, value: prevHeight });
       media.restore();
     }
+  });
+
+  it('viewportBottomInset 同时参与 maxY 夹逼，防止下半屏划词条被底部输入栏遮挡', () => {
+    // 844 - 110 (输入栏避让) - 52 (垂直底部夹逼) = 682
+    const pos = computeSelectionToolbarPosition(
+      { top: 750, left: 140, width: 80, height: 20, bottom: 770 },
+      { isCoarsePointer: true, innerWidth: 390, innerHeight: 844, viewportBottomInset: 110 },
+    );
+    expect(pos.placement).toBe('above');
+    expect(pos.top).toBe(682);
   });
 });
 

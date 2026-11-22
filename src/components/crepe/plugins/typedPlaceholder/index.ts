@@ -4,7 +4,7 @@
  */
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import { Decoration, DecorationSet } from '@milkdown/prose/view';
-import { $prose } from '@milkdown/utils';
+import { $prose } from '@milkdown/kit/utils';
 
 export const typedPlaceholderKey = new PluginKey('ds-typed-placeholder');
 

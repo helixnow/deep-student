@@ -95,7 +95,14 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
   // W17 的清单/降级/同意/安全模式都可能晚于首帧到达，订阅后按当前值渲染。
   const hostStatus = usePluginUiHostStatus(uiStatus);
   const contributions = usePluginContributions();
-  const safeMode = state.safeMode || hostStatus?.safeMode === true;
+  const safeModeUrl = typeof window !== 'undefined' && (() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const v = p.get('safeMode') ?? p.get('safe_mode');
+      return v === '1' || v === 'true';
+    } catch { return false; }
+  })();
+  const safeMode = state.safeMode || hostStatus?.safeMode === true || safeModeUrl;
   const [uninstallTarget, setUninstallTarget] = useState<ManagedPlugin | null>(null);
   const [uninstalling, setUninstalling] = useState(false);
   const [filter, setFilter] = useState<PluginFilter>('all');
@@ -107,6 +114,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
   const [restoring, setRestoring] = useState(false);
   const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(new Set());
   const [creationsOpen, setCreationsOpen] = useState(false);
+  const userToggledCreationsRef = useRef(false);
   const [works, setWorks] = useState(NO_WORKS);
   const [pendingCount, setPendingCount] = useState(0);
   const configTitleId = useId();
@@ -160,17 +168,24 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
     return () => { live = false; };
   }, [workshop, mineSignature]);
 
-  // 有作品在等用户确认时，「工坊创作记录」自己展开：不让一张待确认的卡片藏在折叠里。
+  // 有作品正在制作中或等用户确认时，「工坊创作记录」自动展开；完成后且用户未手动切过时自动收起。
   useEffect(() => {
     if (!workshop?.pending) { setPendingCount(0); return undefined; }
     let live = true;
-    const read = () => workshop.pending!()
-      .then((list) => { if (!live) return; setPendingCount(list.length); if (list.length) setCreationsOpen(true); })
+    const read = () => Promise.all([
+      workshop.pending!(),
+      workshop.hasActive ? workshop.hasActive() : Promise.resolve(false),
+    ])
+      .then(([list, active]) => {
+        if (!live) return;
+        setPendingCount(list.length);
+        if (!userToggledCreationsRef.current) setCreationsOpen(list.length > 0 || active);
+      })
       .catch(() => { if (live) setPendingCount(0); });
     void read();
     const timer = setInterval(() => { void read(); }, 4000);
     return () => { live = false; clearInterval(timer); };
-  }, [workshop]);
+  }, [workshop, mineSignature]);
 
   const needle = query.trim().toLocaleLowerCase();
   const problemOf = (plugin: ManagedPlugin) =>
@@ -415,7 +430,8 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
             {workshop?.creations ? (
               <div className="mt-3 min-w-0">
                 <DsButton variant="ghost" size="sm" aria-expanded={creationsOpen} aria-controls={creationsId} data-testid="plugin-creations-toggle"
-                  className={cn('gap-1.5 text-muted-foreground', COARSE_TOUCH)} onClick={() => setCreationsOpen((open) => !open)}>
+                  className={cn('gap-1.5 text-muted-foreground', COARSE_TOUCH)}
+                  onClick={() => { userToggledCreationsRef.current = true; setCreationsOpen((open) => !open); }}>
                   <CaretRight className={cn('size-3.5 transition-transform motion-reduce:transition-none', creationsOpen && 'rotate-90')} aria-hidden="true" />
                   {pendingCount ? t('mine.creationsPending', { count: pendingCount }) : t('mine.creations')}
                 </DsButton>

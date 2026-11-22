@@ -6,7 +6,7 @@ import {
   type EdgeProps,
 } from '@xyflow/react';
 import { useTranslation } from 'react-i18next';
-import { isOutlineCompositionActive } from '../../../utils/outlineCaret';
+import { useImeCompositionGuard } from '../../../hooks/useImeCompositionGuard';
 import './associationEdge.css';
 
 export type AssociationEdgeData = {
@@ -44,6 +44,7 @@ export const AssociationEdge: React.FC<EdgeProps> = ({
 
   const [draft, setDraft] = useState(label);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { onCompositionStart, onCompositionEnd, isComposingKeyEvent } = useImeCompositionGuard();
 
   useEffect(() => {
     if (!isEditing) return;
@@ -123,10 +124,12 @@ export const AssociationEdge: React.FC<EdgeProps> = ({
                 placeholder={t('association.labelPlaceholder', { defaultValue: '标签' })}
                 onChange={(e) => setDraft(e.target.value)}
                 onBlur={commit}
+                onCompositionStart={onCompositionStart}
+                onCompositionEnd={onCompositionEnd}
                 onKeyDown={(e) => {
                   e.stopPropagation();
                   // IME 组字中 Enter/Escape 属于输入法按键，不提交标签
-                  if (isOutlineCompositionActive(e.nativeEvent)) return;
+                  if (isComposingKeyEvent(e)) return;
                   if (e.key === 'Enter') {
                     e.preventDefault();
                     commit();

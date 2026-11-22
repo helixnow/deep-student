@@ -77,6 +77,17 @@ export function detectPlaces(manifest: DeclaringManifest, uiBundle: string | und
   if (uiBundle) {
     if (/\bviews\.register\s*\(|["']workbench\.apps["']/.test(uiBundle)) places.push({ kind: 'app', title });
     if (/["']editor\.selectionToolbar["']/.test(uiBundle)) places.push({ kind: 'selectionButton' });
+    if (/["']pdf\.selectionToolbar["']/.test(uiBundle)) places.push({ kind: 'pdfSelectionButton' });
+    if (/["']chat\.composer\.commands["']/.test(uiBundle)) {
+      const commandMatch = /["']chat\.composer\.commands["'][\s\S]{0,600}?(?:[^\w$]|^)["']?name["']?\s*:\s*["']([A-Za-z0-9][A-Za-z0-9_-]*)["']/m.exec(uiBundle);
+      places.push(commandMatch?.[1] ? { kind: 'slashCommand', command: commandMatch[1] } : { kind: 'slashCommand' });
+    }
+    if (/["']chat\.message\.actions["']/.test(uiBundle)) places.push({ kind: 'chatMessageAction' });
+    if (/["']review\.cardActions["']/.test(uiBundle)) places.push({ kind: 'reviewAction' });
+    if (/["']desktop\.widgets["']/.test(uiBundle)) places.push({ kind: 'desktopWidget' });
+    if (/["']statusbar\.items["']/.test(uiBundle)) places.push({ kind: 'statusBarItem' });
+    if (/["']theme\.variants["']/.test(uiBundle)) places.push({ kind: 'themeVariant' });
+    if (/["']dashboard\.(?:widgets|stats|charts)["']/.test(uiBundle)) places.push({ kind: 'dashboardWidget' });
   }
   for (const tool of manifest.agentTools ?? []) places.push({ kind: 'agentTool', title: tool.title });
   return places;

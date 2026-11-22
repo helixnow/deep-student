@@ -7,8 +7,14 @@ import { VoiceInputControl } from '../VoiceInputControl';
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => undefined },
   useTranslation: () => ({
-    t: (key: string, fallback?: string) =>
-      key === 'inputBar.voiceInput.button' ? 'Voice input' : fallback || key,
+    t: (key: string, fallback?: string | { defaultValue?: string }) => {
+      if (key === 'inputBar.voiceInput.button') return 'Voice input';
+      if (typeof fallback === 'string') return fallback;
+      if (fallback && typeof fallback === 'object' && typeof fallback.defaultValue === 'string') {
+        return fallback.defaultValue;
+      }
+      return key;
+    },
   }),
 }));
 
@@ -101,6 +107,53 @@ describe('VoiceInputControl', () => {
     expect(onToggleRecording).toHaveBeenCalledTimes(1);
     expect(onStartHoldRecording).toHaveBeenCalledTimes(1);
     expect(onStopHoldRecording).toHaveBeenCalledTimes(1);
+    expect(onCancelRecording).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it('protects touch hold-to-talk with touch-none/select-none/pointerCapture and renders an inline cancel button while recording', () => {
+    vi.useFakeTimers();
+    const onStartHoldRecording = vi.fn();
+    const onStopHoldRecording = vi.fn();
+    const onCancelRecording = vi.fn();
+
+    renderControl({
+      state: { phase: 'recording', elapsedMs: 1200, hotkey: 'mod+shift+space', level: 0.5, errorCode: null },
+      onStartHoldRecording,
+      onStopHoldRecording,
+      onCancelRecording,
+    });
+
+    const recordButton = screen.getByRole('button', { name: /voice input/i });
+    expect(recordButton.className).toContain('touch-none');
+    expect(recordButton.className).toContain('select-none');
+    expect(recordButton.className).toContain('[-webkit-touch-callout:none]');
+
+    const setPointerCapture = vi.fn();
+    const hasPointerCapture = vi.fn().mockReturnValue(true);
+    const releasePointerCapture = vi.fn();
+    recordButton.setPointerCapture = setPointerCapture;
+    recordButton.hasPointerCapture = hasPointerCapture;
+    recordButton.releasePointerCapture = releasePointerCapture;
+
+    const pointerDownEvent = new Event('pointerdown', { bubbles: true, cancelable: true });
+    Object.defineProperty(pointerDownEvent, 'pointerId', { value: 7 });
+    Object.defineProperty(pointerDownEvent, 'pointerType', { value: 'touch' });
+    fireEvent(recordButton, pointerDownEvent);
+    expect(setPointerCapture).toHaveBeenCalledWith(7);
+    vi.advanceTimersByTime(250);
+    expect(onStartHoldRecording).toHaveBeenCalledTimes(1);
+
+    // 捕获指针后 pointerleave 不误断录音
+    const pointerLeaveEvent = new Event('pointerleave', { bubbles: false, cancelable: true });
+    Object.defineProperty(pointerLeaveEvent, 'pointerId', { value: 7 });
+    Object.defineProperty(pointerLeaveEvent, 'pointerType', { value: 'touch' });
+    fireEvent(recordButton, pointerLeaveEvent);
+    expect(onStopHoldRecording).not.toHaveBeenCalled();
+
+    // 点击取消按钮直接取消录音
+    const cancelBtn = screen.getByTestId('voice-input-cancel-btn');
+    fireEvent.click(cancelBtn);
     expect(onCancelRecording).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });

@@ -1,5 +1,5 @@
-import { SchemaReady, prosePluginsCtx } from '@milkdown/core'
-import type { MilkdownPlugin } from '@milkdown/ctx'
+import { SchemaReady, prosePluginsCtx } from '@milkdown/kit/core'
+import type { MilkdownPlugin } from '@milkdown/kit/ctx'
 import { Fragment, type ResolvedPos } from '@milkdown/prose/model'
 import { Plugin, PluginKey, TextSelection } from '@milkdown/prose/state'
 import type { EditorView } from '@milkdown/prose/view'

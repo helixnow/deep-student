@@ -103,7 +103,7 @@ describe('voice input controller', () => {
       config: defaultConfig,
       notifications,
       getActiveTarget: () => null,
-      getProvider: () => null,
+      getProvider: () => createProvider({ text: '' }),
       createRecorderSession: vi.fn().mockRejectedValue(new Error('missing-get-user-media')),
     });
 
@@ -111,6 +111,40 @@ describe('voice input controller', () => {
 
     expect(notifications.show).toHaveBeenCalledWith('error', 'missing-get-user-media');
     expect(controller.getSnapshot().errorCode).toBe('missing-get-user-media');
+  });
+
+  it('blocks recording immediately and notifies when ASR model or provider is not ready', async () => {
+    const createRecorderSession = vi.fn();
+    const notifications = { show: vi.fn() };
+    const unconfiguredController = createVoiceInputController({
+      config: {
+        ...defaultConfig,
+        assignedModel: { status: 'model-assignment-required' },
+      },
+      notifications,
+      getActiveTarget: () => createTarget(),
+      getProvider: () => createProvider({ text: 'ok' }),
+      createRecorderSession,
+    });
+
+    await unconfiguredController.toggleRecording();
+    expect(createRecorderSession).not.toHaveBeenCalled();
+    expect(notifications.show).toHaveBeenCalledWith('error', 'model-assignment-required');
+    expect(unconfiguredController.getSnapshot().phase).toBe('idle');
+
+    const noProviderNotifications = { show: vi.fn() };
+    const noProviderController = createVoiceInputController({
+      config: defaultConfig,
+      notifications: noProviderNotifications,
+      getActiveTarget: () => createTarget(),
+      getProvider: () => null,
+      createRecorderSession,
+    });
+
+    await noProviderController.toggleRecording();
+    expect(createRecorderSession).not.toHaveBeenCalled();
+    expect(noProviderNotifications.show).toHaveBeenCalledWith('error', 'provider-unavailable');
+    expect(noProviderController.getSnapshot().phase).toBe('idle');
   });
 
   it('treats legacy behavior-only configs as missing a model assignment instead of crashing', async () => {
@@ -144,7 +178,7 @@ describe('voice input controller', () => {
       config: defaultConfig,
       notifications: { show: vi.fn() },
       getActiveTarget: () => null,
-      getProvider: () => null,
+      getProvider: () => createProvider({ text: '' }),
       createRecorderSession: vi.fn().mockResolvedValue({
         stop,
         cancel,
@@ -178,7 +212,7 @@ describe('voice input controller', () => {
       config: defaultConfig,
       notifications: { show: vi.fn() },
       getActiveTarget: () => null,
-      getProvider: () => null,
+      getProvider: () => createProvider({ text: '' }),
       createRecorderSession: vi.fn().mockResolvedValue({
         stop: vi.fn().mockResolvedValue(null),
         cancel,
@@ -207,7 +241,7 @@ describe('voice input controller', () => {
       config: defaultConfig,
       notifications: { show: vi.fn() },
       getActiveTarget: () => null,
-      getProvider: () => null,
+      getProvider: () => createProvider({ text: '' }),
       createRecorderSession,
     });
 
@@ -236,7 +270,7 @@ describe('voice input controller', () => {
       config: defaultConfig,
       notifications: { show: vi.fn() },
       getActiveTarget: () => null,
-      getProvider: () => null,
+      getProvider: () => createProvider({ text: '' }),
       createRecorderSession,
     });
 
@@ -263,7 +297,7 @@ describe('voice input controller', () => {
       config: defaultConfig,
       notifications: { show: vi.fn() },
       getActiveTarget: () => null,
-      getProvider: () => null,
+      getProvider: () => createProvider({ text: '' }),
       createRecorderSession,
     });
 

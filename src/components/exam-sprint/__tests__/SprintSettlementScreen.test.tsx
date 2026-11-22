@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
+import { APP_EVENTS } from '@/events';
 import zhReview from '../../../locales/zh-CN/review.json';
 import enReview from '../../../locales/en-US/review.json';
 import { SprintSettlementScreen } from '../SprintSettlementScreen';
@@ -183,6 +184,35 @@ describe('SprintSettlementScreen', () => {
     expect(enStrings.length).toBe(zhStrings.length);
     for (const s of [...zhStrings, ...enStrings]) {
       expect(EMOJI_RE.test(s)).toBe(false);
+    }
+  });
+
+  it('makes concept mastery rows clickable to launch AI reinforcement chat and closes settlement', () => {
+    const onFinish = vi.fn();
+    const received: Array<{ content?: string; newSession?: boolean; autoSend?: boolean }> = [];
+    const listener = (event: Event) => {
+      received.push((event as CustomEvent).detail);
+    };
+    window.addEventListener(APP_EVENTS.PREFILL_CHAT_INPUT, listener);
+
+    try {
+      const settlement = buildSettlementFixture();
+      render(<SprintSettlementScreen settlement={settlement} onFinish={onFinish} />);
+
+      const conceptButtons = screen.getAllByTestId('settlement-concept-button');
+      expect(conceptButtons).toHaveLength(2);
+      const weakBtn = conceptButtons.find((btn) => btn.getAttribute('data-outcome') === 'needs_reinforce');
+      expect(weakBtn).toBeTruthy();
+      expect(weakBtn!.getAttribute('data-concept')).toBe('泰勒展开余项');
+
+      fireEvent.click(weakBtn!);
+      expect(received).toHaveLength(1);
+      expect(received[0]?.content).toContain('泰勒展开余项');
+      expect(received[0]?.newSession).toBe(true);
+      expect(received[0]?.autoSend).toBe(false);
+      expect(onFinish).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(APP_EVENTS.PREFILL_CHAT_INPUT, listener);
     }
   });
 });

@@ -196,3 +196,8 @@ export { stageManager } from './agent/stageManager';
 export { usePresenceStore, useWindowPresence } from './agent/presenceStore';
 export { agentFlash } from './agent/visuals/agentFlash';
 export { registerDomainListener } from './agent/domainEvents';
+export { resolveActiveOrLastCanvasNoteId } from './agent/noteBinding';
+export {
+  getWorkspaceActiveResource,
+  subscribeWorkspaceState,
+} from './apps/notes/workspaceRegistry';

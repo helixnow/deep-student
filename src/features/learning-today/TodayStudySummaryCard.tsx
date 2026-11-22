@@ -38,6 +38,8 @@ export const TodayStudySummaryCard: React.FC<TodayStudySummaryCardProps> = ({
     void refreshTodayLearning();
   }, []);
 
+  const hasSprintTargets = today.cards > 0 || today.mistakes > 0;
+  const onlyNotesDue = !hasSprintTargets && today.notes > 0;
   const reviewDueTotal = today.cards + today.mistakes + today.notes;
   const totalDue = reviewDueTotal + resolvedTodoDue;
 
@@ -51,7 +53,7 @@ export const TodayStudySummaryCard: React.FC<TodayStudySummaryCardProps> = ({
       ? sprintReadiness.estimatedSprintMinutes
       : Math.max(
           1,
-          Math.min(15, Math.ceil((today.cards * 15 + today.mistakes * 40 + today.notes * 30) / 60)),
+          Math.min(15, Math.ceil((today.cards * 15 + today.mistakes * 40) / 60)),
         );
 
   const handleOpenTodos = () => {
@@ -117,17 +119,34 @@ export const TodayStudySummaryCard: React.FC<TodayStudySummaryCardProps> = ({
           </span>
         </div>
 
-        {reviewDueTotal > 0 ? (
+        {hasSprintTargets ? (
           <DsButton
             type="button"
             variant="ghost"
             size="sm"
             data-testid="today-summary-sprint"
             onClick={() => openDailySprint({ source: 'todo-today' })}
-            className="native-touch-target min-h-10 w-full justify-center gap-1.5 rounded-xl border border-primary/35 bg-primary/12 px-3 font-mono text-xs font-medium tabular-nums text-primary hover:bg-primary/18 sm:h-7 sm:min-h-0 sm:w-auto sm:rounded-full sm:px-2.5 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+            className="native-touch-target min-h-10 w-full justify-center gap-1.5 rounded-xl border border-primary/35 bg-primary/12 px-3 font-mono text-xs font-medium tabular-nums text-primary hover:bg-primary/18 sm:h-9 sm:min-h-9 sm:w-auto sm:rounded-full sm:px-3 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
           >
             <Play size={11} weight="fill" aria-hidden="true" />
             <span>{t('review:examSprint.hud.startCta', { minutes: estimatedSprintMinutes })}</span>
+          </DsButton>
+        ) : onlyNotesDue ? (
+          <DsButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-testid="today-summary-review-notes"
+            onClick={() => openTodayReviewTarget('notes')}
+            className="native-touch-target min-h-10 w-full justify-center gap-1.5 rounded-xl border border-primary/35 bg-primary/12 px-3 font-mono text-xs font-medium tabular-nums text-primary hover:bg-primary/18 sm:h-9 sm:min-h-9 sm:w-auto sm:rounded-full sm:px-3 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+          >
+            <Notebook size={13} aria-hidden="true" />
+            <span>
+              {t('todo:reviewLink.reviewNotesCta', {
+                count: today.notes,
+                defaultValue: '复习待看笔记 ({{count}})',
+              })}
+            </span>
           </DsButton>
         ) : null}
       </div>

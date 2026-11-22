@@ -16,6 +16,7 @@ import {
   applyPracticeVerdict, recordGradingFailure, refreshStatus,
   type PracticeServiceHost,
 } from './practice-service.ts';
+import { advanceDueReviewPlan, ensureReviewPlan } from './review-plan-effects.ts';
 import { QbankServiceError } from './question-service.ts';
 import * as repo from '../repository/practice.ts';
 
@@ -57,8 +58,14 @@ export class PracticeGradingFailure extends Error {
 
 export interface ReviewPlanPort {
   getOrCreatePlan(questionId: string, examId: string): unknown;
-  getPlanByQuestion(questionId: string): { id: string; next_review_date: string } | null;
+  getPlanByQuestion(questionId: string): {
+    id: string;
+    next_review_date: string;
+    last_review_date?: string | null;
+    status?: string;
+  } | null;
   advanceFromPractice(planId: string): unknown;
+  lapseFromPractice?(planId: string): unknown;
 }
 
 export interface PracticeGradingHost extends PracticeServiceHost {
@@ -69,6 +76,7 @@ export interface PracticeGradingHost extends PracticeServiceHost {
 interface AppliedOutcome {
   masteryState: unknown | null;
   needsReviewPlan: boolean;
+  shouldAdvanceReviewPlan: boolean;
 }
 
 interface QueueStep {
@@ -234,11 +242,11 @@ function applyPostCommit(host: PracticeGradingHost, outcome: AppliedOutcome | nu
   questionId: string, examId: string): void {
   if (outcome === null) return;
   if (outcome.needsReviewPlan) {
-    try {
-      host.reviewPlan?.getOrCreatePlan(questionId, examId);
-    } catch (error) {
-      host.log?.warn(`[qbank] review plan creation failed: ${errorText(error)}`);
-    }
+    ensureReviewPlan(host, questionId, examId, {
+      logSuccess: false, failureLabel: 'Failed to auto-create review plan for',
+    });
+  } else if (outcome.shouldAdvanceReviewPlan) {
+    advanceDueReviewPlan(host, questionId);
   }
   if (outcome.masteryState !== null) {
     const mastery = host.mastery();

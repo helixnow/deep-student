@@ -15,6 +15,7 @@ import {
   type NodeBoxGeometry,
   type SummaryBraceOrientation,
 } from '../../utils/summaryBraces';
+import { useImeCompositionGuard } from '../../hooks/useImeCompositionGuard';
 import '../../styles/mn5-excerpt.css';
 
 export interface SummaryBraceOverlayProps {
@@ -61,6 +62,7 @@ export const SummaryBraceOverlay: React.FC<SummaryBraceOverlayProps> = ({
   const [draftLabel, setDraftLabel] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const editingRef = useRef<string | null>(null);
+  const { onCompositionStart, onCompositionEnd, isComposingKeyEvent } = useImeCompositionGuard();
 
   const boxMap = useMemo(() => {
     const map = new Map<string, NodeBoxGeometry>();
@@ -164,9 +166,11 @@ export const SummaryBraceOverlay: React.FC<SummaryBraceOverlayProps> = ({
                 value={draftLabel}
                 onChange={(e) => setDraftLabel(e.target.value)}
                 onBlur={() => commitEdit(geom.id)}
+                onCompositionStart={onCompositionStart}
+                onCompositionEnd={onCompositionEnd}
                 onKeyDown={(e) => {
                   e.stopPropagation();
-                  if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                  if (isComposingKeyEvent(e)) return;
                   if (e.key === 'Enter') {
                     e.preventDefault();
                     commitEdit(geom.id);
@@ -198,7 +202,7 @@ export const SummaryBraceOverlay: React.FC<SummaryBraceOverlayProps> = ({
             {!readonly && onRemove && (
               <button
                 type="button"
-                className="opacity-0 group-hover:opacity-80 hover:!opacity-100 focus:opacity-100 inline-flex items-center justify-center w-4 h-4 rounded text-[var(--mm-text-muted)] hover:text-[var(--mm-text)] transition-opacity"
+                className="relative opacity-0 group-hover:opacity-80 hover:!opacity-100 focus:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-80 [@media(pointer:coarse)]:after:content-[''] [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-[14px] inline-flex items-center justify-center w-4 h-4 rounded text-[var(--mm-text-muted)] hover:text-[var(--mm-text)] transition-opacity motion-reduce:transition-none"
                 onClick={(e) => {
                   e.stopPropagation();
                   onRemove(geom.id);

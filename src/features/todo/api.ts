@@ -135,9 +135,49 @@ export function toTodoApiError(e: unknown, command: string): TodoApiError {
   return new TodoApiError(message, classifyTodoError(message), command);
 }
 
+/** 待办增删改完成后派发到 window（Today 待办计数等可据此即时刷新）。 */
+export const TODO_CHANGED_EVENT = 'todo:changed' as const;
+
+function emitTodoChanged(command: string): void {
+  if (typeof window === 'undefined' || typeof CustomEvent === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(TODO_CHANGED_EVENT, { detail: { command } }));
+}
+
+const MUTATING_TODO_COMMANDS: ReadonlySet<string> = new Set([
+  'todo_create_list',
+  'todo_update_list',
+  'todo_delete_list',
+  'todo_toggle_list_favorite',
+  'todo_reorder_lists',
+  'todo_restore_list',
+  'todo_purge_list',
+  'todo_purge_deleted_lists',
+  'todo_restore_item',
+  'todo_purge_item',
+  'todo_purge_deleted_items',
+  'todo_create_item',
+  'todo_update_item',
+  'todo_toggle_item',
+  'todo_delete_item',
+  'todo_reorder_items',
+  'todo_move_item',
+  'todo_ai_breakdown',
+  'todo_batch_complete',
+  'todo_batch_reschedule',
+  'todo_batch_move',
+  'todo_batch_delete',
+  'todo_batch_restore',
+  'todo_batch_purge',
+  'todo_batch_set_priority',
+]);
+
 async function call<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   try {
-    return await invoke<T>(command, args);
+    const result = await invoke<T>(command, args);
+    if (MUTATING_TODO_COMMANDS.has(command)) {
+      emitTodoChanged(command);
+    }
+    return result;
   } catch (e) {
     throw toTodoApiError(e, command);
   }

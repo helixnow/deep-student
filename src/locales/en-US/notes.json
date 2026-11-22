@@ -305,6 +305,8 @@
     "mastery_unset": "Mastery status not set",
     "overdue": "Overdue",
     "today": "Today",
+    "review_due_overdue": "Review overdue ({{date}}) · Mark reviewed:",
+    "review_due_today": "Due for review today · Mark reviewed:",
     "review_done": {
       "label": "Reviewed",
       "menu": "When to review this note next",
@@ -1789,6 +1791,7 @@
     "rename_tag_across_confirm_action": "Rename throughout library",
     "documentTitle": "Note title",
     "breadcrumbs": "Note path",
+    "collapsed_breadcrumbs": "Show collapsed path folders",
     "history": "Version history",
     "add_tags": "Add tags...",
     "manage_tags": "Manage tags",
@@ -1858,7 +1861,10 @@
       "info": "Info"
     },
     "cycleType": "Change callout type",
-    "toggleFold": "Collapse or expand"
+    "pickerLabel": "Choose callout type",
+    "toggleFold": "Collapse or expand",
+    "editTitle": "Edit title",
+    "titleInput": "Callout title"
   },
   "wikilink": {
     "noCandidates": "No candidate notes",
@@ -1868,6 +1874,8 @@
     "headingHint": "Heading mode: link to a heading in “{{target}}”",
     "previewLoading": "Loading…",
     "previewEmpty": "(Empty note)",
+    "previewError": "Failed to load preview",
+    "unresolvedHint": "“{{target}}” does not exist yet — click to create",
     "ambiguousTitle_one": "“{{target}}” matches {{count}} note with this title. Click to choose",
     "ambiguousTitle_other": "“{{target}}” matches {{count}} notes with this title. Click to choose",
     "cacheTruncated": "You have more than {{max}} notes; wiki links beyond that may show as unresolved"
@@ -2254,13 +2262,40 @@
     "chat": "From chat",
     "resource": "From material",
     "resource_page": "From material · p. {{page}}",
+    "resource_chapter": "From material · {{chapter}}",
+    "resource_locator": "From material · {{locator}}",
     "open": "Go to source"
   },
   "selection": {
     "group": "More",
+    "highlight": "Highlight",
+    "cloze": "Make cloze card",
+    "askAi": "Ask AI",
+    "count": "{{count}} chars selected",
+    "count_one": "{{count}} char selected",
+    "count_other": "{{count}} chars selected",
     "excerptToMindmap": "Excerpt to mind map",
     "excerptToMindmapSent": "Excerpt sent; if the mind map does not change, open it and enable \"Excerpt on selection\", then retry",
     "excerptToMindmapFailed": "Excerpt failed: the note editor is not ready"
+  },
+  "sourceMode": {
+    "toggle": "Markdown source",
+    "exit": "Back to rich editor",
+    "badge": "Markdown source",
+    "aria_label": "Markdown source editor",
+    "line_count": "{{count}} lines",
+    "line_count_one": "{{count}} line",
+    "line_count_other": "{{count}} lines",
+    "readonly": "Read-only"
+  },
+  "outline": {
+    "floating_toc": "Table of contents"
+  },
+  "bannerQueue": {
+    "more": "{{count}} more notices",
+    "more_one": "{{count}} more notice",
+    "more_other": "{{count}} more notices",
+    "collapse": "Hide extra notices"
   },
   "inlineCards": {
     "badge_qa": "QA Card",

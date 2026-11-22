@@ -248,16 +248,16 @@ const MarkerSpanImpl: React.FC<MarkerSpanProps> = ({ marker, index, isActive, an
           <span
             {...interactiveProps}
             className={cn(
-              'inline-flex items-baseline gap-1 px-0.5',
+              'inline-flex max-w-full flex-wrap items-baseline gap-1 px-0.5 break-words',
               baseInteractive,
               isActive
                 ? 'bg-amber-100/80 dark:bg-amber-900/40 ring-1 ring-amber-400/60'
                 : 'hover:bg-amber-50/60 dark:hover:bg-amber-950/30'
             )}
           >
-            <span className="text-muted-foreground/70 line-through decoration-1">{marker.oldText}</span>
-            <span className="text-muted-foreground/50 text-xs">→</span>
-            <span className="text-amber-700 dark:text-amber-400 font-medium">{marker.newText}</span>
+            <span className="max-w-full break-words text-muted-foreground/70 line-through decoration-1">{marker.oldText}</span>
+            <span className="shrink-0 text-muted-foreground/50 text-xs">→</span>
+            <span className="max-w-full break-words text-amber-700 dark:text-amber-400 font-medium">{marker.newText}</span>
           </span>
         </CommonTooltip>
       );
@@ -502,12 +502,13 @@ const MarkerDetailCard: React.FC<{
       {/* 原文 → 建议 */}
       <div className="space-y-1.5">
         {originalText && (
-          <div className="flex items-start gap-2">
+          <div className="flex items-start gap-2 min-w-0">
             <span className="shrink-0 text-xs text-muted-foreground/50 mt-0.5 w-8">
               {t('essay_grading:annotation_card.original')}
             </span>
             <span
               className={cn(
+                'min-w-0 flex-1 break-words',
                 marker.type === 'del' && 'text-red-500/80 line-through',
                 marker.type === 'replace' && 'text-muted-foreground/80 line-through',
                 marker.type === 'err' && (isSuggestionErr(marker)
@@ -522,13 +523,13 @@ const MarkerDetailCard: React.FC<{
           </div>
         )}
         {suggestionText && (
-          <div className="flex items-start gap-2">
+          <div className="flex items-start gap-2 min-w-0">
             <span className="shrink-0 text-xs text-muted-foreground/50 mt-0.5 w-8">
               {t('essay_grading:annotation_card.suggestion')}
             </span>
-            <span className="inline-flex items-baseline gap-2 min-w-0">
+            <span className="inline-flex flex-wrap items-baseline gap-1.5 min-w-0 flex-1 break-words">
               {marker.type === 'replace' && <ArrowRight size={12} className="shrink-0 self-center text-muted-foreground/40" />}
-              <span className="font-medium text-amber-700 dark:text-amber-400">
+              <span className="min-w-0 break-words font-medium text-amber-700 dark:text-amber-400">
                 {suggestionText}
               </span>
             </span>

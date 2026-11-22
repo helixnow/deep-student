@@ -1,21 +1,11 @@
 /**
  * 思维导图视图
  *
- * 入口组件，渲染新的模块化画布
+ * 入口组件，直接转发模块化画布视图（保留原有导出契约）
  */
 
-import React from 'react';
-import {
-  MindMapViewNew,
-  type MindMapViewNewHandle,
-  type MindMapViewNewProps,
+export {
+  MindMapViewNew as MindMapView,
+  type MindMapViewNewHandle as MindMapViewHandle,
+  type MindMapViewNewProps as MindMapViewProps,
 } from '../components/mindmap';
-
-export type MindMapViewHandle = MindMapViewNewHandle;
-export type MindMapViewProps = MindMapViewNewProps;
-
-export const MindMapView = React.forwardRef<MindMapViewHandle, MindMapViewProps>(
-  function MindMapView(props, ref) {
-    return <MindMapViewNew ref={ref} {...props} />;
-  },
-);

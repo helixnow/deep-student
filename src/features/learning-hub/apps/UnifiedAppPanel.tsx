@@ -21,6 +21,7 @@ import { reportError } from '@/shared/result';
 import type { DstuNode } from '@/dstu/types';
 import type { ResourceType } from '../types';
 import type { ContentSaveState } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import type { NoteBreadcrumbItem } from '@/features/notes/components/NotesEditorHeader';
 import { DsButton } from '@/components/ui/DsButton';
 import { AppContentErrorBoundary } from './AppContentErrorBoundary';
 
@@ -81,6 +82,12 @@ export interface UnifiedAppPanelProps {
   externalSettingsNavigation?: boolean;
   /** 外部设置标签当前是否选中（仅与 externalSettingsNavigation 配合使用） */
   externalSettingsOpen?: boolean;
+  /** DSTU 笔记面包屑路径（由工作区或资源库宿主提供） */
+  noteBreadcrumbs?: readonly NoteBreadcrumbItem[];
+  /** 点击面包屑文件夹/笔记项时的宿主定位回调 */
+  onNoteBreadcrumbClick?: (item: NoteBreadcrumbItem) => void;
+  /** 右侧常驻大纲已展开时隐藏画布右侧悬浮目录，避免双大纲重叠 */
+  suppressFloatingToc?: boolean;
 }
 
 export interface ContentViewProps {
@@ -108,6 +115,12 @@ export interface ContentViewProps {
   externalSettingsNavigation?: boolean;
   /** 宿主设置标签的受控选中状态 */
   externalSettingsOpen?: boolean;
+  /** DSTU 笔记面包屑路径 */
+  noteBreadcrumbs?: readonly NoteBreadcrumbItem[];
+  /** 点击面包屑项回调 */
+  onNoteBreadcrumbClick?: (item: NoteBreadcrumbItem) => void;
+  /** 右侧大纲面板常驻展开时抑制画布悬浮目录 */
+  suppressFloatingToc?: boolean;
 }
 
 // ============================================================================
@@ -186,6 +199,9 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   propertiesPanelDisabled = false,
   externalSettingsNavigation = false,
   externalSettingsOpen,
+  noteBreadcrumbs,
+  onNoteBreadcrumbClick,
+  suppressFloatingToc = false,
 }) => {
   const { t } = useTranslation(['learningHub', 'common', 'dstu']);
 
@@ -317,8 +333,11 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       propertiesPanelDisabled,
       externalSettingsNavigation,
       externalSettingsOpen,
+      noteBreadcrumbs,
+      onNoteBreadcrumbClick,
+      suppressFloatingToc,
     };
-  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive, focusOnActive, focusScopeId, pdfToolbarVariant, handleSaveStateChange, hostWindowId, propertiesPanelDisabled, externalSettingsNavigation, externalSettingsOpen]);
+  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive, focusOnActive, focusScopeId, pdfToolbarVariant, handleSaveStateChange, hostWindowId, propertiesPanelDisabled, externalSettingsNavigation, externalSettingsOpen, noteBreadcrumbs, onNoteBreadcrumbClick, suppressFloatingToc]);
 
   // ★ 性能：memo 化视图元素。元素引用不变时 React 会直接跳过该子树的重渲染
   //（即使子组件未包 React.memo），使父级因 className/闭包变化引起的重渲染不再波及内容视图

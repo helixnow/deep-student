@@ -2262,11 +2262,16 @@
   right: 12px;
   bottom: calc(var(--ds-pdf-toolbar-h) + var(--ds-pdf-progress-h) + var(--ds-pdf-safe-bottom) + 10px);
   z-index: 140;
+  box-sizing: border-box;
+  max-width: calc(100% - 24px);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 6px 10px;
   padding: 8px 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
   border-radius: 12px;
   background: hsl(var(--popover));
   border: 1px solid hsl(var(--border));
@@ -2287,7 +2292,7 @@
 
 /* 高亮操作条中的原文摘录（单行截断） */
 .ds-pdf__highlight-bar-text {
-  flex: 1;
+  flex: 1 1 120px;
   min-width: 0;
   font-size: 12px;
   color: hsl(var(--foreground));
@@ -2298,20 +2303,35 @@
 
 .ds-pdf__highlight-bar--column {
   flex-direction: column;
+  flex-wrap: nowrap;
   align-items: stretch;
 }
 
 .ds-pdf__highlight-bar-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 6px 10px;
   width: 100%;
+  min-width: 0;
 }
 
 .ds-pdf__highlight-bar .ds-highlight-color {
+  flex-shrink: 0;
   width: 36px;
   height: 36px;
+}
+
+@media (max-width: 480px) {
+  .ds-pdf__highlight-bar {
+    gap: 6px;
+    padding: 8px 10px;
+  }
+
+  .ds-pdf__highlight-bar-row {
+    gap: 6px;
+  }
 }
 
 /* 已废弃（0824 Wave2-B 第 4 轮划词收敛）：.ds-pdf__translation-panel

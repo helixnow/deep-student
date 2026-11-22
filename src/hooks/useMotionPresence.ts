@@ -13,16 +13,40 @@ export type MotionPresenceState = {
   exiting: boolean;
 };
 
-export function readCssDurationMs(varName: string, fallback: number): number {
-  if (typeof window === 'undefined' || typeof getComputedStyle !== 'function') {
-    return fallback;
-  }
-  const raw = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+const cssDurationCache = new Map<string, number>();
+
+function parseCssDurationMs(raw: string, fallback: number): number {
   if (!raw) return fallback;
   const value = parseFloat(raw);
   if (Number.isNaN(value)) return fallback;
   if (raw.endsWith('s') && !raw.endsWith('ms')) return value * 1000;
   return value;
+}
+
+export function invalidateCssDurationCache(): void {
+  cssDurationCache.clear();
+}
+
+export function readCssDurationMs(varName: string, fallback: number): number {
+  if (typeof window === 'undefined' || typeof getComputedStyle !== 'function') {
+    return fallback;
+  }
+  const root = document.documentElement;
+  if (!root) return fallback;
+  // 内联 style 覆写直接 O(1) 读取，不触发同步样式重算
+  const inlineRaw = root.style.getPropertyValue(varName).trim();
+  if (inlineRaw) {
+    return parseCssDurationMs(inlineRaw, fallback);
+  }
+  const cacheKey = `${varName}|${fallback}|${root.getAttribute('data-wb-material') ?? ''}|${root.getAttribute('data-reduced-motion') ?? ''}`;
+  const cached = cssDurationCache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const raw = getComputedStyle(root).getPropertyValue(varName).trim();
+  const parsed = parseCssDurationMs(raw, fallback);
+  cssDurationCache.set(cacheKey, parsed);
+  return parsed;
 }
 
 /**

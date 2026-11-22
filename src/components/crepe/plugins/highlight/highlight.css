@@ -1,0 +1,47 @@
+/*
+ * Crepe Learner Highlighter (`==text==`) Live Preview styles.
+ *
+ * Uses semantic `--warning` / `--muted-foreground` tokens so both light and dark
+ * themes render a warm, high-contrast amber wash without hardcoded hex values.
+ */
+
+.crepe-highlight-mark {
+  background-color: var(--notes-highlight-bg, hsl(var(--warning) / 24%));
+  border-radius: 3px;
+  padding: 0.05em 0.15em;
+  box-decoration-break: clone;
+  transition: background-color 120ms ease;
+}
+
+:root.dark .crepe-highlight-mark,
+.dark .crepe-highlight-mark {
+  background-color: var(--notes-highlight-bg, hsl(var(--warning) / 30%));
+}
+
+.crepe-highlight-delim {
+  color: hsl(var(--muted-foreground));
+  background-color: transparent;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+
+/* Applied strictly when the cursor/selection is outside [matchStart, matchEnd] */
+.crepe-highlight-delim-hidden {
+  font-size: 0;
+  line-height: 0;
+  color: transparent;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.crepe-highlight-delim-active {
+  font-size: 0.85em;
+  opacity: 0.55;
+  letter-spacing: -0.02em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crepe-highlight-mark,
+  .crepe-highlight-delim {
+    transition: none;
+  }
+}

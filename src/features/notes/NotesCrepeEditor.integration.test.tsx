@@ -11,7 +11,6 @@ import { clearPendingNotesQuoteTargetsForTests, publishNotesQuoteTarget } from '
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), get: vi.fn(), metadata: vi.fn(), copy: vi.fn(async () => true), export: vi.fn(async () => ({ canceled: false, path: '/test.md' })) }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke, convertFileSrc: (path: string) => path }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
-vi.mock('@/features/notes/NotesContext', () => ({ useNotesOptional: () => undefined }));
 vi.mock('@/hooks/useTauriDragAndDrop', () => ({ useTauriDragAndDrop: () => ({ isDragging: false }) }));
 vi.mock('@/features/generative-ui/components/GenerativeUIPanel', () => ({ GenerativeUIPanel: () => null }));
 vi.mock('@/utils/clipboardUtils', () => ({ copyTextToClipboard: mocks.copy }));

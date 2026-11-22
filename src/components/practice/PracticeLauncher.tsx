@@ -522,7 +522,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                     size="sm"
                     aria-expanded={drillOpen}
                     onClick={() => setDrillOpen(v => !v)}
-                    className="!h-7 !px-2.5 text-xs text-primary hover:bg-primary/10"
+                    className="!h-9 sm:!h-7 [@media(pointer:coarse)]:!min-h-11 !px-2.5 text-xs text-primary hover:bg-primary/10"
                   >
                     <Play size={13} weight="fill" />
                     {t('batch.drill')}
@@ -532,13 +532,13 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
               {onStartDrill && drillOpen && (
                 <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                   {(['sequential', 'random', 'review_first', 'review_only'] as PracticeMode[]).map(mode => (
-                    <DsButton key={mode} variant="outline" size="sm" className="!h-7 !px-2.5 text-xs" onClick={() => onStartDrill(mode)}>
+                    <DsButton key={mode} variant="outline" size="sm" className="!h-9 sm:!h-7 [@media(pointer:coarse)]:!min-h-11 !px-2.5 text-xs" onClick={() => onStartDrill(mode)}>
                       {modes.find(m => m.key === mode)?.label}
                     </DsButton>
                   ))}
                   {!!tagOptions.length && (
                     <select
-                      className="h-7 max-w-full rounded-md border border-border/50 bg-background px-2 text-xs"
+                      className="h-9 sm:h-7 [@media(pointer:coarse)]:h-11 max-w-full rounded-md border border-border/50 bg-background px-2 text-xs"
                       aria-label={t('practice:tagPicker.title')}
                       defaultValue=""
                       onChange={e => { if (e.target.value) onStartDrill('by_tag', e.target.value); }}

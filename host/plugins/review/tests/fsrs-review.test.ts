@@ -1739,3 +1739,68 @@ it('get_stats_query_failures_report_the_bare_database_text', () => {
   db.run('ALTER TABLE fsrs_review_logs RENAME COLUMN state_before TO state_before_renamed');
   expect(appErrorValue(() => service.getStats()).message).toBe('读取每日复习计数失败: no such column: state_before');
 });
+
+it('undoLastReview unburies review-buried siblings while preserving manually buried ones', () => {
+  const { db, service } = setup();
+  insertTaskAndCard(db, 'doc-unbury', 'task-unbury', 'card-u-a');
+  insertCardForTask(db, 'doc-unbury', 'task-unbury', 'card-u-b');
+  insertCardForTask(db, 'doc-unbury', 'task-unbury', 'card-u-c');
+  for (const card of ['card-u-a', 'card-u-b', 'card-u-c']) {
+    db.run('UPDATE anki_cards SET extra_fields_json = ?1 WHERE id = ?2', [
+      JSON.stringify({ AnkiNoteId: '99' }),
+      card,
+    ]);
+  }
+  const states = service.enqueueCards(['card-u-a', 'card-u-b', 'card-u-c']).states;
+  const stateA = stateOf(states, 'card-u-a');
+  const stateB = stateOf(states, 'card-u-b');
+  const stateC = stateOf(states, 'card-u-c');
+
+  // Manually bury card-u-c BEFORE rating card-u-a (different updated_at)
+  service.setBuried(stateC, true);
+  const rated = service.rate(stateA, 3, null, null);
+  expect(rated.buriedSiblings).toEqual([stateB]);
+  expect(service.getCardState(stateB)!.buriedUntilMs).not.toBeNull();
+  expect(service.getCardState(stateC)!.buriedUntilMs).not.toBeNull();
+
+  // Undo rating -> card-u-b unburied, manually-buried card-u-c remains buried
+  const undone = service.undoLastReview(rated.logId, stateA);
+  expect(undone.changed).toBe(true);
+  expect(service.getCardState(stateB)!.buriedUntilMs).toBeNull();
+  expect(service.getCardState(stateC)!.buriedUntilMs).not.toBeNull();
+  expect(dueStateIds(service)).toContain(stateB);
+  expect(dueStateIds(service)).not.toContain(stateC);
+});
+
+it('undoLastReviewForSession unburies review-buried siblings while preserving manually buried ones', () => {
+  const { db, service } = setup();
+  insertTaskAndCard(db, 'doc-agent-unbury', 'task-agent-unbury', 'card-au-a');
+  setTaskOwner(db, 'task-agent-unbury', 'session-unbury');
+  insertCardForTask(db, 'doc-agent-unbury', 'task-agent-unbury', 'card-au-b');
+  insertCardForTask(db, 'doc-agent-unbury', 'task-agent-unbury', 'card-au-c');
+  for (const card of ['card-au-a', 'card-au-b', 'card-au-c']) {
+    db.run('UPDATE anki_cards SET extra_fields_json = ?1 WHERE id = ?2', [
+      JSON.stringify({ _note_key: 'note-77' }),
+      card,
+    ]);
+  }
+  const states = service.enqueueCards(['card-au-a', 'card-au-b', 'card-au-c']).states;
+  const stateA = stateOf(states, 'card-au-a');
+  const stateB = stateOf(states, 'card-au-b');
+  const stateC = stateOf(states, 'card-au-c');
+
+  service.setBuried(stateC, true);
+  const rated = service.rate(stateA, 3, null, null);
+  expect(rated.buriedSiblings).toEqual([stateB]);
+
+  const snapshot = service.getReviewStatesForSession(['card-au-a'], 'session-unbury')[0]!;
+  const outcome = service.undoLastReviewForSession(
+    'card-au-a',
+    'session-unbury',
+    snapshot.reviewVersion,
+    rated.logId,
+  );
+  expect(outcome.status).toBe('updated');
+  expect(service.getCardState(stateB)!.buriedUntilMs).toBeNull();
+  expect(service.getCardState(stateC)!.buriedUntilMs).not.toBeNull();
+});

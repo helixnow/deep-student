@@ -1,4 +1,4 @@
-import { $nodeSchema } from '@milkdown/utils'
+import { $nodeSchema } from '@milkdown/kit/utils'
 import { COLUMNS_TYPE, COLUMN_TYPE } from './format'
 
 export const columnsSchema = $nodeSchema(COLUMNS_TYPE, () => ({

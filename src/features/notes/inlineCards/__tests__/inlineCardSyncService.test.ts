@@ -112,7 +112,9 @@ describe('inlineCardSyncService (Idempotent FSRS Sync & Edge Pruning)', () => {
     expect(secondSaveArg.cards[0].back).toBe('叶绿体类囊体薄膜（含光合色素与酶）');
 
     // FSRS enqueue was NOT re-invoked for the already-enqueued card!
-    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'fsrs_enqueue_cards'),
+    ).toHaveLength(1);
 
     // Deleted blk_2's anchor edge was pruned cleanly
     expect(mocks.deleteAnkiCards).toHaveBeenCalledWith({ cardIds: [first.dedupedCards[1].cardId] });
@@ -155,5 +157,100 @@ describe('inlineCardSyncService (Idempotent FSRS Sync & Edge Pruning)', () => {
     const params = { noteId: 'note', markdown: '题目 >> 答案 <!-- ds:block-id=one -->' };
     await expect(syncInlineCardsForNote(params)).rejects.toThrow('保存失败');
     await expect(syncInlineCardsForNote(params)).resolves.toMatchObject({ skippedUnchanged: false });
+  });
+
+  it('suspends reviewed inline cards instead of deleting them, and unsuspends when restored', async () => {
+    let storedCardId = '';
+    mocks.invoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === 'fsrs_enqueue_cards') {
+        const ids = (args?.ankiCardIds as string[]) ?? [];
+        storedCardId = ids[0]!;
+        return {
+          enqueued: 1,
+          states: [{ id: 'state_reviewed_1', ankiCardId: storedCardId }],
+        };
+      }
+      if (cmd === 'get_anki_library_card_content') {
+        return {
+          id: storedCardId,
+          stateId: 'state_reviewed_1',
+          state: 2,
+          suspended: false,
+        };
+      }
+      return { changed: true };
+    });
+
+    const line = '牛顿第二定律 >> F = ma <!-- ds:block-id=blk_newton -->';
+    const first = await syncInlineCardsForNote({
+      noteId: 'note_physics',
+      markdown: line,
+    });
+    expect(first.savedIds).toHaveLength(1);
+    const cardId = first.savedIds[0]!;
+
+    // Remove the line from note -> card has state=2, so it must be suspended, NOT deleted
+    await syncInlineCardsForNote({
+      noteId: 'note_physics',
+      markdown: '',
+    });
+    expect(mocks.deleteAnkiCards).not.toHaveBeenCalled();
+    expect(mocks.invoke).toHaveBeenCalledWith('fsrs_suspend_card', {
+      cardStateId: 'state_reviewed_1',
+    });
+
+    // Restore the line -> backend reports duplicatedIds and suspended=true -> must unsuspend
+    mocks.saveAnkiCards.mockResolvedValueOnce({
+      savedIds: [],
+      duplicatedIds: [cardId],
+      taskId: 'task_inline_1',
+    });
+    mocks.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_anki_library_card_content') {
+        return {
+          id: cardId,
+          stateId: 'state_reviewed_1',
+          state: 2,
+          suspended: true,
+        };
+      }
+      return { changed: true };
+    });
+
+    await syncInlineCardsForNote({
+      noteId: 'note_physics',
+      markdown: line,
+    });
+    expect(mocks.invoke).toHaveBeenCalledWith('fsrs_unsuspend_card', {
+      cardStateId: 'state_reviewed_1',
+    });
+  });
+
+  it('keeps the card safely without deleting or suspending when get_anki_library_card_content errors', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mocks.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'fsrs_enqueue_cards') {
+        return { enqueued: 1, states: [{ id: 'st_keep', ankiCardId: 'x' }] };
+      }
+      if (cmd === 'get_anki_library_card_content') {
+        throw new Error('IPC unavailable');
+      }
+      return {};
+    });
+
+    await syncInlineCardsForNote({
+      noteId: 'note_safe_keep',
+      markdown: '问题 >> 答案 <!-- ds:block-id=blk_keep -->',
+    });
+
+    await syncInlineCardsForNote({
+      noteId: 'note_safe_keep',
+      markdown: '',
+    });
+
+    expect(mocks.deleteAnkiCards).not.toHaveBeenCalled();
+    expect(mocks.invoke).not.toHaveBeenCalledWith('fsrs_suspend_card', expect.anything());
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 });

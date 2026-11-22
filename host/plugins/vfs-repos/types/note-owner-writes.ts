@@ -22,6 +22,8 @@ export interface NoteOwnerWrites {
     updatedAtMs: number | bigint): number;
   /** :2397: set text_state/mm_state='disabled' only, no error/required/updated_at change. */
   disableNoteUnitsWithConn(conn: SqlExecutor, resourceId: string): number;
+  /** Re-enable disabled note units back to 'pending' when required or content is non-empty, preserving metadata/timestamps. */
+  reenableNoteUnitsWithConn?(conn: SqlExecutor, resourceId: string): number;
   /**
    * :3111-3118: INSERT OR REPLACE the fixed maintenance.note_links_backfill_done='true' key.
    * Call only after every rebuild batch succeeds. This does not broaden setConfig's whitelist.

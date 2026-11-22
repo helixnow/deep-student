@@ -1,4 +1,4 @@
-import type { Ctx } from '@milkdown/ctx';
+import type { Ctx } from '@milkdown/kit/ctx';
 import { editorViewCtx, serializerCtx } from '@milkdown/kit/core';
 import { closeHistory } from '@milkdown/prose/history';
 import { normalizeMarkdown } from '../../normalizeMarkdown';

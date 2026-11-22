@@ -127,6 +127,13 @@ export function afterRemoveNodes(
 ): void {
   pruneAssociationsForRemovedNodes(state.document, removedIds);
   reconcileSummariesWithTree(state.document);
+  if (state.measuredNodeHeights) {
+    for (const id of removedIds) {
+      if (id in state.measuredNodeHeights) {
+        delete state.measuredNodeHeights[id];
+      }
+    }
+  }
   if (!state.focusedNodeId || removedIds.has(state.focusedNodeId)) {
     state.focusedNodeId = fallbackFocusId ?? state.document.root.id;
   }

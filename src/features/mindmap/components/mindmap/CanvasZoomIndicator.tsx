@@ -19,7 +19,9 @@ export const CanvasZoomIndicator: React.FC = () => {
   // 只订阅取整百分比：平移不触发重渲染，缩放也只在整数百分比跳变时更新
   const zoomPercent = useStore((s) => Math.round(s.transform[2] * 100));
   const { zoomTo } = useReactFlow();
-  const resetShortcut = isMacOS() ? '⌘0' : 'Ctrl+0';
+  const isMac = isMacOS();
+  const resetShortcut = isMac ? '⌘1' : 'Ctrl+1';
+  const fitShortcut = isMac ? '⌘0' : 'Ctrl+0';
 
   const resetZoom = useCallback(() => {
     zoomTo(1, { duration: prefersReducedMotion() ? 0 : 200 });
@@ -27,7 +29,10 @@ export const CanvasZoomIndicator: React.FC = () => {
 
   return (
     <CommonTooltip
-      content={t('canvasV2.zoomResetTooltip', { defaultValue: '当前缩放；点击恢复 100%' })}
+      content={t('canvasV2.zoomResetTooltipDetail', {
+        defaultValue: '当前缩放；点击恢复 100%（{{fitShortcut}} 适应画布）',
+        fitShortcut,
+      })}
       shortcut={resetShortcut}
       position="top"
     >

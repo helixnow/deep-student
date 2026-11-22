@@ -7,8 +7,8 @@ import {
   MS_PER_DAY, decodeStateBeforeSnapshot, defaultSchedulerConfig, validateSnapshotFor,
   type FsrsAgentLatestReviewSnapshot, type FsrsAgentReviewStateSnapshot, type FsrsCardState,
   type FsrsDueCard, type FsrsEnqueuedCard, type FsrsFeedbackRow,
-  type FsrsImportedSchedule, type FsrsPendingMasteryReview, type FsrsSchedulerConfig,
-  type FsrsStateBeforeSnapshot,
+  type FsrsImportedReviewLog, type FsrsImportedSchedule, type FsrsPendingMasteryReview,
+  type FsrsSchedulerConfig, type FsrsStateBeforeSnapshot,
 } from '../src/fsrs-types.ts';
 import { checkParametersUsable, sanitizeSteps } from '../src/fsrs-scheduler.ts';
 import { asF64, asI64, asU64, getKey, parseSerdeJson } from '../src/serde-json.ts';
@@ -256,6 +256,51 @@ export function newCardSeed(nowMs: number): FsrsImportedSchedule {
   return { state: 0, stability: null, difficulty: null, elapsedDays: 0, scheduledDays: 0, reps: 0, lapses: 0, dueMs: nowMs, lastReviewMs: null, suspended: false };
 }
 
+/** 导入卡片时把历史 Anki `revlog` 批量写入 `fsrs_review_logs`（`state_before_json = NULL`，不回溯撤销）。 */
+export function insertImportedReviewLogsInTx(
+  db: SqlExecutor,
+  stateId: string,
+  ankiCardId: string,
+  logs: readonly FsrsImportedReviewLog[],
+  nowRfc: string,
+): number {
+  if (logs.length === 0) return 0;
+  let inserted = 0;
+  for (const log of logs) {
+    if (!Number.isInteger(log.rating) || log.rating < 1 || log.rating > 4) continue;
+    if (!Number.isFinite(log.reviewMs) || log.reviewMs <= 0) continue;
+    const logId = globalThis.crypto.randomUUID();
+    try {
+      db.run(`INSERT INTO fsrs_review_logs (
+        id, card_state_id, anki_card_id, rating, state_before, state_after,
+        stability_before, stability_after, difficulty_before, difficulty_after,
+        scheduled_days, elapsed_days, due_before_ms, due_after_ms,
+        review_ms, duration_ms, fsrs_params_version, created_at, updated_at,
+        state_before_json, mastery_synced_at
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, NULL, NULL, NULL, NULL, ?7, ?8, NULL, ?9, ?10, ?11, ?12, ?13, ?13, NULL, ?13)`,
+      [
+        logId,
+        stateId,
+        ankiCardId,
+        log.rating,
+        log.stateBefore,
+        log.stateAfter,
+        log.scheduledDays,
+        log.elapsedDays,
+        log.dueAfterMs,
+        Math.trunc(log.reviewMs),
+        log.durationMs,
+        FSRS_PARAMS_VERSION,
+        nowRfc,
+      ]);
+      inserted += 1;
+    } catch (e) {
+      throw appError('Database', `写入导入复习日志失败: ${errorText(e)}`);
+    }
+  }
+  return inserted;
+}
+
 export function loadReviewCardsForStates(db: SqlExecutor, states: readonly FsrsCardState[]): FsrsEnqueuedCard[] {
   const out: FsrsEnqueuedCard[] = [];
   for (const state of states) {
@@ -458,7 +503,8 @@ export function latestActiveLogId(db: SqlExecutor, stateId: string, trialV7 = fa
 }
 
 export interface UndoLogRow {
-  stateId: string; ankiCardId: string; reviewMs: number; snapshotJson: string | null; updatedAt: string | null;
+  stateId: string; ankiCardId: string; reviewMs: number; snapshotJson: string | null;
+  createdAt: string | null; updatedAt: string | null;
 }
 /** Keep the exposed review eligible for the next undo after restoring its state. */
 export function reanchorLatestUndoLog(db: SqlExecutor, stateId: string, nowRfc: string, trialV7 = false): void {
@@ -473,11 +519,12 @@ export function reanchorLatestUndoLog(db: SqlExecutor, stateId: string, nowRfc: 
 export function loadLogForUndo(db: SqlExecutor, logId: string): UndoLogRow | null {
   try {
     const row = db.get<UndoLogRow>(`SELECT card_state_id AS stateId, anki_card_id AS ankiCardId, review_ms AS reviewMs,
-      state_before_json AS snapshotJson, updated_at AS updatedAt FROM fsrs_review_logs
+      state_before_json AS snapshotJson, created_at AS createdAt, updated_at AS updatedAt FROM fsrs_review_logs
       WHERE id = ?1 AND deleted_at IS NULL`, [logId]);
     return row ? {
       stateId: String(row.stateId), ankiCardId: String(row.ankiCardId), reviewMs: Number(row.reviewMs),
       snapshotJson: row.snapshotJson === null ? null : String(row.snapshotJson),
+      createdAt: row.createdAt === null ? null : String(row.createdAt),
       updatedAt: row.updatedAt === null ? null : String(row.updatedAt),
     } : null;
   } catch (e) { throw appError('Database', `加载待撤销复习日志失败: ${errorText(e)}`); }
@@ -510,20 +557,29 @@ export function softDeleteLog(db: SqlExecutor, logId: string, stateId: string, n
   } catch (e) { throw appError('Database', `软删除已撤销复习日志失败: ${errorText(e)}`); }
 }
 
-export function burySiblings(
-  db: SqlExecutor, state: FsrsCardState, buryNew: boolean, buryReview: boolean,
-  nowMs: number, nextDayStart: number, nowRfc: string,
-): string[] {
-  if (!buryNew && !buryReview) return [];
+function loadSiblingNoteIdentity(
+  db: SqlExecutor,
+  ankiCardId: string,
+): { taskId: string; noteKey: string } | null {
   let note: { taskId: string; noteKey: string | null } | undefined;
   try {
     note = db.get<{ taskId: string; noteKey: string | null }>(`SELECT task_id AS taskId,
       CASE WHEN json_valid(extra_fields_json) THEN COALESCE(
         CAST(json_extract(extra_fields_json, '$.AnkiNoteId') AS TEXT),
         json_extract(extra_fields_json, '$._note_key')) END AS noteKey
-      FROM anki_cards WHERE id = ?1`, [state.ankiCardId]);
+      FROM anki_cards WHERE id = ?1`, [ankiCardId]);
   } catch (e) { throw appError('Database', `读取兄弟卡笔记失败: ${errorText(e)}`); }
-  if (!note || note.noteKey === null) return [];
+  if (!note || note.noteKey === null) return null;
+  return { taskId: note.taskId, noteKey: note.noteKey };
+}
+
+export function burySiblings(
+  db: SqlExecutor, state: FsrsCardState, buryNew: boolean, buryReview: boolean,
+  nowMs: number, nextDayStart: number, nowRfc: string,
+): string[] {
+  if (!buryNew && !buryReview) return [];
+  const note = loadSiblingNoteIdentity(db, state.ankiCardId);
+  if (note === null) return [];
   let siblings: { id: string }[];
   try {
     siblings = db.all<{ id: string }>(`SELECT s.id AS id FROM fsrs_card_states s
@@ -544,6 +600,39 @@ export function burySiblings(
     } catch (e) { throw appError('Database', `埋藏兄弟卡失败: ${errorText(e)}`); }
   }
   return ids;
+}
+
+/** 撤销最近一次评分时，仅解埋由该次评分同一时间戳埋藏的同笔记兄弟卡。 */
+export function unburySiblingsForUndo(
+  db: SqlExecutor,
+  ankiCardId: string,
+  stateId: string,
+  logCreatedAt: string | null,
+  nowRfc: string,
+): number {
+  if (logCreatedAt === null) return 0;
+  const note = loadSiblingNoteIdentity(db, ankiCardId);
+  if (note === null) return 0;
+  try {
+    return db.run(`UPDATE fsrs_card_states
+      SET buried_until_ms = NULL,
+          updated_at = ?1,
+          local_version = COALESCE(local_version, 0) + 1
+      WHERE id IN (
+        SELECT s.id FROM fsrs_card_states s
+        INNER JOIN anki_cards a ON a.id = s.anki_card_id
+        WHERE a.task_id = ?2
+          AND s.id != ?3
+          AND s.deleted_at IS NULL
+          AND a.deleted_at IS NULL
+          AND s.buried_until_ms IS NOT NULL
+          AND s.updated_at = ?4
+          AND json_valid(a.extra_fields_json)
+          AND COALESCE(CAST(json_extract(a.extra_fields_json, '$.AnkiNoteId') AS TEXT),
+                       json_extract(a.extra_fields_json, '$._note_key')) = ?5
+      )`,
+    [nowRfc, note.taskId, stateId, logCreatedAt, note.noteKey]).changes;
+  } catch (e) { throw appError('Database', `撤销解埋兄弟卡失败: ${errorText(e)}`); }
 }
 
 export function updateBuried(db: SqlExecutor, stateId: string, until: number | null, nowRfc: string): void {
@@ -685,7 +774,7 @@ export function insertFreshState(
 export interface AgentStateRecord { state: FsrsCardState; reviewVersion: bigint }
 export interface AgentLogRecord {
   logId: string; ankiCardId: string; rating: number; reviewMs: number;
-  snapshotJson: string | null; updatedAt: string | null;
+  snapshotJson: string | null; createdAt: string | null; updatedAt: string | null;
 }
 
 /**
@@ -715,13 +804,14 @@ export function loadAgentStateRecord(db: SqlExecutor, ankiCardId: string): Agent
 export function loadLatestAgentReview(db: SqlExecutor, stateId: string, trialV7 = false): AgentLogRecord | null {
   try {
     const row = db.get<AgentLogRecord>(`SELECT id AS logId, anki_card_id AS ankiCardId, rating,
-      review_ms AS reviewMs, state_before_json AS snapshotJson, updated_at AS updatedAt
+      review_ms AS reviewMs, state_before_json AS snapshotJson, created_at AS createdAt, updated_at AS updatedAt
       FROM fsrs_review_logs WHERE card_state_id = ?1 AND deleted_at IS NULL
       ORDER BY review_ms DESC, created_at DESC, ${trialV7 ? 'rowid' : 'id'} DESC LIMIT 1`, [stateId]);
     return row ? {
       logId: String(row.logId), ankiCardId: String(row.ankiCardId), rating: Number(row.rating),
       reviewMs: Number(row.reviewMs),
       snapshotJson: row.snapshotJson === null ? null : String(row.snapshotJson),
+      createdAt: row.createdAt === null ? null : String(row.createdAt),
       updatedAt: row.updatedAt === null ? null : String(row.updatedAt),
     } : null;
   } catch (e) { throw appError('Database', `加载 Agent 最新复习日志失败: ${errorText(e)}`); }

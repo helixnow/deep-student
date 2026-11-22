@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { invoke } from '@tauri-apps/api/core';
 import { PencilSimple, Check, X, CircleNotch, PushPin, PushPinSlash, Archive, DotsThree, Trash, FolderSimple, Folder, Export, FileText, BracketsCurly } from '@phosphor-icons/react';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useSwipeGesture } from '@/hooks/mobile/useSwipeGesture';
 import { type DraggableAttributes, type DraggableSyntheticListeners } from '@dnd-kit/core';
 import {
@@ -182,16 +183,16 @@ const SwipeableSessionRow: React.FC<SwipeableSessionRowProps> = ({
   });
 
   // 打开状态下点行外任意位置收起
-  React.useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: PointerEvent) => {
-      const target = e.target as Node | null;
-      if (target && rootRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [open]);
+  const handleOutsidePointerDown = React.useCallback((e: Event) => {
+    const target = (e as PointerEvent).target as Node | null;
+    if (target && rootRef.current?.contains(target)) return;
+    setOpen(false);
+  }, []);
+
+  useEventRegistry(
+    open ? [{ target: 'document', type: 'pointerdown', listener: handleOutsidePointerDown }] : [],
+    [open, handleOutsidePointerDown],
+  );
 
   // 依赖 swipe.ref（稳定引用）而非 swipe 对象：避免拖动中每帧重挂原生监听器
   const swipeRef = swipe.ref;
@@ -631,7 +632,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               </AppMenuItem>
             )}
             {!isSuper && moveTargetGroups.length > 0 && (
-              <AppMenuSub>
+              <AppMenuSub openOnClick>
                 <AppMenuSubTrigger icon={<FolderSimple size={16} />}>
                   {t('page.moveToGroup')}
                 </AppMenuSubTrigger>
@@ -665,7 +666,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
                 </AppMenuSubContent>
               </AppMenuSub>
             )}
-            <AppMenuSub>
+            <AppMenuSub openOnClick>
               <AppMenuSubTrigger icon={<Export size={16} />}>
                 {t('page.exportSession')}
               </AppMenuSubTrigger>

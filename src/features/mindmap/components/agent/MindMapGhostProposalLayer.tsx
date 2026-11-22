@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useStat
 import { createPortal } from 'react-dom';
 import { ArrowRight, Check, X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { cn } from '@/utils/cn';
 import {
   acceptMindmapSuggestionBranch,
@@ -45,7 +46,7 @@ const BranchActionCapsule: React.FC<BranchActionCapsuleProps> = ({
   onReject,
 }) => (
   <span
-    className="mm-ghost-action-capsule nodrag nopan pointer-events-auto"
+    className="mm-ghost-action-capsule nodrag nopan pointer-events-auto motion-reduce:transition-none"
     onPointerDown={stopCanvasPropagation}
     onMouseDown={stopCanvasPropagation}
     onDoubleClick={stopCanvasPropagation}
@@ -53,7 +54,7 @@ const BranchActionCapsule: React.FC<BranchActionCapsuleProps> = ({
   >
     <button
       type="button"
-      className="mm-ghost-action-btn nodrag nopan pointer-events-auto"
+      className="mm-ghost-action-btn nodrag nopan pointer-events-auto motion-reduce:transition-none motion-reduce:transform-none [@media(pointer:coarse)]:min-h-7 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
       disabled={disabled}
       onPointerDown={stopCanvasPropagation}
       onMouseDown={stopCanvasPropagation}
@@ -69,7 +70,7 @@ const BranchActionCapsule: React.FC<BranchActionCapsuleProps> = ({
     </button>
     <button
       type="button"
-      className="mm-ghost-action-btn mm-ghost-action-btn--reject nodrag nopan pointer-events-auto"
+      className="mm-ghost-action-btn mm-ghost-action-btn--reject nodrag nopan pointer-events-auto motion-reduce:transition-none motion-reduce:transform-none [@media(pointer:coarse)]:min-h-7 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']"
       disabled={disabled}
       onPointerDown={stopCanvasPropagation}
       onMouseDown={stopCanvasPropagation}
@@ -142,7 +143,7 @@ function extractRenderedPositions(
 export const MindMapGhostProposalLayer: React.FC<MindMapGhostProposalLayerProps> = ({
   hostRef,
 }) => {
-  const { t } = useTranslation('graph_conflict');
+  const { t } = useTranslation(['graph_conflict', 'mindmap']);
   const markerUid = useId().replace(/:/g, '');
   const arrowMarkerId = `mm-ghost-arrow-${markerUid}`;
 
@@ -200,11 +201,32 @@ export const MindMapGhostProposalLayer: React.FC<MindMapGhostProposalLayerProps>
     (branchId: string) => {
       if (!mindmapId || !suggestion || busyBranchId) return;
       setBusyBranchId(branchId);
-      void acceptMindmapSuggestionBranch(suggestion.id, mindmapId, branchId).finally(() => {
-        setBusyBranchId(null);
-      });
+      void acceptMindmapSuggestionBranch(suggestion.id, mindmapId, branchId)
+        .then((result) => {
+          if (!result) return;
+          if (result.failed.length > 0) {
+            showGlobalNotification(
+              'warning',
+              result.applied === 0
+                ? result.failed[0]
+                : t('mindmap:agent.suggestion_bar.accept_partial', {
+                    applied: result.applied,
+                    failed: result.failed.length,
+                  }),
+              result.applied === 0 && result.failed.length <= 1
+                ? undefined
+                : result.failed.slice(0, 3).join('\n'),
+            );
+          }
+          if (result.applied > 0 && !result.saved) {
+            showGlobalNotification('warning', t('mindmap:agent.suggestion_bar.save_failed'));
+          }
+        })
+        .finally(() => {
+          setBusyBranchId(null);
+        });
     },
-    [mindmapId, suggestion, busyBranchId],
+    [mindmapId, suggestion, busyBranchId, t],
   );
 
   const handleRejectBranch = useCallback(
@@ -304,7 +326,7 @@ export const MindMapGhostProposalLayer: React.FC<MindMapGhostProposalLayerProps>
         >
           {gNode.isBranchEntry && (
             <div className="mb-1 flex items-center justify-between gap-2 pointer-events-none">
-              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--mm-ghost-accent)]">
+              <span className="inline-flex items-center gap-1 text-2xs font-medium text-[var(--mm-ghost-accent)]">
                 <span
                   className="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--mm-ghost-accent)]"
                   aria-hidden="true"
@@ -321,11 +343,11 @@ export const MindMapGhostProposalLayer: React.FC<MindMapGhostProposalLayerProps>
               />
             </div>
           )}
-          <div className="text-[13px] leading-snug text-[var(--mm-text)] break-words pointer-events-none">
+          <div className="text-sm leading-snug text-[var(--mm-text)] break-words pointer-events-none">
             {gNode.text}
           </div>
           {gNode.note && (
-            <div className="mt-0.5 text-[11px] text-[var(--mm-text-secondary)] line-clamp-2 pointer-events-none">
+            <div className="mt-0.5 text-2xs text-[var(--mm-text-secondary)] line-clamp-2 pointer-events-none">
               {gNode.note}
             </div>
           )}
@@ -350,7 +372,7 @@ export const MindMapGhostProposalLayer: React.FC<MindMapGhostProposalLayerProps>
               <div
                 data-annotation-kind="modify_node"
                 data-branch-id={ann.branchId}
-                className="mm-ghost-diff-pill pointer-events-none text-[11px]"
+                className="mm-ghost-diff-pill pointer-events-none text-2xs"
                 style={{
                   left: ann.x,
                   top: ann.y - 28,
@@ -410,13 +432,13 @@ export const MindMapGhostProposalLayer: React.FC<MindMapGhostProposalLayerProps>
                 }}
               >
                 {ann.beforeText && (
-                  <span className="line-through opacity-75 text-[12px] truncate text-[var(--mm-ghost-remove-fg)] pointer-events-none">
+                  <span className="line-through opacity-75 text-xs truncate text-[var(--mm-ghost-remove-fg)] pointer-events-none">
                     {ann.beforeText}
                   </span>
                 )}
               </div>
               <div
-                className="mm-ghost-remove-badge pointer-events-none text-[11px]"
+                className="mm-ghost-remove-badge pointer-events-none text-2xs"
                 style={{
                   left: ann.x,
                   top: ann.y - 28,
@@ -433,7 +455,7 @@ export const MindMapGhostProposalLayer: React.FC<MindMapGhostProposalLayerProps>
                 />
                 <span className="font-medium">{t('mindmapGhost.removeBadge')}</span>
                 {subtreeCount > 1 && (
-                  <span className="font-mono tabular-nums text-[10px] opacity-85">
+                  <span className="font-mono tabular-nums text-2xs opacity-85">
                     {`· -${subtreeCount}`}
                   </span>
                 )}
@@ -464,7 +486,7 @@ export const MindMapGhostProposalLayer: React.FC<MindMapGhostProposalLayerProps>
             <div
               data-annotation-kind="move_branch"
               data-branch-id={ann.branchId}
-              className="mm-ghost-diff-pill pointer-events-none text-[11px]"
+              className="mm-ghost-diff-pill pointer-events-none text-2xs"
               style={{
                 left: ann.x,
                 top: ann.y - 28,

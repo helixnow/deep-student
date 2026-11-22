@@ -6,8 +6,10 @@
  */
 
 import React, { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { Z_INDEX } from '@/config/zIndex';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { UiPresence } from '@/components/ui/UiPresence';
@@ -79,7 +81,6 @@ const categoryIds: PresetCategory[] = ['mindmap', 'logic', 'orgchart'];
 
 const PresetItem: React.FC<PresetItemProps> = ({ preset, isActive, onClick }) => {
   const { t } = useTranslation('mindmap');
-  const isMindMapActive = useMindMapIsActive();
   const resolvedName = t(preset.name);
   return (
     <DsButton variant="ghost"
@@ -102,7 +103,7 @@ const PresetItem: React.FC<PresetItemProps> = ({ preset, isActive, onClick }) =>
         category={preset.category}
         direction={preset.layoutDirection}
         className={cn(
-          'transition-colors',
+          'transition-colors motion-reduce:transition-none',
           isActive
             ? 'text-primary'
             : 'text-muted-foreground'
@@ -180,9 +181,12 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
   const [internalOpen, setInternalOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
-  // 视口钳位：面板锚定触发按钮时的水平修正量（px）
-  const [clampOffset, setClampOffset] = useState(0);
-  const clampOffsetRef = useRef(0);
+  // Portal fixed 锚点定位（防止 <= 520px 工具栏横向滚动容器裁切弹出面板）
+  const [popoverPos, setPopoverPos] = useState<{
+    left: number;
+    top: number;
+    maxHeight: number;
+  } | null>(null);
 
   // 受控/非受控模式
   const isControlled = controlledOpen !== undefined;
@@ -269,18 +273,20 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
     }
   }, [isOpen, setIsOpen]);
 
-  // 处理键盘事件（仅面板打开时挂监听，避免常驻全局 keydown）
+  // 处理键盘事件（capture 阶段优先消费 Escape，避免透传触发外层演示/背诵退出）
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || isInline) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
+      event.preventDefault();
+      event.stopPropagation();
       setIsOpen(false);
       triggerRef.current?.querySelector<HTMLElement>('button')?.focus();
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, setIsOpen]);
+    document.addEventListener('keydown', handleKeyDown, true);
+    return () => document.removeEventListener('keydown', handleKeyDown, true);
+  }, [isInline, isOpen, setIsOpen]);
 
   useEffect(() => {
     if (!isOpen || isInline || !isMindMapActive) return;
@@ -290,55 +296,60 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
     }, BACK_PRIORITY.overlay);
   }, [isInline, isMindMapActive, isOpen, setIsOpen]);
 
-  // 视口钳位：锚定面板贴近窗口边缘时向内平移，防止右缘/左缘被裁切
-  // 用独立的 translate 属性修正，避免与 ui-zoom-fade-in 的 transform 动画互相覆盖
+  // Portal fixed 锚点定位与视口钳位：resize 与祖先滚动时实时重算，杜绝窄屏工具栏裁切
   useLayoutEffect(() => {
-    if (!isOpen || isInline) {
-      clampOffsetRef.current = 0;
-      setClampOffset(0);
-      return;
-    }
+    if (!isOpen || isInline) return;
     const measure = () => {
-      const el = panelRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
+      const triggerEl = triggerRef.current;
+      if (!triggerEl) return;
+      const rect = triggerEl.getBoundingClientRect();
       const margin = 8;
-      // 先扣掉上一次修正量，还原面板的自然锚定位置再重新计算
-      const naturalLeft = rect.left - clampOffsetRef.current;
-      const naturalRight = rect.right - clampOffsetRef.current;
-      let next = 0;
-      if (naturalRight > window.innerWidth - margin) {
-        next = window.innerWidth - margin - naturalRight;
-      }
-      if (naturalLeft + next < margin) {
-        next = margin - naturalLeft;
-      }
-      if (next !== clampOffsetRef.current) {
-        clampOffsetRef.current = next;
-        setClampOffset(next);
-      }
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, [isOpen, isInline]);
+      const gap = 8;
+      const panelWidth = panelRef.current?.offsetWidth || 296;
+      const panelHeight = panelRef.current?.offsetHeight || 0;
+      const isLeftAligned = placement === 'bottom-left' || placement === 'top-left';
+      const isTopAligned = placement === 'top-left' || placement === 'top-right';
 
-  // 计算面板位置样式
-  const getPlacementStyles = () => {
-    switch (placement) {
-      case 'bottom-left':
-        return 'top-full left-0 mt-2';
-      case 'top-left':
-        return 'bottom-full left-0 mb-2';
-      case 'top-right':
-        return 'bottom-full right-0 mb-2';
-      case 'inline':
-        return ''; // inline 模式不需要定位
-      case 'bottom-right':
-      default:
-        return 'top-full right-0 mt-2';
-    }
-  };
+      const rawLeft = isLeftAligned ? rect.left : rect.right - panelWidth;
+      const maxLeft = Math.max(margin, window.innerWidth - margin - panelWidth);
+      const left = Math.min(Math.max(rawLeft, margin), maxLeft);
+
+      let top: number;
+      let maxHeight: number;
+      if (isTopAligned) {
+        maxHeight = Math.max(160, Math.min(680, Math.floor(rect.top - gap - margin)));
+        const effectiveHeight = panelHeight > 0 ? Math.min(panelHeight, maxHeight) : maxHeight;
+        top = Math.max(margin, rect.top - gap - effectiveHeight);
+      } else {
+        const rawTop = rect.bottom + gap;
+        maxHeight = Math.max(160, Math.min(680, Math.floor(window.innerHeight - rawTop - margin)));
+        top = Math.min(Math.max(margin, rawTop), Math.max(margin, window.innerHeight - margin - 160));
+      }
+
+      setPopoverPos((prev) =>
+        prev && prev.left === left && prev.top === top && prev.maxHeight === maxHeight
+          ? prev
+          : { left, top, maxHeight },
+      );
+    };
+
+    const handleScroll = (event: Event) => {
+      if (panelRef.current && event.target instanceof Node && panelRef.current.contains(event.target)) {
+        return;
+      }
+      measure();
+    };
+
+    measure();
+    const frameId = requestAnimationFrame(measure);
+    window.addEventListener('resize', measure, { passive: true });
+    window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
+    return () => {
+      cancelAnimationFrame(frameId);
+      window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [isOpen, isInline, placement]);
 
   // 面板内容（共用）
   const panelContent = (
@@ -404,7 +415,7 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
             "relative [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2 [@media(pointer:coarse)]:after:content-['']",
             'bg-transparent border border-transparent',
             'hover:bg-[var(--mm-bg-hover)]',
-            'transition-colors duration-100',
+            'transition-colors duration-100 motion-reduce:transition-none',
             'text-sm text-[var(--mm-text-secondary)]',
             'focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--mm-primary)]',
             isOpen && 'bg-[var(--mm-bg-hover)] text-[var(--mm-text)]'
@@ -416,37 +427,44 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
           <span>{t('toolbar.structure')}</span>
           <CaretDown
             className={cn(
-              'w-4 h-4 text-[var(--mm-text-muted)] transition-transform duration-150',
+              'w-4 h-4 text-[var(--mm-text-muted)] transition-transform duration-150 motion-reduce:transition-none',
               isOpen && 'rotate-180'
             )}
           />
         </DsButton>
       )}
 
-      {/* 弹出面板（桌面锚定 popover；窄屏由外壳的 inline 子屏承载，不再走底部 sheet + 遮罩） */}
-      <UiPresence
-        open={isOpen}
-        inClass="ui-zoom-fade-in"
-        outClass="ui-zoom-fade-out"
-        exitMs={150}
-        className={cn(
-          'absolute z-50',
-          getPlacementStyles(),
-          'mm-settings-popover mm-structure-popover',
+      {/* 弹出面板（Portal + fixed 锚点定位，彻底免受 <= 520px 工具栏 overflow-x 裁切） */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <UiPresence
+            open={isOpen}
+            inClass="ui-zoom-fade-in"
+            outClass="ui-zoom-fade-out"
+            exitMs={150}
+            className="mindmap-container fixed mm-settings-popover mm-structure-popover"
+            style={{
+              zIndex: Z_INDEX.popover,
+              left: popoverPos?.left ?? 0,
+              top: popoverPos?.top ?? 0,
+              maxHeight: popoverPos ? `min(680px, ${popoverPos.maxHeight}px)` : undefined,
+              visibility: popoverPos ? 'visible' : 'hidden',
+            }}
+            data-testid="mm-structure-popover"
+          >
+            <CustomScrollArea
+              ref={panelRef}
+              className="h-full w-full"
+              viewportClassName="mm-settings-popover-viewport p-2"
+              role="dialog"
+              aria-label={t('structure.selectorLabel')}
+              fullHeight={false}
+            >
+              {panelContent}
+            </CustomScrollArea>
+          </UiPresence>,
+          document.body,
         )}
-        style={clampOffset !== 0 ? { translate: `${clampOffset}px 0` } : undefined}
-      >
-        <CustomScrollArea
-          ref={panelRef}
-          className="h-full w-full"
-          viewportClassName="mm-settings-popover-viewport p-2"
-          role="dialog"
-          aria-label={t('structure.selectorLabel')}
-          fullHeight={false}
-        >
-          {panelContent}
-        </CustomScrollArea>
-      </UiPresence>
     </div>
   );
 };

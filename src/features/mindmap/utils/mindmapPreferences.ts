@@ -22,39 +22,74 @@ type StoredMindMapPreferences = Omit<Partial<MindMapPreferences>, 'keymap'> & {
   keymap?: MindMapKeymap | 'mubu';
 };
 
-function readStored(): StoredMindMapPreferences {
+let cachedRaw: string | null | undefined;
+let cachedPreferences: MindMapPreferences | null = null;
+
+function invalidatePreferencesCache(): void {
+  cachedRaw = undefined;
+  cachedPreferences = null;
+}
+
+if (typeof globalThis.window !== 'undefined' && typeof globalThis.window.addEventListener === 'function') {
+  globalThis.window.addEventListener('storage', (event: StorageEvent) => {
+    if (event.key === STORAGE_KEY || event.key === null) {
+      invalidatePreferencesCache();
+    }
+  });
+}
+
+function parseStored(raw: string | null): StoredMindMapPreferences {
+  if (!raw) return {};
   try {
-    const raw = globalThis.localStorage?.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) as StoredMindMapPreferences : {};
+    return JSON.parse(raw) as StoredMindMapPreferences;
   } catch {
     return {};
   }
 }
 
 export function getMindMapPreferences(): MindMapPreferences {
-  const stored = readStored();
-  const migratedLegacyKeymap = stored.keymap === 'mubu';
-  const keymap = migratedLegacyKeymap ? 'classic' : DEFAULTS.keymap;
-  if (migratedLegacyKeymap) {
-    try {
-      globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify({ ...stored, keymap }));
-    } catch {
-      // The in-memory migration remains usable if storage is unavailable.
-    }
+  let raw: string | null = null;
+  try {
+    raw = globalThis.localStorage?.getItem(STORAGE_KEY) ?? null;
+  } catch {
+    raw = null;
   }
-  return {
+  if (cachedPreferences !== null && cachedRaw === raw) {
+    return cachedPreferences;
+  }
+  const stored = parseStored(raw);
+  const migratedLegacyKeymap = stored.keymap === 'mubu';
+  const keymap = stored.keymap === 'classic' || stored.keymap === 'mubu' ? 'classic' : DEFAULTS.keymap;
+  const normalized: MindMapPreferences = {
     keymap,
     canvasNavigation: stored.canvasNavigation === 'spatial' ? 'spatial' : DEFAULTS.canvasNavigation,
     descriptionPreview: stored.descriptionPreview === 'first-line' ? 'first-line' : DEFAULTS.descriptionPreview,
   };
+  let finalRaw = raw;
+  if (migratedLegacyKeymap) {
+    const migratedJson = JSON.stringify({ ...stored, keymap });
+    try {
+      globalThis.localStorage?.setItem(STORAGE_KEY, migratedJson);
+      finalRaw = migratedJson;
+    } catch {
+      // The in-memory migration remains usable if storage is unavailable.
+    }
+  }
+  cachedRaw = finalRaw;
+  cachedPreferences = normalized;
+  return normalized;
 }
 
 export function setMindMapPreferences(patch: Partial<MindMapPreferences>): void {
   const next = { ...getMindMapPreferences(), ...patch };
+  const serialized = JSON.stringify(next);
   try {
-    globalThis.localStorage?.setItem(STORAGE_KEY, JSON.stringify(next));
+    globalThis.localStorage?.setItem(STORAGE_KEY, serialized);
+    cachedRaw = serialized;
+    cachedPreferences = next;
   } catch {
     // Preferences remain usable for the current event even if storage is unavailable.
+    invalidatePreferencesCache();
   }
   globalThis.window?.dispatchEvent(new CustomEvent(CHANGE_EVENT));
 }

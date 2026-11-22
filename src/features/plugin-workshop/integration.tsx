@@ -178,6 +178,10 @@ export interface WorkshopIntegrationOptions {
   reportError: (message: string) => void;
   /** Translator for the composer sentence and the editing strip (defaults to the zh-CN wording). */
   translate?: Translate;
+  /** Read persisted Host-side storage entries and byte size for a plugin. */
+  storedData?: (pluginId: string) => Promise<{ readonly keys: readonly string[]; readonly bytes: number }>;
+  /** Clear persisted Host-side storage entries for a plugin. */
+  clearStoredData?: (pluginId: string) => Promise<number>;
 }
 
 const zhFallback: Translate = (key, options) => key === 'workshop.editPrompt'
@@ -185,7 +189,14 @@ const zhFallback: Translate = (key, options) => key === 'workshop.editPrompt'
   : key === 'workshop.editing' ? `正在修改：${String(options?.name ?? '')} v${String(options?.version ?? '')}` : key;
 
 /** Root composition passes this structural object to P2, and contributes toolResult under the paired UI owner. */
-export function createWorkshopIntegration({ adapter, sessions, reportError, translate = zhFallback }: WorkshopIntegrationOptions) {
+export function createWorkshopIntegration({
+  adapter,
+  sessions,
+  reportError,
+  translate = zhFallback,
+  storedData: customStoredData,
+  clearStoredData: customClearStoredData,
+}: WorkshopIntegrationOptions) {
   let entering = false;
   const managed = async (pluginId: string) => {
     const item = (await adapter.list()).find(entry => entry.id === pluginId);
@@ -246,6 +257,10 @@ export function createWorkshopIntegration({ adapter, sessions, reportError, tran
   /** Works waiting for the user (to confirm or to start); the manager opens 「工坊创作记录」 when there are any. */
   const pending = async () => (await adapter.list()).filter(entry => entry.phase === 'ready' || entry.phase === 'proposed')
     .map(entry => ({ pluginId: entry.id, name: entry.name, phase: entry.phase }));
+  const activePhases = new Set(['generating', 'editing', 'validating', 'installing']);
+  const hasActive = async () => (await adapter.list()).some(entry => activePhases.has(entry.phase));
+  const storedData = customStoredData ?? adapter.storedData;
+  const clearStoredData = customClearStoredData ?? adapter.clearStoredData;
   const onRestorePrevious = async (pluginId: string) => {
     const item = await managed(pluginId);
     if (!item.installed || !installedPhases.includes(item.installed.phase) || !item.installed.previousVersion) throw new Error('WORKSHOP_STATE: no successful version retained');
@@ -276,7 +291,9 @@ export function createWorkshopIntegration({ adapter, sessions, reportError, tran
     when: props => Boolean(proposalId(props.toolOutput)),
   };
   return {
-    workshop: { onCreate, ...(sessions.submit ? { onSubmit: (prompt: string) => enter(undefined, prompt, true) } : {}), onModify, onRollback, works, pending, onRestorePrevious, onUninstall, onExport, describeError,
+    workshop: { onCreate, ...(sessions.submit ? { onSubmit: (prompt: string) => enter(undefined, prompt, true) } : {}), onModify, onRollback, works, pending, hasActive,
+      ...(storedData ? { storedData } : {}), ...(clearStoredData ? { clearStoredData } : {}),
+      onRestorePrevious, onUninstall, onExport, describeError,
       ...(onReveal ? { onReveal } : {}), creations: <Creations adapter={adapter} modify={onModify} />,
       allCreations: <Creations adapter={adapter} modify={onModify} includeInstalled /> },
     toolResult,

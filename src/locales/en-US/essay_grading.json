@@ -44,7 +44,9 @@
     "error_tag": "Error",
     "replace_prompt": "Fix the problem in this sentence:\n{{text}}",
     "error_prompt": "Find and fix the error in:\n{{text}}",
+    "error_answer": "{{type}}: {{explanation}}",
     "saved": "Saved {{count}} error(s) to \"Essay mistakes\" for practice and review",
+    "already_saved": "These errors are already in \"Essay mistakes\"",
     "none": "No errors or rewrites to save from this grading",
     "failed": "Failed to save to mistake book",
     "open": "Practice"

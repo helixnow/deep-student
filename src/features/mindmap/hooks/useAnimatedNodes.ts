@@ -112,6 +112,7 @@ export function useAnimatedNodes<NodeType extends Node = Node>(
   const [animatedNodes, setAnimatedNodes] = useState<NodeType[]>(nodes);
 
   const displayRef = useRef<NodeType[]>(nodes);
+  const committedRef = useRef<NodeType[]>(nodes);
   const targetsRef = useRef<NodeType[]>(nodes);
   const animatingRef = useRef<Map<string, AnimEntry>>(new Map());
   const startTimeRef = useRef<number | null>(null);
@@ -173,6 +174,7 @@ export function useAnimatedNodes<NodeType extends Node = Node>(
 
   const commit = (next: NodeType[]) => {
     displayRef.current = next;
+    committedRef.current = next;
     setAnimatedNodes(next);
   };
 
@@ -267,9 +269,7 @@ export function useAnimatedNodes<NodeType extends Node = Node>(
       animatingRef.current.clear();
       spawnUntilRef.current.clear();
       clearSpawnTimer();
-      if (displayRef.current !== nodes) {
-        commit(nodes);
-      }
+      displayRef.current = nodes;
       return;
     }
 
@@ -279,15 +279,18 @@ export function useAnimatedNodes<NodeType extends Node = Node>(
     let needsAnimation = false;
     let spawnsAdded = false;
 
-    // 清理已删除节点的动画/入场状态
-    for (const id of [...animating.keys()]) {
-      if (!nodes.some((n) => n.id === id)) {
-        animating.delete(id);
+    // 清理已删除节点的动画/入场状态（Set O(1) 查找替代 nodes.some O(N²)）
+    if (animating.size > 0 || spawns.size > 0) {
+      const activeNodeIds = new Set(nodes.map((n) => n.id));
+      for (const id of [...animating.keys()]) {
+        if (!activeNodeIds.has(id)) {
+          animating.delete(id);
+        }
       }
-    }
-    for (const id of [...spawns.keys()]) {
-      if (!nodes.some((n) => n.id === id)) {
-        spawns.delete(id);
+      for (const id of [...spawns.keys()]) {
+        if (!activeNodeIds.has(id)) {
+          spawns.delete(id);
+        }
       }
     }
 
@@ -337,8 +340,10 @@ export function useAnimatedNodes<NodeType extends Node = Node>(
       cancelRaf();
       // 非位置字段（selected / data / className）仍可能变：对齐到目标引用
       const decorated = decorateSpawns(nodes);
-      if (displayRef.current !== decorated) {
+      if (committedRef.current !== decorated) {
         commit(decorated);
+      } else {
+        displayRef.current = decorated;
       }
       return;
     }

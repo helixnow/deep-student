@@ -29,8 +29,13 @@ import { useTranslation } from 'react-i18next';
 import { DotsSixVertical } from '@phosphor-icons/react';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { getAppKernel } from '@/ui-kernel/bootstrap';
+import { useOptionalSlot, useOptionalUiKernel } from '@/ui-kernel/react';
+import { SlotEntryScope, runSlotCallback } from '@/ui-kernel/outlet';
+import type { PdfSelectionToolbarContribution } from '@/ui-kernel/contracts/surfaces';
+import type { SlotEntry } from '@/ui-kernel/slots';
 import { cn } from '@/utils/cn';
 import { SelectionToolbar, useTextSelection, type TextSelectionState } from '@/shared/selection';
+import type { SelectionToolbarExtraAction } from '@/shared/selection/SelectionToolbar';
 import type { SelectionSourceKind } from '@/features/chat/context/selectionRef';
 import '../styles/selection-panel.css';
 import { SaveAsNoteFolderPicker, truncateNoteTitle, useSaveAsNoteFlow } from '@/shared/notes';
@@ -279,11 +284,54 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
       });
       return;
     }
-    // 页码不可得时的降级：至少保留文档名做来源
+    // EPUB / 富文档等无 PDF 页码场景：消费 resolveFallbackLocator 写入章节溯源与 _origin
+    const fallbackLocator = resolveFallbackLocator?.()?.trim() || undefined;
+    if (fallbackLocator || selectionSourceId) {
+      const compactTitle = truncateNoteTitle(text, 30);
+      const chapterMatch = fallbackLocator ? /^chapter:(\d+)$/i.exec(fallbackLocator) : null;
+      const sourceLabel = documentTitle
+        ? chapterMatch
+          ? t('pdf:selection.epub_chapter_source', {
+              defaultValue: '—— 摘自《{{name}}》第 {{chapter}} 章',
+              name: documentTitle,
+              chapter: chapterMatch[1],
+            })
+          : fallbackLocator
+            ? t('pdf:selection.locator_source', {
+                defaultValue: '—— 摘自《{{name}}》（{{locator}}）',
+                name: documentTitle,
+                locator: fallbackLocator,
+              })
+            : `—— ${documentTitle}`
+        : fallbackLocator
+          ? `—— ${fallbackLocator}`
+          : undefined;
+      startSaveAsNote({
+        content: sourceLabel
+          ? buildSelectionNoteContent({ text, sourceLabel })
+          : documentTitle
+            ? `> ${documentTitle}\n\n${text}`
+            : text,
+        ...(compactTitle || documentTitle ? { title: compactTitle || documentTitle } : {}),
+        ...(selectionSourceId
+          ? {
+              origin: {
+                kind: 'resource' as const,
+                resourceId: selectionSourceId,
+                ...(fallbackLocator ? { locator: fallbackLocator } : {}),
+                title: documentTitle,
+                quote: text.slice(0, 120),
+              },
+            }
+          : {}),
+      });
+      return;
+    }
+    // 页码与回退定位均不可得时的降级：至少保留文档名做来源
     startSaveAsNote({
       content: documentTitle ? `> ${documentTitle}\n\n${text}` : text,
     });
-  }, [normalizeText, startSaveAsNote, documentTitle, resolveSelectionPage, t, selectionSourceId]);
+  }, [normalizeText, startSaveAsNote, documentTitle, resolveSelectionPage, resolveFallbackLocator, t, selectionSourceId]);
 
   const handleMakeCards = useCallback((rawText: string) => {
     const text = normalizeText(rawText);
@@ -485,6 +533,63 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
 
   useEffect(() => handleExcerptDragEnd, [handleExcerptDragEnd, interopResourceId]);
 
+  const kernel = useOptionalUiKernel();
+  const pdfToolbarEntries = useOptionalSlot('pdf.selectionToolbar');
+  const reportedPdfToolbarErrorsRef = useRef(new WeakSet<SlotEntry<unknown>>());
+  const failedPdfToolbarFilters: Array<{ entry: SlotEntry<PdfSelectionToolbarContribution>; error: unknown }> = [];
+  const visiblePdfToolbarEntries = (pdfToolbarEntries ?? []).filter((entry) => {
+    try {
+      return !entry.value.kinds || entry.value.kinds.includes(selectionKind);
+    } catch (error) {
+      failedPdfToolbarFilters.push({ entry, error });
+      return false;
+    }
+  });
+  useEffect(() => {
+    for (const { entry, error } of failedPdfToolbarFilters) {
+      if (reportedPdfToolbarErrorsRef.current.has(entry)) continue;
+      reportedPdfToolbarErrorsRef.current.add(entry);
+      kernel?.errors.report({
+        pluginId: entry.owner,
+        origin: entry.origin,
+        version: entry.version,
+        phase: 'filter',
+        slot: 'pdf.selectionToolbar',
+        entryId: entry.id,
+        error,
+      });
+    }
+  });
+  const contributedExtraActions: SelectionToolbarExtraAction[] = visiblePdfToolbarEntries.map((entry) => {
+    const Icon = entry.value.icon;
+    return {
+      key: `${entry.owner}:${entry.id}`,
+      label: entry.value.label,
+      hideLabelOnTouch: Boolean(Icon),
+      icon: Icon
+        ? ({ touchTarget }) => (
+            <SlotEntryScope slot="pdf.selectionToolbar" entry={entry}>
+              <Icon size={touchTarget ? 16 : 14} />
+            </SlotEntryScope>
+          )
+        : null,
+      run: (rawText) => {
+        const page = resolveSelectionPage();
+        runSlotCallback(kernel, 'pdf.selectionToolbar', entry, () =>
+          entry.value.run({
+            text: normalizeText(rawText),
+            contextBefore: selection.contextBefore,
+            contextAfter: selection.contextAfter,
+            ...(page !== undefined ? { page } : {}),
+            ...(selectionSourceId ? { resourceId: selectionSourceId } : {}),
+            ...(documentTitle ? { documentTitle } : {}),
+            kind: selectionKind,
+          })
+        );
+      },
+    };
+  });
+
   if (!enabled) return null;
 
   return (
@@ -501,6 +606,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
         onMakeCards={handleMakeCards}
         onAddToChat={handleAddToChat}
         onAddAsContext={undefined}
+        extraActions={contributedExtraActions}
         hideUnavailableActions
         placement="below"
         viewportBottomInset={isMobileLike ? MOBILE_BOTTOM_INSET_PX : 0}

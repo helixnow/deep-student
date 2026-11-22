@@ -127,4 +127,44 @@ describe('QuestionInlineEditor source trigger', () => {
       }),
     );
   });
+
+  it('allows marking a newly created question as a mistake and creating its FSRS review plan', async () => {
+    state.invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'qbank_create_question') {
+        return { id: 'q_new_1', content: '新错题', question_type: 'single_choice', tags: [], status: 'new' };
+      }
+      return undefined;
+    });
+    const onCreate = vi.fn(async () => undefined);
+    render(
+      <QuestionInlineEditor
+        mode="create"
+        examId="exam_1"
+        question={null}
+        onCreate={onCreate}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/题干|题目内容|content/i), {
+      target: { value: '新错题' },
+    });
+    const checkbox = screen.getByTestId('inline-editor-mark-mistake').querySelector('input[type="checkbox"]')!;
+    fireEvent.click(checkbox);
+    fireEvent.click(screen.getByRole('button', { name: /创建题目|保存/i }));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledTimes(1));
+    expect(state.invokeMock).toHaveBeenCalledWith('qbank_update_question', {
+      request: {
+        question_id: 'q_new_1',
+        params: { status: 'review' },
+        record_history: false,
+      },
+    });
+    expect(state.invokeMock).toHaveBeenCalledWith('review_plan_create', {
+      questionId: 'q_new_1',
+      examId: 'exam_1',
+    });
+    expect(onCreate.mock.calls[0][0].status).toBe('review');
+  });
 });

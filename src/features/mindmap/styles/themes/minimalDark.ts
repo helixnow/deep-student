@@ -47,6 +47,7 @@ export const minimalDarkTheme: IStyleTheme = {
     strokeWidth: 1.35,
   },
   palette: MINIMAL_DARK_PALETTE,
+  useBranchPalette: false,
   canvas: {
     background: '#121316',
   },

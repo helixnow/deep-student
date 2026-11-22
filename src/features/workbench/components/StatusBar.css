@@ -29,6 +29,7 @@
  * 液态玻璃顶条：与桌面日历小组件（wb-glass + wb-glass-highlight）同材质。
  * 玻璃放在 ::before 而非本体——本体一旦挂 backdrop-filter 会成为后代的
  * backdrop root，学习中心弹层的毛玻璃将采样不到顶栏后面的内容（变纯透明）。
+ * Tahoe / macOS 27 通透顶栏：柔化底缘边界，使壁纸自然延展至顶部。
  */
 .wb-menubar::before {
   content: '';
@@ -37,12 +38,18 @@
   z-index: -1;
   pointer-events: none;
   background-color: var(--wb-menubar-bg, transparent);
-  background-image: var(--wb-menubar-sheen, none);
+  background-image:
+    linear-gradient(
+      180deg,
+      color-mix(in hsl, hsl(var(--background)) 10%, transparent 90%) 0%,
+      transparent 100%
+    ),
+    var(--wb-menubar-sheen, none);
   -webkit-backdrop-filter: var(--wb-menubar-blur, none);
   backdrop-filter: var(--wb-menubar-blur, none);
 }
 
-/* 底缘 1px specular 高光：对应 wb-glass-highlight 顶缘高光的顶条版本 */
+/* 底缘极柔 specular 微光：弱化分界线感，壁纸在顶栏背后自然延展 */
 .wb-menubar::after {
   content: '';
   position: absolute;
@@ -51,11 +58,12 @@
   bottom: -1px;
   height: 1px;
   pointer-events: none;
+  opacity: 0.42;
   background: linear-gradient(
     90deg,
     transparent 0%,
-    var(--wb-glass-highlight) 16%,
-    var(--wb-glass-highlight) 84%,
+    var(--wb-glass-highlight) 24%,
+    var(--wb-glass-highlight) 76%,
     transparent 100%
   );
 }
@@ -477,7 +485,16 @@
   background: transparent;
 }
 
-/* ==== 今日节律弹层 ======================================== */
+/* ==== 控制中心 + 今日节律弹层 ======================================== */
+
+/* 单一共享外部点击关闭层：位于 .wb-menubar（9050）之下，不阻挡菜单触发器横滑 pointerenter */
+.wb-menubar-dismiss-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--wb-z-menubar, 9050) - 1);
+  background: transparent;
+  pointer-events: auto;
+}
 
 .wb-menubar-flyout-backdrop {
   position: fixed;
@@ -504,6 +521,213 @@
   transform-origin: calc(100% - 20px) top;
   animation: wb-kf-overshoot-in var(--wb-motion-quick, 150ms)
     var(--wb-ease-overshoot, cubic-bezier(0.34, 1.28, 0.64, 1)) both;
+}
+
+.wb-menubar-cc-flyout {
+  width: min(324px, calc(100vw - 24px));
+}
+
+/* macOS 27 控制中心顶部 2×2 快捷玻璃磁贴 */
+.wb-cc-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.wb-menubar-cc-flyout .wb-cc-tile {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  width: 100%;
+  min-height: 52px;
+  height: auto;
+  padding: 9px 10px;
+  margin: 0;
+  border: 1px solid
+    color-mix(in hsl, var(--wb-glass-border, hsl(var(--border))) 55%, transparent 45%);
+  border-radius: var(--wb-radius-md, 12px);
+  background: color-mix(in hsl, hsl(var(--card)) 42%, transparent 58%);
+  box-shadow: inset 0 1px 0
+    color-mix(in srgb, var(--wb-glass-rim, rgb(255 255 255 / 50%)) 55%, transparent 45%);
+  color: inherit;
+  text-align: left;
+  white-space: normal;
+  transition:
+    background-color var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out),
+    border-color var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out),
+    transform var(--wb-press-duration, 90ms) var(--wb-press-ease, ease-in);
+}
+
+.wb-menubar-cc-flyout .wb-cc-tile:hover {
+  background: var(--wb-menubar-item-hover-bg, var(--interactive-hover, rgb(0 0 0 / 8%)));
+}
+
+.wb-menubar-cc-flyout .wb-cc-tile:active {
+  transform: scale(0.97);
+}
+
+.wb-menubar-cc-flyout .wb-cc-tile[data-active='true'] {
+  border-color: color-mix(in hsl, hsl(var(--primary)) 40%, hsl(var(--border)) 60%);
+  background: color-mix(in hsl, hsl(var(--primary)) 13%, hsl(var(--card)) 46%);
+}
+
+.wb-menubar-cc-flyout .wb-cc-tile[data-active='true']:hover {
+  background: color-mix(in hsl, hsl(var(--primary)) 19%, hsl(var(--card)) 48%);
+}
+
+.wb-cc-tile-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  background: color-mix(in hsl, hsl(var(--foreground)) 9%, transparent 91%);
+  color: var(--wb-menubar-fg-strong, hsl(var(--foreground)));
+  transition:
+    background-color var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out),
+    color var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out);
+}
+
+.wb-cc-tile[data-active='true'] .wb-cc-tile-badge {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.wb-cc-tile-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.2;
+}
+
+.wb-cc-tile-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--wb-menubar-fg-strong, hsl(var(--foreground)));
+}
+
+.wb-cc-tile-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  font-weight: 400;
+  color: var(--wb-menubar-fg, hsl(var(--muted-foreground)));
+}
+
+/* macOS 27 Liquid Glass 连续通透度滑块卡片 */
+.wb-cc-clarity {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 11px;
+  border: 1px solid
+    color-mix(in hsl, var(--wb-glass-border, hsl(var(--border))) 55%, transparent 45%);
+  border-radius: var(--wb-radius-md, 12px);
+  background: color-mix(in hsl, hsl(var(--card)) 42%, transparent 58%);
+  box-shadow: inset 0 1px 0
+    color-mix(in srgb, var(--wb-glass-rim, rgb(255 255 255 / 50%)) 55%, transparent 45%);
+}
+
+.wb-cc-clarity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wb-cc-clarity-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--wb-menubar-fg-strong, hsl(var(--foreground)));
+}
+
+.wb-cc-clarity-value {
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  color: var(--wb-menubar-fg, hsl(var(--muted-foreground)));
+}
+
+.wb-cc-clarity-track {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wb-cc-clarity-icon {
+  flex-shrink: 0;
+  color: var(--wb-menubar-fg, hsl(var(--muted-foreground)));
+  opacity: 0.86;
+}
+
+.wb-cc-clarity-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--primary) / 86%) 0%,
+    hsl(var(--primary) / 86%) var(--wb-slider-pct, 55%),
+    color-mix(in hsl, hsl(var(--foreground)) 12%, transparent 88%) var(--wb-slider-pct, 55%),
+    color-mix(in hsl, hsl(var(--foreground)) 12%, transparent 88%) 100%
+  );
+  box-shadow: inset 0 0 0 1px
+    color-mix(in hsl, var(--wb-glass-border, hsl(var(--border))) 55%, transparent 45%);
+}
+
+.wb-cc-clarity-slider:focus-visible {
+  outline: var(--wb-focus-ring-width, 2px) solid
+    var(--wb-focus-ring-color, hsl(var(--primary) / 85%));
+  outline-offset: 2px;
+}
+
+.wb-cc-clarity-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  border: 1px solid rgb(255 255 255 / 78%);
+  background: rgb(255 255 255 / 96%);
+  box-shadow:
+    0 2px 6px rgb(0 0 0 / 22%),
+    inset 0 1px 0 rgb(255 255 255 / 95%);
+  transition: transform var(--wb-press-duration, 90ms) var(--wb-press-ease, ease-in);
+}
+
+.wb-cc-clarity-slider:active::-webkit-slider-thumb {
+  transform: scale(1.06);
+}
+
+.wb-cc-clarity-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  border: 1px solid rgb(255 255 255 / 78%);
+  background: rgb(255 255 255 / 96%);
+  box-shadow:
+    0 2px 6px rgb(0 0 0 / 22%),
+    inset 0 1px 0 rgb(255 255 255 / 95%);
 }
 
 /* 离场：~90ms 加速淡出（macOS 菜单消失近乎瞬时；data-phase 由 StatusBar 相位机挂） */
@@ -610,6 +834,10 @@
 
 :root[data-wb-material='minimal'] .wb-menubar-item,
 :root[data-wb-material='reduced'] .wb-menubar-item,
+:root[data-wb-material='minimal'] .wb-cc-tile,
+:root[data-wb-material='reduced'] .wb-cc-tile,
+:root[data-wb-material='minimal'] .wb-cc-tile-badge,
+:root[data-wb-material='reduced'] .wb-cc-tile-badge,
 :root[data-wb-material='minimal'] .wb-menubar-rhythm-row,
 :root[data-wb-material='reduced'] .wb-menubar-rhythm-row,
 :root[data-wb-material='minimal'] .wb-menubar-agenda-item,
@@ -626,6 +854,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .wb-menubar-item,
+  .wb-cc-tile,
+  .wb-cc-tile-badge,
   .wb-menubar-rhythm-row,
   .wb-menubar-agenda-item,
   .wb-menubar[data-autohide='true'] {
@@ -659,17 +889,22 @@
 
 /* ==== 触屏命中区（pointer: coarse） ====================================== */
 
-/* 菜单栏项受 26px 桌面壳顶栏约束，不硬叠 44 视觉：伪元素纵向外扩到 40px
-   顶栏满高（再高会盖到其下窗口内容）；横向不扩，避免相邻项命中互相重叠 */
 @media (pointer: coarse) {
+  :root,
+  [data-wb-workbench-root] {
+    --wb-menubar-height: 48px;
+  }
+
   .wb-menubar-item {
     position: relative;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .wb-menubar-item::after {
     content: '';
     position: absolute;
-    inset: -7px 0;
+    inset: -2px 0;
   }
 
   /* Windows 窗控三键同款伪元素外扩（26px 视觉不变） */
@@ -695,6 +930,10 @@
 
   /* 空态「创建待办」钮 14px padding + 单行文字约 43px 边缘值，补稳到 44px */
   .wb-menubar-agenda-empty-action {
+    min-height: 44px;
+  }
+
+  .wb-cc-clarity-track {
     min-height: 44px;
   }
 }

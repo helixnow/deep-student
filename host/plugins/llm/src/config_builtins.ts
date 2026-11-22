@@ -47,7 +47,7 @@ function builtinModelToProfile(model: BuiltinModelDef): ModelProfile {
   return {
     id: model.id, vendorId: model.vendorId, label: model.label, model: model.model,
     providerScope: vendor?.providerType ?? 'openai', apiProtocol: null, modelAdapter: adapter,
-    isMultimodal: model.isMultimodal, isReasoning: model.isReasoning, isEmbedding: false,
+    isMultimodal: model.isMultimodal, isReasoning: model.isReasoning, isEmbedding: model.isEmbedding === true,
     isReranker: false, isImageGeneration: false, supportsTools: model.supportsTools,
     supportsReasoning: model.isReasoning, status: 'enabled', enabled: true,
     maxOutputTokens: model.maxOutputTokens, temperature: model.temperature,

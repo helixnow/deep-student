@@ -40,10 +40,12 @@ vi.mock('@/features/notes/noteRelations', () => ({
   isNoteRelationUsable: () => true,
   noteRelationsService: { list: async () => [], put: vi.fn(), delete: vi.fn(), referenceStatus: vi.fn() },
 }));
-vi.mock('@/hooks/useBreakpoint', () => ({ useIsMobile: () => false }));
+vi.mock('@/hooks/useBreakpoint', () => ({
+  useIsMobile: () => false,
+  useBreakpoint: () => ({ isSmallScreen: false, isMobile: false, isTablet: false, isDesktop: true }),
+}));
 vi.mock('@/components/layout', () => ({ useMobileSubviewChrome: () => false }));
 vi.mock('@/features/notes/NotesContextPanel', () => ({ NotesContextPanel: () => null }));
-vi.mock('@/features/notes/NotesContext', () => ({ useNotesOptional: () => undefined }));
 vi.mock('@/hooks/useTauriDragAndDrop', () => ({ useTauriDragAndDrop: () => ({ isDragging: false }) }));
 vi.mock('@/features/notes/components/MobileEditorToolbar', () => ({ MobileEditorToolbar: () => null }));
 vi.mock('@/features/generative-ui/components/GenerativeUIPanel', () => ({ GenerativeUIPanel: () => null }));

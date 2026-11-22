@@ -28,8 +28,10 @@ import {
   TreeStructure,
   Cards,
   NotePencil,
+  Translate,
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { getAppKernel } from '@/ui-kernel/bootstrap';
 import type { AnchorEdgeRecord, AnchorEdgeSourceKind } from '@/ui-kernel/contracts/interop';
 import { DsButton } from '@/components/ui/DsButton';
@@ -90,22 +92,30 @@ const CueBacklinkPill = memo(function CueBacklinkPill({ summary }: { summary: An
   const rootRef = useRef<HTMLDivElement | null>(null);
   const parts = backlinkCountParts(summary);
 
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      if (rootRef.current && event.target instanceof Node && rootRef.current.contains(event.target)) return;
-      setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown, true);
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown, true);
-      window.removeEventListener('keydown', onKeyDown, true);
-    };
-  }, [open]);
+  useEventRegistry(
+    open
+      ? [
+          {
+            target: 'document',
+            type: 'pointerdown',
+            options: true,
+            listener: (event) => {
+              if (rootRef.current && event.target instanceof Node && rootRef.current.contains(event.target)) return;
+              setOpen(false);
+            },
+          },
+          {
+            target: 'window',
+            type: 'keydown',
+            options: true,
+            listener: (event) => {
+              if ((event as KeyboardEvent).key === 'Escape') setOpen(false);
+            },
+          },
+        ]
+      : [],
+    [open],
+  );
 
   const reveal = useCallback((edge: AnchorEdgeRecord) => {
     setOpen(false);
@@ -288,8 +298,11 @@ const TranscriptRow = memo(function TranscriptRow({
           style={{ backgroundColor: branchTint.accentColor }}
         />
       )}
-      <button
-        type="button"
+      {/* 使用 div[role="button"] + select-text：保持按钮语义与键盘可达，同时允许移动端长按选中字幕词句 */}
+      <div
+        role="button"
+        tabIndex={selecting && !selectable ? -1 : 0}
+        aria-disabled={selecting && !selectable ? true : undefined}
         onClick={(event) => {
           if (selecting) {
             if (selectable) onToggle(seg, event.shiftKey);
@@ -297,14 +310,23 @@ const TranscriptRow = memo(function TranscriptRow({
           }
           onSeek(seg);
         }}
-        disabled={selecting && !selectable}
+        onKeyDown={(event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          if (selecting && !selectable) return;
+          event.preventDefault();
+          if (selecting) {
+            onToggle(seg, event.shiftKey);
+          } else {
+            onSeek(seg);
+          }
+        }}
         aria-current={active ? 'true' : undefined}
         aria-pressed={selectable ? selected : undefined}
         aria-label={`${selecting
           ? t('learningHub:mediaTranscript.selectSegment', { time })
           : t('learningHub:mediaTranscript.seekTo', { time })}: ${failed ? t('learningHub:mediaTranscript.segmentFailed') : seg.text}`}
         className={cn(
-          'flex w-full items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-left',
+          'flex w-full cursor-pointer items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-left',
           '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:py-2.5',
           'transition-colors duration-150 motion-reduce:transition-none',
           'outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
@@ -313,7 +335,7 @@ const TranscriptRow = memo(function TranscriptRow({
             : active && !selecting
               ? 'bg-primary/[0.07] text-foreground font-medium rounded-lg'
               : 'hover:bg-foreground/[0.035]',
-          selecting && !selectable && 'opacity-50',
+          selecting && !selectable && 'pointer-events-none opacity-50',
         )}
       >
         {selecting ? (
@@ -323,7 +345,7 @@ const TranscriptRow = memo(function TranscriptRow({
         ) : null}
         <span
           className={cn(
-            'mt-px shrink-0 font-mono tabular-nums text-xs text-muted-foreground leading-5',
+            'mt-px shrink-0 select-none font-mono tabular-nums text-xs text-muted-foreground leading-5',
             active && 'text-primary font-medium',
           )}
         >
@@ -332,14 +354,14 @@ const TranscriptRow = memo(function TranscriptRow({
         <span
           data-cue-text=""
           className={cn(
-            'min-w-0 flex-1 break-words pr-6',
+            'min-w-0 flex-1 select-text break-words pr-6',
             TEXT_SIZE_CLASS[textSize],
             failed ? 'italic text-muted-foreground' : active ? 'text-foreground font-medium' : 'text-foreground/85',
           )}
         >
           {failed ? t('learningHub:mediaTranscript.segmentFailed') : highlight(seg.text, query)}
         </span>
-      </button>
+      </div>
       {!failed && !selecting && (
         <button
           type="button"
@@ -408,6 +430,10 @@ export interface TranscriptPanelProps {
   onQuoteSelection?: (segments: TranscriptSegment[]) => void;
   /** 选中段 → 制卡 */
   onMakeCardsFromSelection?: (segments: TranscriptSegment[]) => void;
+  /** 选中段/划词 → 查词翻译 */
+  onTranslateSelection?: (segments: TranscriptSegment[], selectedText?: string) => void;
+  /** 选中段/划词 → 时间戳笔记 */
+  onSaveNoteFromSelection?: (segments: TranscriptSegment[], selectedText?: string) => void;
   /** 跨插件互操作：拖拽引用与「划选即入图」 */
   interop?: TranscriptInteropOptions;
   /** 各段的反向链接汇总（key = 段 idx） */
@@ -435,6 +461,8 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
   className,
   onQuoteSelection,
   onMakeCardsFromSelection,
+  onTranslateSelection,
+  onSaveNoteFromSelection,
   interop,
   cueBacklinks,
   cueBranchTints,
@@ -442,7 +470,9 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
 }) => {
   const { t } = useTranslation(['learningHub']);
   const [query, setQuery] = useState('');
-  const canSelect = Boolean(onQuoteSelection || onMakeCardsFromSelection);
+  const canSelect = Boolean(
+    onQuoteSelection || onMakeCardsFromSelection || onTranslateSelection || onSaveNoteFromSelection,
+  );
   const [textSize, setTextSize] = useState<TranscriptTextSize>(readTextSize);
   const cycleTextSize = useCallback(() => {
     setTextSize((prev) => {
@@ -468,6 +498,11 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
     [displaySegments, query],
   );
   const searching = query.trim().length > 0;
+  const activeSegmentIdxRef = useRef(activeSegmentIdx);
+  activeSegmentIdxRef.current = activeSegmentIdx;
+  const searchingRef = useRef(searching);
+  searchingRef.current = searching;
+  const graceResumeTimerRef = useRef<number | null>(null);
   const doneCount = useMemo(
     () => segments.filter((s) => s.status === 'done').length,
     [segments],
@@ -500,10 +535,28 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
 
   const markUserScroll = useCallback(() => {
     lastUserScrollAtRef.current = Date.now();
-  }, []);
+    if (graceResumeTimerRef.current !== null) {
+      window.clearTimeout(graceResumeTimerRef.current);
+      graceResumeTimerRef.current = null;
+    }
+    graceResumeTimerRef.current = window.setTimeout(() => {
+      graceResumeTimerRef.current = null;
+      if (
+        !searchingRef.current &&
+        activeSegmentIdxRef.current >= 0 &&
+        Date.now() - lastUserScrollAtRef.current >= FOLLOW_PAUSE_AFTER_USER_SCROLL_MS
+      ) {
+        scrollRowIntoView(activeSegmentIdxRef.current, false);
+      }
+    }, FOLLOW_PAUSE_AFTER_USER_SCROLL_MS + 20);
+  }, [scrollRowIntoView]);
 
   const handleFollow = useCallback(() => {
     lastUserScrollAtRef.current = 0;
+    if (graceResumeTimerRef.current !== null) {
+      window.clearTimeout(graceResumeTimerRef.current);
+      graceResumeTimerRef.current = null;
+    }
     if (searching) setQuery('');
     // 清空搜索后行需要先渲染出来
     if (followRafRef.current !== null) window.cancelAnimationFrame(followRafRef.current);
@@ -515,6 +568,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
   const followRafRef = useRef<number | null>(null);
   useEffect(() => () => {
     if (followRafRef.current !== null) window.cancelAnimationFrame(followRafRef.current);
+    if (graceResumeTimerRef.current !== null) window.clearTimeout(graceResumeTimerRef.current);
   }, []);
 
   const copy = useCallback(
@@ -611,13 +665,76 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
   }, [interop, buildCuePayload]);
 
   const handleSeekRow = useCallback((seg: TranscriptSegment) => {
-    // 点选字幕即入图：有划选文本时让划选路径接管，避免同一手势送两次
+    // 移动端长按/桌面划选字幕词句时，不把抬手误判为点击跳转
     const domSelection = typeof window !== 'undefined' ? window.getSelection() : null;
     if (domSelection && !domSelection.isCollapsed && domSelection.toString().trim()
       && domSelection.anchorNode && listRef.current?.contains(domSelection.anchorNode)) return;
     onSeek(seg);
     emitAutoExcerpt([seg], seg.text);
   }, [onSeek, emitAutoExcerpt]);
+
+  // 原生文本选区（移动端长按选词 / 桌面划词）快捷操作条状态
+  const [nativeSelection, setNativeSelection] = useState<{
+    text: string;
+    segments: TranscriptSegment[];
+  } | null>(null);
+
+  const syncNativeSelection = useCallback(() => {
+    if (selecting || typeof window === 'undefined') {
+      setNativeSelection(null);
+      return;
+    }
+    const list = listRef.current;
+    const domSelection = window.getSelection();
+    if (!list || !domSelection || domSelection.isCollapsed || domSelection.rangeCount === 0) {
+      setNativeSelection(null);
+      return;
+    }
+    const text = domSelection.toString().trim();
+    if (!text) {
+      setNativeSelection(null);
+      return;
+    }
+    const range = domSelection.getRangeAt(0);
+    if (!list.contains(range.startContainer) || !list.contains(range.endContainer)) {
+      setNativeSelection(null);
+      return;
+    }
+    const idxOf = (node: Node) => {
+      const element = node instanceof Element ? node : node.parentElement;
+      if (!element?.closest('[data-cue-text]')) return null;
+      const raw = element.closest('[data-cue-index]')?.getAttribute('data-cue-index');
+      return raw === undefined || raw === null ? null : Number(raw);
+    };
+    const fromIdx = idxOf(range.startContainer);
+    const toIdx = idxOf(range.endContainer);
+    if (fromIdx === null || toIdx === null) {
+      setNativeSelection(null);
+      return;
+    }
+    const lo = Math.min(fromIdx, toIdx);
+    const hi = Math.max(fromIdx, toIdx);
+    const cues = displaySegments.filter((seg) => seg.status === 'done' && seg.idx >= lo && seg.idx <= hi);
+    if (cues.length === 0) {
+      setNativeSelection(null);
+      return;
+    }
+    setNativeSelection({ text, segments: cues });
+  }, [selecting, displaySegments]);
+
+  useEventRegistry(
+    [{ target: 'document', type: 'selectionchange', listener: syncNativeSelection }],
+    [syncNativeSelection],
+  );
+
+  const clearNativeSelection = useCallback(() => {
+    setNativeSelection(null);
+    try {
+      window.getSelection()?.removeAllRanges();
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const endOwnedDragRef = useRef<(() => void) | null>(null);
   const handleExcerptDragStart = useCallback((seg: TranscriptSegment, event: React.DragEvent<HTMLButtonElement>) => {
@@ -720,14 +837,14 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
         className,
       )}
     >
-      {/* 统一紧凑工具行：合并搜索框、段数统计与字号/选段/定位/复制操作，消除双行工具条叠加 */}
-      <div className="flex shrink-0 items-center gap-1.5 px-3 py-1.5 border-b border-border/25">
+      {/* 统一紧凑工具行：允许窄屏折行，确保 390px 触屏下搜索框不被右侧 44px 按钮压扁 */}
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border/25 px-3 py-1.5">
         {!hideTitle && (
           <h3 className="shrink-0 text-sm font-medium text-foreground">
             {t('learningHub:mediaTranscript.panelTitle')}
           </h3>
         )}
-        <div className="relative flex min-w-0 flex-1 items-center">
+        <div className="relative flex min-w-[160px] flex-1 items-center">
           <MagnifyingGlass
             size={13}
             className="pointer-events-none absolute left-2.5 text-muted-foreground"
@@ -763,66 +880,68 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
             </button>
           )}
         </div>
-        <span className="shrink-0 text-[11px] font-mono tabular-nums text-muted-foreground">
-          {searching
-            ? t('learningHub:mediaTranscript.searchResults', { count: visibleSegments.length })
-            : t('learningHub:mediaTranscript.segmentCount', { count: displaySegments.length })}
-        </span>
-        <DsButton
-          variant="ghost"
-          size="sm"
-          iconOnly
-          onClick={cycleTextSize}
-          aria-label={t('learningHub:mediaTranscript.textSize', { size: t(`learningHub:mediaTranscript.textSizeLabel.${textSize}`) })}
-          title={t('learningHub:mediaTranscript.textSize', { size: t(`learningHub:mediaTranscript.textSizeLabel.${textSize}`) })}
-          data-transcript-text-size={textSize}
-          className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-        >
-          <TextAa size={14} aria-hidden="true" />
-        </DsButton>
-        {canSelect && (
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <span className="shrink-0 text-[11px] font-mono tabular-nums text-muted-foreground">
+            {searching
+              ? t('learningHub:mediaTranscript.searchResults', { count: visibleSegments.length })
+              : t('learningHub:mediaTranscript.segmentCount', { count: displaySegments.length })}
+          </span>
           <DsButton
             variant="ghost"
             size="sm"
             iconOnly
-            onClick={() => (selecting ? exitSelecting() : setSelecting(true))}
-            disabled={!selecting && doneCount === 0}
-            aria-pressed={selecting}
-            aria-label={selecting ? t('learningHub:mediaTranscript.selectDone') : t('learningHub:mediaTranscript.selectMode')}
-            title={selecting ? t('learningHub:mediaTranscript.selectDone') : t('learningHub:mediaTranscript.selectMode')}
-            data-transcript-select-toggle=""
-            className={cn(
-              'h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
-              selecting && 'bg-primary/10 text-primary',
-            )}
+            onClick={cycleTextSize}
+            aria-label={t('learningHub:mediaTranscript.textSize', { size: t(`learningHub:mediaTranscript.textSizeLabel.${textSize}`) })}
+            title={t('learningHub:mediaTranscript.textSize', { size: t(`learningHub:mediaTranscript.textSizeLabel.${textSize}`) })}
+            data-transcript-text-size={textSize}
+            className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
           >
-            <ListChecks size={14} aria-hidden="true" />
+            <TextAa size={14} aria-hidden="true" />
           </DsButton>
-        )}
-        <DsButton
-          variant="ghost"
-          size="sm"
-          iconOnly
-          onClick={handleFollow}
-          disabled={activeSegmentIdx < 0}
-          aria-label={t('learningHub:mediaTranscript.follow')}
-          title={t('learningHub:mediaTranscript.follow')}
-          className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-        >
-          <Crosshair size={14} aria-hidden="true" />
-        </DsButton>
-        <DsButton
-          variant="ghost"
-          size="sm"
-          iconOnly
-          onClick={handleCopyAll}
-          disabled={doneCount === 0}
-          aria-label={t('learningHub:mediaTranscript.copyAll')}
-          title={t('learningHub:mediaTranscript.copyAll')}
-          className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-        >
-          <Copy size={14} aria-hidden="true" />
-        </DsButton>
+          {canSelect && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              iconOnly
+              onClick={() => (selecting ? exitSelecting() : setSelecting(true))}
+              disabled={!selecting && doneCount === 0}
+              aria-pressed={selecting}
+              aria-label={selecting ? t('learningHub:mediaTranscript.selectDone') : t('learningHub:mediaTranscript.selectMode')}
+              title={selecting ? t('learningHub:mediaTranscript.selectDone') : t('learningHub:mediaTranscript.selectMode')}
+              data-transcript-select-toggle=""
+              className={cn(
+                'h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
+                selecting && 'bg-primary/10 text-primary',
+              )}
+            >
+              <ListChecks size={14} aria-hidden="true" />
+            </DsButton>
+          )}
+          <DsButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={handleFollow}
+            disabled={activeSegmentIdx < 0}
+            aria-label={t('learningHub:mediaTranscript.follow')}
+            title={t('learningHub:mediaTranscript.follow')}
+            className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+          >
+            <Crosshair size={14} aria-hidden="true" />
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={handleCopyAll}
+            disabled={doneCount === 0}
+            aria-label={t('learningHub:mediaTranscript.copyAll')}
+            title={t('learningHub:mediaTranscript.copyAll')}
+            className="h-7 w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+          >
+            <Copy size={14} aria-hidden="true" />
+          </DsButton>
+        </div>
       </div>
 
       {/* 状态条：进行中 / 部分完成 / 失败 */}
@@ -917,7 +1036,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
                 seg={seg}
                 active={seg.idx === activeSegmentIdx}
                 query={query}
-                onSeek={interop?.autoExcerptActive ? handleSeekRow : onSeek}
+                onSeek={handleSeekRow}
                 onCopy={handleCopySegment}
                 registerRow={registerRow}
                 selecting={selecting}
@@ -934,6 +1053,69 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
           </ul>
         )}
       </div>
+
+      {/* 移动端长按选词 / 桌面划词快捷操作条 */}
+      {!selecting && nativeSelection && (
+        <div
+          data-testid="transcript-text-selection-bar"
+          className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border/35 bg-background/95 px-3 py-2 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))] backdrop-blur-sm"
+          role="toolbar"
+          aria-label={t('learningHub:mediaTranscript.textSelectionToolbar', { defaultValue: '选中字幕操作' })}
+        >
+          <span className="mr-auto max-w-[140px] truncate text-xs text-muted-foreground">
+            {nativeSelection.text}
+          </span>
+          {onTranslateSelection && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                onTranslateSelection(nativeSelection.segments, nativeSelection.text);
+                clearNativeSelection();
+              }}
+              className="gap-1.5"
+            >
+              <Translate size={14} aria-hidden="true" />
+              {t('learningHub:mediaTranscript.translateSelection', { defaultValue: '查词翻译' })}
+            </DsButton>
+          )}
+          {onSaveNoteFromSelection && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                onSaveNoteFromSelection(nativeSelection.segments, nativeSelection.text);
+                clearNativeSelection();
+              }}
+              className="gap-1.5"
+            >
+              <NotePencil size={14} aria-hidden="true" />
+              {t('learningHub:mediaTranscript.timestampNote', { defaultValue: '时间戳笔记' })}
+            </DsButton>
+          )}
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              void copy(nativeSelection.text);
+              clearNativeSelection();
+            }}
+            className="gap-1.5"
+          >
+            <Copy size={14} aria-hidden="true" />
+            {t('common:actions.copy', { defaultValue: '复制' })}
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={clearNativeSelection}
+            aria-label={t('common:close', { defaultValue: '关闭' })}
+          >
+            <X size={14} aria-hidden="true" />
+          </DsButton>
+        </div>
+      )}
 
       {/* 选段操作条 */}
       {selecting && (
@@ -963,6 +1145,30 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
             >
               <ChatCircleText size={14} aria-hidden="true" />
               {t('learningHub:mediaTranscript.quoteSelection')}
+            </DsButton>
+          )}
+          {onTranslateSelection && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => runSelectionAction(onTranslateSelection)}
+              disabled={selectedSegments.length === 0}
+              className="gap-1.5"
+            >
+              <Translate size={14} aria-hidden="true" />
+              {t('learningHub:mediaTranscript.translateSelection', { defaultValue: '查词翻译' })}
+            </DsButton>
+          )}
+          {onSaveNoteFromSelection && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => runSelectionAction(onSaveNoteFromSelection)}
+              disabled={selectedSegments.length === 0}
+              className="gap-1.5"
+            >
+              <NotePencil size={14} aria-hidden="true" />
+              {t('learningHub:mediaTranscript.timestampNote', { defaultValue: '时间戳笔记' })}
             </DsButton>
           )}
           {onMakeCardsFromSelection && (

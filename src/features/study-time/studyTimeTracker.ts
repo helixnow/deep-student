@@ -13,6 +13,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { addTypedEventListener } from '@/events';
 
 import {
   STUDY_TICK_MS,
@@ -35,6 +36,8 @@ const ACTIVITY_EVENTS = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touc
 
 /** 上报完成后派发（热力图等可据此刷新） */
 export const STUDY_TIME_FLUSHED_EVENT = 'study-time:flushed';
+/** 专注态（如番茄钟工作计时）变更事件（避免跨 feature 深依赖） */
+export const STUDY_FOCUS_ACTIVE_EVENT = 'study-time:focus-active';
 
 type Reporter = (day: StudyDay) => Promise<unknown>;
 
@@ -47,6 +50,7 @@ let lastTick = 0;
 let lastActiveAt = 0;
 let ticksSinceFlush = 0;
 let explicitMediaPlaying = false;
+let explicitFocusActive = false;
 let wasVisible = false;
 let pending = new Map<string, number>();
 let flushChain: Promise<void> = Promise.resolve();
@@ -107,7 +111,7 @@ export function studyTimeTick(now: number = Date.now()): void {
 function recordStudyTimeTick(now: number, visible: boolean): void {
   const present = isPresent({
     visible,
-    mediaPlaying: isMediaPlaying(),
+    mediaPlaying: isMediaPlaying() || explicitFocusActive,
     now,
     lastActiveAt,
   });
@@ -142,11 +146,24 @@ function onMediaPlay(): void {
   markActive();
 }
 
+function onStudyFocusChange(event: Event): void {
+  const detail = (event as CustomEvent<{ active?: unknown }>).detail;
+  setStudyFocusActive(Boolean(detail?.active));
+}
+
 /** 播放器可显式上报播放态（可选；默认通过 DOM 中的媒体元素自动判定） */
 export function setStudyMediaPlaying(playing: boolean): void {
   explicitMediaPlaying = playing;
   if (playing) markActive();
 }
+
+/** 番茄钟工作专注态等可显式开启空闲豁免（仅页面可见时生效，绝不单独累加额外时长） */
+export function setStudyFocusActive(active: boolean): void {
+  explicitFocusActive = active;
+  if (active) markActive();
+}
+
+let studyTrackingCleanups: Array<() => void> = [];
 
 /** 启动追踪（应用级挂一次）。返回停止函数。 */
 export function startStudyTracking(options: { reporter?: Reporter } = {}): () => void {
@@ -157,13 +174,19 @@ export function startStudyTracking(options: { reporter?: Reporter } = {}): () =>
   lastActiveAt = Date.now();
   wasVisible = isVisible();
   ticksSinceFlush = 0;
-  for (const ev of ACTIVITY_EVENTS) {
-    window.addEventListener(ev, markActive, { passive: true, capture: true });
-  }
-  // media 事件不冒泡，但可在捕获阶段于 document 上收到
-  document.addEventListener('play', onMediaPlay, true);
-  document.addEventListener('visibilitychange', onVisibilityChange);
-  window.addEventListener('pagehide', onPageHide);
+  explicitFocusActive =
+    typeof globalThis !== 'undefined' &&
+    Boolean((globalThis as Record<string, unknown>).__dstuStudyFocusActive);
+  studyTrackingCleanups = [
+    ...ACTIVITY_EVENTS.map((ev) =>
+      addTypedEventListener(ev, () => markActive(), { passive: true, capture: true }),
+    ),
+    addTypedEventListener(STUDY_FOCUS_ACTIVE_EVENT, (_d, event) => onStudyFocusChange(event)),
+    // media 事件不冒泡，但可在捕获阶段于 document 上收到
+    addTypedEventListener('play', () => onMediaPlay(), true, 'document'),
+    addTypedEventListener('visibilitychange', () => onVisibilityChange(), undefined, 'document'),
+    addTypedEventListener('pagehide', () => onPageHide()),
+  ];
   timer = setInterval(() => studyTimeTick(), STUDY_TICK_MS);
   return stopStudyTracking;
 }
@@ -173,15 +196,14 @@ export function stopStudyTracking(): void {
   started = false;
   if (timer !== undefined) clearInterval(timer);
   timer = undefined;
-  for (const ev of ACTIVITY_EVENTS) {
-    window.removeEventListener(ev, markActive, { capture: true });
+  for (const cleanup of studyTrackingCleanups) {
+    cleanup();
   }
-  document.removeEventListener('play', onMediaPlay, true);
-  document.removeEventListener('visibilitychange', onVisibilityChange);
-  window.removeEventListener('pagehide', onPageHide);
+  studyTrackingCleanups = [];
   studyTimeTick();
   void flushStudyTime();
   explicitMediaPlaying = false;
+  explicitFocusActive = false;
 }
 
 /** 读取当日或指定本地日期尚未上报的内存累计秒数 */
@@ -218,6 +240,10 @@ export const __studyTimeTestHooks = {
     lastActiveAt = now;
     ticksSinceFlush = 0;
     explicitMediaPlaying = false;
+    explicitFocusActive = false;
+    if (typeof globalThis !== 'undefined') {
+      (globalThis as Record<string, unknown>).__dstuStudyFocusActive = false;
+    }
     flushChain = Promise.resolve();
   },
   markActive(at: number): void {

@@ -237,7 +237,7 @@ export const TodayScreen: React.FC = () => {
   const mobileChrome = useFlashcardsMobileChrome({
     title: t('sidebar:navigation.flashcards', '闪卡'),
     rightActions: <>
-      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('today.startReview')} disabled={loading || dueCards.length === 0} onClick={startDueSession}>
+      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('today.startReview')} disabled={loading || dueCards.length === 0} onClick={() => startDueSession()}>
         <Play size={20} />
       </DsButton>
     </>,
@@ -354,18 +354,17 @@ export const TodayScreen: React.FC = () => {
                 </div>
               </div>
               <div className="wb-fcx-hero-actions">
-                {!mobileChrome && (
                 <DsButton
                   type="button"
                   variant="primary"
                   disabled={loading || dueCards.length === 0}
-                  onClick={startDueSession}
+                  onClick={() => startDueSession()}
+                  data-testid="fc-today-start-review"
                   className="wb-fcx-cta [@media(pointer:coarse)]:!min-h-11"
                 >
                   <Play size={16} weight="fill" />
                   {t('today.startReview')}
                 </DsButton>
-                )}
                 {streak > 0 ? (
                   <span className="wb-fcx-chip" title={t('today.streakHint')}>
                     <Fire size={13} weight="fill" />
@@ -497,30 +496,46 @@ export const TodayScreen: React.FC = () => {
                   {dueCards.map((card) => (
                     <li
                       key={card.id}
-                      className="wb-fc-row transition-colors duration-150 hover:bg-foreground/[0.025] motion-reduce:transition-none"
+                      className="wb-fc-row group !p-0 transition-colors duration-150 hover:bg-foreground/[0.025] motion-reduce:transition-none"
                       data-agent-entity={`flashcards:${card.id}`}
                     >
-                      <div className="wb-fc-row-front flex items-center gap-2">
-                        <span
-                          aria-hidden="true"
-                          className={cn(
-                            'h-1.5 w-1.5 shrink-0 rounded-full',
-                            card.lastReviewMs === null ? 'bg-primary/80' : 'bg-emerald-500/80',
-                          )}
-                        />
-                        <span className="min-w-0 truncate">
-                          {cardDisplayFront(card)
-                            ? <CardMathText text={cardDisplayFront(card)} inline />
-                            : t('card.untitled')}
-                        </span>
-                      </div>
-                      {card.tags && card.tags.length > 0 ? (
-                        <div className="wb-fc-tags">
-                          {card.tags.slice(0, 4).map((tag, index) => (
-                            <span key={`${tag}-${index}`} className="wb-fc-tag">{tag}</span>
-                          ))}
+                      <DsButton
+                        type="button"
+                        variant="ghost"
+                        onClick={() => startDueSession(card.id)}
+                        data-testid={`fc-today-upnext-card-${card.id}`}
+                        className="!h-auto min-h-[44px] w-full justify-between gap-2 rounded-none border-0 px-3 py-2.5 text-left font-normal sm:px-3.5"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="wb-fc-row-front flex items-center gap-2">
+                            <span
+                              aria-hidden="true"
+                              className={cn(
+                                'h-1.5 w-1.5 shrink-0 rounded-full',
+                                card.lastReviewMs === null ? 'bg-primary/80' : 'bg-emerald-500/80',
+                              )}
+                            />
+                            <span className="min-w-0 truncate">
+                              {cardDisplayFront(card)
+                                ? <CardMathText text={cardDisplayFront(card)} inline />
+                                : t('card.untitled')}
+                            </span>
+                          </div>
+                          {card.tags && card.tags.length > 0 ? (
+                            <div className="wb-fc-tags">
+                              {card.tags.slice(0, 4).map((tag, index) => (
+                                <span key={`${tag}-${index}`} className="wb-fc-tag">{tag}</span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
-                      ) : null}
+                        <Play
+                          size={13}
+                          weight="fill"
+                          aria-hidden="true"
+                          className="shrink-0 text-muted-foreground/55 transition-colors group-hover:text-primary motion-reduce:transition-none"
+                        />
+                      </DsButton>
                     </li>
                   ))}
                 </ul>

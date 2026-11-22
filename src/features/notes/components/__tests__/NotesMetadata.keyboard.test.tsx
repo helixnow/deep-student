@@ -5,7 +5,6 @@ import { NotesEditorHeader } from '../NotesEditorHeader';
 import { NotesContextPanel } from '../../NotesContextPanel';
 
 const suggestions = vi.hoisted(() => ({ move: vi.fn(() => true), set: vi.fn() }));
-vi.mock('@/features/notes/NotesContext', () => ({ useNotesOptional: () => null }));
 vi.mock('@/features/notes/noteAppearance', () => ({
   NOTE_APPEARANCE_PRESETS: ['standard', 'compact', 'wide'], NOTE_APPEARANCE_ICONS: ['', '📚'], NOTE_ICON_GROUPS: [], ALL_NOTE_ICONS: ['📚'],
   useNoteAppearance: () => ({ value: { preset: 'standard', icon: '' }, update: vi.fn(), loading: false }),
@@ -89,5 +88,57 @@ describe.each([{ isComposing: true }, { keyCode: 229 }])('note metadata IME (%j)
     expect(panel).toHaveAttribute('data-state', 'open');
     fireEvent.keyDown(panel, { key: 'Escape' });
     await waitFor(() => expect(trigger).toHaveFocus());
+  });
+});
+
+describe('NotesContextPanel DOM order and sections isolation', () => {
+  const baseProps = {
+    noteId: 'note-order',
+    title: 'Note',
+    createdAt: Date.UTC(2026, 0, 1),
+    updatedAt: Date.UTC(2026, 0, 2),
+    tags: ['math'],
+    content: '# First Heading\n\n## Nested Heading',
+    beforeOutline: <div data-testid="custom-props">Custom Props</div>,
+    onTagsChange: vi.fn(async () => {}),
+  };
+
+  it('renders Outline before beforeOutline and Metadata/Tags in natural DOM order without CSS order inversion', () => {
+    const { container } = render(<NotesContextPanel {...baseProps} />);
+    expect(container.querySelector('.order-first')).toBeNull();
+    expect(container.querySelector('.order-last')).toBeNull();
+
+    const outlineEl = container.querySelector('.notes-context-outline');
+    const customPropsEl = screen.getByTestId('custom-props');
+    const metadataEl = container.querySelector('.notes-context-metadata');
+    expect(outlineEl).not.toBeNull();
+    expect(metadataEl).not.toBeNull();
+
+    expect(
+      outlineEl!.compareDocumentPosition(customPropsEl) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      customPropsEl.compareDocumentPosition(metadataEl!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('renders only the outline section when sections="outline"', () => {
+    const { container } = render(<NotesContextPanel {...baseProps} sections="outline" />);
+    expect(screen.getByRole('button', { name: 'First Heading' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Nested Heading' })).toBeInTheDocument();
+    expect(screen.queryByTestId('custom-props')).toBeNull();
+    expect(screen.queryByText('notes:context.tags')).toBeNull();
+    expect(screen.queryByText('notes:context.created')).toBeNull();
+    expect(container.querySelector('.notes-context-metadata')).toBeNull();
+  });
+
+  it('renders only beforeOutline and metadata/tags when sections="properties"', () => {
+    const { container } = render(<NotesContextPanel {...baseProps} sections="properties" />);
+    expect(screen.getByTestId('custom-props')).toBeInTheDocument();
+    expect(screen.getByText('notes:context.tags')).toBeInTheDocument();
+    expect(screen.getByText('math')).toBeInTheDocument();
+    expect(screen.queryByText('notes:context.outline')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'First Heading' })).toBeNull();
+    expect(container.querySelector('.notes-context-outline')).toBeNull();
   });
 });

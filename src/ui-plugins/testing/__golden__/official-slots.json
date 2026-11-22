@@ -439,9 +439,236 @@
   "debug.panels": [],
   "desktop.widgets": [],
   "editor.blockMenu": [],
-  "editor.extensions": [],
+  "editor.extensions": [
+   {
+    "id": "editor:automd",
+    "order": 10,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:search-highlight",
+    "order": 20,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:agent-highlight",
+    "order": 30,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:paste-link",
+    "order": 40,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:callout",
+    "order": 50,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:toggle",
+    "order": 60,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:wikilink",
+    "order": 70,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:mention",
+    "order": 80,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:image-lightbox",
+    "order": 90,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:link-keymap",
+    "order": 100,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:internal-link-schema",
+    "order": 110,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:pdf-ref",
+    "order": 120,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:media-ref",
+    "order": 130,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:columns",
+    "order": 140,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:block-identity",
+    "order": 150,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:block-selection",
+    "order": 160,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:typed-placeholder",
+    "order": 170,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:canonical-document",
+    "order": 180,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:command-execute",
+    "order": 190,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:command-bindings",
+    "order": 200,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:list-item-has-checked",
+    "order": 210,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:inline-cards",
+    "order": 220,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   },
+   {
+    "id": "editor:highlight",
+    "order": 230,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "create": "function"
+    }
+   }
+  ],
   "editor.selectionToolbar": [],
-  "editor.slashMenu": [],
+  "editor.slashMenu": [
+   {
+    "id": "slash:callout-toggle",
+    "order": 10,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "build": "function"
+    }
+   },
+   {
+    "id": "slash:editor-commands",
+    "order": 20,
+    "owner": "dstu.ui.editor",
+    "origin": "builtin",
+    "value": {
+     "build": "function"
+    }
+   }
+  ],
   "genui.components": [
    {
     "id": "genui:action-bar",

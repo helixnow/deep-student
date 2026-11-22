@@ -58,6 +58,7 @@ export interface NoteRepository {
   listNotesByFolder(folderId: string | null, limit: number, offset: number, conn?: SqlExecutor): VfsNote[];
   listDeletedNotes(limit: number, offset: number, conn?: SqlExecutor): VfsNote[];
   deleteNote(id: string, conn?: SqlExecutor): void;
+  deleteNoteIfVersion?(id: string, expectedUpdatedAt: string, conn?: SqlExecutor): void;
   deleteNoteWithFolderItem(id: string, conn?: SqlExecutor): void;
   restoreNote(id: string, conn?: SqlExecutor): void;
   purgeNote(id: string, conn?: SqlExecutor): void;

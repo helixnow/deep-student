@@ -22,6 +22,16 @@ export type FlashcardsScreen = 'today' | 'library' | 'settings' | 'session';
 
 export type FsrsRating = 1 | 2 | 3 | 4;
 
+/** 供跨模块监听者（如 todayLearningStore）同步首页待复习计数的 DOM 事件名。 */
+export const FSRS_DUE_REFRESH_EVENT = 'fsrs:due-refresh';
+
+function emitDueRefresh(): void {
+  requestFlashcardsDueRefresh();
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent(FSRS_DUE_REFRESH_EVENT));
+  }
+}
+
 const FSRS_DIAGNOSTIC_CARD_NOT_REVIEWABLE = 'fsrs_diagnostic_card_not_reviewable';
 
 /**
@@ -175,6 +185,8 @@ interface FsrsReviewState {
   retryBatchRequest: BatchReviewRequest | null;
   sessionRatedCount: number;
   sessionAgainCount: number;
+  /** 本轮评过「重来」(Again) 的卡片 stateId 列表（去重，供完成小结「再刷一遍遗忘卡 / 问 AI」） */
+  sessionAgainCardIds: string[];
   /** 本轮各评分（Again/Hard/Good/Easy）次数，供完成态分布图 */
   sessionRatingCounts: SessionRatingCounts;
   /** 当前连续非 Again 评分次数 */
@@ -211,8 +223,10 @@ interface FsrsReviewState {
   setScreen: (screen: FlashcardsScreen) => void;
   applyLaunchPayload: (payload: unknown) => void;
   loadDue: () => Promise<boolean>;
-  startDueSession: () => void;
+  startDueSession: (startCardId?: string) => void;
   startBatchSession: (cardIds: string[], cards?: ReviewCard[]) => Promise<boolean>;
+  /** 将本轮标记「重来」(Again) 的遗忘卡重新组成一轮巩固会话 */
+  startAgainCardsSession: () => Promise<boolean>;
   retryBatchSession: () => Promise<void>;
   /**
    * ACR R1-15：复习 session 进行中 append-only 入队。
@@ -247,6 +261,11 @@ interface FsrsReviewState {
     front: string,
     back: string,
     template?: ReviewEditTemplate | null,
+    options?: {
+      cardStateId?: string;
+      tags?: string[];
+      forceCloze?: boolean;
+    },
   ) => Promise<boolean>;
   suspendCurrent: () => Promise<boolean>;
   /** 埋藏当前卡到明天（Anki bury）；可用 resumeLastSuspended 取消。 */
@@ -709,7 +728,7 @@ async function hideCurrentCard(
       cardStateId: current.id,
     });
     if (get().sessionGeneration !== sessionGeneration) {
-      requestFlashcardsDueRefresh();
+      emitDueRefresh();
       return false;
     }
     if (!result || typeof result !== 'object') {
@@ -751,7 +770,7 @@ async function hideCurrentCard(
         errorKind: null,
       };
     });
-    requestFlashcardsDueRefresh();
+    emitDueRefresh();
     return true;
   } catch (error) {
     if (get().sessionGeneration !== sessionGeneration) return false;
@@ -788,6 +807,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   retryBatchRequest: null,
   sessionRatedCount: 0,
   sessionAgainCount: 0,
+  sessionAgainCardIds: [],
   sessionRatingCounts: emptyRatingCounts(),
   sessionStreak: 0,
   sessionBestStreak: 0,
@@ -871,7 +891,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
     }
   },
 
-  startDueSession: () => {
+  startDueSession: (startCardId) => {
     const { dueCards, error } = get();
     if (error) return;
     set((state) => ({
@@ -895,6 +915,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         lastSuspended: null,
         sessionRatedCount: 0,
         sessionAgainCount: 0,
+        sessionAgainCardIds: [],
         sessionRatingCounts: emptyRatingCounts(),
         sessionStreak: 0,
         sessionBestStreak: 0,
@@ -910,9 +931,19 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       });
       return;
     }
+    const targetId = typeof startCardId === 'string' ? startCardId.trim() : '';
+    const orderedDue = targetId
+      ? (() => {
+          const idx = dueCards.findIndex(
+            (card) => card.id === targetId || card.ankiCardId === targetId,
+          );
+          if (idx <= 0) return dueCards;
+          return [dueCards[idx], ...dueCards.slice(0, idx), ...dueCards.slice(idx + 1)];
+        })()
+      : dueCards;
     set({
-      queue: dueCards,
-      queueIndex: nextReviewableIndex(dueCards, 0),
+      queue: orderedDue,
+      queueIndex: nextReviewableIndex(orderedDue, 0),
       sessionMode: 'due',
       flipped: false,
       flippedAtMs: null,
@@ -922,6 +953,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       lastSuspended: null,
       sessionRatedCount: 0,
       sessionAgainCount: 0,
+      sessionAgainCardIds: [],
       sessionRatingCounts: emptyRatingCounts(),
       sessionStreak: 0,
       sessionBestStreak: 0,
@@ -969,6 +1001,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       lastSuspended: null,
       sessionRatedCount: 0,
       sessionAgainCount: 0,
+      sessionAgainCardIds: [],
       sessionRatingCounts: emptyRatingCounts(),
       sessionStreak: 0,
       sessionBestStreak: 0,
@@ -1012,6 +1045,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         lastSuspended: null,
         sessionRatedCount: 0,
         sessionAgainCount: 0,
+        sessionAgainCardIds: [],
         sessionRatingCounts: emptyRatingCounts(),
         sessionStreak: 0,
         sessionBestStreak: 0,
@@ -1039,6 +1073,60 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       });
       return false;
     }
+  },
+
+  startAgainCardsSession: async () => {
+    const { queue, sessionAgainCardIds } = get();
+    if (sessionAgainCardIds.length === 0) return false;
+    const byId = new Map(queue.map((card) => [card.id, card] as const));
+    const againCards = sessionAgainCardIds
+      .map((id) => byId.get(id))
+      .filter((card): card is ReviewCard => Boolean(card) && !isHiddenInSession(card));
+    if (againCards.length === 0) return false;
+
+    const ankiIds = againCards
+      .map((card) => card.ankiCardId?.trim() ?? '')
+      .filter((id) => isPersistedId(id));
+    if (ankiIds.length === againCards.length) {
+      return get().startBatchSession(ankiIds, againCards);
+    }
+
+    const nextQueue = againCards.map((card) => ({
+      ...card,
+      learningDueMs: null,
+    }));
+    set((state) => ({
+      sessionGeneration: state.sessionGeneration + 1,
+      statsFetchGen: state.statsFetchGen + 1,
+      screen: 'session',
+      sessionMode: 'batch',
+      queue: nextQueue,
+      queueIndex: nextReviewableIndex(nextQueue, 0),
+      flipped: false,
+      flippedAtMs: null,
+      loading: false,
+      ratingBusy: false,
+      lastRated: null,
+      lastReview: null,
+      reviewHistory: [],
+      lastSuspended: null,
+      sessionRatedCount: 0,
+      sessionAgainCount: 0,
+      sessionAgainCardIds: [],
+      sessionRatingCounts: emptyRatingCounts(),
+      sessionStreak: 0,
+      sessionBestStreak: 0,
+      sessionStartedAtMs: Date.now(),
+      remainingDueAfterSession: null,
+      ratingPreviews: null,
+      lastSchedule: null,
+      pendingExternalRateIds: [],
+      pendingRateOp: null,
+      error: null,
+      errorKind: null,
+      retryBatchRequest: null,
+    }));
+    return true;
   },
 
   retryBatchSession: async () => {
@@ -1393,7 +1481,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         expectedLastReviewMs: operation.expectedLastReviewMs,
       });
       if (get().sessionGeneration !== sessionGeneration) {
-        requestFlashcardsDueRefresh();
+        emitDueRefresh();
         return;
       }
       if (!result || typeof result !== 'object') {
@@ -1455,7 +1543,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           allowEarly = false;
         }
         if (get().sessionGeneration !== sessionGeneration) {
-          requestFlashcardsDueRefresh();
+          emitDueRefresh();
           return;
         }
       }
@@ -1531,6 +1619,11 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         const sessionRatedCount = state.sessionRatedCount + 1;
         const sessionAgainCount =
           rating === 1 ? state.sessionAgainCount + 1 : state.sessionAgainCount;
+        const sessionAgainCardIds = rating === 1
+          ? (state.sessionAgainCardIds.includes(current.id)
+            ? state.sessionAgainCardIds
+            : [...state.sessionAgainCardIds, current.id])
+          : state.sessionAgainCardIds;
         const sessionRatingCounts: SessionRatingCounts = { ...state.sessionRatingCounts };
         sessionRatingCounts[rating] += 1;
         const sessionStreak = rating === 1 ? 0 : state.sessionStreak + 1;
@@ -1571,6 +1664,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
               : null,
           sessionRatedCount,
           sessionAgainCount,
+          sessionAgainCardIds,
           sessionRatingCounts,
           sessionStreak,
           sessionBestStreak,
@@ -1579,7 +1673,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           pendingRateOp: null,
         };
       });
-      requestFlashcardsDueRefresh();
+      emitDueRefresh();
 
       // Domain echo deferred while ratingBusy must not empty the queue after
       // the last card — that wiped SessionSummary (empty=true, no stats).
@@ -1614,6 +1708,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
             return;
           }
           set({ remainingDueAfterSession: total, dueTotal: total });
+          emitDueRefresh();
         });
       }
     } catch (err) {
@@ -1643,7 +1738,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         cardStateId: lastReview.cardStateId,
       });
       if (get().sessionGeneration !== sessionGeneration) {
-        requestFlashcardsDueRefresh();
+        emitDueRefresh();
         return false;
       }
       if (!result || typeof result !== 'object') {
@@ -1705,6 +1800,12 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         const reviewHistory = s.reviewHistory.filter(
           (receipt) => receipt.logId !== lastReview.logId,
         );
+        const stillRatedAgain = reviewHistory.some(
+          (receipt) => receipt.cardStateId === lastReview.cardStateId && receipt.rating === 1,
+        );
+        const sessionAgainCardIds = lastReview.rating === 1 && !stillRatedAgain
+          ? s.sessionAgainCardIds.filter((id) => id !== lastReview.cardStateId)
+          : s.sessionAgainCardIds;
         return {
           queue: snapshot,
           queueIndex,
@@ -1726,6 +1827,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
             lastReview.rating === 1
               ? Math.max(0, s.sessionAgainCount - 1)
               : s.sessionAgainCount,
+          sessionAgainCardIds,
           sessionRatingCounts,
           // 撤销打断连续性；诚实归零而非猜测之前的连击值
           sessionStreak: lastReview.previousStreak ?? 0,
@@ -1734,7 +1836,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           errorKind: null,
         };
       });
-      requestFlashcardsDueRefresh();
+      emitDueRefresh();
       return true;
     } catch (error) {
       if (get().sessionGeneration !== sessionGeneration) return false;
@@ -1749,19 +1851,24 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
     }
   },
 
-  updateCurrentCard: async (front, back, template) => {
+  updateCurrentCard: async (front, back, template, options) => {
     const sessionGeneration = get().sessionGeneration;
-    const { queue, queueIndex, ratingBusy } = get();
+    const { queue, queueIndex, dueCards, ratingBusy } = get();
     if (ratingBusy) return false;
-    const current = queue[queueIndex];
-    if (!current?.ankiCardId || !isPersistedId(current.ankiCardId)) {
+    const target = options?.cardStateId
+      ? (queue.find((card) => card.id === options.cardStateId)
+        ?? dueCards.find((card) => card.id === options.cardStateId)
+        ?? null)
+      : queue[queueIndex];
+    if (!target?.ankiCardId || !isPersistedId(target.ankiCardId)) {
       set({
         error: i18n.t('flashcards:session.errors.missingAnkiId'),
         errorKind: 'edit',
       });
       return false;
     }
-    const isCloze = isClozeReviewCard(current, template);
+    const baseIsCloze = isClozeReviewCard(target, template);
+    const isCloze = options?.forceCloze !== undefined ? options.forceCloze : baseIsCloze;
     if (!front.trim() || (!isCloze && !back.trim())) {
       set({
         error: i18n.t('flashcards:session.errors.emptyBasicFields'),
@@ -1777,43 +1884,62 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       return false;
     }
 
-    const edit = applyReviewCardEdit(current, { front, back }, template);
+    const modeChanged = options?.forceCloze !== undefined && options.forceCloze !== baseIsCloze;
+    const effectiveTemplate: ReviewEditTemplate | null | undefined = modeChanged
+      ? {
+          fields: template?.fields ?? [],
+          note_type: isCloze ? 'Cloze' : 'Basic',
+        }
+      : template;
+    const edit = applyReviewCardEdit(target, { front, back }, effectiveTemplate);
+    if (modeChanged && !isCloze) {
+      // 切回 Basic 时清除残留的 Cloze 原文，避免重新打开又被判成挖空卡
+      edit.text = undefined;
+      for (const key of Object.keys(edit.extraFields)) {
+        if (key.trim().toLowerCase() === 'text') {
+          delete edit.extraFields[key];
+        }
+      }
+    }
+    const nextTags = options?.tags !== undefined ? [...options.tags] : [...(target.tags ?? [])];
     const payload: AnkiCard = {
-      id: current.ankiCardId,
+      id: target.ankiCardId,
       front: edit.front,
       back: edit.back,
       text: edit.text,
-      tags: [...(current.tags ?? [])],
-      images: [...(current.images ?? [])],
+      tags: nextTags,
+      images: [...(target.images ?? [])],
       extra_fields: edit.extraFields,
-      template_id: current.templateId ?? null,
-      is_error_card: current.isErrorCard ?? false,
-      error_content: current.errorContent ?? null,
+      template_id: target.templateId ?? null,
+      is_error_card: target.isErrorCard ?? false,
+      error_content: target.errorContent ?? null,
     };
 
     set({ ratingBusy: true, error: null, errorKind: null });
     try {
       await invoke('update_anki_card', { card: payload });
       if (get().sessionGeneration !== sessionGeneration) {
-        requestFlashcardsDueRefresh();
+        emitDueRefresh();
         return false;
       }
       const updated = {
         front: edit.front,
         back: edit.back,
         text: edit.text,
+        tags: nextTags,
         extraFields: edit.extraFields,
       };
       set((state) => ({
-        // await 期间队列可能变化；按 id 定位当前卡，避免旧下标写错行
-        queue: state.queue.map((card) => (card.id === current.id ? { ...card, ...updated } : card)),
+        // await 期间队列可能变化；按 id 定位目标卡，避免旧下标写错行
+        queue: state.queue.map((card) => (card.id === target.id ? { ...card, ...updated } : card)),
         dueCards: state.dueCards.map((card) => (
-          card.id === current.id || card.ankiCardId === current.ankiCardId ? { ...card, ...updated } : card
+          card.id === target.id || card.ankiCardId === target.ankiCardId ? { ...card, ...updated } : card
         )),
         ratingBusy: false,
         error: null,
         errorKind: null,
       }));
+      emitDueRefresh();
       return true;
     } catch (error) {
       if (get().sessionGeneration !== sessionGeneration) return false;
@@ -1844,7 +1970,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         { cardStateId: lastSuspended.cardStateId },
       );
       if (get().sessionGeneration !== sessionGeneration) {
-        requestFlashcardsDueRefresh();
+        emitDueRefresh();
         return false;
       }
       if (!result || typeof result !== 'object') {
@@ -1878,7 +2004,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         errorKind: null,
         };
       });
-      requestFlashcardsDueRefresh();
+      emitDueRefresh();
       return true;
     } catch (error) {
       if (get().sessionGeneration !== sessionGeneration) return false;
@@ -1937,6 +2063,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       retryBatchRequest: null,
       sessionRatedCount: 0,
       sessionAgainCount: 0,
+      sessionAgainCardIds: [],
       sessionRatingCounts: emptyRatingCounts(),
       sessionStreak: 0,
       sessionBestStreak: 0,
@@ -1945,7 +2072,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       ratingPreviews: null,
       lastSchedule: null,
     });
-    requestFlashcardsDueRefresh();
+    emitDueRefresh();
   },
 
   resetFlip: () => set({ flipped: false, flippedAtMs: null, ratingPreviews: null }),

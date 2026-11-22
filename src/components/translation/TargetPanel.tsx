@@ -16,8 +16,11 @@ import {
     Star,
     Columns,
     CircleNotch,
+    CardsThree,
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { TranslationStreamRenderer } from '../../translation/TranslationStreamRenderer';
 import { ComparisonView } from './ComparisonView';
 
@@ -42,6 +45,7 @@ interface TargetPanelProps {
     isSpeaking: boolean;
     onCopyResult: () => void;
     onExportTranslation: () => void;
+    onSaveAsFlashcard?: () => void | Promise<void>;
 }
 
 const COPY_FEEDBACK_MS = 1500;
@@ -77,6 +81,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
     isSpeaking,
     onCopyResult,
     onExportTranslation,
+    onSaveAsFlashcard,
 }, ref) => {
     const { t } = useTranslation(['translation', 'common']);
     const [showComparison, setShowComparison] = useState(false);
@@ -96,8 +101,75 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
             copyTimerRef.current = null;
         }, COPY_FEEDBACK_MS);
     }, [onCopyResult]);
+
+    // ===== 存为生词闪卡（打通查词 → 记忆闭环） =====
+    const [savingFlashcard, setSavingFlashcard] = useState(false);
+    const [justSavedFlashcard, setJustSavedFlashcard] = useState(false);
+    const flashcardTimerRef = useRef<number | null>(null);
+
+    const handleSaveAsFlashcard = useCallback(async () => {
+        if (savingFlashcard || isTranslating) return;
+        const back = translatedText.trim();
+        if (!back) return;
+        const front = sourceText.trim() || back;
+        setSavingFlashcard(true);
+        try {
+            if (onSaveAsFlashcard) {
+                await onSaveAsFlashcard();
+            } else {
+                const [{ ankiApiAdapter }, { enqueueAnkiLibraryCard }, { requestFlashcardsDueRefresh }] = await Promise.all([
+                    import('@/services/ankiApiAdapter'),
+                    import('@/utils/chatApi'),
+                    import('@/events/flashcards'),
+                ]);
+                const deckName = t('translation:target_section.vocab_deck', { defaultValue: '翻译生词本' });
+                const tags = ['生词', '翻译', `${srcLang}->${tgtLang}`];
+                const response = await ankiApiAdapter.saveAnkiCards({
+                    cards: [{ front, back, tags, images: [] }],
+                    options: {
+                        deck_name: deckName,
+                        note_type: 'Basic',
+                        enable_images: false,
+                        max_cards_per_source: 1,
+                        max_cards_per_mistake: 1,
+                    },
+                });
+                const savedId =
+                    response.savedIds?.[0] ??
+                    response.cardIdMappings?.[0]?.persistedId ??
+                    null;
+                if (!savedId) {
+                    const failure = response.failed?.[0]?.error;
+                    throw new Error(
+                        failure || t('translation:target_section.save_flashcard_failed', { defaultValue: '保存生词闪卡失败' }),
+                    );
+                }
+                await enqueueAnkiLibraryCard(savedId).catch(() => undefined);
+                requestFlashcardsDueRefresh();
+            }
+            setJustSavedFlashcard(true);
+            if (flashcardTimerRef.current !== null) window.clearTimeout(flashcardTimerRef.current);
+            flashcardTimerRef.current = window.setTimeout(() => {
+                setJustSavedFlashcard(false);
+                flashcardTimerRef.current = null;
+            }, COPY_FEEDBACK_MS);
+            showGlobalNotification(
+                'success',
+                t('translation:target_section.saved_as_flashcard', { defaultValue: '已存为生词闪卡，已加入记忆队列' }),
+            );
+        } catch (error: unknown) {
+            showGlobalNotification(
+                'error',
+                getErrorMessage(error) || t('translation:target_section.save_flashcard_failed', { defaultValue: '保存生词闪卡失败' }),
+            );
+        } finally {
+            setSavingFlashcard(false);
+        }
+    }, [savingFlashcard, isTranslating, translatedText, sourceText, onSaveAsFlashcard, t, srcLang, tgtLang]);
+
     useEffect(() => () => {
         if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+        if (flashcardTimerRef.current !== null) window.clearTimeout(flashcardTimerRef.current);
     }, []);
 
     // ===== 同步滚动契约：把内容区实际滚动元素打上 target 标记 =====
@@ -222,6 +294,34 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     )}
                                 </DsButton>
                             </CommonTooltip>
+                            <CommonTooltip content={justSavedFlashcard ? t('translation:target_section.saved_as_flashcard_short', { defaultValue: '已存闪卡' }) : t('translation:target_section.save_as_flashcard', { defaultValue: '存为生词闪卡' })}>
+                                <DsButton
+                                    variant="ghost"
+                                    size={justSavedFlashcard ? 'sm' : 'icon'}
+                                    onClick={() => void handleSaveAsFlashcard()}
+                                    disabled={isTranslating || savingFlashcard}
+                                    aria-label={t('translation:target_section.save_as_flashcard', { defaultValue: '存为生词闪卡' })}
+                                    data-testid="translation-save-flashcard-btn"
+                                    className={cn(
+                                        COARSE_HIT,
+                                        'h-7 transition-all duration-150 motion-reduce:transition-none active:scale-95 motion-reduce:active:scale-100',
+                                        justSavedFlashcard
+                                            ? 'w-auto px-2 gap-1 bg-success/10 text-success hover:bg-success/15 hover:text-success'
+                                            : 'w-7 text-muted-foreground hover:text-foreground'
+                                    )}
+                                >
+                                    {savingFlashcard ? (
+                                        <CircleNotch size={15} className="animate-spin motion-reduce:animate-none" />
+                                    ) : justSavedFlashcard ? (
+                                        <Check size={15} className="text-success" />
+                                    ) : (
+                                        <CardsThree size={15} />
+                                    )}
+                                    {justSavedFlashcard && (
+                                        <span className="text-2xs font-medium">{t('translation:target_section.saved_as_flashcard_short', { defaultValue: '已存闪卡' })}</span>
+                                    )}
+                                </DsButton>
+                            </CommonTooltip>
                             <CommonTooltip content={t('translation:target_section.export')}>
                                 <DsButton
                                     variant="ghost"
@@ -286,6 +386,23 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             aria-label={t('translation:target_section.copy')}
                         >
                             {copyIcon}
+                        </DsButton>
+                        <DsButton
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => void handleSaveAsFlashcard()}
+                            disabled={isTranslating || savingFlashcard}
+                            data-testid="translation-save-flashcard-mobile-btn"
+                            className={cn(COARSE_HIT, 'h-8 w-8', justSavedFlashcard ? 'text-success bg-success/10' : 'text-muted-foreground')}
+                            aria-label={t('translation:target_section.save_as_flashcard', { defaultValue: '存为生词闪卡' })}
+                        >
+                            {savingFlashcard ? (
+                                <CircleNotch size={16} className="animate-spin motion-reduce:animate-none" />
+                            ) : justSavedFlashcard ? (
+                                <Check size={16} className="text-success" />
+                            ) : (
+                                <CardsThree size={16} />
+                            )}
                         </DsButton>
                         <DsButton
                             variant="ghost"

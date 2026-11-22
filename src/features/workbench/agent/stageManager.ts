@@ -1117,7 +1117,13 @@ function findActiveApplyRun(
   windowId?: string,
 ): ActiveRun | undefined {
   const exact = activeByRun.get(runIdentity);
-  return exact && (!windowId || exact.windowId === windowId) ? exact : undefined;
+  if (exact && (!windowId || exact.windowId === windowId)) return exact;
+  for (const candidate of activeByRun.values()) {
+    if (candidate.runId === runIdentity && (!windowId || candidate.windowId === windowId)) {
+      return candidate;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -2080,7 +2086,10 @@ async function handleApplyOps(
           req.bridgeToken,
         );
         if (message) {
-          usePresenceStore.getState().updateStatus(runKey, 'acting', message);
+          const paused =
+            arbitrator.paused ||
+            Boolean(windowId && usePresenceStore.getState().byWindow[windowId]?.status === 'pausedByUser');
+          usePresenceStore.getState().updateStatus(runKey, paused ? 'pausedByUser' : 'acting', message);
         }
       },
       checkPaused: () => arbitrator.checkPaused(),

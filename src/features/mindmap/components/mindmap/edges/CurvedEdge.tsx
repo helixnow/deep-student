@@ -82,7 +82,7 @@ function getMindMapPath({
   return `M${sourceX},${sourceY} C${controlX1},${controlY1} ${controlX2},${controlY2} ${targetX},${targetY}`;
 }
 
-export const CurvedEdge: React.FC<EdgeProps> = ({
+const CurvedEdgeComponent: React.FC<EdgeProps> = ({
   sourceX,
   sourceY,
   targetX,
@@ -133,3 +133,6 @@ export const CurvedEdge: React.FC<EdgeProps> = ({
     />
   );
 };
+
+export const CurvedEdge = React.memo(CurvedEdgeComponent);
+CurvedEdge.displayName = 'CurvedEdge';

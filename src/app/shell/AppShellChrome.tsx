@@ -25,7 +25,7 @@ import { CommandPaletteProvider, useCommandPalette } from '@/command-palette/Com
 import { TextContextMenuProvider } from '@/components/context-menu/TextContextMenu';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
 import { DueMistakesReviewHost } from '@/features/learning-today/DueMistakesReviewHost';
-import { DailySprintHost, ExamReadinessHud } from '@/components/exam-sprint';
+import { DailySprintHost } from '@/components/exam-sprint';
 import { LearningHubNavigationProvider } from '@/features/learning-hub';
 import { GoalStatusChip } from '@/features/chat/components/GoalStatusChip';
 import { StudyComposeIcon } from '@/components/icons/StudySidebarIcons';
@@ -407,8 +407,6 @@ export function AppShellChrome(props: AppShellChromeProps) {
                     className="ml-3"
                   />
                 ) : null}
-
-                <ExamReadinessHud variant="study-space-header" className="ml-3" />
 
                 <div
                   ref={setDesktopChatHeaderTarget}

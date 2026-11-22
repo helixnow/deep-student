@@ -174,6 +174,12 @@ export const createAgentSlice: MindMapSliceCreator<
         }
       }, { skipHistory: true });
 
+      if (inserted) {
+        const after = get();
+        syncMindMapAnchorEdges(after.mindmapId, after.document.root, { styleId: after.styleId });
+        reconcileMindMapProjectedFlashcards(after.mindmapId, after.document.root);
+      }
+
       return inserted ? newId : '';
     },
 
@@ -253,6 +259,7 @@ export const createAgentSlice: MindMapSliceCreator<
     },
 
     agentInsertSubtree: (parentId: string, node: MindMapNode, index?: number) => {
+      let inserted = false;
       applyMutation((state) => {
         const parent = findNodeById(state.document.root, parentId);
         if (!parent) return;
@@ -262,7 +269,13 @@ export const createAgentSlice: MindMapSliceCreator<
         // 深拷贝，避免 immer/外部引用共享
         parent.children.splice(bounded, 0, JSON.parse(JSON.stringify(node)) as MindMapNode);
         state.focusedNodeId = node.id;
+        inserted = true;
       }, { skipHistory: true });
+      if (inserted) {
+        const after = get();
+        syncMindMapAnchorEdges(after.mindmapId, after.document.root, { styleId: after.styleId });
+        reconcileMindMapProjectedFlashcards(after.mindmapId, after.document.root);
+      }
     },
   };
 };

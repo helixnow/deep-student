@@ -813,6 +813,27 @@ describe('Rust vfs/indexing.rs VfsFullIndexingService', () => {
     expect(calls).toBe(1);
   });
 
+  it('prepare_units_without_embedding_retries_when_stamp_changes_or_index_deleted', async () => {
+    const { db } = freshDb();
+    insertResource(db, 'res_prepare_stamp', 'content', { hash: 'h1' });
+    let calls = 0;
+    const full = service(db, fakeStore(), {
+      unitSync: {
+        syncResourceUnits() { calls += 1; },
+      },
+    });
+    expect(full.prepareUnitsWithoutEmbedding(10)).toBe(1);
+    expect(full.prepareUnitsWithoutEmbedding(10)).toBe(0);
+
+    db.run("UPDATE resources SET hash = 'h2', updated_at = 2 WHERE id = 'res_prepare_stamp'");
+    expect(full.prepareUnitsWithoutEmbedding(10)).toBe(1);
+    expect(full.prepareUnitsWithoutEmbedding(10)).toBe(0);
+
+    await full.deleteResourceIndex('res_prepare_stamp');
+    expect(full.prepareUnitsWithoutEmbedding(10)).toBe(1);
+    expect(calls).toBe(3);
+  });
+
   it('process_pending_batch_claims_and_indexes_pending_resources', async () => {
     const { db } = freshDb();
     insertResource(db, 'res_batch', 'Batch indexing content for keyword search.');

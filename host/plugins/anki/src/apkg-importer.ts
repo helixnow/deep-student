@@ -54,16 +54,24 @@ export class ApkgImporterService {
   private readonly runtime: ApkgImportRuntime;
   private mediaDir: string | null;
   private enqueueForReview: boolean;
+  private deduplicateExisting: boolean;
 
   constructor(runtime: ApkgImportRuntime) {
     this.runtime = runtime;
     this.mediaDir = runtime.mediaDir ?? null;
     this.enqueueForReview = false;
+    this.deduplicateExisting = false;
   }
 
   /** 导入即入队：卡片写入与 FSRS 状态建档在同一事务内完成。 */
   withReviewEnqueue(): this {
     this.enqueueForReview = true;
+    return this;
+  }
+
+  /** 启用增量去重重导：跳过资料库中已存在的相同 `apkg_import` 存活卡片。 */
+  withDeduplicateExisting(): this {
+    this.deduplicateExisting = true;
     return this;
   }
 
@@ -175,6 +183,7 @@ export class ApkgImporterService {
       sourceName,
       sessionId,
       this.enqueueForReview,
+      this.deduplicateExisting,
     );
   }
 
@@ -198,6 +207,7 @@ export class ApkgImporterService {
       sourceName,
       sessionId,
       this.enqueueForReview,
+      this.deduplicateExisting,
     );
   }
 }

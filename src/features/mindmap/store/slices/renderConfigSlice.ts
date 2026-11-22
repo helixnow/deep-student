@@ -64,13 +64,23 @@ export const createRenderConfigSlice: MindMapSliceCreator<
         return;
       }
       measuredHeightsQueue.set(nodeId, height);
-      if (rt.measuredFlushTimer) {
-        return;
+      const now = Date.now();
+      if (rt.measuredFirstQueuedAt === null) {
+        rt.measuredFirstQueuedAt = now;
       }
+      const burst =
+        measuredHeightsQueue.size > 30 || Object.keys(get().measuredNodeHeights).length > 80;
+      if (rt.measuredFlushTimer) {
+        if (!burst || now - rt.measuredFirstQueuedAt >= 250) {
+          return;
+        }
+        clearTimeout(rt.measuredFlushTimer);
+      }
+      const delayMs = burst ? 100 : 16;
       rt.measuredFlushTimer = setTimeout(() => {
         rt.measuredFlushTimer = null;
         flushMeasuredNodeHeights();
-      }, 16);
+      }, delayMs);
     },
 
     // 应用预设（D1：同 setLayoutId，需持久化渲染配置）

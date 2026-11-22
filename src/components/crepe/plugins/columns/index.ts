@@ -1,4 +1,4 @@
-import type { MilkdownPlugin } from '@milkdown/ctx'
+import type { MilkdownPlugin } from '@milkdown/kit/ctx'
 import { columnsBehavior } from './behavior'
 import type { ColumnsOptions } from './config'
 import { remarkColumnsPlugin } from './remark'

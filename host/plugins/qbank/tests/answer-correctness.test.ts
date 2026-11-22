@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkAnswerCorrectness as check, extractChoiceKeys } from '../src/answer-correctness.ts';
+import { checkAnswerCorrectness as check, extractChoiceKeys, parseNumericInput } from '../src/answer-correctness.ts';
 import { valueFromStr } from '../src/raw-json-number.ts';
 
 describe('question_bank_service.rs answer correctness', () => {
@@ -81,6 +81,24 @@ describe('question_bank_service.rs answer correctness', () => {
     expect(check('3.14', '3.14', 'numeric')).toEqual([true, false]);
     expect(check('3.14', '约等于圆周率', 'numeric')).toEqual([false, true]);
     expect(check('abc', '3.14', 'numeric')).toEqual([false, false]);
+  });
+
+  it('parses anchored numeric expressions and rejects prose/garbage (BUG-15)', () => {
+    expect(parseNumericInput('3.15 m')).toBe(3.15);
+    expect(parseNumericInput('1,009')).toBe(1009);
+    expect(parseNumericInput('3/4')).toBe(0.75);
+    expect(parseNumericInput('-2e3')).toBe(-2000);
+    expect(parseNumericInput('x = 42%')).toBe(42);
+    expect(parseNumericInput('9.8 m/s^2')).toBe(9.8);
+    expect(parseNumericInput('100℃')).toBe(100);
+    expect(parseNumericInput('42米')).toBe(42);
+
+    expect(parseNumericInput('随便乱填 42 次')).toBeNull();
+    expect(parseNumericInput('42 瞎蒙的')).toBeNull();
+    expect(parseNumericInput('1/2/3')).toBeNull();
+    expect(parseNumericInput('答案是 42')).toBeNull();
+    expect(parseNumericInput('1/0')).toBeNull();
+    expect(check('随便乱填 42 次', null, 'numeric', { answer_value: 42, tolerance: 0 })).toEqual([false, false]);
   });
   it('test_ordering_strict_order', () => {
     const sd = { items: [{ key: 'A', content: '一' }, { key: 'B', content: '二' }, { key: 'C', content: '三' }], correct_order: ['B', 'A', 'C'] };

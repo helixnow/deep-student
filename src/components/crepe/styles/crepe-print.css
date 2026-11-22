@@ -1,0 +1,145 @@
+/**
+ * Crepe Editor Print Styles
+ *
+ * Loaded last in cascade so print rules override screen styles without
+ * relying on !important except where hiding JS-positioned floating chrome.
+ */
+
+/* stylelint-disable selector-class-pattern */
+@media print {
+  .crepe-editor-wrapper {
+    position: static;
+    overflow: visible;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    min-height: auto;
+    padding: 0;
+    margin: 0;
+    background: hsl(var(--background));
+  }
+
+  .crepe-editor-wrapper .milkdown,
+  .crepe-editor-wrapper .editor,
+  .crepe-editor-wrapper .ProseMirror {
+    position: static;
+    overflow: visible;
+    background: hsl(var(--background));
+    color: var(--text-primary);
+    padding: 0;
+    margin: 0;
+    min-height: auto;
+    caret-color: transparent;
+  }
+
+  /* Hide floating/interactive editor chrome even if JS sets inline visibility */
+  .crepe-editor-wrapper .milkdown-toolbar,
+  .crepe-editor-wrapper .milkdown-block-handle,
+  .crepe-editor-wrapper .milkdown-slash-menu,
+  .crepe-editor-wrapper .milkdown-link-tooltip,
+  .crepe-editor-wrapper .notes-editor-toolbar,
+  .crepe-editor-wrapper [data-milkdown-toolbar],
+  .crepe-editor-wrapper [data-milkdown-menu] {
+    /* stylelint-disable declaration-no-important */
+    display: none !important;
+    visibility: hidden !important;
+    /* stylelint-enable declaration-no-important */
+  }
+
+  .crepe-editor-wrapper .milkdown .ProseMirror :is(h1, h2, h3, h4, h5, h6) {
+    color: var(--text-primary);
+    break-after: avoid;
+    break-inside: avoid;
+  }
+
+  .crepe-editor-wrapper :is(p, span, div, li, ul, ol) {
+    color: var(--text-primary);
+  }
+
+  .crepe-editor-wrapper li::marker {
+    color: var(--text-primary);
+  }
+
+  .crepe-editor-wrapper .milkdown .ProseMirror a {
+    color: var(--text-primary);
+    text-decoration: underline;
+  }
+
+  .crepe-editor-wrapper .milkdown .ProseMirror blockquote {
+    border-left-color: var(--text-primary);
+    color: var(--text-primary);
+    background: transparent;
+  }
+
+  .crepe-editor-wrapper .milkdown .ProseMirror pre,
+  .crepe-editor-wrapper .milkdown .milkdown-code-block {
+    background: hsl(var(--muted));
+    border: 1px solid hsl(var(--border));
+    color: var(--text-primary);
+    break-inside: avoid;
+  }
+
+  .crepe-editor-wrapper .milkdown :not(pre) > code,
+  .crepe-editor-wrapper code {
+    background: hsl(var(--muted));
+    border: 1px solid hsl(var(--border));
+    color: var(--text-primary);
+  }
+
+  .crepe-editor-wrapper .milkdown-code-block .cm-editor,
+  .crepe-editor-wrapper .cm-scroller,
+  .crepe-editor-wrapper .cm-content,
+  .crepe-editor-wrapper .milkdown-code-block .cm-gutters,
+  .crepe-editor-wrapper .cm-line {
+    background: hsl(var(--muted));
+    color: var(--text-primary);
+  }
+
+  .crepe-editor-wrapper table {
+    border-collapse: collapse;
+    break-inside: avoid;
+  }
+
+  .crepe-editor-wrapper .milkdown .milkdown-table-block th,
+  .crepe-editor-wrapper .milkdown .milkdown-table-block td,
+  .crepe-editor-wrapper th,
+  .crepe-editor-wrapper td {
+    border: 1px solid var(--text-primary);
+    background: hsl(var(--background));
+    color: var(--text-primary);
+  }
+
+  .crepe-editor-wrapper .milkdown .milkdown-table-block th,
+  .crepe-editor-wrapper th {
+    background: hsl(var(--muted));
+  }
+
+  .crepe-editor-wrapper img {
+    max-width: 100%;
+    break-inside: avoid;
+  }
+
+  .crepe-editor-wrapper .milkdown .ProseMirror hr {
+    border-color: var(--text-primary);
+  }
+
+  .crepe-editor-wrapper input[type='checkbox'] {
+    print-color-adjust: exact;
+  }
+
+  .crepe-editor-wrapper .katex,
+  .crepe-editor-wrapper .katex-display {
+    color: var(--text-primary);
+  }
+
+  .crepe-editor-wrapper .milkdown .milkdown-code-block .preview-panel {
+    background: hsl(var(--muted));
+    border: 1px solid hsl(var(--border));
+  }
+
+  .crepe-editor-wrapper .milkdown-code-block .preview-panel .preview {
+    background: var(--surface-elevated);
+    color: var(--text-primary);
+  }
+}
+/* stylelint-enable selector-class-pattern */

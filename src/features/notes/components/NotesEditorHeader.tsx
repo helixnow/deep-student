@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useId } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useNotesOptional } from '../NotesContext';
-import { getPathToNote, type NoteContentStats } from '../notesUtils';
-import { CaretRight, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus, SlidersHorizontal } from '@phosphor-icons/react';
+import { type NoteContentStats } from '../notesUtils';
+import { CaretRight, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus, Smiley } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { NoteGlyph } from './NoteGlyph';
@@ -26,7 +25,13 @@ import './NotesEditorHeader.css';
 
 export type NotesSaveStatus = 'saved' | 'saving' | 'unsaved' | 'failed' | 'conflict';
 
-interface NotesEditorHeaderProps {
+export interface NoteBreadcrumbItem {
+    id: string;
+    title: string;
+    type: 'folder' | 'note';
+}
+
+export interface NotesEditorHeaderProps {
     lastSaved: Date | null;
     /** @deprecated Prefer saveStatus; kept for callers that only pass isSaving */
     isSaving?: boolean;
@@ -41,26 +46,26 @@ interface NotesEditorHeaderProps {
      * 未提供时回退到 charCount：仅展示字数并按 300 字/分估算阅读时间。
      */
     stats?: NoteContentStats;
-    // ========== DSTU 模式 Props ==========
-    /** DSTU 模式：初始标题 */
+    /** 初始标题 */
     initialTitle?: string;
-    /** DSTU 模式：标题变更回调 */
+    /** 标题变更回调 */
     onTitleChange?: (title: string) => Promise<void>;
-    /** DSTU 模式：笔记 ID */
+    /** 笔记 ID */
     noteId?: string;
     /** 是否只读 */
     readOnly?: boolean;
-    /**
-     * P1-10：标题下方内联标签行。
-     * DSTU 模式由宿主传入（NoteContentView）；Context 模式缺省时回退 active.tags。
-     */
+    /** 标题下方内联标签行 */
     tags?: string[];
-    /** 标签变更回调（DSTU 模式必传才可编辑；Context 模式回退 updateNoteTags） */
+    /** 标签变更回调（传参后允许编辑标签） */
     onTagsChange?: (tags: string[]) => Promise<void> | void;
     /** 标题里按 Enter / 末尾按 ↓ 时，把光标送进正文开头 */
     onExitToBody?: () => void;
     /** 新建的空笔记：打开即聚焦标题并全选占位标题，直接输入即可命名 */
     autoFocusTitle?: boolean;
+    /** 笔记路径面包屑（支持父文件夹路径，或父文件夹 + 当前笔记） */
+    breadcrumbs?: readonly NoteBreadcrumbItem[];
+    /** 点击非当前面包屑项时的导航回调 */
+    onBreadcrumbClick?: (item: NoteBreadcrumbItem) => void;
 }
 
 export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({ 
@@ -71,29 +76,18 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     charCount,
     stats,
     initialTitle,
-    onTitleChange: dstuOnTitleChange,
-    noteId: dstuNoteId,
+    onTitleChange,
+    noteId,
     readOnly = false,
     tags: tagsProp,
     onTagsChange,
     onExitToBody,
     autoFocusTitle = false,
+    breadcrumbs: breadcrumbsProp,
+    onBreadcrumbClick,
 }) => {
     const { t, i18n } = useTranslation(['notes', 'common', 'translation']);
     const isZh = (i18n.language || '').startsWith('zh');
-    
-    // ========== 模式判断 ==========
-    const isDstuMode = initialTitle !== undefined;
-    
-    // ========== Context 获取（可选） ==========
-    const notesContext = useNotesOptional();
-    const contextActive = notesContext?.active;
-    const renameItem = notesContext?.renameItem;
-    const folders = notesContext?.folders ?? {};
-    const notes = notesContext?.notes ?? [];
-    const activateTab = notesContext?.activateTab;
-    const setSidebarRevealId = notesContext?.setSidebarRevealId;
-    const updateNoteTags = notesContext?.updateNoteTags;
     
     // Local state for input value to allow typing before commit
     const [titleInput, setTitleInput] = useState("");
@@ -122,11 +116,10 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     // Esc 还原时跳过随后 blur 触发的提交
     const escapeRevertRef = useRef(false);
 
-    // ========== 根据模式选择数据源 ==========
-    const noteId = isDstuMode ? dstuNoteId : contextActive?.id;
     const appearance = useNoteAppearance(noteId);
     const appearanceTitleId = useId();
     const [appearanceOpen, setAppearanceOpen] = useState(false);
+    const [collapsedBreadcrumbsOpen, setCollapsedBreadcrumbsOpen] = useState(false);
     const appearanceTriggerRef = useRef<HTMLButtonElement>(null);
     const appearancePanelRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
@@ -138,7 +131,10 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         });
         return () => cancelAnimationFrame(frame);
     }, [appearanceOpen]);
-    useEffect(() => { setAppearanceOpen(false); }, [noteId]);
+    useEffect(() => {
+        setAppearanceOpen(false);
+        setCollapsedBreadcrumbsOpen(false);
+    }, [noteId]);
     useEffect(() => {
         if (!autoFocusTitle || !noteId || readOnly || autoFocusedNoteRef.current === noteId) return;
         autoFocusedNoteRef.current = noteId;
@@ -162,7 +158,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     ];
     
     // Determine display title
-    const displayTitle = isDstuMode ? (initialTitle || "") : (contextActive?.title || "");
+    const displayTitle = initialTitle ?? '';
 
     const titleDirtyRef = useRef(false);
     // C15：标题已在这轮编辑中被显式提交（保存并关闭）后同步置位，
@@ -183,14 +179,14 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         !titleCommittedRef.current;
 
     useEffect(() => {
-        if (!isDstuMode || !noteId || readOnly) return;
+        if (!noteId || readOnly) return;
         return registerContentDirtyChecker('note', noteId, () => titleDirtyRef.current);
-    }, [isDstuMode, noteId, readOnly]);
+    }, [noteId, readOnly]);
 
     // C15：未提交标题的显式提交契约。失败时向调用方抛出，让「保存并关闭」
     // 保持窗口与草稿；成功后同步把标题标记为已提交（不等 displayTitle 回流）。
     useEffect(() => {
-        if (!isDstuMode || !noteId || readOnly) return;
+        if (!noteId || readOnly) return;
         return registerContentSaveHandler('note', noteId, async () => {
             if (!titleDirtyRef.current) return;
             const trimmed = titleInputValueRef.current.trim();
@@ -206,40 +202,31 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                 pendingTitleRef.current = null;
                 return;
             }
-            if (!dstuOnTitleChangeRef.current) return;
+            if (!onTitleChangeRef.current) return;
             // 成功即已提交；失败抛出 → saveContentNow 不放行关闭
-            await dstuOnTitleChangeRef.current(trimmed);
+            await onTitleChangeRef.current(trimmed);
             titleCommittedRef.current = true;
             pendingTitleRef.current = null;
             setIsEditing(false);
             setTitleInput(trimmed);
         });
-    }, [isDstuMode, noteId, readOnly]);
+    }, [noteId, readOnly]);
 
-    // Calculate Breadcrumbs（仅 Context 模式）
-    const breadcrumbs = useMemo(() => {
-        if (isDstuMode || !contextActive) return [];
-        return getPathToNote(contextActive.id, folders as Record<string, { title: string; children: string[] }>, notes);
-    }, [isDstuMode, contextActive, folders, notes]);
-
-    // Only show breadcrumbs if not in root (length > 1 means it has parents)
-    const showBreadcrumbs = breadcrumbs.length > 1;
+    // First-class DSTU Breadcrumbs
+    const breadcrumbs = breadcrumbsProp ?? [];
+    const showBreadcrumbs = breadcrumbs.length > 0;
+    const shouldCollapseBreadcrumbs = breadcrumbs.length > 4;
+    const collapsedBreadcrumbs = shouldCollapseBreadcrumbs ? breadcrumbs.slice(1, -2) : [];
+    const collapsedPathLabel = collapsedBreadcrumbs.map((item) => item.title).join(' / ');
+    const canNavigateBreadcrumbs = Boolean(onBreadcrumbClick);
 
     // isSaving 仅在此处做 deprecated 兼容映射，组件内部一律消费 saveStatus
     const saveStatus: NotesSaveStatus =
         saveStatusProp ??
         (isSaving ? 'saving' : 'saved');
 
-    const handleBreadcrumbClick = (item: { id: string; title: string; type: 'folder' | 'note' }) => {
-        if (isDstuMode) return; // DSTU 模式下无面包屑导航
-        if (item.type === 'folder') {
-             // Reveal in sidebar
-             if (setSidebarRevealId) setSidebarRevealId(item.id);
-        } else {
-             // Activate note
-             const note = notes.find(n => n.id === item.id);
-             if (note && activateTab) activateTab(note.id);
-        }
+    const handleBreadcrumbClick = (item: NoteBreadcrumbItem) => {
+        onBreadcrumbClick?.(item);
     };
 
     // Sync local state with external source when not editing
@@ -300,23 +287,15 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         // Store the pending title to prevent useEffect from reverting
         pendingTitleRef.current = trimmedTitle;
         setTitleInput(trimmedTitle);
-        
-        if (isDstuMode) {
-            // DSTU 模式：调用 props 的 onTitleChange
-            if (dstuOnTitleChange) {
-                try {
-                    await dstuOnTitleChange(trimmedTitle);
-                } catch (error: unknown) {
-                    // 标题保存失败，回滚
-                    pendingTitleRef.current = null;
-                    setTitleInput(displayTitle);
-                    showGlobalNotification('error', t('notes:errors.title_save_failed'));
-                }
-            }
-        } else {
-            // Context 模式：调用 NotesContext.renameItem
-            if (renameItem) {
-                renameItem(noteId, trimmedTitle);
+
+        if (onTitleChange) {
+            try {
+                await onTitleChange(trimmedTitle);
+            } catch (error: unknown) {
+                // 标题保存失败，回滚
+                pendingTitleRef.current = null;
+                setTitleInput(displayTitle);
+                showGlobalNotification('error', t('notes:errors.title_save_failed'));
             }
         }
     };
@@ -345,10 +324,8 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     // 防止已输入的标题被静默丢弃。
     const unmountFlushRef = useRef({ isEditing, titleInput, displayTitle, noteId, readOnly });
     unmountFlushRef.current = { isEditing, titleInput, displayTitle, noteId, readOnly };
-    const dstuOnTitleChangeRef = useRef(dstuOnTitleChange);
-    dstuOnTitleChangeRef.current = dstuOnTitleChange;
-    const renameItemRef = useRef(renameItem);
-    renameItemRef.current = renameItem;
+    const onTitleChangeRef = useRef(onTitleChange);
+    onTitleChangeRef.current = onTitleChange;
 
     useEffect(() => {
         return () => {
@@ -356,12 +333,10 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
             if (snap.readOnly || !snap.isEditing || !snap.noteId) return;
             const trimmed = snap.titleInput.trim();
             if (!trimmed || trimmed === (snap.displayTitle || '').trim()) return;
-            if (dstuOnTitleChangeRef.current) {
-                dstuOnTitleChangeRef.current(trimmed).catch((err) => {
+            if (onTitleChangeRef.current) {
+                onTitleChangeRef.current(trimmed).catch((err) => {
                     console.warn('[NotesEditorHeader] Unmount title flush failed:', err);
                 });
-            } else if (renameItemRef.current) {
-                renameItemRef.current(snap.noteId, trimmed);
             }
         };
     }, []);
@@ -385,11 +360,8 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     })();
 
     // ========== P1-10：内联标签行（chips + 内联展开输入，不用 Popover） ==========
-    const effectiveTags = tagsProp ?? (isDstuMode ? [] : ((contextActive?.tags as string[] | undefined) ?? []));
-    const commitTags = onTagsChange
-        ?? (!isDstuMode && noteId && updateNoteTags
-            ? (next: string[]) => updateNoteTags(noteId, next)
-            : undefined);
+    const effectiveTags = tagsProp ?? [];
+    const commitTags = onTagsChange;
     const canEditTags = !readOnly && Boolean(noteId) && Boolean(commitTags);
     const [tagInputOpen, setTagInputOpen] = useState(false);
     const [tagInput, setTagInput] = useState('');
@@ -505,57 +477,174 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     const hasIcon = Boolean(appearance.value.icon);
     const showAddTagInline = canEditTags && effectiveTags.length === 0 && !tagInputOpen;
 
+    const renderBreadcrumbNode = (item: NoteBreadcrumbItem, isCurrent: boolean) => {
+        const icon = item.type === 'folder' ? (
+            <Folder className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />
+        ) : (
+            <NoteGlyph noteId={item.id} size={12} fallback={<FileText className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />} />
+        );
+        const label = (
+            <span
+                className={cn(
+                    'notes-breadcrumb-label',
+                    item.type === 'folder' ? 'max-w-[140px]' : 'max-w-[180px]',
+                )}
+            >
+                {item.title}
+            </span>
+        );
+        if (isCurrent) {
+            return (
+                <span
+                    className="notes-breadcrumb-current"
+                    aria-current="page"
+                    title={item.title}
+                >
+                    {icon}
+                    {label}
+                </span>
+            );
+        }
+        if (!canNavigateBreadcrumbs) {
+            return (
+                <span
+                    className="notes-breadcrumb-static"
+                    title={item.title}
+                >
+                    {icon}
+                    {label}
+                </span>
+            );
+        }
+        return (
+            <button
+                type="button"
+                className="notes-breadcrumb-item"
+                onClick={() => handleBreadcrumbClick(item)}
+                title={item.title}
+            >
+                {icon}
+                {label}
+            </button>
+        );
+    };
+
     return (
-        <header className="notes-document-header group relative pt-10 pb-2" data-notes-preset={appearance.value.preset}
+        <header
+            className={cn(
+                'notes-document-header group relative pb-2',
+                showBreadcrumbs ? 'pt-6' : 'pt-8',
+            )}
+            data-notes-preset={appearance.value.preset}
             data-notes-small-text={appearance.value.smallText ? 'true' : undefined}
             data-notes-full-width={appearance.value.fullWidth ? 'true' : undefined}
-            data-notes-font={appearance.value.font}>
+            data-notes-font={appearance.value.font}
+        >
             {showBreadcrumbs && (
-                <div className="mb-3 flex min-h-5 flex-wrap items-center">
-                {/* Breadcrumbs (Left aligned) - Only show if nested in folders */}
-                {showBreadcrumbs && (
-                    <nav aria-label={t('notes:header.breadcrumbs', { defaultValue: isZh ? '笔记路径' : 'Note path' })} className="notes-document-breadcrumbs flex min-w-0 max-w-full flex-wrap items-center gap-1.5 text-xs text-muted-foreground select-none mr-auto">
-                        {breadcrumbs.map((item, index) => {
-                            const isCurrent = index === breadcrumbs.length - 1;
-                            const icon = item.type === 'folder' ? (
-                                <Folder className="h-3 w-3 opacity-70" aria-hidden="true" />
-                            ) : (
-                                <NoteGlyph noteId={item.id} size={12} fallback={<FileText className="h-3 w-3 opacity-70" aria-hidden="true" />} />
-                            );
-                            const label = (
-                                <span className={`truncate ${item.type === 'folder' ? 'max-w-[100px]' : 'max-w-[150px]'}`}>
-                                    {item.title}
-                                </span>
-                            );
-                            return (
-                                <React.Fragment key={item.id}>
-                                    {index > 0 && <CaretRight className="h-3 w-3 shrink-0 opacity-40" aria-hidden="true" />}
-                                    {isCurrent ? (
-                                        <span
-                                            className="flex min-w-0 items-center gap-1 text-foreground font-medium"
-                                            aria-current="page"
-                                            title={item.title}
+                <div className="notes-document-breadcrumbs-row mb-2.5 flex min-h-5 flex-wrap items-center">
+                    <nav
+                        aria-label={t('notes:header.breadcrumbs', { defaultValue: isZh ? '笔记路径' : 'Note path' })}
+                        className="notes-document-breadcrumbs mr-auto"
+                    >
+                        {shouldCollapseBreadcrumbs ? (
+                            <>
+                                {renderBreadcrumbNode(breadcrumbs[0], false)}
+                                <CaretRight
+                                    className="notes-breadcrumb-sep h-3 w-3 shrink-0"
+                                    aria-hidden="true"
+                                />
+                                {canNavigateBreadcrumbs ? (
+                                    <Popover open={collapsedBreadcrumbsOpen} onOpenChange={setCollapsedBreadcrumbsOpen}>
+                                        <PopoverTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className="notes-breadcrumb-item notes-breadcrumb-ellipsis"
+                                                aria-label={t('notes:header.collapsed_breadcrumbs', {
+                                                    defaultValue: isZh ? '展开中间路径' : 'Show intermediate path',
+                                                })}
+                                                aria-haspopup="menu"
+                                                title={collapsedPathLabel}
+                                            >
+                                                <span aria-hidden="true">…</span>
+                                            </button>
+                                        </PopoverTrigger>
+                                        <PopoverContent
+                                            align="start"
+                                            sideOffset={4}
+                                            className="notes-breadcrumb-popover w-auto min-w-[160px] max-w-[min(260px,calc(100vw-16px))] p-1"
                                         >
-                                            {icon}
-                                            {label}
-                                        </span>
-                                    ) : (
-                                        <button
-                                            type="button"
-                                            className="flex min-w-0 items-center gap-1 rounded-sm py-1 text-muted-foreground hover:text-foreground transition-colors duration-150 cursor-pointer [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
-                                            onClick={() => handleBreadcrumbClick(item)}
-                                            title={item.title}
-                                        >
-                                            {icon}
-                                            {label}
-                                        </button>
-                                    )}
-                                </React.Fragment>
-                            );
-                        })}
+                                            <div
+                                                role="menu"
+                                                aria-label={t('notes:header.collapsed_breadcrumbs', {
+                                                    defaultValue: isZh ? '中间路径' : 'Intermediate path',
+                                                })}
+                                                className="flex flex-col gap-0.5"
+                                            >
+                                                {collapsedBreadcrumbs.map((ancestor) => (
+                                                    <button
+                                                        key={`${ancestor.type}:${ancestor.id}`}
+                                                        type="button"
+                                                        role="menuitem"
+                                                        className="notes-breadcrumb-popover-item"
+                                                        title={ancestor.title}
+                                                        onClick={() => {
+                                                            setCollapsedBreadcrumbsOpen(false);
+                                                            handleBreadcrumbClick(ancestor);
+                                                        }}
+                                                    >
+                                                        {ancestor.type === 'folder' ? (
+                                                            <Folder className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
+                                                        ) : (
+                                                            <NoteGlyph
+                                                                noteId={ancestor.id}
+                                                                size={14}
+                                                                fallback={<FileText className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />}
+                                                            />
+                                                        )}
+                                                        <span className="truncate">{ancestor.title}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </PopoverContent>
+                                    </Popover>
+                                ) : (
+                                    <span
+                                        className="notes-breadcrumb-static notes-breadcrumb-ellipsis"
+                                        title={collapsedPathLabel}
+                                    >
+                                        …
+                                    </span>
+                                )}
+                                {breadcrumbs.slice(-2).map((item, tailIndex, tail) => {
+                                    const isCurrent = tailIndex === tail.length - 1 && item.type === 'note';
+                                    return (
+                                        <React.Fragment key={`${item.type}:${item.id}`}>
+                                            <CaretRight
+                                                className="notes-breadcrumb-sep h-3 w-3 shrink-0"
+                                                aria-hidden="true"
+                                            />
+                                            {renderBreadcrumbNode(item, isCurrent)}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </>
+                        ) : (
+                            breadcrumbs.map((item, index) => {
+                                const isCurrent = index === breadcrumbs.length - 1 && item.type === 'note';
+                                return (
+                                    <React.Fragment key={`${item.type}:${item.id}`}>
+                                        {index > 0 && (
+                                            <CaretRight
+                                                className="notes-breadcrumb-sep h-3 w-3 shrink-0"
+                                                aria-hidden="true"
+                                            />
+                                        )}
+                                        {renderBreadcrumbNode(item, isCurrent)}
+                                    </React.Fragment>
+                                );
+                            })
+                        )}
                     </nav>
-                )}
-
                 </div>
             )}
 
@@ -571,13 +660,13 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                 <Popover open={appearanceOpen} onOpenChange={setAppearanceOpen}>
                     <PopoverTrigger asChild>
                         <button ref={appearanceTriggerRef} type="button" className="notes-document-affordance" aria-label={appearanceLabel} aria-haspopup="dialog" aria-controls={appearanceOpen ? `${appearanceTitleId}-panel` : undefined}>
-                            <SlidersHorizontal size={14} aria-hidden="true" />
+                            <Smiley size={14} aria-hidden="true" />
                             <span>{hasIcon
                                 ? t('notes:appearance.change_icon', { defaultValue: isZh ? '更换图标' : 'Change icon' })
                                 : t('notes:appearance.add_icon', { defaultValue: isZh ? '添加图标' : 'Add icon' })}</span>
                         </button>
                     </PopoverTrigger>
-    <PopoverContent ref={appearancePanelRef} id={`${appearanceTitleId}-panel`} tabIndex={-1} align="end" className="notes-appearance-panel w-80 p-3" aria-labelledby={appearanceTitleId} aria-busy={appearance.saving}
+    <PopoverContent ref={appearancePanelRef} id={`${appearanceTitleId}-panel`} tabIndex={-1} align="end" className="notes-appearance-panel w-80 max-w-[calc(100vw-16px)] p-3" aria-labelledby={appearanceTitleId} aria-busy={appearance.saving}
                             onKeyDown={(event) => {
                                 if (event.key !== 'Escape') return;
                                 if (isComposingKeyEvent(event)) {

@@ -1,6 +1,7 @@
-/* 跨分支关联线（不写入 mindmap.css，由 AssociationEdge 自行引入） */
+/* 跨分支关联线（由 AssociationEdge 引入） */
 
-/* 挂载淡入：新建关联线以淡入呈现（与树边 mm-tree-edge 一致） */
+/* stylelint-disable selector-class-pattern */
+
 @keyframes mm-association-enter {
   from {
     opacity: 0;
@@ -9,6 +10,7 @@
 
 .mm-association-edge {
   --mm-association-stroke: color-mix(in srgb, var(--mm-text-muted) 85%, transparent);
+
   animation: mm-association-enter var(--notes-popup-enter-duration, 200ms) ease both;
 }
 
@@ -16,11 +18,11 @@
   --mm-association-stroke: color-mix(in srgb, var(--mm-text) 70%, var(--mm-text-muted));
 }
 
-/* hover 反馈：与树边统一，只动 stroke（宽度/不透明度），禁 filter 防发糊。
-   组件内联 strokeWidth/opacity，需 !important 覆盖 */
+/* hover 反馈：只动 stroke 宽度与不透明度，禁 filter 防发糊 */
 .react-flow__edge:hover .mm-association-edge:not(.is-selected) {
+  /* stylelint-disable-next-line declaration-no-important */
   stroke-width: 2.25px !important;
-  opacity: 0.95 !important;
+  opacity: 0.95;
 }
 
 .mm-association-label {
@@ -45,11 +47,7 @@
     background-color var(--notes-hover-transition, 120ms ease);
 }
 
-.mm-association-label:hover:not(.is-editing) {
-  color: var(--mm-text);
-  border-color: color-mix(in srgb, var(--mm-border) 80%, transparent);
-}
-
+.mm-association-label:hover:not(.is-editing),
 .mm-association-label.is-selected {
   color: var(--mm-text);
   border-color: color-mix(in srgb, var(--mm-border) 80%, transparent);
@@ -86,48 +84,42 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--mm-text-muted) 25%, transparent);
 }
 
-/* 📱 触屏：16px 字号防 iOS 聚焦缩放，高度对齐 44px 触控目标
-   （同 mindmap.css 的 .mm-search-input 范式；须位于上方基线之后，同特异性按源序取胜） */
-@media (pointer: coarse) {
-  .mm-association-label-input {
-    min-height: 44px;
-    font-size: 16px;
-  }
-}
-
 @keyframes mm-association-hint-enter {
   from {
     opacity: 0;
     transform: translateX(-50%) translateY(-4px) scale(0.97);
   }
+
   to {
     opacity: 1;
     transform: translateX(-50%) translateY(0) scale(1);
   }
 }
 
+/* 顶部居中安全区：主工具栏已归入文档流，top: 12px 绝不被遮挡 */
 .mm-association-hint {
   position: absolute;
   left: 50%;
   top: 12px;
   transform: translateX(-50%);
-  z-index: 20;
+  z-index: 25;
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
   border-radius: var(--notes-radius-popup, 8px);
   border: 1px solid var(--mm-border);
-  background: var(--mm-bg-elevated, var(--mm-bg));
+  background: color-mix(in srgb, var(--mm-bg-elevated, var(--mm-bg)) 92%, transparent);
+  backdrop-filter: var(--wb-glass-blur, none);
   color: var(--mm-text);
   font-size: 12px;
-  box-shadow: var(--mm-popover-shadow, 0 4px 14px hsl(var(--shadow-base) / 0.16));
+  box-shadow: var(--mm-popover-shadow, 0 4px 14px hsl(var(--shadow-base) / 16%));
   pointer-events: none;
-  animation: mm-association-hint-enter var(--notes-popup-enter-duration, 150ms)
+  animation:
+    mm-association-hint-enter var(--notes-popup-enter-duration, 150ms)
     var(--notes-popup-enter-easing, cubic-bezier(0.16, 1, 0.3, 1)) both;
 }
 
-/* 触屏无 Esc 键：提示条内提供「取消」按钮，须恢复指针事件（父层 pointer-events: none） */
 .mm-association-hint .mm-association-cancel {
   pointer-events: auto;
   position: relative;
@@ -140,16 +132,15 @@
   background: var(--mm-bg, transparent);
   color: var(--mm-text);
   font-size: 12px;
+  transition: background-color var(--notes-hover-transition, 120ms ease);
 }
 
-/* 触控命中扩展（视觉尺寸不变） */
 .mm-association-hint .mm-association-cancel::after {
   content: '';
   position: absolute;
   inset: -8px;
 }
 
-/* 对齐 CommonTooltip / Notes 快捷键 kbd 视觉 */
 .mm-association-hint kbd {
   display: inline-flex;
   align-items: center;
@@ -158,8 +149,8 @@
   height: 16px;
   padding: 0 4px;
   border-radius: 4px;
-  border: 1px solid hsl(var(--border) / 0.6);
-  background: hsl(var(--muted) / 0.6);
+  border: 1px solid hsl(var(--border) / 60%);
+  background: hsl(var(--muted) / 60%);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 10px;
   line-height: 1;
@@ -167,16 +158,39 @@
   color: hsl(var(--muted-foreground));
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .mm-association-hint {
-    animation: none;
+/* 触屏 44px 触控热区补全 */
+@media (pointer: coarse) {
+  .mm-association-label {
+    padding: 4px 8px;
   }
 
+  .mm-association-label::after {
+    content: '';
+    position: absolute;
+    inset: -10px -6px;
+  }
+
+  .mm-association-label-input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .mm-association-hint .mm-association-cancel {
+    min-height: 44px;
+    height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mm-association-hint,
   .mm-association-edge {
     animation: none;
   }
 
-  .mm-association-label {
+  .mm-association-label,
+  .mm-association-hint .mm-association-cancel {
     transition: none;
   }
 }
+
+/* stylelint-enable selector-class-pattern */

@@ -60,7 +60,7 @@ export type {
 };
 export type {
   FsrsAgentReviewMutationOutcome, FsrsAgentReviewStateSnapshot, FsrsImportEnqueueSummary,
-  FsrsImportedCard, FsrsImportedSchedule, FsrsLibraryEnqueueCard,
+  FsrsImportedCard, FsrsImportedReviewLog, FsrsImportedSchedule, FsrsLibraryEnqueueCard,
   FsrsLibraryEnqueueOutcome,
 } from './src/fsrs-types.ts';
 export type {

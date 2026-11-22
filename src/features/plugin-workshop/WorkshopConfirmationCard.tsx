@@ -145,7 +145,17 @@ export function workshopGenerationText(t: (key: string, options?: Record<string,
 }
 
 export function workshopPlaceText(t: (key: string, options?: Record<string, unknown>) => string, place: WorkshopPlace): string {
-  return place.kind === 'selectionButton' ? t('workshop.where.selectionButton') : t(`workshop.where.${place.kind}`, { title: place.title });
+  switch (place.kind) {
+    case 'app':
+    case 'agentTool':
+      return t(`workshop.where.${place.kind}`, { title: place.title });
+    case 'slashCommand':
+      return place.command
+        ? t('workshop.where.slashCommandNamed', { command: place.command })
+        : t('workshop.where.slashCommand');
+    default:
+      return t(`workshop.where.${place.kind}`);
+  }
 }
 
 /** 「装好后在哪里找到它」: one line, from what the work adds; 「预计…」 while it is only the recipe's expectation. */
@@ -168,7 +178,13 @@ export function workshopErrorText(t: (key: string, options?: Record<string, unkn
     values.services = described.values.services.split(',')
       .map(service => t(`permission.serviceNames.${service}`, { defaultValue: service })).join(t('workshop.whereSeparator'));
   }
-  return t(`workshop.errors.${described.key}`, values);
+  const key = `workshop.errors.${described.key}`;
+  const options = described.fallback ? { ...values, defaultValue: described.fallback } : values;
+  const translated = t(key, options);
+  if ((translated === key || translated === `plugin_manager:${key}`) && described.fallback) {
+    return described.fallback;
+  }
+  return translated;
 }
 
 /** A plain sentence, the next step, and the raw text folded away. */
@@ -230,10 +246,19 @@ export function WorkshopConfirmationCard({ item, busy, error, embedded = false, 
   // The version belongs on the title only when it tells the user something: what this modification turns into.
   const titleText = item.previousVersion && item.version ? `${item.name} · v${item.version}` : item.name;
   const showPlan = deciding || item.phase === 'generating' || item.phase === 'validating' || item.phase === 'installing';
+  const validationBlocked = workshopValidationBlocked(item);
+  const blockedRaw = item.execution?.stage === 'blocked'
+    ? (item.execution.reason || (validationBlocked ? (item.error || 'WORKSHOP_VERIFICATION_INCOMPLETE') : undefined))
+    : undefined;
+  const blockedReasonText = blockedRaw
+    ? (describeWorkshopError(blockedRaw, item.name).key === 'unknown'
+      ? blockedRaw
+      : workshopErrorText(t, blockedRaw, item.name))
+    : undefined;
   const body = (
     <>
       {item.description && <p className="break-words">{item.description}</p>}
-      {(showPlan || item.phase === 'installed' || item.phase === 'disabled') && <WorkshopWhereToFind places={item.places} expected={item.placesExpected && showPlan} />}
+      {(showPlan || item.phase === 'installed' || item.phase === 'disabled' || (item.installed !== undefined && item.installed.phase !== 'undone')) && <WorkshopWhereToFind places={item.places} expected={item.placesExpected && showPlan} />}
       {/* A modification in progress: the installed version keeps running until the new one is installed. */}
       {showPlan && item.installed && item.installed.phase !== 'undone' && (
         <p data-testid="workshop-installed-alongside" className="text-muted-foreground">{t('workshop.installedAlongside', { version: item.installed.version })}</p>
@@ -271,7 +296,7 @@ export function WorkshopConfirmationCard({ item, busy, error, embedded = false, 
       {/* The risk is said once, where the user decides to install. */}
       {item.phase === 'ready' && <p data-testid="workshop-risk" className="text-muted-foreground">{t('workshop.risk')}</p>}
       {item.phase === 'validating' && <p data-testid="workshop-validating" className="text-muted-foreground">{t('workshop.verifying')}</p>}
-      {item.execution?.stage === 'blocked' && item.execution.reason && <p role="status" data-testid="workshop-blocked-reason" className="text-muted-foreground">{item.execution.reason}</p>}
+      {blockedReasonText && <p role="status" data-testid="workshop-blocked-reason" className="text-muted-foreground">{blockedReasonText}</p>}
       {item.execution?.stage === 'repairing' && item.rollback === 'restored' && <p role="status" className="text-muted-foreground">{t('workshop.repairingRestored')}</p>}
       <div role="status" aria-live="polite" className="space-y-1 break-words empty:hidden">
         {item.progress && <p data-testid="workshop-progress" data-stage={item.progress.stage}>{workshopProgressDetail(t, item.progress)}</p>}
@@ -304,7 +329,7 @@ export function WorkshopConfirmationCard({ item, busy, error, embedded = false, 
 
   if (embedded) {
     return (
-      <div className="min-w-0 space-y-3" aria-label={t('workshop.label')} data-testid="workshop-card" data-phase={item.phase}>
+      <div className="min-w-0 space-y-3" aria-label={t('workshop.label')} data-testid="workshop-card" data-phase={item.phase} data-execution-stage={item.execution?.stage === 'blocked' ? 'blocked' : undefined}>
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <h3 className="min-w-0 break-words text-sm font-semibold leading-5">{titleText}</h3>
           {/* Embedded in a chat tool card, whose header already shows the stage: no second badge. */}
@@ -315,7 +340,7 @@ export function WorkshopConfirmationCard({ item, busy, error, embedded = false, 
     );
   }
 
-  return <Card className="min-w-0 shadow-none" aria-label={t('workshop.label')} data-testid="workshop-card" data-phase={item.phase}>
+  return <Card className="min-w-0 shadow-none" aria-label={t('workshop.label')} data-testid="workshop-card" data-phase={item.phase} data-execution-stage={item.execution?.stage === 'blocked' ? 'blocked' : undefined}>
     <CardHeader className="space-y-2">
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <CardTitle className="break-words text-sm">{titleText}</CardTitle>

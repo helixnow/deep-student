@@ -1,0 +1,400 @@
+/**
+ * Crepe Prose Typography & Content Elements
+ *
+ * Headings (h1-h6), block rhythm, selection/selectednode, inline code,
+ * blockquotes, links, lists & task lists, hr, tables, images, KaTeX,
+ * and typed placeholders.
+ */
+
+/* stylelint-disable selector-class-pattern */
+
+/* ===== Block Rhythm ===== */
+.crepe-editor-wrapper .ProseMirror > * + * {
+  margin-top: var(--notes-block-gap, 0.4em);
+}
+
+.crepe-editor-wrapper .milkdown .ProseMirror > :is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-top: 0.4em;
+}
+
+/* Callouts & code blocks breathe slightly wider than body paragraphs */
+.crepe-editor-wrapper .ProseMirror > * + blockquote,
+.crepe-editor-wrapper .ProseMirror > * + pre,
+.crepe-editor-wrapper .ProseMirror > * + .milkdown-code-block {
+  margin-top: var(--notes-callout-gap, 1em);
+}
+
+.crepe-editor-wrapper .ProseMirror > blockquote + *,
+.crepe-editor-wrapper .ProseMirror > pre + *,
+.crepe-editor-wrapper .ProseMirror > .milkdown-code-block + * {
+  margin-top: var(--notes-callout-gap, 1em);
+}
+
+/* ===== Text & Node Selection ===== */
+.crepe-editor-wrapper .milkdown .ProseMirror ::selection {
+  background: var(--notes-selection-bg, hsl(var(--primary) / 14%));
+  color: inherit;
+}
+
+.dark .crepe-editor-wrapper .milkdown .ProseMirror ::selection {
+  background: var(--notes-selection-bg, hsl(var(--primary) / 14%));
+}
+
+/* Node selection outline + soft tint (avoids broad [class*="selected"] invalidation key) */
+.crepe-editor-wrapper .milkdown .ProseMirror .ProseMirror-selectednode {
+  outline: 2px solid hsl(var(--primary) / 45%);
+  outline-offset: 2px;
+  background: var(--notes-block-selected-bg, hsl(var(--primary) / 14%));
+}
+
+.crepe-editor-wrapper [data-selected],
+.crepe-editor-wrapper .selected {
+  background: var(--notes-block-selected-bg, hsl(var(--primary) / 14%));
+}
+
+.crepe-editor-wrapper .selectedCell,
+.crepe-editor-wrapper .tableWrapper .selectedCell,
+.crepe-editor-wrapper td.selectedCell,
+.crepe-editor-wrapper th.selectedCell {
+  background: var(--notes-block-selected-bg, hsl(var(--primary) / 14%));
+  border-color: hsl(var(--primary));
+}
+
+/* ===== Headings (em ladder from notes-typography.css, 0,3,1 beats Crepe reset) ===== */
+.crepe-editor-wrapper .milkdown .ProseMirror h1 {
+  font-size: var(--notes-heading-h1-size, 1.875em);
+  font-weight: var(--notes-heading-h1-weight, 600);
+  line-height: var(--notes-heading-h1-lh, 1.3);
+  margin-top: 1.1em;
+  margin-bottom: 0.15em;
+}
+
+.crepe-editor-wrapper .milkdown .ProseMirror h2 {
+  font-size: var(--notes-heading-h2-size, 1.5em);
+  font-weight: var(--notes-heading-h2-weight, 600);
+  line-height: var(--notes-heading-h2-lh, 1.3);
+  margin-top: 0.95em;
+  margin-bottom: 0.15em;
+}
+
+.crepe-editor-wrapper .milkdown .ProseMirror h3 {
+  font-size: var(--notes-heading-h3-size, 1.25em);
+  font-weight: var(--notes-heading-h3-weight, 600);
+  line-height: var(--notes-heading-h3-lh, 1.3);
+  margin-top: 0.8em;
+  margin-bottom: 0.1em;
+}
+
+.crepe-editor-wrapper .milkdown .ProseMirror h4 {
+  font-size: var(--notes-heading-h4-size, 1.125em);
+  font-weight: var(--notes-heading-h4-weight, 600);
+  line-height: var(--notes-heading-h4-lh, 1.35);
+  margin-top: 0.75em;
+  margin-bottom: 0.1em;
+}
+
+.crepe-editor-wrapper .milkdown .ProseMirror h5 {
+  font-size: var(--notes-heading-h5-size, 1em);
+  font-weight: var(--notes-heading-h5-weight, 600);
+  line-height: var(--notes-heading-h5-lh, 1.4);
+  margin-top: 0.7em;
+  margin-bottom: 0.1em;
+}
+
+.crepe-editor-wrapper .milkdown .ProseMirror h6 {
+  font-size: var(--notes-heading-h6-size, 1em);
+  font-weight: var(--notes-heading-h6-weight, 500);
+  line-height: var(--notes-heading-h6-lh, 1.4);
+  margin-top: 0.7em;
+  margin-bottom: 0.1em;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ===== Inline Code & Plain <pre> ===== */
+.crepe-editor-wrapper .milkdown .ProseMirror pre {
+  background: var(--notes-surface-subtle, hsl(var(--foreground) / 3.5%));
+  border-radius: 10px;
+  padding: 1rem;
+  overflow-x: auto;
+}
+
+.crepe-editor-wrapper code {
+  font-family: var(--font-mono);
+  font-size: var(--notes-inline-code-size, 0.875em);
+}
+
+/* Neutral inline code pill (Notion proportions, never red/destructive) */
+.crepe-editor-wrapper .milkdown :not(pre) > code {
+  background: hsl(var(--foreground) / 7%);
+  color: var(--crepe-color-inline-code, var(--notes-inline-code-color, hsl(var(--foreground) / 86%)));
+  padding: 0.2em 0.4em;
+  border-radius: var(--notes-inline-code-radius, 4px);
+  font-size: 0.85em;
+}
+
+.dark .crepe-editor-wrapper .milkdown :not(pre) > code {
+  background: hsl(var(--foreground) / 10%);
+  color: var(--crepe-color-inline-code, var(--notes-inline-code-color, hsl(var(--foreground) / 86%)));
+}
+
+/* ===== Blockquote (3px bar, non-italic, removes Crepe ::before duplicate bar) ===== */
+.crepe-editor-wrapper .milkdown .ProseMirror blockquote {
+  border-left: var(--notes-blockquote-border-w, 3px) solid hsl(var(--foreground) / 85%);
+  padding-left: 14px;
+  margin-left: 0;
+  font-style: normal;
+  color: var(--notes-ink, hsl(var(--foreground)));
+}
+
+.crepe-editor-wrapper .milkdown .ProseMirror blockquote::before {
+  content: none;
+}
+
+/* ===== Links (Notion-style subtle underline, body ink) ===== */
+.crepe-editor-wrapper .milkdown .ProseMirror a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: hsl(var(--foreground) / 35%);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  transition: text-decoration-color var(--notes-hover-transition, 120ms ease);
+}
+
+.crepe-editor-wrapper .milkdown .ProseMirror a:hover {
+  text-decoration-color: hsl(var(--foreground) / 75%);
+}
+
+/* ===== Lists & Task Lists ===== */
+.crepe-editor-wrapper .ProseMirror ul,
+.crepe-editor-wrapper .ProseMirror ol {
+  padding-left: 1.5rem;
+  color: hsl(var(--foreground) / 60%);
+}
+
+.crepe-editor-wrapper ul {
+  list-style-type: disc;
+}
+
+.crepe-editor-wrapper ul ul {
+  list-style-type: circle;
+}
+
+.crepe-editor-wrapper ul ul ul {
+  list-style-type: square;
+}
+
+.crepe-editor-wrapper ol {
+  list-style-type: decimal;
+}
+
+.crepe-editor-wrapper li {
+  margin-top: var(--notes-list-item-gap, 0.125em);
+  margin-bottom: var(--notes-list-item-gap, 0.125em);
+  color: hsl(var(--foreground) / 60%);
+}
+
+.crepe-editor-wrapper li:first-child {
+  margin-top: 0;
+}
+
+.crepe-editor-wrapper li:last-child {
+  margin-bottom: 0;
+}
+
+.crepe-editor-wrapper ul > li::marker {
+  color: hsl(var(--foreground) / 60%);
+}
+
+.crepe-editor-wrapper ol > li::marker {
+  color: hsl(var(--foreground) / 70%);
+}
+
+/* Restore normal body ink inside list items while markers stay softly muted */
+.crepe-editor-wrapper li > * {
+  color: var(--notes-ink, hsl(var(--foreground)));
+}
+
+/* Milkdown custom list marker wrapper */
+.crepe-editor-wrapper .milkdown-list-item-block li .label-wrapper,
+.crepe-editor-wrapper .milkdown-list-item-block li .label {
+  color: hsl(var(--foreground) / 60%);
+}
+
+.crepe-editor-wrapper .milkdown-list-item-block li .label-wrapper svg {
+  fill: hsl(var(--foreground) / 60%);
+}
+
+/* Checked todo box: primary brand accent */
+:where(.crepe-editor-wrapper) .milkdown-list-item-block .label-wrapper .label.checked {
+  color: hsl(var(--primary));
+  fill: hsl(var(--primary));
+}
+
+:where(.crepe-editor-wrapper) .milkdown-list-item-block .label.checked svg,
+:where(.crepe-editor-wrapper) .milkdown-list-item-block .label.checked path {
+  color: hsl(var(--primary));
+  fill: hsl(var(--primary));
+}
+
+/* Native task list fallback */
+.crepe-editor-wrapper .task-list-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  list-style: none;
+}
+
+.crepe-editor-wrapper input[type='checkbox'] {
+  accent-color: hsl(var(--primary));
+}
+
+.crepe-editor-wrapper .task-list-item input[type='checkbox'] {
+  margin-top: 0.25em;
+  cursor: pointer;
+}
+
+/* Checked task items: muted ink + strikethrough */
+:where(.crepe-editor-wrapper) .task-list-item:has(input[type='checkbox']:checked),
+:where(.crepe-editor-wrapper) .milkdown-list-item-block li:has(.label.checked) .children {
+  color: hsl(var(--muted-foreground));
+  text-decoration: line-through;
+}
+
+:where(.crepe-editor-wrapper) .task-list-item:has(input[type='checkbox']:checked) > *,
+:where(.crepe-editor-wrapper) .milkdown-list-item-block li:has(.label.checked) .children > *,
+:where(.crepe-editor-wrapper) .milkdown-list-item-block li:has(.label.checked) .children :is(p, span) {
+  color: hsl(var(--muted-foreground));
+  text-decoration: line-through;
+}
+
+/* ===== Horizontal Rule (1px fine hairline) ===== */
+.crepe-editor-wrapper .milkdown .ProseMirror hr {
+  border: none;
+  border-top: 1px solid hsl(var(--border));
+  margin: var(--notes-hr-margin-block, 0.75em) 0;
+  padding: 0;
+  height: 1px;
+  background: none;
+}
+
+/* ===== Tables (.tableWrapper overflow rule lives in CrepeEditor.css contract) ===== */
+.crepe-editor-wrapper table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 100%;
+  margin: 1rem 0;
+}
+
+.crepe-editor-wrapper th,
+.crepe-editor-wrapper td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.crepe-editor-wrapper th {
+  background: var(--notes-table-header-bg, hsl(var(--muted) / 50%));
+  font-weight: 600;
+}
+
+/* Notion table density: 14px / 1.5, 7px 9px cell padding (~34px row height) */
+.crepe-editor-wrapper .milkdown .milkdown-table-block th,
+.crepe-editor-wrapper .milkdown .milkdown-table-block td {
+  padding: 7px 9px;
+  border-color: hsl(var(--border));
+  font-size: 14px;
+  line-height: 1.5;
+  vertical-align: top;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-table-block :is(th, td) p {
+  padding: 0;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+/* ===== Images & Image Blocks ===== */
+.crepe-editor-wrapper img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius, 0.5rem);
+}
+
+.crepe-editor-wrapper .image-block,
+.crepe-editor-wrapper milkdown-image-block,
+.crepe-editor-wrapper [data-type='image'] {
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius, 0.5rem);
+  overflow: hidden;
+}
+
+.crepe-editor-wrapper .image-block.selected,
+.crepe-editor-wrapper milkdown-image-block.selected,
+.crepe-editor-wrapper [data-type='image'].selected {
+  border-color: hsl(var(--primary));
+}
+
+/* ===== KaTeX Display Math ===== */
+.crepe-editor-wrapper .katex-display {
+  margin: 1rem 0;
+  overflow-x: auto;
+}
+
+/* ===== Placeholders & Typed Placeholders ===== */
+.crepe-editor-wrapper .placeholder {
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+}
+
+.crepe-editor-wrapper .milkdown .crepe-placeholder::before {
+  color: hsl(var(--muted-foreground) / 75%);
+  animation: crepe-placeholder-in var(--notes-popup-enter-duration, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+@keyframes crepe-placeholder-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Notion-style typed placeholders (--ds-ph-* populated by CrepeEditor.tsx) */
+.crepe-editor-wrapper .ProseMirror h1.crepe-placeholder::before {
+  content: var(--ds-ph-h1);
+}
+
+.crepe-editor-wrapper .ProseMirror h2.crepe-placeholder::before {
+  content: var(--ds-ph-h2);
+}
+
+.crepe-editor-wrapper .ProseMirror h3.crepe-placeholder::before {
+  content: var(--ds-ph-h3);
+}
+
+.crepe-editor-wrapper .ProseMirror :is(h4, h5, h6).crepe-placeholder::before {
+  content: var(--ds-ph-heading);
+}
+
+.crepe-editor-wrapper .ProseMirror blockquote > p.crepe-placeholder::before {
+  content: var(--ds-ph-quote);
+}
+
+.crepe-editor-wrapper .milkdown .ProseMirror .ds-typed-placeholder {
+  position: relative;
+}
+
+.crepe-editor-wrapper .milkdown .ProseMirror .ds-typed-placeholder::before {
+  position: absolute;
+  pointer-events: none;
+  color: hsl(var(--muted-foreground) / 75%);
+  content: var(--ds-ph-list);
+}
+
+.crepe-editor-wrapper .ProseMirror .ds-typed-placeholder[data-kind='todo']::before {
+  content: var(--ds-ph-todo);
+}
+/* stylelint-enable selector-class-pattern */

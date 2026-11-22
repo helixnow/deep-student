@@ -5,7 +5,7 @@ export interface BuiltinVendorDef {
 }
 export interface BuiltinModelDef {
   id: string; vendorId: string; label: string; model: string;
-  isMultimodal: boolean; isReasoning: boolean; supportsTools: boolean;
+  isMultimodal: boolean; isReasoning: boolean; isEmbedding?: boolean; supportsTools: boolean;
   maxOutputTokens: number; temperature: number; contextWindow?: number;
 }
 export const BUILTIN_VENDORS: readonly BuiltinVendorDef[] = [
@@ -186,6 +186,32 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
     "maxOutputTokens": 65536,
     "temperature": 1,
     "contextWindow": 1048576
+  },
+  {
+    "id": "builtin-mistral-embed",
+    "vendorId": "builtin-mistral",
+    "label": "Mistral Embed",
+    "model": "mistral-embed",
+    "isMultimodal": false,
+    "isReasoning": false,
+    "isEmbedding": true,
+    "supportsTools": false,
+    "maxOutputTokens": 0,
+    "temperature": 0,
+    "contextWindow": 8192
+  },
+  {
+    "id": "builtin-codestral-embed",
+    "vendorId": "builtin-mistral",
+    "label": "Codestral Embed",
+    "model": "codestral-embed",
+    "isMultimodal": false,
+    "isReasoning": false,
+    "isEmbedding": true,
+    "supportsTools": false,
+    "maxOutputTokens": 0,
+    "temperature": 0,
+    "contextWindow": 8192
   },
   {
     "id": "builtin-deepseek-flash",

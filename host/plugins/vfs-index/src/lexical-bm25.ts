@@ -10,7 +10,7 @@
  * bit-identical scores and a stable ranking.
  */
 
-export const MAX_SCORED_DOC_CHARS = 12_000;
+export const MAX_SCORED_DOC_CHARS = 100_000;
 
 export interface Bm25Options {
   /** Term-frequency saturation. */
@@ -86,8 +86,60 @@ export function bm25Idf(docCount: number, docFreq: number): number {
 }
 
 function headChars(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
   const chars = [...text];
   return chars.length <= maxChars ? text : chars.slice(0, maxChars).join('');
+}
+
+function codePointLength(text: string): number {
+  let count = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    const code = text.charCodeAt(i);
+    if (code >= 0xd800 && code <= 0xdbff && i + 1 < text.length) {
+      const next = text.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) i += 1;
+    }
+    count += 1;
+  }
+  return count;
+}
+
+function charBefore(text: string, offset: number): string | null {
+  if (offset <= 0) return null;
+  const code = text.charCodeAt(offset - 1);
+  if (code >= 0xdc00 && code <= 0xdfff && offset >= 2) return text.slice(offset - 2, offset);
+  return text[offset - 1]!;
+}
+
+function charAt(text: string, offset: number): string | null {
+  if (offset >= text.length) return null;
+  const cp = text.codePointAt(offset);
+  return cp === undefined ? null : String.fromCodePoint(cp);
+}
+
+function isWholeTokenMatch(text: string, offset: number, term: string): boolean {
+  if ([...term].some(isCjkChar)) return true;
+  const prev = charBefore(text, offset);
+  const next = charAt(text, offset + term.length);
+  return (prev === null || !isWordChar(prev)) && (next === null || !isWordChar(next));
+}
+
+function earliestMatchedTermOffset(loweredFull: string, terms: readonly string[], minSearchFrom: number): number {
+  let earliest = -1;
+  for (const term of terms) {
+    if (term.length === 0) continue;
+    let pos = Math.max(0, minSearchFrom - term.length);
+    while (pos < loweredFull.length) {
+      const found = loweredFull.indexOf(term, pos);
+      if (found < 0) break;
+      if (isWholeTokenMatch(loweredFull, found, term)) {
+        if (earliest < 0 || found < earliest) earliest = found;
+        break;
+      }
+      pos = found + 1;
+    }
+  }
+  return earliest;
 }
 
 /**
@@ -110,13 +162,34 @@ export function bm25Scores(
   const docFreqs = new Array<number>(terms.length).fill(0);
 
   docs.forEach((doc, docIndex) => {
-    const lowered = headChars(doc, MAX_SCORED_DOC_CHARS).toLowerCase();
-    docLens[docIndex] = [...lowered].length;
+    const head = headChars(doc, MAX_SCORED_DOC_CHARS);
+    const loweredHead = head.toLowerCase();
     const freqs = termFreqs[docIndex]!;
-    forEachToken(lowered, (token) => {
+    forEachToken(loweredHead, (token) => {
       const slot = termSlot.get(token);
       if (slot !== undefined) freqs[slot] = freqs[slot]! + 1;
     });
+    if (head.length < doc.length) {
+      const loweredFull = doc.toLowerCase();
+      docLens[docIndex] = codePointLength(loweredFull);
+      if (!freqs.some((freq) => freq > 0)) {
+        const earliestOffset = earliestMatchedTermOffset(loweredFull, terms, loweredHead.length);
+        if (earliestOffset >= 0) {
+          const fullChars = [...loweredFull];
+          const charOffset = codePointLength(loweredFull.slice(0, earliestOffset));
+          const half = Math.floor(MAX_SCORED_DOC_CHARS / 2);
+          const start = Math.max(0, Math.min(charOffset - half, fullChars.length - MAX_SCORED_DOC_CHARS));
+          const end = Math.min(fullChars.length, start + MAX_SCORED_DOC_CHARS);
+          const windowText = fullChars.slice(start, end).join('');
+          forEachToken(windowText, (token) => {
+            const slot = termSlot.get(token);
+            if (slot !== undefined) freqs[slot] = freqs[slot]! + 1;
+          });
+        }
+      }
+    } else {
+      docLens[docIndex] = codePointLength(loweredHead);
+    }
     freqs.forEach((freq, slot) => {
       if (freq > 0) docFreqs[slot] = docFreqs[slot]! + 1;
     });

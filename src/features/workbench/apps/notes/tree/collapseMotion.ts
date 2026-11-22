@@ -71,18 +71,27 @@ export function animateTreeRowsExit(
     return;
   }
 
-  const rows = ids
-    .map((id) =>
-      container.querySelector<HTMLElement>(`[data-nwt-id="${escapeRowId(id)}"]`),
-    )
-    .filter((el): el is HTMLElement => !!el);
+  const entries = ids
+    .map((id) => {
+      const rowEl = container.querySelector<HTMLElement>(`[data-nwt-id="${escapeRowId(id)}"]`);
+      if (!rowEl) return null;
+      // 非虚拟化行包在 .nwt-row-slot 内（同时承载 .nwt-indent-guide 兄弟节点）；
+      // 直接对槽位收拢 + 淡出，避免退场期间残留孤立的层级竖线。
+      const slotEl = rowEl.closest<HTMLElement>('.nwt-row-slot');
+      const guides = slotEl
+        ? []
+        : Array.from(rowEl.parentElement?.querySelectorAll<HTMLElement>('.nwt-indent-guide') ?? [])
+          .filter((guide) => guide.parentElement === rowEl.parentElement);
+      return { el: slotEl ?? rowEl, guides };
+    })
+    .filter((entry): entry is { el: HTMLElement; guides: HTMLElement[] } => !!entry);
   // jsdom 无 Element.animate：测试环境自动走瞬时提交
-  if (rows.length === 0 || typeof rows[0].animate !== 'function') {
+  if (entries.length === 0 || typeof entries[0].el.animate !== 'function') {
     commit();
     return;
   }
 
-  const animations = rows.map((el) => {
+  const animations = entries.map(({ el, guides }) => {
     const height = el.offsetHeight;
     const previousOverflow = el.style.overflow;
     // .nwt-row 有 min-height:30px，会钳住 height 关键帧，动画期间临时归零
@@ -96,7 +105,16 @@ export function animateTreeRowsExit(
       ],
       { duration: COLLAPSE_DURATION_MS, easing: COLLAPSE_EASING, fill: 'forwards' },
     );
-    return { animation, el, previousOverflow, previousMinHeight };
+    const guideAnimations = guides
+      .filter((guide) => typeof guide.animate === 'function')
+      .map((guide) => guide.animate(
+        [
+          { opacity: window.getComputedStyle(guide).opacity || '1' },
+          { opacity: '0' },
+        ],
+        { duration: COLLAPSE_DURATION_MS, easing: COLLAPSE_EASING, fill: 'forwards' },
+      ));
+    return { animation, guideAnimations, el, previousOverflow, previousMinHeight };
   });
 
   let committed = false;
@@ -107,11 +125,18 @@ export function animateTreeRowsExit(
     // commit 后清理 fill:forwards：被移除的行已不在 DOM，无副作用；
     // 未被移除的行（预测未命中等极端情况）恢复正常布局。
     requestAnimationFrame(() => {
-      for (const { animation, el, previousOverflow, previousMinHeight } of animations) {
+      for (const { animation, guideAnimations, el, previousOverflow, previousMinHeight } of animations) {
         try {
           animation.cancel();
         } catch {
           // ignore
+        }
+        for (const guideAnimation of guideAnimations) {
+          try {
+            guideAnimation.cancel();
+          } catch {
+            // ignore
+          }
         }
         el.style.overflow = previousOverflow;
         el.style.minHeight = previousMinHeight;

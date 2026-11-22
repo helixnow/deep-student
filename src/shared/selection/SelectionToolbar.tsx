@@ -124,6 +124,7 @@ export interface SelectionToolbarExtraAction {
   label: string;
   icon: React.ReactNode | ((state: { touchTarget: boolean }) => React.ReactNode);
   run: (text: string) => void;
+  hideLabelOnTouch?: boolean;
 }
 
 // ============================================================================
@@ -223,7 +224,7 @@ export function computeSelectionToolbarPosition(
   const left = Math.min(Math.max(rawCenterX, minX), maxX);
 
   const minY = VERTICAL_TOP_CLAMP_PX;
-  const maxY = Math.max(minY, innerHeight - VERTICAL_BOTTOM_CLAMP_PX);
+  const maxY = Math.max(minY, effectiveBottom - VERTICAL_BOTTOM_CLAMP_PX);
   const top = Math.min(Math.max(rawTop, minY), maxY);
 
   return {
@@ -332,14 +333,16 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   // 键盘可达性：工具栏可见时 Escape 直接关闭（无论焦点在何处）
   useEffect(() => {
     if (!isVisible) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleEscapeKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
         onClear();
       }
     };
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => document.removeEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('keydown', handleEscapeKeyDown, true);
+    return () => {
+      document.removeEventListener('keydown', handleEscapeKeyDown, true);
+    };
   }, [isVisible, onClear]);
 
   // 键盘可达性：左/右/Home/End 在按钮间移动焦点（roving focus）
@@ -571,7 +574,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
             icon={<ChatDots size={touchTarget ? 16 : 14} />}
             label={t('selectionToolbar.addToChat')}
             disabled={!onAddToChat}
-            isLast={!showAddAsContext}
+            isLast={!showAddAsContext && extraActions.length === 0}
             touchTarget={touchTarget}
           />
         </>
@@ -591,7 +594,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
         </>
       )}
 
-      {/* 宿主附加动作（笔记：摘录到导图） */}
+      {/* 宿主附加动作（笔记：摘录到导图 / 插件扩展动作） */}
       {extraActions.map((action, index) => (
         <React.Fragment key={action.key}>
           <Divider />
@@ -604,6 +607,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
             }}
             icon={typeof action.icon === 'function' ? action.icon({ touchTarget }) : action.icon}
             label={action.label}
+            hideLabelOnTouch={action.hideLabelOnTouch}
             isLast={index === extraActions.length - 1}
             touchTarget={touchTarget}
           />
@@ -626,6 +630,7 @@ interface ToolbarButtonProps {
   isLast?: boolean;
   /** 触屏放大触控目标 */
   touchTarget?: boolean;
+  hideLabelOnTouch?: boolean;
 }
 
 const ToolbarButton: React.FC<ToolbarButtonProps> = ({
@@ -636,6 +641,7 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
   isFirst,
   isLast,
   touchTarget,
+  hideLabelOnTouch,
 }) => (
   <button
     type="button"
@@ -644,8 +650,10 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
     aria-label={label}
     title={label}
     className={cn(
-      'flex items-center gap-1.5',
-      touchTarget ? 'min-h-11 min-w-11 justify-center px-3 text-ui' : 'px-2.5 py-1.5 text-xs',
+      'flex items-center',
+      touchTarget
+        ? 'min-h-11 min-w-11 justify-center gap-1 px-2.5 py-1.5 text-xs whitespace-nowrap'
+        : 'gap-1.5 px-2.5 py-1.5 text-xs',
       'font-medium text-foreground/80',
       'hover:bg-accent/60 hover:text-foreground',
       'focus-visible:outline-none focus-visible:bg-accent/60 focus-visible:text-foreground',
@@ -656,7 +664,9 @@ const ToolbarButton: React.FC<ToolbarButtonProps> = ({
     )}
   >
     {icon}
-    {!touchTarget && <span>{label}</span>}
+    {(!touchTarget || !hideLabelOnTouch || !icon) && (
+      <span className={cn(touchTarget && 'leading-none')}>{label}</span>
+    )}
   </button>
 );
 

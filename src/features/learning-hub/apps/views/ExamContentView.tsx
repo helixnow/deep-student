@@ -2854,8 +2854,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         </div>
       )}
 
-      {/* Tab 栏：收敛为干净的 h-11 单行导航；整卷练习（BatchPracticeWorkspace）激活时隐藏右侧管理/导出噪点 */}
-      <div className="flex-shrink-0 h-11 px-3 sm:px-4 border-b border-border/35 bg-background/95 backdrop-blur-sm flex items-center">
+      {/* Tab 栏：收敛为干净的 min-h-11 单行导航；整卷练习（BatchPracticeWorkspace）激活时隐藏右侧管理/导出噪点 */}
+      <div className="flex-shrink-0 min-h-11 px-3 py-1 sm:py-0 sm:h-11 sm:px-4 border-b border-border/35 bg-background/95 backdrop-blur-sm flex items-center">
         <div className="flex w-full items-center justify-between gap-2">
           {/* 左侧 Tab - 允许横向滚动；移动端右缘渐隐提示还有更多；方向键在一级入口间移动焦点 */}
           <div
@@ -2887,7 +2887,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               data-active={activeTopTab === 'list' || undefined}
               aria-pressed={activeTopTab === 'list'}
               className={cn(
-                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
+                'relative z-[1] min-h-9 sm:min-h-0 px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
                 activeTopTab === 'list'
                   ? 'text-foreground font-medium hover:bg-transparent'
                   : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]'
@@ -2903,7 +2903,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               data-active={viewMode === 'papers' || undefined}
               aria-pressed={viewMode === 'papers'}
               className={cn(
-                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
+                'relative z-[1] min-h-9 sm:min-h-0 px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
                 viewMode === 'papers'
                   ? 'text-foreground font-medium hover:bg-transparent'
                   : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]'
@@ -2924,7 +2924,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               data-active={activeTopTab === 'practice' || undefined}
               aria-pressed={activeTopTab === 'practice'}
               className={cn(
-                'relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
+                'relative z-[1] min-h-9 sm:min-h-0 px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
                 activeTopTab === 'practice'
                   ? 'text-foreground font-medium hover:bg-transparent'
                   : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]',
@@ -2945,7 +2945,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     aria-pressed={activeTopTab === 'more'}
                     aria-label={t('learningHub:exam.tab.more')}
                     className={cn(
-                      'group relative z-[1] px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 gap-1 ui-press [@media(pointer:coarse)]:!min-h-11',
+                      'group relative z-[1] min-h-9 sm:min-h-0 px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 gap-1 ui-press [@media(pointer:coarse)]:!min-h-11',
                       activeTopTab === 'more'
                         ? 'text-foreground font-medium hover:bg-transparent'
                         : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]'
@@ -2993,7 +2993,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   options={MODE_OPTIONS}
                   size="sm"
                   variant="ghost"
-                  className="h-7 flex-shrink-0 border-0 bg-foreground/[0.04] px-2 text-xs hover:bg-foreground/[0.07] [@media(pointer:coarse)]:!h-11"
+                  className="h-9 sm:h-7 flex-shrink-0 border-0 bg-foreground/[0.04] px-2 text-xs hover:bg-foreground/[0.07] [@media(pointer:coarse)]:!h-11"
                 />
                 
                 <DsButton
@@ -3009,7 +3009,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                         : t('learningHub:exam.timer.resume')
                   }
                   className={cn(
-                    'flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-foreground/[0.04] transition-colors font-mono tabular-nums text-xs flex-shrink-0 [@media(pointer:coarse)]:!min-h-11',
+                    'flex min-h-9 sm:min-h-0 items-center gap-1.5 px-2.5 py-1 rounded-full bg-foreground/[0.04] transition-colors font-mono tabular-nums text-xs flex-shrink-0 [@media(pointer:coarse)]:!min-h-11',
                     isAdvancedRuntimeTimer && advancedTimerRemaining != null && advancedTimerRemaining <= 60
                       ? 'bg-destructive/[0.08] text-destructive hover:bg-destructive/[0.12]'
                       : isAdvancedRuntimeTimer && advancedTimerRemaining != null && advancedTimerRemaining < 300
@@ -3043,7 +3043,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           {!(viewMode === 'practice' && gradingMode === 'on_submit') && (
             <div className="flex items-center gap-1.5 flex-shrink-0">
               {hasQuestions && stats && <StatsSummary stats={stats} />}
-              {(viewMode === 'practice' || viewMode === 'browse') &&
+              {!isSmallScreen &&
+                (viewMode === 'practice' || viewMode === 'browse') &&
                 activeDragQuestion &&
                 activeDragQuestionMeta && (
                   <button
@@ -3059,7 +3060,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     aria-label={t('exam_sheet:interop.dragQuestionHint', {
                       defaultValue: '将当前题目或错题拖入思维导图知识卡片',
                     })}
-                    className="inline-flex h-7 cursor-grab items-center gap-1 rounded-lg border border-border/35 bg-card/60 px-2 text-xs text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground active:cursor-grabbing [@media(pointer:coarse)]:!min-h-11"
+                    className="hidden md:inline-flex h-7 cursor-grab items-center gap-1 rounded-lg border border-border/35 bg-card/60 px-2 text-xs text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground active:cursor-grabbing"
                   >
                     <DotsSixVertical size={13} aria-hidden="true" />
                     <span className="hidden md:inline">
@@ -3077,7 +3078,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   onClick={handleOpenExport}
                   aria-label={t('learningHub:exam.tab.export')}
                   title={t('learningHub:exam.tab.export')}
-                  className="h-7 gap-1.5 px-2.5 sm:px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11"
+                  className="h-9 sm:h-7 gap-1.5 px-2.5 sm:px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11"
                 >
                   <Download size={14} />
                   <span className="hidden sm:inline">{t('learningHub:exam.tab.export')}</span>
@@ -3092,7 +3093,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                       aria-label={t('learningHub:exam.tab.addQuestion')}
                       title={t('learningHub:exam.tab.addQuestion')}
                       className={cn(
-                        'h-7 gap-1.5 px-2.5 sm:px-3 text-xs ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11',
+                        'h-9 sm:h-7 gap-1.5 px-2.5 sm:px-3 text-xs ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11',
                         viewMode !== 'upload' && 'bg-foreground/[0.04] text-foreground hover:bg-foreground/[0.08]'
                       )}
                     >
@@ -3222,7 +3223,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4" role="status">
           <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" aria-hidden="true" />
           <span className="min-w-0 flex-1 text-xs text-foreground/85 tabular-nums">{t('exam_sheet:uploader.pending_drafts', {count:pendingAuthoringDrafts.length,defaultValue:'待确认草稿：{{count}}'})}</span>
-          <DsButton size="sm" variant="ghost" className="h-7 gap-1.5 px-2.5 text-xs bg-foreground/[0.04] hover:bg-foreground/[0.08]" onClick={() => void handleOpenAuthoringDraft(pendingAuthoringDrafts[0].job_id)}>
+          <DsButton size="sm" variant="ghost" className="h-9 sm:h-7 gap-1.5 px-2.5 text-xs bg-foreground/[0.04] hover:bg-foreground/[0.08] [@media(pointer:coarse)]:!min-h-11" onClick={() => void handleOpenAuthoringDraft(pendingAuthoringDrafts[0].job_id)}>
             <Scan size={14} />
             <span className="tabular-nums">{t('exam_sheet:uploader.review_pending_draft', {defaultValue:'复核并导入'})} ({pendingAuthoringDrafts[0].question_count})</span>
           </DsButton>
@@ -3306,10 +3307,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           ) : viewMode === 'review' && hasQuestions ? (
             /* 错题本视图（顶部提供轻量错题摘录拖拽胶囊条，直连思维导图考点卡） */
             <div className="flex h-full min-h-0 flex-col">
-              {mistakeQuestions.length > 0 && (
+              {!isSmallScreen && mistakeQuestions.length > 0 && (
                 <div
                   data-testid="exam-mistake-excerpt-strip"
-                  className="flex flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-border/35 bg-card/45 px-3 py-1.5 scrollbar-none sm:px-4"
+                  className="hidden md:flex flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-border/35 bg-card/45 px-3 py-1.5 scrollbar-none sm:px-4"
                 >
                   <span
                     className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--destructive))]"

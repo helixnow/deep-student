@@ -111,13 +111,28 @@ export function extractIndexablePages(type: IndexableResourceType, resourceId: s
   return result.length ? result : null;
 }
 function extractMarkdownText(content: string): string {
+  const stashed: string[] = [];
+  const stash = (body: string): string => {
+    const token = `\u0000CODE${stashed.length}\u0000`;
+    stashed.push(body);
+    return token;
+  };
+  content = content
+    .replace(/```[^\r\n]*\r?\n([\s\S]*?)```/g, (_match, body: string) => stash(body))
+    .replace(/```([^`\r\n]+)```/g, (_match, body: string) => stash(body))
+    .replace(/~~~[^\r\n]*\r?\n([\s\S]*?)~~~/g, (_match, body: string) => stash(body))
+    .replace(/``([\s\S]*?)``/g, (_match, body: string) => stash(body))
+    .replace(/`([^`]+)`/g, (_match, body: string) => stash(body));
   const patterns: [RegExp, string][] = [
-    [/!\[.*?\]\(.*?\)/g, ''], [/\[([^\]]+)\]\([^\)]+\)/g, '$1'], [/```[\s\S]*?```/g, ''], [/`[^`]+`/g, ''],
-    [/^#{1,6}\p{White_Space}+/gu, ''], [/\*\*([^*]+)\*\*/g, '$1'], [/\*([^*]+)\*/g, '$1'],
-    [/__([^_]+)__/g, '$1'], [/_([^_]+)_/g, '$1'], [/~~([^~]+)~~/g, '$1'], [/^>\p{White_Space}+/gu, ''],
-    [/^[-*+]\p{White_Space}+/gu, ''], [/^\p{Nd}+\.\p{White_Space}+/gu, ''], [/^---+$(?![\s\S])/g, ''], [/^\|.*\|$(?![\s\S])/g, ''],
+    [/!\[.*?\]\(.*?\)/g, ''], [/\[([^\]]+)\]\([^\)]+\)/g, '$1'],
+    [/^#{1,6}[^\S\r\n]+/gmu, ''], [/\*\*([^*]+)\*\*/g, '$1'], [/\*([^*]+)\*/g, '$1'],
+    [/__([^_]+)__/g, '$1'], [/_([^_]+)_/g, '$1'], [/~~([^~]+)~~/g, '$1'], [/^>[^\S\r\n]*/gm, ''],
+    [/^[ \t]*[-*+][^\S\r\n]+/gmu, ''], [/^[ \t]*\p{Nd}+\.[^\S\r\n]+/gmu, ''], [/^---+[ \t]*$/gm, ''],
+    [/^[ \t]*(?:\|(?:\s*:?-+:?\s*\|)+|\s*:?-+:?\s*\|(?:\s*:?-+:?\s*\|)*\s*:?-+:?)[ \t]*$/gm, ''],
+    [/[ \t]*\|[ \t]*/g, ' '],
   ];
   for (const [pattern, replacement] of patterns) content = content.replace(pattern, replacement);
+  content = content.replace(/\u0000CODE(\d+)\u0000/g, (_match, index: string) => stashed[Number(index)] ?? '');
   return content.split(/\r?\n/).map(rustTrim).filter(s => s.length).join('\n');
 }
 export function extractMindmapText(data: string): string | null {

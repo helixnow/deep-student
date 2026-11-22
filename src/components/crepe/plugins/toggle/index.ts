@@ -8,7 +8,7 @@
  * 不自行注册到编辑器；由接线代理 `crepe.editor.use(togglePlugin())`。
  */
 
-import type { MilkdownPlugin } from '@milkdown/ctx'
+import type { MilkdownPlugin } from '@milkdown/kit/ctx'
 
 import { toggleInputRule } from './input-rule'
 import { toggleKeymap } from './keymap'

@@ -71,13 +71,19 @@ function ensureStyles(): void {
     .ds-webui-pill-stack {
       position: fixed;
       right: max(12px, env(safe-area-inset-right));
-      bottom: max(12px, env(safe-area-inset-bottom));
+      bottom: calc(max(12px, env(safe-area-inset-bottom)) + var(--keyboard-inset, 0px));
       z-index: 99999;
       display: flex;
       flex-direction: column;
       align-items: flex-end;
       gap: 8px;
       pointer-events: none;
+      transition: bottom 150ms ease;
+    }
+    @media (max-width: 767.98px), (pointer: coarse) {
+      .ds-webui-pill-stack {
+        bottom: calc(max(12px, env(safe-area-inset-bottom)) + var(--keyboard-inset, 0px) + var(--ds-mobile-composer-clearance, 84px));
+      }
     }
     .ds-webui-dot {
       width: 6px;
@@ -200,7 +206,8 @@ function ensureStyles(): void {
       outline-offset: 2px;
     }
     @media (prefers-reduced-motion: reduce) {
-      .ds-webui-pill {
+      .ds-webui-pill,
+      .ds-webui-pill-stack {
         transition: none !important;
       }
     }

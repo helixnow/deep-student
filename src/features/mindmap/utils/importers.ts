@@ -14,7 +14,7 @@ import { nanoid } from 'nanoid';
 import i18n from 'i18next';
 import JSZip from 'jszip';
 import type {
-  MindMapAssociation, MindMapDocument, MindMapImage, MindMapNode, MindMapSheetMeta,
+  MindMapAssociation, MindMapDocument, MindMapImage, MindMapNode, MindMapSheetMeta, MindMapSummaryBrace,
 } from '../types';
 import { markdownListToNodes } from './pasteMarkdown';
 import { createImageSanitizeBudget, sanitizeNodeImages } from './imageSanitize';
@@ -41,6 +41,13 @@ const XMIND_CONTENT_XML = 'content.xml';
 export const MAX_XMIND_ARCHIVE_BYTES = 16 * 1024 * 1024;
 export const MAX_XMIND_CONTENT_BYTES = 32 * 1024 * 1024;
 
+interface XmindSummaryJson {
+  id?: string;
+  range?: string;
+  topicId?: string;
+  title?: string;
+}
+
 interface XmindTopicJson {
   id?: string;
   title?: string;
@@ -50,14 +57,144 @@ interface XmindTopicJson {
   };
   markers?: Array<{ markerId?: string }>;
   labels?: string[];
+  style?: {
+    properties?: Record<string, unknown>;
+  };
   /** 主题图片（可解析的小图内联嵌入；其余计数上报并留备注占位） */
   image?: { src?: string; width?: unknown; height?: unknown };
-  /** 主题概要（导入时丢弃，仅计数用于导入报告） */
-  summaries?: unknown[];
+  /** 主题概要：解析为原生 MindMapSummaryBrace（无法映射的单节点/越界条目计入 droppedSummaries） */
+  summaries?: XmindSummaryJson[];
   children?: {
     attached?: XmindTopicJson[];
     summary?: XmindTopicJson[];
   };
+}
+
+const MAX_ASSOCIATION_LABEL_CHARS = 240;
+const SAFE_HEX_COLOR_RE = /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+const SAFE_FUNC_COLOR_RE = /^(?:rgba?|hsla?|oklch|oklab)\([\d\s.,%/+-]+\)$/i;
+const SAFE_NAMED_COLOR_RE = /^[a-z]{3,24}$/i;
+const SAFE_VAR_COLOR_RE = /^var\(--[a-z0-9_-]{1,64}\)$/i;
+const UNSAFE_CSS_TOKEN_RE = /[;<>"'\\]|url\s*\(|expression\s*\(/i;
+const SAFE_DASHARRAY_RE = /^[\d.\s,%]{1,64}$/;
+
+function sanitizeCssColor(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 64) return undefined;
+  if (trimmed.toLowerCase() === 'none') return undefined;
+  if (UNSAFE_CSS_TOKEN_RE.test(trimmed)) return undefined;
+  if (
+    SAFE_HEX_COLOR_RE.test(trimmed) ||
+    SAFE_FUNC_COLOR_RE.test(trimmed) ||
+    SAFE_NAMED_COLOR_RE.test(trimmed) ||
+    SAFE_VAR_COLOR_RE.test(trimmed)
+  ) {
+    return trimmed;
+  }
+  return undefined;
+}
+
+function collectTreeNodeIds(root: MindMapNode): Set<string> {
+  const ids = new Set<string>();
+  const stack: MindMapNode[] = [root];
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (node.id) ids.add(node.id);
+    if (Array.isArray(node.children)) {
+      for (const child of node.children) {
+        stack.push(child);
+      }
+    }
+  }
+  return ids;
+}
+
+function sanitizeAssociationStyle(raw: unknown): MindMapAssociation['style'] | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const candidate = raw as Record<string, unknown>;
+  const style: NonNullable<MindMapAssociation['style']> = {};
+  const stroke = sanitizeCssColor(candidate.stroke);
+  if (stroke) style.stroke = stroke;
+  if (
+    typeof candidate.strokeWidth === 'number' &&
+    Number.isFinite(candidate.strokeWidth) &&
+    candidate.strokeWidth >= 0 &&
+    candidate.strokeWidth <= 24
+  ) {
+    style.strokeWidth = candidate.strokeWidth;
+  }
+  if (typeof candidate.strokeDasharray === 'string') {
+    const dash = candidate.strokeDasharray.trim();
+    if (dash && SAFE_DASHARRAY_RE.test(dash)) {
+      style.strokeDasharray = dash;
+    }
+  }
+  return Object.keys(style).length > 0 ? style : undefined;
+}
+
+/**
+ * 校验并清洗导入文档中的跨分支关联线列表：
+ * - 丢弃端点不存在、自指环、重复无向节点对的条目；
+ * - 去重/补全唯一 id；修剪并截断 label；按白名单清洗 style。
+ */
+export function sanitizeDocumentAssociations(
+  raw: unknown,
+  root: MindMapNode,
+): MindMapAssociation[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const validNodeIds = collectTreeNodeIds(root);
+  const out: MindMapAssociation[] = [];
+  const seenIds = new Set<string>();
+  const seenPairs = new Set<string>();
+  const reservedExplicitIds = new Set<string>();
+
+  for (const item of raw) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const rawId = (item as Record<string, unknown>).id;
+    if (typeof rawId === 'string' && rawId.trim()) {
+      reservedExplicitIds.add(rawId.trim());
+    }
+  }
+
+  for (const item of raw) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const candidate = item as Record<string, unknown>;
+    const source = typeof candidate.source === 'string' ? candidate.source.trim() : '';
+    const target = typeof candidate.target === 'string' ? candidate.target.trim() : '';
+    if (!source || !target || source === target) continue;
+    if (!validNodeIds.has(source) || !validNodeIds.has(target)) continue;
+
+    const pairKey = source < target ? `${source}\0${target}` : `${target}\0${source}`;
+    if (seenPairs.has(pairKey)) continue;
+    seenPairs.add(pairKey);
+
+    const rawId = typeof candidate.id === 'string' ? candidate.id.trim() : '';
+    let id = rawId && !seenIds.has(rawId) ? rawId : '';
+    if (!id) {
+      id = `assoc_${nanoid(10)}`;
+      while (seenIds.has(id) || reservedExplicitIds.has(id)) {
+        id = `assoc_${nanoid(10)}`;
+      }
+    }
+    seenIds.add(id);
+
+    const rawLabel =
+      typeof candidate.label === 'string'
+        ? candidate.label.replace(/\r\n?/g, ' ').trim().slice(0, MAX_ASSOCIATION_LABEL_CHARS)
+        : '';
+    const style = sanitizeAssociationStyle(candidate.style);
+
+    out.push({
+      id,
+      source,
+      target,
+      ...(rawLabel ? { label: rawLabel } : {}),
+      ...(style ? { style } : {}),
+    });
+  }
+
+  return out.length > 0 ? out : undefined;
 }
 
 /**
@@ -94,23 +231,29 @@ function taskMarkerToCompleted(markerIds: string[]): boolean | undefined {
 }
 
 /**
- * .xmind 非任务元数据 → 可用字段的降级映射（B9）：
- * - `priority-N` marker → 正文前缀 `[PN] `（优先级在源文件中高可见，保留到标题）；
+ * .xmind 非任务元数据 → 原生字段与备注映射：
+ * - `priority-1..6` marker → 直接写入原生 `node.priority`（1–6，不再降级拼接 `[PN] ` 标题前缀）；
  * - labels → 备注附注行「标签：…」；
- * - 其余非 task/priority marker（flag/star/smiley 等）→ 备注附注行「.xmind 标记：…」。
- *
- * 明确不支持（导入时静默丢弃）：主题样式/结构样式、图片与附件、概要（summary）、
- * 外框（boundary）、超链接、录音备注、标注（callout）；detached 浮动主题为有意忽略
- * （见 importFromXmindZip 各转换器与既有测试）。
+ * - 其余非 task/1..6 priority marker（flag/star/smiley 等）→ 备注附注行「.xmind 标记：…」。
  */
 function collectXmindExtras(
   markerIds: string[],
   labels: string[],
-): { textPrefix: string; noteSuffixLines: string[] } {
-  const priority = markerIds.find((id) => /^priority-\d+$/.test(id));
-  const textPrefix = priority ? `[P${priority.slice('priority-'.length)}] ` : '';
+): { priority?: number; noteSuffixLines: string[] } {
+  let priority: number | undefined;
+  let matchedPriorityMarker: string | undefined;
+  for (const id of markerIds) {
+    const match = /^priority-(\d+)$/.exec(id);
+    if (!match) continue;
+    const value = Number.parseInt(match[1], 10);
+    if (Number.isInteger(value) && value >= 1 && value <= 6) {
+      priority = value;
+      matchedPriorityMarker = id;
+      break;
+    }
+  }
   const otherMarkers = markerIds.filter(
-    (id) => !id.startsWith('task-') && id !== priority,
+    (id) => !id.startsWith('task-') && id !== matchedPriorityMarker,
   );
   const noteSuffixLines: string[] = [];
   if (labels.length > 0) {
@@ -119,7 +262,63 @@ function collectXmindExtras(
   if (otherMarkers.length > 0) {
     noteSuffixLines.push(i18n.t('mindmap:import.markersNote', { markers: otherMarkers.join(', ') }));
   }
-  return { textPrefix, noteSuffixLines };
+  return { ...(priority !== undefined ? { priority } : {}), noteSuffixLines };
+}
+
+/** 解析 .xmind 概要范围表达式（如 "(0,1)" / "[1, 3]"），返回 0-based [start, end] */
+function parseXmindSummaryRange(rawRange: string | undefined): [number, number] | null {
+  if (!rawRange) return null;
+  const match = /^\s*[([]\s*(\d+)\s*,\s*(\d+)\s*[)\]]\s*$/.exec(rawRange);
+  if (!match) return null;
+  const a = Number.parseInt(match[1], 10);
+  const b = Number.parseInt(match[2], 10);
+  if (!Number.isInteger(a) || !Number.isInteger(b)) return null;
+  return a <= b ? [a, b] : [b, a];
+}
+
+function allocateSummaryBraceId(requestedId: string | undefined, usedIds: Set<string>): string {
+  const cleaned = requestedId?.trim();
+  if (cleaned && !usedIds.has(cleaned)) {
+    usedIds.add(cleaned);
+    return cleaned;
+  }
+  let generated = `sum_${nanoid(8)}`;
+  while (usedIds.has(generated)) generated = `sum_${nanoid(8)}`;
+  usedIds.add(generated);
+  return generated;
+}
+
+function appendXmindSummaryEntry(
+  entry: { id?: string; range?: string; label?: string },
+  parentId: string,
+  attachedChildren: MindMapNode[],
+  outSummaries: MindMapSummaryBrace[],
+  usedSummaryIds: Set<string>,
+  report?: XmindImportReport,
+): void {
+  const range = parseXmindSummaryRange(entry.range);
+  if (
+    !range ||
+    range[0] === range[1] ||
+    range[0] < 0 ||
+    range[1] >= attachedChildren.length
+  ) {
+    if (report) report.droppedSummaries += 1;
+    return;
+  }
+  const startChild = attachedChildren[range[0]];
+  const endChild = attachedChildren[range[1]];
+  if (!startChild || !endChild || startChild.id === endChild.id) {
+    if (report) report.droppedSummaries += 1;
+    return;
+  }
+  outSummaries.push({
+    id: allocateSummaryBraceId(entry.id, usedSummaryIds),
+    parentId,
+    startChildId: startChild.id,
+    endChildId: endChild.id,
+    label: (entry.label ?? '').replace(/\r\n?/g, ' ').trim(),
+  });
 }
 
 /** 组合原始备注与附注行；两者皆空时返回 undefined */
@@ -342,16 +541,10 @@ function xmindJsonTopicToNode(
   forceRoot = false,
   report?: XmindImportReport,
   pendingImages?: PendingNodeImage[],
+  outSummaries?: MindMapSummaryBrace[],
+  usedSummaryIds?: Set<string>,
 ): MindMapNode {
   claimImportedNode(stats, depth, '.xmind');
-  // 导入报告：概要在本应用模型中不支持，计数上报；
-  // 图片引用先收集，拓扑构建完成后统一尝试从 zip 内联（失败才计丢弃+备注占位）
-  if (report) {
-    if (Array.isArray(topic.summaries)) report.droppedSummaries += topic.summaries.length;
-    else if (Array.isArray(topic.children?.summary)) {
-      report.droppedSummaries += topic.children.summary.length;
-    }
-  }
   const plainNote = topic.notes?.plain?.content?.trim();
   const htmlNote = stripHtml(topic.notes?.html?.content);
   const assignedId = allocateXmindNodeId(topic.id, usedIds, forceRoot);
@@ -367,13 +560,55 @@ function xmindJsonTopicToNode(
     (label): label is string => typeof label === 'string' && label.trim().length > 0,
   );
   const extras = collectXmindExtras(markerIds, labels);
+  const children = (topic.children?.attached || []).map((child) =>
+    xmindJsonTopicToNode(
+      child,
+      depth + 1,
+      stats,
+      usedIds,
+      idMap,
+      false,
+      report,
+      pendingImages,
+      outSummaries,
+      usedSummaryIds,
+    ));
+  // 解析 .xmind 概要（summaries + children.summary）为原生 MindMapSummaryBrace
+  if (Array.isArray(topic.summaries) && topic.summaries.length > 0) {
+    const summaryTitlesById = new Map<string, string>();
+    for (const summaryTopic of topic.children?.summary ?? []) {
+      if (summaryTopic?.id) {
+        summaryTitlesById.set(summaryTopic.id, summaryTopic.title?.trim() ?? '');
+      }
+    }
+    const targetSummaries = outSummaries ?? [];
+    const summaryIds = usedSummaryIds ?? new Set<string>();
+    for (const entry of topic.summaries) {
+      const label =
+        (entry?.topicId ? summaryTitlesById.get(entry.topicId) : undefined) ??
+        entry?.title?.trim() ??
+        '';
+      appendXmindSummaryEntry(
+        { id: entry?.id, range: entry?.range, label },
+        assignedId,
+        children,
+        targetSummaries,
+        summaryIds,
+        report,
+      );
+    }
+  } else if (Array.isArray(topic.children?.summary) && topic.children.summary.length > 0) {
+    if (report) report.droppedSummaries += topic.children.summary.length;
+  }
+  const safeFill = sanitizeCssColor(topic.style?.properties?.['svg:fill']);
   const node: MindMapNode = {
     id: assignedId,
-    text: extras.textPrefix + (topic.title?.trim() || i18n.t('mindmap:import.unnamedTopic')),
+    text: topic.title?.trim() || i18n.t('mindmap:import.unnamedTopic'),
     note: composeNote(plainNote || htmlNote, extras.noteSuffixLines),
+    ...(extras.priority !== undefined ? { priority: extras.priority } : {}),
     ...(completed !== undefined ? { completed } : {}),
-    children: (topic.children?.attached || []).map((child) =>
-      xmindJsonTopicToNode(child, depth + 1, stats, usedIds, idMap, false, report, pendingImages)),
+    ...(safeFill ? { style: { bgColor: safeFill } } : {}),
+    children,
   };
   if (topic.image && typeof topic.image === 'object') {
     pendingImages?.push({
@@ -415,17 +650,12 @@ function xmindXmlTopicToNode(
   forceRoot = false,
   report?: XmindImportReport,
   pendingImages?: PendingNodeImage[],
+  outSummaries?: MindMapSummaryBrace[],
+  usedSummaryIds?: Set<string>,
 ): MindMapNode {
   claimImportedNode(stats, depth, '.xmind');
-  // 导入报告：<summaries><summary> 计数；<xhtml:img>（localName=img）先收集引用，
-  // 拓扑构建完成后统一尝试从 zip 内联（失败才计丢弃+备注占位）
+  // <xhtml:img>（localName=img）先收集引用，拓扑构建完成后统一尝试从 zip 内联
   const imageElements = directChildrenByLocalName(topic, 'img');
-  if (report) {
-    const summariesContainer = directChildrenByLocalName(topic, 'summaries')[0];
-    if (summariesContainer) {
-      report.droppedSummaries += directChildrenByLocalName(summariesContainer, 'summary').length;
-    }
-  }
   const title = directChildrenByLocalName(topic, 'title')[0]?.textContent?.trim();
   const notes = directChildrenByLocalName(topic, 'notes')[0];
   const note = notes
@@ -461,13 +691,70 @@ function xmindXmlTopicToNode(
   if (originalId && !idMap.has(originalId)) {
     idMap.set(originalId, assignedId);
   }
+  const children = childTopics.map((child) =>
+    xmindXmlTopicToNode(
+      child,
+      depth + 1,
+      stats,
+      usedIds,
+      idMap,
+      false,
+      report,
+      pendingImages,
+      outSummaries,
+      usedSummaryIds,
+    ));
+  // 解析 XML <summaries><summary range="(0,1)" topic-id="..."/> + <topics type="summary">
+  const summaryGroups = childrenContainer
+    ? directChildrenByLocalName(childrenContainer, 'topics').filter(
+      (group) => group.getAttribute('type') === 'summary',
+    )
+    : [];
+  const summaryTopics = summaryGroups.flatMap((g) => directChildrenByLocalName(g, 'topic'));
+  const summariesContainer = directChildrenByLocalName(topic, 'summaries')[0];
+  const summaryElements = summariesContainer
+    ? directChildrenByLocalName(summariesContainer, 'summary')
+    : [];
+  if (summaryElements.length > 0) {
+    const summaryTitlesById = new Map<string, string>();
+    for (const summaryTopic of summaryTopics) {
+      const stId = summaryTopic.getAttribute('id')?.trim();
+      if (stId) {
+        summaryTitlesById.set(
+          stId,
+          directChildrenByLocalName(summaryTopic, 'title')[0]?.textContent?.trim() ?? '',
+        );
+      }
+    }
+    const targetSummaries = outSummaries ?? [];
+    const summaryIds = usedSummaryIds ?? new Set<string>();
+    for (const summaryEl of summaryElements) {
+      const topicId = summaryEl.getAttribute('topic-id')?.trim() || undefined;
+      const fallbackTitle = directChildrenByLocalName(summaryEl, 'title')[0]?.textContent?.trim();
+      const label = (topicId ? summaryTitlesById.get(topicId) : undefined) ?? fallbackTitle ?? '';
+      appendXmindSummaryEntry(
+        {
+          id: summaryEl.getAttribute('id') ?? undefined,
+          range: summaryEl.getAttribute('range') ?? undefined,
+          label,
+        },
+        assignedId,
+        children,
+        targetSummaries,
+        summaryIds,
+        report,
+      );
+    }
+  } else if (summaryTopics.length > 0) {
+    if (report) report.droppedSummaries += summaryTopics.length;
+  }
   const node: MindMapNode = {
     id: assignedId,
-    text: extras.textPrefix + (title || i18n.t('mindmap:import.unnamedTopic')),
+    text: title || i18n.t('mindmap:import.unnamedTopic'),
     note: composeNote(note, extras.noteSuffixLines),
+    ...(extras.priority !== undefined ? { priority: extras.priority } : {}),
     ...(completed !== undefined ? { completed } : {}),
-    children: childTopics.map((child) =>
-      xmindXmlTopicToNode(child, depth + 1, stats, usedIds, idMap, false, report, pendingImages)),
+    children,
   };
   for (const img of imageElements) {
     pendingImages?.push({
@@ -507,7 +794,9 @@ function createXmindDocument(
   root: MindMapNode,
   associations?: MindMapAssociation[],
   sheets?: MindMapSheetMeta[],
+  summaries?: MindMapSummaryBrace[],
 ): MindMapDocument {
+  const validSummaries = sanitizeDocumentSummaries(summaries, root);
   return {
     version: '1.0',
     root,
@@ -516,6 +805,7 @@ function createXmindDocument(
       ...(sheets && sheets.length > 0 ? { sheets } : {}),
     },
     ...(associations && associations.length > 0 ? { associations } : {}),
+    ...(validSummaries && validSummaries.length > 0 ? { summaries: validSummaries } : {}),
   };
 }
 
@@ -658,6 +948,8 @@ export async function importFromXmindZip(
     const usedIds = new Set<string>();
     const idMap = new Map<string, string>();
     const pendingImages: PendingNodeImage[] = [];
+    const collectedSummaries: MindMapSummaryBrace[] = [];
+    const usedSummaryIds = new Set<string>();
     // sheet 级关联线（拓扑转换完成后统一按 idMap 重映射）
     const rawRelationships = sheets.flatMap((sheet) =>
       (Array.isArray(sheet.relationships) ? sheet.relationships : []).map((rel) => ({
@@ -667,15 +959,15 @@ export async function importFromXmindZip(
       })));
     if (sheets.length === 1) {
       const root = xmindJsonTopicToNode(
-        sheets[0].rootTopic, 0, stats, usedIds, idMap, true, report, pendingImages,
+        sheets[0].rootTopic, 0, stats, usedIds, idMap, true, report, pendingImages, collectedSummaries, usedSummaryIds,
       );
       await resolvePendingImages(zip, pendingImages, report);
-      return createXmindDocument(root, remapXmindRelationships(rawRelationships, idMap));
+      return createXmindDocument(root, remapXmindRelationships(rawRelationships, idMap), undefined, collectedSummaries);
     }
     claimImportedNode(stats, 0, '.xmind');
     usedIds.add('root');
     const children = sheets.map((sheet) =>
-      xmindJsonTopicToNode(sheet.rootTopic, 1, stats, usedIds, idMap, false, report, pendingImages));
+      xmindJsonTopicToNode(sheet.rootTopic, 1, stats, usedIds, idMap, false, report, pendingImages, collectedSummaries, usedSummaryIds));
     await resolvePendingImages(zip, pendingImages, report);
     const sheetTitles = sheets.map((sheet) => sheet.title || sheet.rootTopic.title || '');
     const merged = createMultiSheetRoot(children, sheetTitles);
@@ -683,6 +975,7 @@ export async function importFromXmindZip(
       merged.root,
       remapXmindRelationships(rawRelationships, idMap),
       merged.sheets,
+      collectedSummaries,
     );
   }
 
@@ -701,6 +994,8 @@ export async function importFromXmindZip(
     const usedIds = new Set<string>();
     const idMap = new Map<string, string>();
     const pendingImages: PendingNodeImage[] = [];
+    const collectedSummaries: MindMapSummaryBrace[] = [];
+    const usedSummaryIds = new Set<string>();
     // XML relationships：<relationships><relationship end1=".." end2=".."><title>..</title></relationship>
     const rawRelationships = sheetElements
       .flatMap((sheet) => directChildrenByLocalName(sheet, 'relationships'))
@@ -712,15 +1007,15 @@ export async function importFromXmindZip(
       }));
     if (rootTopics.length === 1) {
       const root = xmindXmlTopicToNode(
-        rootTopics[0], 0, stats, usedIds, idMap, true, report, pendingImages,
+        rootTopics[0], 0, stats, usedIds, idMap, true, report, pendingImages, collectedSummaries, usedSummaryIds,
       );
       await resolvePendingImages(zip, pendingImages, report);
-      return createXmindDocument(root, remapXmindRelationships(rawRelationships, idMap));
+      return createXmindDocument(root, remapXmindRelationships(rawRelationships, idMap), undefined, collectedSummaries);
     }
     claimImportedNode(stats, 0, '.xmind');
     usedIds.add('root');
     const children = rootTopics.map((topic) =>
-      xmindXmlTopicToNode(topic, 1, stats, usedIds, idMap, false, report, pendingImages));
+      xmindXmlTopicToNode(topic, 1, stats, usedIds, idMap, false, report, pendingImages, collectedSummaries, usedSummaryIds));
     await resolvePendingImages(zip, pendingImages, report);
     // sheet 标题优先取 <sheet><title>，缺失时回退到该 sheet 根主题标题
     const sheetTitles = sheetElements
@@ -736,6 +1031,7 @@ export async function importFromXmindZip(
       merged.root,
       remapXmindRelationships(rawRelationships, idMap),
       merged.sheets,
+      collectedSummaries,
     );
   }
 
@@ -1216,6 +1512,7 @@ export function importFromJson(jsonContent: string): MindMapDocument {
   const normalizedRoot = ensureIds(doc.root as MindMapNode, 0);
   const stagingExcerpts = sanitizeStagingExcerpts(doc.stagingExcerpts);
   const summaries = sanitizeDocumentSummaries(doc.summaries, normalizedRoot);
+  const associations = sanitizeDocumentAssociations(doc.associations, normalizedRoot);
 
   return {
     version: '1.0',
@@ -1226,6 +1523,7 @@ export function importFromJson(jsonContent: string): MindMapDocument {
     },
     ...(stagingExcerpts ? { stagingExcerpts } : {}),
     ...(summaries ? { summaries } : {}),
+    ...(associations ? { associations } : {}),
   };
 }
 

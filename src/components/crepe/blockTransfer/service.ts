@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Ctx } from '@milkdown/ctx';
+import type { Ctx } from '@milkdown/kit/ctx';
 import { remarkCtx } from '@milkdown/kit/core';
 import { normalizeMarkdown } from '../normalizeMarkdown';
 import { readBlockMarker, blockMarker, newBlockId } from '../plugins/blockIdentity/markdown';

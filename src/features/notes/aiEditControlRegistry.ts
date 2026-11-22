@@ -21,20 +21,49 @@ export interface NoteAIEditControlHandle {
 }
 
 const controls = new Map<string, NoteAIEditControlHandle>();
+const listeners = new Set<() => void>();
+let lastRegisteredNoteId: string | undefined;
+
+function computeLastRegisteredNoteId(): string | undefined {
+  let last: string | undefined;
+  for (const key of controls.keys()) last = key;
+  return last;
+}
+
+function notifyLastRegisteredNoteIdChange(): void {
+  const next = computeLastRegisteredNoteId();
+  if (next === lastRegisteredNoteId) return;
+  lastRegisteredNoteId = next;
+  for (const listener of listeners) listener();
+}
 
 export function registerNoteAIEditControl(
   noteId: string,
   handle: NoteAIEditControlHandle,
 ): () => void {
+  controls.delete(noteId);
   controls.set(noteId, handle);
+  notifyLastRegisteredNoteIdChange();
   return () => {
     // 防晚到的卸载清理误删新挂载的 handle（同 messageListScrollRegistry 防御模式）
     if (controls.get(noteId) === handle) {
       controls.delete(noteId);
+      notifyLastRegisteredNoteIdChange();
     }
   };
 }
 
 export function getNoteAIEditControl(noteId: string): NoteAIEditControlHandle | null {
   return controls.get(noteId) ?? null;
+}
+
+export function getLastRegisteredNoteId(): string | undefined {
+  return lastRegisteredNoteId;
+}
+
+export function subscribeLastRegisteredNoteId(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }

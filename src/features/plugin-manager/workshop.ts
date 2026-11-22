@@ -33,6 +33,12 @@ export interface PluginManagerWorkshop {
   onUninstall?(pluginId: string): Promise<void>;
   /** Works waiting for the user; 「工坊创作记录」 opens by itself when there are any. */
   pending?(): Promise<readonly { pluginId: string; name: string; phase: string }[]>;
+  /** Whether any work is currently generating, editing, validating, or installing. */
+  hasActive?(): Promise<boolean>;
+  /** Read persisted Host-side storage keys and byte size for a managed plugin. */
+  storedData?(pluginId: string): Promise<{ readonly keys: readonly string[]; readonly bytes: number }>;
+  /** Clear persisted Host-side storage entries for a managed plugin. */
+  clearStoredData?(pluginId: string): Promise<number>;
   /** Activity and recoverable works; installed works are shown separately by the manager. */
   creations: ReactNode;
   /** Complete managed list for standalone workshop entrances, including installed and disabled works. */

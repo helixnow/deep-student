@@ -5,7 +5,7 @@ import React from 'react';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 
-import { WindowErrorBoundary } from '../WindowErrorBoundary';
+import { isModuleLoadError, WindowErrorBoundary } from '../WindowErrorBoundary';
 
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -66,5 +66,23 @@ describe('崩溃卡', () => {
     shouldThrow = false;
     fireEvent.click(screen.getByRole('button', { name: /重新加载/ }));
     expect(onReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('模块解析或动态导入失败时，点击「重新加载」触发整页刷新而非原地重试死缓存', () => {
+    expect(isModuleLoadError(new SyntaxError("Duplicate export of 'updateFocusModeOwners'"))).toBe(true);
+    expect(isModuleLoadError(new TypeError('Failed to fetch dynamically imported module: /x.js'))).toBe(true);
+    expect(isModuleLoadError(new Error('normal render bug'))).toBe(false);
+
+    const onFullReload = vi.fn();
+    const BrokenModule: React.FC = () => {
+      throw new SyntaxError("Duplicate export of 'updateFocusModeOwners'");
+    };
+    render(
+      <WindowErrorBoundary windowId="w1" onFullReload={onFullReload}>
+        <BrokenModule />
+      </WindowErrorBoundary>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /重新加载/ }));
+    expect(onFullReload).toHaveBeenCalledTimes(1);
   });
 });

@@ -108,7 +108,7 @@ export function sanitizeSummaryLabel(raw: unknown, fallback = ''): string {
     : cleaned;
 }
 
-/** 校验并清洗文档 summaries 列表；无效或退化为单节点的条目自动丢弃 */
+/** 校验并清洗文档 summaries 列表；缺省 id 自动生成稳定唯一 ID，无效或退化为单节点的条目自动丢弃 */
 export function sanitizeDocumentSummaries(
   raw: unknown,
   root: MindMapNode,
@@ -117,15 +117,26 @@ export function sanitizeDocumentSummaries(
   const out: MindMapSummaryBrace[] = [];
   const seenIds = new Set<string>();
   const seenRanges = new Set<string>();
+  const reservedExplicitIds = new Set<string>();
 
   for (const item of raw) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const rawId = (item as Record<string, unknown>).id;
+    if (typeof rawId === 'string' && rawId.trim()) {
+      reservedExplicitIds.add(rawId.trim());
+    }
+  }
+
+  for (let idx = 0; idx < raw.length; idx += 1) {
+    const item = raw[idx];
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
     const candidate = item as Record<string, unknown>;
-    const id = typeof candidate.id === 'string' ? candidate.id.trim() : '';
+    const rawId = typeof candidate.id === 'string' ? candidate.id.trim() : '';
     const parentId = typeof candidate.parentId === 'string' ? candidate.parentId.trim() : '';
     const rawStart = typeof candidate.startChildId === 'string' ? candidate.startChildId.trim() : '';
     const rawEnd = typeof candidate.endChildId === 'string' ? candidate.endChildId.trim() : '';
-    if (!id || !parentId || !rawStart || !rawEnd || seenIds.has(id)) continue;
+    if (!parentId || !rawStart || !rawEnd) continue;
+    if (rawId && seenIds.has(rawId)) continue;
 
     const parent = findNodeById(root, parentId);
     if (!parent || !Array.isArray(parent.children) || parent.children.length < 2) continue;
@@ -140,6 +151,16 @@ export function sanitizeDocumentSummaries(
     const endChildId = parent.children[endIndex].id;
     const rangeKey = `${parentId}:${startChildId}:${endChildId}`;
     if (seenRanges.has(rangeKey)) continue;
+
+    let id = rawId;
+    if (!id) {
+      let suffix = idx;
+      id = `sum_${parentId}_${startIndex}_${endIndex}_${suffix}`;
+      while (seenIds.has(id) || reservedExplicitIds.has(id)) {
+        suffix += 1;
+        id = `sum_${parentId}_${startIndex}_${endIndex}_${suffix}`;
+      }
+    }
 
     seenIds.add(id);
     seenRanges.add(rangeKey);

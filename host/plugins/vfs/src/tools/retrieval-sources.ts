@@ -6,13 +6,26 @@ import { charCount, takeChars } from '../../../../platform/util/portable.ts';
 
 export const objectOf = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 export const stringOf = (value: unknown): string | null => typeof value === 'string' ? value : null;
+const HARD_MIN_FLOOR = 0.05;
 export function applyScoreThresholds(sources: SourceInfo[], minScore: number | null, relativeThreshold: number): SourceInfo[] {
-  if (sources.length <= 1) return sources;
-  const max = sources.reduce((max, source) => source.score == null ? max : Math.max(max, Math.fround(source.score)), -3.4028234663852886e38);
+  if (sources.length === 0) return sources;
+  let hasScored = false;
+  let max = -3.4028234663852886e38;
+  for (const source of sources) {
+    if (source.score == null) continue;
+    hasScored = true;
+    max = Math.max(max, Math.fround(source.score));
+  }
+  if (!hasScored) return sources;
+  if (minScore !== null && (!Number.isFinite(max) || max <= 0 || max < Math.fround(HARD_MIN_FLOOR))) {
+    return sources.filter(source => source.score == null);
+  }
   if (!Number.isFinite(max) || max <= 0) return sources;
+  if (sources.length <= 1) return sources;
   const relativeMin = Math.fround(max * Math.fround(relativeThreshold));
   const filtered = sources.filter(source => source.score == null || (Math.fround(source.score) >= relativeMin && (minScore === null || Math.fround(source.score) >= Math.fround(minScore))));
-  return filtered.length === 0 ? sources.slice(0, 1) : filtered;
+  if (filtered.length > 0) return filtered;
+  return minScore !== null && max < Math.fround(HARD_MIN_FLOOR) ? [] : sources.slice(0, 1);
 }
 export function truncateSnippetChars(text: string, maxChars: number): [string, number] {
   const count = charCount(text);

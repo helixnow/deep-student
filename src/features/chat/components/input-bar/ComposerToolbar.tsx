@@ -12,11 +12,13 @@ import React, { useCallback, useLayoutEffect, useMemo, useRef, useState } from '
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import {
+  ArrowLeft,
   ArrowUp,
   Square,
   Lightning,
   CircleNotch,
   CaretDown,
+  CaretRight,
 } from '@phosphor-icons/react';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
@@ -468,8 +470,12 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
     onToggleThinking?.();
   }, [enableThinking, onSetThinkingDepth, onToggleThinking, thinkingCanDisable]);
 
+  // 移动端窄屏下用单层菜单内钻替代横向级联飞出子菜单，避免子菜单与父菜单叠压
+  const [mobileModelPickerOpen, setMobileModelPickerOpen] = useState(false);
+
   const handleThinkingRuntimeMenuOpenChange = useCallback((open: boolean) => {
     // 子菜单搜索词由 RuntimeModelSubmenuBody 自持，随子菜单卸载自然清空
+    setMobileModelPickerOpen(false);
     if (open) onThinkingMenuWillOpen();
   }, [onThinkingMenuWillOpen]);
 
@@ -606,7 +612,34 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                     <CaretDown size={13} weight="bold" className="shrink-0 opacity-55" />
                   </button>
                 </AppMenuTrigger>
-                <AppMenuContent align="end" width={hasRuntimeModelMenu ? 232 : 176}>
+                <AppMenuContent
+                  align="end"
+                  width={hasRuntimeModelMenu ? (isMobile && mobileModelPickerOpen ? 280 : 232) : 176}
+                  className={cn(
+                    isMobile && mobileModelPickerOpen && 'w-[min(288px,calc(100vw-24px))] max-w-[min(288px,calc(100vw-24px))] p-1'
+                  )}
+                >
+                  {isMobile && mobileModelPickerOpen && runtimeModelOptions.length > 0 ? (
+                    <div data-testid="mobile-runtime-model-drilldown">
+                      <AppMenuItem
+                        icon={<ArrowLeft size={14} />}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          setMobileModelPickerOpen(false);
+                        }}
+                      >
+                        {t('chatV2:inputBar.backToThinkingMenu', { defaultValue: '返回推理与模型' })}
+                      </AppMenuItem>
+                      <AppMenuSeparator />
+                      <RuntimeModelSubmenuBody
+                        options={runtimeModelOptions}
+                        currentModelId={runtimeCurrentModelId}
+                        onSelect={onSelectRuntimeModel}
+                        multiSelect={runtimeModelMultiSelect}
+                      />
+                    </div>
+                  ) : (
+                    <>
                   {hasThinkingUnsupportedMenu ? (
                     <AppMenuGroup label={t('chatV2:inputBar.thinking')}>
                       <AppMenuItem disabled>
@@ -660,6 +693,39 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                   {hasRuntimeModelMenu && (
                     <AppMenuGroup label={runtimeModelTitle}>
                       {runtimeModelOptions.length > 0 ? (
+                        isMobile ? (
+                          <AppMenuItem
+                            aria-label={runtimeModelSwitchLabel}
+                            className={runtimeModelLabel ? '[&_.app-menu-item-content]:whitespace-normal' : undefined}
+                            title={runtimeModelSwitchTitle}
+                            suffix={<CaretRight size={14} className="opacity-60" />}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              setMobileModelPickerOpen(true);
+                            }}
+                          >
+                            {runtimeModelLabel ? (
+                              <span className="flex min-w-0 max-w-full flex-col gap-0.5 leading-tight">
+                                <span
+                                  className="block min-w-0 max-w-full truncate text-[12px] font-medium text-foreground"
+                                  title={runtimeModelLabel}
+                                >
+                                  {runtimeModelLabel}
+                                </span>
+                                {runtimeModelProviderLabel && (
+                                  <span
+                                    className="block min-w-0 max-w-full truncate text-2xs text-muted-foreground"
+                                    title={runtimeModelProviderLabel}
+                                  >
+                                    {runtimeModelProviderLabel}
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              chooseRuntimeModelLabel
+                            )}
+                          </AppMenuItem>
+                        ) : (
                         <AppMenuSub openOnClick>
                           <AppMenuSubTrigger
                             aria-label={runtimeModelSwitchLabel}
@@ -696,6 +762,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                             />
                           </AppMenuSubContent>
                         </AppMenuSub>
+                        )
                       ) : (
                         <AppMenuItem
                           aria-label={runtimeModelSwitchLabel}
@@ -726,6 +793,8 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                         </AppMenuItem>
                       )}
                     </AppMenuGroup>
+                  )}
+                    </>
                   )}
                 </AppMenuContent>
               </AppMenu>

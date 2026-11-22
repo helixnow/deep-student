@@ -1,14 +1,14 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useContext, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
-import { cn } from '@/utils/cn';
+import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { Plus } from '@phosphor-icons/react';
 import { NodeContent } from './NodeContent';
 import { useNodeHeightObserver } from './useNodeHeightObserver';
 import { pickDefined } from './styleUtils';
 import { useMindMapStore, useMindMapStoreApi } from '../../../store';
-import { useMindMapTheme } from '../../../hooks/useMindMapTheme';
+import { MindMapThemeContext, useMindMapTheme } from '../../../hooks/useMindMapTheme';
 import { getThemeFontMetrics, MM_NODE_LINE_HEIGHT_RATIO } from '../../../styles/themes';
 import { openNodeRef } from '../../../utils/openNodeRef';
 import { getSearchResultIdSet } from '../../../utils/searchFilter';
@@ -19,6 +19,7 @@ import {
 import { selectNodeImages } from '../../../utils/nodeImages';
 import { selectNodeExcerptMeta } from '../../../utils/nodeAnchors';
 import type { NodeStyle, BlankRange, MindMapNodeRef } from '../../../types';
+import { getMasteryBorderColor, type NodeMasteryStatus } from './BranchNode';
 import './nodes.css';
 
 export interface RootNodeData extends Record<string, unknown> {
@@ -33,93 +34,107 @@ export interface RootNodeData extends Record<string, unknown> {
   blankedRanges?: BlankRange[];
   // Handle 位置
   sourcePosition?: 'left' | 'right' | 'top' | 'bottom' | 'both';
+  /** FSRS 掌握度状态（供热力图微点/边色渲染） */
+  masteryStatus?: NodeMasteryStatus;
+  /** 是否开启 FSRS 掌握度热力图覆盖层 */
+  showMasteryOverlay?: boolean;
+  /** 嵌入预览指定主题 ID（优先于全局 store styleId） */
+  embedStyleId?: string;
 }
 
-export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
+const RootNodeComponent: React.FC<NodeProps<Node<RootNodeData>>> = ({
   data,
   selected,
 }) => {
   const { t } = useTranslation('mindmap');
   const storeApi = useMindMapStoreApi();
-  
-  const updateNode = useMindMapStore(state => state.updateNode);
-  const addNode = useMindMapStore(state => state.addNode);
-  const setFocusedNodeId = useMindMapStore(state => state.setFocusedNodeId);
-  const editingNodeId = useMindMapStore(state => state.editingNodeId);
-  const setEditingNodeId = useMindMapStore(state => state.setEditingNodeId);
-  const editingNoteNodeId = useMindMapStore(state => state.editingNoteNodeId);
-  const setEditingNoteNodeId = useMindMapStore(state => state.setEditingNoteNodeId);
-  const styleId = useMindMapStore(state => state.styleId);
-  const setMeasuredNodeHeight = useMindMapStore(state => state.setMeasuredNodeHeight);
-  const reciteMode = useMindMapStore(state => state.reciteMode);
-  const searchResultIds = useMindMapStore(state => getSearchResultIdSet(state.searchResults));
-  const currentSearchResultId = useMindMapStore(
-    state => state.searchResults[state.currentSearchIndex] ?? null,
+  const nodeId = data.nodeId;
+
+  // 精细原子订阅：仅订阅当前 nodeId 相关的原始/稳定值，避免其他节点编辑/搜索/揭空触发重渲染
+  const isEditing = useMindMapStore(useCallback((state) => state.editingNodeId === nodeId, [nodeId]));
+  const isEditingNote = useMindMapStore(useCallback((state) => state.editingNoteNodeId === nodeId, [nodeId]));
+  const storeStyleId = useMindMapStore((state) => state.styleId);
+  const effectiveStyleId = data.embedStyleId ?? storeStyleId;
+  const reciteMode = useMindMapStore((state) => state.reciteMode);
+  const isSearchMatch = useMindMapStore(
+    useCallback((state) => getSearchResultIdSet(state.searchResults).has(nodeId), [nodeId]),
   );
-  const revealedBlanks = useMindMapStore(state => state.revealedBlanks);
-  const revealBlank = useMindMapStore(state => state.revealBlank);
-  const markBlanksPresented = useMindMapStore(state => state.markBlanksPresented);
-  const addBlankRange = useMindMapStore(state => state.addBlankRange);
-  const removeBlankRange = useMindMapStore(state => state.removeBlankRange);
-  const removeNodeRef = useMindMapStore(state => state.removeNodeRef);
+  const isCurrentSearchMatch = useMindMapStore(
+    useCallback(
+      (state) => state.searchResults[state.currentSearchIndex] === nodeId,
+      [nodeId],
+    ),
+  );
+  const revealedIndices = useMindMapStore(
+    useCallback((state) => state.revealedBlanks[nodeId], [nodeId]),
+  );
   // 装饰字段（priority/progress/href）：布局引擎未拷贝，经索引直接读 store（值稳定 key，无装饰不触发重渲染）
-  const decorationKey = useMindMapStore(state =>
-    selectNodeDecorationKey(state.document.root, data.nodeId),
+  const decorationKey = useMindMapStore(
+    useCallback((state) => selectNodeDecorationKey(state.document.root, nodeId), [nodeId]),
   );
   const decorations = parseNodeDecorations(decorationKey);
   // 内嵌图片：同样经索引直接读 store（数组引用稳定，无图不触发重渲染）
-  const images = useMindMapStore(state => selectNodeImages(state.document.root, data.nodeId));
+  const images = useMindMapStore(
+    useCallback((state) => selectNodeImages(state.document.root, nodeId), [nodeId]),
+  );
   // 摘录出处 / 原文：同一索引模式（无摘录节点恒为 null，不触发重渲染）
-  const excerpt = useMindMapStore(state => selectNodeExcerptMeta(state.document.root, data.nodeId));
-  const removeNodeAnchor = useMindMapStore(state => state.removeNodeAnchor);
-  const removeNodeExcerptSlot = useMindMapStore(state => state.removeNodeExcerptSlot);
-  const setNodeCardNote = useMindMapStore(state => state.setNodeCardNote);
-  const toggleNodeExpandedCard = useMindMapStore(state => state.toggleNodeExpandedCard);
-  const toggleNodeFlashcard = useMindMapStore(state => state.toggleNodeFlashcard);
-  const nodeRef = useRef<HTMLDivElement>(null);
-  
-  const isEditing = editingNodeId === data.nodeId;
-  const isEditingNote = editingNoteNodeId === data.nodeId;
+  const excerpt = useMindMapStore(
+    useCallback((state) => selectNodeExcerptMeta(state.document.root, nodeId), [nodeId]),
+  );
 
+  const nodeRef = useRef<HTMLDivElement>(null);
+
+  const themeCtx = useContext(MindMapThemeContext);
+  const hasEmbedStyle = Boolean(data.embedStyleId);
+  const usesCanvasCssVars = Boolean(themeCtx?.usesCanvasCssVars && !hasEmbedStyle);
   // 从 StyleRegistry 解析主题（订阅暗色模式切换与注册变更，见 useMindMapTheme）
-  const theme = useMindMapTheme(styleId);
+  const theme = useMindMapTheme(effectiveStyleId, { bypassContext: hasEmbedStyle });
+
+  const setMeasuredNodeHeight = useCallback(
+    (id: string, height: number) => {
+      storeApi.getState().setMeasuredNodeHeight(id, height);
+    },
+    [storeApi],
+  );
 
   const handleTextChange = useCallback((text: string) => {
-    updateNode(data.nodeId, { text });
-  }, [data.nodeId, updateNode]);
+    storeApi.getState().updateNode(nodeId, { text });
+  }, [nodeId, storeApi]);
 
   const handleCommitLiveText = useCallback((text: string) => {
-    updateNode(data.nodeId, { text }, { preserveBlankedRanges: true, skipHistory: true });
-  }, [data.nodeId, updateNode]);
+    storeApi.getState().updateNode(nodeId, { text }, { preserveBlankedRanges: true, skipHistory: true });
+  }, [nodeId, storeApi]);
 
   const handleStartEdit = useCallback(() => {
-    setEditingNodeId(data.nodeId);
-  }, [data.nodeId, setEditingNodeId]);
+    storeApi.getState().setEditingNodeId(nodeId);
+  }, [nodeId, storeApi]);
 
   // 按 nodeId 守卫：连续建点时旧 textarea blur 不得清掉新节点的 editingNodeId
   const handleEndEdit = useCallback(() => {
-    const { editingNodeId: current } = storeApi.getState();
-    if (current === data.nodeId) {
-      setEditingNodeId(null);
+    const state = storeApi.getState();
+    if (state.editingNodeId === nodeId) {
+      state.setEditingNodeId(null);
     }
-  }, [data.nodeId, setEditingNodeId, storeApi]);
+  }, [nodeId, storeApi]);
 
   const handleCommitAndCreateSibling = useCallback(() => {
     // 根节点 Enter → 子级（与非编辑快捷键一致）
-    const newId = addNode(data.nodeId);
+    const state = storeApi.getState();
+    const newId = state.addNode(nodeId);
     if (newId) {
-      setFocusedNodeId(newId);
-      setEditingNodeId(newId);
+      state.setFocusedNodeId(newId);
+      state.setEditingNodeId(newId);
     }
-  }, [data.nodeId, addNode, setFocusedNodeId, setEditingNodeId]);
+  }, [nodeId, storeApi]);
 
   const handleCommitAndCreateChild = useCallback(() => {
-    const newId = addNode(data.nodeId);
+    const state = storeApi.getState();
+    const newId = state.addNode(nodeId);
     if (newId) {
-      setFocusedNodeId(newId);
-      setEditingNodeId(newId);
+      state.setFocusedNodeId(newId);
+      state.setEditingNodeId(newId);
     }
-  }, [data.nodeId, addNode, setFocusedNodeId, setEditingNodeId]);
+  }, [nodeId, storeApi]);
 
   const handleAddChild = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -129,22 +144,21 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   // 记录节点实测高度，避免布局重叠
   // ★ 2026-02 优化：embed 模式下跳过测量，防止小容器的测量值覆盖主编辑器
   const isEmbed = !!(data as Record<string, unknown>).isEmbed;
-  useNodeHeightObserver(nodeRef, data.nodeId, setMeasuredNodeHeight, !isEmbed);
+  useNodeHeightObserver(nodeRef, nodeId, setMeasuredNodeHeight, !isEmbed);
 
   // 主题样式 - 从 theme.node.root 获取；fallback 走主题度量单一数据源
   const rootTheme = theme?.node?.root;
   const rootMetrics = getThemeFontMetrics(theme, true);
-  
+
   const hasCustomBg = Boolean(data.style?.bgColor && data.style.bgColor !== 'transparent');
+  const activeMasteryStatus = data.showMasteryOverlay ? data.masteryStatus : undefined;
+  const masteryBorderColor = getMasteryBorderColor(activeMasteryStatus);
 
   // 自定义样式（来自 data.style）优先级高于主题样式
   // ★ 修复：剔除 undefined 字段——直接展开会把主题样式同名键覆盖为 undefined，
   //   导致主题 foreground / fontWeight 等被静默丢弃
   const customStyle: React.CSSProperties = pickDefined({
     background: hasCustomBg ? data.style?.bgColor : undefined,
-    border: hasCustomBg
-      ? `1px solid color-mix(in srgb, ${data.style?.bgColor} 70%, var(--mm-text) 22%)`
-      : undefined,
     color: data.style?.textColor || (hasCustomBg ? 'var(--mm-text)' : undefined),
     fontWeight: data.style?.fontWeight,
     fontStyle: data.style?.fontStyle === 'italic' ? 'italic' : undefined,
@@ -152,12 +166,32 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
     fontSize: data.style?.headingLevel === 'h1' ? '22px' : data.style?.headingLevel === 'h2' ? '18px' : data.style?.headingLevel === 'h3' ? '16px' : data.style?.fontSize ? `${data.style.fontSize}px` : undefined,
   });
 
+  const themeBg = usesCanvasCssVars
+    ? (rootTheme?.background ? `var(--mm-root-bg, ${rootTheme.background})` : 'var(--mm-root-bg, var(--mm-bg-elevated))')
+    : (rootTheme?.background || 'var(--mm-bg-elevated)');
+  const themeFg = usesCanvasCssVars
+    ? (rootTheme?.foreground ? `var(--mm-root-fg, ${rootTheme.foreground})` : 'var(--mm-root-fg, var(--mm-text))')
+    : (rootTheme?.foreground || 'var(--mm-text)');
+  const themeBorder = usesCanvasCssVars
+    ? (rootTheme?.border ? `var(--mm-root-border, ${rootTheme.border})` : 'var(--mm-root-border, 1px solid var(--mm-border))')
+    : (rootTheme?.border || '1px solid var(--mm-border)');
+  const themeShadow = rootTheme?.shadow
+    ? (usesCanvasCssVars ? `var(--mm-root-shadow, ${rootTheme.shadow})` : rootTheme.shadow)
+    : undefined;
+
+  // 边框统一经单一 `border` 简写合成（禁止与条件 `borderColor` 混用，防退出热力图时退化为 currentColor）
+  const resolvedBorder = masteryBorderColor
+    ? `1px solid ${masteryBorderColor}`
+    : hasCustomBg
+      ? `1px solid color-mix(in srgb, ${data.style?.bgColor} 70%, var(--mm-text) 22%)`
+      : themeBorder;
+
   // 合并主题样式和自定义样式，自定义样式优先级更高
   // ★ 修复：正确应用全局主题的所有属性
   const themeStyle: React.CSSProperties = {
-    background: rootTheme?.background || 'var(--mm-bg-elevated)',
-    color: rootTheme?.foreground || 'var(--mm-text)',
-    border: rootTheme?.border || '1px solid var(--mm-border)',
+    background: themeBg,
+    color: themeFg,
+    border: resolvedBorder,
     borderRadius: rootTheme?.borderRadius ? `${rootTheme.borderRadius}px` : '10px',
     fontSize: rootTheme?.fontSize ? `${rootTheme.fontSize}px` : `${rootMetrics.fontSize}px`,
     // 行高与布局估算（getThemeFontMetrics）保持同一系数，编辑态 textarea 继承后不跳动
@@ -167,13 +201,10 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
     // ★ 修复：不要强制内联 boxShadow: 'none'——内联样式会压过
     //   .selected 选中轻染 / search-match 命中框 / .mm-dragging 抬起阴影
     //   等 class 级 box-shadow 反馈；主题未定义 shadow 时干脆不写内联值
-    ...(rootTheme?.shadow ? { boxShadow: rootTheme.shadow } : {}),
+    ...(themeShadow ? { boxShadow: themeShadow } : {}),
     // 自定义样式优先级更高
     ...customStyle,
   };
-
-  const isSearchMatch = searchResultIds.has(data.nodeId);
-  const isCurrentSearchMatch = isSearchMatch && currentSearchResultId === data.nodeId;
 
   return (
     <div
@@ -186,13 +217,25 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         isCurrentSearchMatch && "search-match-current",
         data.completed && "mm-completed"
       )}
+      data-node-editing={isEditing ? 'true' : undefined}
+      data-mastery-status={activeMasteryStatus}
       style={themeStyle}
       onDoubleClick={(e) => {
         e.stopPropagation();
         // Handled by ReactFlow onNodeDoubleClick
       }}
     >
+      {activeMasteryStatus && (
+        <span
+          className="mm-mastery-dot"
+          data-mastery-status={activeMasteryStatus}
+          data-testid="mm-mastery-dot"
+          aria-hidden="true"
+        />
+      )}
+
       <NodeContent
+        nodeId={nodeId}
         text={data.label}
         note={data.note}
         refs={data.refs}
@@ -203,44 +246,45 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
         isEditing={isEditing}
         isEditingNote={isEditingNote}
         blankedRanges={data.blankedRanges}
-        revealedIndices={revealedBlanks[data.nodeId]}
+        revealedIndices={revealedIndices}
         reciteMode={reciteMode}
         decorations={decorations}
         excerpt={excerpt}
         isSelected={selected}
-        onRemoveAnchor={isEmbed ? undefined : (anchorUri) => removeNodeAnchor(data.nodeId, anchorUri)}
-        onRemoveExcerptSlot={isEmbed ? undefined : (slotId) => removeNodeExcerptSlot(data.nodeId, slotId)}
-        onCardNoteChange={isEmbed ? undefined : (cardNote) => setNodeCardNote(data.nodeId, cardNote)}
-        onToggleExpandedCard={isEmbed ? undefined : () => toggleNodeExpandedCard(data.nodeId)}
-        onToggleFlashcard={isEmbed ? undefined : () => toggleNodeFlashcard(data.nodeId)}
+        onRemoveAnchor={isEmbed ? undefined : (anchorUri) => storeApi.getState().removeNodeAnchor(nodeId, anchorUri)}
+        onRemoveExcerptSlot={isEmbed ? undefined : (slotId) => storeApi.getState().removeNodeExcerptSlot(nodeId, slotId)}
+        onCardNoteChange={isEmbed ? undefined : (cardNote) => storeApi.getState().setNodeCardNote(nodeId, cardNote)}
+        onToggleExpandedCard={isEmbed ? undefined : () => storeApi.getState().toggleNodeExpandedCard(nodeId)}
+        onToggleFlashcard={isEmbed ? undefined : () => storeApi.getState().toggleNodeFlashcard(nodeId)}
         showCheckbox={data.style?.showCheckbox}
-        onToggleCompleted={() => updateNode(data.nodeId, { completed: !data.completed })}
+        onToggleCompleted={() => storeApi.getState().updateNode(nodeId, { completed: !data.completed })}
         onTextChange={handleTextChange}
         onCommitLiveText={handleCommitLiveText}
-        onNoteChange={(note) => updateNode(data.nodeId, { note })}
+        onNoteChange={(note) => storeApi.getState().updateNode(nodeId, { note })}
         onStartEdit={reciteMode ? undefined : handleStartEdit}
         onEndEdit={handleEndEdit}
-        onEndEditNote={() => setEditingNoteNodeId(null)}
+        onEndEditNote={() => storeApi.getState().setEditingNoteNodeId(null)}
         onCommitAndCreateSibling={reciteMode ? undefined : handleCommitAndCreateSibling}
         onCommitAndCreateChild={reciteMode ? undefined : handleCommitAndCreateChild}
         onCommitAndEditNote={reciteMode ? undefined : () => {
-          setEditingNodeId(null);
-          setEditingNoteNodeId(data.nodeId);
+          const state = storeApi.getState();
+          state.setEditingNodeId(null);
+          state.setEditingNoteNodeId(nodeId);
         }}
         isBold={data.style?.fontWeight === 'bold'}
-        onRevealBlank={(rangeIndex) => revealBlank(data.nodeId, rangeIndex)}
-        onBlanksPresented={(rangeIndices) => markBlanksPresented(data.nodeId, rangeIndices)}
-        onAddBlank={(range) => addBlankRange(data.nodeId, range)}
-        onRemoveBlank={(rangeIndex) => removeBlankRange(data.nodeId, rangeIndex)}
+        onRevealBlank={(rangeIndex) => storeApi.getState().revealBlank(nodeId, rangeIndex)}
+        onBlanksPresented={(rangeIndices) => storeApi.getState().markBlanksPresented(nodeId, rangeIndices)}
+        onAddBlank={(range) => storeApi.getState().addBlankRange(nodeId, range)}
+        onRemoveBlank={(rangeIndex) => storeApi.getState().removeBlankRange(nodeId, rangeIndex)}
         onToggleBold={() =>
-          updateNode(data.nodeId, {
+          storeApi.getState().updateNode(nodeId, {
             style: {
               ...data.style,
               fontWeight: data.style?.fontWeight === 'bold' ? undefined : 'bold',
             },
           })
         }
-        onRemoveRef={isEmbed ? undefined : (sourceId) => removeNodeRef(data.nodeId, sourceId)}
+        onRemoveRef={isEmbed ? undefined : (sourceId) => storeApi.getState().removeNodeRef(nodeId, sourceId)}
         onClickRef={
           isEmbed
             ? undefined
@@ -279,7 +323,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
       {/* 动态渲染 Source Handle（与 BranchNode 统一：默认隐藏、hover/选中淡入的小锚点） */}
       {(() => {
         const sourcePos = data.sourcePosition || 'right';
-        
+
         if (sourcePos === 'both') {
           return (
             <>
@@ -300,14 +344,14 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
             </>
           );
         }
-        
+
         const positionMap: Record<string, Position> = {
           left: Position.Left,
           right: Position.Right,
           top: Position.Top,
           bottom: Position.Bottom,
         };
-        
+
         return (
           <Handle
             type="source"
@@ -320,3 +364,6 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
     </div>
   );
 };
+
+export const RootNode = React.memo(RootNodeComponent);
+RootNode.displayName = 'RootNode';

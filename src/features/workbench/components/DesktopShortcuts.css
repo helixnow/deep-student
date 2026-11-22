@@ -53,10 +53,46 @@
   background: hsl(var(--foreground) / 0.08);
 }
 
-/* 选中态（点击聚焦即选中，点击桌面空白自然失焦取消） */
+/* 选中态（点击聚焦 / 框选 / Cmd+点击多选 / 菜单打开） */
 .wb-desk-icon:focus,
+.wb-desk-icon[data-selected='true'],
 .wb-desk-icon[data-menu-open='true'] {
   background: hsl(var(--foreground) / 0.14);
+}
+
+.wb-desk-icon[data-selected='true'] {
+  box-shadow: inset 0 0 0 1px hsl(var(--primary) / 45%);
+}
+
+/* 拖拽排序态：拖起图标轻浮跟手，目标落点显示液态玻璃插入高亮 */
+.wb-desk-icon[data-dragging='true'] {
+  z-index: 2;
+  opacity: 0.78;
+  pointer-events: none;
+  background: hsl(var(--foreground) / 12%);
+  box-shadow: var(--wb-shadow-lifted, 0 8px 24px hsl(var(--shadow-base, 0 0% 0%) / 22%));
+}
+
+.wb-desk-icon[data-drop-target='true'] {
+  background: hsl(var(--primary) / 18%);
+  box-shadow: inset 0 0 0 1.5px hsl(var(--primary) / 75%);
+}
+
+/* 桌面空白区橡胶筋框选矩形（Liquid Glass 半透明玻璃选框） */
+.wb-desk-marquee {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 6px;
+  border: 1px solid hsl(var(--primary) / 65%);
+  background: hsl(var(--primary) / 16%);
+  backdrop-filter: blur(4px) saturate(1.2);
+  box-shadow:
+    inset 0 1px 0 hsl(var(--background) / 35%),
+    0 2px 10px hsl(var(--primary) / 14%);
+}
+
+:root[data-wb-material='minimal'] .wb-desk-marquee {
+  backdrop-filter: none;
 }
 
 .wb-desk-icon__art {
@@ -103,6 +139,7 @@
 }
 
 .wb-desk-icon:focus .wb-desk-icon__label,
+.wb-desk-icon[data-selected='true'] .wb-desk-icon__label,
 .wb-desk-icon[data-menu-open='true'] .wb-desk-icon__label {
   background: hsl(var(--primary) / 0.92);
   border-radius: 5px;

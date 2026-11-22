@@ -5,6 +5,7 @@ import type { Plugin } from '@milkdown/prose/state';
 import type { UploadOptions } from '@milkdown/kit/plugin/upload';
 import type { DragDropEvent } from '@tauri-apps/api/webview';
 import i18next from '@/i18n';
+import { pickWebViewFiles } from '@/utils/pickWebViewFiles';
 
 export interface UploadSource {
   name: string;
@@ -295,23 +296,7 @@ export function handleNativeImageDrop(options: {
 
 /** A browser picker is async too: its mapped node anchor must exist before click(). */
 function pickBrowserImage(signal: AbortSignal): Promise<File | null> {
-  return new Promise(resolve => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.hidden = true;
-    const finish = (file: File | null) => {
-      signal.removeEventListener('abort', abort);
-      input.remove();
-      resolve(file);
-    };
-    const abort = () => finish(null);
-    input.onchange = () => finish(input.files?.[0] ?? null);
-    input.addEventListener('cancel', abort, { once: true });
-    signal.addEventListener('abort', abort, { once: true });
-    document.body.append(input);
-    input.click();
-  });
+  return pickWebViewFiles(false, 'image/*', { signal }).then(files => files[0] ?? null);
 }
 
 export function bindBrowserImageUploads(options: {

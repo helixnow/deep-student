@@ -10,38 +10,59 @@
  */
 
 import { useCallback, useSyncExternalStore } from 'react';
+import { isMacOS } from '@/utils/platform';
 
 /** 通用的 localStorage 字符串枚举偏好（模块级单例，跨组件实例同步） */
 function createStoredPreference<T extends string>(
   storageKey: string,
-  defaultValue: T,
+  defaultValue: T | (() => T),
   isValid: (raw: string) => raw is T,
 ) {
+  const resolveDefault = (): T =>
+    typeof defaultValue === 'function' ? (defaultValue as () => T)() : defaultValue;
+
   const listeners = new Set<() => void>();
 
-  const readInitial = (): T => {
-    if (typeof window === 'undefined') return defaultValue;
+  const readStored = (): T | null => {
+    if (typeof window === 'undefined') return null;
     try {
       const raw = window.localStorage.getItem(storageKey);
-      return raw !== null && isValid(raw) ? raw : defaultValue;
+      return raw !== null && isValid(raw) ? raw : null;
     } catch {
-      return defaultValue;
+      return null;
     }
   };
 
-  let current: T = readInitial();
+  const initialStored = readStored();
+  let hasExplicitOverride = initialStored !== null;
+  let current: T = initialStored ?? resolveDefault();
 
-  const get = (): T => current;
+  const get = (): T => {
+    if (!hasExplicitOverride) {
+      const stored = readStored();
+      if (stored !== null) {
+        hasExplicitOverride = true;
+        current = stored;
+        return current;
+      }
+      return resolveDefault();
+    }
+    return current;
+  };
 
   const set = (next: T): void => {
-    if (next === current) return;
+    const prev = get();
+    if (hasExplicitOverride && next === prev) return;
+    hasExplicitOverride = true;
     current = next;
     try {
       window.localStorage.setItem(storageKey, next);
     } catch {
       // localStorage 不可用（隐私模式等）：仅内存生效
     }
-    listeners.forEach((listener) => listener());
+    if (next !== prev) {
+      listeners.forEach((listener) => listener());
+    }
   };
 
   const subscribe = (listener: () => void): (() => void) => {
@@ -49,7 +70,7 @@ function createStoredPreference<T extends string>(
     return () => listeners.delete(listener);
   };
 
-  return { get, set, subscribe, defaultValue };
+  return { get, set, subscribe, getDefault: resolveDefault };
 }
 
 // ============================================================================
@@ -78,26 +99,30 @@ export function useCanvasDragMode(): [CanvasDragMode, (mode: CanvasDragMode) => 
   const mode = useSyncExternalStore(
     dragModePreference.subscribe,
     dragModePreference.get,
-    () => dragModePreference.defaultValue,
+    dragModePreference.getDefault,
   );
   const setMode = useCallback((next: CanvasDragMode) => setCanvasDragMode(next), []);
   return [mode, setMode];
 }
 
 // ============================================================================
-// 滚轮/触控板语义：滚轮缩放（默认） / 双指平移
+// 滚轮/触控板语义：macOS 默认双指平移（pan），Windows/Linux 默认滚轮缩放（zoom）
 // ============================================================================
 
 /**
- * - zoom（默认）：滚轮/双指滑动直接缩放画布，平移用空白拖拽 / Space / 中键
- * - pan：滚轮/双指滑动平移画布，pinch 或 Cmd/Ctrl+滚轮缩放
- *   （对齐 macOS 上常见画布应用的平台习惯）
+ * - pan（macOS 默认）：双指滑动平移画布，捏合或 Cmd/Ctrl+滚轮缩放
+ *   （对齐 macOS 上 XMind / Figma / Whimsical / Heptabase 的触控板平台惯例）
+ * - zoom（Windows/Linux 默认）：滚轮直接缩放画布，平移用空白拖拽 / Space / 中键
  */
 export type CanvasWheelMode = 'pan' | 'zoom';
 
+export function getDefaultCanvasWheelMode(): CanvasWheelMode {
+  return isMacOS() ? 'pan' : 'zoom';
+}
+
 const wheelModePreference = createStoredPreference<CanvasWheelMode>(
   'mindmap:canvas-wheel-mode',
-  'zoom',
+  getDefaultCanvasWheelMode,
   (raw): raw is CanvasWheelMode => raw === 'pan' || raw === 'zoom',
 );
 
@@ -113,7 +138,7 @@ export function useCanvasWheelMode(): [CanvasWheelMode, (mode: CanvasWheelMode) 
   const mode = useSyncExternalStore(
     wheelModePreference.subscribe,
     wheelModePreference.get,
-    () => wheelModePreference.defaultValue,
+    wheelModePreference.getDefault,
   );
   const setMode = useCallback((next: CanvasWheelMode) => setCanvasWheelMode(next), []);
   return [mode, setMode];
@@ -146,7 +171,7 @@ export function useCanvasShortcutHintMode(): [
   const mode = useSyncExternalStore(
     shortcutHintModePreference.subscribe,
     shortcutHintModePreference.get,
-    () => shortcutHintModePreference.defaultValue,
+    shortcutHintModePreference.getDefault,
   );
   const setMode = useCallback((next: CanvasShortcutHintMode) => setCanvasShortcutHintMode(next), []);
   return [mode, setMode];

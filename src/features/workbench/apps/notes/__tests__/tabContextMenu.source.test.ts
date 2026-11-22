@@ -8,17 +8,30 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-const source = readFileSync(path.join(process.cwd(), 'src/features/workbench/apps/notes/NotesWorkspaceApp.tsx'), 'utf8');
-const menuStart = source.indexOf('id="notes-tab-context-menu"');
-const menu = source.slice(menuStart, source.indexOf('</div>\n      )}', menuStart));
+const appSource = readFileSync(path.join(process.cwd(), 'src/features/workbench/apps/notes/NotesWorkspaceApp.tsx'), 'utf8');
+const stripSource = readFileSync(
+  path.join(process.cwd(), 'src/features/workbench/apps/notes/components/WorkspaceTabStrip.tsx'),
+  'utf8',
+);
+const menuStart = stripSource.indexOf('id="notes-tab-context-menu"');
+const menu = stripSource.slice(menuStart, stripSource.indexOf('</div>\n  );', menuStart));
 const zh = JSON.parse(readFileSync(path.join(process.cwd(), 'src/locales/zh-CN/workbench.json'), 'utf8'));
 
 describe('notes workspace tab context menu', () => {
-  it('labels items with the action only', () => {
+  it('deduplicates the tab context menu into WorkspaceTabContextMenu', () => {
+    expect(appSource).toContain('<WorkspaceTabContextMenu');
+    expect(appSource).not.toContain('id="notes-tab-context-menu"');
+  });
+
+  it('labels items with the action only and wraps every label for ellipsis truncation', () => {
     expect(menuStart).toBeGreaterThan(0);
-    expect(menu).not.toContain('title: tabContextTarget.title');
+    expect(menu).not.toContain('title: target.title');
     expect(menu).toContain("t('notesWorkspace.tabs.menu.pin'");
     expect(menu).toContain("t('notesWorkspace.tabs.menu.close'");
+    const menuButtons = menu.match(/<button\b/g) ?? [];
+    const labelSpans = menu.match(/className="notes-context-menu-label"/g) ?? [];
+    expect(labelSpans.length).toBe(menuButtons.length);
+    expect(menu).toContain('onKeyDown={handleMenuKeyDown}');
     expect(zh.notesWorkspace.tabs.menu).toEqual({
       pin: '固定',
       unpin: '取消固定',
@@ -29,12 +42,12 @@ describe('notes workspace tab context menu', () => {
   });
 
   it('keeps the full resource name for assistive tech on the menu itself', () => {
-    expect(menu).toContain('aria-label={tabContextTarget.title}');
+    expect(menu).toContain('aria-label={target.title}');
   });
 
   it('opens below the tab and clamps by measured size', () => {
-    expect(source).toContain('y: tabBounds.bottom + 4');
-    expect(source).not.toContain('window.innerHeight - 148');
-    expect(source).toContain("import { clampMenuPosition } from './tree/TreeContextMenu';");
+    expect(appSource).toContain('y: tabBounds.bottom + 4');
+    expect(appSource).not.toContain('window.innerHeight - 148');
+    expect(appSource).toContain("import { clampMenuPosition } from './tree/TreeContextMenu';");
   });
 });

@@ -922,24 +922,32 @@ function parseBoolAnswer(raw: string): boolean | null {
   }
 }
 
-const NUMERIC_TOKEN_RE = /[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?/;
+const NUMERIC_INPUT_RE =
+  /^(?:[a-zA-Z]\s*[=≈]\s*|[=≈]\s*)?([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)(?:\s*\/\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?))?([\s\S]*)$/;
+const NUMERIC_UNIT_SUFFIX_RE =
+  /^(?:\s*[%°℃℉‰μΩπa-zA-Z]+(?:[·*/][a-zA-Z]+)*(?:\^[-+]?\d+|[⁻⁺]?[¹²³⁴⁵⁶⁷⁸⁹⁰]+)?|[\u4e00-\u9fff]{1,3})?$/u;
 
-/** 数值宽松解析：全角归一化、去千分位逗号、忽略单位后缀、支持简单分数 */
+/** 数值宽松解析：全角归一化、千分位逗号、简单等式前缀、单位后缀、简单分数（与后端 anchored grammar 对齐） */
 export function parseNumericInput(raw: string): number | null {
-  const cleaned = normalizeFullwidth(raw).replace(/,/g, '');
-  const match = cleaned.match(NUMERIC_TOKEN_RE);
-  if (!match || match.index == null) return null;
-  const value = Number.parseFloat(match[0]);
-  if (!Number.isFinite(value)) return null;
+  const normalized = normalizeFullwidth(raw).trim().replace(/(?<=\d),(?=\d{3}(?:\D|$))/g, '');
+  if (!normalized) return null;
 
-  // 简单分数："3/4"、"3 / 4"
-  const rest = cleaned.slice(match.index + match[0].length);
-  const fraction = rest.match(/^\s*\/\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?)/);
-  if (fraction) {
-    const denominator = Number.parseFloat(fraction[1]);
+  const match = NUMERIC_INPUT_RE.exec(normalized);
+  if (!match) return null;
+
+  const numerator = Number(match[1]);
+  if (!Number.isFinite(numerator)) return null;
+
+  let value = numerator;
+  if (match[2] !== undefined) {
+    const denominator = Number(match[2]);
     if (!Number.isFinite(denominator) || denominator === 0) return null;
-    return value / denominator;
+    value = numerator / denominator;
+    if (!Number.isFinite(value)) return null;
   }
+
+  const remainder = match[3].replace(/\p{White_Space}+$/gu, '');
+  if (!NUMERIC_UNIT_SUFFIX_RE.test(remainder)) return null;
   return value;
 }
 

@@ -63,18 +63,23 @@
   text-align: left;
   cursor: default;
   position: relative;
+  z-index: 1;
   user-select: none;
   box-sizing: border-box;
   transition: background-color var(--notes-hover-transition);
 }
 
-/* 缩进引导线：平时静默，仅在鼠标悬停树区域时浮现 1px 极细墨水线 */
-.nwt-row:not([data-depth='1'])::before {
-  content: '';
+.nwt-row-slot {
+  position: relative;
+  width: 100%;
+}
+
+/* 缩进引导线：按层级对齐每个祖先文件夹箭头中心，位于行背景之下不穿透，平时静默，悬停或聚焦树时平滑浮现 */
+.nwt-indent-guide {
   position: absolute;
-  top: 2px;
-  bottom: 2px;
-  left: 14px;
+  top: 0;
+  bottom: 0;
+  z-index: 0;
   width: 1px;
   background: var(--notes-hairline, hsl(var(--border) / 50%));
   opacity: 0;
@@ -82,7 +87,8 @@
   transition: opacity var(--notes-hover-transition, 120ms ease);
 }
 
-.nwt-tree:hover .nwt-row:not([data-depth='1'])::before {
+.nwt-tree:hover .nwt-indent-guide,
+.nwt-tree:focus-within .nwt-indent-guide {
   opacity: 1;
 }
 
@@ -346,7 +352,7 @@
 
 .nwt-context-menu {
   position: fixed;
-  z-index: 80;
+  z-index: var(--z-popover, 3100);
   min-width: 168px;
   max-height: calc(100vh - 16px);
   overflow-y: auto;
@@ -439,6 +445,7 @@
   .nwt-root,
   .nwt-row,
   .nwt-row[data-drop-inside='true'],
+  .nwt-indent-guide,
   .nwt-link-drag,
   .nwt-row-more,
   .nwt-context-menu-item {
@@ -481,19 +488,22 @@
   color: hsl(var(--foreground));
 }
 
-/* 触屏（仿 FavoritesSection .nfs-unfavorite）：hover 不可达，行内按钮常显并放大触控目标。
-   44px 触控目标，负 margin 抵消占位（实际占用仍 36px） */
+/* 触屏：hover 不可达，低透明常显层级引导线；隐藏无效的 HTML5 拖拽双链手柄，
+   保留「更多」按钮并分配真实 44px 命中区（无负 margin 重叠）。 */
 @media (pointer: coarse) {
-  .nwt-row-more,
-  .nwt-link-drag {
-    opacity: 1;
-    width: 44px;
-    height: 44px;
-    margin: -4px;
+  .nwt-indent-guide {
+    opacity: 0.42;
   }
 
   .nwt-link-drag {
-    flex: 0 0 44px;
+    display: none;
+  }
+
+  .nwt-row-more {
+    opacity: 1;
+    width: 44px;
+    height: 44px;
+    margin: 0;
   }
 
   /* 整行可选/打开：触屏放大到 44px 触控目标（桌面保持 30/26 密度档） */

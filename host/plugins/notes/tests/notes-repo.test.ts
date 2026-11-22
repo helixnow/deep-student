@@ -177,6 +177,24 @@ describe('note_repo', () => {
     });
   });
 
+  it('short <3 char LIKE fallback ranks title matches ahead of newer body-only matches', async () => {
+    await withNotes((_host, storage) => {
+      const conn = db(storage);
+      const titleHit = create(storage, 'AI Summary', 'unrelated content', ['study']);
+      // Force bodyHit to have a strictly newer updated_at than titleHit.
+      const bodyHit = create(storage, 'Unrelated Title', 'mentions AI later', ['study']);
+      conn.run('UPDATE notes SET updated_at=?1 WHERE id=?2', ['2026-01-01T00:00:00.000Z', titleHit.id]);
+      conn.run('UPDATE notes SET updated_at=?1 WHERE id=?2', ['2026-12-31T00:00:00.000Z', bodyHit.id]);
+
+      expect(noteRepository.searchNotesWithSnippets('AI', 10, conn).map(([n]) => n.id))
+        .toEqual([titleHit.id, bodyHit.id]);
+      expect(noteRepository.listNotes('AI', 10, 0, conn).map(n => n.id))
+        .toEqual([titleHit.id, bodyHit.id]);
+      expect(noteRepository.searchNotesByTags('AI', ['study'], 10, conn).map(([n]) => n.id))
+        .toEqual([titleHit.id, bodyHit.id]);
+    });
+  });
+
   it('test_fts_index_follows_soft_delete_and_restore', async () => {
     await withNotes((_host, storage) => {
       const note = create(storage, 'Quantum', 'superposition entanglement');

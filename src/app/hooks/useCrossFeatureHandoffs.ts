@@ -2,6 +2,13 @@ import { useCallback } from 'react';
 import { APP_EVENTS, dispatchAppEvent, toAppEventListener } from '@/events';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useViewStore } from '@/stores/viewStore';
+import type { CurrentView } from '@/types/navigation';
+import {
+  clearChatHandoffReturnView,
+  getChatHandoffReturnView,
+  setChatHandoffReturnView,
+  subscribeChatHandoffReturnView,
+} from '@/utils/chatHandoffReturn';
 import {
   resolveClassicShellOpenNoteTarget,
   type DstuOpenNoteDetail,
@@ -10,6 +17,13 @@ import { publishNotesHeadingTarget } from '@/features/notes/headingTargetBridge'
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import type { SetCurrentView } from '../navigation/viewRouting';
 import type { OpenInLearningHub } from './useShellNavigationEvents';
+
+export {
+  clearChatHandoffReturnView,
+  getChatHandoffReturnView,
+  setChatHandoffReturnView,
+  subscribeChatHandoffReturnView,
+};
 
 /**
  * App 壳层：跨功能交接。试卷 / 翻译 / 作文 / 笔记的「打开」事件经 openInLearningHub
@@ -94,6 +108,11 @@ export function useCrossFeatureHandoffs(openInLearningHub: OpenInLearningHub, se
   }) => {
     const { content, autoSend, newSession } = detail ?? {};
     if (!content) return;
+
+    const originView = useViewStore.getState().currentView;
+    if (originView && originView !== 'chat-v2') {
+      setChatHandoffReturnView(originView);
+    }
 
     setCurrentView('chat-v2');
     if (!newSession) {

@@ -266,6 +266,27 @@ describe('save as note', () => {
     fireEvent.click(button('保存为笔记'));
     expect(saveAsNoteStart).toHaveBeenCalledWith({ content: SELECTED });
   });
+
+  it('consumes resolveFallbackLocator for EPUB chapter provenance and origin locator', () => {
+    renderActions({
+      selectionKind: 'epub',
+      selectionSourceId: 'file_epub_1',
+      documentTitle: '量子力学导论',
+      resolveFallbackLocator: () => 'chapter:4',
+    });
+    fireEvent.click(button('保存为笔记'));
+
+    expect(saveAsNoteStart).toHaveBeenCalledWith(expect.objectContaining({
+      title: SELECTED,
+      content: expect.stringContaining('第 4 章'),
+      origin: expect.objectContaining({
+        kind: 'resource',
+        resourceId: 'file_epub_1',
+        locator: 'chapter:4',
+        title: '量子力学导论',
+      }),
+    }));
+  });
 });
 
 describe('explain / translate results', () => {

@@ -11,6 +11,7 @@ import React, {
   useCallback,
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -18,6 +19,7 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, CheckCircle, WarningCircle } from '@phosphor-icons/react';
 import type { TodoItem } from '@/features/todo/types';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { workbenchBus } from '../core/workbenchBus';
 import { useWorkbenchOverlay } from '../core/shortcuts';
 import { useFocusReturn } from '../hooks/useWorkbenchA11y';
@@ -75,15 +77,25 @@ function useMinuteClock(): Date {
       }, delay);
     };
     schedule();
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') setNow(new Date());
-    };
-    document.addEventListener('visibilitychange', onVisible);
     return () => {
       window.clearTimeout(timer);
-      document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
+
+  const visibilityEvents = useMemo(
+    () => [
+      {
+        target: 'document' as const,
+        type: 'visibilitychange',
+        listener: () => {
+          if (document.visibilityState === 'visible') setNow(new Date());
+        },
+      },
+    ],
+    [],
+  );
+  useEventRegistry(visibilityEvents, [visibilityEvents]);
+
   return now;
 }
 
@@ -187,14 +199,37 @@ const ClockAgendaList: React.FC<{ onNavigate: () => void }> = ({ onNavigate }) =
 export interface StatusBarClockProps {
   /** flyout 开合变化时上报（autohide 打开期间保持展开用） */
   onOpenChange?: (open: boolean) => void;
+  /** 受控模式：是否处于展开态 */
+  open?: boolean;
+  /** 受控模式：点击时钟切换 */
+  onToggle?: () => void;
+  /** 受控模式：指针划入时钟触发器（已有顶栏菜单打开时 0ms 切换） */
+  onHoverTrigger?: () => void;
+  /** 受控模式：请求关闭 */
+  onClose?: () => void;
+  /** 由顶栏统一渲染共享外部点击层时关闭本地 backdrop */
+  hideBackdrop?: boolean;
+  /** 切换到相邻顶栏菜单时 0ms 即时卸载且不抢回焦点 */
+  instantExit?: boolean;
 }
 
-export const StatusBarClock: React.FC<StatusBarClockProps> = ({ onOpenChange }) => {
+export const StatusBarClock: React.FC<StatusBarClockProps> = ({
+  onOpenChange,
+  open: controlledOpen,
+  onToggle,
+  onHoverTrigger,
+  onClose,
+  hideBackdrop = false,
+  instantExit = false,
+}) => {
   const { t, i18n } = useTranslation('workbench');
   const now = useMinuteClock();
-  // 相位机：与学习中心 flyout 同款（open → closing 播离场 → closed 卸载）
-  const [phase, setPhase] = useState<'closed' | 'open' | 'closing'>('closed');
-  const open = phase === 'open';
+  const isControlled = controlledOpen !== undefined;
+  // 相位机：与学习中心 flyout 同款（open → closing 播离场 → closed 卸载；相邻切换 0ms 瞬切）
+  const [phase, setPhase] = useState<'closed' | 'open' | 'closing'>(() =>
+    controlledOpen ? 'open' : 'closed',
+  );
+  const open = isControlled ? controlledOpen : phase === 'open';
   const panelRef = useRef<HTMLDivElement | null>(null);
   const titleId = useId();
   const exposeOpen = useWorkbenchOverlay((s) => s.exposeOpen);
@@ -202,15 +237,46 @@ export const StatusBarClock: React.FC<StatusBarClockProps> = ({ onOpenChange }) 
   useLiquidGlassLens(panelRef, open, { staticOnly: true });
   const { skipNextReturn } = useFocusReturn(open);
 
-  const close = useCallback(() => setPhase((p) => (p === 'open' ? 'closing' : p)), []);
+  const instantExitRef = useRef(instantExit);
+  instantExitRef.current = instantExit;
+
+  // 受控模式：同步 open → phase（相邻菜单切换 0ms 直关且跳过焦点归还）
+  useEffect(() => {
+    if (!isControlled) return;
+    if (controlledOpen) {
+      setPhase('open');
+      return;
+    }
+    setPhase((prev) => {
+      if (prev === 'closed') return 'closed';
+      if (instantExitRef.current) {
+        skipNextReturn();
+        return 'closed';
+      }
+      return 'closing';
+    });
+  }, [isControlled, controlledOpen, skipNextReturn]);
+
+  const close = useCallback(() => {
+    if (isControlled) {
+      onClose?.();
+    } else {
+      setPhase((p) => (p === 'open' ? 'closing' : p));
+    }
+  }, [isControlled, onClose]);
+
   const handleNavigate = useCallback(() => {
     skipNextReturn();
     close();
   }, [skipNextReturn, close]);
-  const toggle = useCallback(
-    () => setPhase((p) => (p === 'open' ? 'closing' : 'open')),
-    [],
-  );
+
+  const toggle = useCallback(() => {
+    if (isControlled) {
+      onToggle?.();
+    } else {
+      setPhase((p) => (p === 'open' ? 'closing' : 'open'));
+    }
+  }, [isControlled, onToggle]);
 
   const handleFlyoutKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     const panel = panelRef.current;
@@ -245,8 +311,8 @@ export const StatusBarClock: React.FC<StatusBarClockProps> = ({ onOpenChange }) 
   }, [phase, onOpenChange]);
 
   useEffect(() => {
-    if (exposeOpen || appsPanelOpen) close();
-  }, [exposeOpen, appsPanelOpen, close]);
+    if (!isControlled && (exposeOpen || appsPanelOpen)) close();
+  }, [isControlled, exposeOpen, appsPanelOpen, close]);
 
   useEffect(() => {
     if (phase !== 'closing') return undefined;
@@ -254,19 +320,7 @@ export const StatusBarClock: React.FC<StatusBarClockProps> = ({ onOpenChange }) 
     return () => window.clearTimeout(timer);
   }, [phase]);
 
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.stopPropagation();
-        close();
-      }
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [open, close]);
-
-  // 焦点：打开聚焦首个可聚焦项 + Tab 循环（与学习中心 flyout 同语义）
+  // 焦点：打开聚焦首个可聚焦项
   useEffect(() => {
     if (!open) return undefined;
     const panel = panelRef.current;
@@ -275,36 +329,73 @@ export const StatusBarClock: React.FC<StatusBarClockProps> = ({ onOpenChange }) 
       const focusable = getFocusable(panel);
       (focusable[0] ?? panel).focus({ preventScroll: true });
     });
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return;
-      const focusables = getFocusable(panel);
-      if (focusables.length === 0) {
-        e.preventDefault();
-        panel.focus({ preventScroll: true });
-        return;
-      }
-      const first = focusables[0];
-      const last = focusables[focusables.length - 1];
-      const active = document.activeElement as HTMLElement | null;
-      const inside = active ? panel.contains(active) : false;
-      if (e.shiftKey) {
-        if (!inside || active === first) {
-          e.preventDefault();
-          last.focus({ preventScroll: true });
-        }
-      } else if (!inside || active === last) {
-        e.preventDefault();
-        first.focus({ preventScroll: true });
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown, true);
     return () => {
       window.cancelAnimationFrame(raf);
-      document.removeEventListener('keydown', handleKeyDown, true);
     };
   }, [open]);
 
+  // Esc 关闭（非受控兜底；受控模式由 StatusBar 统一处理） + Tab 循环焦点陷阱
+  const flyoutEvents = useMemo(() => {
+    if (!open) return [];
+    const entries: Array<{
+      target: 'window' | 'document';
+      type: string;
+      listener: EventListener;
+      options?: boolean;
+    }> = [
+      {
+        target: 'document',
+        type: 'keydown',
+        options: true,
+        listener: (event) => {
+          const e = event as KeyboardEvent;
+          if (e.key !== 'Tab') return;
+          const panel = panelRef.current;
+          if (!panel) return;
+          const focusables = getFocusable(panel);
+          if (focusables.length === 0) {
+            e.preventDefault();
+            panel.focus({ preventScroll: true });
+            return;
+          }
+          const first = focusables[0];
+          const last = focusables[focusables.length - 1];
+          const active = document.activeElement as HTMLElement | null;
+          const inside = active ? panel.contains(active) : false;
+          if (e.shiftKey) {
+            if (!inside || active === first) {
+              e.preventDefault();
+              last.focus({ preventScroll: true });
+            }
+          } else if (!inside || active === last) {
+            e.preventDefault();
+            first.focus({ preventScroll: true });
+          }
+        },
+      },
+    ];
+    if (!isControlled) {
+      entries.push({
+        target: 'window',
+        type: 'keydown',
+        options: true,
+        listener: (event) => {
+          const e = event as KeyboardEvent;
+          if (e.key === 'Escape') {
+            e.stopPropagation();
+            close();
+          }
+        },
+      });
+    }
+    return entries;
+  }, [open, isControlled, close]);
+
+  useEventRegistry(flyoutEvents, [flyoutEvents]);
+
   const label = formatMenuBarClock(now, i18n.language);
+
+  const renderedPhase: 'closed' | 'open' | 'closing' = open ? 'open' : phase;
 
   return (
     <>
@@ -318,23 +409,26 @@ export const StatusBarClock: React.FC<StatusBarClockProps> = ({ onOpenChange }) 
         aria-expanded={open}
         title={t('menubar.agendaTitle')}
         onClick={toggle}
+        onPointerEnter={onHoverTrigger}
       >
         <span className="wb-menubar-item-value">{label}</span>
       </button>
 
-      {phase !== 'closed' ? (
+      {renderedPhase !== 'closed' ? (
         <>
-          <div
-            className="wb-menubar-flyout-backdrop"
-            data-testid="wb-menubar-clock-backdrop"
-            aria-hidden="true"
-            onClick={close}
-          />
+          {!hideBackdrop ? (
+            <div
+              className="wb-menubar-flyout-backdrop"
+              data-testid="wb-menubar-clock-backdrop"
+              aria-hidden="true"
+              onClick={close}
+            />
+          ) : null}
           <div
             ref={panelRef}
             className="wb-glass wb-glass-highlight wb-glass-lens wb-menubar-flyout wb-menubar-clock-flyout"
             data-open="true"
-            data-phase={phase}
+            data-phase={renderedPhase}
             data-testid="wb-menubar-clock-flyout"
             role="dialog"
             aria-modal="true"

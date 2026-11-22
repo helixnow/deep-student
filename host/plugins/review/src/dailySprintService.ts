@@ -61,6 +61,104 @@ export interface RemoteCallMeta {
   signal?: AbortSignal;
 }
 
+interface SprintMistakeQuestionImagePayload {
+  id: string;
+  name: string;
+  mime: string;
+  hash: string;
+  role?: 'question' | 'material' | 'option' | 'source' | null;
+}
+
+interface SprintMistakeMaterialPayload {
+  id: string;
+  content: string;
+  images: SprintMistakeQuestionImagePayload[];
+  version: number;
+}
+
+type EnrichedSprintMistakeItem = SprintMistakeItem & {
+  images?: SprintMistakeQuestionImagePayload[];
+  materials?: SprintMistakeMaterialPayload[];
+};
+
+const VALID_MISTAKE_IMAGE_ROLES = new Set(['question', 'material', 'option', 'source']);
+
+function sanitizeSprintMistakeImages(rawImages: unknown): SprintMistakeQuestionImagePayload[] {
+  if (!Array.isArray(rawImages)) return [];
+  const out: SprintMistakeQuestionImagePayload[] = [];
+  for (const entry of rawImages) {
+    if (!isPlainRecord(entry)) continue;
+    const id = nullableTrimmed(typeof entry.id === 'string' ? entry.id : null);
+    if (id === null) continue;
+    const name = typeof entry.name === 'string' ? entry.name : '';
+    const mime = typeof entry.mime === 'string' && entry.mime.trim().length > 0
+      ? entry.mime.trim()
+      : 'image/png';
+    const hash = typeof entry.hash === 'string' ? entry.hash : '';
+    const rawRole = typeof entry.role === 'string' ? entry.role.trim().toLowerCase() : null;
+    const role = rawRole && VALID_MISTAKE_IMAGE_ROLES.has(rawRole)
+      ? (rawRole as SprintMistakeQuestionImagePayload['role'])
+      : undefined;
+    out.push(role ? { id, name, mime, hash, role } : { id, name, mime, hash });
+  }
+  return out;
+}
+
+function sanitizeSprintMistakeMaterials(rawMaterials: unknown): SprintMistakeMaterialPayload[] {
+  if (!Array.isArray(rawMaterials)) return [];
+  const out: SprintMistakeMaterialPayload[] = [];
+  for (const entry of rawMaterials) {
+    if (!isPlainRecord(entry)) continue;
+    const id = nullableTrimmed(typeof entry.id === 'string' ? entry.id : null);
+    if (id === null) continue;
+    const content = typeof entry.content === 'string' ? entry.content : '';
+    const images = sanitizeSprintMistakeImages(entry.images);
+    const version =
+      typeof entry.version === 'number' && Number.isFinite(entry.version)
+        ? Math.max(0, Math.trunc(entry.version))
+        : 1;
+    out.push({ id, content, images, version });
+  }
+  return out;
+}
+
+function loadFallbackGroupMaterials(
+  vfsDb: SqlExecutor | null,
+  groupId: string | null | undefined,
+  debug: (message: string) => void,
+): SprintMistakeMaterialPayload[] {
+  const normalizedGroupId = nullableTrimmed(groupId);
+  if (vfsDb === null || normalizedGroupId === null) return [];
+  try {
+    const rows = examSprintRepo.queryFallbackGroupMaterialRows(vfsDb, normalizedGroupId);
+    const out: SprintMistakeMaterialPayload[] = [];
+    for (const row of rows) {
+      if (typeof row.id !== 'string' || typeof row.content !== 'string') continue;
+      let parsedImages: unknown = [];
+      if (typeof row.images_json === 'string' && row.images_json.trim().length > 0) {
+        try {
+          parsedImages = JSON.parse(row.images_json);
+        } catch {
+          parsedImages = [];
+        }
+      }
+      out.push({
+        id: row.id,
+        content: row.content,
+        images: sanitizeSprintMistakeImages(parsedImages),
+        version:
+          typeof row.local_version === 'number' && Number.isFinite(row.local_version)
+            ? Math.max(0, Math.trunc(row.local_version))
+            : 1,
+      });
+    }
+    return out;
+  } catch (error) {
+    debug(`[exam-sprint] fallback group materials query skipped for ${normalizedGroupId}: ${errorText(error)}`);
+    return [];
+  }
+}
+
 const FULLWIDTH_CLOZE_MASK = '［ ？ ］';
 const MAX_MINDMAPS_TO_HARVEST = 30;
 const MAX_MINDMAP_NODES_TO_HARVEST = 500;
@@ -1633,6 +1731,39 @@ export class DailySprintService {
         return true;
       });
     items = interleaveSprintQueue(items);
+
+    const vfsDbForMaterials = this.tryVfsDb();
+    const debugLog = (msg: string) => this.logger().debug(msg);
+    const groupMaterialsCache = new Map<string, SprintMistakeMaterialPayload[]>();
+    items = items.map((item) => {
+      if (item.kind !== 'mistake_question') return item;
+      const originalQuestion = evaluated.questionsById.get(item.originalQuestionId);
+      if (originalQuestion === undefined) return item;
+      const images = item.isVariant
+        ? []
+        : sanitizeSprintMistakeImages(originalQuestion.images);
+      let materials = sanitizeSprintMistakeMaterials(originalQuestion.materials);
+      if (materials.length === 0 && originalQuestion.group_id) {
+        const cached = groupMaterialsCache.get(originalQuestion.group_id);
+        if (cached !== undefined) {
+          materials = cached;
+        } else {
+          materials = loadFallbackGroupMaterials(
+            vfsDbForMaterials,
+            originalQuestion.group_id,
+            debugLog,
+          );
+          groupMaterialsCache.set(originalQuestion.group_id, materials);
+        }
+      }
+      const enriched: EnrichedSprintMistakeItem = {
+        ...item,
+        images,
+        materials,
+      };
+      return enriched;
+    });
+
     const selectedDueCount = items.filter((item) => item.kind !== 'fsrs_card' || item.state !== 0).length;
     const before = evaluated.snapshot;
     const deferredBacklogCount = Math.max(0,

@@ -48,6 +48,7 @@ export const paperDarkTheme: IStyleTheme = {
     strokeWidth: 1.5,
   },
   palette: PAPER_DARK_PALETTE,
+  useBranchPalette: false,
   canvas: {
     background: '#1A1815',
   },

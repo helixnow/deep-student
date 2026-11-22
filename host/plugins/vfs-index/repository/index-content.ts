@@ -422,6 +422,11 @@ export function clearTextIndexRowsForResource(
   );
 }
 
+export interface PrepareCandidateStamp {
+  readonly id: string;
+  readonly stamp: string;
+}
+
 /** `prepare_units_without_embedding` candidate scan (limit * 4). */
 export function listPrepareCandidates(db: SqlExecutor, limit: number): string[] {
   return db.all<Row>(
@@ -433,6 +438,23 @@ export function listPrepareCandidates(db: SqlExecutor, limit: number): string[] 
      LIMIT ?1`,
     [limit * 4],
   ).map((row) => text(row['id']));
+}
+
+export function listPrepareCandidateStamps(db: SqlExecutor, limit: number): PrepareCandidateStamp[] {
+  return db.all<Row>(
+    `SELECT r.id,
+            COALESCE(r.hash, '') || ':' || COALESCE(CAST(r.updated_at AS TEXT), '') AS stamp
+     FROM resources r
+     WHERE r.deleted_at IS NULL
+       AND COALESCE(r.index_state, 'pending') = 'pending'
+       AND NOT EXISTS (SELECT 1 FROM vfs_index_units u WHERE u.resource_id = r.id)
+     ORDER BY r.updated_at DESC
+     LIMIT ?1`,
+    [limit * 4],
+  ).map((row) => ({
+    id: text(row['id']),
+    stamp: text(row['stamp']),
+  }));
 }
 
 export interface OrphanQueueEntry {

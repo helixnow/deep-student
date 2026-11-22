@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 
-import { isAndroid } from './platform';
+import { isAndroid, isWebUiShell } from './platform';
 import { getSetting, saveSetting } from './settingsApi';
 import { isTauriRuntime } from './shared';
 
@@ -19,7 +19,7 @@ export function parseImmersiveModeSetting(raw: string | null | undefined): boole
 }
 
 export function isAndroidImmersiveModeSupported(): boolean {
-  return isTauriRuntime && isAndroid();
+  return isTauriRuntime && isAndroid() && !isWebUiShell();
 }
 
 async function applyAndroidImmersiveMode(enabled: boolean): Promise<void> {

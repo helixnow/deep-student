@@ -1,0 +1,275 @@
+/**
+ * Crepe Code Blocks, CodeMirror, Language Picker, LaTeX & Mermaid Previews
+ *
+ * Includes CodeMirror surface integration, hover-revealed block tools,
+ * searchable language picker, LaTeX inline edit popover, and Notion-style
+ * preview-only presentation for Mermaid/LaTeX blocks.
+ */
+
+/* stylelint-disable selector-class-pattern */
+
+/* ===== CodeMirror Surface ===== */
+.crepe-editor-wrapper .cm-editor,
+.crepe-editor-wrapper .milkdown-code-block .cm-editor {
+  background: transparent;
+  border-radius: 10px;
+}
+
+.crepe-editor-wrapper .cm-scroller {
+  background: transparent;
+}
+
+.crepe-editor-wrapper .cm-content {
+  color: var(--notes-ink, hsl(var(--foreground)));
+  caret-color: hsl(var(--foreground));
+}
+
+.crepe-editor-wrapper .cm-gutters,
+.crepe-editor-wrapper .milkdown-code-block .cm-gutters {
+  background: transparent;
+  border-color: transparent;
+  color: hsl(var(--muted-foreground) / 65%);
+}
+
+.crepe-editor-wrapper .cm-activeLineGutter {
+  background: hsl(var(--primary) / 10%);
+}
+
+.crepe-editor-wrapper .cm-activeLine {
+  background: hsl(var(--primary) / 5%);
+}
+
+.crepe-editor-wrapper .cm-selectionBackground,
+.crepe-editor-wrapper .cm-editor .cm-selectionBackground {
+  background: var(--notes-selection-bg, hsl(var(--primary) / 14%));
+}
+
+.crepe-editor-wrapper .cm-cursor {
+  border-left-color: hsl(var(--foreground));
+}
+
+.crepe-editor-wrapper .cm-matchingBracket {
+  background: hsl(var(--primary) / 20%);
+  outline: 1px solid hsl(var(--primary) / 50%);
+}
+/* stylelint-enable selector-class-pattern */
+
+/* ===== Code Block Shell & Tools ===== */
+.crepe-editor-wrapper .milkdown .milkdown-code-block {
+  background: var(--notes-surface-subtle, hsl(var(--foreground) / 3.5%));
+  border: 0;
+  border-radius: 10px;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .tools {
+  background: transparent;
+}
+
+.crepe-editor-wrapper .milkdown-code-block .tools .language-button {
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  opacity: 0.65;
+  transition:
+    opacity var(--notes-hover-transition, 120ms ease),
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+:where(.crepe-editor-wrapper) .milkdown-code-block:hover .tools .language-button,
+:where(.crepe-editor-wrapper) .milkdown-code-block:focus-within .tools .language-button {
+  opacity: 1;
+}
+
+:where(.crepe-editor-wrapper) .milkdown-code-block .tools .language-button:hover {
+  background: var(--notes-surface-hover, hsl(var(--accent)));
+  color: hsl(var(--foreground));
+}
+
+/* Fallback language label selectors for non-standard code blocks */
+.crepe-editor-wrapper .code-block .language-button,
+.crepe-editor-wrapper .code-block .language-picker,
+.crepe-editor-wrapper .code-block .language-list,
+.crepe-editor-wrapper milkdown-code-block .language-button,
+.crepe-editor-wrapper pre .language-label {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  border-color: hsl(var(--border));
+}
+
+/* Language dropdown popover */
+.crepe-editor-wrapper .milkdown .milkdown-code-block .list-wrapper {
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup, 12px);
+  overflow: hidden;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .language-list {
+  border-radius: var(--notes-radius-popup, 12px);
+  border-color: hsl(var(--border));
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 15%));
+}
+
+/* Search box inside language picker */
+.crepe-editor-wrapper .milkdown .milkdown-code-block .search-box {
+  width: calc(100% - 28px);
+  margin: 0 14px 8px;
+  outline: none;
+  border: none;
+  background: transparent;
+}
+
+.crepe-editor-wrapper .milkdown-code-block .search-box:has(input:focus) {
+  outline: none;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .search-box input {
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control, 5px);
+  padding: 6px 10px;
+}
+
+.crepe-editor-wrapper .milkdown-code-block .search-box input:focus {
+  border-color: hsl(var(--primary));
+  outline: none;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block .language-list-item {
+  border-radius: var(--notes-popup-item-radius, 4px);
+}
+
+:where(.crepe-editor-wrapper) .milkdown .milkdown-code-block .language-list-item:hover {
+  background: hsl(var(--accent));
+  border-radius: var(--notes-popup-item-radius, 4px);
+}
+
+/* Code block tool buttons: quiet until hover/focus (always visible on touch) */
+.crepe-editor-wrapper .milkdown-code-block .tools .tools-button-group button {
+  opacity: 0;
+  transition: opacity var(--notes-hover-transition, 120ms ease);
+}
+
+:where(.crepe-editor-wrapper) .milkdown-code-block:hover .tools-button-group button,
+:where(.crepe-editor-wrapper) .milkdown-code-block:focus-within .tools-button-group button {
+  opacity: 1;
+}
+
+@media (pointer: coarse) {
+  .crepe-editor-wrapper .milkdown-code-block .tools .tools-button-group button {
+    opacity: 1;
+  }
+}
+
+/* ===== LaTeX / Math Preview Panel (flattened, no box-in-box) ===== */
+.crepe-editor-wrapper .milkdown .milkdown-code-block .preview-panel {
+  background: transparent;
+  border: 0;
+  color: var(--notes-ink, hsl(var(--foreground)));
+  height: auto;
+  min-height: auto;
+  flex-grow: 0;
+}
+
+.crepe-editor-wrapper .milkdown-code-block .preview-panel .preview {
+  background: transparent;
+  border: 0;
+  color: var(--notes-ink, hsl(var(--foreground)));
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+}
+
+.crepe-editor-wrapper .milkdown-code-block .preview-panel .preview-label {
+  color: hsl(var(--muted-foreground) / 75%);
+}
+
+.crepe-editor-wrapper .milkdown-code-block .preview-panel .preview-divider {
+  background: var(--notes-hairline, hsl(var(--border)));
+}
+
+/* LaTeX inline editor popover */
+.crepe-editor-wrapper .milkdown .milkdown-latex-inline-edit {
+  z-index: 50;
+  background: hsl(var(--popover));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-popup, 12px);
+  box-shadow: var(--notes-popup-shadow, 0 4px 12px hsl(var(--shadow-base) / 15%));
+}
+
+/* stylelint-disable-next-line selector-class-pattern */
+.crepe-editor-wrapper .milkdown .milkdown-latex-inline-edit .ProseMirror {
+  min-height: 0;
+  line-height: 1.4;
+}
+
+/* ===== Mermaid Diagram Preview ===== */
+.crepe-editor-wrapper .mermaid-preview {
+  margin-top: 0.5rem;
+  padding: 1rem;
+  background: hsl(var(--muted));
+  border-radius: var(--radius, 0.5rem);
+  border: 1px solid hsl(var(--border));
+  overflow-x: auto;
+}
+
+.crepe-editor-wrapper .mermaid-preview svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.crepe-editor-wrapper .mermaid-preview.mermaid-error {
+  color: hsl(var(--destructive));
+  font-size: 0.875em;
+}
+
+/* ===== Preview-Only Blocks (LaTeX / Mermaid Notion-Style Presentation) ===== */
+.crepe-editor-wrapper .milkdown-code-block:has(> .codemirror-host.hidden) {
+  position: relative;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 2px 0;
+  border-radius: 6px;
+  transition: background-color var(--notes-hover-transition, 120ms ease);
+}
+
+:where(.crepe-editor-wrapper) .milkdown-code-block:has(> .codemirror-host.hidden):hover {
+  background: hsl(var(--foreground) / 3.5%);
+}
+
+:where(.crepe-editor-wrapper) .milkdown-code-block:has(> .codemirror-host.hidden) > .tools {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+:where(.crepe-editor-wrapper) .milkdown-code-block:has(> .codemirror-host.hidden) .language-button {
+  display: none;
+}
+
+:where(.crepe-editor-wrapper .milkdown-code-block:has(> .codemirror-host.hidden)):hover > .tools,
+:where(.crepe-editor-wrapper .milkdown-code-block:has(> .codemirror-host.hidden)) > .tools:focus-within {
+  opacity: 1;
+}
+
+:where(.crepe-editor-wrapper) .milkdown-code-block:has(> .codemirror-host.hidden) .preview-panel,
+:where(.crepe-editor-wrapper) .milkdown-code-block:has(> .codemirror-host.hidden) .preview {
+  background: transparent;
+  border: none;
+  margin: 0;
+  padding: 6px 0;
+}
+
+:where(.crepe-editor-wrapper) .milkdown-code-block:has(> .codemirror-host.hidden) .preview-divider,
+:where(.crepe-editor-wrapper) .milkdown-code-block:has(> .codemirror-host.hidden) .preview-label {
+  display: none;
+}
+
+@media (hover: none), (pointer: coarse) {
+  :where(.crepe-editor-wrapper) .milkdown-code-block:has(> .codemirror-host.hidden) > .tools {
+    opacity: 1;
+  }
+}

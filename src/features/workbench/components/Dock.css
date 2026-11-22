@@ -1,32 +1,109 @@
 /**
- * Dock.css（O5 专属）— Dock 动效层
+ * Dock.css（O5 → macOS 26/27 Liquid Glass 灵魂重塑）— Dock 动效与光学材质层
  * ---------------------------------------------------------------------------
- * 只新增 wb-dock- 细分前缀类，不重定义 workbench.css 契约类
- * （wb-dock / wb-dock-item / wb-dock-indicator / wb-dock-badge）。
- * 复合选择器覆盖（更高特异性，已在 O5 进度文件声明，交 O20 reconcile）：
- *   `.wb-dock.wb-dock-slide` 接管 autohide 的 transform（复合 translate(-50%, y)，
- *   COORDINATION 裁决形式），替代 P5 的 Tailwind translate 类。
+ * 只新增 wb-dock- 细分前缀类，不重定义 workbench.css 契约类。
+ * 复合选择器覆盖（更高特异性）：
+ *   `.wb-dock.wb-dock-slide` 接管 autohide 的 transform（复合 translate(-50%, y)）。
  *
- * 悬停不做邻近放大/位移（产品裁决：图标保持静止，仅显示 tooltip 应用名）。
- * 曲线引用 O1 motion.css（--wb-ease-*）；所有动画仅 transform / opacity。
+ * 曲线引用 motion.css（--wb-ease-*）；所有高频动画仅操作 transform / opacity。
  */
 
-/* ==== O5 可调 token（挂在 .wb-dock 上） ==== */
+/* ==== 可调 token（挂在 .wb-dock 上） ==== */
 .wb-dock {
   --wb-dock-scale: 1;
+  --wb-dock-cursor-x: 50%;
 
-  /* autohide 滑入（spring-soft，无假 overshoot）/ 滑出时长 */
+  /* autohide 滑入（spring-soft）/ 滑出时长 */
   --wb-dock-reveal-duration: 300ms;
   --wb-dock-conceal-duration: 200ms;
 }
 
-/* 水平 padding；element+class 压过契约 shorthand */
+/* 同心圆几何托盘：内边距保证 4px 运行指示点稳居底缘内侧，圆角按 R_inner + pad_x 对齐 */
 div.wb-dock {
-  gap: calc(0.25rem * var(--wb-dock-scale));
+  overflow: visible;
+  gap: calc(6px * var(--wb-dock-scale));
   padding:
-    calc(0.25rem * var(--wb-dock-scale))
-    calc(0.5rem * var(--wb-dock-scale));
+    calc(7px * var(--wb-dock-scale))
+    calc(10px * var(--wb-dock-scale))
+    calc(11px * var(--wb-dock-scale));
   border-radius: calc(22px * var(--wb-dock-scale));
+}
+
+/* 随指针横向移动的极克制 Specular Shimmer 玻璃扫光（与 .wb-glass-rim::before 互补） */
+div.wb-dock::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  background-image:
+    radial-gradient(
+      148px 54px at var(--wb-dock-cursor-x, 50%) 0%,
+      rgb(255 255 255 / 72%) 0%,
+      rgb(255 255 255 / 20%) 42%,
+      transparent 76%
+    ),
+    linear-gradient(
+      90deg,
+      transparent calc(var(--wb-dock-cursor-x, 50%) - 18%),
+      rgb(255 255 255 / 55%) var(--wb-dock-cursor-x, 50%),
+      transparent calc(var(--wb-dock-cursor-x, 50%) + 18%)
+    );
+  background-size: 100% 100%, 100% 1px;
+  background-repeat: no-repeat;
+  background-position: 0 0, 0 0;
+  transition: opacity 220ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+div.wb-dock[data-wb-dock-shimmer='true']::after {
+  opacity: 0.16;
+}
+
+:root.dark div.wb-dock[data-wb-dock-shimmer='true']::after {
+  opacity: 0.14;
+}
+
+.wb-dock .wb-dock-item-wrap {
+  position: relative;
+  z-index: var(--wb-dock-mag-z, 1);
+}
+
+/* 柔和底部接触投影：固定锚定在玻璃托盘表面，随图标放大抬升同步横向偏移与扩散 */
+.wb-dock .wb-dock-item-wrap::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: calc(-2px * var(--wb-dock-scale));
+  width: calc(32px * var(--wb-dock-scale));
+  height: calc(6px * var(--wb-dock-scale));
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    hsl(var(--shadow-base, 0 0% 0%) / 28%) 0%,
+    transparent 74%
+  );
+  opacity: calc(0.5 + var(--wb-dock-mag-weight, 0) * 0.36);
+  transform:
+    translateX(calc(-50% + var(--wb-dock-mag-x, 0px)))
+    scaleX(calc(1 + var(--wb-dock-mag-weight, 0) * 0.44))
+    scaleY(calc(1 + var(--wb-dock-mag-weight, 0) * 0.32));
+  filter: blur(3px);
+  transition:
+    opacity 160ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform 260ms var(--wb-ease-spring-soft, cubic-bezier(0.3, 1.06, 0.36, 1));
+}
+
+.wb-dock[data-wb-dock-magging='true'] .wb-dock-item-wrap::before {
+  transition:
+    opacity 60ms linear,
+    transform 55ms var(--wb-ease-magnify, cubic-bezier(0.2, 0.6, 0.25, 1));
+}
+
+.wb-dock .wb-dock-item-wrap[data-wb-dock-pinned-dragging]::before {
+  opacity: 0;
 }
 
 .wb-dock .wb-dock-item {
@@ -36,20 +113,28 @@ div.wb-dock {
 }
 
 .wb-dock .wb-dock-item-icon {
-  /* 32px 图标在 44px 槽位中约占 95%，减少图标与 Dock 之间的空白。 */
+  /* 32px 图标在 44px 槽位中约占 95%，辅以轻柔接触立体阴影 */
   transform: scale(var(--wb-dock-scale)) scale(1.3);
+  filter: drop-shadow(0 2px 3.5px hsl(var(--shadow-base, 0 0% 0%) / 16%));
 }
 
 /* ==========================================================================
- * 图标结构层（wb-dock-mag 为历史命名的图标内层；dockGeometry / genie 依赖其
- * data-wb-dock-mag-item 发现属性，仅作静态布局层，无 hover 放大）
+ * 60fps 连续波浪放大层（wb-dock-mag：由 Dock.tsx rAF 驱动 transform；
+ * 离场时自动以 spring-soft 曲线流畅回弹至 1.0）
  * ========================================================================== */
 
 .wb-dock-mag {
   display: flex;
+  transform-origin: 50% 100%;
+  transition: transform 320ms var(--wb-ease-spring-soft, cubic-bezier(0.3, 1.06, 0.36, 1));
 }
 
-/* 去掉 hover 灰底（macOS Dock 无 hover 矩形；特异性压过契约类） */
+.wb-dock[data-wb-dock-magging='true'] .wb-dock-mag {
+  will-change: transform;
+  transition: transform 55ms var(--wb-ease-magnify, cubic-bezier(0.2, 0.6, 0.25, 1));
+}
+
+/* 去掉 hover 灰底（macOS Dock 无 hover 矩形；特异性压过契约类与 DsButton） */
 .wb-dock .wb-dock-item:hover {
   background-color: transparent;
 }
@@ -66,20 +151,61 @@ div.wb-dock {
 }
 
 .wb-dock .wb-dock-item:active .wb-dock-item-icon {
-  filter: brightness(0.82);
+  filter: brightness(0.82) drop-shadow(0 1px 2px hsl(var(--shadow-base, 0 0% 0%) / 18%));
 }
 
-/* 键盘用户（不触发指针放大）：focus-visible 时图标内层放大，与 hover 手感对齐 */
+/* 键盘用户（不触发指针放大）：focus-visible 时图标内层轻抬，与 hover 手感对齐 */
 .wb-dock-item:focus-visible .wb-dock-item-icon {
   transform: scale(var(--wb-dock-scale)) scale(1.36);
 }
 
-/* 焦点环统一走 O1 焦点 token（压过契约类的 snap-stroke 描边，与全局 a11y 一致） */
+/* 焦点环统一走焦点 token（与全局 a11y 一致） */
 .wb-dock .wb-dock-item:focus-visible {
   box-shadow: var(--wb-focus-ring);
 }
 
-/* 固定区 / 运行区 / 全部应用 分隔线：颜色走 Dock token（明暗主题自动协调） */
+/* ==========================================================================
+ * 统一右侧系统工具入口玻璃底座（「全部应用」与「AI 操控中心」视觉重量齐平主应用）
+ * ========================================================================== */
+
+.wb-dock-utility-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 22.5%;
+  color: hsl(var(--foreground) / 88%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in hsl, hsl(var(--card)) 88%, white 12%) 0%,
+    color-mix(in hsl, hsl(var(--card)) 74%, hsl(var(--foreground)) 7%) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 72%),
+    inset 0 0 0 0.5px hsl(var(--foreground) / 14%),
+    0 1px 2px hsl(var(--shadow-base, 0 0% 0%) / 20%);
+}
+
+:root.dark .wb-dock-utility-tile {
+  color: hsl(var(--foreground) / 92%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in hsl, hsl(var(--card)) 78%, white 10%) 0%,
+    color-mix(in hsl, hsl(var(--card)) 56%, black 18%) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 26%),
+    inset 0 0 0 0.5px rgb(255 255 255 / 15%),
+    0 1.5px 3px rgb(0 0 0 / 34%);
+}
+
+.wb-dock-utility-tile-agent .wb-agent-control-app-icon {
+  width: 23px;
+  height: 23px;
+}
+
+/* 固定区 / 运行区 / 最小化槽位 / 全部应用 分隔线 */
 .wb-dock .wb-dock-separator {
   background: var(--wb-dock-divider);
   height: calc(32px * var(--wb-dock-scale));
@@ -87,26 +213,213 @@ div.wb-dock {
   margin-right: calc(0.25rem * var(--wb-dock-scale));
 }
 
-/* 角标：微投影提升在彩色图标上的可辨识度（静态样式，非动画） */
+/* 角标：微投影提升在彩色图标上的可辨识度 */
 .wb-dock .wb-dock-badge {
-  box-shadow: 0 1px 4px hsl(var(--shadow-base, 0 0% 0%) / 0.28);
+  box-shadow: 0 1px 4px hsl(var(--shadow-base, 0 0% 0%) / 28%);
 }
 
 /* ==========================================================================
- * hover tooltip（玻璃气泡带箭头；hover / focus-within 显示，带出现延迟）
+ * 最小化窗口缩略槽位：微缩玻璃窗口卡 + 小型应用图标角标 + +N 溢出入口
+ * ========================================================================== */
+
+.wb-dock .wb-dock-min-card {
+  width: calc(46px * var(--wb-dock-scale));
+  height: calc(44px * var(--wb-dock-scale));
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border-radius: calc(10px * var(--wb-dock-scale));
+  background: transparent;
+}
+
+.wb-dock-min-card-surface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: calc(44px * var(--wb-dock-scale));
+  height: calc(34px * var(--wb-dock-scale));
+  border-radius: calc(8px * var(--wb-dock-scale));
+  overflow: hidden;
+  background: linear-gradient(
+    180deg,
+    color-mix(in hsl, hsl(var(--card)) 82%, white 14%) 0%,
+    color-mix(in hsl, hsl(var(--card)) 68%, transparent 32%) 100%
+  );
+  border: 1px solid var(--wb-glass-border);
+  box-shadow:
+    inset 0 1px 0 var(--wb-glass-highlight),
+    0 2px 6px hsl(var(--shadow-base, 0 0% 0%) / 18%);
+}
+
+:root.dark .wb-dock-min-card-surface {
+  background: linear-gradient(
+    180deg,
+    color-mix(in hsl, hsl(var(--card)) 78%, white 8%) 0%,
+    color-mix(in hsl, hsl(var(--card)) 52%, black 24%) 100%
+  );
+}
+
+.wb-dock-min-card-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: calc(9px * var(--wb-dock-scale));
+  padding: 0 calc(4px * var(--wb-dock-scale));
+  border-bottom: 1px solid hsl(var(--border) / 36%);
+  background: hsl(var(--foreground) / 5%);
+}
+
+.wb-dock-min-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: hsl(var(--foreground) / 28%);
+}
+
+.wb-dock-min-card-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: calc(4px * var(--wb-dock-scale)) calc(5px * var(--wb-dock-scale));
+}
+
+.wb-dock-min-line {
+  display: block;
+  height: 2.5px;
+  border-radius: 999px;
+  background: hsl(var(--foreground) / 16%);
+}
+
+.wb-dock-min-line-wide {
+  width: 78%;
+}
+
+.wb-dock-min-line-mid {
+  width: 52%;
+}
+
+.wb-dock-min-card-badge {
+  position: absolute;
+  right: calc(-2px * var(--wb-dock-scale));
+  bottom: calc(2px * var(--wb-dock-scale));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(18px * var(--wb-dock-scale));
+  height: calc(18px * var(--wb-dock-scale));
+  border-radius: calc(5px * var(--wb-dock-scale));
+  overflow: hidden;
+  background: hsl(var(--card));
+  box-shadow:
+    0 1px 3px hsl(var(--shadow-base, 0 0% 0%) / 28%),
+    0 0 0 0.5px var(--wb-glass-border);
+  pointer-events: none;
+}
+
+.wb-dock-min-card-badge > * {
+  width: 100%;
+  height: 100%;
+}
+
+.wb-dock .wb-dock-min-overflow {
+  width: calc(38px * var(--wb-dock-scale));
+  height: calc(44px * var(--wb-dock-scale));
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.wb-dock-min-overflow-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(36px * var(--wb-dock-scale));
+  height: calc(34px * var(--wb-dock-scale));
+  border-radius: calc(9px * var(--wb-dock-scale));
+  font-size: calc(12px * var(--wb-dock-scale));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--foreground) / 86%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in hsl, hsl(var(--card)) 76%, white 12%) 0%,
+    color-mix(in hsl, hsl(var(--card)) 56%, transparent 44%) 100%
+  );
+  border: 1px solid var(--wb-glass-border);
+  box-shadow:
+    inset 0 1px 0 var(--wb-glass-highlight),
+    0 2px 6px hsl(var(--shadow-base, 0 0% 0%) / 16%);
+}
+
+.wb-dock-min-popover {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--wb-z-dock-flyout, 9200);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 176px;
+  max-width: min(260px, 70vw);
+  padding: 6px;
+  border-radius: var(--wb-radius-lg, 14px);
+  box-shadow: var(--wb-glass-edge), var(--wb-shadow-popover);
+}
+
+.wb-dock-min-popover-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 8px;
+  border-radius: var(--wb-radius-sm, 8px);
+  font-size: var(--font-size-xs, 12px);
+  color: hsl(var(--foreground));
+}
+
+.wb-dock-min-popover-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.wb-dock-min-popover-icon > * {
+  width: 100%;
+  height: 100%;
+}
+
+.wb-dock-min-popover-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+ * 0ms 连续 Tooltip 会话（玻璃气泡带箭头；位置自动随放大后顶边抬升）
  * ========================================================================== */
 
 .wb-dock-tip {
   position: absolute;
-  bottom: calc(100% + 12px);
+  bottom: calc(100% + 12px + var(--wb-dock-tip-lift, 0px));
   left: 50%;
-  z-index: 1;
+  z-index: 12;
   padding: 4px 11px;
   border-radius: 8px;
   font-size: 12px;
   font-weight: 500;
   line-height: 1.4;
   white-space: nowrap;
+
   /* 超长应用名：钳到视口内并省略，避免气泡溢出屏幕 */
   max-width: min(60vw, 280px);
   overflow: hidden;
@@ -114,23 +427,32 @@ div.wb-dock {
   color: var(--wb-titlebar-fg, inherit);
   background-color: var(--wb-glass-bg-strong);
   background-image: var(--wb-glass-sheen);
-  -webkit-backdrop-filter: var(--wb-glass-blur);
   backdrop-filter: var(--wb-glass-blur);
   border: 1px solid var(--wb-glass-border);
   box-shadow:
     inset 0 1px 0 var(--wb-glass-highlight),
-    0 6px 18px hsl(var(--shadow-base, 0 0% 0%) / 0.16);
+    0 6px 18px hsl(var(--shadow-base, 0 0% 0%) / 16%);
   opacity: 0;
+
   /* 隐藏态：略下沉 */
   transform: translate(-50%, 5px) scale(0.94);
   transform-origin: 50% 100%;
   pointer-events: none;
   transition:
-    opacity 130ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
-    transform 130ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+    opacity 110ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform 110ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    bottom 55ms var(--wb-ease-magnify, cubic-bezier(0.2, 0.6, 0.25, 1));
 }
 
-/* 指向箭头（旋转小方块，取同款玻璃底色；尺寸极小，blur 差异不可见） */
+/* 会话热态：相邻图标切换 0ms 零延迟且极速过渡 */
+.wb-dock[data-tip-session='active'] .wb-dock-tip {
+  transition:
+    opacity 75ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform 75ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    bottom 55ms var(--wb-ease-magnify, cubic-bezier(0.2, 0.6, 0.25, 1));
+}
+
+/* 指向箭头（旋转小方块，取同款玻璃底色） */
 .wb-dock-tip::after {
   content: '';
   position: absolute;
@@ -145,27 +467,140 @@ div.wb-dock {
   border-bottom: 1px solid var(--wb-glass-border);
 }
 
-.wb-dock-item-wrap:hover .wb-dock-tip,
-.wb-dock-item-wrap:focus-within .wb-dock-tip {
-  opacity: 1;
-  transform: translate(-50%, 0) scale(1);
-  /* 出现延迟：扫过 Dock 时不闪一排气泡；消失无延迟（macOS 基准 300–500ms） */
-  transition-delay: 350ms;
-}
-
-/*
- * 触屏 tooltip 等价（a11y 清单 §4）：无 hover 环境下长按未运行应用把气泡
- * 钉住显示应用名（运行中应用的长按被窗口列表占用，应用名改由列表头部提供）。
- * 立即出现，无 350ms 悬停延迟。
- */
+/* 受 Dock Tooltip 会话托管的项：由 data-tip-active 精确控制 0ms 切换 */
+.wb-dock-item-wrap[data-tip-active='true'] .wb-dock-tip,
+.wb-dock-item-wrap:focus-within .wb-dock-tip,
 .wb-dock-item-wrap[data-tip-pinned='true'] .wb-dock-tip {
   opacity: 1;
   transform: translate(-50%, 0) scale(1);
   transition-delay: 0ms;
 }
 
+/* 独立渲染（无 Dock 容器托管）的 DockItem 保留纯 CSS 悬停显现兜底 */
+.wb-dock-item-wrap:not([data-tip-managed='true']):hover .wb-dock-tip {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+  transition-delay: 70ms;
+}
+
+/* 拖拽期间抑制常规 Tooltip，让位给拖拽提示 */
+.wb-dock-item-wrap[data-wb-dock-pinned-dragging] .wb-dock-tip {
+  opacity: 0;
+  transition-delay: 0ms;
+}
+
 /* ==========================================================================
- * 运行指示点：淡入（静态点，无呼吸；基线定位规则不动）
+ * 拖拽生态：向上拖离取消固定 / 向左拖入自动固定轻提示 + Poof 消散动画
+ * ========================================================================== */
+
+.wb-dock-drag-hint {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  z-index: 14;
+  transform: translate(-50%, 4px) scale(0.92);
+  opacity: 0;
+  pointer-events: none;
+  white-space: nowrap;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--wb-titlebar-fg, inherit);
+  background-color: var(--wb-glass-bg-strong);
+  background-image: var(--wb-glass-sheen);
+  backdrop-filter: var(--wb-glass-blur);
+  border: 1px solid var(--wb-glass-border);
+  box-shadow:
+    inset 0 1px 0 var(--wb-glass-highlight),
+    0 6px 16px hsl(var(--shadow-base, 0 0% 0%) / 18%);
+  transition:
+    opacity 120ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    transform 120ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-dock-item-wrap[data-wb-dock-unpin-ready='true'] .wb-dock-drag-hint,
+.wb-dock-item-wrap[data-wb-dock-pin-ready='true'] .wb-dock-drag-hint {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+.wb-dock-item-wrap[data-wb-dock-unpin-ready='true'] .wb-dock-drag-hint::before {
+  content: attr(data-unpin-label);
+}
+
+.wb-dock-item-wrap[data-wb-dock-pin-ready='true'] .wb-dock-drag-hint::before {
+  content: attr(data-pin-label);
+}
+
+@keyframes wb-dock-poof-burst {
+  0% {
+    opacity: 0.92;
+    transform: translate(-50%, -50%) scale(0.45);
+  }
+
+  55% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.65);
+  }
+}
+
+.wb-dock-poof {
+  position: absolute;
+  width: 56px;
+  height: 56px;
+  pointer-events: none;
+  z-index: var(--wb-z-drag-layer, 9900);
+  animation: wb-dock-poof-burst 360ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) forwards;
+}
+
+.wb-dock-poof-puff {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgb(255 255 255 / 78%) 0%,
+    rgb(255 255 255 / 22%) 62%,
+    transparent 100%
+  );
+  filter: blur(2px);
+}
+
+.wb-dock-poof-puff:nth-child(1) {
+  left: 18px;
+  top: 6px;
+}
+
+.wb-dock-poof-puff:nth-child(2) {
+  left: 32px;
+  top: 16px;
+}
+
+.wb-dock-poof-puff:nth-child(3) {
+  left: 26px;
+  top: 32px;
+}
+
+.wb-dock-poof-puff:nth-child(4) {
+  left: 8px;
+  top: 30px;
+}
+
+.wb-dock-poof-puff:nth-child(5) {
+  left: 4px;
+  top: 14px;
+}
+
+/* ==========================================================================
+ * 运行指示点：稳居玻璃托盘内侧底部，附柔和微光（静态点，无呼吸）
  * ========================================================================== */
 
 @keyframes wb-dock-ind-in {
@@ -173,21 +608,23 @@ div.wb-dock {
     opacity: 0;
     transform: translateX(-50%) scale(0.3);
   }
+
   to {
-    opacity: 0.85;
+    opacity: 0.88;
     transform: translateX(-50%) scale(1);
   }
 }
 
-.wb-dock-indicator.wb-dock-ind {
+.wb-dock .wb-dock-indicator.wb-dock-ind {
+  bottom: calc(-7.5px * var(--wb-dock-scale));
   transform: translateX(-50%);
+  box-shadow: 0 0 6px color-mix(in hsl, var(--wb-dock-indicator) 65%, transparent 35%);
   animation: wb-dock-ind-in 240ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
 }
 
 /* ==========================================================================
  * launch bounce：两段递减弹跳（上升 ease-out / 下落 ease-in 的重力感）
  * 挂在独立内层 wb-dock-bounce 上，与放大层 transform 互不干扰。
- * 单次开窗触发（非循环到就绪）；幅度约 0.45× / 0.18× 图标高度（44px）。
  * ========================================================================== */
 
 @keyframes wb-dock-bounce-launch {
@@ -195,18 +632,22 @@ div.wb-dock {
     transform: translate3d(0, 0, 0);
     animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
   }
+
   28% {
     transform: translate3d(0, -20px, 0);
     animation-timing-function: cubic-bezier(0.55, 0.06, 0.68, 0.19);
   }
+
   54% {
     transform: translate3d(0, 0, 0);
     animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1);
   }
+
   76% {
     transform: translate3d(0, -8px, 0);
     animation-timing-function: cubic-bezier(0.55, 0.06, 0.68, 0.19);
   }
+
   100% {
     transform: translate3d(0, 0, 0);
   }
@@ -221,8 +662,7 @@ div.wb-dock {
 }
 
 /* ==========================================================================
- * autohide 滑入滑出（覆盖声明见文件头；复合 translate(-50%, y) 保持水平居中）
- * 滑入用 spring-soft（平稳微弹，非假 overshoot）；滑出用标准曲线
+ * autohide 滑入滑出（复合 translate(-50%, y) 保持水平居中）
  * ========================================================================== */
 
 .wb-dock.wb-dock-slide {
@@ -254,7 +694,7 @@ div.wb-dock {
 }
 
 /* ==========================================================================
- * 降级：reduced-motion / minimal → 关动效
+ * 降级：reduced-motion / minimal → 关动效与扫光
  * ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
@@ -263,15 +703,23 @@ div.wb-dock {
     --wb-dock-conceal-duration: 0ms;
   }
 
-  .wb-dock-indicator.wb-dock-ind,
-  .wb-dock-bounce[data-bouncing],
-  .wb-dock.wb-dock-slide[data-revealing] {
-    animation: none;
+  div.wb-dock::after {
+    display: none;
   }
 
+  .wb-dock-mag,
   .wb-dock-tip,
-  .wb-dock-item-icon {
+  .wb-dock-drag-hint,
+  .wb-dock-item-icon,
+  .wb-dock-item-wrap::before {
     transition: none;
+  }
+
+  .wb-dock-indicator.wb-dock-ind,
+  .wb-dock-bounce[data-bouncing],
+  .wb-dock-slide[data-revealing],
+  .wb-dock-poof {
+    animation: none;
   }
 
   .wb-dock-item:focus-visible .wb-dock-item-icon {
@@ -284,13 +732,25 @@ div.wb-dock {
   --wb-dock-conceal-duration: 0ms;
 }
 
-:root[data-wb-material='minimal'] .wb-dock-indicator.wb-dock-ind,
+:root[data-wb-material='minimal'] div.wb-dock::after,
+:root[data-wb-material='minimal'] .wb-dock-item-wrap::before {
+  display: none;
+}
+
+:root[data-wb-material='minimal'] .wb-dock-ind,
 :root[data-wb-material='minimal'] .wb-dock-bounce[data-bouncing],
-:root[data-wb-material='minimal'] .wb-dock.wb-dock-slide[data-revealing] {
+:root[data-wb-material='minimal'] .wb-dock-slide[data-revealing],
+:root[data-wb-material='minimal'] .wb-dock-poof {
   animation: none;
 }
 
+:root[data-wb-material='minimal'] .wb-dock-mag,
 :root[data-wb-material='minimal'] .wb-dock-tip,
+:root[data-wb-material='minimal'] .wb-dock-drag-hint,
 :root[data-wb-material='minimal'] .wb-dock-item-icon {
   transition: none;
+}
+
+:root[data-wb-material='minimal'] .wb-dock-ind {
+  box-shadow: none;
 }

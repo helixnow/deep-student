@@ -35,6 +35,34 @@ export const builtinThemes = [
   paperDarkTheme,
 ];
 
+const DARK_VARIANT_BY_ID: Record<string, IStyleTheme> = {
+  default: defaultDarkTheme,
+  minimal: minimalDarkTheme,
+  colorful: colorfulDarkTheme,
+  paper: paperDarkTheme,
+};
+
+/**
+ * 获取适配当前明暗模式的可见主题列表。
+ *
+ * 在暗色模式下，将具备暗色变体的主题解析为真实暗色视觉配置，
+ * 同时保留基础主题 id / name，供 StylePanel 渲染真实暗色缩略图并稳定写回 styleId。
+ */
+export function getThemesForMode(isDark: boolean): IStyleTheme[] {
+  const visibleThemes = builtinThemes.filter(theme => !theme.hidden);
+  if (!isDark) return visibleThemes;
+  return visibleThemes.map(theme => {
+    const darkVariant = DARK_VARIANT_BY_ID[theme.id];
+    if (!darkVariant) return theme;
+    return {
+      ...darkVariant,
+      id: theme.id,
+      name: theme.name,
+      hidden: false,
+    };
+  });
+}
+
 // ============================================================================
 // 主题字号 / padding 单一数据源
 // ============================================================================

@@ -15,6 +15,7 @@ import { MarkdownRenderer } from '@/features/chat/components/renderers';
 import { FillBlankAnswer } from '@/components/question-types/FillBlankAnswer';
 import { MatchingAnswer } from '@/components/question-types/MatchingAnswer';
 import { OrderingAnswer } from '@/components/question-types/OrderingAnswer';
+import { NumericQuickSymbolBar } from '@/components/question-types/NumericAnswer';
 import { AnswerImageStrip } from '@/components/question-types/AnswerImageStrip';
 import {
   canAddImageAnswerImage,
@@ -45,6 +46,7 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
   const { t } = useTranslation('practice');
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
+  const numericInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const uploadRef = useRef(false);
   const latest = useRef({ value, onChange });
@@ -227,16 +229,24 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
           onChange={(order) => updateText(encodeOrderingUserAnswer(order))}
         />{!text && <DsButton variant="outline" size="sm" onClick={() => updateText(encodeOrderingUserAnswer(ordering.items.map(item => item.key)))}>{t('batch.keepOrder')}</DsButton>}</div>
       ) : question.questionType === 'numeric' && !images.length ? (
-        <Input
-          aria-label={t('batch.yourAnswer')}
-          placeholder={t('editor.numeric.placeholder')}
-          value={text}
-          onChange={event => updateText(event.target.value)}
-          onKeyDown={onPrimaryAction}
-          inputMode="decimal"
-          autoComplete="off"
-          className="h-11 w-full rounded-xl border border-border/50 bg-foreground/[0.02] px-3.5 font-mono text-base tabular-nums outline-none transition-colors motion-reduce:transition-none focus-visible:border-primary/45 focus-visible:bg-background focus-visible:ring-0"
-        />
+        <div className="space-y-2">
+          <Input
+            ref={numericInputRef}
+            aria-label={t('batch.yourAnswer')}
+            placeholder={t('editor.numeric.placeholder')}
+            value={text}
+            onChange={event => updateText(event.target.value)}
+            onKeyDown={onPrimaryAction}
+            inputMode="text"
+            autoComplete="off"
+            className="h-11 w-full rounded-xl border border-border/50 bg-foreground/[0.02] px-3.5 font-mono text-base tabular-nums outline-none transition-colors motion-reduce:transition-none focus-visible:border-primary/45 focus-visible:bg-background focus-visible:ring-0"
+          />
+          <NumericQuickSymbolBar
+            value={text}
+            onChange={updateText}
+            inputRef={numericInputRef}
+          />
+        </div>
       ) : (
         <textarea
           aria-label={t('batch.yourAnswer')}

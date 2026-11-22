@@ -91,4 +91,23 @@ describe('TodayReviewHint', () => {
     expect(screen.queryByTestId('weak-strip')).toBeNull();
     expect(screen.queryByText('今日待复习')).toBeNull();
   });
+
+  it('routes directly to due notes instead of starting an empty sprint when only notes are due', () => {
+    Object.assign(snapshot, { cards: 0, mistakes: 0, notes: 3 });
+    render(<TodayReviewHint />);
+    expect(screen.queryByTestId('today-sprint-cta')).toBeNull();
+    const notesCta = screen.getByTestId('today-review-notes-cta');
+    expect(notesCta.className).toContain('min-h-9');
+    expect(notesCta.textContent).toContain('3');
+    fireEvent.click(notesCta);
+    expect(openTodayReviewTarget).toHaveBeenCalledWith('notes');
+  });
+
+  it('ensures >=36px touch height on the sprint CTA when cards or mistakes are due', () => {
+    Object.assign(snapshot, { cards: 2, mistakes: 0, notes: 1 });
+    render(<TodayReviewHint />);
+    const sprintCta = screen.getByTestId('today-sprint-cta');
+    expect(sprintCta.className).toContain('min-h-9');
+    expect(screen.queryByTestId('today-review-notes-cta')).toBeNull();
+  });
 });

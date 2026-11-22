@@ -25,6 +25,8 @@ import {
   Check,
   CheckCircle,
   DotsSixVertical,
+  DotsThree,
+  Flag,
   Minus,
   Paperclip,
   Play,
@@ -37,7 +39,9 @@ import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { haptics } from '@/hooks/mobile';
 import { usePomodoroStore } from '@/features/pomodoro';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
@@ -146,22 +150,27 @@ const InlineRescheduleBar: React.FC<{
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
-  useEffect(() => {
-    const handleOutside = (e: PointerEvent) => {
-      if (barRef.current && !barRef.current.contains(e.target as Node)) {
-        onCloseRef.current();
-      }
-    };
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCloseRef.current();
-    };
-    document.addEventListener('pointerdown', handleOutside);
-    document.addEventListener('keydown', handleEsc);
-    return () => {
-      document.removeEventListener('pointerdown', handleOutside);
-      document.removeEventListener('keydown', handleEsc);
-    };
-  }, []);
+  useEventRegistry(
+    [
+      {
+        target: 'document',
+        type: 'pointerdown',
+        listener: (e) => {
+          if (barRef.current && !barRef.current.contains(e.target as Node)) {
+            onCloseRef.current();
+          }
+        },
+      },
+      {
+        target: 'document',
+        type: 'keydown',
+        listener: (e) => {
+          if ((e as KeyboardEvent).key === 'Escape') onCloseRef.current();
+        },
+      },
+    ],
+    [],
+  );
 
   // Android 返回键：展开条打开时先收起，不触发页面级返回
   useEffect(() => {
@@ -347,9 +356,151 @@ export interface TodoItemRowProps {
   depth?: number;
   /** 子任务完成进度（仅父任务显示） */
   subtaskProgress?: { done: number; total: number };
-  /** 拖拽手柄（仅手动排序视图传入） */
+  /** 拖拽手柄（仅手动排序/四象限视图传入） */
   dragHandle?: React.ReactNode;
+  /** 行尾附加操作（如四象限移动端「移动到象限」快捷菜单） */
+  trailingSlot?: React.ReactNode;
 }
+
+const TOUCH_PRIORITY_ORDER: TodoPriority[] = ['urgent', 'high', 'medium', 'low', 'none'];
+
+const TouchRowMoreMenu: React.FC<{
+  item: TodoItem;
+  isCompleted: boolean;
+  onReschedule: () => void;
+  onDelete: (id: string) => void;
+}> = ({ item, isCompleted, onReschedule, onDelete }) => {
+  const { t } = useTranslation(['todo', 'common']);
+  const updateItem = useTodoStore((s) => s.updateItem);
+  const [open, setOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const handleOpenChange = useCallback((next: boolean) => {
+    setOpen(next);
+    if (!next) setConfirmDelete(false);
+  }, []);
+
+  const handlePickPriority = useCallback(
+    (priority: TodoPriority) => {
+      setOpen(false);
+      setConfirmDelete(false);
+      if (priority !== item.priority) {
+        void updateItem({ id: item.id, priority });
+      }
+    },
+    [item.id, item.priority, updateItem],
+  );
+
+  return (
+    <span
+      className="flex-shrink-0"
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <Popover open={open} onOpenChange={handleOpenChange}>
+        <PopoverTrigger asChild>
+          <DsButton
+            variant="utility"
+            size="icon"
+            iconOnly
+            data-testid={`todo-row-more-${item.id}`}
+            title={t('todo:actions.more', { defaultValue: '更多操作' })}
+            aria-label={t('todo:actions.more', { defaultValue: '更多操作' })}
+            className="flex-shrink-0 opacity-70 transition-opacity duration-100 !p-0 !h-11 !w-11 !min-h-11 !min-w-11 aria-expanded:opacity-100"
+          >
+            <DotsThree size={18} weight="bold" />
+          </DsButton>
+        </PopoverTrigger>
+        <PopoverContent
+          align="end"
+          className="w-52 rounded-[var(--radius-shell-control)] p-1.5"
+          role="menu"
+          aria-label={t('todo:actions.more', { defaultValue: '更多操作' })}
+        >
+          {!isCompleted && (
+            <>
+              <div className="px-2 py-1 text-2xs font-medium text-muted-foreground">
+                <span className="inline-flex items-center gap-1">
+                  <Flag size={11} aria-hidden="true" />
+                  {t('todo:actions.setPriority', { defaultValue: '设置优先级' })}
+                </span>
+              </div>
+              <div className="grid grid-cols-5 gap-1 px-1 pb-1.5">
+                {TOUCH_PRIORITY_ORDER.map((p) => (
+                  <DsButton
+                    key={p}
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    role="menuitemradio"
+                    aria-checked={item.priority === p}
+                    aria-label={t(PRIORITY_CONFIG[p].labelKey)}
+                    title={t(PRIORITY_CONFIG[p].labelKey)}
+                    onClick={() => handlePickPriority(p)}
+                    className={cn(
+                      'h-10 rounded-[8px] border',
+                      item.priority === p
+                        ? 'border-[color:hsl(var(--primary))]/50 bg-[color:hsl(var(--primary))]/10'
+                        : 'border-transparent',
+                    )}
+                  >
+                    <PriorityIcon priority={p} className="h-4 w-4" />
+                  </DsButton>
+                ))}
+              </div>
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  setConfirmDelete(false);
+                  onReschedule();
+                }}
+                className="min-h-11 w-full justify-start gap-2 rounded-[8px] px-2.5 py-2 text-left text-xs font-normal text-foreground"
+              >
+                <CalendarPlus size={15} className="text-muted-foreground" />
+                <span>{t('todo:reschedule.title', { defaultValue: '改期' })}</span>
+              </DsButton>
+              <div className="my-1 h-px bg-border/40" role="separator" />
+            </>
+          )}
+          <DsButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            role="menuitem"
+            data-testid={`todo-row-more-delete-${item.id}`}
+            onClick={() => {
+              if (!confirmDelete) {
+                setConfirmDelete(true);
+                return;
+              }
+              setOpen(false);
+              setConfirmDelete(false);
+              onDelete(item.id);
+            }}
+            className={cn(
+              'min-h-11 w-full justify-start gap-2 rounded-[8px] px-2.5 py-2 text-left text-xs font-medium',
+              confirmDelete
+                ? 'bg-[color:hsl(var(--destructive))] text-[color:hsl(var(--destructive-foreground))] hover:bg-[color:hsl(var(--destructive))] hover:text-[color:hsl(var(--destructive-foreground))]'
+                : 'text-[color:hsl(var(--destructive))] hover:bg-[color:var(--button-danger-surface)] hover:text-[color:hsl(var(--destructive))]',
+            )}
+          >
+            <Trash size={15} weight={confirmDelete ? 'fill' : 'regular'} />
+            <span>
+              {confirmDelete
+                ? t('todo:swipe.confirmDelete', { defaultValue: '确认删除' })
+                : t('todo:actions.deleteItem', { defaultValue: '删除任务' })}
+            </span>
+          </DsButton>
+        </PopoverContent>
+      </Popover>
+    </span>
+  );
+};
 
 const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
   item,
@@ -365,6 +516,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
   depth = 0,
   subtaskProgress,
   dragHandle,
+  trailingSlot,
 }) => {
   const { t, i18n } = useTranslation(['todo', 'common']);
   const overdue = isDisplayOverdue(item);
@@ -490,16 +642,22 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
   }, [setDrag]);
 
   // 动作块展开时：点击行外任意处收起
-  useEffect(() => {
-    if (!actionsOpen) return;
-    const handleOutside = (e: PointerEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        closeActions();
-      }
-    };
-    document.addEventListener('pointerdown', handleOutside);
-    return () => document.removeEventListener('pointerdown', handleOutside);
-  }, [actionsOpen, closeActions]);
+  useEventRegistry(
+    actionsOpen
+      ? [
+          {
+            target: 'document',
+            type: 'pointerdown',
+            listener: (e) => {
+              if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+                closeActions();
+              }
+            },
+          },
+        ]
+      : [],
+    [actionsOpen, closeActions],
+  );
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -974,75 +1132,92 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
         )}
       </div>
 
-      {/* 行尾操作按钮：桌面 hover 渐显；触屏 opacity-60 常显且 ≥44px 命中区
-          （详情页有等价编辑，右滑另有改期/删除兜底）。改期入口触屏仍走
-          滑动手势 + InlineRescheduleBar，行内 RescheduleMenu 保持 coarse 隐藏 */}
-      {!isCompleted && <RowPriorityMenu item={item} />}
-
-      {!isCompleted && (
-        <span className="flex-shrink-0 [@media(pointer:coarse)]:hidden">
-          <RescheduleMenu item={item} />
-        </span>
-      )}
-
-      {links.length > 0 && (
-        <DsButton
-          variant="utility"
-          size="icon"
-          iconOnly
-          onClick={(e) => {
-            e.stopPropagation();
-            // 只挂了一份就直接打开；多份进详情挑
-            if (links.length === 1) openLinkedResource(links[0]);
-            else onSelect(item.id);
-          }}
-          title={t('todo:links.openFromRow', { count: links.length })}
-          aria-label={t('todo:links.openFromRow', { count: links.length })}
-          className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5"
-        >
-          <Paperclip size={16} />
-        </DsButton>
-      )}
-
-      {!isCompleted && (
-        <DsButton
-          variant="utility"
-          size="icon"
-          iconOnly
-          onClick={(e) => {
-            e.stopPropagation();
-            usePomodoroStore.getState().start(item.id, item.title);
-          }}
-          title={isFocusing ? t('todo:actions.focusing') : t('todo:actions.startFocusSession')}
-          aria-label={isFocusing ? t('todo:actions.focusing') : t('todo:actions.startFocusSession')}
-          aria-pressed={isFocusing}
-          // 触屏：min-h/min-w 压过 lg: 档的固定尺寸，保住 44px 命中区
-        className={cn(
-          'flex-shrink-0 transition-opacity duration-100 !p-1.5 [@media(pointer:coarse)]:!p-3.5 [@media(pointer:coarse)]:!-m-2 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
-          isFocusing
-            ? 'text-primary opacity-100'
-            : 'opacity-40 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-60',
-        )}
-        >
-          {isFocusing ? <Brain size={16} weight="duotone" /> : <Play size={16} />}
-        </DsButton>
-      )}
-
-      <DsButton
-        variant="utility"
-        size="icon"
-        iconOnly
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete(item.id);
-        }}
-        title={t('todo:actions.deleteItem')}
-        aria-label={t('todo:actions.deleteItem')}
-        // 触屏：min-h/min-w 压过 lg: 档的固定尺寸，保住 44px 命中区
-        className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 [@media(pointer:coarse)]:!p-3.5 [@media(pointer:coarse)]:!-m-2 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
+      {/* 行尾操作按钮：消除触屏负 margin 导致的热区重叠；
+          触屏下将高危「删除」与优先级/改期收纳进「更多」菜单（含删除二次确认），
+          与「开始番茄」物理隔离，杜绝 390px 窄屏点番茄误删待办 */}
+      <div
+        className="flex flex-shrink-0 items-center gap-1 [@media(pointer:coarse)]:gap-1.5"
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
       >
-        <Trash size={16} />
-      </DsButton>
+        {!isTouchPrimary && !isCompleted && <RowPriorityMenu item={item} />}
+
+        {!isTouchPrimary && !isCompleted && (
+          <span className="flex-shrink-0 [@media(pointer:coarse)]:hidden">
+            <RescheduleMenu item={item} />
+          </span>
+        )}
+
+        {links.length > 0 && (
+          <DsButton
+            variant="utility"
+            size="icon"
+            iconOnly
+            onClick={(e) => {
+              e.stopPropagation();
+              // 只挂了一份就直接打开；多份进详情挑
+              if (links.length === 1) openLinkedResource(links[0]);
+              else onSelect(item.id);
+            }}
+            title={t('todo:links.openFromRow', { count: links.length })}
+            aria-label={t('todo:links.openFromRow', { count: links.length })}
+            className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-70 !p-1.5 [@media(pointer:coarse)]:!p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+          >
+            <Paperclip size={16} />
+          </DsButton>
+        )}
+
+        {trailingSlot}
+
+        {!isCompleted && (
+          <DsButton
+            variant="utility"
+            size="icon"
+            iconOnly
+            data-testid={`todo-row-focus-${item.id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              usePomodoroStore.getState().start(item.id, item.title);
+            }}
+            title={isFocusing ? t('todo:actions.focusing') : t('todo:actions.startFocusSession')}
+            aria-label={isFocusing ? t('todo:actions.focusing') : t('todo:actions.startFocusSession')}
+            aria-pressed={isFocusing}
+            // 触屏：独立 44px 命中区，严禁负 margin（杜绝热区重叠）
+            className={cn(
+              'flex-shrink-0 transition-opacity duration-100 !p-1.5 [@media(pointer:coarse)]:!p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
+              isFocusing
+                ? 'text-primary opacity-100'
+                : 'opacity-40 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-75',
+            )}
+          >
+            {isFocusing ? <Brain size={16} weight="duotone" /> : <Play size={16} />}
+          </DsButton>
+        )}
+
+        {isTouchPrimary ? (
+          <TouchRowMoreMenu
+            item={item}
+            isCompleted={isCompleted}
+            onReschedule={() => setRescheduleOpen(true)}
+            onDelete={onDelete}
+          />
+        ) : (
+          <DsButton
+            variant="utility"
+            size="icon"
+            iconOnly
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(item.id);
+            }}
+            title={t('todo:actions.deleteItem')}
+            aria-label={t('todo:actions.deleteItem')}
+            className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 !p-1.5 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
+          >
+            <Trash size={16} />
+          </DsButton>
+        )}
+      </div>
       </div>
 
       {/* 行下方内联改期展开条（滑动「改期」动作 / 触屏路径） */}

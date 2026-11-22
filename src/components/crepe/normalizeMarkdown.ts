@@ -1,4 +1,4 @@
-import type { Ctx } from '@milkdown/ctx';
+import type { Ctx } from '@milkdown/kit/ctx';
 import { editorViewCtx, schemaCtx, remarkCtx } from '@milkdown/kit/core';
 import { ParserState, SerializerState } from '@milkdown/transformer';
 import { EditorState } from '@milkdown/prose/state';

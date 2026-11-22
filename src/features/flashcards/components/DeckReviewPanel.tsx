@@ -131,30 +131,48 @@ export const DeckReviewPanel: React.FC<{ decks: readonly AnkiLibraryDeckCount[] 
               ) : (
                 <span className="wb-fcx-deck-toggle" aria-hidden="true" />
               )}
-              <div className="wb-fcx-deck-main">
-                <span className="wb-fcx-deck-name" title={node.path || name}>{name}</span>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      'h-1.5 w-1.5 shrink-0 rounded-full',
-                      node.due > 0
-                        ? 'bg-emerald-500'
-                        : node.new > 0
-                          ? 'bg-primary'
-                          : 'bg-muted-foreground/35',
-                    )}
-                  />
-                  <span className="wb-fcx-deck-counts font-mono tabular-nums">
-                    {node.due > 0 || node.new > 0
-                      ? [
-                          node.due > 0 ? t('today.decks.due', { count: node.due }) : null,
-                          node.new > 0 ? t('today.decks.new', { count: node.new }) : null,
-                        ].filter(Boolean).join(' · ')
-                      : t('today.decks.nothingDue')}
-                  </span>
+              {node.due > 0 || node.new > 0 ? (
+                <DsButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={busyPath !== null}
+                  onClick={() => void startDeck(node, node.due > 0 ? 'due' : 'new')}
+                  className="wb-fcx-deck-main !h-auto min-h-[36px] flex-col items-start justify-center rounded-md border-0 !px-1 !py-1 text-left font-normal"
+                >
+                  <span className="wb-fcx-deck-name" title={node.path || name}>{name}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'h-1.5 w-1.5 shrink-0 rounded-full',
+                        node.due > 0
+                          ? 'bg-emerald-500'
+                          : 'bg-primary',
+                      )}
+                    />
+                    <span className="wb-fcx-deck-counts font-mono tabular-nums">
+                      {[
+                        node.due > 0 ? t('today.decks.due', { count: node.due }) : null,
+                        node.new > 0 ? t('today.decks.new', { count: node.new }) : null,
+                      ].filter(Boolean).join(' · ')}
+                    </span>
+                  </div>
+                </DsButton>
+              ) : (
+                <div className="wb-fcx-deck-main">
+                  <span className="wb-fcx-deck-name" title={node.path || name}>{name}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      aria-hidden="true"
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/35"
+                    />
+                    <span className="wb-fcx-deck-counts font-mono tabular-nums">
+                      {t('today.decks.nothingDue')}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              )}
               {node.due > 0 ? (
                 <DsButton
                   type="button"

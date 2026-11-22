@@ -106,9 +106,9 @@ describe('useComposerDockHeight', () => {
 
     render(<GlobalPomodoroWidget />);
     const pill = () => screen.getByLabelText(PILL_MAIN_LABEL).closest<HTMLElement>('.fixed');
-    expect(pill()?.getAttribute('style')).toContain('+ 96px)');
+    expect(pill()?.getAttribute('style')).toContain('+ 96px');
 
     act(() => setComposerDockHeight('131px'));
-    expect(pill()?.getAttribute('style')).toContain('+ 131px)');
+    expect(pill()?.getAttribute('style')).toContain('+ 131px');
   });
 });

@@ -256,14 +256,242 @@ describe('callout render classes', () => {
     }
   });
 
-  it('cycles type class when icon is clicked', async () => {
+  it('opens type picker popover on icon click and updates type on selection', async () => {
     const editor = await createCalloutEditor('> [!note]\n>\n> body\n');
     const view = editor.ctx.get(editorViewCtx);
     const icon = view.dom.querySelector('.crepe-callout__icon') as HTMLButtonElement | null;
     expect(icon).toBeTruthy();
+    expect(icon!.getAttribute('aria-haspopup')).toBe('menu');
+    expect(icon!.getAttribute('aria-expanded')).toBe('false');
+
     icon!.click();
+    const picker = document.body.querySelector('.crepe-callout__picker') as HTMLDivElement | null;
+    expect(picker).toBeTruthy();
+    expect(picker!.getAttribute('role')).toBe('menu');
+    expect(icon!.getAttribute('aria-expanded')).toBe('true');
+
+    const items = Array.from(
+      picker!.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]'),
+    );
+    expect(items).toHaveLength(CALLOUT_TYPES.length);
+    expect(items.find((el) => el.dataset.calloutType === 'note')?.getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    expect(items.find((el) => el.dataset.calloutType === 'tip')?.getAttribute('aria-checked')).toBe(
+      'false',
+    );
+
+    const tipItem = items.find((el) => el.dataset.calloutType === 'tip');
+    expect(tipItem).toBeTruthy();
+    tipItem!.click();
+
     expect(view.state.doc.firstChild?.attrs.type).toBe('tip');
     expect(view.dom.querySelector('.crepe-callout--tip')).toBeTruthy();
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeNull();
+    expect(icon!.getAttribute('aria-expanded')).toBe('false');
+    await editor.destroy();
+  });
+
+  it('supports keyboard navigation, Escape focus return, click-outside, scroll, and destroy cleanup in picker', async () => {
+    const editor = await createCalloutEditor('> [!note]\n>\n> body\n');
+    const view = editor.ctx.get(editorViewCtx);
+    const icon = view.dom.querySelector('.crepe-callout__icon') as HTMLButtonElement;
+
+    // Open picker → initial active is 'note' (index 0)
+    icon.click();
+    let picker = document.body.querySelector('.crepe-callout__picker') as HTMLDivElement | null;
+    expect(picker).toBeTruthy();
+
+    // ArrowDown twice -> warning (index 2), then ArrowUp -> tip (index 1)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+
+    // IME composing Enter should be ignored
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }),
+    );
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeTruthy();
+    expect(view.state.doc.firstChild?.attrs.type).toBe('note');
+
+    // Space selects active item ('tip')
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    expect(view.state.doc.firstChild?.attrs.type).toBe('tip');
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeNull();
+
+    // Open again, ArrowDown -> warning, Enter selects 'warning'
+    icon.click();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(view.state.doc.firstChild?.attrs.type).toBe('warning');
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeNull();
+
+    // Clicking icon a second time toggles picker closed
+    icon.click();
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeTruthy();
+    icon.click();
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeNull();
+
+    // Open again and press Escape -> closes and returns focus to iconButton
+    icon.click();
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeTruthy();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeNull();
+    expect(document.activeElement).toBe(icon);
+
+    // Open again and click outside (pointerdown) -> closes
+    icon.click();
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeTruthy();
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeNull();
+
+    // Open again and scroll window -> closes
+    icon.click();
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeTruthy();
+    window.dispatchEvent(new Event('scroll'));
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeNull();
+
+    // Open again and destroy editor -> cleans up popover from document.body
+    icon.click();
+    picker = document.body.querySelector('.crepe-callout__picker') as HTMLDivElement | null;
+    expect(picker).toBeTruthy();
+    await editor.destroy();
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeNull();
+  });
+
+  it('allows inline editing of callout title with Enter, blur, Escape, empty reset, and IME safety', async () => {
+    const editor = await createCalloutEditor('> [!note] 初始标题\n>\n> body\n');
+    const view = editor.ctx.get(editorViewCtx);
+    const serializer = editor.ctx.get(serializerCtx);
+
+    const titleEl = view.dom.querySelector('.crepe-callout__title') as HTMLDivElement;
+    expect(titleEl).toBeTruthy();
+    expect(titleEl.textContent).toBe('初始标题');
+    expect(titleEl.tabIndex).toBe(0);
+    expect(titleEl.getAttribute('role')).toBe('button');
+    expect(titleEl.getAttribute('aria-label')).toBeTruthy();
+
+    // Click to enter inline edit mode
+    titleEl.click();
+    let input = view.dom.querySelector('.crepe-callout__title-input') as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+    expect(input!.value).toBe('初始标题');
+    expect(input!.placeholder).toBeTruthy();
+
+    // IME composing Enter must NOT commit
+    input!.value = '拼音输入中';
+    input!.dispatchEvent(new Event('compositionstart', { bubbles: true }));
+    input!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }),
+    );
+    expect(view.dom.querySelector('.crepe-callout__title-input')).toBe(input);
+    expect(view.state.doc.firstChild?.attrs.title).toBe('初始标题');
+
+    // End composition: first Enter within 100ms (macOS WKWebView confirmation Enter) must NOT commit
+    input!.dispatchEvent(new Event('compositionend', { bubbles: true }));
+    input!.value = '  新标题  ';
+    input!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(view.dom.querySelector('.crepe-callout__title-input')).toBe(input);
+    expect(view.state.doc.firstChild?.attrs.title).toBe('初始标题');
+
+    // Global shortcut (Cmd/Ctrl+S) bubbles to window instead of being swallowed
+    let bubbledSave = false;
+    const onGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        bubbledSave = true;
+      }
+    };
+    window.addEventListener('keydown', onGlobalKeyDown);
+    input!.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 's', metaKey: true, bubbles: true }),
+    );
+    window.removeEventListener('keydown', onGlobalKeyDown);
+    expect(bubbledSave).toBe(true);
+    expect(view.dom.querySelector('.crepe-callout__title-input')).toBe(input);
+
+    // Next Enter commits trimmed value
+    input!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(view.dom.querySelector('.crepe-callout__title-input')).toBeNull();
+    expect(view.state.doc.firstChild?.attrs.title).toBe('新标题');
+    expect(titleEl.textContent).toBe('新标题');
+    expect(normalizeMd(serializer(view.state.doc))).toContain('> [!note] 新标题');
+
+    // Keyboard activation (Enter on titleEl) + Escape cancels without mutating
+    titleEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    input = view.dom.querySelector('.crepe-callout__title-input') as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+    input!.value = '将被放弃';
+    input!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(view.dom.querySelector('.crepe-callout__title-input')).toBeNull();
+    expect(view.state.doc.firstChild?.attrs.title).toBe('新标题');
+    expect(titleEl.textContent).toBe('新标题');
+
+    // Blur with empty/whitespace string resets to default placeholder title
+    titleEl.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    input = view.dom.querySelector('.crepe-callout__title-input') as HTMLInputElement | null;
+    expect(input).toBeTruthy();
+    input!.value = '   ';
+    input!.dispatchEvent(new FocusEvent('blur'));
+    expect(view.dom.querySelector('.crepe-callout__title-input')).toBeNull();
+    expect(view.state.doc.firstChild?.attrs.title).toBe('');
+    expect(titleEl.classList.contains('crepe-callout__title--placeholder')).toBe(true);
+    expect(titleEl.textContent).toBeTruthy();
+    expect(normalizeMd(serializer(view.state.doc)).split('\n')[0]).toBe('> [!note]');
+
+    await editor.destroy();
+  });
+
+  it('syncs dynamic read-only mode via MutationObserver and allows local fold toggling', async () => {
+    const editor = await createCalloutEditor('> [!info]- 只读标题\n>\n> body\n');
+    const view = editor.ctx.get(editorViewCtx);
+
+    const calloutEl = view.dom.querySelector('.crepe-callout') as HTMLElement;
+    const icon = view.dom.querySelector('.crepe-callout__icon') as HTMLButtonElement;
+    const titleEl = view.dom.querySelector('.crepe-callout__title') as HTMLDivElement;
+    const fold = view.dom.querySelector('.crepe-callout__fold') as HTMLButtonElement;
+
+    // Open picker before switching to read-only
+    icon.click();
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeTruthy();
+
+    // Switch to read-only WITHOUT dispatching a ProseMirror transaction
+    view.setProps({ editable: () => false });
+    await Promise.resolve();
+
+    // MutationObserver on contenteditable closes picker & updates icon/title attributes
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeNull();
+    expect(icon.disabled).toBe(true);
+    expect(icon.hasAttribute('aria-haspopup')).toBe(false);
+    expect(icon.classList.contains('crepe-callout__icon--readonly')).toBe(true);
+
+    icon.click();
+    expect(document.body.querySelector('.crepe-callout__picker')).toBeNull();
+
+    titleEl.click();
+    expect(view.dom.querySelector('.crepe-callout__title-input')).toBeNull();
+    expect(view.state.doc.firstChild?.attrs.title).toBe('只读标题');
+
+    // Read-only fold toggle expands/collapses locally in DOM without mutating doc attrs
+    expect(view.state.doc.firstChild?.attrs.collapsed).toBe(true);
+    expect(calloutEl.dataset.calloutCollapsed).toBe('true');
+    expect(fold.getAttribute('aria-expanded')).toBe('false');
+
+    fold.click();
+    expect(calloutEl.dataset.calloutCollapsed).toBe('false');
+    expect(fold.getAttribute('aria-expanded')).toBe('true');
+    expect(view.state.doc.firstChild?.attrs.collapsed).toBe(true);
+
+    fold.click();
+    expect(calloutEl.dataset.calloutCollapsed).toBe('true');
+    expect(fold.getAttribute('aria-expanded')).toBe('false');
+    expect(view.state.doc.firstChild?.attrs.collapsed).toBe(true);
+
+    // Switching back to editable restores iconButton state
+    view.setProps({ editable: () => true });
+    await Promise.resolve();
+    expect(icon.disabled).toBe(false);
+    expect(icon.getAttribute('aria-haspopup')).toBe('menu');
+
     await editor.destroy();
   });
 

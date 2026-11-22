@@ -11,17 +11,23 @@
 
 /* chrome 淡出：data-focus-mode 仍为 false（display 未被宿主样式收走），
    仅透明度过渡；200ms 后组件层把 data-focus-mode 切为 true 真正隐藏 */
-.notes-crepe-shell .notes-editor-header-section {
+.notes-crepe-shell .notes-editor-header-section,
+.notes-crepe-shell .notes-document-breadcrumbs,
+.notes-crepe-shell .notes-document-breadcrumbs-row {
   transition: opacity 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 
-.notes-crepe-shell[data-focus-chrome='exiting'] .notes-editor-header-section {
+.notes-crepe-shell[data-focus-chrome='exiting'] .notes-editor-header-section,
+.notes-crepe-shell[data-focus-chrome='exiting'] .notes-document-breadcrumbs,
+.notes-crepe-shell[data-focus-chrome='exiting'] .notes-document-breadcrumbs-row {
   opacity: 0;
   pointer-events: none;
 }
 
 /* chrome 淡入：退出焦点模式后 display 立即恢复，播放一次 200ms 下落淡入 */
-.notes-crepe-shell[data-focus-chrome='restoring'] .notes-editor-header-section {
+.notes-crepe-shell[data-focus-chrome='restoring'] .notes-editor-header-section,
+.notes-crepe-shell[data-focus-chrome='restoring'] .notes-document-breadcrumbs,
+.notes-crepe-shell[data-focus-chrome='restoring'] .notes-document-breadcrumbs-row {
   animation: notes-focus-chrome-in 200ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
 }
 
@@ -30,6 +36,7 @@
     opacity: 0;
     transform: translateY(-4px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -46,11 +53,13 @@
   max-width: var(--notes-content-max-w, 816px);
 }
 
-/* 焦点模式真正隐藏头部（上方 115 行注释所述"组件层切 data-focus-mode=true 收走"）。
+/* 焦点模式真正隐藏头部（上方注释所述"组件层切 data-focus-mode=true 收走"）。
    本规则属组件级（作用于 NotesCrepeEditor 渲染的元素），必须随组件全路径加载——
    曾误放在 workbench 懒加载 CSS 里，导致 Learning Hub 路径下焦点模式头部不隐藏。 */
 .notes-crepe-shell[data-focus-mode='true'] .notes-editor-header-section,
-.notes-crepe-shell[data-focus-mode='true'] .notes-editor-header {
+.notes-crepe-shell[data-focus-mode='true'] .notes-editor-header,
+.notes-crepe-shell[data-focus-mode='true'] .notes-document-breadcrumbs,
+.notes-crepe-shell[data-focus-mode='true'] .notes-document-breadcrumbs-row {
   display: none;
 }
 
@@ -62,13 +71,13 @@
   right: 10px;
   z-index: 24;
   border: 1px solid hsl(var(--border));
-  background: hsl(var(--background) / 0.88);
+  background: hsl(var(--background) / 88%);
   color: hsl(var(--muted-foreground));
   backdrop-filter: var(--wb-glass-blur, none);
 }
 
 /* Actual 44px box keeps the exit button's target within its allocated space. */
-@media (max-width: 767.98px), (pointer: coarse) {
+@media (width <= 767.98px), (pointer: coarse) {
   .notes-focus-exit {
     min-width: 44px;
     min-height: 44px;
@@ -85,11 +94,15 @@
   }
 
   .notes-crepe-shell .notes-editor-header-section,
+  .notes-crepe-shell .notes-document-breadcrumbs,
+  .notes-crepe-shell .notes-document-breadcrumbs-row,
   .notes-crepe-shell .notes-editor-content {
     transition: none;
   }
 
-  .notes-crepe-shell[data-focus-chrome='restoring'] .notes-editor-header-section {
+  .notes-crepe-shell[data-focus-chrome='restoring'] .notes-editor-header-section,
+  .notes-crepe-shell[data-focus-chrome='restoring'] .notes-document-breadcrumbs,
+  .notes-crepe-shell[data-focus-chrome='restoring'] .notes-document-breadcrumbs-row {
     animation: none;
   }
 }
@@ -103,22 +116,26 @@
   font-size: 12px;
   color: hsl(var(--muted-foreground));
 }
+
 .notes-editor-toolbar .notes-editor-format-trigger {
   width: auto;
   gap: 5px;
   padding: 0 8px;
   font-size: 12px;
 }
+
 .notes-action-group-label {
   padding: 8px 10px 4px;
   color: hsl(var(--muted-foreground));
   font-size: 11px;
   font-weight: 500;
 }
+
 .notes-action-group-label:not(:first-child) {
   margin-top: 4px;
-  border-top: 1px solid hsl(var(--border) / 0.6);
+  border-top: 1px solid hsl(var(--border) / 60%);
 }
+
 .notes-page-actions button {
   width: 100%;
   height: auto;
@@ -127,37 +144,57 @@
   gap: 8px;
   padding: 6px 10px;
 }
-.notes-page-actions button svg { flex-shrink: 0; }
-.notes-page-actions button span { font-size: 13px; }
+
+.notes-page-actions button svg {
+  flex-shrink: 0;
+}
+
+.notes-page-actions button span {
+  font-size: 13px;
+}
+
 .notes-page-actions kbd {
   margin-left: auto;
   font-family: inherit;
   font-size: 10px;
   color: hsl(var(--muted-foreground));
 }
-@media (max-width: 767.98px), (pointer: coarse) {
+
+@media (width <= 767.98px), (pointer: coarse) {
   .notes-page-actions button,
-  :is(.notes-crepe-shell, .notes-tab-actions-slot) .notes-chrome-text-button { min-height: 44px; }
+  :is(.notes-crepe-shell, .notes-tab-actions-slot) .notes-chrome-text-button {
+    min-height: 44px;
+  }
 }
-.notes-editor-header-section[data-mobile-hosted='true'] { min-height: 0; border-bottom: 0; }
-.notes-editor-header-section[data-mobile-hosted='true']:empty { display: none; }
-@media (max-width: 767px) {
-  .notes-document-header { padding-top: 12px; }
+
+.notes-editor-header-section[data-mobile-hosted='true'] {
+  min-height: 0;
+  border-bottom: 0;
+}
+
+.notes-editor-header-section[data-mobile-hosted='true']:empty {
+  display: none;
+}
+
+@media (width <= 767px) {
+  .notes-document-header {
+    padding-top: 12px;
+  }
 }
 
 /* 宿主状态横幅（刷新失败 / 草稿恢复 / AI 恢复）：轻量极细底线与淡墨底，弱化警报噪音 */
 .notes-banner {
   flex-shrink: 0;
-  border-bottom: 1px solid var(--notes-hairline, hsl(var(--border) / 0.5));
-  background: var(--notes-surface-subtle, hsl(var(--muted) / 0.35));
+  border-bottom: 1px solid var(--notes-hairline, hsl(var(--border) / 50%));
+  background: var(--notes-surface-subtle, hsl(var(--muted) / 35%));
   font-size: 12px;
   line-height: 1.5;
   color: hsl(var(--muted-foreground));
 }
 
 .notes-banner[data-tone='warning'] {
-  background: hsl(var(--warning) / 0.06);
-  color: hsl(var(--foreground) / 0.85);
+  background: hsl(var(--warning) / 6%);
+  color: hsl(var(--foreground) / 85%);
 }
 
 .notes-banner-row {
@@ -190,7 +227,10 @@
 
 /* 学习中心单顶栏：笔记页面级动作（保存状态/阅读/页面▾）并入标签栏右端，
    对齐 Notion 的单一 topbar；无活动笔记时操作位为空，不占宽度。 */
-.notes-tab-actions-slot:empty { display: none; }
+.notes-tab-actions-slot:empty {
+  display: none;
+}
+
 .notes-tab-actions-slot {
   margin-left: auto;
   height: 100%;
@@ -201,15 +241,17 @@
 /* 页面 ▾ 菜单顶部排版区（Notion 同款）：字体三卡 + 小字号/全宽开关 */
 .notes-layout-options {
   padding: 6px 6px 4px;
-  border-bottom: 1px solid hsl(var(--border) / 0.6);
+  border-bottom: 1px solid hsl(var(--border) / 60%);
   margin-bottom: 2px;
 }
+
 .notes-page-actions .notes-layout-fonts {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 4px;
   margin-bottom: 4px;
 }
+
 .notes-page-actions .notes-layout-font {
   display: flex;
   flex-direction: column;
@@ -223,14 +265,43 @@
   color: hsl(var(--muted-foreground));
   transition: background-color 120ms ease, color 120ms ease;
 }
-.notes-page-actions .notes-layout-font:hover:not(:disabled) { background: var(--interactive-hover, hsl(var(--muted))); }
-.notes-page-actions .notes-layout-font[aria-checked='true'] { color: hsl(var(--primary)); }
-.notes-layout-font-sample { font-size: 22px; line-height: 1.15; color: hsl(var(--foreground)); }
-.notes-layout-font[aria-checked='true'] .notes-layout-font-sample { color: hsl(var(--primary)); }
-.notes-page-actions .notes-layout-font-label { font-size: 11px; }
-.notes-layout-font--default { font-family: var(--font-family); }
-.notes-layout-font--serif { font-family: 'Iowan Old Style', 'Charter', Georgia, 'Songti SC', ui-serif, serif; }
-.notes-layout-font--mono { font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace; }
+
+.notes-page-actions .notes-layout-font:hover:not(:disabled) {
+  background: var(--interactive-hover, hsl(var(--muted)));
+}
+
+.notes-page-actions .notes-layout-font[aria-checked='true'] {
+  color: hsl(var(--primary));
+}
+
+.notes-layout-font-sample {
+  font-size: 22px;
+  line-height: 1.15;
+  color: hsl(var(--foreground));
+}
+
+.notes-layout-font[aria-checked='true'] .notes-layout-font-sample {
+  color: hsl(var(--primary));
+}
+
+.notes-page-actions .notes-layout-font-label {
+  font-size: 11px;
+}
+
+/* stylelint-disable selector-class-pattern */
+.notes-layout-font--default {
+  font-family: var(--font-family);
+}
+
+.notes-layout-font--serif {
+  font-family: 'Iowan Old Style', Charter, Georgia, 'Songti SC', ui-serif, serif;
+}
+
+.notes-layout-font--mono {
+  font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace;
+}
+/* stylelint-enable selector-class-pattern */
+
 .notes-page-actions .notes-layout-toggle {
   display: flex;
   align-items: center;
@@ -242,16 +313,21 @@
   font-size: 13px;
   color: hsl(var(--foreground));
 }
-.notes-page-actions .notes-layout-toggle:hover:not(:disabled) { background: var(--interactive-hover, hsl(var(--muted))); }
+
+.notes-page-actions .notes-layout-toggle:hover:not(:disabled) {
+  background: var(--interactive-hover, hsl(var(--muted)));
+}
+
 .notes-layout-switch {
   position: relative;
   flex-shrink: 0;
   width: 26px;
   height: 14px;
   border-radius: 999px;
-  background: hsl(var(--muted-foreground) / 0.35);
+  background: hsl(var(--muted-foreground) / 35%);
   transition: background-color 150ms ease;
 }
+
 .notes-layout-switch::after {
   content: '';
   position: absolute;
@@ -261,18 +337,37 @@
   height: 10px;
   border-radius: 50%;
   background: hsl(var(--background));
-  box-shadow: 0 1px 2px hsl(var(--shadow-base, 0 0% 0%) / 0.2);
+  box-shadow: 0 1px 2px hsl(var(--shadow-base, 0 0% 0%) / 20%);
   transition: transform 150ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
-.notes-layout-toggle[aria-checked='true'] .notes-layout-switch { background: hsl(var(--primary)); }
-.notes-layout-toggle[aria-checked='true'] .notes-layout-switch::after { transform: translateX(12px); }
-.notes-layout-options button:disabled { opacity: 0.5; }
-@media (max-width: 767.98px), (pointer: coarse) {
-  .notes-page-actions .notes-layout-toggle { min-height: 44px; }
-  .notes-page-actions .notes-layout-font { min-height: 56px; }
+
+.notes-layout-toggle[aria-checked='true'] .notes-layout-switch {
+  background: hsl(var(--primary));
 }
+
+.notes-layout-toggle[aria-checked='true'] .notes-layout-switch::after {
+  transform: translateX(12px);
+}
+
+.notes-layout-options button:disabled {
+  opacity: 0.5;
+}
+
+@media (width <= 767.98px), (pointer: coarse) {
+  .notes-page-actions .notes-layout-toggle {
+    min-height: 44px;
+  }
+
+  .notes-page-actions .notes-layout-font {
+    min-height: 56px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .notes-layout-switch, .notes-layout-switch::after { transition: none; }
+  .notes-layout-switch,
+  .notes-layout-switch::after {
+    transition: none;
+  }
 }
 
 /* ── 宿主顶栏操作位：窄宽度自适应（Notion 顶栏同款：空间不够先收文字，绝不挤压图标） ──
@@ -314,5 +409,13 @@
 
   .notes-tab-actions-slot .notes-save-indicator > span:not(.notes-save-indicator-dot) {
     display: none;
+  }
+
+  @media (pointer: coarse) {
+    .notes-tab-actions-slot .notes-chrome-text-button {
+      width: auto;
+      min-width: 44px;
+      min-height: 44px;
+    }
   }
 }

@@ -286,6 +286,38 @@ describe('useAnimatedNodes', () => {
     expect(result.current).toBe(to);
     expect(rafCbs.length).toBe(0);
   });
+
+  it('删除动画中或入场中的节点时通过 Set O(1) 立即清理其残留状态', () => {
+    const initial = [node('a', 0, 0), node('b', 0, 20)];
+    const movedAndSpawned = [node('a', 100, 0), node('b', 100, 20), node('c', 50, 50)];
+    const afterDelete = [node('a', 100, 0)];
+
+    const { result, rerender } = renderHook(
+      ({ n }) => useAnimatedNodes(n, { duration: 200 }),
+      { initialProps: { n: initial } },
+    );
+
+    rerender({ n: movedAndSpawned });
+    expect(rafCbs.length).toBeGreaterThan(0);
+    expect(result.current.find((n) => n.id === 'c')?.className).toContain(NODE_SPAWN_CLASS);
+
+    // 动画尚未结束时删除 b 和 c
+    rerender({ n: afterDelete });
+    expect(result.current.map((n) => n.id)).toEqual(['a']);
+
+    // 完成动画并重新添加 c：应作为全新节点重新触发入场类
+    act(() => {
+      flushRaf(0);
+    });
+    act(() => {
+      flushRaf(200);
+    });
+    expect(result.current).toBe(afterDelete);
+
+    const readded = [node('a', 100, 0), node('c', 80, 80)];
+    rerender({ n: readded });
+    expect(result.current.find((n) => n.id === 'c')?.className).toContain(NODE_SPAWN_CLASS);
+  });
 });
 
 describe('resolveAnimationDuration 大图降级策略', () => {

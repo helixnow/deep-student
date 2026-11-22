@@ -21,7 +21,7 @@ describe('Workbench sidebar architecture', () => {
       'src/features/settings/components/SettingsSidebar.tsx',
       'src/features/learning-hub/components/finder/FinderQuickAccess.tsx',
       'src/features/workbench/apps/content/ResourceAppWorkspace.tsx',
-      'src/features/workbench/apps/notes/NotesWorkspaceApp.tsx',
+      'src/features/workbench/apps/notes/components/WorkspaceExplorer.tsx',
     ];
     for (const path of consumers) {
       expect(read(path), path).toContain('WorkbenchSidebarSurface');

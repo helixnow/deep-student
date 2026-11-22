@@ -50,6 +50,9 @@ export interface InlineCardSyncResult {
 /** Tracks active `cardId -> sourceId` per note so removed blocks are pruned cleanly. */
 const activeSourcesByNote = new Map<string, Map<string, { sourceId: string; contentHash: string }>>();
 
+/** Caches `ankiCardId -> fsrs_card_states.id` so reviewed cards can be suspended on removal. */
+const stateIdByCardId = new Map<string, string>();
+
 /** Per-note promise queue so overlapping sync calls execute sequentially. */
 const inFlightSyncByNote = new Map<string, Promise<InlineCardSyncResult>>();
 
@@ -58,7 +61,8 @@ export function resetInlineCardSyncCache(noteId?: string): void {
     const key = noteId.trim();
     const prev = activeSourcesByNote.get(key);
     if (prev) {
-      for (const { sourceId } of prev.values()) {
+      for (const [cardId, { sourceId }] of prev.entries()) {
+        stateIdByCardId.delete(cardId);
         resetProjectedFlashcardCache('note_inline', sourceId);
       }
     }
@@ -66,6 +70,7 @@ export function resetInlineCardSyncCache(noteId?: string): void {
     return;
   }
   activeSourcesByNote.clear();
+  stateIdByCardId.clear();
   resetProjectedFlashcardCache('note_inline');
 }
 
@@ -92,13 +97,36 @@ export function deduplicateInlineCards(cards: readonly ParsedInlineCard[]): Pars
   return out;
 }
 
+interface LibraryCardStateContent {
+  stateId?: string | null;
+  state?: number | null;
+  suspended?: boolean;
+}
+
+interface FsrsEnqueueResponseShape {
+  states?: Array<{
+    id?: string;
+    ankiCardId?: string;
+    anki_card_id?: string;
+  }>;
+}
+
 function buildInlineNoteProjectorAdapter(): ProjectedFlashcardHostAdapter {
   return {
     saveCards: ({ documentId, cards, options }) =>
       ankiApiAdapter.saveAnkiCards({ documentId, cards, options }),
     enqueueNewCards: async (cardIds) => {
       if (cardIds.length === 0) return;
-      await invoke('fsrs_enqueue_cards', { ankiCardIds: cardIds });
+      const res = await invoke<FsrsEnqueueResponseShape | null>('fsrs_enqueue_cards', {
+        ankiCardIds: cardIds,
+      });
+      for (const entry of res?.states ?? []) {
+        const cardId = (entry.ankiCardId ?? entry.anki_card_id)?.trim();
+        const stateId = entry.id?.trim();
+        if (cardId && stateId) {
+          stateIdByCardId.set(cardId, stateId);
+        }
+      }
     },
     deleteCard: (cardId) => ankiApiAdapter.deleteAnkiCards({ cardIds: [cardId] }),
     upsertAnchorEdges: async (edges) => {
@@ -187,7 +215,42 @@ async function executeInlineCardSync(
   const adapter = buildInlineNoteProjectorAdapter();
 
   for (const removed of removedEntries) {
-    await adapter.deleteCard!(removed.cardId);
+    let content: LibraryCardStateContent | null = null;
+    let queryFailed = false;
+    try {
+      content = await invoke<LibraryCardStateContent | null>('get_anki_library_card_content', {
+        cardId: removed.cardId,
+      });
+    } catch (err) {
+      queryFailed = true;
+      console.warn(
+        '[inlineCardSyncService] Failed to query card state before removal, keeping card safely:',
+        removed.cardId,
+        err,
+      );
+    }
+
+    if (!queryFailed) {
+      const stateId = content?.stateId?.trim() || stateIdByCardId.get(removed.cardId) || null;
+      if (stateId) stateIdByCardId.set(removed.cardId, stateId);
+      const hasReviewOrSuspended =
+        (typeof content?.state === 'number' && content.state > 0) ||
+        content?.suspended === true;
+
+      if (hasReviewOrSuspended) {
+        if (stateId) {
+          await invoke('fsrs_suspend_card', { cardStateId: stateId });
+        } else {
+          console.warn(
+            '[inlineCardSyncService] Missing stateId for reviewed/suspended card, keeping card safely:',
+            removed.cardId,
+          );
+        }
+      } else {
+        await adapter.deleteCard!(removed.cardId);
+        stateIdByCardId.delete(removed.cardId);
+      }
+    }
     resetProjectedFlashcardCache('note_inline', removed.sourceId);
   }
 
@@ -219,6 +282,28 @@ async function executeInlineCardSync(
     skipEdgePrune: true,
   });
 
+  let unsuspendedRestored = false;
+  for (const dupId of batchResult.duplicatedIds) {
+    try {
+      const content = await invoke<LibraryCardStateContent | null>(
+        'get_anki_library_card_content',
+        { cardId: dupId },
+      );
+      const stateId = content?.stateId?.trim() || stateIdByCardId.get(dupId) || null;
+      if (stateId) stateIdByCardId.set(dupId, stateId);
+      if (content?.suspended === true && stateId) {
+        await invoke('fsrs_unsuspend_card', { cardStateId: stateId });
+        unsuspendedRestored = true;
+      }
+    } catch (err) {
+      console.warn(
+        '[inlineCardSyncService] Failed to restore suspended inline card state:',
+        dupId,
+        err,
+      );
+    }
+  }
+
   const kernel = getAppKernel();
   if (kernel?.anchors && (removedEntries.length > 0 || dedupedCards.length > 0)) {
     await kernel.anchors.pruneAnchorEdgesBySource({
@@ -236,7 +321,9 @@ async function executeInlineCardSync(
     });
   }
   activeSourcesByNote.set(trimmedNoteId, nextMap);
-  if (removedEntries.length > 0) adapter.notifyFlashcardsChanged?.('inline-note-sync');
+  if (removedEntries.length > 0 || unsuspendedRestored) {
+    adapter.notifyFlashcardsChanged?.('inline-note-sync');
+  }
 
   return {
     noteId: trimmedNoteId,

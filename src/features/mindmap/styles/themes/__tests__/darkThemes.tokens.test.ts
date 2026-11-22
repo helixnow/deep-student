@@ -8,6 +8,7 @@ import {
   defaultDarkTheme,
   defaultTheme,
   getThemeFontMetrics,
+  getThemesForMode,
   minimalDarkTheme,
   minimalTheme,
   paperDarkTheme,
@@ -140,11 +141,42 @@ describe('StyleRegistry.subscribe', () => {
   });
 });
 
+describe('CSS variable self-reference cycle prevention', () => {
+  it('no builtin theme self-references --mm-bg or --mm-edge', () => {
+    for (const theme of builtinThemes) {
+      expect(theme.canvas?.background, `${theme.id} canvas.background`).not.toContain('var(--mm-bg)');
+      expect(theme.edge?.stroke, `${theme.id} edge.stroke`).not.toContain('var(--mm-edge)');
+    }
+  });
+
+  it('colorful and colorful-dark resolve canvas & edge via root semantic tokens', () => {
+    for (const theme of [colorfulTheme, colorfulDarkTheme]) {
+      expect(theme.canvas?.background).toBe('hsl(var(--background))');
+      expect(theme.edge?.stroke).toBe('hsl(var(--border))');
+    }
+  });
+});
+
+describe('Explicit dark theme (true dark in both light and dark global modes)', () => {
+  it('uses dedicated dark charcoal palette independent of light-mode CSS tokens', () => {
+    expect(darkTheme.canvas?.background).toBe('#17191C');
+    expect(darkTheme.node?.branch.background).toBe('#22262B');
+    expect(darkTheme.node?.branch.foreground).toBe('#E4E7EC');
+    expect(darkTheme.edge?.stroke).toBe('#3C434D');
+
+    const colors = collectStructuralColorStrings(darkTheme);
+    for (const color of colors) {
+      expect(color).not.toContain('var(--secondary)');
+      expect(color).not.toContain('var(--mm-bg)');
+      expect(color).not.toContain('var(--mm-edge)');
+    }
+  });
+});
+
 describe('Token-based themes use CSS variable tokens', () => {
-  // default (Mineral Zen) / minimal (Nordic Stone) / paper (Warm Linen) 是高定色阶 identity 主题，
-  // 下面对它们单独断言精确色阶与暗色防闪白；dark / colorful / colorful-dark 走全局 CSS token。
+  // default (Mineral Zen) / minimal (Nordic Stone) / paper (Warm Linen) / dark (Explicit Dark)
+  // 是高定色阶 identity 主题；colorful / colorful-dark 走全局 CSS token。
   const tokenThemes = [
-    darkTheme,
     colorfulTheme,
     colorfulDarkTheme,
   ];
@@ -256,6 +288,47 @@ describe('Rainbow palettes', () => {
   it('default-dark and explicit dark share the same dark-safe palette', () => {
     expect(defaultDarkTheme.palette).toBe(DARK_SAFE_PALETTE);
     expect(darkTheme.palette).toBe(DARK_SAFE_PALETTE);
+  });
+
+  it('activates useBranchPalette exclusively on colorful and colorful-dark', () => {
+    expect(colorfulTheme.useBranchPalette).toBe(true);
+    expect(colorfulDarkTheme.useBranchPalette).toBe(true);
+    expect(defaultTheme.useBranchPalette).toBe(false);
+    expect(defaultDarkTheme.useBranchPalette).toBe(false);
+    expect(minimalTheme.useBranchPalette).toBe(false);
+    expect(minimalDarkTheme.useBranchPalette).toBe(false);
+    expect(paperTheme.useBranchPalette).toBe(false);
+    expect(paperDarkTheme.useBranchPalette).toBe(false);
+    expect(darkTheme.useBranchPalette).toBe(false);
+  });
+});
+
+describe('getThemesForMode', () => {
+  it('returns the 5 visible light themes when isDark is false', () => {
+    const themes = getThemesForMode(false);
+    expect(themes.map(t => t.id)).toEqual(['default', 'dark', 'minimal', 'colorful', 'paper']);
+    expect(themes.find(t => t.id === 'default')?.canvas?.background).toBe('#F4F6F5');
+    expect(themes.find(t => t.id === 'minimal')?.canvas?.background).toBe('#F6F7F9');
+    expect(themes.find(t => t.id === 'paper')?.canvas?.background).toBe('#F5F4EE');
+    expect(themes.find(t => t.id === 'dark')?.canvas?.background).toBe('#17191C');
+  });
+
+  it('resolves dark variant visual styles while preserving base id and name when isDark is true', () => {
+    const themes = getThemesForMode(true);
+    expect(themes.map(t => t.id)).toEqual(['default', 'dark', 'minimal', 'colorful', 'paper']);
+    expect(themes.map(t => t.name)).toEqual([
+      'themes.default',
+      'themes.dark',
+      'themes.minimal',
+      'themes.colorful',
+      'themes.paper',
+    ]);
+    expect(themes.every(t => !t.hidden)).toBe(true);
+    expect(themes.find(t => t.id === 'default')?.canvas?.background).toBe('#111615');
+    expect(themes.find(t => t.id === 'minimal')?.canvas?.background).toBe('#121316');
+    expect(themes.find(t => t.id === 'paper')?.canvas?.background).toBe('#1A1815');
+    expect(themes.find(t => t.id === 'colorful')?.node?.branch.background).toBe('hsl(var(--muted))');
+    expect(themes.find(t => t.id === 'dark')?.canvas?.background).toBe('#17191C');
   });
 });
 

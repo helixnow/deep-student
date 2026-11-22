@@ -41,11 +41,12 @@ export const colorfulDarkTheme: IStyleTheme = {
   },
   edge: {
     type: 'bezier',
-    stroke: 'hsl(var(--foreground) / 0.18)',
+    stroke: 'hsl(var(--border))',
     strokeWidth: 1.5,
   },
   palette: COLORFUL_DARK_PALETTE,
+  useBranchPalette: true,
   canvas: {
-    background: 'var(--mm-bg)',
+    background: 'hsl(var(--background))',
   },
 };

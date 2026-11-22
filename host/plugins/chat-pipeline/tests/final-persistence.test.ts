@@ -118,4 +118,21 @@ describe('persistence.rs:860–1549 final save production orchestration', () => 
     expect(effects.triggerAutoMemoryExtraction).toHaveBeenCalledTimes(1);
     expect(host.ctx.chatSession.getMessage(ctx.assistantMessageId)!._meta?.usage).toEqual(ctx.tokenUsage);
   });
+
+  it('skips auto-memory extraction when skipAutoMemoryExtraction is set or cancellation token is aborted', async () => {
+    const first = setup();
+    first.ctx.finalContent = 'partial';
+    await first.save.saveResults(first.ctx, { skipAutoMemoryExtraction: true });
+    expect(effects.triggerAutoMemoryExtraction).not.toHaveBeenCalled();
+    expect(effects.onTurnCommitted).toHaveBeenCalledTimes(1);
+
+    const second = setup();
+    const cancel = new AbortController();
+    cancel.abort();
+    second.ctx.setCancellationToken(cancel.signal);
+    second.ctx.finalContent = 'cancelled partial';
+    await second.save.saveResults(second.ctx);
+    expect(effects.triggerAutoMemoryExtraction).not.toHaveBeenCalled();
+    expect(effects.onTurnCommitted).toHaveBeenCalledTimes(1);
+  });
 });

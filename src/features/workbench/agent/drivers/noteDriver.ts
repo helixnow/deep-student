@@ -755,16 +755,159 @@ async function waitForCompositionEnd(run: AcrRunContext, api: CrepeEditorApi): P
   }
 }
 
+export interface AtomicMarkdownStep {
+  before: string;
+  after: string;
+}
+
+function findClosestOccurrence(haystack: string, needle: string, targetIdx: number): number {
+  if (!needle) return -1;
+  let bestIdx = -1;
+  let bestDist = Infinity;
+  let from = 0;
+  while (from <= haystack.length) {
+    const idx = haystack.indexOf(needle, from);
+    if (idx < 0) break;
+    const dist = Math.abs(idx - targetIdx);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIdx = idx;
+    }
+    from = idx + 1;
+  }
+  return bestIdx;
+}
+
+/**
+ * 反转原子写入步骤：从 `afterFinal` 逆向剥离每次 Agent 写入的纯净变更，
+ * 保留 `beforeFallback → afterFinal` 期间用户在热暂停或批次停顿间隙手动输入的内容；
+ * 若无步骤或无法唯一定位，则安全退回 `beforeFallback`。
+ */
+export function computeCleanUndoTarget(
+  beforeFallback: string,
+  afterFinal: string,
+  steps: readonly AtomicMarkdownStep[],
+): string {
+  if (steps.length === 0) return beforeFallback;
+
+  const coalesced: AtomicMarkdownStep[] = [];
+  for (const step of steps) {
+    if (step.before === step.after) continue;
+    const prev = coalesced[coalesced.length - 1];
+    if (prev && prev.after === step.before) {
+      prev.after = step.after;
+    } else {
+      coalesced.push({ before: step.before, after: step.after });
+    }
+  }
+  if (coalesced.length === 0) return beforeFallback;
+
+  let doc = afterFinal;
+  for (let i = coalesced.length - 1; i >= 0; i -= 1) {
+    const { before, after } = coalesced[i]!;
+    if (doc === after) {
+      doc = before;
+      continue;
+    }
+    let prefix = 0;
+    const minLen = Math.min(before.length, after.length);
+    while (prefix < minLen && before[prefix] === after[prefix]) {
+      prefix += 1;
+    }
+    let suffix = 0;
+    while (
+      suffix < minLen - prefix &&
+      before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
+    ) {
+      suffix += 1;
+    }
+    const removed = before.slice(prefix, before.length - suffix);
+    const added = after.slice(prefix, after.length - suffix);
+    if (added === removed) continue;
+    if (!added) return beforeFallback;
+
+    if (doc.slice(prefix, prefix + added.length) === added) {
+      doc = doc.slice(0, prefix) + removed + doc.slice(prefix + added.length);
+      continue;
+    }
+
+    const exactIdx = findClosestOccurrence(doc, added, prefix);
+    if (exactIdx >= 0) {
+      doc = doc.slice(0, exactIdx) + removed + doc.slice(exactIdx + added.length);
+      continue;
+    }
+
+    // 边界容错：用户在热暂停期间常把光标放在文末（AI 刚插入块的末尾、尾部换行之前）打字，
+    // 导致 `## 标题\n` 变成 `## 标题<用户手打>\n`，或 Markdown 规范化增减了首尾换行。
+    const addedNoTrail = added.replace(/[\r\n]+$/, '');
+    const addedCore = addedNoTrail.replace(/^[\r\n]+/, '');
+    const leadingNewlines = addedNoTrail.slice(0, addedNoTrail.length - addedCore.length);
+    let stripped = false;
+
+    if (addedNoTrail && addedNoTrail !== added) {
+      const idx = findClosestOccurrence(doc, addedNoTrail, prefix);
+      if (idx >= 0) {
+        const afterEnd = doc[idx + addedNoTrail.length] ?? '';
+        const keepSep = !removed && leadingNewlines && afterEnd && afterEnd !== '\n' && afterEnd !== '\r'
+          ? leadingNewlines
+          : '';
+        doc = doc.slice(0, idx) + removed + keepSep + doc.slice(idx + addedNoTrail.length);
+        stripped = true;
+      }
+    }
+
+    if (!stripped && addedCore && addedCore !== added && addedCore !== addedNoTrail) {
+      const idx = findClosestOccurrence(doc, addedCore, prefix);
+      if (idx >= 0) {
+        doc = doc.slice(0, idx) + removed + doc.slice(idx + addedCore.length);
+        doc = doc.replace(/\n{3,}/g, '\n\n');
+        stripped = true;
+      }
+    }
+
+    if (!stripped && !removed) {
+      const nonEmptyLines = addedCore.split(/\r?\n/).filter((line) => line.trim().length > 0);
+      if (nonEmptyLines.length > 1) {
+        let candidate = doc;
+        let allMatched = true;
+        for (let li = nonEmptyLines.length - 1; li >= 0; li -= 1) {
+          const line = nonEmptyLines[li]!;
+          const idx = findClosestOccurrence(candidate, line, prefix);
+          if (idx < 0) {
+            allMatched = false;
+            break;
+          }
+          candidate = candidate.slice(0, idx) + candidate.slice(idx + line.length);
+        }
+        if (allMatched) {
+          doc = candidate.replace(/\n{3,}/g, '\n\n');
+          stripped = true;
+        }
+      }
+    }
+
+    if (!stripped) return beforeFallback;
+  }
+  return doc;
+}
+
 async function applyNoteInsert(
   run: AcrRunContext,
   op: AgentOp,
   api: CrepeEditorApi,
   stepIndex: number,
   totalOps: number,
-): Promise<{ ok: boolean; reason?: string; startPos?: number; endPos?: number }> {
+): Promise<{
+  ok: boolean;
+  reason?: string;
+  startPos?: number;
+  endPos?: number;
+  atomicSteps: AtomicMarkdownStep[];
+}> {
+  const atomicSteps: AtomicMarkdownStep[] = [];
   const text = extractInsertText(op.payload);
   if (!text) {
-    return { ok: false, reason: tNote('emptyInsert', '插入内容为空') };
+    return { ok: false, reason: tNote('emptyInsert', '插入内容为空'), atomicSteps };
   }
 
   const anchor = parseAnchor(op.anchor);
@@ -777,6 +920,7 @@ async function applyNoteInsert(
           anchor: (anchor.heading ?? anchor.section)!,
         })
         : tNote('anchorUnresolved', '无法解析锚点'),
+      atomicSteps,
     };
   }
 
@@ -805,6 +949,7 @@ async function applyNoteInsert(
           reason: 'aborted',
           startPos: structuredFrom ?? startPos,
           endPos: pos,
+          atomicSteps,
         };
       }
       const pause = await run.checkPaused();
@@ -815,6 +960,7 @@ async function applyNoteInsert(
           reason: 'aborted',
           startPos: structuredFrom ?? startPos,
           endPos: pos,
+          atomicSteps,
         };
       }
 
@@ -823,6 +969,7 @@ async function applyNoteInsert(
       // 每块先落地、再按字数停留：停留时长同时作为该块逐行显现的动画时长，
       // 上一块显现完下一块才出现（normal ≈ 12ms/字，夹在 5–40 个打字间隔之间）
       const dwellMs = structuredDwellMs(profile, segments[si]!.length);
+      const stepBefore = readCompleteMarkdown(api);
       const insertedRange = api.agentInsertMarkdown(segments[si]!, mappedPos, dwellMs || undefined);
       if (!insertedRange || insertedRange.to <= insertedRange.from) {
         structuredFailed = tNote(
@@ -831,6 +978,10 @@ async function applyNoteInsert(
           { index: si + 1, total: segments.length },
         );
         break;
+      }
+      const stepAfter = readCompleteMarkdown(api);
+      if (stepAfter !== stepBefore) {
+        atomicSteps.push({ before: stepBefore, after: stepAfter });
       }
       if (structuredFrom == null) structuredFrom = insertedRange.from;
       pos = insertedRange.to;
@@ -849,7 +1000,7 @@ async function applyNoteInsert(
     }
 
     if (structuredFailed == null && structuredFrom != null) {
-      return { ok: true, startPos: structuredFrom, endPos: pos };
+      return { ok: true, startPos: structuredFrom, endPos: pos, atomicSteps };
     }
     if (structuredFrom != null) {
       // 中途失败：已插入的前缀如实返回区间，交由调用方记账/报告
@@ -858,6 +1009,7 @@ async function applyNoteInsert(
         reason: structuredFailed ?? tNote('structuredInsertFailed', '结构化插入失败'),
         startPos: structuredFrom,
         endPos: pos,
+        atomicSteps,
       };
     }
     // 首段即失败：回落到纯文本打字机路径（与旧行为一致）
@@ -871,6 +1023,7 @@ async function applyNoteInsert(
         reason: 'aborted',
         startPos: ledgerFrom ?? startPos,
         endPos: pos,
+        atomicSteps,
       };
     }
 
@@ -882,6 +1035,7 @@ async function applyNoteInsert(
         reason: 'aborted',
         startPos: ledgerFrom ?? startPos,
         endPos: pos,
+        atomicSteps,
       };
     }
 
@@ -898,6 +1052,7 @@ async function applyNoteInsert(
         reason: 'aborted',
         startPos: ledgerFrom ?? startPos,
         endPos: pos,
+        atomicSteps,
       };
     }
 
@@ -906,6 +1061,7 @@ async function applyNoteInsert(
     pos = remapInsertPos(api, pos);
 
     const chunk = batches[bi]!;
+    const stepBefore = readCompleteMarkdown(api);
     const insertedRange = api.agentInsert(chunk, pos);
     if (!insertedRange || insertedRange.to <= insertedRange.from) {
       return {
@@ -913,7 +1069,12 @@ async function applyNoteInsert(
         reason: tNote('textInsertUnconfirmed', '编辑器未确认文本插入'),
         startPos: ledgerFrom ?? startPos,
         endPos: pos,
+        atomicSteps,
       };
+    }
+    const stepAfter = readCompleteMarkdown(api);
+    if (stepAfter !== stepBefore) {
+      atomicSteps.push({ before: stepBefore, after: stepAfter });
     }
     pos = insertedRange.cursor;
     if (ledgerFrom == null) ledgerFrom = insertedRange.from;
@@ -938,7 +1099,7 @@ async function applyNoteInsert(
     endPos = Math.max(...useRanges.map((r) => r.to));
   }
 
-  return { ok: true, startPos: fromPos, endPos };
+  return { ok: true, startPos: fromPos, endPos, atomicSteps };
 }
 
 function handleDestructiveSuggestion(
@@ -1216,6 +1377,7 @@ export const noteDriver: CollabDriver = {
     const done: string[] = [];
     const undone: string[] = [];
     const entityIds: string[] = [resourceId];
+    const allAtomicSteps: AtomicMarkdownStep[] = [];
     let applied = 0;
     let aborted = false;
     let lastInsertEnd: number | null = null;
@@ -1289,6 +1451,16 @@ export const noteDriver: CollabDriver = {
         if (direct.ok) {
           applied += 1;
           done.push(op.label);
+          if (
+            direct.previousMarkdown !== undefined
+            && direct.nextMarkdown !== undefined
+            && direct.previousMarkdown !== direct.nextMarkdown
+          ) {
+            allAtomicSteps.push({
+              before: direct.previousMarkdown,
+              after: direct.nextMarkdown,
+            });
+          }
           // ACR 4.0：直改瞬变后对变更区域做一次滚动定位 + 渐隐 flash 演出
           if (
             direct.previousMarkdown !== undefined
@@ -1344,6 +1516,9 @@ export const noteDriver: CollabDriver = {
         if (result.ok && result.before !== undefined && result.after !== undefined) {
           applied += 1;
           done.push(op.label);
+          if (result.before !== result.after) {
+            allAtomicSteps.push({ before: result.before, after: result.after });
+          }
           recordMarkdownInverse(run, api, result.before, result.after, op.label);
           if (result.reason) {
             persistenceError = result.reason;
@@ -1364,6 +1539,11 @@ export const noteDriver: CollabDriver = {
 
       const beforeInsert = readCompleteMarkdown(api);
       const result = await applyNoteInsert(run, op, api, i + 1, ops.length);
+      if (applied === 0 && result.atomicSteps.length > 0) {
+        // 首次实际写入前可能经历了热暂停/组合态等待，用首步写入前快照刷新基线以保留用户并发输入
+        runBaseline = result.atomicSteps[0]!.before;
+      }
+      allAtomicSteps.push(...result.atomicSteps);
       if (result.ok && result.startPos != null && result.endPos != null) {
         const afterInsert = readCompleteMarkdown(api);
         if (afterInsert === beforeInsert) {
@@ -1379,7 +1559,8 @@ export const noteDriver: CollabDriver = {
         lastInsertEnd = result.endPos;
         applied += 1;
         done.push(op.label);
-        recordMarkdownInverse(run, api, beforeInsert, afterInsert, op.label);
+        const undoBefore = computeCleanUndoTarget(beforeInsert, afterInsert, result.atomicSteps);
+        recordMarkdownInverse(run, api, undoBefore, afterInsert, op.label);
         try {
           await flushRequired(api);
         } catch (error) {
@@ -1395,7 +1576,8 @@ export const noteDriver: CollabDriver = {
             applied += 1;
             const partialLabel = tNote('partialItem', '{{label}}（部分）', { label: op.label });
             done.push(partialLabel);
-            recordMarkdownInverse(run, api, beforeInsert, afterInsert, partialLabel);
+            const undoBefore = computeCleanUndoTarget(beforeInsert, afterInsert, result.atomicSteps);
+            recordMarkdownInverse(run, api, undoBefore, afterInsert, partialLabel);
             try {
               await flushRequired(api);
             } catch (error) {
@@ -1416,7 +1598,8 @@ export const noteDriver: CollabDriver = {
           applied += 1;
           const partialLabel = tNote('partialItem', '{{label}}（部分）', { label: op.label });
           done.push(partialLabel);
-          recordMarkdownInverse(run, api, beforeInsert, afterInsert, partialLabel);
+          const undoBefore = computeCleanUndoTarget(beforeInsert, afterInsert, result.atomicSteps);
+          recordMarkdownInverse(run, api, undoBefore, afterInsert, partialLabel);
           try {
             await flushRequired(api);
           } catch (error) {
@@ -1452,7 +1635,15 @@ export const noteDriver: CollabDriver = {
       try {
         const after = readCompleteMarkdown(api);
         if (after !== runBaseline) {
-          dispatchTypedEvent('notes:agent-applied', { noteId: resourceId, windowId: run.windowId ?? undefined, before: runBaseline, after });
+          const undoBefore = computeCleanUndoTarget(runBaseline, after, allAtomicSteps);
+          if (after !== undoBefore) {
+            dispatchTypedEvent('notes:agent-applied', {
+              noteId: resourceId,
+              windowId: run.windowId ?? undefined,
+              before: undoBefore,
+              after,
+            });
+          }
         }
       } catch { /* 读取失败时不提供撤销入口 */ }
     }

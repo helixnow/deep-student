@@ -81,14 +81,11 @@ function findJunctionIndex(text: string, before?: string, after?: string): numbe
       if (afterAnchor && !text.startsWith(afterAnchor, junction)) continue;
       return junction;
     }
-    if (!afterAnchor) return -1;
+    return -1;
   }
 
-  if (afterAnchor) {
-    const idx = text.indexOf(afterAnchor);
-    if (idx !== -1) return idx;
-  }
-  return -1;
+  const afterMatches = findOccurrences(text, afterAnchor);
+  return afterMatches.length === 1 ? afterMatches[0] : -1;
 }
 
 /**

@@ -20,12 +20,18 @@ export interface StatusBarBrandMenuProps {
   /** 品牌钮（定位锚 + 焦点归还目标） */
   anchorRef: React.RefObject<HTMLButtonElement | null>;
   onClose: () => void;
+  /** 由顶栏统一渲染共享外部点击层时关闭本地 backdrop */
+  hideBackdrop?: boolean;
+  /** 切换到相邻顶栏菜单时 0ms 即时卸载且不抢回焦点 */
+  instantExit?: boolean;
 }
 
 export const StatusBarBrandMenu: React.FC<StatusBarBrandMenuProps> = ({
   open,
   anchorRef,
   onClose,
+  hideBackdrop = false,
+  instantExit = false,
 }) => {
   const { t } = useTranslation('workbench');
   const desktopName = useDesktopName();
@@ -52,6 +58,8 @@ export const StatusBarBrandMenu: React.FC<StatusBarBrandMenuProps> = ({
       anchorRef={anchorRef}
       label={t('menubar.brandMenu')}
       onClose={onClose}
+      hideBackdrop={hideBackdrop}
+      instantExit={instantExit}
     >
       {renaming ? (
         <form

@@ -20,11 +20,17 @@
  */
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { useWindowStore } from '../core/windowStore';
 import { useWorkbenchOverlay } from '../core/shortcuts';
 import { appRegistry } from '../core/appRegistry';
 import type { WorkbenchWindow } from '../core/types';
 import { announceWorkbench } from '../hooks/useWorkbenchA11y';
+import {
+  requestCloseAnimated,
+  requestMinimizeAnimated,
+} from '../hooks/useWindowLifecycleAnim';
 import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import { prefetchFrozenWindow } from '../core/wakePrefetchIntent';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -115,6 +121,70 @@ const WindowSwitcherComponent: React.FC<WindowSwitcherProps> = ({ thumbnails = f
     const id = switcherIds[switcherIndex];
     if (id) prefetchFrozenWindow(id);
   }, [switcherOpen, switcherIds, switcherIndex]);
+
+  // 切换器打开期间的 macOS 肌肉记忆快捷键：
+  // - Q：关闭当前高亮窗口（走 requestCloseAnimated / canClose）
+  // - H：最小化当前高亮窗口（走 requestMinimizeAnimated）
+  // - ArrowDown：直接进入当前高亮应用的 App Exposé
+  useEventRegistry(
+    switcherOpen
+      ? [
+          {
+            target: 'window',
+            type: 'keydown',
+            listener: (event) => {
+              const e = event as KeyboardEvent;
+              if (e.defaultPrevented || e.repeat || isComposingKeyEvent(e)) return;
+              if (e.altKey || e.shiftKey) return;
+
+              const overlay = useWorkbenchOverlay.getState();
+              if (!overlay.switcherOpen) return;
+              const currentId = overlay.switcherIds[overlay.switcherIndex];
+              if (!currentId) return;
+              const currentWin = useWindowStore.getState().windows[currentId];
+              if (!currentWin) return;
+
+              const keyLower = e.key.toLowerCase();
+              if (e.code === 'KeyQ' || keyLower === 'q') {
+                e.preventDefault();
+                e.stopPropagation();
+                void requestCloseAnimated(currentId).then((accepted) => {
+                  if (!accepted) return;
+                  const latestOverlay = useWorkbenchOverlay.getState();
+                  if (!latestOverlay.switcherOpen) return;
+                  const storeWindows = useWindowStore.getState().windows;
+                  const remaining = latestOverlay.switcherIds.filter(
+                    (id) => id !== currentId && Boolean(storeWindows[id]),
+                  );
+                  if (remaining.length === 0) {
+                    latestOverlay.closeSwitcher('cancel');
+                  } else {
+                    const nextIndex = Math.min(latestOverlay.switcherIndex, remaining.length - 1);
+                    latestOverlay.openSwitcher(remaining, nextIndex);
+                  }
+                });
+                return;
+              }
+
+              if (e.code === 'KeyH' || keyLower === 'h') {
+                e.preventDefault();
+                e.stopPropagation();
+                requestMinimizeAnimated(currentId);
+                return;
+              }
+
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                e.stopPropagation();
+                overlay.openExpose({ appTypeId: currentWin.typeId });
+              }
+            },
+            options: true,
+          },
+        ]
+      : [],
+    [switcherOpen],
+  );
 
   useEffect(() => {
     if (switcherOpen) {
@@ -303,6 +373,24 @@ const WindowSwitcherComponent: React.FC<WindowSwitcherProps> = ({ thumbnails = f
           </div>
           <div className="wb-switcher-hint">
             {t('workbench:switcher.hint')}
+          </div>
+          <div
+            className="wb-switcher-shortcuts"
+            data-testid="wb-switcher-shortcuts"
+            aria-hidden="true"
+          >
+            <span className="wb-switcher-shortcut-chip">
+              <kbd className="wb-switcher-kbd">Q</kbd>
+              <span>{t('workbench:window.close')}</span>
+            </span>
+            <span className="wb-switcher-shortcut-chip">
+              <kbd className="wb-switcher-kbd">H</kbd>
+              <span>{t('workbench:window.minimize')}</span>
+            </span>
+            <span className="wb-switcher-shortcut-chip">
+              <kbd className="wb-switcher-kbd">↓</kbd>
+              <span>{t('workbench:expose.title')}</span>
+            </span>
           </div>
         </div>
       </div>

@@ -3,7 +3,7 @@
  */
 
 import { InputRule } from '@milkdown/prose/inputrules';
-import { $inputRule } from '@milkdown/utils';
+import { $inputRule } from '@milkdown/kit/utils';
 
 import { isInCodeContext } from './codeContext';
 import { parseWikiLinkInner } from './format';

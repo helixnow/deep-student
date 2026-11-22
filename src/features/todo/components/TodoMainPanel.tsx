@@ -63,6 +63,7 @@ import {
   sortTodoItems,
 } from '../types';
 import { useViewStore } from '@/stores/viewStore';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useKeyboardInset } from '@/hooks/useKeyboardHeight';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { isEffectivelyVisible } from '../utils/domVisibility';
@@ -364,9 +365,38 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     };
   }, [items, filter.priorityFilter, filter.showCompleted, filter.view, filter.sortBy]);
 
-  // ===== 'all' 视图：树形展示（顶层 + 子任务缩进），手动排序时支持顶层拖拽 =====
-  const isTreeView = filter.view === 'all' && !filter.search.trim();
-  const isManualSortView = isTreeView && filter.sortBy === 'manual';
+  // ===== 'all' / 'today' 视图：保留父子任务视觉层级；手动排序仅在 'all' 视图支持顶层拖拽 =====
+  const isTreeView = (filter.view === 'all' || filter.view === 'today') && !filter.search.trim();
+  const isManualSortView = filter.view === 'all' && !filter.search.trim() && filter.sortBy === 'manual';
+
+  const buildHierarchicalRows = useCallback(
+    (
+      source: TodoItem[],
+      progressOf: (parentId: string) => { done: number; total: number } | undefined,
+    ): TodoRowSpec[] => {
+      const visibleIds = new Set(source.map((i) => i.id));
+      const childMap = new Map<string, TodoItem[]>();
+      const tops: TodoItem[] = [];
+      for (const item of source) {
+        if (item.parentId && visibleIds.has(item.parentId)) {
+          const arr = childMap.get(item.parentId) || [];
+          arr.push(item);
+          childMap.set(item.parentId, arr);
+        } else {
+          tops.push(item);
+        }
+      }
+      return tops.flatMap((item) => [
+        { item, subtaskProgress: progressOf(item.id) },
+        ...(childMap.get(item.id) || []).map((child) => ({
+          item: child,
+          depth: 1,
+          subtaskProgress: progressOf(child.id),
+        })),
+      ]);
+    },
+    [],
+  );
 
   const { topLevelItems, childrenByParent } = useMemo(() => {
     const childMap = new Map<string, TodoItem[]>();
@@ -393,7 +423,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   const upcomingGroups = useMemo(() => {
     if (filter.view !== 'upcoming' && filter.view !== 'today') return null;
     const groups = groupItemsByDueBucket(filteredItems);
-    // today 视图只有逾期/今天两组；只有「今天」一组时无需组头，退回普通列表
+    // today 视图只有逾期/今天两组；只有「今天」一组时无需组头，退回普通列表（仍走 isTreeView 保留子任务层级）
     if (filter.view === 'today' && groups.length === 1 && groups[0].bucket === 'today') {
       return null;
     }
@@ -439,15 +469,34 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     [subtaskProgressById],
   );
 
+  // 分组内行规格：today 视图在逾期/今天分组内保留父子缩进与子任务进度；upcoming 也保留子任务进度
+  const upcomingGroupRows = useMemo(() => {
+    if (!upcomingGroups) return null;
+    const preserveHierarchy = filter.view === 'today' && !filter.search.trim();
+    return upcomingGroups.map((group) => ({
+      ...group,
+      rows: preserveHierarchy
+        ? buildHierarchicalRows(group.items, subtaskProgressOf)
+        : group.items.map((item): TodoRowSpec => ({
+            item,
+            subtaskProgress: subtaskProgressOf(item.id),
+          })),
+    }));
+  }, [upcomingGroups, filter.view, filter.search, buildHierarchicalRows, subtaskProgressOf]);
+
   // 树形/平铺分支交给 TodoRowsList（>100 行自动虚拟化）
   const listRows = useMemo<TodoRowSpec[]>(() => {
     if (isTreeView) {
       return topLevelItems.flatMap((item) => [
         { item, subtaskProgress: subtaskProgressOf(item.id) },
-        ...(childrenByParent.get(item.id) || []).map((child) => ({ item: child, depth: 1 })),
+        ...(childrenByParent.get(item.id) || []).map((child) => ({
+          item: child,
+          depth: 1,
+          subtaskProgress: subtaskProgressOf(child.id),
+        })),
       ]);
     }
-    return filteredItems.map((item) => ({ item }));
+    return filteredItems.map((item) => ({ item, subtaskProgress: subtaskProgressOf(item.id) }));
   }, [isTreeView, topLevelItems, childrenByParent, filteredItems, subtaskProgressOf]);
 
   // 键盘导航的可见行顺序（跨所有视图分支统一口径；折叠分组内的行不参与 j/k）
@@ -457,13 +506,13 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
         matrixQuadrants[q].map((i) => i.id),
       );
     }
-    if (upcomingGroups) {
-      return upcomingGroups
+    if (upcomingGroupRows) {
+      return upcomingGroupRows
         .filter((g) => !collapsedBuckets.has(g.bucket))
-        .flatMap((g) => g.items.map((i) => i.id));
+        .flatMap((g) => g.rows.map((r) => r.item.id));
     }
     return listRows.map((r) => r.item.id);
-  }, [matrixQuadrants, upcomingGroups, listRows, collapsedBuckets]);
+  }, [matrixQuadrants, upcomingGroupRows, listRows, collapsedBuckets]);
 
   const visibleRowIdsRef = useRef<string[]>(visibleRowIds);
   visibleRowIdsRef.current = visibleRowIds;
@@ -524,7 +573,8 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   // - workbench 窗口（祖先带 data-wb-sys-app="todo"，见 TodoAppWindow）：
   //   legacy currentView 恒不为 'todo'，改为要求事件发生在本面板所在的
   //   聚焦窗口内（窗壳 data-focused 仅聚焦时存在，见 WindowShell）。
-  useEffect(() => {
+  const handleDocumentKeyDown = useCallback((event: Event) => {
+    const e = event as KeyboardEvent;
     const moveFocus = (delta: number) => {
       const ids = visibleRowIdsRef.current;
       if (ids.length === 0) return;
@@ -539,84 +589,85 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
       setFocusedItemId(ids[next]);
     };
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const target = e.target as HTMLElement | null;
-      const wbHost = panelRootRef.current?.closest<HTMLElement>('[data-wb-sys-app="todo"]');
-      if (wbHost) {
-        const windowShell = wbHost.closest<HTMLElement>('[data-wb-window]');
-        if (windowShell && !windowShell.hasAttribute('data-focused')) return;
-        const scope = windowShell ?? wbHost;
-        if (!target || !scope.contains(target)) return;
-      } else if (useViewStore.getState().currentView !== 'todo') {
-        return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const target = e.target as HTMLElement | null;
+    const wbHost = panelRootRef.current?.closest<HTMLElement>('[data-wb-sys-app="todo"]');
+    if (wbHost) {
+      const windowShell = wbHost.closest<HTMLElement>('[data-wb-window]');
+      if (windowShell && !windowShell.hasAttribute('data-focused')) return;
+      const scope = windowShell ?? wbHost;
+      if (!target || !scope.contains(target)) return;
+    } else if (useViewStore.getState().currentView !== 'todo') {
+      return;
+    }
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable)
+    ) {
+      return;
+    }
+    // 焦点在按钮/菜单/弹层内时不做列表导航（Space/Enter 会双重触发）；
+    // 注意工作台窗口外壳（[data-wb-window]）自身带 role="dialog"，不应屏蔽窗口内列表导航；
+    // / 与 n 这类无冲突入口仍然放行
+    const inControl = Boolean(
+      target?.closest('button, [role="menu"], [role="dialog"]:not([data-wb-window]), [role="listbox"]'),
+    );
+    const isListNavKey = [
+      'j', 'k', 'ArrowDown', 'ArrowUp', ' ', 'x', 'Enter', 'Delete', 'Backspace',
+    ].includes(e.key);
+    if (inControl && isListNavKey) return;
+    if (e.key === '/') {
+      e.preventDefault();
+      document.querySelector<HTMLInputElement>('[data-todo-search]')?.focus();
+    } else if (e.key === 'n' || e.key === 'N') {
+      const quickAdd = document.querySelector<HTMLInputElement>('[data-todo-quick-add]');
+      if (quickAdd) {
+        e.preventDefault();
+        quickAdd.focus();
       }
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return;
+    } else if (e.key === 'j' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      moveFocus(1);
+    } else if (e.key === 'k' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      moveFocus(-1);
+    } else if ((e.key === ' ' || e.key === 'x') && focusedItemIdRef.current) {
+      e.preventDefault();
+      void useTodoStore.getState().toggleItem(focusedItemIdRef.current);
+    } else if (e.key === 'Enter' && focusedItemIdRef.current) {
+      e.preventDefault();
+      useTodoStore.getState().selectItem(focusedItemIdRef.current);
+    } else if ((e.key === 'Delete' || e.key === 'Backspace') && focusedItemIdRef.current) {
+      e.preventDefault();
+      const id = focusedItemIdRef.current;
+      // 删除前把焦点交给相邻行，键盘流不中断（删除本身带撤销 toast）
+      const ids = visibleRowIdsRef.current;
+      const index = ids.indexOf(id);
+      setFocusedItemId(ids[index + 1] ?? ids[index - 1] ?? null);
+      void useTodoStore.getState().deleteItem(id);
+    } else if (e.key === 'Escape') {
+      // 桌面端：Esc 依次退出 多选 → 详情面板 → 键盘焦点行
+      const { selectedItemId: selected, selectItem: select } = useTodoStore.getState();
+      if (checkedIdsRef.current.size > 0) {
+        e.preventDefault();
+        clearChecked();
+      } else if (selected) {
+        e.preventDefault();
+        select(null);
+      } else if (focusedItemIdRef.current) {
+        e.preventDefault();
+        setFocusedItemId(null);
       }
-      // 焦点在按钮/菜单/弹层内时不做列表导航（Space/Enter 会双重触发）；
-      // 注意工作台窗口外壳（[data-wb-window]）自身带 role="dialog"，不应屏蔽窗口内列表导航；
-      // / 与 n 这类无冲突入口仍然放行
-      const inControl = Boolean(
-        target?.closest('button, [role="menu"], [role="dialog"]:not([data-wb-window]), [role="listbox"]'),
-      );
-      const isListNavKey = [
-        'j', 'k', 'ArrowDown', 'ArrowUp', ' ', 'x', 'Enter', 'Delete', 'Backspace',
-      ].includes(e.key);
-      if (inControl && isListNavKey) return;
-      if (e.key === '/') {
-        e.preventDefault();
-        document.querySelector<HTMLInputElement>('[data-todo-search]')?.focus();
-      } else if (e.key === 'n' || e.key === 'N') {
-        const quickAdd = document.querySelector<HTMLInputElement>('[data-todo-quick-add]');
-        if (quickAdd) {
-          e.preventDefault();
-          quickAdd.focus();
-        }
-      } else if (e.key === 'j' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        moveFocus(1);
-      } else if (e.key === 'k' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        moveFocus(-1);
-      } else if ((e.key === ' ' || e.key === 'x') && focusedItemIdRef.current) {
-        e.preventDefault();
-        void useTodoStore.getState().toggleItem(focusedItemIdRef.current);
-      } else if (e.key === 'Enter' && focusedItemIdRef.current) {
-        e.preventDefault();
-        useTodoStore.getState().selectItem(focusedItemIdRef.current);
-      } else if ((e.key === 'Delete' || e.key === 'Backspace') && focusedItemIdRef.current) {
-        e.preventDefault();
-        const id = focusedItemIdRef.current;
-        // 删除前把焦点交给相邻行，键盘流不中断（删除本身带撤销 toast）
-        const ids = visibleRowIdsRef.current;
-        const index = ids.indexOf(id);
-        setFocusedItemId(ids[index + 1] ?? ids[index - 1] ?? null);
-        void useTodoStore.getState().deleteItem(id);
-      } else if (e.key === 'Escape') {
-        // 桌面端：Esc 依次退出 多选 → 详情面板 → 键盘焦点行
-        const { selectedItemId: selected, selectItem: select } = useTodoStore.getState();
-        if (checkedIdsRef.current.size > 0) {
-          e.preventDefault();
-          clearChecked();
-        } else if (selected) {
-          e.preventDefault();
-          select(null);
-        } else if (focusedItemIdRef.current) {
-          e.preventDefault();
-          setFocusedItemId(null);
-        }
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    }
   }, [clearChecked]);
+
+  useEventRegistry(
+    [{ target: 'document', type: 'keydown', listener: handleDocumentKeyDown }],
+    [handleDocumentKeyDown],
+  );
 
   // 触屏友好：TouchSensor 长按 250ms 激活 + 8px 容差，避免竖向滚动被拖拽排序劫持（R2-07）；
   // 与 FinderFileList 等共用同一传感器范式。桌面 MouseSensor 距离激活，键盘可达。
@@ -1195,9 +1246,9 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   </div>
                 </SortableContext>
               </DndContext>
-            ) : upcomingGroups ? (
+            ) : upcomingGroupRows ? (
               <div className="flex flex-col">
-                {upcomingGroups.map((group) => {
+                {upcomingGroupRows.map((group) => {
                   const collapsed = collapsedBuckets.has(group.bucket);
                   return (
                     <div key={group.bucket}>
@@ -1245,17 +1296,19 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                       </div>
                       <InlineReveal open={!collapsed}>
                         <div className="flex flex-col divide-y divide-border/[0.08]">
-                          {group.items.map((item) => (
+                          {group.rows.map((row) => (
                             <TodoItemRow
-                              key={item.id}
-                              item={item}
+                              key={row.item.id}
+                              item={row.item}
+                              depth={row.depth}
+                              subtaskProgress={row.subtaskProgress}
                               onToggle={toggleItem}
                               onSelect={handleSelect}
                               onDelete={deleteItem}
                               onRename={handleRename}
-                              isSelected={selectedItemId === item.id}
-                              isFocused={focusedItemId === item.id}
-                              isChecked={checkedIds.has(item.id)}
+                              isSelected={selectedItemId === row.item.id}
+                              isFocused={focusedItemId === row.item.id}
+                              isChecked={checkedIds.has(row.item.id)}
                               onCheckToggle={handleCheckToggle}
                               checkMode={checkMode}
                             />

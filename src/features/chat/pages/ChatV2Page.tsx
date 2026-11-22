@@ -31,7 +31,6 @@ import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem, ResourceType } from '@/features/learning-hub/types';
 import { useFinderStoreFor, FINDER_HOST_IDS } from '@/features/learning-hub/stores/finderStore';
-import { useNotesOptional } from '@/features/notes/NotesContext';
 import { lazy, Suspense } from 'react';
 
 import { GroupEditorPanel, PRESET_ICONS } from '../components/groups/GroupEditorDialog';
@@ -300,8 +299,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   useEffect(() => clearDeleteConfirmTimeout, [clearDeleteConfirmTimeout]);
 
   // Learning Hub 学习资源状态
-  // 🔧 修复：NotesProvider 已废弃（未挂载），canvasSidebarOpen/toggleCanvasSidebar 改为本地 state
-  const notesContext = useNotesOptional();
+  // NotesProvider 已退役，canvasSidebarOpen/toggleCanvasSidebar 为本地 state
   const [canvasSidebarOpen, setCanvasSidebarOpen] = useState(false);
   const toggleCanvasSidebar = useCallback(() => {
     setCanvasSidebarOpen(prev => {
@@ -789,7 +787,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
 
   // ===== 页面事件 hook =====
   useChatPageEvents({
-    notesContext, t, loadSessions, isInitialLoading, currentSessionId,
+    notesContext: null, t, loadSessions, isInitialLoading, currentSessionId,
     createSession, createAnalysisSession,
     setSessions, setCurrentSessionId,
     canvasSidebarOpen, toggleCanvasSidebar, setPendingOpenResource,

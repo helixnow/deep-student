@@ -70,4 +70,30 @@ describe('DueMistakesReviewOverlay', () => {
     await waitFor(() => expect(screen.getByText('db locked')).toBeInTheDocument());
     expect(screen.getByText('加载到期错题失败')).toBeInTheDocument();
   });
+
+  it('requires confirmation before exiting via mobile header back button during an active review session', async () => {
+    loadDueMistakeItems.mockResolvedValue({ items: [item('a', 'exam-1'), item('b', 'exam-2')], missing: 0 });
+    render(<DueMistakesReviewOverlay />);
+    await screen.findByTestId('review-session');
+
+    const headerBackButton = document.querySelector('header button');
+    expect(headerBackButton).toBeTruthy();
+
+    // First tap arms inline confirmation instead of discarding the active queue
+    fireEvent.click(headerBackButton!);
+    expect(screen.getByTestId('due-mistakes-exit-confirm')).toBeInTheDocument();
+    expect(isDueMistakesReviewOpen()).toBe(true);
+
+    // Clicking "继续复习" cancels confirmation
+    fireEvent.click(screen.getByText('继续复习'));
+    expect(screen.queryByTestId('due-mistakes-exit-confirm')).toBeNull();
+    expect(isDueMistakesReviewOpen()).toBe(true);
+
+    // Arm again and confirm via second back tap
+    fireEvent.click(headerBackButton!);
+    expect(screen.getByTestId('due-mistakes-exit-confirm')).toBeInTheDocument();
+    fireEvent.click(headerBackButton!);
+    expect(isDueMistakesReviewOpen()).toBe(false);
+    expect(refreshTodayLearning).toHaveBeenCalled();
+  });
 });

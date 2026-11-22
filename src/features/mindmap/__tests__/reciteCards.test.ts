@@ -59,7 +59,7 @@ describe('saveReciteMissCards', () => {
       note_type: 'Basic',
       source_ref: { kind: 'mindmap', id: 'mm_1', title: '线性代数' },
     });
-    expect(request.cards[0]).toMatchObject({ front: 'F1', back: 'B1', tags: ['导图背诵', '线性代数'] });
+    expect(request.cards[0]).toMatchObject({ front: 'F1', back: 'B1', tags: ['导图背诵', 'mindmap-card', '线性代数'] });
     expect(invoke).toHaveBeenCalledWith('fsrs_enqueue_cards', { ankiCardIds: ['c1', 'c2'] });
   });
 

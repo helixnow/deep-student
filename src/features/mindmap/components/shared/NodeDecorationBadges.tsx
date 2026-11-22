@@ -13,12 +13,30 @@ import { useTranslation } from 'react-i18next';
 import { Check, LinkSimple } from '@phosphor-icons/react';
 import { openUrl } from '@/utils/urlOpener';
 
-/** 优先级 → 语义色（1 最高）。1/2 用警示族，3 用主色，其余中性 */
-function priorityColor(priority: number): string {
-  if (priority <= 1) return 'hsl(var(--destructive))';
-  if (priority === 2) return 'hsl(var(--warning, 38 92% 50%))';
-  if (priority === 3) return 'hsl(var(--primary))';
-  return 'var(--mm-text-muted)';
+/** 优先级 → 语义底色与配对前景色（1 最高）。确保明暗模式对比度均 ≥ 4.5:1 */
+function priorityStyle(priority: number): React.CSSProperties {
+  if (priority <= 1) {
+    return {
+      backgroundColor: 'hsl(var(--destructive))',
+      color: 'hsl(var(--destructive-foreground))',
+    };
+  }
+  if (priority === 2) {
+    return {
+      backgroundColor: 'hsl(var(--warning, 38 92% 50%))',
+      color: 'hsl(var(--warning-foreground, 222 47% 11%))',
+    };
+  }
+  if (priority === 3) {
+    return {
+      backgroundColor: 'hsl(var(--primary))',
+      color: 'hsl(var(--primary-foreground))',
+    };
+  }
+  return {
+    backgroundColor: 'var(--mm-text-muted)',
+    color: 'var(--mm-bg-elevated)',
+  };
 }
 
 export const PriorityBadge: React.FC<{ priority: number }> = ({ priority }) => {
@@ -27,7 +45,7 @@ export const PriorityBadge: React.FC<{ priority: number }> = ({ priority }) => {
   return (
     <span
       className="mm-deco-priority select-none"
-      style={{ backgroundColor: priorityColor(level) }}
+      style={priorityStyle(level)}
       title={t('node.priorityBadge', { level, defaultValue: `优先级 ${level}` })}
       aria-label={t('node.priorityBadge', { level, defaultValue: `优先级 ${level}` })}
     >

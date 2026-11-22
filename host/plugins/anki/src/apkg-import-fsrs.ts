@@ -4,6 +4,8 @@
  * 只做纯换算；向 `fsrs_card_states` / `fsrs_review_logs` 写入由 L15 的
  * `review.enqueueImportedCardsInTx` 在调用方事务内完成（decisions D1/D4）。
  */
+import type { FsrsImportedReviewLog } from '../../review/api.ts';
+import type { AnkiRevlogRow } from '../repository/apkg-import.ts';
 import {
   ANKI_DUE_TIMESTAMP_THRESHOLD,
   FSRS_DECAY,
@@ -109,8 +111,84 @@ export function ankiSchedToFsrs(
   };
 }
 
+/**
+ * 把单张卡的 Anki `revlog` 行序列逆映射为 FSRS 复习日志条（`apkg-export-model.ts:321-350` 对称逆运算）。
+ * 过滤掉无效评分（非 1..4）及非正时间戳行，并按 `reviewMs` 升序排列。
+ */
+export function convertAnkiRevlogRows(rows: readonly AnkiRevlogRow[]): FsrsImportedReviewLog[] {
+  const valid = rows.filter(
+    (row) => Number.isInteger(row.ease) && row.ease >= 1 && row.ease <= 4
+      && Number.isFinite(row.id) && row.id > 0,
+  );
+  if (valid.length === 0) return [];
+  const ordered = [...valid].sort((left, right) => left.id - right.id);
+  const out: FsrsImportedReviewLog[] = [];
+  let prevReviewMs: number | null = null;
+  let prevStateAfter: number | null = null;
+
+  for (const row of ordered) {
+    const reviewMs = Math.trunc(row.id);
+    const rating = row.ease;
+    let stateBefore: number;
+    if (row.type === 1) {
+      stateBefore = FSRS_STATE_REVIEW;
+    } else if (row.type === 2) {
+      stateBefore = FSRS_STATE_RELEARNING;
+    } else if (row.type === 0) {
+      stateBefore = prevStateAfter === null && row.lastIvl === 0
+        ? FSRS_STATE_NEW
+        : FSRS_STATE_LEARNING;
+    } else {
+      stateBefore = prevStateAfter ?? (
+        row.lastIvl > 0
+          ? FSRS_STATE_REVIEW
+          : row.lastIvl < 0
+            ? FSRS_STATE_LEARNING
+            : FSRS_STATE_NEW
+      );
+    }
+
+    const stateAfter = row.ivl > 0
+      ? FSRS_STATE_REVIEW
+      : (stateBefore === FSRS_STATE_REVIEW || stateBefore === FSRS_STATE_RELEARNING)
+          ? FSRS_STATE_RELEARNING
+          : FSRS_STATE_LEARNING;
+
+    const scheduledDays = row.ivl > 0 ? Math.trunc(row.ivl) : 0;
+    const dueAfterMs = row.ivl > 0
+      ? reviewMs + Math.trunc(row.ivl) * MS_PER_DAY
+      : row.ivl < 0
+        ? reviewMs + Math.trunc(-row.ivl) * 1000
+        : reviewMs;
+    const elapsedDays = prevReviewMs !== null
+      ? Math.max(0, Math.round((reviewMs - prevReviewMs) / MS_PER_DAY))
+      : row.lastIvl > 0
+        ? Math.trunc(row.lastIvl)
+        : 0;
+    const durationMs = row.time >= 0 && Number.isFinite(row.time)
+      ? Math.min(600_000, Math.trunc(row.time))
+      : null;
+
+    out.push({
+      rating,
+      stateBefore,
+      stateAfter,
+      scheduledDays,
+      elapsedDays,
+      reviewMs,
+      dueAfterMs,
+      durationMs,
+    });
+    prevReviewMs = reviewMs;
+    prevStateAfter = stateAfter;
+  }
+
+  return out;
+}
+
 /** APKG 导入入队 Seed；与 L15 `FsrsImportedCard` 结构一致。 */
 export interface EnqueueSeed {
   cardId: string;
   seed: FsrsImportedSchedule | null;
+  reviewLogs?: readonly FsrsImportedReviewLog[];
 }

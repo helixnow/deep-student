@@ -21,6 +21,8 @@ import {
   selectMultimodalObserver, validGenerationConfig, validateRetrievalRequest,
   validateRouteConfigFingerprint, type OcrEngineType, type RetrievalApiConfig,
 } from '../src/unified-retriever.ts';
+import { bm25Scores, MAX_SCORED_DOC_CHARS } from '../src/lexical-bm25.ts';
+import { scopedVectorResourceIds } from '../repository/retrieval.ts';
 import {
   embeddingAvailable, fuseRouteResults, planRetrieval, unavailableCapability,
 } from '../src/retrieval-planner.ts';
@@ -1018,5 +1020,98 @@ describe('RF-W04-blob-relative-path-escape: synced blobs.relative_path cannot po
     } finally {
       await host.dispose();
     }
+  });
+});
+
+describe('BUG-02 / BUG-07 regression tests', () => {
+  it('excludes soft-deleted notes, disabled units, and soft-deleted files across lexical, vector, and scoped queries', async () => {
+    const { db, blobsDir } = freshDb();
+    const registered = registerWithModel(db, 128, 'text', 'model-text', 'Text embedding');
+    const profileId = registered.active_profile_id!;
+    const route = {
+      routeId: 'text-profile',
+      kind: 'text_embedding' as const,
+      profileId,
+      modelConfigId: 'model-text',
+      expectedModelFingerprint: 'fingerprint-model-text',
+      dimension: 128,
+      modality: 'text',
+      weight: 1,
+      fetchLimit: 30,
+    };
+
+    // 1. Live note (should appear)
+    const live = insertLexicalUnit(db, 'note_live', 'quantum softdelete probe');
+    db.run(`INSERT INTO notes (id, resource_id, title, created_at, updated_at, deleted_at)
+      VALUES ('note_live', ?1, 'Live', '2026-01-01', '2026-01-01', NULL)`, [live.resourceId]);
+    db.run('UPDATE vfs_index_units SET text_profile_id = ?2, text_generation = 1 WHERE id = ?1', [live.unitId, profileId]);
+    insertSegment(db, live.unitId, { lanceRowId: 'row_live', contentText: 'quantum softdelete probe', generation: 1, profileId });
+
+    // 2. Soft-deleted note with stale indexed unit/resource (must be excluded)
+    const delNote = insertLexicalUnit(db, 'note_deleted', 'quantum softdelete probe');
+    db.run(`INSERT INTO notes (id, resource_id, title, created_at, updated_at, deleted_at)
+      VALUES ('note_deleted', ?1, 'Deleted', '2026-01-01', '2026-01-01', '2026-01-02')`, [delNote.resourceId]);
+    db.run('UPDATE vfs_index_units SET text_profile_id = ?2, text_generation = 1 WHERE id = ?1', [delNote.unitId, profileId]);
+    insertSegment(db, delNote.unitId, { lanceRowId: 'row_del_note', contentText: 'quantum softdelete probe', generation: 1, profileId });
+
+    // 3. Disabled unit even if resource is pending/indexed (must be excluded)
+    const disabledUnit = insertLexicalUnit(db, 'note_disabled_unit', 'quantum softdelete probe');
+    db.run("UPDATE vfs_index_units SET text_state = 'disabled', text_profile_id = ?2, text_generation = 1 WHERE id = ?1", [disabledUnit.unitId, profileId]);
+    insertSegment(db, disabledUnit.unitId, { lanceRowId: 'row_disabled_unit', contentText: 'quantum softdelete probe', generation: 1, profileId });
+
+    // 4. Soft-deleted file (must be excluded via isSourceSoftDeleted)
+    const delFile = insertLexicalUnit(db, 'file_deleted', 'quantum softdelete probe');
+    db.run("UPDATE resources SET type = 'file', source_table = 'files' WHERE id = ?1", [delFile.resourceId]);
+    db.run(`INSERT INTO files (id, resource_id, sha256, file_name, size, type, created_at, updated_at, deleted_at)
+      VALUES ('file_deleted', ?1, 'sha_del', 'del.pdf', 10, 'file', '2026-01-01', '2026-01-01', '2026-01-02')`, [delFile.resourceId]);
+    db.run('UPDATE vfs_index_units SET text_profile_id = ?2, text_generation = 1 WHERE id = ?1', [delFile.unitId, profileId]);
+    insertSegment(db, delFile.unitId, { lanceRowId: 'row_del_file', contentText: 'quantum softdelete probe', generation: 1, profileId });
+
+    const ftsHits = await executeFtsRoute(db, 'quantum softdelete probe', textRequest('quantum softdelete probe', 10), 10, blobsDir);
+    expect(ftsHits.map((h) => h.identity.resourceId)).toEqual([live.resourceId]);
+
+    const lanceRow = (embeddingId: string, resourceId: string, unitId: string, sourceId: string): VfsLanceSearchResult => ({
+      embedding_id: embeddingId,
+      resource_id: resourceId,
+      unit_id: unitId,
+      resource_type: 'note',
+      folder_id: null,
+      chunk_index: 0,
+      text: 'quantum softdelete probe',
+      score: 0.9,
+      metadata_json: null,
+      index_profile_id: profileId,
+      generation: 1,
+      page_index: 0,
+      source_id: sourceId,
+    });
+    const vectorHits = await lanceRowsToHits(db, [
+      lanceRow('row_live', live.resourceId, live.unitId, 'note_live'),
+      lanceRow('row_del_note', delNote.resourceId, delNote.unitId, 'note_deleted'),
+      lanceRow('row_disabled_unit', disabledUnit.resourceId, disabledUnit.unitId, 'note_disabled_unit'),
+      lanceRow('row_del_file', delFile.resourceId, delFile.unitId, 'file_deleted'),
+    ], route, textRequest('quantum softdelete probe', 10), blobsDir);
+    expect(vectorHits.map((h) => h.identity.resourceId)).toEqual([live.resourceId]);
+
+    const scoped = scopedVectorResourceIds(db, {
+      effectiveFolderIds: [],
+      mountedResourceIds: [live.resourceId, delNote.resourceId],
+    }, null);
+    expect(scoped).toEqual([live.resourceId]);
+  });
+
+  it('MAX_SCORED_DOC_CHARS is 100_000 and bm25Scores scores late matches in huge docs with full docLen normalization', () => {
+    expect(MAX_SCORED_DOC_CHARS).toBe(100_000);
+    const tailMatchDoc = `${'filler '.repeat(20_000)}eigenvalue theorem`; // > 140_000 chars
+    const focusedDoc = 'eigenvalue theorem';
+    const decoyDoc = 'scatter '.repeat(20_000); // > 160_000 chars, no 'cat' token
+    const scores = bm25Scores(['eigenvalue', 'theorem'], [tailMatchDoc, focusedDoc, decoyDoc]);
+    expect(scores[0]).toBeGreaterThan(0);
+    expect(scores[1]).toBeGreaterThan(scores[0]!);
+    expect(scores[2]).toBe(0);
+
+    // Ensure substring decoy in head doesn't hide true late token match
+    const substringHeadPlusLateToken = `${'scatter '.repeat(15_000)}cat`;
+    expect(bm25Scores(['cat'], [substringHeadPlusLateToken, 'unrelated'])[0]).toBeGreaterThan(0);
   });
 });

@@ -11,6 +11,7 @@ import { togglePlugin } from './plugins/toggle';
 import { wikilinkSchema } from './plugins/wikilink/schema';
 import { remarkWikilinkPlugin } from './plugins/wikilink/remark';
 import { blockIdentityPlugin } from './plugins/blockIdentity';
+import { installMilkdownCtxCompat } from './milkdownCtxCompat';
 import { columnsSchema, columnSchema } from './plugins/columns/schema';
 import { remarkColumnsPlugin } from './plugins/columns/remark';
 import { COLUMNS_TYPE } from './plugins/columns/format';
@@ -97,6 +98,7 @@ export async function createOfficialDiffAdapter(options: {
     [CrepeFeature.AI]: false, [CrepeFeature.Toolbar]: false,
     [CrepeFeature.BlockEdit]: false, [CrepeFeature.LinkTooltip]: false,
   } });
+  installMilkdownCtxCompat(crepe.editor.ctx);
   crepe.editor.use(calloutPlugin()).use(togglePlugin()).use(diff).use(diffComponent);
   crepe.editor.use([remarkWikilinkPlugin, wikilinkSchema, remarkColumnsPlugin, columnsSchema, columnSchema].flat())
     .use(blockIdentityPlugin());

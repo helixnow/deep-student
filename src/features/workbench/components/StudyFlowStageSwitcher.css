@@ -138,10 +138,17 @@
 }
 
 @media (pointer: coarse) {
+  .wb-stage-switcher {
+    height: auto;
+    min-height: 44px;
+  }
+
   .wb-stage-pill,
   .wb-stage-sidecar-btn,
   .wb-stage-compact-trigger {
     position: relative;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .wb-stage-pill::after,
@@ -149,10 +156,10 @@
   .wb-stage-compact-trigger::after {
     content: '';
     position: absolute;
-    inset: -6px 0;
+    inset: -2px 0;
   }
 
   .wb-stage-compact-item {
-    min-height: 36px;
+    min-height: 44px;
   }
 }

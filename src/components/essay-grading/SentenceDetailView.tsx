@@ -133,10 +133,10 @@ const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
   switch (marker.type) {
     case 'replace':
       return (
-        <div className="flex items-start gap-2 text-sm">
-          <span className="text-destructive/80 line-through decoration-destructive/50 bg-destructive/[0.05] px-1 rounded-sm">{marker.oldText}</span>
+        <div className="flex flex-wrap items-start gap-2 text-sm">
+          <span className="max-w-full break-words text-destructive/80 line-through decoration-destructive/50 bg-destructive/[0.05] px-1 rounded-sm">{marker.oldText}</span>
           <ArrowRight size={15} className="text-muted-foreground/40 shrink-0 mt-0.5" />
-          <span className="text-amber-700 dark:text-amber-400 font-medium bg-amber-500/[0.07] px-1 rounded-sm">{marker.newText}</span>
+          <span className="max-w-full break-words text-amber-700 dark:text-amber-400 font-medium bg-amber-500/[0.07] px-1 rounded-sm">{marker.newText}</span>
           {marker.newText && (
             <InlineCopyButton text={marker.newText} label={copyLabel} copiedLabel={copiedLabel} />
           )}
@@ -144,14 +144,14 @@ const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
       );
     case 'del':
       return (
-        <div className="text-sm">
+        <div className="text-sm break-words">
           <span className="text-destructive/80 line-through decoration-destructive/50 bg-destructive/[0.05] px-1 rounded-sm">{marker.content}</span>
         </div>
       );
     case 'ins':
       return (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-amber-700 dark:text-amber-400 bg-amber-500/[0.07] px-1 rounded-sm">{marker.content}</span>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="max-w-full break-words text-amber-700 dark:text-amber-400 bg-amber-500/[0.07] px-1 rounded-sm">{marker.content}</span>
           <InlineCopyButton text={marker.content} label={copyLabel} copiedLabel={copiedLabel} />
         </div>
       );

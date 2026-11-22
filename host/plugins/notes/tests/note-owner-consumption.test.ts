@@ -47,12 +47,13 @@ describe('N5 / L10-V2-01 notes consumes the real L11 owner on the caller connect
     const owner = host.ctx.vfsRepo.noteOwnerWrites!;
     const soft = vi.spyOn(owner, 'softDeleteNoteMembershipsWithConn');
     const disable = vi.spyOn(owner, 'disableNoteUnitsWithConn');
+    const reenable = vi.spyOn(owner, 'reenableNoteUnitsWithConn');
     const restore = vi.spyOn(owner, 'restoreLatestDeletedNoteMembershipWithConn');
     const note = repo.createNoteInFolder({ title: 'owner memberships', content: 'body' }, null, db);
     db.run(`INSERT INTO folder_items (id,item_type,item_id,created_at,updated_at,deleted_at)
       VALUES ('fi_owner_old','note',?1,1,2,'old deletion')`, [note.id]);
-    db.run(`INSERT INTO vfs_index_units (id,resource_id,unit_index,text_state,mm_state,created_at,updated_at)
-      VALUES ('unit_owner',?1,0,'indexed','failed',1,2)`, [note.resourceId]);
+    db.run(`INSERT INTO vfs_index_units (id,resource_id,unit_index,text_content,text_required,text_state,mm_state,created_at,updated_at)
+      VALUES ('unit_owner',?1,0,'body',1,'indexed','failed',1,2)`, [note.resourceId]);
     repo.deleteNoteWithFolderItem(note.id, db);
     expect(soft).toHaveBeenCalledWith(db, note.id, expect.any(String), expect.any(Number));
     expect(disable).toHaveBeenCalledWith(db, note.resourceId);
@@ -61,8 +62,29 @@ describe('N5 / L10-V2-01 notes consumes the real L11 owner on the caller connect
       .toEqual({ text_state: 'disabled', mm_state: 'disabled', updated_at: 2 });
     repo.restoreNote(note.id, db);
     expect(restore).toHaveBeenCalledWith(expect.anything(), note.id, expect.any(Number));
+    expect(reenable).toHaveBeenCalledWith(db, note.resourceId);
+    expect(db.get('SELECT text_state,mm_state,updated_at FROM vfs_index_units WHERE id=\'unit_owner\''))
+      .toEqual({ text_state: 'pending', mm_state: 'disabled', updated_at: 2 });
     expect(db.pluck("SELECT COUNT(*) FROM folder_items WHERE item_id=?1 AND deleted_at IS NULL", [note.id])).toBe(1);
     expect(db.pluck("SELECT deleted_at FROM folder_items WHERE id='fi_owner_old'")).toBe('old deletion');
+
+    const directNote = repo.createNote({ title: 'direct delete', content: 'direct body' }, db);
+    db.run(`INSERT INTO vfs_index_units (id,resource_id,unit_index,text_content,text_required,text_state,mm_state,created_at,updated_at)
+      VALUES ('unit_direct',?1,0,'direct body',1,'indexed','indexed',1,2)`, [directNote.resourceId]);
+    repo.deleteNote(directNote.id, db);
+    expect(db.get("SELECT text_state,mm_state FROM vfs_index_units WHERE id='unit_direct'"))
+      .toEqual({ text_state: 'disabled', mm_state: 'disabled' });
+    repo.restoreNote(directNote.id, db);
+    expect(db.get("SELECT text_state,mm_state FROM vfs_index_units WHERE id='unit_direct'"))
+      .toEqual({ text_state: 'pending', mm_state: 'disabled' });
+
+    const occNote = repo.createNote({ title: 'occ delete', content: 'occ body' }, db);
+    const liveOcc = repo.getNote(occNote.id, db)!;
+    db.run(`INSERT INTO vfs_index_units (id,resource_id,unit_index,text_content,text_required,text_state,mm_state,created_at,updated_at)
+      VALUES ('unit_occ',?1,0,'occ body',1,'indexed','indexed',1,2)`, [occNote.resourceId]);
+    repo.deleteNoteIfVersion!(occNote.id, liveOcc.updatedAt, db);
+    expect(db.get("SELECT text_state,mm_state FROM vfs_index_units WHERE id='unit_occ'"))
+      .toEqual({ text_state: 'disabled', mm_state: 'disabled' });
   });
 
   it('test_purge_note_removes_all_owned_resources rolls back a real owner SQL failure and permits retry', () => {

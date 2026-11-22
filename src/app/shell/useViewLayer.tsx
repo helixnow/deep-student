@@ -1,6 +1,7 @@
-import React, { Suspense, useMemo, useState } from 'react';
+import React, { Suspense, useCallback, useMemo, useState } from 'react';
 import type { TFunction } from 'i18next';
 import type { CurrentView } from '@/types/navigation';
+import { runUnifiedBack } from '@/app/navigation/androidBackCoordinator';
 import { MobilePageScaffold } from '@/components/layout';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { FeatureUnavailablePanel } from '@/components/system-status/FeatureUnavailablePanel';
@@ -40,7 +41,22 @@ import type { ShellView, ShellViewContribution } from '@/ui-kernel/contracts/she
 /**
  * dashboard / settings 视图内容。
  */
-export function useDashboardAndSettingsContents(currentView: CurrentView, isSmallScreen: boolean, setCurrentView: SetCurrentView) {
+export function useDashboardAndSettingsContents(
+  currentView: CurrentView,
+  isSmallScreen: boolean,
+  setCurrentView: SetCurrentView,
+  onBack?: () => void,
+) {
+  const handleBack = useCallback(() => {
+    if (onBack) {
+      onBack();
+      return;
+    }
+    if (!runUnifiedBack()) {
+      setCurrentView('chat-v2');
+    }
+  }, [onBack, setCurrentView]);
+
   // 🚀 性能优化：memoize 各视图内容，防止切换视图时所有已缓存视图子树被重新协调
   // 当 App 因 currentView 变化而重渲染时，useMemo 返回相同的 React 元素引用，
   // React 协调器看到相同引用后会跳过整个子树的 diff，大幅减少切换耗时。
@@ -51,7 +67,7 @@ export function useDashboardAndSettingsContents(currentView: CurrentView, isSmal
     isSmallScreen ? (
       <Suspense fallback={<PageLoadingFallback />}>
         <LazySOTADashboard
-          onBack={() => setCurrentView('chat-v2')}
+          onBack={handleBack}
           onNavigate={(view) => setCurrentView(view)}
         />
       </Suspense>
@@ -59,23 +75,23 @@ export function useDashboardAndSettingsContents(currentView: CurrentView, isSmal
       <CustomScrollArea className="flex-1" viewportClassName="flex-1" trackOffsetTop={12} trackOffsetBottom={12}>
         <Suspense fallback={<PageLoadingFallback />}>
           <LazySOTADashboard
-            onBack={() => setCurrentView('chat-v2')}
+            onBack={handleBack}
             onNavigate={(view) => setCurrentView(view)}
           />
         </Suspense>
       </CustomScrollArea>
     )
-  ), [isSmallScreen, setCurrentView]);
+  ), [handleBack, isSmallScreen, setCurrentView]);
 
   const isSettingsActive = currentView === 'settings';
   const settingsContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
       <LazySettings
-        onBack={() => setCurrentView('chat-v2')}
+        onBack={handleBack}
         isActive={isSettingsActive}
       />
     </Suspense>
-  ), [isSettingsActive, setCurrentView]);
+  ), [handleBack, isSettingsActive]);
 
   return { dashboardContent, settingsContent };
 }
@@ -284,16 +300,22 @@ export function useViewLayer(options: ViewLayerOptions): React.ReactNode[] {
   );
 
   // data-management: 依赖仅在导入对话框打开/语言切换时变化
+  const handleDataManagementBack = useCallback(() => {
+    if (!runUnifiedBack()) {
+      setCurrentView('chat-v2');
+    }
+  }, [setCurrentView]);
+
   const dataManagementContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
-      <LazyDataImportExport onBack={() => setCurrentView('chat-v2')} />
+      <LazyDataImportExport onBack={handleDataManagementBack} />
       <LazyImportConversationDialog
         open={showImportConversation}
         onOpenChange={setShowImportConversation}
         onImportSuccess={handleImportConversationSuccess}
       />
     </Suspense>
-  ), [showImportConversation, handleImportConversationSuccess, setCurrentView, setShowImportConversation]);
+  ), [showImportConversation, handleImportConversationSuccess, handleDataManagementBack, setShowImportConversation]);
 
   const {
     todoContent,

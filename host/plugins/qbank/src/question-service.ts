@@ -379,7 +379,7 @@ function buildDailyProgress(host: QuestionServiceHost, examId: string): DailyPro
 
 export interface VerdictOutcome {
   changed: boolean; updated_question: Question; updated_stats: QuestionBankStats;
-  mastery_state: unknown | null; needs_review_plan: boolean;
+  mastery_state: unknown | null; needs_review_plan: boolean; should_advance_review_plan: boolean;
 }
 
 /** question_bank_service.rs:820-957 */
@@ -393,7 +393,7 @@ export function applySubmissionVerdict(host: QuestionServiceHost, conn: SqlExecu
   if (!outcome.changed) {
     return { changed: false, updated_question: outcome.updated_question,
       updated_stats: host.questions.refreshStats(conn, question.exam_id),
-      mastery_state: null, needs_review_plan: false };
+      mastery_state: null, needs_review_plan: false, should_advance_review_plan: false };
   }
 
   // mastery 与仓储写入共用同一个 SqlExecutor；SM-2/profile 仍由调用方在提交后执行。
@@ -404,7 +404,7 @@ export function applySubmissionVerdict(host: QuestionServiceHost, conn: SqlExecu
   return {
     changed: true, updated_question: outcome.updated_question,
     updated_stats: host.questions.refreshStats(conn, question.exam_id), mastery_state: masteryState,
-    needs_review_plan: !newIsCorrect,
+    needs_review_plan: !newIsCorrect, should_advance_review_plan: newIsCorrect,
   };
 }
 
@@ -484,6 +484,8 @@ export function submitAnswer(host: QuestionServiceHost, questionId: string, user
         ensureReviewPlan(host, questionId, outcome.question.exam_id, {
           logSuccess: false, failureLabel: 'Failed to auto-create review plan after regrade for',
         });
+      } else if (outcome.verdict.should_advance_review_plan) {
+        advanceDueReviewPlan(host, questionId);
       }
       syncProfile(host, questionId, outcome.verdict.mastery_state);
       if (outcome.verdict.changed) {
@@ -535,6 +537,8 @@ export function regradeSubmission(host: QuestionServiceHost, questionId: string,
       ensureReviewPlan(host, questionId, outcome.question.exam_id, {
         logSuccess: false, failureLabel: 'Failed to auto-create review plan after regrade for',
       });
+    } else if (outcome.verdict.should_advance_review_plan) {
+      advanceDueReviewPlan(host, questionId);
     }
     syncProfile(host, questionId, outcome.verdict.mastery_state);
     if (outcome.verdict.changed) {

@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { DotsSixVertical } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
+import { addTypedEventListener } from '@/events';
 
 /** 从 localStorage 读取持久化的分栏比例（0..1 之外/非法值一律忽略） */
 function loadStoredRatio(storageKey: string | undefined): number | null {
@@ -81,17 +82,16 @@ export const HorizontalResizable: React.FC<HorizontalResizableProps> = ({
       e.preventDefault();
     };
     const onUp = () => setDragging(false);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    window.addEventListener('touchmove', onMove, { passive: false });
-    window.addEventListener('touchend', onUp);
+    const cleanups = [
+      addTypedEventListener('mousemove', (_d, e) => onMove(e as unknown as MouseEvent)),
+      addTypedEventListener('mouseup', () => onUp()),
+      addTypedEventListener('touchmove', (_d, e) => onMove(e as unknown as TouchEvent), { passive: false }),
+      addTypedEventListener('touchend', () => onUp()),
+    ];
     return () => {
       if (rafId !== 0) cancelAnimationFrame(rafId);
       pendingX = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      window.removeEventListener('touchmove', onMove);
-      window.removeEventListener('touchend', onUp);
+      cleanups.forEach((dispose) => dispose());
     };
   }, [dragging, minLeft, minRight]);
 
@@ -177,17 +177,16 @@ export const VerticalResizable: React.FC<VerticalResizableProps> = ({
       e.preventDefault();
     };
     const onUp = () => setDragging(false);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    window.addEventListener('touchmove', onMove, { passive: false });
-    window.addEventListener('touchend', onUp);
+    const cleanups = [
+      addTypedEventListener('mousemove', (_d, e) => onMove(e as unknown as MouseEvent)),
+      addTypedEventListener('mouseup', () => onUp()),
+      addTypedEventListener('touchmove', (_d, e) => onMove(e as unknown as TouchEvent), { passive: false }),
+      addTypedEventListener('touchend', () => onUp()),
+    ];
     return () => {
       if (rafId !== 0) cancelAnimationFrame(rafId);
       pendingY = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      window.removeEventListener('touchmove', onMove);
-      window.removeEventListener('touchend', onUp);
+      cleanups.forEach((dispose) => dispose());
     };
   }, [dragging, minTop, minBottom]);
 

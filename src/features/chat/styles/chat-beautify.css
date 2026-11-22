@@ -206,6 +206,19 @@
   max-width: none;
 }
 
+.chat-v2 .chat-empty-composer-layout__message-list [data-overlayscrollbars-viewport],
+.chat-v2 .chat-empty-composer-layout__message-list [data-overlayscrollbars] {
+  padding-inline: 0;
+  padding-bottom: 0;
+  overflow: hidden !important;
+}
+
+/* 桌面空态消息区高度为 auto，卡片收起时 Framer Motion popLayout 离场节点会短暂
+   以 position: absolute 探出新容器底部；屏蔽内层 OverlayScrollbars 避免右侧闪出临时滑块。 */
+.chat-v2 .chat-empty-composer-layout__message-list .os-scrollbar {
+  display: none !important;
+}
+
 /* --chat-thread-max-w 含占比分支（max(44rem, ratio%)，见 shadcn-variables.css）：
    空态 stack 与加载骨架的 padding 挂在 thread shell 自身（px-4 md:px-8），其
    max-width 百分比基数是未减 padding 的父宽，需按 (父宽−4rem)×占比 计算才能与

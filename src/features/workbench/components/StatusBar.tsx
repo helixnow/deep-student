@@ -9,25 +9,44 @@
  * 隐藏至顶缘 4px 热区，reveal ~180ms / conceal ~150ms 防误触（对齐 Dock autohide）。
  * Windows：三键（最小化/最大化/关闭）直接融入顶栏最右端，整条空白区可拖拽。
  */
-import React, { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useTranslation } from 'react-i18next';
 import {
+  Browser,
   Cards,
+  Drop,
+  DropHalf,
   GearSix,
+  Image,
   Lightning,
   MagnifyingGlass,
+  Moon,
   Notebook,
   Robot,
+  Rows,
   SquaresFour,
+  Sun,
   Timer,
   WarningDiamond,
 } from '@phosphor-icons/react';
 import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
+import { DsButton } from '@/components/ui/DsButton';
 import { WindowControls } from '@/components/WindowControls';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { useTheme } from '@/hooks/useTheme';
+import { getSetting, saveSetting } from '@/utils/settingsApi';
 import { toggleAppsPanel, useAppsPanelOpen } from './appsPanelStore';
 import { useDesktopName } from './desktopNameStore';
 import { StatusBarBrandMenu } from './StatusBarBrandMenu';
@@ -38,6 +57,11 @@ import {
   useMenuBarAutohide,
   useMenuBarAutohideStore,
 } from './menuBarAutohideStore';
+import {
+  DEFAULT_WALLPAPER,
+  WALLPAPER_PRESETS,
+  type WallpaperConfig,
+} from './WallpaperLayer';
 import {
   getAutomationSummary,
   type AutomationSummary,
@@ -53,6 +77,13 @@ import {
   subscribeAnkiTaskCount,
 } from '../apps/system/ankiTaskSource';
 import { workbenchBus } from '../core/workbenchBus';
+import { parsePersistedWallpaper } from '../core/persistedSettings';
+import {
+  initLiquidGlassAppearance,
+  MAX_GLASS_CLARITY,
+  MIN_GLASS_CLARITY,
+  useLiquidGlassClarity,
+} from '../core/liquidGlassAppearanceStore';
 import {
   getTodayLearningSnapshot,
   subscribeTodayLearning,
@@ -66,6 +97,54 @@ import { StudyFlowStageSwitcher } from './StudyFlowStageSwitcher';
 import './StatusBar.css';
 
 export { formatStatusBarTime } from './StatusBarItems';
+
+export type StatusBarMenuId = 'brand' | 'app' | 'window' | 'control-center' | 'clock';
+
+const MENU_CYCLE_ORDER: readonly StatusBarMenuId[] = [
+  'brand',
+  'app',
+  'window',
+  'control-center',
+  'clock',
+];
+
+const MENU_TRIGGER_TEST_IDS: Record<StatusBarMenuId, string> = {
+  brand: 'wb-menubar-brand',
+  app: 'wb-menubar-appmenu',
+  window: 'wb-menubar-windowmenu',
+  'control-center': 'wb-menubar-center',
+  clock: 'wb-menubar-clock',
+};
+
+const DOCK_AUTOHIDE_SETTING_KEY = 'desktop.workbenchDockAutohide';
+const WALLPAPER_SETTING_KEY = 'desktop.workbenchWallpaper';
+
+async function persistWorkbenchSetting(
+  key: string,
+  raw: string,
+  parsed: unknown,
+): Promise<void> {
+  try {
+    await saveSetting(key, raw);
+  } catch {
+    // 落盘失败仍派发热更新，本次会话内即时生效
+  }
+  try {
+    window.dispatchEvent(
+      new CustomEvent('workbench:settings-changed', { detail: { key, value: parsed } }),
+    );
+  } catch {
+    // noop
+  }
+}
+
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  if (target instanceof HTMLTextAreaElement) return true;
+  if (target instanceof HTMLInputElement && target.type !== 'range') return true;
+  return false;
+}
 
 /** Flyout 内番茄详情：单独订阅 timeLeft，避免 1Hz 刷整棵 StatusBar */
 const PomodoroFlyoutDetail: React.FC = () => {
@@ -143,7 +222,7 @@ const RhythmReviewRows: React.FC<{ onPick: (fn: () => void) => () => void }> = (
 };
 
 const FLYOUT_FOCUSABLE =
-  'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+  'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
 
 const FLASHCARDS_DUE_PAYLOAD = { screen: 'session', mode: 'due' } as const;
 
@@ -191,25 +270,37 @@ function getFocusable(container: HTMLElement): HTMLElement[] {
 const MENUBAR_FLYOUT_EXIT_MS = 120;
 
 const StatusBarComponent: React.FC = () => {
-  const { t } = useTranslation('workbench');
-  // 相位机：open → closing（播离场）→ closed（卸载）；closing 中再点入口直接回 open
+  const { t, i18n } = useTranslation('workbench');
+  const isEnglish = Boolean(i18n.language?.startsWith('en'));
+  // 统一顶栏展开菜单状态：支持 5 个顶栏菜单的 0ms 横滑切换与 ←/→ 循环
+  const [activeMenuId, setActiveMenuId] = useState<StatusBarMenuId | null>(null);
+  // 控制中心离场相位机：open → closing（播离场）→ closed（卸载）；切至相邻菜单时 0ms 瞬切
   const [centerPhase, setCenterPhase] = useState<'closed' | 'open' | 'closing'>('closed');
-  const centerOpen = centerPhase === 'open';
+  const centerOpen = activeMenuId === 'control-center';
+  const brandMenuOpen = activeMenuId === 'brand';
+  const clockMenuOpen = activeMenuId === 'clock';
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const backdropRef = useRef<HTMLDivElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
   const brandButtonRef = useRef<HTMLButtonElement | null>(null);
-  const [brandMenuOpen, setBrandMenuOpen] = useState(false);
-  const [appMenusOpen, setAppMenusOpen] = useState(false);
-  const [clockOpen, setClockOpen] = useState(false);
   const [stageMenuOpen, setStageMenuOpen] = useState(false);
+  const [clockOverlayMounted, setClockOverlayMounted] = useState(false);
   const [automation, setAutomation] = useState<AutomationSummary | null>(null);
+  const [dockAutohide, setDockAutohide] = useState(false);
+  const [wallpaper, setWallpaper] = useState<WallpaperConfig>(DEFAULT_WALLPAPER);
   const titleId = useId();
+  const claritySliderId = useId();
   const winChromeInset = isWindows();
   const macChrome = isMacOS();
   // Spaces 最小命名：品牌钮悬停提示显示用户命名的桌面（未命名回退默认品牌名）
   const desktopName = useDesktopName();
+  const { isDarkMode, toggleDarkMode } = useTheme();
+  const { clarity, setClarity } = useLiquidGlassClarity();
+  const menuBarAutohideSetting = useMenuBarAutohideStore((s) => s.settingEnabled);
   useLiquidGlassLens(panelRef, centerOpen, { staticOnly: true });
+
+  useEffect(() => {
+    initLiquidGlassAppearance();
+  }, []);
 
   const dueCount = useSyncExternalStore(
     subscribeFlashcardsDueCount,
@@ -228,22 +319,61 @@ const StatusBarComponent: React.FC = () => {
 
   const { skipNextReturn } = useFocusReturn(centerOpen);
 
-  const closeCenter = useCallback(
-    () => setCenterPhase((p) => (p === 'open' ? 'closing' : p)),
-    [],
-  );
-  const closeBrandMenu = useCallback(() => setBrandMenuOpen(false), []);
-  // 浮层互斥（macOS 菜单栏语义：同时最多一个打开的菜单/面板）
-  const toggleCenter = useCallback(() => {
-    setBrandMenuOpen(false);
-    setCenterPhase((p) => (p === 'open' ? 'closing' : 'open'));
+  const closeActiveMenu = useCallback(() => {
+    setActiveMenuId(null);
   }, []);
-  const toggleBrandMenu = useCallback(() => {
-    closeCenter();
-    setBrandMenuOpen((v) => !v);
-  }, [closeCenter]);
+
+  const toggleMenu = useCallback((id: StatusBarMenuId) => {
+    setActiveMenuId((cur) => (cur === id ? null : id));
+  }, []);
+
+  const hoverMenu = useCallback((id: StatusBarMenuId) => {
+    setActiveMenuId((cur) => (cur !== null && cur !== id ? id : cur));
+  }, []);
+
+  const cycleMenu = useCallback((delta: 1 | -1) => {
+    setActiveMenuId((cur) => {
+      if (cur === null) return null;
+      const bar = barRef.current;
+      const visibleOrder = bar
+        ? MENU_CYCLE_ORDER.filter((id) => {
+            const trigger = bar.querySelector<HTMLElement>(
+              `[data-testid="${MENU_TRIGGER_TEST_IDS[id]}"]`,
+            );
+            if (!trigger) return false;
+            return getComputedStyle(trigger).display !== 'none';
+          })
+        : [];
+      const order = visibleOrder.length > 0 ? visibleOrder : MENU_CYCLE_ORDER;
+      const idx = order.indexOf(cur);
+      const base = idx === -1 ? 0 : idx;
+      return order[(base + delta + order.length) % order.length];
+    });
+  }, []);
+
+  const renderedCenterPhase: 'closed' | 'open' | 'closing' = centerOpen ? 'open' : centerPhase;
+
+  // 同步控制中心相位：相邻菜单切换 0ms 瞬切并跳过焦点归还；收起到 null 播离场动画
+  useEffect(() => {
+    if (activeMenuId === 'control-center') {
+      setCenterPhase('open');
+      return;
+    }
+    setCenterPhase((prev) => {
+      if (prev === 'closed') return 'closed';
+      if (activeMenuId !== null) {
+        skipNextReturn();
+        return 'closed';
+      }
+      return 'closing';
+    });
+  }, [activeMenuId, skipNextReturn]);
+
   // 统一搜索入口：打开全部应用面板（应用 + 命令），不再弹独立命令面板
-  const openUnifiedSearch = useCallback(() => toggleAppsPanel(), []);
+  const openUnifiedSearch = useCallback(() => {
+    setActiveMenuId(null);
+    toggleAppsPanel();
+  }, []);
 
   // ---- 菜单栏 autohide（对齐 Dock：reveal ~180ms / conceal ~150ms 防误触）----
   const autohide = useMenuBarAutohide();
@@ -252,7 +382,7 @@ const StatusBarComponent: React.FC = () => {
   const revealTimerRef = useRef(0);
   const concealTimerRef = useRef(0);
   const overlaysOpen =
-    centerPhase !== 'closed' || brandMenuOpen || appMenusOpen || clockOpen || stageMenuOpen;
+    activeMenuId !== null || centerPhase !== 'closed' || clockOverlayMounted || stageMenuOpen;
 
   const updateRevealed = useCallback((next: boolean) => {
     revealedRef.current = next;
@@ -320,35 +450,55 @@ const StatusBarComponent: React.FC = () => {
     scheduleConceal();
   }, [autohide, overlaysOpen, scheduleConceal]);
 
-  // 设置读取：get_setting 启动回放 + workbench:settings-changed 热更新
+  // 设置读取：get_setting 启动回放（菜单栏 / 程序坞自动隐藏 + 当前壁纸）
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const raw = await invoke<string | null>('get_setting', {
-          key: MENUBAR_AUTOHIDE_SETTING_KEY,
-        });
-        if (!cancelled) {
-          useMenuBarAutohideStore.getState().setSettingEnabled(String(raw ?? '') === 'true');
-        }
+        const [menubarRaw, dockRaw, wallpaperRaw] = await Promise.all([
+          invoke<string | null>('get_setting', { key: MENUBAR_AUTOHIDE_SETTING_KEY }).catch(
+            () => null,
+          ),
+          getSetting(DOCK_AUTOHIDE_SETTING_KEY).catch(() => null),
+          getSetting(WALLPAPER_SETTING_KEY).catch(() => null),
+        ]);
+        if (cancelled) return;
+        useMenuBarAutohideStore.getState().setSettingEnabled(String(menubarRaw ?? '') === 'true');
+        setDockAutohide(String(dockRaw ?? '') === 'true');
+        setWallpaper(parsePersistedWallpaper(wallpaperRaw, DEFAULT_WALLPAPER));
       } catch {
-        // 读失败保持默认（不自动隐藏）
+        // 读失败保持默认
       }
     })();
-    const onSettingsChanged = (e: Event) => {
-      const { key, value } = (e as CustomEvent<{ key?: string; value?: unknown }>).detail ?? {};
-      if (key === MENUBAR_AUTOHIDE_SETTING_KEY) {
-        useMenuBarAutohideStore
-          .getState()
-          .setSettingEnabled(value === true || value === 'true');
-      }
-    };
-    window.addEventListener('workbench:settings-changed', onSettingsChanged);
     return () => {
       cancelled = true;
-      window.removeEventListener('workbench:settings-changed', onSettingsChanged);
     };
   }, []);
+
+  // workbench:settings-changed 热更新（集中走 useEventRegistry）
+  const settingsEvents = useMemo(
+    () => [
+      {
+        target: 'window' as const,
+        type: 'workbench:settings-changed',
+        listener: (event: Event) => {
+          const { key, value } =
+            (event as CustomEvent<{ key?: string; value?: unknown }>).detail ?? {};
+          if (key === MENUBAR_AUTOHIDE_SETTING_KEY) {
+            useMenuBarAutohideStore
+              .getState()
+              .setSettingEnabled(value === true || value === 'true');
+          } else if (key === DOCK_AUTOHIDE_SETTING_KEY) {
+            setDockAutohide(value === true || value === 'true');
+          } else if (key === WALLPAPER_SETTING_KEY) {
+            setWallpaper(parsePersistedWallpaper(value, DEFAULT_WALLPAPER));
+          }
+        },
+      },
+    ],
+    [],
+  );
+  useEventRegistry(settingsEvents, [settingsEvents]);
 
   // autohide 时工作区顶到屏幕顶缘（menubar 变 overlay）；属性挂在桌面根上供 CSS 消费
   useEffect(() => {
@@ -429,18 +579,16 @@ const StatusBarComponent: React.FC = () => {
   useEffect(() => {
     // Exposé 或统一搜索面板（⌘K）打开时收起全部菜单栏浮层
     if (exposeOpen || appsPanelOpen) {
-      closeCenter();
-      closeBrandMenu();
+      closeActiveMenu();
     }
-  }, [exposeOpen, appsPanelOpen, closeCenter, closeBrandMenu]);
+  }, [exposeOpen, appsPanelOpen, closeActiveMenu]);
 
   useEffect(() => {
-    // 其它顶栏菜单（聚焦应用/窗口/时钟/阶段）展开时收起学习中心与品牌菜单，保证互斥
-    if (appMenusOpen || clockOpen || stageMenuOpen) {
-      closeCenter();
-      closeBrandMenu();
+    // 阶段切换器紧凑菜单展开时收起顶栏互斥菜单
+    if (stageMenuOpen) {
+      closeActiveMenu();
     }
-  }, [appMenusOpen, clockOpen, stageMenuOpen, closeCenter, closeBrandMenu]);
+  }, [stageMenuOpen, closeActiveMenu]);
 
   // 离场相位：播完 wb-kf-window-close 再真正卸载（jsdom 无动画也走同一定时器）
   useEffect(() => {
@@ -449,36 +597,60 @@ const StatusBarComponent: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [centerPhase]);
 
-  useEffect(() => {
-    if (!centerOpen) return undefined;
-    const onKey = (e: KeyboardEvent) => {
+  // 展开任一顶栏菜单时：统一接管 ←/→ 相邻菜单循环切换与 Escape 关闭（useEventRegistry）
+  const activeMenuKeyboardEvents = useMemo(() => {
+    if (activeMenuId === null) return [];
+    const onKeyDown: EventListener = (event) => {
+      const e = event as KeyboardEvent;
+      if (isEditableKeyboardTarget(e.target)) return;
+      const isRangeInput =
+        e.target instanceof HTMLInputElement && e.target.type === 'range';
       if (e.key === 'Escape') {
+        e.preventDefault();
         e.stopPropagation();
-        closeCenter();
+        closeActiveMenu();
+        return;
+      }
+      if (isRangeInput) return;
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        e.stopPropagation();
+        cycleMenu(1);
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        e.stopPropagation();
+        cycleMenu(-1);
       }
     };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [centerOpen, closeCenter]);
+    return [
+      { target: 'window' as const, type: 'keydown', listener: onKeyDown, options: true },
+    ];
+  }, [activeMenuId, closeActiveMenu, cycleMenu]);
+  useEventRegistry(activeMenuKeyboardEvents, [activeMenuKeyboardEvents]);
 
   useEffect(() => {
     if (!centerOpen) return undefined;
     const panel = panelRef.current;
-    const backdrop = backdropRef.current;
     if (!panel) return undefined;
-
-    if (backdrop) {
-      backdrop.setAttribute('aria-hidden', 'true');
-    }
 
     const focusInitial = () => {
       const focusable = getFocusable(panel);
       (focusable[0] ?? panel).focus({ preventScroll: true });
     };
     const raf = window.requestAnimationFrame(focusInitial);
+    return () => {
+      window.cancelAnimationFrame(raf);
+    };
+  }, [centerOpen]);
 
-    const handleKeyDown = (e: KeyboardEvent) => {
+  // 控制中心 Tab 焦点陷阱（useEventRegistry）
+  const centerFocusTrapEvents = useMemo(() => {
+    if (!centerOpen) return [];
+    const handleKeyDown: EventListener = (event) => {
+      const e = event as KeyboardEvent;
       if (e.key !== 'Tab') return;
+      const panel = panelRef.current;
+      if (!panel) return;
       const focusables = getFocusable(panel);
       if (focusables.length === 0) {
         e.preventDefault();
@@ -499,22 +671,53 @@ const StatusBarComponent: React.FC = () => {
         first.focus({ preventScroll: true });
       }
     };
-
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => {
-      window.cancelAnimationFrame(raf);
-      document.removeEventListener('keydown', handleKeyDown, true);
-    };
+    return [
+      { target: 'document' as const, type: 'keydown', listener: handleKeyDown, options: true },
+    ];
   }, [centerOpen]);
+  useEventRegistry(centerFocusTrapEvents, [centerFocusTrapEvents]);
 
   const runAndClose = useCallback(
     (fn: () => void) => () => {
       skipNextReturn();
-      closeCenter();
+      closeActiveMenu();
       fn();
     },
-    [closeCenter, skipNextReturn],
+    [closeActiveMenu, skipNextReturn],
   );
+
+  // ---- macOS 27 控制中心 2×2 快捷玻璃磁贴动作 ----
+  const handleToggleDockAutohide = useCallback(() => {
+    const next = !dockAutohide;
+    setDockAutohide(next);
+    void persistWorkbenchSetting(DOCK_AUTOHIDE_SETTING_KEY, String(next), next);
+  }, [dockAutohide]);
+
+  const handleToggleMenuBarAutohide = useCallback(() => {
+    const next = !menuBarAutohideSetting;
+    useMenuBarAutohideStore.getState().setSettingEnabled(next);
+    void persistWorkbenchSetting(MENUBAR_AUTOHIDE_SETTING_KEY, String(next), next);
+  }, [menuBarAutohideSetting]);
+
+  const handleCycleWallpaper = useCallback(() => {
+    const currentIdx =
+      wallpaper.kind === 'theme'
+        ? WALLPAPER_PRESETS.findIndex((preset) => preset.id === wallpaper.value)
+        : -1;
+    const nextPreset = WALLPAPER_PRESETS[(currentIdx + 1) % WALLPAPER_PRESETS.length];
+    const nextConfig: WallpaperConfig = { kind: 'theme', value: nextPreset.id };
+    setWallpaper(nextConfig);
+    void persistWorkbenchSetting(WALLPAPER_SETTING_KEY, JSON.stringify(nextConfig), nextConfig);
+  }, [wallpaper]);
+
+  const currentWallpaperName = useMemo(() => {
+    if (wallpaper.kind === 'image') {
+      return t('desktopMenu.customWallpaper');
+    }
+    const preset =
+      WALLPAPER_PRESETS.find((item) => item.id === wallpaper.value) ?? WALLPAPER_PRESETS[0];
+    return t(preset.nameKey);
+  }, [wallpaper, t]);
 
   const handleFlyoutKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
     const panel = panelRef.current;
@@ -545,6 +748,9 @@ const StatusBarComponent: React.FC = () => {
   }, []);
 
   const handleDragMouseDown = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (activeMenuId !== null) {
+      closeActiveMenu();
+    }
     if ((!macChrome && !winChromeInset) || event.button !== 0) return;
     if ((event.target as HTMLElement).closest('[data-no-drag]')) return;
     event.preventDefault();
@@ -553,14 +759,50 @@ const StatusBarComponent: React.FC = () => {
       return;
     }
     void getCurrentWindow().startDragging();
-  }, [macChrome, winChromeInset]);
+  }, [activeMenuId, closeActiveMenu, macChrome, winChromeInset]);
 
   const automationRunning = automation?.runningCount ?? 0;
   const automationFailed = automation?.failedCount ?? 0;
   const automationEnabled = automation?.enabledCount ?? 0;
+  const sharedBackdropTestId =
+    activeMenuId === 'control-center'
+      ? 'wb-menubar-flyout-backdrop'
+      : activeMenuId === 'clock'
+        ? 'wb-menubar-clock-backdrop'
+        : 'wb-menubar-menu-backdrop';
+  const clarityLabel = t('menubar.glassClarity', {
+    defaultValue: isEnglish ? 'Liquid Glass' : '液态玻璃通透度',
+  });
+  const stateOnLabel = t('menubar.controlOn', { defaultValue: isEnglish ? 'On' : '已开启' });
+  const stateOffLabel = t('menubar.controlOff', { defaultValue: isEnglish ? 'Off' : '已关闭' });
+  const appearanceTitle = t('settings:appearance.appearance', {
+    defaultValue: isEnglish ? 'Appearance' : '外观',
+  });
+  const appearanceState = isDarkMode
+    ? t('settings:appearance.theme.dark', { defaultValue: isEnglish ? 'Dark' : '深色' })
+    : t('settings:appearance.theme.light', { defaultValue: isEnglish ? 'Light' : '浅色' });
 
   return (
     <>
+      {/* 单一共享外部点击关闭层：z-index 严格位于 .wb-menubar 之下，
+          不阻挡菜单触发器之间的 pointerenter，实现 0ms 横滑切换 */}
+      {activeMenuId !== null
+        ? createPortal(
+            <div
+              className="wb-menubar-dismiss-backdrop"
+              data-testid={sharedBackdropTestId}
+              aria-hidden="true"
+              onPointerDown={closeActiveMenu}
+              onClick={closeActiveMenu}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                closeActiveMenu();
+              }}
+            />,
+            document.body,
+          )
+        : null}
+
       {/* 顶缘 4px 热区：portal 到 body 且置于菜单栏 React 子树之外，
           避免 React 合成 enter/leave 沿 portal 父链冒泡到菜单栏（会绕过防误触延迟）。
           隐藏时负责滑出；滑出后指针未进入菜单栏就离开顶缘时负责收起
@@ -618,16 +860,24 @@ const StatusBarComponent: React.FC = () => {
           aria-haspopup="menu"
           aria-expanded={brandMenuOpen}
           title={desktopName ?? t('menubar.appName')}
-          onClick={toggleBrandMenu}
+          onClick={() => toggleMenu('brand')}
+          onPointerEnter={() => hoverMenu('brand')}
         >
           <DeepStudentMark className="wb-menubar-brand-mark" title="" />
         </button>
         <StatusBarBrandMenu
           open={brandMenuOpen}
           anchorRef={brandButtonRef}
-          onClose={closeBrandMenu}
+          onClose={closeActiveMenu}
+          hideBackdrop
+          instantExit={activeMenuId !== null}
         />
-        <StatusBarAppMenus onOpenChange={setAppMenusOpen} />
+        <StatusBarAppMenus
+          activeMenuId={activeMenuId}
+          onToggleMenu={toggleMenu}
+          onHoverMenu={hoverMenu}
+          onCloseMenu={closeActiveMenu}
+        />
       </div>
       <div className="wb-menubar-stage-slot" data-no-drag>
         <StudyFlowStageSwitcher onOpenChange={setStageMenuOpen} />
@@ -671,146 +921,275 @@ const StatusBarComponent: React.FC = () => {
           aria-haspopup="dialog"
           aria-expanded={centerOpen}
           title={t('menubar.centerTitle')}
-          onClick={toggleCenter}
+          onClick={() => toggleMenu('control-center')}
+          onPointerEnter={() => hoverMenu('control-center')}
         >
           <SquaresFour size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
         </button>
 
-        {centerPhase !== 'closed' ? (
-          <>
+        {renderedCenterPhase !== 'closed' ? (
+          <div
+            ref={panelRef}
+            className="wb-glass wb-glass-highlight wb-glass-lens wb-menubar-flyout wb-menubar-cc-flyout"
+            data-open="true"
+            data-phase={renderedCenterPhase}
+            data-testid="wb-menubar-flyout"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            tabIndex={-1}
+            onKeyDown={handleFlyoutKeyDown}
+          >
+            <WallpaperReplica hostRef={panelRef} enabled />
+
+            {/* macOS 27 控制中心顶部 2×2 快捷玻璃磁贴 */}
             <div
-              ref={backdropRef}
-              className="wb-menubar-flyout-backdrop"
-              data-testid="wb-menubar-flyout-backdrop"
-              aria-hidden="true"
-              onClick={closeCenter}
-            />
-            <div
-              ref={panelRef}
-              className="wb-glass wb-glass-highlight wb-glass-lens wb-menubar-flyout"
-              data-open="true"
-              data-phase={centerPhase}
-              data-testid="wb-menubar-flyout"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby={titleId}
-              tabIndex={-1}
-              onKeyDown={handleFlyoutKeyDown}
+              className="wb-cc-grid"
+              role="group"
+              aria-label={t('menubar.controlCenterQuick', {
+                defaultValue: isEnglish ? 'Quick Controls' : '快捷控制',
+              })}
+              data-testid="wb-menubar-cc-grid"
             >
-              <WallpaperReplica hostRef={panelRef} enabled />
-              <h2 id={titleId} className="wb-menubar-flyout-title">
-                {t('menubar.centerTitle')}
-              </h2>
-
-              <div
-                className="wb-menubar-rhythm"
-                role="group"
-                aria-label={t('menubar.centerTitle')}
-                data-testid="wb-menubar-rhythm"
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className="wb-cc-tile"
+                data-testid="wb-cc-tile-dock-autohide"
+                data-active={dockAutohide ? 'true' : undefined}
+                aria-pressed={dockAutohide}
+                onClick={handleToggleDockAutohide}
               >
-                <button
-                  type="button"
-                  className="wb-menubar-rhythm-row"
-                  data-testid="wb-menubar-module-flashcards"
-                  data-primary={dueCount > 0 ? 'true' : undefined}
-                  aria-label={`${t('menubar.rhythmFlashcards')}: ${t('menubar.flashcardsDueShort', { count: dueCount })}`}
-                  onClick={runAndClose(launchFlashcardsDue)}
-                >
-                  <span className="wb-menubar-rhythm-icon" aria-hidden="true">
-                    <Cards size={18} weight="duotone" />
+                <span className="wb-cc-tile-badge" aria-hidden="true">
+                  <Rows size={15} weight={dockAutohide ? 'fill' : 'duotone'} />
+                </span>
+                <span className="wb-cc-tile-copy">
+                  <span className="wb-cc-tile-label">{t('settings.dockAutohide.title')}</span>
+                  <span className="wb-cc-tile-sub">
+                    {dockAutohide ? stateOnLabel : stateOffLabel}
                   </span>
-                  <span className="wb-menubar-rhythm-text" aria-hidden="true">
-                    <span className="wb-menubar-rhythm-label">
-                      {t('menubar.rhythmFlashcards')}
-                    </span>
-                    <span className="wb-menubar-rhythm-detail">
-                      {t('menubar.flashcardsDueShort', { count: dueCount })}
-                    </span>
-                  </span>
-                </button>
+                </span>
+              </DsButton>
 
-                <RhythmReviewRows onPick={runAndClose} />
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className="wb-cc-tile"
+                data-testid="wb-cc-tile-menubar-autohide"
+                data-active={menuBarAutohideSetting ? 'true' : undefined}
+                aria-pressed={menuBarAutohideSetting}
+                onClick={handleToggleMenuBarAutohide}
+              >
+                <span className="wb-cc-tile-badge" aria-hidden="true">
+                  <Browser size={15} weight={menuBarAutohideSetting ? 'fill' : 'duotone'} />
+                </span>
+                <span className="wb-cc-tile-copy">
+                  <span className="wb-cc-tile-label">{t('settings.menubarAutohide.title')}</span>
+                  <span className="wb-cc-tile-sub">
+                    {menuBarAutohideSetting ? stateOnLabel : stateOffLabel}
+                  </span>
+                </span>
+              </DsButton>
 
-                <button
-                  type="button"
-                  className="wb-menubar-rhythm-row"
-                  data-testid="wb-menubar-module-pomodoro"
-                  onClick={runAndClose(() => launchApp('pomodoro'))}
-                >
-                  <span className="wb-menubar-rhythm-icon" aria-hidden="true">
-                    <Timer size={18} weight="duotone" />
-                  </span>
-                  <span className="wb-menubar-rhythm-text">
-                    <span className="wb-menubar-rhythm-label">
-                      {t('menubar.rhythmPomodoro')}
-                    </span>
-                    <span className="wb-menubar-rhythm-detail">
-                      <PomodoroFlyoutDetail />
-                    </span>
-                  </span>
-                </button>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className="wb-cc-tile"
+                data-testid="wb-cc-tile-theme"
+                data-active={isDarkMode ? 'true' : undefined}
+                aria-pressed={isDarkMode}
+                onClick={toggleDarkMode}
+              >
+                <span className="wb-cc-tile-badge" aria-hidden="true">
+                  {isDarkMode ? <Moon size={15} weight="fill" /> : <Sun size={15} weight="duotone" />}
+                </span>
+                <span className="wb-cc-tile-copy">
+                  <span className="wb-cc-tile-label">{appearanceTitle}</span>
+                  <span className="wb-cc-tile-sub">{appearanceState}</span>
+                </span>
+              </DsButton>
 
-                <button
-                  type="button"
-                  className="wb-menubar-rhythm-row"
-                  data-testid="wb-menubar-module-automations"
-                  data-status={
-                    automationRunning
-                      ? 'running'
-                      : automationFailed
-                        ? 'error'
-                        : 'idle'
-                  }
-                  aria-label={`${t('menubar.rhythmAutomation')}: ${t('menubar.rhythmAutomationDetail', {
-                    running: automationRunning,
-                    failed: automationFailed,
-                    enabled: automationEnabled,
-                  })}`}
-                  onClick={runAndClose(launchAutomations)}
-                >
-                  <span className="wb-menubar-rhythm-icon" aria-hidden="true">
-                    <Robot size={18} weight="duotone" />
-                  </span>
-                  <span className="wb-menubar-rhythm-text" aria-hidden="true">
-                    <span className="wb-menubar-rhythm-label">
-                      {t('menubar.rhythmAutomation')}
-                    </span>
-                    <span className="wb-menubar-rhythm-detail">
-                      {t('menubar.rhythmAutomationDetail', {
-                        running: automationRunning,
-                        failed: automationFailed,
-                        enabled: automationEnabled,
-                      })}
-                    </span>
-                  </span>
-                </button>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                className="wb-cc-tile"
+                data-testid="wb-cc-tile-wallpaper"
+                onClick={handleCycleWallpaper}
+              >
+                <span className="wb-cc-tile-badge" aria-hidden="true">
+                  <Image size={15} weight="duotone" />
+                </span>
+                <span className="wb-cc-tile-copy">
+                  <span className="wb-cc-tile-label">{t('settings.wallpaper.title')}</span>
+                  <span className="wb-cc-tile-sub">{currentWallpaperName}</span>
+                </span>
+              </DsButton>
+            </div>
 
-                <button
-                  type="button"
-                  className="wb-menubar-rhythm-row"
-                  data-testid="wb-menubar-module-tasks"
-                  aria-label={`${t('menubar.rhythmTasks')}: ${t('menubar.rhythmTasksDetail', { count: taskCount })}`}
-                  onClick={runAndClose(() => launchApp('taskDashboard'))}
-                >
-                  <span className="wb-menubar-rhythm-icon" aria-hidden="true">
-                    <Lightning size={18} weight="duotone" />
-                  </span>
-                  <span className="wb-menubar-rhythm-text" aria-hidden="true">
-                    <span className="wb-menubar-rhythm-label">
-                      {t('menubar.rhythmTasks')}
-                    </span>
-                    <span className="wb-menubar-rhythm-detail">
-                      {t('menubar.rhythmTasksDetail', { count: taskCount })}
-                    </span>
-                  </span>
-                </button>
+            {/* macOS 27 Liquid Glass 连续通透度滑块 */}
+            <div className="wb-cc-clarity" data-testid="wb-cc-clarity">
+              <div className="wb-cc-clarity-header">
+                <label htmlFor={claritySliderId} className="wb-cc-clarity-label">
+                  {clarityLabel}
+                </label>
+                <span className="wb-cc-clarity-value" data-testid="wb-cc-clarity-value">
+                  {clarity}%
+                </span>
+              </div>
+              <div className="wb-cc-clarity-track">
+                <DropHalf
+                  size={15}
+                  weight="duotone"
+                  className="wb-cc-clarity-icon"
+                  aria-hidden="true"
+                />
+                <input
+                  id={claritySliderId}
+                  type="range"
+                  min={MIN_GLASS_CLARITY}
+                  max={MAX_GLASS_CLARITY}
+                  step={1}
+                  value={clarity}
+                  className="wb-cc-clarity-slider"
+                  data-testid="wb-cc-clarity-slider"
+                  aria-label={clarityLabel}
+                  aria-valuemin={MIN_GLASS_CLARITY}
+                  aria-valuemax={MAX_GLASS_CLARITY}
+                  aria-valuenow={clarity}
+                  aria-valuetext={`${clarity}%`}
+                  style={{ '--wb-slider-pct': `${clarity}%` } as React.CSSProperties}
+                  onChange={(e) => setClarity(Number(e.target.value))}
+                />
+                <Drop
+                  size={15}
+                  weight="duotone"
+                  className="wb-cc-clarity-icon"
+                  aria-hidden="true"
+                />
               </div>
             </div>
-          </>
+
+            {/* 下方完整保留原有的今日学习节律快捷入口 */}
+            <h2 id={titleId} className="wb-menubar-flyout-title">
+              {t('menubar.centerTitle')}
+            </h2>
+
+            <div
+              className="wb-menubar-rhythm"
+              role="group"
+              aria-label={t('menubar.centerTitle')}
+              data-testid="wb-menubar-rhythm"
+            >
+              <button
+                type="button"
+                className="wb-menubar-rhythm-row"
+                data-testid="wb-menubar-module-flashcards"
+                data-primary={dueCount > 0 ? 'true' : undefined}
+                aria-label={`${t('menubar.rhythmFlashcards')}: ${t('menubar.flashcardsDueShort', { count: dueCount })}`}
+                onClick={runAndClose(launchFlashcardsDue)}
+              >
+                <span className="wb-menubar-rhythm-icon" aria-hidden="true">
+                  <Cards size={18} weight="duotone" />
+                </span>
+                <span className="wb-menubar-rhythm-text" aria-hidden="true">
+                  <span className="wb-menubar-rhythm-label">
+                    {t('menubar.rhythmFlashcards')}
+                  </span>
+                  <span className="wb-menubar-rhythm-detail">
+                    {t('menubar.flashcardsDueShort', { count: dueCount })}
+                  </span>
+                </span>
+              </button>
+
+              <RhythmReviewRows onPick={runAndClose} />
+
+              <button
+                type="button"
+                className="wb-menubar-rhythm-row"
+                data-testid="wb-menubar-module-pomodoro"
+                onClick={runAndClose(() => launchApp('pomodoro'))}
+              >
+                <span className="wb-menubar-rhythm-icon" aria-hidden="true">
+                  <Timer size={18} weight="duotone" />
+                </span>
+                <span className="wb-menubar-rhythm-text">
+                  <span className="wb-menubar-rhythm-label">
+                    {t('menubar.rhythmPomodoro')}
+                  </span>
+                  <span className="wb-menubar-rhythm-detail">
+                    <PomodoroFlyoutDetail />
+                  </span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="wb-menubar-rhythm-row"
+                data-testid="wb-menubar-module-automations"
+                data-status={
+                  automationRunning
+                    ? 'running'
+                    : automationFailed
+                      ? 'error'
+                      : 'idle'
+                }
+                aria-label={`${t('menubar.rhythmAutomation')}: ${t('menubar.rhythmAutomationDetail', {
+                  running: automationRunning,
+                  failed: automationFailed,
+                  enabled: automationEnabled,
+                })}`}
+                onClick={runAndClose(launchAutomations)}
+              >
+                <span className="wb-menubar-rhythm-icon" aria-hidden="true">
+                  <Robot size={18} weight="duotone" />
+                </span>
+                <span className="wb-menubar-rhythm-text" aria-hidden="true">
+                  <span className="wb-menubar-rhythm-label">
+                    {t('menubar.rhythmAutomation')}
+                  </span>
+                  <span className="wb-menubar-rhythm-detail">
+                    {t('menubar.rhythmAutomationDetail', {
+                      running: automationRunning,
+                      failed: automationFailed,
+                      enabled: automationEnabled,
+                    })}
+                  </span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                className="wb-menubar-rhythm-row"
+                data-testid="wb-menubar-module-tasks"
+                aria-label={`${t('menubar.rhythmTasks')}: ${t('menubar.rhythmTasksDetail', { count: taskCount })}`}
+                onClick={runAndClose(() => launchApp('taskDashboard'))}
+              >
+                <span className="wb-menubar-rhythm-icon" aria-hidden="true">
+                  <Lightning size={18} weight="duotone" />
+                </span>
+                <span className="wb-menubar-rhythm-text" aria-hidden="true">
+                  <span className="wb-menubar-rhythm-label">
+                    {t('menubar.rhythmTasks')}
+                  </span>
+                  <span className="wb-menubar-rhythm-detail">
+                    {t('menubar.rhythmTasksDetail', { count: taskCount })}
+                  </span>
+                </span>
+              </button>
+            </div>
+          </div>
         ) : null}
 
         {/* 时钟居右端（macOS 菜单栏时钟落位）；点击展开今日日程 flyout */}
-        <StatusBarClock onOpenChange={setClockOpen} />
+        <StatusBarClock
+          open={clockMenuOpen}
+          onToggle={() => toggleMenu('clock')}
+          onHoverTrigger={() => hoverMenu('clock')}
+          onClose={closeActiveMenu}
+          onOpenChange={setClockOverlayMounted}
+          hideBackdrop
+          instantExit={activeMenuId !== null}
+        />
 
         {/* Windows：三键直接融入顶栏最右端（无独立胶囊/logo），拖拽由整条 drag-region 接管 */}
         {winChromeInset ? (

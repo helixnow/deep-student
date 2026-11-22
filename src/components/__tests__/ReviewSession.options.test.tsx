@@ -1,7 +1,9 @@
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+const invokeMock = vi.fn();
+vi.mock('@tauri-apps/api/core', () => ({ invoke: (...args: unknown[]) => invokeMock(...args) }));
 vi.mock('@/features/chat/components/renderers', () => ({
   MarkdownRenderer: ({ content }: { content: string }) => <span>{content}</span>,
 }));
@@ -98,5 +100,67 @@ describe('ReviewSession — answer before revealing', () => {
     reveal();
     expect(screen.getByTestId('review-options').querySelectorAll('[data-correct]')).toHaveLength(0);
     expect(screen.queryByTestId('review-verdict')).toBeNull();
+  });
+
+  it('renders question images and shared reading materials during FSRS review', async () => {
+    invokeMock.mockReset().mockResolvedValue({ found: true, content: 'aGVsbG8=' });
+    start({
+      id: 'q-media',
+      content: '根据材料回答问题',
+      answer: 'A',
+      question_type: 'short_answer',
+      tags: [],
+      materials: [{ id: 'm1', content: '共享阅读材料正文', images: [], source_refs: [], version: 1 }],
+      images: [
+        { id: 'img1', name: '几何示意图.png', mime: 'image/png', hash: 'h1' },
+        { id: 'img-src', name: '原卷截图.png', mime: 'image/png', hash: 'h2', role: 'source' },
+      ],
+    });
+    render(<ReviewSession examId="e1" />);
+    expect(screen.getByText('共享阅读材料正文')).toBeInTheDocument();
+    await waitFor(() => {
+      const img = screen.getByRole('img', { name: '几何示意图.png' });
+      expect(img).toHaveAttribute('src', 'data:image/png;base64,aGVsbG8=');
+    });
+    expect(screen.queryByRole('img', { name: '原卷截图.png' })).toBeNull();
+  });
+
+  it('requeues Again (quality=0) items later in the current session with a loop cap', async () => {
+    const storeSubmit = useReviewPlanStore.getState();
+    const realSubmit = useReviewPlanStore.getInitialState().submitReview;
+    const processReviewMock = vi.fn(async (planId: string, quality: number) => ({
+      plan: { ...plan, id: planId, total_reviews: plan.total_reviews + 1 },
+      passed: quality >= 3,
+      new_interval: quality === 0 ? 0 : 1,
+      next_review_date: '2026-10-05',
+      history: {
+        id: 'h1', plan_id: planId, question_id: 'q1', quality, passed: quality >= 3,
+        ease_factor_before: 2.5, ease_factor_after: 2.5, interval_before: 1, interval_after: 0,
+        repetitions_before: 1, repetitions_after: 0, reviewed_at: '', user_answer: null, time_spent_seconds: 1,
+      },
+    }));
+    useReviewPlanStore.setState({ submitReview: realSubmit, processReview: processReviewMock });
+    storeSubmit.startSession([
+      { plan: { ...plan, id: 'p1' }, question: singleChoice },
+      { plan: { ...plan, id: 'p2', question_id: 'q2' }, question: { ...singleChoice, id: 'q2' } },
+    ], 'e1');
+
+    // Rate p1 Again -> requeued after p2 (queue length becomes 3)
+    await useReviewPlanStore.getState().submitReview(0);
+    expect(useReviewPlanStore.getState().session.queue.map((i) => i.plan.id)).toEqual(['p1', 'p2', 'p1']);
+    expect(useReviewPlanStore.getState().session.currentIndex).toBe(1);
+
+    // Rate p2 Good -> advance to requeued p1
+    await useReviewPlanStore.getState().submitReview(4);
+    expect(useReviewPlanStore.getState().getCurrentItem()?.plan.id).toBe('p1');
+
+    // Rate p1 Again a 2nd time -> requeued once more (2nd requeue, hits cap of 2)
+    await useReviewPlanStore.getState().submitReview(0);
+    expect(useReviewPlanStore.getState().session.queue.map((i) => i.plan.id)).toEqual(['p1', 'p2', 'p1', 'p1']);
+
+    // Rate p1 Again a 3rd time -> capped, does NOT requeue infinitely
+    await useReviewPlanStore.getState().submitReview(0);
+    expect(useReviewPlanStore.getState().session.queue).toHaveLength(4);
+    expect(useReviewPlanStore.getState().session.currentIndex).toBe(4);
   });
 });

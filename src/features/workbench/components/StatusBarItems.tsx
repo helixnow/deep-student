@@ -12,6 +12,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChartBar, Robot, Stack, Timer } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { SlotOutlet } from '@/ui-kernel/outlet';
 import { workbenchBus } from '../core/workbenchBus';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import type { AutomationSummary } from '@/features/settings/components/automationSettingsApi';
@@ -289,6 +290,8 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({
         ) : null}
         {automationCount > 0 ? <span className="wb-menubar-item-value">{automationCount}</span> : null}
       </button>
+
+      <SlotOutlet name="statusbar.items" props={{ className: 'wb-menubar-item' }} />
     </>
   );
 };

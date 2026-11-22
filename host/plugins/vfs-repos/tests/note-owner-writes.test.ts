@@ -116,6 +116,37 @@ describe('N5 / L10-V2-01 L11 owner writes via the production service', { timeout
     expect(writes().disableNoteUnitsWithConn(db, 'res_missing')).toBe(0);
   });
 
+  it('re-enables disabled note units back to pending only when required or content is non-empty, preserving metadata', () => {
+    const rid = resource('note-reenable');
+    const emptyRid = resource('note-reenable-empty');
+    db.run(`INSERT INTO vfs_index_units (id, resource_id, unit_index, text_content, text_required, mm_required,
+      text_state, mm_state, text_error, text_profile_id, text_generation, created_at, updated_at)
+      VALUES ('unit_req', ?1, 0, NULL, 1, 0, 'disabled', 'disabled', 'keep error', 'prof_1', 3, 4, 5)`, [rid]);
+    db.run(`INSERT INTO vfs_index_units (id, resource_id, unit_index, text_content, text_required, mm_required,
+      image_blob_hash, text_state, mm_state, created_at, updated_at)
+      VALUES ('unit_content', ?1, 1, 'restorable body', 0, 0, 'blob_1', 'disabled', 'disabled', 4, 5)`, [rid]);
+    db.run(`INSERT INTO vfs_index_units (id, resource_id, unit_index, text_content, text_required, mm_required,
+      text_state, mm_state, created_at, updated_at)
+      VALUES ('unit_already_indexed', ?1, 2, 'indexed body', 1, 0, 'indexed', 'disabled', 4, 5)`, [rid]);
+    db.run(`INSERT INTO vfs_index_units (id, resource_id, unit_index, text_content, text_required, mm_required,
+      text_state, mm_state, created_at, updated_at)
+      VALUES ('unit_empty', ?1, 0, '   ', 0, 0, 'disabled', 'disabled', 4, 5)`, [emptyRid]);
+
+    const reqBefore = row('SELECT * FROM vfs_index_units WHERE id = ?1', ['unit_req'])!;
+    const emptyBefore = row('SELECT * FROM vfs_index_units WHERE id = ?1', ['unit_empty'])!;
+    const indexedBefore = row('SELECT * FROM vfs_index_units WHERE id = ?1', ['unit_already_indexed'])!;
+
+    expect(writes().reenableNoteUnitsWithConn!(db, rid)).toBe(2);
+    expect(row('SELECT * FROM vfs_index_units WHERE id = ?1', ['unit_req']))
+      .toEqual({ ...reqBefore, text_state: 'pending' });
+    expect(row('SELECT text_state, mm_state, updated_at FROM vfs_index_units WHERE id = ?1', ['unit_content']))
+      .toEqual({ text_state: 'pending', mm_state: 'pending', updated_at: 5n });
+    expect(row('SELECT * FROM vfs_index_units WHERE id = ?1', ['unit_already_indexed'])).toEqual(indexedBefore);
+    expect(writes().reenableNoteUnitsWithConn!(db, emptyRid)).toBe(0);
+    expect(row('SELECT * FROM vfs_index_units WHERE id = ?1', ['unit_empty'])).toEqual(emptyBefore);
+    expect(writes().reenableNoteUnitsWithConn!(db, 'res_missing')).toBe(0);
+  });
+
   it('writes only the fixed backfill flag without widening the public config whitelist', () => {
     const config = host.ctx.vfsRepo.indexingConfig;
     expect(() => config.setConfig(db, BACKFILL_KEY, 'true')).toThrow();

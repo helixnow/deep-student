@@ -15,20 +15,29 @@
   color: var(--text-primary, hsl(var(--foreground)));
   transition:
     box-shadow 180ms ease,
-    opacity var(--wb-motion-standard, 280ms) var(--wb-ease-out, ease-out);
+    opacity 220ms var(--wb-ease-out, ease-out),
+    filter 220ms var(--wb-ease-out, ease-out);
 }
 
+/*
+ * Sonoma/Tahoe/Golden Gate 单色玻璃融合：前景有可见窗口时桌面小组件以柔和的
+ * 去饱和单色玻璃退入壁纸背景，悬停 / 键盘进入时丝滑恢复全彩；
+ * minimal 档保持全彩与全不透明（性能/可读优先）。
+ */
 .wb-ai-briefing-widget[data-wb-widget-dim] {
-  opacity: 0.55;
+  opacity: 0.72;
+  filter: saturate(0.22) contrast(0.95);
 }
 
 .wb-ai-briefing-widget[data-wb-widget-dim]:hover,
 .wb-ai-briefing-widget[data-wb-widget-dim]:focus-within {
   opacity: 1;
+  filter: saturate(1) contrast(1);
 }
 
 :root[data-wb-material='minimal'] .wb-ai-briefing-widget[data-wb-widget-dim] {
   opacity: 1;
+  filter: none;
 }
 
 .wb-ai-briefing-header {
@@ -185,6 +194,15 @@
 .wb-ai-briefing-action:focus-visible {
   outline: 2px solid hsl(var(--primary));
   outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-ai-briefing-widget,
+  .wb-ai-briefing-widget *,
+  .wb-ai-briefing-widget *::before,
+  .wb-ai-briefing-widget *::after {
+    transition-duration: 0ms;
+  }
 }
 
 @media (pointer: coarse) {

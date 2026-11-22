@@ -284,3 +284,64 @@ it('l14_review_plan_port_resolves_published_service_and_advances_plan', async ()
   expect(advanced.plan.status).toBe('learning');
   expect(advanced.plan.repetitions).toBe(1);
 });
+
+it('syncs questions.status on graduation (mastered) and Again lapse (review), and lapses existing plans on re-wrong', () => {
+  const fixture = vfsFixture();
+  const db = fixture.db;
+  insertExam(db, 'exam_sync', 'Sync Exam');
+  insertQuestion(db, 'q_sync', 'exam_sync', ['微积分']);
+  db.run("UPDATE questions SET status = 'review' WHERE id = 'q_sync'");
+
+  const baseStore = createReviewPlanStore();
+  const store = {
+    ...baseStore,
+    questions: {
+      ...baseStore.questions,
+      getQuestion(conn: Parameters<typeof baseStore.questions.getQuestion>[0], id: string) {
+        const q = baseStore.questions.getQuestion(conn, id);
+        if (q === null) return null;
+        const row = conn.get<{ status: string }>('SELECT status FROM questions WHERE id = ?1', [id]);
+        return { ...q, status: (row?.status ?? 'new') as 'new' | 'in_progress' | 'mastered' | 'review' };
+      },
+      updateQuestion(conn: Parameters<typeof baseStore.questions.getQuestion>[0], id: string, params: { status?: string | null }) {
+        if (params.status != null) {
+          conn.run('UPDATE questions SET status = ?1 WHERE id = ?2', [params.status, id]);
+        }
+      },
+    },
+  };
+
+  const service = new ReviewPlanService(db, store);
+  const plan = service.createReviewPlan('q_sync', 'exam_sync');
+
+  // Repeated Easy ratings graduate the plan (interval >= 21d) and sync questions.status -> 'mastered'
+  let current = plan;
+  for (let i = 0; i < 6 && current.status !== 'graduated'; i += 1) {
+    current = service.processReview(current.id, 5, null, null).plan;
+  }
+  expect(current.status).toBe('graduated');
+  expect(db.get<{ status: string }>("SELECT status FROM questions WHERE id = 'q_sync'")?.status).toBe('mastered');
+
+  // Answering wrong again while graduated lapses the plan, pulls next_review_date back to today, and marks question 'review'
+  const today = db.pluck<string>("SELECT DATE('now', 'localtime')");
+  const lapsed = service.getOrCreatePlan('q_sync', 'exam_sync');
+  expect(lapsed.status).toBe('learning');
+  expect(lapsed.next_review_date).toBe(today);
+  expect(lapsed.repetitions).toBe(0);
+  expect(db.get<{ status: string }>("SELECT status FROM questions WHERE id = 'q_sync'")?.status).toBe('review');
+
+  // Suspended plan also reactivates and lapses to today on re-wrong
+  service.suspendPlan(lapsed.id);
+  db.run("UPDATE review_plans SET next_review_date = '2099-01-01' WHERE id = ?1", [lapsed.id]);
+  db.run("UPDATE questions SET status = 'mastered' WHERE id = 'q_sync'");
+  const reactivated = service.getOrCreatePlan('q_sync', 'exam_sync');
+  expect(reactivated.status).toBe('learning');
+  expect(reactivated.next_review_date).toBe(today);
+  expect(db.get<{ status: string }>("SELECT status FROM questions WHERE id = 'q_sync'")?.status).toBe('review');
+
+  // Future-scheduled active plan also lapses to today on re-wrong
+  db.run("UPDATE review_plans SET status = 'reviewing', next_review_date = '2099-01-01' WHERE id = ?1", [lapsed.id]);
+  const pulledBack = service.getOrCreatePlan('q_sync', 'exam_sync');
+  expect(pulledBack.status).toBe('learning');
+  expect(pulledBack.next_review_date).toBe(today);
+});

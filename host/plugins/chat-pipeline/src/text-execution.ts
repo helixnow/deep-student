@@ -91,7 +91,7 @@ export class TextTurnExecution {
       const reason = cancelled ? 'cancel' : 'error';
       if (ctx.currentAdapter) this.log.info(`[ChatV2::pipeline] Retrieved partial content from adapter on ${reason}: content_len=${utf8ByteLength(ctx.finalContent)}, reasoning_len=${ctx.finalReasoning === null ? 'None' : `Some(${utf8ByteLength(ctx.finalReasoning)})`}`);
       try {
-        await this.deps.finalPersistence.saveResults(ctx);
+        await this.deps.finalPersistence.saveResults(ctx, { skipAutoMemoryExtraction: true });
         this.log.info(`[ChatV2::pipeline] Partial results saved on ${reason}: content_len=${utf8ByteLength(ctx.finalContent)}, reasoning_len=${ctx.finalReasoning === null ? 'None' : `Some(${utf8ByteLength(ctx.finalReasoning)})`}`);
       } catch (saveError) { this.log.warn(`[ChatV2::pipeline] Failed to save partial results on ${reason}: ${message(saveError)}`); }
       if (cancelled) emitter.emitStreamCancelled(assistantId);

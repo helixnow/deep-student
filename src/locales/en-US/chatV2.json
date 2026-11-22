@@ -326,6 +326,7 @@
   },
   "inputBar": {
     "placeholder": "Type a message...",
+    "backToThinkingMenu": "Back to reasoning & model",
     "send": "Send",
     "stop": "Stop",
     "addAttachment": "Add attachment",

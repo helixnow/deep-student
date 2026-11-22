@@ -79,6 +79,42 @@ export function countCollectionCards(db: SqlExecutor): number {
   return Number(db.pluck<number>('SELECT COUNT(*) FROM cards') ?? 0);
 }
 
+/** 检查集合库是否存在 `revlog` 表（部分合成包仅含 col/notes/cards）。 */
+export function hasRevlogTable(db: SqlExecutor): boolean {
+  return collectionObjectType(db, 'revlog') === 'table';
+}
+
+export interface AnkiRevlogRow {
+  id: number;
+  cid: number;
+  ease: number;
+  ivl: number;
+  lastIvl: number;
+  time: number;
+  type: number;
+}
+
+/** 按 `(cid, id)` 升序读取集合库 `revlog` 行，上限 `maxRows`（默认 500,000）。 */
+export function listCollectionRevlogs(db: SqlExecutor, maxRows = 500_000): AnkiRevlogRow[] {
+  const limit = Math.max(0, Math.trunc(maxRows));
+  if (limit === 0) return [];
+  return db.all<AnkiRevlogRow>(
+    `SELECT id, cid, ease, ivl, lastIvl, time, type
+     FROM revlog
+     ORDER BY cid ASC, id ASC
+     LIMIT ?1`,
+    [limit],
+  ).map((row) => ({
+    id: Number(row.id),
+    cid: Number(row.cid),
+    ease: Number(row.ease),
+    ivl: Number(row.ivl),
+    lastIvl: Number(row.lastIvl),
+    time: Number(row.time),
+    type: Number(row.type),
+  }));
+}
+
 /** `SELECT crt FROM col LIMIT 1`（失败/≤0 由调用方降级）。 */
 export function readCollectionCrt(db: SqlExecutor): number | undefined {
   return db.pluck<number>('SELECT crt FROM col LIMIT 1');
@@ -255,4 +291,49 @@ export function insertApkgCard(db: SqlExecutor, row: ApkgCardInsert): void {
       row.documentId,
     ],
   );
+}
+
+export interface ExistingApkgCardFingerprint {
+  documentId: string;
+  modelId: string;
+  noteId: string;
+  cardOrd: string;
+  front: string;
+  back: string;
+  text: string | null;
+}
+
+/**
+ * 查询库内所有未删除的 `apkg_import` 存活卡片指纹，供可选去重重导使用。
+ * 要求 `anki_cards.deleted_at IS NULL` 且 `document_tasks.deleted_at IS NULL`。
+ */
+export function listExistingApkgCardFingerprints(db: SqlExecutor): ExistingApkgCardFingerprint[] {
+  return db.all<ExistingApkgCardFingerprint>(`
+    SELECT dt.document_id AS documentId,
+           CASE WHEN json_valid(ac.extra_fields_json)
+             THEN CAST(json_extract(ac.extra_fields_json, '$.AnkiModelId') AS TEXT)
+             ELSE NULL END AS modelId,
+           CASE WHEN json_valid(ac.extra_fields_json)
+             THEN CAST(json_extract(ac.extra_fields_json, '$.AnkiNoteId') AS TEXT)
+             ELSE NULL END AS noteId,
+           CASE WHEN json_valid(ac.extra_fields_json)
+             THEN CAST(json_extract(ac.extra_fields_json, '$.AnkiCardOrd') AS TEXT)
+             ELSE NULL END AS cardOrd,
+           ac.front AS front,
+           ac.back AS back,
+           ac.text AS text
+    FROM anki_cards ac
+    INNER JOIN document_tasks dt ON dt.id = ac.task_id
+    WHERE ac.source_type = 'apkg_import'
+      AND ac.deleted_at IS NULL
+      AND dt.deleted_at IS NULL
+  `).map((row) => ({
+    documentId: String(row.documentId),
+    modelId: row.modelId === null || row.modelId === undefined ? '' : String(row.modelId),
+    noteId: row.noteId === null || row.noteId === undefined ? '' : String(row.noteId),
+    cardOrd: row.cardOrd === null || row.cardOrd === undefined ? '' : String(row.cardOrd),
+    front: row.front === null || row.front === undefined ? '' : String(row.front),
+    back: row.back === null || row.back === undefined ? '' : String(row.back),
+    text: row.text === null || row.text === undefined ? null : String(row.text),
+  }));
 }

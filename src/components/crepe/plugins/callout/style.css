@@ -52,6 +52,20 @@
   background: hsl(var(--foreground) / 0.06);
 }
 
+.crepe-callout__icon:disabled,
+.crepe-callout__icon--readonly {
+  cursor: default;
+}
+
+.crepe-callout__icon:disabled:hover,
+.crepe-callout__icon--readonly:hover {
+  background: transparent;
+}
+
+.crepe-callout__icon[aria-expanded='true'] {
+  background: hsl(var(--foreground) / 0.08);
+}
+
 .crepe-callout__icon:focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: 1px;
@@ -70,10 +84,63 @@
   font-size: 0.95em;
   line-height: 1.35;
   color: inherit;
+  border-radius: var(--notes-radius-control, 5px);
+  padding: 0.05em 0.3em;
+  margin-inline: -0.3em;
+  transition: background-color var(--notes-hover-transition, 120ms ease);
+}
+
+.crepe-callout__title--editable {
+  cursor: text;
+}
+
+.crepe-callout__title--editable:hover {
+  background: hsl(var(--foreground) / 0.05);
+}
+
+.crepe-callout__title--editable:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+  background: hsl(var(--foreground) / 0.05);
+}
+
+.crepe-callout__title--editing {
+  padding: 0;
+  background: transparent;
+}
+
+.crepe-callout__title--editing:hover {
+  background: transparent;
 }
 
 .crepe-callout__title--placeholder {
   opacity: 0.92;
+}
+
+.crepe-callout__title-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.05em 0.3em;
+  border: 0;
+  border-radius: var(--notes-radius-control, 5px);
+  background: transparent;
+  font: inherit;
+  font-weight: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+  user-select: text;
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 0;
+}
+
+.crepe-callout__title-input::placeholder {
+  color: currentColor;
+  opacity: 0.55;
+  font-weight: 500;
 }
 
 /* 折叠 chevron：默认弱化，hover 块或聚焦时显现 */
@@ -118,26 +185,32 @@
    注意用 pointer: coarse 而非 hover: none——iPad 外接触控板时 hover: none
    不匹配，但主输入仍是手指（coarse），hover 显现在触屏上不可达。 */
 @media (pointer: coarse) {
+  .crepe-callout__header {
+    min-height: 44px;
+    gap: 4px;
+  }
+
   .crepe-callout__fold {
     opacity: 0.5;
   }
 
-  /* 视觉保持小图标，::after 扩命中到 ≥44px 触控目标。
-     header 的 title 不可交互，命中区居中外溢盖住其边缘无副作用。 */
+  /* 实际布局盒 ≥44px，避免 ::after 越界侵入标题区导致误触 */
   .crepe-callout__icon,
   .crepe-callout__fold {
-    position: relative;
-  }
-
-  .crepe-callout__icon::after,
-  .crepe-callout__fold::after {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 50%;
     width: 44px;
     height: 44px;
-    transform: translate(-50%, -50%);
+  }
+
+  .crepe-callout__title {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    margin-inline: 0;
+  }
+
+  /* iOS 触屏防聚焦自动放大 */
+  .crepe-callout__title-input {
+    font-size: 16px;
   }
 }
 
@@ -271,11 +344,186 @@
   box-shadow: inset 0 0 0 1px hsl(var(--foreground) / 0.1);
 }
 
+/* ── 类型选择浮层（Obsidian / Notion 风格） ─────────────────────────── */
+@keyframes crepe-callout-picker-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.crepe-callout__picker {
+  position: fixed;
+  z-index: var(--z-popover, 60);
+  min-width: 10.5rem;
+  max-width: min(16rem, calc(100vw - 16px));
+  max-height: min(20rem, calc(100dvh - 16px));
+  overflow-y: auto;
+  padding: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: var(--notes-radius-popup, 12px);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--popover, var(--card)));
+  color: hsl(var(--popover-foreground, var(--foreground)));
+  box-shadow: var(--notes-popover-shadow, 0 8px 24px hsl(var(--shadow-base) / 0.14));
+  transform-origin: top left;
+  animation: crepe-callout-picker-enter
+    var(--notes-popup-enter-duration, 150ms)
+    var(--notes-popup-enter-easing, var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)))
+    both;
+}
+
+.crepe-callout__picker-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.375rem 0.55rem;
+  border: 0;
+  border-radius: var(--notes-radius-row, 6px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition, 120ms ease),
+    color var(--notes-hover-transition, 120ms ease);
+}
+
+.crepe-callout__picker-item:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.crepe-callout__picker-item:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.crepe-callout__picker-item[aria-checked='true'] {
+  background: hsl(var(--accent) / 0.65);
+  font-weight: 500;
+}
+
+.crepe-callout__picker-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: var(--notes-radius-control, 5px);
+}
+
+.crepe-callout__picker-icon .crepe-callout__icon-svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.crepe-callout__picker-icon--note {
+  color: hsl(var(--info));
+  background: hsl(var(--info) / 0.12);
+}
+
+.crepe-callout__picker-icon--tip {
+  color: hsl(var(--success));
+  background: hsl(var(--success) / 0.12);
+}
+
+.crepe-callout__picker-icon--warning {
+  color: hsl(var(--warning));
+  background: hsl(var(--warning) / 0.14);
+}
+
+.crepe-callout__picker-icon--danger {
+  color: hsl(var(--danger));
+  background: hsl(var(--danger) / 0.14);
+}
+
+.crepe-callout__picker-icon--info {
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.12);
+}
+
+:is(.dark, [data-theme='dark']) .crepe-callout__picker-icon--note {
+  background: hsl(var(--info) / 0.2);
+}
+
+:is(.dark, [data-theme='dark']) .crepe-callout__picker-icon--tip {
+  background: hsl(var(--success) / 0.2);
+}
+
+:is(.dark, [data-theme='dark']) .crepe-callout__picker-icon--warning {
+  background: hsl(var(--warning) / 0.2);
+}
+
+:is(.dark, [data-theme='dark']) .crepe-callout__picker-icon--danger {
+  background: hsl(var(--danger) / 0.2);
+}
+
+:is(.dark, [data-theme='dark']) .crepe-callout__picker-icon--info {
+  background: hsl(var(--primary) / 0.2);
+}
+
+.crepe-callout__picker-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crepe-callout__picker-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  color: hsl(var(--primary));
+  opacity: 0;
+}
+
+.crepe-callout__picker-item[aria-checked='true'] .crepe-callout__picker-check {
+  opacity: 1;
+}
+
+.crepe-callout__picker-check-svg {
+  display: block;
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+@media (pointer: coarse) {
+  .crepe-callout__picker-item {
+    min-height: 44px;
+    padding: 0.5rem 0.65rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .crepe-callout,
+  .crepe-callout__icon,
+  .crepe-callout__title,
   .crepe-callout__fold,
   .crepe-callout__fold-svg,
-  .crepe-callout__body {
+  .crepe-callout__body,
+  .crepe-callout__picker-item {
     transition: none;
+  }
+
+  .crepe-callout__picker {
+    animation: none;
   }
 }

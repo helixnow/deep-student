@@ -17,20 +17,21 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import { isAndroid, isMobilePlatform } from '@/utils/platform';
+import { isAndroid, isMobilePlatform, isWebUiShell } from '@/utils/platform';
 
 export const EXTERNAL_OPEN_UNSUPPORTED = 'EXTERNAL_OPEN_UNSUPPORTED_ON_THIS_PLATFORM';
 
 /** Android 实际执行的动作：直接打开 / 回退为分享面板 */
 export type ExternalOpenAction = 'view' | 'share' | 'reveal' | 'open';
 
-/** 是否能"在文件夹中显示"（系统文件管理器定位）——仅桌面端 */
+/** 是否能"在文件夹中显示"（系统文件管理器定位）——仅桌面原生壳（WebUI 排除） */
 export function canRevealInFolder(): boolean {
-  return !isMobilePlatform();
+  return !isWebUiShell() && !isMobilePlatform();
 }
 
-/** 是否能把文件交给系统/其他应用（桌面 opener、Android Intent；iOS 暂不支持） */
+/** 是否能把文件交给系统/其他应用（桌面 opener、原生 Android Intent；iOS 与 WebUI 不支持） */
 export function canOpenFilesExternally(): boolean {
+  if (isWebUiShell()) return false;
   return !isMobilePlatform() || isAndroid();
 }
 
@@ -41,6 +42,7 @@ async function androidOpen(path: string, mode: 'view' | 'share'): Promise<Extern
 
 /** 用系统默认应用打开文件（Android：选择其他应用打开） */
 export async function openFileExternally(path: string): Promise<ExternalOpenAction> {
+  if (isWebUiShell()) throw new Error(EXTERNAL_OPEN_UNSUPPORTED);
   if (isAndroid()) return androidOpen(path, 'view');
   if (isMobilePlatform()) throw new Error(EXTERNAL_OPEN_UNSUPPORTED);
   const { openPath } = await import('@tauri-apps/plugin-opener');
@@ -53,6 +55,7 @@ export async function openFileExternally(path: string): Promise<ExternalOpenActi
  * （移动端唯一有意义的等价动作）。仅用于**文件**，目录请先用 {@link canRevealInFolder} 判定。
  */
 export async function revealFileOrOpen(path: string): Promise<ExternalOpenAction> {
+  if (isWebUiShell()) throw new Error(EXTERNAL_OPEN_UNSUPPORTED);
   if (isAndroid()) return androidOpen(path, 'view');
   if (isMobilePlatform()) throw new Error(EXTERNAL_OPEN_UNSUPPORTED);
   const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
@@ -62,6 +65,7 @@ export async function revealFileOrOpen(path: string): Promise<ExternalOpenAction
 
 /** Android：系统分享面板；桌面：在文件管理器中定位（由用户自行发送） */
 export async function shareFileExternally(path: string): Promise<ExternalOpenAction> {
+  if (isWebUiShell()) throw new Error(EXTERNAL_OPEN_UNSUPPORTED);
   if (isAndroid()) return androidOpen(path, 'share');
   if (isMobilePlatform()) throw new Error(EXTERNAL_OPEN_UNSUPPORTED);
   const { revealItemInDir } = await import('@tauri-apps/plugin-opener');

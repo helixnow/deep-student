@@ -11,7 +11,7 @@
 import type { Node as ProseNode } from '@milkdown/prose/model';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import { Decoration, DecorationSet, type EditorView } from '@milkdown/prose/view';
-import { $prose } from '@milkdown/utils';
+import { $prose } from '@milkdown/kit/utils';
 import i18next from 'i18next';
 import {
   compileInlineCardsFromDoc,

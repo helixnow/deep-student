@@ -117,7 +117,8 @@ export class ModelProfileStore {
         const builtin = builtinMap.get(profile.id);
         if (builtin === undefined) continue;
         if (profile.supportsTools !== builtin.supportsTools || profile.isMultimodal !== builtin.isMultimodal
-          || profile.isReasoning !== builtin.isReasoning || profile.supportsReasoning !== builtin.supportsReasoning) {
+          || profile.isReasoning !== builtin.isReasoning || profile.supportsReasoning !== builtin.supportsReasoning
+          || profile.isEmbedding !== builtin.isEmbedding) {
           profile.isMultimodal = builtin.isMultimodal; profile.isReasoning = builtin.isReasoning;
           profile.isEmbedding = builtin.isEmbedding; profile.isReranker = builtin.isReranker;
           profile.supportsTools = builtin.supportsTools; profile.supportsReasoning = builtin.supportsReasoning;

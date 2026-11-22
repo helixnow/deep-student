@@ -48,6 +48,12 @@ describe('findAnchoredIndex（前后文锚定定位）', () => {
     const text = '前面的话已经被用户改动';
     expect(findAnchoredIndex(text, '', '前面的话', '后面的话')).toBe(-1);
   });
+
+  it('撤销删除时 before 存在但接缝失配时不退化为仅匹配 after；仅 after 且重复时也安全失败 (BUG-22)', () => {
+    expect(findAnchoredIndex('用户改过的前文后面的话', '', '前面的话', '后面的话')).toBe(-1);
+    expect(findAnchoredIndex('后面的话重复了一次，后面的话又重复一次', '', '', '后面的话')).toBe(-1);
+    expect(findAnchoredIndex('唯一出现的后面的话', '', '', '后面的话')).toBe(5);
+  });
 });
 
 describe('applyAnchoredReplacement（应用与撤销）', () => {

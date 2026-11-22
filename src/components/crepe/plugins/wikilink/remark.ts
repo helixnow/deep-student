@@ -3,7 +3,7 @@
  * 以便 parseMarkdown 映射到 atom node；避免落入 text 后被 stringify 转义为 \[\[（Milkdown#1278）。
  */
 
-import { $remark } from '@milkdown/utils';
+import { $remark } from '@milkdown/kit/utils';
 import { visit } from 'unist-util-visit';
 
 import { parseWikiLinkInner, wikiLinkGlobalPattern } from './format';

@@ -36,6 +36,7 @@ import {
   Sparkle,
   Star,
   Target,
+  Tray,
   Trophy,
   X,
 } from '@phosphor-icons/react';
@@ -98,6 +99,9 @@ import {
   WorkbenchSidebarFixed,
   WorkbenchSidebarScroll,
 } from '@/features/workbench/components/sidebar';
+import { INBOX_SPACE_ID } from '@/shared/study-space/types';
+import { StudySpaceBadgeStrip } from '@/components/study-space/StudySpaceBadgeStrip';
+import { projectStudySpace, useStudySpaceStore } from '@/stores/studySpaceStore';
 
 interface ModernSidebarProps {
   currentView: CurrentView;
@@ -157,6 +161,15 @@ function isSessionGroup(value: unknown): value is SessionGroup {
   return typeof candidate.id === 'string'
     && typeof candidate.name === 'string'
     && typeof candidate.sortOrder === 'number';
+}
+
+function normalizeStudySpaceGroup(group: SessionGroup): SessionGroup {
+  return {
+    ...group,
+    defaultSkillIds: Array.isArray(group.defaultSkillIds) ? group.defaultSkillIds : [],
+    pinnedResourceIds: Array.isArray(group.pinnedResourceIds) ? group.pinnedResourceIds : [],
+    persistStatus: group.persistStatus ?? 'active',
+  };
 }
 
 function sortSessionsByUpdatedAt(sessions: ChatSession[]): ChatSession[] {
@@ -340,6 +353,10 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
   const streamingSessionIdSet = useMemo(() => new Set(streamingSessionIds), [streamingSessionIds]);
   const blockingSessionIdSet = useMemo(() => new Set(blockingSessionIds), [blockingSessionIds]);
   const unreadSessionIdSet = useMemo(() => new Set(unreadSessionIds), [unreadSessionIds]);
+  const activeSpaceId = useStudySpaceStore((s) => s.activeSpaceId);
+  const groupsById = useStudySpaceStore((s) => s.groupsById);
+  const profilesBySpaceId = useStudySpaceStore((s) => s.profilesBySpaceId);
+  const mountsBySpaceId = useStudySpaceStore((s) => s.mountsBySpaceId);
 
   const uiLabEnabled = useIsUILabEnabled();
   const navEntries = useSlot<ShellNavItem>('nav');
@@ -676,6 +693,35 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       return next;
     });
   }, []);
+
+  const handleTopicGroupClick = useCallback((sessionGroup: SessionGroup) => {
+    const store = useStudySpaceStore.getState();
+
+    if (
+      !store.loading
+      && !store.groupsById?.[sessionGroup.id]
+      && sessionGroup.persistStatus !== 'archived'
+      && sessionGroup.persistStatus !== 'deleted'
+    ) {
+      store.upsertGroupInState?.(normalizeStudySpaceGroup(sessionGroup));
+    }
+
+    store.setActiveSpace(sessionGroup.id, { applyWorkbenchPreset: true });
+    toggleRecentGroup(sessionGroup.id);
+  }, [toggleRecentGroup]);
+
+  const handleInboxSpaceClick = useCallback(() => {
+    useStudySpaceStore.getState().setActiveSpace(INBOX_SPACE_ID, { applyWorkbenchPreset: true });
+  }, []);
+
+  const handleEditRecentGroup = useCallback((group: SessionGroup) => {
+    handleViewChange('chat-v2');
+    requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
+        detail: { action: 'edit-group', group },
+      }));
+    });
+  }, [handleViewChange]);
 
   const toggleRecentGroupSessions = useCallback((groupId: string) => {
     setExpandedRecentGroupSessionIds((previous) => {
@@ -1081,7 +1127,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
 
   const renderRecentGroup = useCallback((group: RecentSessionGroup) => {
     const isExpanded = !collapsedRecentGroupIds.has(group.id);
-    const isActive = false;
+    const isSpaceActive = activeSpaceId === group.id;
     const sessionGroup = recentGroups.find(g => g.id === group.id);
     if (!sessionGroup) {
       return null;
@@ -1165,14 +1211,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
               }));
             });
           }}
-          onEditGroup={(g) => {
-            handleViewChange('chat-v2');
-            requestAnimationFrame(() => {
-              window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
-                detail: { action: 'edit-group', group: g }
-              }));
-            });
-          }}
+          onEditGroup={handleEditRecentGroup}
           onArchiveGroup={(g) => {
             window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
               detail: { action: 'archive-group', group: g }
@@ -1182,7 +1221,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
           {({ quickAction, onContextMenu }) => (
             <SidebarRow
               rowType="nav"
-              onClick={() => toggleRecentGroup(group.id)}
+              onClick={() => handleTopicGroupClick(sessionGroup)}
               onContextMenu={onContextMenu}
               onDragEnd={clearRecentGroupDragState}
               onDragOver={(event) => handleRecentGroupDragOver(event, group.id)}
@@ -1190,9 +1229,11 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
               onDrop={(event) => void handleRecentGroupDrop(event, group.id)}
               aria-label={group.label}
               aria-expanded={isExpanded}
+              aria-current={isSpaceActive ? 'true' : undefined}
+              data-study-space-active={isSpaceActive ? 'true' : undefined}
               aria-grabbed={draggedRecentGroupId === group.id}
               draggable={!isPinnedGroup}
-              isActive={isActive}
+              isActive={false}
               className={cn(
                 // 分组 icon 与「课题」分区标题共用左侧基准线，标题和操作区保持原有布局。
                 't-acc-head group/sidebar-section !pl-3 !pr-1 select-none',
@@ -1213,7 +1254,27 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
         {sessionList}
       </section>
     );
-  }, [clearRecentGroupDragState, collapsedRecentGroupIds, dragOverRecentGroupId, draggedRecentGroupId, expandedRecentGroupSessionIds, handleRecentGroupDragOver, handleRecentGroupDragStart, handleRecentGroupDrop, handleRecentGroupPinToggle, handleViewChange, recentGroups, renderRecentGroupIcon, renderRecentSessionRow, t, toggleRecentGroup, toggleRecentGroupSessions]);
+  }, [activeSpaceId, clearRecentGroupDragState, collapsedRecentGroupIds, dragOverRecentGroupId, draggedRecentGroupId, expandedRecentGroupSessionIds, handleEditRecentGroup, handleRecentGroupDragOver, handleRecentGroupDragStart, handleRecentGroupDrop, handleRecentGroupPinToggle, handleTopicGroupClick, handleViewChange, recentGroups, renderRecentGroupIcon, renderRecentSessionRow, t, toggleRecentGroupSessions]);
+
+  const activeSpaceGroup = useMemo<SessionGroup | null>(() => {
+    if (activeSpaceId === INBOX_SPACE_ID) return null;
+    return recentGroups.find((group) => group.id === activeSpaceId) ?? groupsById?.[activeSpaceId] ?? null;
+  }, [activeSpaceId, groupsById, recentGroups]);
+
+  const activeSpace = useMemo(() => {
+    if (activeSpaceId === INBOX_SPACE_ID || !activeSpaceGroup) return null;
+    return projectStudySpace(
+      normalizeStudySpaceGroup(activeSpaceGroup),
+      profilesBySpaceId?.[activeSpaceId],
+      mountsBySpaceId?.[activeSpaceId],
+    );
+  }, [activeSpaceGroup, activeSpaceId, mountsBySpaceId, profilesBySpaceId]);
+
+  const rawInboxLabel = t('chatV2:studySpace.inbox', { defaultValue: '收件箱' });
+  const inboxLabel =
+    rawInboxLabel && rawInboxLabel !== 'chatV2:studySpace.inbox' && rawInboxLabel !== 'studySpace.inbox'
+      ? rawInboxLabel
+      : '收件箱';
 
   const hasPinnedContent = Boolean(superSession) || pinnedRecentGroups.length > 0 || pinnedRecentSessions.length > 0;
   const isPinnedSectionCollapsed = collapsedSidebarSectionIds.has('pinned');
@@ -1384,11 +1445,51 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
                 ),
               })}
               {!isTopicsSectionCollapsed ? (
-                <nav aria-label={t('sidebar:aria.topic_sessions')}>
-                  <div className="space-y-0.5" role="list">
-                    {topicSessionGroups.map((group) => renderRecentGroup(group))}
-                  </div>
-                </nav>
+                <>
+                  {activeSpace ? (
+                    <div className="mb-1.5">
+                      <StudySpaceBadgeStrip
+                        space={activeSpace}
+                        onEditSpace={
+                          activeSpaceGroup
+                          && activeSpaceGroup.persistStatus !== 'archived'
+                          && activeSpaceGroup.persistStatus !== 'deleted'
+                            ? () => handleEditRecentGroup(activeSpaceGroup)
+                            : undefined
+                        }
+                      />
+                    </div>
+                  ) : null}
+                  <nav aria-label={t('sidebar:aria.topic_sessions')}>
+                    <div className="space-y-0.5" role="list">
+                      <div
+                        data-testid="sidebar-inbox-pinned"
+                        className="mb-1 border-b border-border/35 pb-1.5"
+                      >
+                        <SidebarRow
+                          rowType="nav"
+                          onClick={handleInboxSpaceClick}
+                          aria-label={inboxLabel}
+                          aria-current={activeSpaceId === INBOX_SPACE_ID ? 'true' : undefined}
+                          isActive={activeSpaceId === INBOX_SPACE_ID}
+                          className="!pl-3 !pr-2 select-none"
+                          leftSlot={<Tray className="size-[16px] !text-[color:var(--shell-navigation-foreground)]" />}
+                          rightSlot={
+                            <span
+                              data-testid="sidebar-inbox-count"
+                              className="font-mono text-xs tabular-nums text-[color:var(--shell-navigation-muted)]"
+                            >
+                              {conversationSessions.length}
+                            </span>
+                          }
+                        >
+                          <SidebarRowLabel>{inboxLabel}</SidebarRowLabel>
+                        </SidebarRow>
+                      </div>
+                      {topicSessionGroups.map((group) => renderRecentGroup(group))}
+                    </div>
+                  </nav>
+                </>
               ) : null}
             </section>
 

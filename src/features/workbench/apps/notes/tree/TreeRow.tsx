@@ -17,7 +17,6 @@ import {
   LEVEL_INDENT_PX,
   LONG_PRESS_MOVE_TOLERANCE_PX,
   LONG_PRESS_MS,
-  RESOURCE_EXTRA_INDENT_PX,
   type NotesWorkspaceDropPosition,
   type NotesWorkspaceTreeContextMenuEvent,
   type NotesWorkspaceTreeItem,
@@ -131,9 +130,9 @@ export function TreeRow({
     if (longPressTimer.current) clearTimeout(longPressTimer.current);
   }, []);
 
-  const paddingLeft = folder
-    ? BASE_INDENT_PX + depth * LEVEL_INDENT_PX
-    : BASE_INDENT_PX + RESOURCE_EXTRA_INDENT_PX + depth * LEVEL_INDENT_PX;
+  // 笔记/导图行已通过 .nwt-caret-spacer（14px + gap）占位对齐文件夹箭头，
+  // 统一按 depth 计算基础缩进，避免同级笔记二次叠加缩进。
+  const paddingLeft = BASE_INDENT_PX + depth * LEVEL_INDENT_PX;
 
   const renameHintId = useId();
   const trimmedEditValue = editValue.trim();

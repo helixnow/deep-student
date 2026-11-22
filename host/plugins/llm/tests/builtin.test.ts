@@ -70,16 +70,28 @@ describe('builtin_vendors.rs', () => {
     expect(vendor?.maxTokensLimit).toBe(393_216);
   });
 
-  it('Mistral ships only the three selected hosted models with its own adapter', () => {
+  it('Mistral ships its selected hosted models and embedding models with its own adapter', () => {
     expect(vendorById('builtin-mistral')).toMatchObject({
       baseUrl: 'https://api.mistral.ai/v1', apiProtocol: 'openai_responses', apiKey: '',
     });
     const profiles = allProfiles().filter(profile => profile.vendorId === 'builtin-mistral');
-    expect(profiles.map(profile => profile.model)).toEqual([
+    const chatProfiles = profiles.filter(profile => !profile.isEmbedding);
+    const embeddingProfiles = profiles.filter(profile => profile.isEmbedding);
+    expect(chatProfiles.map(profile => profile.model)).toEqual([
       'deepseek-v4-1-flash-1017', 'zai-glm-5-3', 'zai-glm-5-3-flash',
     ]);
-    for (const profile of profiles) {
-      expect(profile).toMatchObject({ providerScope: 'mistral', modelAdapter: 'mistral', supportsTools: true });
+    for (const profile of chatProfiles) {
+      expect(profile).toMatchObject({ providerScope: 'mistral', modelAdapter: 'mistral', supportsTools: true, isEmbedding: false });
+    }
+    expect(embeddingProfiles.map(profile => profile.model)).toEqual([
+      'mistral-embed', 'codestral-embed',
+    ]);
+    for (const profile of embeddingProfiles) {
+      expect(profile).toMatchObject({
+        providerScope: 'mistral', modelAdapter: 'mistral', isEmbedding: true,
+        supportsTools: false, isReasoning: false, isMultimodal: false,
+        maxOutputTokens: 0, temperature: 0, contextWindow: 8192,
+      });
     }
   });
 

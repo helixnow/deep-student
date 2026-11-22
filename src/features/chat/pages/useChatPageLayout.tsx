@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useCallback } from 'react';
-import { ArrowSquareOut, ListChecks, Plus, SidebarSimple } from '@phosphor-icons/react';
+import { ArrowSquareOut, ListChecks, MagnifyingGlass, Plus, SidebarSimple } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { useMobileHeader } from '@/components/layout';
 import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { MobileBreadcrumb } from '@/features/learning-hub/components/MobileBreadcrumb';
 import { GoalStatusChip } from '../components/GoalStatusChip';
+import { CHAT_OPEN_MESSAGE_SEARCH_EVENT } from '../components/MessageSearchBar';
 import { groupEditorSubmitRef } from '../components/groups/GroupEditorDialog';
 import {
   selectSandboxWorkbenchOwnerState,
@@ -119,6 +120,21 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
       <Plus size={21} weight="regular" />
     </DsButton>
   ), [createSession, isLoading, t]);
+
+  const sessionSearchAction = useMemo(() => (
+    <DsButton
+      variant="ghost"
+      size="icon"
+      iconOnly
+      onClick={() => window.dispatchEvent(new CustomEvent(CHAT_OPEN_MESSAGE_SEARCH_EVENT))}
+      disabled={isLoading || isEmptyNewChat}
+      className={shellIconButtonClassName}
+      aria-label={t('messageList.search.open', { defaultValue: '搜索消息' })}
+      title={t('messageList.search.open', { defaultValue: '搜索消息' })}
+    >
+      <MagnifyingGlass size={20} />
+    </DsButton>
+  ), [isEmptyNewChat, isLoading, t]);
 
   const sessionNewChatAction = useMemo(() => (
     <DsButton
@@ -276,11 +292,12 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           <>
             {/* goal 模式 P0：会话目标状态紧凑 chip（goal 为 null 时自渲染空） */}
             {currentSessionId ? <GoalStatusChip sessionId={currentSessionId} compact /> : null}
+            {sessionSearchAction}
             {sessionNewChatAction}
           </>
         ),
   }, [
-    currentSessionId, homepageNewChatAction, sessionNewChatAction, browserNewChatAction, headerTitle, mobileResourcePanelOpen, viewMode, isMinimalChatHeader,
+    currentSessionId, homepageNewChatAction, sessionSearchAction, sessionNewChatAction, browserNewChatAction, headerTitle, mobileResourcePanelOpen, viewMode, isMinimalChatHeader,
     finderBreadcrumbs, handleFinderBreadcrumbNavigate, t,
     mobileSandboxOpen, closeMobileSandbox, openAppTitle, closeMobileOpenApp,
     sandboxOwnerKey, sandboxInspectorOpen, refreshSandboxSession, setSandboxInspectorOpen,

@@ -1,5 +1,5 @@
 import { expectDomTypeError } from '@milkdown/exception';
-import { $nodeSchema } from '@milkdown/utils';
+import { $nodeSchema } from '@milkdown/kit/utils';
 
 import { normalizeCalloutType, type CalloutType } from './types';
 

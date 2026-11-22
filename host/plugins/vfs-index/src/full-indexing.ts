@@ -24,7 +24,7 @@ import {
 import {
   clearTextIndexRowsForResource, contentHashChanged, getFileExtractedTextForRecovery,
   hasLegacyUnpagedPdf, hasMediaTranscript, listOrphanQueueEntries,
-  listPrepareCandidates, recoverStuckIndexingRows, updateOrphanRetry,
+  listPrepareCandidateStamps, recoverStuckIndexingRows, updateOrphanRetry,
 } from '../repository/index-content.ts';
 import {
   MODALITY_MULTIMODAL, MODALITY_TEXT,
@@ -70,7 +70,7 @@ export class VfsFullIndexingService {
   private readonly questionRepo: QuestionRepository | undefined;
   private readonly mediaIndex: VfsFullIndexingDeps['mediaIndex'];
   private readonly logger: LaneLogger | undefined;
-  private readonly attemptedWithoutEmbedding = new Set<string>();
+  private readonly attemptedWithoutEmbedding = new Map<string, string>();
 
   constructor(deps: VfsFullIndexingDeps) {
     this.db = deps.db;
@@ -617,14 +617,15 @@ export class VfsFullIndexingService {
       this.logger?.warn(`[VfsFullIndexingService] Failed to refresh embedding counts: ${messageOf(refreshError)}`);
     }
     markPending(this.db, resourceId);
+    this.attemptedWithoutEmbedding.delete(resourceId);
   }
 
   prepareUnitsWithoutEmbedding(limit: number): number {
-    const candidates = listPrepareCandidates(this.db, limit);
+    const candidates = listPrepareCandidateStamps(this.db, limit);
     let prepared = 0;
-    for (const resourceId of candidates) {
-      if (this.attemptedWithoutEmbedding.has(resourceId)) continue;
-      this.attemptedWithoutEmbedding.add(resourceId);
+    for (const { id: resourceId, stamp } of candidates) {
+      if (this.attemptedWithoutEmbedding.get(resourceId) === stamp) continue;
+      this.attemptedWithoutEmbedding.set(resourceId, stamp);
       try {
         this.syncResourceToUnits(resourceId);
         prepared += 1;

@@ -4,35 +4,11 @@ import { createPortal } from 'react-dom';
 import i18next from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelGroupHandle } from 'react-resizable-panels';
-import {
-  CaretLeft,
-  FileArchive,
-  FileArrowUp,
-  ArrowLeft,
-  ArrowRight,
-  FileText,
-  FolderPlus,
-  LinkSimple,
-  List,
-  MagnifyingGlass,
-  Notebook,
-  PushPin,
-  PushPinSlash,
-  SidebarSimple,
-  TreeStructure,
-  Trash,
-  Robot,
-  X,
-} from '@phosphor-icons/react';
+import { CaretLeft } from '@phosphor-icons/react';
 import { dstu, createEmpty, folderApi, trashApi, type DstuNode } from '@/dstu';
-import { RESOURCE_ID_PREFIX_MAP } from '@/dstu/types/path';
 import { DSTU_FOLDER_CHANGE_EVENT } from '@/dstu/folderEvents';
-import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
-import { getMindMapStoreForInstance } from '@/features/mindmap/store';
 import { exportResourceById } from '@/features/learning-hub/utils/exportResource';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { DsButton } from '@/components/ui/DsButton';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import {
   NOTES_WORKSPACE_COMMAND_EVENT,
@@ -40,18 +16,13 @@ import {
   type NotesWorkspaceCommandDetail,
 } from '@/command-palette/modules/notes.commands';
 import { publishNotesFindQuery } from '@/features/notes/findQueryBridge';
-import { cn } from '@/lib/utils';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
-import { isMacOS } from '@/utils/platform';
-import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
-import type { FolderTreeNode, VfsFolder } from '@/dstu/types/folder';
+import type { VfsFolder } from '@/dstu/types/folder';
 import { requestContentCloseDecision } from '../content/ContentCloseConfirmation';
 import {
   hasContentSaveHandler,
-  isContentDirty,
   saveContentNow,
-  type ContentSaveState,
 } from '../content/contentDirtyRegistry';
 import type { AppWindowProps } from '../../core/types';
 import { setWindowDirty } from '../../core/windowCloseGuard';
@@ -65,39 +36,31 @@ import {
 import {
   NotesBacklinksPanel,
   type NotesBacklinksTabRequest,
+  type PanelTab,
 } from './NotesBacklinksPanel';
 import { RENAME_SYNC_SOURCE_LIMIT, syncWikiLinksAfterNoteRename } from './wikilinkRenameSync';
-import { NotesPropertiesTab } from './NotesPropertiesTab';
-import { NoteLearningViews } from '@/features/notes/components/NoteLearningViews';
+import { NotesOutlineTab, NotesPropertiesTab } from './NotesPropertiesTab';
+import type { NoteBreadcrumbItem } from '@/features/notes/components/NotesEditorHeader';
 import { CreateLearningNoteDialog } from '@/features/notes/components/CreateLearningNoteDialog';
-import { sameNoteLearningMetadata, type NoteLearningView } from '@/features/notes/noteLearningProps';
+import type { NoteLearningView } from '@/features/notes/noteLearningProps';
 import { NotesGraphTab } from './graph/NotesGraphTab';
-import { ExplorerOverflowMenu, type ExplorerOverflowAction } from './ExplorerOverflowMenu';
 import { NotesSearchOverlay, type NotesSearchMode } from './NotesSearchOverlay';
 import { NotesTrashDialog } from './NotesTrashDialog';
-import { FavoritesSection } from './FavoritesSection';
-import { InsightsSection } from './InsightsSection';
-import { TagFilter } from './TagFilter';
 import { useNoteFavorites } from './hooks/useNoteFavorites';
 import {
   useNotesNavHistory,
   type NotesNavHistoryEntry,
 } from './hooks/useNotesNavHistory';
-import { nodeMatchesTags } from './parseTagQuery';
 import { useMemoryRootFolder } from '@/features/learning-hub/hooks/useMemoryRootFolder';
 import {
-  NotesWorkspaceTree,
   mapWorkspaceTreeFolder,
   expandedIdsFromCollapsedPaths,
   collectFolderEntries,
   findItemById,
-  NOTES_WORKSPACE_TREE_ROOT_ID,
   type NotesWorkspaceDropPosition,
   type NotesWorkspaceTreeItem,
-  type NotesWorkspaceTreeMenuItem,
 } from './tree';
 import './NotesWorkspaceApp.css';
-import { WorkbenchSidebarSurface } from '../../components/sidebar';
 import { WorkbenchSidebarLayout } from '../system/SystemWindowShared';
 import { classifyWbSysWidth, type WbSysSizeClass } from '../system/useWbSysSize';
 import { setWikilinkCreateContext } from '@/features/notes/createFromWikilink';
@@ -110,935 +73,65 @@ import {
 } from '@/features/notes/focusModeOwnership';
 import {
   NOTE_TITLE_MAX_CHARS,
-  NOTE_TITLE_COUNT_WARN_THRESHOLD,
-  countNoteInputChars,
-  sanitizeNoteTitleInput,
   validateNoteTitle,
 } from '@/features/notes/noteInputLimits';
 import './notes-empty-states.css';
 import { NotesChromeSlotContext } from '@/features/notes/notesChromeSlot';
-import { useOptionalSlot, useOptionalUiKernel } from '@/ui-kernel/react';
-import type { NotesTreeMenuActions } from '@/ui-kernel/contracts/content';
 import {
-  officialNotesTreeMenuEntries,
-  resolveNotesTreeMenu,
-  type ResourceMenuError,
-} from '@/ui-plugins/official/menu/notesTreeMenu';
-import { NoteGlyph } from '@/features/notes/components/NoteGlyph';
+  BACKLINKS_SIDE_BY_SIDE_MIN_WIDTH,
+  DEFAULT_SPLIT_LAYOUT,
+  EMPTY_RESOURCE_FOLDER_IDS,
+  RESOURCE_LIST_MAX_TOTAL,
+  RESOURCE_LIST_PAGE_SIZE,
+  buildTree,
+  computeNoteBreadcrumbs,
+  computeTabCloseNextState,
+  filterWorkspaceResources,
+  getFolderMembership,
+  getRecentSearchResources,
+  getTabContextMenuState,
+  getTabSaveState,
+  getWelcomeRecentResources,
+  isCloseTabShortcut,
+  isMarkdownFileName,
+  isStableVfsFolderId,
+  listWorkspaceResources,
+  matchWorkspaceWindowShortcut,
+  mergeUpdatedResourceNode,
+  parseInitialResource,
+  parseSplitLayout,
+  readPersistedWorkspaceState,
+  reconcileTabsWithResources,
+  reorderWorkspaceTabs,
+  resolveCoherentPaneState,
+  resolveExplorerDeleteTargets,
+  resolveMoveDestinationFolderId,
+  resolveRightSplitMainTabKey,
+  resourceType,
+  shouldCloseRightSplitOnTabClose,
+  treeResourceKey,
+  writePersistedWorkspaceState,
+  type CloseTabOptions,
+  type ResourceDialog,
+  type ResourceType,
+  type SaveState,
+  type SplitLayout,
+  type TabContextMenu,
+  type TabDropPosition,
+  type WorkspacePaneId,
+  type WorkspaceTab,
+} from './workspaceTreeModel';
+import { WorkspaceTabContextMenu, WorkspaceTabs } from './components/WorkspaceTabStrip';
+import { WorkspacePane } from './components/WorkspacePane';
+import { WorkspaceExplorer } from './components/WorkspaceExplorer';
 
-// 导图视图懒加载：@xyflow/react 体积大，只有导图标签页真正展示时才拉取，
-// 避免拖入 Notes 窗口启动 chunk（加载态用下方轻量占位）
-const MindMapContentView = React.lazy(() =>
-  import('@/features/mindmap/MindMapContentView').then((module) => ({
-    default: module.MindMapContentView,
-  })),
-);
-
-/** 导图 pane 懒加载占位：与文档树加载骨架同款脉冲条 */
-const MindMapPaneFallback: React.FC = () => (
-  <div className="notes-mindmap-loading" aria-hidden="true">
-    <i /><i /><i />
-  </div>
-);
-
-type ResourceType = NotesWorkspaceResourceRef['type'];
-
-interface WorkspaceTab extends NotesWorkspaceResourceRef {
-  key: string;
-  title: string;
-  pinned?: boolean;
-}
-
-type SaveState = ContentSaveState;
-type WorkspacePaneId = 'main' | 'right';
-type SplitLayout = [number, number];
-type TabDropPosition = 'before' | 'after';
-
-const DEFAULT_SPLIT_LAYOUT: SplitLayout = [50, 50];
-
-interface CloseTabOptions {
-  /** A user has already confirmed a destructive action for this resource. */
-  force?: boolean;
-}
-
-interface TabContextMenu {
-  key: string;
-  x: number;
-  y: number;
-}
-
-function getTabSaveState(tab: WorkspaceTab, windowId: string): SaveState {
-  if (tab.type === 'note') {
-    return isContentDirty('note', tab.id) ? 'dirty' : 'saved';
-  }
-  const state = getMindMapStoreForInstance(`${windowId}:${tab.key}`, tab.id)?.getState();
-  if (state?.isSaving) return 'saving';
-  return state?.isDirty ? 'dirty' : 'saved';
-}
-
-interface TreeFolder {
-  name: string;
-  path: string;
-  id?: string;
-  folders: Map<string, TreeFolder>;
-  resources: DstuNode[];
-}
-
-interface ExplorerFolderTarget {
-  kind: 'folder';
-  id: string;
-  name: string;
-  path: string;
-}
-
-interface ExplorerResourceTarget {
-  kind: 'resource';
-  node: DstuNode;
-}
-
-type ExplorerTarget = ExplorerFolderTarget | ExplorerResourceTarget;
-
-type ResourceDialog =
-  | { mode: 'delete'; target: ExplorerTarget }
-  | { mode: 'delete-many'; targets: ExplorerTarget[] }
-  | { mode: 'create-folder'; value: string; parentId: string | null };
-
-const WORKSPACE_STORAGE_KEY = 'workbench.notesWorkspace.state.v1';
-
-/**
- * 资源列表分页参数，与 wikilinkNotesCache 对齐（每页 1000、总上限 20000）。
- * 旧实现单次 `limit: 1000` 静默截断：第 1001 篇起从文件树里消失且毫无提示。
- */
-export const RESOURCE_LIST_PAGE_SIZE = 1000;
-export const RESOURCE_LIST_MAX_TOTAL = 20000;
-
-/**
- * 背链面板并排（非 overlay）所需的最小工作区宽度。
- * 旧值 1180 恰好等于窗口默认宽（去掉窗框后工作区永远差几像素）——默认
- * 尺寸下面板永远盖在正文上。现在阈值与默认窗宽（register.ts 1240）拉开，
- * 默认窗口即可并排显示。
- */
-export const BACKLINKS_SIDE_BY_SIDE_MIN_WIDTH = 1120;
-
-// 互斥 never 字段与 shared/result 的 Ok/Err 同款（strict:false 下无收窄）
-type ListWorkspaceResourcesResult =
-  | { ok: true; nodes: DstuNode[]; truncated: boolean; error?: never }
-  | { ok: false; error: { toUserMessage(): string }; nodes?: never; truncated?: never };
-
-/** 分页拉全某类型资源；命中总上限或后续页失败时返回已取到的部分并标记截断。 */
-export async function listWorkspaceResources(typeFilter: ResourceType): Promise<ListWorkspaceResourcesResult> {
-  const nodes: DstuNode[] = [];
-  let offset = 0;
-  for (;;) {
-    const result = await dstu.list('/', {
-      typeFilter,
-      sortBy: 'name',
-      sortOrder: 'asc',
-      limit: RESOURCE_LIST_PAGE_SIZE,
-      offset,
-    });
-    if (!result.ok) {
-      // 首页失败 = 整树加载失败；后续页失败保留已取到的部分并提示不完整
-      if (offset === 0) return { ok: false, error: result.error };
-      return { ok: true, nodes, truncated: true };
-    }
-    nodes.push(...result.value);
-    if (result.value.length < RESOURCE_LIST_PAGE_SIZE) return { ok: true, nodes, truncated: false };
-    if (nodes.length >= RESOURCE_LIST_MAX_TOTAL) return { ok: true, nodes, truncated: true };
-    offset += RESOURCE_LIST_PAGE_SIZE;
-  }
-}
-
-interface PersistedWorkspaceState {
-  tabs: WorkspaceTab[];
-  activeTabKey: string | null;
-  rightTabKey: string | null;
-  focusedPane: WorkspacePaneId;
-  splitLayout: SplitLayout;
-  backlinksOpen: boolean;
-  explorerOpen: boolean;
-  collapsedFolderPaths: string[];
-}
-
-const resourceType = (value: unknown): ResourceType | null =>
-  value === 'note' || value === 'mindmap' ? value : null;
-
-const treeResourceKey = (type: string, id: string): string => `${type}:${id}`;
-
-const EMPTY_RESOURCE_FOLDER_IDS: ReadonlyMap<string, string> = new Map();
-
-function isStableVfsFolderId(id: string): boolean {
-  return Boolean(id) && !id.startsWith('synth:');
-}
-
-function isReservedFolderTitle(title: string): boolean {
-  return title.trim().toLocaleLowerCase() === '__system__';
-}
-
-function findParentDeep(
-  items: readonly NotesWorkspaceTreeItem[],
-  childId: string,
-): { found: boolean; parentId: string | null } {
-  for (const item of items) {
-    if (!item.children?.length) continue;
-    if (item.children.some((child) => child.id === childId)) {
-      return {
-        found: true,
-        parentId: item.kind === 'folder' && isStableVfsFolderId(item.id) ? item.id : null,
-      };
-    }
-    const nested = findParentDeep(item.children, childId);
-    if (nested.found) return nested;
-  }
-  return { found: false, parentId: null };
-}
-
-function resolveMoveDestinationFolderId(
-  items: readonly NotesWorkspaceTreeItem[],
-  targetId: string,
-  position: NotesWorkspaceDropPosition,
-): string | null | undefined {
-  if (targetId === NOTES_WORKSPACE_TREE_ROOT_ID) return undefined;
-  const target = findItemById(items, targetId);
-  if (!target) return null;
-  if (position === 'inside' && target.kind === 'folder') {
-    return isStableVfsFolderId(target.id) ? target.id : null;
-  }
-  const parent = findParentDeep(items, targetId);
-  return parent.found ? parent.parentId ?? undefined : null;
-}
-
-function parseSplitLayout(value: unknown): SplitLayout {
-  if (!Array.isArray(value) || value.length !== 2) return DEFAULT_SPLIT_LAYOUT;
-  const [main, right] = value;
-  if (
-    typeof main !== 'number'
-    || typeof right !== 'number'
-    || !Number.isFinite(main)
-    || !Number.isFinite(right)
-    || main < 25
-    || right < 25
-    || main > 75
-    || right > 75
-    || Math.abs(main + right - 100) > 0.5
-  ) return DEFAULT_SPLIT_LAYOUT;
-  return [main, right];
-}
-
-function parseInitialResource(instanceKey: string | null, payload: unknown): NotesWorkspaceResourceRef | null {
-  if (payload && typeof payload === 'object') {
-    const value = payload as Record<string, unknown>;
-    const type = resourceType(value.resourceType ?? value.type);
-    const id = typeof value.resourceId === 'string' ? value.resourceId : instanceKey;
-    if (type && id) return { type, id };
-  }
-  if (!instanceKey) return null;
-  // 冷启动回退按 DSTU 统一的 ID 前缀表推断类型（mm_ → mindmap 等），
-  // 未知前缀按笔记打开（历史行为，笔记是工作区的默认资源类型）
-  return { type: resourceTypeFromIdPrefix(instanceKey) ?? 'note', id: instanceKey };
-}
-
-/** 从资源 ID 前缀推断工作区资源类型；非 note/mindmap 前缀返回 null。 */
-function resourceTypeFromIdPrefix(id: string): ResourceType | null {
-  for (const [prefix, type] of Object.entries(RESOURCE_ID_PREFIX_MAP)) {
-    if (id.startsWith(prefix)) return resourceType(type);
-  }
-  return null;
-}
-
-function getFolderMembership(treeNodes: readonly FolderTreeNode[]): ReadonlyMap<string, string> {
-  const membership = new Map<string, string>();
-  const visit = (nodes: readonly FolderTreeNode[]) => {
-    for (const node of nodes) {
-      for (const item of node.items) {
-        if (resourceType(item.itemType)) {
-          membership.set(treeResourceKey(item.itemType, item.itemId), node.folder.id);
-        }
-      }
-      visit(node.children);
-    }
-  };
-  visit(treeNodes);
-  return membership;
-}
-
-export function buildTree(
-  nodes: DstuNode[],
-  folders: VfsFolder[],
-  resourceFolderIds: ReadonlyMap<string, string> = new Map(),
-): TreeFolder {
-  const root: TreeFolder = { name: '', path: '/', folders: new Map(), resources: [] };
-  const foldersById = new Map(folders.map((folder) => [folder.id, folder]));
-  const knownTreeFolders = new Map<string, TreeFolder>();
-  const resolvingFolderIds = new Set<string>();
-
-  const ensureKnownFolder = (folder: VfsFolder): TreeFolder => {
-    const cached = knownTreeFolders.get(folder.id);
-    if (cached) return cached;
-    if (resolvingFolderIds.has(folder.id)) return root;
-    resolvingFolderIds.add(folder.id);
-    const parentFolder = folder.parentId ? foldersById.get(folder.parentId) : undefined;
-    const parent = parentFolder ? ensureKnownFolder(parentFolder) : root;
-    resolvingFolderIds.delete(folder.id);
-    if (isReservedFolderTitle(folder.title)) {
-      knownTreeFolders.set(folder.id, parent);
-      return parent;
-    }
-    const key = `id:${folder.id}`;
-    const existing = parent.folders.get(key);
-    if (existing) return existing;
-    const treeFolder: TreeFolder = {
-      id: folder.id,
-      name: folder.title,
-      path: `${parent.path === '/' ? '' : parent.path}/${folder.id}`,
-      folders: new Map(),
-      resources: [],
-    };
-    parent.folders.set(key, treeFolder);
-    knownTreeFolders.set(folder.id, treeFolder);
-    return treeFolder;
-  };
-
-  const ensureSyntheticFolder = (segments: string[]): TreeFolder => {
-    let cursor = root;
-    const pathSegments: string[] = [];
-    for (const segment of segments) {
-      if (isReservedFolderTitle(segment)) continue;
-      pathSegments.push(segment);
-      const knownMatches = [...cursor.folders.values()].filter((folder) => folder.name === segment);
-      if (knownMatches.length === 1) {
-        cursor = knownMatches[0];
-        continue;
-      }
-      const key = `path:${pathSegments.join('/')}`;
-      let next = cursor.folders.get(key);
-      if (!next) {
-        const path = `${cursor.path === '/' ? '' : cursor.path}/${key}`;
-        next = { name: segment, path, folders: new Map(), resources: [] };
-        cursor.folders.set(key, next);
-      }
-      cursor = next;
-    }
-    return cursor;
-  };
-
-  for (const folder of folders) {
-    ensureKnownFolder(folder);
-  }
-
-  for (const node of nodes) {
-    const type = resourceType(node.type);
-    if (!type) continue;
-    const folderId = resourceFolderIds.get(treeResourceKey(type, node.id));
-    const folder = folderId ? foldersById.get(folderId) : undefined;
-    if (folder) {
-      ensureKnownFolder(folder).resources.push(node);
-      continue;
-    }
-    const segments = node.path.split('/').filter(Boolean);
-    if (segments.at(-1) === node.id) segments.pop();
-    ensureSyntheticFolder(segments).resources.push(node);
-  }
-  return root;
-}
-
-function readPersistedWorkspaceState(): PersistedWorkspaceState {
-  const fallback: PersistedWorkspaceState = {
-    tabs: [],
-    activeTabKey: null,
-    rightTabKey: null,
-    focusedPane: 'main',
-    splitLayout: DEFAULT_SPLIT_LAYOUT,
-    backlinksOpen: false,
-    explorerOpen: true,
-    collapsedFolderPaths: [],
-  };
-  if (typeof window === 'undefined' || typeof window.localStorage === 'undefined') return fallback;
-  try {
-    const raw = window.localStorage.getItem(WORKSPACE_STORAGE_KEY);
-    if (!raw) return fallback;
-    const value = JSON.parse(raw) as Partial<PersistedWorkspaceState>;
-    const restoredTabs = Array.isArray(value.tabs)
-      ? value.tabs.filter((tab): tab is WorkspaceTab => (
-        Boolean(tab)
-        && typeof tab.key === 'string'
-        && typeof tab.id === 'string'
-        && typeof tab.title === 'string'
-        && resourceType(tab.type) !== null
-      ))
-      : [];
-    const tabs = restoredTabs.map((tab) => ({ ...tab, pinned: tab.pinned === true }));
-    const rightTabKey = typeof value.rightTabKey === 'string' && tabs.some((tab) => tab.key === value.rightTabKey)
-      ? value.rightTabKey
-      : null;
-    const mainTabs = tabs.filter((tab) => tab.key !== rightTabKey);
-    const activeTabKey = typeof value.activeTabKey === 'string' && mainTabs.some((tab) => tab.key === value.activeTabKey)
-      ? value.activeTabKey
-      : mainTabs[0]?.key ?? null;
-    return {
-      tabs,
-      activeTabKey,
-      rightTabKey,
-      focusedPane: rightTabKey && value.focusedPane === 'right' ? 'right' : 'main',
-      splitLayout: parseSplitLayout(value.splitLayout),
-      backlinksOpen: typeof value.backlinksOpen === 'boolean' ? value.backlinksOpen : false,
-      explorerOpen: typeof value.explorerOpen === 'boolean' ? value.explorerOpen : true,
-      collapsedFolderPaths: Array.isArray(value.collapsedFolderPaths)
-        ? value.collapsedFolderPaths.filter((path): path is string => typeof path === 'string')
-        : [],
-    };
-  } catch {
-    return fallback;
-  }
-}
-
-function getExplorerTargetName(target: ExplorerTarget): string {
-  return target.kind === 'resource' ? target.node.name : target.name;
-}
-
-const IconButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { label: string }> = ({
-  label,
-  children,
-  className,
-  ...props
-}) => (
-  <button {...props} type="button" className={cn('notes-icon-button', className)} aria-label={label} title={label}>
-    {children}
-  </button>
-);
-
-const ResourceGlyph: React.FC<{ type: ResourceType; size?: number; id?: string }> = ({ type, size = 15, id }) =>
-  type === 'note'
-    ? <NoteGlyph noteId={id} size={size} fallback={<FileText size={size} aria-hidden />} />
-    : <TreeStructure size={size} aria-hidden />;
-
-interface WorkspacePaneProps {
-  paneId: WorkspacePaneId;
-  tabs: WorkspaceTab[];
-  activeKey: string | null;
-  windowId: string;
-  workspaceActive: boolean;
-  onActivate: (key: string) => void;
-  onTitleChange: (key: string, title: string) => void;
-  onSaveStateChange: (key: string, state: SaveState) => void;
-  onCreateNote?: () => void;
-  onCreateMindmap?: () => void;
-  onOpenSearch?: () => void;
-  onImport?: () => void;
-  onAskAgent?: () => void;
-  recentResources?: readonly DstuNode[];
-  onOpenRecent?: (node: DstuNode) => void;
-}
-
-const TREE_SKELETON_ROWS: Array<{ indent: number; width: string }> = [
-  { indent: 0, width: '68%' },
-  { indent: 1, width: '54%' },
-  { indent: 1, width: '62%' },
-  { indent: 2, width: '48%' },
-];
-
-const WorkspacePane: React.FC<WorkspacePaneProps> = ({
-  paneId,
-  tabs,
-  activeKey,
-  windowId,
-  workspaceActive,
-  onActivate,
-  onTitleChange,
-  onSaveStateChange,
-  onCreateNote,
-  onCreateMindmap,
-  onOpenSearch,
-  onImport,
-  onAskAgent,
-  recentResources,
-  onOpenRecent,
-}) => {
-  const { t } = useTranslation(['workbench', 'notes']);
-  const active = tabs.find((tab) => tab.key === activeKey) ?? null;
-  const modKey = isMacOS() ? '⌘' : 'Ctrl+';
-  // 只挂载当前 + 最近 1 个标签的完整编辑器：后台标签不再用 hidden 常驻整份 Crepe，
-  // 显著压低窗口 DOM 规模（拖窗每帧税 ∝ 节点数）。内容已由 DSTU/脏标记持久化。
-  const [mountedKeys, setMountedKeys] = useState<string[]>(() => (activeKey ? [activeKey] : []));
-  useEffect(() => {
-    if (!activeKey) return;
-    setMountedKeys((prev) => {
-      const next = [activeKey, ...prev.filter((key) => key !== activeKey)];
-      const living = new Set(tabs.map((tab) => tab.key));
-      const livingNext = next.filter((key) => living.has(key));
-      // C3：脏/保存中的标签豁免淘汰——切到第三篇时不能以卸载换取内存下降，
-      // 未持久化草稿必须先有主人（与 Learning Hub 的 dirty 额外保活同策略）。
-      const keep = livingNext.slice(0, 2);
-      const keepSet = new Set(keep);
-      const tabByKey = new Map(tabs.map((tab) => [tab.key, tab]));
-      for (const key of livingNext) {
-        if (keepSet.has(key)) continue;
-        const tab = tabByKey.get(key);
-        if (tab && getTabSaveState(tab, windowId) !== 'saved') {
-          keepSet.add(key);
-        }
-      }
-      return livingNext.filter((key) => keepSet.has(key));
-    });
-  }, [activeKey, tabs, windowId]);
-  return (
-    <section
-      className="notes-workspace-pane"
-      data-notes-pane={paneId}
-      data-focused={workspaceActive ? 'true' : 'false'}
-      data-resource-type={active?.type}
-      data-resource-id={active?.id}
-      role="region"
-      aria-label={paneId === 'main'
-        ? t('notesWorkspace.panes.main', 'Main editor')
-        : t('notesWorkspace.panes.right', 'Right editor')}
-      onPointerDown={() => active && onActivate(active.key)}
-    >
-      <div className="notes-pane-content">
-        {!active && (
-          <div className="nes-empty-pane notes-empty-pane" data-nes-empty-pane>
-            <div className="nes-empty-pane__inner ui-zoom-fade-in">
-              <div className="nes-empty-pane__icon" aria-hidden>
-                <Notebook size={48} weight="thin" />
-              </div>
-              <p className="nes-empty-pane__title">
-                {t('workbench:notesWorkspace.empty.paneTitle')}
-              </p>
-              <div className="nes-empty-pane__actions">
-                <DsButton
-                  variant="outline"
-                  size="sm"
-                  className="nes-action"
-                  onClick={() => onCreateNote?.()}
-                >
-                  <FileText size={14} aria-hidden />
-                  {t('workbench:notesWorkspace.empty.paneNewNote')}
-                </DsButton>
-                {onCreateMindmap && (
-                  <DsButton
-                    variant="ghost"
-                    size="sm"
-                    className="nes-action nes-action--ghost"
-                    onClick={() => onCreateMindmap()}
-                  >
-                    <TreeStructure size={14} aria-hidden />
-                    {t('notes:workspace.emptyNewMindmap')}
-                  </DsButton>
-                )}
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  className="nes-action nes-action--ghost"
-                  onClick={() => onOpenSearch?.()}
-                >
-                  <MagnifyingGlass size={14} aria-hidden />
-                  {t('workbench:notesWorkspace.empty.paneOpenSearch')}
-                </DsButton>
-                <DsButton variant="ghost" size="sm" className="nes-action nes-action--ghost" onClick={onImport}>
-                  <FileArrowUp size={14} aria-hidden />
-                  {t('workbench:notesWorkspace.empty.paneImport', 'Import notes')}
-                </DsButton>
-                <DsButton variant="ghost" size="sm" className="nes-action nes-action--ghost" onClick={onAskAgent}>
-                  <Robot size={14} aria-hidden />
-                  {t('workbench:notesWorkspace.empty.paneAskAgent', 'Ask Agent')}
-                </DsButton>
-              </div>
-              {recentResources && recentResources.length > 0 && onOpenRecent && (
-                <div
-                  className="flex w-full max-w-xs flex-col gap-1 border-t border-border/50 pt-3 text-left"
-                  data-testid="notes-empty-recents"
-                >
-                  <p className="px-2 text-2xs font-medium text-muted-foreground/70">
-                    {t('notes:workspace.recentSectionTitle')}
-                  </p>
-                  {recentResources.map((node) => (
-                    <DsButton
-                      key={`${node.type}:${node.id}`}
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-full justify-start gap-2 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150 motion-reduce:transition-none"
-                      onClick={() => onOpenRecent(node)}
-                    >
-                      <ResourceGlyph type={node.type === 'mindmap' ? 'mindmap' : 'note'} id={node.id} size={14} />
-                      <span className="truncate">
-                        {t('notes:workspace.resumeItem', { title: node.name })}
-                      </span>
-                    </DsButton>
-                  ))}
-                </div>
-              )}
-              <ul className="nes-empty-pane__hints">
-                <li className="nes-empty-pane__hint">
-                  <kbd className="nes-kbd">{modKey}P</kbd>
-                  <span>{t('notes:workspace.hintQuickSwitch')}</span>
-                </li>
-                <li className="nes-empty-pane__hint">
-                  <kbd className="nes-kbd">{modKey}O</kbd>
-                  <span>{t('workbench:notesWorkspace.empty.hintQuickOpen')}</span>
-                </li>
-                <li className="nes-empty-pane__hint">
-                  <kbd className="nes-kbd">{modKey}N</kbd>
-                  <span>{t('workbench:notesWorkspace.empty.hintNewNote')}</span>
-                </li>
-                <li className="nes-empty-pane__hint">
-                  <kbd className="nes-kbd">{modKey}\</kbd>
-                  <span>{t('notes:workspace.hintToggleSidebar')}</span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        )}
-        {tabs
-          .filter((tab) => mountedKeys.includes(tab.key))
-          .map((tab) => {
-            const visible = tab.key === activeKey;
-            return (
-              <div className="notes-document-host" hidden={!visible} key={tab.key}>
-                {tab.type === 'note' ? (
-                  <UnifiedAppPanel
-                    type="note"
-                    resourceId={tab.id}
-                    dstuPath={`/${tab.id}`}
-                    strictType
-                    isActive={workspaceActive && visible}
-                    focusOnActive={workspaceActive && visible}
-                    hostWindowId={windowId}
-                    propertiesPanelDisabled
-                    onTitleChange={(title) => onTitleChange(tab.key, title)}
-                    onSaveStateChange={(state) => onSaveStateChange(tab.key, state)}
-                    className="h-full"
-                  />
-                ) : (
-                  <React.Suspense fallback={<MindMapPaneFallback />}>
-                    <MindMapContentView
-                      resourceId={tab.id}
-                      storeInstanceId={`${windowId}:${tab.key}`}
-                      isActive={workspaceActive && visible}
-                      focusOnActive={workspaceActive && visible}
-                      onTitleChange={(title) => onTitleChange(tab.key, title)}
-                      onSaveStateChange={(state) => onSaveStateChange(tab.key, state)}
-                      className="h-full"
-                    />
-                  </React.Suspense>
-                )}
-              </div>
-            );
-          })}
-      </div>
-    </section>
-  );
-};
-
-interface WorkspaceTabsProps {
-  tabs: WorkspaceTab[];
-  activeKey: string | null;
-  rightTabKey: string | null;
-  onActivate: (key: string) => void;
-  onClose: (key: string) => void | Promise<boolean>;
-  onReorder: (draggedKey: string, targetKey: string, position: TabDropPosition) => void;
-  onOpenContextMenu: (key: string, x: number, y: number, trigger: HTMLElement) => void;
-  /** Double-clicking the empty strip area (browser-style) creates a new note. */
-  onNewTab?: () => void;
-  contextMenuKey: string | null;
-  sidebarWidth: string;
-  saveStates: Map<string, SaveState>;
-  /** 标题栏右端的笔记页面级操作位（见 NotesChromeSlotContext） */
-  actionsSlotRef?: React.Ref<HTMLDivElement>;
-}
-
-const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
-  tabs,
-  activeKey,
-  rightTabKey,
-  onActivate,
-  onClose,
-  onReorder,
-  onOpenContextMenu,
-  onNewTab,
-  contextMenuKey,
-  sidebarWidth,
-  saveStates,
-  actionsSlotRef,
-}) => {
-  const { t } = useTranslation('workbench');
-  const stripRef = useRef<HTMLDivElement>(null);
-  const [draggedKey, setDraggedKey] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ key: string; position: TabDropPosition } | null>(null);
-  const [overflowOpen, setOverflowOpen] = useState(false);
-  const [overflowMenuPosition, setOverflowMenuPosition] = useState<{ top: number; right: number } | null>(null);
-  const overflowRef = useRef<HTMLDivElement>(null);
-  const overflowMenuRef = useRef<HTMLDivElement>(null);
-
-  const dismissOverflow = useCallback((event: Event) => {
-    if (event.target instanceof Node && overflowRef.current?.contains(event.target)) return;
-    if (event.target instanceof Node && overflowMenuRef.current?.contains(event.target)) return;
-    setOverflowOpen(false);
-  }, []);
-  useEventRegistry(overflowOpen ? [
-    { target: 'document', type: 'pointerdown', listener: dismissOverflow },
-  ] : [], [overflowOpen, dismissOverflow]);
-
-  useEffect(() => {
-    if (!overflowOpen) return;
-    const menu = overflowMenuRef.current;
-    const selected = menu?.querySelector<HTMLButtonElement>('[role="menuitem"][data-active="true"]')
-      ?? menu?.querySelector<HTMLButtonElement>('[role="menuitem"]');
-    selected?.focus();
-  }, [overflowOpen]);
-
-  const handleOverflowKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.defaultPrevented || isComposingKeyEvent(event)) return;
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      setOverflowOpen(false);
-      overflowRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
-      return;
-    }
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-    const items = Array.from(overflowMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
-    if (!items.length) return;
-    event.preventDefault();
-    const current = items.indexOf(document.activeElement as HTMLButtonElement);
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
-      : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
-    items[next]?.focus();
-  };
-
-  useEffect(() => {
-    const active = stripRef.current?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
-    active?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
-  }, [activeKey, tabs.length]);
-
-  useEffect(() => {
-    const strip = stripRef.current;
-    if (!strip) return;
-    const onWheel = (event: WheelEvent) => {
-      if (strip.scrollWidth <= strip.clientWidth) return;
-      const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
-      if (delta === 0) return;
-      event.preventDefault();
-      strip.scrollLeft += delta;
-    };
-    strip.addEventListener('wheel', onWheel, { passive: false });
-    return () => strip.removeEventListener('wheel', onWheel);
-  }, []);
-
-  const focusTab = (event: React.KeyboardEvent, index: number) => {
-    const buttons = event.currentTarget
-      .closest('[data-notes-tabstrip]')
-      ?.querySelectorAll<HTMLButtonElement>('[role="tab"]');
-    if (!buttons?.length) return;
-    const button = buttons.item((index + buttons.length) % buttons.length);
-    button?.focus();
-    button?.click();
-  };
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number, key: string) => {
-    if (event.defaultPrevented || isComposingKeyEvent(event)) return;
-    if (event.key === 'ArrowRight') {
-      event.preventDefault();
-      focusTab(event, index + 1);
-    } else if (event.key === 'ArrowLeft') {
-      event.preventDefault();
-      focusTab(event, index - 1);
-    } else if (event.key === 'Home') {
-      event.preventDefault();
-      focusTab(event, 0);
-    } else if (event.key === 'End') {
-      event.preventDefault();
-      focusTab(event, tabs.length - 1);
-    } else if (event.key === 'Delete') {
-      event.preventDefault();
-      void onClose(key);
-    } else if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
-      event.preventDefault();
-      const bounds = event.currentTarget.getBoundingClientRect();
-      onOpenContextMenu(key, bounds.left, bounds.bottom, event.currentTarget);
-    }
-  };
-
-  const clearTabDrag = () => {
-    setDraggedKey(null);
-    setDropTarget(null);
-  };
-
-  return (
-  <div className="notes-titlebar-tabs" style={{ '--notes-titlebar-sidebar-width': sidebarWidth } as React.CSSProperties}>
-    <div
-      ref={stripRef}
-      className="notes-tabstrip scrollbar-none"
-      data-notes-tabstrip
-      role="tablist"
-      aria-label={t('notesWorkspace.tabs.aria', 'Open files')}
-      onDoubleClick={(event) => {
-        // 仅拦截真正的空白条区域：已有 tab 时双击空白＝浏览器式新建；
-        // 各 tab 自己 stopPropagation，不会走到这里。没有 tab 时保留
-        // 标题栏双击缩放的窗壳语义。
-        if (!onNewTab || tabs.length === 0 || event.target !== event.currentTarget) return;
-        event.preventDefault();
-        event.stopPropagation();
-        onNewTab();
-      }}
-    >
-      {tabs.map((tab, index) => {
-        const saveState = saveStates.get(tab.key) ?? 'saved';
-        const isRightSplitTab = tab.key === rightTabKey;
-        return (
-        <div
-          className="notes-tab"
-          data-active={tab.key === activeKey ? 'true' : 'false'}
-          data-right-split={isRightSplitTab ? 'true' : 'false'}
-          data-pinned={tab.pinned ? 'true' : 'false'}
-          data-save-state={saveState}
-          data-drop-position={dropTarget?.key === tab.key ? dropTarget.position : undefined}
-          key={tab.key}
-          draggable
-          onPointerDown={(event) => event.stopPropagation()}
-          onDoubleClick={(event) => event.stopPropagation()}
-          onContextMenu={(event) => {
-            event.preventDefault();
-            const trigger = event.currentTarget.querySelector<HTMLElement>('[role="tab"]') ?? event.currentTarget;
-            onOpenContextMenu(tab.key, event.clientX, event.clientY, trigger);
-          }}
-          onDragStart={(event) => {
-            event.dataTransfer.effectAllowed = 'move';
-            event.dataTransfer.setData('text/plain', tab.key);
-            setDraggedKey(tab.key);
-          }}
-          onDragOver={(event) => {
-            if (!draggedKey || draggedKey === tab.key) return;
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'move';
-            const bounds = event.currentTarget.getBoundingClientRect();
-            setDropTarget({
-              key: tab.key,
-              position: event.clientX >= bounds.left + bounds.width / 2 ? 'after' : 'before',
-            });
-          }}
-          onDragLeave={(event) => {
-            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-              setDropTarget((current) => current?.key === tab.key ? null : current);
-            }
-          }}
-          onDrop={(event) => {
-            event.preventDefault();
-            const target = dropTarget?.key === tab.key
-              ? dropTarget
-              : { key: tab.key, position: 'before' as const };
-            if (draggedKey && draggedKey !== target.key) onReorder(draggedKey, target.key, target.position);
-            clearTabDrag();
-          }}
-          onDragEnd={clearTabDrag}
-          onAuxClick={(event) => {
-            if (event.button !== 1) return;
-            event.preventDefault();
-            void onClose(tab.key);
-          }}
-        >
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab.key === activeKey}
-            aria-haspopup="menu"
-            aria-expanded={contextMenuKey === tab.key}
-            aria-controls={contextMenuKey === tab.key ? 'notes-tab-context-menu' : undefined}
-            aria-description={tab.pinned
-              ? t('notesWorkspace.tabs.pinned', 'Pinned')
-              : undefined}
-            tabIndex={tab.key === activeKey ? 0 : -1}
-            onClick={() => onActivate(tab.key)}
-            onKeyDown={(event) => handleKeyDown(event, index, tab.key)}
-          >
-            <ResourceGlyph type={tab.type} id={tab.id} size={14} />
-            <span>{tab.title}</span>
-            {tab.pinned && (
-              <PushPin
-                className="notes-tab-pin"
-                size={11}
-                weight="fill"
-                aria-hidden
-              />
-            )}
-            {saveState !== 'saved' && (
-              <i className="notes-tab-state" aria-label={t(`notesWorkspace.saveState.${saveState}`)}
-                title={t(`notesWorkspace.saveState.${saveState}`)} />
-            )}
-          </button>
-          <IconButton label={t('notesWorkspace.tabs.close', { defaultValue: 'Close {{title}}', title: tab.title })} onClick={() => void onClose(tab.key)}>
-            <X size={12} />
-          </IconButton>
-        </div>
-      );})}
-    </div>
-    {tabs.length > 0 && (
-      <div className="notes-tabs-overflow" ref={overflowRef}>
-        <IconButton
-          label={t('notesWorkspace.tabs.showAll', 'Show all open files')}
-          aria-haspopup="menu"
-          aria-expanded={overflowOpen}
-          onClick={(event) => {
-            if (overflowOpen) {
-              setOverflowOpen(false);
-              return;
-            }
-            const bounds = event.currentTarget.getBoundingClientRect();
-            setOverflowMenuPosition({
-              top: bounds.bottom - 2,
-              right: Math.max(8, window.innerWidth - bounds.right),
-            });
-            setOverflowOpen(true);
-          }}
-        >
-          <List size={15} />
-        </IconButton>
-        {overflowOpen && overflowMenuPosition && createPortal(
-          <CustomScrollArea
-            ref={overflowMenuRef}
-            className="notes-tabs-overflow-menu"
-            viewportClassName="notes-tabs-overflow-menu-viewport"
-            viewportProps={{ role: 'menu', 'aria-label': t('notesWorkspace.tabs.showAll', 'Show all open files'), onKeyDown: handleOverflowKeyDown }}
-            style={overflowMenuPosition}
-            fullHeight={false}
-            trackOffsetTop={4}
-            trackOffsetBottom={4}
-            trackOffsetRight={2}
-          >
-            {tabs.map((tab) => {
-              const overflowSaveState = saveStates.get(tab.key) ?? 'saved';
-              return (
-                <button
-                  type="button"
-                  role="menuitem"
-                  key={tab.key}
-                  data-active={tab.key === activeKey ? 'true' : 'false'}
-                  data-save-state={overflowSaveState}
-                  onClick={() => {
-                    setOverflowOpen(false);
-                    overflowRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
-                    onActivate(tab.key);
-                  }}
-                >
-                  <ResourceGlyph type={tab.type} id={tab.id} size={14} />
-                  <span>{tab.title}</span>
-                  {tab.pinned && <PushPin className="notes-tab-pin" size={11} weight="fill" aria-hidden />}
-                  {overflowSaveState !== 'saved' && (
-                    <i
-                      className="notes-tab-state"
-                      aria-label={t(`notesWorkspace.saveState.${overflowSaveState}`)}
-                      title={t(`notesWorkspace.saveState.${overflowSaveState}`)}
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </CustomScrollArea>,
-          document.body,
-        )}
-      </div>
-    )}
-    {actionsSlotRef && <div ref={actionsSlotRef} className="notes-tab-actions-slot notes-titlebar-actions" data-tab-actions-slot />}
-  </div>
-  );
+export {
+  RESOURCE_LIST_PAGE_SIZE,
+  RESOURCE_LIST_MAX_TOTAL,
+  BACKLINKS_SIDE_BY_SIDE_MIN_WIDTH,
+  listWorkspaceResources,
+  buildTree,
+  computeNoteBreadcrumbs,
 };
 
 export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
@@ -1053,15 +146,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const persistedStateRef = useRef(readPersistedWorkspaceState());
   const persistedState = persistedStateRef.current;
   const hostRef = useRef<HTMLDivElement>(null);
-  const explorerRef = useRef<HTMLElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
   // 拖/缩/settle 期间冻结工作区动画/过渡（CSS 定向规则见 NotesWorkspaceApp.css）
   useDragRenderPause(hostRef, renderThrottleMs);
+
   const [resources, setResources] = useState<DstuNode[]>([]);
   const [folders, setFolders] = useState<VfsFolder[]>([]);
-  const [resourceFolderIds, setResourceFolderIds] = useState<ReadonlyMap<string, string>>(
-    EMPTY_RESOURCE_FOLDER_IDS,
-  );
+  const [resourceFolderIds, setResourceFolderIds] = useState<ReadonlyMap<string, string>>(EMPTY_RESOURCE_FOLDER_IDS);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [learningView, setLearningView] = useState<NoteLearningView | 'tree'>('tree');
@@ -1075,9 +165,18 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [splitLayout, setSplitLayout] = useState<SplitLayout>(() => persistedState.splitLayout);
   const [backlinksOpen, setBacklinksOpen] = useState(() => persistedState.backlinksOpen);
   const [backlinksRequestedTab, setBacklinksRequestedTab] = useState<NotesBacklinksTabRequest | null>(null);
-  // 命令处理器不随面板状态重建：经 ref 读取当前是否打开、停在哪个页签（用于真正的切换语义）
-  const backlinksStateRef = useRef({ open: backlinksOpen, tab: backlinksRequestedTab?.tab });
-  backlinksStateRef.current = { open: backlinksOpen, tab: backlinksRequestedTab?.tab };
+  // 命令处理器不随面板状态重建：经 ref 跟踪面板开关与真实激活页签（由面板通过 onActiveTabChange 回传）
+  const backlinksStateRef = useRef<{ open: boolean; tab: PanelTab }>({
+    open: backlinksOpen,
+    tab: 'links',
+  });
+  backlinksStateRef.current.open = backlinksOpen;
+  const handleBacklinksActiveTabChange = useCallback((tab: PanelTab) => {
+    backlinksStateRef.current.tab = tab;
+  }, []);
+  const closeBacklinks = useCallback(() => {
+    setBacklinksOpen(false);
+  }, []);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchMode, setSearchMode] = useState<NotesSearchMode>('quick-open');
   const [explorerOpen, setExplorerOpen] = useState(() => persistedState.explorerOpen);
@@ -1113,6 +212,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     open: false,
     tab: 'export',
   });
+
   const favorites = useNoteFavorites();
   const navHistory = useNotesNavHistory();
   const initialRef = useRef(parseInitialResource(instanceKey, launchPayload));
@@ -1127,7 +227,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const resourcesRef = useRef<DstuNode[]>([]);
   const hasLoadedResourcesRef = useRef(false);
   const truncationNotifiedRef = useRef(false);
-  const createFolderComposingRef = useRef(false);
   const loadSequenceRef = useRef(0);
   const refreshTimerRef = useRef<number | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -1137,43 +236,35 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const splitLayoutRef = useRef<SplitLayout>(splitLayout);
 
   const splitTab = tabs.find((tab) => tab.key === rightTabKey) ?? null;
-  const mainTabs = useMemo(
-    () => tabs.filter((tab) => tab.key !== splitTab?.key),
-    [splitTab?.key, tabs],
-  );
+  const mainTabs = useMemo(() => tabs.filter((tab) => tab.key !== splitTab?.key), [splitTab?.key, tabs]);
   const mainActiveTab = mainTabs.find((tab) => tab.key === activeTabKey) ?? mainTabs[0] ?? null;
   const resolvedFocusedPane: WorkspacePaneId = splitTab && focusedPane === 'right' ? 'right' : 'main';
   const activeTab = resolvedFocusedPane === 'right' ? splitTab : mainActiveTab;
   const activeResource = activeTab
     ? resources.find((node) => node.id === activeTab.id && node.type === activeTab.type) ?? null
     : null;
-
   const activeResourceFolderId = activeTab
     ? resourceFolderIds.get(treeResourceKey(activeTab.type, activeTab.id)) ?? null
     : null;
   const contextualFolderId = activeTab ? activeResourceFolderId : selectedFolderId;
-  const tabContextTarget = tabContextMenu
-    ? tabs.find((tab) => tab.key === tabContextMenu.key) ?? null
-    : null;
-  const tabContextIndex = tabContextTarget ? tabs.findIndex((tab) => tab.key === tabContextTarget.key) : -1;
-  const tabContextCanCloseOthers = Boolean(tabContextTarget && tabs.some(
-    (tab) => tab.key !== tabContextTarget.key && !tab.pinned,
-  ));
-  const tabContextCanCloseRight = tabContextIndex >= 0 && tabs.slice(tabContextIndex + 1).some((tab) => !tab.pinned);
+
+  const {
+    target: tabContextTarget,
+    canCloseOthers: tabContextCanCloseOthers,
+    canCloseRight: tabContextCanCloseRight,
+  } = getTabContextMenuState(tabs, tabContextMenu);
+
   activeTabRef.current = activeTab;
   tabsRef.current = tabs;
   rightTabKeyRef.current = splitTab?.key ?? null;
   focusedPaneRef.current = resolvedFocusedPane;
   splitLayoutRef.current = splitLayout;
   resourcesRef.current = resources;
-  const filteredResources = useMemo(() => {
-    const term = query.trim().toLocaleLowerCase();
-    return resources.filter((node) => {
-      if (term && !node.name.toLocaleLowerCase().includes(term)) return false;
-      if (!nodeMatchesTags(node.metadata, selectedTags)) return false;
-      return true;
-    });
-  }, [query, resources, selectedTags]);
+
+  const filteredResources = useMemo(
+    () => filterWorkspaceResources(resources, query, selectedTags),
+    [query, resources, selectedTags],
+  );
   const tree = useMemo(
     () => buildTree(
       filteredResources,
@@ -1189,7 +280,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     () => expandedIdsFromCollapsedPaths(folderEntries, collapsedFolderPaths),
     [collapsedFolderPaths, folderEntries],
   );
-  const hasTreeItems = treeItems.length > 0;
+
   // 宽/中窗侧栏可被 explorerOpen 真正折叠（mod+\ / 命令面板 toggle-sidebar）：
   // 折叠后布局宽度归零，titlebar 标签偏移与背链 overlay 判定随之变化
   const explorerVisible = sizeClass !== 'compact' && explorerOpen;
@@ -1306,12 +397,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       setSelectedFolderId((current) => (
         current && nextFolders.some((folder) => folder.id === current) ? current : null
       ));
-      setTabs((current) => current
-        .filter((tab) => byId.has(tab.id))
-        .map((tab) => {
-          const node = byId.get(tab.id);
-          return node && node.name !== tab.title ? { ...tab, title: node.name } : tab;
-        }));
+      setTabs((current) => reconcileTabsWithResources(current, byId));
       setLoadError(null);
       setStatus(t('notesWorkspace.status.fileCount', { defaultValue: '{{count}} files', count: nextResources.length }));
       if (blocking || requiresInitialLoad) setLoading(false);
@@ -1404,11 +490,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     focusedPaneRef.current = 'right';
     setRightTabKey(key);
     setFocusedPane('right');
-    setActiveTabKey((current) => {
-      const mainCandidates = currentTabs.filter((tab) => tab.key !== key);
-      if (current && current !== key && mainCandidates.some((tab) => tab.key === current)) return current;
-      return mainCandidates.find((tab) => tab.key === priorRightKey)?.key ?? mainCandidates[0]?.key ?? null;
-    });
+    setActiveTabKey((current) => resolveRightSplitMainTabKey(currentTabs, key, priorRightKey, current));
   }, [t]);
 
   const closeRightSplit = useCallback(() => {
@@ -1422,18 +504,15 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   }, []);
 
   const toggleTabRightSplit = useCallback((key: string) => {
-    if (rightTabKeyRef.current === key) {
-      closeRightSplit();
-    } else {
-      openTabInRightSplit(key);
-    }
+    if (rightTabKeyRef.current === key) closeRightSplit();
+    else openTabInRightSplit(key);
   }, [closeRightSplit, openTabInRightSplit]);
 
   const closeTab = useCallback(async (key: string, options: CloseTabOptions = {}) => {
     const currentTab = tabsRef.current.find((tab) => tab.key === key);
     if (!currentTab) return false;
-    const saveState = currentTab ? getTabSaveState(currentTab, windowId) : 'saved';
-    if (currentTab && saveState !== 'saved' && !options.force) {
+    const saveState = getTabSaveState(currentTab, windowId);
+    if (saveState !== 'saved' && !options.force) {
       // Repeated Ctrl/Cmd+W presses should not enqueue duplicate discard prompts.
       if (pendingTabCloseKeysRef.current.has(key)) return false;
       pendingTabCloseKeysRef.current.add(key);
@@ -1473,39 +552,29 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     if (!tabToClose) return false;
     forgetWorkspaceResource({ type: tabToClose.type, id: tabToClose.id }, windowId);
     const closingRightKey = rightTabKeyRef.current;
-    const closingRightSplitTab = closingRightKey === key;
-    const closingWouldLeaveOnlyRightPane = !closingRightSplitTab
-      && Boolean(closingRightKey)
-      && tabsRef.current.every((tab) => tab.key === key || tab.key === closingRightKey);
-    const shouldCloseSplit = closingRightSplitTab || closingWouldLeaveOnlyRightPane;
+    const shouldCloseSplit = shouldCloseRightSplitOnTabClose(tabsRef.current, key, closingRightKey);
     if (shouldCloseSplit) {
       rightTabKeyRef.current = null;
       setRightTabKey(null);
     }
     setTabs((current) => {
-      const closing = current.find((tab) => tab.key === key);
-      if (!closing) return current;
-      const closingIndex = current.findIndex((tab) => tab.key === key);
-      const next = current.filter((tab) => tab.key !== key);
-      const nextRightKey = shouldCloseSplit ? null : closingRightKey;
-      const nextMainTabs = next.filter((tab) => tab.key !== nextRightKey);
-      const neighbor = [next[closingIndex], next[closingIndex - 1], ...nextMainTabs]
-        .find((tab): tab is WorkspaceTab => Boolean(tab) && tab.key !== nextRightKey) ?? null;
+      const nextState = computeTabCloseNextState(current, key, closingRightKey, shouldCloseSplit);
+      if (!nextState) return current;
       setActiveTabKey((active) => (
-        active && active !== key && nextMainTabs.some((tab) => tab.key === active)
+        active && active !== key && nextState.nextMainTabs.some((tab) => tab.key === active)
           ? active
-          : neighbor?.key ?? null
+          : nextState.neighborKey
       ));
       setFocusedPane((currentPane) => {
         const nextPane: WorkspacePaneId = shouldCloseSplit
           ? 'main'
-          : currentPane === 'main' && nextMainTabs.length === 0 && nextRightKey
+          : currentPane === 'main' && nextState.nextMainTabs.length === 0 && nextState.nextRightKey
             ? 'right'
             : currentPane;
         focusedPaneRef.current = nextPane;
         return nextPane;
       });
-      return next;
+      return nextState.nextTabs;
     });
     setTabSaveStates((current) => {
       if (!(key in current)) return current;
@@ -1528,16 +597,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
 
   const reorderTabs = useCallback((draggedKey: string, targetKey: string, position: TabDropPosition) => {
     if (draggedKey === targetKey) return;
-    setTabs((current) => {
-      const draggedIndex = current.findIndex((tab) => tab.key === draggedKey);
-      if (draggedIndex < 0) return current;
-      const next = [...current];
-      const [dragged] = next.splice(draggedIndex, 1);
-      const targetIndex = next.findIndex((tab) => tab.key === targetKey);
-      if (!dragged || targetIndex < 0) return current;
-      next.splice(targetIndex + (position === 'after' ? 1 : 0), 0, dragged);
-      return next;
-    });
+    setTabs((current) => reorderWorkspaceTabs(current, draggedKey, targetKey, position));
   }, []);
 
   const toggleTabPinned = useCallback((key: string) => {
@@ -1572,6 +632,35 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     void closeTabs(keys);
   }, [closeTabs]);
 
+  const notifyMovedToTrash = useCallback((id: string, itemType: string, name: string) => {
+    const movedMessage = t('notesWorkspace.status.movedToTrash', {
+      defaultValue: '{{name}} moved to trash',
+      name,
+    });
+    setStatus(movedMessage);
+    showGlobalNotification('success', movedMessage, undefined, {
+      action: {
+        label: t('notesWorkspace.actions.undo', 'Undo'),
+        onClick: () => {
+          void (async () => {
+            const restored = await trashApi.restoreItem(id, itemType);
+            if (!restored.ok) {
+              showGlobalNotification('error', restored.error.toUserMessage());
+              return;
+            }
+            const restoredMessage = t('notesWorkspace.status.restored', {
+              defaultValue: '{{name}} restored',
+              name,
+            });
+            setStatus(restoredMessage);
+            showGlobalNotification('success', restoredMessage);
+            await loadResources({ blocking: false });
+          })();
+        },
+      },
+    });
+  }, [loadResources, t]);
+
   const deleteContextResource = useCallback(async () => {
     if (!resourceDialog || resourceDialog.mode !== 'delete') return;
     const target = resourceDialog.target;
@@ -1592,32 +681,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         // The user already confirmed moving this resource to the trash. Do not
         // ask a second discard question or retain a tab for a deleted resource.
         await closeTab(key, { force: true });
-        const movedMessage = t('notesWorkspace.status.movedToTrash', {
-          defaultValue: '{{name}} moved to trash',
-          name: target.node.name,
-        });
-        setStatus(movedMessage);
-        showGlobalNotification('success', movedMessage, undefined, {
-          action: {
-            label: t('notesWorkspace.actions.undo', 'Undo'),
-            onClick: () => {
-              void (async () => {
-                const restored = await trashApi.restoreItem(target.node.id, target.node.type);
-                if (!restored.ok) {
-                  showGlobalNotification('error', restored.error.toUserMessage());
-                  return;
-                }
-                const restoredMessage = t('notesWorkspace.status.restored', {
-                  defaultValue: '{{name}} restored',
-                  name: target.node.name,
-                });
-                setStatus(restoredMessage);
-                showGlobalNotification('success', restoredMessage);
-                await loadResources({ blocking: false });
-              })();
-            },
-          },
-        });
+        notifyMovedToTrash(target.node.id, target.node.type, target.node.name);
       } finally {
         pendingConfirmedDeletionKeysRef.current.delete(key);
       }
@@ -1629,36 +693,11 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         setDialogError(message);
         return;
       }
-      const movedMessage = t('notesWorkspace.status.movedToTrash', {
-        defaultValue: '{{name}} moved to trash',
-        name: target.name,
-      });
-      setStatus(movedMessage);
-      showGlobalNotification('success', movedMessage, undefined, {
-        action: {
-          label: t('notesWorkspace.actions.undo', 'Undo'),
-          onClick: () => {
-            void (async () => {
-              const restored = await trashApi.restoreItem(target.id, 'folder');
-              if (!restored.ok) {
-                showGlobalNotification('error', restored.error.toUserMessage());
-                return;
-              }
-              const restoredMessage = t('notesWorkspace.status.restored', {
-                defaultValue: '{{name}} restored',
-                name: target.name,
-              });
-              setStatus(restoredMessage);
-              showGlobalNotification('success', restoredMessage);
-              await loadResources({ blocking: false });
-            })();
-          },
-        },
-      });
+      notifyMovedToTrash(target.id, 'folder', target.name);
     }
     setResourceDialog(null);
     await loadResources({ blocking: false });
-  }, [closeTab, loadResources, resourceDialog, selectedFolderId, t]);
+  }, [closeTab, loadResources, notifyMovedToTrash, resourceDialog]);
 
   // 多选批量删除：一次内联确认，逐项移入回收站，失败逐项上报
   const deleteContextResources = useCallback(async () => {
@@ -1790,24 +829,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       if (event.type === 'updated' && changedNode && resourceType(changedNode.type)) {
         const known = resourcesRef.current.find((node) => node.id === changedNode.id);
         if (known && changedNode.updatedAt < known.updatedAt) return;
-        setResources((current) => {
-          const index = current.findIndex((node) => node.id === changedNode.id);
-          if (index < 0) return current;
-          const existing = current[index];
-          if (changedNode.updatedAt < existing.updatedAt) return current;
-          // Keep the latest version even on content-only saves, so delayed
-          // metadata cannot restore an older learning state. Skip duplicate snapshots.
-          if (
-            existing.name === changedNode.name
-            && existing.path === changedNode.path
-            && existing.type === changedNode.type
-            && existing.updatedAt === changedNode.updatedAt
-            && sameNoteLearningMetadata(existing.metadata, changedNode.metadata)
-          ) return current;
-          const next = [...current];
-          next[index] = changedNode;
-          return next;
-        });
+        setResources((current) => mergeUpdatedResourceNode(current, changedNode));
         updateTabTitle(`${changedNode.type}:${changedNode.id}`, changedNode.name);
         return;
       }
@@ -1827,7 +849,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     // debounced refresh path so external moves/renames preserve the tree UI.
     queueResourceRefresh();
   }, [queueResourceRefresh]);
-
   useEventRegistry(
     [{ target: 'window', type: DSTU_FOLDER_CHANGE_EVENT, listener: onFolderChange }],
     [onFolderChange],
@@ -1843,16 +864,14 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   // Keep the two panes coherent after a resource deletion or a restored
   // workspace. The right-side tab is never a valid main-pane selection.
   useEffect(() => {
-    const validRightKey = rightTabKey && tabs.some((tab) => tab.key === rightTabKey)
-      ? rightTabKey
-      : null;
+    const { validRightKey, validActiveKey, validFocusedPane } = resolveCoherentPaneState(
+      tabs,
+      activeTabKey,
+      rightTabKey,
+      focusedPane,
+    );
     if (validRightKey !== rightTabKey) setRightTabKey(validRightKey);
-    const validMainTabs = tabs.filter((tab) => tab.key !== validRightKey);
-    const validActiveKey = activeTabKey && validMainTabs.some((tab) => tab.key === activeTabKey)
-      ? activeTabKey
-      : validMainTabs[0]?.key ?? null;
     if (validActiveKey !== activeTabKey) setActiveTabKey(validActiveKey);
-    const validFocusedPane: WorkspacePaneId = validRightKey && focusedPane === 'right' ? 'right' : 'main';
     if (validFocusedPane !== focusedPane) setFocusedPane(validFocusedPane);
   }, [activeTabKey, focusedPane, rightTabKey, tabs]);
 
@@ -1887,22 +906,17 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   }, [activeTab, windowId]);
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify({
-        tabs,
-        activeTabKey: mainActiveTab?.key ?? null,
-        rightTabKey: splitTab?.key ?? null,
-        focusedPane: resolvedFocusedPane,
-        splitLayout,
-        backlinksOpen,
-        // compact 档 explorerOpen 是「文件」子屏开关，持久化写宽/中窗折叠偏好
-        explorerOpen: sizeClassRef.current === 'compact' ? explorerBeforeCompactRef.current : explorerOpen,
-        collapsedFolderPaths: [...collapsedFolderPaths].sort(),
-      } satisfies PersistedWorkspaceState));
-    } catch {
-      // Local storage is a convenience only; a private browser context must
-      // not prevent the workspace from opening.
-    }
+    writePersistedWorkspaceState({
+      tabs,
+      activeTabKey: mainActiveTab?.key ?? null,
+      rightTabKey: splitTab?.key ?? null,
+      focusedPane: resolvedFocusedPane,
+      splitLayout,
+      backlinksOpen,
+      // compact 档 explorerOpen 是「文件」子屏开关，持久化写宽/中窗折叠偏好
+      explorerOpen: sizeClassRef.current === 'compact' ? explorerBeforeCompactRef.current : explorerOpen,
+      collapsedFolderPaths: [...collapsedFolderPaths].sort(),
+    });
   }, [backlinksOpen, collapsedFolderPaths, explorerOpen, mainActiveTab?.key, resolvedFocusedPane, splitLayout, splitTab?.key, tabs]);
 
   const handleSplitLayout = useCallback((layout: number[]) => {
@@ -1962,7 +976,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     return registerBackHandler(() => {
       // 保活守卫：隐藏工作台里的笔记窗口仍保持挂载，explorer 打开态也随之滞留——
       // 此时不消费返回键、不误关 explorer，交还给当前活跃视图
-      // （对照 NotesEditorHeader 的同款守卫）
       const el = hostRef.current;
       if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
       if (window.getComputedStyle(el).visibility === 'hidden') return false;
@@ -2021,48 +1034,13 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     };
   }, [tabContextMenu]);
 
-  // 行内输入行 / 确认条（非模态）：打开时把焦点送进面板，关闭后归还给触发
-  // 元素；触发行已被删除时回落到树内相邻可聚焦行。
-  useEffect(() => {
-    const mode = resourceDialog?.mode;
-    if (!mode) return;
-    const opener = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
-    const frame = mode === 'delete' || mode === 'delete-many'
-      ? window.requestAnimationFrame(() => {
-        explorerRef.current
-          ?.querySelector<HTMLElement>('[data-notes-inline-confirm] button.is-danger')
-          ?.focus();
-      })
-      : null;
-    return () => {
-      if (frame !== null) window.cancelAnimationFrame(frame);
-      const active = document.activeElement;
-      // 焦点仍停在别的控件上（如失焦取消时点中的目标）就不要抢回来
-      if (active instanceof HTMLElement && active !== document.body) return;
-      if (opener?.isConnected) {
-        opener.focus();
-        return;
-      }
-      explorerRef.current?.querySelector<HTMLElement>('[role="treeitem"]')?.focus();
-    };
-  }, [resourceDialog?.mode]);
-
   const onCloseTabShortcut = useCallback((event: Event) => {
-    if (!(event instanceof KeyboardEvent)) return;
-    if (
-      !(event.metaKey || event.ctrlKey)
-      || event.altKey
-      || event.shiftKey
-      || event.key.toLocaleLowerCase() !== 'w'
-    ) return;
+    if (!(event instanceof KeyboardEvent) || !isCloseTabShortcut(event)) return;
     // The workspace owns Ctrl/Cmd+W even before a tab is opened. Without
     // this, the browser/WebView default can close the entire application.
     event.preventDefault();
     const current = activeTabRef.current;
-    if (!current) return;
-    void closeTabRef.current(current.key);
+    if (current) void closeTabRef.current(current.key);
   }, []);
   useEventRegistry(
     isActive ? [{ target: 'window', type: 'keydown', listener: onCloseTabShortcut }] : [],
@@ -2080,41 +1058,15 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   }, []);
 
   // cmd+P 空查询的「最近打开」分组：导航历史新→旧去重，映射到仍存在的资源
-  const recentSearchResources = useMemo(() => {
-    const seen = new Set<string>();
-    const recents: DstuNode[] = [];
-    for (let index = navHistory.entries.length - 1; index >= 0; index -= 1) {
-      const entry = navHistory.entries[index];
-      if (seen.has(entry.key)) continue;
-      seen.add(entry.key);
-      const node = resources.find((item) => item.id === entry.id && item.type === entry.type);
-      if (node) recents.push(node);
-      if (recents.length >= 8) break;
-    }
-    return recents;
-  }, [navHistory.entries, resources]);
-
+  const recentSearchResources = useMemo(
+    () => getRecentSearchResources(navHistory.entries, resources),
+    [navHistory.entries, resources],
+  );
   // 空工作区欢迎页「继续最近学习」：优先会话访问历史，不足 4 条时按最近更新时间补齐
-  const welcomeRecentResources = useMemo(() => {
-    const seen = new Set<string>();
-    const combined: DstuNode[] = [];
-    for (const node of recentSearchResources) {
-      const key = `${node.type}:${node.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      combined.push(node);
-      if (combined.length >= 4) return combined;
-    }
-    const sortedByUpdated = [...resources].sort((a, b) => b.updatedAt - a.updatedAt);
-    for (const node of sortedByUpdated) {
-      const key = `${node.type}:${node.id}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      combined.push(node);
-      if (combined.length >= 4) break;
-    }
-    return combined;
-  }, [recentSearchResources, resources]);
+  const welcomeRecentResources = useMemo(
+    () => getWelcomeRecentResources(recentSearchResources, resources),
+    [recentSearchResources, resources],
+  );
 
   const openWorkspaceSearchResult = useCallback(async (
     node: DstuNode,
@@ -2131,84 +1083,91 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   }, [openResource]);
 
   const onWorkspaceCommand = useCallback((event: Event) => {
-      const action = (event as CustomEvent<NotesWorkspaceCommandDetail>).detail?.action as NotesWorkspaceCommandAction | undefined;
-      switch (action) {
-        case 'create-note':
-          void createResource('note');
+    const action = (event as CustomEvent<NotesWorkspaceCommandDetail>).detail?.action as NotesWorkspaceCommandAction | undefined;
+    switch (action) {
+      case 'create-note':
+        void createResource('note');
+        break;
+      case 'create-folder':
+        setDialogError(null);
+        // 行内输入行挂在资源管理器树区顶部；窄窗下先展开「文件」子屏
+        setExplorerOpen(true);
+        setResourceDialog({ mode: 'create-folder', value: '', parentId: selectedFolderId });
+        break;
+      case 'focus-search':
+        focusExplorerSearch();
+        break;
+      case 'quick-switch':
+        openSearchOverlay('quick-open');
+        break;
+      case 'search-content':
+        openSearchOverlay('full-text');
+        break;
+      case 'force-save':
+        window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_FORCE_SAVE));
+        break;
+      case 'toggle-sidebar':
+        setExplorerOpen((open) => !open);
+        break;
+      case 'toggle-backlinks':
+        if (backlinksStateRef.current.open && backlinksStateRef.current.tab === 'links') {
+          backlinksStateRef.current.open = false;
+          setBacklinksOpen(false);
           break;
-        case 'create-folder':
-          setDialogError(null);
-          // 行内输入行挂在资源管理器树区顶部；窄窗下先展开「文件」子屏
-          setExplorerOpen(true);
-          setResourceDialog({ mode: 'create-folder', value: '', parentId: selectedFolderId });
+        }
+        backlinksStateRef.current = { open: true, tab: 'links' };
+        setBacklinksRequestedTab((request) => ({
+          tab: 'links',
+          requestId: (request?.requestId ?? 0) + 1,
+        }));
+        setBacklinksOpen(true);
+        break;
+      case 'toggle-outline':
+        if (backlinksStateRef.current.open && backlinksStateRef.current.tab === 'outline') {
+          backlinksStateRef.current.open = false;
+          setBacklinksOpen(false);
           break;
-        case 'focus-search':
-          focusExplorerSearch();
-          break;
-        case 'quick-switch':
-          openSearchOverlay('quick-open');
-          break;
-        case 'search-content':
-          openSearchOverlay('full-text');
-          break;
-        case 'force-save':
-          window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_FORCE_SAVE));
-          break;
-        case 'toggle-sidebar':
-          setExplorerOpen((open) => !open);
-          break;
-        case 'toggle-backlinks':
-          setBacklinksRequestedTab((request) => ({
-            tab: 'links',
-            requestId: (request?.requestId ?? 0) + 1,
-          }));
-          setBacklinksOpen((open) => !open);
-          break;
-        case 'toggle-outline':
-          // 已在大纲（属性）页打开时关闭，否则打开并切到大纲——原先只会打开、关不掉
-          if (backlinksStateRef.current.open && backlinksStateRef.current.tab === 'properties') {
-            setBacklinksOpen(false);
-            break;
-          }
-          setBacklinksRequestedTab((request) => ({
-            tab: 'properties',
-            requestId: (request?.requestId ?? 0) + 1,
-          }));
-          setBacklinksOpen(true);
-          break;
-        case 'export-current':
-          if (activeTabRef.current) {
-            void exportResourceById(
-              activeTabRef.current.id,
-              i18next.getFixedT(i18next.language, 'learningHub'),
-              windowId,
-            );
-          }
-          break;
-        case 'export-library':
-          setLibraryDialog({ open: true, tab: 'export' });
-          break;
-        case 'import-library':
-          setLibraryDialog({ open: true, tab: 'import' });
-          break;
-        case 'insert-math':
-          window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_INSERT_MATH));
-          break;
-        case 'insert-table':
-          window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_INSERT_TABLE));
-          break;
-        case 'insert-codeblock':
-          window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_INSERT_CODEBLOCK));
-          break;
-        case 'insert-link':
-          window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_INSERT_LINK));
-          break;
-        case 'insert-image':
-          window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_INSERT_IMAGE));
-          break;
-        default:
-          break;
-      }
+        }
+        backlinksStateRef.current = { open: true, tab: 'outline' };
+        setBacklinksRequestedTab((request) => ({
+          tab: 'outline',
+          requestId: (request?.requestId ?? 0) + 1,
+        }));
+        setBacklinksOpen(true);
+        break;
+      case 'export-current':
+        if (activeTabRef.current) {
+          void exportResourceById(
+            activeTabRef.current.id,
+            i18next.getFixedT(i18next.language, 'learningHub'),
+            windowId,
+          );
+        }
+        break;
+      case 'export-library':
+        setLibraryDialog({ open: true, tab: 'export' });
+        break;
+      case 'import-library':
+        setLibraryDialog({ open: true, tab: 'import' });
+        break;
+      case 'insert-math':
+        window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_INSERT_MATH));
+        break;
+      case 'insert-table':
+        window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_INSERT_TABLE));
+        break;
+      case 'insert-codeblock':
+        window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_INSERT_CODEBLOCK));
+        break;
+      case 'insert-link':
+        window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_INSERT_LINK));
+        break;
+      case 'insert-image':
+        window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.NOTES_INSERT_IMAGE));
+        break;
+      default:
+        break;
+    }
   }, [createResource, focusExplorerSearch, openSearchOverlay, selectedFolderId, windowId]);
   useEventRegistry(
     isActive
@@ -2294,7 +1253,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       // 按旧标题写的 [[wikilink]] 会因重命名失解析：后台回写引用来源
       //（OCC 保护并发编辑；脏来源跳过），结果以通知汇总
       if (item.kind === 'note' && previousName && previousName !== name) {
-        // knownNotes 是重命名前的标题快照（resourcesRef 尚未刷新，天然是旧名）
         const knownNotes = resourcesRef.current
           .filter((entry) => entry.type === 'note')
           .map((entry) => ({
@@ -2364,109 +1322,20 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     await loadResources({ blocking: false });
   }, [loadResources, treeItems]);
 
-  const resolveCreateFolderId = useCallback((item: NotesWorkspaceTreeItem): string | undefined => {
-    if (item.kind === 'folder' && isStableVfsFolderId(item.id)) return item.id;
-    return selectedFolderId ?? undefined;
-  }, [selectedFolderId]);
-
-  const requestDeleteTreeItem = useCallback((item: NotesWorkspaceTreeItem) => {
-    setDialogError(null);
-    if (item.kind === 'folder') {
-      if (!isStableVfsFolderId(item.id)) return;
-      setResourceDialog({
-        mode: 'delete',
-        target: { kind: 'folder', id: item.id, name: item.name, path: item.path ?? item.id },
-      });
-      return;
-    }
-    const node = resourcesRef.current.find((entry) => entry.id === item.id && entry.type === item.kind);
-    if (!node) return;
-    setResourceDialog({ mode: 'delete', target: { kind: 'resource', node } });
-  }, []);
-
-  // 树内多选 Delete：合并为一次批量确认（避免逐项弹出、只剩最后一项生效）
   const requestDeleteTreeItems = useCallback((items: readonly NotesWorkspaceTreeItem[]) => {
-    const targets: ExplorerTarget[] = [];
-    for (const item of items) {
-      if (item.kind === 'folder') {
-        if (!isStableVfsFolderId(item.id)) continue;
-        targets.push({ kind: 'folder', id: item.id, name: item.name, path: item.path ?? item.id });
-        continue;
-      }
-      const node = resourcesRef.current.find((entry) => entry.id === item.id && entry.type === item.kind);
-      if (node) targets.push({ kind: 'resource', node });
-    }
+    const targets = resolveExplorerDeleteTargets(items, resourcesRef.current);
     if (targets.length === 0) return;
     setDialogError(null);
-    if (targets.length === 1) {
-      setResourceDialog({ mode: 'delete', target: targets[0] });
-      return;
-    }
-    setResourceDialog({ mode: 'delete-many', targets });
+    setResourceDialog(
+      targets.length === 1
+        ? { mode: 'delete', target: targets[0] }
+        : { mode: 'delete-many', targets },
+    );
   }, []);
 
-  // 目录树右键菜单：resource.contextMenu 的 notes-tree 行（官方行见 ui-plugins/official/menu/notesTreeMenu.ts）；无 UI 内核时用官方表
-  const uiKernel = useOptionalUiKernel();
-  const treeMenuEntries = useOptionalSlot('resource.contextMenu') ?? officialNotesTreeMenuEntries;
-  const treeMenuActions = useMemo<NotesTreeMenuActions>(() => ({
-    open: (item) => {
-      if (item.kind !== 'folder') void openResource({ type: item.kind, id: item.id }, item.name);
-    },
-    openInSplit: (item) => {
-      if (item.kind === 'folder') return;
-      const resourceType = item.kind;
-      void (async () => {
-        await openResource({ type: resourceType, id: item.id }, item.name);
-        openTabInRightSplit(`${resourceType}:${item.id}`);
-      })();
-    },
-    isFavorite: (item) => favorites.items.some((entry) => entry.id === item.id && entry.type === item.kind)
-      || item.favorite === true,
-    setFavorite: (item, favorite) => {
-      if (item.kind === 'folder') return;
-      void favorites.setFavorite(item.id, item.kind, favorite, {
-        path: item.path,
-        name: item.name,
-      });
-    },
-    createResource: (kind, folderId) => { void createResource(kind, folderId); },
-    createFolder: (parentId) => {
-      setDialogError(null);
-      setResourceDialog({
-        mode: 'create-folder',
-        value: '',
-        parentId,
-      });
-    },
-    createLearningNote: (folderId) => { setLearningCreateFolderId(folderId); setLearningCreateOpen(true); },
-    requestDelete: (item) => { requestDeleteTreeItem(item); },
-  }), [createResource, favorites, openResource, openTabInRightSplit, requestDeleteTreeItem]);
-  const reportTreeMenuError = useCallback<ResourceMenuError>((entry, phase, error) => {
-    if (uiKernel) uiKernel.errors.report({ pluginId: entry.owner, origin: entry.origin, phase, error, slot: 'resource.contextMenu', entryId: entry.id });
-    else console.error(`[NotesWorkspaceApp] resource.contextMenu "${entry.id}" failed`, error);
-  }, [uiKernel]);
-
-  const getTreeMenuItems = useCallback((
-    item: NotesWorkspaceTreeItem,
-    helpers: { beginRename: () => void },
-  ): NotesWorkspaceTreeMenuItem[] => resolveNotesTreeMenu(treeMenuEntries, {
-    scope: 'notes-tree',
-    // TreeContextMenu closes the menu after every row it runs
-    closeMenu: () => {},
-    item: {
-      id: item.id,
-      name: item.name,
-      kind: item.kind,
-      favorite: item.favorite,
-      path: item.path,
-      canRename: item.canRename,
-      canMove: item.canMove,
-    },
-    beginRename: helpers.beginRename,
-    createFolderId: resolveCreateFolderId(item) ?? null,
-    canDelete: item.kind === 'folder' ? isStableVfsFolderId(item.id) : true,
-    actions: treeMenuActions,
-  }, t, reportTreeMenuError), [reportTreeMenuError, resolveCreateFolderId, t, treeMenuActions, treeMenuEntries]);
+  const requestDeleteTreeItem = useCallback((item: NotesWorkspaceTreeItem) => {
+    requestDeleteTreeItems([item]);
+  }, [requestDeleteTreeItems]);
 
   const openTabContextMenu = useCallback((key: string, x: number, _y: number, trigger: HTMLElement) => {
     restoreTabContextFocusRef.current = false;
@@ -2476,7 +1345,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     setTabContextMenu({ key, x, y: tabBounds.bottom + 4 });
   }, []);
 
-  // 按实测尺寸把标签页菜单限制在视口内（原先按固定 148px 估高，且直接覆盖在指针处）
+  // 按实测尺寸把标签页菜单限制在视口内
   useLayoutEffect(() => {
     const menu = contextMenuRef.current;
     if (!tabContextMenu || !menu) return;
@@ -2507,7 +1376,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   }, [activateTab]);
 
   const importDroppedMarkdown = useCallback(async (files: readonly File[]) => {
-    const markdownFiles = files.filter((file) => /\.md(?:own)?$/i.test(file.name));
+    const markdownFiles = files.filter((file) => isMarkdownFileName(file.name));
     if (markdownFiles.length === 0) return;
     let firstImported: DstuNode | null = null;
     let failed = 0;
@@ -2543,466 +1412,141 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const onWindowKeyDown = useCallback((event: Event) => {
     if (!(event instanceof KeyboardEvent)) return;
     if (navHistory.handleKeyDown(event, activateHistoryEntry)) return;
-    if (
-      (event.metaKey || event.ctrlKey)
-      && !event.altKey
-      && !event.shiftKey
-      && event.key.toLocaleLowerCase() === 'p'
-    ) {
-      event.preventDefault();
-      event.stopPropagation();
-      openSearchOverlay('quick-open');
-      return;
-    }
-    const cyclesByPage = event.ctrlKey
-      && !event.metaKey
-      && !event.altKey
-      && !event.shiftKey
-      && (event.key === 'PageDown' || event.key === 'PageUp');
-    // mod+shift+] / [：某些键盘布局下 shift 组合产出 } / {，一并接受
-    const cyclesByBracket = (event.metaKey || event.ctrlKey)
-      && event.shiftKey
-      && !event.altKey
-      && (event.key === ']' || event.key === '[' || event.key === '}' || event.key === '{');
-    // Ctrl+Tab / Ctrl+Shift+Tab（handlesTabCycleShortcut 让位协议）：
-    // - defaultPrevented = 壳层切换器会话进行中已接管，跳过（协议规则 2）；
-    // - 搜索浮层打开时它自持 Ctrl+Tab 切搜索模式，让给浮层。
-    const cyclesByTab = event.ctrlKey
-      && !event.metaKey
-      && !event.altKey
-      && event.key === 'Tab'
-      && !event.defaultPrevented
-      && !searchOpen;
-    if (cyclesByPage || cyclesByBracket || cyclesByTab) {
-      event.preventDefault();
-      event.stopPropagation();
-      const backwards = cyclesByTab
-        ? event.shiftKey
-        : event.key === 'PageUp' || event.key === '[' || event.key === '{';
-      cycleTab(backwards ? -1 : 1);
-    }
+    const shortcut = matchWorkspaceWindowShortcut(event, searchOpen);
+    if (!shortcut) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (shortcut === 'quick-open') openSearchOverlay('quick-open');
+    else cycleTab(shortcut === 'cycle-prev' ? -1 : 1);
   }, [activateHistoryEntry, cycleTab, navHistory, openSearchOverlay, searchOpen]);
-
   useEventRegistry(
-    isActive
-      ? [{ target: 'window', type: 'keydown', listener: onWindowKeyDown, options: true }]
-      : [],
+    isActive ? [{ target: 'window', type: 'keydown', listener: onWindowKeyDown, options: true }] : [],
     [isActive, onWindowKeyDown],
   );
 
   // 资源管理器面板：宽/中窗作为并排侧栏；窄窗（compact）复用为全屏内联「文件」子屏（P0-5 去抽屉化）
-  // 新建按资源类型归组；库级操作始终收进菜单，避免侧栏宽度与窗口分级不一致时溢出。
-  const explorerCreateActions: ExplorerOverflowAction[] = [
-    { key: 'new-note', label: t('notesWorkspace.explorer.newNote', 'New note'), icon: <FileText size={15} />, onSelect: () => { void createResource('note'); } },
-    { key: 'new-learning-note', label: t('notes:learning.create.title', { defaultValue: '新建学习笔记' }), icon: <Notebook size={15} />, onSelect: () => setLearningCreateOpen(true) },
-    { key: 'new-folder', label: t('notesWorkspace.explorer.newFolder', 'New folder'), icon: <FolderPlus size={15} />, onSelect: () => { setDialogError(null); setResourceDialog({ mode: 'create-folder', value: '', parentId: selectedFolderId }); } },
-    { key: 'new-mindmap', label: t('notesWorkspace.explorer.newMindmap', 'New mind map'), icon: <TreeStructure size={15} />, onSelect: () => { void createResource('mindmap'); } },
-  ];
-  const explorerTailActions: ExplorerOverflowAction[] = [
-    { key: 'search', label: t('notesWorkspace.ribbon.search', 'Search notes'), icon: <MagnifyingGlass size={15} />, onSelect: () => openSearchOverlay('full-text') },
-    { key: 'backlinks', label: t('notesWorkspace.ribbon.backlinks', 'Linked notes'), icon: <LinkSimple size={15} />, active: backlinksOpen, onSelect: () => setBacklinksOpen((open) => !open) },
-    { key: 'trash', label: t('notesWorkspace.ribbon.trash', 'Trash'), icon: <Trash size={15} />, onSelect: () => setTrashOpen(true) },
-    { key: 'library', label: t('notesWorkspace.library.manage', 'Import or export library'), icon: <FileArchive size={15} />, onSelect: () => setLibraryDialog({ open: true, tab: 'export' }) },
-  ];
-
   const explorerSurface = (
-    <WorkbenchSidebarSurface
-        ariaLabel={t('notesWorkspace.explorer.title', 'Files')}
-        ref={explorerRef}
-        className="notes-explorer"
-        data-notes-explorer
-      >
-        <header>
-          <span>{t('notesWorkspace.explorer.title', 'Files')}</span>
-          <div>
-            <IconButton
-              label={t('notesWorkspace.navigation.back', 'Back')}
-              disabled={!navHistory.canBack}
-              onClick={() => { void navHistory.runNavigation('back', activateHistoryEntry); }}
-            ><ArrowLeft size={15} /></IconButton>
-            <IconButton
-              label={t('notesWorkspace.navigation.forward', 'Forward')}
-              disabled={!navHistory.canForward}
-              onClick={() => { void navHistory.runNavigation('forward', activateHistoryEntry); }}
-            ><ArrowRight size={15} /></IconButton>
-            <ExplorerOverflowMenu
-              label={t('notes:chrome.create')}
-              triggerText={t('notes:chrome.create')}
-              actions={explorerCreateActions}
-            />
-            <ExplorerOverflowMenu
-              label={t('notesWorkspace.explorer.moreActions', 'More actions')}
-              actions={explorerTailActions}
-            />
-          </div>
-        </header>
-        <div className="notes-search">
-          <MagnifyingGlass size={14} aria-hidden />
-          <input
-            ref={searchInputRef}
-            className="notes-search-input"
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (isComposingKeyEvent(event)) return;
-              if (event.key === 'Escape') {
-                event.preventDefault();
-                event.stopPropagation();
-                if (query) {
-                  setQuery('');
-                } else {
-                  event.currentTarget.blur();
-                }
-                return;
-              }
-              if (event.key === 'ArrowDown') {
-                if (learningView === 'tree' && treeItems.length > 0) {
-                  event.preventDefault();
-                  const firstId = treeItems[0].id;
-                  selectTreeItem(firstId);
-                  const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-                    ? CSS.escape(firstId)
-                    : firstId;
-                  const row = explorerRef.current?.querySelector<HTMLElement>(
-                    `.notes-tree-host [role="treeitem"][data-nwt-id="${escaped}"]`,
-                  ) ?? explorerRef.current?.querySelector<HTMLElement>('.notes-tree-host [role="treeitem"]');
-                  row?.focus();
-                  return;
-                }
-                const firstAction = explorerRef.current?.querySelector<HTMLElement>('.notes-tree-host button');
-                if (firstAction) {
-                  event.preventDefault();
-                  firstAction.focus();
-                }
-                return;
-              }
-              if (event.key === 'Enter' && query.trim() && filteredResources.length > 0) {
-                event.preventDefault();
-                void openWorkspaceSearchResult(filteredResources[0]);
-              }
-            }}
-            placeholder={t('notesWorkspace.search.placeholder', 'Search files...')}
-            aria-label={t('notesWorkspace.search.aria', 'Search files')}
-          />
-          {query.trim() && (
-            <span
-              className="shrink-0 text-2xs tabular-nums text-muted-foreground/70"
-              data-testid="notes-search-match-count"
-              aria-live="polite"
-            >
-              {t('notes:workspace.searchMatchCount', { count: filteredResources.length })}
-            </span>
-          )}
-          {query && (
-            <DsButton
-              variant="ghost"
-              size="icon"
-              iconOnly
-              className="notes-icon-button h-6 w-6 shrink-0"
-              aria-label={t('notesWorkspace.search.clear', 'Clear search')}
-              title={t('notesWorkspace.search.clear', 'Clear search')}
-              onClick={() => {
-                setQuery('');
-                searchInputRef.current?.focus();
-              }}
-            >
-              <X size={12} />
-            </DsButton>
-          )}
-        </div>
-        <TagFilter
-          selectedTags={selectedTags}
-          onChange={setSelectedTags}
-          className="notes-explorer-tag-filter"
-        />
-        {/* Notion 式：收藏区只在有收藏时出现，不用一句空态说明占掉页面树的位置 */}
-        {favorites.items.length > 0 && <FavoritesSection
-          items={favorites.items}
-          activeId={activeTab?.id ?? null}
-          onOpen={(item) => {
-            void openResource({ type: item.type, id: item.id }, item.name);
-            closeExplorerIfCompact();
-          }}
-          onUnfavorite={(item) => {
-            void favorites.setFavorite(item.id, item.type, false, { path: item.path, name: item.name });
-          }}
-        />}
-        <InsightsSection />
-        {resourceDialog?.mode === 'create-folder' && (
-          <div className="notes-inline-create ui-rise-in" data-notes-inline-create>
-            <div className="notes-inline-create-row">
-              <FolderPlus size={14} aria-hidden />
-              <input
-                autoFocus
-                value={resourceDialog.value}
-                placeholder={t('notesWorkspace.dialog.createFolderTitle', 'New folder')}
-                aria-label={t('notesWorkspace.dialog.createFolderTitle', 'New folder')}
-                onChange={(event) => {
-                  setDialogError(null);
-                  setResourceDialog({
-                    mode: 'create-folder',
-                    // 输入侧就地清洗：粘贴内容折叠换行、去控制字符、按 500 字符截断
-                    //（与后端 note_repo validate_title 限额一致）
-                    value: sanitizeNoteTitleInput(event.target.value),
-                    parentId: resourceDialog.parentId,
-                  });
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape') {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    setDialogError(null);
-                    setResourceDialog(null);
-                    return;
-                  }
-                  if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
-                  event.preventDefault();
-                  void createFolder();
-                }}
-                onCompositionStart={() => { createFolderComposingRef.current = true; }}
-                onCompositionEnd={() => { createFolderComposingRef.current = false; }}
-                onBlur={(event) => {
-                  // 失焦只在「还没输入任何内容」时视为取消。已有输入或 IME 合成中
-                  //（点候选词可能触发 blur）、以及焦点仍落在行内面板内部（计数器/
-                  // 错误提示）时保留输入行，避免误取消丢输入。
-                  if (createFolderComposingRef.current) return;
-                  if (
-                    event.relatedTarget instanceof Node
-                    && event.currentTarget.closest('[data-notes-inline-create]')?.contains(event.relatedTarget)
-                  ) return;
-                  if (resourceDialog.value.trim()) return;
-                  setDialogError(null);
-                  setResourceDialog(null);
-                }}
-              />
-            </div>
-            {countNoteInputChars(resourceDialog.value) > NOTE_TITLE_COUNT_WARN_THRESHOLD && (
-              <p
-                className="notes-inline-counter"
-                data-at-limit={countNoteInputChars(resourceDialog.value) >= NOTE_TITLE_MAX_CHARS ? 'true' : undefined}
-                aria-live="polite"
-              >
-                {t('notesWorkspace.validation.charCount', {
-                  defaultValue: '{{count}} / {{max}}',
-                  count: countNoteInputChars(resourceDialog.value),
-                  max: NOTE_TITLE_MAX_CHARS,
-                })}
-              </p>
-            )}
-            {dialogError && <p className="notes-inline-error" role="alert">{dialogError}</p>}
-          </div>
-        )}
-        {(resourceDialog?.mode === 'delete' || resourceDialog?.mode === 'delete-many') && (
-          <div
-            className="notes-inline-confirm ui-rise-in"
-            data-notes-inline-confirm
-            role="group"
-            aria-label={t('notesWorkspace.dialog.deleteTitle', 'Move to trash')}
-            onKeyDown={(event) => {
-              if (event.key !== 'Escape') return;
-              event.preventDefault();
-              event.stopPropagation();
-              setDialogError(null);
-              setResourceDialog(null);
-            }}
-          >
-            <p className="notes-inline-confirm-copy">
-              {resourceDialog.mode === 'delete'
-                ? t('notesWorkspace.dialog.deleteDescription', {
-                  defaultValue: 'Move "{{name}}" to the trash?',
-                  name: getExplorerTargetName(resourceDialog.target),
-                })
-                : t('notesWorkspace.dialog.deleteManyDescription', {
-                  defaultValue: 'Move {{count}} selected items to the trash?',
-                  count: resourceDialog.targets.length,
-                })}
-            </p>
-            {dialogError && <p className="notes-inline-error" role="alert">{dialogError}</p>}
-            <div className="notes-inline-confirm-actions">
-              <button
-                type="button"
-                onClick={() => {
-                  setDialogError(null);
-                  setResourceDialog(null);
-                }}
-              >
-                {t('notesWorkspace.dialog.cancel', 'Cancel')}
-              </button>
-              <button
-                type="button"
-                className="is-danger"
-                onClick={() => {
-                  if (resourceDialog.mode === 'delete') void deleteContextResource();
-                  else void deleteContextResources();
-                }}
-              >
-                {t('notesWorkspace.dialog.delete', 'Delete')}
-              </button>
-            </div>
-          </div>
-        )}
-        {/* 视图切换：紧凑分段按钮，替代浏览器原生下拉 */}
-        <div className="notes-view-switch" role="radiogroup" aria-label={t('notes:learning.view_selector')}>
-          {(['tree', 'list', 'status', 'review'] as const).map((view) => (
-            <button key={view} type="button" role="radio" aria-checked={learningView === view}
-              title={t(`notes:learning.views.${view}`)}
-              className="notes-view-switch-option" onClick={() => setLearningView(view)}>
-              {t(`notes:learning.views.${view}`)}
-            </button>
-          ))}
-        </div>
-        <div className="notes-tree-host" aria-live="polite">
-          {learningView !== 'tree' ? (
-            loading && resources.length === 0 ? <p className="p-3 text-xs">{t('notes:editor.windowing.loading_note')}</p>
-              : loadError && resources.length === 0 ? <div className="p-3 text-xs" role="alert">{loadError}<DsButton variant="ghost" size="sm" onClick={() => void loadResources({ blocking: true })}>{t('common:retry')}</DsButton></div>
-                : filteredResources.length === 0 && (query.trim() || selectedTags.length > 0) ? (
-                  <div className="nes-tree-empty notes-tree-message" data-state="empty">
-                    <p className="nes-tree-empty__message">
-                      {t('notesWorkspace.tree.noMatches', {
-                        defaultValue: 'No files match "{{query}}"',
-                        query: query || selectedTags.join(', '),
-                      })}
-                    </p>
-                    <DsButton
-                      variant="outline"
-                      size="sm"
-                      className="nes-action"
-                      onClick={() => {
-                        setQuery('');
-                        setSelectedTags([]);
-                        searchInputRef.current?.focus();
-                      }}
-                    >
-                      {t('notesWorkspace.tree.showAll', 'Show all files')}
-                    </DsButton>
-                  </div>
-                )
-                  : <NoteLearningViews notes={filteredResources} view={learningView} activeId={activeTab?.id}
-                    onOpen={(node) => { void openWorkspaceSearchResult(node); }} />
-          ) : <>
-          {loading && !hasTreeItems ? (
-            <div
-              className="notes-tree"
-              role="tree"
-              aria-label={t('notesWorkspace.tree.aria')}
-              aria-busy="true"
-            >
-              <div
-                className="nes-tree-skeleton notes-tree-loading"
-                aria-label={t('notesWorkspace.tree.loading', 'Loading files')}
-              >
-                {TREE_SKELETON_ROWS.map((row, index) => (
-                  <div
-                    key={index}
-                    className="nes-tree-skeleton__row"
-                    style={{ '--nes-indent': row.indent } as React.CSSProperties}
-                  >
-                    <i
-                      className="nes-tree-skeleton__bar"
-                      style={{ '--nes-bar-w': row.width } as React.CSSProperties}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : loadError && !hasTreeItems ? (
-            <div
-              className="notes-tree"
-              role="tree"
-              aria-label={t('notesWorkspace.tree.aria')}
-              aria-busy="false"
-            >
-              <div className="notes-tree-message" data-state="error">
-                <span>{t('notesWorkspace.tree.loadFailed', 'Could not load files')}</span>
-                <button type="button" onClick={() => void loadResources({ blocking: true })}>{t('notesWorkspace.tree.retry', 'Retry')}</button>
-              </div>
-            </div>
-          ) : !hasTreeItems ? (
-            <div
-              className="notes-tree"
-              role="tree"
-              aria-label={t('notesWorkspace.tree.aria')}
-              aria-busy="false"
-            >
-              <div className="nes-tree-empty notes-tree-message" data-state="empty">
-                {query || selectedTags.length > 0 ? (
-                  <>
-                    <p className="nes-tree-empty__message">
-                      {t('notesWorkspace.tree.noMatches', {
-                        defaultValue: 'No files match "{{query}}"',
-                        query: query || selectedTags.join(', '),
-                      })}
-                    </p>
-                    <DsButton
-                      variant="outline"
-                      size="sm"
-                      className="nes-action"
-                      onClick={() => {
-                        setQuery('');
-                        setSelectedTags([]);
-                        searchInputRef.current?.focus();
-                      }}
-                    >
-                      {t('notesWorkspace.tree.showAll', 'Show all files')}
-                    </DsButton>
-                  </>
-                ) : (
-                  <>
-                    <div className="nes-tree-empty__icon" aria-hidden>
-                      <Notebook size={32} weight="thin" />
-                    </div>
-                    <p className="nes-tree-empty__title">
-                      {t('workbench:notesWorkspace.empty.treeTitle')}
-                    </p>
-                    <div className="nes-tree-empty__actions">
-                      <button
-                        type="button"
-                        className="nes-action"
-                        onClick={() => void createResource('note')}
-                      >
-                        <FileText size={13} aria-hidden />
-                        {t('workbench:notesWorkspace.empty.treeNewNote')}
-                      </button>
-                      <button
-                        type="button"
-                        className="nes-action nes-action--ghost"
-                        onClick={() => {
-                          setDialogError(null);
-                          setResourceDialog({ mode: 'create-folder', value: '', parentId: selectedFolderId });
-                        }}
-                      >
-                        <FolderPlus size={13} aria-hidden />
-                        {t('workbench:notesWorkspace.empty.treeNewFolder')}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          ) : (
-            <NotesWorkspaceTree
-              items={treeItems}
-              expandedIds={expandedIds}
-              selectedId={selectedTreeId ?? selectedFolderId}
-              activeId={activeTab?.id ?? null}
-              aria-busy={loading}
-              rootLabel={t('notesWorkspace.tree.root')}
-              onToggleExpand={toggleTreeExpand}
-              onExpand={expandTreeFolder}
-              onSelect={selectTreeItem}
-              onOpen={openTreeItem}
-              onMove={(dragId, targetId, position) => { void moveTreeItem(dragId, targetId, position); }}
-              onRename={(id, name) => { void renameTreeItem(id, name); }}
-              onDelete={requestDeleteTreeItem}
-              onDeleteMany={requestDeleteTreeItems}
-              getMenuItems={getTreeMenuItems}
-            />
-          )}
-          </>}
-        </div>
-      </WorkbenchSidebarSurface>
+    <WorkspaceExplorer
+      canNavBack={navHistory.canBack}
+      canNavForward={navHistory.canForward}
+      onNavBack={() => { void navHistory.runNavigation('back', activateHistoryEntry); }}
+      onNavForward={() => { void navHistory.runNavigation('forward', activateHistoryEntry); }}
+      query={query}
+      onQueryChange={setQuery}
+      selectedTags={selectedTags}
+      onSelectedTagsChange={setSelectedTags}
+      learningView={learningView}
+      onLearningViewChange={setLearningView}
+      loading={loading}
+      loadError={loadError}
+      resourcesCount={resources.length}
+      filteredResources={filteredResources}
+      treeItems={treeItems}
+      expandedIds={expandedIds}
+      selectedTreeId={selectedTreeId}
+      selectedFolderId={selectedFolderId}
+      activeTabId={activeTab?.id ?? null}
+      backlinksOpen={backlinksOpen}
+      favorites={favorites}
+      resourceDialog={resourceDialog}
+      dialogError={dialogError}
+      onResourceDialogChange={setResourceDialog}
+      onDialogErrorChange={setDialogError}
+      onCreateResource={(type, folderId) => { void createResource(type, folderId); }}
+      onCreateFolderSubmit={() => { void createFolder(); }}
+      onDeleteConfirm={() => { void deleteContextResource(); }}
+      onDeleteManyConfirm={() => { void deleteContextResources(); }}
+      onOpenLearningCreate={(folderId) => {
+        if (folderId !== undefined) setLearningCreateFolderId(folderId);
+        setLearningCreateOpen(true);
+      }}
+      onOpenFullTextSearch={() => openSearchOverlay('full-text')}
+      onToggleBacklinks={() => setBacklinksOpen((open) => !open)}
+      onOpenTrash={() => setTrashOpen(true)}
+      onOpenLibrary={() => setLibraryDialog({ open: true, tab: 'export' })}
+      onRetryLoad={() => { void loadResources({ blocking: true }); }}
+      onOpenResource={openResource}
+      onOpenTabInRightSplit={openTabInRightSplit}
+      onOpenSearchResult={(node) => { void openWorkspaceSearchResult(node); }}
+      onCloseExplorerIfCompact={closeExplorerIfCompact}
+      onToggleTreeExpand={toggleTreeExpand}
+      onExpandTreeFolder={expandTreeFolder}
+      onSelectTreeItem={selectTreeItem}
+      onOpenTreeItem={openTreeItem}
+      onMoveTreeItem={(dragId, targetId, position) => { void moveTreeItem(dragId, targetId, position); }}
+      onRenameTreeItem={(id, name) => { void renameTreeItem(id, name); }}
+      onRequestDeleteTreeItem={requestDeleteTreeItem}
+      onRequestDeleteTreeItems={requestDeleteTreeItems}
+    />
   );
+
+  const getNoteBreadcrumbs = useCallback(
+    (noteId: string, title: string): readonly NoteBreadcrumbItem[] => {
+      const trail = computeNoteBreadcrumbs(noteId, folders, resourceFolderIds, title);
+      // 根目录下的单篇笔记无需多占一行面包屑，仅在嵌套文件夹内展示路径定向
+      return trail.length > 1 ? trail : [];
+    },
+    [folders, resourceFolderIds],
+  );
+
+  const handleNoteBreadcrumbClick = useCallback(
+    (item: NoteBreadcrumbItem) => {
+      if (item.type !== 'folder') return;
+      setQuery('');
+      setSelectedTags([]);
+      if (sizeClassRef.current === 'compact') setBacklinksOpen(false);
+      setExplorerOpen(true);
+      setLearningView('tree');
+      // 展开目标目录及其祖先目录（直接基于 folders 计算路径，清空过滤前即使 treeItems 尚未重建也能生效）
+      const foldersById = new Map(folders.map((folder) => [folder.id, folder]));
+      const chainIds: string[] = [];
+      const visited = new Set<string>();
+      let cursor: string | null = item.id;
+      while (cursor && !visited.has(cursor)) {
+        visited.add(cursor);
+        chainIds.unshift(cursor);
+        cursor = foldersById.get(cursor)?.parentId ?? null;
+      }
+      const pathsToExpand = new Set<string>();
+      let prefix = '';
+      for (const id of chainIds) {
+        prefix = `${prefix}/${id}`;
+        pathsToExpand.add(prefix);
+        const existing = findItemById(treeItems, id);
+        if (existing?.path) pathsToExpand.add(existing.path);
+      }
+      setCollapsedFolderPaths((current) => {
+        let changed = false;
+        const next = new Set(current);
+        for (const path of pathsToExpand) {
+          if (next.delete(path)) changed = true;
+        }
+        return changed ? next : current;
+      });
+      setSelectedTreeId(item.id);
+      if (isStableVfsFolderId(item.id)) {
+        setSelectedFolderId(item.id);
+      }
+    },
+    [folders, treeItems],
+  );
+
+  const sharedPaneActionProps = {
+    windowId,
+    onActivate: activateTab,
+    onTitleChange: updateTabTitle,
+    onSaveStateChange: updateTabSaveState,
+    onCreateNote: () => { void createResource('note'); },
+    onCreateMindmap: () => { void createResource('mindmap'); },
+    onOpenSearch: () => openSearchOverlay('quick-open'),
+    onImport: () => setLibraryDialog({ open: true, tab: 'import' }),
+    onAskAgent: () => { void openQuickAssistantWindow().catch((error) => showGlobalNotification('error', String(error))); },
+    recentResources: welcomeRecentResources,
+    onOpenRecent: (node: DstuNode) => { void openWorkspaceSearchResult(node); },
+    getNoteBreadcrumbs,
+    onNoteBreadcrumbClick: handleNoteBreadcrumbClick,
+    suppressFloatingToc: backlinksOpen && !backlinksOverlay,
+  };
 
   return (
     <>
@@ -3010,6 +1554,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         <WorkspaceTabs
           tabs={tabs}
           activeKey={activeTab?.key ?? null}
+          mainActiveKey={mainActiveTab?.key ?? null}
           rightTabKey={splitTab?.key ?? null}
           onActivate={activateTab}
           onClose={closeTab}
@@ -3032,261 +1577,198 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         data-explorer-open={explorerOpen ? 'true' : 'false'}
         onKeyDown={handleWorkspaceKeyDown}
         onDragOver={(event) => {
-          if (!Array.from(event.dataTransfer.files).some((file) => /\.md(?:own)?$/i.test(file.name))) return;
+          if (!Array.from(event.dataTransfer.files).some((file) => isMarkdownFileName(file.name))) return;
           event.preventDefault();
           event.dataTransfer.dropEffect = 'copy';
         }}
         onDrop={(event) => {
           const files = Array.from(event.dataTransfer.files);
-          if (!files.some((file) => /\.md(?:own)?$/i.test(file.name))) return;
+          if (!files.some((file) => isMarkdownFileName(file.name))) return;
           event.preventDefault();
           void importDroppedMarkdown(files);
         }}
       >
-      <WorkbenchSidebarLayout
-        sizeClass={sizeClass}
-        navLabel={t('notesWorkspace.explorer.title', 'Files')}
-        drawerOpen={false}
-        onDrawerOpenChange={handleDrawerOpenChange}
-        sidebarCollapsed={!explorerVisible}
-        sidebar={sizeClass === 'compact' ? null : explorerSurface}
-      >
-
-      <NotesChromeSlotContext.Provider value={splitTab || sizeClass === 'compact' ? null : notesChromeSlot}>
-      <main className="notes-workspace-main" data-notes-split={splitTab ? 'true' : 'false'}>
-        <div className="notes-main-content" data-backlinks-open={backlinksOpen ? 'true' : 'false'} data-backlinks-overlay={backlinksOverlay ? 'true' : 'false'}>
-          <PanelGroup
-            ref={paneGroupRef}
-            direction={sizeClass === 'compact' ? 'vertical' : 'horizontal'}
-            className="notes-panes"
-            id="notes-workspace-panes"
-            onLayout={handleSplitLayout}
-          >
-            <Panel
-              id="notes-workspace-main-pane"
-              order={1}
-              defaultSize={splitTab ? (sizeClass === 'compact' ? DEFAULT_SPLIT_LAYOUT[0] : splitLayout[0]) : 100}
-              minSize={splitTab ? 25 : 100}
-              className="notes-pane-panel"
-            >
-              <WorkspacePane
-                paneId="main"
-                tabs={mainTabs}
-                activeKey={mainActiveTab?.key ?? null}
-                windowId={windowId}
-                workspaceActive={isActive && resolvedFocusedPane === 'main' && !(backlinksOpen && backlinksOverlay)}
-                onActivate={activateTab}
-                onTitleChange={updateTabTitle}
-                onSaveStateChange={updateTabSaveState}
-                onCreateNote={() => { void createResource('note'); }}
-                onCreateMindmap={() => { void createResource('mindmap'); }}
-                onOpenSearch={() => openSearchOverlay('quick-open')}
-                onImport={() => setLibraryDialog({ open: true, tab: 'import' })}
-                onAskAgent={() => { void openQuickAssistantWindow().catch((error) => showGlobalNotification('error', String(error))); }}
-                recentResources={welcomeRecentResources}
-                onOpenRecent={(node) => { void openWorkspaceSearchResult(node); }}
-              />
-            </Panel>
-            {splitTab && (
-              <>
-                {/* compact（手机窄窗）分屏固定 50/50：不渲染拖拽手柄（对照 VerticalResizable fixed） */}
-                {sizeClass !== 'compact' && (
-                  <PanelResizeHandle
-                    className="notes-pane-resize"
-                    /* 触屏热区：库在 document 层用 getBoundingClientRect + hitAreaMargins 做命中检测，
-                       CSS ::after 外扩不参与；coarse 19 → 6px 可视宽 + 2×19 = 44px */
-                    hitAreaMargins={{ coarse: 19, fine: 5 }}
-                    aria-label={t('notesWorkspace.panes.resize', 'Resize split panes')}
-                  />
-                )}
-                <Panel
-                  id="notes-workspace-right-pane"
-                  order={2}
-                  defaultSize={sizeClass === 'compact' ? DEFAULT_SPLIT_LAYOUT[1] : splitLayout[1]}
-                  minSize={25}
-                  className="notes-pane-panel"
+        <WorkbenchSidebarLayout
+          sizeClass={sizeClass}
+          navLabel={t('notesWorkspace.explorer.title', 'Files')}
+          drawerOpen={false}
+          onDrawerOpenChange={handleDrawerOpenChange}
+          sidebarCollapsed={!explorerVisible}
+          sidebar={sizeClass === 'compact' ? null : explorerSurface}
+        >
+          <NotesChromeSlotContext.Provider value={splitTab || sizeClass === 'compact' ? null : notesChromeSlot}>
+            <main className="notes-workspace-main" data-notes-split={splitTab ? 'true' : 'false'}>
+              <div className="notes-main-content" data-backlinks-open={backlinksOpen ? 'true' : 'false'} data-backlinks-overlay={backlinksOverlay ? 'true' : 'false'}>
+                <PanelGroup
+                  ref={paneGroupRef}
+                  direction={sizeClass === 'compact' ? 'vertical' : 'horizontal'}
+                  className="notes-panes"
+                  id="notes-workspace-panes"
+                  onLayout={handleSplitLayout}
                 >
-                  <WorkspacePane
-                    paneId="right"
-                    tabs={[splitTab]}
-                    activeKey={splitTab.key}
-                    windowId={windowId}
-                    workspaceActive={isActive && resolvedFocusedPane === 'right' && !(backlinksOpen && backlinksOverlay)}
-                    onActivate={activateTab}
-                    onTitleChange={updateTabTitle}
-                    onSaveStateChange={updateTabSaveState}
-                    onCreateNote={() => { void createResource('note'); }}
-                    onCreateMindmap={() => { void createResource('mindmap'); }}
-                    onOpenSearch={() => openSearchOverlay('quick-open')}
-                    onImport={() => setLibraryDialog({ open: true, tab: 'import' })}
-                    onAskAgent={() => { void openQuickAssistantWindow().catch((error) => showGlobalNotification('error', String(error))); }}
-                    recentResources={welcomeRecentResources}
-                    onOpenRecent={(node) => { void openWorkspaceSearchResult(node); }}
-                  />
-                </Panel>
-              </>
-            )}
-          </PanelGroup>
-          <NotesBacklinksPanel
-            open={backlinksOpen}
-            requestedTab={backlinksRequestedTab}
-            activeResource={activeResource}
-            notes={resources}
-            onOpenResource={openWorkspaceSearchResult}
-            onClose={() => setBacklinksOpen(false)}
-            onCreateFromUnresolved={createFromUnresolved}
-            onRefresh={() => { void loadResources({ blocking: false }); }}
-            propertiesContent={(
-              <>
-              <NotesPropertiesTab
-                key={activeResource?.id ?? 'no-note'}
-                activeResource={activeResource}
-                onRefresh={() => { void loadResources({ blocking: false }); }}
-              />
-              </>
-            )}
-            graphContent={(
-              <NotesGraphTab
-                open={backlinksOpen}
-                activeResource={activeResource}
-                notes={resources}
-                onOpenResource={openWorkspaceSearchResult}
-              />
-            )}
-          />
-        </div>
-        <footer className="notes-statusbar" data-notes-statusbar>
-          <span>{status}</span>
-          {/* 保存状态已在编辑器顶栏常驻：这里只在未保存 / 失败时提示，不重复「已保存」 */}
-          <span>{activeTab && (saveStates.get(activeTab.key) ?? 'saved') !== 'saved'
-            ? t(`notesWorkspace.saveState.${saveStates.get(activeTab.key)}`)
-            : ''}</span>
-        </footer>
-      </main>
-      </NotesChromeSlotContext.Provider>
-      </WorkbenchSidebarLayout>
-      {/* 窄窗「文件」全屏内联子屏（移动端契约：无遮罩抽屉；顶栏返回 + Android back） */}
-      {sizeClass === 'compact' && explorerOpen && (
-        <div className="notes-files-subscreen" data-notes-files-subscreen>
-          <div className="notes-files-subscreen-header">
-            <button
-              type="button"
-              className="notes-files-subscreen-back"
-              onClick={() => setExplorerOpen(false)}
-              aria-label={t('notesWorkspace.explorer.closeFiles', 'Close files')}
-            >
-              <CaretLeft size={16} aria-hidden />
-              <span>{t('notesWorkspace.navigation.back', 'Back')}</span>
-            </button>
-            <span className="notes-files-subscreen-title">
-              {t('notesWorkspace.explorer.title', 'Files')}
-            </span>
+                  <Panel
+                    id="notes-workspace-main-pane"
+                    order={1}
+                    defaultSize={splitTab ? (sizeClass === 'compact' ? DEFAULT_SPLIT_LAYOUT[0] : splitLayout[0]) : 100}
+                    minSize={splitTab ? 25 : 100}
+                    className="notes-pane-panel"
+                  >
+                    <WorkspacePane
+                      {...sharedPaneActionProps}
+                      paneId="main"
+                      tabs={mainTabs}
+                      activeKey={mainActiveTab?.key ?? null}
+                      workspaceActive={isActive && resolvedFocusedPane === 'main' && !(backlinksOpen && backlinksOverlay)}
+                    />
+                  </Panel>
+                  {splitTab && (
+                    <>
+                      {/* compact（手机窄窗）分屏固定 50/50：不渲染拖拽手柄（对照 VerticalResizable fixed） */}
+                      {sizeClass !== 'compact' && (
+                        <PanelResizeHandle
+                          className="notes-pane-resize"
+                          /* 触屏热区：库在 document 层用 getBoundingClientRect + hitAreaMargins 做命中检测，
+                             CSS ::after 外扩不参与；coarse 22 → 1px 可视宽 + 2×22 = 45px ≥ 44px */
+                          hitAreaMargins={{ coarse: 22, fine: 5 }}
+                          aria-label={t('notesWorkspace.panes.resize', 'Resize split panes')}
+                        />
+                      )}
+                      <Panel
+                        id="notes-workspace-right-pane"
+                        order={2}
+                        defaultSize={sizeClass === 'compact' ? DEFAULT_SPLIT_LAYOUT[1] : splitLayout[1]}
+                        minSize={25}
+                        className="notes-pane-panel"
+                      >
+                        <WorkspacePane
+                          {...sharedPaneActionProps}
+                          paneId="right"
+                          tabs={[splitTab]}
+                          activeKey={splitTab.key}
+                          workspaceActive={isActive && resolvedFocusedPane === 'right' && !(backlinksOpen && backlinksOverlay)}
+                        />
+                      </Panel>
+                    </>
+                  )}
+                </PanelGroup>
+                <NotesBacklinksPanel
+                  open={backlinksOpen}
+                  requestedTab={backlinksRequestedTab}
+                  onActiveTabChange={handleBacklinksActiveTabChange}
+                  activeResource={activeResource}
+                  notes={resources}
+                  onOpenResource={openWorkspaceSearchResult}
+                  onClose={closeBacklinks}
+                  onCreateFromUnresolved={createFromUnresolved}
+                  onRefresh={() => { void loadResources({ blocking: false }); }}
+                  outlineContent={(
+                    <NotesOutlineTab
+                      key={activeResource?.id ?? 'no-note-outline'}
+                      activeResource={activeResource}
+                      onHeadingNavigate={backlinksOverlay ? closeBacklinks : undefined}
+                    />
+                  )}
+                  propertiesContent={(
+                    <NotesPropertiesTab
+                      key={activeResource?.id ?? 'no-note'}
+                      activeResource={activeResource}
+                      hideOutline
+                      onRefresh={() => { void loadResources({ blocking: false }); }}
+                    />
+                  )}
+                  graphContent={(
+                    <NotesGraphTab
+                      open={backlinksOpen}
+                      activeResource={activeResource}
+                      notes={resources}
+                      onOpenResource={openWorkspaceSearchResult}
+                    />
+                  )}
+                />
+              </div>
+              <footer className="notes-statusbar" data-notes-statusbar>
+                <span>{status}</span>
+                {/* 保存状态已在编辑器顶栏常驻：这里只在未保存 / 失败时提示，不重复「已保存」 */}
+                <span>{activeTab && (saveStates.get(activeTab.key) ?? 'saved') !== 'saved'
+                  ? t(`notesWorkspace.saveState.${saveStates.get(activeTab.key)}`)
+                  : ''}</span>
+              </footer>
+            </main>
+          </NotesChromeSlotContext.Provider>
+        </WorkbenchSidebarLayout>
+        {/* 窄窗「文件」全屏内联子屏（移动端契约：无遮罩抽屉；顶栏返回 + Android back） */}
+        {sizeClass === 'compact' && explorerOpen && (
+          <div className="notes-files-subscreen" data-notes-files-subscreen>
+            <div className="notes-files-subscreen-header">
+              <button
+                type="button"
+                className="notes-files-subscreen-back"
+                onClick={() => setExplorerOpen(false)}
+                aria-label={t('notesWorkspace.explorer.closeFiles', 'Close files')}
+              >
+                <CaretLeft size={16} aria-hidden />
+                <span>{t('notesWorkspace.navigation.back', 'Back')}</span>
+              </button>
+              <span className="notes-files-subscreen-title">
+                {t('notesWorkspace.explorer.title', 'Files')}
+              </span>
+            </div>
+            <div className="notes-files-subscreen-body">{explorerSurface}</div>
           </div>
-          <div className="notes-files-subscreen-body">{explorerSurface}</div>
-        </div>
-      )}
-      {learningCreateOpen && <CreateLearningNoteDialog folderId={learningCreateFolderId !== undefined ? learningCreateFolderId : contextualFolderId}
-        onClose={() => { setLearningCreateOpen(false); setLearningCreateFolderId(undefined); }}
-        onCreated={async (node) => { await loadResources({ blocking: false }); await openResource({ type: 'note', id: node.id }, node.name); }} />}
-      <NotesSearchOverlay
-        open={searchOpen}
-        mode={searchMode}
-        onModeChange={setSearchMode}
-        resources={resources}
-        recentResources={recentSearchResources}
-        onOpenResource={openWorkspaceSearchResult}
-        onClose={() => setSearchOpen(false)}
-      />
-      <WorkbenchNotesLibraryDialog
-        open={libraryDialog.open}
-        initialTab={libraryDialog.tab}
-        onOpenChange={(open) => setLibraryDialog((current) => ({ ...current, open }))}
-        onImported={() => loadResources({ blocking: false })}
-      />
-      {tabContextMenu && tabContextTarget && (
-        <div ref={contextMenuRef} id="notes-tab-context-menu" className="notes-context-menu notes-tab-context-menu" role="menu" aria-label={tabContextTarget.title} style={{ left: tabContextMenu.x, top: tabContextMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            aria-checked={Boolean(tabContextTarget.pinned)}
-            onClick={() => {
-              toggleTabPinned(tabContextTarget.key);
+        )}
+        {learningCreateOpen && (
+          <CreateLearningNoteDialog
+            folderId={learningCreateFolderId !== undefined ? learningCreateFolderId : contextualFolderId}
+            onClose={() => { setLearningCreateOpen(false); setLearningCreateFolderId(undefined); }}
+            onCreated={async (node) => {
+              await loadResources({ blocking: false });
+              await openResource({ type: 'note', id: node.id }, node.name);
+            }}
+          />
+        )}
+        <NotesSearchOverlay
+          open={searchOpen}
+          mode={searchMode}
+          onModeChange={setSearchMode}
+          resources={resources}
+          recentResources={recentSearchResources}
+          onOpenResource={openWorkspaceSearchResult}
+          onClose={() => setSearchOpen(false)}
+        />
+        <WorkbenchNotesLibraryDialog
+          open={libraryDialog.open}
+          initialTab={libraryDialog.tab}
+          onOpenChange={(open) => setLibraryDialog((current) => ({ ...current, open }))}
+          onImported={() => loadResources({ blocking: false })}
+        />
+        {tabContextMenu && tabContextTarget && (
+          <WorkspaceTabContextMenu
+            menuRef={contextMenuRef}
+            menu={tabContextMenu}
+            target={tabContextTarget}
+            isRightSplit={tabContextTarget.key === splitTab?.key}
+            canOpenRightSplit={tabs.length > 1}
+            canCloseOthers={tabContextCanCloseOthers}
+            canCloseRight={tabContextCanCloseRight}
+            onTogglePin={toggleTabPinned}
+            onToggleRightSplit={toggleTabRightSplit}
+            onCloseTab={(key) => { void closeTab(key); }}
+            onCloseOthers={closeOtherTabs}
+            onCloseRight={closeTabsToRight}
+            onDismissAndRestoreFocus={() => {
               restoreTabContextFocusRef.current = true;
               setTabContextMenu(null);
             }}
-          >
-            {tabContextTarget.pinned ? <PushPinSlash size={14} aria-hidden /> : <PushPin size={14} aria-hidden />}
-            <span className="notes-context-menu-label">
-              {tabContextTarget.pinned
-                ? t('notesWorkspace.tabs.menu.unpin', 'Unpin')
-                : t('notesWorkspace.tabs.menu.pin', 'Pin')}
-            </span>
-          </button>
-          <button
-            type="button"
-            role="menuitemcheckbox"
-            aria-checked={tabContextTarget.key === splitTab?.key}
-            disabled={tabContextTarget.key !== splitTab?.key && tabs.length <= 1}
-            onClick={() => {
-              toggleTabRightSplit(tabContextTarget.key);
-              restoreTabContextFocusRef.current = true;
-              setTabContextMenu(null);
-            }}
-          >
-            <SidebarSimple size={14} aria-hidden />
-            <span className="notes-context-menu-label">
-              {tabContextTarget.key === splitTab?.key
-                ? t('notesWorkspace.tabs.menu.closeRightSplit', 'Close right split')
-                : t('notesWorkspace.tabs.menu.openInRightSplit', 'Open in right split')}
-            </span>
-          </button>
-          <div role="separator" className="notes-context-menu-separator" />
-          <button
-            type="button"
-            role="menuitem"
-            className="is-danger"
-            onClick={() => {
-              void closeTab(tabContextTarget.key);
-              restoreTabContextFocusRef.current = true;
-              setTabContextMenu(null);
-            }}
-          >
-            <span className="notes-context-menu-label">{t('notesWorkspace.tabs.menu.close', 'Close')}</span>
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            disabled={!tabContextCanCloseOthers}
-            onClick={() => {
-              closeOtherTabs(tabContextTarget.key);
-              restoreTabContextFocusRef.current = true;
-              setTabContextMenu(null);
-            }}
-          >
-            {t('notesWorkspace.tabs.closeOthers', 'Close other tabs')}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            disabled={!tabContextCanCloseRight}
-            onClick={() => {
-              closeTabsToRight(tabContextTarget.key);
-              restoreTabContextFocusRef.current = true;
-              setTabContextMenu(null);
-            }}
-          >
-            {t('notesWorkspace.tabs.closeTabsToRight', 'Close tabs to the right')}
-          </button>
-        </div>
-      )}
-      <NotesTrashDialog
-        open={trashOpen}
-        onOpenChange={setTrashOpen}
-        onChanged={() => {
-          void loadResources({ blocking: false });
-          void favorites.refresh();
-        }}
-      />
+          />
+        )}
+        <NotesTrashDialog
+          open={trashOpen}
+          onOpenChange={setTrashOpen}
+          onChanged={() => {
+            void loadResources({ blocking: false });
+            void favorites.refresh();
+          }}
+        />
       </div>
     </>
   );

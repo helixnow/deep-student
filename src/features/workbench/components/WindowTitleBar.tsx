@@ -8,12 +8,13 @@
  *   绿灯 = 沉浸模式 toggle（maximize + 菜单栏/Dock 强制 autohide）；
  *   ⌥+绿灯 = 传统 zoom（floating ↔ maximized）
  * - 缩放键悬停 350ms 或长按 400ms 弹出 TileMenuPopover 平铺菜单（对标 macOS 绿灯）
- * - 双击标题栏空白区 = 按设置分发（缩放 / 最小化 / 无动作）+ 涟漪
+ * - 双击标题栏空白区 = 按设置分发（缩放 / 最小化 / 无动作）
  * - 标题居中；溢出时 mask 渐隐（替代硬截断省略号）
  * - 材质走 wb-titlebar / wb-traffic-* 契约 + wb-title-* 微交互层
  */
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { DisplayMode } from '../core/types';
 import { MOVE_ARM_THRESHOLD_PX } from '../core/pointerEngine';
 import { useWindowDirty } from '../core/windowCloseGuard';
@@ -122,12 +123,24 @@ const GlyphZoom = ({ restore }: { restore: boolean }) =>
     </svg>
   );
 
-interface RippleSpec {
-  id: number;
-  x: number;
-  y: number;
-  size: number;
-}
+/** ⌥ 按住时绿灯切为经典 macOS `+` 缩放符号 */
+const GlyphPlus = () => (
+  <svg
+    className="wb-title-glyph"
+    data-wb-zoom-glyph="plus"
+    viewBox="0 0 12 12"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path
+      d="M6 2.5v7M2.5 6h7"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+    />
+  </svg>
+);
 
 export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   windowId,
@@ -145,18 +158,16 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
   const dirty = useWindowDirty(windowId);
   const immersive = useWindowImmersive(windowId);
   const doubleClickAction = useTitleBarDoubleClickAction();
-  /** 按住 ⌥ 时三键提示切换为批量/传统 zoom 语义（keydown/keyup 跟踪） */
+  /** 按住 ⌥ 时三键提示切换为批量/传统 zoom 语义，绿灯符号实时切换为 + */
   const [altHeld, setAltHeld] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuAutoFocus, setMenuAutoFocus] = useState(false);
   const [titleOverflow, setTitleOverflow] = useState(false);
-  const [ripples, setRipples] = useState<RippleSpec[]>([]);
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const zoomButtonRef = useRef<HTMLButtonElement>(null);
   const titleRef = useRef<HTMLSpanElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
-  const rippleIdRef = useRef(0);
   /** 标题栏拖拽视觉态启动阈值（与 pointerEngine MOVE_ARM_THRESHOLD_PX 对齐） */
   const dragArmRef = useRef<{ x: number; y: number; armed: boolean } | null>(null);
   /** 本轮视觉拖拽监听清理；失焦 / 重入 / 卸载均须摘掉，避免 class 卡住 */
@@ -175,24 +186,34 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
 
   useEffect(() => clearTimers, [clearTimers]);
 
-  // ⌥ 按下/松开时切换三键 title/aria 的批量语义提示（blur 兜底复位）
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Alt') setAltHeld(true);
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === 'Alt') setAltHeld(false);
-    };
-    const onBlur = () => setAltHeld(false);
-    window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('keyup', onKeyUp);
-    window.addEventListener('blur', onBlur);
-    return () => {
-      window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('keyup', onKeyUp);
-      window.removeEventListener('blur', onBlur);
-    };
-  }, []);
+  // ⌥ 按下/抬起/失焦状态（集中通过 useEventRegistry 监听，切换三键语义与绿灯 + 符号）
+  const altKeyEvents = useMemo(
+    () => [
+      {
+        target: 'window' as const,
+        type: 'keydown',
+        listener: (event: Event) => {
+          const e = event as KeyboardEvent;
+          if (e.key === 'Alt') setAltHeld(true);
+        },
+      },
+      {
+        target: 'window' as const,
+        type: 'keyup',
+        listener: (event: Event) => {
+          const e = event as KeyboardEvent;
+          if (e.key === 'Alt') setAltHeld(false);
+        },
+      },
+      {
+        target: 'window' as const,
+        type: 'blur',
+        listener: () => setAltHeld(false),
+      },
+    ],
+    [],
+  );
+  useEventRegistry(altKeyEvents, [altKeyEvents]);
 
   // 长标题溢出检测 → mask 渐隐
   useLayoutEffect(() => {
@@ -287,17 +308,6 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
 
   const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
-  const spawnRipple = useCallback((clientX: number, clientY: number) => {
-    const bar = barRef.current;
-    if (!bar) return;
-    const rect = bar.getBoundingClientRect();
-    const x = clientX - rect.left;
-    const y = clientY - rect.top;
-    const size = Math.max(rect.width, rect.height) * 2.2;
-    const id = ++rippleIdRef.current;
-    setRipples((prev) => [...prev, { id, x, y, size }]);
-  }, []);
-
   /** 本次按下序列是否发生过拖拽（armed）；拖过后的双击不触发 zoom（对齐 macOS） */
   const recentDragRef = useRef(false);
 
@@ -309,19 +319,14 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
         return;
       }
       if (doubleClickAction === 'none') return;
-      spawnRipple(e.clientX, e.clientY);
       if (doubleClickAction === 'minimize') {
         onMinimize();
         return;
       }
       onZoom({ alt: e.altKey });
     },
-    [doubleClickAction, onMinimize, onZoom, spawnRipple],
+    [doubleClickAction, onMinimize, onZoom],
   );
-
-  const handleRippleEnd = useCallback((id: number) => {
-    setRipples((prev) => prev.filter((r) => r.id !== id));
-  }, []);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
@@ -446,22 +451,11 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       onPointerDown={handlePointerDown}
       onDoubleClick={handleDoubleClick}
     >
-      <div className="wb-title-ripple-layer" aria-hidden="true">
-        {ripples.map((r) => (
-          <span
-            key={r.id}
-            className="wb-title-ripple"
-            style={{
-              left: r.x,
-              top: r.y,
-              width: r.size,
-              height: r.size,
-            }}
-            onAnimationEnd={() => handleRippleEnd(r.id)}
-          />
-        ))}
-      </div>
-      <div className="wb-traffic relative z-10" data-wb-traffic>
+      <div
+        className="wb-traffic relative z-10"
+        data-wb-traffic
+        data-alt-held={altHeld ? 'true' : undefined}
+      >
         <button
           type="button"
           className="wb-traffic-close wb-title-key"
@@ -548,7 +542,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
               }
             }}
           >
-            <GlyphZoom restore={zoomRestore} />
+            {altHeld ? <GlyphPlus /> : <GlyphZoom restore={zoomRestore} />}
           </button>
           <TileMenuPopover
             open={menuOpen}

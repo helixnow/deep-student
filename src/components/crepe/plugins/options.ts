@@ -46,4 +46,9 @@ export interface CrepePluginsOptions {
    * 默认在 defaultPluginOptions 中为 false，由 NotesCrepeEditor 显式开启。
    */
   inlineCards?: boolean | InlineCardsPluginConfig;
+  /**
+   * 学习高亮（`==highlighted text==`）Live Preview 装饰与 `Mod-Shift-H` 快捷键插件。
+   * 默认启用。
+   */
+  highlight?: boolean;
 }

@@ -46,6 +46,14 @@ export function useFrontendErrorCapture() {
           return;
         }
       }
+      const message = errorEvent?.message || String((errorEvent as ErrorEvent)?.error || 'Unknown error');
+      // W3C ResizeObserver 规范允许的良性帧延后告警，不中断渲染也不应污染控制台/错误上报
+      if (
+        !isResourceError &&
+        /^ResizeObserver loop (?:completed with undelivered notifications|limit exceeded)/i.test(message)
+      ) {
+        return;
+      }
       const payload = isResourceError
         ? {
           type: 'ResourceError',
@@ -55,7 +63,7 @@ export function useFrontendErrorCapture() {
         }
         : {
           type: 'Error',
-          message: errorEvent?.message || String((errorEvent as ErrorEvent)?.error || 'Unknown error'),
+          message,
           stack: (errorEvent?.error && (errorEvent.error as Error)?.stack) || undefined,
           filename: errorEvent?.filename,
           lineno: errorEvent?.lineno,

@@ -4,6 +4,7 @@
  */
 import { listAnkiLibraryCards } from '@/utils/chatApi';
 import type { AnkiCard, AnkiLibraryCard } from '@/types';
+import { serializeFlashcardsToCsv } from './csvFlashcards';
 
 const PAGE_SIZE = 200;
 const MAX_CARDS = 20_000;
@@ -48,5 +49,29 @@ export async function exportLibraryApkg(
     count: cards.length - (result.skippedErrorCards ?? 0),
     filePath: result.filePath,
     missingMedia: result.missingMedia?.length ?? 0,
+  };
+}
+
+export async function exportLibraryCsv(
+  selected: AnkiLibraryCard[],
+  options: { defaultDeck?: string; fileName?: string; title?: string } = {},
+): Promise<LibraryExportOutcome> {
+  const cards = selected.length > 0 ? selected : await loadWholeLibrary();
+  if (cards.length === 0) return { status: 'empty' };
+  const { fileManager } = await import('@/utils/fileManager');
+  const content = serializeFlashcardsToCsv(cards, { defaultDeck: options.defaultDeck });
+  const defaultFileName = options.fileName?.trim() || 'flashcards.csv';
+  const result = await fileManager.saveTextFile({
+    title: options.title,
+    defaultFileName,
+    content,
+    filters: [{ name: 'CSV', extensions: ['csv'] }],
+  });
+  if (result.canceled) return { status: 'cancelled' };
+  return {
+    status: 'exported',
+    count: cards.length,
+    filePath: result.path ?? defaultFileName,
+    missingMedia: 0,
   };
 }

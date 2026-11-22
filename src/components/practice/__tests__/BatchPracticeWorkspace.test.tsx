@@ -527,12 +527,16 @@ it.each([false, true])('runs submitted-paper AI analysis without grading and rel
 
   await screen.findByText('已保存 AI 反馈');
   await waitFor(() => expect(questionLookups('q1')).toBeGreaterThan(lookupsBeforeCompletion));
-  expect(screen.getByText('SECRET EXPLANATION')).toBeInTheDocument();
+  if (explanationWritten) {
+    expect(screen.queryByText('SECRET EXPLANATION')).toBeNull();
+  } else {
+    expect(screen.getByText('SECRET EXPLANATION')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /写入解析/ })).toBeInTheDocument();
+  }
   expect(
     screen.queryByText('LIVE QUESTION EXPLANATION DIFFERENT FROM SNAPSHOT'),
   ).toBeNull();
-  expect(screen.queryByRole('button', { name: /写入解析/ })).toBeNull();
-  expect(screen.queryByRole('button', { name: /替换现有解析/ })).toBeNull();
+  expect(screen.getByRole('button', { name: /问 AI 讲解/ })).toBeInTheDocument();
   expect(
     mocks.invoke.mock.calls.some(([command]) => command === 'qbank_update_question'),
   ).toBe(false);
@@ -608,4 +612,88 @@ it('hides AI analysis when the source was deleted after submission despite the s
   expect(screen.getByText('SECRET EXPLANATION')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /AI 解析/ })).toBeNull();
   expect(mocks.invoke.mock.calls.some(([command]) => command === 'qbank_ai_grade')).toBe(false);
+});
+
+it('treats whitespace-only answers as unanswered, clears them before submit, and styles unanswered results neutrally (BUG-16)', async () => {
+  const base = draft();
+  let saved: PracticeDraft = {
+    ...base,
+    questions: [
+      { ...base.questions[0], question_type: 'short_answer', options: [] },
+      { ...base.questions[1], question_type: 'short_answer', options: [] },
+    ],
+    answers: { q1: '   ' },
+  };
+  const refreshEvents: string[] = [];
+  const onRefresh = () => refreshEvents.push('learning-today:refresh');
+  window.addEventListener('learning-today:refresh', onRefresh);
+
+  let completed: PracticeAttempt | null = null;
+  mocks.invoke.mockImplementation(async (command, args) => {
+    if (command === 'qbank_get_practice') return args.submitted ? completed : saved;
+    if (command === 'qbank_save_practice') {
+      saved = { ...saved, ...args.request, revision: saved.revision + 1 };
+      return saved;
+    }
+    if (command === 'qbank_submit_practice') {
+      completed = {
+        ...saved,
+        status: 'completed',
+        submitted_at: '2026-10-28T00:00:00Z',
+        origin_device_id: 'device1',
+        results: [resultFor('unanswered', 'q1'), resultFor('unanswered', 'q2')],
+      } satisfies PracticeAttempt;
+      return completed;
+    }
+    if (command === 'qbank_get_question') return null;
+    if (command === 'qbank_resume_practice_grading') return;
+    return undefined;
+  });
+
+  try {
+    render(<BatchPracticeWorkspace practiceId="draft1" onBack={vi.fn()} />);
+    await screen.findByText('First question');
+
+    // Open answer sheet: whitespace-only answer must count as 0 answered, 2 unanswered, pill not highlighted
+    fireEvent.click(screen.getAllByRole('button', { name: '答题卡' })[0]);
+    expect(screen.getAllByText('已答 0 / 2 题').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText('未答 2 题').length).toBeGreaterThanOrEqual(1);
+    const jumpQ1 = screen.getAllByRole('button', { name: '跳转到第 1 题' })[0];
+    expect(jumpQ1.className).not.toContain('border-primary/40');
+    fireEvent.click(screen.getAllByRole('button', { name: '答题卡' })[0]);
+
+    // Typing whitespace-only into q2 keeps answered count at 0
+    fireEvent.click(screen.getByRole('button', { name: /下一题/ }));
+    await screen.findByText('Second question');
+    const textbox = screen.getByRole('textbox', { name: '我的作答' });
+    fireEvent.change(textbox, { target: { value: '   \n\t  ' } });
+    fireEvent.click(screen.getAllByRole('button', { name: '答题卡' })[0]);
+    expect(screen.getAllByText('已答 0 / 2 题').length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(screen.getAllByRole('button', { name: '答题卡' })[0]);
+
+    // Open submit confirmation: shows 0 answered, 2 unanswered, and jump-to-unanswered CTA
+    fireEvent.click(screen.getByRole('button', { name: '交卷' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('已答 0 / 2 题');
+    expect(dialog).toHaveTextContent('未答 2 题');
+    expect(screen.getByRole('button', { name: '跳到未答题' })).toBeInTheDocument();
+
+    // Confirm submit: blank-only entries stripped before submit and Today refresh event dispatched
+    const submitButtons = screen.getAllByRole('button', { name: '交卷' });
+    fireEvent.click(submitButtons[submitButtons.length - 1]);
+    await screen.findByText('未作答', { selector: 'span' });
+
+    expect(saved.answers).toEqual({});
+    expect(refreshEvents).toEqual(['learning-today:refresh']);
+
+    const statusBanner = screen.getByText('未作答', { selector: 'span' }).closest('div');
+    expect(statusBanner?.className).toContain('bg-muted/40');
+    expect(statusBanner?.className).not.toContain('bg-warning');
+
+    // Post-submit answer sheet legend includes unanswered
+    fireEvent.click(screen.getAllByRole('button', { name: '答题卡' })[0]);
+    expect(screen.getAllByText('未答').length).toBeGreaterThanOrEqual(1);
+  } finally {
+    window.removeEventListener('learning-today:refresh', onRefresh);
+  }
 });

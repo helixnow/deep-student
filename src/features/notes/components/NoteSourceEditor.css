@@ -1,0 +1,181 @@
+/**
+ * NoteSourceEditor — Markdown 源码模式编辑器样式
+ *
+ * 与 DeepStudent 纸张画布无缝融合：
+ * - 透明背景、统一等宽字体 var(--font-mono)、字号跟随 --font-size-scale
+ * - 所有表面、选区、光标、行号槽均走 hsl(var(--...)) 设计令牌
+ * - 阴影仅基于 --shadow-base，严禁硬编码 hex 或用 --foreground 做阴影
+ */
+
+.notes-source-editor {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 40vh;
+  background: transparent;
+  color: var(--notes-ink, hsl(var(--foreground)));
+}
+
+.notes-source-editor-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 0 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--notes-hairline, hsl(var(--border) / 50%));
+  color: hsl(var(--muted-foreground) / 78%);
+  font-size: 11px;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.notes-source-editor-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.notes-source-editor-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: hsl(var(--primary) / 72%);
+  flex-shrink: 0;
+}
+
+.notes-source-editor-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--muted-foreground) / 68%);
+}
+
+.notes-source-editor-readonly-pill {
+  padding: 1px 6px;
+  border-radius: var(--notes-radius-control, 5px);
+  background: var(--notes-surface-subtle, hsl(var(--muted) / 50%));
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+}
+
+.notes-source-editor-exit-btn {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--notes-radius-control, 5px);
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.notes-source-editor-exit-btn:hover {
+  color: hsl(var(--foreground));
+  background: var(--notes-surface-hover, hsl(var(--accent)));
+}
+
+.notes-source-editor-exit-btn:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-source-editor-body {
+  flex: 1 1 auto;
+  min-height: 36vh;
+  background: transparent;
+}
+
+.notes-source-editor-body .cm-editor {
+  background: transparent;
+  color: var(--notes-ink, hsl(var(--foreground)));
+  font-family: var(--font-mono);
+  font-size: calc(14px * var(--font-size-scale, 1));
+  line-height: 1.7;
+  outline: none;
+}
+
+.notes-source-editor-body .cm-editor.cm-focused {
+  outline: none;
+}
+
+.notes-source-editor-body .cm-editor:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  border-radius: var(--notes-radius-row, 6px);
+}
+
+.notes-source-editor-body .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.7;
+  overflow-x: hidden;
+}
+
+.notes-source-editor-body .cm-content {
+  padding: 4px 0 48px;
+  caret-color: var(--notes-ink, hsl(var(--foreground)));
+  transition: color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-source-editor-body .cm-line {
+  padding: 0 2px 0 8px;
+}
+
+.notes-source-editor-body .cm-gutters {
+  background: transparent;
+  color: hsl(var(--muted-foreground) / 50%);
+  border: none;
+  padding-right: 8px;
+  user-select: none;
+}
+
+/* stylelint-disable selector-class-pattern */
+.notes-source-editor-body .cm-lineNumbers .cm-gutterElement {
+  min-width: 28px;
+  padding: 0 6px 0 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85em;
+}
+
+.notes-source-editor-body .cm-activeLine {
+  background: var(--notes-surface-subtle, hsl(var(--muted) / 35%));
+  border-radius: var(--notes-radius-control, 5px);
+}
+
+.notes-source-editor-body .cm-activeLineGutter {
+  background: transparent;
+  color: hsl(var(--foreground) / 82%);
+  font-weight: 500;
+}
+/* stylelint-enable selector-class-pattern */
+
+.notes-source-editor-body .cm-tooltip {
+  border-radius: var(--notes-radius-popup, 12px);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: var(--notes-popover-shadow, 0 8px 24px hsl(var(--shadow-base) / 14%));
+}
+
+@media (pointer: coarse) {
+  .notes-source-editor-body .cm-editor {
+    font-size: 16px;
+  }
+
+  .notes-source-editor-exit-btn {
+    min-height: 44px;
+    padding: 0 12px;
+    font-size: 12px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* stylelint-disable selector-class-pattern */
+  .notes-source-editor-body .cm-content,
+  .notes-source-editor-body .cm-activeLine,
+  .notes-source-editor-body .cm-activeLineGutter {
+    transition: none;
+  }
+  /* stylelint-enable selector-class-pattern */
+}

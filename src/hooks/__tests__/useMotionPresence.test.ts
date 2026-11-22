@@ -1,6 +1,10 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useMotionPresence } from '../useMotionPresence';
+import {
+  invalidateCssDurationCache,
+  readCssDurationMs,
+  useMotionPresence,
+} from '../useMotionPresence';
 
 describe('useMotionPresence', () => {
   beforeEach(() => {
@@ -63,5 +67,24 @@ describe('useMotionPresence', () => {
     expect(result.current.mounted).toBe(true);
     expect(result.current.shown).toBe(true);
     expect(result.current.exiting).toBe(false);
+  });
+
+  it('caches readCssDurationMs without repeated getComputedStyle reflows and respects inline overrides', () => {
+    invalidateCssDurationCache();
+    document.documentElement.style.removeProperty('--dropdown-close-dur');
+    const spy = vi.spyOn(window, 'getComputedStyle');
+    const first = readCssDurationMs('--dropdown-close-dur', 150);
+    const second = readCssDurationMs('--dropdown-close-dur', 150);
+    expect(first).toBe(150);
+    expect(second).toBe(150);
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    document.documentElement.style.setProperty('--dropdown-close-dur', '240ms');
+    expect(readCssDurationMs('--dropdown-close-dur', 150)).toBe(240);
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    document.documentElement.style.removeProperty('--dropdown-close-dur');
+    spy.mockRestore();
+    invalidateCssDurationCache();
   });
 });

@@ -77,16 +77,11 @@ function turnCurrentBlockInto(editor: CrepeEditorApi | null | undefined, kind: C
   runEditorCommand(editor, kind, { toggle: true });
 }
 
-function isTauriEnv(): boolean {
-  if (typeof window === 'undefined') return false;
-  return Boolean((window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
-}
-
 /**
- * P0-4 图片插入闭环：Tauri 原生选图 → notes_save_asset 上传 → 插入带 URL 的 image 节点。
+ * P0-4 图片插入闭环：桌面 Tauri 选图 / WebUI 与浏览器 `<input type="file" accept="image/*">` →
+ * notes_save_asset 上传 → 插入带 URL 的 image 节点。
  * - 用户取消选择：静默返回，不插入空节点；
- * - 上传失败：createImageUploader 内部已 toast，这里同样不插入；
- * - 非 Tauri 环境：回退旧行为（插入空 image 占位块，由 Crepe ImageBlock UI 完成上传）。
+ * - 上传失败：createImageUploader 内部已 toast，这里同样不插入。
  */
 export async function insertImageFromDevice(
   editor: CrepeEditorApi | null | undefined,
@@ -95,10 +90,6 @@ export async function insertImageFromDevice(
   if (!editor) return;
   if (editor.insertImageFromDevice) { editor.insertImageFromDevice(); return; }
   if (editor.isReadonly()) return;
-  if (!isTauriEnv()) {
-    editor.insertImage();
-    return;
-  }
   const instance = editor.getCrepe();
   const selection = editor.captureSelection?.() ?? null;
   try {
@@ -190,10 +181,11 @@ export function buildMobileEditorCommands(
   return {
     subscribeState: editor?.subscribeCommandState,
     canExecute: (action) => {
-      const ids: Record<string, CrepeCommandId> = { bold: 'bold', italic: 'italic', strikethrough: 'strikethrough',
+      const ids: Record<string, CrepeCommandId> = { bold: 'bold', italic: 'italic', strikethrough: 'strikethrough', code: 'inline-code',
         h1: 'heading-1', h2: 'heading-2', h3: 'heading-3', bullet: 'bullet-list', task: 'task-list', ordered: 'ordered-list',
-        codeblock: 'code-block', columns: 'insert-columns', cornell: 'insert-cornell', convertColumns: 'convert-columns',
-        convertCornell: 'convert-cornell', convertCornellTemplate: 'convert-cornell-template', unwrapColumns: 'unwrap-columns' };
+        codeblock: 'code-block', 'inline-math': 'inline-math', math: 'math', columns: 'insert-columns', cornell: 'insert-cornell',
+        convertColumns: 'convert-columns', convertCornell: 'convert-cornell', convertCornellTemplate: 'convert-cornell-template',
+        unwrapColumns: 'unwrap-columns' };
       if (action === 'generateCards' || action === 'find') return Boolean(editor);
       if (action === 'slash' || action === 'blockActions') {
         let enabled = false; withEditorView(editor, view => { enabled = canEditCrepeView(view); }); return enabled;
@@ -205,6 +197,7 @@ export function buildMobileEditorCommands(
     toggleBold: () => editor?.toggleBold(),
     toggleItalic: () => editor?.toggleItalic(),
     toggleStrikethrough: () => editor?.toggleStrikethrough(),
+    toggleInlineCode: () => runEditorCommand(editor, 'inline-code'),
     insertHeading: (level) => turnCurrentBlockInto(editor, `heading-${level}`),
     toggleBulletList: () => turnCurrentBlockInto(editor, 'bullet-list'),
     toggleTaskList: () => turnCurrentBlockInto(editor, 'task-list'),
@@ -219,6 +212,8 @@ export function buildMobileEditorCommands(
     toggleBlockquote: () => turnCurrentBlockInto(editor, 'quote'),
     insertLink: () => editor?.insertLink(),
     insertCodeBlock: () => turnCurrentBlockInto(editor, 'code-block'),
+    insertInlineMath: () => runEditorCommand(editor, 'inline-math'),
+    insertMath: () => runEditorCommand(editor, 'math'),
     insertTable: () => editor?.insertTable(),
     // 📱 触屏无 hover 块句柄：当前块操作菜单入口（Turn into / 复制 / 删除等）
     openBlockActions: () => {

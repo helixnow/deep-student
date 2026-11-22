@@ -234,6 +234,22 @@ export function createVoiceInputController(deps: VoiceInputControllerDeps = {}) 
       return;
     }
 
+    // 开始录音前先校验 ASR 模型与 Provider 是否就绪，未配置时立即提示并阻止空录，
+    // 避免用户说完整段话松手才报错导致语音丢失。
+    const modelResolutionCode = getModelResolutionCode();
+    if (modelResolutionCode) {
+      notify(modelResolutionCode);
+      resetToIdle(modelResolutionCode);
+      return;
+    }
+
+    const provider = getProvider();
+    if (!provider) {
+      notify('provider-unavailable');
+      resetToIdle('provider-unavailable');
+      return;
+    }
+
     startingRecording = true;
     const generation = ++startGeneration;
     const assignment = config.assignedModel;

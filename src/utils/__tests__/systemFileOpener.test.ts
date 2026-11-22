@@ -91,4 +91,17 @@ describe('systemFileOpener', () => {
     expect(openPathMock).not.toHaveBeenCalled();
     expect(invokeMock).not.toHaveBeenCalled();
   });
+
+  it('WebUI shell (including Android Chrome) never invokes native open_file_externally or opener', async () => {
+    stubNavigator(...ANDROID);
+    vi.stubGlobal('__DS_WEBUI__', true);
+    expect(canRevealInFolder()).toBe(false);
+    expect(canOpenFilesExternally()).toBe(false);
+    await expect(openFileExternally('/tmp/a.pdf')).rejects.toThrow(EXTERNAL_OPEN_UNSUPPORTED);
+    await expect(revealFileOrOpen('/tmp/a.pdf')).rejects.toThrow(EXTERNAL_OPEN_UNSUPPORTED);
+    await expect(shareFileExternally('/tmp/a.pdf')).rejects.toThrow(EXTERNAL_OPEN_UNSUPPORTED);
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(openPathMock).not.toHaveBeenCalled();
+    expect(revealItemInDirMock).not.toHaveBeenCalled();
+  });
 });

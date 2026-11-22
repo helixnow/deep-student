@@ -5,7 +5,7 @@
  * 处理方向键导航、节点增删、折叠展开等快捷键。
  */
 
-import { useEffect, useCallback, type RefObject } from 'react';
+import { useEffect, useCallback, useRef, type RefObject } from 'react';
 import { useMindMapStore } from '../store';
 import { useMindMapIsActive } from '../MindMapActiveContext';
 import { collectTopLevelNodeIds, flattenVisibleNodes } from '../utils/node/traverse';
@@ -17,6 +17,78 @@ import {
   getMindMapPreferences,
 } from '../utils/mindmapPreferences';
 import { eventMatchesShortcut } from '../constants/shortcuts';
+
+// ============================================================================
+// Type-to-Edit 一次性同步队列（消除 rAF 吞字与误写 document.activeElement）
+// ============================================================================
+
+const TYPE_TO_EDIT_TTL_MS = 2000;
+
+interface PendingTypeToEdit {
+  nodeId: string;
+  text: string;
+  updatedAt: number;
+}
+
+let pendingTypeToEdit: PendingTypeToEdit | null = null;
+
+function enqueuePendingTypeToEditChar(nodeId: string, char: string): void {
+  const now = Date.now();
+  if (
+    pendingTypeToEdit &&
+    pendingTypeToEdit.nodeId === nodeId &&
+    now - pendingTypeToEdit.updatedAt < TYPE_TO_EDIT_TTL_MS
+  ) {
+    pendingTypeToEdit = {
+      nodeId,
+      text: pendingTypeToEdit.text + char,
+      updatedAt: now,
+    };
+  } else {
+    pendingTypeToEdit = { nodeId, text: char, updatedAt: now };
+  }
+}
+
+/**
+ * 消费目标节点暂存的 Type-to-Edit 初始字符（支持 16ms 内快打累积多字符）。
+ * 由 NodeContent 进入编辑态时同步调用，避免 rAF 延迟竞态与跨组件篡改 activeElement。
+ */
+export function consumePendingTypeToEditChar(nodeId: string): string | null {
+  if (!pendingTypeToEdit) return null;
+  if (Date.now() - pendingTypeToEdit.updatedAt >= TYPE_TO_EDIT_TTL_MS) {
+    pendingTypeToEdit = null;
+    return null;
+  }
+  if (pendingTypeToEdit.nodeId !== nodeId) return null;
+  const text = pendingTypeToEdit.text;
+  pendingTypeToEdit = null;
+  return text;
+}
+
+/** 清空未消费的 Type-to-Edit 队列 */
+export function clearPendingTypeToEditChar(nodeId?: string): void {
+  if (!pendingTypeToEdit) return;
+  if (nodeId === undefined || pendingTypeToEdit.nodeId === nodeId) {
+    pendingTypeToEdit = null;
+  }
+}
+
+const ESCAPE_OVERLAY_TARGET_SELECTOR =
+  '[role="menu"], [role="dialog"], .mm-settings-popover, [data-testid="mm-context-menu"], [data-testid="mm-image-lightbox"]';
+
+const ESCAPE_OPEN_OVERLAY_SELECTOR =
+  '[role="menu"][data-state="open"], .mm-settings-popover, [data-testid="mm-context-menu"], [data-testid="mm-image-lightbox"], [role="dialog"][aria-modal="true"]';
+
+function isEscapeBlockedByOverlay(target: HTMLElement | null): boolean {
+  if (target?.closest?.(ESCAPE_OVERLAY_TARGET_SELECTOR)) {
+    return true;
+  }
+  const doc = typeof window !== 'undefined' ? window.document : null;
+  if (doc?.querySelector(ESCAPE_OPEN_OVERLAY_SELECTOR)) {
+    return true;
+  }
+  return false;
+}
 
 // ============================================================================
 // Hook
@@ -72,13 +144,49 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
   const viewRootId = useMindMapStore(s => s.viewRootId);
   const setViewRootId = useMindMapStore(s => s.setViewRootId);
 
+  const lastCompositionEndAtRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!isActive || !editingNodeId) {
+      clearPendingTypeToEditChar();
+    }
+  }, [isActive, editingNodeId]);
+
+  useEffect(() => () => clearPendingTypeToEditChar(), []);
+
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
-    if (e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
+    if (e.defaultPrevented) return;
     const target = e.target as HTMLElement;
     const tagName = target.tagName;
     const isMod = e.metaKey || e.ctrlKey;
     const lowerKey = e.key.toLowerCase();
     const isTextInputContext = tagName === 'INPUT' || tagName === 'TEXTAREA' || target.isContentEditable;
+
+    // 中文等 IME 组字键：在「选中节点 + 非编辑态 + 非输入控件 + 非背诵」时放行进入编辑，
+    // 让 NodeContent 的 textarea 立即挂载聚焦承接后续组字；其它场景严格忽略，避免误触发快捷键。
+    const isImeComposing = e.isComposing || e.key === 'Process' || e.keyCode === 229;
+    if (isImeComposing) {
+      if (
+        focusedNodeId &&
+        !editingNodeId &&
+        !editingNoteNodeId &&
+        !reciteMode &&
+        !isTextInputContext &&
+        !isMod &&
+        !e.altKey
+      ) {
+        setEditingNodeId(focusedNodeId);
+      }
+      return;
+    }
+
+    // Safari / WKWebView 在 compositionend 同帧内可能补发 Enter/Tab/Escape keydown，做 100ms 守卫
+    if (
+      (e.key === 'Enter' || e.key === 'Tab' || e.key === 'Escape') &&
+      Date.now() - lastCompositionEndAtRef.current < 100
+    ) {
+      return;
+    }
 
     // 辅助：处理快捷键后阻止冒泡，防止命令系统重复处理
     const handled = () => { e.stopPropagation(); };
@@ -128,6 +236,8 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
       // 编辑态 Esc：交给 NodeContent / 备注 textarea 就地恢复 draft（capture 下
       // 本 listener 先于 target，不得在此清 editingNodeId 抢跑）。
       if (isTextInputContext || editingNodeId || editingNoteNodeId) return;
+      // 浮层/菜单/弹窗/灯箱处于打开状态时放行 Escape，优先收起浮层而非先清节点选中态
+      if (isEscapeBlockedByOverlay(target)) return;
       // 无背诵/选中/焦点时导图对 Esc 无事可做：放行给外层
       // （工作台窗口、命令系统等），不得 preventDefault/stopPropagation 吞掉。
       // 背诵 Esc 优先由 MindMapContentView window capture 处理；此处作兜底。
@@ -142,6 +252,24 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
         setFocusedNodeId(null);
         setSelection([]);
       }
+      return;
+    }
+
+    // Type-to-Edit 快打保护：编辑态刚激活但 textarea 尚未消费首字符时，把紧随字符并入队列，避免吞字
+    if (
+      editingNodeId &&
+      !editingNoteNodeId &&
+      !isTextInputContext &&
+      pendingTypeToEdit &&
+      pendingTypeToEdit.nodeId === editingNodeId &&
+      e.key.length === 1 &&
+      e.key !== ' ' &&
+      !e.altKey &&
+      !isMod
+    ) {
+      e.preventDefault();
+      handled();
+      enqueuePendingTypeToEditChar(editingNodeId, e.key);
       return;
     }
 
@@ -377,8 +505,8 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
           if (lowerKey === 'b') style.fontWeight = enable ? 'bold' : undefined;
           else if (lowerKey === 'i') style.fontStyle = enable ? 'italic' : undefined;
           else style.textDecoration = enable ? 'underline' : undefined;
-          // 首个节点记录历史快照，其余跳过 → 一次 undo 还原整批
-          updateNode(node.id, { style }, index === 0 ? undefined : { skipHistory: true });
+          // 首个节点记录独立历史快照（不合并到前一次样式操作），其余跳过 → 一次 undo 还原整批
+          updateNode(node.id, { style }, index === 0 ? { coalesceKey: null } : { skipHistory: true });
         });
         return;
       }
@@ -427,6 +555,16 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
           }
           const node = findNodeById(root, focusedNodeId);
           if (node && node.collapsed) {
+            toggleCollapse(focusedNodeId);
+          }
+          return;
+        }
+        case '/': {
+          if (e.altKey || e.shiftKey) break;
+          e.preventDefault();
+          handled();
+          const node = findNodeById(root, focusedNodeId);
+          if (node && node.children.length > 0) {
             toggleCollapse(focusedNodeId);
           }
           return;
@@ -564,16 +702,28 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
         deleteNodes(targetIds);
         return;
       }
-      case 'F2':
-      case ' ': {
-        // F2 在 SPECIAL_KEYS 中，需 stopPropagation
+      case 'F2': {
+        // F2 在 SPECIAL_KEYS 中，需 stopPropagation；
+        // Space 在非背诵态放行给画布专职「空格抓手平移」，避免长按空格误触发编辑覆盖正文。
         e.preventDefault();
         handled();
         setEditingNodeId(focusedNodeId);
         return;
       }
-      default:
+      default: {
+        // 选中节点直接打字即进入编辑（Type-to-edit）：
+        // 拦截单字符可打印键（排除 Space，保留空格抓手），通过模块级一次性同步队列交给
+        // NodeContent 在 commit 阶段直接初始化 editValue 并将光标置末（彻底去 rAF 竞态，
+        // 绝不篡改无关 document.activeElement，且 Escape 仍可恢复原节点文本）。
+        if (e.key.length === 1 && e.key !== ' ' && !e.altKey && !isMod) {
+          e.preventDefault();
+          handled();
+          enqueuePendingTypeToEditChar(focusedNodeId, e.key);
+          setEditingNodeId(focusedNodeId);
+          return;
+        }
         break;
+      }
     }
   }, [
     focusedNodeId, editingNodeId, editingNoteNodeId, selection, document,
@@ -586,10 +736,17 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
 
   useEffect(() => {
     if (!isActive) return;
+    const handleCompositionEnd = () => {
+      lastCompositionEndAtRef.current = Date.now();
+    };
     // capture：抢在节点 a11y / 其它 bubble 监听之前；editing 时提前 return，
     // 仍把 Enter/Tab 交给 NodeContent textarea。handled() stopPropagation
     // 阻止事件继续冒泡到 window 层命令系统 / 笔记工作区。
     window.document.addEventListener('keydown', handleKeyDown, true);
-    return () => window.document.removeEventListener('keydown', handleKeyDown, true);
+    window.document.addEventListener('compositionend', handleCompositionEnd, true);
+    return () => {
+      window.document.removeEventListener('keydown', handleKeyDown, true);
+      window.document.removeEventListener('compositionend', handleCompositionEnd, true);
+    };
   }, [handleKeyDown, isActive]);
 }

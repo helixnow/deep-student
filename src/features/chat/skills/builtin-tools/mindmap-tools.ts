@@ -5,7 +5,107 @@
  * 前置依赖：learning-resource（提供资源列表、读取等基础能力）
  */
 
-import type { SkillDefinition } from '../types';
+import type { JsonSchemaProperty, SkillDefinition } from '../types';
+
+const SEMANTIC_ANCHOR_FIELDS: Record<string, JsonSchemaProperty> = {
+  kind: { type: 'string', enum: ['pdf', 'media', 'note', 'mindmap', 'qbank', 'custom'] },
+  resourceId: { type: 'string' },
+  page: { type: 'integer', minimum: 1 },
+  quote: { type: 'string' },
+  startMs: { type: 'integer', minimum: 0 },
+  endMs: { type: 'integer', minimum: 0 },
+  blockId: { type: 'string' },
+  heading: { type: 'string' },
+  nodeId: { type: 'string' },
+  questionId: { type: 'string' },
+  namespace: { type: 'string' },
+  locator: { type: 'string' },
+  label: { type: 'string' },
+};
+
+const SEMANTIC_ANCHOR_SCHEMA: JsonSchemaProperty = {
+  type: 'object',
+  description: '出处语义锚点（pdf:page/quote, media:startMs/endMs, note:blockId/heading, mindmap:nodeId, qbank:questionId, custom:namespace/locator）',
+  properties: SEMANTIC_ANCHOR_FIELDS,
+  required: ['kind', 'resourceId'],
+};
+
+const EXCERPT_SLOT_SCHEMA: JsonSchemaProperty = {
+  type: 'object',
+  description: '复合卡片摘录槽（text/image/media/qbank）',
+  properties: {
+    id: { type: 'string' },
+    kind: { type: 'string', enum: ['text', 'image', 'media', 'qbank'] },
+    text: { type: 'string' },
+    imageDataUrl: { type: 'string' },
+    imageAssetId: { type: 'string' },
+    startMs: { type: 'integer', minimum: 0 },
+    endMs: { type: 'integer', minimum: 0 },
+    questionId: { type: 'string' },
+    anchor: {
+      type: 'object',
+      description: '同 anchors 项（kind/resourceId 必填）',
+      properties: {
+        kind: { type: 'string', enum: ['pdf', 'media', 'note', 'mindmap', 'qbank', 'custom'] },
+        resourceId: { type: 'string' },
+      },
+      required: ['kind', 'resourceId'],
+    },
+    sourceTitle: { type: 'string' },
+    createdAt: { type: 'number' },
+  },
+  required: ['anchor'],
+};
+
+const NODE_IMAGE_SCHEMA: JsonSchemaProperty = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    src: { type: 'string' },
+    name: { type: 'string' },
+    width: { type: 'number' },
+    height: { type: 'number' },
+  },
+  required: ['src'],
+};
+
+const NODE_LEARNING_FIELD_PROPERTIES: Record<string, JsonSchemaProperty> = {
+  anchors: { type: 'array', description: '出处锚点；[]/null 清除', items: SEMANTIC_ANCHOR_SCHEMA },
+  excerpts: { type: 'array', description: '多源摘录槽；[]/null 清除', items: EXCERPT_SLOT_SCHEMA },
+  cardNote: { type: 'string', description: '卡片批注；""/null 清除' },
+  isFlashcard: { type: 'boolean', description: '投影为 FSRS 闪卡' },
+  priority: { type: 'integer', minimum: 1, maximum: 6, description: '优先级 1–6' },
+  progress: { type: 'number', minimum: 0, maximum: 100, description: '进度 0–100' },
+  href: { type: 'string', description: '超链接（http/https/mailto）' },
+  images: { type: 'array', description: '节点内嵌图片', items: NODE_IMAGE_SCHEMA },
+};
+
+const NODE_LEARNING_FIELD_COMPACT: Record<string, JsonSchemaProperty> = {
+  anchors: { type: 'array', description: '同 root.anchors', items: { type: 'object' } },
+  excerpts: { type: 'array', description: '同 root.excerpts', items: { type: 'object' } },
+  cardNote: { type: 'string' },
+  isFlashcard: { type: 'boolean' },
+  priority: { type: 'integer', minimum: 1, maximum: 6 },
+  progress: { type: 'number', minimum: 0, maximum: 100 },
+  href: { type: 'string' },
+  images: { type: 'array', description: '同 root.images', items: { type: 'object' } },
+};
+
+const SUMMARY_BRACES_SCHEMA: JsonSchemaProperty = {
+  type: 'array',
+  description: '同父兄弟区间归纳总结大括号 `}`；无效或单节点条目会被过滤',
+  items: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: '大括号 ID（缺省自动生成）' },
+      parentId: { type: 'string', description: '所属父节点 ID' },
+      startChildId: { type: 'string', description: '起始兄弟节点 ID' },
+      endChildId: { type: 'string', description: '结束兄弟节点 ID' },
+      label: { type: 'string', description: '归纳总结标题' },
+    },
+    required: ['parentId', 'startChildId', 'endChildId', 'label'],
+  },
+};
 
 export const mindmapToolsSkill: SkillDefinition = {
   id: 'mindmap-tools',
@@ -170,6 +270,17 @@ export const mindmapToolsSkill: SkillDefinition = {
   - \`sourceId\`: 资源业务 ID（如 note_xxx, file_xxx, mm_xxx 等，通过 resource_list/resource_search 获取）
   - \`type\`: 资源类型（note / file / mindmap / table 等）
   - \`name\`: 显示名称（快照，用于离线显示）
+- \`anchors\`: 摘录出处语义锚点列表（可选，PDF 页码、音视频时间戳、笔记块、题库题目等）
+- \`excerpts\`: 复合卡片多源摘录槽列表（可选，支持图文/时间片/题库引用归并）
+- \`cardNote\`: 复合卡片个人理解批注（可选）
+- \`isFlashcard\`: 是否投影为 FSRS 闪卡（可选，布尔值）
+- \`priority\`: 优先级徽标（可选，1–6，1 最高）
+- \`progress\`: 进度百分比（可选，0–100）
+- \`href\`: 安全超链接（可选，仅 http/https/mailto）
+- \`images\`: 内嵌图片列表（可选，每项含 \`src\` 与可选 \`name\`/\`width\`/\`height\`）
+
+**归纳总结大括号（summaries）**：content 顶层可选字段，表示同父连续兄弟区间的归纳总结 \`}\`：
+- \`parentId\` / \`startChildId\` / \`endChildId\` / \`label\`（\`id\` 可选）
 
 **关联线（associations）**：content 顶层可选字段，表示跨分支的自由连线（非父子边）：
 
@@ -337,6 +448,7 @@ export const mindmapToolsSkill: SkillDefinition = {
                       required: ['sourceId', 'type', 'name'],
                     },
                   },
+                  ...NODE_LEARNING_FIELD_PROPERTIES,
                   children: {
                     type: 'array',
                     description: '子节点数组',
@@ -386,6 +498,7 @@ export const mindmapToolsSkill: SkillDefinition = {
                             required: ['sourceId', 'type', 'name'],
                           },
                         },
+                        ...NODE_LEARNING_FIELD_COMPACT,
                         children: { type: 'array', description: '子节点数组', items: { type: 'object' } },
                       },
                       required: ['id', 'text', 'children'],
@@ -415,6 +528,7 @@ export const mindmapToolsSkill: SkillDefinition = {
                   required: ['source', 'target'],
                 },
               },
+              summaries: SUMMARY_BRACES_SCHEMA,
             },
             required: ['version', 'root'],
           },
@@ -560,6 +674,7 @@ export const mindmapToolsSkill: SkillDefinition = {
                         required: ['sourceId', 'type', 'name'],
                       },
                     },
+                    ...NODE_LEARNING_FIELD_PROPERTIES,
                   },
                 },
                 data: {
@@ -608,6 +723,7 @@ export const mindmapToolsSkill: SkillDefinition = {
                         required: ['sourceId', 'type', 'name'],
                       },
                     },
+                    ...NODE_LEARNING_FIELD_PROPERTIES,
                     children: {
                       type: 'array',
                       description: '子节点数组（支持嵌套）',
@@ -634,6 +750,7 @@ export const mindmapToolsSkill: SkillDefinition = {
               required: ['source', 'target'],
             },
           },
+          summaries: SUMMARY_BRACES_SCHEMA,
         },
         required: ['mindmap_id', 'operations'],
       },

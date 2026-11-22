@@ -1,6 +1,9 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { AnkiCard, DocumentTask } from '../../../../contracts/ipc/generated/_shared.ts';
 import type { DatabaseHandle } from '../../../platform/storage/api.ts';
+import { buildZip } from '../src/apkg-zip.ts';
 import { hasValidClozeText, validateAnkiCardUpdate } from '../src/enhanced-anki.ts';
 import { createAnkiTestEnv, type AnkiTestEnv } from './env.ts';
 
@@ -170,6 +173,49 @@ describe('增强 Anki 卡片/任务命令（真实 mistakes 库）', () => {
       message: expect.stringContaining('APKG 文件不存在:'),
       details: { errorCode: 'apkg_not_found' },
     });
+  });
+
+  it('import_apkg_to_library deduplicates existing library cards on re-import', async () => {
+    const colPath = path.join(env.dir, 'reimport-col.anki2');
+    const colDb = env.storage.openFile(colPath);
+    try {
+      colDb.exec(`
+        PRAGMA journal_mode = DELETE;
+        CREATE TABLE col (models TEXT NOT NULL, decks TEXT NOT NULL);
+        CREATE TABLE notes (id INTEGER PRIMARY KEY, mid INTEGER NOT NULL, tags TEXT NOT NULL, flds TEXT NOT NULL);
+        CREATE TABLE cards (id INTEGER PRIMARY KEY, nid INTEGER NOT NULL, did INTEGER NOT NULL, ord INTEGER NOT NULL);
+      `);
+      colDb.run('INSERT INTO col (models, decks) VALUES (?1, ?2)', [
+        JSON.stringify({
+          100: { name: 'Basic', type: 0, flds: [{ name: 'Front', ord: 0 }, { name: 'Back', ord: 1 }] },
+        }),
+        JSON.stringify({ 1: { name: 'Imported' } }),
+      ]);
+      colDb.run("INSERT INTO notes (id, mid, tags, flds) VALUES (1, 100, '', 'Q1\u001fA1')");
+      colDb.run('INSERT INTO cards (id, nid, did, ord) VALUES (10, 1, 1, 0)');
+    } finally {
+      env.storage.close(colDb);
+    }
+    const apkgBytes = buildZip([{ name: 'collection.anki2', data: fs.readFileSync(colPath) }]);
+    fs.rmSync(colPath, { force: true });
+    const apkgPath = path.join(env.dir, 'library-dedup.apkg');
+    fs.writeFileSync(apkgPath, apkgBytes);
+
+    const first = await env.host.invoke<{ documentId: string; importedCards: number }>('import_apkg_to_library', {
+      path: apkgPath,
+    });
+    expect(first.importedCards).toBe(1);
+
+    const second = await env.host.invoke<{
+      documentId: string;
+      importedCards: number;
+      warnings?: string[];
+    }>('import_apkg_to_library', {
+      path: apkgPath,
+    });
+    expect(second.documentId).toBe(first.documentId);
+    expect(second.importedCards).toBe(0);
+    expect(second.warnings).toContain('跳过 1 张已存在的重复卡片');
   });
 
   it('get_document_tasks_uses_anki_database', async () => {

@@ -171,4 +171,164 @@ describe('mergeHandoutDraftIntoMindMap', () => {
     expect(mergedA.anchors?.some((anchor) => anchor.kind === 'pdf' && anchor.page === 3)).toBe(true);
     expect(mergedA.children.map((child) => child.id)).toEqual(['node_a1', 'node_a2']);
   });
+
+  it('does not duplicate cardNote into note on round-trip and splits edits cleanly', () => {
+    const docWithCardNote: MindMapDocument = {
+      version: '1.0',
+      root: node('node_root', '高等数学', {
+        children: [
+          node('node_only_card', '泰勒展开', {
+            cardNote: '局部多项式逼近的核心直觉。',
+          }),
+          node('node_both', '拉格朗日中值定理', {
+            cardNote: '割线斜率等于某点切线斜率。',
+            note: '常用于证明不等式。',
+          }),
+        ],
+      }),
+      meta: { createdAt: '2026-01-01T00:00:00Z' },
+    };
+
+    const compiled = compileMindMapSubtreeToHandoutMarkdown(docWithCardNote.root, {
+      mindmapId: MINDMAP_ID,
+      mindmapTitle: '高等数学',
+      baseHeadingLevel: 1,
+      maxHeadingLevel: 4,
+      includeMindMapNodeBacklinks: true,
+    });
+
+    // 1) 未编辑直接回写：完全幂等，不会把 cardNote 复制进 note
+    const unchangedDraft = parseHandoutMarkdownToMindMapDraft(compiled, { noteId: 'note_1' })!;
+    const round1 = mergeHandoutDraftIntoMindMap(docWithCardNote, unchangedDraft, { mindmapId: MINDMAP_ID });
+    expect(round1.updated).toBe(0);
+    expect(round1.added).toBe(0);
+    expect(round1.document).toBe(docWithCardNote);
+    const onlyCard1 = round1.document.root.children.find((c) => c.id === 'node_only_card')!;
+    expect(onlyCard1.cardNote).toBe('局部多项式逼近的核心直觉。');
+    expect(onlyCard1.note).toBeUndefined();
+
+    // 2) 编辑双字段节点的 note 部分 & 编辑单 cardNote 节点的正文
+    const editedMarkdown = compiled
+      .replace('常用于证明不等式。', '常用于证明不等式与单调性。')
+      .replace('局部多项式逼近的核心直觉。', '局部多项式逼近（含余项估计）。');
+    const editedDraft = parseHandoutMarkdownToMindMapDraft(editedMarkdown, { noteId: 'note_1' })!;
+    const round2 = mergeHandoutDraftIntoMindMap(docWithCardNote, editedDraft, { mindmapId: MINDMAP_ID });
+    expect(round2.updated).toBe(2);
+    const onlyCard2 = round2.document.root.children.find((c) => c.id === 'node_only_card')!;
+    expect(onlyCard2.cardNote).toBe('局部多项式逼近（含余项估计）。');
+    expect(onlyCard2.note).toBeUndefined();
+
+    const both2 = round2.document.root.children.find((c) => c.id === 'node_both')!;
+    expect(both2.cardNote).toBe('割线斜率等于某点切线斜率。');
+    expect(both2.note).toBe('常用于证明不等式与单调性。');
+
+    // 3) 再次导出并回写：依然零变更，绝无滚雪球式重复复制
+    const recompiled = compileMindMapSubtreeToHandoutMarkdown(round2.document.root, {
+      mindmapId: MINDMAP_ID,
+      mindmapTitle: '高等数学',
+      baseHeadingLevel: 1,
+      maxHeadingLevel: 4,
+      includeMindMapNodeBacklinks: true,
+    });
+    const round3Draft = parseHandoutMarkdownToMindMapDraft(recompiled, { noteId: 'note_1' })!;
+    const round3 = mergeHandoutDraftIntoMindMap(round2.document, round3Draft, { mindmapId: MINDMAP_ID });
+    expect(round3.updated).toBe(0);
+    expect(round3.added).toBe(0);
+  });
+
+  it('keeps appended lines/paragraphs on cardNote when node has only cardNote (no legacy note)', () => {
+    const doc: MindMapDocument = {
+      version: '1.0',
+      root: node('node_root', '高等数学', {
+        children: [
+          node('node_card_only', '中值定理', {
+            cardNote: '核心结论第一段。',
+          }),
+        ],
+      }),
+      meta: { createdAt: '2026-01-01T00:00:00Z' },
+    };
+
+    const compiled = compileMindMapSubtreeToHandoutMarkdown(doc.root, {
+      mindmapId: MINDMAP_ID,
+      mindmapTitle: '高等数学',
+      baseHeadingLevel: 1,
+      maxHeadingLevel: 4,
+      includeMindMapNodeBacklinks: true,
+    });
+
+    const appendedMarkdown = compiled.replace(
+      '核心结论第一段。',
+      '核心结论第一段。\n\n在讲义中新增的补充推导。',
+    );
+    const draft = parseHandoutMarkdownToMindMapDraft(appendedMarkdown, { noteId: 'note_1' })!;
+    const merged = mergeHandoutDraftIntoMindMap(doc, draft, { mindmapId: MINDMAP_ID });
+
+    expect(merged.updated).toBe(1);
+    const updatedNode = merged.document.root.children.find((c) => c.id === 'node_card_only')!;
+    expect(updatedNode.cardNote).toBe('核心结论第一段。\n\n在讲义中新增的补充推导。');
+    expect(updatedNode.note).toBeUndefined();
+
+    // Re-export and re-merge stays idempotent
+    const recompiled = compileMindMapSubtreeToHandoutMarkdown(merged.document.root, {
+      mindmapId: MINDMAP_ID,
+      mindmapTitle: '高等数学',
+      baseHeadingLevel: 1,
+      maxHeadingLevel: 4,
+      includeMindMapNodeBacklinks: true,
+    });
+    const round2Draft = parseHandoutMarkdownToMindMapDraft(recompiled, { noteId: 'note_1' })!;
+    const round2 = mergeHandoutDraftIntoMindMap(merged.document, round2Draft, { mindmapId: MINDMAP_ID });
+    expect(round2.updated).toBe(0);
+    expect(round2.added).toBe(0);
+  });
+
+  it('splits shortened multi-paragraph cardNote and edited note from the tail without duplicating old note', () => {
+    const doc: MindMapDocument = {
+      version: '1.0',
+      root: node('node_root', '高等数学', {
+        children: [
+          node('node_multi', '洛必达法则', {
+            cardNote: '卡片第一段。\n\n卡片第二段。',
+            note: '原备注内容。',
+          }),
+        ],
+      }),
+      meta: { createdAt: '2026-01-01T00:00:00Z' },
+    };
+
+    const compiled = compileMindMapSubtreeToHandoutMarkdown(doc.root, {
+      mindmapId: MINDMAP_ID,
+      mindmapTitle: '高等数学',
+      baseHeadingLevel: 1,
+      maxHeadingLevel: 4,
+      includeMindMapNodeBacklinks: true,
+    });
+
+    // Shorten 2-paragraph cardNote to 1 paragraph AND edit the trailing note at the same time
+    const edited = compiled.replace(
+      '卡片第一段。\n\n卡片第二段。\n\n原备注内容。',
+      '精简后的卡片段。\n\n更新后的备注内容。',
+    );
+    const draft = parseHandoutMarkdownToMindMapDraft(edited, { noteId: 'note_1' })!;
+    const merged = mergeHandoutDraftIntoMindMap(doc, draft, { mindmapId: MINDMAP_ID });
+
+    expect(merged.updated).toBe(1);
+    const updatedNode = merged.document.root.children.find((c) => c.id === 'node_multi')!;
+    expect(updatedNode.cardNote).toBe('精简后的卡片段。');
+    expect(updatedNode.note).toBe('更新后的备注内容。');
+
+    // Re-export should NOT contain old note duplicated alongside new note
+    const recompiled = compileMindMapSubtreeToHandoutMarkdown(merged.document.root, {
+      mindmapId: MINDMAP_ID,
+      mindmapTitle: '高等数学',
+      baseHeadingLevel: 1,
+      maxHeadingLevel: 4,
+      includeMindMapNodeBacklinks: true,
+    });
+    expect(recompiled).not.toContain('原备注内容。');
+    const round2Draft = parseHandoutMarkdownToMindMapDraft(recompiled, { noteId: 'note_1' })!;
+    const round2 = mergeHandoutDraftIntoMindMap(merged.document, round2Draft, { mindmapId: MINDMAP_ID });
+    expect(round2.updated).toBe(0);
+  });
 });

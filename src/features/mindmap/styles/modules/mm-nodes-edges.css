@@ -1,0 +1,492 @@
+/* ============================================
+   思维导图节点、连线、编辑态防挤压、FSRS 掌握度与拖拽演出
+   ============================================ */
+
+/* stylelint-disable selector-class-pattern */
+
+/* --- ReactFlow 节点包装层 --- */
+.mindmap-container .react-flow__node {
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  text-rendering: optimizelegibility;
+}
+
+.mindmap-container .react-flow__node > div {
+  width: 100%;
+  height: 100%;
+}
+
+.mindmap-container .react-flow__node.dragging {
+  transition: none;
+}
+
+/* 编辑态防挤压（单一数据源）：解除 ReactFlow 固定宽高与 z-index 锁死，长句自然横向撑开至 600px */
+.mindmap-container .react-flow__node:has([data-node-editing='true']),
+.mindmap-container .react-flow__node:has(.editing) {
+  /* stylelint-disable declaration-no-important */
+  width: max-content !important;
+  height: auto !important;
+  z-index: 40 !important;
+  /* stylelint-enable declaration-no-important */
+  min-width: 140px;
+  max-width: 600px;
+}
+
+.mindmap-container [data-node-editing='true'] {
+  width: auto;
+  min-width: 80px;
+  max-width: 600px;
+  height: auto;
+  white-space: normal;
+}
+
+/* --- 根节点与分支节点 --- */
+.mm-root-node {
+  min-width: 80px;
+  text-align: center;
+  transition:
+    border-color var(--mm-dur-structure, 150ms) ease,
+    box-shadow var(--mm-dur-structure, 150ms) ease;
+  white-space: nowrap;
+}
+
+.mm-branch-node {
+  min-width: 40px;
+  position: relative;
+  transition:
+    border-color var(--mm-dur-structure, 150ms) ease,
+    box-shadow var(--mm-dur-structure, 150ms) ease;
+  white-space: nowrap;
+}
+
+.mm-root-node:hover,
+.mm-branch-node:hover {
+  border-color: var(--mm-border-strong);
+}
+
+.mm-root-node:hover:not(.selected, .editing),
+.mm-branch-node:hover:not(.selected, .editing) {
+  box-shadow: var(--mm-shadow-node);
+}
+
+/* 选中与编辑态：单层精准内缩边 + 3px 柔和微光环 */
+.mm-root-node.selected,
+.mm-branch-node.selected,
+.react-flow__node.selected .mm-root-node,
+.react-flow__node.selected .mm-branch-node {
+  --mm-node-ring-alpha: 16%;
+}
+
+.mm-root-node.editing,
+.mm-branch-node.editing {
+  --mm-node-ring-alpha: 24%;
+}
+
+.mm-root-node.selected,
+.mm-branch-node.selected,
+.mm-root-node.editing,
+.mm-branch-node.editing,
+.react-flow__node.selected .mm-root-node,
+.react-flow__node.selected .mm-branch-node {
+  outline: 1.5px solid var(--mm-edge-active, var(--mm-primary));
+  outline-offset: -1px;
+  /* stylelint-disable-next-line declaration-no-important */
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--mm-edge-active, var(--mm-primary)) var(--mm-node-ring-alpha, 16%), transparent), var(--mm-shadow-node) !important;
+}
+
+/* --- 下划线风格节点（统一使用 data-node-chrome='underline' 单一代选择器） --- */
+[data-node-chrome='underline'] {
+  background: transparent;
+  border-bottom: 1.5px solid var(--mm-border);
+  min-width: 20px;
+  transition:
+    border-color var(--mm-dur-structure, 150ms) ease,
+    background-color var(--mm-dur-structure, 150ms) ease;
+  white-space: nowrap;
+}
+
+[data-node-chrome='underline'][data-has-bg='true'] {
+  border-radius: 6px;
+  padding: 3px 8px 4px;
+}
+
+[data-node-chrome='underline'].selected,
+.react-flow__node.selected [data-node-chrome='underline']:not([data-has-bg='true']) {
+  background-color: color-mix(in srgb, var(--mm-edge-active, var(--mm-primary)) 8%, transparent);
+}
+
+[data-node-chrome='underline'].editing {
+  background-color: color-mix(in srgb, var(--mm-edge-active, var(--mm-primary)) 6%, transparent);
+}
+
+[data-node-chrome='underline'] .mm-node-actions {
+  left: 100%;
+  margin-left: 8px;
+  top: 0;
+  bottom: 0;
+}
+
+/* --- 搜索命中高亮 --- */
+.mm-root-node.search-match,
+.mm-branch-node.search-match {
+  box-shadow: 0 0 0 2px hsl(var(--warning) / 55%);
+}
+
+.mm-root-node.search-match-current,
+.mm-branch-node.search-match-current {
+  box-shadow: 0 0 0 2px hsl(var(--warning) / 85%);
+}
+
+[data-node-chrome='underline'].search-match {
+  outline: 2px solid hsl(var(--warning) / 60%);
+  outline-offset: 2px;
+  background-color: hsl(var(--warning) / 10%);
+}
+
+[data-node-chrome='underline'].search-match-current {
+  outline: 2px solid hsl(var(--warning) / 90%);
+  outline-offset: 2px;
+  background-color: hsl(var(--warning) / 16%);
+}
+
+.mm-node-content .search-text-match {
+  background-color: hsl(var(--warning) / 55%);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+  font-style: normal;
+}
+
+/* --- 折叠按钮与节点悬浮操作胶囊 --- */
+.mm-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  transition:
+    background-color var(--mm-hover-transition, 120ms ease),
+    border-color var(--mm-hover-transition, 120ms ease),
+    color var(--mm-hover-transition, 120ms ease);
+}
+
+.mm-collapse-btn:hover {
+  background-color: var(--mm-bg-hover);
+}
+
+.mm-node-actions {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  z-index: 10;
+}
+
+.mm-action-btn {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--mm-border) 80%, transparent);
+  background: color-mix(in srgb, var(--mm-bg-elevated) 92%, transparent);
+  color: var(--mm-text-muted);
+  box-shadow: var(--mm-shadow-sm);
+  cursor: pointer;
+  transition:
+    background-color var(--mm-hover-transition, 120ms ease),
+    color var(--mm-hover-transition, 120ms ease),
+    border-color var(--mm-hover-transition, 120ms ease);
+}
+
+.mm-action-btn:hover {
+  background: var(--mm-bg-hover);
+  border-color: var(--mm-border-strong);
+  color: var(--mm-text);
+}
+
+/* --- 连接线 (Edges) --- */
+.mindmap-container .react-flow__edge-path,
+.tree-edge {
+  stroke: var(--mm-edge);
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  transition:
+    stroke var(--mm-dur-structure, 150ms) ease,
+    stroke-width var(--mm-dur-structure, 150ms) ease,
+    opacity var(--mm-dur-structure, 150ms) ease;
+}
+
+.mindmap-container .react-flow__edge.selected .react-flow__edge-path {
+  stroke-width: 2.5px;
+}
+
+.straight-edge,
+.orthogonal-edge,
+.step-edge {
+  transition: stroke var(--mm-dur-structure, 150ms) ease;
+}
+
+/* 树边直接 Hover 走 --mm-hover-* CSS 变量通道（由 buildStyledCanvasEdges 内联回退消费，零 !important） */
+.mindmap-container .react-flow__edge:hover {
+  --mm-hover-stroke: var(--mm-edge-active, var(--mm-primary));
+  --mm-hover-stroke-width: 2.25px;
+  --mm-hover-opacity: 1;
+}
+
+/* --- 拖拽放置目标高亮 --- */
+.mindmap-container .react-flow__node.mm-dragging {
+  opacity: 0.85;
+  z-index: 1000;
+}
+
+.mm-dragging .mm-root-node,
+.mm-dragging .mm-branch-node {
+  box-shadow: var(--mm-shadow-drag);
+}
+
+.mm-dragging [data-node-chrome='underline'] {
+  outline: 1.5px solid var(--mm-primary);
+  outline-offset: 2px;
+}
+
+.mindmap-container .react-flow__node.mm-drop-target {
+  position: relative;
+  overflow: visible;
+  z-index: 50;
+}
+
+.mm-drop-target.mm-drop-child .mm-root-node,
+.mm-drop-target.mm-drop-child .mm-branch-node {
+  outline: 2.5px dashed var(--mm-primary);
+  outline-offset: 4px;
+  border-radius: var(--mm-radius-row, 6px);
+  background-color: color-mix(in srgb, var(--mm-primary) 10%, transparent);
+  transition:
+    outline var(--mm-hover-transition, 120ms ease),
+    background-color var(--mm-hover-transition, 120ms ease);
+}
+
+.mm-drop-target.mm-drop-child [data-node-chrome='underline'] {
+  outline: 2px dashed var(--mm-primary);
+  outline-offset: 3px;
+  background-color: color-mix(in srgb, var(--mm-primary) 10%, transparent);
+  transition:
+    outline var(--mm-hover-transition, 120ms ease),
+    background-color var(--mm-hover-transition, 120ms ease);
+}
+
+.mindmap-container .react-flow__node.mm-drop-child::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -18px;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border: 2px solid var(--mm-primary);
+  border-radius: 3px;
+  background:
+    linear-gradient(var(--mm-primary), var(--mm-primary)) center / 8px 2px no-repeat,
+    linear-gradient(var(--mm-primary), var(--mm-primary)) center / 2px 8px no-repeat,
+    color-mix(in srgb, var(--mm-primary) 12%, var(--mm-bg-elevated));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--mm-primary) 20%, transparent);
+  pointer-events: none;
+  z-index: 20;
+}
+
+.mindmap-container .react-flow__node.mm-drop-sibling-before::before,
+.mindmap-container .react-flow__node.mm-drop-sibling-after::after {
+  content: '';
+  position: absolute;
+  left: -4px;
+  right: -4px;
+  height: 3px;
+  background: var(--mm-primary);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.mindmap-container .react-flow__node.mm-drop-sibling-before::before {
+  top: -5px;
+}
+
+.mindmap-container .react-flow__node.mm-drop-sibling-after::after {
+  bottom: -5px;
+}
+
+.mindmap-container .react-flow__node.mm-drop-sibling-before::after,
+.mindmap-container .react-flow__node.mm-drop-sibling-after::before {
+  content: '';
+  position: absolute;
+  left: -7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mm-primary);
+  pointer-events: none;
+  z-index: 21;
+}
+
+.mindmap-container .react-flow__node.mm-drop-sibling-before::after {
+  top: -7.5px;
+}
+
+.mindmap-container .react-flow__node.mm-drop-sibling-after::before {
+  bottom: -7.5px;
+}
+
+.mm-drop-sibling-before .mm-root-node,
+.mm-drop-sibling-before .mm-branch-node,
+.mm-drop-sibling-before [data-node-chrome='underline'],
+.mm-drop-sibling-after .mm-root-node,
+.mm-drop-sibling-after .mm-branch-node,
+.mm-drop-sibling-after [data-node-chrome='underline'] {
+  background-color: color-mix(in srgb, var(--mm-primary) 5%, transparent);
+  transition: background-color var(--mm-hover-transition, 120ms ease);
+}
+
+/* --- 背诵模式文本选择 --- */
+.mindmap-container .nopan.nodrag {
+  user-select: text;
+  cursor: text;
+}
+
+/* --- Agent 演出动画与视图入场动画 --- */
+@keyframes mm-agent-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(-7px) scale(0.96);
+  }
+
+  62% {
+    opacity: 1;
+    transform: translateY(1px) scale(1.015);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.mindmap-container .react-flow__node.agent-entering > * {
+  transform-origin: center;
+  animation: mm-agent-enter var(--mm-agent-enter-ms, 260ms) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes node-slide-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.955);
+  }
+}
+
+.mindmap-container .react-flow__node.agent-exiting {
+  pointer-events: none;
+}
+
+.mindmap-container .react-flow__node.agent-exiting > * {
+  transform-origin: center;
+  animation: node-slide-out var(--mm-agent-exit-ms, 180ms) cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.outline-node-row.agent-exiting {
+  transform-origin: center left;
+  animation: node-slide-out var(--mm-agent-exit-ms, 180ms) cubic-bezier(0.4, 0, 1, 1) both;
+  pointer-events: none;
+}
+
+.mindmap-container .react-flow__node.agent-updated,
+.outline-node-row.agent-updated {
+  position: relative;
+  isolation: isolate;
+}
+
+.mindmap-container .react-flow__node.agent-updated::before,
+.outline-node-row.agent-updated::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: var(--mm-radius-row, 8px);
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(
+    105deg,
+    hsl(var(--acr-a, var(--primary)) / 26%),
+    hsl(var(--acr-b, var(--info, 210 90% 55%)) / 24%)
+  );
+  animation: mm-agent-updated-fade var(--mm-agent-updated-ms, 900ms) cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes mm-agent-updated-fade {
+  0% {
+    opacity: 1;
+  }
+
+  30% {
+    opacity: 0.55;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes content-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.mm-note-first-line {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+/* ACR forced-colors 高对比度模式 */
+@media (forced-colors: active) {
+  .mindmap-container .react-flow__node.agent-updated::before,
+  .outline-node-row.agent-updated::before {
+    animation: none;
+    opacity: 0;
+  }
+
+  .mindmap-container .react-flow__node.agent-updated,
+  .outline-node-row.agent-updated {
+    outline: 2px solid highlight;
+  }
+
+  .mindmap-container .react-flow__node.agent-exiting,
+  .mindmap-container .react-flow__node.agent-exiting > *,
+  .outline-node-row.agent-exiting {
+    animation: none;
+    opacity: 1;
+  }
+
+  .mindmap-container .react-flow__node.agent-exiting,
+  .outline-node-row.agent-exiting {
+    outline: 2px dashed graytext;
+  }
+}
+
+/* stylelint-enable selector-class-pattern */

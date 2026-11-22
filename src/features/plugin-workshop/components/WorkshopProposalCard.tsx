@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowCounterClockwise, ArrowSquareOut, ChatCircleText, DotsThree, Export, NotePencil, Power, Sparkle, Trash } from '@phosphor-icons/react';
+import {
+  ArrowCounterClockwise, ArrowSquareOut, Cards, ChartBar, ChatCircleText, DotsThree, Export, FilePdf,
+  Layout, NotePencil, Palette, Power, Sparkle, SquaresFour, Terminal, Trash,
+} from '@phosphor-icons/react';
 import { AppMenu, AppMenuContent, AppMenuItem, AppMenuSeparator, AppMenuTrigger } from '@/components/ui/app-menu/AppMenu';
 import { DsButton } from '@/components/ui/DsButton';
 import { WorkshopConfirmationCard, workshopRetryable, WorkshopErrorNotice, type WorkshopConfirmationCardProps } from '../WorkshopConfirmationCard';
@@ -33,11 +36,35 @@ export interface WorkshopProposalCardProps extends WorkshopConfirmationCardProps
 export function workshopPrimaryLabel(t: (key: string, options?: Record<string, unknown>) => string, item: Pick<WorkshopItem, 'name' | 'places'>, place = primaryPlace(item)): string {
   if (!place || place.kind === 'app') return t('card.openNamed', { name: place?.kind === 'app' ? place.title : item.name });
   if (place.kind === 'selectionButton') return t('card.tryNotes');
+  if (place.kind === 'pdfSelectionButton') return t('card.tryPdf');
+  if (place.kind === 'slashCommand') {
+    return place.command ? t('card.trySlashNamed', { command: place.command }) : t('card.trySlash');
+  }
+  if (place.kind === 'chatMessageAction') return t('card.tryChatMessage');
+  if (place.kind === 'reviewAction') return t('card.tryReview');
+  if (place.kind === 'desktopWidget') return t('card.tryDesktopWidget');
+  if (place.kind === 'statusBarItem') return t('card.tryStatusBar');
+  if (place.kind === 'themeVariant') return t('card.tryTheme');
+  if (place.kind === 'dashboardWidget') return t('card.tryDashboard');
   return t('card.trySay', { phrase: place.title });
 }
 
+const PLACE_ICON_MAP = {
+  app: ArrowSquareOut,
+  selectionButton: NotePencil,
+  pdfSelectionButton: FilePdf,
+  slashCommand: Terminal,
+  chatMessageAction: ChatCircleText,
+  reviewAction: Cards,
+  desktopWidget: SquaresFour,
+  statusBarItem: Layout,
+  themeVariant: Palette,
+  dashboardWidget: ChartBar,
+  agentTool: ChatCircleText,
+} as const;
+
 function PrimaryIcon({ place }: { place?: WorkshopPlace }) {
-  const Icon = place?.kind === 'selectionButton' ? NotePencil : place?.kind === 'agentTool' ? ChatCircleText : ArrowSquareOut;
+  const Icon = place ? PLACE_ICON_MAP[place.kind] : ArrowSquareOut;
   return <Icon className="size-4" aria-hidden="true" />;
 }
 
@@ -48,9 +75,19 @@ function PrimaryIcon({ place }: { place?: WorkshopPlace }) {
 export function WorkshopProposalCard({ onRepair, exportPath, onReveal, ...props }: WorkshopProposalCardProps) {
   const { t } = useTranslation('plugin_manager');
   const { item, busy, onAction } = props;
-  // 「打开」 can wait for the view to appear after install (up to 5 s): say so while it does.
+  // 「打开」 can wait for the view to appear after install (up to 5 s): say so immediately on click,
+  // and clear once the async busy cycle finishes (or after a short fallback if parent does not toggle busy).
   const [opening, setOpening] = useState(false);
-  useEffect(() => { if (!busy) setOpening(false); }, [busy]);
+  const prevBusyRef = useRef(Boolean(busy));
+  useEffect(() => {
+    if (prevBusyRef.current && !busy) setOpening(false);
+    prevBusyRef.current = Boolean(busy);
+  }, [busy]);
+  useEffect(() => {
+    if (!opening || busy) return;
+    const timer = setTimeout(() => setOpening(false), 6000);
+    return () => clearTimeout(timer);
+  }, [opening, busy]);
   const tryIt = () => { setOpening(true); onAction('try'); };
   const place = primaryPlace(item);
   // 「回到上一版」 is about the installed version (its predecessor), never about a proposal in progress.
@@ -94,7 +131,7 @@ export function WorkshopProposalCard({ onRepair, exportPath, onReveal, ...props 
   );
   return <div className="space-y-2.5">
     <WorkshopConfirmationCard {...props} onRepair={onRepair} />
-    {item.phase === 'installed' && <p role="status" data-testid="workshop-installed" className="text-sm text-success">{busy && opening ? t('workshop.opening')
+    {item.phase === 'installed' && <p role="status" data-testid="workshop-installed" className="text-sm text-success">{opening ? t('workshop.opening')
       : t(item.validation?.status === 'passed' && item.validation.version === item.version ? 'workshop.verified' : 'workshop.installedUnverified')}</p>}
     {item.validation?.status === 'passed' && item.validation.version === item.version && item.validation.evidence?.length
       ? <details className="text-xs text-muted-foreground" data-testid="workshop-verification-evidence"><summary>{t('workshop.verifiedDetails')}</summary>
@@ -102,11 +139,11 @@ export function WorkshopProposalCard({ onRepair, exportPath, onReveal, ...props 
     {item.phase === 'disabled' && !item.error && <p role="status" className="text-sm text-muted-foreground">{t('workshop.disabled')}</p>}
     {item.phase === 'disabled' && item.error && <WorkshopErrorNotice raw={item.error} name={item.name} busy={busy} emphasis={false} onRepair={onRepair} onRedo={() => onAction('redo')} />}
     {item.phase === 'undone' && <p role="status" data-testid="workshop-undone" className="text-sm text-muted-foreground">{t('workshop.undone')}</p>}
-    {(live || item.phase === 'undone') && (
+    {(live || item.phase === 'undone' || (item.phase === 'failed' && item.installed?.phase === 'installed')) && (
       <div className="flex flex-wrap items-center gap-2 pt-0.5" data-testid="workshop-installed-actions">
-        {item.phase === 'installed' && (
-          <DsButton size="sm" variant="primary" disabled={busy} className="gap-1.5" data-testid="workshop-primary" data-place={place?.kind ?? 'app'} onClick={tryIt}>
-            <PrimaryIcon place={place} />{workshopPrimaryLabel(t, item, place)}
+        {(item.phase === 'installed' || (item.phase === 'failed' && item.installed?.phase === 'installed')) && (place !== undefined || item.places === undefined) && (
+          <DsButton size="sm" variant="primary" disabled={busy || opening} aria-busy={busy || opening || undefined} className="gap-1.5" data-testid="workshop-primary" data-place={place?.kind ?? 'app'} onClick={tryIt}>
+            <PrimaryIcon place={place} />{opening ? t('workshop.opening') : workshopPrimaryLabel(t, item, place)}
           </DsButton>
         )}
         {item.phase === 'disabled' && (
@@ -115,7 +152,7 @@ export function WorkshopProposalCard({ onRepair, exportPath, onReveal, ...props 
         {item.phase === 'undone' && (
           <DsButton size="sm" variant="primary" disabled={busy} data-testid="workshop-restore" onClick={() => onAction('restore')}>{t('workshop.actions.restore')}</DsButton>
         )}
-        {modify}
+        {(live || item.phase === 'undone') && modify}
         {more}
       </div>
     )}

@@ -127,7 +127,12 @@ describe('Flashcards mobile navigation', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'library.create.backLabel' }), { target: { value: 'Answer' } });
     fireEvent.click(screen.getByRole('button', { name: 'library.create.save' }));
     await screen.findByRole('heading', { name: 'library.title' });
-    expect(mocks.createCard).toHaveBeenCalledWith({ front: 'Question', back: 'Answer' });
+    expect(mocks.createCard).toHaveBeenCalledWith({
+      front: 'Question',
+      back: 'Answer',
+      noteType: 'Basic',
+      tags: [],
+    });
     fireEvent.click(screen.getByRole('button', { name: 'library.create.new' }));
     act(() => { expect(handleAndroidBack()).toBe(true); });
     expect(screen.getByRole('heading', { name: 'library.title' })).toBeInTheDocument();
@@ -149,7 +154,11 @@ describe('Flashcards mobile navigation', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'session.front' }), { target: { value: 'Revised question' } });
     fireEvent.click(screen.getByRole('button', { name: 'session.saveEdit' }));
     await screen.findByRole('heading', { name: 'session.title' });
-    expect(mocks.updateCard).toHaveBeenCalledWith('Revised question', 'Answer', null);
+    expect(mocks.updateCard).toHaveBeenCalledWith('Revised question', 'Answer', null, {
+      cardStateId: 'state-1',
+      forceCloze: false,
+      tags: [],
+    });
     fireEvent.click(screen.getByRole('button', { name: 'common:more' }));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'session.edit' }));
     act(() => { expect(handleAndroidBack()).toBe(true); });

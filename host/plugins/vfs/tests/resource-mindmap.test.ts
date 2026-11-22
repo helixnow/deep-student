@@ -142,6 +142,41 @@ it('commits valid backend node operations alongside errors, preserving descendan
   expect(doc.root.children[0].id).toBe('a'); expect(doc.root.children[0].children[0].text).toBe('Updated B');
   expect(doc.root.children[1].id).toMatch(/^n_.{8}$/); expect(doc.associations).toEqual([{ id: 'assoc_g1', source: 'root', target: 'b' }]);
 });
+it('validates and persists top-level summaries in mindmap_edit_nodes with auto-generated IDs', async () => {
+  const created = await execute('mindmap_create', { title: 'Summary edits', content: { root: { id: 'root', text: 'Root', children: [
+    { id: 'c0', text: 'First' },
+    { id: 'c1', text: 'Second' },
+    { id: 'c2', text: 'Third' },
+  ] } } });
+  const id = (created.output as { mindmap: { id: string } }).mindmap.id;
+  const result = await execute('mindmap_edit_nodes', {
+    mindmap_id: id,
+    operations: [],
+    summaries: [
+      { parentId: 'root', startChildId: 'c0', endChildId: 'c1', label: 'Core Pair' },
+      { parentId: 'root', startChildId: 'c2', endChildId: 'c2', label: 'Invalid Single' },
+    ],
+  });
+  expect(result.success).toBe(true);
+  expect(result.output).toMatchObject({
+    success: true,
+    appliedCount: 0,
+    totalOperations: 0,
+    summariesUpdated: true,
+    plane: 'backend',
+    versionId: expect.stringMatching(/^mv_/),
+  });
+  const doc = JSON.parse(host.ctx.vfsRepo.mindmaps.getMindmapContent(db(), id)!);
+  expect(doc.summaries).toEqual([
+    { id: 'sum_root_0_1_0', parentId: 'root', startChildId: 'c0', endChildId: 'c1', label: 'Core Pair' },
+  ]);
+
+  const cleared = await execute('mindmap_edit_nodes', { mindmap_id: id, operations: [], summaries: [] });
+  expect(cleared.success).toBe(true);
+  expect(cleared.output).toMatchObject({ summariesUpdated: true });
+  const afterClear = JSON.parse(host.ctx.vfsRepo.mindmaps.getMindmapContent(db(), id)!);
+  expect(afterClear.summaries).toBeUndefined();
+});
 it('keeps frontend suggestions out of backend storage and sends the exact probed window identity', async () => {
   const info = vi.spyOn(host.ctx.logger, 'info');
   const created = await execute('mindmap_create', { title: 'Delegated map', content: { root: { id: 'root', text: 'Original' } } });

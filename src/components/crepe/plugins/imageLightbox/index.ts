@@ -11,7 +11,7 @@
  */
 
 import { Plugin, PluginKey } from '@milkdown/prose/state';
-import { $prose } from '@milkdown/utils';
+import { $prose } from '@milkdown/kit/utils';
 
 import './imageLightbox.css';
 import { collectLightboxGallery } from './collectGallery';

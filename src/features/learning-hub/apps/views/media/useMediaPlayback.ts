@@ -81,8 +81,14 @@ function saveStoredRate(rate: number): void {
 export interface UseMediaPlaybackOptions {
   /** 媒体源 URL（filestream:// 转换后的 URL 或 blob URL） */
   src: string;
-  /** 所属标签页是否活跃；变为 false 时自动暂停 */
+  /** 所属标签页是否活跃；变为 false 时默认自动暂停（除非 allowBackgroundPlayback 为 true） */
   isActive?: boolean;
+  /** 允许切视图/切标签时继续在后台播放（纯音频或已开启后台听课） */
+  allowBackgroundPlayback?: boolean;
+  /** 媒体标题（用于锁屏 / 通知栏 MediaSession 元数据） */
+  title?: string;
+  /** 媒体作者/来源（用于 MediaSession 元数据） */
+  artist?: string;
   /** 媒体加载/解码失败回调 */
   onError?: (reason?: 'timeout' | 'media') => void;
 }
@@ -90,6 +96,9 @@ export interface UseMediaPlaybackOptions {
 export function useMediaPlayback<T extends HTMLMediaElement>({
   src,
   isActive = true,
+  allowBackgroundPlayback = false,
+  title,
+  artist = 'DeepStudent',
   onError,
 }: UseMediaPlaybackOptions) {
   const mediaRef = useRef<T | null>(null);
@@ -296,12 +305,12 @@ export function useMediaPlayback<T extends HTMLMediaElement>({
     };
   }, []);
 
-  // 非活跃标签页自动暂停
+  // 非活跃标签页自动暂停；纯音频或已开启后台听课时允许继续播放
   useEffect(() => {
-    if (!isActive) {
+    if (!isActive && !allowBackgroundPlayback) {
       mediaRef.current?.pause();
     }
-  }, [isActive]);
+  }, [isActive, allowBackgroundPlayback]);
 
   const togglePlay = useCallback(() => {
     const el = mediaRef.current;
@@ -395,6 +404,96 @@ export function useMediaPlayback<T extends HTMLMediaElement>({
       return next;
     });
   }, []);
+
+  // 锁屏与通知栏播控（Media Session API）
+  const mediaSessionActive = isActive || (allowBackgroundPlayback && isPlaying);
+
+  useEffect(() => {
+    if (!mediaSessionActive) return;
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator) || !navigator.mediaSession) {
+      return;
+    }
+    const ms = navigator.mediaSession;
+    try {
+      const displayTitle = (title || '').replace(/\.[^.]+$/, '') || title || 'DeepStudent';
+      if (typeof MediaMetadata !== 'undefined') {
+        ms.metadata = new MediaMetadata({
+          title: displayTitle,
+          artist,
+        });
+      } else {
+        ms.metadata = { title: displayTitle, artist } as unknown as MediaMetadata;
+      }
+    } catch {
+      // 部分 WebView 不支持 MediaMetadata 构造器
+    }
+    try {
+      ms.playbackState = isPlaying ? 'playing' : 'paused';
+    } catch {
+      // 忽略不支持 playbackState 的环境
+    }
+  }, [mediaSessionActive, title, artist, isPlaying]);
+
+  useEffect(() => {
+    if (!mediaSessionActive) return;
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator) || !navigator.mediaSession) {
+      return;
+    }
+    const ms = navigator.mediaSession;
+    if (typeof ms.setPositionState === 'function' && Number.isFinite(duration) && duration > 0) {
+      try {
+        ms.setPositionState({
+          duration,
+          playbackRate: Number.isFinite(rate) && rate > 0 ? rate : 1,
+          position: Math.min(Math.max(0, currentTime), duration),
+        });
+      } catch {
+        // 忽略 positionState 参数校验异常
+      }
+    }
+  }, [mediaSessionActive, duration, rate, currentTime]);
+
+  useEffect(() => {
+    if (!mediaSessionActive) return;
+    if (typeof navigator === 'undefined' || !('mediaSession' in navigator) || !navigator.mediaSession) {
+      return;
+    }
+    const ms = navigator.mediaSession;
+    if (typeof ms.setActionHandler !== 'function') return;
+
+    const safeSet = (
+      action: MediaSessionAction,
+      handler: MediaSessionActionHandler | null,
+    ) => {
+      try {
+        ms.setActionHandler(action, handler);
+      } catch {
+        // 个别平台不支持全部 action（如 seekto）
+      }
+    };
+
+    safeSet('play', () => play());
+    safeSet('pause', () => pause());
+    safeSet('seekbackward', (details) => {
+      seekBy(-(details?.seekOffset && details.seekOffset > 0 ? details.seekOffset : 10));
+    });
+    safeSet('seekforward', (details) => {
+      seekBy(details?.seekOffset && details.seekOffset > 0 ? details.seekOffset : 10);
+    });
+    safeSet('seekto', (details) => {
+      if (typeof details?.seekTime === 'number' && Number.isFinite(details.seekTime)) {
+        seekTo(details.seekTime);
+      }
+    });
+
+    return () => {
+      safeSet('play', null);
+      safeSet('pause', null);
+      safeSet('seekbackward', null);
+      safeSet('seekforward', null);
+      safeSet('seekto', null);
+    };
+  }, [mediaSessionActive, play, pause, seekBy, seekTo]);
 
   return {
     mediaRef,

@@ -213,17 +213,35 @@ export class VfsFullSearchService {
       ? await this.backend.searchMultimodal(request)
       : await this.backend.search(request);
     const best = response.result.hits[0]?.rrfScore ?? 0;
-    return response.result.hits.map((fused) => ({
-      embeddingId: fused.hit.embeddingId,
-      resourceId: fused.hit.identity.resourceId,
-      chunkIndex: fused.hit.identity.chunkIndex,
-      chunkText: fused.hit.text,
-      score: normalizeCompatibilityRrfScore(fused.rrfScore, best),
-      resourceTitle: fused.hit.title,
-      resourceType: fused.hit.resourceType,
-      pageIndex: fused.hit.identity.pageIndex,
-      sourceId: fused.hit.sourceId,
-    }));
+    return response.result.hits.map((fused) => {
+      let score = normalizeCompatibilityRrfScore(fused.rrfScore, best);
+      // Calibrate pure-vector weak hits (zero FTS lexical match & moderate/low cosine similarity) so
+      // out-of-domain negative queries do not saturate to score 1.0 under relative RRF normalization.
+      const hasFts = fused.provenance.some((p) => p.routeId === 'fts' || p.routeKind === 'full_text');
+      let maxVecSim = -Infinity;
+      for (const p of fused.provenance) {
+        if (p.routeKind !== 'full_text' && typeof p.rawScore === 'number' && Number.isFinite(p.rawScore)) {
+          maxVecSim = Math.max(maxVecSim, p.rawScore);
+        }
+      }
+      if (!hasFts && Number.isFinite(maxVecSim) && maxVecSim < 0.80) {
+        const floor = 0.55;
+        const ceiling = 0.80;
+        const ramp = Math.max(0, Math.min(1, (maxVecSim - floor) / (ceiling - floor)));
+        score = score * ramp * 0.42;
+      }
+      return {
+        embeddingId: fused.hit.embeddingId,
+        resourceId: fused.hit.identity.resourceId,
+        chunkIndex: fused.hit.identity.chunkIndex,
+        chunkText: fused.hit.text,
+        score,
+        resourceTitle: fused.hit.title,
+        resourceType: fused.hit.resourceType,
+        pageIndex: fused.hit.identity.pageIndex,
+        sourceId: fused.hit.sourceId,
+      };
+    });
   }
 
   async searchCrossDimension(

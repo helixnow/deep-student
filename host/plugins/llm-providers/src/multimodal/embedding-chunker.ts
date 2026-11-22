@@ -13,7 +13,8 @@ export class EmbeddingTokenLimits {
     ['BAAI/bge-large-zh', 512], ['BAAI/bge-large-en', 512], ['netease-youdao/bce-embedding', 512],
     ['BAAI/bge-m3', 8192], ['Pro/BAAI/bge-m3', 8192], ['Qwen/Qwen3-Embedding', 32768],
     ['text-embedding-3', 8192], ['text-embedding-ada', 8192], ['voyage-3', 32000],
-    ['voyage-code', 32000], ['voyage-multilingual', 32000], ['jina-embeddings', 8192], ['embed-', 512],
+    ['voyage-code', 32000], ['voyage-multilingual', 32000], ['jina-embeddings', 8192],
+    ['mistral-embed', 8192], ['codestral-embed', 8192], ['embed-', 512],
   ].map(([name, limit]) => [name as string, limit as number] as [string, number])
     .sort((a, b) => b[0].length - a[0].length);
 

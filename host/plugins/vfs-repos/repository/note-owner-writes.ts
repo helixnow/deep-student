@@ -38,6 +38,24 @@ export class NoteOwnerWritesRepo implements NoteOwnerWrites {
       SET text_state = 'disabled', mm_state = 'disabled' WHERE resource_id = ?1`, [resourceId]).changes);
   }
 
+  reenableNoteUnitsWithConn(conn: SqlExecutor, resourceId: string): number {
+    return databaseResult(() => conn.run(`UPDATE vfs_index_units
+      SET
+        text_state = CASE
+          WHEN text_state = 'disabled' AND (text_required = 1 OR TRIM(COALESCE(text_content, '')) <> '') THEN 'pending'
+          ELSE text_state
+        END,
+        mm_state = CASE
+          WHEN mm_state = 'disabled' AND (mm_required = 1 OR TRIM(COALESCE(image_blob_hash, '')) <> '') THEN 'pending'
+          ELSE mm_state
+        END
+      WHERE resource_id = ?1
+        AND (
+          (text_state = 'disabled' AND (text_required = 1 OR TRIM(COALESCE(text_content, '')) <> ''))
+          OR (mm_state = 'disabled' AND (mm_required = 1 OR TRIM(COALESCE(image_blob_hash, '')) <> ''))
+        )`, [resourceId]).changes);
+  }
+
   markNoteLinksBackfillDoneWithConn(conn: SqlExecutor, updatedAtMs: number | bigint): void {
     databaseResult(() => {
       conn.run(`INSERT OR REPLACE INTO vfs_indexing_config (key, value, updated_at)

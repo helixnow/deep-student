@@ -16,6 +16,9 @@ const mocks = vi.hoisted(() => ({
   updateLibraryCard: vi.fn(),
   invoke: vi.fn(),
   pickSingleFile: vi.fn(),
+  readTextFile: vi.fn(),
+  saveTextFile: vi.fn(),
+  saveAnkiCards: vi.fn(),
   showGlobalNotification: vi.fn(),
 }));
 
@@ -89,6 +92,14 @@ vi.mock('@/utils/fileManager', () => ({
   extractFileName: (path: string) => path.split('/').pop() ?? '',
   fileManager: {
     pickSingleFile: mocks.pickSingleFile,
+    readTextFile: mocks.readTextFile,
+    saveTextFile: mocks.saveTextFile,
+  },
+}));
+
+vi.mock('@/services/ankiApiAdapter', () => ({
+  ankiApiAdapter: {
+    saveAnkiCards: mocks.saveAnkiCards,
   },
 }));
 
@@ -354,5 +365,41 @@ describe('LibraryScreen', () => {
       'success',
       '成功导入 12 张卡片',
     );
+  });
+
+  it('supports CSV import and CSV export directly on LibraryScreen without APKG invocation', async () => {
+    mocks.listCards.mockResolvedValue(response([
+      card('c1', { enqueued: true, state: 2 }),
+    ]));
+    mocks.saveTextFile.mockResolvedValue({ canceled: false, path: '/tmp/flashcards.csv' });
+
+    render(<LibraryScreen />);
+    await screen.findByText('front c1');
+
+    fireEvent.click(screen.getByTestId('fc-lib-export-csv'));
+    await waitFor(() => {
+      expect(mocks.saveTextFile).toHaveBeenCalledWith(expect.objectContaining({
+        defaultFileName: 'flashcards.csv',
+        content: expect.stringContaining('\uFEFFFront,Back,Tags,Deck,Type\r\nfront c1,back c1,'),
+      }));
+    });
+    expect(mocks.invoke).not.toHaveBeenCalled();
+
+    mocks.pickSingleFile.mockResolvedValueOnce('/tmp/import.csv');
+    mocks.readTextFile.mockResolvedValueOnce('Front,Back,Tags\r\nNew Front,New Back,t1');
+    mocks.saveAnkiCards.mockResolvedValueOnce({ savedIds: ['new-1'], taskId: 'task-csv' });
+    mocks.invoke.mockResolvedValueOnce({ states: [{ id: 'st-1' }] });
+
+    fireEvent.click(screen.getByTestId('fc-lib-import-csv'));
+    await waitFor(() => {
+      expect(mocks.saveAnkiCards).toHaveBeenCalledWith({
+        cards: [{ front: 'New Front', back: 'New Back', tags: ['t1'], images: [] }],
+      });
+      expect(mocks.invoke).toHaveBeenCalledWith('fsrs_enqueue_cards', {
+        ankiCardIds: ['new-1'],
+      });
+    });
+    expect(mocks.requestDueRefresh).toHaveBeenCalledTimes(1);
+    expect(mocks.showGlobalNotification).toHaveBeenCalledWith('success', 'library.import.csvSuccess');
   });
 });

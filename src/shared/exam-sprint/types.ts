@@ -113,6 +113,21 @@ export interface SprintMistakeQuestionOption {
   content: string;
 }
 
+export interface SprintMistakeQuestionImage {
+  id: string;
+  name: string;
+  mime: string;
+  hash: string;
+  role?: 'question' | 'material' | 'option' | 'source' | null;
+}
+
+export interface SprintMistakeMaterial {
+  id: string;
+  content: string;
+  images: SprintMistakeQuestionImage[];
+  version: number;
+}
+
 export interface SprintMistakeItem {
   kind: 'mistake_question';
   sprintItemId: string; // 'mistake:' + planId
@@ -128,6 +143,8 @@ export interface SprintMistakeItem {
   questionType: string;
   content: string;
   options: SprintMistakeQuestionOption[] | null;
+  images?: SprintMistakeQuestionImage[] | null;
+  materials?: SprintMistakeMaterial[] | null;
   answer: string | null;
   explanation: string | null;
   structuredData: unknown;

@@ -12,8 +12,9 @@ import type { DatabaseHandle } from '../../../platform/storage/api.ts';
 import type { DailyActivityDetails, LearningActivity } from '../api.ts';
 import {
   ANKI_CARDS_CREATED_SQL, CHAT_MESSAGES_SQL, CHAT_SESSIONS_SQL, ESSAYS_CREATED_SQL,
-  EXAMS_CREATED_SQL, NOTES_EDITED_SQL, QUESTIONS_ANSWERED_SQL, STUDY_SECONDS_SQL,
-  TEXTBOOKS_OPENED_SQL, TRANSLATIONS_CREATED_SQL, queryDateCounts,
+  EXAMS_CREATED_SQL, FSRS_CARDS_REVIEWED_SQL, NOTES_EDITED_SQL, POMODOROS_COMPLETED_SQL,
+  QUESTIONS_ANSWERED_SQL, STUDY_SECONDS_SQL, TEXTBOOKS_OPENED_SQL, TODOS_COMPLETED_SQL,
+  TRANSLATIONS_CREATED_SQL, queryDateCounts,
 } from '../repository/heatmap.ts';
 
 export interface HeatmapHost {
@@ -73,6 +74,17 @@ function applyCounts(
   }
 }
 
+function accumulateExtraCounts(
+  rows: Array<[string, number]>,
+  extraByDate: Map<string, number>,
+): void {
+  for (const [date, count] of rows) {
+    if (count > 0) {
+      extraByDate.set(date, (extraByDate.get(date) ?? 0) + count);
+    }
+  }
+}
+
 export function getLearningHeatmap(host: HeatmapHost, startDate: string, endDate: string): LearningActivity[] {
   const start = parseHeatmapDate(startDate, 'start_date');
   const end = parseHeatmapDate(endDate, 'end_date');
@@ -95,6 +107,13 @@ export function getLearningHeatmap(host: HeatmapHost, startDate: string, endDate
   applyCounts(queryDateCounts(host.vfs, QUESTIONS_ANSWERED_SQL, startDate, endDate), daily, 'questionsAnswered');
   applyCounts(queryDateCounts(host.main, ANKI_CARDS_CREATED_SQL, startDate, endDate), daily, 'ankiCardsCreated');
 
+  // 扩展热力图统计口径：纳入 FSRS 刷卡复习、已完成待办与已完成番茄专注到当日总活跃 count，
+  // 同时保持 details 严格遵守 L14-qbank.json 9 字段契约（additionalProperties: false）
+  const extraCounts = new Map<string, number>();
+  accumulateExtraCounts(queryDateCounts(host.main, FSRS_CARDS_REVIEWED_SQL, startDate, endDate), extraCounts);
+  accumulateExtraCounts(queryDateCounts(host.vfs, TODOS_COMPLETED_SQL, startDate, endDate), extraCounts);
+  accumulateExtraCounts(queryDateCounts(host.vfs, POMODOROS_COMPLETED_SQL, startDate, endDate), extraCounts);
+
   const studySeconds = new Map<string, number>();
   for (const [date, seconds] of queryDateCounts(host.vfs, STUDY_SECONDS_SQL, startDate, endDate)) {
     studySeconds.set(date, seconds);
@@ -104,7 +123,8 @@ export function getLearningHeatmap(host: HeatmapHost, startDate: string, endDate
   for (const [date, details] of daily) {
     const count = details.chatSessions + details.chatMessages + details.notesEdited
       + details.textbooksOpened + details.examsCreated + details.translationsCreated
-      + details.essaysCreated + details.ankiCardsCreated + details.questionsAnswered;
+      + details.essaysCreated + details.ankiCardsCreated + details.questionsAnswered
+      + (extraCounts.get(date) ?? 0);
     result.push({ date, count, details, studySeconds: studySeconds.get(date) ?? 0 });
   }
   result.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));

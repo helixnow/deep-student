@@ -4,8 +4,10 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  ArrowClockwise,
   ArrowCounterClockwise,
   CardsThree,
+  ChatCircleText,
   CheckCircle,
   Lightning,
   Play,
@@ -42,8 +44,16 @@ export interface SessionSummaryProps {
   onContinue?: () => void;
   /** 今日清零后前往卡片库挑选牌组或入队新卡的次级引导 */
   onOpenLibrary?: () => void;
+  /** 本轮标记「重来」(Again) 的遗忘卡张数（去重） */
+  againCount?: number;
+  /** 是否存在可立即重刷（未暂停）的遗忘卡 */
+  canRetryAgain?: boolean;
+  /** 一键把本轮遗忘卡重新组成巩固会话 */
+  onRetryAgain?: () => void;
+  /** 新开对话让 AI 梳理本轮遗忘卡难点 */
+  onAskAiAgain?: () => void;
   errorBanner?: React.ReactNode;
-  /** Mobile host already provides back, undo and resume. */
+  /** Mobile host already provides top-bar back, undo and resume. */
   hideChromeActions?: boolean;
 }
 
@@ -63,6 +73,10 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
   onBack,
   onContinue,
   onOpenLibrary,
+  againCount = 0,
+  canRetryAgain = false,
+  onRetryAgain,
+  onAskAiAgain,
   errorBanner,
   hideChromeActions = false,
 }) => {
@@ -70,6 +84,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
   // ratedCount>0 means a real session finished even if reconcile emptied the queue.
   const showSummary = ratedCount > 0;
   const showContinue = Boolean(onContinue) && remainingDue != null && remainingDue > 0;
+  const showAgainRescue = showSummary && againCount > 0 && Boolean((canRetryAgain && onRetryAgain) || onAskAiAgain);
   const maxCount = Math.max(1, ...DIST_ROWS.map(({ rating }) => ratingCounts[rating]));
   const passedCount = ratingCounts[2] + ratingCounts[3] + ratingCounts[4];
   const recallPct = ratedCount > 0 ? Math.round((passedCount / ratedCount) * 100) : 0;
@@ -156,7 +171,56 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center justify-center gap-2">
+      {showAgainRescue ? (
+        <div
+          className="flex w-full max-w-[22rem] flex-col gap-2 rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-3 text-left"
+          data-testid="fc-summary-again-rescue"
+        >
+          <p className="text-xs font-medium text-foreground">
+            {t('review.againRescueTitle', {
+              count: againCount,
+              defaultValue: '本轮有 {{count}} 张遗忘卡，趁热打铁巩固一下？',
+            })}
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {canRetryAgain && onRetryAgain ? (
+              <DsButton
+                type="button"
+                variant="primary"
+                size="sm"
+                disabled={busy}
+                onClick={onRetryAgain}
+                data-testid="fc-summary-retry-again"
+                className="flex-1 justify-center min-h-[36px] active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
+              >
+                <ArrowClockwise size={15} />
+                {t('review.retryAgainCards', {
+                  count: againCount,
+                  defaultValue: '再刷一遍遗忘卡（{{count}}）',
+                })}
+              </DsButton>
+            ) : null}
+            {onAskAiAgain ? (
+              <DsButton
+                type="button"
+                variant="default"
+                size="sm"
+                disabled={busy}
+                onClick={onAskAiAgain}
+                data-testid="fc-summary-ask-ai"
+                className="flex-1 justify-center min-h-[36px] active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
+              >
+                <ChatCircleText size={15} />
+                {t('review.askAiAgainCards', {
+                  defaultValue: '让 AI 梳理本轮难点',
+                })}
+              </DsButton>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex w-full max-w-[22rem] flex-wrap items-center justify-center gap-2 sm:w-auto sm:max-w-none">
         {canUndo && !hideChromeActions ? (
           <DsButton
             type="button"
@@ -165,7 +229,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
             aria-keyshortcuts="Z"
             disabled={busy}
             onClick={onUndo}
-            className="active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
+            className="min-h-[36px] active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
           >
             <ArrowCounterClockwise size={16} />
             <span>{t('session.undo')}</span>
@@ -178,7 +242,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
             variant="default"
             disabled={busy}
             onClick={onResume}
-            className="active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
+            className="min-h-[36px] active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
           >
             <Play size={16} />
             {t('session.resume')}
@@ -190,32 +254,34 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
             variant="primary"
             disabled={busy}
             onClick={onContinue}
-            className="active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
+            className="min-h-[36px] flex-1 justify-center sm:flex-initial active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
           >
             <Play size={16} />
             {t('session.continueReview', { count: remainingDue })}
           </DsButton>
-        ) : !hideChromeActions && onOpenLibrary ? (
+        ) : null}
+        {onOpenLibrary ? (
           <DsButton
             type="button"
             variant="default"
             disabled={busy}
             onClick={onOpenLibrary}
             data-testid="fc-summary-open-library"
-            className="active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
+            className="min-h-[36px] flex-1 justify-center sm:flex-initial active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
           >
             <CardsThree size={16} />
             {t('today.goLibrary')}
           </DsButton>
         ) : null}
-        {!hideChromeActions && <DsButton
+        <DsButton
           type="button"
-          variant={showContinue ? 'default' : 'primary'}
+          variant={showContinue || showAgainRescue ? 'default' : 'primary'}
           onClick={onBack}
-          className="active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
+          data-testid="fc-summary-back-today"
+          className="min-h-[36px] flex-1 justify-center sm:flex-initial active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
         >
           {t('session.backToday')}
-        </DsButton>}
+        </DsButton>
       </div>
       {errorBanner}
       </div>

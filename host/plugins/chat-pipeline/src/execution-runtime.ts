@@ -322,6 +322,10 @@ export function composeExecution(input: ExecutionCompositionInput): ExecutionDep
       log.debug(`[ChatV2::pipeline] Incremented refs for ${ids.length} resources in vfs.db: ${JSON.stringify(ids.slice(0, 3))}`);
     },
     triggerAutoMemoryExtraction(execution) {
+      if (execution.cancellationToken?.()?.aborted) {
+        log.debug('[AutoMemory] Turn cancelled, skipping auto-extraction');
+        return;
+      }
       if (execution.options.autoMemoryExtraction === false) {
         log.debug('[AutoMemory] Auto-extraction disabled for this turn, skipping');
         return;

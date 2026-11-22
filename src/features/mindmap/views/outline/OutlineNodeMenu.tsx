@@ -1,5 +1,5 @@
 /**
- * 大纲行「⋯」菜单：结构操作 / 文本格式 / 颜色 / 剪贴板 / 折叠 / 删除。
+ * 大纲行「⋯」菜单：结构操作 / 文本格式 / 颜色 / 学习与 AI / 剪贴板 / 折叠 / 删除。
  * 快捷键文案随当前 keymap 与平台变化；删除为菜单内两段式内联确认（无弹窗）。
  *
  * 缩进 / 反缩进 / 上移 / 下移与键盘快捷键共用 runOutlineStructureAction，
@@ -7,7 +7,7 @@
  * 进入多选模式（桌面用 Shift/⌘ 单击，入口不显示）。
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   CaretRight,
@@ -38,6 +38,11 @@ import {
   ArrowUp,
   ArrowDown,
   ListChecks,
+  Cards,
+  EyeSlash,
+  Article,
+  Quotes,
+  Sparkle,
 } from '@phosphor-icons/react';
 import {
   AppMenu,
@@ -47,12 +52,17 @@ import {
   AppMenuSeparator,
 } from '@/components/ui/app-menu';
 import { DsButton } from '@/components/ui/DsButton';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
 import { useMindMapStore, useMindMapStoreApi } from '../../store';
 import type { MindMapNode } from '../../types';
 import type { MindMapKeymap } from '../../utils/mindmapPreferences';
-import { QUICK_TEXT_COLORS, QUICK_BG_COLORS } from '../../constants';
+import { getQuickTextColors, getQuickBgColors } from '../../constants';
+import { useMindMapDarkMode } from '../../hooks/useMindMapTheme';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
+import { exportMindMapSelectionToHandoutNote } from '../../interop/handoutExport';
+import { serializeNodesToOutlineText } from '../../utils/node/outlineText';
 import { getOutlineShortcutLabels, useOutlineStoreActions } from './outlineShared';
 import {
   OUTLINE_STRUCTURE_FLAG,
@@ -84,6 +94,10 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
   onEnterSelectMode,
 }) => {
   const { t } = useTranslation('mindmap');
+  const isDark = useMindMapDarkMode();
+  const quickTextColors = useMemo(() => getQuickTextColors(isDark), [isDark]);
+  const quickBgColors = useMemo(() => getQuickBgColors(isDark), [isDark]);
+
   const {
     updateNode,
     addNode,
@@ -94,11 +108,17 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
     cutNodes,
     pasteNodes,
   } = useOutlineStoreActions();
-  const hasClipboard = useMindMapStore(state => !!state.clipboard);
+  const hasClipboard = useMindMapStore((state) => !!state.clipboard);
+  const toggleNodeFlashcard = useMindMapStore((state) => state.toggleNodeFlashcard);
+  const blankBranchNodes = useMindMapStore((state) => state.blankBranchNodes);
+  const mindmapId = useMindMapStore((state) => state.mindmapId);
+  const mapTitle = useMindMapStore((state) => state.metadata?.title);
+  const rootTitle = useMindMapStore((state) => state.document.root.text);
 
   const isTaskNode = node.completed !== undefined;
   const hasChildren = !!node.children && node.children.length > 0;
   const isCollapsed = !!node.collapsed;
+  const isFlashcard = node.isFlashcard === true;
   const shortcuts = getOutlineShortcutLabels(keymap);
 
   const isCoarsePointer = useCoarsePointer();
@@ -107,7 +127,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
   // 受控开合：进入删除确认态时拦截 AppMenuItem 的自动关闭，菜单保持打开
   const [open, setOpen] = useState(false);
   // 结构操作可用性：仅菜单打开时按实时树计算（关闭时恒 0，不给每行增加遍历开销）
-  const structureFlags = useMindMapStore(state =>
+  const structureFlags = useMindMapStore((state) =>
     open ? getOutlineStructureFlags(state.document.root, node.id) : 0,
   );
   const runStructure = (action: OutlineStructureAction) =>
@@ -127,6 +147,69 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
     return () => window.clearTimeout(timer);
   }, [confirmingDelete]);
 
+  const handleBlankBranch = useCallback(() => {
+    const count = blankBranchNodes(node.id);
+    if (count > 0) {
+      showGlobalNotification('success', t('recite.blankBranchDone', { count }));
+    }
+  }, [blankBranchNodes, node.id, t]);
+
+  const handleExportHandout = useCallback(() => {
+    void exportMindMapSelectionToHandoutNote({
+      nodes: [node],
+      mindmapId,
+      mindmapTitle: rootTitle,
+      defaultNoteSuffix: t('mn5.exportHandoutSuffix'),
+    })
+      .then((outcome) => {
+        showGlobalNotification(
+          'success',
+          t('mn5.exportHandoutSuccess', { title: outcome.noteTitle }),
+        );
+      })
+      .catch((err) => {
+        showGlobalNotification(
+          'error',
+          t('mn5.exportHandoutFailed', { error: getErrorMessage(err) }),
+        );
+      });
+  }, [mindmapId, node, rootTitle, t]);
+
+  const sendNodeToChat = useCallback(
+    (promptPrefix?: string) => {
+      if (!mindmapId) return;
+      const outlineText = serializeNodesToOutlineText([node]);
+      const text = promptPrefix ? `${promptPrefix}\n${outlineText}` : outlineText;
+      void import('@/features/chat/context/selectionRef').then(({ selectionToChat }) =>
+        selectionToChat({
+          text,
+          source: {
+            kind: 'mindmap',
+            sourceId: mindmapId,
+            locator: `node:${node.id}`,
+            title: mapTitle || undefined,
+          },
+        }),
+      );
+    },
+    [mapTitle, mindmapId, node],
+  );
+
+  const handleAiNodeAction = useCallback(
+    (action: 'expand' | 'summarize', fallbackPrompt: string) => {
+      if (typeof window !== 'undefined') {
+        const aiEvent = new CustomEvent('mindmap:ai-action', {
+          cancelable: true,
+          detail: { action, nodeId: node.id, mindmapId },
+        });
+        window.dispatchEvent(aiEvent);
+        if (aiEvent.defaultPrevented) return;
+      }
+      sendNodeToChat(fallbackPrompt);
+    },
+    [mindmapId, node.id, sendNodeToChat],
+  );
+
   return (
     <AppMenu
       open={open}
@@ -140,14 +223,15 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
       }}
     >
       <AppMenuTrigger asChild>
-        <DsButton variant="ghost"
+        <DsButton
+          variant="ghost"
           className="action-btn"
           onClick={(e) => e.stopPropagation()}
         >
           <DotsThree size={16} />
         </DsButton>
       </AppMenuTrigger>
-      <AppMenuContent align="end" className="min-w-[180px]">
+      <AppMenuContent align="end" className="min-w-[196px]">
         <AppMenuItem
           icon={<Plus className="w-4 h-4" />}
           shortcut={shortcuts.addChild}
@@ -233,9 +317,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
         {isTaskNode ? (
           <>
             <AppMenuItem
-              icon={node.completed
-                ? <Circle size={16} />
-                : <CheckCircle size={16} />}
+              icon={node.completed ? <Circle size={16} /> : <CheckCircle size={16} />}
               shortcut={shortcuts.toggleComplete}
               onClick={() => updateNode(node.id, { completed: !node.completed })}
             >
@@ -256,65 +338,216 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
             {t('mindmap:outline.convertToTask', { defaultValue: '转为任务' })}
           </AppMenuItem>
         )}
-        {/* 文本格式 B / I / U / S；coarse 下按钮放大到 44px，允许换行防溢出（菜单 max-w 280px） */}
+
+        {/* 学习与 AI 动作：与导图画布对齐 */}
+        <AppMenuSeparator />
+        <AppMenuItem
+          icon={<Cards size={16} />}
+          onClick={() => toggleNodeFlashcard(node.id, !isFlashcard)}
+          data-testid="outline-menu-flashcard"
+        >
+          {t(isFlashcard ? 'mn5.unprojectFlashcard' : 'mn5.projectAsFlashcard', {
+            defaultValue: isFlashcard ? '取消投影闪卡' : '投影为闪卡',
+          })}
+        </AppMenuItem>
+        <AppMenuItem
+          icon={<EyeSlash size={16} />}
+          onClick={handleBlankBranch}
+          data-testid="outline-menu-blank-branch"
+        >
+          {t('recite.blankBranch', { defaultValue: '挖空整个分支' })}
+        </AppMenuItem>
+        <AppMenuItem
+          icon={<Article size={16} />}
+          onClick={handleExportHandout}
+          data-testid="outline-menu-export-handout"
+        >
+          {t('mn5.exportHandout', { defaultValue: '导出讲义笔记' })}
+        </AppMenuItem>
+        {mindmapId && (
+          <>
+            <AppMenuItem
+              icon={<Quotes size={16} />}
+              onClick={() => sendNodeToChat(undefined)}
+              data-testid="outline-menu-quote-chat"
+            >
+              {t('toolbar.quoteToChat', { defaultValue: '引用到 AI 对话' })}
+            </AppMenuItem>
+            <AppMenuItem
+              icon={<Sparkle size={16} />}
+              onClick={() =>
+                handleAiNodeAction(
+                  'expand',
+                  t('ai.expandPrompt', { defaultValue: '请围绕以下思维导图节点进行结构化扩写，补充关键子节点：' }),
+                )
+              }
+              data-testid="outline-menu-ai-expand"
+            >
+              {t('ai.expand', { defaultValue: 'AI 扩写' })}
+            </AppMenuItem>
+            <AppMenuItem
+              icon={<Sparkle size={16} />}
+              onClick={() =>
+                handleAiNodeAction(
+                  'summarize',
+                  t('ai.summarizePrompt', { defaultValue: '请提炼总结以下思维导图分支的核心要点：' }),
+                )
+              }
+              data-testid="outline-menu-ai-summarize"
+            >
+              {t('ai.summarize', { defaultValue: 'AI 总结' })}
+            </AppMenuItem>
+          </>
+        )}
+
+        <AppMenuSeparator />
+        {/* 文本格式 B / I / U / S；DsButton 内建 coarse ≥44px 触控命中 */}
         <div className="flex flex-wrap items-center gap-1 px-2 py-1">
-          <DsButton variant="ghost"
-            className={cn("w-7 h-7 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 flex items-center justify-center rounded", node.style?.fontWeight === 'bold' && "bg-accent")}
-            onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, fontWeight: node.style?.fontWeight === 'bold' ? undefined : 'bold' } }); }}
+          <DsButton
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'w-7 h-7 flex items-center justify-center rounded transition-colors motion-reduce:transition-none',
+              node.style?.fontWeight === 'bold' && 'bg-accent',
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              updateNode(node.id, {
+                style: { ...node.style, fontWeight: node.style?.fontWeight === 'bold' ? undefined : 'bold' },
+              });
+            }}
             title={t('contextMenu.bold')}
-          ><TextB size={16} /></DsButton>
-          <DsButton variant="ghost"
-            className={cn("w-7 h-7 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 flex items-center justify-center rounded", node.style?.fontStyle === 'italic' && "bg-accent")}
-            onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, fontStyle: node.style?.fontStyle === 'italic' ? undefined : 'italic' } }); }}
+          >
+            <TextB size={16} />
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'w-7 h-7 flex items-center justify-center rounded transition-colors motion-reduce:transition-none',
+              node.style?.fontStyle === 'italic' && 'bg-accent',
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              updateNode(node.id, {
+                style: { ...node.style, fontStyle: node.style?.fontStyle === 'italic' ? undefined : 'italic' },
+              });
+            }}
             title={t('contextMenu.italic')}
-          ><TextItalic size={16} /></DsButton>
-          <DsButton variant="ghost"
-            className={cn("w-7 h-7 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 flex items-center justify-center rounded", node.style?.textDecoration === 'underline' && "bg-accent")}
-            onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, textDecoration: node.style?.textDecoration === 'underline' ? undefined : 'underline' } }); }}
+          >
+            <TextItalic size={16} />
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'w-7 h-7 flex items-center justify-center rounded transition-colors motion-reduce:transition-none',
+              node.style?.textDecoration === 'underline' && 'bg-accent',
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              updateNode(node.id, {
+                style: {
+                  ...node.style,
+                  textDecoration: node.style?.textDecoration === 'underline' ? undefined : 'underline',
+                },
+              });
+            }}
             title={t('contextMenu.underline')}
-          ><TextUnderline size={16} /></DsButton>
-          <DsButton variant="ghost"
-            className={cn("w-7 h-7 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 flex items-center justify-center rounded", node.style?.textDecoration === 'line-through' && "bg-accent")}
-            onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, textDecoration: node.style?.textDecoration === 'line-through' ? undefined : 'line-through' } }); }}
+          >
+            <TextUnderline size={16} />
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'w-7 h-7 flex items-center justify-center rounded transition-colors motion-reduce:transition-none',
+              node.style?.textDecoration === 'line-through' && 'bg-accent',
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              updateNode(node.id, {
+                style: {
+                  ...node.style,
+                  textDecoration: node.style?.textDecoration === 'line-through' ? undefined : 'line-through',
+                },
+              });
+            }}
             title={t('contextMenu.strikethrough')}
-          ><TextStrikethrough size={16} /></DsButton>
+          >
+            <TextStrikethrough size={16} />
+          </DsButton>
           <div className="w-px h-4 bg-border mx-0.5" />
           {([['h1', TextHOne], ['h2', TextHTwo], ['h3', TextHThree]] as const).map(([level, Icon]) => (
-            <DsButton variant="ghost" key={level}
-              className={cn("w-7 h-7 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 flex items-center justify-center rounded", node.style?.headingLevel === level && "bg-accent")}
-              onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, headingLevel: node.style?.headingLevel === level ? undefined : level } }); }}
+            <DsButton
+              variant="ghost"
+              size="icon"
+              key={level}
+              className={cn(
+                'w-7 h-7 flex items-center justify-center rounded transition-colors motion-reduce:transition-none',
+                node.style?.headingLevel === level && 'bg-accent',
+              )}
+              onClick={(e) => {
+                e.stopPropagation();
+                updateNode(node.id, {
+                  style: {
+                    ...node.style,
+                    headingLevel: node.style?.headingLevel === level ? undefined : level,
+                  },
+                });
+              }}
               title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
-            ><Icon size={16} /></DsButton>
+            >
+              <Icon size={16} />
+            </DsButton>
           ))}
-          <DsButton variant="ghost"
-            className={cn("w-7 h-7 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 flex items-center justify-center rounded", !node.style?.headingLevel && "bg-accent")}
-            onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, headingLevel: undefined } }); }}
+          <DsButton
+            variant="ghost"
+            size="icon"
+            className={cn(
+              'w-7 h-7 flex items-center justify-center rounded transition-colors motion-reduce:transition-none',
+              !node.style?.headingLevel && 'bg-accent',
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              updateNode(node.id, { style: { ...node.style, headingLevel: undefined } });
+            }}
             title={t('contextMenu.normalText')}
-          ><TextT size={16} /></DsButton>
+          >
+            <TextT size={16} />
+          </DsButton>
         </div>
+
         <AppMenuSeparator />
+        {/* 暗色自适应文字色板 */}
         <div className="flex items-center gap-2 px-2 pt-1.5 pb-0.5 text-[13px] text-muted-foreground select-none">
           <Palette size={16} className="flex-shrink-0" />
           <span>{t('contextMenu.textColor')}</span>
         </div>
         <div className="flex flex-wrap items-center gap-1 [@media(pointer:coarse)]:gap-3 px-2 py-1.5">
-          {QUICK_TEXT_COLORS.map(color => (
-            <DsButton variant="ghost"
+          {quickTextColors.map((color) => (
+            <DsButton
+              variant="ghost"
               key={color}
               className={cn(
-                "relative w-[18px] h-[18px] rounded-full border-2 transition-transform hover:scale-125 flex-shrink-0",
+                'relative w-[18px] h-[18px] rounded-full border-2 transition-colors motion-reduce:transition-none flex-shrink-0',
                 "[@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']",
-                node.style?.textColor === color ? "border-primary scale-110" : "border-transparent"
+                node.style?.textColor === color
+                  ? 'border-primary ring-2 ring-primary/60 ring-offset-1 ring-offset-[var(--menu-shell-surface)]'
+                  : 'border-transparent hover:border-[var(--mm-text-secondary)] hover:ring-2 hover:ring-[var(--mm-border-strong)]',
               )}
               style={{ backgroundColor: color }}
+              aria-label={t('contextMenu.selectColor', { color, defaultValue: `选择颜色 ${color}` })}
               onClick={(e) => {
                 e.stopPropagation();
                 updateNode(node.id, { style: { ...node.style, textColor: color } });
               }}
             />
           ))}
-          <DsButton variant="ghost"
-            className="relative w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+          <DsButton
+            variant="ghost"
+            className="relative w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors motion-reduce:transition-none flex-shrink-0 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+            aria-label={t('contextMenu.clearColor', { defaultValue: '清除颜色' })}
             onClick={(e) => {
               e.stopPropagation();
               updateNode(node.id, { style: { ...node.style, textColor: undefined } });
@@ -323,28 +556,36 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
             <X className="w-2.5 h-2.5" />
           </DsButton>
         </div>
+
+        {/* 暗色自适应高亮背景色板 */}
         <div className="flex items-center gap-2 px-2 pt-1.5 pb-0.5 text-[13px] text-muted-foreground select-none">
           <Highlighter size={16} className="flex-shrink-0" />
           <span>{t('contextMenu.highlight')}</span>
         </div>
         <div className="flex flex-wrap items-center gap-1 [@media(pointer:coarse)]:gap-3 px-2 py-1.5">
-          {QUICK_BG_COLORS.map(color => (
-            <DsButton variant="ghost"
+          {quickBgColors.map((color) => (
+            <DsButton
+              variant="ghost"
               key={color}
               className={cn(
-                "relative w-[18px] h-[18px] rounded-full border-2 transition-transform hover:scale-125 flex-shrink-0",
+                'relative w-[18px] h-[18px] rounded-full border-2 transition-colors motion-reduce:transition-none flex-shrink-0',
                 "[@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']",
-                node.style?.bgColor === color ? "border-primary scale-110" : "border-transparent"
+                node.style?.bgColor === color
+                  ? 'border-primary ring-2 ring-primary/60 ring-offset-1 ring-offset-[var(--menu-shell-surface)]'
+                  : 'border-transparent hover:border-[var(--mm-text-secondary)] hover:ring-2 hover:ring-[var(--mm-border-strong)]',
               )}
               style={{ backgroundColor: color }}
+              aria-label={t('contextMenu.selectColor', { color, defaultValue: `选择颜色 ${color}` })}
               onClick={(e) => {
                 e.stopPropagation();
                 updateNode(node.id, { style: { ...node.style, bgColor: color } });
               }}
             />
           ))}
-          <DsButton variant="ghost"
-            className="relative w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+          <DsButton
+            variant="ghost"
+            className="relative w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors motion-reduce:transition-none flex-shrink-0 [@media(pointer:coarse)]:!w-6 [@media(pointer:coarse)]:!h-6 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-2.5 [@media(pointer:coarse)]:after:content-['']"
+            aria-label={t('contextMenu.clearColor', { defaultValue: '清除颜色' })}
             onClick={(e) => {
               e.stopPropagation();
               updateNode(node.id, { style: { ...node.style, bgColor: undefined } });
@@ -353,6 +594,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
             <X className="w-2.5 h-2.5" />
           </DsButton>
         </div>
+
         <AppMenuSeparator />
         <AppMenuItem
           icon={<Copy className="w-4 h-4" />}
@@ -381,9 +623,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
           <>
             <AppMenuSeparator />
             <AppMenuItem
-              icon={isCollapsed
-                ? <CaretRight size={16} />
-                : <CaretDown size={16} />}
+              icon={isCollapsed ? <CaretRight size={16} /> : <CaretDown size={16} />}
               shortcut={isCollapsed ? shortcuts.expand : shortcuts.collapse}
               onClick={() => toggleCollapse(node.id)}
             >
@@ -399,7 +639,6 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
                 className="flex items-center gap-1.5 px-2 py-1.5"
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') {
-                    // 只收回确认条，不关整个菜单
                     e.preventDefault();
                     e.stopPropagation();
                     setConfirmingDelete(false);

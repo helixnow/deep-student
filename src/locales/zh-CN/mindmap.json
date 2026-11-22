@@ -8,7 +8,8 @@
     "addChild": "添加子节点",
     "delete": "删除",
     "collapse": "折叠",
-    "expand": "展开"
+    "expand": "展开",
+    "close": "关闭"
   },
   "placeholder": {
     "root": "中心主题",
@@ -58,7 +59,10 @@
     "unsaved": "未保存",
     "saveShortcut": "保存 (Cmd+S)",
     "undoDisabled": "没有可撤销的操作",
-    "redoDisabled": "没有可重做的操作"
+    "redoDisabled": "没有可重做的操作",
+    "masteryOverlay": "掌握度",
+    "masteryOverlayHint": "显示 FSRS 记忆与背诵掌握度热力",
+    "quoteToChat": "引用到 AI 对话"
   },
   "preferences": {
     "classicKeymap": "经典大纲键位",
@@ -123,12 +127,19 @@
     "imagePlaceholderNote_one": "[图片占位] 原主题包含 {{count}} 张图片，未能随导入嵌入（缺少资源或超出内嵌大小限制）",
     "imagePlaceholderNote_other": "[图片占位] 原主题包含 {{count}} 张图片，未能随导入嵌入（缺少资源或超出内嵌大小限制）",
     "importing": "正在导入导图，请稍候…",
-    "saveAndImport": "保存并导入"
+    "saveAndImport": "保存并导入",
+    "reportTitle": "导入完成（含兼容提示）"
   },
   "presentation": {
     "enter": "演示模式",
     "exit": "退出演示模式",
-    "exitHint": "退出演示模式 (Esc)"
+    "exitHint": "退出演示模式 (Esc)",
+    "hudLabel": "分支演示控制栏",
+    "overview": "总览",
+    "overviewHint": "返回全图总览 (Home)",
+    "prevBranch": "上一分支 (←)",
+    "nextBranch": "下一分支 (→ / Space)",
+    "exitShort": "退出"
   },
   "loading": "正在加载思维导图...",
   "loadFailed": "思维导图加载失败",
@@ -315,7 +326,19 @@
     "bgColor": "背景颜色",
     "globalTheme": "全局主题",
     "currentNodeStyle": "当前节点样式",
-    "selectNodeHint": "选中节点以自定义样式"
+    "selectNodeHint": "选中节点以自定义样式",
+    "fontSize": "字号",
+    "selectedCount": "已选 {{count}} 项",
+    "nodeAttributes": "节点属性",
+    "priority": "优先级",
+    "clearPriority": "清除优先级",
+    "progress": "完成进度",
+    "clearProgress": "清除进度",
+    "hyperlink": "超链接",
+    "invalidHref": "请输入有效的 http/https/mailto 链接",
+    "showCheckbox": "待办勾选框",
+    "checkboxOn": "已开启",
+    "checkboxOff": "关闭"
   },
   "outline": {
     "dragToMove": "拖拽移动",
@@ -396,7 +419,26 @@
     "exitFocusMode": "退出专注模式",
     "paneMenuLabel": "画布菜单",
     "nodeMenuLabel": "节点菜单",
-    "textStyleGroup": "文本样式"
+    "textStyleGroup": "文本样式",
+    "addHref": "添加超链接",
+    "editHref": "编辑超链接",
+    "clearHref": "清除",
+    "hrefInputLabel": "超链接地址",
+    "invalidHref": "请输入有效的 http/https/mailto 链接",
+    "priority": "优先级",
+    "clearPriority": "清除优先级",
+    "progress": "完成进度",
+    "clearProgress": "清除进度",
+    "toggleCheckbox": "显示待办勾选框",
+    "aiAssistant": "AI 助手",
+    "aiExpand": "AI 扩写子节点",
+    "aiExpandPrompt": "请为以下思维导图知识点扩写子节点：",
+    "aiSummarize": "AI 总结当前分支",
+    "aiSummarizePrompt": "请总结以下思维导图分支的核心要点：",
+    "aiCloze": "AI 智能生成挖空",
+    "aiClozePrompt": "请为以下知识点智能生成背诵挖空建议：",
+    "aiAsk": "追问当前知识点",
+    "aiAskPrompt": "请深入讲解以下知识点："
   },
   "association": {
     "add": "添加关联线",
@@ -431,7 +473,8 @@
     "priorityBadge": "优先级 {{level}}",
     "progressLabel": "进度 {{percent}}%",
     "toggleComplete": "切换完成状态",
-    "imageAlt": "节点图片"
+    "imageAlt": "节点图片",
+    "previewImage": "放大预览图片：{{name}}"
   },
   "sheets": {
     "switcherLabel": "切换 Sheet",
@@ -471,7 +514,9 @@
     "deleteWithChildrenQuestion": "同时删除 {{count}} 个子主题？",
     "confirmDelete": "删除",
     "cancel": "取消",
-    "tapAgainToDelete": "再点确认"
+    "tapAgainToDelete": "再点确认",
+    "deleteSelectedNodesQuestion": "确定删除选中的 {{count}} 个节点？",
+    "zoomResetTooltipDetail": "当前缩放；点击恢复 100%（{{fitShortcut}} 适应画布）"
   },
   "recite": {
     "title": "背诵模式",
@@ -510,13 +555,18 @@
     "missCardsDone_other": "已把 {{count}} 张卡片加入复习",
     "missCardsFailed": "没能做成卡片：{{error}}",
     "missCardsDeck": "导图背诵",
-    "missCardsTag": "导图背诵"
+    "missCardsTag": "导图背诵",
+    "blankBranchDone": "已为 {{count}} 个节点生成挖空",
+    "clearBranchBlanksDone": "已清除 {{count}} 个节点的挖空",
+    "missCards": "错题转卡 ({{count}})",
+    "missCardsDone": "已将 {{count}} 张错题转入闪卡库"
   },
   "errors": {
     "notFound": "未找到思维导图"
   },
   "clipboard": {
-    "pasteParseFailed": "粘贴内容过大或层级过深，无法解析"
+    "pasteParseFailed": "粘贴内容过大或层级过深，无法解析",
+    "empty": "剪贴板为空"
   },
   "menu": {
     "groupData": "数据",
@@ -551,7 +601,9 @@
       "copiedNodes_one": "已复制 {{count}} 个节点",
       "copiedNodes_other": "已复制 {{count}} 个节点",
       "cutNodes_one": "已剪切 {{count}} 个节点",
-      "cutNodes_other": "已剪切 {{count}} 个节点"
+      "cutNodes_other": "已剪切 {{count}} 个节点",
+      "copiedNodes": "已复制 {{count}} 个节点",
+      "cutNodes": "已剪切 {{count}} 个节点"
     },
     "embed": {
       "retry": "重试"
@@ -678,5 +730,23 @@
     "exportHandoutSuffix": "精读讲义",
     "exportHandoutSuccess": "已生成精读讲义《{{title}}》",
     "exportHandoutFailed": "生成精读讲义失败：{{error}}"
+  },
+  "ai": {
+    "label": "AI",
+    "quickActions": "AI 扩写/总结",
+    "expand": "AI 扩写",
+    "expandPrompt": "请围绕以下思维导图节点进行结构化扩写，补充关键子节点：",
+    "summarize": "AI 总结",
+    "summarizePrompt": "请提炼总结以下思维导图分支的核心要点：",
+    "actionDispatched": "已将节点上下文与指令预填至 AI 对话",
+    "actionFailed": "发起 AI 操作失败：{{error}}",
+    "nodeNotFound": "未找到目标节点，无法发起 AI 操作",
+    "promptExpand": "请针对思维导图「{{mapTitle}}」中的节点「{{nodeText}}」（nodeId: {{nodeId}}）进行结构化扩写，直接在该节点下补充 3–5 个关键子节点。",
+    "promptSummarize": "请针对思维导图「{{mapTitle}}」中的节点「{{nodeText}}」（nodeId: {{nodeId}}）及其子树提炼核心要点与结构化总结。",
+    "promptCloze": "请针对思维导图「{{mapTitle}}」中的节点「{{nodeText}}」（nodeId: {{nodeId}}）及其子树，智能识别关键概念并生成背诵挖空建议。",
+    "promptAsk": "请深入讲解思维导图「{{mapTitle}}」中的知识点「{{nodeText}}」（nodeId: {{nodeId}}），结合核心原理、直观例子与易错点说明。"
+  },
+  "common": {
+    "save": "保存"
   }
 }

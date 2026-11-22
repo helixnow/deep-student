@@ -9,7 +9,7 @@
 import i18next from 'i18next';
 import type { Node as ProseNode } from '@milkdown/prose/model';
 import type { EditorView, NodeView } from '@milkdown/prose/view';
-import { $view } from '@milkdown/utils';
+import { $view } from '@milkdown/kit/utils';
 
 import { wikilinkSchema, WIKILINK_NODE_NAME } from './schema';
 import { splitWikiLinkTarget } from './format';
@@ -95,13 +95,20 @@ function createWikilinkView(
       if (ambiguous) dom.setAttribute('data-ambiguous', 'true');
       else dom.removeAttribute('data-ambiguous');
       dom.textContent = displayText(n);
-      dom.title = ambiguous
-        ? i18next.t('notes:wikilink.ambiguousTitle', {
+      if (ambiguous) {
+        dom.title = i18next.t('notes:wikilink.ambiguousTitle', {
           defaultValue: '「{{target}}」命中 {{count}} 篇同名笔记，点击选择',
           target: noteTarget,
           count: resolution.candidateIds?.length ?? 0,
-        })
-        : target;
+        });
+      } else if (!resolution.resolved) {
+        dom.title = i18next.t('notes:wikilink.unresolvedTitle', {
+          defaultValue: '「{{target}}」尚未创建，点击新建笔记',
+          target: noteTarget,
+        });
+      } else {
+        dom.title = target;
+      }
     };
 
     apply(node);
@@ -148,7 +155,7 @@ function createWikilinkView(
       if (!changedTarget || changedTarget === nodeTarget) apply(node);
     };
 
-    const onMouseEnter = () => {
+    const onMouseEnter = (event: MouseEvent) => {
       const target = (node.attrs.target as string) || '';
       const { noteTarget } = splitWikiLinkTarget(target);
       if (!noteTarget) return;
@@ -157,6 +164,7 @@ function createWikilinkView(
       if (!resolution.resolved || resolution.ambiguous || !resolution.noteId) return;
       scheduleWikilinkPreview(dom, resolution.noteId, displayText(node) || noteTarget, {
         meta: previewMetaFor(config.getNotes, resolution.noteId),
+        immediate: event.metaKey || event.ctrlKey,
       });
     };
 

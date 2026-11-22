@@ -23,6 +23,7 @@ import {
   createImageBlockConfig,
   createImageUploader,
   createTransientBlobUrlRegistry,
+  pickImageWithTauriDialog,
 } from '../imageUpload';
 
 describe('createImageUploader', () => {
@@ -177,5 +178,31 @@ describe('createImageUploader size limit (50MB, aligned with backend notes_save_
 
     expect(result).toBe('notes_assets/_global/note-1/photo.jpg');
     expect(notificationMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('pickImageWithTauriDialog browser / WebUI fallback', () => {
+  afterEach(() => {
+    delete (window as any).__TAURI_INTERNALS__;
+    delete (globalThis as any).__DS_WEBUI__;
+    document.querySelectorAll('input[type="file"]').forEach((el) => el.remove());
+  });
+
+  it('falls back to browser <input type="file" accept="image/*"> in WebUI / non-Tauri browser instead of returning null', async () => {
+    (window as any).__TAURI_INTERNALS__ = {};
+    (globalThis as any).__DS_WEBUI__ = true;
+    const picked = new File(['png'], 'diagram.png', { type: 'image/png' });
+    const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) {
+      expect(this.accept).toBe('image/*');
+      Object.defineProperty(this, 'files', { value: [picked], configurable: true });
+      this.dispatchEvent(new Event('change'));
+    });
+
+    try {
+      const file = await pickImageWithTauriDialog();
+      expect(file).toBe(picked);
+    } finally {
+      clickSpy.mockRestore();
+    }
   });
 });

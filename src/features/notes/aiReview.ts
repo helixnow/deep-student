@@ -18,11 +18,80 @@ import {
   persistAIReviewSession, removePersistedAIReview, type AIReviewRecoveryOption,
 } from './aiReviewPersistence';
 import { scopeAIReviewCandidate, type AIReviewHost, type AIReviewRequest, type AIReviewScope, type AIReviewLanding, type OfficialReviewControls, type OfficialReviewDecision } from './officialDiffContract';
+import { useWindowStore } from '@/features/workbench';
 
 type LocalRequest = AIReviewRequest & {
+  claimed?: boolean;
   onLocalDisposition?: (result: { accepted: true } | { accepted: false; reason: string }) => void;
   onSettled?: () => void;
 };
+
+interface ActiveReviewReceiver {
+  getOwner: () => {
+    noteId?: string | null;
+    editorApi: CrepeEditorApi | null;
+    enabled: boolean;
+    windowId?: string;
+  };
+  isMounted: () => boolean;
+}
+
+const activeReviewReceivers = new Set<ActiveReviewReceiver>();
+const claimedAsyncRequestIds = new Set<string>();
+
+function getWindowFocusRank(windowId?: string): number {
+  if (!windowId) return -1;
+  try {
+    return useWindowStore.getState().focusStack.indexOf(windowId);
+  } catch {
+    return -1;
+  }
+}
+
+function shouldReceiverHandleRequest(
+  self: ActiveReviewReceiver,
+  request: LocalRequest,
+): boolean {
+  const owner = self.getOwner();
+  if (!self.isMounted() || !owner.enabled || request.noteId !== owner.noteId) return false;
+  if (request.claimed) return false;
+  if (request.targetWindowId) return request.targetWindowId === owner.windowId;
+
+  const myReady = Boolean(owner.editorApi);
+  const myFocusRank = getWindowFocusRank(owner.windowId);
+  for (const other of activeReviewReceivers) {
+    if (other === self || !other.isMounted()) continue;
+    const otherOwner = other.getOwner();
+    if (!otherOwner.enabled || otherOwner.noteId !== request.noteId) continue;
+    const otherReady = Boolean(otherOwner.editorApi);
+    if (!myReady && otherReady) return false;
+    if (myReady === otherReady && getWindowFocusRank(otherOwner.windowId) > myFocusRank) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function tryClaimCanvasAIEditRequest(
+  self: ActiveReviewReceiver,
+  request: LocalRequest | null | undefined,
+  dedupeById: boolean,
+): request is LocalRequest {
+  if (!request?.requestId) return false;
+  if (!shouldReceiverHandleRequest(self, request)) return false;
+  const canMutate = !Object.isFrozen(request) && Object.isExtensible(request);
+  if (dedupeById || !canMutate) {
+    if (claimedAsyncRequestIds.has(request.requestId)) return false;
+    claimedAsyncRequestIds.add(request.requestId);
+    queueMicrotask(() => {
+      claimedAsyncRequestIds.delete(request.requestId);
+    });
+  }
+  if (canMutate) {
+    request.claimed = true;
+  }
+  return true;
+}
 const emptyState: AIEditState = { isActive: false, request: null, originalContent: '', proposedContent: '', diffLines: [] };
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 const report = async (result: CanvasAIEditResult) => {
@@ -256,16 +325,28 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
     if (!enabled) return;
     let disposed = false;
     let unlisten: (() => void) | undefined;
+    const receiver: ActiveReviewReceiver = {
+      getOwner: () => current.current,
+      isMounted: () => mounted.current,
+    };
+    activeReviewReceivers.add(receiver);
     const onRequest = (event: Event) => {
       const request = (event as CustomEvent<LocalRequest>).detail;
-      if (request?.requestId) void receive(request);
+      if (tryClaimCanvasAIEditRequest(receiver, request, false)) {
+        void receive(request);
+      }
     };
     window.addEventListener('canvas:ai-edit-request', onRequest);
-    void listen<LocalRequest>('canvas:ai-edit-request', (event) => { void receive(event.payload); })
+    void listen<LocalRequest>('canvas:ai-edit-request', (event) => {
+      if (tryClaimCanvasAIEditRequest(receiver, event.payload, true)) {
+        void receive(event.payload);
+      }
+    })
       .then((stop) => { if (disposed) stop(); else unlisten = stop; })
       .catch((error) => console.debug('[aiReview] listener unavailable', error));
     return () => {
       disposed = true;
+      activeReviewReceivers.delete(receiver);
       unlisten?.();
       window.removeEventListener('canvas:ai-edit-request', onRequest);
       // Keep candidate and decisions for reopen; closing a view is not a rejection.

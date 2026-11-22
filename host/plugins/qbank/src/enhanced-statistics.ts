@@ -10,6 +10,18 @@
 import { AppError } from '../../../platform/errors/api.ts';
 import type { FileStat, FilesService } from '../../../platform/files/api.ts';
 import { chronoRfc3339 } from '../../../platform/time/index.ts';
+import {
+  queryLearningStatistics,
+  type BasicLearningStatistics,
+  type EnhancedStatisticsDatabases,
+  type MonthlyTrendPoint,
+} from '../repository/enhanced-statistics.ts';
+
+export type {
+  BasicLearningStatistics,
+  EnhancedStatisticsDatabases,
+  MonthlyTrendPoint,
+} from '../repository/enhanced-statistics.ts';
 
 export type ImageStatisticsFiles = Pick<FilesService, 'exists' | 'readDir' | 'stat'>;
 
@@ -24,6 +36,11 @@ export interface ImageStatistics {
 export interface EnhancedStatistics {
   image_stats: ImageStatistics;
   timestamp: string;
+  basic_stats?: BasicLearningStatistics;
+  recent_additions?: number;
+  recent_growth?: number;
+  quality_score?: number;
+  monthly_trend?: MonthlyTrendPoint[];
 }
 
 function errorText(error: unknown): string {
@@ -100,10 +117,26 @@ export async function getImageStatistics(files: ImageStatisticsFiles, imagesDir:
   return stats;
 }
 
-/** `get_enhanced_statistics`：图片统计 + 响应时间戳。 */
-export async function getEnhancedStatistics(files: ImageStatisticsFiles, imagesDir: string): Promise<EnhancedStatistics> {
-  return {
+/** 聚合学习记录核心指标（对齐仪表盘 coreStats / coreCharts 字段口径）。 */
+export function computeLearningStatistics(
+  databases: EnhancedStatisticsDatabases,
+  now: Date = new Date(),
+): Pick<EnhancedStatistics, 'basic_stats' | 'recent_additions' | 'recent_growth' | 'quality_score' | 'monthly_trend'> {
+  return queryLearningStatistics(databases, now);
+}
+
+/** `get_enhanced_statistics`：图片统计 +（可选）数据库聚合学习统计 + 响应时间戳。 */
+export async function getEnhancedStatistics(
+  files: ImageStatisticsFiles,
+  imagesDir: string,
+  databases?: EnhancedStatisticsDatabases,
+): Promise<EnhancedStatistics> {
+  const base: EnhancedStatistics = {
     image_stats: await getImageStatistics(files, imagesDir),
     timestamp: chronoRfc3339(),
   };
+  if (databases && (databases.vfs || databases.main || databases.chatV2)) {
+    Object.assign(base, computeLearningStatistics(databases));
+  }
+  return base;
 }

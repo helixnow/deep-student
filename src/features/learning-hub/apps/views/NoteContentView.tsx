@@ -9,11 +9,12 @@ import { insertImageFromDevice, runEditorCommand } from '@/features/notes/mobile
  * 所有数据通过 DSTU 节点和 API 获取。
  */
 
-import React, { useEffect, useLayoutEffect, useState, useCallback, useMemo, useRef } from 'react';
+import React, { useEffect, useId, useLayoutEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretLeft, SidebarSimple, WarningCircle, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
+import { updateFocusModeOwners, type NotesFocusModeEventDetail } from '@/features/notes';
 import { invoke } from '@tauri-apps/api/core';
 import { noteNeedsColumnsWriter } from '@/features/notes/noteEditorHost';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
@@ -162,6 +163,9 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   onSaveStateChange,
   hostWindowId,
   propertiesPanelDisabled = false,
+  noteBreadcrumbs,
+  onNoteBreadcrumbClick,
+  suppressFloatingToc = false,
 }) => {
   const { t } = useTranslation(['notes', 'common']);
   const focusOnActiveRef = useRef(focusOnActive);
@@ -172,6 +176,20 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   isActiveRef.current = isActive;
   readOnlyRef.current = readOnly;
   onSaveStateChangeRef.current = onSaveStateChange;
+
+  // Fallback path-derived breadcrumbs when rendered outside NotesWorkspaceApp (e.g. standalone Learning Hub)
+  const resolvedBreadcrumbs = useMemo(() => {
+    if (noteBreadcrumbs !== undefined) return noteBreadcrumbs;
+    const rawSegments = node.path.split('/').filter(Boolean);
+    if (rawSegments.length <= 1) return undefined;
+    const folderSegments = rawSegments.slice(0, -1).filter((seg) => seg !== '__system__' && seg !== 'notes');
+    if (folderSegments.length === 0) return undefined;
+    let accum = '';
+    return folderSegments.map((seg) => {
+      accum += `/${seg}`;
+      return { id: accum, title: seg, type: 'folder' as const };
+    });
+  }, [noteBreadcrumbs, node.path]);
   // N-1: 与 App shell 的 <768 断点对齐（useIsMobile 为 min-width:768 的精确取反）
   const contentHostRef = useRef<HTMLDivElement>(null);
   const [contentWidth, setContentWidth] = useState(0);
@@ -181,9 +199,30 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const isSmallScreen = isViewportMobile;
   // 宽编辑面属性栏并排；窄编辑面（<900）属性栏改为右侧浮层抽屉，正文保持可编辑。
   const [rightPanelVisible, setRightPanelVisible] = useState(false);
+  // 专注模式期间收起独立 NoteContentView 的右侧属性/大纲栏
+  const fallbackFocusScopeId = useId();
+  const effectiveFocusScopeId = hostWindowId ?? fallbackFocusScopeId;
+  const focusModeOwnersRef = useRef<Set<string>>(new Set());
+  const [focusModeActive, setFocusModeActive] = useState(false);
+  useEffect(() => {
+    focusModeOwnersRef.current = new Set();
+    setFocusModeActive(false);
+    const handleFocusModeChanged = (event: Event) => {
+      const detail = (event as CustomEvent<NotesFocusModeEventDetail>).detail;
+      if (!detail || detail.scopeId !== effectiveFocusScopeId) return;
+      const normalizedDetail: NotesFocusModeEventDetail = detail.ownerId?.trim()
+        ? detail
+        : { ...detail, ownerId: '__default__' };
+      const next = updateFocusModeOwners(focusModeOwnersRef.current, normalizedDetail, effectiveFocusScopeId);
+      focusModeOwnersRef.current = next;
+      setFocusModeActive(next.size > 0);
+    };
+    window.addEventListener('notes:focus-mode-changed', handleFocusModeChanged);
+    return () => window.removeEventListener('notes:focus-mode-changed', handleFocusModeChanged);
+  }, [effectiveFocusScopeId]);
   // 移动端：上下文面板（大纲/标签）以 inline 子屏形式全屏呈现（移动端契约：禁用 Sheet/抽屉浮层）
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
-  const propertiesOverlay = !propertiesPanelDisabled && !isSmallScreen && rightPanelVisible && contentWidth > 0 && contentWidth < 900;
+  const propertiesOverlay = !propertiesPanelDisabled && !isSmallScreen && rightPanelVisible && !focusModeActive && contentWidth > 0 && contentWidth < 900;
   const propertiesReplaceEditor = !propertiesPanelDisabled && isSmallScreen && mobilePanelOpen;
   const editorInteractive = isActive && !propertiesReplaceEditor;
 
@@ -837,6 +876,13 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     }
   }, [node.id, node.path, readOnly, updateKnownBaseline]);
 
+  const isFocusAlreadyInsideHost = useCallback(() => {
+    if (typeof document === 'undefined') return false;
+    const active = document.activeElement;
+    const host = contentHostRef.current;
+    return Boolean(active && active !== document.body && active !== host && host?.contains(active));
+  }, []);
+
   // ★ 关键修复：onEditorReady 必须是稳定引用。
   // NotesCrepeEditor 在该 prop 变化时会先执行 cleanup 调用 onEditorReady(null)，
   // 之前的内联箭头函数导致每次重渲染（含每次自动保存回流 setContent）
@@ -847,15 +893,21 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     // RUST-FIX(RF-W09-new-note-title-focus-yield): the Tauri frontend focused the body here unconditionally
     const titleTakesFocus = !readOnlyRef.current && !fullContentRef.current.trim();
     if (api && focusOnActiveRef.current && isActiveRef.current && !titleTakesFocus) {
-      window.requestAnimationFrame(() => api.focus());
+      window.requestAnimationFrame(() => {
+        if (!isFocusAlreadyInsideHost()) api.focus();
+      });
     }
-  }, []);
+  }, [isFocusAlreadyInsideHost]);
 
   useEffect(() => {
     if (!focusOnActive || !isActive) return;
     const editor = editorApiRef.current;
-    if (editor) window.requestAnimationFrame(() => editor.focus());
-  }, [focusOnActive, isActive, node.id]);
+    if (editor) {
+      window.requestAnimationFrame(() => {
+        if (!isFocusAlreadyInsideHost()) editor.focus();
+      });
+    }
+  }, [focusOnActive, isActive, node.id, isFocusAlreadyInsideHost]);
 
   // Share full-document operations with toolbar, AI edits and the noteDriver registry.
   const extendEditorApi = useCallback((api: CrepeEditorApi): CrepeEditorApi => {
@@ -1144,9 +1196,12 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             onSaveStateChange={(state) => onSaveStateChangeRef.current?.(state)}
             tags={tags}
             onTagsChange={readOnly ? undefined : handleTagsChange}
+            breadcrumbs={resolvedBreadcrumbs}
+            onBreadcrumbClick={onNoteBreadcrumbClick}
+            suppressFloatingToc={suppressFloatingToc || (rightPanelVisible && !focusModeActive)}
             dirtyRegistryKey={{ typeId: 'note', instanceKey: node.id }}
             acrWindowId={hostWindowId}
-            focusModeScopeId={hostWindowId}
+            focusModeScopeId={effectiveFocusScopeId}
             windowingState={editorWindowingState}
             onRequestLoadMore={handleRequestLoadMore}
             onRetryLoadMore={handleRetryLoadMore}
@@ -1181,7 +1236,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         )}
       </div>
 
-      {!propertiesPanelDisabled && !isSmallScreen && rightPanelVisible && (
+      {!propertiesPanelDisabled && !isSmallScreen && rightPanelVisible && !focusModeActive && (
         <aside
           className={cn("notes-properties-panel min-w-0 flex flex-col overflow-hidden bg-background border-l border-[var(--notes-hairline,hsl(var(--border)))]",
             propertiesOverlay ? "notes-properties-panel--overlay absolute inset-y-0 right-0 z-30 w-[min(320px,100%)] shadow-[-8px_0_24px_hsl(var(--shadow-base)/0.12)]" : "w-72 shrink-0")}

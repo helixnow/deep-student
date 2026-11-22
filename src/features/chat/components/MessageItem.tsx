@@ -877,6 +877,70 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     startSaveAsNote({ content: text, origin: { kind: 'chat', sessionId: state.sessionId, messageId, title: state.title || undefined } });
   }, [startSaveAsNote, store, messageId]);
 
+  // 🆕 整条 AI 回复快捷沉淀：存为闪卡（复用 selectionCardGeneration / CardForge 管线）
+  const handleMakeCards = useCallback(async () => {
+    if (!message) return;
+    const text = extractMessageContent();
+    if (!text) {
+      showGlobalNotification('error', t('messageItem.actions.noContentToExport'));
+      return;
+    }
+    const sessionId = store.getState().sessionId;
+    await generateCardsFromSelection({
+      selectedText: text,
+      sessionId,
+      t,
+    });
+  }, [message, extractMessageContent, store, t]);
+
+  // 🆕 整条 AI 回复快捷沉淀：创建待办（写入默认收件箱并支持跳转查看）
+  const handleCreateTodo = useCallback(async () => {
+    if (!message) return;
+    const text = extractMessageContent();
+    if (!text) {
+      showGlobalNotification('error', t('messageItem.actions.noContentToExport'));
+      return;
+    }
+    const title = extractNoteTitle(text);
+    const description = text.length > 1200 ? `${text.slice(0, 1200)}…` : text;
+    try {
+      const { useTodoStore, ensureInbox, openTodoItem } = await import('@/features/todo');
+      const todoState = useTodoStore.getState();
+      let targetListId =
+        todoState.lists.find((list) => list.isDefault)?.id ?? todoState.lists[0]?.id;
+      if (!targetListId) {
+        const inbox = await ensureInbox(t('todo:views.inbox', { defaultValue: '收集箱' }));
+        targetListId = inbox.id;
+      }
+      const created = await todoState.createItem({
+        todoListId: targetListId,
+        title,
+        description,
+      });
+      showGlobalNotification(
+        'success',
+        t('messageItem.actions.createTodoSuccess', { defaultValue: '已添加到待办' }),
+        undefined,
+        {
+          action: {
+            label: t('messageItem.actions.openTodo', { defaultValue: '查看待办' }),
+            onClick: () => {
+              void openTodoItem(created.id);
+            },
+          },
+          borderTone: 'neutral',
+        },
+      );
+    } catch (error: unknown) {
+      console.error('[MessageItem] Create todo failed:', error);
+      showGlobalNotification(
+        'error',
+        getErrorMessage(error),
+        t('messageItem.actions.createTodoFailed', { defaultValue: '创建待办失败' }),
+      );
+    }
+  }, [message, extractMessageContent, extractNoteTitle, t]);
+
   // 🆕 会话分支：从此消息处创建新会话（统一走 store.branchSession，见 branchFromMessage）
   const isBranchingRef = useRef(false);
   const handleBranch = useCallback(async () => {
@@ -1095,6 +1159,24 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                       return (
                         <div className="chat-fade-in">
                           <ThinkingIndicator />
+                        </div>
+                      );
+                    }
+
+                    // 中途停止生成且尚无内容块时，显示明确「已取消生成」提示，避免只剩空壳气泡
+                    if (
+                      blocks.length === 0 &&
+                      sessionStatus !== 'streaming' &&
+                      !hasZeroOutputFailure &&
+                      (activeVariant?.status === 'cancelled' || variants.length === 0)
+                    ) {
+                      return (
+                        <div
+                          className="chat-message-status py-1 text-xs text-muted-foreground"
+                          role="status"
+                          data-testid="chat-message-stopped"
+                        >
+                          {t('stream.cancelled', '已取消生成')}
                         </div>
                       );
                     }
@@ -1393,6 +1475,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     {!isMultiVariant && (
                       <MessageActions
                         messageId={messageId}
+                        sessionId={storeSessionId}
+                        getMessageContent={extractMessageContent}
                         isUser={isUser}
                         isLocked={isLocked}
                         canEdit={canEdit}
@@ -1405,6 +1489,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onEdit={isUser && !isReadOnlySession ? handleEdit : undefined}
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
+                        onMakeCards={!isUser ? handleMakeCards : undefined}
+                        onCreateTodo={!isUser ? handleCreateTodo : undefined}
                         onExportMarkdown={!isUser ? handleExportMarkdown : undefined}
                         onToggleReading={hasReadableContent ? toggleReading : undefined}
                         reading={reading}
@@ -1482,6 +1568,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     {!isMultiVariant && (
                       <MessageActions
                         messageId={messageId}
+                        sessionId={storeSessionId}
+                        getMessageContent={extractMessageContent}
                         isUser={isUser}
                         isLocked={isLocked}
                         canEdit={canEdit}
@@ -1493,6 +1581,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onEdit={isUser && !isReadOnlySession ? handleEdit : undefined}
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
+                        onMakeCards={!isUser ? handleMakeCards : undefined}
+                        onCreateTodo={!isUser ? handleCreateTodo : undefined}
                         onExportMarkdown={!isUser ? handleExportMarkdown : undefined}
                         onToggleReading={hasReadableContent ? toggleReading : undefined}
                         reading={reading}
@@ -1584,6 +1674,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
               onCopy={handleCopy}
               onEdit={isUser && !isReadOnlySession ? handleEdit : undefined}
               onRetry={!isUser && !isReadOnlySession ? handleRetry : undefined}
+              onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
               onDelete={handleDelete}
               onClose={closeTouchBar}
             />
@@ -1607,6 +1698,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
         onAddAsContext={isReadOnlySession ? undefined : handleSelectionAddAsContext}
         onMakeCards={handleSelectionMakeCards}
         onSaveAsNote={handleSelectionSaveAsNote}
+        // 移动端为底部输入栏预留避让高度，防止下半屏划词条被输入栏遮挡
+        viewportBottomInset={isSmallScreen ? 110 : 0}
         // P0 复审修复：旧「添加到聊天」纯文本预填已由「引用到聊天」（onAddAsContext）
         // 取代，onAddToChat 不再传入——隐藏未接线动作，避免永久 disabled 的死按钮
         hideUnavailableActions

@@ -2012,4 +2012,171 @@ describe('crates/dstu-anki/src/apkg_importer_service.rs::tests', () => {
     // 说明：Rust 版 smoke 还覆盖 FSRS due/rate、library 分页与 retemplate；
     // 这些服务不在本 lane（导入功能）的移植范围内，故此处只覆盖导入产物本身。
   });
+
+  it('imports Anki revlog history into fsrs_review_logs with state_before_json = NULL', () => {
+    const file = tempPath('revlog-collection');
+    const handle = env.storage.openFile(file);
+    const t0 = 1_700_000_000_000;
+    const day = 86_400_000;
+    try {
+      handle.exec(`
+        PRAGMA journal_mode = DELETE;
+        CREATE TABLE col (models TEXT NOT NULL, decks TEXT NOT NULL, crt INTEGER NOT NULL);
+        CREATE TABLE notes (
+          id INTEGER PRIMARY KEY, mid INTEGER NOT NULL, tags TEXT NOT NULL, flds TEXT NOT NULL
+        );
+        CREATE TABLE cards (
+          id INTEGER PRIMARY KEY, nid INTEGER NOT NULL, did INTEGER NOT NULL, ord INTEGER NOT NULL,
+          type INTEGER NOT NULL, queue INTEGER NOT NULL, due INTEGER NOT NULL, ivl INTEGER NOT NULL,
+          factor INTEGER NOT NULL, reps INTEGER NOT NULL, lapses INTEGER NOT NULL
+        );
+        CREATE TABLE revlog (
+          id INTEGER PRIMARY KEY, cid INTEGER NOT NULL, usn INTEGER NOT NULL,
+          ease INTEGER NOT NULL, ivl INTEGER NOT NULL, lastIvl INTEGER NOT NULL,
+          factor INTEGER NOT NULL, time INTEGER NOT NULL, type INTEGER NOT NULL
+        );
+      `);
+      handle.run('INSERT INTO col (models, decks, crt) VALUES (?1, ?2, ?3)', [
+        JSON.stringify({ 100: modelJson(0, [['Front', 0], ['Back', 1]]) }),
+        JSON.stringify({ 1: { name: 'Imported' } }),
+        1_700_000_000,
+      ]);
+      handle.run("INSERT INTO notes (id, mid, tags, flds) VALUES (1, 100, '', 'Q1\u001fA1')");
+      handle.run(
+        'INSERT INTO cards (id, nid, did, ord, type, queue, due, ivl, factor, reps, lapses) VALUES (10, 1, 1, 0, 2, 2, 10, 5, 2500, 3, 1)',
+      );
+      // 3 valid reviews + 1 invalid ease=0 + 1 non-positive id=0
+      const rows: Array<[number, number, number, number, number, number, number]> = [
+        [t0, 10, 3, -600, 0, 4000, 0],
+        [t0 + 600_000, 10, 3, 2, -600, 3000, 0],
+        [t0 + 2 * day, 10, 1, -600, 2, 5000, 1],
+        [t0 + 3 * day, 10, 0, 1, 1, 1000, 1],
+        [0, 10, 3, 1, 1, 1000, 1],
+      ];
+      for (const [id, cid, ease, ivl, lastIvl, time, type] of rows) {
+        handle.run(
+          'INSERT INTO revlog (id, cid, usn, ease, ivl, lastIvl, factor, time, type) VALUES (?1, ?2, -1, ?3, ?4, ?5, 2500, ?6, ?7)',
+          [id, cid, ease, ivl, lastIvl, time, type],
+        );
+      }
+    } finally {
+      env.storage.close(handle);
+    }
+    const bytes = fs.readFileSync(file);
+    fs.rmSync(file, { force: true });
+
+    const apkg = makeApkg([['collection.anki2', bytes]]);
+    const result = service().withReviewEnqueue().importBytes(apkg, 'revlog.apkg', null);
+    expect(result.importedCards).toBe(1);
+    expect(result.reviewEnqueue?.enqueued).toBe(1);
+
+    const logs = db.all<{
+      rating: number;
+      state_before: number;
+      state_after: number;
+      scheduled_days: number;
+      elapsed_days: number;
+      review_ms: number;
+      due_after_ms: number;
+      duration_ms: number | null;
+      state_before_json: string | null;
+    }>(
+      `SELECT rating, state_before, state_after, scheduled_days, elapsed_days,
+              review_ms, due_after_ms, duration_ms, state_before_json
+       FROM fsrs_review_logs
+       WHERE anki_card_id = ?1
+       ORDER BY review_ms ASC`,
+      [result.cardIds[0]!],
+    );
+    expect(logs).toEqual([
+      {
+        rating: 3,
+        state_before: 0,
+        state_after: 1,
+        scheduled_days: 0,
+        elapsed_days: 0,
+        review_ms: t0,
+        due_after_ms: t0 + 600_000,
+        duration_ms: 4000,
+        state_before_json: null,
+      },
+      {
+        rating: 3,
+        state_before: 1,
+        state_after: 2,
+        scheduled_days: 2,
+        elapsed_days: 0,
+        review_ms: t0 + 600_000,
+        due_after_ms: t0 + 600_000 + 2 * day,
+        duration_ms: 3000,
+        state_before_json: null,
+      },
+      {
+        rating: 1,
+        state_before: 2,
+        state_after: 3,
+        scheduled_days: 0,
+        elapsed_days: 2,
+        review_ms: t0 + 2 * day,
+        due_after_ms: t0 + 2 * day + 600_000,
+        duration_ms: 5000,
+        state_before_json: null,
+      },
+    ]);
+  });
+
+  it('withDeduplicateExisting skips live duplicate apkg_import cards, reuses document_id when all skipped, and omits empty document_tasks', () => {
+    const models = { 100: modelJson(0, [['Front', 0], ['Back', 1]]) };
+    const apkgV1 = makeApkg([[
+      'collection.anki2',
+      makeCollection(
+        models,
+        [
+          [1, 100, '', 'Q1\u001fA1'],
+          [2, 100, '', 'Q2\u001fA2'],
+        ],
+        [[10, 1, 0], [11, 2, 0]],
+      ),
+    ]]);
+
+    const first = service().withReviewEnqueue().withDeduplicateExisting().importBytes(apkgV1, 'deck.apkg', null);
+    expect(first.importedCards).toBe(2);
+    expect(db.pluck<number>('SELECT COUNT(*) FROM document_tasks WHERE deleted_at IS NULL')).toBe(1);
+
+    // Full re-import -> skips both, reuses documentId, no new document_tasks, emits warning
+    const second = service().withReviewEnqueue().withDeduplicateExisting().importBytes(apkgV1, 'deck.apkg', null);
+    expect(second.documentId).toBe(first.documentId);
+    expect(second.importedCards).toBe(0);
+    expect(second.cardIds).toEqual([]);
+    expect(second.reviewEnqueue).toEqual({ enqueued: 0, withHistory: 0, suspended: 0 });
+    expect(second.warnings).toContain('跳过 2 张已存在的重复卡片');
+    expect(db.pluck<number>('SELECT COUNT(*) FROM document_tasks WHERE deleted_at IS NULL')).toBe(1);
+    expect(db.pluck<number>('SELECT COUNT(*) FROM anki_cards WHERE deleted_at IS NULL')).toBe(2);
+
+    // Partial re-import (card 1 unchanged, card 2 edited, card 3 added) -> skips 1, inserts 2
+    const apkgV2 = makeApkg([[
+      'collection.anki2',
+      makeCollection(
+        models,
+        [
+          [1, 100, '', 'Q1\u001fA1'],
+          [2, 100, '', 'Q2\u001fA2-updated'],
+          [3, 100, '', 'Q3\u001fA3'],
+        ],
+        [[10, 1, 0], [11, 2, 0], [12, 3, 0]],
+      ),
+    ]]);
+    const third = service().withReviewEnqueue().withDeduplicateExisting().importBytes(apkgV2, 'deck-v2.apkg', null);
+    expect(third.documentId).not.toBe(first.documentId);
+    expect(third.importedCards).toBe(2);
+    expect(third.warnings).toContain('跳过 1 张已存在的重复卡片');
+    expect(db.pluck<number>('SELECT COUNT(*) FROM anki_cards WHERE deleted_at IS NULL')).toBe(4);
+    expect(db.pluck<number>('SELECT COUNT(*) FROM document_tasks WHERE deleted_at IS NULL')).toBe(2);
+
+    // Soft-deleted cards do not block re-import
+    db.run('UPDATE anki_cards SET deleted_at = ?1 WHERE id = ?2', ['2026-01-01T00:00:00Z', first.cardIds[0]!]);
+    const fourth = service().withReviewEnqueue().withDeduplicateExisting().importBytes(apkgV1, 'deck.apkg', null);
+    expect(fourth.importedCards).toBe(1);
+    expect(fourth.warnings).toContain('跳过 1 张已存在的重复卡片');
+  });
 });

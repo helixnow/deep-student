@@ -18,7 +18,39 @@ export interface NodeDecorations {
   href?: string;
 }
 
+const FAST_SEP = '\u0000';
+const MAX_PARSED_CACHE = 2000;
+
 const indexCache = new WeakMap<MindMapNode, Map<string, string>>();
+const nodeDecoCache = new WeakMap<MindMapNode, { key: string; value: NodeDecorations } | null>();
+const parsedCache = new Map<string, NodeDecorations>();
+
+function cacheParsed(key: string, value: NodeDecorations): void {
+  if (parsedCache.size >= MAX_PARSED_CACHE) parsedCache.clear();
+  parsedCache.set(key, value);
+}
+
+function getOrCreateNodeDeco(node: MindMapNode): { key: string; value: NodeDecorations } | null {
+  const cached = nodeDecoCache.get(node);
+  if (cached !== undefined) return cached;
+  if (node.priority == null && node.progress == null && node.href == null) {
+    nodeDecoCache.set(node, null);
+    return null;
+  }
+  const value: NodeDecorations = Object.freeze({
+    ...(node.priority != null ? { priority: node.priority } : {}),
+    ...(node.progress != null ? { progress: node.progress } : {}),
+    ...(node.href != null ? { href: node.href } : {}),
+  });
+  const canUseFastKey = !node.href || !node.href.includes(FAST_SEP);
+  const key = canUseFastKey
+    ? `${node.priority ?? ''}${FAST_SEP}${node.progress ?? ''}${FAST_SEP}${node.href ?? ''}`
+    : JSON.stringify(value);
+  const entry = { key, value };
+  nodeDecoCache.set(node, entry);
+  cacheParsed(key, value);
+  return entry;
+}
 
 function buildIndex(root: MindMapNode): Map<string, string> {
   const index = new Map<string, string>();
@@ -26,14 +58,8 @@ function buildIndex(root: MindMapNode): Map<string, string> {
   while (stack.length > 0) {
     const node = stack.pop()!;
     if (node.priority != null || node.progress != null || node.href != null) {
-      index.set(
-        node.id,
-        JSON.stringify({
-          priority: node.priority,
-          progress: node.progress,
-          href: node.href,
-        }),
-      );
+      const entry = getOrCreateNodeDeco(node);
+      if (entry) index.set(node.id, entry.key);
     }
     const children = node.children ?? [];
     for (const child of children) stack.push(child);
@@ -51,12 +77,29 @@ export function selectNodeDecorationKey(root: MindMapNode, nodeId: string): stri
   return index.get(nodeId) ?? '';
 }
 
-/** 将选择器返回的 key 解析为装饰对象；'' → null */
+/** 将选择器返回的 key 解析为冻结装饰对象（引用稳定）；'' → null */
 export function parseNodeDecorations(key: string): NodeDecorations | null {
   if (!key) return null;
-  try {
-    return JSON.parse(key) as NodeDecorations;
-  } catch {
-    return null;
+  const cached = parsedCache.get(key);
+  if (cached) return cached;
+  let parsed: NodeDecorations;
+  if (key.startsWith('{')) {
+    try {
+      parsed = Object.freeze(JSON.parse(key) as NodeDecorations);
+    } catch {
+      return null;
+    }
+  } else {
+    const [pStr, progStr, ...hrefParts] = key.split(FAST_SEP);
+    const href = hrefParts.length > 0 ? hrefParts.join(FAST_SEP) : '';
+    const priority = pStr !== '' ? Number(pStr) : undefined;
+    const progress = progStr !== '' ? Number(progStr) : undefined;
+    parsed = Object.freeze({
+      ...(priority !== undefined && Number.isFinite(priority) ? { priority } : {}),
+      ...(progress !== undefined && Number.isFinite(progress) ? { progress } : {}),
+      ...(href ? { href } : {}),
+    });
   }
+  cacheParsed(key, parsed);
+  return parsed;
 }

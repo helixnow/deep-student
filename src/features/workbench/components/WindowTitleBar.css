@@ -16,7 +16,6 @@
 .wb-title-bar {
   --wb-title-fade-duration: 130ms;
   --wb-title-key-duration: 130ms;
-  --wb-title-ripple-duration: 460ms;
 }
 
 /* 标题栏建立独立层级，保证向下展开的窗口菜单不会被内容区子层覆盖。 */
@@ -97,17 +96,35 @@ html[data-wb-dragging] .wb-titlebar.wb-title-bar,
 }
 
 /* ==========================================================================
- * 三键微交互（尺寸/间距沿用 token：12px 直径 / 8px gap，与 macOS 一致）
+ * 三键微交互（macOS 27 Liquid Glass 交通灯：12px 直径 / 8px gap）
+ * - 顶部微亮弧光 + 底部柔和反光，营造通透液态玻璃珠质感
+ * - 按压微弹性缩放 + 轻内陷光影；idle 褪灰 ↔ 本色恢复平滑过渡
  * ========================================================================== */
 
-/* 按压凹陷：缩小 + 契约自带的 brightness(0.82) 变暗叠加。
- * background/border 也入过渡：idle 褪灰 ↔ 本色恢复不再硬切（macOS 的
- * 灰→彩恢复带 ~130ms 淡变） */
 .wb-title-key {
+  box-shadow:
+    inset 0 1px 0.75px rgb(255 255 255 / 44%),
+    inset 0 -1px 1px rgb(255 255 255 / 22%),
+    0 0.5px 1.2px rgb(0 0 0 / 16%);
   transition:
-    transform var(--wb-title-key-duration) var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
-    background-color var(--wb-title-fade-duration) var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1)),
-    border-color var(--wb-title-fade-duration) var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1));
+    transform var(--wb-title-key-duration)
+      var(--wb-ease-spring-soft, cubic-bezier(0.3, 1.08, 0.36, 1)),
+    box-shadow var(--wb-title-key-duration) var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    background-color var(--wb-title-fade-duration)
+      var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1)),
+    border-color var(--wb-title-fade-duration)
+      var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1));
+}
+
+:root.dark .wb-title-key {
+  box-shadow:
+    inset 0 1px 0.75px rgb(255 255 255 / 28%),
+    inset 0 -1px 1px rgb(255 255 255 / 14%),
+    0 0.5px 1.5px rgb(0 0 0 / 38%);
+}
+
+.wb-window-idle .wb-traffic:not(:hover) .wb-title-key {
+  box-shadow: inset 0 0.5px 0.5px rgb(255 255 255 / 18%);
 }
 
 /* 三键符号浮现节奏：覆盖契约的 80ms linear（机械感）——改 --wb-motion-quick
@@ -141,39 +158,56 @@ html[data-wb-dragging] .wb-titlebar.wb-title-bar,
 }
 
 .wb-title-key:active {
-  transform: scale(0.88);
+  transform: scale(0.86);
+  box-shadow:
+    inset 0 1px 2px rgb(0 0 0 / 28%),
+    inset 0 -0.5px 0.75px rgb(255 255 255 / 16%);
 }
 
-/* 逐键悬停微光：左上 specular 高光点（::before 画在符号之下；
- * 契约的 > * 规则只命中真实子元素，伪元素不受影响） */
+/* macOS 27 液态玻璃双层高光（::before 画在符号之下）：
+ * 顶部微亮弧光（upper arc） + 底部柔和反光（lower bounce） */
 .wb-title-key::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: radial-gradient(
-    circle at 32% 28%,
-    rgba(255, 255, 255, 0.85) 0%,
-    rgba(255, 255, 255, 0.28) 44%,
-    rgba(255, 255, 255, 0) 70%
-  );
-  opacity: 0;
+  background:
+    radial-gradient(
+      76% 52% at 50% 14%,
+      rgb(255 255 255 / 72%) 0%,
+      rgb(255 255 255 / 20%) 52%,
+      rgb(255 255 255 / 0%) 80%
+    ),
+    radial-gradient(
+      70% 42% at 50% 92%,
+      rgb(255 255 255 / 34%) 0%,
+      rgb(255 255 255 / 0%) 72%
+    );
+  opacity: 0.44;
   transition: opacity var(--wb-title-key-duration)
     var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
   pointer-events: none;
 }
 
+.wb-window-idle .wb-traffic:not(:hover) .wb-title-key::before {
+  opacity: 0.16;
+}
+
 .wb-title-key:hover::before {
-  opacity: 0.55;
+  opacity: 0.78;
 }
 
 .wb-title-key:active::before {
-  opacity: 0.22;
+  opacity: 0.24;
 }
 
 /* 暗色主题：specular 高光减档，避免深色玻璃上出现塑料亮点 */
+:root.dark .wb-title-key::before {
+  opacity: 0.28;
+}
+
 :root.dark .wb-title-key:hover::before {
-  opacity: 0.38;
+  opacity: 0.48;
 }
 
 :root.dark .wb-title-key:active::before {
@@ -299,42 +333,6 @@ html[data-wb-dragging] .wb-titlebar.wb-title-bar,
 }
 
 /* ==========================================================================
- * 双击 maximize 涟漪（transform + opacity 双属性；裁剪在独立层内）
- * ========================================================================== */
-
-.wb-title-ripple-layer {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.wb-title-ripple {
-  position: absolute;
-  border-radius: 50%;
-  background: currentColor;
-  transform: translate(-50%, -50%) scale(0);
-  opacity: 0;
-  will-change: transform, opacity;
-  animation: wb-title-ripple-in var(--wb-title-ripple-duration)
-    var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1)) both;
-}
-
-@keyframes wb-title-ripple-in {
-  0% {
-    transform: translate(-50%, -50%) scale(0);
-    opacity: 0.16;
-  }
-  70% {
-    opacity: 0.08;
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1);
-    opacity: 0;
-  }
-}
-
-/* ==========================================================================
  * 右侧 App 自定义操作位（可选 slot）
  * ========================================================================== */
 
@@ -369,13 +367,11 @@ html[data-wb-dragging] .wb-titlebar.wb-title-bar,
 :root[data-wb-material='minimal'] .wb-title-bar {
   --wb-title-fade-duration: 0ms;
   --wb-title-key-duration: 0ms;
-  --wb-title-ripple-duration: 0ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .wb-title-bar {
     --wb-title-fade-duration: 0ms;
     --wb-title-key-duration: 0ms;
-    --wb-title-ripple-duration: 0ms;
   }
 }

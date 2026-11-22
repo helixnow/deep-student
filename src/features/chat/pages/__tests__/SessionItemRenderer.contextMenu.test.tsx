@@ -52,7 +52,11 @@ vi.mock('@/components/ui/app-menu/AppMenu', () => {
     },
     AppMenuGroup: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
     AppMenuSeparator: () => <div data-testid="session-context-menu-separator" />,
-    AppMenuSub: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+    AppMenuSub: ({ children, openOnClick }: { children?: React.ReactNode; openOnClick?: boolean }) => (
+      <div data-testid="session-menu-sub" data-open-on-click={openOnClick ? 'true' : 'false'}>
+        {children}
+      </div>
+    ),
     AppMenuSubTrigger: ({ children, icon }: { children?: React.ReactNode; icon?: React.ReactNode }) => (
       <div>
         {icon}
@@ -243,5 +247,17 @@ describe('SessionItemRenderer context menu', () => {
     fireEvent.click(screen.getByText('page.archiveSession'));
 
     expect(archiveSession).toHaveBeenCalledWith('session-1');
+  });
+
+  it('enables click-to-open on export submenu for touch devices', () => {
+    render(<Harness togglePinSession={vi.fn()} startEditSession={vi.fn()} />);
+
+    fireEvent.contextMenu(screen.getByText('Session 1').closest('.group')!);
+
+    const submenus = screen.getAllByTestId('session-menu-sub');
+    expect(submenus.length).toBeGreaterThan(0);
+    for (const submenu of submenus) {
+      expect(submenu).toHaveAttribute('data-open-on-click', 'true');
+    }
   });
 });

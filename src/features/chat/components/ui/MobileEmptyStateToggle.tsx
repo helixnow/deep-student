@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useState, useSyncExternalStore } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
-import { BellSlash, Question, X } from '@phosphor-icons/react';
+import { BellSlash, Question, XCircle } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -268,7 +268,7 @@ export const MobileEmptyStateToggle: React.FC<MobileEmptyStateToggleProps> = ({
               {brandIcon}
             </span>
 
-            {/* 右上角提示气泡：未静默收起态为 `?`，展开态平滑切换为 `×`，静默收起态隐藏 */}
+            {/* 右上角提示角标：Icon 本身自带单层圆环，未静默收起态为 `?`，展开态平滑切换为 `×`，静默收起态隐藏 */}
             <AnimatePresence initial={false}>
               {isBadgeVisible ? (
                 <motion.span
@@ -280,12 +280,12 @@ export const MobileEmptyStateToggle: React.FC<MobileEmptyStateToggleProps> = ({
                   exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, scale: 0.5 }}
                   transition={badgeTransition}
                   className={cn(
-                    'pointer-events-none absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full border shadow-sm transition-colors duration-200',
+                    'pointer-events-none absolute right-0 top-0 flex h-4 w-4 items-center justify-center transition-colors duration-200',
                     showCard
-                      ? 'border-border/80 bg-card text-foreground'
+                      ? 'text-muted-foreground'
                       : hasAccent
-                        ? 'border-primary/40 bg-primary/15 text-primary'
-                        : 'border-border/80 bg-card text-muted-foreground'
+                        ? 'text-primary'
+                        : 'text-muted-foreground'
                   )}
                 >
                   <AnimatePresence mode="wait" initial={false}>
@@ -298,7 +298,7 @@ export const MobileEmptyStateToggle: React.FC<MobileEmptyStateToggleProps> = ({
                         transition={badgeTransition}
                         className="flex items-center justify-center"
                       >
-                        <X size={11} weight="bold" />
+                        <XCircle size={16} weight="bold" />
                       </motion.span>
                     ) : (
                       <motion.span
@@ -309,7 +309,7 @@ export const MobileEmptyStateToggle: React.FC<MobileEmptyStateToggleProps> = ({
                         transition={badgeTransition}
                         className="flex items-center justify-center"
                       >
-                        <Question size={12} weight="bold" />
+                        <Question size={16} weight="bold" />
                       </motion.span>
                     )}
                   </AnimatePresence>
@@ -325,9 +325,18 @@ export const MobileEmptyStateToggle: React.FC<MobileEmptyStateToggleProps> = ({
               <motion.div
                 key="today-card"
                 layout="position"
-                initial={prefersReducedMotion ? false : { opacity: 0, y: 12, scale: 0.95 }}
+                initial={prefersReducedMotion ? false : { opacity: 0, y: 10, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.96 }}
+                exit={
+                  prefersReducedMotion
+                    ? { opacity: 0 }
+                    : {
+                        opacity: 0,
+                        y: -8,
+                        scale: 0.96,
+                        transition: { duration: 0.16, ease: EASE_OUT_QUART },
+                      }
+                }
                 transition={
                   prefersReducedMotion
                     ? { duration: 0.01 }

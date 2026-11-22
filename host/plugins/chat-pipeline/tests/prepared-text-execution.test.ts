@@ -106,6 +106,7 @@ describe('pipeline.rs prepared text stage calls provider and commits before term
   });
   it('cancellation aborts the actual provider, saves partial text and emits cancelled not error', async () => {
     const t = setup(); const cancel = new AbortController(); let signalObserved = false;
+    vi.mocked(post.triggerAutoMemoryExtraction).mockClear();
     script = async request => {
       request.hooks.onContentChunk?.('cancelled partial');
       return new Promise((_resolve, reject) => {
@@ -119,6 +120,7 @@ describe('pipeline.rs prepared text stage calls provider and commits before term
       expect(host.ctx.chatSession.getMessageBlocks(t.ctx.assistantMessageId)[0]!.content).toBe('cancelled partial');
       expect(t.events.filter(e => e.eventType).map(e => e.eventType)).toEqual(['stream_start', 'stream_cancelled']);
       expect(t.states).toEqual([false, true]);
+      expect(post.triggerAutoMemoryExtraction).not.toHaveBeenCalled();
     } finally { t.emitter.dispose(); }
   });
   it('empty-output transient failure retries the real provider once with reconnect and the same frozen request', async () => {

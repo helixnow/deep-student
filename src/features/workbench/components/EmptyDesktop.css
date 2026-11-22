@@ -7,7 +7,9 @@
 .wb-empty-restore-pill {
   position: absolute;
   top: 18px;
-  left: 50%;
+  inset-inline: 0;
+  width: fit-content;
+  margin-inline: auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -21,7 +23,6 @@
   color: var(--text-primary, hsl(var(--foreground)));
   white-space: nowrap;
   pointer-events: auto;
-  transform: translateX(-50%);
   transition: box-shadow 160ms ease;
 }
 

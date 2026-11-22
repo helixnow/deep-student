@@ -32,9 +32,24 @@ vi.mock('@/i18n', () => ({
 
 const createNote = vi.fn();
 const getFolderItems = vi.fn();
+const dstuGet = vi.fn(async (path: string) => ({
+  ok: true as const,
+  value: { path, updatedAt: '2026-11-21T00:00:00.000Z', metadata: { props: {} } },
+}));
+const dstuSetMetadata = vi.fn(async () => ({ ok: true as const, value: undefined }));
 const showGlobalNotification = vi.fn();
+const attachNoteOriginMock = vi.fn(async () => true);
+
+vi.mock('@/features/notes/noteOrigin', () => ({
+  attachNoteOrigin: (...args: unknown[]) => attachNoteOriginMock(...args),
+}));
 
 vi.mock('@/dstu', () => ({
+  dstu: {
+    get: (...args: unknown[]) => dstuGet(...(args as [string])),
+    setMetadata: (...args: unknown[]) => dstuSetMetadata(...args),
+  },
+  updatedAtToVersionToken: (value?: string | null) => value ?? null,
   folderApi: {
     getFolderItems: (...args: unknown[]) => getFolderItems(...args),
   },
@@ -83,6 +98,12 @@ beforeEach(() => {
   createNote.mockReset();
   getFolderItems.mockReset();
   showGlobalNotification.mockReset();
+  attachNoteOriginMock.mockReset().mockResolvedValue(true);
+  dstuGet.mockReset().mockImplementation(async (path: string) => ({
+    ok: true as const,
+    value: { path, updatedAt: '2026-11-21T00:00:00.000Z', metadata: { props: {} } },
+  }));
+  dstuSetMetadata.mockReset().mockResolvedValue({ ok: true as const, value: undefined });
   createNote.mockResolvedValue(ok({ id: 'note-1' }));
   // 缺省场景：回查确认笔记确实在目标目录里
   getFolderItems.mockResolvedValue(ok([{ itemId: 'note-1', itemType: 'note', folderId: 'folder-9' }]));
@@ -318,5 +339,26 @@ describe('saveTextAsNoteAndNotify', () => {
     const [level, message] = showGlobalNotification.mock.calls[0];
     expect(level).toBe('error');
     expect(message).toBe('目录不存在');
+  });
+
+  it('schedules initial next-day study_review_date for PDF/EPUB resource excerpt notes', async () => {
+    const result = await saveTextAsNote({
+      content: '> 摘录内容',
+      folderId: null,
+      origin: { kind: 'resource', resourceId: 'file_1', page: 5, title: '高等数学' },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(attachNoteOriginMock).toHaveBeenCalledWith('note-1', {
+      kind: 'resource',
+      resourceId: 'file_1',
+      page: 5,
+      title: '高等数学',
+    });
+    expect(dstuSetMetadata).toHaveBeenCalledWith(
+      '/note-1',
+      { props: expect.objectContaining({ study_review_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) }) },
+      '2026-11-21T00:00:00.000Z',
+    );
   });
 });

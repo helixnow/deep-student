@@ -215,8 +215,10 @@ export interface IStyleTheme {
   edge?: IThemeEdgeStyle;
   /** 画布样式（新版详细配置） */
   canvas?: IThemeCanvasStyle;
-  /** 彩虹分支色板（如果存在，将自动开启彩虹分支模式） */
+  /** 彩虹分支色板（供缩略图与主题色阶使用） */
   palette?: string[];
+  /** 是否在主画布激活低饱和矿物彩虹分支色（true 时使用 constants/colors.ts 的 getBranchColor） */
+  useBranchPalette?: boolean;
   /** @deprecated 使用 node 代替 */
   nodeStyle?: Partial<NodeStyle>;
   /** @deprecated 使用 edge 代替 */

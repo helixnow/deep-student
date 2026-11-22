@@ -5,7 +5,7 @@
  *   CLICK_WINDOW_MS 内第一次回到前台，按「点了通知」处理，之后再回前台不跳转
  */
 import { addTypedEventListener } from '@/events';
-import { isAndroidMobileShell, isMobilePlatform } from './platform';
+import { isAndroidMobileShell, isMobilePlatform, isWebUiShell } from './platform';
 import { isTauriRuntime } from './shared';
 
 export type NotificationTargetHandler = (target: string) => void;
@@ -51,7 +51,7 @@ export function initNotificationRouting(onTarget: NotificationTargetHandler): ()
       await invoke('plugin:notification|start_action_listener');
     })().catch((error: unknown) => console.warn('[NotificationRouting] Android registration failed:', error));
     disposers.push(() => { stopped = true; });
-  } else if (isMobilePlatform()) {
+  } else if (isMobilePlatform() && !isWebUiShell()) {
     if (isTauriRuntime) {
       let stopped = false;
       void import('@tauri-apps/plugin-notification')

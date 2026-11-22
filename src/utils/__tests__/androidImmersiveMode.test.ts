@@ -5,15 +5,17 @@ const mocks = vi.hoisted(() => ({
   getSetting: vi.fn(),
   saveSetting: vi.fn(),
   isAndroid: vi.fn(() => true),
+  isWebUiShell: vi.fn(() => false),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('../settingsApi', () => ({ getSetting: mocks.getSetting, saveSetting: mocks.saveSetting }));
-vi.mock('../platform', () => ({ isAndroid: mocks.isAndroid }));
+vi.mock('../platform', () => ({ isAndroid: mocks.isAndroid, isWebUiShell: mocks.isWebUiShell }));
 vi.mock('../shared', () => ({ isTauriRuntime: true }));
 
 import {
   ANDROID_IMMERSIVE_MODE_KEY,
+  isAndroidImmersiveModeSupported,
   parseImmersiveModeSetting,
   setAndroidImmersiveMode,
   syncAndroidImmersiveModeFromSettings,
@@ -25,6 +27,7 @@ describe('androidImmersiveMode (#472)', () => {
     mocks.getSetting.mockReset().mockResolvedValue(null);
     mocks.saveSetting.mockReset().mockResolvedValue(undefined);
     mocks.isAndroid.mockReset().mockReturnValue(true);
+    mocks.isWebUiShell.mockReset().mockReturnValue(false);
   });
 
   it('parses the stored setting conservatively (default off)', () => {
@@ -70,5 +73,13 @@ describe('androidImmersiveMode (#472)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     await expect(syncAndroidImmersiveModeFromSettings()).resolves.toBeUndefined();
     warn.mockRestore();
+  });
+
+  it('is disabled and never invokes native command on Android WebUI shell', async () => {
+    mocks.isWebUiShell.mockReturnValue(true);
+    expect(isAndroidImmersiveModeSupported()).toBe(false);
+    mocks.getSetting.mockResolvedValueOnce('true');
+    await syncAndroidImmersiveModeFromSettings();
+    expect(mocks.invoke).not.toHaveBeenCalled();
   });
 });

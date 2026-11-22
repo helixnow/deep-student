@@ -83,16 +83,15 @@ describe('P11 WorkbenchDesktop 总装', () => {
     workbenchBus.setEnabled(false);
   });
 
-  it('挂载后渲染壁纸 + Dock，水合完成后显示空桌面引导，pinned 应用注册齐全', async () => {
+  it('挂载后渲染壁纸 + Dock，空桌面默认无引导卡，pinned 应用注册齐全', async () => {
     render(<WorkbenchDesktop />);
 
     await waitFor(() => {
       expect(screen.getByTestId('wb-dock')).toBeTruthy();
+      expect(document.querySelector('[data-wb-desktop]')).toBeTruthy();
     });
-    // 水合完成（无快照 → 空桌面）
-    await waitFor(() => {
-      expect(document.querySelector('.wb-empty-desktop')).toBeTruthy();
-    });
+    // 无快照时保持桌面干净，不弹出旧版空桌面引导卡
+    expect(document.querySelector('.wb-empty-desktop')).toBeNull();
     expect(document.querySelector('.wb-wallpaper')).toBeTruthy();
 
     // Dock pinned 默认值
@@ -103,9 +102,12 @@ describe('P11 WorkbenchDesktop 总装', () => {
     }
   });
 
-  it('bus.launch 开窗：WindowShell 携带 data-wb-window-id，空桌面引导消失', async () => {
+  it('bus.launch 开窗：WindowShell 携带 data-wb-window-id', async () => {
     render(<WorkbenchDesktop />);
-    await waitFor(() => expect(document.querySelector('.wb-empty-desktop')).toBeTruthy());
+    await waitFor(() => {
+      expect(document.querySelector('[data-wb-desktop]')).toBeTruthy();
+      expect(screen.getByTestId('wb-dock')).toBeTruthy();
+    });
 
     let windowId: string | null = null;
     act(() => {
@@ -157,7 +159,10 @@ describe('P11 WorkbenchDesktop 总装', () => {
 
   it('快照落盘：flushSnapshot 写 localStorage 并派发 workbench:snapshot-saved', async () => {
     render(<WorkbenchDesktop />);
-    await waitFor(() => expect(document.querySelector('.wb-empty-desktop')).toBeTruthy());
+    await waitFor(() => {
+      expect(document.querySelector('[data-wb-desktop]')).toBeTruthy();
+      expect(screen.getByTestId('wb-dock')).toBeTruthy();
+    });
 
     act(() => {
       workbenchBus.launch({ typeId: TEST_TYPE_ID, instanceKey: 'smoke-1', reason: 'api' });
@@ -273,7 +278,10 @@ describe('P11 WorkbenchDesktop 总装', () => {
   it('不拦截 Tauri 原生关闭请求，卸载时仅尽力保存快照', async () => {
     (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
     const { unmount } = render(<WorkbenchDesktop />);
-    await waitFor(() => expect(document.querySelector('.wb-empty-desktop')).toBeTruthy());
+    await waitFor(() => {
+      expect(document.querySelector('[data-wb-desktop]')).toBeTruthy();
+      expect(screen.getByTestId('wb-dock')).toBeTruthy();
+    });
 
     act(() => {
       workbenchBus.launch({ typeId: TEST_TYPE_ID, instanceKey: 'close-contract', reason: 'api' });

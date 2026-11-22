@@ -198,6 +198,50 @@ describe('NotesBacklinksPanel', () => {
     ));
   });
 
+  it('renders a 4-tab strip (大纲 / 属性 / 链接 / 图谱) when outlineContent is provided and falls back cleanly when removed', async () => {
+    const { rerender } = renderPanel({
+      outlineContent: <div data-testid="outline-body">outline body</div>,
+      propertiesContent: <div data-testid="props-body">props body</div>,
+      graphContent: <div data-testid="graph-body">graph body</div>,
+      requestedTab: { tab: 'outline', requestId: 1 },
+    });
+
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['大纲', '属性', '链接', '图谱']);
+
+    await waitFor(() => (
+      expect(screen.getByRole('tab', { name: '大纲' })).toHaveAttribute('aria-selected', 'true')
+    ));
+    const outlinePanel = screen.getByRole('tabpanel', { name: '大纲' });
+    expect(outlinePanel).toHaveClass('notes-backlinks-panel-outline');
+    expect(within(outlinePanel).getByTestId('outline-body')).toBeVisible();
+
+    // Keyboard ArrowRight moves from 大纲 -> 属性
+    fireEvent.keyDown(screen.getByRole('tab', { name: '大纲' }), { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: '属性' })).toHaveAttribute('aria-selected', 'true');
+
+    // Click back to 大纲, then remove outlineContent → falls back to 链接 with 3 tabs
+    fireEvent.click(screen.getByRole('tab', { name: '大纲' }));
+    expect(screen.getByRole('tab', { name: '大纲' })).toHaveAttribute('aria-selected', 'true');
+
+    rerender(
+      <NotesBacklinksPanel
+        open
+        activeResource={notes[0]}
+        notes={notes}
+        onOpenResource={vi.fn()}
+        onClose={vi.fn()}
+        propertiesContent={<div data-testid="props-body">props body</div>}
+        graphContent={<div data-testid="graph-body">graph body</div>}
+      />,
+    );
+    expect(screen.queryByRole('tab', { name: '大纲' })).toBeNull();
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['属性', '链接', '图谱']);
+    await waitFor(() => (
+      expect(screen.getByRole('tab', { name: '链接' })).toHaveAttribute('aria-selected', 'true')
+    ));
+  });
+
   it('loads only the active note and narrow backlink candidates', async () => {
     const { rerender } = renderPanel({ open: false });
     expect(getContent).not.toHaveBeenCalled();
@@ -678,5 +722,32 @@ describe('NotesBacklinksPanel', () => {
     renderPanel();
     const mentions = await screen.findByRole('region', { name: /未链接提及/ });
     expect(await within(mentions).findByText('没有找到未链接的提及')).toBeInTheDocument();
+  });
+
+  it('notifies host via onActiveTabChange, truncates tab labels with title tooltip, and labels close button generically in multi-tab mode', async () => {
+    const onActiveTabChange = vi.fn();
+    renderPanel({
+      outlineContent: <div>outline</div>,
+      propertiesContent: <div>props</div>,
+      graphContent: <div>graph</div>,
+      requestedTab: { tab: 'outline', requestId: 1 },
+      onActiveTabChange,
+    });
+
+    await waitFor(() => expect(onActiveTabChange).toHaveBeenLastCalledWith('outline'));
+    const tabs = screen.getAllByRole('tab');
+    for (const tab of tabs) {
+      expect(tab).toHaveAttribute('title', tab.textContent ?? '');
+      const labelSpan = tab.querySelector('span');
+      expect(labelSpan).toHaveClass('min-w-0', 'truncate');
+    }
+
+    expect(screen.getByRole('button', { name: '关闭面板' })).toHaveAttribute('title', '关闭面板');
+
+    fireEvent.click(screen.getByRole('tab', { name: '属性' }));
+    await waitFor(() => expect(onActiveTabChange).toHaveBeenLastCalledWith('properties'));
+
+    fireEvent.click(screen.getByRole('tab', { name: '图谱' }));
+    await waitFor(() => expect(onActiveTabChange).toHaveBeenLastCalledWith('graph'));
   });
 });

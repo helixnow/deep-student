@@ -10,6 +10,7 @@
 
 import React, { useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { addTypedEventListener } from '@/events';
 import {
   ArrowBendDownRight,
   FilePdf,
@@ -120,18 +121,16 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') handleDragEnd();
     };
-    window.addEventListener('blur', handleDragEnd);
-    window.addEventListener('dragend', handleDragEnd);
-    window.addEventListener('drop', handleDragEnd);
-    window.addEventListener('keydown', onKeyDown);
-    document.addEventListener('visibilitychange', onVisibility);
+    const cleanups = [
+      addTypedEventListener('blur', () => handleDragEnd()),
+      addTypedEventListener('dragend', () => handleDragEnd()),
+      addTypedEventListener('drop', () => handleDragEnd()),
+      addTypedEventListener('keydown', (_d, event) => onKeyDown(event as unknown as KeyboardEvent)),
+      addTypedEventListener('visibilitychange', () => onVisibility(), undefined, 'document'),
+    ];
     return () => {
       handleDragEnd();
-      window.removeEventListener('blur', handleDragEnd);
-      window.removeEventListener('dragend', handleDragEnd);
-      window.removeEventListener('drop', handleDragEnd);
-      window.removeEventListener('keydown', onKeyDown);
-      document.removeEventListener('visibilitychange', onVisibility);
+      cleanups.forEach((dispose) => dispose());
     };
   }, [handleDragEnd]);
 
@@ -140,14 +139,14 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
   return (
     <aside
       className={cn(
-        'flex flex-col shrink-0 w-[272px] max-w-[42vw] h-full border-l border-border/35 bg-[var(--mm-bg-elevated)] z-20 select-none',
+        'flex flex-col shrink-0 w-[272px] max-w-[min(360px,calc(100vw-24px))] h-full border-l border-border/35 bg-[var(--mm-bg-elevated)] z-20 select-none',
         className,
       )}
       aria-label={t('mn5.stagingTrayTitle')}
       data-testid="mm-staging-tray"
     >
       {/* 顶栏：标题 + 等宽数量胶囊 + 关闭 */}
-      <div className="flex items-center justify-between gap-2 h-9 px-3 border-b border-border/35 shrink-0">
+      <div className="flex items-center justify-between gap-2 min-h-9 px-3 border-b border-border/35 shrink-0 [@media(pointer:coarse)]:min-h-12">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="mm-mn5-status-dot" aria-hidden="true" />
           <Tray size={13} className="text-[var(--mm-text-muted)] shrink-0" aria-hidden />
@@ -155,7 +154,7 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
             {t('mn5.stagingTrayTitle')}
           </span>
           <span
-            className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 rounded-full border border-border/35 bg-[var(--mm-bg)] text-[10px] font-mono tabular-nums text-[var(--mm-text-muted)]"
+            className="inline-flex items-center justify-center min-w-[20px] h-[18px] px-1.5 rounded-full border border-border/35 bg-[var(--mm-bg)] text-2xs font-mono tabular-nums text-[var(--mm-text-muted)]"
             data-testid="mm-staging-count"
           >
             {items.length}
@@ -166,7 +165,7 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
             <DsButton
               variant="ghost"
               size="sm"
-              className="h-6 px-1.5 text-[11px] text-[var(--mm-text-muted)]"
+              className="h-6 px-1.5 text-2xs text-[var(--mm-text-muted)] transition-colors motion-reduce:transition-none"
               onClick={clearStagingExcerpts}
               title={t('mn5.stagingTrayClearAll')}
               data-testid="mm-staging-clear-btn"
@@ -177,7 +176,7 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
           <DsButton
             variant="ghost"
             size="icon"
-            className="h-6 w-6"
+            className="h-6 w-6 transition-colors motion-reduce:transition-none"
             onClick={() => setStagingTrayOpen(false)}
             aria-label={t('mn5.stagingTrayToggleHint')}
             data-testid="mm-staging-close-btn"
@@ -189,7 +188,7 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
 
       {/* 入图方式切换：直挂节点 | 先入待整理池 */}
       <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border/35 shrink-0">
-        <span className="text-[11px] text-[var(--mm-text-muted)] shrink-0">
+        <span className="text-2xs text-[var(--mm-text-muted)] shrink-0">
           {t('mn5.intakeModeLabel')}
         </span>
         <div
@@ -197,10 +196,11 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
           role="group"
           aria-label={t('mn5.intakeModeLabel')}
         >
-          <button
-            type="button"
+          <DsButton
+            variant="ghost"
+            size="sm"
             className={cn(
-              'h-6 px-2 rounded text-[11px] transition-colors',
+              'h-6 px-2 rounded text-2xs transition-colors motion-reduce:transition-none',
               excerptIntakeMode === 'direct'
                 ? 'bg-[var(--mm-celadon-pill-bg)] text-[var(--mm-celadon-pill-fg)] font-medium'
                 : 'text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]',
@@ -211,11 +211,12 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
             data-testid="mm-intake-mode-direct"
           >
             {t('mn5.intakeModeDirect')}
-          </button>
-          <button
-            type="button"
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            size="sm"
             className={cn(
-              'h-6 px-2 rounded text-[11px] transition-colors',
+              'h-6 px-2 rounded text-2xs transition-colors motion-reduce:transition-none',
               excerptIntakeMode === 'staging'
                 ? 'bg-[var(--mm-celadon-pill-bg)] text-[var(--mm-celadon-pill-fg)] font-medium'
                 : 'text-[var(--mm-text-muted)] hover:text-[var(--mm-text)]',
@@ -226,7 +227,7 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
             data-testid="mm-intake-mode-staging"
           >
             {t('mn5.intakeModeStaging')}
-          </button>
+          </DsButton>
         </div>
       </div>
 
@@ -240,7 +241,10 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
             {t('mn5.stagingTrayEmpty')}
           </div>
         ) : (
-          <CustomScrollArea className="h-full" viewportClassName="p-2.5 space-y-2">
+          <CustomScrollArea
+            className="h-full"
+            viewportClassName="p-2.5 pb-[calc(10px+max(env(safe-area-inset-bottom,0px),var(--mobile-safe-area-bottom,0px)))] space-y-2"
+          >
             {items.map((item) => {
               const locator = formatMindMapSourcePill(item.anchor);
               const showThumb =
@@ -252,34 +256,36 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
                   draggable
                   onDragStart={(e) => handleDragStart(e, item)}
                   onDragEnd={handleDragEnd}
-                  className="group flex flex-col gap-1.5 p-2.5 rounded-md border border-border/35 bg-[var(--mm-bg)] hover:border-[var(--mm-celadon-border)] cursor-grab active:cursor-grabbing transition-colors"
+                  className="group flex flex-col gap-1.5 p-2.5 rounded-md border border-border/35 bg-[var(--mm-bg)] hover:border-[var(--mm-celadon-border)] cursor-grab active:cursor-grabbing transition-colors motion-reduce:transition-none"
                   data-testid="mm-staging-card"
                   data-staging-id={item.id}
                 >
                   <div className="flex items-center justify-between gap-1.5">
-                    <button
-                      type="button"
-                      className="mm-mn5-source-pill"
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      className="mm-mn5-source-pill h-auto py-0"
                       onClick={() =>
                         void revealMindMapSourceAnchor(item.anchor, kernel?.anchors ?? null)
                       }
                       title={t('mn5.revealSourceHint', { locator })}
                     >
                       <StagingSourceIcon kind={item.anchor.kind} />
-                      <span className="mm-mn5-source-pill-label font-mono tabular-nums text-[10px] font-medium">
+                      <span className="mm-mn5-source-pill-label font-mono tabular-nums text-2xs font-medium">
                         {locator}
                       </span>
-                    </button>
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center w-5 h-5 rounded text-[var(--mm-text-muted)] hover:text-[var(--mm-text)] hover:bg-[var(--mm-bg-hover)]"
+                    </DsButton>
+                    <DsButton
+                      variant="ghost"
+                      size="icon"
+                      className="w-5 h-5 rounded text-[var(--mm-text-muted)] hover:text-[var(--mm-text)] hover:bg-[var(--mm-bg-hover)] transition-colors motion-reduce:transition-none relative"
                       onClick={() => removeStagingExcerpt(item.id)}
                       aria-label={t('mn5.removeStagingItem')}
                       title={t('mn5.removeStagingItem')}
                       data-testid="mm-staging-remove-btn"
                     >
                       <X size={11} />
-                    </button>
+                    </DsButton>
                   </div>
 
                   {showThumb && (
@@ -295,20 +301,22 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
                     {item.text || item.title}
                   </div>
 
-                  <div className="flex items-center gap-1 pt-1 border-t border-border/35">
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1 h-6 px-2 rounded text-[11px] font-medium bg-[var(--mm-celadon-pill-bg)] hover:bg-[var(--mm-celadon-pill-bg-hover)] text-[var(--mm-celadon-pill-fg)] transition-colors"
+                  <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-border/35">
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      className="gap-1 h-6 px-2 rounded text-2xs font-medium bg-[var(--mm-celadon-pill-bg)] hover:bg-[var(--mm-celadon-pill-bg-hover)] text-[var(--mm-celadon-pill-fg)] transition-colors motion-reduce:transition-none"
                       onClick={() => commitStagingExcerpt(item.id)}
                       data-testid="mm-staging-commit-btn"
                     >
                       <ArrowBendDownRight size={11} aria-hidden />
                       <span>{t('mn5.commitToSelectedNode')}</span>
-                    </button>
+                    </DsButton>
                     {canMergeIntoTarget && activeTargetId && (
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1 h-6 px-2 rounded text-[11px] border border-border/35 text-[var(--mm-text-muted)] hover:text-[var(--mm-text)] hover:bg-[var(--mm-bg-hover)] transition-colors"
+                      <DsButton
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1 h-6 px-2 rounded text-2xs border border-border/35 text-[var(--mm-text-muted)] hover:text-[var(--mm-text)] hover:bg-[var(--mm-bg-hover)] transition-colors motion-reduce:transition-none"
                         onClick={() =>
                           commitStagingExcerpt(item.id, {
                             mode: 'merge',
@@ -319,7 +327,7 @@ export const MindMapStagingTray: React.FC<MindMapStagingTrayProps> = ({ classNam
                       >
                         <GitMerge size={11} aria-hidden />
                         <span>{t('mn5.mergeIntoSelectedNode')}</span>
-                      </button>
+                      </DsButton>
                     )}
                   </div>
                 </div>

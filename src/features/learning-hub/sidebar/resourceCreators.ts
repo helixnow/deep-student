@@ -3,8 +3,14 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { createEmpty } from '@/dstu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
-import { isAndroidMobileShell } from '@/utils/platform';
+import { isAndroidMobileShell, isWebUiShell } from '@/utils/platform';
 import { pickWebViewFiles } from '@/utils/pickWebViewFiles';
+
+const hasNativeTauriDialog = (): boolean =>
+  typeof window !== 'undefined'
+  && Boolean((window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
+  && !isWebUiShell()
+  && !isAndroidMobileShell();
 import { dstuNodeToResourceListItem } from '../types';
 import type { LearningHubSidebarProps } from '../types';
 import type { ImportProgressState } from '../components/ImportProgressModal';
@@ -92,8 +98,10 @@ export function createResourceCreators({
     if (importProgress.isImporting) return; // 防止重复点击
 
     try {
-      if (isAndroidMobileShell()) {
-        await importFiles(await pickWebViewFiles(true));
+      if (!hasNativeTauriDialog()) {
+        const files = await pickWebViewFiles(true);
+        if (files.length === 0) return;
+        await importFiles(files);
         return;
       }
       // 打开文件选择对话框。选中的文件与拖拽走同一条导入链路（importPaths）：

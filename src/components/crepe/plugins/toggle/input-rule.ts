@@ -5,12 +5,12 @@
  * 也可仅靠 slash 菜单插入（接线时注册，见交付文档）。
  */
 
-import type { Ctx } from '@milkdown/ctx'
+import type { Ctx } from '@milkdown/kit/ctx'
 import { InputRule } from '@milkdown/prose/inputrules'
 import type { EditorState, Transaction } from '@milkdown/prose/state'
 import type { NodeType } from '@milkdown/prose/model'
 import { TextSelection } from '@milkdown/prose/state'
-import { $inputRule } from '@milkdown/utils'
+import { $inputRule } from '@milkdown/kit/utils'
 
 import { createToggleNode, toggleSchema } from './schema'
 

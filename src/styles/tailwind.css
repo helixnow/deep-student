@@ -1,3 +1,5 @@
+@layer crepe-vendor, base, components, utilities;
+
 @import './transitions-dev.css';
 @import './ui-motion.css';
 

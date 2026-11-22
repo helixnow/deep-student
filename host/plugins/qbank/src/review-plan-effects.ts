@@ -32,10 +32,23 @@ export function ensureReviewPlan(host: ReviewPlanHost, questionId: string, examI
   const review = host.reviewPlan;
   if (review === undefined) return;
   try {
-    const plan = review.getOrCreatePlan(questionId, examId) as { id?: unknown } | null;
+    const plan = review.getOrCreatePlan(questionId, examId) as {
+      id?: unknown;
+      status?: unknown;
+      next_review_date?: unknown;
+    } | null;
+    const planId = plan !== null && typeof plan === 'object' && typeof plan.id === 'string'
+      ? plan.id : '';
+    if (planId !== '' && plan !== null && typeof plan === 'object') {
+      const today = localDate();
+      const needsLapse = plan.status === 'graduated'
+        || plan.status === 'suspended'
+        || (typeof plan.next_review_date === 'string' && plan.next_review_date > today);
+      if (needsLapse && typeof review.lapseFromPractice === 'function') {
+        review.lapseFromPractice(planId);
+      }
+    }
     if (options.logSuccess) {
-      const planId = plan !== null && typeof plan === 'object' && typeof plan.id === 'string'
-        ? plan.id : '';
       host.log?.info?.(
         `[QuestionBankService] Auto review plan for wrong answer: question_id=${questionId}, plan_id=${planId}`);
     }
@@ -49,7 +62,7 @@ export function ensureReviewPlan(host: ReviewPlanHost, questionId: string, examI
 export function advanceDueReviewPlan(host: ReviewPlanHost, questionId: string): void {
   const review = host.reviewPlan;
   if (review === undefined) return;
-  let plan: { id: string; next_review_date: string; last_review_date?: string | null } | null;
+  let plan: { id: string; next_review_date: string; last_review_date?: string | null; status?: string } | null;
   try {
     // Rust `if let Ok(Some(plan))`：查询失败静默跳过，只告警推进失败。
     plan = review.getPlanByQuestion(questionId);
@@ -57,7 +70,7 @@ export function advanceDueReviewPlan(host: ReviewPlanHost, questionId: string): 
     return;
   }
   const today = localDate();
-  if (plan === null || plan.next_review_date > today) return;
+  if (plan === null || plan.status === 'suspended' || plan.next_review_date > today) return;
   // D2（FSRS）：评过分的题可能因学习步（1 / 10 分钟）当天仍到期；同一天已复习过就不再用练习重复推进，
   // 否则冲刺结算 / 复习会话之后的同题练习会把一次回忆记成两次。
   if (plan.last_review_date === today) return;

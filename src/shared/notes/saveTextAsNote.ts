@@ -18,7 +18,7 @@
 
 import type { NoteOrigin } from '@/features/notes/noteOrigin';
 import i18n from '@/i18n';
-import { folderApi } from '@/dstu';
+import { dstu, folderApi, updatedAtToVersionToken } from '@/dstu';
 import { emitDstuFolderChange } from '@/dstu/folderEvents';
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -26,6 +26,32 @@ import { getErrorMessage } from '@/utils/errorUtils';
 
 /** 标题最大长度（超出截断，保持资源库列表可读） */
 const MAX_NOTE_TITLE_LENGTH = 50;
+
+function formatTomorrowLocalDate(now = new Date()): string {
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const y = next.getFullYear();
+  const m = String(next.getMonth() + 1).padStart(2, '0');
+  const d = String(next.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+async function scheduleExcerptNoteReview(noteId: string, reviewDate?: string): Promise<string | null> {
+  const fresh = await dstu.get(`/${noteId}`);
+  if (!fresh.ok) return null;
+  const version = updatedAtToVersionToken(fresh.value.updatedAt);
+  if (!version) return null;
+  const targetDate = reviewDate || formatTomorrowLocalDate();
+  const existingProps =
+    fresh.value.metadata?.props && typeof fresh.value.metadata.props === 'object'
+      ? (fresh.value.metadata.props as Record<string, unknown>)
+      : {};
+  const saved = await dstu.setMetadata(
+    fresh.value.path,
+    { props: { ...existingProps, study_review_date: targetDate } },
+    version,
+  );
+  return saved.ok ? targetDate : null;
+}
 
 export interface SaveTextAsNoteInput {
   /** 笔记正文 */
@@ -38,6 +64,8 @@ export interface SaveTextAsNoteInput {
   tags?: string[];
   /** 来源（对话消息 / 资料页）：写入 props._origin，笔记属性面板可一键回到来源 */
   origin?: NoteOrigin;
+  /** 可选初次复习日期（YYYY-MM-DD）；资料摘录（origin.kind === 'resource'）缺省自动写入次日 */
+  reviewDate?: string;
 }
 
 export type SaveTextAsNoteResult =
@@ -133,6 +161,10 @@ export async function saveTextAsNote(input: SaveTextAsNoteInput): Promise<SaveTe
       await import('@/features/notes/noteOrigin')
         .then(({ attachNoteOrigin }) => attachNoteOrigin(noteId, input.origin!))
         .catch(() => false);
+    }
+    if (input.reviewDate || input.origin?.kind === 'resource') {
+      // PDF/EPUB 等资料摘录默认写入次日初次复习日期（遵循 study_review_date 格式）
+      await scheduleExcerptNoteReview(noteId, input.reviewDate).catch(() => null);
     }
     const landed = input.folderId ? await resolveLandedFolder(noteId, input.folderId) : 'root';
 

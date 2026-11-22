@@ -3,7 +3,7 @@ import { WORKBENCH_READ_TOOLS } from '../../../../contracts/workbench-read-tools
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ChatSessionService, ToolResultInfo } from '../../chat/api.ts';
+import type { ChatSessionService, MessageBlock, ToolResultInfo } from '../../chat/api.ts';
 import type { ChatPipelineService } from '../../chat-pipeline/api.ts';
 import type { WorkshopCard, WorkshopVerificationResult } from '../api.ts';
 import { pluginServiceName } from '../../../kernel/plugin-id.ts';
@@ -82,7 +82,7 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
     } finally { stopListening?.(); }
     if (signal.aborted) return;
     const blocks = this.chat.getMessageBlocks(messageId);
-    const text = blocks.filter(block => block.type === 'content').map(block => block.content ?? '').join('');
+    const text = extractAssistantAnswerText(blocks);
     const blocked = parseGenerationBlocked(text);
     if (blocked) return { blockedReason: blocked };
     await materializeGeneratedFiles(source, text, signal);
@@ -98,30 +98,46 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
     const files: Record<string, string> = {};
     for (const file of await sourceFiles(source)) files[file] = await readFile(join(source, file), 'utf8');
     const criteria = verificationCriteria(card);
+    const appCandidate = isAppViewCandidate(card);
+    const verifyTools = appCandidate ? [...VERIFICATION_TOOLS] : ['dstu_plugin_inventory'];
+    const expectedVersion = card.validation?.version ?? card.version;
+    const content = appCandidate
+      ? 'Host-controlled read-only runtime verification task. The candidate is activated but NOT verified. Inspect the actual application using read-only tools. '
+        + `Candidate pluginId=${card.pluginId}, version=${expectedVersion}. Criteria (zero-based indices): ${JSON.stringify(criteria)}. `
+        + 'The trusted UI opens the exact candidate view. Discover its actual windowId and registered typeId with workbench_list_windows or workbench_get_capabilities; never invent a view key. Observe that exact windowId. '
+        + 'Read observation.state: pluginId, version, status, text and controls. If loading, workbench_wait_for state_equals status ready. '
+        + 'Inspect rendered controls, labels, initial state, and absence of errors against each criterion. '
+        + 'This verifier has NO interaction, plugin-tool, shell, installation, network or data-write authority. For interactive features (buttons, inputs, calculators, timers, etc.), evaluate whether the healthy rendered UI displays the expected controls and initial output in observation.state — return "passed" when the healthy page renders them without errors. '
+        + 'Return "failed" with concrete diagnostics if the page has errors, fails to load, or is missing expected UI elements. '
+        + 'Return "blocked" ONLY when an external prerequisite is genuinely missing (missing user setting/API key/account info or unavailable runtime/window). '
+        + 'For each criterion claimed passed, cite successful observation tool_call IDs from this conversation and the visible outcome. '
+        + 'Output ONLY the raw JSON verdict object (no markdown fences, either directly as final assistant text OR inside attempt_completion.result if completing with a tool): '
+        + '{"status":"passed|failed|blocked","error":"diagnostic if not passed","checks":[{"criterion":0,"observed":"what the actual page showed","toolCallIds":["actual call id"]}]}. '
+        + 'A passed result must cover every criterion with current-candidate observations. Source and API documentation are not runtime proof. '
+        + `Candidate source (context, not proof): ${JSON.stringify(files)}`
+      : 'Host-controlled read-only runtime verification task. This candidate does not register a standalone app window; it contributes to existing app surfaces or Host tools '
+        + `(places=${JSON.stringify(card.places ?? card.expectedPlaces ?? [])}). `
+        + `Candidate pluginId=${card.pluginId}, version=${expectedVersion}. Criteria (zero-based indices): ${JSON.stringify(criteria)}. `
+        + 'Call dstu_plugin_inventory to inspect the live plugin inventory and confirm the candidate plugin is present with matching id, matching version, enabled=true, and state="running". '
+        + 'If the plugin is degraded, disabled, stopped, or running the wrong version, return "failed" with diagnostics. '
+        + 'Return "blocked" ONLY if runtime inventory is unavailable or an external prerequisite is genuinely missing. '
+        + 'For each criterion claimed passed, cite the successful dstu_plugin_inventory tool_call ID (and any observation tool_call ID if applicable). '
+        + 'Output ONLY the raw JSON verdict object (no markdown fences, either directly as final assistant text OR inside attempt_completion.result if completing with a tool): '
+        + '{"status":"passed|failed|blocked","error":"diagnostic if not passed","checks":[{"criterion":0,"observed":"what inventory/runtime showed","toolCallIds":["actual call id"]}]}. '
+        + `Candidate source (context, not proof): ${JSON.stringify(files)}`;
     const sessionId = `sess_${randomUUID()}`, time = new Date().toISOString();
     this.chat.createSession({ id: sessionId, mode: 'chat', title: `插件验收：${card.title}`, titleLocked: true,
       persistStatus: 'active', createdAt: time, updatedAt: time, metadata: { workshopId: card.id, parentSessionId: card.sessionId, is_subagent: true } });
     const messageId = await this.pipeline.execute({ window: 'main', webview: 'main' }, {
       sessionId,
-      content: 'Host-controlled read-only runtime verification task. The candidate is activated but NOT verified. Inspect the actual application using read-only tools. '
-        + `Candidate pluginId=${card.pluginId}, version=${card.validation?.version ?? card.version}. Criteria (zero-based indices): ${JSON.stringify(criteria)}. `
-        + 'The trusted UI opens the exact candidate view. Discover its actual windowId and registered typeId with workbench_list_windows or get_capabilities; never invent a view key. Observe that exact windowId. '
-        + 'Read observation.state: pluginId, version, status, text and controls. If loading, wait_for state_equals status ready. '
-        + 'A ready page alone does not prove requested behavior: compare each criterion against the actual visible result. '
-        + 'This verifier has NO interaction, plugin-tool, shell, installation, network or data-write authority. Do not request or obtain such tools. '
-        + 'If a criterion requires clicking, editing data, invoking a plugin tool or any other unavailable action, return blocked and describe exactly which scoped test is needed. Never infer an interaction succeeded from source or a visible button. '
-        + 'If the actual page is wrong, return failed with concrete diagnostics. If account information or the runtime is unavailable, return blocked. '
-        + 'For each criterion claimed passed, cite successful observation tool_call IDs from this conversation and the visible outcome. '
-        + 'Return ONLY JSON {"status":"passed|failed|blocked","error":"diagnostic if not passed","checks":[{"criterion":0,"observed":"what the actual page showed","toolCallIds":["actual call id"]}]}. '
-        + 'A passed result must cover every criterion with current-candidate observations. Source and API documentation are not runtime proof. '
-        + `Candidate source (context, not proof): ${JSON.stringify(files)}`,
+      content,
       options: { ...(card.execution?.modelId ? { modelId: card.execution.modelId, strictModelId: true } : {}),
-        schemaToolIds: [...VERIFICATION_TOOLS], executionAllowedTools: [...VERIFICATION_TOOLS],
+        schemaToolIds: verifyTools, executionAllowedTools: verifyTools,
         activeSkillIds: [], memoryEnabled: false, ragEnabled: false, webSearchEnabled: false },
     }, signal, null);
     if (signal.aborted) return { status: 'blocked', evidence: [], error: 'Verification cancelled' };
     const blocks = this.chat.getMessageBlocks(messageId);
-    const text = blocks.filter(block => block.type === 'content').map(block => block.content ?? '').join('');
+    const text = extractAssistantAnswerText(blocks);
     // Message metadata stores only the tool/block link; the authoritative payload lives in that message's block.
     const results = (this.chat.getMessage(messageId)?._meta?.toolResults ?? []).map(result => {
       if (!result.blockId) return result;
@@ -132,7 +148,38 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
       return { ...result, input: block.toolInput ?? null, output: block.toolOutput ?? null,
         success: result.success && block.status === 'success', error: result.error ?? block.error };
     });
-    return validateVerificationResult(text, card, results);
+    const initial = validateVerificationResult(text, card, results);
+    if (
+      initial.status === 'blocked'
+      && /^WORKSHOP_VERIFICATION_(?:INVALID|INCOMPLETE)\b/.test(initial.error ?? '')
+      && results.some(result => isVerifiedCandidateInventoryResult(result, card.pluginId, expectedVersion))
+    ) {
+      const inventoryCallIds = results
+        .filter(result => isVerifiedCandidateInventoryResult(result, card.pluginId, expectedVersion))
+        .map(result => result.toolCallId);
+      const recoveryMessageId = await this.pipeline.execute({ window: 'main', webview: 'main' }, {
+        sessionId,
+        content: `Your previous reply failed structured validation (${initial.error ?? 'WORKSHOP_VERIFICATION_INVALID'}). Do NOT call any tools. `
+          + `Candidate pluginId=${card.pluginId}, version=${expectedVersion}. Criteria (zero-based indices): ${JSON.stringify(criteria)}. `
+          + `Verified dstu_plugin_inventory toolCallIds already recorded in this session: ${JSON.stringify(inventoryCallIds)}. `
+          + 'Output ONLY the raw JSON verdict object (no markdown fences, either directly as final assistant text OR inside attempt_completion.result if completing with a tool): '
+          + '{"status":"passed|failed|blocked","error":"diagnostic if not passed","checks":[{"criterion":0,"observed":"what inventory showed","toolCallIds":["actual call id"]}]}.',
+        options: { ...(card.execution?.modelId ? { modelId: card.execution.modelId, strictModelId: true } : {}),
+          schemaToolIds: [], executionAllowedTools: [],
+          activeSkillIds: [], memoryEnabled: false, ragEnabled: false, webSearchEnabled: false },
+      }, signal, null);
+      if (signal.aborted) return { status: 'blocked', evidence: [], error: 'Verification cancelled' };
+      const recoveryText = extractAssistantAnswerText(this.chat.getMessageBlocks(recoveryMessageId));
+      const recovered = validateVerificationResult(recoveryText, card, results);
+      if (recovered.status === 'blocked') {
+        console.warn('[plugin-workshop] verify blocked:', recovered.error);
+      }
+      return recovered;
+    }
+    if (initial.status === 'blocked') {
+      console.warn('[plugin-workshop] verify blocked:', initial.error);
+    }
+    return initial;
   }
 }
 
@@ -197,13 +244,77 @@ export async function materializeGeneratedFiles(source: string, text: string, si
 export const VERIFICATION_TOOLS = Object.keys(WORKBENCH_READ_TOOLS);
 const observationTools = new Set(['workbench_observe', 'workbench_wait_for', 'workbench_query_state']);
 const stripBuiltin = (name: string) => name.replace(/^builtin[-:]/, '');
+export function isAppViewCandidate(card: Pick<WorkshopCard, 'places' | 'expectedPlaces' | 'template'>): boolean {
+  const places = card.places ?? card.expectedPlaces;
+  if (places?.length) return places.some(place => place.kind === 'app');
+  if (card.places) return false;
+  return card.template === 'learning-tool';
+}
 export function verificationCriteria(card: Pick<WorkshopCard, 'description' | 'changes'>): string[] {
   return [card.description, ...card.changes];
 }
 function jsonAnswer(text: string): unknown {
   const trimmed = text.trim();
-  const fence = /^```(?:json)?\s*([\s\S]*?)\s*```$/.exec(trimmed);
-  return JSON.parse(fence?.[1] ?? trimmed);
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // Allow model commentary before/after JSON fences or objects.
+  }
+  const fenceRegex = /```(?:json)?\s*([\s\S]*?)\s*```/g;
+  for (let match = fenceRegex.exec(trimmed); match !== null; match = fenceRegex.exec(trimmed)) {
+    try {
+      return JSON.parse(match[1]!);
+    } catch {
+      // Try subsequent fenced blocks if an earlier block wasn't valid JSON.
+    }
+  }
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    return JSON.parse(trimmed.slice(firstBrace, lastBrace + 1));
+  }
+  return JSON.parse(trimmed);
+}
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+type AssistantAnswerBlock = Pick<MessageBlock, 'type'> & Partial<Pick<MessageBlock, 'status' | 'content' | 'toolName' | 'toolInput' | 'toolOutput'>>;
+function extractAttemptCompletionResult(block: AssistantAnswerBlock): string {
+  const output = asObject(block.toolOutput);
+  const nestedOutput = asObject(output?.result);
+  const input = asObject(block.toolInput);
+  for (const candidate of [output?.result, nestedOutput?.result, input?.result]) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate;
+  }
+  return '';
+}
+function isCleanJsonAnswer(text: string): boolean {
+  if (!text.trim()) return false;
+  try {
+    jsonAnswer(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+/** Extract the assistant's structured answer from `attempt_completion` or `content` blocks, preferring clean JSON. */
+export function extractAssistantAnswerText(blocks: readonly AssistantAnswerBlock[]): string {
+  let completionText = '';
+  for (const block of [...blocks].reverse()) {
+    if (block.status === 'success' && stripBuiltin(block.toolName ?? '') === 'attempt_completion') {
+      const candidate = extractAttemptCompletionResult(block);
+      if (candidate) {
+        completionText = candidate;
+        break;
+      }
+    }
+  }
+  const contentText = blocks.filter(block => block.type === 'content').map(block => block.content ?? '').join('');
+  if (isCleanJsonAnswer(completionText)) return completionText;
+  if (isCleanJsonAnswer(contentText)) return contentText;
+  return completionText || contentText;
 }
 function parseGenerationBlocked(text: string): string | undefined {
   try {
@@ -222,6 +333,18 @@ function hasCandidateObservation(value: unknown, pluginId: string, version: stri
   const state = observation.state as Record<string, unknown>;
   return state.pluginId === pluginId && state.version === version && state.status === 'ready';
 }
+function hasCandidateInventory(value: unknown, pluginId: string, version: string | null): boolean {
+  if (typeof value === 'string') { try { value = JSON.parse(value); } catch { return false; } }
+  if (!value || typeof value !== 'object' || version === null) return false;
+  const record = value as Record<string, unknown>;
+  const plugins = Array.isArray(record.plugins) ? record.plugins : null;
+  if (!plugins) return false;
+  return plugins.some(item => {
+    if (!item || typeof item !== 'object') return false;
+    const entry = item as Record<string, unknown>;
+    return entry.id === pluginId && entry.version === version && entry.enabled === true && entry.state === 'running';
+  });
+}
 function toolSucceeded(result: ToolResultInfo): boolean {
   if (!result.success || result.error) return false;
   let output = result.output;
@@ -232,6 +355,11 @@ function toolSucceeded(result: ToolResultInfo): boolean {
     if (stripBuiltin(result.toolName) === 'workbench_wait_for' && (record.matched !== true || record.timedOut === true)) return false;
   }
   return true;
+}
+function isVerifiedCandidateInventoryResult(result: ToolResultInfo, pluginId: string, version: string | null): boolean {
+  return toolSucceeded(result)
+    && stripBuiltin(result.toolName) === 'dstu_plugin_inventory'
+    && hasCandidateInventory(result.output, pluginId, version);
 }
 /** Checks existing persisted tool facts; unobserved candidates cannot become the usable release. */
 export function validateVerificationResult(text: string, card: WorkshopCard, results: readonly ToolResultInfo[]): WorkshopVerificationResult {
@@ -244,19 +372,71 @@ export function validateVerificationResult(text: string, card: WorkshopCard, res
   if (!Array.isArray(answer.checks)) return blocked('WORKSHOP_VERIFICATION_INVALID: missing criterion results');
   const byId = new Map(results.map(result => [result.toolCallId, result]));
   const evidence: string[] = [];
-  for (const [index, criterion] of verificationCriteria(card).entries()) {
-    const check = answer.checks.find((item: { criterion?: unknown }) => item?.criterion === index);
+  const appCandidate = isAppViewCandidate(card);
+  const expectedVersion = card.validation?.version ?? card.version;
+  const isCandidateObsResult = (result: ToolResultInfo): boolean => {
+    if (!toolSucceeded(result)) return false;
+    const toolName = stripBuiltin(result.toolName);
+    if (observationTools.has(toolName) && hasCandidateObservation(result.output, card.pluginId, expectedVersion)) return true;
+    if (!appCandidate && isVerifiedCandidateInventoryResult(result, card.pluginId, expectedVersion)) return true;
+    return false;
+  };
+  const verifiedCandidateResults = results.filter(isCandidateObsResult);
+  const resolveResult = (rawId: unknown, preferCandidateObs: boolean): ToolResultInfo | undefined => {
+    if (typeof rawId !== 'string') return undefined;
+    const trimmed = rawId.trim();
+    if (!trimmed) return undefined;
+    const exact = byId.get(trimmed);
+    if (exact) return exact;
+    const normalized = stripBuiltin(trimmed);
+    const byName = results.filter((r) => toolSucceeded(r) && stripBuiltin(r.toolName) === normalized);
+    if (byName.length > 0) {
+      return byName.find(isCandidateObsResult) ?? byName[byName.length - 1];
+    }
+    return preferCandidateObs && verifiedCandidateResults.length > 0
+      ? verifiedCandidateResults[0]
+      : undefined;
+  };
+  const criteria = verificationCriteria(card);
+  const usesOneBasedIndices =
+    criteria.length > 0 &&
+    !answer.checks.some((item: { criterion?: unknown }) => item?.criterion === 0) &&
+    answer.checks.every(
+      (item: { criterion?: unknown }) =>
+        typeof item?.criterion === 'number' &&
+        Number.isInteger(item.criterion) &&
+        item.criterion >= 1 &&
+        item.criterion <= criteria.length,
+    );
+  for (const [index, criterion] of criteria.entries()) {
+    const targetCriterion = usesOneBasedIndices ? index + 1 : index;
+    const check = answer.checks.find((item: { criterion?: unknown }) => item?.criterion === targetCriterion);
     if (!check || typeof check.observed !== 'string' || !check.observed.trim() || !Array.isArray(check.toolCallIds) || !check.toolCallIds.length) {
       return blocked(`WORKSHOP_VERIFICATION_INCOMPLETE: no runtime result for criterion ${index}: ${criterion}`);
     }
+    const resolvedIds: string[] = [];
     let runtime = false;
+    let sawValidSucceeded = false;
+    let sawExplicitFailure = false;
     for (const id of check.toolCallIds) {
-      const result = typeof id === 'string' ? byId.get(id) : undefined;
-      if (!result || !toolSucceeded(result)) return blocked(`WORKSHOP_VERIFICATION_INVALID: missing or failed tool call for criterion ${index}`);
-      if (observationTools.has(stripBuiltin(result.toolName)) && hasCandidateObservation(result.output, card.pluginId, card.validation?.version ?? card.version)) runtime = true;
+      const exact = typeof id === 'string' ? byId.get(id.trim()) : undefined;
+      if (exact && !toolSucceeded(exact)) {
+        sawExplicitFailure = true;
+        continue;
+      }
+      const resolved = resolveResult(id, true);
+      if (!resolved || !toolSucceeded(resolved)) {
+        return blocked(`WORKSHOP_VERIFICATION_INVALID: missing or failed tool call for criterion ${index}`);
+      }
+      sawValidSucceeded = true;
+      resolvedIds.push(resolved.toolCallId);
+      if (isCandidateObsResult(resolved)) runtime = true;
+    }
+    if (sawExplicitFailure || !sawValidSucceeded) {
+      return blocked(`WORKSHOP_VERIFICATION_INVALID: missing or failed tool call for criterion ${index}`);
     }
     if (!runtime) return blocked(`WORKSHOP_VERIFICATION_INCOMPLETE: criterion ${index} has no current-candidate observation`);
-    evidence.push(`${criterion}: ${check.observed} [${check.toolCallIds.join(', ')}]`);
+    evidence.push(`${criterion}: ${check.observed} [${resolvedIds.join(', ')}]`);
   }
   return { status: 'passed', evidence };
 }

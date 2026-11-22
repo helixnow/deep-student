@@ -19,6 +19,7 @@ import {
 } from '@/utils/chatApi';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { requestFlashcardsDueRefresh } from '../events';
+import { hasValidCloze } from '../cloze';
 import type { ReviewEditTemplate } from '../reviewCardEditFields';
 
 export const FLASHCARDS_LIBRARY_PAGE_SIZE = 20;
@@ -101,6 +102,8 @@ interface FlashcardsLibraryState {
   createCard: (input: NewLibraryCardInput) => Promise<boolean>;
   /** 选择本地 .apkg 并导入卡片库（后端 import_apkg_to_library，与命令面板同一条链路）。 */
   importApkg: () => Promise<ApkgImportOutcome>;
+  /** 选择本地 CSV/TSV 并解析导入卡片库（RFC 4180 + Anki 导出的文本表格）。 */
+  importCsv: () => Promise<CsvImportOutcome>;
   reset: () => void;
 }
 
@@ -110,6 +113,8 @@ export interface NewLibraryCardInput {
   tags?: string[];
   /** 可选目标牌组（如 `英语::词汇`）；留空为未分组 */
   deckName?: string;
+  /** 卡片类型：Basic（问答）或 Cloze（挖空）；省略时若正面含有效挖空则自动按 Cloze 处理 */
+  noteType?: 'Basic' | 'Cloze';
   /** 建完立刻进入复习队列（默认 true，否则新卡不会出现在到期队列里） */
   enqueue?: boolean;
 }
@@ -122,6 +127,16 @@ export type ApkgImportOutcome =
       reviewEnqueued: number;
       /** 其中沿用 Anki 复习进度（非新卡）建档的卡数 */
       reviewWithHistory: number;
+    }
+  | { status: 'canceled' }
+  | { status: 'failed'; error: string };
+
+export type CsvImportOutcome =
+  | {
+      status: 'imported';
+      importedCards: number;
+      reviewEnqueued: number;
+      skippedRows: number;
     }
   | { status: 'canceled' }
   | { status: 'failed'; error: string };
@@ -409,24 +424,42 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
 
     bulkDelete: (cardIds) => runBulkMutation(cardIds, (card) => deleteAnkiCard(card.id)),
 
-    createCard: async ({ front, back, tags = [], deckName, enqueue = true }) => {
+    createCard: async ({ front, back, tags = [], deckName, noteType, enqueue = true }) => {
       const trimmedFront = front.trim();
       const trimmedBack = back.trim();
       const trimmedDeck = deckName?.trim();
-      if (!trimmedFront || !trimmedBack) {
+      const isCloze = noteType === 'Cloze' || (!noteType && hasValidCloze(trimmedFront));
+      if (!trimmedFront || (!isCloze && !trimmedBack)) {
         set({ actionError: i18n.t('flashcards:library.create.incomplete') });
+        return false;
+      }
+      if (isCloze && !hasValidCloze(trimmedFront)) {
+        set({ actionError: i18n.t('flashcards:session.invalidClozeEdit') });
         return false;
       }
       set({ creating: true, actionError: null });
       try {
         const { ankiApiAdapter } = await import('@/services/ankiApiAdapter');
+        const cardPayload = isCloze
+          ? {
+              front: trimmedFront,
+              back: trimmedBack,
+              text: trimmedFront,
+              extra_fields: {
+                Text: trimmedFront,
+                ...(trimmedBack ? { Extra: trimmedBack } : {}),
+              },
+              tags,
+              images: [] as string[],
+            }
+          : { front: trimmedFront, back: trimmedBack, tags, images: [] as string[] };
         const response = await ankiApiAdapter.saveAnkiCards({
-          cards: [{ front: trimmedFront, back: trimmedBack, tags, images: [] }],
+          cards: [cardPayload],
           ...(trimmedDeck
             ? {
                 options: {
                   deck_name: trimmedDeck,
-                  note_type: 'Basic',
+                  note_type: isCloze ? 'Cloze' : 'Basic',
                   enable_images: false,
                   max_cards_per_source: 1,
                   max_cards_per_mistake: 1,
@@ -542,6 +575,125 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
         }
       } catch (error) {
         const message = getErrorMessage(error) || i18n.t('flashcards:library.import.failed');
+        set({ actionError: message });
+        return { status: 'failed' as const, error: message };
+      } finally {
+        set({ importing: false });
+      }
+    },
+
+    importCsv: async () => {
+      set({ importing: true, actionError: null });
+      try {
+        const [{ fileManager }, { invoke }, { ankiApiAdapter }, { parseFlashcardsFromCsv }] =
+          await Promise.all([
+            import('@/utils/fileManager'),
+            import('@tauri-apps/api/core'),
+            import('@/services/ankiApiAdapter'),
+            import('../library/csvFlashcards'),
+          ]);
+
+        const path = await fileManager.pickSingleFile({
+          title: i18n.t('flashcards:library.import.csvPickTitle'),
+          filters: [{ name: 'CSV / TSV', extensions: ['csv', 'tsv', 'txt'] }],
+        });
+        if (!path) return { status: 'canceled' as const };
+
+        const rawText = await fileManager.readTextFile(path);
+        const parsed = parseFlashcardsFromCsv(rawText);
+        if (parsed.cards.length === 0) {
+          const message = i18n.t('flashcards:library.import.csvEmpty');
+          set({ actionError: message });
+          return { status: 'failed' as const, error: message };
+        }
+
+        const groups = new Map<
+          string,
+          { deck: string; noteType: 'Basic' | 'Cloze'; cards: typeof parsed.cards }
+        >();
+        for (const card of parsed.cards) {
+          const key = `${card.deck}\0${card.noteType}`;
+          const existing = groups.get(key);
+          if (existing) {
+            existing.cards.push(card);
+          } else {
+            groups.set(key, { deck: card.deck, noteType: card.noteType, cards: [card] });
+          }
+        }
+
+        const savedIds: string[] = [];
+        for (const group of groups.values()) {
+          const cardsPayload = group.cards.map((card) =>
+            card.noteType === 'Cloze'
+              ? {
+                  front: card.front,
+                  back: card.back,
+                  text: card.front,
+                  extra_fields: {
+                    Text: card.front,
+                    ...(card.back ? { Extra: card.back } : {}),
+                  },
+                  tags: card.tags,
+                  images: [] as string[],
+                }
+              : {
+                  front: card.front,
+                  back: card.back,
+                  tags: card.tags,
+                  images: [] as string[],
+                },
+          );
+
+          const response = await ankiApiAdapter.saveAnkiCards({
+            cards: cardsPayload,
+            ...(group.deck
+              ? {
+                  options: {
+                    deck_name: group.deck,
+                    note_type: group.noteType,
+                    enable_images: false,
+                    max_cards_per_source: cardsPayload.length,
+                    max_cards_per_mistake: cardsPayload.length,
+                  },
+                }
+              : {}),
+          });
+
+          const groupIds = (
+            response.savedIds?.length
+              ? response.savedIds
+              : response.cardIdMappings?.map((mapping) => mapping.persistedId) ?? []
+          ).filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
+          savedIds.push(...groupIds);
+
+          if (groupIds.length === 0 && response.failed?.length) {
+            throw new Error(response.failed[0].error || i18n.t('flashcards:library.import.csvFailed'));
+          }
+        }
+
+        if (savedIds.length === 0) {
+          const message = i18n.t('flashcards:library.import.csvFailed');
+          set({ actionError: message });
+          return { status: 'failed' as const, error: message };
+        }
+
+        const enqueueResult = await invoke<{ states?: unknown[] } | null>('fsrs_enqueue_cards', {
+          ankiCardIds: savedIds,
+        });
+        const reviewEnqueued = Array.isArray(enqueueResult?.states)
+          ? enqueueResult.states.length
+          : savedIds.length;
+
+        requestFlashcardsDueRefresh();
+        await get().refresh();
+        return {
+          status: 'imported' as const,
+          importedCards: savedIds.length,
+          reviewEnqueued,
+          skippedRows: parsed.skippedRows,
+        };
+      } catch (error) {
+        const message = getErrorMessage(error) || i18n.t('flashcards:library.import.csvFailed');
         set({ actionError: message });
         return { status: 'failed' as const, error: message };
       } finally {

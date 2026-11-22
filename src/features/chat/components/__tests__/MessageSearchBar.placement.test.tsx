@@ -32,7 +32,7 @@ describe('MessageSearchBar placement', () => {
     // floating 形态由组件自身 createPortal 到 document.body，不在 render 容器内
     const root = document.body.querySelector('[data-slot="message-search-bar"]');
 
-    expect(root).toHaveClass('fixed', 'right-4', 'top-2');
+    expect(root).toHaveClass('fixed', 'right-4', 'top-[max(0.5rem,env(safe-area-inset-top))]');
     expect(root).not.toHaveClass('h-full');
   });
 });

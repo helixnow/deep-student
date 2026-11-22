@@ -10,7 +10,7 @@
 import { Plugin, PluginKey, type Transaction, type EditorState } from '@milkdown/prose/state';
 import { Decoration, DecorationSet, type EditorView } from '@milkdown/prose/view';
 import { Fragment, type Node as ProseNode } from '@milkdown/prose/model';
-import { $prose } from '@milkdown/utils';
+import { $prose } from '@milkdown/kit/utils';
 
 export interface SearchMatch {
   from: number;

@@ -1,7 +1,8 @@
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowRight, Play } from '@phosphor-icons/react';
+import { ArrowRight, Play, Sparkle } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/utils/cn';
 import {
@@ -17,6 +18,7 @@ export interface SprintSettlementScreenProps {
   deferredBacklogCount?: number;
   onFinish: () => void;
   onExtraSprint?: (minutes: number) => void;
+  onReinforceConcept?: (concept: string) => void;
 }
 
 function getConceptOutcomeDotClass(outcome: ConceptMasteryDelta['outcome']): string {
@@ -36,8 +38,29 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
   deferredBacklogCount,
   onFinish,
   onExtraSprint,
+  onReinforceConcept,
 }) => {
   const { t } = useTranslation('review');
+
+  const handleReinforceConcept = useCallback(
+    (concept: string) => {
+      if (onReinforceConcept) {
+        onReinforceConcept(concept);
+        return;
+      }
+      dispatchAppEvent(APP_EVENTS.PREFILL_CHAT_INPUT, {
+        content: t('examSprint.settlement.reinforcePrompt', {
+          concept,
+          defaultValue:
+            '帮我针对薄弱知识点「{{concept}}」复习：先用三句话讲清核心概念；再出 3 道由浅入深的练习题，用题库工具写进题目集「薄弱点练习」，每道题的第一个知识点标签写「{{concept}}」，我会在题目集里作答，这样掌握度才会更新；最后告诉我最容易错在哪里。',
+        }),
+        autoSend: false,
+        newSession: true,
+      });
+      onFinish();
+    },
+    [onFinish, onReinforceConcept, t],
+  );
 
   const onWindowKeyDown = useCallback(
     (rawEvent: Event) => {
@@ -49,6 +72,13 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
         && (target.tagName === 'INPUT'
           || target.tagName === 'TEXTAREA'
           || target.isContentEditable)
+      ) {
+        return;
+      }
+      if (
+        (event.key === 'Enter' || event.key === ' ')
+        && target
+        && (target.tagName === 'BUTTON' || (typeof target.closest === 'function' && Boolean(target.closest('button, a'))))
       ) {
         return;
       }
@@ -290,47 +320,81 @@ export const SprintSettlementScreen: React.FC<SprintSettlementScreenProps> = ({
           className="rounded-xl border border-border/35 bg-card/70 p-4"
           data-testid="settlement-concepts-receipt"
         >
-          <div className="mb-2.5 text-xs font-medium text-muted-foreground">
-            {t('examSprint.settlement.conceptsHeading')}
+          <div className="mb-2.5 flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
+            <span>{t('examSprint.settlement.conceptsHeading')}</span>
+            <span className="text-2xs text-muted-foreground/80">
+              {t('examSprint.settlement.conceptsTapHint', { defaultValue: '点击知识点进入 AI 讲练巩固' })}
+            </span>
           </div>
           <ul className="divide-y divide-border/35">
             {visibleConcepts.map((concept) => {
               const scorePct = Math.max(0, Math.min(100, Math.round((concept.scoreAfter ?? 0) * 100)));
+              const needsReinforce = concept.outcome === 'needs_reinforce';
               return (
                 <li
                   key={concept.concept}
-                  className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
+                  className="py-1 first:pt-0 last:pb-0"
                 >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span
-                      className={cn(
-                        'h-1.5 w-1.5 shrink-0 rounded-full',
-                        getConceptOutcomeDotClass(concept.outcome),
-                      )}
-                      aria-hidden="true"
-                    />
-                    <span className="truncate text-sm text-foreground">{concept.concept}</span>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2.5">
-                    <span className="text-xs text-muted-foreground">
-                      {t(`examSprint.settlement.outcome.${concept.outcome}`)}
-                    </span>
-                    <span
-                      aria-hidden="true"
-                      className="hidden h-1.5 w-12 overflow-hidden rounded-full bg-muted sm:inline-block"
-                    >
+                  <button
+                    type="button"
+                    data-testid="settlement-concept-button"
+                    data-concept={concept.concept}
+                    data-outcome={concept.outcome}
+                    onClick={() => handleReinforceConcept(concept.concept)}
+                    title={t('examSprint.settlement.reinforceTooltip', {
+                      concept: concept.concept,
+                      defaultValue: '针对「{{concept}}」开启 AI 讲练巩固',
+                    })}
+                    className={cn(
+                      'group flex min-h-[44px] w-full items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted/50 active:scale-[0.99] motion-reduce:transition-none motion-reduce:active:scale-100',
+                      needsReinforce && 'bg-amber-500/[0.04] hover:bg-amber-500/[0.1]',
+                    )}
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
                       <span
                         className={cn(
-                          'block h-full rounded-full transition-[width] duration-300 ease-standard motion-reduce:transition-none',
+                          'h-1.5 w-1.5 shrink-0 rounded-full',
                           getConceptOutcomeDotClass(concept.outcome),
                         )}
-                        style={{ width: `${scorePct}%` }}
+                        aria-hidden="true"
                       />
-                    </span>
-                    <span className="w-9 text-right font-mono text-xs font-semibold tabular-nums text-foreground">
-                      {formatWholePercent(concept.scoreAfter) ?? '0%'}
-                    </span>
-                  </div>
+                      <span className="truncate text-sm text-foreground">{concept.concept}</span>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {needsReinforce ? (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/35 bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-600 dark:text-amber-400">
+                          <Sparkle size={11} weight="bold" aria-hidden="true" />
+                          <span>
+                            {t('examSprint.settlement.reinforceCta', { defaultValue: 'AI 讲练' })}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          {t(`examSprint.settlement.outcome.${concept.outcome}`)}
+                        </span>
+                      )}
+                      <span
+                        aria-hidden="true"
+                        className="hidden h-1.5 w-12 overflow-hidden rounded-full bg-muted sm:inline-block"
+                      >
+                        <span
+                          className={cn(
+                            'block h-full rounded-full transition-[width] duration-300 ease-standard motion-reduce:transition-none',
+                            getConceptOutcomeDotClass(concept.outcome),
+                          )}
+                          style={{ width: `${scorePct}%` }}
+                        />
+                      </span>
+                      <span className="w-9 text-right font-mono text-xs font-semibold tabular-nums text-foreground">
+                        {formatWholePercent(concept.scoreAfter) ?? '0%'}
+                      </span>
+                      <ArrowRight
+                        size={13}
+                        aria-hidden="true"
+                        className="shrink-0 text-muted-foreground/60 transition-transform group-hover:translate-x-0.5 group-hover:text-foreground motion-reduce:transition-none"
+                      />
+                    </div>
+                  </button>
                 </li>
               );
             })}

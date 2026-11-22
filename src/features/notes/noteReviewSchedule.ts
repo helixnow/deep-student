@@ -29,3 +29,25 @@ export async function rescheduleNoteReview(noteId: string, days: number | null, 
   if (!saved.ok) throw new Error(saved.error.toUserMessage());
   return nextDate;
 }
+
+/** 为新建摘录笔记写入指定或默认次日（YYYY-MM-DD）的初次复习日期。 */
+export async function scheduleInitialNoteReview(
+  noteId: string,
+  reviewDate?: string,
+  now = new Date(),
+): Promise<string | null> {
+  if (!reviewDate) {
+    return rescheduleNoteReview(noteId, 1, now);
+  }
+  const fresh = await dstu.get(`/${noteId}`);
+  if (!fresh.ok) throw new Error(fresh.error.toUserMessage());
+  const props = updateNoteLearningProps(
+    learningPropsFromMetadata(fresh.value.metadata),
+    { reviewDate },
+  );
+  const version = updatedAtToVersionToken(fresh.value.updatedAt);
+  if (!version) throw new Error(i18n.t('notes:learning.errors.version_unavailable'));
+  const saved = await dstu.setMetadata(fresh.value.path, { props }, version);
+  if (!saved.ok) throw new Error(saved.error.toUserMessage());
+  return reviewDate;
+}

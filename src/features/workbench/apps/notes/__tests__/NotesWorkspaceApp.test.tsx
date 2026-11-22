@@ -117,6 +117,7 @@ import {
   RESOURCE_LIST_MAX_TOTAL,
   RESOURCE_LIST_PAGE_SIZE,
 } from '../NotesWorkspaceApp';
+import { WorkspaceTabs } from '../components/WorkspaceTabStrip';
 import {
   NOTES_WORKSPACE_COMMAND_EVENT,
   type NotesWorkspaceCommandAction,
@@ -981,15 +982,129 @@ describe('NotesWorkspaceApp', () => {
     expect(screen.queryByRole('complementary', { name: /Note info panel|笔记信息面板|Linked notes|关联笔记/ })).toBeNull();
   });
 
-  it('opens the visible properties outline from toggle-outline', async () => {
+  it('routes toggle-outline to the Outline tab, syncs manual tab switches, and switches instead of closing on toggle-backlinks', async () => {
     render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
     await screen.findByTestId('note-editor-note_1');
 
     dispatchWorkspaceCommand('toggle-outline');
 
     const panel = await screen.findByRole('complementary', { name: /Note info panel|笔记信息面板|Linked notes|关联笔记/ });
-    expect(within(panel).getByRole('tab', { name: /Properties|属性/ }))
-      .toHaveAttribute('aria-selected', 'true');
+    await waitFor(() => {
+      expect(within(panel).getByRole('tab', { name: /Outline|大纲/ }))
+        .toHaveAttribute('aria-selected', 'true');
+    });
+
+    // 面板已开且在大纲页时触发 toggle-backlinks：切到链接页而不关闭面板
+    dispatchWorkspaceCommand('toggle-backlinks');
+    await waitFor(() => {
+      expect(within(panel).getByRole('tab', { name: /Links|链接/ }))
+        .toHaveAttribute('aria-selected', 'true');
+    });
+
+    // 手动切回大纲页后触发 toggle-outline：因为真实激活页签已同步为 outline，应直接关闭面板
+    fireEvent.click(within(panel).getByRole('tab', { name: /Outline|大纲/ }));
+    await waitFor(() => {
+      expect(within(panel).getByRole('tab', { name: /Outline|大纲/ }))
+        .toHaveAttribute('aria-selected', 'true');
+    });
+    dispatchWorkspaceCommand('toggle-outline');
+    await waitFor(() => {
+      expect(screen.queryByRole('complementary', { name: /Note info panel|笔记信息面板|Linked notes|关联笔记/ })).toBeNull();
+    });
+  });
+
+  it('supports keyboard navigation in the tab context menu and marks both split tabs in strip and overflow menu', async () => {
+    await openThreeWorkspaceTabs();
+    const firstTab = screen.getByRole('tab', { name: '课堂笔记' });
+    const secondTab = screen.getByRole('tab', { name: '第二笔记' });
+
+    fireEvent.contextMenu(secondTab);
+    const menu = await screen.findByRole('menu');
+    const pinItem = within(menu).getByRole('menuitemcheckbox', { name: /固定|Pin/ });
+    const splitItem = within(menu).getByRole('menuitemcheckbox', { name: /右侧分屏|right split/ });
+    const closeItem = within(menu).getByRole('menuitem', { name: /^(关闭|Close)$/ });
+    const closeRightItem = within(menu).getByRole('menuitem', { name: /关闭右侧|Close tabs to the right/ });
+
+    pinItem.focus();
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(splitItem).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'End' });
+    expect(closeRightItem).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'Home' });
+    expect(pinItem).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'ArrowUp' });
+    expect(closeRightItem).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(pinItem).toHaveFocus();
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    fireEvent.keyDown(menu, { key: 'ArrowDown' });
+    expect(closeItem).toHaveFocus();
+
+    // 开启右侧分屏后，左右窗格打开的两个标签在标签栏与溢出菜单均有标记
+    fireEvent.click(splitItem);
+    await waitFor(() => expect(document.querySelectorAll('[data-notes-pane]')).toHaveLength(2));
+
+    expect(secondTab.parentElement).toHaveAttribute('data-right-split', 'true');
+    expect(secondTab.parentElement).toHaveAttribute('data-active', 'true');
+    const mainTab = screen.getByRole('tab', { name: '第三笔记' });
+    expect(mainTab.parentElement).toHaveAttribute('data-main-split', 'true');
+    expect(firstTab.parentElement).toHaveAttribute('data-main-split', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: /显示全部文件|Show all open files/ }));
+    const overflowMenu = screen.getByRole('menu', { name: /显示全部文件|Show all open files/ });
+    expect(overflowMenu.querySelector('[data-main-split="true"] .notes-tab-split-badge[data-pane="main"]')).not.toBeNull();
+    expect(overflowMenu.querySelector('[data-right-split="true"] .notes-tab-split-badge[data-pane="right"]')).not.toBeNull();
+  });
+
+  it('clears active filters and expands ancestors when clicking a note breadcrumb folder', async () => {
+    const parentFolder = {
+      id: 'fld_parent', parentId: null, title: 'Parent', isExpanded: true,
+      sortOrder: 0, createdAt: 1, updatedAt: 1,
+    };
+    const childFolder = {
+      id: 'fld_child', parentId: 'fld_parent', title: 'Child', isExpanded: true,
+      sortOrder: 0, createdAt: 1, updatedAt: 1,
+    };
+    vi.mocked(folderApi.listFolders).mockResolvedValue({ ok: true, value: [parentFolder, childFolder] });
+    vi.mocked(folderApi.getFolderTree).mockResolvedValue({
+      ok: true,
+      value: [{
+        folder: parentFolder,
+        items: [],
+        children: [{
+          folder: childFolder,
+          items: [{ id: 'fi_1', folderId: 'fld_child', itemType: 'note', itemId: 'note_1', sortOrder: 0, createdAt: 1 }],
+          children: [],
+        }],
+      }],
+    });
+
+    render(<NotesWorkspaceApp {...props({ launchPayload: { resourceType: 'note', resourceId: 'note_1' } })} />);
+    await screen.findByTestId('note-editor-note_1');
+
+    // 先折叠父目录，再输入搜索词过滤文件树
+    const parentRow = (await screen.findByText('Parent')).closest('[role="treeitem"]') as HTMLElement;
+    fireEvent.click(parentRow);
+    expect(parentRow).toHaveAttribute('aria-expanded', 'false');
+
+    const searchBox = screen.getByRole('searchbox', { name: /搜索文件|Search files/ });
+    fireEvent.change(searchBox, { target: { value: '不存在的过滤词' } });
+    expect(searchBox).toHaveValue('不存在的过滤词');
+
+    // 点击面包屑中的子目录：应清空过滤、展开祖先目录并选中目标文件夹
+    const onBreadcrumbClick = panelProps.at(-1)?.onNoteBreadcrumbClick as
+      | ((item: { id: string; label: string; type: 'folder' | 'note' }) => void)
+      | undefined;
+    expect(onBreadcrumbClick).toBeTypeOf('function');
+    act(() => {
+      onBreadcrumbClick?.({ id: 'fld_child', label: 'Child', type: 'folder' });
+    });
+
+    await waitFor(() => {
+      expect(searchBox).toHaveValue('');
+      const childRow = screen.getByText('Child').closest('[role="treeitem"]');
+      expect(childRow).toHaveAttribute('data-selected', 'true');
+    });
   });
 
   it('opens full-text search through the explorer menu', async () => {
@@ -1332,5 +1447,31 @@ describe('listWorkspaceResources', () => {
 
     expect(result.ok).toBe(false);
     expect(result.error?.toUserMessage()).toBe('boom');
+  });
+});
+
+describe('WorkspaceTabs accessibility', () => {
+  it('falls back to tabIndex=0 on the first tab when activeKey is not in tabs', () => {
+    render(
+      <WorkspaceTabs
+        tabs={[
+          { key: 'note:a', type: 'note', id: 'a', title: 'Alpha' },
+          { key: 'note:b', type: 'note', id: 'b', title: 'Beta' },
+        ]}
+        activeKey="note:missing"
+        rightTabKey={null}
+        onActivate={vi.fn()}
+        onClose={vi.fn()}
+        onReorder={vi.fn()}
+        onOpenContextMenu={vi.fn()}
+        contextMenuKey={null}
+        sidebarWidth="0px"
+        saveStates={new Map()}
+      />,
+    );
+
+    const tabs = screen.getAllByRole('tab');
+    expect(tabs[0]).toHaveAttribute('tabindex', '0');
+    expect(tabs[1]).toHaveAttribute('tabindex', '-1');
   });
 });

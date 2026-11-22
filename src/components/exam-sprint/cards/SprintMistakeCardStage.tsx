@@ -1,6 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaretDown, CaretUp, Check, Sparkle, X } from '@phosphor-icons/react';
+import { QuestionMaterialView } from '@/components/QuestionMaterialView';
+import {
+  loadQuestionImageUrls,
+  QUESTION_IMAGE_LOAD_ERROR,
+} from '@/components/questionImageLoader';
 import { cn } from '@/utils/cn';
 import { parseCompoundSprintItem } from '../compoundCardModel';
 import { resolveItemSourceAnchors } from '../sourceAnchorBridge';
@@ -91,6 +96,45 @@ export const SprintMistakeCardStage: React.FC<SprintMistakeCardStageProps> = ({
 }) => {
   const { t } = useTranslation('review');
   const [originalExpanded, setOriginalExpanded] = useState(false);
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
+
+  const visibleImages = useMemo(
+    () => (Array.isArray(item.images) ? item.images.filter((img) => img.role !== 'source') : []),
+    [item.images],
+  );
+
+  const visibleMaterials = useMemo(
+    () => (Array.isArray(item.materials) ? item.materials : []),
+    [item.materials],
+  );
+
+  useEffect(() => {
+    if (visibleImages.length === 0) {
+      setImageUrls({});
+      return undefined;
+    }
+    let cancelled = false;
+    const directUrls: Record<string, string> = {};
+    const toFetch = visibleImages.filter((img) => {
+      if (/^(?:data:image\/|https?:\/\/|blob:)/i.test(img.id)) {
+        directUrls[img.id] = img.id;
+        return false;
+      }
+      return true;
+    });
+    if (Object.keys(directUrls).length > 0) {
+      setImageUrls(directUrls);
+    }
+    if (toFetch.length === 0) return undefined;
+    void loadQuestionImageUrls(toFetch).then((loaded) => {
+      if (!cancelled) {
+        setImageUrls({ ...directUrls, ...loaded });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleImages]);
 
   const anchors = useMemo(
     () => externalAnchors ?? resolveItemSourceAnchors(item),
@@ -158,7 +202,54 @@ export const SprintMistakeCardStage: React.FC<SprintMistakeCardStageProps> = ({
           ) : null}
         </div>
 
+        {visibleMaterials.length > 0 ? (
+          <div className="mb-4" data-testid="sprint-mistake-materials">
+            <QuestionMaterialView materials={visibleMaterials} mode="view" compact />
+          </div>
+        ) : null}
+
         <SprintMathOrPlainText text={item.content} className="text-base" />
+
+        {visibleImages.length > 0 ? (
+          <div className="mt-3 flex flex-col gap-2" data-testid="sprint-mistake-images">
+            {visibleImages.map((image) => {
+              const src = imageUrls[image.id];
+              if (src && src !== QUESTION_IMAGE_LOAD_ERROR) {
+                return (
+                  <div
+                    key={image.id}
+                    className="overflow-hidden rounded-lg border border-border/35 bg-background/60 p-1.5"
+                  >
+                    <img
+                      src={src}
+                      alt={image.name || image.id}
+                      data-testid="sprint-mistake-image"
+                      className="block max-h-72 max-w-full rounded object-contain"
+                    />
+                  </div>
+                );
+              }
+              if (src === QUESTION_IMAGE_LOAD_ERROR) {
+                return (
+                  <div
+                    key={image.id}
+                    data-testid="sprint-mistake-image-error"
+                    className="rounded-lg border border-border/35 bg-muted/30 px-3 py-2 text-xs text-muted-foreground"
+                  >
+                    {t('examSprint.player.imageLoadFailed', { defaultValue: '题图加载失败' })}
+                  </div>
+                );
+              }
+              return (
+                <div
+                  key={image.id}
+                  aria-hidden="true"
+                  className="h-24 w-full animate-pulse rounded-lg border border-border/35 bg-muted/30 motion-reduce:animate-none"
+                />
+              );
+            })}
+          </div>
+        ) : null}
 
         {effectiveOptions.length > 0 ? (
           <div className="mt-4 flex flex-col gap-2" role="group" aria-label={t('card.question')}>
@@ -236,6 +327,11 @@ export const SprintMistakeCardStage: React.FC<SprintMistakeCardStageProps> = ({
               rows={3}
               value={scratchpadText}
               onChange={(event) => onScratchpadChange(event.target.value)}
+              onFocus={(event) => {
+                if (typeof event.currentTarget.scrollIntoView === 'function') {
+                  event.currentTarget.scrollIntoView({ block: 'nearest' });
+                }
+              }}
               onKeyDown={(event) => {
                 if (event.nativeEvent.isComposing) return;
                 if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {

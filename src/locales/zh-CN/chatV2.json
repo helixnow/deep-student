@@ -326,6 +326,7 @@
   },
   "inputBar": {
     "placeholder": "输入消息...",
+    "backToThinkingMenu": "返回推理与模型",
     "send": "发送",
     "stop": "停止",
     "addAttachment": "添加附件",

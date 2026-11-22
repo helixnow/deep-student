@@ -188,4 +188,73 @@ describe('NotesWorkspaceTree keyboard integration', () => {
     fireEvent.keyDown(alpha, { key: 'Delete' });
     expect(onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: 'note_1', kind: 'note' }));
   });
+
+  it('skips orphan root indent guide when showRoot is true, centers guides at -0.5px, and aligns sibling notes with sibling folders', () => {
+    render(
+      <NotesWorkspaceTree
+        items={sampleItems}
+        expandedIds={new Set(['fld_a'])}
+        selectedId="note_1"
+        showRoot
+        onToggleExpand={vi.fn()}
+        onSelect={vi.fn()}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onRename={vi.fn()}
+      />,
+    );
+
+    const folderRow = screen.getByRole('treeitem', { name: '文件夹：Archive' });
+    const siblingNoteRow = screen.getByRole('treeitem', { name: '笔记：Root note' });
+    const childNoteRow = screen.getByRole('treeitem', { name: '笔记：Alpha' });
+
+    // 同级文件夹与同级笔记拥有完全一致的 paddingLeft（由 .nwt-caret / .nwt-caret-spacer 对齐图标）
+    expect(siblingNoteRow.style.paddingLeft).toBe(folderRow.style.paddingLeft);
+    expect(folderRow.style.paddingLeft).toBe('22px');
+    expect(childNoteRow.style.paddingLeft).toBe('36px');
+
+    // showRoot=true 时顶层行（depth=1）不画孤立的 level=0 引导线
+    expect(folderRow.closest('.nwt-row-slot')?.querySelectorAll('.nwt-indent-guide')).toHaveLength(0);
+    expect(siblingNoteRow.closest('.nwt-row-slot')?.querySelectorAll('.nwt-indent-guide')).toHaveLength(0);
+
+    // 子行（depth=2）仅画 level=1 引导线，坐标精确居中：8 + 1*14 + 7 - 0.5 = 28.5px
+    const childGuides = childNoteRow.closest('.nwt-row-slot')?.querySelectorAll<HTMLElement>('.nwt-indent-guide');
+    expect(childGuides).toHaveLength(1);
+    expect(childGuides?.[0].style.left).toBe('28.5px');
+  });
+
+  it('scrolls the target row into view when selectedId is updated by the host', async () => {
+    const scrollIntoView = vi.fn();
+    const { rerender } = render(
+      <NotesWorkspaceTree
+        items={sampleItems}
+        expandedIds={new Set(['fld_a'])}
+        selectedId="fld_a"
+        onToggleExpand={vi.fn()}
+        onSelect={vi.fn()}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onRename={vi.fn()}
+      />,
+    );
+
+    const targetRow = screen.getByRole('treeitem', { name: '笔记：Beta' });
+    targetRow.scrollIntoView = scrollIntoView;
+
+    rerender(
+      <NotesWorkspaceTree
+        items={sampleItems}
+        expandedIds={new Set(['fld_a'])}
+        selectedId="note_2"
+        onToggleExpand={vi.fn()}
+        onSelect={vi.fn()}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onRename={vi.fn()}
+      />,
+    );
+
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' });
+  });
 });

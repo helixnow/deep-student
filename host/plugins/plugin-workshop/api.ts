@@ -135,9 +135,18 @@ export interface WorkshopCard extends WorkshopFeasibility {
 export type WorkshopPlace =
   | { kind: 'app'; title: string }
   | { kind: 'selectionButton' }
-  | { kind: 'agentTool'; title: string };
+  | { kind: 'agentTool'; title: string }
+  | { kind: 'pdfSelectionButton' }
+  | { kind: 'slashCommand'; command?: string }
+  | { kind: 'chatMessageAction' }
+  | { kind: 'reviewAction' }
+  | { kind: 'desktopWidget' }
+  | { kind: 'statusBarItem' }
+  | { kind: 'themeVariant' }
+  | { kind: 'dashboardWidget' };
 /** `fileName`: readable `<标题>-v<version>.dstuplugin`, the name a save dialog should suggest. */
 export interface WorkshopExport { id: string; version: string; path: string; fileName: string; }
+export interface WorkshopStoredData { keys: string[]; bytes: number; }
 export interface PluginWorkshopService {
   developmentSkill(includeContent?: boolean): Promise<{ id: string; markdown: string; schemaToolIds: string[] }>;
   bindSession(id: string, revision: number, sessionId: string): Promise<WorkshopCard>;
@@ -162,6 +171,8 @@ export interface PluginWorkshopService {
   reduce(id: string, revision: number): Promise<WorkshopCard>;
   reportValidation(id: string, version: string, revision: number, outcome: WorkshopValidationOutcome): Promise<WorkshopCard>;
   reportFault(id: string, error: string, version?: string): Promise<WorkshopCard>;
+  storedData(pluginId: string): Promise<WorkshopStoredData>;
+  clearStoredData(pluginId: string): Promise<number>;
 }
 declare module '@deepseek-ai/cordis' {
   interface Context { pluginWorkshop: PluginWorkshopService; }

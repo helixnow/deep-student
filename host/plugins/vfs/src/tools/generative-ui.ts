@@ -64,23 +64,40 @@ export function parseResearchSessionId(args: unknown, intent: unknown): string |
   return safeId(object(args)?.researchSessionId) ?? safeId(object(object(intent)?.meta)?.researchSessionId);
 }
 export function parseSkeletonRef(args: unknown): string | null { return safeId(object(args)?.skeletonRef); }
-export function parseNoteEdit(args: unknown): ObjectValue | null {
+export interface ParsedNoteEdit extends ObjectValue {
+  operation: 'append' | 'replace' | 'set';
+  content?: string;
+  search?: string;
+  replace?: string;
+  section?: string;
+  noteId?: string;
+}
+
+export function parseNoteEdit(args: unknown): ParsedNoteEdit | null {
   const input = object(args);
   if (input === null || !Object.hasOwn(input, 'noteEdit')) return null;
   const raw = object(input.noteEdit);
   if (raw === null) throw new Error('noteEdit 必须是 JSON 对象');
   const operation = raw.operation;
   if (typeof operation !== 'string') throw new Error('noteEdit.operation 必填（append | replace | set）');
-  if (!['append', 'replace', 'set'].includes(operation)) throw new Error(`noteEdit.operation 无效: ${operation}`);
+  if (operation !== 'append' && operation !== 'replace' && operation !== 'set') {
+    throw new Error(`noteEdit.operation 无效: ${operation}`);
+  }
   if (raw.isRegex === true) throw new Error('noteEdit.isRegex 不被支持');
   const size = (key: string) => typeof raw[key] === 'string' ? utf8ByteLength(raw[key]) : 0;
   if (size('section') > 1024) throw new Error('noteEdit.section 过长');
   if (size('content') + size('search') + size('replace') + size('section') > 262144) throw new Error('noteEdit 内容超过 262144 字节');
-  const result: ObjectValue = { operation };
-  for (const key of ['content', 'search', 'replace', 'section']) {
+  const result: ParsedNoteEdit = { operation };
+  for (const key of ['content', 'search', 'replace', 'section'] as const) {
     if (!Object.hasOwn(raw, key)) continue;
     if (typeof raw[key] !== 'string') throw new Error(`noteEdit.${key} 必须是字符串`);
     result[key] = raw[key];
+  }
+  if (typeof raw.noteId === 'string') {
+    const noteId = rustTrim(raw.noteId);
+    if (noteId !== '') result.noteId = noteId;
+  } else if (raw.noteId !== undefined && raw.noteId !== null) {
+    throw new Error('noteEdit.noteId 必须是字符串');
   }
   return result;
 }
@@ -126,6 +143,7 @@ export class GenerativeUiExecutor implements ToolExecutor {
     };
     let intent: GenerativeIntent;
     let assembly: WidgetAssemblyResult | undefined;
+    let noteEdit: ParsedNoteEdit | null = null;
     try {
       const input = object(call.arguments);
       if (input?.format === 'html' || (input && Object.hasOwn(input, 'widgetAssembly'))) {
@@ -146,7 +164,7 @@ export class GenerativeUiExecutor implements ToolExecutor {
       } else {
         intent = parseIntent(call.arguments);
       }
-      const noteEdit = parseNoteEdit(call.arguments);
+      noteEdit = parseNoteEdit(call.arguments);
       if (intentHasApplyNoteEdit(intent) && noteEdit === null) throw new Error('intent 含 apply-note-edit 时必须提供 noteEdit 参数');
     } catch (error) {
       const detail = errorText(error);
@@ -168,7 +186,9 @@ export class GenerativeUiExecutor implements ToolExecutor {
     (ctx.emitter as ExecutionContext['emitter'] & Pick<ChatV2Emitter, 'emitChunkWithMeta'>)
       .emitChunkWithMeta('generative_ui', ctx.block_id, serialized, ...meta);
     ctx.emitter.emitEndWithMeta('generative_ui', ctx.block_id, { intent, isStreaming: false,
-      ...(researchSessionId === null ? {} : { researchSessionId }), ...(skeletonRef === null ? {} : { skeletonRef }) }, ...meta);
+      ...(researchSessionId === null ? {} : { researchSessionId }),
+      ...(skeletonRef === null ? {} : { skeletonRef }),
+      ...(noteEdit ? { noteEdit } : {}) }, ...meta);
     if (researchSessionId !== null) {
       const window = ctx.tryWindow();
       if (window !== null) this.research().startFromIntent({ window, sessionId: researchSessionId, title, intent });

@@ -100,6 +100,8 @@ export interface ReviewCardSurfaceProps {
   agentEntityId?: string;
   /** 翻面后浮在卡面左下角的附加操作（如「▶ 回看 mm:ss」）；不触发翻面与滑动手势 */
   backAccessory?: React.ReactNode;
+  /** 正反面均常驻浮在卡面右上角的语音操作（如 APKG 音频重播）；不触发翻面与滑动手势 */
+  audioAccessory?: React.ReactNode;
 }
 
 type AnimPhase = 'none' | 'a' | 'b';
@@ -122,6 +124,7 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
   ratingLabel,
   agentEntityId,
   backAccessory,
+  audioAccessory,
 }) => {
   const side = flipped ? 'back' : 'front';
   // 媒体出处锚点由 backAccessory 的回看按钮承载，卡面不再露出原文
@@ -288,6 +291,15 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
             </span>
           </div>
         </CustomScrollArea>
+        {audioAccessory ? (
+          <div
+            className="wb-fc-card-audio-accessory"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {audioAccessory}
+          </div>
+        ) : null}
         {flipped && backAccessory ? (
           <div
             className="wb-fc-card-accessory"

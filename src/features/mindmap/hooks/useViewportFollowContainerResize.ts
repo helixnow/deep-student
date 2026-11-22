@@ -112,9 +112,25 @@ export function useViewportFollowContainerResize({
       }, RESIZE_REFIT_DEBOUNCE_MS);
     };
 
-    const handleResize = () => {
+    const readEntrySize = (entries?: ResizeObserverEntry[]): ContainerSize | null => {
+      const box = entries?.[0]?.borderBoxSize?.[0];
+      if (
+        box &&
+        typeof box.inlineSize === 'number' &&
+        typeof box.blockSize === 'number' &&
+        Number.isFinite(box.inlineSize) &&
+        Number.isFinite(box.blockSize) &&
+        box.inlineSize > 1 &&
+        box.blockSize > 1
+      ) {
+        return { width: Math.round(box.inlineSize), height: Math.round(box.blockSize) };
+      }
+      return measure(element);
+    };
+
+    const handleResize = (entries?: ResizeObserverEntry[]) => {
       if (window.document.visibilityState === 'hidden') return;
-      const next = measure(element);
+      const next = readEntrySize(entries);
       if (!next) return;
       const prev = lastSize;
       lastSize = next;

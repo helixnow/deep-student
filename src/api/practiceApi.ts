@@ -1,5 +1,9 @@
 import { invoke } from '@tauri-apps/api/core';
+import { dispatchTypedEvent } from '@/events';
 import type { Question as StoredQuestion, GeneratedPaper } from '@/stores/questionBankStore';
+
+/** 与 features/learning-today/todayLearningStore.ts 的 TODAY_LEARNING_REFRESH_EVENT 同名（避免 api → feature 反向依赖）。 */
+const TODAY_LEARNING_REFRESH_EVENT = 'learning-today:refresh';
 
 export type GradingMode = 'immediate' | 'on_submit';
 export interface GradingDiagnostics {
@@ -107,8 +111,11 @@ export const practiceApi = {
         elapsed_seconds: draft.elapsed_seconds,
       },
     }),
-  submit: (id: string, revision: number) =>
-    invoke<PracticeAttempt>('qbank_submit_practice', { id, revision }),
+  submit: async (id: string, revision: number) => {
+    const attempt = await invoke<PracticeAttempt>('qbank_submit_practice', { id, revision });
+    dispatchTypedEvent(TODAY_LEARNING_REFRESH_EVENT);
+    return attempt;
+  },
   list: async (scopeId: string, submitted: boolean): Promise<PracticeSummary[]> => {
     const rows: PracticeSummary[] = [];
     let page: PracticeSummary[];
@@ -122,8 +129,11 @@ export const practiceApi = {
     invoke<void>('qbank_delete_practice', { id, submitted }),
   retry: (id: string, questionId: string) =>
     invoke<PracticeAttempt>('qbank_retry_practice_grading', { id, questionId }),
-  grade: (id: string, questionId: string, correct: boolean) =>
-    invoke<PracticeAttempt>('qbank_grade_practice_manually', { id, questionId, correct }),
+  grade: async (id: string, questionId: string, correct: boolean) => {
+    const attempt = await invoke<PracticeAttempt>('qbank_grade_practice_manually', { id, questionId, correct });
+    dispatchTypedEvent(TODAY_LEARNING_REFRESH_EVENT);
+    return attempt;
+  },
   resumeGrading: () => invoke<void>('qbank_resume_practice_grading'),
   papers: (examId: string) => invoke<GeneratedPaper[]>('qbank_list_papers', { examId }),
   paper: (id: string) => invoke<GeneratedPaper>('qbank_get_paper', { id }),

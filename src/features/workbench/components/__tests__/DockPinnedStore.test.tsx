@@ -5,13 +5,17 @@ import React from 'react';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, renderHook, act } from '@testing-library/react';
 import {
+  DOCK_UNPIN_PULL_THRESHOLD_PX,
   getDockPinned,
   setDockPinned,
   toggleDockPinned,
+  pinDockItemAt,
+  unpinDockItem,
   reorderDockPinned,
   subscribeDockPinned,
   useDockPinned,
   useDockPinnedDragReorder,
+  useDockRunningDragToPin,
 } from '../DockPinnedStore';
 
 beforeEach(() => {
@@ -347,5 +351,218 @@ describe('DockPinnedStore', () => {
     expect(elB.style.transform).toBe('');
     expect(elA).not.toHaveAttribute('data-wb-dock-pinned-dragging');
     expect(getDockPinned()).toEqual(['b', 'a', 'c']);
+  });
+
+  it('pinDockItemAt 与 unpinDockItem 精确插入与移除', () => {
+    setDockPinned(['a', 'c']);
+    pinDockItemAt('b', 1);
+    expect(getDockPinned()).toEqual(['a', 'b', 'c']);
+
+    pinDockItemAt('c', 0);
+    expect(getDockPinned()).toEqual(['c', 'a', 'b']);
+
+    unpinDockItem('a');
+    expect(getDockPinned()).toEqual(['c', 'b']);
+  });
+
+  it('固定区图标向上拖离超过 72px 显示取消固定提示，松手触发 Poof 并取消固定', () => {
+    setDockPinned(['a', 'b']);
+
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    HTMLElement.prototype.getAnimations = () => [];
+
+    const listeners = new Map<string, EventListener>();
+    const origAdd = window.addEventListener.bind(window);
+    const origRemove = window.removeEventListener.bind(window);
+    vi.spyOn(window, 'addEventListener').mockImplementation((type, listener, options) => {
+      if (
+        typeof listener === 'function' &&
+        (type === 'pointermove' || type === 'pointerup' || type === 'pointercancel')
+      ) {
+        listeners.set(String(type), listener as EventListener);
+      }
+      return origAdd(
+        type,
+        listener as EventListenerOrEventListenerObject,
+        options as boolean | AddEventListenerOptions,
+      );
+    });
+    vi.spyOn(window, 'removeEventListener').mockImplementation((type, listener, options) => {
+      if (type === 'pointermove' || type === 'pointerup' || type === 'pointercancel') {
+        listeners.delete(String(type));
+      }
+      return origRemove(
+        type,
+        listener as EventListenerOrEventListenerObject,
+        options as boolean | EventListenerOptions,
+      );
+    });
+
+    let bindA: { onPointerDown: (e: React.PointerEvent<HTMLElement>) => void } | null = null;
+    function Harness() {
+      const a = useDockPinnedDragReorder('a');
+      const b = useDockPinnedDragReorder('b');
+      if ('onPointerDown' in a) bindA = a as { onPointerDown: (e: React.PointerEvent<HTMLElement>) => void };
+      return (
+        <div className="wb-dock-zone">
+          <div className="wb-dock">
+            <div data-testid="pin-a" {...(a as React.HTMLAttributes<HTMLDivElement>)} />
+            <div data-testid="pin-b" {...(b as React.HTMLAttributes<HTMLDivElement>)} />
+          </div>
+        </div>
+      );
+    }
+
+    const { getByTestId } = render(<Harness />);
+    const elA = getByTestId('pin-a');
+
+    act(() => {
+      bindA!.onPointerDown({
+        button: 0,
+        pointerId: 3,
+        clientX: 100,
+        clientY: 850,
+        pointerType: 'mouse',
+        currentTarget: elA,
+        target: elA,
+      } as unknown as React.PointerEvent<HTMLElement>);
+    });
+
+    // 向上拖 50px（未达 72px 阈值）不进入取消固定态
+    act(() => {
+      listeners.get('pointermove')!({ pointerId: 3, clientX: 100, clientY: 800 } as unknown as Event);
+    });
+    expect(elA).not.toHaveAttribute('data-wb-dock-unpin-ready');
+
+    // 向上拖 85px（> 72px 阈值）进入取消固定提示态
+    act(() => {
+      listeners.get('pointermove')!({
+        pointerId: 3,
+        clientX: 100,
+        clientY: 850 - (DOCK_UNPIN_PULL_THRESHOLD_PX + 13),
+      } as unknown as Event);
+    });
+    expect(elA).toHaveAttribute('data-wb-dock-unpin-ready', 'true');
+
+    // 松手 → 触发 Poof 并取消固定
+    act(() => {
+      listeners.get('pointerup')!({
+        type: 'pointerup',
+        pointerId: 3,
+        clientX: 100,
+        clientY: 765,
+      } as unknown as Event);
+    });
+    expect(getDockPinned()).toEqual(['b']);
+    expect(document.querySelector('[data-testid="wb-dock-poof"]')).toBeInTheDocument();
+  });
+
+  it('运行区（runningExtra）图标拖入固定区自动固定到目标位置', () => {
+    setDockPinned(['a', 'b']);
+
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      cb(0);
+      return 1;
+    });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    HTMLElement.prototype.getAnimations = () => [];
+
+    const listeners = new Map<string, EventListener>();
+    const origAdd = window.addEventListener.bind(window);
+    const origRemove = window.removeEventListener.bind(window);
+    vi.spyOn(window, 'addEventListener').mockImplementation((type, listener, options) => {
+      if (
+        typeof listener === 'function' &&
+        (type === 'pointermove' || type === 'pointerup' || type === 'pointercancel')
+      ) {
+        listeners.set(String(type), listener as EventListener);
+      }
+      return origAdd(
+        type,
+        listener as EventListenerOrEventListenerObject,
+        options as boolean | AddEventListenerOptions,
+      );
+    });
+    vi.spyOn(window, 'removeEventListener').mockImplementation((type, listener, options) => {
+      if (type === 'pointermove' || type === 'pointerup' || type === 'pointercancel') {
+        listeners.delete(String(type));
+      }
+      return origRemove(
+        type,
+        listener as EventListenerOrEventListenerObject,
+        options as boolean | EventListenerOptions,
+      );
+    });
+
+    let bindRun: { onPointerDown: (e: React.PointerEvent<HTMLElement>) => void } | null = null;
+    function Harness() {
+      const a = useDockPinnedDragReorder('a');
+      const b = useDockPinnedDragReorder('b');
+      const run = useDockRunningDragToPin('notes');
+      if ('onPointerDown' in run) {
+        bindRun = run as { onPointerDown: (e: React.PointerEvent<HTMLElement>) => void };
+      }
+      return (
+        <div className="wb-dock">
+          <div data-testid="pin-a" {...(a as React.HTMLAttributes<HTMLDivElement>)} />
+          <div data-testid="pin-b" {...(b as React.HTMLAttributes<HTMLDivElement>)} />
+          <div data-testid="run-notes" {...(run as React.HTMLAttributes<HTMLDivElement>)} />
+        </div>
+      );
+    }
+
+    const { getByTestId } = render(<Harness />);
+    const elA = getByTestId('pin-a');
+    const elB = getByTestId('pin-b');
+    const elRun = getByTestId('run-notes');
+
+    const mockRect = (el: HTMLElement, left: number) => {
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+        width: 44,
+        height: 44,
+        top: 840,
+        left,
+        bottom: 884,
+        right: left + 44,
+        x: left,
+        y: 840,
+        toJSON: () => ({}),
+      } as DOMRect);
+    };
+    mockRect(elA, 100);
+    mockRect(elB, 150);
+    mockRect(elRun, 220);
+
+    act(() => {
+      bindRun!.onPointerDown({
+        button: 0,
+        pointerId: 9,
+        clientX: 242,
+        clientY: 862,
+        pointerType: 'mouse',
+        currentTarget: elRun,
+        target: elRun,
+      } as unknown as React.PointerEvent<HTMLElement>);
+    });
+
+    // 向左拖入 a 和 b 之间（clientX=145 < b.center=172, > a.center=122 → index 1）
+    act(() => {
+      listeners.get('pointermove')!({ pointerId: 9, clientX: 145, clientY: 860 } as unknown as Event);
+    });
+    expect(elRun).toHaveAttribute('data-wb-dock-pin-ready', 'true');
+
+    act(() => {
+      listeners.get('pointerup')!({
+        type: 'pointerup',
+        pointerId: 9,
+        clientX: 145,
+        clientY: 860,
+      } as unknown as Event);
+    });
+    expect(getDockPinned()).toEqual(['a', 'notes', 'b']);
   });
 });

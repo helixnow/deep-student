@@ -1,15 +1,116 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { invoke } from '@tauri-apps/api/core';
+import { dispatchTypedEvent } from '@/events';
 import i18n from '@/i18n';
 import type {
   PomodoroState,
   PomodoroMode,
+  PomodoroSettings,
   PomodoroCompleteOptions,
 } from '../types';
 import { DEFAULT_POMODORO_SETTINGS } from '../types';
 import { createPomodoroRecord } from '../api';
 import type { CreatePomodoroInput } from '../api';
 import { noiseEngine } from '../noiseEngine';
+
+const STUDY_FOCUS_ACTIVE_EVENT = 'study-time:focus-active';
+let lastSyncedStudyFocusActive = false;
+
+function syncPomodoroStudyFocus(mode: PomodoroMode, status: PomodoroState['status']): void {
+  const active = mode === 'work' && status === 'running';
+  if (lastSyncedStudyFocusActive === active) return;
+  lastSyncedStudyFocusActive = active;
+  if (typeof globalThis !== 'undefined') {
+    (globalThis as Record<string, unknown>).__dstuStudyFocusActive = active;
+  }
+  dispatchTypedEvent(STUDY_FOCUS_ACTIVE_EVENT, { active });
+}
+
+/** 番茄钟设置同步白名单键（见 host/plugins/sync/src/classification-data/settings.ts） */
+export const POMODORO_SETTINGS_KEY = 'pomodoro.settings';
+
+/** 规范化番茄钟设置（防呆与缺省字段回填，本地写入与后端拉取共用） */
+export function sanitizePomodoroSettings(
+  base: PomodoroSettings,
+  patch: Partial<PomodoroSettings>,
+): PomodoroSettings {
+  const merged: PomodoroSettings = { ...base, ...patch };
+  merged.workDuration = Math.max(60, Number.isFinite(merged.workDuration) ? merged.workDuration : DEFAULT_POMODORO_SETTINGS.workDuration);
+  merged.shortBreak = Math.max(60, Number.isFinite(merged.shortBreak) ? merged.shortBreak : DEFAULT_POMODORO_SETTINGS.shortBreak);
+  merged.longBreak = Math.max(60, Number.isFinite(merged.longBreak) ? merged.longBreak : DEFAULT_POMODORO_SETTINGS.longBreak);
+  merged.longBreakInterval = Math.max(1, Math.round(Number.isFinite(merged.longBreakInterval) ? merged.longBreakInterval : DEFAULT_POMODORO_SETTINGS.longBreakInterval));
+  merged.endReminderSeconds = Math.max(0, Math.round(Number.isFinite(merged.endReminderSeconds) ? merged.endReminderSeconds : DEFAULT_POMODORO_SETTINGS.endReminderSeconds));
+  merged.noiseVolume = Math.max(0, Math.min(1, Number.isFinite(merged.noiseVolume) ? merged.noiseVolume : DEFAULT_POMODORO_SETTINGS.noiseVolume));
+  merged.dailyGoal = Math.max(0, Math.min(99, Math.round(Number.isFinite(merged.dailyGoal) ? merged.dailyGoal : DEFAULT_POMODORO_SETTINGS.dailyGoal)));
+  return merged;
+}
+
+let localSettingsRevision = 0;
+
+function settingsDiffer(a: PomodoroSettings, b: PomodoroSettings): boolean {
+  return JSON.stringify(a) !== JSON.stringify(b);
+}
+
+/** 异步镜像番茄钟设置到后端 settings 表（'pomodoro.settings' 同步白名单） */
+async function mirrorPomodoroSettingsToBackend(settings: PomodoroSettings): Promise<void> {
+  try {
+    await invoke<void>('save_setting', {
+      key: POMODORO_SETTINGS_KEY,
+      value: JSON.stringify(settings),
+    });
+  } catch {
+    // 非 Tauri 环境或测试环境无后端时静默降级，不影响本地 localStorage 持久化
+  }
+}
+
+/**
+ * 从后端 settings 表拉取 'pomodoro.settings' 并与本地镜像同步：
+ * - 远端有值且本次拉取期间本地未发生新修改 → 应用远端设置（不回写）
+ * - 远端为空且本地已自定义（不同于默认值） → 将本地设置镜像推送到后端
+ */
+export async function syncPomodoroSettingsFromBackend(): Promise<boolean> {
+  const revisionAtStart = localSettingsRevision;
+  let raw: string | null = null;
+  try {
+    raw = await invoke<string | null>('get_setting', { key: POMODORO_SETTINGS_KEY });
+  } catch {
+    return false;
+  }
+
+  if (localSettingsRevision !== revisionAtStart) {
+    return false;
+  }
+
+  if (typeof raw === 'string' && raw.trim().length > 0) {
+    try {
+      const parsed = JSON.parse(raw) as Partial<PomodoroSettings>;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        const state = usePomodoroStore.getState();
+        const nextSettings = sanitizePomodoroSettings(DEFAULT_POMODORO_SETTINGS, parsed);
+        const patch: Partial<PomodoroState> = { settings: nextSettings };
+        if (state.mode === 'idle') {
+          patch.timeLeft = nextSettings.countUp ? 0 : nextSettings.workDuration;
+        }
+        usePomodoroStore.setState(patch);
+        if (state.noiseEnabled) {
+          noiseEngine.setVolume(nextSettings.noiseVolume);
+          noiseEngine.setType(nextSettings.noiseType);
+        }
+        return true;
+      }
+    } catch {
+      return false;
+    }
+  } else {
+    const currentSettings = usePomodoroStore.getState().settings;
+    if (settingsDiffer(currentSettings, DEFAULT_POMODORO_SETTINGS)) {
+      await mirrorPomodoroSettingsToBackend(currentSettings);
+    }
+  }
+
+  return false;
+}
 
 // ★ I2 修复：阶段完成时发送系统通知（应用在后台时用户也能感知）
 // ★ 8.1 统一通知策略：默认 background 档（前台时有声音+UI 反馈，无需系统通知）
@@ -820,15 +921,8 @@ export const usePomodoroStore = create<PomodoroState>()(
 
       updateSettings: (newSettings) => {
         const state = get();
-        const merged = { ...state.settings, ...newSettings };
-        // 防呆：时长至少 1 分钟，间隔至少 1
-        merged.workDuration = Math.max(60, merged.workDuration);
-        merged.shortBreak = Math.max(60, merged.shortBreak);
-        merged.longBreak = Math.max(60, merged.longBreak);
-        merged.longBreakInterval = Math.max(1, Math.round(merged.longBreakInterval));
-        merged.endReminderSeconds = Math.max(0, Math.round(merged.endReminderSeconds));
-        merged.noiseVolume = Math.max(0, Math.min(1, merged.noiseVolume));
-        merged.dailyGoal = Math.max(0, Math.min(99, Math.round(merged.dailyGoal)));
+        localSettingsRevision += 1;
+        const merged = sanitizePomodoroSettings(state.settings, newSettings);
 
         const next: Partial<PomodoroState> = { settings: merged };
         if (state.mode === 'idle') {
@@ -873,6 +967,9 @@ export const usePomodoroStore = create<PomodoroState>()(
           noiseEngine.setVolume(merged.noiseVolume);
           noiseEngine.setType(merged.noiseType);
         }
+
+        // 异步镜像到后端 settings 白名单 'pomodoro.settings'，保证跨端同步
+        void mirrorPomodoroSettingsToBackend(merged);
       },
 
       setImmersive: (value: boolean) => {
@@ -921,6 +1018,16 @@ export const usePomodoroStore = create<PomodoroState>()(
           settings: { ...DEFAULT_POMODORO_SETTINGS, ...(p.settings ?? {}) },
         };
       },
+      onRehydrateStorage: () => (state) => {
+        if (state) syncPomodoroStudyFocus(state.mode, state.status);
+        if (typeof window !== 'undefined' && (window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
+          void syncPomodoroSettingsFromBackend();
+        }
+      },
     },
   ),
 );
+
+usePomodoroStore.subscribe((state) => {
+  syncPomodoroStudyFocus(state.mode, state.status);
+});

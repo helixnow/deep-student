@@ -29,14 +29,14 @@ export const CanvasShortcutHintPill: React.FC<CanvasShortcutHintPillProps> = ({
 
   if (hintMode === 'collapsed') {
     return (
-      <div className="absolute bottom-3 left-14 z-20 hidden lg:inline-flex">
+      <div className="mm-shortcut-hint-pill absolute bottom-3 left-14 z-20 inline-flex">
         <Tooltip>
           <TooltipTrigger asChild>
             <DsButton
               variant="ghost"
               size="sm"
               iconOnly
-              className="h-8 w-8 rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] text-[var(--mm-text-secondary)] shadow-[var(--mm-shadow)] backdrop-blur-md hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text)] active:scale-95 transition-all duration-150 motion-reduce:transition-none motion-reduce:transform-none"
+              className="h-8 w-8 rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] text-[var(--mm-text-secondary)] shadow-[var(--mm-shadow)] hover:bg-[var(--mm-bg-hover)] hover:text-[var(--mm-text)] active:scale-95 transition-all duration-150 motion-reduce:transition-none motion-reduce:transform-none"
               onClick={() => setHintMode('expanded')}
               aria-label={t('canvasV2.expandHints')}
               data-testid="mm-shortcut-hint-expand"
@@ -55,7 +55,7 @@ export const CanvasShortcutHintPill: React.FC<CanvasShortcutHintPillProps> = ({
       role="region"
       aria-label={t('canvasV2.quickHintsLabel')}
       data-testid="mm-shortcut-hint-pill"
-      className="absolute bottom-3 left-14 z-20 hidden lg:inline-flex h-8 items-center gap-1.5 rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] pl-2.5 pr-1 text-2xs text-[var(--mm-text-secondary)] shadow-[var(--mm-shadow)] backdrop-blur-md select-none transition-all duration-150 motion-reduce:transition-none"
+      className="mm-shortcut-hint-pill absolute bottom-3 left-14 z-20 inline-flex h-8 items-center gap-1.5 rounded-[10px] border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] pl-2.5 pr-1 text-2xs text-[var(--mm-text-secondary)] shadow-[var(--mm-shadow)] select-none transition-all duration-150 motion-reduce:transition-none"
     >
       <Keyboard size={14} className="shrink-0 text-[var(--mm-text-muted)]" aria-hidden="true" />
       {reciteMode ? (
@@ -88,7 +88,7 @@ export const CanvasShortcutHintPill: React.FC<CanvasShortcutHintPillProps> = ({
           </span>
           <span className="text-[var(--mm-text-muted)]" aria-hidden="true">·</span>
           <span className="inline-flex items-center gap-1">
-            <kbd className={kbdClassName}>Space</kbd>
+            <kbd className={kbdClassName}>F2</kbd>
             <span>
               /{t('canvasV2.hintDoubleClick')} {t('canvasV2.hintEdit')}
             </span>

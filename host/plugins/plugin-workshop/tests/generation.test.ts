@@ -8,7 +8,7 @@ import type { ChatPipelineService } from '../../chat-pipeline/api.ts';
 import { WorkshopOperations } from '../src/operations.ts';
 import { WorkshopCatalog } from '../src/catalog.ts';
 import { WorkshopToolExecutor } from '../src/tools.ts';
-import { PipelineWorkshopGeneration, validateVerificationResult, VERIFICATION_TOOLS } from '../src/generation.ts';
+import { PipelineWorkshopGeneration, extractAssistantAnswerText, validateVerificationResult, VERIFICATION_TOOLS } from '../src/generation.ts';
 import type { WorkshopCard } from '../api.ts';
 
 it('binds the existing pipeline/skill runtime without filesystem, install or global Agent authority', async () => {
@@ -139,3 +139,172 @@ it.each(['success', 'failed-block', 'missing-block', 'wrong-tool'] as const)(
     expect(result.status).toBe(kind === 'success' ? 'passed' : 'blocked');
   },
 );
+
+it('extracts files and verification verdicts from successful attempt_completion blocks when content is empty', async () => {
+  const { ops, card, source } = await verificationFixture();
+  const genChat = {
+    createSession: vi.fn(),
+    getMessageBlocks: () => [
+      { type: 'content', content: '' },
+      {
+        id: 'blk-gen-complete',
+        messageId: 'gen-msg',
+        type: 'mcp_tool',
+        status: 'success',
+        toolName: 'builtin-attempt_completion',
+        toolOutput: { completed: true, result: '{"files":[{"path":"from-completion.ts","content":"export const ok = true;"}]}' },
+      },
+    ],
+    getMessage: () => ({ _meta: {} }),
+  } as unknown as ChatSessionService;
+  const genPipeline = { execute: vi.fn(async () => 'gen-msg') } as unknown as ChatPipelineService;
+  const generator = new PipelineWorkshopGeneration(genChat, genPipeline, new WorkshopToolExecutor(ops, new WorkshopCatalog(() => [])));
+  await generator.generate(card, source, new AbortController().signal);
+  expect(await readFile(join(source, 'from-completion.ts'), 'utf8')).toContain('export const ok = true;');
+
+  // Also covers wrapped toolOutput.result.result and fallback to toolInput.result.
+  expect(extractAssistantAnswerText([
+    { type: 'content', content: '' },
+    { type: 'mcp_tool', status: 'success', toolName: 'attempt_completion', toolOutput: { result: { result: '{"status":"passed"}' } } },
+  ])).toBe('{"status":"passed"}');
+  expect(extractAssistantAnswerText([
+    { type: 'content', content: '' },
+    { type: 'mcp_tool', status: 'success', toolName: 'builtin:attempt_completion', toolOutput: null, toolInput: { result: '{"status":"failed","error":"broken"}' } },
+  ])).toBe('{"status":"failed","error":"broken"}');
+
+  const toolResult = { ...observed(card), blockId: 'obs-block', input: null, output: null };
+  const obsBlock = {
+    id: 'obs-block',
+    messageId: 'verify-msg',
+    type: 'workbench_ops',
+    status: 'success',
+    toolName: 'workbench_observe',
+    toolInput: { windowId: 'candidate-window' },
+    toolOutput: observed(card).output,
+  };
+  const completionBlock = {
+    id: 'complete-block',
+    messageId: 'verify-msg',
+    type: 'mcp_tool',
+    status: 'success',
+    toolName: 'attempt_completion',
+    toolInput: { result: passedAnswer() },
+    toolOutput: { completed: true, result: passedAnswer() },
+  };
+  const verifyExecute = vi.fn(async () => 'verify-msg');
+  const verifyChat = {
+    createSession: vi.fn(),
+    getMessageBlocks: () => [{ type: 'content', content: '' }, obsBlock, completionBlock],
+    getMessage: () => ({ _meta: { toolResults: [toolResult] } }),
+  } as unknown as ChatSessionService;
+  const verifier = new PipelineWorkshopGeneration(verifyChat, { execute: verifyExecute } as unknown as ChatPipelineService,
+    new WorkshopToolExecutor(ops, new WorkshopCatalog(() => [])));
+  const verified = await verifier.verify(card, source, new AbortController().signal);
+  expect(verified.status).toBe('passed');
+  expect(verified.evidence).toHaveLength(2);
+  expect(String((verifyExecute.mock.calls[0] as unknown as [unknown, { content: string }])[1].content)).toContain('attempt_completion.result');
+});
+
+it('runs a 1-shot structured-JSON recovery turn when inventory succeeded but turn 1 returned prose', async () => {
+  const { ops, card, source } = await verificationFixture();
+  card.places = [{ kind: 'slashCommand', command: 'formula' }];
+  card.template = 'host-tool';
+  const inventoryBlock = {
+    id: 'inv-block',
+    messageId: 'verify-turn-1',
+    type: 'workbench_ops',
+    status: 'success',
+    toolName: 'dstu_plugin_inventory',
+    toolInput: {},
+    toolOutput: {
+      plugins: [{ id: card.pluginId, version: card.version, enabled: true, state: 'running' }],
+    },
+  };
+  const inventoryResult: ToolResultInfo = {
+    toolCallId: 'call-inv-1',
+    blockId: 'inv-block',
+    toolName: 'dstu_plugin_inventory',
+    success: true,
+    input: null,
+    output: null,
+  };
+  const recoveryAnswer = JSON.stringify({
+    status: 'passed',
+    checks: [
+      { criterion: 0, observed: 'plugin running in inventory', toolCallIds: ['call-inv-1'] },
+      { criterion: 1, observed: 'version 0.1.0 enabled in inventory', toolCallIds: ['call-inv-1'] },
+    ],
+  });
+  const execute = vi.fn<ChatPipelineService['execute']>()
+    .mockResolvedValueOnce('verify-turn-1')
+    .mockResolvedValueOnce('verify-turn-2');
+  const createSession = vi.fn();
+  const chat = {
+    createSession,
+    getMessageBlocks: (msgId: string) => msgId === 'verify-turn-1'
+      ? [{ type: 'content', content: '插件已安装并处于 running 状态，验收通过。' }, inventoryBlock]
+      : [{ type: 'content', content: recoveryAnswer }],
+    getMessage: (msgId: string) => msgId === 'verify-turn-1' ? { _meta: { toolResults: [inventoryResult] } } : { _meta: {} },
+  } as unknown as ChatSessionService;
+  const generation = new PipelineWorkshopGeneration(chat, { execute } as unknown as ChatPipelineService,
+    new WorkshopToolExecutor(ops, new WorkshopCatalog(() => [])));
+
+  const result = await generation.verify(card, source, new AbortController().signal);
+  expect(result.status).toBe('passed');
+  expect(result.evidence).toHaveLength(2);
+  expect(createSession).toHaveBeenCalledTimes(1);
+  expect(execute).toHaveBeenCalledTimes(2);
+  const firstReq = execute.mock.calls[0]?.[1];
+  const recoveryReq = execute.mock.calls[1]?.[1];
+  expect(firstReq?.options.schemaToolIds).toEqual(['dstu_plugin_inventory']);
+  expect(firstReq?.options.executionAllowedTools).toEqual(['dstu_plugin_inventory']);
+  expect(recoveryReq?.sessionId).toBe(firstReq?.sessionId);
+  expect(recoveryReq?.options).toMatchObject({
+    schemaToolIds: [],
+    executionAllowedTools: [],
+    activeSkillIds: [],
+    memoryEnabled: false,
+    ragEnabled: false,
+    webSearchEnabled: false,
+  });
+
+  // Also recovers when turn 1 returned incomplete checks after verified inventory.
+  const incompleteExecute = vi.fn<ChatPipelineService['execute']>()
+    .mockResolvedValueOnce('verify-turn-1')
+    .mockResolvedValueOnce('verify-turn-2');
+  const incompleteAnswer = JSON.stringify({
+    status: 'passed',
+    checks: [{ criterion: 0, observed: 'only criterion 0', toolCallIds: ['call-inv-1'] }],
+  });
+  const incompleteChat = {
+    createSession: vi.fn(),
+    getMessageBlocks: (msgId: string) => msgId === 'verify-turn-1'
+      ? [{ type: 'content', content: incompleteAnswer }, inventoryBlock]
+      : [{ type: 'content', content: recoveryAnswer }],
+    getMessage: (msgId: string) => msgId === 'verify-turn-1' ? { _meta: { toolResults: [inventoryResult] } } : { _meta: {} },
+  } as unknown as ChatSessionService;
+  const incompleteGen = new PipelineWorkshopGeneration(incompleteChat, { execute: incompleteExecute } as unknown as ChatPipelineService,
+    new WorkshopToolExecutor(ops, new WorkshopCatalog(() => [])));
+  const incompleteRecovered = await incompleteGen.verify(card, source, new AbortController().signal);
+  expect(incompleteRecovered.status).toBe('passed');
+  expect(incompleteExecute).toHaveBeenCalledTimes(2);
+  expect(String(incompleteExecute.mock.calls[1]?.[1]?.content)).toContain('WORKSHOP_VERIFICATION_INCOMPLETE');
+
+  // Does not loop past 1 recovery turn when recovery also fails to return JSON.
+  const failingExecute = vi.fn<ChatPipelineService['execute']>()
+    .mockResolvedValueOnce('verify-turn-1')
+    .mockResolvedValueOnce('verify-turn-bad');
+  const failingChat = {
+    createSession: vi.fn(),
+    getMessageBlocks: (msgId: string) => msgId === 'verify-turn-1'
+      ? [{ type: 'content', content: 'prose only' }, inventoryBlock]
+      : [{ type: 'content', content: 'still not json' }],
+    getMessage: (msgId: string) => msgId === 'verify-turn-1' ? { _meta: { toolResults: [inventoryResult] } } : { _meta: {} },
+  } as unknown as ChatSessionService;
+  const failingGen = new PipelineWorkshopGeneration(failingChat, { execute: failingExecute } as unknown as ChatPipelineService,
+    new WorkshopToolExecutor(ops, new WorkshopCatalog(() => [])));
+  const blocked = await failingGen.verify(card, source, new AbortController().signal);
+  expect(blocked.status).toBe('blocked');
+  expect(blocked.error).toContain('WORKSHOP_VERIFICATION_INVALID');
+  expect(failingExecute).toHaveBeenCalledTimes(2);
+});

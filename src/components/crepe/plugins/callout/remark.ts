@@ -1,5 +1,5 @@
 import type { MarkdownNode } from '@milkdown/transformer';
-import { $remark } from '@milkdown/utils';
+import { $remark } from '@milkdown/kit/utils';
 
 import { parseCalloutMarker } from './types';
 

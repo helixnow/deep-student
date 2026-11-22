@@ -36,7 +36,10 @@ describe('windowed markdown source contracts', () => {
   });
 
   it('keeps Crepe content replacement on replaceAll(markdown)', () => {
-    const source = read('src/components/crepe/CrepeEditor.tsx');
+    const source = [
+      read('src/components/crepe/CrepeEditor.tsx'),
+      read('src/components/crepe/crepeApiBuilder.ts'),
+    ].join('\n');
 
     expect(source).toContain('replaceAll(markdown)');
   });

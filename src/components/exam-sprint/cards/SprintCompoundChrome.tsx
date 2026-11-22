@@ -14,14 +14,30 @@ import {
 export const SprintMathOrPlainText: React.FC<{
   text: string;
   className?: string;
-}> = ({ text, className }) => {
+  inline?: boolean;
+}> = ({ text, className, inline = false }) => {
   const latexHtml = useMemo(() => renderCardFaceLatexHtml(text), [text]);
   if (latexHtml) {
+    if (inline) {
+      return (
+        <span
+          className={cn('inline break-words', className)}
+          dangerouslySetInnerHTML={{ __html: latexHtml }}
+        />
+      );
+    }
     return (
       <div
         className={cn('prose prose-sm dark:prose-invert max-w-none break-words', className)}
         dangerouslySetInnerHTML={{ __html: latexHtml }}
       />
+    );
+  }
+  if (inline) {
+    return (
+      <span className={cn('whitespace-pre-wrap break-words', className)}>
+        {text}
+      </span>
     );
   }
   return (
@@ -333,7 +349,7 @@ export const SprintProvenanceBar: React.FC<SprintProvenanceBarProps> = ({
                   />
                   <span>{pillLabel}</span>
                   {isPrimary ? (
-                    <kbd className="ml-0.5 rounded border border-primary/25 bg-background/70 px-1.5 py-0.5 font-mono text-[10px] text-primary">
+                    <kbd className="ml-0.5 hidden rounded border border-primary/25 bg-background/70 px-1.5 py-0.5 font-mono text-[10px] text-primary sm:inline-block">
                       O
                     </kbd>
                   ) : null}
@@ -398,7 +414,7 @@ export const SprintProvenanceBar: React.FC<SprintProvenanceBarProps> = ({
         ) : null}
         <kbd
           className={cn(
-            'ml-1 rounded border px-1.5 py-0.5 font-mono text-[10px]',
+            'ml-1 hidden rounded border px-1.5 py-0.5 font-mono text-[10px] sm:inline-block',
             accentPrimary
               ? 'border-primary/25 bg-background/60 text-primary'
               : 'border-border/35 bg-muted/50 text-muted-foreground',
