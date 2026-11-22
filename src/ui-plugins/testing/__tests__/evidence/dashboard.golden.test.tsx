@@ -206,10 +206,20 @@ describe('FE-B8 evidence: dashboard', () => {
     vi.stubGlobal('ResizeObserver', SizedResizeObserver);
     localStorage.clear();
     app = await bootAppUi();
-    // Drain app-wide template initialization before tracing individual dashboard clicks.
-    const { templateManager } = await import('@/data/ankiTemplates');
-    await templateManager.loadTemplates();
-  });
+    // Drain app-wide template, chat skill, and markdown renderer initialization sequentially
+    // before tracing individual dashboard clicks so neither <Suspense> fallback timing nor
+    // background `skill_list_directories` IPC leaks into action snapshots.
+    const [{ templateManager }, { skillRegistry }] = await Promise.all([
+      import('@/data/ankiTemplates'),
+      import('@/features/chat/skills/registry'),
+    ]);
+    await import('@/features/chat/init');
+    await import('@/features/chat/components/renderers/MarkdownRenderer');
+    await Promise.all([
+      templateManager.loadTemplates(),
+      skillRegistry.waitForSkillsLoaded(10_000),
+    ]);
+  }, 60_000);
   afterEach(() => {
     cleanup();
     resetCtInvokeHandlers();

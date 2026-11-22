@@ -425,7 +425,7 @@ export function validateVerificationResult(text: string, card: WorkshopCard, res
         continue;
       }
       const resolved = resolveResult(id, true);
-      if (!resolved || !toolSucceeded(resolved)) {
+      if (!resolved || !toolSucceeded(resolved) || !resolved.toolCallId) {
         return blocked(`WORKSHOP_VERIFICATION_INVALID: missing or failed tool call for criterion ${index}`);
       }
       sawValidSucceeded = true;

@@ -256,8 +256,8 @@ it('runs a 1-shot structured-JSON recovery turn when inventory succeeded but tur
   expect(execute).toHaveBeenCalledTimes(2);
   const firstReq = execute.mock.calls[0]?.[1];
   const recoveryReq = execute.mock.calls[1]?.[1];
-  expect(firstReq?.options.schemaToolIds).toEqual(['dstu_plugin_inventory']);
-  expect(firstReq?.options.executionAllowedTools).toEqual(['dstu_plugin_inventory']);
+  expect(firstReq?.options?.schemaToolIds).toEqual(['dstu_plugin_inventory']);
+  expect(firstReq?.options?.executionAllowedTools).toEqual(['dstu_plugin_inventory']);
   expect(recoveryReq?.sessionId).toBe(firstReq?.sessionId);
   expect(recoveryReq?.options).toMatchObject({
     schemaToolIds: [],
