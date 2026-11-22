@@ -169,13 +169,20 @@ async function loadDeferredNamespaces(lang: string): Promise<void> {
     // Each local HTTPS request crosses Android's WebView asset handler.
     // The grouped modules contain the same production namespace JSON.
     const bundle = resolvedLang === 'zh-CN' ? import('./locales/bundles/zh-CN') : import('./locales/bundles/en-US');
-    tasks.push(bundle.then(({ default: resources }) => {
-      for (const [ns, data] of Object.entries(resources)) {
-        if (CORE_NS.has(ns) || state.loadedNamespaces.has(ns)) continue;
-        i18n.addResourceBundle(resolvedLang, ns, data, true, true);
-        state.loadedNamespaces.add(ns);
-      }
-    }));
+    tasks.push(
+      bundle
+        .then(({ default: resources }) => {
+          for (const [ns, data] of Object.entries(resources)) {
+            if (CORE_NS.has(ns) || state.loadedNamespaces.has(ns)) continue;
+            i18n.addResourceBundle(resolvedLang, ns, data, true, true);
+            state.loadedNamespaces.add(ns);
+          }
+        })
+        .catch((error) => {
+          console.error('[i18n] Failed to load mobile locale bundle:', resolvedLang, error);
+          throw error;
+        }),
+    );
   }
 
   for (const [path, loader] of Object.entries(localeModules)) {
@@ -238,20 +245,48 @@ if (typeof i18n.changeLanguage === 'function') {
   };
 }
 
+let resolveInitialMobileLocale: (() => void) | null = null;
+const initialMobileLocaleReady: Promise<void> = IS_MOBILE_BUILD && !IS_DEMO_BUILD
+  ? new Promise<void>((resolve) => {
+      resolveInitialMobileLocale = resolve;
+    })
+  : Promise.resolve();
+
+/**
+ * 移动端构建把当前语言的全部命名空间合并为单个本地 chunk；
+ * 在 BootShell 切到主界面前有界等待当前语言就绪，避免冷启动首屏先闪出一屏原始翻译键。
+ * 非移动端或超时后立即放行，不阻塞首帧。
+ */
+export function waitForInitialMobileLocale(timeoutMs = 5000): Promise<void> {
+  if (!IS_MOBILE_BUILD || IS_DEMO_BUILD) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, timeoutMs);
+    void initialMobileLocaleReady.finally(() => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
 // 立即开始加载延迟命名空间（不阻塞 i18n 导出和首帧渲染）
 if (!IS_DEMO_BUILD) void (async () => {
-  // 优先加载启动时的当前语言，让 UI 文案尽快就位。
-  const initialLang = normalizeSupportedLanguage(i18n.language);
-  await loadDeferredNamespaces(initialLang);
+  try {
+    // 优先加载启动时的当前语言，让 UI 文案尽快就位。
+    const initialLang = normalizeSupportedLanguage(i18n.language);
+    await loadDeferredNamespaces(initialLang);
 
-  // 加载期间语言可能已切换；等待当前活动语言就绪，并复用 languageChanged 启动的批次。
-  const activeLang = normalizeSupportedLanguage(i18n.language);
-  await loadDeferredNamespaces(activeLang);
+    // 加载期间语言可能已切换；等待当前活动语言就绪，并复用 languageChanged 启动的批次。
+    const activeLang = normalizeSupportedLanguage(i18n.language);
+    await loadDeferredNamespaces(activeLang);
+  } finally {
+    resolveInitialMobileLocale?.();
+  }
 
   // 后台加载另一种语言（供 fallback 和后续语言切换使用）。
   // 公网 / WAN（RTT 150–250ms）下这段补载的几十个语言包会与首屏字体、图标、
   // 首帧后的会话/配置请求抢带宽与连接，故延后 5s 再启动；期间用户若主动切到
   // 该语言，`languageChanged` 会立即发起同一批次（同语言批次复用 inFlight）。
+  const activeLang = normalizeSupportedLanguage(i18n.language);
   const otherLang = activeLang === 'zh-CN' ? 'en-US' : 'zh-CN';
   setTimeout(() => requestDeferredNamespaces(otherLang), 5000);
 })().catch(() => {
