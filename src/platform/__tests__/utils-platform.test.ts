@@ -71,5 +71,11 @@ describe('utils/platform converged on the shell bridge (FE-A5)', () => {
     stubNavigator(USER_AGENTS[3]!, 'Linux armv8l', 5);
     globalThis.__DS_PLATFORM__ = { kind: 'mobile', os: 'android' };
     expect([getPlatform(), isAndroid(), isIOS(), isMobilePlatform()]).toEqual(['android', true, false, true]);
+
+    // Mobile shell running outside native Android/iOS (e.g. mobile web preview / Playwright)
+    // still reports isMobilePlatform() = true so desktop-only surfaces (Workbench) never activate.
+    stubNavigator(USER_AGENTS[2]!, 'Linux x86_64', 0);
+    globalThis.__DS_PLATFORM__ = { kind: 'mobile', os: 'linux' };
+    expect([getPlatform(), isAndroid(), isIOS(), isMobilePlatform()]).toEqual(['linux', false, false, true]);
   });
 });

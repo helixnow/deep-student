@@ -324,8 +324,9 @@ export const initAndroidSafeArea = (): void => {
   }
 };
 
-// 统一的移动端检测（供前端功能降级使用）：Android 或 iOS / iPadOS（含伪装成 MacIntel 的 iPadOS 桌面站点模式）。
-export const isMobilePlatform = (): boolean => isAndroid() || isIOS();
+// 统一的移动端检测（供前端功能降级使用）：移动端外壳、Android 或 iOS / iPadOS（含伪装成 MacIntel 的 iPadOS 桌面站点模式）。
+export const isMobilePlatform = (): boolean =>
+  readShellPlatform()?.kind === 'mobile' || isAndroid() || isIOS();
 
 /**
  * 是否运行在 WebUI（浏览器 / PWA）外壳里。

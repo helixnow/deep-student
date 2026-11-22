@@ -226,7 +226,7 @@ export function getAppKernel(): UiKernel {
 
 /** `options` 只给测试固定内核模式；应用入口不传，沿用内核缺省。 */
 export async function createAppUiKernel(options: UiKernelOptions = {}): Promise<UiKernel> {
-  const [{ commandRegistry }, { blockRegistry, eventRegistry, modeRegistry }, { appRegistry }, { default: i18n }, { installOfficialUiPlugins }] = await Promise.all([
+  const [{ commandRegistry }, { blockRegistry, eventRegistry, modeRegistry }, { appRegistry }, { default: i18n, waitForInitialMobileLocale }, { installOfficialUiPlugins }] = await Promise.all([
     import('../command-palette/registry/commandRegistry'),
     import('../features/chat/registry/blockRegistry'),
     import('../features/workbench/core/appRegistry'),
@@ -284,7 +284,10 @@ export async function createAppUiKernel(options: UiKernelOptions = {}): Promise<
     });
   try {
     await import('../app/pluginWorkshop');
-    await installOfficialUiPlugins(kernel);
+    await Promise.all([
+      installOfficialUiPlugins(kernel),
+      waitForInitialMobileLocale?.() ?? Promise.resolve(),
+    ]);
     // Published Host manager contract is now available. The settings owner's lazy point supplies ctx.ui.hostStatus.
     await import('../features/plugin-manager/production');
     activeAppKernel = kernel;
