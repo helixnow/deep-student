@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.20.9](https://github.com/helixnow/deep-student/compare/v0.20.8...v0.20.9) (2026-11-22)
+
+
+### Bug Fixes
+
+* **mobile:** 加固移动端语言包路径归一化、消除冷启动原始翻译键闪屏并补齐平台壳识别 ([07ddc98](https://github.com/helixnow/deep-student/commit/07ddc98910795873e0d8b5207d573b0037eafcac))
+
 ## [0.20.8](https://github.com/helixnow/deep-student/compare/v0.20.7...v0.20.8) (2026-11-22)
 
 
