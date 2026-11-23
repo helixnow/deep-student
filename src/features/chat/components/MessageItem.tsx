@@ -22,7 +22,7 @@ import { useBlocksSegmentMeta, type BlockSegmentMeta } from '../hooks/useChatSto
 import { useImagePreviewsFromRefs } from '../hooks/useImagePreviewsFromRefs';
 import { useFilePreviewsFromRefs } from '../hooks/useFilePreviewsFromRefs';
 import { ParallelVariantView } from './Variant';
-import { MessageActions, MessageInlineEdit, MessageTouchActionBar, UserMessageBubble } from './message';
+import { MemoryKernelAttributionPill, MessageActions, MessageInlineEdit, MessageTouchActionBar, UserMessageBubble } from './message';
 import { resolveSingleVariantDisplayMeta } from './message/variantMetaResolver';
 import { TokenUsageDisplay } from './TokenUsageDisplay';
 // 🔧 移除 ModelRetryDialog，改用底部面板模型选择重试
@@ -1471,6 +1471,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                       >
                         {getModelDisplayName(message._meta?.modelDisplayName || singleVariantModelId)}
                       </DsButton>
+                    )}
+                    {!isUser && !isLocked && (
+                      <MemoryKernelAttributionPill className="mr-1.5" />
                     )}
                     {!isMultiVariant && (
                       <MessageActions

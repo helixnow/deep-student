@@ -87,6 +87,7 @@ import {
   getMemoryAuditLogs,
   setMemoryAutoExtractFrequency,
   getMemoryTree,
+  moveMemoryToFolder,
   type AutoExtractFrequency,
   type MemoryConfig,
   type MemoryListItem,
@@ -168,8 +169,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   // 创建记忆状态
   const [newMemoryTitle, setNewMemoryTitle] = useState('');
   const [newMemoryContent, setNewMemoryContent] = useState('');
+  const [newMemoryFolderPath, setNewMemoryFolderPath] = useState('');
   const [newMemoryType, setNewMemoryType] = useState<MemoryTypeValue>('study');
   const [newMemoryPurpose, setNewMemoryPurpose] = useState<MemoryPurposeType>('memorized');
+  // 子目录/分组内联创建与移动状态 (Memory v2 M3-tail)
+  const [showCreateSubfolderForm, setShowCreateSubfolderForm] = useState(false);
+  const [newSubfolderTitle, setNewSubfolderTitle] = useState('');
+  const [extraFolderPaths, setExtraFolderPaths] = useState<string[]>([]);
   const [isBatchImporting, setIsBatchImporting] = useState(false);
   const [batchImportText, setBatchImportText] = useState('');
   const [batchImportType, setBatchImportType] = useState<MemoryTypeValue>('study');
@@ -404,7 +410,8 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     setIsMutating(true);
     try {
       const purposeArg = newMemoryPurpose !== 'memorized' ? newMemoryPurpose : undefined;
-      const result = await writeMemorySmart(newMemoryTitle, newMemoryContent, undefined, newMemoryType, purposeArg);
+      const folderArg = newMemoryFolderPath.trim() || undefined;
+      const result = await writeMemorySmart(newMemoryTitle, newMemoryContent, folderArg, newMemoryType, purposeArg);
       let msg: string;
       let level: 'success' | 'warning' = 'success';
       const writeSucceeded = result.event === 'ADD' || result.event === 'UPDATE' || result.event === 'APPEND' || result.event === 'DELETE';
@@ -422,12 +429,18 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       }
       showGlobalNotification(level, msg);
       if (writeSucceeded) {
+        if (folderArg) {
+          setExtraFolderPaths((prev) => (prev.includes(folderArg) ? prev : [...prev, folderArg]));
+        }
         setIsCreatingInline(false);
         setNewMemoryTitle('');
         setNewMemoryContent('');
         setNewMemoryType('study');
         setNewMemoryPurpose('memorized');
         loadMemories();
+        if (viewModeRef.current === 'tree') {
+          loadTree();
+        }
       }
     } catch (error: unknown) {
       console.error('[MemoryView] Create failed:', error);
@@ -435,7 +448,92 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     } finally {
       setIsMutating(false);
     }
-  }, [newMemoryTitle, newMemoryContent, newMemoryType, newMemoryPurpose, t, loadMemories]);
+  }, [newMemoryTitle, newMemoryContent, newMemoryFolderPath, newMemoryType, newMemoryPurpose, t, loadMemories, loadTree]);
+
+  // ========== 页内新建子目录 / 分组 ==========
+  const handleCreateSubfolder = useCallback(async () => {
+    const title = newSubfolderTitle.trim();
+    if (!title || !config?.memoryRootFolderId) return;
+    setIsMutating(true);
+    try {
+      const res = await folderApi.createFolder(title, config.memoryRootFolderId);
+      if (!res.ok) {
+        throw new Error(res.error?.message || 'create subfolder failed');
+      }
+      setExtraFolderPaths((prev) => (prev.includes(title) ? prev : [...prev, title]));
+      setNewMemoryFolderPath(title);
+      setNewSubfolderTitle('');
+      setShowCreateSubfolderForm(false);
+      showGlobalNotification('success', t('learningHub:memory.subfolder_created', { defaultValue: `已新建分组「${title}」`, title }));
+      loadTree();
+    } catch (error: unknown) {
+      console.error('[MemoryView] Create subfolder failed:', error);
+      showGlobalNotification('error', t('learningHub:memory.subfolder_create_error', { defaultValue: '新建分组失败' }));
+    } finally {
+      setIsMutating(false);
+    }
+  }, [newSubfolderTitle, config?.memoryRootFolderId, t, loadTree]);
+
+  // ========== 移动记忆到指定分组 ==========
+  const handleMoveMemory = useCallback(async (noteId: string, targetFolderPath: string) => {
+    const target = targetFolderPath.trim();
+    if (!target) return;
+    setIsMutating(true);
+    try {
+      await moveMemoryToFolder(noteId, target);
+      setExtraFolderPaths((prev) => (prev.includes(target) ? prev : [...prev, target]));
+      showGlobalNotification('success', t('learningHub:memory.move_success', { defaultValue: `已移动到「${target}」`, folder: target }));
+      loadMemories();
+      if (viewModeRef.current === 'tree') {
+        loadTree();
+      }
+      if (expandedMemoryId === noteId) {
+        const updated = await readMemory(noteId);
+        if (updated) setExpandedContent(updated);
+      }
+    } catch (error: unknown) {
+      console.error('[MemoryView] Move failed:', error);
+      showGlobalNotification('error', t('learningHub:memory.move_error', { defaultValue: '移动记忆失败' }));
+    } finally {
+      setIsMutating(false);
+    }
+  }, [t, loadMemories, loadTree, expandedMemoryId]);
+
+  const handleBatchMove = useCallback(async (targetFolderPath: string) => {
+    const target = targetFolderPath.trim();
+    if (!target || selectedIds.size === 0) return;
+    setIsMutating(true);
+    try {
+      let succeeded = 0;
+      let failed = 0;
+      for (const id of selectedIds) {
+        try {
+          await moveMemoryToFolder(id, target);
+          succeeded++;
+        } catch {
+          failed++;
+        }
+      }
+      setExtraFolderPaths((prev) => (prev.includes(target) ? prev : [...prev, target]));
+      showGlobalNotification(
+        failed > 0 ? 'warning' : 'success',
+        t('learningHub:memory.batch_move_result', {
+          defaultValue: failed > 0 ? `已移动 ${succeeded} 条，失败 ${failed} 条` : `已将 ${succeeded} 条记忆移动到「${target}」`,
+          succeeded,
+          failed,
+          folder: target,
+        }),
+      );
+      setSelectedIds(new Set());
+      setBatchMode(false);
+      loadMemories();
+      if (viewModeRef.current === 'tree') {
+        loadTree();
+      }
+    } finally {
+      setIsMutating(false);
+    }
+  }, [selectedIds, t, loadMemories, loadTree]);
 
   const handleCancelCreate = useCallback(() => {
     setIsCreatingInline(false);
@@ -494,13 +592,14 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     setIsMutating(true);
     try {
       const purposeArg = batchImportPurpose !== 'memorized' ? batchImportPurpose : undefined;
+      const folderArg = newMemoryFolderPath.trim() || undefined;
       const result = await writeMemoryBatch(
         items.map((item) => ({
           ...item,
           memoryType: batchImportType,
           memoryPurpose: purposeArg,
         })),
-        undefined,
+        folderArg,
         batchImportType,
         purposeArg,
       );
@@ -1063,6 +1162,28 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     return folderList.filter(f => f.title.toLowerCase().includes(q));
   }, [folderList, pickerFilter]);
 
+  const availableFolderPaths = useMemo(() => {
+    const set = new Set<string>();
+    const collectTree = (node: FolderTreeNode | null, prefix: string) => {
+      if (!node) return;
+      for (const child of node.children) {
+        const nextPath = prefix ? `${prefix}/${child.folder.title}` : child.folder.title;
+        if (nextPath.trim()) set.add(nextPath.trim());
+        collectTree(child, nextPath);
+      }
+    };
+    collectTree(treeData, '');
+    for (const m of memories) {
+      const fp = m.folderPath?.trim();
+      if (fp && fp !== '/') set.add(fp.replace(/^\/+/, ''));
+    }
+    for (const p of extraFolderPaths) {
+      const clean = p.trim();
+      if (clean) set.add(clean);
+    }
+    return [...set].sort();
+  }, [treeData, memories, extraFolderPaths]);
+
   // ========== 渲染：配置加载失败 - 内嵌错误态 ==========
   if (loadError && !config) {
     return (
@@ -1295,20 +1416,42 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               {selectedIds.size === visibleIds.length && visibleIds.length > 0 ? t('memory.deselect_all') : t('memory.select_all')}
             </DsButton>
             {selectedIds.size > 0 && (
-              <DsButton
-                variant="ghost" size="sm"
-                onClick={handleBatchDelete}
-                disabled={isMutating}
-                className={cn(
-                  'text-danger hover:bg-danger/10 font-mono tabular-nums transition-colors [@media(pointer:coarse)]:!min-h-11',
-                  confirmingBatchDelete && 'bg-danger/15 font-medium'
+              <>
+                {availableFolderPaths.length > 0 && (
+                  <select
+                    aria-label={t('learningHub:memory.batch_move_label', { defaultValue: '批量移动到分组' })}
+                    defaultValue=""
+                    disabled={isMutating}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val) {
+                        void handleBatchMove(val);
+                        e.target.value = '';
+                      }
+                    }}
+                    className="h-7 rounded-md border border-border/50 bg-background px-2 text-xs text-foreground outline-none focus:border-primary [@media(pointer:coarse)]:!h-11"
+                  >
+                    <option value="">{t('learningHub:memory.batch_move_placeholder', { defaultValue: '移动到分组…' })}</option>
+                    {availableFolderPaths.map((fp) => (
+                      <option key={fp} value={fp}>{localizeMemoryFolderPath(fp, t)}</option>
+                    ))}
+                  </select>
                 )}
-              >
-                {isMutating ? <CircleNotch size={15} className="animate-spin" /> : <Trash size={15} />}
-                {confirmingBatchDelete
-                  ? t('memory.confirm_delete')
-                  : t('memory.batch_delete', { count: selectedIds.size })}
-              </DsButton>
+                <DsButton
+                  variant="ghost" size="sm"
+                  onClick={handleBatchDelete}
+                  disabled={isMutating}
+                  className={cn(
+                    'text-danger hover:bg-danger/10 font-mono tabular-nums transition-colors [@media(pointer:coarse)]:!min-h-11',
+                    confirmingBatchDelete && 'bg-danger/15 font-medium'
+                  )}
+                >
+                  {isMutating ? <CircleNotch size={15} className="animate-spin" /> : <Trash size={15} />}
+                  {confirmingBatchDelete
+                    ? t('memory.confirm_delete')
+                    : t('memory.batch_delete', { count: selectedIds.size })}
+                </DsButton>
+              </>
             )}
           </>
         )}
@@ -1333,6 +1476,15 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 <Gear size={12} />
               )}
               {t('memory.change')}
+            </DsButton>
+            <DsButton
+              variant="ghost" size="sm"
+              data-testid="memory-new-subfolder-btn"
+              onClick={() => setShowCreateSubfolderForm((v) => !v)}
+              className={cn('!h-auto !px-1.5 !py-0.5 text-primary/90 hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2', showCreateSubfolderForm && 'bg-primary/10 text-primary')}
+            >
+              <Plus size={12} />
+              {t('learningHub:memory.new_subfolder', { defaultValue: '新建分组' })}
             </DsButton>
           </div>
 
@@ -1383,6 +1535,56 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             </div>
           )}
         </div>
+
+        {/* ★ 页内新建分组 / 子目录表单 (Memory v2 M3-tail) */}
+        <AnimatePresence initial={false}>
+          {showCreateSubfolderForm && (
+            <motion.div key="create-subfolder-form" {...disclosureMotion} className="overflow-hidden">
+              <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-border/40 bg-card/60 px-2.5 py-2">
+                <Folder size={13} className="text-primary shrink-0" />
+                <Input
+                  data-testid="memory-new-subfolder-input"
+                  value={newSubfolderTitle}
+                  onChange={(e) => setNewSubfolderTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (isComposingKeyEvent(e)) return;
+                    if (e.key === 'Enter' && newSubfolderTitle.trim() && !isMutating) {
+                      e.preventDefault();
+                      void handleCreateSubfolder();
+                    } else if (e.key === 'Escape') {
+                      setShowCreateSubfolderForm(false);
+                      setNewSubfolderTitle('');
+                    }
+                  }}
+                  placeholder={t('learningHub:memory.new_subfolder_placeholder', { defaultValue: '输入分组名，例如：数学与学习风格' })}
+                  autoFocus
+                  className="h-7 flex-1 text-xs bg-muted/30 border-transparent rounded focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
+                />
+                <DsButton
+                  variant="primary"
+                  size="sm"
+                  data-testid="memory-new-subfolder-submit"
+                  disabled={isMutating || !newSubfolderTitle.trim()}
+                  onClick={() => void handleCreateSubfolder()}
+                  className="!h-7 !px-2.5 text-xs [@media(pointer:coarse)]:!min-h-11"
+                >
+                  {isMutating ? <CircleNotch size={12} className="animate-spin" /> : null}
+                  {t('common:create')}
+                </DsButton>
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  onClick={() => { setShowCreateSubfolderForm(false); setNewSubfolderTitle(''); }}
+                  className="!h-6 !w-6"
+                  aria-label={t('common:cancel')}
+                >
+                  <X size={12} />
+                </DsButton>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ★ 内联根目录选择面板（原为模态框） */}
         <AnimatePresence initial={false}>
@@ -1641,6 +1843,24 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       {t('memory.batch_import_count', { count: parseBatchImportItems(batchImportText).length })}
                     </div>
 
+                    {/* 批量导入目标分组（可选） */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-muted-foreground">{t('learningHub:memory.target_folder', { defaultValue: '所属分组' })}:</span>
+                      <Input
+                        data-testid="memory-batch-folder-input"
+                        value={newMemoryFolderPath}
+                        onChange={(e) => setNewMemoryFolderPath(e.target.value)}
+                        list="memory-batch-folder-suggestions"
+                        placeholder={t('learningHub:memory.target_folder_placeholder', { defaultValue: '留空自动归类，或输入/选择分组名' })}
+                        className="h-7 flex-1 min-w-[160px] text-xs bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
+                      />
+                      <datalist id="memory-batch-folder-suggestions">
+                        {availableFolderPaths.map((fp) => (
+                          <option key={fp} value={fp} />
+                        ))}
+                      </datalist>
+                    </div>
+
                     <div className="flex gap-2 pt-1">
                       <DsButton variant="ghost" size="sm" onClick={handleCancelBatchImport} disabled={isMutating} className="flex-1 !h-9 [@media(pointer:coarse)]:!h-11">
                         {t('common:cancel')}
@@ -1744,6 +1964,24 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           {purposeLabel(t, p)}
                         </DsButton>
                       ))}
+                    </div>
+
+                    {/* 目标分组/子目录（可选） */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-muted-foreground">{t('learningHub:memory.target_folder', { defaultValue: '所属分组' })}:</span>
+                      <Input
+                        data-testid="memory-create-folder-input"
+                        value={newMemoryFolderPath}
+                        onChange={(e) => setNewMemoryFolderPath(e.target.value)}
+                        list="memory-folder-suggestions"
+                        placeholder={t('learningHub:memory.target_folder_placeholder', { defaultValue: '留空自动归类，或输入/选择分组名' })}
+                        className="h-7 flex-1 min-w-[160px] text-xs bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background [@media(pointer:coarse)]:!h-11"
+                      />
+                      <datalist id="memory-folder-suggestions">
+                        {availableFolderPaths.map((fp) => (
+                          <option key={fp} value={fp} />
+                        ))}
+                      </datalist>
                     </div>
 
                     <div className="flex gap-2 pt-1">
@@ -2095,6 +2333,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                             onDeleteNote={handleDeleteMemory}
                             confirmingDelete={confirmingDeleteId === memory.id}
                             onOpenInEditor={handleOpenInEditor}
+                            availableFolders={availableFolderPaths}
+                            currentFolder={memory.folderPath}
+                            onMoveToFolder={handleMoveMemory}
                             isLoading={isMutating}
                             className="mx-3 mb-2"
                           />
@@ -2352,6 +2593,9 @@ interface MemoryExpandPanelProps {
   onDeleteNote: (noteId: string) => void;
   confirmingDelete: boolean;
   onOpenInEditor: (noteId: string, title: string) => void;
+  availableFolders?: readonly string[];
+  currentFolder?: string;
+  onMoveToFolder?: (noteId: string, targetFolderPath: string) => void;
   isLoading: boolean;
   className?: string;
 }
@@ -2360,7 +2604,9 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
   noteId, noteTitle, isLoadingContent, expandedContent,
   editingMemoryId, editContent, onEditContentChange,
   onStartEdit, onSaveEdit, onCancelEdit,
-  onDeleteNote, confirmingDelete, onOpenInEditor, isLoading, className,
+  onDeleteNote, confirmingDelete, onOpenInEditor,
+  availableFolders, currentFolder, onMoveToFolder,
+  isLoading, className,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
   const isEditing = editingMemoryId === noteId;
@@ -2454,6 +2700,29 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
                 <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onStartEdit(noteId, content); }} className="text-muted-foreground hover:bg-[var(--interactive-hover)] !h-auto !px-2 !py-1 text-xs [@media(pointer:coarse)]:!min-h-11">
                   <PencilSimple size={12} />{t('memory.edit')}
                 </DsButton>
+              )}
+              {!isEditing && onMoveToFolder && availableFolders && availableFolders.length > 0 && (
+                <select
+                  aria-label={t('learningHub:memory.move_to_folder', { defaultValue: '移动到分组' })}
+                  value=""
+                  disabled={isLoading}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    const target = e.target.value;
+                    if (target) {
+                      onMoveToFolder(noteId, target);
+                    }
+                  }}
+                  className="h-6 rounded border border-border/40 bg-background px-1.5 text-2xs text-muted-foreground outline-none focus:border-primary [@media(pointer:coarse)]:!h-11"
+                >
+                  <option value="">{t('learningHub:memory.move_to_folder', { defaultValue: '移动分组…' })}</option>
+                  {availableFolders
+                    .filter((fp) => fp !== (currentFolder ?? '').replace(/^\/+/, ''))
+                    .map((fp) => (
+                      <option key={fp} value={fp}>{localizeMemoryFolderPath(fp, t)}</option>
+                    ))}
+                </select>
               )}
             </div>
             <DsButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onOpenInEditor(noteId, noteTitle); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2 !py-1 text-xs font-medium [@media(pointer:coarse)]:!min-h-11">
