@@ -117,19 +117,6 @@ html[data-wb-dragging] .wb-titlebar.wb-title-bar,
       var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1));
 }
 
-/* 触屏或手机窄屏：保持 12px 视觉圆点，但用透明伪元素扩展触控命中区并加大键距，避免手机上难以点中关闭按钮 */
-@media (pointer: coarse), (max-width: 640px) {
-  .wb-traffic-lights {
-    gap: 14px;
-  }
-
-  .wb-title-key::before {
-    content: '';
-    position: absolute;
-    inset: -16px -12px;
-  }
-}
-
 :root.dark .wb-title-key {
   box-shadow:
     inset 0 1px 0.75px rgb(255 255 255 / 28%),
@@ -372,6 +359,148 @@ html[data-wb-dragging] .wb-titlebar.wb-title-bar,
   left: var(--wb-macos-traffic-lights-inset, 72px);
   overflow: hidden;
   pointer-events: none;
+}
+
+/* ==========================================================================
+ * 触屏 / 窄屏（<= 640px）：扩大三键真实 <button> 命中框至 36×36px（贴合 38px 标题栏），
+ * 同时通过居中 ::before 绘制 12px 液态玻璃圆点，桌面端 12px 布局零改动。
+ * ========================================================================== */
+
+@media (pointer: coarse), (max-width: 640px) {
+  .wb-titlebar.wb-title-bar .wb-traffic {
+    gap: 0;
+  }
+
+  .wb-titlebar.wb-title-bar .wb-traffic-zoom-wrap {
+    width: 36px;
+    height: 36px;
+  }
+
+  .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key,
+  .wb-window-idle .wb-titlebar.wb-title-bar .wb-traffic:not(:hover) .wb-title-key,
+  .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key:hover,
+  .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key:active,
+  .wb-window-idle .wb-titlebar.wb-title-bar .wb-traffic:not(:hover) .wb-title-key:focus-visible {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+
+  .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key:focus-visible {
+    box-shadow: 0 0 0 2px var(--wb-snap-stroke);
+  }
+
+  /* 按钮本身已是 36×36px 触控框，取消桌面端外扩透明热区 */
+  .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key::after {
+    display: none;
+  }
+
+  /* 居中 12px 视觉交通灯圆点（保留桌面端 ::before 液态玻璃高光叠加） */
+  .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key::before {
+    content: '';
+    position: absolute;
+    inset: auto;
+    top: 50%;
+    left: 50%;
+    z-index: 0;
+    width: var(--wb-traffic-size, 12px);
+    height: var(--wb-traffic-size, 12px);
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 1px solid transparent;
+    transform: translate(-50%, -50%);
+    opacity: 1;
+    box-shadow:
+      inset 0 1px 0.75px rgb(255 255 255 / 44%),
+      inset 0 -1px 1px rgb(255 255 255 / 22%),
+      0 0.5px 1.2px rgb(0 0 0 / 16%);
+    pointer-events: none;
+  }
+
+  :root.dark .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key::before {
+    opacity: 1;
+    box-shadow:
+      inset 0 1px 0.75px rgb(255 255 255 / 28%),
+      inset 0 -1px 1px rgb(255 255 255 / 14%),
+      0 0.5px 1.5px rgb(0 0 0 / 38%);
+  }
+
+  .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key.wb-traffic-close::before {
+    background-color: var(--wb-traffic-close, #ff5f57);
+    border-color: var(--wb-traffic-close-border, #e0443e);
+  }
+
+  .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key.wb-traffic-min::before {
+    background-color: var(--wb-traffic-min, #febc2e);
+    border-color: var(--wb-traffic-min-border, #d89e24);
+  }
+
+  .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key.wb-traffic-zoom::before {
+    background-color: var(--wb-traffic-zoom, #28c840);
+    border-color: var(--wb-traffic-zoom-border, #1dad2c);
+  }
+
+  .wb-window-idle .wb-titlebar.wb-title-bar .wb-traffic:not(:hover) .wb-title-key::before {
+    background-color: var(--wb-traffic-idle);
+    border-color: var(--wb-traffic-idle-border);
+    box-shadow: inset 0 0.5px 0.5px rgb(255 255 255 / 18%);
+    opacity: 1;
+  }
+
+  .wb-window-idle .wb-titlebar.wb-title-bar .wb-traffic:not(:hover) .wb-title-key.wb-traffic-close:focus-visible::before {
+    background-color: var(--wb-traffic-close, #ff5f57);
+    border-color: var(--wb-traffic-close-border, #e0443e);
+  }
+
+  .wb-window-idle .wb-titlebar.wb-title-bar .wb-traffic:not(:hover) .wb-title-key.wb-traffic-min:focus-visible::before {
+    background-color: var(--wb-traffic-min, #febc2e);
+    border-color: var(--wb-traffic-min-border, #d89e24);
+  }
+
+  .wb-window-idle .wb-titlebar.wb-title-bar .wb-traffic:not(:hover) .wb-title-key.wb-traffic-zoom:focus-visible::before {
+    background-color: var(--wb-traffic-zoom, #28c840);
+    border-color: var(--wb-traffic-zoom-border, #1dad2c);
+  }
+
+  .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key:active::before {
+    opacity: 1;
+    filter: brightness(0.84);
+  }
+
+  /* 键内符号保持 8×8px 居中，不随 36px 按钮放大 */
+  .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key > .wb-title-glyph {
+    width: 8px;
+    height: 8px;
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  .wb-titlebar.wb-title-bar .wb-traffic:not(:hover):not(:focus-within) .wb-traffic-close[data-dirty] > .wb-title-glyph {
+    opacity: 0;
+  }
+
+  .wb-titlebar.wb-title-bar .wb-traffic-close .wb-title-dirty-dot {
+    inset: auto;
+    top: 50%;
+    left: 50%;
+    width: 10px;
+    height: 10px;
+    transform: translate(-50%, -50%);
+  }
+
+  /* 3×36px 三键总宽 108px + 左边距 8px = 116px，应用标题栏槽位与标题区避让 */
+  .wb-titlebar.wb-title-bar .wb-title-app-slot {
+    left: 116px;
+  }
+
+  .wb-titlebar.wb-title-bar .wb-title-center {
+    left: 116px;
+    right: 16px;
+  }
 }
 
 /* ==========================================================================

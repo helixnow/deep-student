@@ -3,6 +3,8 @@
  * badge / 运行指示点 / roving tabindex 键盘 / autohide / 分区排序
  */
 import React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, beforeEach, beforeAll, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 
@@ -735,5 +737,16 @@ describe('autohide', () => {
     fireEvent.click(hotzone);
     expect(dock).not.toHaveAttribute('data-hidden');
     expect(hotzone).toHaveAttribute('data-collapsed', 'false');
+  });
+
+  it('窄屏（<= 640px）约束 Dock 最大宽度在视口内并启用隐藏滚动条的横向滚动', () => {
+    const css = readFileSync(resolve(__dirname, '../Dock.css'), 'utf8');
+    const mediaIdx = css.indexOf('@media (max-width: 640px)');
+    expect(mediaIdx).toBeGreaterThan(-1);
+    const mobileBlock = css.slice(mediaIdx);
+    expect(mobileBlock).toContain('max-width: calc(100vw - 16px);');
+    expect(mobileBlock).toContain('overflow-x: auto;');
+    expect(mobileBlock).toContain('scrollbar-width: none;');
+    expect(mobileBlock).toContain('flex-shrink: 0;');
   });
 });

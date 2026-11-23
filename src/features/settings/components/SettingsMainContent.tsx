@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { TFunction } from 'i18next';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
+import { CaretLeft } from '@phosphor-icons/react';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter } from '@/components/ui/DsDialog';
 import { DsButton } from '@/components/ui/DsButton';
@@ -57,6 +58,9 @@ export function SettingsMainContent({
   renderMcpToolEditor,
   invoke,
   setConfig,
+  onMobileBack,
+  mobileTitle,
+  mobileRightActions,
 }: {
   activeTab: string;
   setActiveTab: (tab: string) => void;
@@ -79,6 +83,9 @@ export function SettingsMainContent({
   renderMcpToolEditor: () => React.ReactNode;
   invoke: typeof tauriInvoke | null;
   setConfig: Dispatch<SetStateAction<SystemConfig>>;
+  onMobileBack?: () => void;
+  mobileTitle?: string;
+  mobileRightActions?: React.ReactNode;
 }) {
   const renderActiveSection = (placement: SettingsSectionPlacement) => {
     if (!activeSectionEntry || (activeSectionEntry.value.placement ?? 'main') !== placement) return null;
@@ -94,6 +101,35 @@ export function SettingsMainContent({
       )}
       data-slot={mobilePageMode ? 'mobile-settings-page-content' : undefined}
     >
+        {mobilePageMode && onMobileBack && (
+          <div
+            data-testid="settings-mobile-subpage-header"
+            className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border/40 bg-[color:var(--shell-workspace-panel)] px-2 py-1"
+          >
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="md"
+              data-testid="settings-mobile-back"
+              aria-label={t('settings:a11y.back_to_settings', { defaultValue: '返回设置' })}
+              onClick={onMobileBack}
+              className="!h-11 !min-h-[44px] !min-w-[44px] shrink-0 gap-1 px-2 text-foreground"
+            >
+              <CaretLeft size={20} weight="regular" aria-hidden="true" />
+              <span className="text-sm font-medium">{t('common:back', { defaultValue: '返回' })}</span>
+            </DsButton>
+            {mobileTitle ? (
+              <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">
+                {mobileTitle}
+              </h1>
+            ) : null}
+            {mobileRightActions ? (
+              <div className="flex shrink-0 items-center gap-1">
+                {mobileRightActions}
+              </div>
+            ) : null}
+          </div>
+        )}
         {activeCategory && !(mobilePageMode && mobileVendorDetailOpen) && (
           <div className="shrink-0 px-5 pt-4 lg:px-8">
             <div className="mx-auto w-full max-w-[72rem]">

@@ -66,6 +66,34 @@ describe('Settings shell renders', () => {
     await waitFor(() => expect(view.container.querySelector('[data-settings-mobile-level="content"]')).not.toBeNull());
     expect(view.container.querySelector('#settings-main-content')).not.toBeNull();
 
+    const backBtn = view.getByTestId('settings-mobile-back');
+    expect(backBtn).toHaveAttribute('aria-label', '返回设置');
+    expect(backBtn.className).toContain('!min-h-[44px]');
+    expect(backBtn.className).toContain('!min-w-[44px]');
+
+    fireEvent.click(backBtn);
+    await waitFor(() => expect(view.container.querySelector('[data-settings-mobile-level="sections"]')).not.toBeNull());
+
+    view.unmount();
+    await kernel.dispose();
+  });
+
+  it('shows a visible mobile back button on the About subpage and returns to the category list', async () => {
+    state.mobile = true;
+    state.small = true;
+    const { view, kernel } = await renderSettings();
+    await waitFor(() => expect(view.container.querySelector('[data-settings-mobile-level="sections"]')).not.toBeNull());
+
+    const aboutFooter = view.container.querySelector('[data-settings-about-footer]') as HTMLElement;
+    expect(aboutFooter).not.toBeNull();
+    fireEvent.click(within(aboutFooter).getByRole('button'));
+    await waitFor(() => expect(view.container.querySelector('[data-settings-mobile-level="content"]')).not.toBeNull());
+
+    const backBtn = view.getByTestId('settings-mobile-back');
+    expect(backBtn).toHaveAttribute('aria-label', '返回设置');
+    fireEvent.click(backBtn);
+    await waitFor(() => expect(view.container.querySelector('[data-settings-mobile-level="sections"]')).not.toBeNull());
+
     view.unmount();
     await kernel.dispose();
   });

@@ -694,6 +694,32 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
 }
 
 /* ==========================================================================
+ * 窄屏（<= 640px，如 360px 手机端）：限制 Dock 宽度在视口内并启用横向滚动，
+ * 避免多应用打开时首尾图标被裁出视口
+ * ========================================================================== */
+
+@media (max-width: 640px) {
+  div.wb-dock {
+    box-sizing: border-box;
+    max-width: calc(100vw - 16px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    justify-content: flex-start;
+  }
+
+  div.wb-dock::-webkit-scrollbar {
+    display: none;
+  }
+
+  .wb-dock .wb-dock-item-wrap,
+  .wb-dock .wb-dock-separator {
+    flex-shrink: 0;
+  }
+}
+
+/* ==========================================================================
  * 降级：reduced-motion / minimal → 关动效与扫光
  * ========================================================================== */
 
