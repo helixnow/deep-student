@@ -32,6 +32,7 @@ import { RegisteredViewLayer } from '@/ui-plugins/official/shell/RegisteredViewL
 import { invalidateShellViewComponent, resolveShellViewComponent } from '@/ui-kernel/shell-view';
 const viewLoadingFallback = <PageLoadingFallback />;
 import type { ShellView, ShellViewContribution } from '@/ui-kernel/contracts/shell';
+import { usePluginManagerWorkshop } from '@/features/plugin-manager/workshop';
 
 // App 壳层：经典壳各保活视图层的内容元素，从 App.tsx 原样搬出。
 // 每个视图内容都以 useMemo 保持稳定引用（ViewLayerRenderer 的 memo 以 children 引用比较），
@@ -325,6 +326,7 @@ export function useViewLayer(options: ViewLayerOptions): React.ReactNode[] {
     llmPlaygroundContent,
   } = useAuxiliaryViewContents(setCurrentView);
 
+  const workshop = usePluginManagerWorkshop();
   const [, setRetryGeneration] = useState(0);
   const retryHandlers = useMemo(() => new Map(viewEntries.map(({ value }) => [value.id, () => {
     invalidateShellViewComponent(value);
@@ -353,10 +355,17 @@ export function useViewLayer(options: ViewLayerOptions): React.ReactNode[] {
             <span className="text-muted-foreground">插件工坊作品</span>
             <button
               type="button"
-              onClick={() => setCurrentView('chat-v2')}
+              data-testid="workshop-refine-with-ai"
+              onClick={() => {
+                if (workshop?.onModify) {
+                  workshop.onModify(owner);
+                } else {
+                  setCurrentView('chat-v2');
+                }
+              }}
               className="rounded-full bg-primary px-2.5 py-1 font-medium text-primary-foreground transition-opacity hover:opacity-90"
             >
-              返回对话继续改进
+              ✦ 让 AI 优化
             </button>
           </div>
         ) : undefined}

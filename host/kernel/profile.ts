@@ -18,6 +18,7 @@ import {
   type ProfileInstallOptions, type ProfileLoadResult, type RejectedEntry,
 } from './profile-install.ts';
 import type { HostRuntime, PluginInstall } from './runtime.ts';
+import { mountDeclarativeAssets } from './declarative-loader.ts';
 import type { StartupTimeline } from './startup-timing.ts';
 
 /** 官方 profile：`extends: "official"` 的目标，也是用户 profile 装载失败后的回退目标。 */
@@ -260,7 +261,7 @@ export async function screenProfileEntry(entry: ResolvedEntry, appVersion: strin
   if (!result.ok) throw result.error;
   const { manifest } = result;
   if (manifest.host === undefined) {
-    if (manifest.ui !== undefined && file === packageJson) {
+    if ((manifest.ui !== undefined || manifest.declarative !== undefined) && file === packageJson) {
       return { manifest, packageRoot: dirname(packageJson), uiOnly: true };
     }
     throw new PluginLoadError('HOST_ENTRY_MISMATCH', entry.id, `${packageJson} declares no "host" entry; a profile can only load a plugin's Host half`);
@@ -281,6 +282,7 @@ export async function screenProfileEntry(entry: ResolvedEntry, appVersion: strin
  * 未通过的条目进 `rejected`，不安装。
  */
 export async function prepareProfile(runtime: HostRuntime, entries: readonly ResolvedEntry[], options: ProfileLoadOptions = {}): Promise<{ installs: PluginInstall[]; rejected: RejectedEntry[] }> {
+  runtime.setDeclarativeLoader(mountDeclarativeAssets);
   const appVersion = runtime.app.version;
   const { platform } = options;
   const rejected: RejectedEntry[] = [];

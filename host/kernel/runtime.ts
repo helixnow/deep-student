@@ -54,6 +54,16 @@ import { PluginCallerService } from './plugin-caller.ts';
 import { StartupTimeline } from './startup-timing.ts';
 import type { CapabilityAcl } from './acl.ts';
 import { workshopUiReceipt, releaseWorkshopUiReceipt } from './workshop-ui-authority.ts';
+import {
+  DeclarativeAssetRegistry,
+  type MountDeclarativeDeps,
+} from './declarative-registry.ts';
+
+export type DeclarativeAssetLoader = (
+  manifest: PluginManifest,
+  packageRoot: string,
+  deps: MountDeclarativeDeps,
+) => Promise<() => void>;
 
 export type { InstalledPlugin, HostOutbound } from './kernel.ts';
 
@@ -181,6 +191,14 @@ export class HostRuntime {
   readonly backendEvents: BackendEventService;
   readonly protocols: ProtocolService;
   readonly shell: ShellService;
+  readonly declarativeAssets = new DeclarativeAssetRegistry();
+  private readonly declarativeDisposers = new Map<string, () => void>();
+  private declarativeLoader: DeclarativeAssetLoader | undefined;
+
+  /** Desktop/platform bootstrap installs a filesystem-backed Tier 1 declarative loader. */
+  setDeclarativeLoader(loader: DeclarativeAssetLoader): void {
+    this.declarativeLoader = loader;
+  }
   /** 启动计时（阶段、模块导入、apply）；只记录，不影响装载。 */
   readonly startup = new StartupTimeline();
   private readonly installed: InstalledPlugin[] = [];
@@ -226,6 +244,7 @@ export class HostRuntime {
     };
     // kernel 服务挂在根 fiber 上：插件无需 inject 即可访问，且永远处于 ACTIVE。
     root.provide('app', app);
+    root.provide('declarativeAssets', this.declarativeAssets);
     this.commands = new CommandService(root, this.kernel);
     this.backendEvents = new BackendEventService(root, this.kernel);
     // RUST-FIX(RF-W01-ui-events-emitter): 受限的插件事件入口，与 backendEvents 共用同一条线上传输。
@@ -813,6 +832,16 @@ export class HostRuntime {
     this.installed.push(installed);
     try {
       await wrapped;
+      if (entry.manifest?.declarative && entry.packageRoot && this.declarativeLoader) {
+        const gradingRubrics = this.ctx.reflect.get('gradingRubrics', false) as {
+          register: (pluginId: string, mode: any) => () => void;
+        } | undefined;
+        const disposeDeclarative = await this.declarativeLoader(entry.manifest, entry.packageRoot, {
+          registry: this.declarativeAssets,
+          gradingRubrics,
+        });
+        this.declarativeDisposers.set(installed.id, disposeDeclarative);
+      }
     } catch (error) {
       await this.recordPluginError(installed.id, 'plugin.load', error);
       this.remove(installed);
@@ -855,6 +884,11 @@ export class HostRuntime {
   }
 
   private remove(entry: InstalledPlugin): void {
+    const disposeDeclarative = this.declarativeDisposers.get(entry.id);
+    if (disposeDeclarative) {
+      this.declarativeDisposers.delete(entry.id);
+      try { disposeDeclarative(); } catch { /* best-effort cleanup */ }
+    }
     const index = this.installed.indexOf(entry);
     if (index >= 0) this.installed.splice(index, 1);
   }

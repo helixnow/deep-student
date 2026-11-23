@@ -125,10 +125,10 @@ describe('W01 plugin manifest v1 at startup', () => {
   });
 
   it('rejects newer manifest versions with an upgrade hint before looking at anything else', async () => {
-    const plugin = await community({ id: 'alice.next', ds: { manifestVersion: 2, brandNew: {} }, top: { engines: { deepStudent: '^9.0' } } });
+    const plugin = await community({ id: 'alice.next', ds: { manifestVersion: 3, brandNew: {} }, top: { engines: { deepStudent: '^9.0' } } });
     const { runtime } = await newHost();
     const result = await loadProfile(runtime, await profile([plugin]), { platform: 'desktop' });
-    expect(result.degraded).toEqual([{ id: 'alice.next', reason: 'MANIFEST_VERSION_UNSUPPORTED: manifestVersion 2 is newer than this app supports (1); upgrade the app' }]);
+    expect(result.degraded).toEqual([{ id: 'alice.next', reason: 'MANIFEST_VERSION_UNSUPPORTED: manifestVersion 3 is newer than this app supports (2); upgrade the app' }]);
   });
 
   it('requires engines.deepStudent and validates the rest of the manifest strictly against the contract', async () => {
