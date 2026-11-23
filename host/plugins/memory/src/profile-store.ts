@@ -58,6 +58,8 @@ export interface MasteryWeakPointEvidence {
   total: number;
   wrongCount: number;
   recentWrongSummary: string;
+  subject?: string | null;
+  relapseCount?: number;
 }
 
 /** The subset of `MemoryServiceImpl` this store depends on. */
@@ -458,10 +460,11 @@ export class MemoryProfileStore {
       throw new Error("Invalid argument 'concept': mastery concept must be non-empty");
     }
     const today = new Date().toISOString().slice(0, 10);
+    const relapseNote = evidence.relapseCount && evidence.relapseCount > 0 ? ` relapse=${evidence.relapseCount}` : '';
     const errorPattern = `[mastery] score=${formatF64Fixed2(evidence.score)} `
-      + `total=${evidence.total} wrongs=${evidence.wrongCount}; ${evidence.recentWrongSummary}`;
+      + `total=${evidence.total} wrongs=${evidence.wrongCount}${relapseNote}; ${evidence.recentWrongSummary}`;
     const weakPoint: WeakPoint = {
-      subject: MASTERY_WEAK_POINT_SUBJECT,
+      subject: evidence.subject?.trim() || MASTERY_WEAK_POINT_SUBJECT,
       knowledge_point: trimmed,
       error_pattern: errorPattern,
       evidence_count: Math.max(1, evidence.wrongCount),

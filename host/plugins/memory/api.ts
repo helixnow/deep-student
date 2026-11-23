@@ -100,6 +100,8 @@ export interface MasteryProfileSinkEvidence {
   total: number;
   wrongCount: number;
   recentWrongSummary: string;
+  subject?: string | null;
+  relapseCount?: number;
 }
 
 /** L15 mastery → memory learner-profile reflux (Rust `mastery_hook.rs`). */

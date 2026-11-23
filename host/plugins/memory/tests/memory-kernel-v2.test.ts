@@ -208,4 +208,39 @@ describe('RFC-001 M1: MemoryProvider, HardRules, Frozen <memory_kernel>, and His
     expect(rolled.learnerProfile.recent_status).toBe('阶段 3');
     expect(rolled.learnerProfile.version).toBe(9);
   });
+
+  it('ingests essay_graded low-scoring dimensions and real mastery subject/relapse into LearnerProfile (RFC-001 M2)', async () => {
+    const { host } = await setup();
+    const provider = providerOf(host);
+    const service = serviceOf(host);
+
+    provider.ingestSignal({
+      kind: 'essay_graded',
+      examType: 'ielts_task2',
+      essayId: 'essay_1',
+      rubricDimensions: [
+        { name: 'Task Response', score: 7.5, maxScore: 9, recurringIssue: null },
+        { name: 'Grammatical Range', score: 5.0, maxScore: 9, recurringIssue: '频繁漏用虚拟语气和倒装' },
+      ],
+    });
+
+    // Mastery reflux with real subject and relapse count
+    service.upsertWeakPointFromMastery('特征值分解', {
+      score: 0.35, total: 5, wrongCount: 4, recentWrongSummary: '特征向量方向算错',
+      subject: '线性代数', relapseCount: 2,
+    });
+
+    const view = provider.inspect();
+    const essayWp = view.learnerProfile.weak_points.find(wp => wp.knowledge_point === 'Grammatical Range');
+    expect(essayWp).toBeDefined();
+    expect(essayWp!.subject).toBe('ielts_task2');
+    expect(essayWp!.error_pattern).toContain('虚拟语气');
+    // High-scoring dimension (7.5/9 >= 65%) must NOT be added as a weakness
+    expect(view.learnerProfile.weak_points.some(wp => wp.knowledge_point === 'Task Response')).toBe(false);
+
+    const mathWp = view.learnerProfile.weak_points.find(wp => wp.knowledge_point === '特征值分解');
+    expect(mathWp).toBeDefined();
+    expect(mathWp!.subject).toBe('线性代数');
+    expect(mathWp!.error_pattern).toContain('relapse=2');
+  });
 });
