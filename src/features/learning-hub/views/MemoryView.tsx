@@ -550,15 +550,21 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     setBatchImportPurpose('memorized');
   }, []);
 
-  // ★ 创建与批量导入互斥展开
+  // ★ 创建与批量导入互斥展开（展开时确保滚动容器在顶部，表单立即落入视野）
   const handleOpenCreate = useCallback(() => {
     setIsBatchImporting(false);
     setIsCreatingInline(true);
+    requestAnimationFrame(() => {
+      scrollHostRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' as ScrollBehavior });
+    });
   }, []);
 
   const handleOpenBatchImport = useCallback(() => {
     setIsCreatingInline(false);
     setIsBatchImporting(true);
+    requestAnimationFrame(() => {
+      scrollHostRef.current?.scrollIntoView({ block: 'start', behavior: 'instant' as ScrollBehavior });
+    });
   }, []);
 
   const parseBatchImportItems = useCallback((raw: string) => {
@@ -1642,124 +1648,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       {/* 记忆列表 */}
       <CustomScrollArea className="min-h-0 flex-1">
         <div className="p-3 space-y-3" ref={scrollHostRef}>
-          {/* 记忆体系 v2：AI 常驻印象（L1 硬规则 + 学习者画像 + 预算 + 历史回滚） */}
-          <MemoryKernelPanel refreshSignal={memories.length} />
-
-          {/* 画像汇总 */}
-          <AnimatePresence initial={false}>
-            {showProfile && (
-              <motion.div key="profile-panel" {...disclosureMotion} className="overflow-hidden">
-                <div className="rounded-lg border border-border/35 bg-foreground/[0.015] overflow-hidden">
-                  <div data-wb-blur-surface className="flex items-center gap-2 px-3 py-2 border-b border-border/35">
-                    <MemoryIcon size={14} className="text-muted-foreground" />
-                    <span className="text-xs font-medium text-muted-foreground">{t('memory.profile_title')}</span>
-                  </div>
-                  {isLoadingProfile ? (
-                    <div className="flex items-center justify-center py-6">
-                      <CircleNotch size={16} className="animate-spin text-muted-foreground" />
-                    </div>
-                  ) : profileError ? (
-                    <div className="px-4 py-4 text-xs text-destructive/80 text-center space-y-2">
-                      <div>{profileError}</div>
-                      <DsButton variant="ghost" size="sm" onClick={() => { setShowProfile(false); handleToggleProfile(); }} className="text-xs [@media(pointer:coarse)]:!min-h-11">
-                        {t('common:retry')}
-                      </DsButton>
-                    </div>
-                  ) : profileSections.length === 0 ? (
-                    <div className="px-4 py-4 text-xs text-muted-foreground/60 text-center">
-                      {t('memory.profile_empty')}
-                    </div>
-                  ) : (
-                    <div className="px-3 py-2.5 space-y-2.5">
-                      {profileSections.map((section) => (
-                        <div key={section.category}>
-                          <div className="text-xs font-medium text-foreground/70 mb-1">{section.category}</div>
-                          <div className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">{section.content}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* 审计日志面板 */}
-          <AnimatePresence initial={false}>
-            {showAuditLog && (
-              <motion.div key="audit-panel" {...disclosureMotion} className="overflow-hidden">
-                <div className="rounded-lg border border-border/35 bg-foreground/[0.015] overflow-hidden">
-                  <div data-wb-blur-surface className="flex flex-wrap items-center gap-2 gap-y-1.5 px-3 py-2 border-b border-border/35">
-                    <ClockCounterClockwise size={14} className="text-muted-foreground" />
-                    <span className="text-xs font-medium text-muted-foreground">{t('memory.audit_log')}</span>
-                    <div className="ml-auto flex items-center gap-1.5">
-                      {/* 来源筛选 */}
-                      <Select value={auditSourceFilter} onValueChange={setAuditSourceFilter}>
-                        <SelectTrigger className="h-6 px-1.5 text-2xs bg-muted/40 border-none rounded w-auto min-h-0 [@media(pointer:coarse)]:!min-h-11">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">{t('memory.audit_all_sources')}</SelectItem>
-                          <SelectItem value="tool_call">{t('memory.audit_source_tool')}</SelectItem>
-                          <SelectItem value="auto_extract">{t('memory.audit_source_auto')}</SelectItem>
-                          <SelectItem value="handler">{t('memory.audit_source_handler')}</SelectItem>
-                          <SelectItem value="evolution">{t('memory.audit_source_evolution')}</SelectItem>
-                          <SelectItem value="semantic_dedup">{t('memory.audit_source_semantic_dedup')}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      {/* 成功/失败筛选 */}
-                      <Select value={auditSuccessFilter} onValueChange={setAuditSuccessFilter}>
-                        <SelectTrigger className="h-6 px-1.5 text-2xs bg-muted/40 border-none rounded w-auto min-h-0 [@media(pointer:coarse)]:!min-h-11">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">{t('memory.audit_all_status')}</SelectItem>
-                          <SelectItem value="true">{t('memory.audit_success')}</SelectItem>
-                          <SelectItem value="false">{t('memory.audit_failed')}</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  {isLoadingAuditLog && auditLogs.length === 0 ? (
-                    <div className="flex items-center justify-center py-6">
-                      <CircleNotch size={16} className="animate-spin text-muted-foreground" />
-                    </div>
-                  ) : auditLoadError ? (
-                    <div className="px-4 py-4 text-xs text-danger text-center space-y-2">
-                      <div>{auditLoadError}</div>
-                      <div>
-                        <DsButton variant="ghost" size="sm" onClick={() => loadAuditLogs(0)} className="text-xs [@media(pointer:coarse)]:!min-h-11">
-                          {t('common:retry')}
-                        </DsButton>
-                      </div>
-                    </div>
-                  ) : auditLogs.length === 0 ? (
-                    <div className="px-4 py-4 text-xs text-muted-foreground/60 text-center">
-                      {t('memory.audit_empty')}
-                    </div>
-                  ) : (
-                    <div>
-                      <div className="divide-y divide-border/35">
-                        {auditLogs.map((log) => (
-                          <AuditLogRow key={log.id} log={log} />
-                        ))}
-                      </div>
-                      {hasMoreAuditLogs && (
-                        <div className="flex justify-center py-2 border-t border-border/35">
-                          <DsButton variant="ghost" size="sm" onClick={handleLoadMoreLogs} disabled={isLoadingAuditLog} className="text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-11">
-                            {isLoadingAuditLog ? <CircleNotch size={12} className="animate-spin" /> : null}
-                            {t('memory.audit_load_more')}
-                          </DsButton>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* 批量导入表单 */}
+          {/* 批量导入表单（置顶：点顶栏「批量导入」立刻在视野顶部展开） */}
           <AnimatePresence initial={false}>
             {isBatchImporting && (
               <motion.div key="batch-import-form" {...disclosureMotion} className="overflow-hidden">
@@ -1876,7 +1765,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             )}
           </AnimatePresence>
 
-          {/* 内联创建表单 */}
+          {/* 内联创建表单（置顶：点顶栏「新建」立刻在视野顶部展开） */}
           <AnimatePresence initial={false}>
             {isCreatingInline && (
               <motion.div key="create-form" {...disclosureMotion} className="overflow-hidden">
@@ -1994,6 +1883,123 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       </DsButton>
                     </div>
                   </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* 记忆体系 v2：AI 常驻印象（L1 硬规则 + 学习者画像 + 预算 + 历史回滚） */}
+          <MemoryKernelPanel refreshSignal={memories.length} />
+
+          {/* 画像汇总 */}
+          <AnimatePresence initial={false}>
+            {showProfile && (
+              <motion.div key="profile-panel" {...disclosureMotion} className="overflow-hidden">
+                <div className="rounded-lg border border-border/35 bg-foreground/[0.015] overflow-hidden">
+                  <div data-wb-blur-surface className="flex items-center gap-2 px-3 py-2 border-b border-border/35">
+                    <MemoryIcon size={14} className="text-muted-foreground" />
+                    <span className="text-xs font-medium text-muted-foreground">{t('memory.profile_title')}</span>
+                  </div>
+                  {isLoadingProfile ? (
+                    <div className="flex items-center justify-center py-6">
+                      <CircleNotch size={16} className="animate-spin text-muted-foreground" />
+                    </div>
+                  ) : profileError ? (
+                    <div className="px-4 py-4 text-xs text-destructive/80 text-center space-y-2">
+                      <div>{profileError}</div>
+                      <DsButton variant="ghost" size="sm" onClick={() => { setShowProfile(false); handleToggleProfile(); }} className="text-xs [@media(pointer:coarse)]:!min-h-11">
+                        {t('common:retry')}
+                      </DsButton>
+                    </div>
+                  ) : profileSections.length === 0 ? (
+                    <div className="px-4 py-4 text-xs text-muted-foreground/60 text-center">
+                      {t('memory.profile_empty')}
+                    </div>
+                  ) : (
+                    <div className="px-3 py-2.5 space-y-2.5">
+                      {profileSections.map((section) => (
+                        <div key={section.category}>
+                          <div className="text-xs font-medium text-foreground/70 mb-1">{section.category}</div>
+                          <div className="text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">{section.content}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* 审计日志面板 */}
+          <AnimatePresence initial={false}>
+            {showAuditLog && (
+              <motion.div key="audit-panel" {...disclosureMotion} className="overflow-hidden">
+                <div className="rounded-lg border border-border/35 bg-foreground/[0.015] overflow-hidden">
+                  <div data-wb-blur-surface className="flex flex-wrap items-center gap-2 gap-y-1.5 px-3 py-2 border-b border-border/35">
+                    <ClockCounterClockwise size={14} className="text-muted-foreground" />
+                    <span className="text-xs font-medium text-muted-foreground">{t('memory.audit_log')}</span>
+                    <div className="ml-auto flex items-center gap-1.5">
+                      {/* 来源筛选 */}
+                      <Select value={auditSourceFilter} onValueChange={setAuditSourceFilter}>
+                        <SelectTrigger className="h-6 px-1.5 text-2xs bg-muted/40 border-none rounded w-auto min-h-0 [@media(pointer:coarse)]:!min-h-11">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t('memory.audit_all_sources')}</SelectItem>
+                          <SelectItem value="tool_call">{t('memory.audit_source_tool')}</SelectItem>
+                          <SelectItem value="auto_extract">{t('memory.audit_source_auto')}</SelectItem>
+                          <SelectItem value="handler">{t('memory.audit_source_handler')}</SelectItem>
+                          <SelectItem value="evolution">{t('memory.audit_source_evolution')}</SelectItem>
+                          <SelectItem value="semantic_dedup">{t('memory.audit_source_semantic_dedup')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {/* 成功/失败筛选 */}
+                      <Select value={auditSuccessFilter} onValueChange={setAuditSuccessFilter}>
+                        <SelectTrigger className="h-6 px-1.5 text-2xs bg-muted/40 border-none rounded w-auto min-h-0 [@media(pointer:coarse)]:!min-h-11">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t('memory.audit_all_status')}</SelectItem>
+                          <SelectItem value="true">{t('memory.audit_success')}</SelectItem>
+                          <SelectItem value="false">{t('memory.audit_failed')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  {isLoadingAuditLog && auditLogs.length === 0 ? (
+                    <div className="flex items-center justify-center py-6">
+                      <CircleNotch size={16} className="animate-spin text-muted-foreground" />
+                    </div>
+                  ) : auditLoadError ? (
+                    <div className="px-4 py-4 text-xs text-danger text-center space-y-2">
+                      <div>{auditLoadError}</div>
+                      <div>
+                        <DsButton variant="ghost" size="sm" onClick={() => loadAuditLogs(0)} className="text-xs [@media(pointer:coarse)]:!min-h-11">
+                          {t('common:retry')}
+                        </DsButton>
+                      </div>
+                    </div>
+                  ) : auditLogs.length === 0 ? (
+                    <div className="px-4 py-4 text-xs text-muted-foreground/60 text-center">
+                      {t('memory.audit_empty')}
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="divide-y divide-border/35">
+                        {auditLogs.map((log) => (
+                          <AuditLogRow key={log.id} log={log} />
+                        ))}
+                      </div>
+                      {hasMoreAuditLogs && (
+                        <div className="flex justify-center py-2 border-t border-border/35">
+                          <DsButton variant="ghost" size="sm" onClick={handleLoadMoreLogs} disabled={isLoadingAuditLog} className="text-xs text-muted-foreground [@media(pointer:coarse)]:!min-h-11">
+                            {isLoadingAuditLog ? <CircleNotch size={12} className="animate-spin" /> : null}
+                            {t('memory.audit_load_more')}
+                          </DsButton>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </motion.div>
             )}

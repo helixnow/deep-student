@@ -4,10 +4,11 @@ import { useTranslation } from 'react-i18next';
 import '../styles/settings.css';
 import '../styles/api-config-section.css';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { DsButton } from '@/components/ui/DsButton';
 import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody } from '@/components/ui/DsDialog';
 import UnifiedErrorHandler from '@/components/UnifiedErrorHandler';
 import { AppMenuDemo } from '@/components/ui/app-menu';
-import { Stack } from '@phosphor-icons/react';
+import { CaretLeft, Stack } from '@phosphor-icons/react';
 import { MacTopSafeDragZone } from '@/components/layout/MacTopSafeDragZone';
 import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
 import { ShellViewSwitch } from '@/components/ui/ShellViewSwitch';
@@ -197,7 +198,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   const handleHeaderBack = useCallback(() => handleMobileHeaderBack(dismissRightPanel), [handleMobileHeaderBack, dismissRightPanel]);
 
   // 顶栏标题与右侧动作（面包屑依赖供应商/MCP 编辑目标）
-  const { titleNode: settingsTitleNode, rightActions: settingsHeaderRightActions, onMenuClick: settingsHeaderBack } = useSettingsMobileHeaderContent({
+  const {
+    titleText: settingsTitleText,
+    titleNode: settingsTitleNode,
+    rightActions: settingsHeaderRightActions,
+    onMenuClick: settingsHeaderBack,
+  } = useSettingsMobileHeaderContent({
     t, activeTab, activeNavItem, activeCategory, screenPosition, mobileNavView, mobileVendorDetailOpen,
     isSmallScreen, rightPanelType, mcpPreview, mcpToolModal, modelEditor, editingVendor, selectedVendor,
     vendorConfigModalRef, mcpToolSubmitRef, mcpPolicySaveRef, handleOpenVendorModal, handleCreateMcpTool,
@@ -460,28 +466,64 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       renderMcpToolEditor={renderMcpToolEditor}
       invoke={invoke}
       setConfig={setConfig}
+      onMobileBack={mobilePageMode ? handleHeaderBack : undefined}
+      mobileTitle={mobilePageMode ? settingsTitleText : undefined}
+      mobileRightActions={mobilePageMode ? settingsHeaderRightActions : undefined}
     />
   );
 
   const renderRightPanel = () => (
-    <SettingsMobileRightPanel
-      rightPanelType={rightPanelType}
-      modelEditor={modelEditor}
-      handleSaveModelProfileAndClose={handleSaveModelProfileAndClose}
-      handleCloseModelEditor={handleCloseModelEditor}
-      renderMcpToolEditorEmbedded={renderMcpToolEditorEmbedded}
-      renderMcpPolicyEditorEmbedded={renderMcpPolicyEditorEmbedded}
-      mcpPreview={mcpPreview}
-      stripMcpPrefix={stripMcpPrefix}
-      t={t}
-      vendorModalOpen={vendorModalOpen}
-      editingVendor={editingVendor}
-      handleSaveVendorModal={handleSaveVendorModal}
-      closeRightPanel={closeRightPanel}
-      setVendorModalOpen={setVendorModalOpen}
-      setEditingVendor={setEditingVendor}
-      vendorConfigModalRef={vendorConfigModalRef}
-    />
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+      {screenPosition === 'right' && (
+        <div
+          data-testid="settings-mobile-right-header"
+          className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border/40 bg-[color:var(--shell-workspace-panel)] px-2 py-1"
+        >
+          <DsButton
+            type="button"
+            variant="ghost"
+            size="md"
+            data-testid="settings-mobile-right-back"
+            aria-label={t('settings:a11y.back_to_settings', { defaultValue: '返回设置' })}
+            onClick={handleHeaderBack}
+            className="!h-11 !min-h-[44px] !min-w-[44px] shrink-0 gap-1 px-2 text-foreground"
+          >
+            <CaretLeft size={20} weight="regular" aria-hidden="true" />
+            <span className="text-sm font-medium">{t('common:back', { defaultValue: '返回' })}</span>
+          </DsButton>
+          {settingsTitleText ? (
+            <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">
+              {settingsTitleText}
+            </h2>
+          ) : null}
+          {settingsHeaderRightActions ? (
+            <div className="flex shrink-0 items-center gap-1">
+              {settingsHeaderRightActions}
+            </div>
+          ) : null}
+        </div>
+      )}
+      <div className="min-h-0 flex-1 overflow-hidden">
+        <SettingsMobileRightPanel
+          rightPanelType={rightPanelType}
+          modelEditor={modelEditor}
+          handleSaveModelProfileAndClose={handleSaveModelProfileAndClose}
+          handleCloseModelEditor={handleCloseModelEditor}
+          renderMcpToolEditorEmbedded={renderMcpToolEditorEmbedded}
+          renderMcpPolicyEditorEmbedded={renderMcpPolicyEditorEmbedded}
+          mcpPreview={mcpPreview}
+          stripMcpPrefix={stripMcpPrefix}
+          t={t}
+          vendorModalOpen={vendorModalOpen}
+          editingVendor={editingVendor}
+          handleSaveVendorModal={handleSaveVendorModal}
+          closeRightPanel={closeRightPanel}
+          setVendorModalOpen={setVendorModalOpen}
+          setEditingVendor={setEditingVendor}
+          vendorConfigModalRef={vendorConfigModalRef}
+        />
+      </div>
+    </div>
   );
 
   const appMenuDemoDialog = (

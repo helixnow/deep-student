@@ -139,6 +139,14 @@ body .settings-mobile-sheet-scroll-viewport {
   }
 }
 
+/* Workbench 窗口内的移动端设置：隐藏经典壳透传的 MobileInFlowHeader（避免显示其他视图顶栏或空白占位），
+   子页返回导航由 SettingsMainContent / Settings 内置顶栏承载。 */
+[data-wb-settings-host] [data-mobile-shell='header'],
+[data-wb-settings-host] [data-mobile-shell='floating-sidebar-trigger'],
+[data-wb-settings-host] [data-mobile-shell='header-accessory'] {
+  display: none;
+}
+
 /* API编辑模态框动画 */
 @keyframes fadeIn {
   from {

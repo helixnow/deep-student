@@ -4,6 +4,8 @@
  * 未保存脏点渲染 / 长标题溢出 tooltip / 双击标题栏按设置分发。
  */
 import React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react';
 
@@ -316,5 +318,24 @@ describe('双击标题栏（按设置分发）', () => {
     const bar = container.querySelector('[data-wb-titlebar]') as HTMLElement;
     fireEvent.doubleClick(bar, { clientX: 60, clientY: 12 });
     expect(props.onZoom).not.toHaveBeenCalled();
+  });
+});
+
+describe('移动端 / 触屏三键真实命中框（360px 回归）', () => {
+  it('WindowTitleBar.css 在 coarse / <= 640px 下扩大真实 button 命中框至 >= 36px 并保持居中 12px 圆点', () => {
+    const css = readFileSync(
+      resolve(__dirname, '../WindowTitleBar.css'),
+      'utf8',
+    );
+    const mediaIdx = css.indexOf('@media (pointer: coarse), (max-width: 640px)');
+    expect(mediaIdx).toBeGreaterThan(-1);
+    const mobileBlock = css.slice(mediaIdx);
+    expect(mobileBlock).toContain('min-width: 36px;');
+    expect(mobileBlock).toContain('min-height: 36px;');
+    expect(mobileBlock).toContain('width: 36px;');
+    expect(mobileBlock).toContain('height: 36px;');
+    expect(mobileBlock).toContain('width: var(--wb-traffic-size, 12px);');
+    expect(mobileBlock).toContain('height: var(--wb-traffic-size, 12px);');
+    expect(mobileBlock).toContain('.wb-titlebar.wb-title-bar .wb-traffic-zoom-wrap');
   });
 });

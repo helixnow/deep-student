@@ -567,7 +567,7 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       {/* 标题绝对居中（不受左侧三键宽度影响）；溢出时 mask 渐隐 */}
       {!suppressCenteredTitle ? (
         <div
-          className="pointer-events-none absolute inset-x-16 top-0 flex h-full items-center justify-center"
+          className="wb-title-center pointer-events-none absolute inset-x-16 top-0 flex h-full items-center justify-center"
           aria-hidden={title === ''}
         >
           <span

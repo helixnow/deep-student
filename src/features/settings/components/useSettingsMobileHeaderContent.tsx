@@ -218,6 +218,7 @@ export function useSettingsMobileHeaderContent({
   }, [screenPosition, rightPanelType, t, isSmallScreen, mobileNavView, activeTab, mobileVendorDetailOpen, handleOpenVendorModal, selectedVendor, mcpToolSubmitRef, mcpPolicySaveRef, handleCreateMcpTool]);
 
   return {
+    titleText: settingsBreadcrumbText,
     titleNode: SettingsBreadcrumb,
     rightActions: settingsHeaderRightActions,
     onMenuClick,
