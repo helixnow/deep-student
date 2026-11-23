@@ -36,8 +36,11 @@ import { createExportHandlers } from './plugin-handlers-export.ts';
 import { createRestHandlers } from './plugin-handlers-rest.ts';
 import { createGenerationHandlers } from './plugin-handlers-generation.ts';
 import {
+  cardExplicitDeckName,
   exportCardsToApkgWithFullTemplate,
   FSRS_EXPORT_METADATA_KEY,
+  normalizeExportDeckName,
+  type ApkgExportCard,
   type ApkgExportRuntime,
   type TemplateConfigTuple,
 } from './apkg-exporter.ts';
@@ -46,7 +49,11 @@ import type { AnkiCard } from '../../../../contracts/ipc/generated/_shared.ts';
 import { decodeAnkiCardInput } from './anki-cards.ts';
 import { cardHasClozeMarkup } from './anki-sync.ts';
 import { getTemplateById } from '../repository/templates.ts';
-import { loadExportProgress } from '../repository/anki-cards.ts';
+import {
+  listDeckNamesByCardIds,
+  listDeckNamesByTaskIds,
+  loadExportProgress,
+} from '../repository/anki-cards.ts';
 import { replacePendingMemoryCandidates } from '../repository/anki-sessions.ts';
 import type { PendingMemoryCandidateWriter } from '../../memory/api.ts';
 
@@ -194,6 +201,64 @@ export function applyAnkiPlugin(ctx: Context): void {
       }
     };
 
+    /**
+     * 为即将导出为 APKG 的卡片补全真实牌组名（优先保留单卡显式字段，其次回查 `document_tasks`）：
+     * 避免多牌组备份被压平成单一 `"DeepStudent"` 回退牌组。
+     */
+    const attachCardDeckNames = (cards: ApkgExportCard[], rawCards?: readonly unknown[]): void => {
+      if (rawCards !== undefined) {
+        for (let index = 0; index < cards.length; index += 1) {
+          const card = cards[index]!;
+          if (cardExplicitDeckName(card) !== null) continue;
+          const raw = rawCards[index];
+          if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) continue;
+          const record = raw as Record<string, unknown>;
+          const candidate =
+            normalizeExportDeckName(typeof record.deckName === 'string' ? record.deckName : null)
+            ?? normalizeExportDeckName(typeof record.deck_name === 'string' ? record.deck_name : null);
+          if (candidate !== null) card.deckName = candidate;
+        }
+      }
+
+      const taskIdsToQuery: string[] = [];
+      for (const card of cards) {
+        if (cardExplicitDeckName(card) !== null) continue;
+        const taskId = card.task_id.trim();
+        if (taskId !== '') taskIdsToQuery.push(taskId);
+      }
+      if (taskIdsToQuery.length > 0) {
+        try {
+          const byTask = listDeckNamesByTaskIds(db(), taskIdsToQuery);
+          for (const card of cards) {
+            if (cardExplicitDeckName(card) !== null) continue;
+            const deck = byTask.get(card.task_id.trim());
+            if (deck !== undefined) card.deckName = deck;
+          }
+        } catch {
+          // 查库失败时退回导出参数的默认牌组名，不中断导出。
+        }
+      }
+
+      const cardIdsToQuery: string[] = [];
+      for (const card of cards) {
+        if (cardExplicitDeckName(card) !== null) continue;
+        const cardId = card.id.trim();
+        if (cardId !== '') cardIdsToQuery.push(cardId);
+      }
+      if (cardIdsToQuery.length > 0) {
+        try {
+          const byCard = listDeckNamesByCardIds(db(), cardIdsToQuery);
+          for (const card of cards) {
+            if (cardExplicitDeckName(card) !== null) continue;
+            const deck = byCard.get(card.id.trim());
+            if (deck !== undefined) card.deckName = deck;
+          }
+        } catch {
+          // 查库失败时退回导出参数的默认牌组名，不中断导出。
+        }
+      }
+    };
+
     /** selection 的 `get_template_config` 单次读取：失败时告警并回退默认模板。 */
     const loadApkgTemplate = (
       templateId: string,
@@ -244,8 +309,9 @@ export function applyAnkiPlugin(ctx: Context): void {
       templateId: string | null | undefined,
     ): string => {
       if (rawCards.length === 0) validationFailure('没有选择任何卡片');
-      const cards = decodeExportCards(rawCards);
+      const cards: ApkgExportCard[] = decodeExportCards(rawCards);
       attachFsrsProgress(cards);
+      attachCardDeckNames(cards, rawCards);
 
       const effectiveTemplateId = templateId !== null && templateId !== undefined
         ? templateId
@@ -301,6 +367,7 @@ export function applyAnkiPlugin(ctx: Context): void {
       now,
       service,
       attachFsrsProgress,
+      attachCardDeckNames,
       loadApkgTemplate,
       downloadsDir,
       decodeExportCards,

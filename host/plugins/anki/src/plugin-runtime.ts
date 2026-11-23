@@ -15,7 +15,7 @@ import type { AnkiHostService } from './service.ts';
 import { decodeCustomTemplateJson, decodeFieldExtractionRules, SerdeError } from './templates.ts';
 import { appError, ioErrorText, type AppErrorValue } from './files.ts';
 import { ankiLocalRuntime } from './local-runtime.ts';
-import { type TemplateConfigTuple } from './apkg-exporter.ts';
+import { type ApkgExportCard, type TemplateConfigTuple } from './apkg-exporter.ts';
 import type { AnkiCard } from '../../../../contracts/ipc/generated/_shared.ts';
 import { AnkiCardDecodeError } from './anki-cards.ts';
 
@@ -33,6 +33,7 @@ export interface AnkiPluginRuntime {
   now: () => Date;
   service: AnkiHostService;
   attachFsrsProgress(cards: AnkiCard[]): void;
+  attachCardDeckNames(cards: ApkgExportCard[], rawCards?: readonly unknown[]): void;
   loadApkgTemplate(templateId: string): { config: TemplateConfigTuple; full: CustomAnkiTemplate } | null;
   downloadsDir(): string;
   decodeExportCards(raw: readonly unknown[]): AnkiCard[];

@@ -1138,10 +1138,13 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
             });
           }
 
-          // ★ P0（2026-09-07 附件体验方案）：上传成功后自动弹出附件面板。
-          // 直接上传路径此前从不派发该事件（只有资源库注入路径派发），
-          // 用户上传后看不到处理进度与注入模式选择器。事件已有监听器（:1643）。
-          window.dispatchEvent(new CustomEvent('CHAT_V2_OPEN_ATTACHMENT_PANEL'));
+          // ★ P0（2026-09-07 附件体验方案）：桌面端上传成功后自动弹出附件面板；
+          // 移动端 / 窄屏（<= 640px）保持输入框上方紧凑单行胶囊条，不自动顶起半屏内联详情面板。
+          const isNarrowMobileViewport = isMobile
+            || (typeof window !== 'undefined' && window.innerWidth <= 640);
+          if (!isNarrowMobileViewport) {
+            window.dispatchEvent(new CustomEvent('CHAT_V2_OPEN_ATTACHMENT_PANEL'));
+          }
 
         } catch (error) {
           if (!upload.isActive()) return;
@@ -1253,7 +1256,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
       reader.readAsDataURL(file);
     });
 
-  }, [onAddAttachment, onUpdateAttachment, onContextRefCreated, t, beginUpload, isUploadScopeCurrent]);
+  }, [onAddAttachment, onUpdateAttachment, onContextRefCreated, t, beginUpload, isUploadScopeCurrent, isMobile]);
 
   const processPreparedFilesToAttachments = useCallback((files: File[]) => {
     if (!files.length || !isUploadScopeCurrent()) return;
@@ -2324,13 +2327,18 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
         ? anchor.checkVisibility({ visibilityProperty: true, opacityProperty: true, contentVisibilityAuto: true })
         : getComputedStyle(anchor).visibility !== 'hidden';
       if (!visible) return;
+      // 移动端 / 窄屏（<= 640px）不自动展开内联附件面板，避免上传 1 份 PDF 挤占半屏消息区；
+      // 用户可通过点击单行附件胶囊按需展开详情面板。
+      const isNarrowMobileViewport = isMobile
+        || (typeof window !== 'undefined' && window.innerWidth <= 640);
+      if (isNarrowMobileViewport) return;
       if (!panelStatesRef.current.attachment) {
         onSetPanelState('attachment', true);
       }
     };
     window.addEventListener('CHAT_V2_OPEN_ATTACHMENT_PANEL', handleOpenAttachmentPanel);
     return () => window.removeEventListener('CHAT_V2_OPEN_ATTACHMENT_PANEL', handleOpenAttachmentPanel);
-  }, [onSetPanelState]);
+  }, [onSetPanelState, isMobile]);
 
   // 🔧 首帧轻量化 + 会话切换重置
   // 会话切换时重置 isReady，延迟 HEAVY_UI_DELAY_MS (400ms) 再启动重 UI/计算
@@ -3123,11 +3131,11 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
             </div>
           )}
 
-          {/* ★ 制卡可发现性提示：pdf/docx 可制卡，apkg 可导入 */}
+          {/* ★ 制卡可发现性提示：pdf/docx 可制卡，apkg 可导入（窄屏隐藏避免叠加撑高输入区） */}
           {flashcardHintKind && !flashcardHintDismissed && (
             <div
               data-testid="flashcard-hint"
-              className="mb-1.5 flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--composer-panel-muted-surface,var(--muted))] px-2.5 py-1 text-xs text-muted-foreground"
+              className="mb-1.5 flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--composer-panel-muted-surface,var(--muted))] px-2.5 py-1 text-xs text-muted-foreground max-sm:hidden"
             >
               <span className="min-w-0 truncate">
                 {flashcardHintKind === 'apkg'
@@ -3221,6 +3229,8 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
             onRemove={onRemoveAttachment}
             onRetry={handleRetryAttachmentChip}
             onInjectModesChange={handleInjectModesChange}
+            isMobile={isMobile}
+            onToggleDetails={toggleAttachmentPanel}
             disabled={isStreaming}
           />
 

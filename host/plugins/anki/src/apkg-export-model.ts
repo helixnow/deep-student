@@ -513,6 +513,98 @@ export function stableModelIdForTemplate(templateId: string): number {
   return APKG_MODEL_ID_BASE + 1 + Number(hash % (1n << 52n));
 }
 
+/** FNV-1a 64 位 → 稳定非保留 deck id（始终 > APKG_EXPORT_DECK_ID，避开 Anki 保留默认 id 1）。 */
+export function stableDeckIdForName(deckName: string): number {
+  let hash = 0xcbf2_9ce4_8422_2325n;
+  for (const byte of utf8Encode(deckName)) {
+    hash ^= BigInt(byte);
+    hash = (hash * 0x0000_0100_0000_01b3n) & 0xffff_ffff_ffff_ffffn;
+  }
+  return APKG_EXPORT_DECK_ID + 1 + Number(hash % (1n << 48n));
+}
+
+/** 导出入参卡片：在标准 `AnkiCard` 基础上可选携带每卡归属牌组名。 */
+export type ApkgExportCard = AnkiCard & {
+  deckName?: string | null;
+  deck_name?: string | null;
+};
+
+export interface ExportDeckEntry {
+  id: number;
+  name: string;
+}
+
+export interface ExportDeckPlan {
+  decks: ExportDeckEntry[];
+  deckIdByName: Map<string, number>;
+  primaryDeckId: number;
+}
+
+export function normalizeExportDeckName(raw: string | null | undefined): string | null {
+  if (typeof raw !== 'string') return null;
+  const normalized = raw.replace(/\u001f/g, '::').trim();
+  return normalized === '' ? null : normalized;
+}
+
+/** 提取单卡显式牌组名（不含导出回退名）；必须在 `normalizeCardsForExport` 清理 `_` 前缀字段之前调用。 */
+export function cardExplicitDeckName(card: ApkgExportCard): string | null {
+  return (
+    normalizeExportDeckName(card.deckName)
+    ?? normalizeExportDeckName(card.deck_name)
+    ?? normalizeExportDeckName(card.extra_fields._deck)
+    ?? normalizeExportDeckName(card.extra_fields._deck_name)
+    ?? normalizeExportDeckName(card.extra_fields._deckName)
+  );
+}
+
+/** 解析单卡导出牌组名：优先使用卡片自身牌组名，缺失时回退导出参数 `fallbackDeckName`（或 `DeepStudent`）。 */
+export function resolveCardDeckName(card: ApkgExportCard, fallbackDeckName: string): string {
+  return cardExplicitDeckName(card) ?? normalizeExportDeckName(fallbackDeckName) ?? 'DeepStudent';
+}
+
+/**
+ * 为导出批次构造确定性牌组清单：
+ * - 单牌组且等于导出回退名时继续使用 `APKG_EXPORT_DECK_ID`，保持全部单牌组契约不变；
+ * - 多牌组或保留卡片原始牌组时，为每个非空牌组名分配确定性、非保留的 Anki `did`。
+ */
+export function buildExportDeckPlan(
+  resolvedDeckNames: readonly string[],
+  fallbackDeckName: string,
+): ExportDeckPlan {
+  const fallback = normalizeExportDeckName(fallbackDeckName) ?? 'DeepStudent';
+  const distinct = new Set<string>();
+  for (const raw of resolvedDeckNames) {
+    distinct.add(normalizeExportDeckName(raw) ?? fallback);
+  }
+  if (distinct.size === 0) distinct.add(fallback);
+
+  const sortedNames = [...distinct].sort(compareUtf8);
+  if (sortedNames.length === 1 && sortedNames[0] === fallback) {
+    const entry: ExportDeckEntry = { id: APKG_EXPORT_DECK_ID, name: fallback };
+    return {
+      decks: [entry],
+      deckIdByName: new Map([[fallback, APKG_EXPORT_DECK_ID]]),
+      primaryDeckId: APKG_EXPORT_DECK_ID,
+    };
+  }
+
+  const usedIds = new Set<number>([1, APKG_EXPORT_DECK_ID]);
+  const deckIdByName = new Map<string, number>();
+  const decks: ExportDeckEntry[] = [];
+  for (const name of sortedNames) {
+    let id = stableDeckIdForName(name);
+    while (usedIds.has(id)) id += 1;
+    usedIds.add(id);
+    deckIdByName.set(name, id);
+    decks.push({ id, name });
+  }
+  return {
+    decks,
+    deckIdByName,
+    primaryDeckId: decks[0]!.id,
+  };
+}
+
 /** 稳定 note guid（`apkg_exporter_service.rs:347-397`）。 */
 export function stableNoteGuid(card: AnkiCard): string {
   const hasher = createHasherSync('SHA-1');
@@ -745,27 +837,35 @@ export function createTemplateModel(
 }
 
 
-function deckRecords(deckName: string, nowSeconds: number): Record<string, unknown> {
-  const deckId = APKG_EXPORT_DECK_ID;
+function buildDeckRecord(deckId: number, deckName: string, nowSeconds: number): Record<string, unknown> {
   return {
-    [deckId]: {
-      id: deckId,
-      name: deckName,
-      extendRev: 50,
-      usn: 0,
-      collapsed: false,
-      newToday: [0, 0],
-      revToday: [0, 0],
-      lrnToday: [0, 0],
-      timeToday: [0, 0],
-      dyn: 0,
-      extendNew: 10,
-      conf: 1,
-      desc: '',
-      browserCollapsed: true,
-      mod: nowSeconds,
-    },
+    id: deckId,
+    name: deckName,
+    extendRev: 50,
+    usn: 0,
+    collapsed: false,
+    newToday: [0, 0],
+    revToday: [0, 0],
+    lrnToday: [0, 0],
+    timeToday: [0, 0],
+    dyn: 0,
+    extendNew: 10,
+    conf: 1,
+    desc: '',
+    browserCollapsed: true,
+    mod: nowSeconds,
   };
+}
+
+function deckRecords(
+  decks: readonly ExportDeckEntry[],
+  nowSeconds: number,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const deck of decks) {
+    out[String(deck.id)] = buildDeckRecord(deck.id, deck.name, nowSeconds);
+  }
+  return out;
 }
 
 const DCONF_RECORD = {
@@ -795,16 +895,19 @@ const DCONF_RECORD = {
 export function insertCollection(
   db: DatabaseHandle,
   models: Record<string, unknown>,
-  deckName: string,
+  deckOrDecks: string | readonly ExportDeckEntry[],
   nowSeconds: number,
 ): void {
+  const decks: readonly ExportDeckEntry[] = typeof deckOrDecks === 'string'
+    ? [{ id: APKG_EXPORT_DECK_ID, name: deckOrDecks }]
+    : deckOrDecks;
   const dconf = structuredClone(DCONF_RECORD) as { 1: { mod: number } };
   dconf[1].mod = nowSeconds;
   insertCollectionRow(db, {
     nowSeconds,
     configJson: ANKI_COLLECTION_CONFIG,
     modelsJson: JSON.stringify(models),
-    decksJson: JSON.stringify(deckRecords(deckName, nowSeconds)),
+    decksJson: JSON.stringify(deckRecords(decks, nowSeconds)),
     dconfJson: JSON.stringify(dconf),
   });
 }
@@ -817,8 +920,12 @@ export function initializeAnkiDatabaseWithTemplate(
   templateConfig: TemplateConfigTuple | null,
   templateId: string | null,
   nowSeconds = Math.floor(Date.now() / 1000),
+  decks?: readonly ExportDeckEntry[],
 ): [deckId: number, modelId: number] {
-  const deckId = APKG_EXPORT_DECK_ID;
+  const effectiveDecks: readonly ExportDeckEntry[] = decks && decks.length > 0
+    ? decks
+    : [{ id: APKG_EXPORT_DECK_ID, name: deckName }];
+  const deckId = effectiveDecks[0]!.id;
   const modelId = modelName === 'Cloze' ? 1425279151692 : 1425279151691;
 
   const model = templateConfig !== null
@@ -835,6 +942,7 @@ export function initializeAnkiDatabaseWithTemplate(
     : modelName === 'Cloze'
       ? createClozeModel(nowSeconds)
       : createBasicModel(nowSeconds);
+  model.did = deckId;
 
   const modelValue = model as unknown as Record<string, unknown>;
   modelValue[DEEP_STUDENT_COLLAPSE_CLOZE_ORDS_KEY] = true;
@@ -843,6 +951,6 @@ export function initializeAnkiDatabaseWithTemplate(
     modelValue[DEEP_STUDENT_TEMPLATE_ID_KEY] = trimmedTemplateId;
   }
 
-  insertCollection(db, { [String(model.id)]: modelValue }, deckName, nowSeconds);
+  insertCollection(db, { [String(model.id)]: modelValue }, effectiveDecks, nowSeconds);
   return [deckId, modelId];
 }

@@ -39,9 +39,10 @@ import {
   RESERVED_IMPORT_METADATA_FIELDS,
   type TemplateConfigTuple,
 } from './apkg-export-constants.ts';
-import type { CardSchedRestore, RevlogExport } from './apkg-export-model.ts';
+import type { ApkgExportCard, CardSchedRestore, RevlogExport } from './apkg-export-model.ts';
 import {
   ANKI_COLLECTION_CONFIG,
+  buildExportDeckPlan,
   cleanTemplatePlaceholders,
   clozeCardOrds,
   containsClozeMarker,
@@ -62,6 +63,7 @@ import {
   nextApkgNoteId,
   normalizeCardsForExport,
   occlusionMediaFileName,
+  resolveCardDeckName,
   resolveCardFieldValue,
   sanitizeApkgFieldValue,
   cardSchedRestore,
@@ -89,7 +91,7 @@ export interface ApkgExportReport {
   warnings: string[];
 }
 
-/** `(note_id, guid, flds, sort_field, csum, tags, card_ords, schedules, instance)`。 */
+/** `(note_id, guid, flds, sort_field, csum, tags, card_ords, schedules, instance, deck_ids?)`。 */
 export type AnkiNoteRecord = [
   noteId: string,
   guid: string,
@@ -100,6 +102,7 @@ export type AnkiNoteRecord = [
   cardOrds: number[],
   schedules: Array<CardSchedRestore | null>,
   instance: boolean,
+  deckIds?: number[],
 ];
 
 // ============================== 记录转换 ==============================
@@ -125,13 +128,16 @@ export function convertCardsToAnkiRecordsWithFields(
   modelName: string,
   templateFields: readonly string[] | null,
   logger?: Pick<AnkiLogger, 'warn'>,
+  cardDeckIds?: readonly number[],
 ): AnkiNoteRecord[] {
   const records: AnkiNoteRecord[] = [];
   const isClozeModel = modelName.toLowerCase() === 'cloze';
   const usedGuids = new Set<string>();
   const importedNotes = new Map<string, number>();
 
-  for (const card of cards) {
+  for (let cardIndex = 0; cardIndex < cards.length; cardIndex += 1) {
+    const card = cards[cardIndex]!;
+    const cardDeckId = cardDeckIds?.[cardIndex];
     const noteId = nextApkgNoteId();
     const instance = isClozeModel && isImportedClozeInstance(card);
     const sourceKey = instance ? importedSourceKey(card) : null;
@@ -194,6 +200,9 @@ export function convertCardsToAnkiRecordsWithFields(
         } else {
           record[6].push(ord);
           record[7].push(schedule);
+          if (record[9] !== undefined && cardDeckId !== undefined) {
+            record[9].push(cardDeckId);
+          }
         }
         continue;
       }
@@ -211,17 +220,32 @@ export function convertCardsToAnkiRecordsWithFields(
       guid = uniqueNoteGuid(card, usedGuids);
     }
 
-    records.push([
-      String(noteId),
-      guid,
-      fields,
-      sortField,
-      csum,
-      tags,
-      cardOrds,
-      cardOrds.map(() => schedule),
-      instance,
-    ]);
+    if (cardDeckIds !== undefined && cardDeckId !== undefined) {
+      records.push([
+        String(noteId),
+        guid,
+        fields,
+        sortField,
+        csum,
+        tags,
+        cardOrds,
+        cardOrds.map(() => schedule),
+        instance,
+        cardOrds.map(() => cardDeckId),
+      ]);
+    } else {
+      records.push([
+        String(noteId),
+        guid,
+        fields,
+        sortField,
+        csum,
+        tags,
+        cardOrds,
+        cardOrds.map(() => schedule),
+        instance,
+      ]);
+    }
   }
   return records;
 }
@@ -327,7 +351,7 @@ export function insertAnkiNoteRecords(
   nowSeconds: number,
   nextDue: { value: number },
 ): void {
-  for (const [noteId, guid, fields, sortField, csum, tags, ords, schedules, instance] of records) {
+  for (const [noteId, guid, fields, sortField, csum, tags, ords, schedules, instance, deckIds] of records) {
     const parsedNoteId = Number(noteId);
     if (!Number.isSafeInteger(parsedNoteId)) throw new Error(`invalid note id: ${noteId}`);
     insertNoteRow(db, {
@@ -342,7 +366,8 @@ export function insertAnkiNoteRecords(
       data: JSON.stringify({ deepStudentCardScope: instance ? 'card' : 'note' }),
     });
     for (let index = 0; index < ords.length; index += 1) {
-      insertAnkiCardRows(db, parsedNoteId, deckId, nowSeconds, [ords[index]!], nextDue, schedules[index] ?? null);
+      const targetDeckId = deckIds?.[index] ?? deckId;
+      insertAnkiCardRows(db, parsedNoteId, targetDeckId, nowSeconds, [ords[index]!], nextDue, schedules[index] ?? null);
     }
   }
 }
@@ -447,7 +472,7 @@ function cleanupTempDir(tempDir: string): string | null {
   }
 }
 
-function cloneCards(cards: readonly AnkiCard[]): AnkiCard[] {
+function cloneCards(cards: readonly ApkgExportCard[]): ApkgExportCard[] {
   return cards.map((card) => structuredClone(card));
 }
 
@@ -480,7 +505,7 @@ function isClozeNoteType(noteType: string): boolean {
 
 function writeExport(
   runtime: ApkgExportRuntime,
-  cards: AnkiCard[],
+  cards: ApkgExportCard[],
   deckName: string,
   noteType: string,
   outputPath: string,
@@ -489,6 +514,11 @@ function writeExport(
 ): ApkgExportReport {
   if (cards.length === 0) throw new Error('没有卡片可以导出');
   const normalized = cloneCards(cards);
+  const resolvedDeckNames = normalized.map((card) => resolveCardDeckName(card, deckName));
+  const deckPlan = buildExportDeckPlan(resolvedDeckNames, deckName);
+  const cardDeckIds = resolvedDeckNames.map(
+    (resolved) => deckPlan.deckIdByName.get(resolved) ?? deckPlan.primaryDeckId,
+  );
   normalizeCardsForExport(normalized);
   const cardsForMedia = cloneCards(normalized);
   const tempDir = createTempDir(runtime);
@@ -535,9 +565,16 @@ function writeExport(
         modelConfig,
         fullTemplateId,
         nowSeconds,
+        deckPlan.decks,
       );
 
-      const records = convertCardsToAnkiRecordsWithFields(normalized, noteType, fields, runtime.logger);
+      const records = convertCardsToAnkiRecordsWithFields(
+        normalized,
+        noteType,
+        fields,
+        runtime.logger,
+        cardDeckIds,
+      );
       db.exec('BEGIN IMMEDIATE');
       try {
         insertAnkiNoteRecords(db, records, modelId, deckId, nowSeconds, { value: 1 });
@@ -567,7 +604,7 @@ function writeExport(
 /** Rust `export_cards_to_apkg_with_full_template`：丢弃报告的入口额外记录缺失媒体汇总。 */
 export function exportCardsToApkgWithFullTemplate(
   runtime: ApkgExportRuntime,
-  cards: readonly AnkiCard[],
+  cards: readonly ApkgExportCard[],
   deckName: string,
   noteType: string,
   outputPath: string,
@@ -586,7 +623,7 @@ export function exportCardsToApkgWithFullTemplate(
 /** `export_cards_to_apkg_with_full_template_report`（`apkg_exporter_service.rs:1866-2072`）。 */
 export function exportCardsToApkgWithFullTemplateReport(
   runtime: ApkgExportRuntime,
-  cards: readonly AnkiCard[],
+  cards: readonly ApkgExportCard[],
   deckName: string,
   noteType: string,
   outputPath: string,
@@ -599,13 +636,22 @@ export function exportCardsToApkgWithFullTemplateReport(
 /** `export_multi_template_apkg_report`（`apkg_exporter_service.rs:2101-2385`）。 */
 export function exportMultiTemplateApkgReport(
   runtime: ApkgExportRuntime,
-  cards: readonly AnkiCard[],
+  cards: readonly ApkgExportCard[],
   deckName: string,
   outputPath: string,
   templateMap: ReadonlyMap<string, CustomAnkiTemplate>,
 ): ApkgExportReport {
   if (cards.length === 0) throw new Error('没有卡片可以导出');
   const normalized = cloneCards(cards);
+  const resolvedDeckNames = normalized.map((card) => resolveCardDeckName(card, deckName));
+  const deckPlan = buildExportDeckPlan(resolvedDeckNames, deckName);
+  const cardDeckIdByCard = new Map<AnkiCard, number>();
+  normalized.forEach((card, index) => {
+    cardDeckIdByCard.set(
+      card,
+      deckPlan.deckIdByName.get(resolvedDeckNames[index]!) ?? deckPlan.primaryDeckId,
+    );
+  });
   normalizeCardsForExport(normalized);
   const cardsForMedia = cloneCards(normalized);
   const tempDir = createTempDir(runtime);
@@ -617,7 +663,7 @@ export function exportMultiTemplateApkgReport(
     const db = runtime.openDatabase(dbPath);
     try {
       createAnkiSchema(db);
-      const deckId = APKG_EXPORT_DECK_ID;
+      const deckId = deckPlan.primaryDeckId;
 
       const groups = new Map<string, AnkiCard[]>();
       const noTemplateCards: AnkiCard[] = [];
@@ -657,6 +703,7 @@ export function exportMultiTemplateApkgReport(
             cloze ? 1 : 0,
             nowSeconds,
           );
+          model.did = deckId;
           modelFields.set(templateId, fields);
           const modelValue = model as unknown as Record<string, unknown>;
           modelValue[DEEP_STUDENT_TEMPLATE_ID_KEY] = templateId;
@@ -666,6 +713,7 @@ export function exportMultiTemplateApkgReport(
           modelFields.set(templateId, ['Front', 'Back']);
           const model = createBasicModel(nowSeconds) as unknown as Record<string, unknown>;
           model.id = modelId;
+          model.did = deckId;
           models[String(modelId)] = model;
         }
       }
@@ -684,15 +732,20 @@ export function exportMultiTemplateApkgReport(
           1,
           nowSeconds,
         );
+        model.did = deckId;
         models[String(fallbackClozeModelId)] = model;
       }
       if (noTemplateCards.length > 0) {
         const basic = createBasicModel(nowSeconds) as unknown as Record<string, unknown>;
         basic.id = fallbackModelId;
+        basic.did = deckId;
         models[String(fallbackModelId)] = basic;
       }
 
-      insertCollection(db, models, deckName, nowSeconds);
+      insertCollection(db, models, deckPlan.decks, nowSeconds);
+
+      const deckIdsFor = (batch: readonly AnkiCard[]): number[] =>
+        batch.map((card) => cardDeckIdByCard.get(card) ?? deckId);
 
       db.exec('BEGIN IMMEDIATE');
       try {
@@ -707,6 +760,7 @@ export function exportMultiTemplateApkgReport(
             cloze ? 'Cloze' : 'Basic',
             fields,
             runtime.logger,
+            deckIdsFor(groupCards),
           );
           insertAnkiNoteRecords(db, records, modelId, deckId, nowSeconds, nextDue);
         }
@@ -715,6 +769,7 @@ export function exportMultiTemplateApkgReport(
           'Basic',
           ['Front', 'Back'],
           runtime.logger,
+          deckIdsFor(noTemplateCards),
         );
         insertAnkiNoteRecords(db, basicRecords, fallbackModelId, deckId, nowSeconds, nextDue);
         const clozeRecords = convertCardsToAnkiRecordsWithFields(
@@ -722,6 +777,7 @@ export function exportMultiTemplateApkgReport(
           'Cloze',
           fallbackClozeFields,
           runtime.logger,
+          deckIdsFor(noTemplateClozeCards),
         );
         insertAnkiNoteRecords(db, clozeRecords, fallbackClozeModelId, deckId, nowSeconds, nextDue);
         db.exec('COMMIT');

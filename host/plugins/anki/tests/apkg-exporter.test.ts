@@ -9,6 +9,7 @@ import {
   APKG_EXPORT_DECK_ID,
   APKG_MODEL_ID_BASE,
   RESERVED_IMPORT_METADATA_FIELDS,
+  type ApkgExportCard,
   type ApkgExportReport,
   type ApkgExportRuntime,
   apkgExportReportJson,
@@ -27,10 +28,14 @@ import {
   occlusionMediaFileName,
   resolveCardFieldValue,
   sanitizeApkgFieldValue,
+  stableDeckIdForName,
   stableModelIdForTemplate,
   stableNoteGuid,
   uniqueNoteGuid,
 } from '../src/apkg-exporter.ts';
+import { ApkgImporterService } from '../src/apkg-importer.ts';
+import { decodeAnkiCardRow } from '../src/anki-cards.ts';
+import { listCardsForDocument } from '../repository/anki-cards.ts';
 import { createAnkiTestEnv, type AnkiTestEnv } from './env.ts';
 
 function testCard(id: string, front: string, back: string): AnkiCard {
@@ -827,5 +832,185 @@ describe('crates/dstu-anki/src/apkg_exporter_service.rs::tests', () => {
       expect(noteFlds).toContain('<img src="ghost.png">');
       expect(noteFlds).toContain('{{c1::左心房}}');
     });
+  });
+
+  it('stable_deck_id_is_deterministic_non_reserved_and_distinct_for_hierarchical_decks', () => {
+    const deckA = 'QA Benchmark::Modern 1200';
+    const deckB = '考研数学::线性代数';
+    const idA1 = stableDeckIdForName(deckA);
+    const idA2 = stableDeckIdForName(deckA);
+    const idB = stableDeckIdForName(deckB);
+
+    expect(idA1).toBe(idA2);
+    expect(idA1).not.toBe(idB);
+    expect(Number.isSafeInteger(idA1)).toBe(true);
+    expect(Number.isSafeInteger(idB)).toBe(true);
+    expect(idA1).toBeGreaterThan(APKG_EXPORT_DECK_ID);
+    expect(idB).toBeGreaterThan(APKG_EXPORT_DECK_ID);
+    expect(idA1).not.toBe(1);
+    expect(idB).not.toBe(1);
+  });
+
+  it('multi_deck_export_preserves_hierarchical_decks_and_card_did_mappings_with_fallback', () => {
+    const deckA = 'QA Benchmark::Modern 1200';
+    const deckB = '考研数学::线性代数';
+    const cardA: ApkgExportCard = {
+      ...testCard('hier-a', 'Modern 1200 Q', 'Modern 1200 A'),
+      deckName: deckA,
+    };
+    const cardB: ApkgExportCard = {
+      ...testCard('hier-b', '线性代数特征值', 'Ax = λx'),
+      extra_fields: { _deck: deckB },
+    };
+    const cardFallback: ApkgExportCard = testCard('hier-fallback', 'Fallback Q', 'Fallback A');
+
+    // 1. Multi-template export with only hierarchical deck cards must NOT flatten into "DeepStudent".
+    const outMulti = path.join(tmpRoot, 'hierarchical-multi.apkg');
+    exportMultiTemplateApkgReport(runtime, [cardA, cardB], 'DeepStudent', outMulti, new Map());
+
+    const expectedDidA = stableDeckIdForName(deckA);
+    const expectedDidB = stableDeckIdForName(deckB);
+
+    withCollection(outMulti, (db) => {
+      const decks = JSON.parse(db.one<{ decks: string }>('SELECT decks FROM col LIMIT 1').decks) as Record<
+        string,
+        { id: number; name: string }
+      >;
+      expect(decks['1']).toBeUndefined();
+      expect(Object.values(decks).map((deck) => deck.name).sort()).toEqual([deckA, deckB].sort());
+      expect(decks[String(expectedDidA)]?.name).toBe(deckA);
+      expect(decks[String(expectedDidB)]?.name).toBe(deckB);
+
+      const rows = db.all<{ did: number; flds: string }>(
+        'SELECT c.did AS did, n.flds AS flds FROM cards c INNER JOIN notes n ON n.id = c.nid',
+      );
+      expect(rows).toHaveLength(2);
+      const rowA = rows.find((row) => row.flds.includes('Modern 1200 Q'));
+      const rowB = rows.find((row) => row.flds.includes('线性代数特征值'));
+      expect(rowA?.did).toBe(expectedDidA);
+      expect(rowB?.did).toBe(expectedDidB);
+      expect(rowB?.flds).not.toContain('_deck');
+
+      const fieldNames = modelFieldNames(modelOf(db));
+      expect(fieldNames).not.toContain('_deck');
+    });
+
+    // 2. Single-template export with mixed hierarchical + deckless card uses "DeepStudent" ONLY as fallback.
+    const outMixed = path.join(tmpRoot, 'hierarchical-mixed.apkg');
+    exportCardsToApkgWithFullTemplateReport(
+      runtime,
+      [cardA, cardB, cardFallback],
+      'DeepStudent',
+      'Basic',
+      outMixed,
+      null,
+      null,
+    );
+
+    const expectedDidFallback = stableDeckIdForName('DeepStudent');
+    withCollection(outMixed, (db) => {
+      const decks = JSON.parse(db.one<{ decks: string }>('SELECT decks FROM col LIMIT 1').decks) as Record<
+        string,
+        { id: number; name: string }
+      >;
+      expect(Object.values(decks).map((deck) => deck.name).sort()).toEqual(
+        ['DeepStudent', deckA, deckB].sort(),
+      );
+      const rows = db.all<{ did: number; flds: string }>(
+        'SELECT c.did AS did, n.flds AS flds FROM cards c INNER JOIN notes n ON n.id = c.nid',
+      );
+      expect(rows.find((row) => row.flds.includes('Modern 1200 Q'))?.did).toBe(expectedDidA);
+      expect(rows.find((row) => row.flds.includes('线性代数特征值'))?.did).toBe(expectedDidB);
+      expect(rows.find((row) => row.flds.includes('Fallback Q'))?.did).toBe(expectedDidFallback);
+    });
+  });
+
+  it('hierarchical_decks_survive_import_host_export_and_reimport_roundtrip', async () => {
+    const deckA = 'QA Benchmark::Modern 1200';
+    const deckB = '考研数学::线性代数';
+    const srcA = path.join(tmpRoot, 'u19-src-a.apkg');
+    const srcB = path.join(tmpRoot, 'u19-src-b.apkg');
+
+    exportCardsToApkgWithFullTemplateReport(
+      runtime,
+      [testCard('u19-a1', 'Modern Q1', 'Modern A1')],
+      deckA,
+      'Basic',
+      srcA,
+      null,
+      null,
+    );
+    exportCardsToApkgWithFullTemplateReport(
+      runtime,
+      [testCard('u19-b1', '线代 Q1', '线代 A1')],
+      deckB,
+      'Basic',
+      srcB,
+      null,
+      null,
+    );
+
+    const appDb = env.storage.database('mistakes');
+    const importer = new ApkgImporterService({
+      db: appDb,
+      openDatabase: (filePath) => env.storage.openFile(filePath),
+      closeDatabase: (handle) => env.storage.close(handle),
+      tempDir: path.join(tmpRoot, 'u19-import-tmp'),
+      logger: env.host.ctx.logger,
+    });
+    fs.mkdirSync(path.join(tmpRoot, 'u19-import-tmp'), { recursive: true });
+
+    const importedA = importer.importPath(srcA, null);
+    const importedB = importer.importPath(srcB, null);
+    const cardsA = listCardsForDocument(appDb, importedA.documentId).map(decodeAnkiCardRow);
+    const cardsB = listCardsForDocument(appDb, importedB.documentId).map(decodeAnkiCardRow);
+    expect(cardsA[0]?.extra_fields._deck).toBe(deckA);
+    expect(cardsB[0]?.extra_fields._deck).toBe(deckB);
+
+    // Strip _deck from cardsB to also verify legacy DB cards (imported before _deck existed)
+    // still recover their deck from document_tasks.anki_generation_options_json.
+    const legacyCardB = structuredClone(cardsB[0]!);
+    delete legacyCardB.extra_fields._deck;
+
+    const backupPath = path.join(tmpRoot, 'u19-backup.apkg');
+    const exported = await env.host.invoke<{ path: string }>('export_multi_template_apkg', {
+      cards: [cardsA[0]!, legacyCardB],
+      deckName: 'DeepStudent',
+      outputPath: backupPath,
+    });
+
+    const expectedDidA = stableDeckIdForName(deckA);
+    const expectedDidB = stableDeckIdForName(deckB);
+
+    withCollection(exported.path, (db) => {
+      const decks = JSON.parse(db.one<{ decks: string }>('SELECT decks FROM col LIMIT 1').decks) as Record<
+        string,
+        { id: number; name: string }
+      >;
+      expect(Object.values(decks).map((deck) => deck.name).sort()).toEqual([deckA, deckB].sort());
+      expect(decks[String(expectedDidA)]?.name).toBe(deckA);
+      expect(decks[String(expectedDidB)]?.name).toBe(deckB);
+
+      const rows = db.all<{ did: number; flds: string }>(
+        'SELECT c.did AS did, n.flds AS flds FROM cards c INNER JOIN notes n ON n.id = c.nid',
+      );
+      expect(rows.find((row) => row.flds.includes('Modern Q1'))?.did).toBe(expectedDidA);
+      expect(rows.find((row) => row.flds.includes('线代 Q1'))?.did).toBe(expectedDidB);
+    });
+
+    // Re-import the exported multi-deck .apkg and verify both decks and per-card deck metadata survive!
+    const reimported = importer.importPath(exported.path, null);
+    expect(reimported.importedCards).toBe(2);
+    const reimportedCards = listCardsForDocument(appDb, reimported.documentId).map(decodeAnkiCardRow);
+    expect(reimportedCards.find((card) => card.front === 'Modern Q1')?.extra_fields._deck).toBe(deckA);
+    expect(reimportedCards.find((card) => card.front === '线代 Q1')?.extra_fields._deck).toBe(deckB);
+
+    const taskOptions = JSON.parse(
+      appDb.one<{ anki_generation_options_json: string }>(
+        'SELECT anki_generation_options_json FROM document_tasks WHERE document_id = ?1 LIMIT 1',
+        [reimported.documentId],
+      ).anki_generation_options_json,
+    ) as { imported_decks: string[] };
+    expect(taskOptions.imported_decks).toEqual([deckA, deckB].sort());
   });
 });

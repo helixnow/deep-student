@@ -30,6 +30,9 @@ export const LOCAL_MEMORY_PROVIDER_ID = 'dstu.memory.local';
 const MAX_KERNEL_WEAK_POINTS = 12;
 const MAX_LEGACY_BRIDGE_NOTES = 6;
 const MAX_LEGACY_BRIDGE_CHARS = 900;
+const MAX_LEGACY_BRIDGE_SCAN_NOTES = 30;
+const LEGACY_BRIDGE_HEADING = '## 用户已记录的核心记忆与互动偏好（请从第 1 轮起主动结合并严格遵循其中的互动要求）';
+const LEGACY_PREFERENCE_BRIDGE_RE = /(?:偏好|风格|习惯|每次|固定|必须|不要|思考题|自测|类比|薄弱|偏弱|弱项|工科|理科|文科|背景|请|记住|务必|喜欢|擅长|目标|考研|雅思|托福|本科|大一|大二|大三|大四|高一|高二|高三|先给|引导|提示)/i;
 
 export interface SessionSnapshotRequest {
   sessionId: string;
@@ -194,34 +197,70 @@ function buildLegacyPreferenceBridge(
 
   const lines: string[] = [];
   const noteIds: string[] = [];
-  let usedChars = 0;
+  const maxBridgeChars = Math.min(budgetChars, MAX_LEGACY_BRIDGE_CHARS);
+  let usedChars = ruleCharLength(LEGACY_BRIDGE_HEADING) + 1;
 
   try {
     const items = host.list(null);
-    // Prioritize notes inside 偏好/*, or tagged _important, or explicit user fact/study notes when kernel is still empty.
-    const candidates = items
+    const activeItems = items
+      .filter(item => !item.isArchived && !item.isStale)
       .filter(item => !item.folderPath.includes('__system__'))
-      .filter(item => {
-        if (item.isArchived || item.isStale) return false;
-        const folder = item.folderPath;
-        const isPrefFolder = folder === '偏好' || folder.startsWith('偏好/') || folder.includes('/偏好');
-        const tags = safeGetTags(host, item.id);
-        if (tags.includes('_system')) return false;
-        if (isPrefFolder || item.isImportant || tags.includes('_important')) return true;
-        // When the learner hasn't populated HardRules or LearnerProfile yet, surface up to a few recent user notes
-        // so freshly created memories in MemoryView are deterministically known from Turn 1.
-        return !hasHardRules && !hasLearnerProfile;
-      })
+      .filter(item => !item.title.trimStart().startsWith('__'))
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-      .slice(0, MAX_LEGACY_BRIDGE_NOTES);
+      .slice(0, MAX_LEGACY_BRIDGE_SCAN_NOTES);
 
-    for (const item of candidates) {
+    const scored: Array<{ item: MemoryListItem; rawBody: string; priority: number }> = [];
+    for (const item of activeItems) {
+      const tags = safeGetTags(host, item.id);
+      if (tags.includes('_system') || tags.includes('daily_log')) continue;
+
       const full = safeRead(host, item.id);
       const rawBody = (full?.content ?? '').replace(/\s+/g, ' ').trim();
       if (rawBody === '') continue;
+
+      const folder = item.folderPath;
+      const isPrefFolder = folder === '偏好' || folder.startsWith('偏好/') || folder.includes('/偏好');
+      const isImportant = item.isImportant || tags.includes('_important');
+      const matchesPreferenceOrInstruction = LEGACY_PREFERENCE_BRIDGE_RE.test(`${folder}\n${item.title}\n${rawBody}`);
+      const isUserSubfolder = folder.trim() !== '';
+      const isExplicitUserMemory =
+        isUserSubfolder
+        || item.memoryType === 'fact'
+        || item.memoryType === 'study'
+        || item.memoryPurpose === 'memorized'
+        || item.memoryPurpose === 'internalized'
+        || tags.some(t =>
+          t === 'memorized'
+          || t === '_purpose:memorized'
+          || t === 'fact'
+          || t === 'study'
+          || t === '_type:study',
+        );
+
+      const eligible =
+        isPrefFolder
+        || isImportant
+        || matchesPreferenceOrInstruction
+        || isExplicitUserMemory
+        || (!hasHardRules && !hasLearnerProfile);
+      if (!eligible) continue;
+
+      const priority =
+        (isPrefFolder || isImportant ? 2 : 0)
+        + (matchesPreferenceOrInstruction ? 2 : 0)
+        + (isExplicitUserMemory ? 1 : 0);
+      scored.push({ item, rawBody, priority });
+    }
+
+    scored.sort((a, b) => (
+      b.priority - a.priority || b.item.updatedAt.localeCompare(a.item.updatedAt)
+    ));
+
+    for (const { item, rawBody } of scored) {
+      if (lines.length >= MAX_LEGACY_BRIDGE_NOTES) break;
       const line = `- ${item.title ? `【${item.title}】` : ''}${clipChars(rawBody, 180)}`;
       const len = ruleCharLength(line) + 1;
-      if (usedChars + len > Math.min(budgetChars, MAX_LEGACY_BRIDGE_CHARS)) break;
+      if (usedChars + len > maxBridgeChars) continue;
       lines.push(line);
       noteIds.push(item.id);
       usedChars += len;
@@ -232,7 +271,7 @@ function buildLegacyPreferenceBridge(
 
   if (lines.length > 0) {
     return {
-      section: `## 用户已记录的核心记忆与偏好\n${lines.join('\n')}`,
+      section: `${LEGACY_BRIDGE_HEADING}\n${lines.join('\n')}`,
       noteIds,
     };
   }

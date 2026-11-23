@@ -233,6 +233,35 @@ export function parseModels(raw: string): {
   return { models, templateCandidates };
 }
 
+export function parseDeckMap(raw: string): Map<number, string> {
+  const values = readJsonObject(raw, 'decks');
+  const map = new Map<number, string>();
+  for (const key of Object.keys(values)) {
+    const value = values[key];
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) continue;
+    const record = value as Record<string, unknown>;
+    const name = record.name;
+    if (typeof name !== 'string') continue;
+    const trimmed = trimWhitespace(name);
+    if (trimmed === '') continue;
+    let deckId: number | null = null;
+    if (/^[+-]?\d+$/.test(key)) {
+      const parsed = Number(key);
+      if (Number.isSafeInteger(parsed)) deckId = parsed;
+    }
+    if (deckId === null) {
+      const rawId = record.id;
+      if (typeof rawId === 'number' && Number.isInteger(rawId)) deckId = rawId;
+      else if (typeof rawId === 'string' && /^[+-]?\d+$/.test(rawId)) {
+        const parsed = Number(rawId);
+        if (Number.isSafeInteger(parsed)) deckId = parsed;
+      }
+    }
+    if (deckId !== null) map.set(deckId, trimmed);
+  }
+  return map;
+}
+
 export function parseDeckNames(raw: string): string[] {
   const values = readJsonObject(raw, 'decks');
   const names: string[] = [];

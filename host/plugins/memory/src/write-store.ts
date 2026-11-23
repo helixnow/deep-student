@@ -41,6 +41,22 @@ function elapsedMs(startedAt: number): number {
   return Math.trunc(performance.now() - startedAt);
 }
 
+/**
+ * Detects personal learner profile, preference, habit, or standing-instruction facts
+ * so they are never falsely rejected by the discipline-knowledge keyword heuristic
+ * (e.g. mentioning "概念"/"公式"/"定理" while describing how the learner prefers to learn).
+ */
+const PERSONAL_LEARNER_FACT_RE = /(?:我是|我的|我自己|我偏好|我喜欢|我最喜欢|我习惯|我擅长|我不擅长|我容易|我平时|我目前|我需要|我希望|我更|我会|我要|给我|帮我|对我|让我|用户是|用户偏好|用户喜欢|用户习惯|用户薄弱|用户背景|学习者|偏好|习惯|薄弱|偏弱|弱项|最喜欢|喜欢|个人背景|学习背景|专业背景|学术背景|教学风格|讲解风格|学习风格|回复风格|表达风格|互动偏好|互动要求|回答要求|回复要求|个人要求|每次|固定|请固定|请务必|请先|请用|请多|请不要|请给我|请帮我|请留|请附带|请出|请举例|请结合|请保持|不要直接|先给|思考题|自测|类比|工科|理科|文科|本科|大一|大二|大三|大四|研一|研二|高一|高二|高三|考研|托福|雅思|四六级|\bi am\b|\bi'm\b|\bmy\b|\bi prefer\b|\bi like\b|\bplease always\b|\balways give me\b)/i;
+
+function isPersonalLearnerFact(title: string, content: string): boolean {
+  return PERSONAL_LEARNER_FACT_RE.test(`${title}\n${content}`);
+}
+
+function resolveFactHardRejectReason(title: string, content: string): string | null {
+  if (isPersonalLearnerFact(title, content)) return null;
+  return factHardRejectReason(title, content);
+}
+
 export interface WriteStoreHost {
   readonly db: DatabaseHandle;
   readonly hostContext: import('@deepseek-ai/cordis').Context;
@@ -329,7 +345,7 @@ export class MemoryWriteStore {
       if (memoryType === 'fact' && content.trim().length > 0
         && !containsSensitivePattern(content) && !containsSensitivePattern(title)
         && Array.from(content).length <= CONTENT_LIMITS.fact
-        && factHardRejectReason(title, content) === null && !this.host.config.isPrivacyMode()) {
+        && resolveFactHardRejectReason(title, content) === null && !this.host.config.isPrivacyMode()) {
         return await this.writeFactSmart(folderPath, title, content, purpose, source, sessionId,
           startedAt, reservation);
       }
@@ -391,7 +407,7 @@ export class MemoryWriteStore {
       return output;
     }
     if (memoryType === 'fact') {
-      const reject = factHardRejectReason(title, content);
+      const reject = resolveFactHardRejectReason(title, content);
       if (reject !== null) {
         this.host.audit({ source, operation: 'write_smart', success: false, title, contentPreview: content,
           event: 'FILTERED', reason: reject, durationMs: 0 });

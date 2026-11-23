@@ -179,7 +179,97 @@ describe('RFC-001 M1: MemoryProvider, HardRules, Frozen <memory_kernel>, and His
     service.write('偏好', '自测偏好', '以后每次回答结束后都给我 1 道自测题', 'create');
 
     const snap = providerOf(host).buildSessionSnapshot({ sessionId: 'sess_u13', memoryEnabled: true });
+    expect(snap.renderedKernel).toContain('## 用户已记录的核心记忆与互动偏好（请从第 1 轮起主动结合并严格遵循其中的互动要求）');
     expect(snap.renderedKernel).toContain('以后每次回答结束后都给我 1 道自测题');
+  });
+
+  it('allows personal learner profile and standing-instruction facts containing discipline keywords while still filtering pure knowledge/sensitive writes (Wave 6 U13 Defect 1)', async () => {
+    const { host } = await setup();
+    const bgRes = await host.invoke('memory_write_smart', {
+      title: '学习背景与偏好',
+      content: '我是大二工科生，理解抽象概念时最喜欢生活中的工程类比',
+      memoryType: 'fact',
+    }) as { event: string; noteId: string; isNew: boolean };
+    expect(bgRes.event).toBe('ADD');
+    expect(bgRes.isNew).toBe(true);
+    expect(bgRes.noteId).toMatch(/\S/);
+
+    const quizRes = await host.invoke('memory_write_smart', {
+      title: '互动习惯',
+      content: '每次讲完概念后请固定给我留 1 道自测小思考题',
+      memoryType: 'fact',
+    }) as { event: string; noteId: string; isNew: boolean };
+    expect(quizRes.event).toBe('ADD');
+    expect(quizRes.isNew).toBe(true);
+    expect(quizRes.noteId).toMatch(/\S/);
+
+    // Pure discipline knowledge and sensitive data must still be filtered.
+    const pureKnowledge = await host.invoke('memory_write_smart', {
+      title: '公式',
+      content: '勾股定理 a^2 + b^2 = c^2',
+      memoryType: 'fact',
+    }) as { event: string; reason: string };
+    expect(pureKnowledge.event).toBe('FILTERED');
+    expect(pureKnowledge.reason).toContain('fact 类型只允许保存用户事实');
+
+    const sensitive = await host.invoke('memory_write_smart', {
+      title: '联系方式',
+      content: '手机号 13812345678',
+      memoryType: 'fact',
+    }) as { event: string; reason: string };
+    expect(sensitive.event).toBe('FILTERED');
+    expect(sensitive.reason).toContain('敏感信息');
+  });
+
+  it('bridges VFS learner background and standing instructions into Turn-1 <memory_kernel> even when LearnerProfile already exists (Wave 6 U13 Defect 2)', async () => {
+    const { host } = await setup();
+    const service = serviceOf(host);
+    const provider = providerOf(host);
+
+    // Populate LearnerProfile first so hasLearnerProfile === true.
+    const update = emptyProfileUpdate();
+    update.recent_status = '正在复习线性代数期中考试';
+    service.applyProfileUpdate(update, {
+      source: 'handler',
+      reason: 'seed learner profile',
+      limitPolicy: 'reject',
+    });
+
+    // Save personal background & standing instruction via MemoryView smart write (outside 偏好 folder).
+    const bgWrite = await host.invoke('memory_write_smart', {
+      folderPath: '',
+      title: '工科背景',
+      content: '我是大二工科生，理解抽象概念时最喜欢生活中的工程类比',
+      memoryType: 'fact',
+    }) as { event: string; noteId: string };
+    expect(bgWrite.event).toBe('ADD');
+
+    const quizWrite = await host.invoke('memory_write_smart', {
+      folderPath: '学习习惯',
+      title: '课后自测',
+      content: '每次讲完概念后请固定给我留 1 道自测小思考题',
+      memoryType: 'fact',
+    }) as { event: string; noteId: string };
+    expect(quizWrite.event).toBe('ADD');
+
+    // Stale and archived notes must stay excluded from the bridge.
+    const staleNote = service.write('学习习惯', '旧习惯', '每次都要画三视图', 'create');
+    current!.db.run(`UPDATE notes SET tags = '["_stale"]' WHERE id = ?`, [staleNote.noteId]);
+    const archivedNote = service.write('学习习惯', '已归档偏好', '每次都用英文回答', 'create');
+    current!.db.run(`UPDATE notes SET tags = '["_archived"]' WHERE id = ?`, [archivedNote.noteId]);
+
+    const snap = provider.buildSessionSnapshot({ sessionId: 'sess_blank_turn1', memoryEnabled: true });
+    expect(snap.renderedKernel).toContain('## 学习者长期画像');
+    expect(snap.renderedKernel).toContain('正在复习线性代数期中考试');
+    expect(snap.renderedKernel).toContain('## 用户已记录的核心记忆与互动偏好（请从第 1 轮起主动结合并严格遵循其中的互动要求）');
+    expect(snap.renderedKernel).toContain('我是大二工科生，理解抽象概念时最喜欢生活中的工程类比');
+    expect(snap.renderedKernel).toContain('每次讲完概念后请固定给我留 1 道自测小思考题');
+    expect(snap.renderedKernel).not.toContain('每次都要画三视图');
+    expect(snap.renderedKernel).not.toContain('每次都用英文回答');
+    expect(snap.includedLegacyNoteIds).toContain(bgWrite.noteId);
+    expect(snap.includedLegacyNoteIds).toContain(quizWrite.noteId);
+    expect(snap.includedLegacyNoteIds).not.toContain(staleNote.noteId);
+    expect(snap.includedLegacyNoteIds).not.toContain(archivedNote.noteId);
   });
 
   it('keeps 10 learner profile history versions (including mastery reflux) and supports IPC rollback', async () => {

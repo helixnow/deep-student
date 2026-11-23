@@ -362,18 +362,34 @@ html[data-wb-dragging] .wb-titlebar.wb-title-bar,
 }
 
 /* ==========================================================================
- * 触屏 / 窄屏（<= 640px）：扩大三键真实 <button> 命中框至 36×36px（贴合 38px 标题栏），
- * 同时通过居中 ::before 绘制 12px 液态玻璃圆点，桌面端 12px 布局零改动。
+ * 触屏 / 窄屏（<= 640px）：标题栏增高至 44px，三键真实 <button> 命中框扩大至 44×44px，
+ * 同时通过居中 ::before 绘制 12px 液态玻璃圆点，桌面端 38px / 12px 布局零改动。
  * ========================================================================== */
 
 @media (pointer: coarse), (max-width: 640px) {
+  .wb-titlebar.wb-title-bar {
+    height: 44px;
+    min-height: 44px;
+    flex-basis: 44px;
+  }
+
+  [data-wb-title-seamless] + .acr-agent-strip-host {
+    margin-top: 44px;
+  }
+
+  [data-wb-title-seamless] + [data-wb-window-content] {
+    --wb-chat-top-inset: 44px;
+  }
+
   .wb-titlebar.wb-title-bar .wb-traffic {
     gap: 0;
   }
 
   .wb-titlebar.wb-title-bar .wb-traffic-zoom-wrap {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key,
@@ -381,10 +397,10 @@ html[data-wb-dragging] .wb-titlebar.wb-title-bar,
   .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key:hover,
   .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key:active,
   .wb-window-idle .wb-titlebar.wb-title-bar .wb-traffic:not(:hover) .wb-title-key:focus-visible {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
-    min-height: 36px;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
     background: transparent;
     border-color: transparent;
     box-shadow: none;
@@ -394,7 +410,7 @@ html[data-wb-dragging] .wb-titlebar.wb-title-bar,
     box-shadow: 0 0 0 2px var(--wb-snap-stroke);
   }
 
-  /* 按钮本身已是 36×36px 触控框，取消桌面端外扩透明热区 */
+  /* 按钮本身已是 44×44px 触控框，取消桌面端外扩透明热区 */
   .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key::after {
     display: none;
   }
@@ -471,7 +487,7 @@ html[data-wb-dragging] .wb-titlebar.wb-title-bar,
     filter: brightness(0.84);
   }
 
-  /* 键内符号保持 8×8px 居中，不随 36px 按钮放大 */
+  /* 键内符号保持 8×8px 居中，不随 44px 按钮放大 */
   .wb-titlebar.wb-title-bar .wb-traffic .wb-title-key > .wb-title-glyph {
     width: 8px;
     height: 8px;
@@ -492,13 +508,13 @@ html[data-wb-dragging] .wb-titlebar.wb-title-bar,
     transform: translate(-50%, -50%);
   }
 
-  /* 3×36px 三键总宽 108px + 左边距 8px = 116px，应用标题栏槽位与标题区避让 */
+  /* 3×44px 三键总宽 132px + 左边距 8px = 140px，应用标题栏槽位与标题区避让 */
   .wb-titlebar.wb-title-bar .wb-title-app-slot {
-    left: 116px;
+    left: 140px;
   }
 
   .wb-titlebar.wb-title-bar .wb-title-center {
-    left: 116px;
+    left: 140px;
     right: 16px;
   }
 }
