@@ -11,8 +11,21 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { StreamingMarker } from '@/essay-grading/streamingMarkerParser';
+import { buildSuggestionChange, type SuggestionChange } from '@/essay-grading/suggestionAnchors';
+import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
 import { isSuggestionErr } from './StreamingAnnotatedText';
-import { Warning, ArrowRight, Trash, Pen, Sparkle, Copy, Check, ListChecks } from '@phosphor-icons/react';
+import {
+  Warning,
+  ArrowRight,
+  Trash,
+  Pen,
+  Sparkle,
+  Copy,
+  Check,
+  ListChecks,
+  ArrowCounterClockwise,
+  ChatCircleText,
+} from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -24,6 +37,12 @@ interface SentenceDetailViewProps {
   activeMarkerIndex?: number | null;
   /** 选中/取消选中标注（传原始下标，取消传 null） */
   onMarkerSelect?: (index: number | null) => void;
+  /** 采纳单条修改建议（落回原文） */
+  onApplySuggestion?: (change: SuggestionChange) => void;
+  /** 撤销已采纳的单条修改建议 */
+  onUndoSuggestion?: (change: SuggestionChange) => void;
+  /** 当前轮已采纳建议的 key 集合 */
+  appliedSuggestionKeys?: ReadonlySet<string>;
   markerIndexOffset?: never;
 }
 
@@ -194,6 +213,9 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
   className,
   activeMarkerIndex,
   onMarkerSelect,
+  onApplySuggestion,
+  onUndoSuggestion,
+  appliedSuggestionKeys,
 }) => {
   const { t } = useTranslation(['essay_grading']);
   const cardRefs = useRef(new Map<number, HTMLDivElement>());
@@ -301,6 +323,40 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
               displayNumber += 1;
               const isActive = activeMarkerIndex === originalIndex;
               const number = displayNumber;
+              const applyChange = buildSuggestionChange(markers, originalIndex);
+              const isApplied = Boolean(applyChange?.key && appliedSuggestionKeys?.has(applyChange.key));
+              const originalText = marker.type === 'replace' ? marker.oldText : marker.content;
+              const suggestionText =
+                marker.type === 'replace'
+                  ? marker.newText
+                  : marker.type === 'err'
+                    ? (marker.newText ?? applyChange?.replacement)
+                    : undefined;
+              const explanation = marker.explanation || marker.reason || marker.comment;
+              const badgeLabel = marker.type === 'err'
+                ? t(`essay_grading:markers.error.${marker.errorType ?? 'grammar'}`, {
+                    defaultValue: marker.errorType ?? 'grammar',
+                  })
+                : MARKER_BADGE_CONFIG[marker.type]
+                  ? t(MARKER_BADGE_CONFIG[marker.type]!.i18nKey)
+                  : '';
+              const handleAskAi = (e: React.MouseEvent) => {
+                e.stopPropagation();
+                const parts: string[] = [];
+                if (badgeLabel) parts.push(`【${badgeLabel}】`);
+                if (originalText) parts.push(`原文：「${originalText}」`);
+                if (suggestionText) parts.push(`建议：「${suggestionText}」`);
+                if (explanation) parts.push(`批注说明：${explanation}`);
+                const prompt = t('essay_grading:annotation_card.ask_ai_prompt', {
+                  context: parts.join('\n'),
+                  defaultValue: `请帮我深入讲解这处作文批注，并给出 2 个地道替换例句：\n${parts.join('\n')}`,
+                });
+                dispatchAppEvent(APP_EVENTS.PREFILL_CHAT_INPUT, {
+                  content: prompt,
+                  autoSend: false,
+                });
+                dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'chat-v2' });
+              };
               return (
                 <div
                   key={originalIndex}
@@ -339,9 +395,7 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
                         'px-2 py-0.5 text-xs font-medium rounded border',
                         getErrBadgeStyle(marker)
                       )}>
-                        {t(`essay_grading:markers.error.${marker.errorType ?? 'grammar'}`, {
-                          defaultValue: marker.errorType ?? 'grammar',
-                        })}
+                        {badgeLabel}
                       </span>
                     ) : MARKER_BADGE_CONFIG[marker.type] ? (() => {
                       const cfg = MARKER_BADGE_CONFIG[marker.type]!;
@@ -349,7 +403,7 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
                       return (
                         <span className={cn('flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded border', cfg.style)}>
                           <BadgeIcon size={12} />
-                          {t(cfg.i18nKey)}
+                          {badgeLabel}
                         </span>
                       );
                     })() : null}
@@ -358,13 +412,70 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
                   {/* 卡片内容 */}
                   <div className="px-4 pb-3 pt-1 space-y-2">
                     <MarkerContent marker={marker} />
-
-                    {/* 详细解释 */}
-                    {(marker.explanation || marker.reason || marker.comment) && (
-                      <div className="text-xs text-muted-foreground/75 leading-relaxed pt-1.5 border-t border-border/25">
-                        {marker.explanation || marker.reason || marker.comment}
+                    {marker.type === 'err' && suggestionText && (
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                        <span className="text-muted-foreground/60">{t('essay_grading:annotation_card.suggestion')}</span>
+                        <ArrowRight size={12} className="text-muted-foreground/40 shrink-0" />
+                        <span className="font-medium text-amber-700 dark:text-amber-400 bg-amber-500/[0.07] px-1.5 py-0.5 rounded-sm">
+                          {suggestionText}
+                        </span>
                       </div>
                     )}
+
+                    {/* 详细解释 */}
+                    {explanation && (
+                      <div className="text-xs text-muted-foreground/75 leading-relaxed pt-1.5 border-t border-border/25">
+                        {explanation}
+                      </div>
+                    )}
+
+                    {/* 操作栏：与批注总览卡片保持一致（应用修改 / 已采纳 / 撤销 / 追问 AI） */}
+                    <div
+                      className="flex flex-wrap items-center justify-end gap-1 pt-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {applyChange && onApplySuggestion && (
+                        isApplied ? (
+                          <>
+                            <span className="inline-flex items-center gap-1 px-2 text-xs text-emerald-600 dark:text-emerald-400 select-none">
+                              <Check size={12} weight="bold" />
+                              {t('essay_grading:markers.applied')}
+                            </span>
+                            {onUndoSuggestion && (
+                              <DsButton
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => onUndoSuggestion(applyChange)}
+                                className="!h-6 gap-1 px-2 text-xs text-muted-foreground/65 hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                              >
+                                <ArrowCounterClockwise size={12} />
+                                {t('essay_grading:markers.undo')}
+                              </DsButton>
+                            )}
+                          </>
+                        ) : (
+                          <DsButton
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => onApplySuggestion(applyChange)}
+                            className="!h-6 gap-1 px-2 text-xs text-primary/85 hover:text-primary hover:bg-primary/10"
+                          >
+                            <Check size={12} />
+                            {t('essay_grading:markers.apply')}
+                          </DsButton>
+                        )
+                      )}
+                      <DsButton
+                        variant="ghost"
+                        size="sm"
+                        data-testid="annotation-ask-ai"
+                        onClick={handleAskAi}
+                        className="!h-6 gap-1 px-2 text-xs text-muted-foreground/70 hover:text-primary hover:bg-primary/10"
+                      >
+                        <ChatCircleText size={12} />
+                        {t('essay_grading:annotation_card.ask_ai', { defaultValue: '追问 AI' })}
+                      </DsButton>
+                    </div>
                   </div>
                 </div>
               );

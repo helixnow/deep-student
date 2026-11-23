@@ -31,6 +31,7 @@ export {
   readAllBytesBounded, getFileSize, hashFileSha256, resolveFileInfo, isOpaqueDocumentId,
   extractFileName, extractExtension, detectExtensionFromMagic, sanitizeFileNameForFs,
 } from './unified-file-manager.ts';
+export { takeStagedUpload, type StagedFile } from './staged-upload.ts';
 export { syncStateDatabasePath } from './locations.ts';
 export { openStartupDatabase } from './startup-database.ts';
 export type { StartupDatabase, OpenStartupDatabaseOptions } from './startup-database.ts';

@@ -22,6 +22,7 @@ import { FolderRepo } from '../../vfs-repos/repository/folders.ts';
 import media from '../index.ts';
 import { unusedStorage } from './helpers/storage-double.ts';
 import { renderProgressPercent } from '../src/textbooks-add.ts';
+import { beginIn as beginStagedUpload, append as appendStagedUpload, STAGED_UPLOAD_MAX_BYTES } from '../../../platform/storage/staged-upload.ts';
 
 type RenderImpl = (conn: SqlExecutor, blobsDir: string, bytes: Uint8Array, config: unknown,
   progress?: (current: number, total: number) => void) => Promise<unknown>;
@@ -471,4 +472,27 @@ it('render progress follows the Rust f32/u8 arithmetic', () => {
   expect(renderProgressPercent(1, 3)).toBe(38);
   expect(renderProgressPercent(10, 10)).toBe(85);
   expect(renderProgressPercent(0, 0)).toBe(15); // NaN as u8 = 0
+});
+
+it('imports WebUI dstu-staged:<uploadId> PDF and TXT files via staged upload and cleans up staging (U06/U09 regression)', async () => {
+  const stagingDir = path.join(root, 'staged-cache');
+  const pdfBytes = Buffer.from('%PDF-1.4\n1 0 obj <<>> endobj\n%%EOF\n', 'utf8');
+  const pdfId = beginStagedUpload(stagingDir, 'transformer-paper-12p.pdf', pdfBytes.length, STAGED_UPLOAD_MAX_BYTES);
+  appendStagedUpload(pdfId, 0, pdfBytes);
+
+  const txtBytes = Buffer.from('Lecture notes on self-attention.', 'utf8');
+  const txtId = beginStagedUpload(stagingDir, 'notes.txt', txtBytes.length, STAGED_UPLOAD_MAX_BYTES);
+  appendStagedUpload(txtId, 0, txtBytes);
+
+  const result = await host.invoke('textbooks_add', {
+    sources: [`dstu-staged:${pdfId}`, `dstu-staged:${txtId}`],
+  }) as Array<Record<string, unknown>>;
+
+  expect(result).toHaveLength(2);
+  expect(result[0]!.file_name).toBe('transformer-paper-12p.pdf');
+  expect(result[0]!.original_path).toBeUndefined();
+  expect(result[1]!.file_name).toBe('notes.txt');
+  expect(result[1]!.original_path).toBeUndefined();
+  expect(fs.existsSync(path.join(stagingDir, `${pdfId}.part`))).toBe(false);
+  expect(fs.existsSync(path.join(stagingDir, `${txtId}.part`))).toBe(false);
 });

@@ -326,10 +326,10 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
 
         <div className="min-w-0 flex-1">
           <div className="wb-fc-row-front">
-            {front ? <CardMathText text={front} inline /> : t('card.untitled')}
+            {front ? <CardMathText text={front} inline allowBasicHtml /> : t('card.untitled')}
           </div>
           <div className="wb-fc-row-back">
-            {back ? <CardMathText text={back} inline /> : t('card.noBack')}
+            {back ? <CardMathText text={back} inline allowBasicHtml /> : t('card.noBack')}
           </div>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
             <span
@@ -575,11 +575,11 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                   <div className="fc-lib-paper">
                     <div className="fc-lib-face">
                       <span className="fc-lib-face-label">{t('session.front')}</span>
-                      {front ? <CardMathText text={front} /> : t('card.untitled')}
+                      {front ? <CardMathText text={front} allowBasicHtml /> : t('card.untitled')}
                     </div>
                     <div className="fc-lib-face">
                       <span className="fc-lib-face-label">{t('session.back')}</span>
-                      {back ? <CardMathText text={back} /> : t('card.noBack')}
+                      {back ? <CardMathText text={back} allowBasicHtml /> : t('card.noBack')}
                     </div>
                   </div>
                 )}

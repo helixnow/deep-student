@@ -4,6 +4,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import { CommandError } from '../../../kernel/api.ts';
 import { AppError } from '../../../platform/errors/api.ts';
 import { extractFileName } from '../../../platform/storage/file-names.ts';
+import { takeStagedUpload } from '../../../platform/storage/node.ts';
 import type { Commands } from '../../../../contracts/ipc/generated/L18-media-docs.ts';
 import { AsrConfigError } from './asr.ts';
 import { MediaError } from './errors.ts';
@@ -63,22 +64,33 @@ export function registerMediaCommands(ctx: Context, deps: MediaPluginDeps): void
   ctx.commands.register<Commands['media_transcript_import']['args'],
     Commands['media_transcript_import']['result']>('media_transcript_import',
     async ({ resourceId, path }) => {
+      let staged: ReturnType<typeof takeStagedUpload> | null = null;
       try {
         const database = vfsDatabase();
         const conn = database.getConnSafe();
         const info = loadMediaFile(conn, resourceId);
-        const bytes = await mediaFileIo(() => readAllBytesBounded(path, MAX_SUBTITLE_BYTES));
+        let bytes: Uint8Array;
+        let fileName: string;
+        if (path.startsWith('dstu-staged:')) {
+          staged = takeStagedUpload(path.slice('dstu-staged:'.length).trim());
+          bytes = staged.readBounded(MAX_SUBTITLE_BYTES);
+          fileName = staged.name();
+        } else {
+          bytes = await mediaFileIo(() => readAllBytesBounded(path, MAX_SUBTITLE_BYTES));
+          fileName = extractFileName(path);
+        }
         const vfsIndex = deps.vfsIndex();
         const pdf = vfsIndex?.pdf;
         if (pdf?.isRunning(info.fileId) === true) cancelMedia(pdf, info.fileId);
         const count = importSubtitle(conn, vfsRepo().mediaTranscripts, vfsRepo().files,
-          info, extractFileName(path), bytes);
+          info, fileName, bytes);
         deps.scheduleMediaIndex(vfsIndex, info);
         importLog.info('[media::commands] imported %d subtitle cues for %s', count, info.fileId);
         await deps.startMediaPipeline(pdf, info, true);
         return buildTranscriptView(
           conn, vfsRepo().mediaTranscripts, info, pdf?.isRunning(info.fileId) ?? false, true);
       } catch (error) { return mediaFailure(error); }
+      finally { staged?.dispose(); }
     });
   ctx.commands.register<Commands['media_transcribe_estimate']['args'],
     Commands['media_transcribe_estimate']['result']>('media_transcribe_estimate',
