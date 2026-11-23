@@ -62,6 +62,7 @@ import {
   ListPlus,
 } from '@phosphor-icons/react';
 import { MemoryIcon } from '../icons/ResourceIcons';
+import { MemoryKernelPanel } from './MemoryKernelPanel';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -1439,6 +1440,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       {/* 记忆列表 */}
       <CustomScrollArea className="min-h-0 flex-1">
         <div className="p-3 space-y-3" ref={scrollHostRef}>
+          {/* 记忆体系 v2：AI 常驻印象（L1 硬规则 + 学习者画像 + 预算 + 历史回滚） */}
+          <MemoryKernelPanel refreshSignal={memories.length} />
+
           {/* 画像汇总 */}
           <AnimatePresence initial={false}>
             {showProfile && (

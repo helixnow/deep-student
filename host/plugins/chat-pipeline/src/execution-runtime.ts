@@ -43,6 +43,13 @@ import type { PipelineContext } from './pipeline-context.ts';
 import { WorkspaceInjectionRuntime } from './workspace-injection.ts';
 import { composeChatToolRuntime } from './tool-runtime.ts';
 import { MemoryFlushRecovery } from './memory-flush-recovery.ts';
+import {
+  claimNextPendingMemoryFlushWithConn, completeMemoryFlushWithConn,
+  MEMORY_FLUSH_DRAIN_BATCH_SIZE, releaseMemoryFlushWithConn,
+  saveMemoryFlushExtractionWithConn, skipPendingMemoryFlushesWithConn,
+  updateMemoryFlushProgressWithConn,
+} from '../repository/memory-flush.ts';
+import type { FlushExtraction } from '../../memory/api.ts';
 import { accumulateGoalUsage, createSessionMetadataRuntime, loadActiveGoalSummary, loadLearnerProfileBlock,
   loadProjectAgentsInstructions, loadUserProfile, recordRoundUsage, triggerAutoMemoryExtractionForTurn,
   type AgentsInstructionsPorts } from './execution-capabilities.ts';
@@ -268,14 +275,83 @@ export function resolveCompactionOwnerStore(owner: object): CompactionOwnerStore
   return bound as unknown as CompactionOwnerStore;
 }
 
-/** One recovery state per pipeline (pipeline.rs:327–328); the claimed-row worker is not composed yet. */
+/** One recovery state per pipeline (pipeline.rs:327–328); wired to L17 memory flush extraction & apply (RFC-001 M2). */
 export function composeMemoryFlushRecovery(ctx: Context, missing: MissingCapabilityLog): MemoryFlushRecovery {
+  const workerId = `flush_worker_${globalThis.crypto.randomUUID().slice(0, 8)}`;
   return new MemoryFlushRecovery({
     connection: () => ctx.chatSession.database.getConnSafe(),
     log: ctx.logger,
-    drainClaimable: async () => {
-      missing.note('L03 memory-flush worker (compaction/memory_flush.rs:1201)', 'committed memory-flush ledger rows stay pending for a later drain');
-      return false;
+    drainClaimable: async (sessionId) => {
+      const memory = ctx.get('memory');
+      if (!memory || !ctx.get('vfs')) {
+        missing.note('L03 memory-flush worker', 'memory/vfs service unavailable; pending flush rows stay queued');
+        return false;
+      }
+      const chatDbHandle = ctx.chatSession.database.getConnSafe();
+      try {
+        if (memory.isPrivacyMode()) {
+          skipPendingMemoryFlushesWithConn(chatDbHandle, sessionId, 'privacy mode', Date.now());
+          return false;
+        }
+        if (memory.getAutoExtractFrequency() === 'off') {
+          skipPendingMemoryFlushesWithConn(chatDbHandle, sessionId, 'auto extract off', Date.now());
+          return false;
+        }
+      } catch (error) {
+        ctx.logger.warn(`[compaction] memory flush policy check failed: ${errorMessage(error)}`);
+        return false;
+      }
+
+      let processed = 0;
+      for (let i = 0; i < MEMORY_FLUSH_DRAIN_BATCH_SIZE; i += 1) {
+        const pending = claimNextPendingMemoryFlushWithConn(chatDbHandle, sessionId, workerId, Date.now());
+        if (pending === null) break;
+        try {
+          let extraction: FlushExtraction;
+          if (pending.extractionJson !== null && pending.extractionJson.trim() !== '') {
+            extraction = JSON.parse(pending.extractionJson) as FlushExtraction;
+          } else {
+            extraction = await memory.extractCompactionSegment(pending.segmentText);
+            saveMemoryFlushExtractionWithConn(
+              chatDbHandle,
+              pending.segmentId,
+              workerId,
+              JSON.stringify(extraction),
+              Date.now(),
+            );
+          }
+
+          await memory.applyFlushExtraction(extraction, {
+            segmentId: pending.segmentId,
+            sessionId: pending.sessionId,
+            factsCompleted: pending.factsCompleted,
+            activitiesCompleted: pending.activitiesCompleted,
+            onProgress: (factsCompleted, activitiesCompleted) => {
+              updateMemoryFlushProgressWithConn(
+                chatDbHandle,
+                pending.segmentId,
+                workerId,
+                factsCompleted,
+                activitiesCompleted,
+                Date.now(),
+              );
+            },
+          });
+
+          completeMemoryFlushWithConn(chatDbHandle, pending.segmentId, workerId, Date.now());
+          try { memory.cleanupFlushReceipts(pending.segmentId); } catch { /* non-fatal */ }
+          processed += 1;
+        } catch (error) {
+          const msg = errorMessage(error);
+          ctx.logger.warn(`[compaction] memory flush drain failed for segment=${pending.segmentId}: ${msg}`);
+          releaseMemoryFlushWithConn(chatDbHandle, pending.segmentId, workerId, msg, Date.now());
+          break;
+        }
+      }
+      if (processed > 0) {
+        void memory.spawnPostWriteMaintenance().catch(() => undefined);
+      }
+      return processed >= MEMORY_FLUSH_DRAIN_BATCH_SIZE;
     },
   });
 }

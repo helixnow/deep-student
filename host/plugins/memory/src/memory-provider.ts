@@ -18,7 +18,7 @@ import {
   ruleCharLength, type HardRuleUpsertInput, type HardRulesDocument, type MemoryHardRule,
 } from './hard-rules.ts';
 import {
-  emptyProfile, isProfileContentEmpty, renderLearnerProfile, renderedCharCount,
+  emptyProfile, emptyProfileUpdate, isProfileContentEmpty, renderLearnerProfile, renderedCharCount,
   type LearnerProfile, type LearnerProfileUpdate,
 } from './learner-profile.ts';
 import type { ProfileUpdateOptions } from './profile-store.ts';
@@ -395,9 +395,64 @@ export class LocalMemoryProvider implements MemoryProvider {
       } catch (error) {
         this.host.warn(`[MemoryProvider] ingestSignal(chat_correction) failed: ${error instanceof Error ? error.message : String(error)}`);
       }
+      return;
     }
-    // Additional deterministic signals (essay_graded, study_artifact_friction, fsrs_review, qbank_attempt)
-    // will be wired to extended mastery_states in M2.
+
+    if (signal.kind === 'essay_graded') {
+      const today = new Date().toISOString().slice(0, 10);
+      const weakDims = signal.rubricDimensions.filter(d => d.maxScore > 0 && d.score / d.maxScore < 0.65);
+      if (weakDims.length === 0) return;
+      const update = emptyProfileUpdate();
+      for (const dim of weakDims) {
+        const pct = Math.round((dim.score / dim.maxScore) * 100);
+        const detail = dim.recurringIssue?.trim() || `得分 ${dim.score}/${dim.maxScore} (${pct}%)`;
+        update.weak_points_add.push({
+          subject: signal.examType.trim() || '作文',
+          knowledge_point: dim.name.trim(),
+          error_pattern: `[essay] ${clipChars(detail, 120)}`,
+          evidence_count: 1,
+          last_seen: today,
+          source: 'essay',
+        });
+      }
+      try {
+        this.host.applyProfileUpdate(update, {
+          source: 'auto_extract',
+          sessionId: null,
+          reason: `作文批改低分维度沉淀 (${signal.examType})`,
+          limitPolicy: 'enforce',
+        });
+      } catch (error) {
+        this.host.warn(`[MemoryProvider] ingestSignal(essay_graded) failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return;
+    }
+
+    if (signal.kind === 'study_artifact_friction') {
+      const concept = signal.concept.trim();
+      const detail = signal.detail.trim();
+      if (!concept || !detail) return;
+      const today = new Date().toISOString().slice(0, 10);
+      const update = emptyProfileUpdate();
+      update.weak_points_add.push({
+        subject: signal.source.toUpperCase(),
+        knowledge_point: concept,
+        error_pattern: `[${signal.source}] ${clipChars(detail, 120)}`,
+        evidence_count: 1,
+        last_seen: today,
+        source: signal.source,
+      });
+      try {
+        this.host.applyProfileUpdate(update, {
+          source: 'auto_extract',
+          sessionId: null,
+          reason: `学习资料高频卡点沉淀 (${signal.source})`,
+          limitPolicy: 'enforce',
+        });
+      } catch (error) {
+        this.host.warn(`[MemoryProvider] ingestSignal(study_artifact_friction) failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
   }
 
   inspect(): MemoryInspectionView {

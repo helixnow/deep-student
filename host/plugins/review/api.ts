@@ -75,7 +75,7 @@ export {
 } from './src/review-plan.ts';
 export { prepareMediaTextForGeneration, containsMediaAnchor, mediaCitationSecondsFor, mediaFileName, MEDIA_QUESTION_REQUIREMENTS, MEDIA_CARD_REQUIREMENTS } from './src/media-source.ts';
 export { range as studyTimeRange, addSeconds as addStudyTimeSeconds, totalSeconds as totalStudyTimeSeconds } from './repository/study-time.ts';
-export type MasterySource = 'qbank' | 'fsrs' | 'insight';
+export type MasterySource = 'qbank' | 'fsrs' | 'insight' | 'essay';
 export type MasteryOutcome = 'correct' | 'wrong' | { rating: number };
 export interface MasteryEvent {
   id: string;
@@ -87,11 +87,23 @@ export interface MasteryEvent {
   weight: number;
   signal?: number;
 }
+export interface MasteryLifecycleMeta {
+  conceptKey: string;
+  subject: string | null;
+  errorTag: string | null;
+  status: 'active' | 'mastered';
+  masteredAt: string | null;
+  relapseCount: number;
+}
 export interface MasteryWeakPointEvidence {
   score: number;
   total: number;
   wrongCount: number;
   recentWrongSummary: string;
+  /** Real subject extracted from tags/source (RFC-001 M2), falls back to '掌握度' when absent. */
+  subject?: string | null;
+  /** Number of times this concept relapsed from mastered back to active weakness. */
+  relapseCount?: number;
 }
 export interface MasteryProfileSink {
   upsertWeakPointFromMastery(conn: SqlExecutor, concept: string, evidence: MasteryWeakPointEvidence): void;

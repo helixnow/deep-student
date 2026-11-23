@@ -354,3 +354,111 @@ export async function getMemoryAuditLogs(params?: {
 }): Promise<MemoryAuditLogItem[]> {
   return invoke<MemoryAuditLogItem[]>('memory_get_audit_logs', params ?? {});
 }
+
+// ------------------------------------------------------------------ Memory v2 Kernel API (RFC-001 M1/M3)
+
+export type MemoryHardRuleOrigin = 'user_explicit' | 'chat_correction' | 'dialectic_promoted';
+
+export interface MemoryHardRule {
+  id: string;
+  instruction: string;
+  scope: string;
+  origin: MemoryHardRuleOrigin;
+  pinned: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MemoryHardRulesDocument {
+  version: number;
+  updated_at: string;
+  rules: MemoryHardRule[];
+}
+
+export interface LearnerWeakPoint {
+  subject: string;
+  knowledge_point: string;
+  error_pattern: string;
+  evidence_count: number;
+  last_seen?: string | null;
+  source?: string | null;
+}
+
+export interface LearnerProfileView {
+  version: number;
+  updated_at: string;
+  weak_points: LearnerWeakPoint[];
+  preferences: {
+    explanation_style?: string | null;
+    language?: string | null;
+    pace?: string | null;
+    others: string[];
+  };
+  goals: Array<{ goal: string; deadline?: string | null }>;
+  recent_status?: string | null;
+}
+
+export interface MemoryInspectionView {
+  providerId: string;
+  privacyMode: boolean;
+  hardRules: MemoryHardRulesDocument;
+  learnerProfile: LearnerProfileView;
+  profileHistory: LearnerProfileView[];
+  renderedKernelPreview: string;
+  budgets: {
+    rulesChars: number;
+    rulesMaxChars: number;
+    profileChars: number;
+    profileMaxChars: number;
+  };
+}
+
+export type MemoryKernelMutation =
+  | {
+    kind: 'upsert_rule';
+    input: {
+      id?: string | null;
+      instruction: string;
+      scope?: string | null;
+      origin?: MemoryHardRuleOrigin;
+      pinned?: boolean;
+    };
+  }
+  | { kind: 'remove_rule'; idOrInstruction: string }
+  | {
+    kind: 'update_profile';
+    update: {
+      weak_points_add: LearnerWeakPoint[];
+      weak_points_remove: Array<{ subject: string; knowledge_point: string }>;
+      preferences?: {
+        explanation_style?: string | null;
+        language?: string | null;
+        pace?: string | null;
+        others_add: string[];
+        others_remove: string[];
+      } | null;
+      goals_add: Array<{ goal: string; deadline?: string | null }>;
+      goals_remove: string[];
+      recent_status?: string | null;
+    };
+  }
+  | { kind: 'rollback_profile'; targetVersion: number }
+  | { kind: 'set_budgets'; rulesMaxChars?: number; profileMaxChars?: number };
+
+export async function inspectMemoryKernel(): Promise<MemoryInspectionView> {
+  return invoke<MemoryInspectionView>('plugin:host|call', {
+    caller: 'dstu.memory',
+    service: 'memoryProvider',
+    method: 'inspect',
+    args: [],
+  });
+}
+
+export async function mutateMemoryKernel(mutation: MemoryKernelMutation): Promise<MemoryInspectionView> {
+  return invoke<MemoryInspectionView>('plugin:host|call', {
+    caller: 'dstu.memory',
+    service: 'memoryProvider',
+    method: 'mutateFromUser',
+    args: [mutation],
+  });
+}

@@ -19,6 +19,22 @@ export function conceptKeyFromTags(tags: string[], fallback: string): string | n
   const fallbackTrimmed = rustTrim(fallback);
   return fallbackTrimmed ? `item:${fallbackTrimmed}` : null;
 }
+
+/** Extracts a real subject label from tags (e.g. `subject:线性代数` or `线性代数/特征值` or second tag). */
+export function subjectFromTags(tags: readonly string[]): string | null {
+  for (const raw of tags) {
+    const t = rustTrim(raw);
+    if (t.toLowerCase().startsWith('subject:')) {
+      const value = rustTrim(t.slice('subject:'.length));
+      if (value) return value;
+    }
+    if (t.includes('/')) {
+      const head = rustTrim(t.split('/')[0] ?? '');
+      if (head) return head;
+    }
+  }
+  return null;
+}
 function database<T>(fn: () => T): T {
   try { return fn(); } catch (e) { if (e instanceof CommandError) throw e; throw appError('Database', errorText(e)); }
 }
@@ -30,7 +46,8 @@ function roundedScore(score: number): number {
 export class Mastery extends Service implements MasteryService {
   constructor(ctx: Context) { super(ctx, 'mastery'); }
   _db(): DatabaseHandle { return database(() => this.ctx.storage.database('vfs')); }
-  _record(conn: SqlExecutor, id: string | null, source: MasterySource, concept: string, item: string, outcome: MasteryOutcome): MasteryState {
+  _record(conn: SqlExecutor, id: string | null, source: MasterySource, concept: string, item: string, outcome: MasteryOutcome,
+    meta?: { subject?: string | null; errorTag?: string | null }): MasteryState {
     concept = rustTrim(concept); item = rustTrim(item);
     if (!concept || !item) throw appError('Validation', 'mastery concept_key and item_id must be non-empty');
     const now = utcNow();
@@ -39,7 +56,7 @@ export class Mastery extends Service implements MasteryService {
         conn, id ?? `me_${nanoid(12)}`, now.rfc,
         rfcNanosAfter(now, -ANTI_FARM_WINDOW_NANOS), source, concept, item, outcome,
       );
-      const state = repo.recomputeStateWithConn(conn, concept);
+      const state = repo.recomputeStateWithConn(conn, concept, meta);
       const outcomeDb = typeof outcome === 'string' ? outcome : 'rating';
       this.ctx.logger('review').info(
         '[Mastery] recorded %s/%s concept=%s score=%s total=%d',
@@ -48,20 +65,21 @@ export class Mastery extends Service implements MasteryService {
       return state;
     });
   }
-  recordEvent(source: MasterySource, concept: string, item: string, outcome: MasteryOutcome, operationId?: string): MasteryState {
+  recordEvent(source: MasterySource, concept: string, item: string, outcome: MasteryOutcome, operationId?: string,
+    meta?: { subject?: string | null; errorTag?: string | null }): MasteryState {
     if (!rustTrim(concept) || !rustTrim(item)) throw appError('Validation', 'mastery concept_key and item_id must be non-empty');
-    return database(() => this._db().transaction(tx => this._record(tx, operationId ?? null, source, concept, item, outcome), { behavior: 'immediate' }));
+    return database(() => this._db().transaction(tx => this._record(tx, operationId ?? null, source, concept, item, outcome, meta), { behavior: 'immediate' }));
   }
   recordQbankAnswer(questionId: string, tags: string[], correct: boolean): MasteryState {
     const concept = conceptKeyFromTags(tags, questionId);
     if (concept === null) throw appError('Validation', 'mastery concept_key unavailable for question');
-    const state = this.recordEvent('qbank', concept, questionId, correct ? 'correct' : 'wrong');
+    const state = this.recordEvent('qbank', concept, questionId, correct ? 'correct' : 'wrong', undefined, { subject: subjectFromTags(tags) });
     this.syncLearnerProfile(state); return state;
   }
   recordQbankAnswerWithConn(conn: SqlExecutor, submissionId: string, questionId: string, tags: string[], correct: boolean): MasteryState {
     const concept = conceptKeyFromTags(tags, questionId);
     if (concept === null) throw appError('Validation', 'mastery concept_key unavailable for question');
-    return this._record(conn, `me_qbank_${rustTrim(submissionId)}`, 'qbank', concept, questionId, correct ? 'correct' : 'wrong');
+    return this._record(conn, `me_qbank_${rustTrim(submissionId)}`, 'qbank', concept, questionId, correct ? 'correct' : 'wrong', { subject: subjectFromTags(tags) });
   }
   recordFsrsRating(cardId: string, tags: string[], rating: number): MasteryState | null {
     const concept = conceptKeyFromTags(tags, '');
@@ -73,13 +91,13 @@ export class Mastery extends Service implements MasteryService {
       this.ctx.logger('review').warn('[Mastery] skip FSRS emit: invalid rating %d for card %s', rating, cardId);
       return null;
     }
-    const state = this.recordEvent('fsrs', concept, cardId, { rating }); this.syncLearnerProfile(state); return state;
+    const state = this.recordEvent('fsrs', concept, cardId, { rating }, undefined, { subject: subjectFromTags(tags) }); this.syncLearnerProfile(state); return state;
   }
   recordFsrsRatingForLog(logId: string, cardId: string, tags: string[], rating: number): MasteryState | null {
     const concept = conceptKeyFromTags(tags, '');
     if (concept === null) return null;
     if (rating < 1 || rating > 4) throw appError('Validation', 'FSRS rating must be 1..=4');
-    const state = database(() => this._db().transaction(tx => this._record(tx, `me_fsrs_${rustTrim(logId)}`, 'fsrs', concept, cardId, { rating }), { behavior: 'immediate' }));
+    const state = database(() => this._db().transaction(tx => this._record(tx, `me_fsrs_${rustTrim(logId)}`, 'fsrs', concept, cardId, { rating }, { subject: subjectFromTags(tags) }), { behavior: 'immediate' }));
     try { this.syncLearnerProfile(state); } catch (e) { this.ctx.logger('review').warn('[Mastery] FSRS event committed but profile reflux failed for log %s: %s', logId, errorText(e)); }
     return state;
   }
@@ -149,9 +167,12 @@ export class Mastery extends Service implements MasteryService {
     if (state.score < repo.WEAK_SCORE_THRESHOLD && state.total >= repo.MIN_TOTAL_FOR_WEAK) {
       // Source computes the evidence even when no profile extension is registered.
       const summary = database(() => repo.recentWrongSummary(this._db(), state.conceptKey, 3));
+      const meta = database(() => repo.getMasteryMeta(this._db(), state.conceptKey));
       if (sink) {
         database(() => sink.upsertWeakPointFromMastery(this._db(), state.conceptKey, {
           score: state.score, total: state.total, wrongCount: state.wrongCount, recentWrongSummary: summary,
+          ...(meta?.subject ? { subject: meta.subject } : {}),
+          ...(meta && meta.relapseCount > 0 ? { relapseCount: meta.relapseCount } : {}),
         }));
         this.ctx.logger('review').debug(
           '[Mastery] upserted weak_point source=mastery concept=%s', state.conceptKey,

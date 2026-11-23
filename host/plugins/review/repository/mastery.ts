@@ -1,11 +1,30 @@
 import type { SqlExecutor } from '../../../platform/storage/api.ts';
 import { appError, errorText } from '../src/errors.ts';
-import type { MasteryEvent, MasteryOutcome, MasterySource, MasteryState } from '../api.ts';
+import type { MasteryEvent, MasteryLifecycleMeta, MasteryOutcome, MasterySource, MasteryState } from '../api.ts';
 
 export const WEAK_SCORE_THRESHOLD = 0.5;
 export const MIN_TOTAL_FOR_WEAK = 3;
 export const RECOVER_SCORE_THRESHOLD = 0.75;
 const clamp = (n: number) => Math.min(1, Math.max(0, n));
+
+const extendedColumnsChecked = new WeakSet<object>();
+
+/** Idempotently extends `mastery_states` with RFC-001 M2 lifecycle columns (`subject`, `error_tag`, `status`, `mastered_at`, `relapse_count`). */
+export function ensureMasteryExtendedColumns(db: SqlExecutor): void {
+  if (extendedColumnsChecked.has(db as object)) return;
+  try {
+    const cols = new Set(db.all<{ name: string }>('PRAGMA table_info(mastery_states)').map(c => c.name));
+    if (cols.size === 0) return;
+    if (!cols.has('subject')) db.run('ALTER TABLE mastery_states ADD COLUMN subject TEXT');
+    if (!cols.has('error_tag')) db.run('ALTER TABLE mastery_states ADD COLUMN error_tag TEXT');
+    if (!cols.has('status')) db.run("ALTER TABLE mastery_states ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+    if (!cols.has('mastered_at')) db.run('ALTER TABLE mastery_states ADD COLUMN mastered_at TEXT');
+    if (!cols.has('relapse_count')) db.run('ALTER TABLE mastery_states ADD COLUMN relapse_count INTEGER NOT NULL DEFAULT 0');
+    extendedColumnsChecked.add(db as object);
+  } catch {
+    // Non-fatal: older read-only/mock SqlExecutor instances keep working on core columns.
+  }
+}
 export function targetSignal(outcome: MasteryOutcome): number {
   if (outcome === 'correct') return 1;
   if (outcome === 'wrong') return 0;
@@ -31,10 +50,19 @@ export function insertEvent(
     [id, created, source, concept, item, outcomeDb(outcome), weight, clamp(targetSignal(outcome))]);
   } catch (e) { throw appError('Database', `insert mastery_events: ${errorText(e)}`); }
 }
-export function recomputeStateWithConn(db: SqlExecutor, conceptKey: string): MasteryState {
+export function recomputeStateWithConn(
+  db: SqlExecutor,
+  conceptKey: string,
+  meta?: { subject?: string | null; errorTag?: string | null },
+): MasteryState {
+  ensureMasteryExtendedColumns(db);
   const rows = db.all<{ outcome: string; weight: number; created_at: string; signal: number | null }>(`SELECT outcome, weight, created_at, signal FROM mastery_events
     WHERE concept_key = ?1 AND deleted_at IS NULL ORDER BY created_at ASC, id ASC`, [conceptKey]);
   const state: MasteryState = { conceptKey, score: 0.5, streak: 0, total: 0, wrongCount: 0, lastSignalAt: null };
+  let status: 'active' | 'mastered' = 'active';
+  let masteredAt: string | null = null;
+  let relapseCount = 0;
+  let everWeak = false;
   for (const row of rows) {
     const target = row.signal === null ? ({ correct: 1, wrong: 0, rating: 0.35 }[row.outcome] ?? 0.5) : clamp(row.signal);
     const alphaW = clamp(0.30 * clamp(row.weight));
@@ -43,15 +71,87 @@ export function recomputeStateWithConn(db: SqlExecutor, conceptKey: string): Mas
     state.lastSignalAt = row.created_at;
     if (target < 0.5) { state.wrongCount++; state.streak = 0; }
     else state.streak = Math.min(2147483647, state.streak + 1);
+
+    if (state.total >= MIN_TOTAL_FOR_WEAK && state.score < WEAK_SCORE_THRESHOLD) {
+      if (status === 'mastered') {
+        relapseCount += 1;
+        status = 'active';
+      }
+      everWeak = true;
+    } else if (state.total >= MIN_TOTAL_FOR_WEAK && state.score >= RECOVER_SCORE_THRESHOLD) {
+      if (everWeak || state.streak >= 3) {
+        status = 'mastered';
+        masteredAt = row.created_at;
+      }
+    }
   }
+  const subject = meta?.subject?.trim() || null;
+  const errorTag = meta?.errorTag?.trim() || null;
   try {
-    db.run(`INSERT INTO mastery_states (concept_key, score, streak, total, wrong_count, last_signal_at)
-      VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(concept_key) DO UPDATE SET
+    db.run(`INSERT INTO mastery_states (concept_key, score, streak, total, wrong_count, last_signal_at, subject, error_tag, status, mastered_at, relapse_count)
+      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) ON CONFLICT(concept_key) DO UPDATE SET
       score = excluded.score, streak = excluded.streak, total = excluded.total,
-      wrong_count = excluded.wrong_count, last_signal_at = excluded.last_signal_at`,
-    [conceptKey, state.score, state.streak, state.total, state.wrongCount, state.lastSignalAt]);
-  } catch (e) { throw appError('Database', `upsert mastery_states: ${errorText(e)}`); }
+      wrong_count = excluded.wrong_count, last_signal_at = excluded.last_signal_at,
+      subject = COALESCE(excluded.subject, mastery_states.subject),
+      error_tag = COALESCE(excluded.error_tag, mastery_states.error_tag),
+      status = excluded.status,
+      mastered_at = COALESCE(excluded.mastered_at, mastery_states.mastered_at),
+      relapse_count = excluded.relapse_count`,
+    [conceptKey, state.score, state.streak, state.total, state.wrongCount, state.lastSignalAt,
+      subject, errorTag, status, masteredAt, relapseCount]);
+  } catch {
+    try {
+      db.run(`INSERT INTO mastery_states (concept_key, score, streak, total, wrong_count, last_signal_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT(concept_key) DO UPDATE SET
+        score = excluded.score, streak = excluded.streak, total = excluded.total,
+        wrong_count = excluded.wrong_count, last_signal_at = excluded.last_signal_at`,
+      [conceptKey, state.score, state.streak, state.total, state.wrongCount, state.lastSignalAt]);
+    } catch (e) { throw appError('Database', `upsert mastery_states: ${errorText(e)}`); }
+  }
   return state;
+}
+
+export function getMasteryMeta(db: SqlExecutor, conceptKey: string): MasteryLifecycleMeta | null {
+  ensureMasteryExtendedColumns(db);
+  try {
+    const row = db.get<{
+      conceptKey: string; subject: string | null; errorTag: string | null;
+      status: string | null; masteredAt: string | null; relapseCount: number | null;
+    }>(`SELECT concept_key AS conceptKey, subject, error_tag AS errorTag, status, mastered_at AS masteredAt, relapse_count AS relapseCount
+      FROM mastery_states WHERE concept_key = ?1`, [conceptKey]);
+    if (!row) return null;
+    return {
+      conceptKey: row.conceptKey,
+      subject: row.subject ?? null,
+      errorTag: row.errorTag ?? null,
+      status: row.status === 'mastered' ? 'mastered' : 'active',
+      masteredAt: row.masteredAt ?? null,
+      relapseCount: row.relapseCount ?? 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function listMasteredConcepts(db: SqlExecutor, limit: number): Array<MasteryState & MasteryLifecycleMeta> {
+  ensureMasteryExtendedColumns(db);
+  try {
+    return db.all<MasteryState & {
+      subject: string | null; errorTag: string | null; status: string | null;
+      masteredAt: string | null; relapseCount: number | null;
+    }>(`SELECT ${COLUMNS}, subject, error_tag AS errorTag, status, mastered_at AS masteredAt, relapse_count AS relapseCount
+      FROM mastery_states WHERE status = 'mastered' ORDER BY mastered_at DESC, score DESC LIMIT ?1`, [limit])
+      .map(row => ({
+        ...row,
+        subject: row.subject ?? null,
+        errorTag: row.errorTag ?? null,
+        status: 'mastered' as const,
+        masteredAt: row.masteredAt ?? null,
+        relapseCount: row.relapseCount ?? 0,
+      }));
+  } catch {
+    return [];
+  }
 }
 const COLUMNS = 'concept_key AS conceptKey, score, streak, total, wrong_count AS wrongCount, last_signal_at AS lastSignalAt';
 export function getState(db: SqlExecutor, concept: string): MasteryState | null { return db.get<MasteryState>(`SELECT ${COLUMNS} FROM mastery_states WHERE concept_key = ?1`, [concept]) ?? null; }
