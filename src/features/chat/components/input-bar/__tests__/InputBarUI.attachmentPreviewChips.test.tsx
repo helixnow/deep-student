@@ -481,12 +481,37 @@ describe('InputBarUI attachment preview chips', () => {
       },
     };
 
-    renderInputBar({ attachments: [partialPdf] });
+    const onUpdateAttachment = vi.fn();
+    render(
+      <InputBarUI
+        inputValue=""
+        canSend
+        canAbort={false}
+        isStreaming={false}
+        attachments={[partialPdf]}
+        panelStates={createDefaultPanelStates()}
+        onInputChange={vi.fn()}
+        onSend={vi.fn()}
+        onAbort={vi.fn()}
+        onAddAttachment={vi.fn()}
+        onUpdateAttachment={onUpdateAttachment}
+        onRemoveAttachment={vi.fn()}
+        onClearAttachments={vi.fn()}
+        onSetPanelState={vi.fn()}
+        placeholder="输入消息"
+      />
+    );
     const modeTrigger = screen.getByTestId('attachment-chip-mode-att_pdf_partial');
     fireEvent.click(modeTrigger);
 
     const statusHint = await screen.findByTestId('attachment-chip-mode-status-att_pdf_partial');
     expect(statusHint).toBeInTheDocument();
     expect(statusHint.textContent).toMatch(/OCR|ocr/i);
+
+    const useReadyBtn = screen.getByTestId('attachment-chip-use-ready-att_pdf_partial');
+    fireEvent.click(useReadyBtn);
+    expect(onUpdateAttachment).toHaveBeenCalledWith('att_pdf_partial', {
+      injectModes: { pdf: ['image'] },
+    });
   });
 });

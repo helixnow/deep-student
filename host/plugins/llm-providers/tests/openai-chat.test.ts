@@ -117,6 +117,11 @@ it('sanitize_openai_request_body_drops_all_blank_tools_and_clears_tools_field', 
   const body = sanitize({ messages: [{ role: 'user', content: 'hi' }], tools: [{ type: 'custom_gateway_tool', name: '  ' }], tool_choice: 'auto' });
   expect(body).not.toHaveProperty('tools'); expect(body).not.toHaveProperty('tool_choice');
 });
+it('sanitize_openai_request_body_strips_internal_max_total_tokens_for_strict_providers', () => {
+  const body = sanitize({ model: 'deepseek-v4-1-flash-1017', messages: [{ role: 'user', content: 'hi' }], max_tokens: 4096, max_total_tokens: 4096 });
+  expect(body.max_tokens).toBe(4096);
+  expect(body).not.toHaveProperty('max_total_tokens');
+});
 it('sanitize_openai_request_body_normalizes_missing_or_null_parameters', () => {
   expect(sanitize({ messages: [{ role: 'user', content: 'hi' }], tools: [{ type: 'function', function: { name: 'lookup_weather', parameters: null } }] }).tools).toEqual([{ type: 'function', function: { name: 'lookup_weather', parameters: { type: 'object', properties: {} } } }]);
 });

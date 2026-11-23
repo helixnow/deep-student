@@ -49,8 +49,12 @@ interface ChipStatusInfo {
   lifecycle: ChipLifecycle;
   /** 统一进度（上传 0-50，处理 50-100），无进度时为 null */
   unifiedPercent: number | null;
+  /** 附件媒体类型（仅 PDF/图片） */
+  mediaType: 'pdf' | 'image' | null;
   /** 选中的注入模式（仅 PDF/图片） */
   selectedModes: MediaInjectMode[];
+  /** 已就绪的注入模式（仅 PDF/图片） */
+  readyModes: MediaInjectMode[];
   /** 尚未就绪的选中模式 */
   missingModes: MediaInjectMode[];
   /** PDF 总页数（就绪后显示页数徽标） */
@@ -102,36 +106,39 @@ function computeChipStatus(
   const readyModes = mediaType ? getEffectiveReadyModes(attachment, mediaType, status) : undefined;
   const readySet = new Set(readyModes ?? []);
   const missingModes = selectedModes.filter((mode) => !readySet.has(mode));
+  const readyList = readyModes ?? [];
   const totalPages = mediaType === 'pdf'
     ? (status?.totalPages ?? attachment.processingStatus?.totalPages)
     : undefined;
 
   if (attachment.status === 'error') {
-    return { lifecycle: 'error', unifiedPercent: null, selectedModes, missingModes, totalPages };
+    return { lifecycle: 'error', unifiedPercent: null, mediaType, selectedModes, readyModes: readyList, missingModes, totalPages };
   }
 
   if (attachment.status === 'uploading' || attachment.status === 'pending') {
     const percent = attachment.uploadProgress != null
       ? Math.min(50, Math.max(0, Math.round(attachment.uploadProgress)))
       : null;
-    return { lifecycle: 'uploading', unifiedPercent: percent, selectedModes, missingModes, totalPages };
+    return { lifecycle: 'uploading', unifiedPercent: percent, mediaType, selectedModes, readyModes: readyList, missingModes, totalPages };
   }
 
   if (attachment.status === 'processing') {
     const rawPercent = status?.percent ?? 0;
     const percent = 50 + Math.round(Math.min(100, Math.max(0, rawPercent)) * 0.5);
-    return { lifecycle: 'processing', unifiedPercent: percent, selectedModes, missingModes, totalPages };
+    return { lifecycle: 'processing', unifiedPercent: percent, mediaType, selectedModes, readyModes: readyList, missingModes, totalPages };
   }
 
   // ready：非媒体附件无模式概念，直接视为可用
   if (!mediaType) {
-    return { lifecycle: 'plain', unifiedPercent: null, selectedModes, missingModes, totalPages };
+    return { lifecycle: 'plain', unifiedPercent: null, mediaType: null, selectedModes, readyModes: readyList, missingModes, totalPages };
   }
 
   return {
     lifecycle: missingModes.length > 0 ? 'partial' : 'ready',
     unifiedPercent: null,
+    mediaType,
     selectedModes,
+    readyModes: readyList,
     missingModes,
     totalPages,
   };
@@ -458,16 +465,39 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                         processingStatus={normalizedStoreStatus}
                       />
                       {(isPartial || isBusy) && (
-                        <p
-                          role="status"
-                          data-testid={`attachment-chip-mode-status-${attachment.id}`}
-                          className={cn(
-                            'max-w-[16rem] text-2xs leading-snug',
-                            isPartial ? 'text-warning' : 'text-info',
+                        <div className="flex flex-col items-start gap-1">
+                          <p
+                            role="status"
+                            data-testid={`attachment-chip-mode-status-${attachment.id}`}
+                            className={cn(
+                              'max-w-[16rem] text-2xs leading-snug',
+                              isPartial ? 'text-warning' : 'text-info',
+                            )}
+                          >
+                            {statusTitle}
+                          </p>
+                          {isPartial && chipStatus.mediaType && chipStatus.readyModes.length > 0 && (
+                            <DsButton
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              data-testid={`attachment-chip-use-ready-${attachment.id}`}
+                              onClick={() => {
+                                const mediaKey = chipStatus.mediaType;
+                                if (!mediaKey) return;
+                                onInjectModesChange(attachment.id, {
+                                  ...(attachment.injectModes ?? {}),
+                                  [mediaKey]: [...chipStatus.readyModes],
+                                });
+                              }}
+                              className="!h-6 !px-1.5 text-2xs font-medium text-primary hover:bg-primary/10"
+                            >
+                              {t('chatV2:inputBar.useReadyModes', {
+                                modes: formatModeSummary(chipStatus.readyModes),
+                              })}
+                            </DsButton>
                           )}
-                        >
-                          {statusTitle}
-                        </p>
+                        </div>
                       )}
                     </div>
                   </PopoverContent>

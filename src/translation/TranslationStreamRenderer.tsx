@@ -13,14 +13,20 @@
 import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from '../components/custom-scroll-area';
+import { MathText } from '../components/ui/MathText';
 import { CircleNotch } from '@phosphor-icons/react';
+
+/** 是否包含成对的 LaTeX 数学定界符（如 $x^2$ / $$\frac{a}{b}$$） */
+const HAS_MATH_DELIMITERS = /\$\$[\s\S]+?\$\$|\$[^\s$][^$\n]*?\$/;
 
 /**
  * 稳定文本片段：流式期间 content 只在尾部追加，
  * 按段落边界切片后，除最后一片外全部命中 memo，
- * 每帧只有尾片的文本节点真正更新
+ * 每帧只有尾片的文本节点真正更新；含数学公式时走 KaTeX 按需渲染。
  */
-const StaticSegment = React.memo<{ text: string }>(({ text }) => <span>{text}</span>);
+const StaticSegment = React.memo<{ text: string }>(({ text }) =>
+  HAS_MATH_DELIMITERS.test(text) ? <MathText text={text} /> : <span>{text}</span>
+);
 StaticSegment.displayName = 'StaticSegment';
 
 /** 按段落边界（连续空行，含分隔符本身）切片，保证拼接结果与原文严格一致 */
@@ -135,6 +141,8 @@ export const TranslationStreamRenderer: React.FC<TranslationStreamRendererProps 
             {segments.map((segment, i) =>
               i < segments.length - 1 ? (
                 <StaticSegment key={i} text={segment} />
+              ) : !isStreaming && HAS_MATH_DELIMITERS.test(segment) ? (
+                <MathText key={i} text={segment} />
               ) : (
                 <span key={i}>{segment}</span>
               )

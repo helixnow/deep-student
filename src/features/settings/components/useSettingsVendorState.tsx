@@ -55,15 +55,32 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     return sortVendorsBySettingsOrder(vendors);
   }, [vendors]);
   const vendorOrderMap = useMemo(() => buildVendorOrderMap(vendors), [vendors]);
+  const profileCountByVendor = useMemo(() => {
+    const map = new Map<string, number>();
+    modelProfiles.forEach(profile => {
+      map.set(profile.vendorId, (map.get(profile.vendorId) ?? 0) + 1);
+    });
+    return map;
+  }, [modelProfiles]);
+  // 首次打开设置页时优先默认选中「已配置且有可用模型」的供应商，避免预配置环境落到未配置的空模板
+  const defaultVendor = useMemo(() => {
+    if (sortedVendors.length === 0) return null;
+    const configuredWithModels = sortedVendors.find(
+      v => Boolean((v.apiKey || '').trim()) && (profileCountByVendor.get(v.id) ?? 0) > 0,
+    );
+    if (configuredWithModels) return configuredWithModels;
+    const configured = sortedVendors.find(v => Boolean((v.apiKey || '').trim()));
+    return configured ?? sortedVendors[0];
+  }, [sortedVendors, profileCountByVendor]);
   const selectedVendor = useMemo(() => {
     if (sortedVendors.length === 0) {
       return null;
     }
     if (!selectedVendorId) {
-      return sortedVendors[0];
+      return defaultVendor;
     }
-    return sortedVendors.find(v => v.id === selectedVendorId) ?? sortedVendors[0];
-  }, [sortedVendors, selectedVendorId]);
+    return sortedVendors.find(v => v.id === selectedVendorId) ?? defaultVendor;
+  }, [sortedVendors, selectedVendorId, defaultVendor]);
   const selectedVendorProfiles = useMemo(
     () => (selectedVendor ? modelProfiles.filter(mp => mp.vendorId === selectedVendor.id) : []),
     [modelProfiles, selectedVendor]
@@ -86,13 +103,6 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         : [],
     [selectedVendorProfiles, selectedVendor]
   );
-  const profileCountByVendor = useMemo(() => {
-    const map = new Map<string, number>();
-    modelProfiles.forEach(profile => {
-      map.set(profile.vendorId, (map.get(profile.vendorId) ?? 0) + 1);
-    });
-    return map;
-  }, [modelProfiles]);
   const selectedVendorIsSiliconflow = ((selectedVendor?.providerType ?? '').toLowerCase() === 'siliconflow');
   useEffect(() => {
     if (sortedVendors.length === 0) {
@@ -100,9 +110,9 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       return;
     }
     if (!selectedVendorId || !sortedVendors.some(v => v.id === selectedVendorId)) {
-      setSelectedVendorId(sortedVendors[0].id);
+      setSelectedVendorId((defaultVendor ?? sortedVendors[0]).id);
     }
-  }, [sortedVendors, selectedVendorId]);
+  }, [sortedVendors, selectedVendorId, defaultVendor]);
 
   // 切换供应商时退出编辑模式
   useEffect(() => {

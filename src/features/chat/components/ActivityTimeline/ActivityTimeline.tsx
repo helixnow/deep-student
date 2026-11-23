@@ -599,14 +599,15 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({
 
   useEffect(() => {
     if (isManuallyControlled.current) return;
-    if (node.isThinking) {
+    if (node.isThinking || node.isAborted) {
+      // 用户主动「停止生成」时保留已流式展示的思考内容，不自动折叠成孤立的「已停止思考」一行
       setIsExpanded(true);
     } else if (autoCollapseEnabled && shouldAutoCollapseTimelineOnComplete(hasError, isManuallyControlled.current)) {
       setIsExpanded(false);
     } else if (hasError) {
       setIsExpanded(true);
     }
-  }, [node.isThinking, autoCollapseEnabled, hasError]);
+  }, [node.isThinking, node.isAborted, autoCollapseEnabled, hasError]);
 
   const toggleExpanded = useCallback(() => {
     isManuallyControlled.current = true;

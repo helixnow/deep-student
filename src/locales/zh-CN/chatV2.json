@@ -340,6 +340,8 @@
     "processingIndicatorPartial": "部分模式未就绪",
     "completedMissingModes": "完成（{{modes}}未就绪）",
     "modesNotReady": "未就绪：{{modes}}",
+    "useReadyModes": "仅用已就绪模式（{{modes}}）",
+    "streamStopped": "已停止生成",
     "uploadStage": {
       "reading": "读取文件",
       "uploading": "上传中",
