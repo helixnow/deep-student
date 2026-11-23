@@ -47,6 +47,7 @@ import {
   configureFinalizerLogger, finalizeTask, finalizationWireReport, parseDeclaredArtifacts,
 } from './finalizer.ts';
 import { buildSystemPromptWithProfileAndAgents, parseRendererCapabilities } from './prompt-builder.ts';
+import { ChatPipelineHooksRegistry } from './pipeline-hooks.ts';
 import {
   advanceMicrocompactAnchor, microcompactBatchEligibleTurns, microcompactOldToolOutputs,
 } from './microcompact.ts';
@@ -545,7 +546,7 @@ export interface ChatPipelinePluginOptions {
 export function createChatPipelinePlugin(options: ChatPipelinePluginOptions = {}): HostPlugin {
   return definePlugin({
   meta: {
-    id: 'dstu.chat-pipeline', lane: 'L03-chat-pipeline', commands: [], provides: ['chatPipeline', SUPER_INBOX_SEND_SERVICE],
+    id: 'dstu.chat-pipeline', lane: 'L03-chat-pipeline', commands: [], provides: ['chatPipeline', 'chatPipelineHooks', SUPER_INBOX_SEND_SERVICE],
     ...(options.platforms === undefined ? {} : { platforms: options.platforms }),
   },
   inject: options.platforms?.includes('mobile')
@@ -557,6 +558,8 @@ export function createChatPipelinePlugin(options: ChatPipelinePluginOptions = {}
     setChatPipelineApprovalRuntime(options.approvalRuntime?.() ?? null);
     ctx.effect(() => () => setChatPipelineApprovalRuntime(null));
     const service = new PipelineService(ctx);
+    const pipelineHooks = new ChatPipelineHooksRegistry(message => ctx.logger('chat-pipeline-hooks').warn(message));
+    ctx.provide('chatPipelineHooks', pipelineHooks);
     let disposed = false;
     ctx.effect(() => () => { disposed = true; });
     const port = { execute: service.execute };

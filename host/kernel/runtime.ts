@@ -68,6 +68,30 @@ export type HostCallCallerMode = 'warn' | 'require';
 export const DEFAULT_HOST_CALL_CALLER_MODE: HostCallCallerMode = 'require';
 
 /**
+ * Services a consented community/UI-only plugin may invoke directly via `plugin:host|call`
+ * without shipping a boilerplate Host half (RFC-002 P1/P2).
+ * Callers MUST declare `service:<name>` in `package.json#deepStudent.permissions` and pass K3 consent.
+ */
+const BROKERED_UI_DOMAIN_SERVICES = new Set(['studyData', 'pluginModel', 'pluginNotify']);
+
+function resolveBrokeredMethod(
+  root: Record<string, unknown> | undefined,
+  methodPath: string,
+): { receiver: unknown; fn: (...params: unknown[]) => unknown } | null {
+  if (!root || !methodPath) return null;
+  const parts = methodPath.split('.');
+  if (parts.some(p => p === '' || p === '__proto__' || p === 'constructor' || p === 'prototype')) return null;
+  let current: unknown = root;
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    if (current === null || typeof current !== 'object') return null;
+    current = (current as Record<string, unknown>)[parts[i]!];
+  }
+  if (current === null || typeof current !== 'object') return null;
+  const fn = (current as Record<string, unknown>)[parts[parts.length - 1]!];
+  return typeof fn === 'function' ? { receiver: current, fn: fn as (...params: unknown[]) => unknown } : null;
+}
+
+/**
  * 关停各阶段的等待上限（V09 P1-1/P1-2，API.md「关停」）。外壳给 Host 的关停预算必须大于它们之和加上
  * `main.ts::exitSoon` 的 500 ms：2000 + 3000 + 500 = 5500 ms。
  */
@@ -425,14 +449,25 @@ export class HostRuntime {
   private async remoteCall(caller: string | undefined, service: string, method: string, args: readonly unknown[], signal: AbortSignal, source: WindowRef, invokeId?: string): Promise<unknown> {
     let providers = this.installed.filter((entry) => this.providedBy(entry.fiber).includes(service));
     if (providers.length === 0) throw new CommandError(AppError.validation(`unknown service "${service}"`));
+    let brokeredCaller: InstalledPlugin | null = null;
     if (caller !== undefined) {
       const own = providers.filter((entry) => entry.id === caller);
       if (own.length === 0) {
-        throw new CommandError(AppError.validation(
-          `plugin "${caller}" cannot call service "${service}" of ${providers.map((entry) => `"${entry.id}"`).join(', ')}: a UI half may only call its own Host half`,
-        ));
+        if (BROKERED_UI_DOMAIN_SERVICES.has(service)) {
+          const callerEntry = this.installed.find((entry) => entry.id === caller);
+          const allowed = callerEntry?.manifest?.permissions.includes(`service:${service}`) === true;
+          if (callerEntry && allowed) {
+            brokeredCaller = callerEntry;
+          }
+        }
+        if (brokeredCaller === null) {
+          throw new CommandError(AppError.validation(
+            `plugin "${caller}" cannot call service "${service}" of ${providers.map((entry) => `"${entry.id}"`).join(', ')}: a UI half may only call its own Host half`,
+          ));
+        }
+      } else {
+        providers = own;
       }
-      providers = own;
     } else {
       // warn 模式（过渡期）。只为已有服务计数，计数表的大小以服务数为上限。
       const count = (this.callsWithoutCaller.get(service) ?? 0) + 1;
@@ -441,21 +476,35 @@ export class HostRuntime {
         this.ctx.logger('host').warn(`[host] ${HOST_CALL_COMMAND} to service "${service}" carries no "caller" plugin id; cross-plugin calls are not rejected until the UI kernel sends it (SEC-E06)`);
       }
     }
-    if (!providers.some((entry) => (entry.plugin.meta.remote?.[service] ?? []).includes(method))) {
-      throw new CommandError(AppError.validation(`service "${service}" does not expose "${method}" to UI (declare it in meta.remote)`));
-    }
     const target = this.ctx.get(service) as Record<string, unknown> | undefined;
-    const fn = target?.[method];
-    if (typeof fn !== 'function') throw new CommandError(AppError.validation(`service "${service}" has no method "${method}"`));
+    let receiver: unknown = target;
+    let fn: ((...params: unknown[]) => unknown) | undefined;
+    if (brokeredCaller !== null) {
+      const resolved = resolveBrokeredMethod(target, method);
+      if (!resolved) {
+        throw new CommandError(AppError.validation(`brokered service "${service}" has no method "${method}"`));
+      }
+      receiver = resolved.receiver;
+      fn = resolved.fn;
+    } else {
+      if (!providers.some((entry) => (entry.plugin.meta.remote?.[service] ?? []).includes(method))) {
+        throw new CommandError(AppError.validation(`service "${service}" does not expose "${method}" to UI (declare it in meta.remote)`));
+      }
+      const candidate = target?.[method];
+      if (typeof candidate !== 'function') throw new CommandError(AppError.validation(`service "${service}" has no method "${method}"`));
+      fn = candidate as (...params: unknown[]) => unknown;
+    }
     // RUST-FIX(RF-P3-workshop-tools): paired UI calls get a one-use kernel receipt, never a payload-provided authority.
     // The call runs inside the provider's execution scope (P1 owner checks) and the receipt is released afterwards.
     const receipt = service === 'pluginWorkshop' ? workshopUiReceipt(source, caller, service, method, signal) : null;
-    const invoke = () => (fn as (...params: unknown[]) => unknown).call(target, ...args, receipt ?? { signal });
+    const invoke = () => brokeredCaller !== null
+      ? fn!.call(receiver, ...args)
+      : fn!.call(receiver, ...args, receipt ?? { signal });
+    const execOwner = brokeredCaller ?? providers[0]!;
     let value: unknown;
-    try { value = await (this.kernel.execution ? this.kernel.execution.run(providers[0]!.fiber, invoke) : invoke()); }
+    try { value = await (this.kernel.execution ? this.kernel.execution.run(execOwner.fiber, invoke) : invoke()); }
     catch (error) {
-      const owner = providers[0]!;
-      await this.recordPluginError(owner.id, service + '.' + method, error, invokeId);
+      await this.recordPluginError(execOwner.id, service + '.' + method, error, invokeId);
       throw error;
     }
     finally { if (receipt) releaseWorkshopUiReceipt(receipt); }

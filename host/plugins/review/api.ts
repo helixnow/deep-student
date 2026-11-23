@@ -221,12 +221,24 @@ export interface ReviewService {
 export const masteryService = { name: 'mastery', version: '1.0.0' } as const;
 export const reviewService = { name: 'review', version: '1.0.0' } as const;
 export const reviewPlanService = { name: 'reviewPlan', version: '1.0.0' } as const;
+export const reviewSchedulersService = { name: 'reviewSchedulers', version: '1.0.0' } as const;
+
+export type {
+  ReviewSchedulerDescriptor,
+  ReviewSchedulerProvider,
+  ReviewSchedulerRegistryService,
+  SchedulerCardInput,
+  SchedulerNextState,
+} from './src/scheduler-registry.ts';
+export { DEFAULT_REVIEW_SCHEDULER_ID } from './src/scheduler-registry.ts';
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
     mastery: MasteryService;
     review: ReviewService;
     reviewPlan: ReviewPlanPort;
+    /** Native Cordis pluggable review scheduler registry (RFC-002 P2). */
+    reviewSchedulers: import('./src/scheduler-registry.ts').ReviewSchedulerRegistryService;
     /** 扩展点由 memory lane 提供（Rust `dstu-memory::memory::mastery_hook`）；缺失时按 Rust no-op。 */
     masteryProfileSink: MasteryProfileSink;
   }

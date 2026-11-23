@@ -558,6 +558,15 @@ export function composeExecution(input: ExecutionCompositionInput): ExecutionDep
           return { kernel: null, delta: null, handled: false };
         }
       },
+      pluginExtensions: async execution => {
+        const hooks = ctx.get('chatPipelineHooks');
+        if (!hooks) return null;
+        return hooks.runAugmentSystemPrompt({
+          sessionId: execution.sessionId,
+          mode: execution.options.chatMode ?? null,
+          userContent: execution.userContent,
+        });
+      },
       agentsInstructions: execution => loadProjectAgentsInstructions(agentsPorts, execution.sessionId),
       activeGoal: sessionId => loadActiveGoalSummary(chatDb, log, sessionId),
       insightHints: execution => {
@@ -580,7 +589,19 @@ export function composeExecution(input: ExecutionCompositionInput): ExecutionDep
     effects: {
       accumulateGoalUsage: (sessionId, emitter, tokens, elapsed) =>
         accumulateGoalUsage(chatDb, ctx.backendEvents, log, sessionId, emitter, tokens, elapsed),
-      emitAnswerFinished: payload => emitStudyEvent(ctx, 'study/answer-finished', payload),
+      emitAnswerFinished: payload => {
+        emitStudyEvent(ctx, 'study/answer-finished', payload);
+        const hooks = ctx.get('chatPipelineHooks');
+        if (hooks) {
+          void hooks.runAfterReply({
+            sessionId: payload.sessionId,
+            messageId: payload.messageId,
+            userContent: payload.question,
+            assistantContent: payload.content,
+            durationMs: payload.durationMs,
+          }).catch(() => undefined);
+        }
+      },
     },
     sessionMetadata,
     compaction: input.compaction,

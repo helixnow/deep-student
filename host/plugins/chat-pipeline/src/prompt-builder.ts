@@ -375,6 +375,7 @@ export class PromptBuilder {
   private learnerProfile: string | null = null;
   private memoryKernel: string | null = null;
   private memoryDelta: string | null = null;
+  private pluginExtensions: string | null = null;
   private projectAgentsInstructions: string | null = null;
   private activeTodos: string | null = null;
   private activeGoal: string | null = null;
@@ -471,6 +472,12 @@ export class PromptBuilder {
   /** Compact mid-session `<memory_delta>` injected in `turnVolatile` only when rules/profile changed mid-session. */
   withMemoryDelta(delta: string | null): this {
     this.memoryDelta = delta !== null && rustTrim(delta) !== '' ? delta : null;
+    return this;
+  }
+
+  /** Optional plugin-contributed turn instructions from `chatPipelineHooks.runAugmentSystemPrompt` (RFC-002 P2). */
+  withPluginExtensions(extensions: string | null): this {
+    this.pluginExtensions = extensions !== null && rustTrim(extensions) !== '' ? extensions : null;
     return this;
   }
 
@@ -573,6 +580,11 @@ ${hintsContent}
         + `${escapeXmlContent(this.memoryDelta)}\n</memory_delta>`);
     }
 
+    if (this.pluginExtensions !== null) {
+      parts.push('<plugin_extensions>\n以下由已安装扩展插件为当前轮次补充的领域指令与上下文：\n'
+        + `${escapeXmlContent(this.pluginExtensions)}\n</plugin_extensions>`);
+    }
+
     if (this.activeTodos !== null) {
       parts.push('<active_todos>\n以下是用户当前的待办事项，请在相关时自然提及或协助管理：\n'
         + `${escapeXmlContent(this.activeTodos)}\n</active_todos>`);
@@ -665,6 +677,8 @@ export interface ProfilePromptInput {
   memoryKernel?: string | null;
   /** Compact mid-session `<memory_delta>` injected in `turnVolatile` only on mid-session edits. */
   memoryDelta?: string | null;
+  /** Optional plugin hook prompt extensions (`chatPipelineHooks`, RFC-002 P2). */
+  pluginExtensions?: string | null;
   projectAgentsInstructions?: string | null;
   activeGoal?: string | null;
   insightHints?: string | null;
@@ -683,6 +697,7 @@ export function buildSystemPromptWithProfileAndAgents(input: ProfilePromptInput)
     .withLearnerProfile(input.learnerProfile ?? null)
     .withMemoryKernel(input.memoryKernel ?? null)
     .withMemoryDelta(input.memoryDelta ?? null)
+    .withPluginExtensions(input.pluginExtensions ?? null)
     .withProjectAgentsInstructions(input.projectAgentsInstructions ?? null)
     .withActiveGoal(input.activeGoal ?? null)
     .withInsightHints(input.insightHints ?? null)

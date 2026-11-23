@@ -20,6 +20,7 @@ import { registerEssayGradingCommands } from './src/essay-grading-commands.ts';
 import { registerInsightCommands } from './src/insight-commands.ts';
 import { studyTimeAdd, studyTimeRange } from './src/study-time.ts';
 import { Mastery } from './src/mastery.ts';
+import { ReviewSchedulerRegistry } from './src/scheduler-registry.ts';
 import { appError } from './src/errors.ts';
 import { ReviewToolExecutor } from './src/review-tool-executor.ts';
 import { EssayGradingExecutor } from './src/essay-tool-executor.ts';
@@ -227,7 +228,7 @@ const reviewPlugin = definePlugin({
       'insight_list_relations', 'insight_list_events', 'insight_record_feedback',
       'insight_add_relation', 'insight_run_jobs',
     ],
-    provides: ['mastery', 'review', 'reviewPlan'],
+    provides: ['mastery', 'review', 'reviewPlan', 'reviewSchedulers'],
     remote: {
       review: [
         'getExamHorizonConfig',
@@ -256,6 +257,8 @@ function applyReview(ctx: Context, trialV7 = false): void {
   const mastery = new Mastery(ctx);
   new Review(ctx, trialV7);
   new ReviewPlan(ctx);
+  const schedulerRegistry = new ReviewSchedulerRegistry(message => ctx.logger('review').warn(message));
+  ctx.provide('reviewSchedulers', schedulerRegistry);
   registerFsrsCommands(ctx, trialV7);
   registerReviewPlanCommands(ctx);
   registerEssayGradingCommands(ctx);

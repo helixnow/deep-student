@@ -48,6 +48,7 @@ import type {} from '../../vfs/api.ts';
 import type {} from '../../vfs-repos/api.ts';
 import type {} from '../../llm-providers/api.ts';
 import { createEssayGradingService } from './essay_grading/service.ts';
+import { GradingRubricRegistry } from './essay_grading/rubric-registry.ts';
 import { CustomModeManager } from './essay_grading/custom_modes.ts';
 import { createEssayTransport } from './essay_grading/transport.ts';
 import { createRawPromptService } from './raw_prompt_service.ts';
@@ -124,7 +125,7 @@ export function createLlmPlugin(options: LlmPluginOptions = {}): HostPlugin {
         'opencode_go_get_usage', 'check_api_config_status', 'restore_default_api_configs',
         'fetch_vendor_models', 'call_llm_for_boundary', 'test_api_connection', 'test_deepseek_capability',
       ],
-      provides: ['llm', 'embedding@1', 'llmReranker', 'essayGrading', 'llmStreaming', 'llmAdapterInfos', 'llmEmbeddingModels', 'llmOcrModels', 'llmRag', 'llmOcrRegions', 'llmOcrHedge', 'llmQuestionParsing', 'llmModel2Messages', 'llmProviderRequests', 'llmStreamEvents', 'llmAnkiRouting', 'llmMcpTools', 'llmModel2Streaming', 'llmHttp', 'llmRawPrompt', 'pluginModel', 'llmQuestionAuthoring', 'llmOcrPages', 'llmFileOcr', 'llmContextCompiler'],
+      provides: ['llm', 'embedding@1', 'llmReranker', 'essayGrading', 'gradingRubrics', 'llmStreaming', 'llmAdapterInfos', 'llmEmbeddingModels', 'llmOcrModels', 'llmRag', 'llmOcrRegions', 'llmOcrHedge', 'llmQuestionParsing', 'llmModel2Messages', 'llmProviderRequests', 'llmStreamEvents', 'llmAnkiRouting', 'llmMcpTools', 'llmModel2Streaming', 'llmHttp', 'llmRawPrompt', 'pluginModel', 'llmQuestionAuthoring', 'llmOcrPages', 'llmFileOcr', 'llmContextCompiler'],
       ...(options.platforms === undefined ? {} : { platforms: options.platforms }),
     },
     inject: mobile
@@ -285,9 +286,11 @@ export function createLlmPlugin(options: LlmPluginOptions = {}): HostPlugin {
             : protocol === 'google_generate_content' ? 'gemini'
               : protocol === 'openai_responses' ? 'openai_responses' : 'openai');
         }, http.fetch, undefined, ctx.llmCodexAuth);
+        const rubricRegistry = new GradingRubricRegistry();
+        ctx.provide('gradingRubrics', rubricRegistry);
         ctx.provide('essayGrading', createEssayGradingService({ llm: service,
           repository: ctx.vfsRepo.essays, connection: () => ctx.vfsDatabase.getConnSafe(),
-          customModes: () => modes.listModes(), transport }, modes));
+          customModes: async () => [...(await modes.listModes()), ...rubricRegistry.list()], transport }, modes, rubricRegistry));
       }
 
       ctx.commands.register<{ streamEventName: string }, boolean>('cancel_stream', async ({ streamEventName }) => {
