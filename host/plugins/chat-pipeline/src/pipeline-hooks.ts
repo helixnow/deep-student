@@ -152,3 +152,56 @@ export class ChatPipelineHooksRegistry implements ChatPipelineHooksService {
     }
   }
 }
+
+export interface DeclarativeStudyPackAssetsLike {
+  listSkills(): ReadonlyArray<{ pluginId: string; skillId: string; name: string; description: string; markdown: string }>;
+  listWorkflows(): ReadonlyArray<{
+    pluginId: string;
+    id: string;
+    name: string;
+    description?: string;
+    trigger?: string;
+    steps: ReadonlyArray<{ id: string; title: string; prompt: string }>;
+  }>;
+}
+
+const MAX_STUDY_PACK_PROMPT_CHARS = 1800;
+
+/**
+ * Formats installed Tier 1 Study Pack declarative skills & workflows into a bounded
+ * prompt section merged into `<plugin_extensions>` (RFC-002 P3/P4).
+ */
+export function formatDeclarativeStudyPackPrompt(registry: DeclarativeStudyPackAssetsLike | undefined): string | null {
+  if (!registry) return null;
+  const skills = registry.listSkills();
+  const workflows = registry.listWorkflows();
+  if (skills.length === 0 && workflows.length === 0) return null;
+
+  const lines: string[] = [];
+  if (skills.length > 0) {
+    lines.push('### 已安装学习包方法论技能（Study Pack Skills）');
+    for (const s of skills) {
+      const body = s.markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim();
+      const excerpt = body.length > 260 ? `${body.slice(0, 260)}…` : body;
+      lines.push(`- [${s.pluginId}/${s.skillId}] ${s.name}${s.description ? `：${s.description}` : ''}`);
+      if (excerpt) lines.push(`  指引：${excerpt.replace(/\s+/g, ' ')}`);
+    }
+  }
+  if (workflows.length > 0) {
+    lines.push('### 已安装学习包工作流（Study Pack Workflows）');
+    for (const w of workflows) {
+      const triggerText = w.trigger ? `（触发：${w.trigger}）` : '';
+      lines.push(`- [${w.pluginId}/${w.id}] ${w.name}${triggerText}${w.description ? `：${w.description}` : ''}`);
+      for (let i = 0; i < w.steps.length; i++) {
+        const step = w.steps[i]!;
+        lines.push(`  ${i + 1}. ${step.title}：${step.prompt}`);
+      }
+    }
+  }
+
+  const joined = lines.join('\n').trim();
+  if (!joined) return null;
+  return joined.length > MAX_STUDY_PACK_PROMPT_CHARS
+    ? `${joined.slice(0, MAX_STUDY_PACK_PROMPT_CHARS)}…`
+    : joined;
+}

@@ -22,6 +22,9 @@ import {
   type LearnerProfile, type LearnerProfileUpdate,
 } from './learner-profile.ts';
 import type { ProfileUpdateOptions } from './profile-store.ts';
+import { runDialecticReflection, type DialecticReflectionReport } from './dialectic-reflection.ts';
+
+export type { DialecticProposal, DialecticProposalKind, DialecticReflectionReport } from './dialectic-reflection.ts';
 
 export const LOCAL_MEMORY_PROVIDER_ID = 'dstu.memory.local';
 const MAX_KERNEL_WEAK_POINTS = 12;
@@ -118,6 +121,7 @@ export interface MemoryProvider {
   ingestSignal(signal: LearningSignal): void;
   inspect(): MemoryInspectionView;
   mutateFromUser(mutation: UserMemoryMutation): MemoryInspectionView;
+  reflect?(): DialecticReflectionReport;
 }
 
 /** Narrow host port consumed by `LocalMemoryProvider` (implemented by `MemoryServiceImpl`). */
@@ -525,6 +529,18 @@ export class LocalMemoryProvider implements MemoryProvider {
         break;
     }
     return this.inspect();
+  }
+
+  reflect(): DialecticReflectionReport {
+    const view = this.inspect();
+    return runDialecticReflection({
+      hardRules: view.hardRules,
+      learnerProfile: view.learnerProfile,
+      rulesChars: view.budgets.rulesChars,
+      rulesMaxChars: view.budgets.rulesMaxChars,
+      profileChars: view.budgets.profileChars,
+      profileMaxChars: view.budgets.profileMaxChars,
+    });
   }
 }
 

@@ -1,0 +1,27 @@
+{
+  "name": "deepstudent-pack-kaoyan-math",
+  "version": "1.0.0",
+  "private": true,
+  "description": "考研数学一/二/三零代码学习包（Tier 1 声明式示例）：含证明题严苛批改标准、苏格拉底反问法技能、定理关键步挖空卡模板与考前错题冲刺工作流。",
+  "engines": {
+    "deepStudent": "^0.20",
+    "deepStudentPluginApi": "2"
+  },
+  "deepStudent": {
+    "manifestVersion": 2,
+    "id": "example.kaoyan-math-pack",
+    "displayName": "考研数学学习包（示例）",
+    "author": "DeepStudent Team",
+    "description": "零代码 Tier 1 Study Pack 示例：安装即得证明题批改标准、苏格拉底引导技能、定理挖空模板与错题冲刺流。",
+    "category": "study-pack",
+    "tier": "declarative",
+    "kind": "study-pack",
+    "platforms": ["desktop", "mobile"],
+    "declarative": {
+      "rubrics": ["./rubrics/math-proof.yaml"],
+      "skills": ["./skills/socratic-math.md"],
+      "cardTemplates": ["./templates/theorem-cloze.yaml"],
+      "workflows": ["./workflows/mistake-sprint.yaml"]
+    }
+  }
+}

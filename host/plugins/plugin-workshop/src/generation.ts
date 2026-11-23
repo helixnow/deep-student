@@ -73,6 +73,10 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
           + '(e.g. { v: 1, ... }); when reading, accept records without it or with an older v and migrate them in code (never throw on or drop them); '
           + 'in a modification never rename or delete existing storage keys, only add new ones.'
           + '\nCredentials: never copy API keys or tokens into source or ordinary configuration. Use the user-provided secret setting and ctx.pluginSecrets.get(key), or the declared plugin model service.'
+          + '\nPlugin v2 capabilities (live in Host — pick the lightest tier that fits the goal): '
+          + 'Tier 1 pure declarative packages use manifestVersion: 2 and deepStudent.declarative: { rubrics, skills, cardTemplates, workflows } with zero JS/TS needed for custom rubrics, skills, card templates, or workflows; '
+          + 'Tier 2 UI-only plugins omit boilerplate Host files when calling brokered services (studyData, pluginModel, pluginNotify) via ctx.ui.host with declared "service:<name>" permissions; '
+          + 'Tier 3 full plugins can also hook into Cordis core registries (chatPipelineHooks, gradingRubrics, reviewSchedulers, memoryProvider) via inject plus matching "service:<name>" permissions.'
           + (settings.length ? `\nUser settings: the Host stores the values the user entered as this plugin's config. Never hard-code them; read config[key] in apply(ctx, config) and report clearly when one is missing: ${JSON.stringify(settings)}` : '')
           + `\nTemplate: ${JSON.stringify(templates)}`
           + (card.error ? `\nPrevious attempt failed. Repair the exact diagnostics, preserving working code: ${card.error}\nChecks: ${JSON.stringify(card.check)}` : ''),

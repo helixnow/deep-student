@@ -65,6 +65,19 @@ function entrypoints(pkg: unknown, files: Record<string, string>, expected?: Pic
     const canonical = packagePath(name.startsWith('./') ? name.slice(2) : name);
     if (!Object.hasOwn(files, canonical)) invalid(`missing ${key} entrypoint ${name}`);
   }
+  const declarative = pkg.deepStudent.declarative;
+  if (object(declarative)) {
+    for (const key of ['rubrics', 'skills', 'cardTemplates', 'workflows']) {
+      const list = declarative[key];
+      if (list === undefined) continue;
+      if (!Array.isArray(list)) invalid(`invalid declarative.${key} list`);
+      for (const name of list) {
+        if (typeof name !== 'string') invalid(`invalid declarative.${key} entry`);
+        const canonical = packagePath(name.startsWith('./') ? name.slice(2) : name);
+        if (!Object.hasOwn(files, canonical)) invalid(`missing declarative.${key} asset ${name}`);
+      }
+    }
+  }
 }
 
 export class PluginPackages {
@@ -148,7 +161,9 @@ export class PluginPackages {
 
   install(archive: RandomAccessFile, archiveName: string, checks: InstallCheckOptions): Promise<InstallResult> {
     return this.serialized(async () => {
-      if (!archiveName.endsWith('.dstuplugin') && !archiveName.endsWith('.dsplugin')) invalid('expected .dstuplugin or expected .dsplugin ZIP');
+      if (!archiveName.endsWith('.dstuplugin') && !archiveName.endsWith('.dspack') && !archiveName.endsWith('.dsplugin')) {
+        invalid('expected .dstuplugin, .dspack or expected .dsplugin ZIP');
+      }
       const stage = `.staging/${randomUUID()}`;
       let release: string | undefined;
       try {
