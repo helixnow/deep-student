@@ -19,7 +19,8 @@ import { AppError } from '../../../platform/errors/api.ts';
 import type { Logger } from '../../../platform/log/api.ts';
 import type { SqlExecutor } from '../../../platform/storage/api.ts';
 import {
-  extractFileName, getFileSize, hashFileSha256, isOpaqueDocumentId, readAllBytesBounded, resolveFileInfo,
+  detectExtensionFromMagic, extractExtension, extractFileName, getFileSize, hashFileSha256,
+  isOpaqueDocumentId, readAllBytesBounded, resolveFileInfo, takeStagedUpload, type StagedFile,
 } from '../../../platform/storage/node.ts';
 import type { Textbook, TextbookImportProgress } from '../../../../contracts/ipc/generated/L18-media-docs.ts';
 import type { VfsDatabase } from '../../vfs/api.ts';
@@ -209,209 +210,238 @@ export async function textbooksAdd(deps: TextbooksAddDeps, args: TextbooksAddArg
     })(), 0);
   };
 
+  const STAGED_PREFIX = 'dstu-staged:';
   const out: Textbook[] = [];
   const skippedReasons: string[] = [];
 
-  for (const src of sources) {
-    const [resolvedName, resolvedExt] = resolveFileInfo(src);
-    const uriRawName = extractFileName(src);
-    const displayName = isOpaqueDocumentId(uriRawName)
-      ? `导入文档_${compactUtcTimestamp(now())}${resolvedExt === null ? '' : `.${resolvedExt}`}`
-      : resolvedName;
-
-    log.info(`[Textbooks] Resolved file info: uri=${src}, name=${displayName}, ext=${debugOptionString(resolvedExt)}`);
-
-    let extension: string;
-    if (resolvedExt === 'pdf') {
-      extension = resolvedExt;
-    } else if (resolvedExt !== null) {
-      if (SUPPORTED_EXTENSIONS.includes(resolvedExt) || deps.docs.isPlainTextCodeExtension(resolvedExt)) {
-        extension = resolvedExt;
+  for (const rawSrc of sources) {
+    let staged: StagedFile | null = null;
+    try {
+      let src = rawSrc;
+      let resolvedName: string;
+      let resolvedExt: string | null;
+      let uriRawName: string;
+      if (rawSrc.startsWith(STAGED_PREFIX)) {
+        const uploadId = rawSrc.slice(STAGED_PREFIX.length).trim();
+        try {
+          staged = takeStagedUpload(uploadId);
+        } catch (error) {
+          const message = errorText(error);
+          const reason = `${rawSrc}: 读取暂存上传失败 (${message})`;
+          log.warn(`[Textbooks] ${reason}`);
+          emitProgress(rawSrc, 'error', null, null, 0, `读取上传文件失败: ${message}`);
+          skippedReasons.push(reason);
+          continue;
+        }
+        src = staged.path();
+        uriRawName = staged.name();
+        resolvedName = uriRawName;
+        resolvedExt = extractExtension(uriRawName) ?? detectExtensionFromMagic(src);
       } else {
-        const reason = `${displayName}: 不支持的文件格式 (${resolvedExt})`;
+        [resolvedName, resolvedExt] = resolveFileInfo(src);
+        uriRawName = extractFileName(src);
+      }
+      const displayName = isOpaqueDocumentId(uriRawName)
+        ? `导入文档_${compactUtcTimestamp(now())}${resolvedExt === null ? '' : `.${resolvedExt}`}`
+        : resolvedName;
+
+      log.info(`[Textbooks] Resolved file info: uri=${rawSrc}, name=${displayName}, ext=${debugOptionString(resolvedExt)}`);
+
+      let extension: string;
+      if (resolvedExt === 'pdf') {
+        extension = resolvedExt;
+      } else if (resolvedExt !== null) {
+        if (SUPPORTED_EXTENSIONS.includes(resolvedExt) || deps.docs.isPlainTextCodeExtension(resolvedExt)) {
+          extension = resolvedExt;
+        } else {
+          const reason = `${displayName}: 不支持的文件格式 (${resolvedExt})`;
+          log.warn(`[Textbooks] ${reason}`);
+          emitProgress(displayName, 'error', null, null, 0, `不支持的文件格式: ${resolvedExt}`);
+          skippedReasons.push(reason);
+          continue;
+        }
+      } else {
+        const reason = `${displayName}: 无法识别文件格式`;
         log.warn(`[Textbooks] ${reason}`);
-        emitProgress(displayName, 'error', null, null, 0, `不支持的文件格式: ${resolvedExt}`);
+        emitProgress(displayName, 'error', null, null, 0, '无法识别文件格式，请确认文件类型后重试');
         skippedReasons.push(reason);
         continue;
       }
-    } else {
-      const reason = `${displayName}: 无法识别文件格式`;
-      log.warn(`[Textbooks] ${reason}`);
-      emitProgress(displayName, 'error', null, null, 0, '无法识别文件格式，请确认文件类型后重试');
-      skippedReasons.push(reason);
-      continue;
-    }
 
-    // 超限文件尽早拒绝（无法获取大小的由后续有界读取兜底）
-    let size: number | null = null;
-    try { size = getFileSize(src); }
-    // boundary-allow empty-catch: Rust `if let Ok(size) = get_file_size(..)` 忽略取大小失败
-    catch {}
-    if (size !== null && size > MAX_TEXTBOOK_IMPORT_BYTES) {
-      const limitMb = Math.trunc(MAX_TEXTBOOK_IMPORT_BYTES / (1024 * 1024));
-      const reason = `${displayName}: 文件过大 (${(size / (1024 * 1024)).toFixed(1)}MB，上限 ${limitMb}MB)`;
-      log.warn(`[Textbooks] ${reason}`);
-      emitProgress(displayName, 'error', null, null, 0, `文件过大，上限 ${limitMb}MB`);
-      skippedReasons.push(reason);
-      continue;
-    }
+      // 超限文件尽早拒绝（无法获取大小的由后续有界读取兜底）
+      let size: number | null = null;
+      try { size = getFileSize(src); }
+      // boundary-allow empty-catch: Rust `if let Ok(size) = get_file_size(..)` 忽略取大小失败
+      catch {}
+      if (size !== null && size > MAX_TEXTBOOK_IMPORT_BYTES) {
+        const limitMb = Math.trunc(MAX_TEXTBOOK_IMPORT_BYTES / (1024 * 1024));
+        const reason = `${displayName}: 文件过大 (${(size / (1024 * 1024)).toFixed(1)}MB，上限 ${limitMb}MB)`;
+        log.warn(`[Textbooks] ${reason}`);
+        emitProgress(displayName, 'error', null, null, 0, `文件过大，上限 ${limitMb}MB`);
+        skippedReasons.push(reason);
+        continue;
+      }
 
-    // 阶段1：计算哈希
-    emitProgress(displayName, 'hashing', null, null, 5, null);
-    let sha256: string;
-    try { sha256 = await hashFileSha256(src); }
-    catch (error) {
-      const message = errorText(error);
-      const reason = `${displayName}: 读取文件失败 (${message})`;
-      log.warn(`[Textbooks] ${reason}`);
-      emitProgress(displayName, 'error', null, null, 0, `读取文件失败: ${message}`);
-      skippedReasons.push(reason);
-      continue;
-    }
+      // 阶段1：计算哈希
+      emitProgress(displayName, 'hashing', null, null, 5, null);
+      let sha256: string;
+      try { sha256 = await hashFileSha256(src); }
+      catch (error) {
+        const message = errorText(error);
+        const reason = `${displayName}: 读取文件失败 (${message})`;
+        log.warn(`[Textbooks] ${reason}`);
+        emitProgress(displayName, 'error', null, null, 0, `读取文件失败: ${message}`);
+        skippedReasons.push(reason);
+        continue;
+      }
 
-    // 若已存在，恢复并重新挂载到目标位置
-    let existing: VfsTextbook | null;
-    try { existing = repos.textbooks.getBySha256(database.getConnSafe(), sha256); }
-    catch (error) {
-      throw new CommandError(AppError.database(`VFS 查询教材失败: ${errorText(error)}`));
-    }
-    if (existing !== null) {
-      const tb = existing;
-      let watchEventType = 'created';
-      if (tb.status !== 'active') {
-        try { repos.textbooks.restoreTextbook(database.getConnSafe(), tb.id); }
-        catch (error) {
-          throw new CommandError(AppError.database(`VFS 恢复教材失败: ${errorText(error)}`));
-        }
-        watchEventType = 'restored';
+      // 若已存在，恢复并重新挂载到目标位置
+      let existing: VfsTextbook | null;
+      try { existing = repos.textbooks.getBySha256(database.getConnSafe(), sha256); }
+      catch (error) {
+        throw new CommandError(AppError.database(`VFS 查询教材失败: ${errorText(error)}`));
+      }
+      if (existing !== null) {
+        const tb = existing;
+        let watchEventType = 'created';
+        if (tb.status !== 'active') {
+          try { repos.textbooks.restoreTextbook(database.getConnSafe(), tb.id); }
+          catch (error) {
+            throw new CommandError(AppError.database(`VFS 恢复教材失败: ${errorText(error)}`));
+          }
+          watchEventType = 'restored';
 
-        if (tb.fileName !== displayName) {
-          let conn: SqlExecutor | null = null;
-          try { conn = database.getConnSafe(); }
-          // boundary-allow empty-catch: Rust `if let Ok(conn) = vfs_db.get_conn_safe()` 静默跳过
-          catch {}
-          if (conn !== null) {
-            try { repos.textbooks.renameTextbook(conn, tb.id, displayName); }
-            catch (error) {
-              log.warn(`[Textbooks] 恢复后重命名失败: ${tb.id} (${errorText(error)})`);
+          if (tb.fileName !== displayName) {
+            let conn: SqlExecutor | null = null;
+            try { conn = database.getConnSafe(); }
+            // boundary-allow empty-catch: Rust `if let Ok(conn) = vfs_db.get_conn_safe()` 静默跳过
+            catch {}
+            if (conn !== null) {
+              try { repos.textbooks.renameTextbook(conn, tb.id, displayName); }
+              catch (error) {
+                log.warn(`[Textbooks] 恢复后重命名失败: ${tb.id} (${errorText(error)})`);
+              }
             }
           }
         }
-      }
 
-      // 老记录缺 blob 内容时趁重新导入自愈补存
-      if (tb.blobHash === undefined || tb.blobHash === null) {
-        try {
-          const bytes = await readAllBytesBounded(src, MAX_TEXTBOOK_IMPORT_BYTES);
-          let conn: SqlExecutor;
-          try { conn = database.getConnSafe(); }
-          catch (error) { throw AppError.database(`获取 VFS 连接失败: ${errorText(error)}`); }
-          let healed: boolean;
+        // 老记录缺 blob 内容时趁重新导入自愈补存
+        if (tb.blobHash === undefined || tb.blobHash === null) {
           try {
-            healed = repos.textbooks.attachBlobIfMissing(
-              conn, database.blobsDir(), tb.id, bytes, null, extension);
-          } catch (error) { throw AppError.database(`补存 blob 失败: ${errorText(error)}`); }
-          if (healed) log.info(`[Textbooks] Healed blob for existing textbook ${tb.id}`);
-        } catch (error) {
-          log.warn(`[Textbooks] Blob heal failed for ${tb.id}: ${errorText(error)}`);
+            const bytes = await readAllBytesBounded(src, MAX_TEXTBOOK_IMPORT_BYTES);
+            let conn: SqlExecutor;
+            try { conn = database.getConnSafe(); }
+            catch (error) { throw AppError.database(`获取 VFS 连接失败: ${errorText(error)}`); }
+            let healed: boolean;
+            try {
+              healed = repos.textbooks.attachBlobIfMissing(
+                conn, database.blobsDir(), tb.id, bytes, null, extension);
+            } catch (error) { throw AppError.database(`补存 blob 失败: ${errorText(error)}`); }
+            if (healed) log.info(`[Textbooks] Healed blob for existing textbook ${tb.id}`);
+          } catch (error) {
+            log.warn(`[Textbooks] Blob heal failed for ${tb.id}: ${errorText(error)}`);
+          }
         }
-      }
 
-      attachTextbookToFolder(tb.id);
-      deps.emitWatchEvent(tb.id, watchEventType);
-      startPipelineIfNeeded(tb.id, extension);
-      emitProgress(displayName, 'done', null, null, 100, null);
-      // Rust 推入的是恢复/重命名之前查到的 `tb` 快照（:362）。
-      out.push(toTextbook(tb));
-      continue;
-    }
-
-    const fileName = displayName;
-    emitProgress(fileName, 'copying', null, null, 10, null);
-
-    const isPdf = extension === 'pdf';
-    if (isPdf) emitProgress(fileName, 'rendering', 0, null, 15, null);
-    else emitProgress(fileName, 'parsing', null, null, 15, null);
-
-    let heavy: HeavyResult;
-    try {
-      heavy = { ok: true, outcome: await runHeavy(deps, database, repos, src, fileName, extension, isPdf) };
-    } catch (error) {
-      if (!(error instanceof HeavyFailure)) {
-        // Rust `spawn_blocking` 的 JoinError（panic）分支。
-        log.warn(`[Textbooks] Processing task panicked for ${fileName}: ${errorText(error)}`);
-        emitProgress(fileName, 'error', null, null, 0, `处理任务异常终止: ${errorText(error)}`);
-        skippedReasons.push(`${displayName}: 处理任务异常终止`);
+        attachTextbookToFolder(tb.id);
+        deps.emitWatchEvent(tb.id, watchEventType);
+        startPipelineIfNeeded(tb.id, extension);
+        emitProgress(displayName, 'done', null, null, 100, null);
+        // Rust 推入的是恢复/重命名之前查到的 `tb` 快照（:362）。
+        out.push(toTextbook(tb));
         continue;
       }
-      heavy = { ok: false, error: error.appError };
-    }
-    if (!heavy.ok) {
-      log.warn(`[Textbooks] Processing failed for ${fileName}: ${heavy.error.message}`);
-      emitProgress(fileName, 'error', null, null, 0, heavy.error.message);
-      skippedReasons.push(`${displayName}: ${heavy.error.message}`);
-      continue;
-    }
-    const { outcome } = heavy;
 
-    // 阶段4：入库
-    emitProgress(fileName, 'saving', null, null, 90, null);
-    let conn: SqlExecutor;
-    try { conn = database.getConnSafe(); }
-    catch (error) {
-      throw new CommandError(AppError.database(`获取 VFS 连接失败: ${errorText(error)}`));
-    }
-    let createAttempt = 0;
-    let tb: VfsTextbook | null = null;
-    for (;;) {
-      createAttempt += 1;
+      const fileName = displayName;
+      emitProgress(fileName, 'copying', null, null, 10, null);
+
+      const isPdf = extension === 'pdf';
+      if (isPdf) emitProgress(fileName, 'rendering', 0, null, 15, null);
+      else emitProgress(fileName, 'parsing', null, null, 15, null);
+
+      let heavy: HeavyResult;
       try {
-        tb = repos.textbooks.createTextbookWithPreview(conn, sha256, fileName, outcome.size,
-          outcome.blobHash, src, outcome.previewJsonStr, outcome.extractedText, outcome.pageCount);
-        break;
+        heavy = { ok: true, outcome: await runHeavy(deps, database, repos, src, fileName, extension, isPdf) };
       } catch (error) {
-        const message = errorText(error);
-        const transient = message.includes('locked') || message.includes('busy');
-        if (transient && createAttempt < 4) {
-          await sleep(250 * createAttempt);
+        if (!(error instanceof HeavyFailure)) {
+          // Rust `spawn_blocking` 的 JoinError（panic）分支。
+          log.warn(`[Textbooks] Processing task panicked for ${fileName}: ${errorText(error)}`);
+          emitProgress(fileName, 'error', null, null, 0, `处理任务异常终止: ${errorText(error)}`);
+          skippedReasons.push(`${displayName}: 处理任务异常终止`);
           continue;
         }
-        log.warn(`[Textbooks] 入库失败，跳过 ${fileName}: ${message}`);
-        emitProgress(fileName, 'error', null, null, 0, `入库失败: ${message}`);
-        skippedReasons.push(`${fileName}: 入库失败: ${message}`);
-        break;
+        heavy = { ok: false, error: error.appError };
       }
-    }
-    if (tb === null) continue;
+      if (!heavy.ok) {
+        log.warn(`[Textbooks] Processing failed for ${fileName}: ${heavy.error.message}`);
+        emitProgress(fileName, 'error', null, null, 0, heavy.error.message);
+        skippedReasons.push(`${displayName}: ${heavy.error.message}`);
+        continue;
+      }
+      const { outcome } = heavy;
 
-    if (outcome.pagesJson !== null) {
-      try { repos.textbooks.updateTextbookOcrPagesJson(conn, tb.id, outcome.pagesJson); }
+      // 阶段4：入库
+      emitProgress(fileName, 'saving', null, null, 90, null);
+      let conn: SqlExecutor;
+      try { conn = database.getConnSafe(); }
       catch (error) {
-        log.warn(`[Textbooks] Failed to write ocr_pages_json for ${tb.id}: ${errorText(error)}`);
+        throw new CommandError(AppError.database(`获取 VFS 连接失败: ${errorText(error)}`));
       }
-    }
-
-    if (outcome.renderError !== null) {
-      try { repos.textbooks.markTextbookRenderError(conn, tb.id, outcome.renderError); }
-      catch (error) {
-        log.warn(`[Textbooks] Failed to write render failure status for ${tb.id}: ${errorText(error)}`);
+      let createAttempt = 0;
+      let tb: VfsTextbook | null = null;
+      const originalPath = staged ? null : src;
+      for (;;) {
+        createAttempt += 1;
+        try {
+          tb = repos.textbooks.createTextbookWithPreview(conn, sha256, fileName, outcome.size,
+            outcome.blobHash, originalPath, outcome.previewJsonStr, outcome.extractedText, outcome.pageCount);
+          break;
+        } catch (error) {
+          const message = errorText(error);
+          const transient = message.includes('locked') || message.includes('busy');
+          if (transient && createAttempt < 4) {
+            await sleep(250 * createAttempt);
+            continue;
+          }
+          log.warn(`[Textbooks] 入库失败，跳过 ${fileName}: ${message}`);
+          emitProgress(fileName, 'error', null, null, 0, `入库失败: ${message}`);
+          skippedReasons.push(`${fileName}: 入库失败: ${message}`);
+          break;
+        }
       }
-    }
+      if (tb === null) continue;
 
-    if (folderId !== null) {
-      try { repos.folders.addItemToFolder(conn, newFolderItem(folderId, tb.id)); }
-      catch (error) {
-        throw new CommandError(AppError.database(`VFS 挂载教材失败: ${errorText(error)}`));
+      if (outcome.pagesJson !== null) {
+        try { repos.textbooks.updateTextbookOcrPagesJson(conn, tb.id, outcome.pagesJson); }
+        catch (error) {
+          log.warn(`[Textbooks] Failed to write ocr_pages_json for ${tb.id}: ${errorText(error)}`);
+        }
       }
+
+      if (outcome.renderError !== null) {
+        try { repos.textbooks.markTextbookRenderError(conn, tb.id, outcome.renderError); }
+        catch (error) {
+          log.warn(`[Textbooks] Failed to write render failure status for ${tb.id}: ${errorText(error)}`);
+        }
+      }
+
+      if (folderId !== null) {
+        try { repos.folders.addItemToFolder(conn, newFolderItem(folderId, tb.id)); }
+        catch (error) {
+          throw new CommandError(AppError.database(`VFS 挂载教材失败: ${errorText(error)}`));
+        }
+      }
+
+      emitProgress(fileName, 'indexing', null, null, 95, null);
+      startPipelineIfNeeded(tb.id, extension);
+      deps.emitWatchEvent(tb.id, 'created');
+
+      // 阶段5：完成
+      emitProgress(fileName, 'done', null, null, 100, null);
+      out.push(toTextbook(tb));
+    } finally {
+      staged?.dispose();
     }
-
-    emitProgress(fileName, 'indexing', null, null, 95, null);
-    startPipelineIfNeeded(tb.id, extension);
-    deps.emitWatchEvent(tb.id, 'created');
-
-    // 阶段5：完成
-    emitProgress(fileName, 'done', null, null, 100, null);
-    out.push(toTextbook(tb));
   }
 
   if (out.length === 0 && skippedReasons.length > 0) {

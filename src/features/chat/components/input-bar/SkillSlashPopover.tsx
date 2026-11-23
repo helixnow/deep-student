@@ -184,13 +184,21 @@ export function useSkillSlashCommands({
           }
         })
       : [];
+    const isInternalToolBundle = (id: string) => id.endsWith('-tools') || id === 'ask-user';
     const ranked = [...commands, ...contributedCommands, ...skills.filter(skill => skill.id !== 'compact')]
       .map((skill) => {
         const id = skill.id.toLowerCase();
         const name = skill.name.toLowerCase();
         let rank = -1;
         if (query.length === 0) {
-          rank = 2;
+          // 空查询（刚键入 `/`）时优先展示学生常用指令与学习技能，将内部工程工具包沉底
+          if (id === 'compact' || ('slotEntry' in skill && skill.slotEntry) || activeSet.has(skill.id)) {
+            rank = 0;
+          } else if (isInternalToolBundle(id)) {
+            rank = 3;
+          } else {
+            rank = 1;
+          }
         } else if (id.startsWith(query)) {
           rank = 0;
         } else if (name.startsWith(query)) {

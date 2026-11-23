@@ -460,6 +460,9 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
               markers={parseResult.markers}
               activeMarkerIndex={selectedMarkerIndex}
               onMarkerSelect={setSelectedMarkerIndex}
+              onApplySuggestion={onApplySuggestion}
+              onUndoSuggestion={onUndoSuggestion}
+              appliedSuggestionKeys={appliedSuggestionKeys}
             />
           ) : activeTab === 'polish' ? (
             polishGenerating ? (

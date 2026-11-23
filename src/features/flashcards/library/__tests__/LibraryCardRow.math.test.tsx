@@ -5,7 +5,7 @@ import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { render } from '@testing-library/react';
 import type { AnkiLibraryCard } from '@/types';
-import { CardMathText, renderCardPreviewMathHtml } from '../../cardMathPreview';
+import { CardMathText, renderAnkiCardPreviewHtml, renderCardPreviewMathHtml } from '../../cardMathPreview';
 import { LibraryCardRow } from '../LibraryCardRow';
 
 vi.mock('@/hooks/useAnkiTemplateLoader', () => ({
@@ -47,6 +47,23 @@ describe('renderCardPreviewMathHtml', () => {
 
     const block = renderCardPreviewMathHtml('结论：\n$$\\int_a^b f(x)\\,dx$$', { inline: false });
     expect(block).toContain('katex-display');
+  });
+
+  it('renders safe Anki HTML formatting and image placeholders while escaping unsafe scripts (U19 regression)', () => {
+    const raw = '<b>Card #763</b>: $I_{763} = \\mathrm{tr}(A)$ <img src="qa_img_63.png"> <i>hint</i> <script>alert(1)</script>';
+    const blockHtml = renderAnkiCardPreviewHtml(raw, { inline: false })!;
+    expect(blockHtml).toContain('<b>Card #763</b>');
+    expect(blockHtml).toContain('<i>hint</i>');
+    expect(blockHtml).toContain('class="katex"');
+    expect(blockHtml).toContain('[图片: qa_img_63.png]');
+    expect(blockHtml).not.toContain('<img');
+    expect(blockHtml).not.toContain('<script>');
+    expect(blockHtml).toContain('&lt;script&gt;');
+
+    const inlineHtml = renderAnkiCardPreviewHtml(raw, { inline: true })!;
+    expect(inlineHtml).toContain('Card #763');
+    expect(inlineHtml).not.toContain('<b>');
+    expect(inlineHtml).toContain('[图片: qa_img_63.png]');
   });
 });
 
