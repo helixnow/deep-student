@@ -289,6 +289,10 @@
   font-size: 9px;
 }
 
+:is(.dark, [data-theme='dark']) .wb-agenda-overdue-count {
+  color: hsl(0 86% 74%);
+}
+
 .wb-agenda-open-button {
   flex: 0 0 auto;
   gap: 3px;
@@ -325,6 +329,14 @@
   flex: 1 1 auto;
   flex-direction: column;
   margin-top: 4px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding-bottom: 4px;
+}
+
+.wb-agenda-list::-webkit-scrollbar {
+  display: none;
 }
 
 .wb-agenda-item {
@@ -410,6 +422,10 @@
 
 .wb-agenda-item[data-overdue] .wb-agenda-item-title {
   color: color-mix(in hsl, hsl(var(--destructive)) 78%, hsl(var(--foreground)) 22%);
+}
+
+:is(.dark, [data-theme='dark']) .wb-agenda-item[data-overdue] .wb-agenda-item-title {
+  color: hsl(0 84% 76%);
 }
 
 .wb-agenda-item-meta {

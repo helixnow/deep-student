@@ -1325,7 +1325,7 @@
         "platforms": "Supported Platforms"
       },
       "values": {
-        "platforms": "Windows / macOS / iPadOS / Android"
+        "platforms": "Windows / macOS / Linux / iPadOS / Android"
       }
     },
     "links": {
@@ -1937,6 +1937,7 @@
     "model_favorited": "Model favorited",
     "model_unfavorited": "Favorite removed",
     "model_save_failed": "Failed to save model configuration: {{error}}",
+    "auto_assigned_slots": "Auto-assigned {{count}} empty model slot(s): {{models}}",
     "semantic_fts_save_success": "Semantic search FTS prefilter setting saved",
     "semantic_fts_save_error": "Save failed: {{error}}",
     "vendor_save_failed": "Failed to save provider: {{error}}",

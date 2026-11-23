@@ -17,6 +17,7 @@ export interface GenerateHandoutState {
   running: boolean;
   progress: HandoutProgress | null;
   result: RunHandoutResult | null;
+  error: string | null;
   start: () => void;
   cancel: () => void;
 }
@@ -35,10 +36,14 @@ export function useGenerateHandout({ resourceId, kind, src, fileName }: UseGener
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<HandoutProgress | null>(null);
   const [result, setResult] = useState<RunHandoutResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // 切资源 / 卸载时中止在途生成
-  useEffect(() => () => abortRef.current?.abort(), [resourceId]);
+  useEffect(() => {
+    setError(null);
+    return () => abortRef.current?.abort();
+  }, [resourceId]);
 
   const cancel = useCallback(() => abortRef.current?.abort(), []);
 
@@ -48,6 +53,7 @@ export function useGenerateHandout({ resourceId, kind, src, fileName }: UseGener
     abortRef.current = controller;
     setRunning(true);
     setResult(null);
+    setError(null);
     setProgress({ phase: 'transcript', done: 0, total: 1 });
     const mediaName = fileName.replace(/\.[^.]+$/, '') || fileName;
 
@@ -94,6 +100,7 @@ export function useGenerateHandout({ resourceId, kind, src, fileName }: UseGener
             : e instanceof HandoutError && e.code === 'outline_failed'
               ? t('learningHub:mediaHandout.outlineFailed')
               : errorText(e) || t('learningHub:mediaHandout.failed');
+        setError(message);
         showGlobalNotification('error', message, t('learningHub:mediaHandout.failed'));
       })
       .finally(() => {
@@ -103,5 +110,5 @@ export function useGenerateHandout({ resourceId, kind, src, fileName }: UseGener
       });
   }, [fileName, i18n.language, i18n.resolvedLanguage, kind, resourceId, src, t]);
 
-  return { running, progress, result, start, cancel };
+  return { running, progress, result, error, start, cancel };
 }

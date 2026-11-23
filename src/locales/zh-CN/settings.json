@@ -1325,7 +1325,7 @@
         "platforms": "平台支持"
       },
       "values": {
-        "platforms": "Windows / macOS / iPadOS / Android"
+        "platforms": "Windows / macOS / Linux / iPadOS / Android"
       }
     },
     "links": {
@@ -1937,6 +1937,7 @@
     "model_favorited": "已收藏该模型",
     "model_unfavorited": "已取消收藏",
     "model_save_failed": "模型配置保存失败: {{error}}",
+    "auto_assigned_slots": "已自动为 {{count}} 个空槽位分配默认模型：{{models}}",
     "semantic_fts_save_success": "已保存语义检索 FTS 预筛设置",
     "semantic_fts_save_error": "保存失败: {{error}}",
     "silent_save_failed": "设置保存失败，请稍后重试",

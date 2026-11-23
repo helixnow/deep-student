@@ -310,7 +310,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
         </div>
 
         {/* 内容区 */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 scroll-area--native sm:px-6 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pt-3 pb-5 scroll-pb-5 scroll-area--native sm:px-6 sm:py-4 space-y-3 sm:space-y-4">
           {/* 10 秒单 Key 自动配置面板 */}
           <QuickByokProvisionerCard
             mode="onboarding"
@@ -319,7 +319,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           />
 
           {/* 三大能力速览 */}
-          <div className="space-y-3 border-t border-border/35 pt-4">
+          <div className="space-y-2.5 border-t border-border/35 pt-3.5 sm:space-y-3 sm:pt-4">
             {features.map((f) => (
               <div key={f.titleKey} className="flex items-start gap-3">
                 <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-foreground/[0.04]">

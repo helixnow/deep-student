@@ -2,6 +2,7 @@ import React, { memo, useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowClockwise,
+  CaretDown,
   File,
   FileCode,
   FileText,
@@ -10,11 +11,13 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { coarseHitClassFor24 } from '@/components/ui/coarseHit';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { InlineImageViewer } from '../InlineImageViewer';
+import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
-import type { AttachmentMeta, PdfProcessingStatus } from '../../core/types/common';
+import type { AttachmentInjectModes, AttachmentMeta, PdfProcessingStatus } from '../../core/types/common';
 import {
   TEXT_FILE_MAX_LENGTH,
   ATTACHMENT_TEXT_INJECT_EXTENSIONS,
@@ -31,6 +34,8 @@ interface AttachmentPreviewChipsProps {
   onRemove: (attachmentId: string) => void;
   /** 错误态内联重试（复用附件面板的重试链路） */
   onRetry?: (attachment: AttachmentMeta) => void;
+  /** 附件注入模式切换（支持在 PDF / 图片 chip 上一键切换文本 / OCR / 图片） */
+  onInjectModesChange?: (attachmentId: string, modes: AttachmentInjectModes) => void;
   disabled?: boolean;
   className?: string;
 }
@@ -171,6 +176,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
   attachments,
   onRemove,
   onRetry,
+  onInjectModesChange,
   disabled = false,
   className,
 }) => {
@@ -383,8 +389,8 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                     {t('chatV2:inputBar.chip.truncated')}
                   </span>
                 )}
-                {/* 注入模式微型摘要（如「文本+图片」），错误态隐藏让位给重试 */}
-                {modeSummary && !isError && (
+                {/* 注入模式微型摘要：无回调或禁用时静态展示；支持切换时移至 chip 右侧可点击弹出胶囊 */}
+                {modeSummary && !isError && (!onInjectModesChange || disabled) && (
                   <span
                     className={cn(
                       'whitespace-nowrap text-2xs font-medium leading-none',
@@ -414,6 +420,43 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                   />
                 )}
               </DsButton>
+              {/* PDF / 图片附件注入模式快捷切换入口（点击展开 文本 / OCR / 图片 选择器） */}
+              {modeSummary && !isError && onInjectModesChange && !disabled && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <DsButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-testid={`attachment-chip-mode-${attachment.id}`}
+                      aria-label={`${attachment.name} · ${t('chatV2:injectMode.label')}: ${modeSummary}`}
+                      title={`${t('chatV2:injectMode.label')}: ${modeSummary}`}
+                      className={cn(
+                        'ml-1 !h-7 !gap-1 !rounded-full border !px-2 text-2xs font-medium shadow-sm [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]',
+                        chipStatus.lifecycle === 'partial'
+                          ? 'border-warning/40 bg-warning/10 text-warning hover:bg-warning/15'
+                          : 'border-[color:var(--input-shell-border)] bg-[color:var(--surface-panel-strong)] text-muted-foreground hover:border-[color:var(--button-plain-border)] hover:text-foreground',
+                      )}
+                    >
+                      <span className="whitespace-nowrap leading-none">{modeSummary}</span>
+                      <CaretDown size={10} weight="bold" aria-hidden="true" />
+                    </DsButton>
+                  </PopoverTrigger>
+                  <PopoverContent side="top" align="start" className="w-auto p-2.5">
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-2xs font-medium text-muted-foreground">
+                        {t('chatV2:injectMode.label')}
+                      </span>
+                      <AttachmentInjectModeSelector
+                        attachment={attachment}
+                        onInjectModesChange={onInjectModesChange}
+                        disabled={attachment.status !== 'ready' && chipStatus.lifecycle !== 'processing'}
+                        processingStatus={normalizedStoreStatus}
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
               {/* 错误态/部分未就绪态内联重试（chip 外侧尾随，44px 触控命中区） */}
               {(isError || isPartial) && onRetry && attachment.sourceId && !disabled && (
                 <button

@@ -16,6 +16,7 @@ export const UI_FONT_SIZE_PRESETS = [
   { value: 1.0, label: '100%' },
   { value: 1.1, label: '110%' },
   { value: 1.2, label: '120%' },
+  { value: 1.25, label: '125%' },
   { value: 1.3, label: '130%' },
 ];
 

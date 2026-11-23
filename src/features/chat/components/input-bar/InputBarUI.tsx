@@ -3220,6 +3220,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
             attachments={attachments}
             onRemove={onRemoveAttachment}
             onRetry={handleRetryAttachmentChip}
+            onInjectModesChange={handleInjectModesChange}
             disabled={isStreaming}
           />
 

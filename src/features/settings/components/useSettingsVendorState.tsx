@@ -580,6 +580,26 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     }
   };
 
+  // 手动添加/启用模型后，自动为空模型槽位补齐默认分配（不覆盖用户已选模型）
+  const autoAssignEmptySlotsAfterModelAdded = useCallback(async () => {
+    try {
+      const { autoAssignAllModels } = await import('@/features/chat/readiness/autoAssignModel');
+      const result = await autoAssignAllModels();
+      if (result.assigned && result.assignedCount > 0) {
+        showGlobalNotification(
+          'info',
+          t('settings:notifications.auto_assigned_slots', {
+            count: result.assignedCount,
+            models: result.assignedModelNames.join('、'),
+            defaultValue: '已自动为 {{count}} 个空槽位分配默认模型：{{models}}',
+          }),
+        );
+      }
+    } catch (error) {
+      console.warn('[useSettingsVendorState] Auto-assign after model add skipped:', error);
+    }
+  }, [t]);
+
   const handleSaveModelProfile = async (api: ApiConfig) => {
     if (!modelEditor) return;
     const vendor = modelEditor.vendor;
@@ -590,6 +610,9 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       await upsertModelProfile(toSave);
       showGlobalNotification('success', t('common:config_saved'));
       handleCloseModelEditor();
+      if (toSave.enabled) {
+        void autoAssignEmptySlotsAfterModelAdded();
+      }
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       showGlobalNotification('error', t('settings:notifications.model_save_failed', { error: errorMessage }));
@@ -607,6 +630,9 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       showGlobalNotification('success', t('common:config_saved'));
       setInlineEditState(null);
       setIsAddingNewModel(false);
+      if (toSave.enabled) {
+        void autoAssignEmptySlotsAfterModelAdded();
+      }
     } catch (error) {
       const errorMessage = getErrorMessage(error);
       showGlobalNotification('error', t('settings:notifications.model_save_failed', { error: errorMessage }));
@@ -860,8 +886,9 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     }
     if (changed) {
       await persistModelProfiles(nextProfiles);
+      void autoAssignEmptySlotsAfterModelAdded();
     }
-  }, [modelProfiles, persistModelProfiles]);
+  }, [modelProfiles, persistModelProfiles, autoAssignEmptySlotsAfterModelAdded]);
 
   // ===== 自动流程编排（保存 Key → 获取模型 → 自动分配） =====
 

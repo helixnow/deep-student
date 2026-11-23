@@ -406,7 +406,7 @@ export const AboutTab: React.FC = () => {
               controlClassName="!w-auto text-right"
             >
               <span className="text-sm text-foreground/90">
-                {t('acknowledgements.developer.values.platforms', 'Windows / macOS / iPadOS / Android')}
+                {t('acknowledgements.developer.values.platforms', 'Windows / macOS / Linux / iPadOS / Android')}
               </span>
             </SettingRow>
             </div></div>

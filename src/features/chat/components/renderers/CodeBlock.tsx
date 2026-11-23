@@ -69,18 +69,22 @@ registerArtifactRenderer('openui', function OpenUIPinnedArtifactRenderer({ conte
 const HighlightedCode = React.memo(function HighlightedCode({
   children,
   className,
+  isStreaming = false,
 }: {
   children: string;
   className?: string;
+  isStreaming?: boolean;
 }) {
   const language = className?.replace('language-', '').toLowerCase();
   const hasLanguage = language && !['text', 'plain', 'plaintext'].includes(language);
 
   // The code node belongs to this component, not the lazy fallback, so loading
   // grammars, appending streamed text and ending the stream do not replace it.
+  // 流式输出期间跳过 Prism 全量词法重解析，避免每个 chunk 阻塞主线程（LongTask）；
+  // 流式结束后立即切换为语法高亮。
   return (
     <code className={className}>
-      {hasLanguage ? (
+      {hasLanguage && !isStreaming ? (
         <React.Suspense fallback={children}>
           <LazySyntaxHighlighter
             language={language}
@@ -536,6 +540,15 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     try {
       setRunning(true);
       setMermaidError(null);
+      // 先让出一帧绘制「运行中」状态，避免 mermaid 懒加载与同步排版阻塞点击当帧
+      await new Promise<void>((resolve) => {
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => setTimeout(resolve, 0));
+        } else {
+          setTimeout(resolve, 0);
+        }
+      });
+      if (!isCurrentRequest()) return;
       // 手势期不启动渲染，结束后再跑（拖拽热路径禁止 mermaid 抢帧）
       await waitForShellGestureIdle();
       if (!isCurrentRequest()) return;
@@ -1255,7 +1268,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   const sourceView = (
     <ScrollArea orientation="both" className="code-block-scroll-area">
       <pre className="code-block code-block-inner">
-        <HighlightedCode className={className}>{rawChildren}</HighlightedCode>
+        <HighlightedCode className={className} isStreaming={isStreaming}>{rawChildren}</HighlightedCode>
       </pre>
     </ScrollArea>
   );

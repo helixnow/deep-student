@@ -415,4 +415,53 @@ describe('InputBarUI attachment preview chips', () => {
 
     expect(onAbort).toHaveBeenCalledTimes(1);
   });
+
+  it('exposes a clickable inject-mode switcher directly on PDF attachment chips', async () => {
+    const onUpdateAttachment = vi.fn();
+    const pdfAttachment: AttachmentMeta = {
+      id: 'att_pdf_scanned',
+      name: 'scanned-2p.pdf',
+      type: 'document',
+      mimeType: 'application/pdf',
+      size: 4096,
+      status: 'ready',
+      injectModes: { pdf: ['image'] },
+      processingStatus: {
+        stage: 'completed',
+        readyModes: ['image', 'ocr', 'text'],
+        totalPages: 2,
+      },
+    };
+
+    render(
+      <InputBarUI
+        inputValue=""
+        canSend
+        canAbort={false}
+        isStreaming={false}
+        attachments={[pdfAttachment]}
+        panelStates={createDefaultPanelStates()}
+        onInputChange={vi.fn()}
+        onSend={vi.fn()}
+        onAbort={vi.fn()}
+        onAddAttachment={vi.fn()}
+        onUpdateAttachment={onUpdateAttachment}
+        onRemoveAttachment={vi.fn()}
+        onClearAttachments={vi.fn()}
+        onSetPanelState={vi.fn()}
+        placeholder="输入消息"
+      />
+    );
+
+    const modeTrigger = screen.getByTestId('attachment-chip-mode-att_pdf_scanned');
+    fireEvent.click(modeTrigger);
+
+    // Clicking the mode pill opens AttachmentInjectModeSelector with OCR toggle
+    const ocrBtn = await screen.findByRole('button', { name: /OCR/i });
+    fireEvent.click(ocrBtn);
+
+    expect(onUpdateAttachment).toHaveBeenCalledWith('att_pdf_scanned', {
+      injectModes: { pdf: ['image', 'ocr'] },
+    });
+  });
 });

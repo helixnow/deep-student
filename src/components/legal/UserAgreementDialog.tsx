@@ -135,7 +135,7 @@ const ToggleBlock: React.FC<ToggleBlockProps> = ({
           )}
           weight="regular"
 />
-        <span className="flex-1 min-w-0 truncate">{title}</span>
+        <span className="flex-1 min-w-0 truncate py-0.5 leading-normal">{title}</span>
       </DsButton>
 
       {/* 展开内容 —— 带左侧缩进，模拟 简洁 toggle 嵌套 */}
@@ -413,7 +413,7 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
             <DsButton
               variant="primary"
               size="lg"
-              className="w-full justify-center text-[13px] font-medium [@media(pointer:coarse)]:!min-h-11"
+              className="w-full justify-center !border-primary !bg-primary !text-primary-foreground hover:!bg-primary/90 hover:!text-primary-foreground text-[13px] font-medium [@media(pointer:coarse)]:!min-h-11"
               onClick={onAccept}
             >
               {t('legal.userAgreement.agreeAndContinue')}

@@ -1580,45 +1580,54 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             {isSmallScreen && mobileOverflowMenu}
           </div>
 
-          <SegmentedControl<typeof locationFilter>
-            ariaLabel={t('skills:location.all')}
-            value={locationFilter}
-            onValueChange={setLocationFilter}
-            size="compact"
-            className={cn(
-              'flex items-center gap-1 overflow-x-auto scrollbar-none [&_.study-shell-segmented-thumb]:border-transparent',
-              isSmallScreen && '!border-0 !bg-transparent !p-0 gap-1.5',
-            )}
-            itemClassName={isSmallScreen
-              // 移动端降为轻盈次级芯片条，与下方「学习精选 / 全部 / 系统」主分页拉开主次层级，同时保证 ≥36px 舒适点击高度
-              ? '!h-auto !min-h-9 !rounded-full !px-3 !py-1.5 text-xs font-medium whitespace-nowrap'
-              : '!h-auto !px-2.5 !py-1 text-xs font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3'}
-            options={locationTabs
-              .filter((tab) => tab.id === 'all' || locationCounts[tab.id] > 0)
-              .map((tab) => {
-                const count = locationCounts[tab.id];
-                const isActiveTab = locationFilter === tab.id;
-                return {
-                  value: tab.id,
-                  label: (
-                    <>
-                      <span className={cn('opacity-70', isActiveTab && 'opacity-100')}>
-                        {tab.icon}
-                      </span>
-                      <span>{tab.label}</span>
-                      <span
-                        className={cn(
-                          'ml-0.5 text-2xs tabular-nums opacity-60',
-                          isActiveTab && 'opacity-100 font-bold',
-                        )}
-                      >
-                        {count}
-                      </span>
-                    </>
-                  ),
-                };
-              })}
-          />
+          {(() => {
+            const visibleLocationTabs = locationTabs.filter(
+              (tab) => tab.id === 'all' || locationCounts[tab.id] > 0,
+            );
+            // 仅存在单一来源（例如只有内置技能）时隐藏来源切换条，避免移动端与下方主分类栏重复出现「全部 N」
+            if (visibleLocationTabs.length <= 2 && locationFilter === 'all') {
+              return null;
+            }
+            return (
+              <SegmentedControl<typeof locationFilter>
+                ariaLabel={t('skills:location.all')}
+                value={locationFilter}
+                onValueChange={setLocationFilter}
+                size="compact"
+                className={cn(
+                  'flex items-center gap-1 overflow-x-auto scrollbar-none [&_.study-shell-segmented-thumb]:border-transparent',
+                  isSmallScreen && '!border-0 !bg-transparent !p-0 gap-1.5',
+                )}
+                itemClassName={isSmallScreen
+                  // 移动端降为轻盈次级芯片条，与下方「学习精选 / 全部 / 系统」主分页拉开主次层级，同时保证 ≥36px 舒适点击高度
+                  ? '!h-auto !min-h-9 !rounded-full !px-3 !py-1.5 text-xs font-medium whitespace-nowrap'
+                  : '!h-auto !px-2.5 !py-1 text-xs font-medium whitespace-nowrap [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3'}
+                options={visibleLocationTabs.map((tab) => {
+                  const count = locationCounts[tab.id];
+                  const isActiveTab = locationFilter === tab.id;
+                  return {
+                    value: tab.id,
+                    label: (
+                      <>
+                        <span className={cn('opacity-70', isActiveTab && 'opacity-100')}>
+                          {tab.icon}
+                        </span>
+                        <span>{tab.label}</span>
+                        <span
+                          className={cn(
+                            'ml-0.5 text-2xs tabular-nums opacity-60',
+                            isActiveTab && 'opacity-100 font-bold',
+                          )}
+                        >
+                          {count}
+                        </span>
+                      </>
+                    ),
+                  };
+                })}
+              />
+            );
+          })()}
         </div>
       </div>
 
