@@ -18,8 +18,10 @@ import {
 } from '@/essay-grading/streamingMarkerParser';
 import {
   buildSuggestionChange,
+  extractErrSuggestedReplacement,
   type SuggestionChange,
 } from '@/essay-grading/suggestionAnchors';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { ScoreCard } from './ScoreCard';
 import {
   ArrowCounterClockwise,
@@ -420,7 +422,14 @@ const MarkerDetailCard: React.FC<{
     if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
   }, []);
 
-  const suggestionText = marker.type === 'replace' ? marker.newText : marker.type === 'ins' ? marker.content : undefined;
+  const suggestionText =
+    marker.type === 'replace'
+      ? marker.newText
+      : marker.type === 'ins'
+        ? marker.content
+        : marker.type === 'err'
+          ? (marker.newText?.trim() || extractErrSuggestedReplacement(marker.content, marker.explanation))
+          : undefined;
   const originalText = marker.type === 'replace' ? marker.oldText : marker.type === 'ins' ? undefined : marker.content;
   const explanation = marker.explanation || marker.reason || marker.comment;
 
@@ -440,6 +449,28 @@ const MarkerDetailCard: React.FC<{
       : '';
   const badgeClassName = isSuggestionErr(marker) ? BADGE_SUGGESTION_CLASS : badge?.className;
   const BadgeIcon = badge?.icon;
+
+  const handleAskAi = () => {
+    const lines: string[] = [
+      t('essay_grading:annotation_card.ask_ai_intro', {
+        defaultValue: '请帮我深入讲解我作文里的这处批注：',
+      }),
+    ];
+    if (badgeLabel) lines.push(`${t('essay_grading:annotation_card.type_label', { defaultValue: '批注类型' })}：${badgeLabel}`);
+    if (originalText) lines.push(`${t('essay_grading:annotation_card.original')}：「${originalText}」`);
+    if (suggestionText) lines.push(`${t('essay_grading:annotation_card.suggestion')}：「${suggestionText}」`);
+    if (explanation) lines.push(`${t('essay_grading:annotation_card.detail_label', { defaultValue: '批注说明' })}：${explanation}`);
+    lines.push(
+      t('essay_grading:annotation_card.ask_ai_outro', {
+        defaultValue: '为什么这里需要这样修改/关注？请给出 2 个同类示范例句帮我巩固。',
+      }),
+    );
+    dispatchAppEvent(APP_EVENTS.PREFILL_CHAT_INPUT, {
+      content: lines.join('\n'),
+      autoSend: false,
+    });
+    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'chat-v2' });
+  };
 
   return (
     <div
@@ -544,53 +575,61 @@ const MarkerDetailCard: React.FC<{
         </div>
       )}
 
-      {/* 应用修改（含已采纳态与撤销）/ 复制建议 */}
-      {(suggestionText || (applyChange && onApplySuggestion)) && (
-        <div className="mt-2 flex items-center justify-end gap-1">
-          {applyChange && onApplySuggestion && (
-            isApplied ? (
-              <>
-                <span className="inline-flex items-center gap-1 px-2 text-xs text-emerald-600 dark:text-emerald-400 select-none">
-                  <Check size={12} weight="bold" />
-                  {t('essay_grading:markers.applied')}
-                </span>
-                {onUndoSuggestion && (
-                  <DsButton
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onUndoSuggestion(applyChange)}
-                    className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
-                  >
-                    <ArrowCounterClockwise size={12} />
-                    {t('essay_grading:markers.undo')}
-                  </DsButton>
-                )}
-              </>
-            ) : (
-              <DsButton
-                variant="ghost"
-                size="sm"
-                onClick={() => onApplySuggestion(applyChange)}
-                className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3 text-primary/80 hover:text-primary hover:bg-primary/10"
-              >
-                <Check size={12} />
-                {t('essay_grading:markers.apply')}
-              </DsButton>
-            )
-          )}
-          {suggestionText && (
+      {/* 应用修改（含已采纳态与撤销）/ 复制建议 / 追问 AI */}
+      <div className="mt-2 flex flex-wrap items-center justify-end gap-1">
+        {applyChange && onApplySuggestion && (
+          isApplied ? (
+            <>
+              <span className="inline-flex items-center gap-1 px-2 text-xs text-emerald-600 dark:text-emerald-400 select-none">
+                <Check size={12} weight="bold" />
+                {t('essay_grading:markers.applied')}
+              </span>
+              {onUndoSuggestion && (
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onUndoSuggestion(applyChange)}
+                  className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                >
+                  <ArrowCounterClockwise size={12} />
+                  {t('essay_grading:markers.undo')}
+                </DsButton>
+              )}
+            </>
+          ) : (
             <DsButton
               variant="ghost"
               size="sm"
-              onClick={handleCopy}
-              className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              onClick={() => onApplySuggestion(applyChange)}
+              className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3 text-primary/80 hover:text-primary hover:bg-primary/10"
             >
-              {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
-              {copied ? t('essay_grading:annotation_card.copied') : t('essay_grading:annotation_card.copy_suggestion')}
+              <Check size={12} />
+              {t('essay_grading:markers.apply')}
             </DsButton>
-          )}
-        </div>
-      )}
+          )
+        )}
+        {suggestionText && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={handleCopy}
+            className="!h-6 gap-1 px-2 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:px-3 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
+          >
+            {copied ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+            {copied ? t('essay_grading:annotation_card.copied') : t('essay_grading:annotation_card.copy_suggestion')}
+          </DsButton>
+        )}
+        <DsButton
+          variant="ghost"
+          size="sm"
+          data-testid="annotation-ask-ai"
+          onClick={handleAskAi}
+          className="!h-6 gap-1 px-2 text-xs text-muted-foreground/70 hover:text-primary hover:bg-primary/10"
+        >
+          <ChatCircleText size={12} />
+          {t('essay_grading:annotation_card.ask_ai', { defaultValue: '追问 AI' })}
+        </DsButton>
+      </div>
     </div>
   );
 };

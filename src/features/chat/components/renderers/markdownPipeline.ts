@@ -37,6 +37,7 @@ const markdownSanitizeSchema = {
       'dataCitationType',
       'dataCitationIndex',
       'dataCitationShowImage',
+      'dataCitationBare',
       'dataMindmapCitation',
       'dataMindmapId',
       'dataMindmapVersionId',

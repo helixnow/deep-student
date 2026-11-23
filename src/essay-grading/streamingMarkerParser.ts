@@ -396,11 +396,15 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
     });
   }
   
-  // err (supports both attribute orders: type/explanation or explanation/type)
+  // err (supports both attribute orders: type/explanation or explanation/type, plus optional fix/new/suggestion)
   ERR_REGEX.lastIndex = 0;
   while ((match = ERR_REGEX.exec(text)) !== null) {
     const attrs = match[1] || '';
     const extractedType = extractAttributeValue(attrs, 'type');
+    const errFix =
+      extractAttributeValue(attrs, 'fix') ||
+      extractAttributeValue(attrs, 'new') ||
+      extractAttributeValue(attrs, 'suggestion');
     allMatches.push({
       index: match.index,
       length: match[0].length,
@@ -409,6 +413,7 @@ function parseCompleteMarkers(text: string): { markers: StreamingMarker[], remai
         content: stripNestedMarkerTags(match[2]),
         errorType: (extractedType || 'grammar') as StreamingMarker['errorType'],
         explanation: extractAttributeValue(attrs, 'explanation'),
+        newText: errFix || undefined,
         isComplete: true,
       },
     });

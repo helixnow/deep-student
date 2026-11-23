@@ -882,6 +882,8 @@
       "favoriteSkipped": "Nothing to favorite (folders or already favorited)",
       "alreadyInLibrary": "Already in your library: {{names}}",
       "importFailedFiles": "Failed files: {{names}}",
+      "emptyFileReason": "Empty file (0 bytes)",
+      "corruptPdfReason": "Corrupted or invalid PDF file",
       "readFileFailed": "Failed to read file",
       "guidanceFlashcards": "{{names}}: import Anki deck packages in the Flashcards module",
       "guidanceMindmap": "{{names}}: import mind map files in the Mind Map module"

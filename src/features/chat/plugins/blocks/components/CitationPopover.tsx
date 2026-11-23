@@ -341,6 +341,8 @@ export interface CitationBadgeWithPopoverProps {
   citationType?: RetrievalSourceType;
   /** 类型内 1-based 序号（[知识库-N] 的 N，契约不可变） */
   citationIndex: number;
+  /** 是否来自裸数字 `[N]` 兜底匹配：无对应来源时还原为纯文本 `[N]`，避免误伤正文 */
+  bareNumeric?: boolean;
   /** 点击徽章 / 浮层「查看来源」时触发（citationEvents 滚动高亮面板） */
   onNavigate?: () => void;
   /** 自定义类名（传给徽章） */
@@ -356,6 +358,7 @@ export interface CitationBadgeWithPopoverProps {
 export const CitationBadgeWithPopover: React.FC<CitationBadgeWithPopoverProps> = ({
   citationType,
   citationIndex,
+  bareNumeric = false,
   onNavigate,
   className,
 }) => {
@@ -427,6 +430,17 @@ export const CitationBadgeWithPopover: React.FC<CitationBadgeWithPopoverProps> =
     closeNow();
     onNavigate?.();
   }, [closeNow, onNavigate]);
+
+  // 裸数字 `[N]` 仅当当前消息确实存在对应 RAG 来源时渲染为交互徽章，否则原样还原 `[N]` 文本
+  if (bareNumeric) {
+    const resolvedBare =
+      citationType && resolveSource && citationIndex > 0
+        ? resolveSource(citationType, citationIndex)
+        : null;
+    if (!resolvedBare) {
+      return <>[{citationIndex}]</>;
+    }
+  }
 
   // 孤儿 [知识库-N]：本条消息没有对应的知识库来源（模型凭空套用格式，常见于用工具读了
   // 资料却按知识库格式标注），渲染出来是点了没反应的死徽章——不渲染

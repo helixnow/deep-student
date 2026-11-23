@@ -235,8 +235,11 @@ workshopContributions.announce(ctx => {
       focus: id => { void import('@/features/chat/workshop').then(({ workshopSessions }) => workshopSessions.focus(id)); },
       exists: async id => (await import('@/features/chat/workshop')).workshopSessions.exists(id),
       setEditing: (id, label) => { void import('@/features/chat/workshop').then(({ workshopSessions }) => workshopSessions.setEditing(id, label)); },
-      navigate: id => { void import('@/features/chat/workshop').then(({ workshopSessions }) => workshopSessions.navigate(id))
-        .catch(error => console.error('[plugin-workshop] navigation failed', error)); },
+      navigate: id => {
+        launchSurface('chat', () => { dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'chat-v2' }); });
+        void import('@/features/chat/workshop').then(({ workshopSessions }) => workshopSessions.navigate(id))
+          .catch(error => console.error('[plugin-workshop] navigation failed', error));
+      },
     },
     translate: (key, options) => i18n.t(`plugin_manager:${key}`, options) as string,
     ...(typeof storageRemote.storedData === 'function' ? { storedData: (pluginId: string) => storageRemote.storedData!(pluginId) } : {}),

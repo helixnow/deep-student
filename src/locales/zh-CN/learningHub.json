@@ -882,6 +882,8 @@
       "favoriteSkipped": "没有可收藏的项目（文件夹或已收藏）",
       "alreadyInLibrary": "已在资源库中：{{names}}",
       "importFailedFiles": "失败文件：{{names}}",
+      "emptyFileReason": "文件为空（0 字节）",
+      "corruptPdfReason": "PDF 文件已损坏或格式无效",
       "readFileFailed": "读取文件失败",
       "guidanceFlashcards": "{{names}}：Anki 牌组包请在「闪卡」模块中导入",
       "guidanceMindmap": "{{names}}：导图文件请在「思维导图」模块中导入"

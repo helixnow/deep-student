@@ -298,7 +298,12 @@
     "suggestion": "Suggestion",
     "copy_suggestion": "Copy suggestion",
     "copied": "Copied",
-    "click_hint": "Click for details"
+    "click_hint": "Click for details",
+    "ask_ai": "Ask AI",
+    "ask_ai_intro": "Please explain this annotation from my essay in detail:",
+    "ask_ai_outro": "Why is this change/point important? Please also give 2 similar example sentences.",
+    "type_label": "Type",
+    "detail_label": "Note"
   },
   "result_ui": {
     "annotation_prev": "Previous annotation",

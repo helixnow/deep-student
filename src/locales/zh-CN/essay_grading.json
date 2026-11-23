@@ -298,7 +298,12 @@
     "suggestion": "建议",
     "copy_suggestion": "复制建议",
     "copied": "已复制",
-    "click_hint": "点击查看详情"
+    "click_hint": "点击查看详情",
+    "ask_ai": "追问 AI",
+    "ask_ai_intro": "请帮我深入讲解我作文里的这处批注：",
+    "ask_ai_outro": "为什么这里需要这样修改/关注？请给出 2 个同类示范例句帮我巩固。",
+    "type_label": "批注类型",
+    "detail_label": "批注说明"
   },
   "result_ui": {
     "annotation_prev": "上一条批注",

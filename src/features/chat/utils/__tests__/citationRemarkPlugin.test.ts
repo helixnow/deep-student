@@ -81,4 +81,17 @@ describe('citationRemarkPlugin qbank citations', () => {
 
     expect(htmlNode?.value).toContain('data-qbank-target-id="qgroup_9"');
   });
+
+  it('recognizes [来源-1] and safe bare numeric [1] citations while ignoring arr[1]', () => {
+    const aliasNodes = runPlugin('根据资料 [来源-2] 可知');
+    const aliasHtml = aliasNodes.find((node: any) => node.type === 'html');
+    expect(aliasHtml?.value).toContain('data-citation-type="rag"');
+    expect(aliasHtml?.value).toContain('data-citation-index="2"');
+
+    const bareNodes = runPlugin('特征值之和等于迹 [1]，而数组元素 arr[1] 不应被转换。');
+    const htmlNodes = bareNodes.filter((node: any) => node.type === 'html');
+    expect(htmlNodes).toHaveLength(1);
+    expect(htmlNodes[0]?.value).toContain('data-citation-index="1"');
+    expect(htmlNodes[0]?.value).toContain('data-citation-bare="true"');
+  });
 });
