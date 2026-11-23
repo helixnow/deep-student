@@ -6,6 +6,7 @@
  * `essayGrading` 发布；未安装时按 Rust `VFS 数据库未初始化` 的数据库错误失败。
  */
 import type { Context } from '@deepseek-ai/cordis';
+import { emitStudyEvent } from '../../plugin-services/api.ts';
 import type * as Wire from '../../../../contracts/ipc/generated/L15-review-analytics.ts';
 import { gradingScoreToWire, type EssayGradingService } from '../../llm/api.ts';
 import { f32Atom, type JsonNumberAtom } from '../../../platform/serde-compat/index.ts';
@@ -51,8 +52,51 @@ interface RoundArgs { sessionId: string; roundNumber: number }
 interface ListSessionsArgs { offset?: number | null; limit?: number | null; query?: string | null }
 
 export function registerEssayGradingCommands(ctx: Context): void {
-  ctx.commands.register<{ request: Wire.GradingRequest }>('essay_grading_stream', async ({ request }, call) =>
-    gradingScoreToWire(await essayGradingService(ctx).stream(request, streamEmitter(ctx), call.signal)));
+  ctx.commands.register<{ request: Wire.GradingRequest }>('essay_grading_stream', async ({ request }, call) => {
+    const result = gradingScoreToWire(await essayGradingService(ctx).stream(request, streamEmitter(ctx), call.signal));
+    if (result) {
+      let dimensions: Array<{ name: string; score: number; maxScore: number; comment?: string }> = [];
+      try {
+        const parsed = result.dimension_scores_json ? JSON.parse(result.dimension_scores_json) as {
+          dimensions?: Array<{ name?: string; score?: number; max_score?: number; comment?: string }>;
+        } : null;
+        if (Array.isArray(parsed?.dimensions)) {
+          dimensions = parsed.dimensions
+            .filter(d => typeof d.name === 'string' && typeof d.score === 'number' && typeof d.max_score === 'number')
+            .map(d => ({ name: d.name!, score: d.score!, maxScore: d.max_score!, comment: d.comment }));
+        }
+      } catch { /* ignore malformed dimension_scores_json */ }
+
+      const examType = request.modeId ?? 'essay';
+      emitStudyEvent(ctx, 'study/essay-graded', {
+        essayId: result.round_id,
+        sessionId: result.session_id,
+        roundNumber: result.round_number,
+        examType,
+        overallScore: result.overall_score ?? null,
+        dimensions,
+        createdAt: result.created_at,
+      });
+
+      const memoryProvider = ctx.get('memoryProvider');
+      if (memoryProvider && dimensions.length > 0) {
+        try {
+          memoryProvider.ingestSignal({
+            kind: 'essay_graded',
+            examType,
+            essayId: result.round_id,
+            rubricDimensions: dimensions.map(d => ({
+              name: d.name,
+              score: d.score,
+              maxScore: d.maxScore,
+              recurringIssue: d.comment ?? null,
+            })),
+          });
+        } catch { /* non-fatal signal forwarding */ }
+      }
+    }
+    return result;
+  });
 
   ctx.commands.register<{
     title: string; essayType: string; gradeLevel: string; customPrompt?: string | null;

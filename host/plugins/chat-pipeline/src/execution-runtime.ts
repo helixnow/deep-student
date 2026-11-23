@@ -7,6 +7,7 @@ import {
   freezeMemoryKernelSnapshotWithConn, getMemoryKernelSnapshotWithConn,
   type SessionState,
 } from '../../chat/api.ts';
+import { emitStudyEvent } from '../../plugin-services/api.ts';
 import type { StreamEventSink as LlmStreamEventSink } from '../../llm/api.ts';
 import { onTaskFinalized, onTurnCommitted } from '../../agent-skills/portable.ts';
 import { ToolRounds } from './tool-round.ts';
@@ -503,6 +504,7 @@ export function composeExecution(input: ExecutionCompositionInput): ExecutionDep
     effects: {
       accumulateGoalUsage: (sessionId, emitter, tokens, elapsed) =>
         accumulateGoalUsage(chatDb, ctx.backendEvents, log, sessionId, emitter, tokens, elapsed),
+      emitAnswerFinished: payload => emitStudyEvent(ctx, 'study/answer-finished', payload),
     },
     sessionMetadata,
     compaction: input.compaction,

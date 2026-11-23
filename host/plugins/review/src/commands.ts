@@ -6,6 +6,7 @@
  * - 写操作成功后 emit `fsrs://changed`，无实际写入时不 emit。
  */
 import type { Context } from '@deepseek-ai/cordis';
+import { emitStudyEvent } from '../../plugin-services/api.ts';
 import { rustTrim } from '../../../platform/util/portable.ts';
 import { CommandError } from '../../../kernel/api.ts';
 import type {
@@ -345,6 +346,12 @@ export function registerFsrsCommands(ctx: Context, trialV7 = false): void {
       [result.logId],
     ));
     await compensateMasteryOutboxAfterRate(ctx, svc, result.logId, tags);
+    emitStudyEvent(ctx, 'study/card-reviewed', {
+      cardStateId: result.cardState.id,
+      cardId: result.cardState.ankiCardId ?? null,
+      rating: args.rating,
+      reviewedAt: new Date().toISOString(),
+    });
     return result;
   });
 

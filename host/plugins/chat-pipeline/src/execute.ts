@@ -78,6 +78,7 @@ export interface PromptSources {
 /** pipeline.rs:414 accumulate_goal_usage and summary.rs session metadata (owner effects after success). */
 export interface TurnEffects {
   accumulateGoalUsage(sessionId: string, emitter: ChatV2Emitter, totalTokens: number, elapsedMs: number): void;
+  emitAnswerFinished?(payload: { sessionId: string; messageId: string; content: string; question: string; durationMs: number }): void;
 }
 /** summary.rs:51/293; installed only when L02 title generation and the L04 metadata writer exist. */
 export interface SessionMetadataRuntime {
@@ -253,6 +254,13 @@ export class PipelineExecution {
     }
     emitter.emitStreamCompleteWithUsage(assistantId, ctx.elapsedMs(), hasTokens(ctx.tokenUsage) ? ctx.tokenUsage : null);
     this.deps.effects.accumulateGoalUsage(sessionId, emitter, ctx.tokenUsage.totalTokens, ctx.elapsedMs());
+    this.deps.effects.emitAnswerFinished?.({
+      sessionId,
+      messageId: assistantId,
+      content: ctx.finalContent,
+      question: ctx.userContent,
+      durationMs: ctx.elapsedMs(),
+    });
     log.info(`[ChatV2::pipeline] Pipeline completed for session=${sessionId}, duration=${ctx.elapsedMs()}ms`);
     const userContent = ctx.userContent, assistantContent = ctx.finalContent;
     const metadata = this.deps.sessionMetadata;

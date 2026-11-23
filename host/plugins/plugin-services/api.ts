@@ -149,6 +149,25 @@ export interface CardsCreatedEvent {
   documentId: string | null;
 }
 
+export interface EssayGradedEvent {
+  essayId: string;
+  sessionId: string;
+  roundNumber: number;
+  examType: string;
+  overallScore: number | null;
+  dimensions: Array<{ name: string; score: number; maxScore: number; comment?: string }>;
+  createdAt: string;
+}
+
+export interface QuestionAnsweredEvent {
+  questionId: string;
+  subject: string | null;
+  tags: string[];
+  correct: boolean;
+  score: number | null;
+  answeredAt: string;
+}
+
 /** 官方插件在动作完成后发出的应用事件（`ctx.on(name, handler)` 订阅，插件卸载时自动退订）。 */
 export interface StudyEvents {
   /** 笔记新建或保存（编辑器保存、AI 改写、插件写入都会触发）。 */
@@ -159,6 +178,10 @@ export interface StudyEvents {
   'study/answer-finished'(event: AnswerFinishedEvent): void;
   /** 新卡片存进卡片库。 */
   'study/cards-created'(event: CardsCreatedEvent): void;
+  /** 作文批改完成并落库。 */
+  'study/essay-graded'(event: EssayGradedEvent): void;
+  /** 题库作答或判分完成。 */
+  'study/question-answered'(event: QuestionAnsweredEvent): void;
 }
 
 export type StudyEventName = keyof StudyEvents;
