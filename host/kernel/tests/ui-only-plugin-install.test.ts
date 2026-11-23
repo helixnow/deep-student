@@ -7,6 +7,7 @@ import { HostRuntime } from '../runtime.ts';
 import { ContractSet } from '../contracts.ts';
 import { PluginAdmin } from '../plugin-admin.ts';
 import {
+  HOST_CALL_COMMAND,
   PLUGIN_MANAGER_CONSENT_COMMAND,
   PLUGIN_MANAGER_INSTALL_COMMAND,
   PLUGIN_MANAGER_LIST_COMMAND,
@@ -60,6 +61,18 @@ describe('RFC-002 P1: UI-only community plugin lifecycle', () => {
     runtime.ctx.provide('paths', {});
     runtime.ctx.provide('storage', {});
     runtime.ctx.provide('log', {});
+    // Install an official provider of `studyData` so we can verify permission-gated brokered domain calls
+    await runtime.install({
+      name: 'dstu.plugin-services',
+      meta: { id: 'dstu.plugin-services', provides: ['studyData'] },
+      apply(ctx) {
+        ctx.provide('studyData', {
+          notes: {
+            list: () => [{ id: 'note_1', title: 'Brokered Note' }],
+          },
+        });
+      },
+    });
 
     const store = new UserProfileStore(join(dataDir, 'plugins/user.profile.json'), officialProfile);
     const files = createNodeFiles({ roots: [{ name: 'appData', path: dataDir }, { name: 'work', path: workDir }] });
@@ -88,6 +101,7 @@ describe('RFC-002 P1: UI-only community plugin lifecycle', () => {
         displayName: 'Demo UI Widget',
         platforms: ['desktop'],
         ui: './dist/ui.js',
+        permissions: ['service:studyData'],
       },
     }));
     zip.file('dist/ui.js', 'export default { meta: { id: "acme.demo-widget", version: "1.0.0" }, apply() {} };\n');
@@ -109,7 +123,7 @@ describe('RFC-002 P1: UI-only community plugin lifecycle', () => {
     const consented = await callManager<{ revision?: string }>(
       runtime,
       PLUGIN_MANAGER_CONSENT_COMMAND,
-      { id: 'acme.demo-widget', version: '1.0.0', permissions: [], revision: installed.revision },
+      { id: 'acme.demo-widget', version: '1.0.0', permissions: ['service:studyData'], revision: installed.revision },
     );
     const revAfterConsent = consented.revision ?? installed.revision;
 
@@ -120,6 +134,24 @@ describe('RFC-002 P1: UI-only community plugin lifecycle', () => {
     );
     expect(enabled.enabled).toBe(true);
     expect(runtime.get('acme.demo-widget')).toBeDefined();
+
+    // 2b. Consented UI-only plugin can call brokered `studyData.notes.list` WITHOUT any Host half!
+    const notes = await callManager<Array<{ id: string; title: string }>>(runtime, HOST_CALL_COMMAND, {
+      caller: 'acme.demo-widget',
+      service: 'studyData',
+      method: 'notes.list',
+      args: [],
+    });
+    expect(notes).toEqual([{ id: 'note_1', title: 'Brokered Note' }]);
+
+    // Unconsented service (`pluginModel`) is still denied!
+    const denied = await runtime.dispatchInvoke({
+      id: 'ui_only_denied',
+      cmd: HOST_CALL_COMMAND,
+      args: { caller: 'acme.demo-widget', service: 'studyData', method: 'notes.__proto__', args: [] },
+      source: { window: 'main', webview: 'main' },
+    });
+    expect(denied.kind).toBe('err');
 
     // 3. Disable & uninstall cleanly
     const disabled = await callManager<{ enabled: boolean; revision: string }>(

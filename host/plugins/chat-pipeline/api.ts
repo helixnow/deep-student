@@ -614,10 +614,20 @@ export const chatToolRuntimeService = { name: 'chatToolRuntime', version: '1.0.0
 
 /** @stable chat.pipeline service descriptor (ARCHITECTURE.md appendix A). */
 export const chatPipelineService = { name: 'chatPipeline', version: '1.0.0' } as const;
+export const chatPipelineHooksService = { name: 'chatPipelineHooks', version: '1.0.0' } as const;
+export type {
+  ChatPipelineHookContribution,
+  ChatPipelineHooksService,
+  PipelineHookAfterReplyInput,
+  PipelineHookPromptInput,
+  RegisteredPipelineHookInfo,
+} from './src/pipeline-hooks.ts';
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
     chatPipeline: ChatPipelineService;
+    /** Native Cordis chat lifecycle hook registry (RFC-002 P2). */
+    chatPipelineHooks: import('./src/pipeline-hooks.ts').ChatPipelineHooksService;
     chatToolRuntime: import('./src/tool-round.ts').ChatToolRuntime;
     /** Super inbox send entry (send_message.rs `run_send_message_pipeline_owned`). */
     'chat.send@1': import('../agent-orchestration/api.ts').SendMessagePipeline;

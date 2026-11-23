@@ -69,6 +69,8 @@ export interface PromptSources {
   learnerProfile(ctx: PipelineContext): string | null;
   /** RFC-001 M1: session-frozen `<memory_kernel>` + optional mid-session `<memory_delta>`. */
   memoryKernel?(ctx: PipelineContext): Promise<{ kernel: string | null; delta: string | null; handled: boolean }>;
+  /** RFC-002 P2: fault-isolated `chatPipelineHooks.runAugmentSystemPrompt`. */
+  pluginExtensions?(ctx: PipelineContext): Promise<string | null>;
   agentsInstructions(ctx: PipelineContext): string | null;
   activeGoal(sessionId: string): string | null;
   insightHints(ctx: PipelineContext): string | null;
@@ -319,13 +321,14 @@ export class PipelineExecution {
     // `<user_profile>` + `<learner_profile>` duplication inside `turnVolatile` (eliminating N× bloat).
     const userProfile = kernelResult.handled ? null : await sources.userProfile(ctx);
     const learnerProfile = kernelResult.handled ? null : sources.learnerProfile(ctx);
+    const pluginExtensions = sources.pluginExtensions ? await sources.pluginExtensions(ctx) : null;
     const agents = sources.agentsInstructions(ctx);
     const activeGoal = sources.activeGoal(ctx.sessionId);
     const insightHints = sources.insightHints(ctx);
     const rendererCapabilities = sources.rendererCapabilities();
     const parts = buildSystemPromptWithProfileAndAgents({ options: ctx.options, sources: ctx.retrievedSources,
       canvasNote, userProfile, learnerProfile, memoryKernel: kernelResult.kernel, memoryDelta: kernelResult.delta,
-      projectAgentsInstructions: agents, activeGoal, insightHints, rendererCapabilities });
+      pluginExtensions, projectAgentsInstructions: agents, activeGoal, insightHints, rendererCapabilities });
     ctx.turnVolatileContext = parts.turnVolatile;
     return parts.stableSystem;
   }

@@ -488,5 +488,8 @@ declare module '@deepseek-ai/cordis' {
     llmQuestionAuthoring: LlmQuestionAuthoring;
     llmMcpTools: import('./src/mcp_tools_service.ts').LlmMcpTools;
     essayGrading: import('./src/essay_grading/api.ts').EssayGradingService;
+    /** Native Cordis essay grading rubric provider registry (RFC-002 P2). */
+    gradingRubrics: import('./src/essay_grading/rubric-registry.ts').GradingRubricRegistryService;
   }
 }
+export type { GradingRubricRegistryService } from './src/essay_grading/rubric-registry.ts';

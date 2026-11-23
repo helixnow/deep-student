@@ -3,6 +3,7 @@ import type * as Wire from '../../../../../contracts/ipc/generated/L15-review-an
 import { AppError, CommandError } from '../../../../platform/errors/api.ts';
 import type { VfsEssay } from '../../../vfs-repos/api.ts';
 import type { EssayGradingService } from './api.ts';
+import type { GradingRubricRegistryService } from './rubric-registry.ts';
 import { CustomModeManager, modeToWire } from './custom_modes.ts';
 import { canonicalModeId, getBuiltinGradingModes } from './types.ts';
 import { errorText, vfsOperation } from './errors.ts';
@@ -23,7 +24,11 @@ const dimensions = (items: Wire.ScoreDimension__De[]) => items.map(item => ({
   name: item.name, maxScore: item.max_score, description: item.description ?? null,
 }));
 
-export function createEssayGradingService(runtime: GradingRuntime, modes: CustomModeManager): EssayGradingService {
+export function createEssayGradingService(
+  runtime: GradingRuntime,
+  modes: CustomModeManager,
+  rubrics?: GradingRubricRegistryService,
+): EssayGradingService {
   const repo = runtime.repository;
   const round = (essay: VfsEssay): Wire.GradingRoundResponse => {
     const input = vfsOperation(`获取作文内容失败 (essay_id=${essay.id})`,
@@ -83,12 +88,22 @@ export function createEssayGradingService(runtime: GradingRuntime, modes: Custom
     },
     async getModes() {
       const builtin = getBuiltinGradingModes(), custom = await modes.listModes();
-      return [...builtin.map(mode => ({ ...(custom.find(value => value.id === mode.id) ?? mode), isBuiltin: true })),
-        ...custom.filter(mode => !builtin.some(value => value.id === mode.id))].map(modeToWire);
+      const pluginModes = rubrics?.list() ?? [];
+      const seen = new Set<string>();
+      const ordered = [
+        ...builtin.map(mode => ({ ...(custom.find(value => value.id === mode.id) ?? mode), isBuiltin: true })),
+        ...custom.filter(mode => !builtin.some(value => value.id === mode.id)),
+        ...pluginModes,
+      ].filter(mode => {
+        if (seen.has(mode.id)) return false;
+        seen.add(mode.id);
+        return true;
+      });
+      return ordered.map(modeToWire);
     },
     async getMode(id) {
       const canonical = canonicalModeId(id), builtin = getBuiltinGradingModes().find(mode => mode.id === canonical);
-      const mode = await modes.getMode(canonical) ?? builtin;
+      const mode = await modes.getMode(canonical) ?? rubrics?.get(canonical) ?? builtin;
       return mode === undefined ? null : modeToWire({ ...mode, isBuiltin: builtin !== undefined || mode.isBuiltin });
     },
     async createCustomMode(input) {
