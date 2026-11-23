@@ -9,6 +9,7 @@
 import { definePlugin } from '../../../kernel/api.ts';
 import type { CallContext } from '../../../kernel/api.ts';
 import type { Context } from '@deepseek-ai/cordis';
+import { emitStudyEvent } from '../../plugin-services/api.ts';
 import type { HostPlugin, PluginPlatform } from '../../../kernel/core.ts';
 import { registerDeletionJournal, type SqlExecutor } from '../../../platform/storage/api.ts';
 import type {} from '../../../platform/storage/api.ts';
@@ -309,22 +310,35 @@ export function createNotesPlugin(options: NotesPluginOptions = {}): HostPlugin 
       });
 
     ctx.commands.register<Commands['notes_create']['args'], Commands['notes_create']['result']>(
-      'notes_create', ({ note: payload }) => createNote(vfs(), payload));
+      'notes_create', ({ note: payload }) => {
+        const created = createNote(vfs(), payload);
+        emitStudyEvent(ctx, 'study/note-saved', {
+          noteId: created.id,
+          title: created.title,
+          created: true,
+          updatedAt: created.updated_at,
+        });
+        return created;
+      });
 
     ctx.commands.register<Commands['notes_get']['args'], Commands['notes_get']['result']>(
       'notes_get', ({ id }) => getNote(vfs(), id));
 
     ctx.commands.register<Commands['notes_update']['args'], Commands['notes_update']['result']>(
       'notes_update', ({ note: payload, lease }, call) => {
-        if (payload.capabilities != null || lease != null) {
-          return noteStorage(() => writeStorage(call, lease,
-            (conn) => updateNoteWithCapabilities(conn, payload)));
-        }
-        try {
-          return updateNote(vfs(), payload);
-        } catch (error) {
-          throw noteUpdateStorage(() => { throw error; });
-        }
+        const updated = (payload.capabilities != null || lease != null)
+          ? noteStorage(() => writeStorage(call, lease, (conn) => updateNoteWithCapabilities(conn, payload)))
+          : (() => {
+            try { return updateNote(vfs(), payload); }
+            catch (error) { throw noteUpdateStorage(() => { throw error; }); }
+          })();
+        emitStudyEvent(ctx, 'study/note-saved', {
+          noteId: updated.id,
+          title: updated.title,
+          created: false,
+          updatedAt: updated.updated_at,
+        });
+        return updated;
       });
 
     ctx.commands.register<Commands['notes_set_favorite']['args'], Commands['notes_set_favorite']['result']>(

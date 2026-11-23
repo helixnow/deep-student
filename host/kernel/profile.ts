@@ -239,7 +239,7 @@ async function findPackageJson(dir: string): Promise<string | null> {
  * （manifestVersion → engines → schema → id 来源 → 平台），再核对 Host 半入口就是该模块。
  * 返回清单与包根目录（package.json 所在目录）；官方条目返回 null；不通过抛 {@link PluginLoadError}。
  */
-export async function screenProfileEntry(entry: ResolvedEntry, appVersion: string, platform?: PluginPlatform): Promise<{ manifest: PluginManifest; packageRoot: string } | null> {
+export async function screenProfileEntry(entry: ResolvedEntry, appVersion: string, platform?: PluginPlatform): Promise<{ manifest: PluginManifest; packageRoot: string; uiOnly?: boolean } | null> {
   let file: string | null;
   try {
     file = moduleFileOf(entry.specifier);
@@ -259,10 +259,15 @@ export async function screenProfileEntry(entry: ResolvedEntry, appVersion: strin
   const result = checkManifest(pkg, { appVersion, context: 'community-startup', expectedId: entry.id, ...(platform ? { platform } : {}) }, entry.id);
   if (!result.ok) throw result.error;
   const { manifest } = result;
-  if (manifest.host === undefined) throw new PluginLoadError('HOST_ENTRY_MISMATCH', entry.id, `${packageJson} declares no "host" entry; a profile can only load a plugin's Host half`);
+  if (manifest.host === undefined) {
+    if (manifest.ui !== undefined && file === packageJson) {
+      return { manifest, packageRoot: dirname(packageJson), uiOnly: true };
+    }
+    throw new PluginLoadError('HOST_ENTRY_MISMATCH', entry.id, `${packageJson} declares no "host" entry; a profile can only load a plugin's Host half`);
+  }
   const hostFile = resolve(dirname(packageJson), manifest.host);
   if (hostFile !== file) throw new PluginLoadError('HOST_ENTRY_MISMATCH', entry.id, `profile module ${file} is not the package's host entry ${hostFile}`);
-  return { manifest, packageRoot: dirname(packageJson) };
+  return { manifest, packageRoot: dirname(packageJson), uiOnly: false };
 }
 
 
@@ -279,7 +284,7 @@ export async function prepareProfile(runtime: HostRuntime, entries: readonly Res
   const appVersion = runtime.app.version;
   const { platform } = options;
   const rejected: RejectedEntry[] = [];
-  const manifests = new Map<string, { manifest: PluginManifest; packageRoot: string }>();
+  const manifests = new Map<string, { manifest: PluginManifest; packageRoot: string; uiOnly?: boolean }>();
   const accepted: ResolvedEntry[] = [];
   for (const entry of applyConfigOverrides(entries, options.configOverrides)) {
     try {
@@ -310,7 +315,20 @@ export async function prepareProfile(runtime: HostRuntime, entries: readonly Res
   runtime.startup.mark('manifests checked');
   const imported: Array<{ entry: ResolvedEntry; install: PluginInstall }> = [];
   for (const entry of accepted) {
-    const community = manifests.has(entry.id);
+    const screened = manifests.get(entry.id);
+    const community = screened !== undefined;
+    if (screened?.uiOnly) {
+      const uiOnlyPlugin: HostPlugin = {
+        meta: {
+          id: screened.manifest.id,
+          version: screened.manifest.version,
+          platforms: [...screened.manifest.platforms],
+        },
+        apply() {},
+      };
+      imported.push({ entry, install: { plugin: uiOnlyPlugin, config: entry.config, source: entry.specifier } });
+      continue;
+    }
     try {
       imported.push({ entry, install: await importProfileEntry(entry, runtime.startup, community) });
     } catch (error) {

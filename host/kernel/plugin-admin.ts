@@ -857,7 +857,9 @@ export class PluginAdmin {
       if (managed && (record.id !== managed.id || record.version !== managed.version || !samePermissions(manifest.permissions, managed.permissions))) {
         throw new Error('CONSENT_STALE: archived managed candidate changed');
       }
-      if (!manifest.host) throw new Error('PLUGIN_HOST_REQUIRED: UI-only packages are not supported by this Host manager yet');
+      if (!manifest.host && !manifest.ui) {
+        throw new Error('MANIFEST_INVALID: package must declare a host or ui entry');
+      }
       stopped = this.runtime.get(record.id);
       if (stopped) await this.unloadOrConflict(record.id);
       await this.packages.setEnabled(record.id, false);
@@ -874,9 +876,10 @@ export class PluginAdmin {
         else await this.consent.restore(record.id, undefined);
       }
       consentChanged = managed !== undefined || previousConsent !== undefined;
+      const entryFile = manifest.host ?? 'package.json';
       const written = await this.store.mutate(revision, (file) => {
         const existing = file.plugins.find((entry) => entry.id === record.id);
-        writeEntry(file, { id: record.id, module: pathToFileURL(join(this.runtime.app.dataDir, 'plugins', record.path, manifest.host!)).href,
+        writeEntry(file, { id: record.id, module: pathToFileURL(join(this.runtime.app.dataDir, 'plugins', record.path, entryFile)).href,
           ...(existing?.config !== undefined ? { config: existing.config } : {}), disabled: true });
       });
       if (managed && result.previous) {
