@@ -116,6 +116,9 @@ export class MemoryToolExecutor implements ToolExecutor {
       memory_export_all: (args, service) => curation.exportAll(args, service),
       learner_profile_get: (_args, service) => curation.learnerProfileGet(service),
       learner_profile_update: (args, service, ctx) => curation.learnerProfileUpdate(args, service, ctx),
+      memory_rule_list: (_args, service) => curation.memoryRuleList(service),
+      memory_rule_upsert: (args, service, ctx) => curation.memoryRuleUpsert(args, service, ctx, env),
+      memory_rule_remove: (args, service, ctx) => curation.memoryRuleRemove(args, service, ctx, env),
     };
   }
 

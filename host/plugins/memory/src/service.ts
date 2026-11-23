@@ -19,6 +19,7 @@ import {
   type LearnerProfileApplyOutcome, type MasteryWeakPointEvidence, type ProfileUpdateOptions,
 } from './profile-store.ts';
 export type { LearnerProfileApplyOutcome, ProfileUpdateOptions } from './profile-store.ts';
+import type { HardRuleUpsertInput, HardRulesDocument, MemoryHardRule } from './hard-rules.ts';
 import { InsightJobWorker } from './insight-worker.ts';
 import { queryAuditLogs, insertAuditLog, type AuditEntryInput } from '../repository/audit.ts';
 import { createInsightJobQueue } from '../repository/insight-jobs.ts';
@@ -351,6 +352,37 @@ export class MemoryServiceImpl extends Service implements MemoryService {
   removeWeakPointFromMastery(concept: string): void {
     this.profiles.removeWeakPointFromMastery(concept);
   }
+
+  // ---------------------------------------------------------------- L1 hard rules & kernel budgets
+
+  loadHardRules(): HardRulesDocument { return this.profiles.loadHardRules(); }
+
+  upsertHardRule(
+    input: HardRuleUpsertInput,
+    options: Pick<ProfileUpdateOptions, 'source' | 'sessionId' | 'reason' | 'limitPolicy'>,
+  ): { doc: HardRulesDocument; rule: MemoryHardRule; changed: boolean } {
+    return this.profiles.upsertHardRule(input, options);
+  }
+
+  removeHardRule(
+    idOrInstruction: string,
+    options: Pick<ProfileUpdateOptions, 'source' | 'sessionId' | 'reason'>,
+  ): { doc: HardRulesDocument; removed: MemoryHardRule | null } {
+    return this.profiles.removeHardRule(idOrInstruction, options);
+  }
+
+  rollbackProfileToVersion(
+    targetVersion: number,
+    options: Pick<ProfileUpdateOptions, 'source' | 'sessionId' | 'reason'>,
+  ): LearnerProfileApplyOutcome {
+    return this.profiles.rollbackProfileToVersion(targetVersion, options);
+  }
+
+  getHardRulesMaxChars(): number { return this.profiles.getHardRulesMaxChars(); }
+
+  getLearnerProfileKernelMaxChars(): number { return this.profiles.getLearnerProfileKernelMaxChars(); }
+
+  setConfigValue(key: string, value: string): void { this.config.set(key, value); }
 
   // ---------------------------------------------------------------- read/write
 

@@ -42,9 +42,12 @@ export const deepScholarSkill: SkillDefinition = {
     'builtin-memory_remove_relation',
     'builtin-memory_update_tags',
     'builtin-memory_export_all',
-    // learner-profile
+    // learner-profile & L1 hard rules
     'builtin-learner_profile_get',
     'builtin-learner_profile_update',
+    'builtin-memory_rule_list',
+    'builtin-memory_rule_upsert',
+    'builtin-memory_rule_remove',
     // ask-user
     'builtin-ask_user',
     // learning-resource (auto-loaded)

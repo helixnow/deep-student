@@ -12,7 +12,7 @@ export const MAX_WEAK_POINTS = 20;
 export const MAX_GOALS = 10;
 export const MAX_OTHER_PREFERENCES = 10;
 export const MAX_RECENT_STATUS_CHARS = 500;
-export const PROFILE_HISTORY_KEEP = 5;
+export const PROFILE_HISTORY_KEEP = 10;
 const PROMOTION_FINGERPRINT_JSON_KEY = '_promotion_fingerprint';
 
 export interface WeakPoint {

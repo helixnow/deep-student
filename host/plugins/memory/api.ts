@@ -77,8 +77,22 @@ export { mergeProfileJsonForSync } from './src/learner-profile.ts';
 
 /** Version descriptors required by docs/plugins/ARCHITECTURE.md. */
 export const memoryService = { name: 'memory', version: '1.0.0' } as const;
+export const memoryProviderService = { name: 'memoryProvider', version: '2.0.0' } as const;
 export const insightService = { name: 'insight', version: '1.0.0' } as const;
 export const masteryProfileSinkService = { name: 'masteryProfileSink', version: '1.0.0' } as const;
+
+export type {
+  HardRuleOrigin, HardRuleUpsertInput, HardRulesDocument, MemoryHardRule,
+} from './src/hard-rules.ts';
+export {
+  HARD_RULES_DEFAULT_MAX_CHARS, HARD_RULES_NOTE_TITLE,
+  LEARNER_PROFILE_KERNEL_DEFAULT_MAX_CHARS,
+} from './src/hard-rules.ts';
+export type {
+  LearningSignal, MemoryBudgetSnapshot, MemoryInspectionView, MemoryProvider,
+  MemorySessionSnapshot, SessionSnapshotRequest, UserMemoryMutation,
+} from './src/memory-provider.ts';
+export { LOCAL_MEMORY_PROVIDER_ID } from './src/memory-provider.ts';
 
 /** Mastery evidence shape shared with L15 (`review/api.ts`). */
 export interface MasteryProfileSinkEvidence {
@@ -338,6 +352,8 @@ export interface InsightHintsService {
 declare module '@deepseek-ai/cordis' {
   interface Context {
     memory: MemoryService;
+    /** Pluggable MemoryProvider (RFC-001 / RFC-002 Tier 3 `provider:memory`). Default: `dstu.memory.local`. */
+    memoryProvider: import('./src/memory-provider.ts').MemoryProvider;
     insight: InsightCommandService;
     masteryProfileSink: MasteryProfileSinkService;
     /** L13 retrieval-executor dependency; served by this plugin. */

@@ -29,6 +29,7 @@ import type { InsightHintsService } from './api.ts';
 import {
   MemoryServiceImpl, ctxGet, parseMemoryPurpose, parseMemoryType, type WriteMode,
 } from './src/service.ts';
+import { LocalMemoryProvider } from './src/memory-provider.ts';
 
 function commandFailure(error: unknown): never {
   if (error instanceof CommandError) throw error;
@@ -87,8 +88,11 @@ export interface MemoryPluginConfig {
 export default definePlugin<MemoryPluginConfig | undefined>({
   meta: {
     id: 'dstu.memory', lane: 'L17-memory-research',
-    provides: ['memory', 'insight', 'masteryProfileSink', 'memoryRetrieval', 'hpiasResearch', 'memoryConfig',
+    provides: ['memory', 'memoryProvider', 'insight', 'masteryProfileSink', 'memoryRetrieval', 'hpiasResearch', 'memoryConfig',
       'memoryToolMetadata', 'insightHints'],
+    remote: {
+      memoryProvider: ['inspect', 'mutateFromUser'],
+    },
     commands: [...MEMORY_COMMANDS],
     platforms: ['desktop', 'mobile'],
   },
@@ -97,6 +101,36 @@ export default definePlugin<MemoryPluginConfig | undefined>({
   inject: ['storage', 'settings', 'notes', 'vfsRepo', 'log'],
   apply(ctx, config) {
     const service = new MemoryServiceImpl(ctx);
+    const memoryLog = ctx.log.logger('dstu_memory::memory');
+    const rawMemoryProvider = new LocalMemoryProvider({
+      isPrivacyMode: () => service.isPrivacyMode(),
+      getRootFolderId: () => service.getRootFolderId(),
+      loadHardRules: () => service.loadHardRules(),
+      upsertHardRule: (input, options) => service.upsertHardRule(input, options),
+      removeHardRule: (target, options) => service.removeHardRule(target, options),
+      getHardRulesMaxChars: () => service.getHardRulesMaxChars(),
+      getLearnerProfileKernelMaxChars: () => service.getLearnerProfileKernelMaxChars(),
+      setConfigValue: (key, value) => service.setConfigValue(key, value),
+      loadProfile: () => service.loadProfile(),
+      loadProfileHistory: () => service.loadProfileHistory(),
+      applyProfileUpdate: (update, options) => service.applyProfileUpdate(update, options),
+      rollbackProfileToVersion: (version, options) => service.rollbackProfileToVersion(version, options),
+      list: folderPath => service.list(folderPath ?? null, 100, 0),
+      read: noteId => service.read(noteId),
+      getTags: noteId => service.getTags(noteId),
+      listCategorySummariesWithMembers: () => service.listCategorySummariesWithMembers(),
+      getProfileSummary: () => service.getProfileSummary(),
+      recordInjectionPresence: noteIds => service.recordInjectionPresence(noteIds),
+      warn: message => memoryLog.warn(message),
+    });
+    const memoryProvider: typeof rawMemoryProvider = Object.assign(rawMemoryProvider, {
+      mutateFromUser: (mutation: Parameters<typeof rawMemoryProvider.mutateFromUser>[0]) => {
+        const view = LocalMemoryProvider.prototype.mutateFromUser.call(rawMemoryProvider, mutation);
+        ctx.backendEvents.emit('memory://changed', { source: 'user', action: mutation.kind, entityIds: [] });
+        return view;
+      },
+    });
+    ctx.provide('memoryProvider', memoryProvider);
     const toolMetadata = createMemoryToolMetadata();
     ctx.provide('memoryToolMetadata', toolMetadata);
     const hintLog = ctx.log.logger('dstu_agent::chat_v2::pipeline');

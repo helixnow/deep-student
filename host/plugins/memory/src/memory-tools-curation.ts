@@ -13,6 +13,9 @@ import {
   LEARNER_PROFILE_MAX_CHARS, isProfileUpdateEmpty, learnerProfilePublicValue, renderLearnerProfile,
   renderedCharCount, type LearnerProfileUpdate, type WeakPoint,
 } from './learner-profile.ts';
+import {
+  renderHardRules, renderedHardRulesCharCount, type HardRuleOrigin,
+} from './hard-rules.ts';
 import { exportPage, exportPagination, parseBatchMoveArgs, parseTags, truncateExportContent } from './memory-executor.ts';
 import { CONTENT_LIMITS } from './memory-utils.ts';
 import { cryptoOf } from './crypto.ts';
@@ -524,4 +527,104 @@ export async function learnerProfileUpdate(args: Args, service: MemoryServiceImp
   return { success: true, changed: outcome.changed, version: outcome.profile.version,
     rendered_chars: renderedCharCount(outcome.profile),
     reason: outcome.changed ? '画像已更新' : '更新与当前画像一致，无变更' };
+}
+
+const HARD_RULES_LIMIT_PREFIX = "Invalid argument 'hard_rules': ";
+
+/** Lists all L1 HardRules and current budget occupancy. */
+export async function memoryRuleList(service: MemoryServiceImpl): Promise<unknown> {
+  const doc = service.loadHardRules();
+  const maxChars = service.getHardRulesMaxChars();
+  return {
+    version: doc.version,
+    updated_at: doc.updated_at,
+    rules: doc.rules,
+    rendered_chars: renderedHardRulesCharCount(doc),
+    max_chars: maxChars,
+    rendered_markdown: renderHardRules(doc.rules),
+  };
+}
+
+/** Upserts an L1 HardRule with Hermes-style hard-limit rejection forcing in-turn condensation. */
+export async function memoryRuleUpsert(
+  args: Args,
+  service: MemoryServiceImpl,
+  ctx: ExecutionContext,
+  env: CurationEnv,
+): Promise<unknown> {
+  const instruction = requiredString(args, 'instruction');
+  if (containsSensitivePattern(instruction)) {
+    return { success: false, error: '规则包含敏感信息（手机号/身份证/银行卡/邮箱/密码），已拦截。' };
+  }
+  const id = asStr(args['id'])?.trim() || null;
+  const scope = asStr(args['scope'])?.trim() || 'global';
+  const pinned = typeof args['pinned'] === 'boolean' ? args['pinned'] : undefined;
+  const originRaw = asStr(args['origin']);
+  const origin: HardRuleOrigin = originRaw === 'user_explicit' || originRaw === 'chat_correction' || originRaw === 'dialectic_promoted'
+    ? originRaw : 'chat_correction';
+
+  try {
+    const outcome = service.upsertHardRule(
+      { id, instruction, scope, origin, pinned },
+      {
+        source: 'tool_call',
+        sessionId: ctx.session_id,
+        reason: 'memory_rule_upsert 工具写入 L1 互动硬规则',
+        limitPolicy: 'reject',
+      },
+    );
+    if (outcome.changed) {
+      env.emit(MEMORY_CHANGED_EVENT, { source: 'agent', action: 'hard_rule_upsert', entityIds: [outcome.rule.id] });
+    }
+    return {
+      success: true,
+      changed: outcome.changed,
+      rule: outcome.rule,
+      version: outcome.doc.version,
+      rendered_chars: renderedHardRulesCharCount(outcome.doc),
+      max_chars: service.getHardRulesMaxChars(),
+    };
+  } catch (error) {
+    const message = errorText(error);
+    if (!message.startsWith(HARD_RULES_LIMIT_PREFIX)) throw error;
+    const doc = service.loadHardRules();
+    const maxChars = service.getHardRulesMaxChars();
+    const rendered = renderHardRules(doc.rules);
+    return {
+      success: false,
+      error: `${message.slice(HARD_RULES_LIMIT_PREFIX.length)} 请先调用 memory_rule_remove 删除过时规则，或合并语义重复规则后再重试。\n\n当前互动硬规则全文：\n${rendered}`,
+      rendered_chars: renderedHardRulesCharCount(doc),
+      max_chars: maxChars,
+      current_rules: doc.rules,
+    };
+  }
+}
+
+/** Removes an L1 HardRule by id or exact instruction text. */
+export async function memoryRuleRemove(
+  args: Args,
+  service: MemoryServiceImpl,
+  ctx: ExecutionContext,
+  env: CurationEnv,
+): Promise<unknown> {
+  const target = asStr(args['id'])?.trim() || asStr(args['instruction'])?.trim();
+  if (!target) {
+    throw new Error(invalidArgs('id', '缺少要删除的规则 id 或 instruction', 'Missing rule id or instruction to remove.'));
+  }
+  const outcome = service.removeHardRule(target, {
+    source: 'tool_call',
+    sessionId: ctx.session_id,
+    reason: 'memory_rule_remove 工具移除 L1 互动硬规则',
+  });
+  if (outcome.removed !== null) {
+    env.emit(MEMORY_CHANGED_EVENT, { source: 'agent', action: 'hard_rule_remove', entityIds: [outcome.removed.id] });
+  }
+  return {
+    success: true,
+    removed: outcome.removed !== null,
+    removed_rule: outcome.removed,
+    version: outcome.doc.version,
+    rendered_chars: renderedHardRulesCharCount(outcome.doc),
+    max_chars: service.getHardRulesMaxChars(),
+  };
 }

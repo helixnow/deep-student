@@ -200,6 +200,30 @@ describe('execution-runtime against the official desktop profile', () => {
     expect(events.map(event => event.event_type)).toContain('shown_existence');
   });
 
+  it('memoryKernel freezes HardRules once per session and delivers mid-session edits via delta (RFC-001 M1)', async () => {
+    const created = await host!.invoke('chat_v2_create_session', { title: 'M1 Freeze Test', mode: 'chat' }) as { id: string };
+    host!.ctx.memoryProvider.mutateFromUser({
+      kind: 'upsert_rule',
+      input: { instruction: '每次回答结尾附 1 道变式自测题', scope: 'global', pinned: true },
+    });
+
+    const turn1 = await deps.prompt.memoryKernel!(execution(created.id, '讲讲特征值'));
+    expect(turn1.handled).toBe(true);
+    expect(turn1.kernel).toContain('每次回答结尾附 1 道变式自测题');
+    expect(turn1.delta).toBeNull();
+
+    // Mutate HardRules mid-session: frozen kernel stays byte-identical while delta carries the new rule
+    host!.ctx.memoryProvider.mutateFromUser({
+      kind: 'upsert_rule',
+      input: { instruction: '先给思路提示，不直接给完整解答', scope: 'global', pinned: true },
+    });
+
+    const turn2 = await deps.prompt.memoryKernel!(execution(created.id, '那特征向量怎么求'));
+    expect(turn2.handled).toBe(true);
+    expect(turn2.kernel).toBe(turn1.kernel);
+    expect(turn2.delta).toContain('先给思路提示，不直接给完整解答');
+  });
+
   it('no memory owner capability is reported missing after exercising every memory prompt/effect path', () => {
     expect(warn.mock.calls.map(([message]) => String(message))
       .filter(message => message.includes('owner capability unavailable: memory'))).toEqual([]);

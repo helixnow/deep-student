@@ -96,8 +96,12 @@ export {
   toolScopeFromAllowEntry, scopesFromAllowedTools, DELEGATED_GRANT_SCHEMA_VERSION,
 } from './src/grants.ts';
 export type { DelegatedGrant, GrantDenial, ToolScope, ObjectScope } from './src/grants.ts';
-export type { ToolFacePrefixSnapshot, MicrocompactAnchor } from './src/session-metadata.ts';
-export { markAvailableSkillsSnapshotStale as markAvailableSkillsSnapshotStaleWithConn } from './src/session-metadata.ts';
+export type { ToolFacePrefixSnapshot, MicrocompactAnchor, MemoryKernelFrozenRecord } from './src/session-metadata.ts';
+export {
+  markAvailableSkillsSnapshotStale as markAvailableSkillsSnapshotStaleWithConn,
+  getMemoryKernelSnapshot as getMemoryKernelSnapshotWithConn,
+  freezeMemoryKernelSnapshot as freezeMemoryKernelSnapshotWithConn,
+} from './src/session-metadata.ts';
 export { AGENTS_MD_MAX_CHARS, AgentsMdError, globalAgentsRoot, resolveAgentsMdPath,
   ensureAgentsMdWithinRoot, sanitizeAgentsMdContent, truncateAgentsMdContent,
   readAgentsMdFile, loadAgentsInstructions } from './src/agents-md.ts';

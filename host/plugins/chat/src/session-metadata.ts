@@ -18,6 +18,7 @@ import { resolveSkillState, incrementSkillVersion } from './session-skill-state.
 const AVAILABLE_SKILLS_SNAPSHOT_KEY = 'availableSkillsSnapshot';
 const AVAILABLE_SKILLS_SNAPSHOT_GENERATION_KEY = 'availableSkillsSnapshotGeneration';
 const AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_KEY = 'availableSkillsSnapshotPendingGeneration';
+const MEMORY_KERNEL_SNAPSHOT_KEY = 'memoryKernelSnapshot';
 const TOOL_FACE_PREFIX_GENERATION_KEY = 'toolFacePrefixGeneration';
 const FROZEN_TOOL_SCHEMA_ORDER_KEY = 'frozenToolSchemaOrder';
 const TOOL_SCHEMA_DIGEST_KEY = 'toolSchemaDigest';
@@ -109,6 +110,65 @@ export function markAvailableSkillsSnapshotStale(db: SqlExecutor, sessionId: str
   metadata[AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_KEY] = target;
   updateSession(db, { ...session, metadata });
   return target;
+}
+
+/** Session-frozen `<memory_kernel>` snapshot persisted in `chat_v2_sessions.metadata` (RFC-001 M1). */
+export interface MemoryKernelFrozenRecord {
+  providerId: string;
+  renderedKernel: string;
+  rulesVersion: number;
+  profileVersion: number;
+  includedRuleIds: string[];
+  includedWeakPointKeys: string[];
+  includedLegacyNoteIds: string[];
+  charCount: number;
+  maxChars: number;
+  snapshotAt: string;
+  generation: number;
+}
+
+function parseMemoryKernelSnapshot(raw: unknown): MemoryKernelFrozenRecord | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.providerId !== 'string' || typeof obj.renderedKernel !== 'string') return null;
+  return {
+    providerId: obj.providerId,
+    renderedKernel: obj.renderedKernel,
+    rulesVersion: asU64(obj.rulesVersion) ?? 0,
+    profileVersion: asU64(obj.profileVersion) ?? 0,
+    includedRuleIds: Array.isArray(obj.includedRuleIds)
+      ? obj.includedRuleIds.filter((x): x is string => typeof x === 'string') : [],
+    includedWeakPointKeys: Array.isArray(obj.includedWeakPointKeys)
+      ? obj.includedWeakPointKeys.filter((x): x is string => typeof x === 'string') : [],
+    includedLegacyNoteIds: Array.isArray(obj.includedLegacyNoteIds)
+      ? obj.includedLegacyNoteIds.filter((x): x is string => typeof x === 'string') : [],
+    charCount: asU64(obj.charCount) ?? 0,
+    maxChars: asU64(obj.maxChars) ?? 0,
+    snapshotAt: typeof obj.snapshotAt === 'string' ? obj.snapshotAt : '',
+    generation: asU64(obj.generation) ?? 1,
+  };
+}
+
+export function getMemoryKernelSnapshot(db: SqlExecutor, sessionId: string): MemoryKernelFrozenRecord | null {
+  const session = getSession(db, sessionId);
+  if (!session) return null;
+  return parseMemoryKernelSnapshot(metadataOf(session)[MEMORY_KERNEL_SNAPSHOT_KEY]);
+}
+
+/** First-write-wins session freeze: preserves byte-identical `stableSystem` across all turns of a session. */
+export function freezeMemoryKernelSnapshot(
+  db: SqlExecutor,
+  sessionId: string,
+  snapshot: MemoryKernelFrozenRecord,
+): MemoryKernelFrozenRecord {
+  const session = getSession(db, sessionId);
+  if (!session) return snapshot;
+  const metadata = metadataOf(session);
+  const existing = parseMemoryKernelSnapshot(metadata[MEMORY_KERNEL_SNAPSHOT_KEY]);
+  if (existing !== null) return existing;
+  metadata[MEMORY_KERNEL_SNAPSHOT_KEY] = snapshot;
+  updateSession(db, { ...session, metadata });
+  return snapshot;
 }
 
 export interface ToolFacePrefixSnapshot {

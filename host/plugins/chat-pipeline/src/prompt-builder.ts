@@ -373,6 +373,8 @@ export class PromptBuilder {
   private contextTypeHints: string[] = [];
   private userProfile: string | null = null;
   private learnerProfile: string | null = null;
+  private memoryKernel: string | null = null;
+  private memoryDelta: string | null = null;
   private projectAgentsInstructions: string | null = null;
   private activeTodos: string | null = null;
   private activeGoal: string | null = null;
@@ -460,6 +462,18 @@ export class PromptBuilder {
     return this;
   }
 
+  /** Session-frozen `<memory_kernel>` placed once inside `stableSystem` (RFC-001 M1). */
+  withMemoryKernel(kernel: string | null): this {
+    this.memoryKernel = kernel !== null && rustTrim(kernel) !== '' ? kernel : null;
+    return this;
+  }
+
+  /** Compact mid-session `<memory_delta>` injected in `turnVolatile` only when rules/profile changed mid-session. */
+  withMemoryDelta(delta: string | null): this {
+    this.memoryDelta = delta !== null && rustTrim(delta) !== '' ? delta : null;
+    return this;
+  }
+
   withWebSearchSources(sources?: readonly SourceInfo[] | null): this {
     if (sources !== undefined && sources !== null && sources.length > 0) {
       const block = formatWebSearchAsXml(sources, MAX_WEB_ITEMS, MAX_WEB_TOTAL_CHARS);
@@ -521,6 +535,10 @@ export class PromptBuilder {
     }
     if (this.superAgentRouter !== null) parts.push(this.superAgentRouter);
     parts.push(CITATION_GUIDE);
+    if (this.memoryKernel !== null) {
+      parts.push('<memory_kernel>\n以下是本会话冻结的学习者常驻内核（包含硬性互动规则与核心长期画像）。其中的互动硬性规则必须从第 1 轮起 100% 严格遵循，无需额外检索确认；若用户提出新规则可用 memory_rule_upsert 工具更新，若画像有重大变化可用 learner_profile_update 工具增量更新：\n'
+        + `${escapeXmlContent(this.memoryKernel)}\n</memory_kernel>`);
+    }
     return parts.join('\n\n');
   }
 
@@ -548,6 +566,11 @@ ${hintsContent}
     if (this.learnerProfile !== null) {
       parts.push('<learner_profile>\n以下是该学习者的长期画像（薄弱知识点/学习偏好/学习目标/近期状态）。请据此调整讲解方式与难度，主动关照薄弱环节；画像可用 learner_profile_update 工具增量更新：\n'
         + `${escapeXmlContent(this.learnerProfile)}\n</learner_profile>`);
+    }
+
+    if (this.memoryDelta !== null) {
+      parts.push('<memory_delta>\n本会话进行中新增或变更的记忆规则与状态（立即生效，优先级高于旧规则）：\n'
+        + `${escapeXmlContent(this.memoryDelta)}\n</memory_delta>`);
     }
 
     if (this.activeTodos !== null) {
@@ -638,6 +661,10 @@ export interface ProfilePromptInput {
   userProfile: string | null;
   /** Loaded by the caller (L17 memory service owns profile persistence). */
   learnerProfile?: string | null;
+  /** Session-frozen `<memory_kernel>` injected once in `stableSystem` (RFC-001 M1). */
+  memoryKernel?: string | null;
+  /** Compact mid-session `<memory_delta>` injected in `turnVolatile` only on mid-session edits. */
+  memoryDelta?: string | null;
   projectAgentsInstructions?: string | null;
   activeGoal?: string | null;
   insightHints?: string | null;
@@ -654,6 +681,8 @@ export function buildSystemPromptWithProfileAndAgents(input: ProfilePromptInput)
     .withCanvasNote(input.canvasNote)
     .withUserProfile(input.userProfile)
     .withLearnerProfile(input.learnerProfile ?? null)
+    .withMemoryKernel(input.memoryKernel ?? null)
+    .withMemoryDelta(input.memoryDelta ?? null)
     .withProjectAgentsInstructions(input.projectAgentsInstructions ?? null)
     .withActiveGoal(input.activeGoal ?? null)
     .withInsightHints(input.insightHints ?? null)
