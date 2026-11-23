@@ -168,8 +168,40 @@ export function markerOriginalText(marker: StreamingMarker): string {
   }
 }
 
+const ERR_VAGUE_CANDIDATE_RE = /^(?:如|例如|比如|或|或者|之类|等|更|合理|正确|适当|合适|复数|单数|过去式|现在时)/;
+
 /**
- * 由 marker 流构造可采纳的修改（replace / del），并附带：
+ * 从 `<err explanation="...">` 的自然语言解释中保守提取明确替换片段（如「应改为 has」「改为「读书」」「should be "has"」）。
+ * 仅在提取结果明确、短小、与原文不同且不含泛化提示词时返回，避免误替。
+ */
+export function extractErrSuggestedReplacement(
+  original: string,
+  explanation?: string,
+): string | undefined {
+  if (!original || !explanation) return undefined;
+
+  const patterns: RegExp[] = [
+    /(?:应改为|应改作|应为|建议改为|可改为|改为|改成|替换为|修改为|写为|拼写为|写作)\s*[「『"'`]([^「『"'`\n]{1,80}?)[」』"'`]/,
+    /(?:should be|change(?:d)? to|replace(?:d)? with|correct(?:ed)? to|use)\s+["'`]([^"'`\n]{1,80}?)["'`]/i,
+    /(?:应改为|应改作|建议改为|可改为|改为|改成|替换为|修改为|拼写为)\s*([A-Za-z][A-Za-z0-9'\- ]{0,48}?)(?=[，。；！？、（）()\n]|$)/,
+  ];
+
+  for (const re of patterns) {
+    const m = re.exec(explanation);
+    const candidate = m?.[1]?.trim();
+    if (!candidate) continue;
+    if (candidate === original.trim()) continue;
+    if (candidate.length > Math.max(80, original.length * 4)) continue;
+    if (ERR_VAGUE_CANDIDATE_RE.test(candidate)) continue;
+    // 排除含「或」「/」多选解释
+    if (/\s+(?:or|或)\s+/.test(candidate)) continue;
+    return candidate;
+  }
+  return undefined;
+}
+
+/**
+ * 由 marker 流构造可采纳的修改（replace / del / 带明确修正建议的 err），并附带：
  * - 前后文锚点：按相邻 marker 的原文贡献重建（必须传未过滤的 markers，
  *   筛选视图会把 ins 内容降级为 text，混入锚点会破坏定位）；
  * - 稳定 key：轮次内 marker 下标 + 内容，用于「已采纳」状态。
@@ -190,6 +222,12 @@ export function buildSuggestionChange(
   } else if (marker.type === 'del' && marker.content) {
     original = marker.content;
     replacement = '';
+  } else if (marker.type === 'err' && marker.content) {
+    const errReplacement =
+      marker.newText?.trim() || extractErrSuggestedReplacement(marker.content, marker.explanation);
+    if (!errReplacement) return null;
+    original = marker.content;
+    replacement = errReplacement;
   } else {
     return null;
   }

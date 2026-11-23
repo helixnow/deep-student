@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   applyAnchoredReplacement,
   buildSuggestionChange,
+  extractErrSuggestedReplacement,
   findAnchoredIndex,
   markerOriginalText,
 } from './suggestionAnchors';
@@ -157,5 +158,22 @@ describe('buildSuggestionChange（从 marker 流构造锚定修改）', () => {
       change.after
     );
     expect(applied!.text).toBe('不好的词先出现一次。后面又写更好的词，这里才是要改的。');
+  });
+
+  it('从带明确修正建议的 err 批注构造可采纳修改（W2-B04 回归）', () => {
+    expect(extractErrSuggestedReplacement('have', '主语 She 是第三人称单数，谓语应改为 has；注意一致')).toBe('has');
+    expect(extractErrSuggestedReplacement('read书', '中英文混杂，建议改为「读书」')).toBe('读书');
+    expect(extractErrSuggestedReplacement('go', 'Past tense should be "went" here.')).toBe('went');
+    expect(extractErrSuggestedReplacement('bad', '表达略显平淡，可以再润色')).toBeUndefined();
+
+    const errMarkers: StreamingMarker[] = [
+      marker({ type: 'text', content: 'She ' }),
+      marker({ type: 'err', content: 'have', errorType: 'agreement', explanation: '第三人称单数谓语应改为 has。' }),
+      marker({ type: 'text', content: ' a book.' }),
+    ];
+    const change = buildSuggestionChange(errMarkers, 1);
+    expect(change).not.toBeNull();
+    expect(change!.original).toBe('have');
+    expect(change!.replacement).toBe('has');
   });
 });

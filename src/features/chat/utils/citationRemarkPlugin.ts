@@ -81,6 +81,14 @@ function formatPdfPageLabel(pageStr: string): string {
 // ============================================================================
 
 /**
+ * 裸数字引用兜底（如 `[1]`、`[2]`）：部分模型会用简写 `[1]` 代替 `[知识库-1]`。
+ * 严格排除标识符下标（如 `arr[1]`）、Markdown 链接 `[1](url)`、脚注定义 `[1]:` 与嵌套方括号；
+ * 渲染侧会结合 CitationSourceContext 校验：仅当当前消息确实存在对应编号的 RAG 来源时渲染为可点击徽章，
+ * 否则无损回退为原文 `[1]`，不产生误伤。
+ */
+const BARE_NUMERIC_CITATION_PATTERN = /(?<![A-Za-z0-9_\\])\[(\d{1,2})\](?![([:\]])/g;
+
+/**
  * 创建引用标记处理 Remark 插件
  *
  * 该插件遍历 Markdown AST，将文本节点中的引用标记
@@ -221,6 +229,20 @@ export function makeCitationRemarkPlugin() {
             }
           }
 
+          // 收集裸数字引用（1..30），由前端结合真实检索来源决定渲染为徽章或还原纯文本
+          BARE_NUMERIC_CITATION_PATTERN.lastIndex = 0;
+          while ((match = BARE_NUMERIC_CITATION_PATTERN.exec(value)) !== null) {
+            const indexNum = parseInt(match[1], 10);
+            if (indexNum >= 1 && indexNum <= 30) {
+              matches.push({
+                type: 'citation',
+                index: match.index,
+                length: match[0].length,
+                data: { sourceType: 'rag', indexNum, showImage: false, bareNumeric: true },
+              });
+            }
+          }
+
           if (matches.length === 0) {
             return;
           }
@@ -254,11 +276,12 @@ export function makeCitationRemarkPlugin() {
 
             if (m.type === 'citation') {
               // 普通引用节点
-              const { sourceType, indexNum, showImage } = m.data;
+              const { sourceType, indexNum, showImage, bareNumeric } = m.data;
               const showImageAttr = showImage ? ' data-citation-show-image="true"' : '';
+              const bareAttr = bareNumeric ? ' data-citation-bare="true"' : '';
               parts.push({
                 type: 'html',
-                value: `<span data-citation="true" data-citation-type="${sourceType}" data-citation-index="${indexNum}"${showImageAttr} class="citation-badge-placeholder">[${indexNum}]</span>`,
+                value: `<span data-citation="true" data-citation-type="${sourceType}" data-citation-index="${indexNum}"${showImageAttr}${bareAttr} class="citation-badge-placeholder">[${indexNum}]</span>`,
               });
             } else if (m.type === 'mindmap') {
               // 思维导图引用节点

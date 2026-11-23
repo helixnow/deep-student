@@ -953,10 +953,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
 
       // 无图片时直接返回带 hover 预览的徽章（不再套外层 span）
       // 来源数据经 CitationSourceContext resolve（content.tsx 提供）
+      const bareNumeric = props['data-citation-bare'] === 'true';
       return (
         <CitationBadgeWithPopover
           citationType={citationType}
           citationIndex={citationIndex}
+          bareNumeric={bareNumeric}
           onNavigate={handleBadgeNavigate}
         />
       );

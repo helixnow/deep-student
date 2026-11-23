@@ -354,6 +354,58 @@ export interface ImportDroppedFilesContext {
   onOpenApp?: LearningHubSidebarProps['onOpenApp'];
 }
 
+async function readBlobHeadBytes(blob: Blob): Promise<Uint8Array | null> {
+  if (typeof blob.arrayBuffer === 'function') {
+    return new Uint8Array(await blob.arrayBuffer());
+  }
+  if (typeof FileReader !== 'undefined') {
+    return new Promise<Uint8Array | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        resolve(reader.result instanceof ArrayBuffer ? new Uint8Array(reader.result) : null);
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsArrayBuffer(blob);
+    });
+  }
+  return null;
+}
+
+/**
+ * 导入前快速校验空文件与明显损坏/截断的 PDF（避免静默丢弃或无报错失败）。
+ * 返回本地化失败原因；校验通过返回 null。
+ */
+export async function validateImportFileObject(
+  file: File,
+  ext: string,
+  t: SidebarT,
+): Promise<string | null> {
+  if (file.size === 0) {
+    return t('finder.dragDrop.emptyFileReason', { defaultValue: '文件为空（0 字节）' });
+  }
+  if (ext === 'pdf') {
+    if (file.size < 64) {
+      return t('finder.dragDrop.corruptPdfReason', { defaultValue: 'PDF 文件已损坏或内容不完整' });
+    }
+    try {
+      const slice = typeof file.slice === 'function' ? file.slice(0, 1024) : file;
+      const bytes = await readBlobHeadBytes(slice);
+      if (bytes) {
+        let header = '';
+        for (let i = 0; i < bytes.length; i += 1) {
+          header += String.fromCharCode(bytes[i]);
+        }
+        if (!header.includes('%PDF-')) {
+          return t('finder.dragDrop.corruptPdfReason', { defaultValue: 'PDF 文件已损坏或格式无效' });
+        }
+      }
+    } catch {
+      // 读取片段失败时交由后端处理，不在前置校验阶段误杀
+    }
+  }
+  return null;
+}
+
 /**
  * 处理浏览器 File 对象拖拽（非 Tauri 环境兜底）
  */
@@ -446,6 +498,10 @@ export async function importDroppedFiles(
         const isImage = IMAGE_EXTENSIONS.has(ext);
 
         try {
+          const invalidReason = await validateImportFileObject(file, ext, t);
+          if (invalidReason) {
+            return { ok: false as const, name: file.name, reason: invalidReason };
+          }
           if (fromPicker && DOCUMENT_EXTENSIONS.has(ext) && canParseAsMobileTextbook(ext)) {
             const result = await withStagedTextbookFile(file, (source) =>
               textbookDstuAdapter.addTextbooks([source], currentCreatableFolderId));

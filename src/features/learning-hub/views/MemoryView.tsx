@@ -213,11 +213,23 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   const auditReqIdRef = useRef(0);
   const profileReqIdRef = useRef(0);
   const scrollHostRef = useRef<HTMLDivElement | null>(null);
+  const autoInitRootRef = useRef(false);
 
   // ========== 加载配置和记忆列表 ==========
   const loadConfig = useCallback(async () => {
     try {
-      const cfg = await getMemoryConfig();
+      let cfg = await getMemoryConfig();
+      // 首次进入记忆管理且尚未配置根文件夹时，静默初始化默认记忆根目录，避免被空白配置引导页拦住
+      if (!cfg?.memoryRootFolderId && !autoInitRootRef.current) {
+        autoInitRootRef.current = true;
+        try {
+          const defaultTitle = t('learningHub:memory.defaultRootTitle', { defaultValue: 'AI 记忆' });
+          await createMemoryRootFolder(defaultTitle);
+          cfg = await getMemoryConfig();
+        } catch (initError) {
+          console.warn('[MemoryView] Auto-init default memory root folder skipped:', initError);
+        }
+      }
       setConfig(cfg);
       setLoadError(null);
     } catch (error: unknown) {
@@ -1158,7 +1170,15 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             </motion.div>
           ) : (
             <motion.div key="create-root-button" {...disclosureMotion} className="overflow-hidden">
-              <DsButton variant="ghost" size="sm" onClick={() => setShowCreateRootForm(true)} className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11">
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setNewRootFolderTitle((prev) => prev.trim() || t('learningHub:memory.defaultRootTitle', { defaultValue: 'AI 记忆' }));
+                  setShowCreateRootForm(true);
+                }}
+                className="text-primary hover:bg-primary/10 [@media(pointer:coarse)]:!min-h-11"
+              >
                 <Plus size={16} />
                 {t('memory.create_folder')}
               </DsButton>
