@@ -197,7 +197,7 @@ export const AboutTab: React.FC = () => {
                     ? t('about.update.frequencyDaysDesc', { days: frequencyDays })
                     : t('about.update.frequencyLaunchDesc')}
             >
-              <div className="flex items-center gap-1.5">
+              <div className="flex w-full items-center gap-1.5 sm:w-auto">
                 {noRemind ? (
                   <DsButton
                     variant="outline"
@@ -210,7 +210,7 @@ export const AboutTab: React.FC = () => {
                 ) : (
                   <>
                     <Select value={frequency} onValueChange={(val) => handleFrequencyChange(val as UpdateFrequency)}>
-                      <SelectTrigger className="w-auto">
+                      <SelectTrigger className="w-full sm:w-auto">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>

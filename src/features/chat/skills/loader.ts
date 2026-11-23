@@ -28,6 +28,7 @@ import {
   applyCustomizationToSkill,
 } from './builtinStorage';
 import { getBuiltinToolSkills } from './builtin-tools';
+import { isMobilePlatform, isWebUiShell } from '@/utils/platform';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 
 // ============================================================================
@@ -75,6 +76,8 @@ async function resolveDefaultProjectRootDir(): Promise<string | null | undefined
   // 开发环境保持原语义：相对路径直接交给后端 cwd 处理
   if (import.meta.env.DEV) return null;
   if (!isTauriRuntime()) return null;
+  // 原生移动壳无 workspace runtime root，直接跳过 project skill 扫描避免触发 UNSUPPORTED_ON_PLATFORM 诊断错误
+  if (isMobilePlatform() && !isWebUiShell()) return undefined;
 
   try {
     const roots = await invoke<Array<{

@@ -10,6 +10,7 @@ import { useWorkspaceStore, isWorkerSessionId, parseAgentStatus } from '../works
 import { listAllWorkspaces, listAgents, listAgentSessions, listMessages, listDocuments, restoreExecutions, agentMetadataFromInfo } from '../api';
 import type { WorkspaceAgent, WorkspaceMessage, WorkspaceDocument } from '../types';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { isMobilePlatform, isWebUiShell } from '@/utils/platform';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -51,6 +52,8 @@ export function useWorkspaceRestore(options: UseWorkspaceRestoreOptions = {}) {
   const restoreRunIdRef = useRef(0);
 
   const restoreWorkspace = useCallback(async () => {
+    // 原生移动壳（host/profiles/mobile.json）不装载 agent-workspace 插件，跳过无意义 IPC 避免每次启动刷 18 条错误日志
+    if (isMobilePlatform() && !isWebUiShell()) return;
     if (!enabled || !currentSessionId || restoredRef.current) return;
 
     // 🔧 P1 修复：同一会话已有恢复在进行中时，直接复用该 Promise
