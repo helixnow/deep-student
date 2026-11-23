@@ -13,7 +13,7 @@ import {
   iterateLegacyCollectionCards,
   listCardsTableColumnNames,
   listCollectionRevlogs,
-  listModernDeckNames,
+  listModernDecks,
   listModernFields,
   listModernNotetypes,
   listTableColumns,
@@ -61,7 +61,7 @@ import {
   type TemplateImportCandidate,
 } from './apkg-import-types.ts';
 import { mapCard, validateAndEstimateCard } from './apkg-import-mapping.ts';
-import { dedupeSorted, parseDeckNames, parseModels } from './apkg-import-metadata.ts';
+import { dedupeSorted, parseDeckMap, parseDeckNames, parseModels } from './apkg-import-metadata.ts';
 import { parseNotetypeKind } from './apkg-import-zstd.ts';
 import { collectCardMediaPaths } from './apkg-import-media.ts';
 
@@ -184,14 +184,21 @@ function loadModernModels(db: DatabaseHandle, warnings: string[]): Map<number, M
 }
 
 /** 现代 schema `decks.name` 用 U+001F 分隔层级，转为 Anki 惯用的 `::` 展示形式。 */
-function loadModernDeckNamesForDisplay(db: DatabaseHandle): string[] {
+function loadModernDecksForDisplay(db: DatabaseHandle): {
+  deckNames: string[];
+  deckNameById: Map<number, string>;
+} {
   const names: string[] = [];
-  for (const raw of listModernDeckNames(db)) {
-    const display = raw.replace(/\u001f/g, '::');
-    if (trimWhitespace(display) !== '') names.push(display);
+  const deckNameById = new Map<number, string>();
+  for (const row of listModernDecks(db)) {
+    const display = trimWhitespace(row.name.replace(/\u001f/g, '::'));
+    if (display !== '') {
+      names.push(display);
+      deckNameById.set(row.id, display);
+    }
   }
   names.sort(compareUtf8);
-  return dedupeSorted(names);
+  return { deckNames: dedupeSorted(names), deckNameById };
 }
 
 // ============================================================================
@@ -296,11 +303,14 @@ export function parseCollectionDatabase(
     let models: Map<number, ModelDefinition>;
     let templateCandidates: TemplateImportCandidate[];
     let deckNames: string[];
+    let deckNameById: Map<number, string>;
     try {
       if (modernSchema) {
         validateModernCollectionSchema(db);
         models = loadModernModels(db, warnings);
-        deckNames = loadModernDeckNamesForDisplay(db);
+        const modernDecks = loadModernDecksForDisplay(db);
+        deckNames = modernDecks.deckNames;
+        deckNameById = modernDecks.deckNameById;
         // 现代 notetypes.config 不携带 deepStudentTemplateId，不臆造模板身份。
         templateCandidates = [];
       } else {
@@ -313,6 +323,7 @@ export function parseCollectionDatabase(
         models = parsed.models;
         templateCandidates = parsed.templateCandidates;
         deckNames = parseDeckNames(metadata.decks);
+        deckNameById = parseDeckMap(metadata.decks);
       }
 
       const cardCount = countCollectionCards(db);
@@ -370,7 +381,7 @@ export function parseCollectionDatabase(
             if (currentGroup !== null) {
               const group = currentGroup;
               currentGroup = null;
-              flushNoteGroup(models, group, mediaPaths, revlogsByCardId, cards, warnings, (count) => {
+              flushNoteGroup(models, deckNameById, group, mediaPaths, revlogsByCardId, cards, warnings, (count) => {
                 schedMetadataCards += count;
               }, runtime.logger);
             }
@@ -431,7 +442,7 @@ export function parseCollectionDatabase(
       if (currentGroup !== null) {
         const group = currentGroup;
         currentGroup = null;
-        flushNoteGroup(models, group, mediaPaths, revlogsByCardId, cards, warnings, (count) => {
+        flushNoteGroup(models, deckNameById, group, mediaPaths, revlogsByCardId, cards, warnings, (count) => {
           schedMetadataCards += count;
         }, runtime.logger);
       }
@@ -521,6 +532,7 @@ function parseNoteCardScope(noteData: string): string | undefined {
  */
 function flushNoteGroup(
   models: ReadonlyMap<number, ModelDefinition>,
+  deckNameById: ReadonlyMap<number, string>,
   group: PendingNoteGroup,
   mediaPaths: ReadonlyMap<string, string>,
   revlogsByCardId: ReadonlyMap<number, FsrsImportedReviewLog[]>,
@@ -553,6 +565,10 @@ function flushNoteGroup(
       logger,
     );
     card.extraFields.AnkiCardScope = group.collapseClozeOrds ? 'note' : 'card';
+    const deckName = deckNameById.get(row.deckId);
+    if (deckName !== undefined && deckName !== '') {
+      card.extraFields._deck = deckName;
+    }
     if (swapFrontBack) {
       const front = card.front;
       card.front = card.back;

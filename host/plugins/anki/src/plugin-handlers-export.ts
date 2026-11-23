@@ -83,7 +83,17 @@ function batchNoteToCard(
 }
 
 export function createExportHandlers(rt: AnkiPluginRuntime): Record<string, CommandHandler> {
-  const { ctx, db, now, runApkgExport, attachFsrsProgress, loadApkgTemplate, downloadsDir, decodeExportCards } = rt;
+  const {
+    ctx,
+    db,
+    now,
+    runApkgExport,
+    attachFsrsProgress,
+    attachCardDeckNames,
+    loadApkgTemplate,
+    downloadsDir,
+    decodeExportCards,
+  } = rt;
   const persistedPath = async (path: string) => {
     await ankiLocalRuntime().persistFile?.(path);
     return path;
@@ -141,8 +151,8 @@ export function createExportHandlers(rt: AnkiPluginRuntime): Record<string, Comm
           deckName: string;
           noteType: string;
         };
-        const cards = decodeCardArg('export_cards_as_apkg', 'selectedCards', () => decodeExportCards(selectedCards));
-        return persistedPath(runApkgExport(cards, deckName, noteType, null));
+        decodeCardArg('export_cards_as_apkg', 'selectedCards', () => decodeExportCards(selectedCards));
+        return persistedPath(runApkgExport(selectedCards, deckName, noteType, null));
       },
 
       export_cards_as_apkg_with_template: async (args) => {
@@ -152,9 +162,9 @@ export function createExportHandlers(rt: AnkiPluginRuntime): Record<string, Comm
           noteType: string;
           templateId?: string | null;
         };
-        const cards = decodeCardArg(
+        decodeCardArg(
           'export_cards_as_apkg_with_template', 'selectedCards', () => decodeExportCards(selectedCards));
-        return persistedPath(runApkgExport(cards, deckName, noteType, templateId ?? null));
+        return persistedPath(runApkgExport(selectedCards, deckName, noteType, templateId ?? null));
       },
 
       export_multi_template_apkg: async (args) => {
@@ -166,6 +176,7 @@ export function createExportHandlers(rt: AnkiPluginRuntime): Record<string, Comm
         const cards = decodeCardArg('export_multi_template_apkg', 'cards', () => decodeExportCards(rawCards));
         if (cards.length === 0) validationFailure('没有卡片可以导出');
         attachFsrsProgress(cards);
+        attachCardDeckNames(cards, rawCards);
 
         const templateMap = new Map<string, CustomAnkiTemplate>();
         for (const card of cards) {
@@ -349,6 +360,7 @@ export function createExportHandlers(rt: AnkiPluginRuntime): Record<string, Comm
           .map(decodeAnkiCardRow)
           .filter((card) => !card.is_error_card);
         if (cards.length === 0) validationFailure('没有有效的卡片可以导出');
+        attachCardDeckNames(cards);
 
         let templateConfig: TemplateConfigTuple | null = null;
         const templateId = options.template_id;

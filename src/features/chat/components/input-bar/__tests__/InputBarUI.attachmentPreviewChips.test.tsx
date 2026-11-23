@@ -168,7 +168,7 @@ describe('InputBarUI attachment preview chips', () => {
     );
   });
 
-  it('keeps the remove action always visible with an expanded hit area on coarse pointers', () => {
+  it('keeps the remove action always visible with a 44x44px real button box on coarse pointers and narrow mobile', () => {
     const attachments: AttachmentMeta[] = [
       {
         id: 'att_touch',
@@ -182,15 +182,24 @@ describe('InputBarUI attachment preview chips', () => {
 
     renderInputBar({ attachments });
 
-    // P0-3: 触屏没有 hover，删除按钮常显 + 伪元素扩大命中区（≥44px）
-    // ★ L5 修复后：命中区只向左/上/下外扩，不向右压住文件名（点 chip 开预览）区域
+    // 触屏 / 窄屏（<= 640px）没有 hover，删除按钮常显且实体 <button> 命中框扩大至 44×44px，
+    // 图标容器同步扩至 44×44px 避免覆盖或挤压文件名文本
+    expect(screen.getByTestId('attachment-chip-icon-att_touch')).toHaveClass(
+      '[@media(pointer:coarse)]:min-h-11',
+      '[@media(pointer:coarse)]:min-w-11',
+      'max-sm:min-h-11',
+      'max-sm:min-w-11'
+    );
     expect(screen.getByRole('button', { name: /(?:移除|remove).*touch\.png/i })).toHaveClass(
       '[@media(pointer:coarse)]:opacity-100',
-      '[@media(pointer:coarse)]:after:absolute',
-      '[@media(pointer:coarse)]:after:-left-3',
-      '[@media(pointer:coarse)]:after:-top-3',
-      '[@media(pointer:coarse)]:after:-bottom-3',
-      '[@media(pointer:coarse)]:after:right-0'
+      '[@media(pointer:coarse)]:min-h-11',
+      '[@media(pointer:coarse)]:min-w-11',
+      'max-sm:opacity-100',
+      'max-sm:min-h-11',
+      'max-sm:min-w-11'
+    );
+    expect(screen.getByRole('list', { name: 'analysis:input_bar.attachments.title' })).toHaveClass(
+      'max-sm:max-h-[52px]'
     );
   });
 

@@ -110,6 +110,62 @@ export function listTasksForDocument(db: SqlExecutor, documentId: string): Docum
   return db.all(TASKS_FOR_DOCUMENT, [documentId]);
 }
 
+const TASK_DECK_NAME_EXPR = `COALESCE(TRIM(CASE WHEN json_valid(dt.anki_generation_options_json)
+  THEN json_extract(dt.anki_generation_options_json, '$.deck_name') END), '')`;
+const DECK_LOOKUP_CHUNK_SIZE = 500;
+
+/** 按任务 ID 批量查询文档任务记录的牌组名（空值与软删除任务自动忽略）。 */
+export function listDeckNamesByTaskIds(
+  db: SqlExecutor,
+  taskIds: readonly string[],
+): Map<string, string> {
+  const unique = [...new Set(taskIds.map((id) => id.trim()).filter((id) => id !== ''))];
+  const result = new Map<string, string>();
+  for (let start = 0; start < unique.length; start += DECK_LOOKUP_CHUNK_SIZE) {
+    const chunk = unique.slice(start, start + DECK_LOOKUP_CHUNK_SIZE);
+    const placeholders = chunk.map(() => '?').join(',');
+    const rows = db.all<{ task_id: string; deck_name: string }>(
+      `SELECT dt.id AS task_id, ${TASK_DECK_NAME_EXPR} AS deck_name
+       FROM document_tasks dt
+       WHERE dt.id IN (${placeholders})
+         AND dt.deleted_at IS NULL`,
+      chunk,
+    );
+    for (const row of rows) {
+      const name = row.deck_name?.trim() ?? '';
+      if (name !== '') result.set(row.task_id, name);
+    }
+  }
+  return result;
+}
+
+/** 按卡片 ID 批量查询其所属文档任务的牌组名（用于调用方未带 task_id 的导出路径）。 */
+export function listDeckNamesByCardIds(
+  db: SqlExecutor,
+  cardIds: readonly string[],
+): Map<string, string> {
+  const unique = [...new Set(cardIds.map((id) => id.trim()).filter((id) => id !== ''))];
+  const result = new Map<string, string>();
+  for (let start = 0; start < unique.length; start += DECK_LOOKUP_CHUNK_SIZE) {
+    const chunk = unique.slice(start, start + DECK_LOOKUP_CHUNK_SIZE);
+    const placeholders = chunk.map(() => '?').join(',');
+    const rows = db.all<{ card_id: string; deck_name: string }>(
+      `SELECT ac.id AS card_id, ${TASK_DECK_NAME_EXPR} AS deck_name
+       FROM anki_cards ac
+       INNER JOIN document_tasks dt ON dt.id = ac.task_id
+       WHERE ac.id IN (${placeholders})
+         AND ac.deleted_at IS NULL
+         AND dt.deleted_at IS NULL`,
+      chunk,
+    );
+    for (const row of rows) {
+      const name = row.deck_name?.trim() ?? '';
+      if (name !== '') result.set(row.card_id, name);
+    }
+  }
+  return result;
+}
+
 /** `DocumentTaskCountsDto`。 */
 export interface DocumentTaskCounts {
   pending: number;

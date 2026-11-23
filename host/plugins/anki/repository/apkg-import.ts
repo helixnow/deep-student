@@ -209,6 +209,19 @@ export function listModernNotetypes(db: SqlExecutor): ModernNotetypeRow[] {
   }));
 }
 
+export interface ModernDeckRow {
+  id: number;
+  name: string;
+}
+
+/** `SELECT id, name FROM decks`（现代 schema 的牌组 id 与名，U+001F 层级分隔由调用方转换）。 */
+export function listModernDecks(db: SqlExecutor): ModernDeckRow[] {
+  return db.all<{ id: number; name: string }>('SELECT id, name FROM decks').map((row) => ({
+    id: Number(row.id),
+    name: String(row.name),
+  }));
+}
+
 /** `SELECT name FROM decks`（现代 schema 的牌组名，U+001F 层级分隔由调用方转换）。 */
 export function listModernDeckNames(db: SqlExecutor): string[] {
   return db.all<{ name: string }>('SELECT name FROM decks').map((row) => String(row.name));

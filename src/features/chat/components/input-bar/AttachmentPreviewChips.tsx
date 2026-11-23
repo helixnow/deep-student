@@ -36,6 +36,10 @@ interface AttachmentPreviewChipsProps {
   onRetry?: (attachment: AttachmentMeta) => void;
   /** 附件注入模式切换（支持在 PDF / 图片 chip 上一键切换文本 / OCR / 图片） */
   onInjectModesChange?: (attachmentId: string, modes: AttachmentInjectModes) => void;
+  /** 是否处于移动端紧凑布局 */
+  isMobile?: boolean;
+  /** 移动端点击附件胶囊时展开/收起附件详情面板 */
+  onToggleDetails?: () => void;
   disabled?: boolean;
   className?: string;
 }
@@ -184,6 +188,8 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
   onRemove,
   onRetry,
   onInjectModesChange,
+  isMobile = false,
+  onToggleDetails,
   disabled = false,
   className,
 }) => {
@@ -215,6 +221,13 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
   );
 
   const handleChipClick = useCallback((attachment: AttachmentMeta) => {
+    const isNarrowMobile = isMobile
+      || (typeof window !== 'undefined' && window.innerWidth <= 640);
+    if (isNarrowMobile && onToggleDetails) {
+      onToggleDetails();
+      return;
+    }
+
     if (isImageAttachment(attachment) && attachment.previewUrl) {
       const imgIdx = imageAttachments.findIndex((a) => a.id === attachment.id);
       setCurrentImageIndex(imgIdx >= 0 ? imgIdx : 0);
@@ -233,7 +246,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
         title: attachment.name,
       },
     }));
-  }, [imageAttachments]);
+  }, [imageAttachments, isMobile, onToggleDetails]);
 
   const handleCloseImageViewer = useCallback(() => {
     setImageViewerOpen(false);
@@ -259,13 +272,13 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
         orientation="both"
         fullHeight={false}
         className={cn(
-          'attachment-preview-chips mb-2 max-h-[76px]',
+          'attachment-preview-chips mb-2 max-h-[76px] max-sm:mb-1.5 max-sm:max-h-[52px]',
           className
         )}
         viewportClassName={cn(
           // ★ M6 修复：换行断点从 sm(640) 对齐到 md(768)——与移动端布局断点一致，
           // 避免 640-767px 区间"移动端布局 + 桌面 wrap 行为"的分裂
-          'flex max-h-[76px] flex-nowrap items-center gap-2 pr-1 md:flex-wrap md:content-start'
+          'flex max-h-[76px] max-sm:max-h-[52px] flex-nowrap items-center gap-2 pr-1 md:flex-wrap md:content-start'
         )}
       >
         {attachments.map((attachment) => {
@@ -321,7 +334,8 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                 size="sm"
                 onClick={() => handleChipClick(attachment)}
                 className={cn(
-                  'attachment-preview-chip h-8 w-max justify-start gap-2 rounded-full border bg-[color:var(--surface-panel-strong)] py-0 pl-1.5 pr-3 text-ui font-semibold text-foreground shadow-sm transition-[background-color,border-color,box-shadow] duration-150 hover:bg-[color:var(--button-plain-hover-bg)] cursor-pointer motion-reduce:transition-none [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+                  'attachment-preview-chip h-8 w-max justify-start gap-2 rounded-full border bg-[color:var(--surface-panel-strong)] py-0 pl-1.5 pr-3 text-ui font-semibold text-foreground shadow-sm transition-[background-color,border-color,box-shadow] duration-150 hover:bg-[color:var(--button-plain-hover-bg)] cursor-pointer motion-reduce:transition-none [@media(pointer:coarse)]:min-h-[var(--touch-target-size)] max-sm:min-h-11',
+                  !disabled && '[@media(pointer:coarse)]:gap-1 [@media(pointer:coarse)]:pl-0 max-sm:gap-1 max-sm:pl-0',
                   isError
                     ? 'border-destructive/40 hover:border-destructive/60'
                     : 'border-[color:var(--input-shell-border)] hover:border-[color:var(--button-plain-border)]',
@@ -343,10 +357,18 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                 {/* 图标区域：上传/处理中显示进度环；hover 时变为 X 删除按钮 */}
                 <span
                   data-testid={`attachment-chip-icon-${attachment.id}`}
-                  className="relative inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-[color:var(--surface-elevated)] text-muted-foreground"
+                  className={cn(
+                    'relative inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-[color:var(--surface-elevated)] text-muted-foreground',
+                    !disabled && '[@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:overflow-visible [@media(pointer:coarse)]:border-0 [@media(pointer:coarse)]:bg-transparent max-sm:h-11 max-sm:w-11 max-sm:min-h-11 max-sm:min-w-11 max-sm:overflow-visible max-sm:border-0 max-sm:bg-transparent'
+                  )}
                 >
                   {/* 默认：进度环 / 文件图标 / 图片预览 */}
-                  <span className="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover/attachment-chip:opacity-0 motion-reduce:transition-none">
+                  <span
+                    className={cn(
+                      'absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover/attachment-chip:opacity-0 motion-reduce:transition-none',
+                      !disabled && '[@media(pointer:coarse)]:opacity-0 max-sm:opacity-0'
+                    )}
+                  >
                     {isBusy ? (
                       <ChipProgressRing percent={chipStatus.unifiedPercent} />
                     ) : showImagePreview ? (
@@ -360,8 +382,8 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                       <Icon size={12} aria-hidden="true" />
                     )}
                   </span>
-                  {/* Hover：X 图标覆盖。P0-3：触屏（pointer:coarse）没有 hover，
-                      删除按钮常显，且用透明伪元素把命中区域扩到 ≥44px */}
+                  {/* Hover：X 图标覆盖。触屏 / 窄屏（<= 640px）没有 hover，
+                      删除按钮常显且实体 <button> 盒尺寸扩大到 44×44px，内部居中绘制 × 圆点 */}
                   {!disabled && (
                     <button
                       type="button"
@@ -371,11 +393,11 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                       }}
                       aria-label={t('chatV2:common.removeNamed', { name: attachment.name })}
                       title={t('chatV2:common.removeNamed', { name: attachment.name })}
-                      // ★ L5 修复：命中区只向左/上/下外扩（保持 ~44px 高），不再向右
-                      // 延伸压住文件名区域，避免"点 chip 开预览"被误判为删除
-                      className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity duration-150 group-hover/attachment-chip:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:opacity-100 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-left-3 [@media(pointer:coarse)]:after:-top-3 [@media(pointer:coarse)]:after:-bottom-3 [@media(pointer:coarse)]:after:right-0 [@media(pointer:coarse)]:after:content-['']"
+                      className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity duration-150 group-hover/attachment-chip:opacity-100 focus-visible:opacity-100 motion-reduce:transition-none [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11 [@media(pointer:coarse)]:bg-transparent [@media(pointer:coarse)]:opacity-100 max-sm:min-h-11 max-sm:min-w-11 max-sm:bg-transparent max-sm:opacity-100"
                     >
-                      <X size={10} weight="bold" aria-hidden="true" />
+                      <span className="inline-flex items-center justify-center rounded-full [@media(pointer:coarse)]:h-6 [@media(pointer:coarse)]:w-6 [@media(pointer:coarse)]:bg-black/60 max-sm:h-6 max-sm:w-6 max-sm:bg-black/60">
+                        <X size={10} weight="bold" aria-hidden="true" />
+                      </span>
                     </button>
                   )}
                 </span>
