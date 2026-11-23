@@ -343,7 +343,7 @@ export function buildMediaHandoutDocument(
 
 export const MediaHandoutTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; visible: boolean }> = ({ ctx, visible }) => {
   const { t, i18n } = useTranslation(['mediaStudio', 'learningHub']);
-  const { running, progress, result, start: generate, cancel } = useGenerateHandout({
+  const { running, progress, result, error: handoutError, start: generate, cancel } = useGenerateHandout({
     resourceId: ctx.resourceId,
     kind: ctx.kind,
     src: ctx.src,
@@ -451,7 +451,7 @@ export const MediaHandoutTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; 
               onClick={generate}
               disabled={!ctx.hasTranscript}
               data-media-handout-generate=""
-              className="gap-1.5 self-start"
+              className="gap-1.5 self-start !border-primary/35 !bg-primary/10 !text-primary hover:!bg-primary/15 hover:!text-primary"
             >
               <Notebook size={14} aria-hidden="true" />
               {t('learningHub:mediaHandout.generate')}
@@ -481,6 +481,23 @@ export const MediaHandoutTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; 
         </div>
         {!ctx.hasTranscript && !running ? (
           <p className="text-xs text-muted-foreground">{t('learningHub:mediaHandout.needTranscript')}</p>
+        ) : null}
+        {handoutError && !running ? (
+          <div
+            role="alert"
+            data-media-handout-error=""
+            className="flex items-start justify-between gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive"
+          >
+            <span className="min-w-0 flex-1 leading-relaxed break-words">{handoutError}</span>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={generate}
+              className="!h-7 shrink-0 px-2 text-xs !text-destructive hover:!bg-destructive/10"
+            >
+              {t('common:retry', { defaultValue: '重试' })}
+            </DsButton>
+          </div>
         ) : null}
       </div>
 

@@ -319,6 +319,12 @@
     border-radius: 0.75rem;
   }
 
+  /* 奇数张行动卡（如 5 张）末卡跨满整行，消除 2 列网格末尾单卡半宽留白 */
+  .data-management-content .mb-6 > .flex.flex-wrap.gap-3 > button:last-child:nth-child(odd),
+  .sota-dashboard .mb-6 > .flex.flex-wrap.gap-3 > button:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
   .data-management-content .mb-6 > .flex.flex-wrap.gap-3 > button > span:last-child,
   .sota-dashboard .mb-6 > .flex.flex-wrap.gap-3 > button > span:last-child {
     display: none;

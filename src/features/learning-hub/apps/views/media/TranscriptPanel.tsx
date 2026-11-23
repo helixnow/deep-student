@@ -872,9 +872,10 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
           {query && (
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => setQuery('')}
               aria-label={t('learningHub:mediaTranscript.clearSearch')}
-              className="absolute right-1.5 flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+              className="absolute right-1.5 z-10 flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:text-foreground"
             >
               <X size={11} aria-hidden="true" />
             </button>

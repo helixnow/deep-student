@@ -253,7 +253,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                     handlePasteApiKey(text);
                   }
                 }}
-                className="pr-11 font-mono text-xs"
+                className="pr-12 font-mono text-xs truncate"
               />
               <DsButton
                 type="button"

@@ -19,10 +19,14 @@ export const CSV_HEADER_EXACT_ALIASES: Record<string, CsvQuestionFieldKey> = {
   // content
   题目: 'content',
   题干: 'content',
+  标题: 'content',
   问题: 'content',
   内容: 'content',
   content: 'content',
   question: 'content',
+  title: 'content',
+  stem: 'content',
+  prompt: 'content',
   text: 'content',
   // answer
   答案: 'answer',
@@ -73,7 +77,7 @@ export const CSV_HEADER_FUZZY_PATTERNS: Array<{
   pattern: RegExp;
   field: CsvQuestionFieldKey;
 }> = [
-  { pattern: /题目|题干|内容|content|question|text/, field: 'content' },
+  { pattern: /题目|题干|标题|内容|content|question|title|stem|prompt|text/, field: 'content' },
   { pattern: /答案|正确|answer|correct/, field: 'answer' },
   { pattern: /解析|解答|说明|explanation|analysis/, field: 'explanation' },
   { pattern: /选项|options|choices/, field: 'options' },

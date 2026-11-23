@@ -230,7 +230,8 @@ async function buildOutline(
   let lastErr: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     const raw = await withRetry(
-      () => api.llmComplete(outlinePrompt(material, input.mediaName, input.lang), { json: true, runId }),
+      // 重试时关闭 json_object 强制模式，兼容部分不完全支持 response_format 的 OpenAI 中转模型
+      () => api.llmComplete(outlinePrompt(material, input.mediaName, input.lang), { json: attempt === 0, runId }),
       input.signal,
     );
     try {
@@ -286,7 +287,7 @@ async function writeSections(
     let raw = '';
     let blocks: Block[] | null = null;
     for (let attempt = 0; attempt < 2 && !blocks; attempt++) {
-      raw = await withRetry(() => api.llmComplete(prompt, { json: true, runId }), input.signal);
+      raw = await withRetry(() => api.llmComplete(prompt, { json: attempt === 0, runId }), input.signal);
       try {
         blocks = parseSectionBlocks(raw, range);
       } catch {
@@ -359,6 +360,7 @@ export async function runHandout(input: RunHandoutInput): Promise<RunHandoutResu
     let rawFrames: ExtractedFrame[] = [];
     let framesDegraded = false;
     if (input.videoSrc) {
+      input.onProgress?.({ phase: 'frames', done: 0, total: 1 });
       try {
         rawFrames = await extractFrames(input.videoSrc, {
           signal: input.signal,
@@ -370,6 +372,7 @@ export async function runHandout(input: RunHandoutInput): Promise<RunHandoutResu
         framesDegraded = true;
       }
       if (rawFrames.length > 0) {
+        input.onProgress?.({ phase: 'captions', done: 0, total: rawFrames.length });
         const captioned = await captionFrames(rawFrames, input, runId);
         framesDegraded = captioned.unavailable;
         frames = captioned.frames.filter((f) => f.isTeaching);

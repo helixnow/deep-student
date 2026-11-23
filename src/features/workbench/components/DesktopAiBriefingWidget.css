@@ -154,6 +154,11 @@
   white-space: nowrap;
 }
 
+:is(.dark, [data-theme='dark']) .wb-ai-briefing-tile-alert {
+  background: hsl(0 84% 62% / 0.22);
+  color: hsl(0 86% 76%);
+}
+
 .wb-ai-briefing-actions {
   display: flex;
   gap: 6px;
