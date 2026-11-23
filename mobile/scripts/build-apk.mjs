@@ -360,6 +360,7 @@ try {
   const appVersion = resolveAndroidAppVersion();
   run(process.execPath, [join(mobile, '../scripts/generate-version.mjs')], mobile, env);
   run(npm, ['run', 'build'], mobile, env);
+  run(process.execPath, [join(mobile, 'scripts/verify-app-bundle.mjs')], mobile, env);
   run(npx, ['cap', existsSync(android) ? 'sync' : 'add', 'android'], mobile, env);
   patchAndroidProject(mobile, android, appVersion);
   writeFileSync(join(android, 'local.properties'), `sdk.dir=${property(sdk)}\n`);

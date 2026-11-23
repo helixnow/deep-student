@@ -128,9 +128,9 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
   }
 
   const dockTileClassName = (isActive: boolean) => cn(
-    // 统一 4×2 等宽等高移动端 Dock 磁贴：56px 高度配 22px 图标 + 13px 标签，与 330px 侧栏宽度成自然比例
-    'group/dock-tile flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl px-1 py-2',
-    'text-[13px] font-medium leading-none',
+    // 统一 4×2 等宽等高移动端 Dock 磁贴：56px 高度配 22px 图标 + text-xs 标签，兼顾中文与英文（避免 Flashcards 截断为 Flashc...）
+    'group/dock-tile flex min-h-[56px] min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl px-0.5 py-2',
+    'text-xs font-medium leading-none',
     'outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-ring select-none',
     isActive
       ? 'bg-[color:hsl(var(--primary)/0.14)] text-[color:var(--shell-navigation-foreground)] ring-1 ring-inset ring-[color:hsl(var(--primary)/0.28)]'
