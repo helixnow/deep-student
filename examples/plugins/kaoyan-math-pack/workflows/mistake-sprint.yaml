@@ -1,0 +1,14 @@
+id: kaoyan-mistake-sprint
+name: 考前 15 分钟错题变式冲刺
+description: 扫描近期活跃薄弱知识点，逐个出变式诊断题并沉淀新卡片
+trigger: /kaoyan-sprint
+steps:
+  - id: scan
+    title: 盘点 Top 3 薄弱考点
+    prompt: 结合我的长期记忆薄弱点与近期复习记录，列出当前最需要补救的 3 个考研数学考点及典型错因。
+  - id: drill
+    title: 逐题变式快测
+    prompt: 针对第 1 个考点出一道 5 分钟可做完的变式小题，等我作答后再批改并给下一题。
+  - id: solidify
+    title: 提炼母题挖空卡
+    prompt: 根据我刚才暴露出的卡点，生成 2 张定理条件挖空闪卡并提醒我加入复习计划。

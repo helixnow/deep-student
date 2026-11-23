@@ -209,7 +209,7 @@ export function createHostPluginManagerAdapter(platform: PluginPlatform): HostPl
       }
     },
     choosePackage: () => import('@tauri-apps/plugin-dialog').then(({ open }) => open({
-      multiple: false, directory: false, filters: [{ name: 'Deep Student Plugin', extensions: ['dstuplugin'] }],
+      multiple: false, directory: false, filters: [{ name: 'Deep Student Plugin', extensions: ['dstuplugin', 'dspack'] }],
     })).then((path) => typeof path === 'string' ? path : null),
   });
 }

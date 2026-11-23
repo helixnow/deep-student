@@ -16,6 +16,7 @@ import { isManagedChild } from './paths.ts';
 import { writeSourceFiles, type SourceFile } from './source.ts';
 import type { WorkshopActivationResult, WorkshopSelfCheckContext } from '../../../kernel/plugin-admin.ts';
 import { checkSettingLinks, fillSettings, normalizeWorkshopSource, versionGreater, settingValues, storeSecretSettings, type WorkshopLinkReader, type WorkshopSecretStore } from './settings.ts';
+import { exportPackageExtension } from './study-pack.ts';
 
 // Compatibility failures belong to the running app version. Keep the
 // installed revision enabled on disk so another app version can load it.
@@ -33,10 +34,10 @@ function isCompatibilityFailure(reason: string | undefined): boolean {
 export function isEnvironmentError(text: string | null | undefined): boolean {
   return /SAFE_MODE_ACTIVE|WORKSHOP_SELF_CHECK_UNAVAILABLE|WORKSHOP_GENERATION_UNAVAILABLE|WORKSHOP_INSTALL_UNAVAILABLE|WORKSHOP_UNAVAILABLE/.test(text ?? '');
 }
-/** `<标题>-v<version>.dstuplugin`: a file name a learner recognises, safe on every file system. */
-export function exportFileName(title: string, version: string): string {
+/** `<标题>-v<version>.dstuplugin` (or `.dspack` for study packs): a file name a learner recognises, safe on every file system. */
+export function exportFileName(title: string, version: string, kind?: 'plugin' | 'study-pack'): string {
   const safe = title.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '').replace(/\s+/g, ' ').trim().replace(/^\.+/, '').slice(0, 60).trim() || 'plugin';
-  return `${safe}-v${version}.dstuplugin`;
+  return `${safe}-v${version}${exportPackageExtension(kind)}`;
 }
 const isOpenProposal = (state: WorkshopCard['state']) => OPEN_PROPOSAL_STATES.includes(state);
 
@@ -882,11 +883,15 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
       if (manifest?.isFile()) { directory = candidate; break; }
     }
     if (!directory) throw new Error('WORKSHOP_STATE: no installed version to export yet; install it first');
-    const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')) as { version?: unknown };
+    const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')) as {
+      version?: unknown;
+      deepStudent?: { kind?: unknown };
+    };
     const version = typeof pkg.version === 'string' ? pkg.version : installed?.version ?? card.usableVersion ?? '0.0.0';
+    const kind = pkg.deepStudent?.kind === 'study-pack' ? 'study-pack' : 'plugin';
     const archive = new JSZip();
     for (const file of await sourceFiles(directory)) archive.file(file.replaceAll('\\', '/'), await readFile(join(directory, file)));
-    const fileName = exportFileName(card.title, version);
+    const fileName = exportFileName(card.title, version, kind);
     await mkdir(join(root, 'exports'), { recursive: true });
     const path = join(root, 'exports', fileName);
     await writeFile(path, await archive.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' }));

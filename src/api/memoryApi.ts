@@ -454,6 +454,33 @@ export async function inspectMemoryKernel(): Promise<MemoryInspectionView> {
   });
 }
 
+export interface MemoryDialecticProposal {
+  id: string;
+  kind: 'relapse_focus' | 'promote_preference_to_rule' | 'compress_hard_rules' | 'retire_stale_weak_point';
+  title: string;
+  rationale: string;
+  severity: 'info' | 'attention';
+  suggestedPayload?: Record<string, unknown>;
+}
+
+export interface MemoryDialecticReflectionReport {
+  generatedAt: string;
+  rulesBudgetRatio: number;
+  profileBudgetRatio: number;
+  activeWeakPointCount: number;
+  proposals: MemoryDialecticProposal[];
+  summary: string;
+}
+
+export async function reflectMemoryKernel(): Promise<MemoryDialecticReflectionReport> {
+  return invoke<MemoryDialecticReflectionReport>('plugin:host|call', {
+    caller: 'dstu.memory',
+    service: 'memoryProvider',
+    method: 'reflect',
+    args: [],
+  });
+}
+
 export async function mutateMemoryKernel(mutation: MemoryKernelMutation): Promise<MemoryInspectionView> {
   return invoke<MemoryInspectionView>('plugin:host|call', {
     caller: 'dstu.memory',

@@ -63,7 +63,7 @@ describe('HostPluginManagerAdapter', () => {
     await adapter.setTrust({ id: 'example.web-search', version: '1.0.0', permissions: [] }, 'restricted');
     await adapter.uninstall('example.web-search');
     expect(await adapter.importPackage()).toMatchObject({ status: 'installed' });
-    expect(open).toHaveBeenCalledWith({ multiple: false, directory: false, filters: [{ name: 'Deep Student Plugin', extensions: ['dstuplugin'] }] });
+    expect(open).toHaveBeenCalledWith({ multiple: false, directory: false, filters: [{ name: 'Deep Student Plugin', extensions: ['dstuplugin', 'dspack'] }] });
     expect(new Set(fake.invoke.mock.calls.map(([command]) => command))).toEqual(new Set(Object.values(MANAGER_COMMANDS)));
   });
   it('maps the inventory without conflating enabled intent and running state', async () => {

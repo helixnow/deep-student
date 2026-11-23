@@ -6,8 +6,9 @@
  * 2. L1/L2 学习者长期画像（LearnerProfile）：活跃薄弱点、学习目标、近期状态、字符预算进度条；
  * 3. 透明检查与安全兜底：原始注入快照预览 + 10 版历史快照一键回滚。
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ArrowUUpLeft,
   CaretDown,
   CaretRight,
   ClockCounterClockwise,
@@ -26,6 +27,10 @@ import { invalidateMemoryKernelAttributionCache } from '@/features/chat/componen
 import {
   inspectMemoryKernel,
   mutateMemoryKernel,
+  reflectMemoryKernel,
+  type MemoryDialecticReflectionReport,
+  type MemoryHardRule,
+  type MemoryHardRuleOrigin,
   type MemoryInspectionView,
 } from '@/api/memoryApi';
 
@@ -33,6 +38,16 @@ interface MemoryKernelPanelProps {
   /** External refresh counter bumped when `memory://changed` arrives. */
   refreshSignal?: number;
 }
+
+interface DeletedRuleSnapshot {
+  instruction: string;
+  scope: string;
+  origin: MemoryHardRuleOrigin;
+  pinned: boolean;
+}
+
+const RULE_UNDO_DURATION_MS = 5000;
+const EMPTY_HISTORY_TOOLTIP = '每次画像变化会自动保留最近 10 个版本，支持一键回滚';
 
 const SCOPE_OPTIONS = [
   { value: 'global', label: '全局' },
@@ -61,6 +76,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
   const [expanded, setExpanded] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [reflectionReport, setReflectionReport] = useState<MemoryDialecticReflectionReport | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Inline HardRule creation state
@@ -70,6 +86,23 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
 
   // Inline Goal creation state
   const [newGoalText, setNewGoalText] = useState('');
+
+  // 5-second undo state for deleted HardRule
+  const [pendingUndoRule, setPendingUndoRule] = useState<DeletedRuleSnapshot | null>(null);
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearUndoTimer = useCallback(() => {
+    if (undoTimerRef.current !== null) {
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      clearUndoTimer();
+    };
+  }, [clearUndoTimer]);
 
   const load = useCallback(async () => {
     try {
@@ -102,7 +135,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
       setView(updated);
       invalidateMemoryKernelAttributionCache(updated);
       setNewRuleText('');
-      showGlobalNotification('success', '已保存常驻互动规则（下个新会话第 1 轮起强制生效）');
+      showGlobalNotification('success', '已保存常驻互动规则（下个新会话首轮自动生效）');
     } catch (error) {
       showGlobalNotification('error', error instanceof Error ? error.message : '保存规则失败');
     } finally {
@@ -110,19 +143,55 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
     }
   }, [newRuleText, newRuleScope, newRulePinned, busy]);
 
-  const handleRemoveRule = useCallback(async (id: string) => {
+  const handleRemoveRule = useCallback(async (rule: MemoryHardRule) => {
     if (busy) return;
     setBusy(true);
     try {
-      const updated = await mutateMemoryKernel({ kind: 'remove_rule', idOrInstruction: id });
+      const updated = await mutateMemoryKernel({ kind: 'remove_rule', idOrInstruction: rule.id });
       setView(updated);
       invalidateMemoryKernelAttributionCache(updated);
+      clearUndoTimer();
+      setPendingUndoRule({
+        instruction: rule.instruction,
+        scope: rule.scope,
+        origin: rule.origin,
+        pinned: rule.pinned,
+      });
+      undoTimerRef.current = setTimeout(() => {
+        setPendingUndoRule(null);
+        undoTimerRef.current = null;
+      }, RULE_UNDO_DURATION_MS);
     } catch (error) {
       showGlobalNotification('error', error instanceof Error ? error.message : '删除规则失败');
     } finally {
       setBusy(false);
     }
-  }, [busy]);
+  }, [busy, clearUndoTimer]);
+
+  const handleUndoRemoveRule = useCallback(async () => {
+    if (!pendingUndoRule || busy) return;
+    const snapshot = pendingUndoRule;
+    clearUndoTimer();
+    setBusy(true);
+    try {
+      const updated = await mutateMemoryKernel({
+        kind: 'upsert_rule',
+        input: {
+          instruction: snapshot.instruction,
+          scope: snapshot.scope,
+          origin: snapshot.origin,
+          pinned: snapshot.pinned,
+        },
+      });
+      setView(updated);
+      invalidateMemoryKernelAttributionCache(updated);
+      setPendingUndoRule(null);
+    } catch (error) {
+      showGlobalNotification('error', error instanceof Error ? error.message : '恢复规则失败');
+    } finally {
+      setBusy(false);
+    }
+  }, [pendingUndoRule, busy, clearUndoTimer]);
 
   const handleRemoveWeakPoint = useCallback(async (subject: string, knowledge_point: string) => {
     if (busy) return;
@@ -195,10 +264,47 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
     try {
       const updated = await mutateMemoryKernel({ kind: 'rollback_profile', targetVersion: version });
       setView(updated);
+      invalidateMemoryKernelAttributionCache(updated);
       setShowHistory(false);
       showGlobalNotification('success', `已回滚学习者画像至 v${version}`);
     } catch (error) {
       showGlobalNotification('error', error instanceof Error ? error.message : '回滚失败');
+    } finally {
+      setBusy(false);
+    }
+  }, [busy]);
+
+  const handleToggleReflection = useCallback(async () => {
+    if (reflectionReport) {
+      setReflectionReport(null);
+      return;
+    }
+    if (busy) return;
+    setBusy(true);
+    try {
+      const report = await reflectMemoryKernel();
+      setReflectionReport(report);
+    } catch (error) {
+      showGlobalNotification('error', error instanceof Error ? error.message : '生成整理建议失败');
+    } finally {
+      setBusy(false);
+    }
+  }, [reflectionReport, busy]);
+
+  const handlePromoteProposal = useCallback(async (instruction: string, scope: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const updated = await mutateMemoryKernel({
+        kind: 'upsert_rule',
+        input: { instruction, scope, origin: 'dialectic_promoted', pinned: true },
+      });
+      setView(updated);
+      invalidateMemoryKernelAttributionCache(updated);
+      setReflectionReport(await reflectMemoryKernel().catch(() => null));
+      showGlobalNotification('success', '已升格为常驻硬规则');
+    } catch (error) {
+      showGlobalNotification('error', error instanceof Error ? error.message : '升格规则失败');
     } finally {
       setBusy(false);
     }
@@ -219,11 +325,14 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
         <button
           type="button"
           onClick={() => setExpanded(prev => !prev)}
-          className="flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-primary transition-colors"
+          className="flex flex-wrap items-center gap-1.5 text-xs font-medium text-foreground hover:text-primary transition-colors text-left"
         >
           {expanded ? <CaretDown size={13} /> : <CaretRight size={13} />}
           <Sparkle size={14} className="text-primary" weight="fill" />
-          <span>AI 常驻印象（每轮冻结注入）</span>
+          <span>长期记忆内核</span>
+          <span className="text-[11px] font-normal text-muted-foreground">
+            新会话首轮自动生效，会话内保持稳定
+          </span>
         </button>
 
         {view.privacyMode && (
@@ -238,28 +347,113 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
           <DsButton
             variant="ghost"
             size="sm"
+            data-testid="memory-kernel-reflect-btn"
+            disabled={busy}
+            onClick={() => void handleToggleReflection()}
+            className="h-6 px-2 text-[11px]"
+            title="基于薄弱点复发与规则预算生成一键整理建议"
+          >
+            <Sparkle size={12} className="mr-1" />
+            {reflectionReport ? '收起建议' : '梳理建议'}
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            size="sm"
             onClick={() => setShowPreview(prev => !prev)}
             className="h-6 px-2 text-[11px]"
           >
             <Eye size={12} className="mr-1" />
-            {showPreview ? '收起快照' : '预览快照'}
+            {showPreview ? '收起注入内容' : '预览注入内容'}
           </DsButton>
-          {view.profileHistory.length > 0 && (
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowHistory(prev => !prev)}
-              className="h-6 px-2 text-[11px]"
-            >
-              <ClockCounterClockwise size={12} className="mr-1" />
-              历史 ({view.profileHistory.length})
-            </DsButton>
-          )}
+          <DsButton
+            variant="ghost"
+            size="sm"
+            disabled={view.profileHistory.length === 0}
+            onClick={() => {
+              if (view.profileHistory.length === 0) return;
+              setShowHistory(prev => !prev);
+            }}
+            className={cn(
+              'h-6 px-2 text-[11px]',
+              view.profileHistory.length === 0 && 'text-muted-foreground disabled:pointer-events-auto'
+            )}
+            title={
+              view.profileHistory.length === 0
+                ? EMPTY_HISTORY_TOOLTIP
+                : '查看最近 10 个画像版本并一键回滚'
+            }
+          >
+            <ClockCounterClockwise size={12} className="mr-1" />
+            历史 ({view.profileHistory.length})
+          </DsButton>
         </div>
       </div>
 
       {expanded && (
         <div className="p-3 space-y-3">
+          {reflectionReport && (
+            <div
+              data-testid="memory-kernel-reflection-drawer"
+              className="rounded-md border border-primary/25 bg-primary/[0.04] p-2.5 space-y-2 text-xs"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-foreground">{reflectionReport.summary}</span>
+                <button
+                  type="button"
+                  onClick={() => setReflectionReport(null)}
+                  className="text-[11px] text-muted-foreground hover:text-foreground"
+                >
+                  关闭
+                </button>
+              </div>
+              {reflectionReport.proposals.length > 0 && (
+                <div className="space-y-1.5">
+                  {reflectionReport.proposals.map(p => (
+                    <div
+                      key={p.id}
+                      className="flex items-start justify-between gap-2 rounded border border-border/40 bg-background/80 px-2 py-1.5"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-medium text-foreground/90">{p.title}</div>
+                        <div className="text-[11px] text-muted-foreground">{p.rationale}</div>
+                      </div>
+                      {p.kind === 'promote_preference_to_rule' && typeof p.suggestedPayload?.instruction === 'string' && (
+                        <DsButton
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => void handlePromoteProposal(
+                            String(p.suggestedPayload?.instruction ?? ''),
+                            String(p.suggestedPayload?.scope ?? 'global'),
+                          )}
+                          className="h-6 shrink-0 px-2 text-[11px] text-primary"
+                        >
+                          升格硬规则
+                        </DsButton>
+                      )}
+                      {p.kind === 'retire_stale_weak_point'
+                        && typeof p.suggestedPayload?.subject === 'string'
+                        && typeof p.suggestedPayload?.knowledge_point === 'string' && (
+                        <DsButton
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => void handleRemoveWeakPoint(
+                            String(p.suggestedPayload?.subject ?? ''),
+                            String(p.suggestedPayload?.knowledge_point ?? ''),
+                          )}
+                          className="h-6 shrink-0 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                        >
+                          标记已掌握
+                        </DsButton>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* 1. L1 互动硬规则 */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -298,7 +492,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                       variant="ghost"
                       size="sm"
                       disabled={busy}
-                      onClick={() => void handleRemoveRule(rule.id)}
+                      onClick={() => void handleRemoveRule(rule)}
                       className="h-6 w-6 p-0 shrink-0 text-muted-foreground hover:text-destructive"
                       title="删除规则"
                     >
@@ -306,6 +500,29 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                     </DsButton>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* 5-second inline undo banner after rule deletion */}
+            {pendingUndoRule && (
+              <div
+                role="status"
+                className="flex items-center justify-between gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-1.5 text-xs text-foreground"
+              >
+                <span className="truncate">
+                  已删除规则「{pendingUndoRule.instruction}」
+                </span>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void handleUndoRemoveRule()}
+                  data-testid="memory-kernel-undo-rule"
+                  className="h-6 px-2 text-[11px] shrink-0 text-primary hover:text-primary"
+                >
+                  <ArrowUUpLeft size={12} className="mr-1" />
+                  撤销
+                </DsButton>
               </div>
             )}
 
@@ -442,11 +659,11 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
             </div>
           </div>
 
-          {/* 3. 原始冻结快照预览 */}
+          {/* 3. 注入内容预览 */}
           {showPreview && (
             <div className="rounded border border-border/45 bg-muted/40 p-2.5 space-y-1">
               <div className="text-[11px] font-medium text-muted-foreground">
-                AI 新会话第 1 轮实际接收的 &lt;memory_kernel&gt; 冻结文本：
+                AI 在新会话首轮自动读取的长期记忆注入内容（会话内保持稳定）：
               </div>
               <pre className="text-[11px] text-foreground/90 whitespace-pre-wrap break-words font-mono max-h-48 overflow-y-auto">
                 {view.renderedKernelPreview || '（当前内核为空）'}

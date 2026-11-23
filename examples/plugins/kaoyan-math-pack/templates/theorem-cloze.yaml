@@ -1,0 +1,22 @@
+id: kaoyan-theorem-cloze
+name: 考研定理条件与关键步挖空卡
+description: 专治“记得结论却忘掉使用条件”的定理挖空闪卡模板
+frontTemplate: |
+  **定理**：{{theorem}}
+  **适用前提（易错挖空）**：{{conditions_cloze}}
+  **典型反例**：{{counterexample_hint}}
+backTemplate: |
+  **完整条件**：{{conditions}}
+  **核心证明一步**：{{key_step}}
+  **高频考法**：{{exam_pattern}}
+fields:
+  - theorem
+  - conditions_cloze
+  - counterexample_hint
+  - conditions
+  - key_step
+  - exam_pattern
+tags:
+  - kaoyan
+  - math
+  - theorem

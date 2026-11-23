@@ -91,7 +91,7 @@ export default definePlugin<MemoryPluginConfig | undefined>({
     provides: ['memory', 'memoryProvider', 'insight', 'masteryProfileSink', 'memoryRetrieval', 'hpiasResearch', 'memoryConfig',
       'memoryToolMetadata', 'insightHints'],
     remote: {
-      memoryProvider: ['inspect', 'mutateFromUser'],
+      memoryProvider: ['inspect', 'mutateFromUser', 'reflect'],
     },
     commands: [...MEMORY_COMMANDS],
     platforms: ['desktop', 'mobile'],

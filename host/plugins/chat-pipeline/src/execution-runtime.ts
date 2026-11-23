@@ -30,6 +30,7 @@ import type { FilesService } from '../../../platform/files/api.ts';
 import type { ResolvedCanonicalImage } from './images.ts';
 import type { CanonicalContentPart } from '../../chat/api.ts';
 import { parseRendererCapabilities, RENDERER_CAPABILITIES_SETTING_KEY } from './prompt-builder.ts';
+import { formatDeclarativeStudyPackPrompt } from './pipeline-hooks.ts';
 import type { SessionSkillState } from './skill-injection.ts';
 import { emptyToolFacePrefixSnapshot, refillToolFaceBaseline, mergeFrozenToolSchemaOrderBaseline,
   type ToolFacePrefixSnapshot } from './tool-face.ts';
@@ -559,13 +560,22 @@ export function composeExecution(input: ExecutionCompositionInput): ExecutionDep
         }
       },
       pluginExtensions: async execution => {
+        const parts: string[] = [];
         const hooks = ctx.get('chatPipelineHooks');
-        if (!hooks) return null;
-        return hooks.runAugmentSystemPrompt({
-          sessionId: execution.sessionId,
-          mode: execution.options.chatMode ?? null,
-          userContent: execution.userContent,
-        });
+        if (hooks) {
+          const hooked = await hooks.runAugmentSystemPrompt({
+            sessionId: execution.sessionId,
+            mode: execution.options.chatMode ?? null,
+            userContent: execution.userContent,
+          });
+          if (hooked) parts.push(hooked);
+        }
+        const declarativeAssets = (ctx.reflect?.get?.('declarativeAssets', false) ?? (ctx as unknown as Record<string, unknown>).declarativeAssets) as
+          | import('./pipeline-hooks.ts').DeclarativeStudyPackAssetsLike
+          | undefined;
+        const packPrompt = formatDeclarativeStudyPackPrompt(declarativeAssets);
+        if (packPrompt) parts.push(packPrompt);
+        return parts.length > 0 ? parts.join('\n\n') : null;
       },
       agentsInstructions: execution => loadProjectAgentsInstructions(agentsPorts, execution.sessionId),
       activeGoal: sessionId => loadActiveGoalSummary(chatDb, log, sessionId),

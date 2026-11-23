@@ -1,8 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { ChatPipelineHooksRegistry } from '../src/pipeline-hooks.ts';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { ChatPipelineHooksRegistry, formatDeclarativeStudyPackPrompt } from '../src/pipeline-hooks.ts';
 import { PromptBuilder } from '../src/prompt-builder.ts';
 import { GradingRubricRegistry } from '../../llm/src/essay_grading/rubric-registry.ts';
 import { ReviewSchedulerRegistry, DEFAULT_REVIEW_SCHEDULER_ID } from '../../review/src/scheduler-registry.ts';
+import { checkManifest } from '../../../kernel/manifest.ts';
+import { DeclarativeAssetRegistry, mountDeclarativeAssets } from '../../../kernel/declarative-loader.ts';
 
 describe('RFC-002 P2: Native Cordis Core Hook & Provider Registries', () => {
   it('chatPipelineHooks orders hooks by priority, isolates crashes/timeouts, and renders <plugin_extensions>', async () => {
@@ -119,5 +123,31 @@ describe('RFC-002 P2: Native Cordis Core Hook & Provider Registries', () => {
     disposeBad();
     expect(schedulers.getActiveId()).toBe(DEFAULT_REVIEW_SCHEDULER_ID);
     disposeCram();
+  });
+
+  it('mounts the real examples/plugins/kaoyan-math-pack Study Pack into rubrics + prompt extensions and cleans up cleanly', async () => {
+    const packDir = fileURLToPath(new URL('../../../../examples/plugins/kaoyan-math-pack', import.meta.url));
+    const pkg = JSON.parse(await readFile(`${packDir}/package.json`, 'utf8'));
+    const checked = checkManifest(pkg, { appVersion: '0.20.9', context: 'community-startup', platform: 'desktop' });
+    expect(checked.ok).toBe(true);
+    if (!checked.ok) return;
+
+    const registry = new DeclarativeAssetRegistry();
+    const rubrics = new GradingRubricRegistry();
+    const dispose = await mountDeclarativeAssets(checked.manifest, packDir, { registry, gradingRubrics: rubrics });
+
+    expect(rubrics.get('example.kaoyan-math-pack:kaoyan-math-proof')?.name).toBe('考研数学证明题严格批改');
+    expect(registry.listCardTemplates()).toHaveLength(1);
+    const promptBlock = formatDeclarativeStudyPackPrompt(registry);
+    expect(promptBlock).toContain('考研数学苏格拉底引导法');
+    expect(promptBlock).toContain('/kaoyan-sprint');
+
+    const built = new PromptBuilder(null).withPluginExtensions(promptBlock).buildSplit();
+    expect(built.turnVolatile).toContain('<plugin_extensions>');
+    expect(built.turnVolatile).toContain('考研数学苏格拉底引导法');
+
+    dispose();
+    expect(rubrics.get('example.kaoyan-math-pack:kaoyan-math-proof')).toBeNull();
+    expect(formatDeclarativeStudyPackPrompt(registry)).toBeNull();
   });
 });
