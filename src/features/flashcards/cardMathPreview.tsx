@@ -62,11 +62,19 @@ function formatImgPlaceholder(attrs: string): string {
   return label ? `[图片: ${label}]` : '[图片]';
 }
 
+function escapePlainHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 /**
  * 清理 Anki 导入卡里的安全排版标签与未解析 `<img>` 引用，避免在卡片库预览里露出裸源码。
  * 仅还原白名单无属性排版标签（b/strong/i/em/u/s/del/sub/sup/br），其余 HTML 仍按纯文本转义。
  */
-export function renderAnkiCardPreviewHtml(text: string, options: { inline?: boolean } = {}): string | null {
+export function renderAnkiCardPreviewHtml(text: string | null | undefined, options: { inline?: boolean } = {}): string | null {
   if (!text) return null;
   const hasMath = text.includes('$') || text.includes('\\(') || text.includes('\\[');
   const hasSafeHtml = SAFE_ANKI_HTML_RE.test(text);
@@ -101,7 +109,7 @@ export function renderAnkiCardPreviewHtml(text: string, options: { inline?: bool
 
   let source = normalizeDelimiters(prepared, inline);
   if (inline) source = collapseDisplayMath(source.replace(/\s+/g, ' ').trim());
-  const escaped = renderLatexToHtml(source);
+  const escaped = renderLatexToHtml(source) ?? escapePlainHtml(source);
   const restored = escaped.replace(/\uE000ANKI_(\d+)\uE001/g, (_m, rawIdx: string) => tokens[Number(rawIdx)] ?? '');
 
   if (htmlCache.size >= CACHE_LIMIT) {

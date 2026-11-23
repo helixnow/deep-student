@@ -117,8 +117,8 @@ html[data-wb-dragging] .wb-titlebar.wb-title-bar,
       var(--wb-ease-swift, cubic-bezier(0.3, 0.9, 0.35, 1));
 }
 
-/* 触屏设备：保持 12px 视觉圆点，但用透明伪元素扩展触控命中区并加大键距，避免手机上难以点中关闭按钮 */
-@media (pointer: coarse) {
+/* 触屏或手机窄屏：保持 12px 视觉圆点，但用透明伪元素扩展触控命中区并加大键距，避免手机上难以点中关闭按钮 */
+@media (pointer: coarse), (max-width: 640px) {
   .wb-traffic-lights {
     gap: 14px;
   }
@@ -126,7 +126,7 @@ html[data-wb-dragging] .wb-titlebar.wb-title-bar,
   .wb-title-key::before {
     content: '';
     position: absolute;
-    inset: -10px -8px;
+    inset: -16px -12px;
   }
 }
 

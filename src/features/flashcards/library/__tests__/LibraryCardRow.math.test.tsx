@@ -64,6 +64,14 @@ describe('renderCardPreviewMathHtml', () => {
     expect(inlineHtml).toContain('Card #763');
     expect(inlineHtml).not.toContain('<b>');
     expect(inlineHtml).toContain('[图片: qa_img_63.png]');
+
+    // Pure HTML without LaTeX must NOT crash when renderLatexToHtml returns null
+    const htmlOnly = renderAnkiCardPreviewHtml('<b>Amoxicillin</b><br><img src="rx.png"> <script>x()</script>', { inline: false })!;
+    expect(htmlOnly).toContain('<b>Amoxicillin</b>');
+    expect(htmlOnly).toContain('<br />');
+    expect(htmlOnly).toContain('[图片: rx.png]');
+    expect(htmlOnly).toContain('&lt;script&gt;');
+    expect(renderAnkiCardPreviewHtml(null)).toBeNull();
   });
 });
 
