@@ -49,7 +49,7 @@ async function getSessionManager(): Promise<SessionManagerLike> {
 async function withSessionStore(
   sessionId: string,
   fn: (store: StoreApi<ChatStore>) => void,
-  delays: number[] = [0, 120, 400, 1000],
+  delays: number[] = [0, 120, 300, 600, 1200, 2000],
 ): Promise<boolean> {
   const manager = await getSessionManager();
   return new Promise<boolean>((resolve, reject) => {
@@ -96,7 +96,7 @@ function findSessionInput(sessionId: string): HTMLTextAreaElement | null {
  */
 async function focusSessionInput(
   sessionId: string,
-  delays: number[] = [0, 120, 400, 1000],
+  delays: number[] = [0, 120, 300, 600, 1200, 2000],
 ): Promise<boolean> {
   const storeReady = await withSessionStore(sessionId, () => {});
   if (!storeReady || typeof window === 'undefined') return false;

@@ -501,6 +501,8 @@ export interface ChatStore {
 
   /** 输入框内容 */
   inputValue: string;
+  /** inputValue 是否在当前会话中被本地写入但尚未完成后端恢复对齐（避免冷开窗预填被快照覆盖） */
+  inputValueDirty?: boolean;
 
   /** 附件列表（只存元数据） */
   attachments: AttachmentMeta[];

@@ -196,7 +196,7 @@ export function createSessionActions(
         // ========== 输入框 Actions ==========
 
         setInputValue: (value: string): void => {
-          set({ inputValue: value });
+          set({ inputValue: value, inputValueDirty: true });
           // P2 修复：触发自动保存，防止崩溃时草稿丢失
           scheduleAutoSaveIfReady();
         },
@@ -560,6 +560,7 @@ export function createSessionActions(
             // 🔧 P0修复：保留预设的 modeState，让 onInit 决定如何处理
             modeState: presetModeState,
             inputValue: '',
+            inputValueDirty: false,
             attachments: [],
             panelStates: createDefaultPanelStates(),
             authorityMode: 'craft',

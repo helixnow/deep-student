@@ -464,4 +464,29 @@ describe('InputBarUI attachment preview chips', () => {
       injectModes: { pdf: ['image', 'ocr'] },
     });
   });
+
+  it('shows an inline not-ready status hint inside the mode popover when selected OCR is unavailable', async () => {
+    const partialPdf: AttachmentMeta = {
+      id: 'att_pdf_partial',
+      name: 'scanned-only.pdf',
+      type: 'document',
+      mimeType: 'application/pdf',
+      size: 4096,
+      status: 'ready',
+      injectModes: { pdf: ['image', 'ocr'] },
+      processingStatus: {
+        stage: 'completed',
+        readyModes: ['image'],
+        totalPages: 2,
+      },
+    };
+
+    renderInputBar({ attachments: [partialPdf] });
+    const modeTrigger = screen.getByTestId('attachment-chip-mode-att_pdf_partial');
+    fireEvent.click(modeTrigger);
+
+    const statusHint = await screen.findByTestId('attachment-chip-mode-status-att_pdf_partial');
+    expect(statusHint).toBeInTheDocument();
+    expect(statusHint.textContent).toMatch(/OCR|ocr/i);
+  });
 });

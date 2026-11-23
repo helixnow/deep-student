@@ -38,7 +38,7 @@ import {
   resourceTypeToAppTypeId,
 } from '../apps/content/typeMap';
 import { requestWorkspaceResource } from '../apps/notes/workspaceRegistry';
-import { launchNewChatSession } from '../apps/chat/newSession';
+import { launchNewChatSession, openChatSession } from '../apps/chat/newSession';
 import { CHAT_APP_TYPE_ID } from '../apps/chat/register';
 import { resolvePluginViewAppTypeId } from '../apps/plugin-views/register';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -194,11 +194,17 @@ export const WorkbenchEventBridge: React.FC = () => {
       if (!content) return;
       const sessionId = findRecentChatSessionId();
       if (sessionId) {
+        const hasChatWindow = Object.values(useWindowStore.getState().windows)
+          .some((win) => win.typeId === CHAT_APP_TYPE_ID);
+        if (!hasChatWindow) {
+          openChatSession(sessionId, 'api');
+        }
         void workbenchBus.activate({
           typeId: CHAT_APP_TYPE_ID,
           instanceKey: sessionId,
           action: 'setInput',
           payload: { content, focus: true, sessionId },
+          fallbackLaunch: { typeId: CHAT_APP_TYPE_ID, instanceKey: sessionId, reason: 'api' },
         });
         return;
       }
@@ -208,6 +214,7 @@ export const WorkbenchEventBridge: React.FC = () => {
           instanceKey: result.sessionId,
           action: 'setInput',
           payload: { content, focus: true, sessionId: result.sessionId },
+          fallbackLaunch: { typeId: CHAT_APP_TYPE_ID, instanceKey: result.sessionId, reason: 'api' },
         });
       });
     };

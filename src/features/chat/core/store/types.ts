@@ -283,6 +283,8 @@ export interface ChatStoreState extends StoreCallbacks {
 
   /** 输入框内容 */
   inputValue: string;
+  /** inputValue 是否被本地写入过（用于 restoreFromBackend 保护未落盘预填） */
+  inputValueDirty?: boolean;
 
   /** 附件列表 */
   attachments: AttachmentMeta[];
@@ -363,6 +365,7 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     features: new Map(),
     modeState: null,
     inputValue: '',
+    inputValueDirty: false,
     attachments: [],
     panelStates: createDefaultPanelStates(),
     // 🔧 P1修复：Callback 初始值

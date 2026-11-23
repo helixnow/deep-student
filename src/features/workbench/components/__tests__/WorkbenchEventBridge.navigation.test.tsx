@@ -2,13 +2,16 @@ import React from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { launch, activate, isEnabled, getApp } = vi.hoisted(() => ({
+const { launch, activate, isEnabled, getApp, getCurrentSessionId, openChatSessionMock, launchNewChatSessionMock } = vi.hoisted(() => ({
   launch: vi.fn(),
   activate: vi.fn(async () => true),
   isEnabled: vi.fn(() => true),
   getApp: vi.fn((typeId: string) =>
     typeId === 'flashcards' || typeId === 'chat' || typeId === 'files' ? { typeId } : undefined,
   ),
+  getCurrentSessionId: vi.fn<() => string | null>(() => null),
+  openChatSessionMock: vi.fn(),
+  launchNewChatSessionMock: vi.fn(async () => ({ sessionId: 'sess_new', windowId: 'win-chat-new' })),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
@@ -22,9 +25,14 @@ vi.mock('../../apps/content/typeMap', () => ({
   isNotesWorkspaceResourceType: (type: string) => type === 'note' || type === 'mindmap',
   resourceTypeToAppTypeId: (type: string) => type,
 }));
-vi.mock('../../apps/chat/newSession', () => ({ launchNewChatSession: vi.fn() }));
+vi.mock('../../apps/chat/newSession', () => ({
+  launchNewChatSession: launchNewChatSessionMock,
+  openChatSession: openChatSessionMock,
+}));
 vi.mock('../../apps/chat/register', () => ({ CHAT_APP_TYPE_ID: 'chat' }));
-vi.mock('@/features/chat/core/session/sessionManager', () => ({ sessionManager: { getCurrentSessionId: () => null } }));
+vi.mock('@/features/chat/core/session/sessionManager', () => ({
+  sessionManager: { getCurrentSessionId },
+}));
 vi.mock('../../hooks/useWorkbenchA11y', () => ({ announceWorkbench: vi.fn() }));
 vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: vi.fn() }));
 
@@ -39,6 +47,9 @@ afterEach(() => {
   getApp.mockReset().mockImplementation((typeId: string) =>
     typeId === 'flashcards' || typeId === 'chat' || typeId === 'files' ? { typeId } : undefined,
   );
+  getCurrentSessionId.mockReset().mockReturnValue(null);
+  openChatSessionMock.mockReset();
+  launchNewChatSessionMock.mockReset().mockResolvedValue({ sessionId: 'sess_new', windowId: 'win-chat-new' });
   window.history.replaceState(null, '', '/');
 });
 
@@ -76,6 +87,20 @@ describe('WorkbenchEventBridge classic navigation events (previously dead in wor
     expect(activate).toHaveBeenCalledWith(expect.objectContaining({
       typeId: 'files', action: 'openQuickAccess', payload: { type: 'memory' },
       fallbackLaunch: expect.objectContaining({ typeId: 'files' }),
+    }));
+  });
+
+  it('opens the chat window with fallbackLaunch when CHAT_V2_SET_INPUT arrives with a closed chat window', () => {
+    getCurrentSessionId.mockReturnValue('sess_existing');
+    render(<WorkbenchEventBridge />);
+    fire('CHAT_V2_SET_INPUT', { content: '请帮我深入讲解这处作文批注' });
+    expect(openChatSessionMock).toHaveBeenCalledWith('sess_existing', 'api');
+    expect(activate).toHaveBeenCalledWith(expect.objectContaining({
+      typeId: 'chat',
+      instanceKey: 'sess_existing',
+      action: 'setInput',
+      payload: { content: '请帮我深入讲解这处作文批注', focus: true, sessionId: 'sess_existing' },
+      fallbackLaunch: expect.objectContaining({ typeId: 'chat', instanceKey: 'sess_existing' }),
     }));
   });
 });
