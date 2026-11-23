@@ -165,6 +165,13 @@ describe('buildSuggestionChange（从 marker 流构造锚定修改）', () => {
     expect(extractErrSuggestedReplacement('read书', '中英文混杂，建议改为「读书」')).toBe('读书');
     expect(extractErrSuggestedReplacement('go', 'Past tense should be "went" here.')).toBe('went');
     expect(extractErrSuggestedReplacement('bad', '表达略显平淡，可以再润色')).toBeUndefined();
+    // 真实模型常见中文语法形态措辞（W3-V01 回归）
+    expect(extractErrSuggestedReplacement('student', '前面有 more and more 修饰时应使用复数形式 students')).toBe('students');
+    expect(extractErrSuggestedReplacement('have', '中心词为单数，谓语应用 has；若主语是 graduates 才用 have')).toBe('has');
+    expect(extractErrSuggestedReplacement('government', '此处泛指政府，建议写 the government')).toBe('the government');
+    expect(extractErrSuggestedReplacement('go', '全文叙述的是去年发生的事，谓语应使用一般过去时 went；注意时态')).toBe('went');
+    expect(extractErrSuggestedReplacement('deep', '修饰动词 moved 应使用副词 deeply，deep 多表示空间深度')).toBe('deeply');
+    expect(extractErrSuggestedReplacement('very agree', 'very 不能直接修饰动词 agree；应说 I strongly agree 或 I completely agree')).toBeUndefined();
 
     const errMarkers: StreamingMarker[] = [
       marker({ type: 'text', content: 'She ' }),

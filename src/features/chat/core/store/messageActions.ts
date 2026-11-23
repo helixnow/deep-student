@@ -399,6 +399,7 @@ export function createMessageActions(
             currentStreamingMessageId: assistantMessageId,
             // 清空输入框
             inputValue: '',
+            inputValueDirty: false,
             attachments: [],
             // 🆕 Prompt 6: 发送完成后清空上下文引用
             // ★ P0-01+P0-04 修复：只清空非 sticky 的引用，保留 skill 等持久引用

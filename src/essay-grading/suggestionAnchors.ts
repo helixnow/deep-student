@@ -171,7 +171,14 @@ export function markerOriginalText(marker: StreamingMarker): string {
 const ERR_VAGUE_CANDIDATE_RE = /^(?:如|例如|比如|或|或者|之类|等|更|合理|正确|适当|合适|复数|单数|过去式|现在时)/;
 
 /**
- * 从 `<err explanation="...">` 的自然语言解释中保守提取明确替换片段（如「应改为 has」「改为「读书」」「should be "has"」）。
+ * 可选中文语法形态修饰语（如「应使用复数形式 students」「谓语应使用一般过去时 went」「应使用副词 deeply」）。
+ */
+const ERR_GRAMMAR_MODIFIER =
+  '(?:(?:名词)?复数(?:形式)?|(?:名词)?单数(?:形式)?|一般过去时|过去式|过去分词|现在分词|动词原形|原形|副词(?:形式)?|形容词(?:形式)?|名词(?:形式)?|不定式|冠词|第三人称单数(?:形式)?)?';
+
+/**
+ * 从 `<err explanation="...">` 的自然语言解释中保守提取明确替换片段
+ * （如「应改为 has」「应使用复数形式 students」「谓语应用 has」「建议写 the government」「should be "has"」）。
  * 仅在提取结果明确、短小、与原文不同且不含泛化提示词时返回，避免误替。
  */
 export function extractErrSuggestedReplacement(
@@ -181,9 +188,13 @@ export function extractErrSuggestedReplacement(
   if (!original || !explanation) return undefined;
 
   const patterns: RegExp[] = [
-    /(?:应改为|应改作|应为|建议改为|可改为|改为|改成|替换为|修改为|写为|拼写为|写作)\s*[「『"'`]([^「『"'`\n]{1,80}?)[」』"'`]/,
+    new RegExp(
+      `(?:应改为|应改作|应为|应使用|应用|建议改为|建议写|建议用|可改为|改为|改成|替换为|修改为|写为|拼写为|写作)\\s*${ERR_GRAMMAR_MODIFIER}\\s*[「『"'\`]([^「『"'\`\\n]{1,80}?)[」』"'\`]`,
+    ),
     /(?:should be|change(?:d)? to|replace(?:d)? with|correct(?:ed)? to|use)\s+["'`]([^"'`\n]{1,80}?)["'`]/i,
-    /(?:应改为|应改作|建议改为|可改为|改为|改成|替换为|修改为|拼写为)\s*([A-Za-z][A-Za-z0-9'\- ]{0,48}?)(?=[，。；！？、（）()\n]|$)/,
+    new RegExp(
+      `(?:应改为|应改作|应为|应使用|应用|建议改为|建议写|建议用|可改为|改为|改成|替换为|修改为|拼写为)\\s*${ERR_GRAMMAR_MODIFIER}\\s*([A-Za-z][A-Za-z0-9'\\- ]{0,48}?)(?=[，。；！？、（）()\\n]|$)`,
+    ),
   ];
 
   for (const re of patterns) {

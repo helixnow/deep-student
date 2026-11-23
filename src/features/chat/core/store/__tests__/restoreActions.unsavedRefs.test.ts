@@ -136,4 +136,27 @@ describe('restoreFromBackend — 保留加载前加入的未保存引用', () =>
     await flushAsync();
     expect(other.getState().pendingContextRefs.map((r) => r.resourceId)).toEqual(['res_saved00001']);
   });
+
+  it('保留加载前已写入内存的预填输入框内容（如桌面模式作文批改「追问 AI」冷开对话窗）', async () => {
+    const prefilled = '请帮我深入讲解这处作文批注：原文 have → 建议 has';
+    const { actions, getState } = createHarness({
+      sessionId: 'sess_parallel',
+      inputValue: prefilled,
+      inputValueDirty: true,
+    } as Partial<ChatStoreState>);
+    actions.restoreFromBackend(buildResponse([]), {
+      messageMap: new Map(),
+      blocks: new Map(),
+      inputValue: prefilled,
+      messageIds: new Set(),
+      blockIds: new Set(),
+      sessionStatus: 'idle',
+      currentStreamingMessageId: null,
+    });
+
+    await vi.waitFor(() => expect(getState().isDataLoaded).toBe(true));
+    await flushAsync();
+    expect(getState().inputValue).toBe(prefilled);
+    expect(getState().inputValueDirty).toBe(true);
+  });
 });

@@ -984,9 +984,15 @@ export function createRestoreActions(
             resetTransientRuntimes(getState().setPendingApproval);
           }
 
-          // liveState 已前进（例如发送后清空了输入框）时保留当前 composer，
-          // 避免后端快照里尚未刷掉的旧草稿把已发送正文写回输入框。
+          // liveState 已前进（例如发送后清空了输入框）、或加载完成前已有本地未落盘输入
+          // （例如桌面模式下对话窗尚未打开时从作文批改「追问 AI」/ PDF 划词预填），
+          // 均保留当前 composer，避免后端快照里的旧/空草稿把预填内容冲掉。
+          const hasUnsavedLiveInput =
+            liveState.sessionId === session.id
+            && liveState.inputValueDirty === true
+            && liveState.inputValue.length > 0;
           const resolvedInputValue = liveStateAdvanced
+            || hasUnsavedLiveInput
             || (baseline?.inputValue !== undefined && liveState.inputValue !== baseline.inputValue)
             ? liveState.inputValue
             : inputValue;
@@ -1042,6 +1048,7 @@ export function createRestoreActions(
             features,
             modeState,
             inputValue: resolvedInputValue,
+            inputValueDirty: hasUnsavedLiveInput,
             attachments: [],
             panelStates,
             pendingContextRefs: resolvedPendingContextRefs,

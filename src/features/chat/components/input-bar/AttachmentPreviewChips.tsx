@@ -430,7 +430,11 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                       size="sm"
                       data-testid={`attachment-chip-mode-${attachment.id}`}
                       aria-label={`${attachment.name} · ${t('chatV2:injectMode.label')}: ${modeSummary}`}
-                      title={`${t('chatV2:injectMode.label')}: ${modeSummary}`}
+                      title={
+                        isPartial || isBusy
+                          ? `${t('chatV2:injectMode.label')}: ${modeSummary} · ${statusTitle}`
+                          : `${t('chatV2:injectMode.label')}: ${modeSummary}`
+                      }
                       className={cn(
                         'ml-1 !h-7 !gap-1 !rounded-full border !px-2 text-2xs font-medium shadow-sm [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]',
                         chipStatus.lifecycle === 'partial'
@@ -453,6 +457,18 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                         disabled={attachment.status !== 'ready' && chipStatus.lifecycle !== 'processing'}
                         processingStatus={normalizedStoreStatus}
                       />
+                      {(isPartial || isBusy) && (
+                        <p
+                          role="status"
+                          data-testid={`attachment-chip-mode-status-${attachment.id}`}
+                          className={cn(
+                            'max-w-[16rem] text-2xs leading-snug',
+                            isPartial ? 'text-warning' : 'text-info',
+                          )}
+                        >
+                          {statusTitle}
+                        </p>
+                      )}
                     </div>
                   </PopoverContent>
                 </Popover>
