@@ -770,6 +770,12 @@
   color: hsl(var(--foreground) / 92%);
 }
 
+.chat-v2 .markdown-table th .katex,
+.chat-v2 .markdown-table td .katex {
+  white-space: nowrap;
+  display: inline-block;
+}
+
 
 
 /* ============================================================================

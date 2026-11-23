@@ -104,13 +104,21 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
     };
   }, [clearUndoTimer]);
 
+  const viewRef = useRef<MemoryInspectionView | null>(null);
+  viewRef.current = view;
+
   const load = useCallback(async () => {
     try {
       const next = await inspectMemoryKernel();
-      setView(next);
-      setUnavailable(false);
+      if (next && typeof next === 'object' && next.hardRules && next.learnerProfile) {
+        setView(next);
+        setUnavailable(false);
+      }
     } catch {
-      setUnavailable(true);
+      // Never wipe an already-loaded panel on a transient background refresh error.
+      if (!viewRef.current) {
+        setUnavailable(true);
+      }
     }
   }, []);
 
