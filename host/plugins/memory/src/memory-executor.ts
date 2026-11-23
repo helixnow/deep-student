@@ -15,6 +15,7 @@ export const MEMORY_TOOL_NAMES = [
   'memory_batch_move', 'memory_add_relation', 'memory_remove_relation',
   'memory_update_tags', 'memory_log_activity', 'memory_export_all',
   'learner_profile_get', 'learner_profile_update',
+  'memory_rule_list', 'memory_rule_upsert', 'memory_rule_remove',
 ] as const;
 
 export const MEMORY_BATCH_LIMIT = 20;
@@ -208,7 +209,8 @@ export function memorySensitivity(toolName: string): ToolSensitivity {
     || stripped === 'memory_log_activity' || stripped === 'memory_write'
     || stripped === 'memory_write_smart' || stripped === 'memory_write_batch'
     || stripped === 'memory_update_by_id' || stripped === 'memory_delete'
-    || stripped === 'learner_profile_get' || stripped === 'learner_profile_update') {
+    || stripped === 'learner_profile_get' || stripped === 'learner_profile_update'
+    || stripped === 'memory_rule_upsert' || stripped === 'memory_rule_remove') {
     return 'medium';
   }
   return 'low';
@@ -219,6 +221,7 @@ export function memoryConcurrency(toolName: string): ToolConcurrency {
   const stripped = stripToolNamespace(toolName);
   return stripped === 'memory_search' || stripped === 'memory_read'
     || stripped === 'memory_list' || stripped === 'memory_export_all'
+    || stripped === 'memory_rule_list'
     ? 'read_only' : 'serial';
 }
 

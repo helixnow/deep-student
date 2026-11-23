@@ -67,6 +67,8 @@ export interface PromptSources {
   canvasNote(ctx: PipelineContext): Promise<CanvasNoteInfo | null>;
   userProfile(ctx: PipelineContext): Promise<string | null>;
   learnerProfile(ctx: PipelineContext): string | null;
+  /** RFC-001 M1: session-frozen `<memory_kernel>` + optional mid-session `<memory_delta>`. */
+  memoryKernel?(ctx: PipelineContext): Promise<{ kernel: string | null; delta: string | null; handled: boolean }>;
   agentsInstructions(ctx: PipelineContext): string | null;
   activeGoal(sessionId: string): string | null;
   insightHints(ctx: PipelineContext): string | null;
@@ -304,14 +306,18 @@ export class PipelineExecution {
   private async buildSystemPrompt(ctx: PipelineContext): Promise<string> {
     const sources = this.deps.prompt;
     const canvasNote = await sources.canvasNote(ctx);
-    const userProfile = await sources.userProfile(ctx);
+    const kernelResult = sources.memoryKernel ? await sources.memoryKernel(ctx) : { kernel: null, delta: null, handled: false };
+    // When MemoryProvider handled the session via frozen `<memory_kernel>`, skip legacy per-turn
+    // `<user_profile>` + `<learner_profile>` duplication inside `turnVolatile` (eliminating N× bloat).
+    const userProfile = kernelResult.handled ? null : await sources.userProfile(ctx);
+    const learnerProfile = kernelResult.handled ? null : sources.learnerProfile(ctx);
     const agents = sources.agentsInstructions(ctx);
     const activeGoal = sources.activeGoal(ctx.sessionId);
     const insightHints = sources.insightHints(ctx);
     const rendererCapabilities = sources.rendererCapabilities();
     const parts = buildSystemPromptWithProfileAndAgents({ options: ctx.options, sources: ctx.retrievedSources,
-      canvasNote, userProfile, learnerProfile: sources.learnerProfile(ctx), projectAgentsInstructions: agents,
-      activeGoal, insightHints, rendererCapabilities });
+      canvasNote, userProfile, learnerProfile, memoryKernel: kernelResult.kernel, memoryDelta: kernelResult.delta,
+      projectAgentsInstructions: agents, activeGoal, insightHints, rendererCapabilities });
     ctx.turnVolatileContext = parts.turnVolatile;
     return parts.stableSystem;
   }

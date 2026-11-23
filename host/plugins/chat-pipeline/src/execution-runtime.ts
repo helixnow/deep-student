@@ -2,7 +2,11 @@
  * Required owner surfaces fail before any event/write; optional Rust providers degrade exactly to None.
  */
 import type { Context } from '@deepseek-ai/cordis';
-import { BackendEventsSink, ChatV2Emitter, ChatV2Error, type SessionState } from '../../chat/api.ts';
+import {
+  BackendEventsSink, ChatV2Emitter, ChatV2Error,
+  freezeMemoryKernelSnapshotWithConn, getMemoryKernelSnapshotWithConn,
+  type SessionState,
+} from '../../chat/api.ts';
 import type { StreamEventSink as LlmStreamEventSink } from '../../llm/api.ts';
 import { onTaskFinalized, onTurnCommitted } from '../../agent-skills/portable.ts';
 import { ToolRounds } from './tool-round.ts';
@@ -440,6 +444,42 @@ export function composeExecution(input: ExecutionCompositionInput): ExecutionDep
         const memory = memoryPrompt(), budget = ctx.get('injectionBudget');
         if (memory === null || !budget) return null;
         return loadLearnerProfileBlock(memory, budget, log, execution.options.memoryEnabled);
+      },
+      memoryKernel: async execution => {
+        if (execution.options.memoryEnabled === false) {
+          return { kernel: null, delta: null, handled: true };
+        }
+        const provider = ctx.get('memoryProvider');
+        if (!provider || !ctx.get('vfs')) {
+          return { kernel: null, delta: null, handled: false };
+        }
+        try {
+          const conn = chatDb();
+          const req = {
+            sessionId: execution.sessionId,
+            memoryEnabled: execution.options.memoryEnabled,
+            mode: execution.options.chatMode ?? null,
+          };
+          const existing = getMemoryKernelSnapshotWithConn(conn, execution.sessionId);
+          if (existing === null) {
+            const fresh = provider.buildSessionSnapshot(req);
+            const frozen = freezeMemoryKernelSnapshotWithConn(conn, execution.sessionId, fresh);
+            return {
+              kernel: frozen.renderedKernel !== '' ? frozen.renderedKernel : null,
+              delta: null,
+              handled: true,
+            };
+          }
+          const delta = provider.buildSessionDelta(req, existing);
+          return {
+            kernel: existing.renderedKernel !== '' ? existing.renderedKernel : null,
+            delta,
+            handled: true,
+          };
+        } catch (error) {
+          log.warn(`[ChatV2::pipeline] memoryKernel snapshot failed (session=${execution.sessionId}): ${errorMessage(error)}`);
+          return { kernel: null, delta: null, handled: false };
+        }
       },
       agentsInstructions: execution => loadProjectAgentsInstructions(agentsPorts, execution.sessionId),
       activeGoal: sessionId => loadActiveGoalSummary(chatDb, log, sessionId),

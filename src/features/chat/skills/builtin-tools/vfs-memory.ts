@@ -169,6 +169,9 @@ export const vfsMemorySkill: SkillDefinition = {
     'builtin-memory_export_all',
     'builtin-learner_profile_get',
     'builtin-learner_profile_update',
+    'builtin-memory_rule_list',
+    'builtin-memory_rule_upsert',
+    'builtin-memory_rule_remove',
   ],
   embeddedTools: [
     {
@@ -647,6 +650,57 @@ export const vfsMemorySkill: SkillDefinition = {
           recent_status: {
             type: 'string',
             description: '覆盖近期状态摘要（1-2 句话）',
+          },
+        },
+      },
+    },
+    {
+      name: 'builtin-memory_rule_list',
+      description: '读取学习者的常驻互动硬规则（L1 HardRules，已自动冻结注入每轮对话）及当前字符预算占用。',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+      },
+    },
+    {
+      name: 'builtin-memory_rule_upsert',
+      description: '写入或更新一条常驻互动硬规则（如「每次回答结尾加 1 道自测题」「先提示思路不直接给答案」）。从下个新会话首轮起 100% 强制生效，本会话立即通过增量生效；超出字符预算会拒绝写入，需先精简/删除旧规则。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            description: '更新既有规则时传入规则 id；新增时省略',
+          },
+          instruction: {
+            type: 'string',
+            description: '明确、可执行的单条互动规则（≤260 字符）',
+          },
+          scope: {
+            type: 'string',
+            description: "作用域：'global'（默认全局）、'subject:<学科>' 或 'mode:<模式>'",
+          },
+          pinned: {
+            type: 'boolean',
+            description: '是否置顶必遵（用户明确要求时为 true）',
+          },
+        },
+        required: ['instruction'],
+      },
+    },
+    {
+      name: 'builtin-memory_rule_remove',
+      description: '移除一条已过时或被替代的常驻互动硬规则（按 id 或精确规则文本匹配）。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          id: {
+            type: 'string',
+            description: '要删除的规则 id',
+          },
+          instruction: {
+            type: 'string',
+            description: '若无 id，可传精确规则文本匹配删除',
           },
         },
       },

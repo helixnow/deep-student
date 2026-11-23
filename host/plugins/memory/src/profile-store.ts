@@ -20,6 +20,15 @@ import {
   asciiLower, mergeLearnerProfileUpdate, renderedCharCount,
   type LearnerProfile, type LearnerProfileUpdate, type WeakPoint,
 } from './learner-profile.ts';
+import {
+  HARD_RULES_MAX_CHARS_CONFIG_KEY, HARD_RULES_NOTE_TITLE,
+  LEARNER_PROFILE_KERNEL_MAX_CHARS_CONFIG_KEY, MAX_HARD_RULES,
+  clampHardRulesMaxChars, clampLearnerProfileKernelMaxChars, emptyHardRules,
+  enforceHardRulesCharLimit, hardRulesFromJson, hardRulesToJson,
+  removeHardRule as removeHardRulePure, renderedHardRulesCharCount,
+  upsertHardRule as upsertHardRulePure,
+  type HardRuleUpsertInput, type HardRulesDocument, type MemoryHardRule,
+} from './hard-rules.ts';
 import type { MemoryConfig } from './config.ts';
 
 export const SYSTEM_FOLDER_TITLE = '__system__';
@@ -253,10 +262,190 @@ export class MemoryProfileStore {
         }, systemId);
         this.host.markDisabledBestEffort(note.resourceId, 'system learner profile note');
       }
+      try { this.appendProfileHistory(profile); }
+      catch (error) {
+        this.host.warn(`[Memory] Failed to append learner profile history on mastery reflux: ${errorText(error)}`);
+      }
       return { profile, changed: true };
     }
 
     throw new Error('CONFLICT(learner_profile.conflict): The learner profile remained busy after mastery upsert retries.');
+  }
+
+  /** Configured hard char cap for L1 HardRules (defaults to 1500, range 800-3000). */
+  getHardRulesMaxChars(): number {
+    const raw = this.host.config.get(HARD_RULES_MAX_CHARS_CONFIG_KEY);
+    const parsed = raw !== null ? Number(raw) : undefined;
+    return clampHardRulesMaxChars(parsed);
+  }
+
+  /** Configured hard char cap for L1 LearnerProfile kernel projection (defaults to 2500, range 1500-5000). */
+  getLearnerProfileKernelMaxChars(): number {
+    const raw = this.host.config.get(LEARNER_PROFILE_KERNEL_MAX_CHARS_CONFIG_KEY);
+    const parsed = raw !== null ? Number(raw) : undefined;
+    return clampLearnerProfileKernelMaxChars(parsed);
+  }
+
+  /** Loads persisted L1 HardRules document from `__system__/__memory_hard_rules__`. */
+  loadHardRules(): HardRulesDocument {
+    const snapshot = this.profileNoteSnapshot(HARD_RULES_NOTE_TITLE);
+    if (snapshot === null || snapshot.content.trim() === '') return emptyHardRules();
+    const doc = hardRulesFromJson(snapshot.content);
+    if (doc === null) {
+      this.host.warn('[MemoryHardRules] Hard rules note content is not valid JSON; returning empty');
+      return emptyHardRules();
+    }
+    return doc;
+  }
+
+  /** CAS upsert for an L1 HardRule with Hermes-style hard-limit rejection when limitPolicy='reject'. */
+  upsertHardRule(
+    input: HardRuleUpsertInput,
+    options: Pick<ProfileUpdateOptions, 'source' | 'sessionId' | 'reason' | 'limitPolicy'>,
+  ): { doc: HardRulesDocument; rule: MemoryHardRule; changed: boolean } {
+    const maxChars = this.getHardRulesMaxChars();
+    for (let attempt = 0; attempt < PROFILE_CAS_MAX_RETRIES; attempt += 1) {
+      const snapshot = this.profileNoteSnapshot(HARD_RULES_NOTE_TITLE);
+      const current = snapshot === null ? emptyHardRules() : (hardRulesFromJson(snapshot.content) ?? emptyHardRules());
+      const result = upsertHardRulePure(
+        current,
+        input,
+        chronoRfc3339(),
+        () => `rule_${globalThis.crypto.randomUUID().slice(0, 8)}`,
+      );
+      if (!result.changed) return result;
+
+      let committed = result.doc;
+      if (options.limitPolicy === 'enforce') {
+        committed = enforceHardRulesCharLimit(committed, maxChars);
+      } else {
+        const chars = renderedHardRulesCharCount(committed);
+        if (committed.rules.length > MAX_HARD_RULES) {
+          throw new Error(
+            `Invalid argument 'hard_rules': 互动硬规则数量 ${committed.rules.length} 超过上限 ${MAX_HARD_RULES} 条。请先合并或移除过时规则后再试。`,
+          );
+        }
+        if (chars > maxChars) {
+          throw new Error(
+            `Invalid argument 'hard_rules': 合并后互动硬规则 ${chars} 字符，超过 ${maxChars} 字符硬上限。请先精简、合并或删除旧规则再重试。`,
+          );
+        }
+      }
+
+      const json = hardRulesToJson(committed);
+      if (snapshot !== null) {
+        try {
+          updateNote(this.host.deps, this.host.db, snapshot.noteId, {
+            content: json, expectedUpdatedAt: snapshot.updatedAt,
+          });
+        } catch (error) {
+          if (isProfileRetryable(error)) continue;
+          throw error;
+        }
+      } else {
+        if (this.profileNoteSnapshot(HARD_RULES_NOTE_TITLE) !== null) continue;
+        const systemId = this.ensureSystemFolderId();
+        const note = createNote(this.host.deps, this.host.db, {
+          title: HARD_RULES_NOTE_TITLE, content: json, tags: ['_system'],
+        }, systemId);
+        this.host.markDisabledBestEffort(note.resourceId, 'system memory hard rules note');
+      }
+
+      this.host.audit({
+        source: options.source, operation: 'update', success: true,
+        title: HARD_RULES_NOTE_TITLE, contentPreview: result.rule.instruction.slice(0, 120),
+        folder: SYSTEM_FOLDER_TITLE, event: 'HARD_RULE_UPSERT', reason: options.reason,
+        sessionId: options.sessionId ?? null, durationMs: 0,
+        extraJson: JSON.stringify({ rule_id: result.rule.id, version: committed.version }),
+      });
+      return { doc: committed, rule: result.rule, changed: true };
+    }
+    throw new Error('CONFLICT(hard_rules.conflict): Hard rules remained busy after repeated retries.');
+  }
+
+  /** CAS removal of an L1 HardRule by id or exact instruction text. */
+  removeHardRule(
+    idOrInstruction: string,
+    options: Pick<ProfileUpdateOptions, 'source' | 'sessionId' | 'reason'>,
+  ): { doc: HardRulesDocument; removed: MemoryHardRule | null } {
+    for (let attempt = 0; attempt < PROFILE_CAS_MAX_RETRIES; attempt += 1) {
+      const snapshot = this.profileNoteSnapshot(HARD_RULES_NOTE_TITLE);
+      if (snapshot === null) return { doc: emptyHardRules(), removed: null };
+      const current = hardRulesFromJson(snapshot.content) ?? emptyHardRules();
+      const result = removeHardRulePure(current, idOrInstruction, chronoRfc3339());
+      if (result.removed === null) return result;
+
+      const json = hardRulesToJson(result.doc);
+      try {
+        updateNote(this.host.deps, this.host.db, snapshot.noteId, {
+          content: json, expectedUpdatedAt: snapshot.updatedAt,
+        });
+      } catch (error) {
+        if (isProfileRetryable(error)) continue;
+        throw error;
+      }
+
+      this.host.audit({
+        source: options.source, operation: 'delete', success: true,
+        title: HARD_RULES_NOTE_TITLE, contentPreview: result.removed.instruction.slice(0, 120),
+        folder: SYSTEM_FOLDER_TITLE, event: 'HARD_RULE_REMOVE', reason: options.reason,
+        sessionId: options.sessionId ?? null, durationMs: 0,
+        extraJson: JSON.stringify({ rule_id: result.removed.id, version: result.doc.version }),
+      });
+      return result;
+    }
+    throw new Error('CONFLICT(hard_rules.conflict): Hard rules remained busy after repeated retries.');
+  }
+
+  /** Rolls back `__learner_profile__` to a prior version found in `__learner_profile_history__`. */
+  rollbackProfileToVersion(
+    targetVersion: number,
+    options: Pick<ProfileUpdateOptions, 'source' | 'sessionId' | 'reason'>,
+  ): LearnerProfileApplyOutcome {
+    const history = this.loadProfileHistory();
+    const target = history.find(item => item.version === targetVersion);
+    if (!target) {
+      throw new Error(`NOT_FOUND(learner_profile.history): Version ${targetVersion} not found in profile history.`);
+    }
+    for (let attempt = 0; attempt < PROFILE_CAS_MAX_RETRIES; attempt += 1) {
+      const snapshot = this.profileNoteSnapshot(LEARNER_PROFILE_NOTE_TITLE);
+      const current = snapshot === null ? emptyProfile() : (learnerProfileFromJson(snapshot.content) ?? emptyProfile());
+      const restored: LearnerProfile = {
+        ...structuredClone(target),
+        version: Math.min(0xffffffff, Math.max(current.version, target.version) + 1),
+        updated_at: chronoRfc3339(),
+      };
+      const json = learnerProfileToJson(restored);
+      if (snapshot !== null) {
+        try {
+          updateNote(this.host.deps, this.host.db, snapshot.noteId, {
+            content: json, expectedUpdatedAt: snapshot.updatedAt,
+          });
+        } catch (error) {
+          if (isProfileRetryable(error)) continue;
+          throw error;
+        }
+      } else {
+        const systemId = this.ensureSystemFolderId();
+        const note = createNote(this.host.deps, this.host.db, {
+          title: LEARNER_PROFILE_NOTE_TITLE, content: json, tags: ['_system'],
+        }, systemId);
+        this.host.markDisabledBestEffort(note.resourceId, 'system learner profile note');
+      }
+      try { this.appendProfileHistory(restored); }
+      catch (error) {
+        this.host.warn(`[Memory] Failed to append learner profile history on rollback: ${errorText(error)}`);
+      }
+      this.host.audit({
+        source: options.source, operation: 'update', success: true,
+        title: LEARNER_PROFILE_NOTE_TITLE, contentPreview: `rollback to v${targetVersion}`,
+        folder: SYSTEM_FOLDER_TITLE, event: 'PROFILE_ROLLBACK', reason: options.reason,
+        sessionId: options.sessionId ?? null, durationMs: 0,
+        extraJson: JSON.stringify({ from_version: current.version, restored_from: targetVersion, new_version: restored.version }),
+      });
+      return { profile: restored, changed: true };
+    }
+    throw new Error('CONFLICT(learner_profile.conflict): The learner profile remained busy during rollback.');
   }
 
   /**
