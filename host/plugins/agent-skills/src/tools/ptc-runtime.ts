@@ -53,6 +53,7 @@ export const PTC_ALLOWED_TOOLS: readonly string[] = [
   'builtin-fsrs_get_scheduler_config',
   'builtin-memory_read',
   'builtin-memory_list',
+  'builtin-memory_rule_list',
   'builtin-resource_list',
   'builtin-resource_read',
   'builtin-resource_search',

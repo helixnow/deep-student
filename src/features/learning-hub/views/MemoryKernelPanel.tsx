@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { invalidateMemoryKernelAttributionCache } from '@/features/chat/components/message/MemoryKernelAttributionPill';
 import {
   inspectMemoryKernel,
   mutateMemoryKernel,
@@ -99,6 +100,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
         },
       });
       setView(updated);
+      invalidateMemoryKernelAttributionCache(updated);
       setNewRuleText('');
       showGlobalNotification('success', '已保存常驻互动规则（下个新会话第 1 轮起强制生效）');
     } catch (error) {
@@ -114,6 +116,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
     try {
       const updated = await mutateMemoryKernel({ kind: 'remove_rule', idOrInstruction: id });
       setView(updated);
+      invalidateMemoryKernelAttributionCache(updated);
     } catch (error) {
       showGlobalNotification('error', error instanceof Error ? error.message : '删除规则失败');
     } finally {

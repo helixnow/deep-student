@@ -57,7 +57,7 @@ function errorOf(outcome: PtcScriptOutcome): string {
 
 describe('ptc_runtime.rs', () => {
   it('whitelist_exact_membership_and_fail_closed', () => {
-    expect(PTC_ALLOWED_TOOLS.length).toBe(36);
+    expect(PTC_ALLOWED_TOOLS.length).toBe(37);
     for (const tool of [
       'builtin-unified_search', 'builtin-rag_search', 'builtin-web_search', 'builtin-web_fetch',
       'builtin-arxiv_search', 'builtin-scholar_search', 'builtin-memory_read',

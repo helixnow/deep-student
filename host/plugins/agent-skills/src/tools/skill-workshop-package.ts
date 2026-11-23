@@ -95,6 +95,22 @@ export function packageFileMeta(files: readonly PackageFile[]): ProposalFileMeta
     .sort((left, right) => Buffer.compare(Buffer.from(left.path), Buffer.from(right.path)));
 }
 
+/**
+ * Pure-markdown study skill fast-path eligibility (RFC-001 L3 <-> RFC-002 Tier 1):
+ * True only when the skill id is under `study-*` / `learned-*`, carries zero risk signals
+ * (`riskLevel === 'low'`), and contains exclusively markdown documentation files (no scripts).
+ */
+export function isPureMarkdownStudySkill(
+  skillId: string,
+  files: readonly Pick<ProposalFileMeta, 'path'>[],
+  riskLevel: string,
+  riskSignals: readonly string[],
+): boolean {
+  if (riskLevel !== 'low' || riskSignals.length > 0 || files.length === 0) return false;
+  if (!/^(?:study|learned)-[a-z0-9-]+$/i.test(skillId.trim())) return false;
+  return files.every((f) => /\.md$/i.test(f.path) && !f.path.toLowerCase().startsWith('scripts/'));
+}
+
 export function normalizePackagePath(raw: string): string {
   if (raw === '' || raw.includes('\\') || path.isAbsolute(raw)) {
     throw new Error(`Invalid skill package path: ${JSON.stringify(raw)}`);

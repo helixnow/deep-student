@@ -17,9 +17,10 @@ import {
 } from './skill-install-executor.ts';
 import { toRfc3339 } from '../../../../platform/time/index.ts';
 import {
-  SKILL_FILE_NAME, U64_MAX, asRecord, errorText, exactUnsigned, normalizeWorkshopSha256,
-  packageFileMeta, packageFilesFromArgs, packageSha256, readPackageDirectory, sha256Hex,
-  validatePackageFiles, workshopJson, workshopRisk, type ProposalFileMeta, type WorkshopUnsigned,
+  SKILL_FILE_NAME, U64_MAX, asRecord, errorText, exactUnsigned, isPureMarkdownStudySkill,
+  normalizeWorkshopSha256, packageFileMeta, packageFilesFromArgs, packageSha256,
+  readPackageDirectory, sha256Hex, validatePackageFiles, workshopJson, workshopRisk,
+  type ProposalFileMeta, type WorkshopUnsigned,
 } from './skill-workshop-package.ts';
 import {
   countPendingProposals, generateProposalId, parseAgentWorkshopMarkerVersion, proposalDir,
@@ -578,6 +579,7 @@ export class SkillWorkshopExecutor {
       files: manifest,
       risk_level: riskLevel,
       risk_signals: riskSignals,
+      declarative_study_fast_path: isPureMarkdownStudySkill(appliedMeta.skillId, manifest, riskLevel, riskSignals),
       trust_status: 'untrusted',
       message: APPLY_SUCCESS_MESSAGE,
       next_step: POST_WRITE_TRUST_NEXT_STEP,
