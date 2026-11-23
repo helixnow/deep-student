@@ -162,6 +162,8 @@
   "permission": {
     "service": "使用应用服务「{{name}}」",
     "net": "联网读取 {{host}}（只读，仅限这个域名）",
+    "netWrite": "向 {{host}} 发送写入请求（高风险，仅限这个域名）",
+    "netLocal": "访问本机端口 {{port}}（高风险，仅限本机服务）",
     "agentTool": "让 AI 助手学会新本事「{{title}}」",
     "agentTools": "让 AI 助手学会新本事",
     "rawLabel": "权限原文：",
@@ -193,7 +195,11 @@
       "files": "本地文件",
       "http": "网络请求",
       "secrets": "安全凭据",
-      "backup": "备份"
+      "backup": "备份",
+      "memoryProvider": "记忆内核",
+      "chatPipelineHooks": "对话管线钩子",
+      "gradingRubrics": "批改标准",
+      "reviewSchedulers": "复习调度器"
     }
   },
   "restore": {

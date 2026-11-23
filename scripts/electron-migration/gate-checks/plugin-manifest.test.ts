@@ -35,7 +35,9 @@ describe('plugin manifest v1 schema', () => {
     expect(schemaProblems(manifest({ unknownField: 'x' }))).toEqual(['/deepStudent 不认识的字段 unknownField']);
     expect(schemaProblems(manifest({ displayName: 'x' }))).toEqual([]);
     expect(schemaProblems(manifest({ engines: { deepStudent: '^0.11' } }))).toEqual(['/deepStudent 不认识的字段 engines']);
-    expect(schemaProblems(manifest({ manifestVersion: 2 }))).toEqual(['/deepStudent/manifestVersion 必须是 1']);
+    expect(schemaProblems(manifest({ manifestVersion: 3 }))).toEqual(['/deepStudent/manifestVersion 必须是 1']);
+    expect(schemaProblems(manifest({ manifestVersion: 2, host: undefined, tier: 'declarative', kind: 'study-pack', declarative: { rubrics: ['./rubrics/ielts.json'], skills: ['./skills/SKILL.md'] } }))).toEqual([]);
+    expect(schemaProblems(manifest({ manifestVersion: 2, permissions: ['net:write:api.notion.com', 'net:local:8765'] }))).toEqual([]);
     expect(schemaProblems(manifest({ manifestVersion: '1' }))).toEqual(['/deepStudent/manifestVersion 必须是 1']);
     expect(schemaProblems(without(manifest(), 'engines'))).toEqual(['/ 缺少 engines']);
     expect(schemaProblems(manifest({}, { engines: { node: '>=22' } }))).toEqual(['/engines 缺少 deepStudent']);

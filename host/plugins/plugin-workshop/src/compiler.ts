@@ -1,5 +1,5 @@
 // RUST-FIX(RF-P3-workshop-compiler): built-in compilation and real lifecycle self-check.
-import { mkdir, readFile, writeFile, readdir, lstat, realpath, stat } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, readdir, lstat, realpath, stat, copyFile } from 'node:fs/promises';
 import { join, resolve, relative, isAbsolute, dirname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
@@ -7,6 +7,7 @@ import { checkManifest, checkPluginModule, type PluginManifest } from '../../../
 import { declaredCapabilities, detectPlaces } from './declared.ts';
 import { detectUse, SHARED_UI_MODULES } from './detect.ts';
 import { HostRuntime } from '../../../kernel/runtime.ts';
+import { mountDeclarativeAssets } from '../../../kernel/declarative-loader.ts';
 import { ContractSet } from '../../../kernel/contract-set.ts';
 import type { AppInfo, HostPlugin } from '../../../kernel/api.ts';
 import type { WorkshopCheck, WorkshopPlace } from '../api.ts';
@@ -145,25 +146,49 @@ export async function compileWorkshop(
     const screened = checkManifest(pkg, { appVersion: app.version, context: 'community-install', platform: 'desktop', expectedId });
     if (!screened.ok) throw screened.error;
     manifest = screened.manifest;
-    if (!manifest.host) throw new Error('WORKSHOP_INVALID: Host entry required');
-    check.manifest = 'passed';
-    await mkdir(join(directory, 'dist'), { recursive: true });
-    const sealed = (manifest.agentTools?.length ?? 0) > 0;
-    await build({ entryPoints: [managedRelative(source, manifest.host)], outfile: join(directory, 'dist/host.js'),
-      bundle: true, format: 'esm', platform: 'node', target: 'node24', packages: 'external', logLevel: 'silent',
-      ...(sealed ? { define: Object.fromEntries(sealedHostGlobals.map(name => [name, `${SEALED_MARK}${name}`])) } : {}),
-      tsconfigRaw: {}, plugins: [await sourceBoundary(source, false, sealed)] });
-    if (sealed) {
-      const problems = sealedGlobalProblems(await readFile(join(directory, 'dist/host.js'), 'utf8'));
-      if (problems.length) throw new Error(problems.join('\n'));
+    if (!manifest.host && !manifest.ui && !manifest.declarative) {
+      throw new Error('WORKSHOP_INVALID: plugin must declare a host, ui, or declarative entry');
     }
-    if (manifest.ui) await build({ entryPoints: [managedRelative(source, manifest.ui)], outfile: join(directory, 'dist/ui.js'),
-      bundle: true, format: 'esm', platform: 'browser', target: 'es2022', external: [...uiExternals],
-      jsx: 'transform', jsxFactory: 'React.createElement', jsxFragment: 'React.Fragment', logLevel: 'silent',
-      tsconfigRaw: {}, plugins: [await sourceBoundary(source, true)] });
-    pkg.deepStudent.host = './dist/host.js';
-    if (manifest.ui) pkg.deepStudent.ui = './dist/ui.js';
-    // Only generated ESM and the screened manifest are installable/exportable.
+    check.manifest = 'passed';
+    if (manifest.host || manifest.ui) {
+      await mkdir(join(directory, 'dist'), { recursive: true });
+    } else {
+      await mkdir(directory, { recursive: true });
+    }
+    const sealed = (manifest.agentTools?.length ?? 0) > 0;
+    if (manifest.host) {
+      await build({ entryPoints: [managedRelative(source, manifest.host)], outfile: join(directory, 'dist/host.js'),
+        bundle: true, format: 'esm', platform: 'node', target: 'node24', packages: 'external', logLevel: 'silent',
+        ...(sealed ? { define: Object.fromEntries(sealedHostGlobals.map(name => [name, `${SEALED_MARK}${name}`])) } : {}),
+        tsconfigRaw: {}, plugins: [await sourceBoundary(source, false, sealed)] });
+      if (sealed) {
+        const problems = sealedGlobalProblems(await readFile(join(directory, 'dist/host.js'), 'utf8'));
+        if (problems.length) throw new Error(problems.join('\n'));
+      }
+      pkg.deepStudent.host = './dist/host.js';
+    }
+    if (manifest.ui) {
+      await build({ entryPoints: [managedRelative(source, manifest.ui)], outfile: join(directory, 'dist/ui.js'),
+        bundle: true, format: 'esm', platform: 'browser', target: 'es2022', external: [...uiExternals],
+        jsx: 'transform', jsxFactory: 'React.createElement', jsxFragment: 'React.Fragment', logLevel: 'silent',
+        tsconfigRaw: {}, plugins: [await sourceBoundary(source, true)] });
+      pkg.deepStudent.ui = './dist/ui.js';
+    }
+    if (manifest.declarative) {
+      const declPaths = [
+        ...(manifest.declarative.rubrics ?? []),
+        ...(manifest.declarative.skills ?? []),
+        ...(manifest.declarative.cardTemplates ?? []),
+        ...(manifest.declarative.workflows ?? []),
+      ];
+      for (const relPath of declPaths) {
+        const srcFile = managedRelative(source, relPath);
+        const destFile = managedRelative(directory, relPath);
+        await mkdir(dirname(destFile), { recursive: true });
+        await copyFile(srcFile, destFile);
+      }
+    }
+    // Only generated ESM, declared assets, and the screened manifest are installable/exportable.
     delete pkg.scripts;
     await writeFile(join(directory, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`);
     check.compile = 'passed';
@@ -180,6 +205,9 @@ export async function compileWorkshop(
  */
 const SELF_CHECK_REGISTRATIONS: Readonly<Record<string, readonly string[]>> = {
   pluginSchedule: ['register', 'daily', 'weekly', 'every', 'onStartup'],
+  chatPipelineHooks: ['register'],
+  gradingRubrics: ['register'],
+  reviewSchedulers: ['register'],
 };
 function selfCheckServices(services: Record<string, unknown>): Record<string, unknown> {
   const seen = new WeakMap<object, object>();
@@ -222,11 +250,12 @@ export async function checkWorkshopLifecycle(result: WorkshopBuild, app: AppInfo
   context?: (names: readonly string[]) => Promise<WorkshopSelfCheckContext>): Promise<WorkshopCheck> {
   const { check, manifest, directory } = result;
   check.ok = false;
-  if (check.compile !== 'passed' || !manifest?.host) return check;
+  if (check.compile !== 'passed' || !manifest || (!manifest.host && !manifest.ui && !manifest.declarative)) return check;
   // Check authoritative safe mode before require(), including module top-level effects.
   const initial = await context?.([]);
   if (initial?.safeMode) throw new Error('SAFE_MODE_ACTIVE: workshop lifecycle is disabled');
   const runtime = new HostRuntime({ app, contracts: new ContractSet([]) });
+  runtime.setDeclarativeLoader(mountDeclarativeAssets);
   try {
     const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
     const screened = checkManifest(pkg, { appVersion: app.version, context: 'community-install', platform: 'desktop', expectedId: manifest.id });
@@ -235,8 +264,17 @@ export async function checkWorkshopLifecycle(result: WorkshopBuild, app: AppInfo
       || JSON.stringify(screened.manifest.agentTools ?? []) !== JSON.stringify(manifest.agentTools ?? [])) {
       throw new Error('WORKSHOP_INVALID: candidate subject changed after confirmation');
     }
-    // Node 24 require(ESM) loads the actual built file, not Vite's development module graph.
-    const plugin = createRequire(import.meta.url)(managedRelative(directory, manifest.host)).default as HostPlugin;
+    const plugin: HostPlugin = manifest.host
+      // Node 24 require(ESM) loads the actual built file, not Vite's development module graph.
+      ? createRequire(import.meta.url)(managedRelative(directory, manifest.host)).default as HostPlugin
+      : {
+          meta: {
+            id: manifest.id,
+            version: manifest.version,
+            platforms: [...manifest.platforms],
+          },
+          apply() {},
+        };
     const names = [...(plugin.inject ?? [])];
     const environment = context ? await context(names) : { trust: 'restricted' as const, safeMode: false, services: {} };
     if (environment.safeMode) throw new Error('SAFE_MODE_ACTIVE: workshop lifecycle is disabled');
@@ -265,7 +303,7 @@ export async function checkWorkshopLifecycle(result: WorkshopBuild, app: AppInfo
     let uiBundle: string | undefined;
     if (manifest.ui) { try { uiBundle = await readFile(managedRelative(directory, manifest.ui), 'utf8'); } catch { uiBundle = undefined; } }
     // The card's lines: the manifest and inject list, plus what the built code itself uses (information only).
-    const hostBundle = await readFile(managedRelative(directory, manifest.host), 'utf8');
+    const hostBundle = manifest.host ? await readFile(managedRelative(directory, manifest.host), 'utf8') : undefined;
     result.declared = declaredCapabilities(manifest, names, detectUse({ host: hostBundle, ui: uiBundle }, names));
     result.places = detectPlaces(manifest, uiBundle);
     check.lifecycle = 'passed';

@@ -162,6 +162,8 @@
   "permission": {
     "service": "Use the app service “{{name}}”",
     "net": "Read from {{host}} (read-only, this domain only)",
+    "netWrite": "Send write requests to {{host}} (high risk, this domain only)",
+    "netLocal": "Connect to localhost port {{port}} (high risk, local service only)",
     "agentTool": "Teach the AI assistant a new skill: “{{title}}”",
     "agentTools": "Teach the AI assistant new skills",
     "rawLabel": "Raw permissions: ",
@@ -193,7 +195,11 @@
       "files": "Local files",
       "http": "Network requests",
       "secrets": "Secure credentials",
-      "backup": "Backup"
+      "backup": "Backup",
+      "memoryProvider": "Memory kernel",
+      "chatPipelineHooks": "Chat pipeline hooks",
+      "gradingRubrics": "Grading rubrics",
+      "reviewSchedulers": "Review schedulers"
     }
   },
   "restore": {

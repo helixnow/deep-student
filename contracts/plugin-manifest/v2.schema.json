@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "dstu:plugin-manifest:v2",
+  "title": "DeepStudent 插件包清单 v2（package.json#deepStudent）",
+  "description": "Plugin System v2 清单契约（RFC-002）。完全向后兼容 v1，新增：三档分层（tier: declarative / ui-workshop / full）、学习包形态（kind: study-pack）、声明式扩展入口（declarative: rubrics / skills / cardTemplates / workflows，无需 host/ui 代码）、细粒度写网与本机服务权限（net:write:<host> / net:local:<port>，高风险显式审批）。",
+  "type": "object",
+  "required": ["name", "version", "engines", "deepStudent"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "maxLength": 214,
+      "pattern": "^(?:@[a-z0-9-~][a-z0-9-._~]*/)?[a-z0-9-~][a-z0-9-._~]*$"
+    },
+    "version": {
+      "$ref": "#/$defs/version"
+    },
+    "engines": {
+      "type": "object",
+      "required": ["deepStudent"],
+      "properties": {
+        "deepStudent": { "$ref": "#/$defs/range" },
+        "deepStudentPluginApi": {
+          "type": "string",
+          "pattern": "^[1-9][0-9]*$"
+        }
+      },
+      "additionalProperties": { "type": "string" }
+    },
+    "deepStudent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifestVersion", "id", "platforms"],
+      "anyOf": [
+        { "required": ["host"] },
+        { "required": ["ui"] },
+        { "required": ["declarative"] }
+      ],
+      "properties": {
+        "displayName": { "type": "string", "minLength": 1 },
+        "icon": { "type": "string", "minLength": 1 },
+        "author": { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "category": { "type": "string", "minLength": 1 },
+        "homepage": { "type": "string", "pattern": "^https?://" },
+        "manifestVersion": {
+          "const": 2
+        },
+        "tier": {
+          "description": "插件分级：declarative（纯声明式无代码）、ui-workshop（工坊 UI/轻量工具）、full（深度 Cordis 扩展）。缺省由装载方按入口推断。",
+          "enum": ["declarative", "ui-workshop", "full"]
+        },
+        "kind": {
+          "description": "包形态：plugin（普通插件）或 study-pack（学习流打包：规则+技能+模板+工作流+可选 UI）。",
+          "enum": ["plugin", "study-pack"]
+        },
+        "id": { "$ref": "#/$defs/id" },
+        "platforms": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["desktop", "mobile"] }
+        },
+        "host": {
+          "type": "string",
+          "pattern": "^\\./[^\\\\]+\\.(?:ts|mts|js|mjs)$",
+          "not": { "pattern": "(?:^|/)\\.\\.(?:/|$)" }
+        },
+        "ui": {
+          "type": "string",
+          "pattern": "^\\./[^\\\\]+\\.(?:ts|tsx|js|mjs)$",
+          "not": { "pattern": "(?:^|/)\\.\\.(?:/|$)" }
+        },
+        "declarative": {
+          "description": "Tier 1 声明式学习扩展入口（无可执行代码，零信任风险）。",
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "properties": {
+            "rubrics": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/declarativeDataPath" }
+            },
+            "skills": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/declarativeSkillPath" }
+            },
+            "cardTemplates": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/declarativeDataPath" }
+            },
+            "workflows": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/declarativeDataPath" }
+            }
+          }
+        },
+        "requires": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/id" },
+          "additionalProperties": { "$ref": "#/$defs/range" }
+        },
+        "permissions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "allOf": [
+              { "description": "语法：<kind>:<target>", "pattern": "^[a-z][a-z0-9-]*:\\S+$" },
+              { "description": "kind 封闭集合：service、net、agent", "pattern": "^(?:service|net|agent):" },
+              {
+                "description": "service:<lowerCamelCase> | net:<host> | net:write:<host> | net:local:<port> | agent:tools",
+                "pattern": "^(?:service:[a-z][A-Za-z0-9]*|net:(?:write:)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]|net:local:(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])|agent:tools)$"
+              }
+            ]
+          }
+        },
+        "agentTools": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "title", "description"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,31}$" },
+              "title": { "type": "string", "minLength": 1, "maxLength": 24, "pattern": "^\\S(?:.*\\S)?$" },
+              "description": { "type": "string", "minLength": 1, "maxLength": 600 },
+              "parameters": {
+                "type": "object",
+                "required": ["type"],
+                "properties": { "type": { "const": "object" } }
+              },
+              "sensitivity": { "enum": ["medium", "high"] }
+            }
+          }
+        },
+        "settings": {
+          "type": "array",
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["key", "title", "kind"],
+            "properties": {
+              "key": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,39}$" },
+              "title": { "type": "string", "minLength": 1, "maxLength": 60 },
+              "kind": { "enum": ["ics-url", "https-url", "text"] }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "version": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+    },
+    "range": {
+      "type": "string",
+      "pattern": "^(?:[\\^~](?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?:\\.(?:0|[1-9][0-9]*))?|(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)|>=(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)(?: <(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*))?)$"
+    },
+    "id": {
+      "type": "string",
+      "maxLength": 128,
+      "pattern": "^(?:dstu(?:\\.[a-z][a-z0-9-]*)+|[a-z][a-z0-9-]{1,38}\\.[a-z][a-z0-9-]{1,62})$",
+      "not": { "pattern": "^(?:ds|deepstudent|deep-student|official|builtin|system|community)\\." }
+    },
+    "declarativeDataPath": {
+      "type": "string",
+      "pattern": "^\\./[^\\\\]+\\.(?:json|ya?ml)$",
+      "not": { "pattern": "(?:^|/)\\.\\.(?:/|$)" }
+    },
+    "declarativeSkillPath": {
+      "type": "string",
+      "pattern": "^\\./[^\\\\]+\\.md$",
+      "not": { "pattern": "(?:^|/)\\.\\.(?:/|$)" }
+    },
+    "reservedPublishers": {
+      "const": {
+        "forbidden": ["ds", "deepstudent", "deep-student", "official", "builtin", "system", "community"],
+        "assigned": { "dstu": "官方内置插件", "example": "仓库内示例插件", "local": "本地开发，不得进入索引", "test": "测试夹具" }
+      }
+    }
+  }
+}

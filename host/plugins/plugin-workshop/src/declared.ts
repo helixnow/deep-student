@@ -27,7 +27,8 @@ export const SERVICE_NAMES: Readonly<Record<string, string>> = {
   notes: '笔记', anki: 'Anki 卡片', qbank: '题库', review: '复习计划', mastery: '掌握度', chatPipeline: '对话',
   llm: '大模型', translation: '翻译', vfs: '资料库', retrieval: '资料检索', media: '媒体与文档', ocr: '文字识别',
   mcp: 'MCP 工具', webSearch: '联网搜索', browser: '浏览器', files: '本地文件', http: '网络请求', secrets: '安全凭据',
-  backup: '备份',
+  backup: '备份', memoryProvider: '记忆内核', chatPipelineHooks: '对话管线钩子', gradingRubrics: '批改标准',
+  reviewSchedulers: '复习调度器',
 };
 
 export function serviceCapability(name: string): string {
@@ -46,7 +47,13 @@ export function declaredCapabilities(manifest: DeclaringManifest, inject: readon
     lines.push(`让 AI 助手学会新本事「${tool.title}」${tool.sensitivity === 'high' ? '（敏感操作，调用前按你的审批设置询问）' : ''}`);
   }
   for (const permission of manifest.permissions) {
-    if (permission.startsWith('net:')) lines.push(`联网读取 ${permission.slice('net:'.length)}（只读，仅限这个域名）`);
+    if (permission.startsWith('net:write:')) {
+      lines.push(`向 ${permission.slice('net:write:'.length)} 发送写入请求（高风险，仅限这个域名）`);
+    } else if (permission.startsWith('net:local:')) {
+      lines.push(`访问本机端口 ${permission.slice('net:local:'.length)}（高风险，仅限本机服务）`);
+    } else if (permission.startsWith('net:')) {
+      lines.push(`联网读取 ${permission.slice('net:'.length)}（只读，仅限这个域名）`);
+    }
   }
   const services = new Set<string>();
   for (const permission of manifest.permissions) if (permission.startsWith('service:')) services.add(permission.slice('service:'.length));

@@ -857,8 +857,8 @@ export class PluginAdmin {
       if (managed && (record.id !== managed.id || record.version !== managed.version || !samePermissions(manifest.permissions, managed.permissions))) {
         throw new Error('CONSENT_STALE: archived managed candidate changed');
       }
-      if (!manifest.host && !manifest.ui) {
-        throw new Error('MANIFEST_INVALID: package must declare a host or ui entry');
+      if (!manifest.host && !manifest.ui && !manifest.declarative) {
+        throw new Error('MANIFEST_INVALID: package must declare a host, ui, or declarative entry');
       }
       stopped = this.runtime.get(record.id);
       if (stopped) await this.unloadOrConflict(record.id);

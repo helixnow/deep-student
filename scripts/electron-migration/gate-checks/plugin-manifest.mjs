@@ -20,6 +20,7 @@ import { applyCountBaseline, countBaselineEntries } from './baseline.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 export const SCHEMA_FILE = 'contracts/plugin-manifest/v1.schema.json';
+export const SCHEMA_V2_FILE = 'contracts/plugin-manifest/v2.schema.json';
 export const BASELINE_FILE = 'scripts/electron-migration/gate-checks/plugin-manifest-baseline.json';
 export const OFFICIAL_ROOTS = ['host', 'src/ui-plugins'];
 export const EXAMPLES_DIR = 'examples/plugins';
@@ -90,17 +91,19 @@ export function satisfies(version, range, { includePrerelease = false } = {}) {
 // ------------------------------------------------------------------ schema
 
 const SCHEMA = JSON.parse(fs.readFileSync(path.join(ROOT, SCHEMA_FILE), 'utf8'));
+const SCHEMA_V2 = JSON.parse(fs.readFileSync(path.join(ROOT, SCHEMA_V2_FILE), 'utf8'));
 const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false, strictTypes: false });
-const validate = ajv.compile(SCHEMA);
+const validateV1 = ajv.compile(SCHEMA);
+const validateV2 = ajv.compile(SCHEMA_V2);
 
 const PERMISSION_STEPS = ['语法应为 <kind>:<target>', '未知权限 kind（v1 只有 service）', 'service 的目标应为 lowerCamelCase 服务名'];
 
-function schemaMessage(e) {
+function schemaMessage(e, isV2 = false) {
   const at = e.instancePath || '/';
   switch (e.keyword) {
     case 'required': return `${at} 缺少 ${e.params.missingProperty}`;
     case 'additionalProperties': return `${at} 不认识的字段 ${e.params.additionalProperty}`;
-    case 'anyOf': return `${at} host 与 ui 至少写一个`;
+    case 'anyOf': return isV2 ? `${at} host、ui 与 declarative 至少写一个` : `${at} host 与 ui 至少写一个`;
     case 'const': return `${at} 必须是 ${JSON.stringify(e.params.allowedValue)}`;
     case 'not': return e.schemaPath.includes('/id/') ? `${at} 使用了保留的 publisher` : `${at} 不得含 .. 段`;
     case 'pattern': {
@@ -117,6 +120,8 @@ function schemaMessage(e) {
 
 /** schema 校验：返回去重后的中文问题（anyOf 分支、allOf 包装和 propertyNames 的子错误已折叠；权限只报第一个不满足的步骤）。 */
 export function schemaProblems(pkg) {
+  const isV2 = pkg && typeof pkg === 'object' && pkg.deepStudent && typeof pkg.deepStudent === 'object' && pkg.deepStudent.manifestVersion === 2;
+  const validate = isV2 ? validateV2 : validateV1;
   if (validate(pkg)) return [];
   const out = new Set();
   const permissionReported = new Set();
@@ -126,7 +131,7 @@ export function schemaProblems(pkg) {
       if (permissionReported.has(e.instancePath)) continue;
       permissionReported.add(e.instancePath);
     }
-    out.add(schemaMessage(e));
+    out.add(schemaMessage(e, isV2));
   }
   return [...out];
 }

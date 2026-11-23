@@ -38,6 +38,10 @@ export function permissionLines(
     if (raw === 'agent:tools') {
       if (agentTools?.length) for (const tool of agentTools) lines.push({ raw, text: t('permission.agentTool', { title: tool.title }) });
       else lines.push({ raw, text: t('permission.agentTools') });
+    } else if (kind === 'net' && target.startsWith('write:') && target.length > 'write:'.length) {
+      lines.push({ raw, text: t('permission.netWrite', { host: target.slice('write:'.length) }) });
+    } else if (kind === 'net' && target.startsWith('local:') && target.length > 'local:'.length) {
+      lines.push({ raw, text: t('permission.netLocal', { port: target.slice('local:'.length) }) });
     } else if (kind === 'net' && target) lines.push({ raw, text: t('permission.net', { host: target }) });
     else if (kind === 'service' && target) lines.push({ raw, text: serviceLine(target, t) });
     else lines.push({ raw, text: raw });

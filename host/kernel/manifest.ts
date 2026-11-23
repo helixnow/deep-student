@@ -12,6 +12,7 @@
  */
 import { Ajv2020, type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 import MANIFEST_SCHEMA from '../../contracts/plugin-manifest/v1.schema.json' with { type: 'json' };
+import MANIFEST_SCHEMA_V2 from '../../contracts/plugin-manifest/v2.schema.json' with { type: 'json' };
 import type { HostPlugin, PluginPlatform } from './api.ts';
 import { KERNEL_ONLY_SERVICES } from './kernel.ts';
 import { PluginLoadError, type PluginLoadCode } from './plugin-load-error.ts';
@@ -20,9 +21,9 @@ import { isServiceNameOwnedBy, parsePluginId, reservedIdProblem, type PluginIdCo
 export { PLUGIN_LOAD_CODES, PluginLoadError, parseDegradedReason, type PluginLoadCode } from './plugin-load-error.ts';
 
 /** 本应用支持的最高 manifestVersion。 */
-export const SUPPORTED_MANIFEST_VERSION = 1;
+export const SUPPORTED_MANIFEST_VERSION = 2;
 /** Plugin API support is a release contract, independent of the application version. */
-const SUPPORTED_PLUGIN_APIS = new Set(['1']);
+const SUPPORTED_PLUGIN_APIS = new Set(['1', '2']);
 
 // ------------------------------------------------------------------ 版本与范围（契约 $defs/version、$defs/range）
 
@@ -133,15 +134,20 @@ export function satisfies(version: string, range: string, options: SatisfiesOpti
 
 // ------------------------------------------------------------------ schema
 
-let validator: ValidateFunction | null = null;
+let validatorV1: ValidateFunction | null = null;
+let validatorV2: ValidateFunction | null = null;
 
 /** 契约 schema 的 Ajv 校验函数（首次使用时编译；多数启动没有社区插件）。 */
-function validateManifest(): ValidateFunction {
-  validator ??= new Ajv2020({ allErrors: true, strict: true, strictRequired: false, strictTypes: false }).compile(MANIFEST_SCHEMA);
-  return validator;
+function validateManifest(version: 1 | 2 = 1): ValidateFunction {
+  if (version === 2) {
+    validatorV2 ??= new Ajv2020({ allErrors: true, strict: true, strictRequired: false, strictTypes: false }).compile(MANIFEST_SCHEMA_V2);
+    return validatorV2;
+  }
+  validatorV1 ??= new Ajv2020({ allErrors: true, strict: true, strictRequired: false, strictTypes: false }).compile(MANIFEST_SCHEMA);
+  return validatorV1;
 }
 
-function describeSchemaErrors(errors: readonly ErrorObject[]): string[] {
+function describeSchemaErrors(errors: readonly ErrorObject[], version: 1 | 2): string[] {
   const out = new Set<string>();
   for (const e of errors) {
     // anyOf 分支与 allOf/propertyNames 的子错误由外层错误代表。
@@ -149,17 +155,19 @@ function describeSchemaErrors(errors: readonly ErrorObject[]): string[] {
     const at = e.instancePath || '/';
     if (e.keyword === 'required') out.add(`${at} is missing "${String(e.params.missingProperty)}"`);
     else if (e.keyword === 'additionalProperties') out.add(`${at} has unknown field "${String(e.params.additionalProperty)}"`);
-    else if (e.keyword === 'anyOf') out.add(`${at} must declare "host" or "ui"`);
+    else if (e.keyword === 'anyOf') out.add(version === 2 ? `${at} must declare "host", "ui", or "declarative"` : `${at} must declare "host" or "ui"`);
     else if (e.keyword === 'not') out.add(e.schemaPath.includes('/id/') ? `${at} uses a forbidden publisher` : `${at} must not contain ".." segments`);
     else out.add(`${at} ${e.message ?? 'is invalid'}`);
   }
   return [...out];
 }
 
-/** 契约 schema 的问题列表（空数组即通过）。 */
+/** 契约 schema 的问题列表（空数组即通过）。按 deepStudent.manifestVersion 自动选择 v1/v2 契约。 */
 export function manifestSchemaProblems(pkg: unknown): string[] {
-  const validate = validateManifest();
-  return validate(pkg) ? [] : describeSchemaErrors(validate.errors ?? []);
+  const mv = isRecord(pkg) && isRecord(pkg.deepStudent) ? pkg.deepStudent.manifestVersion : undefined;
+  const version: 1 | 2 = mv === 2 ? 2 : 1;
+  const validate = validateManifest(version);
+  return validate(pkg) ? [] : describeSchemaErrors(validate.errors ?? [], version);
 }
 
 // ------------------------------------------------------------------ 清单
@@ -186,11 +194,28 @@ export interface PluginAgentToolDeclaration {
   readonly sensitivity: 'medium' | 'high';
 }
 
+/** Plugin v2 声明式扩展入口（Tier 1 零代码扩展）。 */
+export interface PluginDeclarativeDeclaration {
+  readonly rubrics?: readonly string[];
+  readonly skills?: readonly string[];
+  readonly cardTemplates?: readonly string[];
+  readonly workflows?: readonly string[];
+}
+
+export type PluginTier = 'declarative' | 'ui-workshop' | 'full';
+export type PluginPackageKind = 'plugin' | 'study-pack';
+
 /** 校验通过后的清单（只保留装载方使用的字段）。 */
 export interface PluginManifest {
   // RUST-FIX(RF-P1-plugin-display): Validated, non-executable package presentation.
   /** Host-derived only; never parsed from package metadata. */
   trust?: 'full' | 'restricted';
+  /** Manifest schema version (1 or 2). */
+  manifestVersion?: 1 | 2;
+  /** Plugin tier: declarative (Tier 1), ui-workshop (Tier 2), full (Tier 3). */
+  tier?: PluginTier;
+  /** Package kind: plugin (default) or study-pack (.dspack). */
+  kind?: PluginPackageKind;
   displayName?: string;
   icon?: string;
   author?: string;
@@ -206,6 +231,7 @@ export interface PluginManifest {
   platforms: readonly PluginPlatform[];
   host?: string;
   ui?: string;
+  declarative?: PluginDeclarativeDeclaration;
   requires: Readonly<Record<string, string>>;
   permissions: readonly string[];
   /** 声明的智能体工具；没有声明时为空数组或缺省。 */
@@ -287,8 +313,12 @@ export function checkManifest(pkg: unknown, options: ManifestCheckOptions, fallb
     if (declared.length && !grantsTools) problems.push(`/deepStudent/agentTools requires the "${AGENT_TOOLS_PERMISSION}" permission`);
     if (!declared.length && grantsTools) problems.push(`/deepStudent/permissions declares "${AGENT_TOOLS_PERMISSION}" without /deepStudent/agentTools`);
     if (declared.length && typeof ds.host !== 'string') problems.push('/deepStudent/agentTools requires a "host" entry (tools run in the Host half)');
-    if (!declared.length && permissions.some(permission => permission.startsWith('net:'))) {
+    const isV2 = manifestVersion === 2;
+    if (!declared.length && !isV2 && permissions.some(permission => permission.startsWith('net:'))) {
       problems.push('/deepStudent/permissions declares "net:" hosts without /deepStudent/agentTools (network access is only available to agent tools)');
+    }
+    if (isV2 && typeof ds.host !== 'string' && permissions.some(permission => permission.startsWith('net:'))) {
+      problems.push('/deepStudent/permissions declares "net:" permissions without a "host" entry');
     }
     const names = new Set<string>();
     declared.forEach((tool, index) => {
@@ -313,11 +343,30 @@ export function checkManifest(pkg: unknown, options: ManifestCheckOptions, fallb
   if (options.platform !== undefined && !platforms.includes(options.platform)) {
     return fail('UNSUPPORTED_ON_PLATFORM', `plugin "${id}" supports ${platforms.join(', ')}, not ${options.platform}`);
   }
+  const rawDecl = isRecord(ds.declarative) ? ds.declarative : null;
+  const declarative: PluginDeclarativeDeclaration | undefined = rawDecl
+    ? Object.freeze({
+        ...(Array.isArray(rawDecl.rubrics) ? { rubrics: Object.freeze([...(rawDecl.rubrics as string[])]) } : {}),
+        ...(Array.isArray(rawDecl.skills) ? { skills: Object.freeze([...(rawDecl.skills as string[])]) } : {}),
+        ...(Array.isArray(rawDecl.cardTemplates) ? { cardTemplates: Object.freeze([...(rawDecl.cardTemplates as string[])]) } : {}),
+        ...(Array.isArray(rawDecl.workflows) ? { workflows: Object.freeze([...(rawDecl.workflows as string[])]) } : {}),
+      })
+    : undefined;
+  const inferredTier: PluginTier = typeof ds.tier === 'string'
+    ? (ds.tier as PluginTier)
+    : (!ds.host && !ds.ui && declarative)
+      ? 'declarative'
+      : (!ds.host && typeof ds.ui === 'string')
+        ? 'ui-workshop'
+        : 'full';
+  const resolvedManifestVersion: 1 | 2 = manifestVersion === 2 ? 2 : 1;
   return {
     ok: true,
     manifest: Object.freeze({
       id,
       packageName: pkg.name as string,
+      ...(resolvedManifestVersion === 2 ? { manifestVersion: 2 as const, tier: inferredTier } : {}),
+      ...(typeof ds.kind === 'string' ? { kind: ds.kind as PluginPackageKind } : {}),
       ...Object.fromEntries(['displayName', 'icon', 'author', 'description', 'category', 'homepage']
         .filter(key => typeof ds[key] === 'string').map(key => [key, ds[key]])),
       version: pkg.version as string,
@@ -325,6 +374,7 @@ export function checkManifest(pkg: unknown, options: ManifestCheckOptions, fallb
       platforms: Object.freeze([...platforms]),
       ...(typeof ds.host === 'string' ? { host: ds.host } : {}),
       ...(typeof ds.ui === 'string' ? { ui: ds.ui } : {}),
+      ...(declarative ? { declarative } : {}),
       requires: Object.freeze({ ...requires }),
       permissions: Object.freeze([...((ds.permissions as string[] | undefined) ?? [])]),
       agentTools: Object.freeze(agentTools),
@@ -344,9 +394,31 @@ export function grantedServices(manifest: Pick<PluginManifest, 'permissions'>): 
   return granted;
 }
 
-/** permissions 授予智能体工具联网读取的主机名（`net:<主机名>`，小写精确匹配）。 */
+/** permissions 授予智能体工具联网只读的主机名（`net:<主机名>`，排除 `net:write:` 和 `net:local:`）。 */
 export function grantedNetHosts(manifest: Pick<PluginManifest, 'permissions'>): string[] {
-  return manifest.permissions.filter(permission => permission.startsWith('net:')).map(permission => permission.slice('net:'.length));
+  return manifest.permissions
+    .filter(permission => permission.startsWith('net:') && !permission.startsWith('net:write:') && !permission.startsWith('net:local:'))
+    .map(permission => permission.slice('net:'.length));
+}
+
+/** v2 权限授予的写网主机名（`net:write:<host>`，高风险权限，需显式用户审批）。 */
+export function grantedNetWriteHosts(manifest: Pick<PluginManifest, 'permissions'>): string[] {
+  return manifest.permissions
+    .filter(permission => permission.startsWith('net:write:'))
+    .map(permission => permission.slice('net:write:'.length));
+}
+
+/** v2 权限授予的本机服务端口（`net:local:<port>`，高风险权限，例如 AnkiConnect 8765 / Zotero 23119）。 */
+export function grantedNetLocalPorts(manifest: Pick<PluginManifest, 'permissions'>): number[] {
+  return manifest.permissions
+    .filter(permission => permission.startsWith('net:local:'))
+    .map(permission => Number(permission.slice('net:local:'.length)))
+    .filter(port => Number.isInteger(port) && port >= 1 && port <= 65535);
+}
+
+/** 是否为需要显式高风险确认的权限。 */
+export function isHighRiskPermission(permission: string): boolean {
+  return permission.startsWith('net:write:') || permission.startsWith('net:local:');
 }
 
 function injectNames(plugin: HostPlugin<any>): string[] {
