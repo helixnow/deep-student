@@ -5,6 +5,7 @@ import { CustomScrollArea } from '../custom-scroll-area';
 import { PulseDot } from '@/components/ui/PulseDot';
 import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
+import { MathText } from '@/components/ui/MathText';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { cn } from '@/utils/cn';
 // 分段/对齐规则与只读查看器（TranslationViewerWrapper）共享，保持两处一致
@@ -171,9 +172,13 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
             </DsButton>
           ) : null;
 
+          const hasMath = (text: string) => /\$\$[\s\S]+?\$\$|\$[^\s$][^$\n]*?\$/.test(text);
+          const renderSegmentText = (text: string, allowMath: boolean) =>
+            allowMath && hasMath(text) ? <MathText text={text} /> : text;
+
           const tgtContent = pair.tgt ? (
             <span className={cn(isTranslating && index === pairs.length - 1 && 'ui-fade-in')}>
-              {pair.tgt}
+              {renderSegmentText(pair.tgt, !isTranslating || index < pairs.length - 1)}
             </span>
           ) : isTranslating ? (
             <span className="inline-flex items-center gap-1.5 text-muted-foreground/40 text-xs">
@@ -198,7 +203,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                   <span className="ml-auto">{copyButton}</span>
                 </div>
                 <div className="text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 text-foreground/90">
-                  {pair.src || <span className="text-muted-foreground/30 italic text-xs">—</span>}
+                  {pair.src ? renderSegmentText(pair.src, true) : <span className="text-muted-foreground/30 italic text-xs">—</span>}
                 </div>
                 <div className="text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 text-foreground/90 border-l-2 border-primary/30 pl-2.5">
                   {tgtContent}
@@ -219,7 +224,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
 
               {/* 原文段落 */}
               <div className="flex-1 text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 transition-colors text-foreground/90 group-hover:text-foreground">
-                {pair.src || (
+                {pair.src ? renderSegmentText(pair.src, true) : (
                   <span className="text-muted-foreground/30 italic text-xs">—</span>
                 )}
               </div>

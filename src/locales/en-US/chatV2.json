@@ -340,6 +340,8 @@
     "processingIndicatorPartial": "Some modes not ready",
     "completedMissingModes": "Completed ({{modes}} not ready)",
     "modesNotReady": "Not ready: {{modes}}",
+    "useReadyModes": "Use ready mode ({{modes}})",
+    "streamStopped": "Generation stopped",
     "uploadStage": {
       "reading": "Reading file",
       "uploading": "Uploading",

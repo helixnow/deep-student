@@ -53,6 +53,10 @@ export function sanitizeOpenaiRequestBody(body: JsonValue): JsonValue {
   const sanitized = structuredClone(body);
   const obj = object(sanitized);
   if (!obj) return sanitized;
+  // max_total_tokens is an internal cross-provider budget hint consumed by
+  // Gemini/Anthropic/Responses adapters; OpenAI-compatible endpoints (e.g. Mistral)
+  // reject unknown top-level fields with HTTP 422.
+  removeKey(obj, 'max_total_tokens');
   const seenNames = new Set<string>();
   const tools = array(obj.tools);
   let validNames = new Set<string>();

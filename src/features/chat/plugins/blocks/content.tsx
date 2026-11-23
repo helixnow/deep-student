@@ -109,6 +109,7 @@ const ContentBlockBase: React.FC<ContentBlockBaseProps> = ({
   onToggleSecrets,
   isUserMessage,
 }) => {
+  const { t } = useTranslation('chatV2');
   const content = block.content || '';
   // 命中脱敏时用 masked 文本（默认）或原文（用户点「显示原文」后）渲染；
   // 用户消息再做一层非代码块 HTML 标签转义，保证字面可见且绝不触发真实 DOM 资源加载。
@@ -146,6 +147,14 @@ const ContentBlockBase: React.FC<ContentBlockBaseProps> = ({
         blockId={block.id}
         messageId={block.messageId}
       />
+      {block.aborted && !isStreaming && !isUserMessage && (
+        <p
+          data-testid="content-block-aborted-notice"
+          className="mt-2 text-xs text-muted-foreground/75 select-none"
+        >
+          {t('inputBar.streamStopped', { defaultValue: '已停止生成' })}
+        </p>
+      )}
       {showSecretNotice && (
         <SecretMaskNotice
           count={hiddenSecretCount ?? 0}

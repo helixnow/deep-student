@@ -94,7 +94,7 @@ describe('llmRawPrompt.callMemoryDecisionRawPrompt (model2_pipeline.rs:8842)', (
     expect(requests).toHaveLength(1);
     expect(requests[0]!.body).toEqual({ model: 'gpt-4o-mini', stream: false, temperature: 0.7,
       messages: [{ role: 'user', content: [{ type: 'text', text: '决策提示词' }] }],
-      max_tokens: expect.any(Number), max_total_tokens: expect.any(Number),
+      max_tokens: expect.any(Number),
       response_format: { type: 'json_object' } });
     expect(requests[0]!.headers.authorization).toBe('Bearer local-memory');
     expect(usage).toEqual([expect.objectContaining({ callerType: 'memory', model: 'gpt-4o-mini', success: true,

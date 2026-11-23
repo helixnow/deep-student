@@ -1748,7 +1748,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       </DsButton>
                       <DsButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isMutating || !newMemoryTitle.trim() || !newMemoryContent.trim()} className="flex-1 !h-9 [@media(pointer:coarse)]:!h-11">
                         {isMutating && <CircleNotch size={16} className="animate-spin" />}
-                        {t('common:create')}
+                        {t('common:save')}
                       </DsButton>
                     </div>
                   </div>
@@ -1841,6 +1841,27 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               </div>
             ) : (
               <div className="space-y-0.5">
+                <div
+                  role="status"
+                  data-testid="memory-search-summary"
+                  className="flex items-center justify-between gap-2 px-3 py-1.5 mb-1 rounded-md bg-muted/40 text-xs text-muted-foreground"
+                >
+                  <span className="truncate">
+                    {t('memory.search_results_summary', {
+                      query: searchQuery.trim(),
+                      count: searchResults.length,
+                      defaultValue: '搜索「{{query}}」找到 {{count}} 条相关记忆',
+                    })}
+                  </span>
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleClearSearch}
+                    className="!h-6 !px-2 text-2xs shrink-0 text-primary hover:bg-primary/10"
+                  >
+                    {t('memory.aria.clear_search')}
+                  </DsButton>
+                </div>
                 {searchResults.map((result) => {
                   const isExpanded = expandedMemoryId === result.noteId;
                   const isSelected = selectedIds.has(result.noteId);

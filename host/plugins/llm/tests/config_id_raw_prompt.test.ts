@@ -94,7 +94,7 @@ describe('llmRawPrompt.callWithConfigIdRawPrompt', () => {
     expect(requests).toHaveLength(1);
     expect(requests[0]!.body).toEqual({ model: 'gpt-4o-mini', stream: false, temperature: 0.7,
       messages: [{ role: 'user', content: [{ type: 'text', text: '研究提示词' }] }],
-      max_tokens: expect.any(Number), max_total_tokens: expect.any(Number) });
+      max_tokens: expect.any(Number) });
     expect(requests[0]!.headers.authorization).toBe('Bearer local-selected');
     expect(requests[0]!.headers[SESSION_HEADER]).toBeUndefined();
     expect(usage).toEqual([expect.objectContaining({ callerType: 'chat_v2', model: 'gpt-4o-mini', success: true,
