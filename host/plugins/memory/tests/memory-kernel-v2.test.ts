@@ -4,7 +4,8 @@ import type { MemoryServiceImpl } from '../src/service.ts';
 import type { MemoryInspectionView, MemoryProvider } from '../api.ts';
 import { MemoryToolExecutor } from '../src/memory-tool-executor.ts';
 import type { ExecutionContext, ToolExecutor } from '../../chat/api.ts';
-import { PromptBuilder } from '../../chat-pipeline/src/prompt-builder.ts';
+import { MEMORY_KERNEL_PACING_RULE, PromptBuilder } from '../../chat-pipeline/src/prompt-builder.ts';
+import { renderHardRules, renderedHardRulesCharCount, ruleCharLength } from '../src/hard-rules.ts';
 import { PROFILE_HISTORY_KEEP, emptyProfileUpdate } from '../src/learner-profile.ts';
 
 let current: MemoryHost | undefined;
@@ -332,5 +333,40 @@ describe('RFC-001 M1: MemoryProvider, HardRules, Frozen <memory_kernel>, and His
     expect(mathWp).toBeDefined();
     expect(mathWp!.subject).toBe('线性代数');
     expect(mathWp!.error_pattern).toContain('relapse=2');
+  });
+
+  it('embeds compact anti-truncation pacing guidance in <memory_kernel> without inflating HardRules budget (P3-3)', async () => {
+    const { host } = await setup();
+    const service = serviceOf(host);
+    const provider = providerOf(host);
+
+    // Empty kernel: <memory_kernel> and pacing guidance must be omitted completely.
+    const emptySnap = provider.buildSessionSnapshot({ sessionId: 'sess_p3_empty', memoryEnabled: true });
+    expect(emptySnap.renderedKernel).toBe('');
+    const emptyBuilt = new PromptBuilder(null).withMemoryKernel(emptySnap.renderedKernel).buildSplit();
+    expect(emptyBuilt.stableSystem).not.toContain('<memory_kernel>');
+    expect(emptyBuilt.stableSystem).not.toContain(MEMORY_KERNEL_PACING_RULE);
+
+    // Non-empty kernel with an ending rule: <memory_kernel> carries concise pacing guidance
+    // while HardRules char budget accounting stays 100% consistent with renderHardRules.
+    provider.mutateFromUser({
+      kind: 'upsert_rule',
+      input: {
+        instruction: '每次讲解末尾必须附带【30秒自测】1 道思考题',
+        scope: 'global',
+        pinned: true,
+      },
+    });
+    const doc = service.loadHardRules();
+    expect(renderedHardRulesCharCount(doc)).toBe(ruleCharLength(renderHardRules(doc.rules)));
+    expect(ruleCharLength(MEMORY_KERNEL_PACING_RULE)).toBeLessThanOrEqual(80);
+
+    const nonEmptySnap = provider.buildSessionSnapshot({ sessionId: 'sess_p3_full', memoryEnabled: true });
+    const fullBuilt = new PromptBuilder(null).withMemoryKernel(nonEmptySnap.renderedKernel).buildSplit();
+    expect(fullBuilt.stableSystem).toContain('<memory_kernel>');
+    expect(fullBuilt.stableSystem).toContain(MEMORY_KERNEL_PACING_RULE);
+    expect(fullBuilt.stableSystem).toContain('【30秒自测】');
+    expect(fullBuilt.stableSystem.indexOf(MEMORY_KERNEL_PACING_RULE))
+      .toBeLessThan(fullBuilt.stableSystem.indexOf('【30秒自测】'));
   });
 });

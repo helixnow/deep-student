@@ -64,6 +64,8 @@ export interface UseChatPageEventsDeps {
   sidebarCollapsed: boolean;
   handleSidebarCollapsedChange: (collapsed: boolean) => void;
   setSessionSheetOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  /** 冷启动加载期间收到显式新建会话意图（如跨功能 PREFILL_CHAT_INPUT newSession），避免自动恢复旧会话 */
+  onEarlyNewSessionIntent?: () => void;
 }
 
 export function useChatPageEvents(deps: UseChatPageEventsDeps) {
@@ -75,6 +77,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     setOpenApp, isSmallScreen, setMobileResourcePanelOpen,
     attachmentPreviewOpen, setAttachmentPreviewOpen,
     sidebarCollapsed, handleSidebarCollapsedChange, setSessionSheetOpen,
+    onEarlyNewSessionIntent,
   } = deps;
   // 导航事件监听器保持稳定，ready effect 重放事件时读取本次 render 的加载态。
   // 若把 isInitialLoading 放进监听器依赖，React 会先移除旧监听器，再由前面的
@@ -738,7 +741,11 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       [COMMAND_EVENTS.CHAT_NEW_SESSION]: () => {
         console.log('[ChatV2Page] CHAT_NEW_SESSION triggered');
         // 冷启动早到事件只用于壳层开窗；ready 后由导航握手重放并创建一次。
-        if (isInitialLoadingRef.current) return;
+        // 同时标记显式新建意图，避免 loadSessions 在 ready 前自动恢复旧会话。
+        if (isInitialLoadingRef.current) {
+          onEarlyNewSessionIntent?.();
+          return;
+        }
         // 事件已被直接消费：清掉握手挂起意图，避免就绪后重复创建
         invalidatePendingChatNavigation();
         createSession(getCurrentSessionGroupId());

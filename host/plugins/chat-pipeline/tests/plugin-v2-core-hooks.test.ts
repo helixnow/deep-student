@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { ChatPipelineHooksRegistry, formatDeclarativeStudyPackPrompt } from '../src/pipeline-hooks.ts';
-import { PromptBuilder } from '../src/prompt-builder.ts';
+import { MEMORY_KERNEL_PACING_RULE, PromptBuilder } from '../src/prompt-builder.ts';
 import { GradingRubricRegistry } from '../../llm/src/essay_grading/rubric-registry.ts';
 import { ReviewSchedulerRegistry, DEFAULT_REVIEW_SCHEDULER_ID } from '../../review/src/scheduler-registry.ts';
 import { checkManifest } from '../../../kernel/manifest.ts';
@@ -149,5 +149,31 @@ describe('RFC-002 P2: Native Cordis Core Hook & Provider Registries', () => {
     dispose();
     expect(rubrics.get('example.kaoyan-math-pack:kaoyan-math-proof')).toBeNull();
     expect(formatDeclarativeStudyPackPrompt(registry)).toBeNull();
+  });
+
+  it('injects compact anti-truncation pacing guidance into <memory_kernel> only when non-empty and reinforces <memory_delta> (P3-3)', () => {
+    const baseline = new PromptBuilder(null).buildSplit();
+    const withEmptyKernel = new PromptBuilder(null).withMemoryKernel('   ').buildSplit();
+    expect(withEmptyKernel.stableSystem).toBe(baseline.stableSystem);
+    expect(baseline.stableSystem).not.toContain('<memory_kernel>');
+    expect(baseline.stableSystem).not.toContain(MEMORY_KERNEL_PACING_RULE);
+
+    expect([...MEMORY_KERNEL_PACING_RULE].length).toBeLessThanOrEqual(80);
+
+    const kernelBody = '## 互动硬性规则（从第 1 轮起 100% 严格遵循）\n- [必遵] 每次回答结尾输出【30秒自测】 (id:r1)';
+    const withKernel = new PromptBuilder(null).withMemoryKernel(kernelBody).buildSplit();
+    expect(withKernel.stableSystem).toContain('<memory_kernel>');
+    expect(withKernel.stableSystem).toContain(MEMORY_KERNEL_PACING_RULE);
+    expect(withKernel.stableSystem).toContain('【30秒自测】');
+    expect(withKernel.turnVolatile).toBeNull();
+
+    const withDelta = new PromptBuilder(null)
+      .withMemoryKernel(kernelBody)
+      .withMemoryDelta('+ 新增/更新规则：结尾附 3 条要点清单 (id:r2)')
+      .buildSplit();
+    expect(withDelta.stableSystem).toBe(withKernel.stableSystem);
+    expect(withDelta.turnVolatile).toContain('<memory_delta>');
+    expect(withDelta.turnVolatile).toContain('勿中途截断');
+    expect(withDelta.turnVolatile).toContain('结尾附 3 条要点清单');
   });
 });

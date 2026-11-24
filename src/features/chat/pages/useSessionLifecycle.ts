@@ -16,9 +16,19 @@ import {
   getDraftSessionScope,
   getHiddenDraftSessionScope,
   getStoredDraftSessionId,
+  isHiddenDraftSessionId,
+  isHiddenDraftSessionMetadata,
   persistHiddenDraftSessionId,
   clearHiddenDraftSessionId,
+  trackHiddenDraftSessionId,
 } from './draftSession';
+import {
+  clearLastActiveSessionId,
+  clearLastActiveSessionIdIfMatches,
+  readLastActiveSessionId,
+  resolveStartupResumableSessionId,
+} from './lastActiveSession';
+import { peekPendingChatNavigation } from '../navigation/pendingChatNavigation';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -39,6 +49,9 @@ const requestChatInputFocus = (sessionId: string) => {
 
 export interface UseSessionLifecycleDeps {
   currentSessionId: string | null;
+  currentSessionIdRef?: React.MutableRefObject<string | null>;
+  selectionEpochRef?: React.MutableRefObject<number>;
+  earlyNewSessionIntentRef?: React.MutableRefObject<boolean>;
   setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
   setCurrentSessionId: (id: string | null | ((prev: string | null) => string | null)) => void;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -57,6 +70,16 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     setUngroupedSessionCount, setIsInitialLoading, sessionsRef,
     t, LAST_SESSION_KEY,
   } = deps;
+
+  const fallbackCurrentSessionIdRef = useRef<string | null>(currentSessionId);
+  fallbackCurrentSessionIdRef.current = currentSessionId;
+  const currentSessionIdRef = deps.currentSessionIdRef ?? fallbackCurrentSessionIdRef;
+
+  const fallbackSelectionEpochRef = useRef(0);
+  const selectionEpochRef = deps.selectionEpochRef ?? fallbackSelectionEpochRef;
+
+  const fallbackEarlyNewSessionIntentRef = useRef(false);
+  const earlyNewSessionIntentRef = deps.earlyNewSessionIntentRef ?? fallbackEarlyNewSessionIntentRef;
 
   useEffect(() => retainSessionListStore(), []);
 
@@ -105,6 +128,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
             sessionId: storedDraftId,
           });
           if (storedDraft && getHiddenDraftSessionScope(storedDraft.metadata) === scope) {
+            trackHiddenDraftSessionId(storedDraft.id);
             return storedDraft;
           }
         } catch (error) {
@@ -134,6 +158,11 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
 
   // 创建新会话（使用全局科目）- 提前定义用于 useMobileHeader
   const createSession = useCallback(async (groupId?: string) => {
+    // 显式「新会话」意图：递增选择纪元以阻止尚未完成的 loadSessions 覆盖本次操作，
+    // 同时清理 lastActiveSessionId，确保刷新时不会违背用户意愿强行跳回旧会话。
+    selectionEpochRef.current += 1;
+    clearLastActiveSessionId(LAST_SESSION_KEY);
+
     const currentDraftScope = getCurrentHiddenDraftSessionScope();
     const targetDraftScope = getDraftSessionScope('chat', groupId ?? null);
     if (currentDraftScope === targetDraftScope) {
@@ -151,7 +180,15 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     } finally {
       setIsLoading(false);
     }
-  }, [getCurrentHiddenDraftSessionScope, getOrCreateHiddenDraftSession, setCurrentSessionId, setIsLoading, t]);
+  }, [
+    LAST_SESSION_KEY,
+    getCurrentHiddenDraftSessionScope,
+    getOrCreateHiddenDraftSession,
+    selectionEpochRef,
+    setCurrentSessionId,
+    setIsLoading,
+    t,
+  ]);
 
   // P1-06: 创建分析模式会话
   // 打开文件对话框让用户选择图片，然后创建 analysis 模式会话
@@ -243,13 +280,27 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
   // - currentSessionId 立即更新（侧边栏高亮立即响应）
   // - deferredSessionId 延迟更新（ChatContainer 重渲染在后台进行）
   const loadSessions = useCallback(async () => {
-    // ★ 性能（首屏瀑布消除）：启动 draft 会话的获取/创建不依赖列表结果，
-    // 与列表加载并行发起。原实现串行等待列表返回后才发起 draft 请求，
-    // 首屏可交互时间多付一跳后端往返。
-    const draftSessionPromise = getOrCreateHiddenDraftSession();
+    const startSelectionEpoch = selectionEpochRef.current;
+    const storedLastSessionId = readLastActiveSessionId(LAST_SESSION_KEY);
+    const pendingNavAtStart = peekPendingChatNavigation();
+    const shouldEagerlyPrepareDraft =
+      !storedLastSessionId
+      || earlyNewSessionIntentRef.current
+      || pendingNavAtStart !== null;
+
+    // ★ 性能（首屏瀑布消除）：无待恢复历史会话（或已有显式新会话/导航意图）时，
+    // 启动 draft 获取与列表加载并行发起；有待恢复会话时延迟到确实回退时再创建，
+    // 避免每次刷新恢复历史会话都多发一次后端 draft IPC。
+    let draftSessionPromise: Promise<ChatSession> | null = shouldEagerlyPrepareDraft
+      ? getOrCreateHiddenDraftSession()
+      : null;
     // 列表加载失败走 catch 分支时，这里的错误由下方 await 统一处理；
     // 提前挂一个空 catch 防止 unhandled rejection 噪音
-    draftSessionPromise.catch(() => {});
+    draftSessionPromise?.catch(() => {});
+
+    const hasActiveUserChoice = () =>
+      selectionEpochRef.current !== startSelectionEpoch
+      || currentSessionIdRef.current !== null;
 
     try {
       // Sidebar and page join one cached/in-flight list request. Counts are
@@ -264,17 +315,69 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       if (totalCount.status === 'fulfilled') setTotalSessionCount(totalCount.value);
       if (ungroupedCount.status === 'fulfilled') setUngroupedSessionCount(ungroupedCount.value);
 
-      // 启动行为：进入一个隐藏 draft。它不进入左侧列表，只有首条消息后才转正。
+      // 竞态保护：异步列表加载期间用户已主动切换会话或点击「新会话」时，绝不覆盖用户选择
+      if (hasActiveUserChoice()) {
+        return;
+      }
+
+      const pendingNav = peekPendingChatNavigation();
+      const hasExplicitNewSessionIntent =
+        earlyNewSessionIntentRef.current || pendingNav?.kind === 'new-session';
+      const hasPendingSessionNav = pendingNav?.kind === 'session';
+
+      if (hasExplicitNewSessionIntent) {
+        earlyNewSessionIntentRef.current = false;
+        clearLastActiveSessionId(LAST_SESSION_KEY);
+      }
+
       let sessionToSelect: string | null = null;
 
-      try {
-        const draftSession = await draftSessionPromise;
-        sessionToSelect = draftSession.id;
-      } catch (e) {
-        console.warn('[ChatV2Page] Failed to create startup draft session:', e);
-        if (allSessions.length > 0) {
-          sessionToSelect = allSessions[0].id;
+      // 1. 外部入口（如学习资源「引用到对话」ensureActiveChatSession）提前激活并注入内容的草稿会话优先保留
+      if (!hasExplicitNewSessionIntent && !hasPendingSessionNav) {
+        const existingManagerSessionId = sessionManager.getCurrentSessionId();
+        if (existingManagerSessionId && sessionManager.has(existingManagerSessionId)) {
+          const existingState = sessionManager.peek(existingManagerSessionId)?.getState();
+          const isDraftWithPendingContent = Boolean(
+            existingState
+            && (isHiddenDraftSessionMetadata(existingState.sessionMetadata)
+              || isHiddenDraftSessionId(existingManagerSessionId))
+            && (
+              existingState.pendingContextRefs.length > 0
+              || existingState.attachments.length > 0
+              || existingState.inputValue.trim().length > 0
+              || existingState.messageOrder.length > 0
+            )
+          );
+          if (isDraftWithPendingContent) {
+            sessionToSelect = existingManagerSessionId;
+          }
         }
+      }
+
+      // 2. P3-2 自动恢复上次活跃会话：当无显式新会话/导航意图，且本地记录的会话仍在活跃列表中时自动恢复
+      if (!sessionToSelect && !hasExplicitNewSessionIntent && !hasPendingSessionNav) {
+        sessionToSelect = resolveStartupResumableSessionId(allSessions, LAST_SESSION_KEY);
+      }
+
+      // 3. 回退行为：进入隐藏 draft（首次启动、显式新建，或上次会话已删除/归档）。它不进入左侧列表，只有首条消息后才转正。
+      if (!sessionToSelect) {
+        try {
+          if (!draftSessionPromise) {
+            draftSessionPromise = getOrCreateHiddenDraftSession();
+          }
+          const draftSession = await draftSessionPromise;
+          sessionToSelect = draftSession.id;
+        } catch (e) {
+          console.warn('[ChatV2Page] Failed to create startup draft session:', e);
+          if (allSessions.length > 0) {
+            sessionToSelect = allSessions[0].id;
+          }
+        }
+      }
+
+      // 二次竞态保护：await draft 期间用户可能已主动切换或点击新建
+      if (hasActiveUserChoice()) {
+        return;
       }
 
       setCurrentSessionId(sessionToSelect);
@@ -285,8 +388,16 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       setIsInitialLoading(false);
     }
   }, [
-    getOrCreateHiddenDraftSession, setCurrentSessionId, setIsInitialLoading,
-    setTotalSessionCount, setUngroupedSessionCount, t,
+    LAST_SESSION_KEY,
+    currentSessionIdRef,
+    earlyNewSessionIntentRef,
+    getOrCreateHiddenDraftSession,
+    selectionEpochRef,
+    setCurrentSessionId,
+    setIsInitialLoading,
+    setTotalSessionCount,
+    setUngroupedSessionCount,
+    t,
   ]);
 
   // The page and sidebar share pagination and its in-flight guard as well.
@@ -314,14 +425,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
         void loadUngroupedCount();
 
         // 🔧 P1-28: 如果删除的是 localStorage 中保存的会话，清理它
-        try {
-          const lastSessionId = localStorage.getItem(LAST_SESSION_KEY);
-          if (lastSessionId === sessionId) {
-            localStorage.removeItem(LAST_SESSION_KEY);
-          }
-        } catch (e) {
-          console.warn('[ChatV2Page] Failed to clear last session ID:', e);
-        }
+        clearLastActiveSessionIdIfMatches(sessionId, LAST_SESSION_KEY);
 
         // 删除 Super-agent 会话：后端已停止其后台任务并新建空的 Super-agent 会话
         // （经 super_session_changed 广播新 id）；拉取最新状态，正停在旧会话时切到新会话。
