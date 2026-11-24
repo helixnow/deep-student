@@ -37,6 +37,37 @@ export function valuesToActivities(items: readonly unknown[]): string[] {
   return result;
 }
 
+/** Phrases signaling strictly one-off / transient turn requests that must not pollute long-term profile/facts. */
+const TRANSIENT_ONLY_MARKER_RE = /(?:就这一次|仅此一次|仅这一次|这次例外|只搞笑这一次|这次不算|暂时只这一次|just\s+this\s+once|only\s+this\s+once|ignore\s+this\s+(?:part\s+)?for\s+memory|don'?t\s+remember\s+this)/i;
+
+function isTransientPollutedCandidate(title: string, content: string, userContent?: string): boolean {
+  const combined = `${title}\n${content}`;
+  if (TRANSIENT_ONLY_MARKER_RE.test(combined)) return true;
+  if (!userContent || !TRANSIENT_ONLY_MARKER_RE.test(userContent)) return false;
+  // Reject extracted facts that mirror transient one-off requests (e.g. "打油诗" / "coffee machine broke")
+  // when the user explicitly marked that turn's stylistic twist or throwaway remark as one-time only.
+  const sentences = userContent.split(/[。！？!?\n]/);
+  for (const s of sentences) {
+    if (!TRANSIENT_ONLY_MARKER_RE.test(s)) continue;
+    const cleaned = s.replace(TRANSIENT_ONLY_MARKER_RE, '').trim();
+    const tokens = cleaned.match(/[\u4e00-\u9fff]{2,6}|[a-zA-Z]{4,}/g) ?? [];
+    for (const tok of tokens) {
+      if (/^(?:帮我|把上面|这次|一下|今天|现在|ignore|memory|please|this|that|only|once)$/i.test(tok)) continue;
+      if (combined.toLowerCase().includes(tok.toLowerCase())) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+export function filterTransientCandidates(
+  candidates: readonly CandidateMemory[],
+  userContent?: string,
+): CandidateMemory[] {
+  return candidates.filter(c => !isTransientPollutedCandidate(c.title, c.content, userContent));
+}
+
 export function valuesToCandidates(items: readonly unknown[]): CandidateMemory[] {
   const result: CandidateMemory[] = [];
   for (const item of items) {
@@ -47,6 +78,7 @@ export function valuesToCandidates(items: readonly unknown[]): CandidateMemory[]
     if (title === null || content === null) continue;
     if (title.length === 0 || content.length === 0 || Array.from(content).length > MAX_FACT_CONTENT_CHARS) continue;
     if (containsSensitivePattern(content) || containsSensitivePattern(title)) continue;
+    if (isTransientPollutedCandidate(title, content)) continue;
     const folderValue = typeof record.folder === 'string' ? record.folder : null;
     result.push({ title, content, folder: folderValue !== null && folderValue.length > 0 ? folderValue : null });
     if (result.length === MAX_FACTS) break;
@@ -108,10 +140,12 @@ ${Array.from(existingProfile).slice(0, 800).join('')}
 2. 只提取关于**用户本人**的事实，不提取通用知识
 3. 提取的类型：身份背景、学习状态、个人偏好、时间约束、目标计划、项目/环境事实、工具与工作习惯
 4. **绝对禁止**提取：学科知识、题目内容、解题过程、文档摘要、通用技术知识（如"Python 支持 f-string"这类与用户无关的事实）
-5. 判断标准：这条信息换一个用户还成立吗？如果是，就不要提取
-6. 最多提取 5 条，宁缺毋滥
-7. **跳过已有记忆中已记录的事实**——只提取新增或更新的信息
-8. 如果对话中没有关于用户的新事实，facts 返回空数组
+5. **绝对禁止提取一次性临时要求或牢骚**：凡用户明确标注"就这一次 / 仅这一次 / 这次例外 / just this once / ignore this for memory / today's coffee broke"的当轮风格要求或一次性情绪牢骚，绝不能写成长期事实！
+6. 判断标准：这条信息换一个用户还成立吗？如果是，就不要提取
+7. 最多提取 5 条，宁缺毋滥
+8. **跳过已有记忆中已记录的事实**——只提取新增或更新的信息
+9. **语言跟随**：如果用户的对话内容是英文（en），提取出的 \`title\` 和 \`content\` 也必须使用英文（不要把英文对话硬翻译成中文写入）；中文对话则用中文。
+10. 如果对话中没有关于用户的新事实，facts 返回空数组
 
 ## activities 提取规则
 1. 每条概括本轮对话中一件"今天做了什么"的学习/工作任务活动（≤80字），

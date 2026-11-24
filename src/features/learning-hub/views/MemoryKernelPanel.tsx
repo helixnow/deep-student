@@ -439,6 +439,34 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                           升格硬规则
                         </DsButton>
                       )}
+                      {p.kind === 'resolve_rule_conflict' && typeof p.suggestedPayload?.ruleBId === 'string' && (
+                        <DsButton
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy}
+                          onClick={async () => {
+                            if (busy) return;
+                            setBusy(true);
+                            try {
+                              const updated = await mutateMemoryKernel({
+                                kind: 'remove_rule',
+                                idOrInstruction: String(p.suggestedPayload?.ruleBId ?? ''),
+                              });
+                              setView(updated);
+                              invalidateMemoryKernelAttributionCache(updated);
+                              setReflectionReport(await reflectMemoryKernel().catch(() => null));
+                              showGlobalNotification('success', '已移除冲突规则并刷新记忆整理建议');
+                            } catch (error) {
+                              showGlobalNotification('error', error instanceof Error ? error.message : '处理冲突失败');
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                          className="h-6 shrink-0 px-2 text-[11px] text-destructive hover:bg-destructive/10"
+                        >
+                          移除后一条
+                        </DsButton>
+                      )}
                       {p.kind === 'retire_stale_weak_point'
                         && typeof p.suggestedPayload?.subject === 'string'
                         && typeof p.suggestedPayload?.knowledge_point === 'string' && (
@@ -496,16 +524,18 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                       )}
                       <span className="text-foreground">{rule.instruction}</span>
                     </div>
-                    <DsButton
-                      variant="ghost"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => void handleRemoveRule(rule)}
-                      className="h-6 w-6 p-0 shrink-0 text-muted-foreground hover:text-destructive"
-                      title="删除规则"
-                    >
-                      <Trash size={12} />
-                    </DsButton>
+                      <DsButton
+                        variant="ghost"
+                        size="sm"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void handleRemoveRule(rule)}
+                        className="h-6 w-6 p-0 shrink-0 text-muted-foreground hover:text-destructive"
+                        aria-label={`删除规则：${rule.instruction.slice(0, 24)}`}
+                        title="删除规则"
+                      >
+                        <Trash size={12} />
+                      </DsButton>
                   </div>
                 ))}
               </div>

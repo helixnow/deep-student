@@ -284,6 +284,11 @@
       "expand": "展开全文",
       "collapse": "收起"
     },
+    "truncation": {
+      "banner": "回复可能因长度限制未完整输出",
+      "continue": "继续生成",
+      "continuing": "正在继续…"
+    },
     "secretMask": {
       "detected": "已遮挡 {{count}} 处疑似密钥（仅隐藏屏幕显示，如已发送请尽快重置）",
       "show": "显示原文",

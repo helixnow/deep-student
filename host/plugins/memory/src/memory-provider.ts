@@ -15,7 +15,7 @@ import {
   buildHardRulesDelta, clampHardRulesMaxChars, clampLearnerProfileKernelMaxChars,
   filterHardRulesForScope, HARD_RULES_MAX_CHARS_CONFIG_KEY,
   LEARNER_PROFILE_KERNEL_MAX_CHARS_CONFIG_KEY, renderHardRules, renderedHardRulesCharCount,
-  ruleCharLength, type HardRuleUpsertInput, type HardRulesDocument, type MemoryHardRule,
+  ruleCharLength, type FrozenRuleSnapshotRef, type HardRuleUpsertInput, type HardRulesDocument, type MemoryHardRule,
 } from './hard-rules.ts';
 import {
   emptyProfile, emptyProfileUpdate, isProfileContentEmpty, renderLearnerProfile, renderedCharCount,
@@ -48,6 +48,7 @@ export interface MemorySessionSnapshot {
   rulesVersion: number;
   profileVersion: number;
   includedRuleIds: string[];
+  includedRules?: FrozenRuleSnapshotRef[];
   includedWeakPointKeys: string[];
   includedLegacyNoteIds: string[];
   charCount: number;
@@ -377,6 +378,7 @@ export class LocalMemoryProvider implements MemoryProvider {
       rulesVersion: hardRulesDoc.version,
       profileVersion: profile?.version ?? 0,
       includedRuleIds: scopedRules.map(r => r.id),
+      includedRules: scopedRules.map(r => ({ id: r.id, instruction: r.instruction, scope: r.scope })),
       includedWeakPointKeys: profileProjection.weakPointKeys,
       includedLegacyNoteIds: bridge.noteIds,
       charCount: ruleCharLength(renderedKernel),
@@ -395,7 +397,7 @@ export class LocalMemoryProvider implements MemoryProvider {
     const hardRulesDoc = this.host.loadHardRules();
     if (hardRulesDoc.version > frozen.rulesVersion) {
       const scoped = filterHardRulesForScope(hardRulesDoc.rules, { subject: req.subject, mode: req.mode });
-      const rulesDelta = buildHardRulesDelta(scoped, frozen.includedRuleIds, frozen.snapshotAt);
+      const rulesDelta = buildHardRulesDelta(scoped, frozen.includedRuleIds, frozen.snapshotAt, frozen.includedRules);
       if (rulesDelta !== null) deltaParts.push(rulesDelta);
     }
 

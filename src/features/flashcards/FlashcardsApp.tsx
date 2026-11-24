@@ -119,32 +119,31 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
     </div>
   ) : (
     <>
-      {!isSmallScreen && (
-        <nav className="wb-fc-nav" aria-label={t('tabs.nav')}>
-          {TABS.map((tab) => {
-            const active = screen === tab.id;
-            const showDueBadge = tab.id === 'today' && dueTotal > 0;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setScreen(tab.id)}
-                className="wb-fc-tab wb-fcx-tab"
-                data-active={active ? 'true' : undefined}
-                aria-current={active ? 'page' : undefined}
-              >
-                {tab.icon}
-                {t(tab.labelKey)}
-                {showDueBadge ? (
-                  <span className="wb-fcx-tab-badge" aria-hidden="true">
-                    {dueTotal > 99 ? '99+' : dueTotal}
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </nav>
-      )}
+      <nav className="wb-fc-nav" aria-label={t('tabs.nav')}>
+        {TABS.map((tab) => {
+          const active = screen === tab.id;
+          const showDueBadge = tab.id === 'today' && dueTotal > 0;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              data-testid={`fc-tab-${tab.id}`}
+              onClick={() => setScreen(tab.id)}
+              className="wb-fc-tab wb-fcx-tab"
+              data-active={active ? 'true' : undefined}
+              aria-current={active ? 'page' : undefined}
+            >
+              {tab.icon}
+              {t(tab.labelKey)}
+              {showDueBadge ? (
+                <span className="wb-fcx-tab-badge" aria-hidden="true">
+                  {dueTotal > 99 ? '99+' : dueTotal}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </nav>
       <div className="wb-fc-body">
         <div key={screen} className="wb-fcx-screen-anim">
           {screen === 'today' ? <TodayScreen /> : null}

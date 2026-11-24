@@ -368,5 +368,38 @@ describe('RFC-001 M1: MemoryProvider, HardRules, Frozen <memory_kernel>, and His
     expect(fullBuilt.stableSystem).toContain('【30秒自测】');
     expect(fullBuilt.stableSystem.indexOf(MEMORY_KERNEL_PACING_RULE))
       .toBeLessThan(fullBuilt.stableSystem.indexOf('【30秒自测】'));
+    // Must not inject concrete examples like 自测题 that models could hallucinate as user rules
+    expect(MEMORY_KERNEL_PACING_RULE).not.toContain('自测题');
+  });
+
+  it('broadcasts exact revoked rule instruction in <memory_delta> when removed mid-session and filters transient noise', async () => {
+    const { host } = await setup();
+    const provider = providerOf(host);
+
+    const added = provider.mutateFromUser({
+      kind: 'upsert_rule',
+      input: { instruction: '每次回答必须以【Day1口头禅：稳扎稳打】开头', scope: 'global', pinned: true },
+    });
+    const ruleId = added.hardRules.rules[0]!.id;
+    const frozen = provider.buildSessionSnapshot({ sessionId: 'sess_revoke', memoryEnabled: true });
+    expect(frozen.includedRuleIds).toContain(ruleId);
+
+    // Same-session deletion (e.g. clicking AttributionPill "忘掉")
+    provider.mutateFromUser({ kind: 'remove_rule', idOrInstruction: ruleId });
+    const delta = provider.buildSessionDelta({ sessionId: 'sess_revoke', memoryEnabled: true }, frozen);
+    expect(delta).not.toBeNull();
+    expect(delta).toContain('【已作废/撤回，立即停止执行】');
+    expect(delta).toContain('【Day1口头禅：稳扎稳打】');
+
+    // Transient one-off filter check
+    const { filterTransientCandidates } = await import('../src/auto-extractor.ts');
+    const kept = filterTransientCandidates(
+      [
+        { title: '幽默风格偏好', content: '用户喜欢用打油诗改写数学概念', folder: '偏好' },
+        { title: '英文缩写偏好', content: '用户偏好中文括注英文缩写', folder: '偏好' },
+      ],
+      '以后英文缩写都要括注中文。对了，帮我把贝叶斯定理改写成打油诗，就这一次搞笑一下。',
+    );
+    expect(kept.map(c => c.title)).toEqual(['英文缩写偏好']);
   });
 });

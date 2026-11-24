@@ -27,7 +27,7 @@ Reply in the language of the user's latest message: Chinese in, Chinese out; Eng
 
 /** Compact anti-truncation & pacing guidance injected only when `<memory_kernel>` is non-empty. */
 export const MEMORY_KERNEL_PACING_RULE =
-  '篇幅与收尾控制：讲解请条理精炼、控制总篇幅，务必为所有常驻规则（尤其是结尾自测题、清单或总结）预留充足输出空间，严禁中途截断或遗漏。';
+  '篇幅与收尾控制：讲解请条理精炼、控制总篇幅，优先确保用户明确约定的各项格式、字数与收尾要求完整落实，严禁中途截断或遗漏。';
 
 export const CITATION_GUIDE = String.raw`<citation_rules>
 <description>引用格式规范，回答时必须遵守</description>
@@ -581,7 +581,7 @@ ${hintsContent}
     }
 
     if (this.memoryDelta !== null) {
-      parts.push('<memory_delta>\n本会话进行中新增或变更的记忆规则与状态（立即生效，优先级高于旧规则；请控制篇幅，确保完整落实结尾等常驻要求，勿中途截断）：\n'
+      parts.push('<memory_delta>\n本会话进行中新增、修改或撤回的记忆规则与状态（立即生效，优先级高于旧规则；若出现【已作废/撤回】条款，必须从本轮起立即停止执行；同时请控制篇幅，确保用户要求完整落实、勿中途截断）：\n'
         + `${escapeXmlContent(this.memoryDelta)}\n</memory_delta>`);
     }
 

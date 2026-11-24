@@ -114,6 +114,8 @@
     "more": "More actions for {{id}}",
     "details": "Details",
     "export": "Export",
+    "exportShort": "Share / Export",
+    "exportA11y": "Export package for {{id}}",
     "restorePrevious": "Go back to the previous version (v{{version}})",
     "noDescription": "This plugin has no description.",
     "openNamed": "Open {{name}}",
@@ -360,6 +362,7 @@
   "actions": {
     "refresh": "Refresh",
     "install": "Import from file",
+    "installUrl": "Install from link",
     "installing": "Installing…",
     "retry": "Retry",
     "cancel": "Cancel",
@@ -505,13 +508,23 @@
       "noPrevious": "No previous version to restore; the disk is unchanged"
     },
     "rejected": {
-      "title": "Installation rejected ({{code}})",
-      "detail": "{{detail}}"
+      "title": "Could not install package",
+      "detail": "{{detail}}",
+      "technical": "Technical details ({{code}})"
     },
     "rollback": {
       "restored": "Previous version restored",
       "unchanged": "Disk unchanged",
       "failed": "Rollback failed; reinstall and check the plugins directory"
+    },
+    "urlDialog": {
+      "title": "Install plugin or study pack from link",
+      "description": "Paste a shared https:// link ending in .dspack or .dstuplugin. Installed packages stay disabled until you approve their permissions.",
+      "placeholder": "https://example.com/kaoyan-math-pack.dspack",
+      "inputLabel": "Package HTTPS URL",
+      "submit": "Download and install",
+      "submitting": "Downloading and installing…",
+      "invalidUrl": "Please enter a valid https:// URL ending in .dspack or .dstuplugin."
     }
   },
   "uninstall": {
@@ -533,11 +546,39 @@
     "reveal": "Show in folder"
   },
   "error": {
-    "title": "Operation failed",
+    "title": "Operation could not be completed",
     "code": "Code: {{code}}",
     "list": "Failed to load the plugin list",
     "reload": "Consent was saved but reloading failed",
-    "detailSuffix": ": {{detail}}"
+    "detailSuffix": ": {{detail}}",
+    "technical": "Technical details ({{code}})",
+    "reasons": {
+      "packageTraversal": "This package contains unsafe file paths trying to escape the plugin folder and was blocked.",
+      "packageInvalidJson": "The package manifest (package.json) is corrupted or not valid JSON. Ask the author to re-export it.",
+      "packageInvalidZip": "This file is not a valid .dstuplugin or .dspack archive.",
+      "packageInvalid": "This plugin package is incomplete or malformed and cannot be installed.",
+      "manifestInvalid": "The plugin manifest is missing required fields or declares invalid entries.",
+      "engineIncompatible": "This plugin requires a different DeepStudent version than the one installed.",
+      "idReserved": "This plugin uses the reserved official namespace (dstu.*). Community packs must use another prefix.",
+      "permissionUndeclared": "This plugin tried to use undeclared permissions and was blocked.",
+      "safeMode": "Safe mode is active: installing and enabling plugins are paused (you can still disable or uninstall broken community plugins).",
+      "consentRequired": "Permission approval is required before enabling this plugin.",
+      "consentStale": "The package contents or permissions changed. Refresh the list and approve again.",
+      "unloadBlocked": "Other running features depend on this plugin right now, so it cannot be disabled or uninstalled yet.",
+      "profileConflict": "Plugin settings were updated elsewhere. Refresh and try again.",
+      "enableFailed": "The plugin failed to start cleanly and was kept off or rolled back.",
+      "installFailed": "The package could not be installed; your existing plugins remain safe.",
+      "urlInvalid": "Invalid URL. Enter a full https:// link to a plugin or study pack.",
+      "urlHttpsRequired": "Only encrypted https:// links are allowed for remote package installs.",
+      "urlHostBlocked": "Blocked access to a local or private-network address to protect your device.",
+      "urlRedirectBlocked": "Blocked an unsafe redirect to an unencrypted or private-network address.",
+      "urlBadExtension": "The link must point directly to a .dspack or .dstuplugin file.",
+      "urlTooLarge": "The remote package exceeds the 32 MiB size limit.",
+      "urlCredentials": "Links with embedded usernames or passwords are not allowed.",
+      "urlHttpError": "Could not download the package from that URL. Verify the link is reachable.",
+      "stageUploadFailed": "Failed to upload the selected package from the browser. Please try again.",
+      "generic": "The operation could not be completed. See technical details below."
+    }
   },
   "addsHint": {
     "app": "A new entry in All apps",

@@ -27,6 +27,8 @@ import {
 import { getFolderTree } from '@/dstu/api/folderApi';
 import type { FolderTreeNode } from '@/dstu/types/folder';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { MemoryKernelPanel } from '@/features/learning-hub/views/MemoryKernelPanel';
+import { localizeMemoryFolderTitle } from '@/features/learning-hub/memoryFolderLabels';
 
 // 分组标题
 // 设置行（使用共享 primitives）
@@ -52,16 +54,17 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
   const flattenFolders = useCallback(
     (nodes: FolderTreeNode[], parentPath = ''): Array<{ id: string; title: string; path: string }> => {
       const result: Array<{ id: string; title: string; path: string }> = [];
-      for (const node of nodes) {
-        const path = parentPath ? `${parentPath}/${node.folder.title}` : node.folder.title;
-        result.push({ id: node.folder.id, title: node.folder.title, path });
+    for (const node of nodes) {
+        const displayTitle = localizeMemoryFolderTitle(node.folder.title, t);
+        const path = parentPath ? `${parentPath}/${displayTitle}` : displayTitle;
+        result.push({ id: node.folder.id, title: displayTitle, path });
         if (node.children.length > 0) {
           result.push(...flattenFolders(node.children, path));
         }
       }
       return result;
     },
-    []
+    [t]
   );
 
   const loadData = useCallback(async () => {
@@ -87,6 +90,11 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
 
   useEffect(() => {
     loadData();
+    const onConfigChanged = () => {
+      void loadData();
+    };
+    window.addEventListener('memory-config-changed', onConfigChanged);
+    return () => window.removeEventListener('memory-config-changed', onConfigChanged);
   }, [loadData]);
 
   const handleSelectFolder = useCallback(
@@ -96,6 +104,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
         await setMemoryRootFolder(folderId);
         const newConfig = await getMemoryConfig();
         setConfig(newConfig);
+        window.dispatchEvent(new CustomEvent('memory-config-changed'));
         showGlobalNotification('success', t('settings:memory.setSuccess'));
       } catch (error: unknown) {
         console.error('设置记忆文件夹失败:', error);
@@ -160,6 +169,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
       setSaving(true);
       await setMemoryAutoExtractFrequency(freq as AutoExtractFrequency);
       setConfig((prev) => (prev ? { ...prev, autoExtractFrequency: freq as AutoExtractFrequency } : prev));
+      window.dispatchEvent(new CustomEvent('memory-config-changed'));
       showGlobalNotification('success', t('settings:memory.autoExtractFrequencyUpdated'));
     } catch (error: unknown) {
       console.error('更新自动提取频率失败:', error);
@@ -224,7 +234,10 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
   const isMemoryOn = !config?.privacyMode;
 
   return (
-    <div>
+    <div className="space-y-4">
+      {/* 长期记忆内核工作台：直接在设置页暴露硬规则、画像、梳理建议与历史回滚，免去翻找学习中心 */}
+      <MemoryKernelPanel />
+
       {!embedded && <GroupTitle title={t('settings:memory.title')} />}
       <div className="rounded-2xl bg-muted px-3 py-3 sm:px-4">
       <div className="space-y-px">
@@ -233,11 +246,11 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
           <div className="flex items-center gap-2">
             <span className={cn(
               "w-1.5 h-1.5 rounded-full flex-shrink-0",
-              !isMemoryOn ? "bg-muted-foreground/40" : isConfigured ? "bg-emerald-500" : "bg-amber-500/70"
+              !isMemoryOn ? "bg-muted-foreground/40" : "bg-emerald-500"
             )} />
             <span className={cn(
               "text-sm",
-              !isMemoryOn ? "text-muted-foreground/50" : isConfigured ? "text-foreground/80" : "text-muted-foreground/60"
+              !isMemoryOn ? "text-muted-foreground/50" : "text-foreground/80"
             )}>
               {!isMemoryOn ? t('settings:memory.disabled') : isConfigured ? t('settings:memory.configured') : t('settings:memory.notConfigured')}
             </span>
@@ -259,7 +272,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
         {/* 根文件夹选择 */}
         <SettingRow
           title={t('settings:memory.rootFolder')}
-          description={config?.memoryRootFolderTitle || undefined}
+          description={config?.memoryRootFolderTitle ? localizeMemoryFolderTitle(config.memoryRootFolderTitle, t) : undefined}
         >
           <div className="flex items-center gap-2">
             <AppSelect

@@ -78,15 +78,30 @@ async function resolveDraftSession(): Promise<ChatSession> {
   return session;
 }
 
+export interface EnsureActiveChatSessionOptions {
+  /**
+   * 外部引用（如划词「引用到对话」、笔记推送）时，若当前会话已有真实历史消息，
+   * 默认开启或复用一个干净的隐藏草稿，避免把无关文档塞进当前对话。
+   */
+  preferFreshDraft?: boolean;
+}
+
 /**
  * 确保存在一个可注入上下文的活动会话，返回其 sessionId。
  * 创建/恢复失败时返回 null（调用方保留原「无会话」提示兜底）。
  */
-export async function ensureActiveChatSession(): Promise<string | null> {
-  // 快路径：已有活动会话
+export async function ensureActiveChatSession(
+  options?: EnsureActiveChatSessionOptions,
+): Promise<string | null> {
+  const preferFreshDraft = options?.preferFreshDraft !== false;
+  // 快路径：仅当当前活动会话尚无已提交消息（或调用方显式允许沿用非空会话）时直接复用
   const currentId = sessionManager.getCurrentSessionId();
   if (currentId && sessionManager.has(currentId)) {
-    return currentId;
+    const currentState = sessionManager.peek(currentId)?.getState();
+    const hasCommittedMessages = (currentState?.messageOrder.length ?? 0) > 0;
+    if (!preferFreshDraft || !hasCommittedMessages) {
+      return currentId;
+    }
   }
 
   if (inFlight) return inFlight;
@@ -105,6 +120,9 @@ export async function ensureActiveChatSession(): Promise<string | null> {
           await store.getState().loadSession(session.id);
         } catch (error) {
           console.warn(LOG_PREFIX, 'loadSession failed (continuing with empty state):', getErrorMessage(error));
+        }
+        if (session.metadata && !store.getState().sessionMetadata) {
+          store.setState({ sessionMetadata: session.metadata });
         }
       }
 

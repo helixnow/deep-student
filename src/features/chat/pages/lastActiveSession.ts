@@ -50,9 +50,9 @@ export function isResumableSessionId(
  * Checks whether a loaded session record is eligible for startup auto-resume.
  * Must be active (not archived/deleted), not a hidden draft, and not a subagent.
  */
-export function isResumableSession(
-  session: Pick<ChatSession, 'id' | 'mode' | 'persistStatus' | 'metadata'> | null | undefined,
-): session is Pick<ChatSession, 'id' | 'mode' | 'persistStatus' | 'metadata'> {
+export function isResumableSession<
+  T extends Pick<ChatSession, 'id' | 'mode' | 'persistStatus' | 'metadata'>,
+>(session: T | null | undefined): session is T {
   if (!session) return false;
   if (session.persistStatus === 'archived' || session.persistStatus === 'deleted') {
     return false;

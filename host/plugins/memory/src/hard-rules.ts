@@ -263,18 +263,29 @@ export function enforceHardRulesCharLimit(doc: HardRulesDocument, maxChars: numb
   return { ...doc, rules };
 }
 
+export interface FrozenRuleSnapshotRef {
+  id: string;
+  instruction: string;
+  scope?: string;
+}
+
 /**
  * Computes a compact mid-session `<memory_delta>` for rules modified after the
- * session snapshot was frozen, so new rules take effect immediately without
- * mutating the frozen `stableSystem` prompt prefix.
+ * session snapshot was frozen, so additions, edits, and explicit revocations
+ * take effect immediately without mutating the frozen `stableSystem` prefix.
  */
 export function buildHardRulesDelta(
   currentRules: readonly MemoryHardRule[],
   frozenRuleIds: readonly string[],
   frozenAt: string,
+  frozenRules?: readonly FrozenRuleSnapshotRef[],
 ): string | null {
   const frozenSet = new Set(frozenRuleIds);
   const currentSet = new Set(currentRules.map(r => r.id));
+  const frozenById = new Map<string, FrozenRuleSnapshotRef>();
+  for (const r of frozenRules ?? []) {
+    frozenById.set(r.id, r);
+  }
   const addedOrUpdated = currentRules.filter(r => !frozenSet.has(r.id) || (frozenAt !== '' && r.updatedAt > frozenAt));
   const removedIds = frozenRuleIds.filter(id => !currentSet.has(id));
   if (addedOrUpdated.length === 0 && removedIds.length === 0) return null;
@@ -284,8 +295,14 @@ export function buildHardRulesDelta(
     const scopeTag = r.scope === 'global' ? '' : `[${r.scope}] `;
     lines.push(`+ 新增/更新规则：${scopeTag}${r.instruction} (id:${r.id})`);
   }
-  if (removedIds.length > 0) {
-    lines.push(`- 已移除旧规则 id：${removedIds.join(', ')}`);
+  for (const id of removedIds) {
+    const prev = frozenById.get(id);
+    if (prev?.instruction) {
+      const scopeTag = prev.scope && prev.scope !== 'global' ? `[${prev.scope}] ` : '';
+      lines.push(`- 【已作废/撤回，立即停止执行】用户已删除规则「${scopeTag}${prev.instruction}」(id:${id})，从本轮起严禁再套用。`);
+    } else {
+      lines.push(`- 【已作废/撤回，立即停止执行】已移除旧规则 id：${id}`);
+    }
   }
   return lines.join('\n');
 }

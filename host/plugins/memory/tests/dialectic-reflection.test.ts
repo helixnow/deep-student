@@ -78,4 +78,67 @@ describe('Memory v2 Dialectic Reflection Engine', () => {
     expect(report.proposals.some(p => p.kind === 'promote_preference_to_rule')).toBe(true);
     expect(report.proposals.some(p => p.kind === 'compress_hard_rules')).toBe(false);
   });
+
+  it('detects directly contradictory HardRules (length and language conflicts)', () => {
+    const report = runDialecticReflection({
+      rulesChars: 140,
+      rulesMaxChars: 1500,
+      profileChars: 0,
+      profileMaxChars: 2500,
+      hardRules: {
+        version: 4,
+        updated_at: '2026-11-24T00:00:00Z',
+        rules: [
+          {
+            id: 'r_long',
+            instruction: '回答必须极其详尽，不得少于 800 字，绝不允许省略任何中间推导步骤',
+            scope: 'global',
+            origin: 'user_explicit',
+            pinned: true,
+            createdAt: '2026-11-24T00:00:00Z',
+            updatedAt: '2026-11-24T00:00:00Z',
+          },
+          {
+            id: 'r_brief',
+            instruction: '所有回答严格控制在 120 字以内，禁止长篇大论',
+            scope: 'global',
+            origin: 'user_explicit',
+            pinned: true,
+            createdAt: '2026-11-24T00:00:00Z',
+            updatedAt: '2026-11-24T00:00:00Z',
+          },
+          {
+            id: 'r_en',
+            instruction: '全文必须使用全英文作答，严禁夹杂中文',
+            scope: 'global',
+            origin: 'user_explicit',
+            pinned: true,
+            createdAt: '2026-11-24T00:00:00Z',
+            updatedAt: '2026-11-24T00:00:00Z',
+          },
+          {
+            id: 'r_zh',
+            instruction: '必须用东北大白话中文讲，禁止英文单词',
+            scope: 'global',
+            origin: 'user_explicit',
+            pinned: true,
+            createdAt: '2026-11-24T00:00:00Z',
+            updatedAt: '2026-11-24T00:00:00Z',
+          },
+        ],
+      },
+      learnerProfile: {
+        version: 1,
+        updated_at: '2026-11-24T00:00:00Z',
+        weak_points: [],
+        preferences: { others: [] },
+        goals: [],
+      },
+    });
+
+    const conflicts = report.proposals.filter(p => p.kind === 'resolve_rule_conflict');
+    expect(conflicts).toHaveLength(2);
+    expect(conflicts.some(c => c.title.includes('篇幅冲突'))).toBe(true);
+    expect(conflicts.some(c => c.title.includes('语言冲突'))).toBe(true);
+  });
 });

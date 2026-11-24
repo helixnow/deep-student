@@ -6,16 +6,17 @@ import { WorkshopComposer } from '@/features/plugin-workshop';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  BookOpen, CaretRight, PencilSimple, ChatCircle, DownloadSimple, MagnifyingGlass, Package, PuzzlePiece, ShieldChevron, Sparkle,
+  BookOpen, CaretRight, PencilSimple, ChatCircle, DownloadSimple, LinkSimple, MagnifyingGlass, Package, PuzzlePiece, ShieldChevron, Sparkle,
   WarningCircle, Wrench,
 } from '@phosphor-icons/react';
 
-import { DsAlertDialog, DsDialog, DsDialogBody, DsDialogHeader, DsDialogTitle } from '@/components/ui/DsDialog';
+import { DsAlertDialog, DsDialog, DsDialogBody, DsDialogDescription, DsDialogFooter, DsDialogHeader, DsDialogTitle } from '@/components/ui/DsDialog';
 import { DsButton } from '@/components/ui/DsButton';
 import { GroupTitle, SettingSection } from '@/components/settings';
 import { Input } from '@/components/ui/shad/Input';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { cn } from '@/lib/utils';
+import { isWebUiShell } from '@/utils/platform';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
 import type { UnifiedModelInfo } from '@/features/settings/components/plugins/PluginsTab';
@@ -32,7 +33,7 @@ import { PluginDetail } from './PluginDetail';
 import { PluginRow } from './PluginRow';
 import { forgetPluginContributions, usePluginContributions } from './contributions';
 import { PACKAGE_BUSY_KEY, errorMessage, usePluginManagerState, type PluginManagerController } from './controller';
-import { errorBudgetOf, type PluginErrorBudgetView } from './reasons';
+import { describeManagerError, errorBudgetOf, type PluginErrorBudgetView } from './reasons';
 import type { ManagedPlugin } from './types';
 import { pluginUiStatus, type PluginUiHostStatus } from './ui-status';
 import { usePluginUiHostStatus } from './use-ui-status';
@@ -117,9 +118,15 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
   const userToggledCreationsRef = useRef(false);
   const [works, setWorks] = useState(NO_WORKS);
   const [pendingCount, setPendingCount] = useState(0);
+  const [urlDialogOpen, setUrlDialogOpen] = useState(false);
+  const [urlInput, setUrlInput] = useState('');
+  const [urlError, setUrlError] = useState<string | null>(null);
+  const [urlSubmitting, setUrlSubmitting] = useState(false);
   const configTitleId = useId();
+  const urlDialogTitleId = useId();
   const creationsId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
 
   // 微信 iLink Bot 等渠道插件只在桌面端可配置（与旧「插件」页签的可见性规则一致）。
@@ -329,12 +336,92 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
     };
   };
 
+  const handleWebFileUpload = async (file: File | undefined, resetInput: () => void) => {
+    if (!file) return;
+    try {
+      const response = await fetch(`/api/files/stage?name=${encodeURIComponent(file.name)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'X-File-Name': encodeURIComponent(file.name),
+        },
+        body: file,
+        credentials: 'same-origin',
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        controller.reportPackageRejection('STAGE_UPLOAD_FAILED', text || `HTTP ${response.status}`);
+        return;
+      }
+      const data = (await response.json()) as { path?: string };
+      if (!data.path) {
+        controller.reportPackageRejection('STAGE_UPLOAD_FAILED', 'Missing staged path');
+        return;
+      }
+      await controller.installPackagePath(data.path);
+    } catch (error) {
+      controller.reportPackageRejection('STAGE_UPLOAD_FAILED', errorMessage(error));
+    } finally {
+      resetInput();
+    }
+  };
+
+  const handleImportClick = () => {
+    if (isWebUiShell()) {
+      // Must execute synchronously within the click gesture so browsers allow the native file chooser.
+      fileInputRef.current?.click();
+      return;
+    }
+    void controller.installPackage();
+  };
+
+  const handleUrlSubmit = async () => {
+    const trimmed = urlInput.trim();
+    let valid = false;
+    try {
+      const parsed = new URL(trimmed);
+      const lowerPath = parsed.pathname.toLowerCase();
+      valid = parsed.protocol === 'https:' && (lowerPath.endsWith('.dspack') || lowerPath.endsWith('.dstuplugin'));
+    } catch {
+      valid = false;
+    }
+    if (!valid) {
+      setUrlError(t('install.urlDialog.invalidUrl'));
+      return;
+    }
+    setUrlError(null);
+    setUrlSubmitting(true);
+    try {
+      await controller.installPackageFromUrl(trimmed);
+      setUrlDialogOpen(false);
+      setUrlInput('');
+    } finally {
+      setUrlSubmitting(false);
+    }
+  };
+
   const importButton = (
-    <DsButton variant="outline" size="sm" data-testid="plugin-import" className={cn('gap-1.5', COARSE_TOUCH)}
-      onClick={() => void controller.installPackage()} disabled={packageBusy}>
-      <DownloadSimple className="size-4" aria-hidden="true" />
-      {packageBusy ? t('install.running') : t('actions.install')}
-    </DsButton>
+    <div className="flex flex-wrap items-center gap-2">
+      <DsButton variant="outline" size="sm" data-testid="plugin-import" className={cn('gap-1.5', COARSE_TOUCH)}
+        onClick={handleImportClick} disabled={packageBusy}>
+        <DownloadSimple className="size-4" aria-hidden="true" />
+        {packageBusy ? t('install.running') : t('actions.install')}
+      </DsButton>
+      <DsButton
+        variant="outline"
+        size="sm"
+        data-testid="plugin-import-url"
+        className={cn('gap-1.5', COARSE_TOUCH)}
+        onClick={() => {
+          setUrlError(null);
+          setUrlDialogOpen(true);
+        }}
+        disabled={packageBusy}
+      >
+        <LinkSimple className="size-4" aria-hidden="true" />
+        {t('actions.installUrl')}
+      </DsButton>
+    </div>
   );
 
   return (
@@ -354,31 +441,39 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
           </div>
         ) : null}
 
-        {state.error ? (
-          <div
-            role="alert"
-            data-testid="plugin-manager-error"
-            className="flex items-start justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
-          >
-            <div className="min-w-0 space-y-0.5">
-              <div className="flex items-center gap-1.5 font-medium">
-                <WarningCircle className="size-4 shrink-0" aria-hidden="true" />
-                {state.error.code === 'LIST_FAILED'
-                  ? t('error.list')
-                  : state.error.code === 'RELOAD_FAILED'
-                    ? t('error.reload')
-                    : t('error.title')}
+        {state.error ? (() => {
+          const friendly = describeManagerError(t, state.error.code, state.error.detail);
+          return (
+            <div
+              role="alert"
+              data-testid="plugin-manager-error"
+              className="flex items-start justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+            >
+              <div className="min-w-0 space-y-1">
+                <div className="flex items-center gap-1.5 font-medium">
+                  <WarningCircle className="size-4 shrink-0" aria-hidden="true" />
+                  {state.error.code === 'LIST_FAILED'
+                    ? t('error.list')
+                    : state.error.code === 'RELOAD_FAILED'
+                      ? t('error.reload')
+                      : t('error.title')}
+                </div>
+                <p className="break-words text-xs leading-relaxed text-foreground/90">
+                  {friendly.explanation}
+                </p>
+                <details className="text-xs text-muted-foreground">
+                  <summary className="cursor-pointer select-none hover:text-foreground">
+                    {t('error.technical', { code: state.error.code })}
+                  </summary>
+                  <p className="mt-1 break-words font-mono text-[11px] opacity-85">{friendly.technical}</p>
+                </details>
               </div>
-              <p className="break-words text-xs leading-relaxed text-muted-foreground">
-                {t('error.code', { code: state.error.code })}
-                {state.error.detail ? t('error.detailSuffix', { detail: state.error.detail }) : ''}
-              </p>
+              <DsButton variant="ghost" size="sm" className={COARSE_TOUCH} onClick={() => controller.clearError()}>
+                {t('actions.dismiss')}
+              </DsButton>
             </div>
-            <DsButton variant="ghost" size="sm" className={COARSE_TOUCH} onClick={() => controller.clearError()}>
-              {t('actions.dismiss')}
-            </DsButton>
-          </div>
-        ) : null}
+          );
+        })() : null}
 
         {state.notice?.kind === 'package' ? (
           <InstallFeedback result={state.notice.result} onDismiss={() => controller.dismissNotice()} />
@@ -681,6 +776,92 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
             </>
           );
         })() : null}
+      </DsDialog>
+      <input
+        ref={fileInputRef}
+        type="file"
+        data-testid="plugin-import-file-input"
+        accept=".dstuplugin,.dspack,.zip"
+        className="sr-only"
+        onChange={(event) => {
+          const input = event.target;
+          void handleWebFileUpload(input.files?.[0], () => {
+            input.value = '';
+          });
+        }}
+      />
+
+      <DsDialog
+        open={urlDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !urlSubmitting) {
+            setUrlDialogOpen(false);
+            setUrlError(null);
+          }
+        }}
+        aria-labelledby={urlDialogTitleId}
+        maxWidth="max-w-lg"
+        showClose={!urlSubmitting}
+        closeOnOverlay={!urlSubmitting}
+      >
+        <DsDialogHeader>
+          <DsDialogTitle id={urlDialogTitleId}>{t('install.urlDialog.title')}</DsDialogTitle>
+          <DsDialogDescription>{t('install.urlDialog.description')}</DsDialogDescription>
+        </DsDialogHeader>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!urlSubmitting) void handleUrlSubmit();
+          }}
+        >
+          <DsDialogBody className="space-y-3 py-4">
+            <label htmlFor="plugin-url-install-input" className="block text-xs font-medium text-muted-foreground">
+              {t('install.urlDialog.inputLabel')}
+            </label>
+            <Input
+              id="plugin-url-install-input"
+              data-testid="plugin-url-install-input"
+              value={urlInput}
+              onChange={(event) => {
+                setUrlInput(event.target.value);
+                if (urlError) setUrlError(null);
+              }}
+              placeholder={t('install.urlDialog.placeholder')}
+              disabled={urlSubmitting}
+              autoFocus
+            />
+            {urlError ? (
+              <p role="alert" data-testid="plugin-url-install-error" className="text-xs text-destructive">
+                {urlError}
+              </p>
+            ) : null}
+          </DsDialogBody>
+          <DsDialogFooter>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={COARSE_TOUCH}
+              disabled={urlSubmitting}
+              onClick={() => {
+                setUrlDialogOpen(false);
+                setUrlError(null);
+              }}
+            >
+              {t('actions.cancel')}
+            </DsButton>
+            <DsButton
+              type="submit"
+              variant="primary"
+              size="sm"
+              data-testid="plugin-url-install-submit"
+              className={COARSE_TOUCH}
+              disabled={urlSubmitting || !urlInput.trim()}
+            >
+              {urlSubmitting ? t('install.urlDialog.submitting') : t('install.urlDialog.submit')}
+            </DsButton>
+          </DsDialogFooter>
+        </form>
       </DsDialog>
     </div>
   );

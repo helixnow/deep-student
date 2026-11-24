@@ -25,6 +25,7 @@ import {
 import {
   clearLastActiveSessionId,
   clearLastActiveSessionIdIfMatches,
+  isResumableSession,
   readLastActiveSessionId,
   resolveStartupResumableSessionId,
 } from './lastActiveSession';
@@ -354,9 +355,29 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
         }
       }
 
-      // 2. P3-2 自动恢复上次活跃会话：当无显式新会话/导航意图，且本地记录的会话仍在活跃列表中时自动恢复
+      // 2. P3-2 自动恢复上次活跃会话：先在已加载会话中匹配；若不在首屏列表，单独向后端查验一次，
+      // 防止分页/冷启动导致误清 lastActiveSessionId 而跌回空白新建草稿
       if (!sessionToSelect && !hasExplicitNewSessionIntent && !hasPendingSessionNav) {
-        sessionToSelect = resolveStartupResumableSessionId(allSessions, LAST_SESSION_KEY);
+        const storedId = readLastActiveSessionId(LAST_SESSION_KEY);
+        if (storedId) {
+          const inList = allSessions.find((session) => session.id === storedId);
+          if (inList) {
+            sessionToSelect = resolveStartupResumableSessionId(allSessions, LAST_SESSION_KEY);
+          } else {
+            const fetched = await invoke<ChatSession | null>('chat_v2_get_session', {
+              sessionId: storedId,
+            }).catch(() => null);
+            if (hasActiveUserChoice()) {
+              return;
+            }
+            if (fetched && isResumableSession(fetched)) {
+              setSessions((prev) => (prev.some((item) => item.id === fetched.id) ? prev : [fetched, ...prev]));
+              sessionToSelect = fetched.id;
+            } else {
+              sessionToSelect = resolveStartupResumableSessionId(allSessions, LAST_SESSION_KEY);
+            }
+          }
+        }
       }
 
       // 3. 回退行为：进入隐藏 draft（首次启动、显式新建，或上次会话已删除/归档）。它不进入左侧列表，只有首条消息后才转正。

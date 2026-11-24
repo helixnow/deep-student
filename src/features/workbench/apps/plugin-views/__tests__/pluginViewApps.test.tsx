@@ -27,6 +27,7 @@ import {
   resolvePluginViewAppTypeId,
 } from '../register';
 import { PluginViewAppWindow } from '../PluginViewAppWindow';
+import { registerPluginManagerWorkshop } from '@/features/plugin-manager/workshop';
 import type { AgentAppContext, AppWindowProps } from '../../../core/types';
 
 const PLUGIN_ID = 'workshop.plugin-recall';
@@ -252,6 +253,28 @@ describe('plugin view apps (learning desktop)', () => {
 
     await act(async () => { await kernel.unload(PLUGIN_ID); });
     expect(screen.getByTestId('wb-plugin-view-missing')).toBeTruthy();
+  });
+
+  it('shows workshop refine CTA for workshop-owned plugin views and calls onModify', async () => {
+    const onModify = vi.fn();
+    const unregister = registerPluginManagerWorkshop({
+      onCreate: vi.fn(),
+      onModify,
+      creations: null,
+    });
+    try {
+      await kernel.install(recallPlugin);
+      render(
+        <UiKernelProvider kernel={kernel}>
+          <PluginViewAppWindow {...windowProps} viewKey={VIEW_KEY} kernel={kernel} />
+        </UiKernelProvider>,
+      );
+      const refineButton = await screen.findByTestId('workshop-refine-with-ai');
+      fireEvent.click(refineButton);
+      expect(onModify).toHaveBeenCalledWith(PLUGIN_ID);
+    } finally {
+      unregister();
+    }
   });
 });
 

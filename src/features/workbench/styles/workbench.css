@@ -674,6 +674,12 @@ html[data-wb-material='minimal'] .wb-desk-menu.wb-glass-lens {
   }
 }
 
+@media (max-width: 640px) {
+  [data-wb-desktop] > [data-wb-window-layer] {
+    bottom: 64px;
+  }
+}
+
 /* ==========================================================================
  * 空桌面引导卡（EmptyDesktop.tsx 消费）
  * ========================================================================== */

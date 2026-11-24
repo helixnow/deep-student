@@ -112,6 +112,7 @@
     "grade": "开始批改",
     "grading": "批改中...",
     "cancel": "取消",
+    "cancel_grading": "取消批改",
     "clear": "清空",
     "view_history": "查看历史轮次",
     "retry": "重试",

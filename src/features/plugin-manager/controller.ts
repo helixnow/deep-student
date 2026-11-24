@@ -243,8 +243,46 @@ export class PluginManagerController {
   }
 
   async installPackage(): Promise<void> {
+    await this.applyPackageInstall(() => this._adapter.importPackage());
+  }
+
+  async installPackagePath(path: string): Promise<void> {
+    if (!this._adapter.installPackagePath) {
+      this.reportPackageRejection('PLUGIN_INSTALL_UNAVAILABLE', 'Direct path installation is unavailable');
+      return;
+    }
+    await this.applyPackageInstall(() => this._adapter.installPackagePath!(path));
+  }
+
+  async installPackageFromUrl(url: string): Promise<PluginPackageResult | null> {
+    if (!this._adapter.installPackageFromUrl) {
+      const rejected: PluginPackageResult = {
+        status: 'rejected',
+        code: 'PLUGIN_INSTALL_UNAVAILABLE',
+        detail: 'URL installation is unavailable',
+        rollback: 'unchanged',
+      };
+      this.patch({ notice: { kind: 'package', result: rejected }, error: null });
+      return rejected;
+    }
+    let result: PluginPackageResult | null = null;
+    await this.applyPackageInstall(async () => {
+      result = await this._adapter.installPackageFromUrl!(url);
+      return result;
+    });
+    return result;
+  }
+
+  reportPackageRejection(code: string, detail: string): void {
+    this.patch({
+      notice: { kind: 'package', result: { status: 'rejected', code, detail, rollback: 'unchanged' } },
+      error: null,
+    });
+  }
+
+  private async applyPackageInstall(run: () => Promise<PluginPackageResult | null>): Promise<void> {
     await this.withBusy(PACKAGE_BUSY_KEY, async () => {
-      const result = await this._adapter.importPackage();
+      const result = await run();
       if (!result) return; // System file picker cancelled; no failure or success notification.
       this.patch({ notice: { kind: 'package', result }, error: null,
         ...(result.status === 'installed' && result.consentRequired ? { consent: result.consentRequired } : {}) });

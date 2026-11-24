@@ -19,6 +19,7 @@ type LearnerWeakPoint = LearnerProfile['weak_points'][number];
 
 export type DialecticProposalKind =
   | 'relapse_focus'
+  | 'resolve_rule_conflict'
   | 'promote_preference_to_rule'
   | 'compress_hard_rules'
   | 'retire_stale_weak_point';
@@ -64,6 +65,56 @@ function normalizeForMatch(text: string): string {
   return text.toLowerCase().replace(/[\s\p{P}]+/gu, '');
 }
 
+const BRIEF_LENGTH_RE = /(?:简短|精炼|极简|不超过\s*\d+\s*字|控制在\s*\d+\s*字以内|\d+\s*字以内|一句话|禁止长篇大论|under\s+\d+\s+words|concise|brief only)/i;
+const LONG_LENGTH_RE = /(?:极其详尽|不得少于\s*\d+\s*字|不少于\s*\d+\s*字|至少\s*\d+\s*字|绝不允许省略任何|完整推导|至少(?:三|两|四|五)种.*解法|exhaustive|at\s+least\s+\d+\s+words)/i;
+const EN_ONLY_RE = /(?:全英文|全部使用英文|只能用英文|严禁.*中文|english\s+only|strictly\s+in\s+english|no\s+chinese)/i;
+const ZH_ONLY_RE = /(?:全中文|只用中文|大白话中文|东北.*中文|禁止.*英文|严禁.*英文|chinese\s+only)/i;
+
+function scopesOverlap(a: string, b: string): boolean {
+  return a === 'global' || b === 'global' || a === b;
+}
+
+function detectRuleConflicts(rules: readonly HardRulesDocument['rules'][number][]): DialecticProposal[] {
+  const conflicts: DialecticProposal[] = [];
+  const seenPairs = new Set<string>();
+
+  for (let i = 0; i < rules.length; i += 1) {
+    for (let j = i + 1; j < rules.length; j += 1) {
+      const a = rules[i]!;
+      const b = rules[j]!;
+      if (!scopesOverlap(a.scope, b.scope)) continue;
+      const pairKey = [a.id, b.id].sort().join(':');
+      if (seenPairs.has(pairKey)) continue;
+
+      const lengthConflict =
+        (BRIEF_LENGTH_RE.test(a.instruction) && LONG_LENGTH_RE.test(b.instruction))
+        || (BRIEF_LENGTH_RE.test(b.instruction) && LONG_LENGTH_RE.test(a.instruction));
+      const langConflict =
+        (EN_ONLY_RE.test(a.instruction) && ZH_ONLY_RE.test(b.instruction))
+        || (EN_ONLY_RE.test(b.instruction) && ZH_ONLY_RE.test(a.instruction));
+
+      if (!lengthConflict && !langConflict) continue;
+      seenPairs.add(pairKey);
+      const conflictType = langConflict ? '语言冲突' : '篇幅冲突';
+      conflicts.push({
+        id: `conflict:${pairKey}`,
+        kind: 'resolve_rule_conflict',
+        title: `检测到规则${conflictType}：「${a.instruction.slice(0, 18)}…」与「${b.instruction.slice(0, 18)}…」互斥`,
+        rationale: `这两条常驻规则在「${conflictType}」上互相矛盾：规则 A「${a.instruction.slice(0, 48)}」vs 规则 B「${b.instruction.slice(0, 48)}」。建议删除其一或明确适用场景/作用域，避免 AI 回答无所适从。`,
+        severity: 'attention',
+        suggestedPayload: {
+          conflictType,
+          ruleAId: a.id,
+          ruleBId: b.id,
+          ruleA: a.instruction,
+          ruleB: b.instruction,
+        },
+      });
+    }
+  }
+  return conflicts;
+}
+
 export function runDialecticReflection(input: DialecticReflectionInput): DialecticReflectionReport {
   const nowMs = input.nowMs ?? Date.now();
   const staleDays = Math.max(7, input.staleDays ?? DEFAULT_STALE_DAYS);
@@ -72,6 +123,11 @@ export function runDialecticReflection(input: DialecticReflectionInput): Dialect
   const profileBudgetRatio = input.profileMaxChars > 0 ? input.profileChars / input.profileMaxChars : 0;
 
   const proposals: DialecticProposal[] = [];
+
+  // 0. Semantic rule contradictions should surface first as high-priority attention items
+  for (const conflict of detectRuleConflicts(input.hardRules.rules)) {
+    proposals.push(conflict);
+  }
 
   // 1. High-evidence or recurring weak points deserve priority focus
   const recurringWeakPoints = input.learnerProfile.weak_points

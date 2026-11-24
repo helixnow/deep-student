@@ -5,6 +5,7 @@ import { CheckCircle, ArrowCounterClockwise, XCircle } from '@phosphor-icons/rea
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 
+import { describeManagerError } from './reasons';
 import type { PluginPackageResult } from './types';
 
 export interface InstallFeedbackProps {
@@ -57,22 +58,31 @@ export function InstallFeedback({ result, onDismiss, className }: InstallFeedbac
               <div className="break-words text-xs">{t('install.rolledBack.reason', { reason: result.reason })}</div>
             </>
           ) : null}
-          {result.status === 'rejected' ? (
-            <>
-              <div className="font-medium">{t('install.rejected.title', { code: result.code })}</div>
-              <div className="break-words text-xs">{t('install.rejected.detail', { detail: result.detail })}</div>
-              <div
-                data-testid="plugin-install-rollback"
-                data-rollback={result.rollback}
-                className={cn(
-                  'text-xs',
-                   result.rollback === 'failed' ? 'text-destructive' : 'text-muted-foreground',
-                )}
-              >
-                {t(`install.rollback.${result.rollback}`)}
-              </div>
-            </>
-          ) : null}
+          {result.status === 'rejected' ? (() => {
+            const friendly = describeManagerError(t, result.code, result.detail);
+            return (
+              <>
+                <div className="font-medium">{t('install.rejected.title')}</div>
+                <p className="text-xs leading-relaxed text-foreground/90">{friendly.explanation}</p>
+                <div
+                  data-testid="plugin-install-rollback"
+                  data-rollback={result.rollback}
+                  className={cn(
+                    'text-xs',
+                    result.rollback === 'failed' ? 'text-destructive' : 'text-muted-foreground',
+                  )}
+                >
+                  {t(`install.rollback.${result.rollback}`)}
+                </div>
+                <details className="text-xs text-muted-foreground">
+                  <summary className="cursor-pointer select-none hover:text-foreground">
+                    {t('install.rejected.technical', { code: result.code })}
+                  </summary>
+                  <p className="mt-1 break-words font-mono text-[11px] opacity-85">{friendly.technical}</p>
+                </details>
+              </>
+            );
+          })() : null}
         </div>
         {onDismiss ? (
           <DsButton variant="ghost" size="sm" className="[@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]" onClick={onDismiss} aria-label={t('actions.dismiss')}>

@@ -1369,5 +1369,10 @@
     "toggleSidecar": "Toggle AI companion sidecar",
     "toggleDualReader": "Toggle dual-reader split (2 sources + MindMap hub)",
     "spaceRestored": "Restored study space layout"
+  },
+  "safeModeBanner": {
+    "title": "Safe mode active",
+    "description": "Community plugins are paused. Open Plugin Manager to disable or uninstall problematic plugins.",
+    "openManager": "Open Plugin Manager"
   }
 }

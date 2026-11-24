@@ -43,6 +43,7 @@ import { logChatV2 } from '../debug/chatV2Logger';
 import { useDevShowRawRequest, useCopyFilterConfig } from '../hooks/useDevShowRawRequest';
 import { RawRequestPreview, type RawRequestPreviewProps, type RawRequest } from './message/RawRequestPreview';
 import { ThreadContentShell } from './ui/ThreadContentShell';
+import { isLikelyTruncatedAssistantMessage } from '../utils/detectTruncatedMessage';
 import { TextShimmer } from './ui/TextShimmer';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { dispatchContextRefPreview } from '../utils/contextRefPreview';
@@ -488,6 +489,40 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   const shouldHideLatestAssistantFooter = !isUser && isLatest && (sessionStatus === 'streaming' || hasActiveBlock);
   const showAssistantFooterAlways = !isUser && isLatest && !shouldHideLatestAssistantFooter;
+  const isTruncatedResponse = useMemo(() => {
+    if (isUser || isMultiVariant || isReadOnlySession || isLocked || isWaitingForContent || hasZeroOutputFailure || !hasConsumableAssistantContent) {
+      return false;
+    }
+    const meta = message?._meta as Record<string, unknown> | undefined;
+    const finishReason = typeof meta?.finishReason === 'string'
+      ? meta.finishReason
+      : typeof meta?.finish_reason === 'string'
+        ? meta.finish_reason
+        : undefined;
+    const contentText = getDisplayBlocks()
+      .filter((block) => block.type === 'content')
+      .map((block) => block.content || '')
+      .join('\n');
+    return isLikelyTruncatedAssistantMessage({
+      status: activeVariant?.status,
+      finishReason,
+      truncated: meta?.truncated === true,
+      content: contentText,
+      hasStreamingBlocks: hasActiveBlock,
+    });
+  }, [
+    isUser,
+    isMultiVariant,
+    isReadOnlySession,
+    isLocked,
+    isWaitingForContent,
+    hasZeroOutputFailure,
+    hasConsumableAssistantContent,
+    message,
+    activeVariant?.status,
+    getDisplayBlocks,
+    hasActiveBlock,
+  ]);
   // ≥768 触屏平板无 hover：coarse 指针下与小屏一样常显，避免历史消息操作（复制/重试/编辑/删除）不可达
   // 注：|| 优先级高于 ?:，等价于 (showAssistantFooterAlways || isCoarsePointer) ? ...，且保留桌面端 fine 指针的 hover 显隐契约
   const assistantFooterClassName = showAssistantFooterAlways || isCoarsePointer
@@ -1418,6 +1453,29 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   {t('messageItem.actions.retryConfirmAction')}
                 </DsButton>
               </div>
+            </div>
+          )}
+
+          {!isUser && !isMultiVariant && !isReadOnlySession && !isLocked && isTruncatedResponse && (
+            <div
+              role="status"
+              data-testid="chat-truncated-banner"
+              className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/35 bg-warning/10 px-3 py-1.5 text-xs text-foreground"
+            >
+              <span className="min-w-0 text-muted-foreground">
+                {t('messageItem.truncation.banner')}
+              </span>
+              <DsButton
+                variant="outline"
+                size="sm"
+                data-testid="chat-continue-generation"
+                onClick={() => {
+                  void handleContinue();
+                }}
+                className="shrink-0 [@media(pointer:coarse)]:!min-h-11"
+              >
+                {t('messageItem.truncation.continue')}
+              </DsButton>
             </div>
           )}
 

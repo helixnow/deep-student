@@ -1369,5 +1369,10 @@
     "toggleSidecar": "切换 AI 伴读侧栏",
     "toggleDualReader": "切换双读对照（双源阅读 + 导图汇聚）",
     "spaceRestored": "已恢复空间桌面布局"
+  },
+  "safeModeBanner": {
+    "title": "安全模式已启用",
+    "description": "社区插件已暂停加载；如需清理问题插件，可前往插件管理停用或卸载。",
+    "openManager": "前往插件管理"
   }
 }

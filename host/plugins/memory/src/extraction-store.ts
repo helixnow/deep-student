@@ -14,7 +14,7 @@ import {
   truncateFlushSegment,
 } from './compaction-flush.ts';
 import {
-  buildExtractionPrompt, parseExtractionResponseFull, shouldSkipExtraction,
+  buildExtractionPrompt, filterTransientCandidates, parseExtractionResponseFull, shouldSkipExtraction,
   truncateExtractionInput,
 } from './auto-extractor.ts';
 import type { DailyLogAppendOutcome } from './daily-log-store.ts';
@@ -177,7 +177,11 @@ export class MemoryExtractionStore {
     } catch (error) {
       throw new Error(`LLM extraction call failed: ${errorText(error)}`);
     }
-    const result = parseExtractionResponseFull(output.assistant_message);
+    const parsed = parseExtractionResponseFull(output.assistant_message);
+    const result: ExtractionResult = {
+      candidates: filterTransientCandidates(parsed.candidates, userContent),
+      activities: parsed.activities,
+    };
     this.host.debug(`[MemoryAutoExtractor] Extracted ${result.candidates.length} candidate memories, `
       + `${result.activities.length} activities from conversation`);
     return result;

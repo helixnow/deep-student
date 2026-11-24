@@ -66,6 +66,7 @@ export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillPr
   const view = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   const [open, setOpen] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [lastRemovedRule, setLastRemovedRule] = useState<{ instruction: string; scope: string; pinned: boolean } | null>(null);
 
   useEffect(() => {
     void ensureMemoryKernelSummary();
@@ -75,16 +76,43 @@ export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillPr
   const rules = view.hardRules?.rules ?? [];
   const weakPoints = view.learnerProfile?.weak_points ?? [];
   const totalCount = rules.length + weakPoints.length;
-  if (totalCount === 0) return null;
+  if (totalCount === 0 && !lastRemovedRule) return null;
 
   const handleRemoveRule = async (id: string) => {
+    const targetRule = rules.find((r) => r.id === id);
     setBusyKey(`rule:${id}`);
     try {
       const updated = await mutateMemoryKernel({ kind: 'remove_rule', idOrInstruction: id });
       invalidateMemoryKernelAttributionCache(updated);
-      showGlobalNotification('success', '已从记忆内核移除该规则');
+      if (targetRule) {
+        setLastRemovedRule({ instruction: targetRule.instruction, scope: targetRule.scope, pinned: targetRule.pinned });
+      }
+      showGlobalNotification('success', '已从记忆内核移除该规则（下轮立即生效）');
     } catch {
       showGlobalNotification('error', '移除规则失败');
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const handleUndoRemovedRule = async () => {
+    if (!lastRemovedRule) return;
+    setBusyKey('rule:undo');
+    try {
+      const updated = await mutateMemoryKernel({
+        kind: 'upsert_rule',
+        input: {
+          instruction: lastRemovedRule.instruction,
+          scope: lastRemovedRule.scope,
+          origin: 'user_explicit',
+          pinned: lastRemovedRule.pinned,
+        },
+      });
+      invalidateMemoryKernelAttributionCache(updated);
+      setLastRemovedRule(null);
+      showGlobalNotification('success', '已恢复刚才删除的规则');
+    } catch {
+      showGlobalNotification('error', '恢复规则失败');
     } finally {
       setBusyKey(null);
     }
@@ -165,12 +193,27 @@ export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillPr
                     disabled={busyKey === `rule:${rule.id}`}
                     onClick={() => void handleRemoveRule(rule.id)}
                     className="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    aria-label={`忘掉这条规则：${rule.instruction.slice(0, 24)}`}
                     title="忘掉这条规则"
                   >
                     <Trash className="h-3 w-3" />
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+
+          {lastRemovedRule && (
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-2 py-1.5 text-[11px]">
+              <span className="truncate">已移除：{lastRemovedRule.instruction}</span>
+              <button
+                type="button"
+                disabled={busyKey === 'rule:undo'}
+                onClick={() => void handleUndoRemovedRule()}
+                className="shrink-0 font-medium text-primary hover:underline"
+              >
+                撤销
+              </button>
             </div>
           )}
 

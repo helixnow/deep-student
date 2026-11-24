@@ -102,3 +102,56 @@ export function errorBudgetOf(
   if (!Number.isFinite(threshold) || threshold <= 0) return null;
   return { errors: budget.count(pluginId), budget: threshold };
 }
+
+export interface FriendlyManagerError {
+  readonly explanation: string;
+  readonly technical: string;
+}
+
+const MANAGER_ERROR_KEYS: Readonly<Record<string, string>> = {
+  MANIFEST_INVALID: 'error.reasons.manifestInvalid',
+  MANIFEST_MISSING: 'error.reasons.packageInvalid',
+  MANIFEST_VERSION_UNSUPPORTED: 'error.reasons.engineIncompatible',
+  ENGINE_INCOMPATIBLE: 'error.reasons.engineIncompatible',
+  ID_RESERVED: 'error.reasons.idReserved',
+  PERMISSION_UNDECLARED: 'error.reasons.permissionUndeclared',
+  SAFE_MODE_ACTIVE: 'error.reasons.safeMode',
+  CONSENT_REQUIRED: 'error.reasons.consentRequired',
+  CONSENT_STALE: 'error.reasons.consentStale',
+  PLUGIN_UNLOAD_BLOCKED: 'error.reasons.unloadBlocked',
+  PROFILE_CONFLICT: 'error.reasons.profileConflict',
+  REVISION_CONFLICT: 'error.reasons.profileConflict',
+  PLUGIN_ENABLE_FAILED: 'error.reasons.enableFailed',
+  PLUGIN_INSTALL_FAILED: 'error.reasons.installFailed',
+  REMOTE_PACK_INVALID_URL: 'error.reasons.urlInvalid',
+  REMOTE_PACK_HTTPS_REQUIRED: 'error.reasons.urlHttpsRequired',
+  REMOTE_PACK_HOST_BLOCKED: 'error.reasons.urlHostBlocked',
+  REMOTE_PACK_REDIRECT_BLOCKED: 'error.reasons.urlRedirectBlocked',
+  REMOTE_PACK_BAD_EXTENSION: 'error.reasons.urlBadExtension',
+  REMOTE_PACK_TOO_LARGE: 'error.reasons.urlTooLarge',
+  REMOTE_PACK_CREDENTIALS_FORBIDDEN: 'error.reasons.urlCredentials',
+  REMOTE_PACK_HTTP_ERROR: 'error.reasons.urlHttpError',
+  STAGE_UPLOAD_FAILED: 'error.reasons.stageUploadFailed',
+};
+
+/** Maps raw Host / ZIP / SSRF error codes into learner-friendly copy while keeping technical context available. */
+export function describeManagerError(
+  t: (key: string, options?: Record<string, unknown>) => string,
+  code: string,
+  detail?: string,
+): FriendlyManagerError {
+  const technical = detail ? (detail.startsWith(`${code}:`) ? detail : `${code}: ${detail}`) : code;
+  if (code === 'PLUGIN_PACKAGE_INVALID') {
+    const raw = detail ?? '';
+    const key = /invalid path|escapes|traversal|\.\./i.test(raw)
+      ? 'error.reasons.packageTraversal'
+      : /json|package\.json/i.test(raw)
+        ? 'error.reasons.packageInvalidJson'
+        : /zip|central directory|archive/i.test(raw)
+          ? 'error.reasons.packageInvalidZip'
+          : 'error.reasons.packageInvalid';
+    return { explanation: t(key), technical };
+  }
+  const key = MANAGER_ERROR_KEYS[code] ?? 'error.reasons.generic';
+  return { explanation: t(key), technical };
+}

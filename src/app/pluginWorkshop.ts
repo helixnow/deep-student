@@ -212,7 +212,7 @@ workshopContributions.announce(ctx => {
     save: async (path, fileName) => {
       const { fileManager } = await import('@/utils/fileManager');
       const result = await fileManager.saveFromSource({ sourcePath: path, defaultFileName: fileName,
-        filters: [{ name: 'DeepStudent plugin', extensions: ['dstuplugin'] }] });
+        filters: [{ name: 'DeepStudent plugin', extensions: ['dspack', 'dstuplugin'] }] });
       return result.canceled ? null : result.path ?? path;
     },
     reveal: async path => {
