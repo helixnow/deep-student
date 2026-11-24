@@ -336,7 +336,9 @@
     "confirm_retranslate": "确认重译",
     "retranslated_undo_hint": "已生成新译文，可随时恢复上一版译文",
     "restore_previous": "恢复上一版",
-    "restored_previous": "已恢复上一版译文"
+    "restored_previous": "已恢复上一版译文",
+    "outdated_hint": "原文或设置已更新，当前译文可能已过期",
+    "retranslate_now": "重新翻译"
   },
   "viewer": {
     "loading": "正在加载翻译…",

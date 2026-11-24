@@ -1007,14 +1007,14 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
         <NavControls
           canGoBack={!gatesDisabled && session.canGoBack}
           canGoForward={!gatesDisabled && session.canGoForward}
-          loading={session.loading || gatesDisabled}
+          loading={session.loading}
           onBack={handleBack}
           onForward={handleForward}
           onStop={handleStop}
         />
         <AddressBar
           draft={session.addressDraft}
-          loading={session.loading || gatesDisabled}
+          loading={session.loading}
           security={browserConnectionSecurity(session.currentUrl, Boolean(session.sessionId))}
           inputRef={addressRef}
           onDraftChange={gatesDisabled ? () => {} : session.setAddressDraft}
@@ -1022,13 +1022,11 @@ const BrowserAppWindow: React.FC<AppWindowProps> = ({
         />
       </div>
       <AgentBar controlMode={session.controlMode} onTakeOver={handleTakeOver} />
-      {(gatesDisabled ? gatesDisabledMessage : session.lastError) ? (
-        <p className="wb-browser-error" role="alert" data-wb-browser-gate-closed={gatesDisabled ? 'true' : undefined}>
+      {!gatesDisabled && session.lastError ? (
+        <p className="wb-browser-error" role="alert">
           <WarningCircle size={14} weight="fill" aria-hidden />
           <span className="wb-browser-error-text">
-            {gatesDisabled
-              ? (gatesDisabledMessage ?? t('browser.needBrowserEnabled'))
-              : localizeBrowserGateMessage(session.lastError ?? '')}
+            {localizeBrowserGateMessage(session.lastError ?? '')}
           </span>
         </p>
       ) : null}

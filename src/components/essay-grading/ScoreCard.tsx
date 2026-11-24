@@ -194,14 +194,16 @@ const RadarChart: React.FC<{ dimensions: DimensionScore[]; mounted: boolean }> =
             className="fill-muted-foreground text-[10px]"
           >
             {lines.map((line, li) => (
-              <tspan
-                key={li}
-                x={x}
-                // 多行整体以锚点垂直居中：首行上移 (行数-1)/2 个行高
-                dy={li === 0 ? `${-((lines.length - 1) * 1.15) / 2}em` : '1.15em'}
-              >
-                {line}
-              </tspan>
+              <React.Fragment key={li}>
+                <tspan
+                  x={x}
+                  // 多行整体以锚点垂直居中：首行上移 (行数-1)/2 个行高
+                  dy={li === 0 ? `${-((lines.length - 1) * 1.15) / 2}em` : '1.15em'}
+                >
+                  {line}
+                </tspan>
+                {li < lines.length - 1 ? ' ' : null}
+              </React.Fragment>
             ))}
           </text>
         );
@@ -381,7 +383,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
                   const dimGrade = getGradeCodeFromPercentage(dimPct);
                   return (
                     <div key={index} className="text-xs leading-relaxed">
-                      <span className="text-foreground/80">{dim.name}</span>
+                      <span className="text-foreground/80">{dim.name}</span>{' '}
                       <span className="font-mono tabular-nums ml-1.5">
                         <span className={cn('font-medium', GRADE_TEXT_CLASS[dimGrade])}>{dim.score}</span>
                         <span className="text-muted-foreground/50">/{dim.maxScore}</span>
@@ -402,7 +404,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
                 return (
                   <div key={index} className="group">
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-sm text-foreground/80">{dim.name}</span>
+                      <span className="text-sm text-foreground/80">{dim.name}</span>{' '}
                       <span className="text-sm font-mono tabular-nums">
                         <span className={cn('font-medium', GRADE_TEXT_CLASS[dimGrade])}>
                           {dim.score}

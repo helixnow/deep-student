@@ -104,6 +104,7 @@ export type LearningSignal =
     examType: string;
     rubricDimensions: Array<{ name: string; score: number; maxScore: number; recurringIssue?: string | null }>;
     essayId: string;
+    locale?: string | null;
   }
   | {
     kind: 'chat_correction';
@@ -443,17 +444,41 @@ export class LocalMemoryProvider implements MemoryProvider {
       return;
     }
 
+const EN_ESSAY_DIMENSION_MAP: Record<string, string> = {
+  '创意与表达': 'Creativity & Expression',
+  '内容完整': 'Content Completeness',
+  '语言规范': 'Language Conventions',
+  '内容': 'Content',
+  '结构': 'Structure',
+  '语言': 'Language',
+  '中心立意': 'Central Thesis',
+  '论证充实': 'Evidence & Reasoning',
+  '结构严谨': 'Structural Coherence',
+  '语言文采': 'Language & Style',
+  '内容切题': 'Task Relevance',
+};
+
+function localizeEssayDimensionName(name: string, useEnglish: boolean): string {
+  const trimmed = name.trim();
+  if (!useEnglish) return trimmed;
+  return EN_ESSAY_DIMENSION_MAP[trimmed] ?? trimmed;
+}
+
     if (signal.kind === 'essay_graded') {
       const today = new Date().toISOString().slice(0, 10);
+      const useEnglish = (signal.locale ?? '').trim().toLowerCase().startsWith('en');
       const weakDims = signal.rubricDimensions.filter(d => d.maxScore > 0 && d.score / d.maxScore < 0.65);
       if (weakDims.length === 0) return;
       const update = emptyProfileUpdate();
       for (const dim of weakDims) {
         const pct = Math.round((dim.score / dim.maxScore) * 100);
-        const detail = dim.recurringIssue?.trim() || `得分 ${dim.score}/${dim.maxScore} (${pct}%)`;
+        const detail = dim.recurringIssue?.trim()
+          || (useEnglish
+            ? `Score ${dim.score}/${dim.maxScore} (${pct}%)`
+            : `得分 ${dim.score}/${dim.maxScore} (${pct}%)`);
         update.weak_points_add.push({
-          subject: signal.examType.trim() || '作文',
-          knowledge_point: dim.name.trim(),
+          subject: signal.examType.trim() || (useEnglish ? 'Essay' : '作文'),
+          knowledge_point: localizeEssayDimensionName(dim.name, useEnglish),
           error_pattern: `[essay] ${clipChars(detail, 120)}`,
           evidence_count: 1,
           last_seen: today,
@@ -464,7 +489,9 @@ export class LocalMemoryProvider implements MemoryProvider {
         this.host.applyProfileUpdate(update, {
           source: 'auto_extract',
           sessionId: null,
-          reason: `作文批改低分维度沉淀 (${signal.examType})`,
+          reason: useEnglish
+            ? `Essay rubric weak-dimension ingestion (${signal.examType})`
+            : `作文批改低分维度沉淀 (${signal.examType})`,
           limitPolicy: 'enforce',
         });
       } catch (error) {

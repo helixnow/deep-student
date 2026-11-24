@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { FolderSimplePlus, PushPinSimple } from '@phosphor-icons/react';
+import { DownloadSimple, FolderSimplePlus, Play, PushPinSimple } from '@phosphor-icons/react';
+import { downloadHtmlSource } from '@/features/chat/components/renderers/codeBlockExport';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { getCollapsedMaxHeight, HTML_PREVIEW_STREAM_INTERVAL_MS } from './ChatHtmlPreview';
@@ -1163,7 +1164,11 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
 
   const [isExpandedView, setIsExpandedView] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [sourceDraft, setSourceDraft] = useState(() => localHtml);
   const [editOpen, setEditOpen] = useState(false);
+  useEffect(() => {
+    setSourceDraft(localHtml);
+  }, [localHtml]);
   const [editInstruction, setEditInstruction] = useState('');
   const [patchSearch, setPatchSearch] = useState('');
   const [patchReplace, setPatchReplace] = useState('');
@@ -1504,24 +1509,60 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
         />
       </div>
 
-      {/* 源码视图 */}
+      {/* 源码视图（支持直接编辑并重新运行 / 下载 HTML） */}
       {sourceOpen && (
         <div
           className="border-t border-border/35 bg-muted/30 p-3"
           data-testid="canvas-source-view"
         >
-          <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>{t('generativeUi:canvas.htmlSource', 'HTML 源码')}</span>
-            <span className="font-mono tabular-nums">
-              {t('generativeUi:canvas.charCount', {
-                count: localHtml.length,
-                defaultValue: '{{count}} 字',
-              })}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-mono tabular-nums">
+                {t('generativeUi:canvas.charCount', {
+                  count: sourceDraft.length,
+                  defaultValue: '{{count}} 字',
+                })}
+              </span>
+              {!streaming && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => commitNewSource(sourceDraft)}
+                    disabled={sourceDraft === localHtml || !sourceDraft.trim()}
+                    className="inline-flex items-center gap-1 rounded bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/25 disabled:opacity-40"
+                    data-testid="canvas-run-source-button"
+                  >
+                    <Play size={12} className="shrink-0" />
+                    <span>{t('generativeUi:canvas.runSource', '应用并运行')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fileBase = (displayTitle || workTitle?.trim() || title || 'canvas').replace(/[\\/:*?"<>|]+/g, '_');
+                      void downloadHtmlSource(localHtml, `${fileBase}.html`);
+                    }}
+                    className="inline-flex items-center gap-1 rounded border border-border/40 bg-background/70 px-2 py-0.5 text-xs text-foreground transition-colors hover:bg-muted"
+                    data-testid="canvas-download-html-button"
+                  >
+                    <DownloadSimple size={12} className="shrink-0" />
+                    <span>{t('generativeUi:canvas.downloadHtml', '下载 HTML')}</span>
+                  </button>
+                </>
+              )}
+            </div>
           </div>
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-all font-mono text-xs text-foreground">
-            <code>{localHtml}</code>
-          </pre>
+          <code className="sr-only" aria-hidden="true">{localHtml}</code>
+          <textarea
+            value={sourceDraft}
+            onChange={(e) => setSourceDraft(e.target.value)}
+            readOnly={streaming}
+            aria-label={t('generativeUi:canvas.htmlSource', 'HTML 源码')}
+            placeholder={t('generativeUi:canvas.sourcePlaceholder', '编辑 HTML / CSS / JS 源码…')}
+            data-testid="canvas-source-editor"
+            rows={10}
+            className="max-h-72 w-full resize-y rounded border border-border/40 bg-background p-2 font-mono text-xs text-foreground outline-none focus:border-primary"
+          />
         </div>
       )}
 

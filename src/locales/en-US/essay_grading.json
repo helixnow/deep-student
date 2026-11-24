@@ -270,6 +270,8 @@
     "undo": "Undo",
     "delete": "Suggest deletion",
     "insert": "Suggest insertion",
+    "insert_badge": "Suggested insert",
+    "inferred_insert_hint": "Added by AI as a suggestion, not in your original text",
     "replace": "Suggest replacement",
     "note": "Note",
     "good": "Highlight",
@@ -417,6 +419,7 @@
     "placeholder": "Enter essay topic, requirements, or reference content...",
     "add_image": "Add reference image",
     "filled": "Filled",
+    "clear": "Clear prompt",
     "image_count": "{{count}} image(s)"
   },
   "sections": {

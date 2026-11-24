@@ -1156,7 +1156,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
           size="sm"
           className="code-block-copy"
           onClick={() => setHtmlInlineInteractive(false)}
-          title={t('codeBlock.scriptsDisabled')}
+          title={t('codeBlock.exitInlineInteractive')}
         >
           <span>{t('codeBlock.exitInlineInteractive')}</span>
         </DsButton>
@@ -1187,6 +1187,25 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
           </>
         )}
         {svgPreviewActive && progressiveSvg !== null && zoomControls}
+        {(htmlPreviewActive || interactiveHtmlPreviewActive) && !isStreaming && (
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className="code-block-copy"
+            onClick={() => {
+              void runSaveAction(
+                () => downloadHtmlSource(codeContent, htmlFileNameFor(codeContent)),
+                'codeBlock.saveFailed',
+              );
+            }}
+            aria-label={t('codeBlock.download')}
+            title={t('codeBlock.download')}
+            data-testid="code-block-download-html"
+          >
+            <DownloadSimple size={14} />
+          </DsButton>
+        )}
         {(htmlPreviewActive || interactiveHtmlPreviewActive) && (htmlOverflowing || htmlExpanded) && (
           <DsButton
             variant="ghost"

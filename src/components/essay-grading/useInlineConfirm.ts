@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /** 内联二段确认的自动复位时间 */
-const INLINE_CONFIRM_TIMEOUT_MS = 3000;
+const INLINE_CONFIRM_TIMEOUT_MS = 8000;
 
 /**
  * 内联二段确认：第一次点击进入"确认？"态，3 秒无操作自动复位，再次点击才执行。

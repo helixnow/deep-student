@@ -79,6 +79,34 @@ export function sourceName(source: MediaImportSource): string {
   return source.kind === 'path' ? extractFileName(source.path) : source.file.name;
 }
 
+const MIN_VALID_MEDIA_BYTES = 128;
+
+async function validateMediaFileBlob(file: File): Promise<string | null> {
+  if (file.size < MIN_VALID_MEDIA_BYTES) {
+    return `文件过小或已损坏（${file.size} 字节）`;
+  }
+  if (typeof file.slice !== 'function') return null;
+  const ext = extensionOf(file.name);
+  const slice = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+  const ascii = String.fromCharCode(...slice);
+  if (ext === 'mp4' || ext === 'm4a' || ext === 'm4v' || ext === 'mov') {
+    if (!/ftyp|moov|mdat|free|wide|skip/.test(ascii)) {
+      return '无效或已损坏的 MP4/QuickTime 容器文件';
+    }
+  } else if (ext === 'webm' || ext === 'mkv') {
+    if (!(slice[0] === 0x1a && slice[1] === 0x45 && slice[2] === 0xdf && slice[3] === 0xa3)) {
+      return '无效或已损坏的 WebM/MKV 容器文件';
+    }
+  } else if (ext === 'wav') {
+    if (!ascii.startsWith('RIFF')) return '无效或已损坏的 WAV 文件';
+  } else if (ext === 'ogg' || ext === 'opus') {
+    if (!ascii.startsWith('OggS')) return '无效或已损坏的 OGG 文件';
+  } else if (ext === 'flac') {
+    if (!ascii.startsWith('fLaC')) return '无效或已损坏的 FLAC 文件';
+  }
+  return null;
+}
+
 /**
  * 逐个导入（媒体文件大，后端创建时会整份读入暂存文件，串行最稳）。
  * 非音视频文件跳过（记入 skipped）。
@@ -110,6 +138,11 @@ export async function importMediaSources(
         uploadId = staged.uploadId;
         size = staged.size;
       } else {
+        const invalidReason = await validateMediaFileBlob(source.file);
+        if (invalidReason) {
+          result.failed.push({ name, reason: invalidReason });
+          continue;
+        }
         uploadId = await stageBlobUpload(source.file, {
           name,
           onProgress: (loaded, total) => report(total > 0 ? loaded / total : null),

@@ -216,8 +216,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   const canGrade = safeInputText.trim().length > 0 || uploadedImageCount > 0;
   // 清空按钮的可见条件：有文字或有图片（onClear 会一并清空图片）
   const hasClearableContent = safeInputText.length > 0 || uploadedImageCount > 0;
-  // ★ Bug#4 修复：有图片时不再显示空态覆盖层
-  const showEmptyState = !safeInputText && !isGrading && uploadedImageCount === 0;
+  // ★ Bug#4 修复：有图片或题目内容时不再显示空态覆盖层
+  const showEmptyState = !safeInputText && !isGrading && uploadedImageCount === 0 && !hasTopicContent;
 
   // ── 内联二段确认（替代模态框） ──
   const desktopClearConfirm = useInlineConfirm(onClear);
@@ -312,9 +312,12 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
     onRetryImageOcr?.(img.id);
   }, [t, onRetryImageOcr]);
 
-  // ── 空状态引导：示例作文一键填入（题目 + 正文），展开题目区使示例题目可见，绝不隐形绑定 ──
+  // ── 空状态引导：示例作文一键填入（题目 + 正文），展开题目区使示例题目可见，绝不隐形覆盖已有内容 ──
   const handleFillSample = useCallback(() => {
     if (isGrading) return;
+    if (safeInputText.trim().length > 0 || hasTopicContent || uploadedImageCount > 0) {
+      return;
+    }
     setInputText(t('essay_grading:workbench.sample.content'));
     if (setTopicText) {
       sampleTopicAppliedRef.current = true;
@@ -322,7 +325,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
       setShowTopicSection(true);
     }
     showGlobalNotification('success', t('essay_grading:workbench.sample.filled_toast'));
-  }, [isGrading, setInputText, setTopicText, t]);
+  }, [isGrading, safeInputText, hasTopicContent, uploadedImageCount, setInputText, setTopicText, t]);
 
   // ── UX#6：轮次圆点点击跳转。父级提供 onSelect 时直接跳转；
   // 否则回退为按差值经 prev/next 逐步推进（每次父级重渲染推进一步直至到达）。 ──

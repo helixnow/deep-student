@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
-import { ensureKatexStyles } from '@/utils/lazyStyles';
+import { ensureKatexStyles, loadKatexStyles } from '@/utils/lazyStyles';
 
 /**
  * 安全的数学公式组件（`@deepstudent/ui` 公共 API）。
@@ -28,7 +28,7 @@ let loading: Promise<Katex> | null = null;
 
 function loadKatex(): Promise<Katex> {
   if (loaded) return Promise.resolve(loaded);
-  loading ??= Promise.all([import('katex'), import('katex/contrib/mhchem')])
+  loading ??= Promise.all([import('katex'), import('katex/contrib/mhchem'), loadKatexStyles()])
     .then(([module]) => (loaded = module.default))
     .catch((error: unknown) => {
       loading = null; // 允许下次重试（网络抖动 / dev server 重启）
@@ -109,8 +109,8 @@ function Formula({ katex, tex, display }: { katex: Katex | null; tex: string; di
   }
   // html 只来自 KaTeX（trust: false），不含插件输入里的原始标记。
   return display
-    ? <span data-math="display" style={{ display: 'block', maxWidth: '100%', overflowX: 'auto' }} dangerouslySetInnerHTML={{ __html: html }} />
-    : <span data-math="inline" dangerouslySetInnerHTML={{ __html: html }} />;
+    ? <span data-math="display" aria-label={tex} style={{ display: 'block', maxWidth: '100%', overflowX: 'auto', whiteSpace: 'normal' }} dangerouslySetInnerHTML={{ __html: html }} />
+    : <span data-math="inline" aria-label={tex} style={{ whiteSpace: 'normal' }} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 export function MathText({ tex, text, display = false, className, style }: MathTextProps) {

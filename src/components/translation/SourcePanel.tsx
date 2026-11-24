@@ -26,7 +26,7 @@ const isMacLike = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.tes
 const TRANSLATE_SHORTCUT = isMacLike ? '⌘ + Enter' : 'Ctrl + Enter';
 
 const PASTE_HINT_DURATION_MS = 4000;
-const CLEAR_CONFIRM_TIMEOUT_MS = 4000;
+const CLEAR_CONFIRM_TIMEOUT_MS = 8000;
 
 const isCoarsePointer = () =>
     typeof window !== 'undefined' &&
@@ -254,7 +254,6 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                         onChange={(e) => setSourceText(e.target.value)}
                         onPaste={handlePaste}
                         placeholder={t('translation:source_section.placeholder')}
-                        maxLength={sourceMaxChars}
                         data-translation-scroll="source"
                         aria-label={t('translation:source_section.title')}
                         className="flex-1 min-h-0 resize-none px-4 pt-5 pb-10 text-base leading-relaxed !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/20"

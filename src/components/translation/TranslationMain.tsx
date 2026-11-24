@@ -72,6 +72,9 @@ interface TranslationMainProps {
   onCopyResult: () => void;
   onExportTranslation: () => void;
   onRateTranslation: (rating: number) => void;
+  canRestorePrevious?: boolean;
+  onRestorePrevious?: () => void;
+  isOutdated?: boolean;
 }
 
 type LayoutMode = 'split' | 'stacked';
@@ -146,6 +149,9 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   onCopyResult,
   onExportTranslation,
   onRateTranslation,
+  canRestorePrevious,
+  onRestorePrevious,
+  isOutdated,
 }) => {
   const { t } = useTranslation(['translation', 'common']);
   const { isSmallScreen } = useBreakpoint();
@@ -362,11 +368,27 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           </span>
         )}
 
+        {/* 语气（正式度）快捷切换 + 开关 */}
+        <div className="hidden md:flex items-center">
+          <SegmentedControl
+            ariaLabel={t('translation:prompt_editor.formality')}
+            value={formality}
+            onValueChange={setFormality}
+            size="compact"
+            options={[
+              { value: 'auto', label: t('translation:prompt_editor.formality_auto') },
+              { value: 'formal', label: t('translation:prompt_editor.formality_formal') },
+              { value: 'casual', label: t('translation:prompt_editor.formality_casual') },
+            ]}
+          />
+        </div>
+
         {/* 窄容器（如学习资源页约 500px 的预览栏）里两个开关会挤进中间的语言组、文字叠在一起：
             断点按窗口宽度判定管不到容器，按容器宽度收起（设置面板里仍可切换） */}
         <div className={cn('hidden items-center gap-2 px-2 py-1 rounded-md hover:bg-[var(--interactive-hover)] transition-colors', !isToolbarCompact && 'lg:flex')}>
           <Switch
             id="toolbar-auto-translate"
+            aria-label={t('translation:workbench.toolbar.auto_translate')}
             checked={isAutoTranslate}
             onCheckedChange={setIsAutoTranslate}
           />
@@ -381,6 +403,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
         <div className={cn('hidden items-center gap-2 px-2 py-1 rounded-md hover:bg-[var(--interactive-hover)] transition-colors', !isToolbarCompact && 'lg:flex')}>
           <Switch
             id="toolbar-sync-scroll"
+            aria-label={t('translation:sync_scroll')}
             checked={isSyncScroll}
             onCheckedChange={setIsSyncScroll}
           />
@@ -486,6 +509,10 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
       isSpeaking={isSpeaking}
       onCopyResult={onCopyResult}
       onExportTranslation={onExportTranslation}
+      canRestorePrevious={canRestorePrevious}
+      onRestorePrevious={onRestorePrevious}
+      isOutdated={isOutdated}
+      onRetranslate={onTranslate}
     />
   );
 

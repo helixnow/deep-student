@@ -827,26 +827,47 @@ export function buildGradingPrompts(
       }
     }
     userPrompt += '---\n\n';
-    userPrompt += '以下为学生修改后的新版本，请对比上一轮原文，关注学生的改进与仍存在的问题，给出针对性批改。\n\n';
+    const sameEssayText =
+      request.previousInput !== null && request.previousInput.trim() === request.inputText.trim();
+    userPrompt += sameEssayText
+      ? '以上为上一轮批改参考；本次作文原文未改动（可能调整了评分标准、题干或批改要求），请按最新要求重新评估并给出完整批改结果。\n\n'
+      : '以下为学生修改后的新版本，请对比上一轮原文，关注学生的改进与仍存在的问题，给出针对性批改。\n\n';
   }
 
   // 兼容旧版：根据作文类型和年级补充提示（空值不添加）
-  const essayTypeHint = request.essayType === 'narrative'
-    ? '这是一篇记叙文。'
-    : request.essayType === 'argumentative'
-      ? '这是一篇议论文。'
-      : request.essayType === 'expository'
-        ? '这是一篇说明文。'
-        : '';
-  const gradeHint = request.gradeLevel === 'middle_school'
-    ? '请按照初中生的标准进行评判。'
-    : request.gradeLevel === 'high_school'
-      ? '请按照高中生的标准进行评判。'
-      : request.gradeLevel === 'college'
-        ? '请按照大学生的标准进行评判。'
-        : '';
+  const useEnglishHints = (request.responseLanguage ?? '').trim().toLowerCase().startsWith('en');
+  const essayTypeHint = useEnglishHints
+    ? request.essayType === 'narrative'
+      ? 'Genre: Narrative essay.'
+      : request.essayType === 'argumentative'
+        ? 'Genre: Argumentative essay.'
+        : request.essayType === 'expository'
+          ? 'Genre: Expository essay.'
+          : ''
+    : request.essayType === 'narrative'
+      ? '这是一篇记叙文。'
+      : request.essayType === 'argumentative'
+        ? '这是一篇议论文。'
+        : request.essayType === 'expository'
+          ? '这是一篇说明文。'
+          : '';
+  const gradeHint = useEnglishHints
+    ? request.gradeLevel === 'middle_school'
+      ? 'Evaluate according to middle-school writing standards.'
+      : request.gradeLevel === 'high_school'
+        ? 'Evaluate according to high-school writing standards.'
+        : request.gradeLevel === 'college'
+          ? 'Evaluate according to college-level writing standards.'
+          : ''
+    : request.gradeLevel === 'middle_school'
+      ? '请按照初中生的标准进行评判。'
+      : request.gradeLevel === 'high_school'
+        ? '请按照高中生的标准进行评判。'
+        : request.gradeLevel === 'college'
+          ? '请按照大学生的标准进行评判。'
+          : '';
   if (essayTypeHint.length > 0 || gradeHint.length > 0) {
-    userPrompt += `${essayTypeHint} ${gradeHint}\n\n`;
+    userPrompt += `${essayTypeHint}${essayTypeHint && gradeHint ? ' ' : ''}${gradeHint}\n\n`;
   }
 
   // 系统统计信息，避免模型依赖 token 估算字数

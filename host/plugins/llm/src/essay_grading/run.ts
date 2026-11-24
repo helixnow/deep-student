@@ -82,6 +82,11 @@ export async function runGrading(
       logInfo('[EssayGrading] 流完成后发现已取消，丢弃结果');
       send({ type: 'cancelled' }); return null;
     }
+    if (accumulated.trim().length === 0) {
+      logWarn(`[EssayGrading] AI 返回空批改结果，拒绝落库（stream=${request.streamSessionId}）`);
+      throw AppError.with_details('LLM', '批改未返回有效内容，请检查模型配置后重试。',
+        { code: 'ESSAY_EMPTY_RESULT', category: 'server', retryable: true });
+    }
     send({ type: 'progress', stage: 'saving', char_count: count });
     const parsed = parseScoreFromResult(accumulated, mode);
     const parsedWire: JsonValue = parsed === null ? null : {

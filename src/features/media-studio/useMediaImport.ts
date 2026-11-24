@@ -5,7 +5,7 @@
 import { useCallback, useRef, useState, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { isMobilePlatform } from '@/utils/platform';
+import { isMobilePlatform, isWebUiShell } from '@/utils/platform';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
   importMediaSources,
@@ -33,7 +33,7 @@ export function useMediaImport(options: { onImported?: () => void } = {}): Media
   const [importing, setImporting] = useState(false);
   const busyRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const usesFileInput = isMobilePlatform();
+  const usesFileInput = isMobilePlatform() || isWebUiShell();
   const { onImported } = options;
 
   const importSources = useCallback(async (sources: MediaImportSource[]) => {

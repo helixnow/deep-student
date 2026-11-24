@@ -554,7 +554,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
             const restoredTopicImages = fromPersistedImages(restoredContext?.topicImages);
             // 草稿里的题目是更新的未保存编辑，优先于会话持久化值；两者均为空时显式清空，防止旧会话题目残留
             const draftTopic = restoredDraftRef.current?.topicText ?? '';
-            setTopicText(draftTopic || restoredTopic);
+            setTopicText(prev => prev || draftTopic || restoredTopic);
             if (restoredUploaded.length > 0 && uploadedImagesRef.current.length === 0) {
               // 恢复的图片登记为活跃：数量上限判定与删除/重试回调依赖该集合
               restoredUploaded.forEach(img => activeImageIdsRef.current.add(img.id));
@@ -584,9 +584,13 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
               });
             }
             // ★ 草稿优先：挂载时恢复的草稿是比最后一轮更新的未保存编辑，
-            // 不应被 loadSessionRounds 回填的轮次正文覆盖
+            // 仅当用户尚未输入新内容（或当前仍是轮次旧正文）时才应用，绝不覆盖异步期间的新输入
             const draft = restoredDraftRef.current;
-            if (draft?.inputText && draft.inputText !== restoredText) {
+            if (
+              draft?.inputText &&
+              draft.inputText !== restoredText &&
+              (!inputTextRef.current || inputTextRef.current === restoredText)
+            ) {
               setInputText(draft.inputText);
             }
           }
@@ -697,7 +701,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
         draftTopic = '';
         clearEssayDraft(draftKey, draftSettingKey);
       }
-      const applyText = Boolean(draftText && !inputText);
+      const applyText = Boolean(draftText && !inputTextRef.current);
       if (applyText) setInputText(draftText);
       if (draftTopic) setTopicText(prev => prev || draftTopic);
       if (applyText || draftTopic) {
@@ -828,9 +832,18 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
       setRounds(sessionRounds);
       setAppliedSuggestionKeys(new Set());
       if (sessionRounds.length > 0) {
-        // 显示最新轮次
-        setCurrentRoundIndex(sessionRounds.length - 1);
-        const latestRound = sessionRounds[sessionRounds.length - 1];
+        // 显示最新轮次（优先最近一轮有正文的批改结果，避免历史空轮覆盖可读结果）
+        let targetIndex = sessionRounds.length - 1;
+        if (!sessionRounds[targetIndex]?.grading_result?.trim()) {
+          for (let i = sessionRounds.length - 1; i >= 0; i -= 1) {
+            if (sessionRounds[i]?.grading_result?.trim()) {
+              targetIndex = i;
+              break;
+            }
+          }
+        }
+        setCurrentRoundIndex(targetIndex);
+        const latestRound = sessionRounds[targetIndex];
         if (inputTextRef.current === bodyAtRestoreStart) {
           setInputText(latestRound.input_text);
         }
@@ -1391,7 +1404,16 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
       gradeLevel,
       customPrompt,
     });
-    if (!options?.bypassUnchangedCheck && rounds.length > 0 && submitSnapshot === lastGradedSnapshotRef.current) {
+    // ★ 若当前已有报错或最新/当前轮次批改结果为空，则始终允许原地重批，不被「内容未修改」卡死重试路径
+    const hasFailedOrEmptyRound =
+      Boolean(gradingStream.error) ||
+      (rounds.length > 0 && !rounds[currentRoundIndex]?.grading_result?.trim());
+    if (
+      !options?.bypassUnchangedCheck &&
+      !hasFailedOrEmptyRound &&
+      rounds.length > 0 &&
+      submitSnapshot === lastGradedSnapshotRef.current
+    ) {
       showGlobalNotification('warning', t('essay_grading:errors.unchanged_text'));
       return;
     }
@@ -1442,7 +1464,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
 
       // 生成流式会话 ID
       const streamSessionId = `grading_${Date.now()}`;
-      const nextRoundNumber = rounds.length + 1;
+      const nextRoundNumber = rounds.reduce((max, r) => Math.max(max, r.round_number), 0) + 1;
 
       // ★ 修复：立即更新 currentRoundIndex 指向新轮次，
       // 使流式期间 UI 显示正确的轮次号（rounds[rounds.length] 越界 → undefined → fallback 到 rounds.length + 1）

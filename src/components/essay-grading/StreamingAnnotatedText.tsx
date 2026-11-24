@@ -251,9 +251,10 @@ const MarkerSpanImpl: React.FC<MarkerSpanProps> = ({ marker, index, isActive, an
               className="mr-1 inline-flex items-center rounded bg-amber-500/20 px-1 py-0 text-[10px] font-medium leading-4 text-amber-800 dark:text-amber-200 align-baseline select-none"
               aria-hidden="true"
             >
-              +{t('essay_grading:markers.insert_badge')}
-            </span>
+              [+{t('essay_grading:markers.insert_badge')}:
+            </span>{' '}
             {marker.content}
+            <span className="ml-0.5 text-[10px] text-amber-700/70 dark:text-amber-300/70 select-none" aria-hidden="true">]</span>
           </span>
         </CommonTooltip>
       );
