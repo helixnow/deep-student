@@ -23,7 +23,7 @@ import {
   loadManifest, markPartial, sha256FileFullAsync, validateForSlotRestore, validateLegacyCandidateForUpgrade,
   validateUntrusted, type BackupFile, type BackupManifest, type BackupKeyPolicy,
 } from './manifest.ts';
-import { verifyDirectoryWithAssets } from './backup-manager.ts';
+import { purgeAndCompactFts5, verifyDirectoryWithAssets } from './backup-manager.ts';
 import { ioMessage, isPathWithin } from './io.ts';
 import {
   MAX_ARCHIVE_FILES, MAX_ARCHIVE_UNCOMPRESSED_BYTES, archiveEntries, copyWithActualSizeBudget,
@@ -488,8 +488,10 @@ function purgeSoftDeletedRowsFromCopy(stagedDbPath: string): void {
       throw error;
     }
 
+    purgeAndCompactFts5(conn);
     conn.exec('PRAGMA wal_checkpoint(TRUNCATE);');
     conn.exec('VACUUM;');
+    conn.exec('PRAGMA wal_checkpoint(TRUNCATE);');
   } finally {
     conn.close();
   }

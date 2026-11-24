@@ -695,6 +695,76 @@ export function trashRestoreCommand(deps: DstuTrashDeps, id: string, itemType: s
   });
 }
 
+function purgeNotesFtsAndVacuum(
+  conn: ReturnType<VfsDatabase['getConnSafe']>,
+  log: DstuCommandLog,
+  commandName: string,
+): void {
+  try {
+    if (typeof conn.get === 'function' && typeof conn.all === 'function') {
+      const hasNotesFts = conn.get<{ ok: number }>(
+        "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'notes_fts'",
+      );
+      if (hasNotesFts) {
+        let rebuilt = false;
+        try {
+          conn.exec("INSERT INTO notes_fts(notes_fts) VALUES('rebuild');");
+          rebuilt = true;
+        } catch {
+          rebuilt = false;
+        }
+        if (!rebuilt) {
+          const hasNotes = Boolean(conn.get<{ ok: number }>(
+            "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'notes'",
+          ));
+          conn.exec('BEGIN IMMEDIATE');
+          try {
+            conn.exec("INSERT INTO notes_fts(notes_fts) VALUES('delete-all');");
+            if (hasNotes) {
+              const noteCols = new Set(conn.all<{ name?: unknown }>('PRAGMA table_info("notes")').map(r => String(r.name ?? '')));
+              const hasResources = Boolean(conn.get<{ ok: number }>(
+                "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'resources'",
+              ));
+              const deletedFilter = noteCols.has('deleted_at') ? ' WHERE n.deleted_at IS NULL' : '';
+              if (hasResources && noteCols.has('resource_id')) {
+                conn.exec(
+                  `INSERT INTO notes_fts(rowid, title, body)
+                   SELECT n.rowid, COALESCE(n.title, ''), COALESCE(r.data, '')
+                   FROM notes n
+                   LEFT JOIN resources r ON r.id = n.resource_id${deletedFilter};`,
+                );
+              } else {
+                conn.exec(
+                  `INSERT INTO notes_fts(rowid, title, body)
+                   SELECT n.rowid, COALESCE(n.title, ''), ''
+                   FROM notes n${deletedFilter};`,
+                );
+              }
+            }
+            conn.exec('COMMIT');
+          } catch (ftsError) {
+            try { conn.exec('ROLLBACK'); } catch { /* ignore */ }
+            throw ftsError;
+          }
+        }
+        conn.exec("INSERT INTO notes_fts(notes_fts) VALUES('optimize');");
+      }
+      const hasQuestionsFts = conn.get<{ ok: number }>(
+        "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'questions_fts'",
+      );
+      if (hasQuestionsFts) {
+        try { conn.exec("INSERT INTO questions_fts(questions_fts) VALUES('rebuild');"); } catch { /* ignore */ }
+        try { conn.exec("INSERT INTO questions_fts(questions_fts) VALUES('optimize');"); } catch { /* ignore */ }
+      }
+    }
+    try { conn.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch { /* ignore */ }
+    conn.exec('VACUUM');
+    try { conn.exec('PRAGMA wal_checkpoint(TRUNCATE)'); } catch { /* ignore */ }
+  } catch (error) {
+    log.warn(`[DSTU::trash] ${commandName}: post-purge VACUUM skipped: %s`, failureMessage(error));
+  }
+}
+
 /** `dstu_permanently_delete` (trash_handlers.rs:799-917). */
 export function permanentlyDeleteCommand(deps: DstuTrashDeps, id: string, itemType: string): null {
   return commandDstu(() => {
@@ -717,11 +787,7 @@ export function permanentlyDeleteCommand(deps: DstuTrashDeps, id: string, itemTy
     }
 
     cleanupNoteAssetDirs(deps.log, deps.database.appDataDir(), noteIdsToCleanup);
-    try {
-      conn.exec('VACUUM');
-    } catch (error) {
-      deps.log.warn('[DSTU::trash] dstu_permanently_delete: post-purge VACUUM skipped: %s', failureMessage(error));
-    }
+    purgeNotesFtsAndVacuum(conn, deps.log, 'dstu_permanently_delete');
     if (resourceId !== undefined) cleanupVectorIndex(deps, resourceId);
     for (const childResourceId of sessionEssayResourceIds) cleanupVectorIndex(deps, childResourceId);
     emitDstuWatchEvent(deps, { type: 'purged', path: `/_trash/${id}` });
@@ -733,9 +799,10 @@ export function permanentlyDeleteCommand(deps: DstuTrashDeps, id: string, itemTy
 export function purgeCommand(deps: DstuTrashDeps, path: string): null {
   return command(() => {
     const { resourceType, id } = extractResourceInfo(path);
+    const conn = deps.database.getConnSafe();
     let resourceId: string | undefined;
     try {
-      [resourceId] = collectDeleteManyResourceIdsWithConn(deps.database.getConnSafe(), [{ resourceType, id }]);
+      [resourceId] = collectDeleteManyResourceIdsWithConn(conn, [{ resourceType, id }]);
     } catch { // boundary-allow empty-catch: handlers.rs:4482 uses get_conn_safe().ok() and query_row().ok()
       resourceId = undefined;
     }
@@ -745,6 +812,7 @@ export function purgeCommand(deps: DstuTrashDeps, path: string): null {
       if (error instanceof DstuFailure) throw new Error(error.message);
       throw error;
     }
+    purgeNotesFtsAndVacuum(conn, deps.log, 'dstu_purge');
     emitDstuWatchEvent(deps, { type: 'purged', path });
     if (resourceId !== undefined) {
       void deps.index.cleanupVectors([resourceId]).then(() =>
@@ -835,11 +903,7 @@ export function emptyTrashCommand(deps: DstuTrashDeps, itemTypes: readonly strin
     cleanupNoteAssetDirs(deps.log, appDataDir, noteIdsToCleanup);
 
     if (totalDeleted > 0) {
-      try {
-        conn.exec('VACUUM');
-      } catch (error) {
-        deps.log.warn('[DSTU::trash] dstu_empty_trash: post-purge VACUUM skipped: %s', failureMessage(error));
-      }
+      purgeNotesFtsAndVacuum(conn, deps.log, 'dstu_empty_trash');
       emitDstuWatchEvent(deps, { type: 'purged', path: '/_trash' });
     }
     for (const resourceId of resourceIdsToCleanup) cleanupVectorIndex(deps, resourceId);
@@ -870,6 +934,9 @@ export function purgeAllCommand(deps: DstuTrashDeps, resourceType: string): numb
       throw new DstuFailure('VfsError', failureMessage(error));
     }
 
+    if (count > 0) {
+      purgeNotesFtsAndVacuum(conn, deps.log, 'dstu_purge_all');
+    }
     emitDstuWatchEvent(deps, { type: 'purged', path: `/${resourceType}/_trash` });
     if (resourceIdsToCleanup.length > 0) {
       void deps.index.cleanupVectors(resourceIdsToCleanup).then(() => deps.log.info(

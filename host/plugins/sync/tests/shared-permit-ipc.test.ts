@@ -62,11 +62,13 @@ it('run_sync assembles the real backup SyncPorts and shares its busy permit', as
       direction: 'download', cloudConfig: { provider: 'webdav' },
     })).rejects.toBe('另一个数据治理任务（同步/备份/恢复）正在进行中，请稍后再试。');
     expect(host.eventsNamed('data-governance-sync-progress').map((event: any) => event.phase)).toEqual(['failed']);
-    const audit = storage.database('audit').get<{ operation_data: string; target: string; status: string }>(
-      "SELECT operation_data,target,status FROM __audit_log WHERE operation_type='Sync'",
+    const audit = storage.database('audit').get<{ operation_data: string; target: string; status: string; duration_ms: number | null; error_message: string | null }>(
+      "SELECT operation_data,target,status,duration_ms,error_message FROM __audit_log WHERE operation_type='Sync'",
     )!;
     expect(audit.target).toBe('cloud_sync/download');
-    expect(audit.status).toBe('Started');
+    expect(audit.status).toBe('Failed');
+    expect(audit.duration_ms).not.toBeNull();
+    expect(audit.error_message).toContain('正在进行中');
     expect(JSON.parse(audit.operation_data)).toEqual({ type: 'Sync', direction: 'Download', records_affected: 0 });
   } finally { held.release(); }
 });

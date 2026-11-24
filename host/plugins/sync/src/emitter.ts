@@ -57,7 +57,7 @@ export class SyncProgressEmitter {
   }
   emitCompleted(): Promise<void> { return this.emit(progress.completed()); }
   emitFailed(error: string): Promise<void> { return this.emit(progress.failed(error)); }
-  emitPartial(error: string): Promise<void> { return this.emit(withOutcome(progress.failed(error), 'partial')); }
+  emitPartial(error: string): Promise<void> { return this.emit(withOutcome({ ...progress.failed(error), percent: 100 }, 'partial')); }
   emitWithSpeed(value: SyncProgress, speed: number, eta: number | null): Promise<void> {
     return this.emit(withSpeed(value, speed, eta));
   }

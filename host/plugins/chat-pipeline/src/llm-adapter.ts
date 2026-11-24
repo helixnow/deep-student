@@ -225,6 +225,111 @@ export class ChatV2StreamingAdapter {
   }
 
   /**
+   * Flush buffered wrap-filter and `<think>` tail content into accumulators and
+   * `textSegments` without emitting stream events (preserves cancel event order).
+   */
+  flushBuffersSilently(): void {
+    const contentTail = this.contentWrapFilter.flush();
+    if (contentTail !== '') this.thinkTagBuffer += contentTail;
+
+    const reasoningTail = this.reasoningWrapFilter.flush();
+    if (reasoningTail !== '' && this.enableThinking) {
+      this.appendSilentSegment(BLOCK_TYPE_THINKING, reasoningTail);
+    }
+
+    if (this.thinkTagBuffer !== '') {
+      this.drainThinkTagBufferSilently();
+    }
+
+    const closedAt = this.now();
+    for (let index = this.textSegments.length - 1; index >= 0; index--) {
+      const segment = this.textSegments[index]!;
+      if (
+        (segment.blockId === this.thinkingBlockId || segment.blockId === this.contentBlockId)
+        && segment.endedAt === null
+      ) {
+        segment.endedAt = closedAt;
+      }
+    }
+  }
+
+  private appendSilentSegment(blockType: typeof BLOCK_TYPE_THINKING | typeof BLOCK_TYPE_CONTENT, text: string): void {
+    if (text === '') return;
+    const isThinking = blockType === BLOCK_TYPE_THINKING;
+    if (isThinking) {
+      this.reasoningContentObserved = true;
+      this.accumulatedReasoning += text;
+    } else {
+      this.accumulatedContent += text;
+    }
+    const existingId = isThinking ? this.thinkingBlockId : this.contentBlockId;
+    if (existingId !== null) {
+      this.appendTextSegment(existingId, text);
+      return;
+    }
+    const blockId = this.generateBlockId();
+    if (isThinking) this.thinkingBlockId = blockId;
+    else this.contentBlockId = blockId;
+    this.textSegments.push({
+      blockId,
+      blockType,
+      content: text,
+      startedAt: this.now(),
+      endedAt: null,
+    });
+  }
+
+  private drainThinkTagBufferSilently(): void {
+    const startTags = ['<thinking>', '<think>'];
+    const endTags = ['</thinking>', '</think>'];
+    while (this.thinkTagBuffer !== '') {
+      if (this.inThinkTag) {
+        let endPos = -1;
+        let endLen = 0;
+        for (const tag of endTags) {
+          const pos = this.thinkTagBuffer.indexOf(tag);
+          if (pos >= 0 && (endPos < 0 || pos < endPos)) {
+            endPos = pos;
+            endLen = tag.length;
+          }
+        }
+        if (endPos >= 0) {
+          const before = this.thinkTagBuffer.slice(0, endPos);
+          this.thinkTagBuffer = this.thinkTagBuffer.slice(endPos + endLen);
+          this.inThinkTag = false;
+          if (this.enableThinking) this.appendSilentSegment(BLOCK_TYPE_THINKING, before);
+          continue;
+        }
+        const remaining = this.thinkTagBuffer;
+        this.thinkTagBuffer = '';
+        if (this.enableThinking) this.appendSilentSegment(BLOCK_TYPE_THINKING, remaining);
+        else this.appendSilentSegment(BLOCK_TYPE_CONTENT, remaining);
+        break;
+      }
+      let startPos = -1;
+      let startLen = 0;
+      for (const tag of startTags) {
+        const pos = this.thinkTagBuffer.indexOf(tag);
+        if (pos >= 0 && (startPos < 0 || pos < startPos)) {
+          startPos = pos;
+          startLen = tag.length;
+        }
+      }
+      if (startPos >= 0) {
+        const before = this.thinkTagBuffer.slice(0, startPos);
+        this.thinkTagBuffer = this.thinkTagBuffer.slice(startPos + startLen);
+        this.inThinkTag = true;
+        this.appendSilentSegment(BLOCK_TYPE_CONTENT, before);
+        continue;
+      }
+      const remaining = this.thinkTagBuffer;
+      this.thinkTagBuffer = '';
+      this.appendSilentSegment(BLOCK_TYPE_CONTENT, remaining);
+      break;
+    }
+  }
+
+  /**
    * 标记本轮已发出 tool_call_preparing 的占位块已交由工具执行阶段接管（或按指定 toolCallIds 精确标记），
    * 避免后续轮次重置或错误清理误杀已进入执行期的工具块。
    */

@@ -586,6 +586,7 @@ const PromptEditorContent: React.FC<{
   setIsAutoTranslate?: (val: boolean) => void;
   isSyncScroll?: boolean;
   setIsSyncScroll?: (val: boolean) => void;
+  hideActions?: boolean;
   className?: string;
 }> = ({
   customPrompt,
@@ -602,6 +603,7 @@ const PromptEditorContent: React.FC<{
   setIsAutoTranslate,
   isSyncScroll,
   setIsSyncScroll,
+  hideActions = false,
   className,
 }) => {
   const { t } = useTranslation(['translation', 'common']);
@@ -711,26 +713,28 @@ const PromptEditorContent: React.FC<{
         </div>
       </PanelSection>
 
-      <div className="flex gap-2 justify-end">
-        <DsButton
-          variant="outline"
-          size="sm"
-          onClick={onRestoreDefaultPrompt}
-          className="[@media(pointer:coarse)]:!min-h-11"
-        >
-          <ArrowCounterClockwise size={16} className="mr-2" />
-          {t('translation:prompt_editor.restore_default')}
-        </DsButton>
-        <DsButton
-          variant="default"
-          size="sm"
-          onClick={onSavePrompt}
-          className="[@media(pointer:coarse)]:!min-h-11"
-        >
-          <FloppyDisk size={16} className="mr-2" />
-          {t('translation:prompt_editor.save')}
-        </DsButton>
-      </div>
+      {!hideActions && (
+        <div className="flex gap-2 justify-end">
+          <DsButton
+            variant="outline"
+            size="sm"
+            onClick={onRestoreDefaultPrompt}
+            className="[@media(pointer:coarse)]:!min-h-11"
+          >
+            <ArrowCounterClockwise size={16} className="mr-2" />
+            {t('translation:prompt_editor.restore_default')}
+          </DsButton>
+          <DsButton
+            variant="default"
+            size="sm"
+            onClick={onSavePrompt}
+            className="[@media(pointer:coarse)]:!min-h-11"
+          >
+            <FloppyDisk size={16} className="mr-2" />
+            {t('translation:prompt_editor.save')}
+          </DsButton>
+        </div>
+      )}
     </div>
   );
 };
@@ -792,27 +796,55 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
       setIsAutoTranslate={setIsAutoTranslate}
       isSyncScroll={isSyncScroll}
       setIsSyncScroll={setIsSyncScroll}
+      hideActions
     />
+  );
+
+  const stickyFooter = (
+    <div
+      data-testid="translation-settings-sticky-footer"
+      className="sticky bottom-0 shrink-0 flex items-center justify-end gap-2 border-t border-border/35 bg-background/95 px-4 py-2.5 pb-[calc(0.625rem+var(--mobile-safe-area-bottom,0px))] backdrop-blur-sm"
+    >
+      <DsButton
+        variant="outline"
+        size="sm"
+        onClick={handleRestoreDefault}
+        className="[@media(pointer:coarse)]:!min-h-11"
+      >
+        <ArrowCounterClockwise size={16} className="mr-2" />
+        {t('translation:prompt_editor.restore_default')}
+      </DsButton>
+      <DsButton
+        variant="default"
+        size="sm"
+        onClick={handleSaveAndClose}
+        className="[@media(pointer:coarse)]:!min-h-11"
+      >
+        <FloppyDisk size={16} className="mr-2" />
+        {t('translation:prompt_editor.save')}
+      </DsButton>
+    </div>
   );
 
   if (mobileFullscreen) {
     // 小屏内联设置区不自绘标题行：宿主功能条仍在上方，再画一条会形成双头部。
     // 关闭路径：Android 返回键 / 宿主顶栏设置开关（learning-hub 更多菜单）/ 保存按钮。
     return (
-      <div className="h-full flex flex-col bg-background">
+      <div className="h-full min-h-0 flex flex-col bg-background">
         <CustomScrollArea
-          className="flex-1"
-          viewportClassName="p-4 pb-[calc(1rem+var(--mobile-safe-area-bottom,0px))]"
+          className="flex-1 min-h-0"
+          viewportClassName="p-4 pb-4"
         >
           {editorContent}
         </CustomScrollArea>
+        {stickyFooter}
       </div>
     );
   }
 
   // 桌面端：设置整页视图内容（由 TranslationMain 以占满主区的独立页承载）
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-full min-h-0 flex flex-col bg-background">
       {/* 头部：无底框线轻量行，与主工具栏自然衔接 */}
       <div className="flex items-center justify-between px-4 pt-3 pb-1 shrink-0">
         <span className="text-sm font-medium text-foreground/80">
@@ -830,9 +862,10 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
       </div>
 
       {/* 内容区 */}
-      <CustomScrollArea className="flex-1" viewportClassName="p-4">
+      <CustomScrollArea className="flex-1 min-h-0" viewportClassName="p-4">
         {editorContent}
       </CustomScrollArea>
+      {stickyFooter}
     </div>
   );
 };

@@ -9,6 +9,8 @@ import {
   looksLikeHtmlDocument,
   repairPartialHtml,
   shouldAutoPreviewHtml,
+  stripSandboxRunRuntimeGuard,
+  wrapSandboxRunHtmlWithRuntimeGuard,
   type HtmlPreviewBufferState,
 } from '../chatHtmlPreviewDocument';
 
@@ -158,5 +160,35 @@ describe('htmlPreviewBufferReducer (double buffering)', () => {
     const s = submit(INITIAL_HTML_PREVIEW_BUFFER, 'a');
     expect(submit(s, 'a')).toBe(s);
     expect(loaded(s, 999)).toBe(s);
+  });
+});
+
+describe('wrapSandboxRunHtmlWithRuntimeGuard & stripSandboxRunRuntimeGuard', () => {
+  it('injects an early runtime guard inside <head> and round-trips cleanly', () => {
+    const raw = '<!DOCTYPE html><html><head><title>App</title></head><body><script>boom()</script></body></html>';
+    const wrapped = wrapSandboxRunHtmlWithRuntimeGuard(raw);
+    const guardIdx = wrapped.indexOf('data-ds-sandbox-runtime-guard="1"');
+    const titleIdx = wrapped.indexOf('<title>App</title>');
+    expect(guardIdx).toBeGreaterThan(-1);
+    expect(guardIdx).toBeLessThan(titleIdx);
+    expect(wrapped).toContain("addEventListener(\"error\"");
+    expect(wrapped).toContain("addEventListener(\"unhandledrejection\"");
+    expect(wrapped).toContain('e.preventDefault()');
+    expect(wrapped).toContain('source:"ds-sandbox-runtime",type:"runtime-error"');
+    expect(wrapped).toContain('ds-sandbox-runtime-error-bar');
+    expect(wrapSandboxRunHtmlWithRuntimeGuard(wrapped)).toBe(wrapped);
+    expect(stripSandboxRunRuntimeGuard(wrapped)).toBe(raw);
+  });
+
+  it('handles <html> without <head> and HTML fragments idempotently', () => {
+    const htmlOnly = '<html><body><p>Hi</p></body></html>';
+    const wrappedHtml = wrapSandboxRunHtmlWithRuntimeGuard(htmlOnly);
+    expect(wrappedHtml).toContain('data-ds-sandbox-runtime-guard-head="1"');
+    expect(stripSandboxRunRuntimeGuard(wrappedHtml)).toBe(htmlOnly);
+
+    const fragment = '<div>Hi</div><script>throw new Error("x")</script>';
+    const wrappedFrag = wrapSandboxRunHtmlWithRuntimeGuard(fragment);
+    expect(wrappedFrag.startsWith('<script data-ds-sandbox-runtime-guard="1">')).toBe(true);
+    expect(stripSandboxRunRuntimeGuard(wrappedFrag)).toBe(fragment);
   });
 });

@@ -2227,7 +2227,10 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
   }, [togglePanel]);
   const renderSkillPanelMenuVariant = useMemo(() => {
     if (!renderSkillPanel) return undefined;
-    return () => renderSkillPanel({ variant: 'menu' });
+    return () => renderSkillPanel({
+      variant: 'menu',
+      onClose: () => setIsAttachmentMenuOpen(false),
+    });
   }, [renderSkillPanel]);
   const pluginWorkshopActive = Boolean(activeSkillIds?.includes('dstu-plugin-development'));
   const handleTogglePluginWorkshop = useCallback(() => {

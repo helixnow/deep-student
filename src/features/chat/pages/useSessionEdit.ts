@@ -10,6 +10,8 @@ import type { ChatSession } from '../types/session';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { showArchiveSessionToast } from '../utils/archiveSessionToast';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { useSessionListStore } from '../stores/sessionListStore';
 import { clearLastActiveSessionIdIfMatches } from './lastActiveSession';
 import i18n, { type TFunction } from 'i18next';
 
@@ -48,6 +50,7 @@ export interface UseSessionEditDeps {
   reorderGroups: (ids: string[]) => void;
   loadUngroupedCount: () => Promise<void>;
   getOrCreateHiddenDraftSession: (groupId?: string | null) => Promise<ChatSession>;
+  setTotalSessionCount?: React.Dispatch<React.SetStateAction<number | null>>;
   groupDragDisabled: boolean;
   visibleGroups: SessionGroup[];
 }
@@ -62,7 +65,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     editingTitle, editingGroup, pendingArchiveGroup, sessionsRef,
     groupPickerAddRef, t,
     updateGroup, createGroup, archiveGroup, reorderGroups,
-    loadUngroupedCount, getOrCreateHiddenDraftSession, groupDragDisabled, visibleGroups,
+    loadUngroupedCount, getOrCreateHiddenDraftSession, setTotalSessionCount, groupDragDisabled, visibleGroups,
   } = deps;
   // 分组拖拽排序已收敛到桌面 ModernSidebar 的 HTML5 DnD（dnd-kit 路径随 SortableGroupItem 移除）
   void reorderGroups;
@@ -158,6 +161,8 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
       const remaining = sessionsRef.current.filter((s) => s.id !== sessionId);
 
       setSessions((prev) => prev.filter((session) => session.id !== sessionId));
+      useSessionListStore.getState().setSessions((prev) => prev.filter((session) => session.id !== sessionId));
+      setTotalSessionCount?.((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
       clearLastActiveSessionIdIfMatches(sessionId);
       emitSessionListUpdated();
 
@@ -167,22 +172,27 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
             const draftSession = await getOrCreateHiddenDraftSession();
             setSessions([]);
             emitSessionListUpdated();
-            loadUngroupedCount();
+            void loadUngroupedCount();
             setCurrentSessionId(draftSession.id);
           } catch (e) {
             console.warn('[ChatV2Page] Failed to create replacement draft session:', e);
             setCurrentSessionId(null);
           }
         } else {
+          void loadUngroupedCount();
           setCurrentSessionId(remaining[0].id);
         }
+      } else {
+        void loadUngroupedCount();
       }
 
       showArchiveSessionToast(t);
     } catch (error) {
       console.error('[ChatV2Page] Failed to archive session:', getErrorMessage(error));
+      showGlobalNotification('error', t('page.archiveSessionFailed'), getErrorMessage(error));
+      emitSessionListUpdated();
     }
-  }, [currentSessionId, setCurrentSessionId, setSessions, sessionsRef, t, getOrCreateHiddenDraftSession, loadUngroupedCount]);
+  }, [currentSessionId, setCurrentSessionId, setSessions, sessionsRef, t, getOrCreateHiddenDraftSession, loadUngroupedCount, setTotalSessionCount]);
 
   // ===== 分组管理 =====
   const openCreateGroup = useCallback(() => {

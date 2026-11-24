@@ -10,8 +10,11 @@ import {
   initializeNextRun, listAutomationRuns, loadAutomations,
   retryOrFinishRun, saveAutomations, setAutomationEnabled, updateAutomationAgentSessionId,
   updateAutomationFull, updateAutomationLastRunAt, generateAutomationId, defaultHeartbeatDefinition,
-  ensureHeartbeatInList, heartbeatIsSilent, scheduleSkewThreshold, effectiveLeaseTimeoutSeconds,
-  rowToRun, DEFAULT_HEARTBEAT_PROMPT, cancelAutomationRun, finalizeOnceAutomation,
+  ensureHeartbeatInList, ensureHeartbeatAutomation, automationListResponse, heartbeatIsSilent,
+  scheduleSkewThreshold, effectiveLeaseTimeoutSeconds,
+  rowToRun, DEFAULT_HEARTBEAT_PROMPT, DEFAULT_HEARTBEAT_PROMPT_EN,
+  DEFAULT_HEARTBEAT_NAME_ZH, DEFAULT_HEARTBEAT_NAME_EN,
+  cancelAutomationRun, finalizeOnceAutomation,
   claimScheduledRun, claimRetryRun, recoverStaleAutomationRuns, nextAfterClaim, dueRetryIds, insertAutomation,
   createAutomation,
 } from '../repository/automations.ts';
@@ -872,5 +875,28 @@ describe('automations.rs repository CRUD and run bookkeeping', () => {
     };
     expect(migrateLegacyAutomations(settings, db, insertAutomation)).toBe(0);
     expect(loadAutomations(db)).toHaveLength(0);
+  });
+
+  it('localizes seeded heartbeat automation title and prompt for en-US vs zh-CN without overriding custom names', async () => {
+    const { db, settings } = await fixture();
+    expect(ensureHeartbeatAutomation(db, Date.UTC(2026, 10, 25, 8))).toBe(true);
+
+    const zhList = automationListResponse(db) as { automations: Array<Record<string, unknown>> };
+    expect(zhList.automations[0]?.name).toBe(DEFAULT_HEARTBEAT_NAME_ZH);
+    expect(zhList.automations[0]?.prompt).toBe(DEFAULT_HEARTBEAT_PROMPT);
+
+    settings.save('language', 'en-US');
+    const enList = automationListResponse(db) as { automations: Array<Record<string, unknown>> };
+    expect(enList.automations[0]?.name).toBe(DEFAULT_HEARTBEAT_NAME_EN);
+    expect(enList.automations[0]?.prompt).toBe(DEFAULT_HEARTBEAT_PROMPT_EN);
+
+    const enSeed = defaultHeartbeatDefinition(Date.UTC(2026, 10, 25, 8), 'en-US');
+    expect(enSeed.name).toBe(DEFAULT_HEARTBEAT_NAME_EN);
+    expect(enSeed.prompt).toContain('HEARTBEAT_OK');
+
+    const heartbeat = loadAutomations(db)[0]!;
+    updateAutomationFull(db, heartbeat.id, heartbeat.version, { name: 'Custom Heartbeat' });
+    const customEnList = automationListResponse(db) as { automations: Array<Record<string, unknown>> };
+    expect(customEnList.automations[0]?.name).toBe('Custom Heartbeat');
   });
 });

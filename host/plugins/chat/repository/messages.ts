@@ -102,7 +102,7 @@ function normalizeRuntimePair(container: Record<string, unknown>): void {
 const MESSAGE_META_FIELDS = ['modelId', 'executionSnapshot', 'canonicalContent', 'chatParams', 'sources',
   'toolResults', 'ankiCards', 'usage', 'contextSnapshot', 'skillSnapshotBefore', 'skillSnapshotAfter',
   'skillRuntimeBefore', 'skillRuntimeAfter', 'replaySource', 'responseReasoningItems', 'skillInjectionAnchors',
-  'openai_responses_web_search_items', 'inboundOrigin'] as const;
+  'openai_responses_web_search_items', 'inboundOrigin', 'stoppedByUser'] as const;
 
 /** serde struct shape: field order, JSON null → None → omitted, unknown keys dropped. */
 function serdeMessageMetaShape(meta: Record<string, unknown>): Record<string, unknown> {

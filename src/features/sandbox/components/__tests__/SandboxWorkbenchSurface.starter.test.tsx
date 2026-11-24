@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: vi.fn(),
@@ -31,6 +31,7 @@ describe('Sandbox starter HTML canvas, path normalization, and sandbox-run upgra
       viewportPreset: 'desktop',
       inspectorOpen: false,
       ownerStates: {},
+      sessionRevisionsByOwner: {},
       activeOwnerKey: LEGACY_SANDBOX_OWNER_KEY,
     });
   });
@@ -81,5 +82,86 @@ describe('Sandbox starter HTML canvas, path normalization, and sandbox-run upgra
     expect(frame).not.toBeNull();
     expect(frame?.getAttribute('sandbox')).toBe('allow-scripts');
     expect(frame?.getAttribute('sandbox')).not.toContain('allow-same-origin');
+    expect(frame?.getAttribute('srcdoc')).toContain('data-ds-sandbox-runtime-guard="1"');
+  });
+
+  it('tracks runtime errors via postMessage, bumps v1->v2 on Apply & Run, persists draft to localStorage, and renders allow-scripts inspector notice', () => {
+    render(<SandboxWorkbenchSurface />);
+    fireEvent.click(screen.getByTestId('sandbox-create-starter-button'));
+
+    expect(screen.getByTestId('sandbox-runtime-status-badge')).toHaveTextContent('已运行 · v1');
+
+    // Simulate runtime-error message posted from sandboxed iframe
+    fireEvent(
+      window,
+      new MessageEvent('message', {
+        data: {
+          source: 'ds-sandbox-runtime',
+          type: 'runtime-error',
+          message: 'Uncaught ReferenceError: boom is not defined',
+          lineno: 12,
+          colno: 5,
+        },
+      }),
+    );
+
+    expect(screen.getByTestId('sandbox-runtime-status-badge')).toHaveTextContent('脚本错误');
+    expect(screen.getByTestId('sandbox-runtime-error-message')).toHaveTextContent(
+      'Uncaught ReferenceError: boom is not defined',
+    );
+    expect(screen.getByTestId('sandbox-runtime-error-message')).toHaveTextContent('12');
+
+    // Switch to source view and Apply & Run new HTML
+    fireEvent.click(screen.getByTestId('canvas-toggle-source'));
+    const editor = screen.getByTestId('canvas-source-editor') as HTMLTextAreaElement;
+    fireEvent.change(editor, { target: { value: '<div>Updated v2 HTML</div>' } });
+    fireEvent.click(screen.getByTestId('canvas-run-source-button'));
+
+    expect(screen.getByTestId('sandbox-runtime-status-badge')).toHaveTextContent('已运行 · v2');
+    expect(screen.getByTestId('sandbox-version-pill-v2')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByTestId('sandbox-runtime-error-message')).toBeNull();
+
+    // Verify expanded mode container enforces non-blocking CSS containment & header z-20
+    const canvas = screen.getByTestId('sandbox-runtime-canvas');
+    expect(canvas.className).toContain('[&_[data-expanded="true"]]:!relative');
+    expect(screen.getByTestId('sandbox-artifact-header').className).toContain('z-20');
+
+    // Open inspector and confirm allow-scripts security text
+    const openInspectorBtn =
+      screen.queryByTestId('sandbox-status-rail') ??
+      screen.getByRole('button', { name: /检查器|属性面板|inspector/i });
+    fireEvent.click(openInspectorBtn);
+    expect(screen.getByTestId('sandbox-inspector-security-notice')).toHaveTextContent(
+      '脚本执行已启用（allow-scripts · 无同源权限）',
+    );
+
+    // Simulate reload: reset Zustand in-memory state while keeping localStorage draft
+    cleanup();
+    useSandboxWorkbenchStore.setState({
+      activeSession: null,
+      isOpen: false,
+      viewportPreset: 'desktop',
+      inspectorOpen: false,
+      ownerStates: {},
+      sessionRevisionsByOwner: {},
+      activeOwnerKey: LEGACY_SANDBOX_OWNER_KEY,
+    });
+
+    render(<SandboxWorkbenchSurface />);
+    expect(screen.getByTestId('sandbox-runtime-status-badge')).toHaveTextContent('已运行 · v2');
+    const restoredFrame = document.querySelector('iframe');
+    expect(restoredFrame?.getAttribute('srcdoc')).toContain('Updated v2 HTML');
+
+    // Reset returns to clean v1
+    fireEvent.click(screen.getByTestId('sandbox-reset-button'));
+    expect(screen.getByTestId('sandbox-runtime-status-badge')).toHaveTextContent('已运行 · v1');
+
+    // Close session -> empty state offers "恢复上次草稿"
+    act(() => {
+      useSandboxWorkbenchStore.getState().closeSession();
+    });
+    expect(screen.getByTestId('sandbox-restore-draft-button')).toHaveTextContent('恢复上次草稿');
+    fireEvent.click(screen.getByTestId('sandbox-restore-draft-button'));
+    expect(screen.getByTestId('sandbox-runtime-status-badge')).toHaveTextContent('已运行 · v1');
   });
 });

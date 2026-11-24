@@ -258,20 +258,22 @@ function parseCsvOptionsCell(raw: string): Array<{ key: string; content: string 
   });
 }
 
-function normalizeCsvQuestionType(raw: string): string {
-  const v = raw.trim().toLowerCase();
-  if (['multiple_choice', '多选', '多选题'].includes(v)) return 'multiple_choice';
-  if (['indefinite_choice', '不定项', '不定项选择题'].includes(v)) return 'indefinite_choice';
-  if (['true_false', '判断', '判断题'].includes(v)) return 'true_false';
-  if (['fill_blank', '填空', '填空题'].includes(v)) return 'fill_blank';
-  if (['short_answer', '简答', '简答题'].includes(v)) return 'short_answer';
-  if (['essay', '论述', '论述题'].includes(v)) return 'essay';
-  if (['calculation', '计算', '计算题'].includes(v)) return 'calculation';
-  if (['proof', '证明', '证明题'].includes(v)) return 'proof';
-  if (['numeric', '数值', '数值题'].includes(v)) return 'numeric';
-  if (['matching', '匹配', '匹配题'].includes(v)) return 'matching';
-  if (['ordering', '排序', '排序题'].includes(v)) return 'ordering';
-  return 'single_choice';
+function normalizeCsvQuestionType(raw: string, hasOptions = false): string {
+  const trimmed = raw.trim().toLowerCase();
+  const compact = trimmed.replace(/[\s_-]+/g, '');
+  if (['singlechoice', '单选', '单选题'].includes(compact)) return 'single_choice';
+  if (['multiplechoice', '多选', '多选题'].includes(compact)) return 'multiple_choice';
+  if (['indefinitechoice', '不定项', '不定项选择题'].includes(compact)) return 'indefinite_choice';
+  if (['truefalse', '判断', '判断题', 'judgment', 'boolean'].includes(compact)) return 'true_false';
+  if (['fillblank', '填空', '填空题'].includes(compact)) return 'fill_blank';
+  if (['shortanswer', '简答', '简答题', '问答', '问答题', '主观', '主观题', 'subjective'].includes(compact)) return 'short_answer';
+  if (['essay', '论述', '论述题'].includes(compact)) return 'essay';
+  if (['calculation', '计算', '计算题'].includes(compact)) return 'calculation';
+  if (['proof', '证明', '证明题'].includes(compact)) return 'proof';
+  if (['numeric', '数值', '数值题'].includes(compact)) return 'numeric';
+  if (['matching', '匹配', '匹配题', '连线', '连线题'].includes(compact)) return 'matching';
+  if (['ordering', '排序', '排序题'].includes(compact)) return 'ordering';
+  return hasOptions ? 'single_choice' : 'short_answer';
 }
 
 const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
@@ -557,7 +559,9 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
           const rawType = cell(row, 'question_type');
           const rawOptions = cell(row, 'options');
           const parsedOptions = parseCsvOptionsCell(rawOptions);
-          const qType = rawType ? normalizeCsvQuestionType(rawType) : (parsedOptions ? 'single_choice' : 'short_answer');
+          const qType = rawType
+            ? normalizeCsvQuestionType(rawType, parsedOptions !== null)
+            : (parsedOptions ? 'single_choice' : 'short_answer');
           const rawTags = cell(row, 'tags');
           const tags = rawTags
             ? rawTags.split(/[,，;；|/]/).map((s) => s.trim()).filter(Boolean)
@@ -576,7 +580,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
             tags,
             question_label: cell(row, 'question_label') || null,
             card_id: null,
-            source_type: 'csv',
+            source_type: 'imported',
             source_ref: null,
             images: null,
             parent_id: null,
@@ -584,8 +588,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
         }
         if (batchQuestions.length > 0) {
           await invoke('qbank_batch_create_questions', {
-            examId,
-            questions: batchQuestions,
+            paramsList: batchQuestions,
           });
         }
         if (isStale()) return;

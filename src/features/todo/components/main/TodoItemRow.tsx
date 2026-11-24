@@ -30,6 +30,7 @@ import {
   Flag,
   Minus,
   Paperclip,
+  PencilSimple,
   Play,
   Repeat,
   Trash,
@@ -368,9 +369,10 @@ const TOUCH_PRIORITY_ORDER: TodoPriority[] = ['urgent', 'high', 'medium', 'low',
 const TouchRowMoreMenu: React.FC<{
   item: TodoItem;
   isCompleted: boolean;
+  onStartRename?: () => void;
   onReschedule: () => void;
   onDelete: (id: string) => void;
-}> = ({ item, isCompleted, onReschedule, onDelete }) => {
+}> = ({ item, isCompleted, onStartRename, onReschedule, onDelete }) => {
   const { t } = useTranslation(['todo', 'common']);
   const updateItem = useTodoStore((s) => s.updateItem);
   const [open, setOpen] = useState(false);
@@ -450,6 +452,24 @@ const TouchRowMoreMenu: React.FC<{
                   </DsButton>
                 ))}
               </div>
+              {onStartRename && (
+                <DsButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  role="menuitem"
+                  data-testid={`todo-row-more-rename-${item.id}`}
+                  onClick={() => {
+                    setOpen(false);
+                    setConfirmDelete(false);
+                    onStartRename();
+                  }}
+                  className="min-h-11 w-full justify-start gap-2 rounded-[8px] px-2.5 py-2 text-left text-xs font-normal text-foreground"
+                >
+                  <PencilSimple size={15} className="text-muted-foreground" />
+                  <span>{t('todo:actions.renameTitle')}</span>
+                </DsButton>
+              )}
               <DsButton
                 type="button"
                 variant="ghost"
@@ -989,6 +1009,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
             title={onRename && !isCompleted ? t('todo:actions.editTitleHint') : item.title}
             onClick={(e) => {
               e.stopPropagation();
+              if (e.detail >= 2) return;
               handleRowClick(e);
             }}
             onDoubleClick={(e) => {
@@ -1188,6 +1209,24 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
 
         {trailingSlot}
 
+        {!isCompleted && onRename && !isTouchPrimary && (
+          <DsButton
+            variant="utility"
+            size="icon"
+            iconOnly
+            data-testid={`todo-row-rename-${item.id}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsEditing(true);
+            }}
+            title={t('todo:actions.renameTitle')}
+            aria-label={t('todo:actions.renameTitle')}
+            className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 !p-1.5"
+          >
+            <PencilSimple size={15} />
+          </DsButton>
+        )}
+
         <DsButton
           variant="utility"
           size="icon"
@@ -1239,6 +1278,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
           <TouchRowMoreMenu
             item={item}
             isCompleted={isCompleted}
+            onStartRename={onRename && !isCompleted ? () => setIsEditing(true) : undefined}
             onReschedule={() => setRescheduleOpen(true)}
             onDelete={onDelete}
           />

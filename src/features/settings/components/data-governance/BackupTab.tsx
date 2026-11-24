@@ -43,6 +43,12 @@ import { Switch } from '@/components/ui/shad/Switch';
 import { settingsQuietTableRowClassName } from '../SettingsCommon';
 import { GroupTitle } from '../settingsTabPrimitives';
 import { localizeCloudStorageError, notifyErrorDeduped } from './localizeCloudError';
+import {
+  BackupImportDialog,
+  buildSnapshotAriaLabelMap,
+  isPreRestoreSafetySnapshot,
+  type BackupImportOutcome,
+} from './BackupImportDialog';
 import type {
   BackupInfoResponse,
   BackupVerifyResponse,
@@ -68,11 +74,7 @@ const isRestorableBackup = (backup: BackupInfoResponse): boolean =>
 /** 备份验证状态 */
 export type BackupVerificationStatus = 'verified' | 'unverified' | 'failed' | 'verifying';
 
-export interface BackupImportOutcome {
-  success?: boolean;
-  cancelled?: boolean;
-  error?: string;
-}
+export type { BackupImportOutcome };
 
 export interface BackupTabProps {
   backups: BackupInfoResponse[];
@@ -362,17 +364,12 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   // 备份密码（可选）：非空时密封凭据等敏感材料，使全保真包可整槽恢复。
   // 外层业务归档仍为明文，用户可见文案必须明确这一边界。
   const [encryptionPassword, setEncryptionPassword] = useState('');
-  // 导入密码与 WebUI 暂存文件状态
   const [showImportPasswordDialog, setShowImportPasswordDialog] = useState(false);
-  const [importPassword, setImportPassword] = useState('');
-  const [importFilePath, setImportFilePath] = useState('');
-  const [importFileName, setImportFileName] = useState('');
-  const [importFileError, setImportFileError] = useState<string | null>(null);
-  const [importPasswordError, setImportPasswordError] = useState<string | null>(null);
-  const [isImportingSubmitting, setIsImportingSubmitting] = useState(false);
-  const [isStagingImportFile, setIsStagingImportFile] = useState(false);
   const [resumeImportJobId, setResumeImportJobId] = useState<string | null>(null);
-  const webUiMode = isWebUiShell();
+  const snapshotAriaLabels = useMemo(
+    () => buildSnapshotAriaLabelMap(backups),
+    [backups]
+  );
 
   /** 与后端 MIN_ENCRYPTION_PASSWORD_CHARS / `chars().count()` 对齐（按 Unicode 标量，不是 UTF-16）。 */
   const MIN_E2EE_PASSWORD_CHARS = 8;
@@ -467,106 +464,9 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     });
   };
 
-  // 导入是对既有密文的解密：故意不做最小长度校验。v0.9.44 允许任意长度的
-  // 备份密码，换机/重装用户必须能用存量短口令解开旧加密 ZIP；口令错误由
-  // 解封层 fail-closed（E_BACKUP_SEALED_DECRYPT_FAILED）。最小长度只约束
-  // 导出（新设口令）路径。
-  const resetImportDialogState = () => {
-    setImportPassword('');
-    setImportFilePath('');
-    setImportFileName('');
-    setImportFileError(null);
-    setImportPasswordError(null);
-    setIsImportingSubmitting(false);
-    setIsStagingImportFile(false);
-    setResumeImportJobId(null);
-  };
-
-  const handleStageWebImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    setImportFileError(null);
-    setIsStagingImportFile(true);
-    try {
-      const response = await fetch(`/api/files/stage?name=${encodeURIComponent(file.name)}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': file.type || 'application/octet-stream',
-          'X-File-Name': encodeURIComponent(file.name),
-        },
-        body: file,
-        credentials: 'same-origin',
-      });
-      if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(text || `HTTP ${response.status}`);
-      }
-      const data = (await response.json()) as { path?: string; name?: string; size?: number };
-      if (!data.path) {
-        throw new Error('Missing staged file path');
-      }
-      setImportFilePath(data.path);
-      setImportFileName(data.name || file.name);
-      setImportFileError(null);
-    } catch (error) {
-      setImportFileError(
-        t('data:governance.import_file_upload_failed', {
-          error: error instanceof Error ? error.message : String(error),
-        })
-      );
-    } finally {
-      setIsStagingImportFile(false);
-    }
-  };
-
-  const handleImportConfirm = async () => {
-    if (isImportingSubmitting) return;
-    if (resumeImportJobId && importPassword === '') {
-      const requiredMsg = t('data:governance.import_sealed_password_required');
-      setImportPasswordError(requiredMsg);
-      showGlobalNotification('warning', requiredMsg);
-      return;
-    }
-    if (!resumeImportJobId && webUiMode && !importFilePath.trim()) {
-      setImportFileError(t('data:governance.import_file_required'));
-      return;
-    }
-    const pwd = importPassword || undefined;
-    const explicitPath = importFilePath.trim();
-    setImportPasswordError(null);
-    setIsImportingSubmitting(true);
-    try {
-      const outcome = resumeImportJobId
-        ? await onResumeJob?.(resumeImportJobId, importPassword)
-        : explicitPath
-          ? await onImportZip(pwd, explicitPath)
-          : await onImportZip(pwd);
-      if (outcome && outcome.success === false) {
-        if (!outcome.cancelled) {
-          const inlineMsg =
-            outcome.error ||
-            t('data:governance.import_decrypt_failed_inline');
-          setImportPasswordError(inlineMsg);
-          notifyErrorDeduped('error', inlineMsg);
-        }
-        return;
-      }
-      setShowImportPasswordDialog(false);
-      resetImportDialogState();
-    } catch (error: unknown) {
-      const msg = localizeCloudStorageError(error, t, i18n?.language) || t('data:governance.import_decrypt_failed_inline');
-      setImportPasswordError(msg);
-      notifyErrorDeduped('error', msg);
-    } finally {
-      setIsImportingSubmitting(false);
-    }
-  };
-
   const handleResumeJob = (job: ResumableJob) => {
     if (job.kind === 'import' && job.requires_password) {
       setResumeImportJobId(job.job_id);
-      setImportPassword('');
       setShowImportPasswordDialog(true);
       return;
     }
@@ -594,33 +494,42 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   };
 
   // 备份类型徽标：桌面表格与移动卡片共用（仅展示层）
-  const renderBackupTypeBadge = (backup: BackupInfoResponse) => (
-    <Badge
-      variant={
-        backup.backup_type === 'full'
-          ? 'default'
-          : backup.backup_type === 'incremental'
-            ? 'destructive'
-            : 'secondary'
-      }
-      className="rounded-sm font-normal whitespace-nowrap"
-      title={
-        backup.backup_type === 'incremental'
-          ? t('data:governance.incremental_legacy_unsupported')
-          : undefined
-      }
-    >
-      {backup.recovery_kind === 'partial_archive'
-        ? t('data:governance.partial_archive', { defaultValue: 'Partial archive' })
-        : backup.backup_type === 'full'
-        ? t('data:governance.full')
-        : backup.backup_type === 'incremental'
-        ? t('data:governance.incremental_legacy_unsupported')
-        : backup.backup_type === 'partial_overlay'
-        ? t('data:governance.partial_overlay')
-        : t('data:governance.legacy_unknown')}
-    </Badge>
-  );
+  const renderBackupTypeBadge = (backup: BackupInfoResponse) => {
+    const preRestoreSafety = isPreRestoreSafetySnapshot(backup);
+    return (
+      <Badge
+        variant={
+          preRestoreSafety
+            ? 'secondary'
+            : backup.backup_type === 'full'
+              ? 'default'
+              : backup.backup_type === 'incremental'
+                ? 'destructive'
+                : 'secondary'
+        }
+        className="rounded-sm font-normal whitespace-nowrap"
+        title={
+          backup.backup_type === 'incremental'
+            ? t('data:governance.incremental_legacy_unsupported')
+            : undefined
+        }
+      >
+        {preRestoreSafety
+          ? t('data:governance.backup_type_pre_restore', {
+              defaultValue: '[恢复前安全快照]',
+            })
+          : backup.recovery_kind === 'partial_archive'
+            ? t('data:governance.partial_archive', { defaultValue: 'Partial archive' })
+            : backup.backup_type === 'full'
+              ? t('data:governance.full')
+              : backup.backup_type === 'incremental'
+                ? t('data:governance.incremental_legacy_unsupported')
+                : backup.backup_type === 'partial_overlay'
+                  ? t('data:governance.partial_overlay')
+                  : t('data:governance.legacy_unknown')}
+      </Badge>
+    );
+  };
 
   // 验证状态徽标：桌面表格与移动卡片共用（仅展示层）
   const renderVerificationBadge = (backup: BackupInfoResponse) => {
@@ -985,7 +894,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             variant="outline"
             size="sm"
             onClick={() => {
-              resetImportDialogState();
+              setResumeImportJobId(null);
               setShowImportPasswordDialog(true);
             }}
             disabled={loading || isBackupRunning}
@@ -1145,7 +1054,9 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {backups.map((backup) => (
+              {backups.map((backup) => {
+                const ariaTime = snapshotAriaLabels.get(backup.path) ?? formatTimestamp(backup.created_at);
+                return (
                 <TableRow key={backup.path} className={settingsQuietTableRowClassName}>
                   <TableCell className="font-medium py-3 whitespace-nowrap">
                     {formatTimestamp(backup.created_at)}
@@ -1170,7 +1081,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         onClick={() => onVerifyBackup(backup.path)}
                         disabled={isBackupRunning}
                         title={t('data:governance.verify')}
-                        aria-label={t('data:governance.verify')}
+                        aria-label={t('data:governance.verify_snapshot_aria', {
+                          time: ariaTime,
+                          defaultValue: '验证 {{time}} 快照',
+                        })}
                       >
                         <Shield className="h-3.5 w-3.5" />
                       </DsButton>
@@ -1184,7 +1098,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         }}
                         disabled={isBackupRunning}
                         title={t('data:governance.export_zip')}
-                        aria-label={t('data:governance.export_zip')}
+                        aria-label={t('data:governance.export_zip_snapshot_aria', {
+                          time: ariaTime,
+                          defaultValue: '导出 {{time}} 备份 ZIP',
+                        })}
                       >
                         <FileArrowDown size={14} />
                       </DsButton>
@@ -1201,7 +1118,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                                 defaultValue: 'Partial archives cannot replace the data slot',
                               })
                         }
-                        aria-label={t('data:governance.restore')}
+                        aria-label={t('data:governance.restore_snapshot_aria', {
+                          time: ariaTime,
+                          defaultValue: '恢复 {{time}} 快照',
+                        })}
                       >
                         <ArrowCounterClockwise size={14} className="shrink-0" />
                         <span>{t('data:governance.restore')}</span>
@@ -1216,14 +1136,18 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         }}
                         disabled={isBackupRunning}
                         title={t('common:actions.delete')}
-                        aria-label={t('common:actions.delete')}
+                        aria-label={t('data:governance.delete_snapshot_aria', {
+                          time: ariaTime,
+                          defaultValue: '删除 {{time}} 快照',
+                        })}
                       >
                         <Trash size={14} />
                       </DsButton>
                     </div>
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
               {backups.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
@@ -1262,12 +1186,19 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                 {renderVerificationBadge(backup)}
               </div>
               <div className="flex flex-wrap items-center gap-1 border-t border-border/40 pt-1.5">
+                {(() => {
+                  const ariaTime = snapshotAriaLabels.get(backup.path) ?? formatTimestamp(backup.created_at);
+                  return (
+                    <>
                 <DsButton
                   variant="ghost"
                   size="icon"
                   onClick={() => onVerifyBackup(backup.path)}
                   disabled={isBackupRunning}
-                  aria-label={t('data:governance.verify')}
+                  aria-label={t('data:governance.verify_snapshot_aria', {
+                    time: ariaTime,
+                    defaultValue: '验证 {{time}} 快照',
+                  })}
                 >
                   <Shield className="h-4 w-4" />
                 </DsButton>
@@ -1279,7 +1210,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                     setActionType('export');
                   }}
                   disabled={isBackupRunning}
-                  aria-label={t('data:governance.export_zip')}
+                  aria-label={t('data:governance.export_zip_snapshot_aria', {
+                    time: ariaTime,
+                    defaultValue: '导出 {{time}} 备份 ZIP',
+                  })}
                 >
                   <FileArrowDown size={16} />
                 </DsButton>
@@ -1289,7 +1223,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   className="gap-1 px-2 whitespace-nowrap shrink-0 [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => handleRestoreClick(backup)}
                   disabled={isBackupRunning}
-                  aria-label={t('data:governance.restore')}
+                  aria-label={t('data:governance.restore_snapshot_aria', {
+                    time: ariaTime,
+                    defaultValue: '恢复 {{time}} 快照',
+                  })}
                 >
                   <ArrowCounterClockwise size={16} className="shrink-0" />
                   <span>{t('data:governance.restore')}</span>
@@ -1304,10 +1241,16 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                     setActionType('delete');
                   }}
                   disabled={isBackupRunning}
-                  aria-label={t('common:actions.delete')}
+                  aria-label={t('data:governance.delete_snapshot_aria', {
+                    time: ariaTime,
+                    defaultValue: '删除 {{time}} 快照',
+                  })}
                 >
                   <Trash size={16} />
                 </DsButton>
+                    </>
+                  );
+                })()}
               </div>
             </div>
           ))}
@@ -1373,134 +1316,16 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       />
 
       {/* 导入 ZIP：新导入可留空；密封敏感材料包的续传必须重新输入密码 */}
-      <DsDialog
+      <BackupImportDialog
         open={showImportPasswordDialog}
         onOpenChange={(open) => {
-          if (!open) {
-            setShowImportPasswordDialog(false);
-            resetImportDialogState();
-          }
+          setShowImportPasswordDialog(open);
+          if (!open) setResumeImportJobId(null);
         }}
-        maxWidth="max-w-md"
-      >
-        <DsDialogHeader>
-          <DsDialogTitle className="flex items-center gap-2">
-            <Upload className="h-5 w-5 text-primary" />
-            {t(resumeImportJobId
-              ? 'data:governance.resume_import_password_title'
-              : 'data:governance.import_password_title')}
-          </DsDialogTitle>
-          <DsDialogDescription>
-            {t(resumeImportJobId
-              ? 'data:governance.resume_import_password_desc'
-              : 'data:governance.import_password_desc')}
-          </DsDialogDescription>
-        </DsDialogHeader>
-        <DsDialogBody
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.preventDefault();
-              void handleImportConfirm();
-            }
-          }}
-        >
-          <div className="space-y-3">
-            {webUiMode && !resumeImportJobId && (
-              <div className="space-y-1.5">
-                <Label htmlFor="webui-import-file" className="text-sm">
-                  {t('data:governance.import_file_label')}
-                </Label>
-                <input
-                  id="webui-import-file"
-                  type="file"
-                  accept=".zip,.dsbk"
-                  disabled={isStagingImportFile}
-                  onChange={(e) => void handleStageWebImportFile(e)}
-                  className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-lg file:border file:border-border/70 file:bg-muted file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-foreground hover:file:bg-muted/80"
-                />
-                <Input
-                  id="webui-import-file-path"
-                  type="text"
-                  className="h-8 text-sm font-mono"
-                  value={importFilePath}
-                  placeholder={t('data:governance.import_file_path_placeholder')}
-                  onChange={(e) => {
-                    setImportFilePath(e.target.value);
-                    if (importFileError) setImportFileError(null);
-                  }}
-                />
-                {isStagingImportFile && (
-                  <p className="text-xs text-muted-foreground">
-                    {t('data:governance.import_file_uploading')}
-                  </p>
-                )}
-                {importFileName && !importFileError && !isStagingImportFile && (
-                  <p className="text-xs text-success">
-                    {t('data:governance.import_file_selected', { name: importFileName })}
-                  </p>
-                )}
-                {importFileError && (
-                  <p role="alert" className="text-xs text-destructive">
-                    {importFileError}
-                  </p>
-                )}
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <Label htmlFor="e2ee-import-password" className="text-sm">
-                {t('data:governance.import_password_label')}
-              </Label>
-              <Input
-                id="e2ee-import-password"
-                type="password"
-                autoComplete="current-password"
-                className="h-8 text-sm"
-                value={importPassword}
-                placeholder={t('data:governance.import_password_placeholder')}
-                required={resumeImportJobId !== null}
-                disabled={isImportingSubmitting}
-                onChange={(e) => {
-                  setImportPassword(e.target.value);
-                  if (importPasswordError) setImportPasswordError(null);
-                }}
-              />
-              {importPasswordError && (
-                <p role="alert" className="text-xs text-destructive">
-                  {importPasswordError}
-                </p>
-              )}
-            </div>
-          </div>
-        </DsDialogBody>
-        <DsDialogFooter>
-          <DsButton
-            variant="ghost"
-            size="sm"
-            disabled={isImportingSubmitting}
-            onClick={() => {
-              setShowImportPasswordDialog(false);
-              resetImportDialogState();
-            }}
-          >
-            {t('common:actions.cancel')}
-          </DsButton>
-          <DsButton
-            variant="primary"
-            size="sm"
-            disabled={isStagingImportFile || isImportingSubmitting}
-            onClick={() => void handleImportConfirm()}
-          >
-            {resumeImportJobId ? (
-              <Play className="h-4 w-4 mr-1.5" />
-            ) : (
-              <Upload className="h-4 w-4 mr-1.5" />
-            )}
-            {t(resumeImportJobId
-              ? 'data:governance.resume'
-              : 'data:governance.import_button')}
-          </DsButton>
-        </DsDialogFooter>
-      </DsDialog>
+        resumeImportJobId={resumeImportJobId}
+        onImportZip={onImportZip}
+        onResumeJob={onResumeJob}
+      />
 
       {/* Task 3: 恢复完成后重启提示对话框 */}
       <DsDialog open={showRestartDialog} onOpenChange={() => undefined}>

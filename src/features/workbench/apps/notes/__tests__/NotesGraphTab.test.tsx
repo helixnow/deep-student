@@ -204,4 +204,33 @@ describe('NotesGraphTab', () => {
       expect(viewProps.current!.data.nodes.map((n) => n.title).sort()).toEqual(['Center', 'Hop1']),
     );
   });
+
+  it('renders incoming edge direction accurately (source -> active) and shows cycle indicator when a cycle exists (S1-06)', async () => {
+    fetchBacklinks.mockImplementation(async (noteId: string) => {
+      if (noteId === 'note_cond') return [backlinkRow('note_bayes', 'S106_贝叶斯定理')];
+      if (noteId === 'note_bayes') return [backlinkRow('note_cond', 'S106_条件概率')];
+      return [];
+    });
+    fetchOutgoing.mockImplementation(async (noteId: string) => {
+      if (noteId === 'note_cond') return [outgoingRow('note_bayes', 'S106_贝叶斯定理')];
+      if (noteId === 'note_bayes') return [outgoingRow('note_cond', 'S106_条件概率')];
+      return [];
+    });
+
+    render(
+      <NotesGraphTab
+        open
+        activeResource={node({ id: 'note_cond', path: '/note_cond', name: 'S106_条件概率' })}
+        notes={[
+          node({ id: 'note_cond', path: '/note_cond', name: 'S106_条件概率' }),
+          node({ id: 'note_bayes', path: '/note_bayes', name: 'S106_贝叶斯定理' }),
+        ]}
+        onOpenResource={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('notes-graph-cycle-badge')).toBeInTheDocument());
+    expect(screen.getByTestId('notes-graph-cycle-badge')).toHaveTextContent('检测到引用环路');
+    expect(screen.getByTestId('notes-graph-edges-summary')).toHaveTextContent('S106_贝叶斯定理 → S106_条件概率');
+  });
 });

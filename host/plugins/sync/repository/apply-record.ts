@@ -683,7 +683,11 @@ export function applySingleChange(
 ): boolean {
   if (change.table_name === 'note_document_revisions') {
     if (change.operation === 'Delete') return false;
-    if (change.data === null) databaseError('History payload missing');
+    if (change.data === null) return false;
+    if (isJsonObject(change.data) && typeof change.data.note_id === 'string' && tableExists(db, 'notes')) {
+      const parentExists = Boolean(db.pluck('SELECT EXISTS(SELECT 1 FROM notes WHERE id = ?1)', [change.data.note_id]));
+      if (!parentExists) return false;
+    }
     applySingleRecord(db, change.table_name, change.record_id, change.data, false, context, change.database_name);
     return true;
   }
@@ -770,11 +774,26 @@ export function applySingleChange(
     return true;
   }
 
+  if (upsertBlockedByDeleteVersion(db, change, idColumn, context.deviceId)) return false;
+
   if (change.data === null) {
     if (change.database_name === null || change.database_name === undefined) return false;
+    // If sender enriched an INSERT/UPDATE log entry after hard-purging the row (or child note tables),
+    // treat absent payload on note/orphan records idempotently instead of poisoning quarantine.
+    const existing = getRecordData(db, change.table_name, change.record_id, idColumn);
+    if (
+      existing === null
+      && (
+        change.table_name === 'notes'
+        || change.table_name === 'note_document_formats'
+        || change.table_name === 'note_learning_relations'
+        || change.table_name === 'folder_items'
+      )
+    ) {
+      return false;
+    }
     databaseError(`INSERT/UPDATE 缺少 data 字段: ${change.table_name}.${idColumn} = ${change.record_id}`);
   }
-  if (upsertBlockedByDeleteVersion(db, change, idColumn, context.deviceId)) return false;
 
   if (!skipLww) {
     const freshness = evaluateCloudUpsertFreshness(db, change, idColumn);

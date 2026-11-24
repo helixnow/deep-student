@@ -112,6 +112,12 @@ export function markAvailableSkillsSnapshotStale(db: SqlExecutor, sessionId: str
   return target;
 }
 
+export interface MemoryKernelFrozenRuleRef {
+  id: string;
+  instruction: string;
+  scope?: string;
+}
+
 /** Session-frozen `<memory_kernel>` snapshot persisted in `chat_v2_sessions.metadata` (RFC-001 M1). */
 export interface MemoryKernelFrozenRecord {
   providerId: string;
@@ -119,6 +125,7 @@ export interface MemoryKernelFrozenRecord {
   rulesVersion: number;
   profileVersion: number;
   includedRuleIds: string[];
+  includedRules?: MemoryKernelFrozenRuleRef[];
   includedWeakPointKeys: string[];
   includedLegacyNoteIds: string[];
   charCount: number;
@@ -127,10 +134,27 @@ export interface MemoryKernelFrozenRecord {
   generation: number;
 }
 
+function parseIncludedRules(raw: unknown): MemoryKernelFrozenRuleRef[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const parsed: MemoryKernelFrozenRuleRef[] = [];
+  for (const item of raw) {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) continue;
+    const obj = item as Record<string, unknown>;
+    if (typeof obj.id !== 'string' || typeof obj.instruction !== 'string') continue;
+    parsed.push({
+      id: obj.id,
+      instruction: obj.instruction,
+      ...(typeof obj.scope === 'string' ? { scope: obj.scope } : {}),
+    });
+  }
+  return parsed;
+}
+
 function parseMemoryKernelSnapshot(raw: unknown): MemoryKernelFrozenRecord | null {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const obj = raw as Record<string, unknown>;
   if (typeof obj.providerId !== 'string' || typeof obj.renderedKernel !== 'string') return null;
+  const includedRules = parseIncludedRules(obj.includedRules);
   return {
     providerId: obj.providerId,
     renderedKernel: obj.renderedKernel,
@@ -138,6 +162,7 @@ function parseMemoryKernelSnapshot(raw: unknown): MemoryKernelFrozenRecord | nul
     profileVersion: asU64(obj.profileVersion) ?? 0,
     includedRuleIds: Array.isArray(obj.includedRuleIds)
       ? obj.includedRuleIds.filter((x): x is string => typeof x === 'string') : [],
+    ...(includedRules !== undefined ? { includedRules } : {}),
     includedWeakPointKeys: Array.isArray(obj.includedWeakPointKeys)
       ? obj.includedWeakPointKeys.filter((x): x is string => typeof x === 'string') : [],
     includedLegacyNoteIds: Array.isArray(obj.includedLegacyNoteIds)

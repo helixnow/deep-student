@@ -270,6 +270,58 @@ function settleStaleRestoredBlock(
   };
 }
 
+function collectStoppedCandidateBlockIds(msg: Message): string[][] {
+  if (!msg.variants || msg.variants.length === 0) {
+    return msg.blockIds.length > 0 ? [msg.blockIds] : [];
+  }
+  const cancelledVariants = msg.variants.filter((v) => v.status === 'cancelled');
+  if (cancelledVariants.length > 0) {
+    return cancelledVariants.map((v) => v.blockIds);
+  }
+  const active = msg.variants.find((v) => v.id === msg.activeVariantId) ?? (msg.variants.length === 1 ? msg.variants[0] : undefined);
+  return active ? [active.blockIds] : [];
+}
+
+function applyStoppedBlockFlagsToMaps(
+  messageMap: Map<string, Message>,
+  blocksMap: Map<string, Block>,
+  skipMessageId?: string | null,
+): boolean {
+  let changed = false;
+  for (const [msgId, msg] of messageMap) {
+    if (msgId === skipMessageId) continue;
+    if (msg.role !== 'assistant' || msg._meta?.stoppedByUser !== true) continue;
+    const candidateLists = collectStoppedCandidateBlockIds(msg);
+    for (const ids of candidateLists) {
+      let lastContentId: string | null = null;
+      for (let i = ids.length - 1; i >= 0; i--) {
+        const blk = blocksMap.get(ids[i]!);
+        if (blk?.type === 'content') {
+          lastContentId = blk.id;
+          break;
+        }
+      }
+      for (const id of ids) {
+        const blk = blocksMap.get(id);
+        if (!blk) continue;
+        if (blk.type === 'content' && id === lastContentId && blk.aborted !== true) {
+          blocksMap.set(id, { ...blk, aborted: true });
+          changed = true;
+          continue;
+        }
+        if (blk.type === 'thinking' && blk.aborted !== true) {
+          const hasLaterContent = hasSubsequentNonEmptyContent(blk, msg, blocksMap);
+          if (!hasLaterContent || !blk.endedAt || blk.status !== 'success') {
+            blocksMap.set(id, { ...blk, aborted: true });
+            changed = true;
+          }
+        }
+      }
+    }
+  }
+  return changed;
+}
+
 /** 后端消息 → 前端 Message（restoreFromBackend / prependHistoryFromBackend 共用） */
 function convertBackendMessage(msg: LoadSessionResponseType['messages'][number]): Message {
   return {
@@ -736,6 +788,9 @@ export function createRestoreActions(
               ...(hasMore ? {} : { earlierHistoryExhausted: true }),
             };
           })();
+          if (applyStoppedBlockFlagsToMaps(messageMap, blocksMap, current.currentStreamingMessageId)) {
+            blocksChanged = true;
+          }
           if (
             !messagesChanged
             && !blocksChanged
@@ -1061,6 +1116,11 @@ export function createRestoreActions(
               }
             }
           }
+          applyStoppedBlockFlagsToMaps(
+            finalMessageMap,
+            finalBlocksMap,
+            hasLiveActiveStream ? liveState.currentStreamingMessageId : null,
+          );
 
           // 🔧 P1 内存泄漏修复：恢复会话会直接置空 attachments，先释放 blob: 预览 URL
           revokeAttachmentBlobUrls(getState().attachments);

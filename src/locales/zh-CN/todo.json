@@ -417,7 +417,8 @@
     "markPending": "标记为未完成",
     "deleteItem": "删除待办",
     "dragToReorder": "拖拽排序",
-    "editTitleHint": "双击可编辑标题",
+    "editTitleHint": "点击查看详情，双击可编辑标题",
+    "renameTitle": "重命名",
     "openDetail": "查看详情与子任务",
     "setPriority": "设置优先级"
   },
@@ -510,6 +511,8 @@
     "reviewCompleted": "查看已完成",
     "addFirstToday": "添加今日第一项",
     "addItemCta": "新建待办",
+    "scopeCaption": "当前视图：{{view}}（共 {{count}} 项）",
+    "viewTodayWithCount": "查看今日待办 ({{count}})",
     "upcomingClear": "未来 7 天没有安排",
     "upcomingClearHint": "用快速添加给未来的自己留个备忘。",
     "overdueClear": "没有逾期任务",
@@ -752,8 +755,11 @@
       "todayCount": "今日 {{value}} 个番茄",
       "todayGoalBadge": "今日 {{done}}/{{goal}} 个番茄",
       "focusLabel": "专注",
+      "seconds": "{{value}} 秒",
       "minutes": "{{value}} 分钟",
       "hours": "{{value}} 小时",
+      "exactSeconds": "累计专注 {{seconds}} 秒",
+      "exactMinutesSeconds": "累计专注 {{minutes}} 分 {{seconds}} 秒",
       "interrupted": "中断 {{value}} 次",
       "goalProgress": "今日目标 {{done}}/{{goal}}",
       "goalReached": "目标达成",
@@ -778,10 +784,12 @@
       "awayWorkCompleteTitle": "番茄已完成",
       "awayWorkCompleteBody": "这个番茄在你离开期间完成了（今日 {{value}} 个）。休息计时未自动开始",
       "awayBreakCompleteTitle": "休息已结束",
-      "awayBreakCompleteBody": "休息在你离开期间结束了，准备好后手动开始下一个番茄"
+      "awayBreakCompleteBody": "休息在你离开期间结束了，准备好后手动开始下一个番茄",
+      "stopped": "已停止当前番茄钟"
     },
     "settings": {
       "title": "番茄钟设置",
+      "appliesNextRound": "当前阶段进行中，时长调整将在下一轮生效",
       "numberInputAria": "{{label}}数值输入",
       "workDuration": "专注时长",
       "shortBreak": "短休息",
@@ -828,6 +836,10 @@
     },
     "errors": {
       "moreFailures": "（另有 {{count}} 条失败）"
+    },
+    "hostBridge": {
+      "runningInWindow": "番茄钟正在独立窗口中运行",
+      "focusWindow": "切换至番茄钟窗口"
     }
   },
   "sidebar": {

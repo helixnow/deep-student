@@ -468,4 +468,51 @@ describe('send_message.rs retry / edit_and_resend production commands', () => {
     expect(batchCalls).toHaveLength(0);
     expect(getBlock(f.db, 'blk_keep')).not.toBeNull();
   });
+
+  it('S4-02 retry_message with preserveVariant keeps v1 intact, adds versioned v2, and only deletes subsequent turns', async () => {
+    message('msg_u1', 'user', 1, undefined, 'first prompt');
+    message('msg_a1', 'assistant', 2, { modelId: 'GPT-4o' }, 'first answer v1');
+    message('msg_u2', 'user', 3, undefined, 'follow-up');
+    message('msg_a2', 'assistant', 4, { modelId: 'GPT-4o' }, 'follow-up answer');
+
+    const res = await host.invoke<{
+      message_id: string;
+      new_variant_id?: string;
+      deleted_message_ids?: string[];
+    }>('chat_v2_retry_message', {
+      sessionId: SESSION,
+      messageId: 'msg_a1',
+      options: { preserveVariant: true, modelId: 'cfg_vision' } as unknown as SendOptions,
+    });
+
+    expect(res.message_id).toBe('msg_a1');
+    expect(res.new_variant_id).toMatch(/^var_/);
+    expect(res.deleted_message_ids).toEqual(['msg_u2', 'msg_a2']);
+    expect(getBlock(f.db, 'blk_msg_a1')?.content).toBe('first answer v1');
+
+    const stored = getMessage(f.db, 'msg_a1')!;
+    expect(stored.activeVariantId).toBe(res.new_variant_id);
+    expect(stored.variants).toHaveLength(2);
+    expect(stored.variants![0]).toMatchObject({
+      id: 'var_v1_msg_a1',
+      modelId: 'GPT-4o',
+      blockIds: ['blk_msg_a1'],
+      status: 'success',
+      meta: { versioned: true },
+    });
+    expect(stored.variants![1]).toMatchObject({
+      id: res.new_variant_id,
+      blockIds: [],
+      status: 'streaming',
+      meta: { versioned: true },
+    });
+
+    expect(requests).toHaveLength(1);
+    expect((requests[0]!.request.options as Record<string, unknown>)).toMatchObject({
+      skipUserMessageSave: true,
+      skipAssistantMessageSave: true,
+      targetVariantId: res.new_variant_id,
+    });
+    expect(getSessionMessages(f.db, SESSION).map(m => m.id)).toEqual(['msg_u1', 'msg_a1']);
+  });
 });

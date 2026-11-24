@@ -174,6 +174,8 @@
   },
   "unsynced": {
     "title": "未同步文件（{{count}}）",
+    "pendingUploadTitle": "待上传变更 ({{count}})",
+    "pendingUploadEmpty": "本地无待上传变更",
     "description": "对照云端清单与本地文件的只读体检：列出云端有、但本设备上还没有的对象，并说明原因与处理办法。不会写入或删除任何数据。",
     "checkNow": "重新检查",
     "notConfigured": "尚未配置云端同步，暂无可对照的云端清单。",
@@ -291,6 +293,20 @@
     "applyHint": "接入将更新配对码包含的云存储与 AI 配置；技能与插件在下一次云同步时自动下载。",
     "applyBtn": "一键接入配置",
     "applyAndPullBtn": "接入并立即拉取云端数据",
-    "runBiSyncBtn": "立即执行双向云同步"
+    "runBiSyncBtn": "立即执行双向云同步",
+    "qrGeneratedAndPushedStatus": "已生成配对码并推送最新快照（{{summary}}）",
+    "pushSnapshotFailed": "配对码已生成，但推送本机快照失败：{{error}}",
+    "applyPullFailedStatus": "配置已接入，但拉取云端数据失败：{{error}}",
+    "codeAppliedAndPulledStatus": "配置已接入并已完成云端数据拉取。{{summary}}"
+  },
+  "fileSync": {
+    "workspace": "文件级同步：工作区数据库",
+    "blob": "文件级同步：附件文件",
+    "assets": "文件级同步：资产目录",
+    "complete": "文件级同步完成",
+    "transfer": "文件级传输",
+    "applyingChanges": "应用变更",
+    "applyingDownloadedChanges": "应用下载变更",
+    "uploadBatch": "上传批次 {{batch}}"
   }
 }

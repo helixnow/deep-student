@@ -29,6 +29,8 @@ import {
   type StudySpaceChangedEventDetail,
 } from '@/shared/study-space/types';
 import { setPendingRestoreDesktopSize, useWindowStore } from '../core/windowStore';
+import { recomputeLifecycles } from '../core/scheduler';
+import { useWorkbenchOverlay } from '../core/shortcuts';
 import { getSortedWindows } from '../core/windowListCache';
 import { startScheduler } from '../core/scheduler';
 import {
@@ -257,6 +259,40 @@ export const WorkbenchDesktop: React.FC = () => {
     return () => {
       window.removeEventListener(OPEN_WALLPAPER_MANAGER_EVENT, onOpenWallpaperManager);
     };
+  }, []);
+
+  useEffect(() => {
+    const onWindowCommand = (event: Event) => {
+      const action = (event as CustomEvent<{ action?: string }>).detail?.action;
+      if (action === 'expose') {
+        useWorkbenchOverlay.getState().toggleExpose();
+        return;
+      }
+      const store = useWindowStore.getState();
+      if (action === 'restoreFloating') {
+        for (const win of Object.values(store.windows)) {
+          if (!win.minimized && win.displayMode !== 'floating') {
+            store.setDisplayMode(win.id, 'floating');
+          }
+        }
+        recomputeLifecycles();
+        return;
+      }
+      if (action === 'tileLeft' || action === 'tileRight') {
+        const targetId = [...store.focusStack]
+          .reverse()
+          .find((id) => {
+            const win = store.windows[id];
+            return Boolean(win && !win.minimized);
+          });
+        if (!targetId) return;
+        store.setDisplayMode(targetId, action === 'tileLeft' ? 'tiled-left' : 'tiled-right');
+        store.focusWindow(targetId);
+        recomputeLifecycles();
+      }
+    };
+    window.addEventListener('workbench:window-command', onWindowCommand);
+    return () => window.removeEventListener('workbench:window-command', onWindowCommand);
   }, []);
 
   const tileMargin = tileMargins.enabled ? tileMargins.px : 0;

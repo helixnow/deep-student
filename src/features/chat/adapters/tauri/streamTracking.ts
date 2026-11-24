@@ -7,7 +7,11 @@
 
 import { reportAdapterError } from '../errors/adapterErrorChannel';
 import type { ChatStore } from '../../core/types';
-import { handleStreamComplete, flushPendingBackendEvents } from '../../core/middleware/eventBridge';
+import {
+  handleStreamComplete,
+  flushPendingBackendEvents,
+  flushOrphanTerminals,
+} from '../../core/middleware/eventBridge';
 import { chunkBuffer } from '../../core/middleware/chunkBuffer';
 import type { SessionEventPayload } from '../types';
 import {
@@ -97,9 +101,11 @@ export function settleStreamCompletion(host: TauriAdapterHost, payload: SessionE
   }
 
   // A terminal event can overtake block events from the separate channel.
-  // First drain sequence-buffered events, then flush their chunk batches,
-  // and only after that tear down the streaming state and bridge context.
+  // Drain sequence-buffered events, materialize any orphan terminal blocks,
+  // and flush batched chunks BEFORE flipping sessionStatus to idle so the
+  // final paragraph renders before terminal action buttons appear.
   flushPendingBackendEvents(host.getCurrentState());
+  flushOrphanTerminals(host.getCurrentState());
   chunkBuffer.flushSession(host.sessionId);
   host.clearStreamExpectation(payload.messageId);
   host.store.completeStream('success');

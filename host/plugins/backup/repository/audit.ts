@@ -93,8 +93,8 @@ export function completeAuditLog(log: AuditLogEntry, durationMs: number): AuditL
   return { ...log, status: 'Completed', duration_ms: durationMs };
 }
 
-export function failAuditLog(log: AuditLogEntry, error: string): AuditLogEntry {
-  return { ...log, status: 'Failed', error_message: error };
+export function failAuditLog(log: AuditLogEntry, error: string, durationMs: number | null = null): AuditLogEntry {
+  return { ...log, status: 'Failed', duration_ms: durationMs, error_message: error };
 }
 
 export function partialAuditLog(log: AuditLogEntry, reason: string, durationMs: number): AuditLogEntry {

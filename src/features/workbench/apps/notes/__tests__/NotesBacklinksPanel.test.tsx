@@ -108,6 +108,21 @@ describe('extractContextSnippet', () => {
     expect(snippet!.truncatedStart).toBe(true);
     expect(snippet!.truncatedEnd).toBe(true);
   });
+
+  it('strips <br /> HTML tags and normalizes resolved wikilink/noteref tokens in surrounding context (S1-06)', () => {
+    const content = '前置说明<br />参见 [[note_gamma]] 和 [[Target]] 以及 [参考](note://note_ref)<br>后续内容';
+    const start = content.indexOf('[[Target]]');
+    const end = start + '[[Target]]'.length;
+    const resolve = (key: string) => (key === 'note_gamma' ? 'Gamma 笔记' : key === 'note_ref' ? 'Ref 笔记' : undefined);
+    const snippet = extractContextSnippet(content, start, end, 100, resolve);
+    expect(snippet).not.toBeNull();
+    expect(snippet!.before).not.toContain('<br');
+    expect(snippet!.after).not.toContain('<br');
+    expect(snippet!.before).toContain('Gamma 笔记');
+    expect(snippet!.before).not.toContain('[[note_gamma]]');
+    expect(snippet!.after).toContain('参考');
+    expect(snippet!.after).not.toContain('note://');
+  });
 });
 
 describe('NotesBacklinksPanel', () => {

@@ -135,4 +135,84 @@ describe('persistence.rs:860–1549 final save production orchestration', () => 
     expect(effects.triggerAutoMemoryExtraction).not.toHaveBeenCalled();
     expect(effects.onTurnCommitted).toHaveBeenCalledTimes(1);
   });
+
+  it('S4-02 persists stoppedByUser on aborted turns and flushes partial buffers silently without extra events', async () => {
+    const { ctx, save } = setup();
+    const emitted: string[] = [];
+    const { ChatV2StreamingAdapter } = await import('../src/llm-adapter.ts');
+    const adapter = new ChatV2StreamingAdapter(
+      {
+        emitStart: (type) => emitted.push(`${type}:start`),
+        emitChunk: (type) => emitted.push(`${type}:chunk`),
+        emitEnd: (type) => emitted.push(`${type}:end`),
+        emitError: (type) => emitted.push(`${type}:error`),
+        emitToolCallPreparingStart: () => emitted.push('preparing:start'),
+      },
+      ctx.assistantMessageId,
+      { enableThinking: true },
+    );
+    adapter.onReasoningChunk('逐步推理内容');
+    adapter.onContentChunk('部分正文回答<t');
+    emitted.length = 0;
+
+    adapter.flushBuffersSilently();
+    expect(emitted).toEqual([]);
+    expect(adapter.getAccumulatedReasoning()).toBe('逐步推理内容');
+    expect(adapter.getAccumulatedContent()).toBe('部分正文回答<t');
+
+    ctx.aborted = true;
+    ctx.finalReasoning = adapter.getAccumulatedReasoning();
+    ctx.finalContent = adapter.getAccumulatedContent();
+    ctx.streamingThinkingBlockId = adapter.getThinkingBlockId();
+    ctx.streamingContentBlockId = adapter.getContentBlockId();
+    ctx.collectStreamedTextSegments(adapter.getTextSegments(), ctx.assistantMessageId);
+
+    await save.saveResults(ctx, { skipAutoMemoryExtraction: true });
+    const restoredMsg = host.ctx.chatSession.getMessage(ctx.assistantMessageId)!;
+    const restoredBlocks = host.ctx.chatSession.getMessageBlocks(ctx.assistantMessageId);
+    expect((restoredMsg._meta as { stoppedByUser?: boolean } | undefined)?.stoppedByUser).toBe(true);
+    expect(restoredBlocks.map((b) => ({ type: b.type, content: b.content }))).toEqual([
+      { type: 'thinking', content: '逐步推理内容' },
+      { type: 'content', content: '部分正文回答<t' },
+    ]);
+  });
+
+  it('S4-02 updates only targetVariantId while preserving sibling version blocks on regenerate', async () => {
+    const { ctx, save, db } = setup();
+    const v1Block = block(ctx.assistantMessageId, `${ctx.sessionId}_v1_blk`, 'content', 'v1 original');
+    host.ctx.chatSession.createMessage({
+      id: ctx.assistantMessageId,
+      sessionId: ctx.sessionId,
+      role: 'assistant',
+      timestamp: 12345,
+      blockIds: [],
+      activeVariantId: 'var_v2',
+      variants: [
+        { id: 'var_v1', modelId: 'm1', blockIds: [v1Block.id], status: 'success', createdAt: 1000, meta: { versioned: true } as never },
+        { id: 'var_v2', modelId: 'm1', blockIds: [], status: 'streaming', createdAt: 2000, meta: { versioned: true } as never },
+      ],
+    });
+    store.createBlockWithConn(db, v1Block);
+    ctx.options.skipUserMessageSave = true;
+    ctx.options.skipAssistantMessageSave = true;
+    ctx.options.targetVariantId = 'var_v2';
+    ctx.finalContent = 'v2 regenerated';
+    ctx.streamingContentBlockId = `${ctx.sessionId}_v2_blk`;
+    vi.mocked(store.updateMessageWithConn).mockClear();
+
+    await save.saveResults(ctx);
+
+    const updatedCall = vi.mocked(store.updateMessageWithConn).mock.calls[0]?.[1];
+    expect(updatedCall).toBeDefined();
+    expect(updatedCall!.timestamp).toBe(12345);
+    expect(updatedCall!.activeVariantId).toBe('var_v2');
+    expect(updatedCall!.variants).toHaveLength(2);
+    expect(updatedCall!.variants![0]).toMatchObject({ id: 'var_v1', blockIds: [v1Block.id], status: 'success' });
+    expect(updatedCall!.variants![1]).toMatchObject({
+      id: 'var_v2',
+      blockIds: [`${ctx.sessionId}_v2_blk`],
+      status: 'success',
+      meta: { versioned: true },
+    });
+  });
 });

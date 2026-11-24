@@ -234,6 +234,34 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         onContextMenu={onContextMenu}
       >
         
+        {/* 多选勾选框（hover/focus-visible/已选中/多选模式下可见，单击累加切换而不清空已有选中） */}
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={isSelected}
+          data-testid="finder-item-select-checkbox"
+          aria-label={t('learningHub:finder.multiSelect.selectItem', {
+            name: shownName,
+            defaultValue: '选择 {{name}}',
+          })}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect('toggle');
+          }}
+          onDoubleClick={(e) => e.stopPropagation()}
+          className={cn(
+            'shrink-0 flex h-4 w-4 items-center justify-center rounded border transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            isSelected
+              ? 'opacity-100 border-primary-foreground/80 bg-primary-foreground text-primary'
+              : multiSelectMode
+                ? 'opacity-100 border-border bg-background/80 text-transparent hover:border-primary/70'
+                : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 border-border bg-background/80 text-transparent hover:border-primary/70',
+          )}
+        >
+          {isSelected && <Check size={11} strokeWidth={3} aria-hidden="true" />}
+        </button>
+
         {/* 自定义 SVG 图标 */}
         <div className="shrink-0">
           <CustomIcon size={useComfortableList ? 28 : 24} />
@@ -386,15 +414,42 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       onContextMenu={onContextMenu}
       title={isEditing ? undefined : rowTitle}
     >
+      {/* 多选勾选框（hover/focus-visible/已选中/多选模式下可见，单击累加切换） */}
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={isSelected}
+        data-testid="finder-item-select-checkbox"
+        aria-label={t('learningHub:finder.multiSelect.selectItem', {
+          name: shownName,
+          defaultValue: '选择 {{name}}',
+        })}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect('toggle');
+        }}
+        onDoubleClick={(e) => e.stopPropagation()}
+        className={cn(
+          'absolute top-1.5 left-1.5 z-20 flex h-4 w-4 items-center justify-center rounded border transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          isSelected
+            ? 'opacity-100 border-primary bg-primary text-primary-foreground'
+            : multiSelectMode
+              ? 'opacity-100 border-border bg-background/90 text-transparent hover:border-primary/70'
+              : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100 border-border bg-background/90 text-transparent hover:border-primary/70',
+        )}
+      >
+        {isSelected && <Check size={11} strokeWidth={3} aria-hidden="true" />}
+      </button>
       {/* 已关联标记 */}
       {isHighlighted && (
-        <div className="absolute top-1 left-1 flex items-center justify-center w-4 h-4 rounded-full bg-primary text-primary-foreground z-10">
+        <div className="absolute top-1 right-7 flex items-center justify-center w-4 h-4 rounded-full bg-primary text-primary-foreground z-10">
           <Check size={10} strokeWidth={3} />
         </div>
       )}
       {/* 收藏星标 */}
       {isFavorite && (
-        <Star size={12} className={cn('absolute top-1.5 text-yellow-500 fill-yellow-500', isTouchPrimary ? 'left-1.5' : 'right-1.5')} />
+        <Star size={12} className={cn('absolute top-1.5 text-yellow-500 fill-yellow-500', isTouchPrimary ? 'right-9' : 'right-1.5')} />
       )}
       {/* 触屏更多操作入口（N-4）：网格模式无 hover/双指，常显右上角 */}
       {isTouchPrimary && !isEditing && (

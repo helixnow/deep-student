@@ -18,3 +18,16 @@
   /* 明确接收指针事件（父层拖拽期间壳会整体 pointer-events:none，不冲突） */
   pointer-events: auto;
 }
+
+/*
+ * 交互画布"展开"态：限制在沙箱工作区画布容器内部，禁止 fixed inset-0 z-50
+ * 覆盖顶栏及「存入空间 / 视口切换 / 检查器」操作区。
+ */
+[data-testid='sandbox-runtime-canvas'] [data-expanded='true'] {
+  position: relative !important;
+  inset: auto !important;
+  z-index: 1 !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 480px;
+}

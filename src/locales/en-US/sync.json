@@ -174,6 +174,8 @@
   },
   "unsynced": {
     "title": "Unsynced files ({{count}})",
+    "pendingUploadTitle": "Pending uploads ({{count}})",
+    "pendingUploadEmpty": "No pending local uploads",
     "description": "A read-only comparison of the cloud manifest against local files: objects that exist in the cloud but not on this device, with the reason and how to fix it. Nothing is written or deleted.",
     "checkNow": "Check again",
     "notConfigured": "Cloud sync is not configured yet, so there is no cloud manifest to compare against.",
@@ -291,6 +293,20 @@
     "applyHint": "Applying updates cloud storage and AI settings included in the code; skills and plugins will download on the next cloud sync.",
     "applyBtn": "Apply Configuration",
     "applyAndPullBtn": "Apply & Pull Cloud Data",
-    "runBiSyncBtn": "Run Bidirectional Sync Now"
+    "runBiSyncBtn": "Run Bidirectional Sync Now",
+    "qrGeneratedAndPushedStatus": "Pairing code generated and latest snapshot pushed ({{summary}})",
+    "pushSnapshotFailed": "Pairing code generated, but pushing local snapshot failed: {{error}}",
+    "applyPullFailedStatus": "Configuration applied, but pulling cloud data failed: {{error}}",
+    "codeAppliedAndPulledStatus": "Configuration applied and cloud data pulled. {{summary}}"
+  },
+  "fileSync": {
+    "workspace": "File sync: workspace databases",
+    "blob": "File sync: attachments",
+    "assets": "File sync: assets directory",
+    "complete": "File sync completed",
+    "transfer": "File transfer",
+    "applyingChanges": "Applying changes",
+    "applyingDownloadedChanges": "Applying downloaded changes",
+    "uploadBatch": "Uploading batch {{batch}}"
   }
 }

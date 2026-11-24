@@ -144,4 +144,71 @@ describe('Essay gradeLevel S3-02 pollution prevention', () => {
     expect(setModeId).toHaveBeenCalledWith('my_custom_mode');
     expect(setGradeLevel).toHaveBeenCalledWith('other');
   });
+
+  it('creates, persists to localStorage, and selects a custom rubric in Section 1 (S3-02)', async () => {
+    window.localStorage.clear();
+    const {
+      LOCAL_CUSTOM_RUBRICS_STORAGE_KEY,
+      mergeModesWithLocalCustom,
+      resolveBackendGradingPayload,
+    } = await import('../modeIds');
+    const setModeId = vi.fn();
+    const onModesChange = vi.fn();
+
+    render(
+      <InlineSettingsPanel
+        isOpen={true}
+        onClose={vi.fn()}
+        modeId="practice"
+        setModeId={setModeId}
+        modes={MODES}
+        modelId="model-1"
+        setModelId={vi.fn()}
+        models={[]}
+        customPrompt=""
+        setCustomPrompt={vi.fn()}
+        onSavePrompt={vi.fn()}
+        onRestoreDefaultPrompt={vi.fn()}
+        onModesChange={onModesChange}
+        essayType="argumentative"
+        setEssayType={vi.fn()}
+        gradeLevel="high_school"
+        setGradeLevel={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('essay-custom-rubric-trigger'));
+    fireEvent.change(screen.getByTestId('custom-rubric-name-input'), {
+      target: { value: '英语读后续写自定标准' },
+    });
+    fireEvent.change(screen.getByTestId('custom-rubric-score-input'), {
+      target: { value: '25' },
+    });
+    fireEvent.change(screen.getByTestId('custom-rubric-prompt-input'), {
+      target: { value: '重点考查情节连贯性与动词细节描写。' },
+    });
+    fireEvent.click(screen.getByTestId('custom-rubric-save-button'));
+
+    expect(onModesChange).toHaveBeenCalledTimes(1);
+    expect(setModeId).toHaveBeenCalledTimes(1);
+    const savedId = setModeId.mock.calls[0]![0] as string;
+    expect(savedId.startsWith('local_custom_')).toBe(true);
+    expect(window.localStorage.getItem(LOCAL_CUSTOM_RUBRICS_STORAGE_KEY)).toContain(
+      '英语读后续写自定标准',
+    );
+
+    const merged = mergeModesWithLocalCustom(MODES);
+    const createdMode = merged.find((m) => m.id === savedId);
+    expect(createdMode?.total_max_score).toBe(25);
+
+    const payload = resolveBackendGradingPayload({
+      modeId: savedId,
+      activeMode: createdMode,
+      customPrompt: '',
+      defaultPromptText: '',
+    });
+    expect(payload.modeIdForBackend).toBe('practice');
+    expect(payload.customPromptForBackend).toContain('英语读后续写自定标准');
+    expect(payload.customPromptForBackend).toContain('重点考查情节连贯性与动词细节描写');
+  });
 });

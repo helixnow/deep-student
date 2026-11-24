@@ -88,8 +88,10 @@ interface GradingMainProps {
   /** 把批改结果送进制卡链路 */
   onGenerateCards?: () => void;
   isGeneratingCards?: boolean;
-  onSaveMistakes?: () => void;
+  onSaveMistakes?: (options?: { includeSuggestions?: boolean }) => void;
   isSavingMistakes?: boolean;
+  mistakesFeedback?: { tone: 'success' | 'info'; message: string } | null;
+  onDismissMistakesFeedback?: () => void;
 
   // Round Props
   /** 显示用的轮次号：新会话没有轮次时是「即将开始的第 1 轮」，不能拿来判断是否已有结果 */
@@ -168,6 +170,8 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   isGeneratingCards,
   onSaveMistakes,
   isSavingMistakes,
+  mistakesFeedback,
+  onDismissMistakesFeedback,
   currentRound,
   hasGradedRound = false,
   onModesChange,
@@ -329,6 +333,8 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       isGeneratingCards={isGeneratingCards}
       onSaveMistakes={onSaveMistakes}
       isSavingMistakes={isSavingMistakes}
+      mistakesFeedback={mistakesFeedback}
+      onDismissMistakesFeedback={onDismissMistakesFeedback}
       currentRound={currentRound}
       roundNavigation={roundNavigation}
       navigateRoundsInHeader={inputCollapsed}
@@ -417,6 +423,14 @@ export const GradingMain: React.FC<GradingMainProps> = ({
             <div className="flex h-full min-h-0 flex-col bg-background">
               {inputSummaryBar}
               <div className="flex flex-1 min-h-0">{resultPanel}</div>
+            </div>
+          ) : isSmallScreen ? (
+            /* 小屏/360px 点击「编辑原文」互斥切换为纯编辑视图，避免与分数报告上下叠压 */
+            <div
+              data-testid="essay-mobile-edit-view"
+              className="flex h-full min-h-0 flex-col bg-background [&>*]:!h-full [&>*]:!min-h-0 [&>*]:!basis-auto [&>*]:!flex-none"
+            >
+              {inputPanel}
             </div>
           ) : isSplit ? (
             <HorizontalResizable

@@ -40,10 +40,78 @@ async function ensureMemoryKernelSummary(): Promise<MemoryInspectionView | null>
 
 export interface MemoryKernelAttributionPillProps {
   className?: string;
+  sessionMetadata?: Record<string, unknown> | null;
 }
 
-export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillProps> = ({ className }) => {
-  const { t } = useTranslation(['settings', 'common']);
+interface FrozenRuleRef {
+  id: string;
+  instruction: string;
+  scope?: string;
+}
+
+interface ParsedFrozenMemorySnapshot {
+  rulesVersion: number;
+  profileVersion: number;
+  includedRuleIds: string[];
+  includedRules: FrozenRuleRef[];
+  includedWeakPointKeys: string[];
+}
+
+function parseFrozenMemorySnapshot(
+  sessionMetadata: Record<string, unknown> | null | undefined,
+): ParsedFrozenMemorySnapshot | null {
+  if (!sessionMetadata || typeof sessionMetadata !== 'object') return null;
+  const raw = sessionMetadata.memoryKernelSnapshot;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  const includedRuleIds = Array.isArray(obj.includedRuleIds)
+    ? obj.includedRuleIds.filter((item): item is string => typeof item === 'string')
+    : [];
+  const includedWeakPointKeys = Array.isArray(obj.includedWeakPointKeys)
+    ? obj.includedWeakPointKeys.filter((item): item is string => typeof item === 'string')
+    : [];
+  const includedRules: FrozenRuleRef[] = [];
+  if (Array.isArray(obj.includedRules)) {
+    for (const item of obj.includedRules) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+      const ruleObj = item as Record<string, unknown>;
+      if (typeof ruleObj.id === 'string' && typeof ruleObj.instruction === 'string') {
+        includedRules.push({
+          id: ruleObj.id,
+          instruction: ruleObj.instruction,
+          ...(typeof ruleObj.scope === 'string' ? { scope: ruleObj.scope } : {}),
+        });
+      }
+    }
+  }
+  return {
+    rulesVersion: typeof obj.rulesVersion === 'number' ? obj.rulesVersion : 0,
+    profileVersion: typeof obj.profileVersion === 'number' ? obj.profileVersion : 0,
+    includedRuleIds,
+    includedRules,
+    includedWeakPointKeys,
+  };
+}
+
+interface AttributionRuleEntry {
+  id: string;
+  instruction: string;
+  scope: string;
+  pinned: boolean;
+  inLive: boolean;
+}
+
+interface AttributionWeakPointEntry {
+  subject: string;
+  knowledge_point: string;
+  inLive: boolean;
+}
+
+export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillProps> = ({
+  className,
+  sessionMetadata,
+}) => {
+  const { t } = useTranslation(['settings', 'chatV2', 'common']);
   const view = useSyncExternalStore(
     subscribeMemoryKernelSummary,
     getMemoryKernelSummarySnapshot,
@@ -58,8 +126,81 @@ export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillPr
   }, []);
 
   if (!view || view.privacyMode) return null;
-  const rules = view.hardRules?.rules ?? [];
-  const weakPoints = view.learnerProfile?.weak_points ?? [];
+  const liveRules = view.hardRules?.rules ?? [];
+  const liveWeakPoints = view.learnerProfile?.weak_points ?? [];
+  const frozenSnapshot = parseFrozenMemorySnapshot(sessionMetadata);
+
+  const rules: AttributionRuleEntry[] = (() => {
+    if (!frozenSnapshot) {
+      return liveRules.map((rule) => ({
+        id: rule.id,
+        instruction: rule.instruction,
+        scope: rule.scope,
+        pinned: rule.pinned,
+        inLive: true,
+      }));
+    }
+    const liveById = new Map(liveRules.map((rule) => [rule.id, rule]));
+    const frozenById = new Map(frozenSnapshot.includedRules.map((rule) => [rule.id, rule]));
+    return frozenSnapshot.includedRuleIds.map((ruleId) => {
+      const liveRule = liveById.get(ruleId);
+      if (liveRule) {
+        return {
+          id: liveRule.id,
+          instruction: liveRule.instruction,
+          scope: liveRule.scope,
+          pinned: liveRule.pinned,
+          inLive: true,
+        };
+      }
+      const frozenRule = frozenById.get(ruleId);
+      return {
+        id: ruleId,
+        instruction: frozenRule?.instruction ?? ruleId,
+        scope: frozenRule?.scope ?? 'global',
+        pinned: false,
+        inLive: false,
+      };
+    });
+  })();
+
+  const weakPoints: AttributionWeakPointEntry[] = (() => {
+    if (!frozenSnapshot) {
+      return liveWeakPoints.map((wp) => ({
+        subject: wp.subject,
+        knowledge_point: wp.knowledge_point,
+        inLive: true,
+      }));
+    }
+    const liveByKey = new Map(
+      liveWeakPoints.map((wp) => [`${wp.subject}:${wp.knowledge_point}`, wp]),
+    );
+    return frozenSnapshot.includedWeakPointKeys.map((key) => {
+      const liveWp = liveByKey.get(key);
+      if (liveWp) {
+        return {
+          subject: liveWp.subject,
+          knowledge_point: liveWp.knowledge_point,
+          inLive: true,
+        };
+      }
+      const sepIndex = key.indexOf(':');
+      return {
+        subject: sepIndex > 0 ? key.slice(0, sepIndex) : '',
+        knowledge_point: sepIndex > 0 ? key.slice(sepIndex + 1) : key,
+        inLive: false,
+      };
+    });
+  })();
+
+  const hasGlobalDrift = Boolean(
+    frozenSnapshot && (
+      frozenSnapshot.rulesVersion !== view.hardRules.version ||
+      liveRules.length !== frozenSnapshot.includedRuleIds.length ||
+      liveRules.some((rule, idx) => frozenSnapshot.includedRuleIds[idx] !== rule.id)
+    ),
+  );
+
   const totalCount = rules.length + weakPoints.length;
   if (totalCount === 0 && !lastRemovedRule) return null;
 
@@ -176,6 +317,15 @@ export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillPr
             </button>
           </div>
 
+          {hasGlobalDrift && (
+            <div
+              data-testid="memory-kernel-frozen-drift-hint"
+              className="mb-2 rounded-md border border-border/50 bg-muted/40 px-2 py-1.5 text-[11px] leading-snug text-muted-foreground"
+            >
+              {t('chatV2:memoryAttribution.frozenMismatchHint', { liveCount: liveRules.length })}
+            </div>
+          )}
+
           {rules.length > 0 && (
             <div className="mb-2 space-y-1">
               <div className="text-[11px] font-medium text-muted-foreground">
@@ -186,19 +336,28 @@ export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillPr
                   key={rule.id}
                   className="flex items-start justify-between gap-2 rounded-md border border-border/40 bg-muted/30 px-2 py-1.5"
                 >
-                  <span className="leading-snug text-foreground/90">{rule.instruction}</span>
-                  <button
-                    type="button"
-                    disabled={busyKey === `rule:${rule.id}`}
-                    onClick={() => void handleRemoveRule(rule.id)}
-                    className="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    aria-label={t('settings:memory.attribution.forgetRuleAria', {
-                      preview: rule.instruction.slice(0, 24),
-                    })}
-                    title={t('settings:memory.attribution.forgetRule')}
-                  >
-                    <Trash className="h-3 w-3" />
-                  </button>
+                  <div className="min-w-0 flex-1 space-y-0.5">
+                    <span className="leading-snug text-foreground/90">{rule.instruction}</span>
+                    {!rule.inLive && (
+                      <div className="text-[10px] text-muted-foreground">
+                        {t('chatV2:memoryAttribution.removedFromGlobal')}
+                      </div>
+                    )}
+                  </div>
+                  {rule.inLive ? (
+                    <button
+                      type="button"
+                      disabled={busyKey === `rule:${rule.id}`}
+                      onClick={() => void handleRemoveRule(rule.id)}
+                      className="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      aria-label={t('settings:memory.attribution.forgetRuleAria', {
+                        preview: rule.instruction.slice(0, 24),
+                      })}
+                      title={t('settings:memory.attribution.forgetRule')}
+                    >
+                      <Trash className="h-3 w-3" />
+                    </button>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -235,17 +394,20 @@ export const MemoryKernelAttributionPill: React.FC<MemoryKernelAttributionPillPr
                     className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-muted/30 px-2 py-1"
                   >
                     <span className="truncate">
-                      <span className="text-muted-foreground">[{wp.subject}]</span> {wp.knowledge_point}
+                      {wp.subject ? <span className="text-muted-foreground">[{wp.subject}] </span> : null}
+                      {wp.knowledge_point}
                     </span>
-                    <button
-                      type="button"
-                      disabled={busyKey === `wp:${key}`}
-                      onClick={() => void handleRemoveWeakPoint(wp.subject, wp.knowledge_point)}
-                      className="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                      title={t('settings:memory.attribution.markMasteredTitle')}
-                    >
-                      <Trash className="h-3 w-3" />
-                    </button>
+                    {wp.inLive ? (
+                      <button
+                        type="button"
+                        disabled={busyKey === `wp:${key}`}
+                        onClick={() => void handleRemoveWeakPoint(wp.subject, wp.knowledge_point)}
+                        className="shrink-0 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        title={t('settings:memory.attribution.markMasteredTitle')}
+                      >
+                        <Trash className="h-3 w-3" />
+                      </button>
+                    ) : null}
                   </div>
                 );
               })}

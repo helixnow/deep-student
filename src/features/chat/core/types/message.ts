@@ -76,6 +76,7 @@ export interface ReplaySkillPayloadSnapshot {
 }
 
 export interface VariantMeta {
+  versioned?: boolean;
   executionSnapshot?: ModelExecutionSnapshot;
   canonicalArtifacts?: CanonicalContentPart[];
   skillSnapshotBefore?: SkillStateSnapshot;

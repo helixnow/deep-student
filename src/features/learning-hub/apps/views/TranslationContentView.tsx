@@ -35,6 +35,44 @@ import { normalizeResourceInstanceKey } from '@/features/workbench/apps/content/
 import { dstu } from '@/dstu';
 import { buildTranslationAutoTitle, isDefaultResourceName } from '@/dstu/autoTitle';
 import { useIsMobile } from '@/hooks/useBreakpoint';
+import {
+  readTranslationDraftSnapshot,
+  saveTranslationDraftSnapshot,
+} from '@/translation';
+
+function toEpochMs(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function mergeWithLocalTranslationDraft(
+  session: TranslationSession,
+): TranslationSession {
+  const draft = readTranslationDraftSnapshot(session.id);
+  if (!draft) return session;
+  const serverMs = toEpochMs(session.updatedAt);
+  // If local draft is strictly newer than server metadata (or server lacks language/text fields), prefer local draft while keeping session id & metadata.
+  if (
+    draft.updatedAt > serverMs ||
+    (!session.srcLang && draft.srcLang) ||
+    (!session.tgtLang && draft.tgtLang) ||
+    (!session.sourceText && draft.sourceText)
+  ) {
+    return {
+      ...session,
+      srcLang: draft.srcLang || session.srcLang,
+      tgtLang: draft.tgtLang || session.tgtLang,
+      sourceText: draft.sourceText !== '' ? draft.sourceText : session.sourceText,
+      translatedText: draft.translatedText !== '' ? draft.translatedText : session.translatedText,
+      updatedAt: draft.updatedAt > serverMs ? draft.updatedAt : session.updatedAt,
+    };
+  }
+  return session;
+}
 
 /** 段落数：按空行/换行切分后剔除空白段（供 agent 观察投影） */
 function countParagraphs(text: string): number {
@@ -310,6 +348,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
   // 避免整屏 loading/错误屏卸载工作台导致用户输入丢失
   // （同步初始化成功时挂载即视为已加载）
   const loadedNodeIdRef = useRef<string | null>(session ? node.id : null);
+  const lastLocalSaveAtRef = useRef<number>(0);
 
   // 节点切换时在渲染阶段同步重置状态（React "adjusting state during render" 模式）：
   // 保证 key 切换后的工作台首帧即拿到正确的初始会话，不会闪现上一节点内容
@@ -333,6 +372,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
     // 保存状态与引导条均为节点级状态，切换后重置
     setSaveState({ status: 'idle' });
     pendingSaveRef.current = null;
+    lastLocalSaveAtRef.current = 0;
     setEmptyHintDismissed(false);
   }
 
@@ -340,6 +380,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
   const loadSession = useCallback(async () => {
     // 捕获本次加载对应的 node ID：若加载期间切换了节点，丢弃过期结果，防止串数据
     const requestNodeId = node.id;
+    const requestStartedAt = Date.now();
     const isStale = () => currentNodeIdRef.current !== requestNodeId;
     // 该节点是否已成功展示过：是则本次为静默刷新，
     // 不得进入整屏 loading/错误屏（会卸载工作台，丢失用户正在输入的内容）
@@ -348,66 +389,65 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
       setLoadError(null);
     }
     try {
-      // 先尝试从 node.metadata 直接转换
-      // 空文件的 metadata 包含默认空值，也能正确转换
-      const converted = dstuNodeToTranslationSession(node);
+      // 先从 node.metadata 构建首帧会话（并合并本地未同步草稿），避免空白闪烁
+      const converted = mergeWithLocalTranslationDraft(dstuNodeToTranslationSession(node));
 
-      // 检查是否有实际内容（空文件的 sourceText 为空）
-      if (converted.sourceText && converted.srcLang && converted.tgtLang) {
-        // 同步就绪，无需进入 loading。本地已有同节点更新的会话（如刚保存过）时
-        // 保留本地版本，避免被父级传入的过期 metadata 回退
-        setSession(prev =>
-          prev && prev.id === converted.id && prev.updatedAt >= converted.updatedAt
-            ? prev
-            : converted
-        );
-        loadedNodeIdRef.current = requestNodeId;
-      } else {
-        // 已有原文但语向字段缺失时先铺出同步内容，同时后台拉取完整 DSTU 数据补齐 meta.srcLang/tgtLang
-        if (converted.sourceText) {
-          setSession(prev =>
-            prev && prev.id === converted.id && prev.updatedAt >= converted.updatedAt
-              ? prev
-              : converted
-          );
-          loadedNodeIdRef.current = requestNodeId;
-        } else if (isFirstLoad) {
-          // 需要异步获取时才进入 loading（仅首次；静默刷新保持工作台挂载）
-          setIsLoading(true);
-        }
-        // 尝试从 DSTU 获取完整数据
-        const result = await translationDstuAdapter.getTranslation(node.id);
-        if (isStale()) return;
-        if (result.ok && result.value) {
-          const fetched = dstuNodeToTranslationSession(result.value);
-          // 与同步路径同规则：静默刷新拿到的旧数据不得回退刚保存的本地会话；
-          // 但若本地缓存缺少语向信息而服务端已补齐，则合并更新
-          setSession(prev => {
-            if (!prev || prev.id !== fetched.id) return fetched;
-            if (prev.updatedAt > fetched.updatedAt) return prev;
-            if (prev.updatedAt === fetched.updatedAt && prev.srcLang && prev.tgtLang) {
-              return prev;
-            }
-            return fetched;
-          });
-          loadedNodeIdRef.current = requestNodeId;
-        } else if (!result.ok) {
-          // S-018 修复：加载失败时进入错误态，阻止保存操作，防止空内容覆盖真实数据
-          const errMsg = 'error' in result ? getErrorMessage(result.error) : t('translation:errors.load_failed_generic');
-          console.error('[TranslationContentView] Failed to load translation from DSTU:', errMsg);
-          if (isFirstLoad) {
-            setLoadError(errMsg);
-            setSession(null);
+      if (converted.sourceText || converted.srcLang || converted.tgtLang) {
+        setSession(prev => {
+          if (prev && prev.id === converted.id && lastLocalSaveAtRef.current >= requestStartedAt) {
+            return prev;
           }
-          return;
-        } else {
-          // 空文件：设置为带 node.id 的空会话
-          setSession({
-            ...converted,
-            id: node.id,
-          });
-          loadedNodeIdRef.current = requestNodeId;
+          if (
+            prev &&
+            prev.id === converted.id &&
+            toEpochMs(prev.updatedAt) > toEpochMs(converted.updatedAt)
+          ) {
+            return prev;
+          }
+          return converted;
+        });
+        loadedNodeIdRef.current = requestNodeId;
+      } else if (isFirstLoad) {
+        // 需要异步获取时才进入 loading（仅首次；静默刷新保持工作台挂载）
+        setIsLoading(true);
+      }
+
+      // ★ S3-11 修复：始终拉取 DSTU 正文 SSOT（v2 JSON 含精确 srcLang/tgtLang/source/translated），
+      // 绝不因树节点缓存里存在默认 en/zh-CN 元数据而跳过正文读取，防止重载丢语向或角色回退。
+      const result = await translationDstuAdapter.getTranslation(node.id);
+      if (isStale()) return;
+      if (result.ok && result.value) {
+        const fetched = mergeWithLocalTranslationDraft(dstuNodeToTranslationSession(result.value));
+        setSession(prev => {
+          if (prev && prev.id === fetched.id && lastLocalSaveAtRef.current >= requestStartedAt) {
+            return prev;
+          }
+          if (
+            prev &&
+            prev.id === fetched.id &&
+            toEpochMs(prev.updatedAt) > toEpochMs(fetched.updatedAt)
+          ) {
+            return prev;
+          }
+          return fetched;
+        });
+        loadedNodeIdRef.current = requestNodeId;
+      } else if (!result.ok) {
+        // S-018 修复：加载失败时进入错误态，阻止保存操作，防止空内容覆盖真实数据
+        const errMsg = 'error' in result ? getErrorMessage(result.error) : t('translation:errors.load_failed_generic');
+        console.error('[TranslationContentView] Failed to load translation from DSTU:', errMsg);
+        if (isFirstLoad && !converted.sourceText) {
+          setLoadError(errMsg);
+          setSession(null);
         }
+        return;
+      } else if (!converted.sourceText) {
+        // 空文件：设置为带 node.id 的空会话（保留本地草稿语向若有）
+        setSession({
+          ...converted,
+          id: node.id,
+        });
+        loadedNodeIdRef.current = requestNodeId;
       }
     } catch (error: unknown) {
       if (isStale()) return;
@@ -445,6 +485,15 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
         // markTranslationPersisted，dirty 标记保留，本地视图也不做乐观更新
         throw result.error;
       }
+      lastLocalSaveAtRef.current = Date.now();
+      saveTranslationDraftSnapshot({
+        id: sessionToSave.id,
+        srcLang: sessionToSave.srcLang || 'auto',
+        tgtLang: sessionToSave.tgtLang || 'zh-CN',
+        sourceText: sessionToSave.sourceText,
+        translatedText: sessionToSave.translatedText,
+        updatedAt: toEpochMs(sessionToSave.updatedAt) || lastLocalSaveAtRef.current,
+      });
       if (isCurrent()) {
         pendingSaveRef.current = null;
         setSession(sessionToSave);

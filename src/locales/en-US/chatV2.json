@@ -295,6 +295,7 @@
     },
     "truncation": {
       "banner": "This response may have been cut off before finishing",
+      "stoppedBanner": "Generation stopped — you can continue from here",
       "continue": "Continue generating",
       "continuing": "Continuing…"
     },
@@ -1343,6 +1344,7 @@
     "pinGroup": "Pin group",
     "unpinGroup": "Unpin group",
     "archiveSession": "Archive Thread",
+    "archiveSessionFailed": "Failed to archive session",
     "archivedSessionsEntry": "Archived Sessions",
     "confirmArchiveSession": "Confirm Archive",
     "archiveSessionToast": "Archived. View archived sessions: Settings",
@@ -1800,6 +1802,9 @@
   },
   "variant": {
     "switcher": "Variant Switcher",
+    "versionSwitcher": "Response version switcher",
+    "prevVersion": "Previous version",
+    "nextVersion": "Next version",
     "cancel": "Cancel",
     "retry": "Retry",
     "delete": "Delete",
@@ -2887,5 +2892,17 @@
   "header": {
     "renameSession": "Rename session",
     "untitledSession": "Untitled Session"
+  },
+  "memoryAttribution": {
+    "frozenMismatchHint": "Global memory settings changed ({{liveCount}} rules globally); this session keeps its frozen Turn-1 baseline.",
+    "removedFromGlobal": "Removed globally"
+  },
+  "starterCue": {
+    "title": "Quick start",
+    "askPromptLabel": "Try a starter question",
+    "askPromptText": "Help me outline today's key study topics and give me 1 quick self-check question.",
+    "openResourcesLabel": "Open Learning Resources",
+    "openFlashcardsLabel": "Go to Flashcards",
+    "dismiss": "Dismiss starter cue"
   }
 }

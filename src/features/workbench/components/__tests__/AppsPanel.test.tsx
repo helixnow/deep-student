@@ -630,3 +630,23 @@ describe('AppsPanel closed backdrop inertness (S5-14)', () => {
     expect(css).toMatch(/\.wb-apps-root\[data-wb-apps-open='false'\]\s*\.wb-apps-backdrop\s*\{[^}]*visibility:\s*hidden;/);
   });
 });
+
+describe('AppsPanel foreground focus above Settings (S4-12)', () => {
+  it('focuses the search input reliably after rendered mounts and applies modal stacking z-index', async () => {
+    const settingsBtn = document.createElement('button');
+    settingsBtn.textContent = 'Settings control';
+    document.body.appendChild(settingsBtn);
+    settingsBtn.focus();
+
+    render(<AppsPanel />);
+    act(() => openAppsPanel());
+
+    const root = screen.getByTestId('wb-apps-panel');
+    expect(root.style.zIndex).toContain('--wb-z-modal');
+    const searchInput = await screen.findByTestId('wb-apps-search');
+    await waitFor(() => {
+      expect(document.activeElement).toBe(searchInput);
+    });
+    settingsBtn.remove();
+  });
+});

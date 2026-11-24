@@ -5,7 +5,7 @@
  */
 
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
-import { Copy, Check, ArrowCounterClockwise, Trash, GitBranch, ArrowBendDownRight } from '@phosphor-icons/react';
+import { Copy, Check, ArrowCounterClockwise, Trash, GitBranch, ArrowBendDownRight, CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { useStore } from 'zustand';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -182,6 +182,13 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     variants,
     activeVariant,
     isMultiVariant,
+    isVersioned,
+    versionCount,
+    activeVersionIndex,
+    canPrevVersion,
+    canNextVersion,
+    switchToPrevVersion,
+    switchToNextVersion,
     displayBlockIds,
     switchVariant,
     cancelVariant,
@@ -422,8 +429,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     });
   }, [store, textSelection.contextBefore, textSelection.contextAfter, t]);
   
-  // 🧮 Token 汇总：多变体判断不依赖并行视图开关
-  const hasMultipleVariants = variants.length > 1;
+  // 🧮 Token 汇总：多变体判断不依赖并行视图开关（但重新生成版本序列按当前激活版本统计）
+  const hasMultipleVariants = variants.length > 1 && !isVersioned;
   // 🔧 性能：memo 聚合结果，保持 usage 对象引用稳定，让 TokenUsageDisplay 的 memo 生效
   const aggregatedUsage = useMemo(
     () => (hasMultipleVariants ? aggregateVariantUsage(variants) : undefined),
@@ -492,6 +499,16 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   const isManuallyStoppedTurn = useMemo(() => {
     if (isUser || sessionStatus === 'streaming' || hasActiveBlock) return false;
+    if (isVersioned && activeVariant) {
+      if (activeVariant.status === 'cancelled') return true;
+      if (hasAbortedBlock) return true;
+      return assistantBlocks.some(
+        (block) =>
+          block.error === 'aborted' ||
+          block.error === 'Stream cancelled before tool execution' ||
+          block.error === 'Stream cancelled'
+      );
+    }
     if (message?._meta?.stoppedByUser) return true;
     if (activeVariant?.status === 'cancelled') return true;
     if (hasAbortedBlock) return true;
@@ -502,11 +519,12 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
         block.error === 'Stream cancelled'
     );
   }, [
-    activeVariant?.status,
+    activeVariant,
     assistantBlocks,
     hasAbortedBlock,
     hasActiveBlock,
     isUser,
+    isVersioned,
     message?._meta?.stoppedByUser,
     sessionStatus,
   ]);
@@ -539,7 +557,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     sessionStatus,
   ]);
 
-  const shouldHideLatestAssistantFooter = !isUser && isLatest && (sessionStatus === 'streaming' || hasActiveBlock);
+  const shouldHideLatestAssistantFooter =
+    !isUser &&
+    isLatest &&
+    (sessionStatus === 'streaming' || hasActiveBlock || activeVariant?.status === 'streaming');
   const showAssistantFooterAlways = !isUser && isLatest && !shouldHideLatestAssistantFooter;
   const isTruncatedResponse = useMemo(() => {
     if (isUser || isMultiVariant || isReadOnlySession || isLocked || isWaitingForContent || hasZeroOutputFailure || !hasConsumableAssistantContent) {
@@ -575,6 +596,16 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     getDisplayBlocks,
     hasActiveBlock,
   ]);
+  const isStoppedResumable =
+    !isUser &&
+    !isMultiVariant &&
+    !isReadOnlySession &&
+    !isLocked &&
+    !isWaitingForContent &&
+    !hasActiveBlock &&
+    isManuallyStoppedTurn &&
+    hasConsumableAssistantContent;
+  const showContinueGenerationBanner = isTruncatedResponse || isStoppedResumable;
   // ≥768 触屏平板无 hover：coarse 指针下与小屏一样常显，避免历史消息操作（复制/重试/编辑/删除）不可达
   // 注：|| 优先级高于 ?:，等价于 (showAssistantFooterAlways || isCoarsePointer) ? ...，且保留桌面端 fine 指针的 hover 显隐契约
   const assistantFooterClassName = showAssistantFooterAlways || isCoarsePointer
@@ -1608,14 +1639,18 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             </div>
           )}
 
-          {!isUser && !isMultiVariant && !isReadOnlySession && !isLocked && isTruncatedResponse && (
+          {!isUser && !isMultiVariant && !isReadOnlySession && !isLocked && showContinueGenerationBanner && (
             <div
               role="status"
               data-testid="chat-truncated-banner"
               className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-warning/35 bg-warning/10 px-3 py-1.5 text-xs text-foreground"
             >
               <span className="min-w-0 text-muted-foreground">
-                {t('messageItem.truncation.banner')}
+                {isStoppedResumable && !isTruncatedResponse
+                  ? t('messageItem.truncation.stoppedBanner', {
+                      defaultValue: '已暂停生成，可继续补充后续内容',
+                    })
+                  : t('messageItem.truncation.banner')}
               </span>
               <DsButton
                 variant="outline"
@@ -1692,7 +1727,41 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                       )
                     )}
                     {!isUser && !isLocked && (
-                      <MemoryKernelAttributionPill className="mr-1.5" />
+                      <MemoryKernelAttributionPill
+                        className="mr-1.5"
+                        sessionMetadata={storeSessionMetadata}
+                      />
+                    )}
+                    {!isUser && !isMultiVariant && isVersioned && (
+                      <div
+                        className="inline-flex items-center gap-0.5 mr-1 text-xs text-muted-foreground select-none"
+                        data-testid="message-version-switcher"
+                        aria-label={t('variant.versionSwitcher', { defaultValue: 'Response version switcher' })}
+                      >
+                        <button
+                          type="button"
+                          data-testid="message-version-prev"
+                          onClick={switchToPrevVersion}
+                          disabled={!canPrevVersion || shouldHideLatestAssistantFooter}
+                          aria-label={t('variant.prevVersion', { defaultValue: 'Previous version' })}
+                          className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-muted/60 disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                          <CaretLeft size={13} />
+                        </button>
+                        <span data-testid="message-version-indicator" className="px-1 tabular-nums">
+                          {activeVersionIndex + 1} / {versionCount}
+                        </span>
+                        <button
+                          type="button"
+                          data-testid="message-version-next"
+                          onClick={switchToNextVersion}
+                          disabled={!canNextVersion || shouldHideLatestAssistantFooter}
+                          aria-label={t('variant.nextVersion', { defaultValue: 'Next version' })}
+                          className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-muted/60 disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                          <CaretRight size={13} />
+                        </button>
+                      </div>
                     )}
                     {!isMultiVariant && (
                       <MessageActions
@@ -1787,6 +1856,37 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 {/* 📱 移动端右侧：操作按钮 + 用户消息时间 */}
                 {isSmallScreen && (
                   <div className="flex items-center gap-0.5">
+                    {!isUser && !isMultiVariant && isVersioned && (
+                      <div
+                        className="inline-flex items-center gap-0.5 mr-1 text-xs text-muted-foreground select-none"
+                        data-testid="message-version-switcher"
+                        aria-label={t('variant.versionSwitcher', { defaultValue: 'Response version switcher' })}
+                      >
+                        <button
+                          type="button"
+                          data-testid="message-version-prev"
+                          onClick={switchToPrevVersion}
+                          disabled={!canPrevVersion || shouldHideLatestAssistantFooter}
+                          aria-label={t('variant.prevVersion', { defaultValue: 'Previous version' })}
+                          className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-muted/60 disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                          <CaretLeft size={13} />
+                        </button>
+                        <span data-testid="message-version-indicator" className="px-1 tabular-nums">
+                          {activeVersionIndex + 1} / {versionCount}
+                        </span>
+                        <button
+                          type="button"
+                          data-testid="message-version-next"
+                          onClick={switchToNextVersion}
+                          disabled={!canNextVersion || shouldHideLatestAssistantFooter}
+                          aria-label={t('variant.nextVersion', { defaultValue: 'Next version' })}
+                          className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-muted/60 disabled:opacity-40 disabled:pointer-events-none"
+                        >
+                          <CaretRight size={13} />
+                        </button>
+                      </div>
+                    )}
                     {!isMultiVariant && (
                       <MessageActions
                         messageId={messageId}

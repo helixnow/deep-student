@@ -141,4 +141,15 @@ describe('S4-06 skills trust status, notifications, and loading state', () => {
 
     expect(screen.getByText('skills:management.set_default')).toBeTruthy();
   });
+
+  it('defines non-empty selector.loading keys in both zh-CN and en-US skills locales', async () => {
+    const zhSkills = await import('@/locales/zh-CN/skills.json');
+    const enSkills = await import('@/locales/en-US/skills.json');
+    expect(typeof zhSkills.selector?.loading).toBe('string');
+    expect(zhSkills.selector?.loading?.trim().length).toBeGreaterThan(0);
+    expect(typeof enSkills.selector?.loading).toBe('string');
+    expect(enSkills.selector?.loading?.trim().length).toBeGreaterThan(0);
+    expect(zhSkills.selector?.loading).not.toBe('selector.loading');
+    expect(enSkills.selector?.loading).not.toBe('selector.loading');
+  });
 });

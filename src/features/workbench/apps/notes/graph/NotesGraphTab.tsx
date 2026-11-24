@@ -21,6 +21,7 @@ import {
 } from '../backlinksBackend';
 import {
   buildLocalGraph,
+  detectDirectedCycles,
   ghostNodeId,
   type LocalGraphData,
   type LocalGraphNodeDatum,
@@ -200,7 +201,12 @@ async function buildClientFallbackGraph(
     }
   }
 
-  return { nodes: Array.from(nodesById.values()), edges, truncated: false };
+  return {
+    nodes: Array.from(nodesById.values()),
+    edges,
+    truncated: false,
+    ...detectDirectedCycles(edges),
+  };
 }
 
 export interface NotesGraphTabProps {
@@ -364,6 +370,12 @@ export const NotesGraphTab: React.FC<NotesGraphTabProps> = ({
   // 纯双链图不出图例；只有真的存在引用链接（note://）时才需要区分两类边
   const hasNoterefEdges = loadState.status === 'ready'
     && loadState.data.edges.some((edge) => edge.kind === 'noteref');
+  const hasDirectedCycle = loadState.status === 'ready'
+    && !isEmptyGraph
+    && Boolean(loadState.data.hasCycle);
+  const cycleEdgeIds = new Set(
+    loadState.status === 'ready' ? (loadState.data.cycleEdgeIds ?? []) : [],
+  );
 
   return (
     <div className="notes-graph-tab" data-notes-graph-tab>
@@ -390,6 +402,15 @@ export const NotesGraphTab: React.FC<NotesGraphTabProps> = ({
             {t('notesWorkspace.graph.depth2', { defaultValue: '2 度' })}
           </button>
         </div>
+        {hasDirectedCycle && (
+          <span
+            className="notes-graph-cycle-badge"
+            data-testid="notes-graph-cycle-badge"
+            role="status"
+          >
+            {t('notes:workspace.graphCycleDetected', { defaultValue: '检测到引用环路' })}
+          </span>
+        )}
         {hasNoterefEdges && (
           <div
             className="notes-graph-legend"
@@ -466,10 +487,19 @@ export const NotesGraphTab: React.FC<NotesGraphTabProps> = ({
                 const sourceName = nodeTitles.get(edge.source) ?? edge.source;
                 const targetName = nodeTitles.get(edge.target) ?? edge.target;
                 const kindLabel = edge.kind === 'noteref' ? noterefLabel : wikilinkLabel;
+                const isCycleEdge = cycleEdgeIds.has(edge.id);
                 return (
-                  <li key={edge.id} className="notes-graph-edges-item">
+                  <li
+                    key={edge.id}
+                    data-cycle={isCycleEdge ? 'true' : undefined}
+                    className={`notes-graph-edges-item${isCycleEdge ? ' is-cycle' : ''}`}
+                  >
                     <span>{`${sourceName} → ${targetName}`}</span>
-                    <span className="notes-graph-edges-kind">{kindLabel}</span>
+                    <span className="notes-graph-edges-kind">
+                      {isCycleEdge
+                        ? `${kindLabel} · ${t('notes:workspace.graphEdgeCycle', { defaultValue: '环路' })}`
+                        : kindLabel}
+                    </span>
                   </li>
                 );
               })}

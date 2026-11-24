@@ -51,7 +51,8 @@ export class FileLevelProgress {
       }
       const inner = bytes > 0 ? clamp(f32(f32(done) / f32(bytes))) : 0;
       const stage = f32(f32(f32(step) + inner) / f32(total));
-      this.send(direction, done, bytes, f32(this.start + f32(f32(this.end - this.start) * clamp(stage))), `${label}：${item}`);
+      const formattedItem = label.startsWith('sync:') ? `${label}::${item}` : `${label}：${item}`;
+      this.send(direction, done, bytes, f32(this.start + f32(f32(this.end - this.start) * clamp(stage))), formattedItem);
     };
   }
 }
@@ -64,10 +65,10 @@ export async function runFileLevelSync(
   const isCancelError = (error: unknown) => Boolean(options.isCancelled?.()) || /同步已取消/.test(message(error));
   const append = (text: string) => { report.failed = true; report.warning = report.warning ? `${report.warning}；${text}` : text; };
   const rateLimited = () => report.warning !== null && isCloudRateLimited(report.warning);
-  const transfer = (step: number) => progress?.transferCallback(direction, step, 3, '文件级传输');
+  const transfer = (step: number) => progress?.transferCallback(direction, step, 3, 'sync:fileSync.transfer');
   // The mobile profile has no Agent Workspace service. Leave desktop workspace files and their tombstones to a host that owns them.
   if (!options.mobile || coordinator !== null) {
-    progress?.emit(direction, 0, 3, '文件级同步：工作区数据库');
+    progress?.emit(direction, 0, 3, 'sync:fileSync.workspace');
     let entered = false;
     try {
       if (coordinator === null) throw new Error('WorkspaceCoordinator 尚未初始化，无法取得一致性屏障');
@@ -98,7 +99,7 @@ export async function runFileLevelSync(
     }
   }
   if (rateLimited()) return report;
-  progress?.emit(direction, 1, 3, '文件级同步：VFS blob');
+  progress?.emit(direction, 1, 3, 'sync:fileSync.blob');
   if (direction !== 'Download') {
     try { await drainDeletionQueue(options.localStorage, cloud, 'blob', options); }
     catch (error) { if (isCancelError(error)) throw new Error('同步已取消'); logger.warn(`[data_governance] ${message(error)}`); append(message(error)); if (rateLimited()) return report; }
@@ -111,7 +112,7 @@ export async function runFileLevelSync(
     }
   } catch (error) { if (isCancelError(error)) throw new Error('同步已取消'); const detail = `附件同步失败: ${message(error)}`; logger.error(`[data_governance] ${detail}`); append(detail); }
   if (rateLimited()) return report;
-  progress?.emit(direction, 2, 3, '文件级同步：资产目录');
+  progress?.emit(direction, 2, 3, 'sync:fileSync.assets');
   if (direction !== 'Download') {
     try { await drainDeletionQueue(options.localStorage, cloud, 'asset', options); }
     catch (error) { if (isCancelError(error)) throw new Error('同步已取消'); logger.warn(`[data_governance] ${message(error)}`); append(message(error)); if (rateLimited()) return report; }
@@ -130,6 +131,6 @@ export async function runFileLevelSync(
       logger.warn(`[data_governance] 资产目录部分失败: ${detail}`); append(detail);
     }
   } catch (error) { if (isCancelError(error)) throw new Error('同步已取消'); const detail = `资产目录同步失败: ${message(error)}`; logger.error(`[data_governance] ${detail}`); append(detail); }
-  progress?.emit(direction, 3, 3, '文件级同步完成');
+  progress?.emit(direction, 3, 3, 'sync:fileSync.complete');
   return report;
 }

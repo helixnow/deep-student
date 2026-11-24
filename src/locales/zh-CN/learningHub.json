@@ -910,6 +910,7 @@
       "permanentDelete": "永久删除"
     },
     "multiSelect": {
+      "selectItem": "选择 {{name}}",
       "selected": "已选择 {{count}} 项",
       "move": "移动",
       "addToChat": "添加到对话",

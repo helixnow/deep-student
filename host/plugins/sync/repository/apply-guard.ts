@@ -152,6 +152,94 @@ export function foldSafeFieldMergeIntoLocal(
   return folded;
 }
 
+function extractNoteBodyText(raw: DbJson | null | undefined): string | null {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = parseJsonLossless(trimmed);
+        if (isJsonObject(parsed)) {
+          for (const key of ['content_md', 'content', 'body', 'markdown', 'text']) {
+            if (typeof parsed[key] === 'string') return parsed[key];
+          }
+        }
+      } catch {
+        // treat as plain markdown/text
+      }
+    }
+    return raw;
+  }
+  if (isJsonObject(raw)) {
+    for (const key of ['content_md', 'data', 'content', 'body', 'markdown', 'text']) {
+      if (typeof raw[key] === 'string') return raw[key];
+    }
+  }
+  return null;
+}
+
+function readResourceBodyFromDb(db: SqlExecutor, resourceId: string | null | undefined): string | null {
+  if (!resourceId || !tableExists(db, 'resources')) return null;
+  try {
+    const row = db.get<{ data: unknown }>('SELECT data FROM resources WHERE id = ?1', [resourceId]);
+    if (!row || row.data === null || row.data === undefined) return null;
+    return extractNoteBodyText(typeof row.data === 'string' ? row.data : stringifyJsonLossless(row.data as DbJson));
+  } catch {
+    return null;
+  }
+}
+
+function enrichNoteSnapshotWithBody(
+  db: SqlExecutor,
+  snapshot: DbJson,
+  batchResourcesById: ReadonlyMap<string, EngineChange>,
+  isCloudSide: boolean,
+): DbJson {
+  if (!isJsonObject(snapshot) || tableHasColumn(db, 'notes', 'content_md')) return snapshot;
+  if (typeof snapshot.content_md === 'string') return snapshot;
+  const resourceId = typeof snapshot.resource_id === 'string' ? snapshot.resource_id : null;
+  if (!resourceId) return snapshot;
+  let body: string | null = null;
+  if (isCloudSide) {
+    const incomingResource = batchResourcesById.get(resourceId);
+    if (incomingResource && incomingResource.data !== null && isJsonObject(incomingResource.data)) {
+      body = extractNoteBodyText(incomingResource.data.data ?? incomingResource.data);
+    }
+  }
+  if (body === null) {
+    body = readResourceBodyFromDb(db, resourceId);
+  }
+  return body !== null ? { ...snapshot, content_md: body } : snapshot;
+}
+
+function localHasPendingForRecord(db: SqlExecutor, tableName: string, recordId: string): boolean {
+  if (!tableExists(db, '__change_log')) return false;
+  try {
+    return Number(
+      db.pluck<number | bigint>(
+        'SELECT COUNT(*) FROM __change_log WHERE table_name = ?1 AND record_id = ?2 AND sync_version = 0',
+        [tableName, recordId],
+      ) ?? 0,
+    ) > 0;
+  } catch {
+    return false;
+  }
+}
+
+function hasUnresolvedConflictForRecord(db: SqlExecutor, tableName: string, recordId: string): boolean {
+  if (!tableExists(db, '__sync_conflicts')) return false;
+  try {
+    return Number(
+      db.pluck<number | bigint>(
+        'SELECT COUNT(*) FROM __sync_conflicts WHERE table_name = ?1 AND record_id = ?2 AND resolved_at IS NULL',
+        [tableName, recordId],
+      ) ?? 0,
+    ) > 0;
+  } catch {
+    return false;
+  }
+}
+
 /** `apply_downloaded_changes_with_conflict_guard`（mod.rs:7760）。 */
 export function applyDownloadedChangesWithConflictGuard(
   db: DatabaseHandle,
@@ -171,6 +259,13 @@ export function applyDownloadedChangesWithConflictGuard(
   let transactionStarted = false;
   let callbackCompleted = false;
 
+  const incomingResourcesById = new Map<string, EngineChange>();
+  for (const ch of changes) {
+    if (ch.table_name === 'resources' && ch.operation !== 'Delete' && ch.data !== null) {
+      incomingResourcesById.set(ch.record_id, ch);
+    }
+  }
+
   try {
     db.transaction(tx => {
     transactionStarted = true;
@@ -182,6 +277,7 @@ export function applyDownloadedChangesWithConflictGuard(
     const fkTables = fkBatchCheckTables(changes, childMap);
     const fkBaseline = collectForeignKeyViolationSet(tx, fkTables);
     const pendingLocalKeys = collectPendingLocalChangeKeys(tx);
+    const deferredResourceIds = new Set<string>();
 
     orderedChangesForApply(changes).forEach((change, index) => {
       if (shouldSkipShadowedIncompleteUpsert(change, shadowed)) {
@@ -215,7 +311,7 @@ export function applyDownloadedChangesWithConflictGuard(
           return;
         }
 
-        const outcome = resolveOne(tx, remapped, idColumn, {
+        let outcome = resolveOne(tx, remapped, idColumn, {
           policy: options.policy,
           snapshotLocalBeforeOverwrite: (tableName, recordId, localData) => {
             snapshotRecordWithData(
@@ -228,6 +324,39 @@ export function applyDownloadedChangesWithConflictGuard(
             );
           },
         });
+
+        // Cross-table pairing guard for notes <-> resources: never allow an overwrite of
+        // one side while the paired side has unsynced local edits or unresolved conflicts.
+        if (outcome === null && options.deferConflictingOverwrite && tableExists(tx, 'notes') && tableExists(tx, 'resources')) {
+          if (remapped.table_name === 'resources') {
+            const linkedNote = tx.get<{ id: string }>('SELECT id FROM notes WHERE resource_id = ?1 LIMIT 1', [remapped.record_id]);
+            if (linkedNote && (localHasPendingForRecord(tx, 'notes', linkedNote.id) || hasUnresolvedConflictForRecord(tx, 'notes', linkedNote.id) || deferredResourceIds.has(remapped.record_id))) {
+              const localRes = getRecordData(tx, 'resources', remapped.record_id, idColumn);
+              if (localRes !== null) {
+                outcome = {
+                  winner: 'Cloud',
+                  loser: 'Local',
+                  winner_data: remapped.operation === 'Delete' ? null : remapped.data,
+                  loser_data: localRes,
+                };
+              }
+            }
+          } else if (remapped.table_name === 'notes') {
+            const localNote = getRecordData(tx, 'notes', remapped.record_id, idColumn);
+            const localResId = isJsonObject(localNote) && typeof localNote.resource_id === 'string' ? localNote.resource_id : null;
+            const cloudResId = isJsonObject(remapped.data) && typeof remapped.data.resource_id === 'string' ? remapped.data.resource_id : null;
+            if (localNote !== null && localResId && (localHasPendingForRecord(tx, 'resources', localResId) || hasUnresolvedConflictForRecord(tx, 'resources', localResId))) {
+              if (cloudResId) deferredResourceIds.add(cloudResId);
+              deferredResourceIds.add(localResId);
+              outcome = {
+                winner: 'Cloud',
+                loser: 'Local',
+                winner_data: remapped.operation === 'Delete' ? null : remapped.data,
+                loser_data: localNote,
+              };
+            }
+          }
+        }
 
         if (outcome === null) {
           const suppress = remapped.suppress_change_log === true;
@@ -247,11 +376,23 @@ export function applyDownloadedChangesWithConflictGuard(
         } else {
           const winningDevice = outcome.winner === 'Cloud' ? options.cloudDeviceId ?? null : options.localDeviceId ?? null;
           const losingDevice = outcome.loser === 'Cloud' ? options.cloudDeviceId ?? null : options.localDeviceId ?? null;
+          if (remapped.table_name === 'notes') {
+            const localSnap = outcome.winner === 'Local' ? outcome.winner_data : outcome.loser_data;
+            const cloudSnap = outcome.winner === 'Cloud' ? outcome.winner_data : outcome.loser_data;
+            if (isJsonObject(localSnap) && typeof localSnap.resource_id === 'string') deferredResourceIds.add(localSnap.resource_id);
+            if (isJsonObject(cloudSnap) && typeof cloudSnap.resource_id === 'string') deferredResourceIds.add(cloudSnap.resource_id);
+          }
+          const rawLoserData = remapped.table_name === 'notes'
+            ? enrichNoteSnapshotWithBody(tx, outcome.loser_data, incomingResourcesById, outcome.loser === 'Cloud')
+            : outcome.loser_data;
+          const rawWinnerData = remapped.table_name === 'notes'
+            ? enrichNoteSnapshotWithBody(tx, outcome.winner_data, incomingResourcesById, outcome.winner === 'Cloud')
+            : outcome.winner_data;
           const loserInserted = saveConflictRecord(tx, {
             table_name: remapped.table_name,
             record_id: remapped.record_id,
             side: outcome.loser,
-            data: outcome.loser_data,
+            data: rawLoserData,
             winning_device_id: winningDevice,
             losing_device_id: losingDevice,
           });
@@ -259,7 +400,7 @@ export function applyDownloadedChangesWithConflictGuard(
             table_name: remapped.table_name,
             record_id: remapped.record_id,
             side: outcome.winner,
-            data: outcome.winner_data,
+            data: rawWinnerData,
             winning_device_id: winningDevice,
             losing_device_id: losingDevice,
           });

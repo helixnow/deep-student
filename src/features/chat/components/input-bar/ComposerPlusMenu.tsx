@@ -663,15 +663,17 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                     {skillBadge}
                   </span>
                 </AppMenuSubTrigger>
-                <AppMenuSubContent
-                  className="w-[min(360px,calc(100vw-24px))] max-h-[min(520px,70vh)] overflow-hidden p-0"
-                  data-testid="plus-menu-skills-panel"
-                  onMouseDown={(event) => event.stopPropagation()}
-                >
-                  <div className="flex max-h-[min(520px,70vh)] flex-col overflow-hidden">
-                    {renderSkillPanel?.()}
-                  </div>
-                </AppMenuSubContent>
+                {open ? (
+                  <AppMenuSubContent
+                    className="w-[min(360px,calc(100vw-24px))] max-h-[min(520px,70vh)] overflow-hidden p-0"
+                    data-testid="plus-menu-skills-panel"
+                    onMouseDown={(event) => event.stopPropagation()}
+                  >
+                    <div className="flex max-h-[min(520px,70vh)] flex-col overflow-hidden">
+                      {renderSkillPanel?.()}
+                    </div>
+                  </AppMenuSubContent>
+                ) : null}
               </AppMenuSub>
             )}
 

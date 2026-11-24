@@ -1,6 +1,7 @@
 import { syncGovernance } from '../../backup/api.ts';
 /** commands_sync.rs:1586-2317,2859-3364. Registered through the published command-level ports. */
 import { join } from '../../../platform/util/path.ts';
+import { fs } from './local-runtime.ts';
 import { fromHex } from '../../../platform/crypto/encoding.ts';
 import { CommandError } from '../../../kernel/api.ts';
 import { acquireSyncTargetLease, providerKey, type RuntimeCloudStorageConfig, type CloudStorage, type SyncTargetLeaseGuard } from '../../sync-providers/api.ts';
@@ -19,23 +20,84 @@ import { validateUploadSchemaCompatibility } from './manifest-upload.ts';
 import { enforceRecordUploadEncryptionPolicyForConfig } from './upload-policy.ts';
 import { validateSyncRegistryDrift } from '../repository/registry-preflight.ts';
 import { collectLocalManifest } from './transfer-commands.ts';
-import { collectSyncChanges } from './collect-sync-changes.ts';
+import { collectFullSnapshotChanges, collectSyncChanges } from './collect-sync-changes.ts';
 import { executeDownloadWithProgress, executeBidirectionalWithProgress, type SyncPassOptions } from './record-progress.ts';
 import { executeUploadWithProgress } from './record-upload-progress.ts';
 import { executePlainSync } from './record-plain.ts';
 import { SyncV5RuntimeCoordinator, storageWithV5Ranges } from './v5-runtime-bridge.ts';
 import type { PairingSettings } from './device-pairing.ts';
-import type { CoordinatedDatabaseName } from '../../../platform/storage/api.ts';
+import { tableExists } from '../repository/sqlite-values.ts';
+import type { CoordinatedDatabaseName, StorageService } from '../../../platform/storage/api.ts';
+
+function countUnresolvedQuarantine(localStorage: StorageService): number {
+  const dbNames: readonly CoordinatedDatabaseName[] = ['vfs', 'llm_usage', 'chat_v2', 'mistakes'];
+  let count = 0;
+  for (const name of dbNames) {
+    const path = localStorage.pathOf(name);
+    if (!fs.existsSync(path)) continue;
+    let db;
+    try { db = localStorage.openFile(path, { profile: 'plain' }); }
+    catch { continue; }
+    try {
+      if (!tableExists(db, '__sync_quarantine')) continue;
+      count += Number(db.pluck<number | bigint>('SELECT COUNT(*) FROM __sync_quarantine') ?? 0);
+    } catch {
+      // ignore read errors on optional quarantine check
+    } finally {
+      localStorage.close(db);
+    }
+  }
+  return count;
+}
+
+function appendQuarantineVisibilityWarning(result: SyncExecutionResult, quarantineCount: number): void {
+  if (quarantineCount <= 0) return;
+  const notice = `同步部分完成：${quarantineCount} 条变更应用失败（详见隔离区）`;
+  if (!result.error_message) {
+    result.error_message = notice;
+  } else if (!result.error_message.includes('隔离区')) {
+    result.error_message = `${result.error_message}；${notice}`;
+  }
+}
 
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 const notConfigured = 'Cloud storage is not configured. Save a cloud config in Settings first.';
 export const LAST_SYNC_AT_SETTING_KEY = 'data_governance.last_sync_at';
+export const FULL_SNAPSHOT_PUSH_SETTING_KEY = 'data_governance.pending_full_snapshot_push';
 
-function persistLastSyncAt(ctx: SyncContext): void {
+function consumeFullSnapshotPushFlag(ctx: SyncContext): boolean {
   try {
-    const settings = ctx.reflect?.get?.('settings') as { set?: (key: string, value: string) => void } | undefined;
-    if (settings && typeof settings.set === 'function') {
-      settings.set(LAST_SYNC_AT_SETTING_KEY, new Date().toISOString());
+    const settings = ctx.reflect?.get?.('settings') as {
+      get?: (key: string) => string | null;
+      save?: (key: string, value: string) => void;
+      delete?: (key: string) => void;
+    } | undefined;
+    if (!settings || typeof settings.get !== 'function') return false;
+    const raw = settings.get(FULL_SNAPSHOT_PUSH_SETTING_KEY);
+    if (!raw || raw.trim() === '' || raw === 'false' || raw === '0') return false;
+    try {
+      if (typeof settings.delete === 'function') settings.delete(FULL_SNAPSHOT_PUSH_SETTING_KEY);
+      else settings.save?.(FULL_SNAPSHOT_PUSH_SETTING_KEY, '');
+    } catch {
+      // ignore setting cleanup errors
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function persistLastSyncAt(ctx: SyncContext): void {
+  try {
+    const settings = ctx.reflect?.get?.('settings') as {
+      save?: (key: string, value: string) => void;
+      set?: (key: string, value: string) => void;
+    } | undefined;
+    const timestamp = new Date().toISOString();
+    if (settings && typeof settings.save === 'function') {
+      settings.save(LAST_SYNC_AT_SETTING_KEY, timestamp);
+    } else if (settings && typeof settings.set === 'function') {
+      settings.set(LAST_SYNC_AT_SETTING_KEY, timestamp);
     }
   } catch {
     // Never fail completed sync or break test fixtures without SettingsStore.
@@ -164,8 +226,19 @@ export async function runSync(
   } });
   let permit;
   try { permit = ports.limiter.tryAcquire(); }
-  catch (error) { throw new CommandError(message(error)); }
-  if (permit === null) throw new CommandError('另一个数据治理任务（同步/备份/恢复）正在进行中，请稍后再试。');
+  catch (error) {
+    ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`,
+      outcome: { kind: 'failed', error: message(error), durationMs: Math.floor(performance.now() - start) },
+      details: { device_id: deviceId, direction: parsed.toLowerCase(), strategy: strategy ?? 'keep_latest' } });
+    throw new CommandError(message(error));
+  }
+  if (permit === null) {
+    const busy = '另一个数据治理任务（同步/备份/恢复）正在进行中，请稍后再试。';
+    ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`,
+      outcome: { kind: 'failed', error: busy, durationMs: Math.floor(performance.now() - start) },
+      details: { device_id: deviceId, direction: parsed.toLowerCase(), strategy: strategy ?? 'keep_latest' } });
+    throw new CommandError(busy);
+  }
   let codec: FilePayloadCodec | null = null, lease: SyncTargetLeaseGuard | null = null;
   const controller = new AbortController(), cancel = () => controller.abort();
   try {
@@ -200,17 +273,29 @@ export async function runSync(
     const local = collectLocalManifest(ctx.storage, deviceId, false).manifest;
     try { await validateUploadSchemaCompatibility(storage, local, options); }
     catch (error) { throw new Error(`同步 schema 预检失败: ${message(error)}`); }
-    const enriched = await collectSyncChanges(ctx.storage, null);
+    const pushSnapshot = parsed === 'Upload' && consumeFullSnapshotPushFlag(ctx);
+    const enriched = pushSnapshot
+      ? await collectFullSnapshotChanges(ctx.storage, null)
+      : await collectSyncChanges(ctx.storage, null);
     assertLeaseHeartbeatHealthy(lease);
     const [result, skipped] = await executePlainSync(storage, enriched, local, parsed, merge, options, ports.workspaceCoordinator, start);
-    if (result.success) persistLastSyncAt(ctx);
+    const unresolvedQuarantine = parsed !== 'Upload' ? countUnresolvedQuarantine(ctx.storage) : 0;
+    appendQuarantineVisibilityWarning(result, unresolvedQuarantine);
+    if (result.success && result.error_message === null) persistLastSyncAt(ctx);
+    else if (result.success) persistLastSyncAt(ctx);
     logger.info(`[data_governance] 同步完成: direction=${result.direction.toLowerCase()}, uploaded=${result.changes_uploaded}, downloaded=${result.changes_downloaded}, conflicts=${result.conflicts_detected}, skipped=${skipped}, duration=${result.duration_ms}ms`);
     ports.saveSyncAudit({ direction: result.direction, recordsAffected: result.changes_uploaded + result.changes_downloaded,
-      target: `cloud_sync/${result.direction.toLowerCase()}`, outcome: result.success ? { kind: 'complete', durationMs: result.duration_ms } : { kind: 'failed', error: result.error_message ?? 'sync failed' },
+      target: `cloud_sync/${result.direction.toLowerCase()}`, outcome: result.success ? { kind: 'complete', durationMs: result.duration_ms } : { kind: 'failed', error: result.error_message ?? 'sync failed', durationMs: result.duration_ms },
       details: { device_id: deviceId, direction: result.direction.toLowerCase(), strategy: strategy ?? 'keep_latest', changes_uploaded: result.changes_uploaded,
-        changes_downloaded: result.changes_downloaded, conflicts_detected: result.conflicts_detected } });
+        changes_downloaded: result.changes_downloaded, conflicts_detected: result.conflicts_detected, quarantined: unresolvedQuarantine } });
     return { ...result, direction: result.direction.toLowerCase(), device_id: deviceId, skipped_changes: skipped };
-  } catch (error) { throw error instanceof CommandError ? error : new CommandError(message(error)); }
+  } catch (error) {
+    const detail = message(error);
+    const duration = Math.floor(performance.now() - start);
+    ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`, outcome: { kind: 'failed', error: detail, durationMs: duration },
+      details: { device_id: deviceId, direction: parsed.toLowerCase(), strategy: strategy ?? 'keep_latest' } });
+    throw error instanceof CommandError ? error : new CommandError(detail);
+  }
   finally {
     signal?.removeEventListener('abort', cancel); ctx.syncProvider.clearCancelToken();
     if (lease !== null) {
@@ -232,7 +317,26 @@ export async function runSyncWithProgress(
   const start = performance.now();
   const emitter = new SyncProgressEmitter(ctx.backendEvents, text => logger.error(text));
   let cancelTokenInstalled = false;
-  const fail = async (error: unknown): Promise<never> => { const detail = (cancelTokenInstalled && ctx.syncProvider.isSyncCancelled()) ? '同步已取消' : message(error); await emitter.emitFailed(detail); throw new CommandError(detail); };
+  let auditStarted = false;
+  let auditParsed: FileSyncDirection | null = null;
+  let auditDeviceId: string | null = null;
+  const auditStrategy = strategy ?? 'keep_latest';
+  const fail = async (error: unknown): Promise<never> => {
+    const cancelled = cancelTokenInstalled && ctx.syncProvider.isSyncCancelled();
+    const detail = cancelled ? '同步已取消' : message(error);
+    await emitter.emitFailed(detail);
+    if (auditStarted && auditParsed !== null) {
+      const durationMs = Math.floor(performance.now() - start);
+      ports.saveSyncAudit({
+        direction: auditParsed,
+        recordsAffected: 0,
+        target: `cloud_sync/${auditParsed.toLowerCase()}`,
+        outcome: cancelled ? { kind: 'cancelled', error: detail, durationMs } : { kind: 'failed', error: detail, durationMs },
+        details: { device_id: auditDeviceId, direction: auditParsed.toLowerCase(), strategy: auditStrategy, with_progress: true, cancelled },
+      });
+    }
+    throw new CommandError(detail);
+  };
   let parsed: FileSyncDirection, merge: MergeStrategy, config: RuntimeCloudStorageConfig;
   try {
     parsed = parseSyncDirection(direction); merge = parseSyncStrategy(strategy);
@@ -242,8 +346,11 @@ export async function runSyncWithProgress(
   } catch (error) { return fail(error); }
   await syncGovernance(ctx).hydrateCloudConfig(config);
   const deviceId = await ctx.paths.deviceId();
+  auditParsed = parsed;
+  auditDeviceId = deviceId;
+  auditStarted = true;
   ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`, outcome: { kind: 'started' }, details: {
-    device_id: deviceId, direction, strategy: strategy ?? 'keep_latest',
+    device_id: deviceId, direction, strategy: auditStrategy,
     provider: { webdav: 'WebDav', s3: 'S3', ftp: 'Ftp' }[providerKey(config.provider ?? 'webdav')], root: config.root ?? null, with_progress: true,
   } });
   let permit;
@@ -294,7 +401,12 @@ export async function runSyncWithProgress(
     try { await validateUploadSchemaCompatibility(storage, local, options); }
     catch (error) { return fail(new Error(`同步 schema 预检失败: ${message(error)}`)); }
     let enriched;
-    try { enriched = await collectSyncChanges(ctx.storage, emitter); }
+    try {
+      const pushSnapshot = parsed === 'Upload' && consumeFullSnapshotPushFlag(ctx);
+      enriched = pushSnapshot
+        ? await collectFullSnapshotChanges(ctx.storage, emitter)
+        : await collectSyncChanges(ctx.storage, emitter);
+    }
     catch (error) { return fail(error); }
     try { assertLeaseHeartbeatHealthy(lease); }
     catch (error) { return fail(error); }
@@ -306,13 +418,18 @@ export async function runSyncWithProgress(
       else [result, skipped] = await executeBidirectionalWithProgress(storage, enriched,
         { total_count: enriched.length, entries: enriched.map(change => ({ id: change.change_log_id ?? 0 })) }, local, merge, options, ports.workspaceCoordinator, optional);
     } catch (error) {
-      const detail = ctx.syncProvider.isSyncCancelled() ? '同步已取消' : message(error);
+      const cancelled = ctx.syncProvider.isSyncCancelled();
+      const detail = cancelled ? '同步已取消' : message(error);
+      const durationMs = Math.floor(performance.now() - start);
       await emitter.emitFailed(detail); logger.error(`[data_governance] 带进度同步失败: ${detail}`);
-      ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`, outcome: { kind: 'failed', error: detail },
-        details: { device_id: deviceId, direction: parsed.toLowerCase(), strategy: strategy ?? 'keep_latest', with_progress: true } });
+      ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`,
+        outcome: cancelled ? { kind: 'cancelled', error: detail, durationMs } : { kind: 'failed', error: detail, durationMs },
+        details: { device_id: deviceId, direction: parsed.toLowerCase(), strategy: auditStrategy, with_progress: true, cancelled } });
       return { success: false, direction: parsed.toLowerCase(), changes_uploaded: 0, changes_downloaded: 0, conflicts_detected: 0,
-        duration_ms: Math.floor(performance.now() - start), device_id: deviceId, error_message: detail, skipped_changes: 0 };
+        duration_ms: durationMs, device_id: deviceId, error_message: detail, skipped_changes: 0 };
     }
+    const unresolvedQuarantine = parsed !== 'Upload' ? countUnresolvedQuarantine(ctx.storage) : 0;
+    appendQuarantineVisibilityWarning(result, unresolvedQuarantine);
     if (result.success && result.error_message === null) {
       persistLastSyncAt(ctx);
       await emitter.emitCompleted();
@@ -322,9 +439,10 @@ export async function runSyncWithProgress(
     }
     logger.info(`[data_governance] 带进度同步完成: direction=${result.direction.toLowerCase()}, uploaded=${result.changes_uploaded}, downloaded=${result.changes_downloaded}, conflicts=${result.conflicts_detected}, skipped=${skipped}, duration=${result.duration_ms}ms`);
     ports.saveSyncAudit({ direction: result.direction, recordsAffected: result.changes_uploaded + result.changes_downloaded,
-      target: `cloud_sync/${result.direction.toLowerCase()}`, outcome: result.success ? { kind: 'complete', durationMs: result.duration_ms } : { kind: 'failed', error: result.error_message ?? 'sync failed' },
-      details: { device_id: deviceId, direction: result.direction.toLowerCase(), strategy: strategy ?? 'keep_latest', changes_uploaded: result.changes_uploaded,
-        changes_downloaded: result.changes_downloaded, conflicts_detected: result.conflicts_detected, skipped_changes: skipped, with_progress: true } });
+      target: `cloud_sync/${result.direction.toLowerCase()}`,
+      outcome: result.success ? { kind: 'complete', durationMs: result.duration_ms } : { kind: 'failed', error: result.error_message ?? 'sync failed', durationMs: result.duration_ms },
+      details: { device_id: deviceId, direction: result.direction.toLowerCase(), strategy: auditStrategy, changes_uploaded: result.changes_uploaded,
+        changes_downloaded: result.changes_downloaded, conflicts_detected: result.conflicts_detected, skipped_changes: skipped, quarantined: unresolvedQuarantine, with_progress: true } });
     return { ...result, direction: result.direction.toLowerCase(), device_id: deviceId, skipped_changes: skipped };
   } finally {
     signal?.removeEventListener('abort', cancel);

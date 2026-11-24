@@ -178,6 +178,11 @@ class ChunkBufferImpl {
     const session = this.sessions.get(sessionId);
     if (!session) return;
 
+    if (session.flushTimerId !== null) {
+      clearTimeout(session.flushTimerId);
+      session.flushTimerId = null;
+    }
+
     // 批量收集所有更新
     const updates: Array<{ blockId: string; content: string }> = [];
 
@@ -201,6 +206,13 @@ class ChunkBufferImpl {
         }
       }
     }
+  }
+
+  /** 检查指定会话是否仍有待刷新的流式内容分片 */
+  hasPendingSession(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    return session.buffers.size > 0;
   }
 
   /**

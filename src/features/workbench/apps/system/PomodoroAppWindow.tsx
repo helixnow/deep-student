@@ -46,9 +46,11 @@ import {
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { getPomodoroTodayStats, type PomodoroTodayStats } from '@/features/pomodoro/api';
 import { PomodoroStatsContent } from '@/features/pomodoro/components/PomodoroStatsPopover';
+import { formatFocusDisplay, formatFocusTooltip } from '@/features/pomodoro';
 import { listAllPendingItems } from '@/features/todo/api';
 import type { TodoItem } from '@/features/todo/types';
 import type { AppWindowProps } from '../../core/types';
@@ -183,6 +185,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
   const status = usePomodoroStore((s) => s.status);
   const timeLeft = usePomodoroStore((s) => s.timeLeft);
   const sessionCountUp = usePomodoroStore((s) => s.sessionCountUp);
+  const sessionDuration = usePomodoroStore((s) => s.sessionDuration);
   const phaseExtraSeconds = usePomodoroStore((s) => s.phaseExtraSeconds);
   const settings = usePomodoroStore((s) => s.settings);
   const currentTaskId = usePomodoroStore((s) => s.currentTaskId);
@@ -307,9 +310,11 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
     const base = (() => {
       switch (mode) {
         case 'short_break':
-          return settings.shortBreak;
+          return sessionDuration ?? settings.shortBreak;
         case 'long_break':
-          return settings.longBreak;
+          return sessionDuration ?? settings.longBreak;
+        case 'work':
+          return sessionDuration ?? settings.workDuration;
         default:
           return settings.workDuration;
       }
@@ -358,9 +363,9 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
     setConfirmingStop(false);
   }, []);
 
-  // 停止：专注阶段先进入内联确认态（15s 超时自动回退），休息阶段直接停（无记录损失）
+  // 停止：已专注 >10s 先进入内联确认态（15s 超时自动回退）；<=10s 或休息阶段直接停止并提示
   const handleStop = useCallback(() => {
-    if (mode === 'work' && !confirmingStop) {
+    if (mode === 'work' && elapsedWorkSeconds > 10 && !confirmingStop) {
       setConfirmingStop(true);
       if (confirmTimerRef.current != null) window.clearTimeout(confirmTimerRef.current);
       confirmTimerRef.current = window.setTimeout(() => {
@@ -371,7 +376,11 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
     }
     cancelStopConfirm();
     stop(true);
-  }, [mode, confirmingStop, cancelStopConfirm, stop]);
+    showGlobalNotification(
+      'info',
+      t('pomodoro.controls.stopped', { defaultValue: '已停止当前番茄钟' }),
+    );
+  }, [mode, elapsedWorkSeconds, confirmingStop, cancelStopConfirm, stop, t]);
 
   // 阶段切换（含自然完成）后残留的确认态失效；卸载时清掉回退定时器
   useEffect(() => {
@@ -387,12 +396,8 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
   const goalReached = settings.dailyGoal > 0 && todayCount >= settings.dailyGoal;
   const focusSeconds = todayStats?.totalFocusSeconds ?? 0;
   const interruptedCount = todayStats?.interruptedCount ?? 0;
-  const focusLabel = (() => {
-    const m = Math.round(focusSeconds / 60);
-    return m < 60
-      ? t('pomodoro.today.minutes', { value: m })
-      : t('pomodoro.today.hours', { value: (m / 60).toFixed(1) });
-  })();
+  const focusLabel = formatFocusDisplay(focusSeconds, t, 'pomodoro.today');
+  const focusTooltip = formatFocusTooltip(focusSeconds, t, 'pomodoro.today');
 
   // ---- 长休息周期圆点 ----
   //
@@ -633,7 +638,11 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                 </span>
               )}
               {focusSeconds > 0 && (
-                <span className="wb-sys-pomo-today-meta">
+                <span
+                  className="wb-sys-pomo-today-meta"
+                  title={focusTooltip}
+                  data-focus-seconds={focusSeconds}
+                >
                   {t('pomodoro.today.focus')} {focusLabel}
                 </span>
               )}
@@ -773,6 +782,10 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                       if (isShortFocusPreview) {
                         cancelStopConfirm();
                         stop(true);
+                        showGlobalNotification(
+                          'info',
+                          t('pomodoro.controls.stopped', { defaultValue: '已停止当前番茄钟' }),
+                        );
                         return;
                       }
                       if (isCountUpWork) completeCurrentSession();

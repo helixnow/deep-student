@@ -58,6 +58,7 @@ import { UnsyncedItemsPanel } from "./UnsyncedItemsPanel";
 import { SyncIndicator } from "./SyncIndicator";
 import { settingsQuietTableRowClassName } from "../SettingsCommon";
 import { GroupTitle } from "../settingsTabPrimitives";
+import { DataGovernanceApi } from "@/api/dataGovernance";
 import type {
   SyncStatusResponse,
   ConflictDetectionResponse,
@@ -232,6 +233,32 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   onViewAuditLog,
 }) => {
   const { t, i18n } = useTranslation(["data", "common", "sync", "cloudStorage"]);
+  const [cloudEditorMounted, setCloudEditorMounted] = React.useState(showCloudSettingsEditor);
+  const [quarantineCount, setQuarantineCount] = React.useState(0);
+
+  const refreshQuarantineCount = React.useCallback(async () => {
+    try {
+      const items = await DataGovernanceApi.listQuarantine(500, 0);
+      setQuarantineCount(Array.isArray(items) ? items.length : 0);
+    } catch {
+      // ignore in environments without quarantine backend
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void refreshQuarantineCount();
+    const onLocalChange = () => {
+      void refreshQuarantineCount();
+    };
+    window.addEventListener("data-governance:local-change", onLocalChange);
+    return () => {
+      window.removeEventListener("data-governance:local-change", onLocalChange);
+    };
+  }, [refreshQuarantineCount, syncStatus]);
+
+  React.useEffect(() => {
+    if (showCloudSettingsEditor) setCloudEditorMounted(true);
+  }, [showCloudSettingsEditor]);
   // 待确认的数据库级冲突解决策略：点击策略按钮先弹确认，确认后才执行
   const [pendingResolveStrategy, setPendingResolveStrategy] =
     React.useState<MergeStrategy | null>(null);
@@ -266,7 +293,14 @@ export const SyncTab: React.FC<SyncTabProps> = ({
     ? sanitizeSyncAclError(rawSyncError, t, i18n?.language)
     : undefined;
   const localizedProgressItem = syncProgress?.current_item
-    ? localizeBackendErrorText(syncProgress.current_item, i18n?.language)
+    ? syncProgress.current_item.startsWith("sync:")
+      ? t(syncProgress.current_item, {
+          defaultValue: localizeBackendErrorText(
+            syncProgress.current_item,
+            i18n?.language
+          ),
+        })
+      : localizeBackendErrorText(syncProgress.current_item, i18n?.language)
     : "-";
   const showSyncProgress = syncRunning || Boolean(sanitizedSyncError);
   // [R09-e2ee] 端到端加密类失败先归类为“人话”，原文保留在下方供排查/搜索
@@ -642,10 +676,13 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={onToggleCloudSettingsEditor}
+                aria-expanded={showCloudSettingsEditor}
                 className="rounded-xl border-border/70 bg-background/60 px-3 text-foreground hover:bg-muted/50"
               >
                 <Cloud size={14} className="mr-1.5" />
-                {t("data:governance.open_cloud_settings")}
+                {showCloudSettingsEditor
+                  ? t("data:governance.close_cloud_settings", { defaultValue: "收起云存储设置" })
+                  : t("data:governance.open_cloud_settings")}
               </DsButton>
             ) : undefined
           }
@@ -745,11 +782,21 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 size="sm"
                 onClick={() => onRunSync("bidirectional", syncStrategy)}
                 disabled={loading || syncRunning}
+                title={t("data:governance.sync_bidirectional")}
                 className="rounded-xl border-primary/40 bg-primary/15 px-3.5 font-medium text-primary hover:bg-primary/25"
               >
                 <ArrowsLeftRight size={14} className="mr-1.5" />
                 <span>{t("sync:syncNow", { defaultValue: "立即同步" })}</span>
-                <span className="sr-only"> ({t("data:governance.sync_bidirectional")})</span>
+              </DsButton>
+              <DsButton
+                variant="outline"
+                size="sm"
+                onClick={() => onRunSync("bidirectional", syncStrategy)}
+                disabled={loading || syncRunning}
+                className="rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-background/90"
+              >
+                <ArrowsLeftRight size={14} className="mr-1.5" />
+                {t("data:governance.sync_bidirectional")}
               </DsButton>
               <DsButton
                 variant="outline"
@@ -772,6 +819,21 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 {t("data:governance.sync_download")}
               </DsButton>
             </div>
+
+            {quarantineCount > 0 && (
+              <div
+                data-testid="sync-quarantine-partial-banner"
+                className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
+              >
+                <Warning size={15} className="shrink-0" />
+                <span>
+                  {t("data:governance.sync_partial_with_quarantine", {
+                    count: quarantineCount,
+                    defaultValue: `同步部分完成：${quarantineCount} 条变更应用失败（详见隔离区）`,
+                  })}
+                </span>
+              </div>
+            )}
 
             {/* 同步进度 */}
             {showSyncProgress && syncProgress && (
@@ -898,8 +960,12 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           </div>
         )}
 
-          {showCloudSettingsEditor && (
-            <div className="rounded-2xl bg-muted p-4">
+          {(showCloudSettingsEditor || cloudEditorMounted) && (
+            <div
+              data-testid="cloud-settings-inline-panel"
+              hidden={!showCloudSettingsEditor}
+              className={showCloudSettingsEditor ? "rounded-2xl bg-muted p-4" : "hidden"}
+            >
               <CloudStorageSection
                 isDialog
                 onConfigChanged={onCloudConfigChanged}

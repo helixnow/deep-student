@@ -6,6 +6,7 @@ vi.mock('@xyflow/react', () => ({
   Background: () => null,
   BackgroundVariant: { Dots: 'dots' },
   Handle: () => null,
+  MarkerType: { ArrowClosed: 'arrowclosed' },
   Position: { Top: 'top', Bottom: 'bottom' },
   ReactFlow: ({
     nodes,

@@ -170,29 +170,33 @@ function isActiveSuperMetadata(metadata: unknown): boolean {
 }
 
 export function archiveSessionAction(db: DatabaseHandle, sessionId: string): void {
-  const existing = getSession(db, sessionId);
-  if (!existing) throw new ChatV2Error('SessionNotFound', sessionId);
-  if (isActiveSuperMetadata(existing.metadata)) {
-    throw new ChatV2Error('Validation',
-      'Super-agent 会话不能归档。如需清空，请删除该会话（会自动新建一个空的 Super-agent 会话）。');
-  }
-  const timestamp = now();
-  const metadata = metadataObject(existing.metadata);
-  metadata[MANUALLY_ARCHIVED_BY_KEY] = { archivedAt: databaseTimestamp(timestamp) };
-  updateSession(db, {
-    ...existing,
-    persistStatus: 'archived',
-    updatedAt: timestamp,
-    metadata,
-  });
+  databaseOperation(() => db.transaction(tx => {
+    const existing = getSession(tx, sessionId);
+    if (!existing) throw new ChatV2Error('SessionNotFound', sessionId);
+    if (isActiveSuperMetadata(existing.metadata)) {
+      throw new ChatV2Error('Validation',
+        'Super-agent 会话不能归档。如需清空，请删除该会话（会自动新建一个空的 Super-agent 会话）。');
+    }
+    const timestamp = now();
+    const metadata = metadataObject(existing.metadata);
+    metadata[MANUALLY_ARCHIVED_BY_KEY] = { archivedAt: databaseTimestamp(timestamp) };
+    updateSession(tx, {
+      ...existing,
+      persistStatus: 'archived',
+      updatedAt: timestamp,
+      metadata,
+    });
+  }, { behavior: 'immediate' }));
 }
 
 export function softDeleteSessionAction(db: DatabaseHandle, sessionId: string): ChatSession {
-  const existing = getSession(db, sessionId);
-  if (!existing) throw new ChatV2Error('SessionNotFound', sessionId);
-  const deleted: ChatSession = { ...existing, persistStatus: 'deleted', updatedAt: now() };
-  updateSession(db, deleted);
-  return deleted;
+  return databaseOperation(() => db.transaction(tx => {
+    const existing = getSession(tx, sessionId);
+    if (!existing) throw new ChatV2Error('SessionNotFound', sessionId);
+    const deleted: ChatSession = { ...existing, persistStatus: 'deleted', updatedAt: now() };
+    updateSession(tx, deleted);
+    return deleted;
+  }, { behavior: 'immediate' }));
 }
 
 export function retireSuperMetadata(metadata: Record<string, unknown>): void {
@@ -205,37 +209,39 @@ export function retireSuperMetadata(metadata: Record<string, unknown>): void {
 }
 
 export function restoreSessionAction(db: DatabaseHandle, sessionId: string): ChatSession {
-  const existing = getSession(db, sessionId);
-  if (!existing) throw new ChatV2Error('SessionNotFound', sessionId);
-  const original = existing.metadata;
-  const isObject = original !== null && typeof original === 'object' && !Array.isArray(original);
-  const metadata = isObject ? { ...(original as Record<string, unknown>) } : original;
-  if (isObject) {
-    delete (metadata as Record<string, unknown>)[MANUALLY_ARCHIVED_BY_KEY];
-    delete (metadata as Record<string, unknown>).groupArchivedBy;
-  }
-  if (isActiveSuperMetadata(metadata) && otherActiveSuperSessionExists(db, sessionId)) {
-    retireSuperMetadata(metadata as Record<string, unknown>);
-  }
-  if (existing.groupId !== undefined && existing.groupId !== null) {
-    const group = getGroup(db, existing.groupId);
-    if (!group) throw new ChatV2Error('GroupNotFound', existing.groupId);
-    if (group.persistStatus === 'archived') {
-      throw new ChatV2Error('Validation',
-        '该会话属于已归档课题，请先恢复整个课题，避免其它历史会话脱离课题分组。');
+  return databaseOperation(() => db.transaction(tx => {
+    const existing = getSession(tx, sessionId);
+    if (!existing) throw new ChatV2Error('SessionNotFound', sessionId);
+    const original = existing.metadata;
+    const isObject = original !== null && typeof original === 'object' && !Array.isArray(original);
+    const metadata = isObject ? { ...(original as Record<string, unknown>) } : original;
+    if (isObject) {
+      delete (metadata as Record<string, unknown>)[MANUALLY_ARCHIVED_BY_KEY];
+      delete (metadata as Record<string, unknown>).groupArchivedBy;
     }
-    if (group.persistStatus === 'deleted') throw new ChatV2Error('GroupNotFound', existing.groupId);
-  }
-  const restored: ChatSession = {
-    ...existing,
-    persistStatus: 'active',
-    updatedAt: now(),
-    metadata,
-  };
-  updateSession(db, restored);
-  // restore_session_in_db discards the rebuild result (`let _ = rebuild_…`).
-  try { rebuildSessionSkillStateFromHistory(db, sessionId); } catch { return restored; }
-  return restored;
+    if (isActiveSuperMetadata(metadata) && otherActiveSuperSessionExists(tx, sessionId)) {
+      retireSuperMetadata(metadata as Record<string, unknown>);
+    }
+    if (existing.groupId !== undefined && existing.groupId !== null) {
+      const group = getGroup(tx, existing.groupId);
+      if (!group) throw new ChatV2Error('GroupNotFound', existing.groupId);
+      if (group.persistStatus === 'archived') {
+        throw new ChatV2Error('Validation',
+          '该会话属于已归档课题，请先恢复整个课题，避免其它历史会话脱离课题分组。');
+      }
+      if (group.persistStatus === 'deleted') throw new ChatV2Error('GroupNotFound', existing.groupId);
+    }
+    const restored: ChatSession = {
+      ...existing,
+      persistStatus: 'active',
+      updatedAt: now(),
+      metadata,
+    };
+    updateSession(tx, restored);
+    // restore_session_in_db discards the rebuild result (`let _ = rebuild_…`).
+    try { rebuildSessionSkillStateFromHistory(tx, sessionId); } catch { return restored; }
+    return restored;
+  }, { behavior: 'immediate' }));
 }
 
 // ============================================================
@@ -299,18 +305,20 @@ export function setAuthorityModeAction(db: DatabaseHandle, sessionId: string, mo
     throw new ChatV2Error('Validation', `Invalid authority mode '${mode}'. Valid modes: ask, plan, craft`);
   }
   log?.info(`[ChatV2::handlers] chat_v2_set_authority_mode: session=${sessionId}, mode=${parsed}`);
-  const session = getSession(db, sessionId);
-  if (!session) throw new ChatV2Error('SessionNotFound', sessionId);
-  const authority = authorityFromMetadata(session.metadata);
-  authority.authorityMode = parsed;
-  if (parsed !== 'plan') delete authority.plan;
-  const updated: ChatSession = {
-    ...session,
-    metadata: applyAuthorityMetadata(session.metadata, authority),
-    updatedAt: now(),
-  };
-  updateSession(db, updated);
-  return updated;
+  return databaseOperation(() => db.transaction(tx => {
+    const session = getSession(tx, sessionId);
+    if (!session) throw new ChatV2Error('SessionNotFound', sessionId);
+    const authority = authorityFromMetadata(session.metadata);
+    authority.authorityMode = parsed;
+    if (parsed !== 'plan') delete authority.plan;
+    const updated: ChatSession = {
+      ...session,
+      metadata: applyAuthorityMetadata(session.metadata, authority),
+      updatedAt: now(),
+    };
+    updateSession(tx, updated);
+    return updated;
+  }, { behavior: 'immediate' }));
 }
 
 export function setPermissionPresetAction(
@@ -332,15 +340,17 @@ export function setPermissionPresetAction(
   if (approvals === undefined) throw new ChatV2Error('Other', 'ApprovalManager is not available');
   approvals.clearSessionRemembered(sessionId);
   const db = getDb();
-  const session = getSession(db, sessionId);
-  if (!session) throw new ChatV2Error('SessionNotFound', sessionId);
-  const authority = authorityFromMetadata(session.metadata);
-  authority.permissionPreset = parsed;
-  const updated: ChatSession = {
-    ...session,
-    metadata: applyAuthorityMetadata(session.metadata, authority),
-    updatedAt: now(),
-  };
-  updateSession(db, updated);
-  return updated;
+  return databaseOperation(() => db.transaction(tx => {
+    const session = getSession(tx, sessionId);
+    if (!session) throw new ChatV2Error('SessionNotFound', sessionId);
+    const authority = authorityFromMetadata(session.metadata);
+    authority.permissionPreset = parsed;
+    const updated: ChatSession = {
+      ...session,
+      metadata: applyAuthorityMetadata(session.metadata, authority),
+      updatedAt: now(),
+    };
+    updateSession(tx, updated);
+    return updated;
+  }, { behavior: 'immediate' }));
 }

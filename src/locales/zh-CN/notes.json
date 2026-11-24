@@ -2320,8 +2320,12 @@
     "searchMatchCount": "匹配 {{count}} 项",
     "linksAndGraph": "反向链接 / 图谱",
     "graphCurrentNode": "当前",
+    "graphDegree1": "1 度",
+    "graphDegree2": "2 度",
     "graphEdgeWikilink": "双链",
     "graphEdgeNoteref": "引用",
+    "graphEdgeCycle": "环路",
+    "graphCycleDetected": "检测到引用环路",
     "graphConnectionsSummary": "连接边 ({{count}})",
     "graphMoreConnections": "还有 {{count}} 条连接"
   }

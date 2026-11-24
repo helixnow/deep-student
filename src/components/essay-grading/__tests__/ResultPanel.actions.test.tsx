@@ -22,6 +22,8 @@ vi.mock('react-i18next', () => ({
       'essay_grading:make_cards.running': 'Making cards',
       'essay_grading:make_cards.disabled_grading': 'Wait for grading',
       'essay_grading:make_cards.disabled_no_result': 'No result',
+      'essay_grading:mistakes.label': 'Save mistakes',
+      'essay_grading:mistakes.none_available': '暂无可入库错误点',
     }[key] ?? key),
   }),
 }));
@@ -174,5 +176,32 @@ describe('ResultPanel composed essay actions', () => {
 
     renderPanel(false);
     expect(screen.getByRole('button', { name: 'common:aria.previous_round' })).toHaveClass('md:hidden');
+  });
+
+  it('disables Save mistakes when 错误 0 and enables only when suggestions checkbox is opted in (S3-02)', () => {
+    const onSaveMistakes = vi.fn();
+    render(
+      <ResultPanel
+        gradingResult='<replace old="好" new="极好" reason="用词升级"/>'
+        isGrading={false}
+        charCount={24}
+        onCopyResult={vi.fn()}
+        onExportResult={vi.fn()}
+        currentRound={1}
+        onSaveMistakes={onSaveMistakes}
+        mistakesFeedback={{ tone: 'success', message: '已将 1 条写入「作文错题」：bad grammar' }}
+      />,
+    );
+
+    const saveBtn = screen.getByTestId('essay-save-mistakes-button');
+    expect(saveBtn).toBeDisabled();
+    expect(saveBtn).toHaveAttribute('title', '暂无可入库错误点');
+    expect(screen.getByTestId('essay-mistakes-empty-hint')).toHaveTextContent('暂无可入库错误点');
+    expect(screen.getByTestId('essay-mistakes-feedback-banner')).toHaveTextContent('作文错题');
+
+    fireEvent.click(screen.getByTestId('essay-include-suggestions-checkbox'));
+    expect(saveBtn).not.toBeDisabled();
+    fireEvent.click(saveBtn);
+    expect(onSaveMistakes).toHaveBeenCalledWith({ includeSuggestions: true });
   });
 });

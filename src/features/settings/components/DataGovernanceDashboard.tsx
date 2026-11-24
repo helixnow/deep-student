@@ -29,9 +29,12 @@ import {
   Trash,
   CircleNotch,
   ShieldCheck,
+  Upload,
+  ArrowCounterClockwise,
 } from '@phosphor-icons/react';
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/shad/Tabs';
+import { Badge } from '@/components/ui/shad/Badge';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
@@ -83,7 +86,14 @@ import type {
 import {
   INCREMENTAL_BACKUP_REMOVED_MESSAGE,
   INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE,
+  formatBytes,
+  formatTimestamp,
 } from '@/types/dataGovernance';
+import {
+  BackupImportDialog,
+  buildSnapshotAriaLabelMap,
+  isPreRestoreSafetySnapshot,
+} from './data-governance/BackupImportDialog';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { TauriAPI } from '@/utils/tauriApi';
 
@@ -817,6 +827,12 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   // 导入完成后提示恢复对话框状态
   const [showRestorePromptDialog, setShowRestorePromptDialog] = useState(false);
   const [importedBackupId, setImportedBackupId] = useState<string | null>(null);
+  const [showRecoveryImportDialog, setShowRecoveryImportDialog] = useState(false);
+  const [pendingRecoveryRestoreId, setPendingRecoveryRestoreId] = useState<string | null>(null);
+  const recoverySnapshotAriaLabels = React.useMemo(
+    () => buildSnapshotAriaLabelMap(backups),
+    [backups]
+  );
 
   // 备份验证结果详细信息
   const [verifyResult, setVerifyResult] = useState<BackupVerifyResponse | null>(null);
@@ -848,7 +864,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   }, []);
 
   const [cloudSyncSummary, setCloudSyncSummary] = useState(readCloudSyncSummary);
-  const [cloudSyncConfigured, setCloudSyncConfigured] = useState(false);
+  const [cloudSyncConfigured, setCloudSyncConfigured] = useState<boolean>(() => Boolean(readCloudSyncSummary()));
   const [showCloudSettingsEditor, setShowCloudSettingsEditor] = useState(false);
 
   const toggleCloudStorageSettingsEditor = useCallback(() => {
@@ -861,24 +877,27 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
   const refreshCloudSyncConfigured = useCallback(async () => {
     try {
-      const [config, resolved] = await Promise.all([
-        loadCloudSyncConfig().catch(() => null),
-        cloudApi.resolveCloudStorageConfig().catch(() => null),
-      ]);
-      const hasConfig = Boolean(config) || Boolean(resolved?.config);
-      setCloudSyncConfigured(hasConfig);
-      if (resolved?.config) {
+      const resolved = await cloudApi.resolveCloudStorageConfig().catch(() => undefined);
+      const config = resolved !== undefined ? resolved : (await loadCloudSyncConfig().catch(() => null));
+      if (config) {
+        setCloudSyncConfigured(true);
         const root =
-          typeof resolved.config.root === 'string' && resolved.config.root.trim().length > 0
-            ? resolved.config.root
+          typeof config.root === 'string' && config.root.trim().length > 0
+            ? config.root
             : undefined;
-        setCloudSyncSummary({ provider: resolved.config.provider, root });
+        setCloudSyncSummary({ provider: config.provider, root });
+      } else if (resolved === null) {
+        setCloudSyncConfigured(false);
+        setCloudSyncSummary(null);
       } else {
-        setCloudSyncSummary(readCloudSyncSummary());
+        const cached = readCloudSyncSummary();
+        setCloudSyncConfigured(Boolean(cached));
+        setCloudSyncSummary(cached);
       }
     } catch (error: unknown) {
       console.error('读取云存储配置失败:', error);
-      setCloudSyncConfigured(Boolean(readCloudSyncSummary()));
+      const cached = readCloudSyncSummary();
+      setCloudSyncConfigured(Boolean(cached));
     }
   }, [loadCloudSyncConfig, readCloudSyncSummary]);
 
@@ -1199,7 +1218,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       startTabLoading('sync');
     }
     // 每次加载同步状态时重新读取云存储配置，保证配置变更后及时反映
-    setCloudSyncSummary(readCloudSyncSummary());
+    const cachedSummary = readCloudSyncSummary();
+    if (cachedSummary) {
+      setCloudSyncSummary(cachedSummary);
+    }
     void refreshCloudSyncConfigured();
     try {
       const status = await DataGovernanceApi.getSyncStatus();
@@ -1767,14 +1789,27 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
       if (result.success) {
         succeeded = true;
-        if (result.error_message || (result.skipped_changes ?? 0) > 0) {
+        let unresolvedQuarantine = 0;
+        try {
+          const items = await DataGovernanceApi.listQuarantine(500, 0);
+          unresolvedQuarantine = Array.isArray(items) ? items.length : 0;
+        } catch {
+          // ignore quarantine count check failure
+        }
+        window.dispatchEvent(new CustomEvent('data-governance:local-change'));
+        if (result.error_message || (result.skipped_changes ?? 0) > 0 || unresolvedQuarantine > 0) {
           const skipped = result.skipped_changes ?? 0;
           const rawMsg = result.error_message;
           const msg = rawMsg
             ? sanitizeAclErrorMessage(rawMsg, t, i18n?.language)
-            : t('data:governance.sync_partial_with_skipped', {
-                skipped,
-              });
+            : unresolvedQuarantine > 0
+              ? t('data:governance.sync_partial_with_quarantine', {
+                  count: unresolvedQuarantine,
+                  defaultValue: `同步部分完成：${unresolvedQuarantine} 条变更应用失败（详见隔离区）`,
+                })
+              : t('data:governance.sync_partial_with_skipped', {
+                  skipped,
+                });
           showGlobalNotification('warning', msg);
         } else {
           showGlobalNotification('success', t('data:governance.sync_success'));
@@ -1990,6 +2025,13 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   useRefreshOnReturn(() => activeTab === 'audit' ? reloadAuditLogs() : loadActiveTab());
 
   useEffect(loadActiveTab, [loadActiveTab]);
+
+  // 首屏冷启动即水合本地备份统计与同步/云存储配置，避免概览页与同步页在首次访问前显示 0 / 未配置
+  useEffect(() => {
+    void loadBackups();
+    void loadSyncStatus({ silent: true });
+    void refreshCloudSyncConfigured();
+  }, [loadBackups, loadSyncStatus, refreshCloudSyncConfigured]);
 
   // 停留在同步标签页时后台静默轮询 + 监听本地编辑/窗口获焦，离线也能及时更新待同步计数
   useEffect(() => {
@@ -2218,9 +2260,208 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
       <TabsContent value="recovery">
         <div className="space-y-6">
+          <section data-testid="recovery-quick-actions" className="min-w-0">
+            <GroupTitle
+              title={t('data:governance.recovery_quick_title', {
+                defaultValue: '从备份或快照恢复数据',
+              })}
+              description={t('data:governance.recovery_quick_desc', {
+                defaultValue: '可直接导入加密备份 (.zip) 或选择本机完整快照一键恢复。',
+              })}
+            />
+            <div className="rounded-2xl bg-muted p-4 space-y-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <DsButton
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setShowRecoveryImportDialog(true)}
+                  disabled={backupLoading || isBackupRunning}
+                  className="rounded-xl border-primary/40 bg-primary/15 px-4 font-medium text-primary hover:bg-primary/25 [@media(pointer:coarse)]:!h-11"
+                >
+                  <Upload className="h-4 w-4 mr-1.5" />
+                  {t('data:governance.recovery_import_encrypted_zip', {
+                    defaultValue: '导入加密备份 (.zip)',
+                  })}
+                </DsButton>
+                <DsButton
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setActiveTab('backup')}
+                  className="rounded-xl border-border/70 bg-background/60 px-4 text-foreground hover:bg-background/90 [@media(pointer:coarse)]:!h-11"
+                >
+                  <HardDrive className="h-4 w-4 mr-1.5" />
+                  {t('data:governance.recovery_manage_backups', {
+                    defaultValue: '前往备份管理',
+                  })}
+                </DsButton>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-sm font-medium text-foreground">
+                  {t('data:governance.recovery_restore_local_snapshot', {
+                    defaultValue: '从本地快照恢复',
+                  })}
+                </div>
+                {backupLoading && backups.length === 0 ? (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                    <CircleNotch size={14} className="animate-spin" />
+                    {t('common:status.loading')}
+                  </div>
+                ) : backups.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-1">
+                    {t('data:governance.no_backups')}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {backups.map((backup) => {
+                      const preRestoreSafety = isPreRestoreSafetySnapshot(backup);
+                      const restorable = backup.restorable ?? backup.backup_type === 'full';
+                      const ariaTime =
+                        recoverySnapshotAriaLabels.get(backup.path) ??
+                        formatTimestamp(backup.created_at);
+                      return (
+                        <div
+                          key={backup.path}
+                          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/40 bg-background/60 px-3 py-2.5"
+                        >
+                          <div className="min-w-0 flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-medium text-foreground whitespace-nowrap">
+                              {formatTimestamp(backup.created_at)}
+                            </span>
+                            <Badge
+                              variant={
+                                preRestoreSafety
+                                  ? 'secondary'
+                                  : backup.backup_type === 'full'
+                                    ? 'default'
+                                    : 'secondary'
+                              }
+                              className="rounded-sm font-normal whitespace-nowrap"
+                            >
+                              {preRestoreSafety
+                                ? t('data:governance.backup_type_pre_restore', {
+                                    defaultValue: '[恢复前安全快照]',
+                                  })
+                                : backup.recovery_kind === 'partial_archive'
+                                  ? t('data:governance.partial_archive', {
+                                      defaultValue: 'Partial archive',
+                                    })
+                                  : backup.backup_type === 'full'
+                                    ? t('data:governance.full')
+                                    : t('data:governance.partial_overlay')}
+                            </Badge>
+                            <span className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+                              {formatBytes(backup.size)}
+                            </span>
+                          </div>
+                          <DsButton
+                            variant="outline"
+                            size="sm"
+                            disabled={isBackupRunning || !restorable}
+                            onClick={() => setPendingRecoveryRestoreId(backup.path)}
+                            aria-label={t('data:governance.restore_snapshot_aria', {
+                              time: ariaTime,
+                              defaultValue: '恢复 {{time}} 快照',
+                            })}
+                            className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
+                          >
+                            <ArrowCounterClockwise size={14} className="shrink-0" />
+                            <span>{t('data:governance.restore')}</span>
+                          </DsButton>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
           <RecoveryCenter mode="settings" />
           <DataMaintenanceSection />
         </div>
+        <BackupImportDialog
+          open={showRecoveryImportDialog}
+          onOpenChange={setShowRecoveryImportDialog}
+          onImportZip={importZip}
+        />
+        <DsAlertDialog
+          open={pendingRecoveryRestoreId !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingRecoveryRestoreId(null);
+          }}
+          title={t('data:governance.confirm_restore_title')}
+          description={
+            <div className="space-y-2">
+              <p>{t('data:governance.confirm_restore_desc')}</p>
+              <p className="text-warning font-medium">
+                {t('data:governance.restore_save_work_warning')}
+              </p>
+            </div>
+          }
+          confirmText={t('data:governance.restore')}
+          cancelText={t('common:actions.cancel')}
+          confirmVariant="warning"
+          onConfirm={() => {
+            const targetId = pendingRecoveryRestoreId;
+            setPendingRecoveryRestoreId(null);
+            if (targetId) void restoreBackup(targetId);
+          }}
+        />
+        <DsAlertDialog
+          open={showRestorePromptDialog}
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowRestorePromptDialog(false);
+              setImportedBackupId(null);
+            }
+          }}
+          title={t('data:governance.import_complete_title')}
+          description={
+            <div className="space-y-2">
+              <p>{t('data:governance.import_complete_desc')}</p>
+              <p className="text-warning font-medium">
+                {t('data:governance.restore_save_work_warning')}
+              </p>
+            </div>
+          }
+          confirmText={t('data:governance.restore_now')}
+          cancelText={t('data:governance.restore_later')}
+          confirmVariant="warning"
+          onConfirm={() => {
+            const targetId = importedBackupId;
+            setShowRestorePromptDialog(false);
+            setImportedBackupId(null);
+            if (targetId) void restoreBackup(targetId);
+          }}
+        />
+        <DsAlertDialog
+          open={showRestartDialog}
+          onOpenChange={() => undefined}
+          title={t('data:governance.restore_complete_title')}
+          description={
+            <div className="space-y-2">
+              <p>{t('data:governance.restore_complete_desc')}</p>
+              <p className="text-warning font-medium">
+                {t('data:governance.restore_save_work_warning')}
+              </p>
+            </div>
+          }
+          confirmText={t('data:governance.restart_now')}
+          cancelText={t('common:actions.cancel')}
+          confirmVariant="primary"
+          onConfirm={async () => {
+            setShowRestartDialog(false);
+            try {
+              await TauriAPI.restartApp();
+              if (import.meta.env.DEV || isWebUiShell()) {
+                window.location.reload();
+              }
+            } catch (error: unknown) {
+              console.error('重启应用失败:', error);
+              showGlobalNotification('error', getErrorMessage(error));
+            }
+          }}
+        />
       </TabsContent>
 
       <TabsContent value="archive">

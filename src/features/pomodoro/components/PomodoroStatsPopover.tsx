@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next';
 import { Flame, TrendDown, TrendUp } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { formatFocusDisplay, formatFocusTooltip } from '../utils/focusDuration';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
@@ -139,15 +140,15 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
 
   const summary = useMemo(() => {
     if (!stats || stats.length === 0) {
-      return { pomodoros: 0, focusMinutes: 0, avgMinutes: 0, activeDays: 0 };
+      return { pomodoros: 0, focusSeconds: 0, avgSeconds: 0, activeDays: 0 };
     }
     const pomodoros = stats.reduce((acc, d) => acc + d.completedCount, 0);
-    const focusMinutes = Math.round(stats.reduce((acc, d) => acc + d.focusSeconds, 0) / 60);
+    const focusSeconds = stats.reduce((acc, d) => acc + d.focusSeconds, 0);
     const activeDays = stats.filter((d) => d.focusSeconds > 0).length;
     return {
       pomodoros,
-      focusMinutes,
-      avgMinutes: activeDays > 0 ? Math.round(focusMinutes / activeDays) : 0,
+      focusSeconds,
+      avgSeconds: activeDays > 0 ? Math.round(focusSeconds / activeDays) : 0,
       activeDays,
     };
   }, [stats]);
@@ -175,10 +176,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
     return { total, max, peakHour };
   }, [hourDist]);
 
-  const formatFocus = (minutes: number) =>
-    minutes < 60
-      ? t('pomodoro.stats.minutes', { value: minutes })
-      : t('pomodoro.stats.hours', { value: (minutes / 60).toFixed(1) });
+  const formatFocus = (seconds: number) => formatFocusDisplay(seconds, t, 'pomodoro.stats');
 
   const dayLabel = (date: string) => {
     try {
@@ -191,9 +189,9 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
     }
   };
 
-  /** Tooltip 正文：日期 · 专注时长 · N 个番茄 */
+  /** Tooltip 正文：日期 · 精确专注时长 · N 个番茄 */
   const dayDetail = (d: PomodoroDailyStat) =>
-    `${dayLabel(d.date)} · ${formatFocus(Math.round(d.focusSeconds / 60))} · ${t(
+    `${dayLabel(d.date)} · ${formatFocusTooltip(d.focusSeconds, t, 'pomodoro.stats')} · ${t(
       'pomodoro.statsPopover.pomodoroCount',
       { count: d.completedCount },
     )}`;
@@ -278,10 +276,14 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
       ) : (
         <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {todayStat && todayStat.focusSeconds > 0 && (
-            <span className="inline-flex items-center gap-1 font-mono font-medium tabular-nums text-primary">
+            <span
+              className="inline-flex items-center gap-1 font-mono font-medium tabular-nums text-primary"
+              title={formatFocusTooltip(todayStat.focusSeconds, t, 'pomodoro.stats')}
+              data-focus-seconds={todayStat.focusSeconds}
+            >
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-hidden="true" />
               {t('pomodoro.statsPopover.today', { defaultValue: '今日' })}{' '}
-              {formatFocus(Math.round(todayStat.focusSeconds / 60))}
+              {formatFocus(todayStat.focusSeconds)}
               {todayStat.completedCount > 0 && (
                 <span className="text-primary/70">
                   · {t('pomodoro.statsPopover.pomodoroCount', { count: todayStat.completedCount })}
@@ -301,15 +303,22 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
           </span>
           <span>
             {t('pomodoro.stats.focusLabel')}{' '}
-            <strong className="font-mono font-semibold tabular-nums text-foreground">
-              {formatFocus(summary.focusMinutes)}
+            <strong
+              className="font-mono font-semibold tabular-nums text-foreground"
+              title={formatFocusTooltip(summary.focusSeconds, t, 'pomodoro.stats')}
+              data-focus-seconds={summary.focusSeconds}
+            >
+              {formatFocus(summary.focusSeconds)}
             </strong>
           </span>
           {summary.activeDays > 0 && (
             <span>
               {t('pomodoro.statsPopover.dailyAvg')}{' '}
-              <strong className="font-mono font-semibold tabular-nums text-foreground">
-                {formatFocus(summary.avgMinutes)}
+              <strong
+                className="font-mono font-semibold tabular-nums text-foreground"
+                title={formatFocusTooltip(summary.avgSeconds, t, 'pomodoro.stats')}
+              >
+                {formatFocus(summary.avgSeconds)}
               </strong>
             </span>
           )}
@@ -332,7 +341,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
             ))}
           </div>
         )
-      ) : summary.focusMinutes === 0 ? (
+      ) : summary.focusSeconds === 0 ? (
         // 空数据态：手写番茄钟表盘插画 + 主文案 + 一句引导
         <div className="flex h-28 flex-col items-center justify-center gap-2 text-center">
           <svg viewBox="0 0 48 48" className="h-11 w-11 text-muted-foreground/40" aria-hidden="true">
@@ -470,7 +479,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
       })()}
 
       {/* 横轴首尾标签 */}
-      {stats && stats.length > 0 && summary.focusMinutes > 0 && (
+      {stats && stats.length > 0 && summary.focusSeconds > 0 && (
         <div className="mt-1 flex justify-between font-mono text-2xs tabular-nums text-muted-foreground/50">
           <span>{dayLabel(stats[0].date)}</span>
           <span>{dayLabel(stats[stats.length - 1].date)}</span>
@@ -478,7 +487,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
       )}
 
       {/* 时段分布：本范围内 24 小时手写 SVG 直方图（高峰时段实心高亮） */}
-      {hourSummary && hourDist && summary.focusMinutes > 0 && (
+      {hourSummary && hourDist && summary.focusSeconds > 0 && (
         <div className="mt-2 border-t border-[color:var(--shell-workspace-border)] pt-2">
           <div className="mb-1 flex items-center justify-between text-2xs text-muted-foreground/70">
             <span>{t('pomodoro.statsPopover.hourDist', { defaultValue: '时段分布' })}</span>
@@ -535,14 +544,24 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[color:var(--shell-workspace-border)] pt-2 text-xs text-muted-foreground">
           <span>
             {t('pomodoro.statsPopover.thisWeek')}{' '}
-            <strong className="font-mono font-semibold tabular-nums text-foreground">
-              {formatFocus(Math.round(weekCompare.thisWeekSeconds / 60))}
+            <strong
+              className="font-mono font-semibold tabular-nums text-foreground"
+              title={formatFocusTooltip(weekCompare.thisWeekSeconds, t, 'pomodoro.stats')}
+            >
+              {formatFocus(weekCompare.thisWeekSeconds)}
             </strong>
           </span>
           <span>
             {t('pomodoro.statsPopover.dailyAvg')}{' '}
-            <strong className="font-mono font-semibold tabular-nums text-foreground">
-              {formatFocus(Math.round(weekCompare.thisWeekSeconds / 60 / weekCompare.elapsedDays))}
+            <strong
+              className="font-mono font-semibold tabular-nums text-foreground"
+              title={formatFocusTooltip(
+                Math.round(weekCompare.thisWeekSeconds / weekCompare.elapsedDays),
+                t,
+                'pomodoro.stats',
+              )}
+            >
+              {formatFocus(Math.round(weekCompare.thisWeekSeconds / weekCompare.elapsedDays))}
             </strong>
           </span>
           {weekCompare.lastWeekSeconds > 0 ? (

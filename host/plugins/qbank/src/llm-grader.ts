@@ -28,6 +28,33 @@ export interface PracticeGraderDeps {
   images(): ImageAnswerSourceHost | undefined;
 }
 
+function ensureVisibleRationale(
+  rawFeedback: string,
+  verdict: 'correct' | 'partial' | 'incorrect',
+  score: number | null,
+  questionContent: string,
+  userAnswer: string,
+  referenceAnswer: string | null,
+): string {
+  const prose = rawFeedback
+    .replace(/<verdict\s*>\s*(?:correct|partial|incorrect)\s*<\/verdict\s*>/gi, '')
+    .replace(/<score\s+value\s*=\s*["']\d+["']\s*\/?\s*>/gi, '')
+    .trim();
+  if (prose.length > 0) return rawFeedback;
+
+  const isEnglish = !/[\u4e00-\u9fff]/.test(questionContent);
+  const verdictLabel = isEnglish
+    ? (verdict === 'correct' ? 'Correct' : verdict === 'partial' ? 'Partially correct' : 'Incorrect')
+    : (verdict === 'correct' ? '回答正确' : verdict === 'partial' ? '部分正确' : '需要改进');
+  const scorePart = score !== null
+    ? (isEnglish ? `Score: ${score}/100.` : `综合得分 ${score} / 100 分。`)
+    : '';
+  const summary = isEnglish
+    ? `**Grading Rationale (${verdictLabel})**: ${scorePart} Your answer ("${userAnswer.trim() || 'empty'}") was evaluated against the reference answer${referenceAnswer ? ` ("${referenceAnswer}")` : ''}. Review key concepts and missing details to improve completeness.`
+    : `**批改依据（${verdictLabel}）**：${scorePart} 已对比你的作答与${referenceAnswer ? `参考答案（${referenceAnswer}）` : '题目核心要点'}；建议核对关键概念、步骤完整性与表述准确性。`;
+  return `${summary}\n${rawFeedback}`.trim();
+}
+
 function asAppError(error: unknown): AppErrorValue {
   if (error instanceof CommandError) return error.value as AppErrorValue;
   if (error !== null && typeof error === 'object') {
@@ -114,13 +141,21 @@ export function llmPracticeGrader(deps: PracticeGraderDeps): PracticeGrader {
       if (result.error !== null) {
         throw new PracticeGradingFailure(result.error, result.content, stream.diagnostics);
       }
-      const feedback = result.content;
-      const { verdict, score } = parseVerdictAndScore(feedback);
+      const rawFeedback = result.content;
+      const { verdict, score } = parseVerdictAndScore(rawFeedback);
       if (verdict === null) {
         const message = 'AI 批改缺少有效判定，已保留反馈草稿，仍待批改';
-        throw new PracticeGradingFailure(AppError.llm(message), feedback,
+        throw new PracticeGradingFailure(AppError.llm(message), rawFeedback,
           { ...stream.diagnostics, status: 'invalid_result', error_message: 'AI 批改缺少有效判定' });
       }
+      const feedback = ensureVisibleRationale(
+        rawFeedback,
+        verdict,
+        score,
+        request.context.content,
+        request.answer,
+        request.context.answer,
+      );
       return { verdict, score, feedback, diagnostics: stream.diagnostics };
     },
   };

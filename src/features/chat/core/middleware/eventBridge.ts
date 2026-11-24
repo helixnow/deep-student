@@ -365,6 +365,16 @@ export function flushPendingBackendEvents(store: ChatStore): void {
 }
 
 /**
+ * 检查会话是否仍有未消化的乱序事件或孤儿终止事件。
+ */
+export function hasPendingBackendWork(sessionId: string): boolean {
+  const bridge = bridgeStates.get(sessionId);
+  if (bridge && bridge.pendingEvents.size > 0) return true;
+  const context = activeContexts.get(sessionId);
+  return Boolean(context && context.orphanTerminals.length > 0);
+}
+
+/**
  * 重置会话的事件桥接状态（开始新流式时调用）
  */
 export function resetBridgeState(sessionId: string): void {

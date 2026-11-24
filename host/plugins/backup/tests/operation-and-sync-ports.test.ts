@@ -206,19 +206,37 @@ it('saveSyncAudit writes started/complete/failed Sync rows without blocking call
     recordsAffected: 0,
     target: 'cloud_sync/download',
     details: { device_id: 'device-1' },
-    outcome: { kind: 'failed', error: 'network down' },
+    outcome: { kind: 'failed', error: 'network down', durationMs: 17 },
+  });
+  ports.saveSyncAudit({
+    direction: 'Bidirectional',
+    recordsAffected: 0,
+    target: 'cloud_sync/bidirectional',
+    details: { device_id: 'device-2' },
+    outcome: { kind: 'started' },
+  });
+  ports.saveSyncAudit({
+    direction: 'Bidirectional',
+    recordsAffected: 0,
+    target: 'cloud_sync/bidirectional',
+    details: { device_id: 'device-2' },
+    outcome: { kind: 'cancelled', error: '同步已取消', durationMs: 29 },
   });
 
   const rows = host.ctx.storage.database('audit').all<{
     operation_type: string; status: string; duration_ms: number | null;
     error_message: string | null; operation_data: string;
   }>('SELECT operation_type, status, duration_ms, error_message, operation_data FROM __audit_log ORDER BY timestamp, rowid');
-  expect(rows).toHaveLength(2);
+  expect(rows).toHaveLength(3);
   expect(rows[0]).toMatchObject({ operation_type: 'Sync', status: 'Completed', duration_ms: 42 });
   expect(JSON.parse(rows[0]!.operation_data)).toMatchObject({ direction: 'Upload', records_affected: 7 });
   expect(rows[1]).toMatchObject({
-    operation_type: 'Sync', status: 'Failed', error_message: 'network down',
+    operation_type: 'Sync', status: 'Failed', duration_ms: 17, error_message: 'network down',
   });
+  expect(rows[2]).toMatchObject({
+    operation_type: 'Sync', status: 'Failed', duration_ms: 29, error_message: '同步已取消',
+  });
+  expect(rows.some(r => r.status === 'Started')).toBe(false);
 });
 
 it('registers DataGovernanceToolExecutor through the L07 agentTools registry', async () => {

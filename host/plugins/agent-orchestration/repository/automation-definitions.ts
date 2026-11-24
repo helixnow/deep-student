@@ -510,27 +510,33 @@ function automationActionValue(actionType: ActionType): string {
   return actionType;
 }
 
-export function automationToListItem(automation: AutomationDefinition, nowMs: number): Record<string, unknown> {
-  let nextTrigger = automation.next_run_at;
-  if (nextTrigger === null && automation.enabled) {
+export function automationToListItem(
+  automation: AutomationDefinition,
+  nowMs: number,
+  locale?: string | null,
+): Record<string, unknown> {
+  const effectiveLocale = normalizeAutomationLocale(locale);
+  const localized = effectiveLocale ? localizeHeartbeatAutomation(automation, effectiveLocale) : automation;
+  let nextTrigger = localized.next_run_at;
+  if (nextTrigger === null && localized.enabled) {
     try {
-      const slot = computeNextTrigger(automation.schedule, nowMs);
-      nextTrigger = onceSlotAlreadyConsumed(automation, slot) ? null : formatTimestampMillis(slot);
+      const slot = computeNextTrigger(localized.schedule, nowMs);
+      nextTrigger = onceSlotAlreadyConsumed(localized, slot) ? null : formatTimestampMillis(slot);
     } catch {
       nextTrigger = 'unknown';
     }
   }
-  const sessionMode = automation.action_type === 'notify' ? null : (automation.session_mode ?? 'isolated');
+  const sessionMode = localized.action_type === 'notify' ? null : (localized.session_mode ?? 'isolated');
   return {
-    id: automation.id, name: automation.name, schedule: scheduleToListItem(automation.schedule), prompt: automation.prompt,
-    enabled: automation.enabled, created_at: automation.created_at, session_id: automation.session_id,
-    last_run_at: automation.last_run_at, next_trigger_at: nextTrigger,
-    action_type: automationActionValue(automation.action_type), heartbeat: automation.heartbeat,
-    agent_prompt: automation.agent_prompt, session_mode: sessionMode, model_id: automation.model_id,
-    agent_session_id: automation.agent_session_id, catch_up_policy: automation.catch_up_policy,
-    max_retries: automation.max_retries, retry_backoff_seconds: automation.retry_backoff_seconds,
-    timeout_seconds: automation.timeout_seconds, trusted_profile: automation.trusted_profile,
-    version: automation.version,
+    id: localized.id, name: localized.name, schedule: scheduleToListItem(localized.schedule), prompt: localized.prompt,
+    enabled: localized.enabled, created_at: localized.created_at, session_id: localized.session_id,
+    last_run_at: localized.last_run_at, next_trigger_at: nextTrigger,
+    action_type: automationActionValue(localized.action_type), heartbeat: localized.heartbeat,
+    agent_prompt: localized.agent_prompt, session_mode: sessionMode, model_id: localized.model_id,
+    agent_session_id: localized.agent_session_id, catch_up_policy: localized.catch_up_policy,
+    max_retries: localized.max_retries, retry_backoff_seconds: localized.retry_backoff_seconds,
+    timeout_seconds: localized.timeout_seconds, trusted_profile: localized.trusted_profile,
+    version: localized.version,
   };
 }
 
@@ -538,11 +544,12 @@ export function automationToListObject(automation: AutomationDefinition, nowMs: 
   return automationToListItem(automation, nowMs);
 }
 
-export function automationListResponse(db: SqlExecutor): Record<string, unknown> {
+export function automationListResponse(db: SqlExecutor, locale?: string | null): Record<string, unknown> {
   const automations = loadAutomations(db);
+  const effectiveLocale = resolveAutomationLocale(locale, db);
   const now = Date.now();
   return { count: automations.length, max: MAX_AUTOMATIONS,
-    automations: automations.map((automation) => automationToListItem(automation, now)) };
+    automations: automations.map((automation) => automationToListItem(automation, now, effectiveLocale)) };
 }
 
 /** automations.rs:596–604. */
@@ -588,6 +595,33 @@ export function updateAutomationAgentSessionId(
   [automationId, sessionId, nowString(), expectedVersion]);
 }
 
+export type AutomationLocale = 'zh-CN' | 'en-US';
+export const DEFAULT_HEARTBEAT_NAME_ZH = '学习心跳检查';
+export const DEFAULT_HEARTBEAT_NAME_EN = 'Learning Heartbeat Check';
+
+function normalizeAutomationLocale(raw: string | null | undefined): AutomationLocale | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim().replace(/^["']|["']$/g, '').toLowerCase();
+  if (trimmed.startsWith('en')) return 'en-US';
+  if (trimmed.startsWith('zh')) return 'zh-CN';
+  return null;
+}
+
+export function resolveAutomationLocale(locale?: string | null, db?: SqlExecutor): AutomationLocale {
+  const explicit = normalizeAutomationLocale(locale);
+  if (explicit) return explicit;
+  if (db) {
+    try {
+      const dbLang = db.pluck<string>('SELECT value FROM settings WHERE key = ?1', ['language']);
+      const fromDb = normalizeAutomationLocale(dbLang);
+      if (fromDb) return fromDb;
+    } catch {
+      // Minimal test fixtures without settings table fall back cleanly.
+    }
+  }
+  return 'zh-CN';
+}
+
 export const DEFAULT_HEARTBEAT_PROMPT = `你是 Deep Student 的后台心跳检查代理。请依次检查以下清单（只使用可用的只读工具，工具不可用则跳过该项）：
 1. 用 builtin-user_todo_get_summary 检查今天到期或已逾期的待办事项；
 2. 用 builtin-qbank_list（include_stats=true）留意最近 3 天没有练习记录、或错误率偏高需要复习的题库/错题本；
@@ -597,13 +631,47 @@ export const DEFAULT_HEARTBEAT_PROMPT = `你是 Deep Student 的后台心跳检�
 - 如果有需要关注的事项，用简洁中文逐条列出（数量 + 建议动作），且不要出现 HEARTBEAT_OK 字样；
 - 不要向用户提问，不要执行任何写操作或高敏感操作。`;
 
+export const DEFAULT_HEARTBEAT_PROMPT_EN = `You are Deep Student's background heartbeat check agent. Check each item in order (use only available read-only tools; skip items whose tools are unavailable):
+1. Check due today or overdue todos with builtin-user_todo_get_summary;
+2. Check question banks/mistake notebooks with no practice in the last 3 days or high error rates with builtin-qbank_list (include_stats=true);
+3. Search relevant study records with builtin-unified_search if extra context is needed.
+Output rules:
+- If nothing needs the user's attention, output only HEARTBEAT_OK with no other content;
+- Otherwise, list items concisely in English (count + suggested action) without containing HEARTBEAT_OK;
+- Do not ask the user questions, and do not perform any write or sensitive operations.`;
+
+function localizeHeartbeatAutomation(
+  automation: AutomationDefinition,
+  locale: AutomationLocale,
+): AutomationDefinition {
+  if (!automation.heartbeat && automation.id !== HEARTBEAT_AUTOMATION_ID) {
+    return automation;
+  }
+  const nextName =
+    automation.name === DEFAULT_HEARTBEAT_NAME_ZH || automation.name === DEFAULT_HEARTBEAT_NAME_EN
+      ? (locale === 'en-US' ? DEFAULT_HEARTBEAT_NAME_EN : DEFAULT_HEARTBEAT_NAME_ZH)
+      : automation.name;
+  const nextPrompt =
+    automation.prompt === DEFAULT_HEARTBEAT_PROMPT || automation.prompt === DEFAULT_HEARTBEAT_PROMPT_EN
+      ? (locale === 'en-US' ? DEFAULT_HEARTBEAT_PROMPT_EN : DEFAULT_HEARTBEAT_PROMPT)
+      : automation.prompt;
+  if (nextName === automation.name && nextPrompt === automation.prompt) {
+    return automation;
+  }
+  return { ...automation, name: nextName, prompt: nextPrompt };
+}
+
 /** automations.rs:4228–4261. */
-export function defaultHeartbeatDefinition(nowMs: number): AutomationDefinition {
+export function defaultHeartbeatDefinition(nowMs: number, locale?: string | null): AutomationDefinition {
+  const resolvedLocale = normalizeAutomationLocale(locale) ?? 'zh-CN';
+  const isEnglish = resolvedLocale === 'en-US';
   return {
-    id: HEARTBEAT_AUTOMATION_ID, name: '学习心跳检查',
+    id: HEARTBEAT_AUTOMATION_ID,
+    name: isEnglish ? DEFAULT_HEARTBEAT_NAME_EN : DEFAULT_HEARTBEAT_NAME_ZH,
     schedule: { kind: 'interval', time: '', weekday: null, weekdays: null, day_of_month: null,
       interval_minutes: DEFAULT_HEARTBEAT_INTERVAL_MINUTES, date: null, timezone: null },
-    prompt: DEFAULT_HEARTBEAT_PROMPT, enabled: false, created_at: formatTimestampMillis(nowMs),
+    prompt: isEnglish ? DEFAULT_HEARTBEAT_PROMPT_EN : DEFAULT_HEARTBEAT_PROMPT,
+    enabled: false, created_at: formatTimestampMillis(nowMs),
     session_id: '', last_run_at: null, next_run_at: null, action_type: 'agent_turn', heartbeat: true,
     agent_prompt: null, session_mode: null, model_id: null, agent_session_id: null,
     catch_up_policy: 'run_once', max_retries: DEFAULT_MAX_RETRIES,
@@ -613,21 +681,30 @@ export function defaultHeartbeatDefinition(nowMs: number): AutomationDefinition 
 }
 
 /** automations.rs:4264–4276. Mutates the list like the Rust helper. */
-export function ensureHeartbeatInList(automations: AutomationDefinition[], nowMs: number): boolean {
+export function ensureHeartbeatInList(
+  automations: AutomationDefinition[],
+  nowMs: number,
+  locale?: string | null,
+): boolean {
   if (automations.some((automation) => automation.heartbeat || automation.id === HEARTBEAT_AUTOMATION_ID)) {
     return false;
   }
-  automations.push(defaultHeartbeatDefinition(nowMs));
+  automations.push(defaultHeartbeatDefinition(nowMs, locale));
   return true;
 }
 
 /** automations.rs:4282–4300：幂等预置心跳自动化（默认 disabled）。 */
-export function ensureHeartbeatAutomation(db: SqlExecutor, nowMs: number = Date.now()): boolean {
+export function ensureHeartbeatAutomation(
+  db: SqlExecutor,
+  nowMs: number = Date.now(),
+  locale?: string | null,
+): boolean {
   const exists = loadAutomations(db).some(
     (automation) => automation.heartbeat || automation.id === HEARTBEAT_AUTOMATION_ID);
   if (exists) return false;
+  const resolvedLocale = resolveAutomationLocale(locale, db);
   try {
-    insertAutomation(db, defaultHeartbeatDefinition(nowMs));
+    insertAutomation(db, defaultHeartbeatDefinition(nowMs, resolvedLocale));
     return true;
   } catch (error) {
     if (errorMessage(error).includes('UNIQUE')) return false;

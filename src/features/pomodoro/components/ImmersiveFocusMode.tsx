@@ -5,6 +5,7 @@ import { Play, Pause, Square, X, Coffee, Brain, SpeakerHigh, SpeakerSlash, SkipF
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { motionSafe } from '@/styles/motion-springs';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { noiseEngine, NOISE_TYPES } from '../noiseEngine';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
@@ -150,6 +151,7 @@ export const ImmersiveFocusMode: React.FC<{
     completedPomodorosToday,
     streakDays,
     sessionCountUp,
+    sessionDuration,
     phaseExtraSeconds,
     noiseEnabled,
     setNoiseEnabled,
@@ -315,8 +317,18 @@ export const ImmersiveFocusMode: React.FC<{
   // 放弃专注会写入 interrupted 记录；沉浸态也使用二次点击确认，避免大按钮误触。
   const [confirmingStop, setConfirmingStop] = useState(false);
   const stopConfirmTimerRef = useRef<number | null>(null);
+  const elapsedWorkSeconds =
+    mode === 'work'
+      ? isCountUpWork
+        ? timeLeft
+        : Math.max(
+            0,
+            (sessionDuration ?? settings.workDuration) + Math.max(0, phaseExtraSeconds) - timeLeft,
+          )
+      : 0;
+
   const handleStop = useCallback(() => {
-    if (mode === 'work' && !confirmingStop) {
+    if (mode === 'work' && elapsedWorkSeconds > 10 && !confirmingStop) {
       setConfirmingStop(true);
       if (stopConfirmTimerRef.current != null) window.clearTimeout(stopConfirmTimerRef.current);
       stopConfirmTimerRef.current = window.setTimeout(() => {
@@ -331,7 +343,11 @@ export const ImmersiveFocusMode: React.FC<{
     }
     setConfirmingStop(false);
     stop(true);
-  }, [mode, confirmingStop, stop]);
+    showGlobalNotification(
+      'info',
+      t('pomodoro.notifications.stopped', { defaultValue: '已停止当前番茄钟' }),
+    );
+  }, [mode, elapsedWorkSeconds, confirmingStop, stop, t]);
   useEffect(() => () => {
     if (stopConfirmTimerRef.current != null) window.clearTimeout(stopConfirmTimerRef.current);
   }, []);
@@ -367,9 +383,9 @@ export const ImmersiveFocusMode: React.FC<{
   // 计算进度（正计时：相对设定工作时长封顶；倒计时分母含 extendPhase 累计加时）
   const baseDuration = (() => {
     switch (mode) {
-      case 'work': return settings.workDuration;
-      case 'short_break': return settings.shortBreak;
-      case 'long_break': return settings.longBreak;
+      case 'work': return sessionDuration ?? settings.workDuration;
+      case 'short_break': return sessionDuration ?? settings.shortBreak;
+      case 'long_break': return sessionDuration ?? settings.longBreak;
       default: return settings.workDuration;
     }
   })();

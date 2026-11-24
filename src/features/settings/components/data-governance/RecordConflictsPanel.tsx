@@ -55,6 +55,7 @@ const PRIMARY_CONTENT_KEYS: readonly string[] = [
   'prompt',
   'subject',
   'topic',
+  'content_md',
   'content',
   'data',
   'body',
@@ -100,12 +101,31 @@ interface ConflictPreviewContext {
   resourceId?: string;
 }
 
+function unwrapResourceJsonText(raw: string): string {
+  const trimmed = raw.trim();
+  if (trimmed.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        for (const innerKey of ['content_md', 'content', 'body', 'markdown', 'text']) {
+          if (typeof parsed[innerKey] === 'string' && (parsed[innerKey] as string).trim().length > 0) {
+            return parsed[innerKey] as string;
+          }
+        }
+      }
+    } catch {
+      // plain text
+    }
+  }
+  return raw;
+}
+
 function extractStringField(obj: Record<string, unknown> | null | undefined, keys: readonly string[]): string | undefined {
   if (!obj) return undefined;
   for (const key of keys) {
     const val = obj[key];
     if (typeof val === 'string' && val.trim().length > 0) {
-      return val;
+      return key === 'data' ? unwrapResourceJsonText(val) : val;
     }
   }
   return undefined;
@@ -123,8 +143,8 @@ function summarizeReadableTitle(
   if (explicit) return explicit.trim();
 
   const body =
-    extractStringField(primaryObj, ['content', 'data', 'body', 'markdown', 'text']) ??
-    extractStringField(secondaryObj, ['content', 'data', 'body', 'markdown', 'text']) ??
+    extractStringField(primaryObj, ['content_md', 'content', 'data', 'body', 'markdown', 'text']) ??
+    extractStringField(secondaryObj, ['content_md', 'content', 'data', 'body', 'markdown', 'text']) ??
     fetched?.content;
   if (!body) return undefined;
   const firstLine = body
@@ -541,8 +561,8 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             ? p.recordId
             : previewCtx?.noteId ?? siblingContextMap.notesByResourceId.get(p.recordId)?.noteId;
           const winningContent = p.tableName === 'resources'
-            ? extractStringField(winningObj, ['data', 'content', 'body'])
-            : extractStringField(winningObj, ['content', 'data', 'body']) ?? previewCtx?.content;
+            ? extractStringField(winningObj, ['data', 'content_md', 'content', 'body'])
+            : extractStringField(winningObj, ['content_md', 'content', 'data', 'body']) ?? previewCtx?.content;
           if (noteId && typeof winningContent === 'string') {
             window.dispatchEvent(new CustomEvent('notes:external-updated', {
               detail: { noteId, content: winningContent, force: true },
@@ -561,14 +581,29 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
 
   const handleStartMerge = useCallback((p: ConflictPair) => {
     const key = pairKey(p);
-    // 默认以 cloud 为基础（业务上通常 cloud 更新）
+    // 默认以 cloud 为基础（业务上通常 cloud 更新），并在 notes 冲突缺少 content_md 时补齐正文以供对比/编辑
     const latestCloud = p.clouds[p.clouds.length - 1];
     const latestLocal = p.locals[p.locals.length - 1];
-    const base = latestCloud?.data_json ?? latestLocal?.data_json ?? '{}';
+    const rawBase = latestCloud?.data_json ?? latestLocal?.data_json ?? '{}';
+    let formattedBase = tryFormatJson(rawBase);
+    if (p.databaseName === 'vfs' && p.tableName === 'notes') {
+      const parsedBase = parseConflictPlainObject(rawBase);
+      if (parsedBase && parsedBase.content_md === undefined) {
+        const resId = extractStringField(parsedBase, ['resource_id']) ?? conflictPreviews[key]?.resourceId ?? '';
+        const sib = resId ? siblingContextMap.resourcesById.get(resId) : undefined;
+        const body =
+          extractStringField(sib?.cloud, ['data', 'content_md', 'content', 'body']) ??
+          extractStringField(sib?.local, ['data', 'content_md', 'content', 'body']) ??
+          conflictPreviews[key]?.content;
+        if (body !== undefined) {
+          formattedBase = JSON.stringify({ ...parsedBase, content_md: body }, null, 2);
+        }
+      }
+    }
     setMergeEditing(key);
-    setMergeText(tryFormatJson(base));
+    setMergeText(formattedBase);
     setRawJsonOpen(false);
-  }, []);
+  }, [conflictPreviews, siblingContextMap.resourcesById]);
 
   const handleBulkResolve = useCallback(async (
     resolution: 'keep_local' | 'keep_cloud',
@@ -726,7 +761,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
 
     const contentOrderMap = new Map(PRIMARY_CONTENT_KEYS.map((key, idx) => [key, idx]));
     const hasExplicitTitle = keys.some((k) => k === 'title' || k === 'name' || k === 'file_name');
-    const hasExplicitBody = keys.some((k) => k === 'content' || k === 'data' || k === 'body' || k === 'markdown' || k === 'text');
+    const hasExplicitBody = keys.some((k) => k === 'content_md' || k === 'content' || k === 'data' || k === 'body' || k === 'markdown' || k === 'text');
 
     const primaryKeys = keys
       .filter((k) => contentOrderMap.has(k))
@@ -894,8 +929,55 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
           const latestLocal = p.locals[p.locals.length - 1];
           const latestCloud = p.clouds[p.clouds.length - 1];
 
-          const localParsed = latestLocal ? parseConflictPlainObject(latestLocal.data_json) : undefined;
-          const cloudParsed = latestCloud ? parseConflictPlainObject(latestCloud.data_json) : undefined;
+          const rawLocalParsed = latestLocal ? parseConflictPlainObject(latestLocal.data_json) : undefined;
+          const rawCloudParsed = latestCloud ? parseConflictPlainObject(latestCloud.data_json) : undefined;
+          const previewCtx = conflictPreviews[key];
+          const siblingResource =
+            p.databaseName === 'vfs' && p.tableName === 'notes'
+              ? siblingContextMap.resourcesById.get(
+                  extractStringField(rawLocalParsed, ['resource_id']) ??
+                  extractStringField(rawCloudParsed, ['resource_id']) ??
+                  previewCtx?.resourceId ??
+                  '',
+                )
+              : undefined;
+          const localSiblingRes =
+            p.databaseName === 'vfs' && p.tableName === 'notes'
+              ? siblingContextMap.resourcesById.get(
+                  extractStringField(rawLocalParsed, ['resource_id']) ?? previewCtx?.resourceId ?? '',
+                )
+              : undefined;
+          const cloudSiblingRes =
+            p.databaseName === 'vfs' && p.tableName === 'notes'
+              ? siblingContextMap.resourcesById.get(extractStringField(rawCloudParsed, ['resource_id']) ?? '')
+              : undefined;
+          const siblingNote =
+            p.databaseName === 'vfs' && p.tableName === 'resources'
+              ? siblingContextMap.notesByResourceId.get(p.recordId)
+              : undefined;
+          const readableTitle =
+            p.tableName === 'note_document_revisions'
+              ? t('data:governance.conflict_table_note_revision', { defaultValue: '笔记历史版本' })
+              : summarizeReadableTitle(
+                  rawLocalParsed ?? siblingNote?.local,
+                  rawCloudParsed ?? siblingNote?.cloud,
+                  previewCtx,
+                );
+          const localBodyPreview =
+            extractStringField(rawLocalParsed, ['content_md', 'content', 'data', 'body', 'markdown', 'text', 'back', 'answer']) ??
+            extractStringField(localSiblingRes?.local ?? siblingResource?.local, ['data', 'content_md', 'content', 'body']) ??
+            previewCtx?.content;
+          const cloudBodyPreview =
+            extractStringField(rawCloudParsed, ['content_md', 'content', 'data', 'body', 'markdown', 'text', 'back', 'answer']) ??
+            extractStringField(cloudSiblingRes?.cloud ?? siblingResource?.cloud, ['data', 'content_md', 'content', 'body']);
+          const localParsed =
+            p.databaseName === 'vfs' && p.tableName === 'notes' && rawLocalParsed && rawLocalParsed.content_md === undefined && localBodyPreview !== undefined
+              ? { ...rawLocalParsed, content_md: localBodyPreview }
+              : rawLocalParsed;
+          const cloudParsed =
+            p.databaseName === 'vfs' && p.tableName === 'notes' && rawCloudParsed && rawCloudParsed.content_md === undefined && cloudBodyPreview !== undefined
+              ? { ...rawCloudParsed, content_md: cloudBodyPreview }
+              : rawCloudParsed;
           const mergedParsed = isEditing ? parseConflictPlainObject(mergeText) : null;
           const canUseStructuredDiff =
             isEditing &&
@@ -913,36 +995,22 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
               : [];
           const diffCount = fieldDiffRows.filter((row) => row.hasDiff).length;
           const effectiveRawOpen = !canUseStructuredDiff || rawJsonOpen;
-
-          const previewCtx = conflictPreviews[key];
-          const siblingResource =
-            p.databaseName === 'vfs' && p.tableName === 'notes'
-              ? siblingContextMap.resourcesById.get(
-                  extractStringField(localParsed, ['resource_id']) ??
-                  extractStringField(cloudParsed, ['resource_id']) ??
-                  previewCtx?.resourceId ??
-                  '',
-                )
-              : undefined;
-          const siblingNote =
-            p.databaseName === 'vfs' && p.tableName === 'resources'
-              ? siblingContextMap.notesByResourceId.get(p.recordId)
-              : undefined;
-          const readableTitle = summarizeReadableTitle(
-            localParsed ?? siblingNote?.local,
-            cloudParsed ?? siblingNote?.cloud,
-            previewCtx,
-          );
-          const localBodyPreview =
-            extractStringField(localParsed, ['content', 'data', 'body', 'markdown', 'text', 'back', 'answer']) ??
-            extractStringField(siblingResource?.local, ['data', 'content', 'body']) ??
-            previewCtx?.content;
-          const cloudBodyPreview =
-            extractStringField(cloudParsed, ['content', 'data', 'body', 'markdown', 'text', 'back', 'answer']) ??
-            extractStringField(siblingResource?.cloud, ['data', 'content', 'body']);
           const showContentDiffSummary =
             (localBodyPreview !== undefined || cloudBodyPreview !== undefined) &&
             localBodyPreview !== cloudBodyPreview;
+          const cloudTrashedOrDeleted =
+            Boolean(latestCloud) &&
+            (rawCloudParsed === null ||
+              (rawCloudParsed !== undefined && rawCloudParsed.deleted_at !== undefined && rawCloudParsed.deleted_at !== null));
+          const localActiveWithEdits =
+            Boolean(latestLocal) &&
+            rawLocalParsed !== null &&
+            (rawLocalParsed === undefined || rawLocalParsed.deleted_at === undefined || rawLocalParsed.deleted_at === null);
+          const showTrashConflictHint = cloudTrashedOrDeleted && localActiveWithEdits;
+          const bodyEditKey = mergedParsed
+            ? (['content_md', 'content', 'data', 'body'] as const).find((k) => k in mergedParsed) ??
+              (p.tableName === 'notes' ? 'content_md' : null)
+            : null;
 
           return (
             <div
@@ -1000,6 +1068,17 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                   </DsButton>
                 </div>
               </div>
+              {showTrashConflictHint && (
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-xs">
+                  <span className="font-medium text-foreground">
+                    {t('data:governance.conflict_local_kept_edits', { defaultValue: '本地保留编辑' })}
+                  </span>
+                  <span className="text-muted-foreground">vs</span>
+                  <span className="font-medium text-warning">
+                    {t('data:governance.conflict_remote_trashed', { defaultValue: '对端已移至回收站' })}
+                  </span>
+                </div>
+              )}
               {showContentDiffSummary && (
                 <div
                   data-testid="conflict-content-diff-summary"
@@ -1074,7 +1153,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                       <CustomScrollArea className="max-h-72">
                         {renderSideSnapshotContent(cloud.data_json, latestLocal?.data_json, {
                           title: readableTitle,
-                          body: extractStringField(parseConflictPlainObject(cloud.data_json), ['content', 'data', 'body', 'markdown', 'text', 'back', 'answer']) ?? extractStringField(siblingResource?.cloud, ['data', 'content', 'body']),
+                          body: extractStringField(parseConflictPlainObject(cloud.data_json), ['content_md', 'content', 'data', 'body', 'markdown', 'text', 'back', 'answer']) ?? cloudBodyPreview,
                           counterpartBody: localBodyPreview,
                         })}
                       </CustomScrollArea>
@@ -1274,6 +1353,22 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                       data-testid="conflict-raw-json-fallback-hint"
                     >
                       {t('data:governance.merge_raw_json_fallback_hint')}
+                    </div>
+                  )}
+
+                  {isEditing && mergedParsed && bodyEditKey && (
+                    <div className="space-y-1.5 rounded-lg border border-border/40 bg-background/60 p-3">
+                      <label className="text-xs font-medium text-foreground">
+                        {t('data:governance.conflict_note_body')} ({bodyEditKey})
+                      </label>
+                      <Textarea
+                        data-testid="conflict-manual-body-editor"
+                        className="scroll-area--native min-h-24 w-full text-xs font-sans"
+                        value={typeof mergedParsed[bodyEditKey] === 'string' ? (mergedParsed[bodyEditKey] as string) : ''}
+                        onChange={(e) => {
+                          setMergeText(JSON.stringify({ ...mergedParsed, [bodyEditKey]: e.target.value }, null, 2));
+                        }}
+                      />
                     </div>
                   )}
 

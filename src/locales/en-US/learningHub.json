@@ -910,6 +910,7 @@
       "permanentDelete": "Delete Permanently"
     },
     "multiSelect": {
+      "selectItem": "Select {{name}}",
       "selected": "{{count}} items selected",
       "move": "Move",
       "addToChat": "Add to Chat",

@@ -33,6 +33,7 @@ import {
   type AgentRuntimeOptions,
 } from './agentRuntime';
 import { useWindowStore } from './windowStore';
+import { recomputeLifecycles } from './scheduler';
 import { confirmWindowClose } from './windowCloseGuard';
 import {
   activateWorkspaceResource,
@@ -315,6 +316,15 @@ export const workbenchBus = {
         payload: resourceId ? { resourceId } : req.payload,
         dropPoint: req.dropPoint,
       });
+      if (windowId) {
+        const fresh = useWindowStore.getState();
+        const win = fresh.windows[windowId];
+        const phase = fresh.transientPhases?.[windowId];
+        if (win && (win.minimized || phase === 'closing' || phase === 'minimizing')) {
+          fresh.focusWindow(windowId);
+        }
+        recomputeLifecycles();
+      }
       if (resourceId) requestResourceWorkspace(req.typeId as ResourceWorkspaceType, resourceId);
       return windowId;
     }

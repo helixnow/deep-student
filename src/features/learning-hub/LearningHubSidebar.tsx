@@ -380,18 +380,14 @@ export function LearningHubSidebar(props: LearningHubSidebarProps) {
             viewMode={isCollapsed ? 'list' : viewMode}
             onViewModeChange={isSmallScreen && !isCollapsed ? setViewMode : undefined}
             multiSelectMode={isMultiSelectMode}
-            onToggleMultiSelectMode={
-              isTouchPrimary
-                ? () => {
-                    if (isMultiSelectMode) {
-                      setIsMultiSelectMode(false);
-                      handleClearSelection();
-                    } else {
-                      setIsMultiSelectMode(true);
-                    }
-                  }
-                : undefined
-            }
+            onToggleMultiSelectMode={() => {
+              if (isMultiSelectMode) {
+                setIsMultiSelectMode(false);
+                handleClearSelection();
+              } else {
+                setIsMultiSelectMode(true);
+              }
+            }}
             sortBy={sortBy}
             sortOrder={sortOrder}
             onSortChange={isSmallScreen ? setSorting : undefined}

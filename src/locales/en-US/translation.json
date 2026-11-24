@@ -341,7 +341,12 @@
     "swapped_lang_only_hint": "Swapped languages while keeping source text",
     "undo_swap": "Undo swap",
     "outdated_hint": "Source or settings changed; translation may be outdated",
-    "retranslate_now": "Retranslate"
+    "retranslate_now": "Retranslate",
+    "source_lang_mismatch_banner": "Source text appears to be {{detected}}, which does not match selected source language ({{selected}})",
+    "source_lang_mismatch_toast": "Detected mismatch between source text and selected source language",
+    "switch_to_detected": "Switch to {{language}}",
+    "switch_to_auto": "Use Auto Detect",
+    "verbatim_output_warning": "Translation matches the source text verbatim; please check your source language setting"
   },
   "viewer": {
     "loading": "Loading translation…",

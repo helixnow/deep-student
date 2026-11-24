@@ -37,6 +37,20 @@ export interface UseVariantUIResult {
   activeVariantId: string | undefined;
   /** 是否为多变体消息 */
   isMultiVariant: boolean;
+  /** 是否为重新生成产生的版本序列（单列内联 1 / 2 切换，而非并行分栏） */
+  isVersioned: boolean;
+  /** 版本总数（仅 isVersioned 时 > 1） */
+  versionCount: number;
+  /** 当前版本 0-based 索引 */
+  activeVersionIndex: number;
+  /** 是否有上一可切换版本 */
+  canPrevVersion: boolean;
+  /** 是否有下一可切换版本 */
+  canNextVersion: boolean;
+  /** 切换到上一版本 */
+  switchToPrevVersion: () => void;
+  /** 切换到下一版本 */
+  switchToNextVersion: () => void;
   /** 正在流式生成的变体数量 */
   streamingCount: number;
 
@@ -142,14 +156,15 @@ export function useVariantUI({
     return variants.find((v) => v.id === activeVariantId);
   }, [variants, activeVariantId]);
 
-  // 🚩 Feature Flag：当 enableParallelVariantView 为 false 时，强制返回 false
-  // 这样即使消息有多个变体，UI 也会降级为单变体展示（只显示激活变体）
-  //
-  // 多变体判断标准：variants.length > 1
-  // - variants 为空或只有 1 个元素（单变体重试产生）：不是多变体
-  // - variants 有 2+ 个元素（真正的多变体）：是多变体
-  // 注意：此判断逻辑需与后端 types.rs 的 is_multi_variant() 保持一致
-  const isMultiVariant = isParallelVariantViewEnabled() && variants.length > 1;
+  // 单模型重新生成的历史版本（variant.meta.versioned === true）走单列 1/2 切换，不进入并行分栏视图
+  const isVersioned = variants.length > 1 && variants.every((v) => v.meta?.versioned === true);
+  const isMultiVariant = isParallelVariantViewEnabled() && variants.length > 1 && !isVersioned;
+  const versionCount = isVersioned ? variants.length : 0;
+  const activeVersionIndex = useMemo(() => {
+    if (!isVersioned) return 0;
+    const idx = variants.findIndex((v) => v.id === activeVariantId);
+    return idx >= 0 ? idx : Math.max(0, variants.length - 1);
+  }, [isVersioned, variants, activeVariantId]);
 
   const streamingCount = useMemo(
     () => variants.filter((v) => v.status === 'streaming').length,
@@ -227,6 +242,33 @@ export function useVariantUI({
     [store, messageId, variants, activeVariantId]
   );
 
+  const prevSwitchableVariant = useMemo(() => {
+    if (!isVersioned) return undefined;
+    for (let i = activeVersionIndex - 1; i >= 0; i--) {
+      if (isVariantSwitchable(variants[i]!.status)) return variants[i];
+    }
+    return undefined;
+  }, [isVersioned, variants, activeVersionIndex]);
+
+  const nextSwitchableVariant = useMemo(() => {
+    if (!isVersioned) return undefined;
+    for (let i = activeVersionIndex + 1; i < variants.length; i++) {
+      if (isVariantSwitchable(variants[i]!.status)) return variants[i];
+    }
+    return undefined;
+  }, [isVersioned, variants, activeVersionIndex]);
+
+  const canPrevVersion = Boolean(prevSwitchableVariant);
+  const canNextVersion = Boolean(nextSwitchableVariant);
+
+  const switchToPrevVersion = useCallback(() => {
+    if (prevSwitchableVariant) switchVariant(prevSwitchableVariant.id);
+  }, [prevSwitchableVariant, switchVariant]);
+
+  const switchToNextVersion = useCallback(() => {
+    if (nextSwitchableVariant) switchVariant(nextSwitchableVariant.id);
+  }, [nextSwitchableVariant, switchVariant]);
+
   // 取消变体
   const cancelVariant = useCallback(
     async (variantId: string) => {
@@ -300,6 +342,13 @@ export function useVariantUI({
     activeVariant,
     activeVariantId,
     isMultiVariant,
+    isVersioned,
+    versionCount,
+    activeVersionIndex,
+    canPrevVersion,
+    canNextVersion,
+    switchToPrevVersion,
+    switchToNextVersion,
     streamingCount,
     displayBlockIds,
     sharedContext,

@@ -3,8 +3,9 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AnkiLibraryCard, AnkiLibraryListResponse, ListAnkiCardsParams } from '@/types';
 
-const { listAnkiLibraryCardsMock } = vi.hoisted(() => ({
+const { listAnkiLibraryCardsMock, rowRenderSpy } = vi.hoisted(() => ({
   listAnkiLibraryCardsMock: vi.fn<(params: ListAnkiCardsParams) => Promise<AnkiLibraryListResponse>>(),
+  rowRenderSpy: vi.fn(),
 }));
 
 vi.mock('@/utils/chatApi', async (importOriginal) => ({
@@ -29,9 +30,10 @@ vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: vi.fn(),
 }));
 vi.mock('../library/LibraryCardRow', () => ({
-  LibraryCardRow: ({ card }: { card: AnkiLibraryCard }) => (
-    <li data-testid={`card-row-${card.id}`}>{card.front}</li>
-  ),
+  LibraryCardRow: ({ card }: { card: AnkiLibraryCard }) => {
+    rowRenderSpy(card.id);
+    return <li data-testid={`card-row-${card.id}`}>{card.front}</li>;
+  },
 }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -255,5 +257,32 @@ describe('LibraryScreen pagination: page jump, first/last buttons, and page-size
     expect(ok).toBe(false);
     expect(useFlashcardsLibraryStore.getState().pageSize).toBe(20);
     expect(listAnkiLibraryCardsMock).not.toHaveBeenCalled();
+  });
+
+  it('debounces search typing without re-rendering mounted card rows on every keystroke in a 1200-card library', async () => {
+    render(<LibraryScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('第 1 / 60 页')).toBeInTheDocument();
+    });
+
+    rowRenderSpy.mockClear();
+    const initialCalls = listAnkiLibraryCardsMock.mock.calls.length;
+    const searchInput = screen.getByLabelText('搜索卡片') as HTMLInputElement;
+
+    for (const value of ['F', 'Fr', 'Fro', 'Fron', 'Front']) {
+      fireEvent.change(searchInput, { target: { value } });
+    }
+
+    // Keystrokes stay isolated inside LibrarySearchBar: zero row renders & zero eager API fetches
+    expect(rowRenderSpy).not.toHaveBeenCalled();
+    expect(listAnkiLibraryCardsMock).toHaveBeenCalledTimes(initialCalls);
+
+    await waitFor(() => {
+      expect(listAnkiLibraryCardsMock).toHaveBeenCalledTimes(initialCalls + 1);
+    });
+    expect(listAnkiLibraryCardsMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ search: 'Front', page: 1 }),
+    );
   });
 });

@@ -78,6 +78,11 @@ export interface PomodoroState {
    */
   sessionCountUp: boolean | null;
   /**
+   * 当前倒计时阶段的锁定目标基础时长（秒，会话开始时锁定，持久化）。
+   * 进行中修改设置时只影响下一轮，不中途裁切当前阶段。
+   */
+  sessionDuration: number | null;
+  /**
    * 本阶段通过 extendPhase 累计加时的秒数（持久化，阶段切换时归零）。
    * 倒计时阶段的「计划总时长」= 设置时长 + phaseExtraSeconds，
    * 进度环分母与落库的 duration/actualDuration 均以此为准。

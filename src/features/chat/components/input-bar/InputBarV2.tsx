@@ -1355,12 +1355,15 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     );
 
     const renderSkillPanel = useMemo(() => {
-      return (opts?: { variant?: 'panel' | 'menu' }) => (
+      return (opts?: { variant?: 'panel' | 'menu'; onClose?: () => void }) => (
         <SkillSelector
           activeSkillIds={activeSkillIds}
           onToggleSkill={handleToggleSkill}
           onClose={() => {
-            if (opts?.variant === 'menu') return;
+            if (opts?.variant === 'menu') {
+              opts.onClose?.();
+              return;
+            }
             setPanelState('skill', false);
           }}
           disabled={isStreaming}

@@ -60,9 +60,93 @@ export function isEnglishUiLanguage(language?: string): boolean {
   return typeof candidate === 'string' && candidate.toLowerCase().startsWith('en');
 }
 
+const FILE_SYNC_FALLBACK_LABELS: Record<
+  string,
+  { zh: string; en: string }
+> = {
+  'sync:fileSync.workspace': {
+    zh: '文件级同步：工作区数据库',
+    en: 'File sync: workspace databases',
+  },
+  'sync:fileSync.blob': {
+    zh: '文件级同步：附件文件',
+    en: 'File sync: attachments',
+  },
+  'sync:fileSync.assets': {
+    zh: '文件级同步：资产目录',
+    en: 'File sync: assets directory',
+  },
+  'sync:fileSync.complete': {
+    zh: '文件级同步完成',
+    en: 'File sync completed',
+  },
+  'sync:fileSync.transfer': {
+    zh: '文件级传输',
+    en: 'File transfer',
+  },
+  'sync:fileSync.applyingChanges': {
+    zh: '应用变更',
+    en: 'Applying changes',
+  },
+  'sync:fileSync.applyingDownloadedChanges': {
+    zh: '应用下载变更',
+    en: 'Applying downloaded changes',
+  },
+};
+
+function localizeFileSyncProgressKey(
+  raw: string,
+  english: boolean,
+  language?: string,
+): string | null {
+  if (!raw.startsWith('sync:fileSync.')) return null;
+  const i18nMatchesLocale =
+    typeof i18next?.language === 'string' &&
+    i18next.language.toLowerCase().startsWith(english ? 'en' : 'zh');
+  const readI18n = (key: string, defaultValue: string, extra?: Record<string, unknown>): string => {
+    if (!i18next?.isInitialized) return defaultValue;
+    if (!language || i18nMatchesLocale) {
+      return i18next.t(key, { ...extra, defaultValue });
+    }
+    return i18next.t(key, { ...extra, lng: language, defaultValue });
+  };
+  if (raw.startsWith('sync:fileSync.transfer::')) {
+    const item = raw.slice('sync:fileSync.transfer::'.length);
+    const fallbackPrefix = english
+      ? FILE_SYNC_FALLBACK_LABELS['sync:fileSync.transfer']!.en
+      : FILE_SYNC_FALLBACK_LABELS['sync:fileSync.transfer']!.zh;
+    const translatedPrefix = i18nMatchesLocale
+      ? readI18n('sync:fileSync.transfer', fallbackPrefix)
+      : fallbackPrefix;
+    return english ? `${translatedPrefix}: ${item}` : `${translatedPrefix}：${item}`;
+  }
+  if (raw.startsWith('sync:fileSync.uploadBatch::')) {
+    const batch = raw.slice('sync:fileSync.uploadBatch::'.length);
+    const defaultLabel = english ? `Uploading batch ${batch}` : `上传批次 ${batch}`;
+    return i18nMatchesLocale
+      ? readI18n('sync:fileSync.uploadBatch', defaultLabel, { batch })
+      : defaultLabel;
+  }
+  const fallback = FILE_SYNC_FALLBACK_LABELS[raw];
+  const defaultValue = fallback ? (english ? fallback.en : fallback.zh) : raw;
+  return i18nMatchesLocale ? readI18n(raw, defaultValue) : defaultValue;
+}
+
 export function localizeBackendErrorText(raw: string, language?: string): string {
-  if (!raw || !isEnglishUiLanguage(language)) return raw;
+  if (!raw) return raw;
+  const english = isEnglishUiLanguage(language);
+  const fileSyncLabel = localizeFileSyncProgressKey(raw, english, language);
+  if (fileSyncLabel !== null) return fileSyncLabel;
+
   let text = raw;
+  if (!english) {
+    return text
+      .replace(/socket hang up/gi, '网络连接中断，请检查服务器或网络后重试')
+      .replace(/\bECONNRESET\b|connection reset by peer/gi, '网络连接被重置，请检查服务器或网络后重试')
+      .replace(/\bECONNREFUSED\b|connection refused/gi, '无法连接到服务器，请检查地址和端口')
+      .replace(/\bETIMEDOUT\b|operation timed out|request timeout/gi, '网络连接超时，请检查网络或稍后重试')
+      .replace(/\b(?:ENOTFOUND|EAI_AGAIN)\b/gi, '无法解析服务器域名，请检查服务器地址和网络');
+  }
 
   // Progress & retry status messages
   text = text
@@ -82,7 +166,19 @@ export function localizeBackendErrorText(raw: string, language?: string): string
       /云端限流保护，约\s*(\d+)\s*秒后自动继续…?/g,
       'Cloud rate-limit protection active, resuming in ~$1s...',
     )
-    .replace(/上传批次\s*(\d+\/\d+)/g, 'Uploading batch $1');
+    .replace(/文件级同步：工作区数据库/g, 'File sync: workspace databases')
+    .replace(/文件级同步：VFS blob/g, 'File sync: attachments')
+    .replace(/文件级同步：资产目录/g, 'File sync: assets directory')
+    .replace(/文件级同步完成/g, 'File sync completed')
+    .replace(/文件级传输：/g, 'File transfer: ')
+    .replace(/应用下载变更/g, 'Applying downloaded changes')
+    .replace(/应用变更/g, 'Applying changes')
+    .replace(/上传批次\s*(\d+\/\d+)/g, 'Uploading batch $1')
+    .replace(/socket hang up/gi, 'Network connection interrupted. Please check the server or network and try again')
+    .replace(/\bECONNRESET\b|connection reset by peer/gi, 'Network connection reset. Please check the server or network and try again')
+    .replace(/\bECONNREFUSED\b|connection refused/gi, 'Connection refused by server. Please check the endpoint URL and port')
+    .replace(/\bETIMEDOUT\b/gi, 'Network connection timed out. Please try again later')
+    .replace(/\b(?:ENOTFOUND|EAI_AGAIN)\b/gi, 'Could not resolve server host name. Please check the URL and network');
 
   // Common WebDAV / Sync / Cloud Storage prefixes & error details
   const replacements: ReadonlyArray<[RegExp, string]> = [

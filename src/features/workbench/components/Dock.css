@@ -738,7 +738,9 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
 
   .wb-dock-zone div.wb-dock[data-hidden],
   .wb-dock-zone[data-immersive='true'] div.wb-dock[data-hidden],
-  .wb-dock-zone[data-compact-typing='true'] div.wb-dock[data-hidden] {
+  .wb-dock-zone[data-compact-typing='true'] div.wb-dock[data-hidden],
+  .wb-dock-zone[data-compact-window='true'] div.wb-dock[data-hidden],
+  .wb-dock-zone[data-compact-collapsed='true'] div.wb-dock[data-hidden] {
     opacity: 0;
     pointer-events: none;
     visibility: hidden;

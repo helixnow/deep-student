@@ -45,7 +45,8 @@ export function syncAuditLog(request: SyncAuditRequest): AuditLogEntry {
   switch (request.outcome.kind) {
     case 'started': return base;
     case 'complete': return completeAuditLog(base, request.outcome.durationMs);
-    case 'failed': return failAuditLog(base, request.outcome.error);
+    case 'failed': return failAuditLog(base, request.outcome.error, request.outcome.durationMs ?? null);
+    case 'cancelled': return failAuditLog(base, request.outcome.error ?? '已取消', request.outcome.durationMs);
   }
 }
 

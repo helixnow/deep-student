@@ -1,6 +1,6 @@
 /** persistence.rs:860–1549. Transaction/ordering belongs to L03; all chat writes use L04 ports. */
 import type { Context } from '@deepseek-ai/cordis';
-import { ChatV2Error, type MessageMeta, type MessageBlock } from '../../chat/api.ts';
+import { ChatV2Error, type ChatMessage, type MessageMeta, type MessageBlock } from '../../chat/api.ts';
 import type { AsyncTransaction, DatabaseHandle, SqlExecutor } from '../../../platform/storage/api.ts';
 import { utf8ByteLength } from '../../../platform/util/index.ts';
 import type { PipelineContext } from './pipeline-context.ts';
@@ -135,22 +135,37 @@ export class PipelineFinalPersistence {
       userBlock = existingUserContentBlockId(conn, (c, id) => this.store.getMessageBlocksWithConn(c, id), ctx.userMessageId);
       this.log.debug(`[ChatV2::pipeline] Skipped user message save (skip_user_message_save=true): id=${ctx.userMessageId}, existing_content_block=${userBlock === null ? 'None' : `Some(${JSON.stringify(userBlock)})`}`);
     }
+    const options = ctx.options;
+    const targetVariantId = options.targetVariantId ?? null;
+    const existingMessage = (targetVariantId !== null || (options.skipAssistantMessageSave ?? false))
+      ? (() => {
+          try { return this.store.getMessageWithConn(conn, ctx.assistantMessageId); }
+          catch { return null; }
+        })()
+      : null;
+    const siblingVariantBlockIds = new Set(
+      targetVariantId !== null && existingMessage?.variants
+        ? existingMessage.variants.filter(v => v.id !== targetVariantId).flatMap(v => v.blockIds)
+        : [],
+    );
     const blocks = this.collectBlocks(ctx);
     const ids = blocks.map(b => b.id);
-    const preserved = this.store.getMessageBlocksWithConn(conn, ctx.assistantMessageId).filter(b => b.type === 'anki_cards');
+    const preserved = this.store.getMessageBlocksWithConn(conn, ctx.assistantMessageId)
+      .filter(b => b.type === 'anki_cards' && !siblingVariantBlockIds.has(b.id));
     const preservedIds = new Set(preserved.map(b => b.id));
-    let existingIds: string[] = [];
-    try { existingIds = this.store.getMessageWithConn(conn, ctx.assistantMessageId)?.blockIds ?? []; }
-    catch { existingIds = []; } // Rust optional query/JSON errors ignored at persistence.rs:1301–1325.
+    const existingIds = existingMessage?.blockIds
+      ?? (() => {
+        try { return this.store.getMessageWithConn(conn, ctx.assistantMessageId)?.blockIds ?? []; }
+        catch { return []; } // Rust optional query/JSON errors ignored at persistence.rs:1301–1325.
+      })();
     for (const id of existingIds) {
-      if (preservedIds.has(id) || ids.includes(id)) continue;
+      if (preservedIds.has(id) || siblingVariantBlockIds.has(id) || ids.includes(id)) continue;
       this.log.info(`[ChatV2::pipeline] 🔧 P37: Preserving frontend-appended block_id: ${id}`); ids.push(id);
     }
     for (const block of preserved.filter(b => !ids.includes(b.id)).sort((a, b) => a.blockIndex - b.blockIndex)) {
       if (!ids.includes(block.id)) ids.splice(Math.min(block.blockIndex, ids.length), 0, block.id);
     }
     const positions = new Map(ids.map((id, index) => [id, index]));
-    const options = ctx.options;
     const chatParams: Record<string, unknown> = {};
     for (const key of ['modelId', 'temperature', 'contextLimit', 'maxTokens', 'enableThinking', 'reasoningEffort', 'thinkingBudget', 'disableTools', 'model2OverrideId'] as const) {
       chatParams[key] = options[key] ?? null;
@@ -158,7 +173,7 @@ export class PipelineFinalPersistence {
     const model = ctx.modelDisplayName ?? [options.model2OverrideId, options.modelId].find(id => id != null && !isConfigIdFormat(id));
     const skillSnapshot = buildReplaySkillPayloadSnapshot(options);
     const anchors = options.skillInjectionAnchors;
-    const meta: MessageMeta = {
+    const meta = {
       ...(model == null ? {} : { modelId: model }),
       ...(ctx.executionSnapshot === null ? {} : { executionSnapshot: structuredClone(ctx.executionSnapshot) }),
       chatParams, usage: structuredClone(ctx.tokenUsage),
@@ -170,9 +185,33 @@ export class PipelineFinalPersistence {
       ...(ctx.responseReasoningByToolCallId.size ? { responseReasoningItems: Object.fromEntries(ctx.responseReasoningByToolCallId) } : {}),
       ...(anchors != null && ((anchors.turnSkillIds?.length ?? 0) || (anchors.toolAnchored?.length ?? 0)) ? { skillInjectionAnchors: structuredClone(anchors) } : {}),
       ...(ctx.responseWebSearchItems.length ? { openai_responses_web_search_items: structuredClone(ctx.responseWebSearchItems) } : {}),
+      ...(ctx.aborted ? { stoppedByUser: true } : {}),
+    } as MessageMeta;
+    const targetVariants = targetVariantId !== null && existingMessage?.variants?.some(v => v.id === targetVariantId)
+      ? existingMessage.variants.map(variant => (variant.id !== targetVariantId ? variant : {
+          ...variant,
+          blockIds: [...ids],
+          status: (ctx.aborted ? 'cancelled' : ctx.failed ? 'error' : 'success') as NonNullable<ChatMessage['variants']>[number]['status'],
+          ...(model == null ? {} : { modelId: model }),
+          usage: structuredClone(ctx.tokenUsage),
+          meta: {
+            ...variant.meta,
+            ...(ctx.executionSnapshot === null ? {} : { executionSnapshot: structuredClone(ctx.executionSnapshot) }),
+            ...(skillSnapshot === null ? {} : { skillRuntimeBefore: structuredClone(skillSnapshot), skillRuntimeAfter: structuredClone(skillSnapshot) }),
+            versioned: true,
+          },
+        }))
+      : null;
+    const message: ChatMessage = {
+      id: ctx.assistantMessageId,
+      sessionId: ctx.sessionId,
+      role: 'assistant' as const,
+      blockIds: ids,
+      timestamp: targetVariants && existingMessage ? existingMessage.timestamp : Date.now(),
+      _meta: meta,
+      ...(targetVariants ? { activeVariantId: targetVariantId!, variants: targetVariants } : {}),
     };
-    const message = { id: ctx.assistantMessageId, sessionId: ctx.sessionId, role: 'assistant' as const, blockIds: ids, timestamp: Date.now(), _meta: meta };
-    if (options.skipAssistantMessageSave ?? false) {
+    if ((options.skipAssistantMessageSave ?? false) || targetVariants !== null) {
       this.log.debug(`[ChatV2::pipeline] Updating existing assistant message for retry: id=${ctx.assistantMessageId}`);
       this.store.updateMessageWithConn(conn, message);
     } else this.store.createMessageWithConn(conn, message);

@@ -34,7 +34,7 @@ export async function executeUploadWithProgress(
         if (!(bytes > 0 && done >= bytes)) { const now = Math.max(0, Date.now()); if (Math.max(0, now - last) < 100) return; last = now; }
         const inner = bytes > 0 ? f(f(done) / f(bytes)) : 0;
         emitter.emitForceSync({ operation_id: null, outcome: null, phase: 'uploading', percent: f(base + f(inner * span)), current: done, total: bytes,
-          current_item: `上传批次 ${index + 1}/${count}`, speed_bytes_per_sec: null, eta_seconds: null, error: null });
+          current_item: `sync:fileSync.uploadBatch::${index + 1}/${count}`, speed_bytes_per_sec: null, eta_seconds: null, error: null });
       };
       try { await uploadEnrichedChanges(storage, enriched.slice(index * 1000, (index + 1) * 1000), options, options.openState, options.compression, progress); }
       catch (error) { throw new Error(`上传同步失败（批次 ${index + 1}/${count}）: ${message(error)}`); }

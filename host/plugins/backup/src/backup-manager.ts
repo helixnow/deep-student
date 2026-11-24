@@ -155,6 +155,64 @@ async function fileEntryAsync(root: string, relative: string, databaseId?: strin
   };
 }
 
+export function purgeAndCompactFts5(conn: Pick<DatabaseHandle, 'get' | 'all' | 'exec'>): void {
+  if (typeof conn.get !== 'function' || typeof conn.all !== 'function') return;
+  const hasNotesFts = conn.get<{ ok: number }>(
+    "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'notes_fts'",
+  );
+  if (hasNotesFts) {
+    let rebuilt = false;
+    try {
+      conn.exec("INSERT INTO notes_fts(notes_fts) VALUES('rebuild');");
+      rebuilt = true;
+    } catch {
+      rebuilt = false;
+    }
+    if (!rebuilt) {
+      const hasNotes = Boolean(conn.get<{ ok: number }>(
+        "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'notes'",
+      ));
+      conn.exec('BEGIN IMMEDIATE;');
+      try {
+        conn.exec("INSERT INTO notes_fts(notes_fts) VALUES('delete-all');");
+        if (hasNotes) {
+          const noteCols = new Set(conn.all<{ name?: unknown }>('PRAGMA table_info("notes")').map(r => String(r.name ?? '')));
+          const hasResources = Boolean(conn.get<{ ok: number }>(
+            "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'resources'",
+          ));
+          const deletedFilter = noteCols.has('deleted_at') ? ' WHERE n.deleted_at IS NULL' : '';
+          if (hasResources && noteCols.has('resource_id')) {
+            conn.exec(
+              `INSERT INTO notes_fts(rowid, title, body)
+               SELECT n.rowid, COALESCE(n.title, ''), COALESCE(r.data, '')
+               FROM notes n
+               LEFT JOIN resources r ON r.id = n.resource_id${deletedFilter};`,
+            );
+          } else {
+            conn.exec(
+              `INSERT INTO notes_fts(rowid, title, body)
+               SELECT n.rowid, COALESCE(n.title, ''), ''
+               FROM notes n${deletedFilter};`,
+            );
+          }
+        }
+        conn.exec('COMMIT;');
+      } catch (ftsError) {
+        try { conn.exec('ROLLBACK;'); } catch { /* ignore */ }
+        throw ftsError;
+      }
+    }
+    conn.exec("INSERT INTO notes_fts(notes_fts) VALUES('optimize');");
+  }
+  const hasQuestionsFts = conn.get<{ ok: number }>(
+    "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'questions_fts'",
+  );
+  if (hasQuestionsFts) {
+    try { conn.exec("INSERT INTO questions_fts(questions_fts) VALUES('rebuild');"); } catch { /* ignore */ }
+    try { conn.exec("INSERT INTO questions_fts(questions_fts) VALUES('optimize');"); } catch { /* ignore */ }
+  }
+}
+
 async function snapshotDatabase(ctx: Context, src: string, dest: string): Promise<void> {
   let source: DatabaseHandle;
   try { source = ctx.storage.openFile(src, { label: `backup:${basename(src)}`, mustExist: true }); }
@@ -169,6 +227,12 @@ async function snapshotDatabase(ctx: Context, src: string, dest: string): Promis
   }
   const handle = ctx.storage.openFile(dest, { label: `backup-dest:${basename(dest)}`, mustExist: true });
   try {
+    // 清理 FTS5 影子表残留 token 再 VACUUM，防止已彻底删除笔记的明文片段残留在备份库页中
+    try {
+      purgeAndCompactFts5(handle);
+    } catch (e) {
+      ctx.logger('backup').warn(`备份库 FTS5 清理跳过: ${ioMessage(e)}`);
+    }
     // 重建目标备份库页面，彻底清除已永久删除记录在 SQLite 空闲页中的明文残留
     try { handle.exec('VACUUM'); }
     catch (e) { ctx.logger('backup').warn(`备份库 VACUUM 失败，继续执行 checkpoint: ${ioMessage(e)}`); }

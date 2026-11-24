@@ -15,6 +15,7 @@ import {
 } from '../translation/useTranslationStream';
 import * as TTS from '../utils/tts';
 import { fileManager } from '../utils/fileManager';
+import { isWebUiShell } from '@/utils/platform';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
 import { WarningCircle, ArrowClockwise, WifiSlash, Info, Translate } from '@phosphor-icons/react';
 import { DsButton } from './ui/DsButton';
@@ -29,7 +30,13 @@ import {
   registerContentDirtyChecker,
   registerContentSaveHandler,
 } from '@/features/workbench/apps/content/contentDirtyRegistry';
-import { resolveSessionPrefs } from '@/translation/sessionPrefs';
+import {
+  clearTranslationDraftSnapshot,
+  detectClearSourceLanguageMismatch,
+  isVerbatimUntranslatedOutput,
+  resolveSessionPrefs,
+  saveTranslationDraftSnapshot,
+} from '@/translation/sessionPrefs';
 import {
   DOMAIN_DEFAULT_PROMPT_KEYS,
   isPromptCustomized as isPromptCustomizedBy,
@@ -309,6 +316,26 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   // 错误状态管理
   const [translationError, setTranslationError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
+  const [verbatimOutputWarning, setVerbatimOutputWarning] = useState(false);
+  const [mismatchBannerDismissed, setMismatchBannerDismissed] = useState(false);
+
+  const draftResourceKey = dstuMode.resourceId ?? currentSessionIdRef.current ?? initialSession?.id;
+
+  const persistLocalDraft = useCallback(
+    (patch?: Partial<{ srcLang: string; tgtLang: string; sourceText: string; translatedText: string }>) => {
+      const key = dstuMode.resourceId ?? currentSessionIdRef.current ?? initialSession?.id;
+      if (!key) return;
+      saveTranslationDraftSnapshot({
+        id: key,
+        srcLang: patch?.srcLang ?? latestStateForPersistRef.current.srcLang,
+        tgtLang: patch?.tgtLang ?? latestStateForPersistRef.current.tgtLang,
+        sourceText: patch?.sourceText ?? latestStateForPersistRef.current.sourceText,
+        translatedText: patch?.translatedText ?? latestTranslatedForPersistRef.current ?? '',
+        updatedAt: Date.now(),
+      });
+    },
+    [dstuMode.resourceId, initialSession?.id],
+  );
 
   const flushSessionPersist = useCallback(() => {
     if (!dstuMode.onSessionSave || !currentSessionIdRef.current) return;
@@ -346,15 +373,20 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   const handleSetSrcLang = useCallback((value: string) => {
     latestStateForPersistRef.current.srcLang = value;
     setSrcLang(value);
+    setVerbatimOutputWarning(false);
+    setMismatchBannerDismissed(false);
     saveWorkbenchPrefs({ srcLang: value });
+    persistLocalDraft({ srcLang: value });
     flushSessionPersist();
-  }, [flushSessionPersist]);
+  }, [flushSessionPersist, persistLocalDraft]);
   const handleSetTgtLang = useCallback((value: string) => {
     latestStateForPersistRef.current.tgtLang = value;
     setTgtLang(value);
+    setVerbatimOutputWarning(false);
     saveWorkbenchPrefs({ tgtLang: value });
+    persistLocalDraft({ tgtLang: value });
     flushSessionPersist();
-  }, [flushSessionPersist]);
+  }, [flushSessionPersist, persistLocalDraft]);
   const handleSetFormality = useCallback((value: 'formal' | 'casual' | 'auto') => {
     setFormality(value);
     saveWorkbenchPrefs({ formality: value });
@@ -487,6 +519,12 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     currentSessionIdRef.current = sessionToSave.id;
     await dstuMode.onSessionSave(sessionToSave);
     markTranslationPersisted(sessionToSave);
+    persistLocalDraft({
+      srcLang: latestSrcLang,
+      tgtLang: latestTgtLang,
+      sourceText: latestSourceText,
+      translatedText: latestTranslatedText,
+    });
   };
 
   useEffect(() => {
@@ -544,7 +582,14 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     setGlossary(initialSession.glossary || []);
     setTranslationQuality(initialSession.quality ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialSession?.id, initialSession?.srcLang, initialSession?.tgtLang, initialSession?.updatedAt]);
+  }, [
+    initialSession?.id,
+    initialSession?.srcLang,
+    initialSession?.tgtLang,
+    initialSession?.sourceText,
+    initialSession?.translatedText,
+    initialSession?.updatedAt,
+  ]);
 
   // ★ A6-06：最近一次已执行翻译的参数签名；恢复历史会话时已有译文视为"已翻译过"
   // 签名结构与 buildTranslationSig 对齐：[source, src, tgt, customPrompt, formality, domain, glossary]
@@ -628,6 +673,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   // 编辑原文同时清除旧错误（恢复自动翻译）
   const handleSetSourceText = useCallback((text: string) => {
     setTranslationError(null);
+    setVerbatimOutputWarning(false);
+    setMismatchBannerDismissed(false);
     if (text.length > TRANSLATION_MAX_CHARS) {
       showGlobalNotification('warning', t('translation:errors.text_too_long', {
         max: TRANSLATION_MAX_CHARS.toLocaleString(),
@@ -635,13 +682,15 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
       const sliced = text.slice(0, TRANSLATION_MAX_CHARS);
       latestStateForPersistRef.current.sourceText = sliced;
       setSourceText(sliced);
+      persistLocalDraft({ sourceText: sliced });
       scheduleSessionPersist();
       return;
     }
     latestStateForPersistRef.current.sourceText = text;
     setSourceText(text);
+    persistLocalDraft({ sourceText: text });
     scheduleSessionPersist();
-  }, [t, scheduleSessionPersist]);
+  }, [t, scheduleSessionPersist, persistLocalDraft]);
 
   // 拖拽文件读取的序号守卫：快速连续拖入多个文件时只保留最后一次结果
   const fileReadSeqRef = useRef(0);
@@ -770,6 +819,19 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     // 清除之前的错误状态
     setTranslationError(null);
     setTranslationQuality(null);
+    setVerbatimOutputWarning(false);
+    syncedInitialTranslatedRef.current = '';
+
+    const preMismatch = detectClearSourceLanguageMismatch(sourceText, srcLang);
+    if (preMismatch.mismatch) {
+      setMismatchBannerDismissed(false);
+      showGlobalNotification(
+        'warning',
+        t('translation:workbench_ui.source_lang_mismatch_toast', {
+          defaultValue: '检测到原文语言与所选源语言不一致',
+        }),
+      );
+    }
 
     // ★ A6-06：登记本次翻译的参数签名（手动/自动触发都登记），自动翻译据此避免对同一内容重复触发
     const activeSig = buildTranslationSig();
@@ -793,6 +855,34 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
         // 翻译成功，清除错误状态
         setTranslationError(null);
         setHasManualEdits(false);
+        syncedInitialTranslatedRef.current = result.translatedText;
+        latestTranslatedForPersistRef.current = result.translatedText;
+
+        const isVerbatim = isVerbatimUntranslatedOutput(
+          sourceText,
+          result.translatedText,
+          srcLang,
+          tgtLang,
+        );
+        if (isVerbatim) {
+          setVerbatimOutputWarning(true);
+          showGlobalNotification(
+            'warning',
+            t('translation:workbench_ui.verbatim_output_warning', {
+              defaultValue: '译文与原文相同，请确认源语言设置',
+            }),
+          );
+        } else {
+          setVerbatimOutputWarning(false);
+        }
+
+        persistLocalDraft({
+          srcLang,
+          tgtLang,
+          sourceText,
+          translatedText: result.translatedText,
+        });
+
         // 翻译完成后保存会话到 DSTU
         if (dstuMode.onSessionSave) {
           try {
@@ -963,12 +1053,21 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     if (!langOnly) {
       latestStateForPersistRef.current.sourceText = translatedText;
       latestTranslatedForPersistRef.current = sourceText;
+      syncedInitialTranslatedRef.current = sourceText;
       setSourceText(translatedText);
       setTranslatedText(sourceText);
     }
+    setVerbatimOutputWarning(false);
+    setMismatchBannerDismissed(false);
     setTranslationError(null);
+    persistLocalDraft({
+      srcLang: tgtLang,
+      tgtLang: effectiveSrcLang,
+      sourceText: langOnly ? sourceText : translatedText,
+      translatedText: langOnly ? translatedText : sourceText,
+    });
     flushSessionPersist();
-  }, [srcLang, tgtLang, sourceText, translatedText, detectedLang, t, setTranslatedText, isTranslating, isEditingTranslation, flushSessionPersist]);
+  }, [srcLang, tgtLang, sourceText, translatedText, detectedLang, t, setTranslatedText, isTranslating, isEditingTranslation, flushSessionPersist, persistLocalDraft]);
 
   const handleUndoSwap = useCallback(() => {
     if (!preSwapSnapshot) return;
@@ -976,17 +1075,25 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     latestStateForPersistRef.current.tgtLang = preSwapSnapshot.tgtLang;
     latestStateForPersistRef.current.sourceText = preSwapSnapshot.sourceText;
     latestTranslatedForPersistRef.current = preSwapSnapshot.translatedText;
+    syncedInitialTranslatedRef.current = preSwapSnapshot.translatedText;
 
     setSrcLang(preSwapSnapshot.srcLang);
     setTgtLang(preSwapSnapshot.tgtLang);
     saveWorkbenchPrefs({ srcLang: preSwapSnapshot.srcLang, tgtLang: preSwapSnapshot.tgtLang });
     setSourceText(preSwapSnapshot.sourceText);
     setTranslatedText(preSwapSnapshot.translatedText);
+    setVerbatimOutputWarning(false);
     setTranslationError(null);
     setPreSwapSnapshot(null);
     setSwapUndoBannerDismissed(true);
+    persistLocalDraft({
+      srcLang: preSwapSnapshot.srcLang,
+      tgtLang: preSwapSnapshot.tgtLang,
+      sourceText: preSwapSnapshot.sourceText,
+      translatedText: preSwapSnapshot.translatedText,
+    });
     flushSessionPersist();
-  }, [preSwapSnapshot, setTranslatedText, flushSessionPersist]);
+  }, [preSwapSnapshot, setTranslatedText, flushSessionPersist, persistLocalDraft]);
 
   // 自动翻译逻辑（智能 debounce：短文本快速触发，长文本延迟触发）
   // deps 包含所有影响翻译结果的参数，修改设置时也会重新触发
@@ -1022,10 +1129,13 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   const handleSaveEditedTranslation = useCallback(async () => {
     try {
       // 更新前端状态
+      syncedInitialTranslatedRef.current = editedTranslation;
+      latestTranslatedForPersistRef.current = editedTranslation;
       setTranslatedText(editedTranslation);
       setIsEditingTranslation(false);
       setHasManualEdits(true);
       setPendingOverwriteConfirm(false);
+      persistLocalDraft({ translatedText: editedTranslation });
       
       // 通过回调保存到 DSTU
       if (dstuMode.onSessionSave && currentSessionIdRef.current) {
@@ -1091,14 +1201,34 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
         `## ${srcName}`, ``,
         sourceText, ``,
         `## ${tgtName}`, ``,
-        translatedText, ``,
+        translatedTextForDirty, ``,
       );
 
       const content = lines.join('\n');
+      const fileName = `translation_${new Date().getTime()}.md`;
+      const useBrowserDownload =
+        typeof window === 'undefined' ||
+        !('__TAURI_INTERNALS__' in window) ||
+        isWebUiShell();
+
+      if (useBrowserDownload && typeof document !== 'undefined') {
+        const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showGlobalNotification('success', t('translation:target_section.exported'));
+        return;
+      }
 
       const result = await fileManager.saveTextFile({
         title: t('translation:target_section.export_title'),
-        defaultFileName: `translation_${new Date().getTime()}.md`,
+        defaultFileName: fileName,
         filters: [
           { name: t('translation:export.file_filters.markdown'), extensions: ['md'] },
           { name: t('translation:export.file_filters.text'), extensions: ['txt'] },
@@ -1111,7 +1241,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
       console.error('[Translation] Failed to export:', error);
       showGlobalNotification('error', t('translation:errors.export_failed', { error: getErrorMessage(error) }));
     }
-  }, [sourceText, translatedText, srcLang, tgtLang, domain, glossary, t]);
+  }, [sourceText, translatedTextForDirty, srcLang, tgtLang, domain, glossary, t]);
 
   // 朗读译文
   const handleSpeak = useCallback(async () => {
@@ -1243,10 +1373,15 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   // 清空逻辑：内联确认由 SourcePanel 承载（单次确认），此处执行真正的清空
   // 清空同时重置错误/编辑/评分/自动翻译签名，避免「清空后粘贴相同文本不再自动翻译」
   const doClear = useCallback(() => {
+    latestStateForPersistRef.current.sourceText = '';
+    latestTranslatedForPersistRef.current = '';
+    syncedInitialTranslatedRef.current = '';
     setSourceText('');
     setTranslatedText('');
     setTranslationQuality(null);
     setTranslationError(null);
+    setVerbatimOutputWarning(false);
+    setMismatchBannerDismissed(false);
     setIsEditingTranslation(false);
     setEditedTranslation('');
     setHasManualEdits(false);
@@ -1256,12 +1391,26 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     lastTranslatedSigRef.current = null;
     setLastTranslatedSig(null);
     restoredSigPendingPromptRef.current = false;
-  }, [setTranslatedText]);
+    clearTranslationDraftSnapshot(draftResourceKey);
+  }, [setTranslatedText, draftResourceKey]);
 
   // 取消残留的部分译文：清除文本（保留原文），或仅关闭提示
   const handleDiscardPartial = useCallback(() => {
+    syncedInitialTranslatedRef.current = '';
+    latestTranslatedForPersistRef.current = '';
     setTranslatedText('');
   }, [setTranslatedText]);
+
+  const sourceLanguageMismatch = useMemo(
+    () => detectClearSourceLanguageMismatch(sourceText, srcLang),
+    [sourceText, srcLang],
+  );
+  const mismatchDetectedLangName = sourceLanguageMismatch.detectedLang
+    ? t(`translation:languages.${sourceLanguageMismatch.detectedLang}`, {
+        defaultValue: sourceLanguageMismatch.detectedLang,
+      })
+    : null;
+  const selectedSrcLangName = t(`translation:languages.${srcLang}`, { defaultValue: srcLang });
 
   const detectedLangName = detectedLang
     ? t(`translation:languages.${detectedLang}`, { defaultValue: detectedLang })
@@ -1312,6 +1461,103 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
             </DsButton>
           </div>
         )}
+
+        {/* 源语言与原文不匹配提示条（S3-11） */}
+        {!isExternalSettingsPageOpen &&
+          sourceLanguageMismatch.mismatch &&
+          !mismatchBannerDismissed &&
+          !translationError && (
+            <div
+              data-testid="translation-mismatch-warning-banner"
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-warning/10 border-b border-warning/25 ui-drop-in"
+            >
+              <div className="flex items-center gap-2 text-warning min-w-0">
+                <WarningCircle size={16} className="shrink-0" />
+                <span className="text-sm">
+                  {t('translation:workbench_ui.source_lang_mismatch_banner', {
+                    detected: mismatchDetectedLangName ?? sourceLanguageMismatch.detectedLang ?? '',
+                    selected: selectedSrcLangName,
+                    defaultValue: '检测到原文语言与所选源语言不一致',
+                  })}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                {sourceLanguageMismatch.detectedLang && (
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    data-testid="translation-mismatch-switch-detected"
+                    onClick={() => handleSetSrcLang(sourceLanguageMismatch.detectedLang!)}
+                    className="text-warning hover:bg-warning/15 font-medium [@media(pointer:coarse)]:!min-h-11"
+                  >
+                    {t('translation:workbench_ui.switch_to_detected', {
+                      language: mismatchDetectedLangName ?? sourceLanguageMismatch.detectedLang,
+                      defaultValue: `切换为 ${mismatchDetectedLangName ?? sourceLanguageMismatch.detectedLang}`,
+                    })}
+                  </DsButton>
+                )}
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  data-testid="translation-mismatch-switch-auto"
+                  onClick={() => handleSetSrcLang('auto')}
+                  className="text-warning hover:bg-warning/15 [@media(pointer:coarse)]:!min-h-11"
+                >
+                  {t('translation:workbench_ui.switch_to_auto', { defaultValue: '改为自动检测' })}
+                </DsButton>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setMismatchBannerDismissed(true)}
+                  className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
+                >
+                  {t('translation:workbench_ui.dismiss')}
+                </DsButton>
+              </div>
+            </div>
+          )}
+
+        {/* 译文与原文完全相同警示条（S3-11） */}
+        {!isExternalSettingsPageOpen &&
+          verbatimOutputWarning &&
+          !isTranslating &&
+          !translationError && (
+            <div
+              data-testid="translation-verbatim-warning-banner"
+              role="alert"
+              className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-warning/10 border-b border-warning/25 ui-drop-in"
+            >
+              <div className="flex items-center gap-2 text-warning min-w-0">
+                <WarningCircle size={16} className="shrink-0" />
+                <span className="text-sm">
+                  {t('translation:workbench_ui.verbatim_output_warning', {
+                    defaultValue: '译文与原文相同，请确认源语言设置',
+                  })}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {srcLang !== 'auto' && (
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleSetSrcLang('auto')}
+                    className="text-warning hover:bg-warning/15 font-medium [@media(pointer:coarse)]:!min-h-11"
+                  >
+                    {t('translation:workbench_ui.switch_to_auto', { defaultValue: '改为自动检测' })}
+                  </DsButton>
+                )}
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setVerbatimOutputWarning(false)}
+                  className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
+                >
+                  {t('translation:workbench_ui.dismiss')}
+                </DsButton>
+              </div>
+            </div>
+          )}
 
         {/* 重译覆盖手工编辑确认条 */}
         {!isExternalSettingsPageOpen && pendingOverwriteConfirm && !isTranslating && (
@@ -1448,7 +1694,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
               setSourceText={handleSetSourceText}
               sourceMaxChars={TRANSLATION_MAX_CHARS}
               isSourceOverLimit={isSourceOverLimit}
-              translatedText={translatedText}
+              translatedText={translatedText || syncedInitialTranslatedRef.current}
               isTranslating={isTranslating}
               customPrompt={customPrompt}
               setCustomPrompt={setCustomPrompt}

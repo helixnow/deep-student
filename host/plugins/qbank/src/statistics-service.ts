@@ -258,12 +258,15 @@ export function generateMockExam(host: StatisticsServiceHost, examId: string, //
     if (!config.include_mistakes) baseFilters.status = ['new', 'in_progress', 'mastered'];
     const selected: string[] = [];
     for (const [type, count] of Object.entries(config.type_distribution)) {
+      if (count <= 0) continue;
       const ids = host.questions.randomQuestionIds(host.db, examId,
         vfsFilters({ ...baseFilters, question_type: [questionTypeFrom(type.toLowerCase())] as never }),
         selected, null, count);
       selected.push(...ids);
     }
+    const typeSelectedCount = selected.length;
     for (const [difficulty, count] of Object.entries(config.difficulty_distribution)) {
+      if (count <= 0) continue;
       const ids = host.questions.randomQuestionIds(host.db, examId,
         vfsFilters({ ...baseFilters, difficulty: [difficultyFrom(difficulty.toLowerCase())] as never }),
         selected, null, count);
@@ -275,8 +278,16 @@ export function generateMockExam(host: StatisticsServiceHost, examId: string, //
           config.total_count - selected.length);
         selected.push(...fill);
       } else if (selected.length > config.total_count) {
-        shuffle(selected);
-        selected.length = config.total_count;
+        if (typeSelectedCount <= config.total_count) {
+          // 优先保留题型配比中显式勾选的题目（如简答题），只对超出配比的尾部做截断
+          const extras = selected.slice(typeSelectedCount);
+          shuffle(extras);
+          selected.length = typeSelectedCount;
+          selected.push(...extras.slice(0, config.total_count - typeSelectedCount));
+        } else {
+          shuffle(selected);
+          selected.length = config.total_count;
+        }
       }
     }
     if (config.shuffle) shuffle(selected);

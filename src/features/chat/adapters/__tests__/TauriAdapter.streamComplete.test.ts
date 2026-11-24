@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const {
   handleBackendEventWithSequence,
   flushPendingBackendEvents,
+  flushOrphanTerminals,
   handleStreamComplete,
   handleStreamAbort,
 } = vi.hoisted(() => ({
   handleBackendEventWithSequence: vi.fn(),
   flushPendingBackendEvents: vi.fn(),
+  flushOrphanTerminals: vi.fn(),
   handleStreamComplete: vi.fn(() => Promise.resolve()),
   handleStreamAbort: vi.fn(() => Promise.resolve()),
 }));
@@ -15,6 +17,7 @@ const {
 vi.mock('../../core/middleware/eventBridge', () => ({
   handleBackendEventWithSequence,
   flushPendingBackendEvents,
+  flushOrphanTerminals,
   handleStreamComplete,
   handleStreamAbort,
   clearEventContext: vi.fn(),

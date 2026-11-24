@@ -71,14 +71,14 @@ export async function executeDownloadWithProgress(
   await emitter.emitDownloading(total, total, null);
   result.conflicts_detected = 0; let skipped = 0;
   if (total > 0) {
-    await emitter.emitApplying(0, total, '应用变更');
+    await emitter.emitApplying(0, total, 'sync:fileSync.applyingChanges');
     const applied = await options.application.apply(downloaded.changes, strategy);
     result.conflicts_detected = applied.total_conflicts; skipped = applied.total_incomplete_skipped;
     markApplyFailuresVisible(result, applied); ensureDownloadApplyIsDurable(applied); skippedWarning(result, skipped);
     await emitter.emitApplying(total, total, null);
   }
   await commitDownloadProgressIfNeeded(storage, downloaded, options);
-  const report = await runFileLevelSync(storage, options.localStorage.locations.activeDir, 'Download', options, coordinator, new FileLevelProgress(emitter, 85, 99));
+  const report = await runFileLevelSync(storage, options.localStorage.locations.activeDir, 'Download', options, coordinator, new FileLevelProgress(emitter, 85, 100));
   if (report.failed) { result.success = false; if (report.warning !== null) append(result, report.warning); }
   return [result, skipped];
 }
@@ -94,7 +94,7 @@ export async function executeBidirectionalWithProgress(
   if (total > 0) await emitter.emitDownloading(total, total, null);
   result.conflicts_detected = 0; let skipped = 0, appliedKeys = new Set<string>();
   if (total > 0) {
-    await emitter.emitApplying(0, total, '应用下载变更');
+    await emitter.emitApplying(0, total, 'sync:fileSync.applyingDownloadedChanges');
     const applied = await options.application.apply(downloaded.changes, strategy);
     result.conflicts_detected = applied.total_conflicts; skipped = applied.total_incomplete_skipped;
     markApplyFailuresVisible(result, applied); ensureDownloadApplyIsDurable(applied); appliedKeys = applied.applied_keys; skippedWarning(result, skipped);
@@ -131,7 +131,7 @@ export async function executeBidirectionalWithProgress(
   catch (error) { rollbackMarkedChanges(options.localStorage, marked, options.logger); throw new Error(`上传刷新清单失败: ${message(error)}`); }
   // mod.rs:3510,3893: authoritative replacement is disabled in the Rust build.
   options.logger.info('[sync] 跳过 v1 UPSERT-only 快照发布：权威 replace/delete-set 协议尚未启用');
-  const download = await runFileLevelSync(storage, active, 'Download', options, coordinator, new FileLevelProgress(emitter, 85, 99));
+  const download = await runFileLevelSync(storage, active, 'Download', options, coordinator, new FileLevelProgress(emitter, 85, 100));
   if (download.failed) { result.success = false; if (download.warning !== null) append(result, download.warning); }
   options.logger.info('[sync] 自动 prune 已禁用：当前快照不具备权威 replace/delete-set 语义');
   archiveSyncedChangeLogs(options.localStorage, 30, options.deviceId, options.logger);

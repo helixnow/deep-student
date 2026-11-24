@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FolderSimplePlus, SidebarSimple } from '@phosphor-icons/react';
+import { FolderSimplePlus, SidebarSimple, X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
@@ -9,6 +9,10 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { HtmlSandboxPreview } from '@/components/previews/HtmlSandboxPreview';
 import { InteractiveHtmlCanvas } from '@/components/previews/InteractiveHtmlCanvas';
+import {
+  stripSandboxRunRuntimeGuard,
+  wrapSandboxRunHtmlWithRuntimeGuard,
+} from '@/components/previews/chatHtmlPreviewDocument';
 import {
   getArtifactRenderer,
   subscribeArtifactRendererRegistry,
@@ -29,10 +33,10 @@ import {
   launchSandboxWorkbench,
 } from '../launchSandboxWorkbench';
 import {
+  readPersistedSandboxDraft,
   selectSandboxWorkbenchOwnerState,
   useSandboxWorkbenchStore,
 } from '../store/useSandboxWorkbenchStore';
-import { SandboxInspectorPanel } from './SandboxInspectorPanel';
 import { SandboxStatusRail } from './SandboxStatusRail';
 import { SandboxToolbar } from './SandboxToolbar';
 import type { SandboxOwnerKey } from '../types';
@@ -81,13 +85,39 @@ export function SandboxWorkbenchSurface({
       : state.viewportPreset,
   );
   const activeOwnerKey = useSandboxWorkbenchStore((state) => state.activeOwnerKey);
+  const effectiveOwnerKey = ownerKey?.trim() || activeOwnerKey;
+  const sessionRevisionsByOwner = useSandboxWorkbenchStore(
+    (state) => state.sessionRevisionsByOwner,
+  );
   const closeSession = useSandboxWorkbenchStore((state) => state.closeSession);
   const openWorkbench = useSandboxWorkbenchStore((state) => state.openWorkbench);
   const closeWorkbench = useSandboxWorkbenchStore((state) => state.closeWorkbench);
+  const commitSessionRevision = useSandboxWorkbenchStore((state) => state.commitSessionRevision);
+  const selectSessionRevision = useSandboxWorkbenchStore((state) => state.selectSessionRevision);
+  const resetSessionDraft = useSandboxWorkbenchStore((state) => state.resetSessionDraft);
+  const restorePersistedDraft = useSandboxWorkbenchStore((state) => state.restorePersistedDraft);
   const setInspectorOpen = useSandboxWorkbenchStore((state) => state.setInspectorOpen);
   const setViewportPreset = useSandboxWorkbenchStore((state) => state.setViewportPreset);
 
-  const effectiveOwnerKey = ownerKey?.trim() || activeOwnerKey;
+  const isEnglish = (i18n.resolvedLanguage || i18n.language || '').startsWith('en');
+
+  const [runtimeError, setRuntimeError] = useState<{
+    message: string;
+    lineno: number;
+    colno: number;
+  } | null>(null);
+  const [canvasSyncKey, setCanvasSyncKey] = useState(0);
+  const didAttemptAutoRestoreRef = useRef(false);
+
+  useEffect(() => {
+    if (didAttemptAutoRestoreRef.current) return;
+    didAttemptAutoRestoreRef.current = true;
+    if (activeSession || embedded) return;
+    const draft = readPersistedSandboxDraft();
+    if (draft && !draft.dismissed) {
+      restorePersistedDraft(ownerKey);
+    }
+  }, [activeSession, embedded, ownerKey, restorePersistedDraft]);
 
   const pinnedRecord = usePinnedArtifactStore((state) => {
     if (activeSession?.artifactId && state.recordsById[activeSession.artifactId]) {
@@ -119,9 +149,14 @@ export function SandboxWorkbenchSurface({
     });
   }, []);
 
+  const sessionRevisionState = sessionRevisionsByOwner[effectiveOwnerKey];
+
   const revisions = useMemo(() => {
     if (pinnedRecord && pinnedRecord.revisions.length > 0) {
       return pinnedRecord.revisions;
+    }
+    if (sessionRevisionState && sessionRevisionState.revisions.length > 0) {
+      return sessionRevisionState.revisions;
     }
     if (activeSession) {
       return [
@@ -133,9 +168,9 @@ export function SandboxWorkbenchSurface({
       ];
     }
     return [];
-  }, [pinnedRecord, activeSession]);
+  }, [pinnedRecord, sessionRevisionState, activeSession]);
 
-  const activeVersion = pinnedRecord?.activeVersion ?? 1;
+  const activeVersion = pinnedRecord?.activeVersion ?? sessionRevisionState?.activeVersion ?? 1;
   const activeRevision = useMemo(
     () =>
       revisions.find((rev) => rev.version === activeVersion) ??
@@ -144,8 +179,28 @@ export function SandboxWorkbenchSurface({
     [revisions, activeVersion],
   );
 
-  const effectiveContent = activeRevision?.content ?? activeSession?.content ?? '';
+  const effectiveContent = stripSandboxRunRuntimeGuard(
+    activeRevision?.content ?? activeSession?.content ?? '',
+  );
+  const initialDraftContent = sessionRevisionState?.initialContent ?? revisions[0]?.content ?? effectiveContent;
+  const canResetDraft =
+    !pinnedRecord &&
+    (revisions.length > 1 ||
+      effectiveContent !== initialDraftContent ||
+      runtimeError !== null);
   const effectiveKind = pinnedRecord?.kind ?? activeSession?.artifactKind;
+  const useInteractiveHtmlCanvas =
+    effectiveKind === 'html' ||
+    Boolean(
+      activeSession &&
+        activeSession.language.toLowerCase().startsWith('html') &&
+        activeSession.mode === 'sandbox-run',
+    );
+  const scriptsEnabled = useInteractiveHtmlCanvas || activeSession?.mode === 'sandbox-run';
+  const guardedHtmlContent = useMemo(
+    () => (useInteractiveHtmlCanvas ? wrapSandboxRunHtmlWithRuntimeGuard(effectiveContent) : effectiveContent),
+    [effectiveContent, useInteractiveHtmlCanvas],
+  );
   const effectiveWidgetId =
     pinnedRecord?.widgetId ??
     activeSession?.widgetId ??
@@ -252,6 +307,44 @@ export function SandboxWorkbenchSurface({
   const prevSessionStampRef = useRef<{ id: string; updatedAt: number } | null>(null);
 
   useEffect(() => {
+    setRuntimeError(null);
+  }, [activeSession?.id, activeVersion]);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const payload = event.data as
+        | { source?: unknown; type?: unknown; message?: unknown; lineno?: unknown; colno?: unknown }
+        | null
+        | undefined;
+      if (!payload || payload.source !== 'ds-sandbox-runtime' || payload.type !== 'runtime-error') {
+        return;
+      }
+      const frame = canvasRef.current?.querySelector('iframe.interactive-html-canvas-frame');
+      if (
+        frame instanceof HTMLIFrameElement &&
+        frame.contentWindow &&
+        event.source &&
+        event.source !== frame.contentWindow
+      ) {
+        return;
+      }
+      setRuntimeError({
+        message: typeof payload.message === 'string' && payload.message.trim()
+          ? payload.message
+          : (isEnglish ? 'Unknown script runtime error' : '未知脚本运行错误'),
+        lineno: typeof payload.lineno === 'number' && Number.isFinite(payload.lineno)
+          ? payload.lineno
+          : 0,
+        colno: typeof payload.colno === 'number' && Number.isFinite(payload.colno)
+          ? payload.colno
+          : 0,
+      });
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [isEnglish]);
+
+  useEffect(() => {
     const prev = prevViewportRef.current;
     prevViewportRef.current = viewportPreset;
     const el = canvasRef.current;
@@ -329,6 +422,8 @@ export function SandboxWorkbenchSurface({
       return null;
     }
 
+    const restorableDraft = readPersistedSandboxDraft();
+
     return (
       <section
         className={cn(
@@ -362,11 +457,26 @@ export function SandboxWorkbenchSurface({
                 }
               >
                 {t('sandbox.createStarterCanvas', {
-                  defaultValue: (i18n.resolvedLanguage || i18n.language || '').startsWith('en')
+                  defaultValue: isEnglish
                     ? 'New HTML Canvas'
                     : '新建 HTML 画布',
                 })}
               </DsButton>
+              {restorableDraft && (
+                <DsButton
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  data-testid="sandbox-restore-draft-button"
+                  onClick={() => {
+                    restorePersistedDraft(ownerKey);
+                  }}
+                >
+                  {t('sandbox.restoreLastDraft', {
+                    defaultValue: isEnglish ? 'Restore last draft' : '恢复上次草稿',
+                  })}
+                </DsButton>
+              )}
             </div>
             {isSmallScreen && (
               <p className="mt-2 text-xs text-muted-foreground/70">{t('sandbox.mobileHint')}</p>
@@ -421,11 +531,6 @@ export function SandboxWorkbenchSurface({
     );
   }
 
-  const useInteractiveHtmlCanvas =
-    effectiveKind === 'html' ||
-    (activeSession.language.toLowerCase().startsWith('html') &&
-      activeSession.mode === 'sandbox-run');
-
   const toolbarSubtitle = `${activeSession.language.toUpperCase()} · ${
     effectiveKind || useInteractiveHtmlCanvas
       ? t('sandbox.pinnedCanvas')
@@ -435,7 +540,7 @@ export function SandboxWorkbenchSurface({
   const previewShell = (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div
-        className="flex flex-wrap items-center justify-between gap-2 border-b border-border/35 px-4 py-2.5"
+        className="relative z-20 flex flex-wrap items-center justify-between gap-2 border-b border-border/35 bg-[color:var(--shell-workspace-panel)] px-4 py-2.5"
         data-testid="sandbox-artifact-header"
       >
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -453,6 +558,21 @@ export function SandboxWorkbenchSurface({
           >
             {effectiveTitle}
           </span>
+          {useInteractiveHtmlCanvas && (
+            <span
+              data-testid="sandbox-runtime-status-badge"
+              className={cn(
+                'rounded-full border px-2 py-0.5 text-[11px] font-medium tabular-nums',
+                runtimeError
+                  ? 'border-destructive/45 bg-destructive/10 text-destructive'
+                  : 'border-[hsl(var(--success)/0.35)] bg-[hsl(var(--success)/0.1)] text-foreground',
+              )}
+            >
+              {runtimeError
+                ? (isEnglish ? 'Script error' : '脚本错误')
+                : (isEnglish ? `Running · v${activeVersion}` : `已运行 · v${activeVersion}`)}
+            </span>
+          )}
           {hasSyncedWidgetState && (
             <span
               className="rounded-full border border-border/35 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground"
@@ -476,8 +596,11 @@ export function SandboxWorkbenchSurface({
                   data-testid={`sandbox-version-pill-v${rev.version}`}
                   aria-pressed={isCurrent}
                   onClick={() => {
+                    setRuntimeError(null);
                     if (pinnedRecord) {
                       selectArtifactVersion(pinnedRecord.artifactId, rev.version);
+                    } else {
+                      selectSessionRevision(rev.version, ownerKey);
                     }
                   }}
                   className={cn(
@@ -494,7 +617,22 @@ export function SandboxWorkbenchSurface({
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {useInteractiveHtmlCanvas && !pinnedRecord && (
+            <button
+              type="button"
+              disabled={!canResetDraft}
+              onClick={() => {
+                setRuntimeError(null);
+                resetSessionDraft(ownerKey);
+                setCanvasSyncKey((v) => v + 1);
+              }}
+              data-testid="sandbox-reset-button"
+              className="inline-flex items-center gap-1 rounded-full border border-border/35 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-45 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-3.5"
+            >
+              <span>{isEnglish ? 'Reset' : '重置'}</span>
+            </button>
+          )}
           <button
             type="button"
             disabled={savingToSpace}
@@ -542,6 +680,46 @@ export function SandboxWorkbenchSurface({
         </div>
       </div>
 
+      {useInteractiveHtmlCanvas && (
+        <div
+          data-testid="sandbox-runtime-console"
+          role={runtimeError ? 'alert' : undefined}
+          className={cn(
+            'relative z-20 flex shrink-0 items-center justify-between gap-2 border-b px-4 py-1.5 text-xs',
+            runtimeError
+              ? 'border-destructive/35 bg-destructive/10 text-destructive'
+              : 'border-border/25 bg-muted/20 text-muted-foreground',
+          )}
+        >
+          <span
+            data-testid={runtimeError ? 'sandbox-runtime-error-message' : 'sandbox-runtime-ok-message'}
+            className="min-w-0 truncate font-mono"
+          >
+            {runtimeError
+              ? `${isEnglish ? 'Runtime error' : '脚本运行错误'}${
+                  runtimeError.lineno > 0
+                    ? isEnglish
+                      ? ` (line ${runtimeError.lineno}${runtimeError.colno > 0 ? `:${runtimeError.colno}` : ''})`
+                      : `（第 ${runtimeError.lineno} 行${runtimeError.colno > 0 ? `:${runtimeError.colno}` : ''}）`
+                    : ''
+                }: ${runtimeError.message}`
+              : (isEnglish
+                  ? `Sandbox runtime · v${activeVersion} · Ready`
+                  : `运行控制台 · v${activeVersion} · 运行正常`)}
+          </span>
+          {runtimeError && (
+            <button
+              type="button"
+              onClick={() => setRuntimeError(null)}
+              data-testid="sandbox-runtime-clear-error"
+              className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium hover:bg-destructive/15"
+            >
+              {isEnglish ? 'Clear' : '清除'}
+            </button>
+          )}
+        </div>
+      )}
+
       <CustomScrollArea
         className="min-h-0 flex-1"
         viewportClassName="bg-[radial-gradient(circle_at_top,_hsl(var(--card)/0.55),_transparent_58%)] p-4"
@@ -551,7 +729,7 @@ export function SandboxWorkbenchSurface({
           ref={canvasRef}
           data-testid="sandbox-runtime-canvas"
           className={cn(
-            'relative mx-auto min-h-[360px] overflow-hidden rounded-2xl border border-border/35 bg-background shadow-[var(--shadow-shell-soft)] md:min-h-[520px]',
+            'relative z-[1] mx-auto min-h-[360px] overflow-hidden rounded-2xl border border-border/35 bg-background shadow-[var(--shadow-shell-soft)] md:min-h-[520px] [&_[data-expanded="true"]]:!relative [&_[data-expanded="true"]]:!inset-auto [&_[data-expanded="true"]]:!z-[1] [&_[data-expanded="true"]]:!h-auto [&_[data-expanded="true"]]:!min-h-[480px] [&_[data-expanded="true"]]:!w-full',
             !useInteractiveHtmlCanvas &&
               effectiveKind !== 'openui' &&
               effectiveKind !== 'generative-ui' &&
@@ -561,15 +739,23 @@ export function SandboxWorkbenchSurface({
         >
           {useInteractiveHtmlCanvas ? (
             <InteractiveHtmlCanvas
-              html={effectiveContent}
+              key={`${activeSession.id}:${canvasSyncKey}`}
+              html={guardedHtmlContent}
               widgetId={effectiveWidgetId || undefined}
               workTitle={effectiveTitle}
               title={effectiveTitle}
               expanded
               externalVersion={activeVersion}
               onHtmlChange={(nextHtml) => {
+                setRuntimeError(null);
+                const cleanHtml = stripSandboxRunRuntimeGuard(nextHtml);
                 if (pinnedRecord) {
-                  applyPatchToArtifact(pinnedRecord.artifactId, { content: nextHtml });
+                  applyPatchToArtifact(pinnedRecord.artifactId, { content: cleanHtml });
+                } else {
+                  commitSessionRevision(cleanHtml, ownerKey);
+                }
+                if (cleanHtml === effectiveContent && nextHtml !== guardedHtmlContent) {
+                  setCanvasSyncKey((v) => v + 1);
                 }
               }}
             />
@@ -604,16 +790,115 @@ export function SandboxWorkbenchSurface({
     </div>
   );
 
+  const inspectorSession = sessionForInspector ?? activeSession;
+  const inspectorSourceTypeLabel = inspectorSession.sourceType === 'chat-code-block'
+    ? t('sandbox.codeBlock')
+    : inspectorSession.sourceType;
+  const inspectorModeLabel = inspectorSession.mode === 'safe-preview'
+    ? t('sandbox.safePreview')
+    : t('sandbox.running');
+
   const inspectorShell = (
-    <SandboxInspectorPanel
-      session={sessionForInspector ?? activeSession}
-      viewportPreset={viewportPreset}
-      lineCount={lineCount}
-      charCount={charCount}
-      onClose={() => setInspectorOpen(false, ownerKey)}
-      onSetViewportPreset={(preset) => setViewportPreset(preset, ownerKey)}
-      compact={isSmallScreen}
-    />
+    <aside
+      data-testid="sandbox-inspector-panel"
+      className={[
+        'flex min-w-0 flex-col bg-[color:var(--shell-inspector-panel)]',
+        isSmallScreen
+          ? 'h-auto max-h-[45dvh] border-t border-border'
+          : 'h-full border-l border-border',
+      ].join(' ')}
+    >
+      <div className="border-b border-border px-4 py-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-foreground">{t('sandbox.inspector')}</h2>
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={() => setInspectorOpen(false, ownerKey)}
+            title={t('sandbox.collapse')}
+            aria-label={t('sandbox.collapse')}
+            className="!h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-my-2"
+          >
+            <X size={14} />
+          </DsButton>
+        </div>
+      </div>
+      <CustomScrollArea
+        className="min-h-0 flex-1"
+        viewportClassName="px-4 py-4 text-sm text-muted-foreground"
+      >
+        <div className="space-y-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.source')}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-border bg-background px-2 py-0.5 text-xs text-foreground">
+                {inspectorSourceTypeLabel}
+              </span>
+              <span className="rounded-full border border-border bg-background px-2 py-0.5 text-xs text-muted-foreground">
+                {inspectorModeLabel}
+              </span>
+            </div>
+            <p className="mt-2 break-all text-xs text-muted-foreground">{inspectorSession.sourceMessageId}</p>
+          </div>
+
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.view')}</p>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+              {(['desktop', 'tablet', 'mobile'] as const).map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => setViewportPreset(preset, ownerKey)}
+                  className={`rounded-lg border px-2 py-2 text-left transition-colors [@media(pointer:coarse)]:!min-h-11 ${
+                    viewportPreset === preset
+                      ? 'border-foreground/30 bg-foreground/5 text-foreground'
+                      : 'border-border bg-transparent'
+                  }`}
+                  aria-label={t(`sandbox.${preset}`)}
+                  title={t(`sandbox.${preset}`)}
+                >
+                  {preset === 'desktop'
+                    ? t('sandbox.desktopShort', '桌')
+                    : preset === 'tablet'
+                      ? t('sandbox.tabletShort', '平')
+                      : t('sandbox.mobileShort', '手')}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.stats')}</p>
+            <dl className="mt-2 space-y-2 text-xs">
+              <div className="flex items-center justify-between gap-4">
+                <dt>{t('sandbox.language')}</dt>
+                <dd className="text-foreground">{inspectorSession.language}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt>{t('sandbox.lines')}</dt>
+                <dd className="text-foreground">{lineCount}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <dt>{t('sandbox.characters')}</dt>
+                <dd className="text-foreground">{charCount}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div
+            data-testid="sandbox-inspector-security-notice"
+            className="rounded-xl border border-border bg-background/60 p-3 text-xs leading-5 text-muted-foreground"
+          >
+            {scriptsEnabled
+              ? (isEnglish
+                  ? 'Script execution enabled (allow-scripts · no same-origin permission).'
+                  : '脚本执行已启用（allow-scripts · 无同源权限）。')
+              : t('sandbox.iframeNotice')}
+          </div>
+        </div>
+      </CustomScrollArea>
+    </aside>
   );
 
   return (
@@ -625,13 +910,15 @@ export function SandboxWorkbenchSurface({
       )}
     >
       {!hideToolbar && (
-        <SandboxToolbar
-          title={effectiveTitle}
-          subtitle={toolbarSubtitle}
-          inspectorOpen={inspectorOpen}
-          onToggleInspector={handleToggleInspector}
-          onClose={handleClose}
-        />
+        <div className="relative z-20 shrink-0">
+          <SandboxToolbar
+            title={effectiveTitle}
+            subtitle={toolbarSubtitle}
+            inspectorOpen={inspectorOpen}
+            onToggleInspector={handleToggleInspector}
+            onClose={handleClose}
+          />
+        </div>
       )}
 
       <div className="min-h-0 flex-1 overflow-hidden">
