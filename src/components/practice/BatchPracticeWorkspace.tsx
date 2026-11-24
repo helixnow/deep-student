@@ -12,6 +12,8 @@ import {
   ListNumbers,
   PaperPlaneRight,
   ArrowClockwise,
+  PencilSimple,
+  Sparkle,
   Star,
   X,
   Keyboard,
@@ -112,6 +114,8 @@ export default function BatchPracticeWorkspace({
   const [favorites, setFavorites] = useState<Record<string, boolean>>({});
   const [aiFeedback, setAiFeedback] = useState<Record<string, string>>({});
   const [liveSourceAvailable, setLiveSourceAvailable] = useState<Record<string, boolean>>({});
+  const [overrideOpen, setOverrideOpen] = useState(false);
+  const [overrideScoreInput, setOverrideScoreInput] = useState('100');
   const runtimeKey = useRef(newPracticeId());
   const [images, setImages] = useState<Record<string, string>>({});
   const dirtyRef = useRef(false);
@@ -428,6 +432,9 @@ export default function BatchPracticeWorkspace({
     }
   }, []);
   useEffect(() => {
+    setOverrideOpen(false);
+  }, [current?.id, attempt?.id]);
+  useEffect(() => {
     let cancelled = false;
     if (!current) return;
     void loadQuestionImageUrls(
@@ -444,6 +451,43 @@ export default function BatchPracticeWorkspace({
   const answeredCount = questions.filter((q) => hasAnswer(answers[q.id])).length;
   const unansweredCount = questions.length - answeredCount;
   const firstUnansweredIndex = questions.findIndex((q) => !hasAnswer(answers[q.id]));
+  const correctCount = results.filter(
+    (r) => r.status === 'correct' || (r.status !== 'partial' && r.is_correct === true),
+  ).length;
+  const partialCount = results.filter((r) => r.status === 'partial').length;
+  const wrongCount = results.filter(
+    (r) =>
+      r.status === 'incorrect'
+      || (r.status !== 'partial'
+        && r.status !== 'unanswered'
+        && r.status !== 'pending'
+        && r.status !== 'failed'
+        && r.is_correct === false),
+  ).length;
+  const unansweredResultCount = results.filter((r) => r.status === 'unanswered').length;
+  const pendingCount = results.filter((r) => r.status === 'pending' || r.status === 'failed').length;
+  const hasPartialScores = partialCount > 0 || results.some(
+    (r) => typeof r.score === 'number' && r.score > 0 && r.score < 100,
+  );
+  const totalEarnedScorePercent =
+    results.length > 0
+      ? Math.round(
+          (results.reduce(
+            (sum, r) =>
+              sum +
+              (typeof r.score === 'number'
+                ? r.score / 100
+                : r.status === 'correct' || r.is_correct === true
+                  ? 1
+                  : 0),
+            0,
+          ) /
+            results.length) *
+            100,
+        )
+      : 0;
+  const fullCorrectRatePercent =
+    results.length > 0 ? Math.round((correctCount / results.length) * 100) : 0;
   const filteredIndices = questions.flatMap((q, i) => {
     const r = results.find((r) => r.question_id === q.id);
     return filter === 'all' ||
@@ -713,55 +757,44 @@ export default function BatchPracticeWorkspace({
         </span>
         {attempt && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-            <span className="inline-flex items-center gap-1 font-mono font-semibold tabular-nums text-primary">
-              {t('batch.totalScoreSummary', {
-                defaultValue: '得分 {{score}}分 · 准确率 {{rate}}%',
-                score:
-                  results.length > 0
-                    ? Math.round(
-                        (results.reduce(
-                          (sum, r) =>
-                            sum +
-                            (typeof r.score === 'number'
-                              ? r.score / 100
-                              : r.is_correct === true
-                                ? 1
-                                : 0),
-                          0,
-                        ) /
-                          results.length) *
-                          100,
-                      )
-                    : 0,
-                rate:
-                  results.length > 0
-                    ? Math.round(
-                        (results.filter((r) => r.is_correct === true).length / results.length) * 100,
-                      )
-                    : 0,
-              })}
+            <span
+              data-testid="batch-total-score-summary"
+              className="inline-flex items-center gap-1 font-mono font-semibold tabular-nums text-primary"
+            >
+              {hasPartialScores
+                ? t('batch.totalScoreSummaryPartial', {
+                    defaultValue: '综合得分 {{score}}分 · 得分率 {{rate}}%（满分率 {{fullRate}}%）',
+                    score: totalEarnedScorePercent,
+                    rate: totalEarnedScorePercent,
+                    fullRate: fullCorrectRatePercent,
+                  })
+                : t('batch.totalScoreSummary', {
+                    defaultValue: '得分 {{score}}分 · 准确率 {{rate}}%',
+                    score: totalEarnedScorePercent,
+                    rate: fullCorrectRatePercent,
+                  })}
             </span>
             <span className="inline-flex items-center gap-1 font-mono tabular-nums text-foreground/85">
               <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
-              {t('batch.correctCount', {
-                count: results.filter((r) => r.is_correct === true).length,
-              })}
+              {t('batch.correctCount', { count: correctCount })}
             </span>
+            {partialCount > 0 && (
+              <span className="inline-flex items-center gap-1 font-mono tabular-nums text-foreground/85">
+                <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
+                {t('batch.partialCount', { defaultValue: '部分正确 {{count}} 题', count: partialCount })}
+              </span>
+            )}
             <span className="inline-flex items-center gap-1 font-mono tabular-nums text-foreground/85">
               <span className="h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden="true" />
-              {t('batch.wrongCount', { count: results.filter((r) => r.is_correct === false).length })}
+              {t('batch.wrongCount', { count: wrongCount })}
             </span>
             <span className="inline-flex items-center gap-1 font-mono tabular-nums text-muted-foreground">
               <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/35" aria-hidden="true" />
-              {t('batch.unansweredCount', {
-                count: results.filter((r) => r.status === 'unanswered').length,
-              })}
+              {t('batch.unansweredCount', { count: unansweredResultCount })}
             </span>
             <span className="inline-flex items-center gap-1 font-mono tabular-nums text-foreground/85">
               <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
-              {t('batch.pendingCount', {
-                count: results.filter((r) => r.status === 'pending' || r.status === 'failed').length,
-              })}
+              {t('batch.pendingCount', { count: pendingCount })}
             </span>
             <select
               aria-label={t('batch.filter')}
@@ -1117,7 +1150,33 @@ export default function BatchPracticeWorkspace({
                   allowExplanationWrite={true}
                   onRefreshQuestion={canAnalyze ? refreshExplanation : undefined}
                 />
-                {result?.feedback && <MarkdownRenderer content={result.feedback} />}
+                {result?.feedback && (
+                  <section
+                    data-testid="practice-ai-grading-rationale"
+                    aria-label={t('batch.aiGradingRationaleTitle', { defaultValue: 'AI 评分依据与批改评语' })}
+                    className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.04] p-3.5"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h4 className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                        <Sparkle size={14} className="text-primary" aria-hidden="true" />
+                        {t('batch.aiGradingRationaleTitle', { defaultValue: 'AI 评分依据与批改评语' })}
+                      </h4>
+                      <div className="flex items-center gap-2 font-mono text-xs tabular-nums">
+                        {result.score != null && (
+                          <span className="rounded-md border border-border/50 bg-background/80 px-2 py-0.5 font-semibold text-foreground">
+                            {t('batch.scorePoints', { defaultValue: '{{score}} / 100 分', score: result.score })}
+                          </span>
+                        )}
+                        <span className="text-muted-foreground">
+                          {t(`batch.result.${result.status}`)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-sm text-foreground">
+                      <MarkdownRenderer content={result.feedback} />
+                    </div>
+                  </section>
+                )}
                 {result?.grading_drafts?.map((saved, draftIndex, drafts) => (
                   <details key={`${saved.created_at}-${draftIndex}`} className="border-t pt-3 text-sm" open={draftIndex === drafts.length - 1 && result.status === 'failed'}>
                     <summary className="cursor-pointer font-medium text-warning">{t('batch.feedbackDraft')} · {new Date(saved.created_at).toLocaleString()}</summary>
@@ -1176,6 +1235,121 @@ export default function BatchPracticeWorkspace({
                         {t(correct ? 'batch.markCorrect' : 'batch.markWrong')}
                       </DsButton>
                     ))}
+                  </div>
+                )}
+                {result && result.status !== 'unanswered' && !readOnly && (
+                  <div className="space-y-2 pt-1">
+                    {!overrideOpen ? (
+                      <DsButton
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={busy}
+                        data-testid="practice-manual-override-toggle"
+                        onClick={() => {
+                          setOverrideScoreInput(
+                            String(result.score ?? (result.is_correct === true ? 100 : 0)),
+                          );
+                          setOverrideOpen(true);
+                        }}
+                      >
+                        <PencilSimple size={15} />
+                        {t('batch.manualOverride', { defaultValue: '手动改判' })}
+                      </DsButton>
+                    ) : (
+                      <div
+                        data-testid="practice-manual-override-panel"
+                        className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-muted/20 p-3 text-xs"
+                      >
+                        <span className="font-medium text-foreground">
+                          {t('batch.manualOverrideTitle', { defaultValue: '手动改判与分数微调' })}
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={1}
+                          data-testid="practice-manual-override-score-input"
+                          aria-label={t('batch.manualScoreInput', { defaultValue: '手动调整得分 (0-100)' })}
+                          value={overrideScoreInput}
+                          onChange={(event) => setOverrideScoreInput(event.target.value)}
+                          className="h-8 w-20 rounded-md border border-border bg-background px-2 font-mono tabular-nums text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        />
+                        <DsButton
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => setOverrideScoreInput('100')}
+                        >
+                          {t('batch.presetFull', { defaultValue: '满分 100' })}
+                        </DsButton>
+                        <DsButton
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => setOverrideScoreInput('50')}
+                        >
+                          {t('batch.presetHalf', { defaultValue: '半对 50' })}
+                        </DsButton>
+                        <DsButton
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => setOverrideScoreInput('0')}
+                        >
+                          {t('batch.presetZero', { defaultValue: '0 分' })}
+                        </DsButton>
+                        <DsButton
+                          type="button"
+                          variant="primary"
+                          size="sm"
+                          disabled={busy}
+                          data-testid="practice-manual-override-save"
+                          onClick={async () => {
+                            const parsed = Number(overrideScoreInput);
+                            const clampedScore = Number.isFinite(parsed)
+                              ? Math.max(0, Math.min(100, Math.round(parsed)))
+                              : 0;
+                            setBusy(true);
+                            try {
+                              setAttempt(
+                                await practiceApi.grade(
+                                  attempt.id,
+                                  question.id,
+                                  clampedScore >= 80,
+                                  clampedScore,
+                                ),
+                              );
+                              setOverrideOpen(false);
+                              showGlobalNotification(
+                                'success',
+                                t('batch.manualScoreSaved', { defaultValue: '已更新本题判分与成绩' }),
+                              );
+                              callbackRef.current?.();
+                            } catch (error) {
+                              setError(getErrorMessage(error));
+                            } finally {
+                              setBusy(false);
+                            }
+                          }}
+                        >
+                          <Check size={14} />
+                          {t('batch.saveManualOverride', { defaultValue: '保存改判' })}
+                        </DsButton>
+                        <DsButton
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => setOverrideOpen(false)}
+                        >
+                          {t('common:cancel', { defaultValue: '取消' })}
+                        </DsButton>
+                      </div>
+                    )}
                   </div>
                 )}
                 <QuestionFollowUpBar

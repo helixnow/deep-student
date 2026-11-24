@@ -402,4 +402,60 @@ describe('pipeline.rs', () => {
     expect(plain).toBeLessThanOrEqual(6);
     expect(estimatedDecodedLen('data:image/png;base64,aGVsbG8=')).toBe(plain);
   });
+
+  // S3-02: IELTS / TOEFL / custom rubric prompts must not suffer high_school grade pollution
+  it('buildGradingPrompts suppresses high_school gradeHint for IELTS, TOEFL, CET, Kaoyan, and custom modes/prompts', () => {
+    const builtinModes = getBuiltinGradingModes();
+    const ieltsMode = builtinModes.find((m) => m.id === 'ielts')!;
+    const ieltsTask1Mode = builtinModes.find((m) => m.id === 'ielts_task1')!;
+    const toeflMode = builtinModes.find((m) => m.id === 'toefl')!;
+    const cetMode = builtinModes.find((m) => m.id === 'cet')!;
+    const kaoyanMode = builtinModes.find((m) => m.id === 'kaoyan')!;
+
+    for (const mode of [ieltsMode, ieltsTask1Mode, toeflMode]) {
+      const [sysPrompt] = buildGradingPrompts(
+        { ...sampleRequest('Task response sample'), modeId: mode.id, gradeLevel: 'high_school' },
+        mode,
+        false,
+      );
+      expect(sysPrompt).not.toContain('高中生');
+      expect(sysPrompt).not.toContain('high school');
+    }
+
+    for (const [mode, reqModeId] of [
+      [cetMode, 'cet4'],
+      [kaoyanMode, 'kaoyan_en'],
+    ] as const) {
+      const [sysPrompt] = buildGradingPrompts(
+        { ...sampleRequest('College exam writing'), modeId: reqModeId, gradeLevel: 'high_school' },
+        mode,
+        false,
+      );
+      expect(sysPrompt).not.toContain('高中生');
+    }
+
+    const customMode = {
+      ...getDefaultGradingMode(),
+      id: 'custom_rubric',
+      isBuiltin: false,
+    };
+    const [customModeSysPrompt] = buildGradingPrompts(
+      { ...sampleRequest('Custom essay text'), modeId: customMode.id, gradeLevel: 'high_school' },
+      customMode,
+      false,
+    );
+    expect(customModeSysPrompt).not.toContain('高中生');
+
+    const [customPromptSysPrompt] = buildGradingPrompts(
+      {
+        ...sampleRequest('Custom prompt essay'),
+        gradeLevel: 'high_school',
+        customPrompt: 'Grade strictly as an Oxford tutorial examiner.',
+      },
+      getDefaultGradingMode(),
+      false,
+    );
+    expect(customPromptSysPrompt).toContain('Grade strictly as an Oxford tutorial examiner.');
+    expect(customPromptSysPrompt).not.toContain('高中生');
+  });
 });

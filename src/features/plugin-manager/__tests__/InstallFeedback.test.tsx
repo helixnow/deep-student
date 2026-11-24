@@ -112,4 +112,50 @@ describe('InstallFeedback', () => {
     const feedback = screen.getByTestId('plugin-install-feedback');
     expect(feedback).toHaveTextContent('/deepStudent/engines/deepStudent is required');
   });
+
+  it('S4-08: resolves wrapped PLUGIN_INSTALL_FAILED traversal/corrupt errors to specific copy without leaking raw PLUGIN_INSTALL_FAILED', () => {
+    const { rerender } = render(
+      <InstallFeedback
+        result={{
+          status: 'rejected',
+          code: 'PLUGIN_INSTALL_FAILED',
+          detail: 'PLUGIN_PACKAGE_INVALID: entry "../../evil.js" escapes root',
+          rollback: 'unchanged',
+        }}
+      />,
+    );
+
+    let feedback = screen.getByTestId('plugin-install-feedback');
+    expect(feedback).toHaveTextContent('不安全的文件路径');
+    expect(feedback).toHaveTextContent('PLUGIN_PACKAGE_INVALID');
+    expect(feedback).not.toHaveTextContent('PLUGIN_INSTALL_FAILED');
+
+    rerender(
+      <InstallFeedback
+        result={{
+          status: 'rejected',
+          code: 'PLUGIN_INSTALL_FAILED',
+          detail: 'corrupt zip archive central directory',
+          rollback: 'unchanged',
+        }}
+      />,
+    );
+    feedback = screen.getByTestId('plugin-install-feedback');
+    expect(feedback).toHaveTextContent('压缩包');
+    expect(feedback).not.toHaveTextContent('PLUGIN_INSTALL_FAILED');
+
+    rerender(
+      <InstallFeedback
+        result={{
+          status: 'rejected',
+          code: 'PLUGIN_INSTALL_FAILED',
+          detail: 'unknown failure',
+          rollback: 'unchanged',
+        }}
+      />,
+    );
+    feedback = screen.getByTestId('plugin-install-feedback');
+    expect(feedback).toHaveTextContent('安装包安装未能完成');
+    expect(feedback).not.toHaveTextContent('PLUGIN_INSTALL_FAILED');
+  });
 });

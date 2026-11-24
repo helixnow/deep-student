@@ -330,7 +330,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
         )}
         {!isUser && onRetry && !showInlineRetry && (
           <AppMenuItem onClick={handleRetry} disabled={isLocked || isRetrying} icon={<ArrowCounterClockwise size={16} />}>
-            {t('messageItem.actions.retry')}
+            {t('messageItem.actions.regenerate')}
           </AppMenuItem>
         )}
         {isUser && onResend && (
@@ -441,6 +441,21 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
             b={<Check className="w-4 h-4 text-success" />}
           />
         </DsButton>
+        {!isUser && onRetry && (
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+            onClick={handleRetry}
+            disabled={isLocked || isRetrying}
+            aria-label={t('messageItem.actions.regenerate')}
+            title={t('messageItem.actions.regenerate')}
+            data-testid="message-regenerate-button"
+          >
+            <ArrowCounterClockwise className={cn('w-4 h-4', isRetrying && 'animate-spin')} />
+          </DsButton>
+        )}
         {actionsMenu}
       </div>
     );
@@ -452,7 +467,17 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
 
       <div className={desktopSecondaryActionsClassName}>
         {showInlineRetry && (
-          <DsButton variant="ghost" size="icon" iconOnly className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={handleRetry} disabled={isLocked || isRetrying} aria-label={t('messageItem.actions.retry')} title={t('messageItem.actions.retry')}>
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+            onClick={handleRetry}
+            disabled={isLocked || isRetrying}
+            aria-label={t('messageItem.actions.regenerate')}
+            title={t('messageItem.actions.regenerate')}
+            data-testid="message-regenerate-button"
+          >
             <ArrowCounterClockwise className={cn('w-4 h-4', isRetrying && 'animate-spin')} />
           </DsButton>
         )}

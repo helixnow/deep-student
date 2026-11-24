@@ -50,6 +50,7 @@ import { dispatchContextRefPreview } from '../utils/contextRefPreview';
 import { branchSessionFromMessage } from './message/branchFromMessage';
 import { useSessionBranchTargets } from '../core/session/sessionBranchIndex';
 import { requestChatSessionNavigation } from '../navigation/pendingChatNavigation';
+import { setPendingBranchContinuation } from '../navigation/pendingBranchContinuation';
 import { useSaveAsNoteFlow, SaveAsNoteFolderPicker } from '@/shared/notes';
 import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -1097,6 +1098,46 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }));
   }, []);
 
+  const performBranchRetry = useCallback(async () => {
+    if (isReadOnlySession || isLocked || !message || isBranchingRef.current) return;
+    isBranchingRef.current = true;
+    setRetryConfirmCount(null);
+    try {
+      const branchedSession = await branchSessionFromMessage(store, messageId);
+      setPendingBranchContinuation(branchedSession.id, { type: 'regenerate_last' });
+      showGlobalNotification('success', t('messageItem.actions.branchSuccess'));
+    } catch (error: unknown) {
+      console.error('[MessageItem] Branch retry failed:', error);
+      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.branchFailed'));
+    } finally {
+      isBranchingRef.current = false;
+    }
+  }, [isReadOnlySession, isLocked, message, store, messageId, t]);
+
+  const performBranchEdit = useCallback(async () => {
+    if (isReadOnlySession || isLocked || !message || isBranchingRef.current) return;
+    const nextContent = editText;
+    isBranchingRef.current = true;
+    setEditConfirmCount(null);
+    setIsInlineEditing(false);
+    setIsSubmittingEdit(true);
+    try {
+      const branchedSession = await branchSessionFromMessage(store, messageId);
+      setPendingBranchContinuation(branchedSession.id, {
+        type: 'resend_last_edited',
+        content: nextContent,
+      });
+      showGlobalNotification('success', t('messageItem.actions.branchSuccess'));
+    } catch (error: unknown) {
+      console.error('[MessageItem] Branch edit failed:', error);
+      setIsInlineEditing(true);
+      showGlobalNotification('error', getErrorMessage(error), t('messageItem.actions.branchFailed'));
+    } finally {
+      isBranchingRef.current = false;
+      setIsSubmittingEdit(false);
+    }
+  }, [isReadOnlySession, isLocked, message, editText, store, messageId, t]);
+
   // 消息不存在
   if (!message) {
     return null;
@@ -1189,6 +1230,11 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onConfirm: () => {
                           void performConfirmEdit();
                         },
+                        onBranchAndConfirm: store.getState().branchSession
+                          ? () => {
+                              void performBranchEdit();
+                            }
+                          : undefined,
                         onCancel: () => setEditConfirmCount(null),
                       }
                     : null
@@ -1535,6 +1581,19 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 >
                   {t('common:actions.cancel')}
                 </DsButton>
+                {store.getState().branchSession && (
+                  <DsButton
+                    variant="secondary"
+                    size="sm"
+                    onClick={performBranchRetry}
+                    disabled={isReadOnlySession || isLocked}
+                    data-testid="retry-downstream-branch-button"
+                    className="[@media(pointer:coarse)]:!min-h-11"
+                  >
+                    <GitBranch className="w-3.5 h-3.5" />
+                    {t('messageItem.actions.branchAndRetry')}
+                  </DsButton>
+                )}
                 <DsButton
                   variant="ghost"
                   size="sm"

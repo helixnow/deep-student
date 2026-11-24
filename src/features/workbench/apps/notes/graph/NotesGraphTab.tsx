@@ -13,6 +13,7 @@ import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react
 import { CircleNotch, Graph } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { dstu, type DstuNode } from '@/dstu';
+import { pLimit } from '@/utils/concurrency';
 import { getWikiLinkRelationships } from '@/features/notes/wikilinks';
 import {
   fetchBacklinksFromBackend,
@@ -67,60 +68,136 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-/** 客户端降级：仅解析当前笔记正文的出链（含未解析幽灵目标）。 */
+const MAX_CLIENT_FALLBACK_NOTES = 60;
+const MAX_DISPLAYED_EDGE_SUMMARY = 10;
+
+async function readNoteTextSafe(notePath: string): Promise<string> {
+  const result = await dstu.getContent(notePath);
+  if (!result.ok) return '';
+  return typeof result.value === 'string'
+    ? result.value
+    : await result.value.text();
+}
+
+/** 客户端降级：按 depth(1/2) 构建当前笔记的双向链接局部图（含未解析幽灵目标）。 */
 async function buildClientFallbackGraph(
   activeNote: DstuNode,
   notes: readonly DstuNode[],
+  depth: LocalGraphDepth,
 ): Promise<LocalGraphData> {
   const contentResult = await dstu.getContent(activeNote.path);
   if (!contentResult.ok) throw contentResult.error;
-  const content = typeof contentResult.value === 'string'
+  const activeContent = typeof contentResult.value === 'string'
     ? contentResult.value
     : await contentResult.value.text();
 
-  const noteEntries = new Map(
-    [...notes.filter((node) => node.type === 'note'), activeNote]
-      .map((node) => [node.id, {
+  const workspaceNotes = notes
+    .filter((node) => node.type === 'note' && node.id !== activeNote.id && !node.path.startsWith('/_trash'))
+    .slice(0, MAX_CLIENT_FALLBACK_NOTES);
+
+  const limit = pLimit(6);
+  const fetchedEntries = await Promise.all(
+    workspaceNotes.map((node) =>
+      limit(async () => [node.id, {
         title: node.name,
-        content: node.id === activeNote.id ? content : '',
-      }]),
+        content: await readNoteTextSafe(node.path).catch(() => ''),
+      }] as const),
+    ),
   );
+
+  const noteEntries = new Map<string, { title: string; content: string }>([
+    [activeNote.id, { title: activeNote.name, content: activeContent }],
+    ...fetchedEntries,
+  ]);
   const relationships = getWikiLinkRelationships(noteEntries);
 
   const nodesById = new Map<string, LocalGraphNodeDatum>();
   const edges: LocalGraphData['edges'] = [];
-  nodesById.set(activeNote.id, {
-    id: activeNote.id,
-    title: activeNote.name,
-    degree: 0,
-    exists: true,
-  });
+  const edgeKeys = new Set<string>();
+  const titleById = new Map<string, string>([
+    ...notes.map((node) => [node.id, node.name] as const),
+    [activeNote.id, activeNote.name],
+  ]);
 
-  const titleById = new Map(notes.map((node) => [node.id, node.name]));
-  for (const relationship of relationships.outboundByNoteId[activeNote.id] ?? []) {
-    const targetId = relationship.targetId;
-    if (!nodesById.has(targetId)) {
-      nodesById.set(targetId, {
-        id: targetId,
-        title: titleById.get(targetId) ?? relationship.link.target,
-        degree: 1,
-        exists: true,
-      });
-      // 客户端降级只解析 [[..]] 双链正文，边类型恒为 wikilink
-      edges.push({
-        id: `e-${edges.length}`,
-        source: activeNote.id,
-        target: targetId,
-        kind: 'wikilink',
-      });
+  const addNode = (datum: LocalGraphNodeDatum) => {
+    const existing = nodesById.get(datum.id);
+    if (!existing) {
+      nodesById.set(datum.id, datum);
+    } else if (datum.degree < existing.degree) {
+      nodesById.set(datum.id, { ...existing, degree: datum.degree });
     }
+  };
+
+  const addEdge = (source: string, target: string) => {
+    if (source === target) return;
+    const key = `${source}->${target}:wikilink`;
+    if (edgeKeys.has(key)) return;
+    edgeKeys.add(key);
+    edges.push({ id: `e-${edges.length}`, source, target, kind: 'wikilink' });
+  };
+
+  addNode({ id: activeNote.id, title: activeNote.name, degree: 0, exists: true });
+
+  const oneHopExistingIds: string[] = [];
+  for (const rel of relationships.outboundByNoteId[activeNote.id] ?? []) {
+    if (rel.targetId === activeNote.id) continue;
+    addNode({
+      id: rel.targetId,
+      title: titleById.get(rel.targetId) ?? rel.link.target,
+      degree: 1,
+      exists: true,
+    });
+    addEdge(activeNote.id, rel.targetId);
+    oneHopExistingIds.push(rel.targetId);
+  }
+  for (const inbound of relationships.inboundByNoteId[activeNote.id] ?? []) {
+    if (inbound.sourceId === activeNote.id) continue;
+    addNode({
+      id: inbound.sourceId,
+      title: titleById.get(inbound.sourceId) ?? inbound.sourceId,
+      degree: 1,
+      exists: true,
+    });
+    addEdge(inbound.sourceId, activeNote.id);
+    oneHopExistingIds.push(inbound.sourceId);
   }
   for (const unresolved of relationships.unresolved) {
     if (unresolved.sourceId !== activeNote.id) continue;
     const id = ghostNodeId(unresolved.link.target);
-    if (nodesById.has(id)) continue;
-    nodesById.set(id, { id, title: unresolved.link.target, degree: 1, exists: false });
-    edges.push({ id: `e-${edges.length}`, source: activeNote.id, target: id, kind: 'wikilink' });
+    addNode({ id, title: unresolved.link.target, degree: 1, exists: false });
+    addEdge(activeNote.id, id);
+  }
+
+  if (depth === 2) {
+    const visitedOneHop = new Set(oneHopExistingIds);
+    for (const hopId of visitedOneHop) {
+      for (const rel of relationships.outboundByNoteId[hopId] ?? []) {
+        if (rel.targetId === hopId) continue;
+        addNode({
+          id: rel.targetId,
+          title: titleById.get(rel.targetId) ?? rel.link.target,
+          degree: 2,
+          exists: true,
+        });
+        addEdge(hopId, rel.targetId);
+      }
+      for (const inbound of relationships.inboundByNoteId[hopId] ?? []) {
+        if (inbound.sourceId === hopId) continue;
+        addNode({
+          id: inbound.sourceId,
+          title: titleById.get(inbound.sourceId) ?? inbound.sourceId,
+          degree: 2,
+          exists: true,
+        });
+        addEdge(inbound.sourceId, hopId);
+      }
+      for (const unresolved of relationships.unresolved) {
+        if (unresolved.sourceId !== hopId) continue;
+        const id = ghostNodeId(unresolved.link.target);
+        addNode({ id, title: unresolved.link.target, degree: 2, exists: false });
+        addEdge(hopId, id);
+      }
+    }
   }
 
   return { nodes: Array.from(nodesById.values()), edges, truncated: false };
@@ -165,6 +242,14 @@ export const NotesGraphTab: React.FC<NotesGraphTabProps> = ({
   useEffect(() => {
     if (!open || !activeNoteId) return undefined;
     const unwatch = dstu.watch('*', (event) => {
+      if (event.type === 'deleted' || event.type === 'purged') {
+        const deletedId = event.node?.id ?? event.path.replace(/^\/(?:_trash\/)?/, '');
+        if (deletedId === activeNoteId && watchTimerRef.current !== null) {
+          window.clearTimeout(watchTimerRef.current);
+          watchTimerRef.current = null;
+        }
+        return;
+      }
       if (event.type !== 'updated' || event.node?.type !== 'note') return;
       if (watchTimerRef.current !== null) window.clearTimeout(watchTimerRef.current);
       watchTimerRef.current = window.setTimeout(() => {
@@ -215,7 +300,7 @@ export const NotesGraphTab: React.FC<NotesGraphTabProps> = ({
         if (!isCurrent()) return;
         if (!data) {
           source = 'client';
-          data = await buildClientFallbackGraph(activeNote, notes);
+          data = await buildClientFallbackGraph(activeNote, notes, depth);
         }
         if (!isCurrent()) return;
         setLoadState({ status: 'ready', data, source });
@@ -361,6 +446,45 @@ export const NotesGraphTab: React.FC<NotesGraphTabProps> = ({
           </Suspense>
         )}
       </div>
+
+      {loadState.status === 'ready' && !isEmptyGraph && loadState.data.edges.length > 0 && (() => {
+        const nodeTitles = new Map(loadState.data.nodes.map((node) => [node.id, node.title]));
+        const visibleEdges = loadState.data.edges.slice(0, MAX_DISPLAYED_EDGE_SUMMARY);
+        const hiddenEdgeCount = loadState.data.edges.length - visibleEdges.length;
+        const wikilinkLabel = t('notes:workspace.graphEdgeWikilink', { defaultValue: '双链' });
+        const noterefLabel = t('notes:workspace.graphEdgeNoteref', { defaultValue: '引用' });
+        return (
+          <div className="notes-graph-edges-summary" data-testid="notes-graph-edges-summary">
+            <div className="notes-graph-edges-heading">
+              {t('notes:workspace.graphConnectionsSummary', {
+                count: loadState.data.edges.length,
+                defaultValue: `连接边 (${loadState.data.edges.length})`,
+              })}
+            </div>
+            <ul className="notes-graph-edges-list">
+              {visibleEdges.map((edge) => {
+                const sourceName = nodeTitles.get(edge.source) ?? edge.source;
+                const targetName = nodeTitles.get(edge.target) ?? edge.target;
+                const kindLabel = edge.kind === 'noteref' ? noterefLabel : wikilinkLabel;
+                return (
+                  <li key={edge.id} className="notes-graph-edges-item">
+                    <span>{`${sourceName} → ${targetName}`}</span>
+                    <span className="notes-graph-edges-kind">{kindLabel}</span>
+                  </li>
+                );
+              })}
+              {hiddenEdgeCount > 0 && (
+                <li className="notes-graph-edges-more">
+                  {t('notes:workspace.graphMoreConnections', {
+                    count: hiddenEdgeCount,
+                    defaultValue: `还有 ${hiddenEdgeCount} 条连接`,
+                  })}
+                </li>
+              )}
+            </ul>
+          </div>
+        );
+      })()}
 
       {loadState.status === 'ready' && (loadState.data.truncated || loadState.source === 'client') && (
         <p className="notes-graph-hint" role="status">

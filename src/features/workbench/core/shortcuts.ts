@@ -537,6 +537,16 @@ export function matchWorkbenchShortcut(e: KeyboardEvent): WorkbenchShortcutDefin
       if (e.key === b.key) return def;
     }
   }
+  const exposeDef = WORKBENCH_SHORTCUT_DEFINITIONS.find((def) => def.id === 'expose') ?? null;
+  if (exposeDef) {
+    // 额外热键别名：F3 与 Ctrl+↑（无其他修饰键）直达多窗俯瞰
+    if (!e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && (e.code === 'F3' || e.key === 'F3')) {
+      return exposeDef;
+    }
+    if (e.ctrlKey && !e.altKey && !e.shiftKey && !e.metaKey && (e.code === 'ArrowUp' || e.key === 'ArrowUp')) {
+      return exposeDef;
+    }
+  }
   return null;
 }
 

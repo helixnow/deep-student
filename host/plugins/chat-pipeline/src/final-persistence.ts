@@ -183,6 +183,7 @@ export class PipelineFinalPersistence {
       try { this.store.createBlockWithConn(conn, { ...block, messageId: ctx.assistantMessageId, blockIndex: positions.get(block.id) ?? block.blockIndex }); }
       catch (error) { this.log.error(`[ChatV2::pipeline] Failed to re-insert preserved anki_cards block: message_id=${ctx.assistantMessageId}, block_id=${block.id}, err=${debugError(error)}`); }
     }
+    conn.run('UPDATE chat_v2_sessions SET updated_at = ?1 WHERE id = ?2', [new Date().toISOString(), ctx.sessionId]);
     persistReplaySidecar(conn, ctx, userBlock, null, this.store);
     this.log.info(`[ChatV2::pipeline] Results saved: session=${ctx.sessionId}, user_msg=${ctx.userMessageId}, assistant_msg=${ctx.assistantMessageId}, blocks=${ctx.generatedBlocks.length}, content_len=${utf8ByteLength(ctx.finalContent)}`);
   }

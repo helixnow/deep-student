@@ -618,3 +618,15 @@ describe('AppsPanel browser availability updates', () => {
     await waitFor(() => expect(screen.queryByTestId('wb-apps-item-browser')).toBeNull());
   });
 });
+
+describe('AppsPanel closed backdrop inertness (S5-14)', () => {
+  it('forces closed root and backdrop to pointer-events: none and visibility: hidden in AppsPanel.css', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs');
+    const { resolve } = require('node:path') as typeof import('node:path');
+    const css = readFileSync(resolve(__dirname, '../AppsPanel.css'), 'utf8');
+    expect(css).toContain(".wb-apps-root[data-wb-apps-open='false']");
+    expect(css).toContain(".wb-apps-root[data-wb-apps-open='false'] .wb-apps-backdrop");
+    expect(css).toMatch(/\.wb-apps-root\[data-wb-apps-open='false'\]\s*\.wb-apps-backdrop\s*\{[^}]*pointer-events:\s*none;/);
+    expect(css).toMatch(/\.wb-apps-root\[data-wb-apps-open='false'\]\s*\.wb-apps-backdrop\s*\{[^}]*visibility:\s*hidden;/);
+  });
+});

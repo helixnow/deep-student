@@ -397,6 +397,26 @@ describe('qbank_practice.rs', () => {
       expect(f.db.pluck<number>('SELECT COUNT(*) FROM qbank_practice_jobs WHERE status = ?1', ['done'])).toBe(1);
       const question = await f.host.invoke('qbank_get_question', { questionId: essay.id }) as Question;
       expect(question).toMatchObject({ attempt_count: 1, correct_count: 1, is_correct: true, status: 'in_progress' });
+
+      // Manual numeric score override (partial / full / out-of-range)
+      const serviceHost: practiceService.PracticeServiceHost = {
+        db: f.db,
+        deviceId: 'qbank-test-device',
+        questions: questionRepo,
+        mastery: () => ({
+          recordQbankAnswerWithConn: () => ({}),
+          recordQbankVerdictCorrectionWithConn: () => ({}),
+          syncLearnerProfile: () => undefined,
+        }),
+      };
+      const partialGraded = practiceService.gradePracticeManually(serviceHost, attempt.id, essay.id, false, 55);
+      expect(partialGraded.attempt.results[0]).toMatchObject({ status: 'partial', is_correct: false, score: 55 });
+
+      const highGraded = practiceService.gradePracticeManually(serviceHost, attempt.id, essay.id, true, 88);
+      expect(highGraded.attempt.results[0]).toMatchObject({ status: 'correct', is_correct: true, score: 88 });
+
+      expect(() => practiceService.gradePracticeManually(serviceHost, attempt.id, essay.id, true, 120))
+        .toThrowError('Score must be between 0 and 100');
     } finally { await f.dispose(); }
   });
 

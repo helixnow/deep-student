@@ -21,6 +21,8 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import type { CurrentView } from '@/types/navigation';
 import {
+  isWorkbenchHostEnabled,
+  launchWorkbenchApp,
   openWorkbenchAppsPanel,
   toggleWorkbenchAppsPanel,
   useFocusedWorkbenchAppTypeId,
@@ -128,8 +130,16 @@ export function CommandPaletteProvider({
     setIsOpen((prev) => !prev);
   }, [workbenchActive]);
 
+  const commandPaletteNavigate = useCallback((view: CurrentView, params?: Record<string, unknown>) => {
+    if (workbenchActive && isWorkbenchHostEnabled() && view === 'sandbox-workbench') {
+      launchWorkbenchApp({ typeId: 'sandbox', reason: 'command' });
+      return;
+    }
+    navigate(view, params);
+  }, [navigate, workbenchActive]);
+
   const deps = useMemo<DependencyResolver>(() => ({
-    navigate,
+    navigate: commandPaletteNavigate,
     getCurrentView: () => currentViewRef.current,
     getFocusedWorkbenchAppTypeId: () => focusedWorkbenchAppTypeId,
     t,
@@ -141,7 +151,7 @@ export function CommandPaletteProvider({
     openCommandPalette: open,
     closeCommandPalette: close,
   }), [
-    navigate,
+    commandPaletteNavigate,
     t,
     toggleTheme,
     isDarkMode,

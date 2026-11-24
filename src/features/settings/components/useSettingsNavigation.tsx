@@ -69,10 +69,105 @@ export type SettingsSearchIndexItem = {
   tab: string;
   label: string;
   keywords: string[];
+  subTab?: string;
 };
 
+/**
+ * Enrich slot-driven settings search index with complete Data Governance / Sync / WebDAV /
+ * Pairing / Backup / Restore entries so searching in either desktop or mobile Settings
+ * immediately surfaces Data Governance and navigates directly to the matching sub-tab.
+ */
+export function mergeDataGovernanceSearchEntries(
+  baseIndex: SettingsSearchIndexItem[],
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): SettingsSearchIndexItem[] {
+  const hasDataGovernance = baseIndex.some((item) => item.tab === 'data-governance');
+  if (!hasDataGovernance) return baseIndex;
+
+  const extraEntries: SettingsSearchIndexItem[] = [
+    {
+      tab: 'data-governance',
+      label: t('data:governance.title'),
+      keywords: [
+        'data governance', '数据治理', 'import', 'export', 'sync', '同步', 'cloud storage', '云存储',
+        'webdav', 's3', 'ftp', 'e2ee', 'pairing', '设备配对', '配对', 'backup', '备份',
+        'restore', '恢复', 'quarantine', '隔离', 'conflict', '冲突', '全局版本', 'snapshots',
+      ],
+    },
+    {
+      tab: 'data-governance',
+      subTab: 'sync',
+      label: t('data:governance.tab_sync'),
+      keywords: [
+        'sync', '同步', '多端同步', '双向同步', '云同步', 'cloud sync', 'webdav',
+        '云存储', 'cloud storage', 's3', 'ftp', 'e2ee', '加密', 'device pairing',
+        'pairing', '设备配对', '配对', 'qr', '二维码', '扫码', 'dspair', 'conflict', '冲突', 'quarantine', '隔离',
+      ],
+    },
+    {
+      tab: 'data-governance',
+      subTab: 'sync',
+      label: t('cloudStorage:title', { defaultValue: 'Cloud Storage' }),
+      keywords: [
+        'webdav', 'cloud storage', '云存储', '云端备份', 's3', 'ftp', 'nextcloud',
+        '坚果云', 'jianguoyun', 'sync root', '同步根目录', 'app-specific password', '应用专用密码', 'sync', '同步',
+      ],
+    },
+    {
+      tab: 'data-governance',
+      subTab: 'sync',
+      label: t('sync:pairing.cardTitle', { defaultValue: 'Device Pairing & Quick Sync' }),
+      keywords: [
+        'device pairing', '设备配对', '配对', 'pairing', 'qr', '二维码', '扫码', 'pin', 'dspair', 'sync', '同步',
+      ],
+    },
+    {
+      tab: 'data-governance',
+      subTab: 'backup',
+      label: t('data:governance.backup'),
+      keywords: ['backup', 'export', '备份', '导出', '恢复点', 'restore point', 'snapshot', 'zip'],
+    },
+    {
+      tab: 'data-governance',
+      subTab: 'backup',
+      label: t('data:governance.restore'),
+      keywords: ['restore', 'import', '恢复', '导入', 'backup', '备份'],
+    },
+    {
+      tab: 'data-governance',
+      subTab: 'overview',
+      label: t('data:governance.tab_overview'),
+      keywords: ['overview', '概览', 'health check', '健康检查', '数据治理'],
+    },
+    {
+      tab: 'data-governance',
+      subTab: 'audit',
+      label: t('data:governance.tab_audit'),
+      keywords: ['audit', '审计', '全局版本', 'snapshots', '日志'],
+    },
+    {
+      tab: 'data-governance',
+      subTab: 'cache',
+      label: t('data:governance.tab_cache'),
+      keywords: ['cache', '缓存', 'media cache', '媒体缓存'],
+    },
+  ];
+
+  const entries = new Map<string, SettingsSearchIndexItem>();
+  for (const item of [...baseIndex, ...extraEntries]) {
+    const key = `${item.tab}:${item.label}`;
+    const existing = entries.get(key);
+    entries.set(key, {
+      ...item,
+      subTab: item.subTab ?? existing?.subTab,
+      keywords: [...new Set([...(existing?.keywords ?? []), ...item.keywords])],
+    });
+  }
+  return [...entries.values()];
+}
+
 export function useSettingsNavigation() {
-  const { t } = useTranslation(['settings', 'common', 'data', 'workbench']);
+  const { t } = useTranslation(['settings', 'common', 'data', 'workbench', 'sync', 'cloudStorage']);
 
   const isMobile = isMobilePlatform();
   const hidePlugins = isMobile;
@@ -374,8 +469,8 @@ export function useSettingsNavigation() {
         keywords: [...new Set([...(existing?.keywords ?? []), ...item.keywords])],
       });
     }
-    return [...entries.values()];
-  }, [sidebarCategories, sidebarNavItems, settingDetails]);
+    return mergeDataGovernanceSearchEntries([...entries.values()], t);
+  }, [sidebarCategories, sidebarNavItems, settingDetails, t]);
 
   return {
     sidebarNavGroups,

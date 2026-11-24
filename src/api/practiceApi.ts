@@ -129,8 +129,16 @@ export const practiceApi = {
     invoke<void>('qbank_delete_practice', { id, submitted }),
   retry: (id: string, questionId: string) =>
     invoke<PracticeAttempt>('qbank_retry_practice_grading', { id, questionId }),
-  grade: async (id: string, questionId: string, correct: boolean) => {
-    const attempt = await invoke<PracticeAttempt>('qbank_grade_practice_manually', { id, questionId, correct });
+  grade: async (id: string, questionId: string, correct: boolean, score?: number) => {
+    const payload: { id: string; questionId: string; correct: boolean; score?: number } = {
+      id,
+      questionId,
+      correct,
+    };
+    if (typeof score === 'number') {
+      payload.score = score;
+    }
+    const attempt = await invoke<PracticeAttempt>('qbank_grade_practice_manually', payload);
     dispatchTypedEvent(TODAY_LEARNING_REFRESH_EVENT);
     return attempt;
   },

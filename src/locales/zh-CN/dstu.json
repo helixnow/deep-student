@@ -199,5 +199,8 @@
       "exam": "用户在题库中进行了手动编辑",
       "pomodoro": "用户手动操作了番茄钟"
     }
+  },
+  "finder": {
+    "selectedTarget": "当前目标："
   }
 }

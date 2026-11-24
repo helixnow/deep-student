@@ -568,21 +568,28 @@ const UnresolvedLinkRow: React.FC<{
 
   return (
     <li className="notes-backlinks-panel-unresolved-row">
-      <LinkSimple size={15} aria-hidden="true" />
-      <code>{item.link.raw}</code>
-      {canCreate && (
+      {canCreate ? (
         <button
           type="button"
-          className="notes-backlinks-panel-create-button"
+          className="notes-backlinks-panel-unresolved-btn"
           disabled={creating}
           onClick={() => onCreate(title)}
           aria-label={createLabel(title)}
           title={createLabel(title)}
         >
-          {creating
-            ? <CircleNotch className="notes-backlinks-panel-spinner" size={14} aria-hidden="true" />
-            : <Plus size={14} aria-hidden="true" />}
+          <LinkSimple size={15} aria-hidden="true" />
+          <code>{item.link.raw}</code>
+          <span className="notes-backlinks-panel-unresolved-create-icon" aria-hidden="true">
+            {creating
+              ? <CircleNotch className="notes-backlinks-panel-spinner" size={14} />
+              : <Plus size={14} />}
+          </span>
         </button>
+      ) : (
+        <div className="notes-backlinks-panel-unresolved-static">
+          <LinkSimple size={15} aria-hidden="true" />
+          <code>{item.link.raw}</code>
+        </div>
       )}
     </li>
   );
@@ -672,6 +679,17 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
     if (!open) return undefined;
 
     const unwatch = dstu.watch('*', (event) => {
+      if (event.type === 'deleted' || event.type === 'purged') {
+        const deletedId = event.node?.id ?? event.path.replace(/^\/(?:_trash\/)?/, '');
+        if (deletedId) {
+          contentCacheRef.current.delete(deletedId);
+        }
+        if (deletedId && deletedId === activeNoteId && watchRefreshTimerRef.current !== null) {
+          window.clearTimeout(watchRefreshTimerRef.current);
+          watchRefreshTimerRef.current = null;
+        }
+        return;
+      }
       if (event.type !== 'updated' || event.node?.type !== 'note') return;
 
       // NotesWorkspaceApp intentionally does not replace resource objects for
@@ -1022,7 +1040,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
         : fallbackResult?.ok
           ? fallbackResult.value
           : null;
-      if (!freshNode) {
+      if (!freshNode || freshNode.path.startsWith('/_trash')) {
         setOpenError(t('notesWorkspace.backlinks.convertFailed', { defaultValue: '无法转为链接。' }));
         return;
       }

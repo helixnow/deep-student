@@ -25,6 +25,10 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 import {
+  createStarterHtmlCanvasInput,
+  launchSandboxWorkbench,
+} from '../launchSandboxWorkbench';
+import {
   selectSandboxWorkbenchOwnerState,
   useSandboxWorkbenchStore,
 } from '../store/useSandboxWorkbenchStore';
@@ -60,7 +64,7 @@ export function SandboxWorkbenchSurface({
   ownerKey,
   hideToolbar = false,
 }: SandboxWorkbenchSurfaceProps) {
-  const { t } = useTranslation('workbench');
+  const { t, i18n } = useTranslation('workbench');
   const { isSmallScreen } = useBreakpoint();
   const activeSession = useSandboxWorkbenchStore((state) =>
     ownerKey ? selectSandboxWorkbenchOwnerState(state, ownerKey).activeSession : state.activeSession,
@@ -342,8 +346,28 @@ export function SandboxWorkbenchSurface({
           />
         )}
         <div className="flex flex-1 items-center justify-center px-6 py-10">
-          <div className="w-full max-w-3xl rounded-3xl border border-dashed border-border/35 bg-card/60 p-8 text-center">
+          <div className="w-full max-w-3xl space-y-4 rounded-3xl border border-dashed border-border/35 bg-card/60 p-8 text-center">
             <p className="text-sm text-muted-foreground">{t('sandbox.emptyHint')}</p>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <DsButton
+                type="button"
+                variant="primary"
+                size="sm"
+                data-testid="sandbox-create-starter-button"
+                onClick={() =>
+                  launchSandboxWorkbench(
+                    createStarterHtmlCanvasInput(i18n.resolvedLanguage || i18n.language),
+                    ownerKey,
+                  )
+                }
+              >
+                {t('sandbox.createStarterCanvas', {
+                  defaultValue: (i18n.resolvedLanguage || i18n.language || '').startsWith('en')
+                    ? 'New HTML Canvas'
+                    : '新建 HTML 画布',
+                })}
+              </DsButton>
+            </div>
             {isSmallScreen && (
               <p className="mt-2 text-xs text-muted-foreground/70">{t('sandbox.mobileHint')}</p>
             )}

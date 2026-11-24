@@ -42,7 +42,7 @@ import { Label } from '@/components/ui/shad/Label';
 import { Switch } from '@/components/ui/shad/Switch';
 import { settingsQuietTableRowClassName } from '../SettingsCommon';
 import { GroupTitle } from '../settingsTabPrimitives';
-import { localizeCloudStorageError } from './localizeCloudError';
+import { localizeCloudStorageError, notifyErrorDeduped } from './localizeCloudError';
 import type {
   BackupInfoResponse,
   BackupVerifyResponse,
@@ -68,9 +68,17 @@ const isRestorableBackup = (backup: BackupInfoResponse): boolean =>
 /** 备份验证状态 */
 export type BackupVerificationStatus = 'verified' | 'unverified' | 'failed' | 'verifying';
 
+export interface BackupImportOutcome {
+  success?: boolean;
+  cancelled?: boolean;
+  error?: string;
+}
+
 export interface BackupTabProps {
   backups: BackupInfoResponse[];
   loading: boolean;
+  onCreateLocalBackup?: () => void;
+  onCreateBackup?: () => void;
   onBackupAndExportZip: (options: {
     compressionLevel: number;
     addToBackupList: boolean;
@@ -80,12 +88,19 @@ export interface BackupTabProps {
     assetTypes?: AssetType[];
     /** 可选 E2EE 备份密码：提供后导出加密全保真换机包 */
     encryptionPassword?: string;
+    /** 未加密便携 ZIP 导出时排除回收站已软删除内容（默认 true） */
+    excludeTrash?: boolean;
   }) => void;
   onDeleteBackup: (backupId: string) => void;
   onVerifyBackup: (backupId: string) => void;
   onRestoreBackup: (backupId: string) => void;
-  onExportZip: (backupId: string, compressionLevel: number, encryptionPassword?: string) => void;
-  onImportZip: (password?: string, filePath?: string) => void;
+  onExportZip: (
+    backupId: string,
+    compressionLevel: number,
+    encryptionPassword?: string,
+    excludeTrash?: boolean,
+  ) => void;
+  onImportZip: (password?: string, filePath?: string) => void | Promise<BackupImportOutcome | void>;
   // 后台任务相关
   backupProgress?: BackupJobEvent | null;
   isBackupRunning?: boolean;
@@ -94,7 +109,7 @@ export interface BackupTabProps {
   currentJobOperation?: BackupJobOperation | null;
   // 可恢复任务相关
   resumableJobs?: ResumableJob[];
-  onResumeJob?: (jobId: string, password?: string) => void;
+  onResumeJob?: (jobId: string, password?: string) => void | Promise<BackupImportOutcome | void>;
   // 恢复完成后重启对话框
   showRestartDialog?: boolean;
   onRestartNow?: () => void;
@@ -174,6 +189,8 @@ const RestorePhaseIndicator: React.FC<RestorePhaseIndicatorProps> = ({ phase, pr
 export const BackupTab: React.FC<BackupTabProps> = ({
   backups,
   loading,
+  onCreateLocalBackup,
+  onCreateBackup,
   onBackupAndExportZip,
   onDeleteBackup,
   onVerifyBackup,
@@ -197,7 +214,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   verificationStatusMap,
   lastAutoVerifyResult,
 }) => {
-  const { t } = useTranslation(['data', 'common', 'settings', 'cloudStorage']);
+  const { t, i18n } = useTranslation(['data', 'common', 'settings', 'cloudStorage']);
+  const triggerCreateLocalBackup = onCreateLocalBackup ?? onCreateBackup;
   // 后台调度只由桌面主进程提供；手机 WebUI 连接桌面宿主，不应误隐藏自动备份配置。
   const isNativeMobile = !isWebUiShell() && readShellPlatform()?.kind === 'mobile';
   const [selectedBackup, setSelectedBackup] = useState<string | null>(null);
@@ -332,6 +350,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   // 分层备份状态
   const [useTieredBackup, setUseTieredBackup] = useState(false);
   const [addToBackupList, setAddToBackupList] = useState(true);
+  // 未加密便携 ZIP 导出时默认排除回收站软删除内容，防止删除笔记/文件正文外泄
+  const [excludeTrash, setExcludeTrash] = useState(true);
   // R04-backup-defaults：默认勾选 core + important 且包含资产，
   // 使默认分层导出覆盖 vfs_blobs（文件库原始文件）等重要资产目录；用户仍可自由增减。
   const [selectedTiers, setSelectedTiers] = useState<BackupTier[]>(['core', 'important']);
@@ -348,6 +368,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   const [importFilePath, setImportFilePath] = useState('');
   const [importFileName, setImportFileName] = useState('');
   const [importFileError, setImportFileError] = useState<string | null>(null);
+  const [importPasswordError, setImportPasswordError] = useState<string | null>(null);
+  const [isImportingSubmitting, setIsImportingSubmitting] = useState(false);
   const [isStagingImportFile, setIsStagingImportFile] = useState(false);
   const [resumeImportJobId, setResumeImportJobId] = useState<string | null>(null);
   const webUiMode = isWebUiShell();
@@ -381,12 +403,16 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       } else if (actionType === 'restore') {
         await onRestoreBackup(selectedBackup);
       } else if (actionType === 'export') {
-        await onExportZip(selectedBackup, compressionLevel, encryptionPassword || undefined);
+        if (!encryptionPassword && !excludeTrash) {
+          await onExportZip(selectedBackup, compressionLevel, undefined, false);
+        } else {
+          await onExportZip(selectedBackup, compressionLevel, encryptionPassword || undefined);
+        }
       }
     } catch (error: unknown) {
-      showGlobalNotification(
+      notifyErrorDeduped(
         'error',
-        localizeCloudStorageError(error, t),
+        localizeCloudStorageError(error, t, i18n?.language),
         t('data:governance.action_failed')
       );
     } finally {
@@ -437,6 +463,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       includeAssets: useTieredBackup ? includeAssets : true,
       assetTypes: useTieredBackup && selectedAssetTypes.length > 0 ? selectedAssetTypes : undefined,
       encryptionPassword: encryptionPassword || undefined,
+      ...(!encryptionPassword && !excludeTrash ? { excludeTrash: false } : {}),
     });
   };
 
@@ -449,6 +476,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     setImportFilePath('');
     setImportFileName('');
     setImportFileError(null);
+    setImportPasswordError(null);
+    setIsImportingSubmitting(false);
     setIsStagingImportFile(false);
     setResumeImportJobId(null);
   };
@@ -491,12 +520,12 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     }
   };
 
-  const handleImportConfirm = () => {
+  const handleImportConfirm = async () => {
+    if (isImportingSubmitting) return;
     if (resumeImportJobId && importPassword === '') {
-      showGlobalNotification(
-        'warning',
-        t('data:governance.import_sealed_password_required')
-      );
+      const requiredMsg = t('data:governance.import_sealed_password_required');
+      setImportPasswordError(requiredMsg);
+      showGlobalNotification('warning', requiredMsg);
       return;
     }
     if (!resumeImportJobId && webUiMode && !importFilePath.trim()) {
@@ -505,15 +534,33 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     }
     const pwd = importPassword || undefined;
     const explicitPath = importFilePath.trim();
-    setShowImportPasswordDialog(false);
-    if (resumeImportJobId) {
-      onResumeJob?.(resumeImportJobId, importPassword);
-    } else if (explicitPath) {
-      onImportZip(pwd, explicitPath);
-    } else {
-      onImportZip(pwd);
+    setImportPasswordError(null);
+    setIsImportingSubmitting(true);
+    try {
+      const outcome = resumeImportJobId
+        ? await onResumeJob?.(resumeImportJobId, importPassword)
+        : explicitPath
+          ? await onImportZip(pwd, explicitPath)
+          : await onImportZip(pwd);
+      if (outcome && outcome.success === false) {
+        if (!outcome.cancelled) {
+          const inlineMsg =
+            outcome.error ||
+            t('data:governance.import_decrypt_failed_inline');
+          setImportPasswordError(inlineMsg);
+          notifyErrorDeduped('error', inlineMsg);
+        }
+        return;
+      }
+      setShowImportPasswordDialog(false);
+      resetImportDialogState();
+    } catch (error: unknown) {
+      const msg = localizeCloudStorageError(error, t, i18n?.language) || t('data:governance.import_decrypt_failed_inline');
+      setImportPasswordError(msg);
+      notifyErrorDeduped('error', msg);
+    } finally {
+      setIsImportingSubmitting(false);
     }
-    resetImportDialogState();
   };
 
   const handleResumeJob = (job: ResumableJob) => {
@@ -727,10 +774,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               id="add-to-backup-list"
               className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
               checked={addToBackupList}
-              onCheckedChange={(checked) => setAddToBackupList(Boolean(checked))}
+              onCheckedChange={(checked) => setAddToBackupList(checked === true)}
               disabled={loading || isBackupRunning}
             />
-            <Label htmlFor="add-to-backup-list" className="flex items-center text-sm [@media(pointer:coarse)]:min-h-11">
+            <Label htmlFor="add-to-backup-list" className="flex items-center text-sm cursor-pointer [@media(pointer:coarse)]:min-h-11">
               {t('data:governance.add_to_backup_list')}
             </Label>
           </div>
@@ -740,13 +787,35 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               id="use-tiered-backup"
               className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
               checked={useTieredBackup}
-              onCheckedChange={(checked) => setUseTieredBackup(Boolean(checked))}
+              onCheckedChange={(checked) => setUseTieredBackup(checked === true)}
               disabled={loading || isBackupRunning}
             />
-            <Label htmlFor="use-tiered-backup" className="flex items-center text-sm [@media(pointer:coarse)]:min-h-11">
+            <Label htmlFor="use-tiered-backup" className="flex items-center text-sm cursor-pointer [@media(pointer:coarse)]:min-h-11">
               {t('data:governance.use_tiered_backup')}
             </Label>
           </div>
+
+          {!encryptionPassword && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 [@media(pointer:coarse)]:min-h-11">
+                <Checkbox
+                  id="exclude-trash-backup"
+                  className="relative [@media(pointer:coarse)]:before:content-[''] [@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:-inset-3.5"
+                  checked={excludeTrash}
+                  onCheckedChange={(checked) => setExcludeTrash(checked === true)}
+                  disabled={loading || isBackupRunning}
+                />
+                <Label htmlFor="exclude-trash-backup" className="flex items-center text-sm cursor-pointer [@media(pointer:coarse)]:min-h-11">
+                  {t('data:governance.exclude_trash_label')}
+                </Label>
+              </div>
+              <p className="pl-6 text-xs text-muted-foreground">
+                {excludeTrash
+                  ? t('data:governance.exclude_trash_desc')
+                  : t('data:governance.exclude_trash_unencrypted_hint')}
+              </p>
+            </div>
+          )}
 
           {/* E2EE 备份密码（可选）：非空时导出加密全保真换机包 */}
           <div className="space-y-1.5">
@@ -882,6 +951,22 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               disabled={loading || isBackupRunning}
             />
           </div>
+          {triggerCreateLocalBackup && (
+            <DsButton
+              variant="outline"
+              size="sm"
+              onClick={triggerCreateLocalBackup}
+              disabled={loading || isBackupRunning}
+              className="rounded-xl border-border/70 bg-background/60 px-4 font-medium text-foreground hover:bg-background/90 [@media(pointer:coarse)]:!h-11"
+            >
+              {isBackupRunning && currentJobOperation === 'backup' ? (
+                <CircleNotch size={16} className="mr-2 animate-spin" />
+              ) : (
+                <Shield className="h-4 w-4 mr-2" />
+              )}
+              {t('data:governance.create_restore_point')}
+            </DsButton>
+          )}
           <DsButton
             variant="primary"
             size="sm"
@@ -1315,7 +1400,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               e.preventDefault();
-              handleImportConfirm();
+              void handleImportConfirm();
             }
           }}
         >
@@ -1373,8 +1458,17 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                 value={importPassword}
                 placeholder={t('data:governance.import_password_placeholder')}
                 required={resumeImportJobId !== null}
-                onChange={(e) => setImportPassword(e.target.value)}
+                disabled={isImportingSubmitting}
+                onChange={(e) => {
+                  setImportPassword(e.target.value);
+                  if (importPasswordError) setImportPasswordError(null);
+                }}
               />
+              {importPasswordError && (
+                <p role="alert" className="text-xs text-destructive">
+                  {importPasswordError}
+                </p>
+              )}
             </div>
           </div>
         </DsDialogBody>
@@ -1382,6 +1476,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
+            disabled={isImportingSubmitting}
             onClick={() => {
               setShowImportPasswordDialog(false);
               resetImportDialogState();
@@ -1392,8 +1487,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           <DsButton
             variant="primary"
             size="sm"
-            disabled={isStagingImportFile}
-            onClick={handleImportConfirm}
+            disabled={isStagingImportFile || isImportingSubmitting}
+            onClick={() => void handleImportConfirm()}
           >
             {resumeImportJobId ? (
               <Play className="h-4 w-4 mr-1.5" />

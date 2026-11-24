@@ -178,4 +178,34 @@ describe('Todo mobile anti-accidental-delete, MatrixBoard, and Today hierarchy',
     expect(childRow).not.toBeNull();
     expect(childRow?.style.paddingLeft).toBe('44px');
   });
+
+  it('S4-09: excludes subtasks from top-level Overdue / Matrix / empty Inbox views even when parent is absent', () => {
+    const today = new Date();
+    const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const orphanSubtask = makeTodo({ id: 'c-orphan', parentId: 'p-missing', title: '不应该出现在顶层的子任务', dueDate: ymd });
+
+    // Overdue view: orphan subtask is excluded
+    useTodoStore.setState({
+      items: [orphanSubtask],
+      filter: { view: 'overdue', search: '', showCompleted: false, sortBy: 'manual', priorityFilter: null },
+    });
+    const { rerender } = render(<TodoMainPanel />);
+    expect(screen.queryByText('不应该出现在顶层的子任务')).toBeNull();
+
+    // Matrix view: orphan subtask is excluded
+    useTodoStore.setState({
+      items: [orphanSubtask],
+      filter: { view: 'matrix', search: '', showCompleted: false, sortBy: 'manual', priorityFilter: null },
+    });
+    rerender(<TodoMainPanel />);
+    expect(screen.queryByText('不应该出现在顶层的子任务')).toBeNull();
+
+    // Empty Inbox shows visible "+ 新建待办" CTA button
+    useTodoStore.setState({
+      items: [],
+      filter: { view: 'all', search: '', showCompleted: false, sortBy: 'manual', priorityFilter: null },
+    });
+    rerender(<TodoMainPanel />);
+    expect(screen.getByTestId('todo-empty-add-button')).toBeInTheDocument();
+  });
 });

@@ -1290,7 +1290,8 @@
     "delete_failed": "删除失败",
     "empty_placeholder": "回收站为空",
     "confirm_empty_desc": "确定要清空回收站吗？此操作不可撤销。",
-    "confirm_delete_desc": "确定要永久删除此项目吗？此操作不可撤销。"
+    "confirm_delete_desc": "确定要永久删除此项目吗？此操作不可撤销。",
+    "selectHint": "已选中，请点击「恢复」以还原此项目"
   },
   "assets": {
     "title": "资源管理",
@@ -2316,6 +2317,12 @@
     "resumeItem": "继续：{{title}}",
     "hintQuickSwitch": "快速切换与搜索",
     "hintToggleSidebar": "展开或收起目录栏",
-    "searchMatchCount": "匹配 {{count}} 项"
+    "searchMatchCount": "匹配 {{count}} 项",
+    "linksAndGraph": "反向链接 / 图谱",
+    "graphCurrentNode": "当前",
+    "graphEdgeWikilink": "双链",
+    "graphEdgeNoteref": "引用",
+    "graphConnectionsSummary": "连接边 ({{count}})",
+    "graphMoreConnections": "还有 {{count}} 条连接"
   }
 }

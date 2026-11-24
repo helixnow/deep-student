@@ -24,6 +24,7 @@ import {
   CircleNotch,
   ListChecks,
   MagnifyingGlass,
+  Plus,
   SortAscending,
   X,
 } from '@phosphor-icons/react';
@@ -360,57 +361,28 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     );
     return {
       filteredItems: sortTodoItems(visible, filter.sortBy),
-      pendingCount: byPriority.filter((i) => i.status === 'pending').length,
-      completedCount: byPriority.filter((i) => i.status === 'completed').length,
+      pendingCount: byPriority.filter((i) => !i.parentId && i.status === 'pending').length,
+      completedCount: byPriority.filter((i) => !i.parentId && i.status === 'completed').length,
     };
   }, [items, filter.priorityFilter, filter.showCompleted, filter.view, filter.sortBy]);
 
-  // ===== 'all' / 'today' 视图：保留父子任务视觉层级；手动排序仅在 'all' 视图支持顶层拖拽 =====
-  const isTreeView = (filter.view === 'all' || filter.view === 'today') && !filter.search.trim();
+  // ===== 'all' / 'today' / 'overdue' 视图：保留父子任务视觉层级；子任务绝不提升为顶层 =====
+  const isTreeView =
+    (filter.view === 'all' || filter.view === 'today' || filter.view === 'overdue') &&
+    !filter.search.trim();
   const isManualSortView = filter.view === 'all' && !filter.search.trim() && filter.sortBy === 'manual';
-
-  const buildHierarchicalRows = useCallback(
-    (
-      source: TodoItem[],
-      progressOf: (parentId: string) => { done: number; total: number } | undefined,
-    ): TodoRowSpec[] => {
-      const visibleIds = new Set(source.map((i) => i.id));
-      const childMap = new Map<string, TodoItem[]>();
-      const tops: TodoItem[] = [];
-      for (const item of source) {
-        if (item.parentId && visibleIds.has(item.parentId)) {
-          const arr = childMap.get(item.parentId) || [];
-          arr.push(item);
-          childMap.set(item.parentId, arr);
-        } else {
-          tops.push(item);
-        }
-      }
-      return tops.flatMap((item) => [
-        { item, subtaskProgress: progressOf(item.id) },
-        ...(childMap.get(item.id) || []).map((child) => ({
-          item: child,
-          depth: 1,
-          subtaskProgress: progressOf(child.id),
-        })),
-      ]);
-    },
-    [],
-  );
 
   const { topLevelItems, childrenByParent } = useMemo(() => {
     const childMap = new Map<string, TodoItem[]>();
     const tops: TodoItem[] = [];
-    if (!isTreeView) {
-      return { topLevelItems: filteredItems, childrenByParent: childMap };
-    }
     const visibleIds = new Set(filteredItems.map((i) => i.id));
     for (const item of filteredItems) {
-      // 父项不可见（被过滤）时子任务提升为顶层，避免凭空消失
-      if (item.parentId && visibleIds.has(item.parentId)) {
-        const arr = childMap.get(item.parentId) || [];
-        arr.push(item);
-        childMap.set(item.parentId, arr);
+      if (item.parentId) {
+        if (isTreeView && visibleIds.has(item.parentId)) {
+          const arr = childMap.get(item.parentId) || [];
+          arr.push(item);
+          childMap.set(item.parentId, arr);
+        }
       } else {
         tops.push(item);
       }
@@ -418,17 +390,16 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     return { topLevelItems: tops, childrenByParent: childMap };
   }, [filteredItems, isTreeView]);
 
-  // ===== 'upcoming'/'today' 视图：按时间段分组 =====
-  // upcoming：逾期/今天/明天/本周/以后；today：逾期置顶 + 今天（SOTA 语义，逾期不会从今天消失）
+  // ===== 'upcoming'/'today' 视图：按时间段分组（仅顶层任务参与分桶，子任务在组内跟随父任务缩进） =====
   const upcomingGroups = useMemo(() => {
     if (filter.view !== 'upcoming' && filter.view !== 'today') return null;
-    const groups = groupItemsByDueBucket(filteredItems);
+    const groups = groupItemsByDueBucket(topLevelItems);
     // today 视图只有逾期/今天两组；只有「今天」一组时无需组头，退回普通列表（仍走 isTreeView 保留子任务层级）
     if (filter.view === 'today' && groups.length === 1 && groups[0].bucket === 'today') {
       return null;
     }
     return groups;
-  }, [filter.view, filteredItems]);
+  }, [filter.view, topLevelItems]);
 
   // ===== 'matrix' 视图：四象限归类 =====
   const matrixQuadrants = useMemo(() => {
@@ -440,11 +411,11 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
       urgentNotImportant: [],
       neither: [],
     };
-    for (const item of filteredItems) {
+    for (const item of topLevelItems) {
       map[classifyEisenhower(item, today)].push(item);
     }
     return map;
-  }, [filter.view, filteredItems]);
+  }, [filter.view, topLevelItems]);
 
   // 计算子任务进度（含被 showCompleted 过滤掉的已完成子任务，进度才真实）。
   // 一次 O(n) 预聚合成 Map，替代此前每个父行 O(n) 过滤（大列表 O(n²) 热点）
@@ -476,13 +447,20 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     return upcomingGroups.map((group) => ({
       ...group,
       rows: preserveHierarchy
-        ? buildHierarchicalRows(group.items, subtaskProgressOf)
+        ? group.items.flatMap((item): TodoRowSpec[] => [
+            { item, subtaskProgress: subtaskProgressOf(item.id) },
+            ...(childrenByParent.get(item.id) || []).map((child): TodoRowSpec => ({
+              item: child,
+              depth: 1,
+              subtaskProgress: subtaskProgressOf(child.id),
+            })),
+          ])
         : group.items.map((item): TodoRowSpec => ({
             item,
             subtaskProgress: subtaskProgressOf(item.id),
           })),
     }));
-  }, [upcomingGroups, filter.view, filter.search, buildHierarchicalRows, subtaskProgressOf]);
+  }, [upcomingGroups, filter.view, filter.search, childrenByParent, subtaskProgressOf]);
 
   // 树形/平铺分支交给 TodoRowsList（>100 行自动虚拟化）
   const listRows = useMemo<TodoRowSpec[]>(() => {
@@ -496,8 +474,8 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
         })),
       ]);
     }
-    return filteredItems.map((item) => ({ item, subtaskProgress: subtaskProgressOf(item.id) }));
-  }, [isTreeView, topLevelItems, childrenByParent, filteredItems, subtaskProgressOf]);
+    return topLevelItems.map((item) => ({ item, subtaskProgress: subtaskProgressOf(item.id) }));
+  }, [isTreeView, topLevelItems, childrenByParent, subtaskProgressOf]);
 
   // 键盘导航的可见行顺序（跨所有视图分支统一口径；折叠分组内的行不参与 j/k）
   const visibleRowIds = useMemo(() => {
@@ -854,11 +832,11 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
     }
   })();
 
-  // 今日负荷摘要：未完成任务的预估番茄合计（仅 today 视图、有预估时显示）
+  // 今日负荷摘要：未完成顶层任务的预估番茄合计（仅 today 视图、有预估时显示）
   const todayPomodoroLoad = useMemo(() => {
     if (filter.view !== 'today') return 0;
     return items
-      .filter((i) => i.status === 'pending')
+      .filter((i) => !i.parentId && i.status === 'pending')
       .reduce((acc, i) => {
         const remaining = (i.estimatedPomodoros || 0) - (i.completedPomodoros || 0);
         return acc + Math.max(0, remaining);
@@ -1121,6 +1099,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
             {(filter.view === 'today' || (filter.view === 'all' && !filter.search.trim())) && (
               <TodayStudySummaryCard
                 inTodayTodoView={filter.view === 'today'}
+                inEmptyListView={filter.view === 'all' && topLevelItems.length === 0}
                 todoDueCount={filter.view === 'today' ? pendingCount : counts?.todayCount ?? 0}
                 onOpenTodos={() => {
                   if (filter.view !== 'today') {
@@ -1137,7 +1116,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               <div className="flex items-center justify-center py-20">
                 <CircleNotch size={24} className="animate-spin text-muted-foreground/60" />
               </div>
-            ) : filteredItems.length === 0 ? (
+            ) : topLevelItems.length === 0 ? (
               <div className="study-shell-empty-state m-4 sm:m-6 ui-rise-in motion-reduce:animate-none">
                 <div
                   className={cn(
@@ -1182,17 +1161,22 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                     </DsButton>
                   </div>
                 )}
-                {isTodayFreshEmpty && (
+                {showQuickAdd && !isTodayAllDone && !filter.search.trim() && (
                   <div className="mt-3 flex items-center justify-center">
                     <DsButton
                       variant="utility"
                       size="sm"
+                      data-testid="todo-empty-add-button"
                       onClick={() => {
-                        document.querySelector<HTMLInputElement>('[data-todo-quick-add]')?.focus();
+                        const target =
+                          panelRootRef.current?.querySelector<HTMLInputElement>('[data-todo-quick-add]') ??
+                          document.querySelector<HTMLInputElement>('[data-todo-quick-add]');
+                        target?.focus();
                       }}
                       className="gap-1.5 text-xs transition-[transform,background-color,border-color,color] duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
                     >
-                      {t('todo:empty.addFirstToday')}
+                      <Plus size={14} />
+                      {isTodayFreshEmpty ? t('todo:empty.addFirstToday') : t('todo:empty.addItemCta')}
                     </DsButton>
                   </div>
                 )}

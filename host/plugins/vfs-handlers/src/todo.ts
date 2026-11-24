@@ -398,7 +398,9 @@ export function listToday(
   offset: number | null,
 ): TodoItem[] {
   try {
-    return deps.repos.listTodayItems(deps.conn(), includeCompleted, limit, offset);
+    return deps.repos
+      .listTodayItems(deps.conn(), includeCompleted, limit, offset)
+      .filter((item) => item.parentId == null);
   } catch (error) {
     return fail(deps, 'todo_list_today', error);
   }
@@ -411,7 +413,9 @@ export function listOverdue(
   offset: number | null,
 ): TodoItem[] {
   try {
-    return deps.repos.listOverdueItems(deps.conn(), includeCompleted, limit, offset);
+    return deps.repos
+      .listOverdueItems(deps.conn(), includeCompleted, limit, offset)
+      .filter((item) => item.parentId == null);
   } catch (error) {
     return fail(deps, 'todo_list_overdue', error);
   }
@@ -419,7 +423,9 @@ export function listOverdue(
 
 export function listUpcoming(deps: TodoDeps, days: number, includeCompleted: boolean): TodoItem[] {
   try {
-    return deps.repos.listUpcomingItems(deps.conn(), days, includeCompleted);
+    return deps.repos
+      .listUpcomingItems(deps.conn(), days, includeCompleted)
+      .filter((item) => item.parentId == null);
   } catch (error) {
     return fail(deps, 'todo_list_upcoming', error);
   }
@@ -435,7 +441,9 @@ export function listReminders(deps: TodoDeps): TodoItem[] {
 
 export function listAllPending(deps: TodoDeps): TodoItem[] {
   try {
-    return deps.repos.listAllPendingItems(deps.conn());
+    return deps.repos
+      .listAllPendingItems(deps.conn())
+      .filter((item) => item.parentId == null);
   } catch (error) {
     return fail(deps, 'todo_list_all_pending', error);
   }
@@ -443,7 +451,9 @@ export function listAllPending(deps: TodoDeps): TodoItem[] {
 
 export function listCompleted(deps: TodoDeps, listId: string | null): TodoItem[] {
   try {
-    return deps.repos.listCompletedItems(deps.conn(), listId);
+    return deps.repos
+      .listCompletedItems(deps.conn(), listId)
+      .filter((item) => item.parentId == null);
   } catch (error) {
     return fail(deps, 'todo_list_completed', error);
   }
@@ -460,7 +470,25 @@ export function search(deps: TodoDeps, query: string, limit: number | null, offs
 
 export function getActiveSummary(deps: TodoDeps): ReturnType<TodoRepository['getActiveTodoSummary']> {
   try {
-    return deps.repos.getActiveTodoSummary(deps.conn());
+    const conn = deps.conn();
+    const summary = deps.repos.getActiveTodoSummary(conn);
+    if (!summary) return null;
+    const allPendingTop = deps.repos.listAllPendingItems(conn).filter((item) => item.parentId == null);
+    const overdueTop = deps.repos.listOverdueItems(conn, false).filter((item) => item.parentId == null);
+    const todayAllTop = deps.repos.listTodayItems(conn, false).filter((item) => item.parentId == null);
+    const topById = new Set(allPendingTop.map((item) => item.id));
+    const overdueById = new Set(overdueTop.map((item) => item.id));
+    return {
+      todayItems: summary.todayItems.filter((item) => topById.has(item.id)),
+      overdueItems: summary.overdueItems.filter((item) => overdueById.has(item.id)),
+      upcomingHighPriority: summary.upcomingHighPriority.filter((item) => topById.has(item.id)),
+      stats: {
+        ...summary.stats,
+        totalPending: allPendingTop.length,
+        overdueCount: overdueTop.length,
+        todayDue: Math.max(0, todayAllTop.length - overdueTop.length),
+      },
+    };
   } catch (error) {
     return fail(deps, 'todo_get_active_summary', error);
   }
@@ -468,7 +496,29 @@ export function getActiveSummary(deps: TodoDeps): ReturnType<TodoRepository['get
 
 export function countsSnapshot(deps: TodoDeps): ReturnType<TodoRepository['countsSnapshot']> {
   try {
-    return deps.repos.countsSnapshot(deps.conn());
+    const conn = deps.conn();
+    const base = deps.repos.countsSnapshot(conn);
+    const lists = deps.repos.listTodoLists(conn);
+    const defaultListIds = new Set(lists.filter((list) => list.isDefault).map((list) => list.id));
+    const allPendingTop = deps.repos.listAllPendingItems(conn).filter((item) => item.parentId == null);
+    const todayTopCount = deps.repos.listTodayItems(conn, false).filter((item) => item.parentId == null).length;
+    const upcomingTopCount = deps.repos.listUpcomingItems(conn, 7, false).filter((item) => item.parentId == null).length;
+    const pendingByList = new Map<string, number>();
+    let inboxCount = 0;
+    for (const item of allPendingTop) {
+      pendingByList.set(item.todoListId, (pendingByList.get(item.todoListId) ?? 0) + 1);
+      if (defaultListIds.has(item.todoListId)) inboxCount += 1;
+    }
+    return {
+      todayCount: todayTopCount,
+      upcomingCount: upcomingTopCount,
+      inboxCount,
+      allPendingCount: allPendingTop.length,
+      perList: base.perList.map((entry) => ({
+        listId: entry.listId,
+        pendingCount: pendingByList.get(entry.listId) ?? 0,
+      })),
+    };
   } catch (error) {
     return fail(deps, 'todo_counts_snapshot', error);
   }

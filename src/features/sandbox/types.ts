@@ -1,6 +1,6 @@
 import type { PinnedArtifactKind } from '@/stores/pinnedArtifactStore';
 
-export type SandboxSourceType = 'chat-code-block' | 'chat-generative-ui';
+export type SandboxSourceType = 'chat-code-block' | 'chat-generative-ui' | 'manual-snippet';
 
 export type SandboxWorkbenchMode = 'safe-preview' | 'sandbox-run';
 
@@ -14,6 +14,7 @@ export interface SandboxSessionInput {
   language: string;
   title: string;
   content: string;
+  sourcePath?: string;
   artifactKind?: PinnedArtifactKind;
   widgetId?: string;
   sessionId?: string;

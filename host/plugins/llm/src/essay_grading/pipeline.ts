@@ -835,6 +835,8 @@ export function buildGradingPrompts(
   }
 
   // 兼容旧版：根据作文类型和年级补充提示（空值不添加）
+  // 标准化英语考试（IELTS/TOEFL 等）、自定义模式（!mode.isBuiltin）或自带自定义评分标准时，
+  // 禁止让默认「高中生标准」覆盖原本的考试或自定义评分标准（S3-02）
   const useEnglishHints = (request.responseLanguage ?? '').trim().toLowerCase().startsWith('en');
   const essayTypeHint = useEnglishHints
     ? request.essayType === 'narrative'
@@ -851,19 +853,39 @@ export function buildGradingPrompts(
         : request.essayType === 'expository'
           ? '这是一篇说明文。'
           : '';
+  const canonicalMode = canonicalModeId(mode.id);
+  const examHasOwnRubric =
+    !mode.isBuiltin ||
+    canonicalMode === 'ielts' ||
+    canonicalMode === 'ielts_task1' ||
+    canonicalMode === 'toefl';
+  const collegeLevelExam =
+    canonicalMode === 'cet' ||
+    canonicalMode === 'kaoyan' ||
+    canonicalMode === 'kaoyan_en';
+  const trimmedCustom = request.customPrompt?.trim() ?? '';
+  const hasExplicitCustomPrompt =
+    trimmedCustom.length > 0 &&
+    !trimmedCustom.startsWith('批改时请重点关注：\n1. 立意与内容') &&
+    !trimmedCustom.startsWith('When grading, please focus on:\n1. Thesis & content');
+  const effectiveGradeLevel =
+    examHasOwnRubric ||
+    (request.gradeLevel === 'high_school' && (collegeLevelExam || hasExplicitCustomPrompt))
+      ? ''
+      : request.gradeLevel;
   const gradeHint = useEnglishHints
-    ? request.gradeLevel === 'middle_school'
+    ? effectiveGradeLevel === 'middle_school'
       ? 'Evaluate according to middle-school writing standards.'
-      : request.gradeLevel === 'high_school'
+      : effectiveGradeLevel === 'high_school'
         ? 'Evaluate according to high-school writing standards.'
-        : request.gradeLevel === 'college'
+        : effectiveGradeLevel === 'college'
           ? 'Evaluate according to college-level writing standards.'
           : ''
-    : request.gradeLevel === 'middle_school'
+    : effectiveGradeLevel === 'middle_school'
       ? '请按照初中生的标准进行评判。'
-      : request.gradeLevel === 'high_school'
+      : effectiveGradeLevel === 'high_school'
         ? '请按照高中生的标准进行评判。'
-        : request.gradeLevel === 'college'
+        : effectiveGradeLevel === 'college'
           ? '请按照大学生的标准进行评判。'
           : '';
   if (essayTypeHint.length > 0 || gradeHint.length > 0) {

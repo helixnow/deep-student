@@ -225,6 +225,8 @@
       "copySuccess": "已复制到剪贴板",
       "copyFailed": "复制失败",
       "retry": "重试",
+      "regenerate": "重新生成",
+      "branchAndRetry": "在新分支重新生成",
       "retryFailed": "重试失败",
       "edit": "编辑",
       "editPrompt": "编辑消息内容:",
@@ -274,6 +276,7 @@
     "editConfirm": {
       "message": "编辑此消息将替换后续回复，是否继续？",
       "confirm": "继续",
+      "branchAndSend": "在新分支发送",
       "cancel": "取消"
     },
     "reconnect": {
@@ -2021,6 +2024,9 @@
     },
     "arguments": "参数",
     "approve": "本次允许",
+    "skillTrustApprove": "同意并信任",
+    "skillTrustReject": "拒绝",
+    "awaitingApproval": "等待审批",
     "allowSession": "本会话允许",
     "allowScope": "允许此范围",
     "reject": "本次拒绝",

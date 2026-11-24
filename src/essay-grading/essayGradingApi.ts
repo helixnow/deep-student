@@ -13,6 +13,11 @@ import { invoke } from '@tauri-apps/api/core';
 import { getErrorDetails, getErrorMessage } from '../utils/errorUtils';
 import i18n from '../i18n';
 import { canonicalizeEssayModeId } from './modeIds';
+export {
+  recommendedGradeLevelForMode,
+  shouldSuppressHighSchoolPollution,
+  type EssayGradeLevel,
+} from './modeIds';
 
 // ======================== 类型定义 ========================
 

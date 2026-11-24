@@ -16,7 +16,7 @@
 
 import type { SkillDefinition, SkillTrustStatus } from './types';
 import { invoke } from '@tauri-apps/api/core';
-import { getSkillTrustStatus } from './packageMetadata';
+import { getSkillPackageRoot, getSkillTrustStatus } from './packageMetadata';
 import { saveSkillUiSetting } from './skillSettingsMirror';
 
 const STORAGE_KEY = 'deep-student.skill-trust-overrides';
@@ -153,7 +153,7 @@ export async function setSkillTrustOverride(
   const target = skill ?? (await import('./registry')).skillRegistry.get(skillId);
   let backendState: SkillTrustState;
   if (trust === 'trusted') {
-    const packageRoot = target?.packageRoot;
+    const packageRoot = target?.packageRoot ?? (target?.sourcePath ? getSkillPackageRoot(target.sourcePath) : undefined);
     if (!packageRoot || packageRoot.startsWith('builtin://')) {
       throw new Error(`Skill "${skillId}" has no local package root to trust`);
     }

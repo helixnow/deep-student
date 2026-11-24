@@ -60,9 +60,9 @@ export function registerPractice(deps: QbankPluginDeps): void {
       startGrading();
       return attempt;
     }));
-  ctx.commands.register<{ id: string; questionId: string; correct: boolean }>('qbank_grade_practice_manually',
-    ({ id, questionId, correct }) => serviceCallAsync(async () =>
-      practice.gradePracticeManually(await deps.practiceHost(), id, questionId, correct).attempt));
+  ctx.commands.register<{ id: string; questionId: string; correct: boolean; score?: number | null }>('qbank_grade_practice_manually',
+    ({ id, questionId, correct, score }) => serviceCallAsync(async () =>
+      practice.gradePracticeManually(await deps.practiceHost(), id, questionId, correct, score).attempt));
   ctx.commands.register<{ request: { exam_id: string; config: PaperConfig__De } }>('qbank_generate_paper',
     ({ request }) => serviceCallAsync(async () =>
       practice.generatePaper(await deps.practiceHost(), request.exam_id, request.config)));

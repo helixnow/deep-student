@@ -199,5 +199,8 @@
       "exam": "The user made manual edits in the question bank",
       "pomodoro": "The user manually operated the pomodoro timer"
     }
+  },
+  "finder": {
+    "selectedTarget": "Destination: "
   }
 }

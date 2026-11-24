@@ -18,8 +18,8 @@ describe('loadTodayTodoCount', () => {
     invoke.mockReset();
   });
 
-  it('queries todo_list_today with includeCompleted=false and returns pending count', async () => {
-    invoke.mockResolvedValueOnce([{ id: 't1' }, { id: 't2' }, { id: 't3' }]);
+  it('queries todo_list_today with includeCompleted=false and excludes subtasks from pending count', async () => {
+    invoke.mockResolvedValueOnce([{ id: 't1' }, { id: 't2' }, { id: 'sub1', parentId: 't1' }, { id: 't3' }]);
     expect(await loadTodayTodoCount()).toBe(3);
     expect(invoke).toHaveBeenCalledWith('todo_list_today', { includeCompleted: false });
   });

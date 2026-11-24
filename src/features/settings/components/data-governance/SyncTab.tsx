@@ -51,6 +51,7 @@ import {
   classifySyncE2eeError,
   SYNC_E2EE_ERROR_I18N_KEYS,
 } from "./syncE2eeErrorMapping";
+import { localizeBackendErrorText } from "./localizeCloudError";
 import { RecordConflictsPanel } from "./RecordConflictsPanel";
 import { SyncQuarantinePanel } from "./SyncQuarantinePanel";
 import { UnsyncedItemsPanel } from "./UnsyncedItemsPanel";
@@ -143,6 +144,7 @@ export function extractSyncLeaseExpiry(raw: string): Date | null {
 function sanitizeSyncAclError(
   raw: string,
   t: (key: string, opts?: Record<string, unknown>) => string,
+  language?: string,
 ): string {
   if (
     /command\s+[a-z0-9_.-]+\s+not\s+allowed(?:\s+by\s+ACL|\s+on\b[^\n]*)?/i.test(raw) ||
@@ -152,10 +154,10 @@ function sanitizeSyncAclError(
       defaultValue: "当前环境暂无权执行该同步操作，请检查应用权限或版本配置后重试。",
     });
   }
-  return raw;
+  return localizeBackendErrorText(raw, language);
 }
 
-/** 计算全量/记录级同步中最新的有效时间戳（兼容仅库级 last_sync_at 更新的场景） */
+/** 计算全量/记录级同步中最新的有效时间戳（兼容仅库级 last_sync_at 与 SQLite UTC 格式） */
 export function resolveLatestSyncTimestamp(syncStatus: SyncStatusResponse | null): string | null {
   if (!syncStatus) return null;
   let bestStr: string | null = null;
@@ -166,10 +168,12 @@ export function resolveLatestSyncTimestamp(syncStatus: SyncStatusResponse | null
   ];
   for (const candidate of candidates) {
     if (!candidate) continue;
-    const ms = Date.parse(candidate);
+    const sqliteUtc = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/.exec(candidate.trim());
+    const normalized = sqliteUtc ? `${sqliteUtc[1]}T${sqliteUtc[2]}Z` : candidate.trim();
+    const ms = Date.parse(normalized);
     if (!Number.isNaN(ms) && ms > bestMs) {
       bestMs = ms;
-      bestStr = candidate;
+      bestStr = sqliteUtc ? normalized : candidate;
     }
   }
   return bestStr;
@@ -199,7 +203,7 @@ export interface SyncTabProps {
   onRunSync: (
     direction: "upload" | "download" | "bidirectional",
     strategy: MergeStrategy,
-  ) => void;
+  ) => void | boolean | Promise<void | boolean>;
   onRetrySync?: () => void;
   onViewAuditLog?: () => void;
 }
@@ -227,11 +231,12 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   onRetrySync,
   onViewAuditLog,
 }) => {
-  const { t } = useTranslation(["data", "common", "sync", "cloudStorage"]);
+  const { t, i18n } = useTranslation(["data", "common", "sync", "cloudStorage"]);
   // 待确认的数据库级冲突解决策略：点击策略按钮先弹确认，确认后才执行
   const [pendingResolveStrategy, setPendingResolveStrategy] =
     React.useState<MergeStrategy | null>(null);
   const [deviceIdCopied, setDeviceIdCopied] = React.useState(false);
+  const [showPendingBreakdown, setShowPendingBreakdown] = React.useState(false);
   // 自动同步开关（默认关闭；调度与安全防线在 syncStatusStore 内实现）
   const autoSyncEnabled = useAutoSyncStore((s) => s.enabled);
   const setAutoSyncEnabled = useAutoSyncStore((s) => s.setEnabled);
@@ -240,23 +245,40 @@ export const SyncTab: React.FC<SyncTabProps> = ({
     // 此处调用仍幂等，仅兜底 App 挂载链路之外的极端渲染场景
     ensureAutoSyncSchedulerStarted();
   }, []);
+
+  React.useEffect(() => {
+    const refreshFromLocalChange = () => {
+      onRefresh();
+    };
+    window.addEventListener("data-governance:local-change", refreshFromLocalChange);
+    return () => {
+      window.removeEventListener("data-governance:local-change", refreshFromLocalChange);
+    };
+  }, [onRefresh]);
+
   const syncDatabases = syncStatus?.databases ?? [];
   const latestSyncAt = React.useMemo(
     () => resolveLatestSyncTimestamp(syncStatus),
     [syncStatus]
   );
-  const sanitizedSyncError = syncProgress?.error
-    ? sanitizeSyncAclError(syncProgress.error, t)
+  const rawSyncError = syncProgress?.error;
+  const sanitizedSyncError = rawSyncError
+    ? sanitizeSyncAclError(rawSyncError, t, i18n?.language)
     : undefined;
+  const localizedProgressItem = syncProgress?.current_item
+    ? localizeBackendErrorText(syncProgress.current_item, i18n?.language)
+    : "-";
   const showSyncProgress = syncRunning || Boolean(sanitizedSyncError);
   // [R09-e2ee] 端到端加密类失败先归类为“人话”，原文保留在下方供排查/搜索
-  const syncErrorE2eeKind = sanitizedSyncError
-    ? classifySyncE2eeError(sanitizedSyncError)
+  const syncErrorE2eeKind = rawSyncError
+    ? classifySyncE2eeError(rawSyncError) ??
+      (sanitizedSyncError ? classifySyncE2eeError(sanitizedSyncError) : null)
     : null;
   // [R09-ux] 已知 E2EE 错误显示人话，原始错误降级为技术详情
   // （补「未配置加密密码」等 e2ee 分类器未覆盖的入口）
-  const syncErrorKind = sanitizedSyncError
-    ? classifySyncError(sanitizedSyncError)
+  const syncErrorKind = rawSyncError
+    ? classifySyncError(rawSyncError) ??
+      (sanitizedSyncError ? classifySyncError(sanitizedSyncError) : null)
     : null;
   const conflictRefreshSignal = `${syncStatus?.total_pending_changes ?? 0}:${syncStatus?.total_synced_changes ?? 0}`;
   const syncProgressCounter =
@@ -292,14 +314,28 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   return (
     <div className="space-y-8">
       {/* 同步状态概览 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 rounded-2xl bg-muted px-4 py-4">
+      <div className="space-y-3 rounded-2xl bg-muted px-4 py-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <Cloud size={16} />
             {t("data:governance.pending_changes")}
           </div>
-          <div className="text-2xl font-semibold tabular-nums text-foreground">
-            {syncStatus?.total_pending_changes ?? 0}
+          <div className="flex items-center gap-2">
+            <div className="text-2xl font-semibold tabular-nums text-foreground">
+              {syncStatus?.total_pending_changes ?? 0}
+            </div>
+            <button
+              type="button"
+              data-testid="sync-pending-breakdown-toggle"
+              aria-expanded={showPendingBreakdown}
+              onClick={() => setShowPendingBreakdown((prev) => !prev)}
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              {showPendingBreakdown
+                ? t("sync:pendingBreakdown.toggleHide")
+                : t("sync:pendingBreakdown.toggleShow")}
+            </button>
           </div>
         </div>
 
@@ -363,6 +399,47 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             )}
           </div>
         </div>
+      </div>
+      {showPendingBreakdown && (
+        <div
+          data-testid="sync-pending-breakdown-panel"
+          className="rounded-xl border border-border/50 bg-background/70 p-3 text-xs space-y-2"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium text-foreground">
+              {t("data:governance.pending_changes")}
+            </span>
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="text-primary hover:underline"
+            >
+              {t("sync:pendingBreakdown.refreshNow")}
+            </button>
+          </div>
+          {(() => {
+            const pendingDbs = syncDatabases.filter((d) => d.pending_changes > 0);
+            if (pendingDbs.length === 0) {
+              return <div className="text-muted-foreground">{t("sync:pendingBreakdown.empty")}</div>;
+            }
+            return (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {pendingDbs.map((db) => (
+                  <div key={db.id} className="rounded-lg border border-border/40 bg-muted/40 p-2 space-y-1">
+                    <div className="flex items-center justify-between font-medium text-foreground">
+                      <span>{getDatabaseDisplayName(db.id, t)}</span>
+                      <span>{t("sync:pendingBreakdown.tableCount", { count: db.pending_changes })}</span>
+                    </div>
+                    <div className="text-2xs text-muted-foreground">
+                      {t("data:governance.synced_changes")}: {db.synced_changes}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      )}
       </div>
 
       {/* 同步 vs 云端整包备份心智区分提示 */}
@@ -739,7 +816,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{syncProgress.current_item ?? "-"}</span>
+                    <span>{localizedProgressItem}</span>
                     <span>{Math.round(syncProgress.percent)}%</span>
                   </div>
                   <div className="h-2 bg-secondary rounded-full overflow-hidden">
@@ -760,7 +837,11 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                     </span>
                   </div>
                   {sanitizedSyncError && (
-                    <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2 space-y-2">
+                    <div
+                      role="alert"
+                      data-testid="sync-terminal-error-banner"
+                      className="rounded-md border border-destructive/30 bg-destructive/5 p-2 space-y-2"
+                    >
                       <div className="flex items-start gap-1.5 text-xs text-destructive">
                         <XCircle size={12} className="mt-0.5 shrink-0" />
                         <span>

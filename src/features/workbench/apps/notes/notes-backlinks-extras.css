@@ -167,21 +167,56 @@
 }
 
 .notes-backlinks-panel-unresolved-row {
-  min-height: 30px;
-  padding: 3px 4px 3px 6px;
+  padding: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
   border-radius: var(--notes-radius-row);
   color: hsl(var(--muted-foreground));
   transition: background-color var(--notes-hover-transition);
 }
 
-.notes-backlinks-panel-unresolved-row:hover {
-  background: hsl(var(--accent) / 40%);
+.notes-backlinks-panel-unresolved-btn,
+.notes-backlinks-panel-unresolved-static {
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--notes-radius-row);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
 
-.notes-backlinks-panel-unresolved-row > svg:first-child {
+.notes-backlinks-panel-unresolved-btn {
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition);
+}
+
+.notes-backlinks-panel-unresolved-btn:hover:not(:disabled) {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.notes-backlinks-panel-unresolved-btn:focus-visible {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-backlinks-panel-unresolved-btn:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.notes-backlinks-panel-unresolved-btn > svg:first-child,
+.notes-backlinks-panel-unresolved-static > svg:first-child {
   flex: 0 0 auto;
 }
 
@@ -193,6 +228,20 @@
   font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.notes-backlinks-panel-unresolved-create-icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--notes-radius-control);
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-backlinks-panel-unresolved-btn:hover:not(:disabled) .notes-backlinks-panel-unresolved-create-icon {
+  color: hsl(var(--primary));
 }
 
 /* Ghost icon button — hidden until row hover / focus-within (workspace icon language) */

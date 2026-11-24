@@ -11,9 +11,12 @@
  */
 
 import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
 import { useLiveDurationSeconds } from '../../hooks/useLiveDurationSeconds';
@@ -24,6 +27,7 @@ import {
   CaretUpDown,
   CircleNotch,
   CheckCircle,
+  ShieldCheck,
   WarningCircle,
   Warning,
   Terminal,
@@ -33,7 +37,7 @@ import { cn } from '@/utils/cn';
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand';
 import type { Block } from '../../core/types/block';
-import type { ChatStore } from '../../core/types/store';
+import type { BlockingInteraction, ChatStore } from '../../core/types/store';
 import { StreamingMarkdownRenderer } from '../renderers';
 import { blockRegistry } from '../../registry/blockRegistry';
 import { RETRIEVAL_BLOCK_TYPES } from './types';
@@ -44,6 +48,7 @@ import {
   getExternalToolProviderName,
   getReadableToolName,
 } from '@/features/chat/utils/toolDisplayName';
+import { getLocalizedApprovalDescription } from '@/features/chat/utils/approvalDescription';
 import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { getToolVisual } from '@/features/chat/utils/toolVisual';
 import { TextShimmer } from '../ui/TextShimmer';
@@ -123,6 +128,10 @@ export interface ActivityTimelineProps {
   onContinue?: () => void;
   /** 🆕 打开笔记回调（笔记工具预览使用） */
   onOpenNote?: (noteId: string) => void;
+  /** 🆕 当前会话挂起的阻塞审批请求（用于内联渲染 skill_trust_request 等等待审批卡片） */
+  pendingBlockingInteraction?: BlockingInteraction | null;
+  /** 🆕 当前会话 ID（内联工具审批回执使用） */
+  sessionId?: string;
 }
 
 // ============================================================================
@@ -176,6 +185,8 @@ function toLiveActivityItem(node: TimelineNodeData): LiveActivityItem & { node: 
     normalizedTool === 'ask_user' ||
     normalizedTool === 'secret_request' ||
     normalizedTool === 'approval' ||
+    normalizedTool === 'skill_trust_request' ||
+    normalizedTool === 'skill_remove' ||
     normalizedTool === 'generative_ui_await';
 
   return {
@@ -960,12 +971,21 @@ interface ToolNodeContentProps {
   isLast: boolean;
   /** 🔧 P7修复：会话级流式状态，用于修正 toolStatus='running' 的显示 */
   isStreaming?: boolean;
+  pendingBlockingInteraction?: BlockingInteraction | null;
+  sessionId?: string;
 }
 
 /** 运行中自动展开的延迟：亚秒级完成的工具不闪烁展开/收起 */
 const RUNNING_AUTO_EXPAND_DELAY_MS = 400;
 
-const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast, isStreaming = false }) => {
+const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({
+  node,
+  isFirst,
+  isLast,
+  isStreaming = false,
+  pendingBlockingInteraction = null,
+  sessionId = '',
+}) => {
   const { t } = useTranslation(['chatV2', 'common']);
   const disclosureMotion = useDisclosureMotion();
   const contentId = useId();
@@ -1008,6 +1028,54 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
     return undefined;
   }, [isPreparing, isRunning, isError]);
   const isSuccess = node.toolStatus === 'success';
+  const normalizedToolShort = node.toolName?.replace(/^builtin[-:]/, '') ?? '';
+  const pendingApproval =
+    pendingBlockingInteraction?.kind === 'tool_approval' &&
+    !pendingBlockingInteraction.resolvedStatus &&
+    (pendingBlockingInteraction.toolCallId === node.block.toolCallId ||
+      (!node.block.toolCallId &&
+        normalizedToolShort === 'skill_trust_request' &&
+        pendingBlockingInteraction.toolName.replace(/^builtin[-:]/, '') === 'skill_trust_request'))
+      ? pendingBlockingInteraction
+      : null;
+  const isInlineSkillTrustApproval = Boolean(
+    pendingApproval && normalizedToolShort === 'skill_trust_request',
+  );
+  const [inlineApprovalBusy, setInlineApprovalBusy] = useState(false);
+  const handleInlineSkillTrustRespond = useCallback(
+    async (approved: boolean) => {
+      if (!pendingApproval || inlineApprovalBusy) return;
+      setInlineApprovalBusy(true);
+      try {
+        if ('respond' in pendingApproval && typeof (pendingApproval as { respond?: unknown }).respond === 'function') {
+          await (pendingApproval as unknown as {
+            respond: (resp: { approved: boolean; remember: boolean; rememberSession: boolean; reason?: string }) => Promise<void>;
+          }).respond({
+            approved,
+            remember: false,
+            rememberSession: false,
+            reason: approved ? undefined : 'user_rejected',
+          });
+        } else {
+          await invoke('chat_v2_tool_approval_respond', {
+            sessionId,
+            toolCallId: pendingApproval.toolCallId,
+            toolName: pendingApproval.toolName,
+            approved,
+            reason: approved ? null : 'user_rejected',
+            remember: false,
+            rememberSession: false,
+            arguments: pendingApproval.arguments,
+          });
+        }
+      } catch (error) {
+        showGlobalNotification('error', getErrorMessage(error), t('approval.notification.responseFailedTitle', { ns: 'chatV2' }));
+      } finally {
+        setInlineApprovalBusy(false);
+      }
+    },
+    [pendingApproval, inlineApprovalBusy, sessionId, t],
+  );
   const isShellCommand = isShellTimelineTool(node.toolName);
   const shellDescriptor = useMemo(() => getShellCommandDescriptor({
     toolName: node.toolName,
@@ -1040,6 +1108,9 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
 
   // 获取状态文本
   const statusText = useMemo(() => {
+    if (pendingApproval) {
+      return t('approval.awaitingApproval', { ns: 'chatV2' });
+    }
     // 🆕 2026-01-16: preparing 状态显示“正在准备...”
     if (isPreparing) {
       return t('timeline.tool.preparing', { ns: 'chatV2' });
@@ -1054,7 +1125,7 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
       return t('timeline.tool.success', { ns: 'chatV2' });
     }
     return t('timeline.tool.pending', { ns: 'chatV2' });
-  }, [isPreparing, isRunning, isError, isSuccess, t]);
+  }, [pendingApproval, isPreparing, isRunning, isError, isSuccess, t]);
 
   const durationText = useMemo(() => {
     if (!isSuccess || durationMs === undefined) return '';
@@ -1208,6 +1279,45 @@ const ToolNodeContentInner: React.FC<ToolNodeContentProps> = ({ node, isFirst, i
           ) : null}
         </DsButton>
 
+        {/* 内联技能信任审批卡（确保 skill_trust_request 在时间线节点处也可立即批准或拒绝） */}
+        {isInlineSkillTrustApproval && pendingApproval && (
+          <div
+            data-testid="timeline-skill-trust-approval"
+            className="mt-1 flex flex-col gap-1.5 rounded-lg border border-warning/35 bg-warning/10 px-3 py-2 text-xs"
+          >
+            <div className="flex items-center gap-1.5 font-medium text-foreground">
+              <ShieldCheck size={14} className="shrink-0 text-warning" />
+              <span>
+                {getLocalizedApprovalDescription(
+                  pendingApproval.toolName,
+                  pendingApproval.arguments,
+                  pendingApproval.description,
+                  t,
+                )}
+              </span>
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <DsButton
+                variant="outline"
+                size="sm"
+                disabled={inlineApprovalBusy}
+                onClick={() => void handleInlineSkillTrustRespond(false)}
+                className="text-destructive hover:text-destructive/80 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+              >
+                {t('approval.skillTrustReject', { ns: 'chatV2' })}
+              </DsButton>
+              <DsButton
+                size="sm"
+                disabled={inlineApprovalBusy}
+                onClick={() => void handleInlineSkillTrustRespond(true)}
+                className="bg-success text-success-foreground [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+              >
+                {t('approval.skillTrustApprove', { ns: 'chatV2' })}
+              </DsButton>
+            </div>
+          </div>
+        )}
+
         {/* 展开的详细信息 */}
         <AnimatePresence initial={false}>
           {isExpanded && hasDetails && (
@@ -1316,7 +1426,9 @@ const ToolNodeContent = React.memo(
     prev.node.block === next.node.block &&
     prev.isFirst === next.isFirst &&
     prev.isLast === next.isLast &&
-    prev.isStreaming === next.isStreaming
+    prev.isStreaming === next.isStreaming &&
+    prev.pendingBlockingInteraction === next.pendingBlockingInteraction &&
+    prev.sessionId === next.sessionId
 );
 
 interface ToolGroupNodeContentProps {
@@ -1673,6 +1785,8 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
   className,
   onContinue,
   onOpenNote,
+  pendingBlockingInteraction = null,
+  sessionId = '',
 }) => {
   const { t } = useTranslation('chatV2');
   const [isWindowExpandedAll, setIsWindowExpandedAll] = useState(false);
@@ -1866,6 +1980,8 @@ export const ActivityTimeline: React.FC<ActivityTimelineProps> = ({
                   isFirst={isFirst}
                   isLast={isLast}
                   isStreaming={isStreaming}
+                  pendingBlockingInteraction={pendingBlockingInteraction}
+                  sessionId={sessionId}
                 />
               );
             } else if (node.type === 'todoList') {
@@ -1960,6 +2076,10 @@ export interface ActivityTimelineWithStoreProps {
   onContinue?: () => void;
   /** 🆕 打开笔记回调（笔记工具预览使用） */
   onOpenNote?: (noteId: string) => void;
+  /** 🆕 当前会话挂起的阻塞审批请求（用于内联渲染 skill_trust_request 等等待审批卡片） */
+  pendingBlockingInteraction?: BlockingInteraction | null;
+  /** 🆕 当前会话 ID（内联工具审批回执使用） */
+  sessionId?: string;
 }
 
 /**
@@ -1993,6 +2113,14 @@ export const ActivityTimelineWithStore: React.FC<ActivityTimelineWithStoreProps>
     [blockIds]
   );
   const isStreaming = useStore(store, isStreamingSelector);
+  const pendingBlockingInteraction = useStore(
+    store,
+    useCallback((s: ChatStore) => s.pendingBlockingInteraction ?? null, [])
+  );
+  const sessionId = useStore(
+    store,
+    useCallback((s: ChatStore) => s.sessionId ?? '', [])
+  );
 
   // 无块时不渲染
   if (blocks.length === 0) {
@@ -2006,6 +2134,8 @@ export const ActivityTimelineWithStore: React.FC<ActivityTimelineWithStoreProps>
       className={className}
       onContinue={onContinue}
       onOpenNote={onOpenNote}
+      pendingBlockingInteraction={pendingBlockingInteraction}
+      sessionId={sessionId}
     />
   );
 };

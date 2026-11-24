@@ -42,6 +42,10 @@ import {
 import { cn } from '@/utils/cn';
 import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
+import { isWebUiShell } from '@/utils/platform';
+import { isTauriEnvironment } from '@/utils/urlOpener';
+import { normalizeSubtitleFileForImport } from './subtitleUploadParser';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -238,9 +242,11 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   const segments = useMemo(() => transcript?.segments ?? [], [transcript]);
   const status = transcript?.status ?? 'none';
   const running = status === 'running' || status === 'queued';
+  const isIndexingOnly = running && transcript?.progress?.stage === 'indexing';
   const displaySegments = useMemo(() => selectDisplaySegments(segments), [segments]);
   const hasTranscript = displaySegments.length > 0;
   const hasDoneSegments = useMemo(() => segments.some((s) => s.status === 'done'), [segments]);
+  const hasReadyTranscriptForHandout = hasDoneSegments && (!running || isIndexingOnly);
 
   const [panelPref, setPanelPref] = useState<boolean | null>(null);
   // 子应用分段面板始终可用（无字幕时字幕分区给出转写 / 导入入口）；手机布局下不可收起
@@ -562,7 +568,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     let uploadId: string | undefined;
     try {
       if (file.size > 20 * 1024 * 1024) throw new Error(t('learningHub:mediaTranscript.importTooLarge', { defaultValue: 'Subtitle files must be 20 MB or smaller.' }));
-      uploadId = await stageBlobUpload(file, { name: file.name });
+      const uploadFile = await normalizeSubtitleFileForImport(file);
+      uploadId = await stageBlobUpload(uploadFile, { name: uploadFile.name });
       const count = await transcriptState.importFromPath(`dstu-staged:${uploadId}`);
       uploadId = undefined;
       setPanelPref(true);
@@ -573,13 +580,16 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   }, [transcriptState, t]);
 
   const handleImport = useCallback(async () => {
-    if (usesAndroidSaf()) { subtitleInputRef.current?.click(); return; }
+    if (usesAndroidSaf() || isWebUiShell() || !isTauriEnvironment()) {
+      subtitleInputRef.current?.click();
+      return;
+    }
     try {
       const path = await fileManager.pickSingleFile({
         filters: [
           {
             name: t('learningHub:mediaTranscript.importFilterName'),
-            extensions: ['srt', 'vtt', 'json'],
+            extensions: ['srt', 'vtt', 'ass', 'txt', 'json'],
           },
         ],
       });
@@ -591,6 +601,15 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       showGlobalNotification('error', getErrorMessage(err), t('learningHub:mediaTranscript.importFailed'));
     }
   }, [transcriptState, t]);
+
+  const handleOpenAsrSettings = useCallback(() => {
+    setConfirmOpen(false);
+    transcriptState.clearEstimate();
+    setPendingSettingsRoute({ tab: 'models' });
+    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
+    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'models' });
+    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'settings' });
+  }, [transcriptState]);
 
   // ---------------------------------------------------------------- B 站字幕 / 在 B 站打开
   const [bilibiliDialogOpen, setBilibiliDialogOpen] = useState(false);
@@ -839,7 +858,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       src: playerSrc,
       fileName,
       transcriptStatus: status,
-      hasTranscript: hasDoneSegments && !running,
+      hasTranscript: hasReadyTranscriptForHandout,
       doneSegments,
       totalSegments: transcript?.progress?.totalSegments || segments.length,
       segments,
@@ -848,7 +867,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       seekTo: seekToSeconds,
       getCurrentTime,
     }),
-    [resourceId, contentKind, playerSrc, fileName, status, hasDoneSegments, running, doneSegments, transcript, segments, chapters, currentChapterIndex, seekToSeconds, getCurrentTime],
+    [resourceId, contentKind, playerSrc, fileName, status, hasReadyTranscriptForHandout, doneSegments, transcript, segments, chapters, currentChapterIndex, seekToSeconds, getCurrentTime],
   );
 
   // ---------------------------------------------------------------- 渲染
@@ -991,11 +1010,18 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
 
   return (
     <div ref={rootRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
-      {usesAndroidSaf() && <input ref={subtitleInputRef} type="file" accept=".srt,.vtt,.json" hidden onChange={event => {
-        const file = event.currentTarget.files?.[0];
-        event.currentTarget.value = '';
-        if (file) void importSubtitleFile(file);
-      }} />}
+      <input
+        ref={subtitleInputRef}
+        data-testid="media-subtitle-file-input"
+        type="file"
+        accept=".srt,.vtt,.ass,.txt,.json"
+        hidden
+        onChange={event => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = '';
+          if (file) void importSubtitleFile(file);
+        }}
+      />
       {/* 工具栏：转写入口 / 进度 / 字幕操作 / 截帧 */}
       <div
         role="toolbar"
@@ -1111,7 +1137,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
             kind={contentKind}
             src={src}
             fileName={fileName}
-            hasTranscript={hasDoneSegments && !running}
+            hasTranscript={hasReadyTranscriptForHandout}
           />
         )}
 
@@ -1530,9 +1556,20 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
               )}
             </dl>
             {!estimate.asrConfigured && (
-              <p className="text-xs text-warning" role="alert">
-                {t('learningHub:mediaTranscript.estimateNoModel')}
-              </p>
+              <div className="space-y-2 rounded-lg border border-warning/30 bg-warning/10 p-3">
+                <p className="text-xs text-warning" role="alert">
+                  {t('learningHub:mediaTranscript.estimateNoModel')}
+                </p>
+                <DsButton
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  data-testid="media-configure-asr-button"
+                  onClick={handleOpenAsrSettings}
+                >
+                  {t('learningHub:mediaTranscript.goConfigureAsr')}
+                </DsButton>
+              </div>
             )}
           </div>
         )}

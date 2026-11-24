@@ -1,8 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, mkdir, open, readFile, readdir, realpath, rename, rm, stat, unlink } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, stat, unlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import type { Context } from '@deepseek-ai/cordis';
 import { FileError, type FilesService } from '../../../platform/files/api.ts';
+import { Connection } from '../../../platform/storage/connection.ts';
+import { PROFILES } from '../../../platform/storage/profiles.ts';
 import { rustTrim } from '../../../platform/util/portable.ts';
 import {
   ZipEntrySizeMismatchError, ZipFormatError, fileZipSink, fileZipSource, nodeZipCodec,
@@ -59,6 +62,8 @@ export interface ZipExportOptions {
   encryptionPassword?: string | null;
   sealFullArchive?: boolean;
   deleteSourceOnSuccess?: boolean;
+  /** 未加密便携 ZIP 导出时排除回收站软删除内容 */
+  excludeTrash?: boolean;
 }
 
 export interface ZipExportResult {
@@ -367,6 +372,199 @@ export async function ensureZipOutputOutsideSource(sourceDir: string, outputPath
   }
 }
 
+const SQLITE_HEADER_MAGIC = Buffer.from('SQLite format 3\0', 'ascii');
+
+async function isSqliteFile(path: string): Promise<boolean> {
+  const handle = await open(path, 'r');
+  try {
+    const buf = Buffer.alloc(16);
+    const { bytesRead } = await handle.read(buf, 0, 16, 0);
+    return bytesRead === 16 && buf.equals(SQLITE_HEADER_MAGIC);
+  } catch {
+    return false;
+  } finally {
+    await handle.close();
+  }
+}
+
+function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+function listSqliteColumns(conn: Connection, table: string): Set<string> {
+  const cols = new Set<string>();
+  const rows = conn.all<{ name?: unknown }>(`PRAGMA table_info(${quoteIdent(table)})`);
+  for (const row of rows) {
+    if (typeof row.name === 'string') cols.add(row.name);
+  }
+  return cols;
+}
+
+function purgeSoftDeletedRowsFromCopy(stagedDbPath: string): void {
+  const conn = new Connection(stagedDbPath, { label: 'zip-exclude-trash', profile: PROFILES.plain });
+  try {
+    const tables: Array<{ name: string; sql: string | null }> = [];
+    const tableRows = conn.all<{ name?: unknown; sql?: unknown }>(
+      `SELECT name, sql FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`,
+    );
+    for (const row of tableRows) {
+      if (typeof row.name === 'string') {
+        tables.push({ name: row.name, sql: typeof row.sql === 'string' ? row.sql : null });
+      }
+    }
+
+    const columnsByTable = new Map<string, Set<string>>();
+    for (const table of tables) {
+      if (table.sql && /^CREATE\s+VIRTUAL\s+TABLE/i.test(table.sql)) continue;
+      try {
+        columnsByTable.set(table.name, listSqliteColumns(conn, table.name));
+      } catch {
+        // 忽略虚拟影子表或不可读元表
+      }
+    }
+
+    const hasDeletedAt = Array.from(columnsByTable.entries()).some(
+      ([, cols]) => cols.has('deleted_at'),
+    );
+    if (!hasDeletedAt) return;
+
+    conn.exec('PRAGMA foreign_keys = OFF;');
+    conn.exec('BEGIN IMMEDIATE;');
+    try {
+      const orphanResourceCandidates = new Set<string>();
+      for (const [tableName, cols] of columnsByTable.entries()) {
+        if (tableName === 'resources') continue;
+        if (!cols.has('deleted_at') || !cols.has('resource_id')) continue;
+        const q = quoteIdent(tableName);
+        const rows = conn.all<{ resource_id?: unknown }>(
+          `SELECT resource_id FROM ${q} WHERE deleted_at IS NOT NULL AND resource_id IS NOT NULL`,
+        );
+        for (const row of rows) {
+          if (typeof row.resource_id === 'string' && row.resource_id.length > 0) {
+            orphanResourceCandidates.add(row.resource_id);
+          }
+        }
+      }
+
+      const noteCols = columnsByTable.get('notes');
+      if (noteCols?.has('deleted_at') && noteCols.has('id')) {
+        for (const childTable of ['note_document_revisions', 'note_editor_lease_notes', 'review_plans', 'note_links']) {
+          const childCols = columnsByTable.get(childTable);
+          if (childCols?.has('note_id')) {
+            conn.exec(
+              `DELETE FROM ${quoteIdent(childTable)} WHERE note_id IN (SELECT id FROM "notes" WHERE deleted_at IS NOT NULL);`,
+            );
+          }
+        }
+      }
+
+      for (const [tableName, cols] of columnsByTable.entries()) {
+        if (!cols.has('deleted_at')) continue;
+        conn.exec(`DELETE FROM ${quoteIdent(tableName)} WHERE deleted_at IS NOT NULL;`);
+      }
+
+      const resourcesCols = columnsByTable.get('resources');
+      if (resourcesCols?.has('id') && orphanResourceCandidates.size > 0) {
+        const stillReferenced = new Set<string>();
+        for (const [tableName, cols] of columnsByTable.entries()) {
+          if (tableName === 'resources' || !cols.has('resource_id')) continue;
+          const rows = conn.all<{ resource_id?: unknown }>(
+            `SELECT DISTINCT resource_id FROM ${quoteIdent(tableName)} WHERE resource_id IS NOT NULL`,
+          );
+          for (const row of rows) {
+            if (typeof row.resource_id === 'string') stillReferenced.add(row.resource_id);
+          }
+        }
+        for (const resId of orphanResourceCandidates) {
+          if (!stillReferenced.has(resId)) {
+            conn.run(`DELETE FROM "resources" WHERE id = ?`, [resId]);
+          }
+        }
+      }
+
+      conn.exec('COMMIT;');
+    } catch (error) {
+      try { conn.exec('ROLLBACK;'); } catch { /* ignore */ }
+      throw error;
+    }
+
+    conn.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+    conn.exec('VACUUM;');
+  } finally {
+    conn.close();
+  }
+}
+
+async function stageTrashExcludedDatabases(
+  ctx: Context,
+  entries: WalkEntry[],
+  manifest: BackupManifest,
+): Promise<{
+  stageDir: string;
+  entries: WalkEntry[];
+  manifest: BackupManifest;
+} | null> {
+  const dbEntries = entries.filter(
+    entry => !entry.isDirectory && entry.relative.endsWith('.db') && !isPortableExcludedRelativePath(entry.relative),
+  );
+  if (dbEntries.length === 0) return null;
+
+  const stageDir = await mkdtemp(join(tmpdir(), 'ds-zip-clean-'));
+  const replacements = new Map<string, { absolute: string; size: number; sha256: string }>();
+  try {
+    for (const entry of dbEntries) {
+      if (!(await isSqliteFile(entry.absolute))) continue;
+      const dest = join(stageDir, entry.relative);
+      await mkdir(dirname(dest), { recursive: true });
+      await copyFile(entry.absolute, dest);
+      for (const sidecar of ['-wal', '-shm']) {
+        if (await pathExists(`${entry.absolute}${sidecar}`)) {
+          await copyFile(`${entry.absolute}${sidecar}`, `${dest}${sidecar}`);
+        }
+      }
+      purgeSoftDeletedRowsFromCopy(dest);
+      for (const sidecar of ['-wal', '-shm']) {
+        await unlink(`${dest}${sidecar}`).catch(() => undefined);
+      }
+      const newSize = (await stat(dest)).size;
+      const newSha = await sha256FileFullAsync(dest);
+      replacements.set(entry.relative, { absolute: dest, size: newSize, sha256: newSha });
+    }
+    if (replacements.size === 0) {
+      await rm(stageDir, { recursive: true, force: true }).catch(() => undefined);
+      return null;
+    }
+    const nextManifest = structuredClone(manifest);
+    for (const file of nextManifest.files) {
+      const rep = replacements.get(file.path);
+      if (!rep) continue;
+      file.size = rep.size;
+      file.sha256 = rep.sha256;
+    }
+    if (nextManifest.coverage) {
+      for (const domain of Object.values(nextManifest.coverage.domains)) {
+        if (domain.paths.some(path => replacements.has(path))) {
+          domain.total_size = domain.paths.reduce((sum, path) => {
+            const rep = replacements.get(path);
+            if (rep) return sum + rep.size;
+            const file = nextManifest.files.find(candidate => candidate.path === path);
+            return sum + (file?.size ?? 0);
+          }, 0);
+        }
+      }
+    }
+    const nextEntries = entries.map(entry => {
+      const rep = replacements.get(entry.relative);
+      return rep ? { ...entry, absolute: rep.absolute, size: rep.size } : entry;
+    });
+    return { stageDir, entries: nextEntries, manifest: nextManifest };
+  } catch (error) {
+    ctx.logger('backup').warn(`清理未加密 ZIP 回收站数据时回退清理临时目录: ${ioMessage(error)}`);
+    await rm(stageDir, { recursive: true, force: true }).catch(() => undefined);
+    throw error;
+  }
+}
+
 /** `zip_export::export_backup_to_zip_with_progress`。 */
 export async function exportBackupToZip(
   ctx: Context,
@@ -395,6 +593,7 @@ export async function exportBackupToZip(
   const io = archiveIo(ctx);
   const revokes: Array<() => void> = [];
   let sealed: SealedPayload | null = null;
+  let stagedCleanDir: string | null = null;
   try {
     revokes.push(await allowPath(io.files, backupDir));
     const sealFullArchive = Boolean(options.encryptionPassword && options.sealFullArchive);
@@ -410,7 +609,18 @@ export async function exportBackupToZip(
       phase: 'scan', progress: 5, processedFiles: 0, totalFiles: 0, currentFile: null,
       message: '正在生成便携清单并预检导出源...',
     });
-    const sourceManifest = loadManifest(join(backupDir, 'manifest.json'));
+    let sourceManifest = loadManifest(join(backupDir, 'manifest.json'));
+    const walked = await walkExportEntries(backupDir);
+    let entries = sealFullArchive ? walked.filter(entry => entry.relative === 'manifest.json') : walked;
+    if (!options.encryptionPassword && options.excludeTrash === true) {
+      const staged = await stageTrashExcludedDatabases(ctx, entries, sourceManifest);
+      if (staged) {
+        stagedCleanDir = staged.stageDir;
+        revokes.push(await allowPath(io.files, stagedCleanDir));
+        entries = staged.entries;
+        sourceManifest = staged.manifest;
+      }
+    }
     const manifestBytes = portableManifestBytes(
       sourceManifest,
       sealed ? 'included_encrypted' : 'excluded_portable',
@@ -418,8 +628,6 @@ export async function exportBackupToZip(
       sealed?.entry ?? null,
       sealFullArchive,
     );
-    const walked = await walkExportEntries(backupDir);
-    const entries = sealFullArchive ? walked.filter(entry => entry.relative === 'manifest.json') : walked;
     let totalEntries = entries.length + (sealed ? 1 : 0);
     let uncompressed = 0n;
     for (const entry of entries) {
@@ -553,6 +761,9 @@ export async function exportBackupToZip(
     return { zipPath, totalSize: Number(totalSize), compressedSize, fileCount, durationMs, zipChecksum };
   } finally {
     await sealed?.cleanup();
+    if (stagedCleanDir) {
+      await rm(stagedCleanDir, { recursive: true, force: true }).catch(() => undefined);
+    }
     for (const revoke of revokes) revoke();
   }
 }

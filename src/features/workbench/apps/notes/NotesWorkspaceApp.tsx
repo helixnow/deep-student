@@ -826,6 +826,14 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     void loadResources({ blocking: true });
     const unwatch = dstu.watch('*', (event) => {
       const changedNode = event.node;
+      if (event.type === 'deleted' || event.type === 'purged') {
+        const deletedId = changedNode?.id ?? event.path.replace(/^\/(?:_trash\/)?/, '');
+        if (deletedId) {
+          setResources((current) => current.filter((node) => node.id !== deletedId));
+        }
+        queueResourceRefresh();
+        return;
+      }
       if (event.type === 'updated' && changedNode && resourceType(changedNode.type)) {
         const known = resourcesRef.current.find((node) => node.id === changedNode.id);
         if (known && changedNode.updatedAt < known.updatedAt) return;
@@ -1565,6 +1573,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           sidebarWidth={titlebarSidebarWidth}
           saveStates={saveStates}
           actionsSlotRef={setNotesChromeSlot}
+          backlinksOpen={backlinksOpen}
+          onToggleBacklinks={() => setBacklinksOpen((open) => !open)}
         />,
         titlebarTarget,
       ) : null}
@@ -1688,10 +1698,24 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
               </div>
               <footer className="notes-statusbar" data-notes-statusbar>
                 <span>{status}</span>
-                {/* 保存状态已在编辑器顶栏常驻：这里只在未保存 / 失败时提示，不重复「已保存」 */}
-                <span>{activeTab && (saveStates.get(activeTab.key) ?? 'saved') !== 'saved'
-                  ? t(`notesWorkspace.saveState.${saveStates.get(activeTab.key)}`)
-                  : ''}</span>
+                <div className="notes-statusbar-right">
+                  {!titlebarTarget && (
+                    <button
+                      type="button"
+                      className="notes-chrome-backlinks-btn is-statusbar"
+                      data-active={backlinksOpen ? 'true' : undefined}
+                      aria-pressed={backlinksOpen}
+                      aria-label={t('notes:workspace.linksAndGraph', { defaultValue: '反向链接 / 图谱' })}
+                      onClick={() => setBacklinksOpen((open) => !open)}
+                    >
+                      <span>{t('notes:workspace.linksAndGraph', { defaultValue: '反向链接 / 图谱' })}</span>
+                    </button>
+                  )}
+                  {/* 保存状态已在编辑器顶栏常驻：这里只在未保存 / 失败时提示，不重复「已保存」 */}
+                  <span>{activeTab && (saveStates.get(activeTab.key) ?? 'saved') !== 'saved'
+                    ? t(`notesWorkspace.saveState.${saveStates.get(activeTab.key)}`)
+                    : ''}</span>
+                </div>
               </footer>
             </main>
           </NotesChromeSlotContext.Provider>

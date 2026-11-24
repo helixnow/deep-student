@@ -157,6 +157,7 @@ export class ZipCommands {
     includeChecksums?: boolean | null;
     encryptionPassword?: string | null;
     useStoredCloudEncryptionPassword?: boolean | null;
+    excludeTrash?: boolean | null;
   }): Promise<BackupJobStartResponse> {
     const backupId = validateBackupId(args.backupId);
     if (args.outputPath != null) validateUserPath(args.outputPath);
@@ -179,6 +180,7 @@ export class ZipCommands {
       outputPath: args.outputPath ?? null, compressionLevel, includeChecksums,
       encryptionPassword: args.encryptionPassword ?? null,
       useStoredCloudEncryptionPassword: args.useStoredCloudEncryptionPassword ?? null,
+      excludeTrash: args.excludeTrash ?? null,
     }).catch(error => this.jobs.markFailure(job.job_id, `ZIP 导出失败: ${ioMessage(error)}`));
     return {
       job_id: job.job_id, kind: 'export', status: 'queued',
@@ -192,6 +194,7 @@ export class ZipCommands {
     options: {
       outputPath: string | null; compressionLevel: number; includeChecksums: boolean;
       encryptionPassword: string | null; useStoredCloudEncryptionPassword: boolean | null;
+      excludeTrash: boolean | null;
     },
   ): Promise<void> {
     let password: string | null;
@@ -244,6 +247,7 @@ export class ZipCommands {
         includeChecksums: options.includeChecksums,
         encryptionPassword: password,
         sealFullArchive: encrypted,
+        excludeTrash: !encrypted && options.excludeTrash !== false,
       }, progress => {
         const phase = progress.phase === 'scan' ? 'scan'
           : progress.phase === 'seal' || progress.phase === 'compress' ? 'compress' : 'verify';
@@ -455,6 +459,7 @@ export class ZipCommands {
     includeAssets?: boolean | null;
     assetTypes?: string[] | null;
     encryptionPassword?: string | null;
+    excludeTrash?: boolean | null;
   }): Promise<BackupJobStartResponse> {
     validateUserPath(args.outputPath);
     const compressionLevel = Math.min(args.compressionLevel ?? 6, 9);
@@ -465,6 +470,7 @@ export class ZipCommands {
       outputPath: args.outputPath, compressionLevel, addToBackupList, useTiered,
       tiers: args.tiers ?? null, includeAssets: args.includeAssets ?? null,
       assetTypes: args.assetTypes ?? null, encryptionPassword: args.encryptionPassword ?? null,
+      excludeTrash: args.excludeTrash ?? null,
     }).catch(error => this.jobs.markFailure(job.job_id, `备份导出失败: ${ioMessage(error)}`));
     return {
       job_id: job.job_id, kind: 'export', status: 'queued',
@@ -477,7 +483,7 @@ export class ZipCommands {
     args: {
       outputPath: string; compressionLevel: number; addToBackupList: boolean; useTiered: boolean;
       tiers: string[] | null; includeAssets: boolean | null; assetTypes: string[] | null;
-      encryptionPassword: string | null;
+      encryptionPassword: string | null; excludeTrash: boolean | null;
     },
   ): Promise<void> {
     const start = performance.now();
@@ -557,6 +563,7 @@ export class ZipCommands {
         includeChecksums: true,
         encryptionPassword: args.encryptionPassword,
         sealFullArchive: args.encryptionPassword !== null,
+        excludeTrash: args.encryptionPassword === null && args.excludeTrash !== false,
       }, progress => {
         job.markRunning('compress', 62 + (progress.progress / 100) * 33,
           progress.message, progress.processedFiles, progress.totalFiles);

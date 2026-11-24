@@ -6,6 +6,7 @@ import type { SettingsSection } from '@/ui-kernel/contracts/settings';
 import { settingsNavigation } from '@/ui-plugins/official/settings/navigation';
 import { isMobilePlatform } from '@/utils/platform';
 import { useSettingsShellStore } from '@/stores/settingsShellStore';
+import { mergeDataGovernanceSearchEntries } from './useSettingsNavigation';
 
 interface SettingsShellSidebarProps {
   isSmallScreen: boolean;
@@ -23,13 +24,16 @@ export const SettingsShellSidebar: React.FC<SettingsShellSidebarProps> = ({
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
   const [sidebarSearchFocused, setSidebarSearchFocused] = useState(false);
   const [internalSidebarOpen, setInternalSidebarOpen] = useState(false);
-  const { t } = useTranslation(['settings', 'common', 'data', 'workbench']);
+  const { t } = useTranslation(['settings', 'common', 'data', 'workbench', 'sync', 'cloudStorage']);
   const entries = useSlot<SettingsSection>('settings.sections');
   const isMobile = isMobilePlatform();
-  const { sidebarNavItems, sidebarCategories, settingsSearchIndex } = useMemo(
-    () => settingsNavigation(entries, t, { isMobile }),
-    [entries, t, isMobile],
-  );
+  const { sidebarNavItems, sidebarCategories, settingsSearchIndex } = useMemo(() => {
+    const nav = settingsNavigation(entries, t, { isMobile });
+    return {
+      ...nav,
+      settingsSearchIndex: mergeDataGovernanceSearchEntries(nav.settingsSearchIndex, t),
+    };
+  }, [entries, t, isMobile]);
   const activeTab = useSettingsShellStore((state) => state.activeTab);
   const setActiveTab = useSettingsShellStore((state) => state.setActiveTab);
 

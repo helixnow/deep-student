@@ -183,6 +183,7 @@ function getI18nTitle(key: string): string {
   } catch { /* ignore */ }
   // fallback: 中/英双语硬编码
   const fallback: Record<string, string[]> = {
+    'chatV2:messageItem.actions.regenerate': ['重新生成', 'Regenerate'],
     'chatV2:messageItem.actions.retry': ['重试', 'Retry'],
     'chatV2:messageItem.actions.edit': ['编辑', 'Edit'],
     'chatV2:messageItem.actions.resend': ['重新发送', 'Resend'],
@@ -307,6 +308,7 @@ function clickButtonByTitle(i18nKey: string): boolean {
   if (buttons.length === 0) {
     // fallback: 尝试英文 title
     const fallback: Record<string, string> = {
+      'chatV2:messageItem.actions.regenerate': 'Regenerate',
       'chatV2:messageItem.actions.retry': 'Retry',
       'chatV2:messageItem.actions.edit': 'Edit',
       'chatV2:messageItem.actions.resend': 'Resend',
@@ -359,10 +361,11 @@ async function ensureMessageHover(role: 'user' | 'assistant'): Promise<void> {
   }
 }
 
-/** 点击重试按钮（最后一条助手消息） */
+/** 点击重试/重新生成按钮（最后一条助手消息） */
 async function clickRetry(): Promise<boolean> {
   await ensureMessageHover('assistant');
-  return clickButtonByTitle('chatV2:messageItem.actions.retry');
+  return clickButtonByTitle('chatV2:messageItem.actions.regenerate')
+    || clickButtonByTitle('chatV2:messageItem.actions.retry');
 }
 
 /** 点击编辑按钮（最后一条用户消息） */

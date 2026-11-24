@@ -4,6 +4,7 @@ import { editorViewCtx } from '@milkdown/kit/core';
 import type { EditorView } from '@milkdown/prose/view';
 import type { CrepeEditorApi } from '@/components/crepe';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { dstu } from '@/dstu';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { registerContentDirtyChecker, type ContentSaveState } from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { mergeExpandedMarkdown } from '../markdownWindow';
@@ -870,6 +871,24 @@ export function useNoteSaveEngine({
       setIsDirty(dirty);
     }
   }, []);
+
+  useEffect(() => {
+    if (!noteId) return;
+    return dstu.watch('*', (event) => {
+      const pathLeaf = event.path.split('/').filter(Boolean).pop() ?? '';
+      const matches = event.node?.id === noteId || pathLeaf === noteId || event.path === `/${noteId}`;
+      if (!matches) return;
+      if (event.type === 'deleted' || event.type === 'purged') {
+        cancelDebounce();
+        pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter((item) => item.noteId !== noteId);
+        queueMicrotask(() => {
+          discardDraftForDelete(noteId);
+        });
+      } else if (event.type === 'restored') {
+        clearDeleteGuard(noteId);
+      }
+    });
+  }, [noteId, cancelDebounce, discardDraftForDelete, clearDeleteGuard]);
 
   return {
     lastSaved, isSaving, isDirty, setIsDirty, saveError, setSaveError, saveStatus,

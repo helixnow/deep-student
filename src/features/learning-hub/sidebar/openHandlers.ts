@@ -31,8 +31,12 @@ export function createOpenHandlers({
 }: OpenHandlersContext) {
   // Handle open item
   const handleOpen = (item: DstuNode) => {
-    // ★ Bug Fix: 回收站中的资源不应记录为最近访问
-    if (item.type !== 'folder' && currentPath.viewKind !== 'trash') {
+    // 回收站内禁止单击/双击/Enter 直接打开或隐式恢复，必须通过显式「恢复」操作
+    if (currentPath.viewKind === 'trash') {
+      return;
+    }
+
+    if (item.type !== 'folder') {
       addRecent({
         id: item.id,
         path: item.path,
@@ -83,6 +87,9 @@ export function createOpenHandlers({
   // 资源打开数量设上限，避免一次 Enter 炸出几十个窗口。
   const OPEN_ALL_LIMIT = 12;
   const handleOpenMany = (itemsToOpen: DstuNode[]) => {
+    if (currentPath.viewKind === 'trash') {
+      return;
+    }
     const resources = itemsToOpen.filter((item) => item.type !== 'folder');
     if (resources.length === 0) {
       const firstFolder = itemsToOpen.find((item) => item.type === 'folder');

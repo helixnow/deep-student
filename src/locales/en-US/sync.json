@@ -25,6 +25,14 @@
   "experimentalBadgeTooltip": "Experimental feature. We recommend backing up your data first.",
   "syncVsBackupTitle": "Multi-Device Sync vs Full Cloud Backup",
   "syncVsBackupDesc": "Use Sync below for everyday multi-device study (merges notes, flashcards, and review progress). Use Full Backup in Cloud Storage Settings when switching devices or archiving snapshots.",
+  "pendingBreakdown": {
+    "toggleShow": "View breakdown",
+    "toggleHide": "Hide breakdown",
+    "empty": "No pending changes",
+    "loading": "Loading pending changes breakdown...",
+    "tableCount": "{{count}}",
+    "refreshNow": "Refresh"
+  },
   "autoSync": {
     "label": "Auto Sync",
     "description": "Off by default. When enabled, a bidirectional sync (keeping the latest edits) runs at your chosen interval and retries automatically with a gradual delay if a run fails. When the cloud is not configured, a password is missing, or another device is currently syncing, the run is silently skipped without error popups.",

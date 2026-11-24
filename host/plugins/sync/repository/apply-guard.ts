@@ -72,6 +72,9 @@ export interface ConflictGuardOptions {
   cloudDeviceId?: string | null;
   localDeviceId?: string | null;
   historyBatchId?: string | null;
+  /** Live sync mode: keep active local conflicting record intact in DB until user resolves in UI. */
+  deferConflictingOverwrite?: boolean;
+  onDeferredConflict?: (key: string) => void;
 }
 
 function clearMatchingQuarantine(db: SqlExecutor, change: EngineChange): number {
@@ -267,7 +270,11 @@ export function applyDownloadedChangesWithConflictGuard(
               (conflictResult.conflicts_by_table[remapped.table_name] ?? 0) + inserted;
           }
 
-          if (outcome.winner === 'Cloud') {
+          if (outcome.winner === 'Cloud' && options.deferConflictingOverwrite) {
+            conflictResult.rejected += 1;
+            applyResult.skipped_count += 1;
+            options.onDeferredConflict?.(keyOf(remapped.table_name, remapped.record_id));
+          } else if (outcome.winner === 'Cloud') {
             const cloudChange: EngineChange = { ...remapped, suppress_change_log: true };
             const preLogMax = changeLogMaxId(tx);
             const applied = applySingleChange(tx, cloudChange, idColumn, true, true, context);

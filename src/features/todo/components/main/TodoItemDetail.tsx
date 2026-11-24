@@ -159,8 +159,14 @@ export const TodoItemDetail: React.FC<{
   // 外部更新（行内改期/改名、拖拽换象限等）跟随 prop 刷新本地编辑态。
   // 面板按 item.id 挂 key，重挂载覆盖新任务；这里处理同一任务字段被外部改写的情况。
   // 用户编辑中：字段保存后 item 值与本地一致，effect 不会打断输入。
-  useEffect(() => setTitle(item.title), [item.title]);
-  useEffect(() => setDescription(item.description || ''), [item.description]);
+  useEffect(() => {
+    if (document.activeElement === titleRef.current) return;
+    setTitle(item.title);
+  }, [item.title]);
+  useEffect(() => {
+    if (document.activeElement === descriptionRef.current) return;
+    setDescription(item.description || '');
+  }, [item.description]);
   useEffect(() => setPriority(item.priority as TodoPriority), [item.priority]);
   useEffect(() => setDueDate(item.dueDate || ''), [item.dueDate]);
   useEffect(() => setDueTime(item.dueTime || ''), [item.dueTime]);
@@ -465,7 +471,7 @@ export const TodoItemDetail: React.FC<{
     }, 300);
   }, [markSaved]);
 
-  /** ⌘/Ctrl+Enter：跳过防抖立即保存 */
+  /** ⌘/Ctrl+Enter 或文本字段失焦：跳过防抖立即保存 */
   const flushSaveNow = useCallback(() => {
     if (blurTimerRef.current !== null) {
       window.clearTimeout(blurTimerRef.current);
@@ -476,16 +482,21 @@ export const TodoItemDetail: React.FC<{
     });
   }, [markSaved]);
 
-  // 卸载（关面板/切任务）时无条件冲刷：handleSave 有 hasChanges 守卫，重复调用无副作用。
-  // 面板按 item.id 挂 key，切换 selectedItemId 先卸载旧实例——此处闭包仍指向旧 item，
-  // 保证冲刷写入旧任务，不会串写到新任务。
+  // 卸载（关面板/切任务）及页面刷新/隐藏前无条件冲刷：handleSave 有 hasChanges 守卫，重复调用无副作用。
   useEffect(() => {
-    return () => {
+    const flushBeforePageExit = () => {
       if (blurTimerRef.current !== null) {
         window.clearTimeout(blurTimerRef.current);
         blurTimerRef.current = null;
       }
       void saveRef.current();
+    };
+    window.addEventListener('pagehide', flushBeforePageExit);
+    window.addEventListener('beforeunload', flushBeforePageExit);
+    return () => {
+      window.removeEventListener('pagehide', flushBeforePageExit);
+      window.removeEventListener('beforeunload', flushBeforePageExit);
+      flushBeforePageExit();
     };
   }, []);
 
@@ -602,7 +613,7 @@ export const TodoItemDetail: React.FC<{
           ref={titleRef}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          onBlur={handleBlur}
+          onBlur={flushSaveNow}
           onKeyDown={(e) => {
             // Enter 提交（失焦触发保存），Shift+Enter 换行；Esc 还原并失焦（不冒泡关面板）
             // IME 组字中的 Enter/Esc 属于输入法，不提交也不还原
@@ -982,7 +993,7 @@ export const TodoItemDetail: React.FC<{
             ref={descriptionRef}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            onBlur={handleBlur}
+            onBlur={flushSaveNow}
             onKeyDown={(e) => {
               // Esc 还原备注并失焦（不冒泡关面板）；换行保持原生 Enter
               if (e.key === 'Escape') {

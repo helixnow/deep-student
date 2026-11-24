@@ -202,7 +202,35 @@ function convertBackendBlock(
   };
 }
 
-function settleStaleRestoredBlock(block: Block, now: number): Block {
+function hasSubsequentNonEmptyContent(
+  block: Block,
+  msg: Message | undefined,
+  blocksMap: ReadonlyMap<string, Block>,
+): boolean {
+  if (!msg) return false;
+  const variantBlockIds = msg.variants?.find((variant) => variant.blockIds.includes(block.id))?.blockIds;
+  const orderedIds = variantBlockIds ?? msg.blockIds ?? [];
+  const idx = orderedIds.indexOf(block.id);
+  if (idx < 0) return false;
+  for (let i = idx + 1; i < orderedIds.length; i += 1) {
+    const candidate = blocksMap.get(orderedIds[i]);
+    if (
+      candidate?.type === 'content' &&
+      typeof candidate.content === 'string' &&
+      candidate.content.trim().length > 0
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function settleStaleRestoredBlock(
+  block: Block,
+  now: number,
+  msg?: Message,
+  blocksMap?: ReadonlyMap<string, Block>,
+): Block {
   if (!block.isPreparing && block.status !== 'running' && block.status !== 'pending') {
     return block;
   }
@@ -217,10 +245,20 @@ function settleStaleRestoredBlock(block: Block, now: number): Block {
     };
   }
   if (block.type === 'thinking' || block.type === 'content') {
+    if (block.error) {
+      return {
+        ...block,
+        status: 'error',
+        aborted: block.aborted,
+        endedAt: settledEndedAt,
+      };
+    }
+    const stoppedByUser = msg?._meta?.stoppedByUser === true;
+    const hasLaterContent = blocksMap ? hasSubsequentNonEmptyContent(block, msg, blocksMap) : false;
     return {
       ...block,
-      status: block.error ? 'error' : 'success',
-      aborted: block.error ? block.aborted : true,
+      status: 'success',
+      aborted: stoppedByUser || !hasLaterContent,
       endedAt: settledEndedAt,
     };
   }
@@ -1004,7 +1042,8 @@ export function createRestoreActions(
           if (!hasLiveActiveStream) {
             const settleNow = Date.now();
             for (const [blockId, block] of finalBlocksMap) {
-              const settled = settleStaleRestoredBlock(block, settleNow);
+              const ownerMessage = finalMessageMap.get(block.messageId);
+              const settled = settleStaleRestoredBlock(block, settleNow, ownerMessage, finalBlocksMap);
               if (settled !== block) {
                 finalBlocksMap.set(blockId, settled);
               }

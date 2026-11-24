@@ -364,6 +364,10 @@ export const WorkbenchEventBridge: React.FC = () => {
           workbenchBus.launch({ typeId: 'settings', reason: 'api' });
           return;
         }
+        if (detail?.view === 'sandbox-workbench') {
+          workbenchBus.launch({ typeId: 'sandbox', reason: 'api' });
+          return;
+        }
         // 社区插件视图（ctx.ui.navigate / kernel.navigation.navigate(viewKey)）→ 对应插件应用窗口
         const pluginAppTypeId = resolvePluginViewAppTypeId(detail?.view);
         if (pluginAppTypeId) workbenchBus.launch({ typeId: pluginAppTypeId, reason: 'api' });

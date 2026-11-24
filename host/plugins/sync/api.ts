@@ -131,7 +131,11 @@ export interface SyncService {
   resolveRecordConflict(args: import('./src/mutation-commands.ts').ResolveConflictArgs): void;
   rollbackSyncSnapshotBatch(databaseName: string, batchId: string): RollbackSnapshotResponse;
   /** commands_backup.rs:374: route/apply all databases; rejects any non-durable target before callers may acknowledge cursors. */
-  applyDownloadedChangesToDatabases(changes: readonly EngineChange[], strategy: MergeStrategy): Promise<import('./repository/apply-databases.ts').ApplyToDatabasesResult>;
+  applyDownloadedChangesToDatabases(
+    changes: readonly EngineChange[],
+    strategy: MergeStrategy,
+    options?: import('./repository/apply-databases.ts').ApplyDownloadedDatabasesOptions,
+  ): Promise<import('./repository/apply-databases.ts').ApplyToDatabasesResult>;
   /** mod.rs:3819: persist cursor candidates after durable apply; no row application. */
   commitDownloadProgress(storage: CloudStorage, downloaded: DownloadChangesResult, options: {
     deviceId: string; codec: PayloadCodec;

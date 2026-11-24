@@ -432,6 +432,9 @@ export class WebDavStorage extends CloudStorageBase {
 
   async checkConnection(): Promise<void> {
     const mkcolFailure = await this.ensureDirectoryTracked(this.root);
+    if (mkcolFailure === 502 || mkcolFailure === 503 || mkcolFailure === 504) {
+      throw new CloudStorageError('Network', `WebDAV 服务暂不可用（HTTP ${mkcolFailure} ${canonicalReasonOf(mkcolFailure)}），请稍后重试`);
+    }
     const rootPath = this.root ? `${this.root}/` : '';
     const url = this.buildPathUrl(rootPath);
     try {
@@ -442,6 +445,12 @@ export class WebDavStorage extends CloudStorageBase {
     } catch (error) {
       if (syncCancelSignal()?.aborted) throw error;
       if (error instanceof CloudStorageError && isCloudRateLimited(error.message)) throw error;
+      if (
+        error instanceof CloudStorageError
+        && /(?:HTTP\s*(?:401|403|500|502|503|504)\b|已重试\s*\d+\s*次)/i.test(error.message)
+      ) {
+        throw error;
+      }
       // Rare partial implementations reject PROPFIND; fall back to GET on the root.
       const res = await this.request('GET', '', null);
       try {

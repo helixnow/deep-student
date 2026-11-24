@@ -19,6 +19,11 @@
   background: hsl(var(--primary) / 0.12);
 }
 
+.crepe-wikilink:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
 .crepe-wikilink--unresolved {
   opacity: 0.8;
   background: transparent;

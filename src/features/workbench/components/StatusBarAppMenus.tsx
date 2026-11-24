@@ -13,10 +13,16 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { SquaresFour } from '@phosphor-icons/react';
 import { appRegistry } from '../core/appRegistry';
 import { useWindowStore } from '../core/windowStore';
-import { useWorkbenchOverlay } from '../core/shortcuts';
+import {
+  formatShortcutBinding,
+  useWorkbenchOverlay,
+  WORKBENCH_SHORTCUT_DEFINITIONS,
+} from '../core/shortcuts';
 import { useAppsPanelOpen } from './appsPanelStore';
+import { ActionItem } from './DeskMenuItems';
 import { StatusBarMenu } from './StatusBarMenu';
 import { MenuBarRows, menuBarWindows, useAppMenuRows, useMenuBarTranslate } from './MenuBarRows';
 
@@ -39,8 +45,25 @@ const WindowMenuItems: React.FC<{
 }> = ({ focusedWindowId, onDone }) => {
   const windows = useWindowStore((s) => s.windows);
   const t = useMenuBarTranslate();
+  const { t: tw } = useTranslation('workbench');
   const rows = useAppMenuRows('workbench.window', { focusedWindowId, windows: menuBarWindows(windows, t) });
-  return <MenuBarRows rows={rows} onDone={onDone} />;
+  const exposeDef = WORKBENCH_SHORTCUT_DEFINITIONS.find((d) => d.id === 'expose');
+  return (
+    <>
+      <MenuBarRows rows={rows} onDone={onDone} />
+      <div className="wb-desk-menu-sep" role="separator" />
+      <ActionItem
+        icon={<SquaresFour size={15} weight="duotone" />}
+        label={tw('menubar.windowExpose', { defaultValue: '多窗俯瞰' })}
+        shortcut={exposeDef ? formatShortcutBinding(exposeDef.binding) : undefined}
+        testId="wb-menubar-window-expose"
+        onClick={() => {
+          useWorkbenchOverlay.getState().toggleExpose();
+          onDone();
+        }}
+      />
+    </>
+  );
 };
 
 export interface StatusBarAppMenusProps {

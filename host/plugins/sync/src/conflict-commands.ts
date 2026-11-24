@@ -14,7 +14,7 @@ import { getRecordData, recordsSemanticallyEqualForSync } from '../repository/re
 import { applyDownloadedChangesForceExactWithHooks } from '../repository/apply.ts';
 import { rollbackBatch, snapshotRecordWithData } from '../repository/history.ts';
 import { latestConflictSideData, listUnresolvedConflictIds, markConflictResolved } from '../repository/conflicts.ts';
-import { tableHasColumn } from '../repository/sqlite-values.ts';
+import { tableExists, tableHasColumn } from '../repository/sqlite-values.ts';
 
 const databases: readonly CoordinatedDatabaseName[] = ['vfs', 'llm_usage', 'chat_v2', 'mistakes'];
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
@@ -192,6 +192,7 @@ function resolveOnDatabase(
 
   const historyBatchId = newBatchId();
   const preflightSnapshot = currentLocalSnapshot;
+  const tempWriteGrantTokens: string[] = [];
   let applyResult;
   try {
     applyResult = applyDownloadedChangesForceExactWithHooks(
@@ -205,8 +206,37 @@ function resolveOnDatabase(
             throw new SyncError('Database error: 本地记录在提交冲突决策前发生变化');
           }
           snapshotRecordWithData(tx, historyBatchId, REASON_CONFLICT_RESOLVE, tableName, recordId, latest as never);
+          if (
+            (tableName === 'notes' || tableName === 'resources')
+            && tableExists(tx, 'note_editor_lease_notes')
+            && tableExists(tx, 'note_editor_write_grants')
+          ) {
+            const rows = tableName === 'notes'
+              ? tx.all<{ token: string }>(
+                  `SELECT DISTINCT ln.token FROM note_editor_lease_notes ln
+                   WHERE ln.note_id = ?1
+                     AND NOT EXISTS (SELECT 1 FROM note_editor_write_grants g WHERE g.token = ln.token)`,
+                  [recordId],
+                )
+              : tx.all<{ token: string }>(
+                  `SELECT DISTINCT ln.token FROM note_editor_lease_notes ln
+                   JOIN notes n ON n.id = ln.note_id
+                   WHERE n.resource_id = ?1
+                     AND NOT EXISTS (SELECT 1 FROM note_editor_write_grants g WHERE g.token = ln.token)`,
+                  [recordId],
+                );
+            for (const row of rows) {
+              if (row?.token) {
+                tx.run('INSERT OR IGNORE INTO note_editor_write_grants (token) VALUES (?1)', [row.token]);
+                tempWriteGrantTokens.push(row.token);
+              }
+            }
+          }
         },
         finalize(tx, result) {
+          for (const token of tempWriteGrantTokens) {
+            tx.run('DELETE FROM note_editor_write_grants WHERE token = ?1', [token]);
+          }
           if (result.success_count === 0) {
             throw new SyncError('Database error: 冲突决策未写入任何业务记录');
           }
@@ -257,6 +287,21 @@ function markResolvedWithoutWrite(
         : data !== null && latest !== null && recordsSemanticallyEqualForSync(latest, data);
       if (!stillDesired) {
         throw new CommandError('本地记录在冲突确认期间已变化，请刷新后重新确认');
+      }
+      if (resolution === 'keep_local' && tableExists(tx, '__change_log')) {
+        const pendingCount = Number(
+          tx.pluck<number | bigint>(
+            'SELECT COUNT(*) FROM __change_log WHERE table_name = ?1 AND record_id = ?2 AND sync_version = 0',
+            [tableName, recordId],
+          ) ?? 0,
+        );
+        if (pendingCount === 0) {
+          tx.run(
+            `INSERT INTO __change_log (table_name, record_id, operation, changed_at, sync_version)
+             VALUES (?1, ?2, ?3, ?4, 0)`,
+            [tableName, recordId, operation === 'Delete' ? 'DELETE' : 'UPDATE', now],
+          );
+        }
       }
       for (const conflictId of expectedIds) {
         let updated;

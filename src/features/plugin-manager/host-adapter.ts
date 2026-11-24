@@ -35,7 +35,9 @@ export function managerError(error: unknown): { code: string; detail: string; de
   const record = object(error);
   const detail = typeof record?.message === 'string' ? record.message : String(error);
   const details = object(record?.details);
-  const code = typeof details?.code === 'string' ? details.code : /^([A-Z][A-Z0-9_]+):/.exec(detail)?.[1] ?? 'OPERATION_FAILED';
+  const prefixed = /^([A-Z][A-Z0-9_]+):/.exec(detail.trim())?.[1];
+  const rawCode = typeof details?.code === 'string' ? details.code : prefixed ?? 'OPERATION_FAILED';
+  const code = rawCode === 'PLUGIN_INSTALL_FAILED' && prefixed && prefixed !== 'PLUGIN_INSTALL_FAILED' ? prefixed : rawCode;
   return { code, detail, details };
 }
 

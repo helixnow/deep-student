@@ -337,6 +337,9 @@
     "retranslated_undo_hint": "Translation updated. You can restore the previous version.",
     "restore_previous": "Restore previous",
     "restored_previous": "Restored previous translation",
+    "swapped_undo_hint": "Swapped source and translation",
+    "swapped_lang_only_hint": "Swapped languages while keeping source text",
+    "undo_swap": "Undo swap",
     "outdated_hint": "Source or settings changed; translation may be outdated",
     "retranslate_now": "Retranslate"
   },

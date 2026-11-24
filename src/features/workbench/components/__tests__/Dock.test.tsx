@@ -737,10 +737,79 @@ describe('autohide', () => {
     fireEvent.click(hotzone);
     expect(dock).not.toHaveAttribute('data-hidden');
     expect(hotzone).toHaveAttribute('data-collapsed', 'false');
+    expect(hotzone.className).toContain('h-4');
+  });
+
+  it('S3-02/S4-12: 收起热区缩至 6px，点击唤出后即使 hotzone 触发 pointerLeave 也不秒收，点击 Dock 图标正常聚焦并退出 Exposé', () => {
+    vi.useFakeTimers();
+    setDockPinned(['chat', 'files']);
+    const chatId = openWin('chat', 'a', '会话 A');
+    openWin('files', 'f', '文件'); // files 在顶层，chat 在后方
+
+    render(<Dock autohide />);
+    const dock = screen.getByTestId('wb-dock');
+    const hotzone = screen.getByTestId('wb-dock-hotzone');
+    expect(dock).toHaveAttribute('data-hidden', 'true');
+    expect(hotzone.className).toContain('h-1.5');
+    expect(hotzone.className).toContain('min-h-[6px]');
+
+    // 点击唤出后立即触发 hotzone pointerLeave（真实浏览器热区位移/松手离开场景）→ 仍保持展开
+    fireEvent.click(hotzone);
+    expect(dock).not.toHaveAttribute('data-hidden');
+    fireEvent.pointerLeave(hotzone);
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(dock).not.toHaveAttribute('data-hidden');
+
+    // 点击运行中的后台窗口 → 成功拉起聚焦
+    fireEvent.click(dockButton('chat'));
+    const state = useWindowStore.getState();
+    expect(state.focusStack[state.focusStack.length - 1]).toBe(chatId);
+  });
+
+  it('S3-17/S4-17: 360px 窄屏有未最小化窗口时 Dock 自动隐藏释放底部空间', () => {
+    const origMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query.includes('max-width: 640px'),
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+    try {
+      setDockPinned(['chat']);
+      const { rerender } = render(<Dock />);
+      const dock = screen.getByTestId('wb-dock');
+      // 空桌面时可见，便于启动应用
+      expect(dock).not.toHaveAttribute('data-hidden');
+
+      act(() => {
+        openWin('chat', 'mobile', '对话');
+      });
+      rerender(<Dock />);
+      expect(dock).toHaveAttribute('data-hidden', 'true');
+    } finally {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        writable: true,
+        value: origMatchMedia,
+      });
+    }
   });
 
   it('窄屏（<= 640px）约束 Dock 最大宽度在视口内并启用隐藏滚动条的横向滚动', () => {
     const css = readFileSync(resolve(__dirname, '../Dock.css'), 'utf8');
+    const collapsedHotzoneIdx = css.indexOf(".wb-dock-hotzone[data-collapsed='true']");
+    expect(collapsedHotzoneIdx).toBeGreaterThan(-1);
+    expect(css.slice(collapsedHotzoneIdx, collapsedHotzoneIdx + 120)).toContain('height: 6px;');
     const mediaIdx = css.indexOf('@media (max-width: 640px)');
     expect(mediaIdx).toBeGreaterThan(-1);
     const mobileBlock = css.slice(mediaIdx);

@@ -21,6 +21,7 @@ import { OptionalEmitter } from './emitter.ts';
 export interface SyncDatabaseApplication {
   /** applied_keys encodes Rust (table_name, record_id) as `${table}\u001f${recordId}`. */
   apply(changes: readonly EngineChange[], strategy: MergeStrategy): ApplyToDatabasesResult | Promise<ApplyToDatabasesResult>;
+  consumeDeferredConflictKeys?: () => Set<string>;
 }
 export interface SyncPassOptions extends FileLevelSyncOptions {
   compression: NativeCompression;
@@ -100,8 +101,12 @@ export async function executeBidirectionalWithProgress(
     await emitter.emitApplying(total, total, null);
   }
   await commitDownloadProgressIfNeeded(storage, downloaded, options);
-  const filtered = enriched.filter(change => !appliedKeys.has(keyOf(change.table_name, change.record_id)));
-  if (filtered.length < enriched.length) options.logger.info(`[data_governance] 双向同步: 已从上传列表中剔除 ${enriched.length - filtered.length} 条被下载覆盖的记录`);
+  const deferredConflictKeys = options.application.consumeDeferredConflictKeys?.() ?? new Set<string>();
+  const filtered = enriched.filter(change => {
+    const key = keyOf(change.table_name, change.record_id);
+    return !appliedKeys.has(key) && !deferredConflictKeys.has(key);
+  });
+  if (filtered.length < enriched.length) options.logger.info(`[data_governance] 双向同步: 已从上传列表中剔除 ${enriched.length - filtered.length} 条被下载覆盖或存在未决冲突的记录`);
   result.changes_uploaded = filtered.length;
   const active = options.localStorage.locations.activeDir;
   const upload = await runFileLevelSync(storage, active, 'Upload', options, coordinator, new FileLevelProgress(emitter, 60, 70));

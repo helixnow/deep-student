@@ -66,6 +66,9 @@ import '../library/library.css';
 import { exportLibraryApkg, exportLibraryCsv } from '../library/exportLibrary';
 import { openImageOcclusionBuilder } from '../occlusion/ImageOcclusionBuilderModal';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { usesAndroidSaf } from '@/utils/fileManager';
+import { isWebUiShell } from '@/utils/platform';
+import { isTauriEnvironment } from '@/utils/urlOpener';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -143,8 +146,11 @@ export const LibraryScreen: React.FC = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null);
   const [bulkDeleteArmed, setBulkDeleteArmed] = useState(false);
-  // 新建：桌面内联展开；移动宿主接管标题/返回/保存，内容区只展示表单。
+  // 新建与导入：桌面内联展开；移动宿主接管标题/返回/保存，内容区只展示表单。
   const [composerOpen, setComposerOpen] = useState(false);
+  const [importPanelMode, setImportPanelMode] = useState<'apkg' | 'csv' | null>(null);
+  const [csvTargetDeck, setCsvTargetDeck] = useState('');
+  const [importDragActive, setImportDragActive] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtersId = useId();
   const [draftMode, setDraftMode] = useState<'basic' | 'cloze'>('basic');
@@ -157,6 +163,8 @@ export const LibraryScreen: React.FC = () => {
   const [pageJumpInput, setPageJumpInput] = useState(() => String(page));
   const mobileFrontRef = useRef<HTMLTextAreaElement | null>(null);
   const desktopFrontRef = useRef<HTMLInputElement | null>(null);
+  const apkgFileInputRef = useRef<HTMLInputElement | null>(null);
+  const csvFileInputRef = useRef<HTMLInputElement | null>(null);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const bulkDisarmTimer = useRef<number | null>(null);
 
@@ -505,6 +513,7 @@ export const LibraryScreen: React.FC = () => {
       if (prev.trim()) return prev;
       return deckFilter && deckFilter !== DECK_FILTER_ALL ? deckFilter : '';
     });
+    setImportPanelMode(null);
     setComposerOpen(true);
   }, [deckFilter]);
 
@@ -547,9 +556,11 @@ export const LibraryScreen: React.FC = () => {
     });
   }, [draftValid, creating, createCard, draftFront, draftBack, draftDeck, draftTags, draftTemplateId, draftMode, translate]);
 
-  const handleImportApkg = useCallback(() => {
+  const preferDomFileInput = !isTauriEnvironment() || usesAndroidSaf() || isWebUiShell();
+
+  const runImportApkg = useCallback((file?: File) => {
     if (importing) return;
-    void importApkg().then((outcome) => {
+    void importApkg(file ? { file } : undefined).then((outcome) => {
       if (outcome.status === 'imported') {
         const { importedCards: count, reviewEnqueued: queued, reviewWithHistory: history } = outcome;
         const message =
@@ -559,14 +570,20 @@ export const LibraryScreen: React.FC = () => {
               ? translate('library.import.successQueuedWithHistory', { count, queued, history })
               : translate('library.import.successQueued', { count, queued });
         showGlobalNotification('success', message);
+        setImportPanelMode(null);
       }
       // canceled 静默；failed 已写入 actionError 由页内错误条呈现
     });
   }, [importing, importApkg, translate]);
 
-  const handleImportCsv = useCallback(() => {
+  const runImportCsv = useCallback((file?: File) => {
     if (importing) return;
-    void importCsv().then((outcome) => {
+    const normalizedTargetDeck = csvTargetDeck.trim();
+    const fallbackDeck = normalizedTargetDeck || (deckFilter && deckFilter !== DECK_FILTER_ALL ? deckFilter : '');
+    void importCsv({
+      ...(fallbackDeck ? { targetDeck: fallbackDeck } : {}),
+      ...(file ? { file } : {}),
+    }).then((outcome) => {
       if (outcome.status === 'imported') {
         const message =
           outcome.skippedRows > 0
@@ -580,10 +597,58 @@ export const LibraryScreen: React.FC = () => {
                 queued: outcome.reviewEnqueued,
               });
         showGlobalNotification('success', message);
+        setImportPanelMode(null);
       }
       // canceled 静默；failed 已写入 actionError 由页内错误条呈现
     });
-  }, [importing, importCsv, translate]);
+  }, [importing, csvTargetDeck, deckFilter, importCsv, translate]);
+
+  const handleImportApkg = useCallback(() => {
+    if (importing) return;
+    setComposerOpen(false);
+    setImportDragActive(false);
+    setImportPanelMode((prev) => (prev === 'apkg' ? null : 'apkg'));
+  }, [importing]);
+
+  const handleImportCsv = useCallback(() => {
+    if (importing) return;
+    setComposerOpen(false);
+    setImportDragActive(false);
+    setImportPanelMode((prev) => {
+      if (prev === 'csv') return null;
+      setCsvTargetDeck(deckFilter && deckFilter !== DECK_FILTER_ALL ? deckFilter : '');
+      return 'csv';
+    });
+  }, [importing, deckFilter]);
+
+  const handleApkgFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) {
+      runImportApkg(file);
+    }
+  }, [runImportApkg]);
+
+  const handleCsvFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) {
+      runImportCsv(file);
+    }
+  }, [runImportCsv]);
+
+  const handleImportDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setImportDragActive(false);
+    const file = event.dataTransfer.files?.[0];
+    if (!file || !importPanelMode) return;
+    if (importPanelMode === 'apkg') {
+      runImportApkg(file);
+    } else {
+      runImportCsv(file);
+    }
+  }, [importPanelMode, runImportApkg, runImportCsv]);
 
   // 导出：有选中导出选中，否则导出整个卡片库
   const [exporting, setExporting] = useState(false);
@@ -671,14 +736,14 @@ export const LibraryScreen: React.FC = () => {
         </AppMenuTrigger>
         <AppMenuContent align="end" width={200}>
           <AppMenuItem icon={<ImageSquare size={18} />} onClick={handleOpenOcclusionBuilder} data-testid="fc-lib-new-occlusion-mobile">{t('occlusion.newCardButton')}</AppMenuItem>
-          <AppMenuItem icon={<UploadSimple size={18} />} disabled={importing} onClick={handleImportApkg}>{t(importing ? 'library.import.running' : 'library.import.apkg')}</AppMenuItem>
+          <AppMenuItem icon={<UploadSimple size={18} />} disabled={importing} onClick={handleImportApkg} data-testid="fc-lib-import-apkg-mobile">{t(importing ? 'library.import.running' : 'library.import.apkg')}</AppMenuItem>
           <AppMenuItem icon={<UploadSimple size={18} />} disabled={importing} onClick={handleImportCsv} data-testid="fc-lib-import-csv-mobile">{t(importing ? 'library.import.running' : 'library.import.csv')}</AppMenuItem>
           <AppMenuItem icon={<DownloadSimple size={18} />} disabled={exporting} onClick={() => void handleExportApkg()} data-testid="fc-lib-export-apkg">{exportLabel}</AppMenuItem>
           <AppMenuItem icon={<DownloadSimple size={18} />} disabled={exporting} onClick={() => void handleExportCsv()} data-testid="fc-lib-export-csv-mobile">{exportCsvLabel}</AppMenuItem>
         </AppMenuContent>
       </AppMenu>
     </>,
-  }, [t, composerOpen, loading, total, closeComposer, backToToday, draftValid, creating, handleSubmitDraft, handleOpenOcclusionBuilder, importing, handleImportApkg, exporting, handleExportApkg, exportLabel]);
+  }, [t, composerOpen, loading, total, closeComposer, backToToday, draftValid, creating, handleSubmitDraft, handleOpenOcclusionBuilder, importing, handleImportApkg, handleImportCsv, exporting, handleExportApkg, exportLabel]);
 
   // A phone composer is a subpage of the library: keep its draft/list state here,
   // while the host owns the title, back and save action.
@@ -872,10 +937,12 @@ export const LibraryScreen: React.FC = () => {
         variant="default"
         iconOnly={isSmallScreen}
         aria-label={importing ? translate('library.import.running') : translate('library.import.apkg')}
+        aria-expanded={importPanelMode === 'apkg'}
         disabled={importing}
         onClick={handleImportApkg}
         title={translate('library.import.hint')}
         className="fc-lib-create-cta text-sm"
+        data-testid="fc-lib-import-apkg"
       >
         <UploadSimple size={18} />
         {!isSmallScreen && (importing ? translate('library.import.running') : translate('library.import.apkg'))}
@@ -885,6 +952,7 @@ export const LibraryScreen: React.FC = () => {
         variant="default"
         iconOnly={isSmallScreen}
         aria-label={importing ? translate('library.import.running') : translate('library.import.csv')}
+        aria-expanded={importPanelMode === 'csv'}
         disabled={importing}
         onClick={handleImportCsv}
         title={translate('library.import.csvHint')}
@@ -976,6 +1044,172 @@ export const LibraryScreen: React.FC = () => {
           </DsButton>
         )}
       </div>
+
+      {importPanelMode ? (
+        <div
+          className="fc-lib-composer"
+          data-testid="fc-lib-import-panel"
+          role="region"
+          aria-label={
+            importPanelMode === 'apkg'
+              ? translate('library.import.apkgPanelTitle', { defaultValue: '导入 Anki 牌组 (.apkg)' })
+              : translate('library.import.csvPanelTitle', { defaultValue: '导入表格卡片 (.csv / .tsv)' })
+          }
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="text-sm font-medium text-foreground">
+              {importPanelMode === 'apkg'
+                ? translate('library.import.apkgPanelTitle', { defaultValue: '导入 Anki 牌组 (.apkg)' })
+                : translate('library.import.csvPanelTitle', { defaultValue: '导入表格卡片 (.csv / .tsv)' })}
+            </div>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={translate('common:close', { defaultValue: '关闭' })}
+              onClick={() => setImportPanelMode(null)}
+              data-testid="fc-lib-import-panel-close"
+              className="min-h-[32px] min-w-[32px]"
+            >
+              <X size={16} />
+            </DsButton>
+          </div>
+
+          {importPanelMode === 'csv' ? (
+            <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
+              <label
+                htmlFor="fc-lib-csv-target-deck-select"
+                className="shrink-0 text-xs font-medium text-muted-foreground"
+              >
+                {translate('library.import.csvTargetDeckLabel', { defaultValue: '导入目标牌组' })}
+              </label>
+              <div className="flex flex-1 flex-wrap items-center gap-2">
+                <select
+                  id="fc-lib-csv-target-deck-select"
+                  data-testid="fc-lib-csv-target-deck-select"
+                  aria-label={translate('library.import.csvTargetDeckLabel', { defaultValue: '导入目标牌组' })}
+                  value={
+                    csvTargetDeck && namedDeckPaths.includes(csvTargetDeck)
+                      ? csvTargetDeck
+                      : csvTargetDeck
+                        ? '__custom__'
+                        : ''
+                  }
+                  onChange={(event) => {
+                    const nextVal = event.target.value;
+                    if (nextVal !== '__custom__') {
+                      setCsvTargetDeck(nextVal);
+                    }
+                  }}
+                  className="h-9 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                >
+                  <option value="">
+                    {translate('library.import.csvTargetDeckDefault', { defaultValue: '自动（使用表格 deck 列或当前分组）' })}
+                  </option>
+                  {namedDeckPaths.map((deckPath) => (
+                    <option key={deckPath} value={deckPath}>
+                      {deckPath}
+                    </option>
+                  ))}
+                  {csvTargetDeck && !namedDeckPaths.includes(csvTargetDeck) ? (
+                    <option value="__custom__">{csvTargetDeck}</option>
+                  ) : null}
+                </select>
+                <Input
+                  type="text"
+                  data-testid="fc-lib-csv-target-deck-input"
+                  aria-label={translate('library.import.csvTargetDeckCustom', { defaultValue: '自定义目标牌组名称' })}
+                  placeholder={translate('library.import.csvTargetDeckPlaceholder', {
+                    defaultValue: '输入新牌组或留空使用上方选择',
+                  })}
+                  value={csvTargetDeck}
+                  onChange={(event) => setCsvTargetDeck(event.target.value)}
+                  className="min-w-[200px] flex-1"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          <div
+            onDragOver={(event) => {
+              event.preventDefault();
+              setImportDragActive(true);
+            }}
+            onDragLeave={() => setImportDragActive(false)}
+            onDrop={handleImportDrop}
+            data-testid="fc-lib-import-dropzone"
+            className={cn(
+              'flex flex-col items-start justify-between gap-3 rounded-xl border border-dashed p-4 transition-colors sm:flex-row sm:items-center',
+              importDragActive
+                ? 'border-primary bg-primary/5'
+                : 'border-border/70 bg-muted/20',
+            )}
+          >
+            <div className="space-y-1 text-xs text-muted-foreground">
+              <p className="text-sm font-medium text-foreground">
+                {importPanelMode === 'apkg'
+                  ? translate('library.import.apkgDropHint', { defaultValue: '拖拽 .apkg 文件到此处，或选择本地文件导入' })
+                  : translate('library.import.csvDropHint', { defaultValue: '拖拽 .csv / .tsv 文件到此处，或选择本地文件导入' })}
+              </p>
+              <p>
+                {importPanelMode === 'apkg'
+                  ? translate('library.import.hint')
+                  : translate('library.import.csvHint')}
+              </p>
+              {importPanelMode === 'apkg' ? (
+                <input
+                  ref={apkgFileInputRef}
+                  type="file"
+                  accept=".apkg,application/octet-stream,application/zip"
+                  data-testid="fc-lib-apkg-file-input"
+                  aria-label={translate('library.import.apkg')}
+                  disabled={importing}
+                  onChange={handleApkgFileChange}
+                  className="mt-2 block text-xs text-muted-foreground file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-2.5 file:py-1 file:text-xs file:font-medium file:text-foreground"
+                />
+              ) : (
+                <input
+                  ref={csvFileInputRef}
+                  type="file"
+                  accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values"
+                  data-testid="fc-lib-csv-file-input"
+                  aria-label={translate('library.import.csv')}
+                  disabled={importing}
+                  onChange={handleCsvFileChange}
+                  className="mt-2 block text-xs text-muted-foreground file:mr-2 file:rounded-md file:border file:border-border file:bg-background file:px-2.5 file:py-1 file:text-xs file:font-medium file:text-foreground"
+                />
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <DsButton
+                type="button"
+                variant="primary"
+                size="sm"
+                disabled={importing}
+                data-testid={importPanelMode === 'apkg' ? 'fc-lib-apkg-choose-btn' : 'fc-lib-csv-choose-btn'}
+                onClick={() => {
+                  if (importPanelMode === 'apkg') {
+                    if (preferDomFileInput && apkgFileInputRef.current) {
+                      apkgFileInputRef.current.click();
+                    } else {
+                      runImportApkg();
+                    }
+                  } else if (preferDomFileInput && csvFileInputRef.current) {
+                    csvFileInputRef.current.click();
+                  } else {
+                    runImportCsv();
+                  }
+                }}
+              >
+                <UploadSimple size={16} />
+                {importing
+                  ? translate('library.import.running')
+                  : translate('library.import.chooseFile', { defaultValue: '选择文件并导入' })}
+              </DsButton>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {composerOpen ? (
         <div className="fc-lib-composer">

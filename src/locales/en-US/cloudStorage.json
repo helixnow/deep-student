@@ -21,9 +21,9 @@
     "endpointHint": "Full URL of the WebDAV server",
     "username": "Username",
     "usernamePlaceholder": "your@email.com",
-    "password": "Password",
-    "passwordPlaceholder": "App-specific password",
-    "passwordHint": "Recommended to use app-specific password instead of login password",
+    "password": "App-specific password",
+    "passwordPlaceholder": "Enter app-specific password",
+    "passwordHint": "Recommended to use an app-specific password instead of your login password (leave blank after saving to keep unchanged)",
     "insecureWarning": {
       "title": "Insecure WebDAV Connection",
       "description": "You are using plaintext HTTP (http://) to connect to the WebDAV server. Your username, password, and data will be transmitted in cleartext over the network and may be intercepted. It is recommended to use HTTPS (https://) for encrypted connections.",
@@ -70,9 +70,9 @@
   },
 
   "root": {
-    "label": "Root Directory",
+    "label": "Sync Root Directory",
     "placeholder": "deep-student-sync",
-    "hint": "Root directory path for cloud storage"
+    "hint": "Root folder name on cloud storage for synced data"
   },
 
   "encryption": {
@@ -142,7 +142,22 @@
   "validation": {
     "embeddedCredentials": "Do not embed credentials in the URL; enter username and password in the dedicated fields below",
     "insecureHttpUrl": "Plaintext HTTP is not allowed (only localhost/loopback addresses may use http://; use https:// elsewhere)",
-    "rootPathTraversal": "Root path cannot contain \"..\" path traversal segments"
+    "rootPathTraversal": "Root path cannot contain \"..\" path traversal segments",
+    "disabledReasonsTitle": "Complete the following required fields before testing or saving:",
+    "webdavEndpointRequired": "WebDAV server URL is required",
+    "webdavEndpointInvalid": "Enter a valid http:// or https:// server URL",
+    "webdavUsernameRequired": "WebDAV username is required",
+    "webdavPasswordRequired": "WebDAV app-specific password is required",
+    "s3EndpointRequired": "S3 endpoint URL is required",
+    "s3EndpointInvalid": "Enter a valid http:// or https:// S3 endpoint URL",
+    "s3BucketRequired": "S3 bucket name is required",
+    "s3AccessKeyRequired": "S3 Access Key ID is required",
+    "s3SecretKeyRequired": "S3 Secret Access Key is required",
+    "ftpEndpointRequired": "FTP server URL is required",
+    "ftpEndpointInvalid": "Enter a valid ftp:// or ftps:// server URL",
+    "ftpUsernameRequired": "FTP username is required",
+    "ftpPasswordRequired": "FTP password is required",
+    "rootRequired": "Sync root directory is required"
   },
 
   "clearConfirm": {
@@ -264,6 +279,7 @@
     "missingWebdavConfig": "WebDAV configuration is missing",
     "missingS3Config": "S3 configuration is missing",
     "missingFtpConfig": "FTP configuration is missing",
+    "saveBeforeUpload": "Current settings are not saved yet. Click Save Configuration first before running cloud operations.",
     "unknown": "Unknown error"
   },
   

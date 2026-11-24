@@ -193,6 +193,16 @@ export async function executeUpsertStreamingBlock(
   content: string,
   sessionId?: string
 ): Promise<void> {
+  const state = host.getCurrentState?.();
+  const existingBlock = state?.blocks?.get(blockId);
+  if (
+    state?.sessionStatus !== 'streaming' ||
+    existingBlock?.status === 'success' ||
+    existingBlock?.status === 'error'
+  ) {
+    return;
+  }
+
   console.log(LOG_PREFIX, 'Executing upsert streaming block:', blockId, 'len:', content.length);
 
   try {

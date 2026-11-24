@@ -697,3 +697,85 @@ it('treats whitespace-only answers as unanswered, clears them before submit, and
     window.removeEventListener('learning-today:refresh', onRefresh);
   }
 });
+
+it('shows expanded AI subjective grading rationale, reconciles partial-credit metrics, and saves inline manual score override (S2-05)', async () => {
+  const base = draft();
+  let attempt: PracticeAttempt = submittedAttempt('partial', {
+    questions: [
+      { ...base.questions[0], question_type: 'short_answer', options: [] },
+    ],
+    answers: { q1: '学生的简要作答' },
+    results: [
+      {
+        question_id: 'q1',
+        status: 'partial',
+        is_correct: false,
+        score: 60,
+        feedback: '要点1正确（+40分），缺少关键推导步骤（-40分）。',
+        error: null,
+        source_available: true,
+        submission_id: 'sub-1',
+      },
+    ],
+  });
+
+  mocks.invoke.mockImplementation(async (command, args) => {
+    if (command === 'qbank_get_practice') return attempt;
+    if (command === 'qbank_get_question') return { ...base.questions[0], is_favorite: false };
+    if (command === 'qbank_get_history') return [];
+    if (command === 'qbank_resume_practice_grading') return;
+    if (command === 'qbank_grade_practice_manually') {
+      const nextScore = typeof args.score === 'number' ? args.score : args.correct ? 100 : 0;
+      attempt = {
+        ...attempt,
+        results: [
+          {
+            ...attempt.results[0]!,
+            score: nextScore,
+            status: nextScore >= 80 ? 'correct' : nextScore === 0 ? 'incorrect' : 'partial',
+            is_correct: nextScore >= 80,
+          },
+        ],
+      };
+      return attempt;
+    }
+    return undefined;
+  });
+
+  render(<BatchPracticeWorkspace practiceId="draft1" submitted onBack={vi.fn()} />);
+  await screen.findByText('First question');
+
+  // Reconciled metrics: score 60 matches score rate 60%, not contradictory "得分 60分 · 准确率 0%"
+  const summary = screen.getByTestId('batch-total-score-summary');
+  expect(summary).toHaveTextContent('综合得分 60分 · 得分率 60%');
+  expect(screen.getByText('部分正确 1 题')).toBeInTheDocument();
+
+  // Visibly expanded AI subjective grading rationale
+  const rationale = screen.getByTestId('practice-ai-grading-rationale');
+  expect(rationale).toHaveTextContent('AI 评分依据与批改评语');
+  expect(rationale).toHaveTextContent('60 / 100 分');
+  expect(rationale).toHaveTextContent('要点1正确（+40分），缺少关键推导步骤（-40分）。');
+
+  // Open inline manual score override and adjust score to 85
+  fireEvent.click(screen.getByTestId('practice-manual-override-toggle'));
+  const scoreInput = screen.getByTestId('practice-manual-override-score-input') as HTMLInputElement;
+  expect(scoreInput.value).toBe('60');
+  fireEvent.change(scoreInput, { target: { value: '85' } });
+  fireEvent.click(screen.getByTestId('practice-manual-override-save'));
+
+  await waitFor(() => {
+    expect(mocks.invoke).toHaveBeenCalledWith('qbank_grade_practice_manually', {
+      id: 'draft1',
+      questionId: 'q1',
+      correct: true,
+      score: 85,
+    });
+  });
+
+  await waitFor(() => {
+    expect(screen.getByTestId('batch-total-score-summary')).toHaveTextContent(
+      '综合得分 85分 · 得分率 85%（满分率 100%）',
+    );
+    expect(screen.getByText('正确 1 题')).toBeInTheDocument();
+  });
+});

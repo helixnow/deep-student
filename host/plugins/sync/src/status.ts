@@ -16,17 +16,89 @@ function open(storage: StorageService, name: CoordinatedDatabaseName): DatabaseH
   return storage.openFile(path, { profile: 'plain' });
 }
 
+function parseTimestampMs(value: string): number | null {
+  const sqliteUtc = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/.exec(value.trim());
+  const normalized = sqliteUtc ? `${sqliteUtc[1]}T${sqliteUtc[2]}Z` : value.trim();
+  const ms = Date.parse(normalized);
+  return Number.isNaN(ms) ? null : ms;
+}
+
 function maxString(values: readonly (string | null)[]): string | null {
   let result: string | null = null;
   for (const value of values) {
     if (value === null) continue;
-    if (result === null || compareUtf8(value, result) > 0) result = value;
+    if (result === null) {
+      result = value;
+      continue;
+    }
+    const leftMs = parseTimestampMs(value);
+    const rightMs = parseTimestampMs(result);
+    if (leftMs !== null && rightMs !== null) {
+      if (leftMs > rightMs) result = value;
+    } else if (compareUtf8(value, result) > 0) {
+      result = value;
+    }
   }
   return result;
 }
 
+export interface PendingTableBreakdown {
+  table_name: string;
+  count: number;
+}
+
+export interface PendingDatabaseBreakdown {
+  id: CoordinatedDatabaseName;
+  pending_changes: number;
+  tables: PendingTableBreakdown[];
+}
+
+export interface PendingBreakdownResponse {
+  total_pending_changes: number;
+  databases: PendingDatabaseBreakdown[];
+}
+
+export function getPendingBreakdown(storage: StorageService): PendingBreakdownResponse {
+  const resultDatabases: PendingDatabaseBreakdown[] = [];
+  let totalPending = 0;
+  for (const name of databases) {
+    if (!fs.existsSync(storage.pathOf(name))) continue;
+    let db: DatabaseHandle;
+    try {
+      db = open(storage, name);
+    } catch {
+      continue;
+    }
+    try {
+      if (!changeLogTableExists(db)) continue;
+      const rows = db.all<{ table_name: string; count: number | bigint }>(
+        'SELECT table_name, COUNT(*) AS count FROM __change_log WHERE sync_version = 0 GROUP BY table_name ORDER BY count DESC, table_name ASC',
+      );
+      const tables = rows.map(row => ({ table_name: row.table_name, count: Number(row.count) }));
+      const pending = tables.reduce((sum, item) => sum + item.count, 0);
+      totalPending += pending;
+      resultDatabases.push({
+        id: name,
+        pending_changes: pending,
+        tables,
+      });
+    } finally {
+      storage.close(db);
+    }
+  }
+  return {
+    total_pending_changes: totalPending,
+    databases: resultDatabases,
+  };
+}
+
 /** commands_sync.rs:1025-1186. */
-export async function getSyncStatus(storage: StorageService, paths: PathsService, logger?: SyncLogger): Promise<SyncStatusResponse> {
+export async function getSyncStatus(
+  storage: StorageService,
+  paths: PathsService,
+  logger?: SyncLogger,
+  lastSyncAtOverride: string | null = null,
+): Promise<SyncStatusResponse> {
   const entries: DatabaseSyncStatusResponse[] = [];
   const statusErrors: string[] = [];
   let totalPending = 0;
@@ -135,7 +207,7 @@ export async function getSyncStatus(storage: StorageService, paths: PathsService
     total_pending_changes: totalPending,
     total_synced_changes: totalSynced,
     databases: entries,
-    last_sync_at: maxString(entries.map(entry => entry.last_sync_at)),
+    last_sync_at: maxString([...entries.map(entry => entry.last_sync_at), lastSyncAtOverride]),
     device_id: await paths.deviceId(),
   };
 }

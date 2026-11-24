@@ -24,8 +24,9 @@ import {
   SETTINGS_NAV_ITEM_LABEL_CLASS_NAME,
 } from './sidebarSettings';
 import { revealSettingsSection } from './settingsSearchReveal';
-import type { SettingsSidebarCategory } from './useSettingsNavigation';
+import type { SettingsSearchIndexItem, SettingsSidebarCategory } from './useSettingsNavigation';
 import { SettingsAboutFooter } from './SettingsAboutFooter';
+import { useSettingsShellStore } from '@/stores/settingsShellStore';
 
 export interface SettingsSidebarProps {
   isSmallScreen: boolean;
@@ -35,7 +36,7 @@ export interface SettingsSidebarProps {
   setSidebarSearchQuery: (v: string) => void;
   sidebarSearchFocused: boolean;
   setSidebarSearchFocused: (v: boolean) => void;
-  settingsSearchIndex: Array<{ label: string; keywords: string[]; tab: string }>;
+  settingsSearchIndex: SettingsSearchIndexItem[];
   sidebarNavItems: Array<{ value: string; label: string; icon: React.ComponentType<{ className?: string }> }>;
   /** 一级分类；省略时保留旧的平铺导航，便于嵌入方和旧测试渐进迁移。 */
   sidebarCategories?: SettingsSidebarCategory[];
@@ -104,7 +105,10 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
     return map;
   }, [sidebarNavItems, sidebarCategories]);
 
-  const activateSearchResult = (item: { label: string; tab: string }) => {
+  const activateSearchResult = (item: SettingsSearchIndexItem) => {
+    if (item.tab === 'data-governance' && item.subTab) {
+      useSettingsShellStore.getState().requestDataGovernanceTab(item.subTab);
+    }
     setActiveTab(item.tab);
     // tab 内容 lazy 加载：交给 reveal 轮询定位 + 高亮命中行
     revealSettingsSection(item.label);

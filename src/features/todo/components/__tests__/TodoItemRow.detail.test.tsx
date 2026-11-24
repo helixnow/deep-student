@@ -100,4 +100,19 @@ describe('TodoItemRow detail & completion separation (W8B-09)', () => {
     expect(onToggle).toHaveBeenCalledWith('ti_test_1');
     expect(onSelect).not.toHaveBeenCalled();
   });
+
+  it('S4-10: displays linked completedPomodoros count on row even without estimatedPomodoros', () => {
+    render(
+      <TodoItemRow
+        item={makeItem({ completedPomodoros: 3, estimatedPomodoros: 0 })}
+        onToggle={vi.fn()}
+        onSelect={vi.fn()}
+        onDelete={vi.fn()}
+        isSelected={false}
+      />,
+    );
+
+    const badge = screen.getByTestId('todo-row-pomodoros-ti_test_1');
+    expect(badge).toHaveTextContent('3');
+  });
 });

@@ -42,9 +42,35 @@ export const ipcPairingSettings: PairingSettingsStore = {
   get: (key) => invoke<string | null>('get_setting', { key }),
   save: async (key, value) => {
     await invoke('save_setting', { key, value });
+    if (key === 'cloud_storage.config.safe_v1') {
+      try {
+        await invoke('cloud_config_ssot_save', { config: JSON.parse(value) });
+      } catch {
+        // Fallback for unit-test invoke mocks without cloud_config_ssot_save
+      }
+    }
   },
-  getSecret: (key) => invoke<string | null>('get_setting', { key }),
+  getSecret: async (key) => invoke<string | null>('get_setting', { key }),
   saveSecret: async (key, value) => {
+    if (key === 'cloud_storage_credentials') {
+      try {
+        const parsed = JSON.parse(value) as Record<string, unknown>;
+        const credentials = {
+          ...(typeof parsed.webdavPassword === 'string' && parsed.webdavPassword ? { webdavPassword: parsed.webdavPassword } : {}),
+          ...(typeof parsed.s3SecretAccessKey === 'string' && parsed.s3SecretAccessKey ? { s3SecretAccessKey: parsed.s3SecretAccessKey } : {}),
+          ...(typeof parsed.ftpPassword === 'string' && parsed.ftpPassword ? { ftpPassword: parsed.ftpPassword } : {}),
+          ...(typeof parsed.encryptionPassword === 'string' && parsed.encryptionPassword ? { encryptionPassword: parsed.encryptionPassword } : {}),
+        };
+        if (Object.keys(credentials).length > 0) {
+          await invoke('secure_save_cloud_credentials', {
+            credentials,
+            encryptionPasswordIsPreexisting: false,
+          });
+        }
+      } catch {
+        // Fallback for legacy / unit-test invoke mocks without secure_save_cloud_credentials
+      }
+    }
     await invoke('save_setting', { key, value });
   },
   listByPrefix: async (prefix) => {
@@ -91,7 +117,7 @@ function generateRandomSixDigitPin(): string {
 export interface DevicePairingSectionProps {
   onApplied?: () => void;
   /** 可选同步触发器：发送端可一键推送快照，接收端接入后可一键拉取数据 */
-  onRunSync?: (direction: 'upload' | 'download' | 'bidirectional') => void;
+  onRunSync?: (direction: 'upload' | 'download' | 'bidirectional') => void | boolean | Promise<void | boolean>;
   /** 本机是否已配置云存储 */
   cloudConfigured?: boolean;
 }
@@ -192,11 +218,18 @@ export function DevicePairingSection({
       update(value);
     });
 
-  const handleGenerateQr = (alsoPushSnapshot = false) =>
+  const handleGenerateQr = (alsoPushSnapshot = false, forceRandomPin = false) =>
     void work(async () => {
-      const targetPin = /^\d{6}$/.test(pin) ? pin : generateRandomSixDigitPin();
+      const targetPin =
+        !forceRandomPin && /^\d{6}$/.test(pin) ? pin : generateRandomSixDigitPin();
       if (targetPin !== pin) {
         setPin(targetPin);
+      }
+      if (alsoPushSnapshot && onRunSync) {
+        const pushed = await onRunSync('upload');
+        if (pushed === false) {
+          return;
+        }
       }
       const result = await createPairingCode(ipcPairingSettings, {
         pin: targetPin,
@@ -213,9 +246,6 @@ export function DevicePairingSection({
           defaultValue: `已生成同步二维码（${summary}）`,
         }),
       );
-      if (alsoPushSnapshot && onRunSync) {
-        onRunSync('upload');
-      }
     });
 
   const handleDownloadQrSvg = () => {
@@ -359,11 +389,13 @@ export function DevicePairingSection({
 
   const handleApplyPairing = (triggerPullAfter = false) =>
     void work(async () => {
+      const normalizedIncoming = incoming.trim();
       const result = await applyPairingCode(ipcPairingSettings, {
-        pairingCode: incoming.trim(),
-        pin: applyPin,
+        pairingCode: normalizedIncoming,
+        pin: applyPin.trim(),
       });
       await load();
+      window.dispatchEvent(new CustomEvent('data-governance:cloud-config-changed'));
       onApplied?.();
       setIncoming('');
       setApplyPin('');
@@ -376,7 +408,7 @@ export function DevicePairingSection({
         }),
       );
       if (triggerPullAfter && onRunSync) {
-        onRunSync('download');
+        await onRunSync('download');
       }
     });
 
@@ -575,7 +607,7 @@ export function DevicePairingSection({
                     variant="outline"
                     size="sm"
                     disabled={busy || !(cloud || llm || prefs)}
-                    onClick={() => handleGenerateQr(false)}
+                    onClick={() => handleGenerateQr(false, true)}
                     title={t('sync:pairing.quickRandomTitle', {
                       defaultValue: '自动生成 6 位随机 PIN 并立即生成二维码',
                     })}

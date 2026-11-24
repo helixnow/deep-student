@@ -8,7 +8,7 @@ import { syncGovernance } from '../../backup/api.ts';
  * `IO error` / `Database error` 降级，纯 SQLite 的指令与契约不受影响。
  */
 import { definePlugin } from '../../../kernel/api.ts';
-import { createPairingCode, applyPairingCode, type CreatePairingArgs, type ApplyPairingArgs } from './device-pairing.ts';
+import { createPairingCode, applyPairingCode, type PairingSettings } from './device-pairing.ts';
 import type { SettingsStore } from '../../../platform/settings/api.ts';
 import type { Context } from '@deepseek-ai/cordis';
 import type { HostPlugin, PluginPlatform } from '../../../kernel/core.ts';
@@ -64,7 +64,7 @@ import { detectChangeLogGaps } from './change-availability.ts';
 import { detectSyncConflicts } from './detect-conflicts.ts';
 import { createLocalPurgeReset } from './purge-reset.ts';
 import { assertNotInMaintenance } from './cloud-runtime.ts';
-import { runSync, runSyncWithProgress } from './run-sync.ts';
+import { LAST_SYNC_AT_SETTING_KEY, runSync, runSyncWithProgress } from './run-sync.ts';
 import { markBlobDeletedCommand, markAssetDeletedCommand } from './tombstone-commands.ts';
 import { listUnsyncedItemsCommand } from './unsynced-command.ts';
 import type { LocalSyncCommandPorts } from './sync-command-needs.ts';
@@ -90,6 +90,7 @@ export function createSyncPlugin(options: SyncPluginOptions = {}): HostPlugin {
       'data_governance_discard_quarantine',
       'data_governance_discard_all_quarantine',
       'data_governance_get_sync_status',
+      'data_governance_get_pending_breakdown',
       'data_governance_list_sync_snapshot_batches',
       'data_governance_purge_resolved_conflicts',
       'data_governance_list_quarantine',
@@ -110,6 +111,9 @@ export function createSyncPlugin(options: SyncPluginOptions = {}): HostPlugin {
       'data_governance_mark_blob_deleted',
       'data_governance_mark_asset_deleted',
       'data_governance_list_unsynced_items',
+      'data_governance_pairing_get_cloud_credentials',
+      'data_governance_pairing_save_cloud_credentials',
+      'data_governance_get_conflict_previews',
     ],
   },
   inject: options.platforms?.includes('mobile')
@@ -117,10 +121,37 @@ export function createSyncPlugin(options: SyncPluginOptions = {}): HostPlugin {
     : ['storage', 'paths', 'notes', 'backup', 'syncProvider', 'secrets', 'vfsDatabase', 'syncSupport', 'nativeCompression', 'vfsRepo', 'mastery'],
   apply(context) {
     const ctx = context as SyncContext;
-    const pairingSettings = (): SettingsStore => {
+    const pairingSettings = (): PairingSettings => {
       const settings = ctx.reflect.get('settings') as SettingsStore | undefined;
       if (!settings) throw new Error('Settings service unavailable');
-      return settings;
+      return {
+        get: key => settings.get(key),
+        save: (key, value) => settings.save(key, value),
+        listByPrefix: prefix => settings.listByPrefix(prefix),
+        getSecret: async key => {
+          if (key === 'cloud_storage_credentials') {
+            const creds = await ctx.secrets.openStore(ctx.app.dataDir).getCloudCredentials();
+            return creds ? JSON.stringify(creds) : null;
+          }
+          return settings.getSecret(key);
+        },
+        saveSecret: async (key, value) => {
+          if (key === 'cloud_storage_credentials') {
+            const parsed = JSON.parse(value) as Record<string, unknown>;
+            const creds = {
+              ...(typeof parsed.webdavPassword === 'string' && parsed.webdavPassword ? { webdavPassword: parsed.webdavPassword } : {}),
+              ...(typeof parsed.s3SecretAccessKey === 'string' && parsed.s3SecretAccessKey ? { s3SecretAccessKey: parsed.s3SecretAccessKey } : {}),
+              ...(typeof parsed.ftpPassword === 'string' && parsed.ftpPassword ? { ftpPassword: parsed.ftpPassword } : {}),
+              ...(typeof parsed.encryptionPassword === 'string' && parsed.encryptionPassword ? { encryptionPassword: parsed.encryptionPassword } : {}),
+            };
+            const store = ctx.secrets.openStore(ctx.app.dataDir);
+            if (Object.keys(creds).length > 0) await store.saveCloudCredentials(creds);
+            else await store.deleteCloudCredentials();
+            return;
+          }
+          return settings.saveSecret(key, value);
+        },
+      };
     };
     setLocalRuntime(options.localRuntime?.(ctx) ?? null);
     ctx.effect(() => () => setLocalRuntime(null));
@@ -156,11 +187,11 @@ export function createSyncPlugin(options: SyncPluginOptions = {}): HostPlugin {
       importSyncData: (path, strategy) => importSyncDataCommand(ctx, path, strategy ?? null),
       resolveRecordConflict: args => resolveRecordConflictCommand(ctx, args),
       rollbackSyncSnapshotBatch: (database, batch) => rollbackSyncSnapshotCommand(ctx, database, batch),
-      applyDownloadedChangesToDatabases: async (changes, strategy) => applyDownloadedChangesToDatabases(
+      applyDownloadedChangesToDatabases: async (changes, strategy, applyOptions) => applyDownloadedChangesToDatabases(
         ctx.storage, changes, strategy, await ctx.paths.deviceId(), {
           recomputeAllStatesWithConn: db => ctx.mastery.recomputeAllStatesWithConn(db),
           syncAllLearnerProfiles: () => ctx.mastery.syncAllLearnerProfiles(),
-        }, ctx.logger('sync'),
+        }, ctx.logger('sync'), applyOptions,
       ),
       prepareDeleteVersionsForCleanup,
       commitDownloadProgress: (storage, downloaded, options) => commitDownloadProgress(
@@ -194,7 +225,14 @@ export function createSyncPlugin(options: SyncPluginOptions = {}): HostPlugin {
       getSyncStatus: () => {
         ctx.logger('sync').debug('[data_governance] 获取同步状态');
         assertNotInMaintenance(ctx);
-        return getSyncStatus(ctx.storage, ctx.paths, ctx.logger('sync'));
+        let recordedLastSyncAt: string | null = null;
+        try {
+          const settings = ctx.reflect?.get?.('settings') as { get?: (key: string) => string | null } | undefined;
+          recordedLastSyncAt = settings?.get?.(LAST_SYNC_AT_SETTING_KEY) ?? null;
+        } catch {
+          recordedLastSyncAt = null;
+        }
+        return getSyncStatus(ctx.storage, ctx.paths, ctx.logger('sync'), recordedLastSyncAt);
       },
       listSyncSnapshotBatches: limit => listSyncSnapshotBatches(ctx.storage, limit),
       purgeResolvedConflicts: days => purgeResolvedConflicts(ctx.storage, days),

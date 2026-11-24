@@ -1991,6 +1991,7 @@ export interface Commands {
       id: string;
       questionId: string;
       correct: boolean;
+      score?: number | null;
     };
     result: PracticeAttempt;
     error: Shared.AppError;

@@ -2074,6 +2074,23 @@
             "type": "boolean"
           },
           "optional": false
+        },
+        {
+          "key": "score",
+          "rustName": "score",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "number",
+                "x-float": "f64"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
         }
       ],
       "injected": [

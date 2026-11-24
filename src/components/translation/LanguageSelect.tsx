@@ -31,6 +31,8 @@ export interface LanguageSelectProps {
   detectedLanguage?: string | null;
   disabled?: boolean;
   className?: string;
+  ariaLabel?: string;
+  dataTestId?: string;
 }
 
 const RECENT_STORAGE_KEY = 'translation.recentLanguages.v1';
@@ -109,6 +111,8 @@ export const LanguageSelect: React.FC<LanguageSelectProps> = ({
   detectedLanguage = null,
   disabled = false,
   className,
+  ariaLabel,
+  dataTestId,
 }) => {
   const { t } = useTranslation(['translation']);
   const [query, setQuery] = React.useState('');
@@ -240,7 +244,8 @@ export const LanguageSelect: React.FC<LanguageSelectProps> = ({
         <DsButton
           variant="ghost"
           disabled={disabled}
-          aria-label={t('translation:language_select.trigger_label')}
+          aria-label={ariaLabel || t('translation:language_select.trigger_label')}
+          data-testid={dataTestId}
           className={cn(
             '!inline-flex !justify-between !gap-1.5 !rounded-full bg-foreground/[0.03] hover:bg-foreground/[0.06] font-medium',
             'h-8 px-3 text-sm [@media(pointer:coarse)]:!h-11',

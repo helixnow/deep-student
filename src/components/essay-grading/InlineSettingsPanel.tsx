@@ -51,6 +51,7 @@ import {
   deleteCustomMode,
   saveBuiltinOverride,
   resetBuiltinMode,
+  recommendedGradeLevelForMode,
 } from '@/essay-grading/essayGradingApi';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -525,13 +526,23 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
 
   const handleModeSwitch = useCallback((newModeId: string) => {
     setModeId(newModeId);
+    if (setGradeLevel) {
+      const targetMode = modes.find((m) => m.id === newModeId);
+      const recommended = recommendedGradeLevelForMode(
+        newModeId,
+        targetMode?.is_builtin ?? true,
+      );
+      if (recommended) {
+        setGradeLevel(recommended);
+      }
+    }
     if (viewMode !== 'view') {
       setViewMode('view');
       setEditingMode(null);
       setError(null);
       setShowValidation(false);
     }
-  }, [setModeId, viewMode]);
+  }, [setModeId, setGradeLevel, modes, viewMode]);
 
   // 保存提示词：就地成功反馈，不关闭面板
   const handleSavePrompt = useCallback(() => {
@@ -699,6 +710,12 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                       </DsButton>
                     ))}
                   </div>
+                  {((currentMode && (!currentMode.is_builtin || recommendedGradeLevelForMode(modeId, currentMode.is_builtin) === 'other')) ||
+                    (Boolean(customPrompt?.trim()) && customPrompt.trim() !== t('essay_grading:prompt_editor.default_prompt').trim())) && (
+                    <p className="text-[11px] leading-relaxed text-muted-foreground">
+                      {t('essay_grading:grade_level.exam_rubric_note')}
+                    </p>
+                  )}
                 </div>
               )}
             </div>

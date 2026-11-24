@@ -134,16 +134,37 @@ const MANAGER_ERROR_KEYS: Readonly<Record<string, string>> = {
   STAGE_UPLOAD_FAILED: 'error.reasons.stageUploadFailed',
 };
 
+export function resolveManagerErrorCode(code: string, detail?: string): string {
+  if (code === 'PLUGIN_INSTALL_FAILED' && detail) {
+    const prefixed = /^([A-Z][A-Z0-9_]+):/.exec(detail.trim())?.[1];
+    if (prefixed && prefixed !== 'PLUGIN_INSTALL_FAILED') return prefixed;
+    if (/invalid path|escapes|traversal|\.\.|zip slip|symlink|foreign root/i.test(detail)) {
+      return 'PLUGIN_PACKAGE_INVALID';
+    }
+    if (/json|package\.json|zip|central directory|archive|corrupt|checksum/i.test(detail)) {
+      return 'PLUGIN_PACKAGE_INVALID';
+    }
+    if (/manifest|engines\.deepStudent|\/deepStudent/i.test(detail)) {
+      return 'MANIFEST_INVALID';
+    }
+  }
+  return code;
+}
+
 /** Maps raw Host / ZIP / SSRF error codes into learner-friendly copy while keeping technical context available. */
 export function describeManagerError(
   t: (key: string, options?: Record<string, unknown>) => string,
   code: string,
   detail?: string,
 ): FriendlyManagerError {
-  const technical = detail ? (detail.startsWith(`${code}:`) ? detail : `${code}: ${detail}`) : code;
-  if (code === 'PLUGIN_PACKAGE_INVALID') {
-    const raw = detail ?? '';
-    const key = /invalid path|escapes|traversal|\.\./i.test(raw)
+  const effectiveCode = resolveManagerErrorCode(code, detail);
+  const cleanedDetail = detail?.replace(/^PLUGIN_INSTALL_FAILED:\s*/i, '').trim();
+  const technical = cleanedDetail
+    ? (cleanedDetail.startsWith(`${effectiveCode}:`) ? cleanedDetail : `${effectiveCode}: ${cleanedDetail}`)
+    : effectiveCode;
+  if (effectiveCode === 'PLUGIN_PACKAGE_INVALID' || effectiveCode === 'PLUGIN_WORKSHOP_PATH_INVALID') {
+    const raw = cleanedDetail ?? '';
+    const key = /invalid path|escapes|traversal|\.\.|zip slip|symlink|foreign root/i.test(raw)
       ? 'error.reasons.packageTraversal'
       : /json|package\.json/i.test(raw)
         ? 'error.reasons.packageInvalidJson'
@@ -152,13 +173,16 @@ export function describeManagerError(
           : 'error.reasons.packageInvalid';
     return { explanation: t(key), technical };
   }
-  if (code === 'MANIFEST_INVALID' && detail && detail.trim() !== '') {
-    const cleanDetail = detail.replace(/^MANIFEST_INVALID:\s*/i, '').trim();
+  if (effectiveCode === 'MANIFEST_INVALID' && cleanedDetail) {
+    const cleanManifestDetail = cleanedDetail.replace(/^MANIFEST_INVALID:\s*/i, '').trim();
     return {
-      explanation: t('error.reasons.manifestInvalidWithDetail', { detail: cleanDetail }),
+      explanation: t('error.reasons.manifestInvalidWithDetail', { detail: cleanManifestDetail }),
       technical,
     };
   }
-  const key = MANAGER_ERROR_KEYS[code] ?? 'error.reasons.generic';
-  return { explanation: t(key), technical };
+  const key = MANAGER_ERROR_KEYS[effectiveCode] ?? 'error.reasons.generic';
+  return {
+    explanation: t(key),
+    technical: effectiveCode === 'PLUGIN_INSTALL_FAILED' ? cleanedDetail || t('error.reasons.installFailed') : technical,
+  };
 }

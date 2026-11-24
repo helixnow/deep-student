@@ -120,6 +120,26 @@ describe('NotesTrashDialog', () => {
     expect(screen.queryByText('Draft note')).toBeNull();
   });
 
+  it('selects/previews without restoring when clicking a trashed title or pressing Enter on row (S1-14)', async () => {
+    listTrash.mockResolvedValueOnce({
+      ok: true,
+      value: [node({ metadata: { contentPreview: 'Deleted preview body' } })],
+    });
+    renderDialog();
+
+    const titleEl = await screen.findByText('Draft note');
+    fireEvent.click(titleEl);
+    expect(restoreItem).not.toHaveBeenCalled();
+    expect(screen.getByTestId('ntd-selected-preview')).toHaveTextContent('Deleted preview body');
+
+    const row = titleEl.closest('[data-trash-row]') as HTMLElement;
+    expect(row).toHaveAttribute('data-selected', 'true');
+
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(restoreItem).not.toHaveBeenCalled();
+    expect(row).not.toHaveAttribute('data-selected', 'true');
+  });
+
   it('permanently deletes after confirm', async () => {
     listTrash.mockResolvedValueOnce({
       ok: true,

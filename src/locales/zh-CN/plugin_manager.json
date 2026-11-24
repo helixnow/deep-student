@@ -417,6 +417,7 @@
     "description": "安全模式会话只加载官方插件；社区插件已停用，正常重启后再启用。",
     "rowHint": "安全模式下社区插件不可启用",
     "exitButton": "退出安全模式并恢复正常启动",
+    "enterButton": "安全模式排查",
     "importDisabled": "安全模式下已停用导入和安装插件，请退出安全模式并正常启动后再试。"
   },
   "row": {
@@ -525,7 +526,8 @@
     "rejected": {
       "title": "无法安装该插件包",
       "detail": "{{detail}}",
-      "technical": "技术详情（{{code}}）"
+      "technical": "技术详情（{{code}}）",
+      "technicalGeneric": "查看技术详情"
     },
     "rollback": {
       "restored": "已恢复旧版本",
@@ -567,6 +569,7 @@
     "reload": "同意已保存，但重新加载失败",
     "detailSuffix": "：{{detail}}",
     "technical": "查看技术详情（{{code}}）",
+    "technicalGeneric": "查看技术详情",
     "reasons": {
       "packageTraversal": "安装包内包含不安全的文件路径（试图访问包外目录），已被安全策略拦截。",
       "packageInvalidJson": "安装包的清单文件（package.json）损坏或不是有效的 JSON 格式，请重新导出后再试。",

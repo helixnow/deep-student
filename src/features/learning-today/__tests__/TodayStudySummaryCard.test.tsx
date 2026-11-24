@@ -82,4 +82,11 @@ describe('TodayStudySummaryCard', () => {
     expect(openTodayReviewTarget).toHaveBeenCalledWith('notes');
     expect(openDailySprint).not.toHaveBeenCalled();
   });
+
+  it('S4-09: labels global today count distinctly when shown in empty Inbox/list view', () => {
+    Object.assign(snapshot, { cards: 1, mistakes: 0, notes: 0 });
+    render(<TodayStudySummaryCard inTodayTodoView={false} inEmptyListView todoDueCount={3} />);
+    expect(screen.getByTestId('today-summary-todos')).toHaveTextContent('全局今日待办');
+    expect(screen.getByTestId('today-summary-todos')).toHaveTextContent('3');
+  });
 });

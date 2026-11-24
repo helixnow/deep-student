@@ -533,6 +533,8 @@ export interface WebHostGateway {
   readonly config: EffectiveTauriConfig;
   readonly ready: Promise<void>;
   isReady(): boolean;
+  isSafeMode(): boolean;
+  setSafeMode(enabled: boolean): Promise<void>;
   attachWebSocket(ws: WebSocketConnection): void;
   handleProtocolHttp(
     scheme: string,
@@ -552,7 +554,7 @@ export function createWebHostGateway(options: WebGatewayOptions): WebHostGateway
   const tauriDir = join(repoRoot, 'resources/app');
   const platform: ShellPlatform = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux';
   const debug = options.debug ?? true;
-  const safeMode = options.safeMode ?? false;
+  let runtimeSafeMode = options.safeMode ?? false;
   const maxStageUploadBytes = options.maxStageUploadBytes ?? DEFAULT_MAX_STAGE_UPLOAD_BYTES;
   const log = options.log ?? ((msg: string) => process.stdout.write(`[dstu-web] ${msg}\n`));
 
@@ -644,7 +646,7 @@ export function createWebHostGateway(options: WebGatewayOptions): WebHostGateway
   };
   runtime.registerPlugin('process', createWebProcessPlugin(scheduleHostRestart));
 
-  const pluginUi = new PluginUiRegistry(safeMode);
+  let pluginUi = new PluginUiRegistry(runtimeSafeMode);
   const pluginFiles = createPluginFileResolver(join(appDataDir, 'plugins'));
 
   // Multi-tab multiplexer backing the canonical `'main'` ShellWindow
@@ -868,7 +870,7 @@ export function createWebHostGateway(options: WebGatewayOptions): WebHostGateway
     runtime.host = bridge as never;
 
     const hostProfile = resolveHostProfile({
-      safeMode,
+      safeMode: runtimeSafeMode,
       override: process.env.DS_HOST_PROFILE,
       appDataDir,
       hostEntry,
@@ -881,7 +883,7 @@ export function createWebHostGateway(options: WebGatewayOptions): WebHostGateway
       contracts: () => ContractSet.fromDirectory(join(repoRoot, 'contracts', 'ipc')),
       configOverrides: envConfigOverrides(process.env),
       hostCallCaller: hostCallCallerMode(process.env),
-      ...(safeMode ? { safeMode: true } : {}),
+      ...(runtimeSafeMode ? { safeMode: true } : {}),
       exit: (code) => {
         log(`[web-host] host session exited with code ${code}`);
       },
@@ -1038,6 +1040,20 @@ export function createWebHostGateway(options: WebGatewayOptions): WebHostGateway
     ready,
     isReady() {
       return activeBridge.readyState;
+    },
+    isSafeMode() {
+      return runtimeSafeMode;
+    },
+    async setSafeMode(enabled: boolean) {
+      const next = Boolean(enabled);
+      if (shuttingDown) return;
+      while (restartInFlight !== null) {
+        await restartInFlight;
+      }
+      if (runtimeSafeMode === next) return;
+      runtimeSafeMode = next;
+      pluginUi = new PluginUiRegistry(runtimeSafeMode);
+      await restartHost();
     },
     attachWebSocket(ws: WebSocketConnection) {
       const tab: ConnectedTab = {

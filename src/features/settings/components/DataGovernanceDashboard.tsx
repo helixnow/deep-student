@@ -43,7 +43,12 @@ import { readShellPlatform } from '@/ui-kernel/services/shell-platform';
 import { isAndroidMobileShell, isWebUiShell } from '@/utils/platform';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import * as cloudApi from '@/utils/cloudStorageApi';
-import { localizeCloudStorageError } from './data-governance/localizeCloudError';
+import {
+  localizeBackendErrorText,
+  localizeCloudStorageError,
+  notifyErrorDeduped,
+  shouldNotifyDeduped,
+} from './data-governance/localizeCloudError';
 
 import {
   DataGovernanceApi,
@@ -51,6 +56,7 @@ import {
   type ResumableJob,
   type DiskSpaceCheckResponse,
 } from '@/api/dataGovernance';
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { MediaCacheSection } from './MediaCacheSection';
 import { LanceOptimizationPanel } from './IndexMaintenanceSection';
@@ -578,6 +584,7 @@ export function isSyncCancelledMessage(message: string | undefined | null): bool
 export function sanitizeAclErrorMessage(
   raw: string,
   t: (key: string, opts?: Record<string, unknown>) => string,
+  language?: string,
 ): string {
   if (
     /command\s+[a-z0-9_.-]+\s+not\s+allowed(?:\s+by\s+ACL|\s+on\b[^\n]*)?/i.test(raw) ||
@@ -587,14 +594,15 @@ export function sanitizeAclErrorMessage(
       defaultValue: '当前环境暂无权执行该同步操作，请检查应用权限或版本配置后重试。',
     });
   }
-  return raw;
+  return localizeBackendErrorText(raw, language);
 }
 
 export function formatGovernanceError(
   error: unknown,
   t: (key: string, opts?: Record<string, unknown>) => string,
+  language?: string,
 ): string {
-  return sanitizeAclErrorMessage(getErrorMessage(error), t);
+  return sanitizeAclErrorMessage(getErrorMessage(error), t, language);
 }
 
 /** 生成本地时区 YYYY-MM-DD，避免 UTC 跨日导致的导出文件名偏移 */
@@ -696,7 +704,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   embedded = false,
   tabTarget = null,
 }) => {
-  const { t } = useTranslation(['data', 'common']);
+  const { t, i18n } = useTranslation(['data', 'common']);
   /**
    * `t` 的身份不保证跨渲染稳定。
    *
@@ -853,13 +861,26 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
   const refreshCloudSyncConfigured = useCallback(async () => {
     try {
-      const config = await loadCloudSyncConfig();
-      setCloudSyncConfigured(Boolean(config));
+      const [config, resolved] = await Promise.all([
+        loadCloudSyncConfig().catch(() => null),
+        cloudApi.resolveCloudStorageConfig().catch(() => null),
+      ]);
+      const hasConfig = Boolean(config) || Boolean(resolved?.config);
+      setCloudSyncConfigured(hasConfig);
+      if (resolved?.config) {
+        const root =
+          typeof resolved.config.root === 'string' && resolved.config.root.trim().length > 0
+            ? resolved.config.root
+            : undefined;
+        setCloudSyncSummary({ provider: resolved.config.provider, root });
+      } else {
+        setCloudSyncSummary(readCloudSyncSummary());
+      }
     } catch (error: unknown) {
       console.error('读取云存储配置失败:', error);
-      setCloudSyncConfigured(false);
+      setCloudSyncConfigured(Boolean(readCloudSyncSummary()));
     }
-  }, [loadCloudSyncConfig]);
+  }, [loadCloudSyncConfig, readCloudSyncSummary]);
 
   const handleCloudConfigChanged = useCallback(() => {
     setCloudSyncSummary(readCloudSyncSummary());
@@ -869,6 +890,16 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   useEffect(() => {
     void refreshCloudSyncConfigured();
   }, [refreshCloudSyncConfigured]);
+
+  useEffect(() => {
+    const onCloudConfigChanged = () => {
+      handleCloudConfigChanged();
+    };
+    window.addEventListener('data-governance:cloud-config-changed', onCloudConfigChanged);
+    return () => {
+      window.removeEventListener('data-governance:cloud-config-changed', onCloudConfigChanged);
+    };
+  }, [handleCloudConfigChanged]);
 
   // 加载概览数据
   const loadOverviewData = useCallback(async () => {
@@ -918,11 +949,43 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }
   }, []);
 
+  type BackupJobOutcome = {
+    success: boolean;
+    cancelled?: boolean;
+    error?: string;
+    requiresRestart?: boolean;
+  };
+  const jobOutcomeWaitersRef = useRef<Map<string, (outcome: BackupJobOutcome) => void>>(new Map());
+
+  const resolveJobOutcome = useCallback((jobId: string | undefined | null, outcome: BackupJobOutcome) => {
+    if (jobId) {
+      const waiter = jobOutcomeWaitersRef.current.get(jobId);
+      if (waiter) {
+        jobOutcomeWaitersRef.current.delete(jobId);
+        waiter(outcome);
+      }
+      return;
+    }
+    if (jobOutcomeWaitersRef.current.size > 0) {
+      const entries = Array.from(jobOutcomeWaitersRef.current.entries());
+      jobOutcomeWaitersRef.current.clear();
+      for (const [, waiter] of entries) {
+        waiter(outcome);
+      }
+    }
+  }, []);
+
+  const waitForBackupJobOutcome = useCallback((jobId: string): Promise<BackupJobOutcome> => {
+    return new Promise((resolve) => {
+      jobOutcomeWaitersRef.current.set(jobId, resolve);
+    });
+  }, []);
+
   /**
    * 以后端聚合状态为真相收敛前端维护横幅。
    *
-   * 退出屏障可能只在某个子库失败；此时任务已经终止，但继续撤掉横幅会让用户
-   * 误以为可以写入。状态查询本身失败也保持 fail-close，提示重启恢复。
+   * 仅当后端处于恢复切槽、启动降级或无活跃非恢复操作却仍被屏障锁住时，
+   * 才进入不可撤销的重启恢复态；瞬时查询失败不再误锁整个桌面 UI。
    */
   const reconcileMaintenanceMode = useCallback(async () => {
     const generation = useSystemStatusStore.getState().maintenanceGeneration;
@@ -930,17 +993,25 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       const status = await DataGovernanceApi.getMaintenanceStatus();
       // 查询期间若有新任务进入/退出维护模式，旧结果不得覆盖新状态。
       if (useSystemStatusStore.getState().maintenanceGeneration !== generation) return;
-      if (status.is_in_maintenance_mode) {
-        requireMaintenanceRestart(t('common:maintenance.recovery_required'));
+      if (status?.is_in_maintenance_mode) {
+        const opKind = (status as { current_operation?: { kind?: string } | null }).current_operation?.kind;
+        const hasComponentIssues = (status.component_issues?.length ?? 0) > 0;
+        if (!opKind || opKind === 'restore' || hasComponentIssues) {
+          requireMaintenanceRestart(t('common:maintenance.recovery_required'));
+        } else {
+          enterMaintenanceMode(t('data:governance.maintenance_backup'));
+        }
       } else {
         exitMaintenanceMode();
       }
     } catch (error: unknown) {
       console.error('查询维护屏障聚合状态失败:', error);
       if (useSystemStatusStore.getState().maintenanceGeneration !== generation) return;
-      requireMaintenanceRestart(t('common:maintenance.recovery_required'));
+      if (!useSystemStatusStore.getState().maintenanceRequiresRestart) {
+        exitMaintenanceMode();
+      }
     }
-  }, [exitMaintenanceMode, requireMaintenanceRestart, t]);
+  }, [enterMaintenanceMode, exitMaintenanceMode, requireMaintenanceRestart, t]);
 
   // 使用统一的备份任务监听 Hook
   const { startListening, stopListening } = useBackupJobListener({
@@ -1029,6 +1100,14 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         void reconcileMaintenanceMode();
       }
 
+      resolveJobOutcome(event.job_id, {
+        success: resultSuccess,
+        error: resultSuccess
+          ? undefined
+          : localizeBackupJobError(event.result?.error || event.message, t),
+        requiresRestart: Boolean(event.result?.requires_restart),
+      });
+
       // 刷新可恢复任务列表
       void loadResumableJobs();
     },
@@ -1038,34 +1117,51 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       setBackupJobId(null);
       setJobOperation(null);
       void reconcileMaintenanceMode();
-      showGlobalNotification(
-        'error',
-        localizeBackupJobError(event.result?.error || event.message, t),
+      const localizedError = localizeBackupJobError(
+        localizeCloudStorageError(event.result?.error || event.message, t, i18n?.language),
+        t,
       );
+      notifyErrorDeduped('error', localizedError);
+      resolveJobOutcome(event.job_id, {
+        success: false,
+        error: localizedError,
+      });
     },
-    onCancelled: () => {
+    onCancelled: (event?: BackupJobEvent) => {
       setIsBackupRunning(false);
       stopTabLoading('backup');
       setBackupJobId(null);
       setJobOperation(null);
       void reconcileMaintenanceMode();
       showGlobalNotification('info', t('data:governance.backup_cancelled'));
+      resolveJobOutcome(event?.job_id, {
+        success: false,
+        cancelled: true,
+      });
       void loadResumableJobs();
     },
   });
 
-  // 组件卸载时停止监听
+  // 组件卸载时停止监听并清理未决等待器
   useEffect(() => {
+    const waiters = jobOutcomeWaitersRef.current;
     return () => {
       stopListening();
+      if (waiters.size > 0) {
+        for (const [, waiter] of Array.from(waiters.entries())) {
+          waiter({ success: false, cancelled: true });
+        }
+        waiters.clear();
+      }
     };
   }, [stopListening]);
 
   // 恢复任务
-  const resumeJob = useCallback(async (jobId: string, password?: string) => {
+  const resumeJob = useCallback(async (jobId: string, password?: string): Promise<BackupJobOutcome> => {
     if (isBackupRunning) {
-      showGlobalNotification('warning', t('data:governance.backup_already_running'));
-      return;
+      const msg = t('data:governance.backup_already_running');
+      showGlobalNotification('warning', msg);
+      return { success: false, error: msg };
     }
     setIsBackupRunning(true);
     setBackupProgress(null);
@@ -1079,18 +1175,29 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       showGlobalNotification('info', t('data:governance.job_resumed'));
       
       // 使用统一的监听 Hook
+      const outcomePromise = waitForBackupJobOutcome(response.job_id);
       await startListening(response.job_id);
+      return await outcomePromise;
     } catch (error: unknown) {
-      showGlobalNotification('error', getErrorMessage(error));
+      const msg = localizeBackupJobError(
+        localizeCloudStorageError(error, t, i18n?.language),
+        t,
+      );
+      notifyErrorDeduped('error', msg);
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
+      return { success: false, error: msg };
     }
-  }, [isBackupRunning, resumableJobs, setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t]);
+  }, [isBackupRunning, resumableJobs, setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, waitForBackupJobOutcome, t, i18n?.language]);
 
   // 加载同步状态
-  const loadSyncStatus = useCallback(async () => {
-    startTabLoading('sync');
+  // 加载同步状态（silent=true 用于后台轮询和本地变更事件刷新，避免闪烁 loading 或重复报错）
+  const loadSyncStatus = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent === true;
+    if (!silent) {
+      startTabLoading('sync');
+    }
     // 每次加载同步状态时重新读取云存储配置，保证配置变更后及时反映
     setCloudSyncSummary(readCloudSyncSummary());
     void refreshCloudSyncConfigured();
@@ -1099,11 +1206,15 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       setSyncStatus(status);
     } catch (error: unknown) {
       console.error('加载同步状态失败:', error);
-      showGlobalNotification('error', formatGovernanceError(error, t));
+      if (!silent) {
+        notifyErrorDeduped('error', formatGovernanceError(error, t, i18n?.language));
+      }
     } finally {
-      stopTabLoading('sync');
+      if (!silent) {
+        stopTabLoading('sync');
+      }
     }
-  }, [startTabLoading, stopTabLoading, readCloudSyncSummary, t]);
+  }, [startTabLoading, stopTabLoading, readCloudSyncSummary, refreshCloudSyncConfigured, t, i18n?.language]);
 
   // 加载审计日志
   const loadAuditLogs = useCallback(async (
@@ -1219,6 +1330,34 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }
   }, [backups, isAutoVerifying, t]);
 
+  // 立即创建完整本地恢复点（直接写入备份列表，支持整槽恢复）
+  const createLocalBackup = useCallback(async () => {
+    if (isBackupRunning) {
+      showGlobalNotification('warning', t('data:governance.backup_already_running'));
+      return;
+    }
+
+    startTabLoading('backup');
+    setIsBackupRunning(true);
+    setBackupProgress(null);
+    setJobOperation('backup');
+    enterMaintenanceMode(t('data:governance.maintenance_backup'));
+
+    try {
+      const response = await DataGovernanceApi.runBackup('full', true);
+      setBackupJobId(response.job_id);
+      showGlobalNotification('info', t('data:governance.create_restore_point_started'));
+      await startListening(response.job_id);
+    } catch (error: unknown) {
+      console.error('创建本地恢复点失败:', error);
+      notifyErrorDeduped('error', localizeCloudStorageError(error, t));
+      setIsBackupRunning(false);
+      void reconcileMaintenanceMode();
+      setJobOperation(null);
+      stopTabLoading('backup');
+    }
+  }, [isBackupRunning, startTabLoading, setJobOperation, enterMaintenanceMode, t, startListening, i18n?.language, reconcileMaintenanceMode, stopTabLoading]);
+
   // 一步导出备份（备份 + ZIP）
   const backupAndExportZip = useCallback(async (options: {
     compressionLevel: number;
@@ -1229,6 +1368,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     assetTypes?: string[];
     /** 可选 E2EE 备份密码：提供后导出加密全保真换机包 */
     encryptionPassword?: string;
+    /** 未加密便携 ZIP 默认排除回收站软删除内容 */
+    excludeTrash?: boolean;
   }) => {
     if (isBackupRunning) {
       showGlobalNotification('warning', t('data:governance.backup_already_running'));
@@ -1250,32 +1391,49 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       startTabLoading('backup');
       setIsBackupRunning(true);
       setBackupProgress(null);
-      setJobOperation('backup');
+      setJobOperation(
+        options.addToBackupList
+          ? (options.useTiered ? 'tiered_backup' : 'backup')
+          : 'zip_export',
+      );
       enterMaintenanceMode(t('data:governance.maintenance_backup'));
 
-      const response = await DataGovernanceApi.backupAndExportZip(
-        savePath,
-        options.compressionLevel,
-        options.addToBackupList,
-        options.useTiered,
-        options.tiers as any,
-        options.includeAssets,
-        options.assetTypes as any,
-        options.encryptionPassword,
-      );
+      const response =
+        !options.encryptionPassword && options.excludeTrash === false
+          ? await invoke<{ job_id: string }>('data_governance_backup_and_export_zip', {
+              outputPath: savePath,
+              compressionLevel: options.compressionLevel,
+              addToBackupList: options.addToBackupList,
+              useTiered: options.useTiered,
+              tiers: options.tiers ?? null,
+              includeAssets: options.includeAssets ?? null,
+              assetTypes: options.assetTypes ?? null,
+              encryptionPassword: null,
+              excludeTrash: false,
+            })
+          : await DataGovernanceApi.backupAndExportZip(
+              savePath,
+              options.compressionLevel,
+              options.addToBackupList,
+              options.useTiered,
+              options.tiers as any,
+              options.includeAssets,
+              options.assetTypes as any,
+              options.encryptionPassword,
+            );
 
       setBackupJobId(response.job_id);
       showGlobalNotification('info', t('data:governance.backup_and_export_started'));
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('备份并导出 ZIP 失败:', error);
-      showGlobalNotification('error', localizeCloudStorageError(error, t));
+      notifyErrorDeduped('error', localizeCloudStorageError(error, t));
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
       stopTabLoading('backup');
     }
-  }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
+  }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, i18n?.language, isBackupRunning, startTabLoading, stopTabLoading]);
 
   // 取消备份
   const cancelBackup = useCallback(async () => {
@@ -1297,7 +1455,12 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   }, [backupJobId, t]);
 
   // 导出为 ZIP（异步）；encryptionPassword 非空时执行加密全保真导出
-  const exportZip = useCallback(async (backupId: string, compressionLevel: number, encryptionPassword?: string) => {
+  const exportZip = useCallback(async (
+    backupId: string,
+    compressionLevel: number,
+    encryptionPassword?: string,
+    excludeTrash?: boolean,
+  ) => {
     // 如果已有任务在运行，不允许再次启动
     if (isBackupRunning) {
       showGlobalNotification('warning', t('data:governance.backup_already_running'));
@@ -1324,13 +1487,23 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       enterMaintenanceMode(t('data:governance.maintenance_export'));
 
       // 启动后台 ZIP 导出任务
-      const response = await DataGovernanceApi.exportZip(
-        backupId,
-        savePath,
-        compressionLevel,
-        true, // includeChecksums
-        encryptionPassword,
-      );
+      const response =
+        !encryptionPassword && excludeTrash === false
+          ? await invoke<{ job_id: string }>('data_governance_export_zip', {
+              backupId,
+              outputPath: savePath ?? null,
+              compressionLevel,
+              includeChecksums: true,
+              encryptionPassword: null,
+              excludeTrash: false,
+            })
+          : await DataGovernanceApi.exportZip(
+              backupId,
+              savePath,
+              compressionLevel,
+              true, // includeChecksums
+              encryptionPassword,
+            );
       setBackupJobId(response.job_id);
 
       showGlobalNotification('info', t('data:governance.export_started'));
@@ -1339,20 +1512,21 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('ZIP 导出失败:', error);
-      showGlobalNotification('error', localizeCloudStorageError(error, t));
+      notifyErrorDeduped('error', localizeCloudStorageError(error, t));
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
       stopTabLoading('backup');
     }
-  }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
+  }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, i18n?.language, isBackupRunning, startTabLoading, stopTabLoading]);
 
   // 从 ZIP 导入（异步）；WebUI/显式路径优先直接提交，否则走系统文件选择器；password 为加密备份密码
-  const importZip = useCallback(async (password?: string, explicitPath?: string) => {
+  const importZip = useCallback(async (password?: string, explicitPath?: string): Promise<BackupJobOutcome> => {
     // 如果已有任务在运行，不允许再次启动
     if (isBackupRunning) {
-      showGlobalNotification('warning', t('data:governance.backup_already_running'));
-      return;
+      const msg = t('data:governance.backup_already_running');
+      showGlobalNotification('warning', msg);
+      return { success: false, error: msg };
     }
 
     try {
@@ -1370,14 +1544,14 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
       // 完整的空值检查
       if (!selected) {
-        return;
+        return { success: false, cancelled: true };
       }
 
       // 处理数组情况（用户取消时可能返回空数组）
       let zipPath: string;
       if (Array.isArray(selected)) {
         if (selected.length === 0) {
-          return; // 空数组，用户取消
+          return { success: false, cancelled: true }; // 空数组，用户取消
         }
         zipPath = selected[0];
       } else {
@@ -1386,7 +1560,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
       // 确保 zipPath 有效
       if (!zipPath) {
-        return;
+        return { success: false, cancelled: true };
       }
 
       startTabLoading('backup');
@@ -1401,17 +1575,24 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
       showGlobalNotification('info', t('data:governance.import_started'));
 
-      // 使用统一的监听 Hook
+      // 使用统一的监听 Hook 并等待任务终态（供口令错弹窗保留错误反馈）
+      const outcomePromise = waitForBackupJobOutcome(response.job_id);
       await startListening(response.job_id);
+      return await outcomePromise;
     } catch (error: unknown) {
       console.error('ZIP 导入失败:', error);
-      showGlobalNotification('error', localizeCloudStorageError(error, t));
+      const msg = localizeBackupJobError(
+        localizeCloudStorageError(error, t),
+        t,
+      );
+      notifyErrorDeduped('error', msg);
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
       stopTabLoading('backup');
+      return { success: false, error: msg };
     }
-  }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
+  }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, waitForBackupJobOutcome, t, i18n?.language, isBackupRunning, startTabLoading, stopTabLoading]);
 
   // 删除备份
   const deleteBackup = useCallback(async (backupId: string) => {
@@ -1516,13 +1697,13 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   const runCloudSync = useCallback(async (
     direction: 'upload' | 'download' | 'bidirectional',
     strategy: MergeStrategy
-  ) => {
+  ): Promise<boolean> => {
     if (isSyncRunning || syncInFlightRef.current) {
       showGlobalNotification(
         'warning',
         t('data:governance.sync_already_running')
       );
-      return;
+      return false;
     }
     // 全局占用：拦截来自其他入口（如设置页同步区块）的并发触发
     if (!useGlobalSyncStore.getState().beginSync('data-governance')) {
@@ -1530,7 +1711,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         'warning',
         t('data:governance.sync_already_running')
       );
-      return;
+      return false;
     }
     syncInFlightRef.current = true;
 
@@ -1545,6 +1726,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         errorMessage,
       );
     };
+    let succeeded = false;
 
     try {
       const cloudConfig = await loadCloudSyncConfig();
@@ -1555,7 +1737,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           t('data:governance.cloud_sync_not_configured'),
           t('data:governance.cloud_sync_configure_now')
         );
-        return;
+        return false;
       }
       setCloudSyncConfigured(true);
 
@@ -1584,11 +1766,15 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       );
 
       if (result.success) {
+        succeeded = true;
         if (result.error_message || (result.skipped_changes ?? 0) > 0) {
           const skipped = result.skipped_changes ?? 0;
-          const msg = result.error_message ?? t('data:governance.sync_partial_with_skipped', {
-            skipped,
-          });
+          const rawMsg = result.error_message;
+          const msg = rawMsg
+            ? sanitizeAclErrorMessage(rawMsg, t, i18n?.language)
+            : t('data:governance.sync_partial_with_skipped', {
+                skipped,
+              });
           showGlobalNotification('warning', msg);
         } else {
           showGlobalNotification('success', t('data:governance.sync_success'));
@@ -1600,13 +1786,14 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           finalProgress = null;
           showGlobalNotification('info', t('data:governance.sync_cancelled'));
         } else {
-          const sanitized = sanitizeAclErrorMessage(errorMessage, t);
+          const sanitized = sanitizeAclErrorMessage(errorMessage, t, i18n?.language);
           failWith(sanitized);
-          showGlobalNotification('error', sanitized);
+          notifyErrorDeduped('error', sanitized);
         }
       }
 
       await loadSyncStatus();
+      return succeeded;
     } catch (error: unknown) {
       console.error('云端同步失败:', error);
       const rawMessage = getErrorMessage(error);
@@ -1614,10 +1801,13 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         finalProgress = null;
         showGlobalNotification('info', t('data:governance.sync_cancelled'));
       } else {
-        const errorMessage = sanitizeAclErrorMessage(rawMessage, t);
+        const errorMessage = sanitizeAclErrorMessage(rawMessage, t, i18n?.language);
         failWith(errorMessage);
-        showGlobalNotification('error', errorMessage);
+        if (shouldNotifyDeduped('error', errorMessage)) {
+          showGlobalNotification('error', errorMessage);
+        }
       }
+      return false;
     } finally {
       stopTabLoading('sync');
       setIsSyncRunning(false);
@@ -1633,6 +1823,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     exitMaintenanceMode,
     startTabLoading,
     stopTabLoading,
+    i18n?.language,
     t,
   ]);
 
@@ -1679,12 +1870,12 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     } catch (error: unknown) {
       console.error('检测冲突失败:', error);
       setConflicts(null);
-      showGlobalNotification('error', formatGovernanceError(error, t));
+      notifyErrorDeduped('error', formatGovernanceError(error, t, i18n?.language));
     } finally {
       stopTabLoading('sync');
       detectInFlightRef.current = false;
     }
-  }, [isSyncRunning, loadCloudSyncConfig, startTabLoading, stopTabLoading, t]);
+  }, [isSyncRunning, loadCloudSyncConfig, startTabLoading, stopTabLoading, i18n?.language, t]);
 
   // 解决冲突
   const resolveConflicts = useCallback(async (strategy: MergeStrategy) => {
@@ -1800,6 +1991,31 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
   useEffect(loadActiveTab, [loadActiveTab]);
 
+  // 停留在同步标签页时后台静默轮询 + 监听本地编辑/窗口获焦，离线也能及时更新待同步计数
+  useEffect(() => {
+    if (activeTab !== 'sync') return;
+    const refreshSilently = () => {
+      if (!syncInFlightRef.current) {
+        void loadSyncStatus({ silent: true });
+      }
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshSilently();
+      }
+    };
+    const intervalId = window.setInterval(refreshSilently, 5000);
+    window.addEventListener('data-governance:local-change', refreshSilently);
+    window.addEventListener('focus', refreshSilently);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('data-governance:local-change', refreshSilently);
+      window.removeEventListener('focus', refreshSilently);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [activeTab, loadSyncStatus]);
+
   // 监听可恢复任务事件（应用启动时发送）
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -1905,8 +2121,14 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           ) {
             return;
           }
-          if (maintenance.is_in_maintenance_mode) {
-            enterMaintenanceMode(t('data:governance.maintenance_restore'));
+          if (maintenance?.is_in_maintenance_mode) {
+            const opKind = (maintenance as { current_operation?: { kind?: string } | null }).current_operation?.kind;
+            const hasBlockedWithoutOp =
+              !opKind && (maintenance.blocked_components?.length ?? 0) > 0;
+            const hasComponentIssues = (maintenance.component_issues?.length ?? 0) > 0;
+            if (opKind === 'restore' || hasBlockedWithoutOp || hasComponentIssues) {
+              enterMaintenanceMode(t('data:governance.maintenance_restore'));
+            }
           } else {
             exitMaintenanceMode();
           }
@@ -1933,12 +2155,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
   const content = (
     <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as DashboardTab)}>
-      {/* 移动端（如 390px）改为单行可横滑 tab strip，避免 7-8 个页签被 grid-cols-4 挤压截断；
-          每个 trigger 保留 aria-label 与完整文字，兼顾可读性与读屏无障碍。 */}
-      <div className="mb-4 -mx-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:overflow-visible sm:px-0">
+      {/* 移动端（如 360px）使用 flex-wrap 自动换行，确保包括「缓存」「全局版本」在内的所有页签始终完整可见、可直接点击。 */}
+      <div className="mb-4">
         <TabsList
           aria-label={t('data:governance.tabs_nav_label')}
-          className="inline-flex h-auto w-max min-w-full flex-nowrap items-center justify-start gap-1.5 rounded-none border-b border-border/40 bg-transparent px-0 pb-3 sm:flex sm:w-full sm:flex-wrap"
+          className="flex h-auto w-full flex-wrap items-center justify-start gap-1.5 rounded-none border-b border-border/40 bg-transparent px-0 pb-3"
         >
           <TabsTrigger value="overview" aria-label={t('data:governance.tab_overview')} className={tabTriggerClassName}>
             <Gauge className="h-3.5 w-3.5 shrink-0" />
@@ -2010,6 +2231,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         <BackupTab
           backups={backups}
           loading={backupLoading}
+          onCreateLocalBackup={createLocalBackup}
           onBackupAndExportZip={backupAndExportZip}
           onDeleteBackup={deleteBackup}
           onVerifyBackup={verifyBackup}
@@ -2028,7 +2250,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
             setShowRestartDialog(false);
             try {
               await TauriAPI.restartApp();
-              if (import.meta.env.DEV) {
+              if (import.meta.env.DEV || isWebUiShell()) {
                 window.location.reload();
               }
             } catch (error: unknown) {

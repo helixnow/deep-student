@@ -362,6 +362,9 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 <span className="text-base text-muted-foreground">%</span>
               </span>
               <span className="text-xs text-muted-foreground">{t('mockExam.correctRateLabel')}</span>
+              <span className="text-[11px] text-muted-foreground tabular-nums">
+                {score.correct_count}/{score.total_count}
+              </span>
             </div>
           </div>
           {score.comment && (

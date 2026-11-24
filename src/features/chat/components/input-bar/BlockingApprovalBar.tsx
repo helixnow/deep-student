@@ -110,12 +110,54 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
   // onEnd/onError（reason=timeout / approval_timeout）解析出已决态并出队。
   const isTimedOutLocally = !isResolved && interaction.timeoutSeconds > 0 && remainingSeconds <= 0;
   const shellScope = interaction.runtimeScope?.kind === 'shell' ? interaction.runtimeScope : null;
-  const skillApprovalScope =
+  const normalizedToolShort = interaction.toolName.replace(/^builtin[-:]/, '');
+  const isSkillTrustRequest =
+    normalizedToolShort === 'skill_trust_request' ||
+    (interaction.runtimeScope?.kind === 'skill_lifecycle' &&
+      interaction.runtimeScope.toolName === 'skill_trust_request');
+  const rawSkillApprovalScope =
     interaction.runtimeScope?.kind === 'skill_install' ||
     interaction.runtimeScope?.kind === 'skill_workshop' ||
     interaction.runtimeScope?.kind === 'skill_lifecycle'
       ? interaction.runtimeScope
       : null;
+  const fallbackSkillArgs = isSkillTrustRequest ? interaction.arguments : null;
+  const fallbackSkillId = typeof (fallbackSkillArgs?.skill_id ?? fallbackSkillArgs?.skillId) === 'string'
+    ? String(fallbackSkillArgs?.skill_id ?? fallbackSkillArgs?.skillId).trim()
+    : undefined;
+  const fallbackReason = typeof fallbackSkillArgs?.reason === 'string'
+    ? fallbackSkillArgs.reason.trim()
+    : undefined;
+  const fallbackSha = typeof (fallbackSkillArgs?.expected_package_sha256 ?? fallbackSkillArgs?.expectedPackageSha256) === 'string'
+    ? String(fallbackSkillArgs?.expected_package_sha256 ?? fallbackSkillArgs?.expectedPackageSha256).trim().slice(0, 12)
+    : undefined;
+  const fallbackRisk = typeof (fallbackSkillArgs?.declared_risk_level ?? fallbackSkillArgs?.declaredRiskLevel) === 'string'
+    ? String(fallbackSkillArgs?.declared_risk_level ?? fallbackSkillArgs?.declaredRiskLevel).trim().toLowerCase()
+    : undefined;
+  const skillApprovalScope = rawSkillApprovalScope ?? (isSkillTrustRequest ? {
+    kind: 'skill_lifecycle' as const,
+    toolSource: 'builtin',
+    toolName: 'skill_trust_request',
+    rootId: '-',
+    cwd: '-',
+    commandPrefix: '-',
+    commandHash: '-',
+    envPlanHash: '-',
+    timeoutMs: 0,
+    maxOutputBytes: 0,
+    trackFileChanges: false,
+    riskLevel: fallbackRisk ?? interaction.sensitivity,
+    networkAllowed: false,
+    hasShellOperators: false,
+    usesScriptRunner: false,
+    firstToken: null,
+    skillRootId: null,
+    rememberDisabled: true,
+    ...(fallbackReason ? { sourceSummary: fallbackReason } : {}),
+    ...(fallbackSha ? { expectedSha256Prefix: fallbackSha } : {}),
+    ...(fallbackRisk ? { declaredRiskLevel: fallbackRisk } : {}),
+    ...(fallbackSkillId ? { skillId: fallbackSkillId } : {}),
+  } : null);
   const skillApprovalRisk =
     skillApprovalScope?.kind === 'skill_install' || skillApprovalScope?.kind === 'skill_lifecycle'
       ? (skillApprovalScope.declaredRiskLevel ?? skillApprovalScope.riskLevel)
@@ -123,6 +165,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
   // Craft+Relaxed Medium only; privilege / High / rememberDisabled stay one-shot.
   // Product deliberately omits always/global persistent remember.
   const rememberDisabled = Boolean(interaction.runtimeScope?.rememberDisabled)
+    || isSkillTrustRequest
     || interaction.permissionPreset !== 'relaxed'
     || interaction.sensitivity !== 'medium';
   // 工具显示名称
@@ -628,7 +671,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
           {skillApprovalScope.skillId && (
             <span className="rounded bg-muted px-1.5 py-0.5 font-mono">{skillApprovalScope.skillId}</span>
           )}
-          {skillApprovalScope.overwriteExisting && (
+          {'overwriteExisting' in skillApprovalScope && skillApprovalScope.overwriteExisting && (
             <span className="rounded bg-destructive/10 px-1.5 py-0.5 font-mono text-destructive">
               overwrite
             </span>
@@ -711,9 +754,10 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             size="sm"
             onClick={() => setIsReasonOpen((prev) => !prev)}
             disabled={disabled}
+            data-testid={isSkillTrustRequest ? 'skill-trust-reject-btn' : undefined}
             className="text-destructive hover:text-destructive/80 [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
           >
-            {t('approval.reject')}
+            {isSkillTrustRequest ? t('approval.skillTrustReject') : t('approval.reject')}
           </DsButton>
 
           {/* 本会话允许（session only；无始终允许 / global persistent） */}
@@ -737,9 +781,10 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             onClick={() => handleResponse('approve')}
             disabled={disabled}
             autoFocus
+            data-testid={isSkillTrustRequest ? 'skill-trust-approve-btn' : undefined}
             className="bg-success text-success-foreground [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
           >
-            {t('approval.approve')}
+            {isSkillTrustRequest ? t('approval.skillTrustApprove') : t('approval.approve')}
           </DsButton>
         </div>
       </div>

@@ -318,4 +318,20 @@ describe('useWorkbenchOverlay — App Exposé 过滤态（P2）', () => {
     expect(useWorkbenchOverlay.getState().exposeOpen).toBe(false);
     expect(useWorkbenchOverlay.getState().exposeAppTypeId).toBeNull();
   });
+
+  it('S4-12: F3 与 Ctrl+ArrowUp 在双平台均匹配 expose（不劫持 Cmd+ArrowUp 或 Shift+F3）', () => {
+    for (const isMac of [false, true]) {
+      setWorkbenchShortcutPlatformOverride(isMac);
+      expect(matchWorkbenchShortcut(keydown({ key: 'F3', code: 'F3' }))?.id).toBe('expose');
+      expect(
+        matchWorkbenchShortcut(keydown({ key: 'ArrowUp', code: 'ArrowUp', ctrlKey: true }))?.id,
+      ).toBe('expose');
+      expect(
+        matchWorkbenchShortcut(keydown({ key: 'F3', code: 'F3', shiftKey: true })),
+      ).toBeNull();
+      expect(
+        matchWorkbenchShortcut(keydown({ key: 'ArrowUp', code: 'ArrowUp', metaKey: true })),
+      ).toBeNull();
+    }
+  });
 });

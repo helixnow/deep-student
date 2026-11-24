@@ -21,9 +21,9 @@
     "endpointHint": "WebDAV 服务器的完整 URL",
     "username": "用户名",
     "usernamePlaceholder": "your@email.com",
-    "password": "密码",
-    "passwordPlaceholder": "应用专用密码",
-    "passwordHint": "建议使用应用专用密码而非登录密码",
+    "password": "应用专用密码",
+    "passwordPlaceholder": "输入应用专用密码（如坚果云授权密码）",
+    "passwordHint": "建议使用应用专用密码而非登录密码（已保存后留空表示保持不变）",
     "insecureWarning": {
       "title": "不安全的 WebDAV 连接",
       "description": "您正在使用明文 HTTP（http://）连接 WebDAV 服务器，用户名、密码以及传输的数据将以明文形式在网络中传输，可能被中间人窃取。建议使用 HTTPS（https://）加密连接。",
@@ -70,9 +70,9 @@
   },
 
   "root": {
-    "label": "根目录",
+    "label": "同步根目录",
     "placeholder": "deep-student-sync",
-    "hint": "云端存储的根目录路径"
+    "hint": "云端存储的同步根目录名称"
   },
 
   "encryption": {
@@ -142,7 +142,22 @@
   "validation": {
     "embeddedCredentials": "URL 中不能包含内嵌用户名或密码，请改填下方的专用凭据输入框",
     "insecureHttpUrl": "不允许使用明文 HTTP（仅本机回环地址可使用 http://，其余地址请使用 https://）",
-    "rootPathTraversal": "根目录路径不能包含 \"..\" 路径穿越片段"
+    "rootPathTraversal": "根目录路径不能包含 \"..\" 路径穿越片段",
+    "disabledReasonsTitle": "需先完成以下配置项才能测试连接或保存：",
+    "webdavEndpointRequired": "请填写 WebDAV 服务器地址",
+    "webdavEndpointInvalid": "请填写有效的 http:// 或 https:// 服务器地址",
+    "webdavUsernameRequired": "请填写 WebDAV 用户名",
+    "webdavPasswordRequired": "请填写 WebDAV 应用专用密码",
+    "s3EndpointRequired": "请填写 S3 Endpoint URL",
+    "s3EndpointInvalid": "请填写有效的 http:// 或 https:// S3 Endpoint",
+    "s3BucketRequired": "请填写 S3 存储桶名称",
+    "s3AccessKeyRequired": "请填写 S3 Access Key ID",
+    "s3SecretKeyRequired": "请填写 S3 Secret Access Key",
+    "ftpEndpointRequired": "请填写 FTP 服务器地址",
+    "ftpEndpointInvalid": "请填写有效的 ftp:// 或 ftps:// 服务器地址",
+    "ftpUsernameRequired": "请填写 FTP 用户名",
+    "ftpPasswordRequired": "请填写 FTP 密码",
+    "rootRequired": "请填写同步根目录"
   },
 
   "clearConfirm": {
@@ -264,6 +279,7 @@
     "missingWebdavConfig": "缺少 WebDAV 配置",
     "missingS3Config": "缺少 S3 配置",
     "missingFtpConfig": "缺少 FTP 配置",
+    "saveBeforeUpload": "当前配置尚未保存：请先点击「保存配置」使其生效，再执行云端操作。",
     "unknown": "未知错误"
   },
   

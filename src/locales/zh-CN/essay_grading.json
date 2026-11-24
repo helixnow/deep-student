@@ -88,7 +88,8 @@
     "middle_school": "初中",
     "high_school": "高中",
     "college": "大学",
-    "other": "其他"
+    "other": "其他",
+    "exam_rubric_note": "当前模式或自定义要求自带评分标准，不会强加高中生标准。"
   },
   "session": {
     "new": "新建会话",

@@ -5,7 +5,7 @@ import { CheckCircle, ArrowCounterClockwise, XCircle } from '@phosphor-icons/rea
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 
-import { describeManagerError } from './reasons';
+import { describeManagerError, resolveManagerErrorCode } from './reasons';
 import type { PluginPackageResult } from './types';
 
 export interface InstallFeedbackProps {
@@ -59,6 +59,7 @@ export function InstallFeedback({ result, onDismiss, className }: InstallFeedbac
             </>
           ) : null}
           {result.status === 'rejected' ? (() => {
+            const effectiveCode = resolveManagerErrorCode(result.code, result.detail);
             const friendly = describeManagerError(t, result.code, result.detail);
             return (
               <>
@@ -76,7 +77,9 @@ export function InstallFeedback({ result, onDismiss, className }: InstallFeedbac
                 </div>
                 <details className="text-xs text-muted-foreground">
                   <summary className="cursor-pointer select-none hover:text-foreground">
-                    {t('install.rejected.technical', { code: result.code })}
+                    {effectiveCode === 'PLUGIN_INSTALL_FAILED'
+                      ? t('install.rejected.technicalGeneric')
+                      : t('install.rejected.technical', { code: effectiveCode })}
                   </summary>
                   <p className="mt-1 break-words font-mono text-[11px] opacity-85">{friendly.technical}</p>
                 </details>

@@ -47,4 +47,13 @@ describe('htmlSandboxPolicy', () => {
     expect(out).not.toContain('data-opt');
     expect(getHtmlSandboxPermissions('chat-safe')).toBe('');
   });
+
+  it('chat mode strips unclosed script tags, inline handlers, and javascript URLs to avoid CSP violations', () => {
+    const dirty =
+      '<div onclick="hack()"><a href="javascript:alert(1)">Link</a><script>if(true){var x=1;';
+    const out = sanitizeHtmlForPreview(dirty, 'chat-safe');
+    expect(out).not.toContain('<script');
+    expect(out).not.toContain('onclick');
+    expect(out).not.toContain('javascript:');
+  });
 });

@@ -417,6 +417,7 @@
     "description": "Safe-mode sessions load official plugins only; community plugins stay disabled until a normal restart.",
     "rowHint": "Community plugins cannot be enabled in safe mode",
     "exitButton": "Exit Safe Mode & Restart",
+    "enterButton": "Restart in Safe Mode",
     "importDisabled": "Importing and installing plugins are disabled in safe mode. Exit safe mode and restart first."
   },
   "row": {
@@ -525,7 +526,8 @@
     "rejected": {
       "title": "Could not install package",
       "detail": "{{detail}}",
-      "technical": "Technical details ({{code}})"
+      "technical": "Technical details ({{code}})",
+      "technicalGeneric": "Technical details"
     },
     "rollback": {
       "restored": "Previous version restored",
@@ -567,6 +569,7 @@
     "reload": "Consent was saved but reloading failed",
     "detailSuffix": ": {{detail}}",
     "technical": "Technical details ({{code}})",
+    "technicalGeneric": "Technical details",
     "reasons": {
       "packageTraversal": "This package contains unsafe file paths trying to escape the plugin folder and was blocked.",
       "packageInvalidJson": "The package manifest (package.json) is corrupted or not valid JSON. Ask the author to re-export it.",

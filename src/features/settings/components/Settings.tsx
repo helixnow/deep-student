@@ -22,6 +22,7 @@ import type { AutomationListen } from './automationSettingsApi';
 import { useSlot } from '@/ui-kernel/react';
 import type { SettingsSection, SettingsSectionPropsFactories } from '@/ui-kernel/contracts/settings';
 import { settingsNavigation } from '@/ui-plugins/official/settings/navigation';
+import { mergeDataGovernanceSearchEntries } from './useSettingsNavigation';
 import { SettingsMobileNavigation } from './SettingsMobileNavigation';
 import { useSettingsShellStore } from '@/stores/settingsShellStore';
 import { APP_EVENTS, useAppEvent } from '@/events';
@@ -74,7 +75,7 @@ const invoke = isTauri ? tauriInvoke : null;
 
 export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) => {
   const { t } = useTranslation(['settings', 'common']);
-  const { t: navigationT } = useTranslation(['settings', 'common', 'data', 'workbench']);
+  const { t: navigationT } = useTranslation(['settings', 'common', 'data', 'workbench', 'sync', 'cloudStorage']);
   const sectionEntries = useSlot<SettingsSection>('settings.sections');
   const { isSmallScreen } = useBreakpoint();
   const isMobile = isMobilePlatform() || (isWebUiShell() && isSmallScreen);
@@ -103,10 +104,13 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   const [mcpStatusInfo, setMcpStatusInfo] = useState<McpStatusInfo | null>(null);
   const isMcpLoading = activeTab === 'mcp' && loading;
 
-  const { sidebarCategories, sidebarNavItems, settingsSearchIndex } = useMemo(
-    () => settingsNavigation(sectionEntries, navigationT, { isMobile }),
-    [sectionEntries, navigationT, isMobile],
-  );
+  const { sidebarCategories, sidebarNavItems, settingsSearchIndex } = useMemo(() => {
+    const nav = settingsNavigation(sectionEntries, navigationT, { isMobile });
+    return {
+      ...nav,
+      settingsSearchIndex: mergeDataGovernanceSearchEntries(nav.settingsSearchIndex, navigationT),
+    };
+  }, [sectionEntries, navigationT, isMobile]);
   const activeSectionEntry = sectionEntries.find((entry) => entry.key === activeTab);
   // Keep legacy section IDs as the single navigation source of truth.
   const activeCategory = sidebarCategories.find((category) => category.items.some((item) => item.value === activeTab));

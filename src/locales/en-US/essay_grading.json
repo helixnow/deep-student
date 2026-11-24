@@ -88,7 +88,8 @@
     "middle_school": "Middle School",
     "high_school": "High School",
     "college": "College",
-    "other": "Other"
+    "other": "Other",
+    "exam_rubric_note": "This mode or custom rubric uses its own criteria without injecting high-school standards."
   },
   "session": {
     "new": "New Session",

@@ -258,7 +258,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
 
   // ========== 状态 ==========
   const [registryVersion, setRegistryVersion] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // 搜索和筛选状态
   const [searchQuery, setSearchQuery] = useState('');
@@ -1198,6 +1198,9 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
       if (screenPosition === 'right' && (editorOpen || rightPanelOpen)) {
         return undefined;
       }
+      if (isLoading && allSkills.length === 0) {
+        return t('skills:selector.loading');
+      }
       return t('skills:management.skills_count', { count: allSkills.length });
     }
     // 右侧面板打开时不显示副标题
@@ -1211,7 +1214,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
       return defaultSkills.map(s => s.name).join(', ');
     }
     return undefined;
-  }, [allSkills.length, defaultSkills, t, screenPosition, editorOpen, rightPanelOpen, isSmallScreen]);
+  }, [allSkills.length, defaultSkills, t, screenPosition, editorOpen, rightPanelOpen, isSmallScreen, isLoading]);
 
   // 判断是否在编辑器视图
   const isEditorView = screenPosition === 'right' && (editorOpen || rightPanelOpen);
@@ -1441,7 +1444,11 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             {/* 标题不收缩：右侧动作条占满时 truncate 会把标题压成 0 宽，只剩「/ 62 个」 */}
             <span className={cn(inTitlebar ? TITLEBAR_TITLE_CLASS : 'font-medium text-foreground truncate', 'shrink-0')}>{t('skills:management.all_skills')}</span>
             <span className="text-muted-foreground/40">/</span>
-            <span className="min-w-0 truncate">{t('skills:management.skills_count', { count: filteredSkills.length })}</span>
+            <span className="min-w-0 truncate">
+              {isLoading && allSkills.length === 0
+                ? t('skills:selector.loading')
+                : t('skills:management.skills_count', { count: filteredSkills.length })}
+            </span>
           </div>
 
           <div className="flex items-center gap-1 flex-shrink-0">
@@ -1656,6 +1663,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             onSelectSkill={(skill) => setSelectedSkillId(skill.id)}
             cardRefsMap={cardRefsMap}
             editingSkillId={editorOpen ? editingSkill?.id : null}
+            isLoading={isLoading}
           />
         </div>
       </CustomScrollArea>

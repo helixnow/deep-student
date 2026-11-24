@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { SettingsAboutFooter } from './SettingsAboutFooter';
 import { revealSettingsSection } from './settingsSearchReveal';
 import type { SettingsSearchIndexItem, SettingsSidebarCategory, SettingsSidebarNavItem } from './useSettingsNavigation';
+import { useSettingsShellStore } from '@/stores/settingsShellStore';
 
 interface SettingsMobileNavigationProps {
   categories: SettingsSidebarCategory[];
@@ -62,6 +63,9 @@ export function SettingsMobileNavigation({ categories, items, searchIndex, query
                   size="md"
                   key={`${item.tab}-${item.label}-${index}`}
                   onClick={() => {
+                    if (item.tab === 'data-governance' && item.subTab) {
+                      useSettingsShellStore.getState().requestDataGovernanceTab(item.subTab);
+                    }
                     onOpenTab(item.tab);
                     revealSettingsSection(item.label);
                   }}

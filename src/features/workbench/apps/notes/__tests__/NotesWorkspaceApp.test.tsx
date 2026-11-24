@@ -1474,4 +1474,29 @@ describe('WorkspaceTabs accessibility', () => {
     expect(tabs[0]).toHaveAttribute('tabindex', '0');
     expect(tabs[1]).toHaveAttribute('tabindex', '-1');
   });
+
+  it('renders a direct top Backlinks / Graph toggle button when onToggleBacklinks is provided', () => {
+    const onToggleBacklinks = vi.fn();
+    render(
+      <WorkspaceTabs
+        tabs={[{ key: 'note:a', type: 'note', id: 'a', title: 'Alpha' }]}
+        activeKey="note:a"
+        rightTabKey={null}
+        onActivate={vi.fn()}
+        onClose={vi.fn()}
+        onReorder={vi.fn()}
+        onOpenContextMenu={vi.fn()}
+        contextMenuKey={null}
+        sidebarWidth="0px"
+        saveStates={new Map()}
+        backlinksOpen={false}
+        onToggleBacklinks={onToggleBacklinks}
+      />,
+    );
+
+    const toggleBtn = screen.getByRole('button', { name: /反向链接 \/ 图谱|Backlinks \/ Graph/i });
+    expect(toggleBtn).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(toggleBtn);
+    expect(onToggleBacklinks).toHaveBeenCalledTimes(1);
+  });
 });

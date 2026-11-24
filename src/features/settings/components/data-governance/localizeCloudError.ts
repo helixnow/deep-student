@@ -4,8 +4,12 @@
  * 短密码 / 读不到已存密码 / E2EE 三类失败优先按稳定 code 映射；
  * 接线前或旧客户端的中文诊断仍兜底。云设置页与本地 ZIP 导入导出共用这一层。
  */
+import i18next from 'i18next';
 import { getErrorMessage } from '@/utils/errorUtils';
 import * as cloudApi from '@/utils/cloudStorageApi';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+
+type NotificationType = 'success' | 'error' | 'info' | 'warning';
 import {
   classifySyncE2eeError,
   classifySyncE2eeErrorCode,
@@ -51,7 +55,134 @@ function readCloudEncryptionI18nKey(
   return undefined;
 }
 
-export function localizeCloudStorageError(error: unknown, t: Translate): string {
+export function isEnglishUiLanguage(language?: string): boolean {
+  const candidate = language ?? (typeof i18next?.language === 'string' ? i18next.language : undefined);
+  return typeof candidate === 'string' && candidate.toLowerCase().startsWith('en');
+}
+
+export function localizeBackendErrorText(raw: string, language?: string): string {
+  if (!raw || !isEnglishUiLanguage(language)) return raw;
+  let text = raw;
+
+  // Progress & retry status messages
+  text = text
+    .replace(
+      /云端请求暂不可用，(\d+)\s*秒后自动重试（第\s*(\d+\/\d+)\s*次）…?/g,
+      'Cloud request temporarily unavailable, retrying in $1s (attempt $2)...',
+    )
+    .replace(
+      /云端目录查询暂不可用，(\d+)\s*秒后自动重试（第\s*(\d+\/\d+)\s*次）…?/g,
+      'Cloud directory check temporarily unavailable, retrying in $1s (attempt $2)...',
+    )
+    .replace(
+      /云端上传暂不可用，(\d+)\s*秒后自动重试（第\s*(\d+\/\d+)\s*次）…?/g,
+      'Cloud upload temporarily unavailable, retrying in $1s (attempt $2)...',
+    )
+    .replace(
+      /云端限流保护，约\s*(\d+)\s*秒后自动继续…?/g,
+      'Cloud rate-limit protection active, resuming in ~$1s...',
+    )
+    .replace(/上传批次\s*(\d+\/\d+)/g, 'Uploading batch $1');
+
+  // Common WebDAV / Sync / Cloud Storage prefixes & error details
+  const replacements: ReadonlyArray<[RegExp, string]> = [
+    [/缺少 WebDAV 配置/g, 'Missing WebDAV configuration'],
+    [/缺少 S3 配置/g, 'Missing S3 configuration'],
+    [/缺少 FTP 配置/g, 'Missing FTP configuration'],
+    [/WebDAV 密码不能为空/g, 'WebDAV password cannot be empty'],
+    [/WebDAV 用户名不能为空/g, 'WebDAV username cannot be empty'],
+    [/WebDAV endpoint 不能为空/g, 'WebDAV endpoint cannot be empty'],
+    [/无效的 WebDAV endpoint/g, 'Invalid WebDAV endpoint'],
+    [/S3 Secret Access Key 不能为空/g, 'S3 Secret Access Key cannot be empty'],
+    [/FTP 密码不能为空/g, 'FTP password cannot be empty'],
+    [/WebDAV\s+PROPFIND\s+([^\s:：]+)\s*失败（已重试\s*(\d+)\s*次）\s*[:：]\s*/g, 'WebDAV PROPFIND $1 failed (retried $2 times): '],
+    [/WebDAV\s+PROPFIND\s*失败（已重试\s*(\d+)\s*次）\s*[:：]\s*/g, 'WebDAV PROPFIND failed (retried $1 times): '],
+    [/WebDAV\s+PROPFIND\s+([^\s:：]+)\s*失败\s*[:：]?\s*/g, 'WebDAV PROPFIND $1 failed: '],
+    [/WebDAV\s+PROPFIND\s*失败/g, 'WebDAV PROPFIND failed'],
+    [/WebDAV\s+([A-Z]+)\s+请求失败（已重试\s*(\d+)\s*次）\s*[:：]\s*/g, 'WebDAV $1 request failed (retried $2 times): '],
+    [/WebDAV\s+上传(?:\s+([^\s:：]+))?\s*失败（已重试\s*(\d+)\s*次）\s*[:：]?\s*/g, 'WebDAV upload $1 failed (retried $2 times): '],
+    [/WebDAV\s+下载失败\s*[:：]?\s*/g, 'WebDAV download failed: '],
+    [/WebDAV\s+服务暂不可用（([^）]+)），请稍后重试/g, 'WebDAV service temporarily unavailable ($1). Please try again later.'],
+    [/WebDAV\s+同步目录不存在，且服务器暂时锁定资源（([^）]+)）：[^。.\n]*/g, 'WebDAV sync directory missing and locked ($1). Please try again later.'],
+    [/WebDAV\s+同步目录不存在，且服务器正在限流（([^）]+)）：[^。.\n]*/g, 'WebDAV sync directory missing and rate-limited ($1). Please try again later.'],
+    [/WebDAV\s+同步目录不存在且无法创建/g, 'WebDAV sync directory does not exist and could not be created'],
+    [/服务端限流（未重试）/g, 'Rate limited by cloud server (not retried)'],
+    [/服务端限流/g, 'Rate limited by cloud server'],
+    [/检查云端变更断层失败\s*[:：]\s*/g, 'Failed to check cloud change log gaps: '],
+    [/读取远端同步格式失败\s*[:：]\s*/g, 'Failed to read remote sync format: '],
+    [/创建云存储失败\s*[:：]\s*/g, 'Failed to create cloud storage: '],
+    [/上传文件失败\s*[:：]\s*/g, 'Failed to upload file: '],
+    [/下载备份失败\s*[:：]\s*/g, 'Failed to download backup: '],
+    [/备份数据库失败\s*[:：]\s*/g, 'Database backup failed: '],
+    [/打包 ZIP 失败\s*[:：]\s*/g, 'Failed to package ZIP: '],
+    [/导入 ZIP 失败\s*[:：]\s*/g, 'Failed to import ZIP: '],
+    [/恢复数据库失败\s*[:：]\s*/g, 'Database restore failed: '],
+    [/同步\s*schema\s*预检失败\s*[:：]\s*/g, 'Sync schema preflight failed: '],
+    [/双向同步失败\s*[:：]\s*/g, 'Bidirectional sync failed: '],
+    [/下载同步失败\s*[:：]\s*/g, 'Download sync failed: '],
+    [/上传同步失败(?:（批次\s*(\d+\/\d+)）)?\s*[:：]\s*/g, 'Upload sync failed ($1): '],
+    [/上传变更失败\s*[:：]\s*/g, 'Failed to upload changes: '],
+    [/上传刷新清单失败\s*[:：]\s*/g, 'Failed to upload refreshed manifest: '],
+    [/上传清单失败\s*[:：]\s*/g, 'Failed to upload manifest: '],
+    [/同步未完全成功：部分步骤失败或有变更被跳过，请检查同步详情。?/g, 'Sync completed with partial errors or skipped changes. Please inspect sync details.'],
+    [/同步已取消/g, 'Sync cancelled'],
+    [/另一个数据治理任务（[^）]*）正在进行中，请稍后再试。?/g, 'Another data-governance operation is currently in progress. Please try again later.'],
+    [/数据治理操作正在进行（维护模式），请稍后再试。?/g, 'A data-governance operation is in progress (maintenance mode). Please try again later.'],
+    [/读取\s*PROPFIND\s*响应失败\s*[:：]\s*/g, 'Failed to read PROPFIND response: '],
+    [/读取响应体失败\s*[:：]\s*/g, 'Failed to read response body: '],
+    [/云端文件不存在/g, 'Cloud file not found'],
+  ];
+
+  for (const [pattern, replacement] of replacements) {
+    text = text.replace(pattern, replacement);
+  }
+  text = text.replace(/\(\s*\)/g, '').replace(/:\s*$/, '').trim();
+  if (/(?:HTTP\s*401|\b401\s*Unauthorized\b)/i.test(text) && !/app-specific password/i.test(text)) {
+    text = `${text} (Check username and app-specific password)`;
+  }
+  return text;
+}
+
+let lastNotifiedKey = '';
+let lastNotifiedAt = 0;
+
+export function shouldNotifyDeduped(
+  type: NotificationType,
+  message: string,
+  title?: string,
+  windowMs = 300,
+): boolean {
+  const now = Date.now();
+  const key = `${type}:${title ?? ''}:${message}`;
+  if (key === lastNotifiedKey && now - lastNotifiedAt < windowMs) {
+    return false;
+  }
+  lastNotifiedKey = key;
+  lastNotifiedAt = now;
+  return true;
+}
+
+export function notifyErrorDeduped(
+  type: NotificationType,
+  message: string,
+  title?: string,
+  windowMs = 300,
+): void {
+  if (!shouldNotifyDeduped(type, message, title, windowMs)) {
+    return;
+  }
+  if (title !== undefined) {
+    showGlobalNotification(type, message, title);
+  } else {
+    showGlobalNotification(type, message);
+  }
+}
+
+export function localizeCloudStorageError(
+  error: unknown,
+  t: Translate,
+  language?: string,
+): string {
   const raw = getErrorMessage(error);
   const encryptionKey = readCloudEncryptionI18nKey(error);
   if (encryptionKey === 'cloudStorage:encryption.tooShort') {
@@ -150,5 +281,5 @@ export function localizeCloudStorageError(error: unknown, t: Translate): string 
   }
   const platformErrorKey = cloudApi.getCloudPlatformErrorI18nKey(error);
   if (platformErrorKey) return t(platformErrorKey);
-  return raw;
+  return localizeBackendErrorText(raw, language);
 }

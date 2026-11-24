@@ -511,7 +511,11 @@ export async function createBackup(context: BackupContext, options: CreateBackup
       updateCoverage(manifest, 'agents', 'excluded', [], 'workspaces assets were not selected');
     }
 
-    try { markFull(manifest); } catch { markPartial(manifest); }
+    try { markFull(manifest); }
+    catch (error) {
+      ctx.logger('backup').warn(`[data_governance] markFull 降级为 partial_overlay: ${ioMessage(error)}`);
+      markPartial(manifest);
+    }
     refreshIncludedComponents(manifest);
 
     options.onProgress?.('verify', '正在校验备份', 0, 1);

@@ -257,10 +257,10 @@ export const MessageTouchActionBar: React.FC<MessageTouchActionBarProps> = ({
               onClick={handleRetry}
               disabled={isLocked || isRetrying}
               tabIndex={open ? 0 : -1}
-              aria-label={t('messageItem.actions.retry')}
+              aria-label={t('messageItem.actions.regenerate')}
             >
               <ArrowCounterClockwise className={cn('h-4 w-4', isRetrying && 'animate-spin')} />
-              <span>{t('messageItem.actions.retry')}</span>
+              <span>{t('messageItem.actions.regenerate')}</span>
             </DsButton>
           )}
 

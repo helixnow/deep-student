@@ -5,6 +5,7 @@
  */
 
 import React, { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Background,
   BackgroundVariant,
@@ -28,24 +29,33 @@ interface GraphNodeData extends Record<string, unknown> {
   title: string;
   degree: 0 | 1 | 2;
   exists: boolean;
+  currentBadge: string;
 }
 
 type GraphFlowNode = Node<GraphNodeData, 'localGraphNode'>;
 
-const GraphNodeView: React.FC<NodeProps<GraphFlowNode>> = ({ data }) => (
-  <div
-    className="notes-graph-node"
-    data-degree={data.degree}
-    data-ghost={data.exists ? undefined : 'true'}
-    title={data.title}
-  >
-    {/* 隐形连接柄：仅为让边有锚点，视觉上不存在 */}
-    <Handle type="target" position={Position.Top} className="notes-graph-handle" isConnectable={false} />
-    <span className="notes-graph-node-dot" aria-hidden="true" />
-    <span className="notes-graph-node-label">{data.title}</span>
-    <Handle type="source" position={Position.Bottom} className="notes-graph-handle" isConnectable={false} />
-  </div>
-);
+const GraphNodeView: React.FC<NodeProps<GraphFlowNode>> = ({ data }) => {
+  const isActive = data.degree === 0;
+  return (
+    <button
+      type="button"
+      className="notes-graph-node"
+      data-degree={data.degree}
+      data-active={isActive ? 'true' : undefined}
+      data-ghost={data.exists ? undefined : 'true'}
+      aria-current={isActive ? 'page' : undefined}
+      aria-label={isActive ? `${data.title} (${data.currentBadge})` : data.title}
+      title={data.title}
+    >
+      {/* 隐形连接柄：仅为让边有锚点，视觉上不存在 */}
+      <Handle type="target" position={Position.Top} className="notes-graph-handle" isConnectable={false} />
+      <span className="notes-graph-node-dot" aria-hidden="true" />
+      <span className="notes-graph-node-label">{data.title}</span>
+      {isActive && <span className="notes-graph-node-badge">{data.currentBadge}</span>}
+      <Handle type="source" position={Position.Bottom} className="notes-graph-handle" isConnectable={false} />
+    </button>
+  );
+};
 
 const nodeTypes = { localGraphNode: GraphNodeView };
 
@@ -61,13 +71,18 @@ export const NotesLocalGraphView: React.FC<NotesLocalGraphViewProps> = ({
   onOpenNode,
   ariaLabel,
 }) => {
+  const { t } = useTranslation('notes');
+  const currentBadge = t('workspace.graphCurrentNode', { defaultValue: '当前' });
+  const wikilinkLabel = t('workspace.graphEdgeWikilink', { defaultValue: '双链' });
+  const noterefLabel = t('workspace.graphEdgeNoteref', { defaultValue: '引用' });
+
   const { nodes, edges } = useMemo(() => {
     const positioned = layoutLocalGraph(data);
     const flowNodes: GraphFlowNode[] = positioned.map((node) => ({
       id: node.id,
       type: 'localGraphNode',
       position: { x: node.x, y: node.y },
-      data: { title: node.title, degree: node.degree, exists: node.exists },
+      data: { title: node.title, degree: node.degree, exists: node.exists, currentBadge },
       // 节点以中心点定位（同心圆坐标即节点中心）
       origin: [0.5, 0.5] as [number, number],
       draggable: true,
@@ -81,11 +96,16 @@ export const NotesLocalGraphView: React.FC<NotesLocalGraphViewProps> = ({
       target: edge.target,
       type: 'straight',
       focusable: false,
+      label: edge.kind === 'noteref' ? noterefLabel : wikilinkLabel,
+      labelStyle: { fontSize: 9.5, fill: 'hsl(var(--muted-foreground))' },
+      labelBgStyle: { fill: 'hsl(var(--background) / 86%)' },
+      labelBgPadding: [4, 1.5] as [number, number],
+      labelBgBorderRadius: 4,
       // 按链接类型分色（RemNote 图谱心智）：unknown 与 wikilink 共用中性样式
       className: `notes-graph-edge notes-graph-edge-${edge.kind}`,
     }));
     return { nodes: flowNodes, edges: flowEdges };
-  }, [data]);
+  }, [currentBadge, data, noterefLabel, wikilinkLabel]);
 
   const onNodeClick: NodeMouseHandler<GraphFlowNode> = (_event, node) => {
     if (!node.data.exists) return;
