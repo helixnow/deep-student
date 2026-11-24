@@ -346,6 +346,11 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
       if (appsOpen) {
         closeAppsPanel();
       }
+      const overlayState = useWorkbenchOverlay.getState();
+      const wasExposeOpen = overlayState.exposeOpen;
+      if (wasExposeOpen) {
+        overlayState.closeExpose();
+      }
       const state = useWindowStore.getState();
       const current = Object.values(state.windows)
         .filter((w) => w.typeId === typeId)
@@ -399,7 +404,7 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
         }
         const win = current[0];
         const topId = state.focusStack[state.focusStack.length - 1];
-        if (topId === win.id && !win.minimized && !appsOpen) {
+        if (topId === win.id && !win.minimized && !appsOpen && !wasExposeOpen) {
           requestMinimizeAnimated(win.id);
         } else {
           state.focusWindow(win.id);

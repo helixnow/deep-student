@@ -16,6 +16,7 @@
 import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { invoke } from '@tauri-apps/api/core';
 import { CheckCircle, PencilSimple, CircleNotch, Trash, CaretRight } from '@phosphor-icons/react';
 import * as DataGovernanceApi from '@/api/dataGovernance';
 import type { RecordConflictRow, SyncSnapshotBatchRow } from '@/api/dataGovernance';
@@ -43,6 +44,95 @@ function formatConflictError(
     });
   }
   return raw;
+}
+
+const PRIMARY_CONTENT_KEYS: readonly string[] = [
+  'title',
+  'name',
+  'file_name',
+  'front',
+  'question',
+  'prompt',
+  'subject',
+  'topic',
+  'content',
+  'data',
+  'body',
+  'markdown',
+  'text',
+  'back',
+  'answer',
+  'description',
+  'tags',
+];
+
+const METADATA_KEYS: ReadonlySet<string> = new Set([
+  'id',
+  'resource_id',
+  'source_id',
+  'source_table',
+  'hash',
+  'external_hash',
+  'content_hash',
+  'sha256',
+  'blob_hash',
+  'storage_mode',
+  'created_at',
+  'updated_at',
+  'deleted_at',
+  'device_id',
+  'local_version',
+  'sync_version',
+  'ref_count',
+  'props',
+  'metadata_json',
+  'status',
+  'type',
+  'mime_type',
+  'size',
+  'is_favorite',
+]);
+
+interface ConflictPreviewContext {
+  title?: string;
+  content?: string;
+  noteId?: string;
+  resourceId?: string;
+}
+
+function extractStringField(obj: Record<string, unknown> | null | undefined, keys: readonly string[]): string | undefined {
+  if (!obj) return undefined;
+  for (const key of keys) {
+    const val = obj[key];
+    if (typeof val === 'string' && val.trim().length > 0) {
+      return val;
+    }
+  }
+  return undefined;
+}
+
+function summarizeReadableTitle(
+  primaryObj: Record<string, unknown> | null | undefined,
+  secondaryObj: Record<string, unknown> | null | undefined,
+  fetched?: ConflictPreviewContext,
+): string | undefined {
+  const explicit =
+    extractStringField(primaryObj, ['title', 'name', 'file_name', 'front', 'question', 'prompt', 'subject', 'topic']) ??
+    extractStringField(secondaryObj, ['title', 'name', 'file_name', 'front', 'question', 'prompt', 'subject', 'topic']) ??
+    fetched?.title;
+  if (explicit) return explicit.trim();
+
+  const body =
+    extractStringField(primaryObj, ['content', 'data', 'body', 'markdown', 'text']) ??
+    extractStringField(secondaryObj, ['content', 'data', 'body', 'markdown', 'text']) ??
+    fetched?.content;
+  if (!body) return undefined;
+  const firstLine = body
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^#+\s*/, '').trim())
+    .find((line) => line.length > 0);
+  if (!firstLine) return undefined;
+  return firstLine.length > 72 ? `${firstLine.slice(0, 72)}…` : firstLine;
 }
 
 interface ConflictPair {
@@ -270,9 +360,34 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
   // [R11-history] 自动快照批次（批量解决/库级策略覆盖前系统自动创建，可单批回退）
   const [snapshotBatches, setSnapshotBatches] = useState<SyncSnapshotBatchRow[]>([]);
   const [rollingBackBatch, setRollingBackBatch] = useState<string | null>(null);
+  const [conflictPreviews, setConflictPreviews] = useState<Record<string, ConflictPreviewContext>>({});
   const requestGeneration = useRef(0);
 
   const pairs = useMemo(() => groupConflicts(rows), [rows]);
+
+  const siblingContextMap = useMemo(() => {
+    const resourcesById = new Map<string, { local?: Record<string, unknown>; cloud?: Record<string, unknown> }>();
+    const notesByResourceId = new Map<string, { noteId: string; local?: Record<string, unknown>; cloud?: Record<string, unknown> }>();
+
+    for (const pair of pairs) {
+      if (pair.databaseName !== 'vfs') continue;
+      const latestLocal = pair.locals[pair.locals.length - 1];
+      const latestCloud = pair.clouds[pair.clouds.length - 1];
+      const localObj = latestLocal ? parseConflictPlainObject(latestLocal.data_json) ?? undefined : undefined;
+      const cloudObj = latestCloud ? parseConflictPlainObject(latestCloud.data_json) ?? undefined : undefined;
+      if (pair.tableName === 'resources') {
+        resourcesById.set(pair.recordId, { local: localObj, cloud: cloudObj });
+      } else if (pair.tableName === 'notes') {
+        const resId =
+          extractStringField(localObj, ['resource_id']) ??
+          extractStringField(cloudObj, ['resource_id']);
+        if (resId) {
+          notesByResourceId.set(resId, { noteId: pair.recordId, local: localObj, cloud: cloudObj });
+        }
+      }
+    }
+    return { resourcesById, notesByResourceId };
+  }, [pairs]);
 
   const refresh = useCallback(async () => {
     const generation = ++requestGeneration.current;
@@ -286,6 +401,52 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
         setRows(list);
         // count API 的 total_groups 与本面板的 (table, record) 分组分页口径一致
         setTotalGroups(counts.total_groups);
+        if (list.length > 0 && typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+          const noteIdsToFetch = new Set<string>();
+          for (const row of list) {
+            if (row.database_name === 'vfs' && row.table_name === 'notes') {
+              noteIdsToFetch.add(row.record_id);
+            }
+          }
+          if (noteIdsToFetch.size > 0) {
+            void Promise.all(
+              Array.from(noteIdsToFetch).map(async (noteId) => {
+                try {
+                  const [noteMeta, noteContent] = await Promise.all([
+                    invoke<{ title?: string; resourceId?: string; resource_id?: string } | null>('vfs_get_note', { id: noteId }),
+                    invoke<string | null>('vfs_get_note_content', { id: noteId }),
+                  ]);
+                  const entry: ConflictPreviewContext = {
+                    noteId,
+                    ...(typeof noteMeta?.title === 'string' && noteMeta.title ? { title: noteMeta.title } : {}),
+                    ...(typeof noteContent === 'string' ? { content: noteContent } : {}),
+                    ...(typeof (noteMeta?.resourceId ?? noteMeta?.resource_id) === 'string'
+                      ? { resourceId: (noteMeta?.resourceId ?? noteMeta?.resource_id) as string }
+                      : {}),
+                  };
+                  return [`vfs|notes|${noteId}`, entry] as const;
+                } catch {
+                  return null;
+                }
+              }),
+            )
+              .then((entries) => {
+                if (requestGeneration.current !== generation) return;
+                const previews: Record<string, ConflictPreviewContext> = {};
+                for (const item of entries) {
+                  if (item) previews[item[0]] = item[1];
+                }
+                setConflictPreviews(previews);
+              })
+              .catch(() => {
+                // Preview enrichment is best-effort
+              });
+          } else {
+            setConflictPreviews({});
+          }
+        } else {
+          setConflictPreviews({});
+        }
       }
     } catch (e: unknown) {
       showGlobalNotification('error', t('data:governance.conflict_load_failed', { error: formatConflictError(e, t) }));
@@ -361,6 +522,33 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
         setMergeEditing(null);
         setMergeText('');
         setRawJsonOpen(false);
+        window.dispatchEvent(new CustomEvent('data-governance:local-change'));
+        if (p.databaseName === 'vfs' && (p.tableName === 'notes' || p.tableName === 'resources')) {
+          const previewCtx = conflictPreviews[key];
+          const latestLocalObj = p.locals[p.locals.length - 1]
+            ? parseConflictPlainObject(p.locals[p.locals.length - 1].data_json)
+            : null;
+          const latestCloudObj = p.clouds[p.clouds.length - 1]
+            ? parseConflictPlainObject(p.clouds[p.clouds.length - 1].data_json)
+            : null;
+          const mergedObj = merged ? parseConflictPlainObject(merged) : null;
+          const winningObj = resolution === 'keep_cloud'
+            ? latestCloudObj
+            : resolution === 'merged'
+              ? mergedObj
+              : latestLocalObj;
+          const noteId = p.tableName === 'notes'
+            ? p.recordId
+            : previewCtx?.noteId ?? siblingContextMap.notesByResourceId.get(p.recordId)?.noteId;
+          const winningContent = p.tableName === 'resources'
+            ? extractStringField(winningObj, ['data', 'content', 'body'])
+            : extractStringField(winningObj, ['content', 'data', 'body']) ?? previewCtx?.content;
+          if (noteId && typeof winningContent === 'string') {
+            window.dispatchEvent(new CustomEvent('notes:external-updated', {
+              detail: { noteId, content: winningContent, force: true },
+            }));
+          }
+        }
         await refresh();
       } catch (e: unknown) {
         showGlobalNotification('error', t('data:governance.conflict_resolve_failed', { error: formatConflictError(e, t) }));
@@ -440,6 +628,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
           count: resolved,
         }));
       }
+      window.dispatchEvent(new CustomEvent('data-governance:local-change'));
       await refresh();
     } finally {
       setResolvingKey(null);
@@ -521,6 +710,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
   const renderSideSnapshotContent = (
     dataJson: string,
     counterpartJson?: string,
+    extraPrimary?: { title?: string; body?: string; counterpartBody?: string },
   ) => {
     const parsedObj = parseConflictPlainObject(dataJson);
     const counterpartObj = counterpartJson ? parseConflictPlainObject(counterpartJson) : null;
@@ -534,32 +724,92 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
       );
     }
 
+    const contentOrderMap = new Map(PRIMARY_CONTENT_KEYS.map((key, idx) => [key, idx]));
+    const hasExplicitTitle = keys.some((k) => k === 'title' || k === 'name' || k === 'file_name');
+    const hasExplicitBody = keys.some((k) => k === 'content' || k === 'data' || k === 'body' || k === 'markdown' || k === 'text');
+
+    const primaryKeys = keys
+      .filter((k) => contentOrderMap.has(k))
+      .sort((a, b) => (contentOrderMap.get(a) ?? 999) - (contentOrderMap.get(b) ?? 999));
+    const secondaryKeys = keys.filter((k) => !contentOrderMap.has(k) && !METADATA_KEYS.has(k));
+    const metadataKeys = keys.filter((k) => !contentOrderMap.has(k) && METADATA_KEYS.has(k));
+
+    const visibleKeys =
+      primaryKeys.length > 0 || secondaryKeys.length > 0 || extraPrimary?.body !== undefined || Boolean(extraPrimary?.title)
+        ? [...primaryKeys, ...secondaryKeys]
+        : metadataKeys;
+    const collapsedMetadataKeys = visibleKeys === metadataKeys ? [] : metadataKeys;
+
+    const renderFieldRow = (fieldKey: string, val: unknown, isDiff: boolean) => (
+      <div
+        key={fieldKey}
+        className={cn(
+          'rounded px-1.5 py-1 text-xs leading-relaxed',
+          isDiff ? 'bg-amber-500/12 text-foreground ring-1 ring-amber-500/25' : 'text-foreground/85',
+        )}
+      >
+        <dt className="font-mono text-2xs text-muted-foreground">{fieldKey}</dt>
+        <dd className="whitespace-pre-wrap break-words">
+          {formatConflictFieldValue(true, val, absentFieldLabel, emptyFieldLabel)}
+        </dd>
+      </div>
+    );
+
     return (
-      <dl className="space-y-1">
-        {keys.map((fieldKey) => {
-          const val = parsedObj[fieldKey];
-          const counterpartPresent = counterpartObj
-            ? Object.prototype.hasOwnProperty.call(counterpartObj, fieldKey)
-            : false;
-          const isDiff = counterpartObj
-            ? !areConflictFieldValuesEqual(true, val, counterpartPresent, counterpartObj[fieldKey])
-            : false;
-          return (
+      <div className="space-y-2">
+        <dl className="space-y-1.5">
+          {!hasExplicitTitle && extraPrimary?.title && (
+            <div className="rounded bg-muted/40 px-1.5 py-1 text-xs leading-relaxed text-foreground">
+              <dt className="text-2xs text-muted-foreground">{t('data:governance.conflict_note_title')}</dt>
+              <dd className="font-medium break-words">{extraPrimary.title}</dd>
+            </div>
+          )}
+          {visibleKeys.map((fieldKey) => {
+            const val = parsedObj[fieldKey];
+            const counterpartPresent = counterpartObj
+              ? Object.prototype.hasOwnProperty.call(counterpartObj, fieldKey)
+              : false;
+            const isDiff = counterpartObj
+              ? !areConflictFieldValuesEqual(true, val, counterpartPresent, counterpartObj[fieldKey])
+              : false;
+            return renderFieldRow(fieldKey, val, isDiff);
+          })}
+          {!hasExplicitBody && extraPrimary?.body !== undefined && (
             <div
-              key={fieldKey}
               className={cn(
                 'rounded px-1.5 py-1 text-xs leading-relaxed',
-                isDiff ? 'bg-amber-500/10 text-foreground' : 'text-foreground/85',
+                extraPrimary.counterpartBody !== undefined && extraPrimary.body !== extraPrimary.counterpartBody
+                  ? 'bg-amber-500/12 text-foreground ring-1 ring-amber-500/25'
+                  : 'text-foreground/85',
               )}
             >
-              <dt className="font-mono text-2xs text-muted-foreground">{fieldKey}</dt>
+              <dt className="text-2xs text-muted-foreground">{t('data:governance.conflict_note_body')}</dt>
               <dd className="whitespace-pre-wrap break-words">
-                {formatConflictFieldValue(true, val, absentFieldLabel, emptyFieldLabel)}
+                {extraPrimary.body || emptyFieldLabel}
               </dd>
             </div>
-          );
-        })}
-      </dl>
+          )}
+        </dl>
+        {collapsedMetadataKeys.length > 0 && (
+          <details className="rounded border border-border/30 bg-background/40 px-2 py-1">
+            <summary className="cursor-pointer select-none text-2xs text-muted-foreground hover:text-foreground">
+              {t('data:governance.conflict_metadata_toggle', { count: collapsedMetadataKeys.length })}
+            </summary>
+            <dl className="mt-1.5 space-y-1">
+              {collapsedMetadataKeys.map((fieldKey) => {
+                const val = parsedObj[fieldKey];
+                const counterpartPresent = counterpartObj
+                  ? Object.prototype.hasOwnProperty.call(counterpartObj, fieldKey)
+                  : false;
+                const isDiff = counterpartObj
+                  ? !areConflictFieldValuesEqual(true, val, counterpartPresent, counterpartObj[fieldKey])
+                  : false;
+                return renderFieldRow(fieldKey, val, isDiff);
+              })}
+            </dl>
+          </details>
+        )}
+      </div>
     );
   };
 
@@ -664,6 +914,36 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
           const diffCount = fieldDiffRows.filter((row) => row.hasDiff).length;
           const effectiveRawOpen = !canUseStructuredDiff || rawJsonOpen;
 
+          const previewCtx = conflictPreviews[key];
+          const siblingResource =
+            p.databaseName === 'vfs' && p.tableName === 'notes'
+              ? siblingContextMap.resourcesById.get(
+                  extractStringField(localParsed, ['resource_id']) ??
+                  extractStringField(cloudParsed, ['resource_id']) ??
+                  previewCtx?.resourceId ??
+                  '',
+                )
+              : undefined;
+          const siblingNote =
+            p.databaseName === 'vfs' && p.tableName === 'resources'
+              ? siblingContextMap.notesByResourceId.get(p.recordId)
+              : undefined;
+          const readableTitle = summarizeReadableTitle(
+            localParsed ?? siblingNote?.local,
+            cloudParsed ?? siblingNote?.cloud,
+            previewCtx,
+          );
+          const localBodyPreview =
+            extractStringField(localParsed, ['content', 'data', 'body', 'markdown', 'text', 'back', 'answer']) ??
+            extractStringField(siblingResource?.local, ['data', 'content', 'body']) ??
+            previewCtx?.content;
+          const cloudBodyPreview =
+            extractStringField(cloudParsed, ['content', 'data', 'body', 'markdown', 'text', 'back', 'answer']) ??
+            extractStringField(siblingResource?.cloud, ['data', 'content', 'body']);
+          const showContentDiffSummary =
+            (localBodyPreview !== undefined || cloudBodyPreview !== undefined) &&
+            localBodyPreview !== cloudBodyPreview;
+
           return (
             <div
               key={key}
@@ -671,14 +951,21 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
             >
               {/* 窄屏：标识行 + 三个操作按钮允许换行，避免 400px 横向溢出 */}
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm font-mono break-all">
-                  <span className="text-muted-foreground" title={p.databaseName}>
-                    {getDatabaseDisplayName(p.databaseName, t)}
-                  </span>
-                  <span className="mx-1 text-muted-foreground">·</span>
-                  <span>{p.tableName}</span>
-                  <span className="mx-1 text-muted-foreground">·</span>
-                  <span className="font-semibold">{p.recordId}</span>
+                <div className="min-w-0 space-y-0.5">
+                  {readableTitle && (
+                    <div className="text-sm font-semibold text-foreground break-words">
+                      {readableTitle}
+                    </div>
+                  )}
+                  <div className="text-xs font-mono break-all text-muted-foreground">
+                    <span title={p.databaseName}>
+                      {getDatabaseDisplayName(p.databaseName, t)}
+                    </span>
+                    <span className="mx-1">·</span>
+                    <span>{p.tableName}</span>
+                    <span className="mx-1">·</span>
+                    <span className="font-semibold text-foreground/90">{p.recordId}</span>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <DsButton
@@ -713,6 +1000,34 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                   </DsButton>
                 </div>
               </div>
+              {showContentDiffSummary && (
+                <div
+                  data-testid="conflict-content-diff-summary"
+                  className="rounded-md border border-amber-500/30 bg-amber-500/[0.06] p-2.5 text-xs space-y-1.5"
+                >
+                  <div className="font-medium text-foreground">
+                    {t('data:governance.conflict_content_diff')}
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <div className="rounded border border-border/30 bg-background/70 p-2">
+                      <div className="mb-1 text-2xs font-medium text-muted-foreground">
+                        {t('data:governance.local')}
+                      </div>
+                      <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-foreground">
+                        {localBodyPreview ?? emptyFieldLabel}
+                      </pre>
+                    </div>
+                    <div className="rounded border border-border/30 bg-background/70 p-2">
+                      <div className="mb-1 text-2xs font-medium text-muted-foreground">
+                        {t('data:governance.cloud')}
+                      </div>
+                      <pre className="max-h-32 overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-relaxed text-foreground">
+                        {cloudBodyPreview ?? emptyFieldLabel}
+                      </pre>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* local/cloud 对比：<sm 上下堆叠（400px 双列每列仅 ~160px，JSON 不可读） */}
               <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
                 <div className="rounded border border-border/30 bg-muted/20 p-2">
@@ -720,9 +1035,13 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     {t('data:governance.local')} {latestLocal?.winning_device_id && <span>（{latestLocal.winning_device_id.slice(0, 8)}...）</span>}
                     {latestLocal?.detected_at && <span className="ml-1">{formatDetectedAt(latestLocal.detected_at)}</span>}
                   </div>
-                  <CustomScrollArea className="h-40">
+                  <CustomScrollArea className="max-h-72">
                     {latestLocal ? (
-                      renderSideSnapshotContent(latestLocal.data_json, latestCloud?.data_json)
+                      renderSideSnapshotContent(latestLocal.data_json, latestCloud?.data_json, {
+                        title: readableTitle,
+                        body: localBodyPreview,
+                        counterpartBody: cloudBodyPreview,
+                      })
                     ) : (
                       <pre className="whitespace-pre-wrap break-words">
                         {t('data:governance.none')}
@@ -752,8 +1071,12 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                           <span className="ml-1">{t('data:governance.latest')}</span>
                         )}
                       </div>
-                      <CustomScrollArea className="h-40">
-                        {renderSideSnapshotContent(cloud.data_json, latestLocal?.data_json)}
+                      <CustomScrollArea className="max-h-72">
+                        {renderSideSnapshotContent(cloud.data_json, latestLocal?.data_json, {
+                          title: readableTitle,
+                          body: extractStringField(parseConflictPlainObject(cloud.data_json), ['content', 'data', 'body', 'markdown', 'text', 'back', 'answer']) ?? extractStringField(siblingResource?.cloud, ['data', 'content', 'body']),
+                          counterpartBody: localBodyPreview,
+                        })}
                       </CustomScrollArea>
                     </div>
                   ))}

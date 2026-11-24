@@ -1063,6 +1063,7 @@ function applyTerminalEvent(
   event: BackendEvent,
   blockId: string
 ): void {
+  streamingBlockSaver.cancelBlock?.(blockId);
   if (event.phase === 'error') {
     handler.onError?.(store, blockId, event.error ?? 'Unknown error');
   } else {

@@ -481,6 +481,11 @@ ${skillList}
     });
   }
 
+  /** 是否已完成初始技能加载 */
+  isSkillsLoaded(): boolean {
+    return this._skillsLoaded;
+  }
+
   /**
    * 标记 skills 已加载完成
    *
@@ -493,6 +498,7 @@ ${skillList}
       resolve();
     }
     this._skillsLoadedWaiters = [];
+    notifyUpdate();
   }
 
   /**

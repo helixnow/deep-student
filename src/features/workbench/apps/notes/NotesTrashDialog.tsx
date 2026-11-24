@@ -330,14 +330,14 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
     } else if (event.key === 'Enter' && target.dataset.trashRow !== undefined) {
       event.preventDefault();
       const node = items[currentIndex];
-      if (node) void restoreItem(node);
+      if (node) toggleSelected(node.id);
     } else if ((event.key === 'Delete' || event.key === 'Backspace') && target.dataset.trashRow !== undefined) {
       event.preventDefault();
       const node = items[currentIndex];
       const type = node ? trashItemType(node.type) : null;
       if (node && type) setConfirm({ kind: 'purge', node, type });
     }
-  }, [focusIndex, focusRow, items, restoreItem]);
+  }, [focusIndex, focusRow, items, toggleSelected]);
 
   const presence = useMotionPresence(open, {
     exitMs: readCssDurationMs('--dropdown-close-dur', 150),
@@ -490,6 +490,7 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
                       <div
                         className="ntd-item"
                         data-trash-row={index}
+                        data-selected={selectedIds.has(node.id) ? 'true' : undefined}
                         tabIndex={index === rovingIndex ? 0 : -1}
                         aria-label={node.name}
                         onFocus={() => setFocusIndex(index)}
@@ -577,6 +578,22 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
               </React.Fragment>
             ))}
             </CustomScrollArea>
+            {selectedIds.size === 1 && (() => {
+              const selectedNode = items.find((item) => selectedIds.has(item.id));
+              if (!selectedNode) return null;
+              const previewText = typeof selectedNode.metadata?.contentPreview === 'string'
+                ? selectedNode.metadata.contentPreview.trim()
+                : '';
+              return (
+                <div className="ntd-preview" data-testid="ntd-selected-preview">
+                  <div className="ntd-preview-title">{selectedNode.name}</div>
+                  {previewText && <div className="ntd-preview-body">{previewText}</div>}
+                  <div className="ntd-preview-hint">
+                    {t('notes:trash.selectHint', { defaultValue: '已选中，请点击「恢复」以还原此项目' })}
+                  </div>
+                </div>
+              );
+            })()}
           </>
         )}
       </div>

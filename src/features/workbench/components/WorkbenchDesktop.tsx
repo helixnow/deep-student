@@ -46,12 +46,9 @@ import { resyncProjections } from '../core/projection';
 import { registerSystemProjections } from '../apps/system/projections';
 import { setMaterialTier, useMaterialTier, type MaterialTierSetting } from '../core/materialTier';
 import {
-  computeTiledFrame,
   getActiveTilingPair,
   hasDockObstructedWindow,
   hasDockObstructedFloatingWindow,
-  MAX_TILING_RATIO,
-  MIN_TILING_RATIO,
 } from '../core/tiling';
 import { RESOURCE_APP_TYPE_IDS } from '../apps/content/typeMap';
 import { NOTES_APP_TYPE_ID } from '../apps/notes/register';
@@ -83,11 +80,9 @@ import { useWorkbenchShortcuts } from '../hooks/useWorkbenchShortcuts';
 import { useCompositorNudge } from '../hooks/useCompositorNudge';
 import { useDesktopDrop } from '../hooks/useDesktopDrop';
 import { handleDesktopResourceDrop } from '../apps/files/desktopDragBridge';
-import { useTilingDivider } from './window-shell/useTilingDivider';
-import {
-  getWorkbenchDesktopOffset,
-  setWorkbenchDesktopOffsetProvider,
-} from './window-shell/workbenchPointerAdapter';
+import { setWorkbenchDesktopOffsetProvider } from './window-shell/workbenchPointerAdapter';
+import { TilingDivider } from './TilingDivider';
+export { TilingDivider };
 import { installImeScrollContainment } from '../core/imeScrollContainment';
 import { ContentCloseConfirmationHost } from '../apps/content/ContentCloseConfirmation';
 import { QuickLookHost } from '../apps/preview/quickLook';
@@ -222,52 +217,6 @@ async function pruneSnapshotWindows(windows: WorkbenchWindow[]): Promise<Workben
 }
 
 // ---------------------------------------------------------------------------
-// 左右平铺中缝
-// ---------------------------------------------------------------------------
-
-const TilingDivider: React.FC<{ leftId: string; rightId: string; margin: number }> = ({
-  leftId,
-  rightId,
-  margin,
-}) => {
-  const { t } = useTranslation('workbench');
-  const divider = useTilingDivider(leftId, rightId, {
-    margin,
-    // ANTI-REGRESSION：与窗口拖拽共用缓存快照，禁止在此 getBoundingClientRect。
-    getDesktopOffset: getWorkbenchDesktopOffset,
-  });
-  const desktopSize = useWindowStore((s) => s.desktopSize);
-  const leftFrame = computeTiledFrame('tiled-left', { desktopSize, margin, ratio: divider.ratio });
-  if (!leftFrame) return null;
-  const centerX = leftFrame.x + leftFrame.w + margin / 2;
-  const valueNow = Math.round(divider.ratio * 100);
-  return (
-    <div
-      data-wb-tiling-divider
-      role="separator"
-      aria-orientation="vertical"
-      aria-label={t('a11y.tilingDivider')}
-      aria-valuemin={Math.round(MIN_TILING_RATIO * 100)}
-      aria-valuemax={Math.round(MAX_TILING_RATIO * 100)}
-      aria-valuenow={valueNow}
-      tabIndex={0}
-      onPointerDown={divider.onPointerDown}
-      onKeyDown={divider.onKeyDown}
-      style={{
-        position: 'absolute',
-        left: centerX - 4,
-        top: 0,
-        bottom: 0,
-        width: 8,
-        cursor: 'col-resize',
-        zIndex: 'var(--wb-z-tiling-divider)',
-        touchAction: 'none',
-        pointerEvents: 'auto',
-      }}
-    />
-  );
-};
-
 // ---------------------------------------------------------------------------
 // 桌面组件
 // ---------------------------------------------------------------------------

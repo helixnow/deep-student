@@ -150,7 +150,12 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   }, []);
 
   const [isTypingInComposer, setIsTypingInComposer] = React.useState(false);
+  const composerBlurTimerRef = React.useRef(0);
   React.useEffect(() => {
+    if (composerBlurTimerRef.current) {
+      window.clearTimeout(composerBlurTimerRef.current);
+      composerBlurTimerRef.current = 0;
+    }
     if (!isCompactViewport || composerDockHeight === null) {
       setIsTypingInComposer(false);
       return undefined;
@@ -163,21 +168,50 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
       );
     };
     const handleFocusIn = (ev: FocusEvent) => {
+      if (composerBlurTimerRef.current) {
+        window.clearTimeout(composerBlurTimerRef.current);
+        composerBlurTimerRef.current = 0;
+      }
       setIsTypingInComposer(isComposerField((ev.target as Element | null) ?? document.activeElement));
     };
     const handleFocusOut = (ev: FocusEvent) => {
-      setIsTypingInComposer(isComposerField(ev.relatedTarget as Element | null));
+      const nextTarget = ev.relatedTarget as Element | null;
+      if (isComposerField(nextTarget)) {
+        if (composerBlurTimerRef.current) {
+          window.clearTimeout(composerBlurTimerRef.current);
+          composerBlurTimerRef.current = 0;
+        }
+        setIsTypingInComposer(true);
+        return;
+      }
+      // 延迟过 click 时窗再复位，避免 360px 窄屏点「发送/添加与会话选项」时 Dock 立即弹出压住按钮
+      if (composerBlurTimerRef.current) window.clearTimeout(composerBlurTimerRef.current);
+      composerBlurTimerRef.current = window.setTimeout(() => {
+        composerBlurTimerRef.current = 0;
+        setIsTypingInComposer(isComposerField(document.activeElement));
+      }, 260);
     };
     setIsTypingInComposer(isComposerField(document.activeElement));
     document.addEventListener('focusin', handleFocusIn);
     document.addEventListener('focusout', handleFocusOut);
     return () => {
+      if (composerBlurTimerRef.current) {
+        window.clearTimeout(composerBlurTimerRef.current);
+        composerBlurTimerRef.current = 0;
+      }
       document.removeEventListener('focusin', handleFocusIn);
       document.removeEventListener('focusout', handleFocusOut);
     };
   }, [isCompactViewport, composerDockHeight]);
 
-  const effectiveAutohide = autohide || Boolean(immersiveWindowId) || isTypingInComposer;
+  const hasOpenWindow = useWindowStore((s) =>
+    Object.values(s.windows).some((w) => !w.minimized),
+  );
+  const effectiveAutohide =
+    autohide ||
+    Boolean(immersiveWindowId) ||
+    isTypingInComposer ||
+    (isCompactViewport && hasOpenWindow);
   const pinned = useDockPinned();
   const tier = useMaterialTier();
   const {
@@ -360,18 +394,24 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   const [revealed, setRevealed] = React.useState(!effectiveAutohide);
   const [revealing, setRevealing] = React.useState(false);
   const revealedRef = React.useRef(!effectiveAutohide);
+  const clickRevealedRef = React.useRef(false);
   const revealTimerRef = React.useRef(0);
   const concealTimerRef = React.useRef(0);
+  const hotzoneRef = React.useRef<HTMLDivElement | null>(null);
 
   const updateRevealed = React.useCallback((next: boolean) => {
     revealedRef.current = next;
     setRevealed(next);
   }, []);
 
-  const revealDock = React.useCallback(() => {
-    if (!revealedRef.current) setRevealing(true);
-    updateRevealed(true);
-  }, [updateRevealed]);
+  const revealDock = React.useCallback(
+    (viaClick = false) => {
+      if (viaClick) clickRevealedRef.current = true;
+      if (!revealedRef.current) setRevealing(true);
+      updateRevealed(true);
+    },
+    [updateRevealed],
+  );
 
   const clearAutohideTimers = React.useCallback(() => {
     if (revealTimerRef.current) {
@@ -404,6 +444,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     if (concealTimerRef.current) return;
     concealTimerRef.current = window.setTimeout(() => {
       concealTimerRef.current = 0;
+      clickRevealedRef.current = false;
       setRevealing(false);
       updateRevealed(false);
     }, 150);
@@ -411,13 +452,44 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
 
   React.useEffect(() => {
     clearAutohideTimers();
+    clickRevealedRef.current = false;
     setRevealing(false);
     updateRevealed(!effectiveAutohide);
     return () => clearAutohideTimers();
   }, [effectiveAutohide, clearAutohideTimers, updateRevealed]);
+
+  // 窄屏（<= 640px）切换/新开前台窗后立即收起 Dock，避免遮挡目标窗底部 CTA
+  const topFocusId = useWindowStore((s) => s.focusStack[s.focusStack.length - 1] ?? null);
+  const prevTopFocusRef = React.useRef<string | null>(topFocusId);
+  React.useEffect(() => {
+    const prev = prevTopFocusRef.current;
+    prevTopFocusRef.current = topFocusId;
+    if (!isCompactViewport || !hasOpenWindow || prev === topFocusId) return;
+    clickRevealedRef.current = false;
+    clearAutohideTimers();
+    setRevealing(false);
+    updateRevealed(false);
+  }, [topFocusId, isCompactViewport, hasOpenWindow, clearAutohideTimers, updateRevealed]);
   const hidden = effectiveAutohide && !revealed;
 
   const dockRef = React.useRef<HTMLDivElement | null>(null);
+  const onAutohideOutsidePointerDown = React.useCallback(
+    (event: Event) => {
+      const target = event.target as Node | null;
+      if (dockRef.current?.contains(target) || hotzoneRef.current?.contains(target)) return;
+      clickRevealedRef.current = false;
+      clearAutohideTimers();
+      setRevealing(false);
+      updateRevealed(false);
+    },
+    [clearAutohideTimers, updateRevealed],
+  );
+  useEventRegistry(
+    effectiveAutohide && revealed
+      ? [{ target: 'document', type: 'pointerdown', listener: onAutohideOutsidePointerDown }]
+      : [],
+    [effectiveAutohide, revealed, onAutohideOutsidePointerDown],
+  );
   React.useLayoutEffect(() => {
     if (dockRef.current) {
       dockRef.current.inert = hidden;
@@ -568,6 +640,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   React.useEffect(() => () => resetMagnification(), [resetMagnification]);
 
   const handleDockPointerEnter = (event: React.PointerEvent<HTMLDivElement>) => {
+    clickRevealedRef.current = false;
     if (effectiveAutohide) {
       clearAutohideTimers();
       revealDock();
@@ -668,7 +741,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
 
   const focusDockItem = (itemId: string) => {
     setActiveId(itemId);
-    if (autohide) {
+    if (effectiveAutohide) {
       clearAutohideTimers();
       revealDock();
     }
@@ -695,6 +768,10 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
       closeAppsPanel();
     }
     useWindowStore.getState().focusWindow(windowId);
+    if (isCompactViewport && effectiveAutohide) {
+      clickRevealedRef.current = false;
+      scheduleConceal();
+    }
   };
 
   return (
@@ -705,10 +782,12 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
       )}
       data-immersive={immersiveWindowId ? 'true' : undefined}
       data-compact-typing={isTypingInComposer ? 'true' : undefined}
+      data-compact-window={isCompactViewport && hasOpenWindow ? 'true' : undefined}
       style={{ zIndex: 'var(--wb-z-dock)' }}
     >
       {effectiveAutohide && (
         <div
+          ref={hotzoneRef}
           data-testid="wb-dock-hotzone"
           data-collapsed={hidden ? 'true' : 'false'}
           role={hidden ? 'button' : undefined}
@@ -716,16 +795,16 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
           aria-hidden={!hidden || undefined}
           aria-label={hidden ? t('workbench:dock.autohideHint') : undefined}
           title={hidden ? t('workbench:dock.autohideHint') : undefined}
-          // macOS 原生纯净底缘热区：收起态保证 >=32px 命中高度且紧贴视口底边，避免窗口铺底时 Dock 难以唤出
+          // 收起态保持 6px 底缘热区（避免挡住底部应用操作栏）；展开态补足高度消除热区→Dock 间断缝
           className={cn(
             'wb-dock-hotzone pointer-events-auto absolute inset-x-0 bottom-0',
-            hidden ? 'h-8 min-h-[32px] cursor-pointer' : 'h-1',
+            hidden ? 'h-1.5 min-h-[6px] cursor-pointer' : 'h-4 min-h-[16px]',
           )}
           onClick={
             hidden
               ? () => {
                   clearAutohideTimers();
-                  revealDock();
+                  revealDock(true);
                 }
               : undefined
           }
@@ -735,7 +814,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault();
                     clearAutohideTimers();
-                    revealDock();
+                    revealDock(true);
                   }
                 }
               : undefined
@@ -746,6 +825,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
               window.clearTimeout(revealTimerRef.current);
               revealTimerRef.current = 0;
             }
+            if (clickRevealedRef.current) return;
             scheduleConceal();
           }}
         />

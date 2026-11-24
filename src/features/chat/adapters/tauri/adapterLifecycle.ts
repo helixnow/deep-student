@@ -25,6 +25,7 @@ import { isTauriRuntimeAvailable } from './runtime';
 import { LOG_PREFIX, adapterConsole as console } from './diagnostics';
 import { blockEventChannel, sessionEventChannel } from './sessionEvents';
 import type { TauriAdapterHost, LlmRequestBodyEventPayload } from './adapterHost';
+import { consumePendingBranchContinuation } from '../../navigation/pendingBranchContinuation';
 
 /**
  * 🔧 P1 修复（2026-07-08 审阅 20 P1-2）：逐个注册监听器并收集 unlisten，失败时回滚。
@@ -447,6 +448,29 @@ export async function setup(host: TauriAdapterHost): Promise<void> {
             await host.store.initSession(mode);
           } catch (initError) {
             console.error(LOG_PREFIX, `Failed to init mode '${mode}':`, getErrorMessage(initError));
+          }
+        }
+      }
+    }
+
+    if (loadResult !== 'error') {
+      const branchAction = consumePendingBranchContinuation(host.sessionId);
+      if (branchAction) {
+        await host.waitForListenersReady();
+        const latestState = host.storeApi?.getState();
+        const messageOrder = latestState?.messageOrder ?? host.store.messageOrder;
+        const targetMessageId = messageOrder[messageOrder.length - 1];
+        if (targetMessageId) {
+          if (branchAction.type === 'regenerate_last') {
+            const retryFn = latestState?.retryMessage ?? host.store.retryMessage;
+            void retryFn(targetMessageId).catch((branchError) => {
+              console.error(LOG_PREFIX, 'Failed to regenerate branched session:', getErrorMessage(branchError));
+            });
+          } else if (branchAction.type === 'resend_last_edited') {
+            const editAndResendFn = latestState?.editAndResend ?? host.store.editAndResend;
+            void editAndResendFn(targetMessageId, branchAction.content).catch((branchError) => {
+              console.error(LOG_PREFIX, 'Failed to resend edited branch session:', getErrorMessage(branchError));
+            });
           }
         }
       }

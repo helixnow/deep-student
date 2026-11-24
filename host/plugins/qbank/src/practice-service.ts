@@ -427,8 +427,28 @@ export interface ManualGradeOutcome {
 
 /** qbank_practice.rs:1060-1122 */
 export function gradePracticeManually(host: PracticeServiceHost, id: string, questionId: string,
-  correct: boolean): ManualGradeOutcome {
+  correct: boolean, score?: number | null): ManualGradeOutcome {
   return withDatabase(() => {
+    let resolvedCorrect = correct;
+    let resolvedScore = correct ? 100 : 0;
+    let resolvedStatus: PracticeResult['status'] = correct ? 'correct' : 'incorrect';
+    if (score !== undefined && score !== null) {
+      if (!Number.isFinite(score) || score < 0 || score > 100) {
+        validation('Score must be between 0 and 100');
+      }
+      const roundedScore = Math.round(score);
+      resolvedScore = roundedScore;
+      if (roundedScore === 0) {
+        resolvedStatus = 'incorrect';
+        resolvedCorrect = false;
+      } else if (roundedScore >= 80 || (roundedScore > 0 && correct && roundedScore === 100)) {
+        resolvedStatus = 'correct';
+        resolvedCorrect = true;
+      } else {
+        resolvedStatus = 'partial';
+        resolvedCorrect = false;
+      }
+    }
     const result = host.db.transaction(tx => {
       const attempt = loadAttemptOrThrow(tx, id);
       const target = attempt.results.find(item => item.question_id === questionId);
@@ -443,15 +463,15 @@ export function gradePracticeManually(host: PracticeServiceHost, id: string, que
         if (live === null || submission === null) {
           target.source_available = false;
         } else {
-          const verdict = applyVerdictForPractice(host, tx, live, submission, correct, 'manual');
+          const verdict = applyVerdictForPractice(host, tx, live, submission, resolvedCorrect, 'manual');
           masteryState = verdict.masteryState;
           if (verdict.needsReviewPlan) wrongExamId = live.exam_id;
           else if (verdict.shouldAdvanceReviewPlan) advanceReviewPlan = true;
         }
       }
-      target.is_correct = correct;
-      target.score = correct ? 100 : 0;
-      target.status = correct ? 'correct' : 'incorrect';
+      target.is_correct = resolvedCorrect;
+      target.score = resolvedScore;
+      target.status = resolvedStatus;
       target.error = null;
       repo.finishJob(tx, id, questionId, now());
       refreshStatus(attempt);

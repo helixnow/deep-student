@@ -25,6 +25,14 @@
   "experimentalBadgeTooltip": "实验性功能，建议先备份数据再使用。",
   "syncVsBackupTitle": "多端同步 vs 云端整包备份",
   "syncVsBackupDesc": "日常跨设备学习请使用下方「同步」（双向合并笔记、闪卡与复习记录）；换新设备或留存完整历史快照时，再使用「云存储设置」里的整包备份与恢复。",
+  "pendingBreakdown": {
+    "toggleShow": "查看各表明细",
+    "toggleHide": "收起各表明细",
+    "empty": "暂无待同步变更",
+    "loading": "正在统计待同步明细...",
+    "tableCount": "{{count}} 条",
+    "refreshNow": "刷新"
+  },
   "autoSync": {
     "label": "自动同步",
     "description": "默认关闭。开启后按所选间隔自动执行双向同步（优先保留最新修改），偶发网络失败会自动延后重试。云端未配置、缺少密码或其他设备正在同步时会静默跳过本轮，不会弹出错误打扰。",

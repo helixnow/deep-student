@@ -30,8 +30,65 @@ import { canParseAsMobileTextbook, withStagedTextbookFile } from '../textbookFil
 
 type AttachImportProgress = { done: number; total: number } | null;
 
+const UPLOAD_MIME_FALLBACKS: Record<string, string> = {
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xls: 'application/vnd.ms-excel',
+  xlsb: 'application/vnd.ms-excel.sheet.binary.macroEnabled.12',
+  ods: 'application/vnd.oasis.opendocument.spreadsheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  epub: 'application/epub+zip',
+  rtf: 'application/rtf',
+  pdf: 'application/pdf',
+  txt: 'text/plain',
+  md: 'text/markdown',
+  markdown: 'text/markdown',
+  csv: 'text/csv',
+  json: 'application/json',
+  xml: 'application/xml',
+  html: 'text/html',
+  htm: 'text/html',
+};
+
+function resolveUploadMimeType(fileName: string, providedType?: string, isImage = false): string {
+  const trimmed = providedType?.trim();
+  if (trimmed) return trimmed;
+  const ext = getFileExtension(fileName);
+  if (UPLOAD_MIME_FALLBACKS[ext]) return UPLOAD_MIME_FALLBACKS[ext];
+  if (isImage) return `image/${ext === 'jpg' ? 'jpeg' : ext || 'png'}`;
+  return 'application/octet-stream';
+}
+
+function stripFileExtension(name: string): string {
+  const idx = name.lastIndexOf('.');
+  return idx > 0 ? name.slice(0, idx) : name;
+}
+
+/** Match returned textbook nodes back to requested paths so skipped items never vanish silently. */
+function findUnmatchedTextbookPaths(paths: string[], nodes: DstuNode[]): string[] {
+  if (nodes.length === 0) return [...paths];
+  const remainingNames = nodes.map((node) => node.name.trim().toLowerCase());
+  const unmatched: string[] = [];
+  for (const filePath of paths) {
+    const fileName = extractDisplayFileName(filePath).trim().toLowerCase();
+    const stem = stripFileExtension(fileName);
+    const matchIndex = remainingNames.findIndex((name) => name === fileName || stripFileExtension(name) === stem);
+    if (matchIndex >= 0) {
+      remainingNames.splice(matchIndex, 1);
+    } else {
+      unmatched.push(filePath);
+    }
+  }
+  return unmatched;
+}
+
+function canFallbackToVfsFile(ext: string): boolean {
+  return ext !== 'pdf';
+}
+
 export interface ImportPathsContext {
   importProgress: Pick<ImportProgressState, 'isImporting'>;
+  currentPath?: FinderPath;
   t: SidebarT;
   currentCreatableFolderId: string | null;
   importMarkdownPathNotes: MarkdownNoteImport['importMarkdownPathNotes'];
@@ -50,6 +107,7 @@ export interface ImportPathsContext {
 export async function importPathsIntoLibrary(
   {
     importProgress,
+    currentPath,
     t,
     currentCreatableFolderId,
     importMarkdownPathNotes,
@@ -70,6 +128,7 @@ export async function importPathsIntoLibrary(
   // Markdown 本身就是笔记：任何位置拖入都导入为笔记（用笔记应用打开、可编辑），
   // 不再只在「笔记」视图才这样——在「全部文件」拖入会变成只读预览的资料
   const shouldImportMarkdownAsNotes = true;
+  const preferVfsFilesView = currentPath?.typeFilter === 'file';
 
   // 按类型分组
   const docPaths: string[] = [];
@@ -90,8 +149,13 @@ export async function importPathsIntoLibrary(
       guidanceNames[guidance].push(name);
       continue;
     }
+    const isMarkdown = ext === 'md' || ext === 'markdown';
     if (DOCUMENT_EXTENSIONS.has(ext)) {
-      docPaths.push(p);
+      if (!isMarkdown && (preferVfsFilesView || !canParseAsMobileTextbook(ext))) {
+        otherPaths.push(p);
+      } else {
+        docPaths.push(p);
+      }
     } else if (IMAGE_EXTENSIONS.has(ext)) {
       imagePaths.push(p);
     } else {
@@ -153,9 +217,11 @@ export async function importPathsIntoLibrary(
       }
     }
 
-    // 1. 文档类：通过 textbookDstuAdapter 导入（支持 PDF 渲染、哈希去重等）
+    // 1. 文档类：通过 textbookDstuAdapter 导入（未接收的非 PDF 文档自动兜底进入 VFS 文件表）
+    const fallbackAttachmentPaths: string[] = [];
     if (textbookPaths.length > 0) {
       const firstFileName = textbookPaths[0] ? extractDisplayFileName(textbookPaths[0]) : '';
+      let lastTextbookError: string | undefined;
       setImportProgress({
         isImporting: true,
         fileName: firstFileName,
@@ -166,6 +232,9 @@ export async function importPathsIntoLibrary(
       // 监听后端进度事件
       unlisten = await listen<TextbookImportProgress>('textbook-import-progress', (event) => {
         const { file_name, stage, current_page, total_pages, progress, error: progressError } = event.payload;
+        if (progressError) {
+          lastTextbookError = progressError;
+        }
         setImportProgress(prev => ({
           ...prev,
           fileName: file_name,
@@ -190,16 +259,38 @@ export async function importPathsIntoLibrary(
         if (!firstImportedNode) {
           firstImportedNode = docResult.value[0] ?? null;
         }
+        const skippedPaths = findUnmatchedTextbookPaths(textbookPaths, docResult.value);
+        for (const skippedPath of skippedPaths) {
+          const ext = getFileExtension(extractFileName(skippedPath));
+          if (canFallbackToVfsFile(ext)) {
+            fallbackAttachmentPaths.push(skippedPath);
+          } else {
+            totalFailed += 1;
+            failedDetails.push({
+              name: extractDisplayFileName(skippedPath),
+              reason: lastTextbookError || t('finder.dragDrop.importFailed'),
+            });
+          }
+        }
       } else {
-        totalFailed += textbookPaths.length;
-        debugLog.error('[LearningHub] 文档导入失败:', docResult.error.toUserMessage());
+        const reason = docResult.error.toUserMessage();
+        debugLog.error('[LearningHub] 文档导入失败:', reason);
+        for (const failedPath of textbookPaths) {
+          const ext = getFileExtension(extractFileName(failedPath));
+          if (canFallbackToVfsFile(ext)) {
+            fallbackAttachmentPaths.push(failedPath);
+          } else {
+            totalFailed += 1;
+            failedDetails.push({ name: extractDisplayFileName(failedPath), reason });
+          }
+        }
       }
 
       setImportProgress(prev => ({ ...prev, isImporting: false }));
     }
 
-    // 2. 图片类/其他文件：通过 attachmentDstuAdapter 创建
-    const attachmentPaths = [...imagePaths, ...otherPaths];
+    // 2. 图片类/其他文件（含被教材管道跳过的 Office/文本兜底）：通过 attachmentDstuAdapter 创建
+    const attachmentPaths = [...imagePaths, ...otherPaths, ...fallbackAttachmentPaths];
     if (attachmentPaths.length > 0) {
       // ★ 由 Rust 直接把文件（含 Android content:// URI、含中文/空格的 Windows 路径）
       // 流式复制进暂存区，WebView 不再经手字节（旧路径 read_file_bytes → File →
@@ -210,10 +301,7 @@ export async function importPathsIntoLibrary(
       // 后端创建时会把暂存文件整份读入内存：按字节预算串行化大文件
       const byteBudget = createByteBudgetLimiter(64 * 1024 * 1024);
 
-      // ★ 2026-06-12（审阅问题 FE-M5）：批量导入显示进度横幅
-      if (attachmentPaths.length > 1) {
-        setAttachImportProgress({ done: 0, total: attachmentPaths.length });
-      }
+      setAttachImportProgress({ done: 0, total: attachmentPaths.length });
 
       const attachResults = await Promise.all(
         attachmentPaths.map((filePath) =>
@@ -231,15 +319,14 @@ export async function importPathsIntoLibrary(
                 return { ok: false as const, name, reason: t('finder.dragDrop.readFileFailed') };
               }
 
-              const mimeType = mimeTypeFromFileName(name)
-                || (isImage ? `image/${ext === 'jpg' ? 'jpeg' : ext}` : 'application/octet-stream');
+              const mimeType = resolveUploadMimeType(name, mimeTypeFromFileName(name), isImage);
 
               let result;
               try {
                 result = await byteBudget(staged.size, () => attachmentDstuAdapter.createFromStagedUpload(
                   { uploadId: staged.uploadId, name, mimeType, size: staged.size },
                   isImage ? 'image' : 'file',
-                  currentCreatableFolderId ? { folderId: currentCreatableFolderId } : undefined,
+                  dropTargetFolderId ? { folderId: dropTargetFolderId } : undefined,
                 ));
               } catch (createError) {
                 // 后端未消费（如 IPC 异常）时主动清理暂存文件；已消费则为幂等空操作
@@ -486,40 +573,52 @@ export async function importDroppedFiles(
     firstImportedNode = markdownResult.importedNodes[0] ?? null;
   }
 
-  // ★ 2026-06-12（审阅问题 FE-M5）：批量导入显示进度横幅
-  if (attachmentFiles.length > 1) {
+  if (attachmentFiles.length > 0) {
     setAttachImportProgress({ done: 0, total: attachmentFiles.length });
   }
+
+  const preferVfsFilesView = currentPath.typeFilter === 'file';
 
   const results = await Promise.all(
     attachmentFiles.map((file) =>
       limit(async () => {
         const ext = getFileExtension(file.name);
         const isImage = IMAGE_EXTENSIONS.has(ext);
+        const mimeType = resolveUploadMimeType(file.name, file.type, isImage);
 
         try {
           const invalidReason = await validateImportFileObject(file, ext, t);
           if (invalidReason) {
             return { ok: false as const, name: file.name, reason: invalidReason };
           }
-          if (fromPicker && DOCUMENT_EXTENSIONS.has(ext) && canParseAsMobileTextbook(ext)) {
+          let textbookFailureReason: string | undefined;
+          if (fromPicker && !preferVfsFilesView && DOCUMENT_EXTENSIONS.has(ext) && canParseAsMobileTextbook(ext)) {
             const result = await withStagedTextbookFile(file, (source) =>
               textbookDstuAdapter.addTextbooks([source], currentCreatableFolderId));
-            if (!result.ok) {
-              return { ok: false as const, name: file.name, reason: result.error.toUserMessage() };
+            if (result.ok && result.value[0]) {
+              return { ok: true as const, name: file.name, node: result.value[0], isMedia: false };
             }
-            const node = result.value[0];
-            if (!node) return { ok: false as const, name: file.name };
-            return { ok: true as const, name: file.name, node, isMedia: false };
+            textbookFailureReason = result.ok
+              ? t('finder.dragDrop.importFailed')
+              : result.error.toUserMessage();
+            if (!canFallbackToVfsFile(ext)) {
+              return { ok: false as const, name: file.name, reason: textbookFailureReason };
+            }
           }
-          // ★ 2026-06-12（审阅问题 FE-M1）：传递当前文件夹 ID，
-          // 修复浏览器拖入的附件总是落到根目录的问题（Tauri paths 链路本就正确）。
+          // ★ 2026-06-12（审阅问题 FE-M1）：传递当前文件夹 ID，并补齐扩展名对应的 MIME（避免浏览器空 type 落盘失败）
           const result = await attachmentDstuAdapter.create(
             file, isImage ? 'image' : 'file',
-            currentCreatableFolderId ? { folderId: currentCreatableFolderId } : undefined,
+            {
+              ...(currentCreatableFolderId ? { folderId: currentCreatableFolderId } : {}),
+              mimeType,
+            },
           );
           if (!result.ok) {
-            return { ok: false as const, name: file.name, reason: result.error.toUserMessage() };
+            return {
+              ok: false as const,
+              name: file.name,
+              reason: result.error.toUserMessage() || textbookFailureReason,
+            };
           }
           return { ok: true as const, name: file.name, node: result.value, isMedia: MEDIA_EXTENSIONS.has(ext) };
         } catch (e) {

@@ -101,7 +101,10 @@ export function sanitizeHtmlForPreview(html: string, mode: HtmlSandboxMode): str
     }
   }
 
-  return DOMPurify.sanitize(html, {
+  const strippedChatInput = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/<script\b[\s\S]*$/i, '');
+  return DOMPurify.sanitize(strippedChatInput, {
     WHOLE_DOCUMENT: isFullDoc,
     ADD_TAGS: ['style', 'meta'],
     FORBID_TAGS: ['script', 'iframe', 'embed', 'object', 'form', 'base', 'link'],

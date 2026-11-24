@@ -88,7 +88,7 @@ export type {
 } from './ui-status';
 export { usePluginUiHostStatus } from './use-ui-status';
 export { getChannelPluginDisplay } from './channelDisplay';
-export { exitSafeModeAndRestart } from './safeMode';
+export { exitSafeModeAndRestart, enterSafeModeAndRestart } from './safeMode';
 
 export type {
   ManagedPlugin,

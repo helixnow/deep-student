@@ -52,17 +52,27 @@ export async function createPairingCode(settings: PairingSettings, args: CreateP
   }
   const included = summary(payload);
   const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
-  const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await key(args.pin, salt, 'encrypt'), new TextEncoder().encode(JSON.stringify(payload))));
+  const normalizedPin = args.pin.trim();
+  const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await key(normalizedPin, salt, 'encrypt'), new TextEncoder().encode(JSON.stringify(payload))));
   const bytes = new Uint8Array(28 + encrypted.length); bytes.set(salt); bytes.set(iv, 16); bytes.set(encrypted, 28);
   const pairingCode = `DSPAIR1:${btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join('')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
   return { pairingCode, summary: included };
 }
 export async function applyPairingCode(settings: PairingSettings, args: ApplyPairingArgs) {
-  if (!args.pairingCode.startsWith('DSPAIR1:')) throw new Error('不支持的配对码格式');
+  const normalizedCode = args.pairingCode.trim();
+  if (!normalizedCode.startsWith('DSPAIR1:')) throw new Error('不支持的配对码格式');
+  const normalizedPin = args.pin.trim();
   let payload: Payload;
   try {
-    const bytes = Uint8Array.from(atob(args.pairingCode.slice(8).trim().replace(/-/g, '+').replace(/_/g, '/')), ch => ch.charCodeAt(0));
-    const decoded = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.slice(16, 28) }, await key(args.pin, bytes.slice(0, 16), 'decrypt'), bytes.slice(28));
+    const rawBase64 = normalizedCode
+      .slice(8)
+      .replace(/[\s\u200B-\u200D\uFEFF]+/g, '')
+      .replace(/-/g, '+')
+      .replace(/_/g, '/')
+      .replace(/=+$/, '');
+    const paddedBase64 = rawBase64.padEnd(rawBase64.length + ((4 - (rawBase64.length % 4)) % 4), '=');
+    const bytes = Uint8Array.from(atob(paddedBase64), ch => ch.charCodeAt(0));
+    const decoded = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.slice(16, 28) }, await key(normalizedPin, bytes.slice(0, 16), 'decrypt'), bytes.slice(28));
     payload = JSON.parse(new TextDecoder().decode(decoded));
   } catch { throw new Error('PIN 不正确或配对码已损坏'); }
   if (payload.version !== 1 || !payload.settings || Array.isArray(payload.settings)) throw new Error('不支持的配对配置');

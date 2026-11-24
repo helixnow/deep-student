@@ -580,10 +580,12 @@ export const useTodoStore = create<TodoState>((set, get) => {
             );
             break;
           case 'matrix':
-            items = await api.listAllPendingItems();
+            items = (await api.listAllPendingItems()).filter((item) => !item.parentId);
             break;
           case 'completed':
-            items = await api.listCompletedItems(state.activeListId ?? undefined);
+            items = (await api.listCompletedItems(state.activeListId ?? undefined)).filter(
+              (item) => !item.parentId,
+            );
             break;
           case 'all':
           default: {
@@ -1220,7 +1222,7 @@ export const useTodoStore = create<TodoState>((set, get) => {
       set({
         items,
         ...(showCompleted
-          ? { todayCompletedCount: items.filter((item) => item.status === 'completed').length }
+          ? { todayCompletedCount: items.filter((item) => !item.parentId && item.status === 'completed').length }
           : {}),
         isLoadingItems: false,
         selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
@@ -1288,7 +1290,7 @@ export const useTodoStore = create<TodoState>((set, get) => {
     const requestVersion = get().itemsRequestVersion + 1;
     set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
-      const items = await api.listAllPendingItems();
+      const items = (await api.listAllPendingItems()).filter((item) => !item.parentId);
       if (get().itemsRequestVersion !== requestVersion) return;
       const selectedItemId = get().selectedItemId;
       set({
@@ -1308,7 +1310,9 @@ export const useTodoStore = create<TodoState>((set, get) => {
     const requestVersion = get().itemsRequestVersion + 1;
     set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
-      const items = await api.listCompletedItems(get().activeListId ?? undefined);
+      const items = (await api.listCompletedItems(get().activeListId ?? undefined)).filter(
+        (item) => !item.parentId,
+      );
       if (get().itemsRequestVersion !== requestVersion) return;
       const selectedItemId = get().selectedItemId;
       set({
@@ -1467,7 +1471,7 @@ export const useTodoStore = create<TodoState>((set, get) => {
     }
     try {
       const items = await api.listOverdueItems(false);
-      if (Array.isArray(items)) set({ overdueCount: items.length });
+      if (Array.isArray(items)) set({ overdueCount: items.filter((item) => !item.parentId).length });
     } catch {
       // 角标属增强信息，失败静默（避免打断主流程的错误提示）
     }

@@ -1015,6 +1015,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
           tags.length > 0 ||
           item.priority !== 'none' ||
           item.estimatedPomodoros ||
+          item.completedPomodoros ||
           repeatRule ||
           item.reminder ||
           links.length > 0 ||
@@ -1066,16 +1067,25 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
               </span>
             )}
 
-            {item.estimatedPomodoros ? (
+            {(item.estimatedPomodoros || item.completedPomodoros) ? (
               <span
+                data-testid={`todo-row-pomodoros-${item.id}`}
                 className="inline-flex items-center gap-1 font-mono text-xs tabular-nums text-muted-foreground"
-                title={t('todo:pomodoro.progressTitle', {
-                  done: item.completedPomodoros || 0,
-                  total: item.estimatedPomodoros,
-                })}
+                title={
+                  item.estimatedPomodoros
+                    ? t('todo:pomodoro.progressTitle', {
+                        done: item.completedPomodoros || 0,
+                        total: item.estimatedPomodoros,
+                      })
+                    : t('todo:pomodoro.completedCount', {
+                        count: item.completedPomodoros || 0,
+                      })
+                }
               >
                 <Brain size={12} />
-                {item.completedPomodoros || 0}/{item.estimatedPomodoros}
+                {item.estimatedPomodoros
+                  ? `${item.completedPomodoros || 0}/${item.estimatedPomodoros}`
+                  : item.completedPomodoros}
               </span>
             ) : null}
 

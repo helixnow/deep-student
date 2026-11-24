@@ -178,7 +178,10 @@ const CHAT_PREVIEW_BASE_CSS = `
 `;
 
 function sanitizeChatHtml(html: string, isFullDoc: boolean): Document {
-  const sanitized = DOMPurify.sanitize(html, {
+  const withoutScripts = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+    .replace(/<script\b[\s\S]*$/i, '');
+  const sanitized = DOMPurify.sanitize(withoutScripts, {
     WHOLE_DOCUMENT: isFullDoc,
     ADD_TAGS: ['style'],
     FORBID_TAGS: ['script', 'iframe', 'frame', 'embed', 'object', 'form', 'base', 'link', 'meta', 'portal'],
@@ -190,6 +193,16 @@ function sanitizeChatHtml(html: string, isFullDoc: boolean): Document {
     isFullDoc ? sanitized : `<!DOCTYPE html><html><head></head><body>${sanitized}</body></html>`,
     'text/html',
   );
+  // 防御性二次剥离残留脚本与内联事件，避免 sandbox="allow-same-origin" 触发 console Blocked script execution
+  doc.querySelectorAll('script').forEach((el) => el.remove());
+  doc.querySelectorAll('*').forEach((el) => {
+    for (const attr of Array.from(el.attributes)) {
+      const name = attr.name.toLowerCase();
+      if (name.startsWith('on') || (name === 'href' && /^javascript:/i.test(attr.value.trim()))) {
+        el.removeAttribute(attr.name);
+      }
+    }
+  });
   // 链接保留 href（点击由父页面拦截：外链走系统浏览器，#锚点 帧内滚动），
   // 外链把目标 URL 作为悬停提示
   doc.querySelectorAll('a[href], area[href]').forEach((el) => {

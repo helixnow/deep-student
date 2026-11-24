@@ -29,6 +29,18 @@ import type { CoordinatedDatabaseName } from '../../../platform/storage/api.ts';
 
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 const notConfigured = 'Cloud storage is not configured. Save a cloud config in Settings first.';
+export const LAST_SYNC_AT_SETTING_KEY = 'data_governance.last_sync_at';
+
+function persistLastSyncAt(ctx: SyncContext): void {
+  try {
+    const settings = ctx.reflect?.get?.('settings') as { set?: (key: string, value: string) => void } | undefined;
+    if (settings && typeof settings.set === 'function') {
+      settings.set(LAST_SYNC_AT_SETTING_KEY, new Date().toISOString());
+    }
+  } catch {
+    // Never fail completed sync or break test fixtures without SettingsStore.
+  }
+}
 
 /**
  * 浏览器/移动端切后台会冻结定时器，心跳续租停摆超过 TTL 后云端租约已被其他设备取走；
@@ -96,6 +108,7 @@ export async function runSyncV5(
       downloaded = (await runtime.pullAndApplyFromV5Cloud()).applied;
     }
     checkCancelled();
+    persistLastSyncAt(ctx);
     const duration = Math.floor(performance.now() - start);
     ports.saveSyncAudit({ direction: parsed, recordsAffected: uploaded + downloaded, target, outcome: { kind: 'complete', durationMs: duration },
       details: { device_id: deviceId, protocol: 'v5', changes_uploaded: uploaded, changes_downloaded: downloaded } });
@@ -162,9 +175,22 @@ export async function runSync(
     try { storage = await ctx.syncProvider.createStorage(config); }
     catch (error) { throw new Error(`创建云存储失败: ${message(error)}`); }
     codec = await createPayloadCodec(ctx.secrets.backup, config.encryptionPassword);
+    const deferredConflictKeys = new Set<string>();
     const options: SyncPassOptions = { deviceId, codec, logger, localStorage: ctx.storage, openState: () => ctx.syncSupport.state,
       settings: ctx.reflect.get('settings') as SyncPassOptions['settings'], appDataDir: ctx.paths.appDataDir, mobile,
-      compression: ctx.nativeCompression, application: { apply: (changes, selected) => ctx.sync.applyDownloadedChangesToDatabases(changes, selected) }, tombstones: ports.tombstones, isCancelled: () => ctx.syncProvider.isSyncCancelled() };
+      compression: ctx.nativeCompression,
+      application: {
+        apply: (changes, selected) => ctx.sync.applyDownloadedChangesToDatabases(changes, selected, {
+          deferConflictingOverwrite: selected === 'KeepLatest' || selected === 'Manual',
+          onDeferredConflict: key => deferredConflictKeys.add(key),
+        }),
+        consumeDeferredConflictKeys: () => {
+          const copy = new Set(deferredConflictKeys);
+          deferredConflictKeys.clear();
+          return copy;
+        },
+      },
+      tombstones: ports.tombstones, isCancelled: () => ctx.syncProvider.isSyncCancelled() };
     try { await validateRemoteFormat(storage, parsed !== 'Download', options); }
     catch (error) { throw new Error(`同步格式协商失败: ${message(error)}`); }
     lease = await acquireSyncTargetLease(storage, deviceId);
@@ -177,6 +203,7 @@ export async function runSync(
     const enriched = await collectSyncChanges(ctx.storage, null);
     assertLeaseHeartbeatHealthy(lease);
     const [result, skipped] = await executePlainSync(storage, enriched, local, parsed, merge, options, ports.workspaceCoordinator, start);
+    if (result.success) persistLastSyncAt(ctx);
     logger.info(`[data_governance] 同步完成: direction=${result.direction.toLowerCase()}, uploaded=${result.changes_uploaded}, downloaded=${result.changes_downloaded}, conflicts=${result.conflicts_detected}, skipped=${skipped}, duration=${result.duration_ms}ms`);
     ports.saveSyncAudit({ direction: result.direction, recordsAffected: result.changes_uploaded + result.changes_downloaded,
       target: `cloud_sync/${result.direction.toLowerCase()}`, outcome: result.success ? { kind: 'complete', durationMs: result.duration_ms } : { kind: 'failed', error: result.error_message ?? 'sync failed' },
@@ -235,9 +262,22 @@ export async function runSyncWithProgress(
     try { storage = await ctx.syncProvider.createStorage(config); }
     catch (error) { return fail(new Error(`创建云存储失败: ${message(error)}`)); }
     codec = await createPayloadCodec(ctx.secrets.backup, config.encryptionPassword);
+    const deferredConflictKeys = new Set<string>();
     const options: SyncPassOptions = { deviceId, codec, logger, localStorage: ctx.storage, openState: () => ctx.syncSupport.state,
       settings: ctx.reflect.get('settings') as SyncPassOptions['settings'], appDataDir: ctx.paths.appDataDir, mobile,
-      compression: ctx.nativeCompression, application: { apply: (changes, selected) => ctx.sync.applyDownloadedChangesToDatabases(changes, selected) }, tombstones: ports.tombstones,
+      compression: ctx.nativeCompression,
+      application: {
+        apply: (changes, selected) => ctx.sync.applyDownloadedChangesToDatabases(changes, selected, {
+          deferConflictingOverwrite: selected === 'KeepLatest' || selected === 'Manual',
+          onDeferredConflict: key => deferredConflictKeys.add(key),
+        }),
+        consumeDeferredConflictKeys: () => {
+          const copy = new Set(deferredConflictKeys);
+          deferredConflictKeys.clear();
+          return copy;
+        },
+      },
+      tombstones: ports.tombstones,
       isCancelled: () => ctx.syncProvider.isSyncCancelled() };
     try { await validateRemoteFormat(storage, parsed !== 'Download', options); }
     catch (error) { return fail(new Error(`同步格式协商失败: ${message(error)}`)); }
@@ -273,8 +313,13 @@ export async function runSyncWithProgress(
       return { success: false, direction: parsed.toLowerCase(), changes_uploaded: 0, changes_downloaded: 0, conflicts_detected: 0,
         duration_ms: Math.floor(performance.now() - start), device_id: deviceId, error_message: detail, skipped_changes: 0 };
     }
-    if (result.success && result.error_message === null) await emitter.emitCompleted();
-    else await emitter.emitPartial(result.error_message ?? '同步未完全成功：部分步骤失败或有变更被跳过，请检查同步详情。');
+    if (result.success && result.error_message === null) {
+      persistLastSyncAt(ctx);
+      await emitter.emitCompleted();
+    } else {
+      if (result.success) persistLastSyncAt(ctx);
+      await emitter.emitPartial(result.error_message ?? '同步未完全成功：部分步骤失败或有变更被跳过，请检查同步详情。');
+    }
     logger.info(`[data_governance] 带进度同步完成: direction=${result.direction.toLowerCase()}, uploaded=${result.changes_uploaded}, downloaded=${result.changes_downloaded}, conflicts=${result.conflicts_detected}, skipped=${skipped}, duration=${result.duration_ms}ms`);
     ports.saveSyncAudit({ direction: result.direction, recordsAffected: result.changes_uploaded + result.changes_downloaded,
       target: `cloud_sync/${result.direction.toLowerCase()}`, outcome: result.success ? { kind: 'complete', durationMs: result.duration_ms } : { kind: 'failed', error: result.error_message ?? 'sync failed' },

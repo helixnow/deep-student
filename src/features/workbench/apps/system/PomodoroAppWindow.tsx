@@ -330,18 +330,20 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
   const isRunning = mode !== 'idle' && status === 'running';
   const isPaused = mode !== 'idle' && status === 'paused';
   const strictLocked = settings.strictMode && mode === 'work' && isRunning;
+  const elapsedWorkSeconds = isCountUpWork ? timeLeft : Math.max(0, totalDuration - timeLeft);
+  const isShortFocusPreview = mode === 'work' && elapsedWorkSeconds < 60;
 
   // ---- 控制行为（与 legacy PomodoroPanel 一致） ----
 
   const handleTogglePlay = useCallback(() => {
     if (mode === 'idle') {
-      start();
+      start(currentTaskId ?? undefined, currentTaskTitle ?? undefined);
     } else if (status === 'running') {
       pause();
     } else {
       resume();
     }
-  }, [mode, status, start, pause, resume]);
+  }, [mode, status, start, pause, resume, currentTaskId, currentTaskTitle]);
 
   // 环境音开关收敛到 store（noiseEnabled/setNoiseEnabled 内部驱动 noiseEngine）
   const toggleNoise = useCallback(() => {
@@ -508,7 +510,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
             </span>
           )}
 
-          {pendingTodos.length > 0 && (
+          {(pendingTodos.length > 0 || Boolean(currentTaskId)) && (
             <div className="mt-1 flex items-center justify-center">
               <select
                 aria-label={t('pomodoro.controls.bindTodo', {
@@ -523,7 +525,11 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                     return;
                   }
                   const picked = pendingTodos.find((item) => item.id === id);
-                  if (picked) bindTask(picked.id, picked.title);
+                  if (picked) {
+                    bindTask(picked.id, picked.title);
+                  } else if (id === currentTaskId) {
+                    bindTask(id, currentTaskTitle ?? id);
+                  }
                 }}
                 className="h-7 max-w-[240px] rounded-md border border-border/55 bg-background/70 px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
               >
@@ -533,6 +539,9 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                     defaultValue: '不绑定任务（自由专注）',
                   })}
                 </option>
+                {currentTaskId && !pendingTodos.some((todo) => todo.id === currentTaskId) && (
+                  <option value={currentTaskId}>{currentTaskTitle || currentTaskId}</option>
+                )}
                 {pendingTodos.map((todo) => (
                   <option key={todo.id} value={todo.id}>
                     {todo.title}
@@ -753,29 +762,57 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                 )
               )}
 
-              {/* 专注阶段：支持提前完成并记录（倒计时/正计时通用）与跳过到休息 */}
+              {/* 专注阶段：满 1 分钟支持提前完成并记录完整番茄；不足 1 分钟标为短时预览，结束仅计中断不记完整番茄 */}
               {mode === 'work' && (
                 <>
                   <DsButton
                     variant="utility"
                     size="sm"
-                    onClick={() => (isCountUpWork ? completeCurrentSession() : finishWorkEarly())}
-                    title={t('pomodoro.controls.finishEarly', {
-                      ns: 'todo',
-                      defaultValue: '提前完成并记录',
-                    })}
-                    aria-label={t('pomodoro.controls.finishEarly', {
-                      ns: 'todo',
-                      defaultValue: '提前完成并记录',
-                    })}
+                    data-short-preview={isShortFocusPreview ? 'true' : undefined}
+                    onClick={() => {
+                      if (isShortFocusPreview) {
+                        cancelStopConfirm();
+                        stop(true);
+                        return;
+                      }
+                      if (isCountUpWork) completeCurrentSession();
+                      else finishWorkEarly();
+                    }}
+                    title={
+                      isShortFocusPreview
+                        ? t('pomodoro.controls.finishEarlyShortHint', {
+                            ns: 'todo',
+                            defaultValue: '专注不足 1 分钟，仅作为短时预览结束，不计入完整番茄数',
+                          })
+                        : t('pomodoro.controls.finishEarly', {
+                            ns: 'todo',
+                            defaultValue: '提前完成并记录',
+                          })
+                    }
+                    aria-label={
+                      isShortFocusPreview
+                        ? t('pomodoro.controls.finishEarlyShort', {
+                            ns: 'todo',
+                            defaultValue: '结束预览（不足 1 分钟不计番茄）',
+                          })
+                        : t('pomodoro.controls.finishEarly', {
+                            ns: 'todo',
+                            defaultValue: '提前完成并记录',
+                          })
+                    }
                     className="h-8 gap-1.5 !px-2.5 text-xs transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-h-11"
                   >
                     <CheckCircle size={14} />
                     <span>
-                      {t('pomodoro.controls.finishEarly', {
-                        ns: 'todo',
-                        defaultValue: '提前完成并记录',
-                      })}
+                      {isShortFocusPreview
+                        ? t('pomodoro.controls.finishEarlyShort', {
+                            ns: 'todo',
+                            defaultValue: '结束预览（不足 1 分钟不计番茄）',
+                          })
+                        : t('pomodoro.controls.finishEarly', {
+                            ns: 'todo',
+                            defaultValue: '提前完成并记录',
+                          })}
                     </span>
                   </DsButton>
                   <DsButton

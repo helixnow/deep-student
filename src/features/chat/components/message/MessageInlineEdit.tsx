@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/shad/Textarea';
 export interface MessageInlineEditConfirmPrompt {
   count: number;
   onConfirm: () => void;
+  onBranchAndConfirm?: () => void;
   onCancel: () => void;
 }
 
@@ -98,6 +99,18 @@ export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
             >
               {t('chatV2:messageItem.editConfirm.cancel')}
             </DsButton>
+            {confirmPrompt.onBranchAndConfirm && (
+              <DsButton
+                variant="secondary"
+                size="sm"
+                className="[@media(pointer:coarse)]:!min-h-11"
+                onClick={confirmPrompt.onBranchAndConfirm}
+                disabled={isSubmitting}
+                data-testid="edit-downstream-branch-button"
+              >
+                {t('chatV2:messageItem.editConfirm.branchAndSend')}
+              </DsButton>
+            )}
             <DsButton
               variant="primary"
               size="sm"

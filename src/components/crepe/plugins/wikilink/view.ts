@@ -75,6 +75,8 @@ function createWikilinkView(
     let node = initialNode;
     const dom = document.createElement('span');
     dom.setAttribute('data-type', WIKILINK_NODE_NAME);
+    dom.setAttribute('role', 'button');
+    dom.tabIndex = 0;
     dom.setAttribute('contenteditable', 'false');
     dom.setAttribute('spellcheck', 'false');
     dom.classList.add('crepe-wikilink');
@@ -113,7 +115,7 @@ function createWikilinkView(
 
     apply(node);
 
-    const onClick = (event: MouseEvent) => {
+    const onClick = (event: Event) => {
       event.preventDefault();
       event.stopPropagation();
       hideWikilinkPreviewNow();
@@ -177,7 +179,13 @@ function createWikilinkView(
       if (event.button === 0) event.preventDefault();
     };
 
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      onClick(event);
+    };
+
     dom.addEventListener('click', onClick);
+    dom.addEventListener('keydown', onKeyDown);
     dom.addEventListener('mouseenter', onMouseEnter);
     dom.addEventListener('mouseleave', onMouseLeave);
     dom.addEventListener('mousedown', onMouseDown);
@@ -201,6 +209,7 @@ function createWikilinkView(
       ignoreMutation: () => true,
       destroy() {
         dom.removeEventListener('click', onClick);
+        dom.removeEventListener('keydown', onKeyDown);
         dom.removeEventListener('mouseenter', onMouseEnter);
         dom.removeEventListener('mouseleave', onMouseLeave);
         dom.removeEventListener('mousedown', onMouseDown);

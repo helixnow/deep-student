@@ -51,6 +51,12 @@
   background: transparent;
 }
 
+.wb-apps-root[data-wb-apps-open='false'],
+.wb-apps-root[data-wb-apps-open='false'] .wb-apps-backdrop {
+  pointer-events: none;
+  visibility: hidden;
+}
+
 /* ==== 面板 ============================================================== */
 
 .wb-apps-panel {

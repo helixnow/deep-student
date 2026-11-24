@@ -169,8 +169,34 @@ export function markSyncedWithTimestamp(db: DatabaseHandle, changeIds: readonly 
 }
 
 /** commands_sync.rs:1080-1085. */
+function normalizeUtcIsoForCompare(raw: string): string | null {
+  const sqliteUtc = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/.exec(raw.trim());
+  const normalized = sqliteUtc ? `${sqliteUtc[1]}T${sqliteUtc[2]}Z` : raw.trim();
+  const ms = Date.parse(normalized);
+  return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+}
+
 export function getLastSyncedChangeAt(db: SqlExecutor): string | null {
-  return db.pluck<string | null>('SELECT MAX(changed_at) FROM __change_log WHERE sync_version > 0') ?? null;
+  const changedAt = db.pluck<string | null>('SELECT MAX(changed_at) FROM __change_log WHERE sync_version > 0') ?? null;
+  let syncIso: string | null = null;
+  try {
+    const rawSyncVersion = db.pluck<number | bigint | null>('SELECT MAX(sync_version) FROM __change_log WHERE sync_version > 0') ?? null;
+    if (rawSyncVersion !== null) {
+      const numeric = Number(rawSyncVersion);
+      if (Number.isFinite(numeric) && numeric >= 1_000_000_000) {
+        const seconds = numeric > 100_000_000_000 ? Math.floor(numeric / 1000) : numeric;
+        const d = new Date(seconds * 1000);
+        if (!Number.isNaN(d.getTime())) syncIso = d.toISOString();
+      }
+    }
+  } catch {
+    // Best-effort fallback when test stubs only mock changed_at query.
+  }
+  if (!syncIso) return changedAt;
+  if (!changedAt) return syncIso;
+  const changedIso = normalizeUtcIsoForCompare(changedAt);
+  if (!changedIso) return syncIso;
+  return Date.parse(syncIso) >= Date.parse(changedIso) ? syncIso : changedAt;
 }
 
 /** sync/mod.rs:4393-4408. */

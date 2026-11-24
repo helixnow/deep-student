@@ -80,7 +80,7 @@ export function builtInAgentProfile(id: string): AgentProfile | null {
     case DEFAULT_PROFILE_ID:
       return {
         id: DEFAULT_PROFILE_ID,
-        description: '通用子代理：完成委派任务并向父代理返回简明结论。',
+        description: 'General subagent: completes delegated tasks and returns a concise summary to the parent agent.',
         instructions: 'Complete the delegated task and return a concise, evidence-backed result to the parent agent.',
         reasoningEffort: 'medium',
         allowedTools: [],
@@ -91,7 +91,7 @@ export function builtInAgentProfile(id: string): AgentProfile | null {
     case WORKER_PROFILE_ID:
       return {
         id: WORKER_PROFILE_ID,
-        description: '执行型子代理：独立完成任务、自行验证并汇报结果。',
+        description: 'Worker subagent: autonomously completes tasks, verifies results, and reports back.',
         instructions: 'Execute the delegated task independently. Use the available tools, verify the result, and report completion to the parent agent.',
         reasoningEffort: 'high',
         allowedTools: [],
@@ -106,7 +106,7 @@ export function builtInAgentProfile(id: string): AgentProfile | null {
     case EXPLORER_PROFILE_ID:
       return {
         id: EXPLORER_PROFILE_ID,
-        description: '调研型子代理：只读探索与检索，产出带出处的调研结论。',
+        description: 'Explorer subagent: read-only exploration and search returning cited research findings.',
         instructions: 'Investigate the delegated question. Prefer primary evidence, keep exploration read-only, and return findings with concrete references.',
         reasoningEffort: 'high',
         allowedTools: [

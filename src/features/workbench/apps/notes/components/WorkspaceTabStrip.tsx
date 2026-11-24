@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   FileText,
+  LinkSimple,
   List,
   PushPin,
   PushPinSlash,
@@ -56,6 +57,9 @@ export interface WorkspaceTabsProps {
   saveStates: Map<string, SaveState>;
   /** 标题栏右端的笔记页面级操作位（见 NotesChromeSlotContext） */
   actionsSlotRef?: React.Ref<HTMLDivElement>;
+  /** 反向链接 / 局部图谱面板开关 */
+  backlinksOpen?: boolean;
+  onToggleBacklinks?: () => void;
 }
 
 export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
@@ -72,6 +76,8 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
   sidebarWidth,
   saveStates,
   actionsSlotRef,
+  backlinksOpen = false,
+  onToggleBacklinks,
 }) => {
   const { t } = useTranslation('workbench');
   const stripRef = useRef<HTMLDivElement>(null);
@@ -373,6 +379,20 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
             document.body,
           )}
         </div>
+      )}
+      {onToggleBacklinks && (
+        <button
+          type="button"
+          className="notes-chrome-backlinks-btn"
+          data-active={backlinksOpen ? 'true' : undefined}
+          aria-pressed={Boolean(backlinksOpen)}
+          aria-label={t('notes:workspace.linksAndGraph', { defaultValue: '反向链接 / 图谱' })}
+          title={t('notes:workspace.linksAndGraph', { defaultValue: '反向链接 / 图谱' })}
+          onClick={onToggleBacklinks}
+        >
+          <LinkSimple size={14} aria-hidden />
+          <span>{t('notes:workspace.linksAndGraph', { defaultValue: '反向链接 / 图谱' })}</span>
+        </button>
       )}
       {actionsSlotRef && <div ref={actionsSlotRef} className="notes-tab-actions-slot notes-titlebar-actions" data-tab-actions-slot />}
     </div>

@@ -280,6 +280,51 @@ function restoreResourceByType(deps: DstuTrashDeps, resourceType: string, id: st
 }
 
 /** `purge_resource_by_type_if_trashed` (delete_helpers.rs:239-352). */
+type TrashDbConn = ReturnType<VfsDatabase['getConnSafe']>;
+
+function hasNoteRevisionsTable(conn: TrashDbConn): boolean {
+  return conn.get("SELECT 1 FROM sqlite_master WHERE type='table' AND name='note_document_revisions'") !== undefined;
+}
+
+/** Explicit permanent-delete / empty-trash unpins retained revisions only after verifying trashed state. */
+function unpinNoteRevisionsForNote(conn: TrashDbConn, noteId: string): void {
+  if (!hasNoteRevisionsTable(conn)) return;
+  conn.run('UPDATE note_document_revisions SET pinned = 0 WHERE note_id = ?1 AND pinned != 0', [noteId]);
+}
+
+function unpinNoteRevisionsForDeletedNotes(conn: TrashDbConn): void {
+  if (!hasNoteRevisionsTable(conn)) return;
+  conn.run(`UPDATE note_document_revisions SET pinned = 0
+    WHERE pinned != 0 AND note_id IN (SELECT id FROM notes WHERE deleted_at IS NOT NULL)`);
+}
+
+function unpinNoteRevisionsForDeletedFolder(conn: TrashDbConn, folderId: string): void {
+  if (!hasNoteRevisionsTable(conn)) return;
+  conn.run(`WITH RECURSIVE tree AS (
+      SELECT id FROM folders WHERE id = ?1 AND deleted_at IS NOT NULL
+      UNION ALL
+      SELECT f.id FROM folders f INNER JOIN tree t ON f.parent_id = t.id WHERE f.deleted_at IS NOT NULL
+    )
+    UPDATE note_document_revisions SET pinned = 0
+    WHERE pinned != 0 AND note_id IN (
+      SELECT fi.item_id FROM folder_items fi
+      INNER JOIN tree t ON fi.folder_id = t.id
+      INNER JOIN notes n ON n.id = fi.item_id
+      WHERE fi.item_type = 'note' AND n.deleted_at IS NOT NULL
+    )`, [folderId]);
+}
+
+function unpinNoteRevisionsForAllDeletedFolders(conn: TrashDbConn): void {
+  if (!hasNoteRevisionsTable(conn)) return;
+  conn.run(`UPDATE note_document_revisions SET pinned = 0
+    WHERE pinned != 0 AND note_id IN (
+      SELECT fi.item_id FROM folder_items fi
+      INNER JOIN folders f ON fi.folder_id = f.id
+      INNER JOIN notes n ON n.id = fi.item_id
+      WHERE f.deleted_at IS NOT NULL AND fi.item_type = 'note' AND n.deleted_at IS NOT NULL
+    )`);
+}
+
 function purgeResourceByTypeIfTrashed(deps: DstuTrashDeps, resourceType: string, id: string): void {
   beginImmediate(deps, (conn) => {
     const trashed = isTrashedWithConn(conn, resourceType, id);
@@ -294,6 +339,7 @@ function purgeResourceByTypeIfTrashed(deps: DstuTrashDeps, resourceType: string,
       switch (resourceType) {
         case 'notes':
         case 'note':
+          unpinNoteRevisionsForNote(conn, id);
           notesRepository().purgeNote(id, conn);
           break;
         case 'textbooks':
@@ -318,6 +364,7 @@ function purgeResourceByTypeIfTrashed(deps: DstuTrashDeps, resourceType: string,
           break;
         case 'folders':
         case 'folder':
+          unpinNoteRevisionsForDeletedFolder(conn, id);
           vfsRepositories().folders.purgeFolder(conn, id, deps.database.blobsDir());
           break;
         case 'images':
@@ -727,10 +774,16 @@ export function emptyTrashCommand(deps: DstuTrashDeps, itemTypes: readonly strin
         catch (error) { throw new DstuFailure('VfsError', failureMessage(error)); }
       };
       if (wantsTrashType(filter, 'folder')) {
-        sep(() => vfsRepositories().folders.purgeDeletedFolders(tx, blobsDir));
+        sep(() => {
+          unpinNoteRevisionsForAllDeletedFolders(tx);
+          return vfsRepositories().folders.purgeDeletedFolders(tx, blobsDir);
+        });
       }
       if (wantsTrashType(filter, 'note')) {
-        sep(() => notesRepository().purgeDeletedNotes(tx));
+        sep(() => {
+          unpinNoteRevisionsForDeletedNotes(tx);
+          return notesRepository().purgeDeletedNotes(tx);
+        });
       }
       if (wantsTrashType(filter, 'exam')) {
         sep(() => {
@@ -803,7 +856,10 @@ export function purgeAllCommand(deps: DstuTrashDeps, resourceType: string): numb
     let count: number;
     try {
       if (resourceType === 'notes') {
-        count = notesRepository().purgeDeletedNotes(conn);
+        count = beginImmediate(deps, (tx) => {
+          unpinNoteRevisionsForDeletedNotes(tx);
+          return notesRepository().purgeDeletedNotes(tx);
+        });
       } else if (resourceType === 'textbooks') {
         count = vfsRepositories().textbooks.purgeDeletedTextbooks(conn, deps.database.blobsDir());
       } else {

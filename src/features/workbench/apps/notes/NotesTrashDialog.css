@@ -440,10 +440,14 @@
   transition: background-color var(--notes-hover-transition);
 }
 
-/* 行 hover / 键盘定位时轻着色 */
+/* 行 hover / 键盘定位 / 选中时轻着色 */
 .ntd-item:hover,
 .ntd-item:focus-within {
   background: hsl(var(--muted) / 35%);
+}
+
+.ntd-item[data-selected='true'] {
+  background: hsl(var(--primary) / 10%);
 }
 
 .ntd-item:focus-visible {
@@ -463,6 +467,7 @@
   flex: 1;
   display: grid;
   gap: 2px;
+  cursor: pointer;
 }
 
 .ntd-item-name {
@@ -522,6 +527,39 @@
 .ntd-row-action-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.ntd-preview {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  background: hsl(var(--muted) / 35%);
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.ntd-preview-title {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ntd-preview-body {
+  color: hsl(var(--muted-foreground));
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ntd-preview-hint {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 85%);
 }
 
 /* ===== Touch (coarse pointer) hit targets =====

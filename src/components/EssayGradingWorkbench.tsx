@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import {
   EssayGradingAPI,
   canonicalizeEssayModeId,
+  recommendedGradeLevelForMode,
+  shouldSuppressHighSchoolPollution,
   type GradingSession,
   type GradingRound,
   type GradingMode,
@@ -228,6 +230,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   const restoredDraftRef = useRef<{ inputText: string; topicText: string } | null>(null);
 
   // 包装 setEssayType / setGradeLevel：用户修改时持久化到全局设置（启动时恢复）
+  const gradeLevelExplicitRef = useRef(Boolean(initialSession?.gradeLevel));
   const setEssayType = useCallback((type: string) => {
     setEssayTypeRaw(type);
     TauriAPI.saveSetting('essay_grading.essay_type', type).catch(() => {
@@ -235,6 +238,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     });
   }, []);
   const setGradeLevel = useCallback((level: string) => {
+    gradeLevelExplicitRef.current = true;
     setGradeLevelRaw(level);
     TauriAPI.saveSetting('essay_grading.grade_level', level).catch(() => {
       console.warn('[EssayGrading] Failed to persist gradeLevel');
@@ -257,7 +261,9 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     let cancelled = false;
     TauriAPI.getSetting('essay_grading.grade_level')
       .then(saved => {
-        if (!cancelled && saved) setGradeLevelRaw(saved);
+        if (!cancelled && saved && !gradeLevelExplicitRef.current) {
+          setGradeLevelRaw(saved);
+        }
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -365,6 +371,18 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   modeSessionIdRef.current = currentSession?.id || initialSession?.id;
   const setModeId = useCallback((id: string) => {
     setModeIdRaw(id);
+    const targetMode = modesRef.current.find((m) => m.id === id);
+    const recommendedGrade = recommendedGradeLevelForMode(
+      id,
+      targetMode ? targetMode.is_builtin : true,
+    );
+    if (recommendedGrade !== null) {
+      gradeLevelExplicitRef.current = false;
+      setGradeLevelRaw(recommendedGrade);
+      TauriAPI.saveSetting('essay_grading.grade_level', recommendedGrade).catch(() => {
+        console.warn('[EssayGrading] Failed to persist gradeLevel');
+      });
+    }
     TauriAPI.saveSetting('essay_grading.mode_id', id).catch(() => {
       console.warn('[EssayGrading] Failed to persist modeId');
     });
@@ -375,6 +393,20 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
       });
     }
   }, []);
+
+  // 当恢复的批阅模式属于标准考试（雅思/托福/四六级/考研）或自定义模式，而当前仍处于默认高中生档位时自动纠偏
+  useEffect(() => {
+    if (initialSession?.gradeLevel || gradeLevelExplicitRef.current) return;
+    if (gradeLevel !== 'high_school') return;
+    const activeMode = modes.find((m) => m.id === modeId);
+    const recommendedGrade = recommendedGradeLevelForMode(
+      modeId,
+      activeMode ? activeMode.is_builtin : true,
+    );
+    if (recommendedGrade && recommendedGrade !== 'high_school') {
+      setGradeLevelRaw(recommendedGrade);
+    }
+  }, [modes, modeId, gradeLevel, initialSession?.gradeLevel]);
 
   // 模型选择状态
   const [models, setModels] = useState<ModelInfo[]>([]);
@@ -1418,6 +1450,19 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
       return;
     }
 
+    const activeMode = modesRef.current.find((m) => m.id === modeId);
+    const trimmedCustomPrompt = customPrompt.trim();
+    const hasExplicitCustomPrompt =
+      trimmedCustomPrompt.length > 0 &&
+      trimmedCustomPrompt !== t('essay_grading:prompt_editor.default_prompt').trim();
+    const suppressHighSchool = shouldSuppressHighSchoolPollution({
+      modeId,
+      isBuiltin: activeMode ? activeMode.is_builtin : true,
+      gradeLevel,
+      hasCustomPrompt: hasExplicitCustomPrompt,
+    });
+    const effectiveGradeLevel = suppressHighSchool ? '' : gradeLevel;
+
     try {
       // 如果没有会话 ID，先创建（仅用于非 DSTU 场景）
       let session = currentSession;
@@ -1442,7 +1487,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
         session = await EssayGradingAPI.createSession({
           title,
           essay_type: essayType,
-          grade_level: gradeLevel,
+          grade_level: effectiveGradeLevel,
           custom_prompt: customPrompt || undefined,
         });
         setCurrentSession(session);
@@ -1487,7 +1532,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
         mode_id: modeId || undefined,
         model_config_id: modelId || undefined, // 空字符串会使用默认模型
         essay_type: essayType,
-        grade_level: gradeLevel,
+        grade_level: effectiveGradeLevel,
         custom_prompt: customPrompt || undefined,
         previous_result: previousResult,
         previous_input: previousInput,

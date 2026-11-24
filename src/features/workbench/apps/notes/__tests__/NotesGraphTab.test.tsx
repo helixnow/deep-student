@@ -169,4 +169,39 @@ describe('NotesGraphTab', () => {
     await waitFor(() => expect(fetchOutgoing).toHaveBeenCalledWith('note_center'));
     expect(fetchOutgoing).not.toHaveBeenCalledWith('note_out');
   });
+
+  it('filters 1-hop vs 2-hop neighbors in client fallback mode and renders edge labels summary', async () => {
+    window.localStorage.setItem('notes-local-graph:depth', '2');
+    fetchBacklinks.mockRejectedValue(new Error('offline'));
+    fetchOutgoing.mockRejectedValue(new Error('offline'));
+
+    const center = node({ id: 'note_center', path: '/note_center', name: 'Center' });
+    const hop1 = node({ id: 'note_hop1', path: '/note_hop1', name: 'Hop1' });
+    const hop2 = node({ id: 'note_hop2', path: '/note_hop2', name: 'Hop2' });
+
+    getContent.mockImplementation(async (path: string) => {
+      if (path === '/note_center') return { ok: true, value: 'Links to [[Hop1]]' };
+      if (path === '/note_hop1') return { ok: true, value: 'Links to [[Hop2]]' };
+      return { ok: true, value: '' };
+    });
+
+    render(
+      <NotesGraphTab
+        open
+        activeResource={center}
+        notes={[center, hop1, hop2]}
+        onOpenResource={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('graph-view')).toBeInTheDocument());
+    expect(viewProps.current!.data.nodes.map((n) => n.title).sort()).toEqual(['Center', 'Hop1', 'Hop2']);
+    expect(screen.getByTestId('notes-graph-edges-summary')).toHaveTextContent('Center → Hop1');
+    expect(screen.getByTestId('notes-graph-edges-summary')).toHaveTextContent('Hop1 → Hop2');
+
+    fireEvent.click(screen.getByRole('button', { name: '1 度' }));
+    await waitFor(() =>
+      expect(viewProps.current!.data.nodes.map((n) => n.title).sort()).toEqual(['Center', 'Hop1']),
+    );
+  });
 });

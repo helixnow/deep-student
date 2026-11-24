@@ -899,6 +899,32 @@ export async function startWebServer(options: StartWebServerOptions = {}): Promi
         return;
       }
 
+      if (pathname === '/api/safe-mode/exit' && req.method === 'POST') {
+        if (!isSameOriginRequest(req, proxyOptions)) {
+          res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'Cross-origin request rejected' }));
+          return;
+        }
+        await gateway.ready;
+        await gateway.setSafeMode(false);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ ok: true, safeMode: gateway.isSafeMode() }));
+        return;
+      }
+
+      if (pathname === '/api/safe-mode/enter' && req.method === 'POST') {
+        if (!isSameOriginRequest(req, proxyOptions)) {
+          res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'Cross-origin request rejected' }));
+          return;
+        }
+        await gateway.ready;
+        await gateway.setSafeMode(true);
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ ok: true, safeMode: gateway.isSafeMode() }));
+        return;
+      }
+
       if (pathname === '/api' || pathname.startsWith('/api/')) {
         res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
         res.end(JSON.stringify({ error: 'Unknown API endpoint' }));

@@ -1361,7 +1361,8 @@
     "delete_failed": "Delete failed",
     "empty_placeholder": "Trash is empty",
     "confirm_empty_desc": "Are you sure you want to empty the trash? This action cannot be undone.",
-    "confirm_delete_desc": "Are you sure you want to permanently delete this item? This action cannot be undone."
+    "confirm_delete_desc": "Are you sure you want to permanently delete this item? This action cannot be undone.",
+    "selectHint": "Selected — click Restore to bring back this item"
   },
   "assets": {
     "title": "Asset management",
@@ -2317,6 +2318,12 @@
     "resumeItem": "Resume: {{title}}",
     "hintQuickSwitch": "Quick switch & search",
     "hintToggleSidebar": "Toggle file sidebar",
-    "searchMatchCount": "{{count}} matches"
+    "searchMatchCount": "{{count}} matches",
+    "linksAndGraph": "Backlinks / Graph",
+    "graphCurrentNode": "Current",
+    "graphEdgeWikilink": "Wikilink",
+    "graphEdgeNoteref": "Reference",
+    "graphConnectionsSummary": "Edges ({{count}})",
+    "graphMoreConnections": "{{count}} more connections"
   }
 }

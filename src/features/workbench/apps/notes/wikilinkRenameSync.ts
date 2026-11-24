@@ -202,8 +202,7 @@ export async function syncWikiLinksAfterNoteRename(
       // 写回基线取自写前的最新节点（乐观锁），并发编辑时后端拒绝覆盖
       const nodeResult = await dstu.get(source.path);
       const node: DstuNode | null = nodeResult.ok ? nodeResult.value : null;
-      if (!node) {
-        summary.failedSources += 1;
+      if (!node || node.path.startsWith('/_trash')) {
         continue;
       }
       const contentResult = await dstu.getContent(node.path);

@@ -329,6 +329,8 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           includeAuto
           detectedLanguage={detectedLang}
           disabled={isTranslating}
+          ariaLabel={t('translation:languages.source_lang')}
+          dataTestId="translation-source-lang-select"
           className={cn('min-w-0 max-w-[9rem]', !isToolbarCompact && 'sm:max-w-none')}
         />
         <CommonTooltip
@@ -355,6 +357,8 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           onChange={setTgtLang}
           languages={languageOptions}
           disabled={isTranslating}
+          ariaLabel={t('translation:languages.target_lang')}
+          dataTestId="translation-target-lang-select"
           className={cn('min-w-0 max-w-[9rem]', !isToolbarCompact && 'sm:max-w-none')}
         />
       </div>

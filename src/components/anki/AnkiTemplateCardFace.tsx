@@ -452,6 +452,47 @@ function defaultFaceText(card: AnkiCard, side: AnkiCardFace): string {
   return card.front || card.fields?.Front || card.text || '';
 }
 
+const SOUND_MARKER_RE = /\[sound:[^\]]*\]/gi;
+
+export function extractAccessibleCardText(html: string, fallback = ''): string {
+  const cleanText = (input: string): string =>
+    input
+      .replace(SOUND_MARKER_RE, '')
+      .replace(/[ \t\r]+/g, ' ')
+      .replace(/\n[ \t]+/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+  if (html && typeof DOMParser !== 'undefined') {
+    try {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      doc
+        .querySelectorAll('style, script, noscript, template, audio, video, [aria-hidden="true"], .sr-only')
+        .forEach((node) => node.remove());
+      doc.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
+      doc.querySelectorAll('p, div, li, tr, h1, h2, h3, h4, h5, h6, hr, blockquote').forEach((block) => {
+        block.append('\n');
+      });
+      const extracted = cleanText(doc.body?.textContent ?? '');
+      if (extracted) return extracted;
+    } catch {
+      // fall through to regex fallback
+    }
+  }
+
+  const stripFallback = (input: string): string =>
+    cleanText(
+      input
+        .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(?:p|div|li|tr|h[1-6]|blockquote)>/gi, '\n')
+        .replace(/<[^>]+>/g, ' '),
+    );
+
+  return stripFallback(html) || stripFallback(fallback);
+}
+
 /**
  * apkg 导入卡携带 AnkiCardOrd（0 起）：Cloze 笔记的第 N 张卡对应 c(N+1) 空位。
  * 仅对 Cloze 模板生效；本地生成卡无 ord（一卡多空全遮，属已知限制）。
@@ -562,6 +603,10 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   );
   const frameInteractive = interactiveFrame && isInteractiveCardHtml(previewHtml);
   const frameHtml = frameInteractive ? `${previewHtml}${CARD_FACE_HELPER_SCRIPT}` : previewHtml;
+  const accessibleFaceText = useMemo(
+    () => (previewHtml ? extractAccessibleCardText(previewHtml, plainText) : ''),
+    [previewHtml, plainText],
+  );
 
   // fallback 视图：\( \)、\[ \]、$、$$ 公式经 KaTeX 渲染；无公式时保持纯文本零成本
   const latexHtml = useMemo(
@@ -622,16 +667,27 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
       data-interactive={frameInteractive ? 'true' : undefined}
     >
       {previewHtml ? (
-        <ShadowDomPreview
-          htmlContent={frameHtml}
-          cssContent={cssContent}
-          compact={compact}
-          fidelity="anki"
-          minHeight={stageMode ? stageHeight : undefined}
-          onFrameClick={frameInteractive ? onFrameClick : undefined}
-          onFrameWheel={frameInteractive ? onFrameWheel : undefined}
-          trustedCss={katexCss ?? undefined}
-        />
+        <>
+          <ShadowDomPreview
+            htmlContent={frameHtml}
+            cssContent={cssContent}
+            compact={compact}
+            fidelity="anki"
+            minHeight={stageMode ? stageHeight : undefined}
+            onFrameClick={frameInteractive ? onFrameClick : undefined}
+            onFrameWheel={frameInteractive ? onFrameWheel : undefined}
+            trustedCss={katexCss ?? undefined}
+          />
+          {accessibleFaceText ? (
+            <div
+              data-testid={`anki-card-face-${side}-text`}
+              data-anki-accessible-text={side}
+              className="sr-only select-text whitespace-pre-wrap"
+            >
+              {accessibleFaceText}
+            </div>
+          ) : null}
+        </>
       ) : (
         <div className="flex min-w-0 flex-col items-center gap-3">
           {latexHtml ? (

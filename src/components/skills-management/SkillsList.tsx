@@ -7,7 +7,7 @@
 import React, { type MutableRefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Lightning, Pencil, Trash, Check, ArrowCounterClockwise, Download, Star, DotsThree, Copy } from '@phosphor-icons/react';
+import { Lightning, Pencil, Trash, Check, ArrowCounterClockwise, Download, Star, DotsThree, Copy, CircleNotch } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import {
   AppMenu,
@@ -59,6 +59,8 @@ export interface SkillsListProps {
   cardRefsMap?: MutableRefObject<Map<string, HTMLDivElement>>;
   /** 当前正在编辑的技能 ID（用于隐藏卡片） */
   editingSkillId?: string | null;
+  /** 是否正在加载技能列表 */
+  isLoading?: boolean;
 }
 
 // ============================================================================
@@ -88,6 +90,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
   className,
   cardRefsMap,
   editingSkillId,
+  isLoading = false,
 }) => {
   const { t } = useTranslation(['skills', 'common']);
   const cardRefs = React.useRef<Record<string, HTMLDivElement | null>>({});
@@ -115,6 +118,18 @@ export const SkillsList: React.FC<SkillsListProps> = ({
   }, [selectedSkillId]);
 
   if (skills.length === 0) {
+    if (isLoading) {
+      return (
+        <div className={cn('study-shell-empty-state', className)} role="status" data-testid="skills-list-loading">
+          <div className="study-shell-empty-state__icon">
+            <CircleNotch size={30} className="animate-spin text-muted-foreground/70" />
+          </div>
+          <p className="study-shell-empty-state__title">
+            {t('skills:selector.loading')}
+          </p>
+        </div>
+      );
+    }
     return (
       <div className={cn('study-shell-empty-state', className)}>
         <div className="study-shell-empty-state__icon">
@@ -239,7 +254,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                     )}
                     title={isDefaultEnabled ? t('skills:management.is_default') : t('skills:management.set_default')}
                  >
-                    {isDefaultEnabled ? t('skills:management.default_abbr') : <span className={cn('transition-opacity', isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}>{t('skills:management.enable')}</span>}
+                    {isDefaultEnabled ? t('skills:management.default_abbr') : <span className={cn('transition-opacity', isTouchPrimary ? 'opacity-100' : 'opacity-0 group-hover:opacity-100')}>{t('skills:management.set_default')}</span>}
                  </div>
               </div>
             </div>

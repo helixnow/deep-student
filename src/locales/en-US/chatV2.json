@@ -225,6 +225,8 @@
       "copySuccess": "Copied to clipboard",
       "copyFailed": "Copy failed",
       "retry": "Retry",
+      "regenerate": "Regenerate",
+      "branchAndRetry": "Regenerate in branch",
       "retryFailed": "Retry failed",
       "edit": "Edit",
       "editPrompt": "Edit message content:",
@@ -274,6 +276,7 @@
     "editConfirm": {
       "message": "Editing this message will replace subsequent replies. Continue?",
       "confirm": "Continue",
+      "branchAndSend": "Send in branch",
       "cancel": "Cancel"
     },
     "reconnect": {
@@ -2021,6 +2024,9 @@
     },
     "arguments": "Arguments",
     "approve": "Allow Once",
+    "skillTrustApprove": "Approve & Trust",
+    "skillTrustReject": "Reject",
+    "awaitingApproval": "Awaiting approval",
     "allowSession": "Allow for Session",
     "allowScope": "Allow Scope",
     "reject": "Reject Once",

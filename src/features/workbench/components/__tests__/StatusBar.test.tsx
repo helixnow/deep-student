@@ -741,13 +741,20 @@ describe('StatusBar 窗口菜单', () => {
     expect(useWindowStore.getState().windows[winA].displayMode).toBe('maximized');
   });
 
-  it('无窗口时显示空态且平铺命令禁用', async () => {
+  it('无窗口时显示空态且平铺命令禁用，但多窗俯瞰入口仍可打开', async () => {
     render(<StatusBar />);
     fireEvent.click(screen.getByTestId('wb-menubar-windowmenu'));
     expect(await screen.findByTestId('wb-menubar-window-empty')).toBeDisabled();
     expect(screen.getByTestId('wb-menubar-window-tile-left')).toBeDisabled();
     expect(screen.getByTestId('wb-menubar-window-tile-right')).toBeDisabled();
     expect(screen.getByTestId('wb-menubar-window-maximize')).toBeDisabled();
+
+    const exposeBtn = screen.getByTestId('wb-menubar-window-expose');
+    expect(exposeBtn).toBeEnabled();
+    expect(exposeBtn).toHaveTextContent('多窗俯瞰');
+    fireEvent.click(exposeBtn);
+    expect(useWorkbenchOverlay.getState().exposeOpen).toBe(true);
+    act(() => useWorkbenchOverlay.getState().closeExpose());
   });
 });
 

@@ -282,6 +282,11 @@ export interface StreamingBlockSaver {
   ): void;
 
   /**
+   * 取消指定块的待执行节流保存并丢弃其累积缓存
+   */
+  cancelBlock?(blockId: string): void;
+
+  /**
    * 清理会话相关状态
    */
   cleanup(sessionId: string): void;
@@ -458,6 +463,18 @@ class StreamingBlockSaverImpl implements StreamingBlockSaver {
     ).catch((error) => {
       console.error('[StreamingBlockSaver] Save failed:', blockId, error);
     });
+  }
+
+  /**
+   * 取消指定块的待执行节流保存并清理累积内容
+   */
+  cancelBlock(blockId: string): void {
+    const timer = this.pendingTimers.get(blockId);
+    if (timer) {
+      clearTimeout(timer);
+      this.pendingTimers.delete(blockId);
+    }
+    this.accumulatedContent.delete(blockId);
   }
 
   /**

@@ -274,8 +274,35 @@ export async function list(path: string, options?: DstuListOptions): Promise<Res
  * @returns Result<DstuNode, VfsError> - 成功返回节点，未找到返回 NOT_FOUND 错误
  */
 export async function get(path: string): Promise<Result<DstuNode>> {
+  const raw = path.trim();
+  const trimmed = raw.replace(/^(\.\/)+/, '').replace(/^\/+/, '');
+  const normalized = trimmed ? `/${trimmed}` : '/';
+  const looksLikeDstuIdSegment =
+    trimmed.length > 0 &&
+    !trimmed.includes('/') &&
+    !/\.[a-z0-9]{1,8}$/i.test(trimmed);
+  const looksLikeRelativePath = !looksLikeDstuIdSegment;
+
   try {
-    const result = await invoke<DstuNode | null>('dstu_get', { path });
+    if (looksLikeRelativePath) {
+      const byPath = await invoke<DstuNode | null>('dstu_get_resource_by_path', { path: normalized });
+      if (byPath !== null) {
+        return ok(byPath);
+      }
+      return err(
+        new VfsError(
+          VfsErrorCode.NOT_FOUND,
+          i18n.t('chat_host:vfs_api.resource_not_found', {
+            defaultValue: '资源未找到: {{path}}',
+            path,
+          }),
+          true,
+          { path }
+        )
+      );
+    }
+
+    const result = await invoke<DstuNode | null>('dstu_get', { path: normalized });
     if (result === null) {
       return err(
         new VfsError(
@@ -291,6 +318,28 @@ export async function get(path: string): Promise<Result<DstuNode>> {
     }
     return ok(result);
   } catch (error: unknown) {
+    const rawMsg = error instanceof Error ? error.message : String(error);
+    if (rawMsg.includes('Invalid DSTU path')) {
+      try {
+        const fallback = await invoke<DstuNode | null>('dstu_get_resource_by_path', { path: normalized });
+        if (fallback !== null) {
+          return ok(fallback);
+        }
+        return err(
+          new VfsError(
+            VfsErrorCode.NOT_FOUND,
+            i18n.t('chat_host:vfs_api.resource_not_found', {
+              defaultValue: '资源未找到: {{path}}',
+              path,
+            }),
+            true,
+            { path }
+          )
+        );
+      } catch {
+        // fall through to standard error reporting
+      }
+    }
     const vfsError = toVfsError(
       error,
       i18n.t('chat_host:vfs_api.get_failed', { defaultValue: '获取资源详情失败' }),

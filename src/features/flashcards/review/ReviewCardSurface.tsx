@@ -55,6 +55,26 @@ const SWIPE_BANDS: Record<SwipeDirection, {
 };
 
 /** 拖动跟手 / 飞出 / 回弹的内联变换（回弹与飞出的过渡由 .wb-fc-swipe-card 提供） */
+function stripHtmlTagsForAccessibleSummary(raw: string): string {
+  const cleaned = raw.replace(/\[sound:[^\]]*\]/gi, '');
+  if (typeof DOMParser !== 'undefined' && /<[^>]+>/.test(cleaned)) {
+    try {
+      const doc = new DOMParser().parseFromString(cleaned, 'text/html');
+      doc.querySelectorAll('style, script, noscript, template').forEach((n) => n.remove());
+      doc.querySelectorAll('br').forEach((n) => n.replaceWith(' '));
+      return (doc.body?.textContent ?? '').replace(/\s+/g, ' ').trim();
+    } catch {
+      // fall through
+    }
+  }
+  return cleaned
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function swipeTransformStyle(state: SwipeRatingState): React.CSSProperties {
   if (state.flyout) {
     const transform = {
@@ -136,6 +156,10 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
       ? displayCard.back || displayCard.text || ''
       : displayCard.front || displayCard.text || '';
   const renderCard = React.useMemo(() => toRenderableReviewCard(displayCard), [displayCard]);
+  const accessibleFrontSummary = React.useMemo(
+    () => stripHtmlTagsForAccessibleSummary(displayCard.front || displayCard.text || ''),
+    [displayCard.front, displayCard.text],
+  );
 
   // 交替使用两个等价动画类以重启 CSS 动画；卡片切换时用入场动画而非翻面动画。
   const cardKey = `${card.id}:${card.ankiCardId ?? ''}`;
@@ -256,10 +280,18 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
             className={cn('wb-fc-card-content flex min-h-full flex-col', !templateMode && 'px-6 py-8 sm:px-10 sm:py-10')}
             data-template-mode={templateMode ? 'true' : undefined}
           >
-            {/* 正/背面由内容本身表达；仅保留给读屏 */}
+            {/* 正/背面由内容本身表达；仅保留给读屏与 DOM 文本可达性 */}
             <span className="sr-only">
               {flipped ? backLabel : frontLabel}
             </span>
+            {flipped && accessibleFrontSummary ? (
+              <span
+                className="sr-only select-text"
+                data-testid="review-card-front-accessible"
+              >
+                {`${frontLabel}: ${accessibleFrontSummary}`}
+              </span>
+            ) : null}
             <div
               data-flip={flipAnim === 'none' ? undefined : flipAnim}
               className="wb-fc-card-face flex min-h-0 min-w-0 flex-1 flex-col"

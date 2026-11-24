@@ -134,6 +134,34 @@
   font-style: italic;
 }
 
+.notes-graph-node {
+  border: 0;
+  padding: 2px 4px;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+}
+
+.notes-graph-node:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+.notes-graph-node[data-active='true'] .notes-graph-node-label {
+  color: hsl(var(--primary));
+  font-weight: 600;
+}
+
+.notes-graph-node-badge {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: hsl(var(--primary) / 14%);
+  color: hsl(var(--primary));
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
 /* 边锚点柄不可见（仅供 xyflow 连线定位） */
 .notes-graph-handle {
   width: 1px;
@@ -202,6 +230,54 @@
   border-top: 1px solid hsl(var(--border) / 60%);
   color: hsl(var(--muted-foreground));
   font-size: 11px;
+}
+
+.notes-graph-edges-summary {
+  padding: 6px 12px 8px;
+  flex: 0 0 auto;
+  border-top: 1px solid hsl(var(--border) / 60%);
+  background: hsl(var(--muted) / 22%);
+  display: grid;
+  gap: 4px;
+}
+
+.notes-graph-edges-heading {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-graph-edges-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+  max-height: 84px;
+  overflow-y: auto;
+}
+
+.notes-graph-edges-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: hsl(var(--foreground) / 88%);
+}
+
+.notes-graph-edges-kind {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+}
+
+.notes-graph-edges-more {
+  font-size: 10.5px;
+  color: hsl(var(--muted-foreground));
 }
 
 /* 懒加载占位（与导图 pane 骨架同款脉冲条） */

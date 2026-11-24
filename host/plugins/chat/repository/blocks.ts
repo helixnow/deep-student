@@ -347,7 +347,8 @@ const UPSERT_STREAMING_BLOCK = `INSERT INTO chat_v2_blocks
     error = excluded.error,
     started_at = COALESCE(chat_v2_blocks.started_at, excluded.started_at),
     ended_at = excluded.ended_at,
-    first_chunk_at = COALESCE(chat_v2_blocks.first_chunk_at, excluded.first_chunk_at)`;
+    first_chunk_at = COALESCE(chat_v2_blocks.first_chunk_at, excluded.first_chunk_at)
+  WHERE chat_v2_blocks.status NOT IN ('success', 'error') OR excluded.status IN ('success', 'error')`;
 
 /** `upsert_block_in_db` (block_actions.rs:958-1015): crash-save upsert keeps the first started_at. */
 export function upsertStreamingBlock(db: SqlExecutor, block: BlockInput): void {

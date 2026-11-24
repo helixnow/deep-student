@@ -249,7 +249,13 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
 
   const persistTimerRef = useRef<number | null>(null);
   useEffect(() => () => {
-    if (persistTimerRef.current !== null) window.clearTimeout(persistTimerRef.current);
+    if (persistTimerRef.current !== null) {
+      window.clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+      void saveCurrentSessionRef.current().catch((err) => {
+        console.warn('[Translation] Failed to flush pending session save on unmount:', err);
+      });
+    }
   }, []);
 
   const scheduleSessionPersist = useCallback(() => {
@@ -284,6 +290,14 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   const [pendingOverwriteConfirm, setPendingOverwriteConfirm] = useState(false);
   const [previousTranslation, setPreviousTranslation] = useState<string | null>(null);
   const [undoBannerDismissed, setUndoBannerDismissed] = useState(false);
+  const [preSwapSnapshot, setPreSwapSnapshot] = useState<{
+    sourceText: string;
+    translatedText: string;
+    srcLang: string;
+    tgtLang: string;
+    langOnly: boolean;
+  } | null>(null);
+  const [swapUndoBannerDismissed, setSwapUndoBannerDismissed] = useState(false);
   const [translationQuality, setTranslationQuality] = useState<number | null>(initialSession?.quality || null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const isSpeakingRef = useRef(false);
@@ -296,6 +310,17 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   const [translationError, setTranslationError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
 
+  const flushSessionPersist = useCallback(() => {
+    if (!dstuMode.onSessionSave || !currentSessionIdRef.current) return;
+    if (persistTimerRef.current !== null) {
+      window.clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+    }
+    void saveCurrentSessionRef.current().catch((err) => {
+      console.warn('[Translation] Failed to persist session settings:', err);
+    });
+  }, [dstuMode.onSessionSave]);
+
   // 偏好持久化：一律走包装 setter（仅用户操作时回写）。
   // 语向/正式度不再用 effect 持久化——effect 无法区分「用户修改」与
   // 「加载历史会话的程序性赋值」，后者会用会话残留污染新建翻译的偏好。
@@ -307,16 +332,29 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     setIsAutoTranslateState(value);
     saveWorkbenchPrefs({ autoTranslate: value });
   }, []);
+  const latestStateForPersistRef = useRef({
+    srcLang,
+    tgtLang,
+    sourceText,
+  });
+  latestStateForPersistRef.current = {
+    srcLang,
+    tgtLang,
+    sourceText,
+  };
+  const latestTranslatedForPersistRef = useRef<string | undefined>(undefined);
   const handleSetSrcLang = useCallback((value: string) => {
+    latestStateForPersistRef.current.srcLang = value;
     setSrcLang(value);
     saveWorkbenchPrefs({ srcLang: value });
-    scheduleSessionPersist();
-  }, [scheduleSessionPersist]);
+    flushSessionPersist();
+  }, [flushSessionPersist]);
   const handleSetTgtLang = useCallback((value: string) => {
+    latestStateForPersistRef.current.tgtLang = value;
     setTgtLang(value);
     saveWorkbenchPrefs({ tgtLang: value });
-    scheduleSessionPersist();
-  }, [scheduleSessionPersist]);
+    flushSessionPersist();
+  }, [flushSessionPersist]);
   const handleSetFormality = useCallback((value: 'formal' | 'casual' | 'auto') => {
     setFormality(value);
     saveWorkbenchPrefs({ formality: value });
@@ -394,10 +432,11 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     []
   );
   const persistedDirtySnapshotRef = useRef(persistedSnapshotOf(initialSession));
+  const syncedInitialTranslatedRef = useRef(initialSession?.translatedText || '');
   const currentDirtySnapshotRef = useRef(persistedDirtySnapshotRef.current);
   const translatedTextForDirty = isEditingTranslation
     ? editedTranslation
-    : translatedText || initialSession?.translatedText || '';
+    : translatedText || syncedInitialTranslatedRef.current;
   currentDirtySnapshotRef.current = translationDirtySnapshot({
     sourceText,
     translatedText: translatedTextForDirty,
@@ -407,10 +446,6 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     domain,
     glossary,
   });
-
-  useEffect(() => {
-    persistedDirtySnapshotRef.current = persistedSnapshotOf(initialSession);
-  }, [initialSession, persistedSnapshotOf]);
 
   useEffect(() => {
     const resourceId = dstuMode.resourceId ?? initialSession?.id;
@@ -424,18 +459,23 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     persistedDirtySnapshotRef.current = translationDirtySnapshot(session);
   }, []);
 
+  latestTranslatedForPersistRef.current = translatedTextForDirty;
+
   // 「保存并关闭」：把当前工作台状态整体落盘（与 dirty 快照同源，
   // 保存成功后 dirty 消除、关窗放行）。闭包经 ref 每帧更新，注册保持稳定。
   const saveCurrentSessionRef = useRef<() => Promise<void>>(async () => undefined);
   saveCurrentSessionRef.current = async () => {
     if (!dstuMode.onSessionSave) return;
     const now = Date.now();
+    const { srcLang: latestSrcLang, tgtLang: latestTgtLang, sourceText: latestSourceText } =
+      latestStateForPersistRef.current;
+    const latestTranslatedText = latestTranslatedForPersistRef.current ?? translatedTextForDirty;
     const sessionToSave: TranslationSession = {
       id: currentSessionIdRef.current || generateTranslationId(),
-      sourceText,
-      translatedText: translatedTextForDirty,
-      srcLang,
-      tgtLang,
+      sourceText: latestSourceText,
+      translatedText: latestTranslatedText,
+      srcLang: latestSrcLang,
+      tgtLang: latestTgtLang,
       formality,
       customPrompt: isPromptCustomized ? customPrompt : undefined,
       domain,
@@ -464,25 +504,47 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     }
   }, [streamError]);
 
+  const syncedSessionIdRef = useRef<string | undefined>(initialSession?.id);
   // 初始化会话数据（编辑已有记录时）
-  // 无条件赋值（含空字符串），确保父级会话被清空/刷新时本地状态一致
+  // 无条件赋值（含空字符串），确保父级会话被清空/刷新时本地状态一致；
+  // 同一节点后台拉取完整语向元数据时，仅在工作台尚无未保存本地改动时同步，防止覆盖用户输入
   useEffect(() => {
+    const isSameSession = syncedSessionIdRef.current === initialSession?.id;
+    syncedSessionIdRef.current = initialSession?.id;
+    const prevPersisted = persistedDirtySnapshotRef.current;
+    const hasUnsavedEdits =
+      isSameSession && currentDirtySnapshotRef.current !== prevPersisted;
+    persistedDirtySnapshotRef.current = persistedSnapshotOf(initialSession);
+    if (hasUnsavedEdits) {
+      return;
+    }
     // 语向/正式度统一解析链：会话缺失的字段（新建空翻译 / 旧版无 meta 文档）
     // 回落到用户持久化偏好，不被幽灵默认值挡住，也不残留上一个会话的设置
     const restored = resolveSessionPrefs(initialSession, loadWorkbenchPrefs());
     setSrcLang(restored.srcLang);
     setTgtLang(restored.tgtLang);
+    latestStateForPersistRef.current.srcLang = restored.srcLang;
+    latestStateForPersistRef.current.tgtLang = restored.tgtLang;
     setFormality(restored.formality);
+    if (!isSameSession) {
+      setPreSwapSnapshot(null);
+      setSwapUndoBannerDismissed(false);
+    }
     if (!initialSession?.id) {
       return;
     }
-    setSourceText(initialSession.sourceText ?? '');
-    setTranslatedText(initialSession.translatedText ?? '');
+    const nextSource = initialSession.sourceText ?? '';
+    const nextTranslated = initialSession.translatedText ?? '';
+    syncedInitialTranslatedRef.current = nextTranslated;
+    latestStateForPersistRef.current.sourceText = nextSource;
+    latestTranslatedForPersistRef.current = nextTranslated;
+    setSourceText(nextSource);
+    setTranslatedText(nextTranslated);
     setDomain(initialSession.domain || 'general');
     setGlossary(initialSession.glossary || []);
     setTranslationQuality(initialSession.quality ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialSession?.id]);
+  }, [initialSession?.id, initialSession?.srcLang, initialSession?.tgtLang, initialSession?.updatedAt]);
 
   // ★ A6-06：最近一次已执行翻译的参数签名；恢复历史会话时已有译文视为"已翻译过"
   // 签名结构与 buildTranslationSig 对齐：[source, src, tgt, customPrompt, formality, domain, glossary]
@@ -570,11 +632,16 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
       showGlobalNotification('warning', t('translation:errors.text_too_long', {
         max: TRANSLATION_MAX_CHARS.toLocaleString(),
       }));
-      setSourceText(text.slice(0, TRANSLATION_MAX_CHARS));
+      const sliced = text.slice(0, TRANSLATION_MAX_CHARS);
+      latestStateForPersistRef.current.sourceText = sliced;
+      setSourceText(sliced);
+      scheduleSessionPersist();
       return;
     }
+    latestStateForPersistRef.current.sourceText = text;
     setSourceText(text);
-  }, [t]);
+    scheduleSessionPersist();
+  }, [t, scheduleSessionPersist]);
 
   // 拖拽文件读取的序号守卫：快速连续拖入多个文件时只保留最后一次结果
   const fileReadSeqRef = useRef(0);
@@ -876,15 +943,50 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
       showGlobalNotification('warning', t('translation:errors.cannot_swap_auto'));
       return;
     }
-    handleSetSrcLang(tgtLang);
-    handleSetTgtLang(effectiveSrcLang);
-    // 同时交换文本（清除旧错误，让自动翻译对交换后的内容重新生效）
-    const tempText = sourceText;
-    setSourceText(translatedText);
-    setTranslatedText(tempText);
+    const langOnly = Boolean(sourceText.trim() && !translatedText.trim());
+    setPreSwapSnapshot({
+      sourceText,
+      translatedText,
+      srcLang,
+      tgtLang,
+      langOnly,
+    });
+    setSwapUndoBannerDismissed(false);
+
+    latestStateForPersistRef.current.srcLang = tgtLang;
+    latestStateForPersistRef.current.tgtLang = effectiveSrcLang;
+    setSrcLang(tgtLang);
+    setTgtLang(effectiveSrcLang);
+    saveWorkbenchPrefs({ srcLang: tgtLang, tgtLang: effectiveSrcLang });
+
+    // 仅当有译文（或双方都为空）时才对调文本；原文非空而译文为空时只交换语向，不清空原文
+    if (!langOnly) {
+      latestStateForPersistRef.current.sourceText = translatedText;
+      latestTranslatedForPersistRef.current = sourceText;
+      setSourceText(translatedText);
+      setTranslatedText(sourceText);
+    }
     setTranslationError(null);
-    scheduleSessionPersist();
-  }, [srcLang, tgtLang, sourceText, translatedText, detectedLang, t, setTranslatedText, isTranslating, isEditingTranslation, handleSetSrcLang, handleSetTgtLang, scheduleSessionPersist]);
+    flushSessionPersist();
+  }, [srcLang, tgtLang, sourceText, translatedText, detectedLang, t, setTranslatedText, isTranslating, isEditingTranslation, flushSessionPersist]);
+
+  const handleUndoSwap = useCallback(() => {
+    if (!preSwapSnapshot) return;
+    latestStateForPersistRef.current.srcLang = preSwapSnapshot.srcLang;
+    latestStateForPersistRef.current.tgtLang = preSwapSnapshot.tgtLang;
+    latestStateForPersistRef.current.sourceText = preSwapSnapshot.sourceText;
+    latestTranslatedForPersistRef.current = preSwapSnapshot.translatedText;
+
+    setSrcLang(preSwapSnapshot.srcLang);
+    setTgtLang(preSwapSnapshot.tgtLang);
+    saveWorkbenchPrefs({ srcLang: preSwapSnapshot.srcLang, tgtLang: preSwapSnapshot.tgtLang });
+    setSourceText(preSwapSnapshot.sourceText);
+    setTranslatedText(preSwapSnapshot.translatedText);
+    setTranslationError(null);
+    setPreSwapSnapshot(null);
+    setSwapUndoBannerDismissed(true);
+    flushSessionPersist();
+  }, [preSwapSnapshot, setTranslatedText, flushSessionPersist]);
 
   // 自动翻译逻辑（智能 debounce：短文本快速触发，长文本延迟触发）
   // deps 包含所有影响翻译结果的参数，修改设置时也会重新触发
@@ -1166,7 +1268,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     : null;
   const currentTranslationSig = buildTranslationSig();
   const isOutdated = Boolean(
-    translatedText.trim() &&
+    (translatedText ?? '').trim() &&
     !isTranslating &&
     !translationError &&
     lastTranslatedSig &&
@@ -1237,6 +1339,43 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
                 className="[@media(pointer:coarse)]:!min-h-11"
               >
                 {t('translation:workbench_ui.confirm_retranslate')}
+              </DsButton>
+            </div>
+          </div>
+        )}
+
+        {/* 交换语言/文本后一键撤销提示条 */}
+        {!isExternalSettingsPageOpen && preSwapSnapshot !== null && !swapUndoBannerDismissed && !isTranslating && (
+          <div
+            data-testid="translation-swap-undo-banner"
+            className="flex items-center justify-between gap-2 px-4 py-2 bg-info/10 border-b border-info/20 ui-drop-in"
+          >
+            <div className="flex items-center gap-2 text-info min-w-0">
+              <Info size={16} className="shrink-0" />
+              <span className="text-sm truncate">
+                {preSwapSnapshot.langOnly
+                  ? t('translation:workbench_ui.swapped_lang_only_hint')
+                  : t('translation:workbench_ui.swapped_undo_hint')}
+              </span>
+              <span aria-hidden="true" className="text-info/60">·</span>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                data-testid="translation-swap-undo-button"
+                onClick={handleUndoSwap}
+                className="text-info hover:bg-info/10 font-medium [@media(pointer:coarse)]:!min-h-11"
+              >
+                {t('translation:workbench_ui.undo_swap')}
+              </DsButton>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => setSwapUndoBannerDismissed(true)}
+                className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
+              >
+                {t('translation:workbench_ui.dismiss')}
               </DsButton>
             </div>
           </div>

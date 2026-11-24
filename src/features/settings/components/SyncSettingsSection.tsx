@@ -36,7 +36,10 @@ import { DevicePairingSection } from './DevicePairingSection';
 import { ConflictResolutionDialog, MergeStrategy } from '@/components/ConflictResolutionDialog';
 import { useConflictResolution } from '@/hooks/useConflictResolution';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { getErrorMessage } from '@/utils/errorUtils';
+import {
+  localizeCloudStorageError,
+  notifyErrorDeduped,
+} from './data-governance/localizeCloudError';
 import {
   SyncPhase,
   formatSpeed,
@@ -63,7 +66,7 @@ interface SyncSettingsSectionProps {
 export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
   embedded = false,
 }) => {
-  const { t } = useTranslation(['data', 'common', 'sync']);
+  const { t, i18n } = useTranslation(['data', 'common', 'sync']);
 
   // 本地化的同步阶段名称
   const localizedPhaseNames = useMemo<Record<SyncPhase, string>>(
@@ -160,12 +163,12 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
       }
       setShowConflictDialog(true);
     } catch (err: unknown) {
-      showGlobalNotification(
+      notifyErrorDeduped(
         'error',
-        `${t('data:sync_settings.detect_failed')}: ${getErrorMessage(err)}`
+        `${t('data:sync_settings.detect_failed')}: ${localizeCloudStorageError(err, t, i18n?.language)}`
       );
     }
-  }, [detectConflicts, detectConflictsMock, t, useMock]);
+  }, [detectConflicts, detectConflictsMock, i18n?.language, t, useMock]);
 
   // 解决冲突
   const handleResolveConflicts = useCallback(
@@ -192,18 +195,19 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
         } else {
           showGlobalNotification(
             'warning',
-            result.error_message ??
-              t('data:sync_settings.resolve_partial')
+            result.error_message
+              ? localizeCloudStorageError(result.error_message, t, i18n?.language)
+              : t('data:sync_settings.resolve_partial')
           );
         }
       } catch (err: unknown) {
-        showGlobalNotification(
+        notifyErrorDeduped(
           'error',
-          `${t('data:sync_settings.resolve_failed')}: ${getErrorMessage(err)}`
+          `${t('data:sync_settings.resolve_failed')}: ${localizeCloudStorageError(err, t, i18n?.language)}`
         );
       }
     },
-    [cloudManifestJson, resolveConflicts, resolveConflictsMock, t, useMock]
+    [cloudManifestJson, i18n?.language, resolveConflicts, resolveConflictsMock, t, useMock]
   );
 
   // 关闭冲突对话框
@@ -261,30 +265,36 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           return;
         }
 
-        const message = result.error_message ??
-          t('data:governance.sync_partial_with_skipped', {
-            skipped: result.skipped_changes ?? 0,
-          });
+        const message = result.error_message ?? t('data:governance.sync_partial_with_skipped', {
+          skipped: result.skipped_changes ?? 0,
+        });
 
         if (result.success) {
-          showGlobalNotification('warning', message);
+          showGlobalNotification(
+            'warning',
+            localizeCloudStorageError(message, t, i18n?.language),
+          );
           void getSyncStatus().catch(console.error);
         } else {
-          showGlobalNotification(
+          notifyErrorDeduped(
             'error',
-            `${t('data:sync_settings.sync_failed')}: ${message}`
+            localizeCloudStorageError(
+              `${t('data:sync_settings.sync_failed')}: ${message}`,
+              t,
+              i18n?.language,
+            ),
           );
         }
       } catch (err: unknown) {
-        showGlobalNotification(
+        notifyErrorDeduped(
           'error',
-          `${t('data:sync_settings.sync_failed')}: ${getErrorMessage(err)}`
+          `${t('data:sync_settings.sync_failed')}: ${localizeCloudStorageError(err, t, i18n?.language)}`
         );
       } finally {
         useGlobalSyncStore.getState().endSync();
       }
     },
-    [getSyncStatus, syncStrategy, t]
+    [getSyncStatus, i18n?.language, syncStrategy, t]
   );
 
   // 计算同步状态摘要

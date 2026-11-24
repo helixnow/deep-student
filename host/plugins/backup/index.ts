@@ -299,11 +299,11 @@ export default definePlugin({
     ctx.commands.register<{
       backupId: string; outputPath?: string | null; compressionLevel?: number | null;
       includeChecksums?: boolean | null; encryptionPassword?: string | null;
-      useStoredCloudEncryptionPassword?: boolean | null;
+      useStoredCloudEncryptionPassword?: boolean | null; excludeTrash?: boolean | null;
     }>('data_governance_export_zip', wrap<{
       backupId: string; outputPath?: string | null; compressionLevel?: number | null;
       includeChecksums?: boolean | null; encryptionPassword?: string | null;
-      useStoredCloudEncryptionPassword?: boolean | null;
+      useStoredCloudEncryptionPassword?: boolean | null; excludeTrash?: boolean | null;
     }>(args => zipCommands.exportZip(args)));
     ctx.commands.register<{
       zipPath: string; backupId?: string | null; password?: string | null;
@@ -316,10 +316,12 @@ export default definePlugin({
       outputPath: string; compressionLevel?: number | null; addToBackupList?: boolean | null;
       useTiered?: boolean | null; tiers?: string[] | null; includeAssets?: boolean | null;
       assetTypes?: string[] | null; encryptionPassword?: string | null;
+      excludeTrash?: boolean | null;
     }>('data_governance_backup_and_export_zip', wrap<{
       outputPath: string; compressionLevel?: number | null; addToBackupList?: boolean | null;
       useTiered?: boolean | null; tiers?: string[] | null; includeAssets?: boolean | null;
       assetTypes?: string[] | null; encryptionPassword?: string | null;
+      excludeTrash?: boolean | null;
     }>(args => zipCommands.backupAndExportZip(args)));
     ctx.commands.register<{ backupId: string; restoreAssets?: boolean | null }>(
       'data_governance_restore_backup',

@@ -7,10 +7,12 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Lightning, Check, User, Wrench, Star, CaretLeft, ShieldWarning, ShieldCheck, Terminal, Stack, Storefront, X } from '@phosphor-icons/react';
+import { Lightning, Check, User, Wrench, Star, CaretLeft, ShieldWarning, ShieldCheck, Terminal, Stack, Storefront, X, CircleNotch } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { ComposerPanel } from '@/features/chat/components/input-bar/ComposerPanel';
@@ -185,10 +187,20 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
     try {
       // setTrust 内部广播 SKILL_TRUST_CHANGED，hook 订阅方自动刷新
       await setTrust(skillId, trust);
+      showGlobalNotification(
+        'success',
+        trust === 'trusted'
+          ? t('skills:package.trust_success')
+          : t('skills:package.trust_revoked_toast'),
+      );
     } catch (error) {
       console.error('[SkillTrust] Failed to update trust:', error);
+      showGlobalNotification(
+        'error',
+        t('skills:package.trust_failed', { error: getErrorMessage(error) }),
+      );
     }
-  }, [setTrust]);
+  }, [setTrust, t]);
 
   const handleEnableSkill = useCallback((skillId: string) => {
     setSkillDisabledNow(skillId, false);
@@ -556,10 +568,17 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
           viewportClassName={cn('space-y-1 pr-1', isMenuVariant && 'max-h-[max(96px,min(384px,calc(70vh-120px)))]')}
         >
           {filteredSkills.length === 0 ? (
-            <ComposerPanel.Empty
-              icon={Lightning}
-              description={searchTerm ? t('skills:selector.noResults') : t('skills:selector.empty')}
-            />
+            !skillRegistry.isSkillsLoaded() && allSkills.length === 0 && !searchTerm ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-8 text-xs text-muted-foreground" role="status">
+                <CircleNotch size={20} className="animate-spin" />
+                <span>{t('skills:selector.loading')}</span>
+              </div>
+            ) : (
+              <ComposerPanel.Empty
+                icon={Lightning}
+                description={searchTerm ? t('skills:selector.noResults') : t('skills:selector.empty')}
+              />
+            )
           ) : (
             <div className="space-y-1.5">
               {customSkills.length > 0 && (

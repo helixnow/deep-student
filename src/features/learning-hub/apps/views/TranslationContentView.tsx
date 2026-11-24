@@ -353,7 +353,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
       const converted = dstuNodeToTranslationSession(node);
 
       // 检查是否有实际内容（空文件的 sourceText 为空）
-      if (converted.sourceText) {
+      if (converted.sourceText && converted.srcLang && converted.tgtLang) {
         // 同步就绪，无需进入 loading。本地已有同节点更新的会话（如刚保存过）时
         // 保留本地版本，避免被父级传入的过期 metadata 回退
         setSession(prev =>
@@ -363,8 +363,16 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
         );
         loadedNodeIdRef.current = requestNodeId;
       } else {
-        // 需要异步获取时才进入 loading（仅首次；静默刷新保持工作台挂载）
-        if (isFirstLoad) {
+        // 已有原文但语向字段缺失时先铺出同步内容，同时后台拉取完整 DSTU 数据补齐 meta.srcLang/tgtLang
+        if (converted.sourceText) {
+          setSession(prev =>
+            prev && prev.id === converted.id && prev.updatedAt >= converted.updatedAt
+              ? prev
+              : converted
+          );
+          loadedNodeIdRef.current = requestNodeId;
+        } else if (isFirstLoad) {
+          // 需要异步获取时才进入 loading（仅首次；静默刷新保持工作台挂载）
           setIsLoading(true);
         }
         // 尝试从 DSTU 获取完整数据
@@ -372,12 +380,16 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
         if (isStale()) return;
         if (result.ok && result.value) {
           const fetched = dstuNodeToTranslationSession(result.value);
-          // 与同步路径同规则：静默刷新拿到的旧数据不得回退刚保存的本地会话
-          setSession(prev =>
-            prev && prev.id === fetched.id && prev.updatedAt >= fetched.updatedAt
-              ? prev
-              : fetched
-          );
+          // 与同步路径同规则：静默刷新拿到的旧数据不得回退刚保存的本地会话；
+          // 但若本地缓存缺少语向信息而服务端已补齐，则合并更新
+          setSession(prev => {
+            if (!prev || prev.id !== fetched.id) return fetched;
+            if (prev.updatedAt > fetched.updatedAt) return prev;
+            if (prev.updatedAt === fetched.updatedAt && prev.srcLang && prev.tgtLang) {
+              return prev;
+            }
+            return fetched;
+          });
           loadedNodeIdRef.current = requestNodeId;
         } else if (!result.ok) {
           // S-018 修复：加载失败时进入错误态，阻止保存操作，防止空内容覆盖真实数据

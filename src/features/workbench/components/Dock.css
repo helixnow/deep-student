@@ -689,13 +689,15 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
 
 .wb-dock-hotzone[data-collapsed='true'] {
   bottom: 0;
-  height: 32px;
-  min-height: 32px;
+  height: 6px;
+  min-height: 6px;
 }
 
 .wb-dock.wb-dock-slide[data-hidden] {
   transform: translate(-50%, calc(100% + 18px));
   opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
   transition-duration: var(--wb-dock-conceal-duration);
   transition-timing-function: var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
 }
@@ -734,10 +736,12 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
     flex-shrink: 0;
   }
 
+  .wb-dock-zone div.wb-dock[data-hidden],
   .wb-dock-zone[data-immersive='true'] div.wb-dock[data-hidden],
   .wb-dock-zone[data-compact-typing='true'] div.wb-dock[data-hidden] {
     opacity: 0;
     pointer-events: none;
+    visibility: hidden;
     transform: translate(-50%, calc(100% + 18px));
   }
 }

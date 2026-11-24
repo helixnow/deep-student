@@ -104,10 +104,20 @@ interface FlashcardsLibraryState {
   /** 手动新建一张卡片（走后端 save_anki_cards，可选立即入队 FSRS）。 */
   createCard: (input: NewLibraryCardInput) => Promise<boolean>;
   /** 选择本地 .apkg 并导入卡片库（后端 import_apkg_to_library，与命令面板同一条链路）。 */
-  importApkg: () => Promise<ApkgImportOutcome>;
+  importApkg: (options?: ImportApkgOptions) => Promise<ApkgImportOutcome>;
   /** 选择本地 CSV/TSV 并解析导入卡片库（RFC 4180 + Anki 导出的文本表格）。 */
-  importCsv: () => Promise<CsvImportOutcome>;
+  importCsv: (options?: ImportCsvOptions) => Promise<CsvImportOutcome>;
   reset: () => void;
+}
+
+export interface ImportApkgOptions {
+  file?: File;
+}
+
+export interface ImportCsvOptions {
+  targetDeck?: string;
+  file?: File;
+  rawText?: string;
 }
 
 export interface NewLibraryCardInput {
@@ -519,17 +529,41 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
       }
     },
 
-    importApkg: async () => {
+    importApkg: async (options) => {
       set({ importing: true, actionError: null });
       try {
         const [{ fileManager, isVirtualUri, extractFileName }, { invoke }] = await Promise.all([
           import('@/utils/fileManager'),
           import('@tauri-apps/api/core'),
         ]);
-        const path = await fileManager.pickSingleFile({
-          title: i18n.t('flashcards:library.import.pickTitle'),
-          filters: [{ name: 'Anki Deck', extensions: ['apkg'] }],
-        });
+        let path: string | null = null;
+        if (options?.file) {
+          const pickedFile = options.file;
+          const lower = pickedFile.name.toLowerCase();
+          if (!lower.endsWith('.apkg') && hasRecognizableExtension(pickedFile.name)) {
+            const message = i18n.t('flashcards:library.import.notApkg');
+            set({ actionError: message });
+            return { status: 'failed' as const, error: message };
+          }
+          const stageRes = await fetch(`/api/files/stage?name=${encodeURIComponent(pickedFile.name)}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': pickedFile.type || 'application/octet-stream',
+              'X-File-Name': encodeURIComponent(pickedFile.name),
+            },
+            body: pickedFile,
+          });
+          if (!stageRes.ok) {
+            throw new Error(`Stage APKG upload failed (${stageRes.status})`);
+          }
+          const staged = (await stageRes.json()) as { path?: string };
+          path = staged.path ?? null;
+        } else {
+          path = await fileManager.pickSingleFile({
+            title: i18n.t('flashcards:library.import.pickTitle'),
+            filters: [{ name: 'Anki Deck', extensions: ['apkg'] }],
+          });
+        }
         if (!path) return { status: 'canceled' as const };
 
         // Android SAF 选择器返回 content:// 等虚拟 URI（不是文件系统路径），而
@@ -610,7 +644,7 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
       }
     },
 
-    importCsv: async () => {
+    importCsv: async (options) => {
       set({ importing: true, actionError: null });
       try {
         const [{ fileManager }, { invoke }, { ankiApiAdapter }, { parseFlashcardsFromCsv }] =
@@ -621,13 +655,29 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
             import('../library/csvFlashcards'),
           ]);
 
-        const path = await fileManager.pickSingleFile({
-          title: i18n.t('flashcards:library.import.csvPickTitle'),
-          filters: [{ name: 'CSV / TSV', extensions: ['csv', 'tsv', 'txt'] }],
-        });
-        if (!path) return { status: 'canceled' as const };
+        let rawText: string | null = null;
+        if (typeof options?.rawText === 'string') {
+          rawText = options.rawText;
+        } else if (options?.file) {
+          rawText = typeof (options.file as { text?: unknown }).text === 'function'
+            ? await options.file.text()
+            : typeof FileReader !== 'undefined'
+              ? await new Promise<string>((resolve, reject) => {
+                  const reader = new FileReader();
+                  reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+                  reader.onerror = () => reject(reader.error ?? new Error('Failed to read CSV file'));
+                  reader.readAsText(options.file as Blob);
+                })
+              : await new Response(options.file).text();
+        } else {
+          const path = await fileManager.pickSingleFile({
+            title: i18n.t('flashcards:library.import.csvPickTitle'),
+            filters: [{ name: 'CSV / TSV', extensions: ['csv', 'tsv', 'txt'] }],
+          });
+          if (!path) return { status: 'canceled' as const };
+          rawText = await fileManager.readTextFile(path);
+        }
 
-        const rawText = await fileManager.readTextFile(path);
         const parsed = parseFlashcardsFromCsv(rawText);
         if (parsed.cards.length === 0) {
           const message = i18n.t('flashcards:library.import.csvEmpty');
@@ -635,17 +685,19 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
           return { status: 'failed' as const, error: message };
         }
 
+        const fallbackTargetDeck = options?.targetDeck?.trim() || '';
         const groups = new Map<
           string,
           { deck: string; noteType: 'Basic' | 'Cloze'; cards: typeof parsed.cards }
         >();
         for (const card of parsed.cards) {
-          const key = `${card.deck}\0${card.noteType}`;
+          const resolvedDeck = card.deck || fallbackTargetDeck;
+          const key = `${resolvedDeck}\0${card.noteType}`;
           const existing = groups.get(key);
           if (existing) {
             existing.cards.push(card);
           } else {
-            groups.set(key, { deck: card.deck, noteType: card.noteType, cards: [card] });
+            groups.set(key, { deck: resolvedDeck, noteType: card.noteType, cards: [card] });
           }
         }
 

@@ -28,3 +28,48 @@ export function canonicalizeEssayModeId(modeId: string): string {
       return trimmed;
   }
 }
+
+export type EssayGradeLevel = 'middle_school' | 'high_school' | 'college' | 'other';
+
+const EXAM_RUBRIC_NO_SCHOOL_GRADE = new Set(['ielts', 'ielts_task1', 'toefl']);
+const COLLEGE_EXAM_MODES = new Set(['cet', 'kaoyan', 'kaoyan_en']);
+const HIGH_SCHOOL_MODES = new Set(['gaokao', 'gaokao_en_short', 'gaokao_en_long']);
+
+export function recommendedGradeLevelForMode(
+  modeId: string,
+  isBuiltin = true,
+): EssayGradeLevel | null {
+  const canonical = canonicalizeEssayModeId(modeId);
+  if (!isBuiltin || EXAM_RUBRIC_NO_SCHOOL_GRADE.has(canonical)) {
+    return 'other';
+  }
+  if (COLLEGE_EXAM_MODES.has(canonical)) {
+    return 'college';
+  }
+  if (canonical === 'zhongkao') {
+    return 'middle_school';
+  }
+  if (HIGH_SCHOOL_MODES.has(canonical)) {
+    return 'high_school';
+  }
+  return null;
+}
+
+export function shouldSuppressHighSchoolPollution(params: {
+  modeId: string;
+  isBuiltin?: boolean;
+  gradeLevel?: string;
+  hasCustomPrompt?: boolean;
+}): boolean {
+  const canonical = canonicalizeEssayModeId(params.modeId);
+  if (!params.isBuiltin || EXAM_RUBRIC_NO_SCHOOL_GRADE.has(canonical)) {
+    return true;
+  }
+  if (
+    (params.gradeLevel === undefined || params.gradeLevel === 'high_school') &&
+    (COLLEGE_EXAM_MODES.has(canonical) || params.hasCustomPrompt)
+  ) {
+    return true;
+  }
+  return false;
+}

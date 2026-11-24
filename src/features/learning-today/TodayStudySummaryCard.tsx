@@ -18,6 +18,8 @@ export interface TodayStudySummaryCardProps {
   todoDueCount?: number;
   /** 当前是否已处于待办「今日」视图（为 true 时只要存在任一到期复习或今日待办即展示） */
   inTodayTodoView?: boolean;
+  /** 当前处于空的收件箱/清单视图（避免「今日待办 N」与下方「暂无待办事项」混为一谈） */
+  inEmptyListView?: boolean;
   /** 点击「今日待办」入口时的回调；未传时默认调用 openTodayReviewTarget('todos') */
   onOpenTodos?: () => void;
   className?: string;
@@ -26,6 +28,7 @@ export interface TodayStudySummaryCardProps {
 export const TodayStudySummaryCard: React.FC<TodayStudySummaryCardProps> = ({
   todoDueCount,
   inTodayTodoView = false,
+  inEmptyListView = false,
   onOpenTodos,
   className,
 }) => {
@@ -93,7 +96,9 @@ export const TodayStudySummaryCard: React.FC<TodayStudySummaryCardProps> = ({
       key: 'todos',
       testId: 'today-summary-todos',
       icon: <ListChecks size={14} aria-hidden="true" />,
-      label: t('todo:reviewLink.todosLabel', { defaultValue: '今日待办' }),
+      label: inEmptyListView
+        ? t('todo:reviewLink.todosGlobalLabel', { defaultValue: '全局今日待办' })
+        : t('todo:reviewLink.todosLabel', { defaultValue: '今日待办' }),
       count: resolvedTodoDue,
       onClick: handleOpenTodos,
     },

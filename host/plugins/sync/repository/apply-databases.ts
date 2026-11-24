@@ -196,6 +196,11 @@ function filterChangedForDatabase(
   return changes.filter(change => tables.has(change.table_name));
 }
 
+export interface ApplyDownloadedDatabasesOptions {
+  deferConflictingOverwrite?: boolean;
+  onDeferredConflict?: (key: string) => void;
+}
+
 export function applyDownloadedChangesToDatabases(
   storage: StorageService,
   changes: readonly EngineChange[],
@@ -203,6 +208,7 @@ export function applyDownloadedChangesToDatabases(
   localDeviceId: string,
   mastery?: MasteryHooks,
   logger?: SyncLogger | null,
+  options?: ApplyDownloadedDatabasesOptions,
 ): ApplyToDatabasesResult {
   const aggregate: ApplyToDatabasesResult = {
     total_success: 0,
@@ -296,6 +302,8 @@ export function applyDownloadedChangesToDatabases(
             policy: policyForStrategy(strategy),
             cloudDeviceId,
             localDeviceId,
+            deferConflictingOverwrite: options?.deferConflictingOverwrite,
+            onDeferredConflict: options?.onDeferredConflict,
           },
         );
       } catch (error) {

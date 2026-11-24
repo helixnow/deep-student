@@ -337,6 +337,9 @@
     "retranslated_undo_hint": "已生成新译文，可随时恢复上一版译文",
     "restore_previous": "恢复上一版",
     "restored_previous": "已恢复上一版译文",
+    "swapped_undo_hint": "已交换源文与译文",
+    "swapped_lang_only_hint": "已交换语言并保留源文",
+    "undo_swap": "撤销交换",
     "outdated_hint": "原文或设置已更新，当前译文可能已过期",
     "retranslate_now": "重新翻译"
   },

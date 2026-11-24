@@ -750,4 +750,15 @@ describe('NotesBacklinksPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: '图谱' }));
     await waitFor(() => expect(onActiveTabChange).toHaveBeenLastCalledWith('graph'));
   });
+
+  it('renders every unresolved wikilink entry itself as an interactive button (S1-06c)', async () => {
+    const onCreateFromUnresolved = vi.fn(async () => {});
+    renderPanel({ onCreateFromUnresolved });
+    const unresolvedSection = await screen.findByRole('region', { name: /未解析链接/ });
+    const code = within(unresolvedSection).getByText('[[missing]]');
+    const button = code.closest('button');
+    expect(button).not.toBeNull();
+    fireEvent.click(button!);
+    await waitFor(() => expect(onCreateFromUnresolved).toHaveBeenCalledWith('missing'));
+  });
 });

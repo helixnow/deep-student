@@ -514,4 +514,16 @@ describe('PluginManagerPanel', () => {
     expect(within(dialog).getByTestId('plugin-detail-declarative')).toHaveTextContent('Essay Coach Prompt');
     expect(within(dialog).getByTestId('plugin-detail-declarative')).toHaveTextContent('Core Vocabulary');
   });
+
+  it('S4-16: renders a Safe Mode troubleshooting entry button only when not already in safe mode', async () => {
+    const uiStatus = new FakePluginUiHostStatus([]);
+    setup([], { uiStatus });
+    const enterBtn = await screen.findByTestId('plugin-enter-safe-mode');
+    expect(enterBtn).toHaveTextContent('安全模式排查');
+
+    uiStatus.setSafeMode(true);
+    await screen.findByTestId('plugin-safe-mode');
+    expect(screen.queryByTestId('plugin-enter-safe-mode')).toBeNull();
+    expect(screen.getByTestId('plugin-exit-safe-mode')).toBeInTheDocument();
+  });
 });

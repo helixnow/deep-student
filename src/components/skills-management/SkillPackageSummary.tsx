@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   FileText,
@@ -13,10 +13,13 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { isMobilePlatform, isWebUiShell } from '@/utils/platform';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { DsButton } from '@/components/ui/DsButton';
+import { showGlobalNotification } from '../UnifiedNotification';
 import type { SkillDefinition, SkillPackageFile, SkillPackageSource, SkillTrustStatus } from '@/features/chat/skills/types';
 import { getSkillEmbeddedToolLabels, getSkillPermissionSummary } from '@/features/chat/skills/packageMetadata';
 import { resolveEffectiveTrustStatus, setSkillTrustOverride } from '@/features/chat/skills/skillTrustStorage';
+import { isSkillDisabled, SKILL_ENABLED_CHANGED_EVENT } from '@/features/chat/skills/skillEnableStorage';
 
 interface SkillPackageSummaryProps {
   skill: SkillDefinition;
@@ -105,9 +108,20 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
 }) => {
   const { t } = useTranslation(['skills']);
   const [, setTrustTick] = useState(0);
+  useEffect(() => {
+    const onEnabledChanged = () => setTrustTick((v) => v + 1);
+    window.addEventListener(SKILL_ENABLED_CHANGED_EVENT, onEnabledChanged);
+    return () => window.removeEventListener(SKILL_ENABLED_CHANGED_EVENT, onEnabledChanged);
+  }, []);
+
   const summary = getSkillPermissionSummary(skill);
   const source = skill.packageSource ?? (skill.isBuiltin ? 'builtin' : skill.location);
   const trust = resolveEffectiveTrustStatus(skill);
+  const isEnabled = !isSkillDisabled(skill.id);
+  const untrustedLabel =
+    trust === 'untrusted' && isEnabled
+      ? t('skills:package.trust_pending_injection')
+      : trustLabel(trust, t);
   const files = skill.packageFiles ?? [];
   const visibleFiles = files.slice(0, 6);
   const remainingFiles = Math.max(0, files.length - visibleFiles.length);
@@ -118,18 +132,29 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
   const hasRequires = requiresBins.length > 0 || requiresEnv.length > 0;
 
   const handleTrustToggle = useCallback(async () => {
+    const nextTrust = trust === 'untrusted' ? 'trusted' : 'untrusted';
     try {
       await setSkillTrustOverride(
         skill.id,
-        trust === 'untrusted' ? 'trusted' : 'untrusted',
+        nextTrust,
         skill,
       );
       setTrustTick((v) => v + 1);
       onTrustChanged?.();
+      showGlobalNotification(
+        'success',
+        nextTrust === 'trusted'
+          ? t('skills:package.trust_success')
+          : t('skills:package.trust_revoked_toast'),
+      );
     } catch (error) {
       console.error('[SkillTrust] Failed to update trust:', error);
+      showGlobalNotification(
+        'error',
+        t('skills:package.trust_failed', { error: getErrorMessage(error) }),
+      );
     }
-  }, [skill, trust, onTrustChanged]);
+  }, [skill, trust, onTrustChanged, t]);
 
   if (variant === 'card') {
     return (
@@ -144,7 +169,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
               tone="warning"
               title={t('skills:package.trust_effect_untrusted')}
             >
-              {trustLabel(trust, t)}
+              {untrustedLabel}
             </Chip>
             {canToggleTrust && (
               <DsButton
@@ -226,7 +251,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             ? t('skills:package.trust_effect_untrusted')
             : t('skills:package.trust_effect_trusted')}
         >
-          {trustLabel(trust, t)}
+          {untrustedLabel}
         </Chip>
         {canToggleTrust && trust === 'untrusted' && (
           <DsButton

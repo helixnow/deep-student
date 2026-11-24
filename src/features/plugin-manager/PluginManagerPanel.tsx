@@ -23,7 +23,7 @@ import type { UnifiedModelInfo } from '@/features/settings/components/plugins/Pl
 import type { PluginInfo } from '@/features/settings/api/pluginsApi';
 
 import { ChannelPluginDialog, ChannelPluginSection, findChannelPlugin, useChannelPlugins } from './ChannelPluginSection';
-import { exitSafeModeAndRestart } from './safeMode';
+import { enterSafeModeAndRestart, exitSafeModeAndRestart } from './safeMode';
 import { ConfigForm } from './ConfigForm';
 import { permissionLines } from './permissions';
 import { pluginConfigForm } from './config-schema';
@@ -34,7 +34,7 @@ import { PluginDetail } from './PluginDetail';
 import { PluginRow } from './PluginRow';
 import { forgetPluginContributions, usePluginContributions } from './contributions';
 import { PACKAGE_BUSY_KEY, errorMessage, usePluginManagerState, type PluginManagerController } from './controller';
-import { describeManagerError, errorBudgetOf, type PluginErrorBudgetView } from './reasons';
+import { describeManagerError, errorBudgetOf, resolveManagerErrorCode, type PluginErrorBudgetView } from './reasons';
 import type { ManagedPlugin } from './types';
 import { pluginUiStatus, type PluginUiHostStatus } from './ui-status';
 import { usePluginUiHostStatus } from './use-ui-status';
@@ -431,6 +431,18 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
           <LinkSimple className="size-4" aria-hidden="true" />
           {t('actions.installUrl')}
         </DsButton>
+        {!safeMode ? (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            data-testid="plugin-enter-safe-mode"
+            className={cn('gap-1.5', COARSE_TOUCH)}
+            onClick={() => void enterSafeModeAndRestart()}
+          >
+            <ShieldChevron className="size-4" aria-hidden="true" />
+            {t('safeMode.enterButton')}
+          </DsButton>
+        ) : null}
       </div>
       {safeMode ? (
         <p id="plugin-import-disabled-reason" data-testid="plugin-import-disabled-reason" className="text-xs text-muted-foreground">
@@ -469,6 +481,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
         ) : null}
 
         {state.error ? (() => {
+          const effectiveCode = resolveManagerErrorCode(state.error.code, state.error.detail);
           const friendly = describeManagerError(t, state.error.code, state.error.detail);
           return (
             <div
@@ -490,7 +503,9 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
                 </p>
                 <details className="text-xs text-muted-foreground">
                   <summary className="cursor-pointer select-none hover:text-foreground">
-                    {t('error.technical', { code: state.error.code })}
+                    {effectiveCode === 'PLUGIN_INSTALL_FAILED'
+                      ? t('error.technicalGeneric')
+                      : t('error.technical', { code: effectiveCode })}
                   </summary>
                   <p className="mt-1 break-words font-mono text-[11px] opacity-85">{friendly.technical}</p>
                 </details>

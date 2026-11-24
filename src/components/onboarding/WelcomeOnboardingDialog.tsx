@@ -308,13 +308,15 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
 
   const dialog = (
     <div
+      aria-hidden={activeLegalDoc !== null ? 'true' : undefined}
       className={cn(
         'fixed inset-0 flex items-center justify-center p-3 sm:p-4',
         'transition-opacity duration-200 ease-out',
         mounted ? 'opacity-100' : 'opacity-0',
+        activeLegalDoc !== null && 'pointer-events-none',
       )}
       style={{
-        zIndex: Z_INDEX.modal,
+        zIndex: activeLegalDoc !== null ? Z_INDEX.modal - 10 : Z_INDEX.modal,
         // Portal 到 body：--mobile-safe-area-*（app-shell 作用域）不可见，
         // 必须走 :root 级 --android-safe-area-* 链（对齐 command-palette.css 注释）
         paddingTop: 'calc(0.75rem + var(--android-safe-area-top, env(safe-area-inset-top, 0px)))',

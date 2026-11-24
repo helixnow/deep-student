@@ -12,7 +12,11 @@ const TODO_CHANGED_EVENT = 'todo:changed';
 export async function loadTodayTodoCount(): Promise<number> {
   try {
     const items = await invoke<unknown>('todo_list_today', { includeCompleted: false });
-    return Array.isArray(items) ? items.length : 0;
+    if (!Array.isArray(items)) return 0;
+    return items.filter((item) => {
+      if (!item || typeof item !== 'object') return true;
+      return (item as { parentId?: string | null }).parentId == null;
+    }).length;
   } catch {
     return 0;
   }

@@ -33,6 +33,7 @@ import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import {
   CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS,
   localizeCloudStorageError,
+  notifyErrorDeduped,
 } from './data-governance/localizeCloudError';
 import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 import { DevicePairingSection } from './DevicePairingSection';
@@ -206,6 +207,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 不改变该状态；只有 cloud_config_publish 成功才置 'published'。
   const [configPhase, setConfigPhase] = useState<'draft' | 'published'>('draft');
   const [hasSavedConfig, setHasSavedConfig] = useState(false);
+  const savedConfigRef = useRef<cloudApi.CloudStorageConfig | null>(null);
   const [draftTestError, setDraftTestError] = useState<string | null>(null);
   // 后端已发布配置回填表单时跳过一次「标记为草稿」，hydration 不是用户编辑
   const hydratingFormRef = useRef(true);
@@ -221,8 +223,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // [R11-android2 / P2-LOCALE] 平台能力错误只按后端稳定 code 映射。
   // message 是诊断文本，允许改语言/措辞，禁止再以正则参与程序分派。
   const localizeCloudError = useCallback(
-    (error: unknown): string => localizeCloudStorageError(error, t),
-    [t],
+    (error: unknown): string => localizeCloudStorageError(error, t, i18n?.language),
+    [t, i18n?.language],
   );
 
   const markSecureStoreIssue = useCallback(
@@ -363,6 +365,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           // 后端已发布配置回填表单：这不是用户编辑，跳过一次草稿标记，
           // 并把前端认知置为「已发布」。
           hydratingFormRef.current = true;
+          savedConfigRef.current = {
+            ...config,
+            webdav: config.webdav ? { ...config.webdav, password: '' } : undefined,
+            s3: config.s3 ? { ...config.s3, secretAccessKey: '' } : undefined,
+            ftp: config.ftp ? { ...config.ftp, password: '' } : undefined,
+          };
           setConfigPhase('published');
           setHasSavedConfig(true);
           setDraftTestError(null);
@@ -384,6 +392,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           if (config.root) setRoot(config.root);
           setAllowInsecure(config.allowInsecure ?? false);
         } else if (active && loadRevision === formRevisionRef.current) {
+          savedConfigRef.current = null;
           setHasStoredFtpConfig(false);
           setAllowInsecure(false);
           setHasSavedConfig(false);
@@ -510,8 +519,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       const config = buildConfig(allowInsecureOverride);
 
       let published: cloudApi.CloudConfigPublishResponse;
+      const formCredentials = buildFormCredentials();
       try {
-        published = await cloudApi.publishCloudConfig(config, buildFormCredentials(), {
+        published = await cloudApi.publishCloudConfig(config, formCredentials, {
           encryptionPasswordIsPreexisting: acceptPreexistingShortPassword,
         });
       } catch (e: unknown) {
@@ -526,10 +536,52 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         return;
       }
 
+      if (Object.values(formCredentials).some((value) => typeof value === 'string' && value.length > 0)) {
+        try {
+          const prevRaw = await invoke<string | null>('get_setting', { key: 'cloud_storage_credentials' });
+          let merged: Record<string, unknown> = {};
+          if (typeof prevRaw === 'string' && prevRaw.trim()) {
+            try {
+              const parsed = JSON.parse(prevRaw);
+              if (parsed && typeof parsed === 'object') merged = { ...parsed };
+            } catch {
+              // ignore malformed previous value
+            }
+          }
+          for (const [k, v] of Object.entries(formCredentials)) {
+            if (typeof v === 'string' && v.length > 0) merged[k] = v;
+          }
+          await invoke('save_setting', {
+            key: 'cloud_storage_credentials',
+            value: JSON.stringify(merged),
+          });
+        } catch {
+          // Best-effort sync to encrypted settings key used by QR pairing
+        }
+      }
+
       setSecureStoreIssue(null);
       // 发布的是请求发出时的快照，不能把等待期间的新编辑标为已发布。
       if (savedRevision === formRevisionRef.current) {
-        setAllowInsecure(published.config.allow_insecure ?? false);
+        const nextAllowInsecure = published.config.allow_insecure ?? false;
+        savedConfigRef.current = {
+          provider: published.config.provider,
+          webdav:
+            published.config.provider === 'webdav'
+              ? { ...published.config.webdav, password: '' }
+              : undefined,
+          s3:
+            published.config.provider === 's3'
+              ? { ...published.config.s3, secretAccessKey: '' }
+              : undefined,
+          ftp:
+            published.config.provider === 'ftp'
+              ? { ...published.config.ftp, password: '' }
+              : undefined,
+          root: published.config.root ?? root,
+          allowInsecure: nextAllowInsecure,
+        };
+        setAllowInsecure(nextAllowInsecure);
         setConfigPhase('published');
         setHasSavedConfig(true);
         setDraftTestError(null);
@@ -538,6 +590,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(published.config));
       localStorage.setItem(cloudApi.CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY, '1');
       showGlobalNotification('success', t('cloudStorage:messages.configSaved'));
+      window.dispatchEvent(new CustomEvent('data-governance:cloud-config-changed'));
       onConfigChanged?.();
 
       // 凭据存在旗标经只读接口刷新（secret 值不回传 IPC）；刷新失败不影响
@@ -554,6 +607,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         const status = await cloudApi.getSyncStatus(config);
         if (savedRevision !== formRevisionRef.current) return;
         setSyncStatus(status);
+        if (status && status.connected !== false) {
+          setConnectionStatus('connected');
+        }
         const versionList = await cloudApi.listVersions(config);
         if (savedRevision === formRevisionRef.current) setVersions(versionList);
       } catch (e: unknown) {
@@ -592,6 +648,86 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
     return errors;
   }, [provider, webdavConfig.endpoint, s3Config.endpoint, ftpConfig.endpoint, root, allowInsecure, t]);
+
+  const disabledValidationReasons = useMemo(() => {
+    const reasons: string[] = [];
+    if (hasRootPathTraversal(root)) {
+      reasons.push(t('cloudStorage:validation.rootPathTraversal'));
+    }
+    if (provider === 'webdav') {
+      const endpoint = webdavConfig.endpoint.trim();
+      if (!endpoint) {
+        reasons.push(t('cloudStorage:validation.webdavEndpointRequired'));
+      } else {
+        try {
+          const url = new URL(endpoint);
+          if (!['http:', 'https:'].includes(url.protocol)) {
+            reasons.push(t('cloudStorage:validation.webdavEndpointInvalid'));
+          } else if (url.username || url.password) {
+            reasons.push(t('cloudStorage:validation.embeddedCredentials'));
+          }
+        } catch {
+          reasons.push(t('cloudStorage:validation.webdavEndpointInvalid'));
+        }
+      }
+      if (!webdavConfig.username.trim()) {
+        reasons.push(t('cloudStorage:validation.webdavUsernameRequired'));
+      }
+      if (!webdavConfig.password.trim() && !credentialStatus.webdavPasswordConfigured) {
+        reasons.push(t('cloudStorage:validation.webdavPasswordRequired'));
+      }
+    } else if (provider === 's3') {
+      const endpoint = s3Config.endpoint.trim();
+      if (!endpoint) {
+        reasons.push(t('cloudStorage:validation.s3EndpointRequired'));
+      } else {
+        try {
+          const url = new URL(endpoint);
+          if (!['http:', 'https:'].includes(url.protocol)) {
+            reasons.push(t('cloudStorage:validation.s3EndpointInvalid'));
+          } else if (url.username || url.password) {
+            reasons.push(t('cloudStorage:validation.embeddedCredentials'));
+          } else if (cloudApi.isPublicHttpEndpoint(endpoint)) {
+            reasons.push(t('cloudStorage:validation.insecureHttpUrl'));
+          }
+        } catch {
+          reasons.push(t('cloudStorage:validation.s3EndpointInvalid'));
+        }
+      }
+      if (!s3Config.bucket.trim()) {
+        reasons.push(t('cloudStorage:validation.s3BucketRequired'));
+      }
+      if (!s3Config.accessKeyId.trim()) {
+        reasons.push(t('cloudStorage:validation.s3AccessKeyRequired'));
+      }
+      if (!s3Config.secretAccessKey.trim() && !credentialStatus.s3SecretAccessKeyConfigured) {
+        reasons.push(t('cloudStorage:validation.s3SecretKeyRequired'));
+      }
+    } else {
+      const endpoint = ftpConfig.endpoint.trim();
+      if (!endpoint) {
+        reasons.push(t('cloudStorage:validation.ftpEndpointRequired'));
+      } else {
+        try {
+          const url = new URL(endpoint);
+          if (!['ftp:', 'ftps:'].includes(url.protocol)) {
+            reasons.push(t('cloudStorage:validation.ftpEndpointInvalid'));
+          } else if (url.username || url.password) {
+            reasons.push(t('cloudStorage:validation.embeddedCredentials'));
+          }
+        } catch {
+          reasons.push(t('cloudStorage:validation.ftpEndpointInvalid'));
+        }
+      }
+      if (!ftpConfig.username.trim()) {
+        reasons.push(t('cloudStorage:validation.ftpUsernameRequired'));
+      }
+      if (!ftpConfig.password.trim() && !credentialStatus.ftpPasswordConfigured) {
+        reasons.push(t('cloudStorage:validation.ftpPasswordRequired'));
+      }
+    }
+    return reasons;
+  }, [provider, webdavConfig, s3Config, ftpConfig, root, credentialStatus, t]);
 
   // 检查配置是否有效
   const isConfigValid = useCallback(() => {
@@ -681,6 +817,95 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     await doSaveConfig(false);
   }, [isConfigValid, buildConfig, credentialStatus, webdavConfig.password, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, t, doSaveConfig]);
 
+  // 当已保存配置在重载后被测试连接，且用户尚未在表单输入新密码、非敏感连接字段也与已发布配置一致时，
+  // 通过 checkConnection 走后端安全存储自取凭据试连，避免因 IPC 不回传密码而误报“密码不能为空”。
+  const canTestWithStoredCredentials = useCallback((config: cloudApi.CloudStorageConfig): boolean => {
+    const saved = savedConfigRef.current;
+    if (!hasSavedConfig || !saved) return false;
+    if (encryptionPassword.trim()) return false;
+    if (config.provider !== saved.provider) return false;
+    if ((config.root ?? '').trim() !== (saved.root ?? '').trim()) return false;
+    if (Boolean(config.allowInsecure) !== Boolean(saved.allowInsecure)) return false;
+
+    if (config.provider === 'webdav') {
+      if (webdavConfig.password.trim() || !credentialStatus.webdavPasswordConfigured) return false;
+      return Boolean(
+        config.webdav
+        && saved.webdav
+        && config.webdav.endpoint.trim() === saved.webdav.endpoint.trim()
+        && config.webdav.username.trim() === saved.webdav.username.trim(),
+      );
+    }
+    if (config.provider === 's3') {
+      if (s3Config.secretAccessKey.trim() || !credentialStatus.s3SecretAccessKeyConfigured) return false;
+      return Boolean(
+        config.s3
+        && saved.s3
+        && config.s3.endpoint.trim() === saved.s3.endpoint.trim()
+        && config.s3.bucket.trim() === saved.s3.bucket.trim()
+        && config.s3.accessKeyId.trim() === saved.s3.accessKeyId.trim()
+        && (config.s3.region ?? '').trim() === (saved.s3.region ?? '').trim()
+        && Boolean(config.s3.pathStyle) === Boolean(saved.s3.pathStyle),
+      );
+    }
+    if (ftpConfig.password.trim() || !credentialStatus.ftpPasswordConfigured) return false;
+    return Boolean(
+      config.ftp
+      && saved.ftp
+      && config.ftp.host.trim() === saved.ftp.host.trim()
+      && config.ftp.port === saved.ftp.port
+      && config.ftp.username.trim() === saved.ftp.username.trim()
+      && Boolean(config.ftp.useTls) === Boolean(saved.ftp.useTls),
+    );
+  }, [
+    hasSavedConfig,
+    encryptionPassword,
+    webdavConfig.password,
+    s3Config.secretAccessKey,
+    ftpConfig.password,
+    credentialStatus,
+  ]);
+
+  const doTestWithStoredCredentials = useCallback(async (allowInsecureOverride = allowInsecure) => {
+    setTesting(true);
+    setConnectionStatus('unknown');
+    setDraftTestError(null);
+    const testedRevision = formRevisionRef.current;
+    try {
+      const config = buildConfig(allowInsecureOverride);
+      const connected = await cloudApi.checkConnection(config);
+      if (testedRevision !== formRevisionRef.current) return;
+      if (connected) {
+        setConnectionStatus('connected');
+        setDraftTestError(null);
+        showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
+        try {
+          const status = await cloudApi.getSyncStatus(config);
+          if (testedRevision !== formRevisionRef.current) return;
+          setSyncStatus(status);
+          const versionList = await cloudApi.listVersions(config);
+          if (testedRevision === formRevisionRef.current) setVersions(versionList);
+        } catch (refreshError: unknown) {
+          console.warn('Failed to refresh cloud status after stored connection check:', refreshError);
+        }
+      } else {
+        setConnectionStatus('failed');
+        const reason = t('cloudStorage:errors.connectionFailed');
+        setDraftTestError(reason);
+        notifyErrorDeduped('error', reason);
+      }
+    } catch (e: unknown) {
+      if (testedRevision !== formRevisionRef.current) return;
+      setConnectionStatus('failed');
+      const secureMessage = markSecureStoreIssue(e, 'read');
+      const reason = secureMessage ?? localizeCloudError(e);
+      setDraftTestError(reason);
+      notifyErrorDeduped('error', `${t('cloudStorage:errors.connectionFailed')}: ${reason}`);
+    } finally {
+      setTesting(false);
+    }
+  }, [allowInsecure, buildConfig, localizeCloudError, markSecureStoreIssue, t]);
+
   // 实际执行测试连接逻辑：草稿试连。表单配置与凭据只随本次 IPC 一次性传给
   // 后端 cloud_config_test_connection_draft，后端不写安全存储、不改 active
   // SSOT/generation。成功/失败都不落任何持久化（不写安全存储、不写后端
@@ -721,7 +946,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       const secureMessage = markSecureStoreIssue(e, 'read');
       const reason = secureMessage ?? localizeCloudError(e);
       setDraftTestError(reason);
-      showGlobalNotification(
+      notifyErrorDeduped(
         'error',
         `${t('cloudStorage:errors.connectionFailed')}: ${reason}`,
       );
@@ -753,12 +978,17 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const handleConfirmInsecureWebdavSave = useCallback(async () => {
     setShowInsecureWebdavWarning(false);
     if (insecureWarningAction === 'test') {
-      await doTestConnection(true);
+      const config = buildConfig(true);
+      if (canTestWithStoredCredentials(config)) {
+        await doTestWithStoredCredentials(true);
+      } else {
+        await doTestConnection(true);
+      }
     } else {
       await doSaveConfig(true);
     }
     setInsecureWarningAction(null);
-  }, [insecureWarningAction, doSaveConfig, doTestConnection]);
+  }, [insecureWarningAction, buildConfig, canTestWithStoredCredentials, doTestWithStoredCredentials, doSaveConfig, doTestConnection]);
 
   // 清除配置
   const clearConfig = useCallback(async () => {
@@ -795,6 +1025,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
     setConnectionStatus('unknown');
     setConfigPhase('draft');
+    savedConfigRef.current = null;
     setHasSavedConfig(false);
     setDraftTestError(null);
     setSyncStatus(null);
@@ -803,6 +1034,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       clearFailed ? 'error' : 'info',
       t(clearFailed ? 'cloudStorage:messages.configClearPartial' : 'cloudStorage:messages.configCleared'),
     );
+    window.dispatchEvent(new CustomEvent('data-governance:cloud-config-changed'));
     onConfigChanged?.();
   }, [t, onConfigChanged]);
 
@@ -855,22 +1087,31 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       return;
     }
 
+    if (canTestWithStoredCredentials(config)) {
+      await doTestWithStoredCredentials(false);
+      return;
+    }
+
     await doTestConnection(false);
-  }, [isConfigValid, provider, s3Config.endpoint, buildConfig, doTestConnection, t]);
+  }, [isConfigValid, provider, s3Config.endpoint, buildConfig, canTestWithStoredCredentials, doTestWithStoredCredentials, doTestConnection, t]);
 
   // 刷新状态
   const refreshStatus = useCallback(async () => {
-    if (connectionStatus !== 'connected') return;
+    if (!hasSavedConfig || configPhase !== 'published') return;
+    if (connectionStatus === 'failed') return;
     try {
       const config = buildConfig();
       const status = await cloudApi.getSyncStatus(config);
       setSyncStatus(status);
+      if (status && status.connected !== false) {
+        setConnectionStatus('connected');
+      }
       const versionList = await cloudApi.listVersions(config);
       setVersions(versionList);
     } catch (e: unknown) {
       console.error('Failed to refresh status:', e);
     }
-  }, [buildConfig, connectionStatus]);
+  }, [buildConfig, configPhase, connectionStatus, hasSavedConfig]);
 
   const resolveBackupId = useCallback((job: BackupJobSummary | null): string | null => {
     const stats = job?.result?.stats as Record<string, unknown> | undefined;
@@ -1012,7 +1253,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 备份并上传到云端
   const handleBackupAndUpload = useCallback(async () => {
-    if (connectionStatus !== 'connected') {
+    if (!hasSavedConfig || configPhase !== 'published') {
+      showGlobalNotification('warning', t('cloudStorage:errors.saveBeforeUpload'));
+      return;
+    }
+    if (connectionStatus === 'failed') {
       showGlobalNotification('warning', t('cloudStorage:errors.connectionFailed'));
       return;
     }
@@ -1097,19 +1342,21 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         showGlobalNotification('info', t('cloudStorage:upload.pruned', { count: result.prunedVersions.length }));
       }
     } catch (e: unknown) {
-      const msg = getErrorMessage(e);
+      const msg = localizeCloudError(e);
       setOpProgress(prev => prev ? { ...prev, error: msg } : null);
-      showGlobalNotification('error', msg);
+      notifyErrorDeduped('error', msg);
     } finally {
       exitMaintenanceMode();
       setUploading(false);
     }
   }, [
     buildConfig,
+    configPhase,
     connectionStatus,
     encryptionPassword,
     enterMaintenanceMode,
     exitMaintenanceMode,
+    hasSavedConfig,
     localizeCloudError,
     refreshStatus,
     resolveBackupId,
@@ -1122,7 +1369,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 打开恢复确认对话框
   const openRestoreConfirm = useCallback((versionId: string) => {
-    if (connectionStatus !== 'connected') {
+    if (!hasSavedConfig || configPhase !== 'published') {
+      showGlobalNotification('warning', t('cloudStorage:errors.saveBeforeUpload'));
+      return;
+    }
+    if (connectionStatus === 'failed') {
       showGlobalNotification('warning', t('cloudStorage:errors.connectionFailed'));
       return;
     }
@@ -1251,9 +1502,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         window.location.reload();
       }
     } catch (e: unknown) {
-      const msg = getErrorMessage(e);
+      const msg = localizeCloudError(e);
       setOpProgress(prev => prev ? { ...prev, error: msg } : null);
-      showGlobalNotification('error', msg);
+      notifyErrorDeduped('error', msg);
     } finally {
       // 切槽成功后 store 会因 requireMaintenanceRestart 拒绝撤掉写屏障。
       exitMaintenanceMode();
@@ -1314,7 +1565,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // [R11-check] 执行云端仓库巡检（只读，不写入/删除任何云端对象）
   const handleRepoCheck = useCallback(async () => {
-    if (connectionStatus !== 'connected') {
+    if (!hasSavedConfig || configPhase !== 'published') {
+      showGlobalNotification('warning', t('cloudStorage:errors.saveBeforeUpload'));
+      return;
+    }
+    if (connectionStatus === 'failed') {
       showGlobalNotification('warning', t('cloudStorage:errors.connectionFailed'));
       return;
     }
@@ -1329,7 +1584,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     } finally {
       setRepoChecking(false);
     }
-  }, [buildConfig, connectionStatus, localizeCloudError, t]);
+  }, [buildConfig, configPhase, connectionStatus, hasSavedConfig, localizeCloudError, t]);
 
   // 打开删除确认对话框
   const openDeleteConfirm = useCallback((versionId: string) => {
@@ -1482,6 +1737,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               <Input
                 {...TECHNICAL_INPUT_PROPS}
                 id="webdav-endpoint"
+                name="cloud_webdav_endpoint"
+                autoComplete="url"
                 placeholder={t('cloudStorage:webdav.endpointPlaceholder')}
                 value={webdavConfig.endpoint}
                 onChange={(e) => setWebdavConfig({ ...webdavConfig, endpoint: e.target.value })}
@@ -1494,6 +1751,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 <Input
                   {...TECHNICAL_INPUT_PROPS}
                   id="webdav-username"
+                  name="cloud_webdav_username"
+                  autoComplete="username"
                   placeholder={t('cloudStorage:webdav.usernamePlaceholder')}
                   value={webdavConfig.username}
                   onChange={(e) => setWebdavConfig({ ...webdavConfig, username: e.target.value })}
@@ -1503,6 +1762,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 <Label htmlFor="webdav-password">{t('cloudStorage:webdav.password')}</Label>
                 <ApiKeyField
                   id="webdav-password"
+                  name="cloud_webdav_app_password"
+                  autoComplete="new-password"
                   placeholder={t('cloudStorage:webdav.passwordPlaceholder')}
                   value={webdavConfig.password}
                   onChange={(e) => setWebdavConfig({ ...webdavConfig, password: e.target.value })}
@@ -1525,6 +1786,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 <Input
                   {...TECHNICAL_INPUT_PROPS}
                   id="s3-endpoint"
+                  name="cloud_s3_endpoint"
                   placeholder={t('cloudStorage:s3.endpointPlaceholder')}
                   value={s3Config.endpoint}
                   onChange={(e) => setS3Config({ ...s3Config, endpoint: e.target.value })}
@@ -1536,6 +1798,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 <Input
                   {...TECHNICAL_INPUT_PROPS}
                   id="s3-bucket"
+                  name="cloud_s3_bucket"
                   placeholder={t('cloudStorage:s3.bucketPlaceholder')}
                   value={s3Config.bucket}
                   onChange={(e) => setS3Config({ ...s3Config, bucket: e.target.value })}
@@ -1548,6 +1811,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 <Input
                   {...TECHNICAL_INPUT_PROPS}
                   id="s3-access-key"
+                  name="cloud_s3_access_key_id"
                   placeholder={t('cloudStorage:s3.accessKeyIdPlaceholder')}
                   value={s3Config.accessKeyId}
                   onChange={(e) => setS3Config({ ...s3Config, accessKeyId: e.target.value })}
@@ -1557,6 +1821,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 <Label htmlFor="s3-secret-key">{t('cloudStorage:s3.secretAccessKey')}</Label>
                 <ApiKeyField
                   id="s3-secret-key"
+                  name="cloud_s3_secret_access_key"
+                  autoComplete="new-password"
                   placeholder={t('cloudStorage:s3.secretAccessKeyPlaceholder')}
                   value={s3Config.secretAccessKey}
                   onChange={(e) => setS3Config({ ...s3Config, secretAccessKey: e.target.value })}
@@ -1607,6 +1873,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               <Input
                 {...TECHNICAL_INPUT_PROPS}
                 id="ftp-endpoint"
+                name="cloud_ftp_endpoint"
                 placeholder={t('cloudStorage:ftp.endpointPlaceholder')}
                 value={ftpConfig.endpoint}
                 onChange={(e) => setFtpConfig({ ...ftpConfig, endpoint: e.target.value })}
@@ -1619,6 +1886,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 <Input
                   {...TECHNICAL_INPUT_PROPS}
                   id="ftp-username"
+                  name="cloud_ftp_username"
+                  autoComplete="username"
                   placeholder={t('cloudStorage:ftp.usernamePlaceholder')}
                   value={ftpConfig.username}
                   onChange={(e) => setFtpConfig({ ...ftpConfig, username: e.target.value })}
@@ -1628,6 +1897,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 <Label htmlFor="ftp-password">{t('cloudStorage:ftp.password')}</Label>
                 <ApiKeyField
                   id="ftp-password"
+                  name="cloud_ftp_password"
+                  autoComplete="new-password"
                   placeholder={t('cloudStorage:ftp.passwordPlaceholder')}
                   value={ftpConfig.password}
                   onChange={(e) => setFtpConfig({ ...ftpConfig, password: e.target.value })}
@@ -1648,6 +1919,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           <Input
             {...TECHNICAL_INPUT_PROPS}
             id="cloud-storage-root"
+            name="cloud_storage_sync_root"
+            autoComplete="off"
+            data-lpignore="true"
             placeholder={t('cloudStorage:root.placeholder')}
             value={root}
             onChange={(e) => setRoot(e.target.value)}
@@ -1682,6 +1956,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           </div>
           <ApiKeyField
             id="cloud-encryption-password"
+            name="cloud_e2ee_backup_password"
+            autoComplete="new-password"
             placeholder={
               credentialStatus.encryptionPasswordConfigured
                 ? t('cloudStorage:encryption.placeholderConfigured')
@@ -1689,7 +1965,6 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             }
             value={encryptionPassword}
             onChange={(e) => setEncryptionPassword(e.target.value)}
-            autoComplete="new-password"
             revealed={showEncryptionPwd}
             canReveal={encryptionPassword.trim().length > 0}
             onToggle={() => setShowEncryptionPwd(!showEncryptionPwd)}
@@ -1822,6 +2097,18 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             {t('cloudStorage:actions.clearConfig')}
           </DsButton>
         </div>
+        {!isConfigValid() && disabledValidationReasons.length > 0 && (
+          <div
+            role="status"
+            data-testid="cloud-config-disabled-reasons"
+            className="rounded-lg border border-border/50 bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+          >
+            <span className="font-medium text-foreground">
+              {t('cloudStorage:validation.disabledReasonsTitle')}
+            </span>{' '}
+            <span>{disabledValidationReasons.join(' · ')}</span>
+          </div>
+        )}
 
         {/* 同步状态 */}
         {syncStatus && (
@@ -2459,7 +2746,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             {content}
           </div>
         </section>
-        <DevicePairingSection onApplied={onPairingApplied} />
+        <DevicePairingSection onApplied={onPairingApplied} cloudConfigured={hasSavedConfig} />
       </div>
       {restoreConfirmDialog}
       {deleteConfirmDialog}

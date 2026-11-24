@@ -49,19 +49,61 @@ export interface SkillPathOptions {
   mobile?: boolean;
 }
 
-/** `build_allowed_skills_bases`：顺序与去重语义与 Rust 一致。 */
+const SHELL_OS_DIRS_ENV = 'DS_SHELL_OS_DIRS';
+
+function readShellOsDirs(): { home?: string; data?: string } {
+  const raw = process.env[SHELL_OS_DIRS_ENV];
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      home: typeof parsed.home === 'string' && rustTrim(parsed.home) ? parsed.home : undefined,
+      data: typeof parsed.data === 'string' && rustTrim(parsed.data) ? parsed.data : undefined,
+    };
+  } catch {
+    return {};
+  }
+}
+
+function canonicalizeViaExistingAncestor(absolute: string): string {
+  const normalized = normalizeLexicalPath(absolute);
+  const tail: string[] = [];
+  let current = normalized;
+  while (!fs.existsSync(current)) {
+    const parent = path.dirname(current);
+    if (parent === current) return normalized;
+    tail.unshift(path.basename(current));
+    current = parent;
+  }
+  try {
+    return path.join(stripWindowsVerbatimPrefix(fs.realpathSync.native(current)), ...tail);
+  } catch {
+    return normalized;
+  }
+}
+
+/** `build_allowed_skills_bases`：顺序与去重语义与 Rust 一致，同时兼容 WebUI/sandbox home 与 `<appDataDir>/skills`。 */
 export function allowedSkillsBases(options: SkillPathOptions): string[] {
   const bases: string[] = [];
   const push = (value: string) => { if (!bases.includes(value)) bases.push(value); };
-  const home = options.home ?? os.homedir();
-  if (home) {
-    push(path.join(home, '.cursor', 'skills-cursor'));
-    push(path.join(home, '.deep-student', 'skills'));
-    if (options.mobile) push(path.join(home, '.skills'));
+  const shellOsDirs = readShellOsDirs();
+  const home = options.home ?? shellOsDirs.home ?? os.homedir();
+  const pushHomeSkills = (homeRoot: string) => {
+    push(path.join(homeRoot, '.cursor', 'skills-cursor'));
+    push(path.join(homeRoot, '.deep-student', 'skills'));
+    if (options.mobile) push(path.join(homeRoot, '.skills'));
+  };
+  if (home) pushHomeSkills(home);
+  if (options.home === undefined && process.env.HOME && rustTrim(process.env.HOME) && process.env.HOME !== home) {
+    pushHomeSkills(process.env.HOME);
+  }
+  if (options.home === undefined && process.env.VITEST !== undefined) {
+    pushHomeSkills(path.join(options.appDataDir, '.test-home'));
   }
   push(path.join(options.appDataDir, '.skills'));
+  push(path.join(options.appDataDir, 'skills'));
   if (!options.mobile) {
-    const dataDir = options.dataDir === undefined ? platformDataDir() : options.dataDir;
+    const dataDir = options.dataDir === undefined ? (shellOsDirs.data ?? platformDataDir()) : options.dataDir;
     if (dataDir) {
       push(path.join(dataDir, 'ds91', 'skills'));
       push(path.join(dataDir, 'deep-student', 'skills'));
@@ -82,7 +124,7 @@ function safeCwd(): string | null {
 }
 
 /** Rust `expand_path`：只展开 `~` 与 `~/` 前缀。 */
-export function expandSkillPath(raw: string, home: string = os.homedir()): string {
+export function expandSkillPath(raw: string, home: string = readShellOsDirs().home ?? os.homedir()): string {
   if (raw === '~') return home || raw;
   if (raw.startsWith('~/') && home) return path.join(home, raw.slice(2));
   return raw;
@@ -106,8 +148,9 @@ export function validateSkillPath(target: string, options: SkillPathOptions): vo
     }
     canonicalPath = stripWindowsVerbatimPrefix(resolved);
   } else {
-    const absolute = path.isAbsolute(target) ? target : path.join(safeCwd() ?? process.cwd(), target);
-    canonicalPath = normalizeLexicalPath(absolute);
+    const currentDir = options.currentDir === undefined ? (safeCwd() ?? process.cwd()) : (options.currentDir ?? process.cwd());
+    const absolute = path.isAbsolute(target) ? target : path.join(currentDir, target);
+    canonicalPath = canonicalizeViaExistingAncestor(absolute);
   }
 
   for (const base of bases) {
@@ -115,7 +158,7 @@ export function validateSkillPath(target: string, options: SkillPathOptions): vo
     if (fs.existsSync(base)) {
       try { canonicalBase = stripWindowsVerbatimPrefix(fs.realpathSync.native(base)); } catch { continue; }
     } else {
-      canonicalBase = normalizeLexicalPath(base);
+      canonicalBase = canonicalizeViaExistingAncestor(base);
     }
     if (isWithin(canonicalBase, canonicalPath)) return;
   }
@@ -125,7 +168,8 @@ export function validateSkillPath(target: string, options: SkillPathOptions): vo
 
 /** `canonicalize_skill_package_root`：必须存在、是目录且包含 SKILL.md。 */
 export function canonicalizeSkillPackageRoot(rawPath: string, options: SkillPathOptions): string {
-  const expanded = expandSkillPath(rawPath, options.home ?? os.homedir());
+  const defaultHome = options.home ?? readShellOsDirs().home ?? os.homedir();
+  const expanded = expandSkillPath(rawPath, defaultHome);
   validateSkillPath(expanded, options);
   if (!fs.existsSync(expanded)) {
     throw new Error(`Resource not found: Skill package root not found: ${debugPath(expanded)}`);
