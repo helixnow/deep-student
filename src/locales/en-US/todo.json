@@ -417,7 +417,8 @@
     "markPending": "Mark as pending",
     "deleteItem": "Delete todo",
     "dragToReorder": "Drag to reorder",
-    "editTitleHint": "Double-click to edit title",
+    "editTitleHint": "Click to view details, double-click to edit title",
+    "renameTitle": "Rename",
     "openDetail": "View details & subtasks",
     "setPriority": "Set priority"
   },
@@ -510,6 +511,8 @@
     "reviewCompleted": "View completed",
     "addFirstToday": "Add first task for today",
     "addItemCta": "New Todo",
+    "scopeCaption": "Current view: {{view}} ({{count}} items)",
+    "viewTodayWithCount": "View Today ({{count}})",
     "upcomingClear": "Nothing due in the next 7 days",
     "upcomingClearHint": "Use quick add to leave a note for your future self.",
     "overdueClear": "No overdue tasks",
@@ -752,8 +755,11 @@
       "todayCount": "{{value}} pomodoros today",
       "todayGoalBadge": "{{done}}/{{goal}} pomodoros today",
       "focusLabel": "Focused",
+      "seconds": "{{value}}s",
       "minutes": "{{value}} min",
       "hours": "{{value}} h",
+      "exactSeconds": "Focused {{seconds}}s",
+      "exactMinutesSeconds": "Focused {{minutes}}m {{seconds}}s",
       "interrupted": "Interrupted {{value}} times",
       "goalProgress": "Daily goal {{done}}/{{goal}}",
       "goalReached": "Goal reached",
@@ -778,10 +784,12 @@
       "awayWorkCompleteTitle": "Pomodoro complete",
       "awayWorkCompleteBody": "This pomodoro finished while you were away ({{value}} today). The break timer was not started automatically",
       "awayBreakCompleteTitle": "Break over",
-      "awayBreakCompleteBody": "Your break ended while you were away — start the next pomodoro when ready"
+      "awayBreakCompleteBody": "Your break ended while you were away — start the next pomodoro when ready",
+      "stopped": "Pomodoro timer stopped"
     },
     "settings": {
       "title": "Pomodoro Settings",
+      "appliesNextRound": "Session in progress — duration changes will apply to the next round",
       "numberInputAria": "{{label}} numeric input",
       "workDuration": "Focus duration",
       "shortBreak": "Short break",
@@ -828,6 +836,10 @@
     },
     "errors": {
       "moreFailures": " ({{count}} more failed)"
+    },
+    "hostBridge": {
+      "runningInWindow": "Pomodoro is running in its own window",
+      "focusWindow": "Focus Pomodoro window"
     }
   },
   "sidebar": {

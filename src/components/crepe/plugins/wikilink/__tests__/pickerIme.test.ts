@@ -43,4 +43,19 @@ describe.each([{ isComposing: true }, { keyCode: 229 }])('wikilink IME (%j)', (c
       expect(isWikilinkCreateConfirmOpenFor(anchor)).toBe(false);
     } finally { anchor.remove(); }
   });
+
+  it('renders non-empty explanatory prompt text inside createConfirm popover (S1-06)', () => {
+    const anchor = document.createElement('button');
+    document.body.appendChild(anchor);
+    try {
+      openWikilinkCreateConfirm({ anchor, title: 'S106_新概念', onConfirm: vi.fn() });
+      const promptEl = document.querySelector('[data-testid="crepe-wikilink-create-confirm-text"]');
+      expect(promptEl).not.toBeNull();
+      expect(promptEl!.textContent).toContain('S106_新概念');
+      const cardEl = document.querySelector('.crepe-wikilink-create-confirm');
+      expect(cardEl?.getAttribute('role')).toBe('dialog');
+    } finally {
+      anchor.remove();
+    }
+  });
 });

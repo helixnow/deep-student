@@ -57,8 +57,11 @@ vi.mock('../library/LibraryCardRow', () => ({
 vi.mock('react-i18next', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-i18next')>()),
   useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) =>
-      typeof opts?.defaultValue === 'string' ? opts.defaultValue : key,
+    t: (key: string, opts?: Record<string, unknown>) => {
+      const raw = typeof opts?.defaultValue === 'string' ? opts.defaultValue : key;
+      if (!opts) return raw;
+      return raw.replace(/\{\{\s*([^}\s]+)\s*\}\}/g, (_, k) => String(opts[k] ?? ''));
+    },
     i18n: { language: 'zh-CN' },
   }),
 }));
@@ -108,7 +111,7 @@ describe('LibraryScreen .apkg / .csv import & targetDeck (S2-09)', () => {
     expect(apkgInput.getAttribute('accept')).toContain('.apkg');
   });
 
-  it('prefills CSV target deck from active deckFilter, allows custom deck override, and saves into targetDeck instead of ungrouped', async () => {
+  it('shows explicit CSV target deck summary, previews card count & deck before saving, and saves into targetDeck on confirm', async () => {
     mocks.saveAnkiCards.mockResolvedValue({
       savedIds: ['c-csv-1'],
       failed: [],
@@ -121,27 +124,66 @@ describe('LibraryScreen .apkg / .csv import & targetDeck (S2-09)', () => {
 
     const deckInput = screen.getByTestId('fc-lib-csv-target-deck-input') as HTMLInputElement;
     expect(deckInput.value).toBe('Biology');
+    expect(screen.getByTestId('fc-lib-csv-target-summary')).toHaveTextContent('Biology');
 
     fireEvent.change(deckInput, { target: { value: 'Chemistry::Organic' } });
+    expect(screen.getByTestId('fc-lib-csv-target-summary')).toHaveTextContent('Chemistry::Organic');
+
     const csvInput = screen.getByTestId('fc-lib-csv-file-input') as HTMLInputElement;
     const csvFile = {
       name: 'organic.csv',
-      text: async () => 'front,back\nBenzene,Aromatic ring\n',
+      text: async () => 'front,back\nBenzene,Aromatic ring\nToluene,Methylbenzene\n',
     } as unknown as File;
 
     await act(async () => {
       fireEvent.change(csvInput, { target: { files: [csvFile] } });
     });
 
+    const confirmBanner = await screen.findByTestId('fc-lib-csv-confirm-banner');
+    expect(confirmBanner).toHaveTextContent('organic.csv');
+    expect(confirmBanner).toHaveTextContent('2');
+    expect(confirmBanner).toHaveTextContent('Chemistry::Organic');
+    // Must wait for explicit confirmation before persisting cards
+    expect(mocks.saveAnkiCards).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('fc-lib-csv-confirm-btn'));
+    });
+
     await waitFor(() => {
       expect(mocks.saveAnkiCards).toHaveBeenCalledWith(
         expect.objectContaining({
-          cards: [expect.objectContaining({ front: 'Benzene', back: 'Aromatic ring' })],
+          cards: [
+            expect.objectContaining({ front: 'Benzene', back: 'Aromatic ring' }),
+            expect.objectContaining({ front: 'Toluene', back: 'Methylbenzene' }),
+          ],
           options: expect.objectContaining({
             deck_name: 'Chemistry::Organic',
           }),
         }),
       );
     });
+  });
+
+  it('allows cancelling pending CSV import preview without saving cards', async () => {
+    render(<LibraryScreen />);
+
+    fireEvent.click(screen.getByTestId('fc-lib-import-csv'));
+    const csvInput = screen.getByTestId('fc-lib-csv-file-input') as HTMLInputElement;
+    const csvFile = {
+      name: 'cancel-check.csv',
+      text: async () => 'front,back\nCell,Unit of life\n',
+    } as unknown as File;
+
+    await act(async () => {
+      fireEvent.change(csvInput, { target: { files: [csvFile] } });
+    });
+
+    const confirmBanner = await screen.findByTestId('fc-lib-csv-confirm-banner');
+    expect(confirmBanner).toHaveTextContent('Biology');
+    fireEvent.click(screen.getByTestId('fc-lib-csv-cancel-btn'));
+
+    expect(screen.queryByTestId('fc-lib-csv-confirm-banner')).not.toBeInTheDocument();
+    expect(mocks.saveAnkiCards).not.toHaveBeenCalled();
   });
 });

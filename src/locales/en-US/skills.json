@@ -85,6 +85,7 @@
     "refresh": "Refresh skill list",
     "noResults": "No matching skills found",
     "empty": "No skills available",
+    "loading": "Loading skills...",
     "emptyHint": "Place SKILL.md files in .skills/ directory to add skills",
     "activeHint": "Skill activated, will be applied automatically in conversations",
     "deactivate": "Deactivate",

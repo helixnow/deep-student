@@ -2321,8 +2321,12 @@
     "searchMatchCount": "{{count}} matches",
     "linksAndGraph": "Backlinks / Graph",
     "graphCurrentNode": "Current",
+    "graphDegree1": "1-hop",
+    "graphDegree2": "2-hop",
     "graphEdgeWikilink": "Wikilink",
     "graphEdgeNoteref": "Reference",
+    "graphEdgeCycle": "Cycle",
+    "graphCycleDetected": "Reference cycle detected",
     "graphConnectionsSummary": "Edges ({{count}})",
     "graphMoreConnections": "{{count}} more connections"
   }

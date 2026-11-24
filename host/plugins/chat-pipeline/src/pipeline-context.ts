@@ -44,6 +44,8 @@ export class PipelineContext {
   toolResults: ToolResultInfo[] = [];
   finalContent = '';
   finalReasoning: string | null = null;
+  aborted = false;
+  failed = false;
   activeBlocks = new Map<string, string>();
   generatedBlocks: MessageBlock[] = [];
   streamingThinkingBlockId: string | null = null;

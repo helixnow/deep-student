@@ -563,14 +563,36 @@ export async function importDroppedFiles(
   // On mobile each staged document is fully parsed in the Host, so consume one at a time.
   const limit = pLimit(fromPicker ? 1 : 3);
   let firstImportedNode: DstuNode | null = null;
+  const failedDetails: { name: string; reason?: string }[] = [];
 
   if (markdownFiles.length > 0) {
-    const markdownResult = await importMarkdownFileObjects(markdownFiles, currentCreatableFolderId);
-    if (!isMountedRef.current) return;
+    try {
+      const markdownResult = await importMarkdownFileObjects(markdownFiles, currentCreatableFolderId);
+      if (!isMountedRef.current) return;
 
-    totalSuccess += markdownResult.importedNodes.length;
-    totalFailed += markdownResult.failedCount;
-    firstImportedNode = markdownResult.importedNodes[0] ?? null;
+      totalSuccess += markdownResult.importedNodes.length;
+      totalFailed += markdownResult.failedCount;
+      firstImportedNode = markdownResult.importedNodes[0] ?? null;
+      for (const failedFile of markdownResult.failedFiles ?? []) {
+        failedDetails.push({
+          name: failedFile,
+          reason: markdownResult.firstError || undefined,
+        });
+      }
+      if (markdownResult.failedCount > 0 && (markdownResult.failedFiles?.length ?? 0) === 0) {
+        failedDetails.push({
+          name: markdownFiles[0]?.name ?? 'markdown',
+          reason: markdownResult.firstError || undefined,
+        });
+      }
+    } catch (e) {
+      if (!isMountedRef.current) return;
+      totalFailed += markdownFiles.length;
+      const reason = e instanceof Error ? e.message : String(e);
+      for (const mdFile of markdownFiles) {
+        failedDetails.push({ name: mdFile.name, reason });
+      }
+    }
   }
 
   if (attachmentFiles.length > 0) {
@@ -592,7 +614,11 @@ export async function importDroppedFiles(
             return { ok: false as const, name: file.name, reason: invalidReason };
           }
           let textbookFailureReason: string | undefined;
-          if (fromPicker && !preferVfsFilesView && DOCUMENT_EXTENSIONS.has(ext) && canParseAsMobileTextbook(ext)) {
+          // 仅 PDF/EPUB 从「导入资料…」走教材解析链路；DOCX/XLSX/TXT 等办公与纯文本文件
+          // 直接入 VFS files，确保 WebUI / 移动壳稳定落盘到 files 表而非在教材解析中丢失或卡死。
+          const shouldTryTextbookImport =
+            fromPicker && !preferVfsFilesView && (ext === 'pdf' || ext === 'epub') && canParseAsMobileTextbook(ext);
+          if (shouldTryTextbookImport) {
             const result = await withStagedTextbookFile(file, (source) =>
               textbookDstuAdapter.addTextbooks([source], currentCreatableFolderId));
             if (result.ok && result.value[0]) {
@@ -639,7 +665,6 @@ export async function importDroppedFiles(
   if (!isMountedRef.current) return;
   setAttachImportProgress(null);
 
-  const failedDetails: { name: string; reason?: string }[] = [];
   for (const r of results) {
     if (r.ok) totalSuccess++;
     else {

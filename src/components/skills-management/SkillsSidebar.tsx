@@ -172,12 +172,14 @@ const SidebarContentComponent: React.FC<SidebarContentProps> = React.memo(({
               >
                 <span className={cn("opacity-70", isActiveTab && "opacity-100")}>{tab.icon}</span>
                 <span>{tab.label}</span>
-                <span className={cn(
-                  'ml-0.5 text-2xs opacity-60',
-                  isActiveTab && 'opacity-100 font-bold'
-                )}>
-                  {count}
-                </span>
+                {!(isLoading && skills.length === 0) ? (
+                  <span className={cn(
+                    'ml-0.5 text-2xs opacity-60',
+                    isActiveTab && 'opacity-100 font-bold'
+                  )}>
+                    {count}
+                  </span>
+                ) : null}
               </DsButton>
             );
           })}

@@ -149,7 +149,8 @@ export interface SyncAuditRequest {
   outcome:
     | { kind: 'started' }
     | { kind: 'complete'; durationMs: number }
-    | { kind: 'failed'; error: string };
+    | { kind: 'failed'; error: string; durationMs?: number }
+    | { kind: 'cancelled'; error?: string; durationMs: number };
 }
 
 /**

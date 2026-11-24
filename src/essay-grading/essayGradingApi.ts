@@ -14,7 +14,16 @@ import { getErrorDetails, getErrorMessage } from '../utils/errorUtils';
 import i18n from '../i18n';
 import { canonicalizeEssayModeId } from './modeIds';
 export {
+  ESSAY_SELECTED_MODE_STORAGE_KEY,
+  LOCAL_CUSTOM_MODE_PREFIX,
+  LOCAL_CUSTOM_RUBRICS_STORAGE_KEY,
+  deleteLocalCustomMode,
+  isLocalCustomModeId,
+  mergeModesWithLocalCustom,
+  readLocalCustomModes,
   recommendedGradeLevelForMode,
+  resolveBackendGradingPayload,
+  saveLocalCustomMode,
   shouldSuppressHighSchoolPollution,
   type EssayGradeLevel,
 } from './modeIds';

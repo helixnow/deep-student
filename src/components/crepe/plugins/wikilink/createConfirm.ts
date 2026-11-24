@@ -93,23 +93,46 @@ function renderCard(title: string): void {
   const el = ensureCard();
   el.replaceChildren();
 
+  const resolvedTitle = title.trim();
+  const isEnglish = i18next.language?.toLowerCase().startsWith('en');
+  const translatedPrompt = i18next.t('notes:wikilinkV2.createConfirm', {
+    defaultValue: isEnglish
+      ? `Create new note "${resolvedTitle}"?`
+      : `新建笔记「${resolvedTitle}」？`,
+    title: resolvedTitle,
+  });
+  const promptText =
+    translatedPrompt
+    && translatedPrompt !== 'wikilinkV2.createConfirm'
+    && translatedPrompt !== 'notes:wikilinkV2.createConfirm'
+      ? translatedPrompt
+      : (isEnglish ? `Create new note "${resolvedTitle}"?` : `新建笔记「${resolvedTitle}」？`);
+
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-label', promptText);
+
   const text = document.createElement('div');
   text.className = `${CLASS}__text`;
-  text.textContent = i18next.t('notes:wikilinkV2.createConfirm', {
-    defaultValue: '创建新笔记「{{title}}」？',
-    title,
-  });
+  text.dataset.testid = 'crepe-wikilink-create-confirm-text';
+  text.style.color = 'hsl(var(--popover-foreground, var(--foreground)))';
+  text.textContent = promptText;
   el.appendChild(text);
 
   const actions = document.createElement('div');
   actions.className = `${CLASS}__actions`;
 
+  const translatedCancel = i18next.t('notes:wikilinkV2.createConfirmCancel', {
+    defaultValue: isEnglish ? 'Cancel' : '取消',
+  });
   const cancel = document.createElement('button');
   cancel.type = 'button';
   cancel.className = `${CLASS}__button`;
-  cancel.textContent = i18next.t('notes:wikilinkV2.createConfirmCancel', {
-    defaultValue: '取消',
-  });
+  cancel.textContent =
+    translatedCancel
+    && translatedCancel !== 'wikilinkV2.createConfirmCancel'
+    && translatedCancel !== 'notes:wikilinkV2.createConfirmCancel'
+      ? translatedCancel
+      : (isEnglish ? 'Cancel' : '取消');
   cancel.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -117,12 +140,18 @@ function renderCard(title: string): void {
   });
   actions.appendChild(cancel);
 
+  const translatedConfirm = i18next.t('notes:wikilinkV2.createConfirmAction', {
+    defaultValue: isEnglish ? 'Create' : '创建',
+  });
   const confirm = document.createElement('button');
   confirm.type = 'button';
   confirm.className = `${CLASS}__button ${CLASS}__button--primary`;
-  confirm.textContent = i18next.t('notes:wikilinkV2.createConfirmAction', {
-    defaultValue: '创建',
-  });
+  confirm.textContent =
+    translatedConfirm
+    && translatedConfirm !== 'wikilinkV2.createConfirmAction'
+    && translatedConfirm !== 'notes:wikilinkV2.createConfirmAction'
+      ? translatedConfirm
+      : (isEnglish ? 'Create' : '创建');
   confirm.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();

@@ -156,6 +156,23 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const { t, i18n } = useTranslation(['cloudStorage', 'common']);
   const [pairingRevision, setPairingRevision] = useState(0);
   const onPairingApplied = () => { setPairingRevision(value => value + 1); onConfigChanged?.(); };
+  const handlePairingRunSync = useCallback(
+    async (direction: 'upload' | 'download' | 'bidirectional'): Promise<boolean> => {
+      try {
+        const resolved = await cloudApi.resolveCloudStorageConfig();
+        if (!resolved) {
+          showGlobalNotification('warning', t('cloudStorage:errors.saveBeforeUpload'));
+          return false;
+        }
+        const result = await DataGovernanceApi.runSyncWithProgress(direction, resolved, 'keep_latest');
+        return result.success;
+      } catch (e: unknown) {
+        notifyErrorDeduped('error', localizeCloudStorageError(e, t, i18n?.language));
+        return false;
+      }
+    },
+    [i18n?.language, t],
+  );
   const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
     useShallow((state) => ({
       enterMaintenanceMode: state.enterMaintenanceMode,
@@ -210,7 +227,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const savedConfigRef = useRef<cloudApi.CloudStorageConfig | null>(null);
   const [draftTestError, setDraftTestError] = useState<string | null>(null);
   // 后端已发布配置回填表单时跳过一次「标记为草稿」，hydration 不是用户编辑
-  const hydratingFormRef = useRef(true);
+  const hydratingFormRef = useRef(false);
+  const prevFormKeyRef = useRef<string | null>(null);
+  const userEditedRef = useRef(false);
   const formRevisionRef = useRef(0);
   const [secureStoreIssue, setSecureStoreIssue] = useState<string | null>(null);
   const [credentialStatus, setCredentialStatus] = useState<cloudApi.CloudStorageCredentialStatus>({
@@ -311,14 +330,28 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     { action: 'save' | 'test'; allowInsecure: boolean } | null
   >(null);
 
-  // 任何表单编辑都把前端认知回退为「未测试的草稿」：后端已发布配置不受
+  // 任何真实用户编辑都把前端认知回退为「未测试的草稿」：后端已发布配置不受
   // 影响，但陈旧的「已连接」测试结论不能继续代表编辑后的表单内容。
   useEffect(() => {
     formRevisionRef.current += 1;
+    const currentFormKey = JSON.stringify([
+      provider,
+      webdavConfig,
+      s3Config,
+      ftpConfig,
+      root,
+      encryptionPassword,
+    ]);
+    if (prevFormKeyRef.current === null || prevFormKeyRef.current === currentFormKey) {
+      prevFormKeyRef.current = currentFormKey;
+      return;
+    }
+    prevFormKeyRef.current = currentFormKey;
     if (hydratingFormRef.current) {
       hydratingFormRef.current = false;
       return;
     }
+    userEditedRef.current = true;
     setConfigPhase('draft');
     setConnectionStatus('unknown');
     setDraftTestError(null);
@@ -350,7 +383,6 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 加载保存的配置 & 检测 S3 是否启用
   useEffect(() => {
     let active = true;
-    const loadRevision = formRevisionRef.current;
     const loadConfig = async () => {
       let loadedFtpConfig = false;
       // 检测 S3 feature 是否启用
@@ -361,10 +393,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       // only after an explicit `configured: false`, then performs one migration.
       try {
         const config = await cloudApi.resolveCloudStorageConfig();
-        if (config && active && loadRevision === formRevisionRef.current) {
+        if (config && active && !userEditedRef.current) {
           // 后端已发布配置回填表单：这不是用户编辑，跳过一次草稿标记，
           // 并把前端认知置为「已发布」。
-          hydratingFormRef.current = true;
+          const willChangeHydratedFields =
+            Boolean(config.webdav || config.s3 || config.ftp || config.provider !== provider || (config.root && config.root !== root));
+          hydratingFormRef.current = willChangeHydratedFields;
           savedConfigRef.current = {
             ...config,
             webdav: config.webdav ? { ...config.webdav, password: '' } : undefined,
@@ -391,7 +425,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           }
           if (config.root) setRoot(config.root);
           setAllowInsecure(config.allowInsecure ?? false);
-        } else if (active && loadRevision === formRevisionRef.current) {
+        } else if (!config && active && !userEditedRef.current) {
+          hydratingFormRef.current = false;
           savedConfigRef.current = null;
           setHasStoredFtpConfig(false);
           setAllowInsecure(false);
@@ -582,6 +617,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           allowInsecure: nextAllowInsecure,
         };
         setAllowInsecure(nextAllowInsecure);
+        userEditedRef.current = false;
         setConfigPhase('published');
         setHasSavedConfig(true);
         setDraftTestError(null);
@@ -1024,6 +1060,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       });
     }
     setConnectionStatus('unknown');
+    userEditedRef.current = false;
     setConfigPhase('draft');
     savedConfigRef.current = null;
     setHasSavedConfig(false);
@@ -2746,7 +2783,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             {content}
           </div>
         </section>
-        <DevicePairingSection onApplied={onPairingApplied} cloudConfigured={hasSavedConfig} />
+        <DevicePairingSection
+          onApplied={onPairingApplied}
+          cloudConfigured={hasSavedConfig}
+          onRunSync={handlePairingRunSync}
+        />
       </div>
       {restoreConfirmDialog}
       {deleteConfirmDialog}

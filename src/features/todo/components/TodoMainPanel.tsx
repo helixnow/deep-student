@@ -1129,6 +1129,14 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   <emptyState.icon size={24} weight={emptyState.celebratory ? 'fill' : 'regular'} />
                 </div>
                 <h3 className="study-shell-empty-state__title">{emptyState.title}</h3>
+                {filter.view === 'all' && !filter.search.trim() && (
+                  <p
+                    data-testid="todo-empty-scope-caption"
+                    className="mt-1 text-xs font-medium text-muted-foreground"
+                  >
+                    {t('todo:empty.scopeCaption', { view: viewTitle, count: topLevelItems.length })}
+                  </p>
+                )}
                 {isTodayAllDone && (
                   <span
                     data-testid="todo-today-all-done-badge"
@@ -1162,7 +1170,19 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                   </div>
                 )}
                 {showQuickAdd && !isTodayAllDone && !filter.search.trim() && (
-                  <div className="mt-3 flex items-center justify-center">
+                  <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+                    {filter.view === 'all' && (counts?.todayCount ?? 0) > 0 && (
+                      <DsButton
+                        variant="primary"
+                        size="sm"
+                        data-testid="todo-empty-view-today"
+                        onClick={() => setViewFilter('today')}
+                        className="gap-1.5 text-xs transition-[transform,background-color,border-color,color] duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
+                      >
+                        <Calendar size={14} />
+                        {t('todo:empty.viewTodayWithCount', { count: counts?.todayCount ?? 0 })}
+                      </DsButton>
+                    )}
                     <DsButton
                       variant="utility"
                       size="sm"

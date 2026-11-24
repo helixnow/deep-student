@@ -341,7 +341,12 @@
     "swapped_lang_only_hint": "已交换语言并保留源文",
     "undo_swap": "撤销交换",
     "outdated_hint": "原文或设置已更新，当前译文可能已过期",
-    "retranslate_now": "重新翻译"
+    "retranslate_now": "重新翻译",
+    "source_lang_mismatch_banner": "检测到原文语言与所选源语言不一致（疑似{{detected}}，当前设为{{selected}}）",
+    "source_lang_mismatch_toast": "检测到原文语言与所选源语言不一致",
+    "switch_to_detected": "切换为{{language}}",
+    "switch_to_auto": "改为自动检测",
+    "verbatim_output_warning": "译文与原文相同，请确认源语言设置"
   },
   "viewer": {
     "loading": "正在加载翻译…",

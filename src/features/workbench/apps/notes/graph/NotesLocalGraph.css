@@ -100,6 +100,40 @@
   box-shadow: 0 0 0 2px hsl(var(--muted-foreground) / 16%);
 }
 
+.notes-graph-node[data-degree='1'] .notes-graph-node-dot {
+  width: 12px;
+  height: 12px;
+  background: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 22%);
+}
+
+.notes-graph-node[data-cycle='true'] .notes-graph-node-dot {
+  background: hsl(var(--warning));
+  box-shadow: 0 0 0 4px hsl(var(--warning) / 28%);
+}
+
+.notes-graph-node[data-cycle='true'] .notes-graph-node-label {
+  color: hsl(var(--warning));
+  font-weight: 600;
+}
+
+.notes-graph-node-degree {
+  padding: 0 4px;
+  border-radius: 999px;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.notes-graph-node-degree[data-degree='1'] {
+  background: hsl(var(--primary) / 12%);
+  color: hsl(var(--primary));
+}
+
+.notes-graph-node-degree[data-degree='2'] {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+}
+
 .notes-graph-node[data-ghost='true'] {
   cursor: default;
 }
@@ -186,6 +220,34 @@
 .notes-graph-canvas .react-flow__edge.notes-graph-edge-noteref .react-flow__edge-path {
   stroke: hsl(var(--info) / 78%);
   stroke-dasharray: 5 4;
+}
+
+/* stylelint-disable-next-line selector-class-pattern -- @xyflow/react 第三方类名（BEM 双下划线） */
+.notes-graph-canvas .react-flow__edge.notes-graph-edge-cycle .react-flow__edge-path {
+  stroke: hsl(var(--warning));
+  stroke-width: 2;
+}
+
+.notes-graph-cycle-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--warning) / 40%);
+  background: hsl(var(--warning) / 12%);
+  color: hsl(var(--warning));
+  font-size: 10.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.notes-graph-edges-item.is-cycle {
+  color: hsl(var(--warning));
+}
+
+.notes-graph-edges-item.is-cycle .notes-graph-edges-kind {
+  background: hsl(var(--warning) / 14%);
+  color: hsl(var(--warning));
 }
 
 /* 工具栏图例（仅当图中存在 noteref 边时渲染） */

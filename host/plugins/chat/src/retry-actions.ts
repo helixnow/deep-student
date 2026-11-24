@@ -180,21 +180,87 @@ export async function retryMessageAction(deps: RetryCommandDeps, sessionId: stri
     if (restoredRefs !== null && restoredRefs.length > 0) {
       log.info(`[ChatV2::handlers] Retry with restored context refs: count=${restoredRefs.length}`);
     }
-    const toDelete = rewindIds(deps, sessionId, messageId, 0, all =>
+    const preserveVariant = (options as { preserveVariant?: boolean } | null)?.preserveVariant === true;
+    const toDelete = rewindIds(deps, sessionId, messageId, preserveVariant ? 1 : 0, all =>
       log.info(`[ChatV2::handlers] Retry: found ${all} total messages in session`),
       (index, total, count) => log.info(`[ChatV2::handlers] Retry: target_index=${index}, total_messages=${total}, to_delete=${count}`));
     cancelDispatchedWorkers(deps, sessionId, toDelete);
     deleteMessagesWithRefs(deps, toDelete, RETRY_TEXT);
+    let newVariantId: string | undefined;
+    if (preserveVariant) {
+      const conn = databaseOperation(() => database.getConnSafe());
+      databaseOperation(() => conn.transaction(tx => {
+        const currentOriginal = getMessage(tx, messageId);
+        if (currentOriginal === null) throw new ChatV2Error('MessageNotFound', messageId);
+        const existingVariants = currentOriginal.variants && currentOriginal.variants.length > 0
+          ? currentOriginal.variants.map(v => ({
+              ...v,
+              meta: { ...(v.meta ?? {}), versioned: true } as NonNullable<ChatMessage['variants']>[number]['meta'],
+            }))
+          : [{
+              id: `var_v1_${messageId}`,
+              modelId: typeof currentOriginal._meta?.modelId === 'string' && currentOriginal._meta.modelId.length > 0
+                ? currentOriginal._meta.modelId
+                : (typeof (currentOriginal._meta?.chatParams as { modelId?: unknown } | undefined)?.modelId === 'string'
+                    ? (currentOriginal._meta?.chatParams as { modelId: string }).modelId
+                    : 'default'),
+              blockIds: [...currentOriginal.blockIds],
+              status: ((currentOriginal._meta as { stoppedByUser?: boolean } | undefined)?.stoppedByUser ? 'cancelled' : 'success') as NonNullable<ChatMessage['variants']>[number]['status'],
+              ...(currentOriginal._meta?.usage ? { usage: structuredClone(currentOriginal._meta.usage) } : {}),
+              createdAt: currentOriginal.timestamp,
+              meta: {
+                ...(currentOriginal._meta?.executionSnapshot ? { executionSnapshot: structuredClone(currentOriginal._meta.executionSnapshot) } : {}),
+                ...(currentOriginal._meta?.skillSnapshotBefore ? { skillSnapshotBefore: structuredClone(currentOriginal._meta.skillSnapshotBefore) } : {}),
+                ...(currentOriginal._meta?.skillSnapshotAfter ? { skillSnapshotAfter: structuredClone(currentOriginal._meta.skillSnapshotAfter) } : {}),
+                ...(currentOriginal._meta?.skillRuntimeBefore ? { skillRuntimeBefore: structuredClone(currentOriginal._meta.skillRuntimeBefore) } : {}),
+                ...(currentOriginal._meta?.skillRuntimeAfter ? { skillRuntimeAfter: structuredClone(currentOriginal._meta.skillRuntimeAfter) } : {}),
+                versioned: true,
+              } as NonNullable<ChatMessage['variants']>[number]['meta'],
+            }];
+        newVariantId = `var_${globalThis.crypto.randomUUID()}`;
+        const nextVariant: NonNullable<ChatMessage['variants']>[number] = {
+          id: newVariantId,
+          modelId: modelId ?? existingVariants[existingVariants.length - 1]?.modelId ?? 'default',
+          blockIds: [],
+          status: 'streaming',
+          createdAt: Date.now(),
+          meta: { versioned: true } as NonNullable<ChatMessage['variants']>[number]['meta'],
+        };
+        const cleanMeta = currentOriginal._meta
+          ? (() => {
+              const copy = { ...currentOriginal._meta } as Record<string, unknown>;
+              delete copy.stoppedByUser;
+              return copy as NonNullable<ChatMessage['_meta']>;
+            })()
+          : undefined;
+        updateMessage(tx, {
+          ...currentOriginal,
+          blockIds: [],
+          ...(cleanMeta ? { _meta: cleanMeta } : {}),
+          activeVariantId: newVariantId,
+          variants: [...existingVariants, nextVariant],
+        }, log);
+      }, { behavior: 'immediate' }));
+    }
     let merged = applyOriginalSkillSnapshotOverrides(applyReplayModeOverrides({ ...(options ?? {}) }),
       original._meta, user.messageMeta);
-    merged = { ...merged, skipUserMessageSave: true, streamGeneration: registration.generation };
+    merged = {
+      ...merged,
+      skipUserMessageSave: true,
+      ...(preserveVariant && newVariantId ? { skipAssistantMessageSave: true, targetVariantId: newVariantId } : {}),
+      streamGeneration: registration.generation,
+    };
     const request: BackendSendRequest = {
       sessionId, content: user.content, options: merged as BackendSendRequest['options'], userMessageId: null,
       assistantMessageId: messageId, userContextRefs: restoredRefs, pathMap: restoredPathMap, workspaceId: null,
     };
     spawnPipeline(deps, window, request, registration, guard, 'Retry');
     spawned = true;
-    return { message_id: messageId, ...(toDelete.length === 0 ? {} : { deleted_message_ids: toDelete }) };
+    return {
+      message_id: messageId,
+      ...(newVariantId ? { new_variant_id: newVariantId } : {}),
+      ...(toDelete.length === 0 ? {} : { deleted_message_ids: toDelete }),
+    };
   } finally { if (!spawned) guard.dispose(); }
 }
 

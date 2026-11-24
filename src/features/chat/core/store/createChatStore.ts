@@ -238,20 +238,15 @@ export function createBlockInternal(
       // 晚到/重放块（startedAt 早于末尾块）插入到正确位置，避免块被追加到
       // 消息底部——分段渲染忠实按 blockIds 顺序，误排会导致工具块/思维链
       // 出现在正文之后（安装版 0.9.50 已复现该数据形态）。
-      const messageUpdate = updateSingleMessage(messageId, (draft) => {
-        const blockStartedAt = block.startedAt;
-        const existing = draft.blockIds;
-        if (existing.includes(blockId)) {
-          return;
-        }
+      const blockStartedAt = block.startedAt;
+      const insertBlockOrdered = (existing: string[]): void => {
+        if (existing.includes(blockId)) return;
         const lastBlockId = existing.length > 0 ? existing[existing.length - 1] : undefined;
         const lastBlock = lastBlockId ? s.blocks.get(lastBlockId) : undefined;
         if (!lastBlockId || (lastBlock?.startedAt ?? 0) <= blockStartedAt) {
-          // 快路径：末尾块不晚于新块，直接追加（正常流式序，零额外开销）
-          draft.blockIds.push(blockId);
+          existing.push(blockId);
           return;
         }
-        // 晚到块：插入到第一个 startedAt 晚于新块的块之前，保持时间序
         let insertAt = existing.length;
         for (let i = 0; i < existing.length; i++) {
           const b = s.blocks.get(existing[i]);
@@ -260,7 +255,25 @@ export function createBlockInternal(
             break;
           }
         }
-        draft.blockIds.splice(insertAt, 0, blockId);
+        existing.splice(insertAt, 0, blockId);
+      };
+
+      const messageUpdate = updateSingleMessage(messageId, (draft) => {
+        // 🔧 按 startedAt 有序插入：正常流式序（时间递增）走 push 快路径；
+        // 晚到/重放块（startedAt 早于末尾块）插入到正确位置，避免块被追加到
+        // 消息底部——分段渲染忠实按 blockIds 顺序，误排会导致工具块/思维链
+        // 出现在正文之后（安装版 0.9.50 已复现该数据形态）。
+        insertBlockOrdered(draft.blockIds);
+        if (draft.activeVariantId && draft.variants) {
+          const activeVariant = draft.variants.find((v) => v.id === draft.activeVariantId);
+          if (
+            activeVariant
+            && activeVariant.meta?.versioned === true
+            && (activeVariant.status === 'streaming' || activeVariant.status === 'pending')
+          ) {
+            insertBlockOrdered(activeVariant.blockIds);
+          }
+        }
       })(s);
 
       return {

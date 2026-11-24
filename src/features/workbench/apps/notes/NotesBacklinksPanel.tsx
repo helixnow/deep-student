@@ -201,21 +201,49 @@ export interface ContextSnippet {
   truncatedEnd: boolean;
 }
 
+function cleanSnippetContext(
+  raw: string,
+  resolveTarget?: (target: string) => string | undefined,
+): string {
+  return raw
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/\[([^\]\n]+)\]\(note:\/\/([^)\s]+)\)/g, (_, label: string, noteId: string) => (
+      label.trim() || resolveTarget?.(noteId.trim()) || noteId.trim()
+    ))
+    .replace(/\[\[([^\]\n]+)\]\]/g, (full: string, inner: string) => {
+      const pipeIdx = inner.indexOf('|');
+      const rawTarget = (pipeIdx >= 0 ? inner.slice(0, pipeIdx) : inner).trim();
+      const alias = pipeIdx >= 0 ? inner.slice(pipeIdx + 1).trim() : '';
+      if (alias) return alias;
+      const hashIdx = rawTarget.indexOf('#');
+      const baseTarget = (hashIdx >= 0 ? rawTarget.slice(0, hashIdx) : rawTarget).trim();
+      const heading = hashIdx >= 0 ? rawTarget.slice(hashIdx + 1).trim() : '';
+      if (!baseTarget) return full;
+      const resolved = resolveTarget?.(baseTarget);
+      if (resolved) {
+        return heading ? `${resolved}#${heading}` : resolved;
+      }
+      return full;
+    })
+    .replace(/\s+/g, ' ');
+}
+
 /** Extract ~radius chars around a wiki-link occurrence for backlink context. */
 export function extractContextSnippet(
   content: string,
   start: number,
   end: number,
   radius: number,
+  resolveTarget?: (target: string) => string | undefined,
 ): ContextSnippet | null {
   if (!content || start < 0 || end <= start || start >= content.length) return null;
   const safeEnd = Math.min(end, content.length);
   const sliceStart = Math.max(0, start - radius);
   const sliceEnd = Math.min(content.length, safeEnd + radius);
   return {
-    before: content.slice(sliceStart, start).replace(/\s+/g, ' '),
+    before: cleanSnippetContext(content.slice(sliceStart, start), resolveTarget),
     match: content.slice(start, safeEnd),
-    after: content.slice(safeEnd, sliceEnd).replace(/\s+/g, ' '),
+    after: cleanSnippetContext(content.slice(safeEnd, sliceEnd), resolveTarget),
     truncatedStart: sliceStart > 0,
     truncatedEnd: sliceEnd < content.length,
   };
@@ -507,17 +535,19 @@ const UnlinkedMentionRowView: React.FC<{
   disabled: boolean;
   converting: boolean;
   contextRadius: number;
+  resolveSnippetTarget?: (target: string) => string | undefined;
   onOpen: (row: UnlinkedMentionRow) => void;
   onConvert: (row: UnlinkedMentionRow) => void;
   openLabel: (title: string) => string;
   convertLabel: (title: string) => string;
   convertButtonText: string;
-}> = ({ row, disabled, converting, contextRadius, onOpen, onConvert, openLabel, convertLabel, convertButtonText }) => {
+}> = ({ row, disabled, converting, contextRadius, resolveSnippetTarget, onOpen, onConvert, openLabel, convertLabel, convertButtonText }) => {
   const snippet = extractContextSnippet(
     row.content,
     row.mention.start,
     row.mention.end,
     contextRadius,
+    resolveSnippetTarget,
   );
 
   return (
@@ -1187,6 +1217,19 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
   const relationshipNodesById = loadState.status === 'ready'
     ? new Map(loadState.noteNodes.map((node) => [node.id, node]))
     : noteNodesById;
+  const noteTitleByLookupKey = new Map<string, string>();
+  for (const node of relationshipNodesById.values()) {
+    noteTitleByLookupKey.set(node.id, node.name);
+    const normalized = node.name.trim().toLocaleLowerCase();
+    if (normalized && !noteTitleByLookupKey.has(normalized)) {
+      noteTitleByLookupKey.set(normalized, node.name);
+    }
+  }
+  const resolveSnippetTarget = (target: string): string | undefined => {
+    const trimmed = target.trim();
+    if (!trimmed) return undefined;
+    return noteTitleByLookupKey.get(trimmed) ?? noteTitleByLookupKey.get(trimmed.toLocaleLowerCase());
+  };
   const contentsByNoteId = loadState.status === 'ready'
     ? loadState.contentsByNoteId
     : null;
@@ -1499,6 +1542,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
                             relationship.link.start,
                             relationship.link.end,
                             contextRadius,
+                            resolveSnippetTarget,
                           );
                           return resource ? (
                             <LinkedNoteRow
@@ -1578,6 +1622,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
                           disabled={openingResourceId !== null}
                           converting={convertingKeys.has(`${row.node.id}:${row.mention.start}`)}
                           contextRadius={contextRadius}
+                          resolveSnippetTarget={resolveSnippetTarget}
                           onOpen={(mentionRow) => void openLinkedResource(mentionRow.node, {
                             findQuery: mentionRow.mention.text,
                           })}

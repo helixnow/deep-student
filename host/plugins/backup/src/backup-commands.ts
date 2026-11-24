@@ -274,14 +274,30 @@ export class BackupCommands {
     includeAssets: boolean, assetTypes: string[] | null,
   ): Promise<void> {
     const start = performance.now();
+    const auditTarget = `governance_backup/${backupType}`;
+    const recordAuditFailure = (message: string): void => {
+      this.governance.trySaveAuditLog(failAuditLog(withAuditDetails(newAuditLog({
+        type: 'Backup', backup_type: 'Full', file_count: 0, total_size: 0,
+      }, auditTarget), {
+        job_id: job.job_id, backup_type: backupType, include_assets: includeAssets,
+      }), message, Math.trunc(performance.now() - start)));
+    };
+    const failJob = (message: string): void => {
+      recordAuditFailure(message);
+      job.fail(message);
+    };
+    const cancelJob = (message: string): void => {
+      recordAuditFailure(message);
+      job.cancelled(message);
+    };
     job.markRunning('queued', 0, WAITING_FOR_OPERATION_MESSAGE, 0, 0);
     let acquired: Awaited<ReturnType<Operations['acquireForJob']>>;
     try { acquired = await this.operations.acquireForJob('backup', job.job_id, () => job.isCancelled()); }
-    catch (error) { job.fail(`获取全局备份锁失败: ${ioMessage(error)}`); return; }
-    if (acquired === 'cancelled') { job.cancelled(OPERATION_QUEUED_CANCELLED_MESSAGE); return; }
+    catch (error) { failJob(`获取全局备份锁失败: ${ioMessage(error)}`); return; }
+    if (acquired === 'cancelled') { cancelJob(OPERATION_QUEUED_CANCELLED_MESSAGE); return; }
     const guard = acquired;
     try {
-      if (backupType === 'incremental') { job.fail(INCREMENTAL_BACKUP_REMOVED_MESSAGE); return; }
+      if (backupType === 'incremental') { failJob(INCREMENTAL_BACKUP_REMOVED_MESSAGE); return; }
       job.setParams({
         backup_type: backupType, base_version: baseVersion ?? undefined, include_assets: includeAssets,
         asset_types: assetTypes ?? undefined, include_checksums: true,
@@ -289,11 +305,11 @@ export class BackupCommands {
       job.initCheckpoint(4);
       const root = backupDir(this.ctx.app.dataDir);
       try { if (!existsSync(root)) mkdirSync(root, { recursive: true }); }
-      catch (e) { job.fail(`创建备份目录失败: ${ioMessage(e)}`); return; }
+      catch (e) { failJob(`创建备份目录失败: ${ioMessage(e)}`); return; }
       job.markRunning('scan', 5, '正在准备备份...', 0, 4);
-      if (job.isCancelled()) { job.cancelled('用户取消备份'); return; }
+      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
       job.markRunning('checkpoint', 10, '正在执行数据库 checkpoint...', 0, 4);
-      if (job.isCancelled()) { job.cancelled('用户取消备份'); return; }
+      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
 
       const allAssetTypes = assetTypes === null || assetTypes.length === 0
         || assetTypes.every(type => !defaultTypes().includes(type));
@@ -301,7 +317,7 @@ export class BackupCommands {
       // 释放失败优先于备份结果错误。
       let barrier;
       try { barrier = await this.operations.enterSnapshotBarrier(); }
-      catch (e) { job.fail(`无法建立一致备份快照: ${ioMessage(e)}`); return; }
+      catch (e) { failJob(`无法建立一致备份快照: ${ioMessage(e)}`); return; }
       let manifest: BackupManifest | null = null;
       let backupFailure: unknown = null;
       try {
@@ -315,12 +331,12 @@ export class BackupCommands {
       } catch (e) { backupFailure = e; }
       let releaseFailure: unknown = null;
       try { barrier.release(); } catch (e) { releaseFailure = e; }
-      if (releaseFailure !== null) { job.fail(ioMessage(releaseFailure)); return; }
+      if (releaseFailure !== null) { failJob(ioMessage(releaseFailure)); return; }
       if (backupFailure !== null) throw backupFailure;
       if (manifest === null) throw new Error('备份未生成清单');
       // Rust commands_backup.rs:2040-2046：请求包含资产的备份必须满足可槽恢复契约。
       if (includeAssets) validateForSlotRestore(manifest);
-      if (job.isCancelled()) { job.cancelled('用户取消备份'); return; }
+      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
       job.markRunning('verify', 80, '正在验证备份...', 3, 4);
 
       const assetSize = manifest.assets?.total_size ?? 0;
@@ -370,13 +386,9 @@ export class BackupCommands {
       };
       job.complete(`备份完成: ${manifest.backup_id}`, databasesBackedUp.length, databasesBackedUp.length, result);
     } catch (e) {
-      if (job.isCancelled()) { job.cancelled('用户取消备份'); return; }
+      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
       const message = ioMessage(e);
-      this.governance.trySaveAuditLog(failAuditLog(withAuditDetails(newAuditLog({
-        type: 'Backup', backup_type: 'Full', file_count: 0, total_size: 0,
-      }, `governance_backup/${backupType}`), {
-        job_id: job.job_id, backup_type: backupType, include_assets: includeAssets,
-      }), message));
+      recordAuditFailure(message);
       job.fail(`备份失败: ${message}`);
     } finally {
       guard.release();
@@ -426,11 +438,28 @@ export class BackupCommands {
     includeAssets?: boolean | null; maxAssetSize?: number | null; assetTypes?: string[] | null;
   }): Promise<void> {
     const start = performance.now();
+    const recordAuditFailure = (message: string): void => {
+      this.governance.trySaveAuditLog(failAuditLog(withAuditDetails(newAuditLog({
+        type: 'Backup', backup_type: 'Full', file_count: 0, total_size: 0,
+      }, 'governance_backup/tiered'), {
+        job_id: job.job_id, tiers: args.tiers ?? null,
+        include_databases: args.includeDatabases ?? null, exclude_databases: args.excludeDatabases ?? null,
+        include_assets: args.includeAssets ?? false, max_asset_size: args.maxAssetSize ?? null,
+      }), message, Math.trunc(performance.now() - start)));
+    };
+    const failJob = (message: string): void => {
+      recordAuditFailure(message);
+      job.fail(message);
+    };
+    const cancelJob = (message: string): void => {
+      recordAuditFailure(message);
+      job.cancelled(message);
+    };
     job.markRunning('queued', 0, WAITING_FOR_OPERATION_MESSAGE, 0, 0);
     let acquired: Awaited<ReturnType<Operations['acquireForJob']>>;
     try { acquired = await this.operations.acquireForJob('backup', job.job_id, () => job.isCancelled()); }
-    catch (error) { job.fail(`获取全局备份锁失败: ${ioMessage(error)}`); return; }
-    if (acquired === 'cancelled') { job.cancelled(OPERATION_QUEUED_CANCELLED_MESSAGE); return; }
+    catch (error) { failJob(`获取全局备份锁失败: ${ioMessage(error)}`); return; }
+    if (acquired === 'cancelled') { cancelJob(OPERATION_QUEUED_CANCELLED_MESSAGE); return; }
     const guard = acquired;
     try {
       const parsedTiers = (args.tiers ?? ['core']).map(tier => tier.toLowerCase()).filter(tier =>
@@ -447,15 +476,15 @@ export class BackupCommands {
       const includeAssets = args.includeAssets ?? false;
       const totalDatabases = selected.length;
       job.markRunning('scan', 5, '正在扫描数据库和资产...', 0, 0);
-      if (job.isCancelled()) { job.cancelled('用户取消备份'); return; }
+      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
       job.markRunning('checkpoint', 15, '正在执行数据库 checkpoint...', 0, totalDatabases);
-      if (job.isCancelled()) { job.cancelled('用户取消备份'); return; }
+      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
       job.markRunning('compress', 20, '一致性屏障内：正在 staging 分层数据并计算哈希...', 0, totalDatabases);
 
       // Rust commands_backup.rs:2807-2818：分层 staging 同样在屏障内完成。
       let barrier;
       try { barrier = await this.operations.enterSnapshotBarrier(); }
-      catch (e) { job.fail(`无法建立一致备份快照: ${ioMessage(e)}`); return; }
+      catch (e) { failJob(`无法建立一致备份快照: ${ioMessage(e)}`); return; }
       let manifest: BackupManifest | null = null;
       let backupFailure: unknown = null;
       try {
@@ -472,13 +501,13 @@ export class BackupCommands {
       } catch (e) { backupFailure = e; }
       let releaseFailure: unknown = null;
       try { barrier.release(); } catch (e) { releaseFailure = e; }
-      if (releaseFailure !== null) { job.fail(ioMessage(releaseFailure)); return; }
+      if (releaseFailure !== null) { failJob(ioMessage(releaseFailure)); return; }
       if (backupFailure !== null) throw backupFailure;
       if (manifest === null) throw new Error('分层备份未生成清单');
-      if (job.isCancelled()) { job.cancelled('用户取消备份'); return; }
+      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
       if (includeAssets) job.markRunning('compress', 90, '正在备份资产文件...', totalDatabases, totalDatabases);
       job.markRunning('verify', 95, '正在验证备份...', totalDatabases, totalDatabases);
-      if (job.isCancelled()) { job.cancelled('用户取消备份'); return; }
+      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
 
       const assetSize = manifest.assets?.total_size ?? 0;
       const { backupSize } = checkedRestoreDiskBudget(manifest.files.map(file => file.size), assetSize);
@@ -511,16 +540,17 @@ export class BackupCommands {
         checkpoint_path: null,
         resumable_job_id: null,
       };
-      this.governance.trySaveAuditLog(completeAuditLog(newAuditLog({
+      this.governance.trySaveAuditLog(withAuditDetails(completeAuditLog(newAuditLog({
         type: 'Backup', backup_type: 'Full', file_count: manifest.files.length, total_size: Number(backupSize),
-      }, manifest.backup_id), durationMs));
+      }, manifest.backup_id), durationMs), {
+        job_id: job.job_id, backup_id: manifest.backup_id, tiers: parsedTiers,
+        include_assets: includeAssets, file_count: manifest.files.length, total_size: Number(backupSize),
+      }));
       job.complete(`分层备份完成: ${manifest.backup_id}，共 ${manifest.files.length} 个文件`, manifest.files.length, manifest.files.length, payload);
     } catch (e) {
-      if (job.isCancelled()) { job.cancelled('用户取消备份'); return; }
+      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
       const message = ioMessage(e);
-      this.governance.trySaveAuditLog(failAuditLog(newAuditLog({
-        type: 'Backup', backup_type: 'Full', file_count: 0, total_size: 0,
-      }, 'governance_backup/tiered'), message));
+      recordAuditFailure(message);
       job.fail(`分层备份失败: ${message}`);
     } finally {
       guard.release();

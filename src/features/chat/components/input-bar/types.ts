@@ -247,7 +247,7 @@ export interface InputBarUIProps {
   /** 渲染 MCP 工具面板（模式插件提供） */
   renderMcpPanel?: () => React.ReactNode;
   /** 渲染技能选择面板；variant=menu 用于加号菜单次级飞出层 */
-  renderSkillPanel?: (opts?: { variant?: 'panel' | 'menu' }) => React.ReactNode;
+  renderSkillPanel?: (opts?: { variant?: 'panel' | 'menu'; onClose?: () => void }) => React.ReactNode;
   /** 打开当前对话模型面板（统一入口，承接单模型 / 对比 / 重试） */
   onOpenRuntimeModelPanel?: (mode?: 'single' | 'compare') => void;
 

@@ -53,8 +53,15 @@ describe('buildLocalGraph', () => {
     expect(data.nodes.find((node) => node.id === 'out1')).toMatchObject({ degree: 1, exists: true });
     expect(data.nodes.find((node) => node.id === ghostNodeId('未解析目标')))
       .toMatchObject({ degree: 1, exists: false, title: '未解析目标' });
-    // 无向去重：中心到每个邻居各一条边
+    // 有向去重：in1 -> center、center -> out1、center -> 未解析目标，共 3 条有向边且保留真实方向
     expect(data.edges).toHaveLength(3);
+    expect(data.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'in1', target: 'center', kind: 'unknown' }),
+        expect.objectContaining({ source: 'center', target: 'out1', kind: 'wikilink' }),
+        expect.objectContaining({ source: 'center', target: ghostNodeId('未解析目标'), kind: 'wikilink' }),
+      ]),
+    );
   });
 
   it('expands to two hops but keeps ghosts only around the center', async () => {
@@ -70,8 +77,14 @@ describe('buildLocalGraph', () => {
     // 二度展开引入 far；mid 的幽灵目标被丢弃（只有中心引入幽灵）
     expect(ids).toEqual(['center', 'far', 'mid']);
     expect(data.nodes.find((node) => node.id === 'far')).toMatchObject({ degree: 2 });
-    // center-mid 与 mid-far；mid 回指 center 的边被无向去重
+    // center -> mid 与 mid -> far；同一条有向边 center -> mid 在 mid.backlinks 被有向去重
     expect(data.edges).toHaveLength(2);
+    expect(data.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'center', target: 'mid' }),
+        expect.objectContaining({ source: 'mid', target: 'far' }),
+      ]),
+    );
     expect(data.truncated).toBe(false);
   });
 
@@ -111,27 +124,46 @@ describe('buildLocalGraph', () => {
       },
     }));
 
-    const kindByTarget = new Map(data.edges.map((edge) => [edge.target, edge.kind]));
-    expect(kindByTarget.get('in-only')).toBe('unknown');
-    expect(kindByTarget.get('both')).toBe('noteref');
-    expect(kindByTarget.get('wiki')).toBe('wikilink');
-    expect(kindByTarget.get('ref')).toBe('noteref');
-    expect(kindByTarget.get(ghostNodeId('Ghost Ref'))).toBe('noteref');
+    const kindByPair = new Map(data.edges.map((edge) => [`${edge.source}->${edge.target}`, edge.kind]));
+    expect(kindByPair.get('in-only->center')).toBe('unknown');
+    expect(kindByPair.get('center->in-only')).toBeUndefined();
+    expect(kindByPair.get('center->both')).toBe('noteref');
+    expect(kindByPair.get('both->center')).toBe('unknown');
+    expect(kindByPair.get('center->wiki')).toBe('wikilink');
+    expect(kindByPair.get('center->ref')).toBe('noteref');
+    expect(kindByPair.get(`center->${ghostNodeId('Ghost Ref')}`)).toBe('noteref');
   });
 
-  it('upgrades an unknown backlink edge when depth-2 expansion sees the reverse outgoing row', async () => {
+  it('upgrades an unknown backlink edge when depth-2 expansion sees the source outgoing row', async () => {
     const data = await buildLocalGraph({ id: 'center', title: 'C' }, 2, fetcherFromMap({
-      // 深度 1 时 center-mid 只从入链行可见（unknown）
+      // 深度 1 时 mid -> center 只从入链行可见（unknown）
       center: { backlinks: [backlink('mid', 'Mid')], outgoing: [] },
-      // 展开 mid 后其出链行补全这条无向边的类型
+      // 展开 mid 后其出链行补全 mid -> center 这条有向边的类型
       mid: { backlinks: [], outgoing: [outgoing('center', 'C', 'noteref')] },
     }));
 
     const edge = data.edges.find((candidate) => (
-      (candidate.source === 'center' && candidate.target === 'mid')
-      || (candidate.source === 'mid' && candidate.target === 'center')
+      candidate.source === 'mid' && candidate.target === 'center'
     ));
     expect(edge?.kind).toBe('noteref');
+    expect(data.hasCycle).toBe(false);
+  });
+
+  it('detects directed reference cycles while keeping pure DAGs cycle-free (S1-06)', async () => {
+    const cyclic = await buildLocalGraph({ id: 'bayes', title: 'S106_贝叶斯定理' }, 2, fetcherFromMap({
+      bayes: { backlinks: [backlink('cond', 'S106_条件概率')], outgoing: [outgoing('norm', 'S106_全概率')] },
+      norm: { backlinks: [backlink('bayes', 'S106_贝叶斯定理')], outgoing: [outgoing('cond', 'S106_条件概率')] },
+      cond: { backlinks: [backlink('norm', 'S106_全概率')], outgoing: [outgoing('bayes', 'S106_贝叶斯定理')] },
+    }));
+    expect(cyclic.hasCycle).toBe(true);
+    expect(new Set(cyclic.cycleNodeIds)).toEqual(new Set(['bayes', 'norm', 'cond']));
+    expect(cyclic.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'cond', target: 'bayes' }),
+        expect.objectContaining({ source: 'bayes', target: 'norm' }),
+        expect.objectContaining({ source: 'norm', target: 'cond' }),
+      ]),
+    );
   });
 
   it('survives expansion failures of individual neighbors', async () => {

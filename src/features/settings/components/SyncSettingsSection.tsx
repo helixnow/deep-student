@@ -37,6 +37,7 @@ import { ConflictResolutionDialog, MergeStrategy } from '@/components/ConflictRe
 import { useConflictResolution } from '@/hooks/useConflictResolution';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
+  localizeBackendErrorText,
   localizeCloudStorageError,
   notifyErrorDeduped,
 } from './data-governance/localizeCloudError';
@@ -46,7 +47,10 @@ import {
   formatEta,
 } from '@/types/dataGovernance';
 import { Switch } from '@/components/ui/shad/Switch';
-import { loadStoredCloudStorageConfigWithCredentials } from '@/utils/cloudStorageApi';
+import {
+  loadStoredCloudStorageConfigSafe,
+  loadStoredCloudStorageConfigWithCredentials,
+} from '@/utils/cloudStorageApi';
 import {
   useGlobalSyncStore,
   useAutoSyncStore,
@@ -101,6 +105,29 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
   // UI 状态
   const [showConflictDialog, setShowConflictDialog] = useState(false);
+  const [cloudConfigured, setCloudConfigured] = useState<boolean>(() =>
+    Boolean(loadStoredCloudStorageConfigSafe()),
+  );
+
+  const refreshCloudConfigured = useCallback(async () => {
+    try {
+      const cfg = await loadStoredCloudStorageConfigWithCredentials();
+      setCloudConfigured(Boolean(cfg));
+    } catch {
+      setCloudConfigured(Boolean(loadStoredCloudStorageConfigSafe()));
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshCloudConfigured();
+    const onCloudChanged = () => {
+      void refreshCloudConfigured();
+    };
+    window.addEventListener('data-governance:cloud-config-changed', onCloudChanged);
+    return () => {
+      window.removeEventListener('data-governance:cloud-config-changed', onCloudChanged);
+    };
+  }, [refreshCloudConfigured]);
 
   // 同步进度 / 取消 / 正在同步：全部来自全局 store（#447）。进度由应用级
   // 事件监听写入，本组件被设置页切栏目卸载后重挂载仍能立即显示；与数据
@@ -222,15 +249,17 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
   // 执行同步（带进度跟踪）
   const handleSync = useCallback(
-    async (direction: 'upload' | 'download' | 'bidirectional') => {
+    async (direction: 'upload' | 'download' | 'bidirectional'): Promise<boolean> => {
       const cloudConfig = await loadStoredCloudStorageConfigWithCredentials();
       if (!cloudConfig) {
+        setCloudConfigured(false);
         showGlobalNotification(
           'warning',
           t('data:governance.cloud_sync_not_configured')
         );
-        return;
+        return false;
       }
+      setCloudConfigured(true);
 
       // 全局占用：任何入口已有同步进行中则直接拒绝本次触发
       if (!useGlobalSyncStore.getState().beginSync('sync-settings')) {
@@ -238,7 +267,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           'warning',
           t('data:governance.sync_already_running')
         );
-        return;
+        return false;
       }
 
       // beginSync 已把全局进度置为「准备中」并复位取消标记；后续进度由
@@ -256,25 +285,42 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
         const result = await runSyncWithProgress(direction, cloudConfig, syncStrategy);
 
-        if (result.success && !result.error_message && (result.skipped_changes ?? 0) === 0) {
+        let quarantineCount = 0;
+        if (direction !== 'upload') {
+          try {
+            const q = await DataGovernanceApi.listQuarantine(500, 0);
+            quarantineCount = Array.isArray(q) ? q.length : 0;
+          } catch {
+            // Quarantine query failure must not mask the sync outcome.
+          }
+        }
+
+        if (result.success && !result.error_message && (result.skipped_changes ?? 0) === 0 && quarantineCount === 0) {
           showGlobalNotification(
             'success',
             t('data:sync_settings.sync_success')
           );
-          void getSyncStatus().catch(console.error);
-          return;
+          await getSyncStatus().catch(console.error);
+          return true;
         }
 
-        const message = result.error_message ?? t('data:governance.sync_partial_with_skipped', {
-          skipped: result.skipped_changes ?? 0,
-        });
+        const message = result.error_message ?? (
+          quarantineCount > 0
+            ? t('data:governance.sync_partial_with_quarantine', {
+                count: quarantineCount,
+              })
+            : t('data:governance.sync_partial_with_skipped', {
+                skipped: result.skipped_changes ?? 0,
+              })
+        );
 
         if (result.success) {
           showGlobalNotification(
             'warning',
             localizeCloudStorageError(message, t, i18n?.language),
           );
-          void getSyncStatus().catch(console.error);
+          await getSyncStatus().catch(console.error);
+          return true;
         } else {
           notifyErrorDeduped(
             'error',
@@ -284,12 +330,15 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               i18n?.language,
             ),
           );
+          await getSyncStatus().catch(console.error);
+          return false;
         }
       } catch (err: unknown) {
         notifyErrorDeduped(
           'error',
           `${t('data:sync_settings.sync_failed')}: ${localizeCloudStorageError(err, t, i18n?.language)}`
         );
+        return false;
       } finally {
         useGlobalSyncStore.getState().endSync();
       }
@@ -414,14 +463,15 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           )}
 
           {/* 最后同步时间 */}
-          {syncStatus?.last_sync_at && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <ClockCounterClockwise className="h-3 w-3" />
-              <span>
-                {t('data:sync_settings.last_sync')}: {syncStatus.last_sync_at}
-              </span>
-            </div>
-          )}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <ClockCounterClockwise className="h-3 w-3" />
+            <span>
+              {t('data:sync_settings.last_sync')}:{' '}
+              {syncStatus?.last_sync_at
+                ? new Date(syncStatus.last_sync_at).toLocaleString()
+                : t('cloudStorage:status.never', { defaultValue: '从未同步' })}
+            </span>
+          </div>
         </div>
       </section>
 
@@ -517,10 +567,19 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           </div>
 
           {/* 同步按钮组 */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <DsButton
+              variant="primary"
+              onClick={() => { void handleSync('bidirectional'); }}
+              disabled={isSyncing}
+              className="flex-1 [@media(pointer:coarse)]:!min-h-11"
+            >
+              <ArrowsLeftRight className="h-4 w-4 mr-2" />
+              {t('sync:syncNow', { defaultValue: '立即同步' })}
+            </DsButton>
             <DsButton
               variant="outline"
-              onClick={() => handleSync('upload')}
+              onClick={() => { void handleSync('upload'); }}
               disabled={isSyncing}
               className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             >
@@ -529,7 +588,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
             </DsButton>
             <DsButton
               variant="outline"
-              onClick={() => handleSync('download')}
+              onClick={() => { void handleSync('download'); }}
               disabled={isSyncing}
               className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             >
@@ -538,7 +597,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
             </DsButton>
             <DsButton
               variant="outline"
-              onClick={() => handleSync('bidirectional')}
+              onClick={() => { void handleSync('bidirectional'); }}
               disabled={isSyncing}
               className="flex-1 [@media(pointer:coarse)]:!min-h-11"
             >
@@ -611,7 +670,17 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                   {/* 当前处理项 */}
                   {syncProgress.current_item && (
                     <div className="text-xs text-muted-foreground truncate bg-muted/50 px-2 py-1 rounded">
-                      {syncProgress.current_item}
+                      {syncProgress.current_item.startsWith('sync:')
+                        ? t(syncProgress.current_item, {
+                            defaultValue: localizeBackendErrorText(
+                              syncProgress.current_item,
+                              i18n?.language
+                            ),
+                          })
+                        : localizeBackendErrorText(
+                            syncProgress.current_item,
+                            i18n?.language
+                          )}
                     </div>
                   )}
 
@@ -620,7 +689,11 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                     <Alert variant="destructive" className="py-2">
                       <Warning className="h-4 w-4" />
                       <AlertDescription className="text-xs">
-                        {syncProgress.error}
+                        {localizeCloudStorageError(
+                          syncProgress.error,
+                          t,
+                          i18n?.language
+                        )}
                       </AlertDescription>
                     </Alert>
                   )}
@@ -752,13 +825,12 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
       {/* 扫码同步与跨设备快传中心 */}
       <DevicePairingSection
-        cloudConfigured
+        cloudConfigured={cloudConfigured}
         onApplied={() => {
+          void refreshCloudConfigured();
           void getSyncStatus().catch(console.error);
         }}
-        onRunSync={(direction) => {
-          void handleSync(direction);
-        }}
+        onRunSync={(direction) => handleSync(direction)}
       />
 
       {/* 冲突解决对话框 */}

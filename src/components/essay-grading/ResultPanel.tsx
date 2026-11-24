@@ -16,6 +16,7 @@ import {
   CaretRight,
 } from '@phosphor-icons/react';
 import { GradingStreamRenderer } from '../../essay-grading/GradingStreamRenderer';
+import { classifyEssayMistakeItems } from './essayMistakeClassifier';
 import { inferGradingPhase } from '../../essay-grading/gradingPhase';
 import type { SuggestionChange } from '../../essay-grading/suggestionAnchors';
 import { cn } from '@/lib/utils';
@@ -45,8 +46,10 @@ interface ResultPanelProps {
   onGenerateCards?: () => void;
   isGeneratingCards?: boolean;
   /** 错误点入错题本 */
-  onSaveMistakes?: () => void;
+  onSaveMistakes?: (options?: { includeSuggestions?: boolean }) => void;
   isSavingMistakes?: boolean;
+  mistakesFeedback?: { tone: 'success' | 'info'; message: string } | null;
+  onDismissMistakesFeedback?: () => void;
   roundNavigation?: {
     currentIndex: number;
     total: number;
@@ -123,6 +126,8 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   isGeneratingCards,
   onSaveMistakes,
   isSavingMistakes,
+  mistakesFeedback,
+  onDismissMistakesFeedback,
   roundNavigation,
   navigateRoundsInHeader = false,
   gradingModeId,
@@ -172,6 +177,24 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
     ? t('essay_grading:make_cards.disabled_grading')
     : !gradingResult
       ? t('essay_grading:make_cards.disabled_no_result')
+      : null;
+
+  const [includeSuggestionsInMistakes, setIncludeSuggestionsInMistakes] = useState(false);
+  useEffect(() => {
+    setIncludeSuggestionsInMistakes(false);
+  }, [gradingResult]);
+
+  const mistakeClassification = useMemo(
+    () => (gradingResult ? classifyEssayMistakeItems(gradingResult) : { errors: [], suggestions: [], all: [] }),
+    [gradingResult],
+  );
+  const eligibleMistakeCount =
+    mistakeClassification.errors.length +
+    (includeSuggestionsInMistakes ? mistakeClassification.suggestions.length : 0);
+  const saveMistakesDisabledReason = generateCardsDisabledReason
+    ? generateCardsDisabledReason
+    : eligibleMistakeCount === 0
+      ? t('essay_grading:mistakes.none_available', { defaultValue: '暂无可入库错误点' })
       : null;
 
   const hasRoundPages = Boolean(roundNavigation && roundNavigation.total > 1);
@@ -404,14 +427,64 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           className="shrink-0 border-t border-border/25 px-3 py-1.5 sm:px-4"
           style={{ paddingBottom: 'calc(0.375rem + var(--wb-dock-clearance, 0px))' }}
         >
+          {mistakesFeedback && (
+            <div
+              data-testid="essay-mistakes-feedback-banner"
+              role="status"
+              className={cn(
+                'mb-1.5 flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-xs',
+                mistakesFeedback.tone === 'success'
+                  ? 'border-success/30 bg-success/10 text-foreground'
+                  : 'border-border/40 bg-muted/40 text-muted-foreground',
+              )}
+            >
+              <span className="min-w-0 break-words">{mistakesFeedback.message}</span>
+              {onDismissMistakesFeedback && (
+                <button
+                  type="button"
+                  onClick={onDismissMistakesFeedback}
+                  aria-label={t('common:close', { defaultValue: '关闭' })}
+                  className="shrink-0 text-muted-foreground hover:text-foreground"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          )}
           <div className="flex flex-wrap items-center justify-end gap-2">
+          {onSaveMistakes && !isGrading && gradingResult && mistakeClassification.suggestions.length > 0 && (
+            <label className="mr-auto inline-flex cursor-pointer select-none items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
+              <input
+                type="checkbox"
+                checked={includeSuggestionsInMistakes}
+                onChange={(e) => setIncludeSuggestionsInMistakes(e.target.checked)}
+                data-testid="essay-include-suggestions-checkbox"
+                className="h-3.5 w-3.5 rounded border-border accent-primary"
+              />
+              <span>
+                {t('essay_grading:mistakes.include_suggestions', {
+                  count: mistakeClassification.suggestions.length,
+                  defaultValue: `同时收录改写建议 (${mistakeClassification.suggestions.length})`,
+                })}
+              </span>
+            </label>
+          )}
+          {onSaveMistakes && !isGrading && gradingResult && eligibleMistakeCount === 0 && (
+            <span
+              data-testid="essay-mistakes-empty-hint"
+              className="text-[11px] text-muted-foreground/80"
+            >
+              {t('essay_grading:mistakes.none_available', { defaultValue: '暂无可入库错误点' })}
+            </span>
+          )}
           {onSaveMistakes && (
             <DsButton
               variant="secondary"
               size="sm"
-              onClick={onSaveMistakes}
-              disabled={Boolean(generateCardsDisabledReason) || Boolean(isSavingMistakes)}
-              title={generateCardsDisabledReason ?? undefined}
+              data-testid="essay-save-mistakes-button"
+              onClick={() => onSaveMistakes({ includeSuggestions: includeSuggestionsInMistakes })}
+              disabled={Boolean(saveMistakesDisabledReason) || Boolean(isSavingMistakes)}
+              title={saveMistakesDisabledReason ?? undefined}
               className="[@media(pointer:coarse)]:!min-h-[44px]"
             >
               <Notebook size={14} />

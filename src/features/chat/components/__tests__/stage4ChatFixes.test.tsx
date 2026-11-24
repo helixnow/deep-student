@@ -479,4 +479,166 @@ describe('Stage 4 Chat fixes (S4-01, S4-02, S4-14, S4-15)', () => {
     fireEvent.click(newSessionButtons[0]);
     expect(onCreateSession).toHaveBeenCalledTimes(1);
   });
+
+  it('S4-02 stop persistence restore: keeps thinking + partial answer + stopped indicators after reload', () => {
+    const store = createChatStore('sess_stop_reload');
+    const response: LoadSessionResponseType = {
+      session: {
+        id: 'sess_stop_reload',
+        mode: 'chat',
+        title: '停止生成后刷新',
+        persistStatus: 'active',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      messages: [
+        {
+          id: 'msg_stop_1',
+          sessionId: 'sess_stop_reload',
+          role: 'assistant',
+          blockIds: ['blk_t1', 'blk_c1'],
+          timestamp: 1000,
+          _meta: { stoppedByUser: true } as unknown as LoadSessionResponseType['messages'][number]['_meta'],
+        },
+        {
+          id: 'msg_stop_think_only',
+          sessionId: 'sess_stop_reload',
+          role: 'assistant',
+          blockIds: ['blk_t2'],
+          timestamp: 2000,
+          _meta: { stoppedByUser: true } as unknown as LoadSessionResponseType['messages'][number]['_meta'],
+        },
+      ],
+      blocks: [
+        {
+          id: 'blk_t1',
+          messageId: 'msg_stop_1',
+          type: 'thinking',
+          status: 'success',
+          content: '第一段推理',
+          startedAt: 100,
+          endedAt: 7100,
+        },
+        {
+          id: 'blk_c1',
+          messageId: 'msg_stop_1',
+          type: 'content',
+          status: 'success',
+          content: '这是已经生成的部分回答',
+          startedAt: 7100,
+          endedAt: 8000,
+        },
+        {
+          id: 'blk_t2',
+          messageId: 'msg_stop_think_only',
+          type: 'thinking',
+          status: 'success',
+          content: '只到思考阶段就停止了',
+          startedAt: 10000,
+          endedAt: 17000,
+        },
+      ],
+    };
+
+    act(() => {
+      store.getState().restoreFromBackend(response);
+    });
+
+    const state = store.getState();
+    expect(state.blocks.get('blk_t1')?.content).toBe('第一段推理');
+    expect(state.blocks.get('blk_c1')).toMatchObject({
+      content: '这是已经生成的部分回答',
+      aborted: true,
+    });
+    expect(state.blocks.get('blk_t2')).toMatchObject({
+      content: '只到思考阶段就停止了',
+      aborted: true,
+    });
+
+    const { rerender } = render(
+      <MessageItem
+        store={store as unknown as React.ComponentProps<typeof MessageItem>['store']}
+        messageId="msg_stop_1"
+        isLatest={false}
+      />
+    );
+    expect(screen.getByTestId('chat-message-stopped')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-continue-generation')).toBeInTheDocument();
+
+    rerender(
+      <MessageItem
+        store={store as unknown as React.ComponentProps<typeof MessageItem>['store']}
+        messageId="msg_stop_think_only"
+        isLatest
+      />
+    );
+    expect(screen.getByTestId('chat-message-stopped')).toBeInTheDocument();
+  });
+
+  it('S4-02 regenerate versioning: preserves v1 and navigates inline 1 / 2 <-> 2 / 2 without destroying v1', async () => {
+    const store = createChatStore('sess_regen_versions');
+    act(() => {
+      store.getState().restoreFromBackend({
+        session: {
+          id: 'sess_regen_versions',
+          mode: 'chat',
+          title: '版本切换测试',
+          persistStatus: 'active',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+        messages: [
+          { id: 'msg_u1', sessionId: 'sess_regen_versions', role: 'user', blockIds: ['blk_u1'], timestamp: 1000 },
+          {
+            id: 'msg_a1',
+            sessionId: 'sess_regen_versions',
+            role: 'assistant',
+            blockIds: ['blk_a1_v1'],
+            timestamp: 2000,
+            _meta: { modelId: 'GPT-4o' },
+          },
+        ],
+        blocks: [
+          { id: 'blk_u1', messageId: 'msg_u1', type: 'content', status: 'success', content: 'hello' },
+          { id: 'blk_a1_v1', messageId: 'msg_a1', type: 'content', status: 'success', content: '第一版回复内容' },
+        ],
+      });
+      store.getState().setRetryCallback(async () => ({
+        success: true,
+        messageId: 'msg_a1',
+        newVariantId: 'var_v2_backend',
+      }));
+    });
+
+    await act(async () => {
+      await store.getState().retryMessage('msg_a1');
+    });
+
+    act(() => {
+      store.getState().createBlockWithId('msg_a1', 'content', 'blk_a1_v2');
+      store.getState().updateBlock('blk_a1_v2', { content: '第二版回复内容', status: 'success' });
+      store.getState().completeStream('success');
+    });
+
+    render(
+      <MessageItem
+        store={store as unknown as React.ComponentProps<typeof MessageItem>['store']}
+        messageId="msg_a1"
+        isLatest
+      />
+    );
+
+    expect(screen.getByTestId('message-version-switcher')).toBeInTheDocument();
+    expect(screen.getByTestId('message-version-indicator')).toHaveTextContent('2 / 2');
+    expect(screen.getByTestId('block-blk_a1_v2')).toHaveTextContent('第二版回复内容');
+    expect(screen.queryByTestId('block-blk_a1_v1')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('message-version-prev'));
+    expect(screen.getByTestId('message-version-indicator')).toHaveTextContent('1 / 2');
+    expect(screen.getByTestId('block-blk_a1_v1')).toHaveTextContent('第一版回复内容');
+
+    fireEvent.click(screen.getByTestId('message-version-next'));
+    expect(screen.getByTestId('message-version-indicator')).toHaveTextContent('2 / 2');
+    expect(screen.getByTestId('block-blk_a1_v2')).toHaveTextContent('第二版回复内容');
+  });
 });

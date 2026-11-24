@@ -42,7 +42,9 @@ import { getOfficialResourceTypeUi } from '@/shared/resource-types/lookup';
 import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
+import { MobileAppNavigationProvider, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
+import { navigateFromChatMobileDrawer } from './mobileSidebarNavigation';
+import type { CurrentView } from '@/types/navigation';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useViewStore } from '@/stores/viewStore';
 import { SandboxWorkbenchSurface } from '@/features/sandbox/components/SandboxWorkbenchSurface';
@@ -666,7 +668,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     editingTitle, editingGroup, pendingArchiveGroup, sessionsRef,
     groupPickerAddRef, t,
     updateGroup, createGroup, archiveGroup, reorderGroups,
-    loadUngroupedCount, getOrCreateHiddenDraftSession, groupDragDisabled, visibleGroups: editableVisibleGroups,
+    loadUngroupedCount, getOrCreateHiddenDraftSession, setTotalSessionCount, groupDragDisabled, visibleGroups: editableVisibleGroups,
   });
 
   const groupEditorCloseConfirmKeyRef = useRef(0);
@@ -718,8 +720,8 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     const handler = (event: Event) => {
       const { action, session, sessionId, groupId } = (event as CustomEvent).detail ?? {};
 
-      // 桌面 ModernSidebar 直接删除/移动会话后，同步本页 sessions 状态（避免 Browser/移动列表残留）
-      if (action === 'session-deleted' && typeof sessionId === 'string') {
+      // 桌面 ModernSidebar 直接删除/归档/移动会话后，同步本页 sessions 状态（避免 Browser/移动列表残留）
+      if ((action === 'session-deleted' || action === 'session-archived') && typeof sessionId === 'string') {
         clearLastActiveSessionIdIfMatches(sessionId, LAST_SESSION_KEY);
         setSessions((prev) => prev.filter((item) => item.id !== sessionId));
         setTotalSessionCount((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
@@ -1463,6 +1465,13 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     />
   );
 
+  const handleMobileDrawerAppNavigate = useCallback((view: CurrentView) => (
+    navigateFromChatMobileDrawer(view, {
+      closeDrawer: () => setSessionSheetOpen(false),
+      focusChat: () => setViewMode('sidebar'),
+    })
+  ), [setViewMode]);
+
   return (
     <StreamPreferencesProvider preset={streamPreset} mode="blocked" suspended={isSuspended}>
       <div className={cn(
@@ -1481,6 +1490,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       <ChatErrorBoundary className="flex-1" resetKey={currentSessionId}>
       {/* ===== 移动端布局：DeepSeek 风格推拉式侧边栏 ===== */}
       {isSmallScreen ? (
+        <MobileAppNavigationProvider navigate={handleMobileDrawerAppNavigate}>
         <MobileSlidingLayout
           className="flex-1"
           drawerHeader={renderSessionSidebarHeader()}
@@ -1594,6 +1604,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             )}
           </div>
         </MobileSlidingLayout>
+        </MobileAppNavigationProvider>
       ) : null}
 
       {!isSmallScreen && (

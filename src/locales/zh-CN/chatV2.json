@@ -295,6 +295,7 @@
     },
     "truncation": {
       "banner": "回复可能因长度限制未完整输出",
+      "stoppedBanner": "已暂停生成，可继续补充后续内容",
       "continue": "继续生成",
       "continuing": "正在继续…"
     },
@@ -1343,6 +1344,7 @@
     "pinGroup": "置顶分组",
     "unpinGroup": "取消置顶分组",
     "archiveSession": "归档线程",
+    "archiveSessionFailed": "归档会话失败",
     "archivedSessionsEntry": "已归档会话",
     "confirmArchiveSession": "确认归档线程",
     "archiveSessionToast": "已归档。查看已归档的会话：设置",
@@ -1800,6 +1802,9 @@
   },
   "variant": {
     "switcher": "变体切换",
+    "versionSwitcher": "回复版本切换",
+    "prevVersion": "上一版本",
+    "nextVersion": "下一版本",
     "cancel": "取消",
     "retry": "重试",
     "delete": "删除",
@@ -2887,5 +2892,17 @@
   "header": {
     "renameSession": "重命名会话",
     "untitledSession": "未命名会话"
+  },
+  "memoryAttribution": {
+    "frozenMismatchHint": "全局记忆设置已变更（当前共 {{liveCount}} 条规则），本会话首轮冻结基准保持不变。",
+    "removedFromGlobal": "已在全局设置移除"
+  },
+  "starterCue": {
+    "title": "快速开始",
+    "askPromptLabel": "填入学习起步提问",
+    "askPromptText": "请帮我梳理今天的学习重点，并先出 1 道自测题检验基础。",
+    "openResourcesLabel": "打开学习资源库",
+    "openFlashcardsLabel": "前往闪卡复习",
+    "dismiss": "收起引导"
   }
 }

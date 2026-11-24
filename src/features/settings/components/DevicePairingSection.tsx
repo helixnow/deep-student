@@ -22,6 +22,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
 import { SettingsGroup, SwitchRow } from './settingsTabPrimitives';
@@ -64,7 +65,7 @@ export const ipcPairingSettings: PairingSettingsStore = {
         if (Object.keys(credentials).length > 0) {
           await invoke('secure_save_cloud_credentials', {
             credentials,
-            encryptionPasswordIsPreexisting: false,
+            encryptionPasswordIsPreexisting: true,
           });
         }
       } catch {
@@ -225,10 +226,35 @@ export function DevicePairingSection({
       if (targetPin !== pin) {
         setPin(targetPin);
       }
-      if (alsoPushSnapshot && onRunSync) {
-        const pushed = await onRunSync('upload');
-        if (pushed === false) {
-          return;
+      if (alsoPushSnapshot) {
+        try {
+          await invoke('save_setting', {
+            key: 'data_governance.pending_full_snapshot_push',
+            value: String(Date.now()),
+          });
+        } catch {
+          // Ignore when unit-test invoke mocks do not handle this setting key
+        }
+        try {
+          if (onRunSync) {
+            const pushed = await onRunSync('upload');
+            if (pushed === false) {
+              const pushFailedMessage = t('sync:pairing.pushSnapshotFailed', {
+                defaultValue: '推送最新快照失败，请检查云存储配置或网络后重试',
+              });
+              setError(pushFailedMessage);
+              return;
+            }
+          }
+        } finally {
+          try {
+            await invoke('save_setting', {
+              key: 'data_governance.pending_full_snapshot_push',
+              value: '',
+            });
+          } catch {
+            // ignore cleanup failure
+          }
         }
       }
       const result = await createPairingCode(ipcPairingSettings, {
@@ -240,12 +266,21 @@ export function DevicePairingSection({
       setCode(result.pairingCode);
       setGeneratedPinDisplay(targetPin);
       const summary = describeSummary(result.summary, t);
-      setStatus(
-        t('sync:pairing.qrGeneratedStatus', {
+      if (alsoPushSnapshot) {
+        const pushedMsg = t('sync:pairing.qrGeneratedAndPushedStatus', {
           summary,
-          defaultValue: `已生成同步二维码（${summary}）`,
-        }),
-      );
+          defaultValue: `已生成配对码并推送最新快照（${summary}）`,
+        });
+        setStatus(pushedMsg);
+        showGlobalNotification('success', pushedMsg);
+      } else {
+        setStatus(
+          t('sync:pairing.qrGeneratedStatus', {
+            summary,
+            defaultValue: `已生成同步二维码（${summary}）`,
+          }),
+        );
+      }
     });
 
   const handleDownloadQrSvg = () => {
@@ -408,7 +443,21 @@ export function DevicePairingSection({
         }),
       );
       if (triggerPullAfter && onRunSync) {
-        await onRunSync('download');
+        const pulled = await onRunSync('download');
+        if (pulled === false) {
+          setError(
+            t('sync:pairing.applyPullFailedStatus', {
+              defaultValue: '配置已接入，但拉取云端快照失败，请点击下方“立即执行双向云同步”重试。',
+            }),
+          );
+          return;
+        }
+        setStatus(
+          t('sync:pairing.codeAppliedAndPulledStatus', {
+            summary,
+            defaultValue: `配置已接入并完成云端快照拉取。${summary}`,
+          }),
+        );
       }
     });
 

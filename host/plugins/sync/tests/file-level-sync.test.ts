@@ -45,8 +45,9 @@ it('a missing workspace barrier reports failure while blob and asset stages cont
     expect(await runFileLevelSync(f.cloud, f.root, 'Download', f.options, null, progress)).toEqual({ failed: true,
       warning: '工作区数据库同步已跳过: WorkspaceCoordinator 尚未初始化，无法取得一致性屏障' });
     expect(events.emit.mock.calls.map(call => call[1].current_item)).toEqual([
-      '文件级同步：工作区数据库', '文件级同步：VFS blob', '文件级同步：资产目录', '文件级同步完成',
+      'sync:fileSync.workspace', 'sync:fileSync.blob', 'sync:fileSync.assets', 'sync:fileSync.complete',
     ]);
+    expect(events.emit.mock.calls.at(-1)?.[1].percent).toBe(80);
   } finally { f.options.codec.dispose(); f.localStorage.dispose(); }
 });
 it('workspace barrier exit retries three times and reports a persistent failure without overwriting the sync result', async () => {

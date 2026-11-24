@@ -264,10 +264,10 @@ export function useLearningHubSidebarController(props: LearningHubSidebarProps) 
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
 
   // ★ 2026-06-12（审阅问题 FE-S3）：触屏设备检测。
-  // 触屏上没有 Cmd/Ctrl 修饰键，普通（非 canvas）视图也需要多选模式开关。
+  // 触屏上没有 Cmd/Ctrl 修饰键，普通（非 canvas）视图也需要多选模式开关；
+  // 桌面端同样支持显式多选切换，勾选条或点击文件可累加选择。
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
-  // 多选模式生效条件：canvas 模式（原有逻辑）或触屏普通模式
-  const multiSelectActive = isMultiSelectMode && (mode === 'canvas' || isTouchPrimary);
+  const multiSelectActive = isMultiSelectMode;
 
   // 新文件夹只作为前端草稿显示；用户提交非空名称后才写入后端。
   const [pendingFolderDraft, setPendingFolderDraft] = useState<PendingFolderDraft | null>(null);
@@ -694,8 +694,14 @@ export function useLearningHubSidebarController(props: LearningHubSidebarProps) 
     const files = Array.from(e.target.files ?? []);
     e.target.value = '';
     if (files.length === 0) return;
-    void importFileObjects(files, true);
-  }, [importFileObjects]);
+    void importFileObjects(files, true).catch((err: unknown) => {
+      showGlobalNotification(
+        'error',
+        t('finder.dragDrop.importFailed'),
+        err instanceof Error ? err.message : String(err),
+      );
+    });
+  }, [importFileObjects, t]);
 
   // 是否允许拖拽导入（排除回收站、特殊视图等）
   const isDragDropEnabled = mode !== 'canvas' && canDragDropInCurrentView;

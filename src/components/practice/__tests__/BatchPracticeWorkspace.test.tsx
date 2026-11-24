@@ -779,3 +779,41 @@ it('shows expanded AI subjective grading rationale, reconciles partial-credit me
     expect(screen.getByText('正确 1 题')).toBeInTheDocument();
   });
 });
+
+it('shows concrete fallback rationale instead of bare numeric score when tags-only or empty feedback arrives for 68/100 (S2-05)', async () => {
+  const base = draft();
+  const attempt = submittedAttempt('partial', {
+    questions: [
+      { ...base.questions[0], question_type: 'short_answer', options: [], answer: '关键要点A与要点B' },
+    ],
+    answers: { q1: '只写了要点A' },
+    results: [
+      {
+        question_id: 'q1',
+        status: 'partial',
+        is_correct: false,
+        score: 68,
+        feedback: '<verdict>partial</verdict><score value="68" />',
+        error: null,
+        source_available: true,
+        submission_id: 'sub-tags-only',
+      },
+    ],
+  });
+
+  mocks.invoke.mockImplementation(async (command) => {
+    if (command === 'qbank_get_practice') return attempt;
+    if (command === 'qbank_get_question') return { ...base.questions[0], is_favorite: false };
+    if (command === 'qbank_get_history') return [];
+    if (command === 'qbank_resume_practice_grading') return;
+    return undefined;
+  });
+
+  render(<BatchPracticeWorkspace practiceId="draft1" submitted onBack={vi.fn()} />);
+  await screen.findByText('First question');
+
+  const rationale = screen.getByTestId('practice-ai-grading-rationale');
+  expect(rationale).toHaveTextContent('68 / 100 分');
+  expect(rationale).toHaveTextContent('关键要点A与要点B');
+  expect(rationale.textContent).not.toContain('<verdict>');
+});

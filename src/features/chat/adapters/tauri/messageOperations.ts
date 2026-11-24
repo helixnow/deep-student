@@ -146,6 +146,10 @@ export async function executeRetry(
     }
 
     // 🔧 2026-01-15: 超时机制已移除
+    const retryOptions = {
+      ...(options as Record<string, unknown>),
+      preserveVariant: true,
+    };
 
     // 🆕 P1 状态同步修复: 后端返回增强的结果，包含状态变更信息
     const result = await invoke<{
@@ -155,7 +159,7 @@ export async function executeRetry(
     }>('chat_v2_retry_message', {
       sessionId: host.sessionId,
       messageId,
-      options,
+      options: retryOptions,
     });
 
     const returnedMessageId = result.message_id ?? messageId;
@@ -459,13 +463,10 @@ export async function continueMessage(host: TauriAdapterHost, messageId: string,
     host.clearStreamExpectation(messageId);
     const errorMsg = getErrorMessage(error);
     console.error(LOG_PREFIX, 'Continue message failed:', errorMsg);
-    // 清除流式状态
-    // 🔧 修复：同时清除 stale currentStreamingMessageId（completeStream 在 idle 时不清除它）
-    host.store.completeStream('error', normalizeStreamTerminalError(error));
+    const isTodoFallback = errorMsg.includes('No incomplete TODO list found');
+    // 清除流式状态；无 TODO 列表时直接交由 store.continueMessage fallback 到 sendMessage，避免把原消息标红为错误
+    host.store.completeStream(isTodoFallback ? 'success' : 'error', isTodoFallback ? undefined : normalizeStreamTerminalError(error));
     host.store.setCurrentStreamingMessage(null);
-    // 🔧 修复：不在此处显示通知，让 store.continueMessage 的 fallback（sendMessage）处理
-    // 原代码在此显示 "继续执行失败" 通知，但 store 会 fallback 到 sendMessage('继续')，
-    // 导致用户看到一个无意义的错误通知
     throw error;
   }
 }

@@ -120,13 +120,27 @@ export const SkillsList: React.FC<SkillsListProps> = ({
   if (skills.length === 0) {
     if (isLoading) {
       return (
-        <div className={cn('study-shell-empty-state', className)} role="status" data-testid="skills-list-loading">
-          <div className="study-shell-empty-state__icon">
-            <CircleNotch size={30} className="animate-spin text-muted-foreground/70" />
+        <div className={cn('space-y-4', className)} role="status" data-testid="skills-list-loading">
+          <div className="study-shell-empty-state">
+            <div className="study-shell-empty-state__icon">
+              <CircleNotch size={30} className="animate-spin text-muted-foreground/70" />
+            </div>
+            <p className="study-shell-empty-state__title">
+              {t('skills:selector.loading')}
+            </p>
           </div>
-          <p className="study-shell-empty-state__title">
-            {t('skills:selector.loading')}
-          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-hidden="true">
+            {[0, 1, 2].map((index) => (
+              <div
+                key={index}
+                className="h-28 rounded-xl border border-border/50 bg-muted/30 animate-pulse p-4 space-y-2.5"
+              >
+                <div className="h-4 w-2/5 rounded bg-muted/60" />
+                <div className="h-3 w-4/5 rounded bg-muted/50" />
+                <div className="h-3 w-3/5 rounded bg-muted/40" />
+              </div>
+            ))}
+          </div>
         </div>
       );
     }

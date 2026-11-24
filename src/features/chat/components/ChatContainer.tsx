@@ -13,14 +13,15 @@
 import '../init';
 import { TodayReviewHint, useTodayReviewHintAvailability } from '@/features/learning-today';
 
-import React, { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { StoreApi } from 'zustand';
 import type { ChatStore } from '../core/types';
 import { useStore } from 'zustand';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Info, X } from '@phosphor-icons/react';
+import { ArrowLeft, Books, Cards, ChatCircleText, Info, X } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { useViewStore } from '@/stores/viewStore';
 import type { CurrentView } from '@/types/navigation';
 import {
@@ -297,6 +298,73 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   // 桌面与移动端空会话统一：订阅今日冲刺/待复习卡片可用性；默认隐藏卡片，仅在居中 Logo 角标提示并由点击切换
   const reviewHintAvailability = useTodayReviewHintAvailability(shouldUseEmptyComposerLayout);
 
+  const [starterCueState, setStarterCueState] = useState<{
+    focus: 'hub' | 'chat' | 'anki' | null;
+    dismissed: boolean;
+  }>(() => {
+    try {
+      const focus = localStorage.getItem('onboarding_starter_focus');
+      const dismissed = localStorage.getItem('onboarding_starter_cue_dismissed') === 'true';
+      const validFocus = focus === 'hub' || focus === 'chat' || focus === 'anki' ? focus : null;
+      return { focus: validFocus, dismissed };
+    } catch {
+      return { focus: null, dismissed: false };
+    }
+  });
+
+  useEffect(() => {
+    const syncStarterCue = () => {
+      try {
+        const focus = localStorage.getItem('onboarding_starter_focus');
+        const dismissed = localStorage.getItem('onboarding_starter_cue_dismissed') === 'true';
+        const validFocus = focus === 'hub' || focus === 'chat' || focus === 'anki' ? focus : null;
+        setStarterCueState({ focus: validFocus, dismissed });
+      } catch {
+        setStarterCueState({ focus: null, dismissed: false });
+      }
+    };
+    window.addEventListener('deepstudent:onboarding-starter-updated', syncStarterCue);
+    window.addEventListener('storage', syncStarterCue);
+    return () => {
+      window.removeEventListener('deepstudent:onboarding-starter-updated', syncStarterCue);
+      window.removeEventListener('storage', syncStarterCue);
+    };
+  }, []);
+
+  const dismissStarterCue = useCallback(() => {
+    try {
+      localStorage.setItem('onboarding_starter_cue_dismissed', 'true');
+    } catch {
+      // Ignore storage errors.
+    }
+    setStarterCueState((prev) => ({ ...prev, dismissed: true }));
+  }, []);
+
+  const launchStarterTarget = useCallback((target: 'hub' | 'chat' | 'anki') => {
+    if (target === 'chat') {
+      window.dispatchEvent(new CustomEvent('CHAT_V2_SET_INPUT', {
+        detail: {
+          content: t('chatV2:starterCue.askPromptText'),
+          autoSend: false,
+        },
+      }));
+      return;
+    }
+    if (target === 'hub') {
+      if (workbenchBus.isEnabled()) {
+        workbenchBus.launch({ typeId: 'files', reason: 'dock' });
+      } else {
+        dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'learning-hub' });
+      }
+      return;
+    }
+    if (workbenchBus.isEnabled()) {
+      workbenchBus.launch({ typeId: 'flashcards', reason: 'dock' });
+    } else {
+      dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'flashcards' });
+    }
+  }, [t]);
+
   // 🆕 Canvas 上下文引用管理 - 白板功能已移除
   // useCanvasContextRef({ store });
 
@@ -472,6 +540,68 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             <SuperInboxPausedBanner sessionId={displayedSessionId} />
             <AgentTaskPanel store={store} chatStore={store} />
             {renderInputBar('chat-empty-composer-layout__input', 'empty')}
+            {starterCueState.focus && !starterCueState.dismissed && (
+              <div
+                data-testid="chat-onboarding-starter-cue"
+                className="mt-3 flex flex-wrap items-center justify-center gap-2 text-xs text-muted-foreground"
+              >
+                <span className="font-medium text-foreground/70">
+                  {t('chatV2:starterCue.title')}
+                </span>
+                <button
+                  type="button"
+                  data-testid="starter-cue-chat"
+                  onClick={() => launchStarterTarget('chat')}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 transition-colors',
+                    starterCueState.focus === 'chat'
+                      ? 'border-primary/40 bg-primary/10 text-foreground'
+                      : 'border-border/60 bg-background/70 hover:bg-muted/60 hover:text-foreground',
+                  )}
+                >
+                  <ChatCircleText size={13} aria-hidden="true" />
+                  <span>{t('chatV2:starterCue.askPromptLabel')}</span>
+                </button>
+                <button
+                  type="button"
+                  data-testid="starter-cue-hub"
+                  onClick={() => launchStarterTarget('hub')}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 transition-colors',
+                    starterCueState.focus === 'hub'
+                      ? 'border-primary/40 bg-primary/10 text-foreground'
+                      : 'border-border/60 bg-background/70 hover:bg-muted/60 hover:text-foreground',
+                  )}
+                >
+                  <Books size={13} aria-hidden="true" />
+                  <span>{t('chatV2:starterCue.openResourcesLabel')}</span>
+                </button>
+                <button
+                  type="button"
+                  data-testid="starter-cue-anki"
+                  onClick={() => launchStarterTarget('anki')}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full border px-3 py-1 transition-colors',
+                    starterCueState.focus === 'anki'
+                      ? 'border-primary/40 bg-primary/10 text-foreground'
+                      : 'border-border/60 bg-background/70 hover:bg-muted/60 hover:text-foreground',
+                  )}
+                >
+                  <Cards size={13} aria-hidden="true" />
+                  <span>{t('chatV2:starterCue.openFlashcardsLabel')}</span>
+                </button>
+                <button
+                  type="button"
+                  data-testid="starter-cue-dismiss"
+                  onClick={dismissStarterCue}
+                  aria-label={t('chatV2:starterCue.dismiss')}
+                  title={t('chatV2:starterCue.dismiss')}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                >
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </div>
+            )}
           </ThreadContentShell>
         </div>
       ) : (

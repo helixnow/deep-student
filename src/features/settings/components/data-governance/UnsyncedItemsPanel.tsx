@@ -28,8 +28,24 @@ import {
   resolveCloudStorageConfig,
   toRuntimeCloudStorageConfig,
 } from "@/utils/cloudStorageApi";
-import { formatBytes } from "@/types/dataGovernance";
+import { formatBytes, getDatabaseDisplayName } from "@/types/dataGovernance";
 import { getErrorMessage } from "@/utils/errorUtils";
+
+interface PendingTableBreakdown {
+  table_name: string;
+  count: number;
+}
+
+interface PendingDatabaseBreakdown {
+  id: string;
+  pending_changes: number;
+  tables: PendingTableBreakdown[];
+}
+
+interface PendingBreakdownResponse {
+  total_pending_changes: number;
+  databases: PendingDatabaseBreakdown[];
+}
 
 /** 未同步条目类别（与后端 `UnsyncedItemKind` 的 camelCase 序列化一致） */
 export type UnsyncedItemKind =
@@ -103,8 +119,10 @@ async function fetchUnsyncedItems(): Promise<UnsyncedItemsReport | null> {
 export const UnsyncedItemsPanel: React.FC<{
   refreshSignal?: string | number;
 }> = ({ refreshSignal }) => {
-  const { t } = useTranslation(["sync", "common"]);
+  const { t } = useTranslation(["sync", "common", "data"]);
   const [report, setReport] = useState<UnsyncedItemsReport | null>(null);
+  const [pendingBreakdown, setPendingBreakdown] =
+    useState<PendingBreakdownResponse | null>(null);
   const [configMissing, setConfigMissing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,9 +133,16 @@ export const UnsyncedItemsPanel: React.FC<{
     const seq = ++requestSeq.current;
     setLoading(true);
     setError(null);
+    const localBreakdownPromise = invoke<PendingBreakdownResponse>(
+      "data_governance_get_pending_breakdown",
+    ).catch(() => null);
     try {
-      const result = await fetchUnsyncedItems();
+      const [result, breakdown] = await Promise.all([
+        fetchUnsyncedItems(),
+        localBreakdownPromise,
+      ]);
       if (seq !== requestSeq.current) return;
+      setPendingBreakdown(breakdown);
       if (result === null) {
         setConfigMissing(true);
         setReport(null);
@@ -127,6 +152,9 @@ export const UnsyncedItemsPanel: React.FC<{
       }
     } catch (e: unknown) {
       if (seq !== requestSeq.current) return;
+      const breakdown = await localBreakdownPromise;
+      if (seq !== requestSeq.current) return;
+      setPendingBreakdown(breakdown);
       setError(getErrorMessage(e));
     } finally {
       if (seq === requestSeq.current) setLoading(false);
@@ -139,12 +167,23 @@ export const UnsyncedItemsPanel: React.FC<{
     void refresh();
   }, [refresh, refreshSignal]);
 
+  useEffect(() => {
+    const onLocalChange = () => {
+      void refresh();
+    };
+    window.addEventListener("data-governance:local-change", onLocalChange);
+    return () => {
+      window.removeEventListener("data-governance:local-change", onLocalChange);
+    };
+  }, [refresh]);
+
   const items = report?.items ?? [];
   const groups = KIND_ORDER.map((kind) => ({
     kind,
     items: items.filter((item) => item.kind === kind),
   })).filter((group) => group.items.length > 0);
   const isEmpty = !configMissing && !error && items.length === 0;
+  const pendingTotal = pendingBreakdown?.total_pending_changes ?? 0;
 
   return (
     <section className="min-w-0">
@@ -159,6 +198,52 @@ export const UnsyncedItemsPanel: React.FC<{
         description={t("sync:unsynced.description")}
       />
       <div className="rounded-2xl bg-muted p-4 space-y-4">
+        {pendingBreakdown !== null && (
+          <div
+            data-testid="pending-upload-queue"
+            className="rounded-xl border border-border/50 bg-background/60 p-3 space-y-2"
+          >
+            <div className="flex items-center justify-between gap-2 text-sm font-medium text-foreground">
+              <span className="tabular-nums">
+                {t("sync:unsynced.pendingUploadTitle", {
+                  count: pendingTotal,
+                  defaultValue: "待上传变更 ({{count}})",
+                })}
+              </span>
+            </div>
+            {pendingTotal === 0 ? (
+              <div className="text-xs text-muted-foreground">
+                {t("sync:unsynced.pendingUploadEmpty", {
+                  defaultValue: "本地无待上传变更",
+                })}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {pendingBreakdown.databases
+                  .filter((db) => db.pending_changes > 0)
+                  .map((db) => (
+                    <div
+                      key={db.id}
+                      className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
+                    >
+                      <span className="font-medium text-foreground">
+                        {getDatabaseDisplayName(db.id, t)}:
+                      </span>
+                      <span className="tabular-nums">{db.pending_changes}</span>
+                      {db.tables.map((tbl) => (
+                        <span
+                          key={tbl.table_name}
+                          className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]"
+                        >
+                          {tbl.table_name} ({tbl.count})
+                        </span>
+                      ))}
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        )}
         {configMissing && (
           <div className="text-sm text-muted-foreground py-2">
             {t("sync:unsynced.notConfigured")}

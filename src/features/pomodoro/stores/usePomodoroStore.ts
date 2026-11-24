@@ -235,10 +235,19 @@ const recordSession = (
   outcome.then((result) => {
     if (!result.error) {
       // ★ I11 修复：完成的工作番茄会在后端递增 todo_items.completed_pomodoros，
-      // 记录成功后刷新 todo 视图，让计数立即反映到 UI
+      // 记录成功后立即同步内存中的待办番茄计数并刷新 todo 视图
       if (todoItemId && type === 'work' && status === 'completed') {
         void import('@/features/todo/stores/useTodoStore')
-          .then(({ useTodoStore }) => useTodoStore.getState().reloadCurrentView())
+          .then(({ useTodoStore }) => {
+            useTodoStore.setState((s) => ({
+              items: s.items.map((item) =>
+                item.id === todoItemId
+                  ? { ...item, completedPomodoros: (item.completedPomodoros ?? 0) + 1 }
+                  : item,
+              ),
+            }));
+            return useTodoStore.getState().reloadCurrentView();
+          })
           .catch(() => {});
       }
     }
@@ -319,6 +328,7 @@ export const usePomodoroStore = create<PomodoroState>()(
       currentTaskTitle: null,
       sessionStartTime: null,
       sessionCountUp: null,
+      sessionDuration: null,
       phaseExtraSeconds: 0,
       settings: DEFAULT_POMODORO_SETTINGS,
       completedPomodorosToday: 0,
@@ -336,6 +346,7 @@ export const usePomodoroStore = create<PomodoroState>()(
           status,
           settings,
           currentTaskId,
+          currentTaskTitle,
           sessionStartTime,
           phaseEndsAt,
           phaseStartedAt,
@@ -343,6 +354,7 @@ export const usePomodoroStore = create<PomodoroState>()(
           lastActiveDate,
           completedPomodorosToday,
           sessionCountUp,
+          sessionDuration,
           phaseExtraSeconds,
         } = get();
 
@@ -351,18 +363,23 @@ export const usePomodoroStore = create<PomodoroState>()(
         const baseCount = shouldReset ? 0 : completedPomodorosToday;
 
         const beginWork = () => {
-          // 会话开始时锁定计时模式：中途改 countUp 设置只影响下一个会话
+          // 会话开始时锁定计时模式与基础时长：中途改设置只影响下一个会话；
+          // 无参 start() 保留已绑定的 currentTaskId / currentTaskTitle
           const isCountUp = settings.countUp;
+          const preserveBoundTask = taskId === undefined && taskTitle === undefined;
+          const nextTaskId = preserveBoundTask ? currentTaskId : taskId || null;
+          const nextTaskTitle = preserveBoundTask ? currentTaskTitle : taskTitle || null;
           set({
             mode: 'work',
             status: 'running',
             timeLeft: isCountUp ? 0 : settings.workDuration,
             phaseEndsAt: isCountUp ? null : Date.now() + settings.workDuration * 1000,
             phaseStartedAt: isCountUp ? Date.now() : null,
-            currentTaskId: taskId || null,
-            currentTaskTitle: taskTitle || null,
+            currentTaskId: nextTaskId,
+            currentTaskTitle: nextTaskTitle,
             sessionStartTime: new Date().toISOString(),
             sessionCountUp: isCountUp,
+            sessionDuration: isCountUp ? null : settings.workDuration,
             phaseExtraSeconds: 0,
             completedPomodorosToday: baseCount,
             lastActiveDate: today,
@@ -401,8 +418,8 @@ export const usePomodoroStore = create<PomodoroState>()(
                 recordSession(currentTaskId, sessionStartTime, elapsed, elapsed, 'work', 'interrupted');
               }
             } else {
-              // 计划总时长含 extendPhase 加时
-              const planned = settings.workDuration + phaseExtraSeconds;
+              // 计划总时长含 extendPhase 加时（优先采用开局锁定基础时长）
+              const planned = (sessionDuration ?? settings.workDuration) + phaseExtraSeconds;
               const remaining =
                 status === 'running' ? wallClockRemaining(phaseEndsAt, timeLeft) : timeLeft;
               const actualDuration = planned - remaining;
@@ -498,6 +515,7 @@ export const usePomodoroStore = create<PomodoroState>()(
           phaseStartedAt,
           timeLeft,
           sessionCountUp,
+          sessionDuration,
           phaseExtraSeconds,
         } = get();
 
@@ -512,8 +530,8 @@ export const usePomodoroStore = create<PomodoroState>()(
               recordSession(currentTaskId, sessionStartTime, elapsed, elapsed, 'work', 'interrupted');
             }
           } else {
-            // 计划总时长含 extendPhase 加时
-            const planned = settings.workDuration + phaseExtraSeconds;
+            // 计划总时长含 extendPhase 加时（优先采用开局锁定基础时长）
+            const planned = (sessionDuration ?? settings.workDuration) + phaseExtraSeconds;
             const remaining =
               status === 'running' ? wallClockRemaining(phaseEndsAt, timeLeft) : timeLeft;
             const actualDuration = planned - remaining;
@@ -540,6 +558,7 @@ export const usePomodoroStore = create<PomodoroState>()(
           currentTaskTitle: null,
           sessionStartTime: null,
           sessionCountUp: null,
+          sessionDuration: null,
           phaseExtraSeconds: 0,
           endReminderFiredPhase: null,
         });
@@ -566,6 +585,7 @@ export const usePomodoroStore = create<PomodoroState>()(
             phaseStartedAt: isCountUp ? Date.now() : null,
             sessionStartTime: new Date().toISOString(),
             sessionCountUp: isCountUp,
+            sessionDuration: isCountUp ? null : settings.workDuration,
             phaseExtraSeconds: 0,
             completedPomodorosToday: lastActiveDate === today ? completedPomodorosToday : 0,
             lastActiveDate: today,
@@ -583,6 +603,7 @@ export const usePomodoroStore = create<PomodoroState>()(
             phaseStartedAt: null,
             sessionStartTime: null,
             sessionCountUp: null,
+            sessionDuration: null,
             phaseExtraSeconds: 0,
             endReminderFiredPhase: null,
           });
@@ -608,6 +629,7 @@ export const usePomodoroStore = create<PomodoroState>()(
           phaseStartedAt: null,
           sessionStartTime: new Date().toISOString(),
           sessionCountUp: null,
+          sessionDuration: settings.shortBreak,
           phaseExtraSeconds: 0,
           endReminderFiredPhase: null,
         });
@@ -629,6 +651,7 @@ export const usePomodoroStore = create<PomodoroState>()(
           phaseStartedAt,
           timeLeft,
           sessionCountUp,
+          sessionDuration,
           phaseExtraSeconds,
           streakDays,
           lastGoalMetDate,
@@ -637,7 +660,9 @@ export const usePomodoroStore = create<PomodoroState>()(
         const isCountUpPhase =
           sessionCountUp ??
           (phaseStartedAt != null || (settings.countUp && phaseEndsAt == null));
-        const planned = isCountUpPhase ? 0 : settings.workDuration + phaseExtraSeconds;
+        const planned = isCountUpPhase
+          ? 0
+          : (sessionDuration ?? settings.workDuration) + phaseExtraSeconds;
         const elapsed = isCountUpPhase
           ? (status === 'running' ? countUpElapsed(phaseStartedAt, timeLeft) : timeLeft)
           : Math.max(1, planned - (status === 'running' ? wallClockRemaining(phaseEndsAt, timeLeft) : timeLeft));
@@ -679,6 +704,7 @@ export const usePomodoroStore = create<PomodoroState>()(
           phaseStartedAt: null,
           sessionStartTime: new Date().toISOString(),
           sessionCountUp: null,
+          sessionDuration: nextTimeLeft,
           phaseExtraSeconds: 0,
           endReminderFiredPhase: null,
           streakDays: nextStreakDays,
@@ -848,6 +874,7 @@ export const usePomodoroStore = create<PomodoroState>()(
           phaseStartedAt,
           timeLeft,
           sessionCountUp,
+          sessionDuration,
           phaseExtraSeconds,
           streakDays,
           lastGoalMetDate,
@@ -864,14 +891,14 @@ export const usePomodoroStore = create<PomodoroState>()(
         }
 
         if (mode === 'work') {
-          // 正计时手动完成：实际时长 = 已专注秒数；倒计时 = 设定工作时长。
+          // 正计时手动完成：实际时长 = 已专注秒数；倒计时 = 会话锁定工作时长 + 加时
           // 以会话锁定的计时模式为准，旧持久化状态回退运行时特征推断
           const isCountUpPhase =
             sessionCountUp ??
             (phaseStartedAt != null || (settings.countUp && get().phaseEndsAt == null));
           const workSeconds = isCountUpPhase
             ? (status === 'running' ? countUpElapsed(phaseStartedAt, timeLeft) : timeLeft)
-            : settings.workDuration + phaseExtraSeconds;
+            : (sessionDuration ?? settings.workDuration) + phaseExtraSeconds;
 
           // 跨午夜完成：当天计数从 1 重新开始。正计时不足 1 分钟不计数（防误触）
           const today = localToday();
@@ -951,6 +978,7 @@ export const usePomodoroStore = create<PomodoroState>()(
             phaseStartedAt: null,
             sessionStartTime: new Date().toISOString(),
             sessionCountUp: null,
+            sessionDuration: nextTimeLeft,
             phaseExtraSeconds: 0,
             endReminderFiredPhase: null,
             streakDays: nextStreakDays,
@@ -965,7 +993,9 @@ export const usePomodoroStore = create<PomodoroState>()(
           const breakType: 'short_break' | 'long_break' =
             mode === 'long_break' ? 'long_break' : 'short_break';
           const breakDuration =
-            (mode === 'long_break' ? settings.longBreak : settings.shortBreak) + phaseExtraSeconds;
+            (sessionDuration ??
+              (mode === 'long_break' ? settings.longBreak : settings.shortBreak)) +
+            phaseExtraSeconds;
           if (sessionStartTime) {
             recordSession(null, sessionStartTime, breakDuration, breakDuration, breakType, 'completed');
           }
@@ -999,6 +1029,7 @@ export const usePomodoroStore = create<PomodoroState>()(
               phaseStartedAt: isCountUp ? Date.now() : null,
               sessionStartTime: new Date().toISOString(),
               sessionCountUp: isCountUp,
+              sessionDuration: isCountUp ? null : settings.workDuration,
               phaseExtraSeconds: 0,
               completedPomodorosToday: lad === nextToday ? cpt : 0,
               lastActiveDate: nextToday,
@@ -1016,6 +1047,7 @@ export const usePomodoroStore = create<PomodoroState>()(
               phaseStartedAt: null,
               sessionStartTime: null,
               sessionCountUp: null,
+              sessionDuration: null,
               phaseExtraSeconds: 0,
               endReminderFiredPhase: null,
             });
@@ -1030,39 +1062,9 @@ export const usePomodoroStore = create<PomodoroState>()(
 
         const next: Partial<PomodoroState> = { settings: merged };
         if (state.mode === 'idle') {
-          // 空闲态同步显示新的工作时长（正计时模式空闲显示 0）
+          // 空闲态同步显示新的工作时长（正计时模式空闲显示 0）；
+          // 进行中的会话已锁定 sessionDuration，时长修改留待下一轮生效，不中途裁切。
           next.timeLeft = merged.countUp ? 0 : merged.workDuration;
-        } else {
-          // 进行中（运行或暂停）的倒计时阶段：对应阶段时长变化时立即生效——
-          // 保持「已消耗时间」不变，按新时长重算剩余与 phaseEndsAt。
-          // 选择即时生效而非「仅影响下一阶段」：用户中途改时长通常就是想调整当前这一段；
-          // 若新时长 ≤ 已消耗，剩余归 0，下一次 tick 会自然完成本阶段。
-          // 正计时工作会话没有目标时长，不受影响（sessionCountUp 锁定，见 types.ts）
-          const durationKey =
-            state.mode === 'work'
-              ? 'workDuration'
-              : state.mode === 'short_break'
-                ? 'shortBreak'
-                : 'longBreak';
-          const oldDuration = state.settings[durationKey];
-          const newDuration = merged[durationKey];
-          const isCountUpWork =
-            state.mode === 'work' && (state.sessionCountUp ?? state.settings.countUp);
-          if (!isCountUpWork && newDuration !== oldDuration) {
-            const remaining =
-              state.status === 'running' && state.phaseEndsAt != null
-                ? wallClockRemaining(state.phaseEndsAt, state.timeLeft)
-                : state.timeLeft;
-            // 计划总时长含 extendPhase 加时（新旧同加，差值只随设置变化）
-            const elapsed = Math.max(0, oldDuration + state.phaseExtraSeconds - remaining);
-            const newRemaining = Math.max(0, newDuration + state.phaseExtraSeconds - elapsed);
-            next.timeLeft = newRemaining;
-            if (state.status === 'running' && state.phaseEndsAt != null) {
-              next.phaseEndsAt = Date.now() + newRemaining * 1000;
-              // phaseEndsAt 变了，本阶段的结束前提醒允许重新触发一次
-              next.endReminderFiredPhase = null;
-            }
-          }
         }
         set(next as PomodoroState);
 
@@ -1106,6 +1108,7 @@ export const usePomodoroStore = create<PomodoroState>()(
         currentTaskTitle: state.currentTaskTitle,
         sessionStartTime: state.sessionStartTime,
         sessionCountUp: state.sessionCountUp,
+        sessionDuration: state.sessionDuration,
         phaseExtraSeconds: state.phaseExtraSeconds,
         settings: state.settings,
         completedPomodorosToday: state.completedPomodorosToday,

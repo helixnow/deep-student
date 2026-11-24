@@ -2,8 +2,13 @@ import React, { useState, useCallback, useEffect, useMemo, useRef, useDeferredVa
 import { useTranslation } from 'react-i18next';
 import {
   EssayGradingAPI,
+  ESSAY_SELECTED_MODE_STORAGE_KEY,
   canonicalizeEssayModeId,
+  isLocalCustomModeId,
+  mergeModesWithLocalCustom,
+  readLocalCustomModes,
   recommendedGradeLevelForMode,
+  resolveBackendGradingPayload,
   shouldSuppressHighSchoolPollution,
   type GradingSession,
   type GradingRound,
@@ -362,15 +367,25 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   const [modes, setModes] = useState<GradingMode[]>([]);
   const modesRef = useRef(modes);
   modesRef.current = modes;
-  const [modeId, setModeIdRaw] = useState(
-    initialSession?.modeId ? canonicalizeEssayModeId(initialSession.modeId) : 'practice'
-  ); // 默认使用日常练习模式
+  const [modeId, setModeIdRaw] = useState(() => {
+    if (initialSession?.modeId) {
+      return canonicalizeEssayModeId(initialSession.modeId);
+    }
+    try {
+      const savedLocal = window.localStorage?.getItem(ESSAY_SELECTED_MODE_STORAGE_KEY);
+      if (savedLocal) return canonicalizeEssayModeId(savedLocal);
+    } catch {}
+    return 'practice';
+  }); // 默认使用日常练习模式
 
   // 包装 setModeId：每次切换模式时持久化到全局设置（新作文默认值）与当前会话（重开恢复）
   const modeSessionIdRef = useRef<string | undefined>(undefined);
   modeSessionIdRef.current = currentSession?.id || initialSession?.id;
   const setModeId = useCallback((id: string) => {
     setModeIdRaw(id);
+    try {
+      window.localStorage?.setItem(ESSAY_SELECTED_MODE_STORAGE_KEY, id);
+    } catch {}
     const targetMode = modesRef.current.find((m) => m.id === id);
     const recommendedGrade = recommendedGradeLevelForMode(
       id,
@@ -491,16 +506,21 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   // 加载批阅模式（提取为 useCallback 以便在保存后重新调用）
   const loadModes = useCallback(async () => {
     try {
-      const loadedModes = await EssayGradingAPI.getGradingModes();
-      setModes(loadedModes);
+      const serverModes = await EssayGradingAPI.getGradingModes();
+      const mergedModes = mergeModesWithLocalCustom(serverModes);
+      setModes(mergedModes);
 
-      // 确定最佳 modeId：initialSession > 持久化设置 > practice > 第一个
+      // 确定最佳 modeId：initialSession > 持久化设置 > local custom > practice > 第一个
       setModeIdRaw(prev => {
-        if (loadedModes.find(m => m.id === prev)) return prev;
-        const practiceMode = loadedModes.find(m => m.id === 'practice');
-        return practiceMode?.id || (loadedModes.length > 0 ? loadedModes[0].id : prev);
+        if (mergedModes.find(m => m.id === prev)) return prev;
+        const practiceMode = mergedModes.find(m => m.id === 'practice');
+        return practiceMode?.id || (mergedModes.length > 0 ? mergedModes[0].id : prev);
       });
     } catch (error: unknown) {
+      const localModes = readLocalCustomModes();
+      if (localModes.length > 0) {
+        setModes(localModes);
+      }
       console.error('[EssayGrading] Failed to load modes:', error);
       showGlobalNotification('error', t('essay_grading:errors.load_modes_failed'));
     }
@@ -538,6 +558,11 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     if (initialSession?.modeId) return;
     const loadMode = async () => {
       try {
+        const localSaved = window.localStorage?.getItem(ESSAY_SELECTED_MODE_STORAGE_KEY);
+        if (localSaved && isLocalCustomModeId(localSaved)) {
+          setModeIdRaw(localSaved);
+          return;
+        }
         const saved = await TauriAPI.getSetting('essay_grading.mode_id');
         if (saved) setModeIdRaw(canonicalizeEssayModeId(saved));
       } catch {}
@@ -1451,10 +1476,17 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     }
 
     const activeMode = modesRef.current.find((m) => m.id === modeId);
+    const defaultPromptText = t('essay_grading:prompt_editor.default_prompt');
+    const resolvedPayload = resolveBackendGradingPayload({
+      modeId,
+      activeMode,
+      customPrompt,
+      defaultPromptText,
+    });
     const trimmedCustomPrompt = customPrompt.trim();
     const hasExplicitCustomPrompt =
-      trimmedCustomPrompt.length > 0 &&
-      trimmedCustomPrompt !== t('essay_grading:prompt_editor.default_prompt').trim();
+      resolvedPayload.isLocalCustom ||
+      (trimmedCustomPrompt.length > 0 && trimmedCustomPrompt !== defaultPromptText.trim());
     const suppressHighSchool = shouldSuppressHighSchoolPollution({
       modeId,
       isBuiltin: activeMode ? activeMode.is_builtin : true,
@@ -1529,11 +1561,11 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
         round_number: nextRoundNumber,
         input_text: safeInputText,
         topic: topicText.trim() || undefined,
-        mode_id: modeId || undefined,
+        mode_id: resolvedPayload.modeIdForBackend,
         model_config_id: modelId || undefined, // 空字符串会使用默认模型
         essay_type: essayType,
         grade_level: effectiveGradeLevel,
-        custom_prompt: customPrompt || undefined,
+        custom_prompt: resolvedPayload.customPromptForBackend,
         previous_result: previousResult,
         previous_input: previousInput,
         image_base64_list: imageBase64List,
@@ -1885,20 +1917,36 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
 
   // ★ 错误点入错题本：改写 / 错误标记 → 「作文错题」题目集（可练习、进复习、计入掌握度）
   const [isSavingMistakes, setIsSavingMistakes] = useState(false);
+  const [mistakesFeedback, setMistakesFeedback] = useState<{
+    tone: 'success' | 'info';
+    message: string;
+  } | null>(null);
   const savingMistakesRef = useRef(false);
-  const handleSaveMistakes = useCallback(async () => {
+  useEffect(() => {
+    setMistakesFeedback(null);
+  }, [gradingResult]);
+  const handleSaveMistakes = useCallback(async (options?: { includeSuggestions?: boolean }) => {
     if (isGrading || !gradingResult || isSavingMistakes || savingMistakesRef.current) return;
     savingMistakesRef.current = true;
     setIsSavingMistakes(true);
     try {
-      const { saveEssayMistakes } = await import('../essay-grading/essayMistakes');
-      const { count, examId } = await saveEssayMistakes(gradingResult);
+      const { saveEssayMistakesWithDetails } = await import('../essay-grading/essayMistakes');
+      const { count, examId, examName, savedTitles } = await saveEssayMistakesWithDetails(
+        gradingResult,
+        { includeSuggestions: options?.includeSuggestions ?? false },
+      );
       if (!examId) {
-        showGlobalNotification('info', t('essay_grading:mistakes.none'));
+        const msg = t('essay_grading:mistakes.none_available', {
+          defaultValue: '暂无可入库错误点',
+        });
+        setMistakesFeedback({ tone: 'info', message: msg });
+        showGlobalNotification('info', msg);
         return;
       }
       if (count === 0) {
-        showGlobalNotification('info', t('essay_grading:mistakes.already_saved'), undefined, {
+        const msg = t('essay_grading:mistakes.already_saved');
+        setMistakesFeedback({ tone: 'info', message: msg });
+        showGlobalNotification('info', msg, undefined, {
           action: {
             label: t('essay_grading:mistakes.open'),
             onClick: () => window.dispatchEvent(new CustomEvent('navigateToExamSheet', { detail: { sessionId: examId } })),
@@ -1906,7 +1954,18 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
         });
         return;
       }
-      showGlobalNotification('success', t('essay_grading:mistakes.saved', { count }), undefined, {
+      const previewTitles =
+        savedTitles.slice(0, 3).join('、') +
+        (savedTitles.length > 3 ? ` 等 ${savedTitles.length} 项` : '');
+      const msg = savedTitles.length > 0
+        ? t('essay_grading:mistakes.saved_with_details', {
+            count,
+            examName,
+            titles: previewTitles,
+          })
+        : t('essay_grading:mistakes.saved', { count });
+      setMistakesFeedback({ tone: 'success', message: msg });
+      showGlobalNotification('success', msg, undefined, {
         action: {
           label: t('essay_grading:mistakes.open'),
           onClick: () => window.dispatchEvent(new CustomEvent('navigateToExamSheet', { detail: { sessionId: examId } })),
@@ -1988,8 +2047,10 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
           onSaveAsNote={handleSaveAsNote}
           onGenerateCards={() => { void handleGenerateCards(); }}
           isGeneratingCards={isGeneratingCards}
-          onSaveMistakes={() => { void handleSaveMistakes(); }}
+          onSaveMistakes={(options) => { void handleSaveMistakes(options); }}
           isSavingMistakes={isSavingMistakes}
+          mistakesFeedback={mistakesFeedback}
+          onDismissMistakesFeedback={() => setMistakesFeedback(null)}
           settingsAsPage={externalSettingsNavigation}
           isActive={isActive}
           roundNavigation={totalRounds > 0 ? {

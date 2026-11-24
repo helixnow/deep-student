@@ -76,4 +76,70 @@ describe('MemoryKernelAttributionPill', () => {
       expect(mutateSpy).toHaveBeenCalledWith({ kind: 'remove_rule', idOrInstruction: 'rule-1' });
     });
   });
+
+  it('shows session-frozen snapshot rules consistently when live global rules diverge', async () => {
+    const liveView: memoryApi.MemoryInspectionView = {
+      providerId: 'dstu.memory.local',
+      privacyMode: false,
+      hardRules: {
+        version: 3,
+        updated_at: '2026-11-24T00:00:00Z',
+        rules: [
+          {
+            id: 'rule-live-new',
+            instruction: '只用英文回答',
+            scope: 'global',
+            origin: 'user_explicit',
+            pinned: true,
+            createdAt: '2026-11-24T00:00:00Z',
+            updatedAt: '2026-11-24T00:00:00Z',
+          },
+        ],
+      },
+      learnerProfile: {
+        version: 2,
+        updated_at: '2026-11-24T00:00:00Z',
+        weak_points: [],
+        preferences: { others: [] },
+        goals: [],
+      },
+      profileHistory: [],
+      renderedKernelPreview: '<memory_kernel>...</memory_kernel>',
+      budgets: { rulesChars: 20, rulesMaxChars: 1500, profileChars: 30, profileMaxChars: 2500 },
+    };
+    vi.spyOn(memoryApi, 'inspectMemoryKernel').mockResolvedValue(liveView);
+
+    render(
+      <MemoryKernelAttributionPill
+        sessionMetadata={{
+          memoryKernelSnapshot: {
+            providerId: 'dstu.memory.local',
+            renderedKernel: '<memory_kernel>frozen</memory_kernel>',
+            rulesVersion: 1,
+            profileVersion: 1,
+            includedRuleIds: ['rule-frozen-1'],
+            includedRules: [
+              { id: 'rule-frozen-1', instruction: '先给反例再总结', scope: 'global' },
+            ],
+            includedWeakPointKeys: ['微积分:洛必达法则'],
+            includedLegacyNoteIds: [],
+            charCount: 40,
+            maxChars: 1500,
+            snapshotAt: '2026-11-23T00:00:00Z',
+            generation: 1,
+          },
+        }}
+      />,
+    );
+
+    const pill = await screen.findByTestId('memory-kernel-attribution-pill');
+    expect(pill.textContent).toContain('1 规则');
+    expect(pill.textContent).toContain('1 薄弱点');
+
+    fireEvent.click(pill);
+    expect(await screen.findByText('先给反例再总结')).toBeTruthy();
+    expect(screen.queryByText('只用英文回答')).toBeNull();
+    expect(screen.getByTestId('memory-kernel-frozen-drift-hint')).toBeTruthy();
+    expect(screen.getByText(/洛必达法则/)).toBeTruthy();
+  });
 });

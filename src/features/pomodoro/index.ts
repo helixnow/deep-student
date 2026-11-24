@@ -6,3 +6,4 @@ export { RollingTime } from './components/RollingTime';
 export { ImmersiveFocusMode } from './components/ImmersiveFocusMode';
 export { usePomodoroStore } from './stores/usePomodoroStore';
 export { setAndroidBackgroundCompletion } from './androidBackgroundAlarm';
+export { formatFocusDisplay, formatFocusTooltip } from './utils/focusDuration';

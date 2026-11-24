@@ -75,6 +75,13 @@ vi.mock('@/translation/TranslationStreamRenderer', () => ({
 }));
 
 import TranslateWorkbench from '@/components/TranslateWorkbench';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import {
+  detectClearSourceLanguageMismatch,
+  isVerbatimUntranslatedOutput,
+  readTranslationDraftSnapshot,
+  saveTranslationDraftSnapshot,
+} from '@/translation/sessionPrefs';
 
 function makeSession(overrides: Partial<TranslationSession> = {}): TranslationSession {
   return {
@@ -249,5 +256,106 @@ describe('TranslateWorkbench S3-11 fixes', () => {
 
     expect(screen.getByTestId('translation-source-lang-select')).toHaveTextContent('translation:languages.fr');
     expect(screen.getByTestId('translation-target-lang-select')).toHaveTextContent('translation:languages.ja');
+  });
+
+  it('detects source language mismatch and verbatim output honestly, and triggers real .md Blob download in WebUI (S3-11)', async () => {
+    const onSessionSave = vi.fn().mockResolvedValue(undefined);
+    const originalCreateObjectUrl = URL.createObjectURL;
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    const createObjectUrlMock = vi.fn(() => 'blob:mock-md');
+    const revokeObjectUrlMock = vi.fn();
+    Object.defineProperty(URL, 'createObjectURL', { writable: true, value: createObjectUrlMock });
+    Object.defineProperty(URL, 'revokeObjectURL', { writable: true, value: revokeObjectUrlMock });
+
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const createdDownloads: Array<{ download: string; href: string }> = [];
+    const origAppend = document.body.appendChild.bind(document.body);
+    const appendSpy = vi.spyOn(document.body, 'appendChild').mockImplementation((node: Node) => {
+      if (node instanceof HTMLAnchorElement) {
+        createdDownloads.push({ download: node.download, href: node.href });
+      }
+      return origAppend(node);
+    });
+
+    try {
+      expect(detectClearSourceLanguageMismatch('今天天气真好，我们去散步吧。', 'en')).toEqual({
+        mismatch: true,
+        detectedLang: 'zh-CN',
+      });
+      expect(isVerbatimUntranslatedOutput('今天天气真好', '今天天气真好', 'en', 'zh-CN')).toBe(true);
+
+      mocks.translate.mockResolvedValue({
+        outcome: 'completed',
+        translatedText: '今天天气真好，我们去散步吧。',
+      });
+
+      render(
+        <TranslateWorkbench
+          dstuMode={{
+            resourceId: 'tr-5',
+            session: makeSession({
+              id: 'tr-5',
+              srcLang: 'en',
+              tgtLang: 'zh-CN',
+              sourceText: '今天天气真好，我们去散步吧。',
+              translatedText: '今天天气真好，我们去散步吧。',
+            }),
+            onSessionSave,
+          }}
+        />,
+      );
+
+      // Source mismatch warning banner appears with quick fix button
+      const mismatchBanner = screen.getByTestId('translation-mismatch-warning-banner');
+      expect(mismatchBanner).toHaveTextContent('检测到原文语言与所选源语言不一致');
+
+      // Translating warns on mismatch AND flags verbatim echoed output
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'translation:actions.translate' }));
+      });
+
+      expect(showGlobalNotification).toHaveBeenCalledWith(
+        'warning',
+        '检测到原文语言与所选源语言不一致',
+      );
+      expect(showGlobalNotification).toHaveBeenCalledWith(
+        'warning',
+        '译文与原文相同，请确认源语言设置',
+      );
+      expect(screen.getByTestId('translation-verbatim-warning-banner')).toHaveTextContent(
+        '译文与原文相同，请确认源语言设置',
+      );
+
+      // Export Markdown triggers real Blob <a download="*.md"> download in browser/WebUI
+      await act(async () => {
+        fireEvent.click(
+          screen.getAllByRole('button', { name: 'translation:target_section.export' })[0]!,
+        );
+      });
+      expect(createObjectUrlMock).toHaveBeenCalledTimes(1);
+      expect(clickSpy).toHaveBeenCalledTimes(1);
+      expect(createdDownloads[0]?.download).toMatch(/^translation_\d+\.md$/);
+
+      // Verify local draft snapshot helper persists fr -> ja + sourceText/translatedText roles cleanly
+      saveTranslationDraftSnapshot({
+        id: 'tr-reload',
+        srcLang: 'fr',
+        tgtLang: 'ja',
+        sourceText: 'Bonjour le monde',
+        translatedText: 'こんにちは世界',
+        updatedAt: Date.now(),
+      });
+      expect(readTranslationDraftSnapshot('tr-reload')).toMatchObject({
+        srcLang: 'fr',
+        tgtLang: 'ja',
+        sourceText: 'Bonjour le monde',
+        translatedText: 'こんにちは世界',
+      });
+    } finally {
+      appendSpy.mockRestore();
+      clickSpy.mockRestore();
+      Object.defineProperty(URL, 'createObjectURL', { writable: true, value: originalCreateObjectUrl });
+      Object.defineProperty(URL, 'revokeObjectURL', { writable: true, value: originalRevokeObjectUrl });
+    }
   });
 });

@@ -266,8 +266,10 @@ describe('Stage 5 Data Governance UI & Locale contracts', () => {
         />,
       );
 
-      // Restore button has visible text label
-      const restoreButtons = screen.getAllByRole('button', { name: 'data:governance.restore' });
+      // Restore button has visible text label and unique snapshot aria-label
+      const restoreButtons = screen.getAllByRole('button', {
+        name: /data:governance\.restore/,
+      });
       expect(restoreButtons.some((btn) => btn.textContent?.includes('data:governance.restore'))).toBe(true);
 
       // Open import dialog

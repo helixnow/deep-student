@@ -655,6 +655,8 @@
     "totalScoreSummary": "得分 {{score}}分 · 准确率 {{rate}}%",
     "totalScoreSummaryPartial": "综合得分 {{score}}分 · 得分率 {{rate}}%（满分率 {{fullRate}}%）",
     "aiGradingRationaleTitle": "AI 评分依据与批改评语",
+    "aiGradingRationaleFallback": "已按主观题评分标准给出 {{score}} 分（{{status}}），请结合核心知识点核对作答完整性与表述准确性。",
+    "aiGradingRationaleFallbackWithRef": "已按评分标准给出 {{score}} 分（{{status}}）。请重点对照参考答案「{{reference}}」核对关键要点与推导过程。",
     "scorePoints": "{{score}} / 100 分",
     "manualOverride": "手动改判",
     "manualOverrideTitle": "手动改判与分数微调",

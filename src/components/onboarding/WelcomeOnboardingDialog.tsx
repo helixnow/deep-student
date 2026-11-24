@@ -16,15 +16,14 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Books, ChatCircleText, Cards, CheckCircle } from '@phosphor-icons/react';
+import { Books, ChatCircleText, Cards, Check, CheckCircle } from '@phosphor-icons/react';
 
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Z_INDEX } from '@/config/zIndex';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
-import { UserAgreementDialog } from '@/components/legal/UserAgreementDialog';
-import { PrivacyPolicyDialog } from '@/components/legal/PrivacyPolicyDialog';
+import { OnboardingLegalDialog } from './OnboardingLegalDialog';
 import { QuickByokProvisionerCard } from './byok';
 import type { ApiConfig } from '@/types';
 
@@ -151,6 +150,14 @@ export function useWelcomeOnboarding(agreementReady: boolean) {
   const dismiss = useCallback(() => {
     detectedPreconfiguredAi = null;
     markWelcomeFlowDone();
+    try {
+      if (!localStorage.getItem(STARTER_FOCUS_KEY)) {
+        localStorage.setItem(STARTER_FOCUS_KEY, 'chat');
+      }
+      window.dispatchEvent(new CustomEvent('deepstudent:onboarding-starter-updated'));
+    } catch {
+      // Ignore storage/event failures.
+    }
     setOpen(false);
   }, []);
 
@@ -169,7 +176,11 @@ interface WelcomeOnboardingDialogProps {
   preconfiguredAi?: boolean | { modelLabel?: string | null };
 }
 
+export type OnboardingStarterFocus = 'hub' | 'chat' | 'anki';
+const STARTER_FOCUS_KEY = 'onboarding_starter_focus';
+
 interface FeatureRow {
+  id: OnboardingStarterFocus;
   icon: React.ReactNode;
   titleKey: string;
   descKey: string;
@@ -195,6 +206,15 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
   const readyModelLabel = resolvedPreconfigured?.modelLabel ?? null;
 
   const [activeLegalDoc, setActiveLegalDoc] = useState<'terms' | 'privacy' | null>(null);
+  const [selectedFeature, setSelectedFeature] = useState<OnboardingStarterFocus>(() => {
+    try {
+      const saved = localStorage.getItem(STARTER_FOCUS_KEY);
+      if (saved === 'hub' || saved === 'chat' || saved === 'anki') return saved;
+    } catch {
+      // Ignore storage failures.
+    }
+    return 'chat';
+  });
   const activeLegalDocRef = useRef<'terms' | 'privacy' | null>(null);
   activeLegalDocRef.current = activeLegalDoc;
 
@@ -289,22 +309,46 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
 
   const features: FeatureRow[] = [
     {
+      id: 'hub',
       icon: <Books size={18} weight="duotone" className="text-blue-500/80" />,
       titleKey: 'welcome_onboarding.feature_hub_title',
       descKey: 'welcome_onboarding.feature_hub_desc',
     },
     {
+      id: 'chat',
       icon: <ChatCircleText size={18} weight="duotone" className="text-emerald-500/80" />,
       titleKey: 'welcome_onboarding.feature_chat_title',
       descKey: 'welcome_onboarding.feature_chat_desc',
     },
     {
+      id: 'anki',
       icon: <Cards size={18} weight="duotone" className="text-orange-500/80" />,
       titleKey: 'welcome_onboarding.feature_anki_title',
       // 闪卡与错题复习统一采用 FSRS 智能间隔重复调度
       descKey: 'welcome_onboarding.feature_anki_desc',
     },
   ];
+
+  const handleSelectFeature = useCallback((id: OnboardingStarterFocus) => {
+    setSelectedFeature(id);
+    try {
+      localStorage.setItem(STARTER_FOCUS_KEY, id);
+      localStorage.removeItem('onboarding_starter_cue_dismissed');
+      window.dispatchEvent(new CustomEvent('deepstudent:onboarding-starter-updated'));
+    } catch {
+      // Ignore storage errors.
+    }
+  }, []);
+
+  const handleCompleteOnboarding = useCallback(() => {
+    try {
+      localStorage.setItem(STARTER_FOCUS_KEY, selectedFeature);
+      window.dispatchEvent(new CustomEvent('deepstudent:onboarding-starter-updated'));
+    } catch {
+      // Ignore storage errors.
+    }
+    onSkip();
+  }, [onSkip, selectedFeature]);
 
   const dialog = (
     <div
@@ -376,6 +420,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
               value={currentLanguage}
               onValueChange={(next) => {
                 void i18n.changeLanguage(next);
+                void invoke('save_setting', { key: 'language', value: next }).catch(() => {});
               }}
               size="compact"
               stretch
@@ -429,23 +474,46 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
             />
           )}
 
-          {/* 三大能力速览 */}
-          <div className="space-y-2.5 border-t border-border/35 pt-3.5 sm:space-y-3 sm:pt-4">
-            {features.map((f) => (
-              <div key={f.titleKey} className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-foreground/[0.04]">
-                  {f.icon}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[13px] font-medium text-foreground/85 leading-snug">
-                    {t(f.titleKey)}
-                  </p>
-                  <p className="mt-0.5 text-[12px] text-foreground/50 leading-[1.55]">
-                    {t(f.descKey)}
-                  </p>
-                </div>
-              </div>
-            ))}
+          {/* 三大能力速览（点击选择优先体验方向） */}
+          <div className="space-y-2 border-t border-border/35 pt-3.5 sm:space-y-2.5 sm:pt-4">
+            {features.map((f) => {
+              const isSelected = selectedFeature === f.id;
+              return (
+                <button
+                  key={f.id}
+                  type="button"
+                  data-testid={`welcome-feature-card-${f.id}`}
+                  aria-pressed={isSelected}
+                  onClick={() => handleSelectFeature(f.id)}
+                  className={cn(
+                    'flex w-full items-start gap-3 rounded-lg border px-2.5 py-2 text-left transition-colors [@media(pointer:coarse)]:min-h-11',
+                    isSelected
+                      ? 'border-primary/40 bg-primary/[0.06] ring-1 ring-primary/20'
+                      : 'border-transparent hover:border-border/60 hover:bg-foreground/[0.03]',
+                  )}
+                >
+                  <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-foreground/[0.04]">
+                    {f.icon}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-medium leading-snug text-foreground/90">
+                      {t(f.titleKey)}
+                    </p>
+                    <p className="mt-0.5 text-[12px] leading-[1.55] text-foreground/55">
+                      {t(f.descKey)}
+                    </p>
+                  </div>
+                  {isSelected && (
+                    <span
+                      aria-hidden="true"
+                      className="mt-1 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary"
+                    >
+                      <Check size={11} weight="bold" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -473,7 +541,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
                 'text-[13px] [@media(pointer:coarse)]:!min-h-11',
                 !isAiReady && 'text-foreground/55',
               )}
-              onClick={onSkip}
+              onClick={handleCompleteOnboarding}
             >
               {isAiReady
                 ? t('settings:vendor_panel.welcome_ai_ready_cta_start', {
@@ -539,20 +607,11 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
   return (
     <>
       {createPortal(dialog, document.body)}
-      {activeLegalDoc === 'terms' && (
-        <UserAgreementDialog
-          preview
+      {activeLegalDoc !== null && (
+        <OnboardingLegalDialog
           open
+          initialTab={activeLegalDoc}
           onClose={() => setActiveLegalDoc(null)}
-          onAccept={() => setActiveLegalDoc(null)}
-        />
-      )}
-      {activeLegalDoc === 'privacy' && (
-        <PrivacyPolicyDialog
-          open
-          onOpenChange={(open) => {
-            if (!open) setActiveLegalDoc(null);
-          }}
         />
       )}
     </>

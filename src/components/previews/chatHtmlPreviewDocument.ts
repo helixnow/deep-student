@@ -380,6 +380,115 @@ export function sanitizeWidgetStreamHtml(raw: string): string {
   return headStyles ? `${headStyles}\n${doc.body.innerHTML}` : doc.body.innerHTML;
 }
 
+export const SANDBOX_RUNTIME_GUARD_ATTR = 'data-ds-sandbox-runtime-guard';
+const SANDBOX_RUNTIME_GUARD_HEAD_ATTR = 'data-ds-sandbox-runtime-guard-head';
+
+const SANDBOX_RUNTIME_GUARD_INLINE_JS = [
+  '(function(){',
+  'if(window.__dsSandboxRuntimeGuardInstalled)return;',
+  'window.__dsSandboxRuntimeGuardInstalled=true;',
+  'var pendingError=null,lastSig="",barRef=null;',
+  'function renderBar(message,lineno,colno){',
+  'var host=document.body||document.documentElement;',
+  'if(!host)return;',
+  'var bar=barRef||document.getElementById("ds-sandbox-runtime-error-bar");',
+  'if(!bar){',
+  'bar=document.createElement("div");',
+  'bar.id="ds-sandbox-runtime-error-bar";',
+  'bar.setAttribute("role","alert");',
+  'bar.style.cssText="position:fixed;left:10px;right:10px;bottom:10px;z-index:2147483647;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;border-radius:8px;border:1px solid rgba(248,113,113,0.45);background:rgba(127,29,29,0.94);color:#fef2f2;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;box-shadow:0 6px 20px rgba(0,0,0,0.28);";',
+  'var txt=document.createElement("span");',
+  'txt.setAttribute("data-ds-runtime-error-text","1");',
+  'txt.style.cssText="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;";',
+  'var btn=document.createElement("button");',
+  'btn.type="button";btn.textContent="x";btn.setAttribute("aria-label","Dismiss runtime error");',
+  'btn.style.cssText="flex:0 0 auto;border:0;background:transparent;color:#fecaca;cursor:pointer;font:13px/1 inherit;padding:0 4px;";',
+  'btn.addEventListener("click",function(){if(bar&&bar.parentNode)bar.parentNode.removeChild(bar);});',
+  'bar.appendChild(txt);bar.appendChild(btn);barRef=bar;',
+  '}',
+  'var loc=lineno>0?(" (line "+lineno+(colno>0?(":"+colno):"")+")"):"";',
+  'if(bar.firstChild)bar.firstChild.textContent="Script error"+loc+": "+message;',
+  'if(!bar.parentNode)host.appendChild(bar);',
+  '}',
+  'function notify(message,lineno,colno){',
+  'var msg=String(message||"Unknown runtime error");',
+  'var line=typeof lineno==="number"&&isFinite(lineno)?lineno:0;',
+  'var col=typeof colno==="number"&&isFinite(colno)?colno:0;',
+  'var sig=msg+"@"+line+":"+col;',
+  'if(sig===lastSig)return;',
+  'lastSig=sig;',
+  'if(typeof Promise==="function"){Promise.resolve().then(function(){if(lastSig===sig)lastSig="";});}',
+  'try{if(window.parent&&window.parent!==window){window.parent.postMessage({source:"ds-sandbox-runtime",type:"runtime-error",message:msg,lineno:line,colno:col},"*");}}catch(_){}',
+  'if(document.body){renderBar(msg,line,col);}else{pendingError={message:msg,lineno:line,colno:col};}',
+  '}',
+  'document.addEventListener("DOMContentLoaded",function(){',
+  'if(pendingError){renderBar(pendingError.message,pendingError.lineno,pendingError.colno);pendingError=null;}',
+  '});',
+  'window.addEventListener("error",function(e){',
+  'if(!e)return;',
+  'if(typeof e.message==="string"||e.error){',
+  'if(typeof e.preventDefault==="function")e.preventDefault();',
+  'notify(e.message||(e.error&&e.error.message)||String(e.error||"Runtime error"),e.lineno||0,e.colno||0);',
+  '}',
+  '},true);',
+  'window.addEventListener("unhandledrejection",function(e){',
+  'if(!e)return;',
+  'if(typeof e.preventDefault==="function")e.preventDefault();',
+  'var r=e.reason;',
+  'var msg=r&&typeof r==="object"&&"message"in r?String(r.message):String(r||"Unhandled promise rejection");',
+  'notify(msg,0,0);',
+  '});',
+  'var prevOnError=window.onerror;',
+  'window.onerror=function(msg,src,line,col,err){',
+  'notify(msg||(err&&err.message)||"Script error",line||0,col||0);',
+  'if(typeof prevOnError==="function"){try{prevOnError.apply(this,arguments);}catch(_){}}',
+  'return true;',
+  '};',
+  '})();',
+].join('');
+
+const SANDBOX_RUNTIME_GUARD_SCRIPT = `<script ${SANDBOX_RUNTIME_GUARD_ATTR}="1">${SANDBOX_RUNTIME_GUARD_INLINE_JS}</script>`;
+const STRIP_SANDBOX_RUNTIME_GUARD_SCRIPT_RE = new RegExp(
+  `<script\\b[^>]*\\b${SANDBOX_RUNTIME_GUARD_ATTR}=["']1["'][^>]*>[\\s\\S]*?<\\/script>`,
+  'gi',
+);
+const STRIP_SANDBOX_RUNTIME_GUARD_HEAD_RE = new RegExp(
+  `<head\\b[^>]*\\b${SANDBOX_RUNTIME_GUARD_HEAD_ATTR}=["']1["'][^>]*>\\s*<\\/head>`,
+  'gi',
+);
+
+export function stripSandboxRunRuntimeGuard(html: string): string {
+  if (!html) return html;
+  return html
+    .replace(STRIP_SANDBOX_RUNTIME_GUARD_SCRIPT_RE, '')
+    .replace(STRIP_SANDBOX_RUNTIME_GUARD_HEAD_RE, '');
+}
+
+export function wrapSandboxRunHtmlWithRuntimeGuard(html: string): string {
+  if (!html || !html.trim()) return html;
+  const clean = stripSandboxRunRuntimeGuard(html);
+
+  const headOpenMatch = /<head\b[^>]*>/i.exec(clean);
+  if (headOpenMatch) {
+    const insertAt = headOpenMatch.index + headOpenMatch[0].length;
+    return `${clean.slice(0, insertAt)}${SANDBOX_RUNTIME_GUARD_SCRIPT}${clean.slice(insertAt)}`;
+  }
+
+  const htmlOpenMatch = /<html\b[^>]*>/i.exec(clean);
+  if (htmlOpenMatch) {
+    const insertAt = htmlOpenMatch.index + htmlOpenMatch[0].length;
+    return `${clean.slice(0, insertAt)}<head ${SANDBOX_RUNTIME_GUARD_HEAD_ATTR}="1">${SANDBOX_RUNTIME_GUARD_SCRIPT}</head>${clean.slice(insertAt)}`;
+  }
+
+  const doctypeMatch = /<!doctype\b[^>]*>/i.exec(clean);
+  if (doctypeMatch) {
+    const insertAt = doctypeMatch.index + doctypeMatch[0].length;
+    return `${clean.slice(0, insertAt)}${SANDBOX_RUNTIME_GUARD_SCRIPT}${clean.slice(insertAt)}`;
+  }
+
+  return `${SANDBOX_RUNTIME_GUARD_SCRIPT}${clean}`;
+}
+
 export interface BuildWidgetStreamPreviewDocOptions {
   html: string;
   themeVars?: Record<string, string>;

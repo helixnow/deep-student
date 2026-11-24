@@ -126,6 +126,8 @@ describe('PomodoroAppWindow todo binding & <60s preview guard (S4-10)', () => {
   });
 
   it('marks <60s work sessions as short preview and suppresses full pomodoro completion', async () => {
+    const origFinish = usePomodoroStore.getState().finishWorkEarly;
+    const origStop = usePomodoroStore.getState().stop;
     const finishSpy = vi.fn();
     const stopSpy = vi.fn();
     usePomodoroStore.setState({
@@ -139,9 +141,89 @@ describe('PomodoroAppWindow todo binding & <60s preview guard (S4-10)', () => {
       stop: stopSpy,
     });
 
+    try {
+      render(
+        <PomodoroAppWindow
+          windowId="w-pomo"
+          instanceKey={null}
+          launchPayload={null}
+          isActive
+          isVisible
+          onTitleChange={vi.fn()}
+          requestClose={vi.fn()}
+        />,
+      );
+
+      const previewBtn = await screen.findByRole('button', {
+        name: '结束预览（不足 1 分钟不计番茄）',
+      });
+      expect(previewBtn).toHaveAttribute('data-short-preview', 'true');
+
+      act(() => {
+        fireEvent.click(previewBtn);
+      });
+      expect(finishSpy).not.toHaveBeenCalled();
+      expect(stopSpy).toHaveBeenCalledWith(true);
+    } finally {
+      usePomodoroStore.setState({ finishWorkEarly: origFinish, stop: origStop });
+    }
+  });
+
+  it('S4-10: keeps active session timeLeft intact when duration setting changes, stops immediately <=10s, and keeps bound todoId across round completion', async () => {
+    const { PomodoroWindowSettings } = await vi.importActual<typeof import('../PomodoroWindowSettings')>(
+      '../PomodoroWindowSettings',
+    );
+    usePomodoroStore.setState({
+      mode: 'idle',
+      status: 'paused',
+      timeLeft: 1500,
+      phaseEndsAt: null,
+      phaseStartedAt: null,
+      currentTaskId: null,
+      currentTaskTitle: null,
+      sessionDuration: null,
+      sessionCountUp: null,
+      phaseExtraSeconds: 0,
+      settings: DEFAULT_POMODORO_SETTINGS,
+    });
+
+    // 1) 绑定任务后启动，25 分钟（1500s）运行中改设为 2 分钟（120s），当前倒计时不被裁切
+    usePomodoroStore.getState().start('todo-bound-7', '背单词');
+    usePomodoroStore.setState({
+      timeLeft: 1495,
+      phaseEndsAt: Date.now() + 1495 * 1000,
+    });
+    usePomodoroStore.getState().updateSettings({ workDuration: 120 });
+
+    const afterUpdate = usePomodoroStore.getState();
+    expect(afterUpdate.sessionDuration).toBe(1500);
+    expect(afterUpdate.timeLeft).toBe(1495);
+    expect(afterUpdate.settings.workDuration).toBe(120);
+
+    const settingsView = render(<PomodoroWindowSettings />);
+    expect(settingsView.getByTestId('pomodoro-settings-next-round-hint')).toBeInTheDocument();
+    settingsView.unmount();
+
+    // 2) 完成本轮并跳过休息回到 idle，再无参 start() 开启下一轮 → todoId 持续绑定，且新一轮应用 2 分钟
+    usePomodoroStore.getState().completeCurrentSession();
+    expect(usePomodoroStore.getState().currentTaskId).toBe('todo-bound-7');
+    usePomodoroStore.getState().skipBreak();
+    expect(usePomodoroStore.getState().currentTaskId).toBe('todo-bound-7');
+    usePomodoroStore.getState().start();
+    expect(usePomodoroStore.getState().currentTaskId).toBe('todo-bound-7');
+    expect(usePomodoroStore.getState().sessionDuration).toBe(120);
+    expect(usePomodoroStore.getState().timeLeft).toBe(120);
+
+    // 3) <=10s 内点击「停止」直接停止而非假响应
+    usePomodoroStore.setState({
+      mode: 'work',
+      status: 'running',
+      timeLeft: 115,
+      sessionDuration: 120,
+    });
     render(
       <PomodoroAppWindow
-        windowId="w-pomo"
+        windowId="w-pomo-stop"
         instanceKey={null}
         launchPayload={null}
         isActive
@@ -150,16 +232,8 @@ describe('PomodoroAppWindow todo binding & <60s preview guard (S4-10)', () => {
         requestClose={vi.fn()}
       />,
     );
-
-    const previewBtn = await screen.findByRole('button', {
-      name: '结束预览（不足 1 分钟不计番茄）',
-    });
-    expect(previewBtn).toHaveAttribute('data-short-preview', 'true');
-
-    act(() => {
-      fireEvent.click(previewBtn);
-    });
-    expect(finishSpy).not.toHaveBeenCalled();
-    expect(stopSpy).toHaveBeenCalledWith(true);
+    const stopBtn = await screen.findByRole('button', { name: 'pomodoro.controls.stop' });
+    fireEvent.click(stopBtn);
+    expect(usePomodoroStore.getState().mode).toBe('idle');
   });
 });

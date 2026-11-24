@@ -53,18 +53,40 @@ export async function alignCancelledMessageWithArchive(host: CancelAlignmentHost
     .filter((b) => b.messageId === messageId && order.has(b.id))
     .sort((a, b) => order.get(a.id)! - order.get(b.id)!);
 
+  const stoppedByUser = (archived.message._meta as { stoppedByUser?: boolean } | undefined)?.stoppedByUser === true;
+  if (stoppedByUser && !state.messageMap.get(messageId)?._meta?.stoppedByUser) {
+    host.store.updateMessageMeta(messageId, { stoppedByUser: true });
+  }
+  const lastContentId = [...blocks].reverse().find((b) => b.type === 'content')?.id ?? null;
+
   let changed = 0;
-  for (const blk of blocks) {
+  for (let i = 0; i < blocks.length; i++) {
+    const blk = blocks[i]!;
+    const hasSubsequentContent = blocks.slice(i + 1).some(
+      (later) => later.type === 'content' && typeof later.content === 'string' && later.content.trim().length > 0,
+    );
+    const shouldMarkAborted =
+      stoppedByUser
+      && (
+        (blk.type === 'content' && blk.id === lastContentId)
+        || (blk.type === 'thinking' && (!hasSubsequentContent || !blk.endedAt || blk.status !== 'success'))
+      );
     const live = state.blocks.get(blk.id);
     if (!live) {
       host.store.createBlockWithId(messageId, blk.type as BlockType, blk.id);
-      host.store.updateBlock(blk.id, archivedFields(blk));
+      host.store.updateBlock(blk.id, {
+        ...archivedFields(blk),
+        ...(shouldMarkAborted ? { aborted: true } : {}),
+      });
       changed += 1;
       continue;
     }
     const visible = live.content ?? '';
     if (typeof blk.content === 'string' && blk.content.length > visible.length && blk.content.startsWith(visible)) {
-      host.store.updateBlock(blk.id, { content: blk.content });
+      host.store.updateBlock(blk.id, {
+        content: blk.content,
+        ...(shouldMarkAborted ? { aborted: true } : {}),
+      });
       changed += 1;
     }
   }

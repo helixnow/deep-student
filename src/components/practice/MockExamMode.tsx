@@ -56,6 +56,27 @@ const formatTime = (seconds: number): string => {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
+const SCORE_CARD_TYPE_KEYS: Record<string, string> = {
+  singlechoice: 'single_choice',
+  multiplechoice: 'multiple_choice',
+  indefinitechoice: 'indefinite_choice',
+  fillblank: 'fill_blank',
+  shortanswer: 'short_answer',
+  essay: 'essay',
+  calculation: 'calculation',
+  proof: 'proof',
+  truefalse: 'true_false',
+  matching: 'matching',
+  ordering: 'ordering',
+  numeric: 'numeric',
+  other: 'other',
+};
+
+function normalizeScoreCardTypeKey(rawType: string): string {
+  const compact = rawType.replace(/[\s_-]+/g, '').toLowerCase();
+  return SCORE_CARD_TYPE_KEYS[compact] ?? rawType;
+}
+
 interface MockExamModeProps {
   examId: string;
   onStart?: (session: MockExamSession) => void;
@@ -112,6 +133,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   // 配置状态
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [totalCount, setTotalCount] = useState(30);
+  const [totalCountTouched, setTotalCountTouched] = useState(false);
   const [shuffle, setShuffle] = useState(true);
   const [includeMistakes, setIncludeMistakes] = useState(true);
 
@@ -124,7 +146,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
 
   const normalizeTotalCount = useCallback((value: number): number => {
     if (!Number.isFinite(value)) return 30;
-    return Math.max(5, Math.min(100, Math.round(value)));
+    return Math.max(1, Math.min(100, Math.round(value)));
   }, []);
   const [typeDistribution, setTypeDistribution] = useState<Record<string, number>>({});
   const [difficultyDistribution, setDifficultyDistribution] = useState<Record<string, number>>({});
@@ -228,12 +250,15 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
 
   // 最后 60 秒：变色 + 脉动（CountdownRing 内处理）
   
-  // 计算总配置题数
+  // 计算总配置题数：若用户显式设置了题型配比且未手动改动总题数，以配比之和为准，避免被默认 30 补满无关单选题
   const configuredCount = useMemo(() => {
     const typeCount = Object.values(typeDistribution).reduce((a, b) => a + b, 0);
     const diffCount = Object.values(difficultyDistribution).reduce((a, b) => a + b, 0);
+    if (typeCount > 0 && !totalCountTouched) {
+      return Math.max(typeCount, diffCount);
+    }
     return Math.max(typeCount, diffCount, totalCount);
-  }, [typeDistribution, difficultyDistribution, totalCount]);
+  }, [typeDistribution, difficultyDistribution, totalCount, totalCountTouched]);
   
   // 更新题型配比
   const handleTypeChange = useCallback((key: string, value: number) => {
@@ -254,11 +279,17 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
   // 开始考试
   const handleStart = useCallback(async () => {
     const isCurrent = beginStartRequest();
+    const cleanedTypeDistribution = Object.fromEntries(
+      Object.entries(typeDistribution).filter(([, count]) => count > 0),
+    );
+    const cleanedDifficultyDistribution = Object.fromEntries(
+      Object.entries(difficultyDistribution).filter(([, count]) => count > 0),
+    );
     const config: MockExamConfig = {
       duration_minutes: durationMinutes,
-      type_distribution: typeDistribution,
-      difficulty_distribution: difficultyDistribution,
-      total_count: totalCount,
+      type_distribution: cleanedTypeDistribution,
+      difficulty_distribution: cleanedDifficultyDistribution,
+      total_count: configuredCount,
       shuffle,
       include_mistakes: includeMistakes,
     };
@@ -277,7 +308,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
       const msg = err instanceof Error ? err.message : String(err);
       showGlobalNotification('error', msg, t('mockExam.startError'));
     }
-  }, [examId, durationMinutes, totalCount, shuffle, includeMistakes, typeDistribution, difficultyDistribution, generateMockExam, onStart, t, beginStartRequest, isCurrentSession]);
+  }, [examId, durationMinutes, configuredCount, shuffle, includeMistakes, typeDistribution, difficultyDistribution, generateMockExam, onStart, t, beginStartRequest, isCurrentSession]);
 
   useEffect(() => {
     if (!activeSession || activeSession.is_submitted) {
@@ -409,17 +440,21 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 {t('mockExam.typeStats')}
               </div>
               <div className="space-y-2">
-                {Object.entries(score.type_stats).map(([type, stat]) => (
-                  <div key={type} className="flex items-center gap-3">
-                    <span className="w-16 truncate text-sm sm:w-20" title={t(`questionType.${type}`, type)}>
-                      {t(`questionType.${type}`, type)}
-                    </span>
+                {Object.entries(score.type_stats).map(([type, stat]) => {
+                  const normalizedType = normalizeScoreCardTypeKey(type);
+                  const typeLabel = t(`questionType.${normalizedType}`, { defaultValue: type });
+                  return (
+                    <div key={type} className="flex items-center gap-3">
+                      <span className="w-16 truncate text-sm sm:w-20" title={typeLabel}>
+                        {typeLabel}
+                      </span>
                     <Progress value={stat.rate} className="h-2 min-w-0 flex-1" />
-                    <span className="w-16 shrink-0 text-right text-sm tabular-nums">
-                      {stat.correct}/{stat.total}
-                    </span>
-                  </div>
-                ))}
+                      <span className="w-16 shrink-0 text-right text-sm tabular-nums">
+                        {stat.correct}/{stat.total}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -488,15 +523,19 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               <Label>{t('mockExam.totalCount')}</Label>
               <Input
                 type="number"
-                min={5}
+                min={1}
                 max={100}
-                value={totalCount}
+                value={totalCountTouched ? totalCount : configuredCount}
                 onChange={(e) => {
                   const raw = e.target.value;
                   if (raw === '') return;
+                  setTotalCountTouched(true);
                   setTotalCount(normalizeTotalCount(Number(raw)));
                 }}
-                onBlur={(e) => setTotalCount(normalizeTotalCount(Number(e.target.value)))}
+                onBlur={(e) => {
+                  if (!totalCountTouched) return;
+                  setTotalCount(normalizeTotalCount(Number(e.target.value)));
+                }}
                 className="[@media(pointer:coarse)]:text-[16px]"
 />
             </div>

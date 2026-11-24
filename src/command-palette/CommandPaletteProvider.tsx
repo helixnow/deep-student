@@ -21,6 +21,7 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import type { CurrentView } from '@/types/navigation';
 import {
+  getWorkbenchHostBridge,
   isWorkbenchHostEnabled,
   launchWorkbenchApp,
   openWorkbenchAppsPanel,
@@ -106,7 +107,7 @@ export function CommandPaletteProvider({
   // （⌘K、顶栏搜索钮、命令内 openCommandPalette）统一改道到全部应用面板
   // （Spotlight：应用 / 命令 / 学习资源 / 聊天）。legacy 壳行为不变。
   const open = useCallback(() => {
-    if (workbenchActive) {
+    if (workbenchActive && getWorkbenchHostBridge()) {
       openWorkbenchAppsPanel();
       return;
     }
@@ -114,7 +115,7 @@ export function CommandPaletteProvider({
     setIsOpen(true);
   }, [workbenchActive]);
   const openSessionSearch = useCallback(() => {
-    if (workbenchActive) {
+    if (workbenchActive && getWorkbenchHostBridge()) {
       openWorkbenchAppsPanel();
       return;
     }
@@ -123,12 +124,65 @@ export function CommandPaletteProvider({
   }, [workbenchActive]);
   const close = useCallback(() => setIsOpen(false), []);
   const toggle = useCallback(() => {
-    if (workbenchActive) {
+    if (workbenchActive && getWorkbenchHostBridge()) {
       toggleWorkbenchAppsPanel();
       return;
     }
     setIsOpen((prev) => !prev);
   }, [workbenchActive]);
+
+  useEffect(() => {
+    if (!workbenchActive) return undefined;
+    const isEn = i18n.language.toLowerCase().startsWith('en');
+    const dispatchWindowCmd = (action: 'tileLeft' | 'tileRight' | 'restoreFloating' | 'expose') => {
+      window.dispatchEvent(
+        new CustomEvent('workbench:window-command', { detail: { action } }),
+      );
+    };
+    const unregister = commandRegistry.registerAll([
+      {
+        id: 'workbench.tile-left',
+        name: t('workbench:shortcuts.tileLeft', isEn ? 'Tile to left half' : '平铺到左半屏'),
+        description: isEn ? 'Tile focused window to left half of desktop' : '将当前焦点窗口平铺到左半屏',
+        category: 'global',
+        keywords: ['平铺', '左半屏', '分屏', 'split', 'tile', 'left', 'tileLeft'],
+        visibleInViews: ['workbench'],
+        priority: 85,
+        execute: () => dispatchWindowCmd('tileLeft'),
+      },
+      {
+        id: 'workbench.tile-right',
+        name: t('workbench:shortcuts.tileRight', isEn ? 'Tile to right half' : '平铺到右半屏'),
+        description: isEn ? 'Tile focused window to right half of desktop' : '将当前焦点窗口平铺到右半屏',
+        category: 'global',
+        keywords: ['平铺', '右半屏', '分屏', 'split', 'tile', 'right', 'tileRight'],
+        visibleInViews: ['workbench'],
+        priority: 84,
+        execute: () => dispatchWindowCmd('tileRight'),
+      },
+      {
+        id: 'workbench.restore-floating',
+        name: t('workbench:shortcuts.restoreFloating', isEn ? 'Restore floating window layout' : '恢复浮动窗口排布'),
+        description: isEn ? 'Restore tiled or maximized windows to floating mode' : '将平铺或最大化窗口恢复为浮动窗口排布',
+        category: 'global',
+        keywords: ['恢复', '浮动', '取消平铺', '平铺', '取消分屏', 'restore', 'floating', 'split', 'tile', 'unsplit', 'restoreFloating'],
+        visibleInViews: ['workbench'],
+        priority: 83,
+        execute: () => dispatchWindowCmd('restoreFloating'),
+      },
+      {
+        id: 'workbench.expose',
+        name: t('workbench:shortcuts.exposeOverview', isEn ? 'Multi-window overview' : '多窗俯瞰'),
+        description: isEn ? 'Show all open windows in overview' : '在多窗俯瞰视图中概览全部打开的窗口',
+        category: 'global',
+        keywords: ['多窗俯瞰', '窗口俯瞰', '俯瞰', '平铺', 'expose', 'overview', 'windows', 'split'],
+        visibleInViews: ['workbench'],
+        priority: 82,
+        execute: () => dispatchWindowCmd('expose'),
+      },
+    ]);
+    return unregister;
+  }, [workbenchActive, t, i18n.language]);
 
   const commandPaletteNavigate = useCallback((view: CurrentView, params?: Record<string, unknown>) => {
     if (workbenchActive && isWorkbenchHostEnabled() && view === 'sandbox-workbench') {
@@ -276,7 +330,10 @@ export function CommandPaletteProvider({
       // 仅当用户未自定义/禁用 global.command-palette 绑定时走硬编码快捷路径；
       // 有自定义时交给下方注册表统一解析，避免改绑/禁用后旧键仍生效。
       if (
-        (e.metaKey || e.ctrlKey) && e.key === 'k' && !e.shiftKey && !e.altKey &&
+        (e.metaKey || e.ctrlKey) &&
+        (e.key.toLowerCase() === 'k' || e.code === 'KeyK') &&
+        !e.shiftKey &&
+        !e.altKey &&
         !shortcutManager.hasCustomShortcut('global.command-palette')
       ) {
         if (isInRichEditor) return;
@@ -311,8 +368,8 @@ export function CommandPaletteProvider({
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [isOpen, toggle, commandView, deps, resolveEffectiveShortcut]);
   
   // 🚀 getCurrentView getter 替代直接暴露 currentView，使 contextValue 不随视图切换重建

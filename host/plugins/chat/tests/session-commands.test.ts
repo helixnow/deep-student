@@ -709,4 +709,26 @@ describe('chat_v2 goal, group and session lifecycle commands', () => {
     expect(f.db.pluck<string>('SELECT last_compaction_id FROM chat_v2_sessions WHERE id = ?1',
       ['sess_settings_compaction_stamp'])).toBe(record.id);
   });
+
+  it('S4-02 archives session to SQLite persist_status=archived, excludes from active inbox, lists under archived, and restores cleanly', async () => {
+    seedSession('sess_arch_1');
+    seedSession('sess_arch_2');
+
+    expect(await host.invoke<number>('chat_v2_count_sessions', { status: 'active' })).toBe(2);
+    await expect(host.invoke('chat_v2_archive_session', { sessionId: 'sess_arch_1' })).resolves.toBeNull();
+
+    expect(getSession(f.db, 'sess_arch_1')!.persistStatus).toBe('archived');
+    expect(f.db.pluck<string>('SELECT persist_status FROM chat_v2_sessions WHERE id = ?1', ['sess_arch_1'])).toBe('archived');
+
+    const activeList = await host.invoke<ChatSession[]>('chat_v2_list_sessions', { status: 'active' });
+    const archivedList = await host.invoke<ChatSession[]>('chat_v2_list_sessions', { status: 'archived' });
+    expect(activeList.map(s => s.id)).toEqual(['sess_arch_2']);
+    expect(archivedList.map(s => s.id)).toEqual(['sess_arch_1']);
+    expect(await host.invoke<number>('chat_v2_count_sessions', { status: 'active' })).toBe(1);
+
+    const restored = await host.invoke<ChatSession>('chat_v2_restore_session', { sessionId: 'sess_arch_1' });
+    expect(restored.persistStatus).toBe('active');
+    expect(await host.invoke<number>('chat_v2_count_sessions', { status: 'active' })).toBe(2);
+    expect((await host.invoke<ChatSession[]>('chat_v2_list_sessions', { status: 'archived' })).map(s => s.id)).toEqual([]);
+  });
 });

@@ -388,21 +388,30 @@ export const useWindowStore = create<WorkbenchStoreState>((set, get) => ({
     set((s) => {
       const win = s.windows[id];
       if (!win) return s;
-      // 已是焦点窗（栈顶且未最小化）→ no-op：不 bump zIndex、不产生新对象，
-      // 消除点击焦点窗内容时的重渲染 / 快照防抖 / zIndex 跳变（焦点切换平滑核心）
-      if (!win.minimized && s.focusStack[s.focusStack.length - 1] === id) return s;
+      const currentPhase = s.transientPhases?.[id];
+      const stuckClosingOrMinimizing =
+        currentPhase === 'closing' || currentPhase === 'minimizing';
+      // 已是焦点窗（栈顶且未最小化且未处于 closing/minimizing 相位）→ no-op
+      if (!win.minimized && !stuckClosingOrMinimizing && s.focusStack[s.focusStack.length - 1] === id) {
+        return s;
+      }
       const wasMinimized = win.minimized;
       const windows = maybeCompactZ({
         ...s.windows,
         [id]: { ...win, zIndex: ++zTop, minimized: false, lastFocusedAt: Date.now() },
       });
+      let transientPhases = s.transientPhases;
+      if (wasMinimized || currentPhase === 'minimizing') {
+        transientPhases = { ...s.transientPhases, [id]: 'restoring' as WindowTransientPhase };
+      } else if (currentPhase === 'closing') {
+        const { [id]: _removed, ...rest } = s.transientPhases ?? {};
+        transientPhases = rest;
+      }
       return {
         windows,
         focusStack: deriveFocusStack(windows),
-        // 反最小化时给 O9 恢复动画标记
-        transientPhases: wasMinimized
-          ? { ...s.transientPhases, [id]: 'restoring' as WindowTransientPhase }
-          : s.transientPhases,
+        // 反最小化/打断最小化时给 O9 恢复动画标记；打断关闭则清除 closing 相位
+        transientPhases,
       };
     });
   },

@@ -463,9 +463,14 @@ describe('CloudStorageSection cloud UI guarantees', () => {
       resolve(process.cwd(), 'src/features/settings/components/data-governance/BackupTab.tsx'),
       'utf-8',
     );
-    const importStart = backupTabSource.indexOf('const handleImportConfirm');
-    const importEnd = backupTabSource.indexOf('return (', importStart);
-    const importBlock = backupTabSource.slice(importStart, importEnd);
+    const importDialogSource = readFileSync(
+      resolve(process.cwd(), 'src/features/settings/components/data-governance/BackupImportDialog.tsx'),
+      'utf-8',
+    );
+    const importStart = importDialogSource.indexOf('const handleImportConfirm');
+    const importEnd = importDialogSource.indexOf('return (', importStart);
+    const importBlock = importDialogSource.slice(importStart, importEnd);
+    expect(backupTabSource).toContain('<BackupImportDialog');
     expect(importStart).toBeGreaterThan(-1);
     expect(importBlock).not.toContain('validateOptionalPassword');
     // 导出（新设密文）仍保留校验

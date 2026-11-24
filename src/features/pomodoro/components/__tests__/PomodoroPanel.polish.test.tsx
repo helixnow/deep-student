@@ -151,4 +151,45 @@ describe('PomodoroPanel tactile & keyboard UX polish', () => {
     expect(badge).toHaveTextContent('/4');
     expect(screen.getByText('pomodoro.stats.goalReached')).toBeInTheDocument();
   });
+
+  it('S4-10: collapses PomodoroPanel into a compact bridge when a visible PomodoroAppWindow is open and formats <60s durations accurately', async () => {
+    const { useWindowStore } = await import('@/features/workbench/core/windowStore');
+    const { formatFocusDisplay, formatFocusTooltip } = await import('@/features/pomodoro/utils/focusDuration');
+
+    const fakeT = ((key: string, opts?: Record<string, unknown>) =>
+      `${key}:${JSON.stringify(opts ?? {})}`) as unknown as Parameters<typeof formatFocusDisplay>[1];
+    expect(formatFocusDisplay(45, fakeT, 'pomodoro.stats')).toContain('"value":45');
+    expect(formatFocusTooltip(95, fakeT, 'pomodoro.stats')).toContain('"minutes":1,"seconds":35');
+
+    useWindowStore.setState({
+      windows: {
+        'w-pomo': {
+          id: 'w-pomo',
+          typeId: 'pomodoro',
+          instanceKey: 'pomodoro',
+          title: '番茄钟',
+          frame: { x: 40, y: 40, w: 380, h: 560 },
+          restoreFrame: null,
+          displayMode: 'floating',
+          zIndex: 10,
+          minimized: false,
+          lifecycle: 'active',
+          createdAt: 1,
+          lastFocusedAt: 1,
+        },
+      },
+      focusStack: ['w-pomo'],
+    });
+
+    usePomodoroStore.setState({
+      mode: 'work',
+      status: 'running',
+      timeLeft: 1400,
+    });
+
+    render(<PomodoroPanel />);
+    expect(screen.getByTestId('pomodoro-panel-host-bridge')).toBeInTheDocument();
+    expect(screen.getByTestId('pomodoro-panel-focus-window')).toBeInTheDocument();
+    useWindowStore.setState({ windows: {}, focusStack: [] });
+  });
 });

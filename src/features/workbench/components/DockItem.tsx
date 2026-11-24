@@ -31,6 +31,7 @@ import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { appRegistry } from '../core/appRegistry';
 import { subscribeAppBadgeChanged } from '../core/badgeBus';
 import { useWindowStore } from '../core/windowStore';
+import { recomputeLifecycles } from '../core/scheduler';
 import { useWorkbenchOverlay } from '../core/shortcuts';
 import { getSortedWindows } from '../core/windowListCache';
 import { workbenchBus } from '../core/workbenchBus';
@@ -351,6 +352,8 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
       if (wasExposeOpen) {
         overlayState.closeExpose();
       }
+      overlayState.closeSwitcher?.();
+      overlayState.closeCheatsheet?.();
       const state = useWindowStore.getState();
       const current = Object.values(state.windows)
         .filter((w) => w.typeId === typeId)
@@ -364,6 +367,11 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
           ? badge.value
           : 0;
       const duePayload = { screen: 'session', mode: 'due' } as const;
+      const isSingletonWorkspace =
+        def?.instanceMode === 'single'
+        || typeId === 'essay'
+        || typeId === 'exam'
+        || typeId === 'translation';
 
       if (current.length === 0) {
         if (dueBadgeCount > 0) {
@@ -386,7 +394,7 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
         });
         return;
       }
-      if (current.length === 1) {
+      if (current.length === 1 || isSingletonWorkspace) {
         // 有到期角标时：热启动也进入 due 复习，而不是只 focus/minimize
         if (dueBadgeCount > 0) {
           void workbenchBus.activate({
@@ -402,12 +410,28 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
           });
           return;
         }
-        const win = current[0];
+        const win = isSingletonWorkspace && current.length > 1
+          ? [...current].sort((a, b) => {
+              const aVisible = !a.minimized && state.transientPhases?.[a.id] !== 'closing';
+              const bVisible = !b.minimized && state.transientPhases?.[b.id] !== 'closing';
+              if (aVisible !== bVisible) return aVisible ? -1 : 1;
+              return b.lastFocusedAt - a.lastFocusedAt;
+            })[0]
+          : current[0];
+        const phase = state.transientPhases?.[win.id];
         const topId = state.focusStack[state.focusStack.length - 1];
-        if (topId === win.id && !win.minimized && !appsOpen && !wasExposeOpen) {
+        if (
+          topId === win.id &&
+          !win.minimized &&
+          phase !== 'closing' &&
+          phase !== 'minimizing' &&
+          !appsOpen &&
+          !wasExposeOpen
+        ) {
           requestMinimizeAnimated(win.id);
         } else {
           state.focusWindow(win.id);
+          recomputeLifecycles();
         }
         return;
       }

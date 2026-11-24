@@ -6,6 +6,8 @@ import { DsButton } from '@/components/ui/DsButton';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   DndContext,
+  MouseSensor,
+  TouchSensor,
   pointerWithin,
   DragCancelEvent,
   DragEndEvent,
@@ -14,8 +16,14 @@ import {
   DragOverlay,
   UniqueIdentifier,
   useDroppable,
+  useSensor,
+  useSensors,
 } from '@dnd-kit/core';
-import { useTouchFriendlyDndSensors, SHELL_SAFE_AUTO_SCROLL } from '@/hooks/useTouchFriendlyDndSensors';
+import {
+  TOUCH_DRAG_DELAY_MS,
+  TOUCH_DRAG_TOLERANCE_PX,
+  SHELL_SAFE_AUTO_SCROLL,
+} from '@/hooks/useTouchFriendlyDndSensors';
 import type { DstuNode } from '@/dstu/types';
 import type { ViewMode } from '../../stores/finderStore';
 import { FinderFileItem, SortableFinderFileItem } from './FinderFileItem';
@@ -570,8 +578,16 @@ export function FinderFileList({
     handleMouseDown(e);
   }, [handleMouseDown]);
 
-  // DnD 传感器配置（N-9/DND-1: 触屏长按激活，避免与滚动/单击打开冲突）
-  const sensors = useTouchFriendlyDndSensors();
+  // DnD 传感器配置：禁用 @dnd-kit 默认 KeyboardSensor 对 Space 的劫持，
+  // 保留 Space 快捷键给访达 QuickLook 快速预览，列表键盘导航由下方 onKeyDown 负责。
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 8 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: TOUCH_DRAG_DELAY_MS, tolerance: TOUCH_DRAG_TOLERANCE_PX },
+    }),
+  );
 
   // ★ 列表模式虚拟滚动配置（行高与触屏 coarse 行高同源，见 listItemHeight）
   const listVirtualizer = useVirtualizer({

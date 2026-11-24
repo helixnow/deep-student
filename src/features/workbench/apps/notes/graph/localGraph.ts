@@ -43,6 +43,12 @@ export interface LocalGraphData {
   edges: LocalGraphEdgeDatum[];
   /** 命中节点/邻居预算，图不完整 */
   truncated: boolean;
+  /** 局部有向图中存在引用环路（至少包含 2 个节点的有向强连通分量） */
+  hasCycle?: boolean;
+  /** 参与引用环路的节点 ID 列表 */
+  cycleNodeIds?: string[];
+  /** 参与引用环路的有向边 ID 列表 */
+  cycleEdgeIds?: string[];
 }
 
 export interface LocalGraphNeighborhood {
@@ -65,16 +71,108 @@ export function ghostNodeId(title: string): string {
   return `ghost:${title.trim().toLocaleLowerCase()}`;
 }
 
-function undirectedEdgeKey(a: string, b: string): string {
-  return a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`;
+function directedEdgeKey(source: string, target: string): string {
+  return `${source}\u0000${target}`;
+}
+
+export interface DirectedCycleSummary {
+  hasCycle: boolean;
+  cycleNodeIds: string[];
+  cycleEdgeIds: string[];
+}
+
+/**
+ * 基于 Tarjan 有向强连通分量算法识别真实引用环路（忽略纯 DAG 合流，只标记闭环成员）。
+ */
+export function detectDirectedCycles(
+  edges: readonly LocalGraphEdgeDatum[],
+): DirectedCycleSummary {
+  const adjacency = new Map<string, LocalGraphEdgeDatum[]>();
+  const allNodes = new Set<string>();
+  for (const edge of edges) {
+    allNodes.add(edge.source);
+    allNodes.add(edge.target);
+    const list = adjacency.get(edge.source);
+    if (list) list.push(edge);
+    else adjacency.set(edge.source, [edge]);
+  }
+
+  let index = 0;
+  const indices = new Map<string, number>();
+  const lowlink = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const sccIdByNode = new Map<string, number>();
+  const cycleSccs = new Set<number>();
+  let nextSccId = 0;
+
+  const strongConnect = (v: string) => {
+    indices.set(v, index);
+    lowlink.set(v, index);
+    index += 1;
+    stack.push(v);
+    onStack.add(v);
+
+    for (const edge of adjacency.get(v) ?? []) {
+      const w = edge.target;
+      if (!indices.has(w)) {
+        strongConnect(w);
+        lowlink.set(v, Math.min(lowlink.get(v)!, lowlink.get(w)!));
+      } else if (onStack.has(w)) {
+        lowlink.set(v, Math.min(lowlink.get(v)!, indices.get(w)!));
+      }
+    }
+
+    if (lowlink.get(v) === indices.get(v)) {
+      const sccId = nextSccId++;
+      const members: string[] = [];
+      while (stack.length > 0) {
+        const w = stack.pop()!;
+        onStack.delete(w);
+        sccIdByNode.set(w, sccId);
+        members.push(w);
+        if (w === v) break;
+      }
+      if (members.length >= 2) {
+        cycleSccs.add(sccId);
+      } else if (members.length === 1) {
+        const selfId = members[0]!;
+        if ((adjacency.get(selfId) ?? []).some((e) => e.target === selfId)) {
+          cycleSccs.add(sccId);
+        }
+      }
+    }
+  };
+
+  for (const nodeId of allNodes) {
+    if (!indices.has(nodeId)) strongConnect(nodeId);
+  }
+
+  const cycleNodeIds = Array.from(allNodes).filter((id) => cycleSccs.has(sccIdByNode.get(id)!));
+  const cycleEdgeIds = edges
+    .filter((edge) => {
+      const srcScc = sccIdByNode.get(edge.source);
+      return srcScc !== undefined && srcScc === sccIdByNode.get(edge.target) && cycleSccs.has(srcScc);
+    })
+    .map((edge) => edge.id);
+
+  return {
+    hasCycle: cycleEdgeIds.length > 0,
+    cycleNodeIds,
+    cycleEdgeIds,
+  };
 }
 
 interface NeighborRef {
   id: string;
   title: string;
   exists: boolean;
-  /** 与展开源之间那条边的链接类型 */
-  kind: LocalGraphEdgeKind;
+  /** 存在 incoming 入链（ref -> self） */
+  hasInbound: boolean;
+  inboundKind: LocalGraphEdgeKind;
+  /** 存在 outgoing 出链（self -> ref） */
+  hasOutbound: boolean;
+  outboundKind: LocalGraphEdgeKind;
 }
 
 function edgeKindFromLinkType(linkType: string): LocalGraphEdgeKind {
@@ -83,62 +181,72 @@ function edgeKindFromLinkType(linkType: string): LocalGraphEdgeKind {
   return 'unknown';
 }
 
-/** 单个节点的邻居列表（入链优先、出链其后、幽灵最后），按预算截断。 */
+function mergeEdgeKind(prev: LocalGraphEdgeKind, next: LocalGraphEdgeKind): LocalGraphEdgeKind {
+  return prev === 'unknown' && next !== 'unknown' ? next : prev;
+}
+
+/** 单个节点的邻居列表（保留真实入链/出链方向；入链优先、出链其后、幽灵最后），按预算截断。 */
 function collectNeighbors(
   neighborhood: LocalGraphNeighborhood,
   selfId: string,
   limit: number,
   includeGhosts: boolean,
 ): { refs: NeighborRef[]; truncated: boolean } {
-  const seen = new Set<string>([selfId]);
+  const byId = new Map<string, NeighborRef>();
   const refs: NeighborRef[] = [];
   let truncated = false;
-  const push = (ref: NeighborRef) => {
-    if (seen.has(ref.id)) return;
-    seen.add(ref.id);
+
+  const upsertNeighbor = (
+    id: string,
+    title: string,
+    exists: boolean,
+    direction: 'inbound' | 'outbound',
+    kind: LocalGraphEdgeKind,
+  ) => {
+    if (id === selfId) return;
+    const existing = byId.get(id);
+    if (existing) {
+      if (direction === 'inbound') {
+        existing.hasInbound = true;
+        existing.inboundKind = mergeEdgeKind(existing.inboundKind, kind);
+      } else {
+        existing.hasOutbound = true;
+        existing.outboundKind = mergeEdgeKind(existing.outboundKind, kind);
+      }
+      return;
+    }
     if (refs.length >= limit) {
       truncated = true;
       return;
     }
+    const ref: NeighborRef = {
+      id,
+      title,
+      exists,
+      hasInbound: direction === 'inbound',
+      inboundKind: direction === 'inbound' ? kind : 'unknown',
+      hasOutbound: direction === 'outbound',
+      outboundKind: direction === 'outbound' ? kind : 'unknown',
+    };
+    byId.set(id, ref);
     refs.push(ref);
   };
 
-  // 入链行不带 linkType；双向链接时借用反向出链行的类型标注这条无向边
-  const outgoingKindById = new Map<string, LocalGraphEdgeKind>();
-  for (const row of neighborhood.outgoing) {
-    const id = row.targetId
-      ?? (row.targetTitle.trim() ? ghostNodeId(row.targetTitle) : null);
-    if (!id) continue;
-    const kind = edgeKindFromLinkType(row.linkType);
-    const previous = outgoingKindById.get(id);
-    if (!previous || (previous === 'unknown' && kind !== 'unknown')) {
-      outgoingKindById.set(id, kind);
-    }
-  }
-
   for (const row of neighborhood.backlinks) {
-    push({
-      id: row.sourceId,
-      title: row.sourceTitle,
-      exists: true,
-      kind: outgoingKindById.get(row.sourceId) ?? 'unknown',
-    });
+    upsertNeighbor(row.sourceId, row.sourceTitle, true, 'inbound', 'unknown');
   }
   for (const row of neighborhood.outgoing) {
+    const kind = edgeKindFromLinkType(row.linkType);
     if (row.targetId) {
-      push({
-        id: row.targetId,
-        title: row.targetTitle,
-        exists: true,
-        kind: outgoingKindById.get(row.targetId) ?? edgeKindFromLinkType(row.linkType),
-      });
+      upsertNeighbor(row.targetId, row.targetTitle, true, 'outbound', kind);
     } else if (includeGhosts && row.targetTitle.trim()) {
-      push({
-        id: ghostNodeId(row.targetTitle),
-        title: row.targetTitle.trim(),
-        exists: false,
-        kind: edgeKindFromLinkType(row.linkType),
-      });
+      upsertNeighbor(
+        ghostNodeId(row.targetTitle),
+        row.targetTitle.trim(),
+        false,
+        'outbound',
+        kind,
+      );
     }
   }
   return { refs, truncated };
@@ -161,10 +269,10 @@ export async function buildLocalGraph(
 
   const addEdge = (source: string, target: string, kind: LocalGraphEdgeKind) => {
     if (source === target) return;
-    const key = undirectedEdgeKey(source, target);
+    const key = directedEdgeKey(source, target);
     const existing = edgesByKey.get(key);
     if (existing) {
-      // 同一条无向边先由入链行（类型未知）引入、后被出链行看到时补全类型
+      // 同一条有向边先由入链行（类型未知）引入、后被源节点出链行看到时补全类型
       if (existing.kind === 'unknown' && kind !== 'unknown') existing.kind = kind;
       return;
     }
@@ -192,7 +300,10 @@ export async function buildLocalGraph(
   );
   truncated = truncated || centerNeighbors.truncated;
   for (const ref of centerNeighbors.refs) {
-    if (addNode(ref, 1)) addEdge(center.id, ref.id, ref.kind);
+    if (addNode(ref, 1)) {
+      if (ref.hasInbound) addEdge(ref.id, center.id, ref.inboundKind);
+      if (ref.hasOutbound) addEdge(center.id, ref.id, ref.outboundKind);
+    }
   }
 
   // ── 第 2 度：展开部分 1 度真实笔记 ────────────────────────────────
@@ -225,16 +336,22 @@ export async function buildLocalGraph(
       for (const neighbor of expansion.refs) {
         // 已在图中的节点只补边；新节点计为 2 度
         if (nodesById.has(neighbor.id) || addNode(neighbor, 2)) {
-          addEdge(ref.id, neighbor.id, neighbor.kind);
+          if (neighbor.hasInbound) addEdge(neighbor.id, ref.id, neighbor.inboundKind);
+          if (neighbor.hasOutbound) addEdge(ref.id, neighbor.id, neighbor.outboundKind);
         }
       }
     }
   }
 
+  const nodes = Array.from(nodesById.values());
+  const edges = Array.from(edgesByKey.values());
+  const cycles = detectDirectedCycles(edges);
+
   return {
-    nodes: Array.from(nodesById.values()),
-    edges: Array.from(edgesByKey.values()),
+    nodes,
+    edges,
     truncated,
+    ...cycles,
   };
 }
 

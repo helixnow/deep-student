@@ -1,5 +1,5 @@
 import i18n from 'i18next';
-import type { AttachmentMeta, Message } from '../types/message';
+import type { AttachmentMeta, Message, VariantStatus } from '../types/message';
 import type { Block, BlockType, BlockStatus } from '../types/block';
 import type { ContextRef } from '../../resources/types';
 import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
@@ -1116,52 +1116,139 @@ export function createMessageActions(
               });
             }
 
-            // 🔧 调试日志：记录清除块
+            // 🔧 调试日志：记录准备重新生成（单消息助手回复保留历史版本）
+            const isParallelRetry = (currentState.pendingParallelModelIds?.length ?? 0) >= 2;
+            const preserveVersion = message.role === 'assistant' && !isParallelRetry;
+            const hadExistingVariants = Boolean(message.variants && message.variants.length > 0);
+            const optimisticPendingVariantId = preserveVersion
+              ? `var_pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+              : null;
+
             logChatV2('message', 'store', 'retryMessage_clearing_blocks', {
               messageId,
               originalBlockIds,
               count: originalBlockIds.length,
+              preserveVersion,
             }, 'info', { messageId });
 
             set((s) => {
               const newMessageMap = new Map(s.messageMap);
               const newBlocks = new Map(s.blocks);
+              const newStreamingVariantIds = new Set(s.streamingVariantIds);
 
-              // 清空原消息的块列表
               const originalMessage = newMessageMap.get(messageId);
               if (originalMessage) {
-                newMessageMap.set(messageId, {
-                  ...originalMessage,
-                  blockIds: [], // 清空块列表，准备接收新内容
-                  _meta: {
-                    ...originalMessage._meta,
-                  // 🔧 三轮修复：_meta.modelId 使用 resolvedModelDisplayName 而非 resolvedModelId
-                  // resolvedModelId 可能是配置 UUID，resolvedModelDisplayName 是可显示的模型名称
-                  modelId: resolvedModelDisplayName || resolvedModelId,
-                  modelDisplayName: resolvedModelDisplayName,
-                    chatParams: { ...currentState.chatParams },
-                  },
-                });
-              }
+                const nextMeta = { ...originalMessage._meta };
+                delete nextMeta.stoppedByUser;
+                // 🔧 三轮修复：_meta.modelId 使用 resolvedModelDisplayName 而非 resolvedModelId
+                // resolvedModelId 可能是配置 UUID，resolvedModelDisplayName 是可显示的模型名称
+                nextMeta.modelId = resolvedModelDisplayName || resolvedModelId;
+                nextMeta.modelDisplayName = resolvedModelDisplayName;
+                nextMeta.chatParams = { ...currentState.chatParams };
 
-              // 从 blocks Map 中删除原消息的块
-              for (const blockId of originalBlockIds) {
-                newBlocks.delete(blockId);
+                if (preserveVersion && optimisticPendingVariantId) {
+                  const baseVariants = originalMessage.variants && originalMessage.variants.length > 0
+                    ? originalMessage.variants.map((v) => ({
+                        ...v,
+                        meta: { ...v.meta, versioned: true },
+                      }))
+                    : [
+                        {
+                          id: `var_v1_${messageId}`,
+                          modelId: originalMessage._meta?.modelId || resolvedModelDisplayName || resolvedModelId || 'default',
+                          blockIds: [...originalMessage.blockIds],
+                          status: (originalMessage._meta?.stoppedByUser ? 'cancelled' : 'success') as VariantStatus,
+                          ...(originalMessage._meta?.usage ? { usage: originalMessage._meta.usage } : {}),
+                          createdAt: originalMessage.timestamp,
+                          meta: { versioned: true },
+                        },
+                      ];
+                  const nextVariant = {
+                    id: optimisticPendingVariantId,
+                    modelId: resolvedModelDisplayName || resolvedModelId || 'default',
+                    blockIds: [],
+                    status: 'streaming' as VariantStatus,
+                    createdAt: Date.now(),
+                    meta: { versioned: true },
+                  };
+                  newStreamingVariantIds.add(optimisticPendingVariantId);
+                  newMessageMap.set(messageId, {
+                    ...originalMessage,
+                    blockIds: [],
+                    variants: [...baseVariants, nextVariant],
+                    activeVariantId: optimisticPendingVariantId,
+                    _meta: nextMeta,
+                  });
+                } else {
+                  newMessageMap.set(messageId, {
+                    ...originalMessage,
+                    blockIds: [], // 清空块列表，准备接收新内容
+                    _meta: nextMeta,
+                  });
+                  for (const blockId of originalBlockIds) {
+                    newBlocks.delete(blockId);
+                  }
+                }
               }
 
               return {
                 messageMap: newMessageMap,
                 blocks: newBlocks,
+                streamingVariantIds: newStreamingVariantIds,
                 currentStreamingMessageId: messageId, // 使用原消息 ID
               };
             });
 
-            console.log('[ChatStore] retryMessage: Cleared blocks for message:', messageId, 'preparing for regeneration');
+            console.log('[ChatStore] retryMessage: Prepared message for regeneration:', messageId, { preserveVersion });
 
             // 调用重试回调（由 TauriAdapter 提供）
             // 🆕 P1 状态同步修复: 接收完整的 RetryMessageResult
             const result = await retryCallback(messageId, modelOverride);
             const returnedMessageId = result.messageId;
+
+            if (preserveVersion && optimisticPendingVariantId) {
+              set((s) => {
+                const msg = s.messageMap.get(messageId);
+                if (!msg?.variants) return {};
+                const newMessageMap = new Map(s.messageMap);
+                const newBlocks = new Map(s.blocks);
+                const newStreamingVariantIds = new Set(s.streamingVariantIds);
+                newStreamingVariantIds.delete(optimisticPendingVariantId);
+
+                if (result.newVariantId) {
+                  newStreamingVariantIds.add(result.newVariantId);
+                  const swappedVariants = msg.variants.map((v) =>
+                    v.id === optimisticPendingVariantId
+                      ? { ...v, id: result.newVariantId! }
+                      : v,
+                  );
+                  newMessageMap.set(messageId, {
+                    ...msg,
+                    variants: swappedVariants,
+                    activeVariantId:
+                      msg.activeVariantId === optimisticPendingVariantId
+                        ? result.newVariantId
+                        : msg.activeVariantId,
+                  });
+                } else if (!hadExistingVariants) {
+                  // Legacy test/mock callback without newVariantId: clean destructive fallback
+                  for (const blockId of originalBlockIds) {
+                    newBlocks.delete(blockId);
+                  }
+                  newMessageMap.set(messageId, {
+                    ...msg,
+                    variants: undefined,
+                    activeVariantId: undefined,
+                  });
+                }
+
+                return {
+                  messageMap: newMessageMap,
+                  blocks: newBlocks,
+                  streamingVariantIds: newStreamingVariantIds,
+                };
+              });
+            }
             
             // 验证返回的 ID 与原消息 ID 一致
             if (returnedMessageId && returnedMessageId !== messageId) {

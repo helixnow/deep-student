@@ -120,6 +120,34 @@ interface CachedMagEntry {
 // Dock
 // ---------------------------------------------------------------------------
 
+const DOCK_COMPACT_COLLAPSED_STORAGE_KEY = 'wb.dock.compactCollapsed';
+const WORKBENCH_ACTIVE_SESSION_STORAGE_KEY = 'ds.workbench.activeSession';
+
+function hasPersistedCompactDockCollapse(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return (
+      window.sessionStorage?.getItem(DOCK_COMPACT_COLLAPSED_STORAGE_KEY) === '1' ||
+      window.sessionStorage?.getItem(WORKBENCH_ACTIVE_SESSION_STORAGE_KEY) === '1'
+    );
+  } catch {
+    return false;
+  }
+}
+
+function writePersistedCompactDockCollapse(collapsed: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    if (collapsed) {
+      window.sessionStorage?.setItem(DOCK_COMPACT_COLLAPSED_STORAGE_KEY, '1');
+    } else {
+      window.sessionStorage?.removeItem(DOCK_COMPACT_COLLAPSED_STORAGE_KEY);
+    }
+  } catch {
+    // 隐私模式/受限环境忽略存储异常
+  }
+}
+
 function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   const { t } = useTranslation();
   useRegistryVersion();
@@ -131,7 +159,8 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   const appsPanelOpen = useAppsPanelOpen();
   const immersiveWindowId = useImmersiveWindowId();
   const composerDockHeight = useComposerDockHeight();
-  const [isCompactViewport, setIsCompactViewport] = React.useState(() =>
+  const desktopWidth = useWindowStore((s) => s.desktopSize.w);
+  const [mqlCompactViewport, setMqlCompactViewport] = React.useState(() =>
     typeof window !== 'undefined' && typeof window.matchMedia === 'function'
       ? Boolean(window.matchMedia('(max-width: 640px)')?.matches)
       : false,
@@ -140,7 +169,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
     const mql = window.matchMedia('(max-width: 640px)');
     if (!mql) return undefined;
-    const syncViewport = () => setIsCompactViewport(Boolean(mql.matches));
+    const syncViewport = () => setMqlCompactViewport(Boolean(mql.matches));
     syncViewport();
     if (typeof mql.addEventListener === 'function') {
       mql.addEventListener('change', syncViewport);
@@ -148,6 +177,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     }
     return undefined;
   }, []);
+  const isCompactViewport = mqlCompactViewport || (desktopWidth > 0 && desktopWidth <= 640);
 
   const [isTypingInComposer, setIsTypingInComposer] = React.useState(false);
   const composerBlurTimerRef = React.useRef(0);
@@ -207,11 +237,28 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   const hasOpenWindow = useWindowStore((s) =>
     Object.values(s.windows).some((w) => !w.minimized),
   );
+  const [compactCollapsedPersisted, setCompactCollapsedPersisted] = React.useState(() =>
+    hasPersistedCompactDockCollapse(),
+  );
+  const hadOpenWindowRef = React.useRef(hasOpenWindow);
+  React.useEffect(() => {
+    const prevOpen = hadOpenWindowRef.current;
+    hadOpenWindowRef.current = hasOpenWindow;
+    if (!isCompactViewport) return;
+    if (hasOpenWindow) {
+      setCompactCollapsedPersisted(true);
+      writePersistedCompactDockCollapse(true);
+    } else if (prevOpen) {
+      setCompactCollapsedPersisted(false);
+      writePersistedCompactDockCollapse(false);
+    }
+  }, [isCompactViewport, hasOpenWindow]);
+
   const effectiveAutohide =
     autohide ||
     Boolean(immersiveWindowId) ||
     isTypingInComposer ||
-    (isCompactViewport && hasOpenWindow);
+    (isCompactViewport && (hasOpenWindow || compactCollapsedPersisted));
   const pinned = useDockPinned();
   const tier = useMaterialTier();
   const {
@@ -406,11 +453,17 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
 
   const revealDock = React.useCallback(
     (viaClick = false) => {
-      if (viaClick) clickRevealedRef.current = true;
+      if (viaClick) {
+        clickRevealedRef.current = true;
+        if (isCompactViewport && !hasOpenWindow) {
+          setCompactCollapsedPersisted(false);
+          writePersistedCompactDockCollapse(false);
+        }
+      }
       if (!revealedRef.current) setRevealing(true);
       updateRevealed(true);
     },
-    [updateRevealed],
+    [hasOpenWindow, isCompactViewport, updateRevealed],
   );
 
   const clearAutohideTimers = React.useCallback(() => {
@@ -447,8 +500,12 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
       clickRevealedRef.current = false;
       setRevealing(false);
       updateRevealed(false);
+      if (isCompactViewport) {
+        setCompactCollapsedPersisted(true);
+        writePersistedCompactDockCollapse(true);
+      }
     }, 150);
-  }, [updateRevealed]);
+  }, [isCompactViewport, updateRevealed]);
 
   React.useEffect(() => {
     clearAutohideTimers();
@@ -481,8 +538,12 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
       clearAutohideTimers();
       setRevealing(false);
       updateRevealed(false);
+      if (isCompactViewport) {
+        setCompactCollapsedPersisted(true);
+        writePersistedCompactDockCollapse(true);
+      }
     },
-    [clearAutohideTimers, updateRevealed],
+    [clearAutohideTimers, isCompactViewport, updateRevealed],
   );
   useEventRegistry(
     effectiveAutohide && revealed
@@ -783,6 +844,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
       data-immersive={immersiveWindowId ? 'true' : undefined}
       data-compact-typing={isTypingInComposer ? 'true' : undefined}
       data-compact-window={isCompactViewport && hasOpenWindow ? 'true' : undefined}
+      data-compact-collapsed={isCompactViewport && compactCollapsedPersisted ? 'true' : undefined}
       style={{ zIndex: 'var(--wb-z-dock)' }}
     >
       {effectiveAutohide && (

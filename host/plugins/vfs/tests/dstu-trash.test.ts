@@ -266,4 +266,53 @@ describe('dstu trash commands', { timeout: 60_000 }, () => {
       metadata: { srcLang: 'en', tgtLang: 'zh' } });
     expect(host.eventsNamed('dstu:change').at(-1)).toMatchObject({ type: 'restored', path, node: restored });
   });
+
+  it('S5-14: rebuilds contentless notes_fts and VACUUMs vfs.db on hard purge leaving zero canary bytes on disk', async () => {
+    const keepTitle = 'KEEP_VISIBLE_TITLE_S514';
+    const keepBody = 'KEEP_VISIBLE_BODY_S514';
+    const canaryTitle = 'CANARY_PURGED_TITLE_S514';
+    const canaryBody = 'CANARY_PURGED_BODY_S514';
+    const canaryBulkTitle = 'CANARY_EMPTY_TRASH_TITLE_S514';
+    const canaryBulkBody = 'CANARY_EMPTY_TRASH_BODY_S514';
+    const canaryAllTitle = 'CANARY_PURGE_ALL_TITLE_S514';
+    const canaryAllBody = 'CANARY_PURGE_ALL_BODY_S514';
+
+    const kept = await createNote(keepTitle, keepBody);
+    const purgedSingle = await createNote(canaryTitle, canaryBody);
+    const purgedEmptyTrash = await createNote(canaryBulkTitle, canaryBulkBody);
+    const purgedAll = await createNote(canaryAllTitle, canaryAllBody);
+
+    expect(
+      conn.all<{ rowid: number }>("SELECT rowid FROM notes_fts WHERE notes_fts MATCH 'CANARY_PURGED_TITLE_S514'"),
+    ).toHaveLength(1);
+
+    await invoke('dstu_soft_delete', { id: purgedSingle.id, itemType: 'note' });
+    await invoke('dstu_permanently_delete', { id: purgedSingle.id, itemType: 'note' });
+
+    await invoke('dstu_soft_delete', { id: purgedEmptyTrash.id, itemType: 'note' });
+    await invoke('dstu_empty_trash', { itemTypes: ['note'] });
+
+    await invoke('dstu_soft_delete', { id: purgedAll.id, itemType: 'note' });
+    await invoke('dstu_purge_all', { resourceType: 'notes' });
+
+    conn.checkpoint('TRUNCATE');
+    const vfsDbPath = storage.pathOf('vfs');
+    const rawDiskBytes = fs.readFileSync(vfsDbPath);
+    for (const secret of [
+      canaryTitle,
+      canaryBody,
+      canaryBulkTitle,
+      canaryBulkBody,
+      canaryAllTitle,
+      canaryAllBody,
+    ]) {
+      expect(rawDiskBytes.includes(Buffer.from(secret, 'utf8'))).toBe(false);
+    }
+
+    expect(
+      conn.all<{ id: string }>(
+        "SELECT n.id FROM notes_fts JOIN notes n ON n.rowid = notes_fts.rowid WHERE notes_fts MATCH 'KEEP_VISIBLE_BODY_S514' AND n.deleted_at IS NULL",
+      ),
+    ).toEqual([{ id: kept.id }]);
+  });
 });

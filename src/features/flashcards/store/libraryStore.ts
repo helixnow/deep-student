@@ -84,7 +84,7 @@ interface FlashcardsLibraryState {
   clearActionError: () => void;
   load: (query?: string, page?: number) => Promise<boolean>;
   refresh: () => Promise<boolean>;
-  submitSearch: (query?: string) => Promise<boolean>;
+  submitSearch: (query?: string, options?: { force?: boolean }) => Promise<boolean>;
   goToPage: (page: number) => Promise<boolean>;
   setPageSize: (pageSize: number) => Promise<boolean>;
   enqueueCard: (cardId: string) => Promise<boolean>;
@@ -381,8 +381,21 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
 
     refresh: () => get().load(get().query, get().page),
 
-    submitSearch: (query = get().searchInput) => {
+    submitSearch: (query = get().searchInput, options) => {
       const normalizedQuery = query.trim();
+      const current = get();
+      if (
+        !options?.force
+        && normalizedQuery === current.query
+        && current.page === 1
+        && current.loaded
+        && !current.loadError
+      ) {
+        if (current.searchInput !== query) {
+          set({ searchInput: query });
+        }
+        return Promise.resolve(false);
+      }
       set({ searchInput: query, query: normalizedQuery, page: 1, actionError: null });
       return get().load(normalizedQuery, 1);
     },

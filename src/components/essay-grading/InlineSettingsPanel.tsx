@@ -52,6 +52,9 @@ import {
   saveBuiltinOverride,
   resetBuiltinMode,
   recommendedGradeLevelForMode,
+  deleteLocalCustomMode,
+  isLocalCustomModeId,
+  saveLocalCustomMode,
 } from '@/essay-grading/essayGradingApi';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -197,6 +200,13 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
   // 折叠区展开状态
   const [editorExpanded, setEditorExpanded] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
+  // Section 1 内联自定义标准创建/编辑态（持久化至 localStorage）
+  const [customRubricOpen, setCustomRubricOpen] = useState(false);
+  const [editingLocalRubricId, setEditingLocalRubricId] = useState<string | null>(null);
+  const [customRubricName, setCustomRubricName] = useState('');
+  const [customRubricTotal, setCustomRubricTotal] = useState('100');
+  const [customRubricPrompt, setCustomRubricPrompt] = useState('');
+  const [customRubricError, setCustomRubricError] = useState<string | null>(null);
   // 二段式确认（删除/重置），3 秒自动复位
   const [pendingConfirm, setPendingConfirm] = useState<ConfirmableAction | null>(null);
   const confirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -230,6 +240,12 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
     setShowValidation(false);
     setEditorExpanded(false);
     setPromptExpanded(false);
+    setCustomRubricOpen(false);
+    setEditingLocalRubricId(null);
+    setCustomRubricName('');
+    setCustomRubricTotal('100');
+    setCustomRubricPrompt('');
+    setCustomRubricError(null);
     setPendingConfirm(null);
     setPromptJustSaved(false);
     setDragArmedIndex(null);
@@ -418,8 +434,13 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
     setIsLoading(true);
     setError(null);
     try {
-      await deleteCustomMode(mode.id);
-      showGlobalNotification('success', t('settings:gradingMode.successDeleted'));
+      if (isLocalCustomModeId(mode.id)) {
+        deleteLocalCustomMode(mode.id);
+        showGlobalNotification('success', t('essay_grading:settings_panel.custom_rubric_deleted'));
+      } else {
+        await deleteCustomMode(mode.id);
+        showGlobalNotification('success', t('settings:gradingMode.successDeleted'));
+      }
       onModesChange?.();
 
       if (mode.id === modeId) {
@@ -432,6 +453,53 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
       setIsLoading(false);
     }
   }, [modes, modeId, setModeId, onModesChange, t]);
+
+  const handleOpenCustomRubricEditor = useCallback((existingMode?: GradingMode) => {
+    if (existingMode && isLocalCustomModeId(existingMode.id)) {
+      setEditingLocalRubricId(existingMode.id);
+      setCustomRubricName(existingMode.name);
+      setCustomRubricTotal(String(existingMode.total_max_score || 100));
+      setCustomRubricPrompt(existingMode.system_prompt || '');
+    } else {
+      setEditingLocalRubricId(null);
+      setCustomRubricName('');
+      setCustomRubricTotal(String(currentMode?.total_max_score || 100));
+      setCustomRubricPrompt('');
+    }
+    setCustomRubricError(null);
+    setCustomRubricOpen(true);
+  }, [currentMode]);
+
+  const handleSaveLocalCustomRubric = useCallback(() => {
+    const trimmedName = customRubricName.trim();
+    const trimmedPrompt = customRubricPrompt.trim();
+    if (!trimmedName) {
+      setCustomRubricError(t('essay_grading:settings_panel.custom_rubric_name_required'));
+      return;
+    }
+    if (!trimmedPrompt) {
+      setCustomRubricError(t('essay_grading:settings_panel.custom_rubric_prompt_required'));
+      return;
+    }
+    const parsedScore = Number(customRubricTotal);
+    const totalMaxScore = Number.isFinite(parsedScore) && parsedScore > 0 ? parsedScore : 100;
+    const saved = saveLocalCustomMode({
+      id: editingLocalRubricId ?? undefined,
+      name: trimmedName,
+      description: trimmedPrompt.length > 80 ? `${trimmedPrompt.slice(0, 80)}…` : trimmedPrompt,
+      system_prompt: trimmedPrompt,
+      total_max_score: totalMaxScore,
+    });
+    onModesChange?.();
+    setModeId(saved.id);
+    setCustomRubricOpen(false);
+    setEditingLocalRubricId(null);
+    setCustomRubricError(null);
+    showGlobalNotification(
+      'success',
+      t('essay_grading:settings_panel.custom_rubric_saved', { name: saved.name }),
+    );
+  }, [customRubricName, customRubricPrompt, customRubricTotal, editingLocalRubricId, onModesChange, setModeId, t]);
 
   /** 第一次点击进入待确认态（3 秒自动复位），第二次点击执行 */
   const handleConfirmableClick = useCallback((action: ConfirmableAction, mode: GradingMode) => {
@@ -618,6 +686,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                       key={mode.id}
                       variant="ghost"
                       size="sm"
+                      data-testid={`essay-mode-chip-${mode.id}`}
                       onClick={() => handleModeSwitch(mode.id)}
                       disabled={isGrading}
                       aria-pressed={mode.id === modeId}
@@ -627,17 +696,154 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                       {getModeDisplayName(mode, t)}
                     </DsButton>
                   ))}
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    data-testid="essay-custom-rubric-trigger"
+                    onClick={() => {
+                      if (customRubricOpen) {
+                        setCustomRubricOpen(false);
+                      } else {
+                        handleOpenCustomRubricEditor();
+                      }
+                    }}
+                    disabled={isGrading}
+                    aria-expanded={customRubricOpen}
+                    className={choiceChipClassName(customRubricOpen)}
+                  >
+                    <Plus size={12} />
+                    {t('essay_grading:settings_panel.custom_rubric')}
+                  </DsButton>
                 </div>
+
+                {customRubricOpen && (
+                  <div
+                    data-testid="essay-custom-rubric-editor"
+                    className="mt-2 space-y-2.5 rounded-md border border-border/50 bg-muted/20 p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-foreground">
+                        {t('essay_grading:settings_panel.custom_rubric')}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setCustomRubricOpen(false)}
+                        aria-label={t('essay_grading:actions.cancel')}
+                        className="text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        {t('essay_grading:actions.cancel')}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_92px]">
+                      <div className="space-y-1">
+                        <label className="block text-[11px] text-muted-foreground">
+                          {t('essay_grading:settings_panel.custom_rubric_name')}
+                        </label>
+                        <Input
+                          value={customRubricName}
+                          onChange={(e) => setCustomRubricName(e.target.value)}
+                          placeholder={t('essay_grading:settings_panel.custom_rubric_name_placeholder')}
+                          data-testid="custom-rubric-name-input"
+                          className="h-8 text-xs"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="block text-[11px] text-muted-foreground">
+                          {t('essay_grading:settings_panel.custom_rubric_total')}
+                        </label>
+                        <Input
+                          type="number"
+                          min={1}
+                          max={1000}
+                          value={customRubricTotal}
+                          onChange={(e) => setCustomRubricTotal(e.target.value)}
+                          data-testid="custom-rubric-score-input"
+                          className="h-8 text-xs tabular-nums"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[11px] text-muted-foreground">
+                        {t('essay_grading:settings_panel.custom_rubric_prompt')}
+                      </label>
+                      <Textarea
+                        value={customRubricPrompt}
+                        onChange={(e) => setCustomRubricPrompt(e.target.value)}
+                        placeholder={t('essay_grading:settings_panel.custom_rubric_prompt_placeholder')}
+                        data-testid="custom-rubric-prompt-input"
+                        className="min-h-[84px] text-xs"
+                      />
+                    </div>
+                    {customRubricError && (
+                      <div role="alert" className="flex items-center gap-1.5 text-xs text-destructive">
+                        <WarningCircle size={13} className="shrink-0" />
+                        <span>{customRubricError}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-end gap-2">
+                      <DsButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setCustomRubricOpen(false)}
+                        className="text-xs [@media(pointer:coarse)]:!min-h-11"
+                      >
+                        {t('essay_grading:actions.cancel')}
+                      </DsButton>
+                      <DsButton
+                        variant="primary"
+                        size="sm"
+                        onClick={handleSaveLocalCustomRubric}
+                        data-testid="custom-rubric-save-button"
+                        className="text-xs [@media(pointer:coarse)]:!min-h-11"
+                      >
+                        <Check size={13} />
+                        {t('essay_grading:settings_panel.custom_rubric_save')}
+                      </DsButton>
+                    </div>
+                  </div>
+                )}
 
                 {/* 当前模式摘要卡（分制 + 维度） */}
                 {currentMode && (
                   <div className="ui-state-colors mt-1.5 space-y-2 rounded-md border border-primary/30 bg-primary/10 p-3">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium text-foreground/90">{getModeDisplayName(currentMode, t)}</span>
-                      {currentMode.is_builtin && (
+                      {currentMode.is_builtin ? (
                         <Badge variant="secondary" className="h-4 bg-muted/80 px-1 text-[10px] font-normal text-muted-foreground">
                           {t('settings:gradingMode.badgeBuiltin')}
                         </Badge>
+                      ) : isLocalCustomModeId(currentMode.id) ? (
+                        <Badge variant="secondary" className="h-4 bg-primary/15 px-1 text-[10px] font-normal text-primary">
+                          {t('essay_grading:settings_panel.custom_rubric_badge')}
+                        </Badge>
+                      ) : null}
+                      {isLocalCustomModeId(currentMode.id) && !isGrading && (
+                        <div className="flex items-center gap-1">
+                          <DsButton
+                            variant="ghost"
+                            size="icon"
+                            iconOnly
+                            onClick={() => handleOpenCustomRubricEditor(currentMode)}
+                            title={t('essay_grading:mode.edit')}
+                            aria-label={t('essay_grading:mode.edit')}
+                            data-testid="custom-rubric-edit-button"
+                            className="!h-6 !w-6 text-muted-foreground hover:text-foreground"
+                          >
+                            <Pencil size={12} />
+                          </DsButton>
+                          <DsButton
+                            variant="ghost"
+                            size="icon"
+                            iconOnly
+                            onClick={() => void executeDelete(currentMode)}
+                            title={t('common:delete', { defaultValue: '删除' })}
+                            aria-label={t('common:delete', { defaultValue: '删除' })}
+                            data-testid="custom-rubric-delete-button"
+                            className="!h-6 !w-6 text-muted-foreground hover:text-destructive"
+                          >
+                            <Trash size={12} />
+                          </DsButton>
+                        </div>
                       )}
                       <span className="ml-auto text-xs tabular-nums text-muted-foreground">
                         {t('settings:gradingMode.maxScore', { score: currentMode.total_max_score })}

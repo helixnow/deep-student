@@ -212,6 +212,7 @@ function applyTwoPaneSplit(
   leftWinId: string,
   rightWinId: string,
   defaultRatio: number,
+  focusTarget: 'left' | 'right' = 'right',
 ): void {
   const targetIds = new Set([leftWinId, rightWinId]);
   minimizeUnrelatedWindows(targetIds);
@@ -231,7 +232,7 @@ function applyTwoPaneSplit(
   const afterModes = useWindowStore.getState();
   afterModes.setTilingRatio(tilingPairKey(leftWinId, rightWinId), defaultRatio);
   afterModes.setTilingRatio('v', defaultRatio);
-  afterModes.focusWindow(rightWinId);
+  afterModes.focusWindow(focusTarget === 'left' ? leftWinId : rightWinId);
 }
 
 function applyThreePaneSplit(
@@ -240,6 +241,7 @@ function applyThreePaneSplit(
   bottomRightWinId: string,
   defaultRatio: number,
   hRightRatio: number,
+  focusTarget: 'left' | 'topRight' = 'topRight',
 ): void {
   const targetIds = new Set([leftWinId, topRightWinId, bottomRightWinId]);
   minimizeUnrelatedWindows(targetIds);
@@ -261,7 +263,7 @@ function applyThreePaneSplit(
   const afterModes = useWindowStore.getState();
   afterModes.setTilingRatio('v', defaultRatio);
   afterModes.setTilingRatio('h-right', hRightRatio);
-  afterModes.focusWindow(topRightWinId);
+  afterModes.focusWindow(focusTarget === 'left' ? leftWinId : topRightWinId);
 }
 
 function applyLeftStackRightHubSplit(
@@ -572,7 +574,7 @@ export async function applyStudyFlowStagePreset(
         })()
       : ensureAppWindow('chat');
 
-    applyThreePaneSplit(leftWinId, notesWinId, chatWinId, defaultRatio, 0.55);
+    applyThreePaneSplit(leftWinId, notesWinId, chatWinId, defaultRatio, 0.55, 'left');
     setStagePresetState('practice-correction', 'chat');
     saveSnapshot('layout');
     return {
@@ -594,7 +596,7 @@ export async function applyStudyFlowStagePreset(
       })()
     : ensureAppWindow('chat');
 
-  applyTwoPaneSplit(leftWinId, rightWinId, defaultRatio);
+  applyTwoPaneSplit(leftWinId, rightWinId, defaultRatio, 'left');
   setStagePresetState('practice-correction', null);
   saveSnapshot('layout');
   return {

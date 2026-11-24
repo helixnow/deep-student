@@ -176,13 +176,28 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
     [t],
   );
 
+  const activeRangeLabel = useMemo(
+    () => rangeOptions.find((option) => option.value === rangeDays)?.label ?? rangeDays,
+    [rangeDays, rangeOptions],
+  );
+
   const studyInsights = useMemo(() => {
     const now = new Date();
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (numericDays - 1));
     const startKey = formatLocalDateYmd(start);
-    const inRange = (heatmap.data ?? []).filter((item) => item.date >= startKey);
-    const studySeconds = inRange.reduce((sum, item) => sum + (item.studySeconds ?? 0), 0);
-    const activeDays = inRange.filter((item) => item.count > 0 || (item.studySeconds ?? 0) > 0).length;
+    const endKey = formatLocalDateYmd(now);
+    const inRange = (heatmap.data ?? []).filter(
+      (item) => item.date >= startKey && item.date <= endKey,
+    );
+    const activeDateSet = new Set<string>();
+    let studySeconds = 0;
+    for (const item of inRange) {
+      studySeconds += item.studySeconds ?? 0;
+      if (item.count > 0 || (item.studySeconds ?? 0) > 0) {
+        activeDateSet.add(item.date);
+      }
+    }
+    const activeDays = Math.min(numericDays, activeDateSet.size);
     const tStats = ((key: string, opts?: Record<string, unknown>) =>
       t(`stats:${key}`, opts as never)) as Parameters<typeof formatStudyDuration>[1];
     return {
@@ -192,10 +207,20 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
   }, [heatmap.data, numericDays, t]);
 
   const todoCompletion = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (numericDays - 1));
+    const startKey = formatLocalDateYmd(start);
+    const endKey = formatLocalDateYmd(now);
+    const trend = todoStats?.completionTrend ?? [];
+    const windowedCompleted = trend
+      .filter((entry) => entry.date >= startKey && entry.date <= endKey)
+      .reduce((sum, entry) => sum + (entry.completedCount ?? 0), 0);
     const completed =
       numericDays === 1
-        ? (todoStats?.completedToday ?? 0)
-        : (todoStats?.totalCompleted ?? 0);
+        ? (todoStats?.completedToday ?? windowedCompleted)
+        : trend.length > 0
+          ? windowedCompleted
+          : (todoStats?.totalCompleted ?? 0);
     const pending = todoStats?.totalPending ?? agenda.items.length;
     const total = completed + pending;
     const rate = total > 0 ? `${Math.round((completed / total) * 100)}%` : '0%';
@@ -235,7 +260,7 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
       <div className="wb-ai-dashboard-body">
         {ready ? (
           <WbSysFade>
-            <div className="wb-ai-dashboard-controls">
+            <div className="wb-ai-dashboard-controls flex flex-wrap items-center justify-between gap-2">
               <SegmentedControl<InsightRangeDays>
                 ariaLabel={t('generativeUi:workbench.dashboard.range_label')}
                 value={rangeDays}
@@ -243,9 +268,21 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
                 options={rangeOptions}
                 size="compact"
               />
+              <span
+                className="text-[11px] text-muted-foreground"
+                data-testid="wb-ai-dashboard-range-caption"
+              >
+                {t('generativeUi:workbench.dashboard.range_caption', {
+                  label: activeRangeLabel,
+                })}
+              </span>
             </div>
 
-            <div className="wb-ai-dashboard-insights" data-testid="wb-ai-dashboard-insights">
+            <div
+              className="wb-ai-dashboard-insights"
+              data-testid="wb-ai-dashboard-insights"
+              data-range={rangeDays}
+            >
               <div className="wb-ai-dashboard-insight-card">
                 <span className="wb-ai-dashboard-insight-label">
                   {t('generativeUi:workbench.dashboard.study_time_label')}

@@ -79,6 +79,8 @@ beforeEach(() => {
   closeAppsPanel();
   resetDockMagnificationForTests();
   localStorage.removeItem(AGENT_CONTROL_DISCOVERY_SEEN_KEY);
+  sessionStorage.removeItem('wb.dock.compactCollapsed');
+  sessionStorage.removeItem('ds.workbench.activeSession');
 });
 
 afterEach(() => {
@@ -817,5 +819,58 @@ describe('autohide', () => {
     expect(mobileBlock).toContain('overflow-x: auto;');
     expect(mobileBlock).toContain('scrollbar-width: none;');
     expect(mobileBlock).toContain('flex-shrink: 0;');
+  });
+
+  it('S4-17: 移动端（<= 640px）刷新重载在异步恢复完成前立即保持 Dock 收起态', () => {
+    const origMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query.includes('max-width: 640px'),
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+    try {
+      setDockPinned(['chat', 'files']);
+      // 模拟上一轮存在前台窗后触发 reload：window 尚未异步回放完成，仅会话标记存在
+      sessionStorage.setItem('wb.dock.compactCollapsed', '1');
+      sessionStorage.setItem('ds.workbench.activeSession', '1');
+
+      render(<Dock />);
+      const dock = screen.getByTestId('wb-dock');
+      expect(dock).toHaveAttribute('data-hidden', 'true');
+      expect(dock).toHaveAttribute('inert');
+    } finally {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        writable: true,
+        value: origMatchMedia,
+      });
+    }
+  });
+
+  it('S3-02: 点击单例工作区应用（essay）始终恢复/拉起并聚焦可见窗口', () => {
+    appRegistry.register(makeApp('essay', { instanceMode: 'single' }));
+    setDockPinned(['essay']);
+    const essayId = openWin('essay', 'workspace', '作文批改');
+    act(() => {
+      useWindowStore.getState().minimizeWindow(essayId, true);
+      useWindowStore.getState().setWindowTransient?.(essayId, 'closing');
+    });
+
+    render(<Dock />);
+    fireEvent.click(dockButton('essay'));
+
+    const state = useWindowStore.getState();
+    expect(state.windows[essayId].minimized).toBe(false);
+    expect(state.focusStack[state.focusStack.length - 1]).toBe(essayId);
+    expect(state.transientPhases?.[essayId]).not.toBe('closing');
   });
 });

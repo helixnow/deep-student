@@ -27,7 +27,7 @@ import {
   type PracticeAttempt,
 } from '@/api/practiceApi';
 import { convertToApiQuestion } from '@/hooks/useQuestionBankSession';
-import { parseImageAnswerEnvelope } from '@/api/questionBankApi';
+import { isSubjectiveQuestionType, parseImageAnswerEnvelope } from '@/api/questionBankApi';
 import { PracticeAnswerInput } from './PracticeAnswerInput';
 import { DsButton } from '@/components/ui/DsButton';
 import {
@@ -1150,33 +1150,67 @@ export default function BatchPracticeWorkspace({
                   allowExplanationWrite={true}
                   onRefreshQuestion={canAnalyze ? refreshExplanation : undefined}
                 />
-                {result?.feedback && (
-                  <section
-                    data-testid="practice-ai-grading-rationale"
-                    aria-label={t('batch.aiGradingRationaleTitle', { defaultValue: 'AI 评分依据与批改评语' })}
-                    className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.04] p-3.5"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <h4 className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
-                        <Sparkle size={14} className="text-primary" aria-hidden="true" />
-                        {t('batch.aiGradingRationaleTitle', { defaultValue: 'AI 评分依据与批改评语' })}
-                      </h4>
-                      <div className="flex items-center gap-2 font-mono text-xs tabular-nums">
-                        {result.score != null && (
-                          <span className="rounded-md border border-border/50 bg-background/80 px-2 py-0.5 font-semibold text-foreground">
-                            {t('batch.scorePoints', { defaultValue: '{{score}} / 100 分', score: result.score })}
+                {(() => {
+                  const cleanedFeedback = (result?.feedback ?? '')
+                    .replace(/<verdict\s*>\s*(?:correct|partial|incorrect)\s*<\/verdict\s*>/gi, '')
+                    .replace(/<score\s+value\s*=\s*["']\d+["']\s*\/?\s*>/gi, '')
+                    .trim();
+                  const isGradedResult = result && (
+                    result.status === 'correct'
+                    || result.status === 'partial'
+                    || result.status === 'incorrect'
+                  );
+                  const needsFallbackRationale = Boolean(
+                    isGradedResult
+                    && !cleanedFeedback
+                    && (
+                      isSubjectiveQuestionType(question.questionType)
+                      || result.status === 'partial'
+                      || (typeof result.score === 'number' && result.score > 0 && result.score < 100)
+                    ),
+                  );
+                  if (!cleanedFeedback && !needsFallbackRationale) return null;
+                  const refText = paperAnswer(current).trim();
+                  const fallbackRationale = refText
+                    ? t('batch.aiGradingRationaleFallbackWithRef', {
+                        defaultValue: '已按评分标准给出 {{score}} 分（{{status}}）。请重点对照参考答案「{{reference}}」核对关键要点与推导过程。',
+                        score: result?.score ?? (result?.status === 'correct' ? 100 : 0),
+                        status: t(`batch.result.${result?.status ?? 'partial'}`),
+                        reference: refText,
+                      })
+                    : t('batch.aiGradingRationaleFallback', {
+                        defaultValue: '已按主观题评分标准给出 {{score}} 分（{{status}}），请结合核心知识点核对作答完整性与表述准确性。',
+                        score: result?.score ?? (result?.status === 'correct' ? 100 : 0),
+                        status: t(`batch.result.${result?.status ?? 'partial'}`),
+                      });
+                  return (
+                    <section
+                      data-testid="practice-ai-grading-rationale"
+                      aria-label={t('batch.aiGradingRationaleTitle', { defaultValue: 'AI 评分依据与批改评语' })}
+                      className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.04] p-3.5"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                          <Sparkle size={14} className="text-primary" aria-hidden="true" />
+                          {t('batch.aiGradingRationaleTitle', { defaultValue: 'AI 评分依据与批改评语' })}
+                        </h4>
+                        <div className="flex items-center gap-2 font-mono text-xs tabular-nums">
+                          {result?.score != null && (
+                            <span className="rounded-md border border-border/50 bg-background/80 px-2 py-0.5 font-semibold text-foreground">
+                              {t('batch.scorePoints', { defaultValue: '{{score}} / 100 分', score: result.score })}
+                            </span>
+                          )}
+                          <span className="text-muted-foreground">
+                            {t(`batch.result.${result?.status ?? 'partial'}`)}
                           </span>
-                        )}
-                        <span className="text-muted-foreground">
-                          {t(`batch.result.${result.status}`)}
-                        </span>
+                        </div>
                       </div>
-                    </div>
-                    <div className="text-sm text-foreground">
-                      <MarkdownRenderer content={result.feedback} />
-                    </div>
-                  </section>
-                )}
+                      <div className="text-sm text-foreground">
+                        <MarkdownRenderer content={cleanedFeedback || fallbackRationale} />
+                      </div>
+                    </section>
+                  );
+                })()}
                 {result?.grading_drafts?.map((saved, draftIndex, drafts) => (
                   <details key={`${saved.created_at}-${draftIndex}`} className="border-t pt-3 text-sm" open={draftIndex === drafts.length - 1 && result.status === 'failed'}>
                     <summary className="cursor-pointer font-medium text-warning">{t('batch.feedbackDraft')} · {new Date(saved.created_at).toLocaleString()}</summary>

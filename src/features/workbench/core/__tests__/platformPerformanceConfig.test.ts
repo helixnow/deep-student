@@ -220,7 +220,9 @@ describe('OS mode drag performance anti-regression', () => {
     );
     expect(providerBlock).not.toContain('getBoundingClientRect');
     // 平铺中缝也必须走缓存快照，禁止本地 querySelector+getBoundingClientRect
-    expect(src).toContain('getDesktopOffset: getWorkbenchDesktopOffset');
+    const divider = readRepo('src', 'features', 'workbench', 'components', 'TilingDivider.tsx');
+    expect(divider).toContain('getDesktopOffset: getWorkbenchDesktopOffset');
+    expect(divider).not.toMatch(/\.getBoundingClientRect\s*\(/);
   });
 
   it('StageManager 不得在 start() 无条件启动 perfMonitor', () => {

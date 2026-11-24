@@ -213,6 +213,8 @@ describe('applyStudyFlowStagePreset', () => {
     expect(state.windows[practiceRes.sidecarWindowId!].displayMode).toBe('tiled-br');
     expect(state.tilingRatios['v']).toBe(0.5);
     expect(state.tilingRatios['h-right']).toBe(0.55);
+    // S4-11: 刷题订正必须把闪卡/试卷主练窗带入前台，而非让右侧辅助窗抢焦
+    expect(state.focusStack[state.focusStack.length - 1]).toBe(practiceRes.leftWindowId);
   });
 
   it('freeform-desktop transitions all tiled-* windows back to floating and restores original restoreFrames', async () => {

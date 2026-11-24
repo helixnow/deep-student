@@ -355,12 +355,13 @@ function failRestoreAfterCommittedCutover(
   targetSlot: string,
   error: string,
   domainOutcomes: DomainRestoreReport[] | null,
+  durationMs: number | null = null,
 ): void {
   const honestError = `${error}（切槽与加密密钥已原子提交、不可撤销：重启后将激活候选槽 ${targetSlot}；本任务按失败终止，失败/未消费的域不会自动恢复，请依据审计日志中的 domains 终态处置）`;
   ctx.logger('backup').error(`[data_governance] ${honestError}`);
   governance.trySaveAuditLog(withAuditDetails(failAuditLog(newAuditLog({
     type: 'Restore', backup_path: backupId,
-  }, backupId), honestError), {
+  }, backupId), honestError, durationMs), {
     job_id: job.job_id,
     cutover_committed: true,
     activates_slot_on_restart: targetSlot,
@@ -412,41 +413,56 @@ export class RestoreCommands {
     restoreAssets: boolean | null,
   ): Promise<void> {
     const start = performance.now();
+    const recordAuditFailure = (message: string, extraDetails: Record<string, unknown> = {}): void => {
+      this.governance.trySaveAuditLog(withAuditDetails(failAuditLog(newAuditLog({
+        type: 'Restore', backup_path: backupId,
+      }, backupId), message, Math.trunc(performance.now() - start)), {
+        job_id: job.job_id, restore_assets: restoreAssets, ...extraDetails,
+      }));
+    };
+    const failJob = (message: string, extraDetails?: Record<string, unknown>): void => {
+      recordAuditFailure(message, extraDetails);
+      job.fail(message);
+    };
+    const cancelJob = (message: string): void => {
+      recordAuditFailure(message, { cancelled: true });
+      job.cancelled(message);
+    };
     job.markRunning('queued', 0, WAITING_FOR_OPERATION_MESSAGE, 0, 0);
     let acquired: Awaited<ReturnType<Operations['acquireForJob']>>;
     try { acquired = await this.operations.acquireForJob('restore', job.job_id, () => job.isCancelled()); }
-    catch (error) { job.fail(`获取全局备份锁失败: ${ioMessage(error)}`); return; }
-    if (acquired === 'cancelled') { job.cancelled(OPERATION_QUEUED_CANCELLED_MESSAGE); return; }
+    catch (error) { failJob(`获取全局备份锁失败: ${ioMessage(error)}`); return; }
+    if (acquired === 'cancelled') { cancelJob(OPERATION_QUEUED_CANCELLED_MESSAGE); return; }
     const guard = acquired;
     const root = backupDir(this.ctx.app.dataDir);
     try {
-      if (!existsSync(root)) { job.fail('备份目录不存在'); return; }
+      if (!existsSync(root)) { failJob('备份目录不存在'); return; }
       job.markRunning('scan', 2, '正在验证备份清单...', 0, 0);
-      if (job.isCancelled()) { job.cancelled('用户取消恢复'); return; }
+      if (job.isCancelled()) { cancelJob('用户取消恢复'); return; }
 
       let manifest: BackupManifest;
       try { manifest = findBackup(root, backupId, '备份不存在', message => this.ctx.logger('backup').warn(message)); }
-      catch (error) { job.fail(ioMessage(error)); return; }
+      catch (error) { failJob(ioMessage(error)); return; }
       const manifestDir = join(root, manifest.backup_id);
       try { ensureExistingPathWithinBackupDir(manifestDir, root, userHomeDir(this.ctx)); }
-      catch (error) { job.fail(`备份路径校验失败: ${ioMessage(error)}`); return; }
+      catch (error) { failJob(`备份路径校验失败: ${ioMessage(error)}`); return; }
 
       try { checkManifestCompatibility(manifest); }
-      catch (error) { job.fail(`备份版本不兼容: ${ioMessage(error)}`); return; }
+      catch (error) { failJob(`备份版本不兼容: ${ioMessage(error)}`); return; }
       try { validateForSlotRestore(manifest); }
       catch (error) {
-        job.fail(`[${PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE}] 备份不能用于完整恢复: ${ioMessage(error)}`);
+        failJob(`[${PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE}] 备份不能用于完整恢复: ${ioMessage(error)}`);
         return;
       }
       if (restoreAssets === false) {
-        job.fail(`[${PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE}] 完整快照恢复不能跳过资产；partial archive 不能替换数据槽`);
+        failJob(`[${PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE}] 完整快照恢复不能跳过资产；partial archive 不能替换数据槽`);
         return;
       }
       const verification = await verifyWithAssets(this.ctx, root, manifest);
       if (!verification.isValid) {
         const errors = [...verification.databaseErrors,
           ...verification.assetErrors.map(error => `${error.path}: ${error.message}`)];
-        job.fail(`备份完整性验证失败: ${errors.join('; ')}`);
+        failJob(`备份完整性验证失败: ${errors.join('; ')}`);
         return;
       }
 
@@ -464,67 +480,67 @@ export class RestoreCommands {
         `备份清单验证通过: ${totalDatabases} 个数据库, ${assetFileCount} 个资产文件`, 0, totalItems);
 
       const backupSubdir = join(root, manifest.backup_id);
-      if (!existsSync(backupSubdir)) { job.fail(`备份目录不存在: ${backupSubdir}`); return; }
-      if (job.isCancelled()) { job.cancelled('用户取消恢复'); return; }
+      if (!existsSync(backupSubdir)) { failJob(`备份目录不存在: ${backupSubdir}`); return; }
+      if (job.isCancelled()) { cancelJob('用户取消恢复'); return; }
 
       const verifyTotal = manifest.files.length;
       for (let index = 0; index < verifyTotal; index++) {
         const file = manifest.files[index]!;
-        if (job.isCancelled()) { job.cancelled('用户取消恢复（验证阶段）'); return; }
+        if (job.isCancelled()) { cancelJob('用户取消恢复（验证阶段）'); return; }
         const progress = 5 + (index / Math.max(1, verifyTotal)) * 10;
         job.markRunning('verify', progress, `正在验证: ${file.path} (${index + 1}/${verifyTotal})`, 0, totalItems);
         const filePath = join(backupSubdir, file.path);
-        if (!existsSync(filePath)) { job.fail(`备份文件不存在: ${file.path}`); return; }
+        if (!existsSync(filePath)) { failJob(`备份文件不存在: ${file.path}`); return; }
         let actual: string;
         try { actual = await sha256FileAsync(filePath, file.size); }
-        catch (error) { job.fail(`计算校验和失败 ${file.path}: ${ioMessage(error)}`); return; }
+        catch (error) { failJob(`计算校验和失败 ${file.path}: ${ioMessage(error)}`); return; }
         if (actual !== file.sha256) {
-          job.fail(`备份文件校验和不匹配: ${file.path} (expected=${file.sha256}, actual=${actual})`);
+          failJob(`备份文件校验和不匹配: ${file.path} (expected=${file.sha256}, actual=${actual})`);
           return;
         }
         if (file.path.endsWith('.db')) {
           let handle;
           try { handle = this.ctx.storage.openFile(filePath, { label: `restore-verify:${file.path}`, mustExist: true }); }
-          catch (error) { job.fail(`无法打开备份数据库文件: ${file.path} (${ioMessage(error)})`); return; }
+          catch (error) { failJob(`无法打开备份数据库文件: ${file.path} (${ioMessage(error)})`); return; }
           try {
             let result: string;
             try { result = integrityCheck(handle); }
-            catch (error) { job.fail(`备份数据库完整性检查执行失败: ${file.path} (${ioMessage(error)})`); return; }
-            if (result !== 'ok') { job.fail(`备份数据库完整性检查失败: ${file.path} (${result})`); return; }
+            catch (error) { failJob(`备份数据库完整性检查执行失败: ${file.path} (${ioMessage(error)})`); return; }
+            if (result !== 'ok') { failJob(`备份数据库完整性检查失败: ${file.path} (${result})`); return; }
           } finally { this.ctx.storage.close(handle); }
         }
       }
 
       const dataSpace = dataSpaceOf(this.ctx);
-      if (dataSpace === null) { job.fail(atomicRestoreUnavailableError()); return; }
+      if (dataSpace === null) { failJob(atomicRestoreUnavailableError()); return; }
       const inactiveSlot = dataSpace.activeDir() === dataSpace.slotDir('slotA') ? 'slotB' : 'slotA';
       const inactiveDir = dataSpace.inactiveDir();
 
       const assetSize = manifest.assets?.total_size ?? 0;
       let required: bigint;
       try { required = checkedRestoreDiskBudget(manifest.files.map(file => file.size), assetSize).requiredBytes; }
-      catch (error) { job.fail(ioMessage(error)); return; }
+      catch (error) { failJob(ioMessage(error)); return; }
       if (!existsSync(inactiveDir)) {
-        job.fail(`恢复目标槽目录不存在或不是目录，无法确定目标卷: ${sanitizePathForUser(inactiveDir, userHomeDir(this.ctx))}`);
+        failJob(`恢复目标槽目录不存在或不是目录，无法确定目标卷: ${sanitizePathForUser(inactiveDir, userHomeDir(this.ctx))}`);
         return;
       }
       let available: number;
       try {
         const targetVolume = realpathSync(inactiveDir);
         available = getAvailableDiskSpace(targetVolume);
-      } catch (error) { job.fail(`获取恢复目标卷可用空间失败: ${ioMessage(error)}`); return; }
+      } catch (error) { failJob(`获取恢复目标卷可用空间失败: ${ioMessage(error)}`); return; }
       if (BigInt(available) < required) {
-        job.fail(`磁盘空间不足：需要 ${(Number(required) / 1024 / 1024).toFixed(1)} MB，仅剩 ${(available / 1024 / 1024).toFixed(1)} MB。请清理存储空间后重试`);
+        failJob(`磁盘空间不足：需要 ${(Number(required) / 1024 / 1024).toFixed(1)} MB，仅剩 ${(available / 1024 / 1024).toFixed(1)} MB。请清理存储空间后重试`);
         return;
       }
 
       try { dataSpace.clearSlotForRestore(inactiveSlot); }
       catch (error) {
-        job.fail(`清空恢复目标插槽 ${inactiveSlot} 失败，已中止恢复（避免脏插槽混入）: ${ioMessage(error)}`);
+        failJob(`清空恢复目标插槽 ${inactiveSlot} 失败，已中止恢复（避免脏插槽混入）: ${ioMessage(error)}`);
         return;
       }
       try { mkdirSync(inactiveDir, { recursive: true }); }
-      catch (error) { job.fail(`创建恢复目标目录失败: ${ioMessage(error)}`); return; }
+      catch (error) { failJob(`创建恢复目标目录失败: ${ioMessage(error)}`); return; }
 
       const databasesRestored: string[] = [];
       const restoreErrors: string[] = [];
@@ -550,15 +566,15 @@ export class RestoreCommands {
       const restoreAssetsEnabled = true;
       if (restoreErrors.length === 0 && databasesRestored.includes('vfs')) {
         try { await prepareVfsIndexRestore(this.ctx, manifest, inactiveDir, restoreAssetsEnabled); }
-        catch (error) { job.fail(`准备恢复 VFS 派生索引失败: ${ioMessage(error)}`); return; }
+        catch (error) { failJob(`准备恢复 VFS 派生索引失败: ${ioMessage(error)}`); return; }
       }
 
       let restoredWorkspaces: number;
       try { restoredWorkspaces = await restoreWorkspaceManifestFilesToDir(this.ctx, manifest, backupSubdir, inactiveDir); }
-      catch (error) { job.fail(`恢复工作区数据库失败: ${ioMessage(error)}`); return; }
+      catch (error) { failJob(`恢复工作区数据库失败: ${ioMessage(error)}`); return; }
       let restoredManifestAssets: number;
       try { restoredManifestAssets = await restoreNonDatabaseManifestFiles(manifest, backupSubdir, inactiveDir); }
-      catch (error) { job.fail(`恢复分层资产失败: ${ioMessage(error)}`); return; }
+      catch (error) { failJob(`恢复分层资产失败: ${ioMessage(error)}`); return; }
 
       job.markRunning('replace', 80,
         `数据库恢复完成: ${databasesRestored.length}/${totalDatabases}，工作区数据库: ${restoredWorkspaces}`,
@@ -566,12 +582,7 @@ export class RestoreCommands {
 
       if (restoreErrors.length > 0) {
         const message = `部分数据库恢复失败: ${restoreErrors.join('; ')}`;
-        this.governance.trySaveAuditLog(withAuditDetails(failAuditLog(newAuditLog({
-          type: 'Restore', backup_path: backupId,
-        }, backupId), message), {
-          job_id: job.job_id, restore_assets: restoreAssets, errors: restoreErrors,
-        }));
-        job.fail(message);
+        failJob(message, { errors: restoreErrors });
         return;
       }
 
@@ -601,7 +612,7 @@ export class RestoreCommands {
           restoredAssets += count;
         } catch (error) {
           if (error instanceof Error && 'cancelled' in error && (error as { cancelled?: boolean }).cancelled === true) {
-            job.cancelled('用户取消恢复（资产阶段）');
+            cancelJob('用户取消恢复（资产阶段）');
             return;
           }
           restoreErrors.push(`资产恢复: ${ioMessage(error)}`);
@@ -610,13 +621,13 @@ export class RestoreCommands {
 
       const hasAssetErrors = restoreErrors.length > 0;
       if (hasAssetErrors) {
-        job.fail(`资产恢复失败: ${restoreErrors.join('; ')}`);
+        failJob(`资产恢复失败: ${restoreErrors.join('; ')}`);
         return;
       }
 
       if (databasesRestored.includes('vfs')) {
         try { finalizeVfsIndexRestore(this.ctx, manifest, inactiveDir, shouldRestoreAssets); }
-        catch (error) { job.fail(`校验恢复后的 VFS 派生索引失败: ${ioMessage(error)}`); return; }
+        catch (error) { failJob(`校验恢复后的 VFS 派生索引失败: ${ioMessage(error)}`); return; }
       }
 
       job.markRunning('cleanup', 93, '正在标记插槽切换...', totalItems, totalItems);
@@ -624,14 +635,14 @@ export class RestoreCommands {
       const restoreTargetPath = inactiveDir;
 
       try { await initializeCandidateSlot(this.governance, inactiveDir); }
-      catch (error) { job.fail(`恢复候选槽迁移/验证失败: ${ioMessage(error)}`); return; }
+      catch (error) { failJob(`恢复候选槽迁移/验证失败: ${ioMessage(error)}`); return; }
 
       for (const dbIdText of databasesRestored) {
         const dbId = asDatabaseId(dbIdText);
         if (dbId === null) continue;
         const dbPath = databasePath(inactiveDir, dbId);
         if (!existsSync(dbPath)) {
-          job.fail(`恢复候选槽缺少数据库: ${dbPath}`);
+          failJob(`恢复候选槽缺少数据库: ${dbPath}`);
           return;
         }
         const conn = new Connection(dbPath, { label: `restore-baseline:${dbId}`, profile: PROFILES.plain });
@@ -651,7 +662,7 @@ export class RestoreCommands {
             catch (rollbackError) {
               this.ctx.logger('backup').warn(`回滚同步基线事务失败: ${ioMessage(rollbackError)}`);
             }
-            job.fail(`${dbIdText} 同步基线重建失败，拒绝激活候选槽: ${ioMessage(error)}`);
+            failJob(`${dbIdText} 同步基线重建失败，拒绝激活候选槽: ${ioMessage(error)}`);
             return;
           }
         } finally {
@@ -660,7 +671,7 @@ export class RestoreCommands {
       }
 
       try { writeRestoreActivationMarker(inactiveDir, backupId, manifest.snapshot_epoch); }
-      catch (error) { job.fail(ioMessage(error)); return; }
+      catch (error) { failJob(ioMessage(error)); return; }
 
       let maintenance: RestoreCutoverBarrier;
       try { maintenance = await setRestoreCutoverMaintenance(this.ctx); }
@@ -669,7 +680,7 @@ export class RestoreCommands {
         catch (cleanupError) {
           this.ctx.logger('backup').warn(`清理恢复激活标记失败: ${ioMessage(cleanupError)}`);
         }
-        job.fail(ioMessage(error));
+        failJob(ioMessage(error));
         return;
       }
 
@@ -691,7 +702,7 @@ export class RestoreCommands {
         catch (cleanupError) {
           this.ctx.logger('backup').warn(`清理恢复激活标记失败: ${ioMessage(cleanupError)}`);
         }
-        job.fail(`提交恢复密钥与切槽失败: ${ioMessage(error)}`);
+        failJob(`提交恢复密钥与切槽失败: ${ioMessage(error)}`);
         return;
       }
       if (restoredCryptoKeys > 0) {
@@ -710,7 +721,7 @@ export class RestoreCommands {
       } catch (error) {
         failRestoreAfterCommittedCutover(
           this.ctx, this.governance, job, backupId, inactiveSlot,
-          `消费域恢复计划失败: ${ioMessage(error)}`, null,
+          `消费域恢复计划失败: ${ioMessage(error)}`, null, Math.round(performance.now() - start),
         );
         return;
       }
@@ -720,7 +731,7 @@ export class RestoreCommands {
       if (failedDomains.length > 0) {
         failRestoreAfterCommittedCutover(
           this.ctx, this.governance, job, backupId, inactiveSlot,
-          `域恢复计划执行失败: ${failedDomains.join('; ')}`, domainOutcomes,
+          `域恢复计划执行失败: ${failedDomains.join('; ')}`, domainOutcomes, Math.round(performance.now() - start),
         );
         return;
       }
@@ -740,7 +751,7 @@ export class RestoreCommands {
         failRestoreAfterCommittedCutover(
           this.ctx, this.governance, job, backupId, inactiveSlot,
           `[E_RESTORE_DOMAIN_UNCONSUMED] 存在未被恢复编排消费的 Complete 域: ${ioMessage(error)}`,
-          domainOutcomes,
+          domainOutcomes, Math.round(performance.now() - start),
         );
         return;
       }
@@ -793,11 +804,9 @@ export class RestoreCommands {
         payload,
       );
     } catch (error) {
-      if (job.isCancelled()) { job.cancelled('用户取消恢复'); return; }
+      if (job.isCancelled()) { cancelJob('用户取消恢复'); return; }
       const message = ioMessage(error);
-      this.governance.trySaveAuditLog(failAuditLog(withAuditDetails(newAuditLog({
-        type: 'Restore', backup_path: backupId,
-      }, backupId), { job_id: job.job_id, restore_assets: restoreAssets }), message));
+      recordAuditFailure(message);
       job.fail(message);
     } finally {
       guard.release();

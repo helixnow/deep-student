@@ -454,7 +454,11 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
         <ComposerPanel.Header
           icon={Lightning}
           title={t('skills:selector.title')}
-          subtitle={t('skills:selector.count', {count: allSkills.length})}
+          subtitle={
+            !skillRegistry.isSkillsLoaded() && allSkills.length === 0
+              ? t('skills:selector.loading')
+              : t('skills:selector.count', { count: allSkills.length })
+          }
           actions={headerActions}
           onClose={onClose}
           closeAriaLabel={t('common:actions.close')}
@@ -930,7 +934,13 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
             </DsButton>
           </span>
           {onClose ? (
-            <DsButton variant="ghost" size="sm" onClick={onClose} className="[@media(pointer:coarse)]:!min-h-11">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              data-testid="skill-selector-close"
+              className="[@media(pointer:coarse)]:!min-h-11"
+            >
               {t('common:actions.close')}
             </DsButton>
           ) : null}

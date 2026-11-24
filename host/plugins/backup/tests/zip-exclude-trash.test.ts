@@ -175,4 +175,89 @@ describe('Unencrypted ZIP trash exclusion (S5-14)', () => {
       conn.close();
     }
   });
+
+  it('S5-14: clears deleted canary tokens from contentless notes_fts shadow tables inside exported ZIP', async () => {
+    const created = await createBackupHost({ secrets: true });
+    hosts.push(created);
+    const { host } = created;
+    const manifest = fullManifest('backup-fts-canary');
+    const dir = join(hostBackupRoot(host), manifest.backup_id);
+    mkdirSync(dir, { recursive: true });
+
+    const keepTitle = 'VISIBLE_FTS_NOTE_KEEP';
+    const keepBody = 'Visible searchable body content for FTS';
+    const canaryTitle = 'SECRET_FTS_CANARY_TITLE_Z99';
+    const canaryBody = 'SECRET_FTS_CANARY_BODY_Z99';
+
+    for (const file of manifest.files) {
+      const dbPath = join(dir, file.path);
+      if (file.database_id === 'vfs') {
+        createDatabaseFile(
+          dbPath,
+          `
+          CREATE TABLE resources (id TEXT PRIMARY KEY, data TEXT, deleted_at TEXT);
+          CREATE TABLE notes (id TEXT PRIMARY KEY, title TEXT, resource_id TEXT, deleted_at TEXT);
+          CREATE VIRTUAL TABLE notes_fts USING fts5(title, body, content='', contentless_delete=1, tokenize='trigram');
+          CREATE TRIGGER trg_notes_fts_insert AFTER INSERT ON notes WHEN NEW.deleted_at IS NULL BEGIN
+            INSERT INTO notes_fts(rowid, title, body)
+            VALUES (NEW.rowid, NEW.title, COALESCE((SELECT r.data FROM resources r WHERE r.id = NEW.resource_id), ''));
+          END;
+          CREATE TRIGGER trg_notes_fts_update AFTER UPDATE ON notes BEGIN
+            DELETE FROM notes_fts WHERE rowid = OLD.rowid AND OLD.deleted_at IS NULL;
+            INSERT INTO notes_fts(rowid, title, body)
+            SELECT NEW.rowid, NEW.title, COALESCE((SELECT r.data FROM resources r WHERE r.id = NEW.resource_id), '')
+            WHERE NEW.deleted_at IS NULL;
+          END;
+          CREATE TRIGGER trg_notes_fts_delete AFTER DELETE ON notes BEGIN
+            DELETE FROM notes_fts WHERE rowid = OLD.rowid AND OLD.deleted_at IS NULL;
+          END;
+          INSERT INTO resources VALUES
+            ('r-keep', '${keepBody}', NULL),
+            ('r-canary', '${canaryBody}', NULL);
+          INSERT INTO notes VALUES
+            ('n-keep', '${keepTitle}', 'r-keep', NULL),
+            ('n-canary', '${canaryTitle}', 'r-canary', NULL);
+          UPDATE notes SET deleted_at = '2026-11-24T00:00:00Z' WHERE id = 'n-canary';
+          `,
+        );
+      } else {
+        createDatabaseFile(dbPath, 'CREATE TABLE items (id TEXT PRIMARY KEY);');
+      }
+      const bytes = readFileSync(dbPath);
+      file.size = bytes.length;
+      file.sha256 = sha256(bytes);
+      updateCoverage(manifest, `database:${file.database_id}`, 'complete', [file.path]);
+    }
+    saveManifest(join(dir, 'manifest.json'), manifest);
+
+    const outZip = join(host.app.dataDir, 'exports', 'clean-fts.zip');
+    await exportBackupToZip(
+      host.ctx,
+      dir,
+      { compressionLevel: 6, outputPath: outZip, includeChecksums: true, excludeTrash: true },
+      () => undefined,
+      () => false,
+    );
+
+    const zip = await JSZip.loadAsync(readFileSync(outZip));
+    const vfsBytes = await zip.file('vfs.db')!.async('nodebuffer');
+    expect(vfsBytes.includes(Buffer.from(canaryTitle, 'utf8'))).toBe(false);
+    expect(vfsBytes.includes(Buffer.from(canaryBody, 'utf8'))).toBe(false);
+
+    const inspectPath = join(host.app.dataDir, 'inspect-fts-vfs.db');
+    writeFileSync(inspectPath, vfsBytes);
+    const conn = new Connection(inspectPath, { label: 'inspect-fts', profile: PROFILES.plain });
+    try {
+      expect(
+        conn.all<{ id: string }>(
+          "SELECT n.id FROM notes_fts JOIN notes n ON n.rowid = notes_fts.rowid WHERE notes_fts MATCH 'VISIBLE_FTS_NOTE_KEEP'",
+        ),
+      ).toEqual([{ id: 'n-keep' }]);
+      expect(
+        conn.all("SELECT rowid FROM notes_fts WHERE notes_fts MATCH 'SECRET_FTS_CANARY_TITLE_Z99'"),
+      ).toEqual([]);
+    } finally {
+      conn.close();
+    }
+  });
 });

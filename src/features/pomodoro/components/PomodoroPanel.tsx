@@ -49,9 +49,12 @@ import { Slider } from '@/components/ui/shad/Slider';
 import { SnappySlider } from '@/components/ui/SnappySlider';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { IconSwap } from '@/components/ui/IconSwap';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { useWindowStore } from '@/features/workbench/core/windowStore';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { getPomodoroTodayStats, type PomodoroTodayStats } from '../api';
 import { noiseEngine, NOISE_TYPES, type NoiseType } from '../noiseEngine';
+import { formatFocusDisplay, formatFocusTooltip } from '../utils/focusDuration';
 import { PomodoroStatsContent } from './PomodoroStatsPopover';
 import { RollingTime } from './RollingTime';
 import '../styles/pomodoro-panel.css';
@@ -239,7 +242,7 @@ const SettingsToggleRow: React.FC<{
 
 export const PomodoroSettingsContent: React.FC<{ size?: SettingsRowSize }> = ({ size = 'sm' }) => {
   const { t } = useTranslation('todo');
-  const { settings, updateSettings, noiseEnabled } = usePomodoroStore();
+  const { mode, settings, updateSettings, noiseEnabled } = usePomodoroStore();
 
   const noiseAutoWithFocus = settings.noiseAutoWithFocus;
   const volumePct = Math.round(settings.noiseVolume * 100);
@@ -247,6 +250,16 @@ export const PomodoroSettingsContent: React.FC<{ size?: SettingsRowSize }> = ({ 
   return (
     <div className={cn('flex flex-col', size === 'md' ? 'gap-4' : 'gap-3')}>
       <SettingsSection label={t('pomodoro.settings.sections.duration')}>
+        {mode !== 'idle' && (
+          <p
+            data-testid="pomodoro-settings-next-round-hint"
+            className="mb-1 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground"
+          >
+            {t('pomodoro.settings.appliesNextRound', {
+              defaultValue: '当前阶段进行中，时长调整将在下一轮生效',
+            })}
+          </p>
+        )}
         <SettingsSliderRow
           size={size}
           label={t('pomodoro.settings.workDuration')}
@@ -459,6 +472,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
     settings,
     completedPomodorosToday,
     sessionCountUp,
+    sessionDuration,
     phaseExtraSeconds,
     streakDays,
     noiseEnabled,
@@ -521,12 +535,14 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
     return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   };
 
-  const formatMinutes = (s: number) => {
-    const m = Math.round(s / 60);
-    return m < 60
-      ? t('pomodoro.stats.minutes', { value: m })
-      : t('pomodoro.stats.hours', { value: (m / 60).toFixed(1) });
-  };
+  const visiblePomodoroWindowId = useWindowStore((s) => {
+    const win = Object.values(s.windows).find(
+      (w) => !w.minimized && w.typeId === 'pomodoro',
+    );
+    return win?.id ?? null;
+  });
+
+  const formatMinutes = (s: number) => formatFocusDisplay(s, t, 'pomodoro.stats');
 
   const panelRootRef = useRef<HTMLDivElement>(null);
 
@@ -573,8 +589,31 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
     setConfirmingStop(false);
   }, [clearConfirmTimer]);
 
+  // 正计时阶段：会话锁定的计时模式优先；旧持久化会话无该字段时回退设置
+  //（严格真值判断会让旧数据下「完成」按钮消失）
+  const isCountUpWork = mode === 'work' && (sessionCountUp ?? settings.countUp);
+
+  const totalDuration = (() => {
+    const base = (() => {
+      switch (mode) {
+        case 'work':
+          return sessionDuration ?? settings.workDuration;
+        case 'short_break':
+          return sessionDuration ?? settings.shortBreak;
+        case 'long_break':
+          return sessionDuration ?? settings.longBreak;
+        default:
+          return settings.workDuration;
+      }
+    })();
+    // 倒计时阶段的计划总时长含 extendPhase 加时（进度环分母同步伸长）
+    return mode !== 'idle' && !isCountUpWork ? base + phaseExtraSeconds : base;
+  })();
+  const elapsedWorkSeconds =
+    mode === 'work' ? (isCountUpWork ? timeLeft : Math.max(0, totalDuration - timeLeft)) : 0;
+
   const handleStop = useCallback(() => {
-    if (mode === 'work' && !confirmingStop) {
+    if (mode === 'work' && elapsedWorkSeconds > 10 && !confirmingStop) {
       setConfirmingStop(true);
       clearConfirmTimer();
       confirmTimerRef.current = window.setTimeout(() => {
@@ -585,8 +624,21 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
     }
     cancelStopConfirm();
     stop(true);
+    showGlobalNotification(
+      'info',
+      t('pomodoro.notifications.stopped', { defaultValue: '已停止当前番茄钟' }),
+    );
     keepPanelFocusAlive();
-  }, [mode, confirmingStop, clearConfirmTimer, cancelStopConfirm, stop, keepPanelFocusAlive]);
+  }, [
+    mode,
+    elapsedWorkSeconds,
+    confirmingStop,
+    clearConfirmTimer,
+    cancelStopConfirm,
+    stop,
+    t,
+    keepPanelFocusAlive,
+  ]);
 
   // 阶段切换（含自然完成）后残留的确认态失效
   useEffect(() => {
@@ -595,26 +647,6 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
 
   useEffect(() => clearConfirmTimer, [clearConfirmTimer]);
 
-  // 正计时阶段：会话锁定的计时模式优先；旧持久化会话无该字段时回退设置
-  //（严格真值判断会让旧数据下「完成」按钮消失）
-  const isCountUpWork = mode === 'work' && (sessionCountUp ?? settings.countUp);
-
-  const totalDuration = (() => {
-    const base = (() => {
-      switch (mode) {
-        case 'work':
-          return settings.workDuration;
-        case 'short_break':
-          return settings.shortBreak;
-        case 'long_break':
-          return settings.longBreak;
-        default:
-          return settings.workDuration;
-      }
-    })();
-    // 倒计时阶段的计划总时长含 extendPhase 加时（进度环分母同步伸长）
-    return mode !== 'idle' && !isCountUpWork ? base + phaseExtraSeconds : base;
-  })();
   const progress =
     mode === 'idle'
       ? 0
@@ -1038,6 +1070,39 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
       </div>
     </div>
   );
+
+  if (visiblePomodoroWindowId && mode !== 'idle') {
+    return (
+      <div
+        ref={panelRootRef}
+        tabIndex={-1}
+        data-pomodoro-mode={mode}
+        data-testid="pomodoro-panel-host-bridge"
+        className="flex flex-shrink-0 items-center justify-between gap-2 border-t border-[color:var(--shell-workspace-border)] bg-[var(--surface-panel)]/75 px-4 py-2 text-xs pb-[var(--mobile-safe-area-bottom,0px)]"
+      >
+        <div className="flex min-w-0 items-center gap-2 text-muted-foreground">
+          <span className="h-2 w-2 flex-shrink-0 rounded-full bg-primary" aria-hidden="true" />
+          <span className="truncate font-medium text-foreground">
+            {t('pomodoro.hostBridge.runningInWindow', {
+              defaultValue: '番茄钟正在独立窗口中运行',
+            })}
+          </span>
+          <span className="font-mono tabular-nums text-primary">{formatTime(timeLeft)}</span>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-1.5">
+          <DsButton
+            variant="utility"
+            size="sm"
+            data-testid="pomodoro-panel-focus-window"
+            onClick={() => useWindowStore.getState().focusWindow(visiblePomodoroWindowId)}
+            className="h-7 px-2.5 text-xs"
+          >
+            {t('pomodoro.hostBridge.focusWindow', { defaultValue: '切换至番茄钟窗口' })}
+          </DsButton>
+        </div>
+      </div>
+    );
+  }
 
   return (
     // 面板是 Todo 中屏最底部元素：预留移动端安全区，避免手势条遮挡统计行（桌面端变量为 0）
@@ -1516,7 +1581,10 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
         {todayStats && todayStats.totalFocusSeconds > 0 && (
           <>
             <span aria-hidden="true" className="text-muted-foreground/45">·</span>
-            <span>
+            <span
+              title={formatFocusTooltip(todayStats.totalFocusSeconds, t, 'pomodoro.stats')}
+              data-focus-seconds={todayStats.totalFocusSeconds}
+            >
               {t('pomodoro.stats.focusLabel')}{' '}
               <strong className="font-medium text-foreground">
                 {formatMinutes(todayStats.totalFocusSeconds)}

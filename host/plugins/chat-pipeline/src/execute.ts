@@ -230,12 +230,18 @@ export class PipelineExecution {
           startedAt: ctx.startedAtEpochMs, endedAt: Date.now() });
       }
       const reason = cancelled ? 'cancel' : 'error';
-      if (cancelled) log.info(`[ChatV2::pipeline] Pipeline cancelled for session=${sessionId}, attempting to save partial results...`);
-      else log.error(`[ChatV2::pipeline] Pipeline error for session=${sessionId}: ${errorMessage(error)}, attempting to save partial results...`);
+      if (cancelled) {
+        ctx.aborted = true;
+        log.info(`[ChatV2::pipeline] Pipeline cancelled for session=${sessionId}, attempting to save partial results...`);
+      } else {
+        ctx.failed = true;
+        log.error(`[ChatV2::pipeline] Pipeline error for session=${sessionId}: ${errorMessage(error)}, attempting to save partial results...`);
+      }
       const adapter = ctx.currentAdapter;
       if (adapter !== null) {
+        adapter.flushBuffersSilently();
         if (ctx.finalContent === '') ctx.finalContent = adapter.getAccumulatedContent();
-        if (ctx.finalReasoning === null) ctx.finalReasoning = adapter.getAccumulatedReasoning();
+        if (ctx.finalReasoning === null || ctx.finalReasoning === '') ctx.finalReasoning = adapter.getAccumulatedReasoning();
         ctx.streamingThinkingBlockId ??= adapter.getThinkingBlockId();
         ctx.streamingContentBlockId ??= adapter.getContentBlockId();
         ctx.collectStreamedTextSegments(adapter.getTextSegments(), assistantId);

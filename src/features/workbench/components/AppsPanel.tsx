@@ -389,11 +389,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     skipFocusReturnRef.current = false;
     prevFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const id = window.setTimeout(() => {
-      searchRef.current?.focus({ preventScroll: true });
-    }, 0);
     return () => {
-      window.clearTimeout(id);
       const prev = prevFocusRef.current;
       prevFocusRef.current = null;
       const skipReturn = skipFocusReturnRef.current;
@@ -401,6 +397,35 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
       if (!skipReturn && prev && prev.isConnected) prev.focus({ preventScroll: true });
     };
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !rendered) return undefined;
+    const focusSearch = () => {
+      const input = searchRef.current;
+      if (!input) return;
+      input.focus({ preventScroll: true });
+    };
+    focusSearch();
+    const timerId = window.setTimeout(() => {
+      if (!dialogRef.current?.contains(document.activeElement)) {
+        focusSearch();
+      }
+    }, 0);
+    const rafId =
+      typeof window.requestAnimationFrame === 'function'
+        ? window.requestAnimationFrame(() => {
+            if (!dialogRef.current?.contains(document.activeElement)) {
+              focusSearch();
+            }
+          })
+        : 0;
+    return () => {
+      window.clearTimeout(timerId);
+      if (rafId && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(rafId);
+      }
+    };
+  }, [open, rendered]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -661,6 +686,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
       className={cn('wb-apps-root', className)}
       data-wb-apps-open={open ? 'true' : 'false'}
       data-testid="wb-apps-panel"
+      style={{ zIndex: 'var(--wb-z-modal, 9700)', pointerEvents: open ? 'auto' : 'none' }}
       onKeyDown={onRootKeyDown}
     >
       <div

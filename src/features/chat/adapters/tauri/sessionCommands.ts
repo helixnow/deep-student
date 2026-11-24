@@ -13,6 +13,7 @@ import { getLoadedSkills } from '../../skills/progressiveDisclosure';
 import { isTauriRuntimeAvailable } from './runtime';
 import { LOG_PREFIX, adapterConsole as console } from './diagnostics';
 import type { TauriAdapterHost } from './adapterHost';
+import { useSessionListStore } from '../../stores/sessionListStore';
 
 export async function saveSession(host: TauriAdapterHost): Promise<void> {
   console.log(LOG_PREFIX, 'Saving session:', host.sessionId);
@@ -114,6 +115,11 @@ export async function archiveSession(host: TauriAdapterHost): Promise<void> {
     await invoke('chat_v2_archive_session', {
       sessionId: host.sessionId,
     });
+
+    useSessionListStore.getState().setSessions((prev) => prev.filter((session) => session.id !== host.sessionId));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+    }
 
     console.log(LOG_PREFIX, 'Session archived');
   } catch (error) {

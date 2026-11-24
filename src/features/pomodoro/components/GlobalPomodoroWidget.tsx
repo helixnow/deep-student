@@ -55,12 +55,16 @@ const phaseProgress = (
   countUp: boolean,
   settings: { workDuration: number; shortBreak: number; longBreak: number },
   extraSeconds = 0,
+  sessionDuration: number | null = null,
 ): number => {
   if (mode === 'idle') return 0;
   const base =
-    mode === 'work' ? settings.workDuration
-      : mode === 'short_break' ? settings.shortBreak
-        : settings.longBreak;
+    sessionDuration ??
+    (mode === 'work'
+      ? settings.workDuration
+      : mode === 'short_break'
+        ? settings.shortBreak
+        : settings.longBreak);
   // 正计时无目标时长，加时不参与分母
   const total = mode === 'work' && countUp ? base : base + Math.max(0, extraSeconds);
   if (total <= 0) return 0;
@@ -150,7 +154,7 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
   workbenchActive = false,
 }) => {
   const { t } = useTranslation('todo');
-  const { mode, status, timeLeft, currentTaskTitle, settings, sessionCountUp, phaseExtraSeconds, pause, resume, stop, skipBreak, tick, syncWallClock, isImmersive, setImmersive } = usePomodoroStore();
+  const { mode, status, timeLeft, currentTaskTitle, settings, sessionCountUp, sessionDuration, phaseExtraSeconds, pause, resume, stop, skipBreak, tick, syncWallClock, isImmersive, setImmersive } = usePomodoroStore();
   const currentView = useViewStore((s) => s.currentView);
   // Workbench 下 legacy currentView 不再切换，仅靠它判断会与 PomodoroAppWindow /
   // Todo 窗口同时出现三份番茄钟；改为直接问窗口状态机有没有可见宿主。
@@ -213,10 +217,10 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
       timeLeft,
       taskTitle: currentTaskTitle,
       strictMode: settings.strictMode,
-      progress: phaseProgress(mode, timeLeft, countUpWork, settings, phaseExtraSeconds),
+      progress: phaseProgress(mode, timeLeft, countUpWork, settings, phaseExtraSeconds, sessionDuration),
       countUp: countUpWork,
     });
-  }, [mode, status, timeLeft, currentTaskTitle, settings, countUpWork, phaseExtraSeconds]);
+  }, [mode, status, timeLeft, currentTaskTitle, settings, countUpWork, phaseExtraSeconds, sessionDuration]);
 
   // ★ 3.2 置顶小窗：监听小窗命令 + ready 请求；停止时收回小窗
   useEffect(() => {
@@ -362,9 +366,10 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
   const handleStop = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (dragMovedRef.current) return;
-    // 专注阶段放弃（含暂停中）= 这一段专注记为 interrupted，误触成本高，
-    // 需要内联二次确认（与 PomodoroPanel / PomodoroAppWindow 同口径）；休息阶段停止无损，直接停
-    if (mode === 'work' && !confirmAbandon) {
+    const totalWork = (sessionDuration ?? settings.workDuration) + Math.max(0, phaseExtraSeconds);
+    const elapsedWork = countUpWork ? timeLeft : Math.max(0, totalWork - timeLeft);
+    // 已专注 >10s 需内联二次确认；<=10s 或休息阶段直接停止并反馈提示
+    if (mode === 'work' && elapsedWork > 10 && !confirmAbandon) {
       setConfirmAbandon(true);
       if (confirmTimerRef.current) window.clearTimeout(confirmTimerRef.current);
       confirmTimerRef.current = window.setTimeout(() => setConfirmAbandon(false), 3000);
@@ -372,6 +377,10 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
     }
     resetConfirmAbandon();
     stop(true);
+    showGlobalNotification(
+      'info',
+      t('pomodoro.notifications.stopped', { defaultValue: '已停止当前番茄钟' }),
+    );
   };
 
   const handleSkipBreak = (e: React.MouseEvent) => {

@@ -111,6 +111,7 @@ const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
 export const PomodoroWindowSettings: React.FC = () => {
   const { t } = useTranslation('todo');
+  const mode = usePomodoroStore((s) => s.mode);
   const settings = usePomodoroStore((s) => s.settings);
   const updateSettings = usePomodoroStore((s) => s.updateSettings);
 
@@ -125,6 +126,16 @@ export const PomodoroWindowSettings: React.FC = () => {
     <div className="wb-sys-pomo-set">
       {/* ---- 时长 ---- */}
       <SectionTitle>{t('pomodoro.settings.sections.duration')}</SectionTitle>
+      {mode !== 'idle' && (
+        <p
+          data-testid="pomodoro-settings-next-round-hint"
+          className="mb-2 rounded-md border border-border/60 bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground"
+        >
+          {t('pomodoro.settings.appliesNextRound', {
+            defaultValue: '当前阶段进行中，时长调整将在下一轮生效',
+          })}
+        </p>
+      )}
       <SliderRow
         label={t('pomodoro.settings.workDuration')}
         display={minutes(Math.round(settings.workDuration / 60))}

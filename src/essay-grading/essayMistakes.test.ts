@@ -15,7 +15,12 @@ vi.mock('i18next', () => ({
   },
 }));
 
-import { buildEssayMistakeDrafts, saveEssayMistakes } from './essayMistakes';
+import {
+  buildEssayMistakeDrafts,
+  classifyEssayMistakeItems,
+  saveEssayMistakes,
+  saveEssayMistakesWithDetails,
+} from './essayMistakes';
 
 const GRADING = [
   '他<replace old="非常很高兴" new="非常高兴" reason="程度副词重复"/>地回家了。',
@@ -135,5 +140,44 @@ describe('essay mistakes', () => {
     await expect(saveEssayMistakes(GRADING)).resolves.toEqual({ count: 0, examId: 'exam_essay' });
     expect(invokeMock.mock.calls.some(([cmd]) => cmd === 'qbank_batch_create_questions')).toBe(false);
     expect(refreshTodayLearningMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('excludes suggestion-only markers when includeSuggestions is false and returns examName + savedTitles (S3-02)', async () => {
+    const SUGGESTION_ONLY = [
+      '表达<replace old="很有意义" new="具有深远意义" reason="提升表达"/>',
+      '<err type="word_choice" explanation="换用更地道词汇">good</err>',
+      '<good>立意鲜明</good>',
+    ].join('\n');
+
+    const classified = classifyEssayMistakeItems(SUGGESTION_ONLY);
+    expect(classified.errors).toHaveLength(0);
+    expect(classified.suggestions).toHaveLength(2);
+    expect(buildEssayMistakeDrafts(SUGGESTION_ONLY, { includeSuggestions: false })).toHaveLength(0);
+
+    await expect(
+      saveEssayMistakesWithDetails(SUGGESTION_ONLY, { includeSuggestions: false }),
+    ).resolves.toEqual({
+      count: 0,
+      examId: null,
+      examName: '作文错题',
+      savedTitles: [],
+    });
+    expect(invokeMock).not.toHaveBeenCalled();
+
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'qbank_batch_create_questions') {
+        return [{ id: 'q_s1' }];
+      }
+      return undefined;
+    });
+    const withErrors = '<err type="grammar" explanation="主谓不一致">he go to school</err>';
+    await expect(
+      saveEssayMistakesWithDetails(withErrors, { includeSuggestions: false }),
+    ).resolves.toEqual({
+      count: 1,
+      examId: 'exam_essay',
+      examName: '作文错题',
+      savedTitles: ['he go to school'],
+    });
   });
 });

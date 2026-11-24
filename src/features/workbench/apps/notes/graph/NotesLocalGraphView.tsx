@@ -10,6 +10,7 @@ import {
   Background,
   BackgroundVariant,
   Handle,
+  MarkerType,
   Position,
   ReactFlow,
   type Edge,
@@ -19,6 +20,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
+  detectDirectedCycles,
   layoutLocalGraph,
   type LocalGraphData,
   type LocalGraphNodeDatum,
@@ -30,6 +32,8 @@ interface GraphNodeData extends Record<string, unknown> {
   degree: 0 | 1 | 2;
   exists: boolean;
   currentBadge: string;
+  degreeLabel?: string;
+  inCycle?: boolean;
 }
 
 type GraphFlowNode = Node<GraphNodeData, 'localGraphNode'>;
@@ -43,6 +47,7 @@ const GraphNodeView: React.FC<NodeProps<GraphFlowNode>> = ({ data }) => {
       data-degree={data.degree}
       data-active={isActive ? 'true' : undefined}
       data-ghost={data.exists ? undefined : 'true'}
+      data-cycle={data.inCycle ? 'true' : undefined}
       aria-current={isActive ? 'page' : undefined}
       aria-label={isActive ? `${data.title} (${data.currentBadge})` : data.title}
       title={data.title}
@@ -52,6 +57,9 @@ const GraphNodeView: React.FC<NodeProps<GraphFlowNode>> = ({ data }) => {
       <span className="notes-graph-node-dot" aria-hidden="true" />
       <span className="notes-graph-node-label">{data.title}</span>
       {isActive && <span className="notes-graph-node-badge">{data.currentBadge}</span>}
+      {!isActive && data.degreeLabel && (
+        <span className="notes-graph-node-degree" data-degree={data.degree}>{data.degreeLabel}</span>
+      )}
       <Handle type="source" position={Position.Bottom} className="notes-graph-handle" isConnectable={false} />
     </button>
   );
@@ -73,16 +81,31 @@ export const NotesLocalGraphView: React.FC<NotesLocalGraphViewProps> = ({
 }) => {
   const { t } = useTranslation('notes');
   const currentBadge = t('workspace.graphCurrentNode', { defaultValue: '当前' });
+  const degree1Label = t('workspace.graphDegree1', { defaultValue: '1 度' });
+  const degree2Label = t('workspace.graphDegree2', { defaultValue: '2 度' });
   const wikilinkLabel = t('workspace.graphEdgeWikilink', { defaultValue: '双链' });
   const noterefLabel = t('workspace.graphEdgeNoteref', { defaultValue: '引用' });
 
   const { nodes, edges } = useMemo(() => {
+    const cycles =
+      data.cycleNodeIds && data.cycleEdgeIds
+        ? { cycleNodeIds: data.cycleNodeIds, cycleEdgeIds: data.cycleEdgeIds }
+        : detectDirectedCycles(data.edges);
+    const cycleNodeSet = new Set(cycles.cycleNodeIds);
+    const cycleEdgeSet = new Set(cycles.cycleEdgeIds);
     const positioned = layoutLocalGraph(data);
     const flowNodes: GraphFlowNode[] = positioned.map((node) => ({
       id: node.id,
       type: 'localGraphNode',
       position: { x: node.x, y: node.y },
-      data: { title: node.title, degree: node.degree, exists: node.exists, currentBadge },
+      data: {
+        title: node.title,
+        degree: node.degree,
+        exists: node.exists,
+        currentBadge,
+        degreeLabel: node.degree === 1 ? degree1Label : node.degree === 2 ? degree2Label : undefined,
+        inCycle: cycleNodeSet.has(node.id),
+      },
       // 节点以中心点定位（同心圆坐标即节点中心）
       origin: [0.5, 0.5] as [number, number],
       draggable: true,
@@ -90,22 +113,35 @@ export const NotesLocalGraphView: React.FC<NotesLocalGraphViewProps> = ({
       focusable: true,
       ariaLabel: node.title,
     }));
-    const flowEdges: Edge[] = data.edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      type: 'straight',
-      focusable: false,
-      label: edge.kind === 'noteref' ? noterefLabel : wikilinkLabel,
-      labelStyle: { fontSize: 9.5, fill: 'hsl(var(--muted-foreground))' },
-      labelBgStyle: { fill: 'hsl(var(--background) / 86%)' },
-      labelBgPadding: [4, 1.5] as [number, number],
-      labelBgBorderRadius: 4,
-      // 按链接类型分色（RemNote 图谱心智）：unknown 与 wikilink 共用中性样式
-      className: `notes-graph-edge notes-graph-edge-${edge.kind}`,
-    }));
+    const flowEdges: Edge[] = data.edges.map((edge) => {
+      const isCycle = cycleEdgeSet.has(edge.id);
+      return {
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        type: 'straight',
+        focusable: false,
+        markerEnd: {
+          type: MarkerType?.ArrowClosed ?? ('arrowclosed' as MarkerType),
+          width: 14,
+          height: 14,
+          color: isCycle
+            ? 'hsl(var(--warning))'
+            : edge.kind === 'noteref'
+              ? 'hsl(var(--info))'
+              : 'hsl(var(--muted-foreground))',
+        },
+        label: edge.kind === 'noteref' ? noterefLabel : wikilinkLabel,
+        labelStyle: { fontSize: 9.5, fill: isCycle ? 'hsl(var(--warning))' : 'hsl(var(--muted-foreground))' },
+        labelBgStyle: { fill: 'hsl(var(--background) / 86%)' },
+        labelBgPadding: [4, 1.5] as [number, number],
+        labelBgBorderRadius: 4,
+        // 按链接类型分色（RemNote 图谱心智）：unknown 与 wikilink 共用中性样式；环路边叠加强调
+        className: `notes-graph-edge notes-graph-edge-${edge.kind}${isCycle ? ' notes-graph-edge-cycle' : ''}`,
+      };
+    });
     return { nodes: flowNodes, edges: flowEdges };
-  }, [currentBadge, data, noterefLabel, wikilinkLabel]);
+  }, [currentBadge, data, degree1Label, degree2Label, noterefLabel, wikilinkLabel]);
 
   const onNodeClick: NodeMouseHandler<GraphFlowNode> = (_event, node) => {
     if (!node.data.exists) return;

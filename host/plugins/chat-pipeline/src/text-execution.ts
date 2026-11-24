@@ -85,8 +85,12 @@ export class TextTurnExecution {
       await this.deps.finalPersistence.saveResults(ctx);
     } catch (error) {
       const cancelled = error instanceof ChatV2Error && error.kind === 'Cancelled';
-      if (cancelled) this.log.info(`[ChatV2::pipeline] Pipeline cancelled for session=${ctx.sessionId}, attempting to save partial results...`);
-      else this.log.error(`[ChatV2::pipeline] Pipeline error for session=${ctx.sessionId}: ${message(error)}, attempting to save partial results...`);
+      if (cancelled) {
+        ctx.aborted = true;
+        this.log.info(`[ChatV2::pipeline] Pipeline cancelled for session=${ctx.sessionId}, attempting to save partial results...`);
+      } else {
+        this.log.error(`[ChatV2::pipeline] Pipeline error for session=${ctx.sessionId}: ${message(error)}, attempting to save partial results...`);
+      }
       this.collectPartial(ctx);
       const reason = cancelled ? 'cancel' : 'error';
       if (ctx.currentAdapter) this.log.info(`[ChatV2::pipeline] Retrieved partial content from adapter on ${reason}: content_len=${utf8ByteLength(ctx.finalContent)}, reasoning_len=${ctx.finalReasoning === null ? 'None' : `Some(${utf8ByteLength(ctx.finalReasoning)})`}`);
@@ -111,8 +115,9 @@ export class TextTurnExecution {
   private collectPartial(ctx: PipelineContext): void {
     const adapter = ctx.currentAdapter;
     if (!adapter) return;
+    adapter.flushBuffersSilently();
     if (ctx.finalContent === '') ctx.finalContent = adapter.getAccumulatedContent();
-    if (ctx.finalReasoning === null) ctx.finalReasoning = adapter.getAccumulatedReasoning();
+    if (ctx.finalReasoning === null || ctx.finalReasoning === '') ctx.finalReasoning = adapter.getAccumulatedReasoning();
     ctx.streamingThinkingBlockId ??= adapter.getThinkingBlockId();
     ctx.streamingContentBlockId ??= adapter.getContentBlockId();
     for (const segment of adapter.getTextSegments()) {

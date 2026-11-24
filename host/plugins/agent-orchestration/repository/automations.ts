@@ -23,7 +23,8 @@ export {
   loadAutomations, saveAutomations, setAutomationEnabled, updateAutomationFull, deleteAutomation,
   automationToListItem, automationToListObject, automationListResponse, effectiveAgentPrompt,
   automationToAgentListItem, updateAutomationLastRunAt, updateAutomationAgentSessionId,
-  DEFAULT_HEARTBEAT_PROMPT, defaultHeartbeatDefinition, ensureHeartbeatInList, ensureHeartbeatAutomation,
+  DEFAULT_HEARTBEAT_PROMPT, DEFAULT_HEARTBEAT_PROMPT_EN, DEFAULT_HEARTBEAT_NAME_ZH, DEFAULT_HEARTBEAT_NAME_EN,
+  resolveAutomationLocale, defaultHeartbeatDefinition, ensureHeartbeatInList, ensureHeartbeatAutomation,
   heartbeatIsSilent, scheduleSkewThreshold, initializeNextRun, repairSkewedNextRun,
   DEFAULT_HEARTBEAT_INTERVAL_MINUTES, DEFAULT_MAX_RETRIES, DEFAULT_RETRY_BACKOFF_SECS, DEFAULT_TIMEOUT_SECS,
 } from './automation-definitions.ts';

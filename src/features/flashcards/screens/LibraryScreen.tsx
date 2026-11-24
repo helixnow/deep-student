@@ -3,7 +3,7 @@
  * 支持防抖即时搜索、状态筛选 chips、客户端排序、多选批量操作（shift 连选）、
  * 行内展开编辑与行内删除确认 —— 全部内联交互，无弹窗。
  */
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   BracketsCurly,
@@ -64,6 +64,7 @@ import {
 import { buildDeckTree, flattenDeckTree } from '../library/deckTree';
 import '../library/library.css';
 import { exportLibraryApkg, exportLibraryCsv } from '../library/exportLibrary';
+import { parseFlashcardsFromCsv } from '../library/csvFlashcards';
 import { openImageOcclusionBuilder } from '../occlusion/ImageOcclusionBuilderModal';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { usesAndroidSaf } from '@/utils/fileManager';
@@ -72,8 +73,89 @@ import { isTauriEnvironment } from '@/utils/urlOpener';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
-const SEARCH_DEBOUNCE_MS = 300;
+const SEARCH_DEBOUNCE_MS = 180;
 const BULK_DELETE_DISARM_MS = 4000;
+
+interface PendingCsvImport {
+  file?: File;
+  rawText: string;
+  fileName: string;
+  cardCount: number;
+  skippedRows: number;
+  deckBuckets: Array<{ csvDeck: string; count: number }>;
+}
+
+interface LibrarySearchBarProps {
+  storeQuery: string;
+  placeholder: string;
+  searchLabel: string;
+  searchButtonText: string;
+  showSearchButton: boolean;
+  onSubmitSearch: (query: string, options?: { force?: boolean }) => Promise<boolean>;
+}
+
+/** 隔离输入草稿状态与防抖，避免每次击键触发整页及 100 行卡片重渲染。 */
+const LibrarySearchBar: React.FC<LibrarySearchBarProps> = React.memo(({
+  storeQuery,
+  placeholder,
+  searchLabel,
+  searchButtonText,
+  showSearchButton,
+  onSubmitSearch,
+}) => {
+  const [draftSearch, setDraftSearch] = useState(storeQuery);
+  const prevStoreQueryRef = useRef(storeQuery);
+
+  useEffect(() => {
+    if (prevStoreQueryRef.current !== storeQuery) {
+      prevStoreQueryRef.current = storeQuery;
+      setDraftSearch((current) => (current.trim() === storeQuery ? current : storeQuery));
+    }
+  }, [storeQuery]);
+
+  useEffect(() => {
+    if (draftSearch.trim() === storeQuery) return;
+    const timer = window.setTimeout(() => {
+      React.startTransition(() => {
+        void onSubmitSearch(draftSearch);
+      });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [draftSearch, storeQuery, onSubmitSearch]);
+
+  const handleSubmitNow = useCallback(() => {
+    React.startTransition(() => {
+      void onSubmitSearch(draftSearch, { force: true });
+    });
+  }, [draftSearch, onSubmitSearch]);
+
+  return (
+    <>
+      <div className="wb-fc-search relative min-w-0 flex-1">
+        <MagnifyingGlass
+          size={14}
+          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+        />
+        <Input
+          aria-label={searchLabel}
+          type="search"
+          value={draftSearch}
+          onChange={(event) => setDraftSearch(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !isComposingKeyEvent(event)) handleSubmitNow();
+          }}
+          placeholder={placeholder}
+          className="h-9 pl-8 text-sm [@media(pointer:coarse)]:!h-11"
+        />
+      </div>
+      {showSearchButton && (
+        <DsButton type="button" variant="default" aria-label={searchButtonText} onClick={handleSubmitNow} className="text-sm">
+          {searchButtonText}
+        </DsButton>
+      )}
+    </>
+  );
+});
 
 const FILTER_OPTIONS: LibraryStatusFilter[] = [
   'all',
@@ -90,6 +172,8 @@ const SORT_OPTIONS: Array<Exclude<LibrarySortKey, 'default'>> = ['due', 'created
 /** 牌组下拉的「全部」取值：牌组名不会以 `::` 开头，'' 已用于「未分组」 */
 const DECK_FILTER_ALL = '::all';
 
+const MemoizedLibraryCardRow = React.memo(LibraryCardRow);
+
 export const LibraryScreen: React.FC = () => {
   const { t } = useTranslation('flashcards');
   const { isSmallScreen } = useBreakpoint();
@@ -99,11 +183,11 @@ export const LibraryScreen: React.FC = () => {
   const backToToday = useCallback(() => setScreen('today'), [setScreen]);
 
   const items = useFlashcardsLibraryStore((state) => state.items);
+  const deferredItems = useDeferredValue(items);
   const total = useFlashcardsLibraryStore((state) => state.total);
   const statusCounts = useFlashcardsLibraryStore((state) => state.statusCounts);
   const page = useFlashcardsLibraryStore((state) => state.page);
   const pageSize = useFlashcardsLibraryStore((state) => state.pageSize);
-  const search = useFlashcardsLibraryStore((state) => state.searchInput);
   const query = useFlashcardsLibraryStore((state) => state.query);
   const loading = useFlashcardsLibraryStore((state) => state.loading);
   const loaded = useFlashcardsLibraryStore((state) => state.loaded);
@@ -116,7 +200,6 @@ export const LibraryScreen: React.FC = () => {
   const decks = useFlashcardsLibraryStore((state) => state.decks);
   const sortKey = useFlashcardsLibraryStore((state) => state.sortKey);
   const sortDir = useFlashcardsLibraryStore((state) => state.sortDir);
-  const setSearch = useFlashcardsLibraryStore((state) => state.setSearchInput);
   const setStatusFilter = useFlashcardsLibraryStore((state) => state.setStatusFilter);
   const setDeckFilter = useFlashcardsLibraryStore((state) => state.setDeckFilter);
   const toggleSort = useFlashcardsLibraryStore((state) => state.toggleSort);
@@ -150,6 +233,7 @@ export const LibraryScreen: React.FC = () => {
   const [composerOpen, setComposerOpen] = useState(false);
   const [importPanelMode, setImportPanelMode] = useState<'apkg' | 'csv' | null>(null);
   const [csvTargetDeck, setCsvTargetDeck] = useState('');
+  const [pendingCsvImport, setPendingCsvImport] = useState<PendingCsvImport | null>(null);
   const [importDragActive, setImportDragActive] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtersId = useId();
@@ -201,15 +285,6 @@ export const LibraryScreen: React.FC = () => {
     [onRefreshEvent],
   );
 
-  // 即时搜索：输入停顿后自动提交；显式搜索（回车 / 按钮）会同步 query 从而取消定时器。
-  useEffect(() => {
-    if (search.trim() === query) return;
-    const timer = window.setTimeout(() => {
-      void useFlashcardsLibraryStore.getState().submitSearch();
-    }, SEARCH_DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [search, query]);
-
   // 数据刷新后修剪失效的选择 / 展开 / 删除确认目标。
   useEffect(() => {
     const ids = new Set(items.map((item) => item.id));
@@ -255,14 +330,15 @@ export const LibraryScreen: React.FC = () => {
   const rowBusy = busyCardId !== null || bulkBusy;
 
   // 已生成未入队（inbox）与已入队队列（scheduled）分区渲染，视觉上隔离两条队列。
+  // deferredItems 防止大页切换（如 100 张含数学公式卡）阻塞交互帧；
   // visibleItems 按「inbox 在前」的渲染顺序拼接，键盘导航 / shift 连选与视觉顺序一致。
   const { inbox: inboxItems, scheduled: scheduledItems } = useMemo(
     () => partitionLibraryQueues(sortLibraryCards(
-      items.filter((card) => matchesStatusFilter(card, statusFilter)),
+      deferredItems.filter((card) => matchesStatusFilter(card, statusFilter)),
       sortKey,
       sortDir,
     )),
-    [items, statusFilter, sortKey, sortDir],
+    [deferredItems, statusFilter, sortKey, sortDir],
   );
   const visibleItems = useMemo(
     () => [...inboxItems, ...scheduledItems],
@@ -279,12 +355,12 @@ export const LibraryScreen: React.FC = () => {
         statusCounts
           ? statusCounts[option]
           : option === 'all'
-            ? items.length
-            : items.filter((card) => matchesStatusFilter(card, option)).length,
+            ? deferredItems.length
+            : deferredItems.filter((card) => matchesStatusFilter(card, option)).length,
       );
     }
     return counts;
-  }, [items, statusCounts]);
+  }, [deferredItems, statusCounts]);
 
   const deckOptions = useMemo(() => flattenDeckTree(buildDeckTree(decks ?? [])), [decks]);
   const namedDeckPaths = useMemo(
@@ -317,17 +393,23 @@ export const LibraryScreen: React.FC = () => {
     disarmBulkDelete();
   }, [disarmBulkDelete]);
 
-  const handleSearchNow = () => {
-    void submitSearch();
-  };
+  const visibleItemsRef = useRef(visibleItems);
+  visibleItemsRef.current = visibleItems;
+  const lastAnchorIdRef = useRef(lastAnchorId);
+  lastAnchorIdRef.current = lastAnchorId;
+  const allVisibleSelectedRef = useRef(allVisibleSelected);
+  allVisibleSelectedRef.current = allVisibleSelected;
+  const deleteCandidateIdRef = useRef(deleteCandidateId);
+  deleteCandidateIdRef.current = deleteCandidateId;
 
   const handleToggleSelect = useCallback((cardId: string, shiftKey: boolean) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
       const targetChecked = !prev.has(cardId);
-      if (shiftKey && lastAnchorId && lastAnchorId !== cardId) {
-        const order = visibleItems.map((card) => card.id);
-        const anchorIndex = order.indexOf(lastAnchorId);
+      const anchor = lastAnchorIdRef.current;
+      if (shiftKey && anchor && anchor !== cardId) {
+        const order = visibleItemsRef.current.map((card) => card.id);
+        const anchorIndex = order.indexOf(anchor);
         const targetIndex = order.indexOf(cardId);
         if (anchorIndex !== -1 && targetIndex !== -1) {
           const [from, to] = anchorIndex < targetIndex
@@ -346,16 +428,16 @@ export const LibraryScreen: React.FC = () => {
     });
     setLastAnchorId(cardId);
     disarmBulkDelete();
-  }, [lastAnchorId, visibleItems, disarmBulkDelete]);
+  }, [disarmBulkDelete]);
 
   const handleToggleSelectAll = useCallback(() => {
-    if (allVisibleSelected) {
+    if (allVisibleSelectedRef.current) {
       clearSelection();
       return;
     }
-    setSelectedIds(new Set(visibleItems.map((card) => card.id)));
+    setSelectedIds(new Set(visibleItemsRef.current.map((card) => card.id)));
     disarmBulkDelete();
-  }, [allVisibleSelected, visibleItems, clearSelection, disarmBulkDelete]);
+  }, [clearSelection, disarmBulkDelete]);
 
   const handleToggleExpand = useCallback((cardId: string) => {
     setExpandedId((prev) => (prev === cardId ? null : cardId));
@@ -382,12 +464,12 @@ export const LibraryScreen: React.FC = () => {
   }, []);
 
   const handleConfirmDelete = useCallback(() => {
-    const cardId = deleteCandidateId;
+    const cardId = deleteCandidateIdRef.current;
     if (!cardId) return;
     void deleteCard(cardId).finally(() => {
       setDeleteCandidateId((prev) => (prev === cardId ? null : prev));
     });
-  }, [deleteCandidateId, deleteCard]);
+  }, [deleteCard]);
 
   const handleSaveEdit = useCallback(
     (
@@ -411,7 +493,7 @@ export const LibraryScreen: React.FC = () => {
     cardId: string,
   ) => {
     if (event.target !== event.currentTarget) return;
-    const order = visibleItems.map((card) => card.id);
+    const order = visibleItemsRef.current.map((card) => card.id);
     const index = order.indexOf(cardId);
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
@@ -433,7 +515,7 @@ export const LibraryScreen: React.FC = () => {
       event.preventDefault();
       setDeleteCandidateId(cardId);
     }
-  }, [visibleItems, handleToggleExpand, handleToggleSelect]);
+  }, [handleToggleExpand, handleToggleSelect]);
 
   const registerRowRef = useCallback((cardId: string, element: HTMLLIElement | null) => {
     if (element) rowRefs.current.set(cardId, element);
@@ -576,13 +658,29 @@ export const LibraryScreen: React.FC = () => {
     });
   }, [importing, importApkg, translate]);
 
-  const runImportCsv = useCallback((file?: File) => {
+  const csvEffectiveFallbackDeck = useMemo(
+    () => csvTargetDeck.trim() || (deckFilter && deckFilter !== DECK_FILTER_ALL ? deckFilter : ''),
+    [csvTargetDeck, deckFilter],
+  );
+
+  const pendingCsvDeckPreview = useMemo(() => {
+    if (!pendingCsvImport) return [];
+    const counts = new Map<string, number>();
+    const ungroupedLabel = translate('library.ungrouped', { defaultValue: '未分组' });
+    for (const bucket of pendingCsvImport.deckBuckets) {
+      const resolvedDeck = bucket.csvDeck || csvEffectiveFallbackDeck || ungroupedLabel;
+      counts.set(resolvedDeck, (counts.get(resolvedDeck) ?? 0) + bucket.count);
+    }
+    return Array.from(counts.entries()).map(([deck, count]) => ({ deck, count }));
+  }, [pendingCsvImport, csvEffectiveFallbackDeck, translate]);
+
+  const runImportCsv = useCallback((input?: { file?: File; rawText?: string }) => {
     if (importing) return;
-    const normalizedTargetDeck = csvTargetDeck.trim();
-    const fallbackDeck = normalizedTargetDeck || (deckFilter && deckFilter !== DECK_FILTER_ALL ? deckFilter : '');
+    const fallbackDeck = csvEffectiveFallbackDeck;
     void importCsv({
       ...(fallbackDeck ? { targetDeck: fallbackDeck } : {}),
-      ...(file ? { file } : {}),
+      ...(input?.file ? { file: input.file } : {}),
+      ...(typeof input?.rawText === 'string' ? { rawText: input.rawText } : {}),
     }).then((outcome) => {
       if (outcome.status === 'imported') {
         const message =
@@ -597,16 +695,59 @@ export const LibraryScreen: React.FC = () => {
                 queued: outcome.reviewEnqueued,
               });
         showGlobalNotification('success', message);
+        setPendingCsvImport(null);
         setImportPanelMode(null);
       }
       // canceled 静默；failed 已写入 actionError 由页内错误条呈现
     });
-  }, [importing, csvTargetDeck, deckFilter, importCsv, translate]);
+  }, [importing, csvEffectiveFallbackDeck, importCsv, translate]);
+
+  const stageCsvPreviewText = useCallback((rawText: string, fileName: string, file?: File) => {
+    const parsed = parseFlashcardsFromCsv(rawText);
+    if (parsed.cards.length === 0) {
+      // 无有效行时走原有错误上报流程，避免空白预览卡住用户
+      runImportCsv({ file, rawText });
+      return;
+    }
+    const bucketCounts = new Map<string, number>();
+    for (const card of parsed.cards) {
+      bucketCounts.set(card.deck, (bucketCounts.get(card.deck) ?? 0) + 1);
+    }
+    setPendingCsvImport({
+      file,
+      rawText,
+      fileName,
+      cardCount: parsed.cards.length,
+      skippedRows: parsed.skippedRows,
+      deckBuckets: Array.from(bucketCounts.entries()).map(([csvDeck, count]) => ({ csvDeck, count })),
+    });
+  }, [runImportCsv]);
+
+  const stageCsvPreviewFile = useCallback(async (file: File) => {
+    if (importing) return;
+    const rawText = typeof (file as { text?: unknown }).text === 'function'
+      ? await file.text()
+      : await new Response(file).text();
+    stageCsvPreviewText(rawText, file.name || 'flashcards.csv', file);
+  }, [importing, stageCsvPreviewText]);
+
+  const pickCsvForPreview = useCallback(async () => {
+    if (importing) return;
+    const { fileManager, extractFileName } = await import('@/utils/fileManager');
+    const path = await fileManager.pickSingleFile({
+      title: translate('library.import.csvPickTitle'),
+      filters: [{ name: 'CSV / TSV', extensions: ['csv', 'tsv', 'txt'] }],
+    });
+    if (!path) return;
+    const rawText = await fileManager.readTextFile(path);
+    stageCsvPreviewText(rawText, extractFileName(path) || path);
+  }, [importing, translate, stageCsvPreviewText]);
 
   const handleImportApkg = useCallback(() => {
     if (importing) return;
     setComposerOpen(false);
     setImportDragActive(false);
+    setPendingCsvImport(null);
     setImportPanelMode((prev) => (prev === 'apkg' ? null : 'apkg'));
   }, [importing]);
 
@@ -614,6 +755,7 @@ export const LibraryScreen: React.FC = () => {
     if (importing) return;
     setComposerOpen(false);
     setImportDragActive(false);
+    setPendingCsvImport(null);
     setImportPanelMode((prev) => {
       if (prev === 'csv') return null;
       setCsvTargetDeck(deckFilter && deckFilter !== DECK_FILTER_ALL ? deckFilter : '');
@@ -633,9 +775,9 @@ export const LibraryScreen: React.FC = () => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (file) {
-      runImportCsv(file);
+      void stageCsvPreviewFile(file);
     }
-  }, [runImportCsv]);
+  }, [stageCsvPreviewFile]);
 
   const handleImportDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -646,9 +788,9 @@ export const LibraryScreen: React.FC = () => {
     if (importPanelMode === 'apkg') {
       runImportApkg(file);
     } else {
-      runImportCsv(file);
+      void stageCsvPreviewFile(file);
     }
-  }, [importPanelMode, runImportApkg, runImportCsv]);
+  }, [importPanelMode, runImportApkg, stageCsvPreviewFile]);
 
   // 导出：有选中导出选中，否则导出整个卡片库
   const [exporting, setExporting] = useState(false);
@@ -876,7 +1018,7 @@ export const LibraryScreen: React.FC = () => {
 
   // 两个队列分区共用同一行渲染（行为完全一致，仅容器视觉不同）。
   const renderCardRow = (card: AnkiLibraryCard) => (
-    <LibraryCardRow
+    <MemoizedLibraryCardRow
       key={card.id}
       card={card}
       busy={rowBusy}
@@ -1008,26 +1150,14 @@ export const LibraryScreen: React.FC = () => {
       </header>}
 
       <div className="wb-fc-toolbar">
-        <div className="wb-fc-search relative min-w-0 flex-1">
-          <MagnifyingGlass
-            size={14}
-            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            aria-label={t('library.searchLabel')}
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !isComposingKeyEvent(event)) handleSearchNow();
-            }}
-            placeholder={t('library.searchPlaceholder')}
-            className="h-9 pl-8 text-sm [@media(pointer:coarse)]:!h-11"
-          />
-        </div>
-        {!isSmallScreen && <DsButton type="button" variant="default" aria-label={t('library.search')} onClick={handleSearchNow} className="text-sm">
-          {t('library.search')}
-        </DsButton>}
+        <LibrarySearchBar
+          storeQuery={query}
+          placeholder={t('library.searchPlaceholder')}
+          searchLabel={t('library.searchLabel')}
+          searchButtonText={t('library.search')}
+          showSearchButton={!isSmallScreen}
+          onSubmitSearch={submitSearch}
+        />
         {!mobileChrome && <div className="fc-lib-create">{creationActions}</div>}
         {isSmallScreen && (
           <DsButton
@@ -1067,7 +1197,10 @@ export const LibraryScreen: React.FC = () => {
               variant="ghost"
               size="icon"
               aria-label={translate('common:close', { defaultValue: '关闭' })}
-              onClick={() => setImportPanelMode(null)}
+              onClick={() => {
+                setPendingCsvImport(null);
+                setImportPanelMode(null);
+              }}
               data-testid="fc-lib-import-panel-close"
               className="min-h-[32px] min-w-[32px]"
             >
@@ -1076,57 +1209,81 @@ export const LibraryScreen: React.FC = () => {
           </div>
 
           {importPanelMode === 'csv' ? (
-            <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
-              <label
-                htmlFor="fc-lib-csv-target-deck-select"
-                className="shrink-0 text-xs font-medium text-muted-foreground"
-              >
-                {translate('library.import.csvTargetDeckLabel', { defaultValue: '导入目标牌组' })}
-              </label>
-              <div className="flex flex-1 flex-wrap items-center gap-2">
-                <select
-                  id="fc-lib-csv-target-deck-select"
-                  data-testid="fc-lib-csv-target-deck-select"
-                  aria-label={translate('library.import.csvTargetDeckLabel', { defaultValue: '导入目标牌组' })}
-                  value={
-                    csvTargetDeck && namedDeckPaths.includes(csvTargetDeck)
-                      ? csvTargetDeck
-                      : csvTargetDeck
-                        ? '__custom__'
-                        : ''
-                  }
-                  onChange={(event) => {
-                    const nextVal = event.target.value;
-                    if (nextVal !== '__custom__') {
-                      setCsvTargetDeck(nextVal);
-                    }
-                  }}
-                  className="h-9 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+            <div className="space-y-1.5">
+              <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center">
+                <label
+                  htmlFor="fc-lib-csv-target-deck-select"
+                  className="shrink-0 text-xs font-medium text-muted-foreground"
                 >
-                  <option value="">
-                    {translate('library.import.csvTargetDeckDefault', { defaultValue: '自动（使用表格 deck 列或当前分组）' })}
-                  </option>
-                  {namedDeckPaths.map((deckPath) => (
-                    <option key={deckPath} value={deckPath}>
-                      {deckPath}
+                  {translate('library.import.csvTargetDeckLabel', { defaultValue: '导入目标牌组' })}
+                </label>
+                <div className="flex flex-1 flex-wrap items-center gap-2">
+                  <select
+                    id="fc-lib-csv-target-deck-select"
+                    data-testid="fc-lib-csv-target-deck-select"
+                    aria-label={translate('library.import.csvTargetDeckLabel', { defaultValue: '导入目标牌组' })}
+                    value={
+                      csvTargetDeck && namedDeckPaths.includes(csvTargetDeck)
+                        ? csvTargetDeck
+                        : csvTargetDeck
+                          ? '__custom__'
+                          : ''
+                    }
+                    onChange={(event) => {
+                      const nextVal = event.target.value;
+                      if (nextVal !== '__custom__') {
+                        setCsvTargetDeck(nextVal);
+                      }
+                    }}
+                    className="h-9 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    <option value="">
+                      {translate('library.import.csvTargetDeckDefault', { defaultValue: '自动（使用表格 deck 列或当前分组）' })}
                     </option>
-                  ))}
-                  {csvTargetDeck && !namedDeckPaths.includes(csvTargetDeck) ? (
-                    <option value="__custom__">{csvTargetDeck}</option>
-                  ) : null}
-                </select>
-                <Input
-                  type="text"
-                  data-testid="fc-lib-csv-target-deck-input"
-                  aria-label={translate('library.import.csvTargetDeckCustom', { defaultValue: '自定义目标牌组名称' })}
-                  placeholder={translate('library.import.csvTargetDeckPlaceholder', {
-                    defaultValue: '输入新牌组或留空使用上方选择',
-                  })}
-                  value={csvTargetDeck}
-                  onChange={(event) => setCsvTargetDeck(event.target.value)}
-                  className="min-w-[200px] flex-1"
-                />
+                    {namedDeckPaths.map((deckPath) => (
+                      <option key={deckPath} value={deckPath}>
+                        {deckPath}
+                      </option>
+                    ))}
+                    {csvTargetDeck && !namedDeckPaths.includes(csvTargetDeck) ? (
+                      <option value="__custom__">{csvTargetDeck}</option>
+                    ) : null}
+                  </select>
+                  <Input
+                    type="text"
+                    data-testid="fc-lib-csv-target-deck-input"
+                    aria-label={translate('library.import.csvTargetDeckCustom', { defaultValue: '自定义目标牌组名称' })}
+                    placeholder={translate('library.import.csvTargetDeckPlaceholder', {
+                      defaultValue: '输入新牌组或留空使用上方选择',
+                    })}
+                    value={csvTargetDeck}
+                    onChange={(event) => setCsvTargetDeck(event.target.value)}
+                    className="min-w-[200px] flex-1"
+                  />
+                </div>
               </div>
+              <p
+                data-testid="fc-lib-csv-target-summary"
+                className="text-xs text-muted-foreground"
+              >
+                {csvTargetDeck.trim()
+                  ? translate('library.import.csvTargetSummaryExplicit', {
+                      deck: csvTargetDeck.trim(),
+                      defaultValue: '未指定表格 deck 列的卡片将导入到目标牌组「{{deck}}」。',
+                    })
+                  : deckFilter && deckFilter !== DECK_FILTER_ALL
+                    ? translate('library.import.csvTargetSummaryFiltered', {
+                        deck: deckFilter,
+                        defaultValue: '当前正在筛选牌组「{{deck}}」；未指定表格 deck 列的卡片将导入该牌组，可在上方修改。',
+                      })
+                    : deckFilter === ''
+                      ? translate('library.import.csvTargetSummaryUngrouped', {
+                          defaultValue: '当前正在查看「未分组」；未指定表格 deck 列的卡片将归入「未分组」，可在上方指定目标牌组。',
+                        })
+                      : translate('library.import.csvTargetSummaryAll', {
+                          defaultValue: '将优先使用表格 deck 列；未指定 deck 列的卡片将归入「未分组」。',
+                        })}
+              </p>
             </div>
           ) : null}
 
@@ -1197,17 +1354,78 @@ export const LibraryScreen: React.FC = () => {
                   } else if (preferDomFileInput && csvFileInputRef.current) {
                     csvFileInputRef.current.click();
                   } else {
-                    runImportCsv();
+                    void pickCsvForPreview();
                   }
                 }}
               >
                 <UploadSimple size={16} />
                 {importing
                   ? translate('library.import.running')
-                  : translate('library.import.chooseFile', { defaultValue: '选择文件并导入' })}
+                  : importPanelMode === 'csv'
+                    ? translate('library.import.chooseCsvFile', { defaultValue: '选择文件预览' })
+                    : translate('library.import.chooseFile', { defaultValue: '选择文件并导入' })}
               </DsButton>
             </div>
           </div>
+
+          {importPanelMode === 'csv' && pendingCsvImport ? (
+            <div
+              data-testid="fc-lib-csv-confirm-banner"
+              className="flex flex-col gap-3 rounded-xl border border-primary/35 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="space-y-1 text-xs">
+                <p className="text-sm font-medium text-foreground">
+                  {translate('library.import.csvConfirmHeading', {
+                    fileName: pendingCsvImport.fileName,
+                    count: pendingCsvImport.cardCount,
+                    defaultValue: '确认导入「{{fileName}}」（共 {{count}} 张卡片）',
+                  })}
+                  {pendingCsvImport.skippedRows > 0
+                    ? ` · ${translate('library.import.csvConfirmSkipped', {
+                        skipped: pendingCsvImport.skippedRows,
+                        defaultValue: '已跳过 {{skipped}} 行空白或无效记录',
+                      })}`
+                    : ''}
+                </p>
+                <p className="text-muted-foreground">
+                  {translate('library.import.csvConfirmTargetDecks', {
+                    decks: pendingCsvDeckPreview.map((item) => `${item.deck} (${item.count})`).join('、'),
+                    defaultValue: '目标牌组：{{decks}}',
+                  })}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <DsButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={importing}
+                  data-testid="fc-lib-csv-cancel-btn"
+                  onClick={() => setPendingCsvImport(null)}
+                >
+                  {translate('common:cancel', { defaultValue: '取消' })}
+                </DsButton>
+                <DsButton
+                  type="button"
+                  variant="primary"
+                  size="sm"
+                  disabled={importing}
+                  data-testid="fc-lib-csv-confirm-btn"
+                  onClick={() => runImportCsv({
+                    file: pendingCsvImport.file,
+                    rawText: pendingCsvImport.rawText,
+                  })}
+                >
+                  {importing
+                    ? translate('library.import.running')
+                    : translate('library.import.csvConfirmButton', {
+                        count: pendingCsvImport.cardCount,
+                        defaultValue: '确认导入（{{count}} 张）',
+                      })}
+                </DsButton>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -1807,7 +2025,9 @@ export const LibraryScreen: React.FC = () => {
                 onChange={(event) => {
                   const nextSize = Number.parseInt(event.target.value, 10);
                   if (Number.isFinite(nextSize)) {
-                    void setPageSize(nextSize);
+                    React.startTransition(() => {
+                      void setPageSize(nextSize);
+                    });
                   }
                 }}
                 className="fc-lib-page-size-select min-h-8 appearance-none rounded-md border border-border/60 bg-background pl-2.5 pr-6 font-mono text-xs tabular-nums text-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"

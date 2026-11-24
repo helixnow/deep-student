@@ -19,6 +19,7 @@ export type BackendSendOptions = SendOptions & {
   executionAllowedTools?: string[] | null;
   userMessageOrigin?: unknown | null;
   streamGeneration?: number | bigint | null;
+  targetVariantId?: string | null;
   skillInjectionAnchors?: import('../../chat/api.ts').SkillInjectionAnchors | null;
 };
 

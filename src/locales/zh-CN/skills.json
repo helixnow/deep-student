@@ -85,6 +85,7 @@
     "refresh": "刷新技能列表",
     "noResults": "未找到匹配的技能",
     "empty": "暂无可用技能",
+    "loading": "加载技能中...",
     "emptyHint": "将 SKILL.md 文件放入 .skills/ 目录以添加技能",
     "activeHint": "技能已激活，对话时将自动应用",
     "deactivate": "取消激活",
