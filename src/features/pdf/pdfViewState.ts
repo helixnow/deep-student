@@ -41,6 +41,8 @@ export interface PdfViewState {
   coverOffset?: boolean;
   /** 紧凑裁白边（裁剪论文四周冗余页边距，放大有效版心） */
   trimMargins?: boolean;
+  /** 最近阅读页码（1-based），用于刷新后瞬时恢复阅读位置 */
+  page?: number;
 }
 
 const STORAGE_PREFIX = 'pdf-viewstate:';
@@ -76,6 +78,10 @@ export function normalizePdfViewState(raw: unknown): PdfViewState {
   }
   if (typeof value.trimMargins === 'boolean') {
     state.trimMargins = value.trimMargins;
+  }
+  const page = Number(value.page);
+  if (Number.isFinite(page) && page >= 1) {
+    state.page = Math.floor(page);
   }
   return state;
 }

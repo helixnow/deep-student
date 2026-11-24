@@ -37,7 +37,13 @@ export interface FinderMoveUndoOp {
   toFolderId: string | null;
 }
 
-export type FinderUndoOp = FinderRenameUndoOp | FinderMoveUndoOp;
+/** 软删除操作记录（支持 Cmd/Ctrl+Z 与通知栏 Undo 共存） */
+export interface FinderSoftDeleteUndoOp {
+  kind: 'soft-delete';
+  targets: Array<{ id: string; type: string; name: string }>;
+}
+
+export type FinderUndoOp = FinderRenameUndoOp | FinderMoveUndoOp | FinderSoftDeleteUndoOp;
 
 export const FINDER_UNDO_STACK_LIMIT = 20;
 

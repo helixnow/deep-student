@@ -1184,7 +1184,22 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
               </span>
             </>
           ) : (
-            <div className="min-w-0 flex-1" />
+            <div
+              role="tablist"
+              aria-label={t('learningHub:officePreview.sheetTabs')}
+              className="flex min-w-0 flex-1 items-center gap-1 px-1"
+            >
+              {sheetTabs[0]?.name ? (
+                <span
+                  role="tab"
+                  aria-selected={true}
+                  className="inline-flex h-6 items-center rounded-sm bg-primary/10 px-2 text-xs font-medium text-primary shadow-[inset_0_2px_0_0_hsl(var(--primary))]"
+                  title={sheetTabs[0].name}
+                >
+                  <span className="truncate">{sheetTabs[0].name}</span>
+                </span>
+              ) : null}
+            </div>
           )}
           <div className="flex flex-shrink-0 items-center gap-3 pl-2 text-xs text-muted-foreground">
             {selectionInfo && (

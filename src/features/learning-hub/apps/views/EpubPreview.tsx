@@ -562,6 +562,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
         setChapterProgress(progress);
       });
     };
+    updateProgress();
     const updateSelection = () => {
       const selection = frameWindow.getSelection();
       const selectedText = selection?.toString().trim().slice(0, 4_000) ?? '';

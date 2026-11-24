@@ -219,7 +219,16 @@ export function restoreResourceByTypeWithConn(
         return;
       case 'textbooks':
       case 'textbook':
-        vfsRepositories().textbooks.restoreTextbook(conn, id);
+        try {
+          vfsRepositories().textbooks.restoreTextbook(conn, id);
+        } catch (tbError) {
+          // PDFs stored in `files` surface as `type: 'textbook'` via fileToDstuNode; fall back cleanly.
+          try {
+            vfsRepositories().files.restoreFile(conn, id);
+          } catch {
+            throw tbError;
+          }
+        }
         return;
       case 'translations':
       case 'translation':
@@ -598,12 +607,32 @@ export function trashRestoreCommand(deps: DstuTrashDeps, id: string, itemType: s
       switch (itemType) {
         case 'folder': vfsRepositories().folders.restoreFolder(deps.database.getConnSafe(), id); break;
         case 'note': notesRepository().restoreNote(id, deps.database.getConnSafe()); break;
-        case 'textbook': vfsRepositories().textbooks.restoreTextbook(deps.database.getConnSafe(), id); break;
+        case 'textbook':
+          try {
+            vfsRepositories().textbooks.restoreTextbook(deps.database.getConnSafe(), id);
+          } catch (tbError) {
+            try {
+              vfsRepositories().files.restoreFile(deps.database.getConnSafe(), id);
+            } catch {
+              throw tbError;
+            }
+          }
+          break;
         case 'exam': vfsRepositories().exams.restoreExam(deps.database.getConnSafe(), id); break;
         case 'translation': vfsRepositories().translations.restoreTranslation(deps.database.getConnSafe(), id); break;
         case 'essay': vfsRepositories().essays.restoreSession(deps.database.getConnSafe(), id); break;
         case 'image':
-        case 'file': vfsRepositories().files.restoreFile(deps.database.getConnSafe(), id); break;
+        case 'file':
+          try {
+            vfsRepositories().files.restoreFile(deps.database.getConnSafe(), id);
+          } catch (fileError) {
+            try {
+              vfsRepositories().textbooks.restoreTextbook(deps.database.getConnSafe(), id);
+            } catch {
+              throw fileError;
+            }
+          }
+          break;
         case 'mindmap': restoreMindmapWithConn(deps.database.getConnSafe(), id); break;
         default:
           deps.log.warn('[DSTU::trash] Unknown item type for restore: %s', itemType);

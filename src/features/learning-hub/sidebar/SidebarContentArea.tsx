@@ -95,6 +95,8 @@ export interface SidebarContentAreaProps {
   parentDropTargets: DropTargets['parentDropTargets'];
   specialDropTargets: DropTargets['specialDropTargets'];
   handleSpecialDrop: (targetId: 'favorites' | 'trash', itemIds: string[]) => Promise<void>;
+  handleRestoreItem?: (id: string, itemType: string) => Promise<void> | void;
+  handlePermanentDeleteItem?: (id: string, itemType: string) => void;
 }
 
 /** 主内容区：特殊系统视图（索引状态 / 记忆 / 桌面）或文件列表 */
@@ -157,6 +159,8 @@ export function SidebarContentArea({
   parentDropTargets,
   specialDropTargets,
   handleSpecialDrop,
+  handleRestoreItem,
+  handlePermanentDeleteItem,
 }: SidebarContentAreaProps) {
   return (
     <>
@@ -376,6 +380,9 @@ export function SidebarContentArea({
           }
           searchQuery={searchQuery}
           onClearSearch={() => setSearchQuery('')}
+          isTrashView={isTrashView}
+          onRestoreItem={isTrashView && handleRestoreItem ? (id, itemType) => { void handleRestoreItem(id, itemType); } : undefined}
+          onPermanentDeleteItem={isTrashView ? handlePermanentDeleteItem : undefined}
         />
         )}
         </>

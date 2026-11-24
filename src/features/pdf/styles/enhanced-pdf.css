@@ -146,6 +146,8 @@
    ============================================================================ */
 
 .ds-pdf__toolbar {
+  position: relative;
+  z-index: 30;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -431,6 +433,8 @@
    ============================================================================ */
 
 .ds-pdf__search-bar {
+  position: relative;
+  z-index: 28;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -479,10 +483,27 @@
    ============================================================================ */
 
 .ds-pdf__main {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex: 1;
   min-height: 0;
   overflow: hidden;
+}
+
+.ds-pdf__scanned-banner {
+  position: relative;
+  z-index: 27;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 12px;
+  background: color-mix(in srgb, hsl(var(--warning)) 10%, hsl(var(--card)) 90%);
+  border-bottom: 1px solid hsl(var(--warning) / 0.35);
+  color: hsl(var(--foreground));
 }
 
 /* ============================================================================
@@ -1234,6 +1255,7 @@
 
 .ds-pdf__page-wrapper {
   position: relative;
+  overflow: hidden;
   margin-bottom: 16px;
   background: hsl(var(--background));
   box-shadow: 0 2px 8px hsl(var(--ring) / 0.1);

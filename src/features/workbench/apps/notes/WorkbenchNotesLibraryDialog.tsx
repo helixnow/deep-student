@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { NotesAPI } from '@/utils/notesApi';
+import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
+import { isWebUiShell } from '@/utils/platform';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { flushAllDirtyContent } from '../content/contentDirtyRegistry';
 import {
@@ -19,6 +21,8 @@ interface WorkbenchNotesLibraryDialogProps {
   onImported: () => void | Promise<void>;
 }
 
+const isMarkdownFilename = (name: string): boolean => /\.(md|markdown|txt)$/i.test(name.trim());
+
 export function WorkbenchNotesLibraryDialog({
   open: dialogOpen,
   initialTab,
@@ -31,9 +35,12 @@ export function WorkbenchNotesLibraryDialog({
   const [exportPathLoading, setExportPathLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [importFilePath, setImportFilePath] = useState('');
+  const [webImportFiles, setWebImportFiles] = useState<File[]>([]);
+  const [nativeImportPaths, setNativeImportPaths] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
   const [importConflictStrategy, setImportConflictStrategy] = useState<ImportConflictStrategy>('skip');
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
+  const webImportInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (dialogOpen) setActiveTab(initialTab);
@@ -99,12 +106,41 @@ export function WorkbenchNotesLibraryDialog({
   };
 
   const pickImportFile = async () => {
-    const selected = await open({
-      title: t('import.file.dialog_title'),
-      multiple: false,
-      filters: [{ name: t('import.filter_name'), extensions: ['zip'] }],
-    });
-    if (typeof selected === 'string') setImportFilePath(selected);
+    const isTauriEnv = typeof window !== 'undefined' && Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__);
+    if (!isTauriEnv || isWebUiShell()) {
+      webImportInputRef.current?.click();
+      return;
+    }
+    try {
+      const selected = await open({
+        title: t('import.file.dialog_title'),
+        multiple: true,
+        filters: [{ name: t('import.filter_name'), extensions: ['zip', 'md', 'markdown', 'txt'] }],
+      });
+      if (typeof selected === 'string') {
+        setWebImportFiles([]);
+        setNativeImportPaths([selected]);
+        setImportFilePath(selected);
+      } else if (Array.isArray(selected) && selected.length > 0) {
+        const valid = selected.filter((item): item is string => typeof item === 'string' && item.length > 0);
+        if (valid.length > 0) {
+          setWebImportFiles([]);
+          setNativeImportPaths(valid);
+          setImportFilePath(valid.join(', '));
+        }
+      }
+    } catch {
+      webImportInputRef.current?.click();
+    }
+  };
+
+  const handleWebImportInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = event.target.files ? Array.from(event.target.files) : [];
+    event.target.value = '';
+    if (picked.length === 0) return;
+    setNativeImportPaths([]);
+    setWebImportFiles(picked);
+    setImportFilePath(picked.map((f) => f.name).join(', '));
   };
 
   const confirmImport = async () => {
@@ -112,8 +148,54 @@ export function WorkbenchNotesLibraryDialog({
     setImporting(true);
     setImportProgress(null);
     try {
+      if (webImportFiles.length > 0) {
+        const mdFiles = webImportFiles.filter((file) => isMarkdownFilename(file.name));
+        if (mdFiles.length === 0) {
+          throw new Error(t('import.failed'));
+        }
+        let importedCount = 0;
+        for (const file of mdFiles) {
+          const content = await file.text();
+          await notesDstuAdapter.importMarkdownContent(file.name, content);
+          importedCount += 1;
+        }
+        showGlobalNotification('success', t('import.success_with_overwrite', {
+          note_count: importedCount,
+          skipped: 0,
+          overwritten: 0,
+        }));
+        setWebImportFiles([]);
+        setImportFilePath('');
+        await onImported();
+        onOpenChange(false);
+        return;
+      }
+
+      const paths = nativeImportPaths.length > 0 ? nativeImportPaths : [importFilePath];
+      const mdPaths = paths.filter((p) => isMarkdownFilename(p));
+      if (mdPaths.length > 0 && mdPaths.length === paths.length) {
+        const { readTextFile } = await import('@tauri-apps/plugin-fs');
+        let importedCount = 0;
+        for (const p of mdPaths) {
+          const content = await readTextFile(p);
+          const baseName = p.split(/[/\\]/).pop() || 'note.md';
+          await notesDstuAdapter.importMarkdownContent(baseName, content);
+          importedCount += 1;
+        }
+        showGlobalNotification('success', t('import.success_with_overwrite', {
+          note_count: importedCount,
+          skipped: 0,
+          overwritten: 0,
+        }));
+        setNativeImportPaths([]);
+        setImportFilePath('');
+        await onImported();
+        onOpenChange(false);
+        return;
+      }
+
       const result = await NotesAPI.importNotes({
-        filePath: importFilePath,
+        filePath: paths[0] ?? importFilePath,
         conflictStrategy: importConflictStrategy,
       });
       showGlobalNotification('success', t('import.success_with_overwrite', {
@@ -121,6 +203,7 @@ export function WorkbenchNotesLibraryDialog({
         skipped: result.skipped_count || 0,
         overwritten: result.overwritten_count || 0,
       }));
+      setNativeImportPaths([]);
       await onImported();
       onOpenChange(false);
     } catch (error) {
@@ -132,25 +215,44 @@ export function WorkbenchNotesLibraryDialog({
   };
 
   return (
-    <NotesLibraryManager
-      open={dialogOpen}
-      onOpenChange={onOpenChange}
-      activeTab={activeTab}
-      onTabChange={setActiveTab}
-      exportTargetPath={exportTargetPath}
-      onExportTargetPathChange={setExportTargetPath}
-      onPickExportPath={() => { void pickExportPath(); }}
-      exportPathLoading={exportPathLoading}
-      exporting={exporting}
-      onConfirmExport={() => { void confirmExport(); }}
-      importFilePath={importFilePath}
-      onImportFilePathChange={setImportFilePath}
-      onPickImportFile={() => { void pickImportFile(); }}
-      importing={importing}
-      onConfirmImport={() => { void confirmImport(); }}
-      importConflictStrategy={importConflictStrategy}
-      onImportConflictStrategyChange={setImportConflictStrategy}
-      importProgress={importProgress}
-    />
+    <>
+      <input
+        ref={webImportInputRef}
+        type="file"
+        accept=".zip,.md,.markdown,.txt,text/markdown,text/plain,application/zip"
+        multiple
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+        data-testid="notes-library-import-input"
+        onChange={handleWebImportInputChange}
+      />
+      <NotesLibraryManager
+        open={dialogOpen}
+        onOpenChange={onOpenChange}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        exportTargetPath={exportTargetPath}
+        onExportTargetPathChange={setExportTargetPath}
+        onPickExportPath={() => { void pickExportPath(); }}
+        exportPathLoading={exportPathLoading}
+        exporting={exporting}
+        onConfirmExport={() => { void confirmExport(); }}
+        importFilePath={importFilePath}
+        onImportFilePathChange={(next) => {
+          setImportFilePath(next);
+          if (!next) {
+            setWebImportFiles([]);
+            setNativeImportPaths([]);
+          }
+        }}
+        onPickImportFile={() => { void pickImportFile(); }}
+        importing={importing}
+        onConfirmImport={() => { void confirmImport(); }}
+        importConflictStrategy={importConflictStrategy}
+        onImportConflictStrategyChange={setImportConflictStrategy}
+        importProgress={importProgress}
+      />
+    </>
   );
 }

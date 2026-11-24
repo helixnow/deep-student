@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN, enUS } from 'date-fns/locale';
-import { Star, DotsThree, Check } from '@phosphor-icons/react';
+import { Star, DotsThree, Check, ArrowCounterClockwise, Trash } from '@phosphor-icons/react';
 import {
   IllustratedNoteIcon,
   IllustratedTextbookIcon,
@@ -55,6 +55,10 @@ export interface FinderFileItemProps {
   multiSelectMode?: boolean;
   /** 仅显示用名称（如记忆系统文件夹本地化）；内联重命名仍编辑 item.name */
   displayName?: string;
+  /** 回收站视图：展示显式行内「恢复」「永久删除」操作 */
+  isTrashView?: boolean;
+  onRestore?: () => void;
+  onPermanentDelete?: () => void;
 }
 
 interface SortableFinderFileItemProps extends FinderFileItemProps {
@@ -129,6 +133,9 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   isHighlighted = false,
   multiSelectMode = false,
   displayName,
+  isTrashView = false,
+  onRestore,
+  onPermanentDelete,
 }: FinderFileItemProps) {
   const { t, i18n } = useTranslation(['learningHub', 'common']);
   const CustomIcon = TYPE_CUSTOM_ICONS[item.type] || IllustratedGenericFileIcon;
@@ -148,13 +155,15 @@ export const FinderFileItem = React.memo(function FinderFileItem({
     if (isEditing) return;
     
     e.stopPropagation();
+    const rowEl = (e.currentTarget as HTMLElement | null)?.closest('[data-finder-item]') as HTMLElement | null;
+    rowEl?.focus({ preventScroll: true });
     if (e.metaKey || e.ctrlKey) {
       onSelect('toggle');
     } else if (e.shiftKey) {
       onSelect('range');
     } else if (isTouchPrimary) {
-      if (multiSelectMode) {
-        // 多选模式：触屏单击只切换选中，不触发打开（否则文件夹会 toggle+导航双触发）
+      if (multiSelectMode || isTrashView) {
+        // 多选模式或回收站：触屏单击只切换选中，不触发打开
         onSelect('toggle');
       } else {
         // 移动端范式：单击 = 打开（文件夹进入 / 文件打开），选中态同步更新
@@ -164,7 +173,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
     } else {
       onSelect('single');
     }
-  }, [isEditing, isTouchPrimary, multiSelectMode, onSelect, onOpen]);
+  }, [isEditing, isTouchPrimary, multiSelectMode, isTrashView, onSelect, onOpen]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     // 编辑模式下不处理双击事件
@@ -246,6 +255,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             onConfirm={handleEditConfirm}
             onCancel={handleEditCancel}
             selectNameOnly={item.type !== 'folder'}
+            ariaLabel={item.type === 'folder' ? t('learningHub:finder.create.newFolder') : t('learningHub:contextMenu.rename')}
+            placeholder={item.type === 'folder' ? t('learningHub:finder.create.newFolder') : undefined}
             textClassName={cn(
               'truncate block text-ui font-normal',
               'max-md:!text-lg max-md:leading-5 [@media(pointer:coarse)]:!text-lg [@media(pointer:coarse)]:leading-5',
@@ -297,6 +308,43 @@ export const FinderFileItem = React.memo(function FinderFileItem({
                   {relativeTime}
                 </span>
               </>
+            )}
+            {/* 回收站行内显式操作：恢复 / 永久删除 */}
+            {isTrashView && (
+              <div className="flex items-center gap-1 shrink-0">
+                {onRestore && (
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      'h-6 px-2 gap-1 text-xs',
+                      isSelected ? 'text-primary-foreground hover:bg-white/15' : 'text-primary hover:bg-primary/10',
+                    )}
+                    onClick={(e) => { e.stopPropagation(); onRestore(); }}
+                    aria-label={`${t('learningHub:finder.contextMenu.restore')} ${shownName}`}
+                    title={t('learningHub:finder.contextMenu.restore')}
+                  >
+                    <ArrowCounterClockwise size={13} aria-hidden="true" />
+                    <span>{t('learningHub:finder.contextMenu.restore')}</span>
+                  </DsButton>
+                )}
+                {onPermanentDelete && (
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      'h-6 px-2 gap-1 text-xs',
+                      isSelected ? 'text-primary-foreground hover:bg-white/15' : 'text-destructive hover:bg-destructive/10',
+                    )}
+                    onClick={(e) => { e.stopPropagation(); onPermanentDelete(); }}
+                    aria-label={`${t('learningHub:finder.contextMenu.permanentDelete')} ${shownName}`}
+                    title={t('learningHub:finder.contextMenu.permanentDelete')}
+                  >
+                    <Trash size={13} aria-hidden="true" />
+                    <span>{t('learningHub:finder.contextMenu.permanentDelete')}</span>
+                  </DsButton>
+                )}
+              </div>
             )}
             {/* 更多操作按钮 - 桌面悬停显示，触屏常显（N-4） */}
             <DsButton
@@ -393,6 +441,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             onConfirm={handleEditConfirm}
             onCancel={handleEditCancel}
             selectNameOnly={item.type !== 'folder'}
+            ariaLabel={item.type === 'folder' ? t('learningHub:finder.create.newFolder') : t('learningHub:contextMenu.rename')}
+            placeholder={item.type === 'folder' ? t('learningHub:finder.create.newFolder') : undefined}
             autoSize
             className="mx-auto text-center"
             // 统一 16px：<16px 的输入框在 iOS 聚焦时会触发页面自动缩放（编辑框调高到 44px 触达）
@@ -407,6 +457,36 @@ export const FinderFileItem = React.memo(function FinderFileItem({
           </span>
         )}
       </div>
+      {isTrashView && !isEditing && (onRestore || onPermanentDelete) && (
+        <div className="mt-1 flex items-center justify-center gap-1">
+          {onRestore && (
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className="!h-6 !w-6 !p-1 text-primary hover:bg-primary/10"
+              onClick={(e) => { e.stopPropagation(); onRestore(); }}
+              aria-label={`${t('learningHub:finder.contextMenu.restore')} ${shownName}`}
+              title={t('learningHub:finder.contextMenu.restore')}
+            >
+              <ArrowCounterClockwise size={13} />
+            </DsButton>
+          )}
+          {onPermanentDelete && (
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className="!h-6 !w-6 !p-1 text-destructive hover:bg-destructive/10"
+              onClick={(e) => { e.stopPropagation(); onPermanentDelete(); }}
+              aria-label={`${t('learningHub:finder.contextMenu.permanentDelete')} ${shownName}`}
+              title={t('learningHub:finder.contextMenu.permanentDelete')}
+            >
+              <Trash size={13} />
+            </DsButton>
+          )}
+        </div>
+      )}
     </div>
   );
 });
@@ -462,18 +542,28 @@ export const SortableFinderFileItem = React.memo(function SortableFinderFileItem
   );
 
   const isDropTarget = isOver && isFolder && !isDragging;
+  // ★ 剥离 @dnd-kit 在 disabled={!enableDrag} 时注入的 aria-disabled="true" 与 role="button"：
+  // 否则内联新建/重命名输入框以及回收站条目会被无障碍树与 Playwright 判定为 disabled！
+  const {
+    role: _dragRole,
+    tabIndex: _dragTabIndex,
+    'aria-disabled': _dragAriaDisabled,
+    ...dragAttributes
+  } = attributes;
 
   return (
     <div
       ref={setNodeRef}
-      {...attributes}
-      {...listeners}
+      {...dragAttributes}
+      {...(enableDrag ? listeners : undefined)}
       data-finder-item
       data-item-id={id}
       data-agent-entity={`files:${id}`}
       role="option"
+      tabIndex={0}
       aria-selected={props.isSelected}
-      className={props.viewMode === 'grid' ? 'flex w-full max-w-[108px] justify-center md:block md:w-[88px] md:max-w-[88px] min-w-0' : 'h-full'}
+      aria-label={props.displayName || props.item.name || undefined}
+      className={props.viewMode === 'grid' ? 'flex w-full max-w-[108px] justify-center md:block md:w-[88px] md:max-w-[88px] min-w-0 outline-none' : 'h-full outline-none'}
     >
       <FinderFileItem
         {...props}

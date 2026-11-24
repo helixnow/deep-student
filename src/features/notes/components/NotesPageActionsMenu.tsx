@@ -10,6 +10,7 @@ import {
   MagnifyingGlass,
   NoteBlank,
   Robot,
+  Trash,
   TreeStructure,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
@@ -259,6 +260,66 @@ export const NotesPageActionsMenu: React.FC<NotesPageActionsMenuProps> = ({
           </span>
         </DsButton>
       ))}
+      {noteId && !readOnly && (
+        <>
+          <div className="my-1 border-t border-border/60" />
+          <DsButton
+            variant="ghost"
+            size="sm"
+            role={menuItemRole}
+            disabled={hostBusy}
+            className="text-destructive hover:text-destructive"
+            onClick={() => {
+              const targetNoteId = noteId;
+              const targetPath = `/${targetNoteId}`;
+              void Promise.all([
+                import('@/dstu'),
+                import('@/features/learning-hub/utils/finderUndoStack'),
+              ])
+                .then(async ([{ dstu, trashApi }, { finderUndoStack }]) => {
+                  const delRes = await dstu.delete(targetPath);
+                  if (!delRes.ok) {
+                    showGlobalNotification('error', delRes.error.toUserMessage());
+                    return;
+                  }
+                  finderUndoStack.push({
+                    kind: 'soft-delete',
+                    targets: [{ id: targetNoteId, type: 'note', name: '' }],
+                  });
+                  showGlobalNotification(
+                    'success',
+                    t('notes:actions.moved_to_trash', { defaultValue: '笔记已移入回收站' }),
+                    undefined,
+                    {
+                      action: {
+                        label: t('notes:actions.undo', { defaultValue: '撤销' }),
+                        onClick: () => {
+                          void trashApi
+                            .restoreItem(targetNoteId, 'note')
+                            .then((res) => {
+                              if (res.ok) {
+                                showGlobalNotification(
+                                  'success',
+                                  t('notes:actions.restored_from_trash', { defaultValue: '已从回收站恢复笔记' }),
+                                );
+                              } else {
+                                showGlobalNotification('error', res.error.toUserMessage());
+                              }
+                            })
+                            .catch((err) => showGlobalNotification('error', String(err)));
+                        },
+                      },
+                    },
+                  );
+                })
+                .catch((error) => showGlobalNotification('error', String(error)));
+            }}
+          >
+            <Trash size={16} />
+            <span>{t('notes:actions.move_to_trash', { defaultValue: '移入回收站' })}</span>
+          </DsButton>
+        </>
+      )}
     </div>
   );
 };

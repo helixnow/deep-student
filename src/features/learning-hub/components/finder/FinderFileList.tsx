@@ -216,6 +216,9 @@ interface FinderFileRowProps {
   onEditCancel?: (id: string) => void;
   /** 仅显示用名称（如记忆系统文件夹本地化）；重命名仍编辑 item.name */
   displayName?: string;
+  isTrashView?: boolean;
+  onRestoreItem?: (id: string, itemType: string) => void;
+  onPermanentDeleteItem?: (id: string, itemType: string) => void;
 }
 
 /**
@@ -241,6 +244,9 @@ const FinderFileRow = React.memo(function FinderFileRow({
   onEditConfirm,
   onEditCancel,
   displayName,
+  isTrashView,
+  onRestoreItem,
+  onPermanentDeleteItem,
 }: FinderFileRowProps) {
   const handleSelect = useCallback(
     (mode: 'single' | 'toggle' | 'range') => onSelect(item.id, mode),
@@ -258,6 +264,14 @@ const FinderFileRow = React.memo(function FinderFileRow({
   const handleEditCancel = useCallback(
     () => onEditCancel?.(item.id),
     [onEditCancel, item.id]
+  );
+  const handleRestore = useCallback(
+    () => onRestoreItem?.(item.id, item.type),
+    [onRestoreItem, item.id, item.type]
+  );
+  const handlePermanentDelete = useCallback(
+    () => onPermanentDeleteItem?.(item.id, item.type),
+    [onPermanentDeleteItem, item.id, item.type]
   );
 
   return (
@@ -279,6 +293,9 @@ const FinderFileRow = React.memo(function FinderFileRow({
       compact={compact}
       multiSelectMode={multiSelectMode}
       displayName={displayName}
+      isTrashView={isTrashView}
+      onRestore={onRestoreItem ? handleRestore : undefined}
+      onPermanentDelete={onPermanentDeleteItem ? handlePermanentDelete : undefined}
     />
   );
 });
@@ -358,6 +375,10 @@ interface FinderFileListProps {
   searchQuery?: string;
   /** ★ 清除搜索回调（搜索空态按钮） */
   onClearSearch?: () => void;
+  /** ★ 回收站视图及行级恢复/永久删除操作 */
+  isTrashView?: boolean;
+  onRestoreItem?: (id: string, itemType: string) => void;
+  onPermanentDeleteItem?: (id: string, itemType: string) => void;
 }
 
 export function FinderFileList({
@@ -397,6 +418,9 @@ export function FinderFileList({
   onOpenMany,
   searchQuery,
   onClearSearch,
+  isTrashView = false,
+  onRestoreItem,
+  onPermanentDeleteItem,
 }: FinderFileListProps) {
   // columns（Finder 分栏视图）的专属 UI 尚未落地：在本组件内统一回退为 grid 渲染，
   // 保证持久化的 viewMode='columns' 不会落入既非 list 也非 grid 的悬空分支
@@ -1273,6 +1297,9 @@ export function FinderFileList({
                       onEditCancel={onEditCancel}
                       compact={compact}
                       multiSelectMode={multiSelectMode}
+                      isTrashView={isTrashView}
+                      onRestoreItem={onRestoreItem}
+                      onPermanentDeleteItem={onPermanentDeleteItem}
                     />
                   </div>
                 );
@@ -1419,6 +1446,9 @@ export function FinderFileList({
                         onEditCancel={onEditCancel}
                         compact={compact}
                         multiSelectMode={multiSelectMode}
+                        isTrashView={isTrashView}
+                        onRestoreItem={onRestoreItem}
+                        onPermanentDeleteItem={onPermanentDeleteItem}
                       />
                     ))}
                   </div>

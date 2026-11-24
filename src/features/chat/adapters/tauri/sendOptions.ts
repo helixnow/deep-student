@@ -354,8 +354,10 @@ export async function buildSendOptions(host: TauriAdapterHost, snapshot?: BuildS
     activeSkillIds: authoritativeActiveSkillIds.length > 0 ? authoritativeActiveSkillIds : undefined,
 
     // ========== Canvas 智能笔记选项 ==========
-    // 从 modeState 获取当前打开的笔记 ID，作为 Canvas 工具的默认目标
-    canvasNoteId: getCanvasNoteIdFromModeState(modeState),
+    // 从 modeState 获取当前打开的笔记 ID；若用户已切到对话窗口聚焦，回退读取桌面上仍打开的笔记窗口
+    canvasNoteId:
+      getCanvasNoteIdFromModeState(modeState) ??
+      (await import('@/features/workbench/agent/noteBinding')).resolveOpenDesktopCanvasNoteId(),
   };
 
   // ========== Schema 工具收集（文档 26）==========

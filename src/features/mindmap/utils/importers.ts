@@ -1617,8 +1617,41 @@ export function importMindMap(
  * 无扩展名时按 zip 魔数嗅探（zip 内容按文本解码会损坏，必须走字节路径），
  * 先按 .xmind 解析、失败再按 .mmap 解析——与后端 chat 附件导入顺序一致。
  */
+const REJECTED_BINARY_EXTENSIONS = new Set([
+  'pdf', 'epub', 'docx', 'doc', 'xlsx', 'xls', 'xlsb', 'ods', 'pptx', 'ppt',
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'heic', 'heif',
+  'mp3', 'wav', 'ogg', 'm4a', 'flac', 'mp4', 'webm', 'mov', 'avi', 'mkv',
+  'apkg', 'colpkg', 'zip', 'rar', '7z', 'tar', 'gz', 'sqlite', 'db', 'wasm', 'exe',
+]);
+
+function looksLikeUnsupportedBinary(bytes: Uint8Array): boolean {
+  if (bytes.length >= 5 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46 && bytes[4] === 0x2d) {
+    return true; // %PDF-
+  }
+  if (bytes.length >= 4 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+    return true; // PNG
+  }
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return true; // JPEG
+  }
+  for (let i = 0; i < bytes.length; i += 1) {
+    if (bytes[i] === 0x00) return true;
+  }
+  return false;
+}
+
 export async function importFromFile(file: File): Promise<MindMapDocument> {
-  const extension = file.name.split('.').pop()?.toLowerCase();
+  const hasDot = file.name.includes('.');
+  const extension = hasDot ? file.name.split('.').pop()?.toLowerCase() : undefined;
+
+  if (extension && REJECTED_BINARY_EXTENSIONS.has(extension)) {
+    throw new Error(
+      i18n.t('mindmap:import.unsupportedFileType', {
+        ext: `.${extension}`,
+        defaultValue: `不支持将 .${extension} 文件导入为思维导图（仅支持 .xmind、.mmap、.opml、.md、.json、.mm、.txt；PDF/Office/EPUB 请在资源库导入）`,
+      }),
+    );
+  }
 
   if (extension === 'xmind') {
     return importFromXmindZip(await file.arrayBuffer());
@@ -1628,10 +1661,16 @@ export async function importFromFile(file: File): Promise<MindMapDocument> {
     return importFromMmapZip(await file.arrayBuffer());
   }
 
+  const headBlob = typeof file.slice === 'function' ? file.slice(0, 512) : null;
+  const probeSlice =
+    headBlob && typeof headBlob.arrayBuffer === 'function'
+      ? new Uint8Array(await headBlob.arrayBuffer())
+      : typeof file.arrayBuffer === 'function' && extension !== 'md' && extension !== 'markdown' && extension !== 'json' && extension !== 'opml' && extension !== 'mm' && extension !== 'txt'
+        ? new Uint8Array((await file.arrayBuffer()).slice(0, 512))
+        : null;
   if (extension !== 'opml' && extension !== 'json' && extension !== 'md'
     && extension !== 'markdown' && extension !== 'mm' && extension !== 'txt') {
-    const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
-    if (looksLikeZip(head)) {
+    if (probeSlice && looksLikeZip(probeSlice)) {
       const bytes = await file.arrayBuffer();
       try {
         return await importFromXmindZip(bytes);
@@ -1640,16 +1679,31 @@ export async function importFromFile(file: File): Promise<MindMapDocument> {
           return await importFromMmapZip(bytes);
         } catch (mmapError) {
           throw new Error(
-            `Unrecognized zip mind map file. .xmind: ${
-              xmindError instanceof Error ? xmindError.message : String(xmindError)
-            }; .mmap: ${mmapError instanceof Error ? mmapError.message : String(mmapError)}`,
+            i18n.t('mindmap:import.unrecognizedZip', {
+              defaultValue: '无法识别该压缩包为思维导图（非有效的 .xmind 或 .mmap 文件）',
+            }) + ` [${xmindError instanceof Error ? xmindError.message : String(xmindError)}; ${mmapError instanceof Error ? mmapError.message : String(mmapError)}]`,
           );
         }
       }
     }
   }
 
+  if (probeSlice && looksLikeUnsupportedBinary(probeSlice)) {
+    throw new Error(
+      i18n.t('mindmap:import.binaryFileRejected', {
+        defaultValue: '检测到二进制文件（如 PDF 或图片），无法作为思维导图文本解析',
+      }),
+    );
+  }
+
   const content = await file.text();
+  if (content.startsWith('%PDF-') || content.slice(0, 512).includes('\u0000')) {
+    throw new Error(
+      i18n.t('mindmap:import.binaryFileRejected', {
+        defaultValue: '检测到二进制文件（如 PDF 或图片），无法作为思维导图文本解析',
+      }),
+    );
+  }
 
   let format: ImportFormat = 'auto';
   if (extension === 'opml') {

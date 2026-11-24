@@ -730,12 +730,36 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 (window as unknown as Record<string, unknown>).__MILKDOWN_CTX__ = ctx;
               }
               viewRef.current = view;
+              const editorDom = view.dom as HTMLElement | null;
+              if (editorDom) {
+                if (!editorDom.getAttribute('role')) editorDom.setAttribute('role', 'textbox');
+                editorDom.setAttribute('aria-multiline', 'true');
+                if (!editorDom.getAttribute('aria-label')) {
+                  editorDom.setAttribute(
+                    'aria-label',
+                    i18next.t('notes:editor.placeholder.body', { defaultValue: '笔记正文' }),
+                  );
+                }
+                editorDom.setAttribute('aria-readonly', String(Boolean(currentCrepe.readonly)));
+              }
               latestPropsRef.current.onFormattingChange?.(readFormattingState(view.state));
               if (viewHooked) return;
               viewHooked = true;
 
               try { lastMarkdown = stripImePlaceholder(currentCrepe.getMarkdown() || ''); } catch { lastMarkdown = ''; }
               lastSerializedDoc = view.state?.doc ?? null;
+
+              let formatRafId: number | null = null;
+              const scheduleFormattingSync = () => {
+                if (formatRafId !== null || destroyed) return;
+                formatRafId = window.requestAnimationFrame(() => {
+                  formatRafId = null;
+                  if (destroyed || !viewRef.current) return;
+                  try {
+                    latestPropsRef.current.onFormattingChange?.(readFormattingState(viewRef.current.state));
+                  } catch { /* ignore transient ProseMirror view state */ }
+                });
+              };
 
               const originalUpdateState = view.updateState?.bind(view);
               if (originalUpdateState) {
@@ -747,10 +771,16 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
 
                   invalidateBlockMenuIfStaleRef.current(view);
                   if (oldState.doc !== newState.doc || !oldState.selection.eq(newState.selection) || oldState.storedMarks !== newState.storedMarks) {
-                    latestPropsRef.current.onFormattingChange?.(readFormattingState(newState));
+                    scheduleFormattingSync();
                   }
                   if (oldState?.doc === newState?.doc || view.composing) return;
-                  if (!oldState?.doc?.eq?.(newState?.doc)) {
+                  const oldSize = oldState?.doc?.content?.size ?? -1;
+                  const newSize = newState?.doc?.content?.size ?? -2;
+                  const docMutated =
+                    oldSize !== newSize ||
+                    newSize > 4096 ||
+                    !oldState?.doc?.eq?.(newState?.doc);
+                  if (docMutated) {
                     latestPropsRef.current.onDocumentChange?.();
                     scheduleEmitChange();
                   }
@@ -837,6 +867,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                   dom?.removeEventListener('blur', handleBlur, true);
                 } catch { /* ignore */ }
                 if (changeTimer != null) { window.clearTimeout(changeTimer); changeTimer = null; }
+                if (formatRafId != null) { window.cancelAnimationFrame(formatRafId); formatRafId = null; }
               };
             });
           } catch { /* 忽略初始化瞬态错误 */ }
@@ -959,6 +990,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     if (crepeRef.current && isReady) {
       if (readonly) uploadsRef.current?.cancelAll();
       crepeRef.current.setReadonly(readonly);
+      const editorDom = viewRef.current?.dom as HTMLElement | undefined;
+      editorDom?.setAttribute('aria-readonly', String(Boolean(readonly)));
     }
   }, [readonly, isReady]);
 

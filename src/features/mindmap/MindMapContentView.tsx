@@ -601,6 +601,10 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
     try {
       await storeApi.getState().loadMindMap(resourceId);
       if (request !== documentLoadRequestRef.current) return;
+      const loadedState = storeApi.getState();
+      if (!loadedState.focusedNodeId && loadedState.document?.root?.id) {
+        loadedState.setFocusedNodeId(loadedState.document.root.id);
+      }
       onReady?.();
     } catch (err: unknown) {
       if (request !== documentLoadRequestRef.current) return;
@@ -742,6 +746,33 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
       }
       latest.setDocument(imported);
       latest.setFocusedNodeId(imported.root.id);
+      const importedTitle = imported.root.text?.trim();
+      const targetMindmapId = resourceId ?? storeApi.getState().mindmapId;
+      if (targetMindmapId) {
+        void storeApi.getState().save().then(() => {
+          if (importedTitle) {
+            void dstu.rename(`/${targetMindmapId}`, importedTitle);
+            onTitleChange?.(importedTitle);
+          }
+        }).catch((err) => {
+          console.warn('[MindMapContentView] Auto-save after import failed:', err);
+        });
+      } else if (typeof dstu.create === 'function') {
+        void Promise.resolve(
+          dstu.create('/', {
+            type: 'mindmap',
+            name: importedTitle || t('mindmap:outline.untitled', { defaultValue: '导入的思维导图' }),
+            content: JSON.stringify(imported),
+          }),
+        ).then((res) => {
+          if (res?.ok && res.value?.id) {
+            void storeApi.getState().loadMindMap(res.value.id, { preserveViewports: true });
+            if (importedTitle) onTitleChange?.(importedTitle);
+          }
+        }).catch((err) => {
+          console.warn('[MindMapContentView] VFS persist for imported mindmap failed:', err);
+        });
+      }
       const nodeCount = countTreeNodes(imported.root);
       const hasDropped = report.droppedImages > 0 || report.droppedSummaries > 0;
       if (hasDropped) {

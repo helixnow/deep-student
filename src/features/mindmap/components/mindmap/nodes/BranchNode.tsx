@@ -520,6 +520,10 @@ const BranchNodeComponent: React.FC<NodeProps<Node<BranchNodeData>>> = ({
       data-has-bg={hasCustomBg ? 'true' : undefined}
       data-node-editing={isEditing ? 'true' : undefined}
       data-mastery-status={activeMasteryStatus}
+      role={isEmbed ? undefined : 'treeitem'}
+      tabIndex={isEmbed ? undefined : 0}
+      aria-selected={isEmbed ? undefined : Boolean(selected)}
+      aria-label={isEmbed ? undefined : (data.label || t('outline.unnamedNode', { defaultValue: '未命名节点' }))}
       style={{
         ...themeStyle,
         ...(isUnderlineNode && underlineColor
@@ -528,9 +532,12 @@ const BranchNodeComponent: React.FC<NodeProps<Node<BranchNodeData>>> = ({
       }}
       onMouseEnter={isLargeGraph ? () => setHoveredForActions(true) : undefined}
       onMouseLeave={isLargeGraph ? () => setHoveredForActions(false) : undefined}
+      onClick={() => {
+        if (!isEmbed) storeApi.getState().setFocusedNodeId(nodeId);
+      }}
       onDoubleClick={(e) => {
         e.stopPropagation();
-        // Handled by ReactFlow onNodeDoubleClick
+        if (!reciteMode && !isEmbed) handleStartEdit();
       }}
     >
       {activeMasteryStatus && (

@@ -44,25 +44,26 @@ export function CreateLearningNoteDialog({ folderId, onCreated, onClose }: {
     <DsDialogHeader><DsDialogTitle>{t('learning.create.title', { defaultValue: '新建学习笔记' })}</DsDialogTitle></DsDialogHeader>
     <DsDialogBody className="py-4">
     <fieldset disabled={busy || Boolean(pending) || Boolean(created)} className="space-y-3">
-      <label className="notes-field">{t('learning.create.name', { defaultValue: '笔记标题' })}<input autoFocus className="block w-full border bg-background p-2" value={title} onChange={(event) => setTitle(event.target.value)} /></label>
-      <label className="notes-field">{t('learning.create.course', { defaultValue: '所属课程' })}<input className="notes-input" value={effectiveCourse} onChange={(event) => { setCourse(event.target.value); setChanges((current) => ({ ...current, course: event.target.value.trim() })); }} /></label>
-      <label className="notes-field">{t('learning.create.template', { defaultValue: '新建模板' })}<select className="notes-select" value={choice} onChange={(event) => setChoice(event.target.value)}>
+      <label className="notes-field">{t('learning.create.name', { defaultValue: '笔记标题' })}<input autoFocus aria-label={t('learning.create.name', { defaultValue: '笔记标题' })} placeholder={selected?.title ?? t('learning.create.untitled_default', { defaultValue: '无标题学习笔记' })} className="block w-full border bg-background p-2" value={title} onChange={(event) => setTitle(event.target.value)} /></label>
+      <label className="notes-field">{t('learning.create.course', { defaultValue: '所属课程' })}<input aria-label={t('learning.create.course', { defaultValue: '所属课程' })} className="notes-input" value={effectiveCourse} onChange={(event) => { setCourse(event.target.value); setChanges((current) => ({ ...current, course: event.target.value.trim() })); }} /></label>
+      <label className="notes-field">{t('learning.create.template', { defaultValue: '新建模板' })}<select aria-label={t('learning.create.template', { defaultValue: '新建模板' })} className="notes-select" value={choice} onChange={(event) => setChoice(event.target.value)}>
         <option value="none">{t('learning.create.blank', { defaultValue: '空白笔记' })}</option>
         <option value="course-default" disabled={!courseDefault}>{t('learning.create.default', { defaultValue: '课程默认：{{title}}', title: courseDefault?.title ?? t('learning.unset') })}</option>
         {all.map((template) => <option key={template.id} value={template.id}>{template.title}</option>)}
       </select></label>
       {loading && <p role="status">{t('personalTemplates.loading')}</p>}
-      {selected && <pre aria-label={t('personalTemplates.preview_label')} className="max-h-40 overflow-auto whitespace-pre-wrap">{renderNoteTemplate(selected.markdown, { title, locale: i18n.language })}</pre>}
+      {selected && <pre aria-label={t('personalTemplates.preview_label')} className="max-h-40 overflow-auto whitespace-pre-wrap">{renderNoteTemplate(selected.markdown, { title: title.trim() || selected.title, locale: i18n.language })}</pre>}
       {(Object.keys(LEARNING_PROP_KEYS) as LearningField[]).filter((field) => field !== 'course').map((field) => <label key={field} className="block">{t(`learning.fields.${field}`)}
-        {field === 'mastery' ? <select className="notes-select" value={changes[field] ?? preset[field] ?? ''} onChange={(event) => setChanges((current) => ({ ...current, [field]: event.target.value }))}>
+        {field === 'mastery' ? <select aria-label={t(`learning.fields.${field}`)} className="notes-select" value={changes[field] ?? preset[field] ?? ''} onChange={(event) => setChanges((current) => ({ ...current, [field]: event.target.value }))}>
           <option value="">{t('learning.unset')}</option>{MASTERY_STATES.map((state) => <option key={state} value={state}>{t(`learning.mastery.${state}`)}</option>)}
-        </select> : <input className="notes-input" type={field === 'reviewDate' ? 'date' : 'text'} value={changes[field] ?? preset[field] ?? ''} onChange={(event) => setChanges((current) => ({ ...current, [field]: event.target.value }))} />}
+        </select> : <input aria-label={t(`learning.fields.${field}`)} className="notes-input" type={field === 'reviewDate' ? 'date' : 'text'} value={changes[field] ?? preset[field] ?? ''} onChange={(event) => setChanges((current) => ({ ...current, [field]: event.target.value }))} />}
       </label>)}
       <p>{t('learning.create.hint', { defaultValue: '课程默认仅在选择后应用，已填写的属性优先保留。' })}</p>
-      <div className="notes-learn-props-footer"><button type="button" className="notes-btn" data-variant="primary" disabled={!title.trim() || (choice !== 'none' && !selected)} onClick={async () => {
+      <div className="notes-learn-props-footer"><button type="button" className="notes-btn" data-variant="primary" disabled={choice !== 'none' && !selected} onClick={async () => {
         setBusy(true); setError('');
+        const resolvedTitle = title.trim() || selected?.title || t('learning.create.untitled_default', { defaultValue: '无标题学习笔记' });
         try {
-          const node = await createLearningNote({ title, course: effectiveCourse, template: selected, folderId, changes });
+          const node = await createLearningNote({ title: resolvedTitle, course: effectiveCourse, template: selected, folderId, changes });
           if (mounted.current) { setCreated(node); await onCreated(node); onClose(); }
         } catch (cause) { if (mounted.current) { if (cause instanceof LearningNoteInitializationError) setPending(cause); setError(cause instanceof Error ? cause.message : String(cause)); } }
         finally { if (mounted.current) setBusy(false); }

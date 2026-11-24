@@ -500,17 +500,25 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const [scrubPage, setScrubPage] = useState<number | null>(null);
   const scrubbingRef = useRef(false);
 
+  const effectiveViewStateKey = resourcePath || (fileName ? `file:${fileName}` : undefined);
+  const persistedViewStateRef = useRef<PdfViewState | null>(null);
+  if (persistedViewStateRef.current === null) {
+    persistedViewStateRef.current = loadPdfViewState(effectiveViewStateKey);
+  }
+  const resolvedInitialPageZeroBased =
+    initialPage > 0
+      ? initialPage
+      : Math.max(0, (persistedViewStateRef.current.page ?? 1) - 1);
+
   const [numPages, setNumPages] = useState<number>(0);
-  const [currentPage, setCurrentPage] = useState<number>(initialPage + 1);
+  const [currentPage, setCurrentPage] = useState<number>(resolvedInitialPageZeroBased + 1);
+  const [isScannedNoTextPdf, setIsScannedNoTextPdf] = useState<boolean>(false);
+  const [ocrInlineState, setOcrInlineState] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
 
   // ========== 缩放模式解析 ==========
   // 优先级：每文档持久化视图状态（localStorage，按 resourcePath）→ props.defaultScale
   // （'PageFit'|'PageWidth'|'ActualSize'|number）→ 设置 defaultFitMode / defaultScale。
   // 注意渲染模型：pageWidth = containerWidth * scale，即 scale=1.0 恒等于「适应宽度」。
-  const persistedViewStateRef = useRef<PdfViewState | null>(null);
-  if (persistedViewStateRef.current === null) {
-    persistedViewStateRef.current = loadPdfViewState(resourcePath);
-  }
   const initialZoomRef = useRef<{ mode: ZoomMode; scale: number } | null>(null);
   if (initialZoomRef.current === null) {
     const persisted = persistedViewStateRef.current;
@@ -867,12 +875,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   );
   const lastSavedViewStateRef = useRef<string | null>(null);
   // 同一挂载实例切换文档（resourcePath 变化）：重新加载新文档的视图状态
-  const prevResourcePathRef = useRef(resourcePath);
+  const prevResourcePathRef = useRef(effectiveViewStateKey);
   useEffect(() => {
-    if (prevResourcePathRef.current === resourcePath) return;
-    prevResourcePathRef.current = resourcePath;
+    if (prevResourcePathRef.current === effectiveViewStateKey) return;
+    prevResourcePathRef.current = effectiveViewStateKey;
     lastSavedViewStateRef.current = null;
-    const next = loadPdfViewState(resourcePath);
+    const next = loadPdfViewState(effectiveViewStateKey);
     persistedViewStateRef.current = next;
     if (next.zoomMode) {
       setZoomMode(next.zoomMode);
@@ -888,12 +896,15 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     if (typeof next.trimMargins === 'boolean') {
       setTrimMargins(next.trimMargins);
     }
-  }, [resourcePath]);
+    if (typeof next.page === 'number' && next.page >= 1) {
+      setCurrentPage(next.page);
+    }
+  }, [effectiveViewStateKey]);
 
   // 视图状态变化即落盘（scale 仅在 custom 模式持久化，fit 模式随窗口重算不算变化）。
   // 首次运行只建立基线，避免每次打开文档都把默认值写进 localStorage。
   useEffect(() => {
-    if (!resourcePath) return;
+    if (!effectiveViewStateKey) return;
     const dualAvailable = !isSmallViewport && !isCoarsePointer;
     if (dualAvailable) viewModeForPersistRef.current = viewMode;
     const payload: PdfViewState = {
@@ -902,6 +913,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       viewMode: viewModeForPersistRef.current,
       coverOffset,
       trimMargins,
+      ...(currentPage > 1 ? { page: currentPage } : {}),
     };
     const json = JSON.stringify(payload);
     if (lastSavedViewStateRef.current === null) {
@@ -910,8 +922,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     }
     if (json === lastSavedViewStateRef.current) return;
     lastSavedViewStateRef.current = json;
-    savePdfViewState(resourcePath, payload);
-  }, [resourcePath, zoomMode, scale, viewMode, coverOffset, trimMargins, isSmallViewport, isCoarsePointer]);
+    savePdfViewState(effectiveViewStateKey, payload);
+  }, [effectiveViewStateKey, zoomMode, scale, viewMode, coverOffset, trimMargins, currentPage, isSmallViewport, isCoarsePointer]);
 
   // ACR 4.0（A7）：agent/引用 gotoPage 跳页成功后给目标页一次高亮渐隐演出。
   // 只动 opacity；prefers-reduced-motion 下 CSS 关闭动画、走静态短高亮（定时移除）。
@@ -1019,6 +1031,32 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 获取 PDF 文档对象用于目录和搜索
   const handleDocumentLoadSuccessWithDoc = useCallback((pdf: PDFDocumentProxy) => {
     pdfDocRef.current = pdf;
+    setIsScannedNoTextPdf(false);
+    setOcrInlineState('idle');
+
+    // 抽样探测前 3 页是否存在原生文字层，及时向用户暴露「扫描件 / 无文字层」真实状态
+    const sampleCount = Math.min(pdf.numPages, 3);
+    void (async () => {
+      try {
+        let charCount = 0;
+        for (let p = 1; p <= sampleCount; p++) {
+          if (pdfDocRef.current !== pdf) return;
+          const page = await pdf.getPage(p);
+          const content = await page.getTextContent();
+          const items = content.items as Array<{ str?: string }>;
+          for (const item of items) {
+            if (item.str) charCount += item.str.replace(/\s+/g, '').length;
+            if (charCount >= 8) break;
+          }
+          if (charCount >= 8) break;
+        }
+        if (pdfDocRef.current === pdf) {
+          setIsScannedNoTextPdf(sampleCount > 0 && charCount === 0);
+        }
+      } catch {
+        // 探测失败不误报扫描件
+      }
+    })();
 
     // 首页基准尺寸（scale=1 的 viewport），供 fit 模式与行高估算使用
     pdf.getPage(1).then((page) => {
@@ -1243,6 +1281,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
   const fileIdForOcr = resourceIdFromDstuPath(resourcePath);
   const ocrStage = usePdfProcessingStore(state => fileIdForOcr ? state.statusMap.get(fileIdForOcr)?.stage : undefined);
+  const ocrError = usePdfProcessingStore(state => fileIdForOcr ? state.statusMap.get(fileIdForOcr)?.error : undefined);
   const ocrReady = usePdfProcessingStore(state => fileIdForOcr
     ? state.statusMap.get(fileIdForOcr)?.readyModes.includes('ocr') : false);
   const [ocrCache, setOcrCache] = useState<{ path: string; pages: ReadonlyMap<number, string> }>();
@@ -1260,19 +1299,35 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
   const [startingOcr, setStartingOcr] = useState(false);
   const runDocumentOcr = useCallback(async () => {
-    if (!fileIdForOcr) return;
     setShowMoreMenu(false);
+    if (!fileIdForOcr) {
+      setOcrInlineState('error');
+      showGlobalNotification('warning', t('pdf:toolbar.ocr_requires_library', { defaultValue: '请先将该 PDF 导入资源库后再执行全文 OCR 识别' }));
+      return;
+    }
     setStartingOcr(true);
+    setOcrInlineState('running');
     try {
       await startPdfProcessing(fileIdForOcr);
       showGlobalNotification('info', t('pdf:toolbar.ocr_started'));
     } catch (error) {
       console.error('[EnhancedPdfViewer] PDF OCR could not start:', error);
+      setOcrInlineState('error');
       showGlobalNotification('error', t('pdf:toolbar.ocr_failed'));
     } finally {
       setStartingOcr(false);
     }
   }, [fileIdForOcr, t]);
+
+  useEffect(() => {
+    if (ocrPages && ocrPages.size > 0) {
+      setOcrInlineState('done');
+    } else if (ocrError) {
+      setOcrInlineState('error');
+    } else if (ocrStage === 'ocr_processing') {
+      setOcrInlineState('running');
+    }
+  }, [ocrError, ocrPages, ocrStage]);
 
   const abortSearchTask = useCallback(() => {
     if (searchTaskRef.current) {
@@ -1357,7 +1412,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             useOcr ? [{ str: cachedOcr }] : items, query,
           );
           if (matchCount > 0) {
-            if (!useOcr) rangesByPage.set(pageIndex, itemRanges);
+            if (!useOcr) {
+              // 单页命中过多（如搜索单字母 "a"）时限制 DOM <mark> 上限，避免高倍缩放下成千上万节点卡死主线程
+              if (matchCount <= 120) {
+                rangesByPage.set(pageIndex, itemRanges);
+              }
+            }
             for (let ordinal = 0; ordinal < matchCount; ordinal++) {
               results.push({ pageIndex, matchIndex: ordinal });
             }
@@ -1395,7 +1455,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     if (searchDebounceRef.current) {
       window.clearTimeout(searchDebounceRef.current);
     }
-    if (!searchQuery.trim()) {
+    const trimmedQuery = searchQuery.trim();
+    if (!trimmedQuery) {
       abortSearchTask();
       setSearchResults([]);
       setSearchRangesByPage(new Map());
@@ -1404,9 +1465,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       setSearchProgress(null);
       return;
     }
+    const isSingleAsciiChar = trimmedQuery.length === 1 && trimmedQuery.charCodeAt(0) < 128;
     searchDebounceRef.current = window.setTimeout(() => {
       handleSearch();
-    }, 300);
+    }, isSingleAsciiChar ? 500 : 250);
     return () => {
       if (searchDebounceRef.current) {
         window.clearTimeout(searchDebounceRef.current);
@@ -3653,15 +3715,18 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const annotationToggleAvailable = canPersistAnnotations && enableTextSelection === undefined;
 
   // ========== 从设置读取渲染参数 ==========
-  // DPR 上限来自设置（默认 2，Retina 清晰）；开启滚动降级时滚动中临时降低
+  // DPR 上限来自设置（默认 2，Retina 清晰）；大倍率缩放（如 200%+）时限制单页画布长边上限 2400px，
+  // 杜绝 4200×6000 巨型画布叠加 overscan 导致 CPU 栅格化卡死 30s+
   const renderDpr = useMemo(() => {
     const deviceDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    const capped = Math.min(deviceDpr, pdfSettings.maxDevicePixelRatio);
+    const maxDprForWidth = Math.max(0.75, Math.round((2400 / Math.max(1, pageWidth)) * 100) / 100);
+    const capped = Math.min(deviceDpr, pdfSettings.maxDevicePixelRatio, maxDprForWidth);
     if (isScrolling && pdfSettings.enableScrollDprDowngrade) {
       return Math.min(pdfSettings.scrollDpr, capped);
     }
     return capped;
   }, [
+    pageWidth,
     pdfSettings.maxDevicePixelRatio,
     pdfSettings.enableScrollDprDowngrade,
     pdfSettings.scrollDpr,
@@ -3837,7 +3902,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         (viewMode === 'dual' ? 24 : 32)
       );
     },
-    overscan: pdfSettings.virtualizerOverscan,
+    overscan: scale >= 1.5 ? 1 : pdfSettings.virtualizerOverscan,
     measureElement: (element) => element?.getBoundingClientRect().height ?? estimatedRowHeight,
   });
 
@@ -3893,19 +3958,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       if (!pageContainerRef.current || pageRowCount === 0) return;
       resizeAnchorRef.current = null;
       const targetRow = getRowIndexForPage(pageNum);
-      const visibleItems = pageVirtualizer.getVirtualItems();
-      const approxCurrentRow = visibleItems.length > 0 ? visibleItems[0]!.index : targetRow;
-      if (Math.abs(targetRow - approxCurrentRow) > 1) {
-        // 跨多页跳转（目录 / 引用定位 / 返回原处）：虚拟列表跨未测量行使用 smooth 会产生 1–3s 漂移，
-        // 改为瞬时定位并在下一帧按真实测量高度二次对齐，确保一步精准落位到页顶
+      // 统一采用瞬时定位 + 下一帧按真实测量高度二次对齐，防止连续点击「下一页」或跨页跳转时 smooth 动画取消导致页码领先视口 1-2 页
+      pageVirtualizer.scrollToIndex(targetRow, { align: 'start' });
+      alignmentRaf = requestAnimationFrame(() => {
+        alignmentRaf = null;
         pageVirtualizer.scrollToIndex(targetRow, { align: 'start' });
-        alignmentRaf = requestAnimationFrame(() => {
-          alignmentRaf = null;
-          pageVirtualizer.scrollToIndex(targetRow, { align: 'start' });
-        });
-      } else {
-        pageVirtualizer.scrollToIndex(targetRow, { align: 'start', behavior: 'smooth' });
-      }
+      });
     };
     return () => {
       if (alignmentRaf !== null) cancelAnimationFrame(alignmentRaf);
@@ -4005,13 +4063,25 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     if (initialScrollDoneRef.current) return;
     if (numPages === 0 || pageRowCount === 0) return;
     initialScrollDoneRef.current = true;
-    if (initialPage > 0) {
-      const targetPage = Math.min(initialPage + 1, numPages);
+    const effectiveTargetZeroBased =
+      initialPage > 0
+        ? initialPage
+        : Math.max(0, (persistedViewStateRef.current?.page ?? 1) - 1);
+    if (effectiveTargetZeroBased > 0) {
+      const targetPage = Math.min(effectiveTargetZeroBased + 1, numPages);
+      setCurrentPage(targetPage);
       const rowIndex = getRowIndexForPage(targetPage);
-      const raf = requestAnimationFrame(() => {
+      let raf2 = 0;
+      const raf1 = requestAnimationFrame(() => {
         pageVirtualizer.scrollToIndex(rowIndex, { align: 'start' });
+        raf2 = requestAnimationFrame(() => {
+          pageVirtualizer.scrollToIndex(rowIndex, { align: 'start' });
+        });
       });
-      return () => cancelAnimationFrame(raf);
+      return () => {
+        cancelAnimationFrame(raf1);
+        if (raf2) cancelAnimationFrame(raf2);
+      };
     }
   }, [numPages, pageRowCount, initialPage, getRowIndexForPage, pageVirtualizer]);
 
@@ -4198,7 +4268,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               aria-label={isSelected ? t('textbook:deselect_page') : t('textbook:select_page')}
             >
               <span className="ds-pdf__select-checkbox" />
-              {typeof maxSelections === 'number' && selectedPages && (
+              {typeof maxSelections === 'number' && selectedPages && selectedPages.size > 0 && (
                 <span className="ds-pdf__select-btn-text">
                   {selectedPages.size}/{maxSelections}
                 </span>
@@ -4827,6 +4897,33 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         </div>
       </div>
 
+      {/* 扫描件 / 无原生文字层持久状态条 + 一键 OCR 入口与实时进度反馈 */}
+      {isScannedNoTextPdf && (!ocrPages || ocrPages.size === 0) && (
+        <div className="ds-pdf__scanned-banner" role="status">
+          <span>
+            {ocrInlineState === 'running' || ocrStage === 'ocr_processing'
+              ? t('pdf:toolbar.ocr_processing_banner', { defaultValue: '正在识别扫描页文字（OCR）… 完成后可直接搜索与划词' })
+              : ocrInlineState === 'error'
+                ? t('pdf:toolbar.ocr_failed_banner', { defaultValue: '当前 PDF 为无文字层扫描件；OCR 暂未完成（请检查设置中的 OCR 引擎配置后重试）' })
+                : t('pdf:toolbar.scanned_no_text_banner', { defaultValue: '检测到当前 PDF 为扫描件 / 无原生文字层，直接搜索无法匹配正文' })}
+          </span>
+          <DsButton
+            variant="primary"
+            size="sm"
+            className="!h-7 px-2.5 text-xs"
+            disabled={startingOcr || ocrStage === 'ocr_processing'}
+            onClick={() => void runDocumentOcr()}
+          >
+            <MagnifyingGlass size={14} />
+            <span>
+              {startingOcr || ocrStage === 'ocr_processing'
+                ? t('pdf:toolbar.ocr_started')
+                : t('pdf:toolbar.run_ocr')}
+            </span>
+          </DsButton>
+        </div>
+      )}
+
       {/* 搜索栏 */}
       {showSearch && (
         <div className="ds-pdf__search-bar">
@@ -4836,12 +4933,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             type="search"
             className="ds-search-input"
             placeholder={t('pdf:toolbar.search_placeholder')}
+            aria-label={t('pdf:toolbar.search_placeholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !isComposingKeyEvent(e) && handleSearch()}
           />
-          {searchResults.length > 0 && (
-            <span className="ds-search-info">
+          {searchResults.length > 0 ? (
+            <span className="ds-search-info" role="status">
               {isSmallViewport
                 ? `${currentSearchIndex + 1}/${searchResults.length}`
                 : t('pdf:toolbar.result_count', {
@@ -4849,7 +4947,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     total: searchResults.length
                   })}
             </span>
-          )}
+          ) : !searchQuery ? (
+            <span className="ds-search-info" aria-live="polite">0/0</span>
+          ) : null}
           {/* 增量扫描进度：命中已实时展示，此处标注还在扫（大文档不再只有转圈） */}
           {isSearching && searchProgress && searchProgress.total > 0 && (
             <span className="ds-search-info ds-search-progress" role="status">
@@ -4862,14 +4962,20 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             </span>
           )}
           {searchQuery && searchResults.length === 0 && !isSearching && (
-            <span className="ds-search-info ds-search-no-results">
-              {t('pdf:toolbar.no_results')}
-            </span>
+            isScannedNoTextPdf && (!ocrPages || ocrPages.size === 0) ? (
+              <span className="ds-search-info ds-search-no-results" role="status">
+                {t('pdf:toolbar.scanned_search_hint', { defaultValue: '无文字层（扫描件），请先运行 OCR' })}
+              </span>
+            ) : (
+              <span className="ds-search-info ds-search-no-results" role="status">
+                {t('pdf:toolbar.no_results')}
+              </span>
+            )
           )}
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handlePrevSearchResult} disabled={searchResults.length === 0} title={t('pdf:toolbar.prev_match')} aria-label={t('pdf:toolbar.prev_match')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handlePrevSearchResult} aria-disabled={searchResults.length === 0 || undefined} title={t('pdf:toolbar.prev_match')} aria-label={t('pdf:toolbar.prev_match')}>
             <CaretUp size={16} />
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleNextSearchResult} disabled={searchResults.length === 0} title={t('pdf:toolbar.next_match')} aria-label={t('pdf:toolbar.next_match')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleNextSearchResult} aria-disabled={searchResults.length === 0 || undefined} title={t('pdf:toolbar.next_match')} aria-label={t('pdf:toolbar.next_match')}>
             <CaretDown size={16} />
           </DsButton>
           <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCloseSearch} title={t('pdf:toolbar.close_search')} aria-label={t('pdf:toolbar.close_search')}>

@@ -4,6 +4,8 @@ import {
   ArrowsClockwise,
   Trash, 
   FolderOpen, 
+  ArrowSquareOut,
+  Eye,
   Chat, 
   X, 
   CheckSquare,
@@ -62,6 +64,9 @@ interface FinderBatchToolbarProps {
   onToggleMultiSelectMode?: () => void;
   /** 回收站视图：删除按钮文案改为永久删除 */
   isTrashView?: boolean;
+  /** 单选打开与快速预览入口 */
+  onOpenSelected?: () => void;
+  onQuickLookSelected?: () => void;
 }
 
 const SORT_OPTIONS: { value: SortBy; labelKey: string }[] = [
@@ -97,6 +102,8 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
   multiSelectMode = false,
   onToggleMultiSelectMode,
   isTrashView = false,
+  onOpenSelected,
+  onQuickLookSelected,
 }: FinderBatchToolbarProps) {
   const { t } = useTranslation('learningHub');
 
@@ -252,6 +259,36 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
         {/* 批量操作按钮 - 仅在有选中项时显示 */}
         {hasSelection && (
           <>
+            {!isTrashView && selectedCount === 1 && onOpenSelected && (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={onOpenSelected}
+                disabled={isProcessing}
+                className={cn(
+                  'h-7 px-2 gap-1 text-xs text-primary hover:bg-primary/10',
+                  isTouchPrimary && '!h-11 px-3',
+                )}
+                title={t('contextMenu.open')}
+                aria-label={t('contextMenu.open')}
+              >
+                <ArrowSquareOut size={14} aria-hidden="true" />
+                <span>{t('contextMenu.open')}</span>
+              </DsButton>
+            )}
+            {!isTrashView && selectedCount === 1 && onQuickLookSelected && (
+              <DsButton
+                variant="ghost"
+                size="icon"
+                onClick={onQuickLookSelected}
+                disabled={isProcessing}
+                className={cn(actionIconBtnClass, 'text-accent-foreground hover:bg-[var(--interactive-hover)]')}
+                title={t('finder.quickLook.title')}
+                aria-label={t('finder.quickLook.title')}
+              >
+                <Eye size={16} />
+              </DsButton>
+            )}
             {onBatchAddToChat && (
               <DsButton
                 variant="ghost"

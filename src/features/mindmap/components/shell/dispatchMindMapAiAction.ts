@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { selectionToChat } from '@/features/chat/context/selectionRef';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { MindMapDocument } from '../../types';
 import { findNodeById } from '../../utils/node/find';
@@ -105,10 +106,19 @@ export async function dispatchMindMapAiAction({
       nodeId,
     });
 
-    dispatchAppEvent(APP_EVENTS.PREFILL_CHAT_INPUT, {
-      content: prompt,
-      autoSend: false,
-    });
+    if (workbenchBus.isEnabled()) {
+      workbenchBus.launch({ typeId: 'chat', placement: { mode: 'beside' }, reason: 'command' });
+    }
+
+    const emitPrefill = () =>
+      dispatchAppEvent(APP_EVENTS.PREFILL_CHAT_INPUT, {
+        content: prompt,
+        autoSend: false,
+      });
+    emitPrefill();
+    if (typeof window !== 'undefined') {
+      window.setTimeout(emitPrefill, 180);
+    }
 
     showGlobalNotification(
       'success',
