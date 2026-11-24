@@ -186,7 +186,7 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
       <FlashcardsMobileChromeContext.Provider value={isSmallScreen && isActive ? setMobileChrome : null}>
         {isSmallScreen ? (
           <MobileSlidingLayout
-            sidebar={mobileSidebar}
+            sidebar={sidebarOpen ? mobileSidebar : <div aria-hidden="true" />}
             sidebarOpen={sidebarOpen}
             onSidebarOpenChange={setSidebarOpen}
             // Subpages own back navigation; review cards own swipe-to-rate gestures.

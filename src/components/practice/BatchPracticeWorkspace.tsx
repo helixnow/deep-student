@@ -713,6 +713,34 @@ export default function BatchPracticeWorkspace({
         </span>
         {attempt && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            <span className="inline-flex items-center gap-1 font-mono font-semibold tabular-nums text-primary">
+              {t('batch.totalScoreSummary', {
+                defaultValue: '得分 {{score}}分 · 准确率 {{rate}}%',
+                score:
+                  results.length > 0
+                    ? Math.round(
+                        (results.reduce(
+                          (sum, r) =>
+                            sum +
+                            (typeof r.score === 'number'
+                              ? r.score / 100
+                              : r.is_correct === true
+                                ? 1
+                                : 0),
+                          0,
+                        ) /
+                          results.length) *
+                          100,
+                      )
+                    : 0,
+                rate:
+                  results.length > 0
+                    ? Math.round(
+                        (results.filter((r) => r.is_correct === true).length / results.length) * 100,
+                      )
+                    : 0,
+              })}
+            </span>
             <span className="inline-flex items-center gap-1 font-mono tabular-nums text-foreground/85">
               <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
               {t('batch.correctCount', {
@@ -936,7 +964,13 @@ export default function BatchPracticeWorkspace({
                   </p>
                 ),
               )}
-          {attempt && !!question.options?.length && (
+          {attempt &&
+            (question.questionType === 'single_choice' ||
+              question.questionType === 'multiple_choice' ||
+              question.questionType === 'indefinite_choice' ||
+              (question.questionType === 'other' &&
+                Boolean(question.options?.some((opt) => opt.content?.trim())))) &&
+            !!question.options?.length && (
             <div className="space-y-2.5">
               {question.options.map((option) => {
                 const userSelected = (answers[question.id] ?? '').includes(option.key);

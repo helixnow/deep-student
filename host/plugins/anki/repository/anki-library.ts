@@ -208,9 +208,14 @@ export function getLibraryCardRecord(
 
 // ------------------------------------------------------------ 卡片库列表
 
-/** 卡片所属牌组（`database/mod.rs:8041-8043`）。 */
-const LIBRARY_DECK_EXPR = `COALESCE(TRIM(CASE WHEN json_valid(dt.anki_generation_options_json) \
+/** 任务级默认牌组（`database/mod.rs:8041-8043`）。 */
+const TASK_DECK_EXPR = `COALESCE(TRIM(CASE WHEN json_valid(dt.anki_generation_options_json) \
 THEN json_extract(dt.anki_generation_options_json, '$.deck_name') END), '')`;
+
+/** 卡片所属牌组：优先取单卡 `extra_fields_json._deck`（支持多牌组 APKG 导入与单卡移动牌组），再回退任务级 `deck_name`。 */
+const LIBRARY_DECK_EXPR = `COALESCE(NULLIF(TRIM(CASE WHEN json_valid(ac.extra_fields_json) \
+THEN json_extract(ac.extra_fields_json, '$._deck') END), ''), \
+${TASK_DECK_EXPR})`;
 
 /** `sql_util::escape_like_pattern`（`database/sql_util.rs:6-11`）。 */
 function escapeLikePattern(value: string): string {
@@ -380,12 +385,12 @@ export function listAnkiLibraryCardsFiltered(
 /** `list_anki_library_deck_counts`（`database/mod.rs:7998-8036`）。 */
 export function listAnkiLibraryDeckCounts(db: SqlExecutor, nowMs: number): AnkiLibraryDeckCount[] {
   const sql = `WITH task_decks AS MATERIALIZED (
-      SELECT dt.id AS task_id, ${LIBRARY_DECK_EXPR} AS deck
+      SELECT dt.id AS task_id, ${TASK_DECK_EXPR} AS task_deck
       FROM document_tasks dt
       WHERE dt.deleted_at IS NULL
     )
     SELECT
-      td.deck AS deck,
+      COALESCE(NULLIF(TRIM(CASE WHEN json_valid(ac.extra_fields_json) THEN json_extract(ac.extra_fields_json, '$._deck') END), ''), td.task_deck) AS deck,
       COUNT(*) AS d_all,
       COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.state != 0 AND fs.due_ms <= ?1 THEN 1 ELSE 0 END), 0) AS d_due,
       COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.state = 0 THEN 1 ELSE 0 END), 0) AS d_new,
@@ -395,8 +400,8 @@ export function listAnkiLibraryDeckCounts(db: SqlExecutor, nowMs: number): AnkiL
     LEFT JOIN fsrs_card_states fs
       ON fs.anki_card_id = ac.id AND fs.deleted_at IS NULL
     WHERE ac.deleted_at IS NULL
-    GROUP BY td.deck
-    ORDER BY td.deck`;
+    GROUP BY deck
+    ORDER BY deck`;
   const rows = db.all<{
     deck: string | null;
     d_all: number;

@@ -1,3 +1,4 @@
+import i18n from '@/i18n';
 import type { GeneratedPaper, Question } from '@/stores/questionBankStore';
 import type { QuestionImage } from '@/api/questionBankApi';
 import {
@@ -19,6 +20,15 @@ export type PaperSection =
   | { kind: 'space'; lines: number };
 
 export function paperAnswer(question: Question): string {
+  if (question.question_type === 'true_false') {
+    const norm = (question.answer ?? '').trim().toLowerCase();
+    if (norm === 'true' || norm === 't' || norm === '1' || norm === '对' || norm === '正确') {
+      return i18n.t('practice:batch.true', { defaultValue: '正确' });
+    }
+    if (norm === 'false' || norm === 'f' || norm === '0' || norm === '错' || norm === '错误') {
+      return i18n.t('practice:batch.false', { defaultValue: '错误' });
+    }
+  }
   const blanks = parseFillBlankData(question.structured_data);
   if (question.question_type === 'fill_blank' && blanks)
     return blanks.blanks.map((blank, index) => `${index + 1}. ${blank.answers.join(' / ')}`).join('\n');

@@ -25,6 +25,7 @@ import {
   CaretDown,
 } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { LatexText } from '@/components/LatexText';
 import { useQbankAiGeneration, type GeneratedQuestionDraft } from '@/hooks/useQbankAiGeneration';
 import SmilesText from '@/components/SmilesText';
 import {
@@ -182,12 +183,48 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
   // 任务完成时默认全选草稿（面板关闭期间完成也适用）；
   // 每个任务只初始化一次，避免后续 store 刷新覆盖用户勾选
   const selectedInitTaskRef = useRef<string | null>(null);
+  const notifiedCompletedTaskRef = useRef<string | null>(null);
   useEffect(() => {
     if (task?.status !== 'completed' || task.drafts.length === 0) return;
-    if (selectedInitTaskRef.current === task.id) return;
-    selectedInitTaskRef.current = task.id;
-    setSelected(new Set(task.drafts.map((_, index) => index)));
-  }, [task]);
+    if (selectedInitTaskRef.current !== task.id) {
+      selectedInitTaskRef.current = task.id;
+      setSelected(new Set(task.drafts.map((_, index) => index)));
+    }
+    if (!open && notifiedCompletedTaskRef.current !== task.id) {
+      notifiedCompletedTaskRef.current = task.id;
+      showGlobalNotification(
+        'success',
+        t('exam_sheet:aiGeneration.backgroundReadyToast', {
+          count: task.drafts.length,
+          defaultValue: `AI 已在后台生成 ${task.drafts.length} 道草稿题，点击审阅入库`,
+        }),
+        undefined,
+        {
+          action: {
+            label: t('exam_sheet:aiGeneration.openReviewAction', { defaultValue: '立即审阅' }),
+            onClick: () => onOpenChange(true),
+          },
+        },
+      );
+    }
+  }, [task, open, onOpenChange, t]);
+
+  // 检测当前题目集是否已有存量题（空题目集禁止仅靠勾选「基于现有题目生成」绕过上下文门禁）
+  const [existingQuestionCount, setExistingQuestionCount] = useState<number>(0);
+  useEffect(() => {
+    if (!open || !examId) return;
+    let cancelled = false;
+    void invoke<{ total_count?: number } | null>('qbank_get_stats', { examId })
+      .then((stats) => {
+        if (!cancelled) setExistingQuestionCount(Number(stats?.total_count ?? 0));
+      })
+      .catch(() => {
+        if (!cancelled) setExistingQuestionCount(availableTags.length > 0 ? 1 : 0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, examId, availableTags.length]);
 
   // ===== 参考资料（C2）=====
   const [references, setReferences] = useState<SelectedReference[]>([]);
@@ -360,11 +397,12 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
     setSpecs((prev) => prev.map((spec) => (spec.id === id ? { ...spec, ...patch } : spec)));
   };
 
+  const canUseExistingQuestions = existingQuestionCount > 0;
   const hasGenerationContext =
     selectedKnowledgePoints.length > 0 ||
     topicHint.trim().length > 0 ||
     references.length > 0 ||
-    basedOnExisting;
+    (basedOnExisting && canUseExistingQuestions);
 
   const handleStart = async () => {
     if (maxQuestions <= 0 || maxQuestions > 100) return;
@@ -744,14 +782,28 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
               </div>
             </div>
 
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <label
+              className={`flex items-center gap-2 text-sm ${
+                canUseExistingQuestions ? 'cursor-pointer' : 'cursor-not-allowed opacity-55'
+              }`}
+            >
               <input
                 type="checkbox"
-                checked={basedOnExisting}
+                checked={basedOnExisting && canUseExistingQuestions}
+                disabled={!canUseExistingQuestions}
                 onChange={(e) => setBasedOnExisting(e.target.checked)}
                 className="h-4 w-4 accent-primary"
               />
-              {t('exam_sheet:aiGeneration.basedOnExisting')}
+              <span>
+                {t('exam_sheet:aiGeneration.basedOnExisting')}
+                {!canUseExistingQuestions && (
+                  <span className="ml-1.5 text-xs text-muted-foreground">
+                    {t('exam_sheet:aiGeneration.basedOnExistingEmptyHint', {
+                      defaultValue: '（当前题目集暂无题目可参考）',
+                    })}
+                  </span>
+                )}
+              </span>
             </label>
 
             {maxQuestions > 100 && (

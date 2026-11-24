@@ -118,6 +118,8 @@ export interface NewLibraryCardInput {
   deckName?: string;
   /** 卡片类型：Basic（问答）或 Cloze（挖空）；省略时若正面含有效挖空则自动按 Cloze 处理 */
   noteType?: 'Basic' | 'Cloze';
+  /** 可选自定义模板 ID（S2-11） */
+  templateId?: string | null;
   /** 建完立刻进入复习队列（默认 true，否则新卡不会出现在到期队列里） */
   enqueue?: boolean;
 }
@@ -439,10 +441,11 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
 
     bulkDelete: (cardIds) => runBulkMutation(cardIds, (card) => deleteAnkiCard(card.id)),
 
-    createCard: async ({ front, back, tags = [], deckName, noteType, enqueue = true }) => {
+    createCard: async ({ front, back, tags = [], deckName, noteType, templateId, enqueue = true }) => {
       const trimmedFront = front.trim();
       const trimmedBack = back.trim();
       const trimmedDeck = deckName?.trim();
+      const trimmedTemplateId = templateId?.trim() || undefined;
       const isCloze = noteType === 'Cloze' || (!noteType && hasValidCloze(trimmedFront));
       if (!trimmedFront || (!isCloze && !trimmedBack)) {
         set({ actionError: i18n.t('flashcards:library.create.incomplete') });
@@ -463,21 +466,31 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
               extra_fields: {
                 Text: trimmedFront,
                 ...(trimmedBack ? { Extra: trimmedBack } : {}),
+                ...(trimmedDeck ? { _deck: trimmedDeck } : {}),
               },
               tags,
               images: [] as string[],
+              ...(trimmedTemplateId ? { template_id: trimmedTemplateId } : {}),
             }
-          : { front: trimmedFront, back: trimmedBack, tags, images: [] as string[] };
+          : {
+              front: trimmedFront,
+              back: trimmedBack,
+              tags,
+              images: [] as string[],
+              ...(trimmedDeck ? { extra_fields: { _deck: trimmedDeck } } : {}),
+              ...(trimmedTemplateId ? { template_id: trimmedTemplateId } : {}),
+            };
         const response = await ankiApiAdapter.saveAnkiCards({
           cards: [cardPayload],
-          ...(trimmedDeck
+          ...((trimmedDeck || trimmedTemplateId)
             ? {
                 options: {
-                  deck_name: trimmedDeck,
+                  deck_name: trimmedDeck || 'Default',
                   note_type: isCloze ? 'Cloze' : 'Basic',
                   enable_images: false,
                   max_cards_per_source: 1,
                   max_cards_per_mistake: 1,
+                  ...(trimmedTemplateId ? { template_id: trimmedTemplateId } : {}),
                 },
               }
             : {}),

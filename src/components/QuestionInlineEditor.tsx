@@ -257,6 +257,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
   const [contentTouched, setContentTouched] = useState(false);
   // 仅对新增的选项行播放入场动效，避免整列表在编辑器展开时重复动画
   const [lastAddedOptionIndex, setLastAddedOptionIndex] = useState<number | null>(null);
+  const [armedRemoveOptionIndex, setArmedRemoveOptionIndex] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const initialDataRef = useRef<EditableQuestion | null>(null);
@@ -472,12 +473,38 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
   }, [editData.options.length]);
 
   const handleRemoveOption = useCallback((index: number) => {
+    const target = editData.options[index];
+    if (!target || editData.options.length <= 2) return;
+    if (target.content.trim().length > 0 && armedRemoveOptionIndex !== index) {
+      setArmedRemoveOptionIndex(index);
+      return;
+    }
+    setArmedRemoveOptionIndex(null);
     setLastAddedOptionIndex(null);
-    setEditData(prev => ({
-      ...prev,
-      options: prev.options.filter((_, i) => i !== index),
-    }));
-  }, []);
+    setEditData(prev => {
+      if (prev.options.length <= 2) return prev;
+      const oldSelected = new Set(
+        prev.answer.toUpperCase().replace(/[^A-Z]/g, '').split(''),
+      );
+      const kept = prev.options.filter((_, i) => i !== index);
+      const nextAnswerLetters: string[] = [];
+      const relettered = kept.map((opt, idx) => {
+        const nextKey = String.fromCharCode(65 + idx);
+        if (oldSelected.has(opt.key.toUpperCase())) {
+          nextAnswerLetters.push(nextKey);
+        }
+        return { ...opt, key: nextKey };
+      });
+      return {
+        ...prev,
+        options: relettered,
+        answer:
+          prev.questionType === 'single_choice'
+            ? (nextAnswerLetters[0] ?? '')
+            : nextAnswerLetters.join(','),
+      };
+    });
+  }, [armedRemoveOptionIndex, editData.options]);
 
   const handleAddTag = useCallback(() => {
     const tag = tagInput.trim();
@@ -652,11 +679,15 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           setError(t('exam_sheet:questionBank.create.contentRequired'));
           return;
         }
+        const isChoiceSave =
+          editData.questionType === 'single_choice' ||
+          editData.questionType === 'multiple_choice' ||
+          editData.questionType === 'indefinite_choice';
         const params = {
           exam_id: examId,
           content: editData.content,
           question_type: editData.questionType || null,
-          options: editData.options.length > 0 ? editData.options : null,
+          options: isChoiceSave && editData.options.length > 0 ? editData.options : null,
           answer: answerPayload,
           structured_data: structuredPayload,
           explanation: editData.explanation || null,
@@ -719,6 +750,10 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
 
       if (!question) return;
 
+      const isChoiceEdit =
+        editData.questionType === 'single_choice' ||
+        editData.questionType === 'multiple_choice' ||
+        editData.questionType === 'indefinite_choice';
       const shouldMarkReview = markAsMistake && question.status !== 'review';
       await invoke('qbank_update_question', {
         request: {
@@ -726,7 +761,9 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           params: {
             content: editData.content,
             question_type: editData.questionType || null,
-            options: editData.options.length > 0 ? editData.options : null,
+            options: isChoiceEdit && editData.options.length > 0
+              ? editData.options
+              : (question.options?.length ? [] : null),
             answer: answerPayload,
             structured_data: structuredPayload,
             explanation: editData.explanation || null,
@@ -757,7 +794,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
         ...question,
         content: editData.content,
         questionType: editData.questionType as QuestionType,
-        options: editData.options,
+        options: isChoiceEdit ? editData.options : [],
         answer: answerPayload ?? undefined,
         explanation: editData.explanation || undefined,
         difficulty: editData.difficulty || undefined,
@@ -932,15 +969,17 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                 {t('common:actions.add')}
               </DsButton>
             </div>
-            {/* 窄屏单列，避免双列输入框在小屏过度拥挤 */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+            {/* 单列宽敞排布 + 删除按钮常驻可见（防 hover 位移误点与 >2 项保护） */}
+            <div className="grid grid-cols-1 gap-1.5">
               {editData.options.map((opt, index) => {
                 const isAnswerKey = selectedAnswerKeys.has(opt.key);
+                const isRemoveArmed = armedRemoveOptionIndex === index;
+                const canRemove = editData.options.length > 2;
                 return (
                   <div
-                    key={index}
+                    key={opt.key}
                     className={cn(
-                      'group flex items-center gap-1.5 rounded-md border px-1.5 min-h-8 transition-colors',
+                      'group flex items-center gap-2 rounded-md border px-2 py-1 min-h-9 transition-colors',
                       index === lastAddedOptionIndex && 'ui-drop-in',
                       isAnswerKey
                         ? 'border-primary/50 bg-primary/5'
@@ -948,32 +987,72 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                     )}
                   >
                     <DsButton
+                      type="button"
                       variant="ghost"
                       size="icon"
                       iconOnly
-                      onClick={() => toggleAnswerKey(opt.key)}
+                      onClick={() => {
+                        setArmedRemoveOptionIndex(null);
+                        toggleAnswerKey(opt.key);
+                      }}
                       title={t('exam_sheet:questionBank.edit.optionsAnswerHint')}
                       aria-label={`${t('exam_sheet:questionBank.edit.answer')} ${opt.key}`}
                       aria-pressed={isAnswerKey}
                       className={cn(
-                        // 触屏放大命中区（桌面保持紧凑视觉）
-                        'flex-shrink-0 !w-5 !h-5 !p-0 rounded text-[11px] font-semibold',
-                        '[@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:-m-0.5',
+                        'flex-shrink-0 !w-6 !h-6 !p-0 rounded text-xs font-semibold',
+                        '[@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11',
                         isAnswerKey
                           ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
-                          : 'text-muted-foreground hover:bg-primary/10 hover:text-primary'
+                          : 'border border-border/60 bg-background/70 text-muted-foreground hover:bg-primary/10 hover:text-primary'
                       )}
                     >
                       {opt.key}
                     </DsButton>
                     <Input
                       value={opt.content}
-                      onChange={(e) => handleOptionChange(index, 'content', e.target.value)}
+                      onChange={(e) => {
+                        if (armedRemoveOptionIndex !== null) setArmedRemoveOptionIndex(null);
+                        handleOptionChange(index, 'content', e.target.value);
+                      }}
                       className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50 [@media(pointer:coarse)]:text-[16px]"
                       placeholder={`${opt.key} ...`}
-/>
-                    <DsButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOption(index)} className="flex-shrink-0 !w-4 !h-4 !p-0 opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:-m-0.5 text-muted-foreground hover:text-destructive" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
-                      <X size={10} />
+                    />
+                    <DsButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={!canRemove}
+                      onClick={() => handleRemoveOption(index)}
+                      className={cn(
+                        'flex-shrink-0 !h-6 !px-1.5 text-[11px] opacity-70 hover:opacity-100 disabled:opacity-25 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
+                        isRemoveArmed
+                          ? 'bg-destructive/15 text-destructive font-medium opacity-100'
+                          : 'text-muted-foreground hover:text-destructive',
+                      )}
+                      aria-label={
+                        isRemoveArmed
+                          ? t('exam_sheet:questionBank.edit.confirmRemoveOption', {
+                              key: opt.key,
+                              defaultValue: `确认删除选项 ${opt.key}`,
+                            })
+                          : t('exam_sheet:questionBank.edit.removeOption', {
+                              key: opt.key,
+                              defaultValue: `删除选项 ${opt.key}`,
+                            })
+                      }
+                      title={
+                        isRemoveArmed
+                          ? t('exam_sheet:questionBank.edit.confirmRemoveOption', {
+                              key: opt.key,
+                              defaultValue: `再次点击删除选项 ${opt.key}`,
+                            })
+                          : t('exam_sheet:questionBank.edit.removeOption', {
+                              key: opt.key,
+                              defaultValue: `删除选项 ${opt.key}`,
+                            })
+                      }
+                    >
+                      {isRemoveArmed ? t('common:confirm', { defaultValue: '确认' }) : <X size={12} />}
                     </DsButton>
                   </div>
                 );

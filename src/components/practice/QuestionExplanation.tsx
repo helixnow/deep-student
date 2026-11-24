@@ -24,6 +24,17 @@ interface Props {
   onRefreshQuestion?: (questionId: string) => Promise<void>;
 }
 
+/** 保护纯文本算式中的单星号乘号（如 `a*t = 12 + 5*6`），避免被 Markdown 误解析为斜体吞掉星号 */
+function escapeBareMathAsterisks(markdown: string): string {
+  const segments = markdown.split(/(```[\s\S]*?```|`[^`\n]+`|\$\$[\s\S]*?\$\$|\$[^$\n]+\$)/g);
+  return segments
+    .map((seg, index) => {
+      if (index % 2 === 1) return seg;
+      return seg.replace(/(?<=[0-9a-zA-Z)\]])\*(?=\s*[0-9a-zA-Z(\[])/g, '\\*');
+    })
+    .join('');
+}
+
 /** Mount with the question ID as key so a stream can never appear on another question. */
 export function QuestionExplanation({
   questionId,
@@ -137,7 +148,7 @@ export function QuestionExplanation({
         >
           <div className="min-h-0 overflow-hidden">
             <div className="space-y-3 border-l-2 border-primary/35 pl-3.5 pt-0.5 text-sm leading-relaxed text-foreground/85">
-              {canonical?.trim() && <MarkdownRenderer content={canonical} />}
+              {canonical?.trim() && <MarkdownRenderer content={escapeBareMathAsterisks(canonical)} />}
               {showFeedback && (
                 <div className="space-y-2">
                   {(ai.state.error || ai.state.cancelled) && <p className="text-xs text-warning">{t('batch.feedbackDraft')}</p>}

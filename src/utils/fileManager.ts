@@ -3,8 +3,26 @@ import { readShellPlatform } from '@/ui-kernel/services/shell-platform';
 import { open as dialogOpen, save as dialogSave } from '@tauri-apps/plugin-dialog';
 import { writeFile } from '@tauri-apps/plugin-fs';
 import i18next from 'i18next';
+import { isWebUiShell } from './platform';
 import { TauriAPI } from './tauriApi';
 import { getErrorMessage } from './errorUtils';
+
+function triggerWebBrowserDownload(data: Uint8Array, fileName: string, mimeType: string): { canceled: boolean; path: string } {
+  const safeName = fileName.trim() || 'deep-student-export';
+  const copy = new Uint8Array(data.byteLength);
+  copy.set(data);
+  const blob = new Blob([copy], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = safeName;
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return { canceled: false, path: safeName };
+}
 
 /**
  * 从任意路径（本地路径或 Android content:// URI）中安全提取文件名。
@@ -239,6 +257,10 @@ export const fileManager = {
     if (usesAndroidSaf()) return fileManager.saveBinaryFile({
       ...options, data: new TextEncoder().encode(options.content), mimeType: 'text/plain',
     });
+    if (isWebUiShell() && typeof document !== 'undefined') {
+      const fileName = options.defaultFileName || buildDefaultPath(options) || 'deep-student-export.txt';
+      return triggerWebBrowserDownload(new TextEncoder().encode(options.content), fileName, 'text/plain;charset=utf-8');
+    }
     const destPath = await dialogSave({
       title: options.title,
       defaultPath: buildDefaultPath(options),
@@ -271,6 +293,10 @@ export const fileManager = {
         },
       });
       return saved === null ? { canceled: true } : { canceled: false, path: saved.path ?? fileName };
+    }
+    if (isWebUiShell() && typeof document !== 'undefined') {
+      const fileName = options.defaultFileName || buildDefaultPath(options) || 'deep-student-export';
+      return triggerWebBrowserDownload(options.data, fileName, options.mimeType ?? 'application/octet-stream');
     }
     const destPath = await dialogSave({
       title: options.title,

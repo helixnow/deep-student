@@ -152,6 +152,8 @@ export const LibraryScreen: React.FC = () => {
   const [draftBack, setDraftBack] = useState('');
   const [draftDeck, setDraftDeck] = useState('');
   const [draftTags, setDraftTags] = useState('');
+  const [draftTemplateId, setDraftTemplateId] = useState<string>('');
+  const [customTemplates, setCustomTemplates] = useState<Array<{ id: string; name: string; note_type?: string }>>([]);
   const [pageJumpInput, setPageJumpInput] = useState(() => String(page));
   const mobileFrontRef = useRef<HTMLTextAreaElement | null>(null);
   const desktopFrontRef = useRef<HTMLInputElement | null>(null);
@@ -161,6 +163,27 @@ export const LibraryScreen: React.FC = () => {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!composerOpen) return;
+    let cancelled = false;
+    void import('@/services/templateService')
+      .then(({ TemplateService }) => TemplateService.getInstance().getAllTemplates())
+      .then((list) => {
+        if (cancelled || !Array.isArray(list)) return;
+        setCustomTemplates(
+          list.map((tpl) => ({
+            id: tpl.id,
+            name: tpl.name,
+            note_type: tpl.note_type,
+          })),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [composerOpen]);
 
   const onRefreshEvent = useCallback(() => {
     void useFlashcardsLibraryStore.getState().refresh();
@@ -511,16 +534,18 @@ export const LibraryScreen: React.FC = () => {
       tags,
       noteType: draftMode === 'cloze' ? 'Cloze' : 'Basic',
       ...(targetDeck ? { deckName: targetDeck } : {}),
+      ...(draftTemplateId ? { templateId: draftTemplateId } : {}),
     }).then((ok) => {
       if (!ok) return;
       setDraftFront('');
       setDraftBack('');
       setDraftTags('');
+      setDraftTemplateId('');
       setDraftMode('basic');
       setComposerOpen(false);
       showGlobalNotification('success', translate('library.create.success'));
     });
-  }, [draftValid, creating, createCard, draftFront, draftBack, draftDeck, draftTags, draftMode, translate]);
+  }, [draftValid, creating, createCard, draftFront, draftBack, draftDeck, draftTags, draftTemplateId, draftMode, translate]);
 
   const handleImportApkg = useCallback(() => {
     if (importing) return;
@@ -1034,7 +1059,7 @@ export const LibraryScreen: React.FC = () => {
               : translate('library.create.backPlaceholder')}
             className="h-10 text-base sm:text-sm [@media(pointer:coarse)]:!h-11"
           />
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <Input
               aria-label={translate('library.editTags', { defaultValue: '标签（逗号分隔）' })}
               value={draftTags}
@@ -1052,6 +1077,22 @@ export const LibraryScreen: React.FC = () => {
               className="h-10 text-base sm:text-sm [@media(pointer:coarse)]:!h-11"
               data-testid="fc-lib-create-deck"
             />
+            <select
+              aria-label={translate('library.create.templateLabel', { defaultValue: '卡片模板' })}
+              value={draftTemplateId}
+              onChange={(event) => setDraftTemplateId(event.target.value)}
+              className="h-10 rounded-md border border-border/60 bg-background px-2.5 text-sm text-foreground [@media(pointer:coarse)]:!h-11"
+              data-testid="fc-lib-create-template"
+            >
+              <option value="">
+                {translate('library.create.defaultTemplateOption', { defaultValue: '默认标准模板' })}
+              </option>
+              {customTemplates.map((tpl) => (
+                <option key={tpl.id} value={tpl.id}>
+                  {tpl.name}
+                </option>
+              ))}
+            </select>
           </div>
           <datalist id={`${filtersId}-deck-suggestions`}>
             {namedDeckPaths.map((path) => (
@@ -1068,6 +1109,15 @@ export const LibraryScreen: React.FC = () => {
               className="fc-lib-create-cta text-sm"
             >
               {creating ? translate('library.create.saving') : translate('library.create.save')}
+            </DsButton>
+            <DsButton
+              type="button"
+              variant="ghost"
+              disabled={creating}
+              onClick={closeComposer}
+              className="text-sm"
+            >
+              {translate('common:cancel', { defaultValue: '取消' })}
             </DsButton>
             <p className="fc-lib-composer-hint">{translate('library.create.hint')}</p>
           </div>
@@ -1181,6 +1231,31 @@ export const LibraryScreen: React.FC = () => {
             </button>
           ) : null}
         </div>
+        {isFiltered && scheduledItems.length > 0 ? (
+          <DsButton
+            type="button"
+            variant="default"
+            size="sm"
+            disabled={rowBusy}
+            onClick={() => {
+              const playable = scheduledItems.filter((c) => !c.suspended && c.stateId);
+              if (playable.length > 0) {
+                void startBatchSession(
+                  playable.map((c) => c.id),
+                  playable.map(toReviewContent),
+                );
+              }
+            }}
+            data-testid="fc-lib-review-filtered"
+            className="text-xs [@media(pointer:coarse)]:!min-h-11"
+          >
+            <Play size={13} weight="fill" />
+            {translate('library.reviewFiltered', {
+              count: scheduledItems.filter((c) => !c.suspended && c.stateId).length,
+              defaultValue: '复习当前筛选（{{count}}）',
+            })}
+          </DsButton>
+        ) : null}
         {visibleItems.length !== items.length ? (
           <span className="fc-lib-result-count font-mono tabular-nums">
             {translate('library.filteredCount', {
