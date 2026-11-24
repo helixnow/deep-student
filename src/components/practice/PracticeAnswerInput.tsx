@@ -96,9 +96,16 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
     }
   };
 
+  const isChoiceQuestion =
+    question.questionType === 'single_choice' ||
+    question.questionType === 'multiple_choice' ||
+    question.questionType === 'indefinite_choice' ||
+    (question.questionType === 'other' &&
+      Boolean(question.options?.some((opt) => opt.content?.trim())));
+
   return (
     <div className="space-y-3">
-      {question.options?.length ? (
+      {isChoiceQuestion && question.options?.length ? (
         <div className="space-y-2.5" data-practice-choice>
           {multiple && (
             <p className="text-xs text-muted-foreground">{t('batch.multiChoiceHint')}</p>

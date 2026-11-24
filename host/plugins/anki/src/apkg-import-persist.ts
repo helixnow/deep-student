@@ -197,8 +197,10 @@ export function persistPackage(
         : generatedDocumentId;
 
       if (importedCards > 0) {
+        const primaryCardDeck = trimWhitespace(cardsToInsert[0]?.extraFields._deck ?? '');
+        const nonDefaultDeck = parsedPackage.deckNames.find((d) => d !== 'Default' && d !== '默认');
         const options = JSON.stringify({
-          deck_name: parsedPackage.deckNames[0] ?? 'Imported APKG',
+          deck_name: primaryCardDeck || nonDefaultDeck || parsedPackage.deckNames[0] || 'Imported APKG',
           note_type: 'Imported',
           enable_images: false,
           max_cards_per_mistake: importedCards,

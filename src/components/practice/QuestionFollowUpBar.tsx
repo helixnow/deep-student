@@ -1,14 +1,23 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
-import { ChatCircleText, CopySimple, FileText, Play } from '@phosphor-icons/react';
+import { Cards, ChatCircleText, CopySimple, FileText, Play, Tag } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import type { Question } from '@/api/questionBankApi';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { useFlashcardsLibraryStore } from '@/features/flashcards/store/libraryStore';
 import { dispatchOpenMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
 import { findFirstMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefTime';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+
+const ERROR_ATTRIBUTION_REASONS = ['概念不清', '计算失误', '审题遗漏', '公式记错'] as const;
 
 /** 每道题的追问都是独立话题：新开对话再填入，不混进正在聊的别的会话 */
 function prefillNewChat(content: string): void {
+  if (workbenchBus.isEnabled()) {
+    workbenchBus.launch({ typeId: 'chat', placement: { mode: 'beside' }, reason: 'command' });
+  }
   dispatchAppEvent(APP_EVENTS.PREFILL_CHAT_INPUT, { content, autoSend: false, newSession: true });
 }
 
@@ -121,36 +130,144 @@ export const QuestionFollowUpBar: React.FC<{
     prefillNewChat(`${intro}\n\n${questionBlock(question, labels, examId)}`);
   };
 
+  const [creatingCard, setCreatingCard] = useState(false);
+  const [selectedErrorReason, setSelectedErrorReason] = useState<string | null>(() => {
+    const found = (question.tags ?? []).find((tag) =>
+      tag.startsWith('错因:') || (ERROR_ATTRIBUTION_REASONS as readonly string[]).includes(tag),
+    );
+    return found ? found.replace(/^错因:/, '') : null;
+  });
+
   const openSource = () => {
     if (!sourceId) return;
     void import('@/features/notes/noteOrigin').then(({ navigateToNoteOrigin }) =>
       navigateToNoteOrigin({ kind: 'resource', resourceId: sourceId }));
   };
 
+  const handleCreateFlashcard = async () => {
+    if (creatingCard) return;
+    setCreatingCard(true);
+    try {
+      const optionLines =
+        question.options && question.options.length > 0 &&
+        (question.questionType === 'single_choice' ||
+          question.questionType === 'multiple_choice' ||
+          question.questionType === 'indefinite_choice')
+          ? `\n\n${question.options.map((opt) => `${opt.key}. ${opt.content}`).join('\n')}`
+          : '';
+      const front = `${question.content.trim()}${optionLines}`;
+      const backParts = [
+        question.answer?.trim() ? `${labels.answer}${question.answer.trim()}` : '',
+        question.explanation?.trim() ? `${labels.explanation}${question.explanation.trim()}` : '',
+      ].filter(Boolean);
+      const back = backParts.join('\n\n') || t('followUp.noAnswerFallback', { defaultValue: '详见原题解析' });
+      const ok = await useFlashcardsLibraryStore.getState().createCard({
+        front,
+        back,
+        tags: [...(question.tags ?? [])],
+        noteType: 'Basic',
+        enqueue: true,
+      });
+      if (ok) {
+        showGlobalNotification('success', t('followUp.flashcardCreated', { defaultValue: '已将该题加入闪卡复习队列' }));
+      } else {
+        showGlobalNotification('error', t('followUp.flashcardFailed', { defaultValue: '转闪卡失败，请稍后重试' }));
+      }
+    } catch (err) {
+      showGlobalNotification('error', String(err));
+    } finally {
+      setCreatingCard(false);
+    }
+  };
+
+  const handleToggleErrorReason = async (reason: string) => {
+    const nextReason = selectedErrorReason === reason ? null : reason;
+    setSelectedErrorReason(nextReason);
+    try {
+      const baseTags = (question.tags ?? []).filter(
+        (tag) => !tag.startsWith('错因:') && !(ERROR_ATTRIBUTION_REASONS as readonly string[]).includes(tag),
+      );
+      const nextTags = nextReason ? [...baseTags, `错因:${nextReason}`] : baseTags;
+      await invoke('qbank_update_question', {
+        request: {
+          question_id: question.id,
+          params: { tags: nextTags },
+          record_history: false,
+        },
+      });
+      showGlobalNotification(
+        'success',
+        nextReason
+          ? t('followUp.errorTagSaved', { reason: nextReason, defaultValue: `已标记错因：${nextReason}` })
+          : t('followUp.errorTagCleared', { defaultValue: '已清除错因标记' }),
+      );
+    } catch (err) {
+      showGlobalNotification('error', String(err));
+    }
+  };
+
   return (
-    <div className="flex flex-wrap items-center gap-1.5 pt-2.5 border-t border-border/35">
-      <DsButton variant="ghost" size="sm" onClick={askAi} className="!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11">
-        <ChatCircleText size={14} aria-hidden="true" />{t('followUp.askAction', { defaultValue: '问 AI 讲解' })}
-      </DsButton>
-      <DsButton variant="ghost" size="sm" onClick={similar} className="!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11">
-        <CopySimple size={14} aria-hidden="true" />{t('followUp.similarAction', { defaultValue: '生成同类题' })}
-      </DsButton>
-      {mediaSource ? (
+    <div className="space-y-2 pt-2.5 border-t border-border/35">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <DsButton variant="ghost" size="sm" onClick={askAi} className="!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11">
+          <ChatCircleText size={14} aria-hidden="true" />{t('followUp.askAction', { defaultValue: '问 AI 讲解' })}
+        </DsButton>
+        <DsButton variant="ghost" size="sm" onClick={similar} className="!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11">
+          <CopySimple size={14} aria-hidden="true" />{t('followUp.similarAction', { defaultValue: '生成同类题' })}
+        </DsButton>
         <DsButton
           variant="ghost"
           size="sm"
-          onClick={() => dispatchOpenMediaRef(mediaSource.resourceId, mediaSource.seconds)}
-          title={t('followUp.mediaSourceTitle', { time: mediaSource.label, defaultValue: '回到课程 {{time}}，重看这道题依据的片段' })}
-          className="!h-7 !px-2.5 font-mono text-xs tabular-nums text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11"
+          disabled={creatingCard}
+          onClick={() => void handleCreateFlashcard()}
+          className="!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11"
         >
-          <Play size={13} weight="fill" aria-hidden="true" />
-          {t('followUp.mediaSourceAction', { time: mediaSource.label, defaultValue: '回看 {{time}}' })}
+          <Cards size={14} aria-hidden="true" />
+          {t('followUp.toFlashcardAction', { defaultValue: '转闪卡' })}
         </DsButton>
-      ) : sourceId ? (
-        <DsButton variant="ghost" size="sm" onClick={openSource} className="!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11">
-          <FileText size={14} aria-hidden="true" />{t('followUp.sourceAction', { defaultValue: '出处' })}
-        </DsButton>
-      ) : null}
+        {mediaSource ? (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={() => dispatchOpenMediaRef(mediaSource.resourceId, mediaSource.seconds)}
+            title={t('followUp.mediaSourceTitle', { time: mediaSource.label, defaultValue: '回到课程 {{time}}，重看这道题依据的片段' })}
+            className="!h-7 !px-2.5 font-mono text-xs tabular-nums text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11"
+          >
+            <Play size={13} weight="fill" aria-hidden="true" />
+            {t('followUp.mediaSourceAction', { time: mediaSource.label, defaultValue: '回看 {{time}}' })}
+          </DsButton>
+        ) : sourceId ? (
+          <DsButton variant="ghost" size="sm" onClick={openSource} className="!h-7 !px-2.5 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] [@media(pointer:coarse)]:!min-h-11">
+            <FileText size={14} aria-hidden="true" />{t('followUp.sourceAction', { defaultValue: '出处' })}
+          </DsButton>
+        ) : null}
+      </div>
+      {isCorrect === false && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs" role="group" aria-label={t('followUp.errorTagGroup', { defaultValue: '错因归因' })}>
+          <span className="inline-flex items-center gap-1 text-muted-foreground">
+            <Tag size={12} aria-hidden="true" />
+            {t('followUp.errorTagLabel', { defaultValue: '错因归因：' })}
+          </span>
+          {ERROR_ATTRIBUTION_REASONS.map((reason) => {
+            const active = selectedErrorReason === reason;
+            return (
+              <button
+                key={reason}
+                type="button"
+                aria-pressed={active}
+                onClick={() => void handleToggleErrorReason(reason)}
+                className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors [@media(pointer:coarse)]:min-h-9 ${
+                  active
+                    ? 'border-primary/60 bg-primary/10 font-medium text-primary'
+                    : 'border-border/50 bg-muted/20 text-muted-foreground hover:border-border hover:text-foreground'
+                }`}
+              >
+                {reason}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };

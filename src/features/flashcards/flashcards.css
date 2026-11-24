@@ -490,6 +490,14 @@
   gap: 4px;
 }
 
+@media (max-width: 767px) {
+  .wb-fc-ratebar {
+    margin-bottom: calc(var(--wb-dock-clearance, 72px) + env(safe-area-inset-bottom, 0px));
+    position: relative;
+    z-index: 20;
+  }
+}
+
 .wb-fc-ratebar[data-mode='rate'] {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   animation: wb-fc-fade-up 200ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));

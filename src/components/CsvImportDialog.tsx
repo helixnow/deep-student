@@ -39,6 +39,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { fileManager, extractFileName } from '@/utils/fileManager';
+import { isWebUiShell } from '@/utils/platform';
 import { showGlobalNotification } from './UnifiedNotification';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import CsvFieldMapper, { FieldMapping } from './CsvFieldMapper';
@@ -183,6 +184,96 @@ const createCsvImportId = (): string => {
   return `csv-import-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 };
 
+/** RFC-4180 CSV 解析器（供 WebUI / 浏览器 File 拖拽直接预览与导入） */
+function parseCsvTextToGrid(rawText: string): { headers: string[]; rows: string[][] } {
+  const text = rawText.replace(/^\uFEFF/, '');
+  const grid: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]!;
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          cell += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cell += ch;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      row.push(cell);
+      cell = '';
+    } else if (ch === '\r' || ch === '\n') {
+      if (ch === '\r' && text[i + 1] === '\n') i += 1;
+      row.push(cell);
+      cell = '';
+      if (row.some((c) => c.trim().length > 0)) grid.push(row);
+      row = [];
+    } else {
+      cell += ch;
+    }
+  }
+  row.push(cell);
+  if (row.some((c) => c.trim().length > 0)) grid.push(row);
+  if (grid.length === 0) return { headers: [], rows: [] };
+  const [headers, ...rows] = grid;
+  return { headers: headers.map((h) => h.trim()), rows };
+}
+
+function parseCsvOptionsCell(raw: string): Array<{ key: string; content: string }> | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (Array.isArray(parsed)) {
+        const valid = parsed
+          .filter((item): item is { key: string; content: string } =>
+            Boolean(item && typeof item === 'object' && typeof (item as { key?: unknown }).key === 'string' && typeof (item as { content?: unknown }).content === 'string'))
+          .map((item) => ({ key: item.key.trim().toUpperCase(), content: item.content.trim() }));
+        if (valid.length > 0) return valid;
+      }
+    } catch { /* fall through */ }
+  }
+  const parts = trimmed.includes('|')
+    ? trimmed.split('|')
+    : trimmed.includes('\n')
+      ? trimmed.split(/\r?\n/)
+      : trimmed.split(/;\s*/);
+  const cleaned = parts.map((p) => p.trim()).filter(Boolean);
+  if (cleaned.length === 0) return null;
+  return cleaned.map((part, idx) => {
+    const match = /^([A-Za-z])[.、:：)\s]\s*([\s\S]*)$/.exec(part);
+    return match
+      ? { key: match[1]!.toUpperCase(), content: match[2]!.trim() }
+      : { key: String.fromCharCode(65 + idx), content: part };
+  });
+}
+
+function normalizeCsvQuestionType(raw: string): string {
+  const v = raw.trim().toLowerCase();
+  if (['multiple_choice', '多选', '多选题'].includes(v)) return 'multiple_choice';
+  if (['indefinite_choice', '不定项', '不定项选择题'].includes(v)) return 'indefinite_choice';
+  if (['true_false', '判断', '判断题'].includes(v)) return 'true_false';
+  if (['fill_blank', '填空', '填空题'].includes(v)) return 'fill_blank';
+  if (['short_answer', '简答', '简答题'].includes(v)) return 'short_answer';
+  if (['essay', '论述', '论述题'].includes(v)) return 'essay';
+  if (['calculation', '计算', '计算题'].includes(v)) return 'calculation';
+  if (['proof', '证明', '证明题'].includes(v)) return 'proof';
+  if (['numeric', '数值', '数值题'].includes(v)) return 'numeric';
+  if (['matching', '匹配', '匹配题'].includes(v)) return 'matching';
+  if (['ordering', '排序', '排序题'].includes(v)) return 'ordering';
+  return 'single_choice';
+}
+
 const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
   examId,
   examName,
@@ -200,6 +291,8 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
 
   // 文件选择状态
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [webParsedRows, setWebParsedRows] = useState<string[][] | null>(null);
+  const webFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // CSV 预览状态
   const [preview, setPreview] = useState<CsvPreviewResult | null>(null);
@@ -292,8 +385,51 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
     }
   }, [t]);
 
+  // 处理 Web File 对象选择 / 拖拽
+  const handleWebFileObject = useCallback(async (file: File) => {
+    if (!file.name.toLowerCase().endsWith('.csv') && file.type !== 'text/csv' && file.type !== 'application/csv') {
+      showGlobalNotification('warning', t('exam_sheet:csv.invalid_file_type'));
+      return;
+    }
+    setSelectedFile(`webui://${file.name}`);
+    setIsLoadingPreview(true);
+    setImportError(null);
+    try {
+      const content = await file.text();
+      const parsed = parseCsvTextToGrid(content);
+      if (parsed.headers.length === 0 || parsed.rows.length === 0) {
+        throw new Error(t('exam_sheet:csv.empty_file', { defaultValue: 'CSV 文件内容为空或未包含有效数据行' }));
+      }
+      setWebParsedRows(parsed.rows);
+      const previewResult: CsvPreviewResult = {
+        headers: parsed.headers,
+        rows: parsed.rows.slice(0, 5),
+        total_rows: parsed.rows.length,
+        encoding: 'UTF-8',
+      };
+      setPreview(previewResult);
+      const autoMapping: FieldMapping = {};
+      parsed.headers.forEach((header) => {
+        const inferred = inferCsvFieldFromHeader(header);
+        if (inferred) autoMapping[header] = inferred;
+      });
+      setFieldMapping(autoMapping);
+      setCurrentStep('mapping');
+    } catch (error: unknown) {
+      console.error('[CsvImport] web preview failed:', error);
+      setImportError(t('exam_sheet:csv.preview_failed', { error: String(error) }));
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  }, [t]);
+
   // 选择文件按钮点击
   const handleSelectFileClick = useCallback(async () => {
+    const isTauriEnv = typeof window !== 'undefined' && Boolean((window as unknown as Record<string, unknown>).__TAURI_INTERNALS__);
+    if (!isTauriEnv || isWebUiShell()) {
+      webFileInputRef.current?.click();
+      return;
+    }
     try {
       const filePath = await fileManager.pickSingleFile({
         title: t('exam_sheet:csv.select_csv_file'),
@@ -305,11 +441,12 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
           showGlobalNotification('warning', t('exam_sheet:csv.invalid_file_type'));
           return;
         }
+        setWebParsedRows(null);
         await handleFileSelect(filePath);
       }
     } catch (error: unknown) {
       console.error('[CsvImport] file select failed:', error);
-      showGlobalNotification('error', t('exam_sheet:csv.select_file_failed'));
+      webFileInputRef.current?.click();
     }
   }, [t, handleFileSelect]);
 
@@ -321,14 +458,15 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
       showGlobalNotification('warning', t('exam_sheet:csv.invalid_file_type'));
       return;
     }
+    setWebParsedRows(null);
     await handleFileSelect(filePath);
   }, [handleFileSelect, t]);
 
-  // 处理拖拽上传的 File 对象（Web 环境 fallback，不使用）
-  const handleFilesDropped = useCallback(() => {
-    // CSV 导入需要文件路径，不使用 File 对象
-    // Tauri 环境会使用 onPathsDropped
-  }, []);
+  // 处理拖拽上传的 File 对象（WebUI / 浏览器拖放直接解析）
+  const handleFilesDropped = useCallback((files: File[]) => {
+    const first = files[0];
+    if (first) void handleWebFileObject(first);
+  }, [handleWebFileObject]);
 
   // 检查映射是否有效（必须映射 content，且不允许重复目标字段）
   const isMappingValid = (() => {
@@ -393,6 +531,91 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
           mapping[csvCol] = targetField;
         }
       });
+
+      // WebUI / 浏览器 File 直传分支：将解析出的行直接批量写入题库
+      if (webParsedRows && selectedFile.startsWith('webui://')) {
+        const headerIndexByTarget = new Map<string, number>();
+        preview.headers.forEach((header, idx) => {
+          const target = mapping[header];
+          if (target) headerIndexByTarget.set(target, idx);
+        });
+        const cell = (row: string[], target: string): string => {
+          const idx = headerIndexByTarget.get(target);
+          return idx !== undefined ? (row[idx] ?? '').trim() : '';
+        };
+        const batchQuestions = [];
+        let failedCount = 0;
+        const errors: Array<{ row: number; message: string }> = [];
+        for (let i = 0; i < webParsedRows.length; i += 1) {
+          const row = webParsedRows[i]!;
+          const content = cell(row, 'content');
+          if (!content) {
+            failedCount += 1;
+            errors.push({ row: i + 2, message: '题干为空' });
+            continue;
+          }
+          const rawType = cell(row, 'question_type');
+          const rawOptions = cell(row, 'options');
+          const parsedOptions = parseCsvOptionsCell(rawOptions);
+          const qType = rawType ? normalizeCsvQuestionType(rawType) : (parsedOptions ? 'single_choice' : 'short_answer');
+          const rawTags = cell(row, 'tags');
+          const tags = rawTags
+            ? rawTags.split(/[,，;；|/]/).map((s) => s.trim()).filter(Boolean)
+            : null;
+          const diff = cell(row, 'difficulty').toLowerCase();
+          const difficulty = ['easy', 'medium', 'hard', 'very_hard'].includes(diff) ? diff : null;
+          batchQuestions.push({
+            exam_id: examId,
+            content,
+            question_type: qType,
+            options: ['single_choice', 'multiple_choice', 'indefinite_choice'].includes(qType) ? parsedOptions : null,
+            answer: cell(row, 'answer') || null,
+            structured_data: null,
+            explanation: cell(row, 'explanation') || null,
+            difficulty,
+            tags,
+            question_label: cell(row, 'question_label') || null,
+            card_id: null,
+            source_type: 'csv',
+            source_ref: null,
+            images: null,
+            parent_id: null,
+          });
+        }
+        if (batchQuestions.length > 0) {
+          await invoke('qbank_batch_create_questions', {
+            examId,
+            questions: batchQuestions,
+          });
+        }
+        if (isStale()) return;
+        const webResult: CsvImportResult = {
+          success_count: batchQuestions.length,
+          skipped_count: 0,
+          failed_count: failedCount,
+          errors,
+          exam_id: examId,
+          total_rows: webParsedRows.length,
+        };
+        setImportResult(webResult);
+        setImportProgress({
+          current: webParsedRows.length,
+          total: webParsedRows.length,
+          success: batchQuestions.length,
+          skipped: 0,
+          failed: failedCount,
+        });
+        onImportComplete?.(webResult);
+        showGlobalNotification(
+          failedCount > 0 ? 'warning' : 'success',
+          t('exam_sheet:csv.import_complete', {
+            success: batchQuestions.length,
+            skipped: 0,
+            failed: failedCount,
+          }),
+        );
+        return;
+      }
 
       // Mark this only immediately before dispatching IPC. Until then the
       // cancel control can safely stop this local preparation phase.
@@ -596,7 +819,9 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
                   index + 1
                 )}
               </span>
-              <span className="text-sm hidden sm:inline">{t(`exam_sheet:csv.steps.${step.key}`)}</span>
+              <span className={cn('text-xs sm:text-sm', !isActive && 'hidden sm:inline')}>
+                {t(`exam_sheet:csv.steps.${step.key}`)}
+              </span>
             </div>
           </React.Fragment>
         );
@@ -607,6 +832,20 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
   // 渲染文件选择步骤
   const renderSelectStep = () => (
     <div className="space-y-4">
+      <input
+        ref={webFileInputRef}
+        type="file"
+        accept=".csv,text/csv,application/csv,text/plain"
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+        data-testid="qbank-csv-file-input"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          event.target.value = '';
+          if (file) void handleWebFileObject(file);
+        }}
+      />
       {/* 拖拽区域 - 使用统一的 UnifiedDragDropZone */}
       <UnifiedDragDropZone
         zoneId="csv-import"

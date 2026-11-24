@@ -139,6 +139,9 @@ export function listDeckNamesByTaskIds(
   return result;
 }
 
+const CARD_DECK_NAME_EXPR = `COALESCE(NULLIF(TRIM(CASE WHEN json_valid(ac.extra_fields_json)
+  THEN json_extract(ac.extra_fields_json, '$._deck') END), ''), ${TASK_DECK_NAME_EXPR})`;
+
 /** 按卡片 ID 批量查询其所属文档任务的牌组名（用于调用方未带 task_id 的导出路径）。 */
 export function listDeckNamesByCardIds(
   db: SqlExecutor,
@@ -150,7 +153,7 @@ export function listDeckNamesByCardIds(
     const chunk = unique.slice(start, start + DECK_LOOKUP_CHUNK_SIZE);
     const placeholders = chunk.map(() => '?').join(',');
     const rows = db.all<{ card_id: string; deck_name: string }>(
-      `SELECT ac.id AS card_id, ${TASK_DECK_NAME_EXPR} AS deck_name
+      `SELECT ac.id AS card_id, ${CARD_DECK_NAME_EXPR} AS deck_name
        FROM anki_cards ac
        INNER JOIN document_tasks dt ON dt.id = ac.task_id
        WHERE ac.id IN (${placeholders})

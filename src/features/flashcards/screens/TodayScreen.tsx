@@ -517,7 +517,7 @@ export const TodayScreen: React.FC = () => {
                             />
                             <span className="min-w-0 truncate">
                               {cardDisplayFront(card)
-                                ? <CardMathText text={cardDisplayFront(card)} inline />
+                                ? <CardMathText text={cardDisplayFront(card)} inline allowBasicHtml />
                                 : t('card.untitled')}
                             </span>
                           </div>

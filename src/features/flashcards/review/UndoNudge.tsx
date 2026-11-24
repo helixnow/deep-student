@@ -45,15 +45,25 @@ export const UndoNudge: React.FC<UndoNudgeProps> = ({
   // 初始化为挂载时的栈顶：只对「挂载后新增的评分」弹提示，
   // 会话中途重挂载（如切 tab 回来）不重复打扰。
   const seenIdRef = React.useRef<string | null>(receiptId);
+  const historyIdsRef = React.useRef<Set<string>>(
+    receiptId ? new Set([receiptId]) : new Set(),
+  );
   const [shownId, setShownId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (receiptId === seenIdRef.current) return undefined;
     seenIdRef.current = receiptId;
     if (!receiptId) {
+      historyIdsRef.current.clear();
       setShownId(null);
       return undefined;
     }
+    // 撤销弹出栈顶暴露出更早评过的 logId 时，不应再当成刚打分重新弹出旧档位提示
+    if (historyIdsRef.current.has(receiptId)) {
+      setShownId(null);
+      return undefined;
+    }
+    historyIdsRef.current.add(receiptId);
     setShownId(receiptId);
     const ttl = rating === 1 ? AGAIN_NUDGE_TTL_MS : NUDGE_TTL_MS;
     const timer = window.setTimeout(() => {

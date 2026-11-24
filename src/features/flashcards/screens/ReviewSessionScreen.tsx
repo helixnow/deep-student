@@ -217,6 +217,16 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   const startDueSession = useFsrsReviewStore((state) => state.startDueSession);
   const startAgainCardsSession = useFsrsReviewStore((state) => state.startAgainCardsSession);
   const exitSession = onExit ?? endSession;
+  const handleUndoWithFeedback = React.useCallback(() => {
+    void undoLastReview().then((undone) => {
+      if (undone !== false) {
+        showGlobalNotification(
+          'info',
+          t('session.undone', { defaultValue: '已撤销上一次评分' }),
+        );
+      }
+    });
+  }, [undoLastReview, t]);
   const openLibraryFromSummary = React.useCallback(() => {
     endSession();
     setScreen?.('library');
@@ -1333,7 +1343,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
               receiptId={lastReview?.logId ?? null}
               rating={lastReview?.rating ?? null}
               busy={ratingBusy}
-              onUndo={() => void undoLastReview()}
+              onUndo={handleUndoWithFeedback}
               secondaryAction={lastAgainCard ? (
                 <div className="flex flex-wrap items-center gap-1">
                   {lastReviewMediaSource ? renderMediaChip(lastReviewMediaSource) : null}

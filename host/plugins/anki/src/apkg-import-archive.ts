@@ -678,7 +678,6 @@ export function parseArchive(
     mediaDir: mediaDir !== null && declaredMedia.size > 0 ? mediaDir : null,
   };
 
-  for (const path of mediaPaths.values()) mediaToPersist?.add(path);
   const collectionPath = writeTemporaryCollection(runtime.tempDir, collectionBytes);
   let packageResult: ParsedPackage;
   try {
@@ -689,6 +688,17 @@ export function parseArchive(
       mediaPaths,
       modernPackage,
     );
+  } catch (collectionErr) {
+    // 集合库校验失败时原子回滚本次新建的媒体文件，避免坏包/恶意包残留脏媒体
+    const local = ankiLocalRuntime();
+    for (const writtenPath of mediaPaths.values()) {
+      try {
+        local.remove(writtenPath);
+      } catch {
+        // ignore rollback cleanup error
+      }
+    }
+    throw collectionErr;
   } finally {
     try {
       const local = ankiLocalRuntime();
@@ -698,6 +708,7 @@ export function parseArchive(
       runtime.logger.warn(`[apkg_import] 清理临时集合文件失败: ${ioErrorText(error)}`);
     }
   }
+  for (const path of mediaPaths.values()) mediaToPersist?.add(path);
 
   packageResult.mediaSkipped = mediaSkipped;
   packageResult.mediaImported = mediaImported;
