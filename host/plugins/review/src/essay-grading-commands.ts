@@ -85,6 +85,7 @@ export function registerEssayGradingCommands(ctx: Context): void {
             kind: 'essay_graded',
             examType,
             essayId: result.round_id,
+            locale: request.responseLanguage ?? null,
             rubricDimensions: dimensions.map(d => ({
               name: d.name,
               score: d.score,

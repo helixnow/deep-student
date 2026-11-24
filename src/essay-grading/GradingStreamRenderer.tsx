@@ -199,12 +199,16 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
     setSelectedMarkerIndex(null);
   }, []);
 
-  // 筛选计数
+  // 筛选计数（与 SentenceDetailView 对齐，跳过空白标记）
   const filterCounts = useMemo(() => {
     let errors = 0;
     let suggestions = 0;
     let highlights = 0;
     for (const m of parseResult.markers) {
+      const hasBody = m.type === 'replace'
+        ? Boolean(m.oldText?.trim() || m.newText?.trim())
+        : Boolean(m.content?.trim());
+      if (!hasBody) continue;
       if (m.type === 'del' || (m.type === 'err' && !isSuggestionErr(m))) errors += 1;
       else if (m.type === 'ins' || m.type === 'replace' || m.type === 'note' || isSuggestionErr(m)) suggestions += 1;
       else if (m.type === 'good') highlights += 1;
@@ -386,7 +390,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
                     isZero && markerFilter !== filter && "opacity-40"
                   )}
                 >
-                  {t(`essay_grading:legend.filter_${filter}`)}
+                  {t(`essay_grading:legend.filter_${filter}`)}{' '}
                   <span className={cn("ml-1", markerFilter === filter ? "text-primary/70" : "text-muted-foreground/40")}>
                     {count}
                   </span>

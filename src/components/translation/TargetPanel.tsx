@@ -17,6 +17,7 @@ import {
     Columns,
     CircleNotch,
     CardsThree,
+    ArrowCounterClockwise,
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -46,6 +47,10 @@ interface TargetPanelProps {
     onCopyResult: () => void;
     onExportTranslation: () => void;
     onSaveAsFlashcard?: () => void | Promise<void>;
+    canRestorePrevious?: boolean;
+    onRestorePrevious?: () => void;
+    isOutdated?: boolean;
+    onRetranslate?: () => void;
 }
 
 const COPY_FEEDBACK_MS = 1500;
@@ -82,6 +87,10 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
     onCopyResult,
     onExportTranslation,
     onSaveAsFlashcard,
+    canRestorePrevious = false,
+    onRestorePrevious,
+    isOutdated = false,
+    onRetranslate,
 }, ref) => {
     const { t } = useTranslation(['translation', 'common']);
     const [showComparison, setShowComparison] = useState(false);
@@ -232,6 +241,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                     <div className="flex lg:hidden items-center gap-1.5 px-1.5 py-0.5 rounded-md hover:bg-[var(--interactive-hover)] transition-colors">
                         <Switch
                             id="target-sync-scroll"
+                            aria-label={t('translation:sync_scroll')}
                             checked={isSyncScroll}
                             onCheckedChange={setIsSyncScroll}
                             className="data-[state=checked]:bg-primary"
@@ -240,6 +250,21 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             {t('translation:sync_scroll')}
                         </Label>
                     </div>
+
+                    {canRestorePrevious && onRestorePrevious && !isTranslating && (
+                        <CommonTooltip content={t('translation:workbench_ui.restore_previous')}>
+                            <DsButton
+                                variant="ghost"
+                                size="icon"
+                                onClick={onRestorePrevious}
+                                aria-label={t('translation:workbench_ui.restore_previous')}
+                                data-testid="translation-restore-prev-btn"
+                                className={cn(COARSE_HIT, 'w-7 h-7 text-info hover:text-info hover:bg-info/10')}
+                            >
+                                <ArrowCounterClockwise size={15} />
+                            </DsButton>
+                        </CommonTooltip>
+                    )}
 
                     {translatedText && (
                         <>
@@ -347,6 +372,17 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                         <span className="font-mono tabular-nums text-muted-foreground/60">· {targetCharCount.toLocaleString()}</span>
                     </span>
                     <div className="flex items-center gap-0.5 shrink-0">
+                        {canRestorePrevious && onRestorePrevious && !isTranslating && (
+                            <DsButton
+                                variant="ghost"
+                                size="icon"
+                                onClick={onRestorePrevious}
+                                className={cn(COARSE_HIT, 'h-8 w-8 text-info hover:bg-info/10')}
+                                aria-label={t('translation:workbench_ui.restore_previous')}
+                            >
+                                <ArrowCounterClockwise size={16} />
+                            </DsButton>
+                        )}
                         <DsButton
                             variant="ghost"
                             size="icon"
@@ -456,6 +492,25 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                     </div>
                 ) : (
                     <div className="flex-1 min-h-0 flex flex-col relative" ref={setContentWrap}>
+                        {/* 译文过期提示（原文/设置已修改） */}
+                        {isOutdated && !isTranslating && translatedText && (
+                            <div
+                                data-testid="translation-outdated-banner"
+                                className="flex items-center justify-between gap-2 px-3 py-1.5 bg-warning/10 border-b border-warning/20 text-xs text-warning shrink-0"
+                            >
+                                <span className="truncate">{t('translation:workbench_ui.outdated_hint')}</span>
+                                {onRetranslate && (
+                                    <DsButton
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={onRetranslate}
+                                        className="!h-6 px-2 text-xs text-warning hover:bg-warning/15 shrink-0 [@media(pointer:coarse)]:!min-h-11"
+                                    >
+                                        {t('translation:workbench_ui.retranslate_now')}
+                                    </DsButton>
+                                )}
+                            </div>
+                        )}
                         {/* 流式翻译实时状态胶囊 */}
                         {isTranslating && (
                             <div
@@ -498,28 +553,32 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
 
                         {/* 悬浮状态条：评分 + 字数 */}
                         {translatedText && !isTranslating && (
-                            <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none opacity-0 group-hover/target:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-200">
+                            <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-none opacity-80 group-hover/target:opacity-100 focus-within:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-200">
                                 <div data-wb-blur-surface className="pointer-events-auto bg-background/85 backdrop-blur-md border border-border/35 rounded-full shadow-sm px-1 py-0.5 flex items-center">
-                                    {[1, 2, 3, 4, 5].map((rating) => (
-                                        <DsButton
-                                            key={rating}
-                                            variant="ghost"
-                                            size="icon"
-                                            onClick={() => onRateTranslation(rating)}
-                                            aria-label={t('translation:panel_ux.rate_star', { count: rating })}
-                                            className="h-7 w-7 p-1.5 hover:bg-[var(--interactive-hover)] rounded-full [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-                                        >
-                                            <Star
-                                                weight={translationQuality && rating <= translationQuality ? 'fill' : 'regular'}
-                                                className={cn(
-                                                    'w-3.5 h-3.5 transition-colors',
-                                                    translationQuality && rating <= translationQuality
-                                                        ? 'text-warning'
-                                                        : 'text-muted-foreground hover:text-warning'
-                                                )}
-                                            />
-                                        </DsButton>
-                                    ))}
+                                    {[1, 2, 3, 4, 5].map((rating) => {
+                                        const isSelected = Boolean(translationQuality && rating <= translationQuality);
+                                        return (
+                                            <DsButton
+                                                key={rating}
+                                                variant="ghost"
+                                                size="icon"
+                                                onClick={() => onRateTranslation(rating)}
+                                                aria-pressed={isSelected}
+                                                aria-label={t('translation:panel_ux.rate_star', { count: rating })}
+                                                className="h-7 w-7 p-1.5 hover:bg-[var(--interactive-hover)] rounded-full [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                                            >
+                                                <Star
+                                                    weight={isSelected ? 'fill' : 'regular'}
+                                                    className={cn(
+                                                        'w-3.5 h-3.5 transition-colors',
+                                                        isSelected
+                                                            ? 'text-warning'
+                                                            : 'text-muted-foreground hover:text-warning'
+                                                    )}
+                                                />
+                                            </DsButton>
+                                        );
+                                    })}
                                 </div>
                                 <div data-wb-blur-surface className="bg-background/85 backdrop-blur-md border border-border/35 rounded-full px-2.5 py-1 text-xs text-muted-foreground shadow-sm font-mono tabular-nums">
                                     {targetCharCount.toLocaleString()} {t('translation:stats.characters')}

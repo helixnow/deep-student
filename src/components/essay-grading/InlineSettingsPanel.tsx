@@ -369,7 +369,8 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
     try {
       if (viewMode === 'create') {
         const input: CreateModeInput = payload;
-        await createCustomMode(input);
+        const created = await createCustomMode(input);
+        setModeId(created.id);
         showGlobalNotification('success', t('settings:gradingMode.successCreated'));
       } else if (viewMode === 'edit' && editingMode) {
         if (editingMode.is_builtin) {
@@ -451,20 +452,32 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
   // ========== 评分维度操作 ==========
 
   const handleAddDimension = useCallback(() => {
-    setFormData(prev => ({
-      ...prev,
-      score_dimensions: [
+    setFormData(prev => {
+      const prevSum = prev.score_dimensions.reduce((sum, dim) => sum + (dim.max_score || 0), 0);
+      const nextDims = [
         ...prev.score_dimensions,
         { name: '', max_score: 10, description: null },
-      ],
-    }));
+      ];
+      const nextSum = prevSum + 10;
+      return {
+        ...prev,
+        score_dimensions: nextDims,
+        total_max_score: Number(prev.total_max_score) === prevSum ? nextSum : prev.total_max_score,
+      };
+    });
   }, []);
 
   const handleRemoveDimension = useCallback((index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      score_dimensions: prev.score_dimensions.filter((_, i) => i !== index),
-    }));
+    setFormData(prev => {
+      const prevSum = prev.score_dimensions.reduce((sum, dim) => sum + (dim.max_score || 0), 0);
+      const nextDims = prev.score_dimensions.filter((_, i) => i !== index);
+      const nextSum = nextDims.reduce((sum, dim) => sum + (dim.max_score || 0), 0);
+      return {
+        ...prev,
+        score_dimensions: nextDims,
+        total_max_score: Number(prev.total_max_score) === prevSum && nextSum > 0 ? nextSum : prev.total_max_score,
+      };
+    });
   }, []);
 
   const handleUpdateDimension = useCallback((
@@ -476,12 +489,20 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
     if (field === 'max_score') {
       processedValue = Math.max(0, Number(value));
     }
-    setFormData(prev => ({
-      ...prev,
-      score_dimensions: prev.score_dimensions.map((dim, i) =>
+    setFormData(prev => {
+      const prevSum = prev.score_dimensions.reduce((sum, dim) => sum + (dim.max_score || 0), 0);
+      const nextDims = prev.score_dimensions.map((dim, i) =>
         i === index ? { ...dim, [field]: processedValue } : dim
-      ),
-    }));
+      );
+      const nextSum = nextDims.reduce((sum, dim) => sum + (dim.max_score || 0), 0);
+      return {
+        ...prev,
+        score_dimensions: nextDims,
+        total_max_score: field === 'max_score' && Number(prev.total_max_score) === prevSum && nextSum > 0
+          ? nextSum
+          : prev.total_max_score,
+      };
+    });
   }, []);
 
   const handleReorderDimension = useCallback((from: number, to: number) => {
@@ -935,7 +956,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                               size="icon"
                               iconOnly
                               onClick={() => handleRemoveDimension(index)}
-                              className="!h-6 !w-6 flex-shrink-0 text-muted-foreground/30 opacity-0 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+                              className="!h-6 !w-6 flex-shrink-0 text-muted-foreground/50 opacity-50 hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
                               aria-label={t('essay_grading:settings_panel.remove_dimension')}
                               title={t('essay_grading:settings_panel.remove_dimension')}
                             >

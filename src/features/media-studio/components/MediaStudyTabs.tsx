@@ -24,6 +24,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { useGenerateHandout, openHandoutNote } from '@/features/media-handout';
+import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import {
   HandoutReaderView,
   chapterIndexAt,
@@ -132,6 +133,116 @@ const CHAPTER_SEEK_FEEDBACK_MS = 1200;
 // ============================================================================
 // 讲义
 // ============================================================================
+
+function parseClockSeconds(clock: string): number {
+  const parts = clock.split(':').map((n) => Number(n));
+  if (parts.some((n) => !Number.isFinite(n) || n < 0)) return 0;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return 0;
+}
+
+/** 将 AI 讲义生成的 Markdown 笔记还原为结构化 HandoutDocument（保留多章节、时间锚点与正文块） */
+export function parseHandoutMarkdownToDocument(
+  markdown: string,
+  courseName: string,
+): HandoutDocument | null {
+  const trimmed = markdown.trim();
+  if (!trimmed) return null;
+  const lines = trimmed.split(/\r?\n/);
+  let docTitle = courseName;
+  const summaryLines: string[] = [];
+  const sections: HandoutSection[] = [];
+  let current: HandoutSection | null = null;
+  let pendingList: { ordered: boolean; items: string[] } | null = null;
+
+  const flushList = () => {
+    if (pendingList && current && pendingList.items.length > 0) {
+      current.blocks.push({ type: 'list', ordered: pendingList.ordered, items: pendingList.items });
+    }
+    pendingList = null;
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushList();
+      continue;
+    }
+    if (line.startsWith('# ') && !current) {
+      docTitle = line.slice(2).trim() || courseName;
+      continue;
+    }
+    if (line.startsWith('## ')) {
+      flushList();
+      if (current) sections.push(current);
+      current = {
+        heading: line.slice(3).trim() || courseName,
+        blocks: [],
+      };
+      continue;
+    }
+    if (!current) {
+      summaryLines.push(line);
+      continue;
+    }
+    const anchorMatch = /^\[媒体@[^:\]]+:(\d{1,3}:\d{2}(?::\d{2})?)\]\s*(.*)$/.exec(line);
+    if (anchorMatch) {
+      flushList();
+      if (current.anchorSeconds == null) {
+        current.anchorSeconds = parseClockSeconds(anchorMatch[1]);
+      }
+      if (anchorMatch[2]?.trim()) {
+        current.blocks.push({ type: 'para', text: anchorMatch[2].trim() });
+      }
+      continue;
+    }
+    if (line.startsWith('### ')) {
+      flushList();
+      current.blocks.push({ type: 'h2', text: line.slice(4).trim() });
+      continue;
+    }
+    if (line.startsWith('> ')) {
+      flushList();
+      current.blocks.push({ type: 'note', text: line.slice(2).trim() });
+      continue;
+    }
+    const bulletMatch = /^[-*]\s+(.+)$/.exec(line);
+    if (bulletMatch) {
+      if (!pendingList || pendingList.ordered) {
+        flushList();
+        pendingList = { ordered: false, items: [] };
+      }
+      pendingList.items.push(bulletMatch[1].trim());
+      continue;
+    }
+    const orderedMatch = /^\d+\.\s+(.+)$/.exec(line);
+    if (orderedMatch) {
+      if (!pendingList || !pendingList.ordered) {
+        flushList();
+        pendingList = { ordered: true, items: [] };
+      }
+      pendingList.items.push(orderedMatch[1].trim());
+      continue;
+    }
+    flushList();
+    if (/^!\[[^\]]*\]\([^)]+\)$/.test(line)) continue;
+    if (line.startsWith('|')) continue;
+    current.blocks.push({ type: 'para', text: line });
+  }
+  flushList();
+  if (current) sections.push(current);
+  if (sections.length === 0) return null;
+
+  return {
+    title: docTitle,
+    courseName,
+    summary: summaryLines.join(' ').trim() || docTitle,
+    estimatedMinutes: sections.length * 5,
+    difficulty: 'intermediate',
+    sections,
+  };
+}
 
 /** 根据当前媒体课程的标题、章节列表与字幕片段构建结构化 HandoutDocument */
 export function buildMediaHandoutDocument(
@@ -350,9 +461,11 @@ export const MediaHandoutTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; 
     fileName: ctx.fileName,
   });
   const [notes, setNotes] = useState<MediaRelatedNote[] | null>(null);
+  const [noteHandoutDoc, setNoteHandoutDoc] = useState<HandoutDocument | null>(null);
   const [showInlineReader, setShowInlineReader] = useState(false);
   const [justSeekedIndex, setJustSeekedIndex] = useState<number | null>(null);
   const seekTimerRef = useRef<number | null>(null);
+  const autoOpenedNoteIdRef = useRef<string | null>(null);
 
   useEffect(() => () => {
     if (seekTimerRef.current !== null) window.clearTimeout(seekTimerRef.current);
@@ -371,14 +484,61 @@ export const MediaHandoutTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; 
     if (visible) void load();
   }, [visible, load, result]);
 
+  const justSeekedTimerRef = seekTimerRef;
+  void justSeekedTimerRef;
+  const wasGeneratingHandoutRef = useRef(running);
+
+  // 仅在主动生成讲义结束并产出新笔记时自动展开内联讲义阅读器
+  useEffect(() => {
+    if (running) {
+      wasGeneratingHandoutRef.current = true;
+      return;
+    }
+    if (wasGeneratingHandoutRef.current && result?.noteId && result.noteId !== autoOpenedNoteIdRef.current) {
+      autoOpenedNoteIdRef.current = result.noteId;
+      wasGeneratingHandoutRef.current = false;
+      setShowInlineReader(true);
+    } else if (!result) {
+      wasGeneratingHandoutRef.current = false;
+    }
+  }, [running, result]);
+
+  const activeHandoutNoteId = result?.noteId ?? notes?.[0]?.id ?? null;
+  const { fileName, chapters, segments } = ctx;
+  const cleanCourseTitle = fileName.replace(/\.[^.]+$/, '') || fileName;
+
+  useEffect(() => {
+    if (!visible || !activeHandoutNoteId) {
+      setNoteHandoutDoc(null);
+      return;
+    }
+    let cancelled = false;
+    void notesDstuAdapter
+      .getNoteContent(activeHandoutNoteId)
+      .then((res) => {
+        if (cancelled) return;
+        if (res?.ok && res.value) {
+          setNoteHandoutDoc(parseHandoutMarkdownToDocument(res.value, cleanCourseTitle));
+        } else {
+          setNoteHandoutDoc(null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setNoteHandoutDoc(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, activeHandoutNoteId, cleanCourseTitle]);
+
   const canShowInlineReader =
     ctx.chapters.length > 0 || Boolean(result) || Boolean(notes && notes.length > 0);
 
-  const { fileName, chapters, segments } = ctx;
-  const handoutDoc = useMemo(
+  const fallbackHandoutDoc = useMemo(
     () => buildMediaHandoutDocument({ fileName, chapters, segments }, t),
     [chapters, fileName, segments, t],
   );
+  const handoutDoc = noteHandoutDoc ?? fallbackHandoutDoc;
 
   const handleChapterSeek = useCallback(
     (index: number, seconds: number) => {

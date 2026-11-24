@@ -5,6 +5,7 @@ import type { TFunction } from 'i18next';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
+import { useSettingsShellStore } from '@/stores/settingsShellStore';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 import {
@@ -25,6 +26,7 @@ let globalVoiceInputListenerCleanup: (() => void) | null = null;
 
 function openSettingsTab(tab: 'general' | 'apis' | 'models' | 'voice-input'): void {
   setPendingSettingsRoute({ tab });
+  useSettingsShellStore.getState().applySettingsRoute({ tab });
   dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
   dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab });
 }

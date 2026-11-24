@@ -33,9 +33,10 @@ export function isTTSSupported(): boolean {
  */
 async function isTauriTTSAvailable(): Promise<boolean> {
   try {
-    await invoke('tts_check_available');
-    return true;
-  } catch {
+    const available = await invoke<boolean>('tts_check_available');
+    return Boolean(available);
+  } catch (err) {
+    console.warn('[TTS] Tauri TTS availability check failed:', err);
     return false;
   }
 }

@@ -208,8 +208,8 @@ function formatMarkersToMarkdown(markers: StreamingMarker[]): string {
       }
 
       case 'ins':
-        // 插入：**text**
-        return `**${marker.content}**`;
+        // 插入：[+建议增加: text]
+        return `[+${et('insert')}: **${marker.content}**]`;
 
       case 'replace': {
         // 替换：~~old~~ -> **new**
@@ -322,7 +322,7 @@ function formatMarkersToPlainText(markers: StreamingMarker[]): string {
         return `${marker.content}${delReason}`;
       }
       case 'ins':
-        return marker.content;
+        return `[+${markerTypeLabel('ins')}: ${marker.content}]`;
       case 'replace': {
         const replaceReason = marker.reason ? ` (${marker.reason})` : '';
         return `${marker.oldText ?? ''} → ${marker.newText ?? ''}${replaceReason}`;

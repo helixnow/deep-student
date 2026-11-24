@@ -336,7 +336,9 @@
     "confirm_retranslate": "Confirm re-translate",
     "retranslated_undo_hint": "Translation updated. You can restore the previous version.",
     "restore_previous": "Restore previous",
-    "restored_previous": "Restored previous translation"
+    "restored_previous": "Restored previous translation",
+    "outdated_hint": "Source or settings changed; translation may be outdated",
+    "retranslate_now": "Retranslate"
   },
   "viewer": {
     "loading": "Loading translation…",

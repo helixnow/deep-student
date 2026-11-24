@@ -221,11 +221,17 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({
   const cardRefs = useRef(new Map<number, HTMLDivElement>());
   const groupRefs = useRef(new Map<GroupId, HTMLDivElement>());
 
-  // 保留原始下标作为身份（跨代理契约），亮点（good）也纳入展示
+  // 保留原始下标作为身份（跨代理契约），过滤空标记（避免空亮点/空批注卡片）
   const grouped = useMemo(() => {
     const indexed: IndexedMarker[] = markers
       .map((marker, originalIndex) => ({ marker, originalIndex }))
-      .filter(({ marker }) => marker.type !== 'text' && marker.type !== 'pending');
+      .filter(({ marker }) => {
+        if (marker.type === 'text' || marker.type === 'pending') return false;
+        if (marker.type === 'replace') {
+          return Boolean(marker.oldText?.trim() || marker.newText?.trim());
+        }
+        return Boolean(marker.content?.trim());
+      });
 
     const byGroup = new Map<GroupId, IndexedMarker[]>();
     for (const item of indexed) {

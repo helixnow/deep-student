@@ -180,7 +180,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
     '!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
   );
   const roundFraction = roundNavigation
-    ? t('essay_grading:round.label_fraction', { current: currentRound, total: roundNavigation.total })
+    ? t('essay_grading:round.label_fraction', { current: currentRound, total: Math.max(roundNavigation.total, currentRound) })
     : '';
   const roundMeta = currentRound > 0 ? (
     <div className="flex items-center gap-0.5 shrink-0">
@@ -400,7 +400,10 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
 
       {/* 生成卡片与入错题本：收进底部紧凑单行（禁用原因走 title 提示，不额外撑高第二行说明文字） */}
       {(onGenerateCards || onSaveMistakes) && !showEmptyState && (
-        <div className="shrink-0 border-t border-border/25 px-3 py-1.5 sm:px-4">
+        <div
+          className="shrink-0 border-t border-border/25 px-3 py-1.5 sm:px-4"
+          style={{ paddingBottom: 'calc(0.375rem + var(--wb-dock-clearance, 0px))' }}
+        >
           <div className="flex flex-wrap items-center justify-end gap-2">
           {onSaveMistakes && (
             <DsButton

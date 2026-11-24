@@ -28,6 +28,7 @@ import { invoke } from '@tauri-apps/api/core';
 import i18n from 'i18next';
 import { APP_EVENTS, addAppEventListener, type SettingsNavigateTabDetail } from '@/events/app';
 import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
+import { useSettingsShellStore } from '@/stores/settingsShellStore';
 import { subscribeWorkbenchHost } from '@/shared/workbenchHost';
 import { appRegistry } from '../core/appRegistry';
 import { workbenchBus } from '../core/workbenchBus';
@@ -376,10 +377,12 @@ export const WorkbenchEventBridge: React.FC = () => {
     // 先写入 pendingSettingsRoute 供设置窗冷挂载消费，再确保设置单例窗打开/聚焦。
     const onSettingsNavigateTab = (detail: SettingsNavigateTabDetail) => {
       if (detail?.tab) {
-        setPendingSettingsRoute({
+        const route = {
           tab: detail.tab,
           ...(detail.dataGovernanceTab ? { dataGovernanceTab: detail.dataGovernanceTab } : {}),
-        });
+        };
+        setPendingSettingsRoute(route);
+        useSettingsShellStore.getState().applySettingsRoute(route);
       }
       workbenchBus.launch({ typeId: 'settings', reason: 'api' });
     };
