@@ -197,6 +197,10 @@ export interface PluginManagerAdapter {
   saveConfig(id: string, values: Readonly<Record<string, unknown>>, revision: PluginConfigRevision): Promise<PluginConfigSaveResult>;
   /** 选择并安装离线 `.dsplugin`（文件选择、ZIP 事务与回滚由 Host/W34 负责）。 */
   importPackage(): Promise<PluginPackageResult | null>;
+  /** 已知本地/暂存路径的离线包安装（WebUI 文件选择器通过 `/api/files/stage` 上传后走此通道）。 */
+  installPackagePath?(path: string): Promise<PluginPackageResult>;
+  /** 从受检 HTTPS 链接下载并安装 `.dspack` / `.dstuplugin`。 */
+  installPackageFromUrl?(url: string): Promise<PluginPackageResult>;
   /** Host 推送清单变化时的重新拉取信号（可选）。 */
   subscribe?(listener: () => void): () => void;
 }

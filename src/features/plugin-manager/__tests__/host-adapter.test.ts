@@ -19,7 +19,8 @@ function setup() {
       case MANAGER_COMMANDS.uninstall: revision = 'profile-2'; return { id: args.id, revision };
       case MANAGER_COMMANDS.consent: return { ...args, permissionsDigest: 'digest' };
       case MANAGER_COMMANDS.setTrust: return { ...args, source: 'package', permissionsDigest: 'digest' };
-      case MANAGER_COMMANDS.install: revision = 'profile-2'; return { id: 'example.web-search', version: '2.0.0', enabled: false, revision,
+      case MANAGER_COMMANDS.install:
+      case MANAGER_COMMANDS.installUrl: revision = 'profile-2'; return { id: 'example.web-search', version: '2.0.0', enabled: false, revision,
         consentRequired: { code: 'CONSENT_REQUIRED', id: 'example.web-search', version: '2.0.0', permissions: [] }, rollback: 'not-needed' };
       default: throw new Error(`Unexpected command: ${command}`);
     }
@@ -63,6 +64,7 @@ describe('HostPluginManagerAdapter', () => {
     await adapter.setTrust({ id: 'example.web-search', version: '1.0.0', permissions: [] }, 'restricted');
     await adapter.uninstall('example.web-search');
     expect(await adapter.importPackage()).toMatchObject({ status: 'installed' });
+    expect(await adapter.installPackageFromUrl('https://example.com/pack.dspack')).toMatchObject({ status: 'installed' });
     expect(open).toHaveBeenCalledWith({ multiple: false, directory: false, filters: [{ name: 'Deep Student Plugin', extensions: ['dstuplugin', 'dspack'] }] });
     expect(new Set(fake.invoke.mock.calls.map(([command]) => command))).toEqual(new Set(Object.values(MANAGER_COMMANDS)));
   });
@@ -87,8 +89,11 @@ describe('HostPluginManagerAdapter', () => {
     expect(invoke).toHaveBeenCalledWith(MANAGER_COMMANDS.setTrust, { id: 'example.web-search', version: '1.0.0', permissions: [], trust: 'full', confirmed: true });
     await adapter.uninstall('example.web-search');
     expect(await adapter.importPackage()).toMatchObject({ status: 'installed', enabled: false, consentRequired: { version: '2.0.0' } });
+    expect(await adapter.installPackagePath('/staged/sample.dspack')).toMatchObject({ status: 'installed' });
+    expect(await adapter.installPackageFromUrl('https://example.com/sample.dspack')).toMatchObject({ status: 'installed' });
     expect(new Set(invoke.mock.calls.map(([command]) => command))).toEqual(new Set(Object.values(MANAGER_COMMANDS)));
     expect(invoke).toHaveBeenCalledWith(MANAGER_COMMANDS.install, { path: '/chosen/sample.dstuplugin', revision: 'profile-2' });
+    expect(invoke).toHaveBeenCalledWith(MANAGER_COMMANDS.installUrl, { url: 'https://example.com/sample.dspack', revision: 'profile-2' });
   });
 
   it('treats picker cancellation as no operation', async () => {

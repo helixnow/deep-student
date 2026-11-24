@@ -97,9 +97,14 @@ import {
   type PersistedTileMargins,
 } from '../core/persistedSettings';
 import { logWallpaperDiag } from '../core/wallpaperDiagnostics';
-import { useOptionalSlot } from '@/ui-kernel/react';
+import { useOptionalSlot, useOptionalUiKernel } from '@/ui-kernel/react';
 import { SlotOutlet } from '@/ui-kernel/outlet';
 import type { DesktopWidgetSize } from '@/ui-kernel/contracts/surfaces';
+import { usePluginUiHostStatus } from '@/features/plugin-manager/use-ui-status';
+import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
+import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
+
+const SESSION_ACTIVE_STORAGE_KEY = 'ds.workbench.activeSession';
 
 // 仅诊断参数启动时开启交互时间线采集（普通 dev 默认关）
 if (isWorkbenchDiagnosticsRequested()) {
@@ -288,6 +293,7 @@ export const WorkbenchDesktop: React.FC = () => {
   const [widgetBriefing, setWidgetBriefing] = useState(true);
   const [devPanel, setDevPanel] = useState(false);
   const contributedWidgets = useOptionalSlot('desktop.widgets');
+  const hostStatus = usePluginUiHostStatus(useOptionalUiKernel()?.hostStatus);
   /**
    * 「恢复上次桌面」次级 CTA 的可用性：仅在关闭自动恢复、且启动时确有快照的
    * 冷启动首屏提供。不翻转 restoreSession 默认值（老用户不会突然被恢复一屏窗口）。
@@ -489,9 +495,18 @@ export const WorkbenchDesktop: React.FC = () => {
     window.addEventListener(STUDY_SPACE_CHANGED_EVENT, onStudySpaceChanged);
 
     void (async () => {
-      // 默认不恢复上次窗口布局（冷启动更快）；开启后才 hydrate 快照
+      // 默认冷启动不恢复旧布局；但同一浏览器标签页内刷新（sessionStorage 仍存活）时保留用户当前桌面窗口
       const restoreSessionVal = await readSetting(SETTING_KEYS.restoreSession);
-      const shouldRestoreSession = String(restoreSessionVal ?? '') === 'true';
+      const isSameTabReload = (() => {
+        try {
+          return typeof sessionStorage !== 'undefined' && sessionStorage.getItem(SESSION_ACTIVE_STORAGE_KEY) === '1';
+        } catch {
+          return false;
+        }
+      })();
+      const shouldRestoreSession =
+        String(restoreSessionVal ?? '') === 'true'
+        || (String(restoreSessionVal ?? '') !== 'false' && isSameTabReload);
       if (bootCancelled()) return;
 
       // Read before any default Dock write can schedule an empty snapshot save.
@@ -604,6 +619,16 @@ export const WorkbenchDesktop: React.FC = () => {
     return getSortedWindows(useWindowStore.getState().windows);
   }, [windowsFingerprint]);
 
+  useEffect(() => {
+    if (!hydrated || typeof sessionStorage === 'undefined') return;
+    try {
+      if (orderedWindows.length > 0) sessionStorage.setItem(SESSION_ACTIVE_STORAGE_KEY, '1');
+      else sessionStorage.removeItem(SESSION_ACTIVE_STORAGE_KEY);
+    } catch {
+      // Ignore restricted storage contexts.
+    }
+  }, [hydrated, orderedWindows.length]);
+
   const handleSnapZoneChange = useCallback((_windowId: string, zone: SnapZone) => {
     // 写入独立 store，勿 setState 刷整棵 Desktop（拖拽卡顿主因之一）
     setActiveSnapZone(zone);
@@ -619,10 +644,11 @@ export const WorkbenchDesktop: React.FC = () => {
   // 否则悬浮 Dock 会遮住窗口底部内容却不让位；
   // 弹出/收起走 Dock 自身的 autohide 热区机制，与用户设置项取或
   // 浮动窗压到 Dock 带：布尔选择器，只在跨越阈值时重渲染（拖拽不逐帧刷桌面）
+  const isNarrowDesktop = useWindowStore((s) => s.desktopSize.w > 0 && s.desktopSize.w <= 767);
   const floatingDockObstructed = useWindowStore((s) => hasDockObstructedFloatingWindow(s.windows, s.desktopSize));
   const dockForceAutohide = useMemo(
-    () => floatingDockObstructed || hasDockObstructedWindow(orderedWindows),
-    [floatingDockObstructed, orderedWindows],
+    () => !isNarrowDesktop && (floatingDockObstructed || hasDockObstructedWindow(orderedWindows)),
+    [isNarrowDesktop, floatingDockObstructed, orderedWindows],
   );
 
   return (
@@ -686,6 +712,32 @@ export const WorkbenchDesktop: React.FC = () => {
         )}
         {/* 桌面快捷方式图标层：与资源库「桌面」视图共用 desktopStore，双向同步 */}
         {hydrated && <DesktopShortcutsLayer desktopRef={workAreaRef} />}
+        {hostStatus?.safeMode ? (
+          <div
+            role="status"
+            data-testid="global-safe-mode-banner"
+            style={{ zIndex: 'var(--wb-z-menubar)' }}
+            className="pointer-events-none absolute inset-x-3 top-2 flex justify-center"
+          >
+            <div className="pointer-events-auto flex max-w-2xl flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/40 bg-warning/15 px-3.5 py-2 text-xs text-foreground shadow-sm backdrop-blur-md">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span className="font-semibold text-warning">{t('safeModeBanner.title')}</span>
+                <span className="text-muted-foreground">{t('safeModeBanner.description')}</span>
+              </div>
+              <button
+                type="button"
+                data-testid="global-safe-mode-open-plugins"
+                onClick={() => {
+                  setPendingSettingsRoute({ tab: 'plugins' });
+                  dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'plugins' });
+                }}
+                className="shrink-0 rounded-md border border-warning/40 bg-background/85 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-background"
+              >
+                {t('safeModeBanner.openManager')}
+              </button>
+            </div>
+          </div>
+        ) : null}
         {hydrated && orderedWindows.length === 0 && (
           <EmptyDesktop
             restoreAvailable={restorableSnapshot !== null}

@@ -13,6 +13,7 @@ export const MANAGER_COMMANDS = {
   list: 'plugin:manager|list', config: 'plugin:manager|config', save: 'plugin:manager|config|save',
   setEnabled: 'plugin:manager|set-enabled', uninstall: 'plugin:manager|uninstall',
   consent: 'plugin:manager|consent', install: 'plugin:manager|install',
+  installUrl: 'plugin:manager|install-url',
   setTrust: 'plugin:manager|set-trust',
 } as const;
 
@@ -169,13 +170,11 @@ export class HostPluginManagerAdapter implements PluginManagerAdapter {
     }
   }
 
-  async importPackage(): Promise<PluginPackageResult | null> {
-    const path = await this.transport.choosePackage();
-    if (!path) return null;
+  private async runPackageInstall(command: string, args: Record<string, unknown>): Promise<PluginPackageResult> {
     try {
       const revision = await this.profileRevision();
       const previous = this.inventory;
-      const result = await this.transport.invoke<PluginManagerInstallResult>(MANAGER_COMMANDS.install, { path, revision });
+      const result = await this.transport.invoke<PluginManagerInstallResult>(command, { ...args, revision });
       this.revision = result.revision;
       return { status: 'installed', id: result.id, version: result.version, enabled: result.enabled,
         previousVersion: previous?.plugins.find((entry) => entry.id === result.id)?.version ?? null,
@@ -186,6 +185,20 @@ export class HostPluginManagerAdapter implements PluginManagerAdapter {
       return { status: 'rejected', code: parsed.code, detail: parsed.detail,
         rollback: parsed.details?.rollback === 'failed' ? 'failed' : parsed.details?.rollback === 'restored' ? 'restored' : 'unchanged' };
     }
+  }
+
+  async importPackage(): Promise<PluginPackageResult | null> {
+    const path = await this.transport.choosePackage();
+    if (!path) return null;
+    return this.runPackageInstall(MANAGER_COMMANDS.install, { path });
+  }
+
+  installPackagePath(path: string): Promise<PluginPackageResult> {
+    return this.runPackageInstall(MANAGER_COMMANDS.install, { path });
+  }
+
+  installPackageFromUrl(url: string): Promise<PluginPackageResult> {
+    return this.runPackageInstall(MANAGER_COMMANDS.installUrl, { url });
   }
 }
 
@@ -204,6 +217,7 @@ export function createHostPluginManagerAdapter(platform: PluginPlatform): HostPl
         case MANAGER_COMMANDS.uninstall: return invoke<T>('plugin:manager|uninstall', { id: args.id, revision: args.revision });
         case MANAGER_COMMANDS.consent: return invoke<T>('plugin:manager|consent', { id: args.id, version: args.version, permissions: args.permissions });
         case MANAGER_COMMANDS.install: return invoke<T>('plugin:manager|install', { path: args.path, revision: args.revision });
+        case MANAGER_COMMANDS.installUrl: return invoke<T>('plugin:manager|install-url', { url: args.url, revision: args.revision });
         case MANAGER_COMMANDS.setTrust: return invoke<T>('plugin:manager|set-trust', { id: args.id, version: args.version, permissions: args.permissions, trust: args.trust, confirmed: true });
         default: throw new Error(`Unsupported plugin manager command: ${command}`);
       }

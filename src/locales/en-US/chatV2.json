@@ -284,6 +284,11 @@
       "expand": "Show more",
       "collapse": "Collapse"
     },
+    "truncation": {
+      "banner": "This response may have been cut off before finishing",
+      "continue": "Continue generating",
+      "continuing": "Continuing…"
+    },
     "secretMask": {
       "detected": "{{count}} possible secret(s) hidden on screen (still sent to the model; rotate if exposed)",
       "show": "Show original",

@@ -848,6 +848,20 @@
 /* ===== 移动端页面布局（与 mobile shell 的 768px 断点对齐） =====
  * 页面标题与主要动作由统一顶栏承载，同级页面从共享抽屉切换。 */
 @media (max-width: 767.98px) {
+  .wb-fc-nav {
+    width: 100%;
+    padding: 4px 6px 0;
+    gap: 4px;
+  }
+
+  .wb-fc-tab {
+    flex: 1 1 0;
+    justify-content: center;
+    min-height: 44px;
+    padding: 8px 6px;
+    white-space: nowrap;
+  }
+
   .wb-fc-body {
     min-height: 0;
   }

@@ -114,6 +114,8 @@
     "more": "{{id}} 的更多操作",
     "details": "详情",
     "export": "导出",
+    "exportShort": "分享/导出",
+    "exportA11y": "导出 {{id}} 安装包或学习包",
     "restorePrevious": "回到上一版（v{{version}}）",
     "noDescription": "这个插件没有留下说明。",
     "openNamed": "打开{{name}}",
@@ -360,6 +362,7 @@
   "actions": {
     "refresh": "刷新",
     "install": "从文件导入",
+    "installUrl": "从链接安装",
     "installing": "正在安装…",
     "retry": "重试",
     "cancel": "取消",
@@ -505,13 +508,23 @@
       "noPrevious": "没有可恢复的旧版本，磁盘保持安装前状态"
     },
     "rejected": {
-      "title": "安装被拒绝（{{code}}）",
-      "detail": "{{detail}}"
+      "title": "无法安装该插件包",
+      "detail": "{{detail}}",
+      "technical": "技术详情（{{code}}）"
     },
     "rollback": {
       "restored": "已恢复旧版本",
       "unchanged": "磁盘未改变",
       "failed": "回滚失败，请重新安装并检查插件目录"
+    },
+    "urlDialog": {
+      "title": "从链接安装插件或学习包",
+      "description": "支持他人分享的 https:// 链接（.dspack 或 .dstuplugin）。安装后默认保持停用，确认权限后才会运行。",
+      "placeholder": "https://example.com/kaoyan-math-pack.dspack",
+      "inputLabel": "安装包 HTTPS 链接",
+      "submit": "下载并安装",
+      "submitting": "正在下载安装…",
+      "invalidUrl": "请输入有效的 https:// 链接（以 .dspack 或 .dstuplugin 结尾）。"
     }
   },
   "uninstall": {
@@ -533,11 +546,39 @@
     "reveal": "在文件夹中显示"
   },
   "error": {
-    "title": "操作失败",
+    "title": "操作未完成",
     "code": "错误码：{{code}}",
     "list": "读取插件清单失败",
     "reload": "同意已保存，但重新加载失败",
-    "detailSuffix": "：{{detail}}"
+    "detailSuffix": "：{{detail}}",
+    "technical": "查看技术详情（{{code}}）",
+    "reasons": {
+      "packageTraversal": "安装包内包含不安全的文件路径（试图访问包外目录），已被安全策略拦截。",
+      "packageInvalidJson": "安装包的清单文件（package.json）损坏或不是有效的 JSON 格式，请重新导出后再试。",
+      "packageInvalidZip": "这不是一个完整的 .dstuplugin 或 .dspack 压缩包（文件可能损坏或格式不对）。",
+      "packageInvalid": "这个安装包不完整或结构无效，无法安装。",
+      "manifestInvalid": "插件的说明清单缺少必要字段或声明不合法，无法加载。",
+      "engineIncompatible": "该插件所需的 DeepStudent 版本与当前应用不兼容。",
+      "idReserved": "插件使用了系统保留的官方命名空间（dstu.*），社区包请使用自己的作者前缀。",
+      "permissionUndeclared": "插件请求或使用了未在清单中声明的能力，已被安全机制拦截。",
+      "safeMode": "当前处于安全模式，已暂停安装和启用社区插件（你仍可在这里停用或卸载有问题插件）。",
+      "consentRequired": "该插件需要确认权限后才能启用。",
+      "consentStale": "安装包内容或权限已发生变化，请刷新列表后重新确认权限。",
+      "unloadBlocked": "有其他正在使用的功能依赖该插件，暂时无法停用或卸载。",
+      "profileConflict": "插件配置刚刚在其他位置更新过，请刷新后重试。",
+      "enableFailed": "插件未能正常启动，系统已自动回滚或保持停用。",
+      "installFailed": "安装包安装未能完成，磁盘已保持安全状态。",
+      "urlInvalid": "链接格式不正确，请输入完整的 https:// 安装包地址。",
+      "urlHttpsRequired": "为了传输安全，仅支持以 https:// 开头的加密链接。",
+      "urlHostBlocked": "为了保护本机与内网安全，已拦截指向本地主机或私网地址的链接。",
+      "urlRedirectBlocked": "该链接跳转到了不安全或内网地址，已被安全策略拦截。",
+      "urlBadExtension": "链接必须指向 .dspack 或 .dstuplugin 安装包文件。",
+      "urlTooLarge": "远程安装包体积超过安全上限（32 MiB），已取消下载。",
+      "urlCredentials": "链接中不能嵌入用户名或密码，请使用公开分享链接。",
+      "urlHttpError": "无法从该链接下载安装包（服务器返回异常），请检查链接是否可访问。",
+      "stageUploadFailed": "浏览器上传插件包到服务端失败，请检查文件后重试。",
+      "generic": "操作未能完成，请展开下方技术详情查看具体原因。"
+    }
   },
   "addsHint": {
     "app": "「全部应用」里多了一个入口",

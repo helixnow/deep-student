@@ -374,6 +374,59 @@ describe('RF-W01-trusted-plugin-admin: plugin manager commands', () => {
       await expect(installer.uninstall('dstu.plain', (await safe.store.read()).revision)).rejects.toThrow('SAFE_MODE_ACTIVE');
     } finally { await safe.runtime.dispose(); }
   });
+
+  it('safe mode allows disabling & uninstalling community plugins for rescue, while blocking enable & remote URL installs', async () => {
+    const normal = await harness();
+    const demo = await community('alice.faulty-rescue');
+    let safeDir: string;
+    try {
+      const sink = new MemoryZipSink();
+      const zip = new ZipWriter(sink, { codec: nodeZipCodec });
+      await zip.addBytes('package.json', await readFile(join(demo.dir, 'package.json')));
+      await zip.addBytes('index.mjs', await readFile(join(demo.dir, 'index.mjs')));
+      await zip.finish();
+      const path = join(root, 'faulty-rescue.dstuplugin');
+      await writeFile(path, sink.bytes());
+      const rev0 = (await normal.store.read()).revision;
+      const installed = await ok<PluginManagerInstallResult>(normal, PLUGIN_MANAGER_INSTALL_COMMAND, { path, revision: rev0 });
+      await ok(normal, PLUGIN_MANAGER_CONSENT_COMMAND, { id: demo.id, version: installed.version, permissions: [] });
+      await ok(normal, PLUGIN_MANAGER_SET_ENABLED_COMMAND, { id: demo.id, enabled: true, revision: installed.revision });
+      safeDir = normal.dataDir;
+    } finally { await normal.runtime.dispose(); }
+
+    // Re-open the same dataDir in safeMode: community plugin can be disabled and uninstalled, not enabled or installed via URL.
+    const safeRuntime = new HostRuntime({ app: { dataDir: safeDir!, version: '0.20.0', platform: 'darwin', debug: true }, contracts: new ContractSet([]), safeMode: true });
+    const store = new UserProfileStore(join(safeDir!, 'plugins/user.profile.json'), join(safeDir!, 'official.profile.json'));
+    await writeFile(join(safeDir!, 'official.profile.json'), '{"plugins":[]}');
+    const files = createNodeFiles({ roots: [{ name: 'appData', path: safeDir! }] });
+    const packages = new PluginPackages(files.scope(join(safeDir!, 'plugins')));
+    const consent = new CommunityConsentLedger(safeDir!);
+    new PluginAdmin({ runtime: safeRuntime, store, official: join(safeDir!, 'official.profile.json'), consent, packages, files }).register();
+    try {
+      const rev1 = (await store.read()).revision;
+      await expect(safeRuntime.commands._dispatch({ id: '1', cmd: PLUGIN_MANAGER_SET_ENABLED_COMMAND, args: { id: demo.id, enabled: true, revision: rev1 }, source: { window: 'main', webview: 'main' } }))
+        .resolves.toMatchObject({ kind: 'err', error: { message: expect.stringContaining('SAFE_MODE_ACTIVE') } });
+      await expect(safeRuntime.commands._dispatch({ id: '2', cmd: 'plugin:manager|install-url', args: { url: 'http://127.0.0.1/evil.dspack', revision: rev1 }, source: { window: 'main', webview: 'main' } }))
+        .resolves.toMatchObject({ kind: 'err', error: { message: expect.stringContaining('SAFE_MODE_ACTIVE') } });
+      const disabled = await safeRuntime.commands._dispatch({ id: '3', cmd: PLUGIN_MANAGER_SET_ENABLED_COMMAND, args: { id: demo.id, enabled: false, revision: rev1 }, source: { window: 'main', webview: 'main' } });
+      expect(disabled.kind).toBe('ok');
+      const rev2 = (await store.read()).revision;
+      const uninstalled = await safeRuntime.commands._dispatch({ id: '4', cmd: PLUGIN_MANAGER_UNINSTALL_COMMAND, args: { id: demo.id, revision: rev2 }, source: { window: 'main', webview: 'main' } });
+      expect(uninstalled.kind).toBe('ok');
+      expect((await packages.list()).some(p => p.id === demo.id)).toBe(false);
+    } finally { await safeRuntime.dispose(); }
+  });
+
+  it('install-url enforces HTTPS & SSRF protections before touching disk', async () => {
+    const h = await harness();
+    try {
+      const rev = (await h.store.read()).revision;
+      const resHttp = await invoke(h, 'plugin:manager|install-url', { url: 'http://127.0.0.1:8080/pack.dspack', revision: rev });
+      expect(resHttp).toMatchObject({ kind: 'err', error: { message: expect.stringContaining('REMOTE_PACK_HTTPS_REQUIRED'), details: { code: 'REMOTE_PACK_HTTPS_REQUIRED' } } });
+      const resLocal = await invoke(h, 'plugin:manager|install-url', { url: 'https://192.168.1.10/pack.dspack', revision: rev });
+      expect(resLocal).toMatchObject({ kind: 'err', error: { message: expect.stringContaining('REMOTE_PACK_HOST_BLOCKED'), details: { code: 'REMOTE_PACK_HOST_BLOCKED' } } });
+    } finally { await h.runtime.dispose(); }
+  });
   it('RF-P1-managed-plugin-install: installs managed files, retains them on undo, restores without generation and rolls back failed replacement', async () => {
     const h = await harness();
     const demo = await community('alice.workshop');

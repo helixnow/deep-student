@@ -456,7 +456,12 @@ export async function inspectMemoryKernel(): Promise<MemoryInspectionView> {
 
 export interface MemoryDialecticProposal {
   id: string;
-  kind: 'relapse_focus' | 'promote_preference_to_rule' | 'compress_hard_rules' | 'retire_stale_weak_point';
+  kind:
+    | 'relapse_focus'
+    | 'resolve_rule_conflict'
+    | 'promote_preference_to_rule'
+    | 'compress_hard_rules'
+    | 'retire_stale_weak_point';
   title: string;
   rationale: string;
   severity: 'info' | 'attention';

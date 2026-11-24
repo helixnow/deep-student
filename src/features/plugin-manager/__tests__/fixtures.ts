@@ -33,6 +33,8 @@ export interface AdapterCalls {
   readConfig: string[];
   saveConfig: Array<{ id: string; values: Readonly<Record<string, unknown>>; revision: PluginConfigRevision }>;
   importPackage: number;
+  installPackagePath: string[];
+  installPackageFromUrl: string[];
 }
 
 /** 只记录调用的假适配器：测试里显式给出 Host 结果，不伪造命令名。 */
@@ -48,6 +50,8 @@ export class FakePluginManagerAdapter implements PluginManagerAdapter {
     readConfig: [],
     saveConfig: [],
     importPackage: 0,
+    installPackagePath: [],
+    installPackageFromUrl: [],
   };
 
   setEnabledResult: PluginOperationResult = { ok: true };
@@ -129,6 +133,16 @@ export class FakePluginManagerAdapter implements PluginManagerAdapter {
 
   async importPackage(): Promise<PluginPackageResult> {
     this.calls.importPackage += 1;
+    return this.packageResult;
+  }
+
+  async installPackagePath(path: string): Promise<PluginPackageResult> {
+    this.calls.installPackagePath.push(path);
+    return this.packageResult;
+  }
+
+  async installPackageFromUrl(url: string): Promise<PluginPackageResult> {
+    this.calls.installPackageFromUrl.push(url);
     return this.packageResult;
   }
 }

@@ -191,10 +191,24 @@ export async function compileWorkshop(
     // Only generated ESM, declared assets, and the screened manifest are installable/exportable.
     delete pkg.scripts;
     await writeFile(join(directory, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`);
-    check.compile = 'passed';
     const built = checkManifest(pkg, { appVersion: app.version, context: 'community-install', platform: 'desktop', expectedId });
     if (!built.ok) throw built.error;
     manifest = built.manifest;
+    const requiredOutputs = [
+      manifest.host,
+      manifest.ui,
+      ...(manifest.declarative?.rubrics ?? []),
+      ...(manifest.declarative?.skills ?? []),
+      ...(manifest.declarative?.cardTemplates ?? []),
+      ...(manifest.declarative?.workflows ?? []),
+    ].filter((rel): rel is string => typeof rel === 'string' && rel.length > 0);
+    for (const rel of requiredOutputs) {
+      const fileInfo = await stat(managedRelative(directory, rel)).catch(() => null);
+      if (!fileInfo?.isFile() || fileInfo.size <= 0) {
+        throw new Error(`WORKSHOP_COMPILE_EMPTY: built artifact "${rel}" is missing or empty`);
+      }
+    }
+    check.compile = 'passed';
   } catch (error) { check.errors.push(error instanceof Error ? error.message : String(error)); }
   return { check, directory, sourceDirectory: source, manifest };
 }

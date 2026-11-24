@@ -82,8 +82,10 @@ vi.mock('../ui/ThreadContentShell', () => ({
 }));
 
 vi.mock('../message', () => ({
+  MemoryKernelAttributionPill: () => null,
   MessageActions: () => <div data-testid="message-actions">message-actions</div>,
   MessageInlineEdit: () => null,
+  MessageTouchActionBar: () => null,
   UserMessageBubble: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 

@@ -149,6 +149,7 @@ describe('useSessionLifecycle auto-resume', () => {
     currentSessionIdRef: React.MutableRefObject<string | null>;
     selectionEpochRef: React.MutableRefObject<number>;
     earlyNewSessionIntentRef: React.MutableRefObject<boolean>;
+    sessionsRef: React.MutableRefObject<ChatSession[]>;
     setCurrentSessionId: ReturnType<typeof vi.fn>;
     setIsInitialLoading: ReturnType<typeof vi.fn>;
   }
@@ -187,6 +188,7 @@ describe('useSessionLifecycle auto-resume', () => {
       currentSessionIdRef,
       selectionEpochRef,
       earlyNewSessionIntentRef,
+      sessionsRef,
       setCurrentSessionId,
       setIsInitialLoading,
     };
@@ -481,5 +483,33 @@ describe('useSessionLifecycle auto-resume', () => {
       expect(api.currentSessionIdRef.current).toBe('sess_draft_after_delete');
     });
     expect(readLastActiveSessionId()).toBeNull();
+  });
+
+  it('recovers stored lastActiveSessionId via chat_v2_get_session when it is not in the first page list', async () => {
+    const page1Session = makeSession({ id: 'sess_page_1', title: 'Page 1' });
+    const olderStored = makeSession({ id: 'sess_older_active', title: 'Older Commute Session' });
+    persistLastActiveSessionId('sess_older_active');
+
+    invokeMock.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      if (command === 'chat_v2_list_sessions') {
+        if (args?.groupId === '*') return [];
+        return [page1Session];
+      }
+      if (command === 'chat_v2_list_groups') return [];
+      if (command === 'chat_v2_count_sessions') return 1;
+      if (command === 'chat_v2_get_session' && args?.sessionId === 'sess_older_active') {
+        return olderStored;
+      }
+      return null;
+    });
+
+    const api = renderLifecycle();
+    await act(async () => {
+      await api.lifecycle.loadSessions();
+    });
+
+    expect(api.currentSessionIdRef.current).toBe('sess_older_active');
+    expect(readLastActiveSessionId()).toBe('sess_older_active');
+    expect(api.sessionsRef.current.some((s) => s.id === 'sess_older_active')).toBe(true);
   });
 });

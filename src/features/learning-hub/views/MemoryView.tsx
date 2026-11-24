@@ -312,6 +312,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
   useEffect(() => {
     loadConfig();
+    const onConfigChanged = () => {
+      void loadConfig();
+    };
+    window.addEventListener('memory-config-changed', onConfigChanged);
+    return () => window.removeEventListener('memory-config-changed', onConfigChanged);
   }, [loadConfig]);
 
   useEffect(() => {
@@ -1109,6 +1114,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     try {
       await setMemoryAutoExtractFrequency(freq);
       loadConfig();
+      window.dispatchEvent(new CustomEvent('memory-config-changed'));
       showGlobalNotification('success', t('memory.frequency_changed'));
     } catch (error: unknown) {
       console.error('[MemoryView] Set frequency failed:', error);
@@ -1214,10 +1220,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
     );
   }
 
-  // ========== 渲染：未配置根文件夹 - 简洁风格（全内联，无模态框） ==========
+  // ========== 渲染：未配置根文件夹 - 简洁风格（内核面板始终可用） ==========
   if (!config?.memoryRootFolderId) {
     return (
-      <div className={cn('flex flex-col items-center justify-center h-full p-8', className)}>
+      <div className={cn('flex flex-col h-full overflow-y-auto p-6 gap-6', className)}>
+        <MemoryKernelPanel refreshSignal={0} />
+        <div className="flex flex-col items-center justify-center flex-1 p-4">
         <MemoryIcon size={48} className="text-muted-foreground/40 mb-4" />
         <h2 className="text-lg font-medium mb-1.5">
           {t('memory.setup_title')}
@@ -1313,6 +1321,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             </motion.div>
           )}
         </AnimatePresence>
+        </div>
       </div>
     );
   }
@@ -1507,7 +1516,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               ]).map((opt) => (
                 <button
                   key={opt.value}
+                  type="button"
                   title={opt.desc}
+                  aria-pressed={config.autoExtractFrequency === opt.value}
                   onClick={() => handleFrequencyChange(opt.value)}
                   className={cn(
                     'px-1.5 py-0.5 rounded text-xs transition-colors [@media(pointer:coarse)]:min-h-11',

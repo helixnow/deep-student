@@ -11,6 +11,7 @@ import type { ShellViewContribution } from '@/ui-kernel/contracts/shell';
 import { SlotOutlet } from '@/ui-kernel/outlet';
 import { UiKernelProvider, useOptionalUiKernel, useSlotEntry } from '@/ui-kernel/react';
 import { resolveShellViewComponent } from '@/ui-kernel/shell-view';
+import { usePluginManagerWorkshop } from '@/features/plugin-manager/workshop';
 import type { AppWindowProps } from '../../core/types';
 
 export interface PluginViewAppWindowProps extends AppWindowProps {
@@ -32,17 +33,34 @@ const Notice: React.FC<{ testId: string; children: React.ReactNode }> = ({ testI
 const PluginViewBody: React.FC<{ viewKey: string }> = ({ viewKey }) => {
   const { t } = useTranslation();
   const entry = useSlotEntry('views', viewKey);
+  const workshop = usePluginManagerWorkshop();
   if (!entry || entry.origin === 'builtin') {
     return <Notice testId="wb-plugin-view-missing">{t('workbench:pluginViewApp.unavailable')}</Notice>;
   }
+  const canRefine = Boolean(entry.owner?.startsWith('workshop.plugin-') && workshop?.onModify);
   return (
     <div
-      className="h-full w-full min-h-0 overflow-auto"
+      className="relative h-full w-full min-h-0 overflow-auto"
       data-testid="wb-plugin-view-window"
       data-plugin-view={viewKey}
       data-plugin-owner={entry.owner}
       data-plugin-version={entry.version ?? ''}
     >
+      {canRefine ? (
+        <div
+          aria-label="插件工坊快捷栏"
+          className="pointer-events-none sticky top-2 z-10 flex justify-end px-3"
+        >
+          <button
+            type="button"
+            data-testid="workshop-refine-with-ai"
+            onClick={() => workshop?.onModify(entry.owner!)}
+            className="pointer-events-auto inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted"
+          >
+            ✦ 让 AI 优化
+          </button>
+        </div>
+      ) : null}
       <SlotOutlet
         name="views"
         filter={(candidate) => candidate.key === viewKey}

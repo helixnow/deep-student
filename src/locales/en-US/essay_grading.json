@@ -112,6 +112,7 @@
     "grade": "Start Grading",
     "grading": "Grading...",
     "cancel": "Cancel",
+    "cancel_grading": "Cancel grading",
     "clear": "Clear",
     "view_history": "View History",
     "retry": "Retry",

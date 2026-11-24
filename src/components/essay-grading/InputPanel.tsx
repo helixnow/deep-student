@@ -485,6 +485,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               <DsButton
                 variant="primary"
                 size="sm"
+                data-testid="essay-grade-submit-mobile"
                 onClick={onGrade}
                 disabled={!canGrade}
                 className={cn(COARSE_HIT, "shrink-0")}
@@ -643,47 +644,52 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         </div>
       )}
 
-      {/* ★ UX#10：批改中输入锁定提示条（grid 动画展开/收起） */}
-      <div
-        className={cn(
-          'grid transition-[grid-template-rows] duration-200 ease-out motion-reduce:transition-none',
-          isGrading ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
-        )}
-        aria-hidden={!isGrading}
-      >
-        <div className="overflow-hidden min-h-0">
-          <div className="flex items-center gap-2 px-4 py-1.5 text-xs text-muted-foreground bg-primary/5 border-b border-border/30" role="status">
-            <CircleNotch size={12} className="text-primary animate-spin motion-reduce:animate-none shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{t('essay_grading:grading_lock.hint')}</span>
-            {/* 阶段进度：当前阶段文案 + 五阶段进度点（分析 → 批注 → 评分 → 润色 → 范文） */}
-            {gradingPhase && (
-              <span className="ml-auto flex shrink-0 items-center gap-1.5">
-                <span className="text-primary/80 tabular-nums whitespace-nowrap">
-                  {t(`essay_grading:progress.phase_${gradingPhase}`)}
-                </span>
-                <span className="hidden sm:flex items-center gap-1" aria-hidden="true">
-                  {GRADING_PHASE_ORDER.map((phase, idx) => {
-                    const currentIdx = GRADING_PHASE_ORDER.indexOf(gradingPhase);
-                    return (
-                      <span
-                        key={phase}
-                        className={cn(
-                          'h-1 w-1 rounded-full transition-colors duration-300 motion-reduce:transition-none',
-                          idx < currentIdx
-                            ? 'bg-primary/50'
-                            : idx === currentIdx
-                              ? 'bg-primary scale-125'
-                              : 'bg-muted-foreground/25'
-                        )}
-                      />
-                    );
-                  })}
-                </span>
+      {/* ★ UX#10：仅在真实批改进行中渲染锁定状态条，避免空闲态 DOM 残留误导提示 */}
+      {isGrading && (
+        <div
+          className="flex flex-wrap items-center gap-2 border-b border-border/30 bg-primary/5 px-4 py-1.5 text-xs text-muted-foreground"
+          role="status"
+          data-testid="essay-grading-lock-banner"
+        >
+          <CircleNotch size={12} className="shrink-0 animate-spin text-primary motion-reduce:animate-none" />
+          <span className="min-w-0 flex-1 truncate">{t('essay_grading:grading_lock.hint')}</span>
+          {/* 阶段进度：当前阶段文案 + 五阶段进度点（分析 → 批注 → 评分 → 润色 → 范文） */}
+          {gradingPhase && (
+            <span className="flex shrink-0 items-center gap-1.5">
+              <span className="tabular-nums whitespace-nowrap text-primary/80">
+                {t(`essay_grading:progress.phase_${gradingPhase}`)}
               </span>
-            )}
-          </div>
+              <span className="hidden sm:flex items-center gap-1" aria-hidden="true">
+                {GRADING_PHASE_ORDER.map((phase, idx) => {
+                  const currentIdx = GRADING_PHASE_ORDER.indexOf(gradingPhase);
+                  return (
+                    <span
+                      key={phase}
+                      className={cn(
+                        'h-1 w-1 rounded-full transition-colors duration-300 motion-reduce:transition-none',
+                        idx < currentIdx
+                          ? 'bg-primary/50'
+                          : idx === currentIdx
+                            ? 'bg-primary scale-125'
+                            : 'bg-muted-foreground/25'
+                      )}
+                    />
+                  );
+                })}
+              </span>
+            </span>
+          )}
+          <DsButton
+            variant="ghost"
+            size="sm"
+            data-testid="essay-cancel-grading-inline"
+            onClick={onCancelGrading}
+            className="h-6 shrink-0 px-2 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+          >
+            {t('essay_grading:actions.cancel_grading')}
+          </DsButton>
         </div>
-      </div>
+      )}
 
       {/* Content - 与翻译面板一致：flex-1 撑满剩余高度，避免空态在 0 高度容器内重叠压缩 */}
       <div className="flex-1 min-h-0 flex flex-col relative overflow-hidden">
@@ -837,6 +843,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 <DsButton
                   variant="primary"
                   size="sm"
+                  data-testid="essay-grade-submit-desktop"
                   onClick={onGrade}
                   disabled={!canGrade}
                 >

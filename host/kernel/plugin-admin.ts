@@ -60,6 +60,9 @@ import { KERNEL_ONLY_SERVICES } from './kernel.ts';
 import { assertInstallable, parseVersion, type PluginManifest } from './manifest.ts';
 import { workshopDirectoryWithin } from './workshop-paths.ts';
 import { pluginExecution } from './plugin-execution.ts';
+import { fetchRemotePackArchive } from '../plugins/plugin-workshop/src/remote-pack-fetch.ts';
+
+export const PLUGIN_MANAGER_INSTALL_URL_COMMAND = 'plugin:manager|install-url';
 
 export interface ManagedPluginInstallRequest {
   id: string;
@@ -351,6 +354,7 @@ export class PluginAdmin {
     commands._registerKernel(PLUGIN_MANAGER_UNINSTALL_COMMAND, (args, call) => mutation(() => this.uninstall(args, call)));
     commands._registerKernel(PLUGIN_MANAGER_CONSENT_COMMAND, (args, call) => mutation(() => this.grantConsent(args, call)));
     commands._registerKernel(PLUGIN_MANAGER_INSTALL_COMMAND, (args, call) => mutation(() => this.installPackage(args, call)));
+    commands._registerKernel(PLUGIN_MANAGER_INSTALL_URL_COMMAND, (args, call) => mutation(() => this.installPackageFromUrl(args, call)));
     commands._registerKernel(PLUGIN_MANAGER_SET_TRUST_COMMAND, (args, call) => mutation(() => this.setTrust(args, call)));
   }
 
@@ -570,10 +574,14 @@ export class PluginAdmin {
 
   private async setEnabled(args: unknown, call: CallContext): Promise<{ id: string; enabled: boolean; revision: string }> {
     assertTrustedManagerSource(call.source, PLUGIN_MANAGER_SET_ENABLED_COMMAND);
-    this.assertWritable(PLUGIN_MANAGER_SET_ENABLED_COMMAND);
     const document = argsObject(args, PLUGIN_MANAGER_SET_ENABLED_COMMAND);
     const id = stringArg(document, PLUGIN_MANAGER_SET_ENABLED_COMMAND, 'id');
     const enabled = booleanArg(document, PLUGIN_MANAGER_SET_ENABLED_COMMAND, 'enabled');
+    const isCommunity = parsePluginId(id)?.official === false;
+    // 安全模式允许停用社区插件以止损，但不允许启用插件或修改官方内置插件。
+    if (enabled || !isCommunity) {
+      this.assertWritable(PLUGIN_MANAGER_SET_ENABLED_COMMAND);
+    }
     const revision = this.revisionArg(document, PLUGIN_MANAGER_SET_ENABLED_COMMAND);
     const current = await this.store.read();
     if (current.revision !== revision) throw new ProfileConflictError(revision, current.revision);
@@ -685,9 +693,13 @@ export class PluginAdmin {
 
   private async uninstall(args: unknown, call: CallContext): Promise<{ id: string; removed: boolean; revision: string }> {
     assertTrustedManagerSource(call.source, PLUGIN_MANAGER_UNINSTALL_COMMAND);
-    this.assertWritable(PLUGIN_MANAGER_UNINSTALL_COMMAND);
     const document = argsObject(args, PLUGIN_MANAGER_UNINSTALL_COMMAND);
     const id = stringArg(document, PLUGIN_MANAGER_UNINSTALL_COMMAND, 'id');
+    const isCommunity = parsePluginId(id)?.official === false;
+    // 安全模式是移除故障/恶意社区插件的救援通道，仅禁止卸载官方内置插件。
+    if (!isCommunity) {
+      this.assertWritable(PLUGIN_MANAGER_UNINSTALL_COMMAND);
+    }
     const revision = this.revisionArg(document, PLUGIN_MANAGER_UNINSTALL_COMMAND);
     const current = await this.store.read();
     if (current.revision !== revision) throw conflict(new ProfileConflictError(revision, current.revision));
@@ -824,6 +836,37 @@ export class PluginAdmin {
     try {
       return await this.installPackage({ path, revision: request.revision }, { source: { window: 'main', webview: 'main' } } as CallContext, request);
     } finally { await unlink(path); }
+  }
+
+  private async installPackageFromUrl(args: unknown, call: CallContext): Promise<PluginManagerInstallResult> {
+    assertTrustedManagerSource(call.source, PLUGIN_MANAGER_INSTALL_URL_COMMAND);
+    this.assertWritable(PLUGIN_MANAGER_INSTALL_URL_COMMAND);
+    const document = argsObject(args, PLUGIN_MANAGER_INSTALL_URL_COMMAND);
+    const url = stringArg(document, PLUGIN_MANAGER_INSTALL_URL_COMMAND, 'url');
+    const revision = this.revisionArg(document, PLUGIN_MANAGER_INSTALL_URL_COMMAND);
+    const current = await this.store.read();
+    if (current.revision !== revision) throw conflict(new ProfileConflictError(revision, current.revision));
+    if (!this.files || !this.packages) {
+      throw new CommandError(AppError.configuration('PLUGIN_INSTALL_UNAVAILABLE: package storage is not configured'));
+    }
+    let downloaded: Awaited<ReturnType<typeof fetchRemotePackArchive>>;
+    try {
+      downloaded = await fetchRemotePackArchive(url);
+    } catch (error) {
+      const message = errorText(error);
+      const code = /^([A-Z][A-Z0-9_]+):/.exec(message)?.[1] ?? 'REMOTE_PACK_FETCH_FAILED';
+      throw new CommandError(AppError.with_details('Configuration', message, { code, rollback: 'not-needed' }));
+    }
+    const temporaryRoot = join(this.runtime.app.dataDir, 'dstu-workshop', '.installs');
+    await mkdir(temporaryRoot, { recursive: true });
+    const safeName = basename(downloaded.archiveName).replace(/[^a-zA-Z0-9._-]/g, '_') || 'package.dspack';
+    const tempPath = join(temporaryRoot, `${randomUUID()}-${safeName}`);
+    await writeFile(tempPath, downloaded.bytes, { flag: 'wx' });
+    try {
+      return await this.installPackage({ path: tempPath, revision }, call);
+    } finally {
+      await unlink(tempPath).catch(() => undefined);
+    }
   }
 
   private installedVersions(): Map<string, string> {

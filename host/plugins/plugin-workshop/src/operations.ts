@@ -643,23 +643,98 @@ export class WorkshopOperations implements Omit<PluginWorkshopService, 'developm
     if (outcome?.ok !== false) throw new Error('WORKSHOP_VERIFICATION_REQUIRED: only runtime verification can mark a version usable');
     return this.completeValidation(id, version, revision, outcome);
   }
+  /** Verify the installed package's compiled artifacts on disk AND active host inventory before marking verified. */
+  private async verifyInstalledIntegrity(card: WorkshopCard, version: string): Promise<string | null> {
+    const pkgDir = join(this.store.directory(card.id), 'versions', version, 'package');
+    let pkg: { deepStudent?: { host?: unknown; ui?: unknown; declarative?: Record<string, unknown> } };
+    try {
+      pkg = JSON.parse(await readFile(join(pkgDir, 'package.json'), 'utf8')) as typeof pkg;
+    } catch {
+      return `WORKSHOP_VERIFY_ARTIFACT_MISSING: package.json missing in installed version v${version}`;
+    }
+    const ds = pkg?.deepStudent;
+    const expectedEntries: string[] = [];
+    if (typeof ds?.host === 'string' && ds.host.trim()) expectedEntries.push(ds.host.trim());
+    if (typeof ds?.ui === 'string' && ds.ui.trim()) expectedEntries.push(ds.ui.trim());
+    const decl = ds?.declarative;
+    if (decl && typeof decl === 'object') {
+      for (const bucket of ['rubrics', 'skills', 'cardTemplates', 'workflows'] as const) {
+        const list = decl[bucket];
+        if (Array.isArray(list)) {
+          for (const rel of list) if (typeof rel === 'string' && rel.trim()) expectedEntries.push(rel.trim());
+        }
+      }
+    }
+    for (const rel of expectedEntries) {
+      const normalized = rel.replace(/^\.\//, '');
+      const target = join(pkgDir, normalized);
+      if (!isManagedChild(pkgDir, target)) {
+        return `WORKSHOP_VERIFY_ARTIFACT_MISSING: entry "${rel}" escapes package directory`;
+      }
+      const info = await stat(target).catch(() => null);
+      if (!info?.isFile() || info.size <= 0) {
+        return `WORKSHOP_VERIFY_ARTIFACT_MISSING: artifact "${rel}" is missing or empty on disk`;
+      }
+    }
+    // Check live release directory under <appDataDir>/plugins/releases if packages lock exists.
+    try {
+      const lockRaw = JSON.parse(await readFile(join(this.app.dataDir, 'plugins', 'plugins.lock.json'), 'utf8')) as {
+        plugins?: Record<string, { version?: string; path?: string; enabled?: boolean }>;
+      };
+      const locked = lockRaw?.plugins?.[card.pluginId];
+      if (locked?.path && locked.version === version) {
+        const releaseDir = join(this.app.dataDir, 'plugins', locked.path);
+        for (const rel of expectedEntries) {
+          const info = await stat(join(releaseDir, rel.replace(/^\.\//, ''))).catch(() => null);
+          if (!info?.isFile() || info.size <= 0) {
+            return `WORKSHOP_VERIFY_ARTIFACT_MISSING: release artifact "${rel}" is missing or empty in ${locked.path}`;
+          }
+        }
+      }
+    } catch {
+      /* Unit tests using a stubbed WorkshopAdmin without plugins.lock.json skip release-dir probe */
+    }
+    if (this.admin) {
+      const inventory = await this.admin.inventory().catch(() => null);
+      const entry = inventory?.plugins.find(item => item.id === card.pluginId);
+      if (!entry || entry.version !== version) {
+        return `WORKSHOP_VERIFY_ARTIFACT_MISSING: "${card.pluginId}" v${version} is not active in plugin inventory`;
+      }
+      if (!entry.enabled || entry.state === 'degraded') {
+        return `WORKSHOP_VERIFY_ARTIFACT_MISSING: "${card.pluginId}" v${version} is disabled or degraded (${entry.reason ?? entry.state})`;
+      }
+      if (typeof ds?.host === 'string' && ds.host.trim() && entry.state !== 'running') {
+        return `WORKSHOP_VERIFY_ARTIFACT_MISSING: host entry of "${card.pluginId}" v${version} is not running (${entry.state})`;
+      }
+    }
+    return null;
+  }
+
   private async completeValidation(id: string, version: string, revision: number, outcome: WorkshopValidationOutcome, controller?: AbortController): Promise<WorkshopCard> {
+    let effectiveOutcome = outcome;
+    if (effectiveOutcome.ok) {
+      const card = await this.status(id);
+      const integrityError = await this.verifyInstalledIntegrity(card, version);
+      if (integrityError) {
+        effectiveOutcome = { ok: false, detail: integrityError, evidence: outcome.evidence };
+      }
+    }
     const validated = await this.serial(id, async () => {
       const card = await this.status(id);
       if (card.pendingRestore || controller && (controller.signal.aborted || this.jobs.get(id) !== controller)
         || card.validation?.version !== version || card.validation.revision !== revision
         || card.validation.status !== 'pending' || installationOf(card)?.version !== version
         || installationOf(card)?.state !== 'installed' || card.state === 'cancelled') return null;
-      const validation = { ...card.validation, status: outcome.ok ? 'passed' as const : 'failed' as const,
-        detail: outcome.detail, evidence: outcome.evidence };
-      return this.store.update(id, card.revision, outcome.ok ? {
+      const validation = { ...card.validation, status: effectiveOutcome.ok ? 'passed' as const : 'failed' as const,
+        detail: effectiveOutcome.detail, evidence: effectiveOutcome.evidence };
+      return this.store.update(id, card.revision, effectiveOutcome.ok ? {
         validation, usableVersion: version, lastGoodPackageDir: join(this.store.directory(id), 'versions', version, 'package'),
         verifiedVersions: { ...card.verifiedVersions, [version]: validation },
         error: null, ...(card.execution ? { execution: { ...card.execution, stage: 'complete' as const, reason: undefined } } : {}),
-      } : { validation, error: outcome.detail ?? 'Runtime verification failed' });
+      } : { validation, error: effectiveOutcome.detail ?? 'Runtime verification failed' });
     });
     if (!validated) return this.status(id);
-    return outcome.ok ? validated : this.reportFault(id, outcome.detail ?? 'Runtime verification failed', version);
+    return effectiveOutcome.ok ? validated : this.reportFault(id, effectiveOutcome.detail ?? 'Runtime verification failed', version);
   }
   async reportFault(id: string, error: string, version?: string): Promise<WorkshopCard> {
     const failed = await this.serial(id, async () => {

@@ -76,6 +76,7 @@ describe('InstallFeedback', () => {
 
     const feedback = screen.getByTestId('plugin-install-feedback');
     expect(feedback).toHaveAttribute('data-status', 'rejected');
+    expect(feedback).toHaveTextContent('安全策略拦截');
     expect(feedback).toHaveTextContent('PLUGIN_PACKAGE_INVALID');
     expect(feedback).toHaveTextContent('path escapes root');
     expect(screen.getByTestId('plugin-install-rollback')).toHaveAttribute('data-rollback', rollback);

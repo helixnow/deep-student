@@ -433,4 +433,53 @@ describe('PluginManagerPanel', () => {
     await screen.findByText('dstu.ui.example');
     expect(screen.queryByText('渠道插件')).toBeNull();
   });
+
+  it('stages selected packages via /api/files/stage in WebUI mode', async () => {
+    (globalThis as { __DS_WEBUI__?: boolean }).__DS_WEBUI__ = true;
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ path: '/tmp/staged/pack.dspack' }),
+    })) as unknown as typeof fetch;
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const { adapter, user } = setup([managedPlugin()]);
+      await screen.findByText('dstu.ui.example');
+      const fileInput = screen.getByTestId('plugin-import-file-input') as HTMLInputElement;
+      const file = new File(['zip-bytes'], 'pack.dspack', { type: 'application/octet-stream' });
+      await user.upload(fileInput, file);
+
+      await waitFor(() => expect(adapter.calls.installPackagePath).toEqual(['/tmp/staged/pack.dspack']));
+      expect(adapter.calls.importPackage).toBe(0);
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/files/stage?name=pack.dspack',
+        expect.objectContaining({ method: 'POST', credentials: 'same-origin' }),
+      );
+    } finally {
+      delete (globalThis as { __DS_WEBUI__?: boolean }).__DS_WEBUI__;
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('validates and submits package installation from HTTPS URL', async () => {
+    const { adapter, user } = setup([managedPlugin()]);
+    await screen.findByText('dstu.ui.example');
+
+    await user.click(screen.getByTestId('plugin-import-url'));
+    const input = await screen.findByTestId('plugin-url-install-input');
+
+    await user.type(input, 'http://example.com/bad.dspack');
+    await user.click(screen.getByTestId('plugin-url-install-submit'));
+    expect(screen.getByTestId('plugin-url-install-error')).toHaveTextContent('https://');
+    expect(adapter.calls.installPackageFromUrl).toEqual([]);
+
+    await user.clear(input);
+    await user.type(input, 'https://example.com/kaoyan-pack.dspack');
+    await user.click(screen.getByTestId('plugin-url-install-submit'));
+
+    await waitFor(() =>
+      expect(adapter.calls.installPackageFromUrl).toEqual(['https://example.com/kaoyan-pack.dspack']),
+    );
+    const feedback = await screen.findByTestId('plugin-install-feedback');
+    expect(feedback).toHaveAttribute('data-status', 'installed');
+  });
 });

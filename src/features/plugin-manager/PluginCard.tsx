@@ -221,6 +221,14 @@ export function PluginCard({
             <primary.icon className="size-4" aria-hidden="true" />{primary.label}
           </DsButton>
         ) : null}
+        {canExport && onExport ? (
+          <DsButton variant="ghost" size="sm" data-testid="plugin-card-export"
+            aria-label={t('card.exportA11y', { id: name })}
+            className={cn('!h-8 shrink-0 gap-1 !rounded-lg !px-2 text-xs text-muted-foreground hover:text-foreground', COARSE_TOUCH)}
+            disabled={busy} onClick={onExport}>
+            <Export className="size-3.5" aria-hidden="true" />{t('card.exportShort')}
+          </DsButton>
+        ) : null}
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground/70" data-testid="plugin-card-origin">
           {pluginProvenance(plugin, t)}{plugin.version && plugin.version !== '—' ? ` · v${plugin.version}` : ''}
         </span>
