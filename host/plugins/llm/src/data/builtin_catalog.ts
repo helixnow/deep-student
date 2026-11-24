@@ -31,31 +31,31 @@ export const BUILTIN_VENDORS: readonly BuiltinVendorDef[] = [
   },
   {
     "id": "builtin-qwen",
-    "name": "通义千问",
+    "name": "Alibaba Qwen",
     "providerType": "qwen",
     "authMode": null,
     "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "notes": "阿里云百炼 API（兼容 OpenAI Chat；平台亦支持 Responses / DashScope 原生）。推荐模型: qwen3.7-max(旗舰), qwen3.7-plus(官方默认推荐/多模态), qwen3.6-flash, qwen3.5-plus, qwen3.5-flash, qwen3-max, qwen3.5-397b-a17b, qwen3.5-122b-a10b",
+    "notes": "Alibaba Cloud Model Studio (Bailian) API (OpenAI Chat compatible; also supports Responses and native DashScope). Recommended models: qwen3.7-max (flagship), qwen3.7-plus (default recommended / multimodal), qwen3.6-flash, qwen3.5-plus, qwen3.5-flash, qwen3-max, qwen3.5-397b-a17b, qwen3.5-122b-a10b.",
     "maxTokensLimit": null,
     "websiteUrl": "https://bailian.console.aliyun.com"
   },
   {
     "id": "builtin-zhipu",
-    "name": "智谱AI",
+    "name": "Zhipu AI",
     "providerType": "zhipu",
     "authMode": null,
     "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
-    "notes": "智谱AI 开放平台。可用模型: glm-5.2(当前旗舰, 1M 上下文, 支持 reasoning_effort), glm-5.1, glm-5, glm-4.7, glm-4.6, glm-4.7-flash(免费)",
+    "notes": "Zhipu AI Open Platform. Available models: glm-5.2 (current flagship, 1M context, supports reasoning_effort), glm-5.1, glm-5, glm-4.7, glm-4.6, glm-4.7-flash (free).",
     "maxTokensLimit": null,
     "websiteUrl": "https://open.bigmodel.cn"
   },
   {
     "id": "builtin-doubao",
-    "name": "字节豆包",
+    "name": "ByteDance Doubao",
     "providerType": "doubao",
     "authMode": null,
     "baseUrl": "https://ark.cn-beijing.volces.com/api/v3",
-    "notes": "火山方舟大模型平台。推荐模型: doubao-seed-2-1-pro-260628 / doubao-seed-2-1-turbo-260628 (2.1 旗舰, 256K 上下文), doubao-seed-evolving (滚动更新 ID), Seed 2.0 全系, Seed 1.8 (doubao-seed-1-8-251228)。可直接用模型名或 ep-* 接入点调用。",
+    "notes": "Volcengine Ark LLM Platform. Recommended models: doubao-seed-2-1-pro-260628 / doubao-seed-2-1-turbo-260628 (2.1 flagship, 256K context), doubao-seed-evolving (rolling ID), Seed 2.0 family, Seed 1.8 (doubao-seed-1-8-251228). Call directly by model name or ep-* endpoint.",
     "maxTokensLimit": null,
     "websiteUrl": "https://www.volcengine.com/product/doubao"
   },
@@ -65,17 +65,17 @@ export const BUILTIN_VENDORS: readonly BuiltinVendorDef[] = [
     "providerType": "minimax",
     "authMode": null,
     "baseUrl": "https://api.minimax.io/v1",
-    "notes": "MiniMax API。可用模型: MiniMax-M3(最新旗舰, 1M 上下文/多模态), MiniMax-M2.7, MiniMax-M2.5, M2.5-highspeed, M2.1",
+    "notes": "MiniMax API. Available models: MiniMax-M3 (latest flagship, 1M context / multimodal), MiniMax-M2.7, MiniMax-M2.5, M2.5-highspeed, M2.1.",
     "maxTokensLimit": null,
     "websiteUrl": "https://platform.minimaxi.com"
   },
   {
     "id": "builtin-moonshot",
-    "name": "月之暗面",
+    "name": "Moonshot AI",
     "providerType": "moonshot",
     "authMode": null,
     "baseUrl": "https://api.moonshot.cn/v1",
-    "notes": "Kimi API。可用模型: kimi-k3(1M/多模态/强制最高推理), kimi-k2.6(多模态), kimi-k2.7-code(编程/强制思考), kimi-k2.5(多模态), moonshot-v1 系列。kimi-k2 全系与 kimi-k2-thinking 已于 2026-05-25 停服、kimi-latest 已于 2026-01-28 停服。注意: K3 不接受 K2.x thinking 对象；K2.5/K2.6 采样参数锁定。",
+    "notes": "Kimi API. Available models: kimi-k3 (1M / multimodal / max reasoning), kimi-k2.6 (multimodal), kimi-k2.7-code (coding / thinking enabled), kimi-k2.5 (multimodal), moonshot-v1 series. kimi-k2 series and kimi-k2-thinking retired on 2026-05-25; kimi-latest retired on 2026-01-28. Note: K3 does not accept K2.x thinking objects; K2.5/K2.6 sampling parameters are locked.",
     "maxTokensLimit": null,
     "websiteUrl": "https://platform.moonshot.cn"
   },
@@ -85,7 +85,7 @@ export const BUILTIN_VENDORS: readonly BuiltinVendorDef[] = [
     "providerType": "openai",
     "authMode": null,
     "baseUrl": "https://api.openai.com/v1",
-    "notes": "OpenAI 官方 API。当前主线包括 gpt-5.6、gpt-5.5/pro、gpt-5.4/pro/mini/nano；全部模型页仍列出 gpt-5.2/pro、gpt-5.1、gpt-5/pro/mini/nano，以及 o3-pro/o3/o4-mini。o 系列已进入退役期: o1/o3-mini/o4-mini 于 2026-10-23 关停，o3/o3-pro 于 2026-12-11 关停。默认协议建议使用 Responses。",
+    "notes": "Official OpenAI API. Current mainlines include gpt-5.6, gpt-5.5/pro, gpt-5.4/pro/mini/nano; full catalog also lists gpt-5.2/pro, gpt-5.1, gpt-5/pro/mini/nano, and o3-pro/o3/o4-mini. The o-series is being retired: o1/o3-mini/o4-mini on 2026-10-23, and o3/o3-pro on 2026-12-11. Responses is recommended as the default protocol.",
     "maxTokensLimit": null,
     "websiteUrl": "https://platform.openai.com"
   },
@@ -105,7 +105,7 @@ export const BUILTIN_VENDORS: readonly BuiltinVendorDef[] = [
     "providerType": "anthropic",
     "authMode": null,
     "baseUrl": "https://api.anthropic.com/v1",
-    "notes": "Anthropic 官方 Claude API（Messages 协议）。可用模型: claude-opus-5(旗舰), claude-sonnet-5(均衡), claude-fable-5(思考 always-on), claude-haiku-4-5(轻量, 官方最新 Haiku 仍为 4.5)。注意: 5 系/4.6+ 新代际思考仅接受 thinking:{type:\"adaptive\"}+output_config.effort，非默认采样参数会 400；Haiku 4.5 走 manual extended thinking(budget_tokens)。",
+    "notes": "Official Anthropic Claude API (Messages protocol). Available models: claude-opus-5 (flagship), claude-sonnet-5 (balanced), claude-fable-5 (always-on thinking), claude-haiku-4-5 (lightweight, latest official Haiku). Note: 5-series / 4.6+ thinking only accepts thinking:{type:\"adaptive\"} + output_config.effort and rejects non-default sampling parameters with 400; Haiku 4.5 uses manual extended thinking (budget_tokens).",
     "maxTokensLimit": null,
     "websiteUrl": "https://platform.claude.com"
   },
@@ -125,7 +125,7 @@ export const BUILTIN_VENDORS: readonly BuiltinVendorDef[] = [
     "providerType": "nvidia",
     "authMode": null,
     "baseUrl": "https://integrate.api.nvidia.com/v1",
-    "notes": "NVIDIA NIM hosted API。OpenAI-compatible Chat Completions；模型可通过 /models 拉取。默认不注入 thinking/reasoning 专用参数，避免不同 NIM 模型参数格式不一致。",
+    "notes": "NVIDIA NIM hosted API (OpenAI-compatible Chat Completions; fetch models via /models). Thinking/reasoning-specific parameters are not injected by default to avoid schema mismatches across NIM models.",
     "maxTokensLimit": null,
     "websiteUrl": "https://build.nvidia.com/nim"
   },
@@ -135,7 +135,7 @@ export const BUILTIN_VENDORS: readonly BuiltinVendorDef[] = [
     "providerType": "mimo",
     "authMode": null,
     "baseUrl": "https://api.xiaomimimo.com/v1",
-    "notes": "Xiaomi MiMo API。优先内置 MiMo V2.5-Pro 与 MiMo V2.5（1M context，OpenAI-compatible Chat Completions）；Token Plan 可将 Base URL 改为 token-plan-*.xiaomimimo.com/v1。支持 thinking: { type } 与 reasoning_content 回传。V2.5 TTS/ASR 属语音专项能力，当前不放入聊天模型默认列表。",
+    "notes": "Xiaomi MiMo API. Built-in defaults prioritize MiMo V2.5-Pro and MiMo V2.5 (1M context, OpenAI-compatible Chat Completions); for Token Plan, set Base URL to token-plan-*.xiaomimimo.com/v1. Supports thinking: { type } and reasoning_content output. V2.5 TTS/ASR are dedicated speech models and are excluded from the default chat list.",
     "maxTokensLimit": null,
     "websiteUrl": "https://platform.xiaomimimo.com"
   },

@@ -38,6 +38,12 @@ let stopDomainListener: (() => void) | null = null;
 let stopTodoStoreListener: (() => void) | null = null;
 const listeners = new Set<() => void>();
 const togglingIds = new Set<string>();
+let mutationEpoch = 0;
+
+function normalizeTodoId(itemId: string): string {
+  const trimmed = itemId.trim();
+  return trimmed.startsWith('todo:') ? trimmed.slice('todo:'.length) : trimmed;
+}
 
 function publish(next: TodoAgendaSnapshot): void {
   snapshot = next;
@@ -151,14 +157,24 @@ export function refreshTodoAgenda(): Promise<void> {
   refreshPromise = (async () => {
     do {
       refreshAgain = false;
+      const epochAtStart = mutationEpoch;
       try {
         const [lists, items] = await Promise.all([
           todoApi.listTodoLists(),
           todoApi.listAllPendingItems(),
         ]);
+        const normalized = normalizePendingItems(items).filter(
+          (item) => !togglingIds.has(item.id),
+        );
+        // If a completion/mutation happened while this fetch was in flight, do not
+        // overwrite the fresher optimistic snapshot with stale pre-write data; loop once more.
+        if (mutationEpoch !== epochAtStart) {
+          refreshAgain = true;
+          continue;
+        }
         publish({
           lists: Array.isArray(lists) ? lists : [],
-          items: normalizePendingItems(items),
+          items: normalized,
           isLoading: false,
           error: null,
           updatedAt: Date.now(),
@@ -177,26 +193,38 @@ export function refreshTodoAgenda(): Promise<void> {
   return refreshPromise;
 }
 
-/** Optimistic completion used by the desktop widget. */
+/** Optimistic, idempotent completion used by the desktop widget. */
 export async function completeTodoAgendaItem(itemId: string): Promise<void> {
-  if (togglingIds.has(itemId)) return;
-  const item = snapshot.items.find((candidate) => candidate.id === itemId);
+  const normalizedId = normalizeTodoId(itemId);
+  if (!normalizedId || togglingIds.has(normalizedId)) return;
+  const item = snapshot.items.find((candidate) => candidate.id === normalizedId);
   if (!item) return;
-  togglingIds.add(itemId);
+  togglingIds.add(normalizedId);
+  mutationEpoch += 1;
   const previous = snapshot;
   publish({
     ...snapshot,
-    items: snapshot.items.filter((candidate) => candidate.id !== itemId),
+    items: snapshot.items.filter((candidate) => candidate.id !== normalizedId),
   });
   try {
-    await todoApi.toggleTodoItem(itemId);
-    void useTodoStore.getState().reloadCurrentView();
+    // Use idempotent status='completed' update (never flips an already-completed task
+    // back to pending on duplicate triggers or stale snapshots).
+    if (typeof todoApi.updateTodoItem === 'function') {
+      await todoApi.updateTodoItem({ id: normalizedId, status: 'completed' });
+    } else {
+      await todoApi.toggleTodoItem(normalizedId);
+    }
+    togglingIds.delete(normalizedId);
+    mutationEpoch += 1;
+    const todoStore = useTodoStore.getState();
+    void todoStore.reloadCurrentView?.();
+    void todoStore.refreshCounts?.();
     await refreshTodoAgenda();
   } catch (error) {
+    togglingIds.delete(normalizedId);
+    mutationEpoch += 1;
     publish(previous);
     throw error;
-  } finally {
-    togglingIds.delete(itemId);
   }
 }
 
@@ -207,5 +235,6 @@ export function resetTodoAgendaSourceForTests(): void {
   refreshPromise = null;
   refreshAgain = false;
   togglingIds.clear();
+  mutationEpoch = 0;
   snapshot = INITIAL_SNAPSHOT;
 }

@@ -200,6 +200,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const topicFileInputRef = React.useRef<HTMLInputElement>(null);
   const [showTopicSection, setShowTopicSection] = useState(false);
+  /** 标记当前 topicText 是否由「填入示例」自动填入且未经用户手改，防止替换正文后残留隐形示例题目 */
+  const sampleTopicAppliedRef = useRef(false);
 
   // 确保 inputText 有默认值，防止 undefined
   const safeInputText = inputText ?? '';
@@ -251,6 +253,19 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
 
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
+    // 若用户曾点击「填入示例」，随后清空或完全替换为自己的作文，同步清掉自动填入的示例题目，避免隐形跑题
+    if (sampleTopicAppliedRef.current && setTopicText) {
+      const sampleTopic = t('essay_grading:workbench.sample.topic');
+      const sampleContent = t('essay_grading:workbench.sample.content');
+      const sampleHead = sampleContent.slice(0, 12);
+      const isClearingOrReplacingSample =
+        newValue.trim().length === 0
+        || (topicText === sampleTopic && !newValue.includes(sampleHead));
+      if (isClearingOrReplacingSample) {
+        sampleTopicAppliedRef.current = false;
+        setTopicText('');
+      }
+    }
     if (getUnicodeCharCount(newValue) <= ESSAY_MAX_CHARS) {
       setInputText(newValue);
       return;
@@ -259,7 +274,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
     const truncated = Array.from(newValue).slice(0, ESSAY_MAX_CHARS).join('');
     setInputText(truncated);
     notifyCharLimit(truncated !== (inputText ?? ''));
-  }, [setInputText, notifyCharLimit, inputText]);
+  }, [setInputText, notifyCharLimit, inputText, setTopicText, t, topicText]);
 
   // ── UX#5：剪贴板图片粘贴（与拖拽同路径 onFilesDropped） ──
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -297,11 +312,15 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
     onRetryImageOcr?.(img.id);
   }, [t, onRetryImageOcr]);
 
-  // ── 空状态引导：示例作文一键填入（题目 + 正文），便于新用户零门槛体验批改 ──
+  // ── 空状态引导：示例作文一键填入（题目 + 正文），展开题目区使示例题目可见，绝不隐形绑定 ──
   const handleFillSample = useCallback(() => {
     if (isGrading) return;
     setInputText(t('essay_grading:workbench.sample.content'));
-    if (setTopicText) setTopicText(t('essay_grading:workbench.sample.topic'));
+    if (setTopicText) {
+      sampleTopicAppliedRef.current = true;
+      setTopicText(t('essay_grading:workbench.sample.topic'));
+      setShowTopicSection(true);
+    }
     showGlobalNotification('success', t('essay_grading:workbench.sample.filled_toast'));
   }, [isGrading, setInputText, setTopicText, t]);
 
@@ -555,33 +574,59 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         </div>
       )}
 
-      {/* ★ 题目元数据折叠区 */}
+      {/* ★ 题目元数据折叠区：有激活题目时在折叠头展示摘要与一键清除，防止隐形题干误绑定 */}
       {setTopicText && (
         <div className="border-b border-border/30">
-          <button
-            type="button"
-            onClick={() => setShowTopicSection(!showTopicSection)}
-            aria-expanded={showTopicSection}
-            className={cn(
-              'flex items-center gap-2 w-full px-4 py-2 text-xs [@media(pointer:coarse)]:min-h-11 transition-colors duration-150',
-              showTopicSection
-                ? 'text-foreground bg-muted/25'
-                : 'text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)]'
-            )}
-          >
-            <span className="w-4 h-4 inline-flex items-center justify-center rounded bg-muted/60">
-              <FileText size={12} />
-            </span>
-            <span className="font-medium">{t('essay_grading:topic.toggle_label')}</span>
-            {hasTopicContent && (
-              <span className="inline-flex items-center rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-2xs text-primary">
-                {topicImageCount > 0
-                  ? t('essay_grading:topic.image_count', { count: topicImageCount })
-                  : t('essay_grading:topic.filled')}
+          <div className="flex items-center w-full">
+            <button
+              type="button"
+              onClick={() => setShowTopicSection(!showTopicSection)}
+              aria-expanded={showTopicSection}
+              className={cn(
+                'flex items-center gap-2 flex-1 min-w-0 px-4 py-2 text-xs [@media(pointer:coarse)]:min-h-11 transition-colors duration-150',
+                showTopicSection
+                  ? 'text-foreground bg-muted/25'
+                  : 'text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)]'
+              )}
+            >
+              <span className="w-4 h-4 shrink-0 inline-flex items-center justify-center rounded bg-muted/60">
+                <FileText size={12} />
               </span>
+              <span className="font-medium shrink-0">{t('essay_grading:topic.toggle_label')}</span>
+              {hasTopicContent && (
+                <span className="inline-flex shrink-0 items-center rounded-md border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-2xs text-primary">
+                  {topicImageCount > 0
+                    ? t('essay_grading:topic.image_count', { count: topicImageCount })
+                    : t('essay_grading:topic.filled')}
+                </span>
+              )}
+              {!showTopicSection && topicText?.trim() && (
+                <span
+                  data-testid="essay-topic-preview"
+                  className="min-w-0 truncate text-2xs text-foreground/70"
+                  title={topicText.trim()}
+                >
+                  {topicText.trim()}
+                </span>
+              )}
+              <CaretDown className={cn('w-3.5 h-3.5 shrink-0 ml-auto transition-transform duration-200 motion-reduce:transition-none', showTopicSection && 'rotate-180')} />
+            </button>
+            {Boolean(topicText?.trim()) && !isGrading && (
+              <button
+                type="button"
+                data-testid="essay-topic-clear-btn"
+                onClick={() => {
+                  sampleTopicAppliedRef.current = false;
+                  setTopicText('');
+                }}
+                aria-label={t('essay_grading:topic.clear')}
+                title={t('essay_grading:topic.clear')}
+                className="shrink-0 mr-2 inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground/60 hover:bg-destructive/10 hover:text-destructive transition-colors"
+              >
+                <X size={12} />
+              </button>
             )}
-            <CaretDown className={cn('w-3.5 h-3.5 ml-auto transition-transform duration-200 motion-reduce:transition-none', showTopicSection && 'rotate-180')} />
-          </button>
+          </div>
           {/* grid-template-rows 展开动画（motion-reduce 降级为直接切换） */}
           <div
             className={cn(
@@ -599,7 +644,10 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 <div className="rounded-lg border border-border/40 bg-muted/[0.18] p-3 space-y-2.5">
                   <Textarea
                     value={topicText ?? ''}
-                    onChange={(e) => setTopicText(e.target.value)}
+                    onChange={(e) => {
+                      sampleTopicAppliedRef.current = false;
+                      setTopicText(e.target.value);
+                    }}
                     placeholder={t('essay_grading:topic.placeholder')}
                     className="w-full min-h-[72px] max-h-[144px] resize-y text-sm leading-relaxed !border-border/35 !bg-background/80 focus:!ring-1 focus:!ring-primary/20 [@media(pointer:coarse)]:text-base"
                     disabled={isGrading}

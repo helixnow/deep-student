@@ -58,6 +58,10 @@ interface ResultPanelProps {
   navigateRoundsInHeader?: boolean;
   /** 当前批阅模式 ID：评分卡里预置模式的维度名按界面语言显示（仅展示） */
   gradingModeId?: string | null;
+  /** 学生提交的原始作文文本：用于校验并区分模型私自插入的未提交文本 */
+  originalText?: string | null;
+  /** 评分缺失时强制重新批改回调 */
+  onRegrade?: () => void;
 }
 
 /** 错误/部分结果统一使用的细边框语义色条 */
@@ -122,6 +126,8 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   roundNavigation,
   navigateRoundsInHeader = false,
   gradingModeId,
+  originalText,
+  onRegrade,
 }, ref) => {
   const { t } = useTranslation(['essay_grading', 'common']);
 
@@ -377,6 +383,8 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
               onUndoSuggestion={onUndoSuggestion}
               appliedSuggestionKeys={appliedSuggestionKeys}
               gradingModeId={gradingModeId}
+              originalText={originalText}
+              onRetry={onRegrade ?? onRetry}
               toolbarAccessory={headerInTabs ? (
                 <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5 sm:flex-initial sm:flex-nowrap sm:gap-2">
                   {progressMeta}

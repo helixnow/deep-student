@@ -382,8 +382,16 @@ export class CanvasToolExecutor {
       content = body;
     }
     const wordCount = charCount(content);
+    const trimmedTitle = (note.title ?? '').trim();
+    const isUntitled =
+      trimmedTitle.length === 0 ||
+      trimmedTitle === '无标题笔记' ||
+      trimmedTitle.toLowerCase() === 'untitled' ||
+      trimmedTitle.toLowerCase() === 'untitled note';
     return {
       noteId,
+      title: note.title,
+      isUntitled,
       content: takeChars(content, READ_TRUNCATE_CHARS),
       wordCount,
       truncated: wordCount > READ_TRUNCATE_CHARS,

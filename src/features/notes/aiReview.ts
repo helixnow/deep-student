@@ -120,8 +120,9 @@ export function projectAIReviewCandidate(request: CanvasAIEditRequest, original:
 }
 
 /** Host owns the only live document. Official review commands propose version-checked writes. */
-export function useAIReview({ noteId, editorApi, enabled = true, windowId, host }: {
+export function useAIReview({ noteId, noteTitle, editorApi, enabled = true, windowId, host }: {
   noteId?: string | null;
+  noteTitle?: string | null;
   editorApi: CrepeEditorApi | null;
   enabled?: boolean;
   windowId?: string;
@@ -129,8 +130,8 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
 }) {
   const key = aiReviewSessionKey(noteId ?? '', windowId);
   const [, refresh] = useReducer((n: number) => n + 1, 0);
-  const current = useRef({ key, noteId, editorApi, enabled, windowId, host });
-  current.current = { key, noteId, editorApi, enabled, windowId, host };
+  const current = useRef({ key, noteId, noteTitle, editorApi, enabled, windowId, host });
+  current.current = { key, noteId, noteTitle, editorApi, enabled, windowId, host };
   const official = useRef<{ key: string; controls: OfficialReviewControls } | null>(null);
   const lease = useRef<(() => void) | null>(null);
   const releaseLease = useCallback(() => { lease.current?.(); lease.current = null; }, []);
@@ -606,6 +607,7 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
         await rollbackCheckpoint();
         return !checkpointsRef.current.includes(top);
       },
+      getNoteTitle: () => current.current.noteTitle?.trim() || undefined,
     });
   }, [noteId, enabled, key, handleReject, rollbackCheckpoint]);
 

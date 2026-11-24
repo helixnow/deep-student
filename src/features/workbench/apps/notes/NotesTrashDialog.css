@@ -480,8 +480,48 @@
 .ntd-item-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   flex: 0 0 auto;
+}
+
+.ntd-row-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--notes-radius-control);
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 11.5px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--notes-hover-transition),
+    color var(--notes-hover-transition),
+    border-color var(--notes-hover-transition);
+}
+
+.ntd-row-action-btn:hover:not(:disabled) {
+  border-color: hsl(var(--ring));
+  background: hsl(var(--accent));
+}
+
+.ntd-row-action-btn.is-danger {
+  color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive) / 35%);
+}
+
+.ntd-row-action-btn.is-danger:hover:not(:disabled) {
+  background: hsl(var(--destructive) / 10%);
+  border-color: hsl(var(--destructive) / 60%);
+}
+
+.ntd-row-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* ===== Touch (coarse pointer) hit targets =====

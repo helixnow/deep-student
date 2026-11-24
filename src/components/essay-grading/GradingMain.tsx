@@ -72,6 +72,10 @@ interface GradingMainProps {
   canRetry?: boolean;
   /** 重试回调 */
   onRetry?: () => void;
+  /** 评分缺失时的强制重新批改回调 */
+  onRegrade?: () => void;
+  /** 本轮提交的原始作文文本（用于批注视图原文核验） */
+  originalText?: string | null;
   isPartialResult?: boolean;
   /** 采纳批改建议：应用一处修改到原文（前后文锚定） */
   onApplySuggestion?: (change: SuggestionChange) => void;
@@ -153,6 +157,8 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   error,
   canRetry,
   onRetry,
+  onRegrade,
+  originalText,
   isPartialResult,
   onApplySuggestion,
   onUndoSuggestion,
@@ -312,6 +318,8 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       error={error}
       canRetry={canRetry}
       onRetry={onRetry}
+      onRegrade={onRegrade}
+      originalText={originalText ?? inputText}
       isPartialResult={isPartialResult}
       onApplySuggestion={onApplySuggestion}
       onUndoSuggestion={onUndoSuggestion}

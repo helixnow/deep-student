@@ -1373,7 +1373,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
           key={selectedItem.id}
           item={selectedItem}
           onClose={() => selectItem(null)}
-          className="w-[360px] flex-shrink-0 border-l border-[color:var(--shell-seam)] ui-slide-fade-in [--ui-enter-x:32px]"
+          className="w-[min(360px,46%)] min-w-[260px] flex-shrink-0 border-l border-[color:var(--shell-seam)] ui-slide-fade-in [--ui-enter-x:32px]"
         />
       )}
     </div>

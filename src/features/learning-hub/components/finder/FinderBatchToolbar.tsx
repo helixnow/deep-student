@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
+  ArrowsClockwise,
   Trash, 
   FolderOpen, 
   Chat, 
@@ -35,6 +36,8 @@ interface FinderBatchToolbarProps {
   onClearSelection: () => void;
   /** 批量删除；未传则不显示删除按钮（受 VIEW_CAPABILITY 门禁） */
   onBatchDelete?: () => void;
+  /** 回收站视图批量还原 */
+  onBatchRestore?: () => void;
   onBatchMove?: () => void;
   onBatchAddToChat?: () => void;
   isProcessing?: boolean;
@@ -79,6 +82,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
   onSelectAll,
   onClearSelection,
   onBatchDelete,
+  onBatchRestore,
   onBatchMove,
   onBatchAddToChat,
   isProcessing = false,
@@ -273,6 +277,24 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
               aria-label={t('finder.multiSelect.move')}
             >
               <FolderOpen size={16} />
+            </DsButton>
+            )}
+
+            {isTrashView && onBatchRestore && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={onBatchRestore}
+              disabled={isProcessing}
+              className={cn(
+                'h-7 px-2 gap-1 text-xs text-primary hover:bg-primary/10',
+                isTouchPrimary && '!h-11 px-3',
+              )}
+              title={t('finder.contextMenu.restore')}
+              aria-label={t('finder.contextMenu.restore')}
+            >
+              <ArrowsClockwise size={14} aria-hidden="true" />
+              <span>{t('finder.contextMenu.restore')}</span>
             </DsButton>
             )}
 

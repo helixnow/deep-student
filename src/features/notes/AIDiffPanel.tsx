@@ -28,6 +28,8 @@ import type { AIReviewLanding, AIReviewScope } from './officialDiffContract';
 
 export interface AIDiffPanelProps {
   state: AIEditState;
+  /** 目标笔记标题（展示于 Diff 预览顶栏，便于用户核对即将写入的笔记） */
+  noteTitle?: string | null;
   onAccept: () => void;
   onReject: () => void;
   onSuspend: () => void;
@@ -333,6 +335,7 @@ function HunkReviewCard({ hunk, totalHunks, disabled, onDecision }: HunkCardProp
  */
 export function AIDiffPanel({
   state,
+  noteTitle,
   onAccept,
   onReject,
   onSuspend,
@@ -518,6 +521,14 @@ export function AIDiffPanel({
                 )}
               </div>
               <p className="truncate text-xs text-muted-foreground">
+                {noteTitle?.trim() && (
+                  <>
+                    <span data-testid="ai-diff-target-note" className="font-medium text-foreground/80">
+                      {noteTitle.trim()}
+                    </span>
+                    <span aria-hidden="true" className="mx-1.5">·</span>
+                  </>
+                )}
                 {operationLabels[request.operation]}
                 {hasChanges && (
                   <span className="ml-2 font-mono tabular-nums">

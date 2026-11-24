@@ -230,12 +230,15 @@ export function resolveGradingMode(
 // 属性 / 评分解析
 // ============================================================================
 
-/** 从标签属性串中按名字提取属性值（与书写顺序无关，容忍未知属性） */
+/** 从标签属性串中按名字提取属性值（与书写顺序无关，兼容双引号/单引号/无引号数值，容忍未知属性） */
 export function extractAttr(attrs: string, name: string): string | null {
-  const regex = /([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*"([^"]*)"/g;
+  const regex = /([A-Za-z_][A-Za-z0-9_-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
   let match: RegExpExecArray | null;
   while ((match = regex.exec(attrs)) !== null) {
-    if (match[1] === name) return decodeXmlEntities(match[2] as string);
+    if (match[1]?.toLowerCase() === name.toLowerCase()) {
+      const raw = match[2] ?? match[3] ?? match[4] ?? '';
+      return decodeXmlEntities(raw);
+    }
   }
   return null;
 }
@@ -295,29 +298,12 @@ function parseNumber(value: string): number | null {
   return Number.isFinite(parsed) ? Math.fround(parsed) : null;
 }
 
-/** 从批改结果中解析评分（`<score>`/`<dim>` 属性任意顺序均可解析） */
-export function parseScoreFromResult(result: string, mode: GradingMode): ParsedScore | null {
-  const scoreRegex = /<score\b([^>]*)>([\s\S]*?)<\/score>/g;
-  const dimRegex = /<dim\b([^>]*)>([^<]*)<\/dim>/g;
-
-  // 协议规定评分在回复最末尾且只有一个；若 LLM 违规输出多个 <score>，
-  // 取最后一个（末尾的才是最终评分，前面的多为示例/中间描述）
-  let scoreMatch: RegExpExecArray | null = null;
-  let candidate: RegExpExecArray | null;
-  while ((candidate = scoreRegex.exec(result)) !== null) scoreMatch = candidate;
-  if (scoreMatch === null) return null;
-
-  const scoreAttrs = scoreMatch[1] as string;
-  const dimsContent = scoreMatch[2] as string;
-
-  const totalRaw = extractAttr(scoreAttrs, 'total');
-  const maxRaw = extractAttr(scoreAttrs, 'max');
-  if (totalRaw === null || maxRaw === null) return null;
-  const totalParsed = parseNumber(totalRaw);
-  const maxTotalParsed = parseNumber(maxRaw);
-  if (totalParsed === null || maxTotalParsed === null) return null;
-
-  // 边界校验
+function buildParsedScore(
+  totalParsed: number,
+  maxTotalParsed: number,
+  dimensions: DimensionScore[],
+  mode: GradingMode,
+): ParsedScore | null {
   if (!Number.isFinite(maxTotalParsed) || maxTotalParsed <= 0) return null;
   if (!Number.isFinite(totalParsed)) return null;
 
@@ -328,38 +314,6 @@ export function parseScoreFromResult(result: string, mode: GradingMode): ParsedS
     : maxTotalParsed;
 
   let total = Math.max(0, Math.min(totalParsed, modeMax));
-
-  // 解析维度评分：单个坏维度（score="8分"、"8.5/10" 等格式漂移）只跳过该维度
-  const dimensions: DimensionScore[] = [];
-  let dimMatch: RegExpExecArray | null;
-  while ((dimMatch = dimRegex.exec(dimsContent)) !== null) {
-    const attrs = dimMatch[1] ?? '';
-    const nameValue = extractAttr(attrs, 'name');
-    if (nameValue === null || nameValue.length === 0) continue;
-    const scoreAttr = extractAttr(attrs, 'score');
-    const scoreParsed = scoreAttr === null ? null : parseNumber(scoreAttr);
-    if (scoreParsed === null) continue;
-    const maxAttr = extractAttr(attrs, 'max');
-    const dimMaxParsed = maxAttr === null ? null : parseNumber(maxAttr);
-    if (dimMaxParsed === null) continue;
-    const rawComment = (dimMatch[2] ?? '').trim();
-    const comment = rawComment.length === 0 ? null : rawComment;
-
-    if (!Number.isFinite(dimMaxParsed) || dimMaxParsed <= 0) continue;
-    if (!Number.isFinite(scoreParsed)) continue;
-
-    // 模式配置的维度满分为权威值；clamp 与落库的 maxScore 使用同一个 dimMax
-    const configured = mode.scoreDimensions.find((dim) => dim.name === nameValue);
-    const configuredMaxScore = configured === undefined ? null : Math.fround(configured.maxScore);
-    const configuredMax = configuredMaxScore !== null
-      && Number.isFinite(configuredMaxScore) && configuredMaxScore > 0
-      ? configuredMaxScore
-      : null;
-    const dimMax = configuredMax ?? dimMaxParsed;
-    const score = Math.max(0, Math.min(scoreParsed, dimMax));
-
-    dimensions.push({ name: nameValue, score, maxScore: dimMax, comment });
-  }
 
   // 求和制模式一致性校正：维度满分之和等于总分满分（非 band 制），
   // 且全部模式维度均成功解析时，以逐维度得分之和为准。
@@ -387,6 +341,202 @@ export function parseScoreFromResult(result: string, mode: GradingMode): ParsedS
     total: f32Json(total), maxTotal: f32Json(modeMax), grade,
     dimensions: dimensions.map((dim) => ({ ...dim, score: f32Json(dim.score), maxScore: f32Json(dim.maxScore) })),
   };
+}
+
+function normalizeDimension(
+  nameValue: string,
+  scoreParsed: number,
+  dimMaxParsed: number,
+  comment: string | null,
+  mode: GradingMode,
+): DimensionScore | null {
+  if (!nameValue || !Number.isFinite(dimMaxParsed) || dimMaxParsed <= 0 || !Number.isFinite(scoreParsed)) {
+    return null;
+  }
+  const configured = mode.scoreDimensions.find((dim) => dim.name === nameValue);
+  const configuredMaxScore = configured === undefined ? null : Math.fround(configured.maxScore);
+  const configuredMax = configuredMaxScore !== null
+    && Number.isFinite(configuredMaxScore) && configuredMaxScore > 0
+    ? configuredMaxScore
+    : null;
+  const dimMax = configuredMax ?? dimMaxParsed;
+  const score = Math.max(0, Math.min(scoreParsed, dimMax));
+  return { name: nameValue, score, maxScore: dimMax, comment };
+}
+
+function parseJsonFallbackScore(result: string, mode: GradingMode): ParsedScore | null {
+  const candidates: string[] = [];
+  const fencedRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/gi;
+  let match: RegExpExecArray | null;
+  while ((match = fencedRegex.exec(result)) !== null) {
+    if (match[1]) candidates.push(match[1]);
+  }
+  // 末尾裸 JSON 对象（须包含 total 字段）
+  const bareRegex = /\{[^{}]*"total"\s*:\s*[-+]?\d[\s\S]*?\}(?:\s*)$/g;
+  while ((match = bareRegex.exec(result)) !== null) {
+    candidates.push(match[0]);
+  }
+  for (let i = candidates.length - 1; i >= 0; i -= 1) {
+    try {
+      const obj = JSON.parse(candidates[i] as string) as Record<string, unknown>;
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) continue;
+      const totalRaw = obj['total'] ?? obj['overall_score'] ?? obj['score'];
+      const totalParsed = typeof totalRaw === 'number'
+        ? Math.fround(totalRaw)
+        : typeof totalRaw === 'string'
+          ? parseNumber(totalRaw)
+          : null;
+      if (totalParsed === null) continue;
+      const maxRaw = obj['max'] ?? obj['max_total'] ?? obj['maxTotal'];
+      const maxParsed = typeof maxRaw === 'number'
+        ? Math.fround(maxRaw)
+        : typeof maxRaw === 'string'
+          ? parseNumber(maxRaw)
+          : Math.fround(mode.totalMaxScore);
+      if (maxParsed === null || maxParsed <= 0) continue;
+
+      const dimensions: DimensionScore[] = [];
+      if (Array.isArray(obj['dimensions'])) {
+        for (const item of obj['dimensions']) {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+          const rec = item as Record<string, unknown>;
+          const name = typeof rec['name'] === 'string' ? rec['name'].trim() : '';
+          const dimScore = typeof rec['score'] === 'number'
+            ? Math.fround(rec['score'])
+            : typeof rec['score'] === 'string'
+              ? parseNumber(rec['score'])
+              : null;
+          const dimMaxRaw = rec['max'] ?? rec['max_score'] ?? rec['maxScore'];
+          const configured = mode.scoreDimensions.find((d) => d.name === name);
+          const dimMax = typeof dimMaxRaw === 'number'
+            ? Math.fround(dimMaxRaw)
+            : typeof dimMaxRaw === 'string'
+              ? parseNumber(dimMaxRaw)
+              : configured
+                ? Math.fround(configured.maxScore)
+                : null;
+          const comment = typeof rec['comment'] === 'string' && rec['comment'].trim().length > 0
+            ? rec['comment'].trim()
+            : null;
+          if (dimScore !== null && dimMax !== null) {
+            const dim = normalizeDimension(name, dimScore, dimMax, comment, mode);
+            if (dim) dimensions.push(dim);
+          }
+        }
+      }
+      const parsed = buildParsedScore(totalParsed, maxParsed, dimensions, mode);
+      if (parsed) return parsed;
+    } catch {
+      // 非合法 JSON 忽略
+    }
+  }
+  return null;
+}
+
+function parseMarkdownFallbackScore(result: string, mode: GradingMode): ParsedScore | null {
+  // 仅从回复尾部区域提取明确的评分汇总，避免正文里偶现的数字误触发
+  const tail = result.slice(Math.max(0, result.length - 2000));
+  const totalPatterns: readonly RegExp[] = [
+    /(?:^|\n)\s*(?:#{1,4}\s*)?(?:\*\*)?(?:总分|综合评分|总评得分|得分|最终得分|Total\s*Score|Overall\s*(?:Score|Band)|Final\s*Score)(?:\*\*)?\s*[：:]\s*\*{0,2}(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\*{0,2}/gim,
+    /(?:^|\n)\s*(?:#{1,4}\s*)?(?:\*\*)?(?:总分|综合评分|最终得分)(?:\*\*)?\s*[：:]\s*\*{0,2}(\d+(?:\.\d+)?)\s*分?\s*[（(]\s*满分\s*(\d+(?:\.\d+)?)\s*分?\s*[）)]/gim,
+  ];
+  let matchedTotal: number | null = null;
+  let matchedMax: number | null = null;
+  for (const regex of totalPatterns) {
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(tail)) !== null) {
+      const t = parseNumber(m[1] ?? '');
+      const mx = parseNumber(m[2] ?? '');
+      if (t !== null && mx !== null && mx > 0) {
+        matchedTotal = t;
+        matchedMax = mx;
+      }
+    }
+  }
+  if (matchedTotal === null || matchedMax === null) return null;
+
+  const dimensions: DimensionScore[] = [];
+  for (const modeDim of mode.scoreDimensions) {
+    const escapedName = modeDim.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const dimLineRe = new RegExp(
+      `(?:^|\\n)\\s*(?:[-*•]\\s*)?(?:\\*\\*)?${escapedName}(?:\\*\\*)?\\s*[：:]\\s*(\\d+(?:\\.\\d+)?)\\s*(?:\\/\\s*(\\d+(?:\\.\\d+)?)|分)(?:\\s*[（(：:—-]\\s*([^\\n）)]+)[）)]?)?`,
+      'i',
+    );
+    const dimMatch = dimLineRe.exec(tail);
+    if (!dimMatch) continue;
+    const scoreVal = parseNumber(dimMatch[1] ?? '');
+    const maxVal = dimMatch[2] ? parseNumber(dimMatch[2]) : Math.fround(modeDim.maxScore);
+    const comment = dimMatch[3]?.trim() || null;
+    if (scoreVal !== null && maxVal !== null) {
+      const dim = normalizeDimension(modeDim.name, scoreVal, maxVal, comment, mode);
+      if (dim) dimensions.push(dim);
+    }
+  }
+  return buildParsedScore(matchedTotal, matchedMax, dimensions, mode);
+}
+
+/** 从批改结果中解析评分（`<score>`/`<dim>` 属性任意顺序均可解析，并兼容 JSON / Markdown 评分汇总兜底） */
+export function parseScoreFromResult(result: string, mode: GradingMode): ParsedScore | null {
+  const scoreRegex = /<score\b([^>]*)>([\s\S]*?)<\/score>/gi;
+  const dimRegex = /<dim\b([^>]*?)(?:\/>|>([\s\S]*?)<\/dim>)/gi;
+
+  // 协议规定评分在回复最末尾且只有一个；若 LLM 违规输出多个 <score>，
+  // 取最后一个（末尾的才是最终评分，前面的多为示例/中间描述）
+  let scoreMatch: RegExpExecArray | null = null;
+  let candidate: RegExpExecArray | null;
+  while ((candidate = scoreRegex.exec(result)) !== null) scoreMatch = candidate;
+
+  // 容错：流尾截断导致 </score> 缺失时，仍尝试解析已输出的 <score ...>...</dim>
+  let scoreAttrs: string | null = scoreMatch ? (scoreMatch[1] ?? '') : null;
+  let dimsContent: string = scoreMatch ? (scoreMatch[2] ?? '') : '';
+  if (scoreAttrs === null) {
+    const unclosedMatch = /<score\b([^>]*)>([\s\S]*)$/i.exec(result);
+    if (unclosedMatch) {
+      scoreAttrs = unclosedMatch[1] ?? '';
+      dimsContent = unclosedMatch[2] ?? '';
+    }
+  }
+
+  if (scoreAttrs !== null) {
+    const totalRaw = extractAttr(scoreAttrs, 'total') ?? extractAttr(scoreAttrs, 'score');
+    const maxRaw = extractAttr(scoreAttrs, 'max') ?? extractAttr(scoreAttrs, 'max_total');
+    const totalParsed = totalRaw === null ? null : parseNumber(totalRaw);
+    const maxTotalParsed = maxRaw !== null
+      ? parseNumber(maxRaw)
+      : Number.isFinite(mode.totalMaxScore) && mode.totalMaxScore > 0
+        ? Math.fround(mode.totalMaxScore)
+        : null;
+    if (totalParsed !== null && maxTotalParsed !== null) {
+      // 解析维度评分：单个坏维度（score="8分"、"8.5/10" 等格式漂移）只跳过该维度
+      const dimensions: DimensionScore[] = [];
+      let dimMatch: RegExpExecArray | null;
+      while ((dimMatch = dimRegex.exec(dimsContent)) !== null) {
+        const attrs = dimMatch[1] ?? '';
+        const nameValue = extractAttr(attrs, 'name');
+        if (nameValue === null || nameValue.length === 0) continue;
+        const scoreAttr = extractAttr(attrs, 'score');
+        const scoreParsed = scoreAttr === null ? null : parseNumber(scoreAttr);
+        if (scoreParsed === null) continue;
+        const maxAttr = extractAttr(attrs, 'max');
+        const configured = mode.scoreDimensions.find((dim) => dim.name === nameValue);
+        const dimMaxParsed = maxAttr !== null
+          ? parseNumber(maxAttr)
+          : configured
+            ? Math.fround(configured.maxScore)
+            : null;
+        if (dimMaxParsed === null) continue;
+        const rawComment = (dimMatch[2] ?? extractAttr(attrs, 'comment') ?? '').trim();
+        const comment = rawComment.length === 0 ? null : rawComment;
+        const normalized = normalizeDimension(nameValue, scoreParsed, dimMaxParsed, comment, mode);
+        if (normalized) dimensions.push(normalized);
+      }
+      const parsed = buildParsedScore(totalParsed, maxTotalParsed, dimensions, mode);
+      if (parsed !== null) return parsed;
+    }
+  }
+
+  // XML <score> 缺失或不可用时，尝试 JSON 评分块或 Markdown 明确评分汇总（绝不伪造分数）
+  return parseJsonFallbackScore(result, mode) ?? parseMarkdownFallbackScore(result, mode);
 }
 
 // ============================================================================

@@ -194,7 +194,12 @@ export function ActionBarBlock({
 
   const handleClick = useCallback(
     (actionId: string, effectiveRisk: RiskLevel) => {
-      if (enforceHandlerRegistry && !lookupGenerativeActionHandler(actionHandlers, actionId)) {
+      const handlerDef = lookupGenerativeActionHandler(actionHandlers, actionId);
+      if (enforceHandlerRegistry && !handlerDef) {
+        return;
+      }
+      if (handlerDef?.skipPreExecuteConfirm) {
+        void runAction(actionId);
         return;
       }
       if (effectiveRisk === 'high') {
@@ -216,6 +221,9 @@ export function ActionBarBlock({
 
   const dialogAction = dialogActionId
     ? actions.find((a) => a.id === dialogActionId)
+    : undefined;
+  const dialogHandlerDef = dialogActionId
+    ? lookupGenerativeActionHandler(actionHandlers, dialogActionId)
     : undefined;
   const dialogTrustedLabel = dialogActionId
     ? trustedLabel(dialogActionId, dialogAction?.label ?? '', actionHandlers)
@@ -344,7 +352,7 @@ export function ActionBarBlock({
             ? t('action.confirm_title', { label: dialogTrustedLabel })
             : t('action.confirm_execute')
         }
-        description={t('action.confirm_desc')}
+        description={dialogHandlerDef?.confirmDescription ?? t('action.confirm_desc')}
         confirmText={t('action.confirm_execute')}
         loading={executing}
         disabled={executing}

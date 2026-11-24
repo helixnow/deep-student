@@ -676,6 +676,7 @@
     "knowledgePointsLabel": "知识点（可选）",
     "knowledgePointsEmpty": "暂无可选知识点，可手动输入",
     "knowledgePointInputPlaceholder": "输入知识点后回车添加",
+    "contextRequired": "请先添加至少 1 个知识点、填写主题提示、附加参考资料，或勾选「基于现有题目生成」",
     "referenceCollecting": "正在读取文件…",
     "taskSubmitted": "任务已提交，将在后台生成；可以关闭本面板，完成后会通知你",
     "taskCompleted": "AI 出题完成：{{count}} 道题待确认",

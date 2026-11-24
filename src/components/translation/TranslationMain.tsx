@@ -13,7 +13,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Switch } from '../ui/shad/Switch';
 import { Label } from '../ui/shad/Label';
 import { CommonTooltip } from '../shared/CommonTooltip';
-import { ArrowsLeftRight, CircleNotch, Columns, GearSix, Rows } from '@phosphor-icons/react';
+import { ArrowsLeftRight, BookBookmark, CircleNotch, Columns, GearSix, Rows } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 
 interface TranslationMainProps {
@@ -392,11 +392,37 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           </Label>
         </div>
 
-        {!settingsAsPage && <div className={cn('hidden w-px h-4 bg-border/35', !isToolbarCompact && 'lg:block')} />}
+        <div className={cn('hidden w-px h-4 bg-border/35', !isToolbarCompact && 'lg:block')} />
 
-        {/* 小屏不渲染页内齿轮：设置入口统一收在宿主移动顶栏
-            （learning-hub rightActions 更多菜单 → 设置，经 translation:openSettings
-            事件开合），页内保留会形成重复次级入口 */}
+        {/* 术语表与翻译设置入口：无论是否处于外部宿主导航模式，均保持一键可达，兑现空状态「术语表约束」承诺 */}
+        {!isSmallScreen && (
+          <CommonTooltip content={t('translation:prompt_editor.title')}>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowPromptEditor(!showPromptEditor)}
+              aria-label={t('translation:prompt_editor.glossary_title')}
+              aria-expanded={showPromptEditor}
+              className={cn(
+                COARSE_HIT,
+                'h-8 px-2 gap-1.5 shrink-0 text-xs font-medium',
+                showPromptEditor || glossary.length > 0
+                  ? 'text-primary bg-primary/10 hover:bg-primary/15'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <BookBookmark size={14} aria-hidden="true" />
+              <span className="whitespace-nowrap">{t('translation:prompt_editor.glossary_title')}</span>
+              {glossary.length > 0 && (
+                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] leading-none font-mono tabular-nums text-primary">
+                  {glossary.length}
+                </span>
+              )}
+            </DsButton>
+          </CommonTooltip>
+        )}
+
+        {/* 小屏不渲染页内齿轮：设置入口统一收在宿主移动顶栏 */}
         {!settingsAsPage && !isSmallScreen && (
           <CommonTooltip content={t('translation:prompt_editor.title')}>
             <DsButton

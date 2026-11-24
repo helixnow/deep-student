@@ -24,6 +24,7 @@ import {
   createNotesEditActionHandlers,
   type NotesEditActionLabels,
 } from '../handlers/notesEditActionHandlers';
+import { getNoteAIEditControl } from '@/features/notes/aiEditControlRegistry';
 import { extractNoteEditPayload } from '../utils/extractNoteEditPayload';
 import {
   COPY_INTENT_ACTION_ID,
@@ -87,6 +88,7 @@ export function collectGenerativeUIActionIds(intent: GenerativeUIIntent): string
 
 export interface ResolveGenerativeUIChatActionHandlersInput {
   canvasNoteId?: string;
+  canvasNoteTitle?: string;
   intent: GenerativeUIIntent;
   toolInput?: unknown;
   toolOutput?: unknown;
@@ -121,13 +123,29 @@ export function resolveGenerativeUIChatActionHandlers(
   if (needsNoteHandlers && input.canvasNoteId) {
     const noteEdit = extractNoteEditPayload(input.toolInput, input.toolOutput);
     if (noteEdit) {
+      const targetNoteTitle = (
+        input.canvasNoteTitle ?? getNoteAIEditControl(input.canvasNoteId)?.getNoteTitle?.()
+      )?.trim();
+      const baseApplyLabel =
+        input.noteEditLabels?.applyEdit ?? fallbackLabel('notes.edit_apply', '预览并应用到笔记');
+      const applyEditLabel = targetNoteTitle
+        ? String(
+            i18n.t('generativeUi:notes.edit_apply_with_target', {
+              label: baseApplyLabel,
+              title: targetNoteTitle,
+              defaultValue: `${baseApplyLabel}（${targetNoteTitle}）`,
+            }),
+          )
+        : baseApplyLabel;
+      const dismissLabel =
+        input.noteEditLabels?.dismissSuggestion ?? fallbackLabel('notes.edit_dismiss', '忽略建议');
       Object.assign(
         handlers,
         createNotesEditActionHandlers(
           { noteId: input.canvasNoteId, ...noteEdit },
-          input.noteEditLabels ?? {
-            applyEdit: fallbackLabel('notes.edit_apply', '应用到笔记'),
-            dismissSuggestion: fallbackLabel('notes.edit_dismiss', '忽略建议'),
+          {
+            applyEdit: applyEditLabel,
+            dismissSuggestion: dismissLabel,
           },
         ),
       );

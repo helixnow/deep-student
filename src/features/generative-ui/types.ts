@@ -91,6 +91,13 @@ export interface GenerativeActionDefinition {
   id: string;
   label: string;
   riskLevel: RiskLevel;
+  /**
+   * 仅打开非破坏性预览（如笔记 Diff 审阅面板，真正写入由面板内确认）时可置 true，
+   * 绕过 ActionBar 前置的通用不可逆确认弹窗（即使模型在意图 JSON 中声明了 high）。
+   */
+  skipPreExecuteConfirm?: boolean;
+  /** 可选：自定义高风险二次确认弹窗的描述文案（含目标对象/变更摘要） */
+  confirmDescription?: string;
   /** 确定性 handler，不由模型执行；可选返回 undo */
   handler: (
     payload?: Record<string, unknown>,

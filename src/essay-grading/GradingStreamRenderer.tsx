@@ -14,12 +14,13 @@ import { useTranslation } from 'react-i18next';
 import { StreamingMarkdownRenderer } from '../features/chat/components/renderers';
 import { StreamingAnnotatedText, isSuggestionErr } from '../components/essay-grading/StreamingAnnotatedText';
 import { hasInlineMarkers, hasScoreMarker, parseStreamingContent, removeScoreTag, removeSectionTags } from './streamingMarkerParser';
+import { reconcileMarkersWithOriginal } from './reconcileAnnotatedMarkers';
 import type { SuggestionChange } from './suggestionAnchors';
 import { ScoreCard } from '../components/essay-grading/ScoreCard';
 import { SentenceDetailView } from '../components/essay-grading/SentenceDetailView';
 import { PolishSectionView } from '../components/essay-grading/PolishSectionView';
 import { ModelEssayView } from '../components/essay-grading/ModelEssayView';
-import { CircleNotch, CaretDown, CaretUp, FileText, ListChecks, Sparkle, BookOpen } from '@phosphor-icons/react';
+import { ArrowClockwise, CircleNotch, CaretDown, CaretUp, FileText, ListChecks, Sparkle, BookOpen } from '@phosphor-icons/react';
 import { CustomScrollArea } from '../components/custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
@@ -56,6 +57,10 @@ interface GradingStreamRendererProps {
   banner?: React.ReactNode;
   /** 当前批阅模式 ID：评分卡里预置模式的维度名按界面语言显示（仅展示） */
   gradingModeId?: string | null;
+  /** 学生提交的原始作文文本：用于校验并区分模型私自插入的未提交文本 */
+  originalText?: string | null;
+  /** 评分缺失或解析失败时的重新批改回调 */
+  onRetry?: () => void;
 }
 
 /** 距底部阈值：小于该值视为"贴底"，恢复自动跟随 */
@@ -99,6 +104,8 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
   toolbarAccessory,
   banner,
   gradingModeId,
+  originalText,
+  onRetry,
 }) => {
   const { t } = useTranslation(['essay_grading']);
   const displayPlaceholder = placeholder || t('essay_grading:result_section.placeholder');
@@ -121,34 +128,47 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
   const strippedContent = useMemo(() => removeSectionTags(content), [content]);
   const contentHasInlineMarkers = useMemo(() => hasInlineMarkers(strippedContent), [strippedContent]);
   const contentHasScore = useMemo(() => hasScoreMarker(content), [content]);
-  const shouldShowAnnotated = contentHasInlineMarkers && viewMode === 'annotated';
 
   // 解析结构化数据（markers、score、sections）。
   // 流式中用 useDeferredValue 合并高频 chunk 的重解析（React 低优先级批处理），
   // 流结束后回到实时值做一次完整解析，避免完成态短暂落后。
   const deferredContent = useDeferredValue(content);
   const parseTarget = isStreaming ? deferredContent : content;
-  const parseResult = useMemo(
+  const rawParseResult = useMemo(
     () => parseStreamingContent(parseTarget, !isStreaming),
     [parseTarget, isStreaming]
   );
 
+  // 原文核验：完成态下将模型私自插入的未提交长句/段落转为建议补充 (ins)，绝不伪装成学生原文
+  const parseResult = useMemo(() => {
+    if (isStreaming || !originalText || !originalText.trim()) return rawParseResult;
+    const reconciled = reconcileMarkersWithOriginal(rawParseResult.markers, originalText);
+    return reconciled === rawParseResult.markers
+      ? rawParseResult
+      : { ...rawParseResult, markers: reconciled };
+  }, [rawParseResult, isStreaming, originalText]);
+
+  const hasReconciledMarkers = useMemo(
+    () => parseResult.markers.some((m) => m.type !== 'text' && m.type !== 'pending'),
+    [parseResult.markers]
+  );
+  const effectiveHasInlineMarkers = contentHasInlineMarkers || hasReconciledMarkers;
+  const effectiveShowAnnotated = effectiveHasInlineMarkers && viewMode === 'annotated';
+
   const scoreOnly = useMemo(() => {
-    if (!contentHasScore || contentHasInlineMarkers) return null;
+    if (!parseResult.score || effectiveHasInlineMarkers) return null;
     return parseResult.score;
-  }, [contentHasScore, contentHasInlineMarkers, parseResult.score]);
+  }, [effectiveHasInlineMarkers, parseResult.score]);
 
   const markdownContent = useMemo(() => {
-    if (!contentHasScore || contentHasInlineMarkers) return strippedContent;
+    if (!contentHasScore || effectiveHasInlineMarkers) return strippedContent;
     return removeScoreTag(strippedContent);
-  }, [strippedContent, contentHasScore, contentHasInlineMarkers]);
+  }, [strippedContent, contentHasScore, effectiveHasInlineMarkers]);
 
-  // A6-30: 模型输出了 <score> 标签但解析失败（畸形标签）时，总分区静默缺失。
-  // 仅在「确有 score 标签、非批注视图、流已结束却解析不出分数」时给降级提示，
-  // 避免对本就没有评分的作文误报。
-  const scoreParseFailed = useMemo(
-    () => !isStreaming && contentHasScore && !contentHasInlineMarkers && !parseResult.score,
-    [isStreaming, contentHasScore, contentHasInlineMarkers, parseResult.score]
+  // 评分缺失/畸形提示：流已结束、有内容却未解析出分数时，明确提示并给出重试入口
+  const scoreUnavailable = useMemo(
+    () => !isStreaming && !effectiveHasInlineMarkers && !parseResult.score && content.trim().length > 0,
+    [isStreaming, effectiveHasInlineMarkers, parseResult.score, content]
   );
 
   const hasPolish = parseResult.polishItems.length > 0;
@@ -198,12 +218,12 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
   const tabs = useMemo(() => {
     const list: { id: SectionTab; label: string; icon: React.ReactNode; show: boolean; generating?: boolean }[] = [
       { id: 'overview', label: t('essay_grading:sections.tab_overview'), icon: <FileText size={14} />, show: true },
-      { id: 'details', label: t('essay_grading:sections.tab_details'), icon: <ListChecks size={14} />, show: isStreaming || contentHasInlineMarkers },
+      { id: 'details', label: t('essay_grading:sections.tab_details'), icon: <ListChecks size={14} />, show: isStreaming || effectiveHasInlineMarkers },
       { id: 'polish', label: t('essay_grading:sections.tab_polish'), icon: <Sparkle size={14} />, show: polishDetected || hasPolish, generating: polishGenerating },
       { id: 'model_essay', label: t('essay_grading:sections.tab_model_essay'), icon: <BookOpen size={14} />, show: modelEssayDetected || hasModelEssay, generating: modelEssayGenerating },
     ];
     return list.filter(tab => tab.show);
-  }, [t, isStreaming, contentHasInlineMarkers, polishDetected, hasPolish, polishGenerating, modelEssayDetected, hasModelEssay, modelEssayGenerating]);
+  }, [t, isStreaming, effectiveHasInlineMarkers, polishDetected, hasPolish, polishGenerating, modelEssayDetected, hasModelEssay, modelEssayGenerating]);
 
   // BUG-6 FIX: 当前 tab 不在可用列表时回退到 overview
   useEffect(() => {
@@ -348,7 +368,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
         </div>
       )}
 
-      {contentHasInlineMarkers && !hideToolbar && activeTab === 'overview' && (
+      {effectiveHasInlineMarkers && !hideToolbar && activeTab === 'overview' && (
         <div className="px-4 py-1.5 border-b border-border/20 flex items-center gap-2 flex-wrap">
           <div className="flex flex-wrap items-center gap-1">
             {(['all', 'errors', 'suggestions', 'highlights'] as const).map((filter) => {
@@ -384,14 +404,16 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
           </button>
         </div>
       )}
-      {showLegend && contentHasInlineMarkers && activeTab === 'overview' && (
+      {showLegend && effectiveHasInlineMarkers && activeTab === 'overview' && (
         <div className="px-5 py-3 border-b border-border/20 bg-muted/10 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
           <div className="flex items-center gap-2">
             <span className="shrink-0 whitespace-nowrap text-red-500 line-through">{t('essay_grading:legend.example')}</span>
             <span className="text-muted-foreground">{t('essay_grading:legend.del_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="shrink-0 whitespace-nowrap text-amber-600 dark:text-amber-400 underline decoration-amber-400/70">{t('essay_grading:legend.example')}</span>
+            <span className="shrink-0 whitespace-nowrap rounded px-1 py-0.5 text-amber-800 dark:text-amber-300 bg-amber-500/10 border border-dashed border-amber-500/45">
+              +{t('essay_grading:markers.insert_badge')} {t('essay_grading:legend.example')}
+            </span>
             <span className="text-muted-foreground">{t('essay_grading:legend.ins_desc')}</span>
           </div>
           <div className="flex items-center gap-2">
@@ -425,7 +447,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
         >
           <div key={activeTab} className="motion-safe:animate-chat-fade-in">
           {activeTab === 'overview' ? (
-            shouldShowAnnotated ? (
+            effectiveShowAnnotated ? (
               <StreamingAnnotatedText
                 text={parseTarget}
                 isStreaming={isStreaming}
@@ -438,15 +460,35 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
                 onUndoSuggestion={onUndoSuggestion}
                 appliedSuggestionKeys={appliedSuggestionKeys}
                 gradingModeId={gradingModeId}
+                onRetry={onRetry}
               />
             ) : (
               <>
                 {scoreOnly && (
                   <ScoreCard score={scoreOnly} className="mb-6" gradingModeId={gradingModeId} />
                 )}
-                {scoreParseFailed && (
-                  <div className="mb-6 px-4 py-3 rounded-lg border border-border/30 bg-muted/20 text-sm text-muted-foreground">
-                    {t('essay_grading:score.parse_failed')}
+                {scoreUnavailable && (
+                  <div
+                    data-testid="essay-score-missing-notice"
+                    className="mb-6 flex flex-wrap items-center justify-between gap-2 px-4 py-3 rounded-lg border border-warning/35 bg-warning/5 text-sm text-foreground/85"
+                    role="status"
+                  >
+                    <span className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
+                      {contentHasScore
+                        ? t('essay_grading:score.parse_failed')
+                        : t('essay_grading:score.missing_notice')}
+                    </span>
+                    {onRetry && (
+                      <DsButton
+                        variant="outline"
+                        size="sm"
+                        onClick={onRetry}
+                        className="h-7 shrink-0 text-xs"
+                      >
+                        <ArrowClockwise size={12} />
+                        {t('essay_grading:score.retry_grading')}
+                      </DsButton>
+                    )}
                   </div>
                 )}
                 <StreamingMarkdownRenderer

@@ -4,6 +4,7 @@ import type { TFunction } from 'i18next';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { ApiConfig, VendorConfig } from '@/types';
 import { ShadApiEditModal } from './ShadApiEditModal';
+import { getProviderDisplayName, getVendorDisplayName } from './builtinVendorDisplay';
 import { VendorConfigModal, type VendorConfigModalRef } from './VendorConfigModal';
 import { SettingsMcpPreviewBody } from './SettingsMcpPreviewBody';
 import type { SettingsRightPanelType } from './hookDepsTypes';
@@ -77,7 +78,11 @@ export function SettingsMobileRightPanel({
             onCancel={handleCloseModelEditor}
             hideConnectionFields
             lockedVendorInfo={{
-              name: modelEditor.vendor.name,
+              name: getVendorDisplayName(
+                modelEditor.vendor,
+                getProviderDisplayName(modelEditor.vendor.providerType, t),
+                t,
+              ),
               baseUrl: modelEditor.vendor.baseUrl,
               providerType: modelEditor.vendor.providerType,
               apiProtocol: modelEditor.vendor.apiProtocol,

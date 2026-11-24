@@ -648,19 +648,32 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
         <div
           data-testid="wb-dock-hotzone"
           data-collapsed={hidden ? 'true' : 'false'}
+          role={hidden ? 'button' : undefined}
+          tabIndex={hidden ? 0 : undefined}
           aria-hidden={!hidden || undefined}
           aria-label={hidden ? t('workbench:dock.autohideHint') : undefined}
           title={hidden ? t('workbench:dock.autohideHint') : undefined}
-          // macOS 原生纯净底缘热区（去除呼吸条），悬停延迟唤出或点击即刻唤出
+          // macOS 原生纯净底缘热区：保留足够点击/悬停命中高度，避免窗口铺底时 Dock 难以唤出
           className={cn(
             'wb-dock-hotzone pointer-events-auto absolute inset-x-0 bottom-0',
-            hidden ? 'h-2 cursor-pointer' : 'h-1',
+            hidden ? 'h-3.5 cursor-pointer' : 'h-1',
           )}
           onClick={
             hidden
               ? () => {
                   clearAutohideTimers();
                   revealDock();
+                }
+              : undefined
+          }
+          onKeyDown={
+            hidden
+              ? (event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    clearAutohideTimers();
+                    revealDock();
+                  }
                 }
               : undefined
           }

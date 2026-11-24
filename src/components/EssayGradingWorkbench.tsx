@@ -294,10 +294,18 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     topicImages,
   });
 
-  // ★ 仅在会话 id 变化（真正换会话）时重置脏基准。父级刷新 initialSession 对象
-  // （如保存回写后）身份变化不应把基准重置回空题目/空图片，否则已批改落盘的
-  // 题目/图片会被误判为未保存修改（restoreFromDstu 会按恢复结果再修正基准）。
+  // ★ 仅在会话 id 变化（真正换会话）时重置脏基准与会话上下文状态，防止上一个会话的题目/图片泄漏到新会话。
+  const prevInitialSessionIdRef = useRef<string | undefined>(initialSession?.id);
   useEffect(() => {
+    const prevId = prevInitialSessionIdRef.current;
+    prevInitialSessionIdRef.current = initialSession?.id;
+    if (prevId !== initialSession?.id) {
+      setTopicText('');
+      setUploadedImages([]);
+      setTopicImages([]);
+      draftRestoredRef.current = false;
+      restoredDraftRef.current = null;
+    }
     patchPersistedBaseline({
       inputText: initialSession?.inputText ?? '',
       topicText: '',
@@ -544,10 +552,9 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
             const restoredTopic = restoredContext?.topicText ?? '';
             const restoredUploaded = fromPersistedImages(restoredContext?.uploadedImages);
             const restoredTopicImages = fromPersistedImages(restoredContext?.topicImages);
-            if (restoredTopic) {
-              // 草稿里的题目是更新的未保存编辑，优先于会话持久化值
-              setTopicText(prev => prev || restoredTopic);
-            }
+            // 草稿里的题目是更新的未保存编辑，优先于会话持久化值；两者均为空时显式清空，防止旧会话题目残留
+            const draftTopic = restoredDraftRef.current?.topicText ?? '';
+            setTopicText(draftTopic || restoredTopic);
             if (restoredUploaded.length > 0 && uploadedImagesRef.current.length === 0) {
               // 恢复的图片登记为活跃：数量上限判定与删除/重试回调依赖该集合
               restoredUploaded.forEach(img => activeImageIdsRef.current.add(img.id));
@@ -683,6 +690,12 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
         }
       } catch {
         // 旧格式：整个值即正文文本
+      }
+      // 若草稿中正文已空且仅残留未修改的内置示例题目（如「坚持」），自动丢弃该幽灵示例题目，避免新作文被隐形跑题
+      const sampleTopic = t('essay_grading:workbench.sample.topic');
+      if (!draftText.trim() && draftTopic.trim() === sampleTopic.trim()) {
+        draftTopic = '';
+        clearEssayDraft(draftKey, draftSettingKey);
       }
       const applyText = Boolean(draftText && !inputText);
       if (applyText) setInputText(draftText);
@@ -1344,8 +1357,8 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     });
   }, [t, loadSessionRounds, dstuMode, patchPersistedBaseline]);
 
-  // 开始批改
-  const handleGrade = useCallback(async () => {
+  // 开始批改（bypassUnchangedCheck 允许评分缺失时直接重批）
+  const executeGrading = useCallback(async (options?: { bypassUnchangedCheck?: boolean }) => {
     // ★ M-052: 离线时阻止批改并提示用户
     if (!navigator.onLine) {
       showGlobalNotification('warning', t('essay_grading:errors.offline'));
@@ -1378,7 +1391,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
       gradeLevel,
       customPrompt,
     });
-    if (rounds.length > 0 && submitSnapshot === lastGradedSnapshotRef.current) {
+    if (!options?.bypassUnchangedCheck && rounds.length > 0 && submitSnapshot === lastGradedSnapshotRef.current) {
       showGlobalNotification('warning', t('essay_grading:errors.unchanged_text'));
       return;
     }
@@ -1480,6 +1493,14 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
       }
     }
   }, [inputText, modeId, modelId, essayType, gradeLevel, customPrompt, currentSession, initialSession?.id, rounds, isGrading, t, i18n, startGrading, finalizeCompletedGrading, uploadedImages, topicImages, topicText]);
+
+  const handleGrade = useCallback(() => {
+    void executeGrading();
+  }, [executeGrading]);
+
+  const handleForceRegrade = useCallback(() => {
+    void executeGrading({ bypassUnchangedCheck: true });
+  }, [executeGrading]);
 
   // 重试批改（错误后由 ResultPanel 触发）
   // ★ 修复：此前重试成功后不会执行任何收尾（无成功反馈、轮次不刷新、DSTU 不回写），现与正常批改共用收尾逻辑
@@ -1880,6 +1901,8 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
           error={gradingStream.error}
           canRetry={gradingStream.canRetry}
           onRetry={handleRetry}
+          onRegrade={handleForceRegrade}
+          originalText={currentRound ? currentRound.input_text : inputText}
           isPartialResult={isPartialResult}
           currentRound={currentRoundNumber}
           hasGradedRound={Boolean(currentRound)}

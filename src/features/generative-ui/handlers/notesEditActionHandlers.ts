@@ -41,7 +41,11 @@ export function createNotesEditActionHandlers(
     'apply-note-edit': {
       id: 'apply-note-edit',
       label: labels.applyEdit,
-      riskLevel: 'high',
+      // 派发 canvas:ai-edit-request 仅在目标笔记中打开非破坏性的 Diff 审阅面板，
+      // 真正写入仅在用户在 Diff 面板内显式点击「采纳/全部采纳」后才发生；
+      // 因此无需前置通用「不可逆操作」二次确认弹窗。
+      riskLevel: 'low',
+      skipPreExecuteConfirm: true,
       handler: async () => {
         const result = dispatchCanvasAIEditRequest(
           {

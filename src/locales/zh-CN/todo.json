@@ -417,6 +417,7 @@
     "deleteItem": "删除待办",
     "dragToReorder": "拖拽排序",
     "editTitleHint": "双击可编辑标题",
+    "openDetail": "查看详情与子任务",
     "setPriority": "设置优先级"
   },
   "reschedule": {

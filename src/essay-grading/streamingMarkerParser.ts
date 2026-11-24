@@ -25,6 +25,8 @@ export interface StreamingMarker {
   // err（词汇表见 markerTypes.ErrorType，与后端 MARKER_INSTRUCTIONS 一致）
   errorType?: ErrorType;
   explanation?: string;
+  /** 由原文核验识别出的 AI 补充段落（非学生提交原文，视觉上按建议补充区分） */
+  inferredInsertion?: boolean;
   // 标记是否完整
   isComplete: boolean;
 }
@@ -88,7 +90,12 @@ export function extractAttributeValue(attrs: string, attrName: string): string |
   // (?:^|\s) 边界防止匹配到其他属性名的后缀（如 old 误匹配 bold）
   const attrStartRegex = new RegExp(`(?:^|\\s)${attrName}\\s*=\\s*(['"])`, 'i');
   const startMatch = attrStartRegex.exec(attrs);
-  if (!startMatch || startMatch.index == null) return undefined;
+  if (!startMatch || startMatch.index == null) {
+    // 兼容无引号数值属性（如 total=46 max=60）
+    const unquotedRegex = new RegExp(`(?:^|\\s)${attrName}\\s*=\\s*([^\\s"'=<>` + '`' + `/]+)`, 'i');
+    const unquotedMatch = unquotedRegex.exec(attrs);
+    return unquotedMatch?.[1] ? decodeXmlEntities(unquotedMatch[1]) : undefined;
+  }
 
   const quoteChar = startMatch[1];
   const valueStart = startMatch.index + startMatch[0].length;
@@ -504,58 +511,19 @@ function parseConfirmedMarkers(
 // ============================================================================
 
 const SCORE_REGEX = /<score\b([^>]*)>([\s\S]*?)<\/score>/gi;
-// 评语惰性匹配到 </dim>，允许评语中出现 '<'（如 "a < b"）
-const DIM_REGEX = /<dim\b([^>]*)>([\s\S]*?)<\/dim>/gi;
+// 评语惰性匹配到 </dim>，允许评语中出现 '<'（如 "a < b"），并兼容自闭合 <dim .../>
+const DIM_REGEX = /<dim\b([^>]*?)(?:\/>|>([\s\S]*?)<\/dim>)/gi;
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(value, max));
 
-/**
- * 解析评分。
- * - 多个 <score> 时取最后一个（与后端 pipeline.parseScoreFromResult 对齐）
- * - <score> 与 <dim> 属性均支持任意顺序（逐属性提取）
- * - 超满分统一 clamp 到 max（与后端一致），total 与 dim 都 clamp
- * - 求和制多维度（dimensions.length >= 2 且各维满分之和等于 maxTotal）且与总分差超过 0.5 时以维度之和为准
- *
- * 供 markerParser.parseScore 复用（统一实现，避免双份逻辑漂移）。
- */
-export function parseScoreFromText(text: string): ParsedScore | null {
-  SCORE_REGEX.lastIndex = 0;
-  let scoreMatch: RegExpExecArray | null = null;
-  let candidate: RegExpExecArray | null;
-  while ((candidate = SCORE_REGEX.exec(text)) !== null) {
-    scoreMatch = candidate;
-  }
-  if (!scoreMatch) return null;
-  
-  const scoreAttrs = scoreMatch[1] ?? '';
-  const dimsContent = scoreMatch[2] ?? '';
-  
-  const total = parseFloat(extractAttributeValue(scoreAttrs, 'total') ?? '');
-  const maxTotal = parseFloat(extractAttributeValue(scoreAttrs, 'max') ?? '');
-  
+function finalizeParsedScore(
+  total: number,
+  maxTotal: number,
+  dimensions: DimensionScore[],
+): ParsedScore | null {
   if (!Number.isFinite(maxTotal) || maxTotal <= 0 || !Number.isFinite(total)) return null;
-  // 超满分/负分统一 clamp 到 [0, maxTotal]，与后端 clamp 行为一致
   const safeTotal = clamp(total, 0, maxTotal);
-  
-  // 解析维度评分（属性任意顺序）
-  const dimensions: DimensionScore[] = [];
-  let dimMatch;
-  DIM_REGEX.lastIndex = 0;
-  while ((dimMatch = DIM_REGEX.exec(dimsContent)) !== null) {
-    const dimAttrs = dimMatch[1] ?? '';
-    const name = extractAttributeValue(dimAttrs, 'name');
-    const score = parseFloat(extractAttributeValue(dimAttrs, 'score') ?? '');
-    const maxScore = parseFloat(extractAttributeValue(dimAttrs, 'max') ?? '');
-    if (name && !isNaN(score) && !isNaN(maxScore) && maxScore > 0) {
-      dimensions.push({
-        name,
-        score: clamp(score, 0, maxScore),
-        maxScore,
-        comment: dimMatch[2]?.trim() || undefined,
-      });
-    }
-  }
 
   let finalTotal = safeTotal;
   if (dimensions.length >= 2) {
@@ -565,8 +533,7 @@ export function parseScoreFromText(text: string): ParsedScore | null {
       finalTotal = clamp(dimSum, 0, maxTotal);
     }
   }
-  
-  // 计算等级代码（组件层负责翻译）
+
   const percentage = (finalTotal / maxTotal) * 100;
   let grade: GradeCode;
   if (percentage >= 90) {
@@ -578,8 +545,138 @@ export function parseScoreFromText(text: string): ParsedScore | null {
   } else {
     grade = 'fail';
   }
-  
+
   return { total: finalTotal, maxTotal, grade, dimensions, isComplete: true };
+}
+
+function parseJsonFallbackScore(text: string): ParsedScore | null {
+  const candidates: string[] = [];
+  const fencedRegex = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/gi;
+  let match: RegExpExecArray | null;
+  while ((match = fencedRegex.exec(text)) !== null) {
+    if (match[1]) candidates.push(match[1]);
+  }
+  const bareRegex = /\{[^{}]*"total"\s*:\s*[-+]?\d[\s\S]*?\}(?:\s*)$/g;
+  while ((match = bareRegex.exec(text)) !== null) {
+    candidates.push(match[0]);
+  }
+  for (let i = candidates.length - 1; i >= 0; i -= 1) {
+    try {
+      const obj = JSON.parse(candidates[i]) as Record<string, unknown>;
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) continue;
+      const total = Number(obj.total ?? obj.overall_score ?? obj.score);
+      const maxTotal = Number(obj.max ?? obj.max_total ?? obj.maxTotal);
+      if (!Number.isFinite(total) || !Number.isFinite(maxTotal) || maxTotal <= 0) continue;
+      const dimensions: DimensionScore[] = [];
+      if (Array.isArray(obj.dimensions)) {
+        for (const item of obj.dimensions) {
+          if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+          const rec = item as Record<string, unknown>;
+          const name = typeof rec.name === 'string' ? rec.name.trim() : '';
+          const score = Number(rec.score);
+          const maxScore = Number(rec.max ?? rec.max_score ?? rec.maxScore);
+          if (name && Number.isFinite(score) && Number.isFinite(maxScore) && maxScore > 0) {
+            dimensions.push({
+              name,
+              score: clamp(score, 0, maxScore),
+              maxScore,
+              comment: typeof rec.comment === 'string' && rec.comment.trim() ? rec.comment.trim() : undefined,
+            });
+          }
+        }
+      }
+      const finalized = finalizeParsedScore(total, maxTotal, dimensions);
+      if (finalized) return finalized;
+    } catch {
+      // 忽略非法 JSON
+    }
+  }
+  return null;
+}
+
+function parseMarkdownFallbackScore(text: string): ParsedScore | null {
+  const tail = text.slice(Math.max(0, text.length - 2000));
+  const patterns: readonly RegExp[] = [
+    /(?:^|\n)\s*(?:#{1,4}\s*)?(?:\*\*)?(?:总分|综合评分|总评得分|得分|最终得分|Total\s*Score|Overall\s*(?:Score|Band)|Final\s*Score)(?:\*\*)?\s*[：:]\s*\*{0,2}(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\*{0,2}/gim,
+    /(?:^|\n)\s*(?:#{1,4}\s*)?(?:\*\*)?(?:总分|综合评分|最终得分)(?:\*\*)?\s*[：:]\s*\*{0,2}(\d+(?:\.\d+)?)\s*分?\s*[（(]\s*满分\s*(\d+(?:\.\d+)?)\s*分?\s*[）)]/gim,
+  ];
+  let total: number | null = null;
+  let maxTotal: number | null = null;
+  for (const regex of patterns) {
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(tail)) !== null) {
+      const t = parseFloat(m[1] ?? '');
+      const mx = parseFloat(m[2] ?? '');
+      if (Number.isFinite(t) && Number.isFinite(mx) && mx > 0) {
+        total = t;
+        maxTotal = mx;
+      }
+    }
+  }
+  if (total === null || maxTotal === null) return null;
+  return finalizeParsedScore(total, maxTotal, []);
+}
+
+/**
+ * 解析评分。
+ * - 多个 <score> 时取最后一个（与后端 pipeline.parseScoreFromResult 对齐）
+ * - <score> 与 <dim> 属性均支持任意顺序（逐属性提取）
+ * - 超满分统一 clamp 到 max（与后端一致），total 与 dim 都 clamp
+ * - 求和制多维度（dimensions.length >= 2 且各维满分之和等于 maxTotal）且与总分差超过 0.5 时以维度之和为准
+ * - 完成态下兼容未闭合 <score>、JSON 评分块、Markdown 总分汇总（绝不编造分数）
+ *
+ * 供 markerParser.parseScore 复用（统一实现，避免双份逻辑漂移）。
+ */
+export function parseScoreFromText(
+  text: string,
+  options?: { allowFallback?: boolean },
+): ParsedScore | null {
+  SCORE_REGEX.lastIndex = 0;
+  let scoreMatch: RegExpExecArray | null = null;
+  let candidate: RegExpExecArray | null;
+  while ((candidate = SCORE_REGEX.exec(text)) !== null) {
+    scoreMatch = candidate;
+  }
+
+  const scoreAttrs: string | null = scoreMatch ? (scoreMatch[1] ?? '') : null;
+  const dimsContent: string = scoreMatch ? (scoreMatch[2] ?? '') : '';
+
+  if (scoreAttrs !== null) {
+    const total = parseFloat(
+      extractAttributeValue(scoreAttrs, 'total') ?? extractAttributeValue(scoreAttrs, 'score') ?? ''
+    );
+    const maxTotal = parseFloat(
+      extractAttributeValue(scoreAttrs, 'max') ?? extractAttributeValue(scoreAttrs, 'max_total') ?? ''
+    );
+
+    if (Number.isFinite(maxTotal) && maxTotal > 0 && Number.isFinite(total)) {
+      const dimensions: DimensionScore[] = [];
+      let dimMatch: RegExpExecArray | null;
+      DIM_REGEX.lastIndex = 0;
+      while ((dimMatch = DIM_REGEX.exec(dimsContent)) !== null) {
+        const dimAttrs = dimMatch[1] ?? '';
+        const name = extractAttributeValue(dimAttrs, 'name');
+        const score = parseFloat(extractAttributeValue(dimAttrs, 'score') ?? '');
+        const maxScore = parseFloat(extractAttributeValue(dimAttrs, 'max') ?? '');
+        const comment = (dimMatch[2] ?? extractAttributeValue(dimAttrs, 'comment') ?? '').trim() || undefined;
+        if (name && !isNaN(score) && !isNaN(maxScore) && maxScore > 0) {
+          dimensions.push({
+            name,
+            score: clamp(score, 0, maxScore),
+            maxScore,
+            comment,
+          });
+        }
+      }
+      const parsed = finalizeParsedScore(total, maxTotal, dimensions);
+      if (parsed) return parsed;
+    }
+  }
+
+  if (options?.allowFallback) {
+    return parseJsonFallbackScore(text) ?? parseMarkdownFallbackScore(text);
+  }
+  return null;
 }
 
 /**
@@ -708,8 +805,19 @@ function doParseStreamingContent(text: string, isComplete: boolean): StreamingPa
   // 1. 提取代码块，避免解析代码块内的标记
   const { cleanText, codeBlocks } = extractCodeBlocks(text);
   
-  // 2. 先尝试解析评分（多个时取最后一个，忽略代码块内的）
-  const score = parseScoreFromText(cleanText);
+  // 2. 先尝试解析评分（多个时取最后一个，优先正文内，完成态兼容代码围栏包裹的 <score>/JSON 与 Markdown 汇总）
+  let score = parseScoreFromText(cleanText, { allowFallback: isComplete });
+  if (!score && isComplete && codeBlocks.size > 0) {
+    score = parseScoreFromText(text, { allowFallback: true });
+    if (score) {
+      // 移除仅包含评分标签的代码块，避免原始 XML <score> 泄漏到正文
+      for (const [placeholder, original] of codeBlocks) {
+        if (/^```(?:xml|html|json)?\s*<score\b[\s\S]*?<\/score>\s*```$/i.test(original.trim())) {
+          codeBlocks.set(placeholder, '');
+        }
+      }
+    }
+  }
   
   // 3. 移除评分标签和 section 标签后处理剩余内容。
   //    孤儿 </score> 直接清除；未闭合的 <score 块整体剥离：流式中评分段与

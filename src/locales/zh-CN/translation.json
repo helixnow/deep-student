@@ -331,7 +331,12 @@
     "dismiss": "知道了",
     "shortcut_translate": "翻译",
     "shortcut_swap": "交换语言",
-    "shortcut_cancel": "取消翻译"
+    "shortcut_cancel": "取消翻译",
+    "overwrite_manual_confirm": "当前译文包含手工修改，重新翻译将覆盖现有内容，是否继续？",
+    "confirm_retranslate": "确认重译",
+    "retranslated_undo_hint": "已生成新译文，可随时恢复上一版译文",
+    "restore_previous": "恢复上一版",
+    "restored_previous": "已恢复上一版译文"
   },
   "viewer": {
     "loading": "正在加载翻译…",

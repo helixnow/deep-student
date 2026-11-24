@@ -1191,7 +1191,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     retryPersistence: retryAIReviewPersistence, recoveryOptions: aiRecoveryOptions,
     restoreCandidate: restoreAICandidate, officialReviewProps, scopeProps,
   } = useAIReview({
-    noteId, editorApi, enabled: true, windowId: acrWindowId,
+    noteId, noteTitle: initialTitle, editorApi, enabled: true, windowId: acrWindowId,
     host: {
       acquireReviewLease: () => {
         if (!editorApi?.acquireReviewLease) throw new Error(t('notes:host.review_lease_not_ready', '审阅交互锁尚未就绪。'));
@@ -1801,7 +1801,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
         {aiEditState.isActive && !aiReview?.collapsed && showBanner('ai-diff') && (
           <AIDiffPanel
             {...officialReviewProps} {...scopeProps}
-            state={aiEditState} review={aiReview}
+            state={aiEditState} review={aiReview} noteTitle={initialTitle}
             onAccept={() => { void handleAccept(); }}
             onApplySelected={() => { void handleAccept(false); }}
             onReject={handleReject}
