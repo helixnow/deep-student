@@ -81,6 +81,11 @@ import {
   clearHiddenDraftSessionMetadata,
   getHiddenDraftSessionScope,
 } from './draftSession';
+import {
+  LAST_ACTIVE_SESSION_KEY,
+  clearLastActiveSessionIdIfMatches,
+  persistLastActiveSessionId,
+} from './lastActiveSession';
 import { ParkedSessionViewManager } from '../utils/modelListCacheAndResume';
 import { ChatReadingResizeHandle, getChatReadingWidth, MIN_READING_LAYOUT_WIDTH } from './ChatReadingResizeHandle';
 
@@ -117,7 +122,7 @@ const APP_ICONS = {
 export const getAppIcon = (type: ResourceType) =>
   Object.hasOwn(APP_ICONS, type) ? APP_ICONS[type as keyof typeof APP_ICONS] : FileText;
 const isReadingResource = (type: ResourceType) => type === 'file' || type === 'textbook' || type === 'image';
-const LAST_SESSION_KEY = 'chat-v2-last-session-id';
+const LAST_SESSION_KEY = LAST_ACTIVE_SESSION_KEY;
 // 次级面板动效对齐 chat 动效 token（motion.css）：
 // - 时长 = --chat-motion-base（200ms）；JS 侧 setTimeout 需要数值，
 //   与下方 duration-[var(--chat-motion-base)] 保持同源语义（token 变更时同步此值）
@@ -200,10 +205,13 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   // - 保存到 localStorage（P1-28）
   // 副作用移出 setState updater（updater 必须纯函数，StrictMode 下会被双调用）
   const currentSessionIdRef = useRef<string | null>(null);
+  const selectionEpochRef = useRef(0);
+  const earlyNewSessionIntentRef = useRef(false);
   const parkedSessionViewsRef = useRef(
     new ParkedSessionViewManager<{ visitedAt: number }>('__init__', () => ({ visitedAt: 0 })),
   );
   const setCurrentSessionId = useCallback((sessionIdOrUpdater: string | null | ((prev: string | null) => string | null)) => {
+    selectionEpochRef.current += 1;
     const prev = currentSessionIdRef.current;
     const newId = typeof sessionIdOrUpdater === 'function' ? sessionIdOrUpdater(prev) : sessionIdOrUpdater;
     currentSessionIdRef.current = newId;
@@ -213,16 +221,14 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     }
     // 同步更新 sessionManager 的当前会话 ID
     sessionManager.setCurrentSessionId(newId);
-    // 🔧 P1-28: 保存到 localStorage（只保存有效的会话 ID）
+    // 🔧 P1-28 + P3-2: 仅持久化真实会话（排除隐藏草稿与子代理/Worker 会话）
     if (newId) {
-      try {
-        // 批判性修复：只持久化普通会话 sess_，避免 Worker 会话 agent_ 污染“上次会话”
-        if (newId.startsWith('sess_')) {
-          localStorage.setItem(LAST_SESSION_KEY, newId);
-        }
-      } catch (e) {
-        console.warn('[ChatV2Page] Failed to save last session ID:', e);
-      }
+      const storeState = sessionManager.peek(newId)?.getState();
+      const listedSession = sessionsRef.current.find((session) => session.id === newId);
+      persistLastActiveSessionId(newId, LAST_SESSION_KEY, {
+        mode: storeState?.mode ?? listedSession?.mode ?? null,
+        metadata: storeState?.sessionMetadata ?? listedSession?.metadata ?? null,
+      });
     }
     // 🔧 Bug fix: 切换对话时关闭右侧预览面板，避免上一个对话的预览残留
     // 移动端同时收回右屏：只清 openApp 会让右屏退化成资源库列表盖住新会话
@@ -504,6 +510,9 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     getOrCreateHiddenDraftSession, handleViewAgentSession,
   } = useSessionLifecycle({
     currentSessionId,
+    currentSessionIdRef,
+    selectionEpochRef,
+    earlyNewSessionIntentRef,
     setSessions, setCurrentSessionId, setIsLoading, setTotalSessionCount,
     setUngroupedSessionCount, setIsInitialLoading, sessionsRef,
     t, LAST_SESSION_KEY,
@@ -530,7 +539,13 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       sessionManager.get(sessionId)?.setState({
         sessionMetadata: nextMetadata,
       });
-      clearHiddenDraftSessionId(draftScope);
+      clearHiddenDraftSessionId(draftScope, sessionId);
+      if (currentSessionIdRef.current === sessionId) {
+        persistLastActiveSessionId(sessionId, LAST_SESSION_KEY, {
+          mode: promotedSession.mode,
+          metadata: promotedSession.metadata,
+        });
+      }
       setSessions((prev) => [promotedSession, ...prev.filter((session) => session.id !== sessionId)]);
       setTotalSessionCount((prev) => (prev !== null ? prev + 1 : null));
       if (!promotedSession.groupId) {
@@ -566,7 +581,14 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     const initialHasMessages = initialState.messageOrder.length > 0;
     setCurrentSessionHasMessages(initialHasMessages);
     if (initialHasMessages) {
-      void promoteHiddenDraftSession(currentSessionId, initialState.sessionMetadata);
+      if (getHiddenDraftSessionScope(initialState.sessionMetadata)) {
+        void promoteHiddenDraftSession(currentSessionId, initialState.sessionMetadata);
+      } else {
+        persistLastActiveSessionId(currentSessionId, LAST_SESSION_KEY, {
+          mode: initialState.mode,
+          metadata: initialState.sessionMetadata,
+        });
+      }
     }
     
     // 订阅 store 的消息数量变化
@@ -578,7 +600,14 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         console.log('[ChatV2Page] Message count changed, hasMessages:', hasMessages);
         setCurrentSessionHasMessages(hasMessages);
         if (hasMessages) {
-          void promoteHiddenDraftSession(currentSessionId, state.sessionMetadata);
+          if (getHiddenDraftSessionScope(state.sessionMetadata)) {
+            void promoteHiddenDraftSession(currentSessionId, state.sessionMetadata);
+          } else {
+            persistLastActiveSessionId(currentSessionId, LAST_SESSION_KEY, {
+              mode: state.mode,
+              metadata: state.sessionMetadata,
+            });
+          }
         }
       }
     });
@@ -691,6 +720,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
 
       // 桌面 ModernSidebar 直接删除/移动会话后，同步本页 sessions 状态（避免 Browser/移动列表残留）
       if (action === 'session-deleted' && typeof sessionId === 'string') {
+        clearLastActiveSessionIdIfMatches(sessionId, LAST_SESSION_KEY);
         setSessions((prev) => prev.filter((item) => item.id !== sessionId));
         setTotalSessionCount((prev) => (prev !== null ? Math.max(0, prev - 1) : null));
         void loadUngroupedCount();
@@ -785,6 +815,10 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     }, BACK_PRIORITY.view);
   }, [isSmallScreen, requestCloseGroupEditor, setSessionSheetOpen, setViewMode]);
 
+  const handleEarlyNewSessionIntent = useCallback(() => {
+    earlyNewSessionIntentRef.current = true;
+  }, []);
+
   // ===== 页面事件 hook =====
   useChatPageEvents({
     notesContext: null, t, loadSessions, isInitialLoading, currentSessionId,
@@ -794,6 +828,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     setOpenApp, isSmallScreen, setMobileResourcePanelOpen,
     attachmentPreviewOpen, setAttachmentPreviewOpen,
     sidebarCollapsed, handleSidebarCollapsedChange, setSessionSheetOpen,
+    onEarlyNewSessionIntent: handleEarlyNewSessionIntent,
   });
 
   // 用户手动点选会话：先作废导航握手里挂起的意图（冷启动期的自动导航

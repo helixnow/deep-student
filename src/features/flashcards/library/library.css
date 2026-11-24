@@ -889,3 +889,28 @@
   height: auto;
   gap: 20px;
 }
+
+/* ---------- 分页栏（首页/末页/直达页码/每页条数） ---------- */
+
+.fc-lib-pagination {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.fc-lib-page-jump-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.fc-lib-page-jump-input::-webkit-outer-spin-button,
+.fc-lib-page-jump-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+@media (max-width: 767.98px) {
+  .fc-lib-page-size-select,
+  .fc-lib-page-jump-input {
+    font-size: 16px;
+  }
+}

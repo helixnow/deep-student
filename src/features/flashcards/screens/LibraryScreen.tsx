@@ -7,6 +7,8 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import { useTranslation } from 'react-i18next';
 import {
   BracketsCurly,
+  CaretDoubleLeft,
+  CaretDoubleRight,
   CaretDown,
   CaretLeft,
   CaretRight,
@@ -42,6 +44,7 @@ import { hasValidCloze, insertClozeDeletion, nextClozeIndex } from '../cloze';
 import { FSRS_LIBRARY_REFRESH_EVENT } from '../events';
 import {
   FLASHCARDS_LIBRARY_PAGE_SIZE,
+  FLASHCARDS_LIBRARY_PAGE_SIZE_OPTIONS,
   useFlashcardsLibraryStore,
   type LibrarySortKey,
   type LibraryStatusFilter,
@@ -96,6 +99,7 @@ export const LibraryScreen: React.FC = () => {
   const total = useFlashcardsLibraryStore((state) => state.total);
   const statusCounts = useFlashcardsLibraryStore((state) => state.statusCounts);
   const page = useFlashcardsLibraryStore((state) => state.page);
+  const pageSize = useFlashcardsLibraryStore((state) => state.pageSize);
   const search = useFlashcardsLibraryStore((state) => state.searchInput);
   const query = useFlashcardsLibraryStore((state) => state.query);
   const loading = useFlashcardsLibraryStore((state) => state.loading);
@@ -118,6 +122,7 @@ export const LibraryScreen: React.FC = () => {
   const refresh = useFlashcardsLibraryStore((state) => state.refresh);
   const submitSearch = useFlashcardsLibraryStore((state) => state.submitSearch);
   const goToPage = useFlashcardsLibraryStore((state) => state.goToPage);
+  const setPageSize = useFlashcardsLibraryStore((state) => state.setPageSize);
   const enqueueCard = useFlashcardsLibraryStore((state) => state.enqueueCard);
   const setCardSuspended = useFlashcardsLibraryStore((state) => state.setCardSuspended);
   const updateCard = useFlashcardsLibraryStore((state) => state.updateCard);
@@ -147,6 +152,7 @@ export const LibraryScreen: React.FC = () => {
   const [draftBack, setDraftBack] = useState('');
   const [draftDeck, setDraftDeck] = useState('');
   const [draftTags, setDraftTags] = useState('');
+  const [pageJumpInput, setPageJumpInput] = useState(() => String(page));
   const mobileFrontRef = useRef<HTMLTextAreaElement | null>(null);
   const desktopFrontRef = useRef<HTMLInputElement | null>(null);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
@@ -185,9 +191,35 @@ export const LibraryScreen: React.FC = () => {
     setLastAnchorId((prev) => (prev && !ids.has(prev) ? null : prev));
   }, [items]);
 
+  useEffect(() => {
+    setPageJumpInput(String(page));
+  }, [page]);
+
   useEffect(() => () => {
     if (bulkDisarmTimer.current !== null) window.clearTimeout(bulkDisarmTimer.current);
   }, []);
+
+  const effectivePageSize = pageSize > 0 ? pageSize : FLASHCARDS_LIBRARY_PAGE_SIZE;
+  const pageCount = Math.max(1, Math.ceil(total / effectivePageSize));
+
+  const handlePageJumpSubmit = useCallback(() => {
+    if (loading) return;
+    const trimmed = pageJumpInput.trim();
+    if (!trimmed) {
+      setPageJumpInput(String(page));
+      return;
+    }
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(parsed)) {
+      setPageJumpInput(String(page));
+      return;
+    }
+    const bounded = Math.min(pageCount, Math.max(1, parsed));
+    setPageJumpInput(String(bounded));
+    if (bounded !== page) {
+      void goToPage(bounded);
+    }
+  }, [loading, pageJumpInput, page, pageCount, goToPage]);
 
   const rowBusy = busyCardId !== null || bulkBusy;
 
@@ -750,7 +782,6 @@ export const LibraryScreen: React.FC = () => {
     </CustomScrollArea>;
   }
 
-  const pageCount = Math.max(1, Math.ceil(total / FLASHCARDS_LIBRARY_PAGE_SIZE));
   const initialLoading = loading && !loaded;
 
   // 两个队列分区共用同一行渲染（行为完全一致，仅容器视觉不同）。
@@ -1446,33 +1477,139 @@ export const LibraryScreen: React.FC = () => {
         )}
       </ListContainer>
 
-      <footer className="flex shrink-0 items-center justify-between gap-3 text-xs text-muted-foreground">
-        <span className="font-mono tabular-nums">{translate('library.page', { page, pages: pageCount })}</span>
-        <div className="flex items-center gap-1">
-          <DsButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={loading || page <= 1}
-            onClick={() => void goToPage(page - 1)}
-            aria-label={t('library.previous')}
-            className="[@media(pointer:coarse)]:!min-h-11"
+      <footer
+        aria-label={translate('library.pagination.label', { defaultValue: '分页导航' })}
+        className="fc-lib-pagination flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border/40 pt-2 text-xs text-muted-foreground"
+      >
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <span className="whitespace-nowrap font-mono tabular-nums">
+            {translate('library.page', { page, pages: pageCount })}
+          </span>
+          <label className="inline-flex items-center gap-1.5">
+            <span className="whitespace-nowrap">
+              {translate('library.pageSize.label', { defaultValue: '每页' })}
+            </span>
+            <span className="relative inline-flex items-center">
+              <select
+                data-testid="library-page-size-select"
+                aria-label={translate('library.pageSize.ariaLabel', { defaultValue: '每页显示数量' })}
+                value={effectivePageSize}
+                disabled={loading}
+                onChange={(event) => {
+                  const nextSize = Number.parseInt(event.target.value, 10);
+                  if (Number.isFinite(nextSize)) {
+                    void setPageSize(nextSize);
+                  }
+                }}
+                className="fc-lib-page-size-select min-h-8 appearance-none rounded-md border border-border/60 bg-background pl-2.5 pr-6 font-mono text-xs tabular-nums text-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
+              >
+                {FLASHCARDS_LIBRARY_PAGE_SIZE_OPTIONS.map((size) => (
+                  <option key={size} value={size}>
+                    {translate('library.pageSize.option', { count: size, defaultValue: '{{count}} 张' })}
+                  </option>
+                ))}
+              </select>
+              <CaretDown size={10} className="pointer-events-none absolute right-2 text-muted-foreground" aria-hidden="true" />
+            </span>
+          </label>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="flex items-center gap-1">
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              iconOnly
+              data-testid="library-page-first-btn"
+              disabled={loading || page <= 1}
+              onClick={() => void goToPage(1)}
+              aria-label={translate('library.firstPage', { defaultValue: '首页' })}
+              title={translate('library.firstPage', { defaultValue: '首页' })}
+              className="min-h-8 min-w-8 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+            >
+              <CaretDoubleLeft size={14} aria-hidden="true" />
+            </DsButton>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={loading || page <= 1}
+              onClick={() => void goToPage(page - 1)}
+              aria-label={t('library.previous')}
+              className="min-h-8 [@media(pointer:coarse)]:!min-h-11"
+            >
+              <CaretLeft size={14} aria-hidden="true" />
+              {t('library.previous')}
+            </DsButton>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={loading || page >= pageCount}
+              onClick={() => void goToPage(page + 1)}
+              aria-label={t('library.next')}
+              className="min-h-8 [@media(pointer:coarse)]:!min-h-11"
+            >
+              {t('library.next')}
+              <CaretRight size={14} aria-hidden="true" />
+            </DsButton>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              iconOnly
+              data-testid="library-page-last-btn"
+              disabled={loading || page >= pageCount}
+              onClick={() => void goToPage(pageCount)}
+              aria-label={translate('library.lastPage', { defaultValue: '末页' })}
+              title={translate('library.lastPage', { defaultValue: '末页' })}
+              className="min-h-8 min-w-8 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+            >
+              <CaretDoubleRight size={14} aria-hidden="true" />
+            </DsButton>
+          </div>
+
+          <form
+            noValidate
+            className="flex items-center gap-1"
+            onSubmit={(event) => {
+              event.preventDefault();
+              handlePageJumpSubmit();
+            }}
           >
-            <CaretLeft size={14} />
-            {t('library.previous')}
-          </DsButton>
-          <DsButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={loading || page >= pageCount}
-            onClick={() => void goToPage(page + 1)}
-            aria-label={t('library.next')}
-            className="[@media(pointer:coarse)]:!min-h-11"
-          >
-            {t('library.next')}
-            <CaretRight size={14} />
-          </DsButton>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={pageCount}
+              step={1}
+              data-testid="library-page-jump-input"
+              aria-label={translate('library.jumpPage.ariaLabel', { defaultValue: '跳转到指定页码' })}
+              value={pageJumpInput}
+              disabled={loading || pageCount <= 1}
+              onChange={(event) => setPageJumpInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  if (!isComposingKeyEvent(event)) {
+                    handlePageJumpSubmit();
+                  }
+                }
+              }}
+              className="fc-lib-page-jump-input min-h-8 w-14 rounded-md border border-border/60 bg-background px-2 text-center font-mono text-xs tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:w-16"
+            />
+            <DsButton
+              type="submit"
+              variant="default"
+              size="sm"
+              data-testid="library-page-jump-btn"
+              disabled={loading || pageCount <= 1}
+              className="min-h-8 px-2.5 text-xs [@media(pointer:coarse)]:!min-h-11"
+            >
+              {translate('library.jumpPage.go', { defaultValue: '跳转' })}
+            </DsButton>
+          </form>
         </div>
       </footer>
     </div>

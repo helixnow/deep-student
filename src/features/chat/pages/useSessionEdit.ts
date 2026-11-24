@@ -10,6 +10,7 @@ import type { ChatSession } from '../types/session';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { showArchiveSessionToast } from '../utils/archiveSessionToast';
+import { clearLastActiveSessionIdIfMatches } from './lastActiveSession';
 import i18n, { type TFunction } from 'i18next';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -157,6 +158,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
       const remaining = sessionsRef.current.filter((s) => s.id !== sessionId);
 
       setSessions((prev) => prev.filter((session) => session.id !== sessionId));
+      clearLastActiveSessionIdIfMatches(sessionId);
       emitSessionListUpdated();
 
       if (currentSessionId === sessionId) {

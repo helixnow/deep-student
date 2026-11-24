@@ -25,6 +25,10 @@ Reply in the language of the user's latest message: Chinese in, Chinese out; Eng
 回复语言跟随用户最新一条消息：中文提问用中文，英文提问用英文。
 </response_language>`;
 
+/** Compact anti-truncation & pacing guidance injected only when `<memory_kernel>` is non-empty. */
+export const MEMORY_KERNEL_PACING_RULE =
+  '篇幅与收尾控制：讲解请条理精炼、控制总篇幅，务必为所有常驻规则（尤其是结尾自测题、清单或总结）预留充足输出空间，严禁中途截断或遗漏。';
+
 export const CITATION_GUIDE = String.raw`<citation_rules>
 <description>引用格式规范，回答时必须遵守</description>
 <format>
@@ -544,6 +548,7 @@ export class PromptBuilder {
     parts.push(CITATION_GUIDE);
     if (this.memoryKernel !== null) {
       parts.push('<memory_kernel>\n以下是本会话冻结的学习者常驻内核（包含硬性互动规则与核心长期画像）。其中的互动硬性规则必须从第 1 轮起 100% 严格遵循，无需额外检索确认；若用户提出新规则可用 memory_rule_upsert 工具更新，若画像有重大变化可用 learner_profile_update 工具增量更新：\n'
+        + `${MEMORY_KERNEL_PACING_RULE}\n`
         + `${escapeXmlContent(this.memoryKernel)}\n</memory_kernel>`);
     }
     return parts.join('\n\n');
@@ -576,7 +581,7 @@ ${hintsContent}
     }
 
     if (this.memoryDelta !== null) {
-      parts.push('<memory_delta>\n本会话进行中新增或变更的记忆规则与状态（立即生效，优先级高于旧规则）：\n'
+      parts.push('<memory_delta>\n本会话进行中新增或变更的记忆规则与状态（立即生效，优先级高于旧规则；请控制篇幅，确保完整落实结尾等常驻要求，勿中途截断）：\n'
         + `${escapeXmlContent(this.memoryDelta)}\n</memory_delta>`);
     }
 

@@ -23,6 +23,8 @@ import { hasValidCloze } from '../cloze';
 import type { ReviewEditTemplate } from '../reviewCardEditFields';
 
 export const FLASHCARDS_LIBRARY_PAGE_SIZE = 20;
+export const FLASHCARDS_LIBRARY_PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
+export type LibraryPageSize = (typeof FLASHCARDS_LIBRARY_PAGE_SIZE_OPTIONS)[number];
 
 /** 状态筛选（服务端执行，跨页生效；计数见 statusCounts）。 */
 export type LibraryStatusFilter =
@@ -84,6 +86,7 @@ interface FlashcardsLibraryState {
   refresh: () => Promise<boolean>;
   submitSearch: (query?: string) => Promise<boolean>;
   goToPage: (page: number) => Promise<boolean>;
+  setPageSize: (pageSize: number) => Promise<boolean>;
   enqueueCard: (cardId: string) => Promise<boolean>;
   setCardSuspended: (cardId: string, suspended: boolean) => Promise<boolean>;
   updateCard: (
@@ -319,11 +322,12 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
       const currentRequest = ++requestId;
       set({ loading: true, loadError: null });
       try {
-        const { statusFilter, deckFilter, sortKey, sortDir } = get();
+        const { statusFilter, deckFilter, sortKey, sortDir, pageSize } = get();
+        const effectivePageSize = pageSize > 0 ? pageSize : FLASHCARDS_LIBRARY_PAGE_SIZE;
         const response: AnkiLibraryListResponse = await listAnkiLibraryCards({
           search: normalizedQuery || undefined,
           page: requestedPage,
-          page_size: FLASHCARDS_LIBRARY_PAGE_SIZE,
+          page_size: effectivePageSize,
           status: statusFilter === 'all' ? undefined : statusFilter,
           sort: sortKey === 'default' ? undefined : sortKey,
           sort_desc: sortKey === 'default' ? undefined : sortDir === 'desc',
@@ -333,7 +337,7 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
         if (currentRequest !== requestId) return false;
 
         const total = Math.max(0, response.total ?? 0);
-        const lastPage = Math.max(1, Math.ceil(total / FLASHCARDS_LIBRARY_PAGE_SIZE));
+        const lastPage = Math.max(1, Math.ceil(total / effectivePageSize));
         if (requestedPage > lastPage) {
           set({ page: lastPage, query: normalizedQuery, loading: false });
           return get().load(normalizedQuery, lastPage);
@@ -372,11 +376,22 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
     },
 
     goToPage: (page) => {
-      const lastPage = Math.max(1, Math.ceil(get().total / FLASHCARDS_LIBRARY_PAGE_SIZE));
+      if (!Number.isFinite(page)) return Promise.resolve(false);
+      const effectivePageSize = get().pageSize > 0 ? get().pageSize : FLASHCARDS_LIBRARY_PAGE_SIZE;
+      const lastPage = Math.max(1, Math.ceil(get().total / effectivePageSize));
       const boundedPage = Math.min(lastPage, Math.max(1, Math.trunc(page)));
       if (boundedPage === get().page) return Promise.resolve(false);
       set({ page: boundedPage });
       return get().load(get().query, boundedPage);
+    },
+
+    setPageSize: (nextPageSize) => {
+      if (!FLASHCARDS_LIBRARY_PAGE_SIZE_OPTIONS.includes(nextPageSize as LibraryPageSize)) {
+        return Promise.resolve(false);
+      }
+      if (nextPageSize === get().pageSize) return Promise.resolve(false);
+      set({ pageSize: nextPageSize, page: 1 });
+      return get().load(get().query, 1);
     },
 
     enqueueCard: (cardId) => runMutation(cardId, (card) => enqueueAnkiLibraryCard(card.id)),
