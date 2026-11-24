@@ -211,6 +211,7 @@ export default definePlugin({
       return service;
     };
     let optionalLlm: unknown;
+    let optionalRawPrompt: RawPromptLlm | undefined;
     let embeddingModels: import('../llm/api.ts').LlmEmbeddingModels | undefined;
     ctx.inject(['llmEmbeddingModels'], scoped => {
       embeddingModels = scoped.llmEmbeddingModels;
@@ -219,6 +220,10 @@ export default definePlugin({
     ctx.inject(['llm'], scoped => {
       optionalLlm = scoped.llm;
       scoped.effect(() => () => { optionalLlm = undefined; });
+    });
+    ctx.inject(['llmRawPrompt'], scoped => {
+      optionalRawPrompt = scoped.llmRawPrompt as RawPromptLlm | undefined;
+      scoped.effect(() => () => { optionalRawPrompt = undefined; });
     });
     const repos = ctx.vfsRepo;
     const conn = () => database.getConnSafe();
@@ -390,7 +395,12 @@ export default definePlugin({
       repos: repos.todos,
       log: ctx.logger,
       emit: (event, payload) => ctx.backendEvents.emit(event, payload),
-      get llm() { return optionalLlm as RawPromptLlm | undefined; },
+      get llm() {
+        return (optionalRawPrompt
+          ?? (typeof (optionalLlm as RawPromptLlm | undefined)?.callModel2RawPrompt === 'function'
+            ? (optionalLlm as RawPromptLlm)
+            : undefined)) as RawPromptLlm | undefined;
+      },
     };
     const pomodoroDeps: pomodoro.PomodoroDeps = {
       conn: deps.conn,

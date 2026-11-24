@@ -17,10 +17,12 @@ import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { openQuickAssistantWindow } from '@/quick-assistant/window';
 import { isMacOS, isMobilePlatform } from '@/utils/platform';
+import { moveNoteToTrash } from '../moveNoteToTrash';
 import { NotePageLayoutOptions } from './NotePageLayoutOptions';
 
 export interface NotesPageActionsMenuProps {
   noteId?: string;
+  noteTitle?: string;
   readOnly: boolean;
   effectiveReadOnly: boolean;
   editorReady: boolean;
@@ -44,6 +46,8 @@ export interface NotesPageActionsMenuProps {
   hasMoreWindowedContent?: boolean;
   hostBusy: boolean;
   onMaterializeFullDocument: () => void;
+  onMoveToTrash?: () => void | Promise<void>;
+  movingToTrash?: boolean;
   acrWindowId?: string;
   /** Optional extra view-group entries (e.g. Source Mode toggle). */
   extraViewActions?: React.ReactNode;
@@ -51,6 +55,7 @@ export interface NotesPageActionsMenuProps {
 
 export const NotesPageActionsMenu: React.FC<NotesPageActionsMenuProps> = ({
   noteId,
+  noteTitle,
   readOnly,
   effectiveReadOnly,
   editorReady,
@@ -74,11 +79,15 @@ export const NotesPageActionsMenu: React.FC<NotesPageActionsMenuProps> = ({
   hasMoreWindowedContent,
   hostBusy,
   onMaterializeFullDocument,
+  onMoveToTrash,
+  movingToTrash = false,
   acrWindowId,
   extraViewActions,
 }) => {
   const { t, i18n } = useTranslation(['notes']);
   const menuItemRole = hasMobileResourceMenu ? 'menuitem' : undefined;
+  const [internalMovingToTrash, setInternalMovingToTrash] = React.useState(false);
+  const isMovingToTrash = Boolean(movingToTrash || internalMovingToTrash);
 
   return (
     <div className="notes-page-actions">
@@ -260,63 +269,31 @@ export const NotesPageActionsMenu: React.FC<NotesPageActionsMenuProps> = ({
           </span>
         </DsButton>
       ))}
-      {noteId && !readOnly && (
+      {!readOnly && (
         <>
           <div className="my-1 border-t border-border/60" />
+          <div className="notes-action-group-label">{t('notes:chrome.manage', { defaultValue: '管理' })}</div>
           <DsButton
             variant="ghost"
             size="sm"
             role={menuItemRole}
-            disabled={hostBusy}
+            disabled={!noteId || effectiveReadOnly || hostBusy || isMovingToTrash}
             className="text-destructive hover:text-destructive"
+            data-no-focus-return="true"
             onClick={() => {
-              const targetNoteId = noteId;
-              const targetPath = `/${targetNoteId}`;
-              void Promise.all([
-                import('@/dstu'),
-                import('@/features/learning-hub/utils/finderUndoStack'),
-              ])
-                .then(async ([{ dstu, trashApi }, { finderUndoStack }]) => {
-                  const delRes = await dstu.delete(targetPath);
-                  if (!delRes.ok) {
-                    showGlobalNotification('error', delRes.error.toUserMessage());
-                    return;
-                  }
-                  finderUndoStack.push({
-                    kind: 'soft-delete',
-                    targets: [{ id: targetNoteId, type: 'note', name: '' }],
-                  });
-                  showGlobalNotification(
-                    'success',
-                    t('notes:actions.moved_to_trash', { defaultValue: '笔记已移入回收站' }),
-                    undefined,
-                    {
-                      action: {
-                        label: t('notes:actions.undo', { defaultValue: '撤销' }),
-                        onClick: () => {
-                          void trashApi
-                            .restoreItem(targetNoteId, 'note')
-                            .then((res) => {
-                              if (res.ok) {
-                                showGlobalNotification(
-                                  'success',
-                                  t('notes:actions.restored_from_trash', { defaultValue: '已从回收站恢复笔记' }),
-                                );
-                              } else {
-                                showGlobalNotification('error', res.error.toUserMessage());
-                              }
-                            })
-                            .catch((err) => showGlobalNotification('error', String(err)));
-                        },
-                      },
-                    },
-                  );
-                })
-                .catch((error) => showGlobalNotification('error', String(error)));
+              if (!noteId || effectiveReadOnly || isMovingToTrash) return;
+              if (onMoveToTrash) {
+                void onMoveToTrash();
+                return;
+              }
+              setInternalMovingToTrash(true);
+              void moveNoteToTrash({ noteId, noteTitle }).finally(() => {
+                setInternalMovingToTrash(false);
+              });
             }}
           >
-            <Trash size={16} />
-            <span>{t('notes:actions.move_to_trash', { defaultValue: '移入回收站' })}</span>
+            <Trash size={16} aria-hidden="true" />
+            <span>{t('notes:actions.move_to_trash', { defaultValue: '移至回收站' })}</span>
           </DsButton>
         </>
       )}

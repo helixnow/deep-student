@@ -99,7 +99,7 @@ describe('my plugins as cards', () => {
     expect(within(card).getByTestId('plugin-tile')).toHaveTextContent('公');
     const heading = within(card).getByRole('heading', { name: '公式速查' });
     expect(card).toHaveAttribute('aria-labelledby', heading.id);
-    expect(within(card).getByRole('switch', { name: '启用 公式速查' })).toBeInTheDocument();
+    expect(within(card).getByRole('switch', { name: '停用 公式速查' })).toBeInTheDocument();
     expect(within(card).getByTestId('plugin-summary-state')).toHaveAttribute('data-tone', 'ok');
   });
 
@@ -288,7 +288,7 @@ describe('built-in capabilities', () => {
     expect(lock).toHaveTextContent('笔记、对话 等 3 项功能正在使用它提供的服务');
     // A disabled plugin is never locked: turning it back on must stay possible.
     expect(screen.getByRole('switch', { name: '启用 翻译', hidden: true })).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: '启用 笔记', hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: '停用 笔记', hidden: true })).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '查看 本地存储 的详情', hidden: true }));
     const sheet = await screen.findByRole('dialog');

@@ -22,6 +22,7 @@ import type { ChatComposerCommandContribution } from '@/ui-kernel/contracts/surf
 import type { SlotEntry } from '@/ui-kernel/slots';
 import { skillRegistry, subscribeToSkillRegistry } from '../../skills/registry';
 import { isSkillDisabled, SKILL_ENABLED_CHANGED_EVENT } from '../../skills/skillEnableStorage';
+import { resolveEffectiveTrustStatus, SKILL_TRUST_CHANGED_EVENT } from '../../skills/skillTrustStorage';
 
 // ============================================================================
 // 类型定义
@@ -110,7 +111,12 @@ function detectSlashContext(inputValue: string, caretPos: number): SlashContext 
 function readInvocableSkills(): Array<{ id: string; name: string; description?: string; argumentHint?: string }> {
   return skillRegistry
     .getAll()
-    .filter((skill) => skill.userInvocable !== false && !isSkillDisabled(skill.id))
+    .filter(
+      (skill) =>
+        skill.userInvocable !== false &&
+        !isSkillDisabled(skill.id) &&
+        resolveEffectiveTrustStatus(skill) !== 'untrusted'
+    )
     .map((skill) => ({
       id: skill.id,
       name: skill.name,
@@ -135,14 +141,16 @@ export function useSkillSlashCommands({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [dismissedQuery, setDismissedQuery] = useState<string | null>(null);
 
-  // registry 更新 / 用户启停技能时刷新候选源
+  // registry 更新 / 用户启停或修改信任状态时刷新候选源
   useEffect(() => {
     const refresh = () => setSkills(readInvocableSkills());
     const unsubscribe = subscribeToSkillRegistry(refresh);
     window.addEventListener(SKILL_ENABLED_CHANGED_EVENT, refresh);
+    window.addEventListener(SKILL_TRUST_CHANGED_EVENT, refresh);
     return () => {
       unsubscribe();
       window.removeEventListener(SKILL_ENABLED_CHANGED_EVENT, refresh);
+      window.removeEventListener(SKILL_TRUST_CHANGED_EVENT, refresh);
     };
   }, []);
 
@@ -352,9 +360,11 @@ export const SkillSlashPopover: React.FC<SkillSlashPopoverProps> = ({
   return (
     <div
       data-testid="skill-slash-popover"
+      data-state={presence.exiting || !open ? 'closed' : 'open'}
       className={cn(
         't-dropdown',
         presence.exiting && 'is-closing',
+        (presence.exiting || !open) && 'pointer-events-none',
         presence.shown && 'is-open',
         // ★ H2 修复：与 ModelMentionPopover 对齐——窄屏时收窄到视口内（固定 w-80 会在小屏溢出）
         'absolute w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',

@@ -6,7 +6,9 @@ import { DsButton } from '@/components/ui/DsButton';
 import type { Question } from '@/api/questionBankApi';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
-import { useFlashcardsLibraryStore } from '@/features/flashcards/store/libraryStore';
+import { requestFlashcardsDueRefresh } from '@/events/flashcards';
+import { ankiApiAdapter } from '@/services/ankiApiAdapter';
+import { enqueueAnkiLibraryCard } from '@/utils/chatApi';
 import { dispatchOpenMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
 import { findFirstMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefTime';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
@@ -161,13 +163,23 @@ export const QuestionFollowUpBar: React.FC<{
         question.explanation?.trim() ? `${labels.explanation}${question.explanation.trim()}` : '',
       ].filter(Boolean);
       const back = backParts.join('\n\n') || t('followUp.noAnswerFallback', { defaultValue: '详见原题解析' });
-      const ok = await useFlashcardsLibraryStore.getState().createCard({
-        front,
-        back,
-        tags: [...(question.tags ?? [])],
-        noteType: 'Basic',
-        enqueue: true,
+      const response = await ankiApiAdapter.saveAnkiCards({
+        cards: [
+          {
+            front: front.trim(),
+            back: back.trim(),
+            tags: [...(question.tags ?? [])],
+            images: [],
+          },
+        ],
       });
+      const savedId =
+        response.savedIds?.[0] ?? response.cardIdMappings?.[0]?.persistedId ?? null;
+      if (savedId) {
+        await enqueueAnkiLibraryCard(savedId);
+        requestFlashcardsDueRefresh();
+      }
+      const ok = Boolean(savedId);
       if (ok) {
         showGlobalNotification('success', t('followUp.flashcardCreated', { defaultValue: '已将该题加入闪卡复习队列' }));
       } else {

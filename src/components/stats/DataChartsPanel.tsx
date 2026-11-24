@@ -134,7 +134,12 @@ const Row: React.FC<{
     <span className="min-w-0 truncate text-[13px] text-foreground">{label}</span>
     <span className="shrink-0 text-right text-[13px] tabular-nums text-muted-foreground">
       {value}
-      {sub != null && <span className="ml-1.5 text-xs text-muted-foreground/60">{sub}</span>}
+      {sub != null && (
+        <>
+          {' '}
+          <span className="ml-1.5 text-xs text-muted-foreground/60">{sub}</span>
+        </>
+      )}
     </span>
   </div>
 );
@@ -314,7 +319,10 @@ const BarList: React.FC<{ items: BarListItem[]; emptyLabel: string }> = ({ items
             <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
               {formatCompactNumber(item.value)}
               {item.percent != null && (
-                <span className="ml-1.5 text-muted-foreground/60">{item.percent}%</span>
+                <>
+                  {' '}
+                  <span className="ml-1.5 text-muted-foreground/60">{item.percent}%</span>
+                </>
               )}
             </span>
           </div>
@@ -345,6 +353,7 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
   const [trendRange, setTrendRange] = useState<RangeDays>('30');
   const [loading, setLoading] = useState(true);
   const [trendLoading, setTrendLoading] = useState(true);
+  const [chartsReady, setChartsReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [trends, setTrends] = useState<UsageTrendPoint[]>([]);
@@ -406,6 +415,22 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
     loadTrends();
   }, [loadTrends]);
 
+  // 延迟一帧再挂载 Recharts / 365 天热力图，避免初次切换到统计页时主线程阻塞
+  useEffect(() => {
+    if (loading) {
+      setChartsReady(false);
+      return;
+    }
+    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+      setChartsReady(true);
+      return;
+    }
+    const rafId = window.requestAnimationFrame(() => {
+      setChartsReady(true);
+    });
+    return () => window.cancelAnimationFrame(rafId);
+  }, [loading]);
+
   const tLlm = useCallback((key: string) => t(`llm_usage:${key}`), [t]);
 
   const modelItems = useMemo<BarListItem[]>(() => {
@@ -427,11 +452,25 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
     return [...byCaller]
       .sort((a, b) => Number(b.requestCount) - Number(a.requestCount))
       .slice(0, 8)
-      .map((c) => ({
-        name: c.displayName || getCallerDisplayName(c.callerType, tLlm),
-        value: Number(c.requestCount),
-        percent: formatPercentage(Number(c.requestCount), total),
-      }));
+      .map((c) => {
+        const localized = c.callerType ? getCallerDisplayName(c.callerType, tLlm) : '';
+        const hasLocalized =
+          Boolean(c.callerType) &&
+          Boolean(localized) &&
+          localized !== c.callerType &&
+          localized !== `callerTypes.${c.callerType}` &&
+          localized !== `llm_usage:callerTypes.${c.callerType}`;
+        const name = hasLocalized
+          ? localized
+          : c.displayName === '文本嵌入'
+            ? getCallerDisplayName('embedding', tLlm)
+            : c.displayName || localized;
+        return {
+          name,
+          value: Number(c.requestCount),
+          percent: formatPercentage(Number(c.requestCount), total),
+        };
+      });
   }, [byCaller, tLlm]);
 
   const successRate = formatPercentage(
@@ -604,8 +643,8 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
               </div>
             }
           >
-            {trendLoading && trends.length === 0 ? (
-              <div className="h-[240px] p-4">
+            {!chartsReady || (trendLoading && trends.length === 0) ? (
+              <div className="h-[240px] p-4" data-testid="trend-chart-skeleton">
                 <Skeleton className="h-full w-full rounded-md bg-muted/20" />
               </div>
             ) : (
@@ -634,7 +673,13 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
           {/* 学习热力图 */}
           <Group title={t('stats:heatmap.title')}>
             <div className="px-4 pb-3 pt-4">
-              <LearningHeatmap months={12} hideTitle showStats={false} showLegend />
+              {chartsReady ? (
+                <LearningHeatmap months={12} hideTitle showStats={false} showLegend />
+              ) : (
+                <div className="h-[180px]" data-testid="heatmap-chart-skeleton">
+                  <Skeleton className="h-full w-full rounded-md bg-muted/20" />
+                </div>
+              )}
             </div>
           </Group>
         </>

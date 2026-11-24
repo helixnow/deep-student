@@ -67,7 +67,7 @@ describe('NotesWorkspaceApp learning views', () => {
     fireEvent.click(within(screen.getByRole('radiogroup', { name: '笔记学习视图' })).getAllByRole('radio')[2]);
     const learningSection = screen.getByRole('heading', { name: '学习中 · 1' }).closest('section')!;
     expect(within(learningSection).getByText('微积分')).toBeInTheDocument();
-    fireEvent.click(within(learningSection).getByRole('button'));
+    fireEvent.click(within(learningSection).getByRole('button', { name: /微积分/ }));
     await screen.findByTestId('opened-n1');
 
     const changed: DstuNode = { ...data.nodes[0], updatedAt: 2,
@@ -84,7 +84,8 @@ describe('NotesWorkspaceApp learning views', () => {
     expect(screen.getByRole('heading', { name: /近期复习.* · 1/ })).toBeInTheDocument();
     fireEvent.click(within(screen.getByRole('radiogroup', { name: '笔记学习视图' })).getAllByRole('radio')[1]);
     const list = screen.getByLabelText('学习视图');
-    expect(within(list).getAllByRole('button')).toHaveLength(2);
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(list).getAllByRole('button', { name: /移至回收站/ })).toHaveLength(2);
   });
   it('creates a course note through the visible workspace entry and opens the initialized note', async () => {
     render(<NotesWorkspaceApp windowId="study-create" instanceKey={null} isActive isVisible onTitleChange={vi.fn()} requestClose={vi.fn()} />);

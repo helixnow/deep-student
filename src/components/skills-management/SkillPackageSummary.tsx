@@ -138,13 +138,47 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
           {sourceLabel(source, t)}
         </Chip>
         {trust === 'untrusted' && (
-          <Chip
-            icon={<ShieldWarning size={10} />}
-            tone="warning"
+          <>
+            <Chip
+              icon={<ShieldWarning size={10} />}
+              tone="warning"
+              title={t('skills:package.trust_effect_untrusted')}
+            >
+              {trustLabel(trust, t)}
+            </Chip>
+            {canToggleTrust && (
+              <DsButton
+                type="button"
+                variant="outline"
+                size="sm"
+                data-testid={`skill-card-trust-${skill.id}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void handleTrustToggle();
+                }}
+                title={t('skills:package.trust_effect_trusted')}
+                className="!h-auto !rounded-full border-primary/40 bg-primary/10 !px-2 !py-0.5 text-[10px] font-medium text-primary hover:bg-primary/20 [@media(pointer:coarse)]:!min-h-[32px]"
+              >
+                {t('skills:package.trust_enable')}
+              </DsButton>
+            )}
+          </>
+        )}
+        {trust === 'trusted' && canToggleTrust && (
+          <DsButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-testid={`skill-card-revoke-trust-${skill.id}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              void handleTrustToggle();
+            }}
             title={t('skills:package.trust_effect_untrusted')}
+            className="!h-auto !rounded-full !px-2 !py-0.5 text-[10px] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-[32px]"
           >
-            {trustLabel(trust, t)}
-          </Chip>
+            {t('skills:package.trust_trusted')}
+          </DsButton>
         )}
         {summary.dependencies > 0 && (
           <Chip icon={<LinkSimple size={10} />}>

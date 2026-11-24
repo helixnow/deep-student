@@ -427,6 +427,9 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
   }
 
   useLayoutEffect(() => {
+    if (rootRef.current) {
+      rootRef.current.inert = Boolean(win?.minimized);
+    }
     if (!useWindowStore.getState().windows[windowId] || gestureRef.current) return;
     syncNativeSurface(windowId);
   }, [frame.h, frame.w, frame.x, frame.y, win?.displayMode, win?.minimized, windowId]);
@@ -1190,6 +1193,9 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
         'wb-window',
         // O9 编排（wb-lifec-*）为唯一开窗/最小化动画源；停用旧 wb-anim-open / wb-anim-minimize 挂载
         focused ? 'wb-window-focused' : 'wb-window-idle',
+        win.displayMode === 'maximized' ? 'wb-window-maximized' : '',
+        win.displayMode.startsWith('tiled-') ? 'wb-window-tiled' : '',
+        win.minimized ? 'wb-window-minimized' : '',
         // 手势类以 DOM classList 为主；重渲染时从 gestureRef 回填，避免被冲掉
         activeGesture?.kind === 'move' ? 'wb-shell-dragging' : '',
         activeGesture?.kind === 'resize' ? 'wb-shell-resizing' : '',
@@ -1215,17 +1221,19 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
         display: 'flex',
         flexDirection: 'column',
         visibility: win.minimized ? 'hidden' : undefined,
-        // 桌面窗口层为 pointer-events:none（P11 总装：让空桌面引导可点），窗口自身恢复命中
-        pointerEvents: 'auto',
+        // 桌面窗口层为 pointer-events:none（P11 总装：让空桌面引导可点），最小化窗壳也不拦截指针
+        pointerEvents: win.minimized ? 'none' : 'auto',
       }}
       data-wb-window
       data-wb-window-id={windowId}
       data-window-id={windowId}
       data-display-mode={win.displayMode}
       data-focused={focused || undefined}
+      data-minimized={win.minimized ? 'true' : undefined}
       data-agent-active={presence?.status === 'acting' ? '' : undefined}
       data-agent-paused={presence?.status === 'pausedByUser' ? '' : undefined}
       data-agent-reviewing={presence?.status === 'reviewing' ? '' : undefined}
+      {...(win.minimized ? ({ inert: '' } as React.HTMLAttributes<HTMLElement>) : {})}
       {...a11y}
       onPointerDownCapture={focusSelf}
       onFocusCapture={handleFocusCapture}
@@ -1247,7 +1255,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       <AgentStrip windowId={windowId} />
       <div
         ref={contentRef}
-        className="relative min-h-0 flex-1"
+        className="relative flex min-h-0 w-full flex-1 flex-col overflow-auto"
         data-wb-window-content
         style={activeGesture ? { pointerEvents: 'none' } : undefined}
         onPointerDownCapture={presence ? handleAgentUserPointerDown : undefined}

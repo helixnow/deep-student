@@ -344,6 +344,9 @@ export interface MessageMeta {
    * 用于在 UI 上标注「已引导对话」徽章。
    */
   steered?: boolean;
+
+  /** 用户主动点击停止中断了本轮流式生成（用于渲染「已手动停止」徽章） */
+  stoppedByUser?: boolean;
 }
 
 /**

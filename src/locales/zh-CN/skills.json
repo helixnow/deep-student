@@ -100,7 +100,9 @@
     "enable": "启用",
     "disable": "停用",
     "manage": "更多设置",
-    "installMore": "获取更多技能"
+    "installMore": "获取更多技能",
+    "customSection": "自定义技能",
+    "allSection": "全部技能"
   },
   "card": {
     "activate": "激活",
@@ -312,6 +314,8 @@
   "editor": {
     "tab_basic": "基本信息",
     "tab_content": "技能内容",
+    "source_mode": "纯文本编辑",
+    "highlight_mode": "语法高亮",
     "id": "技能 ID",
     "id_placeholder": "例如：code-reviewer",
     "id_hint": "只能包含字母、数字、连字符和下划线",

@@ -100,7 +100,7 @@ import { logWallpaperDiag } from '../core/wallpaperDiagnostics';
 import { useOptionalSlot, useOptionalUiKernel } from '@/ui-kernel/react';
 import { SlotOutlet } from '@/ui-kernel/outlet';
 import type { DesktopWidgetSize } from '@/ui-kernel/contracts/surfaces';
-import { usePluginUiHostStatus } from '@/features/plugin-manager/use-ui-status';
+import { exitSafeModeAndRestart, usePluginUiHostStatus } from '@/features/plugin-manager';
 import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
 
@@ -724,17 +724,27 @@ export const WorkbenchDesktop: React.FC = () => {
                 <span className="font-semibold text-warning">{t('safeModeBanner.title')}</span>
                 <span className="text-muted-foreground">{t('safeModeBanner.description')}</span>
               </div>
-              <button
-                type="button"
-                data-testid="global-safe-mode-open-plugins"
-                onClick={() => {
-                  setPendingSettingsRoute({ tab: 'plugins' });
-                  dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'plugins' });
-                }}
-                className="shrink-0 rounded-md border border-warning/40 bg-background/85 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-background"
-              >
-                {t('safeModeBanner.openManager')}
-              </button>
+              <div className="flex shrink-0 flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  data-testid="global-safe-mode-open-plugins"
+                  onClick={() => {
+                    setPendingSettingsRoute({ tab: 'plugins' });
+                    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'plugins' });
+                  }}
+                  className="shrink-0 rounded-md border border-warning/40 bg-background/85 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-background"
+                >
+                  {t('safeModeBanner.openManager')}
+                </button>
+                <button
+                  type="button"
+                  data-testid="global-safe-mode-exit"
+                  onClick={() => void exitSafeModeAndRestart()}
+                  className="shrink-0 rounded-md border border-warning/40 bg-background/85 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-background"
+                >
+                  {t('plugin_manager:safeMode.exitButton', { defaultValue: '退出安全模式并恢复正常启动' })}
+                </button>
+              </div>
             </div>
           </div>
         ) : null}

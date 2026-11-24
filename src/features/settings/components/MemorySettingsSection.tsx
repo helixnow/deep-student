@@ -9,6 +9,7 @@ import { Plus, Check, CircleNotch, WarningCircle, ArrowClockwise } from '@phosph
 import { DsButton } from '@/components/ui/DsButton';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Input } from '@/components/ui/shad/Input';
+import { Switch } from '@/components/ui/shad/Switch';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
@@ -27,8 +28,7 @@ import {
 import { getFolderTree } from '@/dstu/api/folderApi';
 import type { FolderTreeNode } from '@/dstu/types/folder';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
-import { MemoryKernelPanel } from '@/features/learning-hub/views/MemoryKernelPanel';
-import { localizeMemoryFolderTitle } from '@/features/learning-hub/memoryFolderLabels';
+import { MemoryKernelPanel, localizeMemoryFolderTitle } from '@/features/learning-hub';
 
 // 分组标题
 // 设置行（使用共享 primitives）
@@ -261,13 +261,17 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
         </div>
 
         {/* 记忆功能开关 */}
-        <SwitchRow
+        <SRow
           title={t('settings:memory.memoryEnabled')}
           description={t('settings:memory.memoryEnabledDesc')}
-          checked={!config?.privacyMode}
-          onCheckedChange={(enabled) => handleToggleMemory(enabled)}
-          disabled={saving}
-        />
+        >
+          <Switch
+            checked={!config?.privacyMode}
+            onCheckedChange={(enabled) => handleToggleMemory(enabled)}
+            disabled={saving}
+            aria-label={t('settings:memory.memoryEnabledAriaLabel')}
+          />
+        </SRow>
 
         {/* 根文件夹选择 */}
         <SettingRow

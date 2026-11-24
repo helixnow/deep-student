@@ -308,7 +308,18 @@
       "workload_chart_title": "到期与待办",
       "chart_pending": "待办",
       "chart_overdue": "逾期",
-      "workload_chart_series": "数量"
+      "workload_chart_series": "数量",
+      "range_label": "统计时间范围",
+      "range_today": "今日",
+      "range_7d": "7 天",
+      "range_30d": "30 天",
+      "open_full_stats": "详细统计",
+      "study_time_label": "学习时长",
+      "study_time_days": "活跃 {{days}} 天",
+      "todo_completion_label": "待办完成率",
+      "todo_completion_sub": "已完成 {{completed}} / {{total}}",
+      "ai_usage_label": "AI 用量",
+      "ai_usage_sub": "{{requests}} 次请求 · {{tokens}} tokens"
     }
   },
   "learningHub": {

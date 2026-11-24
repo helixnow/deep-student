@@ -100,7 +100,7 @@ export function PluginRow({
       </DsButton>
       {lockedReason
         ? <PluginLockedMark reason={lockedReason} />
-        : <Switch checked={switchChecked} disabled={busy || !supported || blockedBySafeMode} aria-label={t('row.enable', { id: name })} className="shrink-0" onCheckedChange={onToggle} />}
+        : <Switch checked={switchChecked} disabled={busy || !supported || blockedBySafeMode} aria-label={t(switchChecked ? 'row.disable' : 'row.enable', { id: name })} className="shrink-0" onCheckedChange={onToggle} />}
     </div>
   );
 }

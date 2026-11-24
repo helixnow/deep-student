@@ -149,7 +149,11 @@ export const AboutTab: React.FC = () => {
               <div className="flex items-center gap-2">
                 <span className="text-sm font-mono text-foreground/90 whitespace-nowrap">
                   {VERSION_INFO.FULL_VERSION}
-                  <span className="text-muted-foreground/50 ml-1.5 text-xs">{VERSION_INFO.GIT_HASH}</span>
+                  {VERSION_INFO.GIT_HASH &&
+                    VERSION_INFO.GIT_HASH.trim() !== '' &&
+                    VERSION_INFO.GIT_HASH.trim().toLowerCase() !== 'unknown' && (
+                      <span className="text-muted-foreground/50 ml-1.5 text-xs">{VERSION_INFO.GIT_HASH.trim()}</span>
+                    )}
                 </span>
                 {showDesktopUpdater && (
                   <DsButton

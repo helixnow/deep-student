@@ -59,8 +59,8 @@ import '../styles/pomodoro-panel.css';
 /** 空闲态时长快捷预设（分钟）；内联自定义走设置区滑杆 */
 const DURATION_PRESETS = [15, 25, 45, 60] as const;
 
-/** 放弃确认的自动回退时长（ms）：超时未确认视为取消 */
-const STOP_CONFIRM_TIMEOUT_MS = 4000;
+/** 放弃确认的自动回退时长（ms）：留足人工与慢操作确认时间 */
+const STOP_CONFIRM_TIMEOUT_MS = 15000;
 
 /** 延长阶段 chips：+1min / +5min（休息阶段常显；专注倒计时临近结束时显示） */
 const ExtendChips: React.FC<{
@@ -471,6 +471,8 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
     skipBreak,
     extendPhase,
     completeCurrentSession,
+    finishWorkEarly,
+    skipPhase,
     updateSettings,
     setImmersive,
   } = usePomodoroStore();
@@ -893,7 +895,7 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
       return (
         <span
           className="ui-rise-in motion-reduce:animate-none inline-flex flex-shrink-0 items-center gap-1"
-          role="alertdialog"
+          role="group"
           aria-label={abandonConfirmLabel}
         >
           <span
@@ -1172,18 +1174,31 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
             <div className="scrollbar-none ui-rise-in motion-reduce:animate-none -mx-1 flex items-center gap-1 overflow-x-auto px-1">
               {renderStopControl(true)}
               {renderDurationPresets(true)}
-              {isCountUpWork && isRunning && (
-                <DsButton
-                  variant="utility"
-                  size="sm"
-                  onClick={() => completeCurrentSession()}
-                  title={t('pomodoro.controls.finish')}
-                  aria-label={t('pomodoro.controls.finish')}
-                  className="h-11 flex-shrink-0 gap-1.5 !px-3 text-xs transition-[transform,background-color,border-color,color] duration-150 ease-standard active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100"
-                >
-                  <CheckCircle size={16} />
-                  <span>{t('pomodoro.controls.finish')}</span>
-                </DsButton>
+              {mode === 'work' && (
+                <>
+                  <DsButton
+                    variant="utility"
+                    size="sm"
+                    onClick={() => (isCountUpWork ? completeCurrentSession() : finishWorkEarly())}
+                    title={t('pomodoro.controls.finishEarly', { defaultValue: '提前完成并记录' })}
+                    aria-label={t('pomodoro.controls.finishEarly', { defaultValue: '提前完成并记录' })}
+                    className="h-11 flex-shrink-0 gap-1.5 !px-3 text-xs transition-[transform,background-color,border-color,color] duration-150 ease-standard active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100"
+                  >
+                    <CheckCircle size={16} />
+                    <span>{t('pomodoro.controls.finishEarly', { defaultValue: '提前完成并记录' })}</span>
+                  </DsButton>
+                  <DsButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    onClick={() => skipPhase()}
+                    title={t('pomodoro.controls.skipPhase', { defaultValue: '跳过到休息' })}
+                    aria-label={t('pomodoro.controls.skipPhase', { defaultValue: '跳过到休息' })}
+                    className={mobileIconBtnClass}
+                  >
+                    <SkipForward size={16} />
+                  </DsButton>
+                </>
               )}
               {(mode === 'short_break' || mode === 'long_break') && (
                 <DsButton
@@ -1299,19 +1314,32 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
         <div className="flex flex-shrink-0 items-center gap-1">
           {renderStopControl(false)}
 
-          {/* 正计时专注中：手动「完成」收尾 */}
-          {isCountUpWork && isRunning && (
-            <DsButton
-              variant="primary"
-              size="sm"
-              onClick={() => completeCurrentSession()}
-              title={t('pomodoro.controls.finish')}
-              aria-label={t('pomodoro.controls.finish')}
-              className="h-7 gap-1.5 !border-[color:hsl(var(--success))]/35 !bg-[color:hsl(var(--success))]/10 !px-3 text-xs !text-[color:hsl(var(--success))] transition-[transform,background-color,border-color,color] duration-150 ease-standard hover:!bg-[color:hsl(var(--success))]/15 active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100"
-            >
-              <CheckCircle size={14} />
-              <span>{t('pomodoro.controls.finish')}</span>
-            </DsButton>
+          {/* 专注中：支持提前完成并记录（倒计时/正计时通用）与跳过阶段 */}
+          {mode === 'work' && (
+            <>
+              <DsButton
+                variant="utility"
+                size="sm"
+                onClick={() => (isCountUpWork ? completeCurrentSession() : finishWorkEarly())}
+                title={t('pomodoro.controls.finishEarly', { defaultValue: '提前完成并记录' })}
+                aria-label={t('pomodoro.controls.finishEarly', { defaultValue: '提前完成并记录' })}
+                className="h-7 gap-1.5 !border-[color:hsl(var(--success))]/35 !bg-[color:hsl(var(--success))]/10 !px-2.5 text-xs !text-[color:hsl(var(--success))] transition-[transform,background-color,border-color,color] duration-150 ease-standard hover:!bg-[color:hsl(var(--success))]/15 active:scale-[0.96] motion-reduce:transition-none motion-reduce:active:scale-100"
+              >
+                <CheckCircle size={14} />
+                <span>{t('pomodoro.controls.finishEarly', { defaultValue: '提前完成并记录' })}</span>
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => skipPhase()}
+                title={t('pomodoro.controls.skipPhase', { defaultValue: '跳过到休息' })}
+                aria-label={t('pomodoro.controls.skipPhase', { defaultValue: '跳过到休息' })}
+                className="h-7 gap-1 !px-2 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <SkipForward size={13} />
+                <span>{t('pomodoro.controls.skipPhase', { defaultValue: '跳过到休息' })}</span>
+              </DsButton>
+            </>
           )}
 
           {/* 严格模式专注中不可暂停 */}

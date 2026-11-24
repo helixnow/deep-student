@@ -471,3 +471,100 @@ it('encrypted_zip_roundtrip_restores_full_slot', async ({ signal }) => {
     } finally { conn.close(); }
   }
 }, 120_000);
+
+it('sealFullArchive encrypts all databases inside sealed payload leaving zero plaintext in outer zip', async ({ signal }) => {
+  const created = await createBackupHost({
+    secrets: true,
+    storageFactory: dataDir => {
+      const storage = createStorageService({ baseDir: dataDir, dataLocalDir: dataDir });
+      storages.push(storage);
+      return storage;
+    },
+  });
+  hosts.push(created);
+  const host = created.host;
+  await installSyncService(host);
+  const appRoot = host.app.dataDir;
+  const sourceSlot = join(appRoot, 'slots', 'slotA');
+  seedSlot(sourceSlot, MARKER_VALUE);
+  const root = hostBackupRoot(host);
+  const manifest = await createBackup(
+    { ctx: host.ctx, backupRoot: root, activeDir: sourceSlot, baseDir: appRoot },
+    { includeAssets: true, backupIdSuffix: 'full-sealed-archive' },
+  );
+  const backupSubdir = join(root, manifest.backup_id);
+  const zipPath = join(appRoot, 'encrypted-zero-plaintext.zip');
+  await exportBackupToZip(host.ctx, backupSubdir, {
+    compressionLevel: 6, includeChecksums: true, outputPath: zipPath,
+    encryptionPassword: ENCRYPTION_PASSWORD, sealFullArchive: true,
+  }, () => undefined, () => false);
+
+  const outerBytes = readFileSync(zipPath);
+  expect(outerBytes.toString('latin1')).not.toContain(MARKER_VALUE);
+  const outerZip = await JSZip.loadAsync(outerBytes);
+  expect(Object.keys(outerZip.files).sort()).toEqual(
+    ['checksums.sha256', 'manifest.json', ENCRYPTED_SECRETS_ENTRY].sort(),
+  );
+  const outer = parseManifest(JSON.parse(await outerZip.file('manifest.json')!.async('string')));
+  expect(outer.key_policy).toBe('included_encrypted');
+  expect(outer.snapshot_kind).toBe('partial_overlay');
+
+  const targetWrong = join(appRoot, 'wrong-password-target');
+  await expect(importBackupFromZip(host.ctx, zipPath, targetWrong, {
+    password: 'wrong-password-1', skipExisting: false, onProgress: () => undefined, isCancelled: () => false,
+  })).rejects.toThrow(SEALED_BACKUP_DECRYPT_FAILED_CODE);
+
+  const sourceHashes = new Map<string, string>();
+  for (const id of ['vfs', 'chat_v2', 'mistakes', 'llm_usage'] as const) {
+    const relative = id === 'vfs' ? 'vfs.db' : `${id}.db`;
+    sourceHashes.set(relative, sha256(join(backupSubdir, relative)));
+  }
+  await deleteBackup(root, manifest.backup_id);
+  await importBackupFromZip(host.ctx, zipPath, backupSubdir, {
+    password: ENCRYPTION_PASSWORD, skipExisting: false,
+    onProgress: () => undefined, isCancelled: () => false,
+  });
+  expect(existsSync(join(backupSubdir, ENCRYPTED_SECRETS_ENTRY))).toBe(false);
+  for (const [relative, expected] of sourceHashes) {
+    expect(sha256(join(backupSubdir, relative)), `${relative} 全量密封装包往返后字节不一致`).toBe(expected);
+  }
+  const imported = loadManifest(join(backupSubdir, 'manifest.json'));
+  expect(imported.snapshot_kind).toBe('full');
+  expect(() => validateForSlotRestore(imported)).not.toThrow();
+
+  const publication: CryptoPublication = {
+    journalPath: app => join(app, '.crypto_restore_journal.json'),
+    rollbackDir: app => join(app, '.crypto_restore_rollback'),
+    async writeJournal(app: string, journal: CryptoPublicationJournal) {
+      writeFileSync(join(app, '.crypto_restore_journal.json'), JSON.stringify(journal));
+    },
+    async removeJournal(app: string) {
+      const path = join(app, '.crypto_restore_journal.json');
+      if (existsSync(path)) rmSync(path, { force: true });
+    },
+    async recover() { return 'Clean'; },
+  };
+  (host.ctx.secrets as unknown as { publication: CryptoPublication }).publication = publication;
+  const dataSpace = new DataSpaceManager(appRoot, publication);
+  mkdirSync(dataSpace.slotDir('slotA'), { recursive: true });
+  mkdirSync(dataSpace.slotDir('slotB'), { recursive: true });
+  host.ctx.provide('dataSpace', dataSpace);
+
+  const started = await host.invoke('data_governance_restore_backup', {
+    backupId: imported.backup_id,
+  }) as { job_id: string };
+  const job = await waitForJob(host, started.job_id, signal);
+  expect(job.status, String(job.message ?? job.error ?? '')).toBe('completed');
+  const restoredSlot = dataSpace.slotDir('slotB');
+  for (const id of ['chat_v2', 'mistakes', 'llm_usage'] as const) {
+    const path = join(restoredSlot, `${id}.db`);
+    const conn = new (await import('../../../platform/storage/connection.ts')).Connection(path, {
+      label: 'full-sealed-restore-verify',
+      profile: (await import('../../../platform/storage/profiles.ts')).PROFILES.plain,
+      mustExist: true,
+    });
+    try {
+      expect(conn.pluck<string>('SELECT value FROM roundtrip_marker LIMIT 1')).toBe(MARKER_VALUE);
+    } finally { conn.close(); }
+  }
+}, 120_000);

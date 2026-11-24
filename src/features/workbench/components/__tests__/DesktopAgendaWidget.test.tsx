@@ -82,7 +82,7 @@ describe('DesktopAgendaWidget', () => {
 
   it('支持直接完成和按选中日期快速添加', async () => {
     render(<DesktopAgendaWidget />);
-    fireEvent.click(screen.getByRole('button', { name: '完成 复习线性代数' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: '标记此待办完成' }));
     await waitFor(() => expect(mocks.complete).toHaveBeenCalledWith('item-a'));
 
     fireEvent.click(screen.getByRole('button', { name: '添加日程' }));

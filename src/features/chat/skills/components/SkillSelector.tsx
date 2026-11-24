@@ -86,8 +86,8 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
   const [bundleNameInput, setBundleNameInput] = useState<string | null>(null);
 
   // localStorage 覆盖状态改由声明式 hook 订阅（替代旧的 setXxxTick 强刷）
-  const { isDisabled: isSkillDisabledNow, setDisabled: setSkillDisabledNow } = useSkillEnableOverrides();
-  const { setTrust } = useSkillTrust();
+  const { revision: enableRevision, isDisabled: isSkillDisabledNow, setDisabled: setSkillDisabledNow } = useSkillEnableOverrides();
+  const { revision: trustRevision, setTrust } = useSkillTrust();
   const usageRevision = useSkillUsageRevision();
   const { bundles, saveBundle, deleteBundle } = useSkillBundles();
 
@@ -131,6 +131,23 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allSkills, searchTerm, isFavorite, defaultIds, t, usageRevision]);
+
+  const { customSkills, remainingSkills } = useMemo(() => {
+    const custom: typeof filteredSkills = [];
+    const rest: typeof filteredSkills = [];
+    for (const skill of filteredSkills) {
+      const isCustom = !skill.isBuiltin && skill.location !== 'builtin';
+      const isEnabledAndTrusted =
+        !isSkillDisabledNow(skill.id) && resolveEffectiveTrustStatus(skill) !== 'untrusted';
+      if (isCustom && isEnabledAndTrusted) {
+        custom.push(skill);
+      } else {
+        rest.push(skill);
+      }
+    }
+    return { customSkills: custom, remainingSkills: rest };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filteredSkills, enableRevision, trustRevision, isSkillDisabledNow]);
 
   // 从全量技能解析选中项：搜索词过滤掉选中技能时，详情面板仍保持可见
   // （尤其是移动端，否则列表隐藏 + 详情空白会造成无法返回的死角）
@@ -242,6 +259,177 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
       </DsButton>
     </>
   );
+
+  const renderSkillRow = (skill: typeof filteredSkills[number]) => {
+    const isSelected = skill.id === selectedSkillId;
+    const isActiveSkill = isSkillActive(skill.id);
+    const isToolLoaded = isSkillLoaded(skill.id);
+    const isDefaultSkill = isDefault(skill.id);
+    const isDisabledSkill = isSkillDisabledNow(skill.id);
+    const isUntrustedSkill = !skill.isBuiltin && resolveEffectiveTrustStatus(skill) === 'untrusted';
+    const activationBlocked = disabled || ((isDisabledSkill || isUntrustedSkill) && !isActiveSkill);
+    const skillName = getLocalizedSkillName(skill.id, skill.name, t);
+
+    return (
+      <ComposerPanel.Row
+        key={skill.id}
+        selected={isMenuVariant ? isActiveSkill : isSelected}
+        selectedAccent="tinted"
+        onClick={() => {
+          if (isMenuVariant) {
+            if (!activationBlocked) handleToggleActivate(skill.id);
+            return;
+          }
+          handleSelect(skill.id);
+        }}
+        aria-label={skillName}
+        leading={
+          isMenuVariant ? (
+            <span
+              className={cn(
+                'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold',
+                isActiveSkill
+                  ? 'bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
+                  : 'bg-muted text-muted-foreground',
+              )}
+              aria-hidden="true"
+            >
+              {(skillName.trim().charAt(0) || '?').toUpperCase()}
+            </span>
+          ) : (
+            // 主操作统一为「启用（钉住会话）」复选框：工具加载态不再抢占该位置，
+            // 保证被工具加载的技能也能从列表一键钉住
+            // eslint-disable-next-line ds-components/no-native-button -- 此处需精确控制 --button-primary-* token 的 16px 方块复选框，DsButton 的 size/variant 体系不适配
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!activationBlocked) handleToggleActivate(skill.id);
+              }}
+              disabled={activationBlocked}
+              aria-pressed={isActiveSkill}
+              aria-label={
+                isDisabledSkill && !isActiveSkill
+                  ? t('skills:selector.disabled_hint')
+                  : isActiveSkill
+                    ? t('skills:card.pinnedClickToUnpin')
+                    : isToolLoaded
+                      ? t('skills:card.pinLoadedByTool')
+                      : t('skills:card.pinToSession')
+              }
+              title={
+                isDisabledSkill && !isActiveSkill
+                  ? t('skills:selector.disabled_hint')
+                  : isActiveSkill
+                    ? t('skills:card.pinnedClickToUnpin')
+                    : isToolLoaded
+                      ? t('skills:card.pinLoadedByTool')
+                      : t('skills:card.pinToSession')
+              }
+              className={cn(
+                'mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold transition-colors',
+                // coarse 下 -inset-[13px]：18px 复选框 + 2×13px = 44px 触控目标
+                'relative after:absolute after:-inset-2.5 after:content-[\'\'] [@media(pointer:coarse)]:after:-inset-[13px]',
+                isActiveSkill
+                  ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
+                  : 'border-[color:var(--composer-panel-control-border)] text-transparent',
+                !activationBlocked && !isActiveSkill && 'hover:border-[color:var(--button-primary-border)]',
+                activationBlocked && 'cursor-not-allowed opacity-60'
+              )}
+            >
+              {isActiveSkill ? <Check size={12} weight="bold" /> : null}
+            </button>
+          )
+        }
+        trailing={
+          isMenuVariant ? (
+            isActiveSkill ? (
+              <Check size={14} weight="bold" className="text-[color:var(--button-primary-border)] opacity-90" />
+            ) : null
+          ) : (
+            <span className="flex shrink-0 items-center gap-1">
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFavorite(skill.id);
+                }}
+                aria-label={
+                  isFavorite(skill.id)
+                    ? t('skills:favorite.remove')
+                    : t('skills:favorite.add')
+                }
+                title={
+                  isFavorite(skill.id)
+                    ? t('skills:favorite.remove')
+                    : t('skills:favorite.add')
+                }
+                className={cn(
+                  // 视觉 20px，透明伪元素扩大触控命中区至 44px（移动端契约 ≥44px）
+                  '!h-5 !w-5 relative after:absolute after:-inset-3 after:content-[\'\']',
+                  isFavorite(skill.id)
+                    ? 'text-warning hover:text-warning'
+                    : 'text-[color:var(--composer-panel-muted-foreground)] opacity-60 hover:text-warning hover:opacity-100'
+                )}
+              >
+                <Star size={12} weight={isFavorite(skill.id) ? 'fill' : 'regular'} />
+              </DsButton>
+              <span
+                className={cn(
+                  'rounded px-1.5 py-0.5 text-2xs font-medium',
+                  getLocationStyle(skill.location)
+                )}
+              >
+                {getLocationLabel(skill.location, t)}
+              </span>
+            </span>
+          )
+        }
+      >
+        <span className={cn('flex min-w-0 flex-col gap-0.5', isDisabledSkill && 'opacity-60')}>
+          <span className={cn('flex items-center gap-1.5', isDisabledSkill && 'opacity-60')}>
+            <span className="truncate text-sm font-medium">
+              {skillName}
+            </span>
+            {/* 次级状态：被工具临时加载（未钉住时展示，可从复选框一键钉住） */}
+            {!isMenuVariant && isToolLoaded && !isActiveSkill ? (
+              <span
+                className="inline-flex shrink-0 items-center gap-0.5 rounded bg-warning/10 px-1.5 py-0.5 text-2xs font-medium text-warning"
+                title={t('skills:card.toolLoadedHint')}
+              >
+                <Lightning size={9} />
+                {t('skills:status.toolLoadedBadge')}
+              </span>
+            ) : null}
+            {isDisabledSkill ? (
+              <span
+                className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground"
+                title={t('skills:selector.disabled_hint')}
+              >
+                {t('skills:selector.disabled_badge')}
+              </span>
+            ) : null}
+            {!isMenuVariant && isDefaultSkill ? (
+              <span
+                className="inline-flex shrink-0 items-center gap-0.5 rounded bg-success/10 px-1.5 py-0.5 text-2xs font-medium text-success"
+                title={t('skills:default.isDefault')}
+              >
+                <Check size={9} />
+                {t('skills:default.label')}
+              </span>
+            ) : null}
+          </span>
+          {isMenuVariant ? (
+            <span className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+              {getLocalizedSkillDescription(skill.id, skill.description, t)}
+            </span>
+          ) : null}
+        </span>
+      </ComposerPanel.Row>
+    );
+  };
 
   return (
     <ComposerPanel.Root
@@ -373,176 +561,23 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
               description={searchTerm ? t('skills:selector.noResults') : t('skills:selector.empty')}
             />
           ) : (
-            <div className="space-y-1">
-              {filteredSkills.map((skill) => {
-                const isSelected = skill.id === selectedSkillId;
-                const isActiveSkill = isSkillActive(skill.id);
-                const isToolLoaded = isSkillLoaded(skill.id);
-                const isDefaultSkill = isDefault(skill.id);
-                const isDisabledSkill = isSkillDisabledNow(skill.id);
-                const activationBlocked = disabled || (isDisabledSkill && !isActiveSkill);
-                const skillName = getLocalizedSkillName(skill.id, skill.name, t);
-
-                return (
-                  <ComposerPanel.Row
-                    key={skill.id}
-                    selected={isMenuVariant ? isActiveSkill : isSelected}
-                    selectedAccent="tinted"
-                    onClick={() => {
-                      if (isMenuVariant) {
-                        if (!activationBlocked) handleToggleActivate(skill.id);
-                        return;
-                      }
-                      handleSelect(skill.id);
-                    }}
-                    aria-label={skillName}
-                    leading={
-                      isMenuVariant ? (
-                        <span
-                          className={cn(
-                            'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold',
-                            isActiveSkill
-                              ? 'bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
-                              : 'bg-muted text-muted-foreground',
-                          )}
-                          aria-hidden="true"
-                        >
-                          {(skillName.trim().charAt(0) || '?').toUpperCase()}
-                        </span>
-                      ) : (
-                        // 主操作统一为「启用（钉住会话）」复选框：工具加载态不再抢占该位置，
-                        // 保证被工具加载的技能也能从列表一键钉住
-                        // eslint-disable-next-line ds-components/no-native-button -- 此处需精确控制 --button-primary-* token 的 16px 方块复选框，DsButton 的 size/variant 体系不适配
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!activationBlocked) handleToggleActivate(skill.id);
-                          }}
-                          disabled={activationBlocked}
-                          aria-pressed={isActiveSkill}
-                          aria-label={
-                            isDisabledSkill && !isActiveSkill
-                              ? t('skills:selector.disabled_hint')
-                              : isActiveSkill
-                                ? t('skills:card.pinnedClickToUnpin')
-                                : isToolLoaded
-                                  ? t('skills:card.pinLoadedByTool')
-                                  : t('skills:card.pinToSession')
-                          }
-                          title={
-                            isDisabledSkill && !isActiveSkill
-                              ? t('skills:selector.disabled_hint')
-                              : isActiveSkill
-                                ? t('skills:card.pinnedClickToUnpin')
-                                : isToolLoaded
-                                  ? t('skills:card.pinLoadedByTool')
-                                  : t('skills:card.pinToSession')
-                          }
-                          className={cn(
-                            'mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold transition-colors',
-                            // coarse 下 -inset-[13px]：18px 复选框 + 2×13px = 44px 触控目标
-                            'relative after:absolute after:-inset-2.5 after:content-[\'\'] [@media(pointer:coarse)]:after:-inset-[13px]',
-                            isActiveSkill
-                              ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
-                              : 'border-[color:var(--composer-panel-control-border)] text-transparent',
-                            !activationBlocked && !isActiveSkill && 'hover:border-[color:var(--button-primary-border)]',
-                            activationBlocked && 'cursor-not-allowed opacity-60'
-                          )}
-                        >
-                          {isActiveSkill ? <Check size={12} weight="bold" /> : null}
-                        </button>
-                      )
-                    }
-                    trailing={
-                      isMenuVariant ? (
-                        isActiveSkill ? (
-                          <Check size={14} weight="bold" className="text-[color:var(--button-primary-border)] opacity-90" />
-                        ) : null
-                      ) : (
-                      <span className="flex shrink-0 items-center gap-1">
-                        <DsButton
-                          variant="ghost"
-                          size="icon"
-                          iconOnly
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleFavorite(skill.id);
-                          }}
-                          aria-label={
-                            isFavorite(skill.id)
-                              ? t('skills:favorite.remove')
-                              : t('skills:favorite.add')
-                          }
-                          title={
-                            isFavorite(skill.id)
-                              ? t('skills:favorite.remove')
-                              : t('skills:favorite.add')
-                          }
-                          className={cn(
-                            // 视觉 20px，透明伪元素扩大触控命中区至 44px（移动端契约 ≥44px）
-                            '!h-5 !w-5 relative after:absolute after:-inset-3 after:content-[\'\']',
-                            isFavorite(skill.id)
-                              ? 'text-warning hover:text-warning'
-                              : 'text-[color:var(--composer-panel-muted-foreground)] opacity-60 hover:text-warning hover:opacity-100'
-                          )}
-                        >
-                          <Star size={12} weight={isFavorite(skill.id) ? 'fill' : 'regular'} />
-                        </DsButton>
-                        <span
-                          className={cn(
-                            'rounded px-1.5 py-0.5 text-2xs font-medium',
-                            getLocationStyle(skill.location)
-                          )}
-                        >
-                          {getLocationLabel(skill.location, t)}
-                        </span>
-                      </span>
-                      )
-                    }
-                  >
-                    <span className={cn('flex min-w-0 flex-col gap-0.5', isDisabledSkill && 'opacity-60')}>
-                      <span className={cn('flex items-center gap-1.5', isDisabledSkill && 'opacity-60')}>
-                        <span className="truncate text-sm font-medium">
-                          {skillName}
-                        </span>
-                        {/* 次级状态：被工具临时加载（未钉住时展示，可从复选框一键钉住） */}
-                        {!isMenuVariant && isToolLoaded && !isActiveSkill ? (
-                          <span
-                            className="inline-flex shrink-0 items-center gap-0.5 rounded bg-warning/10 px-1.5 py-0.5 text-2xs font-medium text-warning"
-                            title={t('skills:card.toolLoadedHint')}
-                          >
-                            <Lightning size={9} />
-                            {t('skills:status.toolLoadedBadge')}
-                          </span>
-                        ) : null}
-                        {isDisabledSkill ? (
-                          <span
-                            className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-2xs font-medium text-muted-foreground"
-                            title={t('skills:selector.disabled_hint')}
-                          >
-                            {t('skills:selector.disabled_badge')}
-                          </span>
-                        ) : null}
-                        {!isMenuVariant && isDefaultSkill ? (
-                          <span
-                            className="inline-flex shrink-0 items-center gap-0.5 rounded bg-success/10 px-1.5 py-0.5 text-2xs font-medium text-success"
-                            title={t('skills:default.isDefault')}
-                          >
-                            <Check size={9} />
-                            {t('skills:default.label')}
-                          </span>
-                        ) : null}
-                      </span>
-                      {isMenuVariant ? (
-                        <span className="line-clamp-2 text-[11px] leading-snug text-muted-foreground">
-                          {getLocalizedSkillDescription(skill.id, skill.description, t)}
-                        </span>
-                      ) : null}
-                    </span>
-                  </ComposerPanel.Row>
-                );
-              })}
+            <div className="space-y-1.5">
+              {customSkills.length > 0 && (
+                <div className="space-y-1" data-testid="skill-selector-custom-section">
+                  <div className="px-2 pt-1 text-[11px] font-medium text-muted-foreground">
+                    {t('skills:selector.customSection')}
+                  </div>
+                  {customSkills.map(renderSkillRow)}
+                </div>
+              )}
+              {remainingSkills.length > 0 && (
+                <div className="space-y-1" data-testid="skill-selector-all-section">
+                  <div className="px-2 pt-1 text-[11px] font-medium text-muted-foreground">
+                    {t('skills:selector.allSection')}
+                  </div>
+                  {remainingSkills.map(renderSkillRow)}
+                </div>
+              )}
             </div>
           )}
         </CustomScrollArea>

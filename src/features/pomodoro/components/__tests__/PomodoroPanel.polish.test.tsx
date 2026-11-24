@@ -110,10 +110,27 @@ describe('PomodoroPanel tactile & keyboard UX polish', () => {
     expect(preset25).toHaveAttribute('aria-pressed', 'true');
     expect(preset45).toHaveAttribute('aria-pressed', 'false');
 
-    fireEvent.click(preset45);
+    fireEvent.click(screen.getByRole('button', { name: 'pomodoro.presets.setTitle:{"count":45}' }));
     expect(usePomodoroStore.getState().settings.workDuration).toBe(45 * 60);
     expect(preset45).toHaveAttribute('aria-pressed', 'true');
     expect(preset25).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('supports bindTask, finishWorkEarly, and skipPhase transitions', () => {
+    const state = usePomodoroStore.getState();
+    state.bindTask('todo_99', '线代真题');
+    expect(usePomodoroStore.getState().currentTaskId).toBe('todo_99');
+    expect(usePomodoroStore.getState().currentTaskTitle).toBe('线代真题');
+
+    usePomodoroStore.getState().start('todo_99', '线代真题');
+    expect(usePomodoroStore.getState().mode).toBe('work');
+
+    usePomodoroStore.getState().finishWorkEarly();
+    expect(usePomodoroStore.getState().completedPomodorosToday).toBe(1);
+    expect(usePomodoroStore.getState().mode).toBe('short_break');
+
+    usePomodoroStore.getState().skipPhase();
+    expect(usePomodoroStore.getState().mode).toBe('idle');
   });
 
   it('distinguishes work vs break surface states and highlights today completed badge on goal reached', () => {

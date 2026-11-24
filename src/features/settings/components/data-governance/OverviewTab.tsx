@@ -27,17 +27,20 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { settingsQuietTableRowClassName } from '../SettingsCommon';
 import { GroupTitle } from '../settingsTabPrimitives';
 import type {
+  BackupInfoResponse,
   HealthCheckResponse,
   MigrationStatusResponse,
   AutoVerifyResponse,
 } from '@/types/dataGovernance';
-import { getDatabaseDisplayName, formatTimestamp, formatDuration } from '@/types/dataGovernance';
+import { getDatabaseDisplayName, formatBytes, formatTimestamp, formatDuration } from '@/types/dataGovernance';
 
 export interface OverviewTabProps {
   migrationStatus: MigrationStatusResponse | null;
   healthCheck: HealthCheckResponse | null;
   loading: boolean;
   onRunHealthCheck: () => void;
+  /** 本地备份列表（用于概览页展示存储/备份占用并在无备份时禁用验证按钮） */
+  backups?: BackupInfoResponse[];
   /** 最近一次备份验证结果 */
   lastAutoVerifyResult?: AutoVerifyResponse | null;
   /** 正在执行自动验证 */
@@ -55,6 +58,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   healthCheck,
   loading,
   onRunHealthCheck,
+  backups,
   lastAutoVerifyResult,
   isVerifying,
   onVerifyLatestBackup,
@@ -66,6 +70,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   const hasPendingMigrations = pendingMigrationCount > 0;
   const healthCheckDatabases = healthCheck?.databases ?? [];
   const auditDegraded = Boolean(healthCheck && !healthCheck.audit_log_healthy);
+  const safeBackups = Array.isArray(backups) ? backups : [];
+  const hasBackups = safeBackups.length > 0;
+  const noBackupsAvailable = backups !== undefined && safeBackups.length === 0;
+  const totalBackupSizeBytes = safeBackups.reduce(
+    (sum, item) => sum + (Number.isFinite(item?.size) ? item.size : 0),
+    0,
+  );
+  const latestBackup = safeBackups[0] ?? null;
 
   return (
     <div className="space-y-5 sm:space-y-7">
@@ -205,6 +217,40 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
       )}
 
+      {/* 本地存储与备份占用摘要 */}
+      <section className="min-w-0" data-testid="overview-storage-backup-summary">
+        <GroupTitle title={t('data:governance.storage_backup_usage_title')} />
+        <div className="grid grid-cols-1 sm:grid-cols-3 overflow-hidden rounded-2xl bg-muted [&>*]:border-border/45 [&>*+*]:border-t sm:[&>*+*]:border-t-0 sm:[&>*+*]:border-l">
+          <div className="min-w-0 space-y-1 px-4 py-3">
+            <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+              <HardDrive className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{t('data:governance.storage_backup_total_size')}</span>
+            </div>
+            <div className="text-base font-semibold tabular-nums text-foreground">
+              {formatBytes(totalBackupSizeBytes)}
+            </div>
+          </div>
+          <div className="min-w-0 space-y-1 px-4 py-3">
+            <div className="text-xs font-medium text-muted-foreground truncate">
+              {t('data:governance.storage_backup_count')}
+            </div>
+            <div className="text-base font-semibold tabular-nums text-foreground">
+              {safeBackups.length}
+            </div>
+          </div>
+          <div className="min-w-0 space-y-1 px-4 py-3">
+            <div className="text-xs font-medium text-muted-foreground truncate">
+              {t('data:governance.storage_latest_backup')}
+            </div>
+            <div className="truncate text-sm font-medium text-foreground">
+              {hasBackups && latestBackup
+                ? `${formatBytes(latestBackup.size)} · ${formatTimestamp(latestBackup.created_at)}`
+                : t('data:governance.storage_no_backup_yet')}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* 最近备份验证 */}
       <section className="min-w-0">
         <GroupTitle
@@ -215,7 +261,8 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={onVerifyLatestBackup}
-                disabled={loading || isVerifying}
+                disabled={loading || isVerifying || noBackupsAvailable}
+                title={noBackupsAvailable ? t('data:governance.auto_verify_no_backups') : undefined}
                 className="rounded-xl border-border/70 bg-background/60 px-3 text-foreground hover:bg-muted/50"
               >
                 {isVerifying ? (

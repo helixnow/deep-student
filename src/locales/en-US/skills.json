@@ -100,7 +100,9 @@
     "enable": "Enable",
     "disable": "Disable",
     "manage": "More settings",
-    "installMore": "Get more skills"
+    "installMore": "Get more skills",
+    "customSection": "Custom skills",
+    "allSection": "All skills"
   },
   "card": {
     "activate": "Activate",
@@ -312,6 +314,8 @@
   "editor": {
     "tab_basic": "Basic Info",
     "tab_content": "Content",
+    "source_mode": "Plain text",
+    "highlight_mode": "Syntax highlight",
     "id": "Skill ID",
     "id_placeholder": "e.g., code-reviewer",
     "id_hint": "Only letters, numbers, hyphens, and underscores allowed",

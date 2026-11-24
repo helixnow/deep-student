@@ -82,19 +82,23 @@ describe('FlowToken code dependency boundary', () => {
     expect(code?.textContent).toBe('const answer = 42;\n');
     expect(container.querySelector('[data-stream-mode]')).toHaveAttribute('data-stream-mode', 'blocked');
     expect(container.querySelector('.main-content .code-block-lang')).toHaveTextContent('js');
-    await waitFor(() => expect(code?.querySelector('.token.keyword')).toHaveTextContent('const'));
-    expect(syntaxHighlighterLoaded).toHaveBeenCalledTimes(1);
-    expect(container.querySelector('.main-content pre code')).toBe(code);
+    // Streaming skips eager Prism tokenization to avoid blocking chunks on the main thread.
+    expect(syntaxHighlighterLoaded).not.toHaveBeenCalled();
 
     const updated = `${content}\nconsole.log(answer);\n\`\`\``;
     rerender(<StreamingMarkdownRenderer content={updated} isStreaming />);
     expect(container.querySelector('.main-content pre code')).toBe(code);
     expect(code?.textContent).toBe('const answer = 42;\nconsole.log(answer);\n');
-    expect(code?.querySelector('.token.function')).toHaveTextContent('log');
+    expect(syntaxHighlighterLoaded).not.toHaveBeenCalled();
 
     rerender(<StreamingMarkdownRenderer content={updated} isStreaming={false} />);
+    await waitFor(
+      () => expect(code?.querySelector('.token.keyword')).toHaveTextContent('const'),
+      { timeout: 10_000 },
+    );
+    expect(syntaxHighlighterLoaded).toHaveBeenCalledTimes(1);
     expect(container.querySelector('.main-content pre code')).toBe(code);
-    expect(code?.querySelector('.token.keyword')).toHaveTextContent('const');
+    expect(code?.querySelector('.token.function')).toHaveTextContent('log');
     fireEvent.click(getByRole('button', { name: '复制' }));
     await waitFor(() => expect(getByRole('button', { name: '已复制' })).toBeInTheDocument());
     expect(writeNativeClipboard).toHaveBeenCalledWith('const answer = 42;\nconsole.log(answer);');

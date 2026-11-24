@@ -141,3 +141,167 @@ it('data_governance_cancel_sync still cancels the progress sync and still does n
   plain.release();
   expect(await blocked.outcome).toContain('同步格式协商失败');
 });
+
+it('cancelling progress sync clears cancel token before releasing lease and rethrows clean cancel from runFileLevelSync', async () => {
+  const { mkdirSync, mkdtempSync, rmSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { dirname, join } = await import('node:path');
+  const { createStorageService } = await import('../../../platform/storage/service.ts');
+  const { FORMAT_KEY } = await import('../src/remote-format.ts');
+  const { runSyncWithProgress } = await import('../src/run-sync.ts');
+  const { runFileLevelSync } = await import('../src/file-level-sync.ts');
+
+  const tmpRoot = mkdtempSync(join(tmpdir(), 'sync-cancel-lease-'));
+  const storageService = createStorageService({ baseDir: tmpRoot, dataLocalDir: tmpRoot });
+  try {
+    for (const name of ['vfs', 'llm_usage', 'chat_v2', 'mistakes'] as const) {
+      const file = storageService.pathOf(name);
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, '');
+    }
+
+    let token: AbortSignal | null = null;
+    const objects = new Map<string, Buffer>([
+      [FORMAT_KEY, Buffer.from(JSON.stringify({ format_version: 4, min_client: 4 }))],
+    ]);
+    let leaseReleasedWithActiveToken = false;
+    let enteredFileSync!: () => void;
+    const fileSyncStarted = new Promise<void>(resolve => { enteredFileSync = resolve; });
+
+    const storage = {
+      providerName: () => 'fake-webdav',
+      instanceBindingHint: () => 'fake-webdav-root',
+      exists: async (key: string) => {
+        if (token?.aborted) throw new Error('云同步已取消');
+        return objects.has(key);
+      },
+      list: async (prefix: string) => {
+        if (token?.aborted) throw new Error('云同步已取消');
+        return [...objects.keys()].filter(k => k.startsWith(prefix)).map(key => ({ key, size: objects.get(key)!.length, lastModified: null }));
+      },
+      listOutcome: async (prefix: string) => {
+        if (token?.aborted) throw new Error('云同步已取消');
+        const files = [...objects.keys()].filter(k => k.startsWith(prefix)).map(key => ({ key, size: objects.get(key)!.length, lastModified: null }));
+        return { files, truncated: false };
+      },
+      get: async (key: string) => {
+        if (token?.aborted) throw new Error('云同步已取消');
+        return objects.get(key) ?? null;
+      },
+      stat: async (key: string) => {
+        if (token?.aborted) throw new Error('云同步已取消');
+        const buf = objects.get(key);
+        return buf ? { key, size: buf.length, lastModified: null } : null;
+      },
+      put: async (key: string, data: Buffer) => {
+        if (token?.aborted) throw new Error('云同步已取消');
+        objects.set(key, Buffer.from(data));
+      },
+      delete: async (key: string) => {
+        if (token?.aborted) {
+          leaseReleasedWithActiveToken = true;
+          throw new Error('云同步已取消');
+        }
+        objects.delete(key);
+      },
+    };
+
+    const mockSyncProvider = {
+      createStorage: vi.fn(async () => storage),
+      setStatusHook: vi.fn(),
+      clearStatusHook: vi.fn(),
+      setCancelToken: vi.fn((signal: AbortSignal) => { token = signal; }),
+      clearCancelToken: vi.fn(() => { token = null; }),
+      isSyncCancelled: () => token?.aborted ?? false,
+    };
+
+    const cancelController = new AbortController();
+    token = cancelController.signal;
+    cancelController.abort();
+    await expect(runFileLevelSync(
+      storage as never,
+      storageService.locations.activeDir,
+      'Bidirectional',
+      {
+        deviceId: 'dev-a',
+        codec: {} as never,
+        logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never,
+        localStorage: storageService,
+        openState: () => ({ getTombstoneWatermark: () => null, setTombstoneWatermark: vi.fn() }) as never,
+        compression: {} as never,
+        tombstones: {
+          downloadBlobTombstonesAfter: async () => [{ entries: {} }, []],
+          downloadAssetTombstonesAfter: async () => [{ entries: {} }, []],
+        } as never,
+        isCancelled: () => mockSyncProvider.isSyncCancelled(),
+      },
+      null,
+      null,
+    )).rejects.toThrow('同步已取消');
+
+    token = null;
+    let ports: SyncCommandPorts;
+    const host = await createTestHost({
+      plugins: [sync],
+      provide: {
+        backup: {
+          hydrateCloudConfig: vi.fn(async () => undefined),
+          syncCommandPorts: () => ports,
+        },
+        paths: { deviceId: async () => 'dev-a' },
+        syncProvider: mockSyncProvider,
+        secrets: { backup: createBackupCrypto() },
+        vfsDatabase: { isInMaintenanceMode: () => false },
+        storage: storageService,
+      },
+    });
+    hosts.push(host);
+    ports = {
+      limiter: { tryAcquire: () => ({ release: vi.fn() }) },
+      tombstones: {
+        downloadBlobTombstones: async () => {
+          enteredFileSync();
+          await new Promise<void>((_, reject) => {
+            token?.addEventListener('abort', () => reject(new Error('云同步已取消')), { once: true });
+            if (token?.aborted) reject(new Error('云同步已取消'));
+          });
+          return { entries: {}, updated_at: '' };
+        },
+        downloadAssetTombstones: async () => ({ entries: {}, updated_at: '' }),
+        downloadBlobTombstonesAfter: async () => [{ entries: {} }, []],
+        downloadAssetTombstonesAfter: async () => [{ entries: {} }, []],
+        DEFAULT_TOMBSTONE_RETENTION_DAYS: 90,
+      } as never,
+      application: { apply: vi.fn() } as never,
+      loadHydratedCloudConfig: async () => null,
+      saveSyncAudit: vi.fn(),
+      workspaceCoordinator: null,
+    } as unknown as SyncCommandPorts;
+
+    const runOutcomePromise = runSyncWithProgress(
+      host.ctx as never,
+      ports,
+      'upload',
+      { provider: 'webdav', endpoint: 'http://127.0.0.1:9999', root: '/r' } as never,
+      'keep_latest',
+    ).catch((err: unknown) => ({
+      success: false,
+      error_message: err instanceof Error ? err.message : String(err),
+    }));
+
+    const winner = await Promise.race([
+      fileSyncStarted.then(() => ({ kind: 'started' as const })),
+      runOutcomePromise.then(outcome => ({ kind: 'early' as const, outcome })),
+    ]);
+    if (winner.kind === 'early') throw new Error(`runSyncWithProgress exited before fileSyncStarted: ${JSON.stringify(winner.outcome)}`);
+    expect(await host.invoke('data_governance_cancel_sync')).toBe(true);
+    const outcome = await runOutcomePromise;
+    expect(outcome.success).toBe(false);
+    expect(outcome.error_message).toBe('同步已取消');
+    expect(leaseReleasedWithActiveToken).toBe(false);
+    expect([...objects.keys()].some(k => k.startsWith('data_governance/locks/sync-target/'))).toBe(false);
+  } finally {
+    storageService.dispose();
+    rmSync(tmpRoot, { recursive: true, force: true });
+  }
+});

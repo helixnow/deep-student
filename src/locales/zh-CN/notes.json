@@ -19,7 +19,8 @@
     "load_full_document": "加载全文以使用块操作",
     "text_style": "文字样式",
     "paragraph": "段落",
-    "insert": "插入"
+    "insert": "插入",
+    "manage": "管理"
   },
   "formatGate": {
     "checking": "正在确认笔记格式…",
@@ -1027,6 +1028,7 @@
       "auto_save": "自动保存",
       "auto_saved": "已自动保存"
     },
+    "body_aria_label": "笔记正文",
     "placeholder": {
       "default": "开始书写...",
       "body": "输入 '/' 唤起命令菜单...",
@@ -1536,7 +1538,12 @@
     "update_failed": "更新失败",
     "rename_failed": "重命名失败",
     "conflict": "内容已在其他处更新",
-    "conflict_hint": "请刷新后再尝试保存或回滚到历史版本"
+    "conflict_hint": "请刷新后再尝试保存或回滚到历史版本",
+    "move_to_trash": "移至回收站",
+    "move_to_trash_item": "移至回收站：{{title}}",
+    "moved_to_trash": "笔记已移至回收站",
+    "restored_from_trash": "已从回收站恢复笔记",
+    "undo": "撤销"
   },
   "common": {
     "no_selection": "未选择笔记",

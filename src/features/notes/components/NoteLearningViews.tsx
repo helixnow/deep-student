@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle, FileText } from '@phosphor-icons/react';
+import { CheckCircle, FileText, Trash } from '@phosphor-icons/react';
 import { AppMenu, AppMenuContent, AppMenuItem, AppMenuTrigger } from '@/components/ui/app-menu/AppMenu';
 import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -8,6 +8,8 @@ import {
   learningPropsFromMetadata, localCalendarDate, MASTERY_STATES, readNoteLearningProps,
   selectLearningViewNotes, type LearningViewNote, type NoteLearningView,
 } from '../noteLearningProps';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { moveNoteToTrash } from '../moveNoteToTrash';
 import { NOTE_REVIEW_INTERVALS, rescheduleNoteReview } from '../noteReviewSchedule';
 import { NoteGlyph } from './NoteGlyph';
 import './NoteLearningViews.css';
@@ -47,14 +49,16 @@ function ReviewDoneMenu({ noteId }: { noteId: string }) {
 }
 
 /** The host owns loading, filtering and DSTU subscriptions. This component never copies note data. */
-export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onOpen, activeId, now = new Date() }: {
+export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onOpen, onMoveToTrash, activeId, now = new Date() }: {
   notes: readonly T[];
   view: NoteLearningView;
   onOpen: (note: T) => void;
+  onMoveToTrash?: (note: T) => void | Promise<void>;
   activeId?: string | null;
   now?: Date;
 }) {
   const { t } = useTranslation('notes');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const selected = selectLearningViewNotes(notes, view, now);
   const today = localCalendarDate(now);
   const groups = view === 'status'
@@ -64,6 +68,21 @@ export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onO
       notes: selected.filter((note) => (readNoteLearningProps(learningPropsFromMetadata(note.metadata)).mastery ?? 'unset') === state),
     }))
     : [{ key: view, label: view === 'review' ? t('learning.review_range') : t('learning.views.list'), notes: selected }];
+
+  const handleTrashNote = async (note: T) => {
+    if (deletingId === note.id) return;
+    setDeletingId(note.id);
+    try {
+      if (onMoveToTrash) {
+        await onMoveToTrash(note);
+      } else {
+        await moveNoteToTrash({ noteId: note.id, noteTitle: note.name });
+      }
+    } finally {
+      setDeletingId((current) => (current === note.id ? null : current));
+    }
+  };
+
   return (
     <div className="nlv" aria-label={t('learning.views_label')}>
       {groups.map((group) => (
@@ -80,8 +99,22 @@ export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onO
               const props = readNoteLearningProps(learningPropsFromMetadata(note.metadata));
               const due = props.reviewDate ? (props.reviewDate < today ? 'overdue' : props.reviewDate === today ? 'today' : 'later') : undefined;
               const subtitle = [props.course, props.chapter].filter(Boolean).join(' / ');
-              return <li key={note.id} className={view === 'review' ? 'nlv-item' : undefined}>
-                <button type="button" className="nlv-row" aria-current={note.id === activeId ? 'true' : undefined} onClick={() => onOpen(note)}>
+              return <li key={note.id} className="nlv-item">
+                <button
+                  type="button"
+                  className="nlv-row"
+                  aria-current={note.id === activeId ? 'true' : undefined}
+                  onClick={() => onOpen(note)}
+                  onKeyDown={(event) => {
+                    if (isComposingKeyEvent(event) || event.key !== 'Delete') return;
+                    if (event.ctrlKey || event.metaKey || event.altKey) return;
+                    const targetEl = event.target as HTMLElement | null;
+                    if (targetEl?.closest('input, textarea, [contenteditable="true"]')) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void handleTrashNote(note);
+                  }}
+                >
                   <span className="nlv-row-icon"><NoteGlyph noteId={note.id} size={16} fallback={<FileText size={16} aria-hidden="true" />} /></span>
                   <span className="nlv-row-body">
                     <span className="nlv-row-title">{note.name}</span>
@@ -95,6 +128,19 @@ export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onO
                   </span>
                 </button>
                 {view === 'review' && <ReviewDoneMenu noteId={note.id} />}
+                <button
+                  type="button"
+                  className="nlv-trash-btn"
+                  aria-label={t('actions.move_to_trash', { defaultValue: '移至回收站' })}
+                  title={t('actions.move_to_trash_item', { title: note.name || t('common.untitled', '未命名'), defaultValue: `移至回收站：${note.name || '未命名'}` })}
+                  disabled={deletingId === note.id}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void handleTrashNote(note);
+                  }}
+                >
+                  <Trash size={14} aria-hidden="true" />
+                </button>
               </li>;
             })}
           </ul>

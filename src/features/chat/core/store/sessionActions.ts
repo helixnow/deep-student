@@ -18,6 +18,7 @@ import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
 import { resetTransientRuntimes } from './transientRuntimeRegistry';
 import { isStoreSubagentSession } from '../subagentSession';
 import { rememberPermissionPreset } from '../session/permissionPresetDefaults';
+import { useSessionListStore } from '../../stores/sessionListStore';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -165,8 +166,26 @@ export function createSessionActions(
 
         // ========== 会话元信息 Actions ==========
 
-        setTitle: (title: string): void => {
+        setTitle: async (title: string): Promise<void> => {
+          const currentState = getState();
+          const previousTitle = currentState.title;
+          const targetSessionId = currentState.sessionId;
+          const updateSessionTitleInList = (nextTitle: string) => {
+            if (!targetSessionId) return;
+            useSessionListStore.setState((listState) => {
+              if (!listState.sessions.some((session) => session.id === targetSessionId)) {
+                return listState;
+              }
+              return {
+                sessions: listState.sessions.map((session) =>
+                  session.id === targetSessionId ? { ...session, title: nextTitle } : session
+                ),
+              };
+            });
+          };
+
           set({ title });
+          updateSessionTitleInList(title);
           console.log('[ChatStore] Title set:', title);
 
           // 调用后端同步会话设置
@@ -175,9 +194,18 @@ export function createSessionActions(
           })._updateSessionSettingsCallback;
 
           if (updateSessionSettingsCallback) {
-            updateSessionSettingsCallback({ title }).catch((error) => {
+            try {
+              await updateSessionSettingsCallback({ title });
+            } catch (error) {
               console.error('[ChatStore] setTitle sync failed:', getErrorMessage(error));
-            });
+              set({ title: previousTitle });
+              updateSessionTitleInList(previousTitle);
+              throw error;
+            }
+          }
+
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
           }
         },
 

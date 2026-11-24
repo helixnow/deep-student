@@ -4,7 +4,7 @@
  * 支持 WebDAV；桌面端还支持 S3 兼容存储与实验性 FTP。Android 仅 WebDAV。
  */
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
@@ -131,11 +131,28 @@ interface CloudStorageSectionProps {
   onConfigChanged?: () => void;
 }
 
+function hasRootPathTraversal(rootPath: string): boolean {
+  return rootPath
+    .split(/[\\/]+/)
+    .some((segment) => segment.trim() === '..');
+}
+
+function hasEmbeddedUrlCredentials(endpointValue: string): boolean {
+  const trimmed = endpointValue.trim();
+  if (!trimmed) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return Boolean(parsed.username || parsed.password);
+  } catch {
+    return false;
+  }
+}
+
 export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   isDialog = false,
   onConfigChanged,
 }) => {
-  const { t } = useTranslation(['cloudStorage', 'common']);
+  const { t, i18n } = useTranslation(['cloudStorage', 'common']);
   const [pairingRevision, setPairingRevision] = useState(0);
   const onPairingApplied = () => { setPairingRevision(value => value + 1); onConfigChanged?.(); };
   const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
@@ -188,6 +205,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 发布），'published' = 表单与后端已发布配置一致。草稿测试的成功/失败都
   // 不改变该状态；只有 cloud_config_publish 成功才置 'published'。
   const [configPhase, setConfigPhase] = useState<'draft' | 'published'>('draft');
+  const [hasSavedConfig, setHasSavedConfig] = useState(false);
+  const [draftTestError, setDraftTestError] = useState<string | null>(null);
   // 后端已发布配置回填表单时跳过一次「标记为草稿」，hydration 不是用户编辑
   const hydratingFormRef = useRef(true);
   const formRevisionRef = useRef(0);
@@ -300,6 +319,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
     setConfigPhase('draft');
     setConnectionStatus('unknown');
+    setDraftTestError(null);
   }, [provider, webdavConfig, s3Config, ftpConfig, root, encryptionPassword]);
 
   // 监听后端 cloud-sync-progress 事件（字节级传输进度）
@@ -344,6 +364,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           // 并把前端认知置为「已发布」。
           hydratingFormRef.current = true;
           setConfigPhase('published');
+          setHasSavedConfig(true);
+          setDraftTestError(null);
           setProvider(config.provider);
           loadedFtpConfig = config.provider === 'ftp' || Boolean(config.ftp);
           setHasStoredFtpConfig(loadedFtpConfig);
@@ -364,6 +386,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         } else if (active && loadRevision === formRevisionRef.current) {
           setHasStoredFtpConfig(false);
           setAllowInsecure(false);
+          setHasSavedConfig(false);
         }
       } catch (e: unknown) {
         console.error('Failed to resolve backend cloud storage config:', e);
@@ -508,6 +531,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       if (savedRevision === formRevisionRef.current) {
         setAllowInsecure(published.config.allow_insecure ?? false);
         setConfigPhase('published');
+        setHasSavedConfig(true);
+        setDraftTestError(null);
       }
       // 仅 UI 缓存；只有发布成功后才允许写，后端 SSOT 为准。
       localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(published.config));
@@ -540,8 +565,84 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
   }, [buildConfig, buildFormCredentials, encryptionPassword, localizeCloudError, markSecureStoreIssue, t, onConfigChanged]);
 
+  const validationErrors = useMemo(() => {
+    const errors: string[] = [];
+    if (hasRootPathTraversal(root)) {
+      errors.push(t('cloudStorage:validation.rootPathTraversal'));
+    }
+    if (provider === 'webdav') {
+      const endpoint = webdavConfig.endpoint.trim();
+      if (hasEmbeddedUrlCredentials(endpoint)) {
+        errors.push(t('cloudStorage:validation.embeddedCredentials'));
+      } else if (endpoint && !allowInsecure && cloudApi.isPublicHttpEndpoint(endpoint)) {
+        errors.push(t('cloudStorage:validation.insecureHttpUrl'));
+      }
+    } else if (provider === 's3') {
+      const endpoint = s3Config.endpoint.trim();
+      if (hasEmbeddedUrlCredentials(endpoint)) {
+        errors.push(t('cloudStorage:validation.embeddedCredentials'));
+      } else if (endpoint && cloudApi.isPublicHttpEndpoint(endpoint)) {
+        errors.push(t('cloudStorage:validation.insecureHttpUrl'));
+      }
+    } else {
+      const endpoint = ftpConfig.endpoint.trim();
+      if (hasEmbeddedUrlCredentials(endpoint)) {
+        errors.push(t('cloudStorage:validation.embeddedCredentials'));
+      }
+    }
+    return errors;
+  }, [provider, webdavConfig.endpoint, s3Config.endpoint, ftpConfig.endpoint, root, allowInsecure, t]);
+
+  // 检查配置是否有效
+  const isConfigValid = useCallback(() => {
+    if (hasRootPathTraversal(root)) return false;
+    if (provider === 'webdav') {
+      const endpoint = webdavConfig.endpoint.trim();
+      if (
+        !endpoint
+        || !webdavConfig.username.trim()
+        || (!webdavConfig.password.trim() && !credentialStatus.webdavPasswordConfigured)
+      ) return false;
+      // Validate URL format, protocol, and forbid embedded credentials
+      try {
+        const url = new URL(endpoint);
+        if (!['http:', 'https:'].includes(url.protocol)) return false;
+        if (url.username || url.password) return false;
+      } catch { return false; }
+      return true;
+    } else if (provider === 's3') {
+      const endpoint = s3Config.endpoint.trim();
+      if (
+        !endpoint
+        || !s3Config.bucket.trim()
+        || !s3Config.accessKeyId.trim()
+        || (!s3Config.secretAccessKey.trim() && !credentialStatus.s3SecretAccessKeyConfigured)
+      ) return false;
+      try {
+        const url = new URL(endpoint);
+        if (!['http:', 'https:'].includes(url.protocol)) return false;
+        if (url.username || url.password) return false;
+        if (cloudApi.isPublicHttpEndpoint(endpoint)) return false;
+      } catch { return false; }
+      return true;
+    } else {
+      // FTP provider
+      const endpoint = ftpConfig.endpoint.trim();
+      const username = ftpConfig.username.trim();
+      const password = ftpConfig.password.trim();
+      if (!endpoint || !username || (!password && !credentialStatus.ftpPasswordConfigured)) return false;
+      try {
+        const url = new URL(endpoint);
+        if (!['ftp:', 'ftps:'].includes(url.protocol)) return false;
+        if (url.username || url.password) return false;
+      } catch { return false; }
+      return true;
+    }
+  }, [provider, webdavConfig, s3Config, ftpConfig, root, credentialStatus]);
+
   // 保存配置（先检查不安全连接）
   const saveConfig = useCallback(async () => {
+    if (!isConfigValid()) return;
     const config = buildConfig();
     if (
       (config.provider === 'webdav'
@@ -578,7 +679,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
 
     await doSaveConfig(false);
-  }, [buildConfig, credentialStatus, webdavConfig.password, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, t, doSaveConfig]);
+  }, [isConfigValid, buildConfig, credentialStatus, webdavConfig.password, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, t, doSaveConfig]);
 
   // 实际执行测试连接逻辑：草稿试连。表单配置与凭据只随本次 IPC 一次性传给
   // 后端 cloud_config_test_connection_draft，后端不写安全存储、不改 active
@@ -599,6 +700,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
     setTesting(true);
     setConnectionStatus('unknown');
+    setDraftTestError(null);
     const testedRevision = formRevisionRef.current;
     try {
       const config = buildConfig(allowInsecureOverride);
@@ -609,6 +711,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       // 测试成功也仍是「已测试的草稿」：不发布；状态/版本等「已发布」视图
       // 留到发布成功后再刷新，避免草稿结论与已发布数据混在一起。
       setConnectionStatus('connected');
+      setDraftTestError(null);
       showGlobalNotification('success', t('cloudStorage:messages.connectionSuccess'));
     } catch (e: unknown) {
       if (testedRevision !== formRevisionRef.current) return;
@@ -616,9 +719,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       // SECURE_STORE_*（后端在测试末尾只读探测 active generation 失败）
       // 优先给可行动提示，其余按稳定 code 本地化。草稿测试不回填凭据。
       const secureMessage = markSecureStoreIssue(e, 'read');
+      const reason = secureMessage ?? localizeCloudError(e);
+      setDraftTestError(reason);
       showGlobalNotification(
         'error',
-        `${t('cloudStorage:errors.connectionFailed')}: ${secureMessage ?? localizeCloudError(e)}`,
+        `${t('cloudStorage:errors.connectionFailed')}: ${reason}`,
       );
     } finally {
       setTesting(false);
@@ -690,6 +795,8 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
     setConnectionStatus('unknown');
     setConfigPhase('draft');
+    setHasSavedConfig(false);
+    setDraftTestError(null);
     setSyncStatus(null);
     setVersions([]);
     showGlobalNotification(
@@ -729,6 +836,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
   // 测试连接（先检查不安全连接）
   const testConnection = useCallback(async () => {
+    if (!isConfigValid()) return;
     const config = buildConfig();
     if (provider === 'ftp' && cloudApi.requiresInsecureTransportOptIn(config)) {
       setInsecureWarningAction('test');
@@ -748,7 +856,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
 
     await doTestConnection(false);
-  }, [provider, s3Config.endpoint, buildConfig, doTestConnection, t]);
+  }, [isConfigValid, provider, s3Config.endpoint, buildConfig, doTestConnection, t]);
 
   // 刷新状态
   const refreshStatus = useCallback(async () => {
@@ -763,48 +871,6 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       console.error('Failed to refresh status:', e);
     }
   }, [buildConfig, connectionStatus]);
-
-  // 检查配置是否有效
-  const isConfigValid = useCallback(() => {
-    if (provider === 'webdav') {
-      const endpoint = webdavConfig.endpoint.trim();
-      if (
-        !endpoint
-        || !webdavConfig.username.trim()
-        || (!webdavConfig.password.trim() && !credentialStatus.webdavPasswordConfigured)
-      ) return false;
-      // Validate URL format and protocol
-      try {
-        const url = new URL(endpoint);
-        if (!['http:', 'https:'].includes(url.protocol)) return false;
-      } catch { return false; }
-      return true;
-    } else if (provider === 's3') {
-      const endpoint = s3Config.endpoint.trim();
-      if (
-        !endpoint
-        || !s3Config.bucket.trim()
-        || !s3Config.accessKeyId.trim()
-        || (!s3Config.secretAccessKey.trim() && !credentialStatus.s3SecretAccessKeyConfigured)
-      ) return false;
-      try {
-        const url = new URL(endpoint);
-        if (!['http:', 'https:'].includes(url.protocol)) return false;
-      } catch { return false; }
-      return true;
-    } else {
-      // FTP provider
-      const endpoint = ftpConfig.endpoint.trim();
-      const username = ftpConfig.username.trim();
-      const password = ftpConfig.password.trim();
-      if (!endpoint || !username || (!password && !credentialStatus.ftpPasswordConfigured)) return false;
-      try {
-        const url = new URL(endpoint);
-        if (!['ftp:', 'ftps:'].includes(url.protocol)) return false;
-      } catch { return false; }
-      return true;
-    }
-  }, [provider, webdavConfig, s3Config, ftpConfig, credentialStatus]);
 
   const resolveBackupId = useCallback((job: BackupJobSummary | null): string | null => {
     const stats = job?.result?.stats as Record<string, unknown> | undefined;
@@ -1647,9 +1713,43 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           )}
         </div>
 
+        {/* 持久化校验错误与草稿测试失败横幅 */}
+        {validationErrors.length > 0 && (
+          <div
+            role="alert"
+            data-testid="cloud-validation-errors"
+            className="space-y-1 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+          >
+            {validationErrors.map((msg, idx) => (
+              <div key={idx} className="flex items-start gap-2">
+                <WarningCircle size={15} className="mt-0.5 shrink-0" aria-hidden />
+                <span className="min-w-0 break-words">{msg}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {connectionStatus === 'failed' && draftTestError && (
+          <div
+            role="alert"
+            data-testid="cloud-draft-test-error-banner"
+            className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+          >
+            <XCircle size={15} className="mt-0.5 shrink-0" aria-hidden />
+            <div className="min-w-0 break-words">
+              <span className="font-medium">
+                {hasSavedConfig
+                  ? t('cloudStorage:phase.draftTestFailed')
+                  : t('cloudStorage:phase.unsavedTestFailed')}
+              </span>
+              <span>{`${i18n?.language?.startsWith('en') ? ': ' : '：'}${draftTestError}`}</span>
+            </div>
+          </div>
+        )}
+
         {/* 三态状态徽标：未测试的草稿 / 测试中 / 已发布。草稿测试成功也只是
             「已测试的草稿」，点「保存配置」发布之前不会改变已发布配置。 */}
-        {(testing || configPhase === 'published' || isConfigValid()) && (
+        {(testing || configPhase === 'published' || connectionStatus !== 'unknown' || isConfigValid()) && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground" data-testid="cloud-config-phase">
             {testing ? (
               <>
@@ -1669,7 +1769,20 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             ) : connectionStatus === 'failed' ? (
               <>
                 <XCircle size={14} className="text-destructive" />
-                <span>{t('cloudStorage:phase.draftTestFailed')}</span>
+                <span>
+                  {hasSavedConfig ? (
+                    <>
+                      {t('cloudStorage:phase.draftTestFailed')}
+                      {draftTestError
+                        ? `${i18n?.language?.startsWith('en') ? ': ' : '：'}${draftTestError}`
+                        : ''}
+                    </>
+                  ) : draftTestError ? (
+                    t('cloudStorage:phase.unsavedTestFailedWithReason', { reason: draftTestError })
+                  ) : (
+                    t('cloudStorage:phase.unsavedTestFailed')
+                  )}
+                </span>
               </>
             ) : (
               <>

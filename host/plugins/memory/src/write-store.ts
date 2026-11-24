@@ -29,9 +29,10 @@ import type { MemoryConfig } from './config.ts';
 import {
   CONTENT_LIMITS, MAX_BATCH_ITEMS, TAG_ARCHIVED, TAG_IMPORTANT, TAG_LAST_HIT_PREFIX,
   TAG_LAST_INJECTED_PREFIX, TAG_NEEDS_DEDUP_REVIEW, TAG_PURPOSE_PREFIX, TAG_STALE,
-  TAG_TYPE_PREFIX, TAG_REF_PREFIX, errorText, factHardRejectReason, isReservedSystemName,
-  memoryTags, memoryTypeFromTags, parseMemoryPurpose, parseMemoryType, purposeMatches, sameText,
-  shouldDowngradeSmartMutation, typeTag, validateExpectedVersion, ctxGet,
+  TAG_TYPE_PREFIX, TAG_REF_PREFIX, codepointLength, errorText, factHardRejectReason,
+  isReservedSystemName, isTransientScheduleText, memoryTags, memoryTypeFromTags,
+  parseMemoryPurpose, parseMemoryType, purposeMatches, sameText, shouldDowngradeSmartMutation,
+  typeTag, validateExpectedVersion, ctxGet,
 } from './memory-utils.ts';
 
 export type WriteMode = 'create' | 'update' | 'append';
@@ -53,6 +54,9 @@ function isPersonalLearnerFact(title: string, content: string): boolean {
 }
 
 function resolveFactHardRejectReason(title: string, content: string): string | null {
+  if (isTransientScheduleText(title, content)) {
+    return '检测到仅限当天的临时日程安排，不写入长期核心记忆。';
+  }
   if (isPersonalLearnerFact(title, content)) return null;
   return factHardRejectReason(title, content);
 }
@@ -104,7 +108,7 @@ export class MemoryWriteStore {
       throw new Error("Invalid argument 'title/content': 包含敏感信息（手机号/身份证/银行卡/邮箱/密码）");
     }
     const maxChars = CONTENT_LIMITS.fact;
-    if (Array.from(content).length > maxChars) {
+    if (codepointLength(content) > maxChars) {
       throw new Error(`Invalid argument 'content': 内容超过 ${maxChars} 字限制（类型: fact）`);
     }
     const folderId = this.host.resolveWriteTargetFolderId(folderPath, true);
@@ -155,7 +159,7 @@ export class MemoryWriteStore {
         throw new Error("Invalid argument 'content': 内容包含敏感信息（手机号/身份证/银行卡/邮箱/密码）");
       }
       const maxChars = CONTENT_LIMITS[memoryType];
-      if (Array.from(content).length > maxChars) {
+      if (codepointLength(content) > maxChars) {
         throw new Error(`Invalid argument 'content': 内容超过 ${maxChars} 字限制（类型: ${memoryType}）`);
       }
     }
@@ -344,7 +348,7 @@ export class MemoryWriteStore {
       // Earlier filtering/explicit/privacy branches retain their Rust order and do no search.
       if (memoryType === 'fact' && content.trim().length > 0
         && !containsSensitivePattern(content) && !containsSensitivePattern(title)
-        && Array.from(content).length <= CONTENT_LIMITS.fact
+        && codepointLength(content) <= CONTENT_LIMITS.fact
         && resolveFactHardRejectReason(title, content) === null && !this.host.config.isPrivacyMode()) {
         return await this.writeFactSmart(folderPath, title, content, purpose, source, sessionId,
           startedAt, reservation);
@@ -394,7 +398,7 @@ export class MemoryWriteStore {
         resourceId: null, downgraded: false };
     }
     const maxChars = CONTENT_LIMITS[memoryType];
-    if (Array.from(content).length > maxChars) {
+    if (codepointLength(content) > maxChars) {
       const reason = `内容超过 ${maxChars} 字限制（类型: ${memoryType}）`;
       this.host.audit({ source, operation: 'write_smart', success: false, title, contentPreview: content,
         event: 'FILTERED', reason, durationMs: 0 });
@@ -550,8 +554,14 @@ export class MemoryWriteStore {
     try {
       return this.commitFact(reservation, () => {
         const note = this.host.ensureNoteInMemoryRoot(target);
+        const existingType = memoryTypeFromTags(note.tags);
+        const maxChars = CONTENT_LIMITS[existingType];
         const finalContent = decision.event === 'APPEND'
           ? `${getNoteContent(this.host.deps, this.host.db, target)}\n\n${content}` : content;
+        if (decision.event === 'APPEND' && codepointLength(finalContent) > maxChars
+          && codepointLength(content) <= CONTENT_LIMITS.fact) {
+          throw new Error('__APPEND_OVERFLOW__');
+        }
         let result: MemoryWriteOutput;
         if (reservation === undefined) {
           result = this.updateById(target, decision.event === 'UPDATE' ? title : null,
@@ -564,9 +574,7 @@ export class MemoryWriteStore {
           if (containsSensitivePattern(finalContent)) {
             throw new Error("Invalid argument 'content': 内容包含敏感信息（手机号/身份证/银行卡/邮箱/密码）");
           }
-          const existingType = memoryTypeFromTags(note.tags);
-          const maxChars = CONTENT_LIMITS[existingType];
-          if (Array.from(finalContent).length > maxChars) {
+          if (codepointLength(finalContent) > maxChars) {
             throw new Error(`Invalid argument 'content': 内容超过 ${maxChars} 字限制（类型: ${existingType}）`);
           }
           const updated = updateNote(this.host.deps, this.host.db, target, {
@@ -582,6 +590,9 @@ export class MemoryWriteStore {
           reason: decision.reason, downgraded: false };
       });
     } catch (error) {
+      if (error instanceof Error && error.message === '__APPEND_OVERFLOW__') {
+        return create('ADD', `${decision.reason}（追加后超出字数限制，降级为 ADD）`);
+      }
       // Rust degrades only VfsError::NotFound, not a CAS/SQL/content-validation error.
       if (error instanceof Error && /^(Note|MemoryNote) not found: /u.test(error.message)) {
         return create('ADD', `${decision.reason}（target_note_id 无效，降级为 ADD）`);
@@ -629,7 +640,7 @@ export class MemoryWriteStore {
       throw new Error("Invalid argument 'title/content': 包含敏感信息（手机号/身份证/银行卡/邮箱/密码）");
     }
     const maxChars = CONTENT_LIMITS[memoryType];
-    if (Array.from(content).length > maxChars) {
+    if (codepointLength(content) > maxChars) {
       throw new Error(`Invalid argument 'content': 内容超过 ${maxChars} 字限制（类型: ${memoryType}）`);
     }
     const folderId = this.host.resolveWriteTargetFolderId(folderPath, true);

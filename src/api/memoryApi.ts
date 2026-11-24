@@ -494,3 +494,38 @@ export async function mutateMemoryKernel(mutation: MemoryKernelMutation): Promis
     args: [mutation],
   });
 }
+
+// Shared module-level cache so 50 assistant bubbles in a conversation trigger at most 1 RPC.
+let attributionCachedView: MemoryInspectionView | null = null;
+let attributionCachedAt = 0;
+const ATTRIBUTION_CACHE_TTL_MS = 15_000;
+const attributionListeners = new Set<() => void>();
+
+function notifyAttributionListeners(): void {
+  for (const listener of attributionListeners) listener();
+}
+
+export function subscribeMemoryKernelSummary(listener: () => void): () => void {
+  attributionListeners.add(listener);
+  return () => {
+    attributionListeners.delete(listener);
+  };
+}
+
+export function getMemoryKernelSummarySnapshot(): MemoryInspectionView | null {
+  return attributionCachedView;
+}
+
+export function isMemoryKernelSummaryFresh(): boolean {
+  return Boolean(attributionCachedView && Date.now() - attributionCachedAt < ATTRIBUTION_CACHE_TTL_MS);
+}
+
+export function invalidateMemoryKernelAttributionCache(next?: MemoryInspectionView | null): void {
+  if (next !== undefined) {
+    attributionCachedView = next;
+    attributionCachedAt = Date.now();
+  } else {
+    attributionCachedAt = 0;
+  }
+  notifyAttributionListeners();
+}

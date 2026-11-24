@@ -14,6 +14,7 @@ import { reportWorkshopRuntimeFailure } from '@/features/plugin-workshop/runtime
 import { openWorkshopCandidateView } from '@/features/plugin-workshop/open-candidate';
 import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { getWorkbenchHostBridge } from '@/shared/workbenchHost';
+import { useWindowStore } from '@/features/workbench/core/windowStore';
 
 const CONTRIBUTED_SLOT_PLACES: Readonly<Record<string, (entry: { value?: unknown }) => WorkshopPlace>> = {
   'editor.selectionToolbar': () => ({ kind: 'selectionButton' }),
@@ -151,6 +152,30 @@ workshopContributions.announce(ctx => {
       case 'statusBarItem':
         if (!getWorkbenchHostBridge()?.isEnabled()) {
           dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'dashboard' });
+        } else if (place.kind === 'desktopWidget') {
+          try {
+            const store = useWindowStore.getState();
+            for (const win of Object.values(store.windows)) {
+              if (!win.minimized && (win.typeId === 'settings' || win.typeId === 'plugin-workshop')) {
+                store.minimizeWindow(win.id, true);
+              }
+            }
+          } catch {
+            // Ignore when windowStore is not active in headless tests.
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('workbench:reveal-desktop-widgets'));
+            window.requestAnimationFrame(() => {
+              const target = document.querySelector<HTMLElement>(
+                '[data-testid="wb-desktop-plugin-widget"], .wb-desktop-widget-column',
+              );
+              if (target) {
+                target.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+                if (target.tabIndex < 0) target.tabIndex = -1;
+                target.focus?.({ preventScroll: true });
+              }
+            });
+          }
         }
         return true;
       case 'agentTool':

@@ -75,8 +75,22 @@ export function PluginDetail({
   const consentRequired = uiStatus?.consentRequired === true || plugin.consent === 'required';
   const blockedBySafeMode = safeMode && plugin.origin === 'community';
   const statusKey = !supported ? unsupportedPlatformKey(plugin, platform) : autoUninstalled ? 'manager.problemStatus' : pluginStatusKey(plugin, uiStatus, safeMode);
+  const switchChecked = pendingEnabled ?? (plugin.enabled && !consentRequired);
   const switchDisabled = busy || !supported || blockedBySafeMode;
   const additions = pluginAdditions(plugin, livePoints);
+  const declarativeGroups: Array<{ labelKey: string; items: string[] }> = [];
+  if (plugin.declarative) {
+    const prompts = [...(plugin.declarative.prompts ?? []), ...(plugin.declarative.skills ?? [])];
+    const templates = [...(plugin.declarative.templates ?? []), ...(plugin.declarative.cardTemplates ?? [])];
+    const decks = [...(plugin.declarative.decks ?? [])];
+    const rules = [...(plugin.declarative.rules ?? []), ...(plugin.declarative.rubrics ?? [])];
+    const widgets = [...(plugin.declarative.widgets ?? []), ...(plugin.declarative.workflows ?? [])];
+    if (prompts.length) declarativeGroups.push({ labelKey: 'detail.studyPackPrompts', items: prompts });
+    if (templates.length) declarativeGroups.push({ labelKey: 'detail.studyPackTemplates', items: templates });
+    if (decks.length) declarativeGroups.push({ labelKey: 'detail.studyPackDecks', items: decks });
+    if (rules.length) declarativeGroups.push({ labelKey: 'detail.studyPackRules', items: rules });
+    if (widgets.length) declarativeGroups.push({ labelKey: 'detail.studyPackWidgets', items: widgets });
+  }
   const community = plugin.origin === 'community';
   const running = plugin.enabled && plugin.runtime === 'running';
   // 账本对不上的原因用人话说：权限 / 内容 / 版本哪一样变了；从没同意过就是普通的「需要你的同意」。
@@ -104,7 +118,7 @@ export function PluginDetail({
           </div>
           {lockedReason
             ? <PluginLockedMark reason={lockedReason} />
-            : <Switch checked={pendingEnabled ?? (plugin.enabled && !consentRequired)} disabled={switchDisabled} aria-label={t('row.enable', { id: name })} className="mt-1 shrink-0" onCheckedChange={onToggle} />}
+            : <Switch checked={switchChecked} disabled={switchDisabled} aria-label={t(switchChecked ? 'row.disable' : 'row.enable', { id: name })} className="mt-1 shrink-0" onCheckedChange={onToggle} />}
         </div>
         {description ? <p className="min-w-0 text-sm leading-relaxed text-foreground/80 [overflow-wrap:anywhere]" data-testid="plugin-detail-description">{description}</p> : null}
         <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -143,13 +157,22 @@ export function PluginDetail({
         </div>
       </header>
 
-      {additions.length || plugin.agentTools?.length ? (
+      {additions.length || plugin.agentTools?.length || declarativeGroups.length ? (
         <Section title={t('detail.adds')} testId="plugin-detail-adds">
           <PluginAdditionChips kinds={additions} surface="background" label={false} />
           {plugin.agentTools?.length ? (
             <p className="text-xs leading-relaxed text-muted-foreground" data-testid="plugin-detail-tools">
               {t('detail.agentTools', { tools: plugin.agentTools.map((tool) => tool.title).join(t('detail.separator')) })}
             </p>
+          ) : null}
+          {declarativeGroups.length > 0 ? (
+            <div className="space-y-1" data-testid="plugin-detail-declarative">
+              {declarativeGroups.map((group) => (
+                <p key={group.labelKey} className="text-xs leading-relaxed text-muted-foreground">
+                  {t(group.labelKey, { items: group.items.join(t('detail.separator')) })}
+                </p>
+              ))}
+            </div>
           ) : null}
         </Section>
       ) : community ? (

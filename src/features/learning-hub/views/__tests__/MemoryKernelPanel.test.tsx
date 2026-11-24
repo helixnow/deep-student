@@ -3,7 +3,6 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryKernelPanel } from '../MemoryKernelPanel';
 import * as memoryApi from '@/api/memoryApi';
-import * as attributionPill from '@/features/chat/components/message/MemoryKernelAttributionPill';
 
 vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: vi.fn(),
@@ -139,7 +138,7 @@ describe('MemoryKernelPanel (RFC-001 M3)', () => {
       .spyOn(memoryApi, 'mutateMemoryKernel')
       .mockResolvedValueOnce(viewWithoutRule)
       .mockResolvedValueOnce(mockView);
-    const invalidateSpy = vi.spyOn(attributionPill, 'invalidateMemoryKernelAttributionCache');
+    const invalidateSpy = vi.spyOn(memoryApi, 'invalidateMemoryKernelAttributionCache');
 
     render(<MemoryKernelPanel />);
 

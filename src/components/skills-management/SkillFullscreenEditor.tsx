@@ -179,6 +179,8 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('basic');
+  // 桌面全屏编辑器默认直接提供可编辑 <Textarea> 承载 SKILL.md 正文，保留语法高亮按需切换
+  const [useHighlightEditor, setUseHighlightEditor] = useState(false);
   const initialSnapshotRef = useRef<string>(serializeFormData(formData));
   // 动画完成状态 - 用于延迟渲染重量级组件
   const [isAnimationComplete, setIsAnimationComplete] = useState(false);
@@ -606,41 +608,71 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.15 }}
               >
-                <div ref={cmContainerRef} className="flex-1 min-h-0 overflow-hidden relative">
-                  {isAnimationComplete ? (
-                    <>
-                      <CodeMirror
-                        value={formData.content}
-                        onChange={(value) => updateField('content', value)}
-                        extensions={extensions}
-                        theme={editorTheme}
-                        height="100%"
-                        className="h-full skill-codemirror-editor"
-                        basicSetup={{
-                          lineNumbers: true,
-                          highlightActiveLineGutter: true,
-                          highlightActiveLine: true,
-                          foldGutter: true,
-                          dropCursor: true,
-                          allowMultipleSelections: true,
-                          indentOnInput: true,
-                          bracketMatching: true,
-                          closeBrackets: true,
-                          autocompletion: true,
-                          rectangularSelection: true,
-                          crosshairCursor: false,
-                          highlightSelectionMatches: true,
-                        }}
-/>
-                      <CodeMirrorScrollOverlay containerRef={cmContainerRef} />
-                    </>
-                  ) : (
-                    // 动画期间显示轻量占位符
-                    <div className="h-full flex items-center justify-center bg-muted/20">
-                      <div className="text-muted-foreground/50 text-sm">
-                        {t('common:loading')}
+                <div className="flex flex-none items-center justify-between gap-2 border-b border-border/20 bg-muted/15 px-4 py-2">
+                  <Label
+                    htmlFor="skill-fullscreen-content-textarea"
+                    className="text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                  >
+                    {t('skills:editor.content')}
+                  </Label>
+                  <DsButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    data-testid="skill-content-mode-toggle"
+                    onClick={() => setUseHighlightEditor((prev) => !prev)}
+                    className="h-7 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {useHighlightEditor ? t('skills:editor.source_mode') : t('skills:editor.highlight_mode')}
+                  </DsButton>
+                </div>
+                <div ref={cmContainerRef} className="flex-1 min-h-0 overflow-hidden relative flex flex-col">
+                  {useHighlightEditor ? (
+                    isAnimationComplete ? (
+                      <>
+                        <CodeMirror
+                          value={formData.content}
+                          onChange={(value) => updateField('content', value)}
+                          extensions={extensions}
+                          theme={editorTheme}
+                          height="100%"
+                          className="h-full skill-codemirror-editor"
+                          basicSetup={{
+                            lineNumbers: true,
+                            highlightActiveLineGutter: true,
+                            highlightActiveLine: true,
+                            foldGutter: true,
+                            dropCursor: true,
+                            allowMultipleSelections: true,
+                            indentOnInput: true,
+                            bracketMatching: true,
+                            closeBrackets: true,
+                            autocompletion: true,
+                            rectangularSelection: true,
+                            crosshairCursor: false,
+                            highlightSelectionMatches: true,
+                          }}
+                        />
+                        <CodeMirrorScrollOverlay containerRef={cmContainerRef} />
+                      </>
+                    ) : (
+                      // 动画期间显示轻量占位符
+                      <div className="h-full flex items-center justify-center bg-muted/20">
+                        <div className="text-muted-foreground/50 text-sm">
+                          {t('common:loading')}
+                        </div>
                       </div>
-                    </div>
+                    )
+                  ) : (
+                    <Textarea
+                      id="skill-fullscreen-content-textarea"
+                      data-testid="skill-content-textarea"
+                      value={formData.content}
+                      onChange={(e) => updateField('content', (e.target as HTMLTextAreaElement).value)}
+                      placeholder={t('skills:editor.content_placeholder')}
+                      aria-label={t('skills:editor.content')}
+                      className="h-full flex-1 resize-none rounded-none border-0 bg-transparent px-5 py-4 font-mono text-sm leading-relaxed focus-visible:ring-0"
+                    />
                   )}
                 </div>
               </motion.div>

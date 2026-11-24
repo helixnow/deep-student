@@ -314,7 +314,12 @@ function matchDate(text: string, now: Date): DateMatch | null {
   const relative: Array<[string, number]> = [
     ['大后天', 3],
     ['后天', 2],
+    ['明早', 1],
+    ['明晨', 1],
+    ['明晚', 1],
     ['明天', 1],
+    ['今早', 0],
+    ['今晚', 0],
     ['今天', 0],
     ['tomorrow', 1],
     ['today', 0],

@@ -105,10 +105,10 @@ export async function runSyncV5(
     ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target, outcome: { kind: 'failed', error: message(error) }, details: { device_id: deviceId, protocol: 'v5' } });
     throw error instanceof CommandError ? error : new CommandError(message(error));
   } finally {
-    try { await lease?.release(); }
-    catch (error) { ctx.logger('sync').warn(`[sync-v5] 释放同步租约失败: ${message(error)}`); }
     signal?.removeEventListener('abort', cancel);
     ctx.syncProvider.clearCancelToken();
+    try { await lease?.release(); }
+    catch (error) { ctx.logger('sync').warn(`[sync-v5] 释放同步租约失败: ${message(error)}`); }
     permit.release();
   }
 }
@@ -185,11 +185,11 @@ export async function runSync(
     return { ...result, direction: result.direction.toLowerCase(), device_id: deviceId, skipped_changes: skipped };
   } catch (error) { throw error instanceof CommandError ? error : new CommandError(message(error)); }
   finally {
+    signal?.removeEventListener('abort', cancel); ctx.syncProvider.clearCancelToken();
     if (lease !== null) {
       try { await lease.release(); }
       catch (error) { logger.warn(`[data_governance] 释放同步目标租约失败，将等待 TTL 回收: ${message(error)}`); }
     }
-    signal?.removeEventListener('abort', cancel); ctx.syncProvider.clearCancelToken();
     codec?.dispose(); permit.release();
   }
 }
@@ -204,7 +204,8 @@ export async function runSyncWithProgress(
   const ports = assembleSyncCommandPorts(ctx, localPorts);
   const start = performance.now();
   const emitter = new SyncProgressEmitter(ctx.backendEvents, text => logger.error(text));
-  const fail = async (error: unknown): Promise<never> => { const detail = message(error); await emitter.emitFailed(detail); throw new CommandError(detail); };
+  let cancelTokenInstalled = false;
+  const fail = async (error: unknown): Promise<never> => { const detail = (cancelTokenInstalled && ctx.syncProvider.isSyncCancelled()) ? '同步已取消' : message(error); await emitter.emitFailed(detail); throw new CommandError(detail); };
   let parsed: FileSyncDirection, merge: MergeStrategy, config: RuntimeCloudStorageConfig;
   try {
     parsed = parseSyncDirection(direction); merge = parseSyncStrategy(strategy);
@@ -226,7 +227,7 @@ export async function runSyncWithProgress(
   let hooks = false, codec: FilePayloadCodec | null = null, lease: SyncTargetLeaseGuard | null = null;
   try {
     await emitter.emitPreparing();
-    ctx.syncProvider.setCancelToken(controller.signal); installSyncCancelSlot(controller);
+    ctx.syncProvider.setCancelToken(controller.signal); cancelTokenInstalled = true; installSyncCancelSlot(controller);
     if (signal?.aborted) cancel(); else signal?.addEventListener('abort', cancel, { once: true });
     ctx.syncProvider.setStatusHook(reportSyncStatus); setStatusSink(emitter); hooks = true;
     await emitter.emitDetectingChanges();
@@ -281,12 +282,14 @@ export async function runSyncWithProgress(
         changes_downloaded: result.changes_downloaded, conflicts_detected: result.conflicts_detected, skipped_changes: skipped, with_progress: true } });
     return { ...result, direction: result.direction.toLowerCase(), device_id: deviceId, skipped_changes: skipped };
   } finally {
+    signal?.removeEventListener('abort', cancel);
+    if (hooks) { ctx.syncProvider.clearStatusHook(); ctx.syncProvider.clearCancelToken(); clearStatusSink(); clearSyncCancelSlot(controller); }
+    else { ctx.syncProvider.clearCancelToken(); }
     if (lease !== null) {
       try { await lease.release(); }
       catch (error) { logger.warn(`[data_governance] 释放带进度同步目标租约失败，将等待 TTL 回收: ${message(error)}`); }
     }
-    codec?.dispose(); signal?.removeEventListener('abort', cancel);
-    if (hooks) { ctx.syncProvider.clearStatusHook(); ctx.syncProvider.clearCancelToken(); clearStatusSink(); clearSyncCancelSlot(controller); }
+    codec?.dispose();
     permit.release();
   }
 }

@@ -271,7 +271,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-qwen3.7-max",
     "vendorId": "builtin-qwen",
-    "label": "Qwen3.7 Max (旗舰/混合思考)",
+    "label": "Qwen3.7 Max (Flagship / Hybrid Thinking)",
     "model": "qwen3.7-max",
     "isMultimodal": false,
     "isReasoning": true,
@@ -282,7 +282,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-qwen3.7-plus",
     "vendorId": "builtin-qwen",
-    "label": "Qwen3.7 Plus (官方默认推荐/多模态)",
+    "label": "Qwen3.7 Plus (Recommended Default / Multimodal)",
     "model": "qwen3.7-plus",
     "isMultimodal": true,
     "isReasoning": true,
@@ -293,7 +293,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-qwen3.6-flash",
     "vendorId": "builtin-qwen",
-    "label": "Qwen3.6 Flash (轻量高并发/多模态)",
+    "label": "Qwen3.6 Flash (Lightweight / Multimodal)",
     "model": "qwen3.6-flash",
     "isMultimodal": true,
     "isReasoning": true,
@@ -304,7 +304,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-qwen3-max",
     "vendorId": "builtin-qwen",
-    "label": "Qwen3 Max (上一代旗舰)",
+    "label": "Qwen3 Max (Previous Flagship)",
     "model": "qwen3-max",
     "isMultimodal": false,
     "isReasoning": false,
@@ -315,7 +315,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-qwen3.5-plus",
     "vendorId": "builtin-qwen",
-    "label": "Qwen3.5 Plus (多模态/混合思考)",
+    "label": "Qwen3.5 Plus (Multimodal / Hybrid Thinking)",
     "model": "qwen3.5-plus",
     "isMultimodal": true,
     "isReasoning": true,
@@ -326,7 +326,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-qwen3.5-flash",
     "vendorId": "builtin-qwen",
-    "label": "Qwen3.5 Flash (快速/混合思考)",
+    "label": "Qwen3.5 Flash (Fast / Hybrid Thinking)",
     "model": "qwen3.5-flash",
     "isMultimodal": false,
     "isReasoning": true,
@@ -337,7 +337,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-qwen-plus",
     "vendorId": "builtin-qwen",
-    "label": "Qwen Plus (支持思考)",
+    "label": "Qwen Plus (Thinking Supported)",
     "model": "qwen-plus",
     "isMultimodal": false,
     "isReasoning": true,
@@ -348,7 +348,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-qwq-plus",
     "vendorId": "builtin-qwen",
-    "label": "QwQ Plus (遗留推理模型)",
+    "label": "QwQ Plus (Legacy Reasoning)",
     "model": "qwq-plus",
     "isMultimodal": false,
     "isReasoning": true,
@@ -359,7 +359,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-qwen3.5-397b-a17b",
     "vendorId": "builtin-qwen",
-    "label": "Qwen3.5 397B A17B (开源旗舰)",
+    "label": "Qwen3.5 397B A17B (Open-Source Flagship)",
     "model": "qwen3.5-397b-a17b",
     "isMultimodal": false,
     "isReasoning": true,
@@ -370,7 +370,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-qwen3.5-122b-a10b",
     "vendorId": "builtin-qwen",
-    "label": "Qwen3.5 122B A10B (开源旗舰)",
+    "label": "Qwen3.5 122B A10B (Open-Source Flagship)",
     "model": "qwen3.5-122b-a10b",
     "isMultimodal": false,
     "isReasoning": true,
@@ -381,7 +381,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-glm-5.2",
     "vendorId": "builtin-zhipu",
-    "label": "GLM-5.2 (当前旗舰)",
+    "label": "GLM-5.2 (Current Flagship)",
     "model": "glm-5.2",
     "isMultimodal": false,
     "isReasoning": true,
@@ -392,7 +392,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-glm-5.1",
     "vendorId": "builtin-zhipu",
-    "label": "GLM-5.1 (Coding/长程任务)",
+    "label": "GLM-5.1 (Coding / Long-Horizon)",
     "model": "glm-5.1",
     "isMultimodal": false,
     "isReasoning": true,
@@ -403,7 +403,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-glm-5",
     "vendorId": "builtin-zhipu",
-    "label": "GLM-5 (上一代旗舰)",
+    "label": "GLM-5 (Previous Flagship)",
     "model": "glm-5",
     "isMultimodal": false,
     "isReasoning": true,
@@ -414,7 +414,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-glm-4.7",
     "vendorId": "builtin-zhipu",
-    "label": "GLM-4.7 (高性价比)",
+    "label": "GLM-4.7 (Cost-Effective)",
     "model": "glm-4.7",
     "isMultimodal": false,
     "isReasoning": true,
@@ -425,7 +425,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-glm-4.6",
     "vendorId": "builtin-zhipu",
-    "label": "GLM-4.6 (上一代)",
+    "label": "GLM-4.6 (Previous Gen)",
     "model": "glm-4.6",
     "isMultimodal": false,
     "isReasoning": true,
@@ -436,7 +436,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-glm-4.7-flash",
     "vendorId": "builtin-zhipu",
-    "label": "GLM-4.7 Flash (免费)",
+    "label": "GLM-4.7 Flash (Free)",
     "model": "glm-4.7-flash",
     "isMultimodal": false,
     "isReasoning": false,
@@ -447,7 +447,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-doubao-seed-2.1-pro",
     "vendorId": "builtin-doubao",
-    "label": "Seed 2.1 Pro (当前旗舰)",
+    "label": "Seed 2.1 Pro (Current Flagship)",
     "model": "doubao-seed-2-1-pro-260628",
     "isMultimodal": true,
     "isReasoning": true,
@@ -458,7 +458,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-doubao-seed-2.1-turbo",
     "vendorId": "builtin-doubao",
-    "label": "Seed 2.1 Turbo (低成本低时延)",
+    "label": "Seed 2.1 Turbo (Low-Cost / Low-Latency)",
     "model": "doubao-seed-2-1-turbo-260628",
     "isMultimodal": true,
     "isReasoning": true,
@@ -469,7 +469,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-doubao-seed-evolving",
     "vendorId": "builtin-doubao",
-    "label": "Seed Evolving (滚动更新)",
+    "label": "Seed Evolving (Rolling)",
     "model": "doubao-seed-evolving",
     "isMultimodal": true,
     "isReasoning": true,
@@ -480,7 +480,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-doubao-seed-2.0-pro",
     "vendorId": "builtin-doubao",
-    "label": "Seed 2.0 Pro (旗舰全能)",
+    "label": "Seed 2.0 Pro (All-Round Flagship)",
     "model": "doubao-seed-2-0-pro-260215",
     "isMultimodal": true,
     "isReasoning": true,
@@ -491,7 +491,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-doubao-seed-2.0-lite",
     "vendorId": "builtin-doubao",
-    "label": "Seed 2.0 Lite (均衡)",
+    "label": "Seed 2.0 Lite (Balanced)",
     "model": "doubao-seed-2-0-lite-260215",
     "isMultimodal": true,
     "isReasoning": true,
@@ -502,7 +502,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-doubao-seed-2.0-mini",
     "vendorId": "builtin-doubao",
-    "label": "Seed 2.0 Mini (快速)",
+    "label": "Seed 2.0 Mini (Fast)",
     "model": "doubao-seed-2-0-mini-260215",
     "isMultimodal": true,
     "isReasoning": true,
@@ -513,7 +513,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-doubao-seed-2.0-code",
     "vendorId": "builtin-doubao",
-    "label": "Seed 2.0 Code (编程)",
+    "label": "Seed 2.0 Code (Coding)",
     "model": "doubao-seed-2-0-code-preview-260215",
     "isMultimodal": false,
     "isReasoning": true,
@@ -524,7 +524,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-doubao-1.8-pro",
     "vendorId": "builtin-doubao",
-    "label": "Seed 1.8 (上一代)",
+    "label": "Seed 1.8 (Previous Gen)",
     "model": "doubao-seed-1-8-251228",
     "isMultimodal": true,
     "isReasoning": true,
@@ -535,7 +535,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-minimax-m3",
     "vendorId": "builtin-minimax",
-    "label": "MiniMax M3 (最新旗舰/多模态)",
+    "label": "MiniMax M3 (Latest Flagship / Multimodal)",
     "model": "MiniMax-M3",
     "isMultimodal": true,
     "isReasoning": true,
@@ -546,7 +546,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-minimax-m2.7",
     "vendorId": "builtin-minimax",
-    "label": "MiniMax M2.7 (高性价比推理)",
+    "label": "MiniMax M2.7 (Cost-Effective Reasoning)",
     "model": "MiniMax-M2.7",
     "isMultimodal": false,
     "isReasoning": true,
@@ -557,7 +557,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-minimax-m2.5",
     "vendorId": "builtin-minimax",
-    "label": "MiniMax M2.5 (性价比主力)",
+    "label": "MiniMax M2.5 (Best Value)",
     "model": "MiniMax-M2.5",
     "isMultimodal": false,
     "isReasoning": true,
@@ -568,7 +568,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-minimax-m2.5-highspeed",
     "vendorId": "builtin-minimax",
-    "label": "MiniMax M2.5 Highspeed (极速)",
+    "label": "MiniMax M2.5 Highspeed (Ultra-Fast)",
     "model": "MiniMax-M2.5-highspeed",
     "isMultimodal": false,
     "isReasoning": false,
@@ -579,7 +579,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-minimax-m2.1",
     "vendorId": "builtin-minimax",
-    "label": "MiniMax M2.1 (上一代)",
+    "label": "MiniMax M2.1 (Previous Gen)",
     "model": "MiniMax-M2.1",
     "isMultimodal": false,
     "isReasoning": true,
@@ -590,7 +590,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-kimi-k3",
     "vendorId": "builtin-moonshot",
-    "label": "Kimi K3 (旗舰/1M/多模态)",
+    "label": "Kimi K3 (Flagship / 1M / Multimodal)",
     "model": "kimi-k3",
     "isMultimodal": true,
     "isReasoning": true,
@@ -601,7 +601,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-kimi-k2.6",
     "vendorId": "builtin-moonshot",
-    "label": "Kimi K2.6 (旗舰/多模态)",
+    "label": "Kimi K2.6 (Flagship / Multimodal)",
     "model": "kimi-k2.6",
     "isMultimodal": true,
     "isReasoning": true,
@@ -612,7 +612,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-kimi-k2.7-code",
     "vendorId": "builtin-moonshot",
-    "label": "Kimi K2.7 Code (编程/强制思考)",
+    "label": "Kimi K2.7 Code (Coding / Always-On Thinking)",
     "model": "kimi-k2.7-code",
     "isMultimodal": false,
     "isReasoning": true,
@@ -623,7 +623,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-kimi-k2.5",
     "vendorId": "builtin-moonshot",
-    "label": "Kimi K2.5 (上一代多模态旗舰)",
+    "label": "Kimi K2.5 (Previous Multimodal Flagship)",
     "model": "kimi-k2.5",
     "isMultimodal": true,
     "isReasoning": true,
@@ -634,7 +634,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-moonshot-v1-128k",
     "vendorId": "builtin-moonshot",
-    "label": "Moonshot V1 (旧版)",
+    "label": "Moonshot V1 (Legacy)",
     "model": "moonshot-v1-128k",
     "isMultimodal": false,
     "isReasoning": false,
@@ -645,7 +645,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-gpt-5.6",
     "vendorId": "builtin-openai",
-    "label": "GPT-5.6 (当前旗舰)",
+    "label": "GPT-5.6 (Current Flagship)",
     "model": "gpt-5.6",
     "isMultimodal": true,
     "isReasoning": true,
@@ -656,7 +656,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-gpt-5.5",
     "vendorId": "builtin-openai",
-    "label": "GPT-5.5 (上一代旗舰)",
+    "label": "GPT-5.5 (Previous Flagship)",
     "model": "gpt-5.5",
     "isMultimodal": true,
     "isReasoning": true,
@@ -667,7 +667,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-gpt-5.5-pro",
     "vendorId": "builtin-openai",
-    "label": "GPT-5.5 Pro (高精度)",
+    "label": "GPT-5.5 Pro (High Precision)",
     "model": "gpt-5.5-pro",
     "isMultimodal": true,
     "isReasoning": true,
@@ -678,7 +678,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-gpt-5.4",
     "vendorId": "builtin-openai",
-    "label": "GPT-5.4 (均衡主力)",
+    "label": "GPT-5.4 (Balanced Workhorse)",
     "model": "gpt-5.4",
     "isMultimodal": true,
     "isReasoning": true,
@@ -689,7 +689,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-gpt-5.4-pro",
     "vendorId": "builtin-openai",
-    "label": "GPT-5.4 Pro (高计算)",
+    "label": "GPT-5.4 Pro (High Compute)",
     "model": "gpt-5.4-pro",
     "isMultimodal": true,
     "isReasoning": true,
@@ -700,7 +700,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-gpt-5.4-mini",
     "vendorId": "builtin-openai",
-    "label": "GPT-5.4 Mini (高性价比)",
+    "label": "GPT-5.4 Mini (Cost-Effective)",
     "model": "gpt-5.4-mini",
     "isMultimodal": true,
     "isReasoning": true,
@@ -711,7 +711,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-gpt-5.4-nano",
     "vendorId": "builtin-openai",
-    "label": "GPT-5.4 Nano (超低成本)",
+    "label": "GPT-5.4 Nano (Ultra-Low Cost)",
     "model": "gpt-5.4-nano",
     "isMultimodal": true,
     "isReasoning": true,
@@ -722,7 +722,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-gpt-5.2",
     "vendorId": "builtin-openai",
-    "label": "GPT-5.2 (上一代旗舰)",
+    "label": "GPT-5.2 (Previous Flagship)",
     "model": "gpt-5.2",
     "isMultimodal": true,
     "isReasoning": true,
@@ -733,7 +733,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-gpt-5.2-pro",
     "vendorId": "builtin-openai",
-    "label": "GPT-5.2 Pro (上一代高精度)",
+    "label": "GPT-5.2 Pro (Previous Gen High Precision)",
     "model": "gpt-5.2-pro",
     "isMultimodal": true,
     "isReasoning": true,
@@ -744,7 +744,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-gpt-5.1",
     "vendorId": "builtin-openai",
-    "label": "GPT-5.1 (上一代 Coding/Agent)",
+    "label": "GPT-5.1 (Previous Gen Coding/Agent)",
     "model": "gpt-5.1",
     "isMultimodal": true,
     "isReasoning": true,
@@ -755,7 +755,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-gpt-5",
     "vendorId": "builtin-openai",
-    "label": "GPT-5 (基础代)",
+    "label": "GPT-5 (Base Gen)",
     "model": "gpt-5",
     "isMultimodal": true,
     "isReasoning": true,
@@ -766,7 +766,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-gpt-5-pro",
     "vendorId": "builtin-openai",
-    "label": "GPT-5 Pro (高精度)",
+    "label": "GPT-5 Pro (High Precision)",
     "model": "gpt-5-pro",
     "isMultimodal": true,
     "isReasoning": true,
@@ -777,7 +777,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-gpt-5-mini",
     "vendorId": "builtin-openai",
-    "label": "GPT-5 Mini (轻量)",
+    "label": "GPT-5 Mini (Lightweight)",
     "model": "gpt-5-mini",
     "isMultimodal": true,
     "isReasoning": true,
@@ -788,7 +788,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-gpt-5-nano",
     "vendorId": "builtin-openai",
-    "label": "GPT-5 Nano (经济)",
+    "label": "GPT-5 Nano (Economy)",
     "model": "gpt-5-nano",
     "isMultimodal": true,
     "isReasoning": true,
@@ -799,7 +799,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-o3-pro",
     "vendorId": "builtin-openai",
-    "label": "o3-pro (深度推理, 2026-12 退役)",
+    "label": "o3-pro (Deep Reasoning, Retiring 2026-12)",
     "model": "o3-pro",
     "isMultimodal": true,
     "isReasoning": true,
@@ -810,7 +810,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-o3",
     "vendorId": "builtin-openai",
-    "label": "o3 (推理, 2026-12 退役)",
+    "label": "o3 (Reasoning, Retiring 2026-12)",
     "model": "o3",
     "isMultimodal": true,
     "isReasoning": true,
@@ -821,7 +821,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-o3-mini",
     "vendorId": "builtin-openai",
-    "label": "o3-mini (推理轻量, 2026-10 退役)",
+    "label": "o3-mini (Light Reasoning, Retiring 2026-10)",
     "model": "o3-mini",
     "isMultimodal": true,
     "isReasoning": true,
@@ -832,7 +832,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-o4-mini",
     "vendorId": "builtin-openai",
-    "label": "o4-mini (推理, 2026-10 退役)",
+    "label": "o4-mini (Reasoning, Retiring 2026-10)",
     "model": "o4-mini",
     "isMultimodal": true,
     "isReasoning": true,
@@ -909,7 +909,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-claude-opus-5",
     "vendorId": "builtin-anthropic",
-    "label": "Claude Opus 5 (旗舰)",
+    "label": "Claude Opus 5 (Flagship)",
     "model": "claude-opus-5",
     "isMultimodal": true,
     "isReasoning": true,
@@ -920,7 +920,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-claude-sonnet-5",
     "vendorId": "builtin-anthropic",
-    "label": "Claude Sonnet 5 (均衡)",
+    "label": "Claude Sonnet 5 (Balanced)",
     "model": "claude-sonnet-5",
     "isMultimodal": true,
     "isReasoning": true,
@@ -931,7 +931,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-claude-fable-5",
     "vendorId": "builtin-anthropic",
-    "label": "Claude Fable 5 (思考 always-on)",
+    "label": "Claude Fable 5 (Always-On Thinking)",
     "model": "claude-fable-5",
     "isMultimodal": true,
     "isReasoning": true,
@@ -942,7 +942,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-claude-haiku-4-5",
     "vendorId": "builtin-anthropic",
-    "label": "Claude Haiku 4.5 (轻量/官方最新 Haiku)",
+    "label": "Claude Haiku 4.5 (Lightweight / Latest Official Haiku)",
     "model": "claude-haiku-4-5",
     "isMultimodal": true,
     "isReasoning": true,
@@ -986,7 +986,7 @@ export const BUILTIN_MODELS: readonly BuiltinModelDef[] = [
   {
     "id": "builtin-mimo-v2.5",
     "vendorId": "builtin-mimo",
-    "label": "MiMo V2.5 (多模态)",
+    "label": "MiMo V2.5 (Multimodal)",
     "model": "mimo-v2.5",
     "isMultimodal": true,
     "isReasoning": true,

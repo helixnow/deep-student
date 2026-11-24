@@ -150,6 +150,9 @@
 }
 
 .chat-v2 .chat-empty-composer-layout {
+  position: relative;
+  overflow: hidden;
+  pointer-events: none;
   flex: 1 1 auto;
   min-height: 0;
   display: grid;
@@ -158,7 +161,24 @@
 }
 
 .chat-v2 .chat-empty-composer-layout__stack {
+  position: relative;
   grid-row: 2;
+  pointer-events: none;
+}
+
+.chat-v2 .chat-empty-composer-layout__footer,
+.chat-v2 .chat-empty-composer-layout__input,
+.chat-v2 .chat-empty-composer-layout__stack :is(
+  button,
+  a,
+  input,
+  textarea,
+  select,
+  [role='button'],
+  [contenteditable='true'],
+  [tabindex]
+) {
+  pointer-events: auto;
 }
 
 .chat-v2 .chat-empty-composer-layout__message-list {
@@ -266,6 +286,19 @@
 
   .chat-v2 .chat-empty-composer-layout__stack {
     padding: 0 0.875rem;
+  }
+}
+
+@media (width <= 640px) {
+  .chat-v2 .unified-input-docked:not(.chat-empty-composer-layout__input) {
+    padding-bottom: max(
+      calc(8px + var(--wb-dock-clearance, 0px)),
+      var(--unified-input-bottom-gap, 8px)
+    ) !important;
+  }
+
+  .chat-v2 .chat-empty-composer-layout {
+    padding-bottom: max(clamp(1rem, 2.6vh, 2rem), var(--wb-dock-clearance, 0px));
   }
 }
 

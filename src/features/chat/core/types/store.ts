@@ -87,6 +87,8 @@ export interface BackendBlockForRestore {
   endedAt?: number;
   /** 🔧 P3修复：第一个有效 chunk 到达时间（用于排序，保持思维链交替顺序） */
   firstChunkAt?: number;
+  /** 是否在中断前已被手动停止 */
+  aborted?: boolean;
 }
 
 /**
@@ -144,6 +146,8 @@ export interface BackendMessageForRestore {
     replaySource?: string;
     // Super 会话收件箱投递来源（后端 MessageMeta.inbound_origin，serde rename "inboundOrigin"）
     inboundOrigin?: unknown;
+    terminalError?: string;
+    stoppedByUser?: boolean;
     // 注意：sources/toolResults/ankiCards 等数据现在统一存储在 blocks 表中，
     // 通过 msg.blockIds 引用，无需从 _meta 恢复
   };
@@ -780,7 +784,7 @@ export interface ChatStore {
   // ========== 会话元信息 Actions ==========
 
   /** 设置会话标题 */
-  setTitle(title: string): void;
+  setTitle(title: string): Promise<void>;
 
   /** 设置会话简介（自动生成） */
   setDescription(description: string): void;

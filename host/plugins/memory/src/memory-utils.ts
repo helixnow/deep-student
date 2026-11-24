@@ -131,7 +131,22 @@ export function purposeMatches(tags: readonly string[], purpose: MemoryPurpose |
   return memoryPurposeFromTags(tags) === (purpose ?? 'memorized');
 }
 
+/** Unicode codepoint count after trimming leading/trailing whitespace. */
+export function codepointLength(text: string): number {
+  return [...text.trim()].length;
+}
+
+/** Transient / one-off daily schedule markers that must never pollute long-term core memory. */
+export const TRANSIENT_SCHEDULE_MARKER_RE = /(?:今天临时|今晚临时|仅限今天|临时安排|temporary\s+schedule)/i;
+
+export function isTransientScheduleText(title: string, content: string): boolean {
+  return TRANSIENT_SCHEDULE_MARKER_RE.test(`${title}\n${content}`);
+}
+
 export function factHardRejectReason(title: string, content: string): string | null {
+  if (isTransientScheduleText(title, content)) {
+    return '检测到仅限当天的临时日程安排，不写入长期核心记忆。';
+  }
   const combined = `${title}\n${content}`.toLowerCase();
   const keywords = ['知识点', '词汇', '单词', '释义', '例句', '语法', '定理', '公式', '概念',
     '题干', '选项', '答案', '解题', '错题', '文档摘要', '章节概要'];

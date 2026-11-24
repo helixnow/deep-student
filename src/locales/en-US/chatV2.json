@@ -270,6 +270,12 @@
       "hideErrorDetails": "Hide error details",
       "genericError": "This response failed before producing output"
     },
+    "stoppedByUser": "Stopped by user",
+    "editConfirm": {
+      "message": "Editing this message will replace subsequent replies. Continue?",
+      "confirm": "Continue",
+      "cancel": "Cancel"
+    },
     "reconnect": {
       "inline": "Retrying {{attempt}}/{{max}}"
     },
@@ -2871,5 +2877,9 @@
         "prompt": "Create a practice question of similar difficulty targeting the same concept at this anchor, with a brief solution."
       }
     }
+  },
+  "header": {
+    "renameSession": "Rename session",
+    "untitledSession": "Untitled Session"
   }
 }

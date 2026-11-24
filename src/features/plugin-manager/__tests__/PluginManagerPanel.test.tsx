@@ -342,7 +342,11 @@ describe('PluginManagerPanel', () => {
     expect(screen.getByRole('switch', { name: '启用 community.exporter' })).toBeDisabled();
     const officialButton = screen.getByRole('button', { name: '查看 dstu.ui.chat 的详情', hidden: true });
     await userEvent.click(officialButton.closest('details')!.querySelector('summary')!);
-    expect(screen.getByRole('switch', { name: '启用 dstu.ui.chat' })).toBeEnabled();
+    expect(screen.getByRole('switch', { name: '停用 dstu.ui.chat' })).toBeEnabled();
+    expect(screen.getByTestId('plugin-exit-safe-mode')).toHaveTextContent('退出安全模式并恢复正常启动');
+    expect(screen.getByTestId('plugin-import')).toBeDisabled();
+    expect(screen.getByTestId('plugin-import-url')).toBeDisabled();
+    expect(screen.getByTestId('plugin-import-disabled-reason')).toBeInTheDocument();
     const dialog = await openDetails('community.exporter');
     const community = within(dialog).getByTestId('plugin-detail');
     expect(within(community).getByTestId('plugin-safe-mode-hint')).toBeInTheDocument();
@@ -481,5 +485,33 @@ describe('PluginManagerPanel', () => {
     );
     const feedback = await screen.findByTestId('plugin-install-feedback');
     expect(feedback).toHaveAttribute('data-status', 'installed');
+  });
+
+  it('renders declarative study-pack additions under "它增加了什么" in PluginDetail', async () => {
+    setup([
+      managedPlugin({
+        id: 'community.kaoyan-pack',
+        origin: 'community',
+        kind: 'study-pack',
+        contributes: ['prompts', 'templates', 'decks', 'rules', 'widgets'],
+        declarative: {
+          prompts: ['Essay Coach Prompt'],
+          templates: ['Cornell Note Card'],
+          decks: ['Core Vocabulary'],
+          rules: ['IELTS Writing Rubric'],
+          widgets: ['Countdown Widget'],
+        },
+      }),
+    ]);
+
+    const dialog = await openDetails('community.kaoyan-pack');
+    const adds = within(dialog).getByTestId('plugin-detail-adds');
+    expect(adds).toHaveTextContent('学习提示词');
+    expect(adds).toHaveTextContent('卡片模板');
+    expect(adds).toHaveTextContent('记忆牌组');
+    expect(adds).toHaveTextContent('学习规则');
+    expect(adds).toHaveTextContent('学习组件');
+    expect(within(dialog).getByTestId('plugin-detail-declarative')).toHaveTextContent('Essay Coach Prompt');
+    expect(within(dialog).getByTestId('plugin-detail-declarative')).toHaveTextContent('Core Vocabulary');
   });
 });

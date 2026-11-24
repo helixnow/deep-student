@@ -104,7 +104,12 @@
     "dashboardWidget": "首页小组件",
     "editor": "编辑器扩展",
     "renderer": "内容渲染",
-    "navEntry": "导航入口"
+    "navEntry": "导航入口",
+    "studyPrompt": "学习提示词",
+    "studyTemplate": "卡片模板",
+    "studyDeck": "记忆牌组",
+    "studyRule": "学习规则",
+    "studyWidget": "学习组件"
   },
   "card": {
     "addsLabel": "它增加了",
@@ -141,6 +146,11 @@
     "adds": "它增加了什么",
     "addsUnknown": "运行后，这里会列出它给应用增加的入口。",
     "agentTools": "AI 助手学会的新本事：{{tools}}",
+    "studyPackPrompts": "提示词与技能：{{items}}",
+    "studyPackTemplates": "卡片模板：{{items}}",
+    "studyPackDecks": "牌组与词库：{{items}}",
+    "studyPackRules": "批改与学习规则：{{items}}",
+    "studyPackWidgets": "组件与工作流：{{items}}",
     "separator": "、",
     "health": "状态与健康",
     "healthy": "运行正常。",
@@ -357,7 +367,9 @@
     "unbound": "未绑定",
     "bindHint": "未绑定：点「扫码绑定」，用手机微信扫描二维码完成授权。",
     "boundHint": "已绑定：可启停、选择回复模型，并设置限速与系统提示词。",
-    "error": "渠道插件操作失败"
+    "error": "渠道插件操作失败",
+    "ilinkLabel": "微信 iLink Bot",
+    "ilinkBlurb": "通过官方 ClawBot / iLink 协议收发微信消息，并由本地 AI 自动回复。"
   },
   "actions": {
     "refresh": "刷新",
@@ -403,13 +415,16 @@
   "safeMode": {
     "title": "安全模式",
     "description": "安全模式会话只加载官方插件；社区插件已停用，正常重启后再启用。",
-    "rowHint": "安全模式下社区插件不可启用"
+    "rowHint": "安全模式下社区插件不可启用",
+    "exitButton": "退出安全模式并恢复正常启动",
+    "importDisabled": "安全模式下已停用导入和安装插件，请退出安全模式并正常启动后再试。"
   },
   "row": {
     "version": "版本",
     "configure": "配置",
     "uninstall": "卸载",
     "enable": "启用 {{id}}",
+    "disable": "停用 {{id}}",
     "configA11y": "配置 {{id}}",
     "uninstallA11y": "卸载 {{id}}",
     "unsupportedPlatform": "当前平台不可用",
@@ -558,6 +573,7 @@
       "packageInvalidZip": "这不是一个完整的 .dstuplugin 或 .dspack 压缩包（文件可能损坏或格式不对）。",
       "packageInvalid": "这个安装包不完整或结构无效，无法安装。",
       "manifestInvalid": "插件的说明清单缺少必要字段或声明不合法，无法加载。",
+      "manifestInvalidWithDetail": "插件的说明清单不合法：{{detail}}",
       "engineIncompatible": "该插件所需的 DeepStudent 版本与当前应用不兼容。",
       "idReserved": "插件使用了系统保留的官方命名空间（dstu.*），社区包请使用自己的作者前缀。",
       "permissionUndeclared": "插件请求或使用了未在清单中声明的能力，已被安全机制拦截。",
@@ -592,7 +608,12 @@
     "dashboardWidget": "首页多了一个小组件",
     "editor": "让编辑器多了新功能",
     "renderer": "能显示一种新内容",
-    "navEntry": "侧栏多了一个入口"
+    "navEntry": "侧栏多了一个入口",
+    "studyPrompt": "学习包里附带的专属提示词与 AI 技能",
+    "studyTemplate": "用于创建闪卡或笔记的内置模板",
+    "studyDeck": "内置的记忆牌组或词库资源",
+    "studyRule": "批改标准或学习规则",
+    "studyWidget": "学习组件或工作流扩展"
   },
   "workshop": {
     "verified": "已在应用中验收通过，现在可以使用。重启后会自动加载。",

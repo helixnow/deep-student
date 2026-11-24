@@ -122,7 +122,7 @@ describe('plugin manager UI with a real Host', () => {
       await user.click(within(consentDialog).getByRole('button', { name: '允许并启用' }));
       await waitFor(() => expect(screen.queryByTestId('plugin-consent-id')).toBeNull());
       await waitFor(() => expect(host.runtime.get(ID)).toBeDefined());
-      await waitFor(() => expect(screen.getByRole('switch', { name: `启用 ${ID}` })).toBeChecked());
+      await waitFor(() => expect(screen.getByRole('switch', { name: `停用 ${ID}` })).toBeChecked());
       expect(calls.indexOf(MANAGER_COMMANDS.consent)).toBeLessThan(calls.indexOf(MANAGER_COMMANDS.setEnabled));
       expect((await packages.list())[0]?.enabled).toBe(true);
       expect((await store.read()).file.plugins[0].disabled).toBeUndefined();
@@ -161,7 +161,7 @@ describe('plugin manager UI with a real Host', () => {
       await user.click(within(form).getByRole('button', { name: '取消' }));
       await waitFor(() => expect(screen.queryByTestId('plugin-config-form')).toBeNull());
 
-      await user.click(screen.getByRole('switch', { name: `启用 ${ID}` }));
+      await user.click(screen.getByRole('switch', { name: `停用 ${ID}` }));
       await waitFor(() => expect(host.runtime.get(ID)).toBeUndefined());
       await waitFor(() => expect(screen.getByRole('switch', { name: `启用 ${ID}` })).not.toBeChecked());
       expect(host.ctx.get('exampleWebSearch')).toBeUndefined();

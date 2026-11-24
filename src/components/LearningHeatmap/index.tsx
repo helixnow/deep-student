@@ -715,6 +715,16 @@ export function LearningHeatmap({
       </div>
 
       {/* 图例 + 分档刻度说明 */}
+      {!loading && metric === 'duration' && (
+        <div
+          data-testid="study-duration-summary"
+          className="mt-2 px-1 text-xs font-medium text-foreground/80"
+        >
+          {t('heatmap.duration.totalAria', {
+            duration: formatStudyDuration(totalStudySeconds, t),
+          })}
+        </div>
+      )}
       {showLegend && !loading && (
         <div
           className="mt-3 flex flex-wrap items-center justify-between gap-2 px-1"

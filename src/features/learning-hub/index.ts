@@ -123,3 +123,7 @@ export {
   type MediaStudyCompanionTab,
   type MediaStudyCompanionValue,
 } from './apps/views/media/mediaStudyCompanion';
+
+export { MemoryKernelPanel } from './views/MemoryKernelPanel';
+export { localizeMemoryFolderTitle } from './memoryFolderLabels';
+export { finderUndoStack } from './utils/finderUndoStack';

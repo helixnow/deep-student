@@ -17,6 +17,22 @@ import { GroupTitle } from "../settingsTabPrimitives";
 import { showGlobalNotification } from "@/components/UnifiedNotification";
 import { getErrorMessage } from "@/utils/errorUtils";
 
+function formatQuarantineError(
+  error: unknown,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  const raw = getErrorMessage(error);
+  if (
+    /command\s+[a-z0-9_.-]+\s+not\s+allowed(?:\s+by\s+ACL|\s+on\b[^\n]*)?/i.test(raw) ||
+    /not\s+allowed\s+by\s+ACL/i.test(raw)
+  ) {
+    return t("data:governance.acl_permission_denied", {
+      defaultValue: "当前环境暂无权执行该同步操作，请检查应用权限或版本配置后重试。",
+    });
+  }
+  return raw;
+}
+
 function formatPayload(payload?: string | null): string {
   if (!payload) return "";
   try {
@@ -55,7 +71,7 @@ export const SyncQuarantinePanel: React.FC<{
     } catch (e: unknown) {
       showGlobalNotification(
         "error",
-        t("data:governance.quarantine_load_failed", { error: getErrorMessage(e) }),
+        t("data:governance.quarantine_load_failed", { error: formatQuarantineError(e, t) }),
       );
     } finally {
       setLoading(false);
@@ -89,7 +105,7 @@ export const SyncQuarantinePanel: React.FC<{
       } catch (e: unknown) {
         showGlobalNotification(
           "error",
-          t("data:governance.quarantine_retry_failed", { error: getErrorMessage(e) }),
+          t("data:governance.quarantine_retry_failed", { error: formatQuarantineError(e, t) }),
         );
       } finally {
         setActingId(null);
@@ -117,7 +133,7 @@ export const SyncQuarantinePanel: React.FC<{
       } catch (e: unknown) {
         showGlobalNotification(
           "error",
-          t("data:governance.quarantine_discard_failed", { error: getErrorMessage(e) }),
+          t("data:governance.quarantine_discard_failed", { error: formatQuarantineError(e, t) }),
         );
       } finally {
         setActingId(null);
@@ -140,7 +156,7 @@ export const SyncQuarantinePanel: React.FC<{
     } catch (e: unknown) {
       showGlobalNotification(
         "error",
-        t("data:governance.quarantine_retry_all_failed", { error: getErrorMessage(e) }),
+        t("data:governance.quarantine_retry_all_failed", { error: formatQuarantineError(e, t) }),
       );
     } finally {
       setIsBatchRunning(false);
@@ -161,7 +177,7 @@ export const SyncQuarantinePanel: React.FC<{
     } catch (e: unknown) {
       showGlobalNotification(
         "error",
-        t("data:governance.quarantine_discard_all_failed", { error: getErrorMessage(e) }),
+        t("data:governance.quarantine_discard_all_failed", { error: formatQuarantineError(e, t) }),
       );
     } finally {
       setIsBatchRunning(false);

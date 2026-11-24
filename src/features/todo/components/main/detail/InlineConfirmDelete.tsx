@@ -6,12 +6,10 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { Trash } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
-import { tweenFast, transitionInstant } from '@/styles/motion-springs';
 
-const AUTO_DISMISS_MS = 6000;
+const AUTO_DISMISS_MS = 12000;
 
 export const InlineConfirmDelete: React.FC<{
   label: string;
@@ -20,7 +18,6 @@ export const InlineConfirmDelete: React.FC<{
   cancelLabel: string;
   onConfirm: () => void;
 }> = ({ label, question, confirmLabel, cancelLabel, onConfirm }) => {
-  const prefersReducedMotion = useReducedMotion();
   const [confirming, setConfirming] = useState(false);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const timerRef = useRef<number | null>(null);
@@ -34,8 +31,6 @@ export const InlineConfirmDelete: React.FC<{
     };
   }, [confirming]);
 
-  const transition = prefersReducedMotion ? transitionInstant : tweenFast;
-
   return (
     <div
       className="flex items-center justify-end"
@@ -48,58 +43,51 @@ export const InlineConfirmDelete: React.FC<{
         }
       }}
     >
-      <AnimatePresence mode="wait" initial={false}>
-        {confirming ? (
-          <motion.div
-            key="confirm"
-            initial={prefersReducedMotion ? false : { opacity: 0, x: 8 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={prefersReducedMotion ? undefined : { opacity: 0, x: 8 }}
-            transition={transition}
-            className="flex items-center gap-2"
+      {confirming ? (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-[color:hsl(var(--destructive))]" role="alert">
+            {question}
+          </span>
+          <DsButton
+            variant="danger"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirming(false);
+              onConfirm();
+            }}
+            className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
           >
-            <span className="text-xs text-[color:hsl(var(--destructive))]" role="alert">
-              {question}
-            </span>
-            <DsButton
-              variant="danger"
-              size="sm"
-              onClick={onConfirm}
-              className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
-            >
-              <Trash size={14} />
-              {confirmLabel}
-            </DsButton>
-            <DsButton
-              ref={cancelRef}
-              variant="utility"
-              size="sm"
-              onClick={() => setConfirming(false)}
-              className="[@media(pointer:coarse)]:!min-h-11"
-            >
-              {cancelLabel}
-            </DsButton>
-          </motion.div>
-        ) : (
-          <motion.div
-            key="trigger"
-            initial={prefersReducedMotion ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={prefersReducedMotion ? undefined : { opacity: 0 }}
-            transition={transition}
+            <Trash size={14} />
+            {confirmLabel}
+          </DsButton>
+          <DsButton
+            ref={cancelRef}
+            variant="utility"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirming(false);
+            }}
+            className="[@media(pointer:coarse)]:!min-h-11"
           >
-            <DsButton
-              variant="danger"
-              size="sm"
-              onClick={() => setConfirming(true)}
-              className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
-            >
-              <Trash size={16} />
-              {label}
-            </DsButton>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            {cancelLabel}
+          </DsButton>
+        </div>
+      ) : (
+        <DsButton
+          variant="danger"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            setConfirming(true);
+          }}
+          className="gap-1.5 [@media(pointer:coarse)]:!min-h-11"
+        >
+          <Trash size={16} />
+          {label}
+        </DsButton>
+      )}
     </div>
   );
 };

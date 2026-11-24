@@ -129,6 +129,43 @@
 
 .nlv-review-done.nlv-review-done:hover { color: hsl(var(--foreground)); }
 
+.nlv-trash-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 120ms ease, background-color 120ms ease, color 120ms ease;
+}
+
+.nlv-item:hover .nlv-trash-btn,
+.nlv-item:focus-within .nlv-trash-btn,
+.nlv-trash-btn:focus-visible {
+  opacity: 1;
+}
+
+.nlv-trash-btn:hover:not(:disabled) {
+  background: hsl(var(--destructive) / 0.12);
+  color: hsl(var(--destructive));
+}
+
+.nlv-trash-btn:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.nlv-trash-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* 手机 / 窄侧栏：只留图标，文字留给读屏（标题优先占宽） */
 @container nlv (max-width: 380px) {
   .nlv-review-done-label {
@@ -147,4 +184,5 @@
 
 @media (pointer: coarse) {
   .nlv-row { min-height: 48px; }
+  .nlv-trash-btn { opacity: 1; min-width: 44px; min-height: 44px; }
 }
