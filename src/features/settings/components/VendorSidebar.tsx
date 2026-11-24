@@ -38,6 +38,7 @@ import {
 import { useVendorSettings } from './VendorSettingsContext';
 import type { VendorConfig } from '@/types';
 import { isVendorConfiguredForSidebar } from '@/utils/vendorAuth';
+import { getProviderDisplayName, getVendorDisplayName } from './builtinVendorDisplay';
 
 // --- Helpers ---
 
@@ -79,36 +80,6 @@ const getVendorIconBadgeStyle = (
     padding: 2,
     width: 20,
   };
-};
-
-type TranslateFn = (key: string, options?: { defaultValue?: string }) => string;
-
-const getProviderDisplayName = (providerType?: string | null, t?: TranslateFn) => {
-  if (!providerType) return 'OpenAI';
-  const normalizedProviderType = providerType.toLowerCase();
-  const map: Record<string, string> = {
-    openai: 'OpenAI',
-    openai_codex: 'OpenAI Codex',
-    anthropic: 'Anthropic',
-    google: 'Google',
-    // 预置的 Gemini 供应商 providerType 是 gemini（后端与 google 同义）
-    gemini: 'Google Gemini',
-    siliconflow: 'SiliconFlow',
-    deepseek: 'DeepSeek',
-    ollama: 'Ollama',
-    nvidia: 'NVIDIA',
-    mimo: 'Xiaomi MiMo',
-    opencode_go: 'OpenCode Go',
-  };
-  const fallback = map[normalizedProviderType] || providerType;
-  return t?.(`settings:vendor_modal.providers.${normalizedProviderType}`, { defaultValue: fallback }) ?? fallback;
-};
-
-const getVendorDisplayName = (vendor: VendorConfig, providerLabel: string) => {
-  if ((vendor.providerType ?? '').toLowerCase() === 'siliconflow') {
-    return providerLabel;
-  }
-  return vendor.name || providerLabel;
 };
 
 // --- Sortable Row ---
@@ -342,7 +313,7 @@ export const VendorSidebar: React.FC = () => {
                       vendor={vendor}
                       isActive={selectedVendor?.id === vendor.id}
                       modelCount={profileCountByVendor.get(vendor.id) ?? 0}
-                      vendorDisplayName={getVendorDisplayName(vendor, providerLabel)}
+                      vendorDisplayName={getVendorDisplayName(vendor, providerLabel, t)}
                       isSmallScreen={isSmallScreen}
                       openAICodexAuthenticated={openAICodexAuthenticated}
                       onSelect={() => handleSelectVendor(vendor.id)}

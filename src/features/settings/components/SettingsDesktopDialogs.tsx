@@ -7,6 +7,7 @@ import { AppMenuDemo } from '@/components/ui/app-menu';
 import type { TFunction } from 'i18next';
 import { ShadApiEditModal } from './ShadApiEditModal';
 import { VendorConfigModal } from './VendorConfigModal';
+import { getProviderDisplayName, getVendorDisplayName } from './builtinVendorDisplay';
 
 type ModelEditorTarget = { vendor: VendorConfig; api: ApiConfig };
 
@@ -86,7 +87,11 @@ export function SettingsDesktopDialogs({
           onCancel={() => setModelEditor(null)}
           hideConnectionFields
           lockedVendorInfo={{
-            name: modelEditor.vendor.name,
+            name: getVendorDisplayName(
+              modelEditor.vendor,
+              getProviderDisplayName(modelEditor.vendor.providerType, t),
+              t,
+            ),
             baseUrl: modelEditor.vendor.baseUrl,
             providerType: modelEditor.vendor.providerType,
             apiProtocol: modelEditor.vendor.apiProtocol,

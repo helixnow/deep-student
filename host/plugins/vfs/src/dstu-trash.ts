@@ -641,6 +641,11 @@ export function permanentlyDeleteCommand(deps: DstuTrashDeps, id: string, itemTy
     }
 
     cleanupNoteAssetDirs(deps.log, deps.database.appDataDir(), noteIdsToCleanup);
+    try {
+      conn.exec('VACUUM');
+    } catch (error) {
+      deps.log.warn('[DSTU::trash] dstu_permanently_delete: post-purge VACUUM skipped: %s', failureMessage(error));
+    }
     if (resourceId !== undefined) cleanupVectorIndex(deps, resourceId);
     for (const childResourceId of sessionEssayResourceIds) cleanupVectorIndex(deps, childResourceId);
     emitDstuWatchEvent(deps, { type: 'purged', path: `/_trash/${id}` });
@@ -747,7 +752,14 @@ export function emptyTrashCommand(deps: DstuTrashDeps, itemTypes: readonly strin
     }
     cleanupNoteAssetDirs(deps.log, appDataDir, noteIdsToCleanup);
 
-    if (totalDeleted > 0) emitDstuWatchEvent(deps, { type: 'purged', path: '/_trash' });
+    if (totalDeleted > 0) {
+      try {
+        conn.exec('VACUUM');
+      } catch (error) {
+        deps.log.warn('[DSTU::trash] dstu_empty_trash: post-purge VACUUM skipped: %s', failureMessage(error));
+      }
+      emitDstuWatchEvent(deps, { type: 'purged', path: '/_trash' });
+    }
     for (const resourceId of resourceIdsToCleanup) cleanupVectorIndex(deps, resourceId);
     return totalDeleted;
   });

@@ -417,6 +417,7 @@
     "deleteItem": "Delete todo",
     "dragToReorder": "Drag to reorder",
     "editTitleHint": "Double-click to edit title",
+    "openDetail": "View details & subtasks",
     "setPriority": "Set priority"
   },
   "reschedule": {

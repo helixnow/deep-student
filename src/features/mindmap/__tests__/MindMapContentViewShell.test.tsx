@@ -899,5 +899,43 @@ describe('MindMapContentView shell modules', () => {
         expect(loadMasteryMock).toHaveBeenCalledTimes(5);
       });
     });
+
+    it('provides a WebUI file input fallback for import and reports both success and invalid-file errors via toast (W8B-03)', async () => {
+      render(<MindMapContentView isActive />);
+
+      const fileInput = screen.getByTestId('mm-webui-import-input') as HTMLInputElement;
+      expect(fileInput.type).toBe('file');
+      expect(fileInput.accept).toContain('.xmind');
+      expect(fileInput.accept).toContain('.json');
+      expect(fileInput.accept).toContain('.mm');
+      expect(fileInput.accept).toContain('.md');
+
+      // 1. Valid Markdown outline import succeeds and notifies success
+      const mdFile = new File(['# Physics\n- Mechanics\n- Optics\n'], 'physics.md', {
+        type: 'text/markdown',
+      });
+      Object.defineProperty(mdFile, 'text', {
+        value: async () => '# Physics\n- Mechanics\n- Optics\n',
+      });
+      fireEvent.change(fileInput, { target: { files: [mdFile] } });
+
+      await waitFor(() => {
+        expect(notifyMock).toHaveBeenCalledWith('success', expect.any(String));
+      });
+
+      // 2. Invalid JSON file surfaces both inline error and global error toast
+      notifyMock.mockClear();
+      const badJson = new File(['{broken json'], 'broken.json', {
+        type: 'application/json',
+      });
+      Object.defineProperty(badJson, 'text', {
+        value: async () => '{broken json',
+      });
+      fireEvent.change(fileInput, { target: { files: [badJson] } });
+
+      await waitFor(() => {
+        expect(notifyMock).toHaveBeenCalledWith('error', expect.any(String));
+      });
+    });
   });
 });

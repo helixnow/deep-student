@@ -69,7 +69,7 @@ export function buildNoteEditSuggestionIntent(input: NoteEditSuggestionInput): G
               id: 'apply-note-edit',
               label: input.labels.applyEdit,
               variant: 'primary',
-              riskLevel: 'high',
+              riskLevel: 'low',
             },
             {
               id: 'dismiss-note-suggestion',

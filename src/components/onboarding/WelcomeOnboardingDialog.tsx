@@ -16,7 +16,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Books, ChatCircleText, Cards } from '@phosphor-icons/react';
+import { Books, ChatCircleText, Cards, CheckCircle } from '@phosphor-icons/react';
 
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
@@ -57,6 +57,20 @@ function markWelcomeFlowDone(): void {
 }
 
 // ============================================================================
+// 预配置模型状态共享（供不透传新 props 的宿主壳自动展示 AI Ready 引导）
+// ============================================================================
+interface PreconfiguredAiInfo {
+  modelLabel: string | null;
+}
+
+let detectedPreconfiguredAi: PreconfiguredAiInfo | null = null;
+
+/** 测试辅助：重置模块级预配置检测缓存 */
+export function resetWelcomeOnboardingRuntimeState(): void {
+  detectedPreconfiguredAi = null;
+}
+
+// ============================================================================
 // Hook: useWelcomeOnboarding
 // ============================================================================
 /**
@@ -64,6 +78,8 @@ function markWelcomeFlowDone(): void {
  */
 export function useWelcomeOnboarding(agreementReady: boolean) {
   const [open, setOpen] = useState(false);
+  const [aiReady, setAiReady] = useState(false);
+  const [preconfiguredModel, setPreconfiguredModel] = useState<string | null>(null);
   const checkedRef = useRef(false);
 
   useEffect(() => {
@@ -80,20 +96,49 @@ export function useWelcomeOnboarding(agreementReady: boolean) {
 
     let cancelled = false;
     (async () => {
-      // 已配置过 AI 服务的用户（含升级用户）静默跳过并落标记。
       // 注意：内置（isBuiltin）配置出厂自带中转 key，不能把"有 key"当作用户配置过；
       // 只有「用户自己添加的带 key 配置」或「任一已启用的配置」才算真实接入。
       const configs = await invoke<ApiConfig[]>('get_api_configurations').catch(
         () => [] as ApiConfig[],
       );
-      const hasRealConfig = configs.some(
+      const activeConfig = configs.find(
         (c) => c.enabled || (!c.isBuiltin && !!c.apiKey && c.apiKey.trim().length > 0),
       );
-      if (hasRealConfig) {
-        markWelcomeFlowDone();
+      if (activeConfig) {
+        // 区分「已有历史数据的升级/老用户」与「自带预配置模型的全新首启用户」：
+        // 只有已存在会话或笔记的老用户才静默跳过；全新空白工作区即使预配置了模型，
+        // 仍应展示简洁的「AI 已就绪」欢迎引导，避免首次启动完全失去引导入口。
+        const [sessionCount, notes] = await Promise.all([
+          invoke<number>('chat_v2_count_sessions', {}).catch(() => 0),
+          invoke<unknown[]>('vfs_list_notes', { params: { limit: 1 } }).catch(() => []),
+        ]);
+        const hasExistingWorkspaceData =
+          (typeof sessionCount === 'number' && sessionCount > 0) ||
+          (Array.isArray(notes) && notes.length > 0);
+        if (hasExistingWorkspaceData) {
+          detectedPreconfiguredAi = null;
+          markWelcomeFlowDone();
+          return;
+        }
+        const modelLabel =
+          activeConfig.name?.trim() ||
+          activeConfig.model?.trim() ||
+          activeConfig.vendorName?.trim() ||
+          null;
+        detectedPreconfiguredAi = { modelLabel };
+        if (!cancelled) {
+          setAiReady(true);
+          setPreconfiguredModel(modelLabel);
+          setOpen(true);
+        }
         return;
       }
-      if (!cancelled) setOpen(true);
+      detectedPreconfiguredAi = null;
+      if (!cancelled) {
+        setAiReady(false);
+        setPreconfiguredModel(null);
+        setOpen(true);
+      }
     })();
 
     return () => {
@@ -102,11 +147,12 @@ export function useWelcomeOnboarding(agreementReady: boolean) {
   }, [agreementReady]);
 
   const dismiss = useCallback(() => {
+    detectedPreconfiguredAi = null;
     markWelcomeFlowDone();
     setOpen(false);
   }, []);
 
-  return { open, dismiss };
+  return { open, dismiss, aiReady, preconfiguredModel };
 }
 
 // ============================================================================
@@ -115,8 +161,10 @@ export function useWelcomeOnboarding(agreementReady: boolean) {
 interface WelcomeOnboardingDialogProps {
   /** 点击"去配置 AI 服务"：调用方负责导航到设置页 apis 标签 */
   onConfigure: () => void;
-  /** 点击"先随便看看" */
+  /** 点击"先随便看看" / "开始使用" */
   onSkip: () => void;
+  /** 可选：显式指定预配置模型就绪态；缺省读取 useWelcomeOnboarding 检测结果 */
+  preconfiguredAi?: boolean | { modelLabel?: string | null };
 }
 
 interface FeatureRow {
@@ -128,8 +176,21 @@ interface FeatureRow {
 export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = ({
   onConfigure,
   onSkip,
+  preconfiguredAi,
 }) => {
-  const { t, i18n } = useTranslation('common');
+  const { t, i18n } = useTranslation(['common', 'settings']);
+
+  const resolvedPreconfigured =
+    preconfiguredAi !== undefined
+      ? preconfiguredAi === false
+        ? null
+        : {
+            modelLabel:
+              typeof preconfiguredAi === 'object' ? (preconfiguredAi.modelLabel ?? null) : null,
+          }
+      : detectedPreconfiguredAi;
+  const isAiReady = resolvedPreconfigured !== null;
+  const readyModelLabel = resolvedPreconfigured?.modelLabel ?? null;
 
   // 入场动画
   const [mounted, setMounted] = useState(false);
@@ -311,12 +372,41 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
 
         {/* 内容区 */}
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pt-3 pb-5 scroll-pb-5 scroll-area--native sm:px-6 sm:py-4 space-y-3 sm:space-y-4">
-          {/* 10 秒单 Key 自动配置面板 */}
-          <QuickByokProvisionerCard
-            mode="onboarding"
-            onCompleted={() => onSkip()}
-            onOpenFullSettings={onConfigure}
-          />
+          {/* 已预配置模型时展示简洁的「AI 服务已就绪」卡片；否则展示 10 秒单 Key 自动配置面板 */}
+          {isAiReady ? (
+            <div
+              data-testid="welcome-ai-ready-card"
+              className="flex items-start gap-3 rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] px-3.5 py-3"
+            >
+              <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+                <CheckCircle size={18} weight="duotone" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-[13px] font-medium text-foreground/90 leading-snug">
+                  {t('settings:vendor_panel.welcome_ai_ready_title', {
+                    defaultValue: 'AI service is ready',
+                  })}
+                </p>
+                <p className="mt-0.5 text-[12px] text-foreground/60 leading-[1.55]">
+                  {readyModelLabel
+                    ? t('settings:vendor_panel.welcome_ai_ready_desc', {
+                        model: readyModelLabel,
+                        defaultValue: `A configured model (${readyModelLabel}) is ready to use. You can start right away or manage providers anytime in Settings.`,
+                      })
+                    : t('settings:vendor_panel.welcome_ai_ready_desc_generic', {
+                        defaultValue:
+                          'A configured AI service is ready to use. You can start right away or manage providers anytime in Settings.',
+                      })}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <QuickByokProvisionerCard
+              mode="onboarding"
+              onCompleted={() => onSkip()}
+              onOpenFullSettings={onConfigure}
+            />
+          )}
 
           {/* 三大能力速览 */}
           <div className="space-y-2.5 border-t border-border/35 pt-3.5 sm:space-y-3 sm:pt-4">
@@ -346,17 +436,28 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
             className="text-[13px] [@media(pointer:coarse)]:!min-h-11"
             onClick={onConfigure}
           >
-            {t('settings:byok.fullSettingsLink', {
-              defaultValue: t('welcome_onboarding.cta_configure'),
-            })}
+            {isAiReady
+              ? t('settings:vendor_panel.welcome_ai_ready_cta_manage', {
+                  defaultValue: t('welcome_onboarding.cta_configure'),
+                })
+              : t('settings:byok.fullSettingsLink', {
+                  defaultValue: t('welcome_onboarding.cta_configure'),
+                })}
           </DsButton>
           <DsButton
-            variant="ghost"
+            variant={isAiReady ? 'primary' : 'ghost'}
             size="md"
-            className="text-[13px] text-foreground/55 [@media(pointer:coarse)]:!min-h-11"
+            className={cn(
+              'text-[13px] [@media(pointer:coarse)]:!min-h-11',
+              !isAiReady && 'text-foreground/55',
+            )}
             onClick={onSkip}
           >
-            {t('welcome_onboarding.cta_skip')}
+            {isAiReady
+              ? t('settings:vendor_panel.welcome_ai_ready_cta_start', {
+                  defaultValue: t('welcome_onboarding.cta_skip'),
+                })
+              : t('welcome_onboarding.cta_skip')}
           </DsButton>
         </div>
       </div>

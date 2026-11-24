@@ -254,6 +254,18 @@ describe('MindMapFormatBar upgrades', () => {
     expect(findNodeById(root, 'l2_a1')?.style?.showCheckbox).toBeUndefined();
     expect(findNodeById(root, 'l2_a2')?.style?.showCheckbox).toBeUndefined();
   });
+
+  it('pins mm-format-ai-trigger outside the horizontal overflow-x-auto scroll group so it never clips (W8B-03)', () => {
+    render(<MindMapFormatBar />);
+    const scrollGroup = screen.getByTestId('mm-format-scroll-group');
+    const pinnedGroup = screen.getByTestId('mm-format-ai-pinned');
+    const aiTrigger = screen.getByTestId('mm-format-ai-trigger');
+
+    expect(scrollGroup.className).toContain('overflow-x-auto');
+    expect(pinnedGroup.className).toContain('shrink-0');
+    expect(pinnedGroup.contains(aiTrigger)).toBe(true);
+    expect(scrollGroup.contains(aiTrigger)).toBe(false);
+  });
 });
 
 describe('StyleSettings upgrades', () => {

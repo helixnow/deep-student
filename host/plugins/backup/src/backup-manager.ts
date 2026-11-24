@@ -168,7 +168,14 @@ async function snapshotDatabase(ctx: Context, src: string, dest: string): Promis
     ctx.storage.close(source);
   }
   const handle = ctx.storage.openFile(dest, { label: `backup-dest:${basename(dest)}`, mustExist: true });
-  try { handle.checkpoint('TRUNCATE'); } finally { ctx.storage.close(handle); }
+  try {
+    // 重建目标备份库页面，彻底清除已永久删除记录在 SQLite 空闲页中的明文残留
+    try { handle.exec('VACUUM'); }
+    catch (e) { ctx.logger('backup').warn(`备份库 VACUUM 失败，继续执行 checkpoint: ${ioMessage(e)}`); }
+    handle.checkpoint('TRUNCATE');
+  } finally {
+    ctx.storage.close(handle);
+  }
 }
 
 function schemaVersionOf(ctx: Context, path: string): number {

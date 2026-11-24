@@ -258,6 +258,9 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   // 右栏状态
   const [isEditingTranslation, setIsEditingTranslation] = useState(false);
   const [editedTranslation, setEditedTranslation] = useState('');
+  const [hasManualEdits, setHasManualEdits] = useState(false);
+  const [pendingOverwriteConfirm, setPendingOverwriteConfirm] = useState(false);
+  const [previousTranslation, setPreviousTranslation] = useState<string | null>(null);
   const [translationQuality, setTranslationQuality] = useState<number | null>(initialSession?.quality || null);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const isSpeakingRef = useRef(false);
@@ -636,7 +639,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
   );
 
   // 翻译（使用流式管线）
-  const handleTranslate = useCallback(async () => {
+  const executeTranslate = useCallback(async (forceOverwrite = false) => {
     // 防止重复调用
     if (isTranslating) {
       console.warn('[Translation] Translation in progress, ignoring duplicate call');
@@ -653,6 +656,19 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
       setTranslationError(t('translation:errors.offline'));
       showGlobalNotification('warning', t('translation:errors.offline'));
       return;
+    }
+
+    // 手工精修保护：已手动编辑过译文时，重译前先请求确认，避免静默覆盖
+    if (!forceOverwrite && hasManualEdits && translatedText.trim()) {
+      setPendingOverwriteConfirm(true);
+      return;
+    }
+
+    setPendingOverwriteConfirm(false);
+    // 保留上一版译文快照，重译后允许一键撤销恢复
+    const snapshotBeforeRetranslate = translatedText.trim() ? translatedText : null;
+    if (snapshotBeforeRetranslate) {
+      setPreviousTranslation(snapshotBeforeRetranslate);
     }
 
     // 清除之前的错误状态
@@ -678,6 +694,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
       if (result.outcome === 'completed') {
         // 翻译成功，清除错误状态
         setTranslationError(null);
+        setHasManualEdits(false);
         // 翻译完成后保存会话到 DSTU
         if (dstuMode.onSessionSave) {
           try {
@@ -725,7 +742,47 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     } finally {
       setIsRetrying(false);
     }
-  }, [sourceText, srcLang, tgtLang, customPrompt, isPromptCustomized, formality, domain, glossary, t, translationStream.startTranslation, isTranslating, dstuMode, initialSession, isOnline, buildTranslationSig, markTranslationPersisted]);
+  }, [sourceText, srcLang, tgtLang, customPrompt, isPromptCustomized, formality, domain, glossary, t, translationStream.startTranslation, isTranslating, dstuMode, initialSession, isOnline, buildTranslationSig, markTranslationPersisted, hasManualEdits, translatedText]);
+
+  const handleTranslate = useCallback(() => {
+    void executeTranslate(false);
+  }, [executeTranslate]);
+
+  const handleConfirmOverwriteTranslate = useCallback(() => {
+    void executeTranslate(true);
+  }, [executeTranslate]);
+
+  const handleRestorePreviousTranslation = useCallback(async () => {
+    if (previousTranslation === null) return;
+    const restored = previousTranslation;
+    setTranslatedText(restored);
+    setPreviousTranslation(null);
+    setPendingOverwriteConfirm(false);
+    if (dstuMode.onSessionSave && currentSessionIdRef.current) {
+      try {
+        const now = Date.now();
+        const sessionToSave: TranslationSession = {
+          id: currentSessionIdRef.current,
+          sourceText,
+          translatedText: restored,
+          srcLang,
+          tgtLang,
+          formality,
+          customPrompt: isPromptCustomized ? customPrompt : undefined,
+          domain,
+          glossary,
+          quality: translationQuality ?? undefined,
+          createdAt: initialSession?.createdAt || now,
+          updatedAt: now,
+        };
+        await dstuMode.onSessionSave(sessionToSave);
+        markTranslationPersisted(sessionToSave);
+      } catch (error: unknown) {
+        showGlobalNotification('error', t('translation:toast.update_failed', { error: getErrorMessage(error) }));
+      }
+    }
+    showGlobalNotification('success', t('translation:workbench_ui.restored_previous'));
+  }, [previousTranslation, setTranslatedText, dstuMode, sourceText, srcLang, tgtLang, formality, isPromptCustomized, customPrompt, domain, glossary, translationQuality, initialSession, markTranslationPersisted, t]);
 
   // 取消流式翻译（按钮 / Esc 快捷键共用；hook 内先本地 settle，反馈即时）
   const handleCancelTranslation = useCallback(() => {
@@ -826,6 +883,8 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
       // 更新前端状态
       setTranslatedText(editedTranslation);
       setIsEditingTranslation(false);
+      setHasManualEdits(true);
+      setPendingOverwriteConfirm(false);
       
       // 通过回调保存到 DSTU
       if (dstuMode.onSessionSave && currentSessionIdRef.current) {
@@ -1049,6 +1108,9 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
     setTranslationError(null);
     setIsEditingTranslation(false);
     setEditedTranslation('');
+    setHasManualEdits(false);
+    setPendingOverwriteConfirm(false);
+    setPreviousTranslation(null);
     lastTranslatedSigRef.current = null;
     restoredSigPendingPromptRef.current = false;
   }, [setTranslatedText]);
@@ -1097,6 +1159,65 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({
               <ArrowClockwise className={`h-3.5 w-3.5 mr-1.5 ${isRetrying ? 'animate-spin' : ''}`} />
               {t('common:retry')}
             </DsButton>
+          </div>
+        )}
+
+        {/* 重译覆盖手工编辑确认条 */}
+        {!isExternalSettingsPageOpen && pendingOverwriteConfirm && !isTranslating && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-2 px-4 py-2 bg-warning/10 border-b border-warning/25 ui-drop-in"
+          >
+            <div className="flex items-center gap-2 text-warning min-w-0">
+              <WarningCircle size={16} className="shrink-0" />
+              <span className="text-sm truncate">{t('translation:workbench_ui.overwrite_manual_confirm')}</span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => setPendingOverwriteConfirm(false)}
+                className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
+              >
+                {t('common:cancel')}
+              </DsButton>
+              <DsButton
+                variant="default"
+                size="sm"
+                onClick={handleConfirmOverwriteTranslate}
+                className="[@media(pointer:coarse)]:!min-h-11"
+              >
+                {t('translation:workbench_ui.confirm_retranslate')}
+              </DsButton>
+            </div>
+          </div>
+        )}
+
+        {/* 重译后一键撤销/恢复上一版译文提示条 */}
+        {!isExternalSettingsPageOpen && previousTranslation !== null && !isTranslating && !pendingOverwriteConfirm && !translationError && (
+          <div className="flex items-center justify-between gap-2 px-4 py-2 bg-info/10 border-b border-info/20 ui-drop-in">
+            <div className="flex items-center gap-2 text-info min-w-0">
+              <Info size={16} className="shrink-0" />
+              <span className="text-sm truncate">{t('translation:workbench_ui.retranslated_undo_hint')}</span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => void handleRestorePreviousTranslation()}
+                className="text-info hover:bg-info/10 [@media(pointer:coarse)]:!min-h-11"
+              >
+                {t('translation:workbench_ui.restore_previous')}
+              </DsButton>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => setPreviousTranslation(null)}
+                className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11"
+              >
+                {t('translation:workbench_ui.dismiss')}
+              </DsButton>
+            </div>
           </div>
         )}
 

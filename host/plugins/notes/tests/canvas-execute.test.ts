@@ -137,12 +137,23 @@ describe('canvas executor backend branches', () => {
     expect(full.success).toBe(true);
     expect(full.output).toMatchObject({
       noteId: note.id,
+      title: 'Read',
+      isUntitled: false,
       content: '# A\nalpha\n## B\nbeta',
       wordCount: 19,
       truncated: false,
       isSection: false,
       updatedAt: note.updatedAt,
       updated_at: note.updatedAt,
+    });
+
+    const untitled = noteRepository.createNote({ title: '无标题笔记', content: 'Draft' }, db());
+    const untitledRead = await executor().execute(call('builtin-note_read', { noteId: untitled.id }), context());
+    expect(untitledRead.success).toBe(true);
+    expect(untitledRead.output).toMatchObject({
+      noteId: untitled.id,
+      title: '无标题笔记',
+      isUntitled: true,
     });
 
     const section = await executor().execute(

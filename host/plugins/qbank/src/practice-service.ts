@@ -260,6 +260,9 @@ export function submitDraft(host: PracticeServiceHost, id: string, revision: num
             if (!isCorrect) wrongQuestions.push({ questionId: question.id, examId: live.exam_id });
             else correctQuestionIds.push(question.id);
           }
+        } else if (answer === null && live !== null) {
+          // 未答题保持 status='unanswered' / is_correct=null，但同样纳入复习计划，避免从错题/订正/复习闭环中静默消失
+          wrongQuestions.push({ questionId: question.id, examId: live.exam_id });
         }
         results.push({
           question_id: question.id, status, is_correct: isCorrect,

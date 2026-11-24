@@ -7,6 +7,7 @@ import type { ScreenPosition } from '@/components/layout';
 import type { ApiConfig, VendorConfig } from '@/types';
 import { openUrl } from '@/utils/urlOpener';
 import { getProviderWebsiteUrl } from './VendorDetailPanel';
+import { getProviderDisplayName, getVendorDisplayName } from './builtinVendorDisplay';
 import type { VendorConfigModalRef } from './VendorConfigModal';
 import type { SettingsRightPanelType } from './hookDepsTypes';
 import type { McpPreviewState, McpToolModalState } from './mcp-editor/types';
@@ -85,14 +86,18 @@ export function useSettingsMobileHeaderContent({
           text = modelEditor?.api?.name || t('settings:title_edit');
           break;
         case 'vendorConfig':
-          text = editingVendor?.name || t('settings:title_edit');
+          text = editingVendor
+            ? getVendorDisplayName(editingVendor, getProviderDisplayName(editingVendor.providerType, t), t)
+            : t('settings:title_edit');
           break;
         default:
           text = t('settings:title_edit');
       }
     } else if (mobileNavView === 'content') {
       if (activeTab === 'apis' && mobileVendorDetailOpen && selectedVendor) {
-        text = selectedVendor.name || activeNavItem?.label || t('settings:title');
+        text = getVendorDisplayName(selectedVendor, getProviderDisplayName(selectedVendor.providerType, t), t)
+          || activeNavItem?.label
+          || t('settings:title');
       } else if (activeTab === 'apis') {
         // 列表态以分类名为标题；具体分区由下方二级 Tab 标明。
         text = activeCategory?.label ?? t('settings:vendor_panel.list_title');

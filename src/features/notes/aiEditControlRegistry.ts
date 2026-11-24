@@ -18,6 +18,8 @@ export interface NoteAIEditControlHandle {
   rejectPendingSuggestion(): Promise<void>;
   /** 回滚最近一次已接受编辑（checkpoint 栈顶）；无可回滚条目返回 false */
   rollbackLatestCheckpoint(): Promise<boolean>;
+  /** 获取当前目标笔记标题（未命名时返回 undefined） */
+  getNoteTitle?: () => string | undefined;
 }
 
 const controls = new Map<string, NoteAIEditControlHandle>();

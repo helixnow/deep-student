@@ -46,6 +46,11 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import { SettingsVirtualList, type SettingsVirtualItem } from './SettingsVirtualList';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
+import {
+  getProviderDisplayName,
+  getVendorDisplayName,
+  getVendorNotesDisplay,
+} from './builtinVendorDisplay';
 
 // --- Save Status Indicator ---
 type SaveStatus = 'idle' | 'saving' | 'saved';
@@ -214,34 +219,6 @@ const ResponsiveInlineEditorHost: React.FC<{
 // --- Helpers ---
 
 const normalizeBaseUrl = (url: string) => url.trim().replace(/\/+$/, '');
-
-type TranslateFn = (key: string, options?: { defaultValue?: string }) => string;
-
-const getProviderDisplayName = (providerType?: string | null, t?: TranslateFn) => {
-  if (!providerType) return 'OpenAI';
-  const normalizedProviderType = providerType.toLowerCase();
-  const map: Record<string, string> = {
-    openai: 'OpenAI',
-    openai_codex: 'OpenAI Codex',
-    anthropic: 'Anthropic',
-    google: 'Google',
-    siliconflow: 'SiliconFlow',
-    deepseek: 'DeepSeek',
-    ollama: 'Ollama',
-    nvidia: 'NVIDIA',
-    mimo: 'Xiaomi MiMo',
-    opencode_go: 'OpenCode Go',
-  };
-  const fallback = map[normalizedProviderType] || providerType;
-  return t?.(`settings:vendor_modal.providers.${normalizedProviderType}`, { defaultValue: fallback }) ?? fallback;
-};
-
-const getVendorDisplayName = (vendor: VendorConfig, providerLabel: string) => {
-  if ((vendor.providerType ?? '').toLowerCase() === 'siliconflow') {
-    return providerLabel;
-  }
-  return vendor.name || providerLabel;
-};
 
 export const getProviderWebsiteUrl = (providerType?: string | null): string | null => {
   if (!providerType) return null;
@@ -456,7 +433,8 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
   }
 
   const providerLabel = getProviderDisplayName(selectedVendor.providerType, t);
-  const vendorDisplayName = getVendorDisplayName(selectedVendor, providerLabel);
+  const vendorDisplayName = getVendorDisplayName(selectedVendor, providerLabel, t);
+  const vendorNotesDisplay = getVendorNotesDisplay(selectedVendor, t);
   const vendorProtocolOptions = getAllowedApiProtocolsForProviderType(selectedVendor.providerType);
 
   const renderModelCard = ({ profile, api }: (typeof selectedVendorModels)[number]) => {
@@ -648,7 +626,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                     onCancel={() => setInlineEditState(null)}
                     hideConnectionFields
                     lockedVendorInfo={{
-                      name: selectedVendor.name,
+                      name: vendorDisplayName,
                       baseUrl: selectedVendor.baseUrl,
                       providerType: selectedVendor.providerType,
                       apiProtocol: selectedVendor.apiProtocol,
@@ -1005,17 +983,13 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                   </div>
 
                   {/* Notes */}
-                  {selectedVendor.notes && (
+                  {vendorNotesDisplay && (
                     <div className="space-y-1.5">
                       <div className="text-xs font-medium text-muted-foreground">
                         <span>{t('settings:vendor_panel.notes')}</span>
                       </div>
                       <div className="text-sm text-foreground leading-relaxed">
-                        {selectedVendor.notes === 'Built-in template for SiliconFlow. Please enter your API Key.'
-                          ? t('settings:vendor_panel.builtin_siliconflow_notes')
-                          : selectedVendor.notes === 'OpenAI Codex subscription access via ChatGPT OAuth. Sign in with ChatGPT instead of entering an API key.'
-                            ? t('settings:vendor_panel.builtin_codex_notes')
-                            : selectedVendor.notes}
+                        {vendorNotesDisplay}
                       </div>
                     </div>
                   )}
@@ -1151,7 +1125,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                             onCancel={handleCancelAddModel}
                             hideConnectionFields
                             lockedVendorInfo={{
-                              name: selectedVendor.name,
+                              name: vendorDisplayName,
                               baseUrl: selectedVendor.baseUrl,
                               providerType: selectedVendor.providerType,
                               apiProtocol: selectedVendor.apiProtocol,

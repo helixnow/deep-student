@@ -202,10 +202,10 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
                   </span>
                   <span className="ml-auto">{copyButton}</span>
                 </div>
-                <div className="text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 text-foreground/90">
+                <div className="text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 overflow-x-auto [&_.katex-display]:overflow-x-auto [&_.katex-display]:max-w-full text-foreground/90">
                   {pair.src ? renderSegmentText(pair.src, true) : <span className="text-muted-foreground/30 italic text-xs">—</span>}
                 </div>
-                <div className="text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 text-foreground/90 border-l-2 border-primary/30 pl-2.5">
+                <div className="text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 overflow-x-auto [&_.katex-display]:overflow-x-auto [&_.katex-display]:max-w-full text-foreground/90 border-l-2 border-primary/30 pl-2.5">
                   {tgtContent}
                 </div>
               </div>
@@ -223,7 +223,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
               </div>
 
               {/* 原文段落 */}
-              <div className="flex-1 text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 transition-colors text-foreground/90 group-hover:text-foreground">
+              <div className="flex-1 text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 overflow-x-auto [&_.katex-display]:overflow-x-auto [&_.katex-display]:max-w-full transition-colors text-foreground/90 group-hover:text-foreground">
                 {pair.src ? renderSegmentText(pair.src, true) : (
                   <span className="text-muted-foreground/30 italic text-xs">—</span>
                 )}
@@ -233,7 +233,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
               <div className="w-px bg-border/35 shrink-0 self-stretch" />
 
               {/* 译文段落 */}
-              <div className="flex-1 text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 transition-colors text-foreground/90 group-hover:text-foreground pr-6">
+              <div className="flex-1 text-sm leading-relaxed whitespace-pre-wrap break-words min-w-0 overflow-x-auto [&_.katex-display]:overflow-x-auto [&_.katex-display]:max-w-full transition-colors text-foreground/90 group-hover:text-foreground pr-6">
                 {tgtContent}
               </div>
 

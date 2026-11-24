@@ -442,11 +442,30 @@ export const CitationBadgeWithPopover: React.FC<CitationBadgeWithPopoverProps> =
     }
   }
 
-  // 孤儿 [知识库-N]：本条消息没有对应的知识库来源（模型凭空套用格式，常见于用工具读了
-  // 资料却按知识库格式标注），渲染出来是点了没反应的死徽章——不渲染
+  // 孤儿 [知识库-N]：本条消息没有对应的知识库来源（例如跨轮次综合引用或工具读取资料后按
+  // 知识库格式标注）。不能 return null 吞掉标记导致正文出现空白缺口；改渲染为非交互式的
+  // 淡色引用胶囊，保留序号与来源提示，避免死按钮误导。
   const isOrphanRag =
     citationType === 'rag' && !!resolveSource && citationIndex > 0 && !resolveSource('rag', citationIndex);
-  if (isOrphanRag) return null;
+  if (isOrphanRag) {
+    const ragLabel = t('citation.rag', { defaultValue: 'Knowledge Base' });
+    const orphanTooltip = `${ragLabel} [${citationIndex}]`;
+    return (
+      <span
+        data-citation-orphan="true"
+        title={orphanTooltip}
+        aria-label={orphanTooltip}
+        className={cn(
+          'inline-flex items-center justify-center align-baseline min-w-[1.25rem] h-5 px-1 mx-0.5',
+          'rounded text-xs font-medium select-none',
+          'bg-muted/80 text-muted-foreground border border-border/60',
+          className,
+        )}
+      >
+        [{citationIndex}]
+      </span>
+    );
+  }
 
   return (
     <span

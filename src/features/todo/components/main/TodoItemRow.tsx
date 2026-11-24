@@ -22,6 +22,7 @@ import {
   Brain,
   Calendar,
   CalendarPlus,
+  CaretRight,
   Check,
   CheckCircle,
   DotsSixVertical,
@@ -932,9 +933,11 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
         </span>
       ) : (
       <button
+        type="button"
+        data-testid={`todo-row-toggle-${item.id}`}
         onClick={handleToggleClick}
-        // 触屏与窄屏：透明 padding 扩大命中到 ≥44px，负 margin 保持布局不变；按压微缩放提供弹性触感
-        className="flex-shrink-0 rounded-full transition-transform duration-150 ease-out active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] focus-visible:ring-offset-1 motion-reduce:transition-none motion-reduce:active:scale-100 max-md:p-3 max-md:-m-3 [@media(pointer:coarse)]:p-3 [@media(pointer:coarse)]:-m-3"
+        // 触屏与窄屏：扩大命中区但不向右侵入标题热区；按压微缩放提供弹性触感
+        className="relative z-[1] flex-shrink-0 rounded-full transition-transform duration-150 ease-out active:scale-90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] focus-visible:ring-offset-1 motion-reduce:transition-none motion-reduce:active:scale-100 max-md:p-2 max-md:-ml-2 max-md:-my-2 max-md:mr-0 [@media(pointer:coarse)]:p-2 [@media(pointer:coarse)]:-ml-2 [@media(pointer:coarse)]:-my-2 [@media(pointer:coarse)]:mr-0"
         aria-label={isCompleted ? t('todo:actions.markPending') : t('todo:actions.markCompleted')}
       >
         {showCheckFilled ? (
@@ -979,9 +982,15 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
             onCancel={() => setIsEditing(false)}
           />
         ) : (
-          <div
-            className="min-w-0 truncate text-sm"
-            title={onRename && !isCompleted ? t('todo:actions.editTitleHint') : undefined}
+          <button
+            type="button"
+            data-testid={`todo-row-title-${item.id}`}
+            className="min-w-0 max-w-full cursor-pointer truncate bg-transparent p-0 text-left text-sm focus:outline-none focus-visible:underline"
+            title={onRename && !isCompleted ? t('todo:actions.editTitleHint') : item.title}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRowClick(e);
+            }}
             onDoubleClick={(e) => {
               if (!onRename || isCompleted) return;
               e.stopPropagation();
@@ -999,7 +1008,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
             >
               {item.title}
             </span>
-          </div>
+          </button>
         )}
 
         {(item.dueDate ||
@@ -1168,6 +1177,28 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
         )}
 
         {trailingSlot}
+
+        <DsButton
+          variant="utility"
+          size="icon"
+          iconOnly
+          data-testid={`todo-row-detail-${item.id}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect(item.id);
+          }}
+          title={t('todo:actions.openDetail')}
+          aria-label={t('todo:actions.openDetail')}
+          aria-pressed={isSelected}
+          className={cn(
+            'flex-shrink-0 transition-opacity duration-100 !p-1.5 [@media(pointer:coarse)]:!p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
+            isSelected
+              ? 'text-primary opacity-100'
+              : 'opacity-65 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-85',
+          )}
+        >
+          <CaretRight size={15} weight="bold" />
+        </DsButton>
 
         {!isCompleted && (
           <DsButton

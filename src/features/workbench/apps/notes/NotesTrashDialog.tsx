@@ -166,8 +166,9 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
       showGlobalNotification('error', result.error.toUserMessage());
       return;
     }
+    showGlobalNotification('success', t('workbench:notesWorkspace.trash.restoredToast', { name: node.name }));
     await notifyChanged();
-  }, [notifyChanged]);
+  }, [notifyChanged, t]);
 
   /** Batch restore for the current selection; failed rows come back into the list. */
   const restoreSelected = useCallback(async () => {
@@ -195,6 +196,10 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
       showGlobalNotification('error', lastFailure ?? t('workbench:notesWorkspace.trash.restoreSelectedFailed', {
         count: failed.length,
         defaultValue: 'Could not restore {{count}} item(s).',
+      }));
+    } else if (targets.length > 0) {
+      showGlobalNotification('success', t('workbench:notesWorkspace.trash.restoredSelectedToast', {
+        count: targets.length,
       }));
     }
     await notifyChanged();
@@ -231,8 +236,9 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
       showGlobalNotification('error', result.error.toUserMessage());
       return;
     }
+    showGlobalNotification('success', t('workbench:notesWorkspace.trash.purgedToast', { name: node.name }));
     await notifyChanged();
-  }, [busy, notifyChanged]);
+  }, [busy, notifyChanged, t]);
 
   /** Optimistic empty: clear the list, restore the snapshot on failure. */
   const emptyAll = useCallback(async () => {
@@ -503,7 +509,10 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
                           />
                         </label>
                         <span className="ntd-item-icon"><TrashGlyph type={type} /></span>
-                        <div className="ntd-item-meta">
+                        <div
+                          className="ntd-item-meta"
+                          onClick={() => toggleSelected(node.id)}
+                        >
                           <span className="ntd-item-name">{node.name}</span>
                           {time ? (
                             <span className="ntd-item-time">
@@ -514,23 +523,31 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
                         <div className="ntd-item-actions">
                           <button
                             type="button"
-                            className="ntd-icon-button"
+                            className="ntd-row-action-btn"
                             disabled={busy}
                             aria-label={t('workbench:notesWorkspace.trash.restore', { name: node.name })}
                             title={t('workbench:notesWorkspace.trash.restore', { name: node.name })}
-                            onClick={() => void restoreItem(node)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void restoreItem(node);
+                            }}
                           >
-                            <ArrowsClockwise size={14} />
+                            <ArrowsClockwise size={13} aria-hidden="true" />
+                            <span>{t('workbench:notesWorkspace.trash.restoreAction')}</span>
                           </button>
                           <button
                             type="button"
-                            className="ntd-icon-button is-danger"
+                            className="ntd-row-action-btn is-danger"
                             disabled={busy}
                             aria-label={t('workbench:notesWorkspace.trash.purge', { name: node.name })}
                             title={t('workbench:notesWorkspace.trash.purge', { name: node.name })}
-                            onClick={() => setConfirm({ kind: 'purge', node, type })}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setConfirm({ kind: 'purge', node, type });
+                            }}
                           >
-                            <Trash size={14} />
+                            <Trash size={13} aria-hidden="true" />
+                            <span>{t('workbench:notesWorkspace.trash.confirmPurgeAction')}</span>
                           </button>
                         </div>
                       </div>

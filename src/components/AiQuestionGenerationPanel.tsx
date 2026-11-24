@@ -360,8 +360,21 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
     setSpecs((prev) => prev.map((spec) => (spec.id === id ? { ...spec, ...patch } : spec)));
   };
 
+  const hasGenerationContext =
+    selectedKnowledgePoints.length > 0 ||
+    topicHint.trim().length > 0 ||
+    references.length > 0 ||
+    basedOnExisting;
+
   const handleStart = async () => {
     if (maxQuestions <= 0 || maxQuestions > 100) return;
+    if (!hasGenerationContext) {
+      showGlobalNotification(
+        'warning',
+        t('exam_sheet:aiGeneration.contextRequired'),
+      );
+      return;
+    }
     try {
       await startGeneration({
         exam_id: examId,
@@ -902,39 +915,46 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
       </DsDialogBody>
 
       <DsDialogFooter>
-        <div className="flex items-center justify-end gap-2">
-          {!hasDrafts && !isGenerating && (
-            <>
-              <DsButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-                {t('common:cancel')}
-              </DsButton>
-              <DsButton
-                variant="default"
-                size="sm"
-                disabled={maxQuestions <= 0 || maxQuestions > 100}
-                onClick={() => void handleStart()}
-              >
-                <Sparkle size={14} className="mr-1" />
-                {t('exam_sheet:aiGeneration.start')}
-              </DsButton>
-            </>
+        <div className="flex flex-col gap-2 w-full">
+          {!hasDrafts && !isGenerating && !hasGenerationContext && (
+            <p className="text-xs text-warning text-right" role="status">
+              {t('exam_sheet:aiGeneration.contextRequired')}
+            </p>
           )}
-          {hasDrafts && !isGenerating && (
-            <>
-              <DsButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-                {t('common:cancel')}
-              </DsButton>
-              <DsButton
-                variant="default"
-                size="sm"
-                disabled={selected.size === 0 || importing}
-                onClick={() => void handleConfirmImport()}
-              >
-                {importing && <CircleNotch size={14} className="mr-1 animate-spin" />}
-                {t('exam_sheet:aiGeneration.confirmImport', { count: selected.size })}
-              </DsButton>
-            </>
-          )}
+          <div className="flex items-center justify-end gap-2">
+            {!hasDrafts && !isGenerating && (
+              <>
+                <DsButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+                  {t('common:cancel')}
+                </DsButton>
+                <DsButton
+                  variant="default"
+                  size="sm"
+                  disabled={maxQuestions <= 0 || maxQuestions > 100 || !hasGenerationContext}
+                  onClick={() => void handleStart()}
+                >
+                  <Sparkle size={14} className="mr-1" />
+                  {t('exam_sheet:aiGeneration.start')}
+                </DsButton>
+              </>
+            )}
+            {hasDrafts && !isGenerating && (
+              <>
+                <DsButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+                  {t('common:cancel')}
+                </DsButton>
+                <DsButton
+                  variant="default"
+                  size="sm"
+                  disabled={selected.size === 0 || importing}
+                  onClick={() => void handleConfirmImport()}
+                >
+                  {importing && <CircleNotch size={14} className="mr-1 animate-spin" />}
+                  {t('exam_sheet:aiGeneration.confirmImport', { count: selected.size })}
+                </DsButton>
+              </>
+            )}
+          </div>
         </div>
       </DsDialogFooter>
     </DsDialog>

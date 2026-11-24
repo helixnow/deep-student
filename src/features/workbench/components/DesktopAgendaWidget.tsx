@@ -494,7 +494,10 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
                   type="button"
                   className="wb-agenda-check"
                   disabled={completingId === item.id}
-                  onClick={() => void completeItem(item)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void completeItem(item);
+                  }}
                   aria-label={t('agenda.completeItem', { title: item.title })}
                 >
                   <span style={{ borderColor: listColor(list, item.todoListId) }}>

@@ -363,4 +363,16 @@ describe('builtin_vendors.rs', () => {
       expect(profile.thinkingEnabled).toBe(true);
     }
   });
+
+  it('builtin_vendors_expose_clean_english_names_and_notes_without_cjk_leak', () => {
+    const cjk = /[\u4e00-\u9fff]/;
+    for (const vendor of BUILTIN_VENDORS) {
+      expect(cjk.test(vendor.name), `${vendor.id}.name should be English`).toBe(false);
+      expect(cjk.test(vendor.notes), `${vendor.id}.notes should be English`).toBe(false);
+    }
+    expect(vendorById('builtin-qwen').name).toBe('Alibaba Qwen');
+    expect(vendorById('builtin-zhipu').name).toBe('Zhipu AI');
+    expect(vendorById('builtin-doubao').name).toBe('ByteDance Doubao');
+    expect(vendorById('builtin-moonshot').name).toBe('Moonshot AI');
+  });
 });

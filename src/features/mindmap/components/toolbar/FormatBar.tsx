@@ -373,10 +373,15 @@ export const MindMapFormatBar: React.FC = () => {
 
   return (
     <div
-      className="mm-format-bar flex flex-nowrap items-center gap-1 px-2 py-1 overflow-x-auto scrollbar-none"
+      className="mm-format-bar flex flex-nowrap items-center gap-1 px-2 py-1 max-w-full"
       role="toolbar"
       aria-label={t('contextMenu.textStyleGroup', { defaultValue: '文本样式' })}
     >
+      {/* 格式与学习动作区：窄容器/分栏下独立水平滚动，避免挤压右侧固定的 AI 入口 */}
+      <div
+        className="flex flex-1 min-w-0 flex-nowrap items-center gap-1 overflow-x-auto scrollbar-none"
+        data-testid="mm-format-scroll-group"
+      >
       {/* 文本修饰 B / I / U / S */}
       <div className="flex items-center gap-0.5 shrink-0" role="group">
         {toggles.map(({ key, icon: Icon, prop, val }) => {
@@ -663,7 +668,7 @@ export const MindMapFormatBar: React.FC = () => {
         data-testid="mm-format-flashcard-toggle"
       >
         <Cards className="w-3.5 h-3.5" />
-        <span className="hidden lg:inline">{t('mn5.projectAsFlashcard')}</span>
+        <span className="hidden xl:inline">{t('mn5.projectAsFlashcard')}</span>
       </DsButton>
 
       <DsButton
@@ -675,13 +680,16 @@ export const MindMapFormatBar: React.FC = () => {
         data-testid="mm-format-export-handout"
       >
         <Article className="w-3.5 h-3.5 text-[var(--mm-celadon-accent)]" />
-        <span className="hidden lg:inline">{t('mn5.exportHandout')}</span>
+        <span className="hidden xl:inline">{t('mn5.exportHandout')}</span>
       </DsButton>
+      </div>
 
-      {/* AI 扩写 / 总结 + 引用到聊天 */}
+      {/* AI 扩写 / 总结 + 引用到聊天：固定在滚动区外侧，1440×900 开侧边栏也不被裁剪 */}
       {mindmapId && (
-        <>
-          <div className="w-px h-4 bg-[var(--mm-border)] shrink-0" />
+        <div
+          className="flex items-center gap-1 shrink-0 pl-1 border-l border-[var(--mm-border)]"
+          data-testid="mm-format-ai-pinned"
+        >
           <Popover open={aiOpen} onOpenChange={setAiOpen}>
             <PopoverTrigger asChild>
               <DsButton
@@ -731,7 +739,7 @@ export const MindMapFormatBar: React.FC = () => {
           >
             <Quotes className="w-4 h-4" />
           </DsButton>
-        </>
+        </div>
       )}
     </div>
   );

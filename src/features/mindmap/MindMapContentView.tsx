@@ -23,7 +23,13 @@ import {
   exportToPlainText,
   exportToXmindFile,
 } from './utils/exporters';
-import { createXmindImportReport, importFromMmapZip, importFromXmindZip, importMindMap } from './utils/importers';
+import {
+  createXmindImportReport,
+  importFromFile,
+  importFromMmapZip,
+  importFromXmindZip,
+  importMindMap,
+} from './utils/importers';
 import { fileManager } from '@/utils/fileManager';
 import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/utils/cn';
@@ -69,6 +75,14 @@ import type { MindMapDocument } from './types';
 import './styles/mindmap.css';
 
 const EMPTY_MASTERY_STATUS: Record<string, MindMapNodeMasteryStatus> = {};
+const MINDMAP_IMPORT_EXTENSIONS = ['xmind', 'mmap', 'opml', 'md', 'markdown', 'json', 'mm', 'txt'] as const;
+const MINDMAP_IMPORT_ACCEPT = MINDMAP_IMPORT_EXTENSIONS.map((ext) => `.${ext}`).join(',');
+
+function isNativeFileDialogAvailable(): boolean {
+  if (typeof window === 'undefined') return false;
+  const win = window as unknown as Record<string, unknown>;
+  return Boolean(win.__TAURI_INTERNALS__ || win.__TAURI_IPC__);
+}
 
 const MindMapClipboardEffects: React.FC = () => {
   useMindMapClipboard();
@@ -709,21 +723,119 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
     [switchView, t, storeApi],
   );
 
-  // 命令式导入
+  // 命令式导入（Tauri 走原生文件选择器；WebUI 走隐藏 <input type="file"> 兜底）
   const importRequestRef = useRef(0);
+  const webImportInputRef = useRef<HTMLInputElement | null>(null);
+
+  const finalizeImportedDocument = useCallback(
+    (
+      imported: MindMapDocument,
+      report: ReturnType<typeof createXmindImportReport>,
+      initialDocument: MindMapDocument,
+      isCurrent: () => boolean,
+    ) => {
+      if (!isCurrent()) return;
+      const latest = storeApi.getState();
+      if (latest.document !== initialDocument) {
+        setShowImportConfirm(true);
+        return;
+      }
+      latest.setDocument(imported);
+      latest.setFocusedNodeId(imported.root.id);
+      const nodeCount = countTreeNodes(imported.root);
+      const hasDropped = report.droppedImages > 0 || report.droppedSummaries > 0;
+      if (hasDropped) {
+        setImportReport({
+          nodes: nodeCount,
+          droppedImages: report.droppedImages,
+          droppedSummaries: report.droppedSummaries,
+        });
+      }
+      showGlobalNotification(
+        'success',
+        hasDropped
+          ? t('mindmap:import.successSummaryIgnored', {
+              nodes: nodeCount,
+              images: report.droppedImages,
+              summaries: report.droppedSummaries,
+            })
+          : t('mindmap:import.successSummary', { nodes: nodeCount }),
+      );
+    },
+    [storeApi, t],
+  );
+
+  const reportImportError = useCallback(
+    (error: unknown, isCurrent: () => boolean) => {
+      if (!isCurrent()) return;
+      console.error('[MindMapContentView] Import failed:', error);
+      const message =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : t('mindmap:import.failed');
+      setImportError(message);
+      showGlobalNotification('error', message);
+    },
+    [t],
+  );
+
+  const handleWebImportFileChange = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) return;
+
+      const request = ++importRequestRef.current;
+      const loadRequest = documentLoadRequestRef.current;
+      const initialDocument = storeApi.getState().document;
+      const isCurrent = () =>
+        request === importRequestRef.current && loadRequest === documentLoadRequestRef.current;
+      setImportError(null);
+      setImportReport(null);
+      setIsImporting(true);
+      try {
+        const report = createXmindImportReport();
+        const lowerName = file.name.toLowerCase();
+        const imported = lowerName.endsWith('.xmind')
+          ? await importFromXmindZip(await file.arrayBuffer(), report)
+          : await importFromFile(file);
+        finalizeImportedDocument(imported, report, initialDocument, isCurrent);
+      } catch (error: unknown) {
+        reportImportError(error, isCurrent);
+      } finally {
+        if (request === importRequestRef.current) setIsImporting(false);
+      }
+    },
+    [finalizeImportedDocument, reportImportError, storeApi],
+  );
+
   const doImport = useCallback(async () => {
+    setImportError(null);
+    setImportReport(null);
+
+    if (!isNativeFileDialogAvailable()) {
+      const input = webImportInputRef.current;
+      if (!input) {
+        const msg = t('mindmap:import.failed');
+        setImportError(msg);
+        showGlobalNotification('error', msg);
+        return;
+      }
+      input.value = '';
+      input.click();
+      return;
+    }
+
     const request = ++importRequestRef.current;
     const loadRequest = documentLoadRequestRef.current;
     const initialDocument = storeApi.getState().document;
     const isCurrent = () =>
       request === importRequestRef.current && loadRequest === documentLoadRequestRef.current;
-    setImportError(null);
-    setImportReport(null);
     try {
       const filePath = await fileManager.pickSingleFile({
         title: t('mindmap:import.dialogTitle'),
         filters: [
-          { name: t('mindmap:import.filterName'), extensions: ['xmind', 'mmap', 'opml', 'md', 'markdown', 'json', 'mm', 'txt'] },
+          { name: t('mindmap:import.filterName'), extensions: [...MINDMAP_IMPORT_EXTENSIONS] },
         ],
       });
       if (!filePath || !isCurrent()) return;
@@ -736,33 +848,13 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         : lowerPath.endsWith('.mmap')
           ? await importFromMmapZip(await TauriAPI.readFileAsBytes(filePath))
           : importMindMap(await fileManager.readTextFile(filePath), 'auto');
-      if (!isCurrent()) return;
-      const latest = storeApi.getState();
-      if (latest.document !== initialDocument) {
-        setShowImportConfirm(true);
-        return;
-      }
-      latest.setDocument(imported);
-      latest.setFocusedNodeId(imported.root.id);
-      const nodeCount = countTreeNodes(imported.root);
-      const hasDropped = report.droppedImages > 0 || report.droppedSummaries > 0;
-      if (hasDropped) {
-        setImportReport({ nodes: nodeCount, droppedImages: report.droppedImages, droppedSummaries: report.droppedSummaries });
-      }
-      showGlobalNotification(
-        'success',
-        hasDropped
-          ? t('mindmap:import.successSummaryIgnored', { nodes: nodeCount, images: report.droppedImages, summaries: report.droppedSummaries })
-          : t('mindmap:import.successSummary', { nodes: nodeCount }),
-      );
+      finalizeImportedDocument(imported, report, initialDocument, isCurrent);
     } catch (error: unknown) {
-      if (!isCurrent()) return;
-      console.error('[MindMapContentView] Import failed:', error);
-      setImportError(error instanceof Error ? error.message : t('mindmap:import.failed'));
+      reportImportError(error, isCurrent);
     } finally {
       if (request === importRequestRef.current) setIsImporting(false);
     }
-  }, [storeApi, t]);
+  }, [finalizeImportedDocument, reportImportError, storeApi, t]);
 
   const handleImport = useCallback(() => {
     if (storeApi.getState().isDirty) setShowImportConfirm(true);
@@ -989,6 +1081,16 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
         )}
       >
         <div className="mm-document-column relative flex min-w-0 flex-1 flex-col">
+          <input
+            ref={webImportInputRef}
+            type="file"
+            accept={MINDMAP_IMPORT_ACCEPT}
+            className="hidden"
+            aria-hidden="true"
+            tabIndex={-1}
+            data-testid="mm-webui-import-input"
+            onChange={(e) => void handleWebImportFileChange(e)}
+          />
           <MindMapToolbar
             currentView={normalizedView}
             activePanel={activePanel}

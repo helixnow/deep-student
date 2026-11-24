@@ -24,6 +24,7 @@ import {
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { ScoreCard } from './ScoreCard';
 import {
+  ArrowClockwise,
   ArrowCounterClockwise,
   ArrowRight,
   CaretLeft,
@@ -63,6 +64,8 @@ interface StreamingAnnotatedTextProps {
   appliedSuggestionKeys?: ReadonlySet<string>;
   /** 当前批阅模式 ID：评分卡里预置模式的维度名按界面语言显示（仅展示） */
   gradingModeId?: string | null;
+  /** 评分缺失或解析失败时的重试回调 */
+  onRetry?: () => void;
 }
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
@@ -117,7 +120,8 @@ function markersEqual(a: StreamingMarker, b: StreamingMarker): boolean {
     a.newText === b.newText &&
     a.comment === b.comment &&
     a.errorType === b.errorType &&
-    a.explanation === b.explanation
+    a.explanation === b.explanation &&
+    a.inferredInsertion === b.inferredInsertion
   );
 }
 
@@ -220,21 +224,35 @@ const MarkerSpanImpl: React.FC<MarkerSpanProps> = ({ marker, index, isActive, an
     case 'ins':
       return (
         <CommonTooltip
-          content={<TooltipBody title={<span className="text-amber-500/90">{t('essay_grading:markers.insert')}</span>} hint={clickHint} />}
+          content={
+            <TooltipBody
+              title={<span className="text-amber-500/90">{t('essay_grading:markers.insert')}</span>}
+              description={marker.inferredInsertion ? t('essay_grading:markers.inferred_insert_hint') : undefined}
+              hint={clickHint}
+            />
+          }
           position="top"
           maxWidth={320}
         >
           <span
             {...interactiveProps}
+            data-marker-type="ins"
+            data-inferred-insertion={marker.inferredInsertion ? 'true' : undefined}
             className={cn(
-              'inline text-amber-700 dark:text-amber-400',
-              'underline decoration-amber-400/60 decoration-1 underline-offset-2',
+              'inline rounded px-1 py-0.5 text-amber-800 dark:text-amber-300',
+              'bg-amber-500/10 border border-dashed border-amber-500/45',
               baseInteractive,
               isActive
                 ? 'bg-amber-100/80 dark:bg-amber-900/40 ring-1 ring-amber-400/60'
-                : 'hover:bg-amber-50/60 dark:hover:bg-amber-950/30'
+                : 'hover:bg-amber-500/15 dark:hover:bg-amber-900/35'
             )}
           >
+            <span
+              className="mr-1 inline-flex items-center rounded bg-amber-500/20 px-1 py-0 text-[10px] font-medium leading-4 text-amber-800 dark:text-amber-200 align-baseline select-none"
+              aria-hidden="true"
+            >
+              +{t('essay_grading:markers.insert_badge')}
+            </span>
             {marker.content}
           </span>
         </CommonTooltip>
@@ -431,7 +449,11 @@ const MarkerDetailCard: React.FC<{
           ? (marker.newText?.trim() || extractErrSuggestedReplacement(marker.content, marker.explanation))
           : undefined;
   const originalText = marker.type === 'replace' ? marker.oldText : marker.type === 'ins' ? undefined : marker.content;
-  const explanation = marker.explanation || marker.reason || marker.comment;
+  const explanation =
+    marker.explanation
+    || marker.reason
+    || marker.comment
+    || (marker.type === 'ins' && marker.inferredInsertion ? t('essay_grading:markers.inferred_insert_hint') : undefined);
 
   const handleCopy = () => {
     if (!suggestionText) return;
@@ -693,6 +715,7 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
   onUndoSuggestion,
   appliedSuggestionKeys,
   gradingModeId,
+  onRetry,
 }) => {
   const { t } = useTranslation(['essay_grading']);
 
@@ -715,10 +738,11 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
     }
   }, [onMarkerSelect]);
 
-  // A6-30: 文本含 <score> 标签但解析失败（畸形标签）且流已结束时，给一条降级提示，
-  // 避免评分区静默缺失。无 score 标签的作文不触发。
-  const scoreParseFailed = useMemo(
-    () => showScore && !isStreaming && !score && hasScoreMarker(text),
+  // 评分缺失/畸形提示：流已结束、有正文结果却未解析出分数时明确提示并给出重试入口，
+  // 避免评分区静默消失（无论模型是否输出了 <score> 标签）。
+  const hasMalformedScoreTag = useMemo(() => hasScoreMarker(text), [text]);
+  const scoreUnavailable = useMemo(
+    () => showScore && !isStreaming && !score && text.trim().length > 0,
     [showScore, isStreaming, score, text]
   );
 
@@ -726,10 +750,6 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
     if (!markerFilter || markerFilter === 'all') return markers;
     return markers.map(marker => {
       if (marker.type === 'text' || marker.type === 'pending') return marker;
-      // 被筛选隐藏的批注退化为作文原文：replace 取 oldText（content 是 "old → new" 组合串）
-      const plainContent = marker.type === 'replace'
-        ? (marker.oldText ?? marker.content)
-        : (marker.content || marker.oldText || '');
       // 与 SentenceDetailView.groupOfMarker 一致：偏建议的 err 子类型归入建议组
       const matchesFilter =
         markerFilter === 'errors'
@@ -737,7 +757,16 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
           : markerFilter === 'suggestions'
             ? ['ins', 'replace', 'note'].includes(marker.type) || isSuggestionErr(marker)
             : marker.type === 'good';
-      return matchesFilter ? marker : { ...marker, type: 'text' as const, content: plainContent };
+      if (matchesFilter) return marker;
+      // ins 是 AI 建议补充内容而非学生原文：隐藏筛选时必须置空，绝不能降级为普通原文文本
+      if (marker.type === 'ins') {
+        return { ...marker, type: 'text' as const, content: '' };
+      }
+      // 被筛选隐藏的批注退化为作文原文：replace 取 oldText（content 是 "old → new" 组合串）
+      const plainContent = marker.type === 'replace'
+        ? (marker.oldText ?? marker.content)
+        : (marker.content || marker.oldText || '');
+      return { ...marker, type: 'text' as const, content: plainContent };
     });
   }, [markers, markerFilter]);
 
@@ -801,9 +830,28 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
     <div ref={rootRef} className={cn('space-y-6', className)}>
       {/* 评分卡片 */}
       {showScore && score && <ScoreCard score={score} gradingModeId={gradingModeId} />}
-      {scoreParseFailed && (
-        <div className="px-4 py-3 rounded-lg border border-border/30 bg-muted/20 text-sm text-muted-foreground">
-          {t('essay_grading:score.parse_failed')}
+      {scoreUnavailable && (
+        <div
+          data-testid="essay-score-missing-notice"
+          className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 rounded-lg border border-warning/35 bg-warning/5 text-sm text-foreground/85"
+          role="status"
+        >
+          <span className="min-w-0 flex-1 text-xs leading-relaxed text-muted-foreground">
+            {hasMalformedScoreTag
+              ? t('essay_grading:score.parse_failed')
+              : t('essay_grading:score.missing_notice')}
+          </span>
+          {onRetry && (
+            <DsButton
+              variant="outline"
+              size="sm"
+              onClick={onRetry}
+              className="h-7 shrink-0 text-xs"
+            >
+              <ArrowClockwise size={12} />
+              {t('essay_grading:score.retry_grading')}
+            </DsButton>
+          )}
         </div>
       )}
 

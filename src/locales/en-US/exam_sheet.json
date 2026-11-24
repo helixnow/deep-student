@@ -676,6 +676,7 @@
     "knowledgePointsLabel": "Knowledge points (optional)",
     "knowledgePointsEmpty": "No knowledge points available, type to add",
     "knowledgePointInputPlaceholder": "Type a knowledge point and press Enter",
+    "contextRequired": "Add at least one knowledge point, enter a topic hint, attach reference material, or enable \"Based on existing questions\" before generating.",
     "referenceCollecting": "Reading files...",
     "taskSubmitted": "Task submitted — it runs in the background. You can close this panel; we'll notify you when it finishes.",
     "taskCompleted": "AI generation finished: {{count}} draft question(s) to review",

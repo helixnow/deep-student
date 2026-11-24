@@ -84,14 +84,19 @@ function nextCascadeOrigin(
   h: number,
   desktopSize: Size,
   windows: Record<string, WorkbenchWindow>,
+  reserveDockClearance = false,
 ): { x: number; y: number } {
-  const maxOffset = Math.min(desktopSize.w - w, desktopSize.h - h);
+  const maxX = Math.max(0, desktopSize.w - w);
+  const maxY = reserveDockClearance
+    ? Math.max(0, desktopSize.h - h - FLOATING_DOCK_CLEARANCE)
+    : Math.max(0, desktopSize.h - h);
+  const maxOffset = reserveDockClearance ? Math.max(maxX, maxY) : Math.min(maxX, maxY);
   const slotCount = Math.max(1, Math.floor((maxOffset - CASCADE_ORIGIN) / CASCADE_STEP) + 1);
   const slotPos = (k: number): { x: number; y: number } => {
     const offset = CASCADE_ORIGIN + k * CASCADE_STEP;
     return {
-      x: Math.max(0, Math.min(offset, desktopSize.w - w)),
-      y: Math.max(0, Math.min(offset, desktopSize.h - h)),
+      x: Math.max(0, Math.min(offset, maxX)),
+      y: Math.max(0, Math.min(offset, maxY)),
     };
   };
   // 占用判定：现有 floating 窗（含最小化，恢复时会回原位）左上角落在槽位半步内
@@ -152,7 +157,7 @@ function nextFrame(
       h,
     };
   }
-  const cascade = nextCascadeOrigin(w, h, desktopSize, windows);
+  const cascade = nextCascadeOrigin(w, h, desktopSize, windows, input.initialFrame?.h == null);
   return {
     x: input.initialFrame?.x ?? cascade.x,
     y: input.initialFrame?.y ?? cascade.y,
