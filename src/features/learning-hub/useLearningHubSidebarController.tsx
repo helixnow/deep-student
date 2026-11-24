@@ -316,6 +316,9 @@ export function useLearningHubSidebarController(props: LearningHubSidebarProps) 
   
   // Container ref for keyboard shortcuts scope
   const containerRef = useRef<HTMLDivElement>(null);
+  const finderFileInputRef = useRef<HTMLInputElement>(null);
+  const finderMarkdownInputRef = useRef<HTMLInputElement>(null);
+  const pendingMarkdownFolderRef = useRef<string | null>(null);
 
   // ★ MEDIUM-004/005: 组件卸载标志，防止内存泄漏
   const isMountedRef = useRef(true);
@@ -530,7 +533,29 @@ export function useLearningHubSidebarController(props: LearningHubSidebarProps) 
     handleRefresh,
     openImportedMarkdownNote,
     notifyMarkdownImportResult,
+    openWebMarkdownInput: (targetFolderId) => {
+      const input = finderMarkdownInputRef.current;
+      if (!input) return false;
+      pendingMarkdownFolderRef.current = targetFolderId;
+      input.value = '';
+      input.click();
+      return true;
+    },
   }, folderId), [currentCreatableFolderId, ensureCreatableView, handleRefresh, importMarkdownPathNotes, importMarkdownFileObjects, notifyMarkdownImportResult, openImportedMarkdownNote, t]);
+
+  const handleWebMarkdownInputChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (files.length === 0) return;
+    const folderId = pendingMarkdownFolderRef.current ?? currentCreatableFolderId;
+    const { importedNodes, failedCount, firstError, failedFiles } = await importMarkdownFileObjects(files, folderId);
+    if (!isMountedRef.current) return;
+    if (importedNodes.length > 0) {
+      void handleRefresh();
+      openImportedMarkdownNote(importedNodes[0] ?? null);
+    }
+    notifyMarkdownImportResult(importedNodes.length, failedCount, failedFiles, firstError);
+  }, [currentCreatableFolderId, handleRefresh, importMarkdownFileObjects, notifyMarkdownImportResult, openImportedMarkdownNote]);
 
   const handleQuickAccessNavigate = useQuickAccessNavigation({ enterFolder, quickAccessNavigate, t, mode, sessionActive });
 
@@ -632,7 +657,21 @@ export function useLearningHubSidebarController(props: LearningHubSidebarProps) 
     importProgress,
     importPaths,
     importFiles: (files) => importFileObjects(files, true),
+    openWebFileInput: () => {
+      const input = finderFileInputRef.current;
+      if (!input) return false;
+      input.value = '';
+      input.click();
+      return true;
+    },
   });
+
+  const handleWebFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (files.length === 0) return;
+    void importFileObjects(files, true);
+  }, [importFileObjects]);
 
   // 是否允许拖拽导入（排除回收站、特殊视图等）
   const isDragDropEnabled = mode !== 'canvas' && canDragDropInCurrentView;
@@ -1140,5 +1179,5 @@ export function useLearningHubSidebarController(props: LearningHubSidebarProps) 
   ) : null;
 
 
-  return { ...props, addRecent, attachImportProgress, baseQuickAccessType, canAddToChatInCurrentView, canCreateInCurrentView, canDeleteInCurrentView, canDragDropInCurrentView, canInject, canMoveInCurrentView, canPasteHere, canRecordMoveUndo, canSearchInCurrentView, cancelInlineEdit, canvasError, canvasIsLoading, canvasItems, canvasLastSelectedId, canvasRequestIdRef, canvasSearchQuery, canvasSelectedIds, clearSelection, clipboardCount, commandEventsEnabled, containerRef, contextMenuOpen, contextMenuPosition, contextMenuTarget, creatingLearningNote, currentCreatableFolderId, currentPath, currentPathDisplay, currentQuickAccessType, debouncedSearchQuery, deleteConfirmOpen, deleteTarget, displayBreadcrumbs, displayedItems, effectivePath, effectiveQuickAccessCollapsed, ensureCreatableView, enterCanvasFolder, enterFolder, error, examsMistakesActive, examsView, executeBatchDelete, executeCopyEntries, executeEmptyTrash, executePermanentDelete, favoriteCount, finderRefresh, finderStore, focusSearchInput, getItemDisplayName, getSelectedNodes, goBack, goCanvasBack, goCanvasForward, goCanvasUp, goForward, goUp, handleBatchAddToChat, handleBatchDelete, handleBatchMove, handleBatchMoveConfirm, handleBatchRestore, handleClearSelection, handleConfirmDelete, handleContainerContextMenu, handleContextMenu, handleCopyFromContextMenu, handleCopySelection, handleDeleteFolder, handleDeleteResource, handleDuplicateFromContextMenu, handleDuplicateSelection, handleEmptyStateCreate, handleEmptyTrash, handleExportFolder, handleExportResource, handleFilesDrop, handleImportMarkdownNote, handleInlineEditCancel, handleInlineEditConfirm, handleMakeCards, handleMoveItem, handleMoveItems, handleMoveTo, handleNewEssay, handleNewExam, handleNewFolder, handleNewMindMap, handleNewNote, handleNewTextbook, handleNewTranslation, handleOpen, handleOpenFolder, handleOpenMany, handleOpenRenameDialog, handleOpenRenameResourceDialog, handlePaste, handlePathsDrop, handlePermanentDeleteItem, handleQuickAccessNavigate, handleQuickLookOpen, handleReferenceToChat, handleRefresh, handleRestoreItem, handleSelectAll, handleSilentRefresh, handleSpecialDrop, handleToggleFavorite, handleUndoLastOperation, onUnmountFromCurrentFolder, history, historyIndex, importMarkdownFileObjects, importMarkdownPathNotes, importPaths, importProgress, injectToChat, inlineEdit, isBatchProcessing, isCanvasPathBlocked, isDeleting, isDragDropEnabled, isInMemoryFolder, isInjecting, isLearningHubViewActive, isLoading, isMountedRef, isMultiSelectMode, isSearching, isSmallScreen, isTouchPrimary, isTrashView, items, jumpCanvasToBreadcrumb, jumpToBreadcrumb, lastLoadSignatureRef, memoryTreeView, mobileCreateMenuOpen, mobileCreateMenuTriggerRef, mobileSearchExpanded, moveDialogOpen, moveTargetIds, moveUndoSourceFolderId, multiSelectActive, navigateCanvasQuickAccess, navigateCanvasTo, navigateTo, notesLearningView, notifyMarkdownImportResult, openImportedMarkdownNote, parentDropTargets, pathsDropHandledRef, pendingFolderDraft, pendingFolderDraftRef, pendingFolderSequenceRef, queryItemsForPath, quickAccessCollapsed, quickAccessNavigate, quickAccessNode, quickLookItem, refreshCanvas, resetCanvasLocalSelection, resetCanvasLocalState, resolveContextTargetNodes, searchMeta, searchPlaceholder, searchQuery, select, selectAll, selectedIds, setAttachImportProgress, setCanvasError, setCanvasIsLoading, setCanvasItems, setCanvasLastSelectedId, setCanvasSearchQuery, setCanvasSelectedIds, setContextMenuOpen, setContextMenuPosition, setContextMenuTarget, setCreatingLearningNote, setDeleteConfirmOpen, setDeleteTarget, setExamsView, setFavoriteCount, setImportProgress, setIsBatchProcessing, setIsDeleting, setIsMultiSelectMode, setMemoryTreeView, setMobileCreateMenuOpen, setMobileSearchExpanded, setMoveDialogOpen, setMoveTargetIds, setNotesLearningView, setPendingFolderDraft, setQuickAccessCollapsed, setQuickLookItem, setSearchQuery, setSelectedIds, setSorting, setViewMode, shouldRenderQuickAccess, showSoftDeleteUndoToast, softDeleteUndoGenRef, softDeleteUndoInFlightRef, sortBy, sortOrder, specialDropTargets, startInlineEdit, storeClearSelection, storeCurrentPath, storeEnterFolder, storeError, storeGoBack, storeGoForward, storeGoUp, storeHistory, storeHistoryIndex, storeIsLoading, storeItems, storeJumpToBreadcrumb, storeNavigateTo, storeQuickAccessNavigate, storeSearchQuery, storeSelect, storeSelectAll, storeSelectedIds, storeSetSearchQuery, storeSetSelectedIds, t, toggleMultiSelect, viewCapabilities, viewMode };
+  return { ...props, addRecent, attachImportProgress, baseQuickAccessType, canAddToChatInCurrentView, canCreateInCurrentView, canDeleteInCurrentView, canDragDropInCurrentView, canInject, canMoveInCurrentView, canPasteHere, canRecordMoveUndo, canSearchInCurrentView, cancelInlineEdit, canvasError, canvasIsLoading, canvasItems, canvasLastSelectedId, canvasRequestIdRef, canvasSearchQuery, canvasSelectedIds, clearSelection, clipboardCount, commandEventsEnabled, containerRef, contextMenuOpen, contextMenuPosition, contextMenuTarget, creatingLearningNote, currentCreatableFolderId, currentPath, currentPathDisplay, currentQuickAccessType, debouncedSearchQuery, deleteConfirmOpen, deleteTarget, displayBreadcrumbs, displayedItems, effectivePath, effectiveQuickAccessCollapsed, ensureCreatableView, enterCanvasFolder, enterFolder, error, examsMistakesActive, examsView, executeBatchDelete, executeCopyEntries, executeEmptyTrash, executePermanentDelete, favoriteCount, finderFileInputRef, finderMarkdownInputRef, finderRefresh, finderStore, focusSearchInput, getItemDisplayName, getSelectedNodes, goBack, goCanvasBack, goCanvasForward, goCanvasUp, goForward, goUp, handleBatchAddToChat, handleBatchDelete, handleBatchMove, handleBatchMoveConfirm, handleBatchRestore, handleClearSelection, handleConfirmDelete, handleContainerContextMenu, handleContextMenu, handleCopyFromContextMenu, handleCopySelection, handleDeleteFolder, handleDeleteResource, handleDuplicateFromContextMenu, handleDuplicateSelection, handleEmptyStateCreate, handleEmptyTrash, handleExportFolder, handleExportResource, handleFilesDrop, handleImportMarkdownNote, handleInlineEditCancel, handleInlineEditConfirm, handleMakeCards, handleMoveItem, handleMoveItems, handleMoveTo, handleNewEssay, handleNewExam, handleNewFolder, handleNewMindMap, handleNewNote, handleNewTextbook, handleNewTranslation, handleOpen, handleOpenFolder, handleOpenMany, handleOpenRenameDialog, handleOpenRenameResourceDialog, handlePaste, handlePathsDrop, handlePermanentDeleteItem, handleQuickAccessNavigate, handleQuickLookOpen, handleReferenceToChat, handleRefresh, handleRestoreItem, handleSelectAll, handleSilentRefresh, handleSpecialDrop, handleToggleFavorite, handleUndoLastOperation, handleWebFileInputChange, handleWebMarkdownInputChange, onUnmountFromCurrentFolder, history, historyIndex, importMarkdownFileObjects, importMarkdownPathNotes, importPaths, importProgress, injectToChat, inlineEdit, isBatchProcessing, isCanvasPathBlocked, isDeleting, isDragDropEnabled, isInMemoryFolder, isInjecting, isLearningHubViewActive, isLoading, isMountedRef, isMultiSelectMode, isSearching, isSmallScreen, isTouchPrimary, isTrashView, items, jumpCanvasToBreadcrumb, jumpToBreadcrumb, lastLoadSignatureRef, memoryTreeView, mobileCreateMenuOpen, mobileCreateMenuTriggerRef, mobileSearchExpanded, moveDialogOpen, moveTargetIds, moveUndoSourceFolderId, multiSelectActive, navigateCanvasQuickAccess, navigateCanvasTo, navigateTo, notesLearningView, notifyMarkdownImportResult, openImportedMarkdownNote, parentDropTargets, pathsDropHandledRef, pendingFolderDraft, pendingFolderDraftRef, pendingFolderSequenceRef, queryItemsForPath, quickAccessCollapsed, quickAccessNavigate, quickAccessNode, quickLookItem, refreshCanvas, resetCanvasLocalSelection, resetCanvasLocalState, resolveContextTargetNodes, searchMeta, searchPlaceholder, searchQuery, select, selectAll, selectedIds, setAttachImportProgress, setCanvasError, setCanvasIsLoading, setCanvasItems, setCanvasLastSelectedId, setCanvasSearchQuery, setCanvasSelectedIds, setContextMenuOpen, setContextMenuPosition, setContextMenuTarget, setCreatingLearningNote, setDeleteConfirmOpen, setDeleteTarget, setExamsView, setFavoriteCount, setImportProgress, setIsBatchProcessing, setIsDeleting, setIsMultiSelectMode, setMemoryTreeView, setMobileCreateMenuOpen, setMobileSearchExpanded, setMoveDialogOpen, setMoveTargetIds, setNotesLearningView, setPendingFolderDraft, setQuickAccessCollapsed, setQuickLookItem, setSearchQuery, setSelectedIds, setSorting, setViewMode, shouldRenderQuickAccess, showSoftDeleteUndoToast, softDeleteUndoGenRef, softDeleteUndoInFlightRef, sortBy, sortOrder, specialDropTargets, startInlineEdit, storeClearSelection, storeCurrentPath, storeEnterFolder, storeError, storeGoBack, storeGoForward, storeGoUp, storeHistory, storeHistoryIndex, storeIsLoading, storeItems, storeJumpToBreadcrumb, storeNavigateTo, storeQuickAccessNavigate, storeSearchQuery, storeSelect, storeSelectAll, storeSelectedIds, storeSetSearchQuery, storeSetSelectedIds, t, toggleMultiSelect, viewCapabilities, viewMode };
 }

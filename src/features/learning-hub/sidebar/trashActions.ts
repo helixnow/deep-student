@@ -4,6 +4,7 @@ import { VfsErrorCode, reportError } from '@/shared/result';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { pLimit } from '@/utils/concurrency';
+import { finderUndoStack } from '../utils/finderUndoStack';
 import { useDesktopStore } from '../stores/desktopStore';
 import type { ResourceListItem } from '../types';
 import type { DeleteConfirmTarget, SidebarT, SoftDeleteTarget } from './sidebarConstants';
@@ -26,6 +27,10 @@ export function showSoftDeleteUndo(
 ): void {
   if (targets.length === 0) return;
   const generation = ++softDeleteUndoGenRef.current;
+  finderUndoStack.push({
+    kind: 'soft-delete',
+    targets: targets.map((target) => ({ id: target.id, type: target.type, name: target.name })),
+  });
 
   // ★ 悬挂引用清理：资源/文件夹入回收站即移除对应桌面快捷方式；
   // 快照被移除的快捷方式，Undo 恢复资源时原样放回（不丢用户桌面布局）。
@@ -39,12 +44,15 @@ export function showSoftDeleteUndo(
       ? t('finder.movedToTrash')
       : t('finder.batchMovedToTrash', { count: targets.length });
 
+  let undoConsumed = false;
   showGlobalNotification('success', message, undefined, {
     action: {
       label: t('finder.undo'),
       onClick: () => {
+        if (undoConsumed) return;
+        undoConsumed = true;
         void (async () => {
-          if (generation !== softDeleteUndoGenRef.current || softDeleteUndoInFlightRef.current) {
+          if (softDeleteUndoInFlightRef.current) {
             return;
           }
           softDeleteUndoInFlightRef.current = true;
@@ -67,7 +75,6 @@ export function showSoftDeleteUndo(
                 })
               );
             }
-            if (!isMountedRef.current) return;
             const failed = results.filter((r) => !r.ok).length;
             if (failed === 0) {
               showGlobalNotification('success', t('finder.restored'));
@@ -82,7 +89,9 @@ export function showSoftDeleteUndo(
                   : t('finder.trash.restoreSuccess')
               );
             }
-            await handleRefresh();
+            if (isMountedRef.current || generation === softDeleteUndoGenRef.current) {
+              await handleRefresh();
+            }
           } finally {
             softDeleteUndoInFlightRef.current = false;
           }

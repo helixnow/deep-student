@@ -203,7 +203,9 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
           return false;
         }
         autoFitViewportRef.current = null;
-        void Promise.resolve(fitView({ padding, duration, maxZoom: 1 })).then((fitted) => {
+        const visibleNodeCount = reactFlowInstance.getNodes().length;
+        const readableMinZoom = visibleNodeCount > 60 ? 0.45 : 0.25;
+        void Promise.resolve(fitView({ padding, duration, minZoom: readableMinZoom, maxZoom: 1 })).then((fitted) => {
           if (fitted) {
             autoFitViewportRef.current = normalizeMindMapViewport(reactFlowInstance.getViewport());
           }

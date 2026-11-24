@@ -32,6 +32,7 @@ export interface ResourceCreatorsContext {
   importProgress: ImportProgressState;
   importPaths: (paths: string[]) => Promise<void>;
   importFiles: (files: File[]) => Promise<void>;
+  openWebFileInput?: () => boolean;
 }
 
 /** 新建空资源（笔记/题目集/翻译/作文/思维导图）与「导入资料…」对话框 */
@@ -46,6 +47,7 @@ export function createResourceCreators({
   importProgress,
   importPaths,
   importFiles,
+  openWebFileInput,
 }: ResourceCreatorsContext) {
   const handleNewNote = async () => {
     if (!ensureCreatableView()) return;
@@ -99,6 +101,9 @@ export function createResourceCreators({
 
     try {
       if (!hasNativeTauriDialog()) {
+        if (openWebFileInput?.()) {
+          return;
+        }
         const files = await pickWebViewFiles(true);
         if (files.length === 0) return;
         await importFiles(files);

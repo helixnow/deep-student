@@ -131,7 +131,11 @@ export function LearningHubSidebar(props: LearningHubSidebarProps) {
     onMultiSelectModeChange,
     multiSelectToggleRef,
   } = props;
-  const { addRecent, attachImportProgress, baseQuickAccessType, canAddToChatInCurrentView, canCreateInCurrentView, canDeleteInCurrentView, canDragDropInCurrentView, canInject, canMoveInCurrentView, canPasteHere, canRecordMoveUndo, canSearchInCurrentView, cancelInlineEdit, canvasError, canvasIsLoading, canvasItems, canvasLastSelectedId, canvasRequestIdRef, canvasSearchQuery, canvasSelectedIds, clearSelection, clipboardCount, commandEventsEnabled, containerRef, contextMenuOpen, contextMenuPosition, contextMenuTarget, creatingLearningNote, currentCreatableFolderId, currentPath, currentPathDisplay, currentQuickAccessType, debouncedSearchQuery, deleteConfirmOpen, deleteTarget, displayBreadcrumbs, displayedItems, effectivePath, effectiveQuickAccessCollapsed, ensureCreatableView, enterCanvasFolder, enterFolder, error, examsMistakesActive, examsView, executeBatchDelete, executeCopyEntries, executeEmptyTrash, executePermanentDelete, favoriteCount, finderRefresh, finderStore, focusSearchInput, getItemDisplayName, getSelectedNodes, goBack, goCanvasBack, goCanvasForward, goCanvasUp, goForward, goUp, handleBatchAddToChat, handleBatchDelete, handleBatchMove, handleBatchMoveConfirm, handleBatchRestore, handleClearSelection, handleConfirmDelete, handleContainerContextMenu, handleContextMenu, handleCopyFromContextMenu, handleCopySelection, handleDeleteFolder, handleDeleteResource, handleDuplicateFromContextMenu, handleDuplicateSelection, handleEmptyStateCreate, handleEmptyTrash, handleExportFolder, handleExportResource, handleFilesDrop, handleImportMarkdownNote, handleInlineEditCancel, handleInlineEditConfirm, handleMakeCards, handleMoveItem, handleMoveItems, handleMoveTo, handleNewEssay, handleNewExam, handleNewFolder, handleNewMindMap, handleNewNote, handleNewTextbook, handleNewTranslation, handleOpen, handleOpenFolder, handleOpenMany, handleOpenRenameDialog, handleOpenRenameResourceDialog, handlePaste, handlePathsDrop, handlePermanentDeleteItem, handleQuickAccessNavigate, handleQuickLookOpen, handleReferenceToChat, handleRefresh, handleRestoreItem, handleSelectAll, handleSilentRefresh, handleSpecialDrop, handleToggleFavorite, handleUndoLastOperation, history, historyIndex, importMarkdownFileObjects, importMarkdownPathNotes, importPaths, importProgress, injectToChat, inlineEdit, isBatchProcessing, isCanvasPathBlocked, isDeleting, isDragDropEnabled, isInMemoryFolder, isInjecting, isLearningHubViewActive, isLoading, isMountedRef, isMultiSelectMode, isSearching, isSmallScreen, isTouchPrimary, isTrashView, items, jumpCanvasToBreadcrumb, jumpToBreadcrumb, lastLoadSignatureRef, memoryTreeView, mobileCreateMenuOpen, mobileCreateMenuTriggerRef, mobileSearchExpanded, moveDialogOpen, moveTargetIds, moveUndoSourceFolderId, multiSelectActive, navigateCanvasQuickAccess, navigateCanvasTo, navigateTo, notesLearningView, notifyMarkdownImportResult, openImportedMarkdownNote, parentDropTargets, pathsDropHandledRef, pendingFolderDraft, pendingFolderDraftRef, pendingFolderSequenceRef, queryItemsForPath, quickAccessCollapsed, quickAccessNavigate, quickAccessNode, quickLookItem, refreshCanvas, resetCanvasLocalSelection, resetCanvasLocalState, resolveContextTargetNodes, searchMeta, searchPlaceholder, searchQuery, select, selectAll, selectedIds, setAttachImportProgress, setCanvasError, setCanvasIsLoading, setCanvasItems, setCanvasLastSelectedId, setCanvasSearchQuery, setCanvasSelectedIds, setContextMenuOpen, setContextMenuPosition, setContextMenuTarget, setCreatingLearningNote, setDeleteConfirmOpen, setDeleteTarget, setExamsView, setFavoriteCount, setImportProgress, setIsBatchProcessing, setIsDeleting, setIsMultiSelectMode, setMemoryTreeView, setMobileCreateMenuOpen, setMobileSearchExpanded, setMoveDialogOpen, setMoveTargetIds, setNotesLearningView, setPendingFolderDraft, setQuickAccessCollapsed, setQuickLookItem, setSearchQuery, setSelectedIds, setSorting, setViewMode, shouldRenderQuickAccess, showSoftDeleteUndoToast, softDeleteUndoGenRef, softDeleteUndoInFlightRef, sortBy, sortOrder, specialDropTargets, startInlineEdit, storeClearSelection, storeCurrentPath, storeEnterFolder, storeError, storeGoBack, storeGoForward, storeGoUp, storeHistory, storeHistoryIndex, storeIsLoading, storeItems, storeJumpToBreadcrumb, storeNavigateTo, storeQuickAccessNavigate, storeSearchQuery, storeSelect, storeSelectAll, storeSelectedIds, storeSetSearchQuery, storeSetSelectedIds, t, toggleMultiSelect, viewCapabilities, viewMode } = useLearningHubSidebarController(props);
+  const { addRecent, attachImportProgress, baseQuickAccessType, canAddToChatInCurrentView, canCreateInCurrentView, canDeleteInCurrentView, canDragDropInCurrentView, canInject, canMoveInCurrentView, canPasteHere, canRecordMoveUndo, canSearchInCurrentView, cancelInlineEdit, canvasError, canvasIsLoading, canvasItems, canvasLastSelectedId, canvasRequestIdRef, canvasSearchQuery, canvasSelectedIds, clearSelection, clipboardCount, commandEventsEnabled, containerRef, contextMenuOpen, contextMenuPosition, contextMenuTarget, creatingLearningNote, currentCreatableFolderId, currentPath, currentPathDisplay, currentQuickAccessType, debouncedSearchQuery, deleteConfirmOpen, deleteTarget, displayBreadcrumbs, displayedItems, effectivePath, effectiveQuickAccessCollapsed, ensureCreatableView, enterCanvasFolder, enterFolder, error, examsMistakesActive, examsView, executeBatchDelete, executeCopyEntries, executeEmptyTrash, executePermanentDelete, favoriteCount, finderFileInputRef, finderMarkdownInputRef, finderRefresh, finderStore, focusSearchInput, getItemDisplayName, getSelectedNodes, goBack, goCanvasBack, goCanvasForward, goCanvasUp, goForward, goUp, handleBatchAddToChat, handleBatchDelete, handleBatchMove, handleBatchMoveConfirm, handleBatchRestore, handleClearSelection, handleConfirmDelete, handleContainerContextMenu, handleContextMenu, handleCopyFromContextMenu, handleCopySelection, handleDeleteFolder, handleDeleteResource, handleDuplicateFromContextMenu, handleDuplicateSelection, handleEmptyStateCreate, handleEmptyTrash, handleExportFolder, handleExportResource, handleFilesDrop, handleImportMarkdownNote, handleInlineEditCancel, handleInlineEditConfirm, handleMakeCards, handleMoveItem, handleMoveItems, handleMoveTo, handleNewEssay, handleNewExam, handleNewFolder, handleNewMindMap, handleNewNote, handleNewTextbook, handleNewTranslation, handleOpen, handleOpenFolder, handleOpenMany, handleOpenRenameDialog, handleOpenRenameResourceDialog, handlePaste, handlePathsDrop, handlePermanentDeleteItem, handleQuickAccessNavigate, handleQuickLookOpen, handleReferenceToChat, handleRefresh, handleRestoreItem, handleSelectAll, handleSilentRefresh, handleSpecialDrop, handleToggleFavorite, handleUndoLastOperation, handleWebFileInputChange, handleWebMarkdownInputChange, history, historyIndex, importMarkdownFileObjects, importMarkdownPathNotes, importPaths, importProgress, injectToChat, inlineEdit, isBatchProcessing, isCanvasPathBlocked, isDeleting, isDragDropEnabled, isInMemoryFolder, isInjecting, isLearningHubViewActive, isLoading, isMountedRef, isMultiSelectMode, isSearching, isSmallScreen, isTouchPrimary, isTrashView, items, jumpCanvasToBreadcrumb, jumpToBreadcrumb, lastLoadSignatureRef, memoryTreeView, mobileCreateMenuOpen, mobileCreateMenuTriggerRef, mobileSearchExpanded, moveDialogOpen, moveTargetIds, moveUndoSourceFolderId, multiSelectActive, navigateCanvasQuickAccess, navigateCanvasTo, navigateTo, notesLearningView, notifyMarkdownImportResult, openImportedMarkdownNote, parentDropTargets, pathsDropHandledRef, pendingFolderDraft, pendingFolderDraftRef, pendingFolderSequenceRef, queryItemsForPath, quickAccessCollapsed, quickAccessNavigate, quickAccessNode, quickLookItem, refreshCanvas, resetCanvasLocalSelection, resetCanvasLocalState, resolveContextTargetNodes, searchMeta, searchPlaceholder, searchQuery, select, selectAll, selectedIds, setAttachImportProgress, setCanvasError, setCanvasIsLoading, setCanvasItems, setCanvasLastSelectedId, setCanvasSearchQuery, setCanvasSelectedIds, setContextMenuOpen, setContextMenuPosition, setContextMenuTarget, setCreatingLearningNote, setDeleteConfirmOpen, setDeleteTarget, setExamsView, setFavoriteCount, setImportProgress, setIsBatchProcessing, setIsDeleting, setIsMultiSelectMode, setMemoryTreeView, setMobileCreateMenuOpen, setMobileSearchExpanded, setMoveDialogOpen, setMoveTargetIds, setNotesLearningView, setPendingFolderDraft, setQuickAccessCollapsed, setQuickLookItem, setSearchQuery, setSelectedIds, setSorting, setViewMode, shouldRenderQuickAccess, showSoftDeleteUndoToast, softDeleteUndoGenRef, softDeleteUndoInFlightRef, sortBy, sortOrder, specialDropTargets, startInlineEdit, storeClearSelection, storeCurrentPath, storeEnterFolder, storeError, storeGoBack, storeGoForward, storeGoUp, storeHistory, storeHistoryIndex, storeIsLoading, storeItems, storeJumpToBreadcrumb, storeNavigateTo, storeQuickAccessNavigate, storeSearchQuery, storeSelect, storeSelectAll, storeSelectedIds, storeSetSearchQuery, storeSetSelectedIds, t, toggleMultiSelect, viewCapabilities, viewMode } = useLearningHubSidebarController(props);
+
+  const selectedSingleItem = selectedIds.size === 1
+    ? displayedItems.find((item) => selectedIds.has(item.id)) ?? null
+    : null;
 
   return (
     <div
@@ -145,6 +149,28 @@ export function LearningHubSidebar(props: LearningHubSidebarProps) {
       )}
       tabIndex={-1}
     >
+      {/* WebUI / 移动壳挂载的常驻隐藏文件选择器：确保「导入资料…」「导入 Markdown」在任意时机可稳定触发 */}
+      <input
+        ref={finderFileInputRef}
+        type="file"
+        multiple
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+        data-testid="finder-import-files-input"
+        onChange={handleWebFileInputChange}
+      />
+      <input
+        ref={finderMarkdownInputRef}
+        type="file"
+        multiple
+        accept=".md,.markdown,text/markdown,text/plain"
+        className="sr-only"
+        tabIndex={-1}
+        aria-hidden="true"
+        data-testid="finder-import-markdown-input"
+        onChange={handleWebMarkdownInputChange}
+      />
       {/* 左侧快速导航；移动端由 LearningHubPage portal 到统一抽屉。 */}
       {quickAccessPortalTarget && quickAccessNode
         ? createPortal(quickAccessNode, quickAccessPortalTarget)
@@ -324,6 +350,8 @@ export function LearningHubSidebar(props: LearningHubSidebarProps) {
           parentDropTargets={parentDropTargets}
           specialDropTargets={specialDropTargets}
           handleSpecialDrop={handleSpecialDrop}
+          handleRestoreItem={handleRestoreItem}
+          handlePermanentDeleteItem={handlePermanentDeleteItem}
         />
       
         {creatingLearningNote && (
@@ -341,6 +369,8 @@ export function LearningHubSidebar(props: LearningHubSidebarProps) {
             totalCount={items.length}
             onSelectAll={handleSelectAll}
             onClearSelection={handleClearSelection}
+            onOpenSelected={selectedSingleItem && !isTrashView ? () => handleOpen(selectedSingleItem) : undefined}
+            onQuickLookSelected={selectedSingleItem && !isTrashView && !isPendingFolderId(selectedSingleItem.id) ? () => setQuickLookItem(selectedSingleItem) : undefined}
             onBatchDelete={canDeleteInCurrentView ? handleBatchDelete : undefined}
             onBatchRestore={isTrashView ? () => void handleBatchRestore() : undefined}
             onBatchMove={canMoveInCurrentView ? handleBatchMove : undefined}

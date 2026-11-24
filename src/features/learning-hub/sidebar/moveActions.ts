@@ -1,5 +1,5 @@
 import type React from 'react';
-import { dstu, folderApi, type DstuNode } from '@/dstu';
+import { dstu, folderApi, trashApi, type DstuNode } from '@/dstu';
 import { updatePathCacheV2 } from '@/features/chat/context/vfsRefApi';
 import { VfsError, VfsErrorCode, err, reportError } from '@/shared/result';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -314,6 +314,26 @@ export async function undoLastFinderOperation({
 }): Promise<void> {
   const op = finderUndoStack.pop();
   if (!op) return;
+
+  if (op.kind === 'soft-delete') {
+    const limit = pLimit(3);
+    const results = await Promise.all(
+      op.targets.map((target) => limit(() => trashApi.restoreItem(target.id, target.type)))
+    );
+    const failed = results.filter((r) => !r.ok).length;
+    if (failed === 0) {
+      showGlobalNotification('success', t('finder.restored'));
+    } else if (failed < results.length) {
+      showGlobalNotification('warning', t('finder.trash.restoreSuccess'));
+    } else {
+      finderUndoStack.push(op);
+      showGlobalNotification('error', t('finder.undoFailed'));
+    }
+    if (isMountedRef.current) {
+      await handleRefresh();
+    }
+    return;
+  }
 
   if (op.kind === 'rename') {
     let result;

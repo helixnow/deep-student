@@ -186,21 +186,22 @@
 .unified-notification-action {
   flex: 0 0 auto;
   height: auto;
-  min-height: 0;
-  padding: 0 2px;
+  min-height: 24px;
+  padding: 2px 8px;
   border: 0;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
-  background: transparent;
+  background: hsl(var(--foreground) / 0.05);
   box-shadow: none;
   color: hsl(var(--foreground));
-  opacity: 0.82;
+  opacity: 0.92;
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 2px;
-  transition: color 150ms ease-out, opacity 150ms ease-out, text-decoration-color 150ms ease-out;
+  cursor: pointer;
+  transition: color 150ms ease-out, opacity 150ms ease-out, background-color 150ms ease-out, text-decoration-color 150ms ease-out;
 }
 
 .unified-notification-action:hover,

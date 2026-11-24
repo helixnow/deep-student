@@ -26,6 +26,36 @@ let lastBoundSessionId: string | null | undefined;
 let lastActiveCanvasNoteId: string | null = null;
 
 /**
+ * 仅从当前桌面上已打开（非最小化/未关闭）的笔记窗口解析活跃笔记 ID。
+ * 供用户在对话窗口输入提问时，自动作为 Canvas 笔记工具的默认目标（不消费关闭后的历史残留）。
+ */
+export function resolveOpenDesktopCanvasNoteId(): string | undefined {
+  const { windows, focusStack } = useWindowStore.getState();
+  const focused = resolveFocusedNoteId(windows, focusStack);
+  if (focused) return focused;
+  for (let i = focusStack.length - 1; i >= 0; i -= 1) {
+    const win = windows[focusStack[i]!];
+    if (!win || win.minimized) continue;
+    if (win.typeId === 'notes') {
+      const active = getWorkspaceActiveResource(win.id);
+      if (active?.type === 'note' && active.id) return active.id;
+    } else if (win.typeId === 'note' && typeof win.instanceKey === 'string' && win.instanceKey.length > 0) {
+      return win.instanceKey;
+    }
+  }
+  for (const win of Object.values(windows)) {
+    if (win.minimized) continue;
+    if (win.typeId === 'notes') {
+      const active = getWorkspaceActiveResource(win.id);
+      if (active?.type === 'note' && active.id) return active.id;
+    } else if (win.typeId === 'note' && typeof win.instanceKey === 'string' && win.instanceKey.length > 0) {
+      return win.instanceKey;
+    }
+  }
+  return undefined;
+}
+
+/**
  * 解析当前桌面中活跃或最近打开的笔记 ID（先看 focusStack 聚焦窗，再看任意打开的 notes/note 窗，最后兜底最近绑定）。
  * 注意：不影响 `modeState.canvasNoteId` 在失焦时置 null 的现有契约。
  */

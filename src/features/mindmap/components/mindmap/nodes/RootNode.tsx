@@ -219,10 +219,17 @@ const RootNodeComponent: React.FC<NodeProps<Node<RootNodeData>>> = ({
       )}
       data-node-editing={isEditing ? 'true' : undefined}
       data-mastery-status={activeMasteryStatus}
+      role={isEmbed ? undefined : 'treeitem'}
+      tabIndex={isEmbed ? undefined : 0}
+      aria-selected={isEmbed ? undefined : Boolean(selected)}
+      aria-label={isEmbed ? undefined : (data.label || t('outline.unnamedNode', { defaultValue: '中心主题' }))}
       style={themeStyle}
+      onClick={() => {
+        if (!isEmbed) storeApi.getState().setFocusedNodeId(nodeId);
+      }}
       onDoubleClick={(e) => {
         e.stopPropagation();
-        // Handled by ReactFlow onNodeDoubleClick
+        if (!reciteMode && !isEmbed) handleStartEdit();
       }}
     >
       {activeMasteryStatus && (

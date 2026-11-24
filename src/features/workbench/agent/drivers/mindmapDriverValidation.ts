@@ -554,7 +554,12 @@ export function validateMindmapSubtreeInput(
     activeObjects.add(raw);
     seenObjects.add(raw);
 
-    if (typeof raw.id !== 'string' || raw.id.trim().length === 0) {
+    const resolvedRawId =
+      raw.id === undefined
+        ? `node_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`
+        : raw.id;
+
+    if (typeof resolvedRawId !== 'string' || resolvedRawId.trim().length === 0) {
       failure = fail(
         'INVALID_ID',
         i18n.t('mindmap:agent.validation_invalid_id', {
@@ -566,11 +571,11 @@ export function validateMindmapSubtreeInput(
       activeObjects.delete(raw);
       return null;
     }
-    if (existingIds.has(raw.id)) {
+    if (existingIds.has(resolvedRawId)) {
       failure = fail(
         'EXISTING_ID',
         i18n.t('mindmap:agent.validation_existing_id', {
-          id: raw.id,
+          id: resolvedRawId,
           defaultValue: '子节点 id {{id}} 已存在',
         }),
         nodeCount,
@@ -579,11 +584,11 @@ export function validateMindmapSubtreeInput(
       activeObjects.delete(raw);
       return null;
     }
-    if (incomingIds.has(raw.id) || incomingIds.has(raw.id.trim())) {
+    if (incomingIds.has(resolvedRawId) || incomingIds.has(resolvedRawId.trim())) {
       failure = fail(
         'DUPLICATE_ID',
         i18n.t('mindmap:agent.validation_duplicate_id', {
-          id: raw.id,
+          id: resolvedRawId,
           defaultValue: 'children 中存在重复 id {{id}}',
         }),
         nodeCount,
@@ -596,7 +601,7 @@ export function validateMindmapSubtreeInput(
       failure = fail(
         'INVALID_TEXT',
         i18n.t('mindmap:agent.validation_invalid_text', {
-          id: raw.id,
+          id: resolvedRawId,
           defaultValue: '子节点 {{id}} 的 text 必须是字符串',
         }),
         nodeCount,
@@ -605,11 +610,12 @@ export function validateMindmapSubtreeInput(
       activeObjects.delete(raw);
       return null;
     }
-    if (!Array.isArray(raw.children)) {
+    const rawChildren = raw.children === undefined ? [] : raw.children;
+    if (!Array.isArray(rawChildren)) {
       failure = fail(
         'INVALID_CHILDREN',
         i18n.t('mindmap:agent.validation_invalid_children', {
-          id: raw.id,
+          id: resolvedRawId,
           defaultValue: '子节点 {{id}} 的 children 必须是数组',
         }),
         nodeCount,
@@ -619,7 +625,7 @@ export function validateMindmapSubtreeInput(
       return null;
     }
 
-    incomingIds.add(raw.id);
+    incomingIds.add(resolvedRawId);
     nodeCount += 1;
     maxRelativeDepth = Math.max(maxRelativeDepth, relativeDepth);
     if (existingCount + 1 + nodeCount > MAX_MINDMAP_NODES) {
@@ -650,7 +656,7 @@ export function validateMindmapSubtreeInput(
     }
 
     const children: MindMapNode[] = [];
-    for (const child of raw.children) {
+    for (const child of rawChildren) {
       const cloned = visit(child, relativeDepth + 1);
       if (!cloned) {
         activeObjects.delete(raw);
@@ -660,7 +666,7 @@ export function validateMindmapSubtreeInput(
     }
     activeObjects.delete(raw);
 
-    const node: MindMapNode = { id: raw.id, text: raw.text, children };
+    const node: MindMapNode = { id: resolvedRawId, text: raw.text, children };
     applyValidatedOptionalNodeFields(node, raw);
     return node;
   };

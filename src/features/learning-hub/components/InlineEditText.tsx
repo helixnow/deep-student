@@ -27,6 +27,9 @@ export interface InlineEditTextProps {
   disabled?: boolean;
   /** 输入框宽度随内容收缩（Finder 图标视图重命名） */
   autoSize?: boolean;
+  /** 无障碍名称与占位提示 */
+  ariaLabel?: string;
+  placeholder?: string;
 }
 
 const FULL_WIDTH_CHAR = /[\u2E80-\u9FFF\uF900-\uFAFF\uFF01-\uFF60\uFFE0-\uFFE6]/;
@@ -62,12 +65,15 @@ export const InlineEditText = React.memo(function InlineEditText({
   maxLength = 255,
   disabled = false,
   autoSize = false,
+  ariaLabel,
+  placeholder,
 }: InlineEditTextProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [editValue, setEditValue] = useState(value);
   const isComposingRef = useRef(false);
   // 追踪是否已经处理过确认/取消，避免 onBlur 重复触发
   const hasHandledRef = useRef(false);
+  const editStartedAtRef = useRef(0);
 
   // 同步外部值变化（编辑中不覆盖用户正在输入的内容）
   useEffect(() => {
@@ -83,27 +89,37 @@ export const InlineEditText = React.memo(function InlineEditText({
   useEffect(() => {
     if (isEditing) {
       hasHandledRef.current = false;
+      editStartedAtRef.current = Date.now();
       setEditValue(valueRef.current);
     }
   }, [isEditing]);
 
-  // 编辑开始时自动聚焦并选中文本
+  // 编辑开始时自动聚焦并选中文本（含延迟兜底，抵消下拉菜单关闭后的焦点回抢）
   useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      
-      // 选中文本：如果 selectNameOnly 且有扩展名，只选中文件名部分
-      const currentValue = inputRef.current.value;
+    if (!isEditing) return;
+    const focusAndSelect = () => {
+      const el = inputRef.current;
+      if (!el || hasHandledRef.current) return;
+      el.focus({ preventScroll: true });
+      const currentValue = el.value;
       const lastDotIndex = currentValue.lastIndexOf('.');
-      
       if (selectNameOnly && lastDotIndex > 0) {
-        // 选中从开头到最后一个点之前的内容
-        inputRef.current.setSelectionRange(0, lastDotIndex);
+        el.setSelectionRange(0, lastDotIndex);
       } else {
-        // 选中全部
-        inputRef.current.select();
+        el.select();
       }
-    }
+    };
+    focusAndSelect();
+    const rafId = requestAnimationFrame(focusAndSelect);
+    const timerId = window.setTimeout(() => {
+      if (document.activeElement !== inputRef.current) {
+        focusAndSelect();
+      }
+    }, 60);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.clearTimeout(timerId);
+    };
   }, [isEditing, selectNameOnly]);
 
   // 处理确认
@@ -147,13 +163,18 @@ export const InlineEditText = React.memo(function InlineEditText({
     }
   }, [handleConfirm, handleCancel]);
 
-  // 失焦时确认（模拟点击外部确认）
+  // 失焦时确认（模拟点击外部确认；忽略菜单关闭瞬间抢焦点引发的早期空失焦）
   const handleBlur = useCallback(() => {
-    // 使用 requestAnimationFrame 而不是 setTimeout，更可靠
     requestAnimationFrame(() => {
+      if (hasHandledRef.current) return;
+      const elapsed = Date.now() - editStartedAtRef.current;
+      if (elapsed < 220 && editValue.trim() === '' && value === '') {
+        inputRef.current?.focus({ preventScroll: true });
+        return;
+      }
       handleConfirm();
     });
-  }, [handleConfirm]);
+  }, [editValue, handleConfirm, value]);
 
   // 输入变化
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -196,6 +217,8 @@ export const InlineEditText = React.memo(function InlineEditText({
       onCompositionEnd={handleCompositionEnd}
       maxLength={maxLength}
       disabled={disabled}
+      aria-label={ariaLabel}
+      placeholder={placeholder}
       style={autoSize ? {
         width: `min(calc(${getTextWidthEm(editValue)}em + 10px), 100%)`,
       } : undefined}

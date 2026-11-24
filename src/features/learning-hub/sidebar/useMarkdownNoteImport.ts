@@ -165,6 +165,7 @@ export interface ImportMarkdownNoteFromDialogContext {
   handleRefresh: () => Promise<void>;
   openImportedMarkdownNote: MarkdownNoteImport['openImportedMarkdownNote'];
   notifyMarkdownImportResult: MarkdownNoteImport['notifyMarkdownImportResult'];
+  openWebMarkdownInput?: (folderId: string | null) => boolean;
 }
 
 /** 「导入 Markdown 为笔记…」：系统文件对话框选择 .md 后导入到 folderId */
@@ -178,6 +179,7 @@ export async function importMarkdownNoteFromDialog(
     handleRefresh,
     openImportedMarkdownNote,
     notifyMarkdownImportResult,
+    openWebMarkdownInput,
   }: ImportMarkdownNoteFromDialogContext,
   folderId: string | null,
 ): Promise<void> {
@@ -186,6 +188,9 @@ export async function importMarkdownNoteFromDialog(
   try {
     let result: Awaited<ReturnType<MarkdownNoteImport['importMarkdownPathNotes']>>;
     if (!hasNativeTauriDialog()) {
+      if (openWebMarkdownInput?.(folderId)) {
+        return;
+      }
       // Some document providers report Markdown as application/octet-stream.
       const files = await pickWebViewFiles(true);
       if (files.length === 0) return;

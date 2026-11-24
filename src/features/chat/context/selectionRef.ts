@@ -123,7 +123,11 @@ function isChatWindowFocused(): boolean {
 
 /** 切到聊天页并打开指定会话（聊天页可能尚未挂载：延迟重发，setCurrentSessionId 幂等） */
 function openChatSession(sessionId: string): void {
-  dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'chat-v2' });
+  if (workbenchBus.isEnabled()) {
+    workbenchBus.launch({ typeId: 'chat', placement: { mode: 'beside' }, reason: 'command' });
+  } else {
+    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'chat-v2' });
+  }
   const fire = () =>
     window.dispatchEvent(new CustomEvent('navigate-to-session', { detail: { sessionId } }));
   fire();

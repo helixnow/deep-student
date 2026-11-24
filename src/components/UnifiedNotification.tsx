@@ -57,7 +57,8 @@ const shouldShowProgress = (progress: GlobalNotificationProgressMode | undefined
 
 export const UnifiedNotification: React.FC<NotificationProps> = ({ notification, onClose }) => {
   const { t } = useTranslation('common');
-  const DURATION = Math.min(6000 + (notification.message?.length ?? 0) * 20, 15000);
+  const baseDuration = Math.min(6000 + (notification.message?.length ?? 0) * 20, 15000);
+  const DURATION = notification.action ? Math.max(12000, baseDuration) : baseDuration;
   const [isClosing, setIsClosing] = useState(false);
   const [isHoverExpanded, setIsHoverExpanded] = useState(false);
   const [isTimerPaused, setIsTimerPaused] = useState(false);
@@ -262,7 +263,17 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
           </span>
         )}
         {notification.action && (
-          <DsButton variant="ghost" size="sm" className="unified-notification-action [@media(pointer:coarse)]:!min-h-11" onClick={() => { notification.action?.onClick(); handleClose(); }}>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            className="unified-notification-action [@media(pointer:coarse)]:!min-h-11"
+            onClick={(e) => {
+              e.stopPropagation();
+              const actionFn = notification.action?.onClick;
+              actionFn?.();
+              handleClose();
+            }}
+          >
             {notification.action.label}
           </DsButton>
         )}
