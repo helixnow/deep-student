@@ -101,6 +101,7 @@ export function useNoteSaveEngine({
   const isComposingRef = useRef(false);
   const lockedNotesRef = useRef(new Set<string>());
   const invalidNotesRef = useRef(new Set<string>());
+  const deletedNotesRef = useRef(new Set<string>());
   const privilegedFlushRef = useRef(false);
   const projectingFullViewRef = useRef(false);
   const projectedMarkdownRef = useRef<string | null>(null);
@@ -201,6 +202,9 @@ export function useNoteSaveEngine({
 
   const executeSave = useCallback(
     async ({ noteId: targetNoteId, content, fullContent, wasWindowed }: PendingSavePayload) => {
+      if (deletedNotesRef.current.has(targetNoteId)) {
+        return;
+      }
       if (invalidNotesRef.current.has(targetNoteId)) {
         throw Object.assign(new Error(t('notes:host.stale_draft_blocked', '笔记等待刷新，已阻止过期草稿保存。')), { isNonRetryable: true });
       }
@@ -324,6 +328,9 @@ export function useNoteSaveEngine({
     (content: string, overrideNoteId?: string | null) => {
       const resolvedNoteId = overrideNoteId ?? noteIdRef.current;
       if (!resolvedNoteId) return Promise.resolve();
+      if (deletedNotesRef.current.has(resolvedNoteId)) {
+        return Promise.resolve();
+      }
       if (invalidNotesRef.current.has(resolvedNoteId) || (lockedNotesRef.current.has(resolvedNoteId) && !privilegedFlushRef.current)) {
         return Promise.reject(Object.assign(new Error(t('notes:host.operation_pending', '笔记操作尚未完成，请刷新后重试保存。')), { isNonRetryable: true }));
       }
@@ -387,6 +394,10 @@ export function useNoteSaveEngine({
     (targetNoteId?: string | null) => {
       const resolvedNoteId = targetNoteId ?? noteIdRef.current;
       if (!resolvedNoteId) return Promise.resolve();
+      if (deletedNotesRef.current.has(resolvedNoteId)) {
+        cancelDebounce();
+        return Promise.resolve();
+      }
       cancelDebounce();
       const inSourceMode = Boolean(sourceModeRef?.current && resolvedNoteId === noteIdRef.current);
       const api = lifecycleApiRef.current;
@@ -752,7 +763,7 @@ export function useNoteSaveEngine({
 
   const isCurrentNoteDirty = useCallback(() => {
     const currentNoteId = noteIdRef.current;
-    if (!currentNoteId) return false;
+    if (!currentNoteId || deletedNotesRef.current.has(currentNoteId)) return false;
     const draft = draftByNoteRef.current.get(currentNoteId);
     const lastSavedSnapshot = lastSavedMapRef.current.get(currentNoteId) ?? '';
     return (
@@ -834,6 +845,32 @@ export function useNoteSaveEngine({
     }
   }, [noteId]);
 
+  const discardDraftForDelete = useCallback((targetNoteId?: string | null) => {
+    const resolvedNoteId = targetNoteId ?? noteIdRef.current;
+    if (!resolvedNoteId) return;
+    deletedNotesRef.current.add(resolvedNoteId);
+    cancelDebounce();
+    pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter((item) => item.noteId !== resolvedNoteId);
+    if (resolvedNoteId === noteIdRef.current) {
+      unsavedDocChangeRef.current = false;
+      setIsDirty(false);
+    }
+  }, [cancelDebounce]);
+
+  const clearDeleteGuard = useCallback((targetNoteId?: string | null) => {
+    const resolvedNoteId = targetNoteId ?? noteIdRef.current;
+    if (!resolvedNoteId) return;
+    deletedNotesRef.current.delete(resolvedNoteId);
+    const draft = draftByNoteRef.current.get(resolvedNoteId);
+    const lastSavedSnapshot = lastSavedMapRef.current.get(resolvedNoteId) ?? '';
+    if (resolvedNoteId === noteIdRef.current) {
+      const dirty =
+        (typeof draft === 'string' && draft !== lastSavedSnapshot) ||
+        pendingSaveQueueRef.current.some((payload) => payload.noteId === resolvedNoteId);
+      setIsDirty(dirty);
+    }
+  }, []);
+
   return {
     lastSaved, isSaving, isDirty, setIsDirty, saveError, setSaveError, saveStatus,
     recoveryDraft, setRecoveryDraft, recoveredDrafts, draftPersistenceError,
@@ -843,6 +880,7 @@ export function useNoteSaveEngine({
     projectingFullViewRef, projectedMarkdownRef, fullViewMaterializedRef,
     documentRevisionRef, bumpDocumentRevision,
     cancelDebounce, retainFailedDraft, queueSave, flushNoteDraft,
+    discardDraftForDelete, clearDeleteGuard,
     handleManualSave, handleChange, handleDocumentChange, isCurrentNoteDirty,
     copyRecoveryDraft, restoreRecoveryDraft, discardRecoveryDraft, saveRecoveryAs, retryDraftPersistence,
   };

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import enSettings from '@/locales/en-US/settings.json';
 import zhSettings from '@/locales/zh-CN/settings.json';
 import {
+  getModelDisplayLabel,
   getProviderDisplayName,
   getVendorDisplayName,
   getVendorNotesDisplay,
@@ -123,5 +124,12 @@ describe('builtinVendorDisplay (W8B-11)', () => {
       'My Work Bailian Proxy',
     );
     expect(getVendorNotesDisplay(custom, tZh)).toBe('Internal team quota only');
+  });
+
+  it('localizes builtin model labels bidirectionally between zh-CN and en-US without leaking CJK in en-US', () => {
+    expect(getModelDisplayLabel('Qwen3.7 Max (旗舰/混合思考)', tEn)).toBe('Qwen3.7 Max (Flagship / Hybrid Thinking)');
+    expect(getModelDisplayLabel('GLM-5.2 (当前旗舰)', tEn)).toBe('GLM-5.2 (Current Flagship)');
+    expect(getModelDisplayLabel('Qwen3.7 Max (Flagship / Hybrid Thinking)', tZh)).toBe('Qwen3.7 Max (旗舰/混合思考)');
+    expect(getModelDisplayLabel('Custom Internal Model (Team)', tEn)).toBe('Custom Internal Model (Team)');
   });
 });

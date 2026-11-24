@@ -541,6 +541,7 @@
 
 .wb-sys-pomo-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 4px 10px 12px;
@@ -561,9 +562,10 @@
 
 .wb-sys-pomo-controls-main {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 /* 主按钮定宽：开始专注/暂停/继续 切换时不挤压两侧图标 */

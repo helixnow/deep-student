@@ -426,6 +426,13 @@ export const usePomodoroStore = create<PomodoroState>()(
         get().resume();
       },
 
+      bindTask: (taskId, taskTitle) => {
+        set({
+          currentTaskId: taskId || null,
+          currentTaskTitle: taskTitle || null,
+        });
+      },
+
       pause: () => {
         const { status, mode, phaseEndsAt, phaseStartedAt, timeLeft, settings } = get();
         if (status !== 'running') return;
@@ -582,6 +589,103 @@ export const usePomodoroStore = create<PomodoroState>()(
           if (settings.noiseAutoWithFocus && get().noiseEnabled) {
             get().setNoiseEnabled(false);
           }
+        }
+      },
+
+      skipPhase: () => {
+        const { mode, settings } = get();
+        if (mode === 'idle') return;
+        if (mode === 'short_break' || mode === 'long_break') {
+          get().skipBreak();
+          return;
+        }
+        const autoStart = settings.autoStartBreaks;
+        set({
+          mode: 'short_break',
+          status: autoStart ? 'running' : 'paused',
+          timeLeft: settings.shortBreak,
+          phaseEndsAt: autoStart ? Date.now() + settings.shortBreak * 1000 : null,
+          phaseStartedAt: null,
+          sessionStartTime: new Date().toISOString(),
+          sessionCountUp: null,
+          phaseExtraSeconds: 0,
+          endReminderFiredPhase: null,
+        });
+        if (settings.noiseAutoWithFocus && get().noiseEnabled) {
+          get().setNoiseEnabled(false);
+        }
+      },
+
+      finishWorkEarly: () => {
+        const {
+          mode,
+          status,
+          settings,
+          completedPomodorosToday,
+          lastActiveDate,
+          currentTaskId,
+          sessionStartTime,
+          phaseEndsAt,
+          phaseStartedAt,
+          timeLeft,
+          sessionCountUp,
+          phaseExtraSeconds,
+          streakDays,
+          lastGoalMetDate,
+        } = get();
+        if (mode !== 'work') return;
+        const isCountUpPhase =
+          sessionCountUp ??
+          (phaseStartedAt != null || (settings.countUp && phaseEndsAt == null));
+        const planned = isCountUpPhase ? 0 : settings.workDuration + phaseExtraSeconds;
+        const elapsed = isCountUpPhase
+          ? (status === 'running' ? countUpElapsed(phaseStartedAt, timeLeft) : timeLeft)
+          : Math.max(1, planned - (status === 'running' ? wallClockRemaining(phaseEndsAt, timeLeft) : timeLeft));
+        const recordDuration = isCountUpPhase ? Math.max(1, elapsed) : planned;
+        const today = localToday();
+        const base = lastActiveDate === today ? completedPomodorosToday : 0;
+        const newCompletedCount = base + 1;
+        const isLongBreak =
+          newCompletedCount > 0 && newCompletedCount % settings.longBreakInterval === 0;
+        const nextMode: PomodoroMode = isLongBreak ? 'long_break' : 'short_break';
+        const nextTimeLeft = isLongBreak ? settings.longBreak : settings.shortBreak;
+
+        recordSession(
+          currentTaskId,
+          sessionStartTime || new Date(Date.now() - elapsed * 1000).toISOString(),
+          recordDuration,
+          Math.max(1, elapsed),
+          'work',
+          'completed',
+        );
+
+        const reachedDailyGoal =
+          settings.dailyGoal > 0 && base < settings.dailyGoal && newCompletedCount >= settings.dailyGoal;
+        let nextStreakDays = streakDays;
+        let nextGoalMetDate = lastGoalMetDate;
+        if (reachedDailyGoal && lastGoalMetDate !== today) {
+          nextStreakDays = lastGoalMetDate === localYesterday() ? streakDays + 1 : 1;
+          nextGoalMetDate = today;
+        }
+        playChime('work-complete');
+        const autoStart = settings.autoStartBreaks;
+        set({
+          completedPomodorosToday: newCompletedCount,
+          lastActiveDate: today,
+          mode: nextMode,
+          status: autoStart ? 'running' : 'paused',
+          timeLeft: nextTimeLeft,
+          phaseEndsAt: autoStart ? Date.now() + nextTimeLeft * 1000 : null,
+          phaseStartedAt: null,
+          sessionStartTime: new Date().toISOString(),
+          sessionCountUp: null,
+          phaseExtraSeconds: 0,
+          endReminderFiredPhase: null,
+          streakDays: nextStreakDays,
+          lastGoalMetDate: nextGoalMetDate,
+        });
+        if (settings.noiseAutoWithFocus && get().noiseEnabled) {
+          get().setNoiseEnabled(false);
         }
       },
 

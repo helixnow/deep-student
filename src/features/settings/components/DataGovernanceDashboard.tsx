@@ -568,6 +568,43 @@ export const DebugTab: React.FC = () => {
   );
 };
 
+/** 识别用户/后端取消同步，按中性态处理而非报错 */
+export function isSyncCancelledMessage(message: string | undefined | null): boolean {
+  if (!message) return false;
+  return /同步已取消|sync\s+cancel(?:led|ed)/i.test(message) || /\bcancel(?:led|ed)\b/i.test(message);
+}
+
+/** 拦截 Tauri ACL 权限异常，避免向终用户暴露内部命令名 */
+export function sanitizeAclErrorMessage(
+  raw: string,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (
+    /command\s+[a-z0-9_.-]+\s+not\s+allowed(?:\s+by\s+ACL|\s+on\b[^\n]*)?/i.test(raw) ||
+    /not\s+allowed\s+by\s+ACL/i.test(raw)
+  ) {
+    return t('data:governance.acl_permission_denied', {
+      defaultValue: '当前环境暂无权执行该同步操作，请检查应用权限或版本配置后重试。',
+    });
+  }
+  return raw;
+}
+
+export function formatGovernanceError(
+  error: unknown,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  return sanitizeAclErrorMessage(getErrorMessage(error), t);
+}
+
+/** 生成本地时区 YYYY-MM-DD，避免 UTC 跨日导致的导出文件名偏移 */
+function formatLocalDateYmd(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 /** Map Rust English backup rejection strings to i18n (identity for en-US). */
 function localizeBackupJobError(
   message: string | undefined,
@@ -678,6 +715,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }))
   );
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+  const [syncTabVisited, setSyncTabVisited] = useState(false);
   const debugTabEnabled = isDebugTabEnabled();
 
   useEffect(() => {
@@ -717,6 +755,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatusResponse | null>(null);
   const [healthCheck, setHealthCheck] = useState<HealthCheckResponse | null>(null);
   const [backups, setBackups] = useState<BackupInfoResponse[]>([]);
+  const [hasLoadedBackups, setHasLoadedBackups] = useState(false);
+  const hasLoadedBackupsRef = useRef(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatusResponse | null>(null);
   const [conflicts, setConflicts] = useState<ConflictDetectionResponse | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditLogResponse[]>([]);
@@ -842,11 +882,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       setHealthCheck(health);
     } catch (error: unknown) {
       console.error('加载概览数据失败:', error);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', formatGovernanceError(error, t));
     } finally {
       stopTabLoading('overview');
     }
-  }, [startTabLoading, stopTabLoading]);
+  }, [startTabLoading, stopTabLoading, t]);
 
   // 加载备份列表
   const loadBackups = useCallback(async () => {
@@ -854,6 +894,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     try {
       const list = await DataGovernanceApi.getBackupList();
       setBackups(list);
+      hasLoadedBackupsRef.current = true;
+      setHasLoadedBackups(true);
     } catch (error: unknown) {
       console.error('加载备份列表失败:', error);
       showGlobalNotification('error', getErrorMessage(error));
@@ -1057,11 +1099,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       setSyncStatus(status);
     } catch (error: unknown) {
       console.error('加载同步状态失败:', error);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', formatGovernanceError(error, t));
     } finally {
       stopTabLoading('sync');
     }
-  }, [startTabLoading, stopTabLoading, readCloudSyncSummary]);
+  }, [startTabLoading, stopTabLoading, readCloudSyncSummary, t]);
 
   // 加载审计日志
   const loadAuditLogs = useCallback(async (
@@ -1142,6 +1184,23 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   // 验证最新备份（调用后端 data_governance_auto_verify_latest_backup）
   const verifyLatestBackup = useCallback(async () => {
     if (isAutoVerifying) return;
+    let currentBackups = backups;
+    if (!hasLoadedBackupsRef.current) {
+      try {
+        currentBackups = await DataGovernanceApi.getBackupList();
+        if (Array.isArray(currentBackups)) {
+          setBackups(currentBackups);
+          hasLoadedBackupsRef.current = true;
+          setHasLoadedBackups(true);
+        }
+      } catch {
+        // 若读取列表失败，继续交给后端 autoVerifyLatestBackup 兜底报错
+      }
+    }
+    if (Array.isArray(currentBackups) && currentBackups.length === 0) {
+      showGlobalNotification('info', t('data:governance.auto_verify_no_backups'));
+      return;
+    }
     setIsAutoVerifying(true);
     try {
       const result = await DataGovernanceApi.autoVerifyLatestBackup();
@@ -1154,11 +1213,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       );
     } catch (error: unknown) {
       console.error('验证最新备份失败:', error);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', formatGovernanceError(error, t));
     } finally {
       setIsAutoVerifying(false);
     }
-  }, [isAutoVerifying, t]);
+  }, [backups, isAutoVerifying, t]);
 
   // 一步导出备份（备份 + ZIP）
   const backupAndExportZip = useCallback(async (options: {
@@ -1180,7 +1239,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       const useNativeMobilePicker = !isWebUiShell() && isAndroidMobileShell();
       const savePath = useNativeMobilePicker ? '' : await save({
         title: t('data:governance.save_zip'),
-        defaultPath: `backup-${new Date().toISOString().slice(0, 10)}.zip`,
+        defaultPath: `backup-${formatLocalDateYmd()}.zip`,
         filters: [{ name: 'ZIP', extensions: ['zip'] }],
       });
 
@@ -1250,7 +1309,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       const useNativeMobilePicker = !isWebUiShell() && isAndroidMobileShell();
       const savePath = useNativeMobilePicker ? '' : await save({
         title: t('data:governance.save_zip'),
-        defaultPath: `backup-${new Date().toISOString().slice(0, 10)}.zip`,
+        defaultPath: `backup-${formatLocalDateYmd()}.zip`,
         filters: [{ name: 'ZIP', extensions: ['zip'] }],
       });
       
@@ -1288,8 +1347,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }
   }, [setJobOperation, enterMaintenanceMode, reconcileMaintenanceMode, startListening, t, isBackupRunning, startTabLoading, stopTabLoading]);
 
-  // 从 ZIP 导入（异步）；password 为加密全保真包导出时设置的 E2EE 备份密码
-  const importZip = useCallback(async (password?: string) => {
+  // 从 ZIP 导入（异步）；WebUI/显式路径优先直接提交，否则走系统文件选择器；password 为加密备份密码
+  const importZip = useCallback(async (password?: string, explicitPath?: string) => {
     // 如果已有任务在运行，不允许再次启动
     if (isBackupRunning) {
       showGlobalNotification('warning', t('data:governance.backup_already_running'));
@@ -1297,13 +1356,17 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }
 
     try {
-      // 让用户选择 ZIP 文件（仅原生 Android 移动壳使用 'mobile-picker:'，手机 WebUI 走浏览器文件选择与上传暂存）
-      const useNativeMobilePicker = !isWebUiShell() && isAndroidMobileShell();
-      const selected = useNativeMobilePicker ? 'mobile-picker:' : await open({
-        title: t('data:governance.select_zip'),
-        multiple: false,
-        filters: [{ name: 'ZIP', extensions: ['zip'] }],
-      });
+      const trimmedExplicit = explicitPath?.trim();
+      let selected: string | string[] | null = trimmedExplicit || null;
+      if (!selected) {
+        // 让用户选择 ZIP 文件（仅原生 Android 移动壳使用 'mobile-picker:'，手机 WebUI 走浏览器文件选择与上传暂存）
+        const useNativeMobilePicker = !isWebUiShell() && isAndroidMobileShell();
+        selected = useNativeMobilePicker ? 'mobile-picker:' : await open({
+          title: t('data:governance.select_zip'),
+          multiple: false,
+          filters: [{ name: 'ZIP', extensions: ['zip'] }],
+        });
+      }
 
       // 完整的空值检查
       if (!selected) {
@@ -1533,16 +1596,28 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         setConflicts(null);
       } else {
         const errorMessage = result.error_message ?? t('data:governance.sync_failed');
-        failWith(errorMessage);
-        showGlobalNotification('error', errorMessage);
+        if (isSyncCancelledMessage(errorMessage)) {
+          finalProgress = null;
+          showGlobalNotification('info', t('data:governance.sync_cancelled'));
+        } else {
+          const sanitized = sanitizeAclErrorMessage(errorMessage, t);
+          failWith(sanitized);
+          showGlobalNotification('error', sanitized);
+        }
       }
 
       await loadSyncStatus();
     } catch (error: unknown) {
       console.error('云端同步失败:', error);
-      const errorMessage = getErrorMessage(error);
-      failWith(errorMessage);
-      showGlobalNotification('error', errorMessage);
+      const rawMessage = getErrorMessage(error);
+      if (isSyncCancelledMessage(rawMessage)) {
+        finalProgress = null;
+        showGlobalNotification('info', t('data:governance.sync_cancelled'));
+      } else {
+        const errorMessage = sanitizeAclErrorMessage(rawMessage, t);
+        failWith(errorMessage);
+        showGlobalNotification('error', errorMessage);
+      }
     } finally {
       stopTabLoading('sync');
       setIsSyncRunning(false);
@@ -1604,7 +1679,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     } catch (error: unknown) {
       console.error('检测冲突失败:', error);
       setConflicts(null);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', formatGovernanceError(error, t));
     } finally {
       stopTabLoading('sync');
       detectInFlightRef.current = false;
@@ -1655,10 +1730,15 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         }
         await loadSyncStatus();
       } else {
-        showGlobalNotification('error', result.error_message || t('data:governance.sync_failed'));
+        showGlobalNotification(
+          'error',
+          result.error_message
+            ? sanitizeAclErrorMessage(result.error_message, t)
+            : t('data:governance.sync_failed'),
+        );
       }
     } catch (error: unknown) {
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', formatGovernanceError(error, t));
     } finally {
       stopTabLoading('sync');
       resolveInFlightRef.current = false;
@@ -1700,6 +1780,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         void loadResumableJobs();
         break;
       case 'sync':
+        setSyncTabVisited(true);
         void loadSyncStatus();
         break;
       case 'audit':
@@ -1905,6 +1986,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           healthCheck={healthCheck}
           loading={overviewLoading}
           onRunHealthCheck={runHealthCheck}
+          backups={hasLoadedBackups ? backups : undefined}
           lastAutoVerifyResult={lastAutoVerifyResult}
           isVerifying={isAutoVerifying}
           onVerifyLatestBackup={verifyLatestBackup}
@@ -1975,35 +2057,37 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         />
       </TabsContent>
 
-      <TabsContent value="sync">
-        <SyncTab
-          syncStatus={syncStatus}
-          conflicts={conflicts}
-          loading={syncLoading}
-          onRefresh={loadSyncStatus}
-          onDetectConflicts={detectConflicts}
-          onResolveConflicts={resolveConflicts}
-          cloudSyncConfigured={cloudSyncConfigured}
-          cloudSyncSummary={cloudSyncSummary}
-          syncRunning={isSyncRunning || globalSyncing}
-          syncProgress={syncProgress}
-          syncCancelRequested={syncCancelRequested}
-          onCancelSync={handleCancelSync}
-          syncStrategy={syncStrategy}
-          onSyncStrategyChange={setSyncStrategy}
-          showCloudSettingsEditor={showCloudSettingsEditor}
-          onToggleCloudSettingsEditor={toggleCloudStorageSettingsEditor}
-          onSetCloudSettingsEditorOpen={setShowCloudSettingsEditor}
-          onCloudConfigChanged={handleCloudConfigChanged}
-          onRunSync={runCloudSync}
-          onRetrySync={() =>
-            runCloudSync(
-              lastSyncRequestRef.current.direction,
-              lastSyncRequestRef.current.strategy
-            )
-          }
-          onViewAuditLog={() => setActiveTab('audit')}
-        />
+      <TabsContent value="sync" forceMount>
+        {syncTabVisited ? (
+          <SyncTab
+            syncStatus={syncStatus}
+            conflicts={conflicts}
+            loading={syncLoading}
+            onRefresh={loadSyncStatus}
+            onDetectConflicts={detectConflicts}
+            onResolveConflicts={resolveConflicts}
+            cloudSyncConfigured={cloudSyncConfigured}
+            cloudSyncSummary={cloudSyncSummary}
+            syncRunning={isSyncRunning || globalSyncing}
+            syncProgress={syncProgress}
+            syncCancelRequested={syncCancelRequested}
+            onCancelSync={handleCancelSync}
+            syncStrategy={syncStrategy}
+            onSyncStrategyChange={setSyncStrategy}
+            showCloudSettingsEditor={showCloudSettingsEditor}
+            onToggleCloudSettingsEditor={toggleCloudStorageSettingsEditor}
+            onSetCloudSettingsEditorOpen={setShowCloudSettingsEditor}
+            onCloudConfigChanged={handleCloudConfigChanged}
+            onRunSync={runCloudSync}
+            onRetrySync={() =>
+              runCloudSync(
+                lastSyncRequestRef.current.direction,
+                lastSyncRequestRef.current.strategy
+              )
+            }
+            onViewAuditLog={() => setActiveTab('audit')}
+          />
+        ) : null}
       </TabsContent>
 
       <TabsContent value="audit">

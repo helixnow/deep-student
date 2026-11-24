@@ -17,7 +17,7 @@ import {
   renderHardRules, renderedHardRulesCharCount, type HardRuleOrigin,
 } from './hard-rules.ts';
 import { exportPage, exportPagination, parseBatchMoveArgs, parseTags, truncateExportContent } from './memory-executor.ts';
-import { CONTENT_LIMITS } from './memory-utils.ts';
+import { CONTENT_LIMITS, codepointLength, isTransientScheduleText } from './memory-utils.ts';
 import { cryptoOf } from './crypto.ts';
 import type { MemoryServiceImpl } from './service.ts';
 import { withLocalizedMessage } from './tool-errors.ts';
@@ -49,7 +49,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function charLength(value: string): number {
-  return Array.from(value).length;
+  return codepointLength(value);
 }
 
 /** memory_executor.rs:102 `invalid_args`. */
@@ -191,6 +191,11 @@ export async function writeSmart(args: Args, service: MemoryServiceImpl, ctx: Ex
   if (containsSensitivePattern(content) || containsSensitivePattern(title)) {
     auditFiltered(service, title, content, '包含敏感信息（手机号/身份证/银行卡/邮箱/密码）');
     return filteredOutput('内容包含敏感信息（手机号/身份证/银行卡/邮箱/密码），已拦截。请勿在记忆中存储个人敏感信息。');
+  }
+  if (memoryType === 'fact' && isTransientScheduleText(title, content)) {
+    const reason = '检测到仅限当天的临时日程安排，不写入长期核心记忆。';
+    auditFiltered(service, title, content, reason);
+    return filteredOutput(reason);
   }
   const maxChars = CONTENT_LIMITS[memoryType];
   if (charLength(content) > maxChars) {

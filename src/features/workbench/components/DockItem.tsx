@@ -41,6 +41,7 @@ import { requestMinimizeAnimated } from '../hooks/useWindowLifecycleAnim';
 import { DockWindowList } from './DockWindowList';
 import { useDockPinnedDragReorder, useDockRunningDragToPin } from './DockPinnedStore';
 import { dockLongPressTolerancePx } from './dockGestures';
+import { closeAppsPanel, isAppsPanelOpen } from './appsPanelStore';
 // ACR 4.0（A5 跨界最小接线）：agent 后台完成角标（样式在 agent-visuals.css）
 import { useDockAgentBadge } from '../agent/visuals/dockBadgeStore';
 import '../agent/visuals/agent-visuals.css';
@@ -212,10 +213,20 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
     // click，短按点击（launch / focus / minimize / 多实例 toggle）完全不变。
     const longPressTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const longPressFiredRef = React.useRef(false);
+    const longPressResetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     /** tolerance 按下时按 pointerType 取档（触屏放宽，见 dockGestures） */
     const longPressStartRef = React.useRef<{ x: number; y: number; tolerance: number } | null>(
       null,
     );
+
+    React.useEffect(() => {
+      return () => {
+        if (longPressResetTimerRef.current !== null) {
+          clearTimeout(longPressResetTimerRef.current);
+          longPressResetTimerRef.current = null;
+        }
+      };
+    }, []);
 
     // ---- 触屏 tooltip 等价（a11y 清单 §4）----
     // 无 hover 环境下，未运行应用的长按把 tooltip 钉住显示应用名
@@ -331,6 +342,10 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
         longPressFiredRef.current = false;
         return;
       }
+      const appsOpen = isAppsPanelOpen();
+      if (appsOpen) {
+        closeAppsPanel();
+      }
       const state = useWindowStore.getState();
       const current = Object.values(state.windows)
         .filter((w) => w.typeId === typeId)
@@ -384,7 +399,7 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
         }
         const win = current[0];
         const topId = state.focusStack[state.focusStack.length - 1];
-        if (topId === win.id && !win.minimized) {
+        if (topId === win.id && !win.minimized && !appsOpen) {
           requestMinimizeAnimated(win.id);
         } else {
           state.focusWindow(win.id);
@@ -502,6 +517,15 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
             } else if (target?.closest?.('[data-wb-docklist-show-all]')) {
               longPressFiredRef.current = false;
               showAllWindows();
+            } else {
+              // 若后续没有 click（如 pointerup 落在按钮外），下一事件轮自动复位以免吞掉后续点击
+              if (longPressResetTimerRef.current !== null) {
+                clearTimeout(longPressResetTimerRef.current);
+              }
+              longPressResetTimerRef.current = setTimeout(() => {
+                longPressResetTimerRef.current = null;
+                longPressFiredRef.current = false;
+              }, 0);
             }
           }
         }}
@@ -515,6 +539,7 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
           onPointerCancel?.(event);
           onTipPointerLeave?.();
           clearLongPress();
+          longPressFiredRef.current = false;
           if (tipPinned) scheduleTipUnpin();
         }}
         onPointerEnter={(event) => {

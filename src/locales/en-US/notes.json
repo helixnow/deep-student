@@ -19,7 +19,8 @@
     "load_full_document": "Load full document for block actions",
     "text_style": "Text style",
     "paragraph": "Paragraph",
-    "insert": "Insert"
+    "insert": "Insert",
+    "manage": "Manage"
   },
   "formatGate": {
     "checking": "Checking note format…",
@@ -1100,6 +1101,7 @@
       "auto_save": "Auto save",
       "auto_saved": "Auto-saved"
     },
+    "body_aria_label": "Note body",
     "placeholder": {
       "default": "Start writing...",
       "body": "Type '/' to open command menu...",
@@ -1601,7 +1603,12 @@
     "update_failed": "Update failed",
     "rename_failed": "Rename failed",
     "conflict": "Content updated elsewhere",
-    "conflict_hint": "Please refresh and try saving again, or revert to a previous version"
+    "conflict_hint": "Please refresh and try saving again, or revert to a previous version",
+    "move_to_trash": "Move to Trash",
+    "move_to_trash_item": "Move “{{title}}” to Trash",
+    "moved_to_trash": "Note moved to trash",
+    "restored_from_trash": "Note restored from trash",
+    "undo": "Undo"
   },
   "status": {
     "wordCount": "{{count}} characters",

@@ -47,6 +47,7 @@ import { SettingsVirtualList, type SettingsVirtualItem } from './SettingsVirtual
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 import {
+  getModelDisplayLabel,
   getProviderDisplayName,
   getVendorDisplayName,
   getVendorNotesDisplay,
@@ -481,7 +482,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
             <ProviderIcon modelId={api.model} size={20} showTooltip={false} />
             <div className="flex-1 min-w-0 space-y-0.5">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-foreground truncate">{profile.label || api.name}</span>
+                <span className="text-sm font-medium text-foreground truncate">{getModelDisplayLabel(profile.label || api.name, t)}</span>
                 {!profile.enabled && <span className="text-2xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap shrink-0">{t('settings:status.disabled')}</span>}
                 {isReadOnly && <span className="text-2xs px-1.5 py-0.5 rounded-full bg-primary/10 text-primary whitespace-nowrap shrink-0">{t('settings:api_config.badge_builtin_free')}</span>}
               </div>
@@ -605,7 +606,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
             floating={isEditing && useResponsiveInlineDialog}
             testId={`responsive-inline-model-editor-${profile.id}`}
             surfaceTestId={`responsive-inline-model-editor-surface-${profile.id}`}
-            ariaLabel={profile.label || api.name}
+            ariaLabel={getModelDisplayLabel(profile.label || api.name, t)}
             onDismiss={() => setInlineEditState(null)}
           >
             <InlineEditorCollapse

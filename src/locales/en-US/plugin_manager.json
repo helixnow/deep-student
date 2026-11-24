@@ -104,7 +104,12 @@
     "dashboardWidget": "Home widget",
     "editor": "Editor extension",
     "renderer": "Content renderer",
-    "navEntry": "Navigation entry"
+    "navEntry": "Navigation entry",
+    "studyPrompt": "Study prompts",
+    "studyTemplate": "Card templates",
+    "studyDeck": "Study decks",
+    "studyRule": "Grading & study rules",
+    "studyWidget": "Study widgets & workflows"
   },
   "card": {
     "addsLabel": "Adds",
@@ -141,6 +146,11 @@
     "adds": "What it adds",
     "addsUnknown": "Once it runs, the entry points it adds to the app are listed here.",
     "agentTools": "New AI assistant skills: {{tools}}",
+    "studyPackPrompts": "Prompts & skills: {{items}}",
+    "studyPackTemplates": "Card templates: {{items}}",
+    "studyPackDecks": "Decks: {{items}}",
+    "studyPackRules": "Rules & rubrics: {{items}}",
+    "studyPackWidgets": "Widgets & workflows: {{items}}",
     "separator": ", ",
     "health": "Status and health",
     "healthy": "Running normally.",
@@ -357,7 +367,9 @@
     "unbound": "Not bound",
     "bindHint": "Not bound: choose Scan to bind, then scan the QR code with mobile WeChat.",
     "boundHint": "Bound: toggle it, pick the reply model, and set rate limit and system prompt.",
-    "error": "Channel plugin action failed"
+    "error": "Channel plugin action failed",
+    "ilinkLabel": "WeChat iLink Bot",
+    "ilinkBlurb": "Send and receive WeChat messages via the official ClawBot / iLink protocol with automatic local AI replies."
   },
   "actions": {
     "refresh": "Refresh",
@@ -403,13 +415,16 @@
   "safeMode": {
     "title": "Safe mode",
     "description": "Safe-mode sessions load official plugins only; community plugins stay disabled until a normal restart.",
-    "rowHint": "Community plugins cannot be enabled in safe mode"
+    "rowHint": "Community plugins cannot be enabled in safe mode",
+    "exitButton": "Exit Safe Mode & Restart",
+    "importDisabled": "Importing and installing plugins are disabled in safe mode. Exit safe mode and restart first."
   },
   "row": {
     "version": "Version",
     "configure": "Configure",
     "uninstall": "Uninstall",
     "enable": "Enable {{id}}",
+    "disable": "Disable {{id}}",
     "configA11y": "Configure {{id}}",
     "uninstallA11y": "Uninstall {{id}}",
     "unsupportedPlatform": "Unavailable on this platform",
@@ -558,6 +573,7 @@
       "packageInvalidZip": "This file is not a valid .dstuplugin or .dspack archive.",
       "packageInvalid": "This plugin package is incomplete or malformed and cannot be installed.",
       "manifestInvalid": "The plugin manifest is missing required fields or declares invalid entries.",
+      "manifestInvalidWithDetail": "Invalid plugin manifest: {{detail}}",
       "engineIncompatible": "This plugin requires a different DeepStudent version than the one installed.",
       "idReserved": "This plugin uses the reserved official namespace (dstu.*). Community packs must use another prefix.",
       "permissionUndeclared": "This plugin tried to use undeclared permissions and was blocked.",
@@ -592,7 +608,12 @@
     "dashboardWidget": "A new widget on the home page",
     "editor": "New editor features",
     "renderer": "Shows a new kind of content",
-    "navEntry": "A new sidebar entry"
+    "navEntry": "A new sidebar entry",
+    "studyPrompt": "Study-pack prompts and AI assistant skills",
+    "studyTemplate": "Card and study templates",
+    "studyDeck": "Prebuilt flashcard decks or word lists",
+    "studyRule": "Grading rubrics or study rules",
+    "studyWidget": "Study widgets or workflows"
   },
   "workshop": {
     "verified": "Verified in the app and ready to use. It will load again after restart.",

@@ -200,7 +200,7 @@ export function PluginCard({
           </div>
         </div>
         {/* 开关的占位固定：等待 Host 时只是禁用，不换成别的东西，卡片不跳动。 */}
-        <Switch checked={switchChecked} disabled={switchDisabled} aria-label={t('row.enable', { id: name })} className="mt-0.5 shrink-0" onCheckedChange={onToggle} />
+        <Switch checked={switchChecked} disabled={switchDisabled} aria-label={t(switchChecked ? 'row.disable' : 'row.enable', { id: name })} className="mt-0.5 shrink-0" onCheckedChange={onToggle} />
       </div>
 
       <p data-testid="plugin-card-description"

@@ -19,6 +19,7 @@ import { SettingsGroup } from '@/components/settings';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { cn } from '@/lib/utils';
 import type { UnifiedModelInfo } from '@/features/settings/components/plugins/PluginsTab';
+import { getChannelPluginDisplay } from './channelDisplay';
 import {
   pluginsApi,
   PLUGIN_EVENTS,
@@ -169,6 +170,7 @@ export function ChannelPluginSection({ channel, onConfigure, onBind, className }
       {plugins.map((plugin) => {
         const busy = busyId === plugin.id;
         const unbound = !plugin.bound;
+        const display = getChannelPluginDisplay(plugin, t, '');
         return (
           <div
             key={plugin.id}
@@ -185,7 +187,7 @@ export function ChannelPluginSection({ channel, onConfigure, onBind, className }
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
                   <span className="min-w-0 whitespace-normal break-words text-sm text-foreground/90 [overflow-wrap:anywhere]">
-                    {plugin.label}
+                    {display.label}
                   </span>
                   <Badge variant={stateVariant(plugin.state)} className="shrink-0">
                     {t(`channel.${plugin.bound ? 'bound' : 'unbound'}`)}
@@ -198,7 +200,7 @@ export function ChannelPluginSection({ channel, onConfigure, onBind, className }
                   ) : null}
                 </div>
                 <p className="mt-0.5 min-w-0 whitespace-normal break-words text-xs leading-relaxed text-muted-foreground/70 [overflow-wrap:anywhere]">
-                  {plugin.blurb || t(unbound ? 'channel.bindHint' : 'channel.boundHint')}
+                  {display.blurb || t(unbound ? 'channel.bindHint' : 'channel.boundHint')}
                 </p>
               </div>
             </div>
@@ -222,7 +224,7 @@ export function ChannelPluginSection({ channel, onConfigure, onBind, className }
                 className="[@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]"
                 disabled={busy}
                 onClick={() => onConfigure(plugin)}
-                aria-label={t('channel.configureA11y', { id: plugin.label })}
+                aria-label={t('channel.configureA11y', { id: display.label })}
                 data-testid="channel-configure"
               >
                 {t('channel.configure')}
@@ -230,7 +232,7 @@ export function ChannelPluginSection({ channel, onConfigure, onBind, className }
               <Switch
                 checked={plugin.enabled && plugin.bound}
                 disabled={busy || !plugin.bound}
-                aria-label={t('channel.enableA11y', { id: plugin.label })}
+                aria-label={t('channel.enableA11y', { id: display.label })}
                 onCheckedChange={(next) => { void channel.setEnabled(plugin, next); }}
               />
             </div>
@@ -251,11 +253,12 @@ export interface ChannelPluginDialogProps {
 /** Full iLink panel (QR login, enable, reply model, rate limit, system prompt) in a dialog. */
 export function ChannelPluginDialog({ plugin, models, onOpenChange, onChanged }: ChannelPluginDialogProps) {
   const { t } = useTranslation('plugin_manager');
+  const display = plugin ? getChannelPluginDisplay(plugin, t, '') : null;
   return (
     <DsDialog
       open={plugin !== null}
       onOpenChange={onOpenChange}
-      aria-label={plugin?.label ?? t('channel.title')}
+      aria-label={display?.label ?? t('channel.title')}
       maxWidth="max-w-2xl"
       className={cn('md:ml-auto md:h-full md:!max-h-full')}
     >

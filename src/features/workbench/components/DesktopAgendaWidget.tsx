@@ -492,13 +492,16 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
               <div className="wb-agenda-item" key={item.id} data-overdue={overdue || undefined}>
                 <button
                   type="button"
+                  role="checkbox"
+                  aria-checked={completingId === item.id}
                   className="wb-agenda-check"
                   disabled={completingId === item.id}
                   onClick={(event) => {
                     event.stopPropagation();
                     void completeItem(item);
                   }}
-                  aria-label={t('agenda.completeItem', { title: item.title })}
+                  aria-label={t('agenda.completeCheckbox', { defaultValue: '标记此待办完成' })}
+                  title={t('agenda.completeCheckbox', { defaultValue: '标记此待办完成' })}
                 >
                   <span style={{ borderColor: listColor(list, item.todoListId) }}>
                     {completingId === item.id ? <Check size={9} weight="bold" /> : null}

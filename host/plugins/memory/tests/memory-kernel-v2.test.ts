@@ -397,9 +397,23 @@ describe('RFC-001 M1: MemoryProvider, HardRules, Frozen <memory_kernel>, and His
       [
         { title: '幽默风格偏好', content: '用户喜欢用打油诗改写数学概念', folder: '偏好' },
         { title: '英文缩写偏好', content: '用户偏好中文括注英文缩写', folder: '偏好' },
+        { title: '临时自习安排', content: '今天临时改去图书馆', folder: '日程' },
+        { title: 'One-off schedule', content: 'temporary schedule override tonight', folder: 'Schedule' },
       ],
       '以后英文缩写都要括注中文。对了，帮我把贝叶斯定理改写成打油诗，就这一次搞笑一下。',
     );
     expect(kept.map(c => c.title)).toEqual(['英文缩写偏好']);
+  });
+
+  it('injects localized global-alias HardRules on Turn 1 of every new session (S4-03/S4-14)', async () => {
+    const { host } = await setup();
+    const provider = providerOf(host);
+    provider.mutateFromUser({
+      kind: 'upsert_rule',
+      input: { instruction: '每次回答先给一句话结论，再给步骤', scope: '全局', pinned: true },
+    });
+    const turn1 = provider.buildSessionSnapshot({ sessionId: 'sess_turn1_alias', memoryEnabled: true });
+    expect(turn1.renderedKernel).toContain('每次回答先给一句话结论，再给步骤');
+    expect(turn1.includedRuleIds).toHaveLength(1);
   });
 });

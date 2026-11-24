@@ -23,6 +23,7 @@ import type { UnifiedModelInfo } from '@/features/settings/components/plugins/Pl
 import type { PluginInfo } from '@/features/settings/api/pluginsApi';
 
 import { ChannelPluginDialog, ChannelPluginSection, findChannelPlugin, useChannelPlugins } from './ChannelPluginSection';
+import { exitSafeModeAndRestart } from './safeMode';
 import { ConfigForm } from './ConfigForm';
 import { permissionLines } from './permissions';
 import { pluginConfigForm } from './config-schema';
@@ -401,26 +402,41 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
   };
 
   const importButton = (
-    <div className="flex flex-wrap items-center gap-2">
-      <DsButton variant="outline" size="sm" data-testid="plugin-import" className={cn('gap-1.5', COARSE_TOUCH)}
-        onClick={handleImportClick} disabled={packageBusy}>
-        <DownloadSimple className="size-4" aria-hidden="true" />
-        {packageBusy ? t('install.running') : t('actions.install')}
-      </DsButton>
-      <DsButton
-        variant="outline"
-        size="sm"
-        data-testid="plugin-import-url"
-        className={cn('gap-1.5', COARSE_TOUCH)}
-        onClick={() => {
-          setUrlError(null);
-          setUrlDialogOpen(true);
-        }}
-        disabled={packageBusy}
-      >
-        <LinkSimple className="size-4" aria-hidden="true" />
-        {t('actions.installUrl')}
-      </DsButton>
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <DsButton
+          variant="outline"
+          size="sm"
+          data-testid="plugin-import"
+          className={cn('gap-1.5', COARSE_TOUCH)}
+          onClick={handleImportClick}
+          disabled={packageBusy || safeMode}
+          aria-describedby={safeMode ? 'plugin-import-disabled-reason' : undefined}
+        >
+          <DownloadSimple className="size-4" aria-hidden="true" />
+          {packageBusy ? t('install.running') : t('actions.install')}
+        </DsButton>
+        <DsButton
+          variant="outline"
+          size="sm"
+          data-testid="plugin-import-url"
+          className={cn('gap-1.5', COARSE_TOUCH)}
+          onClick={() => {
+            setUrlError(null);
+            setUrlDialogOpen(true);
+          }}
+          disabled={packageBusy || safeMode}
+          aria-describedby={safeMode ? 'plugin-import-disabled-reason' : undefined}
+        >
+          <LinkSimple className="size-4" aria-hidden="true" />
+          {t('actions.installUrl')}
+        </DsButton>
+      </div>
+      {safeMode ? (
+        <p id="plugin-import-disabled-reason" data-testid="plugin-import-disabled-reason" className="text-xs text-muted-foreground">
+          {t('safeMode.importDisabled')}
+        </p>
+      ) : null}
     </div>
   );
 
@@ -431,13 +447,24 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
           <div
             role="status"
             data-testid="plugin-safe-mode"
-            className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
           >
-            <ShieldChevron className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <div className="min-w-0 space-y-0.5">
-              <div className="font-medium">{t('safeMode.title')}</div>
-              <p className="text-xs leading-relaxed text-muted-foreground/80">{t('safeMode.description')}</p>
+            <div className="flex min-w-0 flex-1 items-start gap-2">
+              <ShieldChevron className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              <div className="min-w-0 space-y-0.5">
+                <div className="font-medium">{t('safeMode.title')}</div>
+                <p className="text-xs leading-relaxed text-muted-foreground/80">{t('safeMode.description')}</p>
+              </div>
             </div>
+            <DsButton
+              variant="outline"
+              size="sm"
+              data-testid="plugin-exit-safe-mode"
+              className={cn('shrink-0 border-warning/40 bg-background/85 text-foreground hover:bg-background', COARSE_TOUCH)}
+              onClick={() => void exitSafeModeAndRestart()}
+            >
+              {t('safeMode.exitButton')}
+            </DsButton>
           </div>
         ) : null}
 

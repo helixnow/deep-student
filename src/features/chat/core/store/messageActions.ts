@@ -1317,31 +1317,72 @@ export function createMessageActions(
           // 处理活跃块
           set((s) => {
             const newBlocks = new Map(s.blocks);
+            const targetMessageId = s.currentStreamingMessageId;
+            const targetMessage = targetMessageId ? s.messageMap.get(targetMessageId) : undefined;
+            const now = Date.now();
+            const candidateBlockIds = new Set<string>(activeBlockIds);
+            if (targetMessage) {
+              for (const id of targetMessage.blockIds) {
+                candidateBlockIds.add(id);
+              }
+              if (targetMessage.variants) {
+                for (const variant of targetMessage.variants) {
+                  for (const id of variant.blockIds) {
+                    candidateBlockIds.add(id);
+                  }
+                }
+              }
+            }
 
-            activeBlockIds.forEach((blockId) => {
+            candidateBlockIds.forEach((blockId) => {
               const block = newBlocks.get(blockId);
-              if (block) {
+              if (block && (block.isPreparing || block.status === 'running' || block.status === 'pending')) {
                 // 🔧 P1修复：使用 blockRegistry 确定正确的中断行为
                 // 而不是硬编码 thinking/content 判断
                 const plugin = blockRegistry.get(block.type);
-                const onAbort = plugin?.onAbort ?? 'mark-error';
-                const shouldKeepContent = onAbort === 'keep-content';
+                const onAbort =
+                  plugin?.onAbort ??
+                  (block.type === 'thinking' || block.type === 'content' ? 'keep-content' : 'mark-error');
+                const shouldKeepContent = !block.isPreparing && onAbort === 'keep-content';
 
                 newBlocks.set(blockId, {
                   ...block,
+                  isPreparing: false,
                   status: shouldKeepContent ? 'success' : 'error',
                   error: shouldKeepContent ? undefined : 'aborted',
-                  aborted: shouldKeepContent ? true : undefined,
-                  endedAt: Date.now(),
+                  aborted: true,
+                  endedAt: now,
                 });
               }
             });
+
+            let newMessageMap = s.messageMap;
+            if (targetMessageId && targetMessage) {
+              newMessageMap = new Map(s.messageMap);
+              const nextMeta = { ...targetMessage._meta, stoppedByUser: true };
+              delete nextMeta.preparingToolCall;
+              newMessageMap.set(targetMessageId, {
+                ...targetMessage,
+                _meta: nextMeta,
+                ...(targetMessage.variants
+                  ? {
+                      variants: targetMessage.variants.map((variant) =>
+                        variant.status === 'streaming' || variant.status === 'pending'
+                          ? { ...variant, status: 'cancelled' as const }
+                          : variant
+                      ),
+                    }
+                  : {}),
+              });
+            }
 
             return {
               sessionStatus: 'idle',
               currentStreamingMessageId: null,
               activeBlockIds: new Set(),
+              streamingVariantIds: new Set(),
               blocks: newBlocks,
+              messageMap: newMessageMap,
               ...(hasPendingToolApproval
                 ? { pendingBlockingInteraction: null, pendingApprovalRequest: null }
                 : {}),

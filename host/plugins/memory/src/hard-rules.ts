@@ -62,12 +62,25 @@ export function emptyHardRules(): HardRulesDocument {
   return { version: 0, updated_at: '', rules: [] };
 }
 
+const GLOBAL_SCOPE_ALIASES = new Set([
+  '',
+  'global',
+  'all',
+  '*',
+  'general',
+  'default',
+  '全局',
+  '全学科',
+  '通用',
+]);
+
 export function normalizeRuleScope(raw: string | null | undefined): string {
   const trimmed = (raw ?? '').trim().toLowerCase();
-  if (trimmed === '' || trimmed === 'global' || trimmed === 'all' || trimmed === '*') return 'global';
+  if (GLOBAL_SCOPE_ALIASES.has(trimmed)) return 'global';
   if (trimmed.startsWith('subject:') || trimmed.startsWith('mode:')) {
-    const rest = trimmed.slice(trimmed.indexOf(':') + 1).trim();
-    return rest === '' ? 'global' : `${trimmed.slice(0, trimmed.indexOf(':') + 1)}${rest}`;
+    const colon = trimmed.indexOf(':');
+    const rest = trimmed.slice(colon + 1).trim();
+    return GLOBAL_SCOPE_ALIASES.has(rest) ? 'global' : `${trimmed.slice(0, colon + 1)}${rest}`;
   }
   return `subject:${trimmed}`;
 }
@@ -216,10 +229,12 @@ export function filterHardRulesForScope(
 ): MemoryHardRule[] {
   const subjectKey = filter?.subject?.trim() ? `subject:${filter.subject.trim().toLowerCase()}` : null;
   const modeKey = filter?.mode?.trim() ? `mode:${filter.mode.trim().toLowerCase()}` : null;
-  const matched = rules.filter(r =>
-    r.scope === 'global'
-    || (subjectKey !== null && r.scope === subjectKey)
-    || (modeKey !== null && r.scope === modeKey));
+  const matched = rules.filter((r) => {
+    const normalized = normalizeRuleScope(r.scope);
+    return normalized === 'global'
+      || (subjectKey !== null && normalized === subjectKey)
+      || (modeKey !== null && normalized === modeKey);
+  });
   // Pinned & user_explicit rules come first, then newest updatedAt.
   return matched.sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;

@@ -197,7 +197,38 @@ function convertBackendBlock(
     endedAt: blk.endedAt,
     // 🔧 P3修复：恢复 firstChunkAt 用于排序（保持思维链交替顺序）
     firstChunkAt: blk.firstChunkAt,
+    ...(typeof blk.aborted === 'boolean' ? { aborted: blk.aborted } : {}),
     ...(isWorkbench ? { toolCallId: blk.id } : {}),
+  };
+}
+
+function settleStaleRestoredBlock(block: Block, now: number): Block {
+  if (!block.isPreparing && block.status !== 'running' && block.status !== 'pending') {
+    return block;
+  }
+  const settledEndedAt = block.endedAt ?? block.startedAt ?? now;
+  if (block.isPreparing) {
+    return {
+      ...block,
+      isPreparing: false,
+      status: 'error',
+      error: block.error || 'Stream ended before tool execution',
+      endedAt: settledEndedAt,
+    };
+  }
+  if (block.type === 'thinking' || block.type === 'content') {
+    return {
+      ...block,
+      status: block.error ? 'error' : 'success',
+      aborted: block.error ? block.aborted : true,
+      endedAt: settledEndedAt,
+    };
+  }
+  return {
+    ...block,
+    status: 'error',
+    error: block.error || 'Stream interrupted',
+    endedAt: settledEndedAt,
   };
 }
 
@@ -230,6 +261,8 @@ function convertBackendMessage(msg: LoadSessionResponseType['messages'][number])
           skillRuntimeBefore: msg._meta.skillRuntimeBefore,
           skillRuntimeAfter: msg._meta.skillRuntimeAfter,
           replaySource: msg._meta.replaySource,
+          ...(msg._meta.terminalError !== undefined ? { terminalError: msg._meta.terminalError } : {}),
+          ...(msg._meta.stoppedByUser !== undefined ? { stoppedByUser: msg._meta.stoppedByUser } : {}),
         }
       : undefined,
     // 🔧 变体字段恢复
@@ -880,13 +913,6 @@ export function createRestoreActions(
             blockCount: blocksMap.size,
           });
 
-          // 一次性更新所有状态
-          const restoredActiveBlockIds = new Set(
-            Array.from(blocksMap.values())
-              .filter((block) => block.status === 'running' || block.status === 'pending')
-              .map((block) => block.id)
-          );
-
           // Listener registration and initial load deliberately run in
           // parallel. If a stream (or an edit/delete) advanced the live Store
           // while the backend snapshot was in flight, merge the snapshot into
@@ -902,13 +928,14 @@ export function createRestoreActions(
             || hasIdentitySetChanged(liveState.messageMap.keys(), baseline.messageIds)
             || hasIdentitySetChanged(liveState.blocks.keys(), baseline.blockIds)
           );
+          const hasLiveActiveStream = liveStateAdvanced && liveState.sessionStatus !== 'idle';
 
           let finalMessageMap = messageMap;
           let finalMessageOrder = messageOrder;
           let finalBlocksMap = blocksMap;
           let finalSessionStatus: ChatStore['sessionStatus'] = 'idle';
           let finalCurrentStreamingMessageId: string | null = null;
-          let finalActiveBlockIds = restoredActiveBlockIds;
+          let finalActiveBlockIds = new Set<string>();
           let finalStreamingVariantIds = new Set<string>();
 
           if (liveStateAdvanced) {
@@ -966,13 +993,34 @@ export function createRestoreActions(
               finalMessageMap,
               retainedBackendMessages,
             );
-            finalSessionStatus = liveState.sessionStatus;
-            finalCurrentStreamingMessageId = liveState.currentStreamingMessageId;
-            finalActiveBlockIds = new Set([
-              ...restoredActiveBlockIds,
-              ...liveState.activeBlockIds,
-            ]);
-            finalStreamingVariantIds = new Set(liveState.streamingVariantIds);
+            if (hasLiveActiveStream) {
+              finalSessionStatus = liveState.sessionStatus;
+              finalCurrentStreamingMessageId = liveState.currentStreamingMessageId;
+              finalActiveBlockIds = new Set(liveState.activeBlockIds);
+              finalStreamingVariantIds = new Set(liveState.streamingVariantIds);
+            }
+          }
+
+          if (!hasLiveActiveStream) {
+            const settleNow = Date.now();
+            for (const [blockId, block] of finalBlocksMap) {
+              const settled = settleStaleRestoredBlock(block, settleNow);
+              if (settled !== block) {
+                finalBlocksMap.set(blockId, settled);
+              }
+            }
+            for (const [msgId, msg] of finalMessageMap) {
+              if (msg.variants?.some((v) => v.status === 'streaming' || v.status === 'pending')) {
+                finalMessageMap.set(msgId, {
+                  ...msg,
+                  variants: msg.variants.map((v) =>
+                    v.status === 'streaming' || v.status === 'pending'
+                      ? { ...v, status: 'cancelled' as const }
+                      : v
+                  ),
+                });
+              }
+            }
           }
 
           // 🔧 P1 内存泄漏修复：恢复会话会直接置空 attachments，先释放 blob: 预览 URL

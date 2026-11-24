@@ -260,6 +260,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   const sourceEditorRef = useRef<NoteSourceEditorHandle | null>(null);
   const pendingSourceFocusRef = useRef(false);
   const togglingSourceModeRef = useRef(false);
+  const [movingToTrash, setMovingToTrash] = useState(false);
   const [liveTocMarkdown, setLiveTocMarkdown] = useState(initialContent);
   const tocSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const publishActiveHeadingRef = useRef<() => void>(() => {});
@@ -331,6 +332,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     sourceModeRef.current = false;
     pendingSourceFocusRef.current = false;
     togglingSourceModeRef.current = false;
+    setMovingToTrash(false);
     setSourceMode(false);
     setIsReviewDue(false);
     setBannerQueueExpanded(false);
@@ -1478,9 +1480,31 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     </DsButton>
   );
 
+  const handleMoveToTrash = useCallback(async () => {
+    if (!noteId || effectiveReadOnly || hostBusy || movingToTrash) return;
+    setMovingToTrash(true);
+    try {
+      const { moveNoteToTrash } = await import('./moveNoteToTrash');
+      await moveNoteToTrash({
+        noteId,
+        noteTitle: initialTitle,
+        beforeDelete: () => {
+          save.discardDraftForDelete(noteId);
+        },
+        onDeleteFailed: () => {
+          save.clearDeleteGuard(noteId);
+        },
+      });
+    } finally {
+      if (!save.isUnmountedRef.current) {
+        setMovingToTrash(false);
+      }
+    }
+  }, [effectiveReadOnly, hostBusy, initialTitle, movingToTrash, noteId, save]);
+
   const pageActions = (
     <NotesPageActionsMenu
-      noteId={noteId} readOnly={readOnly} effectiveReadOnly={effectiveReadOnly} editorReady={!!editorApi}
+      noteId={noteId} noteTitle={initialTitle} readOnly={readOnly} effectiveReadOnly={effectiveReadOnly} editorReady={!!editorApi}
       hasMobileResourceMenu={hasMobileResourceMenu} isTouchEditingSurface={isTouchEditingSurface}
       templateMenuOpen={templateMenuOpen} templatePanelId={templatePanelId}
       onToggleTemplateMenu={() => {
@@ -1508,6 +1532,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
           variant="ghost"
           size="sm"
           role={hasMobileResourceMenu ? 'menuitem' : undefined}
+          data-no-focus-return="true"
           onClick={handleToggleSourceMode}
           aria-pressed={sourceMode}
         >
@@ -1520,6 +1545,8 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       onMaterializeFullDocument={() => {
         if (editorApi) void (editorApi as FullDocumentSearchApi).materializeFullDocument().catch((error) => showGlobalNotification('error', String(error)));
       }}
+      onMoveToTrash={handleMoveToTrash}
+      movingToTrash={movingToTrash}
       acrWindowId={acrWindowId}
     />
   );
@@ -1549,8 +1576,13 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
             setPageActionsOpen(false); templateTriggerRef.current?.focus();
           }}
           onClick={(event) => {
-            if (!(event.target as HTMLElement).closest('button:not([data-keep-open])')) return;
-            setPageActionsOpen(false); templateTriggerRef.current?.focus();
+            const btn = (event.target as HTMLElement).closest('button:not([data-keep-open])') as HTMLElement | null;
+            if (!btn) return;
+            const skipFocusReturn = btn.hasAttribute('data-no-focus-return');
+            setPageActionsOpen(false);
+            if (!skipFocusReturn) {
+              templateTriggerRef.current?.focus();
+            }
           }}>
           {pageActions}
         </PopoverContent>
@@ -1841,13 +1873,42 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
             }}
             ref={(el) => { dropZoneRef.current = el; selectionContainerRef.current = el; }}
             onMouseDown={(event) => {
-              if (event.button !== 0 || effectiveReadOnly || sourceMode) return;
+              if (event.button !== 0 || effectiveReadOnly) return;
               const target = event.target as HTMLElement;
+              if (sourceMode) {
+                if (target.closest('.cm-editor, button, input, textarea, a, [role="menu"], [role="dialog"], .notes-document-header, .notes-source-editor-bar')) return;
+                const sourceEl = event.currentTarget.querySelector<HTMLElement>('.notes-source-editor');
+                if (!sourceEl) return;
+                if (event.clientY > sourceEl.getBoundingClientRect().bottom || target.closest('.notes-source-editor-body')) {
+                  event.preventDefault();
+                  if (sourceEditorRef.current) {
+                    sourceEditorRef.current.focus();
+                  } else {
+                    sourceEl.querySelector<HTMLElement>('.cm-content')?.focus();
+                  }
+                }
+                return;
+              }
               if (target.closest('.ProseMirror, button, input, textarea, a, [role="menu"], [role="dialog"], .notes-document-header, .milkdown-block-handle')) return;
-              const editorEl = event.currentTarget.querySelector('.ProseMirror');
-              if (!editorEl || event.clientY <= editorEl.getBoundingClientRect().bottom) return;
-              event.preventDefault();
-              editorApi?.focusEnd?.();
+              const editorEl = event.currentTarget.querySelector<HTMLElement>('.ProseMirror');
+              if (!editorEl) return;
+              if (event.clientY > editorEl.getBoundingClientRect().bottom) {
+                event.preventDefault();
+                if (editorApi?.focusEnd) {
+                  editorApi.focusEnd();
+                } else if (editorApi?.focus) {
+                  editorApi.focus();
+                } else {
+                  editorEl.focus();
+                }
+              } else if (target.closest('.crepe-editor-wrapper')) {
+                event.preventDefault();
+                if (editorApi?.focus) {
+                  editorApi.focus();
+                } else {
+                  editorEl.focus();
+                }
+              }
             }}
           >
             {effectiveReadOnly && !sourceMode && (
@@ -1883,9 +1944,17 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
               onBreadcrumbClick={onBreadcrumbClick}
               onExitToBody={() => {
                 if (sourceModeRef.current) {
-                  sourceEditorRef.current?.focus();
+                  if (sourceEditorRef.current) {
+                    sourceEditorRef.current.focus();
+                  } else {
+                    dropZoneRef.current?.querySelector<HTMLElement>('.notes-source-editor .cm-content')?.focus();
+                  }
+                } else if (editorApi?.focusStart) {
+                  editorApi.focusStart();
+                } else if (editorApi?.focus) {
+                  editorApi.focus();
                 } else {
-                  editorApi?.focusStart?.();
+                  dropZoneRef.current?.querySelector<HTMLElement>('.ProseMirror')?.focus();
                 }
               }}
               // RUST-FIX(RF-W09-new-note-title-focus): 等正文编辑器就绪后再聚焦标题

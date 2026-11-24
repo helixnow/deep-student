@@ -6,12 +6,19 @@ import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { Textarea } from '@/components/ui/shad/Textarea';
 
+export interface MessageInlineEditConfirmPrompt {
+  count: number;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
 export interface MessageInlineEditProps {
   value: string;
   onChange: (value: string) => void;
   onConfirm: () => void;
   onCancel: () => void;
   isSubmitting?: boolean;
+  confirmPrompt?: MessageInlineEditConfirmPrompt | null;
 }
 
 export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
@@ -20,6 +27,7 @@ export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
   onConfirm,
   onCancel,
   isSubmitting,
+  confirmPrompt = null,
 }) => {
   const { t } = useTranslation(['chatV2', 'common']);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -42,14 +50,22 @@ export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
-      onConfirm();
+      if (confirmPrompt) {
+        confirmPrompt.onConfirm();
+      } else {
+        onConfirm();
+      }
     }
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
-      onCancel();
+      if (confirmPrompt) {
+        confirmPrompt.onCancel();
+      } else {
+        onCancel();
+      }
     }
-  }, [onConfirm, onCancel]);
+  }, [confirmPrompt, onConfirm, onCancel]);
 
   return (
     <div className="flex flex-col items-end gap-2">
@@ -62,26 +78,60 @@ export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
         onKeyDown={handleKeyDown}
         disabled={isSubmitting}
       />
-      <div className="flex gap-2">
-        <DsButton
-          variant="ghost"
-          size="sm"
-          className="[@media(pointer:coarse)]:!min-h-11"
-          onClick={onCancel}
-          disabled={isSubmitting}
+      {confirmPrompt ? (
+        <div
+          role="alert"
+          data-testid="edit-downstream-confirm"
+          className="w-full flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[var(--chat-radius-md,12px)] border border-border/60 bg-muted/40 px-3 py-2"
         >
-          {t('common:actions.cancel')}
-        </DsButton>
-        <DsButton
-          variant="primary"
-          size="sm"
-          className="[@media(pointer:coarse)]:!min-h-11"
-          onClick={onConfirm}
-          disabled={isSubmitting}
-        >
-          {t('chatV2:messageItem.actions.send')}
-        </DsButton>
-      </div>
+          <span className="text-ui leading-relaxed text-foreground/85">
+            {t('chatV2:messageItem.editConfirm.message', { count: confirmPrompt.count })}
+          </span>
+          <div className="ml-auto flex items-center gap-1.5">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="[@media(pointer:coarse)]:!min-h-11"
+              onClick={confirmPrompt.onCancel}
+              disabled={isSubmitting}
+              data-testid="edit-downstream-cancel"
+            >
+              {t('chatV2:messageItem.editConfirm.cancel')}
+            </DsButton>
+            <DsButton
+              variant="primary"
+              size="sm"
+              className="!border-destructive !bg-destructive !text-destructive-foreground hover:!bg-destructive/90 [@media(pointer:coarse)]:!min-h-11"
+              onClick={confirmPrompt.onConfirm}
+              disabled={isSubmitting}
+              data-testid="edit-downstream-confirm-button"
+            >
+              {t('chatV2:messageItem.editConfirm.confirm')}
+            </DsButton>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <DsButton
+            variant="ghost"
+            size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
+            onClick={onCancel}
+            disabled={isSubmitting}
+          >
+            {t('common:actions.cancel')}
+          </DsButton>
+          <DsButton
+            variant="primary"
+            size="sm"
+            className="[@media(pointer:coarse)]:!min-h-11"
+            onClick={onConfirm}
+            disabled={isSubmitting}
+          >
+            {t('chatV2:messageItem.actions.send')}
+          </DsButton>
+        </div>
+      )}
     </div>
   );
 };

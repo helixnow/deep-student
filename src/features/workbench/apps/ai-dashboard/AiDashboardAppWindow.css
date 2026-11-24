@@ -10,14 +10,71 @@
 .wb-ai-dashboard-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   flex-shrink: 0;
-  padding: 14px 20px 10px;
+  padding: 12px 16px 10px;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--text-primary, hsl(var(--foreground)));
   border-bottom: 1px solid hsl(var(--border) / 0.35);
+}
+
+.wb-ai-dashboard-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wb-ai-dashboard-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.wb-ai-dashboard-insights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 480px) {
+  .wb-ai-dashboard-insights {
+    grid-template-columns: 1fr;
+  }
+}
+
+.wb-ai-dashboard-insight-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid hsl(var(--border) / 0.55);
+  background: hsl(var(--card));
+}
+
+.wb-ai-dashboard-insight-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-ai-dashboard-insight-value {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: hsl(var(--foreground));
+}
+
+.wb-ai-dashboard-insight-sub {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground) / 0.85);
 }
 
 .wb-ai-dashboard-body {

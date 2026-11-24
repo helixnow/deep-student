@@ -7,6 +7,7 @@
  * 3. 透明检查与安全兜底：原始注入快照预览 + 10 版历史快照一键回滚。
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowUUpLeft,
   CaretDown,
@@ -23,11 +24,13 @@ import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { invalidateMemoryKernelAttributionCache } from '@/features/chat/components/message/MemoryKernelAttributionPill';
 import {
+  getMemoryAuditLogs,
   inspectMemoryKernel,
+  invalidateMemoryKernelAttributionCache,
   mutateMemoryKernel,
   reflectMemoryKernel,
+  type MemoryAuditLogItem,
   type MemoryDialecticReflectionReport,
   type MemoryHardRule,
   type MemoryHardRuleOrigin,
@@ -47,13 +50,12 @@ interface DeletedRuleSnapshot {
 }
 
 const RULE_UNDO_DURATION_MS = 5000;
-const EMPTY_HISTORY_TOOLTIP = '每次画像变化会自动保留最近 10 个版本，支持一键回滚';
 
 const SCOPE_OPTIONS = [
-  { value: 'global', label: '全局' },
-  { value: 'subject:math', label: '数学' },
-  { value: 'subject:english', label: '英语' },
-  { value: 'mode:essay', label: '作文批改' },
+  { value: 'global', labelKey: 'settings:memory.kernel.scopeGlobal' },
+  { value: 'subject:math', labelKey: 'settings:memory.kernel.scopeMath' },
+  { value: 'subject:english', labelKey: 'settings:memory.kernel.scopeEnglish' },
+  { value: 'mode:essay', labelKey: 'settings:memory.kernel.scopeEssay' },
 ] as const;
 
 function BudgetBar({ label, used, max }: { label: string; used: number; max: number }) {
@@ -71,7 +73,9 @@ function BudgetBar({ label, used, max }: { label: string; used: number; max: num
 }
 
 export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSignal = 0 }) => {
+  const { t } = useTranslation(['settings', 'common']);
   const [view, setView] = useState<MemoryInspectionView | null>(null);
+  const [auditLogs, setAuditLogs] = useState<MemoryAuditLogItem[]>([]);
   const [unavailable, setUnavailable] = useState(false);
   const [expanded, setExpanded] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
@@ -109,16 +113,36 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
 
   const load = useCallback(async () => {
     try {
-      const next = await inspectMemoryKernel();
+      const [next, logs] = await Promise.all([
+        inspectMemoryKernel(),
+        typeof getMemoryAuditLogs === 'function'
+          ? getMemoryAuditLogs({ limit: 50 }).catch(() => [] as MemoryAuditLogItem[])
+          : Promise.resolve([] as MemoryAuditLogItem[]),
+      ]);
       if (next && typeof next === 'object' && next.hardRules && next.learnerProfile) {
         setView(next);
         setUnavailable(false);
+      }
+      if (Array.isArray(logs)) {
+        setAuditLogs(logs);
       }
     } catch {
       // Never wipe an already-loaded panel on a transient background refresh error.
       if (!viewRef.current) {
         setUnavailable(true);
       }
+    }
+  }, []);
+
+  const refreshAuditLogs = useCallback(async () => {
+    if (typeof getMemoryAuditLogs !== 'function') return;
+    try {
+      const logs = await getMemoryAuditLogs({ limit: 50 });
+      if (Array.isArray(logs)) {
+        setAuditLogs(logs);
+      }
+    } catch {
+      // Ignore audit log refresh failure to preserve existing view.
     }
   }, []);
 
@@ -143,13 +167,14 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
       setView(updated);
       invalidateMemoryKernelAttributionCache(updated);
       setNewRuleText('');
-      showGlobalNotification('success', '已保存常驻互动规则（下个新会话首轮自动生效）');
+      void refreshAuditLogs();
+      showGlobalNotification('success', t('settings:memory.kernel.ruleSaved'));
     } catch (error) {
-      showGlobalNotification('error', error instanceof Error ? error.message : '保存规则失败');
+      showGlobalNotification('error', error instanceof Error ? error.message : t('settings:memory.kernel.ruleSaveError'));
     } finally {
       setBusy(false);
     }
-  }, [newRuleText, newRuleScope, newRulePinned, busy]);
+  }, [newRuleText, newRuleScope, newRulePinned, busy, refreshAuditLogs, t]);
 
   const handleRemoveRule = useCallback(async (rule: MemoryHardRule) => {
     if (busy) return;
@@ -169,12 +194,13 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
         setPendingUndoRule(null);
         undoTimerRef.current = null;
       }, RULE_UNDO_DURATION_MS);
+      void refreshAuditLogs();
     } catch (error) {
-      showGlobalNotification('error', error instanceof Error ? error.message : '删除规则失败');
+      showGlobalNotification('error', error instanceof Error ? error.message : t('settings:memory.kernel.ruleDeleteError'));
     } finally {
       setBusy(false);
     }
-  }, [busy, clearUndoTimer]);
+  }, [busy, clearUndoTimer, refreshAuditLogs, t]);
 
   const handleUndoRemoveRule = useCallback(async () => {
     if (!pendingUndoRule || busy) return;
@@ -194,12 +220,13 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
       setView(updated);
       invalidateMemoryKernelAttributionCache(updated);
       setPendingUndoRule(null);
+      void refreshAuditLogs();
     } catch (error) {
-      showGlobalNotification('error', error instanceof Error ? error.message : '恢复规则失败');
+      showGlobalNotification('error', error instanceof Error ? error.message : t('settings:memory.kernel.ruleRestoreError'));
     } finally {
       setBusy(false);
     }
-  }, [pendingUndoRule, busy, clearUndoTimer]);
+  }, [pendingUndoRule, busy, clearUndoTimer, refreshAuditLogs, t]);
 
   const handleRemoveWeakPoint = useCallback(async (subject: string, knowledge_point: string) => {
     if (busy) return;
@@ -215,12 +242,13 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
         },
       });
       setView(updated);
+      void refreshAuditLogs();
     } catch (error) {
-      showGlobalNotification('error', error instanceof Error ? error.message : '移除薄弱点失败');
+      showGlobalNotification('error', error instanceof Error ? error.message : t('settings:memory.kernel.weakPointRemoveError'));
     } finally {
       setBusy(false);
     }
-  }, [busy]);
+  }, [busy, refreshAuditLogs, t]);
 
   const handleAddGoal = useCallback(async () => {
     const goal = newGoalText.trim();
@@ -238,12 +266,13 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
       });
       setView(updated);
       setNewGoalText('');
+      void refreshAuditLogs();
     } catch (error) {
-      showGlobalNotification('error', error instanceof Error ? error.message : '保存目标失败');
+      showGlobalNotification('error', error instanceof Error ? error.message : t('settings:memory.kernel.goalSaveError'));
     } finally {
       setBusy(false);
     }
-  }, [newGoalText, busy]);
+  }, [newGoalText, busy, refreshAuditLogs, t]);
 
   const handleRemoveGoal = useCallback(async (goal: string) => {
     if (busy) return;
@@ -259,12 +288,13 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
         },
       });
       setView(updated);
+      void refreshAuditLogs();
     } catch (error) {
-      showGlobalNotification('error', error instanceof Error ? error.message : '移除目标失败');
+      showGlobalNotification('error', error instanceof Error ? error.message : t('settings:memory.kernel.goalRemoveError'));
     } finally {
       setBusy(false);
     }
-  }, [busy]);
+  }, [busy, refreshAuditLogs, t]);
 
   const handleRollback = useCallback(async (version: number) => {
     if (busy) return;
@@ -274,13 +304,14 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
       setView(updated);
       invalidateMemoryKernelAttributionCache(updated);
       setShowHistory(false);
-      showGlobalNotification('success', `已回滚学习者画像至 v${version}`);
+      void refreshAuditLogs();
+      showGlobalNotification('success', t('settings:memory.kernel.rollbackSuccess', { version }));
     } catch (error) {
-      showGlobalNotification('error', error instanceof Error ? error.message : '回滚失败');
+      showGlobalNotification('error', error instanceof Error ? error.message : t('settings:memory.kernel.rollbackError'));
     } finally {
       setBusy(false);
     }
-  }, [busy]);
+  }, [busy, refreshAuditLogs, t]);
 
   const handleToggleReflection = useCallback(async () => {
     if (reflectionReport) {
@@ -293,11 +324,11 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
       const report = await reflectMemoryKernel();
       setReflectionReport(report);
     } catch (error) {
-      showGlobalNotification('error', error instanceof Error ? error.message : '生成整理建议失败');
+      showGlobalNotification('error', error instanceof Error ? error.message : t('settings:memory.kernel.reflectionError'));
     } finally {
       setBusy(false);
     }
-  }, [reflectionReport, busy]);
+  }, [reflectionReport, busy, t]);
 
   const handlePromoteProposal = useCallback(async (instruction: string, scope: string) => {
     if (busy) return;
@@ -310,18 +341,20 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
       setView(updated);
       invalidateMemoryKernelAttributionCache(updated);
       setReflectionReport(await reflectMemoryKernel().catch(() => null));
-      showGlobalNotification('success', '已升格为常驻硬规则');
+      void refreshAuditLogs();
+      showGlobalNotification('success', t('settings:memory.kernel.promoteSuccess'));
     } catch (error) {
-      showGlobalNotification('error', error instanceof Error ? error.message : '升格规则失败');
+      showGlobalNotification('error', error instanceof Error ? error.message : t('settings:memory.kernel.promoteError'));
     } finally {
       setBusy(false);
     }
-  }, [busy]);
+  }, [busy, refreshAuditLogs, t]);
 
   if (unavailable || !view) return null;
 
   const rules = view.hardRules.rules;
   const profile = view.learnerProfile;
+  const historyCount = view.profileHistory.length + auditLogs.length;
 
   return (
     <section
@@ -337,21 +370,21 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
         >
           {expanded ? <CaretDown size={13} /> : <CaretRight size={13} />}
           <Sparkle size={14} className="text-primary" weight="fill" />
-          <span>长期记忆内核</span>
+          <span>{t('settings:memory.kernel.title')}</span>
           <span className="text-[11px] font-normal text-muted-foreground">
-            新会话首轮自动生效，会话内保持稳定
+            {t('settings:memory.kernel.subtitle')}
           </span>
         </button>
 
         {view.privacyMode && (
           <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400">
-            <WarningCircle size={11} /> 隐私模式暂停注入
+            <WarningCircle size={11} /> {t('settings:memory.kernel.privacyPaused')}
           </span>
         )}
 
         <div className="ml-auto flex flex-wrap items-center gap-2">
-          <BudgetBar label="规则" used={view.budgets.rulesChars} max={view.budgets.rulesMaxChars} />
-          <BudgetBar label="画像" used={view.budgets.profileChars} max={view.budgets.profileMaxChars} />
+          <BudgetBar label={t('settings:memory.kernel.budgetRules')} used={view.budgets.rulesChars} max={view.budgets.rulesMaxChars} />
+          <BudgetBar label={t('settings:memory.kernel.budgetProfile')} used={view.budgets.profileChars} max={view.budgets.profileMaxChars} />
           <DsButton
             variant="ghost"
             size="sm"
@@ -359,10 +392,10 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
             disabled={busy}
             onClick={() => void handleToggleReflection()}
             className="h-6 px-2 text-[11px]"
-            title="基于薄弱点复发与规则预算生成一键整理建议"
+            title={t('settings:memory.kernel.reflectionTitle')}
           >
             <Sparkle size={12} className="mr-1" />
-            {reflectionReport ? '收起建议' : '梳理建议'}
+            {reflectionReport ? t('settings:memory.kernel.collapseSuggestions') : t('settings:memory.kernel.reflectionButton')}
           </DsButton>
           <DsButton
             variant="ghost"
@@ -371,28 +404,28 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
             className="h-6 px-2 text-[11px]"
           >
             <Eye size={12} className="mr-1" />
-            {showPreview ? '收起注入内容' : '预览注入内容'}
+            {showPreview ? t('settings:memory.kernel.collapsePreview') : t('settings:memory.kernel.previewButton')}
           </DsButton>
           <DsButton
             variant="ghost"
             size="sm"
-            disabled={view.profileHistory.length === 0}
+            disabled={historyCount === 0}
             onClick={() => {
-              if (view.profileHistory.length === 0) return;
+              if (historyCount === 0) return;
               setShowHistory(prev => !prev);
             }}
             className={cn(
               'h-6 px-2 text-[11px]',
-              view.profileHistory.length === 0 && 'text-muted-foreground disabled:pointer-events-auto'
+              historyCount === 0 && 'text-muted-foreground disabled:pointer-events-auto'
             )}
             title={
-              view.profileHistory.length === 0
-                ? EMPTY_HISTORY_TOOLTIP
-                : '查看最近 10 个画像版本并一键回滚'
+              historyCount === 0
+                ? t('settings:memory.kernel.emptyHistoryTooltip')
+                : t('settings:memory.kernel.historyTooltip')
             }
           >
             <ClockCounterClockwise size={12} className="mr-1" />
-            历史 ({view.profileHistory.length})
+            {t('settings:memory.kernel.historyButton', { count: historyCount })}
           </DsButton>
         </div>
       </div>
@@ -411,7 +444,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                   onClick={() => setReflectionReport(null)}
                   className="text-[11px] text-muted-foreground hover:text-foreground"
                 >
-                  关闭
+                  {t('common:actions.close')}
                 </button>
               </div>
               {reflectionReport.proposals.length > 0 && (
@@ -436,7 +469,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                           )}
                           className="h-6 shrink-0 px-2 text-[11px] text-primary"
                         >
-                          升格硬规则
+                          {t('settings:memory.kernel.promoteRule')}
                         </DsButton>
                       )}
                       {p.kind === 'resolve_rule_conflict' && typeof p.suggestedPayload?.ruleBId === 'string' && (
@@ -455,16 +488,17 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                               setView(updated);
                               invalidateMemoryKernelAttributionCache(updated);
                               setReflectionReport(await reflectMemoryKernel().catch(() => null));
-                              showGlobalNotification('success', '已移除冲突规则并刷新记忆整理建议');
+                              void refreshAuditLogs();
+                              showGlobalNotification('success', t('settings:memory.kernel.conflictResolved'));
                             } catch (error) {
-                              showGlobalNotification('error', error instanceof Error ? error.message : '处理冲突失败');
+                              showGlobalNotification('error', error instanceof Error ? error.message : t('settings:memory.kernel.conflictResolveError'));
                             } finally {
                               setBusy(false);
                             }
                           }}
                           className="h-6 shrink-0 px-2 text-[11px] text-destructive hover:bg-destructive/10"
                         >
-                          移除后一条
+                          {t('settings:memory.kernel.removeLatterRule')}
                         </DsButton>
                       )}
                       {p.kind === 'retire_stale_weak_point'
@@ -480,7 +514,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                           )}
                           className="h-6 shrink-0 px-2 text-[11px] text-muted-foreground hover:text-foreground"
                         >
-                          标记已掌握
+                          {t('settings:memory.kernel.markMastered')}
                         </DsButton>
                       )}
                     </div>
@@ -494,14 +528,16 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="text-xs font-medium text-foreground/85">
-                互动硬规则（首轮 100% 强制遵循）
+                {t('settings:memory.kernel.hardRulesTitle')}
               </div>
-              <span className="text-[11px] text-muted-foreground">{rules.length} 条</span>
+              <span className="text-[11px] text-muted-foreground">
+                {t('settings:memory.kernel.rulesCount', { count: rules.length })}
+              </span>
             </div>
 
             {rules.length === 0 ? (
               <div className="text-[11px] text-muted-foreground/75 px-2.5 py-2 rounded border border-dashed border-border/50">
-                暂无常驻规则。可添加如「每次回答结尾附 1 道变式自测题，先不给答案」。
+                {t('settings:memory.kernel.noRulesHint')}
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -514,7 +550,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                     <div className="flex-1 min-w-0 leading-relaxed">
                       {rule.pinned && (
                         <span className="inline-flex items-center gap-0.5 mr-1.5 rounded bg-primary/10 px-1 py-0.5 text-[10px] font-medium text-primary">
-                          <PushPin size={10} weight="fill" /> 必遵
+                          <PushPin size={10} weight="fill" /> {t('settings:memory.kernel.pinned')}
                         </span>
                       )}
                       {rule.scope !== 'global' && (
@@ -531,8 +567,10 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                         disabled={busy}
                         onClick={() => void handleRemoveRule(rule)}
                         className="h-6 w-6 p-0 shrink-0 text-muted-foreground hover:text-destructive"
-                        aria-label={`删除规则：${rule.instruction.slice(0, 24)}`}
-                        title="删除规则"
+                        aria-label={t('settings:memory.kernel.deleteRuleAria', {
+                          preview: rule.instruction.slice(0, 24),
+                        })}
+                        title={t('settings:memory.kernel.deleteRuleTitle')}
                       >
                         <Trash size={12} />
                       </DsButton>
@@ -548,7 +586,9 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                 className="flex items-center justify-between gap-2 rounded-md border border-amber-500/35 bg-amber-500/10 px-2.5 py-1.5 text-xs text-foreground"
               >
                 <span className="truncate">
-                  已删除规则「{pendingUndoRule.instruction}」
+                  {t('settings:memory.kernel.deletedRuleToast', {
+                    instruction: pendingUndoRule.instruction,
+                  })}
                 </span>
                 <DsButton
                   variant="ghost"
@@ -559,7 +599,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                   className="h-6 px-2 text-[11px] shrink-0 text-primary hover:text-primary"
                 >
                   <ArrowUUpLeft size={12} className="mr-1" />
-                  撤销
+                  {t('settings:memory.kernel.undo')}
                 </DsButton>
               </div>
             )}
@@ -570,7 +610,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                 value={newRuleText}
                 onChange={e => setNewRuleText(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleAddRule(); } }}
-                placeholder="新增常驻互动规则，例如：每次讲解结束后附 1 道自测题..."
+                placeholder={t('settings:memory.kernel.addRulePlaceholder')}
                 className="h-8 text-xs flex-1 min-w-[200px]"
                 disabled={busy}
               />
@@ -581,17 +621,20 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                 disabled={busy}
               >
                 {SCOPE_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>
                 ))}
               </select>
-              <label className="inline-flex items-center gap-1 text-[11px] text-muted-foreground px-1 select-none cursor-pointer">
+              <label
+                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground px-1 select-none cursor-pointer"
+                title={t('settings:memory.kernel.addRulePinTitle')}
+              >
                 <input
                   type="checkbox"
                   checked={newRulePinned}
                   onChange={e => setNewRulePinned(e.target.checked)}
                   disabled={busy}
                 />
-                必遵
+                {t('settings:memory.kernel.pinned')}
               </label>
               <DsButton
                 variant="primary"
@@ -600,7 +643,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                 onClick={() => void handleAddRule()}
                 className="h-8 px-2.5 text-xs"
               >
-                <Plus size={12} className="mr-1" /> 添加规则
+                <Plus size={12} className="mr-1" /> {t('settings:memory.kernel.addRuleButton')}
               </DsButton>
             </div>
           </div>
@@ -610,11 +653,11 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
             {/* Weak points */}
             <div className="space-y-1.5">
               <div className="text-xs font-medium text-foreground/85">
-                活跃薄弱点（{profile.weak_points.length}）
+                {t('settings:memory.kernel.weakPointsTitle', { count: profile.weak_points.length })}
               </div>
               {profile.weak_points.length === 0 ? (
                 <div className="text-[11px] text-muted-foreground/70">
-                  暂无活跃薄弱点（做题/闪卡/作文批改会自动沉淀）。
+                  {t('settings:memory.kernel.noWeakPoints')}
                 </div>
               ) : (
                 <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
@@ -639,7 +682,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                         disabled={busy}
                         onClick={() => void handleRemoveWeakPoint(wp.subject, wp.knowledge_point)}
                         className="h-5 w-5 p-0 shrink-0 text-muted-foreground hover:text-destructive"
-                        title="移出薄弱点"
+                        title={t('settings:memory.kernel.removeWeakPointTitle')}
                       >
                         <Trash size={11} />
                       </DsButton>
@@ -652,7 +695,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
             {/* Goals */}
             <div className="space-y-1.5">
               <div className="text-xs font-medium text-foreground/85">
-                学习目标（{profile.goals.length}）
+                {t('settings:memory.kernel.goalsTitle', { count: profile.goals.length })}
               </div>
               <div className="space-y-1">
                 {profile.goals.map(g => (
@@ -668,7 +711,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                       disabled={busy}
                       onClick={() => void handleRemoveGoal(g.goal)}
                       className="h-5 w-5 p-0 shrink-0 text-muted-foreground hover:text-destructive"
-                      title="移除目标"
+                      title={t('settings:memory.kernel.removeGoalTitle')}
                     >
                       <Trash size={11} />
                     </DsButton>
@@ -679,7 +722,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                     value={newGoalText}
                     onChange={e => setNewGoalText(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleAddGoal(); } }}
-                    placeholder="添加学习目标，如：12 月前拿下雅思写作 7.0"
+                    placeholder={t('settings:memory.kernel.addGoalPlaceholder')}
                     className="h-7 text-[11px] flex-1"
                     disabled={busy}
                   />
@@ -701,42 +744,97 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
           {showPreview && (
             <div className="rounded border border-border/45 bg-muted/40 p-2.5 space-y-1">
               <div className="text-[11px] font-medium text-muted-foreground">
-                AI 在新会话首轮自动读取的长期记忆注入内容（会话内保持稳定）：
+                {t('settings:memory.kernel.previewHeading')}
               </div>
               <pre className="text-[11px] text-foreground/90 whitespace-pre-wrap break-words font-mono max-h-48 overflow-y-auto">
-                {view.renderedKernelPreview || '（当前内核为空）'}
+                {view.renderedKernelPreview || t('settings:memory.kernel.previewEmpty')}
               </pre>
             </div>
           )}
 
-          {/* 4. 10 版历史回滚抽屉 */}
-          {showHistory && view.profileHistory.length > 0 && (
-            <div className="rounded border border-border/45 bg-muted/30 p-2.5 space-y-1.5">
-              <div className="text-[11px] font-medium text-muted-foreground">
-                学习者画像历史快照（最近 10 版，点击一键回滚）
-              </div>
-              <div className="space-y-1 max-h-40 overflow-y-auto">
-                {view.profileHistory.map(snap => (
-                  <div
-                    key={snap.version}
-                    className="flex items-center justify-between gap-2 rounded bg-background/80 px-2 py-1 text-[11px]"
-                  >
-                    <span className="text-foreground">
-                      v{snap.version} · 薄弱点 {snap.weak_points.length} · 目标 {snap.goals.length}
-                      {snap.updated_at ? ` · ${snap.updated_at.slice(0, 16).replace('T', ' ')}` : ''}
-                    </span>
-                    <DsButton
-                      variant="ghost"
-                      size="sm"
-                      disabled={busy || snap.version === profile.version}
-                      onClick={() => void handleRollback(snap.version)}
-                      className="h-6 px-2 text-[11px]"
-                    >
-                      {snap.version === profile.version ? '当前版本' : '回滚'}
-                    </DsButton>
+          {/* 4. 审计变更历史 & 10 版画像快照回滚抽屉 */}
+          {showHistory && historyCount > 0 && (
+            <div className="rounded border border-border/45 bg-muted/30 p-2.5 space-y-2.5" data-testid="memory-kernel-history-drawer">
+              {auditLogs.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] font-medium text-muted-foreground">
+                    {t('settings:memory.kernel.auditHeading', { count: auditLogs.length })}
                   </div>
-                ))}
-              </div>
+                  <div className="space-y-1 max-h-44 overflow-y-auto">
+                    {auditLogs.map((entry) => {
+                      const opUpper = (entry.event ?? entry.operation ?? '').toUpperCase();
+                      const opBadge = opUpper.includes('ADD') || opUpper.includes('CREATE')
+                        ? t('settings:memory.kernel.auditOpAdd')
+                        : opUpper.includes('DELETE') || opUpper.includes('REMOVE')
+                          ? t('settings:memory.kernel.auditOpDelete')
+                          : t('settings:memory.kernel.auditOpUpdate');
+                      return (
+                        <div
+                          key={entry.id}
+                          className="flex items-start justify-between gap-2 rounded bg-background/80 px-2 py-1 text-[11px]"
+                        >
+                          <div className="min-w-0 flex-1 space-y-0.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="rounded bg-primary/10 px-1 py-0.5 text-[10px] font-medium text-primary shrink-0">
+                                {opBadge}
+                              </span>
+                              <span className="font-medium text-foreground truncate">
+                                {entry.title || entry.operation}
+                              </span>
+                            </div>
+                            {(entry.contentPreview || entry.reason) && (
+                              <div className="text-[10px] text-muted-foreground truncate">
+                                {entry.contentPreview || entry.reason}
+                              </div>
+                            )}
+                          </div>
+                          {entry.timestamp && (
+                            <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                              {entry.timestamp.slice(0, 16).replace('T', ' ')}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {view.profileHistory.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] font-medium text-muted-foreground">
+                    {t('settings:memory.kernel.historyHeading')}
+                  </div>
+                  <div className="space-y-1 max-h-40 overflow-y-auto">
+                    {view.profileHistory.map(snap => (
+                      <div
+                        key={snap.version}
+                        className="flex items-center justify-between gap-2 rounded bg-background/80 px-2 py-1 text-[11px]"
+                      >
+                        <span className="text-foreground">
+                          {t('settings:memory.kernel.snapshotSummary', {
+                            version: snap.version,
+                            weakCount: snap.weak_points.length,
+                            goalCount: snap.goals.length,
+                          })}
+                          {snap.updated_at ? ` · ${snap.updated_at.slice(0, 16).replace('T', ' ')}` : ''}
+                        </span>
+                        <DsButton
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy || snap.version === profile.version}
+                          onClick={() => void handleRollback(snap.version)}
+                          className="h-6 px-2 text-[11px]"
+                        >
+                          {snap.version === profile.version
+                            ? t('settings:memory.kernel.currentVersion')
+                            : t('settings:memory.kernel.rollback')}
+                        </DsButton>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

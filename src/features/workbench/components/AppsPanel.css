@@ -47,6 +47,7 @@
 .wb-apps-backdrop {
   position: absolute;
   inset: 0;
+  z-index: 0;
   background: transparent;
 }
 
@@ -54,6 +55,7 @@
 
 .wb-apps-panel {
   position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   width: min(720px, 100%);
@@ -90,6 +92,8 @@
 /* ==== 头部 / 搜索 ======================================================= */
 
 .wb-apps-header {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -140,6 +144,7 @@
 
 .wb-apps-search-wrap {
   position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -147,6 +152,7 @@
   padding: 8px 12px;
   flex: none;
   border-radius: 10px;
+  pointer-events: auto;
   /* 玻璃面搜索框：低透明墨色 inset + 发丝边框，不用实色灰底 */
   border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
   background: color-mix(in hsl, hsl(var(--foreground)) 5%, transparent 95%);
@@ -172,6 +178,7 @@
 .wb-apps-search-icon {
   flex: none;
   opacity: 0.55;
+  pointer-events: none;
   transition: opacity var(--wb-apps-duration) var(--wb-apps-ease);
 }
 
@@ -180,6 +187,8 @@
 }
 
 .wb-apps-search {
+  position: relative;
+  z-index: 1;
   flex: 1;
   min-width: 0;
   border: none;
@@ -188,6 +197,7 @@
   color: inherit;
   font-size: 14px;
   line-height: 1.4;
+  pointer-events: auto;
 }
 
 .wb-apps-search::placeholder {
@@ -239,18 +249,29 @@
 /* ==== 列表 / 网格 ======================================================= */
 
 .wb-apps-body {
-  flex: 1;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
   min-height: 0;
+  overflow: hidden;
 }
 
-.wb-apps-body-viewport {
-  padding: 4px 12px 16px;
+.wb-apps-body-viewport,
+.wb-apps-body .wb-apps-body-viewport[data-overlayscrollbars-viewport] {
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 4px 12px calc(20px + var(--wb-dock-clearance, 0px));
 }
 
 .wb-apps-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
   gap: 6px;
+  width: 100%;
+  min-width: 0;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -260,6 +281,8 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  width: 100%;
+  min-width: 0;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -588,5 +611,29 @@
 
   .wb-apps-search {
     font-size: 16px;
+  }
+}
+
+/* ==== 窄屏（<= 640px，如 360px 手机端）：垂直滚动与底部 Dock 避让 =========== */
+
+@media (max-width: 640px) {
+  .wb-apps-root {
+    padding: 12px 12px calc(76px + var(--wb-dock-clearance, 0px));
+  }
+
+  .wb-apps-panel {
+    max-height: 100%;
+  }
+
+  .wb-apps-body,
+  .wb-apps-body-viewport,
+  .wb-apps-body .wb-apps-body-viewport[data-overlayscrollbars-viewport] {
+    min-height: 0;
+  }
+
+  .wb-apps-body-viewport,
+  .wb-apps-body .wb-apps-body-viewport[data-overlayscrollbars-viewport] {
+    overflow-y: auto;
+    padding-bottom: calc(20px + var(--wb-dock-clearance, 0px));
   }
 }

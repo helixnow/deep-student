@@ -77,6 +77,7 @@ const TabsList = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
       onKeyDown={(event) => {
         onKeyDown?.(event);
         if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+        if ((event.target as HTMLElement)?.getAttribute?.('role') !== 'tab') return;
         const list = event.currentTarget;
         const tabs = Array.from(list.querySelectorAll<HTMLButtonElement>('[role="tab"]')).filter(
           (tab) => !tab.disabled && tab.closest('[role="tablist"]') === list
@@ -142,27 +143,52 @@ TabsTrigger.displayName = 'TabsTrigger';
 
 interface TabsContentProps extends React.HTMLAttributes<HTMLDivElement> {
   value: string;
+  /** 切走时保留子树挂载并用 hidden 隐藏，避免表单草稿丢失 */
+  forceMount?: boolean;
 }
 
-const TabsContent = React.forwardRef<HTMLDivElement, TabsContentProps>(({ className, value, ...props }, ref) => {
-  const ctx = React.useContext(TabsContext);
-  const { register } = ctx;
-  const active = ctx.value === value;
-  React.useLayoutEffect(() => (active ? register?.('panel', value) : undefined), [active, register, value]);
-  // 非激活状态直接不渲染，避免 hidden 属性被 flex 等 display 类覆盖
-  if (!active) return null;
-  return (
-    <div
-      ref={ref}
-      role="tabpanel"
-      id={partId(ctx.baseId, 'panel', value)}
-      aria-labelledby={ctx.triggers.includes(value) ? partId(ctx.baseId, 'trigger', value) : undefined}
-      // ui-rise-in：切换 tab 重挂载时播放 fade + 4px 上升入场（transitions-dev token）
-      className={cn('mt-4 ui-rise-in ring-offset-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)]', className)}
-      {...props}
-    />
-  );
-});
+const TabsContent = React.forwardRef<HTMLDivElement, TabsContentProps>(
+  ({ className, value, forceMount = false, children, ...props }, ref) => {
+    const ctx = React.useContext(TabsContext);
+    const { register } = ctx;
+    const active = ctx.value === value;
+    React.useLayoutEffect(
+      () => (active || forceMount ? register?.('panel', value) : undefined),
+      [active, forceMount, register, value]
+    );
+    // 默认在非激活态卸载，避免 hidden 属性被 flex 等 display 类覆盖；显式 forceMount 时保留 DOM 但用 hidden + hidden 类隐藏
+    if (!active && !forceMount) return null;
+    if (!active && forceMount) {
+      return (
+        <div
+          ref={ref}
+          role="tabpanel"
+          hidden
+          id={partId(ctx.baseId, 'panel', value)}
+          aria-labelledby={ctx.triggers.includes(value) ? partId(ctx.baseId, 'trigger', value) : undefined}
+          data-state="inactive"
+          className={cn('hidden', className)}
+          {...props}
+        >
+          {children}
+        </div>
+      );
+    }
+    return (
+      <div
+        ref={ref}
+        role="tabpanel"
+        id={partId(ctx.baseId, 'panel', value)}
+        aria-labelledby={ctx.triggers.includes(value) ? partId(ctx.baseId, 'trigger', value) : undefined}
+        // ui-rise-in：切换 tab 重挂载时播放 fade + 4px 上升入场（transitions-dev token）
+        className={cn('mt-4 ui-rise-in ring-offset-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)]', className)}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  }
+);
 TabsContent.displayName = 'TabsContent';
 
 export { Tabs, TabsList, TabsTrigger, TabsContent };

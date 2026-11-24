@@ -315,4 +315,30 @@ describe('MemoryToolExecutor curation tools', () => {
     expect(cancelled.result.success).toBe(false);
     expect(cancelled.result.error).toContain('cancelled');
   });
+
+  it('memory_write_smart accepts short 27-36 char facts cleanly and filters ephemeral daily schedule markers', async () => {
+    const { executor } = await setup();
+
+    // Short 30-char fact with surrounding whitespace (S4-04 / S4-05 regression)
+    const shortFact = '  偏好用双语对比讲解高数概念与推导  ';
+    expect([...shortFact.trim()].length).toBeLessThanOrEqual(200);
+    const saved = await call(executor, 'memory_write_smart', {
+      title: '学习偏好',
+      content: shortFact,
+      memory_type: 'fact',
+    });
+    expect(saved.result.success).toBe(true);
+    expect(saved.output).toMatchObject({ event: 'ADD', is_new: true });
+
+    // Ephemeral one-off schedule markers must be filtered and never written to long-term core memory
+    for (const marker of ['今天临时改去三教上自习', '今晚临时加班做实验', '仅限今天使用英文回复', '临时安排明早八点开会', 'temporary schedule change for today']) {
+      const blocked = await call(executor, 'memory_write_smart', {
+        title: '临时情况',
+        content: marker,
+        memory_type: 'fact',
+      });
+      expect(blocked.result.success).toBe(true);
+      expect(blocked.output).toMatchObject({ event: 'FILTERED', is_new: false });
+    }
+  });
 });

@@ -133,8 +133,16 @@
     "draftUntested": "Draft not tested: the current form content is not published and does not affect the published configuration",
     "draftTested": "Draft tested successfully but not published yet — click Save Configuration to make it effective",
     "draftTestFailed": "Draft test failed. Nothing was published; the published configuration is unchanged",
+    "draftTestFailedWithReason": "Draft test failed. Nothing was published; the published configuration is unchanged: {{reason}}",
+    "unsavedTestFailed": "Connection test failed",
+    "unsavedTestFailedWithReason": "Connection test failed: {{reason}}",
     "testing": "Testing the draft connection...",
     "published": "Configuration published"
+  },
+  "validation": {
+    "embeddedCredentials": "Do not embed credentials in the URL; enter username and password in the dedicated fields below",
+    "insecureHttpUrl": "Plaintext HTTP is not allowed (only localhost/loopback addresses may use http://; use https:// elsewhere)",
+    "rootPathTraversal": "Root path cannot contain \"..\" path traversal segments"
   },
 
   "clearConfirm": {

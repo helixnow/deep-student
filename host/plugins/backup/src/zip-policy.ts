@@ -134,7 +134,11 @@ export function validateImportArchive(entries: readonly ArchiveEntryInfo[]): voi
  * 其余目录条目仍按 Rust 拒绝。
  */
 // RUST-FIX(RF-W08-sealed-archive-implicit-parent-dirs): Rust 拒绝任何目录条目，早期 Electron 版的加密备份因此无法导入。
-export function validateSecretsArchive(entries: readonly ArchiveEntryInfo[]): ArchiveEntryInfo[] {
+export function validateSecretsArchive(
+  entries: readonly ArchiveEntryInfo[],
+  options: { allowFullArchive?: boolean } = {},
+): ArchiveEntryInfo[] {
+  const allowFullArchive = options.allowFullArchive === true;
   if (entries.length > MAX_ARCHIVE_FILES) throw tooManyEntries(entries.length, MAX_ARCHIVE_FILES);
   const fileNames = entries.filter(entry => !entry.isDirectory).map(entry => entry.name);
   const isImplicitParent = (name: string): boolean => fileNames.some(file => file.startsWith(`${name}/`));
@@ -150,11 +154,11 @@ export function validateSecretsArchive(entries: readonly ArchiveEntryInfo[]): Ar
     if (name.includes('\r') || name.includes('\n')) throw new Error(`密封载荷路径包含换行符: ${JSON.stringify(name)}`);
     if (!paths.add(name)) throw new Error(`密封载荷包含重复路径: ${name}`);
     if (entry.isDirectory) {
-      if (isPortableExcludedRelativePath(name) && isImplicitParent(name)) continue;
+      if ((allowFullArchive || isPortableExcludedRelativePath(name)) && isImplicitParent(name)) continue;
       throw new Error(`密封载荷不允许包含目录条目: ${name}`);
     }
     if (name === 'manifest.json') hasManifest = true;
-    else if (!isPortableExcludedRelativePath(name)) {
+    else if (!allowFullArchive && !isPortableExcludedRelativePath(name)) {
       throw new Error(`密封载荷只允许包含敏感数据与原始清单，发现越权条目: ${name}`);
     }
     totalUncompressed += BigInt(entry.size);

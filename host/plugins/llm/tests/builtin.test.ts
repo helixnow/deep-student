@@ -375,4 +375,11 @@ describe('builtin_vendors.rs', () => {
     expect(vendorById('builtin-doubao').name).toBe('ByteDance Doubao');
     expect(vendorById('builtin-moonshot').name).toBe('Moonshot AI');
   });
+
+  it('builtin_models_expose_clean_english_labels_without_cjk_leak', () => {
+    const cjk = /[\u4e00-\u9fff]/;
+    for (const model of BUILTIN_MODELS) {
+      expect(cjk.test(model.label), `${model.id}.label should be English`).toBe(false);
+    }
+  });
 });

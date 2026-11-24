@@ -23,6 +23,8 @@ import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Z_INDEX } from '@/config/zIndex';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { UserAgreementDialog } from '@/components/legal/UserAgreementDialog';
+import { PrivacyPolicyDialog } from '@/components/legal/PrivacyPolicyDialog';
 import { QuickByokProvisionerCard } from './byok';
 import type { ApiConfig } from '@/types';
 
@@ -192,6 +194,10 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
   const isAiReady = resolvedPreconfigured !== null;
   const readyModelLabel = resolvedPreconfigured?.modelLabel ?? null;
 
+  const [activeLegalDoc, setActiveLegalDoc] = useState<'terms' | 'privacy' | null>(null);
+  const activeLegalDocRef = useRef<'terms' | 'privacy' | null>(null);
+  activeLegalDocRef.current = activeLegalDoc;
+
   // 入场动画
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
@@ -224,6 +230,10 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
   onSkipRef.current = onSkip;
   useEffect(() => {
     return registerBackHandler(() => {
+      if (activeLegalDocRef.current !== null) {
+        setActiveLegalDoc(null);
+        return true;
+      }
       onSkipRef.current();
       return true;
     }, BACK_PRIORITY.overlay);
@@ -232,6 +242,14 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
   // Esc 关闭（等价于"先随便看看"）+ Tab 焦点圈定在面板内
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (activeLegalDocRef.current !== null) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          setActiveLegalDoc(null);
+        }
+        return;
+      }
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
@@ -267,6 +285,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
   );
 
   const currentLanguage = i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US';
+  const isZh = (i18n.resolvedLanguage ?? i18n.language).toLowerCase().startsWith('zh');
 
   const features: FeatureRow[] = [
     {
@@ -428,43 +447,114 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           </div>
         </div>
 
-        {/* 底部操作栏 */}
-        <div className="flex-shrink-0 flex items-center justify-between gap-2 border-t border-border/35 px-4 py-3.5 sm:px-6">
-          <DsButton
-            variant="ghost"
-            size="md"
-            className="text-[13px] [@media(pointer:coarse)]:!min-h-11"
-            onClick={onConfigure}
+        {/* 底部操作栏 + 非阻塞条款声明 */}
+        <div className="flex-shrink-0 border-t border-border/35 px-4 py-3.5 sm:px-6">
+          <div className="flex items-center justify-between gap-2">
+            <DsButton
+              variant="ghost"
+              size="md"
+              className="text-[13px] [@media(pointer:coarse)]:!min-h-11"
+              onClick={onConfigure}
+            >
+              {isAiReady
+                ? t('settings:vendor_panel.welcome_ai_ready_cta_manage', {
+                    defaultValue: t('welcome_onboarding.cta_configure'),
+                  })
+                : t('settings:byok.fullSettingsLink', {
+                    defaultValue: t('welcome_onboarding.cta_configure'),
+                  })}
+            </DsButton>
+            <DsButton
+              variant={isAiReady ? 'primary' : 'ghost'}
+              size="md"
+              className={cn(
+                'text-[13px] [@media(pointer:coarse)]:!min-h-11',
+                !isAiReady && 'text-foreground/55',
+              )}
+              onClick={onSkip}
+            >
+              {isAiReady
+                ? t('settings:vendor_panel.welcome_ai_ready_cta_start', {
+                    defaultValue: t('welcome_onboarding.cta_skip'),
+                  })
+                : t('welcome_onboarding.cta_skip')}
+            </DsButton>
+          </div>
+          <p
+            data-testid="onboarding-legal-notice"
+            className="mt-2.5 text-center text-[11px] leading-relaxed text-foreground/50"
           >
-            {isAiReady
-              ? t('settings:vendor_panel.welcome_ai_ready_cta_manage', {
-                  defaultValue: t('welcome_onboarding.cta_configure'),
-                })
-              : t('settings:byok.fullSettingsLink', {
-                  defaultValue: t('welcome_onboarding.cta_configure'),
-                })}
-          </DsButton>
-          <DsButton
-            variant={isAiReady ? 'primary' : 'ghost'}
-            size="md"
-            className={cn(
-              'text-[13px] [@media(pointer:coarse)]:!min-h-11',
-              !isAiReady && 'text-foreground/55',
+            {isZh ? (
+              <>
+                {'继续使用即表示同意'}
+                <button
+                  type="button"
+                  data-testid="onboarding-terms-link"
+                  onClick={() => setActiveLegalDoc('terms')}
+                  className="mx-0.5 cursor-pointer rounded-sm text-foreground/75 underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {`《${t('legal.userAgreement.agreementTitle', { defaultValue: '用户协议' })}》`}
+                </button>
+                {'与'}
+                <button
+                  type="button"
+                  data-testid="onboarding-privacy-link"
+                  onClick={() => setActiveLegalDoc('privacy')}
+                  className="mx-0.5 cursor-pointer rounded-sm text-foreground/75 underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {`《${t('legal.privacyPolicy.title', { defaultValue: '隐私政策' })}》`}
+                </button>
+              </>
+            ) : (
+              <>
+                {'By continuing, you agree to the '}
+                <button
+                  type="button"
+                  data-testid="onboarding-terms-link"
+                  onClick={() => setActiveLegalDoc('terms')}
+                  className="cursor-pointer rounded-sm text-foreground/75 underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {t('legal.userAgreement.agreementTitle', { defaultValue: 'User Agreement' })}
+                </button>
+                {' and '}
+                <button
+                  type="button"
+                  data-testid="onboarding-privacy-link"
+                  onClick={() => setActiveLegalDoc('privacy')}
+                  className="cursor-pointer rounded-sm text-foreground/75 underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  {t('legal.privacyPolicy.title', { defaultValue: 'Privacy Policy' })}
+                </button>
+                {'.'}
+              </>
             )}
-            onClick={onSkip}
-          >
-            {isAiReady
-              ? t('settings:vendor_panel.welcome_ai_ready_cta_start', {
-                  defaultValue: t('welcome_onboarding.cta_skip'),
-                })
-              : t('welcome_onboarding.cta_skip')}
-          </DsButton>
+          </p>
         </div>
       </div>
     </div>
   );
 
-  return createPortal(dialog, document.body);
+  return (
+    <>
+      {createPortal(dialog, document.body)}
+      {activeLegalDoc === 'terms' && (
+        <UserAgreementDialog
+          preview
+          open
+          onClose={() => setActiveLegalDoc(null)}
+          onAccept={() => setActiveLegalDoc(null)}
+        />
+      )}
+      {activeLegalDoc === 'privacy' && (
+        <PrivacyPolicyDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setActiveLegalDoc(null);
+          }}
+        />
+      )}
+    </>
+  );
 };
 
 export default WelcomeOnboardingDialog;

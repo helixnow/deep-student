@@ -198,11 +198,18 @@ export const NoteSourceEditor = forwardRef<NoteSourceEditorHandle, NoteSourceEdi
     onBlurRef.current = onBlur;
     readOnlyRef.current = readOnly;
 
+    const pendingFocusRef = useRef(false);
+
     useImperativeHandle(
       ref,
       () => ({
         focus: () => {
-          cmRef.current?.view?.focus();
+          const view = cmRef.current?.view;
+          if (view) {
+            view.focus();
+          } else {
+            pendingFocusRef.current = true;
+          }
         },
         openSearch: () => {
           const view = cmRef.current?.view;
@@ -241,11 +248,14 @@ export const NoteSourceEditor = forwardRef<NoteSourceEditorHandle, NoteSourceEdi
       return () => observer.disconnect();
     }, []);
 
-    const resolvedAriaLabel = ariaLabel ?? t('notes:sourceMode.aria_label', 'Markdown 源码编辑器');
+    const resolvedAriaLabel = ariaLabel ?? t('notes:sourceMode.aria_label', { defaultValue: 'Markdown 源码编辑器' });
 
     const extensions = useMemo(() => {
       const contentAttrs: Record<string, string> = {
+        role: 'textbox',
+        'aria-multiline': 'true',
         'aria-label': resolvedAriaLabel,
+        tabindex: '0',
       };
       if (readOnly) {
         contentAttrs['aria-readonly'] = 'true';
@@ -316,7 +326,21 @@ export const NoteSourceEditor = forwardRef<NoteSourceEditorHandle, NoteSourceEdi
             )}
           </span>
         </div>
-        <div className="notes-source-editor-body">
+        <div
+          className="notes-source-editor-body"
+          onMouseDown={(event) => {
+            if (event.button !== 0 || readOnly) return;
+            const target = event.target as HTMLElement;
+            if (target.closest('.cm-content')) return;
+            event.preventDefault();
+            const view = cmRef.current?.view;
+            if (view) {
+              view.focus();
+            } else {
+              pendingFocusRef.current = true;
+            }
+          }}
+        >
           <CodeMirror
             ref={cmRef}
             value={value}
@@ -326,6 +350,12 @@ export const NoteSourceEditor = forwardRef<NoteSourceEditorHandle, NoteSourceEdi
             editable={!readOnly}
             readOnly={readOnly}
             onChange={handleChange}
+            onCreateEditor={(view) => {
+              if (pendingFocusRef.current) {
+                pendingFocusRef.current = false;
+                requestAnimationFrame(() => view.focus());
+              }
+            }}
             height="auto"
           />
         </div>

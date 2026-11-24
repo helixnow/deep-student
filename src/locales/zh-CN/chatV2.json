@@ -270,6 +270,12 @@
       "hideErrorDetails": "收起错误详情",
       "genericError": "本次回复生成失败"
     },
+    "stoppedByUser": "已手动停止",
+    "editConfirm": {
+      "message": "编辑此消息将替换后续回复，是否继续？",
+      "confirm": "继续",
+      "cancel": "取消"
+    },
     "reconnect": {
       "inline": "正在重试 {{attempt}}/{{max}}"
     },
@@ -2871,5 +2877,9 @@
         "prompt": "请围绕当前锚点考查的知识点，命制一道难度相当的变式训练题并附简要解析。"
       }
     }
+  },
+  "header": {
+    "renameSession": "重命名会话",
+    "untitledSession": "未命名会话"
   }
 }

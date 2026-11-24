@@ -38,7 +38,7 @@ export function valuesToActivities(items: readonly unknown[]): string[] {
 }
 
 /** Phrases signaling strictly one-off / transient turn requests that must not pollute long-term profile/facts. */
-const TRANSIENT_ONLY_MARKER_RE = /(?:就这一次|仅此一次|仅这一次|这次例外|只搞笑这一次|这次不算|暂时只这一次|just\s+this\s+once|only\s+this\s+once|ignore\s+this\s+(?:part\s+)?for\s+memory|don'?t\s+remember\s+this)/i;
+const TRANSIENT_ONLY_MARKER_RE = /(?:就这一次|仅此一次|仅这一次|这次例外|只搞笑这一次|这次不算|暂时只这一次|今天临时|今晚临时|仅限今天|临时安排|temporary\s+schedule|just\s+this\s+once|only\s+this\s+once|ignore\s+this\s+(?:part\s+)?for\s+memory|don'?t\s+remember\s+this)/i;
 
 function isTransientPollutedCandidate(title: string, content: string, userContent?: string): boolean {
   const combined = `${title}\n${content}`;

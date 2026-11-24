@@ -85,7 +85,7 @@ export interface BackupTabProps {
   onVerifyBackup: (backupId: string) => void;
   onRestoreBackup: (backupId: string) => void;
   onExportZip: (backupId: string, compressionLevel: number, encryptionPassword?: string) => void;
-  onImportZip: (password?: string) => void;
+  onImportZip: (password?: string, filePath?: string) => void;
   // 后台任务相关
   backupProgress?: BackupJobEvent | null;
   isBackupRunning?: boolean;
@@ -342,10 +342,15 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   // 备份密码（可选）：非空时密封凭据等敏感材料，使全保真包可整槽恢复。
   // 外层业务归档仍为明文，用户可见文案必须明确这一边界。
   const [encryptionPassword, setEncryptionPassword] = useState('');
-  // 导入密码对话框
+  // 导入密码与 WebUI 暂存文件状态
   const [showImportPasswordDialog, setShowImportPasswordDialog] = useState(false);
   const [importPassword, setImportPassword] = useState('');
+  const [importFilePath, setImportFilePath] = useState('');
+  const [importFileName, setImportFileName] = useState('');
+  const [importFileError, setImportFileError] = useState<string | null>(null);
+  const [isStagingImportFile, setIsStagingImportFile] = useState(false);
   const [resumeImportJobId, setResumeImportJobId] = useState<string | null>(null);
+  const webUiMode = isWebUiShell();
 
   /** 与后端 MIN_ENCRYPTION_PASSWORD_CHARS / `chars().count()` 对齐（按 Unicode 标量，不是 UTF-16）。 */
   const MIN_E2EE_PASSWORD_CHARS = 8;
@@ -439,6 +444,53 @@ export const BackupTab: React.FC<BackupTabProps> = ({
   // 备份密码，换机/重装用户必须能用存量短口令解开旧加密 ZIP；口令错误由
   // 解封层 fail-closed（E_BACKUP_SEALED_DECRYPT_FAILED）。最小长度只约束
   // 导出（新设口令）路径。
+  const resetImportDialogState = () => {
+    setImportPassword('');
+    setImportFilePath('');
+    setImportFileName('');
+    setImportFileError(null);
+    setIsStagingImportFile(false);
+    setResumeImportJobId(null);
+  };
+
+  const handleStageWebImportFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setImportFileError(null);
+    setIsStagingImportFile(true);
+    try {
+      const response = await fetch(`/api/files/stage?name=${encodeURIComponent(file.name)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'X-File-Name': encodeURIComponent(file.name),
+        },
+        body: file,
+        credentials: 'same-origin',
+      });
+      if (!response.ok) {
+        const text = await response.text().catch(() => '');
+        throw new Error(text || `HTTP ${response.status}`);
+      }
+      const data = (await response.json()) as { path?: string; name?: string; size?: number };
+      if (!data.path) {
+        throw new Error('Missing staged file path');
+      }
+      setImportFilePath(data.path);
+      setImportFileName(data.name || file.name);
+      setImportFileError(null);
+    } catch (error) {
+      setImportFileError(
+        t('data:governance.import_file_upload_failed', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+      );
+    } finally {
+      setIsStagingImportFile(false);
+    }
+  };
+
   const handleImportConfirm = () => {
     if (resumeImportJobId && importPassword === '') {
       showGlobalNotification(
@@ -447,14 +499,21 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       );
       return;
     }
+    if (!resumeImportJobId && webUiMode && !importFilePath.trim()) {
+      setImportFileError(t('data:governance.import_file_required'));
+      return;
+    }
+    const pwd = importPassword || undefined;
+    const explicitPath = importFilePath.trim();
     setShowImportPasswordDialog(false);
     if (resumeImportJobId) {
       onResumeJob?.(resumeImportJobId, importPassword);
-      setResumeImportJobId(null);
+    } else if (explicitPath) {
+      onImportZip(pwd, explicitPath);
     } else {
-      onImportZip(importPassword || undefined);
+      onImportZip(pwd);
     }
-    setImportPassword('');
+    resetImportDialogState();
   };
 
   const handleResumeJob = (job: ResumableJob) => {
@@ -650,7 +709,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             <p className="text-xs text-success">
               {t('data:governance.e2ee_export_note', {
                 defaultValue:
-                  '已设置备份密码：API 凭据、密钥等敏感材料会被加密保护，输入同一密码后可整槽恢复；聊天记录、错题、文件等归档内容本身未加密，请勿通过不可信渠道传播。丢失密码后业务数据仍可读取，但凭据和整槽恢复资格将丢失。',
+                  '已设置备份密码：整个备份归档（数据库、笔记、附件与设置）将封装并由 AES-256-GCM 加密的 portable_secrets.dsbk 保护；输入同一密码后可整槽恢复。请妥善保管密码，丢失密码将无法解密或完成整槽恢复。',
               })}
             </p>
           ) : (
@@ -841,7 +900,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             variant="outline"
             size="sm"
             onClick={() => {
-              setResumeImportJobId(null);
+              resetImportDialogState();
               setShowImportPasswordDialog(true);
             }}
             disabled={loading || isBackupRunning}
@@ -1047,7 +1106,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       <DsButton
                         variant="ghost"
                         size="sm"
-                        className="h-7 w-7 p-0 max-md:min-h-11 max-md:min-w-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                        className="h-7 gap-1 px-2 whitespace-nowrap shrink-0 max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
                         onClick={() => handleRestoreClick(backup)}
                         disabled={isBackupRunning}
                         title={
@@ -1059,7 +1118,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         }
                         aria-label={t('data:governance.restore')}
                       >
-                        <ArrowCounterClockwise size={14} />
+                        <ArrowCounterClockwise size={14} className="shrink-0" />
+                        <span>{t('data:governance.restore')}</span>
                       </DsButton>
                       <DsButton
                         variant="ghost"
@@ -1116,7 +1176,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                 </span>
                 {renderVerificationBadge(backup)}
               </div>
-              <div className="flex items-center gap-1 border-t border-border/40 pt-1.5">
+              <div className="flex flex-wrap items-center gap-1 border-t border-border/40 pt-1.5">
                 <DsButton
                   variant="ghost"
                   size="icon"
@@ -1140,12 +1200,14 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                 </DsButton>
                 <DsButton
                   variant="ghost"
-                  size="icon"
+                  size="sm"
+                  className="gap-1 px-2 whitespace-nowrap shrink-0 [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => handleRestoreClick(backup)}
                   disabled={isBackupRunning}
                   aria-label={t('data:governance.restore')}
                 >
-                  <ArrowCounterClockwise size={16} />
+                  <ArrowCounterClockwise size={16} className="shrink-0" />
+                  <span>{t('data:governance.restore')}</span>
                 </DsButton>
                 <div className="flex-1" />
                 <DsButton
@@ -1231,8 +1293,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         onOpenChange={(open) => {
           if (!open) {
             setShowImportPasswordDialog(false);
-            setImportPassword('');
-            setResumeImportJobId(null);
+            resetImportDialogState();
           }
         }}
         maxWidth="max-w-md"
@@ -1250,24 +1311,71 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               : 'data:governance.import_password_desc')}
           </DsDialogDescription>
         </DsDialogHeader>
-        <DsDialogBody>
-          <div className="space-y-1.5">
-            <Label htmlFor="e2ee-import-password" className="text-sm">
-              {t('data:governance.import_password_label')}
-            </Label>
-            <Input
-              id="e2ee-import-password"
-              type="password"
-              autoComplete="current-password"
-              className="h-8 text-sm"
-              value={importPassword}
-              placeholder={t('data:governance.import_password_placeholder')}
-              required={resumeImportJobId !== null}
-              onChange={(e) => setImportPassword(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleImportConfirm();
-              }}
-            />
+        <DsDialogBody
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleImportConfirm();
+            }
+          }}
+        >
+          <div className="space-y-3">
+            {webUiMode && !resumeImportJobId && (
+              <div className="space-y-1.5">
+                <Label htmlFor="webui-import-file" className="text-sm">
+                  {t('data:governance.import_file_label')}
+                </Label>
+                <input
+                  id="webui-import-file"
+                  type="file"
+                  accept=".zip,.dsbk"
+                  disabled={isStagingImportFile}
+                  onChange={(e) => void handleStageWebImportFile(e)}
+                  className="block w-full text-xs text-muted-foreground file:mr-3 file:rounded-lg file:border file:border-border/70 file:bg-muted file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-foreground hover:file:bg-muted/80"
+                />
+                <Input
+                  id="webui-import-file-path"
+                  type="text"
+                  className="h-8 text-sm font-mono"
+                  value={importFilePath}
+                  placeholder={t('data:governance.import_file_path_placeholder')}
+                  onChange={(e) => {
+                    setImportFilePath(e.target.value);
+                    if (importFileError) setImportFileError(null);
+                  }}
+                />
+                {isStagingImportFile && (
+                  <p className="text-xs text-muted-foreground">
+                    {t('data:governance.import_file_uploading')}
+                  </p>
+                )}
+                {importFileName && !importFileError && !isStagingImportFile && (
+                  <p className="text-xs text-success">
+                    {t('data:governance.import_file_selected', { name: importFileName })}
+                  </p>
+                )}
+                {importFileError && (
+                  <p role="alert" className="text-xs text-destructive">
+                    {importFileError}
+                  </p>
+                )}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="e2ee-import-password" className="text-sm">
+                {t('data:governance.import_password_label')}
+              </Label>
+              <Input
+                id="e2ee-import-password"
+                type="password"
+                autoComplete="current-password"
+                className="h-8 text-sm"
+                value={importPassword}
+                placeholder={t('data:governance.import_password_placeholder')}
+                required={resumeImportJobId !== null}
+                onChange={(e) => setImportPassword(e.target.value)}
+              />
+            </div>
           </div>
         </DsDialogBody>
         <DsDialogFooter>
@@ -1276,13 +1384,17 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             size="sm"
             onClick={() => {
               setShowImportPasswordDialog(false);
-              setImportPassword('');
-              setResumeImportJobId(null);
+              resetImportDialogState();
             }}
           >
             {t('common:actions.cancel')}
           </DsButton>
-          <DsButton variant="primary" size="sm" onClick={handleImportConfirm}>
+          <DsButton
+            variant="primary"
+            size="sm"
+            disabled={isStagingImportFile}
+            onClick={handleImportConfirm}
+          >
             {resumeImportJobId ? (
               <Play className="h-4 w-4 mr-1.5" />
             ) : (

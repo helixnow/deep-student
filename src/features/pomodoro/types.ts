@@ -98,6 +98,8 @@ export interface PomodoroState {
 
   // Actions
   start: (taskId?: string, taskTitle?: string) => void;
+  /** Bind or clear the active/upcoming task title & id without interrupting idle/running state unless switching tasks. */
+  bindTask: (taskId: string | null, taskTitle: string | null) => void;
   pause: () => void;
   resume: () => void;
   stop: (interrupted?: boolean) => void;
@@ -106,6 +108,14 @@ export interface PomodoroState {
    * 否则回 idle 待命。不写任何记录（跳过休息不是「中断」）。
    */
   skipBreak: () => void;
+  /**
+   * 提前完成当前专注并记录实际已专注时长（倒计时模式与正计时模式均可用），然后切入休息阶段。
+   */
+  finishWorkEarly: () => void;
+  /**
+   * 跳过当前阶段（专注阶段直接切入短休息且不记已完成番茄；休息阶段同 skipBreak）。
+   */
+  skipPhase: () => void;
   /**
    * 延长当前阶段 N 秒（专注/休息的倒计时阶段均可；正计时无目标时长，no-op）。
    * 运行中顺延 phaseEndsAt 并允许结束前提醒重新触发；暂停中只加 timeLeft。

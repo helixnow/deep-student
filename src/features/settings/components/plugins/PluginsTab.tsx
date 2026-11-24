@@ -17,6 +17,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { SettingSection, settingsQuietInteractiveRowClassName } from '../SettingsCommon';
 import { SettingRow, SettingsGroup, SwitchRow } from '../settingsTabPrimitives';
+import { getChannelPluginDisplay } from '@/features/plugin-manager';
 import {
   pluginsApi,
   PLUGIN_EVENTS,
@@ -65,7 +66,8 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
   onBack,
   onPluginChange,
 }) => {
-  const { t } = useTranslation(['settings', 'common']);
+  const { t } = useTranslation(['settings', 'common', 'plugin_manager']);
+  const channelDisplay = getChannelPluginDisplay(plugin, t);
   const { isSmallScreen } = useBreakpoint();
   const [config, setConfig] = useState<IlinkBotConfig | null>(null);
   const [status, setStatus] = useState<PluginStatusSnapshot | null>(null);
@@ -202,15 +204,15 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
 
   return (
     <div className="space-y-1 pb-10 text-left ui-fade-in-slow">
-      <SettingSection title={plugin.label} hideHeader>
+      <SettingSection title={channelDisplay.label} hideHeader>
         {/* 子页头部：插件名 + 返回列表。小屏不自绘返回（对照 vendor 详情三屏）：
             返回交给 Settings 统一顶栏返回链与已注册的 overlay 返回键 handler
             （见 PluginsTab）；桌面详情内联在设置正文、无顶栏返回链，保留按钮。 */}
         <div className="flex flex-wrap items-start justify-between gap-2 px-1">
           <div className="min-w-0 flex-1">
-            <h3 className="text-base font-semibold text-foreground">{plugin.label}</h3>
+            <h3 className="text-base font-semibold text-foreground">{channelDisplay.label}</h3>
             <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground/70">
-              {plugin.blurb}
+              {channelDisplay.blurb}
             </p>
           </div>
           {!isSmallScreen && (
@@ -479,7 +481,7 @@ interface PluginsTabProps {
 }
 
 export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
-  const { t } = useTranslation(['settings', 'common']);
+  const { t } = useTranslation(['settings', 'common', 'plugin_manager']);
   const { isSmallScreen } = useBreakpoint();
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -595,6 +597,7 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
           ) : (
             plugins.map((p) => {
               const display = pluginDisplayState(p);
+              const channelDisplay = getChannelPluginDisplay(p, t);
               return (
                 <div
                   key={p.id}
@@ -614,14 +617,14 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm text-foreground/90 leading-tight">
-                          {p.label}
+                          {channelDisplay.label}
                         </span>
                         <Badge className="shrink-0 whitespace-nowrap" variant={display.variant}>
                           {t(`settings:plugins.${display.key}`, display.key)}
                         </Badge>
                       </div>
                       <p className="mt-0.5 break-words text-xs leading-relaxed text-muted-foreground/70 md:line-clamp-2">
-                        {p.bound ? p.blurb : t('settings:plugins.bind_first_hint')}
+                        {p.bound ? channelDisplay.blurb : t('settings:plugins.bind_first_hint')}
                       </p>
                     </div>
                   </DsButton>

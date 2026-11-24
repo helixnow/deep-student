@@ -5,6 +5,7 @@ import type {
 import type { ConfigSchemaProjection } from '../../../host/kernel/config-schema';
 import { succeeded } from './result';
 import type {
+  ManagedPlugin,
   PluginManagerAdapter, PluginConfigRevision, PluginConfigSaveResult, PluginConfigState,
   PluginConfigSchemaNode, PluginConsentSubject, PluginOperationResult, PluginPackageResult, PluginPlatform,
 } from './types';
@@ -63,6 +64,17 @@ export function managerSchema(schema: ConfigSchemaProjection | null): PluginConf
   return { type: 'object', dict };
 }
 
+function extendedFields(entry: PluginManagerInventory['plugins'][number]): Partial<Pick<ManagedPlugin, 'kind' | 'declarative'>> {
+  const raw = entry as PluginManagerInventory['plugins'][number] & {
+    kind?: ManagedPlugin['kind'];
+    declarative?: ManagedPlugin['declarative'];
+  };
+  return {
+    ...(raw.kind ? { kind: raw.kind } : {}),
+    ...(raw.declarative ? { declarative: raw.declarative } : {}),
+  };
+}
+
 export class HostPluginManagerAdapter implements PluginManagerAdapter {
   subscribe?: (listener: () => void) => () => void;
   private revision: string | null = null;
@@ -88,6 +100,7 @@ export class HostPluginManagerAdapter implements PluginManagerAdapter {
       ...(entry.consent && !entry.consent.matched && entry.consent.reason ? { consentReason: entry.consent.reason } : {}),
       configurable: entry.hasConfig,
       requiredBy: entry.requiredBy ?? [], contributes: entry.contributes ?? [], agentTools: entry.agentTools ?? [],
+      ...(extendedFields(entry)),
     }); }) };
   }
 

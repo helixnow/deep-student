@@ -157,7 +157,7 @@ describe('BackupTab E2EE 诚实提示', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('设置密码后：明确只有敏感材料受保护，业务归档仍为明文', () => {
+  it('设置密码后：明确整个备份归档将由 AES-256-GCM 加密封装并提示丢失密码无法解密', () => {
     render(<BackupTab {...makeProps()} />);
 
     fireEvent.change(screen.getByLabelText(passwordInputLabel), {
@@ -165,12 +165,11 @@ describe('BackupTab E2EE 诚实提示', () => {
     });
 
     expect(
-      screen.getByText(/敏感材料会被加密保护|e2ee_export_note/),
+      screen.getByText(/AES-256-GCM 加密的 portable_secrets\.dsbk 保护|e2ee_export_note/),
     ).toBeInTheDocument();
-    expect(screen.getByText(/归档内容本身未加密/)).toBeInTheDocument();
-    expect(screen.getByText(/丢失密码后业务数据仍可读取/)).toBeInTheDocument();
+    expect(screen.getByText(/整个备份归档（数据库、笔记、附件与设置）/)).toBeInTheDocument();
+    expect(screen.getByText(/丢失密码将无法解密或完成整槽恢复/)).toBeInTheDocument();
     expect(screen.queryByText(/端到端加密/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/密码丢失将无法解密/)).not.toBeInTheDocument();
     expect(
       screen.queryByText(/不包含本地加密密钥|portable_zip_honest_note/),
     ).not.toBeInTheDocument();

@@ -14,7 +14,7 @@ describe("phase 9 memory tool contracts", () => {
     expect(vfsMemorySkill.allowedTools).toEqual(
       vfsMemorySkill.embeddedTools?.map((entry) => entry.name),
     );
-    expect(new Set(vfsMemorySkill.allowedTools).size).toBe(16);
+    expect(new Set(vfsMemorySkill.allowedTools).size).toBe(19);
     for (const name of [
       "builtin-memory_search",
       "builtin-memory_batch_move",
@@ -22,6 +22,9 @@ describe("phase 9 memory tool contracts", () => {
       "builtin-memory_remove_relation",
       "builtin-memory_update_tags",
       "builtin-memory_export_all",
+      "builtin-memory_rule_list",
+      "builtin-memory_rule_upsert",
+      "builtin-memory_rule_remove",
     ]) {
       tool(name);
     }

@@ -29,6 +29,7 @@ import {
   subscribeChatHandoffReturnView,
 } from '@/utils/chatHandoffReturn';
 import { MessageList } from './MessageList';
+import { ChatSessionHeader } from './ChatSessionHeader';
 import { InputBarV2 } from './input-bar';
 import { SuperInboxPausedBanner } from '../superSession/SuperInboxPausedBanner';
 import { ChatErrorBoundary, ErrorFallback } from './ChatErrorBoundary';
@@ -417,6 +418,9 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         <div className="flex-shrink-0 border-b border-border">
           <HeaderComponent store={store} />
         </div>
+      )}
+      {!HeaderComponent && !isSubagentSession && !forceEmptyPreview && (
+        <ChatSessionHeader store={store} />
       )}
 
       {/* 跨学习页跳 AI 后的「返回原学习现场」轻量胶囊 */}

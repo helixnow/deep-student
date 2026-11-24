@@ -258,3 +258,82 @@ export function getVendorNotesDisplay(
 
   return raw;
 }
+
+const BUILTIN_MODEL_TAG_SPECS: ReadonlyArray<{
+  key: string;
+  zh: string;
+  en: string;
+}> = [
+  { key: 'flagship_hybrid_thinking', zh: '旗舰/混合思考', en: 'Flagship / Hybrid Thinking' },
+  { key: 'recommended_multimodal', zh: '官方默认推荐/多模态', en: 'Recommended Default / Multimodal' },
+  { key: 'lightweight_multimodal', zh: '轻量高并发/多模态', en: 'Lightweight / Multimodal' },
+  { key: 'prev_flagship', zh: '上一代旗舰', en: 'Previous Flagship' },
+  { key: 'multimodal_hybrid_thinking', zh: '多模态/混合思考', en: 'Multimodal / Hybrid Thinking' },
+  { key: 'fast_hybrid_thinking', zh: '快速/混合思考', en: 'Fast / Hybrid Thinking' },
+  { key: 'thinking_supported', zh: '支持思考', en: 'Thinking Supported' },
+  { key: 'legacy_reasoning', zh: '遗留推理模型', en: 'Legacy Reasoning' },
+  { key: 'oss_flagship', zh: '开源旗舰', en: 'Open-Source Flagship' },
+  { key: 'current_flagship', zh: '当前旗舰', en: 'Current Flagship' },
+  { key: 'coding_long_horizon', zh: 'Coding/长程任务', en: 'Coding / Long-Horizon' },
+  { key: 'cost_effective', zh: '高性价比', en: 'Cost-Effective' },
+  { key: 'prev_gen', zh: '上一代', en: 'Previous Gen' },
+  { key: 'free', zh: '免费', en: 'Free' },
+  { key: 'low_cost_latency', zh: '低成本低时延', en: 'Low-Cost / Low-Latency' },
+  { key: 'rolling', zh: '滚动更新', en: 'Rolling' },
+  { key: 'all_round_flagship', zh: '旗舰全能', en: 'All-Round Flagship' },
+  { key: 'balanced', zh: '均衡', en: 'Balanced' },
+  { key: 'fast', zh: '快速', en: 'Fast' },
+  { key: 'coding', zh: '编程', en: 'Coding' },
+  { key: 'latest_flagship_multimodal', zh: '最新旗舰/多模态', en: 'Latest Flagship / Multimodal' },
+  { key: 'cost_effective_reasoning', zh: '高性价比推理', en: 'Cost-Effective Reasoning' },
+  { key: 'best_value', zh: '性价比主力', en: 'Best Value' },
+  { key: 'ultra_fast', zh: '极速', en: 'Ultra-Fast' },
+  { key: 'flagship_1m_multimodal', zh: '旗舰/1M/多模态', en: 'Flagship / 1M / Multimodal' },
+  { key: 'flagship_multimodal', zh: '旗舰/多模态', en: 'Flagship / Multimodal' },
+  { key: 'coding_forced_thinking', zh: '编程/强制思考', en: 'Coding / Always-On Thinking' },
+  { key: 'prev_multimodal_flagship', zh: '上一代多模态旗舰', en: 'Previous Multimodal Flagship' },
+  { key: 'legacy', zh: '旧版', en: 'Legacy' },
+  { key: 'high_precision', zh: '高精度', en: 'High Precision' },
+  { key: 'balanced_workhorse', zh: '均衡主力', en: 'Balanced Workhorse' },
+  { key: 'high_compute', zh: '高计算', en: 'High Compute' },
+  { key: 'ultra_low_cost', zh: '超低成本', en: 'Ultra-Low Cost' },
+  { key: 'prev_high_precision', zh: '上一代高精度', en: 'Previous Gen High Precision' },
+  { key: 'prev_coding_agent', zh: '上一代 Coding/Agent', en: 'Previous Gen Coding/Agent' },
+  { key: 'base_gen', zh: '基础代', en: 'Base Gen' },
+  { key: 'lightweight', zh: '轻量', en: 'Lightweight' },
+  { key: 'economy', zh: '经济', en: 'Economy' },
+  { key: 'deep_reasoning_retire_2026_12', zh: '深度推理, 2026-12 退役', en: 'Deep Reasoning, Retiring 2026-12' },
+  { key: 'reasoning_retire_2026_12', zh: '推理, 2026-12 退役', en: 'Reasoning, Retiring 2026-12' },
+  { key: 'light_reasoning_retire_2026_10', zh: '推理轻量, 2026-10 退役', en: 'Light Reasoning, Retiring 2026-10' },
+  { key: 'reasoning_retire_2026_10', zh: '推理, 2026-10 退役', en: 'Reasoning, Retiring 2026-10' },
+  { key: 'flagship', zh: '旗舰', en: 'Flagship' },
+  { key: 'always_on_thinking', zh: '思考 always-on', en: 'Always-On Thinking' },
+  { key: 'lightweight_latest_haiku', zh: '轻量/官方最新 Haiku', en: 'Lightweight / Latest Official Haiku' },
+  { key: 'multimodal', zh: '多模态', en: 'Multimodal' },
+  { key: 'latest_stable', zh: '最新稳定', en: 'Latest Stable' },
+  { key: 'latest_lightweight', zh: '最新轻量', en: 'Latest Lightweight' },
+];
+
+const MODEL_TAG_LOOKUP = new Map<string, (typeof BUILTIN_MODEL_TAG_SPECS)[number]>();
+for (const spec of BUILTIN_MODEL_TAG_SPECS) {
+  MODEL_TAG_LOOKUP.set(spec.zh, spec);
+  MODEL_TAG_LOOKUP.set(spec.en, spec);
+}
+
+/**
+ * Localizes parenthetical descriptor tags inside builtin model labels (both current English
+ * catalog entries for zh-CN users and legacy Chinese persisted entries for en-US users).
+ */
+export function getModelDisplayLabel(rawLabel: string, t?: VendorTranslateFn): string {
+  if (!rawLabel) return rawLabel;
+  const match = /^(.*)\s+\(([^()]+)\)\s*$/.exec(rawLabel);
+  if (!match) return rawLabel;
+  const base = match[1]!;
+  const tag = match[2]!.trim();
+  const spec = MODEL_TAG_LOOKUP.get(tag);
+  if (!spec) return rawLabel;
+  const key = `settings:vendor_panel.builtin_model_tags.${spec.key}`;
+  const translated = t?.(key, { defaultValue: spec.en });
+  const nextTag = translated && translated !== key ? translated : spec.en;
+  return `${base} (${nextTag})`;
+}

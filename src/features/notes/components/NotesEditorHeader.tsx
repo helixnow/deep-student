@@ -115,6 +115,11 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     const pendingTitleRef = useRef<string | null>(null);
     // Esc 还原时跳过随后 blur 触发的提交
     const escapeRevertRef = useRef(false);
+    const titleDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isTitleComposingRef = useRef(false);
+    const lastCommittedTitleRef = useRef<string | null>(null);
+    const titleCommitChainRef = useRef<Promise<void>>(Promise.resolve());
+    const isHeaderUnmountedRef = useRef(false);
 
     const appearance = useNoteAppearance(noteId);
     const appearanceTitleId = useId();
@@ -188,6 +193,10 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     useEffect(() => {
         if (!noteId || readOnly) return;
         return registerContentSaveHandler('note', noteId, async () => {
+            if (titleDebounceTimerRef.current) {
+                clearTimeout(titleDebounceTimerRef.current);
+                titleDebounceTimerRef.current = null;
+            }
             if (!titleDirtyRef.current) return;
             const trimmed = titleInputValueRef.current.trim();
             if (!trimmed) {
@@ -204,7 +213,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
             }
             if (!onTitleChangeRef.current) return;
             // 成功即已提交；失败抛出 → saveContentNow 不放行关闭
-            await onTitleChangeRef.current(trimmed);
+            await enqueueTitleCommit(trimmed, true);
             titleCommittedRef.current = true;
             pendingTitleRef.current = null;
             setIsEditing(false);
@@ -230,6 +239,76 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     };
 
     // Sync local state with external source when not editing
+    const clearTitleDebounce = () => {
+        if (titleDebounceTimerRef.current) {
+            clearTimeout(titleDebounceTimerRef.current);
+            titleDebounceTimerRef.current = null;
+        }
+    };
+
+    const enqueueTitleCommit = (trimmedTitle: string, finalizeEditing: boolean): Promise<void> => {
+        if (!noteId || readOnly) return Promise.resolve();
+        const baseline = lastCommittedTitleRef.current ?? (displayTitleValueRef.current || '').trim();
+        if (trimmedTitle === baseline) {
+            if (finalizeEditing) {
+                pendingTitleRef.current = null;
+                setTitleInput(trimmedTitle);
+            }
+            return titleCommitChainRef.current;
+        }
+        const next = titleCommitChainRef.current.then(async () => {
+            if (isHeaderUnmountedRef.current && !finalizeEditing) return;
+            const candidate = finalizeEditing ? trimmedTitle : titleInputValueRef.current.trim();
+            if (!candidate) return;
+            const currentBaseline = lastCommittedTitleRef.current ?? (displayTitleValueRef.current || '').trim();
+            if (candidate === currentBaseline) return;
+            lastCommittedTitleRef.current = candidate;
+            if (!finalizeEditing) {
+                pendingTitleRef.current = candidate;
+            }
+            if (!onTitleChangeRef.current) return;
+            try {
+                await onTitleChangeRef.current(candidate);
+                titleCommittedRef.current = true;
+                if (!finalizeEditing) {
+                    // Let React flush any state/tab/tree updates before a subsequent queued title save.
+                    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+                }
+            } catch (error) {
+                lastCommittedTitleRef.current = null;
+                pendingTitleRef.current = null;
+                throw error;
+            }
+        });
+        titleCommitChainRef.current = next.catch(() => {});
+        return next;
+    };
+
+    const scheduleTitleCommit = () => {
+        if (readOnly || !noteId || isTitleComposingRef.current) return;
+        clearTitleDebounce();
+        titleDebounceTimerRef.current = setTimeout(() => {
+            titleDebounceTimerRef.current = null;
+            if (readOnly || isTitleComposingRef.current || isHeaderUnmountedRef.current) return;
+            const trimmed = titleInputValueRef.current.trim();
+            if (!trimmed) return;
+            void enqueueTitleCommit(trimmed, false).catch(() => {});
+        }, 120);
+    };
+
+    useEffect(() => {
+        lastCommittedTitleRef.current = null;
+        clearTitleDebounce();
+    }, [noteId]);
+
+    useEffect(() => {
+        isHeaderUnmountedRef.current = false;
+        return () => {
+            isHeaderUnmountedRef.current = true;
+            clearTitleDebounce();
+        };
+    }, []);
+
     useEffect(() => {
         if (!isEditing) {
             // If we have a pending title, use it until displayTitle catches up
@@ -254,12 +333,19 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         titleCommittedRef.current = false;
         // 输入侧就地清洗（折叠换行、去控制字符、500 字符截断），
         // 与后端 note_repo validate_title 限额一致；正常输入为恒等变换
-        setTitleInput(sanitizeNoteTitleInput(e.target.value));
+        const nextValue = sanitizeNoteTitleInput(e.target.value);
+        titleInputValueRef.current = nextValue;
+        setTitleInput(nextValue);
         setIsEditing(true);
+        const nativeComposing = Boolean((e.nativeEvent as { isComposing?: boolean } | undefined)?.isComposing);
+        if (!nativeComposing && !isTitleComposingRef.current) {
+            scheduleTitleCommit();
+        }
     };
 
     const handleTitleSubmit = async () => {
         if (readOnly) return;
+        clearTitleDebounce();
         if (escapeRevertRef.current) {
             // Esc 还原：不提交，状态已在 keydown 中回滚
             escapeRevertRef.current = false;
@@ -277,8 +363,9 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
             return;
         }
 
-        // Don't submit if unchanged
-        if (trimmedTitle === (displayTitle || "").trim()) {
+        // Don't submit if unchanged from both displayTitle and last debounced commit
+        const baseline = lastCommittedTitleRef.current ?? (displayTitle || "").trim();
+        if (trimmedTitle === baseline) {
             pendingTitleRef.current = null;
             setTitleInput(trimmedTitle);
             return;
@@ -290,7 +377,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
 
         if (onTitleChange) {
             try {
-                await onTitleChange(trimmedTitle);
+                await enqueueTitleCommit(trimmedTitle, true);
             } catch (error: unknown) {
                 // 标题保存失败，回滚
                 pendingTitleRef.current = null;
@@ -304,14 +391,16 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         if (isComposingKeyEvent(e)) return;
         const atEnd = e.currentTarget.selectionStart === e.currentTarget.value.length
             && e.currentTarget.selectionEnd === e.currentTarget.value.length;
-        if (e.key === 'Enter' || (e.key === 'ArrowDown' && atEnd && onExitToBody)) {
-            // 标题与正文是同一份文档：Enter / ↓ 提交标题并把光标送进正文开头
+        const isPlainTab = e.key === 'Tab' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey;
+        if (e.key === 'Enter' || (e.key === 'ArrowDown' && atEnd && onExitToBody) || (isPlainTab && onExitToBody)) {
+            // 标题与正文是同一份文档：Enter / ↓ / Tab 提交标题并把光标送进正文开头
             e.preventDefault();
             e.currentTarget.blur(); // Triggers onBlur -> handleTitleSubmit
             onExitToBody?.();
         } else if (e.key === 'Escape') {
             // Esc 还原为已保存标题并退出编辑（blur 提交由 escapeRevertRef 短路）
             e.preventDefault();
+            clearTitleDebounce();
             escapeRevertRef.current = true;
             pendingTitleRef.current = null;
             setTitleInput(displayTitle);
@@ -743,6 +832,17 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                 onChange={readOnly ? undefined : handleTitleChange}
                 onBlur={readOnly ? undefined : handleTitleSubmit}
                 onKeyDown={readOnly ? undefined : handleKeyDown}
+                onCompositionStart={readOnly ? undefined : () => {
+                    isTitleComposingRef.current = true;
+                    clearTitleDebounce();
+                }}
+                onCompositionEnd={readOnly ? undefined : (e) => {
+                    isTitleComposingRef.current = false;
+                    const nextValue = sanitizeNoteTitleInput(e.currentTarget.value);
+                    titleInputValueRef.current = nextValue;
+                    setTitleInput(nextValue);
+                    scheduleTitleCommit();
+                }}
                 placeholder={t('notes:common.untitled')}
                 readOnly={readOnly}
             />

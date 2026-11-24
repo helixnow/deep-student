@@ -96,4 +96,20 @@ describe('InstallFeedback', () => {
     await user.click(screen.getByRole('button', { name: '知道了' }));
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
+
+  it('surfaces specific MANIFEST_INVALID field validation detail in explanation', () => {
+    render(
+      <InstallFeedback
+        result={{
+          status: 'rejected',
+          code: 'MANIFEST_INVALID',
+          detail: 'MANIFEST_INVALID: /deepStudent/engines/deepStudent is required',
+          rollback: 'unchanged',
+        }}
+      />,
+    );
+
+    const feedback = screen.getByTestId('plugin-install-feedback');
+    expect(feedback).toHaveTextContent('/deepStudent/engines/deepStudent is required');
+  });
 });

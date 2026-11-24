@@ -243,6 +243,7 @@ export class ZipCommands {
         outputPath: zipPath,
         includeChecksums: options.includeChecksums,
         encryptionPassword: password,
+        sealFullArchive: encrypted,
       }, progress => {
         const phase = progress.phase === 'scan' ? 'scan'
           : progress.phase === 'seal' || progress.phase === 'compress' ? 'compress' : 'verify';
@@ -555,6 +556,7 @@ export class ZipCommands {
         outputPath: zipPath,
         includeChecksums: true,
         encryptionPassword: args.encryptionPassword,
+        sealFullArchive: args.encryptionPassword !== null,
       }, progress => {
         job.markRunning('compress', 62 + (progress.progress / 100) * 33,
           progress.message, progress.processedFiles, progress.totalFiles);

@@ -5,6 +5,9 @@
 export { ChatContainer } from './ChatContainer';
 export type { ChatContainerProps } from './ChatContainer';
 
+export { ChatSessionHeader } from './ChatSessionHeader';
+export type { ChatSessionHeaderProps } from './ChatSessionHeader';
+
 export { MessageList } from './MessageList';
 export type { MessageListProps } from './MessageList';
 

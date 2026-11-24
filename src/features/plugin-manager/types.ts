@@ -68,6 +68,20 @@ export interface ManagedPlugin {
   readonly contributes?: readonly string[];
   /** 清单声明的智能体工具（给用户看的标题）。 */
   readonly agentTools?: readonly { readonly name: string; readonly title: string }[];
+  /** Package kind (`plugin` or `study-pack`) when declared. */
+  readonly kind?: 'plugin' | 'study-pack';
+  /** Declarative study-pack capabilities (prompts, templates, decks, rules, widgets, rubrics, skills, cardTemplates, workflows). */
+  readonly declarative?: {
+    readonly prompts?: readonly string[];
+    readonly templates?: readonly string[];
+    readonly decks?: readonly string[];
+    readonly rules?: readonly string[];
+    readonly widgets?: readonly string[];
+    readonly rubrics?: readonly string[];
+    readonly skills?: readonly string[];
+    readonly cardTemplates?: readonly string[];
+    readonly workflows?: readonly string[];
+  };
 }
 
 /** `list()` 的返回值：一次完整的已安装清单 + 当前平台。 */

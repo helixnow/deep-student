@@ -44,9 +44,13 @@ import {
 } from './dockMagnification';
 import {
   APPS_DOCK_TYPE_ID,
+  closeAppsPanel,
+  isAppsPanelOpen,
   toggleAppsPanel,
   useAppsPanelOpen,
 } from './appsPanelStore';
+import { useImmersiveWindowId } from '../core/immersiveMode';
+import { useComposerDockHeight } from '@/hooks/useComposerDockHeight';
 import {
   AGENT_CONTROL_DOCK_ID,
   AgentControlDockEntry,
@@ -125,6 +129,55 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   React.useEffect(() => startDockAgentBadgeTracking(), []);
 
   const appsPanelOpen = useAppsPanelOpen();
+  const immersiveWindowId = useImmersiveWindowId();
+  const composerDockHeight = useComposerDockHeight();
+  const [isCompactViewport, setIsCompactViewport] = React.useState(() =>
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? Boolean(window.matchMedia('(max-width: 640px)')?.matches)
+      : false,
+  );
+  React.useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mql = window.matchMedia('(max-width: 640px)');
+    if (!mql) return undefined;
+    const syncViewport = () => setIsCompactViewport(Boolean(mql.matches));
+    syncViewport();
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', syncViewport);
+      return () => mql.removeEventListener('change', syncViewport);
+    }
+    return undefined;
+  }, []);
+
+  const [isTypingInComposer, setIsTypingInComposer] = React.useState(false);
+  React.useEffect(() => {
+    if (!isCompactViewport || composerDockHeight === null) {
+      setIsTypingInComposer(false);
+      return undefined;
+    }
+    const isComposerField = (el: Element | null): boolean => {
+      if (!(el instanceof HTMLElement)) return false;
+      if (!el.matches('textarea, input, [contenteditable="true"]')) return false;
+      return Boolean(
+        el.closest('.unified-input-docked, [data-composer-panel-anchor], [data-testid="chat-input"]'),
+      );
+    };
+    const handleFocusIn = (ev: FocusEvent) => {
+      setIsTypingInComposer(isComposerField((ev.target as Element | null) ?? document.activeElement));
+    };
+    const handleFocusOut = (ev: FocusEvent) => {
+      setIsTypingInComposer(isComposerField(ev.relatedTarget as Element | null));
+    };
+    setIsTypingInComposer(isComposerField(document.activeElement));
+    document.addEventListener('focusin', handleFocusIn);
+    document.addEventListener('focusout', handleFocusOut);
+    return () => {
+      document.removeEventListener('focusin', handleFocusIn);
+      document.removeEventListener('focusout', handleFocusOut);
+    };
+  }, [isCompactViewport, composerDockHeight]);
+
+  const effectiveAutohide = autohide || Boolean(immersiveWindowId) || isTypingInComposer;
   const pinned = useDockPinned();
   const tier = useMaterialTier();
   const {
@@ -304,9 +357,9 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   React.useEffect(() => () => clearTipTimers(), [clearTipTimers]);
 
   // ---- autohide（reveal ~180ms / conceal ~150ms 防误触；离开热区取消）----
-  const [revealed, setRevealed] = React.useState(!autohide);
+  const [revealed, setRevealed] = React.useState(!effectiveAutohide);
   const [revealing, setRevealing] = React.useState(false);
-  const revealedRef = React.useRef(!autohide);
+  const revealedRef = React.useRef(!effectiveAutohide);
   const revealTimerRef = React.useRef(0);
   const concealTimerRef = React.useRef(0);
 
@@ -359,12 +412,17 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   React.useEffect(() => {
     clearAutohideTimers();
     setRevealing(false);
-    updateRevealed(!autohide);
+    updateRevealed(!effectiveAutohide);
     return () => clearAutohideTimers();
-  }, [autohide, clearAutohideTimers, updateRevealed]);
-  const hidden = autohide && !revealed;
+  }, [effectiveAutohide, clearAutohideTimers, updateRevealed]);
+  const hidden = effectiveAutohide && !revealed;
 
   const dockRef = React.useRef<HTMLDivElement | null>(null);
+  React.useLayoutEffect(() => {
+    if (dockRef.current) {
+      dockRef.current.inert = hidden;
+    }
+  }, [hidden]);
 
   // ---- 60fps 连续波浪放大 + Specular Shimmer（单监听器 pointermove + rAF）----
   const magRafRef = React.useRef(0);
@@ -510,7 +568,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   React.useEffect(() => () => resetMagnification(), [resetMagnification]);
 
   const handleDockPointerEnter = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (autohide) {
+    if (effectiveAutohide) {
       clearAutohideTimers();
       revealDock();
     }
@@ -531,14 +589,14 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     if (event.target !== event.currentTarget) return;
     resetMagnification();
     resetTipSession();
-    if (!autohide) return;
+    if (!effectiveAutohide) return;
     // 焦点仍在 Dock 内（键盘用户）时不收起
     if (dockRef.current?.contains(document.activeElement)) return;
     scheduleConceal();
   };
 
   const handleDockBlur = (event: React.FocusEvent) => {
-    if (!autohide) return;
+    if (!effectiveAutohide) return;
     const next = event.relatedTarget as Node | null;
     if (next && dockRef.current?.contains(next)) return;
     scheduleConceal();
@@ -633,6 +691,9 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
 
   const restoreMinimizedWindow = (windowId: string) => {
     setOverflowOpen(false);
+    if (isAppsPanelOpen()) {
+      closeAppsPanel();
+    }
     useWindowStore.getState().focusWindow(windowId);
   };
 
@@ -642,9 +703,11 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
         'wb-dock-zone pointer-events-none absolute inset-x-0 bottom-0 flex justify-center',
         className,
       )}
+      data-immersive={immersiveWindowId ? 'true' : undefined}
+      data-compact-typing={isTypingInComposer ? 'true' : undefined}
       style={{ zIndex: 'var(--wb-z-dock)' }}
     >
-      {autohide && (
+      {effectiveAutohide && (
         <div
           data-testid="wb-dock-hotzone"
           data-collapsed={hidden ? 'true' : 'false'}
@@ -653,10 +716,10 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
           aria-hidden={!hidden || undefined}
           aria-label={hidden ? t('workbench:dock.autohideHint') : undefined}
           title={hidden ? t('workbench:dock.autohideHint') : undefined}
-          // macOS 原生纯净底缘热区：保留足够点击/悬停命中高度，避免窗口铺底时 Dock 难以唤出
+          // macOS 原生纯净底缘热区：收起态保证 >=32px 命中高度且紧贴视口底边，避免窗口铺底时 Dock 难以唤出
           className={cn(
             'wb-dock-hotzone pointer-events-auto absolute inset-x-0 bottom-0',
-            hidden ? 'h-3.5 cursor-pointer' : 'h-1',
+            hidden ? 'h-8 min-h-[32px] cursor-pointer' : 'h-1',
           )}
           onClick={
             hidden
@@ -692,8 +755,10 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
         role="toolbar"
         aria-orientation="horizontal"
         aria-label={t('workbench:dock.label')}
+        aria-hidden={hidden || undefined}
+        {...(hidden ? ({ inert: '' } as React.HTMLAttributes<HTMLDivElement>) : {})}
         data-testid="wb-dock"
-        data-autohide={autohide || undefined}
+        data-autohide={effectiveAutohide || undefined}
         data-hidden={hidden || undefined}
         data-revealing={revealing || undefined}
         data-tip-session={tipSessionActive ? 'active' : undefined}
@@ -701,7 +766,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
         style={{ '--wb-dock-scale': dockScale } as React.CSSProperties}
         className={cn(
           'wb-dock wb-glass-rim flex items-end',
-          autohide && 'wb-dock-slide',
+          effectiveAutohide && 'wb-dock-slide',
           hidden ? 'pointer-events-none' : 'pointer-events-auto',
         )}
         onKeyDown={handleToolbarKeyDown}
@@ -709,7 +774,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
         onPointerMove={handleDockPointerMove}
         onPointerLeave={handleDockPointerLeave}
         onFocusCapture={() => {
-          if (!autohide) return;
+          if (!effectiveAutohide) return;
           clearAutohideTimers();
           revealDock();
         }}
@@ -919,7 +984,10 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
                 aria-label={t('workbench:dock.apps')}
                 aria-expanded={appsPanelOpen}
                 tabIndex={effectiveActiveId === APPS_DOCK_TYPE_ID ? 0 : -1}
-                onClick={() => toggleAppsPanel()}
+                onClick={() => {
+                  clearAutohideTimers();
+                  toggleAppsPanel();
+                }}
                 onFocus={() => focusDockItem(APPS_DOCK_TYPE_ID)}
               >
                 <span

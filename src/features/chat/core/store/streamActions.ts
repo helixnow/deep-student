@@ -2,6 +2,7 @@ import type { ChatStoreState, SetState, GetState } from './types';
 import type { Block } from '../types/block';
 import type { Message } from '../types/message';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { blockRegistry } from '../../registry';
 import { chunkBuffer } from '../middleware/chunkBuffer';
 import { resetTransientRuntimes } from './transientRuntimeRegistry';
 
@@ -49,7 +50,20 @@ function hasResidualLiveBlocks(
       return true;
     }
   }
+  for (const b of blocks.values()) {
+    if (b.isPreparing || b.status === 'running') {
+      return true;
+    }
+  }
   return Boolean(message?._meta?.preparingToolCall);
+}
+
+function shouldKeepContentOnCancel(block: Block): boolean {
+  const plugin = blockRegistry.get(block.type);
+  const onAbort =
+    plugin?.onAbort ??
+    (block.type === 'thinking' || block.type === 'content' ? 'keep-content' : 'mark-error');
+  return onAbort === 'keep-content';
 }
 
 export function createStreamActions(
@@ -84,6 +98,7 @@ export function createStreamActions(
             if (state.sessionStatus === 'idle') {
               const hasStaleState =
                 state.activeBlockIds.size > 0 ||
+                (state.streamingVariantIds?.size ?? 0) > 0 ||
                 state.currentStreamingMessageId !== null ||
                 hasResidualLiveBlocks(state.blocks, state.activeBlockIds, allMessageBlockIds, targetMessage);
               if (!hasStaleState) {
@@ -140,11 +155,20 @@ export function createStreamActions(
                     status: 'success',
                     endedAt: now,
                   });
+                } else if (reason === 'cancelled' && shouldKeepContentOnCancel(block)) {
+                  newBlocks.set(blockId, {
+                    ...block,
+                    status: 'success',
+                    error: undefined,
+                    aborted: true,
+                    endedAt: now,
+                  });
                 } else {
                   newBlocks.set(blockId, {
                     ...block,
                     status: 'error',
                     error: reason === 'error' ? 'Stream ended with error' : 'Stream cancelled',
+                    ...(reason === 'cancelled' ? { aborted: true } : {}),
                     endedAt: now,
                   });
                 }
@@ -152,9 +176,14 @@ export function createStreamActions(
               }
             });
 
-            // 2. 🔧 额外安全措施：遍历当前流式消息的所有块（含 variants 分支），确保 running 状态的块被更新
-            // 这可以捕获那些因某种原因没有在 activeBlockIds 中但仍处于 running 状态的块（如 thinking 块）
-            for (const blockId of messageBlockIds) {
+            // 2. 🔧 额外安全措施：遍历当前流式消息的所有块（含 variants 分支），以及剩余残留的 running 块
+            const settledIds = new Set<string>(messageBlockIds);
+            newBlocks.forEach((b, id) => {
+              if (!b.isPreparing && b.status === 'running') {
+                settledIds.add(id);
+              }
+            });
+            for (const blockId of settledIds) {
               const block = newBlocks.get(blockId);
               if (block && !block.isPreparing && block.status === 'running') {
                 console.warn(
@@ -168,11 +197,20 @@ export function createStreamActions(
                     status: 'success',
                     endedAt: now,
                   });
+                } else if (reason === 'cancelled' && shouldKeepContentOnCancel(block)) {
+                  newBlocks.set(blockId, {
+                    ...block,
+                    status: 'success',
+                    error: undefined,
+                    aborted: true,
+                    endedAt: now,
+                  });
                 } else {
                   newBlocks.set(blockId, {
                     ...block,
                     status: 'error',
                     error: reason === 'error' ? 'Stream ended with error' : 'Stream cancelled',
+                    ...(reason === 'cancelled' ? { aborted: true } : {}),
                     endedAt: now,
                   });
                 }
@@ -236,6 +274,10 @@ export function createStreamActions(
               if (msg) {
                 const removedSet = removedPreparingIds.length > 0 ? new Set(removedPreparingIds) : null;
                 const dropPreparingMeta = Boolean(msg._meta?.preparingToolCall);
+                const markStoppedByUser = reason === 'cancelled' && !msg._meta?.stoppedByUser;
+                const hasLiveVariants = Boolean(
+                  msg.variants?.some((v) => v.status === 'streaming' || v.status === 'pending')
+                );
                 const dropBlockIds =
                   removedSet && msg.blockIds.some((id) => removedSet.has(id))
                     ? msg.blockIds.filter((id) => !removedSet.has(id))
@@ -248,14 +290,32 @@ export function createStreamActions(
                           : v
                       )
                     : null;
-                if (dropPreparingMeta || dropBlockIds || dropVariantBlockIds) {
+                const settledVariants = hasLiveVariants
+                  ? (dropVariantBlockIds ?? msg.variants)?.map((v) =>
+                      v.status === 'streaming' || v.status === 'pending'
+                        ? {
+                            ...v,
+                            status:
+                              reason === 'cancelled'
+                                ? ('cancelled' as const)
+                                : reason === 'error'
+                                  ? ('error' as const)
+                                  : ('success' as const),
+                          }
+                        : v
+                    )
+                  : dropVariantBlockIds;
+                if (dropPreparingMeta || markStoppedByUser || dropBlockIds || settledVariants) {
                   newMessageMap = new Map(s.messageMap);
                   const newMeta = { ...msg._meta };
                   delete newMeta.preparingToolCall;
+                  if (reason === 'cancelled') {
+                    newMeta.stoppedByUser = true;
+                  }
                   newMessageMap.set(currentMessageId, {
                     ...msg,
                     ...(dropBlockIds ? { blockIds: dropBlockIds } : {}),
-                    ...(dropVariantBlockIds ? { variants: dropVariantBlockIds } : {}),
+                    ...(settledVariants ? { variants: settledVariants } : {}),
                     _meta: newMeta,
                   });
                 }
@@ -310,6 +370,7 @@ export function createStreamActions(
               sessionStatus: 'idle',
               currentStreamingMessageId: null,
               activeBlockIds: new Set(),
+              streamingVariantIds: new Set(),
               blocks: newBlocks,
               messageMap: newMessageMap,
               ...(hasPendingToolApproval

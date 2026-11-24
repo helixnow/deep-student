@@ -49,6 +49,8 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
 import { getPomodoroTodayStats, type PomodoroTodayStats } from '@/features/pomodoro/api';
 import { PomodoroStatsContent } from '@/features/pomodoro/components/PomodoroStatsPopover';
+import { listAllPendingItems } from '@/features/todo/api';
+import type { TodoItem } from '@/features/todo/types';
 import type { AppWindowProps } from '../../core/types';
 import { workbenchBus } from '../../core/workbenchBus';
 import {
@@ -183,19 +185,24 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
   const sessionCountUp = usePomodoroStore((s) => s.sessionCountUp);
   const phaseExtraSeconds = usePomodoroStore((s) => s.phaseExtraSeconds);
   const settings = usePomodoroStore((s) => s.settings);
+  const currentTaskId = usePomodoroStore((s) => s.currentTaskId);
   const currentTaskTitle = usePomodoroStore((s) => s.currentTaskTitle);
   const completedPomodorosToday = usePomodoroStore((s) => s.completedPomodorosToday);
   const streakDays = usePomodoroStore((s) => s.streakDays);
   const noiseEnabled = usePomodoroStore((s) => s.noiseEnabled);
   const setNoiseEnabled = usePomodoroStore((s) => s.setNoiseEnabled);
   const start = usePomodoroStore((s) => s.start);
+  const bindTask = usePomodoroStore((s) => s.bindTask);
   const pause = usePomodoroStore((s) => s.pause);
   const resume = usePomodoroStore((s) => s.resume);
   const stop = usePomodoroStore((s) => s.stop);
   const skipBreak = usePomodoroStore((s) => s.skipBreak);
+  const skipPhase = usePomodoroStore((s) => s.skipPhase);
   const extendPhase = usePomodoroStore((s) => s.extendPhase);
   const completeCurrentSession = usePomodoroStore((s) => s.completeCurrentSession);
+  const finishWorkEarly = usePomodoroStore((s) => s.finishWorkEarly);
   const setImmersive = usePomodoroStore((s) => s.setImmersive);
+  const [pendingTodos, setPendingTodos] = useState<TodoItem[]>([]);
 
   // 视图切换：view 为目标视图；renderedSub 让子视图在退场过渡期间保持挂载
   const [view, setView] = useState<PomoView>('main');
@@ -241,10 +248,24 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
     else if (last === 'stats') statsBtnRef.current?.focus();
   }, [view]);
 
-  // 今日统计：完成数变化 / 阶段切换（含中断停止）时刷新
+  // 今日统计 + 待绑定待办列表：完成数变化 / 阶段切换（含中断停止）时刷新
   useEffect(() => {
     getPomodoroTodayStats().then(setTodayStats).catch(() => {});
   }, [completedPomodorosToday, mode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    listAllPendingItems()
+      .then((items) => {
+        if (!cancelled && Array.isArray(items)) {
+          setPendingTodos(items.filter((item) => !item.parentId));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, isVisible]);
 
   // 完成瞬间：进度环一次性闪光（仅计数上升时触发，日切归零不闪）
   useEffect(() => {
@@ -335,7 +356,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
     setConfirmingStop(false);
   }, []);
 
-  // 停止：专注阶段先进入内联确认态（4s 超时自动回退），休息阶段直接停（无记录损失）
+  // 停止：专注阶段先进入内联确认态（15s 超时自动回退），休息阶段直接停（无记录损失）
   const handleStop = useCallback(() => {
     if (mode === 'work' && !confirmingStop) {
       setConfirmingStop(true);
@@ -343,7 +364,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
       confirmTimerRef.current = window.setTimeout(() => {
         confirmTimerRef.current = null;
         setConfirmingStop(false);
-      }, 4000);
+      }, 15000);
       return;
     }
     cancelStopConfirm();
@@ -487,6 +508,40 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
             </span>
           )}
 
+          {pendingTodos.length > 0 && (
+            <div className="mt-1 flex items-center justify-center">
+              <select
+                aria-label={t('pomodoro.controls.bindTodo', {
+                  ns: 'todo',
+                  defaultValue: '绑定待办任务',
+                })}
+                value={currentTaskId ?? ''}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  if (!id) {
+                    bindTask(null, null);
+                    return;
+                  }
+                  const picked = pendingTodos.find((item) => item.id === id);
+                  if (picked) bindTask(picked.id, picked.title);
+                }}
+                className="h-7 max-w-[240px] rounded-md border border-border/55 bg-background/70 px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">
+                  {t('pomodoro.controls.bindTodoNone', {
+                    ns: 'todo',
+                    defaultValue: '不绑定任务（自由专注）',
+                  })}
+                </option>
+                {pendingTodos.map((todo) => (
+                  <option key={todo.id} value={todo.id}>
+                    {todo.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
             {/* 休息期联动：有到期闪卡时提供「去复习 N 张」（利用休息碎片完成到期复习） */}
             {(mode === 'short_break' || mode === 'long_break') && dueCount > 0 && (
               <button
@@ -614,7 +669,7 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                 (confirmingStop ? (
                   <span
                     className="wb-sys-pomo-stop-confirm"
-                    role="alertdialog"
+                    role="group"
                     aria-label={t('pomodoro.controls.abandonConfirm', {
                       ns: 'todo',
                       defaultValue: '放弃本次专注？',
@@ -698,19 +753,54 @@ const PomodoroAppWindow: React.FC<AppWindowProps> = ({
                 )
               )}
 
-              {/* 正计时专注中：手动「完成」收尾 */}
-              {isCountUpWork && isRunning && (
-                <DsButton
-                  variant="primary"
-                  size="sm"
-                  onClick={() => completeCurrentSession()}
-                  title={t('pomodoro.controls.finish')}
-                  aria-label={t('pomodoro.controls.finish')}
-                  className="h-8 gap-1.5 !px-3 text-xs transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-h-11"
-                >
-                  <CheckCircle size={14} />
-                  <span>{t('pomodoro.controls.finish')}</span>
-                </DsButton>
+              {/* 专注阶段：支持提前完成并记录（倒计时/正计时通用）与跳过到休息 */}
+              {mode === 'work' && (
+                <>
+                  <DsButton
+                    variant="utility"
+                    size="sm"
+                    onClick={() => (isCountUpWork ? completeCurrentSession() : finishWorkEarly())}
+                    title={t('pomodoro.controls.finishEarly', {
+                      ns: 'todo',
+                      defaultValue: '提前完成并记录',
+                    })}
+                    aria-label={t('pomodoro.controls.finishEarly', {
+                      ns: 'todo',
+                      defaultValue: '提前完成并记录',
+                    })}
+                    className="h-8 gap-1.5 !px-2.5 text-xs transition-colors duration-150 ease-standard [@media(pointer:coarse)]:!min-h-11"
+                  >
+                    <CheckCircle size={14} />
+                    <span>
+                      {t('pomodoro.controls.finishEarly', {
+                        ns: 'todo',
+                        defaultValue: '提前完成并记录',
+                      })}
+                    </span>
+                  </DsButton>
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => skipPhase()}
+                    title={t('pomodoro.controls.skipPhase', {
+                      ns: 'todo',
+                      defaultValue: '跳过到休息',
+                    })}
+                    aria-label={t('pomodoro.controls.skipPhase', {
+                      ns: 'todo',
+                      defaultValue: '跳过到休息',
+                    })}
+                    className="h-8 gap-1 !px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
+                  >
+                    <SkipForward size={14} />
+                    <span>
+                      {t('pomodoro.controls.skipPhase', {
+                        ns: 'todo',
+                        defaultValue: '跳过到休息',
+                      })}
+                    </span>
+                  </DsButton>
+                </>
               )}
 
               {(mode === 'short_break' || mode === 'long_break') && (

@@ -61,11 +61,54 @@
 }
 
 /*
+ * 窗口层与最小化/隐藏壳体禁止拦截桌面底层或前景窗口指针事件。
+ */
+[data-wb-window-layer],
+.wb-window-layer {
+  pointer-events: none;
+}
+
+.wb-window.wb-window-minimized,
+.wb-window[data-minimized='true'],
+.wb-window[aria-hidden='true'] {
+  pointer-events: none;
+}
+
+/*
  * 内容区建立独立 stacking context，避免编辑器内部的高 z-index 浮层越过标题栏菜单。
+ * 同时沿 WindowShell -> WindowBody -> 应用根链路传递 flex 列高与 100% 高度，
+ * 避免最大化 / 平铺时设置、笔记、应用页因百分比高度失效塌陷成空白区。
  * 标题栏层级见 WindowTitleBar.css。
  */
 [data-wb-window-content] {
   z-index: var(--wb-z-window-content, 0);
+}
+
+.wb-window > [data-wb-window-content],
+.wb-window.wb-window-maximized > [data-wb-window-content],
+.wb-window.wb-window-tiled > [data-wb-window-content],
+.wb-window[data-display-mode='maximized'] > [data-wb-window-content],
+.wb-window[data-display-mode^='tiled-'] > [data-wb-window-content] {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+}
+
+.wb-window > [data-wb-window-content] > [data-wb-window-body],
+.wb-window > [data-wb-window-content] > [data-wb-window-body] > [data-wb-window-content] {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0%;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
 }
 
 /*

@@ -5,9 +5,18 @@
  * 另加错题复习与笔记复习（todayLearningStore，与首页「今日学习」同口径），
  * 经 `buildAiDashboardIntent` 渲染结构化简报，ActionBar 走 workbenchLearningHandlers。
  */
-import React, { useEffect, useMemo, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkle } from '@phosphor-icons/react';
+import { ChartBar, Sparkle } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
+import { SegmentedControl, type SegmentedControlOption } from '@/components/ui/SegmentedControl';
+import { formatStudyDuration } from '@/components/LearningHeatmap';
+import { formatLocalDateYmd, useLearningHeatmap } from '@/hooks/useLearningHeatmap';
+import { LlmUsageApi, type UsageSummary } from '@/api/llmUsageApi';
+import { getTodoStatsOverview, type TodoStatsOverview } from '@/features/todo/api';
+import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
+import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
+import { workbenchBus } from '../../core/workbenchBus';
 import { GenerativeUIPanel } from '@/features/generative-ui/components/GenerativeUIPanel';
 import { buildAiDashboardIntent } from '@/features/generative-ui/utils/buildAiDashboardIntent';
 import { createWorkbenchLearningHandlers } from '@/features/generative-ui/handlers/workbenchLearningHandlers';
@@ -33,13 +42,50 @@ import { useWbSysSize } from '../system/useWbSysSize';
 import { WbSysFade, WbSysSkeleton } from '../system/SystemWindowShared';
 import './AiDashboardAppWindow.css';
 
+type InsightRangeDays = '1' | '7' | '30';
+
+function formatCompactTokens(tokens: number): string {
+  if (!Number.isFinite(tokens) || tokens <= 0) return '0';
+  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
+  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`;
+  return String(Math.round(tokens));
+}
+
 const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
-  const { t } = useTranslation(['workbench', 'generativeUi']);
+  const { t } = useTranslation(['workbench', 'generativeUi', 'stats']);
   const { ref } = useWbSysSize();
+  const [rangeDays, setRangeDays] = useState<InsightRangeDays>('7');
+  const [usageSummary, setUsageSummary] = useState<UsageSummary | null>(null);
+  const [todoStats, setTodoStats] = useState<TodoStatsOverview | null>(null);
+
   const dueCount = useSyncExternalStore(subscribeFlashcardsDueCount, getFlashcardsDueCount, () => 0);
   const agenda = useSyncExternalStore(subscribeTodoAgenda, getTodoAgendaSnapshot, getTodoAgendaSnapshot);
   const activeTasks = useSyncExternalStore(subscribeAnkiTaskCount, getActiveAnkiTaskCount, () => 0);
   const today = useSyncExternalStore(subscribeTodayLearning, getTodayLearningSnapshot, getTodayLearningSnapshot);
+  const heatmap = useLearningHeatmap(1);
+
+  const numericDays = Number(rangeDays);
+
+  useEffect(() => {
+    let cancelled = false;
+    const endDate = new Date();
+    const startDate = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate() - (numericDays - 1));
+    const endKey = formatLocalDateYmd(endDate);
+    const startKey = formatLocalDateYmd(startDate);
+
+    void Promise.all([
+      LlmUsageApi.getSummary(startKey, endKey).catch(() => null),
+      getTodoStatsOverview(numericDays).catch(() => null),
+    ]).then(([usage, todoOverview]) => {
+      if (cancelled) return;
+      setUsageSummary(usage);
+      setTodoStats(todoOverview);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [numericDays]);
 
   const { pendingTodos, overdueTodos } = useMemo(() => {
     const todayKey = formatLocalDateKey(new Date());
@@ -115,6 +161,47 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
     onTitleChange(t('workbench:apps.aiDashboard'));
   }, [onTitleChange, t]);
 
+  const handleOpenFullStats = useCallback(() => {
+    setPendingSettingsRoute({ tab: 'statistics' });
+    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'statistics' });
+    workbenchBus.launch({ typeId: 'settings', reason: 'api' });
+  }, []);
+
+  const rangeOptions = useMemo<Array<SegmentedControlOption<InsightRangeDays>>>(
+    () => [
+      { value: '1', label: t('generativeUi:workbench.dashboard.range_today') },
+      { value: '7', label: t('generativeUi:workbench.dashboard.range_7d') },
+      { value: '30', label: t('generativeUi:workbench.dashboard.range_30d') },
+    ],
+    [t],
+  );
+
+  const studyInsights = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (numericDays - 1));
+    const startKey = formatLocalDateYmd(start);
+    const inRange = (heatmap.data ?? []).filter((item) => item.date >= startKey);
+    const studySeconds = inRange.reduce((sum, item) => sum + (item.studySeconds ?? 0), 0);
+    const activeDays = inRange.filter((item) => item.count > 0 || (item.studySeconds ?? 0) > 0).length;
+    const tStats = ((key: string, opts?: Record<string, unknown>) =>
+      t(`stats:${key}`, opts as never)) as Parameters<typeof formatStudyDuration>[1];
+    return {
+      formattedDuration: formatStudyDuration(studySeconds, tStats),
+      activeDays,
+    };
+  }, [heatmap.data, numericDays, t]);
+
+  const todoCompletion = useMemo(() => {
+    const completed =
+      numericDays === 1
+        ? (todoStats?.completedToday ?? 0)
+        : (todoStats?.totalCompleted ?? 0);
+    const pending = todoStats?.totalPending ?? agenda.items.length;
+    const total = completed + pending;
+    const rate = total > 0 ? `${Math.round((completed / total) * 100)}%` : '0%';
+    return { completed, total, rate };
+  }, [agenda.items.length, numericDays, todoStats]);
+
   const ready = !agenda.isLoading;
 
   return (
@@ -125,17 +212,86 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
       data-testid="wb-ai-dashboard-window"
     >
       <header className="wb-ai-dashboard-header">
-        <Sparkle className="h-5 w-5 text-primary" weight="fill" aria-hidden />
-        {t('generativeUi:workbench.dashboard.title', {
-          defaultValue: t('generativeUi:workbench.briefing_label'),
-        })}
+        <div className="wb-ai-dashboard-title">
+          <Sparkle className="h-5 w-5 shrink-0 text-primary" weight="fill" aria-hidden />
+          <span className="truncate">
+            {t('generativeUi:workbench.dashboard.title', {
+              defaultValue: t('generativeUi:workbench.briefing_label'),
+            })}
+          </span>
+        </div>
+        <DsButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          data-testid="wb-ai-dashboard-stats-button"
+          onClick={handleOpenFullStats}
+          className="h-7 shrink-0 gap-1.5 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
+        >
+          <ChartBar className="h-3.5 w-3.5" aria-hidden />
+          {t('generativeUi:workbench.dashboard.open_full_stats')}
+        </DsButton>
       </header>
       <div className="wb-ai-dashboard-body">
         {ready ? (
           <WbSysFade>
+            <div className="wb-ai-dashboard-controls">
+              <SegmentedControl<InsightRangeDays>
+                ariaLabel={t('generativeUi:workbench.dashboard.range_label')}
+                value={rangeDays}
+                onValueChange={setRangeDays}
+                options={rangeOptions}
+                size="compact"
+              />
+            </div>
+
+            <div className="wb-ai-dashboard-insights" data-testid="wb-ai-dashboard-insights">
+              <div className="wb-ai-dashboard-insight-card">
+                <span className="wb-ai-dashboard-insight-label">
+                  {t('generativeUi:workbench.dashboard.study_time_label')}
+                </span>
+                <span className="wb-ai-dashboard-insight-value">
+                  {studyInsights.formattedDuration}
+                </span>
+                <span className="wb-ai-dashboard-insight-sub">
+                  {t('generativeUi:workbench.dashboard.study_time_days', { days: studyInsights.activeDays })}
+                </span>
+              </div>
+
+              <div className="wb-ai-dashboard-insight-card">
+                <span className="wb-ai-dashboard-insight-label">
+                  {t('generativeUi:workbench.dashboard.todo_completion_label')}
+                </span>
+                <span className="wb-ai-dashboard-insight-value">
+                  {todoCompletion.rate}
+                </span>
+                <span className="wb-ai-dashboard-insight-sub">
+                  {t('generativeUi:workbench.dashboard.todo_completion_sub', {
+                    completed: todoCompletion.completed,
+                    total: todoCompletion.total,
+                  })}
+                </span>
+              </div>
+
+              <div className="wb-ai-dashboard-insight-card">
+                <span className="wb-ai-dashboard-insight-label">
+                  {t('generativeUi:workbench.dashboard.ai_usage_label')}
+                </span>
+                <span className="wb-ai-dashboard-insight-value">
+                  {formatCompactTokens(usageSummary?.totalTokens ?? 0)}
+                </span>
+                <span className="wb-ai-dashboard-insight-sub">
+                  {t('generativeUi:workbench.dashboard.ai_usage_sub', {
+                    requests: usageSummary?.totalRequests ?? 0,
+                    tokens: formatCompactTokens(usageSummary?.totalTokens ?? 0),
+                  })}
+                </span>
+              </div>
+            </div>
+
             <GenerativeUIPanel
               intent={intent}
-              showChrome
+              showChrome={false}
               actionHandlers={actionHandlers}
             />
           </WbSysFade>

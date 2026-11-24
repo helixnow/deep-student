@@ -133,8 +133,16 @@
     "draftUntested": "草稿未测试：当前表单内容尚未发布，不影响已发布配置",
     "draftTested": "草稿测试通过，尚未发布——点「保存配置」后才会生效",
     "draftTestFailed": "草稿测试失败，未发布；已发布配置未受影响",
+    "draftTestFailedWithReason": "草稿测试失败，未发布；已发布配置未受影响：{{reason}}",
+    "unsavedTestFailed": "测试连接失败",
+    "unsavedTestFailedWithReason": "测试连接失败：{{reason}}",
     "testing": "正在测试草稿连接…",
     "published": "配置已发布"
+  },
+  "validation": {
+    "embeddedCredentials": "URL 中不能包含内嵌用户名或密码，请改填下方的专用凭据输入框",
+    "insecureHttpUrl": "不允许使用明文 HTTP（仅本机回环地址可使用 http://，其余地址请使用 https://）",
+    "rootPathTraversal": "根目录路径不能包含 \"..\" 路径穿越片段"
   },
 
   "clearConfirm": {

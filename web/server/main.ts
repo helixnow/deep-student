@@ -679,7 +679,7 @@ export async function startWebServer(options: StartWebServerOptions = {}): Promi
   const host = options.host ?? process.env.DS_WEB_HOST ?? '127.0.0.1';
   const requestedPort = options.port ?? Number(process.env.DS_WEB_PORT ?? 1428);
   const prod = options.prod ?? process.env.DS_WEB_PROD === '1';
-  const distDir = resolve(options.distDir ?? join(repoRoot, 'dist-web'));
+  const distDir = resolve(options.distDir ?? (process.env.DS_WEB_DIST_DIR || join(repoRoot, 'dist-web')));
   const webPublicDir = join(repoRoot, 'web', 'public');
   const log = options.log ?? ((msg: string) => process.stdout.write(`[dstu-web] ${msg}\n`));
 
@@ -710,10 +710,10 @@ export async function startWebServer(options: StartWebServerOptions = {}): Promi
 
   const gateway = createWebHostGateway({
     repoRoot,
-    appDataDir: options.appDataDir,
+    appDataDir: options.appDataDir ?? (process.env.DS_WEB_DATA_DIR || undefined),
     localOrigin,
     debug: !prod,
-    safeMode: options.safeMode,
+    safeMode: options.safeMode ?? (process.env.DS_WEB_SAFE_MODE === '1' ? true : undefined),
     ...(options.maxStageUploadBytes === undefined ? {} : { maxStageUploadBytes: options.maxStageUploadBytes }),
     log,
   });

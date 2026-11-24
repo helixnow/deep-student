@@ -328,6 +328,7 @@
 }
 
 .app-menu-sub-content[data-state="closed"] {
+  pointer-events: none;
   animation: card-submenu-out var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
 }
 

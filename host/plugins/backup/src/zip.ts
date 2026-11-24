@@ -57,6 +57,7 @@ export interface ZipExportOptions {
   outputPath?: string | null;
   includeChecksums: boolean;
   encryptionPassword?: string | null;
+  sealFullArchive?: boolean;
   deleteSourceOnSuccess?: boolean;
 }
 
@@ -135,24 +136,30 @@ async function removeTempFile(ctx: Context, path: string): Promise<void> {
   }
 }
 
-function portableManifestObject(manifest: BackupManifest): BackupManifest {
+function portableManifestObject(manifest: BackupManifest, sealFullArchive = false): BackupManifest {
   const copy = structuredClone(manifest);
-  copy.files = copy.files.filter(file => !isPortableExcludedRelativePath(file.path));
+  copy.files = sealFullArchive
+    ? []
+    : copy.files.filter(file => !isPortableExcludedRelativePath(file.path));
   if (copy.coverage) {
     for (const domain of Object.values(copy.coverage.domains)) {
-      if (domain.encrypted || domain.restore_target === 'databases/audit.db') {
+      if (sealFullArchive || domain.encrypted || domain.restore_target === 'databases/audit.db') {
         domain.status = 'excluded';
         domain.paths = [];
         domain.file_count = 0;
         domain.total_size = 0;
-        domain.detail = 'excluded from unencrypted portable archive';
+        domain.detail = sealFullArchive
+          ? 'sealed into password-encrypted full archive'
+          : 'excluded from unencrypted portable archive';
       }
     }
   }
   if (copy.assets) {
-    copy.assets.files = copy.assets.files.filter(asset =>
-      !isPortableExcludedRelativePath(asset.relative_path)
-      && !isPortableExcludedRelativePath(asset.original_path));
+    copy.assets.files = sealFullArchive
+      ? []
+      : copy.assets.files.filter(asset =>
+        !isPortableExcludedRelativePath(asset.relative_path)
+        && !isPortableExcludedRelativePath(asset.original_path));
     copy.assets.total_files = copy.assets.files.length;
     copy.assets.total_size = copy.assets.files.reduce((sum, asset) => sum + asset.size, 0);
   }
@@ -167,13 +174,14 @@ function portableManifestBytes(
   keyPolicy: BackupKeyPolicy,
   exclusionDetail: string,
   sealedPayload: BackupFile | null,
+  sealFullArchive = false,
 ): Buffer {
-  const copy = portableManifestObject(manifest);
+  const copy = portableManifestObject(manifest, sealFullArchive);
   copy.key_policy = keyPolicy;
   if (sealedPayload) copy.files.push(sealedPayload);
   if (copy.coverage) {
     for (const domain of Object.values(copy.coverage.domains)) {
-      if (domain.encrypted || domain.restore_target === 'databases/audit.db') {
+      if (sealFullArchive || domain.encrypted || domain.restore_target === 'databases/audit.db') {
         domain.detail = exclusionDetail;
       }
     }
@@ -226,6 +234,7 @@ async function buildSealedSecretsPayload(
   backupDir: string,
   password: string,
   isCancelled: () => boolean,
+  sealFullArchive = false,
 ): Promise<SealedPayload> {
   if (rustTrim(password) === '' || Array.from(password).length < MIN_ENCRYPTION_PASSWORD_CHARS) {
     throw new Error(`[E_CLOUD_ENCRYPTION_PASSWORD_TOO_SHORT] 备份密码至少需要 ${MIN_ENCRYPTION_PASSWORD_CHARS} 个字符（不能为空白）`);
@@ -240,7 +249,11 @@ async function buildSealedSecretsPayload(
   let sealedBytes = 0n;
   for (const entry of await walkExportEntries(backupDir, { includePortableExcluded: true })) {
     if (isCancelled()) throw zipCancelled('导出');
-    if (entry.isDirectory || !isPortableExcludedRelativePath(entry.relative)) continue;
+    if (entry.isDirectory) continue;
+    const shouldSeal = sealFullArchive
+      ? entry.relative !== 'manifest.json' && entry.relative.toLowerCase() !== 'checksums.sha256'
+      : isPortableExcludedRelativePath(entry.relative);
+    if (!shouldSeal) continue;
     sealedBytes += BigInt(entry.size);
     if (sealedBytes > MAX_ARCHIVE_UNCOMPRESSED_BYTES) throw new Error('敏感数据总大小超出归档策略上限');
     sealedFiles.push({ absolute: entry.absolute, relative: entry.relative, size: entry.size });
@@ -384,12 +397,13 @@ export async function exportBackupToZip(
   let sealed: SealedPayload | null = null;
   try {
     revokes.push(await allowPath(io.files, backupDir));
+    const sealFullArchive = Boolean(options.encryptionPassword && options.sealFullArchive);
     if (options.encryptionPassword) {
       onProgress({
         phase: 'seal', progress: 2, processedFiles: 0, totalFiles: 0, currentFile: null,
-        message: '正在密封敏感数据为加密载荷...',
+        message: sealFullArchive ? '正在全量加密封存备份内容...' : '正在密封敏感数据为加密载荷...',
       });
-      sealed = await buildSealedSecretsPayload(ctx, io, backupDir, options.encryptionPassword, isCancelled);
+      sealed = await buildSealedSecretsPayload(ctx, io, backupDir, options.encryptionPassword, isCancelled, sealFullArchive);
     }
 
     onProgress({
@@ -402,8 +416,10 @@ export async function exportBackupToZip(
       sealed ? 'included_encrypted' : 'excluded_portable',
       sealed ? 'sealed into password-encrypted portable payload' : 'excluded from unencrypted portable archive',
       sealed?.entry ?? null,
+      sealFullArchive,
     );
-    const entries = await walkExportEntries(backupDir);
+    const walked = await walkExportEntries(backupDir);
+    const entries = sealFullArchive ? walked.filter(entry => entry.relative === 'manifest.json') : walked;
     let totalEntries = entries.length + (sealed ? 1 : 0);
     let uncompressed = 0n;
     for (const entry of entries) {
@@ -758,7 +774,8 @@ async function unsealEncryptedSecrets(
     catch (error) { throw new Error(`密封载荷不是有效 ZIP: ${ioMessage(zipError(error))}`); }
     const written: string[] = [];
     try {
-      const entries = validateSecretsArchive(archiveEntries(inner));
+      const isFullSealed = manifest.files.length > 0 && manifest.files.every(file => file.path === ENCRYPTED_SECRETS_ENTRY);
+      const entries = validateSecretsArchive(archiveEntries(inner), { allowFullArchive: isFullSealed });
       const budget: ExtractBudget = { written: 0n };
       try {
         for (const entry of entries) {

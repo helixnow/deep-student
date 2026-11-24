@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { DownloadSimple, FolderSimplePlus, Play, PushPinSimple } from '@phosphor-icons/react';
-import { downloadHtmlSource } from '@/features/chat/components/renderers/codeBlockExport';
+import { fileManager } from '@/utils/fileManager';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { getCollapsedMaxHeight, HTML_PREVIEW_STREAM_INTERVAL_MS } from './ChatHtmlPreview';
@@ -1540,7 +1540,13 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
                     type="button"
                     onClick={() => {
                       const fileBase = (displayTitle || workTitle?.trim() || title || 'canvas').replace(/[\\/:*?"<>|]+/g, '_');
-                      void downloadHtmlSource(localHtml, `${fileBase}.html`);
+                      const fileName = `${fileBase}.html`;
+                      void fileManager.saveTextFile({
+                        title: fileName,
+                        defaultFileName: fileName,
+                        content: localHtml,
+                        filters: [{ name: 'HTML', extensions: ['html', 'htm'] }],
+                      });
                     }}
                     className="inline-flex items-center gap-1 rounded border border-border/40 bg-background/70 px-2 py-0.5 text-xs text-foreground transition-colors hover:bg-muted"
                     data-testid="canvas-download-html-button"

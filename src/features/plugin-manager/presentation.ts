@@ -111,6 +111,7 @@ export function pluginStatusKey(plugin: ManagedPlugin, uiStatus?: PluginUiStatus
 export const ADDITION_KINDS = [
   'app', 'selectionButton', 'agentTool', 'chatCard', 'settingsPage', 'contextMenu', 'menuItem',
   'slashCommand', 'dashboardWidget', 'editor', 'renderer', 'navEntry',
+  'studyPrompt', 'studyTemplate', 'studyDeck', 'studyRule', 'studyWidget',
 ] as const;
 export type PluginAdditionKind = typeof ADDITION_KINDS[number];
 
@@ -130,6 +131,15 @@ const additionByPoint: Readonly<Record<string, PluginAdditionKind>> = {
   'editor.extensions': 'editor', 'editor.blockMenu': 'editor',
   'markdown.codeBlocks': 'renderer', 'markdown.remark': 'renderer', 'markdown.rehype': 'renderer', 'resource.types': 'renderer',
   nav: 'navEntry',
+  prompts: 'studyPrompt', 'study-pack.prompts': 'studyPrompt', 'declarative.prompts': 'studyPrompt',
+  skills: 'studyPrompt', 'declarative.skills': 'studyPrompt',
+  templates: 'studyTemplate', 'study-pack.templates': 'studyTemplate', 'declarative.templates': 'studyTemplate',
+  cardTemplates: 'studyTemplate', 'declarative.cardTemplates': 'studyTemplate',
+  decks: 'studyDeck', 'study-pack.decks': 'studyDeck', 'declarative.decks': 'studyDeck',
+  rules: 'studyRule', 'study-pack.rules': 'studyRule', 'declarative.rules': 'studyRule',
+  rubrics: 'studyRule', 'declarative.rubrics': 'studyRule',
+  widgets: 'studyWidget', 'study-pack.widgets': 'studyWidget', 'declarative.widgets': 'studyWidget',
+  workflows: 'studyWidget', 'declarative.workflows': 'studyWidget',
 };
 
 /** Contribution-point names → addition kinds, de-duplicated, in the fixed reading order of {@link ADDITION_KINDS}. */
@@ -140,6 +150,14 @@ export function pluginAdditions(plugin: ManagedPlugin, livePoints: readonly stri
     if (kind) found.add(kind);
   }
   if (plugin.agentTools?.length) found.add('agentTool');
+  const decl = plugin.declarative;
+  if (decl) {
+    if (decl.prompts?.length || decl.skills?.length) found.add('studyPrompt');
+    if (decl.templates?.length || decl.cardTemplates?.length) found.add('studyTemplate');
+    if (decl.decks?.length) found.add('studyDeck');
+    if (decl.rules?.length || decl.rubrics?.length) found.add('studyRule');
+    if (decl.widgets?.length || decl.workflows?.length) found.add('studyWidget');
+  }
   // A view is the entry itself; the sidebar item that leads to it is not a second thing the plugin "adds".
   if (found.has('app')) found.delete('navEntry');
   return ADDITION_KINDS.filter((kind) => found.has(kind));

@@ -82,12 +82,24 @@
 }
 
 .notes-source-editor-body {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-height: 36vh;
   background: transparent;
+  cursor: text;
+}
+
+.notes-source-editor-body > div {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 36vh;
 }
 
 .notes-source-editor-body .cm-editor {
+  flex: 1 1 auto;
+  min-height: 36vh;
   background: transparent;
   color: var(--notes-ink, hsl(var(--foreground)));
   font-family: var(--font-mono);
@@ -107,12 +119,15 @@
 }
 
 .notes-source-editor-body .cm-scroller {
+  flex: 1 1 auto;
+  min-height: 36vh;
   font-family: var(--font-mono);
   line-height: 1.7;
   overflow-x: hidden;
 }
 
 .notes-source-editor-body .cm-content {
+  min-height: 36vh;
   padding: 4px 0 48px;
   caret-color: var(--notes-ink, hsl(var(--foreground)));
   transition: color var(--notes-hover-transition, 120ms ease);

@@ -29,6 +29,22 @@ import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
 
+function formatConflictError(
+  error: unknown,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  const raw = getErrorMessage(error);
+  if (
+    /command\s+[a-z0-9_.-]+\s+not\s+allowed(?:\s+by\s+ACL|\s+on\b[^\n]*)?/i.test(raw) ||
+    /not\s+allowed\s+by\s+ACL/i.test(raw)
+  ) {
+    return t('data:governance.acl_permission_denied', {
+      defaultValue: '当前环境暂无权执行该同步操作，请检查应用权限或版本配置后重试。',
+    });
+  }
+  return raw;
+}
+
 interface ConflictPair {
   databaseName: string;
   tableName: string;
@@ -272,7 +288,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
         setTotalGroups(counts.total_groups);
       }
     } catch (e: unknown) {
-      showGlobalNotification('error', t('data:governance.conflict_load_failed', { error: getErrorMessage(e) }));
+      showGlobalNotification('error', t('data:governance.conflict_load_failed', { error: formatConflictError(e, t) }));
     } finally {
       if (requestGeneration.current === generation) {
         setLoading(false);
@@ -295,7 +311,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
       });
     } catch (e: unknown) {
       showGlobalNotification('error', t('data:governance.conflict_load_failed', {
-        error: getErrorMessage(e),
+        error: formatConflictError(e, t),
       }));
     } finally {
       if (requestGeneration.current === generation) {
@@ -347,7 +363,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
         setRawJsonOpen(false);
         await refresh();
       } catch (e: unknown) {
-        showGlobalNotification('error', t('data:governance.conflict_resolve_failed', { error: getErrorMessage(e) }));
+        showGlobalNotification('error', t('data:governance.conflict_resolve_failed', { error: formatConflictError(e, t) }));
       } finally {
         setResolvingKey(null);
       }
@@ -410,7 +426,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
           );
           resolved += 1;
         } catch (error) {
-          failures.push(`${pair.tableName}/${pair.recordId}: ${getErrorMessage(error)}`);
+          failures.push(`${pair.tableName}/${pair.recordId}: ${formatConflictError(error, t)}`);
         }
       }
       if (failures.length > 0) {
@@ -437,7 +453,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
       const batches = await DataGovernanceApi.listSyncSnapshotBatches(20);
       setSnapshotBatches(batches);
     } catch (e: unknown) {
-      showGlobalNotification('error', t('data:governance.snapshot_load_failed', { error: getErrorMessage(e) }));
+      showGlobalNotification('error', t('data:governance.snapshot_load_failed', { error: formatConflictError(e, t) }));
     }
   }, [t]);
 
@@ -467,7 +483,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
       }));
       await Promise.all([refresh(), refreshSnapshots()]);
     } catch (e: unknown) {
-      showGlobalNotification('error', t('data:governance.snapshot_rollback_failed', { error: getErrorMessage(e) }));
+      showGlobalNotification('error', t('data:governance.snapshot_rollback_failed', { error: formatConflictError(e, t) }));
     } finally {
       setRollingBackBatch(null);
     }
@@ -493,7 +509,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
       showGlobalNotification('info', t('data:governance.conflict_purged', { count: n }));
       await refresh();
     } catch (e: unknown) {
-      showGlobalNotification('error', t('data:governance.conflict_purge_failed', { error: getErrorMessage(e) }));
+      showGlobalNotification('error', t('data:governance.conflict_purge_failed', { error: formatConflictError(e, t) }));
     } finally {
       setPurging(false);
     }

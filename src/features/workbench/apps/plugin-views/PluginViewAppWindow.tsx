@@ -11,7 +11,7 @@ import type { ShellViewContribution } from '@/ui-kernel/contracts/shell';
 import { SlotOutlet } from '@/ui-kernel/outlet';
 import { UiKernelProvider, useOptionalUiKernel, useSlotEntry } from '@/ui-kernel/react';
 import { resolveShellViewComponent } from '@/ui-kernel/shell-view';
-import { usePluginManagerWorkshop } from '@/features/plugin-manager/workshop';
+import { usePluginManagerWorkshop } from '@/features/plugin-manager';
 import type { AppWindowProps } from '../../core/types';
 
 export interface PluginViewAppWindowProps extends AppWindowProps {

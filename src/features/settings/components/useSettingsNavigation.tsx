@@ -337,9 +337,16 @@ export function useSettingsNavigation() {
     { tab: 'statistics', label: t('settings:statistics.learning_time'), keywords: ['learning time', 'statistics'] },
     { tab: 'statistics', label: t('settings:statistics.chat_stats'), keywords: ['chat stats', 'session'] },
     { tab: 'statistics', label: t('settings:statistics.heatmap'), keywords: ['heatmap', 'activity'] },
-    { tab: 'data-governance', label: t('data:governance.title'), keywords: ['data governance', 'import', 'export'] },
-    { tab: 'data-governance', label: t('data:governance.backup'), keywords: ['backup', 'export'] },
-    { tab: 'data-governance', label: t('data:governance.restore'), keywords: ['restore', 'import'] },
+    {
+      tab: 'data-governance',
+      label: t('data:governance.title'),
+      keywords: [
+        'data governance', 'import', 'export', 'sync', '同步', 'cloud storage', '云存储',
+        'webdav', 's3', 'ftp', 'e2ee', 'pairing', '配对', 'quarantine', '隔离', 'conflict', '冲突',
+      ],
+    },
+    { tab: 'data-governance', label: t('data:governance.backup'), keywords: ['backup', 'export', '备份'] },
+    { tab: 'data-governance', label: t('data:governance.restore'), keywords: ['restore', 'import', '恢复'] },
     { tab: 'params', label: t('common:settings.chat_stream.card_title'), keywords: ['timeout', 'stream', '超时', '流式'] },
     { tab: 'params', label: t('settings:cards.search_settings_title'), keywords: ['fts', 'semantic', 'search', '语义搜索'] },
     ...(!hideShortcuts

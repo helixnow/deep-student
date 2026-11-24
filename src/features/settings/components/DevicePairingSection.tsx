@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import {
   QrCode,
@@ -58,12 +59,24 @@ export const ipcPairingSettings: PairingSettingsStore = {
   },
 };
 
-function describeSummary(summary: Summary): string {
-  return `云存储：${summary.cloudProvider ?? '未包含'} · AI 供应商：${summary.llmProviders} 个 · 技能：${
-    summary.includeSkills === null ? '未包含' : summary.includeSkills ? '同步' : '不同步'
-  } · 插件：${
-    summary.includePlugins === null ? '未包含' : summary.includePlugins ? '同步' : '不同步'
-  }`;
+function describeSummary(
+  summary: Summary,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  const notIncluded = t('sync:pairing.summaryNotIncluded', { defaultValue: '未包含' });
+  const syncLabel = t('sync:pairing.summarySync', { defaultValue: '同步' });
+  const noSyncLabel = t('sync:pairing.summaryNoSync', { defaultValue: '不同步' });
+  const skillsLabel =
+    summary.includeSkills === null ? notIncluded : summary.includeSkills ? syncLabel : noSyncLabel;
+  const pluginsLabel =
+    summary.includePlugins === null ? notIncluded : summary.includePlugins ? syncLabel : noSyncLabel;
+  return t('sync:pairing.summaryFormat', {
+    cloud: summary.cloudProvider ?? notIncluded,
+    llmProviders: summary.llmProviders,
+    skills: skillsLabel,
+    plugins: pluginsLabel,
+    defaultValue: `云存储：${summary.cloudProvider ?? notIncluded} · AI 供应商：${summary.llmProviders} 个 · 技能：${skillsLabel} · 插件：${pluginsLabel}`,
+  });
 }
 
 function generateRandomSixDigitPin(): string {
@@ -88,6 +101,7 @@ export function DevicePairingSection({
   onRunSync,
   cloudConfigured = false,
 }: DevicePairingSectionProps) {
+  const { t } = useTranslation(['sync', 'cloudStorage', 'common']);
   const [skills, setSkills] = useState(true);
   const [plugins, setPlugins] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -192,7 +206,13 @@ export function DevicePairingSection({
       });
       setCode(result.pairingCode);
       setGeneratedPinDisplay(targetPin);
-      setStatus(`已生成同步二维码（${describeSummary(result.summary)}）`);
+      const summary = describeSummary(result.summary, t);
+      setStatus(
+        t('sync:pairing.qrGeneratedStatus', {
+          summary,
+          defaultValue: `已生成同步二维码（${summary}）`,
+        }),
+      );
       if (alsoPushSnapshot && onRunSync) {
         onRunSync('upload');
       }
@@ -206,10 +226,16 @@ export function DevicePairingSection({
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `deepstudent-sync-qr-${new Date().toISOString().slice(0, 10)}.svg`;
+      const now = new Date();
+      const ymd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      a.download = `deepstudent-sync-qr-${ymd}.svg`;
       a.click();
       URL.revokeObjectURL(url);
-      setStatus('同步二维码图片已下载');
+      setStatus(
+        t('sync:pairing.qrDownloadedStatus', {
+          defaultValue: '同步二维码图片已下载',
+        }),
+      );
     } catch (e) {
       setError(getErrorMessage(e));
     }
@@ -228,7 +254,11 @@ export function DevicePairingSection({
       !navigator.mediaDevices ||
       typeof navigator.mediaDevices.getUserMedia !== 'function'
     ) {
-      setCameraHint('当前设备环境未暴露摄像头接口，请使用「从二维码图片导入」或直接粘贴配对码。');
+      setCameraHint(
+        t('sync:pairing.cameraUnavailable', {
+          defaultValue: '当前设备环境未暴露摄像头接口，请使用「从二维码图片导入」或直接粘贴配对码。',
+        }),
+      );
       return;
     }
 
@@ -253,16 +283,26 @@ export function DevicePairingSection({
         if (video.readyState < 2) return;
         decoding = true;
         try {
-          const code = await decodePairingFrame(canvas, video, video.videoWidth, video.videoHeight);
-          if (code && cameraSession.current === session) {
-            setIncoming(code);
-            setStatus('已通过摄像头识别到同步二维码，请输入 6 位 PIN 完成接入');
+          const decoded = await decodePairingFrame(canvas, video, video.videoWidth, video.videoHeight);
+          if (decoded && cameraSession.current === session) {
+            setIncoming(decoded);
+            setStatus(
+              t('sync:pairing.cameraRecognized', {
+                defaultValue: '已通过摄像头识别到同步二维码，请输入 6 位 PIN 完成接入',
+              }),
+            );
             stopCamera();
           }
         } catch (e) {
           if (cameraSession.current === session) {
             stopCamera();
-            setCameraHint('无法解码摄像头画面：' + getErrorMessage(e));
+            const errMsg = getErrorMessage(e);
+            setCameraHint(
+              t('sync:pairing.cameraDecodeFailed', {
+                error: errMsg,
+                defaultValue: `无法解码摄像头画面：${errMsg}`,
+              }),
+            );
           }
         } finally {
           decoding = false;
@@ -271,8 +311,12 @@ export function DevicePairingSection({
     } catch (e) {
       if (cameraSession.current !== session) return;
       stopCamera();
+      const errMsg = getErrorMessage(e);
       setCameraHint(
-        `无法开启摄像头（${getErrorMessage(e)}），请使用「从二维码图片导入」或直接粘贴配对码。`,
+        t('sync:pairing.cameraStartFailed', {
+          error: errMsg,
+          defaultValue: `无法开启摄像头（${errMsg}），请使用「从二维码图片导入」或直接粘贴配对码。`,
+        }),
       );
     }
   };
@@ -286,15 +330,30 @@ export function DevicePairingSection({
     setStatus('');
 
     try {
-      const code = await decodePairingImage(file);
-      if (code) {
-        setIncoming(code);
-        setStatus('已从二维码图片识别配对码，请输入 6 位 PIN 完成接入');
+      const decoded = await decodePairingImage(file);
+      if (decoded) {
+        setIncoming(decoded);
+        setStatus(
+          t('sync:pairing.imageRecognized', {
+            defaultValue: '已从二维码图片识别配对码，请输入 6 位 PIN 完成接入',
+          }),
+        );
         return;
       }
-      setError('未能从所选图片中识别出同步配对码，请优先导入本应用导出的二维码图片或直接粘贴配对码文本。');
+      setError(
+        t('sync:pairing.imageDecodeEmpty', {
+          defaultValue:
+            '未能从所选图片中识别出同步配对码，请优先导入本应用导出的二维码图片或直接粘贴配对码文本。',
+        }),
+      );
     } catch (e) {
-      setError(`读取二维码图片失败：${getErrorMessage(e)}`);
+      const errMsg = getErrorMessage(e);
+      setError(
+        t('sync:pairing.imageReadFailed', {
+          error: errMsg,
+          defaultValue: `读取二维码图片失败：${errMsg}`,
+        }),
+      );
     }
   };
 
@@ -309,7 +368,13 @@ export function DevicePairingSection({
       setIncoming('');
       setApplyPin('');
       setAppliedSuccess(true);
-      setStatus(`配置已接入。${describeSummary(result.summary)}`);
+      const summary = describeSummary(result.summary, t);
+      setStatus(
+        t('sync:pairing.codeAppliedStatus', {
+          summary,
+          defaultValue: `配置已接入。${summary}`,
+        }),
+      );
       if (triggerPullAfter && onRunSync) {
         onRunSync('download');
       }
@@ -319,19 +384,25 @@ export function DevicePairingSection({
     <div className="space-y-6" data-testid="device-pairing-section">
       {/* 1. 同步内容扩展（技能与插件） */}
       <SettingsGroup
-        title="同步内容扩展（技能与插件）"
-        description="随云同步传输可移植文件；不会自动授予插件信任，移动端自动跳过桌面专用插件。"
+        title={t('sync:pairing.extensionsTitle', { defaultValue: '同步内容扩展（技能与插件）' })}
+        description={t('sync:pairing.extensionsDesc', {
+          defaultValue: '随云同步传输可移植文件；不会自动授予插件信任，移动端自动跳过桌面专用插件。',
+        })}
       >
         <SwitchRow
-          title="同步自定义技能与市场技能"
-          description="将 .skills 目录中的自定义技能随云端同步分发到其他设备"
+          title={t('sync:pairing.syncSkillsTitle', { defaultValue: '同步自定义技能与市场技能' })}
+          description={t('sync:pairing.syncSkillsDesc', {
+            defaultValue: '将 .skills 目录中的自定义技能随云端同步分发到其他设备',
+          })}
           checked={skills}
           disabled={!loaded || busy}
           onCheckedChange={(value) => toggle('sync.include_skills', value, setSkills)}
         />
         <SwitchRow
-          title="同步插件与工坊自制插件"
-          description="跨设备同步已安装插件包与自制插件源码"
+          title={t('sync:pairing.syncPluginsTitle', { defaultValue: '同步插件与工坊自制插件' })}
+          description={t('sync:pairing.syncPluginsDesc', {
+            defaultValue: '跨设备同步已安装插件包与自制插件源码',
+          })}
           checked={plugins}
           disabled={!loaded || busy}
           onCheckedChange={(value) => toggle('sync.include_plugins', value, setPlugins)}
@@ -340,13 +411,16 @@ export function DevicePairingSection({
 
       {/* 2. 扫码同步 & 局域网/跨端一键配对中心 */}
       <SettingsGroup
-        title="扫码同步与跨设备一键配对"
-        description="无需在新设备繁琐输入 WebDAV / S3 地址、端到端加密密码或 AI 密钥。使用 6 位 PIN 端到端加密生成二维码，另一台设备扫码或导入即可一键完成配对并同步数据。"
+        title={t('sync:pairing.cardTitle', { defaultValue: '扫码同步与跨设备一键配对' })}
+        description={t('sync:pairing.cardDesc', {
+          defaultValue:
+            '无需在新设备繁琐输入 WebDAV / S3 地址、端到端加密密码或 AI 密钥。使用 6 位 PIN 端到端加密生成二维码，另一台设备扫码或导入即可一键完成配对并同步数据。',
+        })}
         actions={
           <div
             className="inline-flex items-center rounded-lg bg-muted p-0.5 border border-border/40"
             role="tablist"
-            aria-label="配对模式切换"
+            aria-label={t('sync:pairing.modeSwitchAria', { defaultValue: '配对模式切换' })}
           >
             <button
               type="button"
@@ -364,7 +438,7 @@ export function DevicePairingSection({
               )}
             >
               <QrCode size={14} />
-              本机生成二维码
+              {t('sync:pairing.tabSend', { defaultValue: '本机生成二维码' })}
             </button>
             <button
               type="button"
@@ -379,7 +453,7 @@ export function DevicePairingSection({
               )}
             >
               <Camera size={14} />
-              新设备扫码 / 接入
+              {t('sync:pairing.tabReceive', { defaultValue: '新设备扫码 / 接入' })}
             </button>
           </div>
         }
@@ -390,7 +464,7 @@ export function DevicePairingSection({
               {/* 左侧：配置项与生成控制 */}
               <fieldset className="space-y-3 min-w-0" disabled={busy}>
                 <legend className="text-sm font-medium text-foreground mb-1">
-                  在当前设备生成同步二维码
+                  {t('sync:pairing.sendTitle', { defaultValue: '在当前设备生成同步二维码' })}
                 </legend>
                 <div className="space-y-2 rounded-xl bg-background/55 border border-border/30 p-3">
                   <label className="flex items-center gap-2.5 text-sm text-foreground/90 cursor-pointer [@media(pointer:coarse)]:min-h-9">
@@ -398,21 +472,48 @@ export function DevicePairingSection({
                       checked={cloud}
                       onCheckedChange={(checked) => setCloud(Boolean(checked))}
                     />
-                    <span>云同步配置与密码（WebDAV / S3 / 端到端加密密钥）</span>
+                    <span>
+                      {t('sync:pairing.includeCloud', {
+                        defaultValue: '云同步配置与密码（WebDAV / S3 / 端到端加密密钥）',
+                      })}
+                    </span>
                   </label>
+                  {cloud && !cloudConfigured && (
+                    <div
+                      role="status"
+                      data-testid="pairing-cloud-not-configured-warning"
+                      className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
+                    >
+                      <WarningCircle size={14} className="mt-0.5 shrink-0" aria-hidden />
+                      <span>
+                        {t('sync:pairing.cloudNotConfiguredWarning', {
+                          defaultValue:
+                            '当前尚未保存云存储配置：勾选此项不会包含任何可用的云存储凭据，请先保存云存储配置后再重新生成配对码。',
+                        })}
+                      </span>
+                    </div>
+                  )}
                   <label className="flex items-center gap-2.5 text-sm text-foreground/90 cursor-pointer [@media(pointer:coarse)]:min-h-9">
                     <Checkbox
                       checked={llm}
                       onCheckedChange={(checked) => setLlm(Boolean(checked))}
                     />
-                    <span>AI 供应商配置与 API 密钥</span>
+                    <span>
+                      {t('sync:pairing.includeLlm', {
+                        defaultValue: 'AI 供应商配置与 API 密钥',
+                      })}
+                    </span>
                   </label>
                   <label className="flex items-center gap-2.5 text-sm text-foreground/90 cursor-pointer [@media(pointer:coarse)]:min-h-9">
                     <Checkbox
                       checked={prefs}
                       onCheckedChange={(checked) => setPrefs(Boolean(checked))}
                     />
-                    <span>技能 / 插件同步偏好</span>
+                    <span>
+                      {t('sync:pairing.includeExtensions', {
+                        defaultValue: '技能 / 插件同步偏好',
+                      })}
+                    </span>
                   </label>
                 </div>
 
@@ -423,7 +524,7 @@ export function DevicePairingSection({
                       className="text-xs font-medium text-muted-foreground flex items-center gap-1.5"
                     >
                       <Key size={13} />
-                      生成 PIN（6 位数字）
+                      {t('sync:pairing.pinLabel', { defaultValue: '生成 PIN（6 位数字）' })}
                     </label>
                     <DsButton
                       type="button"
@@ -434,7 +535,7 @@ export function DevicePairingSection({
                       disabled={busy}
                     >
                       <Shuffle size={13} className="mr-1" />
-                      随机生成 6 位 PIN
+                      {t('sync:pairing.generateRandomPin', { defaultValue: '随机生成 6 位 PIN' })}
                     </DsButton>
                   </div>
                   <Input
@@ -443,13 +544,18 @@ export function DevicePairingSection({
                     inputMode="numeric"
                     autoComplete="new-password"
                     maxLength={6}
-                    placeholder="输入 6 位数字 PIN（或点击右侧随机生成）"
+                    placeholder={t('sync:pairing.pinPlaceholder', {
+                      defaultValue: '输入 6 位数字 PIN（或点击右侧随机生成）',
+                    })}
                     value={pin}
                     onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
                     className="max-w-xs font-mono tabular-nums tracking-widest"
                   />
                   <p className="text-xs text-muted-foreground/80">
-                    配对码采用端到端加密保护，仅凭二维码无法反解，需在新设备输入同一 6 位 PIN。
+                    {t('sync:pairing.pinE2eeHint', {
+                      defaultValue:
+                        '配对码采用端到端加密保护，仅凭二维码无法反解，需在新设备输入同一 6 位 PIN。',
+                    })}
                   </p>
                 </div>
 
@@ -462,7 +568,7 @@ export function DevicePairingSection({
                     data-testid="generate-pairing-qr-btn"
                   >
                     <QrCode size={15} className="mr-1.5" />
-                    生成同步二维码
+                    {t('sync:pairing.generateQrBtn', { defaultValue: '生成同步二维码' })}
                   </DsButton>
 
                   <DsButton
@@ -470,10 +576,14 @@ export function DevicePairingSection({
                     size="sm"
                     disabled={busy || !(cloud || llm || prefs)}
                     onClick={() => handleGenerateQr(false)}
-                    title="自动生成 6 位随机 PIN 并立即生成二维码"
+                    title={t('sync:pairing.quickRandomTitle', {
+                      defaultValue: '自动生成 6 位随机 PIN 并立即生成二维码',
+                    })}
                   >
                     <Sparkle size={14} className="mr-1.5" />
-                    一键随机 PIN 生成二维码
+                    {t('sync:pairing.quickRandomBtn', {
+                      defaultValue: '一键随机 PIN 生成二维码',
+                    })}
                   </DsButton>
 
                   {onRunSync && cloudConfigured && (
@@ -484,7 +594,9 @@ export function DevicePairingSection({
                       onClick={() => handleGenerateQr(true)}
                     >
                       <CloudArrowUp size={15} className="mr-1.5" />
-                      生成并立即推送本机最新快照
+                      {t('sync:pairing.generateAndPushBtn', {
+                        defaultValue: '生成并立即推送本机最新快照',
+                      })}
                     </DsButton>
                   )}
                 </div>
@@ -501,7 +613,9 @@ export function DevicePairingSection({
                   </div>
                   {generatedPinDisplay && (
                     <div className="text-center space-y-0.5">
-                      <div className="text-2xs text-muted-foreground">配对解密 PIN</div>
+                      <div className="text-2xs text-muted-foreground">
+                        {t('sync:pairing.pinDisplayLabel', { defaultValue: '配对解密 PIN' })}
+                      </div>
                       <div
                         className="font-mono text-lg font-semibold tracking-[0.28em] text-foreground tabular-nums"
                         data-testid="device-pairing-pin-display"
@@ -512,9 +626,11 @@ export function DevicePairingSection({
                   )}
                   <div className="w-full space-y-1.5">
                     <label className="block text-2xs text-muted-foreground">
-                      加密配对码
+                      {t('sync:pairing.encryptedCodeLabel', { defaultValue: '加密配对码' })}
                       <textarea
-                        aria-label="生成的加密配对码"
+                        aria-label={t('sync:pairing.encryptedCodeAria', {
+                          defaultValue: '生成的加密配对码',
+                        })}
                         readOnly
                         value={code}
                         rows={2}
@@ -528,14 +644,22 @@ export function DevicePairingSection({
                         onClick={() =>
                           void work(async () => {
                             if (!(await copyTextToClipboard(code))) {
-                              throw new Error('复制失败，请手动复制');
+                              throw new Error(
+                                t('sync:pairing.copyFailedError', {
+                                  defaultValue: '复制失败，请手动复制',
+                                }),
+                              );
                             }
-                            setStatus('配对码已复制');
+                            setStatus(
+                              t('sync:pairing.codeCopiedStatus', {
+                                defaultValue: '配对码已复制',
+                              }),
+                            );
                           })
                         }
                       >
                         <Copy size={13} className="mr-1" />
-                        一键复制
+                        {t('sync:pairing.copyCodeBtn', { defaultValue: '一键复制' })}
                       </DsButton>
                       <DsButton
                         variant="outline"
@@ -544,7 +668,7 @@ export function DevicePairingSection({
                         data-testid="download-pairing-qr-btn"
                       >
                         <DownloadSimple size={13} className="mr-1" />
-                        下载二维码
+                        {t('sync:pairing.downloadQrBtn', { defaultValue: '下载二维码' })}
                       </DsButton>
                       <DsButton
                         variant="ghost"
@@ -556,7 +680,7 @@ export function DevicePairingSection({
                         }}
                       >
                         <EyeSlash size={13} className="mr-1" />
-                        隐藏并清除
+                        {t('sync:pairing.clearCodeBtn', { defaultValue: '隐藏并清除' })}
                       </DsButton>
                     </div>
                   </div>
@@ -565,10 +689,12 @@ export function DevicePairingSection({
                 <div className="hidden lg:flex flex-col items-center justify-center rounded-xl border border-dashed border-border/45 bg-background/35 px-6 py-8 text-center w-[240px]">
                   <QrCode size={40} className="text-muted-foreground/40 mb-2" />
                   <p className="text-xs font-medium text-muted-foreground">
-                    尚未生成同步二维码
+                    {t('sync:pairing.emptyQrTitle', { defaultValue: '尚未生成同步二维码' })}
                   </p>
                   <p className="mt-1 text-2xs text-muted-foreground/70 leading-relaxed">
-                    输入或随机生成 6 位 PIN 后，点击左侧按钮即可在此展示高清二维码
+                    {t('sync:pairing.emptyQrDesc', {
+                      defaultValue: '输入或随机生成 6 位 PIN 后，点击左侧按钮即可在此展示高清二维码',
+                    })}
                   </p>
                 </div>
               )}
@@ -577,7 +703,7 @@ export function DevicePairingSection({
             /* 接收端：扫码 / 导入二维码图片 / 粘贴配对码 */
             <fieldset className="space-y-4" disabled={busy}>
               <legend className="text-sm font-medium text-foreground">
-                在新设备扫码或粘贴配对码接入
+                {t('sync:pairing.receiveTitle', { defaultValue: '在新设备扫码或粘贴配对码接入' })}
               </legend>
 
               {/* 快捷扫码与图片导入工具栏 */}
@@ -592,12 +718,12 @@ export function DevicePairingSection({
                   {cameraActive ? (
                     <>
                       <StopCircle size={14} className="mr-1.5" />
-                      停止摄像头扫码
+                      {t('sync:pairing.stopCameraScan', { defaultValue: '停止摄像头扫码' })}
                     </>
                   ) : (
                     <>
                       <Camera size={14} className="mr-1.5" />
-                      使用摄像头扫码
+                      {t('sync:pairing.startCameraScan', { defaultValue: '使用摄像头扫码' })}
                     </>
                   )}
                 </DsButton>
@@ -610,14 +736,16 @@ export function DevicePairingSection({
                   data-testid="import-qr-image-btn"
                 >
                   <ImageSquare size={14} className="mr-1.5" />
-                  从二维码图片导入
+                  {t('sync:pairing.importQrImage', { defaultValue: '从二维码图片导入' })}
                 </DsButton>
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/svg+xml,image/png,image/jpeg,image/webp,.svg,.png,.jpg,.jpeg,.webp"
                   className="hidden"
-                  aria-label="选择同步二维码图片"
+                  aria-label={t('sync:pairing.importQrAria', {
+                    defaultValue: '选择同步二维码图片',
+                  })}
                   onChange={(e) => void handleImportQrImage(e)}
                 />
               </div>
@@ -632,7 +760,9 @@ export function DevicePairingSection({
                     className="w-full rounded-lg bg-black/90 aspect-square object-cover"
                   />
                   <p className="text-xs text-muted-foreground text-center">
-                    请将另一台设备上的同步二维码置于取景框中央
+                    {t('sync:pairing.cameraAimHint', {
+                      defaultValue: '请将另一台设备上的同步二维码置于取景框中央',
+                    })}
                   </p>
                 </div>
               )}
@@ -645,7 +775,9 @@ export function DevicePairingSection({
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
                 <label className="block text-xs font-medium text-muted-foreground">
-                  粘贴 DSPAIR1 配对码（或通过上方扫码自动填入）
+                  {t('sync:pairing.pasteCodeLabel', {
+                    defaultValue: '粘贴 DSPAIR1 配对码（或通过上方扫码自动填入）',
+                  })}
                   <textarea
                     value={incoming}
                     onChange={(e) => setIncoming(e.target.value)}
@@ -657,20 +789,27 @@ export function DevicePairingSection({
 
                 <div className="space-y-2">
                   <label className="block text-xs font-medium text-muted-foreground space-y-1.5">
-                    <span>配对 PIN（6 位数字）</span>
+                    <span>
+                      {t('sync:pairing.receivePinLabel', { defaultValue: '配对 PIN（6 位数字）' })}
+                    </span>
                     <Input
                       type="password"
                       inputMode="numeric"
                       autoComplete="off"
                       maxLength={6}
-                      placeholder="6 位数字 PIN"
+                      placeholder={t('sync:pairing.receivePinPlaceholder', {
+                        defaultValue: '6 位数字 PIN',
+                      })}
                       value={applyPin}
                       onChange={(e) => setApplyPin(e.target.value.replace(/\D/g, ''))}
                       className="font-mono tabular-nums tracking-widest"
                     />
                   </label>
                   <p className="text-2xs text-muted-foreground/80 leading-relaxed">
-                    接入将更新配对码包含的云存储与 AI 配置；技能与插件在下一次云同步时自动下载。
+                    {t('sync:pairing.applyHint', {
+                      defaultValue:
+                        '接入将更新配对码包含的云存储与 AI 配置；技能与插件在下一次云同步时自动下载。',
+                    })}
                   </p>
                 </div>
               </div>
@@ -688,7 +827,7 @@ export function DevicePairingSection({
                   data-testid="apply-pairing-code-btn"
                 >
                   <CheckCircle size={15} className="mr-1.5" />
-                  一键接入配置
+                  {t('sync:pairing.applyBtn', { defaultValue: '一键接入配置' })}
                 </DsButton>
 
                 {onRunSync && (
@@ -703,7 +842,7 @@ export function DevicePairingSection({
                     onClick={() => handleApplyPairing(true)}
                   >
                     <Download size={14} className="mr-1.5" />
-                    接入并立即拉取云端数据
+                    {t('sync:pairing.applyAndPullBtn', { defaultValue: '接入并立即拉取云端数据' })}
                   </DsButton>
                 )}
 
@@ -715,7 +854,7 @@ export function DevicePairingSection({
                     onClick={() => onRunSync('bidirectional')}
                   >
                     <Upload size={14} className="mr-1.5" />
-                    立即执行双向云同步
+                    {t('sync:pairing.runBiSyncBtn', { defaultValue: '立即执行双向云同步' })}
                   </DsButton>
                 )}
               </div>

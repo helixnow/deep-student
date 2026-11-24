@@ -234,6 +234,7 @@ export function ComposerPanelOverlay({
       data-composer-panel-overlay={panelKey}
       data-composer-panel-placement={position?.placement ?? 'top'}
       data-panel-motion={motionState}
+      data-state={motionState === 'open' ? 'open' : 'closed'}
       className={cn(
         'fixed rounded-[var(--radius-shell-panel)] border border-[color:var(--composer-panel-border)] bg-[color:var(--composer-panel-surface)] bg-clip-padding p-3 text-[color:var(--composer-panel-foreground)] shadow-[var(--composer-panel-shadow)]',
         heightMode === 'available'

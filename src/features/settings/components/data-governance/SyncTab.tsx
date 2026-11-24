@@ -20,7 +20,12 @@ import {
   Upload,
   ArrowsLeftRight,
   FileText,
+  Clock,
+  Copy,
+  Check,
 } from "@phosphor-icons/react";
+import { copyTextToClipboard } from "@/utils/clipboardUtils";
+import { showGlobalNotification } from "@/components/UnifiedNotification";
 
 import { DsButton, type DsButtonVariant } from "@/components/ui/DsButton";
 import { CustomScrollArea } from "@/components/custom-scroll-area";
@@ -64,6 +69,7 @@ import {
   formatBytes,
   formatSpeed,
   formatEta,
+  formatTimestamp,
 } from "@/types/dataGovernance";
 import type { StorageProvider } from "@/utils/cloudStorageApi";
 
@@ -134,6 +140,41 @@ export function extractSyncLeaseExpiry(raw: string): Date | null {
   return Number.isNaN(expiry.getTime()) ? null : expiry;
 }
 
+function sanitizeSyncAclError(
+  raw: string,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
+  if (
+    /command\s+[a-z0-9_.-]+\s+not\s+allowed(?:\s+by\s+ACL|\s+on\b[^\n]*)?/i.test(raw) ||
+    /not\s+allowed\s+by\s+ACL/i.test(raw)
+  ) {
+    return t("data:governance.acl_permission_denied", {
+      defaultValue: "当前环境暂无权执行该同步操作，请检查应用权限或版本配置后重试。",
+    });
+  }
+  return raw;
+}
+
+/** 计算全量/记录级同步中最新的有效时间戳（兼容仅库级 last_sync_at 更新的场景） */
+export function resolveLatestSyncTimestamp(syncStatus: SyncStatusResponse | null): string | null {
+  if (!syncStatus) return null;
+  let bestStr: string | null = null;
+  let bestMs = -Infinity;
+  const candidates: Array<string | null | undefined> = [
+    syncStatus.last_sync_at,
+    ...(syncStatus.databases ?? []).map((db) => db.last_sync_at),
+  ];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const ms = Date.parse(candidate);
+    if (!Number.isNaN(ms) && ms > bestMs) {
+      bestMs = ms;
+      bestStr = candidate;
+    }
+  }
+  return bestStr;
+}
+
 export interface SyncTabProps {
   syncStatus: SyncStatusResponse | null;
   conflicts: ConflictDetectionResponse | null;
@@ -190,6 +231,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   // 待确认的数据库级冲突解决策略：点击策略按钮先弹确认，确认后才执行
   const [pendingResolveStrategy, setPendingResolveStrategy] =
     React.useState<MergeStrategy | null>(null);
+  const [deviceIdCopied, setDeviceIdCopied] = React.useState(false);
   // 自动同步开关（默认关闭；调度与安全防线在 syncStatusStore 内实现）
   const autoSyncEnabled = useAutoSyncStore((s) => s.enabled);
   const setAutoSyncEnabled = useAutoSyncStore((s) => s.setEnabled);
@@ -199,15 +241,22 @@ export const SyncTab: React.FC<SyncTabProps> = ({
     ensureAutoSyncSchedulerStarted();
   }, []);
   const syncDatabases = syncStatus?.databases ?? [];
-  const showSyncProgress = syncRunning || Boolean(syncProgress?.error);
+  const latestSyncAt = React.useMemo(
+    () => resolveLatestSyncTimestamp(syncStatus),
+    [syncStatus]
+  );
+  const sanitizedSyncError = syncProgress?.error
+    ? sanitizeSyncAclError(syncProgress.error, t)
+    : undefined;
+  const showSyncProgress = syncRunning || Boolean(sanitizedSyncError);
   // [R09-e2ee] 端到端加密类失败先归类为“人话”，原文保留在下方供排查/搜索
-  const syncErrorE2eeKind = syncProgress?.error
-    ? classifySyncE2eeError(syncProgress.error)
+  const syncErrorE2eeKind = sanitizedSyncError
+    ? classifySyncE2eeError(sanitizedSyncError)
     : null;
   // [R09-ux] 已知 E2EE 错误显示人话，原始错误降级为技术详情
   // （补「未配置加密密码」等 e2ee 分类器未覆盖的入口）
-  const syncErrorKind = syncProgress?.error
-    ? classifySyncError(syncProgress.error)
+  const syncErrorKind = sanitizedSyncError
+    ? classifySyncError(sanitizedSyncError)
     : null;
   const conflictRefreshSignal = `${syncStatus?.total_pending_changes ?? 0}:${syncStatus?.total_synced_changes ?? 0}`;
   const syncProgressCounter =
@@ -227,10 +276,23 @@ export const SyncTab: React.FC<SyncTabProps> = ({
     setPendingResolveStrategy(null);
   };
 
+  const handleCopyDeviceId = async () => {
+    if (!syncStatus?.device_id) return;
+    const ok = await copyTextToClipboard(syncStatus.device_id);
+    if (ok) {
+      setDeviceIdCopied(true);
+      showGlobalNotification(
+        "success",
+        t("sync:deviceIdCopied", { defaultValue: "已复制设备 ID" })
+      );
+      window.setTimeout(() => setDeviceIdCopied(false), 2000);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* 同步状态概览 */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 rounded-2xl bg-muted px-4 py-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 rounded-2xl bg-muted px-4 py-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <Cloud size={16} />
@@ -253,19 +315,52 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <Clock size={16} />
+            {t("data:sync_settings.last_sync")}
+          </div>
+          <div className="text-sm font-medium text-foreground" data-testid="sync-last-sync-at">
+            {latestSyncAt ? formatTimestamp(latestSyncAt) : "-"}
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <HardDrive size={16} />
             {t("data:governance.device_id")}
           </div>
-          <div
-            className="text-sm font-mono truncate"
-            title={syncStatus?.device_id}
-          >
-            {syncStatus?.device_id
-              ? `${syncStatus.device_id.slice(0, 8)}...`
-              : "-"}
+          <div className="flex items-start gap-1.5">
+            <div
+              className="min-w-0 flex-1 text-xs font-mono break-all select-all"
+              title={syncStatus?.device_id}
+              data-testid="sync-device-id"
+            >
+              {syncStatus?.device_id || "-"}
+            </div>
+            {syncStatus?.device_id && (
+              <DsButton
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 shrink-0"
+                onClick={() => void handleCopyDeviceId()}
+                title={t("sync:copyDeviceId", { defaultValue: "复制设备 ID" })}
+                aria-label={t("sync:copyDeviceId", { defaultValue: "复制设备 ID" })}
+              >
+                {deviceIdCopied ? <Check size={12} /> : <Copy size={12} />}
+              </DsButton>
+            )}
           </div>
           <div className="pt-1">
-            <SyncIndicator refreshSignal={conflictRefreshSignal} />
+            {cloudSyncConfigured ? (
+              <SyncIndicator refreshSignal={conflictRefreshSignal} />
+            ) : (
+              <Badge
+                variant="secondary"
+                className="font-normal text-muted-foreground"
+                data-testid="sync-conflicts-not-checked"
+              >
+                {t("sync:indicator.notChecked", { defaultValue: "未检测" })}
+              </Badge>
+            )}
           </div>
         </div>
       </div>
@@ -303,7 +398,14 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={onDetectConflicts}
-                disabled={loading}
+                disabled={loading || !cloudSyncConfigured}
+                title={
+                  !cloudSyncConfigured
+                    ? t("sync:indicator.configureCloudFirstTooltip", {
+                        defaultValue: "请先配置云存储后再检测冲突",
+                      })
+                    : undefined
+                }
               >
                 <MagnifyingGlass size={14} className="mr-1.5" />
                 {t("data:governance.detect_conflicts")}
@@ -458,15 +560,17 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             </span>
           }
           actions={
-            <DsButton
-              variant="outline"
-              size="sm"
-              onClick={onToggleCloudSettingsEditor}
-              className="rounded-xl border-border/70 bg-background/60 px-3 text-foreground hover:bg-muted/50"
-            >
-              <Cloud size={14} className="mr-1.5" />
-              {t("data:governance.open_cloud_settings")}
-            </DsButton>
+            cloudSyncConfigured || showCloudSettingsEditor ? (
+              <DsButton
+                variant="outline"
+                size="sm"
+                onClick={onToggleCloudSettingsEditor}
+                className="rounded-xl border-border/70 bg-background/60 px-3 text-foreground hover:bg-muted/50"
+              >
+                <Cloud size={14} className="mr-1.5" />
+                {t("data:governance.open_cloud_settings")}
+              </DsButton>
+            ) : undefined
           }
         />
         <div className="space-y-4">
@@ -567,7 +671,8 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 className="rounded-xl border-primary/40 bg-primary/15 px-3.5 font-medium text-primary hover:bg-primary/25"
               >
                 <ArrowsLeftRight size={14} className="mr-1.5" />
-                {t("data:governance.sync_bidirectional")}
+                <span>{t("sync:syncNow", { defaultValue: "立即同步" })}</span>
+                <span className="sr-only"> ({t("data:governance.sync_bidirectional")})</span>
               </DsButton>
               <DsButton
                 variant="outline"
@@ -654,7 +759,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                       {formatEta(syncProgress.eta_seconds)}
                     </span>
                   </div>
-                  {syncProgress.error && (
+                  {sanitizedSyncError && (
                     <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2 space-y-2">
                       <div className="flex items-start gap-1.5 text-xs text-destructive">
                         <XCircle size={12} className="mt-0.5 shrink-0" />
@@ -663,22 +768,22 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                             ? t(syncErrorHumanKeys[syncErrorKind], {
                                 expiresAt:
                                   extractSyncLeaseExpiry(
-                                    syncProgress.error,
+                                    sanitizedSyncError,
                                   )?.toLocaleString() ?? "",
                               })
                             : syncErrorE2eeKind
                               ? t(SYNC_E2EE_ERROR_I18N_KEYS[syncErrorE2eeKind])
-                              : syncProgress.error}
+                              : sanitizedSyncError}
                         </span>
                       </div>
                       {syncErrorE2eeKind && (
                         <p className="pl-[18px] text-2xs text-muted-foreground break-all">
-                          {t("sync:errors.technicalDetail")} {syncProgress.error}
+                          {t("sync:errors.technicalDetail")} {sanitizedSyncError}
                         </p>
                       )}
                       {syncErrorKind && !syncErrorE2eeKind && (
                         <p className="pl-[18px] text-2xs text-muted-foreground break-all">
-                          {t("sync:errors.technicalDetail")} {syncProgress.error}
+                          {t("sync:errors.technicalDetail")} {sanitizedSyncError}
                         </p>
                       )}
                       <div className="flex items-center gap-2 pl-[18px]">

@@ -426,9 +426,12 @@ describe('CloudStorageSection cloud UI guarantees', () => {
     expect(
       screen.getByPlaceholderText('cloudStorage:webdav.endpointPlaceholder'),
     ).toHaveValue('https://dav.example.test');
-    // 三态徽标进入「草稿测试失败」态，明示已发布配置未受影响
+    // 无已保存配置时测试失败，不应误报「已发布配置未受影响」，应显示测试失败原因与错误横幅
     expect(screen.getByTestId('cloud-config-phase')).toHaveTextContent(
-      'cloudStorage:phase.draftTestFailed',
+      'cloudStorage:phase.unsavedTestFailedWithReason',
+    );
+    expect(screen.getByTestId('cloud-draft-test-error-banner')).toHaveTextContent(
+      'cloudStorage:phase.unsavedTestFailed',
     );
   });
 

@@ -61,6 +61,7 @@ export async function runFileLevelSync(
   coordinator: Maintenance | null, progress?: FileLevelProgress | null,
 ): Promise<FileLevelSyncReport> {
   const report: FileLevelSyncReport = { failed: false, warning: null }, { logger } = options;
+  const isCancelError = (error: unknown) => Boolean(options.isCancelled?.()) || /同步已取消/.test(message(error));
   const append = (text: string) => { report.failed = true; report.warning = report.warning ? `${report.warning}；${text}` : text; };
   const rateLimited = () => report.warning !== null && isCloudRateLimited(report.warning);
   const transfer = (step: number) => progress?.transferCallback(direction, step, 3, '文件级传输');
@@ -81,10 +82,10 @@ export async function runFileLevelSync(
       try {
         if (direction !== 'Download') {
           try { await drainDeletionQueue(options.localStorage, cloud, 'workspace', options); }
-          catch (error) { logger.warn(`[data_governance] ${message(error)}`); append(message(error)); if (rateLimited()) return report; }
+          catch (error) { if (isCancelError(error)) throw new Error('同步已取消'); logger.warn(`[data_governance] ${message(error)}`); append(message(error)); if (rateLimited()) return report; }
         }
         try { await syncWorkspaceDatabases(cloud, active, direction, options, transfer(0)); }
-        catch (error) { const detail = `工作区数据库同步失败: ${message(error)}`; logger.warn(`[data_governance] ${detail}`); append(detail); }
+        catch (error) { if (isCancelError(error)) throw new Error('同步已取消'); const detail = `工作区数据库同步失败: ${message(error)}`; logger.warn(`[data_governance] ${detail}`); append(detail); }
       } finally {
         for (let attempt = 1; attempt <= 3; attempt++) {
           try { coordinator!.exitMaintenanceMode(); break; }
@@ -100,7 +101,7 @@ export async function runFileLevelSync(
   progress?.emit(direction, 1, 3, '文件级同步：VFS blob');
   if (direction !== 'Download') {
     try { await drainDeletionQueue(options.localStorage, cloud, 'blob', options); }
-    catch (error) { logger.warn(`[data_governance] ${message(error)}`); append(message(error)); if (rateLimited()) return report; }
+    catch (error) { if (isCancelError(error)) throw new Error('同步已取消'); logger.warn(`[data_governance] ${message(error)}`); append(message(error)); if (rateLimited()) return report; }
   }
   try {
     const result = await syncBlobsWithTombstones(cloud, join(active, 'vfs_blobs'), direction, options, transfer(1));
@@ -108,12 +109,12 @@ export async function runFileLevelSync(
       const detail = `附件同步部分失败：${result.upload_failures.length} 个上传失败，${result.download_failures.length} 个下载失败`;
       logger.warn(`[data_governance] VFS blob 部分失败: ${detail}`); append(detail);
     }
-  } catch (error) { const detail = `附件同步失败: ${message(error)}`; logger.error(`[data_governance] ${detail}`); append(detail); }
+  } catch (error) { if (isCancelError(error)) throw new Error('同步已取消'); const detail = `附件同步失败: ${message(error)}`; logger.error(`[data_governance] ${detail}`); append(detail); }
   if (rateLimited()) return report;
   progress?.emit(direction, 2, 3, '文件级同步：资产目录');
   if (direction !== 'Download') {
     try { await drainDeletionQueue(options.localStorage, cloud, 'asset', options); }
-    catch (error) { logger.warn(`[data_governance] ${message(error)}`); append(message(error)); if (rateLimited()) return report; }
+    catch (error) { if (isCancelError(error)) throw new Error('同步已取消'); logger.warn(`[data_governance] ${message(error)}`); append(message(error)); if (rateLimited()) return report; }
   }
   try {
     // Rust intentionally maps legacy app_data asset keys to the active slot.
@@ -128,7 +129,7 @@ export async function runFileLevelSync(
       if (conflict !== undefined) detail += `；${conflict}`;
       logger.warn(`[data_governance] 资产目录部分失败: ${detail}`); append(detail);
     }
-  } catch (error) { const detail = `资产目录同步失败: ${message(error)}`; logger.error(`[data_governance] ${detail}`); append(detail); }
+  } catch (error) { if (isCancelError(error)) throw new Error('同步已取消'); const detail = `资产目录同步失败: ${message(error)}`; logger.error(`[data_governance] ${detail}`); append(detail); }
   progress?.emit(direction, 3, 3, '文件级同步完成');
   return report;
 }

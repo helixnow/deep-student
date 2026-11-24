@@ -1244,6 +1244,7 @@ export function AppMenuSubContent({
         left: position?.left ?? 8,
         top: position?.top ?? 8,
         visibility: position ? 'visible' : 'hidden',
+        pointerEvents: presence.exiting || !subCtx.open ? 'none' : undefined,
         '--app-menu-available-height': position?.availableHeight
           ? `${position.availableHeight}px`
           : undefined,

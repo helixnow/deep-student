@@ -41,13 +41,13 @@ describe('re-enabling a plugin the user already consented to', () => {
     const row = await screen.findByTestId('plugin-card');
     expect(within(row).getByTestId('plugin-summary-state')).toHaveTextContent('运行中');
 
-    await user.click(within(row).getByRole('switch', { name: '启用 编成口诀' }));
+    await user.click(within(row).getByRole('switch', { name: '停用 编成口诀' }));
     await waitFor(() => expect(within(screen.getByTestId('plugin-card')).getByTestId('plugin-summary-state')).toHaveTextContent('已停用'));
     expect(screen.getByRole('switch', { name: '启用 编成口诀' })).toHaveAttribute('aria-checked', 'false');
 
     await user.click(screen.getByRole('switch', { name: '启用 编成口诀' }));
     await waitFor(() => expect(within(screen.getByTestId('plugin-card')).getByTestId('plugin-summary-state')).toHaveTextContent('运行中'));
-    expect(screen.getByRole('switch', { name: '启用 编成口诀' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('switch', { name: '停用 编成口诀' })).toHaveAttribute('aria-checked', 'true');
 
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(adapter.calls.setEnabled).toEqual([{ id: 'workshop.mnemonic', enabled: false }, { id: 'workshop.mnemonic', enabled: true }]);
@@ -88,7 +88,7 @@ describe('switch while the Host is answering', () => {
     const controller = new PluginManagerController(adapter);
     render(<PluginManagerPanel controller={controller} />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('switch', { name: '启用 编成口诀' }));
+    await user.click(await screen.findByRole('switch', { name: '停用 编成口诀' }));
 
     const pending = screen.getByRole('switch', { name: '启用 编成口诀' });
     expect(pending).toHaveAttribute('aria-checked', 'false');
@@ -113,12 +113,12 @@ describe('switch while the Host is answering', () => {
     const controller = new PluginManagerController(adapter);
     render(<PluginManagerPanel controller={controller} />);
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('switch', { name: '启用 编成口诀' }));
+    await user.click(await screen.findByRole('switch', { name: '停用 编成口诀' }));
     expect(screen.getByRole('switch', { name: '启用 编成口诀' })).toHaveAttribute('aria-checked', 'false');
 
     settle({ ok: false, code: 'PLUGIN_UNLOAD_BLOCKED', detail: 'PLUGIN_UNLOAD_BLOCKED: still in use' });
     expect(await screen.findByTestId('plugin-manager-error')).toHaveTextContent('PLUGIN_UNLOAD_BLOCKED');
-    const restored = screen.getByRole('switch', { name: '启用 编成口诀' });
+    const restored = screen.getByRole('switch', { name: '停用 编成口诀' });
     expect(restored).toHaveAttribute('aria-checked', 'true');
     expect(restored).not.toBeDisabled();
     expect(within(screen.getByTestId('plugin-card')).getByTestId('plugin-summary-state')).toHaveTextContent('运行中');

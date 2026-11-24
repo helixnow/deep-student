@@ -14,7 +14,7 @@ import React, { useRef, useEffect, useCallback, useState, useMemo, forwardRef, u
 import { ref as createVueRef } from 'vue';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import { EditorView } from '@codemirror/view';
-import { editorViewCtx } from '@milkdown/kit/core';
+import { editorViewCtx, editorViewOptionsCtx } from '@milkdown/kit/core';
 import { uploadConfig } from '@milkdown/kit/plugin/upload';
 import type { EditorView as ProseEditorView } from '@milkdown/prose/view';
 import i18next from 'i18next';
@@ -642,9 +642,32 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         });
 
         installMilkdownCtxCompat(crepe.editor.ctx);
-        crepe.editor.config((ctx) =>
-          ctx.update(uploadConfig.key, (config) => ({ ...config, uploadWidgetFactory: uploadLifecycle.widgetFactory })),
-        );
+        crepe.editor.config((ctx) => {
+          ctx.update(uploadConfig.key, (config) => ({ ...config, uploadWidgetFactory: uploadLifecycle.widgetFactory }));
+          ctx.update(editorViewOptionsCtx, (prev) => {
+            const prevAttrs = prev?.attributes;
+            return {
+              ...prev,
+              attributes: (state) => {
+                const base = typeof prevAttrs === 'function' ? prevAttrs(state) : (prevAttrs ?? {});
+                const isRo = Boolean(readonlyRef.current);
+                const merged: Record<string, string> = {
+                  ...base,
+                  role: 'textbox',
+                  'aria-multiline': 'true',
+                  'aria-label': i18next.t('notes:editor.body_aria_label', { defaultValue: '笔记正文' }),
+                  tabindex: '0',
+                };
+                if (isRo) {
+                  merged['aria-readonly'] = 'true';
+                } else {
+                  delete merged['aria-readonly'];
+                }
+                return merged;
+              },
+            };
+          });
+        });
         applyCrepePlugins(crepe, editorInstance.options, contributions.extensionEntries, reportContributionError('editor.extensions'));
         if (readonly) crepe.setReadonly(true);
 
@@ -732,15 +755,19 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
               viewRef.current = view;
               const editorDom = view.dom as HTMLElement | null;
               if (editorDom) {
-                if (!editorDom.getAttribute('role')) editorDom.setAttribute('role', 'textbox');
+                const isRo = Boolean(currentCrepe.readonly);
+                editorDom.setAttribute('role', 'textbox');
                 editorDom.setAttribute('aria-multiline', 'true');
-                if (!editorDom.getAttribute('aria-label')) {
-                  editorDom.setAttribute(
-                    'aria-label',
-                    i18next.t('notes:editor.placeholder.body', { defaultValue: '笔记正文' }),
-                  );
+                editorDom.setAttribute(
+                  'aria-label',
+                  i18next.t('notes:editor.body_aria_label', { defaultValue: '笔记正文' }),
+                );
+                editorDom.setAttribute('tabindex', '0');
+                if (isRo) {
+                  editorDom.setAttribute('aria-readonly', 'true');
+                } else {
+                  editorDom.removeAttribute('aria-readonly');
                 }
-                editorDom.setAttribute('aria-readonly', String(Boolean(currentCrepe.readonly)));
               }
               latestPropsRef.current.onFormattingChange?.(readFormattingState(view.state));
               if (viewHooked) return;
@@ -991,7 +1018,13 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       if (readonly) uploadsRef.current?.cancelAll();
       crepeRef.current.setReadonly(readonly);
       const editorDom = viewRef.current?.dom as HTMLElement | undefined;
-      editorDom?.setAttribute('aria-readonly', String(Boolean(readonly)));
+      if (editorDom) {
+        if (readonly) {
+          editorDom.setAttribute('aria-readonly', 'true');
+        } else {
+          editorDom.removeAttribute('aria-readonly');
+        }
+      }
     }
   }, [readonly, isReady]);
 

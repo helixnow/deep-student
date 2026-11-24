@@ -429,6 +429,18 @@ export const SubtaskSection: React.FC<{
           placeholder={t('todo:subtasks.addPlaceholder')}
           className="h-7 flex-1 border-0 bg-transparent px-0 text-ui focus-visible:ring-0 placeholder:text-muted-foreground/50 [@media(pointer:coarse)]:h-11"
         />
+        <DsButton
+          type="button"
+          variant="utility"
+          size="sm"
+          onClick={() => void handleAdd()}
+          disabled={!draft.trim()}
+          aria-label={t('todo:subtasks.addButton', { defaultValue: '添加子任务' })}
+          title={t('todo:subtasks.addButton', { defaultValue: '添加子任务' })}
+          className="h-7 flex-shrink-0 px-2.5 text-xs [@media(pointer:coarse)]:!min-h-11"
+        >
+          {t('todo:subtasks.addButton', { defaultValue: '添加子任务' })}
+        </DsButton>
       </div>
     </div>
   );

@@ -481,11 +481,62 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     return blockError || null;
   }, [activeVariant?.error, assistantBlocks, isUser, message?._meta?.terminalError]);
 
+  const hasAbortedBlockSelector = useCallback(
+    (s: ChatStore) =>
+      !isUser &&
+      displayBlockIds.some((blockId) => s.blocks.get(blockId)?.aborted === true),
+    [displayBlockIds, isUser]
+  );
+  const hasAbortedBlock = useStore(store, hasAbortedBlockSelector);
+
+  const isManuallyStoppedTurn = useMemo(() => {
+    if (isUser || sessionStatus === 'streaming' || hasActiveBlock) return false;
+    if (message?._meta?.stoppedByUser) return true;
+    if (activeVariant?.status === 'cancelled') return true;
+    if (hasAbortedBlock) return true;
+    return assistantBlocks.some(
+      (block) =>
+        block.error === 'aborted' ||
+        block.error === 'Stream cancelled before tool execution' ||
+        block.error === 'Stream cancelled'
+    );
+  }, [
+    activeVariant?.status,
+    assistantBlocks,
+    hasAbortedBlock,
+    hasActiveBlock,
+    isUser,
+    message?._meta?.stoppedByUser,
+    sessionStatus,
+  ]);
+
+  const hasAssistantFailure = useMemo(() => {
+    if (isUser || isMultiVariant) return false;
+    if (message?._meta?.terminalError) return true;
+    if (isManuallyStoppedTurn) return false;
+    return assistantBlocks.some((block) => block.status === 'error');
+  }, [assistantBlocks, isManuallyStoppedTurn, isMultiVariant, isUser, message?._meta?.terminalError]);
+
   const hasZeroOutputFailure = useMemo(() => {
     if (isUser || isMultiVariant) return false;
-    const hasAssistantFailure = Boolean(message?._meta?.terminalError) || assistantBlocks.some((block) => block.status === 'error');
     return hasAssistantFailure && !hasConsumableAssistantContent;
-  }, [assistantBlocks, hasConsumableAssistantContent, isMultiVariant, isUser, message?._meta?.terminalError]);
+  }, [hasAssistantFailure, hasConsumableAssistantContent, isMultiVariant, isUser]);
+
+  const isFailedOrEmptyAssistantTurn = useMemo(() => {
+    if (isUser || isMultiVariant) return false;
+    if (hasZeroOutputFailure || hasAssistantFailure) return true;
+    const isSettled = sessionStatus !== 'streaming' && !hasActiveBlock;
+    return isSettled && !isManuallyStoppedTurn && !hasConsumableAssistantContent;
+  }, [
+    hasAssistantFailure,
+    hasActiveBlock,
+    hasConsumableAssistantContent,
+    hasZeroOutputFailure,
+    isManuallyStoppedTurn,
+    isMultiVariant,
+    isUser,
+    sessionStatus,
+  ]);
 
   const shouldHideLatestAssistantFooter = !isUser && isLatest && (sessionStatus === 'streaming' || hasActiveBlock);
   const showAssistantFooterAlways = !isUser && isLatest && !shouldHideLatestAssistantFooter;
@@ -623,6 +674,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   // 🔧 P1-4: 重试破坏性确认改为内联确认条（替代 window.confirm，禁模态）
   // 记录待确认的"将被删除的后续消息数"；null 表示未展开确认条
   const [retryConfirmCount, setRetryConfirmCount] = useState<number | null>(null);
+  const [editConfirmCount, setEditConfirmCount] = useState<number | null>(null);
 
   // 真正执行重试（确认后 / 无后续消息时直接调用）
   const performRetry = useCallback(async () => {
@@ -771,6 +823,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     const contentBlock = blocks.find((b) => b.type === 'content');
     const originalText = contentBlock?.content || '';
     setEditText(originalText);
+    setEditConfirmCount(null);
     setIsInlineEditing(true);
 
     // 🔧 调试日志：记录编辑模式开启
@@ -780,27 +833,17 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }, 'success', { messageId });
   }, [canEdit, message, isSubmittingEdit, getDisplayBlocks, messageId]);
 
-  // 确认编辑并重发
-  const handleConfirmEdit = useCallback(async () => {
-    // 🔧 调试日志：记录 handleConfirmEdit 调用
-    logChatV2('message', 'ui', 'handleConfirmEdit_called', {
-      messageId,
-      editTextLength: editText.length,
-    }, 'info', { messageId });
+  const handleEditTextChange = useCallback((nextText: string) => {
+    setEditText(nextText);
+    setEditConfirmCount((prev) => (prev !== null ? null : prev));
+  }, []);
 
+  const performConfirmEdit = useCallback(async () => {
     const blocks = getDisplayBlocks();
     const contentBlock = blocks.find((b) => b.type === 'content');
     const originalText = contentBlock?.content || '';
 
-    if (!editText.trim()) {
-      // 🔧 调试日志：内容为空
-      logChatV2('message', 'ui', 'handleConfirmEdit_empty_content', {
-        messageId,
-      }, 'error', { messageId });
-      showGlobalNotification('error', t('messageItem.actions.emptyContent'), t('messageItem.actions.editFailed'));
-      return;
-    }
-
+    setEditConfirmCount(null);
     setIsInlineEditing(false);
     setIsSubmittingEdit(true);
 
@@ -832,9 +875,38 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }
   }, [getDisplayBlocks, editText, messageId, store, t]);
 
+  // 确认编辑并重发
+  const handleConfirmEdit = useCallback(async () => {
+    // 🔧 调试日志：记录 handleConfirmEdit 调用
+    logChatV2('message', 'ui', 'handleConfirmEdit_called', {
+      messageId,
+      editTextLength: editText.length,
+    }, 'info', { messageId });
+
+    if (!editText.trim()) {
+      // 🔧 调试日志：内容为空
+      logChatV2('message', 'ui', 'handleConfirmEdit_empty_content', {
+        messageId,
+      }, 'error', { messageId });
+      showGlobalNotification('error', t('messageItem.actions.emptyContent'), t('messageItem.actions.editFailed'));
+      return;
+    }
+
+    const currentOrder = store.getState().messageOrder;
+    const msgIndex = currentOrder.indexOf(messageId);
+    const subsequentCount = msgIndex >= 0 ? currentOrder.length - msgIndex - 1 : 0;
+    if (subsequentCount > 0) {
+      setEditConfirmCount(subsequentCount);
+      return;
+    }
+
+    await performConfirmEdit();
+  }, [editText, messageId, performConfirmEdit, store, t]);
+
   // 取消内联编辑
   const handleCancelEdit = useCallback(() => {
     setIsInlineEditing(false);
+    setEditConfirmCount(null);
     setEditText('');
   }, []);
 
@@ -1106,10 +1178,21 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             {isUser && isInlineEditing ? (
               <MessageInlineEdit
                 value={editText}
-                onChange={setEditText}
+                onChange={handleEditTextChange}
                 onConfirm={handleConfirmEdit}
                 onCancel={handleCancelEdit}
                 isSubmitting={isSubmittingEdit}
+                confirmPrompt={
+                  editConfirmCount !== null
+                    ? {
+                        count: editConfirmCount,
+                        onConfirm: () => {
+                          void performConfirmEdit();
+                        },
+                        onCancel: () => setEditConfirmCount(null),
+                      }
+                    : null
+                }
               />
             ) : (
               <>
@@ -1198,20 +1281,21 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                       );
                     }
 
-                    // 中途停止生成且尚无内容块时，显示明确「已取消生成」提示，避免只剩空壳气泡
+                    // 中途停止生成且尚无内容块时，显示明确「已手动停止」提示，避免只剩空壳气泡
                     if (
                       blocks.length === 0 &&
                       sessionStatus !== 'streaming' &&
+                      !hasActiveBlock &&
                       !hasZeroOutputFailure &&
-                      (activeVariant?.status === 'cancelled' || variants.length === 0)
+                      isManuallyStoppedTurn
                     ) {
                       return (
                         <div
-                          className="chat-message-status py-1 text-xs text-muted-foreground"
+                          className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/40 px-2.5 py-0.5 text-xs text-muted-foreground"
                           role="status"
                           data-testid="chat-message-stopped"
                         >
-                          {t('stream.cancelled', '已取消生成')}
+                          {t('messageItem.stoppedByUser')}
                         </div>
                       );
                     }
@@ -1337,6 +1421,15 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                       }
                     });
                   })()}
+                  {!isUser && !isMultiVariant && assistantBlocks.length > 0 && isManuallyStoppedTurn && (
+                    <div
+                      className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/40 px-2.5 py-0.5 text-xs text-muted-foreground"
+                      role="status"
+                      data-testid="chat-message-stopped"
+                    >
+                      {t('messageItem.stoppedByUser')}
+                    </div>
+                  )}
                 </div>
               )}
             </>
@@ -1511,24 +1604,33 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 {!isSmallScreen && (
                   <div className="flex items-center gap-1 min-w-0">
                     {!isUser && !isMultiVariant && singleVariantModelId && (
-                      <DsButton
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          store.getState().setModelRetryTarget(messageId);
-                          store.getState().setPanelState('model', true);
-                        }}
-                        disabled={isReadOnlySession || isLocked}
-                        className={cn(
-                          '!h-auto !px-1.5 !py-0.5 mr-1',
-                          '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3',
-                          'text-[11px] text-muted-foreground/70',
-                          'hover:text-foreground'
-                        )}
-                        title={t('messageItem.modelRetry.clickToRetry')}
-                      >
-                        {getModelDisplayName(message._meta?.modelDisplayName || singleVariantModelId)}
-                      </DsButton>
+                      isFailedOrEmptyAssistantTurn ? (
+                        <DsButton
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            store.getState().setModelRetryTarget(messageId);
+                            store.getState().setPanelState('model', true);
+                          }}
+                          disabled={isReadOnlySession || isLocked}
+                          className={cn(
+                            '!h-auto !px-1.5 !py-0.5 mr-1',
+                            '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-3',
+                            'text-[11px] text-muted-foreground/70',
+                            'hover:text-foreground'
+                          )}
+                          title={t('messageItem.modelRetry.clickToRetry')}
+                        >
+                          {getModelDisplayName(message._meta?.modelDisplayName || singleVariantModelId)}
+                        </DsButton>
+                      ) : (
+                        <span
+                          data-testid="chat-message-model-label"
+                          className="mr-1 px-1.5 py-0.5 text-[11px] text-muted-foreground/70 select-none"
+                        >
+                          {getModelDisplayName(message._meta?.modelDisplayName || singleVariantModelId)}
+                        </span>
+                      )
                     )}
                     {!isUser && !isLocked && (
                       <MemoryKernelAttributionPill className="mr-1.5" />

@@ -152,6 +152,13 @@ export function describeManagerError(
           : 'error.reasons.packageInvalid';
     return { explanation: t(key), technical };
   }
+  if (code === 'MANIFEST_INVALID' && detail && detail.trim() !== '') {
+    const cleanDetail = detail.replace(/^MANIFEST_INVALID:\s*/i, '').trim();
+    return {
+      explanation: t('error.reasons.manifestInvalidWithDetail', { detail: cleanDetail }),
+      technical,
+    };
+  }
   const key = MANAGER_ERROR_KEYS[code] ?? 'error.reasons.generic';
   return { explanation: t(key), technical };
 }

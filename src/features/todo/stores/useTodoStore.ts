@@ -159,18 +159,64 @@ async function fetchListItemsRetainingActiveSubtasks(
   );
 }
 
+async function appendSubtasksOfParents(
+  baseItems: TodoItem[],
+  includeCompleted: boolean,
+): Promise<TodoItem[]> {
+  if (baseItems.length === 0) return baseItems;
+  const parentIds = new Set(baseItems.filter((item) => !item.parentId).map((item) => item.id));
+  if (parentIds.size === 0) return baseItems;
+  const activeParentIds = new Set(
+    baseItems.filter((item) => !item.parentId && item.status !== 'completed').map((item) => item.id),
+  );
+  const existingIds = new Set(baseItems.map((item) => item.id));
+  const listIds = [...new Set(baseItems.map((item) => item.todoListId).filter(Boolean))];
+  try {
+    const perList = await Promise.all(
+      listIds.map((listId) => api.listTodoItems(listId, true).catch(() => [] as TodoItem[])),
+    );
+    const extras: TodoItem[] = [];
+    for (const listItems of perList) {
+      if (!Array.isArray(listItems)) continue;
+      for (const candidate of listItems) {
+        if (!candidate.parentId || !parentIds.has(candidate.parentId)) continue;
+        if (existingIds.has(candidate.id)) continue;
+        if (
+          includeCompleted ||
+          candidate.status !== 'completed' ||
+          activeParentIds.has(candidate.parentId)
+        ) {
+          existingIds.add(candidate.id);
+          extras.push(candidate);
+        }
+      }
+    }
+    return extras.length > 0 ? [...baseItems, ...extras] : baseItems;
+  } catch {
+    return baseItems;
+  }
+}
+
 /** 新建/移动的 item 是否（大致）属于当前视图；拿不准的场景返回 false，交给后台静默校准 */
 function itemBelongsToCurrentView(
   item: TodoItem,
-  state: Pick<TodoState, 'filter' | 'activeListId'>,
+  state: Pick<TodoState, 'filter' | 'activeListId' | 'items' | 'lists'>,
 ): boolean {
   const { view, showCompleted, search } = state.filter;
   if (search.trim()) return false;
+  if (item.parentId && state.items.some((parent) => parent.id === item.parentId)) {
+    const parentActive = state.items.some(
+      (parent) => parent.id === item.parentId && parent.status !== 'completed',
+    );
+    return item.status !== 'completed' || showCompleted || parentActive;
+  }
   if (item.status === 'completed' && view !== 'completed' && !showCompleted) return false;
   const today = localToday();
+  const effectiveListId =
+    state.activeListId ?? (state.lists.find((l) => l.isDefault) || state.lists[0])?.id ?? null;
   switch (view) {
     case 'all':
-      return state.activeListId !== null && item.todoListId === state.activeListId;
+      return effectiveListId !== null && item.todoListId === effectiveListId;
     case 'today':
       // 后端 todo_list_today 口径：pending 含逾期（due_date <= today），
       // completed 仅当天（due_date = today）。此前只认 === today，
@@ -516,13 +562,22 @@ export const useTodoStore = create<TodoState>((set, get) => {
       } else {
         switch (state.filter.view) {
           case 'today':
-            items = await api.listTodayItems(state.filter.showCompleted);
+            items = await appendSubtasksOfParents(
+              await api.listTodayItems(state.filter.showCompleted),
+              state.filter.showCompleted,
+            );
             break;
           case 'overdue':
-            items = await api.listOverdueItems(state.filter.showCompleted);
+            items = await appendSubtasksOfParents(
+              await api.listOverdueItems(state.filter.showCompleted),
+              state.filter.showCompleted,
+            );
             break;
           case 'upcoming':
-            items = await api.listUpcomingItems(7, state.filter.showCompleted);
+            items = await appendSubtasksOfParents(
+              await api.listUpcomingItems(7, state.filter.showCompleted),
+              state.filter.showCompleted,
+            );
             break;
           case 'matrix':
             items = await api.listAllPendingItems();
@@ -531,14 +586,19 @@ export const useTodoStore = create<TodoState>((set, get) => {
             items = await api.listCompletedItems(state.activeListId ?? undefined);
             break;
           case 'all':
-          default:
-            if (state.activeListId) {
+          default: {
+            const listId =
+              state.activeListId ??
+              (state.lists.find((l) => l.isDefault) || state.lists[0])?.id ??
+              null;
+            if (listId) {
               items = await fetchListItemsRetainingActiveSubtasks(
-                state.activeListId,
+                listId,
                 state.filter.showCompleted,
               );
             }
             break;
+          }
         }
       }
       if (!Array.isArray(items)) return;
@@ -1151,7 +1211,10 @@ export const useTodoStore = create<TodoState>((set, get) => {
     set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
       const showCompleted = get().filter.showCompleted;
-      const items = await api.listTodayItems(showCompleted);
+      const items = await appendSubtasksOfParents(
+        await api.listTodayItems(showCompleted),
+        showCompleted,
+      );
       if (get().itemsRequestVersion !== requestVersion) return;
       const selectedItemId = get().selectedItemId;
       set({
@@ -1177,7 +1240,11 @@ export const useTodoStore = create<TodoState>((set, get) => {
     const requestVersion = get().itemsRequestVersion + 1;
     set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
-      const items = await api.listOverdueItems(get().filter.showCompleted);
+      const showCompleted = get().filter.showCompleted;
+      const items = await appendSubtasksOfParents(
+        await api.listOverdueItems(showCompleted),
+        showCompleted,
+      );
       if (get().itemsRequestVersion !== requestVersion) return;
       const selectedItemId = get().selectedItemId;
       set({
@@ -1197,7 +1264,11 @@ export const useTodoStore = create<TodoState>((set, get) => {
     const requestVersion = get().itemsRequestVersion + 1;
     set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
-      const items = await api.listUpcomingItems(days, get().filter.showCompleted);
+      const showCompleted = get().filter.showCompleted;
+      const items = await appendSubtasksOfParents(
+        await api.listUpcomingItems(days, showCompleted),
+        showCompleted,
+      );
       if (get().itemsRequestVersion !== requestVersion) return;
       const selectedItemId = get().selectedItemId;
       set({
@@ -1300,12 +1371,17 @@ export const useTodoStore = create<TodoState>((set, get) => {
         await state.loadCompletedItems();
         return;
       case 'all':
-      default:
-        if (state.activeListId) {
-          await state.loadItems(state.activeListId, state.filter.showCompleted);
+      default: {
+        const listId =
+          state.activeListId ??
+          (state.lists.find((l) => l.isDefault) || state.lists[0])?.id ??
+          null;
+        if (listId) {
+          await state.loadItems(listId, state.filter.showCompleted);
           return;
         }
         set({ items: [], isLoadingItems: false });
+      }
     }
   },
 

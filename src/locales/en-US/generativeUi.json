@@ -308,7 +308,18 @@
       "workload_chart_title": "Due and todos",
       "chart_pending": "Pending todos",
       "chart_overdue": "Overdue todos",
-      "workload_chart_series": "Count"
+      "workload_chart_series": "Count",
+      "range_label": "Statistics range",
+      "range_today": "Today",
+      "range_7d": "7d",
+      "range_30d": "30d",
+      "open_full_stats": "Full stats",
+      "study_time_label": "Study time",
+      "study_time_days": "{{days}} active days",
+      "todo_completion_label": "Todo completion",
+      "todo_completion_sub": "{{completed}} / {{total}} done",
+      "ai_usage_label": "AI usage",
+      "ai_usage_sub": "{{requests}} calls · {{tokens}} tokens"
     }
   },
   "learningHub": {

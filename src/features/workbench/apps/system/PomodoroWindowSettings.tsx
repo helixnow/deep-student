@@ -25,27 +25,69 @@ import { isAndroidMobileShell } from '@/utils/platform';
 const SliderRow: React.FC<{
   label: string;
   display: string;
+  unit?: string;
   value: number;
   min: number;
   max: number;
   onChange: (v: number) => void;
-}> = ({ label, display, value, min, max, onChange }) => (
-  <div className="wb-sys-pomo-set-row">
-    <div className="wb-sys-pomo-set-rowhead">
-      <span className="wb-sys-pomo-set-label">{label}</span>
-      <span className="wb-sys-pomo-set-value">{display}</span>
+}> = ({ label, unit, value, min, max, onChange }) => {
+  const { t } = useTranslation('todo');
+  const clampVal = (raw: number) => Math.max(min, Math.min(max, Math.round(raw)));
+  return (
+    <div className="wb-sys-pomo-set-row">
+      <div className="wb-sys-pomo-set-rowhead">
+        <span className="wb-sys-pomo-set-label">{label}</span>
+        <div className="wb-sys-pomo-set-value inline-flex items-center gap-1.5">
+          <button
+            type="button"
+            aria-label={`${label} -1`}
+            onClick={() => onChange(clampVal(value - 1))}
+            disabled={value <= min}
+            className="inline-flex h-6 w-6 items-center justify-center rounded border border-border/60 bg-background/60 text-xs text-foreground hover:bg-muted disabled:opacity-40"
+          >
+            -
+          </button>
+          <input
+            type="number"
+            min={min}
+            max={max}
+            value={value}
+            aria-label={t('pomodoro.settings.numberInputAria', {
+              label,
+              defaultValue: `${label}`,
+            })}
+            onChange={(e) => {
+              const parsed = Number(e.target.value);
+              if (!Number.isNaN(parsed)) {
+                onChange(clampVal(parsed));
+              }
+            }}
+            className="h-6 w-14 rounded border border-border/60 bg-background/70 px-1.5 text-right font-mono text-xs tabular-nums text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          {unit ? <span>{unit}</span> : null}
+          <button
+            type="button"
+            aria-label={`${label} +1`}
+            onClick={() => onChange(clampVal(value + 1))}
+            disabled={value >= max}
+            className="inline-flex h-6 w-6 items-center justify-center rounded border border-border/60 bg-background/60 text-xs text-foreground hover:bg-muted disabled:opacity-40"
+          >
+            +
+          </button>
+        </div>
+      </div>
+      <Slider
+        className="py-1.5"
+        value={[value]}
+        min={min}
+        max={max}
+        step={1}
+        onValueChange={(v) => onChange(v[0] ?? min)}
+        aria-label={label}
+      />
     </div>
-    <Slider
-      className="py-1.5"
-      value={[value]}
-      min={min}
-      max={max}
-      step={1}
-      onValueChange={(v) => onChange(v[0] ?? min)}
-      aria-label={label}
-    />
-  </div>
-);
+  );
+};
 
 /** 开关行：标签 + 设计系统 Switch */
 const ToggleRow: React.FC<{
@@ -86,6 +128,7 @@ export const PomodoroWindowSettings: React.FC = () => {
       <SliderRow
         label={t('pomodoro.settings.workDuration')}
         display={minutes(Math.round(settings.workDuration / 60))}
+        unit={minutesUnit}
         value={Math.round(settings.workDuration / 60)}
         min={1}
         max={120}
@@ -94,6 +137,7 @@ export const PomodoroWindowSettings: React.FC = () => {
       <SliderRow
         label={t('pomodoro.settings.shortBreak')}
         display={minutes(Math.round(settings.shortBreak / 60))}
+        unit={minutesUnit}
         value={Math.round(settings.shortBreak / 60)}
         min={1}
         max={60}
@@ -102,6 +146,7 @@ export const PomodoroWindowSettings: React.FC = () => {
       <SliderRow
         label={t('pomodoro.settings.longBreak')}
         display={minutes(Math.round(settings.longBreak / 60))}
+        unit={minutesUnit}
         value={Math.round(settings.longBreak / 60)}
         min={1}
         max={90}
@@ -110,6 +155,7 @@ export const PomodoroWindowSettings: React.FC = () => {
       <SliderRow
         label={t('pomodoro.settings.longBreakInterval')}
         display={pomodoros(settings.longBreakInterval)}
+        unit={pomodorosUnit}
         value={settings.longBreakInterval}
         min={1}
         max={12}
@@ -155,6 +201,7 @@ export const PomodoroWindowSettings: React.FC = () => {
             ? t('pomodoro.settings.valueOff')
             : minutes(Math.round(settings.endReminderSeconds / 60))
         }
+        unit={minutesUnit}
         value={Math.round(settings.endReminderSeconds / 60)}
         min={0}
         max={10}
@@ -167,6 +214,7 @@ export const PomodoroWindowSettings: React.FC = () => {
             ? t('pomodoro.settings.valueUnset')
             : pomodoros(settings.dailyGoal)
         }
+        unit={pomodorosUnit}
         value={settings.dailyGoal}
         min={0}
         max={99}
