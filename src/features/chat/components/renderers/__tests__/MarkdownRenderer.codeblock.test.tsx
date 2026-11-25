@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -8,13 +8,15 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 describe('MarkdownRenderer code block fidelity', () => {
-  it('turns inline SMILES into a controlled molecule placeholder', () => {
+  it('turns inline SMILES into a controlled molecule placeholder', async () => {
     const { container } = render(
       <MarkdownRenderer content={'苯的结构为 \\smiles{c1ccccc1}。'} />
     );
 
     const molecule = container.querySelector('.inline-smiles');
-    expect(molecule?.querySelector('svg')).not.toBeNull();
+    await waitFor(() => {
+      expect(molecule?.querySelector('svg')).not.toBeNull();
+    });
     expect(molecule?.getAttribute('title')).toBe('分子结构：c1ccccc1');
   });
 

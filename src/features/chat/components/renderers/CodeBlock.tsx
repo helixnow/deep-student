@@ -45,7 +45,7 @@ import { useSessionListStore } from '../../stores/sessionListStore';
 import { shouldPauseHeavyContent } from '@/features/workbench/core/shellGestureFlags';
 import { reportFrontendError } from '@/logging/errorReporter';
 import { DEFAULT_RENDERER_CAPABILITIES, type RendererCapabilities } from './rendererCapabilities';
-import { RichCodeRenderer, type RichCodeRendererKind } from './RichCodeRenderer';
+import { RichCodeRenderer, subscribeDocumentDarkMode, type RichCodeRendererKind } from './RichCodeRenderer';
 import { CodeBlockMoreMenu, type CodeBlockMenuAction } from './CodeBlockMoreMenu';
 import { sanitizeSvgMarkup } from './progressiveSvg';
 import { useProgressiveSvg } from './useProgressiveSvg';
@@ -141,6 +141,98 @@ const waitForShellGestureIdle = async (): Promise<void> => {
     await new Promise((resolve) => setTimeout(resolve, 120));
   }
 };
+
+// ============================================================================
+// Mermaid 单飞异步渲染队列（防止主题切换 / 多图并发渲染阻塞主线程）
+// ============================================================================
+
+type MermaidQueueEntry = {
+  run: () => Promise<void>;
+  cancel: () => void;
+  isCancelled?: () => boolean;
+};
+
+const mermaidRenderQueue: MermaidQueueEntry[] = [];
+let mermaidQueueDraining = false;
+
+const yieldMermaidMacrotask = (): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+
+async function drainMermaidRenderQueue(): Promise<void> {
+  if (mermaidQueueDraining) return;
+  mermaidQueueDraining = true;
+  let executedCount = 0;
+  try {
+    while (mermaidRenderQueue.length > 0) {
+      const entry = mermaidRenderQueue.shift()!;
+      if (entry.isCancelled?.()) {
+        entry.cancel();
+        continue;
+      }
+      // 连续排队任务之间让出一个 macrotask，确保浏览器响应用户输入与主题重绘
+      if (executedCount > 0) {
+        await yieldMermaidMacrotask();
+        if (entry.isCancelled?.()) {
+          entry.cancel();
+          continue;
+        }
+      }
+      executedCount += 1;
+      await entry.run();
+    }
+  } finally {
+    mermaidQueueDraining = false;
+    if (mermaidRenderQueue.length > 0) {
+      void drainMermaidRenderQueue();
+    }
+  }
+}
+
+/**
+ * Serializes Mermaid initialization and rendering through a module-level
+ * single-flight async queue (max 1 concurrent `mermaid.render()`), yielding a
+ * macrotask (`setTimeout(..., 0)`) between queued renders so the main thread
+ * stays responsive during theme toggles or multi-diagram chats.
+ */
+export function enqueueMermaidRender<T>(
+  task: () => Promise<T>,
+  options?: { isCancelled?: () => boolean },
+): Promise<T | undefined> {
+  return new Promise<T | undefined>((resolve, reject) => {
+    const isCancelled = options?.isCancelled;
+    let settled = false;
+    const cancel = () => {
+      if (settled) return;
+      settled = true;
+      resolve(undefined);
+    };
+    mermaidRenderQueue.push({
+      isCancelled,
+      cancel,
+      run: async () => {
+        if (isCancelled?.()) {
+          cancel();
+          return;
+        }
+        try {
+          const result = await task();
+          if (!settled) {
+            settled = true;
+            resolve(result);
+          }
+        } catch (err) {
+          if (!settled) {
+            settled = true;
+            reject(err);
+          }
+        }
+      },
+    });
+    void drainMermaidRenderQueue();
+  });
+}
 
 // ============================================================================
 // HTML 转义辅助函数（防止 XSS）
@@ -524,8 +616,11 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   const codeContent = rawChildren.replace(/\n$/, '');
   const mermaidRequestRef = useRef(0);
   const renderedMermaidThemeRef = useRef<'dark' | 'light' | null>(null);
+  const pendingMermaidThemeRef = useRef<'dark' | 'light' | null>(null);
+  const isMermaidVisibleRef = useRef(true);
   useEffect(() => {
     mermaidRequestRef.current += 1;
+    pendingMermaidThemeRef.current = null;
     setRunning(false);
   }, [codeContent, isStreaming]);
 
@@ -587,6 +682,8 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     // 只有内容真正稳定后才重置
     if (prevCodeRef.current !== codeContent) {
       prevCodeRef.current = codeContent;
+      renderedMermaidThemeRef.current = null;
+      pendingMermaidThemeRef.current = null;
       setRenderedSvg(null);
       setShowRichRenderer(false);
       setShowRendered(false);
@@ -638,15 +735,21 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     }
   };
 
-  const handleRunMermaid = async () => {
+  const handleRunMermaid = async (trigger: 'manual' | 'theme' = 'manual') => {
     if (!canRunMermaid || isStreaming) return;
     const request = ++mermaidRequestRef.current;
-    const isCurrentRequest = () => isMountedRef.current && request === mermaidRequestRef.current;
+    const targetTheme: 'dark' | 'light' = isDocumentDarkMode() ? 'dark' : 'light';
+    pendingMermaidThemeRef.current = targetTheme;
+    const isCurrentRequest = () => {
+      if (!isMountedRef.current || request !== mermaidRequestRef.current) return false;
+      if (trigger === 'theme' && !isMermaidVisibleRef.current) return false;
+      return true;
+    };
     const id = `mermaid-${Math.random().toString(36).slice(2)}`;
     try {
       setRunning(true);
       setMermaidError(null);
-      // 先让出一帧绘制「运行中」状态，避免 mermaid 懒加载与同步排版阻塞点击当帧
+      // 先让出一帧绘制「运行中」状态或新主题页面，避免 mermaid 懒加载与同步排版阻塞当帧
       await new Promise<void>((resolve) => {
         if (typeof requestAnimationFrame === 'function') {
           requestAnimationFrame(() => setTimeout(resolve, 0));
@@ -655,54 +758,63 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
         }
       });
       if (!isCurrentRequest()) return;
-      // 手势期不启动渲染，结束后再跑（拖拽热路径禁止 mermaid 抢帧）
-      await waitForShellGestureIdle();
-      if (!isCurrentRequest()) return;
-      const lib: any = await import('mermaid');
 
-      if (!isCurrentRequest()) return;
+      const rendered = await enqueueMermaidRender(
+        async () => {
+          // 手势期不启动渲染，结束后再跑（拖拽热路径禁止 mermaid 抢帧）
+          await waitForShellGestureIdle();
+          if (!isCurrentRequest()) return undefined;
+          const lib: any = await import('mermaid');
+          if (!isCurrentRequest()) return undefined;
 
-      const mermaid = lib?.default ?? lib;
+          const mermaid = lib?.default ?? lib;
+          const currentIsDark = isDocumentDarkMode();
+          const currentTheme: 'dark' | 'light' = currentIsDark ? 'dark' : 'light';
+          if (trigger === 'theme' && renderedMermaidThemeRef.current === currentTheme) {
+            return undefined;
+          }
+          const themeConfig = getMermaidThemeConfig(currentIsDark);
 
-      const currentIsDark = isDocumentDarkMode();
-      const themeConfig = getMermaidThemeConfig(currentIsDark);
+          if (mermaid?.initialize) {
+            mermaid.initialize({
+              startOnLoad: false,
+              securityLevel: 'strict',
+              ...themeConfig,
+              flowchart: { useMaxWidth: true },
+              sequence: { useMaxWidth: true },
+            });
+          }
+          let svg: string | null = null;
+          if (mermaid?.render) {
+            const out = await mermaid.render(id, codeContent);
+            svg = out?.svg || null;
+          } else if (mermaid?.default?.render) {
+            const out = await mermaid.default.render(id, codeContent);
+            svg = out?.svg || null;
+          } else {
+            svg = `<pre class="mermaid">${codeContent.replace(/</g, '&lt;')}</pre>`;
+            if (mermaid?.run) {
+              await mermaid.run();
+            }
+          }
+          if (svg) {
+            svg = DOMPurify.sanitize(svg, {
+              USE_PROFILES: { svg: true, svgFilters: true },
+              ADD_TAGS: ['style', 'foreignObject'],
+              FORBID_TAGS: ['script', 'iframe', 'embed', 'object'],
+              FORBID_ATTR: ['xlink:href'],
+            });
+          }
+          return { svg, theme: currentTheme };
+        },
+        { isCancelled: () => !isCurrentRequest() },
+      );
 
-      if (mermaid?.initialize) {
-        mermaid.initialize({
-          startOnLoad: false,
-          securityLevel: 'strict',
-          ...themeConfig,
-          flowchart: { useMaxWidth: true },
-          sequence: { useMaxWidth: true },
-        });
-      }
-      let svg: string | null = null;
-      if (mermaid?.render) {
-        const out = await mermaid.render(id, codeContent);
-        svg = out?.svg || null;
-      } else if (mermaid?.default?.render) {
-        const out = await mermaid.default.render(id, codeContent);
-        svg = out?.svg || null;
-      } else {
-        svg = `<pre class="mermaid">${codeContent.replace(/</g, '&lt;')}</pre>`;
-        if (mermaid?.run) {
-          await mermaid.run();
-        }
-      }
-      if (svg) {
-        svg = DOMPurify.sanitize(svg, {
-          USE_PROFILES: { svg: true, svgFilters: true },
-          ADD_TAGS: ['style', 'foreignObject'],
-          FORBID_TAGS: ['script', 'iframe', 'embed', 'object'],
-          FORBID_ATTR: ['xlink:href'],
-        });
-      }
+      // 异步操作完成后再次检查组件是否已卸载或已被取消
+      if (!rendered || !isCurrentRequest()) return;
 
-      // 异步操作完成后再次检查组件是否已卸载
-      if (!isCurrentRequest()) return;
-
-      renderedMermaidThemeRef.current = currentIsDark ? 'dark' : 'light';
-      setRenderedSvg(svg);
+      renderedMermaidThemeRef.current = rendered.theme;
+      setRenderedSvg(rendered.svg);
       setShowRendered(true);
     } catch (err: unknown) {
       // mermaid.render 解析失败时会把错误图（id / d+id）残留在 document.body 上，
@@ -722,9 +834,11 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${escapeHtml(t('codeBlock.errorWithDetail', { message: t('codeBlock.mermaidFailed'), detail: errorMsg }))}</span></div>`);
       setShowRendered(true);
     } finally {
-      // 组件卸载后不更新状态
-      if (isCurrentRequest()) {
-        setRunning(false);
+      if (request === mermaidRequestRef.current) {
+        pendingMermaidThemeRef.current = null;
+        if (isMountedRef.current) {
+          setRunning(false);
+        }
       }
     }
   };
@@ -732,22 +846,53 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   const handleRunMermaidRef = useRef(handleRunMermaid);
   handleRunMermaidRef.current = handleRunMermaid;
 
-  // 主题切换时自动按新主题重渲已展开的 Mermaid 图表，避免亮色 SVG 残留在暗色表面上
+  // 主题切换时通过共享文档订阅 + IntersectionObserver 可见性门控按新主题重渲：
+  // 离屏 Mermaid 图表推迟到滚入视口后再串行重渲，避免切换主题时全量并发卡死主线程。
   useEffect(() => {
     if (!canRunMermaid || !showRendered || !renderedSvg || isStreaming) return;
-    if (typeof MutationObserver !== 'function' || typeof document === 'undefined') return;
-    const syncTheme = () => {
-      const nextTheme = isDocumentDarkMode() ? 'dark' : 'light';
-      if (renderedMermaidThemeRef.current && renderedMermaidThemeRef.current !== nextTheme) {
-        void handleRunMermaidRef.current();
+    isMermaidVisibleRef.current = true;
+
+    const syncThemeIfVisible = () => {
+      const nextTheme: 'dark' | 'light' = isDocumentDarkMode() ? 'dark' : 'light';
+      if (renderedMermaidThemeRef.current === nextTheme) {
+        if (pendingMermaidThemeRef.current && pendingMermaidThemeRef.current !== nextTheme) {
+          mermaidRequestRef.current += 1;
+          pendingMermaidThemeRef.current = null;
+          setRunning(false);
+        }
+        return;
+      }
+      if (!isMermaidVisibleRef.current) return;
+      if (renderedMermaidThemeRef.current && pendingMermaidThemeRef.current !== nextTheme) {
+        void handleRunMermaidRef.current('theme');
       }
     };
-    const observer = new MutationObserver(syncTheme);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class', 'data-theme'],
+
+    const unsubscribeTheme = subscribeDocumentDarkMode(() => {
+      syncThemeIfVisible();
     });
-    return () => observer.disconnect();
+
+    const previewEl = previewRef.current;
+    let io: IntersectionObserver | null = null;
+    if (previewEl && typeof IntersectionObserver === 'function') {
+      io = new IntersectionObserver(
+        (entries) => {
+          const latest = entries[entries.length - 1];
+          if (!latest) return;
+          isMermaidVisibleRef.current = latest.isIntersecting;
+          if (latest.isIntersecting) {
+            syncThemeIfVisible();
+          }
+        },
+        { rootMargin: '100px 0px' },
+      );
+      io.observe(previewEl);
+    }
+
+    return () => {
+      unsubscribeTheme();
+      io?.disconnect();
+    };
   }, [canRunMermaid, showRendered, renderedSvg, isStreaming]);
 
   const buildIframeDoc = (inner: string) => `<!doctype html><html><head><meta charset="utf-8"><style>
@@ -1389,7 +1534,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
               size="sm"
               className="code-block-copy [@media(pointer:coarse)]:!min-h-11"
               onClick={
-                canRunMermaid ? handleRunMermaid :
+                canRunMermaid ? () => { void handleRunMermaid('manual'); } :
                 canRenderXml ? handleRunXml :
                 () => setShowRichRenderer(true)
               }
