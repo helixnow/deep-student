@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  computeCrispQrPixelSize,
   encodeQrCodeMatrix,
   extractPairingCodeFromText,
   QrCodeSvg,
@@ -73,6 +74,74 @@ describe('QR Code encoder & DevicePairingSection workflow', () => {
 
     const svgString = renderQrCodeSvgString(code);
     expect(extractPairingCodeFromText(svgString)).toBe(code);
+  });
+
+  it('snaps dense 650-char DSPAIR1 QR codes to crisp integer px/module >= 300px with crispEdges and overflow-safe container', async () => {
+    const longPayload = `DSPAIR1:${'A'.repeat(642)}`;
+    expect(longPayload.length).toBe(650);
+
+    const { unmount } = render(<QrCodeSvg value={longPayload} margin={4} ariaLabel="Dense QR" />);
+
+    const svg = screen.getByTestId('device-pairing-qr-svg');
+    expect(svg).toHaveAttribute('shape-rendering', 'crispEdges');
+
+    const rect = svg.querySelector('rect');
+    const path = svg.querySelector('path');
+    expect(rect).toHaveAttribute('fill', '#FFFFFF');
+    expect(rect).toHaveAttribute('shape-rendering', 'crispEdges');
+    expect(path).toHaveAttribute('fill', '#000000');
+    expect(path).toHaveAttribute('shape-rendering', 'crispEdges');
+
+    const viewBoxParts = (svg.getAttribute('viewBox') ?? '').split(' ').map(Number);
+    const totalModules = viewBoxParts[2]!;
+    const renderedWidth = Number(svg.getAttribute('width'));
+    const renderedHeight = Number(svg.getAttribute('height'));
+
+    expect(renderedWidth).toBe(renderedHeight);
+    expect(renderedWidth).toBeGreaterThanOrEqual(300);
+    expect(renderedWidth % totalModules).toBe(0);
+    expect(renderedWidth / totalModules).toBeGreaterThanOrEqual(3);
+    expect(computeCrispQrPixelSize(totalModules, 312, 3)).toBe(renderedWidth);
+
+    const svgClass = svg.getAttribute('class') ?? '';
+    expect(svgClass).toContain('max-w-full');
+    expect(svgClass).toContain('h-auto');
+
+    unmount();
+
+    const { createPairingCode } = await import(
+      '../../../../../host/plugins/sync/src/device-pairing'
+    );
+    vi.mocked(createPairingCode).mockResolvedValueOnce({
+      pairingCode: longPayload,
+      summary: {
+        cloudProvider: 'webdav',
+        llmProviders: 2,
+        includeSkills: true,
+        includePlugins: true,
+      },
+    });
+
+    render(<DevicePairingSection cloudConfigured />);
+    await waitFor(() => {
+      expect(mockInvoke).toHaveBeenCalledWith('get_setting', { key: 'sync.include_skills' });
+    });
+
+    fireEvent.click(screen.getByText('随机生成 6 位 PIN'));
+    fireEvent.click(screen.getByTestId('generate-pairing-qr-btn'));
+
+    const panel = await screen.findByTestId('device-pairing-qr-panel');
+    const frame = screen.getByTestId('device-pairing-qr-frame');
+    const renderedSvg = screen.getByTestId('device-pairing-qr-svg');
+
+    expect(panel.className).toContain('w-full');
+    expect(panel.className).toContain('min-w-0');
+    expect(frame.className).toContain('bg-white');
+    expect(frame.className).toContain('max-w-full');
+    expect(renderedSvg).toHaveAttribute('shape-rendering', 'crispEdges');
+    expect(Number(renderedSvg.getAttribute('width'))).toBeGreaterThanOrEqual(300);
+    expect(renderedSvg.getAttribute('class') ?? '').toContain('max-w-full');
+    expect(renderedSvg.getAttribute('class') ?? '').toContain('h-auto');
   });
 
   it('generates a 6-digit PIN, exports pairing code, renders QR SVG, and triggers snapshot upload callback', async () => {
