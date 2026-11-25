@@ -5,8 +5,9 @@ import type {
   AnkiCard, ChatAnkiChatBlock, ChatAnkiChatBlockStore, ChatAnkiToolExecutor, CustomAnkiTemplate, ToolCall, ToolConcurrency,
   ToolExecutionContext, ToolResultInfo, ToolSensitivity,
 } from '../api.ts';
-import { verifyDocumentOwnership } from './card-access.ts';
+import { isUnownedLibraryDocument, verifyDocumentOwnership } from './card-access.ts';
 import { resolveDeckAndNoteType } from './chatanki-executor.ts';
+import { classifyAnkiConnectError, humanizeChatAnkiError, type AnkiConnectErrorInfo } from './errors.ts';
 import { parseChatAnkiSyncArgs, type ChatAnkiSyncArgs } from './executor-args.ts';
 import { chatankiSensitivityForCall } from './executor-helpers.ts';
 import { errorText, stripToolNamespace } from './execution.ts';
@@ -18,8 +19,102 @@ import {
 import { collectRequestedTemplateIds, resolveSingleTemplateId } from './template-selection.ts';
 import { rustTrim } from '../../../platform/util/text.ts';
 
-const ANKI_CONNECT_UNAVAILABLE = 'blocks.ankiCards.errors.ankiConnectUnavailable';
 const ANKI_SYNC_EMPTY = 'blocks.ankiCards.errors.ankiSyncEmpty';
+const MAX_LIBRARY_SYNC_CARDS = 100;
+
+type ChatAnkiSyncSelector =
+  | { kind: 'document'; documentId: string }
+  | { kind: 'libraryCards'; cardIds: string[] };
+
+interface NormalizedChatAnkiSyncArgs extends Omit<ChatAnkiSyncArgs, 'documentId'> {
+  selector: ChatAnkiSyncSelector;
+}
+
+function normalizeLibraryCardIds(raw: unknown, fieldName: 'libraryCardIds' | 'cardIds'): string[] {
+  if (!Array.isArray(raw)) {
+    throw new Error(`invalid type: ${typeof raw}, expected a sequence for \`${fieldName}\``);
+  }
+  if (raw.length === 0 || raw.length > MAX_LIBRARY_SYNC_CARDS) {
+    throw new Error(`${fieldName} must contain 1 to ${MAX_LIBRARY_SYNC_CARDS} unique entries`);
+  }
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const item of raw) {
+    if (typeof item !== 'string') {
+      throw new Error(`invalid type: ${typeof item}, expected a string in \`${fieldName}\``);
+    }
+    const cardId = rustTrim(item);
+    if (cardId.length === 0) throw new Error(`${fieldName} must not contain empty IDs`);
+    if (seen.has(cardId)) throw new Error(`${fieldName} must not contain duplicate IDs`);
+    seen.add(cardId);
+    normalized.push(cardId);
+  }
+  return normalized;
+}
+
+function parseSyncRequest(raw: unknown): NormalizedChatAnkiSyncArgs {
+  if (!isRecord(raw)) {
+    const parsed = parseChatAnkiSyncArgs(raw);
+    return {
+      selector: { kind: 'document', documentId: parsed.documentId },
+      deckName: parsed.deckName,
+      noteType: parsed.noteType,
+      templateId: parsed.templateId,
+      templateIds: parsed.templateIds,
+    };
+  }
+
+  const rawDocumentId = raw.documentId;
+  const hasDocumentId = rawDocumentId !== undefined && rawDocumentId !== null;
+  const hasLibraryCardIds = raw.libraryCardIds !== undefined && raw.libraryCardIds !== null;
+  const hasCardIds = raw.cardIds !== undefined && raw.cardIds !== null;
+
+  if (hasLibraryCardIds && hasCardIds) {
+    throw new Error('libraryCardIds and cardIds are mutually exclusive; provide only one');
+  }
+  const hasExplicitCards = hasLibraryCardIds || hasCardIds;
+  if (hasDocumentId && hasExplicitCards) {
+    throw new Error('documentId and libraryCardIds/cardIds are mutually exclusive; provide exactly one');
+  }
+
+  if (hasExplicitCards) {
+    const fieldName = hasLibraryCardIds ? 'libraryCardIds' : 'cardIds';
+    const cardIds = normalizeLibraryCardIds(hasLibraryCardIds ? raw.libraryCardIds : raw.cardIds, fieldName);
+    const parsed = parseChatAnkiSyncArgs({ ...raw, documentId: '__library__' });
+    return {
+      selector: { kind: 'libraryCards', cardIds },
+      deckName: parsed.deckName,
+      noteType: parsed.noteType,
+      templateId: parsed.templateId,
+      templateIds: parsed.templateIds,
+    };
+  }
+
+  const parsed = parseChatAnkiSyncArgs(raw);
+  const trimmedDocId = rustTrim(parsed.documentId);
+  if (trimmedDocId.length === 0) {
+    throw new Error('documentId must not be empty');
+  }
+  return {
+    selector: { kind: 'document', documentId: trimmedDocId },
+    deckName: parsed.deckName,
+    noteType: parsed.noteType,
+    templateId: parsed.templateId,
+    templateIds: parsed.templateIds,
+  };
+}
+
+function ankiConnectFailureOutput(classified: AnkiConnectErrorInfo): Record<string, unknown> {
+  const output: Record<string, unknown> = {
+    status: 'error',
+    errorCode: classified.code,
+    retryable: classified.retryable,
+    error: classified.message,
+  };
+  if (classified.detectedVersion !== undefined) output.detectedVersion = classified.detectedVersion;
+  if (classified.requiredVersion !== undefined) output.requiredVersion = classified.requiredVersion;
+  return output;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -91,8 +186,8 @@ export function patchAnkiCardsBlockSyncStatus(
 export async function executeChatAnkiSync(
   call: ToolCall, ctx: ToolExecutionContext, startedAt: number,
 ): Promise<ToolResultInfo> {
-  let args: ChatAnkiSyncArgs;
-  try { args = parseChatAnkiSyncArgs(call.arguments); }
+  let args: NormalizedChatAnkiSyncArgs;
+  try { args = parseSyncRequest(call.arguments); }
   catch (caught) {
     return finishFailure(call, ctx, startedAt, `Invalid chatanki_sync arguments: ${errorText(caught)}`);
   }
@@ -103,14 +198,35 @@ export async function executeChatAnkiSync(
     return finishFailure(call, ctx, startedAt, 'Anki database not available');
   }
 
-  try { verifyDocumentOwnership(repo, args.documentId, ctx.sessionId, ctx.warn); }
-  catch (caught) { return finishFailure(call, ctx, startedAt, errorText(caught)); }
-
   let cards: AnkiCard[];
-  try { cards = repo.getCardsForDocument(args.documentId); }
-  catch (caught) {
-    return finishFailure(call, ctx, startedAt, `Failed to load cards for document: ${errorText(caught)}`);
+  let documentId: string | null = null;
+  let libraryCardIds: string[] | null = null;
+  let sessionOwnedDocument = false;
+
+  if (args.selector.kind === 'document') {
+    documentId = args.selector.documentId;
+    try {
+      verifyDocumentOwnership(repo, documentId, ctx.sessionId, ctx.warn);
+      sessionOwnedDocument = true;
+    } catch (caught) {
+      if (isUnownedLibraryDocument(ctx.documents, documentId, ctx.warn)) {
+        sessionOwnedDocument = false;
+      } else {
+        return finishFailure(call, ctx, startedAt, humanizeChatAnkiError(errorText(caught)));
+      }
+    }
+    try { cards = repo.getCardsForDocument(documentId); }
+    catch (caught) {
+      return finishFailure(call, ctx, startedAt, `Failed to load cards for document: ${errorText(caught)}`);
+    }
+  } else {
+    libraryCardIds = [...args.selector.cardIds];
+    try { cards = repo.getLibraryCardsByIds(libraryCardIds); }
+    catch (caught) {
+      return finishFailure(call, ctx, startedAt, `Failed to load library cards: ${errorText(caught)}`);
+    }
   }
+
   cards = cards.filter((card) => !card.is_error_card);
   if (cards.length === 0) {
     return finishFailure(call, ctx, startedAt, 'No cards to sync (all cards are empty or error cards)');
@@ -120,8 +236,9 @@ export async function executeChatAnkiSync(
   if (sync === null) return finishFailure(call, ctx, startedAt, 'AnkiConnect sync service unavailable');
   try { await sync.checkAnkiConnectAvailability(); }
   catch (caught) {
-    ctx.warn(`[ChatAnkiToolExecutor] AnkiConnect unavailable: ${errorText(caught)}`);
-    return finishFailure(call, ctx, startedAt, ANKI_CONNECT_UNAVAILABLE);
+    const classified = classifyAnkiConnectError(errorText(caught));
+    ctx.warn(`[ChatAnkiToolExecutor] AnkiConnect unavailable (${classified.code}): ${classified.message}`);
+    return finishFailure(call, ctx, startedAt, classified.message, ankiConnectFailureOutput(classified));
   }
 
   const noteTypeExplicit = args.noteType !== null && rustTrim(args.noteType).length > 0;
@@ -167,14 +284,15 @@ export async function executeChatAnkiSync(
       cards, deckName, noteType, cardModels, templatesByModel, options: sync.readSyncOptions(),
     });
   } catch (caught) {
-    return finishFailure(call, ctx, startedAt, errorText(caught));
+    const classified = classifyAnkiConnectError(errorText(caught));
+    return finishFailure(call, ctx, startedAt, classified.message, ankiConnectFailureOutput(classified));
   }
 
   const total = report.noteIds.length;
   const { added, duplicates, failed } = report;
   // D1: all duplicates is an idempotent success; real failures with nothing landed is an error.
   const status = failed === 0 ? 'ok' : added > 0 || duplicates > 0 ? 'partial' : 'error';
-  const error = status === 'error' ? ANKI_SYNC_EMPTY : null;
+  const error = status === 'error' ? humanizeChatAnkiError(ANKI_SYNC_EMPTY) : null;
   const warning = status === 'partial'
     ? { code: 'anki_sync_partial', details: { total, added, duplicates, failed } }
     : null;
@@ -191,9 +309,9 @@ export async function executeChatAnkiSync(
     }
   }
 
-  const output = {
+  const output: Record<string, unknown> = {
     status,
-    documentId: args.documentId,
+    documentId,
     deckName,
     noteType,
     total,
@@ -205,10 +323,13 @@ export async function executeChatAnkiSync(
     error,
     warning,
   };
+  if (libraryCardIds !== null) output.libraryCardIds = libraryCardIds;
   if (error !== null) return finishFailure(call, ctx, startedAt, error, output);
 
   const chatBlocks = ctx.chatBlocks ?? null;
-  if (chatBlocks !== null) patchAnkiCardsBlockSyncStatus(chatBlocks, ctx, args.documentId, 'synced', null);
+  if (sessionOwnedDocument && documentId !== null && chatBlocks !== null) {
+    patchAnkiCardsBlockSyncStatus(chatBlocks, ctx, documentId, 'synced', null);
+  }
   return finishSuccess(call, ctx, startedAt, output);
 }
 

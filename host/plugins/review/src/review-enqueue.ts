@@ -18,6 +18,10 @@ import { diagnosticError } from './review-scheduling.ts';
 import type { ReviewRuntime } from './review-runtime.ts';
 import * as repo from '../repository/fsrs.ts';
 
+const SESSION_CARD_NOT_FOUND_MESSAGE =
+  'blocks.ankiCards.errors.statusNotFound: no live card task found for the given id under this session; '
+  + 'for cross-session or library cards call chatanki_list_library_cards and use chatanki_enqueue_library_review';
+
 export function enqueueCards(rt: ReviewRuntime, ankiCardIds: readonly string[]): FsrsEnqueueResult {
   const result = expectPlainEnqueue(enqueueCardsInner(rt, ankiCardIds, { kind: 'internal' }));
   rt.info(`[FsrsReviewService] enqueue: enqueued=${result.enqueued}, skipped=${result.skipped}`);
@@ -99,7 +103,7 @@ function enqueueCardsInner(
       const documentId = scope.expectedDocumentId;
       const sessionId = scope.sessionId;
       if (!repo.documentOwnedBySession(tx, documentId, sessionId)) {
-        throw appError('NotFound', 'blocks.ankiCards.errors.statusNotFound');
+        throw appError('NotFound', SESSION_CARD_NOT_FOUND_MESSAGE);
       }
       ids = repo.documentLiveCardIds(tx, documentId, sessionId);
     }
@@ -117,17 +121,17 @@ function enqueueCardsInner(
           libraryMissing.push(cardId);
           continue;
         }
-        throw appError('NotFound', 'blocks.ankiCards.errors.statusNotFound');
+        throw appError('NotFound', SESSION_CARD_NOT_FOUND_MESSAGE);
       }
       if (scope.kind === 'session') {
         if (selection.sourceSessionId !== scope.sessionId
           || (scope.expectedDocumentId !== null && scope.expectedDocumentId !== selection.documentId)) {
-          throw appError('NotFound', 'blocks.ankiCards.errors.statusNotFound');
+          throw appError('NotFound', SESSION_CARD_NOT_FOUND_MESSAGE);
         }
         if (!validatedDocuments.has(selection.documentId)) {
           validatedDocuments.add(selection.documentId);
           if (!repo.documentOwnedBySession(tx, selection.documentId, scope.sessionId)) {
-            throw appError('NotFound', 'blocks.ankiCards.errors.statusNotFound');
+            throw appError('NotFound', SESSION_CARD_NOT_FOUND_MESSAGE);
           }
         }
       } else if (scope.kind === 'library') {

@@ -1,6 +1,7 @@
 // chatanki_executor.rs:2738–3334 batch_update_cards / delete_cards / add_cards.
 import { expect, it } from 'vitest';
 import type { AnkiCard, ToolExecutionContext } from '../api.ts';
+import { STATUS_NOT_FOUND_MESSAGE } from '../src/card-access.ts';
 import { ChatAnkiCardBatchExecutor } from '../src/card-batch-executor.ts';
 import { createChatAnkiExecutors } from '../src/executors.ts';
 import { CardStoreDouble } from './chatanki-card-double.ts';
@@ -68,7 +69,7 @@ it('batch_update_cards applies per-card CAS, reports conflicts/mismatches and sy
   const results = out(result).results as Record<string, unknown>[];
   expect(results.map((entry) => [entry.cardId, entry.status, entry.error])).toEqual([
     ['a1', 'ok', undefined], ['a2', 'conflict', 'version_conflict'],
-    ['b1', 'rejected', 'document_mismatch'], ['missing', 'not_found', 'blocks.ankiCards.errors.statusNotFound'],
+    ['b1', 'rejected', 'document_mismatch'], ['missing', 'not_found', STATUS_NOT_FOUND_MESSAGE],
   ]);
   expect(repo.getCardWithDocument('a1')!.card.front).toBe('new a1');
   expect(repo.getCardWithDocument('a2')!.card.front).toBe('front a2');

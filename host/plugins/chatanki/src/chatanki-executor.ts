@@ -5,6 +5,7 @@ import type {
   CustomAnkiTemplate, ToolCall, ToolConcurrency, ToolExecutionContext, ToolResultInfo,
   ToolSensitivity, VfsContextRefData, VfsResourceRef,
 } from '../api.ts';
+import { classifyAnkiConnectError, type AnkiConnectErrorCode } from './errors.ts';
 import { errorText, stripToolNamespace } from './execution.ts';
 import { parseChatAnkiExportArgs, parseChatAnkiListTemplatesArgs } from './executor-args.ts';
 import { chatankiReviewStatsOutput, parseChatAnkiReviewStatsArgs } from './review-payloads.ts';
@@ -486,17 +487,33 @@ export async function executeChatAnkiCheckAnkiConnect(
   const service = ctx.ankiConnect ?? null;
   let available = false;
   let error: string | null = null;
+  let errorCode: AnkiConnectErrorCode | undefined;
+  let retryable: boolean | undefined;
+  let detectedVersion: number | undefined;
+  let requiredVersion: number | undefined;
   if (service === null) {
     // Rust 直接调用 free function；宿主缺服务时按探测失败的最接近形状返回。
     error = 'AnkiConnect service unavailable';
+    errorCode = 'anki_connect_unavailable';
+    retryable = true;
   } else {
     try { available = await service.checkAnkiConnectAvailability(); }
     catch (caught) {
       available = false;
-      error = errorText(caught);
+      const classified = classifyAnkiConnectError(errorText(caught));
+      error = classified.message;
+      errorCode = classified.code;
+      retryable = classified.retryable;
+      detectedVersion = classified.detectedVersion;
+      requiredVersion = classified.requiredVersion;
     }
   }
-  return finishSuccess(call, ctx, startedAt, { status: 'ok', available, error });
+  const output: Record<string, unknown> = { status: 'ok', available, error };
+  if (errorCode !== undefined) output.errorCode = errorCode;
+  if (retryable !== undefined) output.retryable = retryable;
+  if (detectedVersion !== undefined) output.detectedVersion = detectedVersion;
+  if (requiredVersion !== undefined) output.requiredVersion = requiredVersion;
+  return finishSuccess(call, ctx, startedAt, output);
 }
 
 // ============================================================================

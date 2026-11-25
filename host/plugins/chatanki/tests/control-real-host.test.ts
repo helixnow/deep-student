@@ -19,6 +19,7 @@ import type { ChatV2EventEmitter, ToolExecutor } from '../../chat/api.ts';
 import review from '../../review/index.ts';
 import type { AnkiCard, TaskStatus, ToolExecutionContext, ToolResultInfo } from '../api.ts';
 import chatanki from '../index.ts';
+import { STATUS_NOT_FOUND_MESSAGE } from '../src/card-access.ts';
 
 let dir = '';
 let storage: ReturnType<typeof createStorageService>;
@@ -250,8 +251,8 @@ it('W22 control retry: a foreign task is statusNotFound inline, a missing task i
   const mismatch = await control({ action: 'retry', documentId: 'doc-mine', taskId: other });
   expect(mismatch.success).toBe(false);
   expect(mismatch.output).toBeNull();
-  expect(mismatch.error).toBe('blocks.ankiCards.errors.statusNotFound');
-  expect(toolErrors).toEqual(['blocks.ankiCards.errors.statusNotFound']);
+  expect(mismatch.error).toBe(STATUS_NOT_FOUND_MESSAGE);
+  expect(toolErrors).toEqual([STATUS_NOT_FOUND_MESSAGE]);
   expect(statuses('doc-other')).toEqual({ [other]: 'Failed' });
 
   await expect(control({ action: 'retry', documentId: 'doc-mine', taskId: 'task-missing' }))
@@ -271,7 +272,7 @@ it('W22 control maps argument, ownership and action failures like Rust before to
     [{ action: 'pause', documentId: 'doc-guard', taskId: 7 }, `${prefix}invalid type: number, expected a string`],
     [['pause', 'doc-guard'], `${prefix}invalid length 2, expected struct ChatAnkiControlArgs with 3 elements`],
     [{ action: 'pause', documentId: '  ' }, 'documentId is required'],
-    [{ action: 'pause', documentId: 'doc-guard-foreign' }, 'blocks.ankiCards.errors.statusNotFound'],
+    [{ action: 'pause', documentId: 'doc-guard-foreign' }, STATUS_NOT_FOUND_MESSAGE],
     [{ action: ' Stop ', documentId: 'doc-guard' }, 'Unsupported action:  Stop '],
   ];
   for (const [args, error] of cases) {
@@ -349,12 +350,12 @@ it('W22 registry: builtin-chatanki_control is offered only while L16 publishes a
     id: 'call-control-reg-2', name: 'builtin-chatanki_control',
     arguments: { action: 'retry', documentId: 'doc-reg', taskId: other },
   }, execution());
-  expect(mismatch.error).toBe('blocks.ankiCards.errors.statusNotFound');
+  expect(mismatch.error).toBe(STATUS_NOT_FOUND_MESSAGE);
   // chatanki_executor.rs:6629 `ctx.emitter.emit_error(TOOL_CALL, block_id, .., None)`, not emit_tool_call_error.
   expect(calls).toEqual([
     ['emitStartWithMeta', 'tool_call', 'message-control-reg', 'block-control-reg',
       { toolName: 'builtin-chatanki_control', toolInput: { action: 'retry', documentId: 'doc-reg', taskId: other },
         toolCallId: 'call-control-reg-2' }, null, null, 'round-control-reg'],
-    ['emitError', 'tool_call', 'block-control-reg', 'blocks.ankiCards.errors.statusNotFound', null],
+    ['emitError', 'tool_call', 'block-control-reg', STATUS_NOT_FOUND_MESSAGE, null],
   ]);
 });

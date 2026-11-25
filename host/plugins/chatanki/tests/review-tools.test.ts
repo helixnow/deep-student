@@ -129,10 +129,48 @@ it('chatanki_check_anki_connect reports availability and probe failures', async 
       id: 'call-check-anki-failing', name: 'chatanki_check_anki_connect', arguments: {},
     }, context());
     expect(result.success).toBe(true);
-    expect(result.output).toEqual({
-      status: 'ok', available: false, error: 'connection refused',
+    expect(result.output).toMatchObject({
+      status: 'ok',
+      available: false,
+      errorCode: 'anki_connect_offline',
+      retryable: true,
     });
+    const offlineErr = (result.output as { error: string }).error;
+    expect(offlineErr).toContain('[anki_connect_offline]');
+    expect(offlineErr).not.toMatch(/[\u3400-\u9fff]/);
   } finally { await failingHost.dispose(); }
+
+  const v5Host = await createTestHost({
+    plugins: [chatanki],
+    provide: {
+      settings: { get: () => null, save: () => undefined },
+      review: {},
+      llm: {},
+      'anki': {
+        checkAnkiConnectAvailability: async () => {
+          throw new Error('AnkiConnect 插件版本过旧（API v5，需要 ≥ v6）。请在 Anki 中更新 AnkiConnect 插件（代码：2055492159）后重试');
+        },
+      },
+    },
+  });
+  try {
+    const result = await v5Host.ctx.chatankiTools.execute({
+      id: 'call-check-anki-v5', name: 'chatanki_check_anki_connect', arguments: {},
+    }, context());
+    expect(result.success).toBe(true);
+    expect(result.output).toMatchObject({
+      status: 'ok',
+      available: false,
+      errorCode: 'anki_connect_version_unsupported',
+      retryable: false,
+      detectedVersion: 5,
+      requiredVersion: 6,
+    });
+    const v5Err = (result.output as { error: string }).error;
+    expect(v5Err).toContain('[anki_connect_version_unsupported]');
+    expect(v5Err).toContain('API v5');
+    expect(v5Err).not.toMatch(/[\u3400-\u9fff]/);
+  } finally { await v5Host.dispose(); }
 
   const missingHost = await createTestHost({
     plugins: [chatanki],
@@ -149,7 +187,11 @@ it('chatanki_check_anki_connect reports availability and probe failures', async 
     }, context());
     expect(result.success).toBe(true);
     expect(result.output).toEqual({
-      status: 'ok', available: false, error: 'AnkiConnect service unavailable',
+      status: 'ok',
+      available: false,
+      error: 'AnkiConnect service unavailable',
+      errorCode: 'anki_connect_unavailable',
+      retryable: true,
     });
   } finally { await missingHost.dispose(); }
 });

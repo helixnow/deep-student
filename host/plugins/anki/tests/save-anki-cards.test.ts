@@ -293,4 +293,42 @@ describe('src/cmd/anki_connect.rs::save_anki_cards_semantics_tests', () => {
       failed: [{ id: 'failed-1', error: 'boom' }],
     })).toBeNull();
   });
+
+  it('G16/G19 regression: uses locale-clean Default or resolved deck name instead of hardcoded Chinese Chat Cards 未分类', async () => {
+    await save(saveRequest('doc-default-locale', [cardPayload('locale-default-1', 'Q1', 'A1')]));
+    const defaultName = db.pluck<string>(
+      "SELECT original_document_name FROM document_tasks WHERE document_id = 'doc-default-locale'",
+    );
+    expect(defaultName).toBe('Default');
+    expect(defaultName).not.toMatch(/[\u3400-\u9fff]/);
+
+    const withDeckRequest = saveRequest('doc-explicit-deck', [cardPayload('locale-deck-1', 'Q2', 'A2')]);
+    withDeckRequest.options = {
+      deck_name: '  Neuroscience::LTP  ',
+      note_type: 'Basic',
+      enable_images: false,
+      max_cards_per_mistake: 1,
+    };
+    await save(withDeckRequest);
+    const deckDocName = db.pluck<string>(
+      "SELECT original_document_name FROM document_tasks WHERE document_id = 'doc-explicit-deck'",
+    );
+    expect(deckDocName).toBe('Neuroscience::LTP');
+
+    const withFieldDeck = saveRequest('doc-field-deck', [{
+      id: 'locale-field-1',
+      front: 'Q3',
+      back: 'A3',
+      text: null,
+      tags: null,
+      images: null,
+      fields: { _deck: 'Chemistry' },
+      template_id: null,
+    }]);
+    await save(withFieldDeck);
+    const fieldDeckName = db.pluck<string>(
+      "SELECT original_document_name FROM document_tasks WHERE document_id = 'doc-field-deck'",
+    );
+    expect(fieldDeckName).toBe('Chemistry');
+  });
 });

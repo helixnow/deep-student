@@ -1,12 +1,14 @@
 // Rust: chatanki_executor.rs:1775–1836 + dstu-agent workspace/card_read_scope.rs.
 // L04 installs workspace read grants in L05's public registry. Read that same
 // owner state; a private map here would silently hide real worker grants.
-import type { AnkiCard, ChatAnkiCardRepository } from '../api.ts';
+import type { AnkiCard, ChatAnkiCardRepository, ChatAnkiDocumentTaskRepository } from '../api.ts';
 import type { ChatAnkiReviewSelector } from './executor-args.ts';
+import { humanizeChatAnkiError } from './errors.ts';
 import { errorText } from './execution.ts';
 import { workspaceCardReadScope } from '../../agent-workspace/portable.ts';
 
 export const STATUS_NOT_FOUND = 'blocks.ankiCards.errors.statusNotFound';
+export const STATUS_NOT_FOUND_MESSAGE = humanizeChatAnkiError(STATUS_NOT_FOUND);
 
 /** Write paths never consult the scope: this is the strict ownership check. */
 export function verifyDocumentOwnership(
@@ -20,7 +22,36 @@ export function verifyDocumentOwnership(
     warn?.(`[ChatAnkiToolExecutor] verify_document_ownership failed for document ${documentId}: ${errorText(caught)}`);
     owned = false;
   }
-  if (!owned) throw new Error(STATUS_NOT_FOUND);
+  if (!owned) throw new Error(STATUS_NOT_FOUND_MESSAGE);
+}
+
+/**
+ * Returns true when `documentId` has live tasks and no chat session owns any of
+ * them (e.g. cards manually created in Flashcards Library or imported via APKG/CSV).
+ * Documents owned by another chat session always return false.
+ */
+export function isUnownedLibraryDocument(
+  documents: Partial<Pick<ChatAnkiDocumentTaskRepository, 'getTasksForDocument' | 'getDocumentSessionSource'>> | null | undefined,
+  documentId: string,
+  warn?: (message: string) => void,
+): boolean {
+  if (
+    documents === null
+    || documents === undefined
+    || typeof documents.getTasksForDocument !== 'function'
+    || typeof documents.getDocumentSessionSource !== 'function'
+  ) {
+    return false;
+  }
+  try {
+    const tasks = documents.getTasksForDocument(documentId);
+    if (tasks.length === 0) return false;
+    const owner = documents.getDocumentSessionSource(documentId);
+    return owner === null || owner.trim().length === 0;
+  } catch (caught) {
+    warn?.(`[ChatAnkiToolExecutor] library document lookup failed for ${documentId}: ${errorText(caught)}`);
+    return false;
+  }
 }
 
 /**
@@ -40,7 +71,7 @@ export function resolveChatankiReadSession(
       + ` coordinator=${scope.coordinatorSessionId}, document=${documentId}`);
     return scope.coordinatorSessionId;
   }
-  throw new Error(STATUS_NOT_FOUND);
+  throw new Error(STATUS_NOT_FOUND_MESSAGE);
 }
 
 function verifyDocumentOwnershipOk(
@@ -66,7 +97,7 @@ export function loadOwnedChatankiCard(
       + ` ${errorText(caught)}`);
     owned = null;
   }
-  if (owned === null) throw new Error(STATUS_NOT_FOUND);
+  if (owned === null) throw new Error(STATUS_NOT_FOUND_MESSAGE);
   return owned;
 }
 
