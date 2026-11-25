@@ -1160,11 +1160,19 @@ export function DevicePairingSection({
               {/* 右侧：高清 SVG 二维码展示卡片 */}
               {code ? (
                 <div
-                  className="flex w-full min-w-0 flex-col items-center justify-center rounded-xl bg-background/70 border border-border/35 p-4 space-y-3 lg:min-w-[264px] lg:max-w-[320px]"
+                  className="flex w-full min-w-0 flex-col items-center justify-center rounded-xl bg-background/70 border border-border/35 p-4 space-y-3 lg:min-w-[300px] lg:max-w-[480px]"
                   data-testid="device-pairing-qr-panel"
                 >
-                  <div className="rounded-xl bg-white p-3 shadow-sm ring-1 ring-black/5">
-                    <QrCodeSvg value={code} size={216} margin={4} className="max-w-full h-auto" />
+                  <div
+                    className="max-w-full rounded-xl bg-white p-3 shadow-sm ring-1 ring-black/5"
+                    data-testid="device-pairing-qr-frame"
+                  >
+                    <QrCodeSvg
+                      value={code}
+                      size={code.length > 350 ? 312 : 256}
+                      margin={4}
+                      className="block max-w-full h-auto"
+                    />
                   </div>
                   {generatedPinDisplay && (
                     <div className="text-center space-y-0.5">

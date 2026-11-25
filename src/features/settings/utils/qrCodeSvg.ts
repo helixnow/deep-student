@@ -497,17 +497,49 @@ export function buildQrSvgPath(matrix: boolean[][], margin = 4): {
   };
 }
 
+const DEFAULT_QR_MIN_MODULE_PX = 3;
+const DENSE_QR_MODULE_THRESHOLD = 85;
+const DEFAULT_QR_STANDARD_SIZE = 256;
+const DEFAULT_QR_DENSE_SIZE = 312;
+
+/**
+ * 将目标像素尺寸对齐为 QR 总模块数（含静区）的精确整数倍，
+ * 避免 1x DPR 桌面显示器上的亚像素缩放与边缘模糊。
+ */
+export function computeCrispQrPixelSize(
+  viewBoxSize: number,
+  requestedSize: number,
+  minModulePx = DEFAULT_QR_MIN_MODULE_PX,
+): number {
+  const safeViewBox = Math.max(1, Math.floor(viewBoxSize));
+  const safeMinModulePx = Math.max(1, Math.floor(minModulePx));
+  const modulePx = Math.max(
+    safeMinModulePx,
+    Math.ceil(Math.max(1, requestedSize) / safeViewBox),
+  );
+  return safeViewBox * modulePx;
+}
+
 /**
  * 生成独立的 SVG 文件字符串（内嵌元信息，方便离线文件导入识别）
  */
 export function renderQrCodeSvgString(
   text: string,
-  options?: { size?: number; margin?: number; eccLevel?: QrEccLevel },
+  options?: {
+    size?: number;
+    margin?: number;
+    eccLevel?: QrEccLevel;
+    minModulePx?: number;
+  },
 ): string {
-  const pixelSize = options?.size ?? 320;
   const margin = options?.margin ?? 4;
   const matrix = encodeQrCodeMatrix(text, options?.eccLevel ?? 'L');
   const { viewBoxSize, pathData } = buildQrSvgPath(matrix, margin);
+  const pixelSize = computeCrispQrPixelSize(
+    viewBoxSize,
+    options?.size ?? 320,
+    options?.minModulePx ?? DEFAULT_QR_MIN_MODULE_PX,
+  );
   const escaped = text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -518,8 +550,8 @@ export function renderQrCodeSvgString(
     `<?xml version="1.0" encoding="UTF-8"?>`,
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${viewBoxSize} ${viewBoxSize}" width="${pixelSize}" height="${pixelSize}" shape-rendering="crispEdges" data-pairing-code="${escaped}">`,
     `<desc>${escaped}</desc>`,
-    `<rect width="100%" height="100%" fill="#ffffff"/>`,
-    `<path d="${pathData}" fill="#0f172a"/>`,
+    `<rect width="100%" height="100%" fill="#FFFFFF" shape-rendering="crispEdges"/>`,
+    `<path d="${pathData}" fill="#000000" shape-rendering="crispEdges"/>`,
     `</svg>`,
   ].join('');
 }
@@ -539,6 +571,7 @@ export interface QrCodeSvgProps {
   value: string;
   size?: number;
   margin?: number;
+  minModulePx?: number;
   eccLevel?: QrEccLevel;
   className?: string;
   ariaLabel?: string;
@@ -547,8 +580,9 @@ export interface QrCodeSvgProps {
 
 export const QrCodeSvg: React.FC<QrCodeSvgProps> = ({
   value,
-  size = 208,
-  margin = 3,
+  size,
+  margin = 4,
+  minModulePx = DEFAULT_QR_MIN_MODULE_PX,
   eccLevel = 'L',
   className,
   ariaLabel,
@@ -559,16 +593,27 @@ export const QrCodeSvg: React.FC<QrCodeSvgProps> = ({
     return buildQrSvgPath(matrix, margin);
   }, [value, margin, eccLevel]);
 
+  const requestedSize =
+    size ??
+    (encoded.viewBoxSize >= DENSE_QR_MODULE_THRESHOLD
+      ? DEFAULT_QR_DENSE_SIZE
+      : DEFAULT_QR_STANDARD_SIZE);
+  const pixelSize = computeCrispQrPixelSize(
+    encoded.viewBoxSize,
+    requestedSize,
+    minModulePx,
+  );
+
   return React.createElement(
     'svg',
     {
       role: 'img',
       'aria-label': label ?? ariaLabel ?? '同步配对二维码',
       viewBox: `0 0 ${encoded.viewBoxSize} ${encoded.viewBoxSize}`,
-      width: size,
-      height: size,
+      width: pixelSize,
+      height: pixelSize,
       shapeRendering: 'crispEdges',
-      className,
+      className: className ?? 'max-w-full h-auto',
       'data-testid': 'device-pairing-qr-svg',
       'data-pairing-code': value,
     },
@@ -576,12 +621,13 @@ export const QrCodeSvg: React.FC<QrCodeSvgProps> = ({
     React.createElement('rect', {
       width: '100%',
       height: '100%',
-      fill: '#ffffff',
-      rx: 1.5,
+      fill: '#FFFFFF',
+      shapeRendering: 'crispEdges',
     }),
     React.createElement('path', {
       d: encoded.pathData,
-      fill: '#0f172a',
+      fill: '#000000',
+      shapeRendering: 'crispEdges',
     }),
   );
 };
