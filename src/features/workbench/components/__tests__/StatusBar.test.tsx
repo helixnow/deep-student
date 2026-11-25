@@ -1010,3 +1010,92 @@ describe('StatusBar macOS 27 控制中心 2×2 玻璃网格与通透度滑块', 
     );
   });
 });
+
+describe('StatusBar MenuBar backdrop, Escape in inputs, and window-focus auto-dismiss (SOTA04 P2-1)', () => {
+  it('closes an active MenuBar dropdown on Escape even when focus is inside an input', async () => {
+    render(
+      <>
+        <StatusBar />
+        <input data-testid="workspace-input" />
+      </>,
+    );
+
+    const centerBtn = screen.getByTestId('wb-menubar-center');
+    fireEvent.click(centerBtn);
+    expect(centerBtn).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('wb-menubar-flyout')).toBeInTheDocument();
+
+    const input = screen.getByTestId('workspace-input');
+    input.focus();
+    expect(document.activeElement).toBe(input);
+
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(centerBtn).toHaveAttribute('aria-expanded', 'false');
+    await waitFor(() => {
+      expect(screen.queryByTestId('wb-menubar-flyout')).toBeNull();
+    });
+  });
+
+  it('auto-closes an active MenuBar dropdown when a window opens or top focus changes', () => {
+    render(<StatusBar />);
+
+    const brandBtn = screen.getByTestId('wb-menubar-brand');
+    fireEvent.click(brandBtn);
+    expect(brandBtn).toHaveAttribute('aria-expanded', 'true');
+
+    let winA = '';
+    act(() => {
+      winA = useWindowStore.getState().openWindow({ typeId: 'settings', title: 'Settings' });
+    });
+    expect(brandBtn).toHaveAttribute('aria-expanded', 'false');
+
+    act(() => {
+      useWindowStore.getState().openWindow({ typeId: 'todo', title: 'Todo' });
+    });
+
+    const windowMenuBtn = screen.getByTestId('wb-menubar-windowmenu');
+    fireEvent.click(windowMenuBtn);
+    expect(windowMenuBtn).toHaveAttribute('aria-expanded', 'true');
+
+    act(() => {
+      useWindowStore.getState().focusWindow(winA);
+    });
+    expect(windowMenuBtn).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('dismisses an active MenuBar dropdown on Dock pointerdown without blocking the Dock click', async () => {
+    const onDockClick = vi.fn();
+    render(
+      <>
+        <StatusBar />
+        <div className="wb-dock" data-testid="mock-dock">
+          <button type="button" data-testid="mock-dock-apps-btn" onClick={onDockClick}>
+            All Apps
+          </button>
+        </div>
+      </>,
+    );
+
+    const centerBtn = screen.getByTestId('wb-menubar-center');
+    fireEvent.click(centerBtn);
+    expect(centerBtn).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByTestId('wb-menubar-flyout-backdrop')).toBeInTheDocument();
+
+    const dockBtn = screen.getByTestId('mock-dock-apps-btn');
+    fireEvent.pointerDown(dockBtn);
+    expect(centerBtn).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(dockBtn);
+    expect(onDockClick).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('wb-menubar-flyout')).toBeNull();
+    });
+
+    // Verify StatusBar.css stacks the dismiss backdrop below the Dock (z-index < --wb-z-dock)
+    const { readFileSync } = require('node:fs') as typeof import('node:fs');
+    const { resolve } = require('node:path') as typeof import('node:path');
+    const css = readFileSync(resolve(__dirname, '../StatusBar.css'), 'utf8');
+    expect(css).toMatch(/\.wb-menubar-dismiss-backdrop\s*\{[^}]*z-index:\s*calc\(var\(--wb-z-dock,\s*9000\)\s*-\s*1\);/);
+  });
+});

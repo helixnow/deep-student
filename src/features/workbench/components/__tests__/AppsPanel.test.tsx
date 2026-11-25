@@ -691,3 +691,105 @@ describe('AppsPanel Sandbox discovery (S3-08)', () => {
     launchSpy.mockRestore();
   });
 });
+
+describe('AppsPanel backdrop recovery and bottom-row clearance (G02/U06/SOTA07)', () => {
+  it('closes AppsPanel on Escape even when focus has moved outside wb-apps-panel', async () => {
+    const outsideButton = document.createElement('button');
+    outsideButton.textContent = 'MenuBar Settings';
+    document.body.appendChild(outsideButton);
+
+    try {
+      render(<AppsPanel />);
+      act(() => openAppsPanel());
+      expect(isAppsPanelOpen()).toBe(true);
+
+      act(() => {
+        outsideButton.focus();
+      });
+      expect(document.activeElement).toBe(outsideButton);
+
+      // IME composing Escape must not close the panel
+      const composingEvent = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+        isComposing: true,
+      });
+      act(() => {
+        outsideButton.dispatchEvent(composingEvent);
+      });
+      expect(isAppsPanelOpen()).toBe(true);
+
+      // Non-composing Escape outside the dialog closes AppsPanel via document capture listener
+      const escapeEvent = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        cancelable: true,
+      });
+      act(() => {
+        outsideButton.dispatchEvent(escapeEvent);
+      });
+      expect(escapeEvent.defaultPrevented).toBe(true);
+      expect(isAppsPanelOpen()).toBe(false);
+    } finally {
+      outsideButton.remove();
+    }
+  });
+
+  it('auto-closes AppsPanel without stealing focus when a window opens or top focus changes', async () => {
+    const prevTrigger = document.createElement('button');
+    prevTrigger.textContent = 'Previous trigger';
+    const launchedWindowControl = document.createElement('button');
+    launchedWindowControl.textContent = 'Launched window control';
+    document.body.append(prevTrigger, launchedWindowControl);
+
+    try {
+      prevTrigger.focus();
+      expect(document.activeElement).toBe(prevTrigger);
+
+      render(<AppsPanel />);
+      act(() => openAppsPanel());
+      await waitFor(() => {
+        expect(screen.getByTestId('wb-apps-search')).toHaveFocus();
+      });
+
+      // Launching a window externally via workbenchBus closes AppsPanel and skips focus return
+      act(() => {
+        launchedWindowControl.focus();
+        workbenchBus.launch({ typeId: 'pomodoro', reason: 'api' });
+      });
+      expect(isAppsPanelOpen()).toBe(false);
+      expect(document.activeElement).toBe(launchedWindowControl);
+
+      // Focusing a different existing window while AppsPanel is open also closes without stealing focus
+      let winA = '';
+      act(() => {
+        winA = useWindowStore.getState().openWindow({ typeId: 'chat' });
+        useWindowStore.getState().openWindow({ typeId: 'files' });
+      });
+
+      prevTrigger.focus();
+      act(() => openAppsPanel());
+      await waitFor(() => {
+        expect(screen.getByTestId('wb-apps-search')).toHaveFocus();
+      });
+
+      act(() => {
+        launchedWindowControl.focus();
+        useWindowStore.getState().focusWindow(winA);
+      });
+      expect(isAppsPanelOpen()).toBe(false);
+      expect(document.activeElement).toBe(launchedWindowControl);
+    } finally {
+      prevTrigger.remove();
+      launchedWindowControl.remove();
+    }
+  });
+
+  it('gives .wb-apps-body-viewport extra bottom clearance so Workspace Tools tiles clear the footer', () => {
+    const { readFileSync } = require('node:fs') as typeof import('node:fs');
+    const { resolve } = require('node:path') as typeof import('node:path');
+    const css = readFileSync(resolve(__dirname, '../AppsPanel.css'), 'utf8');
+    expect(css).toContain('padding: 4px 12px calc(36px + var(--wb-dock-clearance, 0px));');
+  });
+});

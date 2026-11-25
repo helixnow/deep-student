@@ -47,7 +47,8 @@ import { WindowControls } from '@/components/WindowControls';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useTheme } from '@/hooks/useTheme';
 import { getSetting, saveSetting } from '@/utils/settingsApi';
-import { toggleAppsPanel, useAppsPanelOpen } from './appsPanelStore';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { closeAppsPanel, toggleAppsPanel, useAppsPanelOpen } from './appsPanelStore';
 import { useDesktopName } from './desktopNameStore';
 import { StatusBarBrandMenu } from './StatusBarBrandMenu';
 import { StatusBarAppMenus } from './StatusBarAppMenus';
@@ -76,6 +77,7 @@ import {
   getActiveAnkiTaskCount,
   subscribeAnkiTaskCount,
 } from '../apps/system/ankiTaskSource';
+import { useWindowStore } from '../core/windowStore';
 import { workbenchBus } from '../core/workbenchBus';
 import { parsePersistedWallpaper } from '../core/persistedSettings';
 import {
@@ -144,6 +146,20 @@ function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   if (target instanceof HTMLTextAreaElement) return true;
   if (target instanceof HTMLInputElement && target.type !== 'range') return true;
   return false;
+}
+
+function isInsideMenuBarOrPortal(
+  target: EventTarget | null,
+  bar: HTMLElement | null,
+): boolean {
+  if (!(target instanceof Node)) return false;
+  if (bar?.contains(target)) return true;
+  const element = target instanceof Element ? target : target.parentElement;
+  return Boolean(
+    element?.closest(
+      '.wb-menubar, [data-wb-statusbar-menu], .wb-menubar-flyout, .wb-menubar-hotzone',
+    ),
+  );
 }
 
 /** Flyout 内番茄详情：单独订阅 timeLeft，避免 1Hz 刷整棵 StatusBar */
@@ -228,6 +244,7 @@ const FLASHCARDS_DUE_PAYLOAD = { screen: 'session', mode: 'due' } as const;
 
 function launchApp(typeId: string): void {
   workbenchBus.launch({ typeId, reason: 'api' });
+  closeAppsPanel();
 }
 
 function launchFlashcardsDue(): void {
@@ -242,6 +259,7 @@ function launchFlashcardsDue(): void {
       payload: FLASHCARDS_DUE_PAYLOAD,
     },
   });
+  closeAppsPanel();
 }
 
 function launchAutomations(): void {
@@ -255,6 +273,7 @@ function launchAutomations(): void {
       payload: { todoView: 'automations' },
     },
   });
+  closeAppsPanel();
 }
 
 function getFocusable(container: HTMLElement): HTMLElement[] {
@@ -597,20 +616,51 @@ const StatusBarComponent: React.FC = () => {
     return () => window.clearTimeout(timer);
   }, [centerPhase]);
 
-  // 展开任一顶栏菜单时：统一接管 ←/→ 相邻菜单循环切换与 Escape 关闭（useEventRegistry）
+  // 顶栏菜单展开期间若外部打开新窗口或切换焦点窗口，自动收起菜单并跳过焦点归还
+  useEffect(() => {
+    if (activeMenuId === null) return undefined;
+    const initial = useWindowStore.getState();
+    let prevTop = initial.focusStack[initial.focusStack.length - 1] ?? null;
+    let prevWindowIds = new Set(Object.keys(initial.windows));
+
+    return useWindowStore.subscribe((state) => {
+      const nextTop = state.focusStack[state.focusStack.length - 1] ?? null;
+      const nextWindowIds = Object.keys(state.windows);
+      const hasNewWindow = nextWindowIds.some((id) => !prevWindowIds.has(id));
+      const focusChanged = nextTop !== null && nextTop !== prevTop;
+
+      if (hasNewWindow || focusChanged) {
+        skipNextReturn();
+        closeActiveMenu();
+        return;
+      }
+
+      prevTop = nextTop;
+      prevWindowIds = new Set(nextWindowIds);
+    });
+  }, [activeMenuId, closeActiveMenu, skipNextReturn]);
+
+  // 展开任一顶栏菜单时：统一接管 Escape 关闭（优先于可编辑焦点拦截）与 ←/→ 相邻菜单循环切换
   const activeMenuKeyboardEvents = useMemo(() => {
     if (activeMenuId === null) return [];
     const onKeyDown: EventListener = (event) => {
       const e = event as KeyboardEvent;
-      if (isEditableKeyboardTarget(e.target)) return;
-      const isRangeInput =
-        e.target instanceof HTMLInputElement && e.target.type === 'range';
       if (e.key === 'Escape') {
+        if (isComposingKeyEvent(e)) return;
+        if (
+          e.target instanceof HTMLElement &&
+          e.target.closest('[data-testid="wb-menubar-brand-rename-form"]')
+        ) {
+          return;
+        }
         e.preventDefault();
         e.stopPropagation();
         closeActiveMenu();
         return;
       }
+      if (isEditableKeyboardTarget(e.target)) return;
+      const isRangeInput =
+        e.target instanceof HTMLInputElement && e.target.type === 'range';
       if (isRangeInput) return;
       if (e.key === 'ArrowRight') {
         e.preventDefault();
@@ -622,10 +672,16 @@ const StatusBarComponent: React.FC = () => {
         cycleMenu(-1);
       }
     };
+    const onPointerDown: EventListener = (event) => {
+      if (isInsideMenuBarOrPortal(event.target, barRef.current)) return;
+      skipNextReturn();
+      closeActiveMenu();
+    };
     return [
       { target: 'window' as const, type: 'keydown', listener: onKeyDown, options: true },
+      { target: 'document' as const, type: 'pointerdown', listener: onPointerDown, options: true },
     ];
-  }, [activeMenuId, closeActiveMenu, cycleMenu]);
+  }, [activeMenuId, closeActiveMenu, cycleMenu, skipNextReturn]);
   useEventRegistry(activeMenuKeyboardEvents, [activeMenuKeyboardEvents]);
 
   useEffect(() => {
@@ -907,7 +963,10 @@ const StatusBarComponent: React.FC = () => {
           data-testid="wb-menubar-settings"
           aria-label={t('menubar.openSettings')}
           title={t('menubar.openSettings')}
-          onClick={() => launchApp('settings')}
+          onClick={() => {
+            closeActiveMenu();
+            launchApp('settings');
+          }}
         >
           <GearSix size={15} weight="bold" className="wb-menubar-item-icon" aria-hidden />
         </button>
