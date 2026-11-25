@@ -106,6 +106,14 @@ const MIN_HEARTBEAT_INTERVAL_MS = 250;
 const activeInProcessOperations = new Set<string>();
 /** Operation IDs whose cleanup/release failed (e.g. 503/offline) and must be reclaimed on retry. */
 const orphanedLocalOperations = new Set<string>();
+/**
+ * Tracks ONLY genuine `storage.get(key)` transport failures thrown by
+ * `releaseOwnedCandidate` so that `LeaseGuard.release()` and `acquireLease`
+ * cleanup can distinguish a transient GET 503 (safe to attempt a direct DELETE)
+ * from JSON corruption (`releaseParseFailed`) or ownership mismatch (`Conflict`),
+ * both of which must fail closed.
+ */
+const releaseReadFailedErrors = new WeakSet<Error>();
 
 function isSelfDevice(lease: LeaseRecord | null, localDeviceId: string): boolean {
   const local = rustTrim(localDeviceId);
@@ -366,7 +374,9 @@ async function releaseOwnedCandidate(
   operationId: string,
 ): Promise<boolean> {
   const bytes = await storage.get(key).catch(error => {
-    throw new CloudStorageError('Network', spec.messages.releaseReadFailed(errorDetail(error)));
+    const err = new CloudStorageError('Network', spec.messages.releaseReadFailed(errorDetail(error)));
+    releaseReadFailedErrors.add(err);
+    throw err;
   });
   if (bytes === null) return false;
   let lease: LeaseRecord;
@@ -530,7 +540,10 @@ export class LeaseGuard {
       orphanedLocalOperations.add(this.lease.operation_id);
       // If read-before-delete failed transiently (e.g. 503 on GET) while DELETE can still
       // remove our unique UUID-keyed lease object, try direct delete before giving up.
-      if (!(error instanceof CloudStorageError && error.value.error_type === 'Conflict')) {
+      // IMPORTANT: only do this for genuine transport GET failures (tracked in
+      // `releaseReadFailedErrors`).  JSON corruption (`releaseParseFailed`) and ownership
+      // mismatch (`Conflict`) must fail closed — never blindly delete a corrupted lease.
+      if (error instanceof Error && releaseReadFailedErrors.has(error)) {
         try {
           await this.storage.delete(this.key);
           orphanedLocalOperations.delete(this.lease.operation_id);
@@ -613,12 +626,16 @@ export async function acquireLease(
       try {
         await releaseOwnedCandidate(spec, storage, key, lease.operation_id);
         cleaned = true;
-      } catch {
-        try {
-          await storage.delete(key);
-          cleaned = true;
-        } catch {
-          cleaned = false;
+      } catch (cleanupErr) {
+        // Only attempt a direct DELETE when the read genuinely failed transiently (GET 503).
+        // JSON corruption or Conflict must not cause a blind delete of an alien/corrupted lease.
+        if (cleanupErr instanceof Error && releaseReadFailedErrors.has(cleanupErr)) {
+          try {
+            await storage.delete(key);
+            cleaned = true;
+          } catch {
+            cleaned = false;
+          }
         }
       }
       if (!cleaned) {
