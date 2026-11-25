@@ -56,6 +56,7 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
   const { isSmallScreen } = useBreakpoint();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [mobileChrome, setMobileChrome] = useState<FlashcardsMobileChrome | null>(null);
+  const [pendingOpenComposer, setPendingOpenComposer] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const reviewOrigin = useRef<Exclude<FlashcardsScreen, 'session'>>('today');
   const toggleSidebar = useCallback(() => setSidebarOpen((open) => !open), []);
@@ -64,6 +65,13 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
   const applyLaunchPayload = useFsrsReviewStore((s) => s.applyLaunchPayload);
   const dueTotal = useFsrsReviewStore((s) => s.dueTotal);
   const endSession = useFsrsReviewStore((s) => s.endSession);
+  const handleQuickNewCard = useCallback(() => {
+    setPendingOpenComposer(true);
+    setScreen('library');
+  }, [setScreen]);
+  const consumePendingOpenComposer = useCallback(() => {
+    setPendingOpenComposer(false);
+  }, []);
 
   useEffect(() => {
     if (screen !== 'session') reviewOrigin.current = screen;
@@ -146,8 +154,13 @@ export const FlashcardsApp: React.FC<FlashcardsAppProps> = ({
       </nav>
       <div className="wb-fc-body">
         <div key={screen} className="wb-fcx-screen-anim">
-          {screen === 'today' ? <TodayScreen /> : null}
-          {screen === 'library' ? <LibraryScreen /> : null}
+          {screen === 'today' ? <TodayScreen onQuickNewCard={handleQuickNewCard} /> : null}
+          {screen === 'library' ? (
+            <LibraryScreen
+              autoOpenComposer={pendingOpenComposer}
+              onAutoOpenComposerConsumed={consumePendingOpenComposer}
+            />
+          ) : null}
           {screen === 'settings' ? <StatisticsScreen /> : null}
         </div>
       </div>

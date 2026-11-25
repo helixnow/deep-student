@@ -3,8 +3,13 @@
  *
  * 对标 TaskDashboardAppWindow：WbSys 骨架 + 淡入 + launchPayload 透传。
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  MobileHeaderActiveViewSync,
+  MobileHeaderNavProvider,
+  MobileHeaderProvider,
+} from '@/components/layout/MobileHeaderContext';
 import type { AppWindowProps } from '../../core/types';
 import { WbSysFade } from './SystemWindowShared';
 import { useWbSysSize } from './useWbSysSize';
@@ -19,10 +24,15 @@ const FlashcardsAppWindow: React.FC<AppWindowProps> = ({
 }) => {
   const { t } = useTranslation('workbench');
   const { ref } = useWbSysSize();
+  const appTitle = t('workbench:apps.flashcards');
+  const mobileHeaderNav = useMemo(
+    () => ({ fallbackTitle: appTitle }),
+    [appTitle],
+  );
 
   useEffect(() => {
-    onTitleChange(t('workbench:apps.flashcards'));
-  }, [onTitleChange, t]);
+    onTitleChange(appTitle);
+  }, [onTitleChange, appTitle]);
 
   return (
     <div
@@ -31,7 +41,13 @@ const FlashcardsAppWindow: React.FC<AppWindowProps> = ({
       data-wb-sys-app="flashcards"
     >
       <WbSysFade>
-        <FlashcardsApp launchPayload={launchPayload} isActive={isActive} />
+        {/* 窗口内隔离 MobileHeaderContext：避免 360px 工作台模式下继承外层 chat-v2 顶栏标题与按钮 */}
+        <MobileHeaderProvider>
+          <MobileHeaderActiveViewSync activeView="flashcards" />
+          <MobileHeaderNavProvider value={mobileHeaderNav}>
+            <FlashcardsApp launchPayload={launchPayload} isActive={isActive} />
+          </MobileHeaderNavProvider>
+        </MobileHeaderProvider>
       </WbSysFade>
     </div>
   );

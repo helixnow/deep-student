@@ -135,6 +135,170 @@ function isCommandAvailableInCurrentContext(
 // 视图模式
 type ViewMode = 'search' | 'recent' | 'favorites';
 
+/** 命令面板搜索范围（支持顶部芯片点击或输入前缀 > / @ / # 切换） */
+export type PaletteScope = 'all' | 'commands' | 'files' | 'flashcards';
+
+export interface ParsedPaletteQuery {
+  prefixScope: Exclude<PaletteScope, 'all'> | null;
+  effectiveScope: PaletteScope;
+  searchTerm: string;
+}
+
+const PREFIX_TO_SCOPE: Record<string, Exclude<PaletteScope, 'all'>> = {
+  '>': 'commands',
+  '＞': 'commands',
+  '@': 'files',
+  '＠': 'files',
+  '#': 'flashcards',
+  '＃': 'flashcards',
+};
+
+const SCOPE_CHIPS: ReadonlyArray<{
+  id: PaletteScope;
+  prefix: string | null;
+  labelKey: string;
+  defaultLabel: string;
+}> = [
+  { id: 'all', prefix: null, labelKey: 'command_palette:scope_all', defaultLabel: 'All' },
+  { id: 'commands', prefix: '>', labelKey: 'command_palette:scope_commands', defaultLabel: 'Commands' },
+  { id: 'files', prefix: '@', labelKey: 'command_palette:scope_files', defaultLabel: 'Files' },
+  { id: 'flashcards', prefix: '#', labelKey: 'command_palette:scope_flashcards', defaultLabel: 'Cards' },
+];
+
+/** 解析前缀语法（> 命令 / @ 文件与笔记 / # 闪卡）与当前选定范围 */
+export function parsePaletteQuery(
+  rawQuery: string,
+  selectedScope: PaletteScope,
+  sessionSearchOnly = false,
+): ParsedPaletteQuery {
+  if (sessionSearchOnly) {
+    return {
+      prefixScope: null,
+      effectiveScope: 'all',
+      searchTerm: rawQuery.trim(),
+    };
+  }
+  const leading = rawQuery.trimStart();
+  const firstChar = leading[0];
+  const prefixScope = firstChar ? (PREFIX_TO_SCOPE[firstChar] ?? null) : null;
+  if (prefixScope) {
+    return {
+      prefixScope,
+      effectiveScope: prefixScope,
+      searchTerm: leading.slice(1).trim(),
+    };
+  }
+  return {
+    prefixScope: null,
+    effectiveScope: selectedScope,
+    searchTerm: rawQuery.trim(),
+  };
+}
+
+/** 点击范围芯片切换范围时剥离已有前缀，保留用户已输入的关键词 */
+export function stripPaletteQueryPrefix(rawQuery: string): string {
+  const leading = rawQuery.trimStart();
+  const firstChar = leading[0];
+  if (firstChar && PREFIX_TO_SCOPE[firstChar]) {
+    return leading.slice(1).replace(/^\s+/, '');
+  }
+  return rawQuery;
+}
+
+/** 评估候选项标题与描述相对检索词的匹配强度（用于 >=3 字符时的内容优先排序） */
+export function scorePaletteTextMatch(
+  title: string,
+  description: string | undefined,
+  query: string,
+): number {
+  const normQuery = query.trim().toLowerCase();
+  if (!normQuery) return 0;
+  const normTitle = title.trim().toLowerCase();
+  const normDesc = (description ?? '').trim().toLowerCase();
+
+  if (normTitle === normQuery) return 100;
+  if (normTitle.startsWith(normQuery)) return 85;
+  if (normTitle.includes(normQuery)) return 70;
+
+  const tokens = normQuery.split(/\s+/).filter(Boolean);
+  if (tokens.length > 1) {
+    const combined = `${normTitle} ${normDesc}`;
+    if (tokens.every((token) => combined.includes(token))) {
+      return 55;
+    }
+  }
+  if (normDesc && normDesc.includes(normQuery)) return 45;
+  return 20;
+}
+
+/** 安全渲染大小写不敏感子串高亮（无 dangerouslySetInnerHTML，保留原生 <mark> 语义） */
+export function renderHighlightedText(text: string, query: string): React.ReactNode {
+  const trimmed = query.trim();
+  if (!text || !trimmed) return text;
+
+  const lowerText = text.toLowerCase();
+  const lowerQuery = trimmed.toLowerCase();
+  const spans: Array<{ start: number; end: number }> = [];
+
+  let cursor = 0;
+  while (cursor < lowerText.length) {
+    const idx = lowerText.indexOf(lowerQuery, cursor);
+    if (idx === -1) break;
+    spans.push({ start: idx, end: idx + lowerQuery.length });
+    cursor = idx + lowerQuery.length;
+  }
+
+  if (spans.length === 0) {
+    const tokens = Array.from(new Set(lowerQuery.split(/\s+/).filter(Boolean)))
+      .sort((a, b) => b.length - a.length);
+    if (tokens.length > 1) {
+      const occupied = new Uint8Array(text.length);
+      for (const token of tokens) {
+        let pos = 0;
+        while (pos < lowerText.length) {
+          const idx = lowerText.indexOf(token, pos);
+          if (idx === -1) break;
+          let overlaps = false;
+          for (let i = idx; i < idx + token.length; i += 1) {
+            if (occupied[i]) {
+              overlaps = true;
+              break;
+            }
+          }
+          if (!overlaps) {
+            spans.push({ start: idx, end: idx + token.length });
+            for (let i = idx; i < idx + token.length; i += 1) {
+              occupied[i] = 1;
+            }
+          }
+          pos = idx + token.length;
+        }
+      }
+      spans.sort((a, b) => a.start - b.start);
+    }
+  }
+
+  if (spans.length === 0) return text;
+
+  const parts: React.ReactNode[] = [];
+  let lastEnd = 0;
+  for (const span of spans) {
+    if (span.start > lastEnd) {
+      parts.push(text.slice(lastEnd, span.start));
+    }
+    parts.push(
+      <mark key={`${span.start}-${span.end}`} className="command-palette-highlight">
+        {text.slice(span.start, span.end)}
+      </mark>,
+    );
+    lastEnd = span.end;
+  }
+  if (lastEnd < text.length) {
+    parts.push(text.slice(lastEnd));
+  }
+  return parts;
+}
+
 export function CommandPalette() {
   const { t } = useTranslation(['command_palette', 'common']);
   // 移动端没有物理键盘：快捷键徽章与键盘操作提示只在桌面显示
@@ -156,6 +320,7 @@ export function CommandPalette() {
   const groupLabelId = useCallback((category: string) => `${baseId}-group-${category}`, [baseId]);
 
   const [query, setQuery] = useState('');
+  const [selectedScope, setSelectedScope] = useState<PaletteScope>('all');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [viewMode, setViewMode] = useState<ViewMode>('search');
   const [favoritesVersion, setFavoritesVersion] = useState(0);
@@ -164,6 +329,11 @@ export function CommandPalette() {
   const containerRef = useRef<HTMLDivElement>(null);
   // 标记是否为键盘导航（区分鼠标悬停），只有键盘导航才触发滚动
   const isKeyboardNavRef = useRef(false);
+
+  const { effectiveScope, searchTerm } = useMemo(
+    () => parsePaletteQuery(query, selectedScope, sessionSearchOnly),
+    [query, selectedScope, sessionSearchOnly],
+  );
   
   // 订阅收藏变化
   useEffect(() => {
@@ -200,7 +370,7 @@ export function CommandPalette() {
     return commands;
   }, [favoritesVersion, currentView, deps]);
   
-  // 搜索结果
+  // 搜索结果（@ / # 范围仅检索资源，不混入通用命令）
   const filteredCommands = useMemo(() => {
     if (viewMode === 'recent') {
       return recentCommands;
@@ -208,81 +378,193 @@ export function CommandPalette() {
     if (viewMode === 'favorites') {
       return favoriteCommands;
     }
-    return searchCommands(query);
-  }, [searchCommands, query, viewMode, recentCommands, favoriteCommands]);
+    if (effectiveScope === 'files' || effectiveScope === 'flashcards') {
+      return [];
+    }
+    return searchCommands(searchTerm);
+  }, [searchCommands, searchTerm, effectiveScope, viewMode, recentCommands, favoriteCommands]);
 
-  // 资源直达搜索（文件/闪卡 ≥2 字符、会话 ≥1 字符，由 useResourceSearch 内部按各自 minChars 门控）
-  const resourceSearchEnabled = isOpen && viewMode === 'search' && query.trim().length >= 1;
-  const { fileResults, flashcardResults, sessionResults, loading: resourceLoading } = useResourceSearch(
-    query,
+  // 资源直达搜索（文件/闪卡 ≥2 字符、会话 ≥1 字符，由 useResourceSearch 内部按各自 minChars 门控；> 仅命令范围不发资源请求）
+  const wantsResources = sessionSearchOnly
+    || effectiveScope === 'all'
+    || effectiveScope === 'files'
+    || effectiveScope === 'flashcards';
+  const resourceSearchEnabled = isOpen && viewMode === 'search' && wantsResources && searchTerm.length >= 1;
+  const {
+    fileResults = [],
+    flashcardResults = [],
+    sessionResults = [],
+    loading: resourceLoading,
+  } = useResourceSearch(
+    searchTerm,
     resourceSearchEnabled,
   );
   const isResourceSearching = resourceSearchEnabled && Boolean(resourceLoading);
 
-  // 将资源结果转为即时命令（不进入注册表，执行时直接调用 execute）
+  // 将资源结果转为即时命令（不进入注册表，执行时直接调用 execute），并按匹配强度组内稳定排序
   const fileCommands = useMemo<Command[]>(() => {
-    if (!resourceSearchEnabled) return [];
-    return fileResults.map((node) => ({
-      id: `${RESOURCE_COMMAND_PREFIX}file.${node.id}`,
-      name: node.name,
-      description: formatDstuSearchSubtitle(node),
-      category: 'learning',
-      icon: RESOURCE_TYPE_ICONS[node.type] ?? FileIcon,
-      execute: (d) => { void openFileFromPalette(d, node); },
-    }));
-  }, [resourceSearchEnabled, fileResults]);
+    if (!resourceSearchEnabled || (effectiveScope !== 'all' && effectiveScope !== 'files')) return [];
+    const mapped = fileResults.map((node, index) => {
+      const description = formatDstuSearchSubtitle(node);
+      return {
+        command: {
+          id: `${RESOURCE_COMMAND_PREFIX}file.${node.id}`,
+          name: node.name,
+          description,
+          category: 'learning' as const,
+          icon: RESOURCE_TYPE_ICONS[node.type] ?? FileIcon,
+          execute: (d: DependencyResolver) => { void openFileFromPalette(d, node); },
+        },
+        score: scorePaletteTextMatch(node.name, description, searchTerm),
+        index,
+      };
+    });
+    if (searchTerm.length > 0) {
+      mapped.sort((a, b) => (b.score - a.score) || (a.index - b.index));
+    }
+    return mapped.map((entry) => entry.command);
+  }, [resourceSearchEnabled, effectiveScope, fileResults, searchTerm]);
 
   const flashcardCommands = useMemo<Command[]>(() => {
-    if (!resourceSearchEnabled) return [];
-    const trimmedQuery = query.trim();
-    return flashcardResults.map((item) => ({
-      id: `${RESOURCE_COMMAND_PREFIX}flashcard.${item.cardId}`,
-      name: item.front,
-      description: formatFlashcardSearchSubtitle(item),
-      category: 'anki',
-      icon: Stack,
-      execute: (d) => { void openFlashcardFromPalette(d, item, trimmedQuery); },
-    }));
-  }, [resourceSearchEnabled, flashcardResults, query]);
+    if (!resourceSearchEnabled || (effectiveScope !== 'all' && effectiveScope !== 'flashcards')) return [];
+    const mapped = flashcardResults.map((item, index) => {
+      const description = formatFlashcardSearchSubtitle(item);
+      return {
+        command: {
+          id: `${RESOURCE_COMMAND_PREFIX}flashcard.${item.cardId}`,
+          name: item.front,
+          description,
+          category: 'anki' as const,
+          icon: Stack,
+          execute: (d: DependencyResolver) => { void openFlashcardFromPalette(d, item, searchTerm); },
+        },
+        score: scorePaletteTextMatch(item.front, description, searchTerm),
+        index,
+      };
+    });
+    if (searchTerm.length > 0) {
+      mapped.sort((a, b) => (b.score - a.score) || (a.index - b.index));
+    }
+    return mapped.map((entry) => entry.command);
+  }, [resourceSearchEnabled, effectiveScope, flashcardResults, searchTerm]);
 
   const sessionCommands = useMemo<Command[]>(() => {
-    if (!resourceSearchEnabled) return [];
-    return sessionResults.map((item) => ({
-      id: `${RESOURCE_COMMAND_PREFIX}session.${item.sessionId}`,
-      name: item.title || t('workbench:appsPanel.untitledChat', t('command_palette:untitled', '未命名会话')),
-      description: item.snippet,
-      category: 'chat',
-      icon: ChatCenteredText,
-      execute: (d) => { openSessionFromPalette(d, item.sessionId); },
-    }));
-  }, [resourceSearchEnabled, sessionResults, t]);
+    if (!resourceSearchEnabled || (!sessionSearchOnly && effectiveScope !== 'all')) return [];
+    const mapped = sessionResults.map((item, index) => {
+      const name = item.title || t('workbench:appsPanel.untitledChat', t('command_palette:untitled', '未命名会话'));
+      return {
+        command: {
+          id: `${RESOURCE_COMMAND_PREFIX}session.${item.sessionId}`,
+          name,
+          description: item.snippet,
+          category: 'chat' as const,
+          icon: ChatCenteredText,
+          execute: (d: DependencyResolver) => { openSessionFromPalette(d, item.sessionId); },
+        },
+        score: scorePaletteTextMatch(name, item.snippet, searchTerm),
+        index,
+      };
+    });
+    if (searchTerm.length > 0) {
+      mapped.sort((a, b) => (b.score - a.score) || (a.index - b.index));
+    }
+    return mapped.map((entry) => entry.command);
+  }, [resourceSearchEnabled, sessionSearchOnly, effectiveScope, sessionResults, searchTerm, t]);
 
-  // 分组结果（搜索模式按分类分组，最近/收藏模式显示为单独分组）
+  // 分组结果（搜索模式按范围筛选；全范围且查询 ≥3 字符时，强内容命中优先于通用命令）
   const groupedCommands = useMemo(() => {
     if (sessionSearchOnly) {
       return new Map<DisplayCategory, Command[]>([['sessions', sessionCommands]]);
     }
     if (viewMode === 'recent') {
-      // 最近使用模式，显示为单独分组
       return new Map<DisplayCategory, Command[]>([['recent', filteredCommands]]);
     }
     if (viewMode === 'favorites') {
-      // 收藏模式，显示为单独分组
       return new Map<DisplayCategory, Command[]>([['favorites', filteredCommands]]);
     }
-    // 搜索模式按分类分组显示，资源直达分组追加在命令之后
-    const groups = groupCommandsByCategory(filteredCommands) as Map<DisplayCategory, Command[]>;
+    if (effectiveScope === 'commands') {
+      return groupCommandsByCategory(filteredCommands);
+    }
+    if (effectiveScope === 'files') {
+      return fileCommands.length > 0
+        ? new Map<DisplayCategory, Command[]>([['files', fileCommands]])
+        : new Map<DisplayCategory, Command[]>();
+    }
+    if (effectiveScope === 'flashcards') {
+      return flashcardCommands.length > 0
+        ? new Map<DisplayCategory, Command[]>([['flashcards', flashcardCommands]])
+        : new Map<DisplayCategory, Command[]>();
+    }
+
+    const commandGroups = groupCommandsByCategory(filteredCommands);
+    const resourceGroups: Array<{
+      key: 'files' | 'flashcards' | 'sessions';
+      items: Command[];
+      bestScore: number;
+      defaultOrder: number;
+    }> = [];
     if (fileCommands.length > 0) {
-      groups.set('files', fileCommands);
+      resourceGroups.push({
+        key: 'files',
+        items: fileCommands,
+        bestScore: Math.max(...fileCommands.map((cmd) => scorePaletteTextMatch(cmd.name, cmd.description, searchTerm))),
+        defaultOrder: 0,
+      });
     }
     if (flashcardCommands.length > 0) {
-      groups.set('flashcards', flashcardCommands);
+      resourceGroups.push({
+        key: 'flashcards',
+        items: flashcardCommands,
+        bestScore: Math.max(...flashcardCommands.map((cmd) => scorePaletteTextMatch(cmd.name, cmd.description, searchTerm))),
+        defaultOrder: 1,
+      });
     }
     if (sessionCommands.length > 0) {
-      groups.set('sessions', sessionCommands);
+      resourceGroups.push({
+        key: 'sessions',
+        items: sessionCommands,
+        bestScore: Math.max(...sessionCommands.map((cmd) => scorePaletteTextMatch(cmd.name, cmd.description, searchTerm))),
+        defaultOrder: 2,
+      });
+    }
+
+    const groups = new Map<DisplayCategory, Command[]>();
+    const bestCommandScore = searchTerm.length >= 3 && filteredCommands.length > 0
+      ? Math.max(
+          ...filteredCommands.map((cmd) => scorePaletteTextMatch(
+            t(`command_palette:commands.${cmd.id}`, cmd.name),
+            cmd.description ? t(`command_palette:descriptions.${cmd.id}`, cmd.description) : undefined,
+            searchTerm,
+          )),
+        )
+      : 0;
+    const bestContentScore = resourceGroups.length > 0
+      ? Math.max(...resourceGroups.map((entry) => entry.bestScore))
+      : 0;
+    const promoteContentFirst = searchTerm.length >= 3
+      && bestContentScore >= 45
+      && (bestCommandScore < 85 || bestContentScore >= bestCommandScore);
+
+    if (promoteContentFirst) {
+      const sortedResources = [...resourceGroups].sort(
+        (a, b) => (b.bestScore - a.bestScore) || (a.defaultOrder - b.defaultOrder),
+      );
+      for (const entry of sortedResources) {
+        if (entry.bestScore >= 45) groups.set(entry.key, entry.items);
+      }
+      commandGroups.forEach((cmds, category) => groups.set(category, cmds));
+      for (const entry of sortedResources) {
+        if (entry.bestScore < 45) groups.set(entry.key, entry.items);
+      }
+      return groups;
+    }
+
+    commandGroups.forEach((cmds, category) => groups.set(category, cmds));
+    for (const entry of resourceGroups) {
+      groups.set(entry.key, entry.items);
     }
     return groups;
-  }, [filteredCommands, viewMode, fileCommands, flashcardCommands, sessionCommands, sessionSearchOnly]);
+  }, [filteredCommands, viewMode, effectiveScope, searchTerm, fileCommands, flashcardCommands, sessionCommands, sessionSearchOnly, t]);
   
   // 扁平化命令列表（用于键盘导航）
   const flatCommands = useMemo(() => {
@@ -305,6 +587,7 @@ export function CommandPalette() {
   useEffect(() => {
     if (!isOpen) return;
     setQuery('');
+    setSelectedScope('all');
     setSelectedIndex(0);
     setViewMode('search');
     // 延迟聚焦，等待动画完成；清理时取消——否则打开后一帧内按 Esc，
@@ -392,6 +675,16 @@ export function CommandPalette() {
   // 清空搜索词并将焦点归还搜索框（无结果恢复动作）
   const handleClearSearch = useCallback(() => {
     setQuery('');
+    setSelectedScope('all');
+    setSelectedIndex(0);
+    inputRef.current?.focus();
+  }, []);
+
+  // 点击范围芯片切换搜索范围（剥离旧前缀保留关键词）
+  const handleSelectScope = useCallback((nextScope: PaletteScope) => {
+    setQuery((prev) => stripPaletteQueryPrefix(prev));
+    setSelectedScope(nextScope);
+    setViewMode('search');
     setSelectedIndex(0);
     inputRef.current?.focus();
   }, []);
@@ -431,12 +724,12 @@ export function CommandPalette() {
     isKeyboardNavRef.current = false;
   }, [selectedIndex]);
 
-  // 搜索词或视图模式切换时复位列表滚动位置
+  // 搜索词、范围或视图模式切换时复位列表滚动位置
   useEffect(() => {
     if (listRef.current) {
       listRef.current.scrollTop = 0;
     }
-  }, [query, viewMode]);
+  }, [query, viewMode, selectedScope]);
   
   /**
    * Tab：只把焦点圈在面板内，不再一刀切吞掉。
@@ -688,6 +981,42 @@ export function CommandPalette() {
             </button>
           )}
         </div>
+
+        {/* 范围筛选芯片（> 命令 / @ 文件与笔记 / # 闪卡） */}
+        {!sessionSearchOnly && viewMode === 'search' && (
+          <div
+            className="command-palette-scopes"
+            role="toolbar"
+            aria-label={t('command_palette:scope_label', 'Search scope')}
+            data-testid="command-palette-scopes"
+          >
+            {SCOPE_CHIPS.map((chip) => {
+              const isActive = effectiveScope === chip.id;
+              return (
+                <DsButton
+                  key={chip.id}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  data-testid={`command-palette-scope-${chip.id}`}
+                  aria-pressed={isActive}
+                  onClick={() => handleSelectScope(chip.id)}
+                  className={cn(
+                    'command-palette-scope-chip motion-reduce:transition-none',
+                    isActive && 'command-palette-scope-chip-active',
+                  )}
+                >
+                  {chip.prefix ? (
+                    <span className="command-palette-scope-prefix" aria-hidden="true">
+                      {chip.prefix}
+                    </span>
+                  ) : null}
+                  <span>{t(chip.labelKey, chip.defaultLabel)}</span>
+                </DsButton>
+              );
+            })}
+          </div>
+        )}
         
         {/* 命令列表 */}
         <CustomScrollArea
@@ -714,13 +1043,29 @@ export function CommandPalette() {
               >
                 {t('command_palette:resource_searching')}
               </div>
-            ) : sessionSearchOnly && query.trim().length < 2 ? (
+            ) : sessionSearchOnly && searchTerm.length < 2 ? (
               <div
                 className="command-palette-empty"
                 role="status"
                 data-testid="command-palette-session-min-chars"
               >
                 {t('command_palette:session_search_min_chars')}
+              </div>
+            ) : viewMode === 'search' && effectiveScope === 'files' && searchTerm.length < 2 ? (
+              <div
+                className="command-palette-empty"
+                role="status"
+                data-testid="command-palette-scope-min-chars"
+              >
+                {t('command_palette:scope_files_min_chars', 'Type at least 2 characters to search files and notes')}
+              </div>
+            ) : viewMode === 'search' && effectiveScope === 'flashcards' && searchTerm.length < 2 ? (
+              <div
+                className="command-palette-empty"
+                role="status"
+                data-testid="command-palette-scope-min-chars"
+              >
+                {t('command_palette:scope_flashcards_min_chars', 'Type at least 2 characters to search flashcards')}
               </div>
             ) : (
               <div
@@ -735,7 +1080,7 @@ export function CommandPalette() {
                       ? t('command_palette:no_favorites')
                       : t('command_palette:no_results')}
                 </div>
-                {viewMode === 'search' && query.trim().length > 0 ? (
+                {viewMode === 'search' && (searchTerm.length > 0 || effectiveScope !== 'all') ? (
                   <>
                     <p className="text-xs text-muted-foreground">
                       {t('command_palette:no_results_hint')}
@@ -820,6 +1165,15 @@ export function CommandPalette() {
                       const isEnabled = !command.isEnabled || command.isEnabled(deps);
                       const Icon = command.icon;
                       const isResource = command.id.startsWith(RESOURCE_COMMAND_PREFIX);
+                      const displayName = isResource
+                        ? command.name
+                        : t(`command_palette:commands.${command.id}`, command.name);
+                      const displayDescription = command.description
+                        ? (isResource
+                            ? command.description
+                            : t(`command_palette:descriptions.${command.id}`, command.description))
+                        : '';
+                      const highlightNeedle = viewMode === 'search' ? searchTerm : '';
 
                       return (
                         <div
@@ -840,11 +1194,13 @@ export function CommandPalette() {
                           <div className="command-palette-item-left">
                             {Icon && <Icon className="command-palette-item-icon" size={16} />}
                             <span className="command-palette-item-name">
-                              {isResource ? command.name : t(`command_palette:commands.${command.id}`, command.name)}
+                              {highlightNeedle ? renderHighlightedText(displayName, highlightNeedle) : displayName}
                             </span>
-                            {command.description && (
+                            {displayDescription && (
                               <span className="command-palette-item-description">
-                                {isResource ? command.description : t(`command_palette:descriptions.${command.id}`, command.description)}
+                                {highlightNeedle
+                                  ? renderHighlightedText(displayDescription, highlightNeedle)
+                                  : displayDescription}
                               </span>
                             )}
                           </div>

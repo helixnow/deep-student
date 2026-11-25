@@ -68,6 +68,7 @@ vi.mock('react-i18next', async (importOriginal) => ({
 
 import { LibraryScreen } from '../screens/LibraryScreen';
 import { useFlashcardsLibraryStore } from '../store/libraryStore';
+import { useFsrsReviewStore } from '../store/fsrsReviewStore';
 
 describe('LibraryScreen .apkg / .csv import & targetDeck (S2-09)', () => {
   beforeEach(() => {
@@ -185,5 +186,123 @@ describe('LibraryScreen .apkg / .csv import & targetDeck (S2-09)', () => {
 
     expect(screen.queryByTestId('fc-lib-csv-confirm-banner')).not.toBeInTheDocument();
     expect(mocks.saveAnkiCards).not.toHaveBeenCalled();
+  });
+
+  it('shows dismissible post-import summary banner after .apkg import with 1-click Start Studying Now & Filter Deck actions (S6)', async () => {
+    const importedDeckCards = [
+      {
+        id: 'apkg-card-1',
+        task_id: 'task-apkg',
+        front: 'What does this protein diagram show? <img src="plot1.png" /> [sound:pronounce.mp3]',
+        back: 'Enzyme kinetics curve <img src="plot2.png" />',
+        tags: ['science'],
+        images: ['plot1.png', 'plot2.png', 'pronounce.mp3'],
+        extra_fields: { _deck: 'Real Media Science' },
+        created_at: '2026-11-25T10:00:00Z',
+        updated_at: '2026-11-25T10:00:00Z',
+        stateId: 'fsrs-apkg-1',
+        enqueued: true,
+        suspended: false,
+        isDue: true,
+      },
+      {
+        id: 'apkg-card-2',
+        task_id: 'task-apkg',
+        front: 'ATP synthase location <img src="mito.png" />',
+        back: 'Inner mitochondrial membrane',
+        tags: ['science'],
+        images: ['mito.png'],
+        extra_fields: { _deck: 'Real Media Science' },
+        created_at: '2026-11-25T10:00:01Z',
+        updated_at: '2026-11-25T10:00:01Z',
+        stateId: 'fsrs-apkg-2',
+        enqueued: true,
+        suspended: false,
+        isDue: true,
+      },
+    ];
+
+    const startBatchSpy = vi.spyOn(useFsrsReviewStore.getState(), 'startBatchSession').mockResolvedValue(true);
+    const importApkgSpy = vi.spyOn(useFlashcardsLibraryStore.getState(), 'importApkg').mockImplementation(async () => {
+      useFlashcardsLibraryStore.setState({
+        items: importedDeckCards,
+        total: 7,
+        decks: [
+          { name: 'Biology', all: 5, due: 1, new: 2, notEnqueued: 0 },
+          { name: 'Real Media Science', all: 2, due: 2, new: 2, notEnqueued: 0 },
+        ],
+      });
+      return {
+        status: 'imported' as const,
+        importedCards: 2,
+        reviewEnqueued: 2,
+        reviewWithHistory: 0,
+      };
+    });
+
+    mocks.listAnkiLibraryCards.mockResolvedValue({
+      items: importedDeckCards,
+      total: 2,
+      page: 1,
+      pageSize: 20,
+      decks: [
+        { name: 'Biology', all: 5, due: 1, new: 2, notEnqueued: 0 },
+        { name: 'Real Media Science', all: 2, due: 2, new: 2, notEnqueued: 0 },
+      ],
+    });
+
+    render(<LibraryScreen />);
+
+    fireEvent.click(screen.getByTestId('fc-lib-import-apkg'));
+    const apkgInput = screen.getByTestId('fc-lib-apkg-file-input') as HTMLInputElement;
+    const apkgFile = new File(['PK\x03\x04dummy'], 'real-media-science-deck.apkg', {
+      type: 'application/octet-stream',
+    });
+
+    await act(async () => {
+      fireEvent.change(apkgInput, { target: { files: [apkgFile] } });
+    });
+
+    const summary = await screen.findByTestId('fc-lib-apkg-import-summary');
+    expect(summary).toBeInTheDocument();
+    expect(screen.getByTestId('fc-lib-apkg-summary-deck')).toHaveTextContent('Real Media Science');
+    expect(screen.getByTestId('fc-lib-apkg-summary-cards')).toHaveTextContent('2');
+    // 3 images + 1 audio across the 2 imported cards = 4 media files.
+    expect(screen.getByTestId('fc-lib-apkg-summary-media')).toHaveTextContent('4');
+
+    // 1-click "Filter Deck in Library"
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('fc-lib-apkg-summary-filter'));
+    });
+    expect(useFlashcardsLibraryStore.getState().deckFilter).toBe('Real Media Science');
+    expect(useFlashcardsLibraryStore.getState().statusFilter).toBe('all');
+
+    // 1-click "Start Studying Now"
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('fc-lib-apkg-summary-study'));
+    });
+    await waitFor(() => {
+      expect(startBatchSpy).toHaveBeenCalledWith(
+        ['apkg-card-1', 'apkg-card-2'],
+        expect.arrayContaining([
+          expect.objectContaining({ ankiCardId: 'apkg-card-1', id: 'fsrs-apkg-1' }),
+          expect.objectContaining({ ankiCardId: 'apkg-card-2', id: 'fsrs-apkg-2' }),
+        ]),
+      );
+    });
+    // Banner closes once study starts.
+    expect(screen.queryByTestId('fc-lib-apkg-import-summary')).not.toBeInTheDocument();
+
+    // Re-import and verify manual dismiss button hides banner.
+    fireEvent.click(screen.getByTestId('fc-lib-import-apkg'));
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('fc-lib-apkg-file-input'), { target: { files: [apkgFile] } });
+    });
+    await screen.findByTestId('fc-lib-apkg-import-summary');
+    fireEvent.click(screen.getByTestId('fc-lib-apkg-summary-dismiss'));
+    expect(screen.queryByTestId('fc-lib-apkg-import-summary')).not.toBeInTheDocument();
+
+    importApkgSpy.mockRestore();
+    startBatchSpy.mockRestore();
   });
 });
