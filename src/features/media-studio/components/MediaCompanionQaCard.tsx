@@ -17,11 +17,14 @@ import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/utils/cn';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import {
-  tokenizeTimestampText,
   type CompanionQaCitation,
   type CompanionQaResult,
   type CompanionQaTurn,
 } from '../mediaCompanionQa';
+import {
+  CompanionAnswerRenderer,
+  CompanionCitationJumpPill as CitationJumpPill,
+} from './CompanionAnswerRenderer';
 
 export interface MediaCompanionAnchor {
   kind: 'pdf_page' | 'video_timestamp' | 'question_id' | 'handout_section';
@@ -93,52 +96,13 @@ export interface MediaCompanionQaCardProps {
   className?: string;
 }
 
-const CitationJumpPill: React.FC<{
-  seconds: number;
-  label: string;
-  onSeek: (seconds: number) => void;
-  titleText: string;
-}> = ({ seconds, label, onSeek, titleText }) => (
-  <DsButton
-    type="button"
-    variant="ghost"
-    size="sm"
-    onClick={() => onSeek(seconds)}
-    data-media-qa-citation={label}
-    data-media-qa-citation-seconds={seconds}
-    aria-label={titleText}
-    title={titleText}
-    className="mx-0.5 !inline-flex !h-auto !min-h-0 !px-1.5 !py-0.5 align-baseline gap-0.5 rounded bg-primary/10 font-mono text-2xs font-medium tabular-nums !text-primary hover:!bg-primary/20 active:scale-[0.98] transition-colors motion-reduce:transition-none motion-reduce:active:scale-100"
-  >
-    <span aria-hidden="true">▶</span>
-    <span>{label}</span>
-  </DsButton>
-);
-
 const LinkedAnswerBody: React.FC<{
   content: string;
   onSeek: (seconds: number) => void;
   jumpTitle: (label: string) => string;
-}> = ({ content, onSeek, jumpTitle }) => {
-  const tokens = tokenizeTimestampText(content);
-  return (
-    <div className="whitespace-pre-wrap break-words leading-relaxed">
-      {tokens.map((token, idx) =>
-        token.kind === 'citation' ? (
-          <CitationJumpPill
-            key={`cit-${idx}-${token.seconds}`}
-            seconds={token.seconds}
-            label={token.label}
-            onSeek={onSeek}
-            titleText={jumpTitle(token.label)}
-          />
-        ) : (
-          <React.Fragment key={`txt-${idx}`}>{token.value}</React.Fragment>
-        ),
-      )}
-    </div>
-  );
-};
+}> = ({ content, onSeek, jumpTitle }) => (
+  <CompanionAnswerRenderer content={content} onSeek={onSeek} jumpTitle={jumpTitle} />
+);
 
 export const MediaCompanionQaCard: React.FC<MediaCompanionQaCardProps> = ({
   anchor,
