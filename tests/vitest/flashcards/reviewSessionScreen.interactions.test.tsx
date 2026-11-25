@@ -258,27 +258,22 @@ describe('ReviewSessionScreen interactions', () => {
     });
   });
 
-  it('supports undo from the completion page with Z', async () => {
-    invokeMock.mockResolvedValueOnce({
-      state: { id: 'state-1', ankiCardId: 'anki-1' },
-      changed: true,
-      undoneLogId: 'log-1',
-    });
+  it('disables Undo rating button and ignores Z on the completion page', () => {
     useFsrsReviewStore.setState({
       queue: [{ id: 'state-1', ankiCardId: 'anki-1', front: 'Q', back: 'A' }],
       queueIndex: 1,
+      sessionRatedCount: 1,
       lastReview: { logId: 'log-1', cardStateId: 'state-1', queueIndex: 0 },
     });
 
     render(<ReviewSessionScreen />);
-    fireEvent.keyDown(window, { key: 'z', code: 'KeyZ' });
+    expect(screen.queryByRole('button', { name: '撤销评分' })).not.toBeInTheDocument();
 
-    await waitFor(() => expect(useFsrsReviewStore.getState().queueIndex).toBe(0));
-    expect(invokeMock).toHaveBeenCalledWith('fsrs_undo_last_review', {
-      expectedLogId: 'log-1',
-      cardStateId: 'state-1',
-    });
-    expect(screen.getByTestId('anki-card-face')).toHaveTextContent('Q');
+    fireEvent.keyDown(window, { key: 'z', code: 'KeyZ' });
+    fireEvent.keyDown(window, { key: 'z', code: 'KeyZ', ctrlKey: true });
+
+    expect(invokeMock).not.toHaveBeenCalledWith('fsrs_undo_last_review', expect.anything());
+    expect(useFsrsReviewStore.getState().queueIndex).toBe(1);
   });
 
   it('does not run the Z shortcut from an input, during IME, or while busy', () => {

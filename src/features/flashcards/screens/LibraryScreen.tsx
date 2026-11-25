@@ -247,7 +247,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   }
   const initialHydratedView = initialHydratedViewRef.current;
 
-  const { t } = useTranslation(['flashcards', 'common']);
+  const { t, i18n } = useTranslation(['flashcards', 'common']);
   const { isSmallScreen } = useBreakpoint();
   const translate = t as Translate;
   const startBatchSession = useFsrsReviewStore((s) => s.startBatchSession);
@@ -840,7 +840,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       draftFront,
       el?.selectionStart,
       el?.selectionEnd,
-      translate('library.create.clozePlaceholder', { defaultValue: '挖空内容' }),
+      translate('library.create.clozePlaceholder', { defaultValue: 'Cloze text' }),
     );
     setDraftMode('cloze');
     setDraftFront(nextValue);
@@ -916,11 +916,11 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             ? inferredItemDeck
             : null;
         const fallbackDeckName = stripApkgExtension(file?.name)
-          || translate('common:flashcards_import_banner.default_deck', { defaultValue: '新导入的牌组' });
+          || translate('common:flashcards_import_banner.default_deck', { defaultValue: 'Imported deck' });
         const deckName = (deckFilterPath && deckFilterPath.length > 0)
           ? deckFilterPath
           : deckFilterPath === ''
-            ? translate('library.deck.ungrouped', { defaultValue: '未分组' })
+            ? translate('library.deck.ungrouped', { defaultValue: 'No deck' })
             : fallbackDeckName;
 
         let sampledCards = newItems;
@@ -979,7 +979,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         showGlobalNotification(
           'info',
           translate('common:flashcards_import_banner.study_empty', {
-            defaultValue: '该牌组暂时没有可复习的卡片',
+            defaultValue: 'No studyable cards are available in this deck yet',
           }),
         );
         return;
@@ -999,7 +999,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       showGlobalNotification(
         'error',
         translate('common:flashcards_import_banner.study_failed', {
-          defaultValue: '无法启动该牌组的复习，请重试',
+          defaultValue: 'Could not start studying this deck, please try again',
         }),
       );
     } finally {
@@ -1030,7 +1030,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
   const pendingCsvDeckPreview = useMemo(() => {
     if (!pendingCsvImport) return [];
     const counts = new Map<string, number>();
-    const ungroupedLabel = translate('library.ungrouped', { defaultValue: '未分组' });
+    const ungroupedLabel = translate('library.deck.ungrouped', { defaultValue: 'No deck' });
     for (const bucket of pendingCsvImport.deckBuckets) {
       const resolvedDeck = bucket.csvDeck || csvEffectiveFallbackDeck || ungroupedLabel;
       counts.set(resolvedDeck, (counts.get(resolvedDeck) ?? 0) + bucket.count);
@@ -1167,17 +1167,17 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         showGlobalNotification(
           outcome.missingMedia > 0 ? 'warning' : 'success',
           outcome.missingMedia > 0
-            ? translate('library.export.successMissingMedia', { count: outcome.count, missing: outcome.missingMedia, defaultValue: '已导出 {{count}} 张卡片，{{missing}} 个媒体文件缺失未打包' })
-            : translate('library.export.success', { count: outcome.count, defaultValue: '已导出 {{count}} 张卡片' }),
+            ? translate('library.export.successMissingMedia', { count: outcome.count, missing: outcome.missingMedia, defaultValue: 'Exported {{count}} cards; {{missing}} media files were missing' })
+            : translate('library.export.success', { count: outcome.count, defaultValue: 'Exported {{count}} cards' }),
         );
       } else if (outcome.status === 'empty') {
-        showGlobalNotification('info', translate('library.export.empty', { defaultValue: '卡片库里还没有卡片' }));
+        showGlobalNotification('info', translate('library.export.empty', { defaultValue: 'The library has no cards yet' }));
       } else if (outcome.status === 'failed') {
-        showGlobalNotification('error', translate('library.export.failed', { defaultValue: '导出失败' }));
+        showGlobalNotification('error', translate('library.export.failed', { defaultValue: 'Export failed' }));
       }
     } catch (error: unknown) {
       console.error('[FlashcardsLibrary] export failed:', error);
-      showGlobalNotification('error', translate('library.export.failed', { defaultValue: '导出失败' }));
+      showGlobalNotification('error', translate('library.export.failed', { defaultValue: 'Export failed' }));
     } finally {
       setExporting(false);
     }
@@ -1206,10 +1206,10 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
     }
   }, [exporting, selectedCards, translate]);
   const exportLabel = exporting
-    ? translate('library.export.running', { defaultValue: '正在导出…' })
+    ? translate('library.export.running', { defaultValue: 'Exporting…' })
     : selectedCards.length > 0
-      ? translate('library.export.selected', { count: selectedCards.length, defaultValue: '导出选中（{{count}}）' })
-      : translate('library.export.apkg', { defaultValue: '导出 .apkg' });
+      ? translate('library.export.selected', { count: selectedCards.length, defaultValue: 'Export selected ({{count}})' })
+      : translate('library.export.apkg', { defaultValue: 'Export .apkg' });
   const exportCsvLabel = exporting
     ? translate('library.export.running')
     : selectedCards.length > 0
@@ -1259,7 +1259,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div
             role="group"
-            aria-label={translate('library.create.typeLabel', { defaultValue: '卡片类型' })}
+            aria-label={translate('library.create.typeLabel', { defaultValue: 'Card type' })}
             className="inline-flex items-center rounded-lg border border-border/50 bg-muted/40 p-0.5"
           >
             <DsButton
@@ -1276,7 +1276,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              {translate('library.create.typeBasic', { defaultValue: '问答卡 (Basic)' })}
+              {translate('library.create.typeBasic', { defaultValue: 'Basic (Q&A)' })}
             </DsButton>
             <DsButton
               type="button"
@@ -1292,7 +1292,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   : 'text-muted-foreground hover:text-foreground',
               )}
             >
-              {translate('library.create.typeCloze', { defaultValue: '挖空卡 (Cloze)' })}
+              {translate('library.create.typeCloze', { defaultValue: 'Cloze deletion' })}
             </DsButton>
           </div>
           <DsButton
@@ -1305,7 +1305,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           >
             <BracketsCurly size={14} aria-hidden="true" />
             <span>
-              {translate('library.create.insertCloze', { defaultValue: '插入挖空' })}
+              {translate('library.create.insertCloze', { defaultValue: 'Insert cloze' })}
               {' '}
               <code className="font-mono">{`{{c${nextClozeIndex(draftFront)}::...}}`}</code>
             </span>
@@ -1313,7 +1313,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         </div>
         <label className="flex flex-col gap-2 text-sm font-medium">
           {draftMode === 'cloze'
-            ? translate('library.create.clozeTextLabel', { defaultValue: '挖空正文（含 {{c1::...}}）' })
+            ? translate('library.create.clozeTextLabel', { defaultValue: 'Cloze text (with {{c1::...}})' })
             : t('library.create.frontLabel')}
           <textarea
             ref={mobileFrontRef}
@@ -1322,7 +1322,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             value={draftFront}
             onChange={(event) => setDraftFront(event.target.value)}
             placeholder={draftMode === 'cloze'
-              ? translate('library.create.clozeFrontPlaceholder', { defaultValue: '输入正文，选中关键词点「插入挖空」生成 {{c1::...}}' })
+              ? translate('library.create.clozeFrontPlaceholder', { defaultValue: 'Enter text, highlight a key term, and click Insert cloze for {{c1::...}}' })
               : t('library.create.frontPlaceholder')}
             className="w-full resize-y rounded-md border border-border bg-background p-3 text-base font-normal"
           />
@@ -1335,24 +1335,24 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         ) : null}
         <label className="flex flex-col gap-2 text-sm font-medium">
           {draftMode === 'cloze'
-            ? translate('library.create.clozeExtraLabel', { defaultValue: '补充解析（可选）' })
+            ? translate('library.create.clozeExtraLabel', { defaultValue: 'Extra note (optional)' })
             : t('library.create.backLabel')}
           <textarea
             rows={4}
             value={draftBack}
             onChange={(event) => setDraftBack(event.target.value)}
             placeholder={draftMode === 'cloze'
-              ? translate('library.create.clozeBackPlaceholder', { defaultValue: '翻面后展示的解析或出处（可留空）' })
+              ? translate('library.create.clozeBackPlaceholder', { defaultValue: 'Explanation or source shown on back (optional)' })
               : t('library.create.backPlaceholder')}
             className="w-full resize-y rounded-md border border-border bg-background p-3 text-base font-normal"
           />
         </label>
         <label className="flex flex-col gap-2 text-sm font-medium">
-          {translate('library.editTags', { defaultValue: '标签（逗号分隔）' })}
+          {translate('library.editTags', { defaultValue: 'Tags (comma separated)' })}
           <Input
             value={draftTags}
             onChange={(event) => setDraftTags(event.target.value)}
-            placeholder={translate('library.create.tagsPlaceholder', { defaultValue: '例：高数, 重点' })}
+            placeholder={translate('library.create.tagsPlaceholder', { defaultValue: 'e.g. Calculus, Key concept' })}
             data-testid="fc-lib-create-tags"
             className="h-11 text-base font-normal"
           />
@@ -1473,7 +1473,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         aria-label={exportLabel}
         disabled={exporting}
         onClick={() => void handleExportApkg()}
-        title={translate('library.export.hint', { defaultValue: '导出为 Anki 牌组（.apkg），保留每张卡的模板与样式；未选中卡片时导出整个卡片库' })}
+        title={translate('library.export.hint', { defaultValue: "Export as an Anki deck (.apkg) keeping each card's template and styling; exports the whole library when nothing is selected" })}
         className="fc-lib-create-cta text-sm"
         data-testid="fc-lib-export-apkg"
       >
@@ -1603,18 +1603,18 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           className="fc-lib-queue-section"
           data-queue="inbox"
           aria-label={translate('library.queue.inboxTitle', {
-            defaultValue: '已生成 · 待入队',
+            defaultValue: 'Generated · Not in queue',
           })}
         >
           <div className="fc-lib-queue-head" data-queue="inbox">
             <Tray size={14} weight="duotone" aria-hidden="true" />
             <span className="fc-lib-queue-title">
-              {translate('library.queue.inboxTitle', { defaultValue: '已生成 · 待入队' })}
+              {translate('library.queue.inboxTitle', { defaultValue: 'Generated · Not in queue' })}
             </span>
             <span className="fc-lib-queue-count font-mono tabular-nums">{inboxItems.length}</span>
             <span className="fc-lib-queue-hint">
               {translate('library.queue.inboxHint', {
-                defaultValue: '尚未进入复习计划，不会出现在到期队列',
+                defaultValue: "Not scheduled yet, so these won't appear in the due queue",
               })}
             </span>
             <DsButton
@@ -1628,7 +1628,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
               <PlusCircle size={13} />
               {translate('library.queue.enqueueAll', {
                 count: inboxItems.length,
-                defaultValue: '加入复习（{{count}}）',
+                defaultValue: 'Add to review ({{count}})',
               })}
             </DsButton>
           </div>
@@ -1642,7 +1642,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           className="fc-lib-queue-section"
           data-queue="scheduled"
           aria-label={translate('library.queue.scheduledTitle', {
-            defaultValue: '复习队列',
+            defaultValue: 'Review queue',
           })}
         >
           {/* 仅当上方存在收件箱时才需要显式的队列区头做视觉分界 */}
@@ -1650,14 +1650,14 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <div className="fc-lib-queue-head" data-queue="scheduled">
               <Stack size={14} weight="duotone" aria-hidden="true" />
               <span className="fc-lib-queue-title">
-                {translate('library.queue.scheduledTitle', { defaultValue: '复习队列' })}
+                {translate('library.queue.scheduledTitle', { defaultValue: 'Review queue' })}
               </span>
               <span className="fc-lib-queue-count font-mono tabular-nums">{scheduledItems.length}</span>
               {scheduledDueCount > 0 ? (
                 <span className="fc-lib-queue-hint font-mono tabular-nums" data-tone="due">
                   {translate('library.queue.dueCount', {
                     count: scheduledDueCount,
-                    defaultValue: '{{count}} 张已到期',
+                    defaultValue: '{{count}} due',
                   })}
                 </span>
               ) : null}
@@ -1716,7 +1716,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
         <section
           role="status"
           aria-label={translate('common:flashcards_import_banner.region_label', {
-            defaultValue: 'Anki 牌组导入结果摘要',
+            defaultValue: 'Anki deck import summary',
           })}
           data-testid="fc-lib-apkg-import-summary"
           className="flex flex-col gap-3 rounded-xl border border-emerald-500/35 bg-emerald-500/10 p-3.5 text-sm shadow-sm sm:flex-row sm:items-center sm:justify-between"
@@ -1731,7 +1731,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="font-semibold text-foreground">
-                  {translate('common:flashcards_import_banner.title', { defaultValue: '牌组导入完成' })}
+                  {translate('common:flashcards_import_banner.title', { defaultValue: 'Deck imported' })}
                 </span>
                 <span
                   data-testid="fc-lib-apkg-summary-deck"
@@ -1744,14 +1744,14 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                 <span data-testid="fc-lib-apkg-summary-cards">
                   {translate('common:flashcards_import_banner.cards_count', {
                     count: apkgImportSummary.importedCards,
-                    defaultValue: '{{count}} 张卡片',
+                    defaultValue: '{{count}} cards',
                   })}
                 </span>
                 {apkgImportSummary.reviewEnqueued > 0 ? (
                   <span>
                     {translate('common:flashcards_import_banner.queued_count', {
                       count: apkgImportSummary.reviewEnqueued,
-                      defaultValue: '{{count}} 张已加入复习',
+                      defaultValue: '{{count}} added to review',
                     })}
                   </span>
                 ) : null}
@@ -1759,7 +1759,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   <span data-testid="fc-lib-apkg-summary-media">
                     {translate('common:flashcards_import_banner.media_count', {
                       count: apkgImportSummary.mediaCount,
-                      defaultValue: '{{count}} 个媒体文件',
+                      defaultValue: '{{count}} media files',
                     })}
                   </span>
                 ) : null}
@@ -1767,7 +1767,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   <span>
                     {translate('common:flashcards_import_banner.history_count', {
                       count: apkgImportSummary.reviewWithHistory,
-                      defaultValue: '{{count}} 张保留原复习进度',
+                      defaultValue: '{{count}} kept review history',
                     })}
                   </span>
                 ) : null}
@@ -1786,8 +1786,8 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             >
               <Play size={14} weight="fill" aria-hidden="true" />
               {studyingImportedDeck
-                ? translate('common:flashcards_import_banner.starting_study', { defaultValue: '正在进入复习…' })
-                : translate('common:flashcards_import_banner.start_studying', { defaultValue: '立即开始学习' })}
+                ? translate('common:flashcards_import_banner.starting_study', { defaultValue: 'Starting study…' })
+                : translate('common:flashcards_import_banner.start_studying', { defaultValue: 'Start Studying Now' })}
             </DsButton>
             {apkgImportSummary.deckFilterPath !== null ? (
               <DsButton
@@ -1800,7 +1800,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
               >
                 <Funnel size={14} aria-hidden="true" />
                 {translate('common:flashcards_import_banner.filter_deck', {
-                  defaultValue: '在卡片库中筛选该牌组',
+                  defaultValue: 'Filter Deck in Library',
                 })}
               </DsButton>
             ) : null}
@@ -1809,8 +1809,8 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
               variant="ghost"
               size="icon"
               data-testid="fc-lib-apkg-summary-dismiss"
-              aria-label={translate('common:close', { defaultValue: '关闭' })}
-              title={translate('common:close', { defaultValue: '关闭' })}
+              aria-label={translate('common:close', { defaultValue: 'Close' })}
+              title={translate('common:close', { defaultValue: 'Close' })}
               onClick={() => setApkgImportSummary(null)}
             >
               <X size={16} aria-hidden="true" />
@@ -1826,21 +1826,21 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           role="region"
           aria-label={
             importPanelMode === 'apkg'
-              ? translate('library.import.apkgPanelTitle', { defaultValue: '导入 Anki 牌组 (.apkg)' })
-              : translate('library.import.csvPanelTitle', { defaultValue: '导入表格卡片 (.csv / .tsv)' })
+              ? translate('library.import.apkgPanelTitle', { defaultValue: 'Import Anki deck (.apkg)' })
+              : translate('library.import.csvPanelTitle', { defaultValue: 'Import spreadsheet cards (.csv / .tsv)' })
           }
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="text-sm font-medium text-foreground">
               {importPanelMode === 'apkg'
-                ? translate('library.import.apkgPanelTitle', { defaultValue: '导入 Anki 牌组 (.apkg)' })
-                : translate('library.import.csvPanelTitle', { defaultValue: '导入表格卡片 (.csv / .tsv)' })}
+                ? translate('library.import.apkgPanelTitle', { defaultValue: 'Import Anki deck (.apkg)' })
+                : translate('library.import.csvPanelTitle', { defaultValue: 'Import spreadsheet cards (.csv / .tsv)' })}
             </div>
             <DsButton
               type="button"
               variant="ghost"
               size="icon"
-              aria-label={translate('common:close', { defaultValue: '关闭' })}
+              aria-label={translate('common:close', { defaultValue: 'Close' })}
               onClick={() => {
                 setPendingCsvImport(null);
                 setImportPanelMode(null);
@@ -1859,13 +1859,13 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   htmlFor="fc-lib-csv-target-deck-select"
                   className="shrink-0 text-xs font-medium text-muted-foreground"
                 >
-                  {translate('library.import.csvTargetDeckLabel', { defaultValue: '导入目标牌组' })}
+                  {translate('library.import.csvTargetDeckLabel', { defaultValue: 'Target deck' })}
                 </label>
                 <div className="flex flex-1 flex-wrap items-center gap-2">
                   <select
                     id="fc-lib-csv-target-deck-select"
                     data-testid="fc-lib-csv-target-deck-select"
-                    aria-label={translate('library.import.csvTargetDeckLabel', { defaultValue: '导入目标牌组' })}
+                    aria-label={translate('library.import.csvTargetDeckLabel', { defaultValue: 'Target deck' })}
                     value={
                       csvTargetDeck && namedDeckPaths.includes(csvTargetDeck)
                         ? csvTargetDeck
@@ -1882,7 +1882,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                     className="h-9 rounded-md border border-border bg-background px-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                   >
                     <option value="">
-                      {translate('library.import.csvTargetDeckDefault', { defaultValue: '自动（使用表格 deck 列或当前分组）' })}
+                      {translate('library.import.csvTargetDeckDefault', { defaultValue: 'Auto (use CSV deck column or current deck)' })}
                     </option>
                     {namedDeckPaths.map((deckPath) => (
                       <option key={deckPath} value={deckPath}>
@@ -1896,9 +1896,9 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   <Input
                     type="text"
                     data-testid="fc-lib-csv-target-deck-input"
-                    aria-label={translate('library.import.csvTargetDeckCustom', { defaultValue: '自定义目标牌组名称' })}
+                    aria-label={translate('library.import.csvTargetDeckCustom', { defaultValue: 'Custom target deck name' })}
                     placeholder={translate('library.import.csvTargetDeckPlaceholder', {
-                      defaultValue: '输入新牌组或留空使用上方选择',
+                      defaultValue: 'Enter a new deck or leave blank to use selection above',
                     })}
                     value={csvTargetDeck}
                     onChange={(event) => setCsvTargetDeck(event.target.value)}
@@ -1913,19 +1913,19 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                 {csvTargetDeck.trim()
                   ? translate('library.import.csvTargetSummaryExplicit', {
                       deck: csvTargetDeck.trim(),
-                      defaultValue: '未指定表格 deck 列的卡片将导入到目标牌组「{{deck}}」。',
+                      defaultValue: 'Cards without a deck column will be imported into “{{deck}}”.',
                     })
                   : deckFilter && deckFilter !== DECK_FILTER_ALL
                     ? translate('library.import.csvTargetSummaryFiltered', {
                         deck: deckFilter,
-                        defaultValue: '当前正在筛选牌组「{{deck}}」；未指定表格 deck 列的卡片将导入该牌组，可在上方修改。',
+                        defaultValue: 'Currently viewing deck “{{deck}}”; cards without a deck column will go there (override above).',
                       })
                     : deckFilter === ''
                       ? translate('library.import.csvTargetSummaryUngrouped', {
-                          defaultValue: '当前正在查看「未分组」；未指定表格 deck 列的卡片将归入「未分组」，可在上方指定目标牌组。',
+                          defaultValue: 'Currently viewing “No deck”; cards without a deck column will be ungrouped unless you choose a deck above.',
                         })
                       : translate('library.import.csvTargetSummaryAll', {
-                          defaultValue: '将优先使用表格 deck 列；未指定 deck 列的卡片将归入「未分组」。',
+                          defaultValue: 'Uses the CSV deck column when present; rows without one will be ungrouped.',
                         })}
               </p>
             </div>
@@ -1949,8 +1949,8 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <div className="space-y-1 text-xs text-muted-foreground">
               <p className="text-sm font-medium text-foreground">
                 {importPanelMode === 'apkg'
-                  ? translate('library.import.apkgDropHint', { defaultValue: '拖拽 .apkg 文件到此处，或选择本地文件导入' })
-                  : translate('library.import.csvDropHint', { defaultValue: '拖拽 .csv / .tsv 文件到此处，或选择本地文件导入' })}
+                  ? translate('library.import.apkgDropHint', { defaultValue: 'Drop an .apkg file here, or choose a local file to import' })
+                  : translate('library.import.csvDropHint', { defaultValue: 'Drop a .csv / .tsv file here, or choose a local file to import' })}
               </p>
               <p>
                 {importPanelMode === 'apkg'
@@ -2006,8 +2006,8 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                 {importing
                   ? translate('library.import.running')
                   : importPanelMode === 'csv'
-                    ? translate('library.import.chooseCsvFile', { defaultValue: '选择文件预览' })
-                    : translate('library.import.chooseFile', { defaultValue: '选择文件并导入' })}
+                    ? translate('library.import.chooseCsvFile', { defaultValue: 'Choose file to preview' })
+                    : translate('library.import.chooseFile', { defaultValue: 'Choose file & import' })}
               </DsButton>
             </div>
           </div>
@@ -2022,19 +2022,21 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   {translate('library.import.csvConfirmHeading', {
                     fileName: pendingCsvImport.fileName,
                     count: pendingCsvImport.cardCount,
-                    defaultValue: '确认导入「{{fileName}}」（共 {{count}} 张卡片）',
+                    defaultValue: 'Confirm import of “{{fileName}}” ({{count}} cards)',
                   })}
                   {pendingCsvImport.skippedRows > 0
                     ? ` · ${translate('library.import.csvConfirmSkipped', {
                         skipped: pendingCsvImport.skippedRows,
-                        defaultValue: '已跳过 {{skipped}} 行空白或无效记录',
+                        defaultValue: 'Skipped {{skipped}} blank or invalid rows',
                       })}`
                     : ''}
                 </p>
                 <p className="text-muted-foreground">
                   {translate('library.import.csvConfirmTargetDecks', {
-                    decks: pendingCsvDeckPreview.map((item) => `${item.deck} (${item.count})`).join('、'),
-                    defaultValue: '目标牌组：{{decks}}',
+                    decks: pendingCsvDeckPreview
+                      .map((item) => `${item.deck} (${item.count})`)
+                      .join((i18n?.resolvedLanguage ?? i18n?.language ?? '').toLowerCase().startsWith('zh') ? '、' : ', '),
+                    defaultValue: 'Target decks: {{decks}}',
                   })}
                 </p>
               </div>
@@ -2047,7 +2049,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                   data-testid="fc-lib-csv-cancel-btn"
                   onClick={() => setPendingCsvImport(null)}
                 >
-                  {translate('common:cancel', { defaultValue: '取消' })}
+                  {translate('common:cancel', { defaultValue: 'Cancel' })}
                 </DsButton>
                 <DsButton
                   type="button"
@@ -2064,7 +2066,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                     ? translate('library.import.running')
                     : translate('library.import.csvConfirmButton', {
                         count: pendingCsvImport.cardCount,
-                        defaultValue: '确认导入（{{count}} 张）',
+                        defaultValue: 'Confirm import ({{count}})',
                       })}
                 </DsButton>
               </div>
@@ -2078,7 +2080,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div
               role="group"
-              aria-label={translate('library.create.typeLabel', { defaultValue: '卡片类型' })}
+              aria-label={translate('library.create.typeLabel', { defaultValue: 'Card type' })}
               className="inline-flex items-center rounded-lg border border-border/50 bg-muted/40 p-0.5"
             >
               <DsButton
@@ -2095,7 +2097,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                     : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                {translate('library.create.typeBasic', { defaultValue: '问答卡 (Basic)' })}
+                {translate('library.create.typeBasic', { defaultValue: 'Basic (Q&A)' })}
               </DsButton>
               <DsButton
                 type="button"
@@ -2111,7 +2113,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
                     : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                {translate('library.create.typeCloze', { defaultValue: '挖空卡 (Cloze)' })}
+                {translate('library.create.typeCloze', { defaultValue: 'Cloze deletion' })}
               </DsButton>
             </div>
             <DsButton
@@ -2124,7 +2126,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             >
               <BracketsCurly size={14} aria-hidden="true" />
               <span>
-                {translate('library.create.insertCloze', { defaultValue: '插入挖空' })}
+                {translate('library.create.insertCloze', { defaultValue: 'Insert cloze' })}
                 {' '}
                 <code className="font-mono">{`{{c${nextClozeIndex(draftFront)}::...}}`}</code>
               </span>
@@ -2136,7 +2138,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             value={draftFront}
             onChange={(event) => setDraftFront(event.target.value)}
             placeholder={draftMode === 'cloze'
-              ? translate('library.create.clozeFrontPlaceholder', { defaultValue: '输入正文，选中关键词点「插入挖空」生成 {{c1::...}}' })
+              ? translate('library.create.clozeFrontPlaceholder', { defaultValue: 'Enter text, highlight a key term, and click Insert cloze for {{c1::...}}' })
               : translate('library.create.frontPlaceholder')}
             className="h-10 text-base sm:text-sm [@media(pointer:coarse)]:!h-11"
           />
@@ -2151,16 +2153,16 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             value={draftBack}
             onChange={(event) => setDraftBack(event.target.value)}
             placeholder={draftMode === 'cloze'
-              ? translate('library.create.clozeBackPlaceholder', { defaultValue: '翻面后展示的解析或出处（可留空）' })
+              ? translate('library.create.clozeBackPlaceholder', { defaultValue: 'Explanation or source shown on back (optional)' })
               : translate('library.create.backPlaceholder')}
             className="h-10 text-base sm:text-sm [@media(pointer:coarse)]:!h-11"
           />
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <Input
-              aria-label={translate('library.editTags', { defaultValue: '标签（逗号分隔）' })}
+              aria-label={translate('library.editTags', { defaultValue: 'Tags (comma separated)' })}
               value={draftTags}
               onChange={(event) => setDraftTags(event.target.value)}
-              placeholder={translate('library.create.tagsPlaceholder', { defaultValue: '例：高数, 重点' })}
+              placeholder={translate('library.create.tagsPlaceholder', { defaultValue: 'e.g. Calculus, Key concept' })}
               className="h-10 text-base sm:text-sm [@media(pointer:coarse)]:!h-11"
               data-testid="fc-lib-create-tags"
             />
@@ -2174,14 +2176,14 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
               data-testid="fc-lib-create-deck"
             />
             <select
-              aria-label={translate('library.create.templateLabel', { defaultValue: '卡片模板' })}
+              aria-label={translate('library.create.templateLabel', { defaultValue: 'Card template' })}
               value={draftTemplateId}
               onChange={(event) => setDraftTemplateId(event.target.value)}
               className="h-10 rounded-md border border-border/60 bg-background px-2.5 text-sm text-foreground [@media(pointer:coarse)]:!h-11"
               data-testid="fc-lib-create-template"
             >
               <option value="">
-                {translate('library.create.defaultTemplateOption', { defaultValue: '默认标准模板' })}
+                {translate('library.create.defaultTemplateOption', { defaultValue: 'Default standard template' })}
               </option>
               {customTemplates.map((tpl) => (
                 <option key={tpl.id} value={tpl.id}>
@@ -2213,7 +2215,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
               onClick={closeComposer}
               className="text-sm"
             >
-              {translate('common:cancel', { defaultValue: '取消' })}
+              {translate('common:cancel', { defaultValue: 'Cancel' })}
             </DsButton>
             <p className="fc-lib-composer-hint">{translate('library.create.hint')}</p>
           </div>
@@ -2352,7 +2354,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
             <Play size={13} weight="fill" />
             {translate('library.reviewFiltered', {
               count: scheduledItems.filter((c) => !c.suspended && c.stateId).length,
-              defaultValue: '复习当前筛选（{{count}}）',
+              defaultValue: 'Review filtered ({{count}})',
             })}
           </DsButton>
         ) : null}
@@ -2484,7 +2486,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
       )}
 
       <footer
-        aria-label={translate('library.pagination.label', { defaultValue: '分页导航' })}
+        aria-label={translate('library.pagination.label', { defaultValue: 'Pagination' })}
         className="fc-lib-pagination flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border/40 pt-2 text-xs text-muted-foreground"
       >
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -2493,12 +2495,12 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
           </span>
           <label className="inline-flex items-center gap-1.5">
             <span className="whitespace-nowrap">
-              {translate('library.pageSize.label', { defaultValue: '每页' })}
+              {translate('library.pageSize.label', { defaultValue: 'Per page' })}
             </span>
             <span className="relative inline-flex items-center">
               <select
                 data-testid="library-page-size-select"
-                aria-label={translate('library.pageSize.ariaLabel', { defaultValue: '每页显示数量' })}
+                aria-label={translate('library.pageSize.ariaLabel', { defaultValue: 'Cards per page' })}
                 value={effectivePageSize}
                 disabled={loading}
                 onChange={(event) => {
@@ -2513,7 +2515,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
               >
                 {FLASHCARDS_LIBRARY_PAGE_SIZE_OPTIONS.map((size) => (
                   <option key={size} value={size}>
-                    {translate('library.pageSize.option', { count: size, defaultValue: '{{count}} 张' })}
+                    {translate('library.pageSize.option', { count: size, defaultValue: '{{count}} cards' })}
                   </option>
                 ))}
               </select>
@@ -2532,8 +2534,8 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
               data-testid="library-page-first-btn"
               disabled={loading || page <= 1}
               onClick={() => void handleGoToPage(1)}
-              aria-label={translate('library.firstPage', { defaultValue: '首页' })}
-              title={translate('library.firstPage', { defaultValue: '首页' })}
+              aria-label={translate('library.firstPage', { defaultValue: 'First page' })}
+              title={translate('library.firstPage', { defaultValue: 'First page' })}
               className="min-h-8 min-w-8 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             >
               <CaretDoubleLeft size={14} aria-hidden="true" />
@@ -2570,8 +2572,8 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
               data-testid="library-page-last-btn"
               disabled={loading || page >= pageCount}
               onClick={() => void handleGoToPage(pageCount)}
-              aria-label={translate('library.lastPage', { defaultValue: '末页' })}
-              title={translate('library.lastPage', { defaultValue: '末页' })}
+              aria-label={translate('library.lastPage', { defaultValue: 'Last page' })}
+              title={translate('library.lastPage', { defaultValue: 'Last page' })}
               className="min-h-8 min-w-8 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
             >
               <CaretDoubleRight size={14} aria-hidden="true" />
@@ -2593,7 +2595,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
               max={pageCount}
               step={1}
               data-testid="library-page-jump-input"
-              aria-label={translate('library.jumpPage.ariaLabel', { defaultValue: '跳转到指定页码' })}
+              aria-label={translate('library.jumpPage.ariaLabel', { defaultValue: 'Jump to page' })}
               value={pageJumpInput}
               disabled={loading || pageCount <= 1}
               onChange={(event) => setPageJumpInput(event.target.value)}
@@ -2615,7 +2617,7 @@ export const LibraryScreen: React.FC<LibraryScreenProps> = ({
               disabled={loading || pageCount <= 1}
               className="min-h-8 px-2.5 text-xs [@media(pointer:coarse)]:!min-h-11"
             >
-              {translate('library.jumpPage.go', { defaultValue: '跳转' })}
+              {translate('library.jumpPage.go', { defaultValue: 'Go' })}
             </DsButton>
           </form>
         </div>

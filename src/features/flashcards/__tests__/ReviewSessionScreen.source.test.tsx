@@ -109,7 +109,7 @@ describe('ReviewSessionScreen — back to the source while reviewing', () => {
     const [eventName, detail] = dispatchMock.mock.calls.find(([name]) => name === 'PREFILL_CHAT_INPUT') ?? [];
     expect(eventName).toBe('PREFILL_CHAT_INPUT');
     expect(detail).toMatchObject({ autoSend: false, newSession: true });
-    expect(detail.content).toContain('正面：导数的定义');
-    expect(detail.content).toContain('背面：极限 第 3 页');
+    expect(detail.content).toContain('正面: 导数的定义');
+    expect(detail.content).toContain('背面: 极限 第 3 页');
   });
 });

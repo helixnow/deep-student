@@ -478,14 +478,19 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
                     {libraryEmpty
                       ? t('today.libraryEmpty')
                       : pendingEnqueue > 0 && !showDoneState
-                        ? t('today.pendingEnqueue', { count: pendingEnqueue, defaultValue: '{{count}} 张新卡还没加入复习' })
+                        ? t('today.pendingEnqueue', {
+                            count: pendingEnqueue,
+                            defaultValue: '{{count}} new cards are not in review yet',
+                          })
                         : showDoneState ? t('today.allDone') : t('today.empty')}
                   </p>
                   <p className="mx-auto max-w-md text-xs text-muted-foreground">
                     {libraryEmpty
                       ? t('today.libraryEmptyHint')
                       : pendingEnqueue > 0 && !showDoneState
-                        ? t('today.pendingEnqueueHint', { defaultValue: '新生成的卡片先放在卡片库的「待入队」里，加入复习后才会出现在每天的复习中。' })
+                        ? t('today.pendingEnqueueHint', {
+                            defaultValue: 'Newly generated cards wait in the library inbox. Add them to review to see them in your daily queue.',
+                          })
                         : showDoneState
                           ? t('today.allDoneHint', {
                               count: doneToday,
@@ -503,7 +508,7 @@ export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
                   >
                     <Books size={15} weight="duotone" />
                     {pendingEnqueue > 0 && !showDoneState
-                      ? t('today.goEnqueue', { defaultValue: '去加入复习' })
+                      ? t('today.goEnqueue', { defaultValue: 'Add to review' })
                       : t('today.goLibrary')}
                   </DsButton>
                   <DsButton
