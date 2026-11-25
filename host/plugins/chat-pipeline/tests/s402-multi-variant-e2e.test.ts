@@ -255,7 +255,6 @@ describe('S4-02 full-stack multi-variant persistence through real pipeline and S
       type: 'content',
       status: 'success',
       content: '旧版消息提问',
-      blockIndex: 0,
     });
     host.ctx.chatSession.createMessage({
       id: assistantId,
@@ -277,7 +276,6 @@ describe('S4-02 full-stack multi-variant persistence through real pipeline and S
       type: 'content',
       status: 'success',
       content: '旧版回答 v1',
-      blockIndex: 0,
     });
     const rawMetaSize = Buffer.byteLength(
       db.pluck<string>('SELECT meta_json FROM chat_v2_messages WHERE id = ?', [assistantId]) ?? '',

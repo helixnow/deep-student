@@ -136,7 +136,7 @@ steps:
       expect(checked.manifest.tier).toBe('declarative');
 
       const runtime = new HostRuntime({
-        app: { version: '0.20.9', dataDir: dir },
+        app: { version: '0.20.9', dataDir: dir, platform: 'linux', debug: true },
         contracts: new ContractSet([]),
       });
       runtime.setDeclarativeLoader(mountDeclarativeAssets);
@@ -145,6 +145,7 @@ steps:
 
       await runtime.installEntry({
         plugin: {
+          name: checked.manifest.id,
           meta: { id: checked.manifest.id, version: checked.manifest.version, platforms: ['desktop', 'mobile'] },
           apply() {},
         },
@@ -203,7 +204,7 @@ scoreDimensions:
         },
       }), 'utf8');
 
-      const app = { version: '0.20.9', dataDir: dir };
+      const app = { version: '0.20.9', dataDir: dir, platform: 'linux' as const, debug: true };
       const build = await compileWorkshop(srcDir, buildsDir, 'workshop.plugin-11111111-1111-4111-8111-111111111111', app);
       expect(build.check.manifest).toBe('passed');
       expect(build.check.compile).toBe('passed');

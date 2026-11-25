@@ -18,9 +18,10 @@ import {
   SYNC_LEASE_HELD_ERROR_CODE,
   SYNC_TARGET_LEASE_PREFIX,
   acquireSyncTargetLeaseWithTtl,
+  type CloudStorage,
 } from '../../sync-providers/api.ts';
 import { configureNotesRepository } from '../../notes/repository/notes.ts';
-import type { CloudStorage, SyncAuditRequest } from '../../backup/api.ts';
+import type { SyncAuditRequest } from '../../backup/api.ts';
 
 interface DeviceSpec {
   deviceId: string;

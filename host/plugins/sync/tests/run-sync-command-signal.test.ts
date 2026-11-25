@@ -228,7 +228,6 @@ it('cancelling progress sync clears cancel token before releasing lease and reth
         logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } as never,
         localStorage: storageService,
         openState: () => ({ getTombstoneWatermark: () => null, setTombstoneWatermark: vi.fn() }) as never,
-        compression: {} as never,
         tombstones: {
           downloadBlobTombstonesAfter: async () => [{ entries: {} }, []],
           downloadAssetTombstonesAfter: async () => [{ entries: {} }, []],
