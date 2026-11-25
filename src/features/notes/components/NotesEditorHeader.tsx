@@ -621,7 +621,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     return (
         <header
             className={cn(
-                'notes-document-header group relative pb-2',
+                'notes-document-header group relative min-w-0 pb-2',
                 showBreadcrumbs ? 'pt-6' : 'pt-8',
             )}
             data-notes-preset={appearance.value.preset}
@@ -690,7 +690,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                                                 fallback={<FileText className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />}
                                                             />
                                                         )}
-                                                        <span className="truncate">{ancestor.title}</span>
+                                                        <span className="min-w-0 truncate">{ancestor.title}</span>
                                                     </button>
                                                 ))}
                                             </div>
@@ -826,8 +826,9 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
             <textarea
                 ref={titleRef}
                 rows={1}
-                className="notes-document-title w-full border-none bg-transparent p-0 font-semibold text-foreground shadow-none outline-none placeholder:text-muted-foreground/40 focus-visible:ring-0"
+                className="notes-document-title w-full min-w-0 border-none bg-transparent p-0 font-semibold text-foreground shadow-none outline-none placeholder:text-muted-foreground/40 focus-visible:ring-0"
                 aria-label={t('notes:header.documentTitle')}
+                title={titleInput || undefined}
                 value={titleInput}
                 onChange={readOnly ? undefined : handleTitleChange}
                 onBlur={readOnly ? undefined : handleTitleSubmit}
@@ -865,7 +866,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 transition={motionSafe(springSnap)}
                                 className="inline-flex items-center gap-0.5 rounded-[5px] border-0 bg-[var(--notes-surface-subtle,hsl(var(--foreground)/0.045))] py-0.5 pl-2 pr-1 text-[11px] leading-none text-muted-foreground [@media(pointer:coarse)]:py-1.5"
                             >
-                                <span className="max-w-[140px] truncate">{tag}</span>
+                                <span className="max-w-[140px] min-w-0 truncate" title={tag}>{tag}</span>
                                 {canEditTags ? (
                                     <button
                                         type="button"

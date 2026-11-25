@@ -1,0 +1,32 @@
+/* Narrow tiled split-window layout (~460px) for MediaLibraryPage inside desktop workbench panes */
+[data-media-library] {
+  container-type: inline-size;
+  container-name: media-library;
+}
+
+@container media-library (width <= 540px) {
+  [data-media-library] [data-media-library-toolbar] {
+    padding-inline: 0.75rem;
+    padding-top: 0.75rem;
+  }
+
+  [data-media-library] [data-media-library-content] {
+    padding-inline: 0.75rem;
+    padding-top: 0.75rem;
+  }
+
+  [data-media-library] [data-media-library-controls] {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+
+  [data-media-library] [data-media-library-search-wrap] {
+    max-width: none;
+  }
+
+  [data-media-library] [data-media-library-view-wrap] {
+    margin-left: 0;
+    align-self: flex-end;
+  }
+}

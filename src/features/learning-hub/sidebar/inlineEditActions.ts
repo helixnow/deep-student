@@ -12,6 +12,22 @@ import {
   type SidebarT,
 } from './sidebarConstants';
 
+// U03 弱网连点幂等锁：按侧栏实例（isMountedRef）跟踪新建草稿防抖与在途创建/重命名 IPC
+const RAPID_FOLDER_DRAFT_DEDUPE_MS = 400;
+const inlineActionState = new WeakMap<
+  object,
+  { rafScheduled: boolean; inFlight: Set<string> }
+>();
+
+function getInlineActionState(instanceKey: object) {
+  let state = inlineActionState.get(instanceKey);
+  if (!state) {
+    state = { rafScheduled: false, inFlight: new Set<string>() };
+    inlineActionState.set(instanceKey, state);
+  }
+  return state;
+}
+
 export interface BeginPendingFolderDraftContext {
   ensureCreatableView: () => boolean;
   isMountedRef: React.MutableRefObject<boolean>;
@@ -37,6 +53,18 @@ export function beginPendingFolderDraft({
   startInlineEdit,
 }: BeginPendingFolderDraftContext): void {
   if (!ensureCreatableView()) return;
+  const actionState = getInlineActionState(isMountedRef);
+  if (actionState.rafScheduled) return;
+  // 快速双击「新建文件夹」时，已有同目录刚打开的草稿输入框，不再反复取消并重建草稿
+  const existingDraft = pendingFolderDraftRef.current;
+  if (
+    existingDraft &&
+    existingDraft.parentFolderId === currentCreatableFolderId &&
+    Date.now() - existingDraft.node.createdAt < RAPID_FOLDER_DRAFT_DEDUPE_MS
+  ) {
+    return;
+  }
+
   const beginDraft = () => {
     if (!isMountedRef.current) return;
     cancelInlineEdit();
@@ -63,7 +91,14 @@ export function beginPendingFolderDraft({
 
   // 连续新建时，先让旧输入框的 blur 完成提交/取消，再开始下一份草稿。
   if (pendingFolderDraftRef.current) {
-    requestAnimationFrame(beginDraft);
+    actionState.rafScheduled = true;
+    requestAnimationFrame(() => {
+      try {
+        beginDraft();
+      } finally {
+        actionState.rafScheduled = false;
+      }
+    });
   } else {
     beginDraft();
   }
@@ -112,21 +147,37 @@ export async function confirmInlineEdit(
     // 旧输入框的延迟 blur 不得提交或清除后来创建的新草稿。
     if (!draft || draft.node.id !== itemId) return;
 
+    const trimmedName = newName.trim();
+    const actionState = getInlineActionState(isMountedRef);
+    const createKey = `createFolder:${draft.parentFolderId ?? 'root'}:${trimmedName}`;
     cancelInlineEdit();
     pendingFolderDraftRef.current = null;
     setPendingFolderDraft(null);
-    const result = await folderApi.createFolder(
-      newName.trim(),
-      draft.parentFolderId ?? undefined
-    );
+    if (actionState.inFlight.has(createKey)) return;
+    actionState.inFlight.add(createKey);
+    try {
+      const result = await folderApi.createFolder(
+        trimmedName,
+        draft.parentFolderId ?? undefined
+      );
 
-    if (!isMountedRef.current) return;
-    if (result.ok) {
-      showGlobalNotification('success', t('finder.create.folderSuccess'));
-      await handleRefresh();
-    } else {
-      reportError(result.error, 'create folder');
-      showGlobalNotification('error', result.error.toUserMessage());
+      if (!isMountedRef.current) return;
+      if (result.ok) {
+        showGlobalNotification('success', t('finder.create.folderSuccess'));
+        await handleRefresh();
+      } else {
+        reportError(result.error, 'create folder');
+        showGlobalNotification('error', result.error.toUserMessage());
+      }
+    } catch (err) {
+      if (isMountedRef.current) {
+        showGlobalNotification(
+          'error',
+          err instanceof Error ? err.message : t('finder.create.failed', { defaultValue: '创建文件夹失败，请重试' }),
+        );
+      }
+    } finally {
+      actionState.inFlight.delete(createKey);
     }
     return;
   }
@@ -149,46 +200,63 @@ export async function confirmInlineEdit(
   // 先取消编辑状态，避免 UI 闪烁
   cancelInlineEdit();
 
-  let renameResult;
+  const actionState = getInlineActionState(isMountedRef);
+  const renameKey = `rename:${itemId}`;
+  if (actionState.inFlight.has(renameKey)) return;
+  actionState.inFlight.add(renameKey);
 
-  if (editingType === 'folder') {
-    // 重命名文件夹
-    renameResult = await folderApi.renameFolder(itemId, newName.trim());
-  } else {
-    // 重命名资源 - 使用 DSTU rename API
-    const resourcePath = item.path;
-    if (!resourcePath) {
-      showGlobalNotification('error', t('contextMenu.renameError'));
-      if (isMountedRef.current) {
-        await handleRefresh();
+  try {
+    let renameResult;
+
+    if (editingType === 'folder') {
+      // 重命名文件夹
+      renameResult = await folderApi.renameFolder(itemId, newName.trim());
+    } else {
+      // 重命名资源 - 使用 DSTU rename API
+      const resourcePath = item.path;
+      if (!resourcePath) {
+        showGlobalNotification('error', t('contextMenu.renameError'));
+        if (isMountedRef.current) {
+          await handleRefresh();
+        }
+        return;
       }
-      return;
+      renameResult = await dstu.rename(resourcePath, newName.trim());
     }
-    renameResult = await dstu.rename(resourcePath, newName.trim());
-  }
 
-  // ★ Cmd+Z 撤销：记录重命名（组件卸载与否不影响入栈）
-  if (renameResult.ok && mode !== 'canvas') {
-    finderUndoStack.push({
-      kind: 'rename',
-      targetType: editingType === 'folder' ? 'folder' : 'resource',
-      id: itemId,
-      path: item.path ?? null,
-      oldName: item.name,
-      newName: newName.trim(),
-    });
-  }
+    // ★ Cmd+Z 撤销：记录重命名（组件卸载与否不影响入栈）
+    if (renameResult.ok && mode !== 'canvas') {
+      finderUndoStack.push({
+        kind: 'rename',
+        targetType: editingType === 'folder' ? 'folder' : 'resource',
+        id: itemId,
+        path: item.path ?? null,
+        oldName: item.name,
+        newName: newName.trim(),
+      });
+    }
 
-  // ★ MEDIUM-005: 检查组件是否已卸载
-  if (!isMountedRef.current) return;
+    // ★ MEDIUM-005: 检查组件是否已卸载
+    if (!isMountedRef.current) return;
 
-  if (renameResult.ok) {
-    showGlobalNotification('success', t('contextMenu.renameSuccess'));
-    await handleRefresh();
-  } else {
-    reportError(renameResult.error, 'rename');
-    showGlobalNotification('error', renameResult.error.toUserMessage());
-    // 出错时也需要刷新以恢复原始状态
-    await handleRefresh();
+    if (renameResult.ok) {
+      showGlobalNotification('success', t('contextMenu.renameSuccess'));
+      await handleRefresh();
+    } else {
+      reportError(renameResult.error, 'rename');
+      showGlobalNotification('error', renameResult.error.toUserMessage());
+      // 出错时也需要刷新以恢复原始状态
+      await handleRefresh();
+    }
+  } catch (err) {
+    if (isMountedRef.current) {
+      showGlobalNotification(
+        'error',
+        err instanceof Error ? err.message : t('contextMenu.renameError'),
+      );
+      await handleRefresh();
+    }
+  } finally {
+    actionState.inFlight.delete(renameKey);
   }
 }

@@ -2,6 +2,7 @@ import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Brain } from '@phosphor-icons/react';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { handleMarkdownCopyEvent } from './markdownCopyFidelity';
 import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
 import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
@@ -262,6 +263,7 @@ export const EnhancedStreamingMarkdownRenderer: React.FC<BaseStreamingProps> = m
       className="streaming-markdown"
       data-streaming={isStreaming ? 'true' : 'false'}
       data-has-visible-content={hasVisibleContent ? 'true' : 'false'}
+      onCopy={handleMarkdownCopyEvent}
     >
       {parsed ? (
         <>

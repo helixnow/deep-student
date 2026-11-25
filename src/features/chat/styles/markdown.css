@@ -32,6 +32,7 @@
 }
 
 .chat-v2 .markdown-content {
+  box-sizing: border-box;
   line-height: var(--chat-md-line-height);
   color: hsl(var(--foreground));
   font-size: var(--chat-body-font-size);
@@ -41,7 +42,15 @@
   overflow-wrap: break-word;
   width: 100%;
   max-width: 100%;
+  min-width: 0;
   font-feature-settings: "kern" 1, "liga" 1;
+}
+
+.chat-v2 .blocked-markdown {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .chat-v2 .markdown-content:lang(zh) {
@@ -300,6 +309,9 @@
 }
 
 .chat-v2 .markdown-content .code-block-body-shell {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow: hidden;
   /* 内层裁剪圆角 = 外框圆角 - 1px 边框，与边框内沿严丝合缝 */
   border-radius: 0 0 calc(var(--chat-block-radius) - 1px) calc(var(--chat-block-radius) - 1px);
@@ -309,12 +321,15 @@
 .chat-v2 .markdown-content .mermaid-preview {
   height: 420px; /* 固定视窗高度，防止边框随内容跳动 */
   background: transparent; /* 透明背景 */
+  color: hsl(var(--foreground));
   border: none; /* 使用外层wrapper边框 */
   border-radius: 0;
   overflow: hidden; /* 使用变换平移缩放，隐藏溢出 */
   cursor: grab;
   padding: 0 !important; /* 占满边框可视区域 */
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   display: block;
 
   /* P1-11: 触屏单指平移预览（Pointer Events 需要禁用浏览器默认滚动手势） */
@@ -444,12 +459,24 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
   padding: 10px 12px;
   background: var(--chat-table-header-surface);
   border-bottom: none; /* 移除边框 */
   border-radius: var(--chat-block-radius) var(--chat-block-radius) 0 0;
   font-size: 12px;
   color: hsl(var(--muted-foreground));
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.chat-v2 .markdown-content .code-block-lang {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-v2 .markdown-content .code-block-header .code-block-actions {
@@ -521,9 +548,11 @@
 .chat-v2 .markdown-content .code-block-scroll-area {
   max-height: 80vh;
   width: 100%;
+  max-width: 100%;
   min-width: 0;
   /* Native fallback when the custom scrollbar fails to initialize. */
   overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Inner pre inside ScrollArea — let OverlayScrollbars manage overflow */
@@ -694,6 +723,7 @@
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
+  min-width: 0;
   margin: calc(var(--chat-md-table-gap) * 0.5) 0;
   margin-block: calc(var(--chat-md-table-gap) * 0.575) calc(var(--chat-md-table-gap) * 0.8);
   overflow: visible;
@@ -722,10 +752,25 @@
   margin-top: calc((var(--chat-md-paragraph-gap) + 0.3rem) * 0.5);
 }
 
-/* ScrollArea wrapper for tables — ensures full-width scroll area */
+/* ScrollArea wrapper for tables — ensures full-width horizontal scroll container
+   with native overflow-x fallback so wide 10+ column tables never blow out bubbles */
 .chat-v2 .markdown-content .table-scroll-area {
+  display: block;
   width: 100%;
+  max-width: 100%;
   min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Override chat.css generic table max-width:100% inside the dedicated horizontal
+   scroll container so multi-column tables keep natural column widths and scroll smoothly. */
+.chat-v2 .message-selectable-area .markdown-content .table-scroll-area .markdown-table,
+.chat-v2 .markdown-content .table-scroll-area .markdown-table {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
 }
 
 /* Blocked streaming path: each markdown block is its own .markdown-content root,
@@ -776,7 +821,56 @@
   display: inline-block;
 }
 
+/* 表格表头、行分隔与斑马纹对比度（亮/暗双主题均保持清晰层次，遵循语义 token 契约） */
+.chat-v2 .markdown-table thead {
+  background-color: hsl(var(--muted) / 55%);
+}
 
+.chat-v2 .markdown-table tbody tr:nth-child(even) {
+  background-color: hsl(var(--muted) / 28%);
+}
+
+.chat-v2 .markdown-table tbody tr + tr {
+  border-top: 1px solid hsl(var(--border) / 60%);
+}
+
+:root.dark .chat-v2 .markdown-table,
+.dark .chat-v2 .markdown-table,
+[data-theme='dark'] .chat-v2 .markdown-table {
+  border-top-color: hsl(var(--foreground) / 28%);
+  border-bottom-color: hsl(var(--foreground) / 28%);
+}
+
+:root.dark .chat-v2 .markdown-table thead,
+.dark .chat-v2 .markdown-table thead,
+[data-theme='dark'] .chat-v2 .markdown-table thead {
+  background-color: hsl(var(--muted) / 85%);
+}
+
+:root.dark .chat-v2 .markdown-table thead th,
+.dark .chat-v2 .markdown-table thead th,
+[data-theme='dark'] .chat-v2 .markdown-table thead th {
+  color: hsl(var(--foreground));
+  border-bottom-color: hsl(var(--foreground) / 24%);
+}
+
+:root.dark .chat-v2 .markdown-table tbody tr:nth-child(even),
+.dark .chat-v2 .markdown-table tbody tr:nth-child(even),
+[data-theme='dark'] .chat-v2 .markdown-table tbody tr:nth-child(even) {
+  background-color: hsl(var(--muted) / 48%);
+}
+
+:root.dark .chat-v2 .markdown-table tbody tr + tr,
+.dark .chat-v2 .markdown-table tbody tr + tr,
+[data-theme='dark'] .chat-v2 .markdown-table tbody tr + tr {
+  border-top-color: hsl(var(--foreground) / 14%);
+}
+
+:root.dark .chat-v2 .markdown-table tbody td,
+.dark .chat-v2 .markdown-table tbody td,
+[data-theme='dark'] .chat-v2 .markdown-table tbody td {
+  color: hsl(var(--foreground) / 94%);
+}
 
 /* ============================================================================
    流式Markdown样式 - Streaming Markdown Styles
@@ -784,6 +878,9 @@
 
 .chat-v2 .streaming-markdown {
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 
   --stream-reveal-duration: 220ms;
   --stream-reveal-ease: var(--ease-standard);
@@ -793,6 +890,9 @@
 .chat-v2 .normal-content,
 .chat-v2 .main-content {
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .chat-v2 .streaming-markdown[data-streaming="true"] .normal-content,
@@ -1124,6 +1224,91 @@
 }
 
 /* ============================================================================
+   Mermaid 暗色模式可读性兜底（流程图 / 时序图 / 状态图 / 类图等）
+   配合 CodeBlock.tsx 的 getMermaidThemeConfig(true) 高对比度变量，
+   防止深色背景下出现黑字、黑箭头或深底标签不可读的问题。
+   ============================================================================ */
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg,
+:root.dark .chat-v2 .mermaid-content svg[aria-roledescription]:not([aria-roledescription='mindmap']),
+.dark .chat-v2 .mermaid-content svg[aria-roledescription]:not([aria-roledescription='mindmap']),
+[data-theme='dark'] .chat-v2 .mermaid-content svg[aria-roledescription]:not([aria-roledescription='mindmap']) {
+  color: hsl(var(--foreground));
+}
+
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg text,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg text,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg text,
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg tspan,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg tspan,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg tspan,
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .messageText,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .messageText,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .messageText,
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .labelText,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .labelText,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .labelText,
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .loopText,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .loopText,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .loopText {
+  fill: hsl(var(--foreground));
+}
+
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .nodeLabel,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .nodeLabel,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .nodeLabel,
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .edgeLabel,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .edgeLabel,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .edgeLabel,
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .cluster-label,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .cluster-label,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .cluster-label,
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg foreignObject,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg foreignObject,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg foreignObject {
+  color: hsl(var(--foreground));
+}
+
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .flowchart-link,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .flowchart-link,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .flowchart-link,
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .edgePath .path,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .edgePath .path,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .edgePath .path,
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .messageLine0,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .messageLine0,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .messageLine0,
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .messageLine1,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .messageLine1,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .messageLine1,
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .actor-line,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .actor-line,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .actor-line {
+  stroke: hsl(var(--foreground) / 78%);
+}
+
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg marker path,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg marker path,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg marker path,
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .arrowheadPath,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .arrowheadPath,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .arrowheadPath {
+  fill: hsl(var(--foreground) / 82%);
+  stroke: hsl(var(--foreground) / 82%);
+}
+
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .edgeLabel rect,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .edgeLabel rect,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .edgeLabel rect,
+:root.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .labelBkg,
+.dark .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .labelBkg,
+[data-theme='dark'] .chat-v2 .mermaid-content[data-mermaid-diagram='true'] svg .labelBkg {
+  fill: hsl(var(--card));
+  background-color: hsl(var(--card));
+}
+
+/* ============================================================================
    引用徽章样式 - Citation Badge Styles
    ============================================================================ */
 
@@ -1292,19 +1477,32 @@
   flex-shrink: 0;
 }
 
-/* KaTeX 块级公式由 MarkdownRenderer 的横向 ScrollArea 统一承载。 */
+/* KaTeX 块级公式由 MarkdownRenderer 的横向 ScrollArea 统一承载。
+   显式 width/max-width/min-width 与 overflow-x 兜底防止宽矩阵撑破气泡，
+   上下留白避免高分式/多行矩阵与相邻正文碰撞或被横向滚动裁切。 */
 .chat-v2 .markdown-content .math-scroll-area {
+  display: block;
+  width: 100%;
   max-width: 100%;
-  padding-bottom: 0.25em;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-top: 0.35em;
+  padding-bottom: 0.45em;
 }
 
-/* 行内长公式防撑破：限制最大宽度为容器 100% 并允许横向滚动，避免 390px 下溢出视口 */
+/* 行内长公式防撑破：限制最大宽度为容器 100% 并允许横向滚动，避免窄屏溢出视口；
+   同时留出上下安全缓冲防止高分式/求和上下标被 overflow-y: hidden 裁切或紧贴相邻行 */
 .chat-v2 .markdown-content .math-inline-scroll {
   display: inline-block;
   max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   vertical-align: middle;
+  padding-top: 0.16em;
+  padding-bottom: 0.16em;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
@@ -1313,8 +1511,34 @@
   display: none;
 }
 
+.chat-v2 .markdown-content .katex {
+  line-height: 1.4;
+  padding-top: 0.08em;
+  padding-bottom: 0.08em;
+}
+
 .chat-v2 .markdown-content .katex-display {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0.75em 0;
+  padding-top: 0.35em;
+  padding-bottom: 0.35em;
+}
+
+.chat-v2 .markdown-content .math-scroll-area .katex-display {
   overflow: visible;
+  margin: 0.25em 0;
+  padding-top: 0.25em;
+  padding-bottom: 0.25em;
+}
+
+.chat-v2 .markdown-content .katex-display > .katex {
+  display: inline-block;
+  max-width: none;
+  white-space: nowrap;
 }
 
 /* 正文内联分子结构：与文字同一排版节奏，不使用独立图表容器。 */
@@ -1341,10 +1565,30 @@
 /* 启用的专用代码块在原消息流中就地预览；源码仍可一键切回。 */
 .chat-v2 .markdown-content .rich-code-renderer {
   min-height: 7rem;
+  width: 100%;
   max-width: 100%;
+  min-width: 0;
   overflow: auto;
   padding: 0.75rem;
   background: hsl(var(--muted) / 18%);
+  color: hsl(var(--foreground));
+}
+
+/* 暗色模式下 Graphviz / ABC 乐谱 / WaveDrom / 2D 分子图默认绘制黑色线条，
+   通过亮色反相滤镜保证在深色表面清晰可读（不破坏色相结构） */
+:root.dark .chat-v2 .markdown-content .rich-code-renderer--dot svg,
+.dark .chat-v2 .markdown-content .rich-code-renderer--dot svg,
+[data-theme='dark'] .chat-v2 .markdown-content .rich-code-renderer--dot svg,
+:root.dark .chat-v2 .markdown-content .rich-code-renderer--abc svg,
+.dark .chat-v2 .markdown-content .rich-code-renderer--abc svg,
+[data-theme='dark'] .chat-v2 .markdown-content .rich-code-renderer--abc svg,
+:root.dark .chat-v2 .markdown-content .rich-code-renderer--wavedrom svg,
+.dark .chat-v2 .markdown-content .rich-code-renderer--wavedrom svg,
+[data-theme='dark'] .chat-v2 .markdown-content .rich-code-renderer--wavedrom svg,
+:root.dark .chat-v2 .markdown-content .rich-code-renderer--molecule-2d svg,
+.dark .chat-v2 .markdown-content .rich-code-renderer--molecule-2d svg,
+[data-theme='dark'] .chat-v2 .markdown-content .rich-code-renderer--molecule-2d svg {
+  filter: invert(0.88) hue-rotate(180deg);
 }
 
 .chat-v2 .markdown-content .rich-code-renderer-host {

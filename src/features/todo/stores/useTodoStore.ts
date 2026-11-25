@@ -481,6 +481,31 @@ interface TodoState {
 export const useTodoStore = create<TodoState>((set, get) => {
   // 并发 initialize 去重（防止 React StrictMode 双挂载/多宿主同时挂载竞态打断今日视图加载）
   let activeInitializePromise: Promise<void> | null = null;
+  // U03 弱网双击幂等守卫：同 payload 的在途创建/更新复用同一个 Promise，
+  // 防止快速双击「添加」/「新建清单」/「保存」在弱网延迟下并发发出重复 IPC 写入。
+  const inFlightCreateItems = new Map<string, Promise<TodoItem>>();
+  const inFlightCreateLists = new Map<string, Promise<TodoList>>();
+  const inFlightUpdateItems = new Map<string, { sig: string; promise: Promise<void> }>();
+
+  const buildCreateItemSignature = (input: CreateTodoItemInput): string =>
+    JSON.stringify({
+      todoListId: input.todoListId,
+      title: input.title.trim(),
+      description: input.description ?? '',
+      priority: input.priority ?? 'none',
+      dueDate: input.dueDate ?? '',
+      dueTime: input.dueTime ?? '',
+      reminder: input.reminder ?? '',
+      tags: input.tags ? [...input.tags] : [],
+      parentId: input.parentId ?? '',
+      repeatJson: input.repeatJson ?? '',
+    });
+
+  const buildCreateListSignature = (title: string, description?: string): string =>
+    JSON.stringify({ title: title.trim(), description: description ?? '' });
+
+  const buildUpdateItemSignature = (input: UpdateTodoItemInput): string =>
+    JSON.stringify(input);
   // 静默校准的世代号：两次静默校准并发时，旧响应不得覆盖新响应。
   // 独立于 itemsRequestVersion（那是显式加载的语义，不混用）。
   let silentReloadSeq = 0;
@@ -798,14 +823,27 @@ export const useTodoStore = create<TodoState>((set, get) => {
   },
 
   createList: async (title, description) => {
-    try {
-      const list = await api.createTodoList({ title, description });
-      set((s) => ({ lists: [...s.lists, list] }));
-      return list;
-    } catch (e) {
-      set({ error: notifyError(e) });
-      throw e;
+    const sig = buildCreateListSignature(title, description);
+    const existing = inFlightCreateLists.get(sig);
+    if (existing) {
+      return existing;
     }
+    const promise = (async () => {
+      try {
+        const list = await api.createTodoList({ title, description });
+        set((s) => (s.lists.some((l) => l.id === list.id) ? s : { lists: [...s.lists, list] }));
+        return list;
+      } catch (e) {
+        set({ error: notifyError(e) });
+        throw e;
+      } finally {
+        if (inFlightCreateLists.get(sig) === promise) {
+          inFlightCreateLists.delete(sig);
+        }
+      }
+    })();
+    inFlightCreateLists.set(sig, promise);
+    return promise;
   },
 
   updateList: async (id, title, description, extra) => {
@@ -920,20 +958,33 @@ export const useTodoStore = create<TodoState>((set, get) => {
   // ★ 乐观写路径：用后端返回值就地追加，不再 await 整表 reload（消除新建闪烁）；
   // 视图归属拿不准/排序需要校准时由后台静默 reload 兜底
   createItem: async (input) => {
-    if (input.reminder) requestReminderNotificationPermission();
-    try {
-      const item = await api.createTodoItem(input);
-      if (itemBelongsToCurrentView(item, get())) {
-        set((s) => (s.items.some((i) => i.id === item.id) ? s : { items: [...s.items, item] }));
-      }
-      void silentReloadCurrentView();
-      scheduleCountsRefresh();
-      pokeReminderScheduler();
-      return item;
-    } catch (e) {
-      set({ error: notifyError(e) });
-      throw e;
+    const sig = buildCreateItemSignature(input);
+    const existing = inFlightCreateItems.get(sig);
+    if (existing) {
+      return existing;
     }
+    if (input.reminder) requestReminderNotificationPermission();
+    const promise = (async () => {
+      try {
+        const item = await api.createTodoItem(input);
+        if (itemBelongsToCurrentView(item, get())) {
+          set((s) => (s.items.some((i) => i.id === item.id) ? s : { items: [...s.items, item] }));
+        }
+        void silentReloadCurrentView();
+        scheduleCountsRefresh();
+        pokeReminderScheduler();
+        return item;
+      } catch (e) {
+        set({ error: notifyError(e) });
+        throw e;
+      } finally {
+        if (inFlightCreateItems.get(sig) === promise) {
+          inFlightCreateItems.delete(sig);
+        }
+      }
+    })();
+    inFlightCreateItems.set(sig, promise);
+    return promise;
   },
 
   // ★ 乐观更新：先本地合并输入字段，成功后用后端完整 item 就地替换，失败回滚；
@@ -954,6 +1005,11 @@ export const useTodoStore = create<TodoState>((set, get) => {
         effectiveInput.dueDate = localToday();
       }
     }
+    const updateSig = buildUpdateItemSignature(effectiveInput);
+    const existingUpdate = inFlightUpdateItems.get(effectiveInput.id);
+    if (existingUpdate && existingUpdate.sig === updateSig) {
+      return existingUpdate.promise;
+    }
     // 领取本条目的最新写序号：同一条目快速连续保存时，
     // 旧请求的迟到响应（成功或失败）都不得覆盖新请求的乐观状态
     const opSeq = acquireItemOp(effectiveInput.id);
@@ -969,51 +1025,58 @@ export const useTodoStore = create<TodoState>((set, get) => {
       }));
     }
     beginWrite();
-    try {
-      const updated = await api.updateTodoItem(effectiveInput);
-      if (isLatestItemOp(effectiveInput.id, opSeq)) {
-        inFlightItemInputs.delete(effectiveInput.id);
-        set((s) => {
-          if (!s.items.some((i) => i.id === updated.id)) return s;
-          const { view, showCompleted } = s.filter;
-          const isSubtaskOfActiveParent = Boolean(
-            updated.parentId &&
-              s.items.some(
-                (candidate) => candidate.id === updated.parentId && candidate.status !== 'completed',
-              ),
-          );
-          const stillVisible =
-            view === 'completed'
-              ? updated.status === 'completed'
-              : updated.status !== 'completed' || showCompleted || isSubtaskOfActiveParent;
-          return {
-            items: stillVisible
-              ? s.items.map((i) => (i.id === updated.id ? updated : i))
-              : s.items.filter((i) => i.id !== updated.id),
-            selectedItemId:
-              !stillVisible && s.selectedItemId === updated.id ? null : s.selectedItemId,
-          };
-        });
+    const runUpdate = (async () => {
+      try {
+        const updated = await api.updateTodoItem(effectiveInput);
+        if (isLatestItemOp(effectiveInput.id, opSeq)) {
+          inFlightItemInputs.delete(effectiveInput.id);
+          set((s) => {
+            if (!s.items.some((i) => i.id === updated.id)) return s;
+            const { view, showCompleted } = s.filter;
+            const isSubtaskOfActiveParent = Boolean(
+              updated.parentId &&
+                s.items.some(
+                  (candidate) => candidate.id === updated.parentId && candidate.status !== 'completed',
+                ),
+            );
+            const stillVisible =
+              view === 'completed'
+                ? updated.status === 'completed'
+                : updated.status !== 'completed' || showCompleted || isSubtaskOfActiveParent;
+            return {
+              items: stillVisible
+                ? s.items.map((i) => (i.id === updated.id ? updated : i))
+                : s.items.filter((i) => i.id !== updated.id),
+              selectedItemId:
+                !stillVisible && s.selectedItemId === updated.id ? null : s.selectedItemId,
+            };
+          });
+        }
+        void silentReloadCurrentView();
+        scheduleCountsRefresh();
+        pokeReminderScheduler();
+      } catch (e) {
+        if (isLatestItemOp(effectiveInput.id, opSeq)) {
+          inFlightItemInputs.delete(effectiveInput.id);
+        }
+        set((s) => ({
+          // 旧请求失败但已有更新的写在途时不回滚（新写的乐观状态优先）；
+          // item 已被其他并发操作移除时也不强行塞回
+          items: prevItem && isLatestItemOp(effectiveInput.id, opSeq)
+            ? s.items.map((i) => (i.id === effectiveInput.id ? prevItem : i))
+            : s.items,
+          error: notifyError(e),
+        }));
+      } finally {
+        if (inFlightUpdateItems.get(effectiveInput.id)?.promise === runUpdate) {
+          inFlightUpdateItems.delete(effectiveInput.id);
+        }
+        releaseItemOp(effectiveInput.id, opSeq);
+        endWrite();
       }
-      void silentReloadCurrentView();
-      scheduleCountsRefresh();
-      pokeReminderScheduler();
-    } catch (e) {
-      if (isLatestItemOp(effectiveInput.id, opSeq)) {
-        inFlightItemInputs.delete(effectiveInput.id);
-      }
-      set((s) => ({
-        // 旧请求失败但已有更新的写在途时不回滚（新写的乐观状态优先）；
-        // item 已被其他并发操作移除时也不强行塞回
-        items: prevItem && isLatestItemOp(effectiveInput.id, opSeq)
-          ? s.items.map((i) => (i.id === effectiveInput.id ? prevItem : i))
-          : s.items,
-        error: notifyError(e),
-      }));
-    } finally {
-      releaseItemOp(effectiveInput.id, opSeq);
-      endWrite();
-    }
+    })();
+    inFlightUpdateItems.set(effectiveInput.id, { sig: updateSig, promise: runUpdate });
+    return runUpdate;
   },
 
   // ★ I6 修复：乐观勾选——立即翻转本地状态，成功后用后端返回值就地替换，

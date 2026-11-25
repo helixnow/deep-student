@@ -407,7 +407,7 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
   }), [activeTab, meta, t]);
 
   const headerRow = (inTitlebar: boolean) => (
-    <div className={cn('flex min-w-0 items-center gap-2', inTitlebar && 'pointer-events-auto h-full flex-1')}>
+    <div className={cn('flex min-w-0 items-center gap-1.5 sm:gap-2', inTitlebar && 'pointer-events-auto h-full flex-1')}>
       <DsButton
         variant="ghost"
         size="icon"
@@ -423,8 +423,8 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
       <span className={cn(inTitlebar ? TITLEBAR_TITLE_CLASS : 'text-sm font-semibold text-foreground', 'shrink-0')}>
         {t('mediaStudio:title')}
       </span>
-      <span className="text-muted-foreground/40">/</span>
-      <span className={cn(inTitlebar ? TITLEBAR_META_CLASS : 'text-xs text-muted-foreground', 'min-w-0 truncate')}>
+      <span className="shrink-0 text-muted-foreground/40">/</span>
+      <span className={cn(inTitlebar ? TITLEBAR_META_CLASS : 'text-xs text-muted-foreground', 'min-w-0 flex-1 truncate')}>
         {displayName}
       </span>
     </div>

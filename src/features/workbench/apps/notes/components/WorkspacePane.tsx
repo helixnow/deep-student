@@ -180,11 +180,12 @@ export const WorkspacePane: React.FC<WorkspacePaneProps> = ({
                       key={`${node.type}:${node.id}`}
                       variant="ghost"
                       size="sm"
-                      className="h-7 w-full justify-start gap-2 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150 motion-reduce:transition-none"
+                      title={node.name}
+                      className="h-7 w-full min-w-0 justify-start gap-2 px-2 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150 motion-reduce:transition-none"
                       onClick={() => onOpenRecent(node)}
                     >
                       <ResourceGlyph type={node.type === 'mindmap' ? 'mindmap' : 'note'} id={node.id} size={14} />
-                      <span className="truncate">
+                      <span className="min-w-0 truncate">
                         {t('notes:workspace.resumeItem', { title: node.name })}
                       </span>
                     </DsButton>

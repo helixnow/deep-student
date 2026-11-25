@@ -55,6 +55,7 @@ const defaultStats: StateStats = {
 
 // 选择资源请求序号：仅允许最新请求回写状态
 let selectResourceRequestSeq = 0;
+let inFlightSummaryRefresh: Promise<void> | null = null;
 
 export const useUnifiedIndexStore = create<UnifiedIndexState>((set, get) => ({
   // 初始状态
@@ -65,17 +66,26 @@ export const useUnifiedIndexStore = create<UnifiedIndexState>((set, get) => ({
   error: null,
   filters: { ...defaultFilters },
 
-  // 刷新索引状态总览
-  refresh: async () => {
+  // 刷新索引状态总览（并发去重，避免启动期多组件重复触发聚合查询）
+  refresh: () => {
+    if (inFlightSummaryRefresh) return inFlightSummaryRefresh;
     set({ isLoading: true, error: null });
-    try {
-      const summary = await vfsUnifiedIndexApi.getUnifiedIndexStatus();
-      set({ summary, isLoading: false });
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      set({ error: errorMsg, isLoading: false });
-      console.error('[UnifiedIndexStore] refresh failed:', err);
-    }
+    const task = (async () => {
+      try {
+        const summary = await vfsUnifiedIndexApi.getUnifiedIndexStatus();
+        set({ summary, isLoading: false });
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        set({ error: errorMsg, isLoading: false });
+        console.error('[UnifiedIndexStore] refresh failed:', err);
+      }
+    })().finally(() => {
+      if (inFlightSummaryRefresh === task) {
+        inFlightSummaryRefresh = null;
+      }
+    });
+    inFlightSummaryRefresh = task;
+    return task;
   },
 
   // 设置筛选条件

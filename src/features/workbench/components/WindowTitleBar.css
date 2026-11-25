@@ -513,9 +513,34 @@ html[data-wb-dragging] .wb-titlebar.wb-title-bar,
     left: 140px;
   }
 
+  /* 窄屏 / 触屏标题栏已增至 44px：槽内「切换边栏」按钮直接给足 44×44 真实命中区，不再依赖负边距外扩 */
+  .wb-titlebar.wb-title-bar .wb-title-app-slot [data-wb-resource-sidebar-toggle],
+  .wb-titlebar.wb-title-bar .wb-title-app-slot [data-wb-chat-sidebar-toggle] {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .wb-titlebar.wb-title-bar .wb-title-app-slot [data-wb-resource-sidebar-toggle]::after,
+  .wb-titlebar.wb-title-bar .wb-title-app-slot [data-wb-chat-sidebar-toggle]::after {
+    display: none;
+  }
+
   .wb-titlebar.wb-title-bar .wb-title-center {
     left: 140px;
     right: 16px;
+  }
+
+  /* 槽内存在「切换边栏」开关（作文 / 翻译 / 题库 / 对话）时，标题区再让出 44px 按钮 + 4px 间距，
+     避免 360px 窄屏下「切换边栏」覆盖窗口标题 */
+  .wb-titlebar.wb-title-bar:has(
+    [data-wb-resource-sidebar-toggle],
+    [data-wb-chat-sidebar-toggle]
+  ) .wb-title-center {
+    left: 188px;
+    right: 12px;
+    justify-content: flex-start;
   }
 }
 

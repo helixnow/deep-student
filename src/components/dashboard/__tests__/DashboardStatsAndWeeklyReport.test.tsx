@@ -7,8 +7,9 @@ import {
   normalizeDashboardStatistics,
   resetFallbackDashboardStatisticsForTest,
 } from '../coreStats';
+import { TodayCommandCenter } from '../TodayCommandCenter';
 import { WeeklyReportActions, buildTomorrowTodosFromReport } from '../WeeklyReportActions';
-import type { WeeklyReportData } from '@/features/learning-today/weeklyReport';
+import { buildWeeklyReportMarkdown, type WeeklyReportData } from '@/features/learning-today/weeklyReport';
 
 const mocks = vi.hoisted(() => ({
   createTodoItem: vi.fn(async () => ({ id: 'todo-new' })),
@@ -138,5 +139,27 @@ describe('Dashboard stats alignment, heatmap local dates, and WeeklyReportAction
       expect(mocks.createTodoItem).toHaveBeenCalledTimes(5);
     });
     expect(mocks.showGlobalNotification).toHaveBeenCalledWith('success', expect.any(String));
+  });
+
+  it('S4-11: renders non-blank structured TodayCommandCenter skeleton on frame 0 and memoizes normalized stats', () => {
+    const raw = { image_stats: { total_files: 3, total_size_bytes: 1024 } };
+    const first = normalizeDashboardStatistics(raw, null);
+    const second = normalizeDashboardStatistics(raw, null);
+    expect(second).toBe(first);
+
+    // Weekly report formats sub-minute studySeconds honestly instead of rounding down to "0 分钟"
+    const subMinuteMd = buildWeeklyReportMarkdown(
+      {
+        ...sampleReportData,
+        thisWeek: { ...sampleReportData.thisWeek, studySeconds: 25 },
+      },
+      (_key, opts) =>
+        String(opts?.defaultValue ?? _key).replace(/\{\{(\w+)\}\}/g, (_m, k) => String(opts?.[k] ?? '')),
+    );
+    expect(subMinuteMd).toContain('学习时长：25s');
+    expect(subMinuteMd).not.toContain('学习时长：0 分钟');
+
+    render(<TodayCommandCenter />);
+    expect(screen.getByTestId('today-command-center-skeleton')).toBeInTheDocument();
   });
 });

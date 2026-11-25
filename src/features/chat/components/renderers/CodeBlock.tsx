@@ -50,6 +50,7 @@ import { CodeBlockMoreMenu, type CodeBlockMenuAction } from './CodeBlockMoreMenu
 import { sanitizeSvgMarkup } from './progressiveSvg';
 import { useProgressiveSvg } from './useProgressiveSvg';
 import { downloadHtmlSource, downloadSvgSource, saveSvgAsPng, type SaveResult } from './codeBlockExport';
+import { extractTextFromReactNode } from './markdownCopyFidelity';
 import { useOptionalSlot } from '@/ui-kernel/react';
 import type { ContentCodeBlockContribution } from '@/ui-kernel/contracts/content';
 import { officialMarkdownEntries } from '@/ui-plugins/official/content/entries';
@@ -131,22 +132,73 @@ const escapeHtml = (str: string): string =>
 // ============================================================================
 
 /**
- * 获取 mermaid 主题配置
- * 使用 Mermaid 官方内置主题，确保最佳兼容性和可读性
- * - 亮色模式：使用 'neutral' 主题（高对比度灰色系，适合各种图表）
- * - 暗色模式：使用 'dark' 主题（官方暗色主题，经过充分测试）
+ * 检测文档当前是否处于暗色主题（兼容 `.dark` 类与 `[data-theme="dark"]`）。
  */
-const getMermaidThemeConfig = (isDark: boolean) => {
+export const isDocumentDarkMode = (): boolean => {
+  if (typeof document === 'undefined') return false;
+  return (
+    document.documentElement.classList.contains('dark') ||
+    document.documentElement.getAttribute('data-theme') === 'dark' ||
+    Boolean(document.body?.classList.contains('dark'))
+  );
+};
+
+/**
+ * 获取 mermaid 主题配置
+ * 使用 Mermaid 官方内置主题并显式补全高对比度 themeVariables：
+ * - 暗色模式：使用 'dark' 主题 + 显式浅色文字/连线/箭头/标签与深色节点底色，
+ *   防止流程图/时序图在深色背景下出现黑字黑箭头的不可读情况
+ * - 亮色模式：使用 'neutral' 主题 + 清晰深灰文字/连线，适合各种图表
+ */
+export const getMermaidThemeConfig = (isDark: boolean) => {
   // 通用字体配置
   const fontFamily = 'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-  
+
   if (isDark) {
-    // 暗色模式 - 使用官方 dark 主题
+    // 暗色模式 - 使用官方 dark 主题并补全高对比度变量
     return {
       theme: 'dark' as const,
       themeVariables: {
+        darkMode: true,
         fontFamily,
         fontSize: '14px',
+        background: '#1f1f1f',
+        mainBkg: '#262930',
+        primaryColor: '#2b3344',
+        primaryTextColor: '#f3f4f6',
+        primaryBorderColor: '#60a5fa',
+        secondaryColor: '#2d3139',
+        secondaryTextColor: '#e5e7eb',
+        secondaryBorderColor: '#6b7280',
+        tertiaryColor: '#252830',
+        tertiaryTextColor: '#e5e7eb',
+        tertiaryBorderColor: '#52525b',
+        lineColor: '#cbd5e1',
+        textColor: '#f3f4f6',
+        titleColor: '#f9fafb',
+        nodeBkg: '#262930',
+        nodeBorder: '#60a5fa',
+        nodeTextColor: '#f3f4f6',
+        clusterBkg: '#1c1f26',
+        clusterBorder: '#52525b',
+        defaultLinkColor: '#cbd5e1',
+        edgeLabelBackground: '#1f232b',
+        actorBkg: '#262930',
+        actorBorder: '#60a5fa',
+        actorTextColor: '#f3f4f6',
+        actorLineColor: '#94a3b8',
+        signalColor: '#e2e8f0',
+        signalTextColor: '#f3f4f6',
+        labelBoxBkgColor: '#262930',
+        labelBoxBorderColor: '#64748b',
+        labelTextColor: '#f3f4f6',
+        loopTextColor: '#e2e8f0',
+        noteBkgColor: '#2f2b1e',
+        noteBorderColor: '#d97706',
+        noteTextColor: '#fef3c7',
+        activationBkgColor: '#334155',
+        activationBorderColor: '#93c5fd',
+        sequenceNumberColor: '#0f172a',
       },
     };
   } else {
@@ -154,8 +206,31 @@ const getMermaidThemeConfig = (isDark: boolean) => {
     return {
       theme: 'neutral' as const,
       themeVariables: {
+        darkMode: false,
         fontFamily,
         fontSize: '14px',
+        background: '#ffffff',
+        primaryColor: '#f1f5f9',
+        primaryTextColor: '#1e293b',
+        primaryBorderColor: '#64748b',
+        secondaryColor: '#f8fafc',
+        secondaryTextColor: '#1e293b',
+        secondaryBorderColor: '#94a3b8',
+        lineColor: '#475569',
+        textColor: '#1e293b',
+        titleColor: '#0f172a',
+        edgeLabelBackground: '#ffffff',
+        actorBkg: '#f8fafc',
+        actorBorder: '#64748b',
+        actorTextColor: '#1e293b',
+        actorLineColor: '#64748b',
+        signalColor: '#334155',
+        signalTextColor: '#1e293b',
+        labelTextColor: '#1e293b',
+        loopTextColor: '#1e293b',
+        noteBkgColor: '#fefce8',
+        noteBorderColor: '#ca8a04',
+        noteTextColor: '#1e293b',
       },
     };
   }
@@ -414,10 +489,11 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     };
   }, []);
 
-  // 兼容 children 为数组或字符串
-  const rawChildren = Array.isArray(children) ? (children as any[]).join('') : String(children ?? '');
+  // 兼容 children 为字符串、数组或带搜索高亮 <mark> 的 React 节点
+  const rawChildren = extractTextFromReactNode(children);
   const codeContent = rawChildren.replace(/\n$/, '');
   const mermaidRequestRef = useRef(0);
+  const renderedMermaidThemeRef = useRef<'dark' | 'light' | null>(null);
   useEffect(() => {
     mermaidRequestRef.current += 1;
     setRunning(false);
@@ -558,8 +634,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
 
       const mermaid = lib?.default ?? lib;
 
-      const currentIsDark = document.documentElement.classList.contains('dark') ||
-                            document.documentElement.getAttribute('data-theme') === 'dark';
+      const currentIsDark = isDocumentDarkMode();
       const themeConfig = getMermaidThemeConfig(currentIsDark);
 
       if (mermaid?.initialize) {
@@ -596,6 +671,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       // 异步操作完成后再次检查组件是否已卸载
       if (!isCurrentRequest()) return;
 
+      renderedMermaidThemeRef.current = currentIsDark ? 'dark' : 'light';
       setRenderedSvg(svg);
       setShowRendered(true);
     } catch (err: unknown) {
@@ -622,6 +698,27 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       }
     }
   };
+
+  const handleRunMermaidRef = useRef(handleRunMermaid);
+  handleRunMermaidRef.current = handleRunMermaid;
+
+  // 主题切换时自动按新主题重渲已展开的 Mermaid 图表，避免亮色 SVG 残留在暗色表面上
+  useEffect(() => {
+    if (!canRunMermaid || !showRendered || !renderedSvg || isStreaming) return;
+    if (typeof MutationObserver !== 'function' || typeof document === 'undefined') return;
+    const syncTheme = () => {
+      const nextTheme = isDocumentDarkMode() ? 'dark' : 'light';
+      if (renderedMermaidThemeRef.current && renderedMermaidThemeRef.current !== nextTheme) {
+        void handleRunMermaidRef.current();
+      }
+    };
+    const observer = new MutationObserver(syncTheme);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'data-theme'],
+    });
+    return () => observer.disconnect();
+  }, [canRunMermaid, showRendered, renderedSvg, isStreaming]);
 
   const buildIframeDoc = (inner: string) => `<!doctype html><html><head><meta charset="utf-8"><style>
     html,body{margin:0;padding:0;background:#fff;color:#111;overflow:visible!important;height:auto;min-width:0}
@@ -1285,7 +1382,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   );
 
   const sourceView = (
-    <ScrollArea orientation="both" className="code-block-scroll-area">
+    <ScrollArea orientation="both" className="code-block-scroll-area max-w-full overflow-x-auto min-w-0">
       <pre className="code-block code-block-inner">
         <HighlightedCode className={className} isStreaming={isStreaming}>{rawChildren}</HighlightedCode>
       </pre>
@@ -1390,6 +1487,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
             {previewMarkup ? (
               <div
                 className="mermaid-content"
+                data-mermaid-diagram={canRunMermaid ? 'true' : undefined}
                 style={{
                   transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
                   transformOrigin: '0 0',

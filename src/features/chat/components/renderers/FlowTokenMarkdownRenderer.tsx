@@ -4,6 +4,7 @@ import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import '../../styles/flowtoken-patched.css';
 import { openUrl } from '@/utils/urlOpener';
 import { escapeHtmlTagsForFlowToken } from './flowTokenEligibility';
+import { handleMarkdownCopyEvent } from './markdownCopyFidelity';
 
 interface FlowTokenMarkdownRendererProps {
   content: string;
@@ -109,7 +110,11 @@ export const FlowTokenMarkdownRenderer: React.FC<FlowTokenMarkdownRendererProps>
   }, [AnimatedMarkdown]);
 
   return (
-    <div className="markdown-content flowtoken-markdown" onClick={handleClick}>
+    <div
+      className="markdown-content flowtoken-markdown"
+      onClick={handleClick}
+      onCopy={handleMarkdownCopyEvent}
+    >
       {AnimatedMarkdown ? (
         <AnimatedMarkdown
           content={safeContent}

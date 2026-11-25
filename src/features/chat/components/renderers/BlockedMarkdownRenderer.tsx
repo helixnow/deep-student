@@ -12,6 +12,7 @@
 
 import React, { memo, useMemo, useRef } from 'react';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { handleMarkdownCopyEvent } from './markdownCopyFidelity';
 import { createMarkdownBlockSplitter, type MarkdownBlock } from './splitMarkdownBlocks';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import type { CitationImageInfo } from './MarkdownRenderer';
@@ -101,7 +102,11 @@ export const BlockedMarkdownRenderer: React.FC<BlockedMarkdownRendererProps> = m
     const lastIndex = blocks.length - 1;
 
     return (
-      <div className="blocked-markdown" data-streaming={isStreaming ? 'true' : 'false'}>
+      <div
+        className="blocked-markdown"
+        data-streaming={isStreaming ? 'true' : 'false'}
+        onCopy={handleMarkdownCopyEvent}
+      >
         {blocks.map((block, idx) => {
           // 仅最后一块 + 整体处于流式 → 视为流式块（开启词淡入 + 平滑）
           const isStreamingBlock = isStreaming && idx === lastIndex;

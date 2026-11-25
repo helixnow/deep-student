@@ -54,11 +54,22 @@ export function resetFallbackDashboardStatisticsForTest(): void {
   notifyFallbackListeners();
 }
 
+const NULL_FALLBACK_KEY = {};
+const normalizedStatsCache = new WeakMap<
+  DashboardStatistics,
+  WeakMap<object, DashboardStatistics>
+>();
+
 export function normalizeDashboardStatistics(
   statistics: DashboardStatistics | undefined,
   fallback: FallbackDashboardStats | null = null,
 ): DashboardStatistics | undefined {
   if (!statistics) return undefined;
+  const fallbackKey = fallback ?? NULL_FALLBACK_KEY;
+  let byFallback = normalizedStatsCache.get(statistics);
+  const cached = byFallback?.get(fallbackKey);
+  if (cached) return cached;
+
   const raw = statistics as Record<string, unknown>;
   const rawBasic = (statistics.basic_stats ?? raw.basicStats) as
     | { total_mistakes?: unknown; totalMistakes?: unknown; tag_stats?: unknown; tagStats?: unknown }
@@ -85,7 +96,7 @@ export function normalizeDashboardStatistics(
       }
     : fallback?.basic_stats;
 
-  return {
+  const normalized: DashboardStatistics = {
     ...statistics,
     ...(effectiveBasic ? { basic_stats: effectiveBasic } : {}),
     recent_additions:
@@ -108,6 +119,13 @@ export function normalizeDashboardStatistics(
         }
       : statistics.image_stats,
   };
+
+  if (!byFallback) {
+    byFallback = new WeakMap<object, DashboardStatistics>();
+    normalizedStatsCache.set(statistics, byFallback);
+  }
+  byFallback.set(fallbackKey, normalized);
+  return normalized;
 }
 
 function needsFallbackAggregation(statistics: DashboardStatistics | undefined): boolean {

@@ -9,10 +9,16 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 import {
+  LARGE_FORMAT_MAX_CANVAS_EDGE_PX,
+  LARGE_FORMAT_MAX_CANVAS_PIXELS,
   SINGLE_COLUMN_ZOOM_SCALE,
+  STANDARD_MAX_CANVAS_EDGE_PX,
+  STANDARD_MAX_CANVAS_PIXELS,
   buildProgressBarTicks,
   computeColumnDoubleClickZoom,
+  computeSafeRenderDpr,
   computeTrimmedPageLayout,
+  isLargeFormatPdfPage,
 } from '../pdfViewportEnhance';
 import {
   cleanExtractedStructuredText,
@@ -179,5 +185,52 @@ describe('pdfRegionExtract structured LaTeX and Markdown table extraction', () =
       source: 'ocr',
       content: '$$\nx_t = W h_{t-1}\n$$',
     });
+  });
+});
+
+describe('computeSafeRenderDpr and large-format A1 CAD pixel caps', () => {
+  it('classifies A1/A2 CAD sheets as large-format while keeping A4/Letter standard', () => {
+    expect(isLargeFormatPdfPage(595, 842)).toBe(false); // A4
+    expect(isLargeFormatPdfPage(612, 792)).toBe(false); // Letter
+    expect(isLargeFormatPdfPage(1684, 1191)).toBe(true); // A2
+    expect(isLargeFormatPdfPage(2384, 1684)).toBe(true); // A1 CAD blueprint
+  });
+
+  it('preserves full 2x Retina DPR for standard A4 reading widths', () => {
+    const dpr = computeSafeRenderDpr({
+      renderWidth: 800,
+      renderHeight: 1131,
+      requestedDpr: 2,
+      intrinsicWidth: 595,
+      intrinsicHeight: 842,
+    });
+    expect(dpr).toBe(2);
+  });
+
+  it('caps both max canvas edge and total canvas pixels on tall or zoomed standard pages', () => {
+    const dpr = computeSafeRenderDpr({
+      renderWidth: 1600,
+      renderHeight: 2800,
+      requestedDpr: 2,
+      intrinsicWidth: 595,
+      intrinsicHeight: 1040,
+    });
+    expect(1600 * dpr).toBeLessThanOrEqual(STANDARD_MAX_CANVAS_EDGE_PX);
+    expect(2800 * dpr).toBeLessThanOrEqual(STANDARD_MAX_CANVAS_EDGE_PX);
+    expect(1600 * dpr * 2800 * dpr).toBeLessThanOrEqual(STANDARD_MAX_CANVAS_PIXELS);
+  });
+
+  it('aggressively caps DPR below 0.75 on massive 300%-zoomed A1 CAD blueprints to prevent OOM', () => {
+    const dpr = computeSafeRenderDpr({
+      renderWidth: 3600,
+      renderHeight: 2543,
+      requestedDpr: 2,
+      intrinsicWidth: 2384,
+      intrinsicHeight: 1684,
+    });
+    expect(dpr).toBeLessThan(0.75);
+    expect(3600 * dpr).toBeLessThanOrEqual(LARGE_FORMAT_MAX_CANVAS_EDGE_PX);
+    expect(2543 * dpr).toBeLessThanOrEqual(LARGE_FORMAT_MAX_CANVAS_EDGE_PX);
+    expect(3600 * dpr * 2543 * dpr).toBeLessThanOrEqual(LARGE_FORMAT_MAX_CANVAS_PIXELS);
   });
 });

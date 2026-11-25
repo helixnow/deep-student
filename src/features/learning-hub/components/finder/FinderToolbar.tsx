@@ -147,7 +147,7 @@ function CompressedBreadcrumbs({
       size="sm"
       onClick={() => (onNavigateHome ? onNavigateHome() : onBreadcrumbClick(-1))}
       className={cn(
-        '!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight',
+        'shrink-0 !h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight',
         CRUMB_TOUCH_HIT_CLASS,
         breadcrumbs.length === 0
           ? 'text-foreground/85 cursor-default'
@@ -157,14 +157,17 @@ function CompressedBreadcrumbs({
       aria-label={rootLabel}
       disabled={breadcrumbs.length === 0}
     >
-      <span className="truncate max-w-[72px]">{rootLabel}</span>
+      <span className="block truncate max-w-[72px]">{rootLabel}</span>
     </DsButton>
   );
 
   if (breadcrumbs.length === 0) {
     return (
-      <nav data-agent-entity="files:path" className="pointer-events-auto flex min-w-0 items-center justify-center gap-0.5 rounded-md" aria-label={rootLabel}>
-        <span className="block w-full truncate text-center text-ui font-medium tracking-tight text-foreground/85">
+      <nav data-agent-entity="files:path" className="pointer-events-auto flex min-w-0 max-w-full flex-1 items-center justify-center gap-0.5 rounded-md" aria-label={rootLabel}>
+        <span
+          className="block min-w-0 flex-1 truncate text-center text-ui font-medium tracking-tight text-foreground/85"
+          title={title}
+        >
           {title}
         </span>
       </nav>
@@ -175,6 +178,7 @@ function CompressedBreadcrumbs({
     // 深度路径：Home › … › parent › current；省略号跳到第一个被折叠的祖先。
     const parentIndex = breadcrumbs.length - 2;
     const parentCrumb = breadcrumbs[parentIndex];
+    const currentLabel = lastCrumb?.name || title;
     return (
       <nav data-agent-entity="files:path" className="pointer-events-auto flex min-w-0 max-w-full items-center justify-center gap-0.5 rounded-md" aria-label={title}>
         {homeButton}
@@ -183,7 +187,7 @@ function CompressedBreadcrumbs({
           variant="ghost"
           size="sm"
           onClick={() => onBreadcrumbClick(0)}
-          className={cn('!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground', CRUMB_TOUCH_HIT_CLASS)}
+          className={cn('shrink-0 !h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground', CRUMB_TOUCH_HIT_CLASS)}
           title={breadcrumbs[0]?.name}
           aria-label={breadcrumbs[0]?.name || '…'}
         >
@@ -195,15 +199,18 @@ function CompressedBreadcrumbs({
             variant="ghost"
             size="sm"
             onClick={() => onBreadcrumbClick(parentIndex)}
-            className={cn('!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground', CRUMB_TOUCH_HIT_CLASS)}
+            className={cn('shrink-0 !h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground', CRUMB_TOUCH_HIT_CLASS)}
             title={parentCrumb.name}
           >
-            <span className="truncate max-w-[72px]">{parentCrumb.name}</span>
+            <span className="block truncate max-w-[72px]">{parentCrumb.name}</span>
           </DsButton>
         ) : null}
         {parentCrumb ? sep : null}
-        <span className="min-w-0 truncate text-ui font-medium tracking-tight text-foreground/85">
-          {lastCrumb?.name || title}
+        <span
+          className="min-w-0 flex-1 truncate text-ui font-medium tracking-tight text-foreground/85"
+          title={currentLabel}
+        >
+          {currentLabel}
         </span>
       </nav>
     );
@@ -218,7 +225,10 @@ function CompressedBreadcrumbs({
           <React.Fragment key={crumb.id}>
             {sep}
             {isLast ? (
-              <span className="min-w-0 truncate text-ui font-medium tracking-tight text-foreground/85">
+              <span
+                className="min-w-0 flex-1 truncate text-ui font-medium tracking-tight text-foreground/85"
+                title={crumb.name}
+              >
                 {crumb.name}
               </span>
             ) : (
@@ -226,10 +236,10 @@ function CompressedBreadcrumbs({
                 variant="ghost"
                 size="sm"
                 onClick={() => onBreadcrumbClick(index)}
-                className={cn('!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground', CRUMB_TOUCH_HIT_CLASS)}
+                className={cn('shrink-0 !h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground', CRUMB_TOUCH_HIT_CLASS)}
                 title={crumb.name}
               >
-                <span className="truncate max-w-[88px]">{crumb.name}</span>
+                <span className="block truncate max-w-[88px]">{crumb.name}</span>
               </DsButton>
             )}
           </React.Fragment>
@@ -548,10 +558,12 @@ export const FinderToolbar = React.memo(function FinderToolbar({
     >
       <div className="flex h-full min-w-0 items-center gap-1.5">
         {navButtons}
-        <div className="min-w-0 flex-1 px-2 text-center">
+        <div className="flex min-w-0 flex-1 justify-center overflow-hidden px-2 text-center">
           {breadcrumbCenter}
         </div>
-        {utilityButtons}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {utilityButtons}
+        </div>
         {searchField}
       </div>
     </div>

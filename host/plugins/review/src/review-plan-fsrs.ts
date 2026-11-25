@@ -16,7 +16,7 @@
  *   - 上次复习时刻取 last_review_date 当天中午（没有就按 interval_days 倒推）。
  */
 import type { ReviewPlan, ReviewPlanFsrsState, ReviewPlanRatingPreviews } from '../../vfs-repos/api.ts';
-import { localDateKey } from './local-date.ts';
+import { addLocalDays, localDateKey } from './local-date.ts';
 import { scheduleAllRatings, type ScheduleOutcome } from './review-scheduling.ts';
 import { defaultSchedulerConfig, MS_PER_DAY, type FsrsCardState, type FsrsSchedulerConfig } from './fsrs-types.ts';
 
@@ -128,11 +128,17 @@ export interface PlanFsrsOutcome {
 function toPlanOutcome(rating: FsrsRating, outcome: ScheduleOutcome, nowMs: number, lapsesBefore: number): PlanFsrsOutcome {
   const phase = PHASES[outcome.state] ?? 'review';
   const intervalMinutes = Math.max(0, Math.round((outcome.dueMs - nowMs) / 60_000));
+  const intervalDays = Math.max(0, Math.round(outcome.scheduledDays));
+  // 按日排期用纯本地日历加减（避免夏令时 23h/25h 天在 23:58/00:05 加 86400s 偏移一天）；
+  // 分钟级学习步沿用实际到期时刻所在本地日历日。
+  const nextReviewDate = intervalDays >= 1
+    ? addLocalDays(localDateKey(new Date(nowMs)), intervalDays)
+    : localDateKey(new Date(outcome.dueMs));
   return {
     rating,
     passed: fsrsRatingPassed(rating),
-    intervalDays: Math.max(0, Math.round(outcome.scheduledDays)),
-    nextReviewDate: localDateKey(new Date(outcome.dueMs)),
+    intervalDays,
+    nextReviewDate,
     intervalMinutes,
     easeFactor: easeFromDifficulty(outcome.difficulty),
     phase,

@@ -621,19 +621,34 @@ export class VfsFullIndexingService {
   }
 
   prepareUnitsWithoutEmbedding(limit: number): number {
+    if (limit <= 0) return 0;
     const candidates = listPrepareCandidateStamps(this.db, limit);
-    let prepared = 0;
-    for (const { id: resourceId, stamp } of candidates) {
-      if (this.attemptedWithoutEmbedding.get(resourceId) === stamp) continue;
-      this.attemptedWithoutEmbedding.set(resourceId, stamp);
-      try {
-        this.syncResourceToUnits(resourceId);
-        prepared += 1;
-      } catch (error) {
-        this.logger?.warn(`[VfsFullIndexingService] Failed to prepare units for ${resourceId}: ${messageOf(error)}`);
-      }
-      if (prepared >= limit) break;
+    const pending: Array<{ id: string; stamp: string }> = [];
+    for (const candidate of candidates) {
+      if (this.attemptedWithoutEmbedding.get(candidate.id) === candidate.stamp) continue;
+      pending.push(candidate);
+      if (pending.length >= limit) break;
     }
+    if (pending.length === 0) return 0;
+
+    // Batch unit preparation into a single SQLite transaction with a synchronous time budget
+    // so large libraries never incur 2N autocommit fsyncs or stall the Host event loop.
+    const PREPARE_BATCH_TIME_BUDGET_MS = 50;
+    const startedAt = performance.now();
+    let prepared = 0;
+    inTransaction(this.db, () => {
+      for (const { id: resourceId, stamp } of pending) {
+        if (prepared > 0 && performance.now() - startedAt >= PREPARE_BATCH_TIME_BUDGET_MS) break;
+        this.attemptedWithoutEmbedding.set(resourceId, stamp);
+        try {
+          this.syncResourceToUnits(resourceId);
+          prepared += 1;
+        } catch (error) {
+          this.logger?.warn(`[VfsFullIndexingService] Failed to prepare units for ${resourceId}: ${messageOf(error)}`);
+        }
+        if (prepared >= limit) break;
+      }
+    });
     return prepared;
   }
 

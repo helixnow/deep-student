@@ -416,7 +416,7 @@ export class ReviewPlanService {
     const passed = fsrsOutcome.passed;
     // repetitions 保持「连续答对次数」的旧语义（恢复暂停时的状态推断仍按它）。
     const newReps = passed ? plan.repetitions + 1 : 0;
-    const today = localDateKey();
+    const today = localDateKey(new Date(nowMs));
     const nextReviewDate = reactivateSuspended && !passed && fsrsOutcome.nextReviewDate > today
       ? today
       : fsrsOutcome.nextReviewDate;

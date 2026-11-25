@@ -94,6 +94,7 @@ export const FavoritesSection: React.FC<FavoritesSectionProps> = ({
                   <button
                     type="button"
                     className="nfs-item-main"
+                    title={item.name}
                     onClick={() => onOpen(item)}
                     aria-current={isActive ? 'page' : undefined}
                   >

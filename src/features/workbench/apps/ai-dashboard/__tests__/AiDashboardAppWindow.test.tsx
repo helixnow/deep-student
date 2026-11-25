@@ -1,21 +1,32 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import zhGenerativeUi from '@/locales/zh-CN/generativeUi.json';
+import zhStats from '@/locales/zh-CN/stats.json';
+
+function lookupLocale(root: unknown, pathStr: string, opts?: Record<string, unknown>): string | null {
+  const path = pathStr.split('.');
+  let cur: unknown = root;
+  for (const seg of path) {
+    cur = cur && typeof cur === 'object' ? (cur as Record<string, unknown>)[seg] : undefined;
+  }
+  if (typeof cur === 'string') {
+    return cur.replace(/\{\{(\w+)\}\}/g, (_, k) => String(opts?.[k] ?? ''));
+  }
+  return null;
+}
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: vi.fn() },
   useTranslation: () => ({
     t: (key: string, opts?: Record<string, unknown>) => {
       if (key.startsWith('generativeUi:')) {
-        const path = key.slice('generativeUi:'.length).split('.');
-        let cur: unknown = zhGenerativeUi;
-        for (const seg of path) {
-          cur = cur && typeof cur === 'object' ? (cur as Record<string, unknown>)[seg] : undefined;
-        }
-        if (typeof cur === 'string') {
-          return cur.replace(/\{\{(\w+)\}\}/g, (_, k) => String(opts?.[k] ?? ''));
-        }
+        const found = lookupLocale(zhGenerativeUi, key.slice('generativeUi:'.length), opts);
+        if (found !== null) return found;
+      }
+      if (key.startsWith('stats:')) {
+        const found = lookupLocale(zhStats, key.slice('stats:'.length), opts);
+        if (found !== null) return found;
       }
       return key;
     },
@@ -26,6 +37,7 @@ vi.mock('react-i18next', () => ({
 const {
   getUsageSummaryMock,
   getTodoStatsOverviewMock,
+  invokeMock,
   launchMock,
   setPendingSettingsRouteMock,
   todayStr,
@@ -38,6 +50,7 @@ const {
   return {
     getUsageSummaryMock: vi.fn(),
     getTodoStatsOverviewMock: vi.fn(),
+    invokeMock: vi.fn(async () => null),
     launchMock: vi.fn(),
     setPendingSettingsRouteMock: vi.fn(),
     todayStr: `${y}-${m}-${d}`,
@@ -51,6 +64,10 @@ const {
     },
   };
 });
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: invokeMock,
+}));
 
 vi.mock('@/hooks/useLearningHeatmap', () => ({
   formatLocalDateYmd: (date: Date) => {
@@ -273,5 +290,114 @@ describe('AiDashboardAppWindow insights and navigation', () => {
       expect(insights).toHaveTextContent('80%');
       expect(insights).toHaveTextContent('3.0k');
     });
+  });
+
+  it('S4-11: avoids contradicting "学习时长 不到 1 分钟" alongside "活跃 2 天" when active days come from non-timed study activities', async () => {
+    const now = new Date();
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const yesterdayStr = `${String(yesterday.getFullYear()).padStart(4, '0')}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+
+    heatmapDataRef.current = [
+      { date: yesterdayStr, count: 8, studySeconds: 15, details: {} },
+      { date: todayStr, count: 6, studySeconds: 15, details: {} },
+    ];
+    invokeMock.mockResolvedValue(null);
+
+    render(
+      <AiDashboardAppWindow
+        windowId="win-dashboard"
+        instanceKey=""
+        typeId="aiDashboard"
+        payload={undefined}
+        isFocused
+        onTitleChange={vi.fn()}
+      />,
+    );
+
+    const studyCard = await screen.findByTestId('wb-ai-dashboard-study-card');
+    expect(studyCard).toHaveAttribute('data-study-mode', 'activity');
+    expect(studyCard).toHaveTextContent('学习活跃度');
+    expect(studyCard).toHaveTextContent('14 次活动');
+    expect(studyCard).toHaveTextContent('活跃 2 天');
+    expect(studyCard).toHaveTextContent('30s');
+    expect(studyCard).not.toHaveTextContent('不到 1 分钟');
+  });
+
+  it('S4-11: reconciles Pomodoro focusSeconds and FSRS review studyMs when presence study_time_daily is 0', async () => {
+    const now = new Date();
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const yesterdayStr = `${String(yesterday.getFullYear()).padStart(4, '0')}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+
+    heatmapDataRef.current = [
+      { date: yesterdayStr, count: 4, studySeconds: 0, details: {} },
+      { date: todayStr, count: 5, studySeconds: 0, details: {} },
+    ];
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'pomodoro_stats_overview') {
+        return { daily: [{ date: yesterdayStr, focusSeconds: 1500, completedCount: 1 }] };
+      }
+      if (cmd === 'fsrs_get_review_statistics') {
+        return { dailyReviews: [{ date: todayStr, total: 10, studyMs: 600_000 }] };
+      }
+      return null;
+    });
+
+    render(
+      <AiDashboardAppWindow
+        windowId="win-dashboard"
+        instanceKey=""
+        typeId="aiDashboard"
+        payload={undefined}
+        isFocused
+        onTitleChange={vi.fn()}
+      />,
+    );
+
+    const studyCard = await screen.findByTestId('wb-ai-dashboard-study-card');
+    await waitFor(() => {
+      expect(studyCard).toHaveAttribute('data-study-mode', 'duration');
+      // 1500s (25m Pomodoro) + 600s (10m FSRS) = 35 分钟
+      expect(studyCard).toHaveTextContent('35 分钟');
+      expect(studyCard).toHaveTextContent('活跃 2 天');
+    });
+  });
+
+  it('S4-11: renders header and KPI insight cards on frame 0 while deferring GenerativeUIPanel until rAF', async () => {
+    let rafCallback: FrameRequestCallback | null = null;
+    const rafSpy = vi
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((cb: FrameRequestCallback) => {
+        rafCallback = cb;
+        return 1;
+      });
+    const cancelSpy = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+
+    try {
+      render(
+        <AiDashboardAppWindow
+          windowId="win-dashboard"
+          instanceKey=""
+          typeId="aiDashboard"
+          payload={undefined}
+          isFocused
+          onTitleChange={vi.fn()}
+        />,
+      );
+
+      // Frame 0: header + 3 KPI cards are immediately non-blank while heavy panel waits for rAF
+      expect(screen.getByTestId('wb-ai-dashboard-insights')).toBeInTheDocument();
+      expect(screen.getByTestId('wb-ai-dashboard-panel-skeleton')).toBeInTheDocument();
+
+      await act(async () => {
+        rafCallback?.(16);
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('wb-ai-dashboard-panel-skeleton')).not.toBeInTheDocument();
+      });
+    } finally {
+      rafSpy.mockRestore();
+      cancelSpy.mockRestore();
+    }
   });
 });

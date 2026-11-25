@@ -290,13 +290,13 @@ export function sanitizeSteps(steps: readonly number[]): number[] {
 interface DateParts { year: number; month: number; day: number }
 
 function localParts(ms: number, rolloverHour: number): DateParts {
-  const time = civilTime(BigInt(ms) * 1_000_000n, true);
+  const time = civilTime(BigInt(Math.trunc(ms)) * 1_000_000n, true);
   const day = new Date(Date.UTC(time.year, time.month - 1, time.day - (time.hour < rolloverHour ? 1 : 0)));
   return { year: day.getUTCFullYear(), month: day.getUTCMonth(), day: day.getUTCDate() };
 }
 
 function offsetParts(ms: number, offsetMinutes: number, rolloverHour: number): DateParts {
-  const time = civilTime(BigInt(ms + offsetMinutes * 60_000 - rolloverHour * 3_600_000) * 1_000_000n, false);
+  const time = civilTime(BigInt(Math.trunc(ms + offsetMinutes * 60_000 - rolloverHour * 3_600_000)) * 1_000_000n, false);
   return { year: time.year, month: time.month - 1, day: time.day };
 }
 

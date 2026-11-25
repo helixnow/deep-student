@@ -188,9 +188,33 @@ function createInner(conn: SqlExecutor, input: CreateUnitInput): VfsIndexUnit {
   const mmRequired = input.imageBlobHash !== null;
   const contentHash = computeContentHash(input.imageBlobHash, input.textContent);
   insertUnit(conn, input, id, now, textRequired, mmRequired, contentHash);
-  const created = conn.get(SELECT_UNIT_BY_ID, [id]);
-  if (created === undefined) throw notFound('Unit', id);
-  return rowToUnit(created);
+  return {
+    id,
+    resourceId: input.resourceId,
+    unitIndex: input.unitIndex,
+    imageBlobHash: input.imageBlobHash,
+    imageMimeType: input.imageMimeType,
+    textContent: input.textContent,
+    textSource: input.textSource,
+    contentHash,
+    textRequired,
+    textState: textRequired ? 'pending' : 'disabled',
+    textError: null,
+    textIndexedAt: null,
+    textChunkCount: 0,
+    textEmbeddingDim: null,
+    textProfileId: null,
+    textGeneration: 0,
+    mmRequired,
+    mmState: mmRequired ? 'pending' : 'disabled',
+    mmError: null,
+    mmIndexedAt: null,
+    mmEmbeddingDim: null,
+    mmProfileId: null,
+    mmGeneration: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 function updateUnit(conn: SqlExecutor, unit: VfsIndexUnit): void {
@@ -318,18 +342,31 @@ export class IndexUnitRepo implements IndexUnitRepository {
 
   sweepOrphanIndexUnits(conn: SqlExecutor): number {
     return databaseResult(() => {
-      conn.run(`INSERT INTO __lance_orphan_queue (lance_row_id, resource_id)
-        SELECT s.lance_row_id, u.resource_id
-        FROM vfs_index_segments s
-        JOIN vfs_index_units u ON s.unit_id = u.id
-        WHERE NOT EXISTS (SELECT 1 FROM resources r WHERE r.id = u.resource_id)
-        ON CONFLICT(lance_row_id) DO UPDATE SET
-            resource_id = excluded.resource_id,
-            enqueued_at = excluded.enqueued_at,
-            next_retry_at = 0,
-            last_error = NULL`);
-      return conn.run(`DELETE FROM vfs_index_units
-        WHERE NOT EXISTS (SELECT 1 FROM resources r WHERE r.id = vfs_index_units.resource_id)`).changes;
+      const orphanIds = conn.all<{ id: string }>(
+        `SELECT u.id FROM vfs_index_units u
+         WHERE NOT EXISTS (SELECT 1 FROM resources r WHERE r.id = u.resource_id)`,
+      ).map(row => row.id);
+      if (orphanIds.length === 0) return 0;
+      let deleted = 0;
+      for (let start = 0; start < orphanIds.length; start += 500) {
+        const chunk = orphanIds.slice(start, start + 500);
+        const placeholders = chunk.map((_, idx) => `?${idx + 1}`).join(',');
+        conn.run(`INSERT INTO __lance_orphan_queue (lance_row_id, resource_id)
+          SELECT s.lance_row_id, u.resource_id
+          FROM vfs_index_segments s
+          JOIN vfs_index_units u ON s.unit_id = u.id
+          WHERE u.id IN (${placeholders})
+          ON CONFLICT(lance_row_id) DO UPDATE SET
+              resource_id = excluded.resource_id,
+              enqueued_at = excluded.enqueued_at,
+              next_retry_at = 0,
+              last_error = NULL`, chunk);
+        deleted += conn.run(
+          `DELETE FROM vfs_index_units WHERE id IN (${placeholders})`,
+          chunk,
+        ).changes;
+      }
+      return deleted;
     });
   }
 

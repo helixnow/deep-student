@@ -14,18 +14,27 @@
 
 .streaming-block-renderer {
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .streaming-blocks {
   /* A block formatting context contains the first/last margins while letting
    * adjacent stream blocks collapse margins like one Markdown document. */
   display: flow-root;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 /* ─── Block base ─────────────────────────────────────────────────────────── */
 
 .stream-block {
   position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   opacity: 1;
 }
 

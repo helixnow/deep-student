@@ -63,6 +63,16 @@ vi.mock('react-i18next', async (importOriginal) => ({
         'translation:workbench_ui.restored_previous': '已恢复上一版译文',
         'translation:workbench_ui.dismiss': '知道了',
         'translation:workbench_ui.version_history_count': `共 ${opts?.count ?? 0} 个历史版本`,
+        'translation:workbench_ui.outdated_hint': '原文或设置已更新，当前译文可能已过期',
+        'translation:workbench_ui.retranslate_now': '重新翻译',
+        'translation:workbench_ui.save_as_new_version': '另存新版本',
+        'translation:workbench_ui.keep_current_translation': '保留当前译文',
+        'translation:languages.zh-CN': '简体中文',
+        'translation:languages.en': '英语',
+        'translation:languages.ja': '日语',
+        'translation:languages.fr': '法语',
+        'translation:languages.target_lang': '目标语言',
+        'translation:languages.source_lang': '源语言',
       };
       if (key in map) return map[key]!;
       return typeof opts?.defaultValue === 'string' ? opts.defaultValue : key;
@@ -101,6 +111,10 @@ import TranslateWorkbench, {
   pushTranslationVersion,
   readPersistedWorkbenchState,
 } from '@/components/TranslateWorkbench';
+import {
+  computeTranslationSourceHash,
+  readTranslationDraftSnapshot,
+} from '@/translation/sessionPrefs';
 
 function makeSession(overrides: Partial<TranslationSession> = {}): TranslationSession {
   const now = Date.now();
@@ -403,8 +417,476 @@ describe('TranslateWorkbench S3-11 Round 5 P1 fixes', () => {
       expect.objectContaining({
         id: 'tr-reload-versions',
         translatedText: '第一版译文：在利普希茨连续条件下，梯度下降法会收敛。',
+        formality: 'auto',
       }),
     );
     expect(screen.queryByTestId('translation-previous-version-banner')).toBeNull();
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
+  });
+
+  it('atomically restores targetLanguage, sourceLanguage, formality, and sourceHash across multi-language rollback and stays non-stale after reload (S3-11 Round 6)', async () => {
+    const savedSessions: TranslationSession[] = [];
+    const onSessionSave = vi.fn().mockImplementation(async (session: TranslationSession) => {
+      savedSessions.push(session);
+    });
+
+    const sourceZh = '分布式系统的一致性协议需要在可用性与分区容错之间权衡。';
+    const englishFormalDraft =
+      'Consensus protocols in distributed systems must balance availability and partition tolerance.';
+    const japaneseCasualDraft =
+      '分散システムの合意プロトコルは可用性と分断耐性のバランスが大事だよ。';
+
+    mocks.translate
+      .mockResolvedValueOnce({
+        outcome: 'completed',
+        translatedText: englishFormalDraft,
+        translationId: 'tr-en-v1',
+      })
+      .mockResolvedValueOnce({
+        outcome: 'completed',
+        translatedText: japaneseCasualDraft,
+        translationId: 'tr-ja-v2',
+      });
+
+    const { unmount } = render(
+      <TranslateWorkbench
+        dstuMode={{
+          resourceId: 'tr-multilang-rollback',
+          session: makeSession({
+            id: 'tr-multilang-rollback',
+            sourceText: sourceZh,
+            translatedText: '',
+            srcLang: 'zh-CN',
+            tgtLang: 'en',
+            formality: 'formal',
+          }),
+          onSessionSave,
+        }}
+      />,
+    );
+
+    // Step 1: Translate Chinese -> English (formal)
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /翻译/ })[0]!);
+    });
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(englishFormalDraft);
+    expect(screen.getByTestId('translation-target-lang-select')).toHaveTextContent('英语');
+    expect(getVisibleFormalityRadios().formalRadio).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
+
+    // Step 2: Switch target language to Japanese and formality to casual -> outdated banner appears with non-destructive options
+    fireEvent.click(screen.getByTestId('translation-target-lang-select'));
+    fireEvent.click(screen.getByText('日语'));
+    fireEvent.click(getVisibleFormalityRadios().casualRadio);
+
+    expect(screen.getByTestId('translation-outdated-banner')).toBeInTheDocument();
+    expect(screen.getByTestId('translation-outdated-save-new-version-btn')).toHaveTextContent('另存新版本');
+    expect(screen.getByTestId('translation-outdated-retranslate-btn')).toHaveTextContent('重新翻译');
+    expect(screen.getByTestId('translation-outdated-keep-current-btn')).toHaveTextContent('保留当前译文');
+
+    // Step 3: Translate Chinese -> Japanese (casual)
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /翻译/ })[0]!);
+    });
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(japaneseCasualDraft);
+    expect(screen.getByTestId('translation-target-lang-select')).toHaveTextContent('日语');
+    expect(getVisibleFormalityRadios().casualRadio).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
+
+    // Version history snapshot captures full English v1 metadata + sourceHash
+    expect(screen.getByTestId('translation-previous-version-meta')).toHaveTextContent('英语 · 正式');
+    const persistedBeforeRestore = readPersistedWorkbenchState(['tr-multilang-rollback']);
+    expect(persistedBeforeRestore?.versionHistory[0]).toMatchObject({
+      translatedText: englishFormalDraft,
+      sourceText: sourceZh,
+      sourceHash: computeTranslationSourceHash(sourceZh),
+      srcLang: 'zh-CN',
+      tgtLang: 'en',
+      formality: 'formal',
+    });
+
+    // Step 4: Restore previous version -> MUST atomically roll back body + targetLanguage (en) + formality (formal)
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('translation-restore-previous-banner-button'));
+    });
+
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(englishFormalDraft);
+    expect(screen.getByTestId('translation-target-lang-select')).toHaveTextContent('英语');
+    expect(getVisibleFormalityRadios().formalRadio).toHaveAttribute('aria-checked', 'true');
+    expect(getVisibleFormalityRadios().casualRadio).toHaveAttribute('aria-checked', 'false');
+    // Immediately after rollback, English draft matching restored en/formal/source is NOT stale!
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
+
+    const restoredSave = savedSessions[savedSessions.length - 1]!;
+    expect(restoredSave).toMatchObject({
+      id: 'tr-multilang-rollback',
+      translatedText: englishFormalDraft,
+      srcLang: 'zh-CN',
+      tgtLang: 'en',
+      formality: 'formal',
+      lastTranslatedMeta: expect.objectContaining({
+        sourceText: sourceZh,
+        sourceHash: computeTranslationSourceHash(sourceZh),
+        srcLang: 'zh-CN',
+        tgtLang: 'en',
+        formality: 'formal',
+      }),
+    });
+
+    // Local draft snapshot also carries restored tgtLang + formality + lastTranslatedMeta
+    expect(readTranslationDraftSnapshot('tr-multilang-rollback')).toMatchObject({
+      srcLang: 'zh-CN',
+      tgtLang: 'en',
+      formality: 'formal',
+      translatedText: englishFormalDraft,
+      lastTranslatedMeta: expect.objectContaining({
+        tgtLang: 'en',
+        formality: 'formal',
+        sourceHash: computeTranslationSourceHash(sourceZh),
+      }),
+    });
+
+    // Step 5: Simulate full page reload (including stale VFS list metadata carrying old tgtLang='ja' / undefined formality,
+    // followed by async v2 hydration!)
+    unmount();
+
+    const { rerender } = render(
+      <TranslateWorkbench
+        dstuMode={{
+          resourceId: 'tr-multilang-rollback',
+          session: {
+            ...restoredSave,
+            // Stale VFS table columns on first frame before v2 content loads
+            tgtLang: 'ja',
+            formality: undefined,
+            lastTranslatedMeta: undefined,
+            updatedAt: restoredSave.updatedAt - 1000,
+          },
+          onSessionSave,
+        }}
+      />,
+    );
+
+    // Even on first frame with stale SQL metadata, persisted rollback snapshot keeps en + formal + non-stale!
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(englishFormalDraft);
+    expect(screen.getByTestId('translation-target-lang-select')).toHaveTextContent('英语');
+    expect(getVisibleFormalityRadios().formalRadio).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
+
+    // Async VFS v2 hydration arrives with authoritative restored session
+    rerender(
+      <TranslateWorkbench
+        dstuMode={{
+          resourceId: 'tr-multilang-rollback',
+          session: restoredSave,
+          onSessionSave,
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(englishFormalDraft);
+    expect(screen.getByTestId('translation-target-lang-select')).toHaveTextContent('英语');
+    expect(getVisibleFormalityRadios().formalRadio).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
+  });
+
+  it('handles genuine source edits after reload with non-destructive Keep Current and Save as New Version choices', async () => {
+    const savedSessions: TranslationSession[] = [];
+    const onSessionSave = vi.fn().mockImplementation(async (session: TranslationSession) => {
+      savedSessions.push(session);
+    });
+
+    const sourceV1 = 'The theorem holds for all compact metric spaces.';
+    const sourceV2 = 'The theorem holds for all compact metric spaces and separable Banach spaces.';
+    const sourceV3 = 'The theorem holds for all complete metric spaces.';
+    const transV1 = '该定理对所有紧致度量空间成立。';
+    const transV2 = '该定理对所有完备度量空间成立。';
+
+    mocks.translate
+      .mockResolvedValueOnce({
+        outcome: 'completed',
+        translatedText: transV1,
+        translationId: 'tr-src-v1',
+      })
+      .mockResolvedValueOnce({
+        outcome: 'completed',
+        translatedText: transV2,
+        translationId: 'tr-src-v2',
+      });
+
+    const { unmount } = render(
+      <TranslateWorkbench
+        dstuMode={{
+          resourceId: 'tr-nondestructive',
+          session: makeSession({
+            id: 'tr-nondestructive',
+            sourceText: sourceV1,
+            translatedText: '',
+            srcLang: 'en',
+            tgtLang: 'zh-CN',
+            formality: 'formal',
+          }),
+          onSessionSave,
+        }}
+      />,
+    );
+
+    // Produce initial completed translation
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /翻译/ })[0]!);
+    });
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(transV1);
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
+
+    // Edit source text -> translation is genuinely out of sync with edited source
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: sourceV2 } });
+    expect(screen.getByTestId('translation-outdated-banner')).toBeInTheDocument();
+
+    // Simulate reload with edited source + persisted syncedMeta still pointing to sourceV1 hash
+    const latestPersistedSession = savedSessions[savedSessions.length - 1]!;
+    unmount();
+
+    render(
+      <TranslateWorkbench
+        dstuMode={{
+          resourceId: 'tr-nondestructive',
+          session: {
+            ...latestPersistedSession,
+            sourceText: sourceV2,
+            translatedText: transV1,
+          },
+          onSessionSave,
+        }}
+      />,
+    );
+
+    // After reload, genuinely out-of-sync source is detected AND offers non-destructive actions
+    expect(screen.getByTestId('translation-outdated-banner')).toBeInTheDocument();
+
+    // Choice 1: "保留当前译文" dismisses warning without overwriting or calling translate
+    fireEvent.click(screen.getByTestId('translation-outdated-keep-current-btn'));
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(transV1);
+    expect(mocks.translate).toHaveBeenCalledTimes(1);
+
+    // Further source edit brings back the banner for the new delta
+    const reloadedTextarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(reloadedTextarea, { target: { value: sourceV3 } });
+    expect(screen.getByTestId('translation-outdated-banner')).toBeInTheDocument();
+
+    // Choice 2: "另存新版本" preserves transV1 into version history and translates sourceV3 cleanly
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('translation-outdated-save-new-version-btn'));
+    });
+
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(transV2);
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
+    // Archived v1 is preserved in version history with original sourceHash & formality
+    const persistedAfterNewVer = readPersistedWorkbenchState(['tr-nondestructive']);
+    expect(persistedAfterNewVer?.versionHistory[0]).toMatchObject({
+      translatedText: transV1,
+      sourceText: sourceV1,
+      sourceHash: computeTranslationSourceHash(sourceV1),
+      srcLang: 'en',
+      tgtLang: 'zh-CN',
+      formality: 'formal',
+    });
+    expect(screen.getByTestId('translation-previous-version-banner')).toBeInTheDocument();
+  });
+
+  it('preserves 3-language + formality stack across multiple reloads and sequential rollbacks with zero false staleness even after async prompt load', async () => {
+    const savedSessions: TranslationSession[] = [];
+    const onSessionSave = vi.fn().mockImplementation(async (session: TranslationSession) => {
+      savedSessions.push(session);
+    });
+    // Simulate async TauriAPI.getSetting('translation.prompt') returning default prompt on reload
+    mocks.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_setting') return 'translation:prompt_editor.default_prompt';
+      return null;
+    });
+
+    const src = '量子纠缠在量子通信中具有核心作用。';
+    const enFormal = 'Quantum entanglement plays a central role in quantum communication.';
+    const jaCasual = '量子もつれは量子通信で大事な役割を果たすよ。';
+    const frAuto = "L'intrication quantique joue un rôle central dans la communication quantique.";
+
+    mocks.translate
+      .mockResolvedValueOnce({ outcome: 'completed', translatedText: enFormal, translationId: 'v1' })
+      .mockResolvedValueOnce({ outcome: 'completed', translatedText: jaCasual, translationId: 'v2' })
+      .mockResolvedValueOnce({ outcome: 'completed', translatedText: frAuto, translationId: 'v3' });
+
+    const { unmount } = render(
+      <TranslateWorkbench
+        dstuMode={{
+          resourceId: 'tr-3lang',
+          session: makeSession({
+            id: 'tr-3lang',
+            sourceText: src,
+            translatedText: '',
+            srcLang: 'zh-CN',
+            tgtLang: 'en',
+            formality: 'formal',
+          }),
+          onSessionSave,
+        }}
+      />,
+    );
+
+    // v1: en + formal
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /翻译/ })[0]!);
+    });
+    // v2: ja + casual
+    fireEvent.click(screen.getByTestId('translation-target-lang-select'));
+    fireEvent.click(screen.getByText('日语'));
+    fireEvent.click(getVisibleFormalityRadios().casualRadio);
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /翻译/ })[0]!);
+    });
+    // v3: fr + auto
+    fireEvent.click(screen.getByTestId('translation-target-lang-select'));
+    fireEvent.click(screen.getByText('法语'));
+    fireEvent.click(getVisibleFormalityRadios().autoRadio);
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /翻译/ })[0]!);
+    });
+
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(frAuto);
+    expect(screen.getByTestId('translation-version-history-count')).toHaveTextContent('共 2 个历史版本');
+
+    // Reload #1 while at v3 (fr / auto)
+    const savedAtV3 = savedSessions[savedSessions.length - 1]!;
+    unmount();
+
+    const mount2 = render(
+      <TranslateWorkbench
+        dstuMode={{ resourceId: 'tr-3lang', session: savedAtV3, onSessionSave }}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(frAuto);
+    expect(screen.getByTestId('translation-target-lang-select')).toHaveTextContent('法语');
+    expect(getVisibleFormalityRadios().autoRadio).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
+    expect(screen.getByTestId('translation-previous-version-meta')).toHaveTextContent('日语 · 非正式');
+
+    // Rollback #1 -> v2 (ja / casual)
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('translation-restore-previous-banner-button'));
+    });
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(jaCasual);
+    expect(screen.getByTestId('translation-target-lang-select')).toHaveTextContent('日语');
+    expect(getVisibleFormalityRadios().casualRadio).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
+    expect(screen.getByTestId('translation-previous-version-meta')).toHaveTextContent('英语 · 正式');
+
+    // Reload #2 while at restored v2 (ja / casual)
+    const savedAtV2 = savedSessions[savedSessions.length - 1]!;
+    mount2.unmount();
+
+    const mount3 = render(
+      <TranslateWorkbench
+        dstuMode={{ resourceId: 'tr-3lang', session: savedAtV2, onSessionSave }}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(jaCasual);
+    expect(screen.getByTestId('translation-target-lang-select')).toHaveTextContent('日语');
+    expect(getVisibleFormalityRadios().casualRadio).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
+
+    // Rollback #2 -> v1 (en / formal)
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('translation-restore-previous-banner-button'));
+    });
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(enFormal);
+    expect(screen.getByTestId('translation-target-lang-select')).toHaveTextContent('英语');
+    expect(getVisibleFormalityRadios().formalRadio).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
+    expect(screen.queryByTestId('translation-previous-version-banner')).toBeNull();
+
+    // Reload #3 while at restored v1 (en / formal)
+    const savedAtV1 = savedSessions[savedSessions.length - 1]!;
+    mount3.unmount();
+
+    render(
+      <TranslateWorkbench
+        dstuMode={{ resourceId: 'tr-3lang', session: savedAtV1, onSessionSave }}
+      />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(enFormal);
+    expect(screen.getByTestId('translation-target-lang-select')).toHaveTextContent('英语');
+    expect(getVisibleFormalityRadios().formalRadio).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
+  });
+
+  it('flags honest source-hash mismatch when restoring an older version after source edits, and clears staleness when source reverts', async () => {
+    const onSessionSave = vi.fn().mockResolvedValue(undefined);
+    const src1 = '第一版中文原文。';
+    const src2 = '第二版已修改中文原文。';
+    const en1 = 'First version Chinese source text.';
+    const ja2 = '第二版の修正済み原文です。';
+
+    mocks.translate
+      .mockResolvedValueOnce({ outcome: 'completed', translatedText: en1, translationId: 's1' })
+      .mockResolvedValueOnce({ outcome: 'completed', translatedText: ja2, translationId: 's2' });
+
+    render(
+      <TranslateWorkbench
+        dstuMode={{
+          resourceId: 'tr-src-hash-mismatch',
+          session: makeSession({
+            id: 'tr-src-hash-mismatch',
+            sourceText: src1,
+            translatedText: '',
+            srcLang: 'zh-CN',
+            tgtLang: 'en',
+            formality: 'formal',
+          }),
+          onSessionSave,
+        }}
+      />,
+    );
+
+    // Translate src1 -> en1 (formal)
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /翻译/ })[0]!);
+    });
+
+    // Edit source to src2, switch to ja/casual, translate -> ja2
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: src2 } });
+    fireEvent.click(screen.getByTestId('translation-target-lang-select'));
+    fireEvent.click(screen.getByText('日语'));
+    fireEvent.click(getVisibleFormalityRadios().casualRadio);
+    await act(async () => {
+      fireEvent.click(screen.getAllByRole('button', { name: /翻译/ })[0]!);
+    });
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(ja2);
+
+    // Restore v1: restores en1 + en + formal while keeping user's edited src2,
+    // and honestly marks out-of-sync with non-destructive options
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('translation-restore-previous-banner-button'));
+    });
+    expect(screen.getByTestId('translation-output')).toHaveTextContent(en1);
+    expect(screen.getByTestId('translation-target-lang-select')).toHaveTextContent('英语');
+    expect(getVisibleFormalityRadios().formalRadio).toHaveAttribute('aria-checked', 'true');
+    expect(textarea.value).toBe(src2);
+    expect(screen.getByTestId('translation-outdated-banner')).toBeInTheDocument();
+    expect(screen.getByTestId('translation-outdated-save-new-version-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('translation-outdated-keep-current-btn')).toBeInTheDocument();
+
+    // Reverting source text back to src1 matches restored v1's sourceHash -> no longer stale!
+    fireEvent.change(textarea, { target: { value: src1 } });
+    expect(screen.queryByTestId('translation-outdated-banner')).toBeNull();
   });
 });

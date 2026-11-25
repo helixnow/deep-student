@@ -29,6 +29,7 @@ import {
   Image as ImageIcon,
   TreeStructure,
   ChatCenteredText,
+  Stack,
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -42,7 +43,7 @@ import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { useImeSafeControlledValue } from '@/components/ui/shad/useImeSafeControlledValue';
 
 // 扩展分类类型，包含特殊分组
-type DisplayCategory = CommandCategory | 'recent' | 'favorites' | 'files' | 'sessions';
+type DisplayCategory = CommandCategory | 'recent' | 'favorites' | 'files' | 'flashcards' | 'sessions';
 import { CATEGORY_CONFIG, CATEGORY_LABELS } from './registry/types';
 import { commandRegistry } from './registry/commandRegistry';
 import { commandHistory } from './registry/commandHistory';
@@ -53,7 +54,10 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import {
   useResourceSearch,
+  formatDstuSearchSubtitle,
+  formatFlashcardSearchSubtitle,
   openFileFromPalette,
+  openFlashcardFromPalette,
   openSessionFromPalette,
 } from './hooks/useResourceSearch';
 import type { DstuNodeType } from '@/dstu/types';
@@ -207,9 +211,9 @@ export function CommandPalette() {
     return searchCommands(query);
   }, [searchCommands, query, viewMode, recentCommands, favoriteCommands]);
 
-  // 资源直达搜索（文件 ≥2 字符、会话 ≥1 字符，由 useResourceSearch 内部按各自 minChars 门控）
+  // 资源直达搜索（文件/闪卡 ≥2 字符、会话 ≥1 字符，由 useResourceSearch 内部按各自 minChars 门控）
   const resourceSearchEnabled = isOpen && viewMode === 'search' && query.trim().length >= 1;
-  const { fileResults, sessionResults, loading: resourceLoading } = useResourceSearch(
+  const { fileResults, flashcardResults, sessionResults, loading: resourceLoading } = useResourceSearch(
     query,
     resourceSearchEnabled,
   );
@@ -221,12 +225,25 @@ export function CommandPalette() {
     return fileResults.map((node) => ({
       id: `${RESOURCE_COMMAND_PREFIX}file.${node.id}`,
       name: node.name,
-      description: node.path,
+      description: formatDstuSearchSubtitle(node),
       category: 'learning',
       icon: RESOURCE_TYPE_ICONS[node.type] ?? FileIcon,
       execute: (d) => { void openFileFromPalette(d, node); },
     }));
   }, [resourceSearchEnabled, fileResults]);
+
+  const flashcardCommands = useMemo<Command[]>(() => {
+    if (!resourceSearchEnabled) return [];
+    const trimmedQuery = query.trim();
+    return flashcardResults.map((item) => ({
+      id: `${RESOURCE_COMMAND_PREFIX}flashcard.${item.cardId}`,
+      name: item.front,
+      description: formatFlashcardSearchSubtitle(item),
+      category: 'anki',
+      icon: Stack,
+      execute: (d) => { void openFlashcardFromPalette(d, item, trimmedQuery); },
+    }));
+  }, [resourceSearchEnabled, flashcardResults, query]);
 
   const sessionCommands = useMemo<Command[]>(() => {
     if (!resourceSearchEnabled) return [];
@@ -258,11 +275,14 @@ export function CommandPalette() {
     if (fileCommands.length > 0) {
       groups.set('files', fileCommands);
     }
+    if (flashcardCommands.length > 0) {
+      groups.set('flashcards', flashcardCommands);
+    }
     if (sessionCommands.length > 0) {
       groups.set('sessions', sessionCommands);
     }
     return groups;
-  }, [filteredCommands, viewMode, fileCommands, sessionCommands, sessionSearchOnly]);
+  }, [filteredCommands, viewMode, fileCommands, flashcardCommands, sessionCommands, sessionSearchOnly]);
   
   // 扁平化命令列表（用于键盘导航）
   const flatCommands = useMemo(() => {
@@ -773,6 +793,8 @@ export function CommandPalette() {
                   categoryLabel = t('command_palette:mode_favorites');
                 } else if (category === 'files') {
                   categoryLabel = t('command_palette:resource_files');
+                } else if (category === 'flashcards') {
+                  categoryLabel = t('command_palette:resource_flashcards', { defaultValue: '闪卡' });
                 } else if (category === 'sessions') {
                   categoryLabel = t('command_palette:resource_sessions');
                 } else {

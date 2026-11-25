@@ -19,8 +19,20 @@ import type {
   ByokAutoProvisionSummary,
   ByokProviderPreset,
   ByokProvisionerState,
+  ByokSlotRoleId,
 } from './types';
 import { useByokAutoProvisioner } from './useByokAutoProvisioner';
+
+const LEARNER_ROLE_LABELS: Readonly<Record<ByokSlotRoleId, { zh: string; en: string }>> = {
+  primary_chat: { zh: '日常问答与解题', en: 'Chat & Problem Solving' },
+  fast_utility: { zh: '快速摘要与标题', en: 'Quick Summaries & Titles' },
+  summary_memory: { zh: '笔记整理与回顾', en: 'Notes & Study Memory' },
+  coding_agent: { zh: '练习生成与辅助', en: 'Practice & Study Helper' },
+  vision_parse: { zh: '图片与拍题识别', en: 'Image & Problem Reading' },
+  document_ocr: { zh: 'PDF 与文档识别', en: 'PDF & Document Reading' },
+  text_embedding: { zh: '资料智能搜索', en: 'Smart Material Search' },
+  rag_reranker: { zh: '搜索结果精选', en: 'Search Result Ranking' },
+};
 
 export interface QuickByokProvisionerCardProps {
   mode?: 'onboarding' | 'settings';
@@ -61,7 +73,8 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
   onOpenFullSettings,
   className,
 }) => {
-  const { t } = useTranslation(['settings', 'common']);
+  const { t, i18n } = useTranslation(['settings', 'common']);
+  const isZh = (i18n.resolvedLanguage ?? i18n.language ?? 'zh-CN').toLowerCase().startsWith('zh');
   const [isCollapsed, setIsCollapsed] = useState<boolean>(
     mode === 'settings' ? defaultCollapsed : false,
   );
@@ -71,6 +84,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
 
   const provisioner = useByokAutoProvisioner({
     fetcher,
+    mode,
     autoProbeOnPaste,
   });
 
@@ -124,10 +138,9 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
           <span className="truncate text-xs text-muted-foreground">
-            {t('settings:byok.collapsedPrompt', {
-              defaultValue:
-                'Paste one API key to auto-configure model slots and vector index in 10 seconds',
-            })}
+            {isZh
+              ? '粘贴一个 API 密钥，几秒内自动配置对话、文档阅读与搜索所需的 AI 模型'
+              : 'Paste one API key to automatically set up AI models for chat, reading, and search'}
           </span>
         </div>
         <DsButton
@@ -140,7 +153,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
             setIsCollapsed(false);
           }}
         >
-          {t('settings:byok.expandAction', { defaultValue: 'Quick Setup' })}
+          {isZh ? '快速连接' : 'Quick Setup'}
         </DsButton>
       </div>
     );
@@ -150,17 +163,17 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
   const steps: Array<{ key: string; label: string; status: StepStatus }> = [
     {
       key: 'detect',
-      label: t('settings:byok.steps.detect', { defaultValue: 'Detect Provider' }),
+      label: isZh ? '识别服务商' : 'Identify provider',
       status: step1Status,
     },
     {
       key: 'probe',
-      label: t('settings:byok.steps.probe', { defaultValue: 'Probe Models & Dim' }),
+      label: isZh ? '检查可用模型' : 'Check available models',
       status: step2Status,
     },
     {
       key: 'assign',
-      label: t('settings:byok.steps.assign', { defaultValue: 'Assign 8 Slots' }),
+      label: isZh ? '配置学习功能' : 'Set up study features',
       status: step3Status,
     },
   ];
@@ -197,14 +210,13 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
               )}
             />
             <h2 className="text-sm font-medium text-foreground leading-snug">
-              {t('settings:byok.cardTitle', { defaultValue: '1-Key Auto-Provisioner' })}
+              {isZh ? '连接 AI 模型服务' : 'Connect an AI Service'}
             </h2>
           </div>
           <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-            {t('settings:byok.cardSubtitle', {
-              defaultValue:
-                'Paste a single API key to detect provider, probe models, and configure vector indexing.',
-            })}
+            {isZh
+              ? '粘贴一个服务商 API 密钥，自动识别服务商并配置日常对话、文档阅读与资料搜索。'
+              : 'Paste a single provider API key to identify your provider and set up chat, reading, and material search.'}
           </p>
         </div>
 
@@ -218,7 +230,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
               setIsCollapsed(true);
             }}
           >
-            {t('settings:byok.collapseAction', { defaultValue: 'Collapse' })}
+            {isZh ? '收起' : 'Collapse'}
           </DsButton>
         )}
       </div>
@@ -241,10 +253,12 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                 value={rawApiKey}
                 autoFocus={mode === 'onboarding'}
                 disabled={isBusy}
-                aria-label={t('settings:byok.keyInputAriaLabel', { defaultValue: 'API Key' })}
-                placeholder={t('settings:byok.keyPlaceholder', {
-                  defaultValue: 'Paste API Key (e.g. sk-... / AIzaSy... / sk-ant-...)',
-                })}
+                aria-label={isZh ? 'API 密钥' : 'API Key'}
+                placeholder={
+                  isZh
+                    ? '粘贴你的 API 密钥（如 sk-... / AIzaSy...）'
+                    : 'Paste your API key (e.g. sk-... / AIzaSy...)'
+                }
                 onChange={(event) => setRawApiKey(event.target.value)}
                 onPaste={(event) => {
                   const text = event.clipboardData?.getData('text');
@@ -263,8 +277,8 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                 tabIndex={-1}
                 aria-label={
                   revealed
-                    ? t('settings:byok.hideKey', { defaultValue: 'Hide API key' })
-                    : t('settings:byok.showKey', { defaultValue: 'Show API key' })
+                    ? (isZh ? '隐藏密钥' : 'Hide API key')
+                    : (isZh ? '显示密钥' : 'Show API key')
                 }
                 onClick={() => setRevealed((prev) => !prev)}
                 className="absolute right-0.5 top-1/2 -translate-y-1/2 !h-8 !w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-muted-foreground hover:text-foreground"
@@ -291,12 +305,8 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
               )}
               <span>
                 {isBusy
-                  ? t('settings:byok.provisioningBusy', {
-                      defaultValue: 'Probing & Configuring...',
-                    })
-                  : t('settings:byok.provisionCta', {
-                      defaultValue: 'Probe & Auto-Configure',
-                    })}
+                  ? (isZh ? '正在连接并配置…' : 'Connecting & setting up…')
+                  : (isZh ? '一键连接并配置' : 'Connect & Set Up')}
               </span>
             </button>
           </div>
@@ -319,10 +329,9 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                       variant="color"
                     />
                     <span className="truncate">
-                      {t('settings:byok.detectedProvider', {
-                        provider: getLocalizedPresetName(detection.preset),
-                        defaultValue: `Detected: ${getLocalizedPresetName(detection.preset)}`,
-                      })}
+                      {isZh
+                        ? `已识别服务商：${getLocalizedPresetName(detection.preset)}`
+                        : `Provider detected: ${getLocalizedPresetName(detection.preset)}`}
                     </span>
                   </div>
                 )}
@@ -334,9 +343,9 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                 >
                   <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
                   <span>
-                    {t('settings:byok.disambiguatePrompt', {
-                      defaultValue: 'Generic sk- key detected. Pick a provider or auto-probe:',
-                    })}
+                    {isZh
+                      ? '请选择你的服务商，或让系统自动识别：'
+                      : 'Choose your provider, or let us detect it automatically:'}
                   </span>
                 </div>
               )}
@@ -349,7 +358,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
               className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               <span>
-                {t('settings:byok.toggleCustomUrl', { defaultValue: 'Custom Base URL' })}
+                {isZh ? '自定义服务地址' : 'Custom server address'}
               </span>
               <CaretDown
                 size={12}
@@ -373,7 +382,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                 )}
               >
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-                <span>{t('settings:byok.autoDetectPill', { defaultValue: 'Auto-Probe' })}</span>
+                <span>{isZh ? '自动识别' : 'Auto-detect'}</span>
               </button>
 
               {detection.candidates.map((candidate) => {
@@ -412,9 +421,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                 htmlFor="byok-custom-base-url"
                 className="block text-xs text-muted-foreground"
               >
-                {t('settings:byok.baseUrlLabel', {
-                  defaultValue: 'Custom Base URL (Optional)',
-                })}
+                {isZh ? '自定义服务地址（可选）' : 'Custom server address (optional)'}
               </label>
               <Input
                 {...TECHNICAL_INPUT_PROPS}
@@ -423,9 +430,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                 value={customBaseUrl}
                 disabled={isBusy}
                 onChange={(event) => setCustomBaseUrl(event.target.value)}
-                placeholder={t('settings:byok.baseUrlPlaceholder', {
-                  defaultValue: 'https://api.example.com/v1',
-                })}
+                placeholder="https://api.example.com/v1"
                 className="font-mono text-xs"
               />
             </div>
@@ -486,7 +491,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
         </Alert>
       )}
 
-      {/* Completed Full RAG + 8 Slots Summary */}
+      {/* Completed Full Study Features Summary */}
       {state === 'completed' && summary && (
         <div data-testid="byok-completed-summary" className="space-y-3 pt-1">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -499,9 +504,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                 variant="color"
               />
               <span className="text-xs font-medium text-foreground">
-                {t('settings:byok.result.fullReadyTitle', {
-                  defaultValue: 'Models and Vector Index Configured',
-                })}
+                {isZh ? 'AI 学习助手已就绪' : 'Your AI study assistant is ready'}
               </span>
             </div>
 
@@ -512,36 +515,25 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                 className="gap-1.5 border border-border/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-normal"
               >
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-                <span className="font-mono tabular-nums">{summary.dimension}</span>
-                <span>
-                  {t('settings:byok.vectorReadyBadge', {
-                    dimension: summary.dimension,
-                    defaultValue: `Vector Index Ready · ${summary.dimension} dim`,
-                  })}
-                </span>
+                {summary.dimension !== null && (
+                  <span className="font-mono tabular-nums">{summary.dimension}</span>
+                )}
+                <span>{isZh ? '资料智能搜索已就绪' : 'Smart search ready'}</span>
               </Badge>
-              <span className="rounded border border-border/35 px-1.5 py-0.5 text-[11px] font-mono tabular-nums text-muted-foreground">
-                {summary.latencyMs} ms
-              </span>
             </div>
           </div>
 
-          <p className="text-xs text-muted-foreground leading-relaxed font-mono tabular-nums">
-            {t('settings:byok.result.fullReadySummary', {
-              modelCount: summary.enabledModelCount,
-              slotCount: summary.assignedSlotCount,
-              dimension: summary.dimension,
-              defaultValue: `Enabled ${summary.enabledModelCount} core models, populated ${summary.assignedSlotCount} slots, and bound ${summary.dimension}-dim vector index.`,
-            })}
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            {isZh
+              ? `已启用 ${summary.enabledModelCount} 个模型，完成 ${summary.assignedSlotCount} 项学习功能配置，并开启资料智能搜索。`
+              : `Enabled ${summary.enabledModelCount} models across ${summary.assignedSlotCount} study features, with smart material search ready.`}
           </p>
 
           {summary.keptExistingDefaultDimension !== null && (
-            <p className="text-xs text-muted-foreground font-mono tabular-nums">
-              {t('settings:byok.vectorPreservedHint', {
-                existingDimension: summary.keptExistingDefaultDimension,
-                dimension: summary.dimension,
-                defaultValue: `Kept existing default vector index (${summary.keptExistingDefaultDimension} dim) and bound the new model to ${summary.dimension} dim.`,
-              })}
+            <p className="text-xs text-muted-foreground">
+              {isZh
+                ? '已保留你现有的资料搜索配置，并关联了新的搜索模型。'
+                : 'Kept your existing material search setup and linked the new search model.'}
             </p>
           )}
         </div>
@@ -558,26 +550,20 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
               <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
               <div className="min-w-0 space-y-1">
                 <AlertTitle className="text-xs font-medium text-foreground">
-                  {t('settings:byok.result.chatOnlyTitle', {
-                    defaultValue: 'Chat & Study Models Ready (No Embedding Model Found)',
-                  })}
+                  {isZh ? 'AI 对话与学习功能已就绪' : 'AI chat & study features are ready'}
                 </AlertTitle>
                 <AlertDescription className="text-xs text-muted-foreground leading-relaxed">
-                  {t('settings:byok.result.chatOnlyDescription', {
-                    slotCount: summary.assignedSlotCount,
-                    defaultValue: `Populated ${summary.assignedSlotCount} chat and specialist slots. This provider has no Embeddings endpoint, so Library RAG will run in keyword FTS mode until an embedding key is added.`,
-                  })}
+                  {isZh
+                    ? `已为你配置 ${summary.assignedSlotCount} 项对话与学习功能。当前服务商暂未提供语义搜索模型，资料库将先使用关键词搜索；你随时可以在设置中补充支持语义搜索的服务。`
+                    : `Set up ${summary.assignedSlotCount} chat and study features. This provider does not offer semantic search yet, so your library will use keyword search for now—you can add one anytime in Settings.`}
                 </AlertDescription>
               </div>
             </div>
-            <span className="shrink-0 rounded border border-border/35 px-1.5 py-0.5 text-[11px] font-mono tabular-nums text-muted-foreground">
-              {summary.latencyMs} ms
-            </span>
           </div>
         </Alert>
       )}
 
-      {/* Compact 2-Column 8-Slot Assignment Grid */}
+      {/* Compact 2-Column Study Feature Assignment Grid */}
       {isFinished && summary && (
         <div
           data-testid="byok-slots-grid"
@@ -599,16 +585,14 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                   {slot.slotNumber}.
                 </span>
                 <span className="truncate text-foreground/85">
-                  {t(`settings:byok.roles.${slot.roleId}`, {
-                    defaultValue: slot.roleId,
-                  })}
+                  {isZh ? LEARNER_ROLE_LABELS[slot.roleId].zh : LEARNER_ROLE_LABELS[slot.roleId].en}
                 </span>
               </div>
               <span className="max-w-[46%] truncate font-mono tabular-nums text-[11px] text-muted-foreground">
                 {slot.modelLabel ??
                   (slot.preservedExisting && slot.configId
-                    ? t('settings:config_status.configured', { defaultValue: 'Configured' })
-                    : t('settings:byok.roleUnassigned', { defaultValue: 'Unassigned' }))}
+                    ? (isZh ? '已配置' : 'Configured')
+                    : (isZh ? '暂未启用' : 'Optional'))}
               </span>
             </div>
           ))}
@@ -626,14 +610,14 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
           >
             <ArrowCounterClockwise size={14} />
             <span>
-              {t('settings:byok.resetAction', { defaultValue: 'Configure Another Key' })}
+              {isZh ? '换一个密钥' : 'Use Another Key'}
             </span>
           </DsButton>
 
           <div className="flex items-center gap-2">
             {mode === 'onboarding' && onOpenFullSettings && (
               <DsButton variant="ghost" size="sm" onClick={onOpenFullSettings}>
-                {t('settings:byok.fullSettingsLink', { defaultValue: 'Open Full Settings' })}
+                {isZh ? '前往完整模型设置' : 'Open AI Settings'}
               </DsButton>
             )}
             {mode === 'onboarding' && onCompleted && (
@@ -647,7 +631,7 @@ export const QuickByokProvisionerCard: React.FC<QuickByokProvisionerCardProps> =
                   '[@media(pointer:coarse)]:!min-h-11',
                 )}
               >
-                {t('settings:byok.result.enterAppCta', { defaultValue: 'Start Learning' })}
+                {isZh ? '开始学习' : 'Start Learning'}
               </button>
             )}
           </div>

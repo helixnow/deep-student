@@ -143,12 +143,18 @@ export interface WorkbenchSidebarLayoutProps {
   onDrawerOpenChange?: (open: boolean) => void;
   /** Wide/medium mode can fully collapse its persistent sidebar. */
   sidebarCollapsed?: boolean;
+  /**
+   * 外部宿主（如窗口标题栏「切换边栏」按钮）已提供窄窗抽屉开关时，
+   * 隐藏内置的紧凑顶条与抽屉把手，避免窄屏下重复控件或占用额外高度。
+   */
+  hideDrawerHandle?: boolean;
 }
 
 /**
  * 宽窗（wide）：侧栏 272px 并排（--wb-sidebar-width，对话标准）；
  * 中窗（medium）：侧栏收窄到 240px；
- * 窄窗（compact）：侧栏离场，改为左缘把手 + 玻璃抽屉。
+ * 窄窗（compact）：侧栏离场，改为文档流紧凑导航条（非悬浮遮挡正文）+ 玻璃抽屉；
+ * 若窗口标题栏已提供「切换边栏」按钮（hideDrawerHandle），则不重复渲染紧凑导航条。
  *
  * 抽屉面板**始终挂载**（visibility 隐藏）：lazy 侧栏随首屏一起加载，
  * 打开抽屉绝不触发 Suspense 回退。
@@ -161,6 +167,7 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
   drawerOpen: controlledDrawerOpen,
   onDrawerOpenChange,
   sidebarCollapsed = false,
+  hideDrawerHandle = false,
 }) => {
   const { t } = useTranslation('workbench');
   const [internalDrawerOpen, setInternalDrawerOpen] = useState(false);
@@ -171,7 +178,9 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
   }, [onDrawerOpenChange]);
   const drawerRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
   const compact = sizeClass === 'compact';
+  const showDrawerHandle = compact && !hideDrawerHandle;
   const wasCompactRef = useRef(compact);
   // 焦点陷阱（aria-modal 契约缺口修补）：抽屉开着时 Tab 不得穿透到遮罩后内容。
   // 初始聚焦 / 关闭归还由下方既有 effect 负责，这里只补 Tab 循环。
@@ -190,17 +199,24 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
     wasCompactRef.current = compact;
   }, [compact, setDrawerOpen]);
 
-  // 焦点管理：开抽屉焦点入面板（aria-modal 对话框契约），关抽屉还给把手
+  // 焦点管理：开抽屉焦点入面板（aria-modal 对话框契约），关抽屉还给把手或外部触发按钮
   useEffect(() => {
     if (compact && drawerOpen) {
       const drawer = drawerRef.current;
       const handle = handleRef.current;
+      const previousActive = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+      previousFocusRef.current = previousActive;
       drawer?.focus();
       return () => {
         // inert 可能已让焦点退回 body；用户主动点到别处时不抢焦点。
         const active = document.activeElement;
-        if (handle?.isConnected && (active === document.body || (active && drawer?.contains(active)))) {
-          handle.focus({ preventScroll: true });
+        const restoreTarget = handle?.isConnected
+          ? handle
+          : (previousFocusRef.current?.isConnected ? previousFocusRef.current : null);
+        if (restoreTarget && (active === document.body || (active && drawer?.contains(active)))) {
+          restoreTarget.focus({ preventScroll: true });
         }
       };
     }
@@ -247,6 +263,7 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
     <div
       className="wb-sys-split"
       data-wb-sys-drawer-mode={compact ? 'true' : 'false'}
+      data-wb-sys-drawer-bar={showDrawerHandle ? 'true' : 'false'}
       data-wb-sys-sidebar-collapsed={!compact && sidebarCollapsed ? 'true' : 'false'}
     >
       {/* 并排侧栏（compact 档由 CSS 离场） */}
@@ -255,11 +272,9 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
         {!compact && sidebar}
       </div>
 
-      <div className="wb-sys-content">{children}</div>
-
-      {compact && (
-        <>
-          {/* 左缘玻璃把手：窄窗唯一的导航入口 */}
+      {/* 窄窗文档流顶条：替代原 left:0/top:50% 浮动把手，彻底避免 360px 覆盖正文 */}
+      {showDrawerHandle && (
+        <div className="wb-sys-compact-bar" data-wb-sys-compact-bar>
           <DsButton
             ref={handleRef}
             variant="ghost"
@@ -272,9 +287,16 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
             title={openLabel}
             data-wb-sys-drawer-handle
           >
-            <SidebarSimple size={14} weight="bold" aria-hidden />
+            <SidebarSimple size={16} weight="regular" aria-hidden />
           </DsButton>
+          <span className="wb-sys-compact-bar-label">{navLabel}</span>
+        </div>
+      )}
 
+      <div className="wb-sys-content">{children}</div>
+
+      {compact && (
+        <>
           {/* 遮罩 */}
           <div
             className="wb-sys-scrim"

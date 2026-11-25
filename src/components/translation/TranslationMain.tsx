@@ -75,6 +75,8 @@ interface TranslationMainProps {
   canRestorePrevious?: boolean;
   onRestorePrevious?: () => void;
   isOutdated?: boolean;
+  onSaveAsNewVersion?: () => void;
+  onKeepCurrentTranslation?: () => void;
 }
 
 type LayoutMode = 'split' | 'stacked';
@@ -152,6 +154,8 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   canRestorePrevious,
   onRestorePrevious,
   isOutdated,
+  onSaveAsNewVersion,
+  onKeepCurrentTranslation,
 }) => {
   const { t } = useTranslation(['translation', 'common']);
   const { isSmallScreen } = useBreakpoint();
@@ -512,6 +516,8 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
       onRestorePrevious={onRestorePrevious}
       isOutdated={isOutdated}
       onRetranslate={onTranslate}
+      onSaveAsNewVersion={onSaveAsNewVersion}
+      onKeepCurrentTranslation={onKeepCurrentTranslation}
     />
   );
 

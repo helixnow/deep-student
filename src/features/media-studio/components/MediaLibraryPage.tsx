@@ -89,6 +89,7 @@ import { mediaFileAccept } from '../importMedia';
 import type { MediaLibraryState } from '../useMediaLibrary';
 import type { MediaImportController } from '../useMediaImport';
 import { MediaLibraryRow, type MediaRowAction } from './MediaLibraryRow';
+import './MediaLibraryPage.css';
 
 /** 媒体文件大：拖放上限与导入上限（4 GB，见设计契约 §4）一致 */
 const MAX_MEDIA_FILE_SIZE = 4 * 1024 * 1024 * 1024;
@@ -540,7 +541,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   );
 
   const headerRow = (inTitlebar: boolean) => (
-    <div className={cn('flex min-w-0 items-center justify-between gap-3', inTitlebar && 'pointer-events-auto h-full flex-1')}>
+    <div className={cn('flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1.5', inTitlebar && 'pointer-events-auto h-full flex-1 flex-nowrap')}>
       <div className="flex min-w-0 items-center gap-2">
         <span className={cn(inTitlebar ? TITLEBAR_TITLE_CLASS : 'truncate text-base font-semibold text-foreground', 'shrink-0')}>
           {t('mediaStudio:title')}
@@ -555,7 +556,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
         ) : null}
       </div>
       {!isSmallScreen ? (
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 flex-wrap items-center gap-1.5">
           {items.length > 0 ? selectToggle(inTitlebar ? 'titlebar' : 'page') : null}
           {/* 库为空时空态里已经有这两个按钮（更醒目），标题行不再重复；加载失败时空态不出现，仍放在这里 */}
           {items.length > 0 || error ? (
@@ -865,12 +866,21 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
         customOverlayText={t('mediaStudio:import.dropHint')}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <div className={cn('study-shell-toolbar study-shell-toolbar--seamless shrink-0 space-y-3 px-5 pt-4 sm:px-8 lg:px-10', isSmallScreen && 'px-3 pt-3')}>
+        <div
+          data-media-library-toolbar=""
+          className={cn('study-shell-toolbar study-shell-toolbar--seamless shrink-0 space-y-3 px-5 pt-4 sm:px-8 lg:px-10', isSmallScreen && 'px-3 pt-3')}
+        >
           {!titlebarTarget && !isSmallScreen ? headerRow(false) : null}
           {!showEmpty && <p className="text-xs leading-relaxed text-muted-foreground">{t('mediaStudio:tagline')}</p>}
           {hasItems ? (
-            <div className={cn('flex items-center gap-3', isSmallScreen && 'flex-col items-stretch gap-2')}>
-              <div className={cn('flex min-w-0 flex-1 items-center gap-2', !isSmallScreen && 'max-w-xs')}>
+            <div
+              data-media-library-controls=""
+              className={cn('flex flex-wrap items-center gap-2.5 sm:gap-3', isSmallScreen && 'flex-col flex-nowrap items-stretch gap-2')}
+            >
+              <div
+                data-media-library-search-wrap=""
+                className={cn('flex min-w-0 flex-1 items-center gap-2', !isSmallScreen && 'min-w-[160px] max-w-xs')}
+              >
                 <div className="relative min-w-0 flex-1">
                   <MagnifyingGlass size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" aria-hidden="true" />
                   <Input
@@ -895,21 +905,21 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
                 options={filterOptions}
                 size="compact"
                 className={cn(
-                  '!flex-nowrap overflow-x-auto scrollbar-none [&_.study-shell-segmented-thumb]:border-transparent',
+                  '!flex-nowrap max-w-full overflow-x-auto scrollbar-none [&_.study-shell-segmented-thumb]:border-transparent',
                   isSmallScreen && '-mx-1 !w-auto px-1',
                 )}
                 itemClassName={isSmallScreen
                   ? '!h-auto !px-3 !py-2 text-sm font-medium whitespace-nowrap'
                   : '!h-auto !px-2.5 !py-1 text-xs font-medium whitespace-nowrap'}
               />
-              {isSmallScreen ? null : <div className="ml-auto">{viewToggle}</div>}
+              {isSmallScreen ? null : <div data-media-library-view-wrap="" className="ml-auto shrink-0">{viewToggle}</div>}
             </div>
           ) : null}
           {selectMode && !isSmallScreen && hasItems ? (
             <div
               role="toolbar"
               aria-label={t('mediaStudio:select.barLabel')}
-              className="study-shell-secondary-card flex items-center gap-2 px-3 py-1.5"
+              className="study-shell-secondary-card flex flex-wrap items-center gap-2 px-3 py-1.5"
               data-media-select-bar=""
             >
               {selectCount}
@@ -928,11 +938,14 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
           className="min-h-0 flex-1"
           viewportClassName="pb-[calc(1rem+var(--mobile-safe-area-bottom,0px)+var(--wb-mobile-dock-clearance,var(--mobile-dock-height,var(--wb-dock-clearance,0px))))] sm:pb-6"
         >
-          <div className={cn(
-            'px-5 pt-4 sm:px-8 lg:px-10',
-            isSmallScreen && 'px-3 pt-3',
-            showEmpty && 'flex min-h-full flex-col',
-          )}>
+          <div
+            data-media-library-content=""
+            className={cn(
+              'px-5 pt-4 sm:px-8 lg:px-10',
+              isSmallScreen && 'px-3 pt-3',
+              showEmpty && 'flex min-h-full flex-col',
+            )}
+          >
             {importRow}
             {error && !hasItems ? (
               <div className="study-shell-empty-state" role="alert">

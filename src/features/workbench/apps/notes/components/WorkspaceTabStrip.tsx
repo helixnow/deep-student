@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { NoteGlyph } from '@/features/notes/components/NoteGlyph';
-import { disambiguateTabTitles } from '@/features/notes/tabTitleDisambiguation';
+import { disambiguateTabTitles } from '@/features/notes';
 import type {
   ResourceType,
   SaveState,

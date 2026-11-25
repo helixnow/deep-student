@@ -9,8 +9,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { search as dstuSearch } from '@/dstu/api';
 import type { DstuNode } from '@/dstu/types';
+import type { AnkiLibraryCard, AnkiLibraryListResponse } from '@/types';
 import type { Command } from '@/command-palette/registry/types';
-import { sessionManager } from '@/features/chat';
 import type { AppDefinition } from '../core/types';
 import { workbenchBus } from '../core/workbenchBus';
 import { resourceTypeToAppTypeId } from '../apps/content/typeMap';
@@ -20,6 +20,7 @@ export const GLOBAL_SEARCH_DEBOUNCE_MS = 250;
 export const CONTENT_SEARCH_MIN_CHARS = 2;
 export const CHAT_SEARCH_MIN_CHARS = 1;
 export const DSTU_RESULT_LIMIT = 6;
+export const FLASHCARD_RESULT_LIMIT = 5;
 export const CHAT_RESULT_LIMIT = 5;
 
 export type GlobalSearchKind = 'app' | 'command' | 'dstu' | 'chat';
@@ -60,6 +61,16 @@ export interface SessionSearchItem {
   sessionId: string;
   title: string;
   snippet: string;
+  messageId?: string;
+}
+
+export interface FlashcardSearchItem {
+  cardId: string;
+  front: string;
+  back: string;
+  deck?: string;
+  tags: string[];
+  snippet: string;
 }
 
 /** FTS snippet 可能包含 <b> / <mark> 高亮标记与 HTML 实体，纯文本展示时还原并剥离 */
@@ -72,6 +83,51 @@ export function stripSnippetMarkers(snippet: string): string {
     .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/** 将卡片字段里的 Cloze 标记与 HTML 标签清理为可读摘要文本 */
+function stripCardMarkup(raw: string): string {
+  return raw
+    .replace(/\{\{c\d+::([^:}]+)(?:::[^}]*)?\}\}/gi, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function readCardDeck(card: AnkiLibraryCard & { deck?: unknown; deckName?: unknown }): string | undefined {
+  const candidates = [
+    card.deckName,
+    card.deck,
+    card.extra_fields?._deck,
+    card.fields?._deck,
+  ];
+  for (const raw of candidates) {
+    if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  }
+  return undefined;
+}
+
+/** 格式化 DSTU 搜索结果副标题：正文 snippet 存在时优先展示命中片段并附带路径 */
+export function formatDstuSearchSubtitle(node: DstuNode): string {
+  const rawSnippet = typeof node.metadata?.snippet === 'string'
+    ? stripSnippetMarkers(node.metadata.snippet)
+    : '';
+  if (!rawSnippet) return node.path;
+  return node.path ? `${rawSnippet} · ${node.path}` : rawSnippet;
+}
+
+/** 格式化闪卡搜索结果副标题：牌组 + 背面摘要 / 标签 */
+export function formatFlashcardSearchSubtitle(item: FlashcardSearchItem): string {
+  const parts: string[] = [];
+  if (item.deck) parts.push(item.deck);
+  if (item.snippet) parts.push(item.snippet);
+  else if (item.tags.length > 0) parts.push(item.tags.slice(0, 3).map((tag) => `#${tag}`).join(' '));
+  return parts.join(' · ');
 }
 
 function scoreByRank(index: number): number {
@@ -102,6 +158,63 @@ export async function fetchDstuSearchResults(
   if (signal.aborted) return [];
   if (!settled.ok) return [];
   return settled.value.filter((node) => node.type !== 'folder').slice(0, limit);
+}
+
+/**
+ * 全库闪卡深层内容检索（正面 / 背面 / 挖空正文 / 标签）。
+ * 直接经 Tauri `list_anki_library_cards` 查询，不静态引入 flashcards 模块。
+ */
+export async function fetchFlashcardSearchResults(
+  query: string,
+  signal: AbortSignal,
+  limit = FLASHCARD_RESULT_LIMIT,
+): Promise<FlashcardSearchItem[]> {
+  if (signal.aborted) return [];
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  try {
+    const response = await invoke<AnkiLibraryListResponse | null>('list_anki_library_cards', {
+      request: {
+        search: trimmed,
+        page: 1,
+        pageSize: limit,
+        includeDecks: false,
+      },
+    });
+    if (signal.aborted || !response || typeof response !== 'object' || !Array.isArray(response.items)) {
+      return [];
+    }
+    const items: FlashcardSearchItem[] = [];
+    const seen = new Set<string>();
+    for (const raw of response.items) {
+      if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string' || !raw.id || seen.has(raw.id)) {
+        continue;
+      }
+      seen.add(raw.id);
+      const card = raw as AnkiLibraryCard & { deck?: unknown; deckName?: unknown };
+      const rawFront = card.front || card.fields?.Front || card.text || '';
+      const rawBack = card.back || card.fields?.Back || '';
+      const front = stripCardMarkup(rawFront) || card.id;
+      const back = stripCardMarkup(rawBack);
+      const deck = readCardDeck(card);
+      const tags = Array.isArray(card.tags)
+        ? card.tags.filter((tag): tag is string => typeof tag === 'string' && tag.trim().length > 0)
+        : [];
+      const snippet = back ? back.slice(0, 140) : tags.slice(0, 3).map((tag) => `#${tag}`).join(' ');
+      items.push({
+        cardId: card.id,
+        front: front.slice(0, 140),
+        back,
+        ...(deck ? { deck } : {}),
+        tags,
+        snippet,
+      });
+      if (items.length >= limit) break;
+    }
+    return items;
+  } catch {
+    return [];
+  }
 }
 
 interface ListedChatSessionRow {
@@ -180,6 +293,7 @@ export async function fetchChatSearchResults(
       sessionId: item.sessionId,
       title: item.sessionTitle || '',
       snippet: stripSnippetMarkers(item.snippet),
+      ...(item.messageId ? { messageId: item.messageId } : {}),
     });
     if (sessionResults.length >= limit) break;
   }
@@ -231,22 +345,27 @@ export async function fetchChatSearchResults(
     if (ungroupedSettled.status === 'fulfilled') pushRows(ungroupedSettled.value);
     if (groupedSettled.status === 'fulfilled') pushRows(groupedSettled.value);
 
-    // 内存态兜底：若当前窗口已创建但列表查询为空，从 sessionManager 读取活动会话
-    try {
-      const currentId = sessionManager?.getCurrentSessionId?.();
-      if (currentId && !seenListed.has(currentId)) {
-        seenListed.add(currentId);
-        listedRows.push({ id: currentId, title: null, description: null });
+    const matchesUntitled = matchesAliasList(queryLower, UNTITLED_SESSION_ALIASES);
+    const matchesGeneric = matchesAliasList(queryLower, GENERIC_CHAT_SESSION_ALIASES);
+
+    // 内存态兜底：仅当列表查询为空且查询命中未命名/通用会话别名时，按需读取 sessionManager 活动会话（不进入首屏静态闭包）
+    if (listedRows.length === 0 && (matchesUntitled || matchesGeneric)) {
+      try {
+        const { sessionManager } = await import('@/features/chat/core/session');
+        if (signal.aborted) return [];
+        const currentId = sessionManager?.getCurrentSessionId?.();
+        if (currentId && !seenListed.has(currentId)) {
+          seenListed.add(currentId);
+          listedRows.push({ id: currentId, title: null, description: null });
+        }
+      } catch {
+        // ignore sessionManager read errors in isolated environments
       }
-    } catch {
-      // ignore sessionManager read errors in isolated environments
     }
 
     listedRows.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
 
     const matchedCandidates: Array<{ rank: number; item: SessionSearchItem }> = [];
-    const matchesUntitled = matchesAliasList(queryLower, UNTITLED_SESSION_ALIASES);
-    const matchesGeneric = matchesAliasList(queryLower, GENERIC_CHAT_SESSION_ALIASES);
 
     for (const row of listedRows) {
       if (seen.has(row.id)) continue;
@@ -281,14 +400,114 @@ export async function fetchChatSearchResults(
   return sessionResults;
 }
 
-/** Workbench 下打开学习资源（与 command-palette openFileFromPalette 对齐） */
+/** Workbench 下打开学习资源并聚焦目标内容（与 command-palette openFileFromPalette 对齐） */
 export function openDstuInWorkbench(node: DstuNode): void {
+  const targetId = (node.id || node.sourceId || '').trim();
+  if (!targetId) return;
   const typeId =
     node.type === 'note' || node.type === 'mindmap'
       ? node.type
       : resourceTypeToAppTypeId(node.type);
   if (!typeId) return;
-  workbenchBus.launch({ typeId, instanceKey: node.id, reason: 'command' });
+  const windowId = workbenchBus.launch({ typeId, instanceKey: targetId, reason: 'command' });
+
+  if (node.type === 'note') {
+    const heading = typeof node.metadata?.heading === 'string'
+      ? node.metadata.heading.trim()
+      : '';
+    if (heading) {
+      void workbenchBus.openNoteAnchor({
+        noteId: targetId,
+        heading,
+        fallbackLaunch: false,
+      });
+    }
+    // 懒加载 noteDriver 让目标笔记编辑器获焦（不引入静态闭包依赖）
+    void import('../agent/drivers/noteDriver')
+      .then(({ getNoteEditor, subscribeNoteEditorReady }) => {
+        const focusEditor = (api: { focus?: () => void } | undefined) => {
+          api?.focus?.();
+        };
+        const existing = getNoteEditor(targetId, windowId ?? undefined);
+        if (existing) {
+          focusEditor(existing as { focus?: () => void });
+          return;
+        }
+        const cancel = subscribeNoteEditorReady(
+          targetId,
+          (api) => {
+            cancel();
+            focusEditor(api as { focus?: () => void });
+          },
+          windowId ?? undefined,
+        );
+        setTimeout(cancel, 4000);
+      })
+      .catch(() => undefined);
+  }
+}
+
+/**
+ * Workbench 下打开命中的闪卡：直接定位到卡片库的对应卡片、牌组与搜索词，
+ * 而不是落在空白的「今日复习」首页。所有 flashcards store 均走动态 import，
+ * 保持首屏静态闭包零新增。
+ */
+export async function openFlashcardInWorkbench(
+  item: Pick<FlashcardSearchItem, 'cardId' | 'front' | 'deck'>,
+  searchQuery?: string,
+): Promise<string | null> {
+  const focusQuery = (searchQuery?.trim() || item.front.trim()).slice(0, 120);
+  const targetDeck = item.deck?.trim() || null;
+
+  try {
+    const {
+      useFsrsReviewStore,
+      useFlashcardsLibraryStore,
+      requestLibraryCardFocus,
+    } = await import('@/features/flashcards');
+
+    requestLibraryCardFocus({
+      cardId: item.cardId,
+      query: focusQuery,
+      deckFilter: targetDeck,
+    });
+    useFlashcardsLibraryStore.setState({
+      statusFilter: 'all',
+      deckFilter: targetDeck,
+      sortKey: 'default',
+      sortDir: 'asc',
+      searchInput: focusQuery,
+      query: focusQuery,
+      page: 1,
+      actionError: null,
+    });
+    useFsrsReviewStore.getState().setScreen('library');
+
+    const windowId = workbenchBus.launch({
+      typeId: 'flashcards',
+      payload: {
+        screen: 'library',
+        cardId: item.cardId,
+        query: focusQuery,
+        ...(targetDeck ? { deck: targetDeck } : {}),
+      },
+      reason: 'command',
+    });
+
+    void useFlashcardsLibraryStore.getState().load(focusQuery, 1);
+    return windowId;
+  } catch {
+    return workbenchBus.launch({
+      typeId: 'flashcards',
+      payload: {
+        screen: 'library',
+        cardId: item.cardId,
+        query: focusQuery,
+        ...(targetDeck ? { deck: targetDeck } : {}),
+      },
+      reason: 'command',
+    });
+  }
 }
 
 /** Workbench 下打开聊天会话并定位 */
@@ -308,6 +527,7 @@ export interface WorkbenchSearchHost {
   openCommand: (id: string) => void | Promise<void>;
   openDstu: (node: DstuNode) => void | Promise<void>;
   openChat: (sessionId: string) => void | Promise<void>;
+  openFlashcard?: (card: FlashcardSearchItem, query: string) => void | Promise<void>;
   untitledSessionTitle?: string;
 }
 
@@ -379,16 +599,49 @@ export function createDstuProvider(host: WorkbenchSearchHost): GlobalSearchProvi
     debounceMs: GLOBAL_SEARCH_DEBOUNCE_MS,
     minChars: CONTENT_SEARCH_MIN_CHARS,
     search: async (query, signal) => {
-      const nodes = await fetchDstuSearchResults(query.trim(), signal);
+      const trimmed = query.trim();
+      const [dstuSettled, flashcardSettled] = await Promise.allSettled([
+        fetchDstuSearchResults(trimmed, signal),
+        fetchFlashcardSearchResults(trimmed, signal),
+      ]);
       if (signal.aborted) return [];
-      return nodes.map((node, index) => ({
+      const nodes = dstuSettled.status === 'fulfilled' ? dstuSettled.value : [];
+      const cards = flashcardSettled.status === 'fulfilled' ? flashcardSettled.value : [];
+
+      const dstuItems: GlobalSearchItem[] = nodes.map((node, index) => ({
         id: `dstu:${node.id}`,
         kind: 'dstu' as const,
         title: node.name,
-        subtitle: node.path,
+        subtitle: formatDstuSearchSubtitle(node),
         score: scoreByRank(index) * 0.85,
         open: () => host.openDstu(node),
       }));
+
+      const flashcardItems: GlobalSearchItem[] = cards.map((card, index) => ({
+        id: `dstu:flashcard:${card.cardId}`,
+        kind: 'dstu' as const,
+        title: card.front,
+        subtitle: formatFlashcardSearchSubtitle(card),
+        score: Math.max(
+          scoreByRank(index) * 0.82,
+          matchScore(`${card.front} ${card.back}`, trimmed) * 0.84,
+        ),
+        open: async () => {
+          if (host.openFlashcard) {
+            await host.openFlashcard(card, trimmed);
+            return;
+          }
+          try {
+            const { closeAppsPanel } = await import('../components/appsPanelStore');
+            closeAppsPanel();
+          } catch {
+            // ignore outside workbench UI
+          }
+          await openFlashcardInWorkbench(card, trimmed);
+        },
+      }));
+
+      return [...dstuItems, ...flashcardItems];
     },
   };
 }
@@ -455,7 +708,7 @@ export function createDstuProviderWithNodeCapture(
         id: `dstu:${node.id}`,
         kind: 'dstu' as const,
         title: node.name,
-        subtitle: node.path,
+        subtitle: formatDstuSearchSubtitle(node),
         score: scoreByRank(index) * 0.85,
         open: () => host.openDstu(node),
       }));

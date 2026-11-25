@@ -272,30 +272,37 @@ export class ResourceRepo implements ResourceRepository {
     });
   }
 
-  cleanupUnreferencedRetrievals(conn: SqlExecutor, gracePeriodMs: number): number {
-    return databaseResult(() => {
-      const cutoff = Date.now() - gracePeriodMs;
+  private purgeResourcesByIds(conn: SqlExecutor, ids: readonly string[]): number {
+    if (ids.length === 0) return 0;
+    let deleted = 0;
+    for (let start = 0; start < ids.length; start += 500) {
+      const chunk = ids.slice(start, start + 500);
+      const placeholders = chunk.map((_, idx) => `?${idx + 1}`).join(',');
       conn.run(`INSERT INTO __lance_orphan_queue (lance_row_id, resource_id)
          SELECT s.lance_row_id, u.resource_id
          FROM vfs_index_segments s
          JOIN vfs_index_units u ON s.unit_id = u.id
-         WHERE u.resource_id IN (
-             SELECT id FROM resources
-             WHERE type = 'retrieval' AND ref_count = 0 AND updated_at < ?1
-         )
+         WHERE u.resource_id IN (${placeholders})
          ON CONFLICT(lance_row_id) DO UPDATE SET
              resource_id = excluded.resource_id,
              enqueued_at = excluded.enqueued_at,
              next_retry_at = 0,
-             last_error = NULL`, [cutoff]);
-      conn.run(`DELETE FROM vfs_index_units
-         WHERE resource_id IN (
-             SELECT id FROM resources
-             WHERE type = 'retrieval' AND ref_count = 0 AND updated_at < ?1
-         )`, [cutoff]);
-      const deleted = conn.run(
-        "DELETE FROM resources WHERE type = 'retrieval' AND ref_count = 0 AND updated_at < ?1",
-        [cutoff]).changes;
+             last_error = NULL`, chunk);
+      conn.run(`DELETE FROM vfs_index_units WHERE resource_id IN (${placeholders})`, chunk);
+      deleted += conn.run(`DELETE FROM resources WHERE id IN (${placeholders})`, chunk).changes;
+    }
+    return deleted;
+  }
+
+  cleanupUnreferencedRetrievals(conn: SqlExecutor, gracePeriodMs: number): number {
+    return databaseResult(() => {
+      const cutoff = Date.now() - gracePeriodMs;
+      const ids = conn.all<{ id: string }>(
+        "SELECT id FROM resources WHERE type = 'retrieval' AND ref_count = 0 AND updated_at < ?1",
+        [cutoff],
+      ).map((row) => row.id);
+      if (ids.length === 0) return 0;
+      const deleted = this.purgeResourcesByIds(conn, ids);
       if (deleted > 0) logInfo(`[VFS::ResourceRepo] Swept ${deleted} unreferenced retrieval resources`);
       return deleted;
     });
@@ -304,29 +311,22 @@ export class ResourceRepo implements ResourceRepository {
   cleanupOrphanNoteMindmapResources(conn: SqlExecutor, gracePeriodMs: number): number {
     return databaseResult(() => {
       const cutoff = Date.now() - gracePeriodMs;
-      const noteFilter = `type = 'note'
-        AND updated_at < ?1
-        AND NOT EXISTS (SELECT 1 FROM notes n WHERE n.resource_id = resources.id)`;
-      const mindmapFilter = `type = 'mindmap'
-        AND updated_at < ?1
-        AND NOT EXISTS (SELECT 1 FROM mindmaps m WHERE m.resource_id = resources.id)
-        AND NOT EXISTS (SELECT 1 FROM mindmap_versions mv WHERE mv.resource_id = resources.id)`;
-      let total = 0;
-      for (const filter of [noteFilter, mindmapFilter]) {
-        conn.run(`INSERT INTO __lance_orphan_queue (lance_row_id, resource_id)
-           SELECT s.lance_row_id, u.resource_id
-           FROM vfs_index_segments s
-           JOIN vfs_index_units u ON s.unit_id = u.id
-           WHERE u.resource_id IN (SELECT id FROM resources WHERE ${filter})
-           ON CONFLICT(lance_row_id) DO UPDATE SET
-               resource_id = excluded.resource_id,
-               enqueued_at = excluded.enqueued_at,
-               next_retry_at = 0,
-               last_error = NULL`, [cutoff]);
-        conn.run(`DELETE FROM vfs_index_units WHERE resource_id IN (SELECT id FROM resources WHERE ${filter})`,
-          [cutoff]);
-        total += conn.run(`DELETE FROM resources WHERE ${filter}`, [cutoff]).changes;
-      }
+      const noteIds = conn.all<{ id: string }>(
+        `SELECT id FROM resources
+         WHERE type = 'note'
+           AND updated_at < ?1
+           AND NOT EXISTS (SELECT 1 FROM notes n WHERE n.resource_id = resources.id)`,
+        [cutoff],
+      ).map((row) => row.id);
+      const mindmapIds = conn.all<{ id: string }>(
+        `SELECT id FROM resources
+         WHERE type = 'mindmap'
+           AND updated_at < ?1
+           AND NOT EXISTS (SELECT 1 FROM mindmaps m WHERE m.resource_id = resources.id)
+           AND NOT EXISTS (SELECT 1 FROM mindmap_versions mv WHERE mv.resource_id = resources.id)`,
+        [cutoff],
+      ).map((row) => row.id);
+      const total = this.purgeResourcesByIds(conn, noteIds) + this.purgeResourcesByIds(conn, mindmapIds);
       if (total > 0) logInfo(`[VFS::ResourceRepo] Swept ${total} orphan note/mindmap resources`);
       return total;
     });

@@ -17,6 +17,20 @@ import {
   type ReviewEditTemplate,
 } from '../reviewCardEditFields';
 import { hasValidCloze } from '../cloze';
+import {
+  DEFAULT_FSRS_DAY_ROLLOVER_HOUR,
+  formatLocalDateKey,
+  formatLogicalDateKey,
+  msUntilNextDayBoundary,
+  sanitizeRolloverHour,
+} from './localDate';
+
+export {
+  DEFAULT_FSRS_DAY_ROLLOVER_HOUR,
+  formatLocalDateKey,
+  formatLogicalDateKey,
+  msUntilNextDayBoundary,
+} from './localDate';
 
 export type FlashcardsScreen = 'today' | 'library' | 'settings' | 'session';
 
@@ -164,6 +178,12 @@ interface FsrsReviewState {
   dueCards: ReviewCard[];
   /** 后端统计的真实到期总数（可能大于本轮 dueCards.length） */
   dueTotal: number;
+  /** FSRS 逻辑日切小时（0-23，来自调度设置，默认 4 点） */
+  dayRolloverHour: number;
+  /** 最近一次成功加载到期队列时的本地日历日（YYYY-MM-DD） */
+  dueDateKey: string | null;
+  /** 最近一次成功加载到期队列时的 FSRS 逻辑学习日（YYYY-MM-DD） */
+  dueLogicalDayKey: string | null;
   learnAheadMinutes: number;
   /** 单次作答用时上限（毫秒，来自调度设置 maxAnswerSeconds） */
   maxAnswerMs: number;
@@ -223,6 +243,8 @@ interface FsrsReviewState {
   setScreen: (screen: FlashcardsScreen) => void;
   applyLaunchPayload: (payload: unknown) => void;
   loadDue: () => Promise<boolean>;
+  /** 跨本地午夜或 FSRS 日切小时时自动刷新到期队列与计数，避免残留前一日桶。 */
+  refreshIfDayRolledOver: (now?: Date) => Promise<boolean>;
   startDueSession: (startCardId?: string) => void;
   startBatchSession: (cardIds: string[], cards?: ReviewCard[]) => Promise<boolean>;
   /** 将本轮标记「重来」(Again) 的遗忘卡重新组成一轮巩固会话 */
@@ -490,11 +512,16 @@ async function fetchDueFromBackend(): Promise<ReviewCard[]> {
 interface SessionSchedulerConfig {
   learnAheadMinutes: number;
   maxAnswerMs: number;
+  dayRolloverHour: number;
 }
 
 async function fetchSessionConfig(): Promise<SessionSchedulerConfig> {
   // No confirmed setting: wait until learning cards are actually due.
-  const config: SessionSchedulerConfig = { learnAheadMinutes: 0, maxAnswerMs: MAX_ANSWER_DURATION_MS };
+  const config: SessionSchedulerConfig = {
+    learnAheadMinutes: 0,
+    maxAnswerMs: MAX_ANSWER_DURATION_MS,
+    dayRolloverHour: DEFAULT_FSRS_DAY_ROLLOVER_HOUR,
+  };
   try {
     const result = await invoke<Record<string, unknown>>('fsrs_get_scheduler_config');
     const minutes = result?.learnAheadMinutes ?? result?.learn_ahead_minutes;
@@ -504,6 +531,10 @@ async function fetchSessionConfig(): Promise<SessionSchedulerConfig> {
     const seconds = result?.maxAnswerSeconds ?? result?.max_answer_seconds;
     if (typeof seconds === 'number' && Number.isInteger(seconds) && seconds >= 1 && seconds <= 3600) {
       config.maxAnswerMs = seconds * 1000;
+    }
+    const rollover = result?.dayRolloverHour ?? result?.day_rollover_hour;
+    if (typeof rollover === 'number' && Number.isInteger(rollover) && rollover >= 0 && rollover <= 23) {
+      config.dayRolloverHour = rollover;
     }
   } catch { /* Older backends may not expose scheduler configuration. */ }
   return config;
@@ -793,6 +824,9 @@ async function hideCurrentCard(
 export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   screen: 'today',
   sessionMode: null,
+  dayRolloverHour: DEFAULT_FSRS_DAY_ROLLOVER_HOUR,
+  dueDateKey: null,
+  dueLogicalDayKey: null,
   learnAheadMinutes: LEARNING_STEP_REQUEUE_WINDOW_MS / 60_000,
   maxAnswerMs: MAX_ANSWER_DURATION_MS,
   dueCards: [],
@@ -853,8 +887,13 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   },
 
   loadDue: async () => {
-    const previousDueTotal = get().dueTotal;
-    const sessionGeneration = get().sessionGeneration;
+    const fetchStartedAt = new Date();
+    const {
+      dueTotal: previousDueTotal,
+      dueDateKey: previousDueDateKey,
+      dueLogicalDayKey: previousDueLogicalDayKey,
+      sessionGeneration,
+    } = get();
     const dueLoadGeneration = get().dueLoadGeneration + 1;
     const isCurrent = () => get().sessionGeneration === sessionGeneration
       && get().dueLoadGeneration === dueLoadGeneration;
@@ -865,11 +904,18 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         fetchDueTotalFromStats(),
         fetchSessionConfig(),
       ]);
-      // stats 失败时：若本批打满上限，保留上次诚实总数，避免把 50 当成「刚好 50」。
+      // stats 失败时：仅在同一本地/逻辑日内且本批打满上限时保留上次诚实总数，
+      // 跨午夜或跨日切边界后绝不把昨日计数带入新的一天。
       if (!isCurrent()) return false;
+      const rolloverHour = sanitizeRolloverHour(sessionConfig.dayRolloverHour);
+      const loadedDateKey = formatLocalDateKey(fetchStartedAt);
+      const loadedLogicalDayKey = formatLogicalDateKey(fetchStartedAt, rolloverHour);
+      const sameDay = previousDueDateKey === loadedDateKey
+        && previousDueLogicalDayKey === loadedLogicalDayKey;
       let resolvedTotal = dueTotal ?? fromBackend.length;
       if (
-        dueTotal == null
+        sameDay
+        && dueTotal == null
         && fromBackend.length >= 50
         && previousDueTotal > fromBackend.length
       ) {
@@ -879,9 +925,13 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         dueCards: fromBackend,
         learnAheadMinutes: sessionConfig.learnAheadMinutes,
         maxAnswerMs: sessionConfig.maxAnswerMs,
+        dayRolloverHour: rolloverHour,
+        dueDateKey: loadedDateKey,
+        dueLogicalDayKey: loadedLogicalDayKey,
         dueTotal: resolvedTotal,
         loading: false,
       });
+      scheduleFsrsDayRolloverTimer(rolloverHour);
       return true;
     } catch (error) {
       if (!isCurrent()) return false;
@@ -894,6 +944,65 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       });
       return false;
     }
+  },
+
+  refreshIfDayRolledOver: async (now: Date = new Date()) => {
+    const state = get();
+    const rolloverHour = sanitizeRolloverHour(state.dayRolloverHour);
+    const currentDateKey = formatLocalDateKey(now);
+    const currentLogicalDayKey = formatLogicalDateKey(now, rolloverHour);
+    const calendarChanged = state.dueDateKey !== null && state.dueDateKey !== currentDateKey;
+    const logicalChanged =
+      state.dueLogicalDayKey !== null && state.dueLogicalDayKey !== currentLogicalDayKey;
+    if (!calendarChanged && !logicalChanged) return false;
+    if (inFlightDayRolloverRefresh) return inFlightDayRolloverRefresh;
+
+    const task = (async (): Promise<boolean> => {
+      const dueLoadGeneration = get().dueLoadGeneration + 1;
+      set({ dueLoadGeneration });
+      try {
+        const [fromBackend, dueTotal, sessionConfig] = await Promise.all([
+          fetchDueFromBackend(),
+          fetchDueTotalFromStats(),
+          fetchSessionConfig(),
+        ]);
+        if (get().dueLoadGeneration !== dueLoadGeneration) return false;
+        const nextRolloverHour = sanitizeRolloverHour(sessionConfig.dayRolloverHour);
+        const refreshedDateKey = formatLocalDateKey(now);
+        const refreshedLogicalDayKey = formatLogicalDateKey(now, nextRolloverHour);
+        const resolvedTotal = dueTotal ?? fromBackend.length;
+        const live = get();
+        const inSession = live.screen === 'session';
+        const sessionDone = inSession && live.queue.length > 0 && live.queueIndex >= live.queue.length;
+
+        set({
+          dueCards: fromBackend,
+          dueTotal: resolvedTotal,
+          learnAheadMinutes: sessionConfig.learnAheadMinutes,
+          maxAnswerMs: sessionConfig.maxAnswerMs,
+          dayRolloverHour: nextRolloverHour,
+          dueDateKey: refreshedDateKey,
+          dueLogicalDayKey: refreshedLogicalDayKey,
+          ...(inSession
+            ? (sessionDone ? { remainingDueAfterSession: resolvedTotal } : {})
+            : { loading: false, error: null, errorKind: null }),
+        });
+        scheduleFsrsDayRolloverTimer(nextRolloverHour);
+        emitDueRefresh();
+        return true;
+      } catch {
+        // 后台跨午夜刷新失败时保留现有卡片/计数并维持旧 dateKey，等待下次聚焦重试，绝不错误清零
+        scheduleFsrsDayRolloverTimer(rolloverHour);
+        return false;
+      } finally {
+        if (inFlightDayRolloverRefresh === task) {
+          inFlightDayRolloverRefresh = null;
+        }
+      }
+    })();
+
+    inFlightDayRolloverRefresh = task;
+    return task;
   },
 
   startDueSession: (startCardId) => {
@@ -2082,6 +2191,36 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
 
   resetFlip: () => set({ flipped: false, flippedAtMs: null, ratingPreviews: null }),
 }));
+
+let fsrsDayRolloverTimer: ReturnType<typeof setTimeout> | null = null;
+let inFlightDayRolloverRefresh: Promise<boolean> | null = null;
+
+export function stopFsrsDayRolloverTimer(): void {
+  if (fsrsDayRolloverTimer !== null) {
+    clearTimeout(fsrsDayRolloverTimer);
+    fsrsDayRolloverTimer = null;
+  }
+}
+
+function scheduleFsrsDayRolloverTimer(dayRolloverHour: number): void {
+  stopFsrsDayRolloverTimer();
+  const delayMs = msUntilNextDayBoundary(new Date(), dayRolloverHour);
+  fsrsDayRolloverTimer = setTimeout(() => {
+    fsrsDayRolloverTimer = null;
+    void useFsrsReviewStore.getState().refreshIfDayRolledOver();
+  }, delayMs);
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  const handleDayRolloverWake = () => {
+    if (typeof document !== 'undefined' && document.hidden) return;
+    void useFsrsReviewStore.getState().refreshIfDayRolledOver();
+  };
+  window.addEventListener('focus', handleDayRolloverWake);
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('visibilitychange', handleDayRolloverWake);
+  }
+}
 
 function flushPendingExternalRates(): void {
   const state = useFsrsReviewStore.getState();

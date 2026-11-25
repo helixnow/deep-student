@@ -61,6 +61,15 @@ import {
   sortLibraryCards,
   toReviewContent,
 } from '../library/libraryView';
+import {
+  clearPendingLibraryCardFocus,
+  hydrateLibraryStoreFromViewState,
+  peekPendingLibraryCardFocus,
+  saveLibraryViewState,
+  setLibraryReturnOrigin,
+  subscribePendingLibraryCardFocus,
+  type FlashcardsLibraryViewSnapshot,
+} from '../library/libraryViewState';
 import { buildDeckTree, flattenDeckTree } from '../library/deckTree';
 import '../library/library.css';
 import { exportLibraryApkg, exportLibraryCsv } from '../library/exportLibrary';
@@ -105,17 +114,24 @@ const LibrarySearchBar: React.FC<LibrarySearchBarProps> = React.memo(({
 }) => {
   const [draftSearch, setDraftSearch] = useState(storeQuery);
   const prevStoreQueryRef = useRef(storeQuery);
+  const userEditedRef = useRef(false);
 
   useEffect(() => {
     if (prevStoreQueryRef.current !== storeQuery) {
       prevStoreQueryRef.current = storeQuery;
+      userEditedRef.current = false;
       setDraftSearch((current) => (current.trim() === storeQuery ? current : storeQuery));
     }
   }, [storeQuery]);
 
   useEffect(() => {
-    if (draftSearch.trim() === storeQuery) return;
+    if (!userEditedRef.current) return;
+    if (draftSearch.trim() === storeQuery) {
+      userEditedRef.current = false;
+      return;
+    }
     const timer = window.setTimeout(() => {
+      userEditedRef.current = false;
       React.startTransition(() => {
         void onSubmitSearch(draftSearch);
       });
@@ -124,6 +140,7 @@ const LibrarySearchBar: React.FC<LibrarySearchBarProps> = React.memo(({
   }, [draftSearch, storeQuery, onSubmitSearch]);
 
   const handleSubmitNow = useCallback(() => {
+    userEditedRef.current = false;
     React.startTransition(() => {
       void onSubmitSearch(draftSearch, { force: true });
     });
@@ -140,7 +157,10 @@ const LibrarySearchBar: React.FC<LibrarySearchBarProps> = React.memo(({
           aria-label={searchLabel}
           type="search"
           value={draftSearch}
-          onChange={(event) => setDraftSearch(event.target.value)}
+          onChange={(event) => {
+            userEditedRef.current = true;
+            setDraftSearch(event.target.value);
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !isComposingKeyEvent(event)) handleSubmitNow();
           }}
@@ -175,6 +195,14 @@ const DECK_FILTER_ALL = '::all';
 const MemoizedLibraryCardRow = React.memo(LibraryCardRow);
 
 export const LibraryScreen: React.FC = () => {
+  // Hydrate persisted library pagination/filter/scroll snapshot synchronously before
+  // selecting store state so returning to the library starts immediately on the saved page.
+  const initialHydratedViewRef = useRef<FlashcardsLibraryViewSnapshot | null | undefined>(undefined);
+  if (initialHydratedViewRef.current === undefined) {
+    initialHydratedViewRef.current = hydrateLibraryStoreFromViewState();
+  }
+  const initialHydratedView = initialHydratedViewRef.current;
+
   const { t } = useTranslation('flashcards');
   const { isSmallScreen } = useBreakpoint();
   const translate = t as Translate;
@@ -226,7 +254,9 @@ export const LibraryScreen: React.FC = () => {
 
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [lastAnchorId, setLastAnchorId] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(
+    () => peekPendingLibraryCardFocus()?.cardId ?? initialHydratedView?.expandedId ?? null,
+  );
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null);
   const [bulkDeleteArmed, setBulkDeleteArmed] = useState(false);
   // 新建与导入：桌面内联展开；移动宿主接管标题/返回/保存，内容区只展示表单。
@@ -235,7 +265,9 @@ export const LibraryScreen: React.FC = () => {
   const [csvTargetDeck, setCsvTargetDeck] = useState('');
   const [pendingCsvImport, setPendingCsvImport] = useState<PendingCsvImport | null>(null);
   const [importDragActive, setImportDragActive] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState<boolean>(
+    () => initialHydratedView?.filtersOpen ?? false,
+  );
   const filtersId = useId();
   const [draftMode, setDraftMode] = useState<'basic' | 'cloze'>('basic');
   const [draftFront, setDraftFront] = useState('');
@@ -249,12 +281,125 @@ export const LibraryScreen: React.FC = () => {
   const desktopFrontRef = useRef<HTMLInputElement | null>(null);
   const apkgFileInputRef = useRef<HTMLInputElement | null>(null);
   const csvFileInputRef = useRef<HTMLInputElement | null>(null);
+  const scrollViewportRef = useRef<HTMLDivElement | null>(null);
+  const savedScrollTopRef = useRef<number>(
+    peekPendingLibraryCardFocus() ? 0 : (initialHydratedView?.scrollTop ?? 0),
+  );
+  const scrollRestoredRef = useRef(false);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const bulkDisarmTimer = useRef<number | null>(null);
+
+  const resetScrollPosition = useCallback(() => {
+    savedScrollTopRef.current = 0;
+    scrollRestoredRef.current = true;
+    if (scrollViewportRef.current) {
+      scrollViewportRef.current.scrollTop = 0;
+    }
+    saveLibraryViewState({ scrollTop: 0 });
+  }, []);
+
+  const handleSubmitSearch = useCallback(
+    (nextQuery: string, options?: { force?: boolean }) => {
+      resetScrollPosition();
+      return submitSearch(nextQuery, options);
+    },
+    [resetScrollPosition, submitSearch],
+  );
+
+  const handleGoToPage = useCallback(
+    (nextPage: number) => {
+      resetScrollPosition();
+      return goToPage(nextPage);
+    },
+    [goToPage, resetScrollPosition],
+  );
+
+  const handleSetPageSize = useCallback(
+    (nextPageSize: number) => {
+      resetScrollPosition();
+      return setPageSize(nextPageSize);
+    },
+    [resetScrollPosition, setPageSize],
+  );
+
+  const handleSetStatusFilter = useCallback(
+    (nextFilter: LibraryStatusFilter) => {
+      resetScrollPosition();
+      setStatusFilter(nextFilter);
+    },
+    [resetScrollPosition, setStatusFilter],
+  );
+
+  const handleSetDeckFilter = useCallback(
+    (nextDeck: string | null) => {
+      resetScrollPosition();
+      setDeckFilter(nextDeck);
+    },
+    [resetScrollPosition, setDeckFilter],
+  );
+
+  const handleToggleSort = useCallback(
+    (key: Exclude<LibrarySortKey, 'default'>) => {
+      resetScrollPosition();
+      toggleSort(key);
+    },
+    [resetScrollPosition, toggleSort],
+  );
+
+  const handleClearSort = useCallback(() => {
+    resetScrollPosition();
+    clearSort();
+  }, [clearSort, resetScrollPosition]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // Listen for Cmd+K deep-jump requests while LibraryScreen is already mounted.
+  useEffect(() => {
+    return subscribePendingLibraryCardFocus((focus) => {
+      if (!focus?.cardId) return;
+      savedScrollTopRef.current = 0;
+      scrollRestoredRef.current = true;
+      setExpandedId(focus.cardId);
+    });
+  }, []);
+
+  // Track list scroll offset passively so returning from review/edit/tab switch restores exact position.
+  useEffect(() => {
+    const viewport = scrollViewportRef.current;
+    if (!viewport) return;
+    const onScroll = () => {
+      savedScrollTopRef.current = viewport.scrollTop;
+      saveLibraryViewState({ scrollTop: viewport.scrollTop });
+    };
+    viewport.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      viewport.removeEventListener('scroll', onScroll);
+      if (scrollRestoredRef.current || viewport.scrollTop > 0) {
+        savedScrollTopRef.current = viewport.scrollTop;
+        saveLibraryViewState({ scrollTop: viewport.scrollTop });
+      }
+    };
+  }, [isSmallScreen, composerOpen]);
+
+  // Persist active library filter, pagination, expanded row, and scroll offset into session view state.
+  useEffect(() => {
+    if (!loaded && expandedId === null && !filtersOpen) return;
+    saveLibraryViewState({
+      page,
+      pageSize,
+      query,
+      searchInput: query,
+      statusFilter,
+      deckFilter,
+      sortKey,
+      sortDir,
+      expandedId,
+      filtersOpen,
+      scrollTop: savedScrollTopRef.current,
+    });
+  }, [loaded, page, pageSize, query, statusFilter, deckFilter, sortKey, sortDir, expandedId, filtersOpen]);
 
   useEffect(() => {
     if (!composerOpen) return;
@@ -285,17 +430,46 @@ export const LibraryScreen: React.FC = () => {
     [onRefreshEvent],
   );
 
-  // 数据刷新后修剪失效的选择 / 展开 / 删除确认目标。
+  // 数据刷新后修剪失效的选择 / 展开 / 删除确认目标（加载中或尚未首载完成时保留待恢复的展开目标）。
   useEffect(() => {
+    if (!loaded || loading) return;
     const ids = new Set(items.map((item) => item.id));
     setSelectedIds((prev) => {
       const next = new Set(Array.from(prev).filter((id) => ids.has(id)));
       return next.size === prev.size ? prev : next;
     });
-    setExpandedId((prev) => (prev && !ids.has(prev) ? null : prev));
+    const pendingFocus = peekPendingLibraryCardFocus();
+    if (pendingFocus?.cardId) {
+      if (ids.has(pendingFocus.cardId)) {
+        setExpandedId(pendingFocus.cardId);
+        const row = rowRefs.current.get(pendingFocus.cardId);
+        row?.scrollIntoView?.({ block: 'center' });
+        row?.focus?.();
+      } else {
+        setExpandedId((prev) => (prev && !ids.has(prev) ? null : prev));
+      }
+      clearPendingLibraryCardFocus();
+      scrollRestoredRef.current = true;
+    } else {
+      setExpandedId((prev) => (prev && !ids.has(prev) ? null : prev));
+      if (!scrollRestoredRef.current && items.length > 0) {
+        scrollRestoredRef.current = true;
+        const targetScrollTop = savedScrollTopRef.current;
+        if (targetScrollTop > 0 && scrollViewportRef.current) {
+          scrollViewportRef.current.scrollTop = targetScrollTop;
+          if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+            window.requestAnimationFrame(() => {
+              if (scrollViewportRef.current && savedScrollTopRef.current === targetScrollTop) {
+                scrollViewportRef.current.scrollTop = targetScrollTop;
+              }
+            });
+          }
+        }
+      }
+    }
     setDeleteCandidateId((prev) => (prev && !ids.has(prev) ? null : prev));
     setLastAnchorId((prev) => (prev && !ids.has(prev) ? null : prev));
-  }, [items]);
+  }, [items, loaded, loading]);
 
   useEffect(() => {
     setPageJumpInput(String(page));
@@ -323,9 +497,9 @@ export const LibraryScreen: React.FC = () => {
     const bounded = Math.min(pageCount, Math.max(1, parsed));
     setPageJumpInput(String(bounded));
     if (bounded !== page) {
-      void goToPage(bounded);
+      void handleGoToPage(bounded);
     }
-  }, [loading, pageJumpInput, page, pageCount, goToPage]);
+  }, [loading, pageJumpInput, page, pageCount, handleGoToPage]);
 
   const rowBusy = busyCardId !== null || bulkBusy;
 
@@ -444,6 +618,11 @@ export const LibraryScreen: React.FC = () => {
   }, []);
 
   const handleStartReview = useCallback((card: AnkiLibraryCard) => {
+    saveLibraryViewState({
+      expandedId: card.id,
+      scrollTop: scrollViewportRef.current?.scrollTop ?? savedScrollTopRef.current,
+    });
+    setLibraryReturnOrigin('library');
     void startBatchSession([card.id], [toReviewContent(card)]);
   }, [startBatchSession]);
 
@@ -550,6 +729,10 @@ export const LibraryScreen: React.FC = () => {
 
   const handleBulkReview = () => {
     if (reviewTargets.length === 0) return;
+    saveLibraryViewState({
+      scrollTop: scrollViewportRef.current?.scrollTop ?? savedScrollTopRef.current,
+    });
+    setLibraryReturnOrigin('library');
     void startBatchSession(
       reviewTargets.map((card) => card.id),
       reviewTargets.map(toReviewContent),
@@ -574,6 +757,7 @@ export const LibraryScreen: React.FC = () => {
   };
 
   const handleClearFilters = () => {
+    resetScrollPosition();
     void useFlashcardsLibraryStore.getState().clearFilters();
   };
   // 搜索 / 状态 / 牌组筛选生效时，空列表表示「没有命中」而不是「库是空的」
@@ -1042,8 +1226,6 @@ export const LibraryScreen: React.FC = () => {
     />
   );
 
-  // Phone filters scroll with the cards; the composer uses its own subpage.
-  const ListContainer = isSmallScreen ? 'div' : CustomScrollArea;
   const creationActions = (
     <>
       <DsButton
@@ -1134,6 +1316,181 @@ export const LibraryScreen: React.FC = () => {
       </DsButton>
     </>
   );
+  const listBody = loadError ? (
+    <div role="alert" className="wb-fc-empty">
+      <p className="break-words text-destructive">{loadError}</p>
+      <DsButton
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={() => void refresh()}
+        className="[@media(pointer:coarse)]:!min-h-11"
+      >
+        {t('library.retry')}
+      </DsButton>
+    </div>
+  ) : initialLoading ? (
+    <div aria-hidden="true">
+      {Array.from({ length: 6 }, (_, index) => (
+        <div key={index} className="fc-lib-skeleton-row">
+          <div className="fc-lib-skeleton" style={{ width: `${52 + (index % 3) * 14}%` }} />
+          <div className="fc-lib-skeleton" style={{ width: `${30 + (index % 4) * 10}%`, height: 10 }} />
+        </div>
+      ))}
+    </div>
+  ) : items.length === 0 ? (
+    <div className="wb-fc-empty">
+      <Stack size={28} className="text-muted-foreground/50" weight="duotone" />
+      <p>{isFiltered ? translate('library.noMatches') : t('library.empty')}</p>
+      {isFiltered ? (
+        <DsButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={handleClearFilters}
+          className="[@media(pointer:coarse)]:!min-h-11"
+        >
+          {translate('library.clearFilters')}
+        </DsButton>
+      ) : (
+        <>
+          <p className="max-w-md text-xs text-muted-foreground">
+            {translate('library.emptyHint')}
+          </p>
+          {!mobileChrome && <div className="fc-lib-empty-actions">
+            <DsButton
+              type="button"
+              variant="primary"
+              onClick={() => setComposerOpen(true)}
+              className="fc-lib-create-cta text-sm"
+            >
+              <Plus size={15} />
+              {translate('library.create.new')}
+            </DsButton>
+            <DsButton
+              type="button"
+              variant="default"
+              disabled={importing}
+              onClick={handleImportApkg}
+              className="fc-lib-create-cta text-sm"
+            >
+              <UploadSimple size={15} />
+              {importing ? translate('library.import.running') : translate('library.import.apkg')}
+            </DsButton>
+            <DsButton
+              type="button"
+              variant="default"
+              disabled={importing}
+              onClick={handleImportCsv}
+              className="fc-lib-create-cta text-sm"
+              data-testid="fc-lib-empty-import-csv"
+            >
+              <UploadSimple size={15} />
+              {importing ? translate('library.import.running') : translate('library.import.csv')}
+            </DsButton>
+          </div>}
+        </>
+      )}
+    </div>
+  ) : visibleItems.length === 0 ? (
+    <div className="wb-fc-empty">
+      <Stack size={28} className="text-muted-foreground/50" weight="duotone" />
+      <p>{translate('library.noMatches')}</p>
+      <DsButton
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={handleClearFilters}
+        className="[@media(pointer:coarse)]:!min-h-11"
+      >
+        {translate('library.clearFilters')}
+      </DsButton>
+    </div>
+  ) : (
+    <div className={loading ? 'fc-lib-list-dimmed' : undefined}>
+      <div className="fc-lib-list-head">
+        <Checkbox
+          checked={allVisibleSelected}
+          aria-label={translate('library.selectAll')}
+          disabled={rowBusy}
+          onClick={handleToggleSelectAll}
+        />
+        <span>{translate('library.selectAll')}</span>
+        <span className="fc-lib-kbd-hint">{translate('library.keyboardHint')}</span>
+      </div>
+      {inboxItems.length > 0 ? (
+        <section
+          className="fc-lib-queue-section"
+          data-queue="inbox"
+          aria-label={translate('library.queue.inboxTitle', {
+            defaultValue: '已生成 · 待入队',
+          })}
+        >
+          <div className="fc-lib-queue-head" data-queue="inbox">
+            <Tray size={14} weight="duotone" aria-hidden="true" />
+            <span className="fc-lib-queue-title">
+              {translate('library.queue.inboxTitle', { defaultValue: '已生成 · 待入队' })}
+            </span>
+            <span className="fc-lib-queue-count font-mono tabular-nums">{inboxItems.length}</span>
+            <span className="fc-lib-queue-hint">
+              {translate('library.queue.inboxHint', {
+                defaultValue: '尚未进入复习计划，不会出现在到期队列',
+              })}
+            </span>
+            <DsButton
+              type="button"
+              variant="default"
+              size="sm"
+              disabled={rowBusy}
+              onClick={handleEnqueueInbox}
+              className="fc-lib-queue-cta text-xs [@media(pointer:coarse)]:!min-h-11"
+            >
+              <PlusCircle size={13} />
+              {translate('library.queue.enqueueAll', {
+                count: inboxItems.length,
+                defaultValue: '加入复习（{{count}}）',
+              })}
+            </DsButton>
+          </div>
+          <ul className="wb-fc-list-ul">
+            {inboxItems.map(renderCardRow)}
+          </ul>
+        </section>
+      ) : null}
+      {scheduledItems.length > 0 ? (
+        <section
+          className="fc-lib-queue-section"
+          data-queue="scheduled"
+          aria-label={translate('library.queue.scheduledTitle', {
+            defaultValue: '复习队列',
+          })}
+        >
+          {/* 仅当上方存在收件箱时才需要显式的队列区头做视觉分界 */}
+          {inboxItems.length > 0 ? (
+            <div className="fc-lib-queue-head" data-queue="scheduled">
+              <Stack size={14} weight="duotone" aria-hidden="true" />
+              <span className="fc-lib-queue-title">
+                {translate('library.queue.scheduledTitle', { defaultValue: '复习队列' })}
+              </span>
+              <span className="fc-lib-queue-count font-mono tabular-nums">{scheduledItems.length}</span>
+              {scheduledDueCount > 0 ? (
+                <span className="fc-lib-queue-hint font-mono tabular-nums" data-tone="due">
+                  {translate('library.queue.dueCount', {
+                    count: scheduledDueCount,
+                    defaultValue: '{{count}} 张已到期',
+                  })}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+          <ul className="wb-fc-list-ul">
+            {scheduledItems.map(renderCardRow)}
+          </ul>
+        </section>
+      ) : null}
+    </div>
+  );
+
   const content = (
     <div className="wb-fc-screen fc-lib-screen">
       {!mobileChrome && <header className="wb-fc-header" data-align="end">
@@ -1156,7 +1513,7 @@ export const LibraryScreen: React.FC = () => {
           searchLabel={t('library.searchLabel')}
           searchButtonText={t('library.search')}
           showSearchButton={!isSmallScreen}
-          onSubmitSearch={submitSearch}
+          onSubmitSearch={handleSubmitSearch}
         />
         {!mobileChrome && <div className="fc-lib-create">{creationActions}</div>}
         {isSmallScreen && (
@@ -1599,7 +1956,7 @@ export const LibraryScreen: React.FC = () => {
                 className="fc-lib-chip active:scale-[0.98] motion-reduce:transition-none motion-reduce:active:scale-100"
                 data-active={statusFilter === option ? 'true' : undefined}
                 aria-pressed={statusFilter === option}
-                onClick={() => setStatusFilter(option)}
+                onClick={() => handleSetStatusFilter(option)}
               >
                 {dotTone && count > 0 ? (
                   <span
@@ -1626,7 +1983,7 @@ export const LibraryScreen: React.FC = () => {
                 className="fc-lib-deck-select"
                 data-active={deckFilter !== null ? 'true' : undefined}
                 value={deckFilter ?? DECK_FILTER_ALL}
-                onChange={(event) => setDeckFilter(
+                onChange={(event) => handleSetDeckFilter(
                   event.target.value === DECK_FILTER_ALL ? null : event.target.value,
                 )}
               >
@@ -1664,7 +2021,7 @@ export const LibraryScreen: React.FC = () => {
                 title={active
                   ? translate(sortDir === 'asc' ? 'library.sort.asc' : 'library.sort.desc')
                   : undefined}
-                onClick={() => toggleSort(option)}
+                onClick={() => handleToggleSort(option)}
               >
                 {translate(`library.sort.${option}`)}
                 {active ? (sortDir === 'asc' ? ' ↑' : ' ↓') : null}
@@ -1675,7 +2032,7 @@ export const LibraryScreen: React.FC = () => {
             <button
               type="button"
               className="fc-lib-chip"
-              onClick={clearSort}
+              onClick={handleClearSort}
               aria-label={translate('library.sort.reset')}
               title={translate('library.sort.reset')}
             >
@@ -1692,6 +2049,10 @@ export const LibraryScreen: React.FC = () => {
             onClick={() => {
               const playable = scheduledItems.filter((c) => !c.suspended && c.stateId);
               if (playable.length > 0) {
+                saveLibraryViewState({
+                  scrollTop: scrollViewportRef.current?.scrollTop ?? savedScrollTopRef.current,
+                });
+                setLibraryReturnOrigin('library');
                 void startBatchSession(
                   playable.map((c) => c.id),
                   playable.map(toReviewContent),
@@ -1827,182 +2188,13 @@ export const LibraryScreen: React.FC = () => {
         </div>
       ) : null}
 
-      <ListContainer className="wb-fc-list min-h-0 flex-1">
-        {loadError ? (
-          <div role="alert" className="wb-fc-empty">
-            <p className="break-words text-destructive">{loadError}</p>
-            <DsButton
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => void refresh()}
-              className="[@media(pointer:coarse)]:!min-h-11"
-            >
-              {t('library.retry')}
-            </DsButton>
-          </div>
-        ) : initialLoading ? (
-          <div aria-hidden="true">
-            {Array.from({ length: 6 }, (_, index) => (
-              <div key={index} className="fc-lib-skeleton-row">
-                <div className="fc-lib-skeleton" style={{ width: `${52 + (index % 3) * 14}%` }} />
-                <div className="fc-lib-skeleton" style={{ width: `${30 + (index % 4) * 10}%`, height: 10 }} />
-              </div>
-            ))}
-          </div>
-        ) : items.length === 0 ? (
-          <div className="wb-fc-empty">
-            <Stack size={28} className="text-muted-foreground/50" weight="duotone" />
-            <p>{isFiltered ? translate('library.noMatches') : t('library.empty')}</p>
-            {isFiltered ? (
-              <DsButton
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleClearFilters}
-                className="[@media(pointer:coarse)]:!min-h-11"
-              >
-                {translate('library.clearFilters')}
-              </DsButton>
-            ) : (
-              <>
-                <p className="max-w-md text-xs text-muted-foreground">
-                  {translate('library.emptyHint')}
-                </p>
-                {!mobileChrome && <div className="fc-lib-empty-actions">
-                  <DsButton
-                    type="button"
-                    variant="primary"
-                    onClick={() => setComposerOpen(true)}
-                    className="fc-lib-create-cta text-sm"
-                  >
-                    <Plus size={15} />
-                    {translate('library.create.new')}
-                  </DsButton>
-                  <DsButton
-                    type="button"
-                    variant="default"
-                    disabled={importing}
-                    onClick={handleImportApkg}
-                    className="fc-lib-create-cta text-sm"
-                  >
-                    <UploadSimple size={15} />
-                    {importing ? translate('library.import.running') : translate('library.import.apkg')}
-                  </DsButton>
-                  <DsButton
-                    type="button"
-                    variant="default"
-                    disabled={importing}
-                    onClick={handleImportCsv}
-                    className="fc-lib-create-cta text-sm"
-                    data-testid="fc-lib-empty-import-csv"
-                  >
-                    <UploadSimple size={15} />
-                    {importing ? translate('library.import.running') : translate('library.import.csv')}
-                  </DsButton>
-                </div>}
-              </>
-            )}
-          </div>
-        ) : visibleItems.length === 0 ? (
-          <div className="wb-fc-empty">
-            <Stack size={28} className="text-muted-foreground/50" weight="duotone" />
-            <p>{translate('library.noMatches')}</p>
-            <DsButton
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleClearFilters}
-              className="[@media(pointer:coarse)]:!min-h-11"
-            >
-              {translate('library.clearFilters')}
-            </DsButton>
-          </div>
-        ) : (
-          <div className={loading ? 'fc-lib-list-dimmed' : undefined}>
-            <div className="fc-lib-list-head">
-              <Checkbox
-                checked={allVisibleSelected}
-                aria-label={translate('library.selectAll')}
-                disabled={rowBusy}
-                onClick={handleToggleSelectAll}
-              />
-              <span>{translate('library.selectAll')}</span>
-              <span className="fc-lib-kbd-hint">{translate('library.keyboardHint')}</span>
-            </div>
-            {inboxItems.length > 0 ? (
-              <section
-                className="fc-lib-queue-section"
-                data-queue="inbox"
-                aria-label={translate('library.queue.inboxTitle', {
-                  defaultValue: '已生成 · 待入队',
-                })}
-              >
-                <div className="fc-lib-queue-head" data-queue="inbox">
-                  <Tray size={14} weight="duotone" aria-hidden="true" />
-                  <span className="fc-lib-queue-title">
-                    {translate('library.queue.inboxTitle', { defaultValue: '已生成 · 待入队' })}
-                  </span>
-                  <span className="fc-lib-queue-count font-mono tabular-nums">{inboxItems.length}</span>
-                  <span className="fc-lib-queue-hint">
-                    {translate('library.queue.inboxHint', {
-                      defaultValue: '尚未进入复习计划，不会出现在到期队列',
-                    })}
-                  </span>
-                  <DsButton
-                    type="button"
-                    variant="default"
-                    size="sm"
-                    disabled={rowBusy}
-                    onClick={handleEnqueueInbox}
-                    className="fc-lib-queue-cta text-xs [@media(pointer:coarse)]:!min-h-11"
-                  >
-                    <PlusCircle size={13} />
-                    {translate('library.queue.enqueueAll', {
-                      count: inboxItems.length,
-                      defaultValue: '加入复习（{{count}}）',
-                    })}
-                  </DsButton>
-                </div>
-                <ul className="wb-fc-list-ul">
-                  {inboxItems.map(renderCardRow)}
-                </ul>
-              </section>
-            ) : null}
-            {scheduledItems.length > 0 ? (
-              <section
-                className="fc-lib-queue-section"
-                data-queue="scheduled"
-                aria-label={translate('library.queue.scheduledTitle', {
-                  defaultValue: '复习队列',
-                })}
-              >
-                {/* 仅当上方存在收件箱时才需要显式的队列区头做视觉分界 */}
-                {inboxItems.length > 0 ? (
-                  <div className="fc-lib-queue-head" data-queue="scheduled">
-                    <Stack size={14} weight="duotone" aria-hidden="true" />
-                    <span className="fc-lib-queue-title">
-                      {translate('library.queue.scheduledTitle', { defaultValue: '复习队列' })}
-                    </span>
-                    <span className="fc-lib-queue-count font-mono tabular-nums">{scheduledItems.length}</span>
-                    {scheduledDueCount > 0 ? (
-                      <span className="fc-lib-queue-hint font-mono tabular-nums" data-tone="due">
-                        {translate('library.queue.dueCount', {
-                          count: scheduledDueCount,
-                          defaultValue: '{{count}} 张已到期',
-                        })}
-                      </span>
-                    ) : null}
-                  </div>
-                ) : null}
-                <ul className="wb-fc-list-ul">
-                  {scheduledItems.map(renderCardRow)}
-                </ul>
-              </section>
-            ) : null}
-          </div>
-        )}
-      </ListContainer>
+      {isSmallScreen ? (
+        <div className="wb-fc-list min-h-0 flex-1">{listBody}</div>
+      ) : (
+        <CustomScrollArea viewportRef={scrollViewportRef} className="wb-fc-list min-h-0 flex-1">
+          {listBody}
+        </CustomScrollArea>
+      )}
 
       <footer
         aria-label={translate('library.pagination.label', { defaultValue: '分页导航' })}
@@ -2026,7 +2218,7 @@ export const LibraryScreen: React.FC = () => {
                   const nextSize = Number.parseInt(event.target.value, 10);
                   if (Number.isFinite(nextSize)) {
                     React.startTransition(() => {
-                      void setPageSize(nextSize);
+                      void handleSetPageSize(nextSize);
                     });
                   }
                 }}
@@ -2052,7 +2244,7 @@ export const LibraryScreen: React.FC = () => {
               iconOnly
               data-testid="library-page-first-btn"
               disabled={loading || page <= 1}
-              onClick={() => void goToPage(1)}
+              onClick={() => void handleGoToPage(1)}
               aria-label={translate('library.firstPage', { defaultValue: '首页' })}
               title={translate('library.firstPage', { defaultValue: '首页' })}
               className="min-h-8 min-w-8 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
@@ -2064,7 +2256,7 @@ export const LibraryScreen: React.FC = () => {
               variant="ghost"
               size="sm"
               disabled={loading || page <= 1}
-              onClick={() => void goToPage(page - 1)}
+              onClick={() => void handleGoToPage(page - 1)}
               aria-label={t('library.previous')}
               className="min-h-8 [@media(pointer:coarse)]:!min-h-11"
             >
@@ -2076,7 +2268,7 @@ export const LibraryScreen: React.FC = () => {
               variant="ghost"
               size="sm"
               disabled={loading || page >= pageCount}
-              onClick={() => void goToPage(page + 1)}
+              onClick={() => void handleGoToPage(page + 1)}
               aria-label={t('library.next')}
               className="min-h-8 [@media(pointer:coarse)]:!min-h-11"
             >
@@ -2090,7 +2282,7 @@ export const LibraryScreen: React.FC = () => {
               iconOnly
               data-testid="library-page-last-btn"
               disabled={loading || page >= pageCount}
-              onClick={() => void goToPage(pageCount)}
+              onClick={() => void handleGoToPage(pageCount)}
               aria-label={translate('library.lastPage', { defaultValue: '末页' })}
               title={translate('library.lastPage', { defaultValue: '末页' })}
               className="min-h-8 min-w-8 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
@@ -2143,5 +2335,5 @@ export const LibraryScreen: React.FC = () => {
       </footer>
     </div>
   );
-  return isSmallScreen ? <CustomScrollArea>{content}</CustomScrollArea> : content;
+  return isSmallScreen ? <CustomScrollArea viewportRef={scrollViewportRef}>{content}</CustomScrollArea> : content;
 };

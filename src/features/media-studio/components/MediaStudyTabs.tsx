@@ -35,10 +35,7 @@ import {
   type HandoutSection,
   type MediaStudyCompanionRenderContext,
 } from '@/features/learning-hub';
-import {
-  ContextualMiniChat,
-  type MiniChatContextAnchor,
-} from '@/features/chat';
+import type { MiniChatContextAnchor } from '@/features/chat';
 import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
 import {
   mediaTranscriptApi,
@@ -62,6 +59,13 @@ import {
 } from '../api';
 import { formatDuration, formatRelativeTime, watchedMinutes } from '../libraryModel';
 import { startMediaChat } from '../mediaChat';
+import {
+  askMediaCompanionQa,
+  cancelCompanionQaRequest,
+  openMediaAiModelSettings,
+  type CompanionQaTurn,
+} from '../mediaCompanionQa';
+import { MediaCompanionQaCard } from './MediaCompanionQaCard';
 
 export interface MediaTabMeta {
   name: string;
@@ -792,130 +796,6 @@ export function buildRecentMomentPrompt(
     : t('mediaStudio:ask.prompt.momentNoTranscript', { name, ref: buildMediaRefMarker(ctx.resourceId, from) });
 }
 
-/** 结合当前播放时间点、匹配章节与邻近字幕窗口生成即时伴读速答摘要 */
-export function buildMiniChatCompanionReply(
-  ctx: Pick<
-    MediaStudyCompanionRenderContext,
-    'resourceId' | 'chapters' | 'segments' | 'getCurrentTime' | 'hasTranscript'
-  >,
-  courseName: string,
-  payload: {
-    text: string;
-    anchor: MiniChatContextAnchor | null;
-    presetId?: string;
-  },
-  t?: TranslateFn,
-): string {
-  const nowSeconds = Math.max(0, Math.floor(ctx.getCurrentTime()));
-  const timeLabel = formatMediaRefTimestamp(nowSeconds);
-  const chapIdx = chapterIndexAt(ctx.chapters, nowSeconds);
-  const chapterTitle = chapIdx >= 0 ? ctx.chapters[chapIdx]?.title ?? null : null;
-  const headerContext = chapterTitle
-    ? resolveText(
-        t,
-        'mediaStudio:miniChat.headerWithChapter',
-        '当前时间点 {{time}}（章节：{{chapter}}）',
-        { time: timeLabel, chapter: chapterTitle },
-      )
-    : resolveText(
-        t,
-        'mediaStudio:miniChat.headerWithCourse',
-        '当前时间点 {{time}}（{{course}}）',
-        { time: timeLabel, course: courseName },
-      );
-
-  const doneSegments = ctx.segments.filter(
-    (seg) => seg.status === 'done' && seg.text.trim().length > 0,
-  );
-  if (!ctx.hasTranscript || doneSegments.length === 0) {
-    return resolveText(
-      t,
-      'mediaStudio:miniChat.noTranscript',
-      '{{header}}尚无可用字幕转写。请先在「字幕」分区完成课程转写以获取基于原话的即时速答，或点击右上角「迁入主会话」携带时间锚点发起完整提问。',
-      { header: headerContext },
-    );
-  }
-
-  const fromMs = Math.max(0, nowSeconds - MINI_CHAT_WINDOW_RADIUS_SECONDS) * 1000;
-  const toMs = (nowSeconds + MINI_CHAT_WINDOW_RADIUS_SECONDS) * 1000 + 1;
-  const nearbySegments = segmentsInWindow(ctx.segments, fromMs, toMs);
-
-  if (nearbySegments.length === 0) {
-    const centerMs = nowSeconds * 1000;
-    const nearest = [...doneSegments].sort((a, b) => {
-      const distA = Math.min(Math.abs(a.startMs - centerMs), Math.abs(a.endMs - centerMs));
-      const distB = Math.min(Math.abs(b.startMs - centerMs), Math.abs(b.endMs - centerMs));
-      return distA - distB;
-    })[0];
-    const nearestHint = nearest
-      ? resolveText(
-          t,
-          'mediaStudio:miniChat.nearestHint',
-          '最近相关原话位于 [{{time}}]：「{{text}}」。',
-          {
-            time: formatMediaRefTimestamp(Math.floor(nearest.startMs / 1000)),
-            text: nearest.text.trim(),
-          },
-        )
-      : '';
-    return resolveText(
-      t,
-      'mediaStudio:miniChat.noNearbySpeech',
-      '{{header}}前后 {{window}} 秒内暂无课程对白。{{nearestHint}}可定位到对应讲解片段后重试，或点击右上角「迁入主会话」发起完整深度追问。',
-      {
-        header: headerContext,
-        window: MINI_CHAT_WINDOW_RADIUS_SECONDS,
-        nearestHint,
-      },
-    );
-  }
-
-  const sep = resolveText(t, 'mediaStudio:miniChat.excerptSeparator', '；');
-  const excerptLines = nearbySegments
-    .slice(0, 4)
-    .map(
-      (seg) =>
-        `[${formatMediaRefTimestamp(Math.floor(seg.startMs / 1000))}] ${seg.text.trim()}`,
-    )
-    .join(sep);
-
-  let focusLead = resolveText(
-    t,
-    'mediaStudio:miniChat.focusDefault',
-    '结合当前时间窗内的课程原话要点梳理：',
-  );
-  if (payload.presetId === 'explain_paragraph') {
-    focusLead = resolveText(
-      t,
-      'mediaStudio:miniChat.focusExplain',
-      '围绕当前段落原话的核心概念梳理：',
-    );
-  } else if (payload.presetId === 'derive_formula') {
-    focusLead = resolveText(
-      t,
-      'mediaStudio:miniChat.focusDerive',
-      '结合当前时刻讲解的推导脉络梳理：',
-    );
-  } else if (payload.presetId === 'generate_variant') {
-    focusLead = resolveText(
-      t,
-      'mediaStudio:miniChat.focusVariant',
-      '紧扣当前时间点考查要点的迁移提示：',
-    );
-  }
-
-  return resolveText(
-    t,
-    'mediaStudio:miniChat.replyBody',
-    '{{header}} · {{focus}}{{excerpts}}。如需展开完整公式推导、变式演练或多轮深入探讨，可点击右上角「迁入主会话」发起完整深度追问。',
-    {
-      header: headerContext,
-      focus: focusLead,
-      excerpts: excerptLines,
-    },
-  );
-}
-
 export const MediaAskTab: React.FC<{
   ctx: MediaStudyCompanionRenderContext;
   meta: MediaTabMeta;
@@ -962,18 +842,41 @@ export const MediaAskTab: React.FC<{
     [activeChapterTitle, ctx.resourceId, name, playheadSeconds],
   );
 
-  const handleMiniChatAsk = useCallback(
-    (payload: {
+  const handleCompanionAsk = useCallback(
+    async (payload: {
       text: string;
       anchor: MiniChatContextAnchor | null;
       presetId?: string;
+      history: CompanionQaTurn[];
+      requestId: string;
     }) => {
       const latestSeconds = Math.max(0, Math.floor(ctx.getCurrentTime()));
       setPlayheadSeconds((prev) => (prev === latestSeconds ? prev : latestSeconds));
-      return buildMiniChatCompanionReply(ctx, name, payload, t);
+      return askMediaCompanionQa({
+        ctx: {
+          resourceId: ctx.resourceId,
+          courseName: name,
+          hasTranscript: ctx.hasTranscript,
+          segments: ctx.segments,
+          chapters: ctx.chapters,
+          currentTimeSeconds: latestSeconds,
+        },
+        question: payload.text,
+        history: payload.history,
+        presetId: payload.presetId,
+        requestId: payload.requestId,
+      });
     },
-    [ctx, name, t],
+    [ctx, name],
   );
+
+  const handleCancelCompanionAsk = useCallback((requestId: string) => {
+    void cancelCompanionQaRequest(requestId);
+  }, []);
+
+  const handleOpenSettings = useCallback(() => {
+    openMediaAiModelSettings('apis');
+  }, []);
 
   return (
     <TabScroll nativeScrollbars viewportRef={askScrollViewportRef}>
@@ -981,12 +884,15 @@ export const MediaAskTab: React.FC<{
         data-media-ask-composer-host=""
         className="flex flex-col gap-2 px-3 py-2 sm:py-3"
       >
-        <ContextualMiniChat
+        <MediaCompanionQaCard
           anchor={miniChatAnchor}
           defaultMinimized={false}
           expandSignal={isVisible}
           className="max-w-none"
-          onSendMessage={handleMiniChatAsk}
+          onAskQuestion={handleCompanionAsk}
+          onCancelRequest={handleCancelCompanionAsk}
+          onSeekTimestamp={ctx.seekTo}
+          onOpenSettings={handleOpenSettings}
           onPromoteToMainChat={({ messages, anchor }) => {
             const lastUserMsg =
               [...messages].reverse().find((m) => m.role === 'user') ?? messages[messages.length - 1];

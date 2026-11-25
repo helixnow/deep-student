@@ -88,7 +88,46 @@ interface SuperAgentEnabledState {
   refresh: () => Promise<SuperSessionChangedPayload | null>;
 }
 
-let syncing: Promise<void> | null = null;
+let inFlightRefresh: Promise<SuperSessionChangedPayload | null> | null = null;
+let sharedListenerRefs = 0;
+let sharedListenerUnlisten: (() => void) | null = null;
+let sharedListenerPromise: Promise<void> | null = null;
+
+function retainSuperSessionChangedListener(): () => void {
+  sharedListenerRefs += 1;
+  if (sharedListenerRefs === 1 && !sharedListenerUnlisten && !sharedListenerPromise) {
+    const init = import('@tauri-apps/api/event')
+      .then(({ listen }) => listen<SuperSessionChangedPayload>(SUPER_SESSION_CHANGED_EVENT, (event) => {
+        const payload = event.payload;
+        if (!payload || typeof payload.enabled !== 'boolean') return;
+        useSuperAgentEnabledStore.getState().setMirror(payload.enabled, payload.sessionId ?? null);
+        emitSessionsUpdated();
+      }))
+      .then((fn) => {
+        if (sharedListenerRefs === 0) fn();
+        else sharedListenerUnlisten = fn;
+      })
+      .catch(() => {
+        // 非 Tauri 环境（测试 / 浏览器预览）：没有事件总线，忽略
+      })
+      .finally(() => {
+        if (sharedListenerPromise === init) sharedListenerPromise = null;
+      });
+    sharedListenerPromise = init;
+  }
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    sharedListenerRefs = Math.max(0, sharedListenerRefs - 1);
+    if (sharedListenerRefs === 0 && sharedListenerUnlisten) {
+      const fn = sharedListenerUnlisten;
+      sharedListenerUnlisten = null;
+      fn();
+    }
+  };
+}
 
 export const useSuperAgentEnabledStore = create<SuperAgentEnabledState>()((set, get) => ({
   enabled: readCachedEnabled(),
@@ -108,25 +147,28 @@ export const useSuperAgentEnabledStore = create<SuperAgentEnabledState>()((set, 
   },
   syncFromBackend: () => {
     if (get().synced) return Promise.resolve();
-    syncing ??= get()
-      .refresh()
-      .then(() => undefined)
-      .finally(() => {
-        syncing = null;
-      });
-    return syncing;
+    return get().refresh().then(() => undefined);
   },
-  refresh: async () => {
-    try {
-      const s = await superSessionCommands.getState();
-      const next = { enabled: !!s?.enabled, sessionId: s?.sessionId ?? null };
-      writeCached(next.enabled, next.sessionId);
-      set({ ...next, synced: true });
-      return next;
-    } catch {
-      // 后端未就绪：保持缓存值，下次挂载再试
-      return null;
-    }
+  refresh: () => {
+    if (inFlightRefresh) return inFlightRefresh;
+    const task = (async (): Promise<SuperSessionChangedPayload | null> => {
+      try {
+        const s = await superSessionCommands.getState();
+        const next = { enabled: !!s?.enabled, sessionId: s?.sessionId ?? null };
+        writeCached(next.enabled, next.sessionId);
+        set({ ...next, synced: true });
+        return next;
+      } catch {
+        // 后端未就绪：保持缓存值，下次挂载再试
+        return null;
+      }
+    })().finally(() => {
+      if (inFlightRefresh === task) {
+        inFlightRefresh = null;
+      }
+    });
+    inFlightRefresh = task;
+    return task;
   },
 }));
 
@@ -152,27 +194,6 @@ export function getSuperAgentSessionId(): string | null {
 export function useSyncSuperAgentEnabled(): void {
   useEffect(() => {
     void useSuperAgentEnabledStore.getState().syncFromBackend();
-
-    let disposed = false;
-    let unlisten: (() => void) | null = null;
-    void import('@tauri-apps/api/event')
-      .then(({ listen }) => listen<SuperSessionChangedPayload>(SUPER_SESSION_CHANGED_EVENT, (event) => {
-        const payload = event.payload;
-        if (!payload || typeof payload.enabled !== 'boolean') return;
-        useSuperAgentEnabledStore.getState().setMirror(payload.enabled, payload.sessionId ?? null);
-        emitSessionsUpdated();
-      }))
-      .then((fn) => {
-        if (disposed) fn();
-        else unlisten = fn;
-      })
-      .catch(() => {
-        // 非 Tauri 环境（测试 / 浏览器预览）：没有事件总线，忽略
-      });
-
-    return () => {
-      disposed = true;
-      unlisten?.();
-    };
+    return retainSuperSessionChangedListener();
   }, []);
 }

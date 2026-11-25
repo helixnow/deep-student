@@ -488,6 +488,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
         drawerOpen={sidebarOpen}
         onDrawerOpenChange={setSidebarOpen}
         sidebarCollapsed={sidebarCollapsed}
+        hideDrawerHandle={Boolean(titlebarTarget)}
         sidebar={<WorkbenchSidebarSurface ariaLabel={title} className="wb-resource-workspace-sidebar">
         <header className="wb-resource-workspace-sidebar-title">
           <span className="wb-resource-workspace-app-icon">

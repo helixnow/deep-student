@@ -242,9 +242,12 @@ export function launchOnboardingStarterApp(focus: OnboardingStarterFocus): void 
 
 interface FeatureRow {
   id: OnboardingStarterFocus;
+  stepNumber: 1 | 2 | 3;
   icon: React.ReactNode;
-  titleKey: string;
-  descKey: string;
+  titleZh: string;
+  titleEn: string;
+  descZh: string;
+  descEn: string;
 }
 
 export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = ({
@@ -374,22 +377,30 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
   const features: FeatureRow[] = [
     {
       id: 'hub',
+      stepNumber: 1,
       icon: <Books size={18} weight="duotone" className="text-blue-500/80" />,
-      titleKey: 'welcome_onboarding.feature_hub_title',
-      descKey: 'welcome_onboarding.feature_hub_desc',
+      titleZh: '1. 导入学习资料',
+      titleEn: '1. Import your study materials',
+      descZh: '拖入 PDF、教材或课堂笔记，整理到你本地私密的学习空间。',
+      descEn: 'Add PDFs, textbooks, or class notes to your private local workspace.',
     },
     {
       id: 'chat',
+      stepNumber: 2,
       icon: <ChatCircleText size={18} weight="duotone" className="text-emerald-500/80" />,
-      titleKey: 'welcome_onboarding.feature_chat_title',
-      descKey: 'welcome_onboarding.feature_chat_desc',
+      titleZh: '2. 向 AI 提问与记笔记',
+      titleEn: '2. Ask AI & take notes',
+      descZh: '结合你的资料向 AI 提问、拆解难题，并随时沉淀学习笔记。',
+      descEn: 'Ask AI questions grounded in your materials, solve problems, and capture notes.',
     },
     {
       id: 'anki',
+      stepNumber: 3,
       icon: <Cards size={18} weight="duotone" className="text-orange-500/80" />,
-      titleKey: 'welcome_onboarding.feature_anki_title',
-      // 闪卡与错题复习统一采用 FSRS 智能间隔重复调度
-      descKey: 'welcome_onboarding.feature_anki_desc',
+      titleZh: '3. 制作闪卡与复习',
+      titleEn: '3. Make flashcards & review',
+      descZh: '把重点与错题一键生成记忆闪卡，按遗忘规律自动安排复习。',
+      descEn: 'Turn key points and mistakes into flashcards with automatic spaced review.',
     },
   ];
 
@@ -533,8 +544,14 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
             />
           )}
 
-          {/* 三大能力速览（点击选择优先体验方向） */}
+          {/* 三步学习指引（点击选择优先体验方向） */}
           <div className="space-y-2 border-t border-border/35 pt-3.5 sm:space-y-2.5 sm:pt-4">
+            <p
+              data-testid="welcome-steps-heading"
+              className="px-1 text-[12px] font-medium text-foreground/65"
+            >
+              {isZh ? '三步开始高效学习（点击选择起点）' : 'Get started in 3 simple steps (pick where to begin)'}
+            </p>
             {features.map((f) => {
               const isSelected = selectedFeature === f.id;
               return (
@@ -556,10 +573,10 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
                   </span>
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] font-medium leading-snug text-foreground/90">
-                      {t(f.titleKey)}
+                      {isZh ? f.titleZh : f.titleEn}
                     </p>
                     <p className="mt-0.5 text-[12px] leading-[1.55] text-foreground/55">
-                      {t(f.descKey)}
+                      {isZh ? f.descZh : f.descEn}
                     </p>
                   </div>
                   {isSelected && (
@@ -586,12 +603,8 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
               onClick={onConfigure}
             >
               {isAiReady
-                ? t('settings:vendor_panel.welcome_ai_ready_cta_manage', {
-                    defaultValue: t('welcome_onboarding.cta_configure'),
-                  })
-                : t('settings:byok.fullSettingsLink', {
-                    defaultValue: t('welcome_onboarding.cta_configure'),
-                  })}
+                ? (isZh ? '管理 AI 模型' : 'Manage AI Models')
+                : (isZh ? '前往完整模型设置' : 'Open AI Settings')}
             </DsButton>
             <DsButton
               variant={isAiReady ? 'primary' : 'ghost'}

@@ -82,11 +82,14 @@ export class ChatLanceStore {
     return Number.isSafeInteger(dim) ? dim : null;
   }
 
-  private async existingDimTables(prefix: string): Promise<Array<[number, string]>> {
+  private async listTableNames(): Promise<string[]> {
     const connection = await this.connect();
-    const names = await connection.tableNames().catch((error: unknown) => {
+    return connection.tableNames().catch((error: unknown) => {
       throw new Error(`Database error: 枚举 Lance 表失败: ${messageOf(error)}`);
     });
+  }
+
+  private static filterDimTables(names: readonly string[], prefix: string): Array<[number, string]> {
     return names
       .map((name) => {
         const dim = ChatLanceStore.parseDimFromTableName(name, prefix);
@@ -94,6 +97,10 @@ export class ChatLanceStore {
       })
       .filter((entry): entry is [number, string] => entry !== null)
       .sort((left, right) => left[0] - right[0]);
+  }
+
+  private async existingDimTables(prefix: string): Promise<Array<[number, string]>> {
+    return ChatLanceStore.filterDimTables(await this.listTableNames(), prefix);
   }
 
   private async openExistingChatTables(): Promise<Array<{ delete(filter: string): Promise<void> }>> {
@@ -132,10 +139,12 @@ export class ChatLanceStore {
     deleteUnverified: boolean | null,
     force: boolean,
   ): Promise<number> {
+    if (this.shouldSkipOptimization('chat', OPTIMIZE_MIN_INTERVAL_CHAT_SECS, force)) return 0;
+    const allNames = await this.listTableNames();
     const names: string[] = [];
-    for (const [, name] of await this.existingDimTables(CHAT_V2_TABLE_PREFIX)) names.push(name);
-    for (const [, name] of await this.existingDimTables(CHAT_LEGACY_TABLE_PREFIX)) names.push(name);
-    names.push(CHAT_LEGACY_FALLBACK_TABLE);
+    for (const [, name] of ChatLanceStore.filterDimTables(allNames, CHAT_V2_TABLE_PREFIX)) names.push(name);
+    for (const [, name] of ChatLanceStore.filterDimTables(allNames, CHAT_LEGACY_TABLE_PREFIX)) names.push(name);
+    if (allNames.includes(CHAT_LEGACY_FALLBACK_TABLE)) names.push(CHAT_LEGACY_FALLBACK_TABLE);
     return this.optimizeTableGroup(
       'chat',
       OPTIMIZE_MIN_INTERVAL_CHAT_SECS,
@@ -152,6 +161,7 @@ export class ChatLanceStore {
     deleteUnverified: boolean | null,
     force: boolean,
   ): Promise<number> {
+    if (this.shouldSkipOptimization('kb', OPTIMIZE_MIN_INTERVAL_KB_SECS, force)) return 0;
     const names = (await this.existingDimTables(KB_V2_TABLE_PREFIX)).map(([, name]) => name);
     return this.optimizeTableGroup(
       'kb',

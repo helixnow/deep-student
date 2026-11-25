@@ -4,6 +4,8 @@
   position: absolute;
   inset: 0;
   display: block;
+  container-type: inline-size;
+  container-name: notes-workspace;
   /* 结构容器用 clip：禁止 WebKit reveal-selection 把整个工作区滚位移 */
   overflow: clip;
   color: hsl(var(--foreground));
@@ -652,11 +654,13 @@
   box-sizing: border-box;
   width: 100%;
   height: 100%;
+  min-width: 0;
+  container: notes-tabbar / inline-size;
   /* .wb-title-app-slot 已从红绿灯预留区右侧开始，不能再次叠加完整侧栏宽度。 */
   padding-left: max(0px, calc(var(--notes-titlebar-sidebar-width, 0px) - var(--wb-macos-traffic-lights-inset, 72px)));
 
-  /* Keep a reliable titlebar drag target after the final tab. */
-  padding-right: 78px;
+  /* Keep a reliable titlebar drag target after the final tab, shrinking smoothly in narrow split windows (440-540px). */
+  padding-right: clamp(8px, calc(100% - 480px), 78px);
   display: flex;
   align-items: stretch;
   pointer-events: none;
@@ -1631,4 +1635,62 @@
   padding: 0 7px;
   margin-left: 0;
   font-size: 10.5px;
+}
+
+/* ── 窄工作台分屏窗口（440–560px）标签栏容器查询：压缩标签与次要文字，不溢出不裁切主操作 ── */
+@container notes-tabbar (max-width: 560px) {
+  .notes-tab {
+    min-width: 92px;
+    flex-basis: 132px;
+  }
+
+  .notes-tab > button:first-child {
+    padding: 0 2px 0 8px;
+    gap: 4px;
+  }
+
+  .notes-titlebar-actions {
+    padding-left: 2px;
+    gap: 1px;
+  }
+
+  .notes-chrome-backlinks-btn {
+    width: 26px;
+    padding: 0;
+    margin-left: 2px;
+    justify-content: center;
+  }
+
+  .notes-chrome-backlinks-btn > span {
+    display: none;
+  }
+
+  @media (pointer: coarse) {
+    .notes-chrome-backlinks-btn {
+      width: auto;
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+}
+
+@container notes-tabbar (max-width: 460px) {
+  .notes-tabstrip {
+    padding: 4px 2px;
+  }
+
+  .notes-tab {
+    min-width: 72px;
+    flex-basis: 108px;
+  }
+
+  .notes-tabs-overflow {
+    flex-basis: 28px;
+  }
+
+  @media (pointer: coarse) {
+    .notes-tabs-overflow {
+      flex-basis: 44px;
+    }
+  }
 }

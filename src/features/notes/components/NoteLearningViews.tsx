@@ -103,6 +103,7 @@ export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onO
                 <button
                   type="button"
                   className="nlv-row"
+                  title={note.name}
                   aria-current={note.id === activeId ? 'true' : undefined}
                   onClick={() => onOpen(note)}
                   onKeyDown={(event) => {
@@ -118,7 +119,7 @@ export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onO
                   <span className="nlv-row-icon"><NoteGlyph noteId={note.id} size={16} fallback={<FileText size={16} aria-hidden="true" />} /></span>
                   <span className="nlv-row-body">
                     <span className="nlv-row-title">{note.name}</span>
-                    {subtitle && <span className="nlv-row-sub">{subtitle}</span>}
+                    {subtitle && <span className="nlv-row-sub" title={subtitle}>{subtitle}</span>}
                   </span>
                   <span className="nlv-row-chips">
                     {view !== 'status' && props.mastery && <span className="nlv-chip" data-mastery={props.mastery}>{t(`learning.mastery.${props.mastery}`)}</span>}

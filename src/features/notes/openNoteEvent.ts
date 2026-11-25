@@ -53,6 +53,10 @@ export interface DstuOpenNoteDetail {
   target?: string;
   /** 可选的标题锚点（配合 headingTargetBridge 冷启动跳转） */
   heading?: string;
+  /** 可选的块级锚点 ID（保留回链定位精度） */
+  blockId?: string;
+  /** 可选的引用片段（配合 quoteTarget 定位） */
+  quote?: string;
 }
 
 /** True only for events whose navigation is owned by the Notes workspace. */

@@ -13,6 +13,20 @@ import { DEFAULT_POMODORO_SETTINGS } from '../types';
 import { createPomodoroRecord } from '../api';
 import type { CreatePomodoroInput } from '../api';
 import { noiseEngine } from '../noiseEngine';
+import {
+  formatLocalDateKey,
+  normalizeLocalDateKey,
+  shiftLocalDateKey,
+} from '../utils/localDate';
+
+/** 后端落库一条番茄记录后通知 UI 刷新今日统计（含跨午夜收尾的会话）。 */
+export const POMODORO_RECORD_SAVED_EVENT = 'pomodoro:record-saved';
+
+function emitPomodoroRecordSaved(): void {
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent(POMODORO_RECORD_SAVED_EVENT));
+  }
+}
 
 const STUDY_FOCUS_ACTIVE_EVENT = 'study-time:focus-active';
 let lastSyncedStudyFocusActive = false;
@@ -234,6 +248,7 @@ const recordSession = (
   void outcome.finally(() => pendingRecordRequests.delete(outcome));
   outcome.then((result) => {
     if (!result.error) {
+      emitPomodoroRecordSaved();
       // ★ I11 修复：完成的工作番茄会在后端递增 todo_items.completed_pomodoros，
       // 记录成功后立即同步内存中的待办番茄计数并刷新 todo 视图
       if (todoItemId && type === 'work' && status === 'completed') {
@@ -264,11 +279,13 @@ async function flushPendingRecords(): Promise<void> {
 
   // 2. N11：重放此前已失败的记录——只有全部已接受记录都提交，flush 才算成功
   let retriedWorkCompleted = false;
+  let retriedAny = false;
   if (failedRecordInputs.length > 0) {
     const retrying = failedRecordInputs.splice(0, failedRecordInputs.length);
     for (const input of retrying) {
       try {
         await createPomodoroRecord(input);
+        retriedAny = true;
         if (input.todoItemId && input.type === 'work' && input.status === 'completed') {
           retriedWorkCompleted = true;
         }
@@ -277,6 +294,9 @@ async function flushPendingRecords(): Promise<void> {
         failedRecordInputs.push(input);
         errors.push(error);
       }
+    }
+    if (retriedAny) {
+      emitPomodoroRecordSaved();
     }
     if (retriedWorkCompleted) {
       void import('@/features/todo/stores/useTodoStore')
@@ -296,13 +316,60 @@ async function flushPendingRecords(): Promise<void> {
   }
 }
 
-const localToday = () => new Date().toDateString();
+const localToday = (now: Date = new Date()) => formatLocalDateKey(now);
 
-const localYesterday = () => {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toDateString();
-};
+const localYesterday = (now: Date = new Date()) => shiftLocalDateKey(formatLocalDateKey(now), -1);
+
+/**
+ * 本地日历日翻转补丁：
+ * - `lastActiveDate` 非空且早于今天 → 今日完成计数归零、刷新为今天的 `YYYY-MM-DD`
+ * - `lastGoalMetDate` 非空且既非今天也非昨天 → 连续达标已断档，`streakDays` 归零
+ * - 旧版 `Date#toDateString()` 持久化日期自动归一化为 `YYYY-MM-DD`
+ * 无变化时返回 null，避免无意义的 store 写入。
+ */
+function resolveCalendarDayRolloverPatch(
+  state: Pick<PomodoroState, 'completedPomodorosToday' | 'lastActiveDate' | 'streakDays' | 'lastGoalMetDate'>,
+  now: Date = new Date(),
+): Partial<Pick<PomodoroState, 'completedPomodorosToday' | 'lastActiveDate' | 'streakDays' | 'lastGoalMetDate'>> | null {
+  const today = localToday(now);
+  const yesterday = shiftLocalDateKey(today, -1);
+  const normalizedActive = normalizeLocalDateKey(state.lastActiveDate);
+  const normalizedGoalMet = normalizeLocalDateKey(state.lastGoalMetDate);
+
+  const patch: Partial<
+    Pick<PomodoroState, 'completedPomodorosToday' | 'lastActiveDate' | 'streakDays' | 'lastGoalMetDate'>
+  > = {};
+  let changed = false;
+
+  if (normalizedActive !== null) {
+    if (normalizedActive !== today) {
+      if (state.completedPomodorosToday !== 0) {
+        patch.completedPomodorosToday = 0;
+        changed = true;
+      }
+      if (state.lastActiveDate !== today) {
+        patch.lastActiveDate = today;
+        changed = true;
+      }
+    } else if (state.lastActiveDate !== today) {
+      patch.lastActiveDate = today;
+      changed = true;
+    }
+  }
+
+  if (normalizedGoalMet !== null) {
+    if (state.lastGoalMetDate !== normalizedGoalMet) {
+      patch.lastGoalMetDate = normalizedGoalMet;
+      changed = true;
+    }
+    if (normalizedGoalMet !== today && normalizedGoalMet !== yesterday && state.streakDays !== 0) {
+      patch.streakDays = 0;
+      changed = true;
+    }
+  }
+
+  return changed ? patch : null;
+}
 
 /** 运行中阶段的真实剩余秒数（墙钟基准，不受定时器节流影响） */
 const wallClockRemaining = (phaseEndsAt: number | null, fallback: number): number => {
@@ -359,8 +426,10 @@ export const usePomodoroStore = create<PomodoroState>()(
         } = get();
 
         const today = localToday();
-        const shouldReset = lastActiveDate !== today;
+        const normalizedActive = normalizeLocalDateKey(lastActiveDate);
+        const shouldReset = normalizedActive !== today;
         const baseCount = shouldReset ? 0 : completedPomodorosToday;
+        const rolloverPatch = resolveCalendarDayRolloverPatch(get());
 
         const beginWork = () => {
           // 会话开始时锁定计时模式与基础时长：中途改设置只影响下一个会话；
@@ -370,6 +439,7 @@ export const usePomodoroStore = create<PomodoroState>()(
           const nextTaskId = preserveBoundTask ? currentTaskId : taskId || null;
           const nextTaskTitle = preserveBoundTask ? currentTaskTitle : taskTitle || null;
           set({
+            ...(rolloverPatch ?? {}),
             mode: 'work',
             status: 'running',
             timeLeft: isCountUp ? 0 : settings.workDuration,
@@ -494,12 +564,15 @@ export const usePomodoroStore = create<PomodoroState>()(
         // 跨午夜暂停后恢复：与 start() 的日期翻转一致，先按新的一天把今日计数归零，
         // 否则这里刷新 lastActiveDate 后 completeCurrentSession 会把昨天的计数当今天的底数
         const today = localToday();
+        const rolloverPatch = resolveCalendarDayRolloverPatch(get());
         set({
+          ...(rolloverPatch ?? {}),
           status: 'running',
           phaseEndsAt: isCountUpWork ? null : Date.now() + Math.max(0, timeLeft) * 1000,
           phaseStartedAt: isCountUpWork ? Date.now() - Math.max(0, timeLeft) * 1000 : null,
           sessionStartTime: sessionStartTime || new Date().toISOString(),
-          completedPomodorosToday: lastActiveDate === today ? completedPomodorosToday : 0,
+          completedPomodorosToday:
+            normalizeLocalDateKey(lastActiveDate) === today ? completedPomodorosToday : 0,
           lastActiveDate: today,
         });
       },
@@ -548,7 +621,9 @@ export const usePomodoroStore = create<PomodoroState>()(
           }
         }
 
+        const rolloverPatch = resolveCalendarDayRolloverPatch(get());
         set({
+          ...(rolloverPatch ?? {}),
           mode: 'idle',
           status: 'paused',
           timeLeft: settings.countUp ? 0 : settings.workDuration,
@@ -571,6 +646,7 @@ export const usePomodoroStore = create<PomodoroState>()(
       skipBreak: () => {
         const { mode, settings, lastActiveDate, completedPomodorosToday } = get();
         if (mode !== 'short_break' && mode !== 'long_break') return;
+        const rolloverPatch = resolveCalendarDayRolloverPatch(get());
         // 跳过休息既不是「完成」也不是「中断」，不写任何记录
         if (settings.autoStartWork) {
           // 直接开始下一个番茄（沿用当前任务，与休息自然结束的 autoStartWork 路径一致）
@@ -578,6 +654,7 @@ export const usePomodoroStore = create<PomodoroState>()(
           // 休息跨午夜后被跳过：与 start()/resume() 的日期翻转一致，先重置今日计数
           const today = localToday();
           set({
+            ...(rolloverPatch ?? {}),
             mode: 'work',
             status: 'running',
             timeLeft: isCountUp ? 0 : settings.workDuration,
@@ -587,7 +664,8 @@ export const usePomodoroStore = create<PomodoroState>()(
             sessionCountUp: isCountUp,
             sessionDuration: isCountUp ? null : settings.workDuration,
             phaseExtraSeconds: 0,
-            completedPomodorosToday: lastActiveDate === today ? completedPomodorosToday : 0,
+            completedPomodorosToday:
+              normalizeLocalDateKey(lastActiveDate) === today ? completedPomodorosToday : 0,
             lastActiveDate: today,
             endReminderFiredPhase: null,
           });
@@ -596,6 +674,7 @@ export const usePomodoroStore = create<PomodoroState>()(
           }
         } else {
           set({
+            ...(rolloverPatch ?? {}),
             mode: 'idle',
             status: 'paused',
             timeLeft: settings.countUp ? 0 : settings.workDuration,
@@ -621,7 +700,9 @@ export const usePomodoroStore = create<PomodoroState>()(
           return;
         }
         const autoStart = settings.autoStartBreaks;
+        const rolloverPatch = resolveCalendarDayRolloverPatch(get());
         set({
+          ...(rolloverPatch ?? {}),
           mode: 'short_break',
           status: autoStart ? 'running' : 'paused',
           timeLeft: settings.shortBreak,
@@ -668,7 +749,10 @@ export const usePomodoroStore = create<PomodoroState>()(
           : Math.max(1, planned - (status === 'running' ? wallClockRemaining(phaseEndsAt, timeLeft) : timeLeft));
         const recordDuration = isCountUpPhase ? Math.max(1, elapsed) : planned;
         const today = localToday();
-        const base = lastActiveDate === today ? completedPomodorosToday : 0;
+        const yesterday = localYesterday();
+        const normalizedActive = normalizeLocalDateKey(lastActiveDate);
+        const normalizedGoalMet = normalizeLocalDateKey(lastGoalMetDate);
+        const base = normalizedActive === today ? completedPomodorosToday : 0;
         const newCompletedCount = base + 1;
         const isLongBreak =
           newCompletedCount > 0 && newCompletedCount % settings.longBreakInterval === 0;
@@ -686,10 +770,13 @@ export const usePomodoroStore = create<PomodoroState>()(
 
         const reachedDailyGoal =
           settings.dailyGoal > 0 && base < settings.dailyGoal && newCompletedCount >= settings.dailyGoal;
-        let nextStreakDays = streakDays;
-        let nextGoalMetDate = lastGoalMetDate;
-        if (reachedDailyGoal && lastGoalMetDate !== today) {
-          nextStreakDays = lastGoalMetDate === localYesterday() ? streakDays + 1 : 1;
+        let nextStreakDays =
+          normalizedGoalMet !== null && normalizedGoalMet !== today && normalizedGoalMet !== yesterday
+            ? 0
+            : streakDays;
+        let nextGoalMetDate = normalizedGoalMet;
+        if (reachedDailyGoal && normalizedGoalMet !== today) {
+          nextStreakDays = normalizedGoalMet === yesterday ? streakDays + 1 : 1;
           nextGoalMetDate = today;
         }
         playChime('work-complete');
@@ -759,6 +846,10 @@ export const usePomodoroStore = create<PomodoroState>()(
       flushPendingRecords,
 
       tick: () => {
+        const rolloverPatch = resolveCalendarDayRolloverPatch(get());
+        if (rolloverPatch) {
+          set(rolloverPatch);
+        }
         const { status, phaseEndsAt, phaseStartedAt, timeLeft, settings, mode, endReminderFiredPhase } = get();
         if (status !== 'running') return;
 
@@ -822,11 +913,17 @@ export const usePomodoroStore = create<PomodoroState>()(
         }
       },
 
+      syncCalendarDay: (now: Date = new Date()) => {
+        const patch = resolveCalendarDayRolloverPatch(get(), now);
+        if (patch) set(patch);
+      },
+
       // 墙钟矫正：应用重启 rehydrate、窗口重新可见、系统休眠唤醒后调用。
       // 运行中已超时 → 按完成处理；超时幅度大（> AWAY_JUMP_MS，典型是长时间休眠）
       // 则走「离开期间完成」温和路径：静音、换文案、不自动连锁开下一阶段
       syncWallClock: () => {
         void flushPendingRecords().catch(error => console.warn('[Pomodoro] Record retry failed:', error));
+        get().syncCalendarDay();
         const { status, phaseEndsAt, phaseStartedAt, timeLeft, mode } = get();
         if (status !== 'running' || mode === 'idle') return;
 
@@ -902,8 +999,11 @@ export const usePomodoroStore = create<PomodoroState>()(
 
           // 跨午夜完成：当天计数从 1 重新开始。正计时不足 1 分钟不计数（防误触）
           const today = localToday();
+          const yesterday = localYesterday();
+          const normalizedActive = normalizeLocalDateKey(lastActiveDate);
+          const normalizedGoalMet = normalizeLocalDateKey(lastGoalMetDate);
           const countsAsPomodoro = !isCountUpPhase || workSeconds >= 60;
-          const base = lastActiveDate === today ? completedPomodorosToday : 0;
+          const base = normalizedActive === today ? completedPomodorosToday : 0;
           const newCompletedCount = countsAsPomodoro ? base + 1 : base;
 
           const isLongBreak =
@@ -934,10 +1034,13 @@ export const usePomodoroStore = create<PomodoroState>()(
             newCompletedCount >= settings.dailyGoal;
 
           // streak：达成每日目标时更新连续天数（昨天也达成 → +1，否则重置为 1）
-          let nextStreakDays = streakDays;
-          let nextGoalMetDate = lastGoalMetDate;
-          if (reachedDailyGoal && lastGoalMetDate !== today) {
-            nextStreakDays = lastGoalMetDate === localYesterday() ? streakDays + 1 : 1;
+          let nextStreakDays =
+            normalizedGoalMet !== null && normalizedGoalMet !== today && normalizedGoalMet !== yesterday
+              ? 0
+              : streakDays;
+          let nextGoalMetDate = normalizedGoalMet;
+          if (reachedDailyGoal && normalizedGoalMet !== today) {
+            nextStreakDays = normalizedGoalMet === yesterday ? streakDays + 1 : 1;
             nextGoalMetDate = today;
           }
 
@@ -1014,6 +1117,7 @@ export const usePomodoroStore = create<PomodoroState>()(
             notificationDeadline,
           );
 
+          const breakRolloverPatch = resolveCalendarDayRolloverPatch(get());
           // 离开期间结束：不自动开始下一个番茄（否则唤醒瞬间「已专注」一大段幽灵时间）
           if (!away && settings.autoStartWork) {
             // 自动开始下一个番茄（沿用当前任务）
@@ -1022,6 +1126,7 @@ export const usePomodoroStore = create<PomodoroState>()(
             const nextToday = localToday();
             const { lastActiveDate: lad, completedPomodorosToday: cpt } = get();
             set({
+              ...(breakRolloverPatch ?? {}),
               mode: 'work',
               status: 'running',
               timeLeft: isCountUp ? 0 : settings.workDuration,
@@ -1031,7 +1136,7 @@ export const usePomodoroStore = create<PomodoroState>()(
               sessionCountUp: isCountUp,
               sessionDuration: isCountUp ? null : settings.workDuration,
               phaseExtraSeconds: 0,
-              completedPomodorosToday: lad === nextToday ? cpt : 0,
+              completedPomodorosToday: normalizeLocalDateKey(lad) === nextToday ? cpt : 0,
               lastActiveDate: nextToday,
               endReminderFiredPhase: null,
             });
@@ -1040,6 +1145,7 @@ export const usePomodoroStore = create<PomodoroState>()(
             }
           } else {
             set({
+              ...(breakRolloverPatch ?? {}),
               mode: 'idle',
               status: 'paused',
               timeLeft: settings.countUp ? 0 : settings.workDuration,
@@ -1118,12 +1224,14 @@ export const usePomodoroStore = create<PomodoroState>()(
       }),
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<PomodoroState>;
-        return {
+        const merged: PomodoroState = {
           ...current,
           ...p,
           // 旧版本 settings 缺少新增字段时回填默认值（含 noiseAutoWithFocus）
           settings: { ...DEFAULT_POMODORO_SETTINGS, ...(p.settings ?? {}) },
         };
+        const rolloverPatch = resolveCalendarDayRolloverPatch(merged);
+        return rolloverPatch ? { ...merged, ...rolloverPatch } : merged;
       },
       onRehydrateStorage: () => (state) => {
         if (state) syncPomodoroStudyFocus(state.mode, state.status);

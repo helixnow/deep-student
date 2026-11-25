@@ -16,7 +16,7 @@
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { CaretDown, SquaresFour } from '@phosphor-icons/react';
+import { CaretDown, CaretUp, SquaresFour } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '../../../lib/utils';
@@ -98,6 +98,10 @@ const DOCK_COLLAPSE_ID = '__dock_collapse__';
 const MOBILE_DOCK_FALLBACK_HEIGHT_PX = 58;
 const MOBILE_DOCK_FALLBACK_BOTTOM_PX = 4;
 const MOBILE_DOCK_CLEARANCE_GAP_PX = 10;
+/** 窄屏（<= 767px）收起态底部唤出把手专属让位高度（>= 36–44px 触控热区，避免与聊天 `+` 附件按钮重叠） */
+export const MOBILE_DOCK_HANDLE_CLEARANCE_PX = 40;
+/** 触控唤出后忽略浏览器补发合成 click 的保护窗口（ms） */
+const HOTZONE_TOUCH_CLICK_GUARD_MS = 450;
 
 function computeMobileDockClearancePx(dockEl: HTMLElement | null, scale: number): number {
   const measuredHeight = dockEl?.offsetHeight ?? 0;
@@ -488,7 +492,8 @@ function DockImpl({
   const clickRevealedRef = React.useRef(false);
   const revealTimerRef = React.useRef(0);
   const concealTimerRef = React.useRef(0);
-  const hotzoneRef = React.useRef<HTMLDivElement | null>(null);
+  const hotzoneRef = React.useRef<HTMLButtonElement | null>(null);
+  const lastTouchRevealAtRef = React.useRef(0);
 
   const updateRevealed = React.useCallback((next: boolean) => {
     revealedRef.current = next;
@@ -740,6 +745,8 @@ function DockImpl({
 
   const mobileClearanceActive =
     isCompactViewport && ((effectiveAutohide && revealed) || holdClearanceForPointer);
+  const mobileCollapsedHandleActive =
+    isCompactViewport && effectiveAutohide && hidden && !holdClearanceForPointer;
   const clearanceTargetsRef = React.useRef<Set<HTMLElement>>(new Set());
   const lastReportedClearanceRef = React.useRef<DockMobileClearanceState | null>(null);
   const syncMobileDockClearance = React.useCallback(() => {
@@ -748,6 +755,8 @@ function DockImpl({
       ? computeMobileDockClearancePx(dockRef.current, dockScale)
       : 0;
     const revealedFlag = mobileClearanceActive && clearancePx > 0;
+    const collapsedHandleFlag = mobileCollapsedHandleActive && !revealedFlag;
+    const handleClearancePx = collapsedHandleFlag ? MOBILE_DOCK_HANDLE_CLEARANCE_PX : 0;
     const targets: HTMLElement[] = [document.documentElement];
     const wbRoot = dockZoneRef.current?.closest<HTMLElement>('[data-wb-workbench-root]');
     const wbDesktop = dockZoneRef.current?.closest<HTMLElement>('[data-wb-desktop]');
@@ -762,6 +771,13 @@ function DockImpl({
         el.removeAttribute('data-wb-dock-revealed');
         el.style.setProperty('--wb-mobile-dock-clearance', '0px');
       }
+      if (collapsedHandleFlag) {
+        el.setAttribute('data-wb-dock-collapsed', 'true');
+        el.style.setProperty('--wb-mobile-dock-handle-clearance', `${handleClearancePx}px`);
+      } else {
+        el.removeAttribute('data-wb-dock-collapsed');
+        el.style.setProperty('--wb-mobile-dock-handle-clearance', '0px');
+      }
     }
     const prev = lastReportedClearanceRef.current;
     if (!prev || prev.revealed !== revealedFlag || prev.clearancePx !== clearancePx) {
@@ -769,7 +785,7 @@ function DockImpl({
       lastReportedClearanceRef.current = next;
       onMobileClearanceChange?.(next);
     }
-  }, [dockScale, mobileClearanceActive, onMobileClearanceChange]);
+  }, [dockScale, mobileClearanceActive, mobileCollapsedHandleActive, onMobileClearanceChange]);
   const syncMobileDockClearanceRef = React.useRef(syncMobileDockClearance);
   syncMobileDockClearanceRef.current = syncMobileDockClearance;
 
@@ -786,6 +802,8 @@ function DockImpl({
       for (const el of targets) {
         el.removeAttribute('data-wb-dock-revealed');
         el.style.removeProperty('--wb-mobile-dock-clearance');
+        el.removeAttribute('data-wb-dock-collapsed');
+        el.style.removeProperty('--wb-mobile-dock-handle-clearance');
       }
       targets.clear();
       lastReportedClearanceRef.current = null;
@@ -943,6 +961,7 @@ function DockImpl({
   React.useEffect(() => () => resetMagnification(), [resetMagnification]);
 
   const handleDockPointerEnter = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'touch') return;
     clickRevealedRef.current = false;
     if (effectiveAutohide) {
       clearAutohideTimers();
@@ -963,6 +982,7 @@ function DockImpl({
   const handleDockPointerLeave = (event: React.PointerEvent<HTMLDivElement>) => {
     // 忽略从子项冒泡上来的合成 leave（仅处理真正离开 Dock 容器本身的离场）
     if (event.target !== event.currentTarget) return;
+    if (event.pointerType === 'touch') return;
     resetMagnification();
     resetTipSession();
     if (!effectiveAutohide) return;
@@ -970,6 +990,121 @@ function DockImpl({
     if (dockRef.current?.contains(document.activeElement)) return;
     scheduleConceal();
   };
+
+  const isWithinTouchClickGuard = () =>
+    lastTouchRevealAtRef.current > 0 &&
+    Date.now() - lastTouchRevealAtRef.current < HOTZONE_TOUCH_CLICK_GUARD_MS;
+
+  const triggerHotzoneReveal = React.useCallback(
+    (fromTouch = false) => {
+      if (fromTouch) {
+        lastTouchRevealAtRef.current = Date.now();
+      }
+      clearAutohideTimers();
+      revealDock(true);
+    },
+    [clearAutohideTimers, revealDock],
+  );
+
+  const handleHotzonePointerDown = React.useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (!hidden) return;
+      event.stopPropagation();
+      if (event.pointerType === 'touch' || event.pointerType === 'pen') {
+        event.preventDefault();
+      }
+    },
+    [hidden],
+  );
+
+  const handleHotzoneTouchStart = React.useCallback(
+    (event: React.TouchEvent<HTMLButtonElement>) => {
+      if (!hidden) return;
+      event.stopPropagation();
+    },
+    [hidden],
+  );
+
+  const handleHotzoneTouchEnd = React.useCallback(
+    (event: React.TouchEvent<HTMLButtonElement>) => {
+      const withinGuard = isWithinTouchClickGuard();
+      if (!hidden && !withinGuard) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (hidden && !revealedRef.current) {
+        triggerHotzoneReveal(true);
+      } else {
+        lastTouchRevealAtRef.current = Date.now();
+      }
+    },
+    [hidden, triggerHotzoneReveal],
+  );
+
+  const handleHotzonePointerUp = React.useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+      const withinGuard = isWithinTouchClickGuard();
+      if (!hidden && !withinGuard) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (hidden && !revealedRef.current) {
+        triggerHotzoneReveal(true);
+      } else {
+        lastTouchRevealAtRef.current = Date.now();
+      }
+    },
+    [hidden, triggerHotzoneReveal],
+  );
+
+  const handleHotzoneClick = React.useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      const withinGuard = isWithinTouchClickGuard();
+      if (!hidden) {
+        if (withinGuard) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      triggerHotzoneReveal(false);
+    },
+    [hidden, triggerHotzoneReveal],
+  );
+
+  const handleHotzoneKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (!hidden) return;
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        event.stopPropagation();
+        triggerHotzoneReveal(false);
+      }
+    },
+    [hidden, triggerHotzoneReveal],
+  );
+
+  const handleHotzonePointerEnter = React.useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (event.pointerType === 'touch') return;
+      scheduleReveal();
+    },
+    [scheduleReveal],
+  );
+
+  const handleHotzonePointerLeave = React.useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (event.pointerType === 'touch') return;
+      if (revealTimerRef.current) {
+        window.clearTimeout(revealTimerRef.current);
+        revealTimerRef.current = 0;
+      }
+      if (clickRevealedRef.current) return;
+      scheduleConceal();
+    },
+    [scheduleConceal],
+  );
 
   const handleDockBlur = (event: React.FocusEvent) => {
     if (!effectiveAutohide) return;
@@ -1094,52 +1229,56 @@ function DockImpl({
       data-compact-window={isCompactViewport && hasOpenWindow ? 'true' : undefined}
       data-compact-collapsed={isCompactViewport && compactCollapsedPersisted ? 'true' : undefined}
       data-dock-revealed={mobileClearanceActive ? 'true' : undefined}
-      style={{ zIndex: 'var(--wb-z-dock)' }}
+      data-dock-collapsed={mobileCollapsedHandleActive ? 'true' : undefined}
+      style={{ zIndex: 'var(--wb-z-dock, 9000)' }}
     >
       {effectiveAutohide && (
-        <div
+        <button
           ref={hotzoneRef}
+          type="button"
           data-testid="wb-dock-hotzone"
           data-collapsed={hidden ? 'true' : 'false'}
-          role={hidden ? 'button' : undefined}
-          tabIndex={hidden ? 0 : undefined}
+          data-mobile-handle={isCompactViewport && hidden ? 'true' : undefined}
+          tabIndex={hidden ? 0 : -1}
           aria-hidden={!hidden || undefined}
+          aria-expanded={hidden ? false : undefined}
           aria-label={hidden ? t('workbench:dock.autohideHint') : undefined}
           title={hidden ? t('workbench:dock.autohideHint') : undefined}
-          // 收起态保持 6px 底缘热区（避免挡住底部应用操作栏）；展开态补足高度消除热区→Dock 间断缝
-          className={cn(
-            'wb-dock-hotzone pointer-events-auto absolute inset-x-0 bottom-0',
-            hidden ? 'h-1.5 min-h-[6px] cursor-pointer' : 'h-4 min-h-[16px]',
-          )}
-          onClick={
-            hidden
-              ? () => {
-                  clearAutohideTimers();
-                  revealDock(true);
-                }
-              : undefined
-          }
-          onKeyDown={
-            hidden
-              ? (event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    clearAutohideTimers();
-                    revealDock(true);
-                  }
-                }
-              : undefined
-          }
-          onPointerEnter={scheduleReveal}
-          onPointerLeave={() => {
-            if (revealTimerRef.current) {
-              window.clearTimeout(revealTimerRef.current);
-              revealTimerRef.current = 0;
-            }
-            if (clickRevealedRef.current) return;
-            scheduleConceal();
+          style={{
+            zIndex: hidden ? 'calc(var(--wb-z-dock, 9000) + 1)' : 0,
+            touchAction: 'manipulation',
           }}
-        />
+          // 桌面收起态保持 6px 纯净底缘热区；移动端（<= 767px）收起态提供居中 40px 触控唤出把手，避开聊天 `+` / 发送按钮
+          className={cn(
+            'wb-dock-hotzone absolute bottom-0',
+            hidden
+              ? isCompactViewport
+                ? 'wb-dock-mobile-handle pointer-events-auto left-1/2 flex h-10 min-h-[40px] min-w-[148px] -translate-x-1/2 cursor-pointer items-center justify-center'
+                : 'pointer-events-auto inset-x-0 h-1.5 min-h-[6px] cursor-pointer'
+              : isCompactViewport
+                ? 'pointer-events-none inset-x-0 h-4 min-h-[16px]'
+                : 'pointer-events-auto inset-x-0 h-4 min-h-[16px]',
+          )}
+          onPointerDown={handleHotzonePointerDown}
+          onTouchStart={handleHotzoneTouchStart}
+          onTouchEnd={handleHotzoneTouchEnd}
+          onPointerUp={handleHotzonePointerUp}
+          onClick={handleHotzoneClick}
+          onKeyDown={handleHotzoneKeyDown}
+          onPointerEnter={handleHotzonePointerEnter}
+          onPointerLeave={handleHotzonePointerLeave}
+        >
+          {isCompactViewport && hidden && (
+            <span
+              aria-hidden="true"
+              data-testid="wb-dock-mobile-handle-pill"
+              className="wb-dock-mobile-handle-pill pointer-events-none inline-flex items-center justify-center gap-1.5"
+            >
+              <CaretUp size={11} weight="bold" className="wb-dock-mobile-handle-chevron shrink-0" />
+              <span className="wb-dock-mobile-handle-label">{t('workbench:dock.label')}</span>
+            </span>
+          )}
+        </button>
       )}
       <div
         ref={dockRef}

@@ -687,10 +687,85 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
     var(--wb-ease-spring-soft, cubic-bezier(0.3, 1.12, 0.36, 1)) both;
 }
 
+.wb-dock-hotzone {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  outline: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .wb-dock-hotzone[data-collapsed='true'] {
   bottom: 0;
   height: 6px;
   min-height: 6px;
+  z-index: calc(var(--wb-z-dock, 9000) + 1);
+  pointer-events: auto;
+}
+
+.wb-dock-hotzone[data-collapsed='true'][data-mobile-handle='true'] {
+  left: 50%;
+  right: auto;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: min(204px, calc(100vw - 112px));
+  min-width: 148px;
+  height: var(--wb-mobile-dock-handle-clearance, 40px);
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  touch-action: manipulation;
+  z-index: calc(var(--wb-z-dock, 9000) + 1);
+}
+
+.wb-dock-hotzone[data-collapsed='true'][data-mobile-handle='true']:focus-visible
+  .wb-dock-mobile-handle-pill {
+  box-shadow: var(--wb-focus-ring);
+}
+
+.wb-dock-hotzone[data-collapsed='true'][data-mobile-handle='true']:active
+  .wb-dock-mobile-handle-pill {
+  transform: scale(0.96);
+}
+
+.wb-dock-mobile-handle-pill {
+  height: 24px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  color: hsl(var(--foreground) / 84%);
+  background-color: var(--wb-dock-bg);
+  background-image: var(--wb-glass-sheen);
+  -webkit-backdrop-filter: var(--wb-dock-blur);
+  backdrop-filter: var(--wb-dock-blur);
+  border: 1px solid var(--wb-dock-border);
+  box-shadow:
+    inset 0 1px 0 var(--wb-glass-highlight),
+    0 2px 8px hsl(var(--shadow-base, 0 0% 0%) / 14%);
+  transition: transform 110ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+:root.dark .wb-dock-mobile-handle-pill {
+  color: hsl(var(--foreground) / 90%);
+  box-shadow:
+    inset 0 1px 0 var(--wb-glass-highlight),
+    0 3px 10px rgb(0 0 0 / 36%);
+}
+
+.wb-dock-mobile-handle-chevron {
+  opacity: 0.78;
+}
+
+.wb-dock-mobile-handle-label {
+  white-space: nowrap;
 }
 
 .wb-dock.wb-dock-slide[data-hidden] {
@@ -747,9 +822,23 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
     transform: translate(-50%, calc(100% + 18px));
   }
 
-  /* 窄屏动态布局让位：收起时归零不浪费视口，展开时窗口层底缘同步上抬避开程序坞 */
+  /* 窄屏动态布局让位：收起态为居中 40px 唤出把手保留专属底部通道，避免与聊天 `+` 附件按钮重叠；展开态同步上抬避开程序坞 */
   [data-wb-desktop] > [data-wb-window-layer] {
     bottom: var(--wb-mobile-dock-clearance, 0px);
+  }
+
+  [data-wb-desktop][data-wb-dock-collapsed='true'] > [data-wb-window-layer],
+  :root[data-wb-dock-collapsed='true'] [data-wb-desktop] > [data-wb-window-layer] {
+    bottom: max(
+      var(--wb-mobile-dock-clearance, 0px),
+      var(--wb-mobile-dock-handle-clearance, 40px)
+    ) !important;
+    overflow: clip;
+  }
+
+  [data-wb-desktop][data-wb-dock-collapsed='true'] > [data-wb-window-layer] > .wb-window,
+  :root[data-wb-dock-collapsed='true'] [data-wb-desktop] > [data-wb-window-layer] > .wb-window {
+    max-height: 100%;
   }
 
   [data-wb-desktop][data-wb-dock-revealed='true'] > [data-wb-window-layer],
@@ -819,6 +908,7 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
   .wb-dock-tip,
   .wb-dock-drag-hint,
   .wb-dock-item-icon,
+  .wb-dock-mobile-handle-pill,
   .wb-dock-item-wrap::before {
     transition: none;
   }
@@ -855,6 +945,7 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
 :root[data-wb-material='minimal'] .wb-dock-mag,
 :root[data-wb-material='minimal'] .wb-dock-tip,
 :root[data-wb-material='minimal'] .wb-dock-drag-hint,
+:root[data-wb-material='minimal'] .wb-dock-mobile-handle-pill,
 :root[data-wb-material='minimal'] .wb-dock-item-icon {
   transition: none;
 }

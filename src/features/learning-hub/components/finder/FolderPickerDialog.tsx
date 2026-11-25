@@ -97,7 +97,7 @@ function FolderNode({
           aria-disabled={isExcluded || undefined}
           tabIndex={isExcluded ? -1 : 0}
           className={cn(
-            'flex items-center justify-start gap-1.5 py-2 px-2 rounded-md cursor-pointer',
+            'flex min-w-0 items-center justify-start gap-1.5 py-2 px-2 rounded-md cursor-pointer',
             'transition-all duration-150 ease-out',
             'active:scale-[0.99]',
             'focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.35)]',
@@ -147,7 +147,7 @@ function FolderNode({
           'shrink-0 transition-colors duration-150',
           isSelected ? 'text-primary' : 'text-amber-500'
         )} />
-          <span className="text-sm truncate flex-1">{node.folder.title}</span>
+          <span className="min-w-0 flex-1 truncate text-sm" title={node.folder.title}>{node.folder.title}</span>
         </div>
       </TouchTarget>
       {hasChildren && (
@@ -349,7 +349,7 @@ export function FolderPickerDialog({
               {t('common:back')}
             </DsButton>
             <FolderInputIcon size={16} className="text-muted-foreground shrink-0" />
-            <h2 className="text-sm font-semibold truncate">{resolvedTitle}</h2>
+            <h2 className="min-w-0 flex-1 truncate text-sm font-semibold" title={resolvedTitle}>{resolvedTitle}</h2>
           </div>
         )}
 
@@ -386,9 +386,9 @@ export function FolderPickerDialog({
   return (
     <DsDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-md">
         <DsDialogHeader>
-          <DsDialogTitle className="flex items-center gap-2">
-            <FolderInputIcon size={16} className="text-muted-foreground" />
-            {resolvedTitle}
+          <DsDialogTitle className="flex min-w-0 items-start gap-2">
+            <FolderInputIcon size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{resolvedTitle}</span>
           </DsDialogTitle>
         </DsDialogHeader>
 

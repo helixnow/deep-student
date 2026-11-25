@@ -27,10 +27,55 @@ function folderPath(conn: SqlExecutor, id: string): string {
     FROM folders f JOIN folder_path fp ON f.id=fp.parent_id WHERE fp.depth < ?2)
     SELECT title FROM folder_path ORDER BY depth DESC`, [id, MAX_FOLDER_DEPTH + 1]).map(row => row.title).join('/');
 }
+function folderEntryFromPath(id: string, resolvedPath: string, now: string): PathCacheEntry {
+  const slash = resolvedPath.lastIndexOf('/');
+  return {
+    itemType: 'folder',
+    itemId: id,
+    fullPath: `/${resolvedPath}`,
+    folderPath: slash < 0 ? '/' : `/${resolvedPath.slice(0, slash)}`,
+    updatedAt: now,
+  };
+}
 function folderEntry(conn: SqlExecutor, id: string, now: string): PathCacheEntry {
-  const path = folderPath(conn, id);
-  const slash = path.lastIndexOf('/');
-  return { itemType: 'folder', itemId: id, fullPath: `/${path}`, folderPath: slash < 0 ? '/' : `/${path.slice(0, slash)}`, updatedAt: now };
+  return folderEntryFromPath(id, folderPath(conn, id), now);
+}
+const RESOURCE_TITLE_BATCH_SQL: Record<string, string> = {
+  note: 'SELECT id, title AS value FROM notes WHERE id IN ({})',
+  file: 'SELECT id, file_name AS value FROM files WHERE id IN ({})',
+  exam: 'SELECT id, COALESCE(exam_name,id) AS value FROM exam_sheets WHERE id IN ({})',
+  translation: 'SELECT id, COALESCE(title,id) AS value FROM translations WHERE id IN ({})',
+  essay: 'SELECT id, COALESCE(title,id) AS value FROM essays WHERE id IN ({})',
+};
+function batchValidateResourceTitles(conn: SqlExecutor, items: readonly FolderItem[]): Set<string> {
+  const invalidKeys = new Set<string>();
+  const byType = new Map<string, string[]>();
+  for (const item of items) {
+    const type = canonicalType(item.item_type);
+    if (!(type in RESOURCE_TITLE_BATCH_SQL)) continue;
+    const bucket = byType.get(type);
+    if (bucket === undefined) byType.set(type, [item.item_id]);
+    else bucket.push(item.item_id);
+  }
+  for (const [type, ids] of byType) {
+    const template = RESOURCE_TITLE_BATCH_SQL[type]!;
+    for (let start = 0; start < ids.length; start += 500) {
+      const chunk = ids.slice(start, start + 500);
+      const sql = template.replace('{}', chunk.map(() => '?').join(','));
+      try {
+        const rows = conn.all<{ id: string; value: unknown }>(sql, chunk);
+        for (const row of rows) {
+          if (typeof row.value !== 'string') {
+            invalidKeys.add(`${type}\u0000${row.id}`);
+          }
+        }
+      } catch (error) {
+        logWarn('[VFS::PathCacheRepo] Skipping resource cache:', error);
+        for (const id of chunk) invalidKeys.add(`${type}\u0000${id}`);
+      }
+    }
+  }
+  return invalidKeys;
 }
 function resourceEntry(conn: SqlExecutor, itemType: string, itemId: string, folderId: string | null, now: string): PathCacheEntry {
   // Rust fetches the unused title too: a missing table/invalid title must still fail here.
@@ -167,15 +212,34 @@ export class PathCacheRepo implements PathCacheRepository {
       try {
         conn.run('DELETE FROM path_cache');
         const now = utcTimestamp();
+        const folderPathCache = new Map<string, string>();
+        const resolveFolderPath = (folderId: string): string => {
+          const cached = folderPathCache.get(folderId);
+          if (cached !== undefined) return cached;
+          const computed = folderPath(conn, folderId);
+          folderPathCache.set(folderId, computed);
+          return computed;
+        };
         for (const { id } of conn.all<{ id: string }>('SELECT id FROM folders WHERE deleted_at IS NULL')) {
-          const entry = folderEntry(conn, id, now);
-          if (byteLength(entry.fullPath) <= MAX_PATH_LENGTH) { this.setPath(conn, entry); count++; }
+          const entry = folderEntryFromPath(id, resolveFolderPath(id), now);
+          if (byteLength(entry.fullPath) <= MAX_PATH_LENGTH) {
+            conn.run(upsert, [entry.itemType, entry.itemId, entry.fullPath, entry.folderPath, entry.updatedAt]);
+            count++;
+          }
         }
-        for (const item of liveItems(conn)) {
-          let entry: PathCacheEntry;
-          try { entry = resourceEntry(conn, item.item_type, item.item_id, item.folder_id, now); }
-          catch (error) { logWarn('[VFS::PathCacheRepo] Skipping resource cache:', error); continue; }
-          if (byteLength(entry.fullPath) <= MAX_PATH_LENGTH) { this.setPath(conn, entry); count++; }
+        const items = liveItems(conn);
+        const invalidKeys = batchValidateResourceTitles(conn, items);
+        for (const item of items) {
+          if (invalidKeys.has(`${canonicalType(item.item_type)}\u0000${item.item_id}`)) {
+            logWarn('[VFS::PathCacheRepo] Skipping resource cache: invalid null title');
+            continue;
+          }
+          const resolvedFolderPath = item.folder_id === null ? '/' : `/${resolveFolderPath(item.folder_id)}`;
+          const fullPath = resolvedFolderPath === '/' ? `/${item.item_id}` : `${resolvedFolderPath}/${item.item_id}`;
+          if (byteLength(fullPath) <= MAX_PATH_LENGTH) {
+            conn.run(upsert, [item.item_type, item.item_id, fullPath, resolvedFolderPath, now]);
+            count++;
+          }
         }
       } catch (error) { rollbackIgnoringFailure(conn); throw error; }
       conn.exec('COMMIT');
@@ -188,6 +252,20 @@ export class PathCacheRepo implements PathCacheRepository {
       const now = utcTimestamp();
       const ids = recursiveFolderIds(conn, id);
       if (ids.length === 0) return 0;
+      const folderPathCache = new Map<string, string>();
+      const resolveFolderPath = (folderId: string): string => {
+        const cached = folderPathCache.get(folderId);
+        if (cached !== undefined) return cached;
+        const computed = folderPath(conn, folderId);
+        folderPathCache.set(folderId, computed);
+        return computed;
+      };
+      const writeEntry = (entry: PathCacheEntry): void => {
+        if (byteLength(entry.fullPath) > MAX_PATH_LENGTH) {
+          throw new VfsRepositoryError('VFS_INVALID_ARGUMENT', `Invalid argument 'full_path': Path too long: ${byteLength(entry.fullPath)} chars (max ${MAX_PATH_LENGTH})`, { param: 'full_path' });
+        }
+        conn.run(upsert, [entry.itemType, entry.itemId, entry.fullPath, entry.folderPath, entry.updatedAt]);
+      };
       let count = 0;
       for (const folderId of ids) {
         // Rust get_folder_with_conn fails on old/incomplete folder schemas; skip those rows.
@@ -197,13 +275,18 @@ export class PathCacheRepo implements PathCacheRepository {
             CASE typeof(created_at) WHEN 'text' THEN CAST(strftime('%s',created_at) AS INTEGER)*1000 ELSE created_at END AS created_at,
             CASE typeof(updated_at) WHEN 'text' THEN CAST(strftime('%s',updated_at) AS INTEGER)*1000 ELSE updated_at END AS updated_at FROM folders WHERE id=?1`, [folderId]);
         } catch (error) { logWarn('[VFS::PathCacheRepo] Skipping folder cache:', error); continue; }
-        if (folder) { this.setPath(conn, folderEntry(conn, folderId, now)); count++; }
+        if (folder) { writeEntry(folderEntryFromPath(folderId, resolveFolderPath(folderId), now)); count++; }
       }
-      for (const item of liveItems(conn, ids)) {
-        let entry: PathCacheEntry;
-        try { entry = resourceEntry(conn, item.item_type, item.item_id, item.folder_id, now); }
-        catch (error) { logWarn('[VFS::PathCacheRepo] Skipping resource cache:', error); continue; }
-        this.setPath(conn, entry);
+      const items = liveItems(conn, ids);
+      const invalidKeys = batchValidateResourceTitles(conn, items);
+      for (const item of items) {
+        if (invalidKeys.has(`${canonicalType(item.item_type)}\u0000${item.item_id}`)) {
+          logWarn('[VFS::PathCacheRepo] Skipping resource cache: invalid null title');
+          continue;
+        }
+        const resolvedFolderPath = item.folder_id === null ? '/' : `/${resolveFolderPath(item.folder_id)}`;
+        const fullPath = resolvedFolderPath === '/' ? `/${item.item_id}` : `${resolvedFolderPath}/${item.item_id}`;
+        writeEntry({ itemType: item.item_type, itemId: item.item_id, fullPath, folderPath: resolvedFolderPath, updatedAt: now });
         count++;
       }
       return count;

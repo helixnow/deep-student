@@ -181,14 +181,17 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
         data-mobile-shell="floating-sidebar-trigger"
         data-phone-landscape={isPhoneLandscape ? 'true' : undefined}
         className={cn(
-          'pointer-events-none flex w-full items-start justify-between px-3',
+          'relative z-10 flex w-full shrink-0 items-center justify-between px-3',
+          isPhoneLandscape && 'h-10',
           chromeMotionClass,
           className,
         )}
         style={{
-          paddingTop: 'calc(var(--mobile-safe-area-top, 0px) + 0.375rem)',
+          paddingTop: isPhoneLandscape ? '0px' : 'var(--mobile-safe-area-top, 0px)',
           paddingLeft,
           paddingRight,
+          height: headerHeight,
+          minHeight: headerHeight,
           ...style,
         }}
       >
@@ -196,14 +199,14 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
           variant="ghost"
           size="icon"
           onClick={config.onMenuClick}
-          className={cn(shellIconButtonClassName, 'pointer-events-auto')}
+          className={cn(shellIconButtonClassName, 'min-h-11 min-w-11')}
           data-mobile-floating-menu-button
           aria-label={t('common:mobile_header.open_sidebar')}
         >
           <List size={21} weight="regular" />
         </DsButton>
         {config.rightActions ? (
-          <div className="pointer-events-auto flex shrink-0 items-center" data-no-drag>
+          <div className="flex shrink-0 items-center" data-no-drag>
             {config.rightActions}
           </div>
         ) : (

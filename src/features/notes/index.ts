@@ -174,3 +174,11 @@ export {
   getLastRegisteredNoteId,
   subscribeLastRegisteredNoteId,
 } from './aiEditControlRegistry';
+
+// 多标签页标题消歧（workbench 笔记标签栏消费）
+export { disambiguateTabTitles, visualWidth } from './tabTitleDisambiguation';
+export type {
+  TabTitleInput,
+  DisambiguatedTabLabel,
+  DisambiguateTabTitlesOptions,
+} from './tabTitleDisambiguation';

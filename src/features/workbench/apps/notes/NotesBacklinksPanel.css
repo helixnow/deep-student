@@ -1,6 +1,8 @@
 .notes-backlinks-panel {
   min-width: 0;
   min-height: 0;
+  container-type: inline-size;
+  container-name: notes-backlinks;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -24,8 +26,10 @@
 
 .notes-backlinks-panel-heading {
   min-width: 0;
+  flex: 1 1 auto;
   padding: 6px 4px;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   align-content: center;
   gap: 1px;
 }
@@ -292,11 +296,13 @@
 
 .notes-backlinks-panel-link {
   width: 100%;
+  min-width: 0;
   min-height: 32px;
   padding: 5px 6px;
   display: flex;
   align-items: center;
   gap: 7px;
+  overflow: hidden;
   border: 0;
   border-radius: var(--notes-radius-row);
   color: hsl(var(--foreground));
@@ -323,7 +329,9 @@
 
 .notes-backlinks-panel-link-copy {
   min-width: 0;
+  flex: 1 1 auto;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1px;
 }
 
@@ -344,11 +352,13 @@
 }
 
 .notes-backlinks-panel-unresolved-link {
+  min-width: 0;
   min-height: 30px;
   padding: 5px 6px;
   display: flex;
   align-items: center;
   gap: 7px;
+  overflow: hidden;
   color: hsl(var(--muted-foreground));
 }
 

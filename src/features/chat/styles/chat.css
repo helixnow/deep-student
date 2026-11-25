@@ -288,12 +288,15 @@
 .chat-v2 .message-selectable-area .markdown-content video,
 .chat-v2 .message-selectable-area .markdown-content .code-block-wrapper,
 .chat-v2 .message-selectable-area .markdown-content .table-wrapper,
+.chat-v2 .message-selectable-area .markdown-content .math-scroll-area,
 .chat-v2 .message-selectable-area .stream-block:has(pre),
 .chat-v2 .message-selectable-area .stream-block:has(table),
 .chat-v2 .message-selectable-area .stream-block:has(.code-block-wrapper),
-.chat-v2 .message-selectable-area .stream-block:has(.table-wrapper) {
+.chat-v2 .message-selectable-area .stream-block:has(.table-wrapper),
+.chat-v2 .message-selectable-area .stream-block:has(.math-scroll-area) {
   max-width: 100%;
   width: 100%;
+  min-width: 0;
 }
 
 /* ────────────────────────────────────────────────────────
@@ -307,6 +310,9 @@
 .chat-v2 .message-selectable-area .mindmap-citation-card,
 .chat-v2 .message-selectable-area .copy-button,
 .chat-v2 .message-selectable-area .code-toolbar,
+.chat-v2 .message-selectable-area .code-block-sticky-header,
+.chat-v2 .message-selectable-area .code-block-header,
+.chat-v2 .message-selectable-area .code-block-header *,
 .chat-v2 .message-selectable-area .timeline-node-dot {
   -webkit-user-select: none;
   user-select: none;

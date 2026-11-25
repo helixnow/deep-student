@@ -51,6 +51,8 @@ interface TargetPanelProps {
     onRestorePrevious?: () => void;
     isOutdated?: boolean;
     onRetranslate?: () => void;
+    onSaveAsNewVersion?: () => void;
+    onKeepCurrentTranslation?: () => void;
 }
 
 const COPY_FEEDBACK_MS = 1500;
@@ -91,6 +93,8 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
     onRestorePrevious,
     isOutdated = false,
     onRetranslate,
+    onSaveAsNewVersion,
+    onKeepCurrentTranslation,
 }, ref) => {
     const { t } = useTranslation(['translation', 'common']);
     const [showComparison, setShowComparison] = useState(false);
@@ -492,23 +496,48 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                     </div>
                 ) : (
                     <div className="flex-1 min-h-0 flex flex-col relative" ref={setContentWrap}>
-                        {/* 译文过期提示（原文/设置已修改） */}
+                        {/* 译文过期提示（原文/设置已修改）：提供非破坏性选择，避免单一 CTA 直接覆盖当前完成稿 */}
                         {isOutdated && !isTranslating && translatedText && (
                             <div
                                 data-testid="translation-outdated-banner"
-                                className="flex items-center justify-between gap-2 px-3 py-1.5 bg-warning/10 border-b border-warning/20 text-xs text-warning shrink-0"
+                                className="flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 bg-warning/10 border-b border-warning/20 text-xs text-warning shrink-0"
                             >
                                 <span className="truncate">{t('translation:workbench_ui.outdated_hint')}</span>
-                                {onRetranslate && (
-                                    <DsButton
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={onRetranslate}
-                                        className="!h-6 px-2 text-xs text-warning hover:bg-warning/15 shrink-0 [@media(pointer:coarse)]:!min-h-11"
-                                    >
-                                        {t('translation:workbench_ui.retranslate_now')}
-                                    </DsButton>
-                                )}
+                                <div className="flex flex-wrap items-center gap-1 shrink-0">
+                                    {onSaveAsNewVersion && (
+                                        <DsButton
+                                            variant="ghost"
+                                            size="sm"
+                                            data-testid="translation-outdated-save-new-version-btn"
+                                            onClick={onSaveAsNewVersion}
+                                            className="!h-6 px-2 text-xs font-medium text-warning hover:bg-warning/15 shrink-0 [@media(pointer:coarse)]:!min-h-11"
+                                        >
+                                            {t('translation:workbench_ui.save_as_new_version', { defaultValue: '另存新版本' })}
+                                        </DsButton>
+                                    )}
+                                    {onRetranslate && (
+                                        <DsButton
+                                            variant="ghost"
+                                            size="sm"
+                                            data-testid="translation-outdated-retranslate-btn"
+                                            onClick={onRetranslate}
+                                            className="!h-6 px-2 text-xs text-warning hover:bg-warning/15 shrink-0 [@media(pointer:coarse)]:!min-h-11"
+                                        >
+                                            {t('translation:workbench_ui.retranslate_now')}
+                                        </DsButton>
+                                    )}
+                                    {onKeepCurrentTranslation && (
+                                        <DsButton
+                                            variant="ghost"
+                                            size="sm"
+                                            data-testid="translation-outdated-keep-current-btn"
+                                            onClick={onKeepCurrentTranslation}
+                                            className="!h-6 px-2 text-xs text-muted-foreground hover:bg-warning/10 shrink-0 [@media(pointer:coarse)]:!min-h-11"
+                                        >
+                                            {t('translation:workbench_ui.keep_current_translation', { defaultValue: '保留当前译文' })}
+                                        </DsButton>
+                                    )}
+                                </div>
                             </div>
                         )}
                         {/* 流式翻译实时状态胶囊 */}

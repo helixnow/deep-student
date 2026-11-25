@@ -156,9 +156,22 @@ vi.mock('@/shared/selection', () => ({
 }));
 
 vi.mock('@/components/custom-scroll-area', () => ({
-  CustomScrollArea: React.forwardRef<HTMLDivElement, React.PropsWithChildren>(
-    function MockCustomScrollArea({ children }, ref) {
-      return <div ref={ref}>{children}</div>;
+  CustomScrollArea: React.forwardRef<
+    HTMLDivElement,
+    React.PropsWithChildren<{
+      className?: string;
+      viewportRef?: React.Ref<HTMLDivElement>;
+      viewportProps?: React.HTMLAttributes<HTMLDivElement>;
+    }>
+  >(
+    function MockCustomScrollArea({ children, className, viewportRef, viewportProps }, ref) {
+      return (
+        <div ref={ref} className={className}>
+          <div ref={viewportRef} className="scroll-area__viewport" {...viewportProps}>
+            {children}
+          </div>
+        </div>
+      );
     },
   ),
 }));
@@ -544,6 +557,89 @@ describe('NotesCrepeEditor P0/P1/P2 state machine & interaction fixes', () => {
       expect(slotEl.childElementCount).toBe(0);
     } finally {
       slotEl.remove();
+    }
+  });
+
+  it('intercepts pdfref citation clicks preserving page/highlightId and restores note scrollTop on focus return', async () => {
+    const openDetails: Array<Record<string, unknown>> = [];
+    const focusDetails: Array<Record<string, unknown>> = [];
+    const onOpen = (e: Event) => openDetails.push((e as CustomEvent).detail);
+    const onFocus = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      focusDetails.push(detail);
+      detail.acknowledge?.(true);
+    };
+    document.addEventListener('pdf-ref:open', onOpen);
+    document.addEventListener('pdf-ref:focus', onFocus);
+
+    try {
+      const { container, rerender } = render(
+        <NotesCrepeEditor
+          noteId="note-pdf-scroll"
+          initialContent="# Citations"
+          acrWindowId="win_notes_split"
+          isActive
+        />,
+      );
+
+      const proseMirror = await screen.findByTestId('mock-prosemirror');
+      const viewport = container.querySelector<HTMLElement>('.notes-editor-content-scroll .scroll-area__viewport')
+        ?? container.querySelector<HTMLElement>('.notes-editor-content-scroll');
+      expect(viewport).toBeTruthy();
+
+      // Simulate user scrolling deep into the note before clicking a PDF highlight citation
+      Object.defineProperty(viewport!, 'scrollTop', { configurable: true, writable: true, value: 640 });
+      fireEvent.scroll(viewport!);
+
+      const link = document.createElement('a');
+      link.setAttribute('href', 'pdfref://tb_linalg?page=18&highlight=hl_42&quote=Eigenvalues');
+      link.textContent = '第 18 页';
+      proseMirror.appendChild(link);
+
+      fireEvent.click(link);
+
+      expect(openDetails).toHaveLength(1);
+      expect(openDetails[0]).toMatchObject({
+        sourceId: 'tb_linalg',
+        pageNumber: 18,
+        highlightId: 'hl_42',
+        annotationId: 'hl_42',
+        quote: 'Eigenvalues',
+        sourceWindowId: 'win_notes_split',
+      });
+      expect(focusDetails[0]).toMatchObject({
+        sourceId: 'tb_linalg',
+        pageNumber: 18,
+        highlightId: 'hl_42',
+      });
+
+      // Focus shifts to PDF window (Notes becomes inactive), then browser/focus resets scrollTop to 0
+      rerender(
+        <NotesCrepeEditor
+          noteId="note-pdf-scroll"
+          initialContent="# Citations"
+          acrWindowId="win_notes_split"
+          isActive={false}
+        />,
+      );
+      viewport!.scrollTop = 0;
+
+      // Returning focus to Notes restores exact saved scrollTop (640)
+      rerender(
+        <NotesCrepeEditor
+          noteId="note-pdf-scroll"
+          initialContent="# Citations"
+          acrWindowId="win_notes_split"
+          isActive
+        />,
+      );
+
+      await waitFor(() => {
+        expect(viewport!.scrollTop).toBe(640);
+      });
+    } finally {
+      document.removeEventListener('pdf-ref:open', onOpen);
+      document.removeEventListener('pdf-ref:focus', onFocus);
     }
   });
 });

@@ -10,11 +10,12 @@
  * 标题旁的入口（周报）、卡片行、行下方的条（薄弱知识点）都来自 `dashboard.widgets` 槽位，按 placement 分区；
  * 计数在这里统一加载后传给每个小部件。
  */
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { loadTodayLearning } from '@/features/learning-today/todayLearning';
 import '@/features/learning-today/dashboardWidgets';
+import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { SlotOutlet } from '@/ui-kernel/outlet';
 import { useOptionalUiKernel, useT } from '@/ui-kernel/react';
 import type { SlotEntry } from '@/ui-kernel/slots';
@@ -71,11 +72,20 @@ export const TodayCommandCenter: React.FC<TodayCommandCenterProps> = ({ onNaviga
   const platform = kernel?.platform.kind;
   const unattached = useUnattachedDashboardWidgets();
 
+  const mountedRef = useRef(true);
+
   const refresh = useCallback(() => {
-    loadCounts().then(setCounts).catch(() => setCounts({ cardsDue: 0, mistakesDue: 0, notesDue: 0, todoDue: 0, activeJobs: 0 }));
+    loadCounts()
+      .then((next) => {
+        if (mountedRef.current) setCounts(next);
+      })
+      .catch(() => {
+        if (mountedRef.current) setCounts({ cardsDue: 0, mistakesDue: 0, notesDue: 0, todoDue: 0, activeJobs: 0 });
+      });
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     refresh();
     const timer = setInterval(() => {
       if (!document.hidden) refresh();
@@ -85,12 +95,35 @@ export const TodayCommandCenter: React.FC<TodayCommandCenterProps> = ({ onNaviga
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
+      mountedRef.current = false;
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, [refresh]);
 
-  if (!counts) return null;
+  if (!counts) {
+    return (
+      <div className="mb-6" data-testid="today-command-center-skeleton" role="status" aria-busy="true">
+        <div className="mb-2 flex items-baseline gap-2">
+          <h2 className="text-base font-semibold text-foreground">{t('today_center.title')}</h2>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          {[0, 1, 2, 3, 4].map((idx) => (
+            <div
+              key={idx}
+              className="flex min-w-[180px] flex-1 items-center gap-3 rounded-lg border border-border bg-card px-4 py-3"
+            >
+              <Skeleton className="h-9 w-9 shrink-0 rounded-md bg-foreground/10" />
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Skeleton className="h-3 w-16 rounded bg-foreground/10" />
+                <Skeleton className="h-5 w-10 rounded bg-foreground/[0.08]" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   const nothingToDo = counts.cardsDue === 0 && counts.mistakesDue === 0 && counts.notesDue === 0
     && counts.todoDue === 0 && counts.activeJobs === 0;

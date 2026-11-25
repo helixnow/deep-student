@@ -160,6 +160,7 @@ export const ChatAppWindow: React.FC<AppWindowProps> = ({
         sidebarCollapsed={sidebarCollapsed}
         drawerOpen={drawerOpen}
         onDrawerOpenChange={setDrawerOpen}
+        hideDrawerHandle={Boolean(titlebarTarget)}
         sidebar={(
           <ModernSidebar
             currentView="chat-v2"

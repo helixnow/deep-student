@@ -12,6 +12,10 @@ import { pathUtils } from '../utils/pathUtils';
 import type { DstuNode, DstuListOptions } from '../types';
 import type { TranslationHistoryItem } from '@/utils/tauriApi';
 import { Result, VfsError, ok, err, reportError, toVfsError } from '@/shared/result';
+import {
+  sanitizeTranslationSyncedMeta,
+  type TranslationSyncedMeta,
+} from '@/shared/translationSyncedMeta';
 import { v4 as uuidv4 } from 'uuid';
 
 // ============================================================================
@@ -50,6 +54,8 @@ export interface TranslationSession {
   quality?: number;
   /** 是否收藏 */
   isFavorite?: boolean;
+  /** 最近一次已完成译文的生成元数据（语向/正式度/原文哈希等，用于跨重载精准过期检测） */
+  lastTranslatedMeta?: TranslationSyncedMeta;
   /** 创建时间（Unix 毫秒） */
   createdAt: number;
   /** 更新时间（Unix 毫秒） */
@@ -87,6 +93,7 @@ export interface TranslationContentMeta {
   domain?: string;
   glossary?: Array<[string, string]>;
   customPrompt?: string;
+  lastTranslatedMeta?: TranslationSyncedMeta;
 }
 
 /** 解析后的翻译正文 */
@@ -156,6 +163,14 @@ export function parseTranslationContent(raw: string): ParsedTranslationContent {
     const glossary = sanitizeGlossary(m.glossary);
     if (glossary) meta.glossary = glossary;
     if (typeof m.customPrompt === 'string' && m.customPrompt) meta.customPrompt = m.customPrompt;
+    const syncedMeta = sanitizeTranslationSyncedMeta(m.lastTranslatedMeta);
+    if (syncedMeta) {
+      meta.lastTranslatedMeta = {
+        ...syncedMeta,
+        srcLang: normalizeLangCode(syncedMeta.srcLang),
+        tgtLang: normalizeLangCode(syncedMeta.tgtLang),
+      };
+    }
   } else {
     // 无 meta 的旧文档：尝试读取历史顶层语言键（早期 Viewer 假定的格式）
     const legacySrc = pickString('sourceLang', 'source_lang');
@@ -183,6 +198,7 @@ export function buildTranslationContent(session: TranslationSession): string {
   if (session.domain) meta.domain = session.domain;
   if (session.glossary && session.glossary.length > 0) meta.glossary = session.glossary;
   if (session.customPrompt) meta.customPrompt = session.customPrompt;
+  if (session.lastTranslatedMeta) meta.lastTranslatedMeta = session.lastTranslatedMeta;
   return JSON.stringify({
     source: session.sourceText,
     translated: session.translatedText,
@@ -207,7 +223,7 @@ function mergeContentIntoNode(node: DstuNode, parsed: ParsedTranslationContent):
     // metadata 中可能残留的旧值；否则清空术语表/恢复默认 Prompt 后重开会复活。
     // 无 schemaVersion 的历史嵌套 meta 仍按增量覆盖处理，避免破坏旧数据。
     if ((parsed.meta.schemaVersion ?? 0) >= TRANSLATION_CONTENT_SCHEMA_VERSION) {
-      for (const key of ['srcLang', 'tgtLang', 'formality', 'domain', 'glossary', 'customPrompt']) {
+      for (const key of ['srcLang', 'tgtLang', 'formality', 'domain', 'glossary', 'customPrompt', 'lastTranslatedMeta']) {
         delete metadata[key];
       }
     }
@@ -217,6 +233,7 @@ function mergeContentIntoNode(node: DstuNode, parsed: ParsedTranslationContent):
     if (parsed.meta.domain) metadata.domain = parsed.meta.domain;
     if (parsed.meta.glossary) metadata.glossary = parsed.meta.glossary;
     if (parsed.meta.customPrompt) metadata.customPrompt = parsed.meta.customPrompt;
+    if (parsed.meta.lastTranslatedMeta) metadata.lastTranslatedMeta = parsed.meta.lastTranslatedMeta;
   }
   return { ...node, metadata };
 }
@@ -256,6 +273,7 @@ export function dstuNodeToTranslationSession(node: DstuNode): TranslationSession
     meta.formality === 'formal' || meta.formality === 'casual' || meta.formality === 'auto'
       ? meta.formality
       : undefined;
+  const lastTranslatedMeta = sanitizeTranslationSyncedMeta(meta.lastTranslatedMeta);
   return {
     id: node.id,
     sourceText: (meta.sourceText as string) || '',
@@ -268,6 +286,7 @@ export function dstuNodeToTranslationSession(node: DstuNode): TranslationSession
     glossary: meta.glossary as Array<[string, string]> | undefined,
     quality: meta.qualityRating as number | undefined,
     isFavorite: Boolean(meta.isFavorite),
+    ...(lastTranslatedMeta ? { lastTranslatedMeta } : {}),
     createdAt: node.createdAt,
     updatedAt: node.updatedAt,
   };

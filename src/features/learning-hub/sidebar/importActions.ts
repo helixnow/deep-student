@@ -30,6 +30,24 @@ import { canParseAsMobileTextbook, withStagedTextbookFile } from '../textbookFil
 
 type AttachImportProgress = { done: number; total: number } | null;
 
+// U03 弱网连点幂等锁：按侧栏实例（isMountedRef）隔离，跨重渲染稳定且卸载自动 GC
+const inFlightImportLocks = new WeakMap<object, Set<string>>();
+
+function getImportLocks(instanceKey: object): Set<string> {
+  let locks = inFlightImportLocks.get(instanceKey);
+  if (!locks) {
+    locks = new Set<string>();
+    inFlightImportLocks.set(instanceKey, locks);
+  }
+  return locks;
+}
+
+/** 当前侧栏实例是否存在在途导入（供工具栏「导入资料」防连点复用） */
+export function isImportActionInFlight(isMountedRef: object): boolean {
+  const locks = inFlightImportLocks.get(isMountedRef);
+  return Boolean(locks && locks.size > 0);
+}
+
 const UPLOAD_MIME_FALLBACKS: Record<string, string> = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -163,7 +181,8 @@ export async function importPathsIntoLibrary(
   paths: string[],
 ): Promise<void> {
   if (paths.length === 0) return;
-  if (importProgress.isImporting) return;
+  const locks = getImportLocks(isMountedRef);
+  if (importProgress.isImporting || locks.has('importPaths')) return;
 
   debugLog.log('[LearningHub] 导入文件:', paths.length, '个文件');
 
@@ -241,6 +260,9 @@ export async function importPathsIntoLibrary(
   // 后端按内容哈希去重：拖入已有的同一份文件会返回旧条目，不能报「已导入」
   const duplicateNames: string[] = [];
   const importStartedAt = Date.now();
+  let textbookProgressStarted = false;
+  let attachProgressStarted = false;
+  locks.add('importPaths');
 
   try {
     const dropTargetFolderId = currentCreatableFolderId;
@@ -262,6 +284,7 @@ export async function importPathsIntoLibrary(
     if (textbookPaths.length > 0) {
       const firstFileName = textbookPaths[0] ? extractDisplayFileName(textbookPaths[0]) : '';
       let lastTextbookError: string | undefined;
+      textbookProgressStarted = true;
       setImportProgress({
         isImporting: true,
         fileName: firstFileName,
@@ -333,6 +356,7 @@ export async function importPathsIntoLibrary(
         }
       }
 
+      textbookProgressStarted = false;
       if (isMountedRef.current) {
         setImportProgress(prev => ({ ...prev, isImporting: false }));
       }
@@ -350,6 +374,7 @@ export async function importPathsIntoLibrary(
       // 后端创建时会把暂存文件整份读入内存：按字节预算串行化大文件
       const byteBudget = createByteBudgetLimiter(64 * 1024 * 1024);
 
+      attachProgressStarted = true;
       setAttachImportProgress({ done: 0, total: attachmentPaths.length });
 
       const attachResults = await Promise.all(
@@ -404,6 +429,7 @@ export async function importPathsIntoLibrary(
         )
       );
 
+      attachProgressStarted = false;
       if (isMountedRef.current) {
         setAttachImportProgress(null);
       }
@@ -470,13 +496,20 @@ export async function importPathsIntoLibrary(
       }
     }
   } catch (error) {
-    if (unlisten) unlisten();
     debugLog.error('[LearningHub] 导入异常:', error);
-    if (isMountedRef.current) {
+    showGlobalNotification('error', t('finder.dragDrop.importFailed'));
+  } finally {
+    locks.delete('importPaths');
+    if (unlisten) {
+      unlisten();
+      unlisten = null;
+    }
+    if (textbookProgressStarted && isMountedRef.current) {
       setImportProgress(prev => ({ ...prev, isImporting: false }));
+    }
+    if (attachProgressStarted && isMountedRef.current) {
       setAttachImportProgress(null);
     }
-    showGlobalNotification('error', t('finder.dragDrop.importFailed'));
   }
 }
 
@@ -601,171 +634,187 @@ export async function importDroppedFiles(
   }
   if (importableFiles.length === 0) return;
 
-  // Markdown 本身就是笔记：任何位置拖入都导入为笔记（用笔记应用打开、可编辑），
-  // 不再只在「笔记」视图才这样——在「全部文件」拖入会变成只读预览的资料
-  const shouldImportMarkdownAsNotes = true;
-  const { markdownItems: markdownFiles, otherItems: attachmentFiles } = partitionMarkdownNoteImports(
-    importableFiles,
-    (file) => file.name,
-    shouldImportMarkdownAsNotes,
-  );
+  const locks = getImportLocks(isMountedRef);
+  if (locks.has('importDroppedFiles')) return;
+  locks.add('importDroppedFiles');
+  let attachProgressStarted = false;
 
-  let totalSuccess = 0;
-  let totalFailed = 0;
-  // On mobile each staged document is fully parsed in the Host, so consume one at a time.
-  const limit = pLimit(fromPicker ? 1 : 3);
-  let firstImportedNode: DstuNode | null = null;
-  const failedDetails: { name: string; reason?: string }[] = [];
+  try {
+    // Markdown 本身就是笔记：任何位置拖入都导入为笔记（用笔记应用打开、可编辑），
+    // 不再只在「笔记」视图才这样——在「全部文件」拖入会变成只读预览的资料
+    const shouldImportMarkdownAsNotes = true;
+    const { markdownItems: markdownFiles, otherItems: attachmentFiles } = partitionMarkdownNoteImports(
+      importableFiles,
+      (file) => file.name,
+      shouldImportMarkdownAsNotes,
+    );
 
-  if (markdownFiles.length > 0) {
-    try {
-      const markdownResult = await importMarkdownFileObjects(markdownFiles, currentCreatableFolderId);
+    let totalSuccess = 0;
+    let totalFailed = 0;
+    // On mobile each staged document is fully parsed in the Host, so consume one at a time.
+    const limit = pLimit(fromPicker ? 1 : 3);
+    let firstImportedNode: DstuNode | null = null;
+    const failedDetails: { name: string; reason?: string }[] = [];
 
-      totalSuccess += markdownResult.importedNodes.length;
-      totalFailed += markdownResult.failedCount;
-      firstImportedNode = markdownResult.importedNodes[0] ?? null;
-      for (const failedFile of markdownResult.failedFiles ?? []) {
-        failedDetails.push({
-          name: failedFile,
-          reason: markdownResult.firstError || undefined,
-        });
-      }
-      if (markdownResult.failedCount > 0 && (markdownResult.failedFiles?.length ?? 0) === 0) {
-        failedDetails.push({
-          name: markdownFiles[0]?.name ?? 'markdown',
-          reason: markdownResult.firstError || undefined,
-        });
-      }
-    } catch (e) {
-      totalFailed += markdownFiles.length;
-      const reason = e instanceof Error ? e.message : String(e);
-      for (const mdFile of markdownFiles) {
-        failedDetails.push({ name: mdFile.name, reason });
+    if (markdownFiles.length > 0) {
+      try {
+        const markdownResult = await importMarkdownFileObjects(markdownFiles, currentCreatableFolderId);
+
+        totalSuccess += markdownResult.importedNodes.length;
+        totalFailed += markdownResult.failedCount;
+        firstImportedNode = markdownResult.importedNodes[0] ?? null;
+        for (const failedFile of markdownResult.failedFiles ?? []) {
+          failedDetails.push({
+            name: failedFile,
+            reason: markdownResult.firstError || undefined,
+          });
+        }
+        if (markdownResult.failedCount > 0 && (markdownResult.failedFiles?.length ?? 0) === 0) {
+          failedDetails.push({
+            name: markdownFiles[0]?.name ?? 'markdown',
+            reason: markdownResult.firstError || undefined,
+          });
+        }
+      } catch (e) {
+        totalFailed += markdownFiles.length;
+        const reason = e instanceof Error ? e.message : String(e);
+        for (const mdFile of markdownFiles) {
+          failedDetails.push({ name: mdFile.name, reason });
+        }
       }
     }
-  }
 
-  if (attachmentFiles.length > 0 && isMountedRef.current) {
-    setAttachImportProgress({ done: 0, total: attachmentFiles.length });
-  }
+    if (attachmentFiles.length > 0 && isMountedRef.current) {
+      attachProgressStarted = true;
+      setAttachImportProgress({ done: 0, total: attachmentFiles.length });
+    }
 
-  const preferVfsFilesView = currentPath.typeFilter === 'file';
+    const preferVfsFilesView = currentPath.typeFilter === 'file';
 
-  let results: Array<
-    | { ok: true; name: string; node: DstuNode; isMedia: boolean }
-    | { ok: false; name: string; reason?: string }
-  >;
-  try {
-    results = await Promise.all(
-      attachmentFiles.map((file) =>
-        limit(async () => {
-          const ext = getFileExtension(file.name);
-          const isImage = IMAGE_EXTENSIONS.has(ext);
-          const mimeType = resolveUploadMimeType(file.name, file.type, isImage);
+    let results: Array<
+      | { ok: true; name: string; node: DstuNode; isMedia: boolean }
+      | { ok: false; name: string; reason?: string }
+    >;
+    try {
+      results = await Promise.all(
+        attachmentFiles.map((file) =>
+          limit(async () => {
+            const ext = getFileExtension(file.name);
+            const isImage = IMAGE_EXTENSIONS.has(ext);
+            const mimeType = resolveUploadMimeType(file.name, file.type, isImage);
 
-          try {
-            const invalidReason = await validateImportFileObject(file, ext, t);
-            if (invalidReason) {
-              return { ok: false as const, name: file.name, reason: invalidReason };
-            }
-            let textbookFailureReason: string | undefined;
-            // 仅 PDF/EPUB 从「导入资料…」优先尝试教材解析；若浏览器/WebUI 环境未解析出教材条目，
-            // 统一兜底写入 VFS files 表（前置已拦截 0 字节与损坏 PDF），绝不静默丢弃。
-            const shouldTryTextbookImport =
-              fromPicker && !preferVfsFilesView && (ext === 'pdf' || ext === 'epub') && canParseAsMobileTextbook(ext);
-            if (shouldTryTextbookImport) {
-              try {
-                const result = await withStagedTextbookFile(file, (source) =>
-                  textbookDstuAdapter.addTextbooks([source], currentCreatableFolderId));
-                if (result.ok && result.value[0]) {
-                  return { ok: true as const, name: file.name, node: result.value[0], isMedia: false };
-                }
-                textbookFailureReason = result.ok
-                  ? t('finder.dragDrop.importFailed')
-                  : result.error.toUserMessage();
-              } catch (stageErr) {
-                textbookFailureReason = stageErr instanceof Error ? stageErr.message : String(stageErr);
+            try {
+              const invalidReason = await validateImportFileObject(file, ext, t);
+              if (invalidReason) {
+                return { ok: false as const, name: file.name, reason: invalidReason };
               }
-            }
-            // ★ 2026-06-12（审阅问题 FE-M1）：传递当前文件夹 ID，并补齐扩展名对应的 MIME（避免浏览器空/通用 type 落盘失败）
-            const result = await attachmentDstuAdapter.create(
-              file, isImage ? 'image' : 'file',
-              {
-                ...(currentCreatableFolderId ? { folderId: currentCreatableFolderId } : {}),
-                mimeType,
-              },
-            );
-            if (!result.ok) {
+              let textbookFailureReason: string | undefined;
+              // 仅 PDF/EPUB 从「导入资料…」优先尝试教材解析；若浏览器/WebUI 环境未解析出教材条目，
+              // 统一兜底写入 VFS files 表（前置已拦截 0 字节与损坏 PDF），绝不静默丢弃。
+              const shouldTryTextbookImport =
+                fromPicker && !preferVfsFilesView && (ext === 'pdf' || ext === 'epub') && canParseAsMobileTextbook(ext);
+              if (shouldTryTextbookImport) {
+                try {
+                  const result = await withStagedTextbookFile(file, (source) =>
+                    textbookDstuAdapter.addTextbooks([source], currentCreatableFolderId));
+                  if (result.ok && result.value[0]) {
+                    return { ok: true as const, name: file.name, node: result.value[0], isMedia: false };
+                  }
+                  textbookFailureReason = result.ok
+                    ? t('finder.dragDrop.importFailed')
+                    : result.error.toUserMessage();
+                } catch (stageErr) {
+                  textbookFailureReason = stageErr instanceof Error ? stageErr.message : String(stageErr);
+                }
+              }
+              // ★ 2026-06-12（审阅问题 FE-M1）：传递当前文件夹 ID，并补齐扩展名对应的 MIME（避免浏览器空/通用 type 落盘失败）
+              const result = await attachmentDstuAdapter.create(
+                file, isImage ? 'image' : 'file',
+                {
+                  ...(currentCreatableFolderId ? { folderId: currentCreatableFolderId } : {}),
+                  mimeType,
+                },
+              );
+              if (!result.ok) {
+                return {
+                  ok: false as const,
+                  name: file.name,
+                  reason: result.error.toUserMessage() || textbookFailureReason,
+                };
+              }
+              return { ok: true as const, name: file.name, node: result.value, isMedia: MEDIA_EXTENSIONS.has(ext) };
+            } catch (e) {
               return {
                 ok: false as const,
                 name: file.name,
-                reason: result.error.toUserMessage() || textbookFailureReason,
+                reason: e instanceof Error ? e.message : undefined,
               };
+            } finally {
+              if (isMountedRef.current) {
+                setAttachImportProgress(p => (p ? { ...p, done: p.done + 1 } : p));
+              }
             }
-            return { ok: true as const, name: file.name, node: result.value, isMedia: MEDIA_EXTENSIONS.has(ext) };
-          } catch (e) {
-            return {
-              ok: false as const,
-              name: file.name,
-              reason: e instanceof Error ? e.message : undefined,
-            };
-          } finally {
-            if (isMountedRef.current) {
-              setAttachImportProgress(p => (p ? { ...p, done: p.done + 1 } : p));
-            }
-          }
-        })
-      )
-    );
-  } finally {
-    if (isMountedRef.current) {
-      setAttachImportProgress(null);
-    }
-  }
-
-  for (const r of results) {
-    if (r.ok) totalSuccess++;
-    else {
-      totalFailed++;
-      failedDetails.push({ name: r.name, reason: 'reason' in r ? r.reason : undefined });
-    }
-  }
-
-  // ★ 失败时附具体文件与原因（最多 3 条），不再只报笼统"导入失败"
-  const failedSummary = failedDetails.length > 0
-    ? t('finder.dragDrop.importFailedFiles', {
-        names: failedDetails
-          .slice(0, 3)
-          .map((f) => (f.reason ? `${f.name}（${f.reason}）` : f.name))
-          .join('；'),
-      })
-    : undefined;
-  if (totalSuccess > 0 && totalFailed === 0) {
-    showGlobalNotification('success',
-      t('finder.dragDrop.importSuccess', { count: totalSuccess })
-    );
-  } else if (totalSuccess > 0) {
-    showGlobalNotification('warning',
-      t('finder.dragDrop.importPartial', {
-        success: totalSuccess,
-        failed: totalFailed,
-      }),
-      failedSummary
-    );
-  } else if (totalFailed > 0) {
-    showGlobalNotification('error', t('finder.dragDrop.importFailed'), failedSummary);
-  }
-
-  if (totalSuccess > 0) {
-    await handleRefresh();
-    if (isMountedRef.current) {
-      if (firstImportedNode) openImportedMarkdownNote(firstImportedNode);
-      else if (fromPicker && onOpenApp) {
-        const firstPreview = results.find((entry) => entry.ok && (entry.node.type === 'textbook' || entry.isMedia));
-        if (firstPreview?.ok) {
-          onOpenApp(dstuNodeToResourceListItem(firstPreview.node, firstPreview.node.type === 'textbook' ? 'textbook' : 'file'));
+          })
+        )
+      );
+    } finally {
+      if (attachProgressStarted) {
+        attachProgressStarted = false;
+        if (isMountedRef.current) {
+          setAttachImportProgress(null);
         }
       }
+    }
+
+    for (const r of results) {
+      if (r.ok) totalSuccess++;
+      else {
+        totalFailed++;
+        failedDetails.push({ name: r.name, reason: 'reason' in r ? r.reason : undefined });
+      }
+    }
+
+    // ★ 失败时附具体文件与原因（最多 3 条），不再只报笼统"导入失败"
+    const failedSummary = failedDetails.length > 0
+      ? t('finder.dragDrop.importFailedFiles', {
+          names: failedDetails
+            .slice(0, 3)
+            .map((f) => (f.reason ? `${f.name}（${f.reason}）` : f.name))
+            .join('；'),
+        })
+      : undefined;
+    if (totalSuccess > 0 && totalFailed === 0) {
+      showGlobalNotification('success',
+        t('finder.dragDrop.importSuccess', { count: totalSuccess })
+      );
+    } else if (totalSuccess > 0) {
+      showGlobalNotification('warning',
+        t('finder.dragDrop.importPartial', {
+          success: totalSuccess,
+          failed: totalFailed,
+        }),
+        failedSummary
+      );
+    } else if (totalFailed > 0) {
+      showGlobalNotification('error', t('finder.dragDrop.importFailed'), failedSummary);
+    }
+
+    if (totalSuccess > 0) {
+      await handleRefresh();
+      if (isMountedRef.current) {
+        if (firstImportedNode) openImportedMarkdownNote(firstImportedNode);
+        else if (fromPicker && onOpenApp) {
+          const firstPreview = results.find((entry) => entry.ok && (entry.node.type === 'textbook' || entry.isMedia));
+          if (firstPreview?.ok) {
+            onOpenApp(dstuNodeToResourceListItem(firstPreview.node, firstPreview.node.type === 'textbook' ? 'textbook' : 'file'));
+          }
+        }
+      }
+    }
+  } finally {
+    locks.delete('importDroppedFiles');
+    if (attachProgressStarted && isMountedRef.current) {
+      setAttachImportProgress(null);
     }
   }
 }

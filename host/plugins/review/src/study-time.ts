@@ -25,16 +25,14 @@ export function validateAdd(seconds: number, date: string, today: string): void 
   if (seconds < 1 || seconds > 3600) throw appError('Validation', `seconds must be within 1..=3600, got ${seconds}`);
   if (Math.abs(Date.parse(date) - Date.parse(today)) > 2 * 86400000) throw appError('Validation', `date ${date} is too far from today (${today})`);
 }
-function localToday(): string {
-  return localDateKey();
-}
 export function studyTimeAdd(ctx: Context, seconds: number, raw?: string | null) {
-  const today = localToday();
+  const now = utcNow();
+  const today = localDateKey(new Date(now.ms));
   const trimmed = raw === null || raw === undefined ? '' : rustTrim(raw);
   const date = trimmed ? parseDate('date', trimmed) : today;
   validateAdd(seconds, date, today);
   const db = ctx.storage.database('vfs');
-  try { return addSeconds(db, date, seconds, utcNow().ms); }
+  try { return addSeconds(db, date, seconds, now.ms); }
   catch (error) { throw appError('Database', `study_time_add failed: ${errorText(error)}`); }
 }
 export function studyTimeRange(ctx: Context, from: string, to: string) {

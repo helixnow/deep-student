@@ -51,10 +51,11 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
-import { usePomodoroStore } from '../stores/usePomodoroStore';
+import { POMODORO_RECORD_SAVED_EVENT, usePomodoroStore } from '../stores/usePomodoroStore';
 import { getPomodoroTodayStats, type PomodoroTodayStats } from '../api';
 import { noiseEngine, NOISE_TYPES, type NoiseType } from '../noiseEngine';
 import { formatFocusDisplay, formatFocusTooltip } from '../utils/focusDuration';
+import { useLocalDateKey } from '../utils/localDate';
 import { PomodoroStatsContent } from './PomodoroStatsPopover';
 import { RollingTime } from './RollingTime';
 import '../styles/pomodoro-panel.css';
@@ -487,11 +488,15 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
     completeCurrentSession,
     finishWorkEarly,
     skipPhase,
+    syncCalendarDay,
     updateSettings,
     setImmersive,
   } = usePomodoroStore();
 
   const [todayStats, setTodayStats] = useState<PomodoroTodayStats | null>(null);
+  const todayKey = useLocalDateKey();
+  const prevTodayKeyRef = useRef(todayKey);
+  const [recordSavedTick, setRecordSavedTick] = useState(0);
 
   // 内联展开区（设置/统计）：inlinePanel 为目标态，renderedPanel 让内容在
   // 0fr 收起过渡（200ms）期间保持挂载，过渡结束后再卸载
@@ -521,9 +526,30 @@ export const PomodoroPanel: React.FC<PomodoroPanelProps> = ({
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
 
   useEffect(() => {
-    getPomodoroTodayStats().then(setTodayStats).catch(() => {});
-    // mode 变化（含中断停止）也刷新今日统计，保证中断计数及时显示
-  }, [completedPomodorosToday, mode]);
+    const onRecordSaved = () => setRecordSavedTick((n) => n + 1);
+    window.addEventListener(POMODORO_RECORD_SAVED_EVENT, onRecordSaved);
+    return () => window.removeEventListener(POMODORO_RECORD_SAVED_EVENT, onRecordSaved);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const dayRolledOver = prevTodayKeyRef.current !== todayKey;
+    prevTodayKeyRef.current = todayKey;
+    syncCalendarDay();
+    if (dayRolledOver) {
+      // 跨午夜立即清掉昨天的今日统计，避免新的一天短暂残留昨日累计
+      setTodayStats(null);
+    }
+    getPomodoroTodayStats()
+      .then((next) => {
+        if (!cancelled) setTodayStats(next);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // mode 变化（含中断停止）、跨本地午夜、以及记录落库完成均刷新今日统计
+  }, [completedPomodorosToday, mode, todayKey, recordSavedTick, syncCalendarDay]);
 
   const toggleNoise = useCallback(() => {
     setNoiseEnabled(!noiseEnabled);

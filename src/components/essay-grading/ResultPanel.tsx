@@ -213,7 +213,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
 
   const hasRoundPages = Boolean(roundNavigation && roundNavigation.total > 1);
   const roundButtonClass = cn(
-    !navigateRoundsInHeader && 'md:hidden',
+    !navigateRoundsInHeader && 'md:hidden essay-round-nav-inline',
     '!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
   );
   const roundFraction = roundNavigation
@@ -238,8 +238,8 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
         {hasRoundPages ? (
           navigateRoundsInHeader ? roundFraction : (
             <>
-              <span className="md:hidden">{roundFraction}</span>
-              <span className="hidden md:inline">{t('essay_grading:round.label', { number: currentRound })}</span>
+              <span className="essay-round-label-compact md:hidden">{roundFraction}</span>
+              <span className="essay-round-label-wide hidden md:inline">{t('essay_grading:round.label', { number: currentRound })}</span>
             </>
           )
         ) : (
@@ -358,7 +358,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   const handleStaleRegrade = onRegradeWithSelectedRubric ?? onRegrade ?? onRetry;
 
   return (
-    <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 overflow-hidden transition-all duration-200 motion-reduce:transition-none">
+    <div className="essay-result-pane flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 overflow-hidden transition-all duration-200 motion-reduce:transition-none">
       {!headerInTabs && (
         <div className="flex h-[41px] shrink-0 items-center justify-between border-b border-border/35 px-3 [@media(pointer:coarse)]:h-11 sm:px-4">
           <div className="flex items-center gap-3 min-w-0">
@@ -473,7 +473,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
               originalText={originalText}
               onRetry={onRegrade ?? onRetry}
               toolbarAccessory={headerInTabs ? (
-                <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5 sm:flex-initial sm:flex-nowrap sm:gap-2">
+                <div className="essay-result-accessory-inner flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5 sm:flex-initial sm:flex-nowrap sm:gap-2">
                   {progressMeta}
                   {roundMeta}
                   {resultActions}

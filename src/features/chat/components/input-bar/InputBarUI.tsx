@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import {
   UploadSimple,
   Info,
+  Key,
 } from '@phosphor-icons/react';
 import { usePdfProcessingProgress } from '@/hooks/usePdfProcessingProgress';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
@@ -62,6 +63,8 @@ import {
   buildDefaultInjectModes,
 } from './injectModeUtils';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
+import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
+import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
 import { useVoiceInputIntegration } from '@/voice-input';
 import { registerBackHandler, BACK_PRIORITY, hasOpenRadixOverlayBesides } from '@/app/navigation/androidBackCoordinator';
 import { useKeyboardInset, isEditableElement } from '@/hooks/useKeyboardHeight';
@@ -596,8 +599,12 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
   onClearPdfPageRefs,
   // ★ 模型能力（附件默认注入模式）
   effectiveChatModelId,
+  // ★ U01：缺失 AI 模型 / API 密钥引导横幅
+  missingApiKey = false,
+  onOpenApiSettings,
 }) => {
-  const { t } = useTranslation(['analysis', 'common', 'chatV2', 'settings', 'skills']);
+  const { t, i18n } = useTranslation(['analysis', 'common', 'chatV2', 'settings', 'skills']);
+  const isZh = (i18n.resolvedLanguage ?? i18n.language ?? 'zh-CN').toLowerCase().startsWith('zh');
   const modeLabelMap = useMemo<Record<MediaInjectMode, string>>(() => ({
     text: t('chatV2:injectMode.pdf.text'),
     ocr: t('chatV2:injectMode.image.ocr'),
@@ -628,6 +635,22 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
   const ghostRef = useRef<HTMLDivElement>(null);
   const inputContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const configureApiKeyBtnRef = useRef<HTMLButtonElement>(null);
+  const [missingApiKeyAttention, setMissingApiKeyAttention] = useState(false);
+  useEffect(() => {
+    if (!missingApiKey) {
+      setMissingApiKeyAttention(false);
+    }
+  }, [missingApiKey]);
+  const handleOpenApiSettingsClick = useCallback(() => {
+    if (onOpenApiSettings) {
+      onOpenApiSettings();
+      return;
+    }
+    setPendingSettingsTab('apis');
+    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
+    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'apis' });
+  }, [onOpenApiSettings]);
   // 🔧 IME 合成态追踪已随 textarea 渲染整体拆至 ComposerTextarea.tsx
 
   // ========== 本地状态 ==========
@@ -2093,6 +2116,17 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
       showGlobalNotification('warning', t('common:messages.error.empty_input'));
       return;
     }
+    if (missingApiKey) {
+      setMissingApiKeyAttention(true);
+      configureApiKeyBtnRef.current?.focus();
+      showGlobalNotification(
+        'info',
+        isZh
+          ? '请先配置一个 AI 模型服务，再发送问题。'
+          : 'Please configure an AI model before sending a question.',
+      );
+      return;
+    }
     if (disabledSend) {
       // ★ 键盘 Enter 触发时按钮禁用态不可见，给出与 tooltip 一致的原因反馈
       if (sendBlockedReason) {
@@ -2109,7 +2143,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
         // 错误已在上层处理，这里只是避免未捕获的 rejection 警告
       });
     }
-  }, [canSendWithAttachments, disabledSend, sendBlockedReason, flushPillsAndDraftForSend, onSend, t]);
+  }, [canSendWithAttachments, missingApiKey, isZh, disabledSend, sendBlockedReason, flushPillsAndDraftForSend, onSend, t]);
 
   useEffect(() => {
     if (!pendingSlashSendRef.current) return;
@@ -3327,6 +3361,46 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
               onRemove={modelMentionActions.removeSelectedModel}
               disabled={isStreaming}
             />
+          )}
+
+          {/* ★ U01：尚未配置 AI 模型 / API 密钥时的清晰内联引导横幅 */}
+          {missingApiKey && (
+            <div
+              data-testid="chat-missing-api-key-banner"
+              data-attention={missingApiKeyAttention ? 'true' : 'false'}
+              role="status"
+              aria-live="polite"
+              className={cn(
+                'mb-2 flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-shell-control)] border px-3 py-2 text-xs transition-colors',
+                missingApiKeyAttention
+                  ? 'border-amber-500/60 bg-amber-500/[0.12] text-foreground'
+                  : 'border-amber-500/35 bg-amber-500/[0.07] text-foreground/90',
+              )}
+            >
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <Key
+                  size={14}
+                  weight="duotone"
+                  className="shrink-0 text-amber-600 dark:text-amber-400"
+                  aria-hidden="true"
+                />
+                <span className="min-w-0 leading-snug">
+                  {isZh
+                    ? '尚未配置 AI 模型，连接一个模型服务后即可开始对话与学习'
+                    : 'No AI model is configured yet. Connect a provider to start chatting.'}
+                </span>
+              </div>
+              <DsButton
+                ref={configureApiKeyBtnRef}
+                variant="primary"
+                size="sm"
+                data-testid="chat-configure-api-key-btn"
+                onClick={handleOpenApiSettingsClick}
+                className="!h-7 shrink-0 !px-2.5 !text-xs font-medium [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
+              >
+                {isZh ? '配置 AI 模型' : 'Configure AI Model'}
+              </DsButton>
+            </div>
           )}
 
           {/* ★ 已绑定的技能 Chips（支持可见状态与一键解绑 ×） */}

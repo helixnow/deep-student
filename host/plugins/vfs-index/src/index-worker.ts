@@ -30,6 +30,8 @@ export interface VfsIndexWorkerDeps {
   multimodalConfigured(): Promise<boolean>;
   processMultimodalBatch(batchSize: number): Promise<[number, number]>;
   maybeOptimizeAll(): Promise<number>;
+  /** Optional grace delay before the first tick so background indexing never contends with initial UI hydration. */
+  initialDelayMs?: number;
   logger?: LaneLogger;
   now?: () => number;
   sleep?: IndexWorkerSleep;
@@ -49,6 +51,7 @@ export class VfsIndexWorker {
   private readonly deps: VfsIndexWorkerDeps;
   private readonly now: () => number;
   private readonly sleep: IndexWorkerSleep;
+  private readonly initialDelayMs: number;
   private abort: AbortController | null = null;
   private loop: Promise<void> | null = null;
   private tick: Promise<void> | null = null;
@@ -62,6 +65,7 @@ export class VfsIndexWorker {
     this.deps = deps;
     this.now = deps.now ?? (() => performance.now());
     this.sleep = deps.sleep ?? defaultIndexWorkerSleep;
+    this.initialDelayMs = Math.max(0, deps.initialDelayMs ?? 0);
   }
 
   get running(): boolean { return this.loop !== null; }
@@ -124,6 +128,9 @@ export class VfsIndexWorker {
   }
 
   private async run(signal: AbortSignal): Promise<void> {
+    if (this.initialDelayMs > 0 && !signal.aborted) {
+      await this.sleep(this.initialDelayMs, signal);
+    }
     while (!signal.aborted) {
       if (this.paused > 0 || this.deps.startupMaintenance() || !this.deps.lanceEnabled()) {
         await this.wait(CONFIG_RETRY_MS, signal);

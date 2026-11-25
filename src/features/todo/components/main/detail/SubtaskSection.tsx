@@ -217,6 +217,7 @@ export const SubtaskSection: React.FC<{
   const popTimerRef = useRef<number | null>(null);
   const errorTimerRef = useRef<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const submittingSubtaskRef = useRef<string | null>(null);
 
   useEffect(() => {
     return () => {
@@ -313,12 +314,17 @@ export const SubtaskSection: React.FC<{
 
   const handleAdd = useCallback(async () => {
     const trimmed = draft.trim();
-    if (!trimmed) return;
+    if (!trimmed || submittingSubtaskRef.current === trimmed) return;
+    submittingSubtaskRef.current = trimmed;
     setDraft('');
     try {
       await createItem({ todoListId: item.todoListId, title: trimmed, parentId: item.id });
     } catch {
       // 失败提示由 store 统一处理
+    } finally {
+      if (submittingSubtaskRef.current === trimmed) {
+        submittingSubtaskRef.current = null;
+      }
     }
     // Enter 连续添加：提交后焦点留在输入框
     inputRef.current?.focus();

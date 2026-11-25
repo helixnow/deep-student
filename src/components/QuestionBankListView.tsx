@@ -20,6 +20,10 @@ import {
   Check,
   CheckCircle,
   X,
+  CaretDoubleLeft,
+  CaretDoubleRight,
+  CaretDown,
+  CaretLeft,
   CaretRight,
   GridNine,
   List,
@@ -58,6 +62,169 @@ import { EXAM_DOCUMENT_TYPE, EXAM_IMAGE_TYPE } from './ExamSheetUploader';
 import { getQuestionTypeMeta, QUESTION_TYPE_ORDER, type ExtendedQuestionType } from './questionTypeMeta';
 import katex from 'katex';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+
+export const QBANK_LIST_DEFAULT_PAGE_SIZE = 50;
+export const QBANK_LIST_PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
+type QBankListPageSize = (typeof QBANK_LIST_PAGE_SIZE_OPTIONS)[number];
+
+export interface QuestionBankListViewStateSnapshot {
+  searchQuery: string;
+  debouncedSearch: string;
+  statusFilter: QuestionStatus | 'all';
+  difficultyFilter: Difficulty | 'all';
+  typeFilter: QuestionType | 'all';
+  tagFilter: string | 'all';
+  showFavoriteOnly: boolean;
+  page: number;
+  pageSize: number;
+  scrollTop: number;
+}
+
+const QBANK_LIST_STATE_STORAGE_PREFIX = 'deepstudent.qbank.listViewState.v1:';
+const qbankListViewStateMemory = new Map<string, QuestionBankListViewStateSnapshot>();
+
+const DEFAULT_QBANK_LIST_VIEW_STATE: QuestionBankListViewStateSnapshot = {
+  searchQuery: '',
+  debouncedSearch: '',
+  statusFilter: 'all',
+  difficultyFilter: 'all',
+  typeFilter: 'all',
+  tagFilter: 'all',
+  showFavoriteOnly: false,
+  page: 1,
+  pageSize: QBANK_LIST_DEFAULT_PAGE_SIZE,
+  scrollTop: 0,
+};
+
+const VALID_QBANK_STATUS_FILTERS = new Set<QuestionStatus | 'all'>([
+  'all',
+  'new',
+  'in_progress',
+  'mastered',
+  'review',
+]);
+
+const VALID_QBANK_DIFFICULTY_FILTERS = new Set<Difficulty | 'all'>([
+  'all',
+  'easy',
+  'medium',
+  'hard',
+  'very_hard',
+]);
+
+function sanitizeQBankListViewState(raw: unknown): QuestionBankListViewStateSnapshot | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  const searchQuery = typeof obj.searchQuery === 'string' ? obj.searchQuery : '';
+  const debouncedSearch = typeof obj.debouncedSearch === 'string' ? obj.debouncedSearch : searchQuery;
+  const statusFilter = typeof obj.statusFilter === 'string'
+    && VALID_QBANK_STATUS_FILTERS.has(obj.statusFilter as QuestionStatus | 'all')
+    ? (obj.statusFilter as QuestionStatus | 'all')
+    : 'all';
+  const difficultyFilter = typeof obj.difficultyFilter === 'string'
+    && VALID_QBANK_DIFFICULTY_FILTERS.has(obj.difficultyFilter as Difficulty | 'all')
+    ? (obj.difficultyFilter as Difficulty | 'all')
+    : 'all';
+  const typeFilter = typeof obj.typeFilter === 'string' && obj.typeFilter.trim()
+    ? (obj.typeFilter as QuestionType | 'all')
+    : 'all';
+  const tagFilter = typeof obj.tagFilter === 'string' && obj.tagFilter.trim()
+    ? obj.tagFilter
+    : 'all';
+  const showFavoriteOnly = obj.showFavoriteOnly === true;
+  const page = typeof obj.page === 'number' && Number.isFinite(obj.page) && obj.page >= 1
+    ? Math.trunc(obj.page)
+    : 1;
+  const rawPageSize = typeof obj.pageSize === 'number' && Number.isFinite(obj.pageSize)
+    ? Math.trunc(obj.pageSize)
+    : QBANK_LIST_DEFAULT_PAGE_SIZE;
+  const pageSize = QBANK_LIST_PAGE_SIZE_OPTIONS.includes(rawPageSize as QBankListPageSize)
+    ? rawPageSize
+    : QBANK_LIST_DEFAULT_PAGE_SIZE;
+  const scrollTop = typeof obj.scrollTop === 'number' && Number.isFinite(obj.scrollTop) && obj.scrollTop >= 0
+    ? obj.scrollTop
+    : 0;
+  return {
+    searchQuery,
+    debouncedSearch,
+    statusFilter,
+    difficultyFilter,
+    typeFilter,
+    tagFilter,
+    showFavoriteOnly,
+    page,
+    pageSize,
+    scrollTop,
+  };
+}
+
+function readPersistedQBankListViewState(examId?: string): QuestionBankListViewStateSnapshot {
+  if (!examId) return { ...DEFAULT_QBANK_LIST_VIEW_STATE };
+  const cached = qbankListViewStateMemory.get(examId);
+  if (cached) return { ...cached };
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = window.sessionStorage.getItem(`${QBANK_LIST_STATE_STORAGE_PREFIX}${examId}`);
+      if (raw) {
+        const parsed = sanitizeQBankListViewState(JSON.parse(raw));
+        if (parsed) {
+          qbankListViewStateMemory.set(examId, parsed);
+          return { ...parsed };
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }
+  return { ...DEFAULT_QBANK_LIST_VIEW_STATE };
+}
+
+function writePersistedQBankListViewState(
+  examId: string | undefined,
+  snapshot: QuestionBankListViewStateSnapshot,
+): void {
+  if (!examId) return;
+  const sanitized = sanitizeQBankListViewState(snapshot) ?? { ...DEFAULT_QBANK_LIST_VIEW_STATE };
+  qbankListViewStateMemory.set(examId, sanitized);
+  if (typeof window !== 'undefined') {
+    try {
+      window.sessionStorage.setItem(
+        `${QBANK_LIST_STATE_STORAGE_PREFIX}${examId}`,
+        JSON.stringify(sanitized),
+      );
+    } catch {
+      // ignore storage quota errors
+    }
+  }
+}
+
+export function clearQuestionBankListViewState(examId?: string): void {
+  if (examId) {
+    qbankListViewStateMemory.delete(examId);
+    if (typeof window !== 'undefined') {
+      try {
+        window.sessionStorage.removeItem(`${QBANK_LIST_STATE_STORAGE_PREFIX}${examId}`);
+      } catch { /* ignore */ }
+    }
+    return;
+  }
+  qbankListViewStateMemory.clear();
+  if (typeof window !== 'undefined') {
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < window.sessionStorage.length; i += 1) {
+        const key = window.sessionStorage.key(i);
+        if (key?.startsWith(QBANK_LIST_STATE_STORAGE_PREFIX)) {
+          keysToRemove.push(key);
+        }
+      }
+      for (const key of keysToRemove) {
+        window.sessionStorage.removeItem(key);
+      }
+    } catch { /* ignore */ }
+  }
+}
 
 export interface QuestionListFilters {
   search?: string;
@@ -579,16 +746,33 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   className,
 }) => {
   const { t } = useTranslation(['practice', 'common', 'exam_sheet', 'learningHub']);
+  // 会话级视图记忆（按 examId 隔离）：切到详情/练习/编辑后返回时恢复筛选、搜索、页码与滚动位置
+  const initialPersistedRef = useRef<QuestionBankListViewStateSnapshot | null>(null);
+  if (initialPersistedRef.current === null) {
+    initialPersistedRef.current = readPersistedQBankListViewState(examId);
+  }
+  const initialPersisted = initialPersistedRef.current;
+
   // 视图偏好持久化：记住用户上次选择的卡片/列表视图
   const [viewType, setViewType] = useState<'grid' | 'list'>(readStoredViewType);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(() => initialPersisted.searchQuery);
   // 防抖后的搜索词：驱动本地过滤 / 后端请求 / 命中高亮
-  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState(() => initialPersisted.debouncedSearch);
+  const debouncedSearchRef = useRef(debouncedSearch);
+  debouncedSearchRef.current = debouncedSearch;
   const searchTimerRef = useRef<number | null>(null);
-  const [statusFilter, setStatusFilter] = useState<QuestionStatus | 'all'>('all');
-  const [difficultyFilter, setDifficultyFilter] = useState<Difficulty | 'all'>('all');
-  const [typeFilter, setTypeFilter] = useState<QuestionType | 'all'>('all');
-  const [showFavoriteOnly, setShowFavoriteOnly] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<QuestionStatus | 'all'>(() => initialPersisted.statusFilter);
+  const [difficultyFilter, setDifficultyFilter] = useState<Difficulty | 'all'>(() => initialPersisted.difficultyFilter);
+  const [typeFilter, setTypeFilter] = useState<QuestionType | 'all'>(() => initialPersisted.typeFilter);
+  const [tagFilter, setTagFilter] = useState<string | 'all'>(() => initialPersisted.tagFilter);
+  const [showFavoriteOnly, setShowFavoriteOnly] = useState(() => initialPersisted.showFavoriteOnly);
+  const [page, setPage] = useState(() => initialPersisted.page);
+  const [pageSize, setPageSize] = useState(() => initialPersisted.pageSize);
+  const [pageJumpInput, setPageJumpInput] = useState(() => String(initialPersisted.page));
+  const scrollViewportRef = useRef<HTMLDivElement | null>(null);
+  const savedScrollTopRef = useRef<number>(initialPersisted.scrollTop);
+  const scrollRestoredRef = useRef(false);
+  const prevExamIdRef = useRef<string | undefined>(examId);
 
   // 编辑模式状态（批量操作）
   const [isEditMode, setIsEditMode] = useState(false);
@@ -654,17 +838,19 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     return true;
   }, [expandedEditId, inlineEditorDirty]);
 
-  // 本地过滤（仅在不使用后端筛选时）；搜索使用防抖后的关键词
+  // 本地过滤（仅在不使用后端筛选时）；搜索使用防抖后的关键词（同步匹配题干、题号与标签）
   const filteredQuestions = useMemo(() => {
     if (useBackendFilter) {
       return questions; // 后端筛选模式下，questions 已经是筛选后的结果
     }
+    const normalizedSearch = debouncedSearch.trim().toLowerCase();
     return questions.filter(q => {
       // 搜索过滤
-      if (debouncedSearch) {
+      if (normalizedSearch) {
         const content = (q.content || q.ocrText || '').toLowerCase();
         const label = (q.questionLabel || '').toLowerCase();
-        if (!content.includes(debouncedSearch.toLowerCase()) && !label.includes(debouncedSearch.toLowerCase())) {
+        const matchesTag = (q.tags ?? []).some((tag) => tag.toLowerCase().includes(normalizedSearch));
+        if (!content.includes(normalizedSearch) && !label.includes(normalizedSearch) && !matchesTag) {
           return false;
         }
       }
@@ -680,16 +866,157 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       if (typeFilter !== 'all' && q.questionType !== typeFilter) {
         return false;
       }
+      // 标签过滤
+      if (tagFilter !== 'all' && !(q.tags ?? []).includes(tagFilter)) {
+        return false;
+      }
       // 收藏过滤
       if (showFavoriteOnly && !q.isFavorite) {
         return false;
       }
       return true;
     });
-  }, [questions, debouncedSearch, statusFilter, difficultyFilter, typeFilter, showFavoriteOnly, useBackendFilter]);
+  }, [questions, debouncedSearch, statusFilter, difficultyFilter, typeFilter, tagFilter, showFavoriteOnly, useBackendFilter]);
+
+  const effectivePageSize = pageSize > 0 ? pageSize : QBANK_LIST_DEFAULT_PAGE_SIZE;
+  const pageCount = Math.max(1, Math.ceil(filteredQuestions.length / effectivePageSize));
+  const safePage = filteredQuestions.length > 0 ? Math.min(page, pageCount) : page;
+
+  const paginatedQuestions = useMemo(() => {
+    if (useBackendFilter) return filteredQuestions;
+    const start = (safePage - 1) * effectivePageSize;
+    return filteredQuestions.slice(start, start + effectivePageSize);
+  }, [useBackendFilter, filteredQuestions, safePage, effectivePageSize]);
+
+  // 仅当结果集缩小且当前页越界时钳制页码；临时空数据刷新时不回弹第 1 页
+  useEffect(() => {
+    if (useBackendFilter || filteredQuestions.length === 0) return;
+    if (page > pageCount) {
+      setPage(pageCount);
+    }
+  }, [useBackendFilter, filteredQuestions.length, page, pageCount]);
+
+  useEffect(() => {
+    setPageJumpInput(String(safePage));
+  }, [safePage]);
+
+  // examId 切换（同一实例挂载切题库）时同步切换记忆态
+  useEffect(() => {
+    if (prevExamIdRef.current === examId) return;
+    prevExamIdRef.current = examId;
+    const restored = readPersistedQBankListViewState(examId);
+    setSearchQuery(restored.searchQuery);
+    setDebouncedSearch(restored.debouncedSearch);
+    setStatusFilter(restored.statusFilter);
+    setDifficultyFilter(restored.difficultyFilter);
+    setTypeFilter(restored.typeFilter);
+    setTagFilter(restored.tagFilter);
+    setShowFavoriteOnly(restored.showFavoriteOnly);
+    setPage(restored.page);
+    setPageSize(restored.pageSize);
+    setPageJumpInput(String(restored.page));
+    savedScrollTopRef.current = restored.scrollTop;
+    scrollRestoredRef.current = false;
+  }, [examId]);
+
+  const latestViewStateRef = useRef<QuestionBankListViewStateSnapshot>({
+    searchQuery,
+    debouncedSearch,
+    statusFilter,
+    difficultyFilter,
+    typeFilter,
+    tagFilter,
+    showFavoriteOnly,
+    page: safePage,
+    pageSize: effectivePageSize,
+    scrollTop: savedScrollTopRef.current,
+  });
+  latestViewStateRef.current = {
+    searchQuery,
+    debouncedSearch,
+    statusFilter,
+    difficultyFilter,
+    typeFilter,
+    tagFilter,
+    showFavoriteOnly,
+    page: safePage,
+    pageSize: effectivePageSize,
+    scrollTop: savedScrollTopRef.current,
+  };
+
+  // 持久化当前题目集的搜索 / 筛选 / 分页 / 滚动位置
+  useEffect(() => {
+    writePersistedQBankListViewState(examId, {
+      ...latestViewStateRef.current,
+      scrollTop: savedScrollTopRef.current,
+    });
+  }, [
+    examId,
+    searchQuery,
+    debouncedSearch,
+    statusFilter,
+    difficultyFilter,
+    typeFilter,
+    tagFilter,
+    showFavoriteOnly,
+    safePage,
+    effectivePageSize,
+  ]);
+
+  // 被动监听列表滚动位置，返回列表时自动恢复（未恢复前卸载不以 0 覆盖已存位置）
+  const hasQuestions = questions.length > 0;
+  useEffect(() => {
+    const viewport = scrollViewportRef.current;
+    if (!viewport || !examId) return;
+    const onScroll = () => {
+      savedScrollTopRef.current = viewport.scrollTop;
+      writePersistedQBankListViewState(examId, {
+        ...latestViewStateRef.current,
+        scrollTop: viewport.scrollTop,
+      });
+    };
+    viewport.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      viewport.removeEventListener('scroll', onScroll);
+      if (scrollRestoredRef.current || viewport.scrollTop > 0) {
+        savedScrollTopRef.current = viewport.scrollTop;
+        writePersistedQBankListViewState(examId, {
+          ...latestViewStateRef.current,
+          scrollTop: viewport.scrollTop,
+        });
+      }
+    };
+  }, [examId, hasQuestions]);
+
+  // 首次加载到题目后恢复上次停留的滚动位置
+  useEffect(() => {
+    if (scrollRestoredRef.current || questions.length === 0) return;
+    const viewport = scrollViewportRef.current;
+    if (!viewport) return;
+    scrollRestoredRef.current = true;
+    const targetScrollTop = savedScrollTopRef.current;
+    if (targetScrollTop > 0) {
+      viewport.scrollTop = targetScrollTop;
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => {
+          if (scrollViewportRef.current && savedScrollTopRef.current === targetScrollTop) {
+            scrollViewportRef.current.scrollTop = targetScrollTop;
+          }
+        });
+      }
+    }
+  }, [questions.length, paginatedQuestions.length]);
+
+  const resetListScroll = useCallback(() => {
+    savedScrollTopRef.current = 0;
+    scrollRestoredRef.current = true;
+    if (scrollViewportRef.current) {
+      scrollViewportRef.current.scrollTop = 0;
+    }
+  }, []);
 
   // 展示分组：连续同组题只在第一题前渲染一次材料
-  const displayGroups = useMemo(() => buildDisplayGroups(filteredQuestions), [filteredQuestions]);
+  const displayGroups = useMemo(() => buildDisplayGroups(paginatedQuestions), [paginatedQuestions]);
   const displayGroupByStartIndex = useMemo(() => {
     const map = new Map<number, QuestionDisplayGroup>();
     for (const group of displayGroups) map.set(group.startIndex, group);
@@ -700,12 +1027,12 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   // 保留会导致下一次 shift+点击按错误的区间批量选中
   useEffect(() => {
     lastSelectedIndexRef.current = null;
-  }, [filteredQuestions]);
+  }, [paginatedQuestions]);
 
   // 数据/筛选变化后行级待确认删除态复位，避免确认按钮落到错误的行
   useEffect(() => {
     setArmedDeleteId(null);
-  }, [filteredQuestions]);
+  }, [paginatedQuestions]);
 
   // 当前数据集中出现过的题型（数据驱动：仅展示实际存在的题型 chip；
   // 已激活的题型筛选即使计数归零也保留，避免筛选项凭空消失无法取消）
@@ -715,6 +1042,18 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     if (typeFilter !== 'all') present.add(typeFilter);
     return QUESTION_TYPE_ORDER.filter(type => present.has(type)) as ExtendedQuestionType[];
   }, [questions, typeFilter]);
+
+  const presentTags = useMemo(() => {
+    const tags = new Set<string>();
+    questions.forEach((q) => {
+      q.tags?.forEach((tag) => {
+        const trimmed = tag.trim();
+        if (trimmed) tags.add(trimmed);
+      });
+    });
+    if (tagFilter !== 'all') tags.add(tagFilter);
+    return Array.from(tags).sort((a, b) => a.localeCompare(b));
+  }, [questions, tagFilter]);
 
   // 筛选变更时通知父组件（后端筛选模式）
   // ★ P1 修复：拆分为按维度的独立入口。原先搜索框/收藏按钮复用同一 handleFilterChange
@@ -738,6 +1077,28 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     }
   }, [onFilterChange]);
 
+  // 后端筛选模式恢复已记忆筛选：仅当存在激活筛选时在挂载后同步一次
+  const syncedRestoredBackendRef = useRef(false);
+  useEffect(() => {
+    if (!useBackendFilter || syncedRestoredBackendRef.current) return;
+    syncedRestoredBackendRef.current = true;
+    if (
+      initialPersisted.debouncedSearch ||
+      initialPersisted.statusFilter !== 'all' ||
+      initialPersisted.difficultyFilter !== 'all' ||
+      initialPersisted.typeFilter !== 'all' ||
+      initialPersisted.showFavoriteOnly
+    ) {
+      emitFilterChange(
+        initialPersisted.debouncedSearch,
+        initialPersisted.statusFilter,
+        initialPersisted.difficultyFilter,
+        initialPersisted.showFavoriteOnly,
+        initialPersisted.typeFilter,
+      );
+    }
+  }, [useBackendFilter, emitFilterChange, initialPersisted]);
+
   // 搜索防抖：输入即时回显，250ms 静默后才触发过滤/后端请求，避免逐字请求竞态
   const applySearchChange = useCallback((newSearch: string) => {
     setSearchQuery(newSearch);
@@ -746,10 +1107,16 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     }
     searchTimerRef.current = window.setTimeout(() => {
       searchTimerRef.current = null;
+      const changed = newSearch !== debouncedSearchRef.current;
+      debouncedSearchRef.current = newSearch;
       setDebouncedSearch(newSearch);
+      if (changed) {
+        setPage(1);
+        resetListScroll();
+      }
       emitFilterChange(newSearch, statusFilter, difficultyFilter, showFavoriteOnly, typeFilter);
     }, 250);
-  }, [emitFilterChange, statusFilter, difficultyFilter, showFavoriteOnly, typeFilter]);
+  }, [emitFilterChange, resetListScroll, statusFilter, difficultyFilter, showFavoriteOnly, typeFilter]);
 
   const handleSearchChange = useCallback((newSearch: string) => {
     const apply = () => applySearchChange(newSearch);
@@ -765,15 +1132,19 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     }
     setSearchQuery('');
     setDebouncedSearch('');
+    setPage(1);
+    resetListScroll();
     emitFilterChange('', statusFilter, difficultyFilter, showFavoriteOnly, typeFilter);
-  }, [emitFilterChange, statusFilter, difficultyFilter, showFavoriteOnly, typeFilter]);
+  }, [emitFilterChange, resetListScroll, statusFilter, difficultyFilter, showFavoriteOnly, typeFilter]);
 
   // toggle-to-clear 只作用于用户点击的状态维度
   const applyStatusToggle = useCallback((newStatus: QuestionStatus | 'all') => {
     const finalStatus = (newStatus !== 'all' && newStatus === statusFilter) ? 'all' : newStatus;
     setStatusFilter(finalStatus);
+    setPage(1);
+    resetListScroll();
     emitFilterChange(searchQuery, finalStatus, difficultyFilter, showFavoriteOnly, typeFilter);
-  }, [emitFilterChange, searchQuery, statusFilter, difficultyFilter, showFavoriteOnly, typeFilter]);
+  }, [emitFilterChange, resetListScroll, searchQuery, statusFilter, difficultyFilter, showFavoriteOnly, typeFilter]);
 
   const handleStatusToggle = useCallback((newStatus: QuestionStatus | 'all') => {
     const apply = () => applyStatusToggle(newStatus);
@@ -785,8 +1156,10 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   const applyDifficultyToggle = useCallback((newDifficulty: Difficulty | 'all') => {
     const finalDifficulty = (newDifficulty !== 'all' && newDifficulty === difficultyFilter) ? 'all' : newDifficulty;
     setDifficultyFilter(finalDifficulty);
+    setPage(1);
+    resetListScroll();
     emitFilterChange(searchQuery, statusFilter, finalDifficulty, showFavoriteOnly, typeFilter);
-  }, [emitFilterChange, searchQuery, statusFilter, difficultyFilter, showFavoriteOnly, typeFilter]);
+  }, [emitFilterChange, resetListScroll, searchQuery, statusFilter, difficultyFilter, showFavoriteOnly, typeFilter]);
 
   const handleDifficultyToggle = useCallback((newDifficulty: Difficulty | 'all') => {
     const apply = () => applyDifficultyToggle(newDifficulty);
@@ -797,8 +1170,10 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   const applyFavoriteToggle = useCallback(() => {
     const nextFavorite = !showFavoriteOnly;
     setShowFavoriteOnly(nextFavorite);
+    setPage(1);
+    resetListScroll();
     emitFilterChange(searchQuery, statusFilter, difficultyFilter, nextFavorite, typeFilter);
-  }, [emitFilterChange, searchQuery, statusFilter, difficultyFilter, showFavoriteOnly, typeFilter]);
+  }, [emitFilterChange, resetListScroll, searchQuery, statusFilter, difficultyFilter, showFavoriteOnly, typeFilter]);
 
   const handleFavoriteToggle = useCallback(() => {
     if (!requestInlineEditorDiscard({ kind: 'callback', run: applyFavoriteToggle })) return;
@@ -809,8 +1184,10 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   const applyTypeToggle = useCallback((newType: QuestionType | 'all') => {
     const finalType = (newType !== 'all' && newType === typeFilter) ? 'all' : newType;
     setTypeFilter(finalType);
+    setPage(1);
+    resetListScroll();
     emitFilterChange(searchQuery, statusFilter, difficultyFilter, showFavoriteOnly, finalType);
-  }, [emitFilterChange, searchQuery, statusFilter, difficultyFilter, showFavoriteOnly, typeFilter]);
+  }, [emitFilterChange, resetListScroll, searchQuery, statusFilter, difficultyFilter, showFavoriteOnly, typeFilter]);
 
   const handleTypeToggle = useCallback((newType: QuestionType | 'all') => {
     const apply = () => applyTypeToggle(newType);
@@ -818,8 +1195,69 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     apply();
   }, [applyTypeToggle, requestInlineEditorDiscard]);
 
+  const applyTagChange = useCallback((nextTag: string | 'all') => {
+    const finalTag = nextTag === tagFilter && nextTag !== 'all' ? 'all' : nextTag;
+    setTagFilter(finalTag);
+    setPage(1);
+    resetListScroll();
+  }, [resetListScroll, tagFilter]);
+
+  const handleTagChange = useCallback((nextTag: string | 'all') => {
+    const apply = () => applyTagChange(nextTag);
+    if (!requestInlineEditorDiscard({ kind: 'callback', run: apply })) return;
+    apply();
+  }, [applyTagChange, requestInlineEditorDiscard]);
+
+  const applyPageChange = useCallback((nextPage: number) => {
+    if (!Number.isFinite(nextPage)) return;
+    const bounded = Math.min(pageCount, Math.max(1, Math.trunc(nextPage)));
+    if (bounded === safePage) return;
+    setPage(bounded);
+    setPageJumpInput(String(bounded));
+    resetListScroll();
+  }, [pageCount, resetListScroll, safePage]);
+
+  const handlePageChange = useCallback((nextPage: number) => {
+    const apply = () => applyPageChange(nextPage);
+    if (!requestInlineEditorDiscard({ kind: 'callback', run: apply })) return;
+    apply();
+  }, [applyPageChange, requestInlineEditorDiscard]);
+
+  const applyPageSizeChange = useCallback((nextSize: number) => {
+    if (!QBANK_LIST_PAGE_SIZE_OPTIONS.includes(nextSize as QBankListPageSize)) return;
+    if (nextSize === effectivePageSize) return;
+    setPageSize(nextSize);
+    setPage(1);
+    setPageJumpInput('1');
+    resetListScroll();
+  }, [effectivePageSize, resetListScroll]);
+
+  const handlePageSizeChange = useCallback((nextSize: number) => {
+    const apply = () => applyPageSizeChange(nextSize);
+    if (!requestInlineEditorDiscard({ kind: 'callback', run: apply })) return;
+    apply();
+  }, [applyPageSizeChange, requestInlineEditorDiscard]);
+
+  const handlePageJumpSubmit = useCallback(() => {
+    const trimmed = pageJumpInput.trim();
+    if (!trimmed) {
+      setPageJumpInput(String(safePage));
+      return;
+    }
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!Number.isFinite(parsed)) {
+      setPageJumpInput(String(safePage));
+      return;
+    }
+    const bounded = Math.min(pageCount, Math.max(1, parsed));
+    setPageJumpInput(String(bounded));
+    if (bounded !== safePage) {
+      handlePageChange(bounded);
+    }
+  }, [handlePageChange, pageCount, pageJumpInput, safePage]);
+
   const hasActiveFilters = Boolean(
-    searchQuery || statusFilter !== 'all' || difficultyFilter !== 'all' || typeFilter !== 'all' || showFavoriteOnly,
+    searchQuery || statusFilter !== 'all' || difficultyFilter !== 'all' || typeFilter !== 'all' || tagFilter !== 'all' || showFavoriteOnly,
   );
 
   const applyClearFilters = useCallback(() => {
@@ -832,9 +1270,13 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
     setStatusFilter('all');
     setDifficultyFilter('all');
     setTypeFilter('all');
+    setTagFilter('all');
     setShowFavoriteOnly(false);
+    setPage(1);
+    setPageJumpInput('1');
+    resetListScroll();
     emitFilterChange('', 'all', 'all', false, 'all');
-  }, [emitFilterChange]);
+  }, [emitFilterChange, resetListScroll]);
 
   const clearFilters = useCallback(() => {
     if (!requestInlineEditorDiscard({ kind: 'callback', run: applyClearFilters })) return;
@@ -857,7 +1299,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   
   const handleQuestionClick = useCallback((index: number) => {
     // ★ 边界修复：筛选结果为空（或索引越界）时「开始做题」不再抛 TypeError
-    const target = filteredQuestions[index];
+    const target = paginatedQuestions[index];
     if (!target) return;
     // 找到原始索引（使用预计算 Map，O(1) 查找）
     const originalIndex = questionIndexMap.get(target.id) ?? index;
@@ -870,7 +1312,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       return;
     }
     onQuestionClick?.(originalIndex);
-  }, [expandedEditId, filteredQuestions, inlineEditorDirty, onDraftNavigationRequested, onQuestionClick, questionIndexMap]);
+  }, [expandedEditId, inlineEditorDirty, onDraftNavigationRequested, onQuestionClick, paginatedQuestions, questionIndexMap]);
 
   useEffect(() => {
     onDraftDirtyChange?.(inlineEditorDirty);
@@ -910,7 +1352,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       if (shiftKey && anchor != null && anchor !== listIndex) {
         const [from, to] = anchor < listIndex ? [anchor, listIndex] : [listIndex, anchor];
         for (let i = from; i <= to; i++) {
-          const q = filteredQuestions[i];
+          const q = paginatedQuestions[i];
           if (!q) continue;
           if (selected) {
             next.add(q.id);
@@ -926,33 +1368,33 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       return next;
     });
     lastSelectedIndexRef.current = listIndex;
-  }, [filteredQuestions]);
+  }, [paginatedQuestions]);
   
-  // ★ 修复：全选判定改为「当前筛选结果是否全部选中」，
+  // ★ 修复：全选判定改为「当前页可见筛选结果是否全部选中」，
   // 原先按 size 相等比较，在选中项包含筛选外题目时会误判
-  const allFilteredSelected = filteredQuestions.length > 0 && filteredQuestions.every(q => selectedIds.has(q.id));
+  const allFilteredSelected = paginatedQuestions.length > 0 && paginatedQuestions.every(q => selectedIds.has(q.id));
 
-  // 全选/取消全选（作用于当前筛选结果）
+  // 全选/取消全选（作用于当前页可见筛选结果）
   const toggleSelectAll = useCallback(() => {
     if (allFilteredSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(filteredQuestions.map(q => q.id)));
+      setSelectedIds(new Set(paginatedQuestions.map(q => q.id)));
     }
     lastSelectedIndexRef.current = null;
-  }, [allFilteredSelected, filteredQuestions]);
+  }, [allFilteredSelected, paginatedQuestions]);
 
-  // 反选（作用于当前筛选结果）
+  // 反选（作用于当前页可见筛选结果）
   const invertSelection = useCallback(() => {
     setSelectedIds(prev => {
       const next = new Set<string>();
-      filteredQuestions.forEach(q => {
+      paginatedQuestions.forEach(q => {
         if (!prev.has(q.id)) next.add(q.id);
       });
       return next;
     });
     lastSelectedIndexRef.current = null;
-  }, [filteredQuestions]);
+  }, [paginatedQuestions]);
   
   // 批量删除：第一次点击进入内联确认态，确认后执行
   const handleBatchDeleteClick = useCallback(() => {
@@ -1587,6 +2029,33 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                   })}
                 </>
               )}
+
+              {/* 标签筛选（数据驱动：存在标签时展示紧凑下拉选择） */}
+              {!useBackendFilter && presentTags.length > 0 && (
+                <>
+                  <div className="w-px h-3 bg-border/45 mx-0.5 flex-shrink-0" aria-hidden="true" />
+                  <span className="relative inline-flex flex-shrink-0 items-center">
+                    <select
+                      data-testid="qbank-tag-filter-select"
+                      aria-label={t('practice:questionBank.tagFilter', { defaultValue: '按标签筛选' })}
+                      value={tagFilter}
+                      onChange={(e) => handleTagChange(e.target.value || 'all')}
+                      className={cn(
+                        'h-7 appearance-none rounded-md border border-transparent bg-transparent pl-2 pr-5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50',
+                        tagFilter !== 'all'
+                          ? 'bg-foreground/[0.07] font-medium text-foreground'
+                          : 'text-muted-foreground hover:bg-foreground/[0.035] hover:text-foreground',
+                      )}
+                    >
+                      <option value="all">{t('practice:questionBank.allTags', { defaultValue: '全部标签' })}</option>
+                      {presentTags.map((tag) => (
+                        <option key={tag} value={tag}>{tag}</option>
+                      ))}
+                    </select>
+                    <CaretDown size={10} className="pointer-events-none absolute right-1.5 text-muted-foreground" aria-hidden="true" />
+                  </span>
+                </>
+              )}
             </div>
 
             {/* 常驻右侧的匹配计数 + 一键清除筛选（不随横向筛选条滚出视口） */}
@@ -1726,7 +2195,11 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         )}
       </div>
       
-      <CustomScrollArea className="flex-1" viewportClassName="px-3 sm:px-4 pt-1 pb-4">
+      <CustomScrollArea
+        viewportRef={scrollViewportRef}
+        className="flex-1"
+        viewportClassName="px-3 sm:px-4 pt-1 pb-4"
+      >
         {/* 新题目内联创建区域（置顶） */}
         {expandedEditId === '__new__' && examId && (
           <div className="pb-2 ui-rise-in">
@@ -1764,7 +2237,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         ) : viewType === 'grid' ? (
           // key=viewType：切换视图时整体重挂载，触发 stagger 淡入形成平滑过渡
           <div key="grid" className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-2">
-            {filteredQuestions.map((q, idx) => (
+            {paginatedQuestions.map((q, idx) => (
               <React.Fragment key={q.id}>
                 {displayGroupByStartIndex.get(idx) && (
                   <div className="col-span-full">
@@ -1803,7 +2276,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           </div>
         ) : (
           <div key="list" className="space-y-0.5">
-            {filteredQuestions.map((q, idx) => (
+            {paginatedQuestions.map((q, idx) => (
               <React.Fragment key={q.id}>
                 {displayGroupByStartIndex.get(idx) && renderGroupHeader(displayGroupByStartIndex.get(idx)!, idx)}
                 <QuestionListRow
@@ -1838,6 +2311,158 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           </div>
         )}
       </CustomScrollArea>
+
+      {/* 大题库分页栏（>20 题或已翻页/改页容时呈现，保持小题目集清爽） */}
+      {!useBackendFilter && filteredQuestions.length > 0 && (
+        filteredQuestions.length > QBANK_LIST_PAGE_SIZE_OPTIONS[0] ||
+        safePage > 1 ||
+        effectivePageSize !== QBANK_LIST_DEFAULT_PAGE_SIZE
+      ) && (
+        <footer
+          data-testid="qbank-pagination"
+          aria-label={t('practice:questionBank.pagination.label', { defaultValue: '分页导航' })}
+          className="flex flex-shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-t border-border/40 bg-background/95 px-3 py-2 text-xs text-muted-foreground sm:px-4"
+        >
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="whitespace-nowrap font-mono tabular-nums" data-testid="qbank-page-indicator">
+              {t('practice:questionBank.pagination.page', {
+                page: safePage,
+                pages: pageCount,
+                defaultValue: `第 ${safePage} / ${pageCount} 页`,
+              })}
+            </span>
+            <label className="inline-flex items-center gap-1.5">
+              <span className="whitespace-nowrap">
+                {t('practice:questionBank.pagination.pageSizeLabel', { defaultValue: '每页' })}
+              </span>
+              <span className="relative inline-flex items-center">
+                <select
+                  data-testid="qbank-page-size-select"
+                  aria-label={t('practice:questionBank.pagination.pageSizeAriaLabel', { defaultValue: '每页显示题数' })}
+                  value={effectivePageSize}
+                  onChange={(event) => {
+                    const nextSize = Number.parseInt(event.target.value, 10);
+                    if (Number.isFinite(nextSize)) {
+                      handlePageSizeChange(nextSize);
+                    }
+                  }}
+                  className="min-h-7 appearance-none rounded-md border border-border/60 bg-background pl-2 pr-6 font-mono text-xs tabular-nums text-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 [@media(pointer:coarse)]:min-h-11"
+                >
+                  {QBANK_LIST_PAGE_SIZE_OPTIONS.map((size) => (
+                    <option key={size} value={size}>
+                      {t('practice:questionBank.pagination.pageSizeOption', {
+                        count: size,
+                        defaultValue: `${size} 题`,
+                      })}
+                    </option>
+                  ))}
+                </select>
+                <CaretDown size={10} className="pointer-events-none absolute right-2 text-muted-foreground" aria-hidden="true" />
+              </span>
+            </label>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex items-center gap-1">
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                iconOnly
+                data-testid="qbank-page-first-btn"
+                disabled={safePage <= 1}
+                onClick={() => handlePageChange(1)}
+                aria-label={t('practice:questionBank.pagination.firstPage', { defaultValue: '首页' })}
+                title={t('practice:questionBank.pagination.firstPage', { defaultValue: '首页' })}
+                className="min-h-7 min-w-7 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+              >
+                <CaretDoubleLeft size={13} aria-hidden="true" />
+              </DsButton>
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid="qbank-page-prev-btn"
+                disabled={safePage <= 1}
+                onClick={() => handlePageChange(safePage - 1)}
+                aria-label={t('common:pagination.previous', { defaultValue: '上一页' })}
+                className="min-h-7 [@media(pointer:coarse)]:!min-h-11"
+              >
+                <CaretLeft size={13} aria-hidden="true" />
+                {t('common:pagination.previous', { defaultValue: '上一页' })}
+              </DsButton>
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid="qbank-page-next-btn"
+                disabled={safePage >= pageCount}
+                onClick={() => handlePageChange(safePage + 1)}
+                aria-label={t('common:pagination.next', { defaultValue: '下一页' })}
+                className="min-h-7 [@media(pointer:coarse)]:!min-h-11"
+              >
+                {t('common:pagination.next', { defaultValue: '下一页' })}
+                <CaretRight size={13} aria-hidden="true" />
+              </DsButton>
+              <DsButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                iconOnly
+                data-testid="qbank-page-last-btn"
+                disabled={safePage >= pageCount}
+                onClick={() => handlePageChange(pageCount)}
+                aria-label={t('practice:questionBank.pagination.lastPage', { defaultValue: '末页' })}
+                title={t('practice:questionBank.pagination.lastPage', { defaultValue: '末页' })}
+                className="min-h-7 min-w-7 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+              >
+                <CaretDoubleRight size={13} aria-hidden="true" />
+              </DsButton>
+            </div>
+
+            <form
+              noValidate
+              className="flex items-center gap-1"
+              onSubmit={(event) => {
+                event.preventDefault();
+                handlePageJumpSubmit();
+              }}
+            >
+              <input
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={pageCount}
+                step={1}
+                data-testid="qbank-page-jump-input"
+                aria-label={t('practice:questionBank.pagination.jumpAriaLabel', { defaultValue: '跳转到指定页码' })}
+                value={pageJumpInput}
+                disabled={pageCount <= 1}
+                onChange={(event) => setPageJumpInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    if (!isComposingKeyEvent(event)) {
+                      handlePageJumpSubmit();
+                    }
+                  }
+                }}
+                className="min-h-7 w-14 rounded-md border border-border/60 bg-background px-2 text-center font-mono text-xs tabular-nums text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
+              />
+              <DsButton
+                type="submit"
+                variant="default"
+                size="sm"
+                data-testid="qbank-page-jump-btn"
+                disabled={pageCount <= 1}
+                className="min-h-7 px-2 text-xs [@media(pointer:coarse)]:!min-h-11"
+              >
+                {t('practice:questionBank.pagination.jumpGo', { defaultValue: '跳转' })}
+              </DsButton>
+            </form>
+          </div>
+        </footer>
+      )}
       
       {/* 批量管理吸底操作条：全选/反选、选中数量、内联二次确认（不用模态框） */}
       <UiPresence

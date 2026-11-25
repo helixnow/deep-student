@@ -1159,6 +1159,7 @@ export const useQuestionBankStore = create<QuestionBankState>()(
     subscribeWithSelector((set, get) => {
       const practiceRequests = new Map<PracticeRequestKind, object>();
       const mockExamSubmissions = new Map<string, { examId: string; promise: Promise<MockExamScoreCard> }>();
+      const inFlightQuestionBankStats = new Map<string, Promise<void>>();
       let latestPracticeRequest: object | null = null;
       const invalidatePracticeRequest = (kind: PracticeRequestKind) => {
         practiceRequests.delete(kind);
@@ -1667,12 +1668,20 @@ export const useQuestionBankStore = create<QuestionBankState>()(
         if (addTags.length === 0 && removeTags.size === 0) return;
         
         try {
+          // 预取本地缺失的题目（有界并发，避免串行 N+1 IPC 瀑布）
+          const missingIds = questionIds.filter((id) => !get().questions.has(id));
+          const FETCH_CONCURRENCY = 8;
+          for (let start = 0; start < missingIds.length; start += FETCH_CONCURRENCY) {
+            await Promise.all(
+              missingIds.slice(start, start + FETCH_CONCURRENCY).map((id) => get().getQuestion(id)),
+            );
+          }
+
           // 逐题计算合并后的标签（保留各题既有标签），结果相同的题目
           // 归为一组走一次 qbank_batch_update_questions
           const groups = new Map<string, { tags: string[]; ids: string[] }>();
           for (const id of questionIds) {
-            // 优先本地缓存；未加载的题目按需拉取（getQuestion 会写回缓存）
-            const question = get().questions.get(id) ?? await get().getQuestion(id);
+            const question = get().questions.get(id);
             if (!question) continue;
             const nextTags = Array.from(new Set([
               ...question.tags.filter((tag) => !removeTags.has(tag)),
@@ -1867,19 +1876,30 @@ export const useQuestionBankStore = create<QuestionBankState>()(
       },
 
       loadStats: async (examId) => {
-        try {
-          const stats = await invoke<QuestionBankStats | null>('qbank_get_stats', {
-            examId,
-          });
-          emitExamSheetDebug('info', 'frontend:hook-state', `[Store] loadStats 成功: total=${stats?.total_count ?? '?'}`, { sessionId: examId, detail: stats });
-          set({ stats });
-        } catch (err: unknown) {
-          debugLog.error('[QuestionBankStore] loadStats failed:', err);
-          emitExamSheetDebug('error', 'frontend:hook-state', `[Store] loadStats 失败: ${String(err)}`, { sessionId: examId });
-        }
+        const existing = inFlightQuestionBankStats.get(examId);
+        if (existing) return existing;
+        const task = (async () => {
+          try {
+            const stats = await invoke<QuestionBankStats | null>('qbank_get_stats', {
+              examId,
+            });
+            emitExamSheetDebug('info', 'frontend:hook-state', `[Store] loadStats 成功: total=${stats?.total_count ?? '?'}`, { sessionId: examId, detail: stats });
+            set({ stats });
+          } catch (err: unknown) {
+            debugLog.error('[QuestionBankStore] loadStats failed:', err);
+            emitExamSheetDebug('error', 'frontend:hook-state', `[Store] loadStats 失败: ${String(err)}`, { sessionId: examId });
+          }
+        })().finally(() => {
+          if (inFlightQuestionBankStats.get(examId) === task) {
+            inFlightQuestionBankStats.delete(examId);
+          }
+        });
+        inFlightQuestionBankStats.set(examId, task);
+        return task;
       },
 
       refreshStats: async (examId) => {
+        inFlightQuestionBankStats.delete(examId);
         const stats = await invoke<QuestionBankStats>('qbank_refresh_stats', {
           examId,
         });
@@ -2041,10 +2061,12 @@ export const useQuestionBankStore = create<QuestionBankState>()(
           
           set({ isLoading: false });
           
-          // 导入成功后刷新题目列表
+          // 导入成功后并行刷新题目列表与统计
           if (result.success_count > 0) {
-            await get().loadQuestions(request.exam_id);
-            await get().loadStats(request.exam_id);
+            await Promise.all([
+              get().loadQuestions(request.exam_id),
+              get().loadStats(request.exam_id),
+            ]);
           }
           
           return result;

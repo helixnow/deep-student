@@ -40,7 +40,10 @@ import {
 import { decodePairingFrame, decodePairingImage } from '../utils/decodePairingQr';
 import * as cloudApi from '@/utils/cloudStorageApi';
 import { useGlobalSyncStore } from '@/stores/syncStatusStore';
-import { localizeBackendErrorText } from './data-governance/localizeCloudError';
+import {
+  isEnglishUiLanguage,
+  localizeBackendErrorText,
+} from './data-governance/localizeCloudError';
 import { probeStoredCloudConfigured } from './QuickSyncNowButton';
 
 export const ipcPairingSettings: PairingSettingsStore = {
@@ -154,6 +157,37 @@ function generateRandomSixDigitPin(): string {
   return String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
 }
 
+interface PairingFallbackCopy {
+  copyPairingCodeBtn: string;
+  qrDecodeEmptyError: string;
+  qrImageReadError: (reason: string) => string;
+  pasteCodeInsteadBtn: string;
+  retryImportImageBtn: string;
+}
+
+function getPairingFallbackCopy(language?: string): PairingFallbackCopy {
+  if (isEnglishUiLanguage(language)) {
+    return {
+      copyPairingCodeBtn: 'Copy pairing code',
+      qrDecodeEmptyError:
+        'Could not detect a sync pairing QR code in this image. Try instead: 1) Copy and paste the pairing text code below; 2) Crop tightly around the QR code area (keeping its white border) and retry; 3) Use the 6-digit pairing PIN from the source device.',
+      qrImageReadError: (reason: string) =>
+        `Failed to read QR image (${reason}). Try instead: 1) Copy and paste the pairing text code below; 2) Crop tightly around the QR code area and retry; 3) Use the 6-digit pairing PIN from the source device.`,
+      pasteCodeInsteadBtn: 'Paste pairing code instead',
+      retryImportImageBtn: 'Choose another image',
+    };
+  }
+  return {
+    copyPairingCodeBtn: '复制配对码',
+    qrDecodeEmptyError:
+      '未能从所选图片中识别出同步二维码。可改用：1) 复制配对文本码粘贴导入；2) 仅裁剪二维码区域（保留白边）后重试；3) 使用原设备显示的 6 位配对码完成接入。',
+    qrImageReadError: (reason: string) =>
+      `读取二维码图片失败（${reason}）。可改用：1) 复制配对文本码粘贴导入；2) 仅裁剪二维码区域后重试；3) 使用 6 位配对码完成接入。`,
+    pasteCodeInsteadBtn: '改用粘贴配对码',
+    retryImportImageBtn: '重新选择图片',
+  };
+}
+
 export interface DevicePairingSectionProps {
   onApplied?: () => void;
   /** 可选同步触发器：发送端可一键推送快照，接收端接入后可一键拉取数据 */
@@ -232,15 +266,22 @@ export function DevicePairingSection({
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraHint, setCameraHint] = useState<string | null>(null);
   const [appliedSuccess, setAppliedSuccess] = useState(false);
+  const [decodingImage, setDecodingImage] = useState(false);
+  const [qrImportError, setQrImportError] = useState(false);
+  const [highlightPasteBox, setHighlightPasteBox] = useState(false);
 
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+
+  const fallbackCopy = getPairingFallbackCopy(i18n?.language);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const scanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const codeTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const incomingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const applyPinInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const el = codeTextareaRef.current;
@@ -311,6 +352,8 @@ export function DevicePairingSection({
     setBusy(true);
     setError('');
     setStatus('');
+    setQrImportError(false);
+    setHighlightPasteBox(false);
     try {
       await action();
     } catch (e) {
@@ -319,6 +362,22 @@ export function DevicePairingSection({
       setBusy(false);
     }
   }
+
+  const focusManualPasteInput = useCallback(() => {
+    stopCamera();
+    setCameraHint(null);
+    setHighlightPasteBox(true);
+    if (activeMode !== 'receive') {
+      setActiveMode('receive');
+      setTimeout(() => {
+        incomingTextareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        incomingTextareaRef.current?.focus();
+      }, 0);
+      return;
+    }
+    incomingTextareaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    incomingTextareaRef.current?.focus();
+  }, [activeMode, stopCamera]);
 
   const toggle = (key: string, value: boolean, update: (value: boolean) => void) =>
     void work(async () => {
@@ -478,15 +537,24 @@ export function DevicePairingSection({
         if (video.readyState < 2) return;
         decoding = true;
         try {
-          const decoded = await decodePairingFrame(canvas, video, video.videoWidth, video.videoHeight);
+          const decoded = await decodePairingFrame(
+            canvas,
+            video,
+            video.videoWidth,
+            video.videoHeight,
+            { mode: 'fast' },
+          );
           if (decoded && cameraSession.current === session) {
             setIncoming(decoded);
+            setQrImportError(false);
+            setHighlightPasteBox(false);
             setStatus(
               t('sync:pairing.cameraRecognized', {
                 defaultValue: '已通过摄像头识别到同步二维码，请输入 6 位 PIN 完成接入',
               }),
             );
             stopCamera();
+            applyPinInputRef.current?.focus();
           }
         } catch (e) {
           if (cameraSession.current === session) {
@@ -523,32 +591,32 @@ export function DevicePairingSection({
 
     setError('');
     setStatus('');
+    setQrImportError(false);
+    setHighlightPasteBox(false);
+    setDecodingImage(true);
 
     try {
       const decoded = await decodePairingImage(file);
       if (decoded) {
         setIncoming(decoded);
+        setQrImportError(false);
+        setHighlightPasteBox(false);
         setStatus(
           t('sync:pairing.imageRecognized', {
             defaultValue: '已从二维码图片识别配对码，请输入 6 位 PIN 完成接入',
           }),
         );
+        applyPinInputRef.current?.focus();
         return;
       }
-      setError(
-        t('sync:pairing.imageDecodeEmpty', {
-          defaultValue:
-            '未能从所选图片中识别出同步配对码，请优先导入本应用导出的二维码图片或直接粘贴配对码文本。',
-        }),
-      );
+      setQrImportError(true);
+      setError(fallbackCopy.qrDecodeEmptyError);
     } catch (e) {
-      const errMsg = getErrorMessage(e);
-      setError(
-        t('sync:pairing.imageReadFailed', {
-          error: errMsg,
-          defaultValue: `读取二维码图片失败：${errMsg}`,
-        }),
-      );
+      const errMsg = localizeBackendErrorText(getErrorMessage(e), i18n?.language);
+      setQrImportError(true);
+      setError(fallbackCopy.qrImageReadError(errMsg));
+    } finally {
+      setDecodingImage(false);
     }
   };
 
@@ -662,6 +730,8 @@ export function DevicePairingSection({
               aria-selected={activeMode === 'send'}
               onClick={() => {
                 stopCamera();
+                setQrImportError(false);
+                setHighlightPasteBox(false);
                 setActiveMode('send');
               }}
               className={cn(
@@ -839,11 +909,11 @@ export function DevicePairingSection({
               {/* 右侧：高清 SVG 二维码展示卡片 */}
               {code ? (
                 <div
-                  className="flex w-full min-w-0 flex-col items-center justify-center rounded-xl bg-background/70 border border-border/35 p-4 space-y-3 lg:min-w-[240px] lg:max-w-[300px]"
+                  className="flex w-full min-w-0 flex-col items-center justify-center rounded-xl bg-background/70 border border-border/35 p-4 space-y-3 lg:min-w-[264px] lg:max-w-[320px]"
                   data-testid="device-pairing-qr-panel"
                 >
-                  <div className="rounded-xl bg-white p-2.5 shadow-sm ring-1 ring-black/5">
-                    <QrCodeSvg value={code} size={196} margin={3} />
+                  <div className="rounded-xl bg-white p-3 shadow-sm ring-1 ring-black/5">
+                    <QrCodeSvg value={code} size={216} margin={4} className="max-w-full h-auto" />
                   </div>
                   {generatedPinDisplay && (
                     <div className="text-center space-y-0.5">
@@ -858,6 +928,43 @@ export function DevicePairingSection({
                       </div>
                     </div>
                   )}
+                  <div className="flex flex-wrap items-center justify-center gap-1.5">
+                    <DsButton
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      data-testid="copy-pairing-code-btn"
+                      onClick={() =>
+                        void work(async () => {
+                          if (!(await copyTextToClipboard(code))) {
+                            throw new Error(
+                              t('sync:pairing.copyFailedError', {
+                                defaultValue: '复制失败，请手动复制',
+                              }),
+                            );
+                          }
+                          const copiedMsg = t('sync:pairing.codeCopiedStatus', {
+                            defaultValue: '配对码已复制',
+                          });
+                          setStatus(copiedMsg);
+                          showGlobalNotification('success', copiedMsg);
+                        })
+                      }
+                    >
+                      <Copy size={13} className="mr-1" />
+                      {fallbackCopy.copyPairingCodeBtn}
+                    </DsButton>
+                    <DsButton
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDownloadQrSvg}
+                      data-testid="download-pairing-qr-btn"
+                    >
+                      <DownloadSimple size={13} className="mr-1" />
+                      {t('sync:pairing.downloadQrBtn', { defaultValue: '下载二维码' })}
+                    </DsButton>
+                  </div>
                   <div className="w-full min-w-0 space-y-1.5">
                     <label className="block text-2xs text-muted-foreground">
                       {t('sync:pairing.encryptedCodeLabel', { defaultValue: '加密配对码' })}
@@ -875,38 +982,7 @@ export function DevicePairingSection({
                     </label>
                     <div className="flex flex-wrap items-center justify-center gap-1.5">
                       <DsButton
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          void work(async () => {
-                            if (!(await copyTextToClipboard(code))) {
-                              throw new Error(
-                                t('sync:pairing.copyFailedError', {
-                                  defaultValue: '复制失败，请手动复制',
-                                }),
-                              );
-                            }
-                            setStatus(
-                              t('sync:pairing.codeCopiedStatus', {
-                                defaultValue: '配对码已复制',
-                              }),
-                            );
-                          })
-                        }
-                      >
-                        <Copy size={13} className="mr-1" />
-                        {t('sync:pairing.copyCodeBtn', { defaultValue: '一键复制' })}
-                      </DsButton>
-                      <DsButton
-                        variant="outline"
-                        size="sm"
-                        onClick={handleDownloadQrSvg}
-                        data-testid="download-pairing-qr-btn"
-                      >
-                        <DownloadSimple size={13} className="mr-1" />
-                        {t('sync:pairing.downloadQrBtn', { defaultValue: '下载二维码' })}
-                      </DsButton>
-                      <DsButton
+                        type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => {
@@ -968,6 +1044,7 @@ export function DevicePairingSection({
                   type="button"
                   variant="outline"
                   size="sm"
+                  disabled={decodingImage}
                   onClick={() => fileInputRef.current?.click()}
                   data-testid="import-qr-image-btn"
                 >
@@ -979,12 +1056,49 @@ export function DevicePairingSection({
                   type="file"
                   accept="image/svg+xml,image/png,image/jpeg,image/webp,.svg,.png,.jpg,.jpeg,.webp"
                   className="hidden"
+                  data-testid="import-qr-file-input"
                   aria-label={t('sync:pairing.importQrAria', {
                     defaultValue: '选择同步二维码图片',
                   })}
                   onChange={(e) => void handleImportQrImage(e)}
                 />
               </div>
+
+              {error && qrImportError && (
+                <div
+                  role="alert"
+                  data-testid="pairing-qr-import-error"
+                  className="rounded-xl bg-destructive/5 border border-destructive/25 px-3 py-2.5 text-xs text-destructive space-y-2"
+                >
+                  <div className="flex items-start gap-2">
+                    <WarningCircle size={15} className="mt-0.5 shrink-0" aria-hidden />
+                    <span className="leading-relaxed">{error}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pl-5">
+                    <DsButton
+                      type="button"
+                      variant="primary"
+                      size="sm"
+                      onClick={focusManualPasteInput}
+                      data-testid="pairing-qr-fallback-paste-btn"
+                    >
+                      <Copy size={13} className="mr-1.5" />
+                      {fallbackCopy.pasteCodeInsteadBtn}
+                    </DsButton>
+                    <DsButton
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={decodingImage}
+                      onClick={() => fileInputRef.current?.click()}
+                      data-testid="pairing-qr-retry-import-btn"
+                    >
+                      <ImageSquare size={13} className="mr-1.5" />
+                      {fallbackCopy.retryImportImageBtn}
+                    </DsButton>
+                  </div>
+                </div>
+              )}
 
               {cameraActive && (
                 <div className="rounded-xl border border-border/40 bg-background/70 p-3 space-y-2 max-w-sm">
@@ -1015,11 +1129,25 @@ export function DevicePairingSection({
                     defaultValue: '粘贴 DSPAIR1 配对码（或通过上方扫码自动填入）',
                   })}
                   <textarea
+                    ref={incomingTextareaRef}
+                    data-testid="pairing-code-paste-input"
                     value={incoming}
-                    onChange={(e) => setIncoming(e.target.value)}
+                    onChange={(e) => {
+                      setIncoming(e.target.value);
+                      if (highlightPasteBox) setHighlightPasteBox(false);
+                      if (qrImportError && e.target.value.trim()) {
+                        setQrImportError(false);
+                        setError('');
+                      }
+                    }}
                     rows={3}
                     placeholder="DSPAIR1:..."
-                    className="mt-1.5 w-full rounded-xl border border-border/40 bg-background/80 p-2.5 font-mono text-xs text-foreground"
+                    className={cn(
+                      'mt-1.5 w-full rounded-xl border bg-background/80 p-2.5 font-mono text-xs text-foreground transition-shadow',
+                      highlightPasteBox
+                        ? 'border-primary ring-2 ring-primary/35'
+                        : 'border-border/40',
+                    )}
                   />
                 </label>
 
@@ -1029,6 +1157,7 @@ export function DevicePairingSection({
                       {t('sync:pairing.receivePinLabel', { defaultValue: '配对 PIN（6 位数字）' })}
                     </span>
                     <Input
+                      ref={applyPinInputRef}
                       type="password"
                       inputMode="numeric"
                       autoComplete="off"
@@ -1106,7 +1235,7 @@ export function DevicePairingSection({
               <span>{status}</span>
             </div>
           )}
-          {error && (
+          {error && !(qrImportError && activeMode === 'receive') && (
             <div
               role="alert"
               className="flex items-center gap-2 rounded-xl bg-destructive/5 border border-destructive/25 px-3 py-2 text-xs text-destructive"

@@ -221,7 +221,7 @@ export function FinderQuickLook({ item, onClose, onOpen }: FinderQuickLookProps)
             // 这条 py-2 标题栏），伪元素扩区走 coarseHit.ts 共享出口的 -inset-1 档
             // （coarseHitClassFor36 字面量），40px + 两侧各 4px = 48px ≥44px 命中区
             className={cn(
-              '!h-6 !w-6 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10',
+              'shrink-0 !h-6 !w-6 !p-1 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10',
               coarseHitClassFor36
             )}
             onClick={onClose}
@@ -273,7 +273,7 @@ export function FinderQuickLook({ item, onClose, onOpen }: FinderQuickLookProps)
           <span className="text-xs text-muted-foreground">{typeLabel}</span>
 
           {contentPreview && (
-            <p className="w-full whitespace-pre-wrap break-words rounded-lg bg-muted/40 px-3 py-2 text-xs leading-relaxed text-foreground/80 line-clamp-6">
+            <p className="w-full whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded-lg bg-muted/40 px-3 py-2 text-xs leading-relaxed text-foreground/80 line-clamp-6">
               {contentPreview}
             </p>
           )}

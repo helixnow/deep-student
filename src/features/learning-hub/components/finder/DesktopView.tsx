@@ -296,7 +296,7 @@ function DesktopContextMenu({
           <div className="px-3 py-1.5 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <FolderOpen size={14} />
-              <span className="truncate max-w-[140px]">
+              <span className="truncate max-w-[140px]" title={desktopRoot.folderName || t('desktop.rootPath')}>
                 {desktopRoot.folderName || t('desktop.rootPath')}
               </span>
             </div>
@@ -436,7 +436,10 @@ function ShortcutCard({
           </DsButton>
         </div>
       ) : (
-        <span className="text-xs text-center font-medium text-foreground/80 group-hover:text-foreground line-clamp-2 max-w-[80px]">
+        <span
+          className="text-xs text-center font-medium text-foreground/80 group-hover:text-foreground line-clamp-2 max-w-[80px] break-words [overflow-wrap:anywhere]"
+          title={displayName}
+        >
           {displayName}
         </span>
       )}

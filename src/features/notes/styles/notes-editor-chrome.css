@@ -373,13 +373,32 @@
 /* ── 宿主顶栏操作位：窄宽度自适应（Notion 顶栏同款：空间不够先收文字，绝不挤压图标） ──
    容器为宿主标签栏/面板工具栏本身（.notes-tabbar-host），不看窗口宽度：
    桌面窗口里的窄分栏、右侧栏同样生效。 */
+.notes-crepe-shell {
+  container: notes-shell / inline-size;
+}
+
 .notes-tabbar-host,
 .notes-titlebar-tabs {
   container: notes-tabbar / inline-size;
 }
 
+.notes-tab-actions-slot {
+  min-width: 0;
+}
+
 .notes-tab-actions-slot > * {
   flex-shrink: 0;
+}
+
+.notes-editor-chrome-row {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.notes-editor-chrome-row > div {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .notes-chrome-compact-icon {
@@ -403,7 +422,8 @@
   }
 
   /* 已保存时整段隐藏；未保存/失败只留状态点或警示图标（悬停 title 仍有完整说明） */
-  .notes-tab-actions-slot .notes-save-indicator[data-status='saved'] {
+  .notes-tab-actions-slot .notes-save-indicator[data-status='saved'],
+  .notes-tab-actions-slot .notes-save-indicator-meta {
     display: none;
   }
 
@@ -417,5 +437,87 @@
       min-width: 44px;
       min-height: 44px;
     }
+  }
+}
+
+@container notes-tabbar (max-width: 460px) {
+  .notes-tab-actions-slot {
+    gap: 1px;
+  }
+
+  .notes-tab-actions-slot .notes-chrome-text-button {
+    width: 26px;
+  }
+}
+
+/* ── 编辑器壳层窄容器（440–560px 桌面分屏窗口，sizeClass=compact 时顶栏操作不传送到标题栏） ──
+   桌面视口 1440px 下 @media (max-width: 640px) 与 Tailwind md: 均不生效，
+   必须按 notes-shell 容器内联宽度收紧 gutter 并折叠次要 chrome，防止工具栏溢出或裁剪主操作。 */
+@container notes-shell (max-width: 560px) {
+  .notes-editor-header-section,
+  .notes-editor-content,
+  .notes-column {
+    --notes-gutter: 24px;
+  }
+
+  .notes-editor-chrome-row .notes-save-indicator-meta {
+    display: none;
+  }
+
+  .notes-editor-chrome-row .notes-chrome-text-button {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .notes-editor-chrome-row .notes-chrome-text-button > span,
+  .notes-editor-chrome-row .notes-chrome-caret {
+    display: none;
+  }
+
+  .notes-editor-chrome-row .notes-chrome-compact-icon {
+    display: inline-block;
+  }
+
+  .notes-editor-chrome-row .notes-save-indicator[data-status='saved'] {
+    display: none;
+  }
+
+  .notes-editor-chrome-row .notes-save-indicator > span:not(.notes-save-indicator-dot) {
+    display: none;
+  }
+
+  .notes-editor-toolbar {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+
+  @media (pointer: coarse) {
+    .notes-editor-chrome-row .notes-chrome-text-button {
+      width: auto;
+      min-width: 44px;
+      min-height: 44px;
+    }
+  }
+}
+
+@container notes-shell (max-width: 460px) {
+  .notes-editor-header-section,
+  .notes-editor-content,
+  .notes-column {
+    --notes-gutter: 16px;
+  }
+
+  .notes-editor-chrome-row {
+    gap: 2px;
+  }
+
+  .notes-editor-chrome-row .notes-chrome-text-button {
+    width: 26px;
+  }
+
+  .notes-ai-checkpoint-bar .notes-column {
+    flex-wrap: wrap;
+    row-gap: 4px;
   }
 }

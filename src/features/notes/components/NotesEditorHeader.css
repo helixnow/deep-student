@@ -3,11 +3,16 @@
  * （定义于 src/styles/notes-typography.css），未定义时走 fallback。 */
 
 .notes-document-header {
+  min-width: 0;
+  max-width: 100%;
   container-type: inline-size;
+  container-name: notes-doc-header;
 }
 
 .notes-document-title {
   display: block;
+  width: 100%;
+  min-width: 0;
   resize: none;
   overflow: hidden;
   overflow-wrap: anywhere;
@@ -18,9 +23,46 @@
   letter-spacing: -0.01em;
 }
 
+@container (max-width: 560px) {
+  .notes-document-title {
+    font-size: 28px;
+  }
+
+  .notes-document-breadcrumbs {
+    margin-inline-start: 0;
+    gap: 1px;
+  }
+
+  .notes-document-breadcrumbs .notes-breadcrumb-label {
+    max-width: 120px;
+  }
+
+  .notes-document-affordances {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 28px;
+    margin-inline-start: 0;
+  }
+}
+
 @container (max-width: 480px) {
   .notes-document-title {
-    font-size: 30px;
+    font-size: 26px;
+  }
+}
+
+@container (max-width: 460px) {
+  .notes-document-title {
+    font-size: 24px;
+  }
+
+  .notes-document-breadcrumbs .notes-breadcrumb-label {
+    max-width: 96px;
+  }
+
+  .notes-document-affordance {
+    padding: 0 6px;
+    font-size: 12px;
   }
 }
 
@@ -59,6 +101,7 @@
   right: 0;
   z-index: 30;
   min-width: 168px;
+  max-width: calc(100cqi - 16px);
   padding: 8px 10px;
   border: 1px solid hsl(var(--border));
   border-radius: var(--notes-radius-popup, 12px);
@@ -159,6 +202,7 @@
   align-items: center;
   gap: 4px;
   min-width: 0;
+  max-width: 100%;
   padding: 2px 5px;
   border: 1px solid transparent;
   border-radius: var(--notes-radius-control, 5px);
@@ -187,6 +231,7 @@
   align-items: center;
   gap: 4px;
   min-width: 0;
+  max-width: 100%;
   padding: 2px 5px;
   border: 1px solid transparent;
   border-radius: var(--notes-radius-control, 5px);
@@ -210,6 +255,7 @@
 .notes-breadcrumb-popover-item {
   display: flex;
   width: 100%;
+  min-width: 0;
   min-height: 28px;
   align-items: center;
   gap: 6px;
@@ -241,6 +287,7 @@
   align-items: center;
   gap: 4px;
   min-width: 0;
+  max-width: 100%;
   padding: 2px 5px;
   border-radius: var(--notes-radius-control, 5px);
   color: hsl(var(--foreground));
@@ -394,6 +441,13 @@
 @container (max-width: 480px) {
   .notes-document-icon {
     font-size: 56px;
+  }
+}
+
+@container (max-width: 460px) {
+  .notes-document-icon {
+    font-size: 48px;
+    margin-inline-start: 0;
   }
 }
 

@@ -2,11 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { DstuNode } from '@/dstu/types';
 import { useMediaStudyCompanion } from '@/features/learning-hub/apps/views/media/mediaStudyCompanion';
 
 const {
+  invokeMock,
   dstuGetMock,
   useReferenceToChatMock,
   startMediaChatMock,
@@ -15,6 +16,7 @@ const {
   stableT,
   stableI18n,
 } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
   dstuGetMock: vi.fn(),
   useReferenceToChatMock: vi.fn(),
   startMediaChatMock: vi.fn(),
@@ -29,6 +31,10 @@ const {
     return key;
   },
   stableI18n: { resolvedLanguage: 'zh-CN', language: 'zh-CN' },
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: invokeMock,
 }));
 
 vi.mock('react-i18next', async (importOriginal) => {
@@ -192,6 +198,12 @@ describe('MediaStudyPage 360px mobile play fallback & Ask tab visible input (S3-
   beforeEach(() => {
     cleanup();
     vi.clearAllMocks();
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'handout_llm_complete') {
+        return '波的相干条件包括：频率相同、振动方向相同、相位差恒定 [00:01]。';
+      }
+      return null;
+    });
     isWebUiShellMock.mockReturnValue(false);
     dstuGetMock.mockResolvedValue({ ok: true, value: SAMPLE_VIDEO_NODE });
     useReferenceToChatMock.mockReturnValue({
@@ -478,15 +490,20 @@ describe('MediaStudyPage 360px mobile play fallback & Ask tab visible input (S3-
     expect(askInput).toBeVisible();
     expect(sendBtn).toBeVisible();
 
-    // Typing a question and clicking Send works immediately in-place on 360px
+    // Typing a question and clicking Send invokes LLM completion and renders direct grounded answer with ▶ 00:01 jump pill
     fireEvent.change(askInput, { target: { value: '波的相干条件是什么？' } });
     expect(sendBtn).not.toBeDisabled();
     fireEvent.click(sendBtn);
+    await waitFor(() => {
+      expect(screen.getByTestId('mini-chat-message-list')).toHaveTextContent(
+        '频率相同、振动方向相同、相位差恒定',
+      );
+    });
     expect(screen.getByTestId('mini-chat-message-list')).toHaveTextContent('波的相干条件是什么？');
-    expect(screen.getByTestId('mini-chat-message-list')).toHaveTextContent('本节讲解波的干涉与衍射条件');
+    expect(screen.getByRole('button', { name: '跳转到 00:01' })).toBeInTheDocument();
 
     // Verify MediaStudyPage.css keeps central Play circle at z-index: 30, lets disabled Play pass through,
-    // and compacts 360px audio + Ask tab layout so the QA input stays above the fold
+    // compacts 360px audio + Ask tab layout, and adds @container rules for ~460px split windows
     const cssPath = path.resolve(__dirname, '../components/MediaStudyPage.css');
     const css = fs.readFileSync(cssPath, 'utf-8');
     expect(css).toContain('[data-media-study] button.absolute.inset-0.z-10');
@@ -494,5 +511,6 @@ describe('MediaStudyPage 360px mobile play fallback & Ask tab visible input (S3-
     expect(css).toContain('pointer-events: none;');
     expect(css).toContain('[data-media-study] [data-media-study-tab="ask"] [data-testid="contextual-mini-chat"]');
     expect(css).toContain('max-height: 7.5rem;');
+    expect(css).toContain('@container media-study (width <= 540px)');
   });
 });

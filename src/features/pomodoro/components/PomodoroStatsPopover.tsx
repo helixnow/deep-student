@@ -26,6 +26,11 @@ import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { getPomodoroDailyStats, listPomodorosInRange, type PomodoroDailyStat } from '../api';
+import {
+  parseLocalDateNoon,
+  shiftLocalDateKey,
+  useLocalDateKey,
+} from '../utils/localDate';
 
 const RANGES = [7, 14, 30] as const;
 type RangeDays = (typeof RANGES)[number];
@@ -34,18 +39,6 @@ type ViewModeValue = '7' | '14' | '30' | 'heatmap';
 
 /** 热力图覆盖天数（12 周） */
 const HEATMAP_DAYS = 84;
-
-const fmtLocalDate = (d: Date): string => {
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${m}-${day}`;
-};
-
-const shiftDays = (d: Date, n: number): Date => {
-  const next = new Date(d);
-  next.setDate(next.getDate() + n);
-  return next;
-};
 
 /** 加载骨架的柱高（确定性伪随机，避免每次渲染跳动） */
 const SKELETON_BAR_HEIGHTS = [42, 68, 30, 84, 55, 24, 73, 48, 62, 36, 90, 52, 28, 66];
@@ -57,12 +50,18 @@ const SKELETON_BAR_HEIGHTS = [42, 68, 30, 84, 55, 24, 73, 48, 62, 36, 90, 52, 28
 export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTitle = true }) => {
   const { t, i18n } = useTranslation('todo');
   const streakDays = usePomodoroStore((s) => s.streakDays);
+  const syncCalendarDay = usePomodoroStore((s) => s.syncCalendarDay);
+  const todayKey = useLocalDateKey();
   const [mode, setMode] = useState<ViewMode>(7);
   const [stats, setStats] = useState<PomodoroDailyStat[] | null>(null);
   // 触屏明细：hover Tooltip 在 coarse 指针上不可达，tap 选中后在图表下方
   // 固定明细行展示当日数值（再次 tap 取消选中）
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const days = mode === 'heatmap' ? HEATMAP_DAYS : mode;
+
+  useEffect(() => {
+    syncCalendarDay();
+  }, [todayKey, syncCalendarDay]);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,7 +77,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
     return () => {
       cancelled = true;
     };
-  }, [days]);
+  }, [days, todayKey]);
 
   // ===== 周对比：本周至今 vs 上周同期（固定取近 14 天，与展示模式无关） =====
   const [weekCompare, setWeekCompare] = useState<{
@@ -94,14 +93,14 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
       .then((data) => {
         if (cancelled) return;
         const byDate = new Map(data.map((d) => [d.date, d.focusSeconds]));
-        const now = new Date();
-        const dayIdx = (now.getDay() + 6) % 7; // 0 = 周一
-        const monday = shiftDays(now, -dayIdx);
+        const todayNoon = parseLocalDateNoon(todayKey) ?? new Date();
+        const dayIdx = (todayNoon.getDay() + 6) % 7; // 0 = 周一
+        const mondayKey = shiftLocalDateKey(todayKey, -dayIdx);
         let thisWeekSeconds = 0;
         let lastWeekSeconds = 0;
         for (let i = 0; i <= dayIdx; i++) {
-          thisWeekSeconds += byDate.get(fmtLocalDate(shiftDays(monday, i))) ?? 0;
-          lastWeekSeconds += byDate.get(fmtLocalDate(shiftDays(monday, i - 7))) ?? 0;
+          thisWeekSeconds += byDate.get(shiftLocalDateKey(mondayKey, i)) ?? 0;
+          lastWeekSeconds += byDate.get(shiftLocalDateKey(mondayKey, i - 7)) ?? 0;
         }
         setWeekCompare({ thisWeekSeconds, lastWeekSeconds, elapsedDays: dayIdx + 1 });
       })
@@ -109,7 +108,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [todayKey]);
 
   // ===== 时段分布：本范围内工作记录按开始小时分桶（秒），手写 SVG 直方图 =====
   const [hourDist, setHourDist] = useState<number[] | null>(null);
@@ -117,9 +116,9 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
   useEffect(() => {
     let cancelled = false;
     setHourDist(null);
-    const end = new Date();
-    const start = shiftDays(end, -(days - 1));
-    listPomodorosInRange(fmtLocalDate(start), fmtLocalDate(end))
+    const endKey = todayKey;
+    const startKey = shiftLocalDateKey(endKey, -(days - 1));
+    listPomodorosInRange(startKey, endKey)
       .then((records) => {
         if (cancelled) return;
         const bins = new Array<number>(24).fill(0);
@@ -136,7 +135,7 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
     return () => {
       cancelled = true;
     };
-  }, [days]);
+  }, [days, todayKey]);
 
   const summary = useMemo(() => {
     if (!stats || stats.length === 0) {
@@ -158,8 +157,11 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
     [stats],
   );
 
-  // 今日快照（日聚合序列末位 = 今天）
-  const todayStat = stats && stats.length > 0 ? stats[stats.length - 1] : null;
+  // 今日快照：按本地 YYYY-MM-DD 精确匹配，避免跨午夜重拉前误将昨日当「今日」
+  const todayStat = useMemo(
+    () => (stats && stats.length > 0 ? stats.find((d) => d.date === todayKey) ?? null : null),
+    [stats, todayKey],
+  );
 
   const hourSummary = useMemo(() => {
     if (!hourDist) return null;
@@ -180,7 +182,9 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
 
   const dayLabel = (date: string) => {
     try {
-      return new Date(`${date}T00:00:00`).toLocaleDateString(
+      const localNoon = parseLocalDateNoon(date);
+      if (!localNoon) return date.slice(5);
+      return localNoon.toLocaleDateString(
         i18n.language?.startsWith('zh') ? 'zh-CN' : 'en-US',
         { month: 'numeric', day: 'numeric' },
       );
@@ -201,8 +205,9 @@ export const PomodoroStatsContent: React.FC<{ showTitle?: boolean }> = ({ showTi
     if (mode !== 'heatmap' || !stats || stats.length === 0) return null;
     const weeks: (PomodoroDailyStat | null)[][] = [];
     let week: (PomodoroDailyStat | null)[] = [];
-    // 首列补齐：周一=0 … 周日=6
-    const firstDay = new Date(`${stats[0].date}T00:00:00`).getDay();
+    // 首列补齐：周一=0 … 周日=6（用本地正午防夏令时零点跳变偏移星期）
+    const firstDate = parseLocalDateNoon(stats[0].date);
+    const firstDay = firstDate ? firstDate.getDay() : 0;
     const mondayIndex = (firstDay + 6) % 7;
     for (let i = 0; i < mondayIndex; i++) week.push(null);
     for (const d of stats) {

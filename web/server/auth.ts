@@ -108,41 +108,72 @@ export function isTrustedProxyRequest(req: IncomingMessage, trustProxy = false):
   return LOOPBACK_REMOTE_ADDRESSES.has(remote);
 }
 
+function parseHttpOrigin(raw: string): URL | null {
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 反代场景下 `Host` 是 `127.0.0.1:1428`，浏览器 `Origin` 却是 `https://study.example.com`：
  * 只比 `Host` 会把所有登录/上传都判成跨站。来自受信代理时再接受 `X-Forwarded-Host` 的第一个值。
+ *
+ * Chromium 在部分同源表单提交 / 401→303 重定向 / 隐私策略场景下可能发送 `Origin: null`：
+ * 此时结合浏览器不可伪造的 Fetch Metadata（`Sec-Fetch-Site: same-origin`）与同源 `Referer` 兜底核验，
+ * 跨站页面、sandboxed iframe（`Sec-Fetch-Site: cross-site`）与裸 `Origin: null` 仍一律拒绝。
  */
 export function isSameOriginRequest(req: IncomingMessage, options: { trustProxy?: boolean } = {}): boolean {
-  const origin = req.headers.origin;
+  const rawOrigin = req.headers.origin;
+  const origin = Array.isArray(rawOrigin) ? rawOrigin[0] : rawOrigin;
   if (!origin) return true;
-  let parsedOrigin: URL;
-  try {
-    parsedOrigin = new URL(origin);
-  } catch (error) {
-    void error;
-    return false;
-  }
+
   const trusted = isTrustedProxyRequest(req, options.trustProxy);
   const forwardedProto = trusted ? req.headers['x-forwarded-proto'] : undefined;
   const rawProto = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto;
   const protocol = (req.socket as { encrypted?: boolean }).encrypted === true ||
     rawProto?.split(',')[0]?.trim().toLowerCase() === 'https' ? 'https:' : 'http:';
-  if (parsedOrigin.protocol !== protocol) return false;
-  const originHost = parsedOrigin.host.toLowerCase();
-  const matchesHost = (value: string): boolean => {
-    try {
-      return new URL(`${protocol}//${value}`).host.toLowerCase() === originHost;
-    } catch {
+
+  const matchesTargetOrigin = (candidate: URL): boolean => {
+    if (candidate.protocol !== protocol) return false;
+    const candidateHost = candidate.host.toLowerCase();
+    const matchesHost = (value: string): boolean => {
+      try {
+        return new URL(`${protocol}//${value}`).host.toLowerCase() === candidateHost;
+      } catch {
+        return false;
+      }
+    };
+    const host = req.headers.host;
+    if (typeof host === 'string' && matchesHost(host)) return true;
+    if (!trusted) return false;
+    const forwardedHost = req.headers['x-forwarded-host'];
+    const rawForwarded = Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost;
+    const firstForwarded = rawForwarded?.split(',')[0]?.trim().toLowerCase();
+    return firstForwarded !== undefined && firstForwarded !== '' && matchesHost(firstForwarded);
+  };
+
+  if (origin.trim().toLowerCase() === 'null') {
+    const rawSecFetchSite = req.headers['sec-fetch-site'];
+    const secFetchSite = (Array.isArray(rawSecFetchSite) ? rawSecFetchSite[0] : rawSecFetchSite)?.trim().toLowerCase();
+    const rawReferer = req.headers.referer;
+    const referer = (Array.isArray(rawReferer) ? rawReferer[0] : rawReferer)?.trim();
+    const parsedReferer = referer ? parseHttpOrigin(referer) : null;
+    if (referer && (!parsedReferer || !matchesTargetOrigin(parsedReferer))) {
       return false;
     }
-  };
-  const host = req.headers.host;
-  if (typeof host === 'string' && matchesHost(host)) return true;
-  if (!trusted) return false;
-  const forwardedHost = req.headers['x-forwarded-host'];
-  const rawForwarded = Array.isArray(forwardedHost) ? forwardedHost[0] : forwardedHost;
-  const firstForwarded = rawForwarded?.split(',')[0]?.trim().toLowerCase();
-  return firstForwarded !== undefined && firstForwarded !== '' && matchesHost(firstForwarded);
+    if (secFetchSite !== undefined && secFetchSite !== '') {
+      return secFetchSite === 'same-origin';
+    }
+    return parsedReferer !== null && matchesTargetOrigin(parsedReferer);
+  }
+
+  const parsedOrigin = parseHttpOrigin(origin);
+  if (!parsedOrigin) return false;
+  return matchesTargetOrigin(parsedOrigin);
 }
 
 /** 限流用的客户端标识：只有受信代理给出的 `X-Forwarded-For` 才采信，否则一律用 socket 地址。 */

@@ -7,6 +7,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { motionSafe } from '@/styles/motion-springs';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
+import { useLocalDateKey } from '../utils/localDate';
 import { noiseEngine, NOISE_TYPES } from '../noiseEngine';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { RollingTime } from './RollingTime';
@@ -162,8 +163,14 @@ export const ImmersiveFocusMode: React.FC<{
     skipBreak,
     extendPhase,
     completeCurrentSession,
+    syncCalendarDay,
     updateSettings,
   } = usePomodoroStore();
+
+  const todayKey = useLocalDateKey();
+  useEffect(() => {
+    syncCalendarDay();
+  }, [todayKey, syncCalendarDay]);
 
   const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)');
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');

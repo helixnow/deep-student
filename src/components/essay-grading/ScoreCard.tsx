@@ -371,7 +371,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
         </div>
       )}
       {/* 总分区域 */}
-      <div className="flex items-start justify-between mb-5">
+      <div className="essay-score-header flex items-start justify-between gap-3 mb-5">
         <div className="flex items-center gap-4">
           {/* 分数圆环 */}
           <div className="relative w-16 h-16">

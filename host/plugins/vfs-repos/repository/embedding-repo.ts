@@ -331,13 +331,24 @@ export class IndexStateRepo implements IndexStateRepository {
       if (getConfig(conn, key) !== null) return 0;
       conn.exec('BEGIN');
       try {
-        const requeued = conn.run(`UPDATE resources
-          SET index_state = ?1, index_error = NULL, index_retry_count = 0, index_next_retry_at = 0
-          WHERE deleted_at IS NULL
-            AND COALESCE(index_state, 'pending') IN ('indexed', 'failed')
-            AND id IN (SELECT resource_id FROM files
-                       WHERE deleted_at IS NULL AND COALESCE(page_count, 0) > 1
-                         AND resource_id IS NOT NULL)`, [INDEX_STATE_PENDING]).changes;
+        // Resolve matching multi-page PDF resource IDs first so libraries with thousands of notes
+        // and zero multi-page PDFs skip scanning `resources` completely during startup.
+        const pagedResourceIds = conn.all<{ resource_id: string }>(
+          `SELECT DISTINCT resource_id FROM files
+           WHERE deleted_at IS NULL AND COALESCE(page_count, 0) > 1
+             AND resource_id IS NOT NULL`,
+        ).map((row) => row.resource_id);
+        let requeued = 0;
+        for (let start = 0; start < pagedResourceIds.length; start += 500) {
+          const chunk = pagedResourceIds.slice(start, start + 500);
+          const placeholders = chunk.map((_, idx) => `?${idx + 2}`).join(',');
+          requeued += conn.run(`UPDATE resources
+            SET index_state = ?1, index_error = NULL, index_retry_count = 0, index_next_retry_at = 0
+            WHERE id IN (${placeholders})
+              AND deleted_at IS NULL
+              AND COALESCE(index_state, 'pending') IN ('indexed', 'failed')`,
+          [INDEX_STATE_PENDING, ...chunk]).changes;
+        }
         conn.run(`INSERT OR REPLACE INTO vfs_indexing_config (key, value, updated_at)
           VALUES (?1, 'done', ?2)`, [key, nowMs()]);
         conn.exec('COMMIT');
@@ -373,9 +384,11 @@ export class IndexStateRepo implements IndexStateRepository {
       conn.exec('BEGIN IMMEDIATE');
       try {
         const ids = this.getPendingResources(conn, limit, maxRetries);
-        for (const resourceId of ids) {
-          conn.run(`UPDATE resources SET index_state = ?1, index_error = NULL WHERE id = ?2`,
-            [INDEX_STATE_INDEXING, resourceId]);
+        for (let start = 0; start < ids.length; start += 500) {
+          const chunk = ids.slice(start, start + 500);
+          const placeholders = chunk.map((_, idx) => `?${idx + 2}`).join(',');
+          conn.run(`UPDATE resources SET index_state = ?1, index_error = NULL WHERE id IN (${placeholders})`,
+            [INDEX_STATE_INDEXING, ...chunk]);
         }
         conn.exec('COMMIT');
         return ids;

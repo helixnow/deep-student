@@ -64,6 +64,8 @@ export interface FinderFileItemProps {
 interface SortableFinderFileItemProps extends FinderFileItemProps {
   id: string;
   enableDrag?: boolean;
+  /** 是否有活跃拖拽会话；false 时强制清零 isDropTarget/isSpringLoading 防止残留边框 */
+  isDragActive?: boolean;
 }
 
 /** 有类型标签的资源类型（folder 不显示标签）；文案走 i18n indexStatus.resourceType.* */
@@ -231,11 +233,15 @@ export const FinderFileItem = React.memo(function FinderFileItem({
     : shownName;
 
   if (viewMode === 'list') {
+    const activeDropTarget = isDropTarget && item.type === 'folder';
+    const activeSpringLoading = isSpringLoading && item.type === 'folder' && !activeDropTarget;
     return (
       <div
+        data-drop-target={activeDropTarget ? 'true' : undefined}
+        data-spring-loading={activeSpringLoading ? 'true' : undefined}
         className={cn(
           // 触屏/移动壳行高 64px（LIST_ITEM_HEIGHT_TOUCH），用 px 而非 rem，避免根字号把 4rem 缩成 56px
-          "group relative flex h-full min-h-10 items-center gap-2 px-3 py-1.5 cursor-default select-none",
+          "group relative flex h-full min-h-10 min-w-0 overflow-hidden items-center gap-2 px-3 py-1.5 cursor-default select-none",
           "max-md:min-h-[64px] max-md:gap-2.5 max-md:px-3.5 max-md:py-2.5",
           "[@media(pointer:coarse)]:min-h-[64px] [@media(pointer:coarse)]:gap-2.5 [@media(pointer:coarse)]:px-3.5 [@media(pointer:coarse)]:py-2.5",
           "transition-[background-color,opacity] duration-100 ease-out",
@@ -245,8 +251,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
           isActive && !isSelected && "bg-[var(--interactive-selected)]",
           isDragging && "opacity-40",
           isDragOverlay && "bg-primary text-primary-foreground shadow-lg",
-          isDropTarget && item.type === 'folder' && "outline outline-2 outline-primary outline-offset-[-2px] bg-primary/10",
-          isSpringLoading && item.type === 'folder' && !isDropTarget && "outline outline-2 outline-primary/50 outline-offset-[-2px] bg-primary/5 animate-pulse"
+          activeDropTarget && "outline outline-2 outline-primary outline-offset-[-2px] bg-primary/10",
+          activeSpringLoading && "outline outline-2 outline-primary/50 outline-offset-[-2px] bg-primary/5 animate-pulse"
         )}
         title={rowTitle}
         onClick={handleClick}
@@ -295,7 +301,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         )}
 
         {/* 名称 + 收藏 */}
-        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+        <div className="flex-1 min-w-0 flex items-center gap-1.5" title={isEditing ? undefined : rowTitle}>
           <InlineEditText
             value={item.name}
             displayValue={shownName}
@@ -306,7 +312,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             ariaLabel={item.type === 'folder' ? t('learningHub:finder.create.newFolder') : t('learningHub:contextMenu.rename')}
             placeholder={item.type === 'folder' ? t('learningHub:finder.create.newFolder') : undefined}
             textClassName={cn(
-              'truncate block text-ui font-normal',
+              'min-w-0 flex-1 truncate block text-ui font-normal',
               'max-md:!text-lg max-md:leading-5 [@media(pointer:coarse)]:!text-lg [@media(pointer:coarse)]:leading-5',
               isSelected ? 'text-primary-foreground' : 'text-foreground/90'
             )}
@@ -453,7 +459,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
               size="icon"
               iconOnly
               className={cn(
-                'hover:bg-[var(--interactive-hover)] transition-opacity duration-150',
+                'shrink-0 hover:bg-[var(--interactive-hover)] transition-opacity duration-150',
                 isTouchPrimary
                   ? '!h-11 !w-11 !p-2.5 opacity-100'
                   : '!h-6 !w-6 !p-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
@@ -470,8 +476,12 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   }
 
   // Grid View - Finder-style icon layout
+  const activeGridDropTarget = isDropTarget && item.type === 'folder';
+  const activeGridSpringLoading = isSpringLoading && item.type === 'folder' && !activeGridDropTarget;
   return (
     <div
+      data-drop-target={activeGridDropTarget ? 'true' : undefined}
+      data-spring-loading={activeGridSpringLoading ? 'true' : undefined}
       className={cn(
         "group relative flex flex-col items-center cursor-default select-none",
         isTrashView
@@ -481,8 +491,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         "ui-press-coarse transition-opacity duration-100 ease-out",
         isDragging && "opacity-40",
         isDragOverlay && "drop-shadow-lg",
-        isDropTarget && item.type === 'folder' && "rounded-lg bg-primary/10 outline outline-2 outline-primary",
-        isSpringLoading && item.type === 'folder' && !isDropTarget && "rounded-lg bg-primary/5 outline outline-2 outline-primary/50 animate-pulse"
+        activeGridDropTarget && "rounded-lg bg-primary/10 outline outline-2 outline-primary",
+        activeGridSpringLoading && "rounded-lg bg-primary/5 outline outline-2 outline-primary/50 animate-pulse"
       )}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
@@ -567,7 +577,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       </div>
       
       {/* 文件名 */}
-      <div className="w-full min-w-0 text-center">
+      <div className="w-full min-w-0 overflow-hidden text-center">
         {isEditing ? (
           <InlineEditText
             value={item.name}
@@ -583,11 +593,14 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             inputClassName="!h-[18px] !rounded !border-primary/70 !bg-background !px-1 !py-0 !text-center !text-xs !leading-tight !shadow-none focus:!ring-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!text-[16px]"
           />
         ) : (
-          <span className={cn(
-            'mx-auto block w-fit max-w-full rounded px-1 text-xs leading-[1.35] font-normal break-words',
-            isTrashView ? 'line-clamp-1' : 'line-clamp-2',
-            isSelected ? 'bg-primary text-primary-foreground' : 'text-foreground/85'
-          )}>
+          <span
+            title={rowTitle}
+            className={cn(
+              'mx-auto block w-fit max-w-full overflow-hidden rounded px-1 text-xs leading-[1.35] font-normal break-words [overflow-wrap:anywhere]',
+              isTrashView ? 'line-clamp-1' : 'line-clamp-2',
+              isSelected ? 'bg-primary text-primary-foreground' : 'text-foreground/85'
+            )}
+          >
             {shownName}
           </span>
         )}
@@ -680,6 +693,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
 export const SortableFinderFileItem = React.memo(function SortableFinderFileItem({
   id,
   enableDrag = true,
+  isDragActive = true,
   ...props
 }: SortableFinderFileItemProps) {
   const isFolder = props.item.type === 'folder';
@@ -720,7 +734,9 @@ export const SortableFinderFileItem = React.memo(function SortableFinderFileItem
     [setDragRef, setDropRef]
   );
 
-  const isDropTarget = isOver && isFolder && !isDragging;
+  // 仅在拖拽活跃时允许展示 drop-target / spring-load 高亮，彻底防止拖拽异常取消后残留边框
+  const isDropTarget = isDragActive && Boolean(props.isDropTarget || isOver) && isFolder && !isDragging;
+  const isSpringLoading = isDragActive && Boolean(props.isSpringLoading) && isFolder && !isDragging;
   // ★ 剥离 @dnd-kit 在 disabled={!enableDrag} 时注入的 aria-disabled="true" 与 role="button"：
   // 否则内联新建/重命名输入框以及回收站条目会被无障碍树与 Playwright 判定为 disabled！
   const {
@@ -742,12 +758,13 @@ export const SortableFinderFileItem = React.memo(function SortableFinderFileItem
       tabIndex={0}
       aria-selected={props.isSelected}
       aria-label={props.displayName || props.item.name || undefined}
-      className={props.viewMode === 'grid' ? 'flex w-full max-w-[108px] justify-center md:block md:w-[88px] md:max-w-[88px] min-w-0 outline-none' : 'h-full outline-none'}
+      className={props.viewMode === 'grid' ? 'flex w-full max-w-[108px] justify-center md:block md:w-[88px] md:max-w-[88px] min-w-0 outline-none' : 'h-full min-w-0 outline-none'}
     >
       <FinderFileItem
         {...props}
-        isDragging={isDragging}
+        isDragging={isDragActive && isDragging}
         isDropTarget={isDropTarget}
+        isSpringLoading={isSpringLoading}
       />
     </div>
   );
