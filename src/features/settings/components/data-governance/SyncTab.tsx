@@ -34,6 +34,7 @@ import { DsButton } from "@/components/ui/DsButton";
 import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { Badge } from "@/components/ui/shad/Badge";
 import { Switch } from "@/components/ui/shad/Switch";
+import * as syncStatusStore from "@/stores/syncStatusStore";
 import {
   useAutoSyncStore,
   ensureAutoSyncSchedulerStarted,
@@ -202,6 +203,33 @@ export interface SyncTabProps {
   onViewAuditLog?: () => void;
 }
 
+function getGlobalSyncStoreSafe(): typeof syncStatusStore.useGlobalSyncStore | undefined {
+  try {
+    return syncStatusStore.useGlobalSyncStore;
+  } catch {
+    return undefined;
+  }
+}
+
+const subscribeGlobalSyncStore = (listener: () => void): (() => void) => {
+  const store = getGlobalSyncStoreSafe();
+  return typeof store?.subscribe === "function" ? store.subscribe(listener) : () => {};
+};
+
+const readHasUnsavedCloudDraft = (): boolean => {
+  const store = getGlobalSyncStoreSafe();
+  return typeof store?.getState === "function"
+    ? Boolean(store.getState().hasUnsavedCloudDraft)
+    : false;
+};
+
+const readConflictJumpRequestSeq = (): number => {
+  const store = getGlobalSyncStoreSafe();
+  return typeof store?.getState === "function"
+    ? (store.getState().conflictJumpRequestSeq ?? 0)
+    : 0;
+};
+
 export const SyncTab: React.FC<SyncTabProps> = ({
   syncStatus,
   conflicts,
@@ -231,6 +259,19 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   const [quarantineCount, setQuarantineCount] = React.useState(0);
   const [liveRecordConflictGroups, setLiveRecordConflictGroups] = React.useState(0);
   const [conflictPanelJumpSignal, setConflictPanelJumpSignal] = React.useState(0);
+  const syncErrorPanelRef = React.useRef<HTMLDivElement | null>(null);
+  const lastScrolledSyncErrorRef = React.useRef<string | null>(null);
+
+  const hasUnsavedCloudDraft = React.useSyncExternalStore(
+    subscribeGlobalSyncStore,
+    readHasUnsavedCloudDraft,
+    () => false,
+  );
+  const conflictJumpRequestSeq = React.useSyncExternalStore(
+    subscribeGlobalSyncStore,
+    readConflictJumpRequestSeq,
+    () => 0,
+  );
 
   const handleJumpToConflicts = React.useCallback(() => {
     setConflictPanelJumpSignal((n) => n + 1);
@@ -244,6 +285,39 @@ export const SyncTab: React.FC<SyncTabProps> = ({
     if (!externalConflictFocusSignal) return;
     handleJumpToConflicts();
   }, [externalConflictFocusSignal, handleJumpToConflicts]);
+
+  React.useEffect(() => {
+    if (!conflictJumpRequestSeq) return;
+    handleJumpToConflicts();
+    getGlobalSyncStoreSafe()?.getState?.()?.clearJumpToConflicts?.();
+  }, [conflictJumpRequestSeq, handleJumpToConflicts]);
+
+  const handleRunSyncGuarded = React.useCallback(
+    (direction: "upload" | "download" | "bidirectional") => {
+      if (hasUnsavedCloudDraft) {
+        showGlobalNotification(
+          "warning",
+          t("data:governance.unsaved_cloud_draft_sync_warning", {
+            defaultValue:
+              "云端存储配置有未保存的修改，请先点击「保存配置」再执行同步。",
+          }),
+        );
+        if (!showCloudSettingsEditor) {
+          onSetCloudSettingsEditorOpen(true);
+        }
+        return;
+      }
+      void onRunSync(direction, syncStrategy);
+    },
+    [
+      hasUnsavedCloudDraft,
+      onRunSync,
+      onSetCloudSettingsEditorOpen,
+      showCloudSettingsEditor,
+      syncStrategy,
+      t,
+    ],
+  );
 
   const effectiveUnresolvedConflictCount = Math.max(
     unresolvedConflictCount,
@@ -383,6 +457,19 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   const leaseCountdown = leaseExpiry
     ? formatRemainingLeaseDuration(leaseExpiry, i18n?.language, leaseNowMs)
     : null;
+
+  React.useEffect(() => {
+    if (!rawSyncError) {
+      lastScrolledSyncErrorRef.current = null;
+      return;
+    }
+    if (lastScrolledSyncErrorRef.current === rawSyncError) return;
+    lastScrolledSyncErrorRef.current = rawSyncError;
+    const panel = syncErrorPanelRef.current;
+    if (panel && typeof panel.scrollIntoView === "function") {
+      panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [rawSyncError]);
 
   React.useEffect(() => {
     if (!leaseExpiry) return;
@@ -995,11 +1082,49 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               />
             </div>
 
+            {hasUnsavedCloudDraft && (
+              <div
+                role="alert"
+                data-testid="sync-unsaved-cloud-draft-banner"
+                className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-warning/45 bg-warning/10 px-3.5 py-2.5 text-xs text-foreground"
+              >
+                <div className="flex min-w-0 flex-1 items-start gap-2">
+                  <Warning size={16} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="font-semibold text-foreground">
+                      {t("data:governance.unsaved_cloud_draft_banner_title", {
+                        defaultValue: "云端存储配置有未保存的修改",
+                      })}
+                    </div>
+                    <p className="text-muted-foreground leading-relaxed">
+                      {t("data:governance.unsaved_cloud_draft_banner_desc", {
+                        defaultValue:
+                          "表单中的修改（如加密密码或服务器地址）尚未保存，请先保存配置再同步，避免继续使用旧配置。",
+                      })}
+                    </p>
+                  </div>
+                </div>
+                {!showCloudSettingsEditor && (
+                  <DsButton
+                    type="button"
+                    variant="warning"
+                    size="sm"
+                    onClick={() => onSetCloudSettingsEditorOpen(true)}
+                    className="shrink-0"
+                  >
+                    {t("data:governance.unsaved_cloud_draft_open_settings", {
+                      defaultValue: "去保存配置",
+                    })}
+                  </DsButton>
+                )}
+              </div>
+            )}
+
             <div className="flex flex-wrap gap-2">
               <DsButton
                 variant="primary"
                 size="sm"
-                onClick={() => onRunSync("bidirectional", syncStrategy)}
+                onClick={() => handleRunSyncGuarded("bidirectional")}
                 disabled={loading || syncRunning}
                 title={t("data:governance.sync_bidirectional")}
                 className="rounded-xl border-primary/40 bg-primary/15 px-3.5 font-medium text-primary hover:bg-primary/25"
@@ -1010,7 +1135,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
-                onClick={() => onRunSync("bidirectional", syncStrategy)}
+                onClick={() => handleRunSyncGuarded("bidirectional")}
                 disabled={loading || syncRunning}
                 className="rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-background/90"
               >
@@ -1020,7 +1145,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
-                onClick={() => onRunSync("upload", syncStrategy)}
+                onClick={() => handleRunSyncGuarded("upload")}
                 disabled={loading || syncRunning}
                 className="rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-background/90"
               >
@@ -1030,7 +1155,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               <DsButton
                 variant="outline"
                 size="sm"
-                onClick={() => onRunSync("download", syncStrategy)}
+                onClick={() => handleRunSyncGuarded("download")}
                 disabled={loading || syncRunning}
                 className="rounded-xl border-border/70 bg-background/60 px-3.5 text-foreground hover:bg-background/90"
               >
@@ -1039,24 +1164,10 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               </DsButton>
             </div>
 
-            {quarantineCount > 0 && (
-              <div
-                data-testid="sync-quarantine-partial-banner"
-                className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
-              >
-                <Warning size={15} className="shrink-0" />
-                <span>
-                  {t("data:governance.sync_partial_with_quarantine", {
-                    count: quarantineCount,
-                    defaultValue: `同步部分完成：${quarantineCount} 条变更应用失败（详见隔离区）`,
-                  })}
-                </span>
-              </div>
-            )}
-
-            {/* 同步进度 */}
+            {/* 同步进度与失败提示（紧贴操作栏，确保首屏可见不落到视口外） */}
             {showSyncProgress && syncProgress && (
               <div
+                ref={syncErrorPanelRef}
                 data-testid="active-sync-progress-panel"
                 className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3"
               >
@@ -1098,115 +1209,137 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                   )}
                 </div>
 
-                <div className="space-y-1">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{localizedProgressItem}</span>
-                    <span>{Math.round(syncProgress.percent)}%</span>
-                  </div>
-                  <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary transition-all duration-300 ease-out"
-                      style={{ width: `${syncProgress.percent}%` }}
-                    />
-                  </div>
-                  <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
-                    <span>{syncProgressCounter}</span>
-                    <span>
-                      {t("data:governance.speed")}:{" "}
-                      {formatSpeed(syncProgress.speed_bytes_per_sec)}
-                    </span>
-                    <span>
-                      {t("data:governance.eta")}:{" "}
-                      {formatEta(syncProgress.eta_seconds)}
-                    </span>
-                  </div>
-                  {sanitizedSyncError && (
-                    <div
-                      role="alert"
-                      data-testid="sync-terminal-error-banner"
-                      className="rounded-md border border-destructive/30 bg-destructive/5 p-2 space-y-2"
-                    >
-                      <div className="flex items-start gap-1.5 text-xs text-destructive">
-                        <XCircle size={12} className="mt-0.5 shrink-0" />
-                        <span>
-                          {syncErrorKind
-                            ? t(syncErrorHumanKeys[syncErrorKind], {
-                                expiresAt:
-                                  extractSyncLeaseExpiry(
-                                    sanitizedSyncError,
-                                  )?.toLocaleString() ?? "",
-                              })
-                            : syncErrorE2eeKind
-                              ? t(SYNC_E2EE_ERROR_I18N_KEYS[syncErrorE2eeKind])
-                              : friendlySyncError ?? sanitizedSyncError}
-                        </span>
-                      </div>
-                      {(syncErrorKind === "lease_held" || syncErrorKind === "lease_held_self") &&
-                        (leaseCountdown || leaseHolderDevice) && (
-                          <div
-                            data-testid="sync-lease-countdown-panel"
-                            className={
-                              leaseCountdown?.expired
-                                ? "ml-[18px] rounded-md border border-success/40 bg-success/10 px-2.5 py-1.5 text-xs text-foreground space-y-0.5"
-                                : "ml-[18px] rounded-md border border-warning/35 bg-warning/10 px-2.5 py-1.5 text-xs text-foreground space-y-0.5"
-                            }
-                          >
-                            {leaseHolderDevice && syncErrorKind === "lease_held" && (
-                              <div className="font-medium">
-                                {t("data:governance.lease_holder_label", {
-                                  holder: leaseHolderDevice,
-                                })}
-                              </div>
-                            )}
-                            {leaseCountdown && (
-                              <div className="tabular-nums text-muted-foreground">
-                                {leaseCountdown.expired
-                                  ? t("data:governance.lease_expired_ready_to_retry")
-                                  : t("data:governance.lease_countdown_remaining", {
-                                      remaining: leaseCountdown.label,
-                                      expiresAt: leaseExpiry?.toLocaleString() ?? "",
-                                    })}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      {(syncErrorE2eeKind || syncErrorKind) && (
-                        <details className="pl-[18px] text-2xs text-muted-foreground">
-                          <summary className="cursor-pointer select-none hover:text-foreground">
-                            {t("sync:errors.technicalDetail")}
-                          </summary>
-                          <p className="mt-1 break-all">{sanitizedSyncError}</p>
-                        </details>
-                      )}
-                      <div className="flex flex-wrap items-center gap-2 pl-[18px]">
-                        {onRetrySync && (
-                          <DsButton
-                            variant={leaseCountdown?.expired ? "primary" : "outline"}
-                            size="sm"
-                            onClick={onRetrySync}
-                            disabled={syncRunning}
-                            data-testid="sync-terminal-retry-btn"
-                          >
-                            <ArrowClockwise size={12} className="mr-1" />
-                            {leaseCountdown?.expired
-                              ? t("data:governance.lease_retry_now")
-                              : t("common:actions.retry")}
-                          </DsButton>
-                        )}
-                        {onViewAuditLog && (
-                          <DsButton
-                            variant="outline"
-                            size="sm"
-                            onClick={onViewAuditLog}
-                          >
-                            <FileText size={12} className="mr-1" />
-                            {t("data:governance.view_audit_log")}
-                          </DsButton>
-                        )}
-                      </div>
+                {sanitizedSyncError && (
+                  <div
+                    role="alert"
+                    data-testid="sync-terminal-error-banner"
+                    className="rounded-md border border-destructive/30 bg-destructive/5 p-2 space-y-2"
+                  >
+                    <div className="flex items-start gap-1.5 text-xs text-destructive">
+                      <XCircle size={12} className="mt-0.5 shrink-0" />
+                      <span>
+                        {syncErrorKind
+                          ? t(syncErrorHumanKeys[syncErrorKind], {
+                              expiresAt:
+                                extractSyncLeaseExpiry(
+                                  sanitizedSyncError,
+                                )?.toLocaleString() ?? "",
+                            })
+                          : syncErrorE2eeKind
+                            ? t(SYNC_E2EE_ERROR_I18N_KEYS[syncErrorE2eeKind])
+                            : friendlySyncError ?? sanitizedSyncError}
+                      </span>
                     </div>
-                  )}
-                </div>
+                    {(syncErrorKind === "lease_held" || syncErrorKind === "lease_held_self") &&
+                      (leaseCountdown || leaseHolderDevice) && (
+                        <div
+                          data-testid="sync-lease-countdown-panel"
+                          className={
+                            leaseCountdown?.expired
+                              ? "ml-[18px] rounded-md border border-success/40 bg-success/10 px-2.5 py-1.5 text-xs text-foreground space-y-0.5"
+                              : "ml-[18px] rounded-md border border-warning/35 bg-warning/10 px-2.5 py-1.5 text-xs text-foreground space-y-0.5"
+                          }
+                        >
+                          {leaseHolderDevice && syncErrorKind === "lease_held" && (
+                            <div className="font-medium">
+                              {t("data:governance.lease_holder_label", {
+                                holder: leaseHolderDevice,
+                              })}
+                            </div>
+                          )}
+                          {leaseCountdown && (
+                            <div className="tabular-nums text-muted-foreground">
+                              {leaseCountdown.expired
+                                ? t("data:governance.lease_expired_ready_to_retry")
+                                : t("data:governance.lease_countdown_remaining", {
+                                    remaining: leaseCountdown.label,
+                                    expiresAt: leaseExpiry?.toLocaleString() ?? "",
+                                  })}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    {((syncErrorE2eeKind && Boolean(sanitizedSyncError)) ||
+                      syncErrorKind ||
+                      (Boolean(sanitizedSyncError) &&
+                        Boolean(friendlySyncError) &&
+                        sanitizedSyncError !== friendlySyncError)) && (
+                      <details className="pl-[18px] text-2xs text-muted-foreground">
+                        <summary className="cursor-pointer select-none hover:text-foreground">
+                          {t("sync:errors.technicalDetail")}
+                        </summary>
+                        <p className="mt-1 break-all">{sanitizedSyncError}</p>
+                      </details>
+                    )}
+                    <div className="flex flex-wrap items-center gap-2 pl-[18px]">
+                      {onRetrySync && (
+                        <DsButton
+                          variant={leaseCountdown?.expired ? "primary" : "outline"}
+                          size="sm"
+                          onClick={onRetrySync}
+                          disabled={syncRunning}
+                          data-testid="sync-terminal-retry-btn"
+                        >
+                          <ArrowClockwise size={12} className="mr-1" />
+                          {leaseCountdown?.expired
+                            ? t("data:governance.lease_retry_now")
+                            : t("common:actions.retry")}
+                        </DsButton>
+                      )}
+                      {onViewAuditLog && (
+                        <DsButton
+                          variant="outline"
+                          size="sm"
+                          onClick={onViewAuditLog}
+                        >
+                          <FileText size={12} className="mr-1" />
+                          {t("data:governance.view_audit_log")}
+                        </DsButton>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {syncRunning && (
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{localizedProgressItem}</span>
+                      <span>{Math.round(syncProgress.percent)}%</span>
+                    </div>
+                    <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-primary transition-all duration-300 ease-out"
+                        style={{ width: `${syncProgress.percent}%` }}
+                      />
+                    </div>
+                    <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+                      <span>{syncProgressCounter}</span>
+                      <span>
+                        {t("data:governance.speed")}:{" "}
+                        {formatSpeed(syncProgress.speed_bytes_per_sec)}
+                      </span>
+                      <span>
+                        {t("data:governance.eta")}:{" "}
+                        {formatEta(syncProgress.eta_seconds)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {quarantineCount > 0 && (
+              <div
+                data-testid="sync-quarantine-partial-banner"
+                className="flex items-center gap-2 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
+              >
+                <Warning size={15} className="shrink-0" />
+                <span>
+                  {t("data:governance.sync_partial_with_quarantine", {
+                    count: quarantineCount,
+                    defaultValue: `同步部分完成：${quarantineCount} 条变更应用失败（详见隔离区）`,
+                  })}
+                </span>
               </div>
             )}
           </div>

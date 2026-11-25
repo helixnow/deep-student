@@ -8,13 +8,18 @@
  * 番茄状态项文案区分状态：专注剩余 / 已专注（正计时）/ 休息剩余 / 已暂停
  *（data-status = focus|break|paused 供 CSS 暂停态压暗）。
  */
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChartBar, Robot, Stack, Timer } from '@phosphor-icons/react';
+import { ChartBar, Robot, Stack, Timer, Warning } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { DsButton } from '@/components/ui/DsButton';
 import { SlotOutlet } from '@/ui-kernel/outlet';
 import { workbenchBus } from '../core/workbenchBus';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
+import { useGlobalSyncStore } from '@/stores/syncStatusStore';
+import { useSettingsShellStore } from '@/stores/settingsShellStore';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import type { AutomationSummary } from '@/features/settings/components/automationSettingsApi';
 import './StatusBar.css';
 
@@ -78,6 +83,70 @@ function launchAutomations(): void {
   });
 }
 
+function launchSyncConflicts(onBeforeNavigate?: () => void): void {
+  onBeforeNavigate?.();
+  const route = {
+    tab: 'data-governance' as const,
+    dataGovernanceTab: 'sync',
+  };
+  setPendingSettingsRoute(route);
+  useSettingsShellStore.getState().applySettingsRoute(route);
+  useGlobalSyncStore?.getState?.()?.requestJumpToConflicts?.();
+  dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
+  dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, route);
+  workbenchBus.launch({ typeId: 'settings', reason: 'api' });
+  window.dispatchEvent(new CustomEvent('data-governance:jump-to-conflicts'));
+}
+
+const subscribeGlobalSyncConflicts = (listener: () => void): (() => void) =>
+  typeof useGlobalSyncStore?.subscribe === 'function'
+    ? useGlobalSyncStore.subscribe(listener)
+    : () => {};
+
+const readGlobalUnresolvedConflictCount = (): number =>
+  typeof useGlobalSyncStore?.getState === 'function'
+    ? (useGlobalSyncStore.getState().unresolvedConflictCount ?? 0)
+    : 0;
+
+/** 全局持久同步冲突信号项：无冲突时不渲染任何节点（零占位），有未解决冲突时跨路由/重载常驻顶栏 */
+const SyncConflictStatusItem: React.FC<{ onBeforeNavigate?: () => void }> = ({
+  onBeforeNavigate,
+}) => {
+  const { t } = useTranslation('workbench');
+  const unresolvedConflictCount = useSyncExternalStore(
+    subscribeGlobalSyncConflicts,
+    readGlobalUnresolvedConflictCount,
+    () => 0,
+  );
+  if (unresolvedConflictCount <= 0) {
+    return null;
+  }
+  const conflictLabel = t('menubar.syncConflicts', { count: unresolvedConflictCount });
+  return (
+    <DsButton
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="wb-menubar-item bg-warning/15 text-warning hover:bg-warning/25"
+      data-testid="global-sync-conflict-badge"
+      data-wb-status-item="syncConflicts"
+      aria-label={conflictLabel}
+      title={conflictLabel}
+      onClick={() => launchSyncConflicts(onBeforeNavigate)}
+    >
+      <Warning size={14} weight="duotone" className="wb-menubar-item-icon" aria-hidden />
+      <span
+        className="wb-menubar-item-tag hidden lg:inline text-2xs font-medium"
+        data-testid="wb-menubar-sync-conflicts-tag"
+        aria-hidden="true"
+      >
+        {t('menubar.syncConflictsTag')}
+      </span>
+      <span className="wb-menubar-item-value">{unresolvedConflictCount}</span>
+    </DsButton>
+  );
+};
+
 /** 番茄信号叶子：单独订阅 timeLeft，专注中 1Hz 重渲染只落在本按钮 */
 const PomodoroStatusItem: React.FC = () => {
   const { t } = useTranslation('workbench');
@@ -134,12 +203,14 @@ export interface StatusBarItemsProps {
   dueCount: number;
   taskCount: number;
   automation: AutomationSummary | null;
+  onBeforeNavigate?: () => void;
 }
 
 export const StatusBarItems: React.FC<StatusBarItemsProps> = ({
   dueCount,
   taskCount,
   automation,
+  onBeforeNavigate,
 }) => {
   const { t } = useTranslation('workbench');
 
@@ -201,6 +272,7 @@ export const StatusBarItems: React.FC<StatusBarItemsProps> = ({
 
   return (
     <>
+      <SyncConflictStatusItem onBeforeNavigate={onBeforeNavigate} />
       {showPomodoro ? <PomodoroStatusItem /> : null}
 
       {dueCount > 0 ? (

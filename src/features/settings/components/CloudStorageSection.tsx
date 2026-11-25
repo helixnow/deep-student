@@ -273,6 +273,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 不改变该状态；只有 cloud_config_publish 成功才置 'published'。
   const [configPhase, setConfigPhase] = useState<'draft' | 'published'>('draft');
   const [hasSavedConfig, setHasSavedConfig] = useState(false);
+  const [hasUserEdited, setHasUserEdited] = useState(false);
   const savedConfigRef = useRef<cloudApi.CloudStorageConfig | null>(null);
   const [draftTestError, setDraftTestError] = useState<string | null>(null);
   // 后端已发布配置回填表单时跳过一次「标记为草稿」，hydration 不是用户编辑
@@ -492,11 +493,23 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       return;
     }
     userEditedRef.current = true;
+    setHasUserEdited(true);
     setConfigPhase('draft');
     setConnectionStatus('unknown');
     setDraftTestError(null);
     setRemoteSyncObjectsPresent(false);
   }, [provider, webdavConfig, s3Config, ftpConfig, root, encryptionPassword]);
+
+  const hasUnsavedDraft = configPhase === 'draft' && (hasSavedConfig || hasUserEdited);
+  useEffect(() => {
+    useGlobalSyncStore?.getState?.()?.setHasUnsavedCloudDraft?.(hasUnsavedDraft);
+  }, [hasUnsavedDraft]);
+
+  useEffect(() => {
+    return () => {
+      useGlobalSyncStore?.getState?.()?.setHasUnsavedCloudDraft?.(false);
+    };
+  }, []);
 
   // 监听后端 cloud-sync-progress 事件（字节级传输进度）
   useEffect(() => {
@@ -782,6 +795,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         }));
         setAllowInsecure(nextAllowInsecure);
         userEditedRef.current = false;
+        setHasUserEdited(false);
         setConfigPhase('published');
         setHasSavedConfig(true);
         setDraftTestError(null);
@@ -1251,6 +1265,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
     setConnectionStatus('unknown');
     userEditedRef.current = false;
+    setHasUserEdited(false);
     setConfigPhase('draft');
     savedConfigRef.current = null;
     setHasSavedConfig(false);

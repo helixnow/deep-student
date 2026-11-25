@@ -7,19 +7,69 @@
  * - 4 层阶梯渐进模糊垫层（MobileProgressiveBlurBar），向外延伸 14px 羽化尾迹
  */
 
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CaretLeft, CaretRight, List } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, List, Warning } from '@phosphor-icons/react';
 import { DESKTOP_SHELL } from '@/app/shell/desktopShell';
 import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { MOBILE_LAYOUT } from '@/config/mobileLayout';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { usePhoneLandscape } from '@/hooks/useBreakpoint';
 import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
+import { useSettingsShellStore } from '@/stores/settingsShellStore';
+import { useGlobalSyncStore } from '@/stores/syncStatusStore';
 import { cn } from '@/utils/cn';
+import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { isMacOS, isMobilePlatform, isWebUiShell } from '@/utils/platform';
 import { useMobileHeaderContextSafe, useMobileHeaderNav, type MobileHeaderConfig } from './MobileHeaderContext';
 import { useMobileLayoutSafe } from './MobileLayoutContext';
+
+const subscribeGlobalSyncConflicts = (listener: () => void): (() => void) =>
+  typeof useGlobalSyncStore?.subscribe === 'function'
+    ? useGlobalSyncStore.subscribe(listener)
+    : () => {};
+
+const readGlobalUnresolvedConflictCount = (): number =>
+  typeof useGlobalSyncStore?.getState === 'function'
+    ? (useGlobalSyncStore.getState().unresolvedConflictCount ?? 0)
+    : 0;
+
+function openMobileSyncConflicts(): void {
+  const route = {
+    tab: 'data-governance' as const,
+    dataGovernanceTab: 'sync',
+  };
+  setPendingSettingsRoute(route);
+  useSettingsShellStore.getState().applySettingsRoute(route);
+  useGlobalSyncStore?.getState?.()?.requestJumpToConflicts?.();
+  dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
+  dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, route);
+  window.dispatchEvent(new CustomEvent('data-governance:jump-to-conflicts'));
+}
+
+const MobileSyncConflictBadge: React.FC<{ count: number }> = ({ count }) => {
+  const { t } = useTranslation(['data']);
+  if (count <= 0) return null;
+  const label = t('data:governance.unresolved_conflicts_banner_title', { count });
+  return (
+    <DsButton
+      type="button"
+      variant="warning"
+      size="sm"
+      data-testid="global-sync-conflict-badge"
+      aria-label={label}
+      title={label}
+      onClick={openMobileSyncConflicts}
+      className="shrink-0 gap-1 rounded-full border-warning/45 bg-warning/15 px-2.5 text-xs font-medium text-warning hover:bg-warning/25"
+    >
+      <Warning size={14} weight="fill" className="shrink-0" aria-hidden="true" />
+      <span className="tabular-nums">
+        {t('data:governance.unresolved_conflicts_badge', { count })}
+      </span>
+    </DsButton>
+  );
+};
 
 export interface MobileProgressiveBlurBarProps {
   /** 渐进模糊方向：top 为顶栏向下消融，bottom 为底栏向上消融 */
@@ -120,6 +170,11 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
 }) => {
   const { t } = useTranslation(['common']);
   const isPhoneLandscape = usePhoneLandscape();
+  const unresolvedConflictCount = useSyncExternalStore(
+    subscribeGlobalSyncConflicts,
+    readGlobalUnresolvedConflictCount,
+    () => 0,
+  );
   const ctx = useMobileHeaderContextSafe();
   const config = configOverride ?? ctx?.config ?? {
     title: '',
@@ -205,8 +260,9 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
         >
           <List size={21} weight="regular" />
         </DsButton>
-        {config.rightActions ? (
-          <div className="flex shrink-0 items-center" data-no-drag>
+        {config.rightActions || unresolvedConflictCount > 0 ? (
+          <div className="flex shrink-0 items-center gap-1" data-no-drag>
+            <MobileSyncConflictBadge count={unresolvedConflictCount} />
             {config.rightActions}
           </div>
         ) : (
@@ -316,6 +372,7 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
           超过 2 个会挤压中间标题区并在 320-375px 窄屏溢出；
           更多动作请收进页面内的「更多」菜单，而不是继续往这里塞。 */}
       <div className="relative z-10 flex min-w-[var(--touch-target-size)] shrink-0 items-center justify-end gap-1" data-no-drag>
+        <MobileSyncConflictBadge count={unresolvedConflictCount} />
         {config.rightActions}
       </div>
     </header>

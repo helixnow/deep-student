@@ -222,13 +222,54 @@ describe('localizeCloudStorageError', () => {
     ).toBe(false);
   });
 
-  it('maps rewritten E2EE diagnostics by stable code', () => {
-    expect(
-      localizeCloudStorageError(
-        { code: SYNC_E2EE_WRONG_PASSWORD_CODE, message: 'rewritten password' },
-        t,
-      ),
-    ).toBe('cloudStorage:errors.e2eeWrongPassword\n(rewritten password)');
+  it('maps rewritten E2EE diagnostics by stable code without leaking raw codes or paths', () => {
+    const e2eeMsg = localizeCloudStorageError(
+      {
+        code: SYNC_E2EE_WRONG_PASSWORD_CODE,
+        message: '[E_SYNC_E2EE_WRONG_PASSWORD] Database error: decrypt failed [path]/9f0e0e7fa512c679.json',
+      },
+      t,
+    );
+    expect(e2eeMsg).toBe('cloudStorage:errors.e2eeWrongPassword');
+    expect(e2eeMsg).not.toContain('E_SYNC_E2EE_WRONG_PASSWORD');
+    expect(e2eeMsg).not.toContain('Database error:');
+    expect(e2eeMsg).not.toContain('[path]/9f0e0e7fa512c679.json');
+
+    const badObjMsg = localizeCloudStorageError(
+      {
+        code: 'E_SYNC_BAD_OBJECT_FAIL_CLOSED',
+        message: '[E_SYNC_BAD_OBJECT_FAIL_CLOSED] corrupt [path]/abc123.json',
+      },
+      t,
+    );
+    expect(badObjMsg).toBe('cloudStorage:errors.syncBadObjectFailClosed');
+    expect(badObjMsg).not.toContain('[path]/abc123.json');
+  });
+
+  it('collapses nested WebDAV GET/PROPFIND offline and connection-reset chains in zh-CN and en-US', () => {
+    const offlineChain =
+      '检查云端变更断层失败: Network error: WebDAV GET 请求失败（已重试 3 次）: error sending request for url (https://dav.example.com/sync/manifest.json)';
+    const zhOffline = localizeCloudStorageError(new Error(offlineChain), t, 'zh-CN');
+    expect(zhOffline).toBe('暂时无法连接到云端服务器，请检查网络连接和服务器地址后重试。');
+    expect(zhOffline).not.toContain('WebDAV GET');
+    expect(zhOffline).not.toContain('检查云端变更断层失败');
+
+    const enOffline = localizeCloudStorageError(new Error(offlineChain), t, 'en-US');
+    expect(enOffline).toBe(
+      'Cannot reach the cloud server. Please check your network connection and server URL, then retry.',
+    );
+    expect(enOffline).not.toMatch(/[\u4e00-\u9fff]/);
+    expect(enOffline).not.toContain('WebDAV GET');
+
+    const resetChain =
+      'WebDAV PROPFIND /sync/ 失败（已重试 3 次）: connection reset by peer';
+    const zhReset = localizeCloudStorageError(new Error(resetChain), t, 'zh-CN');
+    expect(zhReset).toBe('同步途中网络连接中断，本地更改已安全保留，网络恢复后重试即可。');
+    const enReset = localizeCloudStorageError(new Error(resetChain), t, 'en-US');
+    expect(enReset).toBe(
+      'Network connection was interrupted mid-sync. Your local changes are safe—please retry.',
+    );
+    expect(enReset).not.toMatch(/[\u4e00-\u9fff]/);
   });
 
   it('keeps unmapped diagnostics as the original message', () => {

@@ -386,8 +386,8 @@ export function applyDownloadedChangesWithConflictGuard(
 
         // Cross-table pairing guard for notes <-> resources: never allow an overwrite of
         // one side while the paired side has unsynced local edits or unresolved conflicts.
-        if (outcome === null && options.deferConflictingOverwrite && tableExists(tx, 'notes') && tableExists(tx, 'resources')) {
-          if (remapped.table_name === 'resources') {
+        if (outcome === null && options.deferConflictingOverwrite && tableExists(tx, 'notes')) {
+          if (remapped.table_name === 'resources' && tableExists(tx, 'resources')) {
             const linkedNote = tx.get<{ id: string }>('SELECT id FROM notes WHERE resource_id = ?1 LIMIT 1', [remapped.record_id]);
             if (linkedNote && (localHasPendingForRecord(tx, 'notes', linkedNote.id) || hasUnresolvedConflictForRecord(tx, 'notes', linkedNote.id) || deferredResourceIds.has(remapped.record_id))) {
               const localRes = getRecordData(tx, 'resources', remapped.record_id, idColumn);
@@ -409,19 +409,36 @@ export function applyDownloadedChangesWithConflictGuard(
             const localAlreadyTrashed = isJsonObject(localNote)
               && localNote.deleted_at !== undefined
               && localNote.deleted_at !== null;
-            const cloudSoftDeleted = isJsonObject(remapped.data)
-              && remapped.data.deleted_at !== undefined
-              && remapped.data.deleted_at !== null;
+            const cloudDeletedAt = isJsonObject(remapped.data) ? remapped.data.deleted_at : undefined;
+            const cloudSoftDeleted = cloudDeletedAt !== undefined && cloudDeletedAt !== null;
             const localResId = isJsonObject(localNote) && typeof localNote.resource_id === 'string' ? localNote.resource_id : null;
             const cloudResId = isJsonObject(remapped.data) && typeof remapped.data.resource_id === 'string' ? remapped.data.resource_id : null;
+            const noteHasDivergentLocalEdit =
+              cloudSoftDeleted
+              && !localAlreadyTrashed
+              && isJsonObject(localNote)
+              && isJsonObject(remapped.data)
+              && (
+                hasUnresolvedConflictForRecord(tx, 'notes', remapped.record_id)
+                || (
+                  localHasPendingForRecord(tx, 'notes', remapped.record_id)
+                  && !recordsSemanticallyEqualForSync(
+                    { ...localNote, deleted_at: cloudDeletedAt },
+                    remapped.data,
+                  )
+                )
+              );
+            const resourceHasDivergentLocalEdit =
+              tableExists(tx, 'resources')
+              && localResId !== null
+              && resourceHasDivergentLocalEditForNote(tx, remapped.record_id, localNote, localResId, incomingResourcesById);
             if (
               localNote !== null
               && !(localAlreadyTrashed && cloudSoftDeleted)
-              && localResId
-              && resourceHasDivergentLocalEditForNote(tx, remapped.record_id, localNote, localResId, incomingResourcesById)
+              && (noteHasDivergentLocalEdit || resourceHasDivergentLocalEdit)
             ) {
               if (cloudResId) deferredResourceIds.add(cloudResId);
-              deferredResourceIds.add(localResId);
+              if (localResId) deferredResourceIds.add(localResId);
               outcome = {
                 winner: 'Cloud',
                 loser: 'Local',
