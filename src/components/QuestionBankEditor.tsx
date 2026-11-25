@@ -1,72 +1,28 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import { QuestionFollowUpBar } from './practice/QuestionFollowUpBar';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
-import { Card, CardContent, CardHeader } from './ui/shad/Card';
-import { Badge } from './ui/shad/Badge';
-import { Progress } from './ui/shad/Progress';
-import { AppSelect } from './ui/app-menu';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/shad/Popover';
-import { Input } from './ui/shad/Input';
-import { Textarea } from './ui/shad/Textarea';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useQbankAiGrading } from '@/hooks/useQbankAiGrading';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
-import { formatTime } from '@/utils/formatUtils';
 import { usePracticeShortcuts, type PracticeShortcutOptions } from './practice/usePracticeShortcuts';
-import { PracticeShortcutHints } from './practice/PracticeShortcutHints';
-import { MarkdownRenderer, StreamingMarkdownRenderer } from '@/features/chat/components/renderers';
-import { LatexText } from '@/components/LatexText';
 import { ImageCropDialog } from '@/components/ImageCropDialog';
 import { loadQuestionImageUrls, QUESTION_IMAGE_LOAD_ERROR } from '@/components/questionImageLoader';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { QuestionExplanation } from './practice/QuestionExplanation';
-import { GradingDiagnosticsView } from './practice/GradingDiagnosticsView';
-import { QuestionMaterialView } from './QuestionMaterialView';
 import {
   CaretLeft,
   CaretRight,
-  CaretDown,
-  CaretUp,
-  Check,
-  X,
-  Shuffle,
-  ListNumbers,
-  ArrowCounterClockwise,
-  Tag,
   CircleNotch,
   BookOpen,
-  Target,
   WarningCircle,
-  Lightbulb,
   PaperPlaneRight,
-  Clock,
-  Star,
-  GearSix,
-  Crosshair,
-  ArrowClockwise,
-  Note,
-  MagnifyingGlass,
-  Flame,
-  Trophy,
-  Eye,
-  EyeSlash,
-  Sparkle,
-  Confetti,
-  Keyboard,
-  Crop,
-  ImageIcon,
-  Trash,
-  Camera,
 } from '@phosphor-icons/react';
 
 import type {
   QuestionType,
-  QuestionStatus,
-  Difficulty,
   PracticeMode,
   QuestionImage,
   Question,
@@ -74,20 +30,18 @@ import type {
   SubmitResult,
   ImageAnswerPayload,
 } from '@/api/questionBankApi';
-import { getNextQuestionIndex, parseNumericInput } from '@/api/questionBankApi';
 import {
+  getNextQuestionIndex,
+  parseNumericInput,
   encodeImageAnswerUserAnswer,
   isSubjectiveQuestionType,
   parseImageAnswerEnvelope,
   IMAGE_ANSWER_MAX_IMAGES,
-  IMAGE_ANSWER_MIME_TYPES,
-  isSourceQuestionImage,
 } from '@/api/questionBankApi';
 import {
   getPracticeSessionKey,
   useQuestionBankStore,
   type PracticeSessionOwner,
-  practiceAccuracyPercent,
   countCorrectQuestions,
 } from '@/stores/questionBankStore';
 import {
@@ -101,17 +55,25 @@ import {
   encodeMatchingUserAnswer,
   encodeOrderingUserAnswer,
   encodeFillBlankUserAnswer,
-  TrueFalseAnswer,
-  MatchingAnswer,
-  OrderingAnswer,
-  NumericAnswer,
-  FillBlankAnswer,
   StructuredAnswerSummary,
-  AnswerImageStrip,
-  ImageAnswerDisplay,
-  canAddImageAnswerImage,
   uploadImageAnswerImage,
 } from '@/components/question-types';
+
+import { QBANK_KEYFRAMES } from './question-bank/questionBankEditorConfig';
+import { useQuestionSwipeGesture } from './question-bank/useQuestionSwipeGesture';
+import { QuestionSettingsDrawer } from './question-bank/QuestionSettingsDrawer';
+import {
+  QuestionCompletionCard,
+  type QuestionCompletionStats,
+} from './question-bank/QuestionCompletionCard';
+import { QuestionSubmitResultCard } from './question-bank/QuestionSubmitResultCard';
+import {
+  QuestionJumperPopover,
+  QuestionUserNoteSection,
+  type NoteSaveState,
+} from './question-bank/QuestionUserNoteAndJumper';
+import { QuestionAnswerInputSection } from './question-bank/QuestionAnswerInputSection';
+import { QuestionEditorStage } from './question-bank/QuestionEditorStage';
 
 export interface QuestionBankEditorProps {
   sessionId: string;
@@ -169,350 +131,6 @@ export interface QuestionBankEditorProps {
   /** ★ 标签页：当前面板是否为活跃标签页（控制计时器暂停） */
   isActive?: boolean;
 }
-
-const DIFFICULTY_CONFIG: Record<Difficulty, { dot: string }> = {
-  easy: { dot: 'bg-success/75' },
-  medium: { dot: 'bg-warning/75' },
-  hard: { dot: 'bg-warning' },
-  very_hard: { dot: 'bg-destructive/80' },
-};
-
-const STATUS_CONFIG: Record<QuestionStatus, { dot: string }> = {
-  new: { dot: 'bg-muted-foreground/35' },
-  in_progress: { dot: 'bg-primary' },
-  mastered: { dot: 'bg-success' },
-  review: { dot: 'bg-warning' },
-};
-
-const MODE_ICON: Record<PracticeMode, React.ElementType> = {
-  sequential: ListNumbers,
-  random: Shuffle,
-  review_first: ArrowCounterClockwise,
-  review_only: ArrowCounterClockwise,
-  by_tag: Tag,
-  timed: Clock,
-  mock_exam: BookOpen,
-  daily: Target,
-  paper: Target,
-};
-
-/** Maps snake_case PracticeMode to camelCase i18n key */
-const MODE_I18N_KEY: Record<PracticeMode, string> = {
-  sequential: 'sequential',
-  random: 'random',
-  review_first: 'reviewFirst',
-  review_only: 'reviewOnly',
-  by_tag: 'byTag',
-  timed: 'timed',
-  mock_exam: 'mockExam',
-  daily: 'daily',
-  paper: 'paper',
-};
-
-/** Maps snake_case Difficulty to camelCase i18n key */
-const DIFFICULTY_I18N_KEY: Record<Difficulty, string> = {
-  easy: 'easy',
-  medium: 'medium',
-  hard: 'hard',
-  very_hard: 'veryHard',
-};
-
-/** Maps snake_case QuestionStatus to camelCase i18n key */
-const STATUS_I18N_KEY: Record<QuestionStatus, string> = {
-  new: 'new',
-  in_progress: 'inProgress',
-  mastered: 'mastered',
-  review: 'review',
-};
-
-/** Maps snake_case QuestionType to camelCase i18n key */
-const QUESTION_TYPE_I18N_KEY: Record<ExtendedQuestionType, string> = {
-  single_choice: 'singleChoice',
-  multiple_choice: 'multipleChoice',
-  indefinite_choice: 'indefiniteChoice',
-  fill_blank: 'fillBlank',
-  short_answer: 'shortAnswer',
-  essay: 'essay',
-  calculation: 'calculation',
-  proof: 'proof',
-  other: 'other',
-  true_false: 'trueFalse',
-  matching: 'matching',
-  ordering: 'ordering',
-  numeric: 'numeric',
-};
-
-/**
- * 做题视图共享动效关键帧。
- * scale / translate 使用独立属性（与 ui-motion.css 一致），不覆盖 inline transform。
- */
-const QBANK_KEYFRAMES = `
-  @keyframes fadeSlideUp {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes qbankPopIn {
-    0% { scale: 0.4; opacity: 0; }
-    60% { scale: 1.18; opacity: 1; }
-    100% { scale: 1; opacity: 1; }
-  }
-  @keyframes qbankShake {
-    0%, 100% { translate: 0 0; }
-    20% { translate: -4px 0; }
-    40% { translate: 4px 0; }
-    60% { translate: -3px 0; }
-    80% { translate: 3px 0; }
-  }
-  .qbank-anim-pop {
-    animation: qbankPopIn 320ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)) both;
-  }
-  .qbank-anim-shake {
-    animation: qbankShake 340ms ease-in-out both;
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .qbank-anim-pop, .qbank-anim-shake { animation: none; }
-  }
-`;
-
-/** 内联放大预览图片：点击在题目区内展开/收起，不使用遮罩层灯箱 */
-const InlineZoomImage: React.FC<{
-  src: string;
-  alt: string;
-  collapsedClassName?: string;
-}> = React.memo(({ src, alt, collapsedClassName = 'max-h-64' }) => {
-  const [expanded, setExpanded] = React.useState(false);
-  const { t } = useTranslation('practice');
-  return (
-    <button
-      type="button"
-      onClick={() => setExpanded(v => !v)}
-      className={cn(
-        'block w-full focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40',
-        expanded ? 'cursor-zoom-out' : 'cursor-zoom-in'
-      )}
-      aria-expanded={expanded}
-      aria-label={expanded ? t('editor.imageCollapse') : t('editor.imageExpand')}
-      title={expanded ? t('editor.imageCollapse') : t('editor.imageExpand')}
-    >
-      <img
-        src={src}
-        alt={alt}
-        loading="lazy"
-        className={cn(
-          'w-full object-contain transition-[max-height] duration-300 ease-out',
-          expanded ? 'max-h-[70vh]' : collapsedClassName
-        )}
-/>
-    </button>
-  );
-});
-InlineZoomImage.displayName = 'InlineZoomImage';
-
-/** 题干 Markdown 渲染 memo 化：计时器每秒 tick 等无关重渲染时跳过富文本重渲染 */
-const QuestionContentBlock = React.memo<{ content: string }>(({ content }) => (
-  <MarkdownRenderer content={content} />
-));
-QuestionContentBlock.displayName = 'QuestionContentBlock';
-
-/** 自动关联的原始图片折叠气泡 — 默认展开 */
-/** 题目图片占位：已加载显示图片，失败显示错误占位，其余显示加载动画 */
-const QuestionImageSlot: React.FC<{
-  url: string | undefined;
-  alt: string;
-  collapsedClassName: string;
-  placeholderClassName: string;
-  iconSize: number;
-}> = ({ url, alt, collapsedClassName, placeholderClassName, iconSize }) => {
-  const { t } = useTranslation('exam_sheet');
-  if (url && url !== QUESTION_IMAGE_LOAD_ERROR) {
-    return <InlineZoomImage src={url} alt={alt} collapsedClassName={collapsedClassName} />;
-  }
-  if (url === QUESTION_IMAGE_LOAD_ERROR) {
-    return (
-      <div
-        role="img"
-        aria-label={t('image.load_failed')}
-        className={cn('w-full flex flex-col items-center justify-center gap-1 text-xs text-muted-foreground', placeholderClassName)}
-      >
-        <WarningCircle size={iconSize} />
-        <span>{t('image.load_failed')}</span>
-      </div>
-    );
-  }
-  return (
-    <div className={cn('w-full flex items-center justify-center text-muted-foreground', placeholderClassName)}>
-      <CircleNotch size={iconSize} className="animate-spin" />
-    </div>
-  );
-};
-
-const SourceImagesBubble: React.FC<{
-  images: QuestionImage[];
-  imageUrls: Record<string, string>;
-}> = ({ images, imageUrls }) => {
-  const [expanded, setExpanded] = React.useState(true);
-  const { t } = useTranslation('exam_sheet');
-
-  return (
-    <div className="rounded-lg border border-border/40 bg-muted/10 overflow-hidden">
-      <button
-        type="button"
-        className="w-full flex items-center gap-2 px-3 py-2 [@media(pointer:coarse)]:min-h-11 text-xs text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors"
-        onClick={() => setExpanded(v => !v)}
-      >
-        <ImageIcon size={14} className="flex-shrink-0" />
-        <span className="flex-1 text-left">
-          {t('image.source_images_bubble', {
-            count: images.length,
-          })}
-        </span>
-        {expanded ? <CaretUp size={14} /> : <CaretDown size={14} />}
-      </button>
-      {expanded && (
-        <div className={cn(
-          'grid gap-2 p-2 pt-0',
-          images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-        )}>
-          {images.map((img) => (
-            <div key={img.id} className="rounded-lg overflow-hidden border border-border/30 bg-muted/20">
-              <QuestionImageSlot
-                url={imageUrls[img.id]}
-                alt={img.name}
-                collapsedClassName="max-h-64"
-                placeholderClassName="h-24"
-                iconSize={16}
-              />
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-interface OptionButtonProps {
-  optionKey: string;
-  content: string;
-  isSelected: boolean;
-  /** 整题判定（无标准答案时由 AI 评判给出；null = 待判定） */
-  isCorrect?: boolean | null;
-  isSubmitted: boolean;
-  correctAnswer?: string;
-  /** 稳定回调 + optionKey，配合 React.memo 避免计时器 tick 等无关渲染 */
-  onSelect: (key: string) => void;
-  type: 'single' | 'multiple';
-  /** 内联键盘快捷键提示（桌面端），如 "1" */
-  shortcutHint?: string;
-}
-
-const OptionButton: React.FC<OptionButtonProps> = React.memo(({
-  optionKey,
-  content,
-  isSelected,
-  isCorrect,
-  isSubmitted,
-  correctAnswer,
-  onSelect,
-  type,
-  shortcutHint,
-}) => {
-  const { t } = useTranslation('practice');
-  // 扫描/OCR 导入的试卷常没有答案：此时不能拿空答案比对（会把选对的也标成「错误」），
-  // 选中项的对错跟随整题判定（AI 评判），判定前保持中性。
-  const hasAnswerKey = Boolean(correctAnswer?.trim());
-  // 大小写归一：后端返回小写字母答案时也能正确高亮
-  const isThisCorrect = hasAnswerKey
-    ? correctAnswer!.toUpperCase().includes(optionKey.toUpperCase())
-    : isSelected && isCorrect === true;
-  const isWrong = isSubmitted && isSelected && (hasAnswerKey ? !isThisCorrect : isCorrect === false);
-  const showCorrect = isSubmitted && isThisCorrect;
-  // 已提交、待 AI 判定：保留选中态，不提前给对错
-  const isPendingVerdict = isSubmitted && isSelected && !showCorrect && !isWrong;
-
-  const handleClick = React.useCallback(() => onSelect(optionKey), [onSelect, optionKey]);
-
-  return (
-    <DsButton
-      variant="ghost" size="sm"
-      onClick={handleClick}
-      disabled={isSubmitted}
-      className={cn(
-        'group w-full !justify-start !h-auto !p-0 !rounded-xl border transition-all',
-        // 未提交：按压缩放反馈（ui-press 使用独立 scale 属性）
-        !isSubmitted && 'ui-press',
-        !isSubmitted && !isSelected && 'border-border/45 bg-card/60 hover:bg-foreground/[0.03] hover:border-border/80',
-        // 选中：描边 + 浅色填充
-        !isSubmitted && isSelected && 'border-primary/45 bg-primary/[0.06]',
-        showCorrect && 'border-success/40 bg-success/[0.06]',
-        // 答错：轻微 shake
-        isWrong && 'border-destructive/35 bg-destructive/[0.05] qbank-anim-shake',
-        isPendingVerdict && 'border-primary/45 bg-primary/[0.06]',
-        isSubmitted && !isSelected && !isThisCorrect && 'border-border/35 bg-card/30 opacity-50',
-        'disabled:cursor-default'
-      )}
-    >
-      <div className="flex w-full items-start gap-3 px-4 py-3 text-left">
-        {/* 选项键帽 - 24×24 等宽 */}
-        <div className={cn(
-          'flex-shrink-0 w-6 h-6 rounded-md border flex items-center justify-center font-mono text-xs font-medium transition-colors',
-          // 默认 - 极细描边
-          !isSubmitted && !isSelected && 'border-border/60 bg-background/80 text-muted-foreground group-hover:border-border',
-          // 选中 - 主题色填充
-          !isSubmitted && isSelected && 'border-primary bg-primary text-primary-foreground',
-          // 正确 - 绿色填充 + 对勾弹入
-          showCorrect && 'border-success bg-success text-success-foreground qbank-anim-pop',
-          // 错误 - 红色填充
-          isWrong && 'border-destructive bg-destructive text-destructive-foreground',
-          isPendingVerdict && 'border-primary bg-primary text-primary-foreground',
-          // 已提交非选中非正确
-          isSubmitted && !isSelected && !isThisCorrect && 'border-border/40 bg-background/50 text-muted-foreground/50'
-        )}>
-          {showCorrect ? (
-            <Check size={13} weight="bold" />
-          ) : isWrong ? (
-            <X size={13} />
-          ) : (
-            optionKey
-          )}
-        </div>
-        
-        {/* 选项内容 */}
-        <div className="flex-1 min-w-0 pt-0.5">
-          <LatexText
-            content={content}
-            className={cn(
-              'text-sm leading-relaxed',
-              !isSubmitted && 'text-foreground',
-              showCorrect && 'text-success',
-              isWrong && 'text-destructive',
-              isSubmitted && !isSelected && !isThisCorrect && 'text-foreground/50'
-            )}
-          />
-        </div>
-
-        {/* 内联快捷键提示：仅悬停未提交时淡入 */}
-        {!isSubmitted && shortcutHint && (
-          <kbd className="flex-shrink-0 hidden sm:inline-flex items-center justify-center min-w-[20px] h-5 px-1 rounded border border-border/50 bg-background/80 font-mono text-[10px] text-muted-foreground/75 opacity-0 group-hover:opacity-100 transition-opacity">
-            {shortcutHint}
-          </kbd>
-        )}
-
-        {/* 状态文字 - 简洁风格：简洁文字标识 */}
-        {showCorrect && (
-          <span className="flex-shrink-0 text-xs text-success ui-rise-in">
-            {t('editor.correct')}
-          </span>
-        )}
-        {isWrong && (
-          <span className="flex-shrink-0 text-xs text-destructive ui-rise-in">
-            {t('editor.wrong')}
-          </span>
-        )}
-      </div>
-    </DsButton>
-  );
-});
-OptionButton.displayName = 'OptionButton';
 
 export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   sessionId,
@@ -575,7 +193,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     startGrading: startAiGrading,
     retryGrading: retryAiGrading,
   } = aiGrading;
-  
+
   // P1-2: 计时功能
   const [elapsedTime, setElapsedTime] = useState(0);
   const [localTimerRunning, setLocalTimerRunning] = useState(true);
@@ -593,7 +211,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     ? Math.max(timerDuration - resolvedElapsedTime, 0)
     : null;
   const timerDisplay = remainingTime ?? resolvedElapsedTime;
-  
+
   // 设置面板可由工作区精确控制；独立使用编辑器时仍保留本地状态。
   const [localSettingsPanelOpen, setLocalSettingsPanelOpen] = useState(false);
   const showSettingsPanel = settingsPanelOpen ?? localSettingsPanelOpen;
@@ -604,7 +222,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     }
     setLocalSettingsPanelOpen(open);
   }, [onSettingsPanelOpenChange]);
-  
+
   // P1-1: 专注模式（刷题降噪）
   const [localFocusMode, setLocalFocusMode] = useState(false);
   const focusMode = focusModeProp ?? localFocusMode;
@@ -627,21 +245,21 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       setLocalHideAnswerMode(newMode);
     }
   }, [onHideAnswerModeChange]);
-  
+
   // 暗记模式下是否已揭示答案
   const [answerRevealed, setAnswerRevealed] = useState(false);
-  
+
   // 用户笔记编辑（内联展开 + 失焦自动保存）
   const [isEditingNote, setIsEditingNote] = useState(false);
   const [noteText, setNoteText] = useState('');
-  const [noteSaveState, setNoteSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [noteSaveState, setNoteSaveState] = useState<NoteSaveState>('idle');
   const noteSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 最近一次已成功保存的笔记内容（避免 blur 与点击保存的双重提交，并驱动草稿脏状态）
   const [lastSavedNote, setLastSavedNote] = useState('');
-  
+
   // 题目搜索
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // 连对计数 & 激励（里程碑提示走 showGlobalNotification 统一通知，不再用本地 z-50 toast）
   // 会话进度提到 questionBankStore：切到错题本 / 统计再回来不清零（仅内存，重启不恢复）
   const practiceSessionKey = getPracticeSessionKey(practiceSessionOwner);
@@ -649,18 +267,13 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     practiceSessionKey ? state.practiceSessions[practiceSessionKey] : undefined
   ));
   const streakCount = practiceSession?.streakCount ?? 0;
-  const totalCorrectCount = practiceSession?.totalCorrectCount ?? 0;
   const recordPracticeSessionAnswer = useQuestionBankStore(
     (state) => state.recordPracticeSessionAnswer,
   );
-  
+
   // 完成庆祝
   const [showCompletionCelebration, setShowCompletionCelebration] = useState(false);
-  const [completionStats, setCompletionStats] = useState<{
-    totalAnswered: number;
-    correctCount: number;
-    totalTime: number;
-  } | null>(null);
+  const [completionStats, setCompletionStats] = useState<QuestionCompletionStats | null>(null);
   const completionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 卸载时清理庆祝/笔记指示定时器，避免定时器泄漏与卸载后 setState
@@ -668,7 +281,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     if (completionTimerRef.current) clearTimeout(completionTimerRef.current);
     if (noteSavedTimerRef.current) clearTimeout(noteSavedTimerRef.current);
   }, []);
-  
+
   // 单题计时（使用 ref 避免 stale closure）
   const [questionStartTime, setQuestionStartTime] = useState<number>(Date.now());
   const questionStartTimeRef = useRef<number>(questionStartTime);
@@ -676,7 +289,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   // 单题用时仅在切题时累加、不参与渲染，用 ref 避免多余重渲染
   const questionTimesRef = useRef<Record<string, number>>({});
   const prevQuestionIdRef = useRef<string | undefined>(undefined);
-  
+
   // 填空题多空位
   const [fillBlankAnswers, setFillBlankAnswers] = useState<string[]>([]);
   // 匹配题配对 / 排序题当前排列（结构化题型作答状态）
@@ -710,6 +323,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
   // 响应式断点
   const { isSmallScreen } = useBreakpoint();
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!isSmallScreen || !showSettingsPanel) return;
@@ -727,151 +341,18 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   }, [isSmallScreen, showSettingsPanel, setShowSettingsPanel]);
 
   // ========== 移动端滑动面板状态 ==========
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState(0);
-
-  const dragStateRef = useRef({
-    isDragging: false,
-    startX: 0,
-    startY: 0,
-    currentTranslate: 0,
-    axisLocked: null as 'horizontal' | 'vertical' | null,
+  const {
+    containerWidth,
+    settingsPanelWidth,
+    isDragging,
+    dragOffset,
+    getBaseTranslate,
+  } = useQuestionSwipeGesture({
+    containerRef,
+    isSmallScreen,
+    showSettingsPanel,
+    onShowSettingsPanelChange: setShowSettingsPanel,
   });
-
-  // 监听容器宽度
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !isSmallScreen) return;
-
-    const updateWidth = () => setContainerWidth(container.clientWidth);
-    updateWidth();
-
-    const ro = new ResizeObserver(updateWidth);
-    ro.observe(container);
-    return () => ro.disconnect();
-  }, [isSmallScreen]);
-
-  // 设置面板宽度
-  const settingsPanelWidth = Math.max(containerWidth - 60, 280);
-
-  // 计算基础偏移
-  const getBaseTranslate = useCallback(() => {
-    return showSettingsPanel ? -settingsPanelWidth : 0;
-  }, [showSettingsPanel, settingsPanelWidth]);
-
-  // 拖拽处理
-  const handleDragStart = useCallback((clientX: number, clientY: number) => {
-    dragStateRef.current = {
-      isDragging: true,
-      startX: clientX,
-      startY: clientY,
-      currentTranslate: getBaseTranslate(),
-      axisLocked: null,
-    };
-    setIsDragging(true);
-    setDragOffset(0);
-  }, [getBaseTranslate]);
-
-  const handleDragMove = useCallback((clientX: number, clientY: number, preventDefault: () => void) => {
-    if (!dragStateRef.current.isDragging) return;
-
-    const deltaX = clientX - dragStateRef.current.startX;
-    const deltaY = clientY - dragStateRef.current.startY;
-
-    if (dragStateRef.current.axisLocked === null && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
-      if (Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
-        dragStateRef.current.axisLocked = 'horizontal';
-      } else {
-        dragStateRef.current.axisLocked = 'vertical';
-        dragStateRef.current.isDragging = false;
-        setIsDragging(false);
-        return;
-      }
-    }
-
-    if (dragStateRef.current.axisLocked === 'vertical') return;
-    if (dragStateRef.current.axisLocked === 'horizontal') preventDefault();
-
-    const minTranslate = -settingsPanelWidth;
-    const maxTranslate = 0;
-    let newTranslate = dragStateRef.current.currentTranslate + deltaX;
-    newTranslate = Math.max(minTranslate, Math.min(maxTranslate, newTranslate));
-
-    setDragOffset(newTranslate - getBaseTranslate());
-  }, [settingsPanelWidth, getBaseTranslate]);
-
-  const handleDragEnd = useCallback(() => {
-    if (!dragStateRef.current.isDragging) {
-      dragStateRef.current.axisLocked = null;
-      return;
-    }
-
-    const threshold = settingsPanelWidth * 0.3;
-    const offset = dragOffset;
-
-    if (Math.abs(offset) > threshold) {
-      if (offset > 0 && showSettingsPanel) {
-        setShowSettingsPanel(false);
-      } else if (offset < 0 && !showSettingsPanel) {
-        setShowSettingsPanel(true);
-      }
-    }
-
-    dragStateRef.current.isDragging = false;
-    dragStateRef.current.axisLocked = null;
-    setIsDragging(false);
-    setDragOffset(0);
-  }, [dragOffset, showSettingsPanel, settingsPanelWidth]);
-
-  // 绑定触摸事件
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !isSmallScreen) return;
-
-    // 起点位于可横向滚动的内容（宽表格 / 溢出公式等）时放弃面板拖拽手势，
-    // 把横向滑动让位给内容自身的横向滚动，避免手势劫持。
-    const startsInHorizontalScrollable = (target: EventTarget | null): boolean => {
-      let node = target instanceof Element ? target : null;
-      while (node && node !== container) {
-        if (
-          node instanceof HTMLElement
-          && node.scrollWidth > node.clientWidth + 1
-        ) {
-          const { overflowX } = getComputedStyle(node);
-          if (overflowX === 'auto' || overflowX === 'scroll') return true;
-        }
-        node = node.parentElement;
-      }
-      return false;
-    };
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (startsInHorizontalScrollable(e.target)) return;
-      const touch = e.touches[0];
-      handleDragStart(touch.clientX, touch.clientY);
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      const touch = e.touches[0];
-      handleDragMove(touch.clientX, touch.clientY, () => e.preventDefault());
-    };
-
-    const onTouchEnd = () => handleDragEnd();
-
-    container.addEventListener('touchstart', onTouchStart, { passive: true });
-    container.addEventListener('touchmove', onTouchMove, { passive: false });
-    container.addEventListener('touchend', onTouchEnd);
-    container.addEventListener('touchcancel', onTouchEnd);
-
-    return () => {
-      container.removeEventListener('touchstart', onTouchStart);
-      container.removeEventListener('touchmove', onTouchMove);
-      container.removeEventListener('touchend', onTouchEnd);
-      container.removeEventListener('touchcancel', onTouchEnd);
-    };
-  }, [isSmallScreen, handleDragStart, handleDragMove, handleDragEnd]);
 
   // 兼容旧工作区事件，并支持 action 传入精确的 open 值而不是盲目切换。
   useEffect(() => {
@@ -1067,20 +548,20 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     const query = searchQuery.toLowerCase();
     return questions
       .map((q, idx) => ({ q, idx }))
-      .filter(({ q }) => 
+      .filter(({ q }) =>
         q.content?.toLowerCase().includes(query) ||
         q.questionLabel?.toLowerCase().includes(query) ||
-        q.tags?.some(t => t.toLowerCase().includes(query))
+        q.tags?.some(tag => tag.toLowerCase().includes(query))
       )
       .map(({ idx }) => idx);
   }, [questions, searchQuery]);
 
   const handleOptionClick = useCallback((key: string) => {
     if (submitResult || submitInFlightRef.current || answerImageUploadRef.current) return;
-    
-    const isMulti = currentQuestion?.questionType === 'multiple_choice' 
+
+    const isMulti = currentQuestion?.questionType === 'multiple_choice'
       || currentQuestion?.questionType === 'indefinite_choice';
-    
+
     if (isMulti) {
       setSelectedOptions(prev => {
         const next = new Set(prev);
@@ -1244,7 +725,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           debugLog.warn('[QuestionBankEditor] AI grading failed, falling back to manual');
         });
       }
-      
+
       // 图片作答已落信封：清空编辑区引用（回显由 submittedImageAnswer 承担）
       if (pendingEnvelope) {
         setAnswerImages([]);
@@ -1283,7 +764,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         setCompletionStats({
           totalAnswered,
           correctCount,
-          totalTime: resolvedElapsedTime
+          totalTime: resolvedElapsedTime,
         });
         if (completionTimerRef.current) clearTimeout(completionTimerRef.current);
         completionTimerRef.current = setTimeout(() => {
@@ -1432,6 +913,26 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     setTimerRunning(!isTimerRunning);
   }, [allowTimerControl, isTimerRunning, setTimerRunning]);
 
+  const handleCropImageAdded = useCallback(() => {
+    if (!currentQuestion?.id) return;
+
+    const reloadImages = () => {
+      setQuestionImageUrls({});
+      setImageRefreshKey(k => k + 1);
+    };
+
+    if (onRefreshQuestion) {
+      onRefreshQuestion(currentQuestion.id)
+        .catch((err) => {
+          debugLog.error('[QuestionBankEditor] refresh after crop failed:', err);
+        })
+        .finally(reloadImages);
+      return;
+    }
+
+    reloadImages();
+  }, [currentQuestion?.id, onRefreshQuestion]);
+
   // 从 question 数据读取收藏状态（SSOT: store -> question -> UI）
   const isFavorite = currentQuestion?.isFavorite ?? false;
 
@@ -1517,7 +1018,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           </div>
           <p className="text-sm text-muted-foreground max-w-sm">{error}</p>
           {onBack && (
-            <DsButton variant="ghost" onClick={onBack} className="[@media(pointer:coarse)]:!min-h-11">{t('editor.back')}</DsButton>
+            <DsButton variant="ghost" onClick={onBack}>{t('editor.back')}</DsButton>
           )}
         </div>
       </div>
@@ -1536,18 +1037,18 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             <p className="text-sm text-muted-foreground">{t('editor.noQuestionsDesc')}</p>
           </div>
           {onBack && (
-            <DsButton variant="ghost" onClick={onBack} className="[@media(pointer:coarse)]:!min-h-11">{t('editor.back')}</DsButton>
+            <DsButton variant="ghost" onClick={onBack}>{t('editor.back')}</DsButton>
           )}
         </div>
       </div>
     );
   }
 
-  const isChoiceQuestion = currentQuestion.questionType === 'single_choice' 
+  const isChoiceQuestion = currentQuestion.questionType === 'single_choice'
     || currentQuestion.questionType === 'multiple_choice'
     || currentQuestion.questionType === 'indefinite_choice';
-  
-  const isMultiSelect = currentQuestion.questionType === 'multiple_choice' 
+
+  const isMultiSelect = currentQuestion.questionType === 'multiple_choice'
     || currentQuestion.questionType === 'indefinite_choice';
 
   // 判断题标准答案（提交结果优先，回退题目 answer 字段）
@@ -1594,7 +1095,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       variant="primary"
       size="sm"
       onClick={() => onPracticeQuestion(currentQuestion.id)}
-      className="ml-auto min-h-9 sm:min-h-0 !h-auto rounded-lg border-primary/40 bg-primary/15 !px-3 !py-1.5 sm:!px-2.5 sm:!py-1 text-xs font-medium text-primary hover:bg-primary/25 [@media(pointer:coarse)]:!min-h-11"
+      className="ml-auto min-h-9 sm:min-h-0 !h-auto rounded-lg border-primary/40 bg-primary/15 !px-3 !py-1.5 sm:!px-2.5 sm:!py-1 text-xs font-medium text-primary hover:bg-primary/25 [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)]"
     >
       <PaperPlaneRight size={14} />
       {t('editor.practiceThisQuestion')}
@@ -1606,216 +1107,40 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     ['--ui-enter-x' as string]: navDirection >= 0 ? '24px' : '-24px',
   } as React.CSSProperties;
 
-  // ========== 右侧设置面板内容 ==========
-  const renderSettingsPanel = () => (
-    <div className="h-full flex flex-col bg-background">
-      <div className="flex-shrink-0 flex items-center justify-between gap-2 px-4 py-3 border-b border-border/50">
-        <h3 className="font-medium">{t('editor.settings')}</h3>
-        <DsButton
-          variant="ghost"
-          size="sm"
-          iconOnly
-          onClick={() => setShowSettingsPanel(false)}
-          aria-label={t('common:close')}
-          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-        >
-          <X size={16} />
-        </DsButton>
-      </div>
-      <CustomScrollArea className="flex-1" viewportClassName="p-4 space-y-6">
-        {/* 学习统计 */}
-        {stats && (
-          <div className="space-y-3">
-            <h4 className="text-sm font-medium text-muted-foreground">{t('editor.studyStats')}</h4>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-md bg-muted p-2">
-                <div className="text-xs text-muted-foreground">{t('editor.totalQuestions')}</div>
-                <div className="text-lg font-semibold">{stats.total}</div>
-              </div>
-              <div className="rounded-md bg-success/10 p-2">
-                <div className="text-xs text-success">{t('editor.mastered')}</div>
-                <div className="text-lg font-semibold text-success">{stats.mastered}</div>
-              </div>
-              <div className="rounded-md bg-warning/10 p-2">
-                <div className="text-xs text-warning">{t('editor.needsReview')}</div>
-                <div className="text-lg font-semibold text-warning">{stats.review}</div>
-              </div>
-              <div className="rounded-md bg-primary/10 p-2">
-                <div className="text-xs text-primary">{t('editor.correctRate')}</div>
-                <div className="text-lg font-semibold text-primary">{Math.round(stats.correctRate * 100)}%</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 练习模式（宿主不接管模式切换时不显示，如跨题目集的错题重做） */}
-        {onModeChange && (
-        <div className="space-y-3">
-          <h4 className="text-sm font-medium text-muted-foreground">{t('editor.practiceMode')}</h4>
-          <AppSelect value={practiceMode} onValueChange={(v) => handleModeChange(v as PracticeMode)}
-            options={Object.keys(MODE_ICON).map(key => ({ value: key, label: t(`editor.modeShort.${MODE_I18N_KEY[key as PracticeMode]}`), description: t(`modes.${MODE_I18N_KEY[key as PracticeMode]}.desc`) }))}
-            variant="outline"
-/>
-          {/* 当前模式说明 */}
-          <p className="text-xs text-muted-foreground px-1">
-            {t(`modes.${MODE_I18N_KEY[practiceMode]}.desc`)}
-          </p>
-
-          {practiceMode === 'by_tag' && tagOptions.length > 0 && (
-            <AppSelect value={selectedTag} onValueChange={handleTagChange}
-              placeholder={t('editor.selectTag')}
-              options={tagOptions}
-              variant="outline"
-/>
-          )}
-        </div>
-        )}
-
-        {/* 计时器控制 */}
-        {showTimer && (
-          <div className="space-y-3">
-            <h4 className="text-sm font-medium text-muted-foreground">{t('editor.timer')}</h4>
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
-              <div className="flex items-center gap-2">
-                <Clock className={cn('w-5 h-5', isTimerRunning ? 'text-primary' : 'text-muted-foreground')} />
-                <div className="flex flex-col">
-                  <span className="text-xl font-mono tabular-nums">{formatTime(timerDisplay)}</span>
-                  {remainingTime != null && (
-                    <span className="text-[11px] text-muted-foreground">
-                      {t('timed.remaining')}
-                    </span>
-                  )}
-                </div>
-              </div>
-              {allowTimerControl && (
-                <DsButton variant="ghost" size="sm" onClick={toggleTimer} className="[@media(pointer:coarse)]:!min-h-11">
-                  {isTimerRunning ? t('editor.pause') : t('editor.resume')}
-                </DsButton>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* 当前题目操作 */}
-        <div className="space-y-3">
-          <h4 className="text-sm font-medium text-muted-foreground">{t('editor.currentQuestion')}</h4>
-          <div className="space-y-2">
-            <DsButton
-              variant="outline"
-              className="w-full justify-start gap-2"
-              onClick={handleToggleFavorite}
-            >
-              {isFavorite ? (
-                <Star size={16} className="fill-warning text-warning" />
-              ) : (
-                <Star size={16} />
-              )}
-              {isFavorite ? t('editor.unfavorite') : t('editor.favorite')}
-            </DsButton>
-            {onDeleteQuestion && (
-              deleteConfirmOpen ? (
-                /* 内联删除确认：替代模态对话框 */
-                <div className="ui-rise-in rounded-md border border-destructive/30 bg-destructive/5 p-2.5 space-y-2">
-                  <p className="text-xs text-destructive flex items-start gap-1.5">
-                    <WarningCircle size={14} className="flex-shrink-0 mt-0.5" />
-                    {t('exam_sheet:questionBank.confirmDeleteSingle')}
-                  </p>
-                  <div className="flex gap-2">
-                    <DsButton
-                      variant="ghost"
-                      size="sm"
-                      className="flex-1 !h-7 [@media(pointer:coarse)]:!h-11"
-                      disabled={isDeleting}
-                      onClick={() => {
-                        setDeleteConfirmOpen(false);
-                        setDeleteTargetId(null);
-                      }}
-                    >
-                      {t('common:cancel')}
-                    </DsButton>
-                    <DsButton
-                      variant="ghost"
-                      size="sm"
-                      className="flex-1 !h-7 [@media(pointer:coarse)]:!h-11 bg-destructive/10 text-destructive hover:bg-destructive/[0.15]"
-                      disabled={isDeleting}
-                      onClick={() => void handleConfirmDelete()}
-                    >
-                      {isDeleting ? (
-                        <CircleNotch size={14} className="animate-spin" />
-                      ) : (
-                        <Trash size={14} />
-                      )}
-                      {t('common:delete')}
-                    </DsButton>
-                  </div>
-                </div>
-              ) : (
-                <DsButton
-                  variant="outline"
-                  className="w-full justify-start gap-2 text-destructive hover:bg-destructive/10"
-                  onClick={handleRequestDelete}
-                >
-                  <Trash size={16} />
-                  {t('common:delete')}
-                </DsButton>
-              )
-            )}
-          </div>
-        </div>
-
-        {/* 显示设置 */}
-        <div className="space-y-3">
-          <h4 className="text-sm font-medium text-muted-foreground">{t('editor.displaySettings')}</h4>
-          <DsButton
-            variant={focusMode ? 'default' : 'outline'}
-            className="w-full justify-start gap-2"
-            onClick={() => handleFocusModeChange(!focusMode)}
-          >
-            <Crosshair size={16} />
-            {t('editor.focusMode')}
-            {focusMode && <span className="ml-auto text-xs opacity-70">{t('editor.enabled')}</span>}
-          </DsButton>
-          <p className="text-xs text-muted-foreground">
-            {t('editor.focusModeDesc')}
-          </p>
-          <DsButton
-            variant={hideAnswerMode ? 'default' : 'outline'}
-            className="w-full justify-start gap-2"
-            onClick={() => handleHideAnswerModeChange(!hideAnswerMode)}
-          >
-            {hideAnswerMode ? <EyeSlash size={16} /> : <Eye size={16} />}
-            {t('editor.hideAnswerMode')}
-            {hideAnswerMode && <span className="ml-auto text-xs opacity-70">{t('editor.enabled')}</span>}
-          </DsButton>
-          <p className="text-xs text-muted-foreground">
-            {t('editor.hideAnswerModeDesc')}
-          </p>
-        </div>
-
-        {/* 快捷键提示 */}
-        {!isSmallScreen && (
-          <div className="space-y-3">
-            <h4 className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
-              <Keyboard size={16} />
-              {t('editor.shortcuts')}
-            </h4>
-            <PracticeShortcutHints {...shortcutOptions} />
-          </div>
-        )}
-
-        {/* 连对统计 */}
-        {streakCount > 0 && (
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium text-muted-foreground">{t('editor.currentStreak')}</h4>
-            <div className="flex items-center gap-2 p-2 rounded-md bg-warning/10">
-              <Flame size={16} className="text-warning" />
-              <span className="text-base font-semibold text-warning">{streakCount}</span>
-              <span className="text-sm text-muted-foreground">{t('editor.questionsUnit')}</span>
-            </div>
-          </div>
-        )}
-      </CustomScrollArea>
-    </div>
+  const settingsPanelNode = (
+    <QuestionSettingsDrawer
+      onClose={() => setShowSettingsPanel(false)}
+      stats={stats}
+      practiceMode={practiceMode}
+      onModeChange={onModeChange ? handleModeChange : undefined}
+      selectedTag={selectedTag}
+      onTagChange={handleTagChange}
+      tagOptions={tagOptions}
+      showTimer={showTimer}
+      isTimerRunning={isTimerRunning}
+      timerDisplay={timerDisplay}
+      remainingTime={remainingTime}
+      allowTimerControl={allowTimerControl}
+      onToggleTimer={toggleTimer}
+      isFavorite={isFavorite}
+      onToggleFavorite={() => void handleToggleFavorite()}
+      canDelete={!!onDeleteQuestion}
+      deleteConfirmOpen={deleteConfirmOpen}
+      isDeleting={isDeleting}
+      onRequestDelete={handleRequestDelete}
+      onCancelDelete={() => {
+        setDeleteConfirmOpen(false);
+        setDeleteTargetId(null);
+      }}
+      onConfirmDelete={() => void handleConfirmDelete()}
+      focusMode={focusMode}
+      onFocusModeChange={handleFocusModeChange}
+      hideAnswerMode={hideAnswerMode}
+      onHideAnswerModeChange={handleHideAnswerModeChange}
+      isSmallScreen={isSmallScreen}
+      shortcutOptions={shortcutOptions}
+      streakCount={streakCount}
+    />
   );
 
   /** 内联未保存草稿提示条：替代模态确认框，锚定在底部导航上方 */
@@ -1829,7 +1154,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         <DsButton
           variant="ghost"
           size="sm"
-          className="!h-7 [@media(pointer:coarse)]:!h-11 !px-2 text-xs"
+          className="!h-7 [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)] !px-2 text-xs"
           onClick={() => setPendingNavigationIndex(null)}
         >
           {t('common:cancel')}
@@ -1837,7 +1162,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         <DsButton
           variant="ghost"
           size="sm"
-          className="!h-7 [@media(pointer:coarse)]:!h-11 !px-2 text-xs bg-warning/10 text-warning hover:bg-warning/20"
+          className="!h-7 [@media(pointer:coarse)]:!min-h-[var(--touch-target-size)] !px-2 text-xs bg-warning/10 text-warning hover:bg-warning/20"
           onClick={() => {
             const targetIndex = pendingNavigationIndex;
             setPendingNavigationIndex(null);
@@ -1850,650 +1175,98 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     </div>
   ) : null;
 
-  // ========== 答题输入区（移动端与桌面端共用，覆盖全部题型） ==========
+  const answerInputNode = (
+    <QuestionAnswerInputSection
+      currentQuestion={currentQuestion}
+      qType={qType}
+      isChoiceQuestion={isChoiceQuestion}
+      isMultiSelect={isMultiSelect}
+      isSmallScreen={isSmallScreen}
+      selectedAnswer={selectedAnswer}
+      onSelectAnswer={setSelectedAnswer}
+      selectedOptions={selectedOptions}
+      onOptionClick={handleOptionClick}
+      submitResult={submitResult}
+      trueFalseCorrectAnswer={trueFalseCorrectAnswer}
+      matchingData={matchingData}
+      matchingPairs={matchingPairs}
+      onMatchingPairsChange={setMatchingPairs}
+      orderingData={orderingData}
+      orderingOrder={orderingOrder}
+      onOrderingOrderChange={setOrderingOrder}
+      numericData={numericData}
+      fillBlankData={fillBlankData}
+      fillBlankAnswers={fillBlankAnswers}
+      onFillBlankAnswersChange={setFillBlankAnswers}
+      onAnswerPrimaryAction={onAnswerPrimaryAction}
+      imageAnswerEnabled={imageAnswerEnabled}
+      answerImages={answerImages}
+      submittedImageAnswer={submittedImageAnswer}
+      isUploadingAnswerImage={isUploadingAnswerImage}
+      isSubmitting={isSubmitting}
+      answerImageInputRef={answerImageInputRef}
+      onAnswerImageSelect={(files) => { void handleAnswerImageSelect(files); }}
+      onRemoveAnswerImage={removeAnswerImage}
+    />
+  );
 
-  // 图片作答控件（主观题/填空题）：上传按钮 + 缩略图条 + 隐藏 file input
-  // 限定可提交的图片格式；移动端仍可从系统选择器拍照。已提交后隐藏编辑控件，
-  // 只读缩略图由结果卡区域的 ImageAnswerDisplay 呈现。
-  const renderImageAnswerControls = () => {
-    if (!imageAnswerEnabled) return null;
-    const disabled = !!submitResult || isUploadingAnswerImage || isSubmitting;
-    return (
-      <div className="space-y-2">
-        {!submitResult && submittedImageAnswer && (
-          <ImageAnswerDisplay
-            images={submittedImageAnswer.images}
-            text={submittedImageAnswer.text}
-          />
-        )}
-        {answerImages.length > 0 && (
-          <AnswerImageStrip
-            images={answerImages}
-            readOnly={!!submitResult}
-            onRemove={removeAnswerImage}
-          />
-        )}
-        {!submitResult && (
-          <div className="flex items-center gap-2">
-            <DsButton
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={disabled || !canAddImageAnswerImage(answerImages.length)}
-              onClick={() => answerImageInputRef.current?.click()}
-              className="[@media(pointer:coarse)]:!min-h-11"
-            >
-              {isUploadingAnswerImage
-                ? <CircleNotch size={16} className="animate-spin" />
-                : <Camera size={16} />}
-              <span className="text-xs">
-                {t('editor.imageAnswerUpload', { defaultValue: '拍照/上传手写答案' })}
-              </span>
-            </DsButton>
-            <span className="text-xs text-muted-foreground">
-              {answerImages.length}/{IMAGE_ANSWER_MAX_IMAGES}
-            </span>
-          </div>
-        )}
-        <input
-          ref={answerImageInputRef}
-          type="file"
-          accept={IMAGE_ANSWER_MIME_TYPES.join(',')}
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            void handleAnswerImageSelect(e.target.files);
-          }}
-        />
-      </div>
-    );
-  };
+  const completionCelebrationNode = showCompletionCelebration && completionStats ? (
+    <QuestionCompletionCard
+      stats={completionStats}
+      onRestart={() => {
+        setShowCompletionCelebration(false);
+        requestNavigate(0);
+      }}
+      onDismiss={() => setShowCompletionCelebration(false)}
+    />
+  ) : null;
 
-  const renderAnswerInput = () => {
-    if (isChoiceQuestion && currentQuestion.options) {
-      return (
-        <div className="space-y-3" data-practice-choice>
-          {currentQuestion.options.map((opt, index) => (
-            <OptionButton
-              key={opt.key}
-              optionKey={opt.key}
-              content={opt.content}
-              isSelected={
-                isMultiSelect
-                  ? selectedOptions.has(opt.key)
-                  : selectedAnswer === opt.key
-              }
-              isSubmitted={!!submitResult}
-              isCorrect={submitResult?.isCorrect ?? null}
-              correctAnswer={submitResult?.correctAnswer}
-              onSelect={handleOptionClick}
-              type={isMultiSelect ? 'multiple' : 'single'}
-              shortcutHint={!isSmallScreen && index < 9 ? String(index + 1) : undefined}
-            />
-          ))}
-        </div>
-      );
-    }
-    if (qType === 'true_false') {
-      return (
-        <div data-practice-choice><TrueFalseAnswer
-          value={selectedAnswer === 'true' || selectedAnswer === 'false' ? selectedAnswer : ''}
-          onChange={(v) => setSelectedAnswer(v)}
-          submitted={!!submitResult}
-          correctAnswer={submitResult ? trueFalseCorrectAnswer : null}
-        /></div>
-      );
-    }
-    if (qType === 'matching' && matchingData) {
-      return (
-        <MatchingAnswer
-          data={matchingData}
-          pairs={matchingPairs}
-          onChange={setMatchingPairs}
-          submitted={!!submitResult}
-        />
-      );
-    }
-    if (qType === 'ordering' && orderingData) {
-      return (
-        <OrderingAnswer
-          data={orderingData}
-          order={orderingOrder}
-          onChange={setOrderingOrder}
-          submitted={!!submitResult}
-        />
-      );
-    }
-    if (qType === 'numeric') {
-      return (
-        <NumericAnswer
-          value={selectedAnswer}
-          onChange={setSelectedAnswer}
-          spec={numericData}
-          submitted={!!submitResult}
-          isCorrect={submitResult ? submitResult.isCorrect : null}
-          onPrimaryAction={onAnswerPrimaryAction}
-        />
-      );
-    }
-    if (qType === 'fill_blank') {
-      return (
-        <div className="space-y-3">
-          <FillBlankAnswer
-            answers={fillBlankAnswers}
-            onChange={setFillBlankAnswers}
-            blanks={fillBlankData}
-            submitted={!!submitResult}
-            onPrimaryAction={onAnswerPrimaryAction}
-          />
-          {renderImageAnswerControls()}
-        </div>
-      );
-    }
-    if (qType === 'short_answer') {
-      return (
-        <div className="space-y-3">
-          <Input
-            value={selectedAnswer}
-            onChange={(e) => setSelectedAnswer(e.target.value)}
-            onKeyDown={onAnswerPrimaryAction}
-            placeholder={t('editor.answerPlaceholder')}
-            disabled={!!submitResult}
-            className="h-11 rounded-xl border border-border/50 bg-foreground/[0.02] px-3.5 transition-colors focus-visible:border-primary/45 focus-visible:bg-background focus-visible:ring-0 [@media(pointer:coarse)]:text-[16px]"
-          />
-          {renderImageAnswerControls()}
-        </div>
-      );
-    }
-    return (
-      <div className="space-y-3">
-        <Textarea
-          value={selectedAnswer}
-          onChange={(e) => setSelectedAnswer(e.target.value)}
-          placeholder={t('editor.answerPlaceholder')}
-          disabled={!!submitResult}
-          rows={4}
-          className="resize-none rounded-xl border border-border/50 bg-foreground/[0.02] p-3.5 transition-colors focus-visible:border-primary/45 focus-visible:bg-background focus-visible:ring-0 [@media(pointer:coarse)]:text-[16px]"
-        />
-        {imageAnswerEnabled && renderImageAnswerControls()}
-      </div>
-    );
-  };
-
-  // ========== 完成庆祝（内联卡片，随内容滚动，不使用遮罩层） ==========
-  const renderCompletionCelebration = () => {
-    if (!showCompletionCelebration || !completionStats) return null;
-    const correctRate = practiceAccuracyPercent(
-      completionStats.correctCount,
-      completionStats.totalAnswered,
-    );
-
-    return (
-      <div className="ui-rise-in p-4 rounded-md bg-card border border-border/50 shadow-sm text-center space-y-3">
-        <div className="flex justify-center">
-          <div className="p-2 rounded-md bg-warning/10">
-            <Trophy size={24} className="text-warning qbank-anim-pop" />
-          </div>
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold flex items-center justify-center gap-2">
-            <Confetti size={16} className="text-warning" />
-            {t('editor.congratulations')}
-            <Confetti size={16} className="text-warning" />
-          </h2>
-          <p className="text-muted-foreground mt-1">{t('editor.completedMessage')}</p>
-        </div>
-        <div className="grid grid-cols-3 gap-2 py-2">
-          <div className="p-2 rounded-md bg-muted/50">
-            <div className="text-lg font-semibold">{completionStats.totalAnswered}</div>
-            <div className="text-xs text-muted-foreground">{t('editor.answeredCount')}</div>
-          </div>
-          <div className="p-2 rounded-md bg-success/10">
-            <div className="text-lg font-semibold text-success">{correctRate}%</div>
-            <div className="text-xs text-success">{t('editor.correctRate')}</div>
-          </div>
-          <div className="p-2 rounded-md bg-primary/10">
-            <div className="text-lg font-semibold text-primary">{formatTime(completionStats.totalTime)}</div>
-            <div className="text-xs text-primary">{t('editor.timeSpent')}</div>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <DsButton
-            variant="outline"
-            className="flex-1 [@media(pointer:coarse)]:!min-h-11"
-            onClick={() => {
-              setShowCompletionCelebration(false);
-              requestNavigate(0);
-            }}
-          >
-            <ArrowClockwise size={16} className="mr-1" />
-            {t('editor.restart')}
-          </DsButton>
-          <DsButton
-            className="flex-1 [@media(pointer:coarse)]:!min-h-11"
-            onClick={() => setShowCompletionCelebration(false)}
-          >
-            {t('editor.viewQuestions')}
-          </DsButton>
-        </div>
-      </div>
-    );
-  };
-
-  // ========== 提交结果卡片（移动端与桌面端共用） ==========
-  // 包含：AI 判分流式结果 / 失败重试 / 手动批改兜底 / 解析折叠 / 客观题 AI 解析
   const renderSubmitResultCard = (extraClassName?: string) => {
     if (!submitResult || browseMode) return null;
     return (
-      <div
-        className={cn(
-          'ui-rise-in p-3 rounded-md space-y-3',
-          submitResult.needsManualGrading
-            ? 'bg-warning/[0.08] dark:bg-warning/[0.15]'
-            : submitResult.isCorrect
-              ? 'bg-success/[0.08] dark:bg-success/[0.15]'
-              : 'bg-destructive/[0.08] dark:bg-destructive/[0.15]',
-          extraClassName
-        )}
-      >
-        {/* 图片作答回显：本次提交是信封时只读展示缩略图 + 文字补充 */}
-        {submittedImageAnswer && (
-          <ImageAnswerDisplay
-            images={submittedImageAnswer.images}
-            text={submittedImageAnswer.text}
-          />
-        )}
-        {submitResult.needsManualGrading ? (
-          <>
-            {/* AI 评判中 */}
-            {aiGrading.state.isGrading ? (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-5 h-5 rounded-full bg-info flex items-center justify-center">
-                    <Sparkle size={12} className="text-info-foreground animate-pulse" />
-                  </div>
-                  <span className="text-sm font-medium text-info">
-                    {t('editor.aiGrading')}
-                  </span>
-                  <DsButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground">
-                    {t('common:cancel')}
-                  </DsButton>
-                </div>
-                {aiGrading.state.feedback ? (
-                  <CustomScrollArea
-                    className="max-h-48"
-                    viewportClassName="pl-7.5 text-sm leading-relaxed text-muted-foreground"
-                    fullHeight={false}
-                  >
-                    <StreamingMarkdownRenderer
-                      content={aiGrading.state.feedback}
-                      isStreaming={true}
-                    />
-                  </CustomScrollArea>
-                ) : (
-                  /* 流尚未产出内容：优雅加载态（三点跳动） */
-                  <div className="pl-7.5 flex items-center gap-1 py-1" aria-hidden>
-                    <span className="w-1.5 h-1.5 rounded-full bg-info/60 animate-bounce" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-info/60 animate-bounce [animation-delay:150ms]" />
-                    <span className="w-1.5 h-1.5 rounded-full bg-info/60 animate-bounce [animation-delay:300ms]" />
-                  </div>
-                )}
-              </div>
-            ) : aiGrading.state.error ? (
-              /* AI 评判失败，回退手动批改 + 内联重试 */
-              <div className="space-y-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-5 h-5 rounded-full bg-warning flex items-center justify-center">
-                    <WarningCircle size={12} className="text-warning-foreground" />
-                  </div>
-                  <span className="text-sm text-warning">
-                    {t('editor.aiGradingFailed')}
-                  </span>
-                  <DsButton
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      retryAiGrading()?.catch((err) => {
-                        debugLog.warn('[QuestionBankEditor] AI grading retry failed:', err);
-                      });
-                    }}
-                    className="ml-auto !h-auto !px-2 !py-0.5 [@media(pointer:coarse)]:!min-h-11 text-xs text-info hover:bg-info/10"
-                  >
-                    <ArrowClockwise size={12} />
-                    {t('editor.aiRetry')}
-                  </DsButton>
-                </div>
-                {/* #56: 评判失败时保留已流式输出的内容，不再整段消失 */}
-                <p role="alert" className="break-words text-xs text-destructive">{aiGrading.state.error}</p>
-                <GradingDiagnosticsView diagnostics={aiGrading.state.diagnostics} />
-                {aiGrading.state.feedback && (
-                  <CustomScrollArea
-                    className="max-h-48"
-                    viewportClassName="pl-7.5 text-sm leading-relaxed text-muted-foreground"
-                    fullHeight={false}
-                  >
-                    <StreamingMarkdownRenderer
-                      content={aiGrading.state.feedback}
-                      isStreaming={false}
-                    />
-                  </CustomScrollArea>
-                )}
-                {submitResult.correctAnswer && (
-                  <p className="text-sm text-muted-foreground pl-7.5">
-                    {t('editor.referenceAnswerLabel')}<LatexText content={submitResult.correctAnswer} className="inline font-medium text-foreground" />
-                  </p>
-                )}
-                {onMarkCorrect && (
-                  <div className="flex gap-2 pt-1">
-                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 [@media(pointer:coarse)]:!h-11 bg-success/10 text-success hover:bg-success/[0.15]">
-                      <Check size={14} />
-                      {t('editor.iGotItRight')}
-                    </DsButton>
-                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 [@media(pointer:coarse)]:!h-11 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
-                      <X size={14} />
-                      {t('editor.iGotItWrong')}
-                    </DsButton>
-                  </div>
-                )}
-              </div>
-            ) : (
-              /* 等待 AI 评判（尚未开始）- 显示等待状态 + 手动兜底 */
-              <div className="space-y-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-5 h-5 rounded-full bg-warning flex items-center justify-center">
-                    <Lightbulb size={12} className="text-warning-foreground" />
-                  </div>
-                  <div>
-                    <span className="text-sm font-medium text-warning">{t('editor.subjectiveSubmitted')}</span>
-                    <span className="text-xs text-muted-foreground ml-2">{t('editor.judgeSelf')}</span>
-                  </div>
-                </div>
-                {submitResult.correctAnswer && (
-                  <p className="text-sm text-muted-foreground pl-7.5">
-                    {t('editor.referenceAnswerLabel')}<LatexText content={submitResult.correctAnswer} className="inline font-medium text-foreground" />
-                  </p>
-                )}
-                {onMarkCorrect && (
-                  <div className="flex gap-2 pt-1">
-                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(true)} disabled={isManualGrading} className="flex-1 !h-8 [@media(pointer:coarse)]:!h-11 bg-success/10 text-success hover:bg-success/[0.15]">
-                      <Check size={14} />
-                      {t('editor.iGotItRight')}
-                    </DsButton>
-                    <DsButton variant="ghost" size="sm" onClick={() => handleManualGrade(false)} disabled={isManualGrading} className="flex-1 !h-8 [@media(pointer:coarse)]:!h-11 text-destructive bg-destructive/10 hover:bg-destructive/[0.15]">
-                      <X size={14} />
-                      {t('editor.iGotItWrong')}
-                    </DsButton>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* AI 评判完成后的结果展示（verdict + score + feedback） */}
-            {!aiGrading.state.isGrading && aiGrading.state.feedback && !aiGrading.state.error && (
-              <div className="pt-2 border-t border-foreground/[0.06] space-y-2">
-                {aiGrading.state.cancelled && <p className="text-xs text-warning">{t('batch.feedbackDraft')}</p>}
-                {aiGrading.state.verdict && (
-                  <div className="flex items-center gap-2">
-                    <span className={cn(
-                      'text-xs font-medium px-2 py-0.5 rounded-full',
-                      aiGrading.state.verdict === 'correct' ? 'bg-success/10 text-success' :
-                      aiGrading.state.verdict === 'partial' ? 'bg-warning/20 text-warning' :
-                      'bg-destructive/10 text-destructive'
-                    )}>
-                      {aiGrading.state.verdict === 'correct' ? t('editor.verdictCorrect') : aiGrading.state.verdict === 'partial' ? t('editor.verdictPartial') : t('editor.verdictIncorrect')}
-                    </span>
-                    {aiGrading.state.score != null && (
-                      <span className="text-xs text-muted-foreground">
-                        {t('editor.aiScore', { score: aiGrading.state.score })}
-                      </span>
-                    )}
-                  </div>
-                )}
-                <div className="text-sm text-muted-foreground leading-relaxed">
-                  <StreamingMarkdownRenderer
-                    content={aiGrading.state.feedback}
-                    isStreaming={false}
-                  />
-                </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <div className={cn(
-                  'w-5 h-5 rounded-full flex items-center justify-center',
-                  submitResult.aiVerdict === 'partial'
-                    ? 'bg-warning'
-                    : submitResult.isCorrect
-                      ? 'bg-success qbank-anim-pop'
-                      : 'bg-destructive'
-                )}>
-                  {submitResult.isCorrect ? (
-                    <Check size={12} weight="bold" className="text-success-foreground" />
-                  ) : submitResult.aiVerdict === 'partial' ? (
-                    <Sparkle size={12} className="text-warning-foreground" />
-                  ) : (
-                    <X size={12} className="text-destructive-foreground" />
-                  )}
-                </div>
-                <span className={cn(
-                  'text-sm font-medium',
-                  submitResult.aiVerdict === 'partial'
-                    ? 'text-warning'
-                    : submitResult.isCorrect
-                      ? 'text-success'
-                      : 'text-destructive'
-                )}>
-                  {submitResult.aiVerdict === 'partial'
-                    ? t('editor.verdictPartial')
-                    : submitResult.isCorrect
-                      ? t('editor.answerCorrect')
-                      : t('editor.answerWrong')}
-                </span>
-                {(submitResult.aiScore != null || aiGrading.state.score != null) && (
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {t('editor.aiScore', {
-                      score: submitResult.aiScore ?? aiGrading.state.score,
-                    })}
-                  </span>
-                )}
-                {/* 结构化题型的标准答案由作答组件内联揭示，这里不再重复展示原始 JSON */}
-                {submitResult.correctAnswer && !submitResult.isCorrect && !structuredRevealsAnswer && (
-                  <span className="text-sm text-muted-foreground">
-                    · {t('editor.correctAnswerLabel')}<LatexText content={submitResult.correctAnswer} className="inline font-medium text-foreground" />
-                  </span>
-                )}
-              </div>
-              {/* 重做按钮 */}
-              {!submitResult.isCorrect && (
-                <DsButton variant="ghost" size="sm" onClick={handleRetry} className="!h-auto !px-2.5 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:bg-foreground/5" title={t('editor.retryTitle')}>
-                  <ArrowClockwise size={14} />
-                  {t('editor.retry')}
-                </DsButton>
-              )}
-            </div>
-
-            {/* 主观题 AI 评判反馈：needsManualGrading 置 false 后仍保留分析正文 */}
-            {!aiGrading.state.isGrading && aiGrading.state.feedback && !aiGrading.state.error && (
-              <div className="pt-2 border-t border-foreground/[0.06] text-sm text-muted-foreground leading-relaxed">
-                {aiGrading.state.cancelled && <p className="text-xs text-warning">{t('batch.feedbackDraft')}</p>}
-                <StreamingMarkdownRenderer
-                  content={aiGrading.state.feedback}
-                  isStreaming={false}
-                />
-              </div>
-            )}
-
-            {/* 追问：问 AI 讲解 / 生成同类题 / 回到出处（错题 → 对话闭环） */}
-            <QuestionFollowUpBar question={currentQuestion} examId={sessionId}
-              userAnswer={selectedAnswer} isCorrect={submitResult?.isCorrect} />
-          </>
-        )}
-        {aiGrading.state.diagnostics?.status === 'completed' && (
-          <GradingDiagnosticsView diagnostics={aiGrading.state.diagnostics} />
-        )}
-      </div>
+      <QuestionSubmitResultCard
+        submitResult={submitResult}
+        submittedImageAnswer={submittedImageAnswer}
+        aiGrading={aiGrading}
+        onRetryAiGrading={retryAiGrading}
+        canManualGrade={!!onMarkCorrect}
+        isManualGrading={isManualGrading}
+        onManualGrade={(isCorrect) => { void handleManualGrade(isCorrect); }}
+        structuredRevealsAnswer={structuredRevealsAnswer}
+        onRetry={handleRetry}
+        currentQuestion={currentQuestion}
+        sessionId={sessionId}
+        selectedAnswer={selectedAnswer}
+        extraClassName={extraClassName}
+      />
     );
   };
 
-  const renderUserNoteSection = () => (
-    <div>
-      {isEditingNote ? (
-        <div className="ui-rise-in space-y-2 rounded-xl border border-border/45 bg-foreground/[0.015] p-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium flex items-center gap-1.5 text-muted-foreground">
-              <Note size={14} className="text-warning" />
-              {t('editor.myNotes')}
-              {/* 自动保存指示 */}
-              {noteSaveState === 'saving' && (
-                <span className="flex items-center gap-1 text-xs text-muted-foreground font-normal">
-                  <CircleNotch size={12} className="animate-spin" />
-                  {t('editor.noteSaving')}
-                </span>
-              )}
-              {noteSaveState === 'saved' && (
-                <span className="ui-rise-in flex items-center gap-1 text-xs text-success font-normal">
-                  <Check size={12} />
-                  {t('editor.noteSaved')}
-                </span>
-              )}
-              {noteSaveState === 'error' && (
-                <span className="flex items-center gap-1 text-xs text-destructive font-normal">
-                  <WarningCircle size={12} />
-                  {t('editor.noteSaveFailed')}
-                </span>
-              )}
-            </span>
-            <DsButton
-              variant="primary"
-              size="sm"
-              onClick={handleSaveNote}
-              disabled={!onUpdateUserNote || noteSaveState === 'saving'}
-              className="!h-9 sm:!h-7 !px-2.5 text-xs [@media(pointer:coarse)]:!min-h-11"
-            >
-              {t('editor.noteDone')}
-            </DsButton>
-          </div>
-          <Textarea
-            value={noteText}
-            onChange={(e) => setNoteText(e.target.value)}
-            onBlur={handleNoteBlur}
-            placeholder={t('editor.notePlaceholder')}
-            rows={3}
-            autoFocus
-            className="resize-none rounded-lg border border-border/50 bg-background p-2.5 text-sm transition-colors focus-visible:border-primary/45 focus-visible:ring-0 [@media(pointer:coarse)]:text-[16px]"
-          />
-          <p className="text-[11px] text-muted-foreground/60">
-            {t('editor.noteAutoSaveHint')}
-          </p>
-        </div>
-      ) : currentQuestion?.userNote ? (
-        <DsButton
-          variant="ghost"
-          size="sm"
-          onClick={() => setIsEditingNote(true)}
-          disabled={!onUpdateUserNote}
-          className="w-full !justify-start !h-auto min-h-9 [@media(pointer:coarse)]:!min-h-11 !rounded-lg !px-3 !py-2 bg-foreground/[0.025] hover:bg-foreground/[0.045] text-left"
-        >
-          <div className="space-y-1 w-full">
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Note size={14} className="text-warning" />
-              <span className="font-medium text-foreground/85">{t('editor.myNotes')}</span>
-            </div>
-            <p className="text-sm text-muted-foreground line-clamp-2 text-left w-full">
-              {currentQuestion.userNote}
-            </p>
-          </div>
-        </DsButton>
-      ) : (
-        <DsButton
-          variant="ghost"
-          size="sm"
-          onClick={() => setIsEditingNote(true)}
-          disabled={!onUpdateUserNote}
-          className="!h-9 sm:!h-7 !px-2 !py-1 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground gap-1.5"
-        >
-          <Note size={14} />
-          <span>+ {t('editor.myNotes')}</span>
-        </DsButton>
-      )}
-    </div>
+  const userNoteSectionNode = (
+    <QuestionUserNoteSection
+      isEditingNote={isEditingNote}
+      noteText={noteText}
+      noteSaveState={noteSaveState}
+      savedUserNote={currentQuestion?.userNote}
+      canUpdateNote={!!onUpdateUserNote}
+      onStartEdit={() => setIsEditingNote(true)}
+      onChangeNoteText={setNoteText}
+      onBlurNote={handleNoteBlur}
+      onSaveNote={handleSaveNote}
+    />
   );
 
   const renderQuestionJumper = (triggerClassName?: string) => (
-    <Popover>
-      <PopoverTrigger asChild>
-        <DsButton
-          variant="ghost"
-          size="sm"
-          aria-label={t('editor.jumpToQuestion')}
-          data-testid="qbank-editor-question-jumper"
-          className={cn(
-            '!px-3 !py-1.5 font-mono text-xs tabular-nums [@media(pointer:coarse)]:!min-h-11 hover:bg-foreground/[0.04]',
-            triggerClassName,
-          )}
-        >
-          <span className="font-medium text-foreground">{currentIndex + 1}</span>
-          <span className="text-muted-foreground">/ {totalQuestions}</span>
-          <CaretDown size={14} className="text-muted-foreground" />
-        </DsButton>
-      </PopoverTrigger>
-      <PopoverContent className="w-[min(20rem,calc(100vw-2rem))] p-3.5" align="center" side="top" sideOffset={8}>
-        {/* 搜索框 */}
-        <div className="relative mb-3">
-          <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            type="search"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={t('editor.searchPlaceholder')}
-            className="h-9 sm:h-8 pl-8 text-sm [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:text-[16px]"
-          />
-        </div>
-        <div className="text-xs text-muted-foreground mb-2">
-          {filteredQuestionIndices
-            ? t('editor.foundCount', { count: filteredQuestionIndices.length })
-            : t('editor.jumpToQuestion')}
-        </div>
-        <CustomScrollArea
-          className="max-h-48"
-          viewportClassName="grid grid-cols-6 sm:grid-cols-8 gap-1.5"
-          fullHeight={false}
-          onWheel={(event) => event.stopPropagation()}
-        >
-          {(filteredQuestionIndices || questions.map((_, idx) => idx)).map((idx) => {
-            const q = questions[idx];
-            const status = q.status || 'new';
-            return (
-              <DsButton
-                key={q.id}
-                variant="ghost"
-                size="icon"
-                iconOnly
-                onClick={() => { requestNavigate(idx); setSearchQuery(''); }}
-                className={cn(
-                  '!w-full !h-9 sm:!w-7 sm:!h-7 [@media(pointer:coarse)]:!w-full [@media(pointer:coarse)]:!h-11 !rounded-lg border font-mono text-xs tabular-nums [content-visibility:auto] [contain-intrinsic-size:auto_28px]',
-                  idx === currentIndex && 'border-primary bg-primary text-primary-foreground font-semibold',
-                  idx !== currentIndex && status === 'mastered' && 'border-success/35 bg-success/[0.08] text-success hover:bg-success/15',
-                  idx !== currentIndex && status === 'review' && 'border-warning/35 bg-warning/[0.08] text-warning hover:bg-warning/15',
-                  idx !== currentIndex && status === 'new' && 'border-border/45 bg-foreground/[0.02] text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground',
-                  idx !== currentIndex && status === 'in_progress' && 'border-primary/35 bg-primary/[0.08] text-primary hover:bg-primary/15',
-                )}
-              >
-                {idx + 1}
-              </DsButton>
-            );
-          })}
-        </CustomScrollArea>
-        <div className="flex items-center gap-3 mt-3 pt-2 border-t border-border/35 text-[10px] text-muted-foreground">
-          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-success" /> {t('editor.legendMastered')}</span>
-          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-warning" /> {t('editor.legendReview')}</span>
-          <span className="flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-muted-foreground/35" /> {t('editor.legendNew')}</span>
-        </div>
-      </PopoverContent>
-    </Popover>
+    <QuestionJumperPopover
+      questions={questions}
+      currentIndex={currentIndex}
+      totalQuestions={totalQuestions}
+      searchQuery={searchQuery}
+      onSearchQueryChange={setSearchQuery}
+      filteredQuestionIndices={filteredQuestionIndices}
+      onJumpToIndex={requestNavigate}
+      triggerClassName={triggerClassName}
+    />
   );
 
   // ========== 移动端滑动布局 ==========
@@ -2534,211 +1307,42 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
             {/* 题目内容区（无框纸感舞台） */}
             <CustomScrollArea className="flex-1" viewportClassName="px-4 py-4 space-y-4">
-                {/* 完成庆祝（内联） */}
-                {renderCompletionCelebration()}
-                <div key={currentQuestion.id} className="ui-slide-fade-in space-y-4" style={questionTransitionStyle}>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="font-mono text-xs font-medium tabular-nums text-muted-foreground">
-                      {currentQuestion.questionLabel || `Q${currentIndex + 1}`} · {currentIndex + 1}/{totalQuestions}
-                    </span>
-                    <span className="rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground">
-                      {t(`editor.questionType.${QUESTION_TYPE_I18N_KEY[currentQuestion.questionType]}`)}
-                    </span>
-                    {/* 专注模式下隐藏难度与标签 */}
-                    {!focusMode && currentQuestion.difficulty && (
-                      <span className="inline-flex items-center gap-1.5 rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground">
-                        <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', DIFFICULTY_CONFIG[currentQuestion.difficulty].dot)} aria-hidden="true" />
-                        {t(`questionBank.difficulty.${DIFFICULTY_I18N_KEY[currentQuestion.difficulty]}`)}
-                      </span>
-                    )}
-                    {!focusMode && currentQuestion.tags && currentQuestion.tags.length > 0 && (
-                      currentQuestion.tags.map(tag => (
-                        <span
-                          key={tag}
-                          className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground"
-                        >
-                          <Tag size={11} />
-                          {tag}
-                        </span>
-                      ))
-                    )}
-                    <div className="ml-auto flex items-center gap-1">
-                      {onToggleFavorite && (
-                        <DsButton
-                          variant="ghost"
-                          size="icon"
-                          iconOnly
-                          onClick={() => void handleToggleFavorite()}
-                          aria-label={isFavorite ? t('editor.unfavorite') : t('editor.favorite')}
-                          aria-pressed={isFavorite}
-                          title={isFavorite ? t('editor.unfavorite') : t('editor.favorite')}
-                          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-foreground"
-                        >
-                          <Star size={16} weight={isFavorite ? 'fill' : 'regular'} className={isFavorite ? 'text-warning' : undefined} />
-                        </DsButton>
-                      )}
-                      <DsButton
-                        variant="ghost"
-                        size="icon"
-                        iconOnly
-                        onClick={() => setCropDialogOpen(true)}
-                        aria-label={t('common:question_bank.source_images')}
-                        title={t('common:question_bank.source_images')}
-                        className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-foreground"
-                      >
-                        <Crop size={16} />
-                      </DsButton>
-                      {browseMode ? browsePracticeButton : (
-                        <DsButton
-                          variant="ghost"
-                          size="icon"
-                          iconOnly
-                          onClick={() => setShowSettingsPanel(true)}
-                          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-foreground"
-                          aria-label={t('questionBank.settings', 'Settings')}
-                          title={t('questionBank.settings', 'Settings')}
-                        >
-                          <GearSix size={18} />
-                        </DsButton>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    {/* issue 491：共享材料在题目之前独立展示（单题练习同样可见） */}
-                    <QuestionMaterialView
-                      materials={currentQuestion.materials ?? []}
-                      mode={browseMode ? 'view' : 'edit'}
-                      onUpdated={async () => {
-                        if (onRefreshQuestion) await onRefreshQuestion(currentQuestion.id);
-                      }}
-                    />
-                    <div className="prose prose-sm dark:prose-invert max-w-[74ch] text-[16px] leading-[1.72] text-foreground">
-                      <QuestionContentBlock
-                        content={currentQuestion.content || currentQuestion.ocrText || t('editor.noContent')}
-                      />
-                    </div>
-
-                    {/* 题目图片 */}
-                    {currentQuestion.images && currentQuestion.images.length > 0 && (() => {
-                      // 新数据用 role 区分题干/材料/选项图与来源截图；旧数据回退 crop_ 命名
-                      const confirmedImages = currentQuestion.images!.filter(img => !isSourceQuestionImage(img));
-                      const sourceImages = currentQuestion.images!.filter(img => isSourceQuestionImage(img));
-                      return (
-                        <>
-                          {/* 用户确认的图片（裁剪/上传）正常显示 */}
-                          {confirmedImages.length > 0 && (
-                            <div className={cn(
-                              'grid gap-2',
-                              confirmedImages.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-                            )}>
-                              {confirmedImages.map((img) => (
-                                <div key={img.id} className="rounded-lg overflow-hidden border border-border/40 bg-muted/20">
-                                  <QuestionImageSlot
-                                    url={questionImageUrls[img.id]}
-                                    alt={img.name}
-                                    collapsedClassName="max-h-48"
-                                    placeholderClassName="h-24"
-                                    iconSize={16}
-                                  />
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {/* 自动关联的原始图片 — 折叠气泡，点击展开 */}
-                          {sourceImages.length > 0 && (
-                            <SourceImagesBubble
-                              images={sourceImages}
-                              imageUrls={questionImageUrls}
-/>
-                          )}
-                        </>
-                      );
-                    })()}
-
-                    {/* 答题区域（浏览模式：只读答案与解析） */}
-                    {browseMode ? (
-                      <div className="space-y-3">
-                        {isChoiceQuestion && currentQuestion.options && (
-                          <div className="space-y-2.5">
-                            {currentQuestion.options.map(opt => (
-                              <div
-                                key={opt.key}
-                                className={cn(
-                                  'flex items-start gap-3 rounded-xl border px-4 py-3',
-                                  currentQuestion.answer?.includes(opt.key)
-                                    ? 'border-success/40 bg-success/[0.06]'
-                                    : 'border-border/45 bg-card/60'
-                                )}
-                              >
-                                <span className={cn(
-                                  'flex-shrink-0 w-6 h-6 rounded-md border flex items-center justify-center font-mono text-xs font-medium',
-                                  currentQuestion.answer?.includes(opt.key)
-                                    ? 'border-success bg-success text-success-foreground'
-                                    : 'border-border/60 bg-background/80 text-muted-foreground'
-                                )}>
-                                  {opt.key}
-                                </span>
-                                <LatexText content={opt.content} className="text-sm flex-1 pt-0.5 leading-relaxed" />
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {(structuredAnswerSummaryNode || currentQuestion.answer) && (
-                          <div className="rounded-xl border border-success/35 bg-success/[0.05] p-3.5">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <Check size={14} className="text-success" />
-                              <span className="text-xs font-medium text-success">{t('editor.referenceAnswer')}</span>
-                            </div>
-                            {structuredAnswerSummaryNode ?? (
-                              <LatexText content={currentQuestion.answer!} className="text-sm" />
-                            )}
-                          </div>
-                        )}
-                        {!structuredAnswerSummaryNode && !currentQuestion.answer && !currentQuestion.explanation && (
-                          <div className="rounded-xl bg-muted/40 p-3.5 text-center">
-                            <p className="text-sm text-muted-foreground">{t('editor.noAnswerOrExplanation')}</p>
-                          </div>
-                        )}
-                        {renderExplanation(true)}
-                      </div>
-                    ) : (
-                      <>
-                        {/* 暗记模式遮罩 */}
-                        {hideAnswerMode && !answerRevealed && !submitResult && (
-                          <DsButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-8 !rounded-xl border border-dashed border-border/60 bg-muted/20 flex-col items-center justify-center gap-2 hover:bg-foreground/[0.03]">
-                            <Eye size={28} className="text-muted-foreground" />
-                            <span className="text-sm text-muted-foreground">{t('editor.clickToReveal')}</span>
-                          </DsButton>
-                        )}
-
-                        {/* 正常答题区域（与桌面端共用题型渲染） */}
-                        {(!hideAnswerMode || answerRevealed || submitResult) && renderAnswerInput()}
-
-                        {!submitResult && (
-                          <DsButton
-                            variant="primary"
-                            size="lg"
-                            onClick={handleSubmit}
-                            disabled={!canSubmit || isSubmitting}
-                            className="w-full !rounded-xl [@media(pointer:coarse)]:!min-h-11"
-                          >
-                            {isSubmitting ? (
-                              <><CircleNotch size={16} className="animate-spin" />{t('editor.submitting')}</>
-                            ) : (
-                              <><PaperPlaneRight size={16} />{t('editor.submitAnswer')}</>
-                            )}
-                          </DsButton>
-                        )}
-
-                        {/* 提交结果（含 AI 判分/解析，与桌面端共用） */}
-                        {renderSubmitResultCard('mt-1')}
-                        {renderExplanation()}
-                        {renderUserNoteSection()}
-                      </>
-                    )}
-                  </div>
-                </div>
+              {/* 完成庆祝（内联） */}
+              {completionCelebrationNode}
+              <QuestionEditorStage
+                variant="mobile"
+                currentQuestion={currentQuestion}
+                currentIndex={currentIndex}
+                totalQuestions={totalQuestions}
+                qType={qType}
+                isChoiceQuestion={isChoiceQuestion}
+                isSmallScreen={isSmallScreen}
+                focusMode={focusMode}
+                browseMode={browseMode}
+                isFavorite={isFavorite}
+                canToggleFavorite={!!onToggleFavorite}
+                showSettingsPanel={showSettingsPanel}
+                hideAnswerMode={hideAnswerMode}
+                answerRevealed={answerRevealed}
+                submitResult={submitResult}
+                canSubmit={canSubmit}
+                isSubmitting={isSubmitting}
+                questionImageUrls={questionImageUrls}
+                questionTransitionStyle={questionTransitionStyle}
+                structuredAnswerSummaryNode={structuredAnswerSummaryNode}
+                browsePracticeButton={browsePracticeButton}
+                answerInputNode={answerInputNode}
+                submitResultCardNode={renderSubmitResultCard('mt-1')}
+                browseExplanationNode={renderExplanation(true)}
+                practiceExplanationNode={renderExplanation()}
+                userNoteSectionNode={userNoteSectionNode}
+                onToggleFavorite={() => { void handleToggleFavorite(); }}
+                onOpenCropDialog={() => setCropDialogOpen(true)}
+                onToggleSettingsPanel={() => setShowSettingsPanel(true)}
+                onRefreshQuestion={onRefreshQuestion}
+                onRevealAnswer={() => setAnswerRevealed(true)}
+                onSubmit={() => { void handleSubmit(); }}
+              />
             </CustomScrollArea>
 
             {/* 底部导航 - 仅保留安全区域间距（历史 tab 栏已移除） */}
@@ -2783,7 +1387,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             onTouchMove={(e) => e.stopPropagation()}
             onTouchEnd={(e) => e.stopPropagation()}
           >
-            {renderSettingsPanel()}
+            {settingsPanelNode}
           </div>
         </div>
         {/* 原始图片裁剪：移动端全屏内联裁剪工具（此前移动分支未挂载，裁剪入口点了没反应） */}
@@ -2795,25 +1399,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             questionId={currentQuestion.id}
             inline
             isActive={isActive}
-            onImageAdded={() => {
-              if (!currentQuestion?.id) return;
-
-              const reloadImages = () => {
-                setQuestionImageUrls({});
-                setImageRefreshKey(k => k + 1);
-              };
-
-              if (onRefreshQuestion) {
-                onRefreshQuestion(currentQuestion.id)
-                  .catch((err) => {
-                    debugLog.error('[QuestionBankEditor] refresh after crop failed:', err);
-                  })
-                  .finally(reloadImages);
-                return;
-              }
-
-              reloadImages();
-            }}
+            onImageAdded={handleCropImageAdded}
           />
         )}
       </div>
@@ -2835,254 +1421,49 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         <div
           className="h-full bg-primary transition-[width] duration-300 ease-out"
           style={{ width: `${progressPercent}%` }}
-/>
+        />
       </div>
 
       {/* 居中栏放在视口内层：视口的 margin / padding 由 OverlayScrollbars 接管，写在 viewportClassName 上的 mx-auto 不生效 */}
       <CustomScrollArea className="flex-1">
         <div className="max-w-3xl mx-auto px-3 py-4 sm:px-6 sm:py-6 space-y-4">
           {/* 完成庆祝（内联） */}
-          {renderCompletionCelebration()}
+          {completionCelebrationNode}
 
-          <div key={currentQuestion.id} className="ui-slide-fade-in space-y-5" style={questionTransitionStyle}>
-            {/* 单行题头页眉：题号 + 题型 + 难度 + 状态 + 标签 + 收藏 + 原图裁剪 + 设置 */}
-            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <span className="font-mono text-xs font-medium tabular-nums text-muted-foreground">
-                {currentQuestion.questionLabel || `Q${currentIndex + 1}`} · {currentIndex + 1}/{totalQuestions}
-              </span>
-              <span className="rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground">
-                {t(`editor.questionType.${QUESTION_TYPE_I18N_KEY[currentQuestion.questionType]}`)}
-              </span>
-              {!focusMode && currentQuestion.difficulty && (
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground">
-                  <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', DIFFICULTY_CONFIG[currentQuestion.difficulty].dot)} aria-hidden="true" />
-                  {t(`questionBank.difficulty.${DIFFICULTY_I18N_KEY[currentQuestion.difficulty]}`)}
-                </span>
-              )}
-              {!focusMode && currentQuestion.status && (
-                <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', STATUS_CONFIG[currentQuestion.status].dot)} aria-hidden="true" />
-                  {t(`questionBank.status.${STATUS_I18N_KEY[currentQuestion.status]}`)}
-                </span>
-              )}
-              {!focusMode && currentQuestion.tags && currentQuestion.tags.length > 0 && (
-                currentQuestion.tags.map(tag => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] px-2 py-0.5 text-xs text-muted-foreground"
-                  >
-                    <Tag size={11} />
-                    {tag}
-                  </span>
-                ))
-              )}
-              <div className="ml-auto flex items-center gap-1">
-                {onToggleFavorite && (
-                  <DsButton
-                    variant="ghost"
-                    size="sm"
-                    iconOnly
-                    onClick={() => void handleToggleFavorite()}
-                    aria-label={isFavorite ? t('editor.unfavorite') : t('editor.favorite')}
-                    aria-pressed={isFavorite}
-                    title={isFavorite ? t('editor.unfavorite') : t('editor.favorite')}
-                    className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-foreground"
-                  >
-                    <Star size={15} weight={isFavorite ? 'fill' : 'regular'} className={isFavorite ? 'text-warning' : undefined} />
-                  </DsButton>
-                )}
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  iconOnly
-                  onClick={() => setCropDialogOpen(true)}
-                  aria-label={t('common:question_bank.source_images')}
-                  title={t('common:question_bank.source_images')}
-                  className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-foreground"
-                >
-                  <Crop size={15} />
-                </DsButton>
-                {browseMode ? browsePracticeButton : (
-                  <DsButton
-                    variant="ghost"
-                    size="sm"
-                    iconOnly
-                    onClick={() => setShowSettingsPanel(!showSettingsPanel)}
-                    aria-label={t('editor.settings')}
-                    aria-pressed={showSettingsPanel}
-                    title={t('editor.settings')}
-                    className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground hover:text-foreground"
-                  >
-                    <GearSix size={16} />
-                  </DsButton>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-6">
-              {/* issue 491：桌面练习路径同样在题目之前展示共享材料 */}
-              <QuestionMaterialView
-                materials={currentQuestion.materials ?? []}
-                mode={browseMode ? 'view' : 'edit'}
-                onUpdated={async () => {
-                  if (onRefreshQuestion) await onRefreshQuestion(currentQuestion.id);
-                }}
-              />
-              <div className="prose prose-sm dark:prose-invert max-w-[74ch] text-[16px] sm:text-[17px] leading-[1.72] text-foreground">
-                <QuestionContentBlock
-                  content={currentQuestion.content || currentQuestion.ocrText || t('editor.noContent')}
-                />
-              </div>
-
-              {/* 题目图片 */}
-              {currentQuestion.images && currentQuestion.images.length > 0 && (() => {
-                const confirmedImgs = currentQuestion.images!.filter(img => !isSourceQuestionImage(img));
-                const sourceImgs = currentQuestion.images!.filter(img => isSourceQuestionImage(img));
-                return (
-                  <>
-                    {confirmedImgs.length > 0 && (
-                      <div className={cn(
-                        'grid gap-2',
-                        confirmedImgs.length === 1 ? 'grid-cols-1 max-w-md' : 'grid-cols-2'
-                      )}>
-                        {confirmedImgs.map((img) => (
-                          <div key={img.id} className="rounded-lg overflow-hidden border border-border/40 bg-muted/20">
-                            <QuestionImageSlot
-                              url={questionImageUrls[img.id]}
-                              alt={img.name}
-                              collapsedClassName="max-h-64"
-                              placeholderClassName="h-32"
-                              iconSize={20}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {sourceImgs.length > 0 && (
-                      <SourceImagesBubble images={sourceImgs} imageUrls={questionImageUrls} />
-                    )}
-                  </>
-                );
-              })()}
-
-              {/* 浏览模式：直接显示答案和解析（只读） */}
-              {browseMode ? (
-                <div className="space-y-4">
-                  {/* 选项展示（只读） */}
-                  {isChoiceQuestion && currentQuestion.options && (
-                    <div className="space-y-2.5">
-                      {currentQuestion.options.map(opt => (
-                        <div
-                          key={opt.key}
-                          className={cn(
-                            'flex items-start gap-3 rounded-xl border px-4 py-3 transition-colors',
-                            currentQuestion.answer?.includes(opt.key)
-                              ? 'border-success/40 bg-success/[0.06]'
-                              : 'border-border/45 bg-card/60'
-                          )}
-                        >
-                          <span className={cn(
-                            'flex-shrink-0 w-6 h-6 rounded-md border flex items-center justify-center font-mono text-xs font-medium',
-                            currentQuestion.answer?.includes(opt.key)
-                              ? 'border-success bg-success text-success-foreground'
-                              : 'border-border/60 bg-background/80 text-muted-foreground'
-                          )}>
-                            {opt.key}
-                          </span>
-                          <LatexText content={opt.content} className="text-sm flex-1 pt-0.5 leading-relaxed" />
-                          {currentQuestion.answer?.includes(opt.key) && (
-                            <Check size={16} className="text-success flex-shrink-0" />
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* 答案显示（结构化题型渲染可读摘要而非原始 JSON） */}
-                  {(structuredAnswerSummaryNode || currentQuestion.answer) && (
-                    <div className="rounded-xl border border-success/35 bg-success/[0.05] p-3.5">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Check size={16} className="text-success" />
-                        <span className="text-sm font-medium text-success">{t('editor.referenceAnswer')}</span>
-                      </div>
-                      {structuredAnswerSummaryNode ?? (
-                        <LatexText content={currentQuestion.answer!} className="text-sm" />
-                      )}
-                    </div>
-                  )}
-
-                  {/* 无答案提示 */}
-                  {!structuredAnswerSummaryNode && !currentQuestion.answer && !currentQuestion.explanation && (
-                    <div className="rounded-xl bg-muted/40 p-3.5 text-center">
-                      <p className="text-sm text-muted-foreground">{t('editor.noAnswerOrExplanation')}</p>
-                    </div>
-                  )}
-
-                  {renderExplanation(true)}
-                </div>
-              ) : (
-                /* 做题模式：答题 UI */
-                <>
-                  {/* 暗记模式遮罩 */}
-                  {hideAnswerMode && !answerRevealed && !submitResult && (
-                    <DsButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-12 !rounded-xl border border-dashed border-border/60 bg-muted/20 flex-col items-center justify-center gap-3 hover:bg-foreground/[0.03]">
-                      <Eye size={36} className="text-muted-foreground" />
-                      <span className="text-muted-foreground">{t('editor.clickToRevealWithKey')}</span>
-                    </DsButton>
-                  )}
-
-                  {/* 正常答题区域（与移动端共用题型渲染） */}
-                  {(!hideAnswerMode || answerRevealed || submitResult) && (
-                    <div className="space-y-4">
-                      {renderAnswerInput()}
-                    </div>
-                  )}
-
-                  {!submitResult && (
-                    <DsButton
-                      variant="primary"
-                      size="lg"
-                      onClick={handleSubmit}
-                      disabled={!canSubmit || isSubmitting}
-                      className="w-full !rounded-xl [@media(pointer:coarse)]:!min-h-11"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <CircleNotch size={16} className="animate-spin" />
-                          {t('editor.submitting')}
-                        </>
-                      ) : (
-                        <>
-                          <PaperPlaneRight size={16} />
-                          {t('editor.submitAnswer')}
-                        </>
-                      )}
-                    </DsButton>
-                  )}
-
-                  {/* 内联快捷键提示（桌面端，按题型展示对应提示） */}
-                  {!isSmallScreen && (
-                    <p className="text-center text-[11px] text-muted-foreground/60 select-none">
-                      {submitResult
-                        ? t('editor.inlineShortcutHintAfterSubmit')
-                        : isChoiceQuestion
-                          ? t('editor.inlineShortcutHint')
-                          : qType === 'true_false'
-                            ? t('editor.inlineShortcutHintTrueFalse')
-                            : t('editor.inlineShortcutHintGeneric')}
-                    </p>
-                  )}
-                </>
-              )}
-
-              {/* 提交结果（含 AI 判分/解析，与移动端共用） */}
-              {renderSubmitResultCard()}
-              {!browseMode && renderExplanation()}
-
-              {/* 用户笔记：未写笔记且未展开编辑时收敛为文末轻量幽灵按钮，仅已有笔记或编辑时展开 */}
-              {!browseMode && renderUserNoteSection()}
-            </div>
-          </div>
+          <QuestionEditorStage
+            variant="desktop"
+            currentQuestion={currentQuestion}
+            currentIndex={currentIndex}
+            totalQuestions={totalQuestions}
+            qType={qType}
+            isChoiceQuestion={isChoiceQuestion}
+            isSmallScreen={isSmallScreen}
+            focusMode={focusMode}
+            browseMode={browseMode}
+            isFavorite={isFavorite}
+            canToggleFavorite={!!onToggleFavorite}
+            showSettingsPanel={showSettingsPanel}
+            hideAnswerMode={hideAnswerMode}
+            answerRevealed={answerRevealed}
+            submitResult={submitResult}
+            canSubmit={canSubmit}
+            isSubmitting={isSubmitting}
+            questionImageUrls={questionImageUrls}
+            questionTransitionStyle={questionTransitionStyle}
+            structuredAnswerSummaryNode={structuredAnswerSummaryNode}
+            browsePracticeButton={browsePracticeButton}
+            answerInputNode={answerInputNode}
+            submitResultCardNode={renderSubmitResultCard()}
+            browseExplanationNode={renderExplanation(true)}
+            practiceExplanationNode={renderExplanation()}
+            userNoteSectionNode={userNoteSectionNode}
+            onToggleFavorite={() => { void handleToggleFavorite(); }}
+            onOpenCropDialog={() => setCropDialogOpen(true)}
+            onToggleSettingsPanel={() => setShowSettingsPanel(!showSettingsPanel)}
+            onRefreshQuestion={onRefreshQuestion}
+            onRevealAnswer={() => setAnswerRevealed(true)}
+            onSubmit={() => { void handleSubmit(); }}
+          />
         </div>
       </CustomScrollArea>
 
@@ -3096,7 +1477,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               size="sm"
               onClick={() => handleNavigate('prev')}
               disabled={currentIndex === 0}
-              className="h-8 px-3 [@media(pointer:coarse)]:!min-h-11 text-muted-foreground hover:text-foreground"
+              className="h-8 px-3 text-muted-foreground hover:text-foreground"
             >
               <CaretLeft size={16} className="mr-1" />
               {t('editor.prevQuestion')}
@@ -3109,7 +1490,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               size="sm"
               onClick={() => handleNavigate('next')}
               disabled={currentIndex === totalQuestions - 1}
-              className="h-8 px-3 [@media(pointer:coarse)]:!min-h-11"
+              className="h-8 px-3"
             >
               {t('editor.nextQuestion')}
               <CaretRight size={16} className="ml-1" />
@@ -3122,7 +1503,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           className="absolute inset-y-0 right-0 z-20 w-80 max-w-[calc(100%-2rem)] border-l border-border/50 bg-background shadow-[var(--shadow-shell-floating)]"
           aria-label={t('editor.settings')}
         >
-          {renderSettingsPanel()}
+          {settingsPanelNode}
         </aside>
       )}
       {/* 原始图片裁剪：容器内内联裁剪工具（非模态浮层） */}
@@ -3134,26 +1515,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           questionId={currentQuestion.id}
           inline
           isActive={isActive}
-          onImageAdded={() => {
-            if (!currentQuestion?.id) return;
-
-            const reloadImages = () => {
-              setQuestionImageUrls({});
-              setImageRefreshKey(k => k + 1);
-            };
-
-            if (onRefreshQuestion) {
-              onRefreshQuestion(currentQuestion.id)
-                .catch((err) => {
-                  debugLog.error('[QuestionBankEditor] refresh after crop failed:', err);
-                })
-                .finally(reloadImages);
-              return;
-            }
-
-            reloadImages();
-          }}
-/>
+          onImageAdded={handleCropImageAdded}
+        />
       )}
     </div>
   );
