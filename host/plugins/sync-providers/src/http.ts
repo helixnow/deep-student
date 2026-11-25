@@ -22,6 +22,8 @@ import { canonicalReason as statusReason, decodeUtf8Lossy } from '../../../platf
 import { CloudStorageError } from './errors.ts';
 
 export const HEADER_TIMEOUT_MS = 120_000;
+/** Fast response-header timeout for metadata/control-plane requests (PROPFIND/MKCOL/GET/DELETE/small PUT). */
+export const CONTROL_PLANE_HEADER_TIMEOUT_MS = 15_000;
 export const BODY_STALL_TIMEOUT_MS = 90_000;
 /** reqwest `redirect::Policy::default()` = `limited(10)`. */
 export const MAX_REDIRECTS = 10;
@@ -73,6 +75,8 @@ export interface RequestOptions {
   /** Fresh stream per attempt (file uploads). Takes precedence over `body`. */
   bodyFactory?: (() => ReadableStream<Uint8Array>) | null;
   bodyLength?: number | null;
+  /** Per-attempt response-header timeout in ms. Default: `HEADER_TIMEOUT_MS`. */
+  headerTimeoutMs?: number | null;
   /** Whole-request timeout in ms (covers body upload). Default: headers only. */
   totalTimeoutMs?: number | null;
   /** Aborts the request (sync cancellation). */
@@ -272,9 +276,10 @@ async function sendOnce(options: RequestOptions): Promise<HttpResponse> {
   const onAbort = (): void => { fail(new CloudStorageError('Unknown', '云同步已取消')); };
   if (options.signal?.aborted) throw new CloudStorageError('Unknown', '云同步已取消');
 
+  const headerTimeoutMs = options.headerTimeoutMs ?? HEADER_TIMEOUT_MS;
   const headerTimer = setTimeout(() => {
-    fail(new CloudStorageError('Network', `等待响应头超时（${Math.round(HEADER_TIMEOUT_MS / 1000)} 秒）`));
-  }, HEADER_TIMEOUT_MS);
+    fail(new CloudStorageError('Network', `等待响应头超时（${Math.round(headerTimeoutMs / 1000)} 秒）`));
+  }, headerTimeoutMs);
   unrefTimer(headerTimer);
   const totalTimeoutMs = options.totalTimeoutMs;
   const totalTimer = totalTimeoutMs == null ? null : setTimeout(() => {

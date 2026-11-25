@@ -92,27 +92,74 @@ export function getPendingChanges(db: SqlExecutor, tableFilter?: string | null, 
   return pendingChangesFromEntries(rows.map(row => parseEntry(row, hasFieldDeltas)));
 }
 
-/** sync/mod.rs:9637-9663. */
-export function getChangeLogStats(db: SqlExecutor): ChangeLogStats {
+/** sync/mod.rs:9637-9663. Optionally scoped to an allow-list of RowSync tables. */
+export function getChangeLogStats(
+  db: SqlExecutor,
+  allowedTables?: readonly string[] | null,
+): ChangeLogStats {
+  const scoped = allowedTables !== undefined && allowedTables !== null;
+  if (scoped && allowedTables.length === 0) {
+    return { total_count: 0, pending_count: 0, synced_count: 0 };
+  }
+  const tableFilterSql = scoped
+    ? `table_name IN (${allowedTables.map((_, index) => `?${index + 1}`).join(', ')})`
+    : '';
+  const params = scoped ? [...allowedTables] : [];
+
   let total: number;
   try {
-    total = db.pluck<number>('SELECT COUNT(*) FROM __change_log') ?? 0;
+    total = db.pluck<number>(
+      scoped ? `SELECT COUNT(*) FROM __change_log WHERE ${tableFilterSql}` : 'SELECT COUNT(*) FROM __change_log',
+      params,
+    ) ?? 0;
   } catch (error) {
     databaseError(`查询变更日志总数失败: ${message(error)}`);
   }
   let pending: number;
   try {
-    pending = db.pluck<number>('SELECT COUNT(*) FROM __change_log WHERE sync_version = 0') ?? 0;
+    pending = db.pluck<number>(
+      scoped
+        ? `SELECT COUNT(*) FROM __change_log WHERE sync_version = 0 AND ${tableFilterSql}`
+        : 'SELECT COUNT(*) FROM __change_log WHERE sync_version = 0',
+      params,
+    ) ?? 0;
   } catch (error) {
     databaseError(`查询待同步数量失败: ${message(error)}`);
   }
   let synced: number;
   try {
-    synced = db.pluck<number>('SELECT COUNT(*) FROM __change_log WHERE sync_version > 0') ?? 0;
+    synced = db.pluck<number>(
+      scoped
+        ? `SELECT COUNT(*) FROM __change_log WHERE sync_version > 0 AND ${tableFilterSql}`
+        : 'SELECT COUNT(*) FROM __change_log WHERE sync_version > 0',
+      params,
+    ) ?? 0;
   } catch (error) {
     databaseError(`查询已同步数量失败: ${message(error)}`);
   }
   return { total_count: total, pending_count: pending, synced_count: synced };
+}
+
+/** Delete stale pending rows (e.g. non-RowSync tables) in batches of 500 below SQLite bind limits. */
+export function deletePendingChangeLogEntries(db: DatabaseHandle, changeIds: readonly (number | bigint)[]): number {
+  if (changeIds.length === 0) return 0;
+  const batchSize = 500;
+  try {
+    return db.transaction(tx => {
+      let deleted = 0;
+      for (let offset = 0; offset < changeIds.length; offset += batchSize) {
+        const chunk = changeIds.slice(offset, offset + batchSize);
+        const placeholders = chunk.map((_, index) => `?${index + 1}`).join(', ');
+        deleted += tx.run(
+          `DELETE FROM __change_log WHERE sync_version = 0 AND id IN (${placeholders})`,
+          chunk,
+        ).changes;
+      }
+      return deleted;
+    });
+  } catch (error) {
+    databaseError(`清理非 RowSync 待同步变更日志失败: ${message(error)}`);
+  }
 }
 
 class UpdateSyncVersionFailure extends Error {

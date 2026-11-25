@@ -2,10 +2,14 @@
 import type { WorkspaceCoordinator } from '../../agent-workspace/api.ts';
 import type { CloudStorage } from '../../sync-providers/api.ts';
 import type { NativeCompression } from '../../../platform/native/api.ts';
+import type { CoordinatedDatabaseName, StorageService } from '../../../platform/storage/api.ts';
 import type { ApplyToDatabasesResult } from '../repository/apply-databases.ts';
 import { keyOf } from '../repository/apply-shared.ts';
-import { markUploadedChanges, rollbackMarkedChanges, archiveSyncedChangeLogs } from '../repository/sync-pass.ts';
+import { changeLogTableExists, getPendingChanges, markSyncedWithTimestamp } from '../repository/change-log.ts';
+import { markUploadedChanges, rollbackMarkedChanges, archiveSyncedChangeLogs, type MarkedChanges } from '../repository/sync-pass.ts';
 import { isJsonObject } from '../../../platform/util/lossless-json.ts';
+import { fs } from './local-runtime.ts';
+import { filterPendingChangesForDatabase } from './change-log.ts';
 import type { EngineChange } from './change-payload.ts';
 import type { SyncManifest, MergeStrategy } from './merge.ts';
 import { collectLocalManifest } from './transfer-commands.ts';
@@ -40,12 +44,15 @@ export async function enforcePruneGapCheck(storage: CloudStorage, options: SyncP
 export function ensureDownloadApplyIsDurable(result: ApplyToDatabasesResult): void {
   if (result.db_errors.length > 0) throw new Error(`下载变更未能持久处理，已保留远端游标等待重试：${result.db_errors.map(([db, error]) => `${db}: ${error}`).join('；')}`);
 }
-export function filterUploadCandidatesAfterDownload(
-  enriched: readonly EngineChange[],
-  appliedKeys: ReadonlySet<string>,
+export interface PartitionedUploadCandidates {
+  toUpload: EngineChange[];
+  supersededByDownload: EngineChange[];
+}
+
+function collectDeferredEntities(
   deferredConflictKeys: ReadonlySet<string>,
-  downloadedChanges: readonly EngineChange[] = [],
-): EngineChange[] {
+  changes: readonly EngineChange[],
+): { deferredNoteIds: Set<string>; deferredResourceIds: Set<string> } {
   const deferredNoteIds = new Set<string>();
   const deferredResourceIds = new Set<string>();
   for (const key of deferredConflictKeys) {
@@ -53,25 +60,110 @@ export function filterUploadCandidatesAfterDownload(
     else if (key.startsWith('resources\u001f')) deferredResourceIds.add(key.slice('resources\u001f'.length));
   }
   if (deferredNoteIds.size > 0) {
-    for (const change of [...enriched, ...downloadedChanges]) {
+    for (const change of changes) {
       if (change.table_name === 'notes' && deferredNoteIds.has(change.record_id) && isJsonObject(change.data) && typeof change.data.resource_id === 'string') {
         deferredResourceIds.add(change.data.resource_id);
       }
     }
   }
-  return enriched.filter(change => {
+  return { deferredNoteIds, deferredResourceIds };
+}
+
+export function partitionUploadCandidatesAfterDownload(
+  enriched: readonly EngineChange[],
+  appliedKeys: ReadonlySet<string>,
+  deferredConflictKeys: ReadonlySet<string>,
+  downloadedChanges: readonly EngineChange[] = [],
+): PartitionedUploadCandidates {
+  const { deferredNoteIds, deferredResourceIds } = collectDeferredEntities(deferredConflictKeys, [...enriched, ...downloadedChanges]);
+  const isDeferred = (change: EngineChange): boolean => {
     const key = keyOf(change.table_name, change.record_id);
-    if (appliedKeys.has(key) || deferredConflictKeys.has(key)) return false;
-    if (change.table_name === 'resources' && deferredResourceIds.has(change.record_id)) return false;
-    if (change.table_name === 'note_document_formats' && deferredNoteIds.has(change.record_id)) return false;
+    if (deferredConflictKeys.has(key)) return true;
+    if (change.table_name === 'resources' && deferredResourceIds.has(change.record_id)) return true;
+    if (change.table_name === 'note_document_formats' && deferredNoteIds.has(change.record_id)) return true;
     if ((change.table_name === 'note_document_revisions' || change.table_name === 'note_learning_relations')
       && isJsonObject(change.data)
       && typeof change.data.note_id === 'string'
       && deferredNoteIds.has(change.data.note_id)) {
-      return false;
+      return true;
     }
-    return true;
-  });
+    return false;
+  };
+  const deferredChangeLogIds = new Set<number | bigint>();
+  const toUpload: EngineChange[] = [];
+  const rawSuperseded: EngineChange[] = [];
+  for (const change of enriched) {
+    if (isDeferred(change)) {
+      if (change.change_log_id != null) deferredChangeLogIds.add(change.change_log_id);
+      continue;
+    }
+    const key = keyOf(change.table_name, change.record_id);
+    if (appliedKeys.has(key)) {
+      rawSuperseded.push(change);
+      continue;
+    }
+    toUpload.push(change);
+  }
+  const supersededByDownload = deferredChangeLogIds.size === 0
+    ? rawSuperseded
+    : rawSuperseded.filter(change => change.change_log_id == null || !deferredChangeLogIds.has(change.change_log_id));
+  return { toUpload, supersededByDownload };
+}
+
+export function filterUploadCandidatesAfterDownload(
+  enriched: readonly EngineChange[],
+  appliedKeys: ReadonlySet<string>,
+  deferredConflictKeys: ReadonlySet<string>,
+  downloadedChanges: readonly EngineChange[] = [],
+): EngineChange[] {
+  return partitionUploadCandidatesAfterDownload(enriched, appliedKeys, deferredConflictKeys, downloadedChanges).toUpload;
+}
+
+const coordinatedDatabases: readonly CoordinatedDatabaseName[] = ['vfs', 'llm_usage', 'chat_v2', 'mistakes'];
+
+/** Mark local pending RowSync `__change_log` entries superseded by applied remote changes (`appliedKeys \ deferredConflictKeys`). */
+export function markDownloadSupersededKeys(
+  local: StorageService | undefined,
+  appliedKeys: ReadonlySet<string>,
+  deferredConflictKeys: ReadonlySet<string>,
+  downloadedChanges: readonly EngineChange[] = [],
+): MarkedChanges {
+  const marked: MarkedChanges = new Map();
+  if (!local || typeof local.pathOf !== 'function' || appliedKeys.size === 0) return marked;
+  const { deferredNoteIds, deferredResourceIds } = collectDeferredEntities(deferredConflictKeys, downloadedChanges);
+  const eligibleKeys = new Set<string>();
+  for (const key of appliedKeys) {
+    if (deferredConflictKeys.has(key)) continue;
+    const sep = key.indexOf('\u001f');
+    if (sep < 0) continue;
+    const table = key.slice(0, sep);
+    const recordId = key.slice(sep + 1);
+    if (table === 'resources' && deferredResourceIds.has(recordId)) continue;
+    if (table === 'note_document_formats' && deferredNoteIds.has(recordId)) continue;
+    eligibleKeys.add(key);
+  }
+  if (eligibleKeys.size === 0) return marked;
+
+  for (const name of coordinatedDatabases) {
+    const path = local.pathOf(name);
+    if (!path || !fs.existsSync(path)) continue;
+    let db;
+    try { db = local.openFile(path, { profile: 'plain' }); }
+    catch { continue; }
+    try {
+      if (!changeLogTableExists(db)) continue;
+      const pending = filterPendingChangesForDatabase(getPendingChanges(db, null, null), name);
+      const ids = pending.entries
+        .filter(entry => eligibleKeys.has(keyOf(entry.table_name, entry.record_id)))
+        .map(entry => entry.id);
+      if (ids.length === 0) continue;
+      markSyncedWithTimestamp(db, ids);
+      marked.set(name, ids);
+    } finally {
+      local.close(db);
+    }
+  }
+  return marked;
 }
 export function markApplyFailuresVisible(result: SyncExecutionResult, applied: ApplyToDatabasesResult): void {
   if (applied.total_failed === 0) return;
@@ -103,15 +195,18 @@ export async function executeDownloadWithProgress(
   catch (error) { throw new Error(`下载同步失败: ${message(error)}`); }
   const total = downloaded.changes.length;
   await emitter.emitDownloading(total, total, null);
-  result.conflicts_detected = 0; let skipped = 0;
+  result.conflicts_detected = 0; let skipped = 0; let appliedKeys = new Set<string>();
   if (total > 0) {
     await emitter.emitApplying(0, total, 'sync:fileSync.applyingChanges');
     const applied = await options.application.apply(downloaded.changes, strategy);
     result.conflicts_detected = applied.total_conflicts; skipped = applied.total_incomplete_skipped;
-    markApplyFailuresVisible(result, applied); ensureDownloadApplyIsDurable(applied); skippedWarning(result, skipped);
+    markApplyFailuresVisible(result, applied); ensureDownloadApplyIsDurable(applied); appliedKeys = applied.applied_keys; skippedWarning(result, skipped);
     await emitter.emitApplying(total, total, null);
   }
-  await commitDownloadProgressIfNeeded(storage, downloaded, options);
+  const deferredConflictKeys = options.application.consumeDeferredConflictKeys?.() ?? new Set<string>();
+  const markedSuperseded = markDownloadSupersededKeys(options.localStorage, appliedKeys, deferredConflictKeys, downloaded.changes);
+  try { await commitDownloadProgressIfNeeded(storage, downloaded, options); }
+  catch (error) { rollbackMarkedChanges(options.localStorage, markedSuperseded, options.logger); throw error; }
   const report = await runFileLevelSync(storage, options.localStorage.locations.activeDir, 'Download', options, coordinator, new FileLevelProgress(emitter, 85, 100));
   if (report.failed) { result.success = false; if (report.warning !== null) append(result, report.warning); }
   return [result, skipped];
@@ -136,7 +231,7 @@ export async function executeBidirectionalWithProgress(
   }
   await commitDownloadProgressIfNeeded(storage, downloaded, options);
   const deferredConflictKeys = options.application.consumeDeferredConflictKeys?.() ?? new Set<string>();
-  const filtered = filterUploadCandidatesAfterDownload(enriched, appliedKeys, deferredConflictKeys, downloaded.changes);
+  const { toUpload: filtered, supersededByDownload } = partitionUploadCandidatesAfterDownload(enriched, appliedKeys, deferredConflictKeys, downloaded.changes);
   if (filtered.length < enriched.length) options.logger.info(`[data_governance] 双向同步: 已从上传列表中剔除 ${enriched.length - filtered.length} 条被下载覆盖或存在未决冲突的记录`);
   result.changes_uploaded = filtered.length;
   const active = options.localStorage.locations.activeDir;
@@ -155,7 +250,11 @@ export async function executeBidirectionalWithProgress(
     catch (error) { throw new Error(`上传变更失败: ${message(error)}`); }
     await emitter.emitUploading(filtered.length, filtered.length, null);
   }
-  const marked = markUploadedChanges(options.localStorage, filtered);
+  const changesToMark = supersededByDownload.length > 0 ? [...filtered, ...supersededByDownload] : filtered;
+  const marked = markUploadedChanges(options.localStorage, changesToMark);
+  if (supersededByDownload.length > 0) {
+    options.logger.info(`[data_governance] 双向同步: 已将 ${supersededByDownload.length} 条被下载覆盖的本地待同步变更标记为已同步`);
+  }
   if (ids.length > 0) options.logger.debug(`[data_governance] 双向同步标记变更完成: ${ids.length} 条`);
   const refreshed = collectLocalManifest(options.localStorage, options.deviceId, false).manifest;
   try { await uploadManifest(storage, refreshed, options, options.openState); }

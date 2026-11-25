@@ -4,11 +4,18 @@ import type { CoordinatedDatabaseName, DatabaseHandle, StorageService } from '..
 import type { PathsService } from '../../../platform/paths/api.ts';
 import type { DatabaseSyncStatusResponse, SyncStatusResponse } from '../api.ts';
 import { changeLogTableExists, getChangeLogStats, getLastSyncedChangeAt } from '../repository/change-log.ts';
+import { rowSyncTables } from './classification.ts';
 import type { SyncLogger } from './log.ts';
 import { compareUtf8 } from '../../../platform/util/portable.ts';
 
 const databases: readonly CoordinatedDatabaseName[] = ['vfs', 'llm_usage', 'chat_v2', 'mistakes'];
 const message = (error: unknown): string => error instanceof Error ? error.message : String(error);
+
+function rowSyncTableNamesForDatabase(database: CoordinatedDatabaseName): string[] {
+  return rowSyncTables()
+    .filter(entry => entry.database === database)
+    .map(entry => entry.table_name);
+}
 
 function open(storage: StorageService, name: CoordinatedDatabaseName): DatabaseHandle {
   const path = storage.pathOf(name);
@@ -71,9 +78,13 @@ export function getPendingBreakdown(storage: StorageService): PendingBreakdownRe
     }
     try {
       if (!changeLogTableExists(db)) continue;
-      const rows = db.all<{ table_name: string; count: number | bigint }>(
-        'SELECT table_name, COUNT(*) AS count FROM __change_log WHERE sync_version = 0 GROUP BY table_name ORDER BY count DESC, table_name ASC',
-      );
+      const allowedTables = rowSyncTableNamesForDatabase(name);
+      const rows = allowedTables.length === 0
+        ? []
+        : db.all<{ table_name: string; count: number | bigint }>(
+            `SELECT table_name, COUNT(*) AS count FROM __change_log WHERE sync_version = 0 AND table_name IN (${allowedTables.map((_, i) => `?${i + 1}`).join(', ')}) GROUP BY table_name ORDER BY count DESC, table_name ASC`,
+            allowedTables,
+          );
       const tables = rows.map(row => ({ table_name: row.table_name, count: Number(row.count) }));
       const pending = tables.reduce((sum, item) => sum + item.count, 0);
       totalPending += pending;
@@ -156,7 +167,7 @@ export async function getSyncStatus(
 
       let stats;
       try {
-        stats = getChangeLogStats(db);
+        stats = getChangeLogStats(db, rowSyncTableNamesForDatabase(name));
       } catch (error) {
         const detail = message(error);
         statusErrors.push(`${name}: 读取变更日志统计失败: ${detail}`);

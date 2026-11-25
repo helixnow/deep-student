@@ -7,8 +7,16 @@ import { CloudStorageError } from './errors.ts';
 import { defaultLogSink } from './logging.ts';
 import { documentDescendants, parseXml, type XmlElement } from './xml.ts';
 
-export const MAX_RETRY_WAIT_MS = 30_000;
+export const MAX_RETRY_WAIT_MS = 8_000;
 export const NUTSTORE_REQUESTS_PER_WINDOW = 540;
+/** Per-sync consecutive HTTP 503 circuit-breaker trip threshold. */
+export const WEBDAV_CONSECUTIVE_503_TRIP_THRESHOLD = 3;
+/** Per-sync cumulative HTTP 503 fault ceiling to stop alternating weak-net fault storms. */
+export const WEBDAV_MAX_503_PER_SYNC = 12;
+/** Per-sync cumulative retry overhead time budget (ms) so weak-net 503 fails cleanly in <20s. */
+export const WEBDAV_RETRY_BUDGET_MS = 15_000;
+/** Payload size ceiling for classifying PUT requests as control-plane/metadata calls. */
+export const WEBDAV_CONTROL_PLANE_MAX_BODY_BYTES = 256 * 1024;
 
 export function decodePath(path: string): string {
   try { return decodeURIComponent(path); } catch { return path; }
@@ -29,16 +37,16 @@ export function parseRetryAfter(raw: string): number | bigint | null {
   return delta >= 0 ? delta : null;
 }
 
-export function backoffDelayMs(attempt: number): number {
-  return Math.min(500 * 2 ** attempt, MAX_RETRY_WAIT_MS);
+export function backoffDelayMs(attempt: number, maxWaitMs = MAX_RETRY_WAIT_MS): number {
+  return Math.min(500 * 2 ** attempt, maxWaitMs);
 }
 
-/** webdav.rs:454: `Retry-After` capped by the 30 s retry budget. */
-export function cappedRetryAfter(res: { headers: Record<string, string> }): number | null {
+/** webdav.rs:454: `Retry-After` capped by the interactive retry wait budget. */
+export function cappedRetryAfter(res: { headers: Record<string, string> }, maxWaitMs = MAX_RETRY_WAIT_MS): number | null {
   const raw = res.headers['retry-after'];
   if (raw === undefined) return null;
   const parsed = parseRetryAfter(raw);
-  return parsed === null ? null : parsed > MAX_RETRY_WAIT_MS ? MAX_RETRY_WAIT_MS : Number(parsed);
+  return parsed === null ? null : parsed > maxWaitMs ? maxWaitMs : Number(parsed);
 }
 
 /** webdav.rs:348. Only the two server-side truncation boundaries observed in production. */
@@ -167,5 +175,12 @@ export function findLastModified(response: XmlElement): number {
 
 export function canonicalReasonOf(status: number): string {
   // Kept local to avoid importing the HTTP module's table into hot paths twice.
-  return status === 403 ? 'Forbidden' : status === 507 ? 'Insufficient Storage' : '';
+  switch (status) {
+    case 403: return 'Forbidden';
+    case 502: return 'Bad Gateway';
+    case 503: return 'Service Unavailable';
+    case 504: return 'Gateway Timeout';
+    case 507: return 'Insufficient Storage';
+    default: return '';
+  }
 }

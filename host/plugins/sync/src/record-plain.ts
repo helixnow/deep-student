@@ -4,14 +4,13 @@ import type { WorkspaceCoordinator } from '../../agent-workspace/api.ts';
 import type { EngineChange } from './change-payload.ts';
 import type { SyncManifest, MergeStrategy } from './merge.ts';
 import { executeDownload, executeBidirectional, type SyncExecutionResult } from './execute-download.ts';
-import { enforcePruneGapCheck, filterUploadCandidatesAfterDownload, markApplyFailuresVisible, ensureDownloadApplyIsDurable, commitDownloadProgressIfNeeded, type SyncPassOptions } from './record-progress.ts';
+import { enforcePruneGapCheck, partitionUploadCandidatesAfterDownload, markDownloadSupersededKeys, markApplyFailuresVisible, ensureDownloadApplyIsDurable, commitDownloadProgressIfNeeded, type SyncPassOptions } from './record-progress.ts';
 import { runFileLevelSync } from './file-level-sync.ts';
 import type { FileSyncDirection } from './workspace-sync.ts';
 import { uploadEnrichedChanges } from './upload-changes.ts';
 import { uploadManifest } from './manifest-upload.ts';
 import { collectLocalManifest } from './transfer-commands.ts';
 import { markUploadedChanges, rollbackMarkedChanges, archiveSyncedChangeLogs } from '../repository/sync-pass.ts';
-import { keyOf } from '../repository/apply-shared.ts';
 
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 function append(result: SyncExecutionResult, text: string) { result.error_message = result.error_message ? `${result.error_message}；${text}` : text; }
@@ -55,10 +54,17 @@ export async function executePlainSync(
         append(result, `同步已完成，但有 ${skipped} 条变更因数据不完整被跳过。建议在源设备重新执行完整同步以补全数据。`);
       }
     }
-    await commitDownloadProgressIfNeeded(storage, downloaded, options);
+    if (direction === 'Download') {
+      const deferredConflictKeys = options.application.consumeDeferredConflictKeys?.() ?? new Set<string>();
+      const markedSuperseded = markDownloadSupersededKeys(options.localStorage, appliedKeys, deferredConflictKeys, downloaded.changes);
+      try { await commitDownloadProgressIfNeeded(storage, downloaded, options); }
+      catch (error) { rollbackMarkedChanges(options.localStorage, markedSuperseded, options.logger); throw error; }
+    } else {
+      await commitDownloadProgressIfNeeded(storage, downloaded, options);
+    }
     if (direction === 'Bidirectional') {
       const deferredConflictKeys = options.application.consumeDeferredConflictKeys?.() ?? new Set<string>();
-      const filtered = filterUploadCandidatesAfterDownload(enriched, appliedKeys, deferredConflictKeys, downloaded.changes);
+      const { toUpload: filtered, supersededByDownload } = partitionUploadCandidatesAfterDownload(enriched, appliedKeys, deferredConflictKeys, downloaded.changes);
       if (filtered.length < enriched.length) options.logger.info(`[data_governance] 双向同步: 已从上传列表中剔除 ${enriched.length - filtered.length} 条被下载覆盖或存在未决冲突的记录`);
       result.changes_uploaded = filtered.length;
       const files = await runFileLevelSync(storage, active, 'Upload', options, coordinator);
@@ -68,7 +74,11 @@ export async function executePlainSync(
           try { await uploadEnrichedChanges(storage, filtered, options, options.openState, options.compression); }
           catch (error) { throw new Error(`上传变更失败: ${message(error)}`); }
         }
-        const marked = markUploadedChanges(options.localStorage, filtered, true);
+        const changesToMark = supersededByDownload.length > 0 ? [...filtered, ...supersededByDownload] : filtered;
+        const marked = markUploadedChanges(options.localStorage, changesToMark, true);
+        if (supersededByDownload.length > 0) {
+          options.logger.info(`[data_governance] 双向同步: 已将 ${supersededByDownload.length} 条被下载覆盖的本地待同步变更标记为已同步`);
+        }
         if (ids.length > 0) options.logger.debug(`[data_governance] 双向同步标记变更完成: ${ids.length} 条`);
         const refreshed = collectLocalManifest(options.localStorage, options.deviceId, false).manifest;
         try { await uploadManifest(storage, refreshed, options, options.openState); }
