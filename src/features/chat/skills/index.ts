@@ -45,8 +45,10 @@ export {
   serializeSkillToMarkdown,
 } from './parser';
 
-// P3 产物模板骨架
+// P3 产物模板骨架 & 用户自定义技能首轮硬约束渲染
 export {
+  USER_SKILL_DIRECTIVE_TAG,
+  isUserAuthoredSkill,
   renderSkillContentWithArtifact,
   validateArtifactSkeletonTypes,
   validateIntentAgainstSkeleton,

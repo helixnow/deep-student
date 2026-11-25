@@ -39,6 +39,36 @@ describe('chat_v2/pipeline/persistence.rs::tests', () => {
     expect(replaySnapshotHasMetadata({ skillContents: { a: 'body' } })).toBe(false);
   });
 
+  it('S4-02 buildReplaySkillPayloadSnapshot filters transient inactive skillEmbeddedTools/skillDependencies to active & loaded skills only', () => {
+    const toolSchema = (name: string) => ({ name, description: `${name} desc`, inputSchema: { type: 'object' } });
+    const snapshot = buildReplaySkillPayloadSnapshot({
+      activeSkillIds: ['active-a'],
+      skillInjectionAnchors: {
+        beforeTurnUser: false,
+        turnSkillIds: [],
+        toolAnchored: [{ toolCallId: 'call_1', skillIds: ['loaded-b'] }],
+      },
+      skillDependencies: {
+        'active-a': ['dep-c'],
+        'inactive-x': ['inactive-y'],
+      },
+      skillEmbeddedTools: {
+        'active-a': [toolSchema('tool_a')],
+        'loaded-b': [toolSchema('tool_b')],
+        'dep-c': [toolSchema('tool_c')],
+        'mcp-matched-d': [toolSchema('tool_d')],
+        'inactive-x': [toolSchema('tool_x')],
+        'inactive-z': [toolSchema('tool_z')],
+      },
+      mcpToolSchemas: [toolSchema('load_skills'), toolSchema('tool_d')],
+    });
+    expect(snapshot).not.toBeNull();
+    expect(Object.keys(snapshot!.skillEmbeddedTools ?? {}).sort()).toEqual([
+      'active-a', 'dep-c', 'loaded-b', 'mcp-matched-d',
+    ]);
+    expect(snapshot!.skillDependencies).toEqual({ 'active-a': ['dep-c'] });
+  });
+
   it('cited_memory_ids_map_citations_including_compressed_sources', () => {
     const toolResults = [toolResult({
       success: true,

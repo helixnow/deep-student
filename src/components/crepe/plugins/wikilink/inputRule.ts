@@ -16,7 +16,7 @@ import { wikilinkSchema } from './schema';
  */
 export const wikilinkInputRule = $inputRule(
   (ctx) =>
-    new InputRule(/\[\[([^\]\r\n]+?)\]\]$/, (state, match, start, end) => {
+    new InputRule(/\[\[([^[\]\r\n]+?)\]\]$/, (state, match, start, end) => {
       if (isInCodeContext(state, start)) return null;
       const parsed = parseWikiLinkInner(match[1] ?? '');
       if (!parsed) return null;

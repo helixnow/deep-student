@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Variant } from '../api.ts';
-import { enforceVariantsJsonSizeLimit } from '../repository/messages.ts';
+import { enforceVariantsJsonSizeLimit, serializeVariants } from '../repository/messages.ts';
 import type { ChatLogger } from '../src/logger.ts';
 
 function variant(index: number, error: string): Variant {
@@ -55,5 +55,43 @@ describe('repo.rs enforce_variants_json_size_limit', () => {
     const single = enforceVariantsJsonSizeLimit(output, variants, 'msg_single', log);
     expect(single).toBe(output);
     expect(entries.at(-1)).toEqual(['error', `[ChatV2::Repo] cannot truncate: single variant already exceeds limit (size=${Buffer.byteLength(output)}, message_id=msg_single)`]);
+  });
+  it('S4-02 serializeVariants compacts oversized variant.meta skill schemas before truncating oldest variants', () => {
+    const hugeSchema = { name: 'builtin-big', description: '说明'.repeat(50_000), inputSchema: { type: 'object' } };
+    const variants: Variant[] = [
+      {
+        id: 'var_v1_msg_1',
+        modelId: 'm1',
+        status: 'success',
+        blockIds: ['blk_1'],
+        createdAt: 1,
+        meta: {
+          versioned: true,
+          skillRuntimeBefore: {
+            activeSkillIds: ['skill-a'],
+            skillEmbeddedTools: { 'skill-a': [hugeSchema] },
+            mcpToolSchemas: [hugeSchema],
+          },
+        },
+      },
+      {
+        id: 'var_v2_msg_1',
+        modelId: 'm1',
+        status: 'success',
+        blockIds: ['blk_2'],
+        createdAt: 2,
+        meta: { versioned: true },
+      },
+    ];
+    const { log, entries } = recordingLogger();
+    const output = serializeVariants(variants, 'msg_1', log);
+    const parsed = JSON.parse(output) as Variant[];
+    expect(parsed.map(v => v.id)).toEqual(['var_v1_msg_1', 'var_v2_msg_1']);
+    expect(parsed[0]!.meta?.versioned).toBe(true);
+    expect(parsed[0]!.meta?.skillRuntimeBefore?.activeSkillIds).toEqual(['skill-a']);
+    expect(parsed[0]!.meta?.skillRuntimeBefore?.skillEmbeddedTools).toBeUndefined();
+    expect(parsed[0]!.meta?.skillRuntimeBefore?.mcpToolSchemas).toBeUndefined();
+    expect(Buffer.byteLength(output, 'utf8')).toBeLessThan(64 * 1024);
+    expect(entries.some(([level, msg]) => level === 'warn' && msg.includes('compacted replaceable skill/tool schemas'))).toBe(true);
   });
 });

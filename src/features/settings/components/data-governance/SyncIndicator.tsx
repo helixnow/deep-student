@@ -19,13 +19,22 @@ import * as DataGovernanceApi from '@/api/dataGovernance';
 
 const POLL_INTERVAL_MS = 30_000;
 
-export const SyncIndicator: React.FC<{ compact?: boolean; refreshSignal?: string | number }> = ({
+export const SyncIndicator: React.FC<{
+  compact?: boolean;
+  refreshSignal?: string | number;
+  onJumpToConflicts?: () => void;
+  onCountChange?: (totalGroups: number) => void;
+}> = ({
   compact = false,
   refreshSignal,
+  onJumpToConflicts,
+  onCountChange,
 }) => {
   const { t } = useTranslation('sync');
   const [counts, setCounts] = useState<DataGovernanceApi.RecordConflictCounts | null>(null);
   const [loading, setLoading] = useState(true);
+  const onCountChangeRef = React.useRef(onCountChange);
+  onCountChangeRef.current = onCountChange;
 
   useEffect(() => {
     let cancelled = false;
@@ -35,6 +44,7 @@ export const SyncIndicator: React.FC<{ compact?: boolean; refreshSignal?: string
         const result = await DataGovernanceApi.countRecordConflicts();
         if (!cancelled) {
           setCounts(result);
+          onCountChangeRef.current?.(result?.total_groups ?? 0);
         }
       } catch {
         // 静默：后端命令缺失或数据库未就绪时不骚扰用户
@@ -78,13 +88,37 @@ export const SyncIndicator: React.FC<{ compact?: boolean; refreshSignal?: string
     )
     .join(t('indicator.separator', { defaultValue: ', ' }));
 
+  const badgeLabel = t('indicator.conflictGroups', { count: total, defaultValue: '{{count}} 组冲突' });
+
+  if (onJumpToConflicts) {
+    return (
+      <button
+        type="button"
+        data-testid="sync-conflicts-jump-button"
+        onClick={onJumpToConflicts}
+        aria-label={t('indicator.jumpToConflictsAria', {
+          count: total,
+          defaultValue: '查看并跳转到 {{count}} 组未解决冲突',
+        })}
+        title={t('indicator.jumpToConflictsTitle', {
+          detail: perDb,
+          defaultValue: '点击跳转到下方记录级冲突列表（{{detail}}）',
+        })}
+        className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-warning/15 px-2.5 py-0.5 text-xs font-medium text-warning ring-1 ring-inset ring-warning/30 transition-colors hover:bg-warning/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/60 [@media(pointer:coarse)]:min-h-8"
+      >
+        <Warning size={12} aria-hidden="true" />
+        <span>{badgeLabel}</span>
+      </button>
+    );
+  }
+
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning ring-1 ring-inset ring-warning/30"
       title={t('indicator.unresolvedTitle', { detail: perDb, defaultValue: '未解决冲突：{{detail}}' })}
     >
       <Warning size={12} />
-      {t('indicator.conflictGroups', { count: total, defaultValue: '{{count}} 组冲突' })}
+      {badgeLabel}
     </span>
   );
 };

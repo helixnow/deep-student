@@ -125,10 +125,8 @@ describe('dstu/api.ts 错误文案 i18n（chat_host:vfs_api）', () => {
       const zhGroup = (zhCN as Record<string, unknown>).vfs_api as Record<string, string>;
       const enGroup = (enUS as Record<string, unknown>).vfs_api as Record<string, string>;
 
-      const usedKeys = new Set<string>();
-      for (const match of apiSource.matchAll(/'chat_host:vfs_api\.(\w+)'/g)) {
-        usedKeys.add(match[1]);
-      }
+      const allKeyMatches = Array.from(apiSource.matchAll(/'chat_host:vfs_api\.(\w+)'/g));
+      const usedKeys = new Set<string>(allKeyMatches.map((match) => match[1]));
       expect(usedKeys.size).toBeGreaterThan(0);
       for (const key of usedKeys) {
         expect(zhGroup[key], `zh-CN 缺少 vfs_api.${key}`).toBeTruthy();
@@ -136,17 +134,22 @@ describe('dstu/api.ts 错误文案 i18n（chat_host:vfs_api）', () => {
       }
 
       // defaultValue 兜底文案必须与 zh-CN locale 逐字一致（异步 namespace 未就绪时回退）
+      // 同一 key（如 resource_not_found）可在多个错误分支复用：同时校验所有调用点都携带
+      // 一致的 defaultValue，且所有唯一 key 均被覆盖。
       const pairs = apiSource.matchAll(
         /'chat_host:vfs_api\.(\w+)',\s*\{\s*defaultValue:\s*'([^']*)'/g
       );
       let pairCount = 0;
+      const keysWithDefaultValue = new Set<string>();
       for (const [, key, defaultValue] of pairs) {
         pairCount += 1;
+        keysWithDefaultValue.add(key);
         expect(defaultValue, `vfs_api.${key} 的 defaultValue 应与 zh-CN 一致`).toBe(
           zhGroup[key]
         );
       }
-      expect(pairCount).toBe(usedKeys.size);
+      expect(pairCount).toBe(allKeyMatches.length);
+      expect(keysWithDefaultValue.size).toBe(usedKeys.size);
     });
   });
 

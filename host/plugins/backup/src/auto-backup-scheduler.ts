@@ -32,6 +32,7 @@ import {
 } from './manifest.ts';
 import type { Operations } from './operations.ts';
 import { exportBackupToZip } from './zip.ts';
+import { formatBackupProgressMessage, resolveBackupLocale } from './progress-messages.ts';
 
 export const AUTO_BACKUP_INITIAL_DELAY_MS = 120_000;
 export const AUTO_BACKUP_CHECK_INTERVAL_MS = 3_600_000;
@@ -259,10 +260,11 @@ async function checkAndPerformAutoBackup(env: CheckEnv): Promise<void> {
     return;
   }
 
+  const locale = resolveBackupLocale(env.ctx);
   log.info('[AutoBackup] 开始执行自动备份...');
   const job = jobs.createJob('export');
   job.setParams({ backup_type: 'automatic_backup', include_assets: true, compression_level: 6, include_checksums: true });
-  job.markRunning('scan', 2, '自动灾备：正在建立一致性快照', 0, 4);
+  job.markRunning('scan', 2, formatBackupProgressMessage(locale, 'auto_backup.building_snapshot'), 0, 4);
 
   let status: AutoBackupStatus;
   try {
@@ -324,9 +326,10 @@ async function checkAndPerformAutoBackup(env: CheckEnv): Promise<void> {
     success: true,
     output_path: outcome.artifactName,
     resolved_path: null,
-    message: disasterRecovery
-      ? '自动灾备恢复点已验证并发布'
-      : '自动便携归档已发布（未加密 ZIP 不含密钥材料，导入后不能整槽恢复；恢复后需重新输入 API 凭据）',
+    message: formatBackupProgressMessage(
+      locale,
+      disasterRecovery ? 'auto_backup.completed_encrypted' : 'auto_backup.completed_portable',
+    ),
     error: null,
     duration_ms: null,
     stats: { automatic: true, recovery_kind: outcome.recoveryKind, restorable: disasterRecovery },
@@ -334,7 +337,7 @@ async function checkAndPerformAutoBackup(env: CheckEnv): Promise<void> {
     checkpoint_path: null,
     resumable_job_id: null,
   };
-  job.complete(`自动备份完成: ${outcome.artifactName}`, 4, 4, result);
+  job.complete(formatBackupProgressMessage(locale, 'auto_backup.completed', { zipName: outcome.artifactName }), 4, 4, result);
 }
 
 /** `FileManager::get_writable_app_data_dir`：运行时根是活动数据槽，不可写时按 Rust 顺序回退。 */
@@ -423,7 +426,8 @@ async function backupThroughStaging(
   }
   if (manifest === null) throw new Error('完整自动备份失败: 备份未生成清单');
 
-  job.markRunning('verify', 65, '一致性屏障已解除；资产与数据库必须同属一个快照，因此快照阶段无法进一步缩短', 2, 4);
+  const locale = resolveBackupLocale(ctx);
+  job.markRunning('verify', 65, formatBackupProgressMessage(locale, 'auto_backup.verifying_snapshot'), 2, 4);
   try { validateForSlotRestore(manifest); }
   catch (error) { throw new Error(`自动备份未达到可恢复完整快照要求，已拒绝导出: ${ioMessage(error)}`); }
   const databaseBytes = manifest.files.reduce((total, file) => total + BigInt(file.size), 0n);
@@ -450,7 +454,7 @@ async function backupThroughStaging(
   }
 
   const zipName = `auto-backup-${zipTimestamp(env.now())}.zip`;
-  job.markRunning('compress', 80, '一致性屏障已解除；正在压缩并发布自动备份', 3, 4);
+  job.markRunning('compress', 80, formatBackupProgressMessage(locale, 'auto_backup.compressing_and_publishing'), 3, 4);
   let zipPath: string;
   try {
     zipPath = (await exportBackupToZip(ctx, backupSubdir, {

@@ -441,6 +441,8 @@ describe('first-turn tool face (prompt cache A1/A2)', () => {
     registerBuiltin(SKILL_A);
     const catalog = generateAvailableSkillsPrompt();
     expect(catalog).toContain('在第一次工具调用中一次性加载完');
+    expect(catalog).toContain('<user_skill_directive>');
+    expect(catalog).toContain('第 1 轮回复起即具强制约束力');
   });
 
   it('preloads configured default skills once and reports only newly loaded ids', () => {

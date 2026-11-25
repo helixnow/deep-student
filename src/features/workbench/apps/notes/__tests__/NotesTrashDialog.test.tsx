@@ -123,21 +123,35 @@ describe('NotesTrashDialog', () => {
   it('selects/previews without restoring when clicking a trashed title or pressing Enter on row (S1-14)', async () => {
     listTrash.mockResolvedValueOnce({
       ok: true,
-      value: [node({ metadata: { contentPreview: 'Deleted preview body' } })],
+      value: [node({ name: 'S114_保留恢复笔记', metadata: { contentPreview: 'Deleted preview body' } })],
     });
-    renderDialog();
+    const { onChanged } = renderDialog();
 
-    const titleEl = await screen.findByText('Draft note');
-    fireEvent.click(titleEl);
+    // Title itself exposes an interactive button role so clicking/targeting it selects & previews
+    // rather than falling through to the "恢复 <name>" button.
+    const titleButton = await screen.findByRole('button', { name: 'S114_保留恢复笔记', exact: true });
+    expect(titleButton).toHaveAttribute('aria-pressed', 'false');
+
+    const titleText = within(titleButton).getByText('S114_保留恢复笔记');
+    fireEvent.click(titleText);
     expect(restoreItem).not.toHaveBeenCalled();
+    expect(titleButton).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('ntd-selected-preview')).toHaveTextContent('Deleted preview body');
 
-    const row = titleEl.closest('[data-trash-row]') as HTMLElement;
+    const row = titleButton.closest('[data-trash-row]') as HTMLElement;
     expect(row).toHaveAttribute('data-selected', 'true');
 
     fireEvent.keyDown(row, { key: 'Enter' });
     expect(restoreItem).not.toHaveBeenCalled();
     expect(row).not.toHaveAttribute('data-selected', 'true');
+
+    // Only clicking the explicit "恢复" button performs restore.
+    const restoreButton = screen.getByRole('button', {
+      name: /恢复 S114_保留恢复笔记|Restore S114_保留恢复笔记/i,
+    });
+    fireEvent.click(restoreButton);
+    await waitFor(() => expect(restoreItem).toHaveBeenCalledWith('note_1', 'note'));
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
   it('permanently deletes after confirm', async () => {

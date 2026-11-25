@@ -237,6 +237,8 @@
     "perDatabase": "{{db}}: {{groups}} group(s) ({{rows}} row(s))",
     "separator": ", ",
     "unresolvedTitle": "Unresolved conflicts: {{detail}}",
+    "jumpToConflictsTitle": "Click to jump to record conflicts below ({{detail}})",
+    "jumpToConflictsAria": "Jump to {{count}} unresolved conflict group(s)",
     "conflictGroups": "{{count}} conflict group(s)"
   },
   "syncNow": "Sync Now",
@@ -305,8 +307,10 @@
     "applyAndPullBtn": "Apply & Pull Cloud Data",
     "runBiSyncBtn": "Run Bidirectional Sync Now",
     "qrGeneratedAndPushedStatus": "Pairing code generated and latest snapshot pushed ({{summary}})",
-    "pushSnapshotFailed": "Pairing code generated, but pushing local snapshot failed: {{error}}",
+    "pushSnapshotFailed": "Failed to push local snapshot: {{error}}",
+    "pushSnapshotFailedFallback": "Please check your cloud storage settings, network, or permissions and try again",
     "applyPullFailedStatus": "Configuration applied, but pulling cloud data failed: {{error}}",
+    "applyPullFailedFallback": "Click \"Run Bidirectional Sync Now\" below to retry",
     "codeAppliedAndPulledStatus": "Configuration applied and cloud data pulled. {{summary}}"
   },
   "fileSync": {

@@ -169,7 +169,7 @@ describe('cloud-only DELETE 冲突组解决', () => {
     });
   });
 
-  it('「保留本地」可点击：确认后以仅含 cloud 行 id 的 expectedConflictIds 调用 keep_local（驳回云端败方 DELETE）', async () => {
+  it('「保留本地」可点击：先展开常驻内联确认条，确认后以仅含 cloud 行 id 的 expectedConflictIds 调用 keep_local（驳回云端败方 DELETE）', async () => {
     const user = userEvent.setup();
     render(<RecordConflictsPanel />);
     await waitFor(() => {
@@ -182,12 +182,16 @@ describe('cloud-only DELETE 冲突组解决', () => {
     expect(keepLocalButton).toBeEnabled();
     await user.click(keepLocalButton);
 
-    // 危险语义必须先确认，不静默执行
-    expect(mockUnifiedConfirm).toHaveBeenCalledTimes(1);
+    // 危险语义必须先展开常驻内联确认条，不静默执行
+    const confirmBar = await screen.findByTestId('conflict-keep-local-confirm-bar');
+    expect(confirmBar).toBeInTheDocument();
     expect(mockTranslate).toHaveBeenCalledWith(
       'data:governance.conflict_keep_local_cloud_only_confirm',
       { table: 'items', record: 'r07-one-sided-del' },
     );
+    expect(mockResolveRecordConflict).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId('conflict-keep-local-confirm-button'));
 
     await waitFor(() => {
       expect(mockResolveRecordConflict).toHaveBeenCalledWith(
@@ -201,8 +205,7 @@ describe('cloud-only DELETE 冲突组解决', () => {
     });
   });
 
-  it('「保留本地」确认被拒绝时绝不调用 resolve', async () => {
-    mockUnifiedConfirm.mockReturnValue(false);
+  it('「保留本地」确认被取消时绝不调用 resolve', async () => {
     const user = userEvent.setup();
     render(<RecordConflictsPanel />);
     await waitFor(() => {
@@ -213,8 +216,11 @@ describe('cloud-only DELETE 冲突组解决', () => {
       screen.getByRole('button', { name: 'data:governance.keep_local' }),
     );
 
-    expect(mockUnifiedConfirm).toHaveBeenCalledTimes(1);
+    expect(await screen.findByTestId('conflict-keep-local-confirm-bar')).toBeInTheDocument();
+    await user.click(screen.getByTestId('conflict-keep-local-cancel-button'));
+
     await waitFor(() => {
+      expect(screen.queryByTestId('conflict-keep-local-confirm-bar')).not.toBeInTheDocument();
       expect(mockResolveRecordConflict).not.toHaveBeenCalled();
     });
   });

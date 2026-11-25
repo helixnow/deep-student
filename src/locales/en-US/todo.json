@@ -175,6 +175,10 @@
       "durationMinutesSeconds": "{{minutes}}m {{seconds}}s",
       "durationSeconds": "{{seconds}}s"
     },
+    "builtin": {
+      "heartbeatName": "Study Heartbeat Check",
+      "heartbeatPrompt": "You are Deep Student's background heartbeat check agent. Check each item in order (use only available read-only tools; skip items whose tools are unavailable):\n1. Check due today or overdue todos with builtin-user_todo_get_summary;\n2. Check question banks/mistake notebooks with no practice in the last 3 days or high error rates with builtin-qbank_list (include_stats=true);\n3. Search relevant study records with builtin-unified_search if extra context is needed.\nOutput rules:\n- If nothing needs the user's attention, output only HEARTBEAT_OK with no other content;\n- Otherwise, list items concisely in English (count + suggested action) without containing HEARTBEAT_OK;\n- Do not ask the user questions, and do not perform any write or sensitive operations."
+    },
     "noHistory": "No runs yet",
     "new": "New task",
     "createTitle": "New scheduled task",

@@ -386,7 +386,11 @@ export function applyDownloadedChangesWithConflictGuard(
             const linkedNote = tx.get<{ id: string }>('SELECT id FROM notes WHERE resource_id = ?1 LIMIT 1', [remapped.record_id]);
             if (linkedNote && (localHasPendingForRecord(tx, 'notes', linkedNote.id) || hasUnresolvedConflictForRecord(tx, 'notes', linkedNote.id) || deferredResourceIds.has(remapped.record_id))) {
               const localRes = getRecordData(tx, 'resources', remapped.record_id, idColumn);
-              if (localRes !== null) {
+              const isSemanticEcho = remapped.operation !== 'Delete'
+                && remapped.data !== null
+                && localRes !== null
+                && recordsSemanticallyEqualForSync(localRes, remapped.data);
+              if (localRes !== null && !isSemanticEcho) {
                 outcome = {
                   winner: 'Cloud',
                   loser: 'Local',
@@ -431,7 +435,30 @@ export function applyDownloadedChangesWithConflictGuard(
             && isJsonObject(remapped.data)
             && typeof remapped.data.resource_id === 'string'
             && applyResult.applied_keys.has(keyOf('resources', remapped.data.resource_id));
-          const applied = applySingleChange(tx, remapped, idColumn, false, allowFieldMerge, context, pairedResourceApplied);
+          let noteMetadataAdvanced = false;
+          if (
+            remapped.table_name === 'notes'
+            && remapped.operation !== 'Delete'
+            && isJsonObject(remapped.data)
+            && Object.hasOwn(remapped.data, 'updated_at')
+            && !pairedResourceApplied
+          ) {
+            const localNoteForMeta = getRecordData(tx, 'notes', remapped.record_id, idColumn);
+            if (isJsonObject(localNoteForMeta)) {
+              const localMs = toTimestampMillis(localNoteForMeta.updated_at);
+              const cloudMs = toTimestampMillis(remapped.data.updated_at);
+              noteMetadataAdvanced = localMs !== null && cloudMs !== null && cloudMs > localMs;
+            }
+          }
+          const applied = applySingleChange(
+            tx,
+            remapped,
+            idColumn,
+            false,
+            allowFieldMerge,
+            context,
+            pairedResourceApplied || noteMetadataAdvanced,
+          );
           if (applied) {
             applyResult.success_count += 1;
             applyResult.applied_keys.add(keyOf(remapped.table_name, remapped.record_id));

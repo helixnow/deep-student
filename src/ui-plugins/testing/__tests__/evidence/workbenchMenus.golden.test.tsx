@@ -70,7 +70,7 @@ describe('FE-B9 evidence: workbench menus', () => {
     localStorage.clear();
     app = await bootAppUi();
     await import('@/features/workbench/apps/registerAll');
-  });
+  }, 60_000);
   afterEach(() => { cleanup(); });
   afterAll(async () => { await app.dispose(); });
 

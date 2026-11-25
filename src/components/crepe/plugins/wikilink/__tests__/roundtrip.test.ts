@@ -3,24 +3,56 @@ import { setupMilkdownTimers } from '../../../__tests__/milkdownTimers';
 setupMilkdownTimers();
 import { Editor, rootCtx, defaultValueCtx, editorViewCtx } from '@milkdown/kit/core';
 import { commonmark } from '@milkdown/kit/preset/commonmark';
+import { automd } from '@milkdown/plugin-automd';
 import { getMarkdown } from '@milkdown/kit/utils';
+import { TextSelection } from '@milkdown/prose/state';
+import { EditorView } from '@milkdown/prose/view';
 
 import { wikilinkPlugin } from '../index';
 import { WIKILINK_NODE_NAME } from '../schema';
 import { WIKILINK_EVENTS, normalizeResolve } from '../types';
 
-async function createEditor(markdown: string, pluginConfig?: Parameters<typeof wikilinkPlugin>[0]) {
+async function createEditor(
+  markdown: string,
+  pluginConfig?: Parameters<typeof wikilinkPlugin>[0],
+  options?: { withAutomd?: boolean },
+) {
   const root = document.createElement('div');
   document.body.appendChild(root);
-  const editor = await Editor.make()
+  let builder = Editor.make()
     .config((ctx) => {
       ctx.set(rootCtx, root);
       ctx.set(defaultValueCtx, markdown);
     })
-    .use(commonmark)
+    .use(commonmark);
+  if (options?.withAutomd) {
+    builder = builder.use(automd);
+  }
+  const editor = await builder
     .use(wikilinkPlugin(pluginConfig))
     .create();
   return { editor, root };
+}
+
+function collectWikilinks(view: EditorView): Array<{ target: string; label: string }> {
+  const links: Array<{ target: string; label: string }> = [];
+  view.state.doc.descendants((node) => {
+    if (node.type.name === WIKILINK_NODE_NAME) {
+      links.push({
+        target: String(node.attrs.target ?? ''),
+        label: String(node.attrs.label ?? ''),
+      });
+    }
+  });
+  return links;
+}
+
+async function flushAnimationFrames() {
+  await new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  });
 }
 
 async function destroyEditor(editor: Editor, root: HTMLElement) {
@@ -171,6 +203,116 @@ describe('wikilink markdown roundtrip', () => {
       expect(twice).not.toMatch(/\\\[/);
     } finally {
       await destroyEditor(second.editor, second.root);
+    }
+  });
+
+  it('never leaks automd sentinel ⁂ (U+2042) or swallows ]] when typing \\n[[ before an existing wikilink (S1-06)', async () => {
+    const coordsSpy = vi
+      .spyOn(EditorView.prototype, 'coordsAtPos')
+      .mockReturnValue({ left: 0, right: 1, top: 0, bottom: 20 });
+    const initial = '后续需要研究 [[S106_马尔可夫链平稳分布]] 这一主题。';
+    const { editor, root } = await createEditor(
+      initial,
+      { resolve: (target) => target === 'S106_马尔可夫链平稳分布' },
+      { withAutomd: true },
+    );
+    const view = editor.action((ctx) => ctx.get(editorViewCtx));
+    const focusSpy = vi.spyOn(view, 'hasFocus').mockReturnValue(true);
+    try {
+      // Simulate Enter (\n) followed by typing "[[" right before the paragraph containing the existing wikilink.
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)));
+      view.dispatch(view.state.tr.split(1));
+      view.dispatch(view.state.tr.insertText('['));
+      await flushAnimationFrames();
+      view.dispatch(view.state.tr.insertText('['));
+      await flushAnimationFrames();
+
+      const markdown = editor.action(getMarkdown());
+      const domText = root.textContent ?? '';
+      expect(markdown).not.toMatch(/[\u2042\u2234\u2205]/);
+      expect(domText).not.toMatch(/[\u2042\u2234\u2205]/);
+      expect(markdown).toContain('[[S106_马尔可夫链平稳分布]]');
+      expect(collectWikilinks(view)).toEqual([
+        { target: 'S106_马尔可夫链平稳分布', label: '' },
+      ]);
+      const linkEl = root.querySelector<HTMLElement>('.crepe-wikilink');
+      expect(linkEl?.dataset.resolved).toBe('true');
+      expect(linkEl?.textContent).toBe('S106_马尔可夫链平稳分布');
+    } finally {
+      focusSpy.mockRestore();
+      coordsSpy.mockRestore();
+      await destroyEditor(editor, root);
+    }
+  });
+
+  it('keeps existing wikilinks intact when typing literal \\n[[, [[ after a wikilink, or triggering automd on the same line (S1-06)', async () => {
+    const coordsSpy = vi
+      .spyOn(EditorView.prototype, 'coordsAtPos')
+      .mockReturnValue({ left: 0, right: 1, top: 0, bottom: 20 });
+    const initial = '后续需要研究 [[S106_马尔可夫链平稳分布]] 这一主题。';
+    const { editor, root } = await createEditor(
+      initial,
+      { resolve: (target) => target === 'S106_马尔可夫链平稳分布' },
+      { withAutomd: true },
+    );
+    const view = editor.action((ctx) => ctx.get(editorViewCtx));
+    const focusSpy = vi.spyOn(view, 'hasFocus').mockReturnValue(true);
+    try {
+      // 1. Insert literal "\n[[" before the existing wikilink in the same paragraph.
+      view.dispatch(view.state.tr.insertText('\n[[', 1));
+      await flushAnimationFrames();
+
+      // 2. Also trigger automd inline sync via **强调** on the same paragraph so runReplacer actively runs with placeholder.
+      const insertBoldAt = view.state.doc.content.size - 1;
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, insertBoldAt)));
+      view.dispatch(view.state.tr.insertText(' **强调** [['));
+      await flushAnimationFrames();
+
+      const markdown = editor.action(getMarkdown());
+      const domText = root.textContent ?? '';
+      expect(markdown).not.toMatch(/[\u2042\u2234\u2205]/);
+      expect(domText).not.toMatch(/[\u2042\u2234\u2205]/);
+      expect(markdown).toContain('[[S106_马尔可夫链平稳分布]]');
+      let hasStrong = false;
+      view.state.doc.descendants((node) => {
+        if (node.isText && node.text === '强调' && node.marks.some((m) => m.type.name === 'strong')) {
+          hasStrong = true;
+        }
+      });
+      expect(hasStrong).toBe(true);
+      expect(collectWikilinks(view)).toEqual([
+        { target: 'S106_马尔可夫链平稳分布', label: '' },
+      ]);
+    } finally {
+      focusSpy.mockRestore();
+      coordsSpy.mockRestore();
+      await destroyEditor(editor, root);
+    }
+  });
+
+  it('never leaks automd cursor placeholder when typing [[ before literal closing brackets ]] (S1-06)', async () => {
+    const coordsSpy = vi
+      .spyOn(EditorView.prototype, 'coordsAtPos')
+      .mockReturnValue({ left: 0, right: 1, top: 0, bottom: 20 });
+    const { editor, root } = await createEditor('foo]]', undefined, { withAutomd: true });
+    const view = editor.action((ctx) => ctx.get(editorViewCtx));
+    const focusSpy = vi.spyOn(view, 'hasFocus').mockReturnValue(true);
+    try {
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)));
+      view.dispatch(view.state.tr.insertText('['));
+      await flushAnimationFrames();
+      view.dispatch(view.state.tr.insertText('['));
+      await flushAnimationFrames();
+
+      const markdown = editor.action(getMarkdown());
+      const domText = root.textContent ?? '';
+      expect(markdown).not.toMatch(/[\u2042\u2234\u2205]/);
+      expect(domText).not.toMatch(/[\u2042\u2234\u2205]/);
+      expect(collectWikilinks(view)).toEqual([]);
+    } finally {
+      focusSpy.mockRestore();
+      coordsSpy.mockRestore();
+      await destroyEditor(editor, root);
     }
   });
 });

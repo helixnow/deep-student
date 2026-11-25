@@ -23,10 +23,71 @@ export type BackendSendOptions = SendOptions & {
   skillInjectionAnchors?: import('../../chat/api.ts').SkillInjectionAnchors | null;
 };
 
+function collectRelevantSkillIds(options: BackendSendOptions): Set<string> {
+  const relevant = new Set<string>();
+  for (const id of options.activeSkillIds ?? []) {
+    if (typeof id === 'string' && id.length > 0) relevant.add(id);
+  }
+  const anchors = options.skillInjectionAnchors;
+  if (anchors != null) {
+    for (const id of anchors.turnSkillIds ?? []) {
+      if (typeof id === 'string' && id.length > 0) relevant.add(id);
+    }
+    for (const entry of anchors.toolAnchored ?? []) {
+      for (const id of entry.skillIds ?? []) {
+        if (typeof id === 'string' && id.length > 0) relevant.add(id);
+      }
+    }
+  }
+  const activeToolNames = new Set(
+    (options.mcpToolSchemas ?? [])
+      .map(schema => schema?.name)
+      .filter((name): name is string => typeof name === 'string' && name.length > 0),
+  );
+  if (activeToolNames.size > 0 && options.skillEmbeddedTools != null) {
+    for (const [skillId, tools] of Object.entries(options.skillEmbeddedTools)) {
+      if (Array.isArray(tools) && tools.some(tool => typeof tool?.name === 'string' && activeToolNames.has(tool.name))) {
+        relevant.add(skillId);
+      }
+    }
+  }
+  const dependencies = options.skillDependencies;
+  if (dependencies != null && relevant.size > 0) {
+    const queue = [...relevant];
+    while (queue.length > 0) {
+      const skillId = queue.pop()!;
+      for (const dep of dependencies[skillId] ?? []) {
+        if (typeof dep === 'string' && dep.length > 0 && !relevant.has(dep)) {
+          relevant.add(dep);
+          queue.push(dep);
+        }
+      }
+    }
+  }
+  return relevant;
+}
+
+function pickRecordKeys<T>(
+  record: Record<string, T> | null | undefined,
+  keys: ReadonlySet<string>,
+): Record<string, T> {
+  if (record == null || keys.size === 0) return {};
+  const filtered: Record<string, T> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (keys.has(key)) filtered[key] = value;
+  }
+  return filtered;
+}
+
 /** types::ReplaySkillPayloadSnapshot::without_skill_contents. */
 export function buildReplaySkillPayloadSnapshot(
   options: BackendSendOptions,
 ): ReplaySkillPayloadSnapshot | null {
+  // Frontend sends the entire runtime-admitted skill catalog (~287 KB of schemas)
+  // transiently so the backend can service lazy `load_skills` calls mid-turn.
+  // Persist only skills that were actually active or loaded during this turn so
+  // message meta_json and multi-variant variants_json never bloat past size caps.
+  const relevantSkillIds = collectRelevantSkillIds(options);
   const snapshot: ReplaySkillPayloadSnapshot = {
     activeSkillIds: options.activeSkillIds ?? [],
     ...(options.executionAllowedTools === undefined || options.executionAllowedTools === null
@@ -34,8 +95,8 @@ export function buildReplaySkillPayloadSnapshot(
       : { executionAllowedTools: options.executionAllowedTools }),
     // Bodies are deliberately dropped: only ids and shapes may be persisted.
     skillContents: {},
-    skillDependencies: options.skillDependencies ?? {},
-    skillEmbeddedTools: options.skillEmbeddedTools ?? {},
+    skillDependencies: pickRecordKeys(options.skillDependencies, relevantSkillIds),
+    skillEmbeddedTools: pickRecordKeys(options.skillEmbeddedTools, relevantSkillIds),
     mcpToolSchemas: options.mcpToolSchemas ?? [],
     selectedMcpServers: options.mcpTools ?? [],
   };

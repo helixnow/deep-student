@@ -25,6 +25,10 @@ import {
 import { requestAutomationCreate } from '@/features/todo/automationCreateRequest';
 import { AutomationScheduleEditor } from '@/features/todo/components/automation/AutomationScheduleEditor';
 import { formatRelativeTime } from '@/features/todo/components/automation/automationFormat';
+import {
+  getAutomationDisplayName,
+  getAutomationDisplayPrompt,
+} from '@/utils/automationDisplay';
 import { formatWeekdayList } from '@/features/todo/components/automation/scheduleMath';
 import { AutomationStatusPill } from '@/features/todo/components/automation/AutomationStatusPill';
 import {
@@ -79,8 +83,12 @@ const ROW_MESSAGE_TIMEOUT_MS = 5_000;
 const fallbackTimezone = () =>
   Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai';
 
-const draftFromAutomation = (automation: AutomationListItem): FormDraft => ({
-  name: automation.name,
+const draftFromAutomation = (
+  automation: AutomationListItem,
+  displayName: string = automation.name,
+  displayPrompt: string = automation.prompt,
+): FormDraft => ({
+  name: displayName,
   actionType: automation.actionType,
   schedule: {
     ...automation.schedule,
@@ -88,7 +96,7 @@ const draftFromAutomation = (automation: AutomationListItem): FormDraft => ({
       ? automation.schedule.timezone
       : automation.schedule.timezone || fallbackTimezone(),
   },
-  prompt: automation.prompt,
+  prompt: displayPrompt,
   agentPrompt: automation.agentPrompt ?? '',
   sessionMode: automation.sessionMode ?? 'isolated',
   modelId: automation.modelId ?? '',
@@ -484,6 +492,22 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
   }, [confirmingBackgroundOff]);
 
   const locale = i18n.resolvedLanguage || i18n.language || 'zh-CN';
+  const resolveDisplayName = useCallback(
+    (automation: AutomationRowItem) => getAutomationDisplayName(
+      automation,
+      t as (key: string, options?: Record<string, unknown>) => string,
+      locale,
+    ),
+    [locale, t],
+  );
+  const resolveDisplayPrompt = useCallback(
+    (automation: AutomationRowItem) => getAutomationDisplayPrompt(
+      automation,
+      t as (key: string, options?: Record<string, unknown>) => string,
+      locale,
+    ),
+    [locale, t],
+  );
   const weekdayLabels = useMemo(() => (
     [0, 1, 2, 3, 4, 5, 6].map((day) => t(`settings:automation.weekdays.${day}`))
   ), [t]);
@@ -552,11 +576,12 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
   const handleToggleEnabled = async (automation: AutomationRowItem, enabled: boolean) => {
     setActionError(null);
     setNotice(null);
+    const displayName = resolveDisplayName(automation);
     try {
       await setEnabled(automation.id, automation.version, enabled);
       setNotice(t(enabled
         ? 'settings:automation.notices.enabled'
-        : 'settings:automation.notices.disabled', { name: automation.name }));
+        : 'settings:automation.notices.disabled', { name: displayName }));
     } catch (cause) {
       if (isVersionConflict(cause)) {
         // store 在冲突时已自动 refresh 拉回真实状态，这里只做行内提示
@@ -570,9 +595,10 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
   const handleRunNow = async (automation: AutomationRowItem) => {
     setActionError(null);
     setNotice(null);
+    const displayName = resolveDisplayName(automation);
     try {
       await runNow(automation.id, automation.version);
-      setNotice(t('settings:automation.notices.started', { name: automation.name }));
+      setNotice(t('settings:automation.notices.started', { name: displayName }));
     } catch (cause) {
       if (isVersionConflict(cause)) {
         setRowMessage({ id: automation.id, text: t('settings:automation.row_updated_elsewhere') });
@@ -585,11 +611,12 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
   const handleConfirmDelete = async (automation: AutomationRowItem) => {
     setActionError(null);
     setNotice(null);
+    const displayName = resolveDisplayName(automation);
     try {
       await remove(automation.id, automation.version);
       setConfirmingDeleteId(null);
       if (expandedId === automation.id) setExpandedId(null);
-      setNotice(t('settings:automation.notices.deleted', { name: automation.name }));
+      setNotice(t('settings:automation.notices.deleted', { name: displayName }));
     } catch (cause) {
       setConfirmingDeleteId(null);
       if (isVersionConflict(cause)) {
@@ -707,6 +734,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
   }
 
   const renderRow = (automation: AutomationRowItem) => {
+    const displayName = resolveDisplayName(automation);
     const rowBusy = busyKey !== null && busyKey.endsWith(`:${automation.id}`);
     const enableBusy = busyKey === `enable:${automation.id}`;
     const runBusy = busyKey === `run:${automation.id}`;
@@ -772,8 +800,8 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
         >
           <div className="min-w-0 flex-1 space-y-1">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <span className="min-w-0 truncate text-sm font-medium text-foreground" title={automation.name}>
-                {automation.name}
+              <span className="min-w-0 truncate text-sm font-medium text-foreground" title={displayName}>
+                {displayName}
               </span>
               <span className="shrink-0 rounded border border-border bg-muted/60 px-1.5 py-0.5 text-2xs text-muted-foreground">
                 {t(`settings:automation.action_type.${automation.actionType}`)}
@@ -825,7 +853,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                 size="sm"
                 checked={automation.enabled}
                 disabled={rowBusy}
-                aria-label={t('settings:automation.actions.toggle', { name: automation.name })}
+                aria-label={t('settings:automation.actions.toggle', { name: displayName })}
                 onCheckedChange={(checked) => void handleToggleEnabled(automation, checked)}
               />
             )}
@@ -834,7 +862,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               size="icon"
               iconOnly
               className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-              aria-label={t('settings:automation.actions.run_now', { name: automation.name })}
+              aria-label={t('settings:automation.actions.run_now', { name: displayName })}
               title={t('settings:automation.actions.run_now_short')}
               disabled={rowBusy}
               onClick={() => void handleRunNow(automation)}
@@ -848,7 +876,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               size="icon"
               iconOnly
               className={cn('!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11', expanded && 'bg-primary/10 text-primary')}
-              aria-label={t('settings:automation.actions.edit', { name: automation.name })}
+              aria-label={t('settings:automation.actions.edit', { name: displayName })}
               aria-expanded={expanded}
               title={t('settings:automation.actions.edit_short')}
               disabled={updateBusy}
@@ -869,7 +897,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                   size="icon"
                   iconOnly
                   className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-                  aria-label={t('settings:automation.actions.delete', { name: automation.name })}
+                  aria-label={t('settings:automation.actions.delete', { name: displayName })}
                   disabled
                 >
                   <Trash className="h-4 w-4" />
@@ -881,7 +909,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
                 size="icon"
                 iconOnly
                 className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 text-destructive hover:text-destructive"
-                aria-label={t('settings:automation.actions.delete', { name: automation.name })}
+                aria-label={t('settings:automation.actions.delete', { name: displayName })}
                 title={t('settings:automation.actions.delete_short')}
                 disabled={rowBusy}
                 onClick={() => setConfirmingDeleteId(automation.id)}
@@ -903,7 +931,7 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
             <AutomationForm
               mode="edit"
               idPrefix={`edit-${automation.id}`}
-              initialDraft={draftFromAutomation(automation)}
+              initialDraft={draftFromAutomation(automation, displayName, resolveDisplayPrompt(automation))}
               onSubmit={(draft) => handleSaveEdit(automation, draft)}
               onCancel={() => setExpandedId(null)}
             />

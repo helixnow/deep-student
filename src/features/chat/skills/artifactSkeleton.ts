@@ -21,37 +21,100 @@ import type { SkillArtifactDeclaration, SkillDefinition } from './types';
 /** 骨架注入段的包裹标签（prompt 内可识别、审计可过滤） */
 const ARTIFACT_TEMPLATE_TAG = 'artifact_template';
 
+/** 用户自定义/已改写激活技能的首轮硬性约束包裹标签（S4-06 P1 #1） */
+export const USER_SKILL_DIRECTIVE_TAG = 'user_skill_directive';
+const USER_SKILL_SELF_CHECK_TAG = 'user_skill_self_check';
+
+export type RenderableSkillInput = Pick<SkillDefinition, 'id' | 'content' | 'artifact'> &
+  Partial<Pick<SkillDefinition, 'name' | 'location' | 'isBuiltin' | 'isCustomized' | 'packageSource' | 'sourcePath'>>;
+
+function escapeXmlAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 /**
- * 把产物模板声明渲染为 skill 正文的附加段。
- * 无 artifact 声明或骨架为空时原样返回。
+ * 判断技能是否为用户自建或用户显式修改过的自定义技能。
+ *
+ * - 非内置来源（global / project / external）或已自定义内置技能（isCustomized=true）返回 true；
+ * - 原生内置技能及未提供来源字段的轻量单测桩返回 false（保持原样输出与零额外 token 开销）。
+ */
+export function isUserAuthoredSkill(skill: RenderableSkillInput): boolean {
+  if (skill.isCustomized === true) return true;
+  if (skill.isBuiltin === true || skill.packageSource === 'builtin') return false;
+  if (skill.sourcePath?.startsWith('builtin://')) return false;
+  return (
+    skill.location === 'global' ||
+    skill.location === 'project' ||
+    skill.packageSource === 'global' ||
+    skill.packageSource === 'project' ||
+    skill.packageSource === 'external'
+  );
+}
+
+/**
+ * 把产物模板声明与用户自定义技能的首轮硬性约束框架渲染进 skill 正文。
+ *
+ * - 原生内置技能且无 artifact 声明（或骨架为空）时原样返回；
+ * - 非内置/用户自定义技能且正文非空时，增加紧凑高显著性的首轮约束指令头与输出前自检尾，
+ *   确保其中的明确规则、格式约束与禁止项（如「禁止直接给出完整证明/答案」「只给下一步方向」）
+ *   在 Turn 1 即被严格遵守，且 live 与 original replay 共享同一渲染结果（逐字节一致）。
  */
 export function renderSkillContentWithArtifact(
-  skill: Pick<SkillDefinition, 'id' | 'content' | 'artifact'>,
+  skill: RenderableSkillInput,
 ): string {
   const content = skill.content ?? '';
   const artifact = skill.artifact;
-  if (!artifact?.intentSkeleton) return content;
 
-  const layoutLock = artifact.layoutLock === true;
-  const dataToolsAttr = artifact.dataTools?.length
-    ? ` dataTools="${artifact.dataTools.join(',')}"`
-    : '';
-  const skeletonJson = JSON.stringify(artifact.intentSkeleton, null, 2);
+  let body = content;
+  if (artifact?.intentSkeleton) {
+    const layoutLock = artifact.layoutLock === true;
+    const dataToolsAttr = artifact.dataTools?.length
+      ? ` dataTools="${escapeXmlAttr(artifact.dataTools.join(','))}"`
+      : '';
+    const skeletonJson = JSON.stringify(artifact.intentSkeleton, null, 2);
 
-  const section = [
-    '',
-    `<${ARTIFACT_TEMPLATE_TAG} skillId="${skill.id}" layoutLock="${layoutLock}"${dataToolsAttr}>`,
-    layoutLock
-      ? '【产物模板】本技能已声明产物布局骨架。调用 render_generative_ui 时 intent 必须严格遵循以下骨架：只允许填充数据（props 内的值），不得增删块或改变块顺序。'
-      : '【产物模板】本技能已声明产物布局骨架。调用 render_generative_ui 时 intent 应遵循以下骨架结构，可按需补充块。',
-    '```json',
-    skeletonJson,
-    '```',
-    `调用时填 skeletonRef="${skill.id}" 以声明遵循该骨架。`,
-    `</${ARTIFACT_TEMPLATE_TAG}>`,
+    const section = [
+      '',
+      `<${ARTIFACT_TEMPLATE_TAG} skillId="${escapeXmlAttr(skill.id)}" layoutLock="${layoutLock}"${dataToolsAttr}>`,
+      layoutLock
+        ? '【产物模板】本技能已声明产物布局骨架。调用 render_generative_ui 时 intent 必须严格遵循以下骨架：只允许填充数据（props 内的值），不得增删块或改变块顺序。'
+        : '【产物模板】本技能已声明产物布局骨架。调用 render_generative_ui 时 intent 应遵循以下骨架结构，可按需补充块。',
+      '```json',
+      skeletonJson,
+      '```',
+      `调用时填 skeletonRef="${skill.id}" 以声明遵循该骨架。`,
+      `</${ARTIFACT_TEMPLATE_TAG}>`,
+    ].join('\n');
+
+    body += section;
+  }
+
+  if (
+    !isUserAuthoredSkill(skill) ||
+    body.trim().length === 0 ||
+    body.includes(`<${USER_SKILL_DIRECTIVE_TAG}`)
+  ) {
+    return body;
+  }
+
+  const header = [
+    `<${USER_SKILL_DIRECTIVE_TAG} skillId="${escapeXmlAttr(skill.id)}" enforcement="strict" scope="turn-1-and-all">`,
+    '【用户自定义激活技能 · 首轮强制生效】以下规则由用户主动编写并启用，优先级高于默认解题/作答习惯。起草第 1 轮及后续每轮回复前，必须逐条核对并严格遵守其中全部硬性规则、格式要求与禁止项（特别是「禁止直接给出完整答案/完整证明」「只给下一步思考方向」等负向约束，绝不可擅自越界或提前剧透）。',
+    `</${USER_SKILL_DIRECTIVE_TAG}>`,
   ].join('\n');
 
-  return content + section;
+  const footer = [
+    `<${USER_SKILL_SELF_CHECK_TAG}>`,
+    '【输出前自检】确认本条回复未违反上方自定义技能的任何禁止项或格式约束，再输出给用户。',
+    `</${USER_SKILL_SELF_CHECK_TAG}>`,
+  ].join('\n');
+
+  return `${header}\n\n${body}\n\n${footer}`;
 }
 
 export interface SkeletonTypeValidation {

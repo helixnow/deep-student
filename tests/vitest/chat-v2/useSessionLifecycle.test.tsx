@@ -7,10 +7,20 @@ import type { ChatSession } from '@/features/chat/types/session';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useSuperAgentEnabledStore } from '@/stores/superAgentEnabledStore';
 
-const { createSessionWithDefaultsMock, invokeMock, sessionManagerGetMock } = vi.hoisted(() => ({
+const {
+  createSessionWithDefaultsMock,
+  invokeMock,
+  sessionManagerGetMock,
+  sessionManagerGetCurrentSessionIdMock,
+  sessionManagerHasMock,
+  sessionManagerPeekMock,
+} = vi.hoisted(() => ({
   createSessionWithDefaultsMock: vi.fn(),
   invokeMock: vi.fn(),
   sessionManagerGetMock: vi.fn(),
+  sessionManagerGetCurrentSessionIdMock: vi.fn<() => string | null>(() => null),
+  sessionManagerHasMock: vi.fn<(id: string) => boolean>(() => false),
+  sessionManagerPeekMock: vi.fn(),
 }));
 
 vi.mock('@/features/chat/core/session/createSessionWithDefaults', () => ({
@@ -20,6 +30,9 @@ vi.mock('@/features/chat/core/session/createSessionWithDefaults', () => ({
 vi.mock('@/features/chat/core/session/sessionManager', () => ({
   sessionManager: {
     get: sessionManagerGetMock,
+    getCurrentSessionId: sessionManagerGetCurrentSessionIdMock,
+    has: sessionManagerHasMock,
+    peek: sessionManagerPeekMock,
   },
 }));
 
@@ -116,6 +129,9 @@ describe('useSessionLifecycle hidden draft creation', () => {
     createSessionWithDefaultsMock.mockReset();
     invokeMock.mockReset();
     sessionManagerGetMock.mockReset();
+    sessionManagerGetCurrentSessionIdMock.mockReset().mockReturnValue(null);
+    sessionManagerHasMock.mockReset().mockReturnValue(false);
+    sessionManagerPeekMock.mockReset();
     useSessionListStore.getState().setSnapshot([], false);
   });
 

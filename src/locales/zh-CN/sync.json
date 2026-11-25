@@ -237,6 +237,8 @@
     "perDatabase": "{{db}}: {{groups}} 组（{{rows}} 行）",
     "separator": ", ",
     "unresolvedTitle": "未解决冲突：{{detail}}",
+    "jumpToConflictsTitle": "点击跳转到下方记录级冲突列表（{{detail}}）",
+    "jumpToConflictsAria": "查看并跳转到 {{count}} 组未解决冲突",
     "conflictGroups": "{{count}} 组冲突"
   },
   "syncNow": "立即同步",
@@ -305,8 +307,10 @@
     "applyAndPullBtn": "接入并立即拉取云端数据",
     "runBiSyncBtn": "立即执行双向云同步",
     "qrGeneratedAndPushedStatus": "已生成配对码并推送最新快照（{{summary}}）",
-    "pushSnapshotFailed": "配对码已生成，但推送本机快照失败：{{error}}",
+    "pushSnapshotFailed": "推送本机最新快照失败：{{error}}",
+    "pushSnapshotFailedFallback": "请检查云存储配置、网络或权限后重试",
     "applyPullFailedStatus": "配置已接入，但拉取云端数据失败：{{error}}",
+    "applyPullFailedFallback": "请点击下方「立即执行双向云同步」重试",
     "codeAppliedAndPulledStatus": "配置已接入并已完成云端数据拉取。{{summary}}"
   },
   "fileSync": {

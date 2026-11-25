@@ -11,7 +11,7 @@
  */
 
 html, body, #root {
-	font-family: var(--font-family);
+	font-family: var(--font-family), var(--font-math-fallback), sans-serif;
 	font-size: var(--font-size-base);
 	line-height: var(--line-height-normal);
 	font-weight: var(--font-weight-normal);
@@ -120,11 +120,16 @@ small, .text-sm {
 
 /* study-ui 对齐：仅侧边栏范围使用更贴近参考项目的字体栈 */
 .font-sidebar-study-ui {
-	font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+	font-family: ui-sans-serif, system-ui, var(--font-math-fallback), sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 	font-weight: var(--font-weight-normal);
 	font-synthesis: none;
 	--sidebar-study-surface: var(--sidebar);
 	--sidebar-study-hover: var(--interactive-hover);
 	--sidebar-study-selected: var(--interactive-selected);
 	--sidebar-study-border: var(--sidebar-border);
+}
+
+/* 对话与 Markdown 正文显式保留数学符号回退字体（≠, ≤, ≥, ≈, ∈, ∀, ∃, →, ∞, ∫, ∑） */
+:where(.markdown-body, .chat-prose, .markdown-content) {
+	font-family: var(--chat-font-family, var(--font-family)), var(--font-math-fallback), sans-serif;
 }

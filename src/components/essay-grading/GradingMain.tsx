@@ -12,9 +12,20 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
 import { inferGradingPhase, type GradingPhase } from '@/essay-grading/gradingPhase';
 import { getModeDisplayName } from '@/essay-grading/modeI18n';
+import { parseStreamingContent } from '@/essay-grading/streamingMarkerParser';
 import type { EssayTextStats } from '@/essay-grading/textStats';
 import type { SuggestionChange } from '@/essay-grading/suggestionAnchors';
 import type { UploadedImage } from '../EssayGradingWorkbench';
+import {
+  computeStaleRubricInfo,
+  fingerprintGradingResult,
+  hydrateGradedRubricMeta,
+  maxScoresDiffer,
+  mergeAvailableRubricModes,
+  resolveInitialGradedRubric,
+  resolveRubricMetaById,
+  type GradedRubricMeta,
+} from './rubricResultContext';
 import { cn } from '@/lib/utils';
 
 interface GradingMainProps {
@@ -98,6 +109,10 @@ interface GradingMainProps {
   currentRound: number;
   /** 当前显示的是已完成的一轮（有历史结果可看） */
   hasGradedRound?: boolean;
+  /** 可选：显式指定产生当前批改结果的评分标准元信息（未传时自动追踪并从评分块推断） */
+  gradedRubricId?: string | null;
+  gradedRubricName?: string | null;
+  gradedMaxScore?: number | null;
 
   // 模式管理
   onModesChange?: () => void;
@@ -174,6 +189,9 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   onDismissMistakesFeedback,
   currentRound,
   hasGradedRound = false,
+  gradedRubricId,
+  gradedRubricName,
+  gradedMaxScore,
   onModesChange,
   settingsAsPage = false,
   isActive,
@@ -229,11 +247,155 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   const expandInput = React.useCallback(() => setInputExpanded(true), []);
   const collapseInput = React.useCallback(() => setInputExpanded(false), []);
   const canGrade = (inputText ?? '').trim().length > 0 || uploadedImages.length > 0;
-  const currentMode = modes.find((mode) => mode.id === modeId);
+  const allAvailableModes = React.useMemo(
+    () => mergeAvailableRubricModes(modes),
+    // modeId ensures newly created local custom rubrics resolve before async mode reload finishes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [modes, modeId],
+  );
+  const currentMode = allAvailableModes.find((mode) => mode.id === modeId) ?? modes.find((mode) => mode.id === modeId);
   const modeName = currentMode ? getModeDisplayName(currentMode, t) : undefined;
   const modelName = (models.find((model) => model.id === modelId) ?? models.find((model) => model.is_default))?.name;
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const resultRef = React.useRef<HTMLDivElement>(null);
+
+  // S3-02: 追踪产生当前展示批改结果的评分标准，切换标准后立即提示结果过期并提供一键重批
+  const selectedRubric = React.useMemo(
+    () => resolveRubricMetaById(modeId, allAvailableModes, t),
+    [modeId, allAvailableModes, t],
+  );
+  const resultFingerprint = React.useMemo(
+    () => (isGrading ? '' : fingerprintGradingResult(gradingResult)),
+    [isGrading, gradingResult],
+  );
+  const parsedResultScore = React.useMemo(
+    () => (!isGrading && resultFingerprint ? parseStreamingContent(gradingResult, true).score : null),
+    [isGrading, resultFingerprint, gradingResult],
+  );
+  const resultRubricCacheRef = React.useRef<Map<string, GradedRubricMeta>>(new Map());
+  const wasGradingRef = React.useRef(isGrading);
+  const preGradingFingerprintRef = React.useRef('');
+  const activeGradingRubricRef = React.useRef<GradedRubricMeta | null>(null);
+  const [trackedResultRubric, setTrackedResultRubric] = React.useState<{
+    fingerprint: string;
+    meta: GradedRubricMeta;
+  } | null>(null);
+
+  useEffect(() => {
+    const wasGrading = wasGradingRef.current;
+    wasGradingRef.current = isGrading;
+
+    if (isGrading) {
+      if (!wasGrading) {
+        preGradingFingerprintRef.current = fingerprintGradingResult(gradingResult);
+      }
+      activeGradingRubricRef.current = {
+        id: selectedRubric.id,
+        name: selectedRubric.name,
+        maxScore: selectedRubric.maxScore,
+      };
+      return;
+    }
+
+    if (!resultFingerprint) {
+      activeGradingRubricRef.current = null;
+      setTrackedResultRubric(null);
+      return;
+    }
+
+    if (wasGrading && activeGradingRubricRef.current) {
+      const runRubric = activeGradingRubricRef.current;
+      activeGradingRubricRef.current = null;
+      const unchangedResult = resultFingerprint === preGradingFingerprintRef.current;
+      const scoreConflictsWithRun =
+        parsedResultScore != null &&
+        maxScoresDiffer(parsedResultScore.maxTotal, runRubric.maxScore);
+      if (!(unchangedResult && (Boolean(error) || scoreConflictsWithRun))) {
+        const completedMeta: GradedRubricMeta = {
+          id: runRubric.id,
+          name: runRubric.name,
+          maxScore: runRubric.maxScore ?? parsedResultScore?.maxTotal ?? null,
+        };
+        resultRubricCacheRef.current.set(resultFingerprint, completedMeta);
+        setTrackedResultRubric({ fingerprint: resultFingerprint, meta: completedMeta });
+        return;
+      }
+    }
+
+    const cached = resultRubricCacheRef.current.get(resultFingerprint);
+    if (cached) {
+      setTrackedResultRubric((prev) =>
+        prev && prev.fingerprint === resultFingerprint && prev.meta === cached
+          ? prev
+          : { fingerprint: resultFingerprint, meta: cached },
+      );
+      return;
+    }
+
+    const initialMeta = resolveInitialGradedRubric({
+      parsedScore: parsedResultScore,
+      selectedRubric,
+      modes: allAvailableModes,
+      t,
+    });
+    resultRubricCacheRef.current.set(resultFingerprint, initialMeta);
+    setTrackedResultRubric({ fingerprint: resultFingerprint, meta: initialMeta });
+  }, [isGrading, resultFingerprint, gradingResult, parsedResultScore, selectedRubric, allAvailableModes, error, t]);
+
+  const resolvedGradedRubric = React.useMemo<GradedRubricMeta | null>(() => {
+    if (isGrading || !resultFingerprint) return null;
+    if (gradedRubricId !== undefined || gradedRubricName !== undefined || gradedMaxScore !== undefined) {
+      const baseFromId = gradedRubricId ? resolveRubricMetaById(gradedRubricId, allAvailableModes, t) : null;
+      return {
+        id: gradedRubricId ?? null,
+        name: gradedRubricName ?? baseFromId?.name ?? selectedRubric.name,
+        maxScore: gradedMaxScore ?? baseFromId?.maxScore ?? parsedResultScore?.maxTotal ?? null,
+      };
+    }
+    const rawMeta =
+      trackedResultRubric && trackedResultRubric.fingerprint === resultFingerprint
+        ? trackedResultRubric.meta
+        : resultRubricCacheRef.current.get(resultFingerprint) ??
+          resolveInitialGradedRubric({
+            parsedScore: parsedResultScore,
+            selectedRubric,
+            modes: allAvailableModes,
+            t,
+          });
+    return hydrateGradedRubricMeta(rawMeta, allAvailableModes, t);
+  }, [
+    isGrading,
+    resultFingerprint,
+    gradedRubricId,
+    gradedRubricName,
+    gradedMaxScore,
+    trackedResultRubric,
+    parsedResultScore,
+    selectedRubric,
+    allAvailableModes,
+    t,
+  ]);
+
+  const staleRubric = React.useMemo(
+    () =>
+      computeStaleRubricInfo({
+        hasResult: Boolean(resultFingerprint),
+        isGrading,
+        graded: resolvedGradedRubric,
+        selected: selectedRubric,
+      }),
+    [resultFingerprint, isGrading, resolvedGradedRubric, selectedRubric],
+  );
+
+  // 批改结果/评分卡应按产生该结果的真实标准渲染（避免旧雅思 9 分制误套新 25 分制的得分率/及格徽章）
+  const resultGradingModeId = staleRubric ? staleRubric.graded.id : (resolvedGradedRubric?.id ?? modeId);
+  const handleRegradeWithSelectedRubric = React.useCallback(() => {
+    if (onRegrade) {
+      onRegrade();
+    } else {
+      onGrade();
+    }
+  }, [onRegrade, onGrade]);
 
   // 批改中阶段推断（供 InputPanel 锁定提示条显示阶段进度）
   const gradingPhase = React.useMemo<GradingPhase | undefined>(
@@ -345,7 +507,10 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       currentRound={currentRound}
       roundNavigation={roundNavigation}
       navigateRoundsInHeader={inputCollapsed}
-      gradingModeId={modeId}
+      gradingModeId={resultGradingModeId}
+      staleRubric={staleRubric}
+      onRegradeWithSelectedRubric={handleRegradeWithSelectedRubric}
+      canRegradeWithSelectedRubric={canGrade}
     />
   );
 

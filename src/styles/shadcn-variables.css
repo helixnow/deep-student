@@ -66,21 +66,24 @@
   /* =========================================
      字体系统 (clean-inspired)
      ========================================= */
-  
+
+  /* 数学符号回退栈：防止 Linux Chromium 等环境下 ≠ (U+2260)、≤、≥、≈、∈、∀、∃、→、∞、∫、∑ 渲染为豆腐块 */
+  --font-math-fallback: "Noto Sans Math", "DejaVu Sans", "Liberation Sans", "KaTeX_Main", "Apple Symbols", "Segoe UI Symbol", "Cambria Math", "STIX Two Math", "Symbola";
+
   /* 主字体栈 - 优先系统字体，确保原生感 */
-  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, var(--font-math-fallback), sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   
   /* 中文优化字体栈 */
-  --font-family-cn: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --font-family-cn: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", var(--font-math-fallback), sans-serif;
 
   /* study-ui 全局应用字体栈 */
-  --app-font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
+  --app-font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", var(--font-math-fallback), sans-serif;
 
   /* study-ui 风格的侧边栏字体栈，仅用于局部侧边栏范围 */
-  --font-family-sidebar-study-ui: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
+  --font-family-sidebar-study-ui: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", var(--font-math-fallback), sans-serif;
   
   /* 等宽字体 */
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", "DejaVu Sans Mono", var(--font-math-fallback), monospace;
   
   /* 语义化字体大小 */
   --font-size-scale: 1;

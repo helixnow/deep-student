@@ -9,6 +9,9 @@ import type {
   BackupJobSummary, JobCheckpoint, PersistedJob, ImportProgress,
 } from '../api.ts';
 import { ioMessage, utcNow } from './io.ts';
+import {
+  backupPhaseStageCode, formatBackupProgressMessage, inferBackupProgressMessageKey, resolveBackupLocale,
+} from './progress-messages.ts';
 
 export const INCREMENTAL_BACKUP_DISABLED_MESSAGE = 'Incremental backup has been removed; use full backup or cloud sync';
 export function defaultJobParams(): BackupJobParams {
@@ -185,7 +188,13 @@ export class Jobs implements BackupJobManager {
       if (elapsed > 0) event.eta_seconds = Math.trunc(Math.max(0, Math.fround(elapsed * Math.fround(Math.fround(100 - event.progress) / event.progress))));
     }
     event.progress = Math.min(100, Math.max(0, event.progress));
-    this._ctx.backendEvents.emit('backup-job-progress', event);
+    const messageKey = inferBackupProgressMessageKey(event.phase, event.message);
+    const payload = {
+      ...event,
+      stage: backupPhaseStageCode(event.phase),
+      ...(messageKey ? { message_key: messageKey } : {}),
+    };
+    this._ctx.backendEvents.emit('backup-job-progress', payload);
   }
   emitLegacyProgress(progress: ImportProgress): void { if (!this._disposed) this._ctx.backendEvents.emit('backup-import-progress', structuredClone(progress)); }
   persistJob(id: string): void {
@@ -259,7 +268,9 @@ export class Jobs implements BackupJobManager {
         if (state.event.finished_at && Math.trunc((now - Date.parse(state.event.finished_at)) / 1000) > maxAgeSeconds) this.removeJob(id);
       } else if (state.event.status === 'running' && state.maxDuration !== null && state.startedInstant !== undefined
         && performance.now() - state.startedInstant > state.maxDuration) {
-        this.requestCancel(id); this.markFailure(id, '任务执行超时');
+        const locale = resolveBackupLocale(this._ctx);
+        this.requestCancel(id);
+        this.markFailure(id, formatBackupProgressMessage(locale, 'backup.job_timeout'));
       }
     }
   }
@@ -270,8 +281,9 @@ export class Jobs implements BackupJobManager {
     this._persistQuietly(id);
   }
   markCancelled(id: string, message: string | null): void {
+    const locale = resolveBackupLocale(this._ctx);
     this._update(id, 'cancelled', 'cancelled', 0, message, 0, 0,
-      { success: false, output_path: null, message, error: '任务已取消', duration_ms: null, requires_restart: false });
+      { success: false, output_path: null, message, error: formatBackupProgressMessage(locale, 'backup.job_cancelled'), duration_ms: null, requires_restart: false });
     this._deleteQuietly(id); this.scheduleJobRemoval(id);
   }
   _warn(message: string, error: unknown): void { this._ctx.logger('backup').warn(`${message}: ${ioMessage(error)}`); }

@@ -55,6 +55,7 @@ import { AutomationRunHistory } from './automation/AutomationRunHistory';
 import { AutomationScheduleEditor } from './automation/AutomationScheduleEditor';
 import { AutomationTemplatePicker } from './automation/AutomationTemplates';
 import { formatAbsoluteTime, formatRelativeTime } from './automation/automationFormat';
+import { getAutomationDisplayName } from '@/utils/automationDisplay';
 import { computeNextRuns, formatWeekdayList } from './automation/scheduleMath';
 import '../styles/automation.css';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
@@ -348,8 +349,15 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
   }, [openCreate]);
 
   const automationNames = useMemo(
-    () => Object.fromEntries(automations.map((automation) => [automation.id, automation.name])),
-    [automations],
+    () => Object.fromEntries(automations.map((automation) => [
+      automation.id,
+      getAutomationDisplayName(
+        automation,
+        t as (key: string, options?: Record<string, unknown>) => string,
+        locale,
+      ),
+    ])),
+    [automations, locale, t],
   );
 
   const setField = useCallback(<K extends keyof CreateDraft>(key: K, value: CreateDraft[K]) => {

@@ -372,6 +372,14 @@
     "label": "部分结果",
     "hint": "批改未完成，以下为已生成的部分内容"
   },
+  "stale_rubric": {
+    "banner_with_scale": "当前展示的是旧评分标准「{{gradedRubric}}（{{gradedMax}}分制）」的批改结果，与已选标准「{{selectedRubric}}（{{selectedMax}}分制）」不一致",
+    "banner_without_scale": "当前展示的是旧评分标准「{{gradedRubric}}」的批改结果，与已选标准「{{selectedRubric}}」不一致",
+    "regrade_cta": "按新标准重新批改",
+    "score_badge": "旧标准结果：{{gradedRubric}}",
+    "unknown_rubric": "原有评分标准",
+    "scale_fallback": "{{max}}分制标准"
+  },
   "system_prompt_label": "系统提示词",
   "score_generating": "评分生成中...",
   "api_errors": {

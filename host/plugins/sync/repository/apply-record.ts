@@ -14,7 +14,7 @@ import { compareLwwTimestamps, lwwDevicePair, lwwTimestampMillis, timestampValue
 import { recomputeTodoCompletedPomodorosIfRelevant } from './pomodoro-counts.ts';
 import { snapshotRecordWithData } from './history.ts';
 import { newBatchId, REASON_POLICY_OVERRIDE } from '../src/history.ts';
-import { canonicalizeSyncValueForCompare, getRecordData, recordsSemanticallyEqualForSync, SYNC_FIELD_DELTAS_KEY } from './record-data.ts';
+import { canonicalizeSyncValueForCompare, getRecordData, normalizeSqliteSecondDeleteTimestamp, recordsSemanticallyEqualForSync, SYNC_FIELD_DELTAS_KEY } from './record-data.ts';
 import { saveConflictRecord, ensureConflictTable, resolveOne } from './conflict-resolver.ts';
 import {
   buildPrimaryKeyPredicate,
@@ -149,7 +149,9 @@ function currentDeleteVersion(
 }
 
 function changeVersion(change: EngineChange, defaultDeviceId: string): DeleteVersion {
-  let changedAt = change.changed_at;
+  let changedAt = change.operation === 'Delete'
+    ? normalizeSqliteSecondDeleteTimestamp(change.changed_at)
+    : change.changed_at;
   if (change.data !== null && typeof change.data === 'object' && !Array.isArray(change.data) && !isJsonFloat(change.data)) {
     const updatedAt = timestampValueToLwwString(change.data.updated_at);
     if (updatedAt !== null) changedAt = updatedAt;
@@ -438,15 +440,35 @@ function applySingleRecord(
   noteHistory?.validateIncoming?.(db, tableName, recordId, data);
   const historyNotes = noteHistory?.affectedNotes?.(db, tableName, recordId) ?? [];
   let previousNoteResource: string | null = null;
+  let skipBeforeSyncForMetadataOnlyNote = false;
   if (tableName === 'notes' && historyNotes.length > 0) {
     try {
-      const row = db.get('SELECT resource_id FROM notes WHERE id=?1', [recordId]);
-      previousNoteResource = row === undefined ? null : String(row.resource_id);
+      const existingNote = getRecordData(db, 'notes', recordId, 'id');
+      if (isJsonObject(existingNote)) {
+        previousNoteResource = typeof existingNote.resource_id === 'string' ? existingNote.resource_id : null;
+        if (isJsonObject(data)) {
+          const sameField = (field: string): boolean => {
+            if (!Object.hasOwn(data, field)) return true;
+            const localVal = existingNote[field] ?? null;
+            const remoteVal = data[field] ?? null;
+            if (localVal === remoteVal) return true;
+            return stringifyJsonLossless(canonicalizeSyncValueForCompare(localVal))
+              === stringifyJsonLossless(canonicalizeSyncValueForCompare(remoteVal));
+          };
+          skipBeforeSyncForMetadataOnlyNote =
+            sameField('resource_id')
+            && sameField('title')
+            && sameField('tags')
+            && sameField('props');
+        }
+      }
     } catch (error) {
       databaseError(message(error));
     }
   }
-  if (historyNotes.length > 0) noteHistory?.snapshotNotes?.(db, historyNotes, 'before_sync');
+  if (historyNotes.length > 0 && !skipBeforeSyncForMetadataOnlyNote) {
+    noteHistory?.snapshotNotes?.(db, historyNotes, 'before_sync');
+  }
 
   const tableIdent = quoteIdentifier(tableName);
   if (data === null || typeof data !== 'object' || Array.isArray(data) || isJsonFloat(data)) {
@@ -716,9 +738,10 @@ export function applySingleChange(
     const pkValues = parseRecordKeyValues(change.table_name, change.record_id, pkColumns);
     const pkPredicate = buildPrimaryKeyPredicate(pkColumns);
     const pkPredicateAfter = buildPrimaryKeyPredicate(pkColumns, 2);
+    const normalizedChangedAt = normalizeSqliteSecondDeleteTimestamp(change.changed_at);
 
     if (!skipLww) {
-      const cloudMillis = lwwTimestampMillis(change.changed_at);
+      const cloudMillis = lwwTimestampMillis(normalizedChangedAt);
       if (cloudMillis === null) {
         databaseError(
           `DELETE changed_at 不可解析，fail-closed 拒绝删除: ${change.table_name}.${idColumn} = ${change.record_id}, changed_at="${change.changed_at}"`,
@@ -739,7 +762,7 @@ export function applySingleChange(
               localTimestamp,
               localDevice,
               stringifyJsonLossless(localData),
-              change.changed_at,
+              normalizedChangedAt,
               cloudDevice,
               '',
             ) > 0) {
@@ -761,17 +784,34 @@ export function applySingleChange(
       }
     }
 
-    if (hasTombstone) {
+    // VFS trashable tables (`notes`, `resources`, `folder_items`) propagate soft-delete via
+    // UPDATE(deleted_at != null); an explicit DELETE operation always represents hard purge
+    // and must physically delete the row so it leaves Trash and never resurrects.
+    const isVfsHardPurgeTable =
+      change.table_name === 'notes'
+      || change.table_name === 'resources'
+      || change.table_name === 'folder_items';
+
+    if (change.table_name === 'resources' && tableExists(db, 'notes')) {
+      const stillReferenced = Boolean(
+        db.pluck('SELECT EXISTS(SELECT 1 FROM notes WHERE resource_id = ?1)', [change.record_id]),
+      );
+      if (stillReferenced) {
+        return false;
+      }
+    }
+
+    if (hasTombstone && !isVfsHardPurgeTable) {
       const declared = columnDeclaredType(db, change.table_name, 'deleted_at') ?? 'TEXT';
       const sql = `UPDATE ${tableIdent} SET "deleted_at" = ?1 WHERE ${pkPredicateAfter} AND "deleted_at" IS NULL`;
       let tombstoneValue: SqlParam;
       if (declared.toUpperCase().includes('INT')) {
-        const millis = lwwTimestampMillis(change.changed_at);
+        const millis = lwwTimestampMillis(normalizedChangedAt);
         if (millis === null) databaseError(`软删除时间戳不可解析: "${change.changed_at}"`);
         tombstoneValue = millis;
       } else {
-        const parsed = parseRfc3339(change.changed_at);
-        tombstoneValue = parsed === null ? change.changed_at : toRfc3339(parsed.epochNanos);
+        const parsed = parseRfc3339(normalizedChangedAt);
+        tombstoneValue = parsed === null ? normalizedChangedAt : toRfc3339(parsed.epochNanos);
       }
       try {
         db.run(sql, [tombstoneValue, ...pkValues]);
@@ -779,6 +819,13 @@ export function applySingleChange(
         databaseError(`软删除记录失败: ${message(error)}`);
       }
     } else {
+      if (change.table_name === 'notes' && tableHasColumn(db, 'note_document_revisions', 'version_id')) {
+        try {
+          db.run('UPDATE note_document_revisions SET pinned = 0 WHERE note_id = ?1 AND pinned = 1', pkValues);
+        } catch (error) {
+          databaseError(`清理待彻底删除笔记的保留版本标记失败: ${message(error)}`);
+        }
+      }
       try {
         db.run(`DELETE FROM ${tableIdent} WHERE ${pkPredicate}`, pkValues);
       } catch (error) {

@@ -426,7 +426,7 @@ describe('Stage 5 R3-E UI Regressions', () => {
   });
 
   it('S5-08/S5-18: UnsyncedItemsPanel displays pending offline uploads and localizeBackendErrorText localizes network & progress strings', async () => {
-    render(<UnsyncedItemsPanel />);
+    render(<UnsyncedItemsPanel showPendingUploads />);
 
     await waitFor(() => {
       const queue = screen.getByTestId('pending-upload-queue');

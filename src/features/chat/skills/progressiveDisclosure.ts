@@ -687,6 +687,7 @@ export function generateAvailableSkillsPrompt(): string {
   lines.push('');
   lines.push('<tool_calling_rules>');
   lines.push('【重要】所有技能组中包含的工具必须通过正常的工具调用方式使用，不要直接输出 JSON 文本。调用时请严格遵循技能文档中的参数格式示例。');
+  lines.push('【硬性约束】当上下文注入已启用的 <skill_instructions>（尤其含 <user_skill_directive> 的用户自定义技能）时，其中所有明确规则、格式规定与禁止项（如「禁止直接给出完整证明/最终答案」「只给下一步提示」等）从第 1 轮回复起即具强制约束力，起草回复前必须逐条遵守。');
   lines.push('</tool_calling_rules>');
 
   return lines.join('\n');

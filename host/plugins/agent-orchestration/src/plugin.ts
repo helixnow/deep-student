@@ -244,21 +244,26 @@ export function createAgentOrchestrationPlugin(options: AgentOrchestrationPlugin
         failedCount: summary.failedCount, nextRunAt: summary.nextRunAt, backgroundEnabled,
         onceCompletedCount: summary.onceCompletedCount, lastFailedRunAt: summary.lastFailedRunAt };
     }));
-    ctx.commands.register('chat_v2_automation_list', () => runCommand(() => automationListResponse(openDatabase())));
+    const readLanguage = (): string | null => {
+      try { return ctx.settings.get('language'); }
+      catch { return null; }
+    };
+    ctx.commands.register('chat_v2_automation_list', () => runCommand(() => automationListResponse(openDatabase(), readLanguage())));
     ctx.commands.register<Commands['chat_v2_automation_create']['args'], unknown>(
       'chat_v2_automation_create', ({ request }) => runCommand(() => {
         const automation = createAutomation(openDatabase(), createFieldsFromRequest(request,
           request.trustedProfile == null ? null : normalizeTrustedProfile(request.trustedProfile)));
         emitChanged('create', automation.id);
-        return { success: true, automation: automationToListItem(automation, Date.now()) };
+        return { success: true, automation: automationToListItem(automation, Date.now(), readLanguage()) };
       }),
     );
     ctx.commands.register<Commands['chat_v2_automation_set_enabled']['args'], unknown>(
       'chat_v2_automation_set_enabled', ({ automationId, expectedVersion, enabled }) => runCommand(() => {
         const { previous, current } = setAutomationEnabled(openDatabase(), automationId, expectedVersion, enabled);
+        const locale = readLanguage();
         emitChanged('set_enabled', automationId);
-        return { success: true, previous: automationToListItem(previous, Date.now()),
-          current: automationToListItem(current, Date.now()) };
+        return { success: true, previous: automationToListItem(previous, Date.now(), locale),
+          current: automationToListItem(current, Date.now(), locale) };
       }),
     );
     ctx.commands.register<Commands['chat_v2_automation_update']['args'], unknown>(
@@ -269,10 +274,11 @@ export function createAgentOrchestrationPlugin(options: AgentOrchestrationPlugin
           ? { value: request.trustedProfile == null ? null : normalizeTrustedProfile(request.trustedProfile) } : undefined;
         const { previous, current } = updateAutomationFull(openDatabase(), automationId, request.expectedVersion,
           updateFieldsFromRequest(request, trustedProfile));
+        const locale = readLanguage();
         emitChanged('update', automationId);
         const response: Record<string, unknown> = {
-          success: true, previous: automationToListItem(previous, Date.now()),
-          current: automationToListItem(current, Date.now()), next_trigger: current.next_run_at,
+          success: true, previous: automationToListItem(previous, Date.now(), locale),
+          current: automationToListItem(current, Date.now(), locale), next_trigger: current.next_run_at,
         };
         if (onceAutomationCompleted(current)) {
           response.once_completed = true;
@@ -285,7 +291,7 @@ export function createAgentOrchestrationPlugin(options: AgentOrchestrationPlugin
       'chat_v2_automation_delete', ({ automationId, expectedVersion }) => runCommand(() => {
         const deleted = deleteAutomation(openDatabase(), automationId, expectedVersion);
         emitChanged('delete', automationId);
-        return { success: true, automationId, deleted: automationToListItem(deleted, Date.now()), reversible: false };
+        return { success: true, automationId, deleted: automationToListItem(deleted, Date.now(), readLanguage()), reversible: false };
       }),
     );
     ctx.commands.register<Commands['chat_v2_automation_runs']['args'], unknown>(
@@ -490,7 +496,7 @@ export function createAgentOrchestrationPlugin(options: AgentOrchestrationPlugin
           ctx.logger.warn(`[AutomationScheduler] stale run recovery failed: ${errorMessage(error)}`);
         }
         try {
-          if (ensureHeartbeatAutomation(startup.db)) {
+          if (ensureHeartbeatAutomation(startup.db, Date.now(), readLanguage())) {
             ctx.logger.info('[AutomationScheduler] provisioned default heartbeat automation (disabled)');
           }
         } catch (error) {
@@ -588,13 +594,13 @@ export function createAgentOrchestrationPlugin(options: AgentOrchestrationPlugin
       catch { return null; }
     };
     ctx.provide('agentAutomation', {
-      list: () => automationListResponse(openDatabase()) as unknown as Json,
+      list: () => automationListResponse(openDatabase(), readLanguage()) as unknown as Json,
       create: async (request: AutomationCreateCommandRequest) => automationToListItem(runCommand(() => {
         const automation = createAutomation(openDatabase(), createFieldsFromRequest(request,
           request.trustedProfile == null ? null : normalizeTrustedProfile(request.trustedProfile)));
         emitChanged('create', automation.id);
         return automation;
-      }), Date.now()) as unknown as Json,
+      }), Date.now(), readLanguage()) as unknown as Json,
       update: async (request: AutomationUpdateCommandRequest) => {
         const trustedProfile = Object.hasOwn(request, 'trustedProfile')
           ? { value: request.trustedProfile == null ? null : normalizeTrustedProfile(request.trustedProfile) }
@@ -602,17 +608,17 @@ export function createAgentOrchestrationPlugin(options: AgentOrchestrationPlugin
         const { current } = runCommand(() => updateAutomationFull(openDatabase(), rustTrim(request.automationId),
           request.expectedVersion, updateFieldsFromRequest(request, trustedProfile)));
         emitChanged('update', request.automationId);
-        return automationToListItem(current, Date.now()) as unknown as Json;
+        return automationToListItem(current, Date.now(), readLanguage()) as unknown as Json;
       },
       setEnabled: async (automationId: string, expectedVersion: number, enabled: boolean) => {
         const { current } = runCommand(() => setAutomationEnabled(openDatabase(), automationId, expectedVersion, enabled));
         emitChanged('set_enabled', automationId);
-        return automationToListItem(current, Date.now()) as unknown as Json;
+        return automationToListItem(current, Date.now(), readLanguage()) as unknown as Json;
       },
       delete: async (automationId: string, expectedVersion: number) => {
         const deleted = runCommand(() => deleteAutomation(openDatabase(), automationId, expectedVersion));
         emitChanged('delete', automationId);
-        return automationToListItem(deleted, Date.now()) as unknown as Json;
+        return automationToListItem(deleted, Date.now(), readLanguage()) as unknown as Json;
       },
       runNow: async (automationId: string, expectedVersion: number) => runCommand(
         () => runAutomationNow(runtimeDeps(), automationId, expectedVersion)) as unknown as Json,

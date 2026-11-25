@@ -6,6 +6,10 @@
  * 渲染成没有层级的平铺文本（「操作系统课堂笔记」的多级要点完全看不出结构）。
  * 这里只补最基本的块级排版；`.not-prose` 区域（代码块、表格、公式容器）不受影响。
  */
+.prose {
+  font-family: var(--font-family), var(--font-math-fallback), sans-serif;
+}
+
 .prose :where(p, ul, ol, blockquote, pre, table, hr):not(:where(.not-prose, .not-prose *)) {
   margin-top: 0.6em;
   margin-bottom: 0.6em;

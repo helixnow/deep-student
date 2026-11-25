@@ -35,6 +35,7 @@ describe('buildNoteEditSuggestionIntent', () => {
 
     const actionBar = intent.blocks.find((b) => b.type === 'action-bar');
     const actions = (actionBar!.props as { actions: Array<{ id: string; riskLevel?: string }> }).actions;
-    expect(actions.find((a) => a.id === 'apply-note-edit')?.riskLevel).toBe('high');
+    // apply-note-edit 仅在目标笔记中打开非破坏性 Diff 审阅面板，真正写入由 Diff 面板内确认
+    expect(actions.find((a) => a.id === 'apply-note-edit')?.riskLevel).toBe('low');
   });
 });

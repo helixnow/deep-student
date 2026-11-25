@@ -20,6 +20,7 @@ import {
 import { databasePath, userHomeDir } from './paths.ts';
 import { rustTrim } from '../../../platform/util/portable.ts';
 import { ioMessage } from './io.ts';
+import { formatBackupProgressMessage, resolveBackupLocale } from './progress-messages.ts';
 import { archivePathRequiresExplicitTrust } from './manifest.ts';
 import { prepareBackupRestoreDestination } from './restore-files.ts';
 import type { VfsMaintenanceService } from '../../vfs-repos/api.ts';
@@ -469,10 +470,11 @@ export async function createBackup(context: BackupContext, options: CreateBackup
   }
   if (!backupDir) throw new Error('无法生成唯一备份目录（多次尝试均冲突）');
 
+  const locale = resolveBackupLocale(ctx);
   const manifest = newManifest(ctx.app.version);
   manifest.backup_id = backupId;
   try {
-    options.onProgress?.('scan', '正在备份核心数据库', 0, 4);
+    options.onProgress?.('scan', formatBackupProgressMessage(locale, 'backup.backing_up_core_databases'), 0, 4);
     const selected = options.selectedDatabases ?? DATABASE_IDS;
     const total = selected.length;
     let index = 0;
@@ -497,7 +499,7 @@ export async function createBackup(context: BackupContext, options: CreateBackup
       updateCoverage(manifest, `database:${id}`, 'complete', [file.path]);
       manifest.schema_versions[id] = schemaVersionOf(ctx, src);
       index += 1;
-      options.onProgress?.('checkpoint', `已备份数据库 ${id}`, index, total);
+      options.onProgress?.('checkpoint', formatBackupProgressMessage(locale, 'backup.database_backed_up', { id }), index, total);
     }
 
     options.checkContinue?.();
@@ -511,7 +513,7 @@ export async function createBackup(context: BackupContext, options: CreateBackup
     markPartial(manifest);
 
     if (options.includeAssets) {
-      options.onProgress?.('compress', '正在备份资产文件', 0, 1);
+      options.onProgress?.('compress', formatBackupProgressMessage(locale, 'backup.backing_up_assets'), 0, 1);
       const filtered = options.assetTypes && options.assetTypes.length > 0
         ? options.assetTypes.filter((type): type is AssetType => defaultAssetOptions().asset_types.includes(type as AssetType))
         : [];
@@ -582,7 +584,7 @@ export async function createBackup(context: BackupContext, options: CreateBackup
     }
     refreshIncludedComponents(manifest);
 
-    options.onProgress?.('verify', '正在校验备份', 0, 1);
+    options.onProgress?.('verify', formatBackupProgressMessage(locale, 'backup.verifying'), 0, 1);
     validateUntrusted(manifest);
     if (manifest.snapshot_kind === 'full') validateForSlotRestore(manifest);
     saveManifest(join(backupDir, MANIFEST_FILENAME), manifest, ctx.logger('backup'));
@@ -593,7 +595,7 @@ export async function createBackup(context: BackupContext, options: CreateBackup
       catch (e) { ctx.logger('backup').warn(`删除未通过校验的清单失败: ${ioMessage(e)}`); }
       throw new Error(`备份验证失败（${verification.databaseErrors.length + verification.assetErrors.length} 个错误）。备份可能已损坏，请使用其他备份或重新创建备份。\n详情:\n${detail}`);
     }
-    options.onProgress?.('verify', '备份完成', 1, 1);
+    options.onProgress?.('verify', formatBackupProgressMessage(locale, 'backup.completed_short'), 1, 1);
     return manifest;
   } catch (error) {
     try { await rm(backupDir, { recursive: true, force: true }); }

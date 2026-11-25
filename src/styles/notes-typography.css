@@ -156,7 +156,7 @@
 }
 
 .notes-crepe-shell {
-  --notes-font-family: var(--font-family);
+  --notes-font-family: var(--font-family), var(--font-math-fallback), sans-serif;
 }
 
 /* 页面 ▾ 菜单的排版开关（Notion 同款，可叠加）：小字号只缩字不改版心，全宽只放开版心 */
@@ -174,11 +174,11 @@
 
 /* 字体风格：中文分别回退到宋体 / 苹方，避免衬线、等宽下中英文割裂 */
 .notes-crepe-shell:has(.notes-document-header[data-notes-font='serif']) {
-  --notes-font-family: 'Iowan Old Style', 'Charter', Georgia, 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', STSong, ui-serif, serif;
+  --notes-font-family: 'Iowan Old Style', 'Charter', Georgia, 'Songti SC', 'Noto Serif CJK SC', 'Source Han Serif SC', STSong, var(--font-math-fallback), ui-serif, serif;
 }
 
 .notes-crepe-shell:has(.notes-document-header[data-notes-font='mono']) {
-  --notes-font-family: 'SF Mono', ui-monospace, Menlo, Consolas, 'PingFang SC', 'Microsoft YaHei', monospace;
+  --notes-font-family: 'SF Mono', ui-monospace, Menlo, Consolas, 'PingFang SC', 'Microsoft YaHei', 'DejaVu Sans Mono', var(--font-math-fallback), monospace;
 }
 
 /* 统一版心：正文、顶栏、模板/AI/冲突条带共用，左右 gutter 对称，左边线严格一致 */

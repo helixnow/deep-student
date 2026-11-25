@@ -746,6 +746,22 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
     visibility: hidden;
     transform: translate(-50%, calc(100% + 18px));
   }
+
+  /* 窄屏动态布局让位：收起时归零不浪费视口，展开时窗口层底缘同步上抬避开程序坞 */
+  [data-wb-desktop] > [data-wb-window-layer] {
+    bottom: var(--wb-mobile-dock-clearance, 0px);
+  }
+
+  [data-wb-desktop][data-wb-dock-revealed='true'] > [data-wb-window-layer],
+  :root[data-wb-dock-revealed='true'] [data-wb-desktop] > [data-wb-window-layer] {
+    bottom: var(--wb-mobile-dock-clearance, 0px);
+    overflow: clip;
+  }
+
+  [data-wb-desktop][data-wb-dock-revealed='true'] > [data-wb-window-layer] > .wb-window,
+  :root[data-wb-dock-revealed='true'] [data-wb-desktop] > [data-wb-window-layer] > .wb-window {
+    max-height: 100%;
+  }
 }
 
 @media (max-width: 640px) {

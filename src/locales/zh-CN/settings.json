@@ -915,7 +915,7 @@
     "external_search": "外部搜索",
     "statistics": "数据统计",
     "data_manage": "数据管理",
-    "data_governance": "数据治理",
+    "data_governance": "数据治理与同步",
     "general": "常规",
     "appearance": "外观",
     "automation": "自动化",
@@ -955,7 +955,7 @@
     "search": "配置联网搜索引擎",
     "plugins": "管理已安装的扩展",
     "statistics": "查看学习与使用数据",
-    "data_governance": "备份、恢复与数据管理",
+    "data_governance": "云存储、跨端同步、备份与恢复",
     "params": "调整模型生成参数",
     "shortcuts": "自定义键盘操作",
     "about": "版本信息与开源致谢",
@@ -964,6 +964,8 @@
     "workbench": "窗口化桌面与工作区",
     "document_processing": "PDF 渲染与 OCR 识别"
   },
+  "quick_cloud_sync_title": "云存储与同步",
+  "quick_cloud_sync_desc": "配置 WebDAV / S3 云同步、跨设备扫码配对与数据备份",
   "automation": {
     "title": "自动化",
     "description": "管理已创建的定时提醒和无人值守 Agent 任务。",

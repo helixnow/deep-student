@@ -58,6 +58,7 @@ import { localizeBackendErrorText } from "./localizeCloudError";
 import { RecordConflictsPanel } from "./RecordConflictsPanel";
 import { SyncQuarantinePanel } from "./SyncQuarantinePanel";
 import { UnsyncedItemsPanel } from "./UnsyncedItemsPanel";
+import { UnsyncedPendingUploadsProvider } from "./unsyncedPendingUploadsContext";
 import { SyncIndicator } from "./SyncIndicator";
 import { settingsQuietTableRowClassName } from "../SettingsCommon";
 import { GroupTitle } from "../settingsTabPrimitives";
@@ -238,6 +239,16 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   const { t, i18n } = useTranslation(["data", "common", "sync", "cloudStorage"]);
   const [cloudEditorMounted, setCloudEditorMounted] = React.useState(showCloudSettingsEditor);
   const [quarantineCount, setQuarantineCount] = React.useState(0);
+  const [liveRecordConflictGroups, setLiveRecordConflictGroups] = React.useState(0);
+  const [conflictPanelJumpSignal, setConflictPanelJumpSignal] = React.useState(0);
+
+  const handleJumpToConflicts = React.useCallback(() => {
+    setConflictPanelJumpSignal((n) => n + 1);
+    const el = document.getElementById("record-conflicts-panel");
+    if (el && typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, []);
 
   const refreshQuarantineCount = React.useCallback(async () => {
     try {
@@ -385,7 +396,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   };
 
   return (
-    <div className="space-y-8">
+    <div className="min-w-0 space-y-8 pb-6" data-testid="sync-tab-content">
       {/* 同步状态概览 */}
       <div
         data-testid="sync-status-overview-card"
@@ -463,7 +474,11 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           </div>
           <div className="pt-1">
             {cloudSyncConfigured ? (
-              <SyncIndicator refreshSignal={conflictRefreshSignal} />
+              <SyncIndicator
+                refreshSignal={conflictRefreshSignal}
+                onJumpToConflicts={handleJumpToConflicts}
+                onCountChange={setLiveRecordConflictGroups}
+              />
             ) : (
               <Badge
                 variant="secondary"
@@ -1095,7 +1110,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           <p className="text-sm text-muted-foreground">
             {t("data:governance.conflicts_count", {
               count: conflicts.database_conflicts.length,
-              records: conflicts.record_conflict_count,
+              records: Math.max(conflicts.record_conflict_count, liveRecordConflictGroups),
             })}
           </p>
 
@@ -1174,17 +1189,23 @@ export const SyncTab: React.FC<SyncTabProps> = ({
       />
 
       {/* 记录级冲突面板（__sync_conflicts 表） */}
-      <RecordConflictsPanel refreshSignal={conflictRefreshSignal} />
+      <RecordConflictsPanel
+        refreshSignal={conflictRefreshSignal}
+        onCountChange={setLiveRecordConflictGroups}
+        focusSignal={conflictPanelJumpSignal}
+      />
       <SyncQuarantinePanel refreshSignal={conflictRefreshSignal} />
       {/* [R11-unsynced-ui] 未同步文件清单常驻面板（仅挂载行） */}
-      <UnsyncedItemsPanel
-        refreshSignal={conflictRefreshSignal}
-        onRunSync={
-          cloudSyncConfigured
-            ? () => onRunSync("bidirectional", syncStrategy)
-            : undefined
-        }
-      />
+      <UnsyncedPendingUploadsProvider value={true}>
+        <UnsyncedItemsPanel
+          refreshSignal={conflictRefreshSignal}
+          onRunSync={
+            cloudSyncConfigured
+              ? () => onRunSync("bidirectional", syncStrategy)
+              : undefined
+          }
+        />
+      </UnsyncedPendingUploadsProvider>
     </div>
   );
 };

@@ -7,7 +7,7 @@ import { SyncError } from '../src/errors.ts';
 import { compareLwwTimestamps, lwwDevicePair, timestampValueToLwwString } from '../src/lww.ts';
 import type { DbJson } from '../../../platform/util/lossless-json.ts';
 import { isJsonObject } from '../../../platform/util/lossless-json.ts';
-import { canonicalizeSyncValueForCompare, differsSemantically, getRecordData } from './record-data.ts';
+import { canonicalizeSyncValueForCompare, differsSemantically, getRecordData, normalizeSqliteSecondDeleteTimestamp } from './record-data.ts';
 import { stringifyJsonLossless } from '../../../platform/util/lossless-json.ts';
 import { pluckSafe, tableExists } from './sqlite-values.ts';
 import { createHasherSync } from '../../../platform/crypto/sync.ts';
@@ -162,7 +162,21 @@ export function resolveOne(
     if (!localHasUnsyncedChange(db, change.table_name, change.record_id)) return null;
     const localData = getRecordData(db, change.table_name, change.record_id, idColumn);
     if (localData === null) return null;
+    // Orphaned note resources whose parent note was already purged/replaced must not raise
+    // a conflict solely because local background indexing touched index_state/indexed_at.
+    if (
+      change.table_name === 'resources'
+      && isJsonObject(localData)
+      && localData.source_table === 'notes'
+      && tableExists(db, 'notes')
+    ) {
+      const stillReferenced = Boolean(
+        db.pluck('SELECT EXISTS(SELECT 1 FROM notes WHERE resource_id = ?1)', [change.record_id]),
+      );
+      if (!stillReferenced) return null;
+    }
     const cloudData: DbJson = null;
+    const normalizedDeleteTs = normalizeSqliteSecondDeleteTimestamp(change.changed_at);
     let winner: ConflictSide;
     let loser: ConflictSide;
     if (policy === 'KeepCloud') {
@@ -179,7 +193,7 @@ export function resolveOne(
           localTimestamp,
           localDevice,
           stringifyJsonLossless(localData),
-          change.changed_at,
+          normalizedDeleteTs,
           cloudDevice,
           '',
         );

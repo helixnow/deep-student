@@ -70,7 +70,13 @@ import { WindowShell } from './WindowShell';
 import { SnapPreview } from './SnapPreview';
 import { enableInteractionTrace } from '../core/interactionTrace';
 import { isWorkbenchDiagnosticsRequested } from '../core/workbenchDiagnosticsGate';
-import { Dock, getDockPinned, setDockPinned, subscribeDockPinned } from './Dock';
+import {
+  Dock,
+  getDockPinned,
+  setDockPinned,
+  subscribeDockPinned,
+  type DockMobileClearanceState,
+} from './Dock';
 import { StatusBar } from './StatusBar';
 import { AppsPanel } from './AppsPanel';
 import { ExposeOverlay } from './ExposeOverlay';
@@ -233,6 +239,33 @@ export const WorkbenchDesktop: React.FC = () => {
   const [desktopOffset, setDesktopOffset] = useState({ x: 0, y: 0 });
   /** 吸附引擎读取 ref 快照；拖拽热路径绝不能重新测量 DOMRect。 */
   const desktopOffsetRef = useRef({ x: 0, y: 0 });
+  /** 工作区未扣除窄屏程序坞让位前的原始物理尺寸 */
+  const workAreaRectRef = useRef({ w: 0, h: 0 });
+  /** 窄屏（<= 767px）程序坞展开时的底部让位高度（px） */
+  const mobileDockClearanceRef = useRef(0);
+  const [mobileDockClearance, setMobileDockClearance] = useState<DockMobileClearanceState>({
+    revealed: false,
+    clearancePx: 0,
+  });
+
+  const handleMobileDockClearanceChange = useCallback((next: DockMobileClearanceState) => {
+    const clearancePx = next.revealed && next.clearancePx > 0 ? Math.ceil(next.clearancePx) : 0;
+    const revealed = clearancePx > 0;
+    mobileDockClearanceRef.current = clearancePx;
+    setMobileDockClearance((prev) =>
+      prev.revealed === revealed && prev.clearancePx === clearancePx
+        ? prev
+        : { revealed, clearancePx },
+    );
+    const raw = workAreaRectRef.current;
+    if (raw.w > 0 && raw.h > 0) {
+      const nextH = clearancePx > 0 ? Math.max(200, raw.h - clearancePx) : raw.h;
+      const prev = useWindowStore.getState().desktopSize;
+      if (prev.w !== raw.w || prev.h !== nextH) {
+        useWindowStore.getState().setDesktopSize({ w: raw.w, h: nextH });
+      }
+    }
+  }, []);
 
   // ---- 设置状态（启动回放 + workbench:settings-changed 热更新）----
   const [wallpaper, setWallpaper] = useState<WallpaperConfig>(DEFAULT_WALLPAPER);
@@ -410,9 +443,12 @@ export const WorkbenchDesktop: React.FC = () => {
       raf = 0;
       const rect = el.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) {
+        workAreaRectRef.current = { w: rect.width, h: rect.height };
+        const clearance = mobileDockClearanceRef.current;
+        const nextH = clearance > 0 ? Math.max(200, rect.height - clearance) : rect.height;
         const prev = useWindowStore.getState().desktopSize;
-        if (prev.w !== rect.width || prev.h !== rect.height) {
-          useWindowStore.getState().setDesktopSize({ w: rect.width, h: rect.height });
+        if (prev.w !== rect.width || prev.h !== nextH) {
+          useWindowStore.getState().setDesktopSize({ w: rect.width, h: nextH });
         }
       }
       const nextOffset = { x: rect.left, y: rect.top };
@@ -640,6 +676,7 @@ export const WorkbenchDesktop: React.FC = () => {
     <div
       ref={rootRef}
       data-wb-workbench-root
+      data-wb-dock-revealed={mobileDockClearance.revealed ? 'true' : undefined}
       // absolute inset-0：不依赖百分比高度链，避免父级 flex/contain 抖动时桌面只占半屏
       // overflow-clip（非 hidden）：结构容器不可成为滚动容器，否则 WebKit 的
       // reveal-selection/caret 会在拖选文本时把整个桌面（窗口+Dock）滚出去
@@ -647,7 +684,10 @@ export const WorkbenchDesktop: React.FC = () => {
       // isolation:isolate：桌面内部的 --wb-z-* 刻度（Dock 9000 / 菜单栏 9050 /
       // overlay 9500+）全部关进本根节点的 stacking context，不再与应用全局的
       // Dialog / Toast（body 层 portal）比大小——层序表本身不动。
-      style={{ isolation: 'isolate' }}
+      style={{
+        isolation: 'isolate',
+        ['--wb-mobile-dock-clearance' as string]: `${mobileDockClearance.clearancePx}px`,
+      }}
     >
       {/* 壁纸挂在根节点（延伸到菜单栏背后），玻璃顶条才有真实背景可采样 */}
       <div className="wb-wallpaper-frame" aria-hidden="true">
@@ -660,8 +700,12 @@ export const WorkbenchDesktop: React.FC = () => {
         ref={workAreaRef}
         data-wb-desktop
         data-wb-workarea
+        data-wb-dock-revealed={mobileDockClearance.revealed ? 'true' : undefined}
         className="absolute inset-x-0 bottom-0 overflow-clip"
-        style={{ top: 'var(--wb-workarea-top)' }}
+        style={{
+          top: 'var(--wb-workarea-top)',
+          ['--wb-mobile-dock-clearance' as string]: `${mobileDockClearance.clearancePx}px`,
+        }}
         tabIndex={0}
         aria-label={t('a11y.desktop')}
         onContextMenu={gestures.onDesktopContextMenu}
@@ -746,7 +790,12 @@ export const WorkbenchDesktop: React.FC = () => {
         <div
           data-wb-window-layer
           className="absolute inset-0"
-          style={{ isolation: 'isolate', zIndex: 'var(--wb-z-window-layer)', pointerEvents: 'none' }}
+          style={{
+            isolation: 'isolate',
+            zIndex: 'var(--wb-z-window-layer)',
+            pointerEvents: 'none',
+            bottom: 'var(--wb-mobile-dock-clearance, 0px)',
+          }}
         >
           {orderedWindows.map((win) => (
             <WindowShell
@@ -769,7 +818,11 @@ export const WorkbenchDesktop: React.FC = () => {
         <WindowSwitcher />
         <ShortcutCheatsheet />
 
-        <Dock autohide={dockAutohide || dockForceAutohide} size={dockSize} />
+        <Dock
+          autohide={dockAutohide || dockForceAutohide}
+          size={dockSize}
+          onMobileClearanceChange={handleMobileDockClearanceChange}
+        />
 
         {/* 全部应用是工作台内的启动器，不覆盖常驻顶栏。 */}
         <AppsPanel />

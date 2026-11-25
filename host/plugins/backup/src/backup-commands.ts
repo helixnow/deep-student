@@ -7,9 +7,8 @@ import type {
   BackupVerifyWithAssetsResponse, DatabaseVerifyStatus, DiskSpaceCheckResponse,
 } from '../../../../contracts/ipc/generated/L21-backup-governance.ts';
 import type { Jobs } from './jobs.ts';
-import {
-  OPERATION_QUEUED_CANCELLED_MESSAGE, WAITING_FOR_OPERATION_MESSAGE, type Operations,
-} from './operations.ts';
+import type { Operations } from './operations.ts';
+import { formatBackupProgressMessage, resolveBackupLocale } from './progress-messages.ts';
 import type { Governance } from './governance.ts';
 import {
   backupInfo, createBackup, deleteBackup, findBackup, listBackups, verifyWithAssets,
@@ -263,9 +262,10 @@ export class BackupCommands {
     }));
     void this.executeBackup(job, backupType, args.baseVersion ?? null, includeAssets, args.assetTypes ?? null)
       .catch(e => this.jobs.markFailure(job.job_id, `备份失败: ${ioMessage(e)}`));
+    const locale = resolveBackupLocale(this.ctx);
     return {
       job_id: job.job_id, kind: 'export', status: 'queued',
-      message: '备份任务已启动，请通过 backup-job-progress 事件监听进度',
+      message: formatBackupProgressMessage(locale, 'backup.started'),
     };
   }
 
@@ -274,6 +274,7 @@ export class BackupCommands {
     includeAssets: boolean, assetTypes: string[] | null,
   ): Promise<void> {
     const start = performance.now();
+    const locale = resolveBackupLocale(this.ctx);
     const auditTarget = `governance_backup/${backupType}`;
     const recordAuditFailure = (message: string): void => {
       this.governance.trySaveAuditLog(failAuditLog(withAuditDetails(newAuditLog({
@@ -290,11 +291,11 @@ export class BackupCommands {
       recordAuditFailure(message);
       job.cancelled(message);
     };
-    job.markRunning('queued', 0, WAITING_FOR_OPERATION_MESSAGE, 0, 0);
+    job.markRunning('queued', 0, formatBackupProgressMessage(locale, 'backup.waiting_for_operation'), 0, 0);
     let acquired: Awaited<ReturnType<Operations['acquireForJob']>>;
     try { acquired = await this.operations.acquireForJob('backup', job.job_id, () => job.isCancelled()); }
     catch (error) { failJob(`获取全局备份锁失败: ${ioMessage(error)}`); return; }
-    if (acquired === 'cancelled') { cancelJob(OPERATION_QUEUED_CANCELLED_MESSAGE); return; }
+    if (acquired === 'cancelled') { cancelJob(formatBackupProgressMessage(locale, 'backup.cancelled_in_queue')); return; }
     const guard = acquired;
     try {
       if (backupType === 'incremental') { failJob(INCREMENTAL_BACKUP_REMOVED_MESSAGE); return; }
@@ -306,10 +307,10 @@ export class BackupCommands {
       const root = backupDir(this.ctx.app.dataDir);
       try { if (!existsSync(root)) mkdirSync(root, { recursive: true }); }
       catch (e) { failJob(`创建备份目录失败: ${ioMessage(e)}`); return; }
-      job.markRunning('scan', 5, '正在准备备份...', 0, 4);
-      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
-      job.markRunning('checkpoint', 10, '正在执行数据库 checkpoint...', 0, 4);
-      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
+      job.markRunning('scan', 5, formatBackupProgressMessage(locale, 'backup.preparing'), 0, 4);
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'backup.cancelled')); return; }
+      job.markRunning('checkpoint', 10, formatBackupProgressMessage(locale, 'backup.checkpointing_databases'), 0, 4);
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'backup.cancelled')); return; }
 
       const allAssetTypes = assetTypes === null || assetTypes.length === 0
         || assetTypes.every(type => !defaultTypes().includes(type));
@@ -336,8 +337,8 @@ export class BackupCommands {
       if (manifest === null) throw new Error('备份未生成清单');
       // Rust commands_backup.rs:2040-2046：请求包含资产的备份必须满足可槽恢复契约。
       if (includeAssets) validateForSlotRestore(manifest);
-      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
-      job.markRunning('verify', 80, '正在验证备份...', 3, 4);
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'backup.cancelled')); return; }
+      job.markRunning('verify', 80, formatBackupProgressMessage(locale, 'backup.verifying_ellipsis'), 3, 4);
 
       const assetSize = manifest.assets?.total_size ?? 0;
       const { backupSize } = checkedRestoreDiskBudget(manifest.files.map(file => file.size), assetSize);
@@ -368,7 +369,9 @@ export class BackupCommands {
         success: verification.isValid,
         output_path: manifest.backup_id,
         resolved_path: null,
-        message: `备份完成: ${databasesBackedUp.length} 个数据库, ${backupSize} 字节`,
+        message: formatBackupProgressMessage(locale, 'backup.completed_summary', {
+          databaseCount: databasesBackedUp.length, backupSize,
+        }),
         error: verification.isValid ? null : '备份完成但校验失败，请在审计页查看详情并重新执行备份。',
         duration_ms: durationMs,
         stats: {
@@ -384,9 +387,14 @@ export class BackupCommands {
         checkpoint_path: null,
         resumable_job_id: null,
       };
-      job.complete(`备份完成: ${manifest.backup_id}`, databasesBackedUp.length, databasesBackedUp.length, result);
+      job.complete(
+        formatBackupProgressMessage(locale, 'backup.completed', { backupId: manifest.backup_id }),
+        databasesBackedUp.length,
+        databasesBackedUp.length,
+        result,
+      );
     } catch (e) {
-      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'backup.cancelled')); return; }
       const message = ioMessage(e);
       recordAuditFailure(message);
       job.fail(`备份失败: ${message}`);
@@ -408,9 +416,10 @@ export class BackupCommands {
     const assetTypes = Array.isArray(params.asset_types) ? params.asset_types.map(String) : null;
     void this.executeBackup(restored, backupType, baseVersion, includeAssets, assetTypes)
       .catch(e => this.jobs.markFailure(restored.job_id, `备份失败: ${ioMessage(e)}`));
+    const locale = resolveBackupLocale(this.ctx);
     return {
       job_id: restored.job_id, kind: 'export', status: 'queued',
-      message: '备份任务已恢复，将使用相同参数重新执行',
+      message: formatBackupProgressMessage(locale, 'backup.resumed'),
     };
   }
 
@@ -427,9 +436,10 @@ export class BackupCommands {
       include_assets: args.includeAssets ?? false, max_asset_size: args.maxAssetSize ?? null,
     }));
     void this.executeTiered(job, args).catch(e => this.jobs.markFailure(job.job_id, `分层备份失败: ${ioMessage(e)}`));
+    const locale = resolveBackupLocale(this.ctx);
     return {
       job_id: job.job_id, kind: 'export', status: 'queued',
-      message: '分层备份任务已启动，请通过 backup-job-progress 事件监听进度',
+      message: formatBackupProgressMessage(locale, 'backup.tiered.started'),
     };
   }
 
@@ -438,6 +448,7 @@ export class BackupCommands {
     includeAssets?: boolean | null; maxAssetSize?: number | null; assetTypes?: string[] | null;
   }): Promise<void> {
     const start = performance.now();
+    const locale = resolveBackupLocale(this.ctx);
     const recordAuditFailure = (message: string): void => {
       this.governance.trySaveAuditLog(failAuditLog(withAuditDetails(newAuditLog({
         type: 'Backup', backup_type: 'Full', file_count: 0, total_size: 0,
@@ -455,11 +466,11 @@ export class BackupCommands {
       recordAuditFailure(message);
       job.cancelled(message);
     };
-    job.markRunning('queued', 0, WAITING_FOR_OPERATION_MESSAGE, 0, 0);
+    job.markRunning('queued', 0, formatBackupProgressMessage(locale, 'backup.waiting_for_operation'), 0, 0);
     let acquired: Awaited<ReturnType<Operations['acquireForJob']>>;
     try { acquired = await this.operations.acquireForJob('backup', job.job_id, () => job.isCancelled()); }
     catch (error) { failJob(`获取全局备份锁失败: ${ioMessage(error)}`); return; }
-    if (acquired === 'cancelled') { cancelJob(OPERATION_QUEUED_CANCELLED_MESSAGE); return; }
+    if (acquired === 'cancelled') { cancelJob(formatBackupProgressMessage(locale, 'backup.cancelled_in_queue')); return; }
     const guard = acquired;
     try {
       const parsedTiers = (args.tiers ?? ['core']).map(tier => tier.toLowerCase()).filter(tier =>
@@ -475,11 +486,11 @@ export class BackupCommands {
       });
       const includeAssets = args.includeAssets ?? false;
       const totalDatabases = selected.length;
-      job.markRunning('scan', 5, '正在扫描数据库和资产...', 0, 0);
-      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
-      job.markRunning('checkpoint', 15, '正在执行数据库 checkpoint...', 0, totalDatabases);
-      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
-      job.markRunning('compress', 20, '一致性屏障内：正在 staging 分层数据并计算哈希...', 0, totalDatabases);
+      job.markRunning('scan', 5, formatBackupProgressMessage(locale, 'backup.scanning_databases_and_assets'), 0, 0);
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'backup.cancelled')); return; }
+      job.markRunning('checkpoint', 15, formatBackupProgressMessage(locale, 'backup.checkpointing_databases'), 0, totalDatabases);
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'backup.cancelled')); return; }
+      job.markRunning('compress', 20, formatBackupProgressMessage(locale, 'backup.staging_tiered'), 0, totalDatabases);
 
       // Rust commands_backup.rs:2807-2818：分层 staging 同样在屏障内完成。
       let barrier;
@@ -504,10 +515,10 @@ export class BackupCommands {
       if (releaseFailure !== null) { failJob(ioMessage(releaseFailure)); return; }
       if (backupFailure !== null) throw backupFailure;
       if (manifest === null) throw new Error('分层备份未生成清单');
-      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
-      if (includeAssets) job.markRunning('compress', 90, '正在备份资产文件...', totalDatabases, totalDatabases);
-      job.markRunning('verify', 95, '正在验证备份...', totalDatabases, totalDatabases);
-      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'backup.cancelled')); return; }
+      if (includeAssets) job.markRunning('compress', 90, formatBackupProgressMessage(locale, 'backup.backing_up_assets_ellipsis'), totalDatabases, totalDatabases);
+      job.markRunning('verify', 95, formatBackupProgressMessage(locale, 'backup.verifying_ellipsis'), totalDatabases, totalDatabases);
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'backup.cancelled')); return; }
 
       const assetSize = manifest.assets?.total_size ?? 0;
       const { backupSize } = checkedRestoreDiskBudget(manifest.files.map(file => file.size), assetSize);
@@ -532,7 +543,9 @@ export class BackupCommands {
         success: verification.isValid,
         output_path: join(backupDir(this.ctx.app.dataDir), manifest.backup_id),
         resolved_path: null,
-        message: `分层备份完成，共 ${manifest.files.length} 个文件，大小 ${backupSize} 字节`,
+        message: formatBackupProgressMessage(locale, 'backup.tiered.completed_summary', {
+          fileCount: manifest.files.length, backupSize,
+        }),
         error: verification.isValid ? null : '分层备份完成但校验失败，请在审计页查看详情并重新执行备份。',
         duration_ms: durationMs,
         stats,
@@ -546,9 +559,16 @@ export class BackupCommands {
         job_id: job.job_id, backup_id: manifest.backup_id, tiers: parsedTiers,
         include_assets: includeAssets, file_count: manifest.files.length, total_size: Number(backupSize),
       }));
-      job.complete(`分层备份完成: ${manifest.backup_id}，共 ${manifest.files.length} 个文件`, manifest.files.length, manifest.files.length, payload);
+      job.complete(
+        formatBackupProgressMessage(locale, 'backup.tiered.completed', {
+          backupId: manifest.backup_id, fileCount: manifest.files.length,
+        }),
+        manifest.files.length,
+        manifest.files.length,
+        payload,
+      );
     } catch (e) {
-      if (job.isCancelled()) { cancelJob('用户取消备份'); return; }
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'backup.cancelled')); return; }
       const message = ioMessage(e);
       recordAuditFailure(message);
       job.fail(`分层备份失败: ${message}`);

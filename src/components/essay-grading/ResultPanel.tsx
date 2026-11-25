@@ -19,6 +19,11 @@ import { GradingStreamRenderer } from '../../essay-grading/GradingStreamRenderer
 import { classifyEssayMistakeItems } from './essayMistakeClassifier';
 import { inferGradingPhase } from '../../essay-grading/gradingPhase';
 import type { SuggestionChange } from '../../essay-grading/suggestionAnchors';
+import {
+  EssayRubricResultContext,
+  formatStaleRubricBannerMessage,
+  type StaleRubricInfo,
+} from './rubricResultContext';
 import { cn } from '@/lib/utils';
 
 interface ResultPanelProps {
@@ -65,6 +70,12 @@ interface ResultPanelProps {
   originalText?: string | null;
   /** 评分缺失时强制重新批改回调 */
   onRegrade?: () => void;
+  /** 当前展示的结果与用户新选评分标准不一致时的过期状态信息 */
+  staleRubric?: StaleRubricInfo | null;
+  /** 按新选择的评分标准重新批改 */
+  onRegradeWithSelectedRubric?: () => void;
+  /** 是否允许一键重新批改（有正文或原图） */
+  canRegradeWithSelectedRubric?: boolean;
 }
 
 /** 错误/部分结果统一使用的细边框语义色条 */
@@ -133,6 +144,9 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   gradingModeId,
   originalText,
   onRegrade,
+  staleRubric = null,
+  onRegradeWithSelectedRubric,
+  canRegradeWithSelectedRubric = true,
 }, ref) => {
   const { t } = useTranslation(['essay_grading', 'common']);
 
@@ -332,6 +346,17 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
     </>
   );
 
+  const activeStaleRubric = !isGrading && gradingResult ? staleRubric : null;
+  const rubricContextValue = useMemo(
+    () => ({ staleRubric: activeStaleRubric }),
+    [activeStaleRubric],
+  );
+  const staleBannerMessage = useMemo(
+    () => (activeStaleRubric ? formatStaleRubricBannerMessage(activeStaleRubric, t) : null),
+    [activeStaleRubric, t],
+  );
+  const handleStaleRegrade = onRegradeWithSelectedRubric ?? onRegrade ?? onRetry;
+
   return (
     <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 overflow-hidden transition-all duration-200 motion-reduce:transition-none">
       {!headerInTabs && (
@@ -347,7 +372,46 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
         </div>
       )}
 
+      {/* S3-02: 评分标准变更后，在评分/结果区正上方展示高对比度过期提示条与一键重批入口 */}
+      {activeStaleRubric && staleBannerMessage && (
+        <div
+          data-testid="essay-stale-rubric-banner"
+          role="status"
+          aria-live="polite"
+          className="mx-3 mt-2.5 mb-1.5 sm:mx-4 shrink-0 rounded-lg border border-amber-500/75 bg-amber-50 dark:border-amber-400/60 dark:bg-amber-950/55 px-3.5 py-2.5 shadow-sm"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
+            <div className="flex min-w-0 flex-1 items-start gap-2">
+              <WarningCircle
+                size={16}
+                weight="fill"
+                className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400"
+                aria-hidden="true"
+              />
+              <p className="min-w-0 text-xs sm:text-[13px] font-medium leading-relaxed text-amber-950 dark:text-amber-100 break-words">
+                {staleBannerMessage}
+              </p>
+            </div>
+            {handleStaleRegrade && (
+              <DsButton
+                type="button"
+                variant="primary"
+                size="sm"
+                data-testid="essay-regrade-with-selected-rubric"
+                onClick={handleStaleRegrade}
+                disabled={!canRegradeWithSelectedRubric || isGrading}
+                className="h-8 shrink-0 gap-1.5 px-3 text-xs font-medium shadow-sm [@media(pointer:coarse)]:!min-h-11"
+              >
+                <ArrowClockwise size={13} className="shrink-0" />
+                {t('essay_grading:stale_rubric.regrade_cta', { defaultValue: '按新标准重新批改' })}
+              </DsButton>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Content */}
+      <EssayRubricResultContext.Provider value={rubricContextValue}>
       <div className="flex-1 min-h-0 flex flex-col relative" ref={ref}>
         {!headerInTabs && banners}
 
@@ -420,6 +484,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           </div>
         )}
       </div>
+      </EssayRubricResultContext.Provider>
 
       {/* 生成卡片与入错题本：收进底部紧凑单行（禁用原因走 title 提示，不额外撑高第二行说明文字） */}
       {(onGenerateCards || onSaveMistakes) && !showEmptyState && (

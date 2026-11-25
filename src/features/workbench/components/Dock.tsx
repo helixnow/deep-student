@@ -71,12 +71,19 @@ export {
   useDockRunningDragToPin,
 } from './DockPinnedStore';
 
+export interface DockMobileClearanceState {
+  revealed: boolean;
+  clearancePx: number;
+}
+
 export interface DockProps {
   /** 自动隐藏（设置接线 P11）：隐藏至底缘 4px 热区 */
   autohide?: boolean;
   /** Dock 尺寸百分比，默认 100，桌面设置范围 75..125 */
   size?: number;
   className?: string;
+  /** 窄屏（<= 767px）程序坞展开/收起时的底部布局让位高度回调 */
+  onMobileClearanceChange?: (state: DockMobileClearanceState) => void;
 }
 
 /** 首次悬停 Tooltip 显现延迟（ms）；会话激活后横划相邻图标 0ms 即时切换 */
@@ -88,6 +95,23 @@ export const DOCK_MAX_MINIMIZED_SLOTS = 3;
 
 const MINIMIZED_OVERFLOW_DOCK_ID = '__minimized_overflow__';
 const DOCK_COLLAPSE_ID = '__dock_collapse__';
+const MOBILE_DOCK_FALLBACK_HEIGHT_PX = 58;
+const MOBILE_DOCK_FALLBACK_BOTTOM_PX = 4;
+const MOBILE_DOCK_CLEARANCE_GAP_PX = 10;
+
+function computeMobileDockClearancePx(dockEl: HTMLElement | null, scale: number): number {
+  const measuredHeight = dockEl?.offsetHeight ?? 0;
+  const dockHeight =
+    measuredHeight > 0 ? measuredHeight : Math.ceil(MOBILE_DOCK_FALLBACK_HEIGHT_PX * scale);
+  let bottomOffset = MOBILE_DOCK_FALLBACK_BOTTOM_PX;
+  if (dockEl && typeof window !== 'undefined' && typeof window.getComputedStyle === 'function') {
+    const parsed = Number.parseFloat(window.getComputedStyle(dockEl).bottom);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      bottomOffset = parsed;
+    }
+  }
+  return Math.ceil(dockHeight + bottomOffset + MOBILE_DOCK_CLEARANCE_GAP_PX);
+}
 
 function useRegistryVersion(): void {
   const [, setVersion] = React.useState(0);
@@ -149,7 +173,12 @@ function writePersistedCompactDockCollapse(collapsed: boolean): void {
   }
 }
 
-function DockImpl({ autohide = false, size = 100, className }: DockProps) {
+function DockImpl({
+  autohide = false,
+  size = 100,
+  className,
+  onMobileClearanceChange,
+}: DockProps) {
   const { t } = useTranslation();
   useRegistryVersion();
 
@@ -466,8 +495,37 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     setRevealed(next);
   }, []);
 
+  const [holdClearanceForPointer, setHoldClearanceForPointer] = React.useState(false);
+  const holdClearanceReleaseTimerRef = React.useRef(0);
+  const holdClearanceSafetyTimerRef = React.useRef(0);
+
+  const clearHoldClearanceTimers = React.useCallback(() => {
+    if (holdClearanceReleaseTimerRef.current) {
+      window.clearTimeout(holdClearanceReleaseTimerRef.current);
+      holdClearanceReleaseTimerRef.current = 0;
+    }
+    if (holdClearanceSafetyTimerRef.current) {
+      window.clearTimeout(holdClearanceSafetyTimerRef.current);
+      holdClearanceSafetyTimerRef.current = 0;
+    }
+  }, []);
+
+  const releaseHoldClearance = React.useCallback(() => {
+    clearHoldClearanceTimers();
+    setHoldClearanceForPointer(false);
+  }, [clearHoldClearanceTimers]);
+
+  const scheduleHoldClearanceRelease = React.useCallback(() => {
+    if (holdClearanceReleaseTimerRef.current) return;
+    holdClearanceReleaseTimerRef.current = window.setTimeout(() => {
+      holdClearanceReleaseTimerRef.current = 0;
+      releaseHoldClearance();
+    }, 0);
+  }, [releaseHoldClearance]);
+
   const revealDock = React.useCallback(
     (viaClick = false) => {
+      releaseHoldClearance();
       if (viaClick) {
         clickRevealedRef.current = true;
         if (isCompactViewport && !hasOpenWindow) {
@@ -478,7 +536,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
       if (!revealedRef.current) setRevealing(true);
       updateRevealed(true);
     },
-    [hasOpenWindow, isCompactViewport, updateRevealed],
+    [hasOpenWindow, isCompactViewport, releaseHoldClearance, updateRevealed],
   );
 
   const clearAutohideTimers = React.useCallback(() => {
@@ -553,8 +611,22 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   }, [topFocusId, isCompactViewport, hasOpenWindow, concealDockImmediate]);
   const hidden = effectiveAutohide && !revealed;
 
+  const dockZoneRef = React.useRef<HTMLDivElement | null>(null);
   const dockRef = React.useRef<HTMLDivElement | null>(null);
-  const onAutohideOutsideDismiss = React.useCallback(
+  const onAutohideOutsidePointerDown = React.useCallback(
+    (event: Event) => {
+      const target = event.target as Node | null;
+      if (dockRef.current?.contains(target) || hotzoneRef.current?.contains(target)) return;
+      if (isCompactViewport && effectiveAutohide && revealedRef.current) {
+        // 指针按下期间保持布局让位直至 pointerup/click 结算，防止发送按钮在松手前下移错位导致无法一次点中
+        clearHoldClearanceTimers();
+        setHoldClearanceForPointer(true);
+      }
+      concealDockImmediate();
+    },
+    [clearHoldClearanceTimers, concealDockImmediate, effectiveAutohide, isCompactViewport],
+  );
+  const onAutohideOutsideClick = React.useCallback(
     (event: Event) => {
       const target = event.target as Node | null;
       if (dockRef.current?.contains(target) || hotzoneRef.current?.contains(target)) return;
@@ -602,13 +674,13 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
           {
             target: 'document',
             type: 'pointerdown',
-            listener: onAutohideOutsideDismiss,
+            listener: onAutohideOutsidePointerDown,
             options: true,
           },
           {
             target: 'document',
             type: 'click',
-            listener: onAutohideOutsideDismiss,
+            listener: onAutohideOutsideClick,
             options: true,
           },
           {
@@ -627,11 +699,100 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     [
       effectiveAutohide,
       revealed,
-      onAutohideOutsideDismiss,
+      onAutohideOutsidePointerDown,
+      onAutohideOutsideClick,
       onAutohideOutsideFocusIn,
       onAutohideKeyDown,
     ],
   );
+  useEventRegistry(
+    holdClearanceForPointer
+      ? [
+          {
+            target: 'window',
+            type: 'pointerup',
+            listener: scheduleHoldClearanceRelease,
+            options: true,
+          },
+          {
+            target: 'window',
+            type: 'pointercancel',
+            listener: releaseHoldClearance,
+            options: true,
+          },
+          {
+            target: 'window',
+            type: 'blur',
+            listener: releaseHoldClearance,
+          },
+        ]
+      : [],
+    [holdClearanceForPointer, scheduleHoldClearanceRelease, releaseHoldClearance],
+  );
+  React.useEffect(() => {
+    if (!holdClearanceForPointer) return undefined;
+    holdClearanceSafetyTimerRef.current = window.setTimeout(() => {
+      holdClearanceSafetyTimerRef.current = 0;
+      releaseHoldClearance();
+    }, 400);
+    return () => clearHoldClearanceTimers();
+  }, [holdClearanceForPointer, clearHoldClearanceTimers, releaseHoldClearance]);
+
+  const mobileClearanceActive =
+    isCompactViewport && ((effectiveAutohide && revealed) || holdClearanceForPointer);
+  const clearanceTargetsRef = React.useRef<Set<HTMLElement>>(new Set());
+  const lastReportedClearanceRef = React.useRef<DockMobileClearanceState | null>(null);
+  const syncMobileDockClearance = React.useCallback(() => {
+    if (typeof document === 'undefined') return;
+    const clearancePx = mobileClearanceActive
+      ? computeMobileDockClearancePx(dockRef.current, dockScale)
+      : 0;
+    const revealedFlag = mobileClearanceActive && clearancePx > 0;
+    const targets: HTMLElement[] = [document.documentElement];
+    const wbRoot = dockZoneRef.current?.closest<HTMLElement>('[data-wb-workbench-root]');
+    const wbDesktop = dockZoneRef.current?.closest<HTMLElement>('[data-wb-desktop]');
+    if (wbRoot) targets.push(wbRoot);
+    if (wbDesktop) targets.push(wbDesktop);
+    for (const el of targets) {
+      clearanceTargetsRef.current.add(el);
+      if (revealedFlag) {
+        el.setAttribute('data-wb-dock-revealed', 'true');
+        el.style.setProperty('--wb-mobile-dock-clearance', `${clearancePx}px`);
+      } else {
+        el.removeAttribute('data-wb-dock-revealed');
+        el.style.setProperty('--wb-mobile-dock-clearance', '0px');
+      }
+    }
+    const prev = lastReportedClearanceRef.current;
+    if (!prev || prev.revealed !== revealedFlag || prev.clearancePx !== clearancePx) {
+      const next = { revealed: revealedFlag, clearancePx };
+      lastReportedClearanceRef.current = next;
+      onMobileClearanceChange?.(next);
+    }
+  }, [dockScale, mobileClearanceActive, onMobileClearanceChange]);
+  const syncMobileDockClearanceRef = React.useRef(syncMobileDockClearance);
+  syncMobileDockClearanceRef.current = syncMobileDockClearance;
+
+  React.useLayoutEffect(() => {
+    syncMobileDockClearance();
+  }, [syncMobileDockClearance]);
+
+  React.useEffect(() => {
+    const targets = clearanceTargetsRef.current;
+    return () => {
+      if (typeof document !== 'undefined') {
+        targets.add(document.documentElement);
+      }
+      for (const el of targets) {
+        el.removeAttribute('data-wb-dock-revealed');
+        el.style.removeProperty('--wb-mobile-dock-clearance');
+      }
+      targets.clear();
+      lastReportedClearanceRef.current = null;
+      onMobileClearanceChange?.({ revealed: false, clearancePx: 0 });
+    };
+  }, [onMobileClearanceChange]);
+
   React.useLayoutEffect(() => {
     if (dockRef.current) {
       dockRef.current.inert = hidden;
@@ -868,7 +1029,12 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     };
     dock.addEventListener('transitionend', onTransitionEnd);
     const observer =
-      typeof ResizeObserver === 'function' ? new ResizeObserver(() => publishGeometrySoon()) : null;
+      typeof ResizeObserver === 'function'
+        ? new ResizeObserver(() => {
+            publishGeometrySoon();
+            syncMobileDockClearanceRef.current();
+          })
+        : null;
     observer?.observe(dock);
     return () => {
       dock.removeEventListener('transitionend', onTransitionEnd);
@@ -918,6 +1084,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
 
   return (
     <div
+      ref={dockZoneRef}
       className={cn(
         'wb-dock-zone pointer-events-none absolute inset-x-0 bottom-0 flex justify-center',
         className,
@@ -926,6 +1093,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
       data-compact-typing={isTypingInComposer ? 'true' : undefined}
       data-compact-window={isCompactViewport && hasOpenWindow ? 'true' : undefined}
       data-compact-collapsed={isCompactViewport && compactCollapsedPersisted ? 'true' : undefined}
+      data-dock-revealed={mobileClearanceActive ? 'true' : undefined}
       style={{ zIndex: 'var(--wb-z-dock)' }}
     >
       {effectiveAutohide && (

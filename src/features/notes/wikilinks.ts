@@ -92,7 +92,7 @@ interface OpenFence {
   start: number;
 }
 
-const WIKI_LINK_PATTERN = /\[\[([^\]\r\n]+?)\]\]/g;
+const WIKI_LINK_PATTERN = /\[\[([^[\]\r\n]+?)\]\]/g;
 /**
  * `[label](note://id?query#heading)`：id 不吃 `?` / `#`，heading 捕获进第 3 组，
  * 供 `WikiLink.heading` 使用（B10：此前 hash 被并入 id，导致解析失败且丢失 heading）。

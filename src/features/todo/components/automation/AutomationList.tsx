@@ -44,6 +44,7 @@ import {
 import { useAutomationStore } from '../../stores/useAutomationStore';
 import { AutomationScheduleEditor } from './AutomationScheduleEditor';
 import { AutomationStatusPill } from './AutomationStatusPill';
+import { getAutomationDisplayName, getAutomationDisplayPrompt } from '@/utils/automationDisplay';
 import { formatAbsoluteTime, formatRelativeTime } from './automationFormat';
 import { computeNextRuns, formatWeekdayList } from './scheduleMath';
 import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
@@ -86,11 +87,15 @@ type EditDraft = {
   timeoutSeconds: string;
 };
 
-const draftFromAutomation = (automation: AutomationListItem): EditDraft => ({
-  name: automation.name,
+const draftFromAutomation = (
+  automation: AutomationListItem,
+  displayName: string = automation.name,
+  displayPrompt: string = automation.prompt,
+): EditDraft => ({
+  name: displayName,
   actionType: automation.actionType,
   schedule: { ...automation.schedule },
-  prompt: automation.prompt,
+  prompt: displayPrompt,
   agentPrompt: automation.agentPrompt ?? '',
   sessionMode: automation.sessionMode ?? 'isolated',
   modelId: automation.modelId ?? '',
@@ -204,6 +209,11 @@ function AutomationCard({
   onSaveEdit,
 }: AutomationCardProps): JSX.Element {
   const { t } = useTranslation(['todo', 'settings', 'common']);
+  const displayName = getAutomationDisplayName(
+    automation,
+    t as (key: string, options?: Record<string, unknown>) => string,
+    locale,
+  );
 
   const rowBusy = busyKey !== null && busyKey.endsWith(`:${automation.id}`);
   const enableBusy = busyKey === `enable:${automation.id}`;
@@ -296,7 +306,7 @@ function AutomationCard({
       {confirmingDelete ? (
         <div className="automation-rise-in flex flex-wrap items-center justify-between gap-2 border-b border-destructive/20 bg-destructive/10 px-3 py-2">
           <span className="text-xs font-medium text-destructive">
-            {t('todo:automation.card.deleteConfirm', { name: automation.name })}
+            {t('todo:automation.card.deleteConfirm', { name: displayName })}
           </span>
           <div className="flex items-center gap-2">
             <DsButton size="sm" variant="ghost" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => onRequestDelete(null)}>
@@ -320,8 +330,8 @@ function AutomationCard({
         <div className="min-w-0 flex-1 space-y-1.5">
           {/* 行 1：任务名 + 徽标 + 最近一次运行状态 */}
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="min-w-0 truncate text-sm font-medium text-foreground" title={automation.name}>
-              {automation.name}
+            <span className="min-w-0 truncate text-sm font-medium text-foreground" title={displayName}>
+              {displayName}
             </span>
             <span className="shrink-0 rounded border border-[color:var(--border-soft,hsl(var(--border)))] bg-muted/60 px-1.5 py-0.5 text-2xs text-muted-foreground">
               {automation.actionType === 'agent_turn'
@@ -388,7 +398,7 @@ function AutomationCard({
               size="sm"
               checked={automation.enabled}
               disabled={rowBusy}
-              aria-label={t('todo:automation.card.toggleAria', { name: automation.name })}
+              aria-label={t('todo:automation.card.toggleAria', { name: displayName })}
               onCheckedChange={(checked) => onToggleEnabled(automation, checked)}
             />
           )}
@@ -397,7 +407,7 @@ function AutomationCard({
             size="icon"
             iconOnly
             className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-            aria-label={t('todo:automation.card.runNowAria', { name: automation.name })}
+            aria-label={t('todo:automation.card.runNowAria', { name: displayName })}
             title={t('todo:automation.card.runNow')}
             disabled={rowBusy}
             onClick={() => onRunNow(automation)}
@@ -415,7 +425,7 @@ function AutomationCard({
               '!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
               expanded && 'bg-primary/10 text-primary',
             )}
-            aria-label={t('todo:automation.card.editAria', { name: automation.name })}
+            aria-label={t('todo:automation.card.editAria', { name: displayName })}
             aria-expanded={expanded}
             aria-controls={editPanelId}
             title={t('todo:automation.card.edit')}
@@ -426,7 +436,7 @@ function AutomationCard({
           {automation.heartbeat ? (
             // 心跳探活任务不可删除（与设置侧一致）
             <span title={t('settings:automation.delete.heartbeat_blocked')}>
-              <DsButton variant="ghost" size="icon" iconOnly className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" disabled aria-label={t('todo:automation.card.deleteAria', { name: automation.name })}>
+              <DsButton variant="ghost" size="icon" iconOnly className="!h-7 !w-7 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11" disabled aria-label={t('todo:automation.card.deleteAria', { name: displayName })}>
                 <Trash size={15} aria-hidden />
               </DsButton>
             </span>
@@ -436,7 +446,7 @@ function AutomationCard({
               size="icon"
               iconOnly
               className="!h-7 !w-7 text-destructive hover:text-destructive [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-              aria-label={t('todo:automation.card.deleteAria', { name: automation.name })}
+              aria-label={t('todo:automation.card.deleteAria', { name: displayName })}
               title={t('todo:automation.card.delete')}
               disabled={rowBusy}
               onClick={() => onRequestDelete(automation.id)}
@@ -489,8 +499,13 @@ interface AutomationCardEditFormProps {
 }
 
 function AutomationCardEditForm({ automation, busy, onCancel, onSubmit }: AutomationCardEditFormProps): JSX.Element {
-  const { t } = useTranslation(['todo', 'settings', 'common']);
-  const [draft, setDraft] = React.useState<EditDraft>(() => draftFromAutomation(automation));
+  const { t, i18n } = useTranslation(['todo', 'settings', 'common']);
+  const locale = i18n.resolvedLanguage || i18n.language || 'zh-CN';
+  const [draft, setDraft] = React.useState<EditDraft>(() => draftFromAutomation(
+    automation,
+    getAutomationDisplayName(automation, t as (key: string, options?: Record<string, unknown>) => string, locale),
+    getAutomationDisplayPrompt(automation, t as (key: string, options?: Record<string, unknown>) => string, locale),
+  ));
   const [formError, setFormError] = React.useState<string | null>(null);
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
   // 乐观并发的期望版本必须在「面板打开时」定格：草稿基于该版本的快照，
@@ -858,18 +873,23 @@ export function AutomationList({ className }: AutomationListProps): JSX.Element 
 
   const handleRunNow = React.useCallback((automation: AutomationListItem) => {
     setRowMessage(null);
+    const displayName = getAutomationDisplayName(
+      automation,
+      t as (key: string, options?: Record<string, unknown>) => string,
+      locale,
+    );
     void runNow(automation.id, automation.version)
       .then(() => {
         setRowMessage({
           id: automation.id,
-          text: t('todo:automation.card.runStarted', { name: automation.name }),
+          text: t('todo:automation.card.runStarted', { name: displayName }),
           tone: 'info',
         });
       })
       .catch((cause) => {
         setRowMessage(failureRowMessage(automation.id, cause));
       });
-  }, [failureRowMessage, runNow, t]);
+  }, [failureRowMessage, locale, runNow, t]);
 
   const handleConfirmDelete = React.useCallback((automation: AutomationListItem) => {
     void remove(automation.id, automation.version)

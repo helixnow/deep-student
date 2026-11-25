@@ -717,7 +717,7 @@ function writeBackupVerificationStatuses(map: Record<string, BackupVerificationS
 export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = ({
   embedded = false,
   tabTarget = null,
-  hideHeaderQuickSync = false,
+  hideHeaderQuickSync = true,
 }) => {
   const { t, i18n } = useTranslation(['data', 'common', 'sync']);
   /**
@@ -1928,12 +1928,23 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         return;
       }
 
-      const result = await DataGovernanceApi.detectConflicts(undefined, cloudConfig);
-      setConflicts(result);
+      const [result, recordCounts] = await Promise.all([
+        DataGovernanceApi.detectConflicts(undefined, cloudConfig),
+        typeof DataGovernanceApi.countRecordConflicts === 'function'
+          ? DataGovernanceApi.countRecordConflicts().catch(() => null)
+          : Promise.resolve(null),
+      ]);
+      const unresolvedRecordGroups = recordCounts?.total_groups ?? 0;
+      const mergedResult: ConflictDetectionResponse = {
+        ...result,
+        record_conflict_count: Math.max(result.record_conflict_count ?? 0, unresolvedRecordGroups),
+        has_conflicts: Boolean(result.has_conflicts || unresolvedRecordGroups > 0),
+      };
+      setConflicts(mergedResult);
 
       showGlobalNotification(
-        result.has_conflicts ? 'warning' : 'success',
-        result.has_conflicts
+        mergedResult.has_conflicts ? 'warning' : 'success',
+        mergedResult.has_conflicts
           ? t('data:governance.conflicts_found')
           : t('data:governance.no_conflicts')
       );
@@ -2062,11 +2073,13 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   useEffect(loadActiveTab, [loadActiveTab]);
 
   // 首屏冷启动即水合本地备份统计与同步/云存储配置，避免概览页与同步页在首次访问前显示 0 / 未配置
+  // embedded 模式下由当前激活 Tab 按需加载，保持原有按需请求契约
   useEffect(() => {
+    if (embedded) return;
     void loadBackups();
     void loadSyncStatus({ silent: true });
     void refreshCloudSyncConfigured();
-  }, [loadBackups, loadSyncStatus, refreshCloudSyncConfigured]);
+  }, [embedded, loadBackups, loadSyncStatus, refreshCloudSyncConfigured]);
 
   // 停留在同步标签页时后台静默轮询 + 监听本地编辑/窗口获焦，离线也能及时更新待同步计数
   useEffect(() => {
@@ -2288,11 +2301,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   );
 
   const tabTriggerClassName =
-    'inline-flex shrink-0 max-w-full cursor-pointer min-h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-border/45 bg-muted/40 !px-2.5 sm:!px-3 !py-1.5 !text-xs text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start [@media(pointer:coarse)]:!min-h-10';
+    'inline-flex shrink-0 max-w-full cursor-pointer min-h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-border/45 bg-muted/40 !px-2.5 sm:!px-3 !py-1.5 !text-xs text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start [@media(pointer:coarse)]:!min-h-11';
   const isNativeMobile = !isWebUiShell() && readShellPlatform()?.kind === 'mobile';
 
   const content = (
-    <Tabs value={activeTab} onValueChange={(v) => handleSelectTab(v as DashboardTab)}>
+    <Tabs value={activeTab} onValueChange={(v) => handleSelectTab(v as DashboardTab)} className="min-w-0">
       {maintenanceMode && (
         <div
           role="status"
@@ -2390,7 +2403,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           lastAutoVerifyResult={lastAutoVerifyResult}
           isVerifying={isAutoVerifying}
           onVerifyLatestBackup={verifyLatestBackup}
-          onOpenArchive={() => handleSelectTab('archive')}
+          onOpenArchive={() => setActiveTab('archive')}
           onOpenSync={() => handleSelectTab('sync')}
         />
       </TabsContent>
@@ -2546,7 +2559,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
                 if (!open) setPendingRecoveryRestoreId(null);
               }}
               title={t('data:governance.confirm_restore_title')}
-              description={t('data:governance.confirm_restore_desc')}
+              description={t('data:governance.restore_warning')}
               confirmText={t('data:governance.restore')}
               cancelText={t('common:actions.cancel')}
               confirmVariant="warning"
@@ -2561,18 +2574,18 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
                 className="space-y-1.5 text-xs text-muted-foreground"
               >
                 <p className="font-medium text-foreground">
-                  {t('data:governance.confirm_restore_snapshot_info', {
+                  {t('data:governance.restore_dialog_snapshot_info', {
                     name: snapshotName,
                     time: snapshotTime,
                   })}
                 </p>
                 <p>
-                  {t('data:governance.confirm_restore_covered_dbs', {
+                  {t('data:governance.restore_dialog_covered_dbs', {
                     databases: coveredDbsText,
                   })}
                 </p>
-                <p>{t('data:governance.confirm_restore_safety_backup_notice')}</p>
-                <p>{t('data:governance.confirm_restore_reload_notice')}</p>
+                <p>{t('data:governance.restore_dialog_safety_backup_notice')}</p>
+                <p>{t('data:governance.restore_dialog_reload_notice')}</p>
                 <p className="text-warning font-medium">
                   {t('data:governance.restore_save_work_warning')}
                 </p>
@@ -2693,7 +2706,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         />
       </TabsContent>
 
-      <TabsContent value="sync" forceMount>
+      <TabsContent value="sync" forceMount className="min-w-0">
         {syncTabVisited ? (
           <SyncTab
             syncStatus={syncStatus}

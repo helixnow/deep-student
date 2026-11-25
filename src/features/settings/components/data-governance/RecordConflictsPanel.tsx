@@ -367,7 +367,11 @@ export function formatDetectedAt(detectedAt: string): string {
   });
 }
 
-export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }> = ({ refreshSignal }) => {
+export const RecordConflictsPanel: React.FC<{
+  refreshSignal?: string | number;
+  onCountChange?: (totalGroups: number) => void;
+  focusSignal?: number;
+}> = ({ refreshSignal, onCountChange, focusSignal = 0 }) => {
   const { t } = useTranslation(['data', 'common', 'sync']);
   const [rows, setRows] = useState<RecordConflictRow[]>([]);
   const [totalGroups, setTotalGroups] = useState(0);
@@ -378,11 +382,26 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
   const [mergeText, setMergeText] = useState('');
   const [rawJsonOpen, setRawJsonOpen] = useState(false);
   const [purging, setPurging] = useState(false);
+  const [jumpHighlighted, setJumpHighlighted] = useState(false);
   // [R11-history] 自动快照批次（批量解决/库级策略覆盖前系统自动创建，可单批回退）
   const [snapshotBatches, setSnapshotBatches] = useState<SyncSnapshotBatchRow[]>([]);
   const [rollingBackBatch, setRollingBackBatch] = useState<string | null>(null);
   const [conflictPreviews, setConflictPreviews] = useState<Record<string, ConflictPreviewContext>>({});
   const requestGeneration = useRef(0);
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const onCountChangeRef = useRef(onCountChange);
+  onCountChangeRef.current = onCountChange;
+
+  useEffect(() => {
+    if (!focusSignal) return;
+    const target = sectionRef.current;
+    if (target && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    setJumpHighlighted(true);
+    const timer = window.setTimeout(() => setJumpHighlighted(false), 1800);
+    return () => window.clearTimeout(timer);
+  }, [focusSignal]);
 
   const pairs = useMemo(() => groupConflicts(rows), [rows]);
 
@@ -422,6 +441,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
         setRows(list);
         // count API 的 total_groups 与本面板的 (table, record) 分组分页口径一致
         setTotalGroups(counts.total_groups);
+        onCountChangeRef.current?.(counts.total_groups);
         if (list.length > 0 && typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
           const noteIdsToFetch = new Set<string>();
           for (const row of list) {
@@ -857,7 +877,16 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
   };
 
   return (
-    <section className="min-w-0">
+    <section
+      ref={sectionRef}
+      id="record-conflicts-panel"
+      data-testid="record-conflicts-panel"
+      tabIndex={-1}
+      className={cn(
+        'min-w-0 scroll-mt-4 rounded-2xl transition-shadow duration-300',
+        jumpHighlighted && 'ring-2 ring-warning/60 ring-offset-2 ring-offset-background',
+      )}
+    >
       <GroupTitle
         title={
           <span className="tabular-nums">
@@ -1159,7 +1188,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                     {t('data:governance.local')} {latestLocal?.winning_device_id && <span>（{latestLocal.winning_device_id.slice(0, 8)}...）</span>}
                     {latestLocal?.detected_at && <span className="ml-1">{formatDetectedAt(latestLocal.detected_at)}</span>}
                   </div>
-                  <CustomScrollArea className="max-h-72">
+                  <CustomScrollArea fullHeight={false} className="md:max-h-72">
                     {latestLocal ? (
                       renderSideSnapshotContent(latestLocal.data_json, latestCloud?.data_json, {
                         title: readableTitle,
@@ -1195,7 +1224,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                           <span className="ml-1">{t('data:governance.latest')}</span>
                         )}
                       </div>
-                      <CustomScrollArea className="max-h-72">
+                      <CustomScrollArea fullHeight={false} className="md:max-h-72">
                         {renderSideSnapshotContent(cloud.data_json, latestLocal?.data_json, {
                           title: readableTitle,
                           body: extractStringField(parseConflictPlainObject(cloud.data_json), ['content_md', 'content', 'data', 'body', 'markdown', 'text', 'back', 'answer']) ?? cloudBodyPreview,

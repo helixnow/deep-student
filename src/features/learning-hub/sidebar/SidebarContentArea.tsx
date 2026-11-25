@@ -310,9 +310,9 @@ export function SidebarContentArea({
                   // ★ 多选模式下，普通单击改为 toggle 模式，允许累加/取消选择
                   select(id, selectMode === 'single' ? 'toggle' : selectMode);
                 }
-              : mode === 'canvas'
+              : mode === 'canvas' && !isTrashView
                 ? (id, _mode) => {
-                    // canvas 非多选模式下，单击直接打开文件/文件夹
+                    // canvas 非多选模式下，单击直接打开文件/文件夹（回收站内仅选择，不打开）
                     const item = displayedItems.find(i => i.id === id);
                     if (item) handleOpen(item);
                   }

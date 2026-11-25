@@ -253,7 +253,6 @@ async function attachTauriListener(): Promise<void> {
   }
 }
 
-// 模块加载时即注册
-if (typeof window !== 'undefined') {
-  attachTauriListener();
-}
+// 模块加载时即注册；导出就绪 Promise 供测试确定性等待异步 listener 注册完成
+export const tauriListenerReady: Promise<void> =
+  typeof window !== 'undefined' ? attachTauriListener() : Promise.resolve();
