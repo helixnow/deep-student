@@ -13,7 +13,7 @@ import chat from '../../chat/index.ts';
 import review from '../../review/index.ts';
 import type { AnkiCard, ToolExecutionContext } from '../api.ts';
 import chatanki from '../index.ts';
-import { loadOwnedChatankiCard } from '../src/card-access.ts';
+import { loadOwnedChatankiCard, STATUS_NOT_FOUND_MESSAGE } from '../src/card-access.ts';
 import { chatankiDeleteReviewConflictPayload, chatankiVersionConflictPayload } from '../src/library-output.ts';
 
 let dir = '';
@@ -113,7 +113,7 @@ it('test_chatanki_update_card_rejects_mixed_owner_document_atomically with real 
   expect(repo.getCardForSession(card.id, OWNER)).not.toBeNull();
   expect(repo.loadOwnedCard(card.id, OWNER)).toBeNull();
   expect(() => loadOwnedChatankiCard(repo, card.id, OWNER))
-    .toThrow(new Error('blocks.ankiCards.errors.statusNotFound'));
+    .toThrow(new Error(STATUS_NOT_FOUND_MESSAGE));
   const outcome = repo.updateCardIfVersionForSession({ ...card, front: 'must not be written' }, card.updated_at, OWNER);
   expect(outcome.kind).toBe('notFound');
   const current = repo.getCardWithDocument(card.id)!.card;

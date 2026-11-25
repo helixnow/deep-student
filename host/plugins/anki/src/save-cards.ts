@@ -34,6 +34,23 @@ function nonEmpty(value: string | null | undefined): value is string {
   return value !== null && value !== undefined && value.trim() !== '';
 }
 
+export const DEFAULT_CHAT_CARDS_DOCUMENT_NAME = 'Default';
+
+/**
+ * Resolves a locale-neutral `document_tasks.original_document_name` for saved cards.
+ * Prefers explicit `options.deck_name`, then a card's `_deck` field, falling back to
+ * `'Default'` (never hardcoded Chinese like `'Chat Cards 未分类'`).
+ */
+export function resolveSaveCardsDocumentName(request: SaveAnkiCardsRequest): string {
+  const deckName = request.options?.deck_name;
+  if (nonEmpty(deckName)) return deckName.trim();
+  for (const card of request.cards) {
+    const cardDeck = card.fields?._deck;
+    if (nonEmpty(cardDeck)) return cardDeck.trim();
+  }
+  return DEFAULT_CHAT_CARDS_DOCUMENT_NAME;
+}
+
 /** `is_temporary_anki_card_id`（`cmd/anki_connect.rs:495-499`）。 */
 export function isTemporaryAnkiCardId(raw: string): boolean {
   const id = raw.trim();
@@ -128,7 +145,7 @@ export function saveAnkiCardsInDatabase(
 ): SaveAnkiCardsResponse {
   if (request.cards.length === 0) throw new SaveCardsError('Validation', 'No cards provided for saving');
 
-  const subject = '未分类';
+  const originalDocumentName = resolveSaveCardsDocumentName(request);
   const documentId =
     [request.document_id, request.block_id, request.message_stable_id].find(nonEmpty) ?? globalThis.crypto.randomUUID();
   const taskId = globalThis.crypto.randomUUID();
@@ -155,7 +172,7 @@ export function saveAnkiCardsInDatabase(
   const task: DocumentTask = {
     id: taskId,
     document_id: documentId,
-    original_document_name: `Chat Cards ${subject}`,
+    original_document_name: originalDocumentName,
     segment_index: 0,
     content_segment: contentSegment,
     status: 'Completed',

@@ -168,7 +168,7 @@ it('soft_deleted_card_is_hidden_from_agent_crud_and_fsrs', () => {
     .toBe('not_found');
 
   expect(appErrorValue(() => service.enqueueCardsForSession(['card-tombstone'], 'session-owner', null)).message)
-    .toBe('blocks.ankiCards.errors.statusNotFound');
+    .toContain('blocks.ankiCards.errors.statusNotFound: ');
   expect(service.getDue(null)).toEqual([]);
   expect(service.getStats().total).toBe(0);
   expect(appErrorValue(() => service.rate(stateId, 3, null, null)).message)
@@ -240,9 +240,9 @@ it('soft_deleted_document_task_is_hidden_and_cannot_be_recovered_or_mutated', ()
   ])).toThrow('document_ownership_mismatch');
 
   expect(appErrorValue(() => service.enqueueCardsForSession(['card-live-child'], 'session-owner', null)).message)
-    .toBe('blocks.ankiCards.errors.statusNotFound');
+    .toContain('blocks.ankiCards.errors.statusNotFound: ');
   expect(appErrorValue(() => service.enqueueCardsForSession([], 'session-owner', 'doc-task-tombstone')).message)
-    .toBe('blocks.ankiCards.errors.statusNotFound');
+    .toContain('blocks.ankiCards.errors.statusNotFound: ');
   expect(service.getDue(null)).toEqual([]);
   const stats = service.getStats();
   expect(stats.total).toBe(0);

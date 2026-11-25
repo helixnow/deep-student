@@ -12,7 +12,7 @@ import review from '../../review/index.ts';
 import type { AnkiCard, ToolExecutionContext } from '../api.ts';
 import chatanki from '../index.ts';
 import {
-  STATUS_NOT_FOUND, loadOwnedChatankiCard,
+  STATUS_NOT_FOUND_MESSAGE, loadOwnedChatankiCard,
   resolveChatankiReadSession, verifyDocumentOwnership,
 } from '../src/card-access.ts';
 
@@ -63,7 +63,7 @@ it('test_workspace_card_read_scope_never_relaxes_write_paths through real public
         expect(resolveChatankiReadSession(repo, documentId, worker)).toBe(coordinator); // :16359-16361
         expect(() => verifyDocumentOwnership(repo, documentId, worker)).toThrow(); // :16363
         expect(() => loadOwnedChatankiCard(repo, card.id, worker))
-          .toThrow(new Error(STATUS_NOT_FOUND)); // :16364-16368 (exact error text)
+          .toThrow(new Error(STATUS_NOT_FOUND_MESSAGE)); // :16364-16368 (humanized error text)
         const outcome = repo.updateCardIfVersionForSession(
           { ...card, front: 'must not be written' }, card.updated_at, worker,
         );

@@ -1,5 +1,6 @@
 // Rust: chatanki_executor.rs:13817–14210 status snapshot and workflow projection.
 import type { AnkiCard, DocumentTask, TaskStatus } from '../api.ts';
+import { humanizeChatAnkiError } from './errors.ts';
 import { now, nowEpochNanos } from '../../../platform/time/index.ts';
 import { f32ToJsonNumber } from '../../../platform/util/f32-json.ts';
 import { rustTrim } from '../../../platform/util/text.ts';
@@ -84,7 +85,7 @@ export function deriveStatusSnapshot(
   else status = generationTerminalStage(classifyGenerationTerminal(tasks, cards));
   return {
     status,
-    error: status === 'not_found' ? 'blocks.ankiCards.errors.statusNotFound' : null,
+    error: status === 'not_found' ? humanizeChatAnkiError('blocks.ankiCards.errors.statusNotFound') : null,
     shouldRetry: status === 'not_found',
   };
 }

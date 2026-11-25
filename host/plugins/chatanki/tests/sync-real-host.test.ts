@@ -21,6 +21,8 @@ import type { ToolExecutor } from '../../chat/api.ts';
 import review from '../../review/index.ts';
 import type { AnkiCard, ToolExecutionContext, ToolResultInfo } from '../api.ts';
 import chatanki from '../index.ts';
+import { STATUS_NOT_FOUND_MESSAGE } from '../src/card-access.ts';
+import { humanizeChatAnkiError } from '../src/errors.ts';
 
 let dir = '';
 let storage: ReturnType<typeof createStorageService>;
@@ -260,14 +262,15 @@ it('W22 sync status: duplicates only is ok without receipts, a partial push warn
   seedBlock('blk-fail', CALLER, { documentId: 'doc-fail', cards: [] });
   healthy({ added: () => null });
   const failed = await sync({ documentId: 'doc-fail' });
+  const expectedSyncEmpty = humanizeChatAnkiError('blocks.ankiCards.errors.ankiSyncEmpty');
   expect(failed.success).toBe(false);
-  expect(failed.error).toBe('blocks.ankiCards.errors.ankiSyncEmpty');
+  expect(failed.error).toBe(expectedSyncEmpty);
   expect(failed.output).toEqual({
     status: 'error', documentId: 'doc-fail', deckName: 'Default', noteType: 'Basic', total: 1, added: 0,
     duplicates: 0, failed: 1, createdModels: [], receiptWritten: 0,
-    error: 'blocks.ankiCards.errors.ankiSyncEmpty', warning: null,
+    error: expectedSyncEmpty, warning: null,
   });
-  expect(toolErrors).toEqual(['blocks.ankiCards.errors.ankiSyncEmpty']);
+  expect(toolErrors).toEqual([expectedSyncEmpty]);
   expect(blockOutput('blk-fail')).toEqual({ documentId: 'doc-fail', cards: [] });
   expect(chunks).toEqual([]);
 });
@@ -325,16 +328,27 @@ it('W22 sync: an all-cloze set goes to Cloze; a missing template is the Rust `?`
   expect(explicit.output).toMatchObject({ status: 'ok', noteType: 'Basic', added: 1 });
 });
 
-it('W22 sync: unavailable AnkiConnect, empty sets, ownership and argument failures follow Rust', async () => {
+it('W22 sync: unavailable AnkiConnect, empty sets, ownership and argument failures return actionable errors', async () => {
   const task = addDocument('doc-guard');
   addCard(task, 'guard-1');
   ankiConnect(() => ({ result: 5, error: null }));
   const unavailable = await sync({ documentId: 'doc-guard' });
   expect(unavailable.success).toBe(false);
-  expect(unavailable.output).toBeNull();
-  expect(unavailable.error).toBe('blocks.ankiCards.errors.ankiConnectUnavailable');
+  expect(unavailable.error).toContain('[anki_connect_version_unsupported]');
+  expect(unavailable.error).toContain('API v5');
+  expect(unavailable.error).toContain('>= v6');
+  expect(unavailable.error).not.toMatch(/[\u3400-\u9fff]/);
+  expect(unavailable.output).toEqual({
+    status: 'error',
+    errorCode: 'anki_connect_version_unsupported',
+    retryable: false,
+    detectedVersion: 5,
+    requiredVersion: 6,
+    error: unavailable.error,
+  });
   expect(warnings).toEqual([expect.stringMatching(
-    /^\[ChatAnkiToolExecutor\] AnkiConnect unavailable: AnkiConnect 插件版本过旧（API v5，需要 ≥ v6）/)]);
+    /^\[ChatAnkiToolExecutor\] AnkiConnect unavailable \(anki_connect_version_unsupported\):/)]);
+  expect(warnings[0]).not.toMatch(/[\u3400-\u9fff]/);
   expect(actions()).toEqual(['version']);
 
   const errorsOnly = addDocument('doc-errors-only');
@@ -343,7 +357,7 @@ it('W22 sync: unavailable AnkiConnect, empty sets, ownership and argument failur
   const prefix = 'Invalid chatanki_sync arguments: ';
   const cases: Array<[unknown, string]> = [
     [{ documentId: 'doc-errors-only' }, 'No cards to sync (all cards are empty or error cards)'],
-    [{ documentId: 'doc-foreign' }, 'blocks.ankiCards.errors.statusNotFound'],
+    [{ documentId: 'doc-foreign' }, STATUS_NOT_FOUND_MESSAGE],
     [{}, `${prefix}missing field \`documentId\``],
     [{ documentId: 'doc-guard', templateIds: 'tpl' }, `${prefix}invalid type: string "tpl", expected a sequence`],
     [{ documentId: 'doc-guard', templateMode: 'some' },
@@ -359,6 +373,136 @@ it('W22 sync: unavailable AnkiConnect, empty sets, ownership and argument failur
     expect(result.error).toBe(error);
   }
   expect(requests).toEqual([]);
+});
+
+it('G19 regression: syncs Library cards via libraryCardIds/cardIds and unowned Library documents without statusNotFound', async () => {
+  // 1. Cross-session cards synced explicitly via libraryCardIds and cardIds.
+  const foreignTask = addDocument('doc-lib-foreign', FOREIGN);
+  addCard(foreignTask, 'lib-foreign-1');
+  const ownTask = addDocument('doc-lib-own', CALLER);
+  addCard(ownTask, 'lib-own-1');
+  seedBlock('blk-lib-own', CALLER, { documentId: 'doc-lib-own', cards: [], syncStatus: 'error', syncError: 'old' });
+  healthy();
+
+  const byLibraryIds = await sync({
+    libraryCardIds: ['lib-foreign-1', 'lib-own-1'],
+    deckName: 'Biology Deck',
+    noteType: 'Basic',
+  });
+  expect(byLibraryIds.success, byLibraryIds.error ?? undefined).toBe(true);
+  expect(byLibraryIds.output).toEqual({
+    status: 'ok',
+    documentId: null,
+    libraryCardIds: ['lib-foreign-1', 'lib-own-1'],
+    deckName: 'Biology Deck',
+    noteType: 'Basic',
+    total: 2,
+    added: 2,
+    duplicates: 0,
+    failed: 0,
+    createdModels: [],
+    receiptWritten: 2,
+    error: null,
+    warning: null,
+  });
+  expect(receipts('doc-lib-foreign')).toEqual([{ id: 'lib-foreign-1', anki_note_id: 9000, export_status: 'synced' }]);
+  expect(receipts('doc-lib-own')).toEqual([{ id: 'lib-own-1', anki_note_id: 9001, export_status: 'synced' }]);
+  // Library-id sync must not mutate unrelated chat blocks.
+  expect(blockOutput('blk-lib-own')).toEqual({
+    documentId: 'doc-lib-own', cards: [], syncStatus: 'error', syncError: 'old',
+  });
+
+  // `cardIds` alias also works for Library cards.
+  requests = [];
+  const byCardIds = await sync({ cardIds: ['lib-foreign-1'], deckName: 'Biology Deck' });
+  expect(byCardIds.success, byCardIds.error ?? undefined).toBe(true);
+  expect(byCardIds.output).toMatchObject({
+    status: 'ok',
+    documentId: null,
+    libraryCardIds: ['lib-foreign-1'],
+    added: 1,
+  });
+
+  // Missing or conflicting selector arguments fail closed with clear messages.
+  const both = await sync({ documentId: 'doc-lib-own', libraryCardIds: ['lib-own-1'] });
+  expect(both.success).toBe(false);
+  expect(both.error).toContain('mutually exclusive');
+
+  const missingCard = await sync({ libraryCardIds: ['lib-foreign-1', 'does-not-exist'] });
+  expect(missingCard.success).toBe(false);
+  expect(missingCard.error).toContain('library_cards_unavailable');
+
+  // 2. Unowned Library document (created via save_anki_cards without business_session_id -> source_session_id IS NULL).
+  const saved = await host.invoke<{ savedIds: string[]; taskId: string }>('save_anki_cards', {
+    request: {
+      document_id: 'doc-manual-library',
+      business_session_id: null,
+      message_stable_id: null,
+      block_id: null,
+      template_id: null,
+      cards: [{ id: 'manual-lib-card-1', front: 'ATP', back: 'Adenosine triphosphate', text: null, tags: ['bio'], images: null, fields: null, template_id: null }],
+      options: null,
+    },
+  });
+  expect(saved.savedIds).toEqual(['manual-lib-card-1']);
+
+  requests = [];
+  const byLibraryDoc = await sync({ documentId: 'doc-manual-library', deckName: 'Bio' });
+  expect(byLibraryDoc.success, byLibraryDoc.error ?? undefined).toBe(true);
+  expect(byLibraryDoc.output).toMatchObject({
+    status: 'ok',
+    documentId: 'doc-manual-library',
+    deckName: 'Bio',
+    total: 1,
+    added: 1,
+    receiptWritten: 1,
+  });
+  expect(receipts('doc-manual-library')).toEqual([
+    { id: 'manual-lib-card-1', anki_note_id: 9000, export_status: 'synced' },
+  ]);
+});
+
+it('G19 regression: offline AnkiConnect peer returns actionable English error without raw os error 111 or Chinese leak', async () => {
+  const task = addDocument('doc-offline');
+  addCard(task, 'offline-1');
+  vi.spyOn(net, 'connect').mockImplementation((() => {
+    const socket = new EventEmitter() as net.Socket;
+    socket.destroy = () => socket;
+    const err = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:8765'), {
+      code: 'ECONNREFUSED',
+      errno: -111,
+    });
+    setImmediate(() => socket.emit('error', err));
+    return socket;
+  }) as typeof net.connect);
+
+  const result = await sync({ documentId: 'doc-offline' });
+  expect(result.success).toBe(false);
+  expect(result.error).toContain('[anki_connect_offline]');
+  expect(result.error).not.toContain('os error 111');
+  expect(result.error).not.toMatch(/[\u3400-\u9fff]/);
+  expect(result.output).toEqual({
+    status: 'error',
+    errorCode: 'anki_connect_offline',
+    retryable: true,
+    error: result.error,
+  });
+
+  const probe = await host.ctx.chatankiTools.execute(
+    { id: 'call-probe-offline', name: 'builtin-chatanki_check_anki_connect', arguments: {} },
+    context(),
+  );
+  expect(probe.success).toBe(true);
+  expect(probe.output).toMatchObject({
+    status: 'ok',
+    available: false,
+    errorCode: 'anki_connect_offline',
+    retryable: true,
+  });
+  const probeError = (probe.output as { error: string }).error;
+  expect(probeError).toContain('[anki_connect_offline]');
+  expect(probeError).not.toContain('os error 111');
+  expect(probeError).not.toMatch(/[\u3400-\u9fff]/);
 });
 
 it('RF-W22-sync-status-patch-session-scope: the syncStatus write-back stays on the caller session\'s block', async () => {

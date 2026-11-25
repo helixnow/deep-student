@@ -780,7 +780,8 @@ it('session_enqueue_rolls_back_mixed_owner_batch', () => {
   setTaskOwner(db, 'task-foreign', 'session-foreign');
   const error = appErrorValue(() =>
     service.enqueueCardsForSession(['card-owner', 'card-foreign'], 'session-owner', null));
-  expect(error.message).toBe('blocks.ankiCards.errors.statusNotFound');
+  expect(error.message).toContain('blocks.ankiCards.errors.statusNotFound: ');
+  expect(error.message).toContain('chatanki_list_library_cards');
   expect(service.getStats().total).toBe(0);
 });
 
@@ -904,7 +905,8 @@ it('document_selector_rechecks_all_task_owners_before_writing', () => {
   setTaskOwner(db, 'task-race-foreign', 'session-foreign');
   const error = appErrorValue(() =>
     service.enqueueCardsForSession(previouslyResolved, 'session-owner', 'doc-race'));
-  expect(error.message).toBe('blocks.ankiCards.errors.statusNotFound');
+  expect(error.message).toContain('blocks.ankiCards.errors.statusNotFound: ');
+  expect(error.message).toContain('chatanki_list_library_cards');
   expect(service.getStats().total).toBe(0);
 });
 

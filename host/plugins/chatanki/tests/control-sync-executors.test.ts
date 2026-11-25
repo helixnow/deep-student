@@ -7,6 +7,7 @@ import { expect, it } from 'vitest';
 import type {
   ChatAnkiConnectSync, ChatAnkiDocumentPipeline, ToolExecutionContext,
 } from '../api.ts';
+import { STATUS_NOT_FOUND_MESSAGE } from '../src/card-access.ts';
 import { ChatAnkiControlExecutor } from '../src/control-executor.ts';
 import { parseChatAnkiControlArgs, parseChatAnkiSyncArgs } from '../src/executor-args.ts';
 import { ChatAnkiSyncExecutor } from '../src/sync-executor.ts';
@@ -112,7 +113,7 @@ it('W22 control: run-control failures are inline `<Action> failed: <AppError Dis
     cards: { isDocumentOwnedBySession: () => { throw new Error('io'); } } as never,
   });
   expect((await control.execute(controlCall({ action: 'bogus', documentId: 'doc' }), notOwned.ctx)).error)
-    .toBe('blocks.ankiCards.errors.statusNotFound');
+    .toBe(STATUS_NOT_FOUND_MESSAGE);
   expect(notOwned.warnings).toEqual(['[ChatAnkiToolExecutor] verify_document_ownership failed for document doc: io']);
 });
 
@@ -150,8 +151,13 @@ it('W22 sync: owner failures map to the Rust inline texts, receipts are best-eff
     ankiConnectSync: syncFacade({ addNotesToAnkiDetailed: async () => { throw new Error('无法核对 Anki 模型，发送尚未开始: x'); } }),
   });
   const pushFailed = await sync.execute(syncCall({ documentId: 'doc', noteType: 'Basic' }), rejected.ctx);
-  expect(pushFailed.output).toBeNull();
-  expect(pushFailed.error).toBe('无法核对 Anki 模型，发送尚未开始: x');
+  expect(pushFailed.error).toBe('[anki_connect_model_error] Failed to verify Anki note models before syncing: x');
+  expect(pushFailed.output).toEqual({
+    status: 'error',
+    errorCode: 'anki_connect_model_error',
+    retryable: true,
+    error: '[anki_connect_model_error] Failed to verify Anki note models before syncing: x',
+  });
 
   const receiptFails = harness({
     ankiConnectSync: syncFacade({ writeAnkiExportReceipts: () => { throw APP_ERROR; } }),

@@ -30,6 +30,7 @@ import chat from '../../chat/index.ts';
 import review from '../../review/index.ts';
 import type { ChatAnkiChatBlock, ChatAnkiChatBlockStore, ToolExecutionContext } from '../api.ts';
 import chatanki from '../index.ts';
+import { STATUS_NOT_FOUND_MESSAGE } from '../src/card-access.ts';
 import { patchAnkiCardsBlockSyncStatus } from '../src/sync-executor.ts';
 
 let dir = '';
@@ -275,7 +276,7 @@ it('RF-W22-sync-status-patch-session-scope evidence 6: after a snapshot export +
     { id: 'call-doc-e6-copy', name: 'builtin-chatanki_sync', arguments: { documentId: 'doc-e6' } },
     context(imported.sessionId, []),
   );
-  expect([fromCopy.success, fromCopy.error]).toEqual([false, 'blocks.ankiCards.errors.statusNotFound']);
+  expect([fromCopy.success, fromCopy.error]).toEqual([false, STATUS_NOT_FOUND_MESSAGE]);
 
   const { rust, lane } = await bothModes('sess_e6', 'doc-e6');
   expect(rust).toEqual({

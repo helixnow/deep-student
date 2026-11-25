@@ -15,7 +15,7 @@ import {
   decidePipelineTimeout, decideRoute, decideWaitTimeoutStatus, defaultGenerationTuning,
   defaultMaxCardsForContent, deriveEffectiveTemplateMode, effectiveSingleTemplateId,
   glossaryGenerationKnobs, goalPrefersChoiceTemplate,
-  humanizeChatAnkiError, isChatAnkiTool, isMultiTemplate, isStaleRunningAnkiBlock,
+  classifyAnkiConnectError, humanizeChatAnkiError, isChatAnkiTool, isMultiTemplate, isStaleRunningAnkiBlock,
   looksLikeGlossaryContent, normalizeTemplateSelection, parseChatAnkiRunArgs,
   parseChatAnkiStartArgs, parseRoutePlanResponse, resolveRouteDecision, resolveSingleTemplateId,
   routePlanToDebugJson, selectChatankiTemplatePage, unsupportedChatankiResourceMessage,
@@ -100,9 +100,49 @@ describe('chatanki_executor.rs (pure helpers)', () => {
     expect(humanized.startsWith('blocks.ankiCards.errors.statusNotFound: ')).toBe(true);
     expect(humanized).toContain('chatanki_list_library_cards');
     expect(humanized).toContain('chatanki_*_library_card');
+    expect(humanized).toContain('libraryCardIds');
+    // Idempotent: re-humanizing an already humanized message does not double-append.
+    expect(humanizeChatAnkiError(humanized)).toBe(humanized);
     expect(humanizeChatAnkiError('blocks.ankiCards.errors.ankiConnectUnavailable'))
       .toContain('AnkiConnect is unavailable');
     expect(humanizeChatAnkiError('some other failure')).toBe('some other failure');
+  });
+
+  it('classifyAnkiConnectError converts Chinese v5/offline/timeout errors into actionable locale-clean codes', () => {
+    const v5 = classifyAnkiConnectError(
+      'AnkiConnect 插件版本过旧（API v5，需要 ≥ v6）。请在 Anki 中更新 AnkiConnect 插件（代码：2055492159）后重试',
+    );
+    expect(v5.code).toBe('anki_connect_version_unsupported');
+    expect(v5.retryable).toBe(false);
+    expect(v5.detectedVersion).toBe(5);
+    expect(v5.requiredVersion).toBe(6);
+    expect(v5.message).toContain('[anki_connect_version_unsupported]');
+    expect(v5.message).toContain('do not bypass');
+    expect(v5.message).not.toMatch(/[\u3400-\u9fff]/);
+
+    const offline = classifyAnkiConnectError(
+      '端口8765无法访问: Connection refused (os error 111) \n\n这通常意味着：\n1. Anki桌面程序未运行',
+    );
+    expect(offline.code).toBe('anki_connect_offline');
+    expect(offline.retryable).toBe(true);
+    expect(offline.message).toContain('[anki_connect_offline]');
+    expect(offline.message).not.toContain('os error 111');
+    expect(offline.message).not.toMatch(/[\u3400-\u9fff]/);
+
+    const timeout = classifyAnkiConnectError(
+      'AnkiConnect连接超时，请确保Anki桌面程序正在运行并启用了AnkiConnect插件',
+    );
+    expect(timeout.code).toBe('anki_connect_timeout');
+    expect(timeout.retryable).toBe(true);
+    expect(timeout.message).not.toMatch(/[\u3400-\u9fff]/);
+
+    const mismatch = classifyAnkiConnectError(
+      'Anki 模型「Deep Student / tpl / v1」与本地模板的字段、卡面或样式不同。请使用新模板版本后发送。',
+    );
+    expect(mismatch.code).toBe('anki_connect_model_mismatch');
+    expect(mismatch.retryable).toBe(false);
+    expect(mismatch.message).toContain('Deep Student / tpl / v1');
+    expect(mismatch.message).not.toMatch(/[\u3400-\u9fff]/);
   });
 
   it('test_can_handle', () => {
@@ -690,7 +730,9 @@ function makeTask(status: TaskStatus): DocumentTask {
 describe('chatanki_executor.rs (status snapshot / workflow projection)', () => {
   it('test_derive_status_snapshot_not_found', () => {
     expect(deriveStatusSnapshot([], [])).toEqual({
-      status: 'not_found', error: 'blocks.ankiCards.errors.statusNotFound', shouldRetry: true,
+      status: 'not_found',
+      error: humanizeChatAnkiError('blocks.ankiCards.errors.statusNotFound'),
+      shouldRetry: true,
     });
   });
 

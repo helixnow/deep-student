@@ -6,7 +6,7 @@ import type {
   ToolExecutionContext, ToolResultInfo, ToolSensitivity,
 } from '../api.ts';
 import { syncTerminalAnkiBlockWithDb } from './block-reap.ts';
-import { verifyDocumentOwnership } from './card-access.ts';
+import { STATUS_NOT_FOUND_MESSAGE, verifyDocumentOwnership } from './card-access.ts';
 import { parseChatAnkiControlArgs, type ChatAnkiControlArgs } from './executor-args.ts';
 import { chatankiSensitivityForCall, computeTaskCounts } from './executor-helpers.ts';
 import { errorText, stripToolNamespace } from './execution.ts';
@@ -71,7 +71,7 @@ export async function executeChatAnkiControl(
           if (task.document_id !== documentId) {
             const bare = ctx.emitBareToolCallError ?? null;
             const emitting = bare === null ? ctx : { ...ctx, emitToolCallError: bare };
-            return finishFailure(call, emitting, startedAt, 'blocks.ankiCards.errors.statusNotFound');
+            return finishFailure(call, emitting, startedAt, STATUS_NOT_FOUND_MESSAGE);
           }
           pipeline.updateTaskStatus(taskId, 'Pending', null);
         } else {
