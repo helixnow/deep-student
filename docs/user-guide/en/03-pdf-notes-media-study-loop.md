@@ -59,9 +59,9 @@
 
 **What you get**: The paired PDF window scrolls straight to the exact cited page without covering your note or losing your cursor position.
 
-### Same-Name Tab Disambiguation
+### Smart Tab Title Disambiguation (Shared Prefixes)
 
-When you keep multiple course notes open at once — for example, `Week 1.md` inside `Calculus/` and another `Week 1.md` inside `Physics/` — the Notes tab strip automatically appends the distinguishing parent folder name next to the duplicate tab title. You can always tell at a glance which course note you are editing.
+When you keep multiple similarly titled notes open at once — for example, `Calculus - Chapter 1 - Limits` and `Calculus - Chapter 2 - Derivatives` — compact tabs would normally all cut off to the same truncated prefix. Instead, the Notes tab strip automatically collapses the shared prefix into a short leading hint plus `…` followed by each tab's differentiating part (such as `Calc…Chapter 1 - Limits` and `Calc…Chapter 2 - Derivatives`), snapping cleanly to word and number boundaries. Hover over any tab at any time to see the full title.
 
 ### Daily Note-Taking Essentials
 
