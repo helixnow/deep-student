@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { invoke, openMedia } = vi.hoisted(() => ({ invoke: vi.fn(), openMedia: vi.fn() }));
+const { invoke, openMedia, rememberPending } = vi.hoisted(() => ({
+  invoke: vi.fn(),
+  openMedia: vi.fn(),
+  rememberPending: vi.fn(),
+}));
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
-vi.mock('@/features/learning-hub/apps/views/media/mediaRefEvents', () => ({ dispatchOpenMediaRef: openMedia }));
+vi.mock('@/features/learning-hub/apps/views/media/mediaRefEvents', () => ({
+  dispatchOpenMediaRef: openMedia,
+  rememberPendingMediaFocus: rememberPending,
+}));
 
 import { findLibraryCard, openCardSourceTarget, resolveCardSource } from '../cardSource';
 

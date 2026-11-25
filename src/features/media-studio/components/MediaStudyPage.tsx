@@ -29,7 +29,10 @@ import { MEDIA_STUDIO_FOCUS_SCOPE } from '../mediaStudioNavigation';
 import {
   describeMediaPlaybackError,
   findHitDisabledPlayButton,
+  hasMediaElementSource,
+  isCustomProtocolMediaUrl,
   resolvePlayableMediaUrl,
+  shouldReportMediaElementError,
 } from '../mediaPlaybackGuard';
 import { MediaAskTab, MediaHandoutTab, MediaPracticeTab, type MediaTabMeta } from './MediaStudyTabs';
 import './MediaStudyPage.css';
@@ -109,47 +112,55 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
     const cleanups: Array<() => void> = [];
     const webUi = isWebUiShell();
 
-    const normalizeElementSource = (el: HTMLMediaElement) => {
-      if (!webUi) return;
+    const clearPlaybackError = () => {
+      setPlaybackError(null);
+      lastToastedErrorRef.current = null;
+    };
+
+    const isStreamFallbackPending = (el: HTMLMediaElement): boolean =>
+      Boolean(el.closest('[data-media-source-kind="stream"]'));
+
+    const normalizeElementSource = (el: HTMLMediaElement): boolean => {
+      if (!webUi) return false;
       const rawAttr = el.getAttribute('src');
-      if (!rawAttr) return;
+      if (!rawAttr || !isCustomProtocolMediaUrl(rawAttr)) return false;
       const resolved = resolvePlayableMediaUrl(rawAttr, { isWebUi: true });
       if (resolved && resolved !== rawAttr) {
         el.setAttribute('src', resolved);
-      }
-    };
-
-    const inspectMediaElementError = (el: HTMLMediaElement): boolean => {
-      const hasSrc = Boolean(el.currentSrc || el.getAttribute('src')?.trim() || el.querySelector('source[src]'));
-      if (!hasSrc) {
-        reportPlaybackError(describeMediaPlaybackError({ hasSrc: false }, t));
-        return true;
-      }
-      if (el.error) {
-        reportPlaybackError(describeMediaPlaybackError({ mediaError: el.error, networkState: el.networkState }, t));
-        return true;
-      }
-      if (el.networkState === 3) {
-        reportPlaybackError(describeMediaPlaybackError({ networkState: el.networkState }, t));
+        if (typeof el.load === 'function') {
+          try {
+            el.load();
+          } catch {
+            // Let subsequent media events / play() drive loading.
+          }
+        }
         return true;
       }
       return false;
     };
 
+    const inspectMediaElementError = (el: HTMLMediaElement): boolean => {
+      if (!shouldReportMediaElementError(el, { isWebUi: webUi, fallbackPending: isStreamFallbackPending(el) })) {
+        return false;
+      }
+      reportPlaybackError(describeMediaPlaybackError({ mediaError: el.error, networkState: el.networkState }, t));
+      return true;
+    };
+
     const attachGuard = (el: HTMLMediaElement) => {
       if (guarded.has(el)) return;
       guarded.add(el);
-      normalizeElementSource(el);
-      if (el.error || el.networkState === 3) {
+      const rewrote = normalizeElementSource(el);
+      if (!el.error && el.readyState >= 1) {
+        clearPlaybackError();
+      } else if (!rewrote && el.error) {
         inspectMediaElementError(el);
       }
       const rawPlay = el.play.bind(el);
       el.play = () => {
-        setPlaybackError(null);
-        lastToastedErrorRef.current = null;
+        clearPlaybackError();
         normalizeElementSource(el);
-        const hasSrc = Boolean(el.currentSrc || el.getAttribute('src')?.trim() || el.querySelector('source[src]'));
-        if (!hasSrc) {
+        if (!hasMediaElementSource(el)) {
           const msg = describeMediaPlaybackError({ hasSrc: false }, t);
           reportPlaybackError(msg);
           return Promise.reject(new Error(msg));
@@ -161,6 +172,17 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
             // Fall through to rawPlay so error reporting still runs.
           }
         }
+        const reportPlayRejection = (err: unknown) => {
+          const errName = (err as DOMException | null)?.name;
+          if (errName === 'AbortError' || !el.isConnected) return;
+          if (isStreamFallbackPending(el)) return;
+          reportPlaybackError(
+            describeMediaPlaybackError(
+              { mediaError: el.error, error: err, networkState: el.networkState },
+              t,
+            ),
+          );
+        };
         let playPromise: Promise<void>;
         try {
           playPromise = rawPlay();
@@ -173,49 +195,26 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
               const mutedResult = rawPlay();
               if (mutedResult && typeof mutedResult.then === 'function') {
                 return mutedResult.catch((mutedErr: unknown) => {
-                  if ((mutedErr as DOMException | null)?.name !== 'AbortError') {
-                    reportPlaybackError(
-                      describeMediaPlaybackError(
-                        { mediaError: el.error, error: mutedErr, networkState: el.networkState },
-                        t,
-                      ),
-                    );
-                  }
+                  reportPlayRejection(mutedErr);
                   throw mutedErr;
                 });
               }
               return mutedResult;
             } catch (mutedErr) {
-              reportPlaybackError(
-                describeMediaPlaybackError(
-                  { mediaError: el.error, error: mutedErr, networkState: el.networkState },
-                  t,
-                ),
-              );
+              reportPlayRejection(mutedErr);
               return Promise.reject(mutedErr);
             }
           }
-          if (errName !== 'AbortError') {
-            reportPlaybackError(
-              describeMediaPlaybackError(
-                { mediaError: el.error, error: err, networkState: el.networkState },
-                t,
-              ),
-            );
-          }
+          reportPlayRejection(err);
           return Promise.reject(err);
         }
         if (!playPromise || typeof playPromise.then !== 'function') {
-          if (el.error || el.networkState === 3) {
-            inspectMediaElementError(el);
-          }
+          if (el.error) inspectMediaElementError(el);
           return playPromise;
         }
         return playPromise
           .then((value) => {
-            if (el.error || el.networkState === 3) {
-              inspectMediaElementError(el);
-            }
+            if (el.error) inspectMediaElementError(el);
             return value;
           })
           .catch((err: unknown) => {
@@ -224,48 +223,35 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
               el.muted = true;
               setMutedAutoplayNotice(true);
               return rawPlay().catch((mutedErr: unknown) => {
-                if ((mutedErr as DOMException | null)?.name !== 'AbortError') {
-                  reportPlaybackError(
-                    describeMediaPlaybackError(
-                      { mediaError: el.error, error: mutedErr, networkState: el.networkState },
-                      t,
-                    ),
-                  );
-                }
+                reportPlayRejection(mutedErr);
                 throw mutedErr;
               });
             }
-            if (errName !== 'AbortError') {
-              reportPlaybackError(
-                describeMediaPlaybackError(
-                  { mediaError: el.error, error: err, networkState: el.networkState },
-                  t,
-                ),
-              );
-            }
+            reportPlayRejection(err);
             throw err;
           });
       };
 
+      const onMediaReady = () => {
+        if (!el.error) clearPlaybackError();
+      };
       const onPlaying = () => {
-        setPlaybackError(null);
-        lastToastedErrorRef.current = null;
+        clearPlaybackError();
       };
       const onVolumeChange = () => {
         if (!el.muted) setMutedAutoplayNotice(false);
       };
-      const onMediaError = () => {
-        reportPlaybackError(
-          describeMediaPlaybackError({ mediaError: el.error, networkState: el.networkState }, t),
-        );
-      };
+      el.addEventListener('loadedmetadata', onMediaReady);
+      el.addEventListener('loadeddata', onMediaReady);
+      el.addEventListener('canplay', onMediaReady);
       el.addEventListener('playing', onPlaying);
       el.addEventListener('volumechange', onVolumeChange);
-      el.addEventListener('error', onMediaError);
       cleanups.push(() => {
+        el.removeEventListener('loadedmetadata', onMediaReady);
+        el.removeEventListener('loadeddata', onMediaReady);
+        el.removeEventListener('canplay', onMediaReady);
         el.removeEventListener('playing', onPlaying);
         el.removeEventListener('volumechange', onVolumeChange);
-        el.removeEventListener('error', onMediaError);
       });
     };
 
@@ -277,18 +263,40 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
     scan();
 
     // Capture-phase error listener catches non-bubbling <audio>/<video>/<source> errors
-    // even before MutationObserver attaches per-element listeners.
+    // even before MutationObserver attaches per-element listeners, while ignoring transient,
+    // empty-src, stale-src, aborted, and stream-fallback-pending errors.
     const onCapturedMediaError = (event: Event) => {
       const target = event.target;
       if (target instanceof HTMLMediaElement) {
-        reportPlaybackError(
-          describeMediaPlaybackError({ mediaError: target.error, networkState: target.networkState }, t),
-        );
+        attachGuard(target);
+        if (normalizeElementSource(target)) return;
+        inspectMediaElementError(target);
       } else if (target instanceof HTMLSourceElement) {
         const parentMedia = target.parentElement instanceof HTMLMediaElement ? target.parentElement : null;
+        if (!parentMedia || !parentMedia.isConnected) return;
+        if (target.nextElementSibling?.tagName === 'SOURCE') return;
+        const sourceSrc = target.getAttribute('src')?.trim() ?? '';
+        if (!sourceSrc) return;
+        if (webUi && isCustomProtocolMediaUrl(sourceSrc)) {
+          const resolved = resolvePlayableMediaUrl(sourceSrc, { isWebUi: true });
+          if (resolved && resolved !== sourceSrc) {
+            target.setAttribute('src', resolved);
+            if (typeof parentMedia.load === 'function') {
+              try {
+                parentMedia.load();
+              } catch {
+                // ignore
+              }
+            }
+            return;
+          }
+        }
+        if (isStreamFallbackPending(parentMedia) || parentMedia.readyState >= 2) return;
+        if (parentMedia.error?.code === 1) return;
+        if (!parentMedia.error && parentMedia.networkState !== 3) return;
         reportPlaybackError(
           describeMediaPlaybackError(
-            { mediaError: parentMedia?.error, networkState: parentMedia?.networkState ?? 3 },
+            { mediaError: parentMedia.error, networkState: parentMedia.networkState },
             t,
           ),
         );
@@ -313,8 +321,7 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
         return;
       }
       attachGuard(media);
-      if (media.error || media.networkState === 3) {
-        inspectMediaElementError(media);
+      if (media.error && inspectMediaElementError(media)) {
         return;
       }
       if (media.paused) {
