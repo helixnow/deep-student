@@ -10,14 +10,21 @@ import type { ParsedScore, DimensionScore } from '../../essay-grading/streamingM
 import type { GradeCode } from '../../essay-grading/types';
 import { wrapRadarLabel } from './radarLabel';
 import { getDimensionDisplayName } from '../../essay-grading/modeI18n';
-import { ChartBar, ChartPolar } from '@phosphor-icons/react';
+import { ChartBar, ChartPolar, WarningCircle } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import {
+  formatStaleScoreBadgeText,
+  useEssayRubricResultContext,
+  type StaleRubricInfo,
+} from './rubricResultContext';
 
 interface ScoreCardProps {
   score: ParsedScore;
   className?: string;
   /** 当前批阅模式 ID：预置模式的维度名按界面语言显示（仅展示，不改评分数据） */
   gradingModeId?: string | null;
+  /** 可选：显式传入过期标准信息（未传时自动读取 ResultPanel 提供的上下文） */
+  staleRubric?: StaleRubricInfo | null;
 }
 
 const clampPct = (value: number) => Math.max(0, Math.min(100, value));
@@ -299,16 +306,23 @@ const RadarChart: React.FC<{ dimensions: DimensionScore[]; mounted: boolean }> =
   );
 };
 
-export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingModeId }) => {
+export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingModeId, staleRubric: staleRubricProp }) => {
   const { t } = useTranslation('essay_grading');
-  const isIeltsBand = isIeltsNineBandMode(gradingModeId, score.maxTotal);
+  const { staleRubric: contextStaleRubric } = useEssayRubricResultContext();
+  const resolvedStaleRubric = staleRubricProp !== undefined ? staleRubricProp : contextStaleRubric;
+  const effectiveGradingModeId = resolvedStaleRubric ? resolvedStaleRubric.graded.id : gradingModeId;
+  const staleRubricBadgeText = useMemo(
+    () => (resolvedStaleRubric ? formatStaleScoreBadgeText(resolvedStaleRubric.graded, t) : null),
+    [resolvedStaleRubric, t],
+  );
+  const isIeltsBand = isIeltsNineBandMode(effectiveGradingModeId, score.maxTotal);
   const normalizedScore = useMemo(
     () => reconcileEssayScore(score, isIeltsBand),
     [score, isIeltsBand],
   );
   const dimensions = useMemo(
-    () => normalizedScore.dimensions.map((dim) => ({ ...dim, name: getDimensionDisplayName(gradingModeId, dim.name, t) })),
-    [normalizedScore.dimensions, gradingModeId, t]
+    () => normalizedScore.dimensions.map((dim) => ({ ...dim, name: getDimensionDisplayName(effectiveGradingModeId, dim.name, t) })),
+    [normalizedScore.dimensions, effectiveGradingModeId, t]
   );
 
   const percentage = safePercentage(normalizedScore.total, normalizedScore.maxTotal);
@@ -337,7 +351,25 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
     : RING_CIRCUMFERENCE;
 
   return (
-    <div className={cn('mb-6', className)}>
+    <div
+      className={cn(
+        'mb-6',
+        resolvedStaleRubric && 'rounded-xl border border-amber-500/45 bg-amber-500/[0.04] p-4',
+        className,
+      )}
+      data-stale-rubric={resolvedStaleRubric ? 'true' : undefined}
+    >
+      {resolvedStaleRubric && staleRubricBadgeText && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span
+            data-testid="score-card-stale-rubric-badge"
+            className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/60 bg-amber-100/90 dark:border-amber-400/50 dark:bg-amber-950/70 px-2.5 py-0.5 text-xs font-medium text-amber-950 dark:text-amber-100"
+          >
+            <WarningCircle size={13} weight="fill" className="shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+            {staleRubricBadgeText}
+          </span>
+        </div>
+      )}
       {/* 总分区域 */}
       <div className="flex items-start justify-between mb-5">
         <div className="flex items-center gap-4">

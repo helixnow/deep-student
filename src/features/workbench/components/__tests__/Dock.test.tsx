@@ -969,4 +969,145 @@ describe('autohide', () => {
     render(<Dock />);
     expect(screen.getByTestId('wb-dock')).toHaveAttribute('data-hidden', 'true');
   });
+
+  it('S4-17: 360px 展开程序坞时动态暴露布局让位变量与属性，收起后归零，且外部点按发送按钮期间不提前回弹导致错位', () => {
+    vi.useFakeTimers();
+    const origMatchMedia = window.matchMedia;
+    const origInnerWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      writable: true,
+      value: 360,
+    });
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query.includes('max-width: 767px') || query.includes('max-width: 640px'),
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+
+    try {
+      useWindowStore.setState({ desktopSize: { w: 360, h: 760 } });
+      setDockPinned(['chat', 'files']);
+      openWin('chat', 'mobile-clearance', '对话');
+      const onMobileClearanceChange = vi.fn();
+      const onSendClick = vi.fn();
+
+      const { unmount } = render(
+        <div data-wb-workbench-root="" data-testid="wb-root">
+          <div data-wb-desktop="" data-testid="wb-desktop">
+            <div data-wb-window-layer="" data-testid="wb-window-layer">
+              <button type="button" aria-label="发送消息" onClick={onSendClick}>
+                发送
+              </button>
+            </div>
+            <Dock onMobileClearanceChange={onMobileClearanceChange} />
+          </div>
+        </div>,
+      );
+
+      const root = screen.getByTestId('wb-root');
+      const desktop = screen.getByTestId('wb-desktop');
+      const dock = screen.getByTestId('wb-dock');
+      const hotzone = screen.getByTestId('wb-dock-hotzone');
+
+      // 模拟真实渲染下的程序坞高度（62px）
+      Object.defineProperty(dock, 'offsetHeight', { configurable: true, value: 62 });
+
+      // 初始收起态：无 data-wb-dock-revealed，让位高度为 0px
+      expect(document.documentElement).not.toHaveAttribute('data-wb-dock-revealed');
+      expect(document.documentElement.style.getPropertyValue('--wb-mobile-dock-clearance')).toBe('0px');
+      expect(root).not.toHaveAttribute('data-wb-dock-revealed');
+      expect(desktop).not.toHaveAttribute('data-wb-dock-revealed');
+
+      // 点击底缘热区展开：立即写入 data-wb-dock-revealed="true" 与 --wb-mobile-dock-clearance（62 + 4 + 10 = 76px）
+      fireEvent.click(hotzone);
+      expect(dock).not.toHaveAttribute('data-hidden');
+      expect(document.documentElement).toHaveAttribute('data-wb-dock-revealed', 'true');
+      expect(document.documentElement.style.getPropertyValue('--wb-mobile-dock-clearance')).toBe('76px');
+      expect(root).toHaveAttribute('data-wb-dock-revealed', 'true');
+      expect(root.style.getPropertyValue('--wb-mobile-dock-clearance')).toBe('76px');
+      expect(desktop).toHaveAttribute('data-wb-dock-revealed', 'true');
+      expect(desktop.style.getPropertyValue('--wb-mobile-dock-clearance')).toBe('76px');
+      expect(onMobileClearanceChange).toHaveBeenLastCalledWith({ revealed: true, clearancePx: 76 });
+
+      // Escape 收起：立即归零
+      fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' });
+      expect(dock).toHaveAttribute('data-hidden', 'true');
+      expect(document.documentElement).not.toHaveAttribute('data-wb-dock-revealed');
+      expect(document.documentElement.style.getPropertyValue('--wb-mobile-dock-clearance')).toBe('0px');
+      expect(onMobileClearanceChange).toHaveBeenLastCalledWith({ revealed: false, clearancePx: 0 });
+
+      // 再次展开后点击「收起程序坞」按钮：立即归零
+      fireEvent.click(hotzone);
+      expect(document.documentElement).toHaveAttribute('data-wb-dock-revealed', 'true');
+      fireEvent.click(screen.getByTestId('wb-dock-collapse-button'));
+      expect(document.documentElement).not.toHaveAttribute('data-wb-dock-revealed');
+      expect(document.documentElement.style.getPropertyValue('--wb-mobile-dock-clearance')).toBe('0px');
+
+      // 再次展开后在真实指针序列（pointerdown → pointerup → click）中点击发送按钮：
+      // pointerdown 瞬间先收起程序坞但保持让位，避免按钮移走导致一次点不中；松手 click 后自动归零
+      fireEvent.click(hotzone);
+      expect(document.documentElement).toHaveAttribute('data-wb-dock-revealed', 'true');
+      const sendBtn = screen.getByRole('button', { name: '发送消息' });
+      fireEvent.pointerDown(sendBtn);
+      expect(dock).toHaveAttribute('data-hidden', 'true');
+      expect(document.documentElement).toHaveAttribute('data-wb-dock-revealed', 'true');
+      expect(document.documentElement.style.getPropertyValue('--wb-mobile-dock-clearance')).toBe('76px');
+
+      fireEvent.pointerUp(sendBtn);
+      fireEvent.click(sendBtn);
+      expect(onSendClick).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        vi.advanceTimersByTime(10);
+      });
+      expect(document.documentElement).not.toHaveAttribute('data-wb-dock-revealed');
+      expect(document.documentElement.style.getPropertyValue('--wb-mobile-dock-clearance')).toBe('0px');
+
+      // 卸载后清理全局属性与变量
+      unmount();
+      expect(document.documentElement).not.toHaveAttribute('data-wb-dock-revealed');
+      expect(document.documentElement.style.getPropertyValue('--wb-mobile-dock-clearance')).toBe('');
+
+      // 验证 Dock.css 在 <= 767px 下绑定 --wb-mobile-dock-clearance 与窗口层收缩规则
+      const css = readFileSync(resolve(__dirname, '../Dock.css'), 'utf8');
+      const mobile767Block = css.slice(css.indexOf('@media (max-width: 767px)'));
+      expect(mobile767Block).toContain('bottom: var(--wb-mobile-dock-clearance, 0px);');
+      expect(mobile767Block).toContain('max-height: 100%;');
+    } finally {
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        writable: true,
+        value: origInnerWidth,
+      });
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        writable: true,
+        value: origMatchMedia,
+      });
+    }
+  });
+
+  it('S4-17: 桌面宽屏（1600px）展开 autohide 程序坞时不触发移动端布局让位', () => {
+    useWindowStore.setState({ desktopSize: { w: 1600, h: 900 } });
+    setDockPinned(['chat']);
+    const onMobileClearanceChange = vi.fn();
+
+    render(<Dock autohide onMobileClearanceChange={onMobileClearanceChange} />);
+    fireEvent.click(screen.getByTestId('wb-dock-hotzone'));
+
+    expect(screen.getByTestId('wb-dock')).not.toHaveAttribute('data-hidden');
+    expect(document.documentElement).not.toHaveAttribute('data-wb-dock-revealed');
+    expect(document.documentElement.style.getPropertyValue('--wb-mobile-dock-clearance')).toBe('0px');
+    expect(onMobileClearanceChange).toHaveBeenLastCalledWith({ revealed: false, clearancePx: 0 });
+  });
 });

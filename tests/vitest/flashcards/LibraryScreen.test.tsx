@@ -90,11 +90,17 @@ vi.mock('@/features/flashcards/events', () => ({
 vi.mock('@/utils/fileManager', () => ({
   isVirtualUri: (path: string) => path.startsWith('content://'),
   extractFileName: (path: string) => path.split('/').pop() ?? '',
+  usesAndroidSaf: () => false,
   fileManager: {
     pickSingleFile: mocks.pickSingleFile,
     readTextFile: mocks.readTextFile,
     saveTextFile: mocks.saveTextFile,
   },
+}));
+
+vi.mock('@/utils/urlOpener', () => ({
+  isTauriEnvironment: () => true,
+  openUrl: vi.fn(),
 }));
 
 vi.mock('@/services/ankiApiAdapter', () => ({
@@ -286,7 +292,7 @@ describe('LibraryScreen', () => {
     await waitFor(() => expect(mocks.enqueueCard).toHaveBeenCalledWith('queue-me'));
     expect(mocks.requestDueRefresh).toHaveBeenCalledTimes(1);
     expect(mocks.startBatchSession).not.toHaveBeenCalled();
-    expect(await screen.findByTestId('schedule-state-queue-me')).toHaveTextContent('新卡');
+    await waitFor(() => expect(screen.getByTestId('schedule-state-queue-me')).toHaveTextContent('新卡'));
 
     fireEvent.click(screen.getByRole('button', { name: '复习' }));
     expect(mocks.startBatchSession).toHaveBeenCalledWith(
@@ -349,6 +355,8 @@ describe('LibraryScreen', () => {
     expect(await screen.findByText('库中暂无卡片')).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole('button', { name: 'library.import.apkg' })[0]);
+    expect(screen.getByTestId('fc-lib-import-panel')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('fc-lib-apkg-choose-btn'));
 
     await waitFor(() => {
       expect(mocks.pickSingleFile).toHaveBeenCalledWith({
@@ -391,6 +399,11 @@ describe('LibraryScreen', () => {
     mocks.invoke.mockResolvedValueOnce({ states: [{ id: 'st-1' }] });
 
     fireEvent.click(screen.getByTestId('fc-lib-import-csv'));
+    expect(screen.getByTestId('fc-lib-import-panel')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('fc-lib-csv-choose-btn'));
+    expect(await screen.findByTestId('fc-lib-csv-confirm-banner')).toBeInTheDocument();
+    expect(mocks.saveAnkiCards).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('fc-lib-csv-confirm-btn'));
     await waitFor(() => {
       expect(mocks.saveAnkiCards).toHaveBeenCalledWith({
         cards: [{ front: 'New Front', back: 'New Back', tags: ['t1'], images: [] }],

@@ -175,9 +175,19 @@ export const UI_FONT_PRESETS: FontPreset[] = [
   ...MONOSPACE_FONTS,
 ];
 
+/**
+ * 数学符号回退字体栈：置于通用族（sans-serif / serif / monospace / cursive）之前，
+ * 避免 Linux Chromium 等环境下 ≠ (U+2260)、≤、≥、≈、∈、∀、∃、→、∞、∫、∑ 渲染成缺字豆腐块。
+ */
+export const MATH_SYMBOL_FALLBACK_FONTS =
+  '"Noto Sans Math", "DejaVu Sans", "Liberation Sans", "KaTeX_Main", "Apple Symbols", "Segoe UI Symbol", "Cambria Math", "STIX Two Math", "Symbola"';
+
+const withMathFallback = (family: string): string =>
+  family.replace(/,\s*(sans-serif|serif|monospace|cursive)\s*$/, `, ${MATH_SYMBOL_FALLBACK_FONTS}, $1`);
+
 // 字体 value 到 family 的映射（用于快速查找）
 export const UI_FONT_FAMILY_MAP: Record<string, string> = Object.fromEntries(
-  UI_FONT_PRESETS.map(p => [p.value, p.family])
+  UI_FONT_PRESETS.map(p => [p.value, withMathFallback(p.family)])
 );
 
 /**

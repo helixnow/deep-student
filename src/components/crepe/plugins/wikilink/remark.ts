@@ -6,7 +6,7 @@
 import { $remark } from '@milkdown/kit/utils';
 import { visit } from 'unist-util-visit';
 
-import { parseWikiLinkInner, wikiLinkGlobalPattern } from './format';
+import { AUTOMD_PLACEHOLDER_PATTERN, parseWikiLinkInner, wikiLinkGlobalPattern } from './format';
 
 type MdastNode = {
   type: string;
@@ -31,7 +31,12 @@ function remarkWikilinkTransform() {
         if (match.index > last) {
           parts.push({ type: 'text', value: value.slice(last, match.index) });
         }
-        const parsed = parseWikiLinkInner(match[1]);
+        // Never turn a span containing an @milkdown/plugin-automd inline-sync
+        // cursor placeholder (⁂ / ∴ / ∅) into an atom wikilink node: atom nodes
+        // have empty textContent so automd's calcOffset cannot find or remove
+        // the placeholder, causing it to leak visibly into the document.
+        const inner = match[1];
+        const parsed = AUTOMD_PLACEHOLDER_PATTERN.test(inner) ? null : parseWikiLinkInner(inner);
         if (parsed) {
           parts.push({
             type: 'wikilink',

@@ -175,6 +175,10 @@
       "durationMinutesSeconds": "{{minutes}} 分 {{seconds}} 秒",
       "durationSeconds": "{{seconds}} 秒"
     },
+    "builtin": {
+      "heartbeatName": "学习心跳检查",
+      "heartbeatPrompt": "你是 Deep Student 的后台心跳检查代理。请依次检查以下清单（只使用可用的只读工具，工具不可用则跳过该项）：\n1. 用 builtin-user_todo_get_summary 检查今天到期或已逾期的待办事项；\n2. 用 builtin-qbank_list（include_stats=true）留意最近 3 天没有练习记录、或错误率偏高需要复习的题库/错题本；\n3. 如需补充上下文，可用 builtin-unified_search 搜索相关学习记录。\n输出规则：\n- 如果所有检查都没有需要用户关注的事项，只输出 HEARTBEAT_OK，不要输出任何其他内容；\n- 如果有需要关注的事项，用简洁中文逐条列出（数量 + 建议动作），且不要出现 HEARTBEAT_OK 字样；\n- 不要向用户提问，不要执行任何写操作或高敏感操作。"
+    },
     "noHistory": "暂无运行记录",
     "new": "新建任务",
     "createTitle": "新建定时任务",

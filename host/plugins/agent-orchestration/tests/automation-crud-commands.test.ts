@@ -568,7 +568,7 @@ describe('automations.rs list/create/update/delete commands', () => {
   });
 
   it('deletes an automation and refuses the built-in heartbeat', async () => {
-    const { host, storage, db } = await fixture();
+    const { host, storage, db, settings } = await fixture();
     try {
       saveAutomations(db, [sampleDaily('09:00')]);
       const response = await host.invoke<Record<string, unknown>>('chat_v2_automation_delete', {
@@ -578,7 +578,10 @@ describe('automations.rs list/create/update/delete commands', () => {
       expect((response.deleted as Record<string, unknown>).schedule).toEqual({ kind: 'daily', time: '09:00' });
       expect(db.pluck<number>('SELECT COUNT(*) FROM automation_definitions')).toBe(0);
 
-      saveAutomations(db, [sampleDaily('09:00', { id: 'auto_heartbeat_default', heartbeat: true })]);
+      saveAutomations(db, [sampleDaily('09:00', { id: 'auto_heartbeat_default', name: '学习心跳检查', heartbeat: true })]);
+      settings.save('language', 'en-US');
+      const enListed = await host.invoke<{ automations: Record<string, unknown>[] }>('chat_v2_automation_list');
+      expect(enListed.automations[0]?.name).toBe('Study Heartbeat Check');
       await expect(host.invoke('chat_v2_automation_delete', {
         automationId: 'auto_heartbeat_default', expectedVersion: 1,
       })).rejects.toBe('{"code":"VALIDATION_ERROR","message":"The built-in heartbeat automation cannot be deleted; disable it instead"}');

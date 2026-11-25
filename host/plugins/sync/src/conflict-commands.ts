@@ -385,6 +385,10 @@ function synchronizePairedNoteAndResource(
         }
       } else if (existingRes) {
         bumpUpdatedAtAndLog(tx, 'resources', targetResId, now, epochMs);
+        if (tableExists(tx, 'note_document_formats')) {
+          const fmtExists = Boolean(tx.pluck('SELECT EXISTS(SELECT 1 FROM note_document_formats WHERE note_id = ?1)', [recordId]));
+          if (fmtExists) ensurePendingChangeLog(tx, 'note_document_formats', recordId, 'UPDATE', now);
+        }
       }
     }
 
@@ -559,6 +563,51 @@ function resolveOnDatabase(
           }
           snapshotRecordWithData(tx, historyBatchId, REASON_CONFLICT_RESOLVE, tableName, recordId, latest as never);
           tempWriteGrantTokens = acquireTemporaryNoteWriteGrants(tx, tableName, recordId);
+          // If resolving a notes conflict selects a resource_id whose resources row was deferred/missing
+          // locally, materialize it before notes upsert so FK checks pass atomically.
+          if (
+            tableName === 'notes'
+            && operation !== 'Delete'
+            && isJsonObject(data)
+            && typeof data.resource_id === 'string'
+            && tableExists(tx, 'resources')
+          ) {
+            const targetResId = data.resource_id;
+            const exists = Boolean(tx.pluck('SELECT EXISTS(SELECT 1 FROM resources WHERE id = ?1)', [targetResId]));
+            if (!exists) {
+              let body = virtualContentMd;
+              if (body === null) {
+                const rawRes = latestConflictSideData(tx, 'resources', targetResId, resolution === 'keep_local' ? 'local' : 'cloud');
+                if (rawRes !== null) {
+                  try {
+                    body = extractNoteContentFromResource(parseJsonLossless(rawRes));
+                  } catch {
+                    // ignore unparseable conflict snapshot
+                  }
+                }
+              }
+              const initialBody = body ?? '';
+              const nextHash = createHasherSync('SHA-256').update(`${recordId}\0${initialBody}`).digestHex();
+              const resCols = new Set(tableInfo(tx, 'resources').map(c => c.name));
+              const insertCols: string[] = ['id'];
+              const insertVals: SqlParam[] = [targetResId];
+              const pushCol = (col: string, val: SqlParam): void => {
+                if (!resCols.has(col)) return;
+                insertCols.push(quoteIdentifier(col));
+                insertVals.push(val);
+              };
+              pushCol('hash', nextHash);
+              pushCol('type', 'note');
+              pushCol('source_id', recordId);
+              pushCol('source_table', 'notes');
+              pushCol('data', initialBody);
+              pushCol('created_at', timestampForColumn(tx, 'resources', 'created_at', now, epochMs));
+              pushCol('updated_at', timestampForColumn(tx, 'resources', 'updated_at', now, epochMs));
+              const placeholders = insertVals.map((_, idx) => `?${idx + 1}`).join(', ');
+              tx.run(`INSERT INTO resources (${insertCols.join(', ')}) VALUES (${placeholders})`, insertVals);
+              ensurePendingChangeLog(tx, 'resources', targetResId, 'INSERT', now);
+            }
+          }
         },
         finalize(tx, result) {
           if (result.success_count === 0) {

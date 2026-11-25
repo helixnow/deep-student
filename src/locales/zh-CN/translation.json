@@ -335,6 +335,7 @@
     "overwrite_manual_confirm": "当前译文包含手工修改，重新翻译将覆盖现有内容，是否继续？",
     "confirm_retranslate": "确认重译",
     "retranslated_undo_hint": "已生成新译文，可随时恢复上一版译文",
+    "version_history_count": "共 {{count}} 个历史版本",
     "restore_previous": "恢复上一版",
     "restored_previous": "已恢复上一版译文",
     "swapped_undo_hint": "已交换源文与译文",

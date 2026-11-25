@@ -229,8 +229,8 @@ describe('Notes HITL action handlers', () => {
     );
 
     await user.click(screen.getByRole('button', { name: '应用到笔记' }));
-    expect(screen.getByText('确认：应用到笔记')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '确认执行' }));
+    // 派发 canvas:ai-edit-request 仅打开非破坏性 Diff 审阅面板，不弹出前置通用不可逆确认弹窗
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
 
     window.removeEventListener('canvas:ai-edit-request', listener);
 

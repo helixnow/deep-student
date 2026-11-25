@@ -129,6 +129,221 @@ export interface BackupTabProps {
   lastAutoVerifyResult?: AutoVerifyResponse | null;
 }
 
+const BACKUP_STAGE_KEYS = {
+  queued: { key: 'data:governance.backup_stage_queued', fallback: 'Queued' },
+  prepare: { key: 'data:governance.backup_stage_prepare', fallback: 'Preparing' },
+  scan: { key: 'data:governance.backup_stage_scan', fallback: 'Scanning' },
+  checkpoint: { key: 'data:governance.backup_stage_checkpoint', fallback: 'Checkpointing databases' },
+  copy: { key: 'data:governance.backup_stage_copy', fallback: 'Copying files' },
+  seal: { key: 'data:governance.backup_stage_seal', fallback: 'Sealing archive' },
+  compress: { key: 'data:governance.backup_stage_compress', fallback: 'Compressing archive' },
+  verify: { key: 'data:governance.backup_stage_verify', fallback: 'Verifying integrity' },
+  extract: { key: 'data:governance.backup_stage_extract', fallback: 'Extracting files' },
+  replace: { key: 'data:governance.backup_stage_replace', fallback: 'Restoring data' },
+  cleanup: { key: 'data:governance.backup_stage_cleanup', fallback: 'Finalizing & cleaning up' },
+  finalize: { key: 'data:governance.backup_stage_finalize', fallback: 'Finalizing' },
+  completed: { key: 'data:governance.backup_stage_completed', fallback: 'Completed' },
+  failed: { key: 'data:governance.backup_stage_failed', fallback: 'Failed' },
+  cancelled: { key: 'data:governance.backup_stage_cancelled', fallback: 'Cancelled' },
+} as const;
+
+type BackupStageId = keyof typeof BACKUP_STAGE_KEYS;
+
+export function localizeBackupStage(
+  phase: string,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const trimmed = phase.trim();
+  if (!trimmed) return phase;
+  const entry = BACKUP_STAGE_KEYS[trimmed as BackupStageId];
+  if (!entry) return phase;
+  const localized = t(entry.key);
+  if (!localized || localized === entry.key) {
+    return entry.fallback;
+  }
+  return localized;
+}
+
+const CJK_CHAR_RE = /[\u4e00-\u9fff]/;
+
+export function localizeBackupProgressMessage(
+  message: string | null | undefined,
+  t: (key: string, options?: Record<string, unknown>) => string,
+  language?: string,
+): string {
+  if (!message) return '';
+  if (!language || !language.toLowerCase().startsWith('en')) {
+    return message;
+  }
+  if (!CJK_CHAR_RE.test(message)) {
+    return message;
+  }
+
+  const translate = (
+    key: string,
+    fallback: string,
+    vars?: Record<string, string | number>,
+  ): string => {
+    const localized = t(key, vars);
+    if (!localized || localized === key || CJK_CHAR_RE.test(localized)) {
+      return fallback;
+    }
+    return localized;
+  };
+
+  const trimmed = message.trim();
+
+  // Parameterized host messages
+  let m = /^正在压缩[:：]\s*(.+?)\s*\((\d+)\/(\d+)\)$/.exec(trimmed);
+  if (m) {
+    return translate(
+      'data:governance.backup_progress_compressing_item',
+      `Compressing: ${m[1]} (${m[2]}/${m[3]})`,
+      { item: m[1], current: m[2], total: m[3] },
+    );
+  }
+  m = /^正在解压[:：]\s*(.+?)\s*\((\d+)\/(\d+)\)$/.exec(trimmed);
+  if (m) {
+    return translate(
+      'data:governance.backup_progress_extracting_item',
+      `Extracting: ${m[1]} (${m[2]}/${m[3]})`,
+      { item: m[1], current: m[2], total: m[3] },
+    );
+  }
+  m = /^跳过已存在[:：]\s*(.+?)\s*\((\d+)\/(\d+)\)$/.exec(trimmed);
+  if (m) {
+    return translate(
+      'data:governance.backup_progress_skipping_existing',
+      `Skipping existing: ${m[1]} (${m[2]}/${m[3]})`,
+      { item: m[1], current: m[2], total: m[3] },
+    );
+  }
+  m = /^正在验证[:：]\s*(.+?)\s*\((\d+)\/(\d+)\)$/.exec(trimmed);
+  if (m) {
+    return translate(
+      'data:governance.backup_progress_verifying_item',
+      `Verifying: ${m[1]} (${m[2]}/${m[3]})`,
+      { item: m[1], current: m[2], total: m[3] },
+    );
+  }
+  m = /^正在恢复数据库[:：]\s*(.+?)\s*\((\d+)\/(\d+)\)$/.exec(trimmed);
+  if (m) {
+    return translate(
+      'data:governance.backup_progress_restoring_db',
+      `Restoring database: ${m[1]} (${m[2]}/${m[3]})`,
+      { db: m[1], current: m[2], total: m[3] },
+    );
+  }
+  m = /^正在恢复资产文件[:：]\s*(\d+)\/(\d+)$/.exec(trimmed);
+  if (m) {
+    return translate(
+      'data:governance.backup_progress_restoring_assets',
+      `Restoring asset files: ${m[1]}/${m[2]}`,
+      { current: m[1], total: m[2] },
+    );
+  }
+  m = /^导出预检完成[:：]\s*(\d+)\s*个条目[,，]\s*(\d+)\s*字节$/.exec(trimmed);
+  if (m) {
+    const formattedSize = formatBytes(Number(m[2]));
+    return translate(
+      'data:governance.backup_progress_preflight_done',
+      `Export preflight complete: ${m[1]} entries, ${formattedSize}`,
+      { count: m[1], size: formattedSize },
+    );
+  }
+  m = /^备份清单验证通过[:：]\s*(\d+)\s*个数据库[,，]\s*(\d+)\s*个资产文件$/.exec(trimmed);
+  if (m) {
+    return translate(
+      'data:governance.backup_progress_manifest_verified',
+      `Backup manifest validated: ${m[1]} databases, ${m[2]} asset files`,
+      { dbs: m[1], assets: m[2] },
+    );
+  }
+  m = /^数据库恢复完成[:：]\s*(\d+)\/(\d+)[,，]\s*工作区数据库[:：]\s*(\d+)$/.exec(trimmed);
+  if (m) {
+    return translate(
+      'data:governance.backup_progress_dbs_restored',
+      `Databases restored: ${m[1]}/${m[2]}, workspace databases: ${m[3]}`,
+      { restored: m[1], total: m[2], workspaces: m[3] },
+    );
+  }
+  m = /^已备份数据库\s+(.+)$/.exec(trimmed);
+  if (m) {
+    return translate(
+      'data:governance.backup_progress_backed_up_db',
+      `Backed up database ${m[1]}`,
+      { db: m[1] },
+    );
+  }
+  m = /^ZIP 导出完成[,，]共\s*(\d+)\s*个文件$/.exec(trimmed);
+  if (m) {
+    return translate(
+      'data:governance.backup_progress_export_done',
+      `ZIP export completed (${m[1]} files)`,
+      { count: m[1] },
+    );
+  }
+  m = /^ZIP 文件验证完成[,，]共\s*(\d+)\s*个文件$/.exec(trimmed);
+  if (m) {
+    return translate(
+      'data:governance.backup_progress_zip_verified',
+      `ZIP archive verified (${m[1]} files)`,
+      { count: m[1] },
+    );
+  }
+  m = /^ZIP 导入完成[,，]共解压\s*(\d+)\s*个文件$/.exec(trimmed);
+  if (m) {
+    return translate(
+      'data:governance.backup_progress_import_done',
+      `ZIP import completed (${m[1]} files extracted)`,
+      { count: m[1] },
+    );
+  }
+
+  // Known static / prefix host messages
+  const exactMap: ReadonlyArray<[RegExp, string, string]> = [
+    [/等待.*(?:数据治理|任务|操作)/, 'data:governance.backup_progress_waiting', 'Waiting for another data governance task to finish...'],
+    [/正在生成便携清单并预检导出源/, 'data:governance.backup_progress_preflight_portable', 'Generating portable manifest and preflighting export sources...'],
+    [/正在全量加密封存备份内容|正在密封敏感数据并生成加密全保真/, 'data:governance.backup_progress_sealing_full_archive', 'Encrypting and sealing full backup archive...'],
+    [/正在密封敏感数据为加密载荷/, 'data:governance.backup_progress_sealing_secrets', 'Sealing sensitive credentials into encrypted payload...'],
+    [/正在准备备份/, 'data:governance.backup_progress_preparing_backup', 'Preparing backup...'],
+    [/正在执行数据库\s*checkpoint/i, 'data:governance.backup_progress_checkpoint', 'Checkpointing databases...'],
+    [/正在备份核心数据库/, 'data:governance.backup_progress_backing_up_core_dbs', 'Backing up core databases...'],
+    [/正在备份资产文件/, 'data:governance.backup_progress_backing_up_assets', 'Backing up asset files...'],
+    [/正在验证备份清单/, 'data:governance.backup_progress_verifying_manifest', 'Validating backup manifest...'],
+    [/正在验证备份|正在校验备份/, 'data:governance.backup_progress_verifying_backup', 'Verifying backup...'],
+    [/正在扫描数据库和资产/, 'data:governance.backup_progress_scanning_dbs_assets', 'Scanning databases and assets...'],
+    [/正在\s*staging\s*分层数据/i, 'data:governance.backup_progress_staging_tiered', 'Staging tiered data and computing checksums...'],
+    [/正在扫描备份目录/, 'data:governance.backup_progress_scanning_backup_dir', 'Scanning backup directory...'],
+    [/正在压缩\s*ZIP/i, 'data:governance.backup_progress_compressing_zip', 'Compressing ZIP archive...'],
+    [/已写入加密敏感数据载荷/, 'data:governance.backup_progress_wrote_encrypted_secrets', 'Encrypted secrets payload written'],
+    [/正在自检并发布\s*ZIP/i, 'data:governance.backup_progress_verifying_publishing_zip', 'Self-checking and publishing ZIP archive...'],
+    [/正在计算\s*ZIP\s*校验和/i, 'data:governance.backup_progress_computing_zip_checksum', 'Computing ZIP checksum...'],
+    [/正在完成导出/, 'data:governance.backup_progress_finishing_export', 'Finalizing export...'],
+    [/从检查点恢复.*验证\s*ZIP/i, 'data:governance.backup_progress_resuming_verifying_zip', 'Resuming from checkpoint, verifying ZIP archive...'],
+    [/正在验证\s*ZIP/i, 'data:governance.backup_progress_verifying_zip', 'Verifying ZIP archive...'],
+    [/正在验证解压的文件/, 'data:governance.backup_progress_verifying_extracted', 'Verifying extracted files...'],
+    [/已解封加密敏感数据/, 'data:governance.backup_progress_unsealed_verifying', 'Encrypted secrets unsealed; verifying against original manifest...'],
+    [/文件验证完成/, 'data:governance.backup_progress_files_verified', 'File verification complete'],
+    [/正在清理临时文件/, 'data:governance.backup_progress_cleaning_temp', 'Cleaning up temporary files...'],
+    [/正在标记插槽切换/, 'data:governance.backup_progress_marking_slot_switch', 'Preparing data slot switch...'],
+    [/正在恢复辅助域/, 'data:governance.backup_progress_restoring_aux_domains', 'Restoring auxiliary domains (audit, settings, quarantine)...'],
+    [/正在记录审计日志/, 'data:governance.backup_progress_recording_audit', 'Recording audit log...'],
+    [/自动灾备.*一致性快照/, 'data:governance.backup_progress_auto_snapshot', 'Auto-backup: creating consistent snapshot...'],
+    [/一致性屏障已解除.*压缩并发布/, 'data:governance.backup_progress_auto_publishing', 'Consistency barrier released; compressing and publishing auto-backup...'],
+    [/一致性屏障已解除/, 'data:governance.backup_progress_auto_barrier_released', 'Consistency barrier released; verifying snapshot...'],
+    [/^备份完成|备份并导出.*完成/, 'data:governance.backup_progress_completed_generic', 'Operation completed'],
+  ];
+
+  for (const [pattern, key, fallback] of exactMap) {
+    if (pattern.test(trimmed)) {
+      return translate(key, fallback);
+    }
+  }
+
+  return translate('data:governance.backup_progress_generic', 'Processing backup task...');
+}
+
 // Task 2: 恢复操作阶段指示器（细粒度：scan → verify → databases → assets → cleanup）
 interface RestorePhaseIndicatorProps {
   phase: string;
@@ -566,6 +781,24 @@ export const BackupTab: React.FC<BackupTabProps> = ({
     );
   };
 
+  const resolveSnapshotActionAriaLabel = useCallback(
+    (snapshotKey: string, fallbackKey: string, time: string): string => {
+      const localized = t(snapshotKey, { time });
+      if (!localized || localized === snapshotKey || localized.includes('{{time}}')) {
+        return t(fallbackKey);
+      }
+      return localized;
+    },
+    [t],
+  );
+
+  const localizedProgressMessage = backupProgress?.message
+    ? localizeBackupProgressMessage(backupProgress.message, t, i18n?.language)
+    : '';
+  const localizedProgressStage = backupProgress?.phase
+    ? localizeBackupStage(backupProgress.phase, t)
+    : '';
+
   return (
     <div className="space-y-8">
       {/* 可恢复任务提示 */}
@@ -578,7 +811,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           {resumableJobs.map(job => (
             <div key={job.job_id} className="flex items-center justify-between text-sm">
               <span className="text-muted-foreground">
-                {job.kind === 'export' ? t('data:governance.export') : t('data:governance.import')} - {job.phase} ({Math.round(job.progress)}%)
+                {job.kind === 'export' ? t('data:governance.export') : t('data:governance.import')} - {localizeBackupStage(job.phase, t)} ({Math.round(job.progress)}%)
               </span>
               <DsButton size="sm" variant="outline" className="[@media(pointer:coarse)]:!min-h-11" onClick={() => handleResumeJob(job)}>
                 <Play className="h-3 w-3 mr-1" />
@@ -607,8 +840,8 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   ? t('data:governance.restore_in_progress')
                   : t('data:governance.backup_in_progress')}
               </span>
-              {backupProgress.message && (
-                <span className="text-xs text-muted-foreground">- {backupProgress.message}</span>
+              {localizedProgressMessage && (
+                <span className="text-xs text-muted-foreground">- {localizedProgressMessage}</span>
               )}
             </div>
             {backupProgress.cancellable && onCancelBackup && (
@@ -634,7 +867,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
           {/* 进度条 */}
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-muted-foreground">
-              <span>{backupProgress.phase}</span>
+              <span>{localizedProgressStage}</span>
               <span>{Math.round(backupProgress.progress)}%</span>
             </div>
             <div className="h-2 bg-secondary rounded-full overflow-hidden">
@@ -1084,10 +1317,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         onClick={() => onVerifyBackup(backup.path)}
                         disabled={isBackupRunning}
                         title={t('data:governance.verify')}
-                        aria-label={t('data:governance.verify_snapshot_aria', {
-                          time: ariaTime,
-                          defaultValue: '验证 {{time}} 快照',
-                        })}
+                        aria-label={resolveSnapshotActionAriaLabel(
+                          'data:governance.verify_snapshot_aria',
+                          'data:governance.verify',
+                          ariaTime,
+                        )}
                       >
                         <Shield className="h-3.5 w-3.5" />
                       </DsButton>
@@ -1101,10 +1335,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         }}
                         disabled={isBackupRunning}
                         title={t('data:governance.export_zip')}
-                        aria-label={t('data:governance.export_zip_snapshot_aria', {
-                          time: ariaTime,
-                          defaultValue: '导出 {{time}} 备份 ZIP',
-                        })}
+                        aria-label={resolveSnapshotActionAriaLabel(
+                          'data:governance.export_zip_snapshot_aria',
+                          'data:governance.export_zip',
+                          ariaTime,
+                        )}
                       >
                         <FileArrowDown size={14} />
                       </DsButton>
@@ -1121,10 +1356,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                                 defaultValue: 'Partial archives cannot replace the data slot',
                               })
                         }
-                        aria-label={t('data:governance.restore_snapshot_aria', {
-                          time: ariaTime,
-                          defaultValue: '恢复 {{time}} 快照',
-                        })}
+                        aria-label={resolveSnapshotActionAriaLabel(
+                          'data:governance.restore_snapshot_aria',
+                          'data:governance.restore',
+                          ariaTime,
+                        )}
                       >
                         <ArrowCounterClockwise size={14} className="shrink-0" />
                         <span>{t('data:governance.restore')}</span>
@@ -1139,10 +1375,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         }}
                         disabled={isBackupRunning}
                         title={t('common:actions.delete')}
-                        aria-label={t('data:governance.delete_snapshot_aria', {
-                          time: ariaTime,
-                          defaultValue: '删除 {{time}} 快照',
-                        })}
+                        aria-label={resolveSnapshotActionAriaLabel(
+                          'data:governance.delete_snapshot_aria',
+                          'common:actions.delete',
+                          ariaTime,
+                        )}
                       >
                         <Trash size={14} />
                       </DsButton>
@@ -1198,10 +1435,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   size="icon"
                   onClick={() => onVerifyBackup(backup.path)}
                   disabled={isBackupRunning}
-                  aria-label={t('data:governance.verify_snapshot_aria', {
-                    time: ariaTime,
-                    defaultValue: '验证 {{time}} 快照',
-                  })}
+                  aria-label={resolveSnapshotActionAriaLabel(
+                    'data:governance.verify_snapshot_aria',
+                    'data:governance.verify',
+                    ariaTime,
+                  )}
                 >
                   <Shield className="h-4 w-4" />
                 </DsButton>
@@ -1213,10 +1451,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                     setActionType('export');
                   }}
                   disabled={isBackupRunning}
-                  aria-label={t('data:governance.export_zip_snapshot_aria', {
-                    time: ariaTime,
-                    defaultValue: '导出 {{time}} 备份 ZIP',
-                  })}
+                  aria-label={resolveSnapshotActionAriaLabel(
+                    'data:governance.export_zip_snapshot_aria',
+                    'data:governance.export_zip',
+                    ariaTime,
+                  )}
                 >
                   <FileArrowDown size={16} />
                 </DsButton>
@@ -1226,10 +1465,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   className="gap-1 px-2 whitespace-nowrap shrink-0 [@media(pointer:coarse)]:!min-h-11"
                   onClick={() => handleRestoreClick(backup)}
                   disabled={isBackupRunning}
-                  aria-label={t('data:governance.restore_snapshot_aria', {
-                    time: ariaTime,
-                    defaultValue: '恢复 {{time}} 快照',
-                  })}
+                  aria-label={resolveSnapshotActionAriaLabel(
+                    'data:governance.restore_snapshot_aria',
+                    'data:governance.restore',
+                    ariaTime,
+                  )}
                 >
                   <ArrowCounterClockwise size={16} className="shrink-0" />
                   <span>{t('data:governance.restore')}</span>
@@ -1244,10 +1484,11 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                     setActionType('delete');
                   }}
                   disabled={isBackupRunning}
-                  aria-label={t('data:governance.delete_snapshot_aria', {
-                    time: ariaTime,
-                    defaultValue: '删除 {{time}} 快照',
-                  })}
+                  aria-label={resolveSnapshotActionAriaLabel(
+                    'data:governance.delete_snapshot_aria',
+                    'common:actions.delete',
+                    ariaTime,
+                  )}
                 >
                   <Trash size={16} />
                 </DsButton>
@@ -1311,7 +1552,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                 ? encryptionPassword
                   ? t('data:governance.export_warning_encrypted', { level: compressionLevel })
                   : t('data:governance.export_warning', { level: compressionLevel })
-                : t('data:governance.confirm_restore_desc')
+                : t('data:governance.restore_warning')
             }
             confirmText={
               actionType === 'delete'
@@ -1341,18 +1582,18 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                 className="space-y-1.5 text-xs text-muted-foreground"
               >
                 <p className="font-medium text-foreground">
-                  {t('data:governance.confirm_restore_snapshot_info', {
+                  {t('data:governance.restore_dialog_snapshot_info', {
                     name: snapshotName,
                     time: snapshotTime,
                   })}
                 </p>
                 <p>
-                  {t('data:governance.confirm_restore_covered_dbs', {
+                  {t('data:governance.restore_dialog_covered_dbs', {
                     databases: coveredDbsText,
                   })}
                 </p>
-                <p>{t('data:governance.confirm_restore_safety_backup_notice')}</p>
-                <p>{t('data:governance.confirm_restore_reload_notice')}</p>
+                <p>{t('data:governance.restore_dialog_safety_backup_notice')}</p>
+                <p>{t('data:governance.restore_dialog_reload_notice')}</p>
                 <p className="text-warning font-medium">
                   {t('data:governance.restore_save_work_warning')}
                 </p>

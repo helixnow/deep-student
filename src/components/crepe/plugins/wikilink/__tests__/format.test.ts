@@ -44,6 +44,28 @@ describe('wikilink format', () => {
     ]);
   });
 
+  it('does not let an unclosed [[ swallow a subsequent complete [[target]] (S1-06)', () => {
+    const text = '[[后续需要研究 [[S106_马尔可夫链平稳分布]] 这一主题。';
+    expect(findWikiLinksInText(text)).toEqual([
+      {
+        target: 'S106_马尔可夫链平稳分布',
+        label: '',
+        raw: '[[S106_马尔可夫链平稳分布]]',
+        start: text.indexOf('[[S106_马尔可夫链平稳分布]]'),
+        end: text.indexOf('[[S106_马尔可夫链平稳分布]]') + '[[S106_马尔可夫链平稳分布]]'.length,
+      },
+    ]);
+    expect(findWikiLinksInText('[[[S106_马尔可夫链平稳分布]]')).toEqual([
+      {
+        target: 'S106_马尔可夫链平稳分布',
+        label: '',
+        raw: '[[S106_马尔可夫链平稳分布]]',
+        start: 1,
+        end: 1 + '[[S106_马尔可夫链平稳分布]]'.length,
+      },
+    ]);
+  });
+
   it('splits an optional heading without changing the serialized destination', () => {
     expect(splitWikiLinkTarget('Note#Section one')).toEqual({
       noteTarget: 'Note',

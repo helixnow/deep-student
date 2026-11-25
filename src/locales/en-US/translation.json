@@ -335,6 +335,7 @@
     "overwrite_manual_confirm": "This translation has manual edits. Re-translating will replace them — continue?",
     "confirm_retranslate": "Confirm re-translate",
     "retranslated_undo_hint": "Translation updated. You can restore the previous version.",
+    "version_history_count": "{{count}} previous versions",
     "restore_previous": "Restore previous",
     "restored_previous": "Restored previous translation",
     "swapped_undo_hint": "Swapped source and translation",

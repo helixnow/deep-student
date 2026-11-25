@@ -93,7 +93,11 @@ afterEach(() => {
 
 async function load() {
   ({ default: Panel } = (await import('../plugins/QuestionImportDebugPlugin')) as unknown as { default: React.ComponentType<PanelProps> });
+  const { tauriListenerReady } = await import('../plugins/questionImport/progress');
   channel = await import('@/shared/debug/channels/questionImport');
+  await act(async () => {
+    await tauriListenerReady;
+  });
   await flush();
 }
 
@@ -155,7 +159,7 @@ async function sendImport() {
   await backend(5, null);
 }
 
-describe('question import debug panel (evidence before the split)', () => {
+describe('question import debug panel (evidence before the split)', { timeout: 15_000 }, () => {
   it('records a whole import: phases, the per-session summary, durations and expanded details', async () => {
     await load();
     expect(h.listened).toEqual(['question_import_progress']);

@@ -14,9 +14,9 @@ import { rustTrim } from '../../../platform/util/portable.ts';
 import type { BackupJobContext, BackupJobResultPayload } from '../api.ts';
 import type { Jobs } from './jobs.ts';
 import {
-  OPERATION_QUEUED_CANCELLED_MESSAGE, WAITING_FOR_OPERATION_MESSAGE, isMainDatabaseAlreadyInMaintenance,
-  type Operations,
+  isMainDatabaseAlreadyInMaintenance, type Operations,
 } from './operations.ts';
+import { formatBackupProgressMessage, resolveBackupLocale } from './progress-messages.ts';
 import type { Governance } from './governance.ts';
 import {
   findBackup, finalizeVfsIndexRestore, prepareVfsIndexRestore, restoreNonDatabaseManifestFiles,
@@ -401,9 +401,10 @@ export class RestoreCommands {
     }));
     void this.executeRestore(job, backupId, args.restoreAssets ?? null)
       .catch(error => this.jobs.markFailure(job.job_id, `恢复失败: ${ioMessage(error)}`));
+    const locale = resolveBackupLocale(this.ctx);
     return {
       job_id: job.job_id, kind: 'import', status: 'queued',
-      message: '恢复任务已启动，请通过 backup-job-progress 事件监听进度',
+      message: formatBackupProgressMessage(locale, 'restore.started'),
     };
   }
 
@@ -413,6 +414,7 @@ export class RestoreCommands {
     restoreAssets: boolean | null,
   ): Promise<void> {
     const start = performance.now();
+    const locale = resolveBackupLocale(this.ctx);
     const recordAuditFailure = (message: string, extraDetails: Record<string, unknown> = {}): void => {
       this.governance.trySaveAuditLog(withAuditDetails(failAuditLog(newAuditLog({
         type: 'Restore', backup_path: backupId,
@@ -428,17 +430,17 @@ export class RestoreCommands {
       recordAuditFailure(message, { cancelled: true });
       job.cancelled(message);
     };
-    job.markRunning('queued', 0, WAITING_FOR_OPERATION_MESSAGE, 0, 0);
+    job.markRunning('queued', 0, formatBackupProgressMessage(locale, 'backup.waiting_for_operation'), 0, 0);
     let acquired: Awaited<ReturnType<Operations['acquireForJob']>>;
     try { acquired = await this.operations.acquireForJob('restore', job.job_id, () => job.isCancelled()); }
     catch (error) { failJob(`获取全局备份锁失败: ${ioMessage(error)}`); return; }
-    if (acquired === 'cancelled') { cancelJob(OPERATION_QUEUED_CANCELLED_MESSAGE); return; }
+    if (acquired === 'cancelled') { cancelJob(formatBackupProgressMessage(locale, 'backup.cancelled_in_queue')); return; }
     const guard = acquired;
     const root = backupDir(this.ctx.app.dataDir);
     try {
       if (!existsSync(root)) { failJob('备份目录不存在'); return; }
-      job.markRunning('scan', 2, '正在验证备份清单...', 0, 0);
-      if (job.isCancelled()) { cancelJob('用户取消恢复'); return; }
+      job.markRunning('scan', 2, formatBackupProgressMessage(locale, 'restore.verifying_manifest'), 0, 0);
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'restore.cancelled')); return; }
 
       let manifest: BackupManifest;
       try { manifest = findBackup(root, backupId, '备份不存在', message => this.ctx.logger('backup').warn(message)); }
@@ -477,18 +479,27 @@ export class RestoreCommands {
         .filter(file => file.database_id == null && !file.path.endsWith('.db')).length;
       const totalItems = totalDatabases + workspaceFileCount + manifestAssetCount + assetFileCount;
       job.markRunning('scan', 5,
-        `备份清单验证通过: ${totalDatabases} 个数据库, ${assetFileCount} 个资产文件`, 0, totalItems);
+        formatBackupProgressMessage(locale, 'restore.manifest_verified', { totalDatabases, assetFileCount }),
+        0, totalItems);
 
       const backupSubdir = join(root, manifest.backup_id);
       if (!existsSync(backupSubdir)) { failJob(`备份目录不存在: ${backupSubdir}`); return; }
-      if (job.isCancelled()) { cancelJob('用户取消恢复'); return; }
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'restore.cancelled')); return; }
 
       const verifyTotal = manifest.files.length;
       for (let index = 0; index < verifyTotal; index++) {
         const file = manifest.files[index]!;
-        if (job.isCancelled()) { cancelJob('用户取消恢复（验证阶段）'); return; }
+        if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'restore.cancelled_verify')); return; }
         const progress = 5 + (index / Math.max(1, verifyTotal)) * 10;
-        job.markRunning('verify', progress, `正在验证: ${file.path} (${index + 1}/${verifyTotal})`, 0, totalItems);
+        job.markRunning(
+          'verify',
+          progress,
+          formatBackupProgressMessage(locale, 'restore.verifying_file', {
+            path: file.path, index: index + 1, total: verifyTotal,
+          }),
+          0,
+          totalItems,
+        );
         const filePath = join(backupSubdir, file.path);
         if (!existsSync(filePath)) { failJob(`备份文件不存在: ${file.path}`); return; }
         let actual: string;
@@ -554,7 +565,9 @@ export class RestoreCommands {
         }
         const progress = 15 + (index / Math.max(1, totalDatabases)) * 65;
         job.markRunning('replace', progress,
-          `正在恢复数据库: ${dbIdText} (${index + 1}/${totalDatabases})`, index, totalItems);
+          formatBackupProgressMessage(locale, 'restore.restoring_database', {
+            dbId: dbIdText, index: index + 1, total: totalDatabases,
+          }), index, totalItems);
         try {
           await restoreSingleDatabaseToDir(this.ctx, dbId, backupSubdir, inactiveDir);
           databasesRestored.push(dbIdText);
@@ -577,7 +590,9 @@ export class RestoreCommands {
       catch (error) { failJob(`恢复分层资产失败: ${ioMessage(error)}`); return; }
 
       job.markRunning('replace', 80,
-        `数据库恢复完成: ${databasesRestored.length}/${totalDatabases}，工作区数据库: ${restoredWorkspaces}`,
+        formatBackupProgressMessage(locale, 'restore.databases_restored', {
+          restored: databasesRestored.length, total: totalDatabases, workspaces: restoredWorkspaces,
+        }),
         totalDatabases, totalItems);
 
       if (restoreErrors.length > 0) {
@@ -604,7 +619,9 @@ export class RestoreCommands {
               if (job.isCancelled()) return false;
               const ratio = totalAsset > 0 ? restored / totalAsset : 1;
               job.markRunning('replace', 80 + ratio * 12,
-                `正在恢复资产文件: ${restored}/${totalAsset}`,
+                formatBackupProgressMessage(locale, 'restore.restoring_assets', {
+                  restored, total: totalAsset,
+                }),
                 totalDatabases + restored, totalItems);
               return true;
             },
@@ -612,7 +629,7 @@ export class RestoreCommands {
           restoredAssets += count;
         } catch (error) {
           if (error instanceof Error && 'cancelled' in error && (error as { cancelled?: boolean }).cancelled === true) {
-            cancelJob('用户取消恢复（资产阶段）');
+            cancelJob(formatBackupProgressMessage(locale, 'restore.cancelled_assets'));
             return;
           }
           restoreErrors.push(`资产恢复: ${ioMessage(error)}`);
@@ -630,7 +647,7 @@ export class RestoreCommands {
         catch (error) { failJob(`校验恢复后的 VFS 派生索引失败: ${ioMessage(error)}`); return; }
       }
 
-      job.markRunning('cleanup', 93, '正在标记插槽切换...', totalItems, totalItems);
+      job.markRunning('cleanup', 93, formatBackupProgressMessage(locale, 'restore.marking_slot_switch'), totalItems, totalItems);
       const durationMs = Math.round(performance.now() - start);
       const restoreTargetPath = inactiveDir;
 
@@ -712,7 +729,7 @@ export class RestoreCommands {
       }
       this.ctx.logger('backup').info(`[data_governance] 已原子登记下次启动切换到 ${inactiveSlot}`);
 
-      job.markRunning('cleanup', 95, '正在恢复辅助域（审计/设置/待信任隔离）...', totalItems, totalItems);
+      job.markRunning('cleanup', 95, formatBackupProgressMessage(locale, 'restore.restoring_auxiliary_domains'), totalItems, totalItems);
       let domainOutcomes: DomainRestoreReport[];
       try {
         domainOutcomes = await consumeCompleteDomains(
@@ -756,7 +773,7 @@ export class RestoreCommands {
         return;
       }
 
-      job.markRunning('cleanup', 97, '正在记录审计日志...', totalItems, totalItems);
+      job.markRunning('cleanup', 97, formatBackupProgressMessage(locale, 'restore.recording_audit_log'), totalItems, totalItems);
       this.governance.trySaveAuditLog(withAuditDetails(
         completeAuditLog(newAuditLog({ type: 'Restore', backup_path: backupId }, backupId), durationMs),
         {
@@ -771,14 +788,14 @@ export class RestoreCommands {
         },
       ));
 
-      const isolatedSuffix = isolatedSummary.length === 0
-        ? ''
-        : `；隔离待信任: ${isolatedSummary.join(', ')}`;
+      const isolatedDomains = isolatedSummary.join(', ');
       const payload: BackupJobResultPayload = {
         success: true,
         output_path: restoreTargetPath,
         resolved_path: restoreTargetPath,
-        message: `已恢复数据库: ${databasesRestored.join(', ')}；资产文件: ${restoredAssets}${isolatedSuffix}`,
+        message: formatBackupProgressMessage(locale, 'restore.completed_detail', {
+          databases: databasesRestored.join(', '), restoredAssets, isolatedDomains,
+        }),
         error: null,
         duration_ms: durationMs,
         stats: {
@@ -798,13 +815,15 @@ export class RestoreCommands {
         resumable_job_id: null,
       };
       job.complete(
-        `恢复完成，已恢复 ${databasesRestored.length} 个数据库，资产文件 ${restoredAssets} 个${isolatedSuffix}`,
+        formatBackupProgressMessage(locale, 'restore.completed', {
+          databaseCount: databasesRestored.length, restoredAssets, isolatedDomains,
+        }),
         totalItems,
         totalItems,
         payload,
       );
     } catch (error) {
-      if (job.isCancelled()) { cancelJob('用户取消恢复'); return; }
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'restore.cancelled')); return; }
       const message = ioMessage(error);
       recordAuditFailure(message);
       job.fail(message);

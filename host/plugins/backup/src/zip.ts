@@ -25,6 +25,7 @@ import {
 } from './manifest.ts';
 import { purgeAndCompactFts5, verifyDirectoryWithAssets } from './backup-manager.ts';
 import { ioMessage, isPathWithin } from './io.ts';
+import { formatBackupProgressMessage, resolveBackupLocale } from './progress-messages.ts';
 import {
   MAX_ARCHIVE_FILES, MAX_ARCHIVE_UNCOMPRESSED_BYTES, archiveEntries, copyWithActualSizeBudget,
   isPortableExcludedRelativePath, tooManyEntries, validateImportArchive, validateSecretsArchive,
@@ -592,6 +593,7 @@ export async function exportBackupToZip(
   }
   if (isCancelled()) throw zipCancelled('导出');
 
+  const locale = resolveBackupLocale(ctx);
   const io = archiveIo(ctx);
   const revokes: Array<() => void> = [];
   let sealed: SealedPayload | null = null;
@@ -602,14 +604,17 @@ export async function exportBackupToZip(
     if (options.encryptionPassword) {
       onProgress({
         phase: 'seal', progress: 2, processedFiles: 0, totalFiles: 0, currentFile: null,
-        message: sealFullArchive ? '正在全量加密封存备份内容...' : '正在密封敏感数据为加密载荷...',
+        message: formatBackupProgressMessage(
+          locale,
+          sealFullArchive ? 'zip.export.sealing_full' : 'zip.export.sealing_secrets',
+        ),
       });
       sealed = await buildSealedSecretsPayload(ctx, io, backupDir, options.encryptionPassword, isCancelled, sealFullArchive);
     }
 
     onProgress({
       phase: 'scan', progress: 5, processedFiles: 0, totalFiles: 0, currentFile: null,
-      message: '正在生成便携清单并预检导出源...',
+      message: formatBackupProgressMessage(locale, 'zip.export.precheck_portable'),
     });
     let sourceManifest = loadManifest(join(backupDir, 'manifest.json'));
     const walked = await walkExportEntries(backupDir);
@@ -644,7 +649,7 @@ export async function exportBackupToZip(
     if (options.includeChecksums) totalEntries += 1;
     onProgress({
       phase: 'scan', progress: 10, processedFiles: 0, totalFiles: totalEntries, currentFile: null,
-      message: `导出预检完成: ${totalEntries} 个条目, ${uncompressed} 字节`,
+      message: formatBackupProgressMessage(locale, 'zip.export.precheck_done', { totalEntries, uncompressed }),
     });
     if (isCancelled()) throw zipCancelled('导出');
 
@@ -699,7 +704,10 @@ export async function exportBackupToZip(
         processed += 1;
         onProgress({
           phase: 'compress', progress: progressFor(), processedFiles: processed, totalFiles: totalEntries,
-          currentFile: entry.relative, message: `正在压缩: ${entry.relative} (${processed}/${totalEntries})`,
+          currentFile: entry.relative,
+          message: formatBackupProgressMessage(locale, 'zip.export.compressing_entry', {
+            entry: entry.relative, processed, total: totalEntries,
+          }),
         });
       }
 
@@ -716,7 +724,8 @@ export async function exportBackupToZip(
         processed += 1;
         onProgress({
           phase: 'compress', progress: progressFor(), processedFiles: processed, totalFiles: totalEntries,
-          currentFile: ENCRYPTED_SECRETS_ENTRY, message: '已写入加密敏感数据载荷',
+          currentFile: ENCRYPTED_SECRETS_ENTRY,
+          message: formatBackupProgressMessage(locale, 'zip.export.sealed_payload_written'),
         });
       }
 
@@ -730,7 +739,7 @@ export async function exportBackupToZip(
 
       onProgress({
         phase: 'finalize', progress: 90, processedFiles: processed, totalFiles: totalEntries,
-        currentFile: null, message: '正在自检并发布 ZIP 文件...',
+        currentFile: null, message: formatBackupProgressMessage(locale, 'zip.export.publishing'),
       });
       await writer.finish({ sync: true });
       await validateArchivePath(io, tempPath);
@@ -745,7 +754,7 @@ export async function exportBackupToZip(
 
     onProgress({
       phase: 'finalize', progress: 95, processedFiles: processed, totalFiles: totalEntries,
-      currentFile: null, message: '正在计算 ZIP 校验和...',
+      currentFile: null, message: formatBackupProgressMessage(locale, 'zip.export.computing_checksum'),
     });
     const compressedSize = (await stat(zipPath)).size;
     const zipChecksum = await sha256FileFullAsync(zipPath);
@@ -758,7 +767,7 @@ export async function exportBackupToZip(
 
     onProgress({
       phase: 'completed', progress: 100, processedFiles: processed, totalFiles: totalEntries,
-      currentFile: null, message: `ZIP 导出完成，共 ${fileCount} 个文件`,
+      currentFile: null, message: formatBackupProgressMessage(locale, 'zip.export.completed_files', { fileCount }),
     });
     return { zipPath, totalSize: Number(totalSize), compressedSize, fileCount, durationMs, zipChecksum };
   } finally {
@@ -1128,10 +1137,11 @@ export async function importBackupFromZip(
   targetDir: string,
   options: ImportOptions,
 ): Promise<number> {
+  const locale = resolveBackupLocale(ctx);
   const { onProgress, isCancelled } = options;
   onProgress({
     phase: 'scan', progress: 0, processedFiles: 0, totalFiles: 0, currentFile: null,
-    message: '正在验证 ZIP 文件...',
+    message: formatBackupProgressMessage(locale, 'zip.import.validating'),
   });
   if (isCancelled()) throw zipCancelled('导入');
 
@@ -1154,7 +1164,7 @@ export async function importBackupFromZip(
     const totalFiles = entries.length;
     onProgress({
       phase: 'scan', progress: 5, processedFiles: 0, totalFiles, currentFile: null,
-      message: `ZIP 文件验证完成，共 ${totalFiles} 个文件`,
+      message: formatBackupProgressMessage(locale, 'zip.import.validated', { totalFiles }),
     });
     if (isCancelled()) throw zipCancelled('导入');
 
@@ -1191,7 +1201,10 @@ export async function importBackupFromZip(
               fileCount += 1;
               onProgress({
                 phase: 'extract', progress: currentProgress, processedFiles: index, totalFiles,
-                currentFile: entry.name, message: `跳过已存在: ${entry.name} (${index + 1}/${totalFiles})`,
+                currentFile: entry.name,
+                message: formatBackupProgressMessage(locale, 'zip.import.skipping_existing', {
+                  entry: entry.name, index: index + 1, total: totalFiles,
+                }),
               });
               continue;
             }
@@ -1203,7 +1216,10 @@ export async function importBackupFromZip(
 
       onProgress({
         phase: 'extract', progress: currentProgress, processedFiles: index, totalFiles,
-        currentFile: entry.name, message: `正在解压: ${entry.name} (${index + 1}/${totalFiles})`,
+        currentFile: entry.name,
+        message: formatBackupProgressMessage(locale, 'zip.import.extracting_entry', {
+          entry: entry.name, index: index + 1, total: totalFiles,
+        }),
       });
       if (entry.isDirectory) continue;
 
@@ -1216,7 +1232,7 @@ export async function importBackupFromZip(
 
     onProgress({
       phase: 'verify', progress: 80, processedFiles: fileCount, totalFiles, currentFile: null,
-      message: '正在验证解压的文件...',
+      message: formatBackupProgressMessage(locale, 'zip.import.verifying_extracted'),
     });
     if (isCancelled()) throw zipCancelled('导入');
 
@@ -1224,18 +1240,18 @@ export async function importBackupFromZip(
     if (unsealed) {
       onProgress({
         phase: 'verify', progress: 84, processedFiles: fileCount, totalFiles, currentFile: null,
-        message: '已解封加密敏感数据，正在按原始清单验证...',
+        message: formatBackupProgressMessage(locale, 'zip.import.unsealed_verifying'),
       });
     }
     await validateImportedBackupDir(ctx, targetDir, unsealed);
 
     onProgress({
       phase: 'verify', progress: 90, processedFiles: fileCount, totalFiles, currentFile: null,
-      message: '文件验证完成',
+      message: formatBackupProgressMessage(locale, 'zip.import.verification_complete'),
     });
     onProgress({
       phase: 'completed', progress: 100, processedFiles: fileCount, totalFiles, currentFile: null,
-      message: `ZIP 导入完成，共解压 ${fileCount} 个文件`,
+      message: formatBackupProgressMessage(locale, 'zip.import.completed_extracted', { fileCount }),
     });
     return fileCount;
   } finally {

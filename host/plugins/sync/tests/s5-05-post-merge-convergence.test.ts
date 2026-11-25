@@ -343,6 +343,111 @@ describe('S5-05, S5-02, S5-07, S5-08 two-device sync regressions', () => {
     });
   }, 120000);
 
+  it('S5-05: converges Device A and Device B cleanly for both keep_local and keep_cloud (use_cloud) resolutions with 0 skipped records and matching updated_at', async () => {
+    for (const mode of ['keep_local', 'keep_cloud'] as const) {
+      const cloud = new MemoryStorage('webdav');
+      const devA = await initDevice(`dev-a-${mode}`, cloud);
+      const devB = await initDevice(`dev-b-${mode}`, cloud);
+
+      const noteId = await onDevice(devA, async ({ host }) => {
+        const created = await host.invoke<{ id: string }>('notes_create', {
+          note: { title: `Conflict ${mode}`, content_md: 'Shared Base' },
+        });
+        const initPush = await host.invoke<{ success: boolean; skipped_changes?: number }>('data_governance_run_sync_with_progress', {
+          direction: 'bidirectional',
+          strategy: 'keep_latest',
+        });
+        expect(initPush).toMatchObject({ success: true, skipped_changes: 0 });
+        return created.id;
+      });
+
+      await onDevice(devB, async ({ host }) => {
+        const initPull = await host.invoke<{ success: boolean; skipped_changes?: number }>('data_governance_run_sync_with_progress', {
+          direction: 'bidirectional',
+          strategy: 'keep_latest',
+        });
+        expect(initPull).toMatchObject({ success: true, skipped_changes: 0 });
+      });
+
+      // Divergent edits on Device A and Device B
+      await onDevice(devA, async ({ host }) => {
+        await host.invoke('notes_update', { note: { id: noteId, content_md: `A_CONTENT_${mode}` } });
+        const pushA = await host.invoke<{ success: boolean; skipped_changes?: number }>('data_governance_run_sync_with_progress', {
+          direction: 'bidirectional',
+          strategy: 'keep_latest',
+        });
+        expect(pushA).toMatchObject({ success: true, skipped_changes: 0 });
+      });
+
+      let resolvedUpdatedAtB = '';
+      const expectedBody = mode === 'keep_local' ? `B_CONTENT_${mode}` : `A_CONTENT_${mode}`;
+      await onDevice(devB, async ({ host, storage }) => {
+        await host.invoke('notes_update', { note: { id: noteId, content_md: `B_CONTENT_${mode}` } });
+        const syncB1 = await host.invoke<{ success: boolean; conflicts_detected: number; skipped_changes?: number }>('data_governance_run_sync_with_progress', {
+          direction: 'bidirectional',
+          strategy: 'keep_latest',
+        });
+        expect(syncB1.success).toBe(true);
+        expect(syncB1.skipped_changes).toBe(0);
+        expect(syncB1.conflicts_detected).toBeGreaterThanOrEqual(1);
+
+        const conflicts = await host.invoke<Array<{ id: number; table_name: string; record_id: string }>>('data_governance_list_record_conflicts', {});
+        const noteConflicts = conflicts.filter(c => c.table_name === 'notes' && c.record_id === noteId);
+        expect(noteConflicts.length).toBeGreaterThanOrEqual(2);
+
+        await host.invoke('data_governance_resolve_record_conflict', {
+          databaseName: 'vfs',
+          tableName: 'notes',
+          recordId: noteId,
+          resolution: mode,
+          mergedDataJson: null,
+          expectedConflictIds: noteConflicts.map(c => c.id),
+        });
+
+        // Verify pending changes include notes + resources + note_document_formats before upload
+        const vfs = storage.database('vfs');
+        const pendingTables = new Set(
+          vfs.all<{ table_name: string }>('SELECT DISTINCT table_name FROM __change_log WHERE sync_version = 0').map(r => r.table_name),
+        );
+        expect(pendingTables.has('notes')).toBe(true);
+        expect(pendingTables.has('resources')).toBe(true);
+        expect(pendingTables.has('note_document_formats')).toBe(true);
+
+        const syncB2 = await host.invoke<{ success: boolean; changes_uploaded: number; conflicts_detected: number; skipped_changes?: number; error_message?: string | null }>('data_governance_run_sync_with_progress', {
+          direction: 'bidirectional',
+          strategy: 'keep_latest',
+        });
+        expect(syncB2).toMatchObject({ success: true, conflicts_detected: 0, skipped_changes: 0, error_message: null });
+        expect(syncB2.changes_uploaded).toBeGreaterThanOrEqual(3);
+
+        const noteB = await host.invoke<{ content_md: string; updated_at: string }>('notes_get', { id: noteId });
+        expect(noteB.content_md).toBe(expectedBody);
+        resolvedUpdatedAtB = noteB.updated_at;
+      });
+
+      // Device A syncs twice -> MUST converge to exact resolved content & updated_at with 0 conflicts & 0 skipped!
+      await onDevice(devA, async ({ host }) => {
+        for (let pass = 0; pass < 2; pass += 1) {
+          const syncA = await host.invoke<{ success: boolean; conflicts_detected: number; skipped_changes?: number; error_message?: string | null }>('data_governance_run_sync_with_progress', {
+            direction: 'bidirectional',
+            strategy: 'keep_latest',
+          });
+          expect(syncA).toMatchObject({ success: true, conflicts_detected: 0, skipped_changes: 0, error_message: null });
+        }
+        const conflictsA = await host.invoke<unknown[]>('data_governance_list_record_conflicts', {});
+        const quarantineA = await host.invoke<unknown[]>('data_governance_list_quarantine', {});
+        const statusA = await host.invoke<{ total_pending_changes: number }>('data_governance_get_sync_status', {});
+        expect(conflictsA).toEqual([]);
+        expect(quarantineA).toEqual([]);
+        expect(statusA.total_pending_changes).toBe(0);
+
+        const noteA = await host.invoke<{ content_md: string; updated_at: string }>('notes_get', { id: noteId });
+        expect(noteA.content_md).toBe(expectedBody);
+        expect(noteA.updated_at).toBe(resolvedUpdatedAtB);
+      });
+    }
+  }, 120000);
+
   it('S5-07: soft-deleting a note on Device A moves it cleanly to Trash on Device B (zero false conflict), restoring on B revives it on A, while genuine local edits still raise trash-vs-edit conflict', async () => {
     const cloud = new MemoryStorage('webdav');
     const devA = await initDevice('dev-a-s507', cloud);

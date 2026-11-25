@@ -365,6 +365,16 @@
               "checked": null,
               "danger": false,
               "submenu": false
+            },
+            "—",
+            {
+              "label": "多窗俯瞰",
+              "testId": "wb-menubar-window-expose",
+              "shortcut": "Ctrl+Alt+E",
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
             }
           ]
         }
@@ -827,6 +837,16 @@
               "label": "最大化",
               "testId": "wb-menubar-window-maximize",
               "shortcut": null,
+              "disabled": false,
+              "checked": null,
+              "danger": false,
+              "submenu": false
+            },
+            "—",
+            {
+              "label": "多窗俯瞰",
+              "testId": "wb-menubar-window-expose",
+              "shortcut": "Ctrl+Alt+E",
               "disabled": false,
               "checked": null,
               "danger": false,

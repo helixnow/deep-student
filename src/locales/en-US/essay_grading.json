@@ -372,6 +372,14 @@
     "label": "Partial Result",
     "hint": "Grading was not completed. Below is the content generated so far."
   },
+  "stale_rubric": {
+    "banner_with_scale": "Showing results graded under the previous rubric \"{{gradedRubric}} ({{gradedMax}}-point)\", which differs from the selected rubric \"{{selectedRubric}} ({{selectedMax}}-point)\".",
+    "banner_without_scale": "Showing results graded under the previous rubric \"{{gradedRubric}}\", which differs from the selected rubric \"{{selectedRubric}}\".",
+    "regrade_cta": "Re-grade with New Rubric",
+    "score_badge": "Previous rubric: {{gradedRubric}}",
+    "unknown_rubric": "Previous rubric",
+    "scale_fallback": "{{max}}-point rubric"
+  },
   "system_prompt_label": "System Prompt",
   "score_generating": "Generating score...",
   "api_errors": {

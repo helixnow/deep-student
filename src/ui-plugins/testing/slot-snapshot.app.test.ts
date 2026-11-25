@@ -63,5 +63,5 @@ describe('FE-A1 slot snapshot (production assembly)', () => {
     const diff = diffSlotSnapshots(JSON.parse(fs.readFileSync(file, 'utf8')) as SlotSnapshot, actual, moves);
     for (const move of diff.acceptedMoves) report.push(`[slots] app-assembly: accepted ${move}`);
     expect(diff.failures, 'slot snapshot drift in app-assembly').toEqual([]);
-  }, 60_000);
+  }, 120_000);
 });

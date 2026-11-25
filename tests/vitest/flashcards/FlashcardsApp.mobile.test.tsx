@@ -100,12 +100,16 @@ describe('Flashcards mobile navigation', () => {
     const { container } = renderApp();
     expect(screen.getByRole('heading', { name: 'today.title' })).toBeInTheDocument();
     expect(container.querySelectorAll('[data-mobile-shell="header"]')).toHaveLength(1);
-    expect(screen.queryByRole('button', { name: 'tabs.library' })).not.toBeInTheDocument();
+    const drawerPage = container.querySelector('[data-mobile-drawer-page]') as HTMLElement;
+    expect(drawerPage).not.toBeNull();
+    // 移动端保留顶部一级 Tab 栏以便单手直达，同时抽屉关闭时不渲染侧栏导航项
+    expect(screen.getByTestId('fc-tab-library')).toBeInTheDocument();
+    expect(within(drawerPage).queryByRole('button', { name: 'tabs.library' })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'common:mobile_header.open_sidebar' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'tabs.library' }));
+    fireEvent.click(await within(drawerPage).findByRole('button', { name: 'tabs.library' }));
     expect(useFsrsReviewStore.getState().screen).toBe('library');
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'tabs.library' })).not.toBeInTheDocument());
+    await waitFor(() => expect(within(drawerPage).queryByRole('button', { name: 'tabs.library' })).not.toBeInTheDocument());
     expect(screen.getAllByRole('heading', { name: 'library.title' })).toHaveLength(1);
     const header = container.querySelector('[data-mobile-shell="header"]') as HTMLElement;
     expect(within(header).getByRole('button', { name: 'library.create.new' })).toBeInTheDocument();

@@ -82,6 +82,7 @@ vi.mock('react-i18next', () => {
       'settings:automation.errors.desktop_only': 'Automation management requires the Deep Student desktop app.',
       'settings:automation.errors.prompt_required': 'Task instructions cannot be empty.',
       'settings:automation.errors.name_required': 'Name cannot be empty.',
+      'todo:automation.builtin.heartbeatName': 'Study Heartbeat Check',
       'common:cancel': 'Cancel',
       'common:save': 'Save',
     };
@@ -420,6 +421,30 @@ describe('AutomationSettingsSection', () => {
       'title',
       'The system heartbeat automation cannot be deleted; you can disable it instead.',
     );
+  });
+
+  it('localizes seeded Chinese builtin heartbeat automation title and aria-labels in en-US with zero CJK', () => {
+    storeState.automations = [{
+      ...automationItem,
+      id: 'auto_heartbeat_default',
+      name: '学习心跳检查',
+      heartbeat: true,
+      enabled: false,
+      schedule: { kind: 'interval', time: '', intervalMinutes: 30 },
+    }];
+    const { container } = renderSection();
+    expect(screen.getByText('Study Heartbeat Check')).toBeInTheDocument();
+    expect(screen.queryByText('学习心跳检查')).not.toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: 'Enable or disable Study Heartbeat Check' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Run Study Heartbeat Check now' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Edit Study Heartbeat Check' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Delete Study Heartbeat Check' })).toBeDisabled();
+    expect(container.textContent).not.toMatch(/[\u4e00-\u9fff]/);
+    const ariaLabels = Array.from(container.querySelectorAll('[aria-label]'))
+      .map((node) => node.getAttribute('aria-label') ?? '');
+    for (const label of ariaLabels) {
+      expect(label).not.toMatch(/[\u4e00-\u9fff]/);
+    }
   });
 
   it('auto-dismisses success notices after three seconds', async () => {

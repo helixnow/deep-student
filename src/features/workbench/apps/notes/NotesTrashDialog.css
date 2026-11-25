@@ -465,9 +465,26 @@
 .ntd-item-meta {
   min-width: 0;
   flex: 1;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: var(--notes-radius-control);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   display: grid;
   gap: 2px;
   cursor: pointer;
+}
+
+.ntd-item-meta:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.ntd-item-meta:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .ntd-item-name {

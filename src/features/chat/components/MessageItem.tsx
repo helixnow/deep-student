@@ -1766,7 +1766,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     )}
                     {!isUser && !isMultiVariant && isVersioned && (
                       <div
-                        className="inline-flex items-center gap-0.5 mr-1 text-xs text-muted-foreground select-none"
+                        className="inline-flex items-center gap-0.5 mr-1.5 px-0.5 py-0.5 rounded-md border border-border/60 bg-muted/40 text-xs font-medium text-foreground/80 select-none"
                         data-testid="message-version-switcher"
                         aria-label={t('variant.versionSwitcher', { defaultValue: 'Response version switcher' })}
                       >
@@ -1776,7 +1776,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           onClick={switchToPrevVersion}
                           disabled={!canPrevVersion || shouldHideLatestAssistantFooter}
                           aria-label={t('variant.prevVersion', { defaultValue: 'Previous version' })}
-                          className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-muted/60 disabled:opacity-40 disabled:pointer-events-none"
+                          className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-background hover:text-foreground transition-colors disabled:opacity-35 disabled:pointer-events-none"
                         >
                           <CaretLeft size={13} />
                         </button>
@@ -1789,7 +1789,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           onClick={switchToNextVersion}
                           disabled={!canNextVersion || shouldHideLatestAssistantFooter}
                           aria-label={t('variant.nextVersion', { defaultValue: 'Next version' })}
-                          className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-muted/60 disabled:opacity-40 disabled:pointer-events-none"
+                          className="inline-flex items-center justify-center w-6 h-6 rounded hover:bg-background hover:text-foreground transition-colors disabled:opacity-35 disabled:pointer-events-none"
                         >
                           <CaretRight size={13} />
                         </button>
@@ -1890,7 +1890,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   <div className="flex items-center gap-0.5">
                     {!isUser && !isMultiVariant && isVersioned && (
                       <div
-                        className="inline-flex items-center gap-0.5 mr-1 text-xs text-muted-foreground select-none"
+                        className="inline-flex items-center gap-0.5 mr-1.5 px-0.5 py-0.5 rounded-md border border-border/60 bg-muted/40 text-xs font-medium text-foreground/80 select-none"
                         data-testid="message-version-switcher"
                         aria-label={t('variant.versionSwitcher', { defaultValue: 'Response version switcher' })}
                       >
@@ -1900,7 +1900,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           onClick={switchToPrevVersion}
                           disabled={!canPrevVersion || shouldHideLatestAssistantFooter}
                           aria-label={t('variant.prevVersion', { defaultValue: 'Previous version' })}
-                          className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-muted/60 disabled:opacity-40 disabled:pointer-events-none"
+                          className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-background hover:text-foreground transition-colors disabled:opacity-35 disabled:pointer-events-none"
                         >
                           <CaretLeft size={13} />
                         </button>
@@ -1913,7 +1913,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           onClick={switchToNextVersion}
                           disabled={!canNextVersion || shouldHideLatestAssistantFooter}
                           aria-label={t('variant.nextVersion', { defaultValue: 'Next version' })}
-                          className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-muted/60 disabled:opacity-40 disabled:pointer-events-none"
+                          className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-background hover:text-foreground transition-colors disabled:opacity-35 disabled:pointer-events-none"
                         >
                           <CaretRight size={13} />
                         </button>

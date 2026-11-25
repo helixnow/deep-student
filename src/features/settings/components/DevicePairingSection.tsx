@@ -39,6 +39,8 @@ import {
 
 import { decodePairingFrame, decodePairingImage } from '../utils/decodePairingQr';
 import * as cloudApi from '@/utils/cloudStorageApi';
+import { useGlobalSyncStore } from '@/stores/syncStatusStore';
+import { localizeBackendErrorText } from './data-governance/localizeCloudError';
 import { probeStoredCloudConfigured } from './QuickSyncNowButton';
 
 export const ipcPairingSettings: PairingSettingsStore = {
@@ -165,7 +167,7 @@ export function DevicePairingSection({
   onRunSync,
   cloudConfigured,
 }: DevicePairingSectionProps) {
-  const { t } = useTranslation(['sync', 'cloudStorage', 'common']);
+  const { t, i18n } = useTranslation(['sync', 'cloudStorage', 'common']);
   const [skills, setSkills] = useState(true);
   const [plugins, setPlugins] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -238,6 +240,32 @@ export function DevicePairingSection({
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const scanTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const codeTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const el = codeTextareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    if (el.scrollHeight > 0) {
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  }, [code]);
+
+  const resolveSyncFailureReason = useCallback(
+    (caughtError: unknown, fallbackKey: string, fallbackText: string): string => {
+      const language = i18n?.language;
+      const rawCaught = caughtError ? getErrorMessage(caughtError).trim() : '';
+      if (rawCaught) {
+        return localizeBackendErrorText(rawCaught, language);
+      }
+      const storeError = useGlobalSyncStore.getState().progress?.error?.trim();
+      if (storeError) {
+        return localizeBackendErrorText(storeError, language);
+      }
+      return t(fallbackKey, { defaultValue: fallbackText });
+    },
+    [i18n?.language, t],
+  );
 
   const cameraSession = useRef(0);
   const stopCamera = useCallback(() => {
@@ -317,10 +345,32 @@ export function DevicePairingSection({
         }
         try {
           if (onRunSync) {
-            const pushed = await onRunSync('upload');
+            let pushed: void | boolean;
+            try {
+              pushed = await onRunSync('upload');
+            } catch (syncErr) {
+              const reason = resolveSyncFailureReason(
+                syncErr,
+                'sync:pairing.pushSnapshotFailedFallback',
+                '请检查云存储配置、网络或权限后重试',
+              );
+              setError(
+                t('sync:pairing.pushSnapshotFailed', {
+                  error: reason,
+                  defaultValue: `推送本机最新快照失败：${reason}`,
+                }),
+              );
+              return;
+            }
             if (pushed === false) {
+              const reason = resolveSyncFailureReason(
+                null,
+                'sync:pairing.pushSnapshotFailedFallback',
+                '请检查云存储配置、网络或权限后重试',
+              );
               const pushFailedMessage = t('sync:pairing.pushSnapshotFailed', {
-                defaultValue: '推送最新快照失败，请检查云存储配置或网络后重试',
+                error: reason,
+                defaultValue: `推送本机最新快照失败：${reason}`,
               });
               setError(pushFailedMessage);
               return;
@@ -524,11 +574,33 @@ export function DevicePairingSection({
         }),
       );
       if (triggerPullAfter && onRunSync) {
-        const pulled = await onRunSync('download');
-        if (pulled === false) {
+        let pulled: void | boolean;
+        try {
+          pulled = await onRunSync('download');
+        } catch (pullErr) {
+          const reason = resolveSyncFailureReason(
+            pullErr,
+            'sync:pairing.applyPullFailedFallback',
+            '请点击下方「立即执行双向云同步」重试',
+          );
           setError(
             t('sync:pairing.applyPullFailedStatus', {
-              defaultValue: '配置已接入，但拉取云端快照失败，请点击下方“立即执行双向云同步”重试。',
+              error: reason,
+              defaultValue: `配置已接入，但拉取云端数据失败：${reason}`,
+            }),
+          );
+          return;
+        }
+        if (pulled === false) {
+          const reason = resolveSyncFailureReason(
+            null,
+            'sync:pairing.applyPullFailedFallback',
+            '请点击下方「立即执行双向云同步」重试',
+          );
+          setError(
+            t('sync:pairing.applyPullFailedStatus', {
+              error: reason,
+              defaultValue: `配置已接入，但拉取云端数据失败：${reason}`,
             }),
           );
           return;
@@ -767,7 +839,7 @@ export function DevicePairingSection({
               {/* 右侧：高清 SVG 二维码展示卡片 */}
               {code ? (
                 <div
-                  className="flex flex-col items-center justify-center rounded-xl bg-background/70 border border-border/35 p-4 space-y-3 min-w-[240px]"
+                  className="flex w-full min-w-0 flex-col items-center justify-center rounded-xl bg-background/70 border border-border/35 p-4 space-y-3 lg:min-w-[240px] lg:max-w-[300px]"
                   data-testid="device-pairing-qr-panel"
                 >
                   <div className="rounded-xl bg-white p-2.5 shadow-sm ring-1 ring-black/5">
@@ -786,17 +858,19 @@ export function DevicePairingSection({
                       </div>
                     </div>
                   )}
-                  <div className="w-full space-y-1.5">
+                  <div className="w-full min-w-0 space-y-1.5">
                     <label className="block text-2xs text-muted-foreground">
                       {t('sync:pairing.encryptedCodeLabel', { defaultValue: '加密配对码' })}
                       <textarea
+                        ref={codeTextareaRef}
+                        data-testid="device-pairing-code-output"
                         aria-label={t('sync:pairing.encryptedCodeAria', {
                           defaultValue: '生成的加密配对码',
                         })}
                         readOnly
                         value={code}
-                        rows={2}
-                        className="mt-1 w-full break-all rounded-lg border border-border/40 bg-background p-2 font-mono text-2xs text-muted-foreground"
+                        rows={Math.max(4, Math.ceil(code.length / 34))}
+                        className="mt-1 h-auto max-h-none w-full resize-none overflow-visible whitespace-pre-wrap break-all select-all rounded-lg border border-border/40 bg-background p-2.5 font-mono text-2xs leading-relaxed text-muted-foreground"
                       />
                     </label>
                     <div className="flex flex-wrap items-center justify-center gap-1.5">

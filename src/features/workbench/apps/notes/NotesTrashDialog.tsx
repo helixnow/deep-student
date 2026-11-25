@@ -306,7 +306,7 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
     return result;
   }, [items, locale]);
 
-  // Roving keyboard navigation over rows: ↑/↓ move, Enter restores,
+  // Roving keyboard navigation over rows: ↑/↓ move, Enter toggles selection,
   // Delete / Backspace opens the inline purge confirm.
   const focusRow = useCallback((index: number) => {
     const clamped = Math.max(0, Math.min(index, items.length - 1));
@@ -510,8 +510,12 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
                           />
                         </label>
                         <span className="ntd-item-icon"><TrashGlyph type={type} /></span>
-                        <div
+                        <button
+                          type="button"
                           className="ntd-item-meta"
+                          aria-pressed={selectedIds.has(node.id)}
+                          aria-label={node.name}
+                          disabled={busy}
                           onClick={() => toggleSelected(node.id)}
                         >
                           <span className="ntd-item-name">{node.name}</span>
@@ -520,7 +524,7 @@ export const NotesTrashDialog: React.FC<NotesTrashDialogProps> = ({
                               {t('workbench:notesWorkspace.trash.deletedAt', { time })}
                             </span>
                           ) : null}
-                        </div>
+                        </button>
                         <div className="ntd-item-actions">
                           <button
                             type="button"

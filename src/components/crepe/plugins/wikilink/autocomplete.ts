@@ -66,7 +66,7 @@ export function detectWikilinkTrigger(
   const open = textBefore.lastIndexOf('[[');
   if (open < 0) return null;
   const after = textBefore.slice(open + 2);
-  if (after.includes(']]') || after.includes('\n')) return null;
+  if (after.includes(']]') || after.includes('\n') || after.includes('\uFFFC')) return null;
   return { triggerStartInText: open, query: after };
 }
 

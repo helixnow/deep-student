@@ -23,9 +23,8 @@ import {
 } from './zip.ts';
 import { completeAuditLog, failAuditLog, newAuditLog, withAuditDetails } from '../repository/audit.ts';
 import { ioMessage } from './io.ts';
-import {
-  OPERATION_QUEUED_CANCELLED_MESSAGE, WAITING_FOR_OPERATION_MESSAGE, type Operations,
-} from './operations.ts';
+import type { Operations } from './operations.ts';
+import { formatBackupProgressMessage, resolveBackupLocale } from './progress-messages.ts';
 import { DATABASE_IDS, type CoordinatedId } from './migrations.ts';
 
 export const STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED_CODE = 'E_STORED_CLOUD_ENCRYPTION_PASSWORD_REQUIRED';
@@ -182,9 +181,10 @@ export class ZipCommands {
       useStoredCloudEncryptionPassword: args.useStoredCloudEncryptionPassword ?? null,
       excludeTrash: args.excludeTrash ?? null,
     }).catch(error => this.jobs.markFailure(job.job_id, `ZIP 导出失败: ${ioMessage(error)}`));
+    const locale = resolveBackupLocale(this.ctx);
     return {
       job_id: job.job_id, kind: 'export', status: 'queued',
-      message: 'ZIP 导出任务已启动，请通过 backup-job-progress 事件监听进度',
+      message: formatBackupProgressMessage(locale, 'zip.export.started'),
     };
   }
 
@@ -198,6 +198,7 @@ export class ZipCommands {
     },
   ): Promise<void> {
     const start = performance.now();
+    const locale = resolveBackupLocale(this.ctx);
     const recordAuditFailure = (message: string): void => {
       this.governance.trySaveAuditLog(failAuditLog(withAuditDetails(newAuditLog({
         type: 'Backup', backup_type: 'Full', file_count: 0, total_size: 0,
@@ -226,11 +227,11 @@ export class ZipCommands {
       return;
     }
 
-    job.markRunning('queued', 0, WAITING_FOR_OPERATION_MESSAGE, 0, 0);
+    job.markRunning('queued', 0, formatBackupProgressMessage(locale, 'backup.waiting_for_operation'), 0, 0);
     let acquired: Awaited<ReturnType<Operations['acquireForJob']>>;
     try { acquired = await this.operations.acquireForJob('zip_export', job.job_id, () => job.isCancelled()); }
     catch (error) { failJob(`获取全局备份锁失败: ${ioMessage(error)}`); return; }
-    if (acquired === 'cancelled') { cancelJob(OPERATION_QUEUED_CANCELLED_MESSAGE); return; }
+    if (acquired === 'cancelled') { cancelJob(formatBackupProgressMessage(locale, 'backup.cancelled_in_queue')); return; }
     const guard = acquired;
     try {
       const root = backupDir(this.ctx.app.dataDir);
@@ -241,8 +242,11 @@ export class ZipCommands {
       }
       const encrypted = password !== null;
       job.markRunning('scan', 0,
-        encrypted ? '正在密封敏感数据并生成加密全保真 ZIP...' : '正在扫描备份目录...', 0, 1);
-      if (job.isCancelled()) { cancelJob('用户取消 ZIP 导出'); return; }
+        formatBackupProgressMessage(
+          locale,
+          encrypted ? 'zip.export.sealing_full_start' : 'zip.export.scanning_backup_dir',
+        ), 0, 1);
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'zip.export.cancelled')); return; }
 
       const zipPath = options.outputPath ?? join(root, `${backupId}.zip`);
       mkdirSync(dirname(zipPath), { recursive: true });
@@ -263,9 +267,9 @@ export class ZipCommands {
           : progress.phase === 'seal' || progress.phase === 'compress' ? 'compress' : 'verify';
         job.markRunning(phase, progress.progress, progress.message, progress.processedFiles, progress.totalFiles);
       }, () => job.isCancelled());
-      if (job.isCancelled()) { cancelJob('用户取消 ZIP 导出'); return; }
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'zip.export.cancelled')); return; }
 
-      job.markRunning('cleanup', 98, '正在完成导出...', result.fileCount, result.fileCount);
+      job.markRunning('cleanup', 98, formatBackupProgressMessage(locale, 'zip.export.finalizing'), result.fileCount, result.fileCount);
       const ratio = result.totalSize === 0 ? 0 : 1 - result.compressedSize / result.totalSize;
       const durationMs = Math.trunc(performance.now() - start);
       const recoveryKind = restorable ? 'disaster_recovery' : 'partial_archive';
@@ -279,15 +283,18 @@ export class ZipCommands {
         recovery_kind: recoveryKind,
       }), durationMs));
 
-      job.complete(`ZIP 导出完成: ${result.zipPath}`, result.fileCount, result.fileCount, {
+      job.complete(formatBackupProgressMessage(locale, 'zip.export.completed_path', { zipPath: result.zipPath }), result.fileCount, result.fileCount, {
         success: true,
         output_path: result.zipPath,
         resolved_path: result.zipPath,
         message: encrypted
-          ? (restorable
-            ? '加密全保真 ZIP 导出完成：导入时输入备份密码后可整槽恢复'
-            : '加密 ZIP 导出完成：源备份不是完整快照，导入后仍为部分归档')
-          : `ZIP 导出完成: ${result.fileCount} 个文件, 压缩率 ${(ratio * 100).toFixed(1)}%（便携归档：不含密钥等敏感数据，导入后不能整槽恢复）`,
+          ? formatBackupProgressMessage(
+            locale,
+            restorable ? 'zip.export.completed_encrypted_restorable' : 'zip.export.completed_encrypted_partial',
+          )
+          : formatBackupProgressMessage(locale, 'zip.export.completed_portable', {
+            fileCount: result.fileCount, ratioPercent: (ratio * 100).toFixed(1),
+          }),
         error: null,
         duration_ms: durationMs,
         stats: {
@@ -301,7 +308,7 @@ export class ZipCommands {
         resumable_job_id: null,
       });
     } catch (error) {
-      if (job.isCancelled()) { cancelJob('用户取消 ZIP 导出'); return; }
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'zip.export.cancelled')); return; }
       const message = `ZIP 导出失败: ${ioMessage(error)}`;
       recordAuditFailure(message);
       job.fail(message);
@@ -330,9 +337,10 @@ export class ZipCommands {
     void this.executeImport(job, args.zipPath, requestedBackupId, args.password ?? null,
       args.useStoredCloudEncryptionPassword ?? null, false)
       .catch(error => this.jobs.markFailure(job.job_id, `ZIP 导入失败: ${ioMessage(error)}`));
+    const locale = resolveBackupLocale(this.ctx);
     return {
       job_id: job.job_id, kind: 'import', status: 'queued',
-      message: 'ZIP 导入任务已启动，请通过 backup-job-progress 事件监听进度',
+      message: formatBackupProgressMessage(locale, 'zip.import.started'),
     };
   }
 
@@ -345,6 +353,7 @@ export class ZipCommands {
     resumable: boolean,
   ): Promise<void> {
     const start = performance.now();
+    const locale = resolveBackupLocale(this.ctx);
     const recordAuditFailure = (targetId: string, message: string): void => {
       this.governance.trySaveAuditLog(failAuditLog(withAuditDetails(newAuditLog({
         type: 'Backup', backup_type: 'Full', file_count: 0, total_size: 0,
@@ -378,11 +387,11 @@ export class ZipCommands {
       return;
     }
 
-    job.markRunning('queued', 0, WAITING_FOR_OPERATION_MESSAGE, 0, 0);
+    job.markRunning('queued', 0, formatBackupProgressMessage(locale, 'backup.waiting_for_operation'), 0, 0);
     let acquired: Awaited<ReturnType<Operations['acquireForJob']>>;
     try { acquired = await this.operations.acquireForJob('zip_import', job.job_id, () => job.isCancelled()); }
     catch (error) { failEarly(initialAuditId, `获取全局备份锁失败: ${ioMessage(error)}`); return; }
-    if (acquired === 'cancelled') { cancelEarly(initialAuditId, OPERATION_QUEUED_CANCELLED_MESSAGE); return; }
+    if (acquired === 'cancelled') { cancelEarly(initialAuditId, formatBackupProgressMessage(locale, 'backup.cancelled_in_queue')); return; }
     const guard = acquired;
     const root = backupDir(this.ctx.app.dataDir);
     let targetId = backupId ?? importBackupId();
@@ -410,8 +419,11 @@ export class ZipCommands {
       if (checkpoint === null) job.initCheckpoint(0);
       job.setPartialOutput(targetDir);
       job.updateZipCheckpoint(processedCount, checkpoint?.total_items ?? 0);
-      job.markRunning('scan', 0, isResuming ? '从检查点恢复，正在验证 ZIP 文件...' : '正在验证 ZIP 文件...', 0, 0);
-      if (job.isCancelled()) { cancelEarly(targetId, '用户取消导入'); return; }
+      job.markRunning('scan', 0, formatBackupProgressMessage(
+        locale,
+        isResuming ? 'zip.import.resuming_validating' : 'zip.import.validating',
+      ), 0, 0);
+      if (job.isCancelled()) { cancelEarly(targetId, formatBackupProgressMessage(locale, 'zip.import.cancelled')); return; }
 
       const fileCount = await importBackupFromZip(this.ctx, zipPath, targetDir, {
         password,
@@ -422,7 +434,7 @@ export class ZipCommands {
         isCancelled: () => job.isCancelled(),
       });
       const durationMs = Math.trunc(performance.now() - start);
-      job.markRunning('cleanup', 95, '正在清理临时文件...', fileCount, fileCount);
+      job.markRunning('cleanup', 95, formatBackupProgressMessage(locale, 'zip.import.cleaning_temp'), fileCount, fileCount);
 
       let restorable = false;
       try { restorable = classifyRecoveryKind(loadManifest(join(targetDir, 'manifest.json'))).restorable; }
@@ -439,7 +451,9 @@ export class ZipCommands {
         success: true,
         output_path: targetDir,
         resolved_path: null,
-        message: `ZIP 导入成功: ${fileCount} 个文件, 备份 ID: ${targetId}${restorable ? '（完整快照，可整槽恢复）' : '（部分归档，不能整槽恢复）'}`,
+        message: formatBackupProgressMessage(locale, 'zip.import.completed_summary', {
+          fileCount, backupId: targetId, restorable,
+        }),
         error: null,
         duration_ms: durationMs,
         stats: {
@@ -450,9 +464,9 @@ export class ZipCommands {
         checkpoint_path: null,
         resumable_job_id: null,
       };
-      job.complete(`ZIP 导入成功: ${fileCount} 个文件`, fileCount, fileCount, payload);
+      job.complete(formatBackupProgressMessage(locale, 'zip.import.completed', { fileCount }), fileCount, fileCount, payload);
     } catch (error) {
-      if (job.isCancelled()) { cancelEarly(targetId, '用户取消导入'); return; }
+      if (job.isCancelled()) { cancelEarly(targetId, formatBackupProgressMessage(locale, 'zip.import.cancelled')); return; }
       const message = ioMessage(error);
       this.ctx.logger('backup').error(
         resumable ? `[data_governance] ZIP 导入失败: ${message}` : `[data_governance] ZIP 导入任务失败: ${message}`,
@@ -497,9 +511,10 @@ export class ZipCommands {
       assetTypes: args.assetTypes ?? null, encryptionPassword: args.encryptionPassword ?? null,
       excludeTrash: args.excludeTrash ?? null,
     }).catch(error => this.jobs.markFailure(job.job_id, `备份导出失败: ${ioMessage(error)}`));
+    const locale = resolveBackupLocale(this.ctx);
     return {
       job_id: job.job_id, kind: 'export', status: 'queued',
-      message: '备份导出任务已启动，请通过 backup-job-progress 事件监听进度',
+      message: formatBackupProgressMessage(locale, 'zip.backup_and_export.started'),
     };
   }
 
@@ -512,6 +527,7 @@ export class ZipCommands {
     },
   ): Promise<void> {
     const start = performance.now();
+    const locale = resolveBackupLocale(this.ctx);
     const recordAuditFailure = (message: string): void => {
       this.governance.trySaveAuditLog(failAuditLog(withAuditDetails(newAuditLog({
         type: 'Backup', backup_type: 'Full', file_count: 0, total_size: 0,
@@ -527,11 +543,11 @@ export class ZipCommands {
       recordAuditFailure(message);
       job.cancelled(message);
     };
-    job.markRunning('queued', 0, WAITING_FOR_OPERATION_MESSAGE, 0, 0);
+    job.markRunning('queued', 0, formatBackupProgressMessage(locale, 'backup.waiting_for_operation'), 0, 0);
     let acquired: Awaited<ReturnType<Operations['acquireForJob']>>;
     try { acquired = await this.operations.acquireForJob('backup', job.job_id, () => job.isCancelled()); }
     catch (error) { failJob(`获取全局备份锁失败: ${ioMessage(error)}`); return; }
-    if (acquired === 'cancelled') { cancelJob(OPERATION_QUEUED_CANCELLED_MESSAGE); return; }
+    if (acquired === 'cancelled') { cancelJob(formatBackupProgressMessage(locale, 'backup.cancelled_in_queue')); return; }
     const guard = acquired;
     try {
       const includeAssets = args.includeAssets ?? !args.useTiered;
@@ -545,8 +561,8 @@ export class ZipCommands {
       });
       const root = backupDir(this.ctx.app.dataDir);
       if (!existsSync(root)) mkdirSync(root, { recursive: true });
-      job.markRunning('scan', 2, '正在准备备份...', 0, 1);
-      if (job.isCancelled()) { cancelJob('用户取消备份导出'); return; }
+      job.markRunning('scan', 2, formatBackupProgressMessage(locale, 'backup.preparing'), 0, 1);
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'zip.backup_and_export.cancelled')); return; }
 
       let selected: readonly CoordinatedId[] = DATABASE_IDS;
       let backupIdSuffix: string | undefined;
@@ -565,7 +581,7 @@ export class ZipCommands {
         missingStyle = 'tiered';
       }
 
-      job.markRunning('checkpoint', 15, '正在执行数据库 checkpoint...', 0, selected.length);
+      job.markRunning('checkpoint', 15, formatBackupProgressMessage(locale, 'backup.checkpointing_databases'), 0, selected.length);
       // Rust commands_zip.rs:427-516：屏障覆盖数据库/资产 staging，释放失败优先于备份结果。
       let barrier;
       try { barrier = await this.operations.enterSnapshotBarrier(); }
@@ -592,9 +608,9 @@ export class ZipCommands {
       if (releaseFailure !== null) { failJob(ioMessage(releaseFailure)); return; }
       if (backupFailure !== null) throw backupFailure;
       if (manifest === null) throw new Error('备份并导出未生成清单');
-      if (job.isCancelled()) { cancelJob('用户取消备份导出'); return; }
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'zip.backup_and_export.cancelled')); return; }
 
-      job.markRunning('compress', 62, '正在压缩 ZIP 文件...', 0, 1);
+      job.markRunning('compress', 62, formatBackupProgressMessage(locale, 'zip.export.compressing_archive'), 0, 1);
       const zipPath = args.outputPath;
       mkdirSync(dirname(zipPath), { recursive: true });
       const result = await exportBackupToZip(this.ctx, join(root, manifest.backup_id), {
@@ -615,7 +631,7 @@ export class ZipCommands {
         catch { restorable = false; }
       }
       const recoveryKind = restorable ? 'disaster_recovery' : 'partial_archive';
-      job.markRunning('cleanup', 98, '正在完成导出...', 1, 1);
+      job.markRunning('cleanup', 98, formatBackupProgressMessage(locale, 'zip.export.finalizing'), 1, 1);
 
       if (!args.addToBackupList) {
         try { await deleteBackup(root, manifest.backup_id); }
@@ -628,7 +644,9 @@ export class ZipCommands {
         success: true,
         output_path: result.zipPath,
         resolved_path: null,
-        message: `备份并导出完成: ${result.fileCount} 个文件，${result.compressedSize} 字节${restorable ? '（加密全保真 ZIP：导入时输入备份密码后可整槽恢复）' : '（便携归档：不含密钥等敏感数据，导入后不能整槽恢复）'}`,
+        message: formatBackupProgressMessage(locale, 'zip.backup_and_export.completed_summary', {
+          fileCount: result.fileCount, compressedSize: result.compressedSize, restorable,
+        }),
         error: null,
         duration_ms: durationMs,
         stats: {
@@ -654,9 +672,9 @@ export class ZipCommands {
         compressed_size: result.compressedSize, encrypted: args.encryptionPassword !== null,
         recovery_kind: recoveryKind, subtype: 'backup_and_export',
       }), durationMs));
-      job.complete('备份并导出 ZIP 完成', 1, 1, payload);
+      job.complete(formatBackupProgressMessage(locale, 'zip.backup_and_export.completed'), 1, 1, payload);
     } catch (error) {
-      if (job.isCancelled()) { cancelJob('用户取消备份导出'); return; }
+      if (job.isCancelled()) { cancelJob(formatBackupProgressMessage(locale, 'zip.backup_and_export.cancelled')); return; }
       failJob(`备份导出失败: ${ioMessage(error)}`);
     } finally {
       guard.release();
@@ -688,9 +706,10 @@ export class ZipCommands {
     void this.executeImport(restored, zipPath, params.backup_id ?? null,
       args.password ?? null, null, true)
       .catch(error => this.jobs.markFailure(restored.job_id, `ZIP 导入失败: ${ioMessage(error)}`));
+    const locale = resolveBackupLocale(this.ctx);
     return {
       job_id: restored.job_id, kind: 'import', status: 'queued',
-      message: '导入任务已恢复，将从断点继续解压',
+      message: formatBackupProgressMessage(locale, 'zip.import.resumed'),
     };
   }
 }

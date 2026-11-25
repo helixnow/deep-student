@@ -55,12 +55,31 @@ const STRIP_KEYS = new Set([
   'last_attempt_at',
   'indexed_at',
   'mm_indexed_at',
+  'index_state',
+  'index_hash',
+  'index_error',
+  'index_retry_count',
+  'index_next_retry_at',
+  'index_generation',
+  'mm_index_state',
+  'mm_index_error',
+  'mm_indexed_pages_json',
+  'mm_embedding_dim',
   'remote_version',
   'remote_id',
   'sync_status',
   'content_hash',
   'ref_count',
 ]);
+
+/** SQLite `datetime('now')` lacks sub-second precision; expand DELETE timestamps to end-of-second so same-second millisecond `updated_at` rows do not falsely outrank a hard purge. */
+export function normalizeSqliteSecondDeleteTimestamp(changedAt: string): string {
+  const trimmed = changedAt.trim();
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(trimmed)) {
+    return `${trimmed.replace(' ', 'T')}.999Z`;
+  }
+  return changedAt;
+}
 
 /** `canonicalize_sync_value_for_compare`（mod.rs:9045）。 */
 export function canonicalizeSyncValueForCompare(value: DbJson): DbJson {
@@ -243,7 +262,9 @@ export function enrichChangesWithData(
       record_id: entry.record_id,
       operation: entry.operation,
       data: data as SyncChangeWithData['data'],
-      changed_at: entry.changed_at,
+      changed_at: entry.operation === 'Delete'
+        ? normalizeSqliteSecondDeleteTimestamp(entry.changed_at)
+        : entry.changed_at,
       change_log_id: entry.id,
       database_name: null,
       suppress_change_log: null,

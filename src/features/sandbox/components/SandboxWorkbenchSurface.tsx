@@ -102,7 +102,8 @@ export function SandboxWorkbenchSurface({
   const setInspectorOpen = useSandboxWorkbenchStore((state) => state.setInspectorOpen);
   const setViewportPreset = useSandboxWorkbenchStore((state) => state.setViewportPreset);
 
-  const isEnglish = (i18n.resolvedLanguage || i18n.language || '').startsWith('en');
+  const resolvedLanguage = i18n?.resolvedLanguage || i18n?.language || '';
+  const isEnglish = resolvedLanguage.startsWith('en');
 
   const [runtimeError, setRuntimeError] = useState<{
     message: string;
@@ -501,7 +502,7 @@ export function SandboxWorkbenchSurface({
                 data-testid="sandbox-create-starter-button"
                 onClick={() =>
                   launchSandboxWorkbench(
-                    createStarterHtmlCanvasInput(i18n.resolvedLanguage || i18n.language),
+                    createStarterHtmlCanvasInput(resolvedLanguage || undefined),
                     ownerKey,
                   )
                 }

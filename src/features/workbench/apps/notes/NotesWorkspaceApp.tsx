@@ -112,6 +112,7 @@ import {
   treeResourceKey,
   writePersistedWorkspaceState,
   type CloseTabOptions,
+  type PersistedWorkspaceState,
   type ResourceDialog,
   type ResourceType,
   type SaveState,
@@ -134,17 +135,78 @@ export {
   computeNoteBreadcrumbs,
 };
 
+function normalizeWorkspaceResourceRef(
+  ref: NotesWorkspaceResourceRef | null,
+): NotesWorkspaceResourceRef | null {
+  if (!ref) return null;
+  const rawId = ref.id.trim();
+  if (!rawId) return null;
+  if (rawId.startsWith('note:')) {
+    const stripped = rawId.slice('note:'.length).trim();
+    return stripped ? { type: 'note', id: stripped } : null;
+  }
+  if (rawId.startsWith('mindmap:')) {
+    const stripped = rawId.slice('mindmap:'.length).trim();
+    return stripped ? { type: 'mindmap', id: stripped } : null;
+  }
+  return { type: ref.type, id: rawId };
+}
+
+function normalizePersistedWorkspaceState(state: PersistedWorkspaceState): PersistedWorkspaceState {
+  const keyRemap = new Map<string, string>();
+  const seenKeys = new Set<string>();
+  const tabs: WorkspaceTab[] = [];
+  for (const tab of state.tabs) {
+    const normalizedRef = normalizeWorkspaceResourceRef({ type: tab.type, id: tab.id });
+    if (!normalizedRef) continue;
+    const canonicalKey = `${normalizedRef.type}:${normalizedRef.id}`;
+    keyRemap.set(tab.key, canonicalKey);
+    if (seenKeys.has(canonicalKey)) continue;
+    seenKeys.add(canonicalKey);
+    tabs.push({
+      ...tab,
+      type: normalizedRef.type,
+      id: normalizedRef.id,
+      key: canonicalKey,
+    });
+  }
+  const remapKey = (key: string | null): string | null => {
+    if (!key) return null;
+    const mapped = keyRemap.get(key) ?? key;
+    return seenKeys.has(mapped) ? mapped : null;
+  };
+  const rightTabKey = remapKey(state.rightTabKey);
+  const mainTabs = tabs.filter((tab) => tab.key !== rightTabKey);
+  const rawActive = remapKey(state.activeTabKey);
+  const activeTabKey = rawActive && mainTabs.some((tab) => tab.key === rawActive)
+    ? rawActive
+    : mainTabs[0]?.key ?? null;
+  return {
+    ...state,
+    tabs,
+    activeTabKey,
+    rightTabKey,
+    focusedPane: rightTabKey && state.focusedPane === 'right' ? 'right' : 'main',
+  };
+}
+
 export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   windowId,
   instanceKey,
   launchPayload,
   isActive,
+  isVisible = true,
+  isSuspended = false,
   renderThrottleMs = 0,
   onTitleChange,
 }) => {
   const { t } = useTranslation(['workbench', 'notes', 'common']);
-  const persistedStateRef = useRef(readPersistedWorkspaceState());
+  const persistedStateRef = useRef(normalizePersistedWorkspaceState(readPersistedWorkspaceState()));
   const persistedState = persistedStateRef.current;
+  const paneVisible = isVisible && !isSuspended;
+  const [hasBeenVisible, setHasBeenVisible] = useState(paneVisible);
+  const [paneReloadNonce, setPaneReloadNonce] = useState<{ main: number; right: number }>({ main: 0, right: 0 });
+  const [hasInteractiveTabOpen, setHasInteractiveTabOpen] = useState(false);
   const hostRef = useRef<HTMLDivElement>(null);
   // 拖/缩/settle 期间冻结工作区动画/过渡（CSS 定向规则见 NotesWorkspaceApp.css）
   useDragRenderPause(hostRef, renderThrottleMs);
@@ -215,16 +277,21 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
 
   const favorites = useNoteFavorites();
   const navHistory = useNotesNavHistory();
-  const initialRef = useRef(parseInitialResource(instanceKey, launchPayload));
+  const initialRef = useRef(normalizeWorkspaceResourceRef(parseInitialResource(instanceKey, launchPayload)));
   const openResourceRef = useRef<(ref: NotesWorkspaceResourceRef, title?: string) => Promise<void>>(async () => undefined);
   const closeTabRef = useRef<(key: string, options?: CloseTabOptions) => Promise<boolean>>(async () => false);
   const pendingTabCloseKeysRef = useRef(new Set<string>());
   const pendingConfirmedDeletionKeysRef = useRef(new Set<string>());
   const activeTabRef = useRef<WorkspaceTab | null>(null);
+  const mainActiveTabRef = useRef<WorkspaceTab | null>(null);
+  const splitTabRef = useRef<WorkspaceTab | null>(null);
   const tabsRef = useRef<WorkspaceTab[]>([]);
   const rightTabKeyRef = useRef<string | null>(rightTabKey);
   const focusedPaneRef = useRef<WorkspacePaneId>(focusedPane);
   const resourcesRef = useRef<DstuNode[]>([]);
+  const resourceUpdatedAtRef = useRef<Map<string, number>>(new Map());
+  const syncHydrationPendingRef = useRef(false);
+  const wasPaneVisibleRef = useRef(paneVisible);
   const pendingStageHydrationRef = useRef<{
     preferredType: ResourceType;
     rootFolderId: string | null;
@@ -260,6 +327,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   } = getTabContextMenuState(tabs, tabContextMenu);
 
   activeTabRef.current = activeTab;
+  mainActiveTabRef.current = mainActiveTab;
+  splitTabRef.current = splitTab;
   tabsRef.current = tabs;
   rightTabKeyRef.current = splitTab?.key ?? null;
   focusedPaneRef.current = resolvedFocusedPane;
@@ -334,7 +403,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       );
       observer.observe(shell ?? document.body, { childList: true, subtree: true });
     }
-    return () => observer?.disconnect();
+  return () => observer?.disconnect();
   }, [windowId]);
 
   const updateTabSaveState = useCallback((key: string, state: SaveState) => {
@@ -364,7 +433,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       const reportLoadFailure = (message: string) => {
         if (blocking || !hasLoadedResourcesRef.current) setLoadError(message);
         setStatus(message);
-        if (blocking || requiresInitialLoad) setLoading(false);
+        setLoading(false);
       };
       if (!notesResult.ok) {
         reportLoadFailure(notesResult.error.toUserMessage());
@@ -395,6 +464,28 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       const nextResourceFolderIds = folderTreeResult?.ok
         ? getFolderMembership(folderTreeResult.value)
         : EMPTY_RESOURCE_FOLDER_IDS;
+      const hadLoadedBefore = hasLoadedResourcesRef.current;
+      const syncHydrationPending = syncHydrationPendingRef.current;
+      syncHydrationPendingRef.current = false;
+      const previousUpdatedAt = resourceUpdatedAtRef.current;
+      const shouldReloadPaneTab = (tab: WorkspaceTab | null): boolean => {
+        if (!tab || !byId.has(tab.id)) return false;
+        if (getTabSaveState(tab, windowId) !== 'saved') return false;
+        if (syncHydrationPending) return true;
+        if (!hadLoadedBefore) return false;
+        const prevTs = previousUpdatedAt.get(tab.id);
+        const nextTs = byId.get(tab.id)?.updatedAt ?? 0;
+        return prevTs === undefined || nextTs > prevTs;
+      };
+      const reloadMain = shouldReloadPaneTab(mainActiveTabRef.current);
+      const reloadRight = shouldReloadPaneTab(splitTabRef.current);
+
+      const nextUpdatedAt = new Map<string, number>();
+      for (const node of nextResources) {
+        nextUpdatedAt.set(node.id, node.updatedAt ?? 0);
+      }
+      resourceUpdatedAtRef.current = nextUpdatedAt;
+
       hasLoadedResourcesRef.current = true;
       setResources(nextResources);
       setFolders(nextFolders);
@@ -403,9 +494,15 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         current && nextFolders.some((folder) => folder.id === current) ? current : null
       ));
       setTabs((current) => reconcileTabsWithResources(current, byId));
+      if (reloadMain || reloadRight) {
+        setPaneReloadNonce((current) => ({
+          main: reloadMain ? current.main + 1 : current.main,
+          right: reloadRight ? current.right + 1 : current.right,
+        }));
+      }
       setLoadError(null);
       setStatus(t('notesWorkspace.status.fileCount', { defaultValue: '{{count}} files', count: nextResources.length }));
-      if (blocking || requiresInitialLoad) setLoading(false);
+      setLoading(false);
       if (
         pendingStageHydrationRef.current &&
         tabsRef.current.length === 0 &&
@@ -441,9 +538,9 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         : t('notesWorkspace.tree.loadFailed', 'Could not load files');
       if (blocking || !hasLoadedResourcesRef.current) setLoadError(message);
       setStatus(message);
-      if (blocking || requiresInitialLoad) setLoading(false);
+      setLoading(false);
     }
-  }, [t]);
+  }, [t, windowId]);
 
   useEffect(() => {
     void favorites.refresh();
@@ -475,7 +572,10 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     }
   }, [navHistory]);
 
-  const openResource = useCallback((ref: NotesWorkspaceResourceRef, title?: string) => {
+  const openResource = useCallback((rawRef: NotesWorkspaceResourceRef, title?: string) => {
+    const ref = normalizeWorkspaceResourceRef(rawRef);
+    if (!ref) return Promise.resolve();
+    setHasInteractiveTabOpen(true);
     const key = `${ref.type}:${ref.id}`;
     setTabs((current) => {
       if (current.some((tab) => tab.type === ref.type && tab.id === ref.id)) return current;
@@ -870,13 +970,14 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       if (event.type === 'updated' && changedNode && resourceType(changedNode.type)) {
         const known = resourcesRef.current.find((node) => node.id === changedNode.id);
         if (known && changedNode.updatedAt < known.updatedAt) return;
+        resourceUpdatedAtRef.current.set(changedNode.id, changedNode.updatedAt ?? 0);
         setResources((current) => mergeUpdatedResourceNode(current, changedNode));
         updateTabTitle(`${changedNode.type}:${changedNode.id}`, changedNode.name);
         return;
       }
       queueResourceRefresh();
     });
-    return () => {
+  return () => {
       unwatch();
       if (refreshTimerRef.current !== null) {
         window.clearTimeout(refreshTimerRef.current);
@@ -890,10 +991,68 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     // debounced refresh path so external moves/renames preserve the tree UI.
     queueResourceRefresh();
   }, [queueResourceRefresh]);
+  const triggerSyncHydration = useCallback(() => {
+    syncHydrationPendingRef.current = true;
+    void loadResources({ blocking: false });
+  }, [loadResources]);
+  const onSyncProgressWindowEvent = useCallback((event: Event) => {
+    const detail = (event as CustomEvent<{ phase?: string; outcome?: string | null }>).detail;
+    if (detail?.phase === 'completed' || detail?.outcome === 'completed') {
+      triggerSyncHydration();
+    }
+  }, [triggerSyncHydration]);
   useEventRegistry(
-    [{ target: 'window', type: DSTU_FOLDER_CHANGE_EVENT, listener: onFolderChange }],
-    [onFolderChange],
+    [
+      { target: 'window', type: DSTU_FOLDER_CHANGE_EVENT, listener: onFolderChange },
+      { target: 'window', type: 'data-governance:local-change', listener: triggerSyncHydration },
+      { target: 'window', type: 'data-governance-sync-progress', listener: onSyncProgressWindowEvent },
+    ],
+    [onFolderChange, onSyncProgressWindowEvent, triggerSyncHydration],
   );
+
+  // S5-02: Listen to backend sync completion events so notes/resources hydrated
+  // by pairing or bidirectional sync refresh both the file tree and open clean tabs.
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    void import('@tauri-apps/api/event')
+      .then(({ listen }) => listen<{ phase?: string; outcome?: string | null }>(
+        'data-governance-sync-progress',
+        (event) => {
+          const payload = event.payload;
+          if (payload?.phase === 'completed' || payload?.outcome === 'completed') {
+            triggerSyncHydration();
+          }
+        },
+      ))
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      })
+      .catch(() => undefined);
+  return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [triggerSyncHydration]);
+
+  // S5-02: Never mount editors inside a background `content-visibility: hidden`
+  // shell before first visibility, and re-hydrate clean tabs when waking from background.
+  useEffect(() => {
+    const wasVisible = wasPaneVisibleRef.current;
+    wasPaneVisibleRef.current = paneVisible;
+    if (!paneVisible) return;
+    if (!hasBeenVisible) {
+      setHasBeenVisible(true);
+      if (hasLoadedResourcesRef.current) {
+        void loadResources({ blocking: false });
+      }
+      return;
+    }
+    if (!wasVisible) {
+      triggerSyncHydration();
+    }
+  }, [hasBeenVisible, loadResources, paneVisible, triggerSyncHydration]);
 
   useEffect(() => {
     const initial = initialRef.current;
@@ -981,7 +1140,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         group.setLayout(sizeClass === 'compact' ? DEFAULT_SPLIT_LAYOUT : splitLayoutRef.current);
       }
     });
-    return () => window.cancelAnimationFrame(frame);
+  return () => window.cancelAnimationFrame(frame);
   }, [splitTab?.key, sizeClass]);
 
   useEffect(() => {
@@ -1003,7 +1162,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       }
     });
     observer.observe(host);
-    return () => observer.disconnect();
+  return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -1067,7 +1226,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     const frame = window.requestAnimationFrame(() => {
       menu?.querySelector<HTMLElement>('[role="menuitemcheckbox"]')?.focus();
     });
-    return () => {
+  return () => {
       window.cancelAnimationFrame(frame);
       if (restoreTabContextFocusRef.current && trigger?.isConnected) trigger.focus();
       restoreTabContextFocusRef.current = false;
@@ -1276,7 +1435,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
 
     window.addEventListener('workbench:prefer-mindmap-tab', onPreferMindmap);
     window.addEventListener('workbench:hydrate-notes-stage', onHydrateNotesStage);
-    return () => {
+  return () => {
       window.removeEventListener('workbench:prefer-mindmap-tab', onPreferMindmap);
       window.removeEventListener('workbench:hydrate-notes-stage', onHydrateNotesStage);
     };
@@ -1654,6 +1813,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     suppressFloatingToc: backlinksOpen && !backlinksOverlay,
   };
 
+  const canRenderEditorPanes = hasBeenVisible && (!loading || hasInteractiveTabOpen || tabs.length === 0);
+
   return (
     <>
       {titlebarTarget ? createPortal(
@@ -1721,13 +1882,16 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                     minSize={splitTab ? 25 : 100}
                     className="notes-pane-panel"
                   >
-                    <WorkspacePane
-                      {...sharedPaneActionProps}
-                      paneId="main"
-                      tabs={mainTabs}
-                      activeKey={mainActiveTab?.key ?? null}
-                      workspaceActive={isActive && resolvedFocusedPane === 'main' && !(backlinksOpen && backlinksOverlay)}
-                    />
+                    {canRenderEditorPanes ? (
+                      <WorkspacePane
+                        key={`main:${paneReloadNonce.main}`}
+                        {...sharedPaneActionProps}
+                        paneId="main"
+                        tabs={mainTabs}
+                        activeKey={mainActiveTab?.key ?? null}
+                        workspaceActive={isActive && resolvedFocusedPane === 'main' && !(backlinksOpen && backlinksOverlay)}
+                      />
+                    ) : null}
                   </Panel>
                   {splitTab && (
                     <>
@@ -1748,13 +1912,16 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                         minSize={25}
                         className="notes-pane-panel"
                       >
-                        <WorkspacePane
-                          {...sharedPaneActionProps}
-                          paneId="right"
-                          tabs={[splitTab]}
-                          activeKey={splitTab.key}
-                          workspaceActive={isActive && resolvedFocusedPane === 'right' && !(backlinksOpen && backlinksOverlay)}
-                        />
+                        {canRenderEditorPanes ? (
+                          <WorkspacePane
+                            key={`right:${paneReloadNonce.right}`}
+                            {...sharedPaneActionProps}
+                            paneId="right"
+                            tabs={[splitTab]}
+                            activeKey={splitTab.key}
+                            workspaceActive={isActive && resolvedFocusedPane === 'right' && !(backlinksOpen && backlinksOverlay)}
+                          />
+                        ) : null}
                       </Panel>
                     </>
                   )}

@@ -26,6 +26,7 @@ const extraNotes = [
 ] as const;
 
 const panelProps: Array<Record<string, unknown>> = [];
+const panelMountCounts: Record<string, number> = {};
 const mindmapProps: Array<Record<string, unknown>> = [];
 
 const { folderApi, trashApi, search, getContent, listTags, setFavorite } = vi.hoisted(() => ({
@@ -95,7 +96,11 @@ vi.mock('@/dstu', () => ({
 vi.mock('@/features/learning-hub/apps/UnifiedAppPanel', () => ({
   default: (props: Record<string, unknown>) => {
     panelProps.push(props);
-    return <div data-testid={`note-editor-${String(props.resourceId)}`} />;
+    const id = String(props.resourceId);
+    React.useEffect(() => {
+      panelMountCounts[id] = (panelMountCounts[id] ?? 0) + 1;
+    }, [id]);
+    return <div data-testid={`note-editor-${id}`} />;
   },
 }));
 
@@ -181,6 +186,7 @@ async function openThreeWorkspaceTabs(): Promise<void> {
 describe('NotesWorkspaceApp', () => {
   beforeEach(() => {
     panelProps.length = 0;
+    for (const key of Object.keys(panelMountCounts)) delete panelMountCounts[key];
     mindmapProps.length = 0;
     resetWorkspaceRegistryForTests();
     __resetContentDirtyRegistry();
@@ -1386,6 +1392,97 @@ describe('NotesWorkspaceApp', () => {
     // 因此断言状态栏计数而非具体树节点文本。
     await screen.findByText(/1001 个文件/);
     expect(screen.queryByText(/加载失败|无法加载/)).toBeNull();
+  });
+
+  it('S5-02: re-hydrates clean persisted note tabs after sync completion without remounting dirty tabs', async () => {
+    window.localStorage.setItem('workbench.notesWorkspace.state.v1', JSON.stringify({
+      tabs: [{ key: 'note:note_1', type: 'note', id: 'note_1', title: '课堂笔记' }],
+      activeTabKey: 'note:note_1',
+      rightTabKey: null,
+      focusedPane: 'main',
+      splitLayout: [50, 50],
+      explorerOpen: true,
+      collapsedFolderPaths: [],
+    }));
+
+    render(<NotesWorkspaceApp {...props()} />);
+    await screen.findByTestId('note-editor-note_1');
+    await waitFor(() => expect(panelMountCounts.note_1).toBe(1));
+
+    const listCallsBeforeSync = vi.mocked(dstu.list).mock.calls.length;
+    vi.mocked(dstu.list).mockImplementation((_path, options) => {
+      if (options?.typeFilter === 'mindmap') {
+        return Promise.resolve({ ok: true, value: [nodes[1]] }) as never;
+      }
+      return Promise.resolve({
+        ok: true,
+        value: [{ ...nodes[0], name: 'S502_主力机跨端同步', updatedAt: 999 }],
+      }) as never;
+    });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('data-governance:local-change'));
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(dstu.list).mock.calls.length).toBeGreaterThan(listCallsBeforeSync);
+      expect(panelMountCounts.note_1).toBe(2);
+    });
+    expect(screen.getByRole('tab', { name: /S502_主力机跨端同步/ })).toBeInTheDocument();
+
+    // Dirty tabs must keep their live unsaved editor instance across background sync events.
+    const unregisterDirty = registerContentDirtyChecker('note', 'note_1', () => true);
+    try {
+      act(() => {
+        window.dispatchEvent(new CustomEvent('data-governance-sync-progress', { detail: { phase: 'completed' } }));
+      });
+      await waitFor(() => {
+        expect(vi.mocked(dstu.list).mock.calls.length).toBeGreaterThan(listCallsBeforeSync + 2);
+      });
+      expect(panelMountCounts.note_1).toBe(2);
+    } finally {
+      unregisterDirty();
+    }
+  });
+
+  it('S5-02: defers mounting persisted note editors while window is suspended in background and hydrates once visible', async () => {
+    window.localStorage.setItem('workbench.notesWorkspace.state.v1', JSON.stringify({
+      tabs: [{ key: 'note:note_1', type: 'note', id: 'note_1', title: '课堂笔记' }],
+      activeTabKey: 'note:note_1',
+      rightTabKey: null,
+      focusedPane: 'main',
+      splitLayout: [50, 50],
+      explorerOpen: true,
+      collapsedFolderPaths: [],
+    }));
+
+    const { rerender } = render(<NotesWorkspaceApp {...props({ isActive: false, isVisible: false, isSuspended: true })} />);
+    await screen.findByText('课堂笔记');
+    expect(screen.queryByTestId('note-editor-note_1')).toBeNull();
+    expect(panelMountCounts.note_1 ?? 0).toBe(0);
+
+    rerender(<NotesWorkspaceApp {...props({ isActive: true, isVisible: true, isSuspended: false })} />);
+    await screen.findByTestId('note-editor-note_1');
+    await waitFor(() => expect(panelMountCounts.note_1).toBe(1));
+  });
+
+  it('S5-02: normalizes prefixed instanceKey on reload without creating a bogus duplicate tab', async () => {
+    window.localStorage.setItem('workbench.notesWorkspace.state.v1', JSON.stringify({
+      tabs: [{ key: 'note:note_1', type: 'note', id: 'note_1', title: '课堂笔记' }],
+      activeTabKey: 'note:note_1',
+      rightTabKey: null,
+      focusedPane: 'main',
+      splitLayout: [50, 50],
+      explorerOpen: true,
+      collapsedFolderPaths: [],
+    }));
+
+    render(<NotesWorkspaceApp {...props({ instanceKey: 'note:note_1', launchPayload: undefined })} />);
+    await screen.findByTestId('note-editor-note_1');
+
+    expect(screen.getAllByRole('tab')).toHaveLength(1);
+    expect(document.querySelector('[data-notes-pane="main"]')).toHaveAttribute('data-resource-id', 'note_1');
+    expect(screen.queryByTestId('note-editor-note:note_1')).toBeNull();
   });
 });
 

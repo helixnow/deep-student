@@ -142,7 +142,7 @@ export function localizeBackendErrorText(raw: string, language?: string): string
   if (!english) {
     return text
       .replace(/socket hang up/gi, '网络连接中断，请检查服务器或网络后重试')
-      .replace(/\bECONNRESET\b|connection reset by peer/gi, '网络连接被重置，请检查服务器或网络后重试')
+      .replace(/(?<!\()\bECONNRESET\b(?!\))|(?<!\()connection reset by peer(?!\))/gi, '网络连接被重置，请检查服务器或网络后重试')
       .replace(/\bECONNREFUSED\b|connection refused/gi, '无法连接到服务器，请检查地址和端口')
       .replace(/\bETIMEDOUT\b|operation timed out|request timeout/gi, '网络连接超时，请检查网络或稍后重试')
       .replace(/\b(?:ENOTFOUND|EAI_AGAIN)\b/gi, '无法解析服务器域名，请检查服务器地址和网络');

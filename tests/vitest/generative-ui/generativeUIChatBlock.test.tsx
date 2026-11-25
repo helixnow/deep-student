@@ -149,7 +149,7 @@ describe('GenerativeUIBlockComponent chat action handlers', () => {
     );
 
     await user.click(screen.getByRole('button', { name: '应用到笔记' }));
-    await user.click(screen.getByRole('button', { name: '确认执行' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
 
     window.removeEventListener('canvas:ai-edit-request', listener);
 

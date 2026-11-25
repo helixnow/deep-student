@@ -33,6 +33,7 @@ import {
 } from "@/utils/cloudStorageApi";
 import { formatBytes, getDatabaseDisplayName } from "@/types/dataGovernance";
 import { getErrorMessage } from "@/utils/errorUtils";
+import { UnsyncedPendingUploadsContext } from "./unsyncedPendingUploadsContext";
 
 interface PendingTableBreakdown {
   table_name: string;
@@ -128,8 +129,11 @@ async function fetchUnsyncedItems(): Promise<UnsyncedItemsReport | null> {
 export const UnsyncedItemsPanel: React.FC<{
   refreshSignal?: string | number;
   onRunSync?: () => void | boolean | Promise<void | boolean>;
-}> = ({ refreshSignal, onRunSync }) => {
+  showPendingUploads?: boolean;
+}> = ({ refreshSignal, onRunSync, showPendingUploads }) => {
   const { t } = useTranslation(["sync", "common", "data"]);
+  const contextShowPendingUploads = React.useContext(UnsyncedPendingUploadsContext);
+  const enablePendingUploads = showPendingUploads ?? contextShowPendingUploads;
   const [report, setReport] = useState<UnsyncedItemsReport | null>(null);
   const [pendingBreakdown, setPendingBreakdown] =
     useState<PendingBreakdownResponse | null>(null);
@@ -151,9 +155,11 @@ export const UnsyncedItemsPanel: React.FC<{
     const seq = ++requestSeq.current;
     setLoading(true);
     setError(null);
-    const localBreakdownPromise = invoke<PendingBreakdownResponse>(
-      "data_governance_get_pending_breakdown",
-    ).catch(() => null);
+    const localBreakdownPromise = enablePendingUploads
+      ? invoke<PendingBreakdownResponse>(
+          "data_governance_get_pending_breakdown",
+        ).catch(() => null)
+      : Promise.resolve(null);
     try {
       const [result, breakdown] = await Promise.all([
         fetchUnsyncedItems(),
@@ -177,7 +183,7 @@ export const UnsyncedItemsPanel: React.FC<{
     } finally {
       if (seq === requestSeq.current) setLoading(false);
     }
-  }, []);
+  }, [enablePendingUploads]);
 
   useRefreshOnReturn(refresh);
 

@@ -72,9 +72,17 @@ vi.mock('@/features/anki-tasks/AnkiTasksApp', () => ({
   AnkiTasksApp: () => <div data-testid="mock-task-dashboard" />,
 }));
 
-vi.mock('@/features/pomodoro', () => ({
-  PomodoroPanel: () => <div data-testid="mock-pomodoro-panel" />,
-}));
+vi.mock('@/features/pomodoro', async () => {
+  const { formatFocusDisplay, formatFocusTooltip } = await import(
+    '@/features/pomodoro/utils/focusDuration'
+  );
+  return {
+    PomodoroPanel: () => <div data-testid="mock-pomodoro-panel" />,
+    formatFocusDisplay,
+    formatFocusTooltip,
+    setAndroidBackgroundCompletion: vi.fn(),
+  };
+});
 
 vi.mock('@/features/sandbox/components/SandboxWorkbenchSurface', () => {
   const Surface = ({ className, ownerKey }: { className?: string; ownerKey?: string }) => (

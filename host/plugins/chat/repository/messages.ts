@@ -222,9 +222,56 @@ export function enforceVariantsJsonSizeLimit(
   return current;
 }
 
+const VARIANTS_JSON_HARD_LIMIT = 256 * 1024;
+
+/**
+ * Strips heavy replaceable schema caches (`skillEmbeddedTools`, `mcpToolSchemas`)
+ * from a variant's replay skill runtime metadata while keeping lightweight replay
+ * metadata (`activeSkillIds`, `executionAllowedTools`, `skillDependencies`,
+ * `selectedMcpServers`, `executionSnapshot`, `versioned`) intact.
+ * Used as a safety valve before `enforceVariantsJsonSizeLimit` so schema bloat
+ * (including pre-upgrade legacy rows or many active skills) never evicts saved
+ * versions like `var_v1_*`.
+ */
+function compactVariantSkillRuntimeSchemas(variant: Variant): Variant {
+  const meta = variant.meta;
+  if (meta === undefined || meta === null) return variant;
+  let changed = false;
+  const nextMeta = { ...meta } as Record<string, unknown>;
+  for (const slot of ['skillRuntimeBefore', 'skillRuntimeAfter'] as const) {
+    const runtime = nextMeta[slot];
+    if (runtime === null || typeof runtime !== 'object' || Array.isArray(runtime)) continue;
+    const record = runtime as Record<string, unknown>;
+    if ('skillEmbeddedTools' in record || 'mcpToolSchemas' in record) {
+      const compacted = { ...record };
+      delete compacted.skillEmbeddedTools;
+      delete compacted.mcpToolSchemas;
+      if (hasReplayMetadata(compacted as ReplaySkillPayloadSnapshot)) {
+        nextMeta[slot] = compacted;
+      } else {
+        delete nextMeta[slot];
+      }
+      changed = true;
+    }
+  }
+  if (!changed) return variant;
+  normalizeRuntimePair(nextMeta);
+  return { ...variant, meta: nextMeta as VariantMeta };
+}
+
 export function serializeVariants(variants: Variant[], messageId: string, log?: ChatLogger): string {
-  const sanitized = variants.map(normalizeVariant);
-  return enforceVariantsJsonSizeLimit(JSON.stringify(sanitized), sanitized, messageId, log);
+  let sanitized = variants.map(normalizeVariant);
+  let json = JSON.stringify(sanitized);
+  if (utf8ByteLength(json) >= VARIANTS_JSON_HARD_LIMIT) {
+    const compacted = sanitized.map(compactVariantSkillRuntimeSchemas);
+    const compactedJson = JSON.stringify(compacted);
+    if (utf8ByteLength(compactedJson) < utf8ByteLength(json)) {
+      log?.warn(`[ChatV2::Repo] variants_json size ${utf8ByteLength(json)} bytes exceeded limit ${VARIANTS_JSON_HARD_LIMIT}; compacted replaceable skill/tool schemas to ${utf8ByteLength(compactedJson)} bytes before truncation (count=${compacted.length}, message_id=${messageId})`);
+      sanitized = compacted;
+      json = compactedJson;
+    }
+  }
+  return enforceVariantsJsonSizeLimit(json, sanitized, messageId, log);
 }
 
 export function rowToMessage(row: MessageRow, log?: ChatLogger): ChatMessage {

@@ -246,4 +246,17 @@ describe('wikilinks', () => {
     expect(wikiLinkHeadingsEqual('一、极限，与连续', '一,极限,与连续')).toBe(true);
     expect(wikiLinkHeadingsEqual('第一章', '第二章')).toBe(false);
   });
+
+  it('skips unclosed [[ before an existing complete [[target]] without swallowing it (S1-06)', () => {
+    const markdown = '[[后续需要研究 [[S106_马尔可夫链平稳分布]] 这一主题。';
+    expect(parseWikiLinks(markdown)).toEqual([
+      {
+        raw: '[[S106_马尔可夫链平稳分布]]',
+        target: 'S106_马尔可夫链平稳分布',
+        label: undefined,
+        start: markdown.indexOf('[[S106_马尔可夫链平稳分布]]'),
+        end: markdown.indexOf('[[S106_马尔可夫链平稳分布]]') + '[[S106_马尔可夫链平稳分布]]'.length,
+      },
+    ]);
+  });
 });

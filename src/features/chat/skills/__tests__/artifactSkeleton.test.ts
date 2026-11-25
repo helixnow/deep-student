@@ -10,7 +10,9 @@ import { describe, expect, it } from 'vitest';
 import { parseSkillFile, serializeSkillToMarkdown } from '../parser';
 import {
   findActiveArtifactSkill,
+  isUserAuthoredSkill,
   renderSkillContentWithArtifact,
+  USER_SKILL_DIRECTIVE_TAG,
   validateArtifactSkeletonTypes,
   validateIntentAgainstSkeleton,
 } from '../artifactSkeleton';
@@ -242,6 +244,83 @@ describe('renderSkillContentWithArtifact', () => {
     expect(
       renderSkillContentWithArtifact({ id: 's', content: '# 正文', artifact: { layoutLock: true } }),
     ).toBe('# 正文');
+  });
+
+  it('原生内置技能不追加用户自定义指令包裹（保持零额外 token 开销）', () => {
+    const builtinRendered = renderSkillContentWithArtifact({
+      id: 'course-study',
+      content: '# 课程学习',
+      location: 'builtin',
+      isBuiltin: true,
+      isCustomized: false,
+      sourcePath: 'builtin://course-study',
+    });
+    expect(builtinRendered).toBe('# 课程学习');
+    expect(isUserAuthoredSkill({ id: 'course-study', content: '# 课程学习', location: 'builtin', isBuiltin: true })).toBe(false);
+  });
+
+  it('用户自建（global/project）与已自定义内置技能注入紧凑的首轮硬约束包裹', () => {
+    const body = '# 苏格拉底导学\n1. 禁止直接给出完整证明或最终答案\n2. 只给出下一步的思考方向';
+    const rendered = renderSkillContentWithArtifact({
+      id: 'socratic-math"1',
+      content: body,
+      location: 'global',
+      isBuiltin: false,
+      sourcePath: '/Users/demo/.deep-student/skills/socratic-math/SKILL.md',
+    });
+
+    expect(rendered).toContain(`<${USER_SKILL_DIRECTIVE_TAG} skillId="socratic-math&quot;1" enforcement="strict" scope="turn-1-and-all">`);
+    expect(rendered).toContain('首轮强制生效');
+    expect(rendered).toContain('禁止直接给出完整答案/完整证明');
+    expect(rendered).toContain(body);
+    expect(rendered).toContain('<user_skill_self_check>');
+    expect(rendered).toContain('</user_skill_self_check>');
+    // 包裹层保持紧凑（<= 420 chars 额外开销），不挤占上下文预算
+    expect(rendered.length - body.length).toBeLessThanOrEqual(420);
+    // 幂等：重复渲染不双重包裹
+    expect(renderSkillContentWithArtifact({
+      id: 'socratic-math"1',
+      content: rendered,
+      location: 'global',
+      isBuiltin: false,
+    })).toBe(rendered);
+
+    // 用户修改过的内置技能同样获得首轮硬约束包裹
+    const customizedBuiltin = renderSkillContentWithArtifact({
+      id: 'tutor-mode',
+      content: '# 我的导师规则',
+      location: 'builtin',
+      isBuiltin: true,
+      isCustomized: true,
+    });
+    expect(customizedBuiltin).toContain(`<${USER_SKILL_DIRECTIVE_TAG} skillId="tutor-mode"`);
+    expect(customizedBuiltin).toContain('# 我的导师规则');
+
+    // 空正文的纯工具自定义技能不包裹
+    expect(renderSkillContentWithArtifact({
+      id: 'tool-only-custom',
+      content: '   ',
+      location: 'project',
+      isBuiltin: false,
+    })).toBe('   ');
+  });
+
+  it('用户自建技能同时声明 artifact 骨架时，指令头在前、骨架随正文、自检尾收口', () => {
+    const rendered = renderSkillContentWithArtifact({
+      id: 'custom-report',
+      content: '# 报告规则',
+      location: 'project',
+      isBuiltin: false,
+      artifact: { intentSkeleton: SKELETON, layoutLock: true },
+    });
+    const headerIdx = rendered.indexOf(`<${USER_SKILL_DIRECTIVE_TAG}`);
+    const bodyIdx = rendered.indexOf('# 报告规则');
+    const artifactIdx = rendered.indexOf('<artifact_template');
+    const footerIdx = rendered.indexOf('<user_skill_self_check>');
+    expect(headerIdx).toBeGreaterThanOrEqual(0);
+    expect(bodyIdx).toBeGreaterThan(headerIdx);
+    expect(artifactIdx).toBeGreaterThan(bodyIdx);
+    expect(footerIdx).toBeGreaterThan(artifactIdx);
   });
 });
 

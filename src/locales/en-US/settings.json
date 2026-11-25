@@ -915,7 +915,7 @@
     "external_search": "External Search",
     "statistics": "Statistics",
     "data_manage": "Data Management",
-    "data_governance": "Data Governance",
+    "data_governance": "Data & Sync",
     "general": "General",
     "appearance": "Appearance",
     "automation": "Automations",
@@ -955,7 +955,7 @@
     "search": "Configure web search providers",
     "plugins": "Manage installed integrations",
     "statistics": "Learning and usage data",
-    "data_governance": "Back up, restore, and manage data",
+    "data_governance": "Cloud storage, sync, backup, and restore",
     "params": "Tune model generation settings",
     "shortcuts": "Customize keyboard commands",
     "about": "Version and open-source acknowledgements",
@@ -964,6 +964,8 @@
     "workbench": "Windowed desktop and workspaces",
     "document_processing": "PDF rendering and OCR recognition"
   },
+  "quick_cloud_sync_title": "Cloud Storage & Sync",
+  "quick_cloud_sync_desc": "Configure WebDAV / S3 sync, QR device pairing, and backups",
   "automation": {
     "title": "Automations",
     "description": "Manage scheduled reminders and unattended Agent tasks.",

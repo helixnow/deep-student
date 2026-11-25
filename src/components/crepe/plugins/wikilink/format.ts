@@ -17,7 +17,13 @@ export interface WikiLinkTargetParts {
   heading: string | undefined;
 }
 
-const WIKI_LINK_INNER = /\[\[([^\]\r\n]+?)\]\]/g;
+const WIKI_LINK_INNER = /\[\[([^[\]\r\n]+?)\]\]/g;
+
+/**
+ * `@milkdown/plugin-automd` inline-sync temporary cursor placeholders:
+ * `⁂` (U+2042 punctuation), `∴` (U+2234 char), `∅` (U+2205 hole).
+ */
+export const AUTOMD_PLACEHOLDER_PATTERN = /[\u2042\u2234\u2205]/;
 
 /** 将 target(+可选 label) 格式化为 双链文本 */
 export function formatWikiLink(target: string, label?: string | null): string {
@@ -77,5 +83,5 @@ export function findWikiLinksInText(text: string): Array<WikiLinkParts & { start
 
 /** 用于 InputRule / remark 的全局正则（每次使用前重置 lastIndex） */
 export function wikiLinkGlobalPattern(): RegExp {
-  return /\[\[([^\]\r\n]+?)\]\]/g;
+  return /\[\[([^[\]\r\n]+?)\]\]/g;
 }

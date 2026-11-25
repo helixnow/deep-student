@@ -139,9 +139,12 @@ function formatMarkdownReport(ranked: readonly SkillTokenBudget[]): string {
 // 2026-11-14：0.20.1 合并 DeepStudent-Go 题库增强（qbank-tools=7246，47 个工具）及新增
 // workbench/self-service 技能工具后，50 组实测 schema 合计 55547、总计 82303；
 // 属合理功能增长，有意识上调基线并保留 ~10% 回归余量。
+// 2026-11-25：合并导图多源复合卡片/语义锚点/Ghost 提案（a39463e2c）与 Memory v2 M1
+// （a1762b66d, vfs-memory 硬规则与 memory_kernel）后，50 组实测 schema 仍在 58000 内、
+// schema+content 总计 85127（超 85000 护栏 127 tokens）；有意识将总计护栏微调至 88000。
 const MAX_SINGLE_GROUP_SCHEMA_TOKENS = 7_500;
 const MAX_TOTAL_SCHEMA_TOKENS = 58_000;
-const MAX_TOTAL_TOKENS = 85_000;
+const MAX_TOTAL_TOKENS = 88_000;
 
 // ============================================================================
 // 测试

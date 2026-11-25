@@ -597,7 +597,12 @@ export function updateAutomationAgentSessionId(
 
 export type AutomationLocale = 'zh-CN' | 'en-US';
 export const DEFAULT_HEARTBEAT_NAME_ZH = '学习心跳检查';
-export const DEFAULT_HEARTBEAT_NAME_EN = 'Learning Heartbeat Check';
+export const DEFAULT_HEARTBEAT_NAME_EN = 'Study Heartbeat Check';
+const DEFAULT_HEARTBEAT_NAMES = new Set<string>([
+  DEFAULT_HEARTBEAT_NAME_ZH,
+  DEFAULT_HEARTBEAT_NAME_EN,
+  'Learning Heartbeat Check',
+]);
 
 function normalizeAutomationLocale(raw: string | null | undefined): AutomationLocale | null {
   if (typeof raw !== 'string') return null;
@@ -648,7 +653,7 @@ function localizeHeartbeatAutomation(
     return automation;
   }
   const nextName =
-    automation.name === DEFAULT_HEARTBEAT_NAME_ZH || automation.name === DEFAULT_HEARTBEAT_NAME_EN
+    DEFAULT_HEARTBEAT_NAMES.has(automation.name.trim())
       ? (locale === 'en-US' ? DEFAULT_HEARTBEAT_NAME_EN : DEFAULT_HEARTBEAT_NAME_ZH)
       : automation.name;
   const nextPrompt =
