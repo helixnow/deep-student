@@ -142,9 +142,30 @@ describe('vfs/todo_handlers.rs command layer', { timeout: 120_000 }, () => {
     expect(children.map(child => child.title)).toEqual(['收集素材', '写提纲']);
     expect(children.every(child => child.parentId === parent.id)).toBe(true);
     expect(seen).toHaveLength(1);
-    expect(seen[0]!.caller).toEqual({ Other: 'todo_breakdown' });
+    expect(seen[0]!.caller).toEqual({ other: 'todo_breakdown' });
     expect(seen[0]!.prompt).toContain('任务标题：Prepare deck');
     expect(await invoke('todo_list_items', { listId: list.id, includeCompleted: false })).toHaveLength(3);
+  });
+
+  it('todo_ai_breakdown uses llmRawPrompt with lowercase { other } caller compatible with LlmCallerType', async () => {
+    const callers: unknown[] = [];
+    await vfs.dispose();
+    vfs = await createVfsHost({
+      provide: {
+        llmRawPrompt: {
+          callModel2RawPrompt: async (_prompt: string, images: null, caller: { other: string }) => {
+            callers.push(caller);
+            expect(images).toBeNull();
+            return { assistant_message: '["step A"]' };
+          },
+        },
+      },
+    });
+    const list = await invoke<{ id: string }>('todo_create_list', { input: { title: 'L' } });
+    const parent = await invoke<{ id: string }>('todo_create_item', { input: { todoListId: list.id, title: 'Ship fix' } });
+    const children = await invoke<Array<{ title: string }>>('todo_ai_breakdown', { itemId: parent.id });
+    expect(children.map(child => child.title)).toEqual(['step A']);
+    expect(callers).toEqual([{ other: 'todo_breakdown' }]);
   });
 
   it('todo_ai_breakdown rolls back owner writes and emits nothing when the second subtask fails', async () => {

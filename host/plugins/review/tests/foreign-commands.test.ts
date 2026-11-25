@@ -6,7 +6,8 @@ import { createTestHost } from '../../../kernel/testing.ts';
 import { createStorageService } from '../../../platform/storage/service.ts';
 import type * as Wire from '../../../../contracts/ipc/generated/L15-review-analytics.ts';
 import type { EssayGradingService } from '../../llm/api.ts';
-import type { InsightCommandService } from '../../memory/api.ts';
+import type { InsightCommandService, LearningSignal } from '../../memory/api.ts';
+import type { EssayGradedEvent } from '../../plugin-services/api.ts';
 import review from '../index.ts';
 
 const hosts: Awaited<ReturnType<typeof createTestHost>>[] = [];
@@ -135,7 +136,7 @@ function insightDouble(): { service: InsightCommandService; calls: InsightCalls 
   return { service, calls };
 }
 
-async function setup(essayOverrides: Partial<EssayGradingService> = {}) {
+async function setup(essayOverrides: Partial<EssayGradingService> = {}, extraProvide: Record<string, unknown> = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'review-foreign-commands-'));
   dirs.push(dir);
   const storage = createStorageService({ baseDir: dir, dataLocalDir: dir });
@@ -144,7 +145,7 @@ async function setup(essayOverrides: Partial<EssayGradingService> = {}) {
   const insight = insightDouble();
   const host = await createTestHost({
     plugins: [review],
-    provide: { storage, essayGrading: essay.service, insight: insight.service },
+    provide: { storage, essayGrading: essay.service, insight: insight.service, ...extraProvide },
   });
   hosts.push(host);
   return { host, essay, insight };
@@ -293,6 +294,103 @@ it('essay_grading_stream broadcasts emitted events like Rust Window::emit', asyn
     { type: 'data', chunk: 'x', char_count: 1 },
   ]);
   expect(host.events.at(-1)!.target).toEqual({ kind: 'Any' });
+});
+
+it('essay_grading_stream forwards snake_case mode_id, numeric overall_score, and response_language while preserving wire f32', async () => {
+  const signals: LearningSignal[] = [];
+  const gradedEvents: EssayGradedEvent[] = [];
+  const response: Wire.GradingResponse = {
+    round_id: 'round_9',
+    session_id: 'session_9',
+    round_number: 2,
+    grading_result: 'detailed feedback',
+    overall_score: 52,
+    dimension_scores_json: JSON.stringify({
+      dimensions: [
+        { name: '立意', score: 18, max_score: 20, comment: '论点不够聚焦' },
+        { name: '结构', score: 17, max_score: 20 },
+      ],
+    }),
+    created_at: '2026-11-25T10:00:00Z',
+  };
+  let nextResponse: Wire.GradingResponse = response;
+  const { host } = await setup(
+    { async stream() { return nextResponse; } },
+    { memoryProvider: { ingestSignal(signal: LearningSignal) { signals.push(signal); } } },
+  );
+  host.ctx.on('study/essay-graded', event => { gradedEvents.push(event); });
+
+  const outcome = await host.runtime.dispatchInvoke({
+    id: 'essay-signal-1',
+    cmd: 'essay_grading_stream',
+    args: {
+      request: {
+        session_id: 'session_9',
+        stream_session_id: 'stream_9',
+        round_number: 2,
+        input_text: 'essay text',
+        essay_type: 'argument',
+        grade_level: 'high',
+        mode_id: 'gaokao_zh',
+        response_language: 'zh-CN',
+      },
+    },
+    source: { window: 'main', webview: 'main' },
+  });
+  expect(outcome.kind).toBe('ok');
+  if (outcome.kind === 'ok') {
+    expect(outcome.json).toContain('"overall_score":52.0,');
+  }
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
+
+  expect(gradedEvents).toEqual([{
+    essayId: 'round_9',
+    sessionId: 'session_9',
+    roundNumber: 2,
+    examType: 'gaokao_zh',
+    overallScore: 52,
+    dimensions: [
+      { name: '立意', score: 18, maxScore: 20, comment: '论点不够聚焦' },
+      { name: '结构', score: 17, maxScore: 20, comment: undefined },
+    ],
+    createdAt: '2026-11-25T10:00:00Z',
+  }]);
+  expect(typeof gradedEvents[0]!.overallScore).toBe('number');
+  expect(signals).toEqual([{
+    kind: 'essay_graded',
+    examType: 'gaokao_zh',
+    essayId: 'round_9',
+    locale: 'zh-CN',
+    rubricDimensions: [
+      { name: '立意', score: 18, maxScore: 20, recurringIssue: '论点不够聚焦' },
+      { name: '结构', score: 17, maxScore: 20, recurringIssue: null },
+    ],
+  }]);
+
+  nextResponse = { ...response, round_id: 'round_10', overall_score: null };
+  await host.invoke('essay_grading_stream', {
+    request: {
+      session_id: 'session_9',
+      stream_session_id: 'stream_10',
+      round_number: 3,
+      input_text: 'essay text 2',
+      essay_type: 'argument',
+      grade_level: 'high',
+    },
+  });
+  await new Promise<void>(resolve => setTimeout(resolve, 0));
+
+  expect(gradedEvents[1]).toMatchObject({
+    essayId: 'round_10',
+    examType: 'essay',
+    overallScore: null,
+  });
+  expect(signals[1]).toMatchObject({
+    kind: 'essay_graded',
+    examType: 'essay',
+    essayId: 'round_10',
+    locale: null,
+  });
 });
 
 it('essay_grading_list_sessions forwards null options to the logic layer defaults', async () => {
