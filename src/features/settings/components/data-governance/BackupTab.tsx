@@ -731,7 +731,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       >
         {preRestoreSafety
           ? t('data:governance.backup_type_pre_restore', {
-              defaultValue: '[恢复前安全快照]',
+              defaultValue: '[Pre-restore safety snapshot]',
             })
           : backup.recovery_kind === 'partial_archive'
             ? t('data:governance.partial_archive', { defaultValue: 'Partial archive' })
@@ -1119,7 +1119,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             disabled={loading || isBackupRunning}
             className="rounded-xl border-primary/40 bg-primary/15 px-4 font-medium text-primary hover:bg-primary/25 [@media(pointer:coarse)]:!h-11"
           >
-            {isBackupRunning ? (
+            {isBackupRunning && currentJobOperation === 'zip_export' ? (
               <CircleNotch size={16} className="mr-2 animate-spin" />
             ) : (
               <Archive className="h-4 w-4 mr-2" />

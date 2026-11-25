@@ -1,9 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { TestHost } from '../../../kernel/testing.ts';
 import { exportBackupToZip } from '../src/zip.ts';
-import { createBackupHost, hostBackupRoot, partialManifest, waitForJob, writeBackup } from './helpers.ts';
+import { createBackupHost, hostBackupRoot, partialManifest, sha256, waitForJob, writeBackup } from './helpers.ts';
 
 const hosts: Array<{ host: TestHost; secrets: unknown }> = [];
 afterEach(async () => { for (const entry of hosts.splice(0)) await entry.host.dispose(); });
@@ -89,22 +90,120 @@ it('data_governance_check_disk_space_for_restore uses the inactive slot volume',
   expect(typeof response.has_enough_space).toBe('boolean');
 });
 
-it('data_governance_verify_backup_with_assets keeps the Rust boundary-root behavior', async () => {
+it('data_governance_verify_backup_with_assets verifies modern recovery/backups snapshots with assets without legacy backups dir', async () => {
   const { host } = await setup();
   const root = hostBackupRoot(host);
-  writeBackup(root, partialManifest('backup-assets', { files: { 'persistent/a.json': 'a' } }), {
-    'persistent/a.json': 'a',
+  const assetBytes = Buffer.from('diagram-png-payload');
+  const manifest = partialManifest('backup-modern-assets', {
+    files: { 'persistent/a.json': 'a' },
   });
-  await expect(host.invoke('data_governance_verify_backup_with_assets', {
-    backupId: 'backup-assets',
-  })).rejects.toThrow('解析备份根目录失败');
+  manifest.assets = {
+    files: [{
+      asset_type: 'images',
+      relative_path: 'assets/images/diagram.png',
+      original_path: 'images/diagram.png',
+      size: assetBytes.length,
+      checksum: sha256(assetBytes),
+      is_directory: false,
+    }],
+    total_files: 1,
+    total_size: assetBytes.length,
+    skipped_files: 0,
+    skip_reasons: {},
+    incomplete_asset_types: [],
+    by_asset_type: { images: { file_count: 1, total_size: assetBytes.length } },
+    started_at: '2026-01-01T00:00:00.000Z',
+    completed_at: '2026-01-01T00:00:01.000Z',
+  };
+  writeBackup(root, manifest, {
+    'persistent/a.json': 'a',
+    'assets/images/diagram.png': assetBytes,
+  });
 
-  mkdirSync(join(host.app.dataDir, 'backups', 'backup-assets'), { recursive: true });
-  const response = await host.invoke('data_governance_verify_backup_with_assets', {
-    backupId: 'backup-assets',
+  // Legacy <dataDir>/backups does not exist; modern backup under <dataDir>/recovery/backups must succeed
+  expect(existsSync(join(host.app.dataDir, 'backups'))).toBe(false);
+  const valid = await host.invoke('data_governance_verify_backup_with_assets', {
+    backupId: 'backup-modern-assets',
   }) as Record<string, unknown>;
-  expect(response.is_valid).toBe(true);
-  expect(response.has_assets).toBe(false);
+  expect(valid).toEqual({
+    is_valid: true,
+    database_errors: [],
+    asset_errors: [],
+    has_assets: true,
+    asset_file_count: 1,
+  });
+
+  // Tampering an asset in the modern backup is detected
+  writeFileSync(join(root, 'backup-modern-assets', 'assets', 'images', 'diagram.png'), 'TAMPERED');
+  const tampered = await host.invoke('data_governance_verify_backup_with_assets', {
+    backupId: 'backup-modern-assets',
+  }) as Record<string, unknown>;
+  expect(tampered.is_valid).toBe(false);
+  expect((tampered.asset_errors as Array<Record<string, unknown>>).length).toBeGreaterThan(0);
+});
+
+it('data_governance_verify_backup_with_assets prefers modern recovery/backups and falls back to legacy backups only when present', async () => {
+  const { host } = await setup();
+  const modernRoot = hostBackupRoot(host);
+  const legacyRoot = join(host.app.dataDir, 'backups');
+
+  // Legacy-only backup succeeds even before modern recovery/backups exists
+  writeBackup(legacyRoot, partialManifest('backup-legacy-only', { files: { 'persistent/legacy.json': 'legacy' } }), {
+    'persistent/legacy.json': 'legacy',
+  });
+  expect(existsSync(modernRoot)).toBe(false);
+  const legacyResult = await host.invoke('data_governance_verify_backup_with_assets', {
+    backupId: 'backup-legacy-only',
+  }) as Record<string, unknown>;
+  expect(legacyResult.is_valid).toBe(true);
+  expect(legacyResult.has_assets).toBe(false);
+
+  // When same ID exists in both roots, modern recovery/backups takes precedence
+  writeBackup(modernRoot, partialManifest('backup-dual', { files: { 'persistent/ok.json': 'modern' } }), {
+    'persistent/ok.json': 'modern',
+  });
+  writeBackup(legacyRoot, partialManifest('backup-dual', { files: { 'persistent/ok.json': 'legacy' } }), {
+    'persistent/ok.json': 'CORRUPTED-LEGACY',
+  });
+  const dualResult = await host.invoke('data_governance_verify_backup_with_assets', {
+    backupId: 'backup-dual',
+  }) as Record<string, unknown>;
+  expect(dualResult.is_valid).toBe(true);
+});
+
+it('data_governance_verify_backup_with_assets rejects path-traversal backupIds and symlink escapes', async () => {
+  const { host } = await setup();
+  const root = hostBackupRoot(host);
+  mkdirSync(root, { recursive: true });
+
+  await expect(host.invoke('data_governance_verify_backup_with_assets', {
+    backupId: '../escape',
+  })).rejects.toThrow('backup_id 包含非法路径片段');
+  await expect(host.invoke('data_governance_verify_backup_with_assets', {
+    backupId: 'nested/escape',
+  })).rejects.toThrow('backup_id 包含非法路径片段');
+
+  const outsideRoot = mkdtempSync(join(tmpdir(), 'l21-verify-outside-'));
+  try {
+    const outsideBackupDir = writeBackup(
+      outsideRoot,
+      partialManifest('symlink-escape', { files: { 'persistent/a.json': 'a' } }),
+      { 'persistent/a.json': 'a' },
+    );
+    symlinkSync(outsideBackupDir, join(root, 'symlink-escape'));
+    await expect(host.invoke('data_governance_verify_backup_with_assets', {
+      backupId: 'symlink-escape',
+    })).rejects.toThrow('备份路径越界');
+
+    const legacyRoot = join(host.app.dataDir, 'backups');
+    mkdirSync(legacyRoot, { recursive: true });
+    symlinkSync(outsideBackupDir, join(legacyRoot, 'legacy-symlink-escape'));
+    await expect(host.invoke('data_governance_verify_backup_with_assets', {
+      backupId: 'legacy-symlink-escape',
+    })).rejects.toThrow('备份路径越界');
+  } finally {
+    rmSync(outsideRoot, { recursive: true, force: true });
+  }
 });
 
 it('data_governance_restore_backup fail-closes partial archives before writing data', async () => {
