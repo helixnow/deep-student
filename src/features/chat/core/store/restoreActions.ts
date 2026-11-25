@@ -225,6 +225,25 @@ function hasSubsequentNonEmptyContent(
   return false;
 }
 
+function getLatestSentUserMessageText(
+  messageOrder: readonly string[],
+  messageMap: ReadonlyMap<string, Message>,
+  blocksMap: ReadonlyMap<string, Block>,
+): string | null {
+  for (let i = messageOrder.length - 1; i >= 0; i -= 1) {
+    const message = messageMap.get(messageOrder[i]);
+    if (message?.role !== 'user') continue;
+    const text = (message.blockIds ?? [])
+      .map((blockId) => blocksMap.get(blockId))
+      .filter((block): block is Block => block?.type === 'content' && typeof block.content === 'string')
+      .map((block) => block.content!)
+      .join('\n')
+      .trim();
+    return text || null;
+  }
+  return null;
+}
+
 function settleStaleRestoredBlock(
   block: Block,
   now: number,
@@ -244,6 +263,8 @@ function settleStaleRestoredBlock(
       endedAt: settledEndedAt,
     };
   }
+  const stoppedByUser = msg?._meta?.stoppedByUser === true;
+  const hasLaterContent = blocksMap ? hasSubsequentNonEmptyContent(block, msg, blocksMap) : false;
   if (block.type === 'thinking' || block.type === 'content') {
     if (block.error) {
       return {
@@ -253,12 +274,28 @@ function settleStaleRestoredBlock(
         endedAt: settledEndedAt,
       };
     }
-    const stoppedByUser = msg?._meta?.stoppedByUser === true;
-    const hasLaterContent = blocksMap ? hasSubsequentNonEmptyContent(block, msg, blocksMap) : false;
+    const isCompletedFinalContent =
+      block.type === 'content' &&
+      !stoppedByUser &&
+      Boolean(msg?._meta?.usage) &&
+      typeof block.content === 'string' &&
+      block.content.trim().length > 0;
     return {
       ...block,
       status: 'success',
-      aborted: stoppedByUser || !hasLaterContent,
+      aborted: stoppedByUser || (!hasLaterContent && !isCompletedFinalContent),
+      endedAt: settledEndedAt,
+    };
+  }
+  const hasCompletedToolResult =
+    !block.error &&
+    (block.toolOutput !== undefined ||
+      (Array.isArray(block.citations) && block.citations.length > 0) ||
+      hasLaterContent);
+  if (hasCompletedToolResult) {
+    return {
+      ...block,
+      status: 'success',
       endedAt: settledEndedAt,
     };
   }
@@ -1132,8 +1169,17 @@ export function createRestoreActions(
             hasLiveActiveStream ? liveState.currentStreamingMessageId : null,
           );
 
-          // 🔧 P1 内存泄漏修复：恢复会话会直接置空 attachments，先释放 blob: 预览 URL
-          revokeAttachmentBlobUrls(getState().attachments);
+          // 同会话在 loadSession 返回前用户已添加待发送附件（例如首轮打开即贴图）时保留，
+          // 避免清空 attachments 导致上传完成回调判定附件已删除并丢弃图片 ContextRef。
+          const preserveLiveAttachments =
+            liveState.sessionId === session.id
+            && !liveStateAdvanced
+            && Array.isArray(liveState.attachments)
+            && liveState.attachments.length > 0;
+          // 🔧 P1 内存泄漏修复：跨会话恢复置空 attachments 前先释放 blob: 预览 URL
+          if (!preserveLiveAttachments) {
+            revokeAttachmentBlobUrls(getState().attachments);
+          }
           const shouldResetTransientRuntimes =
             session.id !== liveState.sessionId
             || (!liveStateAdvanced && !liveState.pendingBlockingInteraction);
@@ -1148,11 +1194,22 @@ export function createRestoreActions(
             liveState.sessionId === session.id
             && liveState.inputValueDirty === true
             && liveState.inputValue.length > 0;
+          const latestSentUserText = getLatestSentUserMessageText(
+            finalMessageOrder,
+            finalMessageMap,
+            finalBlocksMap,
+          );
+          const sanitizedBackendInputValue =
+            inputValue.trim().length > 0
+            && latestSentUserText !== null
+            && inputValue.trim() === latestSentUserText
+              ? ''
+              : inputValue;
           const resolvedInputValue = liveStateAdvanced
             || hasUnsavedLiveInput
             || (baseline?.inputValue !== undefined && liveState.inputValue !== baseline.inputValue)
             ? liveState.inputValue
-            : inputValue;
+            : sanitizedBackendInputValue;
 
           // 加载完成前已加进内存、还没保存的引用（工作台里对话窗口未打开时从 PDF 划词「添加到聊天」：
           // 引用先进草稿 store，窗口随后打开才真正从后端恢复）——整体替换会把它们丢掉，
@@ -1206,7 +1263,7 @@ export function createRestoreActions(
             modeState,
             inputValue: resolvedInputValue,
             inputValueDirty: hasUnsavedLiveInput,
-            attachments: [],
+            attachments: preserveLiveAttachments ? liveState.attachments : [],
             panelStates,
             pendingContextRefs: resolvedPendingContextRefs,
             pendingContextRefsDirty: unsavedLiveRefs.length > 0,

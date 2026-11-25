@@ -92,6 +92,8 @@ import {
   type SessionDraftRecord,
   type SessionDraftTripletKeyInput,
 } from './composerOpenChamberEnhancements';
+import { clearComposerDraft } from './composerDraftStorage';
+import { registerSessionDraftLruClearer } from './useInputBarV2';
 
 // ============================================================================
 // 常量
@@ -426,6 +428,12 @@ export class SessionDraftLruStore extends BaseSessionDraftLruStore {
 
 export const globalSessionDraftLru = new SessionDraftLruStore(16);
 
+if (typeof registerSessionDraftLruClearer === 'function') {
+  registerSessionDraftLruClearer((sid: string) => {
+    globalSessionDraftLru.deleteDraft(sid);
+  });
+}
+
 // ============================================================================
 // 辅助 Hooks
 // ============================================================================
@@ -495,6 +503,10 @@ export interface InputBarUIExtendedProps extends InputBarUIProps {
   allowSteer?: boolean;
   /** 专用抢占发送回调（入队置顶并中断，或先中断再直发） */
   onSteerSend?: () => void | Promise<void>;
+  /** 会话历史仍在加载期间暂缓从内存 LRU 恢复草稿，避免抢跑写入输入态 */
+  suppressDraftRestore?: boolean;
+  /** 最近一条已持久化用户消息文本（trimmed），用于丢弃与刚发送提问重复的陈旧 LRU 草稿 */
+  latestPersistedUserText?: string | null;
 }
 
 const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
@@ -602,9 +614,11 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
   // ★ U01：缺失 AI 模型 / API 密钥引导横幅
   missingApiKey = false,
   onOpenApiSettings,
+  suppressDraftRestore = false,
+  latestPersistedUserText = null,
 }) => {
   const { t, i18n } = useTranslation(['analysis', 'common', 'chatV2', 'settings', 'skills']);
-  const isZh = (i18n.resolvedLanguage ?? i18n.language ?? 'zh-CN').toLowerCase().startsWith('zh');
+  const isZh = (i18n?.resolvedLanguage ?? i18n?.language ?? 'zh-CN').toLowerCase().startsWith('zh');
   const modeLabelMap = useMemo<Record<MediaInjectMode, string>>(() => ({
     text: t('chatV2:injectMode.pdf.text'),
     ocr: t('chatV2:injectMode.image.ocr'),
@@ -697,6 +711,10 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
   } | null>(null);
 
   useEffect(() => {
+    if (suppressDraftRestore) {
+      return;
+    }
+
     if (prevDraftSessionIdRef.current !== sessionId) {
       prevDraftSessionIdRef.current = sessionId;
       pendingRestoredTextRef.current = null;
@@ -713,10 +731,24 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
       const draft = globalSessionDraftLru.getDraft(sessionId);
       const isCurrentInputEmpty = inputValue.trim().length === 0;
       if (draft) {
+        const isStaleSentDraft = Boolean(
+          draft.text &&
+          latestPersistedUserText &&
+          draft.text.trim() === latestPersistedUserText
+        );
+        if (isStaleSentDraft) {
+          globalSessionDraftLru.deleteDraft(sessionId);
+          clearComposerDraft(sessionId);
+          if (pastedPillsRef.current.length > 0) {
+            pastedPillsRef.current = [];
+            setPastedPills([]);
+          }
+          return;
+        }
         const restoredPills = draft.pastedPills ?? [];
         pastedPillsRef.current = restoredPills;
         setPastedPills(restoredPills);
-        if (draft.text && isCurrentInputEmpty && inputValue === '') {
+        if (draft.text && isCurrentInputEmpty && inputValue === '' && !isStreaming) {
           pendingRestoredTextRef.current = { sessionId, text: draft.text };
           onInputChange(draft.text);
         } else if (!isCurrentInputEmpty && inputValue !== draft.text) {
@@ -783,7 +815,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
       attachments: [],
       pastedPills,
     });
-  }, [sessionId, inputValue, pastedPills, onInputChange]);
+  }, [sessionId, inputValue, pastedPills, onInputChange, isStreaming, suppressDraftRestore, latestPersistedUserText]);
   // ★ 制卡可发现性：附加 pdf/docx/apkg 时展示一条可关闭的制卡/导入提示
   const [flashcardHintDismissed, setFlashcardHintDismissed] = useState(false);
   const flashcardHintKind = useMemo<'apkg' | 'document' | null>(() => {
@@ -1829,8 +1861,18 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
 
   // 最终生效的键盘 inset：仅移动端 + composer 内可编辑元素聚焦时抬升
   const keyboardInsetPx = isMobile && composerEditableFocused ? globalKeyboardInset : 0;
-  // 🔧 P1修复：检查是否有附件正在上传
-  const hasUploadingAttachments = attachments.some(a => a.status === 'uploading' || a.status === 'pending');
+  // 🔧 P1修复：检查是否有附件正在上传，或尚未完成 ContextRef 关联
+  const pendingContextRefIds = useMemo(
+    () => (Array.isArray(pendingContextRefs) ? new Set(pendingContextRefs.map((ref) => ref.resourceId)) : null),
+    [pendingContextRefs]
+  );
+  const hasUploadingAttachments = attachments.some((a) => {
+    if (a.status === 'uploading' || a.status === 'pending') return true;
+    if (pendingContextRefIds !== null && (a.status === 'ready' || a.status === 'processing')) {
+      return !a.resourceId || !pendingContextRefIds.has(a.resourceId);
+    }
+    return false;
+  });
   // 允许 ready 或 processing 但选中模式已就绪的附件发送
   const hasSendableAttachments = useMemo(() => {
     return attachments.some(att => {
@@ -2096,6 +2138,7 @@ const InputBarUIInner: React.FC<InputBarUIExtendedProps> = ({
         expanded,
       };
       globalSessionDraftLru.deleteDraft(sessionId);
+      clearComposerDraft(sessionId);
     }
     if (currentPills.length > 0) {
       pastedPillsRef.current = [];
