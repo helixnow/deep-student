@@ -1171,11 +1171,14 @@ export function createRestoreActions(
 
           // 同会话在 loadSession 返回前用户已添加待发送附件（例如首轮打开即贴图）时保留，
           // 避免清空 attachments 导致上传完成回调判定附件已删除并丢弃图片 ContextRef。
+          // 过滤掉 status === 'error' 的失败附件，防止重载后复活永久 "Failed" chip。
+          const liveNonErrorAttachments = Array.isArray(liveState.attachments)
+            ? liveState.attachments.filter((att) => att.status !== 'error')
+            : [];
           const preserveLiveAttachments =
             liveState.sessionId === session.id
             && !liveStateAdvanced
-            && Array.isArray(liveState.attachments)
-            && liveState.attachments.length > 0;
+            && liveNonErrorAttachments.length > 0;
           // 🔧 P1 内存泄漏修复：跨会话恢复置空 attachments 前先释放 blob: 预览 URL
           if (!preserveLiveAttachments) {
             revokeAttachmentBlobUrls(getState().attachments);
@@ -1263,7 +1266,7 @@ export function createRestoreActions(
             modeState,
             inputValue: resolvedInputValue,
             inputValueDirty: hasUnsavedLiveInput,
-            attachments: preserveLiveAttachments ? liveState.attachments : [],
+            attachments: preserveLiveAttachments ? liveNonErrorAttachments : [],
             panelStates,
             pendingContextRefs: resolvedPendingContextRefs,
             pendingContextRefsDirty: unsavedLiveRefs.length > 0,

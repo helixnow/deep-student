@@ -567,7 +567,9 @@
   },
   "input": {
     "attachmentUploadFailed": "Attachment upload failed, please retry",
-    "attachmentUploadFailedDetail": "Attachment upload failed: {{detail}}"
+    "attachmentUploadFailedDetail": "Attachment upload failed: {{detail}}",
+    "unsupportedAnkiDeck": "Anki deck files ({{ext}}) can be imported in the Flashcards app instead of chat attachments.",
+    "unsupportedFileType": "This file type ({{ext}}) is not supported as a chat attachment."
   },
   "anki": {
     "loadingPanel": "Loading Anki Panel..."

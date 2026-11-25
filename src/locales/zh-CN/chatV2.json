@@ -567,7 +567,9 @@
   },
   "input": {
     "attachmentUploadFailed": "附件上传失败，请重试",
-    "attachmentUploadFailedDetail": "附件上传失败：{{detail}}"
+    "attachmentUploadFailedDetail": "附件上传失败：{{detail}}",
+    "unsupportedAnkiDeck": "Anki 牌组文件（{{ext}}）请在闪卡应用中导入，暂不支持作为聊天附件上传。",
+    "unsupportedFileType": "暂不支持将此文件类型（{{ext}}）作为聊天附件上传。"
   },
   "anki": {
     "loadingPanel": "加载 Anki 面板..."
