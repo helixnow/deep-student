@@ -759,6 +759,7 @@ export function createSessionActions(
           if (getState().pendingBlockingInteraction?.kind === 'tool_limit') {
             set(blockingInteractionPatch(null));
           }
+          const { inputValue: preservedDraft, inputValueDirty: preservedDraftDirty } = getState();
           const continueCallback = (getState() as ChatStoreState & ChatStore & {
             _continueMessageCallback?: ((messageId: string, variantId?: string) => Promise<void>) | null
           })._continueMessageCallback;
@@ -770,28 +771,34 @@ export function createSessionActions(
               return;
             } catch (error) {
               const errorMsg = getErrorMessage(error);
-              // 🔧 竞态修复：区分"流已存在"（后端正在执行）和"无 TodoList"（可 fallback）
-              // 流已存在时不应 fallback 到 sendMessage，否则会再次失败并显示混淆错误
+              // 🔧 竞态修复：仅在明确提示“无 TodoList”时才允许回退到 sendMessage；
+              // 流冲突和其他真实失败直接抛出，避免注入幽灵“继续”用户消息或吞掉错误。
               const isStreamConflict = errorMsg.includes('register stream') ||
                 errorMsg.includes('already') ||
                 getState().sessionStatus === 'streaming';
-              if (isStreamConflict) {
+              const isTodoFallback = errorMsg.includes('No incomplete TODO list found');
+              if (isStreamConflict || !isTodoFallback) {
                 console.warn(
-                  '[ChatStore] continueMessage failed due to active stream, NOT falling back:',
+                  '[ChatStore] continueMessage failed, NOT falling back to sendMessage:',
                   errorMsg
                 );
                 throw error;
               }
-              // 非流冲突错误（如无 TodoList）：回退到 sendMessage('继续') 作为兜底
-              console.warn(
-                '[ChatStore] continueMessage callback failed, falling back to sendMessage:',
+              console.debug(
+                '[ChatStore] continueMessage callback returned TODO fallback, falling back to sendMessage:',
                 errorMsg
               );
             }
           }
 
-          // Fallback：发送"继续"消息（创建新轮次）
-          await getState().sendMessage(i18n.t('chatV2:store.continueMessage'));
+          // Fallback：发送"继续"消息（创建新轮次），同时保留输入框内未发送的用户草稿
+          try {
+            await getState().sendMessage(i18n.t('chatV2:store.continueMessage'));
+          } finally {
+            if (preservedDraft !== '' && getState().inputValue === '') {
+              set({ inputValue: preservedDraft, inputValueDirty: preservedDraftDirty });
+            }
+          }
         },
 
         // ========== 🆕 P0 分支模型：会话分支 ==========

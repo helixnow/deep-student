@@ -146,4 +146,66 @@ describe('send_message.rs chat_v2_continue_message', () => {
     await expect(invoke('msg_a1')).rejects.toContain('Failed to load TodoList: Failed to deserialize steps: ');
     expect(host.ctx.chatState.hasActiveStream(SESSION)).toBe(false);
   });
+
+  it('continues a user-stopped assistant message in-place without a TODO list or phantom user message', async () => {
+    message('msg_u1', 'user', 1, 'explain quantum tunneling');
+    message('msg_a1', 'assistant', 2, 'Quantum tunneling occurs when', {
+      _meta: { stoppedByUser: true },
+    });
+    expect(await invoke('msg_a1', null, { modelId: 'cfg_vision' })).toBe('msg_a1');
+    await host.ctx.chatState.shutdownTasks(1000);
+    expect(getTodoList(SESSION)).toBeNull();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.request).toMatchObject({
+      sessionId: SESSION,
+      content: 'explain quantum tunneling',
+      assistantMessageId: 'msg_a1',
+      userMessageId: null,
+    });
+    expect(requests[0]!.request.options).toMatchObject({
+      modelId: 'cfg_vision',
+      isContinue: true,
+      continueVariantId: null,
+    });
+  });
+
+  it('continues an interrupted/cancelled variant or truncated assistant message in-place without a TODO list', async () => {
+    message('msg_u1', 'user', 1, 'write a long guide');
+    message('msg_a1', 'assistant', 2, 'Part 1...', {
+      variants: [variant('var_c', 'cancelled')],
+      activeVariantId: 'var_c',
+    });
+    expect(await invoke('msg_a1')).toBe('msg_a1');
+    await host.ctx.chatState.shutdownTasks(1000);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.request).toMatchObject({
+      sessionId: SESSION,
+      assistantMessageId: 'msg_a1',
+      userMessageId: null,
+    });
+    expect(requests[0]!.request.options).toMatchObject({
+      isContinue: true,
+      continueVariantId: 'var_c',
+    });
+  });
+
+  it('continues a long heuristic-truncated assistant message in-place without a TODO list', async () => {
+    message('msg_u1', 'user', 1, 'show python code');
+    message('msg_a1', 'assistant', 2, `${'a'.repeat(210)}\n\`\`\`python\ndef foo():`);
+    expect(await invoke('msg_a1')).toBe('msg_a1');
+    await host.ctx.chatState.shutdownTasks(1000);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.request.assistantMessageId).toBe('msg_a1');
+    expect(requests[0]!.request.userMessageId).toBeNull();
+    expect(requests[0]!.request.options).toMatchObject({ isContinue: true });
+  });
+
+  it('still rejects nonexistent, non-assistant, or empty messages when no TODO list exists', async () => {
+    message('msg_u1', 'user', 1, 'hello');
+    message('msg_empty', 'assistant', 2, undefined, { _meta: { stoppedByUser: true } });
+    await expect(invoke('msg_missing')).rejects.toBe(cmdError('Validation', 'No incomplete TODO list found. Cannot continue execution.'));
+    await expect(invoke('msg_u1')).rejects.toBe(cmdError('Validation', 'No incomplete TODO list found. Cannot continue execution.'));
+    await expect(invoke('msg_empty')).rejects.toBe(cmdError('Validation', 'No incomplete TODO list found. Cannot continue execution.'));
+    expect(requests).toHaveLength(0);
+  });
 });

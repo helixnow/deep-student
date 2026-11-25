@@ -6,11 +6,12 @@
  */
 import type { WindowRef } from '../../../kernel/api.ts';
 import type { SendOptions } from '../../../../contracts/ipc/generated/_shared.ts';
-import type { ChatV2Database } from '../api.ts';
+import type { ChatMessage, ChatV2Database } from '../api.ts';
 import {
   loadPersistedTodoListWithConn, restoreTodoListFromDbWithConn, todoCompletedCount, todoIsAllDone, todoTotalCount,
 } from '../../agent-orchestration/portable.ts';
 import type { PersistedTodoList } from '../../agent-orchestration/api.ts';
+import { getMessageBlocks, type StoredBlock } from '../repository/blocks.ts';
 import { getMessage } from '../repository/messages.ts';
 import { databaseOperation } from '../repository/errors.ts';
 import { ChatV2Error } from './error.ts';
@@ -34,6 +35,47 @@ export interface ContinueCommandDeps {
 
 const debugOption = (value: string | null | undefined): string => value == null ? 'None' : `Some(${JSON.stringify(value)})`;
 
+const RESUMABLE_VARIANT_STATUSES = new Set(['interrupted', 'cancelled', 'error', 'streaming']);
+const LENGTH_FINISH_REASONS = new Set(['length', 'max_tokens', 'max_output_tokens']);
+const DANGLING_SUFFIX_RE = /(?:[：:，,、([（【+\-×÷=→⇒]|于是|因此|例如|包括|如下|建议写成|也就是说|换言之)$/;
+
+function isResumableAssistantMessage(message: ChatMessage, variantId: string | null, blocks: readonly StoredBlock[]): boolean {
+  if (message.role !== 'assistant' || blocks.length === 0) return false;
+  if (message._meta?.stoppedByUser === true) return true;
+
+  const targetVariantId = variantId ?? message.activeVariantId ?? null;
+  if (targetVariantId !== null) {
+    const variant = message.variants?.find(v => v.id === targetVariantId);
+    if (variant !== undefined && RESUMABLE_VARIANT_STATUSES.has(variant.status)) return true;
+  }
+
+  if (blocks.some(block => block.status !== 'success' || block.error != null)) return true;
+
+  const meta = message._meta as Record<string, unknown> | undefined;
+  if (meta?.truncated === true) return true;
+  const finishReason = typeof meta?.finishReason === 'string'
+    ? meta.finishReason
+    : typeof meta?.finish_reason === 'string'
+      ? meta.finish_reason
+      : null;
+  if (finishReason !== null && LENGTH_FINISH_REASONS.has(finishReason.trim().toLowerCase())) return true;
+
+  const content = blocks
+    .filter(block => block.type === 'content')
+    .map(block => block.content ?? '')
+    .join('\n')
+    .trim();
+  if (content.length >= 200) {
+    const fenceCount = content.match(/^[ \t]*```/gm)?.length ?? 0;
+    if (fenceCount % 2 === 1) return true;
+    const mathCount = content.match(/\$\$/g)?.length ?? 0;
+    if (mathCount % 2 === 1) return true;
+    if (DANGLING_SUFFIX_RE.test(content)) return true;
+  }
+
+  return false;
+}
+
 /** `chat_v2_continue_message`; returns the persisted assistant message id. */
 export async function continueMessageAction(deps: ContinueCommandDeps, sessionId: string, messageId: string,
   variantId: string | null, options: SendOptions | null, window: WindowRef): Promise<string> {
@@ -46,19 +88,33 @@ export async function continueMessageAction(deps: ContinueCommandDeps, sessionId
   let todoInfo: PersistedTodoList | null;
   try { todoInfo = loadPersistedTodoListWithConn(database.getConn(), sessionId, todoLog); }
   catch (error) { throw new ChatV2Error('Other', `Failed to load TodoList: ${errorText(error)}`); }
-  if (todoInfo === null) {
-    // boundary-allow todo-marker: Rust error text verbatim (send_message.rs:2044).
-    throw new ChatV2Error('Validation', 'No incomplete TODO list found. Cannot continue execution.');
+
+  let persistedMessageId: string;
+  let persistedVariantId: string | null;
+  if (todoInfo !== null) {
+    const { list: todoList, messageId: todoMessageId, variantId: todoVariantId } = todoInfo;
+    persistedMessageId = todoMessageId;
+    persistedVariantId = todoVariantId;
+    if (persistedMessageId !== messageId) {
+      log.warn(`[ChatV2::handlers] Message ID mismatch: expected=${persistedMessageId}, got=${messageId}`);
+    }
+    if (todoIsAllDone(todoList)) {
+      // boundary-allow todo-marker: Rust error text verbatim (send_message.rs:2063).
+      throw new ChatV2Error('Validation', 'TODO list is already complete. No need to continue.');
+    }
+    log.info(`[ChatV2::handlers] Found incomplete TODO list: id=${todoList.id}, title=${todoList.title}, progress=${todoCompletedCount(todoList)}/${todoTotalCount(todoList)}`);
+  } else {
+    const conn = databaseOperation(() => database.getConnSafe());
+    const candidate = getMessage(conn, messageId);
+    const blocks = candidate !== null && candidate.sessionId === sessionId ? getMessageBlocks(conn, messageId) : [];
+    if (candidate === null || candidate.sessionId !== sessionId || !isResumableAssistantMessage(candidate, variantId, blocks)) {
+      // boundary-allow todo-marker: Rust error text verbatim (send_message.rs:2044).
+      throw new ChatV2Error('Validation', 'No incomplete TODO list found. Cannot continue execution.');
+    }
+    persistedMessageId = messageId;
+    persistedVariantId = null;
+    log.info(`[ChatV2::handlers] Continuing interrupted/truncated assistant message in-place without TODO list: session_id=${sessionId}, message_id=${messageId}`);
   }
-  const { list: todoList, messageId: persistedMessageId, variantId: persistedVariantId } = todoInfo;
-  if (persistedMessageId !== messageId) {
-    log.warn(`[ChatV2::handlers] Message ID mismatch: expected=${persistedMessageId}, got=${messageId}`);
-  }
-  if (todoIsAllDone(todoList)) {
-    // boundary-allow todo-marker: Rust error text verbatim (send_message.rs:2063).
-    throw new ChatV2Error('Validation', 'TODO list is already complete. No need to continue.');
-  }
-  log.info(`[ChatV2::handlers] Found incomplete TODO list: id=${todoList.id}, title=${todoList.title}, progress=${todoCompletedCount(todoList)}/${todoTotalCount(todoList)}`);
 
   // admit_or_block, then try_register_stream_owned before any memory restore (the 🔧 ordering fix).
   if (state.killSwitch.isTripped()) throw new ChatV2Error('Other', KILL_SWITCH_BLOCKED_MESSAGE);
@@ -70,8 +126,10 @@ export async function continueMessageAction(deps: ContinueCommandDeps, sessionId
   const guard = new StreamGuard(state, sessionId, registration);
   let spawned = false;
   try {
-    try { restoreTodoListFromDbWithConn(database.getConn(), sessionId, todoLog); }
-    catch (error) { throw new ChatV2Error('Other', `Failed to restore TodoList: ${errorText(error)}`); }
+    if (todoInfo !== null) {
+      try { restoreTodoListFromDbWithConn(database.getConn(), sessionId, todoLog); }
+      catch (error) { throw new ChatV2Error('Other', `Failed to restore TodoList: ${errorText(error)}`); }
+    }
 
     const original = getMessage(databaseOperation(() => database.getConnSafe()), persistedMessageId);
     if (original === null) throw new ChatV2Error('MessageNotFound', persistedMessageId);
