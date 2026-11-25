@@ -1033,26 +1033,26 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                         isRemoveArmed
                           ? t('exam_sheet:questionBank.edit.confirmRemoveOption', {
                               key: opt.key,
-                              defaultValue: `确认删除选项 ${opt.key}`,
+                              defaultValue: 'Click again to remove option {{key}}',
                             })
                           : t('exam_sheet:questionBank.edit.removeOption', {
                               key: opt.key,
-                              defaultValue: `删除选项 ${opt.key}`,
+                              defaultValue: 'Remove option {{key}}',
                             })
                       }
                       title={
                         isRemoveArmed
                           ? t('exam_sheet:questionBank.edit.confirmRemoveOption', {
                               key: opt.key,
-                              defaultValue: `再次点击删除选项 ${opt.key}`,
+                              defaultValue: 'Click again to remove option {{key}}',
                             })
                           : t('exam_sheet:questionBank.edit.removeOption', {
                               key: opt.key,
-                              defaultValue: `删除选项 ${opt.key}`,
+                              defaultValue: 'Remove option {{key}}',
                             })
                       }
                     >
-                      {isRemoveArmed ? t('common:confirm', { defaultValue: '确认' }) : <X size={12} />}
+                      {isRemoveArmed ? t('common:confirm', { defaultValue: 'Confirm' }) : <X size={12} />}
                     </DsButton>
                   </div>
                 );
@@ -1387,7 +1387,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             />
             <span>
               {t('exam_sheet:questionBank.create.markAsMistake', {
-                defaultValue: '直接标为错题并加入 FSRS 复习',
+                defaultValue: 'Mark as mistake and add to FSRS review',
               })}
             </span>
           </label>
@@ -1485,11 +1485,11 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               size="sm"
               onClick={() => setShowSourceViewer(true)}
               className="h-6 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
-              aria-label={t('exam_sheet:questionBank.sourceViewer.open', { defaultValue: '查看原题来源' })}
+              aria-label={t('exam_sheet:questionBank.sourceViewer.open', { defaultValue: 'View original source' })}
               aria-haspopup="dialog"
             >
               <BookOpen size={14} className="mr-1" />
-              {t('exam_sheet:questionBank.sourceViewer.openShort', { defaultValue: '原题来源' })}
+              {t('exam_sheet:questionBank.sourceViewer.openShort', { defaultValue: 'Source' })}
               <span className="ml-1 rounded bg-muted/50 px-1 text-[10px] tabular-nums text-muted-foreground">
                 {sourceRefCount}
               </span>
