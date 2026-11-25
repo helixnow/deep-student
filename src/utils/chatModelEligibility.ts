@@ -23,6 +23,7 @@ export function isChatGenerationModel(config: ChatModelEligibilityInput): boolea
   ) return false;
 
   const model = (config.model ?? '').trim();
+  if (!model) return false;
   const lower = model.toLowerCase();
   if (lower === 'system' || (lower.includes('deepseek') && lower.includes('ocr')) || lower.includes('paddleocr')) {
     return false;

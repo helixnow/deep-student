@@ -76,16 +76,61 @@ export const RuntimeModelSubmenuBody: React.FC<RuntimeModelSubmenuBodyProps> = (
   const selectedIdSet = useMemo(() => new Set(multiSelect?.selectedIds ?? []), [multiSelect?.selectedIds]);
   const otherProviderLabel = t('chatV2:inputBar.runtimeModelOtherProvider');
 
-  const optionById = useMemo(() => new Map(options.map((option) => [option.id, option])), [options]);
+  // 防御性清洗：过滤空白 id/label，按 id 与 (provider, label) 去重（避免收藏/供应商分区重复条目或空白行）
+  const sanitizedOptions = useMemo<RuntimeModelOption[]>(() => {
+    const result: RuntimeModelOption[] = [];
+    const indexById = new Map<string, number>();
+    const indexByKey = new Map<string, number>();
+
+    for (const option of options) {
+      const id = (option.id ?? '').trim();
+      const label = (option.label ?? '').trim();
+      if (!id || !label) continue;
+      if (indexById.has(id)) continue;
+
+      const providerScope = (option.providerId ?? option.providerLabel ?? '').trim().toLowerCase();
+      const dedupeKey = `${providerScope}\u0000${label.toLowerCase()}`;
+      const existingIndex = indexByKey.get(dedupeKey);
+      if (existingIndex !== undefined) {
+        const previous = result[existingIndex];
+        const prevPriority =
+          (previous.id === currentModelId ? 4 : 0)
+          + (selectedIdSet.has(previous.id) ? 2 : 0)
+          + (favoriteIds.has(previous.id) ? 1 : 0);
+        const nextPriority =
+          (id === currentModelId ? 4 : 0)
+          + (selectedIdSet.has(id) ? 2 : 0)
+          + (favoriteIds.has(id) ? 1 : 0);
+        if (nextPriority > prevPriority) {
+          indexById.delete(previous.id);
+          result[existingIndex] = { ...option, id, label };
+          indexById.set(id, existingIndex);
+        }
+        continue;
+      }
+
+      const nextIndex = result.length;
+      result.push({ ...option, id, label });
+      indexById.set(id, nextIndex);
+      indexByKey.set(dedupeKey, nextIndex);
+    }
+
+    return result;
+  }, [currentModelId, favoriteIds, options, selectedIdSet]);
+
+  const optionById = useMemo(
+    () => new Map(sanitizedOptions.map((option) => [option.id, option])),
+    [sanitizedOptions]
+  );
 
   const sections = useMemo<Section[]>(() => {
     const filtered = keyword
-      ? options.filter((model) => [model.label, model.providerLabel, model.id]
+      ? sanitizedOptions.filter((model) => [model.label, model.providerLabel, model.id]
         .filter((value): value is string => typeof value === 'string' && value.length > 0)
         .join(' ')
         .toLowerCase()
         .includes(keyword))
-      : options;
+      : sanitizedOptions;
 
     const result: Section[] = [];
     // 收藏：只取仍可用的模型（已删除/失效模型的收藏静默忽略），保持列表原有顺序（供应商顺序）
@@ -115,7 +160,7 @@ export const RuntimeModelSubmenuBody: React.FC<RuntimeModelSubmenuBodyProps> = (
     });
     result.push(...providerGroups.values());
     return result;
-  }, [favoriteIds, keyword, options, otherProviderLabel, t]);
+  }, [favoriteIds, keyword, otherProviderLabel, sanitizedOptions, t]);
 
   const handleToggleFavorite = useCallback((modelId: string) => {
     void toggleFavorite(modelId).then((result) => {
@@ -305,7 +350,7 @@ export const RuntimeModelSubmenuBody: React.FC<RuntimeModelSubmenuBodyProps> = (
 
       <CustomScrollArea
         fullHeight={false}
-        className="max-h-[min(280px,calc(var(--app-menu-available-height,100vh)-140px))]"
+        className="min-h-0 flex-1 max-h-[min(280px,calc(var(--app-menu-available-height,100vh)-140px))]"
         viewportClassName="max-h-[min(280px,calc(var(--app-menu-available-height,100vh)-140px))]"
       >
         {sections.length > 0 ? (

@@ -85,24 +85,29 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     () => (selectedVendor ? modelProfiles.filter(mp => mp.vendorId === selectedVendor.id) : []),
     [modelProfiles, selectedVendor]
   );
-  const selectedVendorModels = useMemo(
-    () =>
-      selectedVendor
-        ? selectedVendorProfiles
-            .map(profile => {
-              const api = convertProfileToApiConfig(profile, selectedVendor);
-              return api ? { profile, api } : null;
-            })
-            .filter((row): row is { profile: ModelProfile; api: ApiConfig } => Boolean(row))
-            // 收藏的模型置顶
-            .sort((a, b) => {
-              if (a.profile.isFavorite && !b.profile.isFavorite) return -1;
-              if (!a.profile.isFavorite && b.profile.isFavorite) return 1;
-              return 0;
-            })
-        : [],
-    [selectedVendorProfiles, selectedVendor]
-  );
+  const selectedVendorModels = useMemo(() => {
+    if (!selectedVendor) return [];
+    const seenIds = new Set<string>();
+    const seenModels = new Set<string>();
+    const rows: Array<{ profile: ModelProfile; api: ApiConfig }> = [];
+    for (const profile of selectedVendorProfiles) {
+      const trimmedModel = (profile.model ?? '').trim();
+      if (!trimmedModel) continue;
+      const modelKey = trimmedModel.toLowerCase();
+      if (seenIds.has(profile.id) || seenModels.has(modelKey)) continue;
+      const api = convertProfileToApiConfig(profile, selectedVendor);
+      if (!api) continue;
+      seenIds.add(profile.id);
+      seenModels.add(modelKey);
+      rows.push({ profile, api });
+    }
+    // 收藏的模型置顶
+    return rows.sort((a, b) => {
+      if (a.profile.isFavorite && !b.profile.isFavorite) return -1;
+      if (!a.profile.isFavorite && b.profile.isFavorite) return 1;
+      return 0;
+    });
+  }, [selectedVendorProfiles, selectedVendor]);
   const selectedVendorIsSiliconflow = ((selectedVendor?.providerType ?? '').toLowerCase() === 'siliconflow');
   useEffect(() => {
     if (sortedVendors.length === 0) {
@@ -610,17 +615,65 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     }
   }, [t]);
 
+  /**
+   * 校验并保存单条模型配置：
+   * - 拒绝空/全空白的 model ID，避免落库后在模型选择器出现空白行；
+   * - 按 (vendorId, model.trim().toLowerCase()) 去重，避免同一供应商重复条目污染收藏分区。
+   */
+  const persistValidatedModelProfile = async (
+    vendorId: string,
+    api: ApiConfig,
+    existingProfileId?: string,
+  ): Promise<ModelProfile | null> => {
+    const trimmedModel = (api.model ?? '').trim();
+    if (!trimmedModel) {
+      showGlobalNotification('error', t('common:model_name_required'));
+      return null;
+    }
+    const normalizedModelKey = trimmedModel.toLowerCase();
+    const normalizedApi: ApiConfig = {
+      ...api,
+      model: trimmedModel,
+      name: (api.name ?? '').trim() || trimmedModel,
+    };
+    const duplicate = modelProfiles.find(
+      profile =>
+        profile.vendorId === vendorId
+        && profile.id !== normalizedApi.id
+        && profile.model.trim().toLowerCase() === normalizedModelKey
+    );
+    const mergedApi: ApiConfig = duplicate
+      ? {
+          ...normalizedApi,
+          id: duplicate.id,
+          isFavorite: normalizedApi.isFavorite || duplicate.isFavorite,
+        }
+      : normalizedApi;
+    const toSave = convertApiConfigToProfile(mergedApi, vendorId);
+    toSave.enabled = api.enabled;
+    toSave.status = api.enabled ? 'enabled' : 'disabled';
+
+    if (duplicate && existingProfileId && existingProfileId !== duplicate.id) {
+      const nextProfiles = modelProfiles
+        .filter(profile => profile.id !== existingProfileId && profile.id !== duplicate.id);
+      nextProfiles.push(toSave);
+      await persistModelProfiles(nextProfiles);
+      return toSave;
+    }
+
+    await upsertModelProfile(toSave);
+    return toSave;
+  };
+
   const handleSaveModelProfile = async (api: ApiConfig) => {
     if (!modelEditor) return;
     const vendor = modelEditor.vendor;
-    const toSave = convertApiConfigToProfile(api, vendor.id);
-    toSave.enabled = api.enabled;
-    toSave.status = api.enabled ? 'enabled' : 'disabled';
     try {
-      await upsertModelProfile(toSave);
+      const saved = await persistValidatedModelProfile(vendor.id, api, modelEditor.profile?.id);
+      if (!saved) return;
       showGlobalNotification('success', t('common:config_saved'));
       handleCloseModelEditor();
-      if (toSave.enabled) {
+      if (saved.enabled) {
         void autoAssignEmptySlotsAfterModelAdded();
       }
     } catch (error) {
@@ -632,15 +685,14 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
   // 内联编辑保存处理（用于卡片展开编辑）
   const handleSaveInlineEdit = async (api: ApiConfig) => {
     if (!selectedVendor) return;
-    const toSave = convertApiConfigToProfile(api, selectedVendor.id);
-    toSave.enabled = api.enabled;
-    toSave.status = api.enabled ? 'enabled' : 'disabled';
     try {
-      await upsertModelProfile(toSave);
+      const existingProfileId = !isAddingNewModel ? inlineEditState?.profileId : undefined;
+      const saved = await persistValidatedModelProfile(selectedVendor.id, api, existingProfileId);
+      if (!saved) return;
       showGlobalNotification('success', t('common:config_saved'));
       setInlineEditState(null);
       setIsAddingNewModel(false);
-      if (toSave.enabled) {
+      if (saved.enabled) {
         void autoAssignEmptySlotsAfterModelAdded();
       }
     } catch (error) {
@@ -789,9 +841,25 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
 
   const handleSiliconFlowConfig = async (configData: Omit<ApiConfig, 'id'>): Promise<string | null> => {
     try {
+      const trimmedModel = (configData.model ?? '').trim();
+      if (!trimmedModel) {
+        showGlobalNotification('error', t('common:model_name_required'));
+        return null;
+      }
       const vendor = await ensureVendorForConfig(configData);
+      const duplicate = modelProfiles.find(
+        profile =>
+          profile.vendorId === vendor.id
+          && profile.model.trim().toLowerCase() === trimmedModel.toLowerCase()
+      );
       const newProfile = convertApiConfigToProfile(
-        { ...configData, id: `sf_${Date.now()}` } as ApiConfig,
+        {
+          ...configData,
+          id: duplicate?.id ?? `sf_${Date.now()}`,
+          model: trimmedModel,
+          name: (configData.name ?? '').trim() || trimmedModel,
+          isFavorite: configData.isFavorite || duplicate?.isFavorite,
+        } as ApiConfig,
         vendor.id
       );
       newProfile.enabled = configData.enabled ?? true;
@@ -813,7 +881,9 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     const nextProfiles = [...modelProfiles];
     let changed = false;
     for (const { modelId, label, contextWindow, maxOutputTokens } of models) {
-      const normalizedModel = modelId.trim().toLowerCase();
+      const trimmedModelId = (modelId ?? '').trim();
+      if (!trimmedModelId) continue;
+      const normalizedModel = trimmedModelId.toLowerCase();
       const existingIdx = nextProfiles.findIndex(
         p => p.vendorId === vendor.id && p.model.trim().toLowerCase() === normalizedModel
       );
@@ -827,9 +897,10 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         continue;
       }
 
-      const caps = inferCapabilities({ id: modelId, providerScope: vendor.providerType, name: label });
-      const extCaps = inferApiCapabilities({ id: modelId, name: label, providerScope: vendor.providerType });
-      const defaults = getModelDefaultParameters(modelId, { providerScope: vendor.providerType });
+      const trimmedLabel = (label ?? '').trim() || trimmedModelId;
+      const caps = inferCapabilities({ id: trimmedModelId, providerScope: vendor.providerType, name: trimmedLabel });
+      const extCaps = inferApiCapabilities({ id: trimmedModelId, name: trimmedLabel, providerScope: vendor.providerType });
+      const defaults = getModelDefaultParameters(trimmedModelId, { providerScope: vendor.providerType });
       const isNvidiaProvider = vendor.providerType?.toLowerCase() === 'nvidia';
 
       const effectiveSupportsReasoning =
@@ -852,8 +923,8 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       const profile: ModelProfile = {
         id: `vm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         vendorId: vendor.id,
-        label: label || modelId,
-        model: modelId,
+        label: trimmedLabel,
+        model: trimmedModelId,
         modelAdapter,
         isMultimodal: caps.isMultimodal,
         isReasoning: effectiveSupportsReasoning,
@@ -880,7 +951,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
 
       // 供应商特定调整
       const adjustments = applyProviderSpecificAdjustments({
-        modelId,
+        modelId: trimmedModelId,
         supportsTools: caps.supportsTools,
         supportsReasoning: caps.supportsReasoning,
       });
@@ -915,7 +986,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
           onAddModels: handleAddVendorModels,
         });
       } catch (error) {
-        console.error('[useSettingsVendorState] Post-save auto-flow failed:', error);
+        console.warn('[useSettingsVendorState] Post-save auto-flow failed:', error);
       }
     },
     [modelProfiles, handleAddVendorModels]
@@ -1049,8 +1120,10 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       let nextProfiles = [...modelProfiles];
       let changed = false;
       for (const configItem of configs) {
+        const trimmedModel = (configItem.model ?? '').trim();
+        if (!trimmedModel) continue;
         const vendor = await ensureVendorForConfig(configItem);
-        const normalizedModel = configItem.model.trim().toLowerCase();
+        const normalizedModel = trimmedModel.toLowerCase();
         const existingProfile = nextProfiles.find(
           profile =>
             profile.vendorId === vendor.id && profile.model.trim().toLowerCase() === normalizedModel
@@ -1060,7 +1133,12 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
           continue;
         }
         const profile = convertApiConfigToProfile(
-          { ...configItem, id: configItem.tempId } as ApiConfig,
+          {
+            ...configItem,
+            id: configItem.tempId,
+            model: trimmedModel,
+            name: (configItem.name ?? '').trim() || trimmedModel,
+          } as ApiConfig,
           vendor.id
         );
         profile.enabled = configItem.enabled ?? true;

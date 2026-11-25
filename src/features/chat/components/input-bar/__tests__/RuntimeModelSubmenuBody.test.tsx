@@ -214,4 +214,28 @@ describe('RuntimeModelSubmenuBody', () => {
     await waitFor(() => expect(rowIds(sectionOf('__favorites__'))).toEqual(['ds-r1', 'gpt-4o']));
     expect(onToggle).not.toHaveBeenCalled();
   });
+
+  it('filters blank rows and deduplicates duplicate favorites and provider rows (G22)', async () => {
+    profiles = [
+      { id: 'blank-row', isFavorite: true },
+      { id: 'gpt-4o-a', isFavorite: true },
+      { id: 'gpt-4o-b', isFavorite: true },
+      { id: 'ds-v3' },
+    ];
+    const dirtyOptions: RuntimeModelOption[] = [
+      { id: 'blank-row', label: '   ', providerLabel: 'OpenAI', providerId: 'openai' },
+      { id: '', label: 'orphan-no-id', providerLabel: 'OpenAI', providerId: 'openai' },
+      { id: 'gpt-4o-a', label: 'gpt-4o', providerLabel: 'OpenAI', providerId: 'openai' },
+      { id: 'gpt-4o-a', label: 'gpt-4o', providerLabel: 'OpenAI', providerId: 'openai' },
+      { id: 'gpt-4o-b', label: ' GPT-4O ', providerLabel: 'OpenAI', providerId: 'openai' },
+      { id: 'ds-v3', label: 'deepseek-v3', providerLabel: 'DeepSeek', providerId: 'deepseek' },
+    ];
+
+    render(<RuntimeModelSubmenuBody options={dirtyOptions} currentModelId="ds-v3" onSelect={vi.fn()} />);
+
+    await waitFor(() => expect(rowIds(sectionOf('__favorites__'))).toEqual(['gpt-4o-a']));
+    expect(rowIds(sectionOf('provider:openai'))).toEqual(['gpt-4o-a']);
+    expect(document.querySelector('[data-model-id="blank-row"]')).toBeNull();
+    expect(document.querySelector('[data-model-id="gpt-4o-b"]')).toBeNull();
+  });
 });

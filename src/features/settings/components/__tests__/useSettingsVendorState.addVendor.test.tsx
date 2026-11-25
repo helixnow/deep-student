@@ -229,3 +229,98 @@ describe('useSettingsVendorState bulk import capability inference (embed-gateway
     expect(bindingOf('embed-gateway_qwen3.8-max')).toBeNull();
   });
 });
+
+describe('useSettingsVendorState model validation and deduplication (G22)', () => {
+  const vendor: VendorConfig = {
+    id: 'vendor-custom',
+    name: 'Custom',
+    providerType: 'custom',
+    baseUrl: 'https://example.invalid/v1',
+    apiKey: 'sk-test',
+  };
+
+  it('rejects saving empty/whitespace-only model IDs in modal and inline editors', async () => {
+    const deps = createDeps({ vendors: [vendor], modelProfiles: [] });
+    const { result } = renderHook(() => useSettingsVendorState(deps));
+
+    act(() => result.current.handleOpenModelEditor(vendor));
+    const blankModalDraft = { ...result.current.modelEditor!.api, model: '   ' };
+    await act(async () => {
+      await result.current.handleSaveModelProfile(blankModalDraft);
+    });
+    expect(deps.upsertModelProfile).not.toHaveBeenCalled();
+    expect(result.current.modelEditor).not.toBeNull();
+
+    act(() => result.current.handleAddModelInline(vendor));
+    const blankInlineDraft = { ...result.current.inlineEditState!.api, model: '' };
+    await act(async () => {
+      await result.current.handleSaveInlineEdit(blankInlineDraft);
+    });
+    expect(deps.upsertModelProfile).not.toHaveBeenCalled();
+    expect(result.current.inlineEditState).not.toBeNull();
+  });
+
+  it('deduplicates (vendorId, model) on save by merging into existing profile ID and preserving favorite', async () => {
+    const existingProfile = {
+      id: 'existing-profile-1',
+      vendorId: vendor.id,
+      label: 'Existing GPT',
+      model: 'gpt-4o',
+      modelAdapter: 'general',
+      isMultimodal: false,
+      isReasoning: false,
+      isEmbedding: false,
+      isReranker: false,
+      enabled: true,
+      status: 'enabled' as const,
+      isFavorite: true,
+    };
+    const deps = createDeps({
+      vendors: [vendor],
+      modelProfiles: [existingProfile],
+      upsertModelProfile: vi.fn().mockResolvedValue(existingProfile),
+    });
+    const { result } = renderHook(() => useSettingsVendorState(deps));
+
+    act(() => result.current.handleOpenModelEditor(vendor));
+    const duplicateDraft = {
+      ...result.current.modelEditor!.api,
+      id: 'new-temp-id',
+      name: '  ',
+      model: ' GPT-4O ',
+      isFavorite: false,
+    };
+    await act(async () => {
+      await result.current.handleSaveModelProfile(duplicateDraft);
+    });
+
+    expect(deps.upsertModelProfile).toHaveBeenCalledTimes(1);
+    expect(deps.upsertModelProfile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'existing-profile-1',
+        vendorId: vendor.id,
+        model: 'GPT-4O',
+        label: 'GPT-4O',
+        isFavorite: true,
+      })
+    );
+  });
+
+  it('skips blank model IDs during bulk handleAddVendorModels', async () => {
+    const deps = createDeps({ vendors: [vendor], modelProfiles: [] });
+    const { result } = renderHook(() => useSettingsVendorState(deps));
+
+    await act(async () => {
+      await result.current.handleAddVendorModels(vendor, [
+        { modelId: '', label: 'Empty' },
+        { modelId: '   ', label: 'Whitespace' },
+        { modelId: 'gpt-5', label: '  ' },
+      ]);
+    });
+
+    expect(deps.persistModelProfiles).toHaveBeenCalledTimes(1);
+    const saved = deps.persistModelProfiles.mock.calls[0][0] as Array<{ model: string; label: string }>;
+    expect(saved).toHaveLength(1);
+    expect(saved[0]).toMatchObject({ model: 'gpt-5', label: 'gpt-5' });
+  });
+});

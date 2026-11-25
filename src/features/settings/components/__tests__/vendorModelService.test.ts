@@ -1,9 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const tauriFetchMock = vi.hoisted(() => vi.fn());
+const { tauriFetchMock, showGlobalNotificationMock, debugWarnMock } = vi.hoisted(() => ({
+  tauriFetchMock: vi.fn(),
+  showGlobalNotificationMock: vi.fn(),
+  debugWarnMock: vi.fn(),
+}));
 
 vi.mock('@tauri-apps/plugin-http', () => ({
   fetch: tauriFetchMock,
+}));
+
+vi.mock('@/components/UnifiedNotification', () => ({
+  showGlobalNotification: showGlobalNotificationMock,
+}));
+
+vi.mock('@/debug-panel/debugMasterSwitch', () => ({
+  debugLog: {
+    log: vi.fn(),
+    debug: vi.fn(),
+    warn: debugWarnMock,
+    info: vi.fn(),
+    error: vi.fn(),
+  },
 }));
 
 vi.mock('@/utils/tauriApi', () => ({
@@ -14,8 +32,11 @@ vi.mock('@/utils/tauriApi', () => ({
 
 import type { VendorConfig } from '@/types';
 import {
+  autoPostSaveFlow,
   buildVendorModelsUrl,
   fetchModelsFromVendor,
+  formatVendorModelFetchError,
+  INVALID_VENDOR_MODEL_RESPONSE,
   mergeVendorModelRequestHeaders,
 } from '../vendorModelService';
 
@@ -34,6 +55,8 @@ const vendor: VendorConfig = {
 describe('vendorModelService request headers', () => {
   beforeEach(() => {
     tauriFetchMock.mockReset();
+    showGlobalNotificationMock.mockReset();
+    debugWarnMock.mockReset();
   });
 
   it.each([
@@ -151,5 +174,71 @@ describe('vendorModelService request headers', () => {
       'x-api-key': 'live-key',
       'anthropic-version': '2023-06-01',
     });
+  });
+
+  it('extracts actionable detail from IPC error objects and strips legacy Chinese prefixes (G22)', () => {
+    const t = (key: string) => key;
+    expect(
+      formatVendorModelFetchError(
+        { error_type: 'Network', message: 'fetch failed: connect ECONNREFUSED 127.0.0.1:19999', details: null },
+        t
+      )
+    ).toBe('fetch failed: connect ECONNREFUSED 127.0.0.1:19999');
+
+    expect(
+      formatVendorModelFetchError(
+        { error_type: 'Network', message: '获取供应商模型失败: 502 Bad Gateway', details: null },
+        t
+      )
+    ).toBe('502 Bad Gateway');
+
+    const withCause = new TypeError('fetch failed', {
+      cause: new Error('connect ECONNREFUSED 127.0.0.1:19999'),
+    });
+    expect(formatVendorModelFetchError(withCause, t)).toBe('fetch failed: connect ECONNREFUSED 127.0.0.1:19999');
+
+    expect(formatVendorModelFetchError(new Error(INVALID_VENDOR_MODEL_RESPONSE), t)).toBe(
+      'settings:vendor_model_fetcher.invalid_response'
+    );
+    expect(formatVendorModelFetchError(null, t)).toBe('common:error.unknown_error');
+  });
+
+  it('logs unreachable provider errors via debugLog.warn and notifies UI without console.error (G22)', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    tauriFetchMock.mockRejectedValueOnce({
+      error_type: 'Network',
+      message: 'fetch failed: connect ECONNREFUSED 127.0.0.1:19999',
+      details: null,
+    });
+
+    try {
+      await autoPostSaveFlow(
+        {
+          ...vendor,
+          id: 'unreachable-local',
+          name: 'Local Unreachable',
+          authMode: 'none',
+          apiKey: '',
+          baseUrl: 'http://127.0.0.1:19999/v1',
+        },
+        {
+          existingModelIds: [],
+          onAddModels: vi.fn(),
+        }
+      );
+
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+      expect(debugWarnMock).toHaveBeenCalledTimes(1);
+      expect(debugWarnMock.mock.calls[0]?.[0]).toContain('ECONNREFUSED 127.0.0.1:19999');
+      expect(showGlobalNotificationMock).toHaveBeenCalledTimes(1);
+      expect(showGlobalNotificationMock).toHaveBeenCalledWith(
+        'warning',
+        expect.stringContaining('ECONNREFUSED 127.0.0.1:19999')
+      );
+      expect(String(showGlobalNotificationMock.mock.calls[0]?.[1])).not.toContain('Unknown error');
+      expect(String(showGlobalNotificationMock.mock.calls[0]?.[1])).not.toContain('获取供应商模型失败');
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 });

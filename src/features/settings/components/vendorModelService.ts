@@ -10,6 +10,10 @@
 
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import i18n from '@/i18n';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { getErrorDetails, getErrorMessage } from '@/utils/errorUtils';
 import { TauriAPI } from '@/utils/tauriApi';
 import type { VendorConfig } from '@/types';
 
@@ -104,6 +108,143 @@ const isStreamChannelError = (error: unknown): boolean => {
   return message.includes('fetch_read_body') && message.includes('streamChannel');
 };
 
+const LEGACY_VENDOR_FETCH_PREFIX = /^(?:获取供应商模型失败|解析供应商模型响应失败)\s*[:：]\s*/u;
+const LEGACY_INVALID_RESPONSE_MESSAGES = new Set([
+  INVALID_VENDOR_MODEL_RESPONSE,
+  'Gemini 模型响应缺少 models 数组',
+  '供应商模型响应缺少 data 数组',
+]);
+
+function extractNestedCauseDetail(error: unknown, depth = 0): string {
+  if (depth > 4 || error === null || error === undefined) return '';
+  if (typeof error === 'string') return error.trim();
+  if (typeof error !== 'object') return String(error).trim();
+  const record = error as {
+    message?: unknown;
+    code?: unknown;
+    cause?: unknown;
+    errors?: unknown;
+  };
+  const message = typeof record.message === 'string' ? record.message.trim() : '';
+  const code = typeof record.code === 'string' && record.code.trim() !== '' ? record.code.trim() : '';
+  const parts: string[] = [];
+  if (message) parts.push(message);
+  if (code && !message.includes(code)) parts.push(code);
+  if (Array.isArray(record.errors) && record.errors.length > 0) {
+    const sub = [...new Set(
+      record.errors
+        .map((entry) => extractNestedCauseDetail(entry, depth + 1))
+        .filter((text) => text.length > 0)
+    )];
+    if (sub.length > 0) parts.push(sub.join('; '));
+  }
+  if (record.cause !== undefined && record.cause !== error) {
+    const nested = extractNestedCauseDetail(record.cause, depth + 1);
+    if (nested && !parts.some((part) => part.includes(nested))) {
+      parts.push(nested);
+    }
+  }
+  return parts.join(': ');
+}
+
+/**
+ * Extract actionable, locale-neutral network/HTTP error detail from IPC plain objects,
+ * `Error` instances (including `cause` / `AggregateError`), or strings without degrading
+ * structured host errors to "Unknown error".
+ */
+export function formatVendorModelFetchError(
+  error: unknown,
+  translate?: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const tr = translate ?? ((key: string, options?: Record<string, unknown>) => String(i18n.t(key, options)));
+  const unknownFallback = tr('common:error.unknown_error', { defaultValue: 'Unknown error' });
+
+  if (error === null || error === undefined) {
+    return unknownFallback;
+  }
+
+  let raw = '';
+  const details = getErrorDetails(error);
+  if (details.message || details.detail || details.code) {
+    raw = getErrorMessage(error).trim();
+  } else if (typeof error === 'object') {
+    const nested = extractNestedCauseDetail(error);
+    if (nested) {
+      raw = nested;
+    } else {
+      try {
+        const json = JSON.stringify(error);
+        if (json && json !== '{}') raw = getErrorMessage(error).trim();
+      } catch {
+        raw = '';
+      }
+    }
+  } else {
+    raw = getErrorMessage(error).trim();
+  }
+
+  if (error && typeof error === 'object') {
+    const record = error as { cause?: unknown; errors?: unknown };
+    const extraParts: string[] = [];
+    if (Array.isArray(record.errors) && record.errors.length > 0) {
+      const sub = [...new Set(
+        record.errors
+          .map((entry) => extractNestedCauseDetail(entry, 1))
+          .filter((text) => text.length > 0)
+      )];
+      if (sub.length > 0) extraParts.push(sub.join('; '));
+    }
+    if (record.cause !== undefined && record.cause !== error) {
+      const causeText = extractNestedCauseDetail(record.cause, 1);
+      if (causeText) extraParts.push(causeText);
+    }
+    for (const extra of extraParts) {
+      if (extra && !raw.includes(extra)) {
+        raw = raw ? `${raw}: ${extra}` : extra;
+      }
+    }
+  }
+
+  const cleaned = raw.replace(LEGACY_VENDOR_FETCH_PREFIX, '').trim();
+  if (!cleaned) {
+    return unknownFallback;
+  }
+  if (LEGACY_INVALID_RESPONSE_MESSAGES.has(cleaned)) {
+    return tr('settings:vendor_model_fetcher.invalid_response', {
+      defaultValue: 'Invalid API response format',
+    });
+  }
+  return cleaned;
+}
+
+async function readHttpErrorDetail(response: Response): Promise<string> {
+  const text = (await response.text().catch(() => '')).trim();
+  if (text) {
+    try {
+      const parsed = JSON.parse(text) as {
+        error?: { message?: unknown } | string;
+        message?: unknown;
+        detail?: unknown;
+      };
+      if (
+        typeof parsed?.error === 'object'
+        && parsed.error !== null
+        && typeof parsed.error.message === 'string'
+        && parsed.error.message.trim()
+      ) {
+        return parsed.error.message.trim();
+      }
+      if (typeof parsed?.error === 'string' && parsed.error.trim()) return parsed.error.trim();
+      if (typeof parsed?.message === 'string' && parsed.message.trim()) return parsed.message.trim();
+      if (typeof parsed?.detail === 'string' && parsed.detail.trim()) return parsed.detail.trim();
+    } catch {
+      // Non-JSON text body
+    }
+    return text.slice(0, 500);
+  }
+  return response.statusText || `HTTP ${response.status}`;
+}
+
 /**
  * Merge user-configured vendor headers with headers required by the selected
  * transport. Transport headers win case-insensitively so a stale custom
@@ -172,7 +313,7 @@ export async function resolveApiKey(vendor: VendorConfig): Promise<string | null
       if (!key && submittedKey) return submittedKey;
       return key && key.trim() ? key.trim() : null;
     } catch {
-      console.warn(`[vendorModelService] Failed to resolve builtin API key for ${vendor.id}`);
+      debugLog.warn(`[vendorModelService] Failed to resolve builtin API key for ${vendor.id}`);
       return submittedKey ?? null;
     }
   }
@@ -251,12 +392,7 @@ async function fetchOpenAICompatible(
   });
 
   if (!response.ok) {
-    let detail: string;
-    try {
-      detail = JSON.stringify(await response.json());
-    } catch {
-      detail = response.statusText || `HTTP ${response.status}`;
-    }
+    const detail = await readHttpErrorDetail(response);
     throw new Error(`${response.status}: ${detail}`);
   }
 
@@ -275,31 +411,37 @@ async function fetchOpenAICompatible(
   }
 
   return body.data
-    .filter(
-      (m: OpenAIModelItem) =>
-        !m.id.includes('tts') &&
-        !m.id.includes('whisper') &&
-        !m.id.includes('video') &&
-        !m.id.includes('kolors') &&
-        !m.id.includes('flux') &&
-        !m.id.includes('dall-e') &&
-        !m.id.includes('audio')
-    )
-    .map((m: OpenAIModelItem) => ({
-      id: m.id,
-      label: m.id,
-      contextWindow: firstPositive(
-        m.context_length,
-        m.context_window,
-        m.max_context_length,
-        m.max_model_len
-      ),
-      maxOutputTokens: firstPositive(
-        m.max_output_tokens,
-        m.max_completion_tokens,
-        m.top_provider?.max_completion_tokens
-      ),
-    }))
+    .filter((m: OpenAIModelItem) => typeof m?.id === 'string' && m.id.trim().length > 0)
+    .filter((m: OpenAIModelItem) => {
+      const lower = m.id.trim().toLowerCase();
+      return (
+        !lower.includes('tts') &&
+        !lower.includes('whisper') &&
+        !lower.includes('video') &&
+        !lower.includes('kolors') &&
+        !lower.includes('flux') &&
+        !lower.includes('dall-e') &&
+        !lower.includes('audio')
+      );
+    })
+    .map((m: OpenAIModelItem) => {
+      const id = m.id.trim();
+      return {
+        id,
+        label: id,
+        contextWindow: firstPositive(
+          m.context_length,
+          m.context_window,
+          m.max_context_length,
+          m.max_model_len
+        ),
+        maxOutputTokens: firstPositive(
+          m.max_output_tokens,
+          m.max_completion_tokens,
+          m.top_provider?.max_completion_tokens
+        ),
+      };
+    })
     .sort((a: FetchedModel, b: FetchedModel) => a.id.localeCompare(b.id));
 }
 
@@ -322,12 +464,7 @@ async function fetchGemini(
   });
 
   if (!response.ok) {
-    let detail: string;
-    try {
-      detail = JSON.stringify(await response.json());
-    } catch {
-      detail = response.statusText || `HTTP ${response.status}`;
-    }
+    const detail = await readHttpErrorDetail(response);
     throw new Error(`${response.status}: ${detail}`);
   }
 
@@ -346,16 +483,17 @@ async function fetchGemini(
   }
 
   return body.models
-    .filter((m: GeminiModelItem) => m.supportedGenerationMethods?.includes('generateContent'))
+    .filter((m: GeminiModelItem) => typeof m?.name === 'string' && m.supportedGenerationMethods?.includes('generateContent'))
     .map((m: GeminiModelItem) => {
-      const modelId = m.name.replace(/^models\//, '');
+      const modelId = m.name.replace(/^models\//, '').trim();
       return {
         id: modelId,
-        label: m.displayName || modelId,
+        label: m.displayName?.trim() || modelId,
         contextWindow: firstPositive(m.inputTokenLimit),
         maxOutputTokens: firstPositive(m.outputTokenLimit),
       };
     })
+    .filter((m: FetchedModel) => m.id.length > 0)
     .sort((a: FetchedModel, b: FetchedModel) => a.id.localeCompare(b.id));
 }
 
@@ -382,12 +520,7 @@ async function fetchAnthropic(
   });
 
   if (!response.ok) {
-    let detail: string;
-    try {
-      detail = JSON.stringify(await response.json());
-    } catch {
-      detail = response.statusText || `HTTP ${response.status}`;
-    }
+    const detail = await readHttpErrorDetail(response);
     throw new Error(`${response.status}: ${detail}`);
   }
 
@@ -406,8 +539,11 @@ async function fetchAnthropic(
   }
 
   return body.data
-    .filter((m: AnthropicModelItem) => !!m.id && (m.type === undefined || m.type === 'model'))
-    .map((m: AnthropicModelItem) => ({ id: m.id, label: m.display_name || m.id }))
+    .filter((m: AnthropicModelItem) => typeof m?.id === 'string' && m.id.trim().length > 0 && (m.type === undefined || m.type === 'model'))
+    .map((m: AnthropicModelItem) => {
+      const id = m.id.trim();
+      return { id, label: m.display_name?.trim() || id };
+    })
     .sort((a: FetchedModel, b: FetchedModel) => a.id.localeCompare(b.id));
 }
 
@@ -422,7 +558,7 @@ async function fetchAnthropic(
  * 3. onAddModels - 将新模型持久化为 ModelProfile（跳过已存在）
  * 4. autoAssignAllModels - 自动分配到空槽位
  *
- * 所有错误仅 console.error，不弹出通知（静默执行）。
+ * 预期网络失败走 debugLog.warn + 本地化 UI 提示，不向控制台抛未处理 console.error。
  * 如某个步骤失败，后续步骤不再执行。
  */
 export async function autoPostSaveFlow(
@@ -436,7 +572,7 @@ export async function autoPostSaveFlow(
     && Boolean((window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__);
   const resolvedKey = isTauri ? '' : await resolveApiKey(vendor);
   if (resolvedKey === null) {
-    console.warn(
+    debugLog.warn(
       `[autoPostSaveFlow] Cannot resolve API key for vendor ${vendor.id} (${vendor.name}), skipping auto-fetch.`
     );
     return;
@@ -447,39 +583,48 @@ export async function autoPostSaveFlow(
   try {
     fetchedModels = await fetchModelsFromVendor(vendor, resolvedKey);
   } catch (err) {
-    console.error(
-      `[autoPostSaveFlow] Failed to fetch models for vendor ${vendor.id} (${vendor.name}):`,
+    const errorDetail = formatVendorModelFetchError(err);
+    debugLog.warn(
+      `[autoPostSaveFlow] Failed to fetch models for vendor ${vendor.id} (${vendor.name}): ${errorDetail}`,
       err
+    );
+    showGlobalNotification(
+      'warning',
+      i18n.t('settings:vendor_model_fetcher.fetch_failed', {
+        error: errorDetail,
+        defaultValue: `Failed to fetch model list: ${errorDetail}`,
+      })
     );
     return;
   }
 
   if (fetchedModels.length === 0) {
-    console.warn(`[autoPostSaveFlow] No models returned for vendor ${vendor.id}, skipping add.`);
+    debugLog.warn(`[autoPostSaveFlow] No models returned for vendor ${vendor.id}, skipping add.`);
     return;
   }
 
   // 3. 只添加尚未存在的新模型
-  const existingSet = new Set(existingModelIds.map(id => id.toLowerCase()));
+  const existingSet = new Set(existingModelIds.map(id => id.trim().toLowerCase()));
   const newModels = vendor.id === 'builtin-mistral'
-    ? [] : fetchedModels.filter(m => !existingSet.has(m.id.toLowerCase()));
+    ? []
+    : fetchedModels.filter(m => m.id.trim().length > 0 && !existingSet.has(m.id.trim().toLowerCase()));
 
   if (newModels.length > 0) {
     try {
       await onAddModels(
         vendor,
         newModels.map(m => ({
-          modelId: m.id,
-          label: m.label,
+          modelId: m.id.trim(),
+          label: m.label.trim() || m.id.trim(),
           contextWindow: m.contextWindow,
           maxOutputTokens: m.maxOutputTokens,
         }))
       );
-      console.log(
+      debugLog.log(
         `[autoPostSaveFlow] Added ${newModels.length} models for vendor ${vendor.id} (${vendor.name})`
       );
     } catch (err) {
-      console.error(
+      debugLog.warn(
         `[autoPostSaveFlow] Failed to persist models for vendor ${vendor.id}:`,
         err
       );
@@ -494,15 +639,15 @@ export async function autoPostSaveFlow(
     );
     const result = await autoAssignAllModels();
     if (result.assigned) {
-      console.log(
+      debugLog.log(
         `[autoPostSaveFlow] Auto-assigned ${result.assignedCount} model(s): ${result.assignedModelNames.join(', ')}`
       );
     } else {
-      console.log(
+      debugLog.log(
         `[autoPostSaveFlow] Auto-assign skipped or no models available: ${result.reason ?? 'unknown'}`
       );
     }
   } catch (err) {
-    console.error('[autoPostSaveFlow] Auto-assignment failed:', err);
+    debugLog.warn('[autoPostSaveFlow] Auto-assignment failed:', err);
   }
 }

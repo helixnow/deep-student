@@ -14,10 +14,11 @@ import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/lib/utils';
 import { groupByModelFamily } from './modelFamily';
-import { fetchModelsFromVendor, INVALID_VENDOR_MODEL_RESPONSE } from './vendorModelService';
+import { fetchModelsFromVendor, formatVendorModelFetchError } from './vendorModelService';
 import type { FetchedModel, VendorModelAddPayload } from './vendorModelService';
 import type { VendorConfig } from '@/types';
 
@@ -46,6 +47,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   const [isFromCache, setIsFromCache] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [existingExpanded, setExistingExpanded] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const cacheKey = `vendor_models.${vendor.id}`;
   const cacheTimeKey = `vendor_models_time.${vendor.id}`;
@@ -69,14 +71,17 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
       if (cached && cachedTime) {
         const data = JSON.parse(cached) as FetchedModel[];
         if (Array.isArray(data) && data.length > 0) {
-          setModels(data);
-          setLastFetchTime(parseInt(cachedTime));
-          setIsFromCache(true);
-          return true;
+          const valid = data.filter(m => typeof m?.id === 'string' && m.id.trim().length > 0);
+          if (valid.length > 0) {
+            setModels(valid);
+            setLastFetchTime(parseInt(cachedTime));
+            setIsFromCache(true);
+            return true;
+          }
         }
       }
     } catch (e) {
-      console.warn(`[VendorModelFetcher] load cache failed for ${vendor.id}:`, e);
+      debugLog.warn(`[VendorModelFetcher] load cache failed for ${vendor.id}:`, e);
     }
     return false;
   }, [cacheKey, cacheTimeKey, vendor.id]);
@@ -88,7 +93,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
       await TauriAPI.saveSetting(cacheTimeKey, Date.now().toString());
       setLastFetchTime(Date.now());
     } catch (e) {
-      console.warn(`[VendorModelFetcher] save cache failed for ${vendor.id}:`, e);
+      debugLog.warn(`[VendorModelFetcher] save cache failed for ${vendor.id}:`, e);
     }
   }, [cacheKey, cacheTimeKey, vendor.id]);
 
@@ -118,6 +123,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     setModels([]);
     setLastFetchTime(null);
     setIsFromCache(false);
+    setFetchError(null);
   }, [vendor.id]);
 
   const fetchModels = useCallback(async (forceRefresh = false) => {
@@ -135,24 +141,25 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     }
 
     setLoading(true);
+    setFetchError(null);
     // 注意：刷新期间保留旧列表（如有），让 React 通过稳定的 m.id key 做增量 diff，
     // 避免出现「整列表先全部消失再重新出现」的闪烁。
     setIsFromCache(false);
 
     try {
-      const result = await fetchModelsFromVendor(vendor, fallbackApiKey);
+      const result = (await fetchModelsFromVendor(vendor, fallbackApiKey))
+        .filter(m => typeof m?.id === 'string' && m.id.trim().length > 0);
 
       // 原子替换：仅在拿到新数据后整体替换，保持已添加项的视觉连续性
       setModels(result);
       await saveCache(result);
       showGlobalNotification('success', t('settings:vendor_model_fetcher.fetch_success', { count: result.length }));
     } catch (err: unknown) {
-      console.error(`[VendorModelFetcher] fetch failed for ${vendor.id}:`, err);
-      const raw = err instanceof Error ? err.message : t('common:error.unknown_error');
-      const error = raw === INVALID_VENDOR_MODEL_RESPONSE
-        ? t('settings:vendor_model_fetcher.invalid_response')
-        : raw;
-      showGlobalNotification('error', t('settings:vendor_model_fetcher.fetch_failed', { error }));
+      const error = formatVendorModelFetchError(err, t);
+      debugLog.warn(`[VendorModelFetcher] fetch failed for ${vendor.id}: ${error}`, err);
+      const message = t('settings:vendor_model_fetcher.fetch_failed', { error });
+      setFetchError(message);
+      showGlobalNotification('error', message);
     } finally {
       setLoading(false);
     }
@@ -192,7 +199,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
       }]);
       showGlobalNotification('success', t('settings:vendor_model_fetcher.add_success', { count: 1 }));
     } catch (err: unknown) {
-      showGlobalNotification('error', t('settings:vendor_model_fetcher.add_failed', { error: err instanceof Error ? err.message : t('common:error.unknown_error') }));
+      showGlobalNotification('error', t('settings:vendor_model_fetcher.add_failed', { error: formatVendorModelFetchError(err, t) }));
     } finally {
       setAddingId(null);
     }
@@ -211,7 +218,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
       })));
       showGlobalNotification('success', t('settings:vendor_model_fetcher.add_success', { count: newModels.length }));
     } catch (err: unknown) {
-      showGlobalNotification('error', t('settings:vendor_model_fetcher.add_failed', { error: err instanceof Error ? err.message : t('common:error.unknown_error') }));
+      showGlobalNotification('error', t('settings:vendor_model_fetcher.add_failed', { error: formatVendorModelFetchError(err, t) }));
     } finally {
       setAddingAll(false);
     }
@@ -255,6 +262,16 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
           {loading ? t('settings:vendor_model_fetcher.fetching') : t('settings:vendor_model_fetcher.fetch_button')}
         </DsButton>
       </div>
+
+      {fetchError && (
+        <div
+          role="alert"
+          data-testid="vendor-model-fetcher-error"
+          className="px-3 py-2 text-xs text-destructive bg-destructive/5 border-b border-destructive/20 break-words"
+        >
+          {fetchError}
+        </div>
+      )}
 
       {/* 模型列表 */}
       {models.length > 0 ? (

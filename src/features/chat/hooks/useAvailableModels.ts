@@ -108,42 +108,61 @@ addTypedEventListener('api_configurations_changed', () => clearModelsCache());
 async function fetchAvailableModelInfos(): Promise<ModelInfo[]> {
   const configs = await invoke<ModelConfig[]>('get_api_configurations');
 
-  // 过滤掉嵌入模型、重排序模型和未启用的模型（供应商没有 API Key 的模型 enabled=false）
+  // 过滤掉嵌入模型、重排序模型、空白模型 ID 和未启用的模型（供应商没有 API Key 的模型 enabled=false）
   const chatModels = (configs || []).filter(isAvailableChatModel);
 
-  // 转换为 ModelInfo 格式
-  // 🔧 修复：使用 model 字段作为显示 ID，而非数据库 ID
-  // 🔧 扩展：传递模型能力字段（isReasoning、supportsTools、enabled）
-  return chatModels.map((config) => ({
-    id: config.id, // 数据库 ID（用于后端调用）
-    name: config.name || config.model, // 用户定义的名称（用于显示和 @mention 插入）
-    // 模型标识符（如 "gpt-4", "deepseek-chat"）- 用于 Popover 副标题显示
-    model: config.model,
-    vendorId: config.vendorId ?? config.vendor_id,
-    vendorName: config.vendorName ?? config.vendor_name,
-    providerType: config.providerType,
-    providerScope: config.providerScope,
-    baseUrl: config.baseUrl,
-    resolvedAdapterId: config.resolvedAdapterId ?? config.resolved_adapter_id,
-    // 生成别名：包含名称、模型标识符
-    aliases: [
-      config.name?.toLowerCase(),
-      config.model?.toLowerCase(),
-    ].filter((s): s is string => !!s && s.length > 0),
-    // 🔧 新增：模型能力字段，便于 UI 根据能力显示不同状态
-    isMultimodal: config.isMultimodal,
-    isReasoning: config.isReasoning,
-    supportsReasoning: config.supportsReasoning ?? config.supports_reasoning,
-    supportsTools: config.supportsTools,
-    enabled: config.enabled,
-    // 上下文预算推断所需元信息
-    maxOutputTokens: config.maxOutputTokens ?? config.max_output_tokens,
-    maxTokensLimit: config.maxTokensLimit ?? config.max_tokens_limit,
-    contextWindow: config.contextWindow ?? config.context_window,
-    reasoningEffort: config.reasoningEffort ?? config.reasoning_effort,
-    thinkingBudget: config.thinkingBudget ?? config.thinking_budget,
-    enableThinking: config.enableThinking ?? config.enable_thinking,
-  }));
+  // 防御性去重：按 id 及 (vendorScope, model) 去重，同时过滤空白标签
+  const seenIds = new Set<string>();
+  const seenVendorModels = new Set<string>();
+  const result: ModelInfo[] = [];
+
+  for (const config of chatModels) {
+    const id = (config.id ?? '').trim();
+    const model = (config.model ?? '').trim();
+    const name = (config.name ?? '').trim() || model;
+    if (!id || !model || !name) continue;
+
+    const vendorId = config.vendorId ?? config.vendor_id;
+    const vendorName = config.vendorName ?? config.vendor_name;
+    const vendorScope = (vendorId ?? vendorName ?? config.baseUrl ?? '').trim().toLowerCase();
+    const vendorModelKey = `${vendorScope}\u0000${model.toLowerCase()}`;
+    if (seenIds.has(id) || seenVendorModels.has(vendorModelKey)) continue;
+    seenIds.add(id);
+    seenVendorModels.add(vendorModelKey);
+
+    result.push({
+      id, // 数据库 ID（用于后端调用）
+      name, // 用户定义的名称（用于显示和 @mention 插入）
+      // 模型标识符（如 "gpt-4", "deepseek-chat"）- 用于 Popover 副标题显示
+      model,
+      vendorId,
+      vendorName,
+      providerType: config.providerType,
+      providerScope: config.providerScope,
+      baseUrl: config.baseUrl,
+      resolvedAdapterId: config.resolvedAdapterId ?? config.resolved_adapter_id,
+      // 生成别名：包含名称、模型标识符
+      aliases: [
+        name.toLowerCase(),
+        model.toLowerCase(),
+      ].filter((s): s is string => !!s && s.length > 0),
+      // 🔧 新增：模型能力字段，便于 UI 根据能力显示不同状态
+      isMultimodal: config.isMultimodal,
+      isReasoning: config.isReasoning,
+      supportsReasoning: config.supportsReasoning ?? config.supports_reasoning,
+      supportsTools: config.supportsTools,
+      enabled: config.enabled,
+      // 上下文预算推断所需元信息
+      maxOutputTokens: config.maxOutputTokens ?? config.max_output_tokens,
+      maxTokensLimit: config.maxTokensLimit ?? config.max_tokens_limit,
+      contextWindow: config.contextWindow ?? config.context_window,
+      reasoningEffort: config.reasoningEffort ?? config.reasoning_effort,
+      thinkingBudget: config.thinkingBudget ?? config.thinking_budget,
+      enableThinking: config.enableThinking ?? config.enable_thinking,
+    });
+  }
+
+  return result;
 }
 
 /**

@@ -43,6 +43,75 @@ export function stringifyProfileArray(profiles: readonly ModelProfile[]): string
   return `[${items.join(',')}]`;
 }
 
+/**
+ * Drop profiles with blank/whitespace-only model IDs and deduplicate by `id` and `(vendorId, model)`
+ * (case-insensitive on model ID) so blank rows and duplicate favorites cannot be persisted or returned.
+ */
+export function sanitizeAndDedupeModelProfiles(
+  profiles: readonly ModelProfile[],
+  builtinIds?: ReadonlySet<string>,
+): ModelProfile[] {
+  const result: ModelProfile[] = [];
+  const indexById = new Map<string, number>();
+  const indexByVendorModel = new Map<string, number>();
+
+  const isCanonicalBuiltin = (profile: ModelProfile): boolean =>
+    profile.isBuiltin || (builtinIds?.has(profile.id) ?? false);
+
+  for (const profile of profiles) {
+    const trimmedModel = rustTrim(profile.model);
+    if (trimmedModel === '') continue;
+
+    const trimmedLabel = rustTrim(profile.label);
+    const normalized: ModelProfile = {
+      ...profile,
+      model: trimmedModel,
+      label: trimmedLabel === '' ? trimmedModel : profile.label,
+    };
+
+    const idKey = rustTrim(normalized.id);
+    const vendorModelKey = `${rustTrim(normalized.vendorId)}\u0000${trimmedModel.toLowerCase()}`;
+
+    const existingIdIndex = idKey !== '' ? indexById.get(idKey) : undefined;
+    if (existingIdIndex !== undefined) {
+      const previous = result[existingIdIndex]!;
+      const previousVendorModelKey = `${rustTrim(previous.vendorId)}\u0000${rustTrim(previous.model).toLowerCase()}`;
+      if (previousVendorModelKey !== vendorModelKey && indexByVendorModel.get(previousVendorModelKey) === existingIdIndex) {
+        indexByVendorModel.delete(previousVendorModelKey);
+      }
+      result[existingIdIndex] = normalized;
+      if (!indexByVendorModel.has(vendorModelKey)) {
+        indexByVendorModel.set(vendorModelKey, existingIdIndex);
+      }
+      continue;
+    }
+
+    const existingVendorModelIndex = indexByVendorModel.get(vendorModelKey);
+    if (existingVendorModelIndex !== undefined) {
+      const existing = result[existingVendorModelIndex]!;
+      if (!isCanonicalBuiltin(existing) && isCanonicalBuiltin(normalized)) {
+        const prevIdKey = rustTrim(existing.id);
+        if (prevIdKey !== '') indexById.delete(prevIdKey);
+        result[existingVendorModelIndex] = {
+          ...normalized,
+          isFavorite: normalized.isFavorite || existing.isFavorite,
+        };
+        if (idKey !== '') indexById.set(idKey, existingVendorModelIndex);
+      } else if (normalized.isFavorite && !existing.isFavorite) {
+        result[existingVendorModelIndex] = { ...existing, isFavorite: true };
+      }
+      continue;
+    }
+
+    const nextIndex = result.length;
+    result.push(normalized);
+    if (idKey !== '') indexById.set(idKey, nextIndex);
+    indexByVendorModel.set(vendorModelKey, nextIndex);
+  }
+
+  return result;
+}
+
 export class ModelProfileStore {
   private readonly settings: SettingsStore;
   private readonly readVendors: () => Promise<VendorConfig[]>;
@@ -149,6 +218,8 @@ export class ModelProfileStore {
     } catch (error) { logWarn(`[VendorModel] 修正隐藏内置模型列表失败，继续使用现有值: ${messageOf(error)}`); }
     if (hidden.size > 0) profiles = profiles.filter(profile => !hidden.has(profile.id));
     for (const builtin of builtinProfiles) if (!hidden.has(builtin.id)) mergeBuiltinProfileUserAware(profiles, builtin, snapshot.get(builtin.id));
+    const builtinIdSet = new Set(builtinProfiles.map(profile => profile.id));
+    profiles = sanitizeAndDedupeModelProfiles(profiles, builtinIdSet);
     try { this.saveProfiles(SNAPSHOT, builtinProfiles, '序列化内置模型快照失败', '保存内置模型快照失败'); }
     catch (error) { logWarn(`[VendorModel] 保存内置模型快照失败（不影响读取）: ${messageOf(error)}`); }
     return profiles;
@@ -158,7 +229,8 @@ export class ModelProfileStore {
     const builtin = loadAllBuiltins([], []);
     const ids = new Set(builtin.profiles.map(profile => profile.id));
     const models = new Map(builtin.profiles.map(profile => [profile.id, profile.model]));
-    const incoming = new Set(profiles.map(profile => profile.id).filter(id => ids.has(id)));
+    const sanitized = sanitizeAndDedupeModelProfiles(profiles, ids);
+    const incoming = new Set(sanitized.map(profile => profile.id).filter(id => ids.has(id)));
     const existing = await this.read().catch((): ModelProfile[] => []);
     const snapshot = this.snapshot();
     const known = new Set([...ids].filter(id => {
@@ -168,7 +240,6 @@ export class ModelProfileStore {
     if (known.size > 0 || incoming.size > 0) this.saveHidden(new Set([...known].filter(id => !incoming.has(id))));
     const vendors = new Map((await this.readVendors().catch((): VendorConfig[] => [])).map(vendor => [vendor.id, vendor]));
     for (const vendor of builtin.vendors) if (!vendors.has(vendor.id)) vendors.set(vendor.id, vendor);
-    const sanitized = profiles.map(profile => ({ ...profile }));
     for (const profile of sanitized) normalizeModelProfileProtocolConfig(profile, vendors.get(profile.vendorId));
     this.saveProfiles(PROFILES, sanitized, '序列化模型条目失败', '保存模型条目失败');
   }
