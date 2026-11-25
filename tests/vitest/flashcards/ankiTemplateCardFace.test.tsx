@@ -1,7 +1,8 @@
 import React from 'react';
-import { render } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AnkiTemplateCardFace } from '@/components/anki/AnkiTemplateCardFace';
+import { TRANSPARENT_PIXEL_DATA_URL } from '@/components/anki/utils/cardMedia';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
 
 const card: AnkiCard = {
@@ -115,5 +116,127 @@ describe('AnkiTemplateCardFace', () => {
       />,
     );
     expect(view.getByText('Answer')).toBeInTheDocument();
+  });
+
+  afterEach(() => {
+    document.documentElement.classList.remove('dark');
+    document.documentElement.removeAttribute('data-theme');
+  });
+
+  it('never emits raw unresolved relative image src into srcdoc before media resolves (G17 CSP zero-error)', () => {
+    const imgCard: AnkiCard = {
+      ...card,
+      id: 'card-csp-pending',
+      front: '<div>Protein plot: <img src="real_protein_plots.png"> [sound:real_audio.mp3]</div>',
+      back: 'Back',
+      text: '',
+      extra_fields: {},
+      images: [],
+    };
+    const { container } = render(
+      <AnkiTemplateCardFace card={imgCard} template={null} side="front" compact={false} interactiveFrame />,
+    );
+    const srcdoc = container.querySelector('iframe')?.getAttribute('srcdoc') ?? '';
+    expect(srcdoc).not.toContain('src="real_protein_plots.png"');
+    expect(srcdoc).toContain(`src="${TRANSPARENT_PIXEL_DATA_URL}"`);
+    expect(srcdoc).toContain('data-anki-media-pending="1"');
+    expect(srcdoc).toContain('<button type="button" class="anki-sound anki-sound-btn"');
+  });
+
+  it('threads darkMode into sandbox body nightMode classes for dark-mode Cloze contrast (G18)', () => {
+    document.documentElement.classList.add('dark');
+    const { container } = render(
+      <AnkiTemplateCardFace card={card} template={template} side="front" />,
+    );
+    const doc = new DOMParser().parseFromString(
+      container.querySelector('iframe')!.getAttribute('srcdoc')!,
+      'text/html',
+    );
+    expect(doc.body.classList.contains('card')).toBe(true);
+    expect(doc.body.classList.contains('nightMode')).toBe(true);
+    expect(doc.body.classList.contains('night_mode')).toBe(true);
+    expect(doc.head.textContent).toContain('body.card.nightMode .glass-panel .cloze');
+  });
+
+  it('opens full-resolution zoom lightbox on sdp-image-click and light-DOM image click without flipping, closing on Esc or backdrop (S5)', () => {
+    const PNG_200DPI = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const onFlip = vi.fn();
+    const imgCard: AnkiCard = {
+      ...card,
+      id: 'card-zoom-s5',
+      front: `<div>Diagram: <img src="${PNG_200DPI}" alt="Protein 200-DPI"></div>`,
+      back: 'Back',
+      text: '',
+      extra_fields: {},
+      images: [],
+    };
+
+    const { container } = render(
+      <div onClick={onFlip}>
+        <AnkiTemplateCardFace
+          card={imgCard}
+          template={null}
+          side="front"
+          compact={false}
+          interactiveFrame
+          onFrameClick={onFlip}
+        />
+      </div>,
+    );
+
+    const iframe = container.querySelector('iframe')!;
+    expect(iframe).not.toBeNull();
+
+    // Simulate sdp-image-click postMessage from sandbox iframe
+    fireEvent(
+      window,
+      new MessageEvent('message', {
+        data: { type: 'sdp-image-click', src: PNG_200DPI, alt: 'Protein 200-DPI' },
+        source: iframe.contentWindow,
+      }),
+    );
+
+    expect(screen.getByTestId('anki-image-lightbox')).toBeInTheDocument();
+    expect(screen.getByTestId('anki-image-lightbox-img')).toHaveAttribute('src', PNG_200DPI);
+    expect(onFlip).not.toHaveBeenCalled();
+
+    // Zoom controls work without flipping
+    fireEvent.click(screen.getByTestId('anki-image-lightbox-zoom-in'));
+    expect(screen.getByTestId('anki-image-lightbox-reset')).toHaveTextContent('150%');
+    expect(onFlip).not.toHaveBeenCalled();
+
+    // Esc closes lightbox without flipping
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('anki-image-lightbox')).not.toBeInTheDocument();
+    expect(onFlip).not.toHaveBeenCalled();
+
+    // Re-open via light-DOM plain-text image attachment and close via backdrop click
+    const plainImgCard: AnkiCard = {
+      ...card,
+      id: 'card-zoom-plain',
+      front: 'Inspect scientific figure',
+      back: 'Answer',
+      text: '',
+      extra_fields: {},
+      images: [PNG_200DPI],
+    };
+    const { container: plainContainer } = render(
+      <div onClick={onFlip}>
+        <AnkiTemplateCardFace
+          card={plainImgCard}
+          template={null}
+          side="front"
+          compact={false}
+          interactiveFrame
+        />
+      </div>,
+    );
+    fireEvent.click(plainContainer.querySelector('img')!);
+    expect(screen.getByTestId('anki-image-lightbox')).toBeInTheDocument();
+    expect(onFlip).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByTestId('anki-image-lightbox-backdrop'));
+    expect(screen.queryByTestId('anki-image-lightbox')).not.toBeInTheDocument();
+    expect(onFlip).not.toHaveBeenCalled();
   });
 });

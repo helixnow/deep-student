@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 
 import {
   buildHtmlSandboxDocument,
@@ -8,6 +9,13 @@ import {
   type HtmlSandboxMode,
 } from './htmlSandboxPolicy';
 
+export interface SandboxImageClickPayload {
+  src: string;
+  alt: string;
+}
+
+const SAFE_LIGHTBOX_IMAGE_SRC_RE = /^(?:data:image\/|blob:|https?:\/\/)/i;
+
 export interface HtmlSandboxPreviewProps {
   mode: HtmlSandboxMode;
   htmlContent: string;
@@ -15,6 +23,8 @@ export interface HtmlSandboxPreviewProps {
   compact?: boolean;
   height?: number | string;
   fidelity?: 'default' | 'anki';
+  /** 应用暗色模式时向沙箱 body 透传 Anki `nightMode night_mode` 类名 */
+  darkMode?: boolean;
   title?: string;
   /** iframe 最小高度（px）：内容不足时也撑满宿主区域（复习舞台） */
   minHeight?: number;
@@ -22,6 +32,10 @@ export interface HtmlSandboxPreviewProps {
   style?: React.CSSProperties;
   /** iframe 内点击非交互区域时回调（卡面辅助脚本发出 `sdp-click`） */
   onFrameClick?: () => void;
+  /** iframe 内点击图片时回调（卡面辅助脚本发出 `sdp-image-click`，用于全分辨率缩放灯箱，不翻面） */
+  onFrameImageClick?: (payload: SandboxImageClickPayload) => void;
+  /** iframe 内点击待加载/重试音频按钮时回调（卡面辅助脚本发出 `sdp-sound-click`） */
+  onFrameSoundClick?: (soundFile: string) => void;
   /**
    * iframe 文档自身滚不动时回调（卡面辅助脚本发出 `sdp-wheel`）。
    * 复习舞台把 iframe 高度设成内容高度，WebKit 不会把 iframe 里的滚轮链回宿主，
@@ -46,11 +60,14 @@ export const HtmlSandboxPreview: React.FC<HtmlSandboxPreviewProps> = ({
   compact = false,
   height,
   fidelity = 'default',
+  darkMode = false,
   title = 'html-preview',
   minHeight,
   className,
   style,
   onFrameClick,
+  onFrameImageClick,
+  onFrameSoundClick,
   onFrameWheel,
   trustedCss,
 }) => {
@@ -67,51 +84,67 @@ export const HtmlSandboxPreview: React.FC<HtmlSandboxPreviewProps> = ({
       compact,
       height,
       fidelity,
+      darkMode,
       trustedCss,
     });
-  }, [compact, cssContent, fidelity, height, htmlContent, mode, trustedCss]);
+  }, [compact, cssContent, darkMode, fidelity, height, htmlContent, mode, trustedCss]);
 
   useEffect(() => {
     if (typeof height === 'number') {
       setIframeHeight(height);
-      return;
     }
-    if (height !== undefined) {
-      return;
-    }
-    if (mode !== 'template-safe') {
-      return;
-    }
+  }, [height]);
 
-    const handleMessage = (event: MessageEvent) => {
-      if (event.source !== iframeRef.current?.contentWindow) return;
-      if (event.data?.type === 'sdp-resize' && typeof event.data.height === 'number') {
-        const nextHeight = Math.max(20, Math.min(event.data.height, 5000));
-        if (Number.isFinite(nextHeight)) {
-          setIframeHeight(nextHeight);
-        }
+  const shouldListenResize = height === undefined && mode === 'template-safe';
+  const handleResizeMessage = useCallback((rawEvent: Event) => {
+    const event = rawEvent as MessageEvent;
+    if (event.source !== iframeRef.current?.contentWindow) return;
+    if (event.data?.type === 'sdp-resize' && typeof event.data.height === 'number') {
+      const nextHeight = Math.max(20, Math.min(event.data.height, 5000));
+      if (Number.isFinite(nextHeight)) {
+        setIframeHeight(nextHeight);
       }
-    };
+    }
+  }, []);
 
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [height, mode]);
+  useEventRegistry(
+    shouldListenResize ? [{ target: 'window', type: 'message', listener: handleResizeMessage }] : [],
+    [shouldListenResize, handleResizeMessage],
+  );
 
-  useEffect(() => {
-    if ((!onFrameClick && !onFrameWheel) || mode !== 'template-safe') return undefined;
-    const handleMessage = (event: MessageEvent) => {
-      if (event.source !== iframeRef.current?.contentWindow) return;
-      const data = event.data as { type?: string; deltaY?: number; deltaMode?: number } | null;
-      if (!data) return;
-      if (data.type === 'sdp-click') {
-        onFrameClick?.();
-      } else if (data.type === 'sdp-wheel') {
-        onFrameWheel?.(Number(data.deltaY) || 0, Number(data.deltaMode) || 0);
+  const shouldListenInteraction =
+    Boolean(onFrameClick || onFrameWheel || onFrameImageClick || onFrameSoundClick)
+    && mode === 'template-safe';
+  const handleInteractionMessage = useCallback((rawEvent: Event) => {
+    const event = rawEvent as MessageEvent;
+    if (event.source !== iframeRef.current?.contentWindow) return;
+    const data = event.data as {
+      type?: string;
+      deltaY?: number;
+      deltaMode?: number;
+      src?: unknown;
+      alt?: unknown;
+      soundFile?: unknown;
+    } | null;
+    if (!data) return;
+    if (data.type === 'sdp-click') {
+      onFrameClick?.();
+    } else if (data.type === 'sdp-wheel') {
+      onFrameWheel?.(Number(data.deltaY) || 0, Number(data.deltaMode) || 0);
+    } else if (data.type === 'sdp-image-click' && typeof data.src === 'string') {
+      const src = data.src.trim();
+      if (SAFE_LIGHTBOX_IMAGE_SRC_RE.test(src)) {
+        onFrameImageClick?.({ src, alt: typeof data.alt === 'string' ? data.alt : '' });
       }
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [mode, onFrameClick, onFrameWheel]);
+    } else if (data.type === 'sdp-sound-click' && typeof data.soundFile === 'string') {
+      onFrameSoundClick?.(data.soundFile);
+    }
+  }, [onFrameClick, onFrameImageClick, onFrameSoundClick, onFrameWheel]);
+
+  useEventRegistry(
+    shouldListenInteraction ? [{ target: 'window', type: 'message', listener: handleInteractionMessage }] : [],
+    [shouldListenInteraction, handleInteractionMessage],
+  );
 
   return (
     <iframe

@@ -1,8 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { MagnifyingGlassMinus, MagnifyingGlassPlus, X } from '@phosphor-icons/react';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { vfsFileApi } from '@/api/vfsFileApi';
 import { ShadowDomPreview } from '@/components/ShadowDomPreview';
+import type { SandboxImageClickPayload } from '@/components/previews/HtmlSandboxPreview';
+import { DsButton } from '@/components/ui/DsButton';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import {
   TemplateRenderService,
   type DetailedCardRenderResult,
@@ -15,6 +20,7 @@ import { cardHtmlNeedsKatex, renderCardFaceLatexHtml, renderCardTemplateMath } f
 import { useKatexSandboxCss } from './utils/katexSandboxCss';
 import {
   CARD_FACE_HELPER_SCRIPT,
+  clearCardMediaCache,
   extractInlineMediaNames,
   injectCardMedia,
   isAnkiMediaRef,
@@ -25,7 +31,7 @@ import {
   looksLikeHtml,
   mediaBasename,
   soundNames,
-  useCardMediaMap,
+  useCardMediaState,
 } from './utils/cardMedia';
 import {
   normalizeOcclusionSpec,
@@ -449,6 +455,8 @@ export interface AnkiTemplateCardFaceProps {
    * 复习舞台用它驱动外层统一 viewport 滚动（WebKit 不会自动把滚轮链回宿主）。
    */
   onFrameWheel?: (deltaY: number, deltaMode: number) => void;
+  /** 图片全分辨率缩放灯箱开关状态变化回调（复习舞台据此在灯箱打开期间屏蔽翻面与滑动手势） */
+  onImageLightboxChange?: (open: boolean) => void;
 }
 
 function defaultFaceText(card: AnkiCard, side: AnkiCardFace): string {
@@ -473,7 +481,9 @@ export function extractAccessibleCardText(html: string, fallback = ''): string {
     try {
       const doc = new DOMParser().parseFromString(html, 'text/html');
       doc
-        .querySelectorAll('style, script, noscript, template, audio, video, [aria-hidden="true"], .sr-only')
+        .querySelectorAll(
+          'style, script, noscript, template, audio, video, .anki-sound-player, .anki-sound, .anki-sound-btn, .anki-sound-play, [aria-hidden="true"], .sr-only',
+        )
         .forEach((node) => node.remove());
       doc.querySelectorAll('br').forEach((br) => br.replaceWith('\n'));
       doc.querySelectorAll('p, div, li, tr, h1, h2, h3, h4, h5, h6, hr, blockquote').forEach((block) => {
@@ -549,6 +559,231 @@ const RenderIssueNotice: React.FC<{ issues: TemplateRenderIssue[] }> = ({ issues
   );
 };
 
+const LIGHTBOX_ZOOM_MIN = 0.5;
+const LIGHTBOX_ZOOM_MAX = 4;
+const LIGHTBOX_ZOOM_STEP = 0.5;
+
+const CardImageLightbox: React.FC<{
+  image: SandboxImageClickPayload;
+  onClose: () => void;
+}> = ({ image, onClose }) => {
+  const { t } = useTranslation('common');
+  const [zoomMode, setZoomMode] = useState<'fit' | 'custom'>('fit');
+  const [scale, setScale] = useState<number>(1);
+  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
+
+  const handleKeyDown = useCallback((rawEvent: Event) => {
+    const event = rawEvent as KeyboardEvent;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      onClose();
+      return;
+    }
+    if (event.key === '+' || event.key === '=') {
+      event.preventDefault();
+      event.stopPropagation();
+      setZoomMode('custom');
+      setScale((prev) => Math.min(LIGHTBOX_ZOOM_MAX, Number((prev + LIGHTBOX_ZOOM_STEP).toFixed(2))));
+      return;
+    }
+    if (event.key === '-') {
+      event.preventDefault();
+      event.stopPropagation();
+      setZoomMode('custom');
+      setScale((prev) => Math.max(LIGHTBOX_ZOOM_MIN, Number((prev - LIGHTBOX_ZOOM_STEP).toFixed(2))));
+      return;
+    }
+    if (event.key === '0') {
+      event.preventDefault();
+      event.stopPropagation();
+      setZoomMode('fit');
+      setScale(1);
+      return;
+    }
+    if (event.key === ' ' || event.key === 'Enter') {
+      // 避免灯箱打开期间按空格/回车误触发底层复习卡翻面
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, [onClose]);
+
+  useEventRegistry(
+    [{ target: 'window', type: 'keydown', listener: handleKeyDown, options: true }],
+    [handleKeyDown],
+  );
+
+  const handleZoomIn = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setZoomMode('custom');
+    setScale((prev) => Math.min(LIGHTBOX_ZOOM_MAX, Number((prev + LIGHTBOX_ZOOM_STEP).toFixed(2))));
+  }, []);
+
+  const handleZoomOut = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    setZoomMode('custom');
+    setScale((prev) => Math.max(LIGHTBOX_ZOOM_MIN, Number((prev - LIGHTBOX_ZOOM_STEP).toFixed(2))));
+  }, []);
+
+  const handleToggleFitOrReset = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (zoomMode === 'fit') {
+      setZoomMode('custom');
+      setScale(1);
+    } else {
+      setZoomMode('fit');
+      setScale(1);
+    }
+  }, [zoomMode]);
+
+  const handleImageClick = useCallback((event: React.MouseEvent<HTMLImageElement>) => {
+    event.stopPropagation();
+    if (zoomMode === 'fit') {
+      setZoomMode('custom');
+      setScale(1.5);
+    } else {
+      setZoomMode('fit');
+      setScale(1);
+    }
+  }, [zoomMode]);
+
+  const stopBubble = useCallback((event: React.SyntheticEvent) => {
+    event.stopPropagation();
+  }, []);
+
+  const zoomStyle: React.CSSProperties | undefined = useMemo(() => {
+    if (zoomMode === 'fit') return undefined;
+    if (naturalSize && naturalSize.width > 0) {
+      return {
+        width: `${Math.round(naturalSize.width * scale)}px`,
+        height: 'auto',
+        maxWidth: 'none',
+        maxHeight: 'none',
+      };
+    }
+    return {
+      transform: `scale(${scale})`,
+      transformOrigin: 'center center',
+      maxWidth: 'none',
+      maxHeight: 'none',
+    };
+  }, [naturalSize, scale, zoomMode]);
+
+  const content = (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={image.alt || t('imageViewer.zoomInOut', { defaultValue: 'Zoom' })}
+      data-testid="anki-image-lightbox"
+      data-anki-image-lightbox="true"
+      className="fixed inset-0 z-modal flex flex-col items-center justify-center bg-black/85 backdrop-blur-xs"
+      onPointerDown={stopBubble}
+      onMouseDown={stopBubble}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        className="fixed right-4 top-4 z-10 flex items-center gap-2"
+        onClick={stopBubble}
+        onPointerDown={stopBubble}
+      >
+        <DsButton
+          type="button"
+          variant="ghost"
+          iconOnly
+          data-testid="anki-image-lightbox-zoom-out"
+          aria-label={t('imageViewer.zoomOut', { defaultValue: 'Zoom out' })}
+          title={t('imageViewer.zoom_out', { defaultValue: 'Zoom out (-)' })}
+          onClick={handleZoomOut}
+          className="h-11 min-w-11 rounded-lg border border-white/25 bg-black/65 px-2.5 text-sm text-white hover:bg-black/85 hover:text-white focus-visible:ring-white/80"
+        >
+          <MagnifyingGlassMinus size={18} aria-hidden="true" />
+        </DsButton>
+        <DsButton
+          type="button"
+          variant="ghost"
+          data-testid="anki-image-lightbox-reset"
+          aria-label={t('imageViewer.reset', { defaultValue: 'Reset' })}
+          title={t('imageViewer.reset_title', { defaultValue: 'Reset (0)' })}
+          onClick={handleToggleFitOrReset}
+          className="h-11 min-w-14 rounded-lg border border-white/25 bg-black/65 px-3 font-mono text-xs font-medium tabular-nums text-white hover:bg-black/85 hover:text-white focus-visible:ring-white/80"
+        >
+          {zoomMode === 'fit' ? '1:1' : `${Math.round(scale * 100)}%`}
+        </DsButton>
+        <DsButton
+          type="button"
+          variant="ghost"
+          iconOnly
+          data-testid="anki-image-lightbox-zoom-in"
+          aria-label={t('imageViewer.zoomIn', { defaultValue: 'Zoom in' })}
+          title={t('imageViewer.zoom_in', { defaultValue: 'Zoom in (+)' })}
+          onClick={handleZoomIn}
+          className="h-11 min-w-11 rounded-lg border border-white/25 bg-black/65 px-2.5 text-sm text-white hover:bg-black/85 hover:text-white focus-visible:ring-white/80"
+        >
+          <MagnifyingGlassPlus size={18} aria-hidden="true" />
+        </DsButton>
+        <DsButton
+          type="button"
+          variant="ghost"
+          iconOnly
+          data-testid="anki-image-lightbox-close"
+          aria-label={t('imageViewer.close', { defaultValue: 'Close (Esc)' })}
+          title={t('imageViewer.close', { defaultValue: 'Close (Esc)' })}
+          onClick={(event) => {
+            event.stopPropagation();
+            onClose();
+          }}
+          className="h-11 min-w-11 rounded-lg border border-white/25 bg-black/65 px-2.5 text-sm text-white hover:bg-black/85 hover:text-white focus-visible:ring-white/80"
+        >
+          <X size={18} aria-hidden="true" />
+        </DsButton>
+      </div>
+
+      <div
+        data-testid="anki-image-lightbox-backdrop"
+        className="flex h-full w-full items-center justify-center overflow-auto p-6 pt-20"
+        onClick={(event) => {
+          event.stopPropagation();
+          if (event.target === event.currentTarget) {
+            onClose();
+          }
+        }}
+      >
+        <img
+          data-testid="anki-image-lightbox-img"
+          src={image.src}
+          alt={image.alt}
+          draggable={false}
+          onClick={handleImageClick}
+          onLoad={(event) => {
+            const el = event.currentTarget;
+            if (el.naturalWidth > 0 && el.naturalHeight > 0) {
+              setNaturalSize({ width: el.naturalWidth, height: el.naturalHeight });
+            }
+          }}
+          style={zoomStyle}
+          className={cn(
+            'select-none rounded shadow-2xl',
+            zoomMode === 'fit'
+              ? 'max-h-[86vh] max-w-[94vw] cursor-zoom-in object-contain'
+              : 'cursor-zoom-out',
+          )}
+        />
+      </div>
+    </div>
+  );
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(content, document.body);
+  }
+  return content;
+};
+
 export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   card,
   template,
@@ -562,7 +797,9 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   interactiveFrame = false,
   onFrameClick,
   onFrameWheel,
+  onImageLightboxChange,
 }) => {
+  const { t: tCommon } = useTranslation('common');
   const rawExtraFields = useMemo<Record<string, string> | null>(() => {
     const dynamicExtra = (card as AnkiCard & { extraFields?: Record<string, string> }).extraFields;
     return dynamicExtra ?? card.extra_fields ?? card.fields ?? null;
@@ -571,6 +808,34 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
 
   const darkMode = useDocumentDarkMode();
   const surfaceColor = useCardFaceSurfaceColor();
+  const [mediaRetryNonce, setMediaRetryNonce] = useState(0);
+  const [lightboxImage, setLightboxImage] = useState<SandboxImageClickPayload | null>(null);
+
+  useEffect(() => {
+    setLightboxImage(null);
+  }, [card.id, side]);
+
+  useEffect(() => {
+    onImageLightboxChange?.(lightboxImage !== null);
+  }, [lightboxImage, onImageLightboxChange]);
+
+  useEffect(() => () => {
+    onImageLightboxChange?.(false);
+  }, [onImageLightboxChange]);
+
+  const handleOpenLightbox = useCallback((payload: SandboxImageClickPayload) => {
+    if (!payload.src) return;
+    setLightboxImage(payload);
+  }, []);
+
+  const handleCloseLightbox = useCallback(() => {
+    setLightboxImage(null);
+  }, []);
+
+  const handleRetryMedia = useCallback(() => {
+    clearCardMediaCache();
+    setMediaRetryNonce((n) => n + 1);
+  }, []);
 
   const rendered = useMemo<DetailedCardRenderResult | null>(() => {
     if (occlusionSpec || !template) return null;
@@ -604,14 +869,18 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
     () => (occlusionSpec ? undefined : extractInlineMediaNames(rawFaceHtml)),
     [occlusionSpec, rawFaceHtml],
   );
-  const media = useCardMediaMap(occlusionSpec ? undefined : card.images, inlineMediaRefs);
+  const { media, loading: mediaLoading } = useCardMediaState(
+    occlusionSpec ? undefined : card.images,
+    inlineMediaRefs,
+    mediaRetryNonce,
+  );
 
   const faceHtml = useMemo(() => {
     if (!rawFaceHtml) return '';
     // 背面不自动重放正面的音频（同 Anki：{{FrontSide}} 里的音频不自动播放）
     const noAutoplay = side === 'back' ? soundNames(frontHtml) : undefined;
-    return injectCardMedia(rawFaceHtml, media, { noAutoplay });
-  }, [rawFaceHtml, side, frontHtml, media]);
+    return injectCardMedia(rawFaceHtml, media, { noAutoplay, mediaLoading });
+  }, [rawFaceHtml, side, frontHtml, media, mediaLoading]);
   // 卡面公式与聊天侧一致由 KaTeX 自带字体排版（htmlAndMathml + iframe 内 data: 字体），
   // 不依赖设备数学字体（#461）。样式首次下载期间先出纯 MathML，就绪后切换。
   const katexCss = useKatexSandboxCss(cardHtmlNeedsKatex(faceHtml));
@@ -627,9 +896,9 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   );
   // 媒体异步加载完成后重建 ShadowDomPreview，避免预加载阶段 0px 坏图把 iframe 高度锁死。
   const mediaSignature = useMemo(() => {
-    if (media.size === 0) return 'm:0';
-    return `m:${Array.from(media.keys()).sort().join(',')}`;
-  }, [media]);
+    if (media.size === 0) return `m:0:${mediaLoading ? '1' : '0'}`;
+    return `m:${Array.from(media.keys()).sort().join(',')}:${mediaLoading ? '1' : '0'}`;
+  }, [media, mediaLoading]);
 
   // fallback 视图：\( \)、\[ \]、$、$$ 公式经 KaTeX 渲染；无公式时保持纯文本零成本
   const latexHtml = useMemo(
@@ -674,7 +943,7 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
     return { imageSrcs: imgs, audioAttachments: audios };
   }, [occlusionSpec, card.images, media, previewHtml, referencedInAnyFace]);
 
-  const hasInteractiveAttachments = audioAttachments.length > 0;
+  const hasInteractiveAttachments = imageSrcs.length > 0 || audioAttachments.length > 0;
   const hasInteractiveContent = frameInteractive || hasInteractiveAttachments;
 
   const stageMode = stageHeight != null && stageHeight > 0;
@@ -730,8 +999,12 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
             cssContent={cssContent}
             compact={compact}
             fidelity="anki"
+            darkMode={darkMode}
             minHeight={stageMode ? stageHeight : undefined}
+            className={interactiveFrame && !frameInteractive ? 'pointer-events-none' : undefined}
             onFrameClick={frameInteractive ? onFrameClick : undefined}
+            onFrameImageClick={frameInteractive ? handleOpenLightbox : undefined}
+            onFrameSoundClick={frameInteractive ? handleRetryMedia : undefined}
             onFrameWheel={frameInteractive ? onFrameWheel : undefined}
             trustedCss={katexCss ?? undefined}
           />
@@ -747,13 +1020,27 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
           {imageSrcs.length > 0 || audioAttachments.length > 0 ? (
             <div className="mt-3 flex w-full flex-col items-center gap-2">
               {imageSrcs.map((src) => (
-                <img
+                <DsButton
                   key={src}
-                  src={src}
-                  alt=""
-                  loading="lazy"
-                  className="max-h-64 max-w-full rounded object-contain"
-                />
+                  type="button"
+                  variant="ghost"
+                  data-anki-zoom-trigger="true"
+                  aria-label={tCommon('imageViewer.zoomIn', { defaultValue: 'Zoom in' })}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onMouseDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    handleOpenLightbox({ src, alt: '' });
+                  }}
+                  className="h-auto max-w-full cursor-zoom-in rounded border-0 bg-transparent p-0 hover:bg-transparent"
+                >
+                  <img
+                    src={src}
+                    alt=""
+                    loading="lazy"
+                    className="max-h-64 max-w-full rounded object-contain"
+                  />
+                </DsButton>
               ))}
               {audioAttachments.map((item) => (
                 <div
@@ -796,13 +1083,27 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
             </div>
           )}
           {imageSrcs.map((src) => (
-            <img
+            <DsButton
               key={src}
-              src={src}
-              alt=""
-              loading="lazy"
-              className="max-h-64 max-w-full rounded object-contain"
-            />
+              type="button"
+              variant="ghost"
+              data-anki-zoom-trigger="true"
+              aria-label={tCommon('imageViewer.zoomIn', { defaultValue: 'Zoom in' })}
+              onPointerDown={(event) => event.stopPropagation()}
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleOpenLightbox({ src, alt: '' });
+              }}
+              className="h-auto max-w-full cursor-zoom-in rounded border-0 bg-transparent p-0 hover:bg-transparent"
+            >
+              <img
+                src={src}
+                alt=""
+                loading="lazy"
+                className="max-h-64 max-w-full rounded object-contain"
+              />
+            </DsButton>
           ))}
           {audioAttachments.map((item) => (
             <div
@@ -823,6 +1124,9 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
         </div>
       )}
       {showRenderIssues ? <RenderIssueNotice issues={issues} /> : null}
+      {lightboxImage ? (
+        <CardImageLightbox image={lightboxImage} onClose={handleCloseLightbox} />
+      ) : null}
     </div>
   );
 };
