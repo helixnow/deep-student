@@ -32,7 +32,7 @@ import {
 import { peekPendingChatNavigation } from '../navigation/pendingChatNavigation';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
-const STARTUP_DRAFT_FALLBACK_TIMEOUT_MS = 8_000;
+const STARTUP_DRAFT_FALLBACK_TIMEOUT_MS = 4_000;
 
 function pickFallbackResumableSessionId(sessions: readonly ChatSession[]): string | null {
   const resumable = sessions.find((session) => isResumableSession(session));
@@ -408,13 +408,34 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
           if (!draftSessionPromise) {
             draftSessionPromise = getOrCreateHiddenDraftSession();
           }
-          const draftSession = allSessions.length > 0
-            ? await awaitWithTimeout(draftSessionPromise, STARTUP_DRAFT_FALLBACK_TIMEOUT_MS)
-            : await draftSessionPromise;
+          const draftSession = await awaitWithTimeout(draftSessionPromise, STARTUP_DRAFT_FALLBACK_TIMEOUT_MS);
           sessionToSelect = draftSession.id;
         } catch (e) {
           console.warn('[ChatV2Page] Failed to create startup draft session:', e);
           sessionToSelect = pickFallbackResumableSessionId(allSessions);
+          if (!sessionToSelect) {
+            const scope = getDraftSessionScope('chat', null);
+            const placeholderId = `draft_local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            const placeholderStore = sessionManager.getOrCreate(placeholderId, { mode: 'chat' });
+            placeholderStore.setState({
+              sessionMetadata: buildHiddenDraftSessionMetadata(null, scope),
+            });
+            trackHiddenDraftSessionId(placeholderId);
+            sessionToSelect = placeholderId;
+            // If the timed-out draft IPC eventually resolves while the placeholder is still
+            // active and untouched, seamlessly upgrade to the persisted hidden draft session.
+            draftSessionPromise?.then((resolvedDraft) => {
+              const state = placeholderStore.getState();
+              const isUntouched = currentSessionIdRef.current === placeholderId
+                && state.messageOrder.length === 0
+                && state.inputValue.trim().length === 0
+                && state.attachments.length === 0
+                && state.pendingContextRefs.length === 0;
+              if (isUntouched) {
+                setCurrentSessionId(resolvedDraft.id);
+              }
+            }).catch(() => {});
+          }
         }
       }
 
