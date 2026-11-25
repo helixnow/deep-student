@@ -894,13 +894,19 @@ export const MediaAskTab: React.FC<{
           onSeekTimestamp={ctx.seekTo}
           onOpenSettings={handleOpenSettings}
           onPromoteToMainChat={({ messages, anchor }) => {
-            const lastUserMsg =
-              [...messages].reverse().find((m) => m.role === 'user') ?? messages[messages.length - 1];
-            const effectiveRef = anchor?.referenceId ?? miniChatAnchor.referenceId;
-            const promptOrLastQuestion = lastUserMsg
-              ? `${effectiveRef} ${lastUserMsg.content}`
-              : buildRecentMomentPrompt(ctx, name, t);
-            void start('mini-chat-promote', promptOrLastQuestion);
+            const firstAnchoredMsg = messages.find((m) => m.anchor?.referenceId);
+            const effectiveRef =
+              firstAnchoredMsg?.anchor?.referenceId ??
+              anchor?.referenceId ??
+              miniChatAnchor.referenceId;
+            const conversationLines = messages
+              .filter((m) => m.content.trim().length > 0)
+              .map((m) => `${m.role === 'user' ? 'Q' : 'A'}: ${m.content.trim()}`);
+            const promptOrConversation =
+              conversationLines.length > 0
+                ? `${effectiveRef}\n${conversationLines.join('\n\n')}`
+                : buildRecentMomentPrompt(ctx, name, t);
+            void start('mini-chat-promote', promptOrConversation);
           }}
         />
       </div>
