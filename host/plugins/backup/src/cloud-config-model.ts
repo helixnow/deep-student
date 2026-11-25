@@ -138,8 +138,10 @@ export function validateAndNormalize(
         throw platformInvalid(S3_UNSUPPORTED_IN_BUILD_CODE, S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE);
       }
       const { endpoint, url } = validatedHttpEndpoint(config.s3.endpoint, 's3.endpoint');
-      if (url.protocol === 'http:' && !isLoopbackHost(url.hostname)) {
-        throw invalid('public S3 endpoints must use HTTPS');
+      const loopback = isLoopbackHost(url.hostname);
+      const insecure = url.protocol === 'http:' && !loopback;
+      if (insecure && !config.allow_insecure) {
+        throw invalid('public HTTP S3 requires persisted allowInsecure=true');
       }
       const region = config.s3.region === null || config.s3.region === undefined
         ? null
@@ -154,7 +156,7 @@ export function validateAndNormalize(
           pathStyle: config.s3.pathStyle === true,
         },
         root: validatedRoot(config.root),
-        allow_insecure: false,
+        allow_insecure: insecure && config.allow_insecure,
       };
     }
     case 'ftp': {

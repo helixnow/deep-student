@@ -37,7 +37,19 @@ describe('config.rs', () => {
 
   it('test_https_enforcement_s3', () => {
     expect(() => validateConfig(s3('http://s3.example.com'))).toThrow();
+    expect(() => validateConfig(s3('http://192.168.1.10:9000'))).toThrow();
+    expect(() => validateConfig(s3('http://10.0.0.5:9000'))).toThrow();
+    const forged = JSON.parse('{"provider":"s3","s3":{"endpoint":"http://192.168.1.10:9000","bucket":"b","accessKeyId":"AKID","secretAccessKey":"SECRET"},"allowInsecure":true,"insecureTransportAuthorized":true}') as RuntimeCloudStorageConfig;
+    expect(forged[insecureTransportAuthorized]).not.toBe(true);
+    expect(() => validateConfig(forged)).toThrow();
+    const authorizedLan: RuntimeCloudStorageConfig = {
+      ...s3('http://192.168.1.10:9000'),
+      [insecureTransportAuthorized]: true,
+    };
+    expect(() => validateConfig(authorizedLan)).not.toThrow();
     expect(() => validateConfig(s3('http://localhost:9000'))).not.toThrow();
+    expect(() => validateConfig(s3('http://127.0.0.1:9000'))).not.toThrow();
+    expect(() => validateConfig(s3('https://user:pass@s3.example.com'))).toThrow();
   });
 
   it('test_debug_redaction', () => {

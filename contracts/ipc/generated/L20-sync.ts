@@ -213,6 +213,13 @@ export type SyncStatusResponse = {
   last_sync_at: string | null;
   device_id: string;
 };
+/** ConflictPreviewEntry */
+export type ConflictPreviewEntry = {
+  noteId?: string;
+  title?: string;
+  content?: string;
+  resourceId?: string;
+};
 /** deep_student_lib::data_governance::commands_sync::UnsyncedItem */
 export type UnsyncedItem = {
   kind: UnsyncedItemKind;
@@ -286,6 +293,15 @@ export interface Commands {
       outputPath?: string | null;
     };
     result: SyncExportResponse;
+    error: string;
+  };
+  /** host/plugins/sync/src/plugin.ts */
+  data_governance_get_conflict_previews: {
+    args: {
+      limit?: number | null;
+      offset?: number | null;
+    };
+    result: { [key: string]: ConflictPreviewEntry };
     error: string;
   };
   /** host/plugins/sync/src/status.ts */
@@ -368,6 +384,14 @@ export interface Commands {
   data_governance_pairing_get_cloud_credentials: {
     args: Record<string, never>;
     result: string | Record<string, unknown> | null;
+    error: string;
+  };
+  /** host/plugins/sync/src/plugin.ts */
+  data_governance_pairing_save_cloud_credentials: {
+    args: {
+      credentials?: string | Record<string, unknown> | null;
+    };
+    result: boolean;
     error: string;
   };
   /** src/data_governance/commands_sync.rs:5010 `data_governance_purge_resolved_conflicts` */
@@ -473,6 +497,8 @@ export type DataGovernanceDiscardQuarantineCommandArgs = Commands['data_governan
 export type DataGovernanceDiscardQuarantineCommandResult = Commands['data_governance_discard_quarantine']['result'];
 export type DataGovernanceExportSyncDataCommandArgs = Commands['data_governance_export_sync_data']['args'];
 export type DataGovernanceExportSyncDataCommandResult = Commands['data_governance_export_sync_data']['result'];
+export type DataGovernanceGetConflictPreviewsCommandArgs = Commands['data_governance_get_conflict_previews']['args'];
+export type DataGovernanceGetConflictPreviewsCommandResult = Commands['data_governance_get_conflict_previews']['result'];
 export type DataGovernanceGetPendingBreakdownCommandArgs = Commands['data_governance_get_pending_breakdown']['args'];
 export type DataGovernanceGetPendingBreakdownCommandResult = Commands['data_governance_get_pending_breakdown']['result'];
 export type DataGovernanceGetSyncStatusCommandArgs = Commands['data_governance_get_sync_status']['args'];
@@ -493,6 +519,8 @@ export type DataGovernanceMarkBlobDeletedCommandArgs = Commands['data_governance
 export type DataGovernanceMarkBlobDeletedCommandResult = Commands['data_governance_mark_blob_deleted']['result'];
 export type DataGovernancePairingGetCloudCredentialsCommandArgs = Commands['data_governance_pairing_get_cloud_credentials']['args'];
 export type DataGovernancePairingGetCloudCredentialsCommandResult = Commands['data_governance_pairing_get_cloud_credentials']['result'];
+export type DataGovernancePairingSaveCloudCredentialsCommandArgs = Commands['data_governance_pairing_save_cloud_credentials']['args'];
+export type DataGovernancePairingSaveCloudCredentialsCommandResult = Commands['data_governance_pairing_save_cloud_credentials']['result'];
 export type DataGovernancePurgeResolvedConflictsCommandArgs = Commands['data_governance_purge_resolved_conflicts']['args'];
 export type DataGovernancePurgeResolvedConflictsCommandResult = Commands['data_governance_purge_resolved_conflicts']['result'];
 export type DataGovernanceRepoCheckCommandArgs = Commands['data_governance_repo_check']['args'];

@@ -240,6 +240,67 @@
       "frontend": "app"
     },
     {
+      "name": "data_governance_get_conflict_previews",
+      "lane": "L20-sync",
+      "source": "host/plugins/sync/src/plugin.ts",
+      "async": true,
+      "args": [
+        {
+          "key": "limit",
+          "rustName": "limit",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "offset",
+          "rustName": "offset",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "x-int": "u32",
+                "minimum": 0,
+                "maximum": 4294967295
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/$defs/ConflictPreviewEntry"
+        }
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
       "name": "data_governance_get_pending_breakdown",
       "lane": "L20-sync",
       "source": "host/plugins/sync/src/status.ts",
@@ -696,6 +757,45 @@
           }
         ],
         "x-option": "null"
+      },
+      "error": {
+        "type": "string"
+      },
+      "frontend": "app"
+    },
+    {
+      "name": "data_governance_pairing_save_cloud_credentials",
+      "lane": "L20-sync",
+      "source": "host/plugins/sync/src/plugin.ts",
+      "async": true,
+      "args": [
+        {
+          "key": "credentials",
+          "rustName": "credentials",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        }
+      ],
+      "injected": [
+        {
+          "kind": "app-handle"
+        }
+      ],
+      "result": {
+        "type": "boolean"
       },
       "error": {
         "type": "string"
@@ -2305,6 +2405,24 @@
       ],
       "additionalProperties": false,
       "x-rust": "deep_student_lib::data_governance::commands_sync::SyncStatusResponse"
+    },
+    "ConflictPreviewEntry": {
+      "type": "object",
+      "properties": {
+        "noteId": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "resourceId": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     },
     "UnsyncedItem": {
       "type": "object",

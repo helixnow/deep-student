@@ -7,16 +7,18 @@ import { syncGovernance } from '../../backup/api.ts';
  * （`local-runtime.node.ts`），移动端入口不注入——缺省端口没有本地文件系统，走磁盘的指令按
  * `IO error` / `Database error` 降级，纯 SQLite 的指令与契约不受影响。
  */
-import { definePlugin } from '../../../kernel/api.ts';
+import { CommandError, definePlugin } from '../../../kernel/api.ts';
 import { createPairingCode, applyPairingCode, type PairingSettings } from './device-pairing.ts';
 import type { SettingsStore } from '../../../platform/settings/api.ts';
+import type { CloudStorageCredentials } from '../../../platform/secrets/api.ts';
 import type { Context } from '@deepseek-ai/cordis';
 import type { HostPlugin, PluginPlatform } from '../../../kernel/core.ts';
-import { setLocalRuntime, type LocalRuntime } from './local-runtime.ts';
+import { fs, setLocalRuntime, type LocalRuntime } from './local-runtime.ts';
 import type { BatchQuarantineResult, RecordConflictRow, RollbackSnapshotResponse, SyncExportResponse, SyncImportResponse, SyncQuarantineRow, SyncService, SyncSnapshotBatchRow } from '../api.ts';
 import { Hlc } from './hlc.ts';
 import { countRecordConflicts, discardAll, discardOne } from './local-commands.ts';
-import { getSyncStatus } from './status.ts';
+import { getPendingBreakdown, getSyncStatus } from './status.ts';
+import { sqliteTableExists } from '../repository/conflicts.ts';
 import { listSyncSnapshotBatches, purgeResolvedConflicts } from './history-commands.ts';
 import { listQuarantine, listRecordConflicts, resolveConflicts } from './list-commands.ts';
 import { cancelActiveSync, runUntilCallerOrPluginStops, runUntilPluginStops } from './cancellation.ts';
@@ -69,7 +71,183 @@ import { markBlobDeletedCommand, markAssetDeletedCommand } from './tombstone-com
 import { listUnsyncedItemsCommand } from './unsynced-command.ts';
 import type { LocalSyncCommandPorts } from './sync-command-needs.ts';
 import type { CloudStorageConfig } from '../../../../contracts/ipc/generated/_shared.ts';
-import type { ConflictDetectionResponse, RepoCheckReport } from '../../../../contracts/ipc/generated/L20-sync.ts';
+import type { ConflictDetectionResponse, ConflictPreviewEntry, PendingBreakdownResponse, RepoCheckReport } from '../../../../contracts/ipc/generated/L20-sync.ts';
+
+function sanitizePairingCloudCredentials(raw: unknown): CloudStorageCredentials {
+  if (raw === null || raw === undefined || raw === '') return {};
+  const parsedValue: unknown = typeof raw === 'string'
+    ? (raw.trim() === '' ? {} : JSON.parse(raw))
+    : raw;
+  if (!parsedValue || typeof parsedValue !== 'object' || Array.isArray(parsedValue)) {
+    throw new Error('cloud credentials payload must be a JSON object');
+  }
+  const record = parsedValue as Record<string, unknown>;
+  const keepNonBlank = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+  const webdavPassword = keepNonBlank(record.webdavPassword);
+  const s3SecretAccessKey = keepNonBlank(record.s3SecretAccessKey);
+  const ftpPassword = keepNonBlank(record.ftpPassword);
+  const encryptionPassword = keepNonBlank(record.encryptionPassword);
+  return {
+    ...(webdavPassword ? { webdavPassword } : {}),
+    ...(s3SecretAccessKey ? { s3SecretAccessKey } : {}),
+    ...(ftpPassword ? { ftpPassword } : {}),
+    ...(encryptionPassword ? { encryptionPassword } : {}),
+  };
+}
+
+async function readPairingCloudCredentialsJson(ctx: SyncContext): Promise<string | null> {
+  const creds = await ctx.secrets.openStore(ctx.app.dataDir).getCloudCredentials();
+  if (!creds) return null;
+  const sanitized = sanitizePairingCloudCredentials(creds);
+  return Object.keys(sanitized).length > 0 ? JSON.stringify(sanitized) : null;
+}
+
+async function savePairingCloudCredentials(ctx: SyncContext, raw: unknown): Promise<void> {
+  const sanitized = sanitizePairingCloudCredentials(raw);
+  const store = ctx.secrets.openStore(ctx.app.dataDir);
+  if (Object.keys(sanitized).length > 0) {
+    await store.saveCloudCredentials(sanitized);
+  } else {
+    await store.deleteCloudCredentials();
+  }
+  // Purge any legacy duplicate in slot-scoped settings secret store so old/deleted credentials never resurrect.
+  try {
+    const settings = ctx.reflect.get('settings') as SettingsStore | undefined;
+    await settings?.deleteSecret?.('cloud_storage_credentials');
+    settings?.delete?.('cloud_storage_credentials');
+  } catch {
+    // Best-effort cleanup when settings service is absent or read-only
+  }
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function getConflictPreviews(
+  ctx: SyncContext,
+  limit?: number | null,
+  offset?: number | null,
+): Record<string, ConflictPreviewEntry> {
+  const rows = listRecordConflicts(ctx.storage, limit, offset);
+  const noteIds = new Set<string>();
+  const resourceIds = new Set<string>();
+  for (const row of rows) {
+    if (row.database_name === 'vfs' && row.table_name === 'notes') {
+      noteIds.add(row.record_id);
+    } else if (row.database_name === 'vfs' && row.table_name === 'resources') {
+      resourceIds.add(row.record_id);
+    }
+  }
+  if (noteIds.size === 0 && resourceIds.size === 0) return {};
+
+  const vfsPath = ctx.storage.pathOf('vfs');
+  if (!fs.existsSync(vfsPath)) return {};
+
+  const previews: Record<string, ConflictPreviewEntry> = {};
+  let db;
+  try {
+    db = ctx.storage.openFile(vfsPath, { profile: 'plain' });
+  } catch {
+    return previews;
+  }
+
+  try {
+    const hasNotesTable = sqliteTableExists(db, 'notes');
+    const hasResourcesTable = sqliteTableExists(db, 'resources');
+
+    for (const noteId of noteIds) {
+      let found = false;
+      let title: string | undefined;
+      let content: string | undefined;
+      let resourceId: string | undefined;
+
+      try {
+        const noteMeta = ctx.notes.repository.getNote(noteId, db);
+        if (noteMeta) {
+          found = true;
+          title = nonEmptyString(noteMeta.title);
+          const metaRecord = noteMeta as unknown as Record<string, unknown>;
+          resourceId = nonEmptyString(metaRecord.resourceId ?? metaRecord.resource_id);
+        }
+        const noteContent = ctx.notes.repository.getNoteContent(noteId, db);
+        if (typeof noteContent === 'string') {
+          found = true;
+          content = noteContent;
+        }
+      } catch {
+        // Fallback below handles stubbed notes services in tests or stripped schemas
+      }
+
+      if (!found || title === undefined || content === undefined || resourceId === undefined) {
+        try {
+          if (hasNotesTable) {
+            const rawNote = getRecordData(db, 'notes', noteId, 'id');
+            if (rawNote && typeof rawNote === 'object' && !Array.isArray(rawNote)) {
+              const rec = rawNote as Record<string, unknown>;
+              found = true;
+              title ??= nonEmptyString(rec.title);
+              resourceId ??= nonEmptyString(rec.resource_id ?? rec.resourceId);
+              if (content === undefined && typeof rec.content === 'string') {
+                content = rec.content;
+              }
+            }
+          }
+          if (content === undefined && resourceId && hasResourcesTable) {
+            const rawRes = getRecordData(db, 'resources', resourceId, 'id');
+            if (rawRes && typeof rawRes === 'object' && !Array.isArray(rawRes)) {
+              const data = (rawRes as Record<string, unknown>).data;
+              if (typeof data === 'string') content = data;
+            }
+          }
+        } catch {
+          // Preview enrichment is strictly best-effort
+        }
+      }
+
+      if (found) {
+        previews[`vfs|notes|${noteId}`] = {
+          noteId,
+          ...(title !== undefined ? { title } : {}),
+          ...(content !== undefined ? { content } : {}),
+          ...(resourceId !== undefined ? { resourceId } : {}),
+        };
+      }
+    }
+
+    if (hasResourcesTable) {
+      for (const resourceId of resourceIds) {
+        try {
+          const rawRes = getRecordData(db, 'resources', resourceId, 'id');
+          if (!rawRes || typeof rawRes !== 'object' || Array.isArray(rawRes)) continue;
+          const rec = rawRes as Record<string, unknown>;
+          let title = nonEmptyString(rec.title ?? rec.name);
+          if (!title && typeof rec.metadata_json === 'string' && rec.metadata_json.trim()) {
+            try {
+              const meta = JSON.parse(rec.metadata_json) as Record<string, unknown>;
+              title = nonEmptyString(meta.title ?? meta.name ?? meta.fileName);
+            } catch {
+              // Ignore malformed metadata JSON
+            }
+          }
+          const content = typeof rec.data === 'string' ? rec.data : undefined;
+          previews[`vfs|resources|${resourceId}`] = {
+            resourceId,
+            ...(title !== undefined ? { title } : {}),
+            ...(content !== undefined ? { content } : {}),
+          };
+        } catch {
+          // Preview enrichment is strictly best-effort
+        }
+      }
+    }
+  } finally {
+    ctx.storage.close(db);
+  }
+
+  return previews;
+}
 
 
 /** 平台差异部分：桌面入口注入 `node:fs` / `node:os` 端口，移动端入口不注入。 */
@@ -130,23 +308,13 @@ export function createSyncPlugin(options: SyncPluginOptions = {}): HostPlugin {
         listByPrefix: prefix => settings.listByPrefix(prefix),
         getSecret: async key => {
           if (key === 'cloud_storage_credentials') {
-            const creds = await ctx.secrets.openStore(ctx.app.dataDir).getCloudCredentials();
-            return creds ? JSON.stringify(creds) : null;
+            return readPairingCloudCredentialsJson(ctx);
           }
           return settings.getSecret(key);
         },
         saveSecret: async (key, value) => {
           if (key === 'cloud_storage_credentials') {
-            const parsed = JSON.parse(value) as Record<string, unknown>;
-            const creds = {
-              ...(typeof parsed.webdavPassword === 'string' && parsed.webdavPassword ? { webdavPassword: parsed.webdavPassword } : {}),
-              ...(typeof parsed.s3SecretAccessKey === 'string' && parsed.s3SecretAccessKey ? { s3SecretAccessKey: parsed.s3SecretAccessKey } : {}),
-              ...(typeof parsed.ftpPassword === 'string' && parsed.ftpPassword ? { ftpPassword: parsed.ftpPassword } : {}),
-              ...(typeof parsed.encryptionPassword === 'string' && parsed.encryptionPassword ? { encryptionPassword: parsed.encryptionPassword } : {}),
-            };
-            const store = ctx.secrets.openStore(ctx.app.dataDir);
-            if (Object.keys(creds).length > 0) await store.saveCloudCredentials(creds);
-            else await store.deleteCloudCredentials();
+            await savePairingCloudCredentials(ctx, value);
             return;
           }
           return settings.saveSecret(key, value);
@@ -312,6 +480,32 @@ export function createSyncPlugin(options: SyncPluginOptions = {}): HostPlugin {
       ({ databaseName, quarantineId }) => service.discardQuarantine(databaseName, quarantineId));
     ctx.commands.register('data_governance_discard_all_quarantine', () => service.discardAllQuarantine());
     ctx.commands.register('data_governance_get_sync_status', () => service.getSyncStatus());
+    ctx.commands.register<Record<string, never>, PendingBreakdownResponse>('data_governance_get_pending_breakdown', () => {
+      assertNotInMaintenance(ctx);
+      return getPendingBreakdown(ctx.storage);
+    });
+    ctx.commands.register<Record<string, never>, string | null>('data_governance_pairing_get_cloud_credentials', async () => {
+      try {
+        return await readPairingCloudCredentialsJson(ctx);
+      } catch (error) {
+        throw new CommandError(error instanceof Error ? error.message : String(error));
+      }
+    });
+    ctx.commands.register<{ credentials?: string | Record<string, unknown> | null }, boolean>(
+      'data_governance_pairing_save_cloud_credentials',
+      async ({ credentials }) => {
+        try {
+          await savePairingCloudCredentials(ctx, credentials ?? null);
+          return true;
+        } catch (error) {
+          throw new CommandError(error instanceof Error ? error.message : String(error));
+        }
+      },
+    );
+    ctx.commands.register<{ limit?: number | null; offset?: number | null }, Record<string, ConflictPreviewEntry>>(
+      'data_governance_get_conflict_previews',
+      ({ limit, offset }) => getConflictPreviews(ctx, limit, offset),
+    );
     ctx.commands.register<{ limit?: number | null }, SyncSnapshotBatchRow[]>('data_governance_list_sync_snapshot_batches',
       ({ limit }) => service.listSyncSnapshotBatches(limit));
     ctx.commands.register<{ olderThanDays?: number | null }, number>('data_governance_purge_resolved_conflicts',

@@ -138,4 +138,68 @@ describe('CloudStorageSection insecure-transport opt-in round trip', () => {
       allow_insecure: true,
     });
   });
+
+  test('BUG-6: LAN HTTP S3 (MinIO) supports explicit allow_insecure opt-in dialog and persists the S3 risk banner', async () => {
+    const LAN_S3_ENDPOINT = 'http://192.168.1.20:9000';
+    vi.mocked(cloudApi.publishCloudConfig).mockResolvedValue({
+      ok: true,
+      generation: 2,
+      provider: 's3',
+      config: {
+        provider: 's3',
+        s3: {
+          endpoint: LAN_S3_ENDPOINT,
+          bucket: 'study-sync',
+          accessKeyId: 'minioadmin',
+          pathStyle: true,
+        },
+        allow_insecure: true,
+      },
+    });
+
+    render(<CloudStorageSection />);
+    fireEvent.click(await screen.findByText('cloudStorage:provider.s3'));
+    fireEvent.change(
+      await screen.findByPlaceholderText('cloudStorage:s3.endpointPlaceholder'),
+      { target: { value: LAN_S3_ENDPOINT } },
+    );
+    fireEvent.change(
+      screen.getByPlaceholderText('cloudStorage:s3.bucketPlaceholder'),
+      { target: { value: 'study-sync' } },
+    );
+    fireEvent.change(
+      screen.getByPlaceholderText('cloudStorage:s3.accessKeyIdPlaceholder'),
+      { target: { value: 'minioadmin' } },
+    );
+    fireEvent.change(
+      screen.getByPlaceholderText('cloudStorage:s3.secretAccessKeyPlaceholder'),
+      { target: { value: 'minio-secret' } },
+    );
+
+    const saveBtn = screen.getByRole('button', { name: 'cloudStorage:actions.save' });
+    expect(saveBtn).not.toBeDisabled();
+    fireEvent.click(saveBtn);
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog.textContent).toContain('cloudStorage:s3.insecureWarning.title');
+    fireEvent.click(
+      Array.from(dialog.querySelectorAll('button'))
+        .find((button) => button.textContent === 'cloudStorage:s3.insecureWarning.confirm')!,
+    );
+
+    await waitFor(() => expect(cloudApi.publishCloudConfig).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(cloudApi.publishCloudConfig).mock.calls[0][0]).toMatchObject({
+      provider: 's3',
+      allowInsecure: true,
+    });
+    await waitFor(() => {
+      const banners = screen.queryAllByRole('alert')
+        .filter((el) => el.textContent?.includes('cloudStorage:s3.insecureWarning.description'));
+      expect(banners).toHaveLength(1);
+    });
+    expect(JSON.parse(localStorage.getItem('cloud_storage_config_v2')!)).toMatchObject({
+      provider: 's3',
+      allow_insecure: true,
+    });
+  });
 });
