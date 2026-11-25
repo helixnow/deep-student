@@ -10,6 +10,7 @@ import {
   type VfsFile,
 } from '../api.ts';
 import { BlobRepo } from './blobs.ts';
+import { runWithoutChangeLogEcho } from './change-log-echo.ts';
 import { databaseResult } from './errors.ts';
 import { FolderRepo, newFolderItem } from './folders.ts';
 import { purgeIndexArtifactsByResource } from './index-artifacts.ts';
@@ -752,40 +753,44 @@ export class FileRepo implements FileRepository {
   }
 
   cancelProcessing(conn: SqlExecutor, fileId: string): number {
-    return databaseResult(() => conn.run(
+    return databaseResult(() => runWithoutChangeLogEcho(conn, 'files', () => conn.run(
       `UPDATE files
        SET processing_status = 'cancelled', processing_error = NULL
        WHERE id = ?1 AND processing_status IN ('queued','decode','vad','asr','indexing','pending')`,
-      [fileId]).changes);
+      [fileId]).changes));
   }
 
   markProcessingRecovered(conn: SqlExecutor, fileId: string): number {
-    return databaseResult(() => conn.run(
+    return databaseResult(() => runWithoutChangeLogEcho(conn, 'files', () => conn.run(
       `UPDATE files
        SET processing_status = 'pending',
            processing_error = 'recovered: interrupted by app restart'
        WHERE id = ?1`,
-      [fileId]).changes);
+      [fileId]).changes));
   }
 
   setProcessingError(conn: SqlExecutor, fileId: string, error: string,
     completedAt: number): void {
     databaseResult(() => {
-      conn.run(
-        `UPDATE files
-         SET processing_status = 'error',
-             processing_error = ?1,
-             processing_completed_at = ?2
-         WHERE id = ?3`,
-        [error, completedAt, fileId]);
+      runWithoutChangeLogEcho(conn, 'files', () => {
+        conn.run(
+          `UPDATE files
+           SET processing_status = 'error',
+               processing_error = ?1,
+               processing_completed_at = ?2
+           WHERE id = ?3`,
+          [error, completedAt, fileId]);
+      });
     });
   }
 
   updateProcessingProgress(conn: SqlExecutor, fileId: string, progressJson: string): void {
     databaseResult(() => {
-      conn.run(
-        'UPDATE files SET processing_progress = ?1 WHERE id = ?2',
-        [progressJson, fileId]);
+      runWithoutChangeLogEcho(conn, 'files', () => {
+        conn.run(
+          'UPDATE files SET processing_progress = ?1 WHERE id = ?2',
+          [progressJson, fileId]);
+      });
     });
   }
 
@@ -794,51 +799,54 @@ export class FileRepo implements FileRepository {
     issueSummary: string | null): void {
     databaseResult(() => {
       // G2: processing writes deliberately never touch business `updated_at`
-      // (pdf_processing_service.rs:2766-2840).
-      if (stage === 'completed') {
-        conn.run(
-          `UPDATE files SET processing_status = ?1, processing_progress = ?2,
-                  processing_completed_at = ?3, processing_error = NULL WHERE id = ?4`,
-          [stage, progressJson, completedAt ?? now, fileId]);
-      } else if (stage === 'completed_with_issues') {
-        conn.run(
-          `UPDATE files SET processing_status = ?1, processing_progress = ?2,
-                  processing_completed_at = ?3, processing_error = COALESCE(?4, processing_error)
-           WHERE id = ?5`,
-          [stage, progressJson, completedAt ?? now, issueSummary, fileId]);
-      } else if (stage === 'error') {
-        conn.run(
-          'UPDATE files SET processing_status = ?1, processing_progress = ?2 WHERE id = ?3',
-          [stage, progressJson, fileId]);
-      } else {
-        conn.run(
-          `UPDATE files SET processing_status = ?1, processing_progress = ?2,
-                  processing_started_at = COALESCE(processing_started_at, ?3)
-           WHERE id = ?4`,
-          [stage, progressJson, now, fileId]);
-      }
+      // (pdf_processing_service.rs:2766-2840) and are local-only derived state.
+      runWithoutChangeLogEcho(conn, 'files', () => {
+        if (stage === 'completed') {
+          conn.run(
+            `UPDATE files SET processing_status = ?1, processing_progress = ?2,
+                    processing_completed_at = ?3, processing_error = NULL WHERE id = ?4`,
+            [stage, progressJson, completedAt ?? now, fileId]);
+        } else if (stage === 'completed_with_issues') {
+          conn.run(
+            `UPDATE files SET processing_status = ?1, processing_progress = ?2,
+                    processing_completed_at = ?3, processing_error = COALESCE(?4, processing_error)
+             WHERE id = ?5`,
+            [stage, progressJson, completedAt ?? now, issueSummary, fileId]);
+        } else if (stage === 'error') {
+          conn.run(
+            'UPDATE files SET processing_status = ?1, processing_progress = ?2 WHERE id = ?3',
+            [stage, progressJson, fileId]);
+        } else {
+          conn.run(
+            `UPDATE files SET processing_status = ?1, processing_progress = ?2,
+                    processing_started_at = COALESCE(processing_started_at, ?3)
+             WHERE id = ?4`,
+            [stage, progressJson, now, fileId]);
+        }
+      });
     });
   }
 
   applyMultimodalIndexState(conn: SqlExecutor, fileId: string, state: string,
     indexedPagesJsonOrError: string | null): void {
     databaseResult(() => {
-      // multimodal_service.rs:1631-1644: only `indexed` stores pages, only
-      // `failed` stores the error, and every branch bumps `updated_at`.
-      const now = utcTimestamp();
-      if (state === 'indexed') {
-        conn.run(
-          'UPDATE files SET mm_index_state = ?1, mm_indexed_pages_json = ?2, updated_at = ?3 WHERE id = ?4',
-          [state, indexedPagesJsonOrError, now, fileId]);
-      } else if (state === 'failed') {
-        conn.run(
-          'UPDATE files SET mm_index_state = ?1, mm_index_error = ?2, updated_at = ?3 WHERE id = ?4',
-          [state, indexedPagesJsonOrError, now, fileId]);
-      } else {
-        conn.run(
-          'UPDATE files SET mm_index_state = ?1, updated_at = ?2 WHERE id = ?3',
-          [state, now, fileId]);
-      }
+      // Local-only derived multimodal index state: never bump synced `updated_at`
+      // and suppress unconditional `__change_log` trigger echoes.
+      runWithoutChangeLogEcho(conn, 'files', () => {
+        if (state === 'indexed') {
+          conn.run(
+            'UPDATE files SET mm_index_state = ?1, mm_indexed_pages_json = ?2 WHERE id = ?3',
+            [state, indexedPagesJsonOrError, fileId]);
+        } else if (state === 'failed') {
+          conn.run(
+            'UPDATE files SET mm_index_state = ?1, mm_index_error = ?2 WHERE id = ?3',
+            [state, indexedPagesJsonOrError, fileId]);
+        } else {
+          conn.run(
+            'UPDATE files SET mm_index_state = ?1 WHERE id = ?2',
+            [state, fileId]);
+        }
+      });
     });
   }
 

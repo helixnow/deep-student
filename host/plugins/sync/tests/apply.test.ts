@@ -1823,6 +1823,15 @@ suite('apply downloaded changes', () => {
     });
     // X6-AP-0408: retain mod.rs:14590-14593 in addition to the resulting row state.
     expect(isLocalDerivedSyncColumn('exam_sheets', 'mm_indexing_mode')).toBe(true);
+    for (const column of [
+      'processing_status', 'processing_progress', 'processing_started_at',
+      'processing_completed_at', 'processing_error',
+    ]) {
+      expect(isLocalDerivedSyncColumn('files', column)).toBe(true);
+    }
+    for (const column of ['preview_json', 'extracted_text', 'ocr_pages_json', 'file_name', 'updated_at']) {
+      expect(isLocalDerivedSyncColumn('files', column)).toBe(false);
+    }
   });
 
   it('preferred_project_root_path_is_local_derived_for_session_groups', () => {

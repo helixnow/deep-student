@@ -13,6 +13,7 @@ import {
   type VfsTextbook,
 } from '../api.ts';
 import { BlobRepo } from './blobs.ts';
+import { runWithoutChangeLogEcho } from './change-log-echo.ts';
 import { databaseResult } from './errors.ts';
 import { FolderRepo } from './folders.ts';
 import { parsePdfPreviewJson } from './pdf-preview-json.ts';
@@ -546,8 +547,10 @@ export class TextbookRepo implements TextbookRepository {
   }
 
   markTextbookRenderError(conn: SqlExecutor, textbookId: string, renderError: string): void {
-    conn.run("UPDATE files SET processing_status = 'error', processing_error = ?1 WHERE id = ?2",
-      [renderError, textbookId]);
+    runWithoutChangeLogEcho(conn, 'files', () => {
+      conn.run("UPDATE files SET processing_status = 'error', processing_error = ?1 WHERE id = ?2",
+        [renderError, textbookId]);
+    });
   }
 
   attachBlobIfMissing(conn: SqlExecutor, blobsDir: string, textbookId: string,
@@ -810,8 +813,10 @@ export class TextbookRepo implements TextbookRepository {
       const position = pages.findIndex(page => page.pageIndex === meta.pageIndex);
       if (position >= 0) pages[position] = meta;
       else pages.push(meta);
-      conn.run('UPDATE files SET mm_indexed_pages_json = ?1, updated_at = ?2 WHERE id = ?3',
-        [JSON.stringify(pages), utcTimestamp(), textbookId]);
+      runWithoutChangeLogEcho(conn, 'files', () => {
+        conn.run('UPDATE files SET mm_indexed_pages_json = ?1 WHERE id = ?2',
+          [JSON.stringify(pages), textbookId]);
+      });
     });
   }
 
@@ -842,8 +847,10 @@ export class TextbookRepo implements TextbookRepository {
 
   clearMmIndex(conn: SqlExecutor, textbookId: string): void {
     databaseResult(() => {
-      conn.run('UPDATE files SET mm_indexed_pages_json = NULL, updated_at = ?1 WHERE id = ?2',
-        [utcTimestamp(), textbookId]);
+      runWithoutChangeLogEcho(conn, 'files', () => {
+        conn.run('UPDATE files SET mm_indexed_pages_json = NULL WHERE id = ?1',
+          [textbookId]);
+      });
     });
   }
 
@@ -856,9 +863,9 @@ export class TextbookRepo implements TextbookRepository {
 
   setMmIndexState(conn: SqlExecutor, textbookId: string, state: string, error: string | null): void {
     databaseResult(() => {
-      const updated = conn.run(
-        'UPDATE files SET mm_index_state = ?1, mm_index_error = ?2, updated_at = ?3 WHERE id = ?4',
-        [state, error, utcTimestamp(), textbookId]).changes;
+      const updated = runWithoutChangeLogEcho(conn, 'files', () => conn.run(
+        'UPDATE files SET mm_index_state = ?1, mm_index_error = ?2 WHERE id = ?3',
+        [state, error, textbookId]).changes);
       if (updated === 0) throw notFound('textbook', textbookId);
     });
   }

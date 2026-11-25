@@ -8,6 +8,7 @@ import { VfsRepositoryError, type AnswerSubmission, type CreateQuestionParams, t
   type QuestionMetadataPatch, type QuestionRepository, type QuestionSearchFilters, type QuestionSearchListResult,
   type ReparseQuestionParams, type SubmissionSnapshot, type UpdateQuestionParams, type VerdictApplyOutcome } from '../api.ts';
 import { rustTrim, stringifyJsonValue } from '../../../platform/util/index.ts';
+import { runWithoutChangeLogEcho } from './change-log-echo.ts';
 import { databaseResult, rollbackIgnoringFailure } from './errors.ts';
 import { utcNow } from './timestamps.ts';
 import { mapSkippingErrors, parseImages, parseJson, parseSourceRefs, rowToQuestion, rowToSyncQuestion, selectQuestionColumns,
@@ -310,7 +311,9 @@ export class QuestionRepo implements QuestionRepository {
       if (!exists(conn, 'resources') || !exists(conn, 'exam_sheets')) return;
       const id = conn.pluck<string | null>('SELECT resource_id FROM exam_sheets WHERE id=?1', [examId]);
       if (id == null || rustTrim(id) === '') return;
-      conn.run("UPDATE resources SET index_state='pending',indexed_at=NULL,updated_at=?1 WHERE id=?2 AND index_state NOT IN ('pending','disabled')", [utcNow(), id]);
+      runWithoutChangeLogEcho(conn, 'resources', () => {
+        conn.run("UPDATE resources SET index_state='pending',indexed_at=NULL WHERE id=?1 AND index_state NOT IN ('pending','disabled')", [id]);
+      });
     });
   }
   examIdForQuestion(conn: SqlExecutor, id: string): string | null {

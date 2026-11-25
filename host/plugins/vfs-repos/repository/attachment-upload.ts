@@ -1,5 +1,6 @@
 /** Upload/registration pipeline of attachment_repo.rs (upload_*_with_conn, media stream, PDF repair). */
 import { logDebug, logError, logInfo, logWarn } from './logger.ts';
+import { runWithoutChangeLogEcho } from './change-log-echo.ts';
 import { nanoid } from 'nanoid';
 import { toBase64 } from '../../../platform/crypto/encoding.ts';
 import { utf8ByteLength } from '../../../platform/util/portable.ts';
@@ -545,7 +546,11 @@ export class AttachmentUploadPipeline {
         catch (error) { logWarn(`[VFS::AttachmentRepo] Failed to write ocr_pages_json for ${upsertedId}:`, error); }
       }
       if (prepared.pdfRenderError !== null) {
-        try { conn.run('UPDATE files SET processing_error = ?1 WHERE id = ?2', [prepared.pdfRenderError, upsertedId]); }
+        try {
+          runWithoutChangeLogEcho(conn, 'files', () => {
+            conn.run('UPDATE files SET processing_error = ?1 WHERE id = ?2', [prepared.pdfRenderError, upsertedId]);
+          });
+        }
         catch (error) { logWarn(`[VFS::AttachmentRepo] Failed to write processing_error for ${upsertedId}:`, error); }
       }
       return {

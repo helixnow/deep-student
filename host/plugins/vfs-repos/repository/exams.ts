@@ -15,6 +15,7 @@ import {
   type VfsFolderItem,
 } from '../api.ts';
 import { BlobRepo } from './blobs.ts';
+import { runWithoutChangeLogEcho } from './change-log-echo.ts';
 import { databaseResult, rollbackIgnoringFailure } from './errors.ts';
 import { FolderRepo } from './folders.ts';
 import { purgeIndexArtifactsByResource } from './index-artifacts.ts';
@@ -1102,9 +1103,9 @@ export class ExamRepo implements ExamRepository {
 
   setMmIndexState(conn: SqlExecutor, examId: string, state: string, error: string | null): void {
     databaseResult(() => {
-      const updated = conn.run(
-        'UPDATE exam_sheets SET mm_index_state = ?1, mm_index_error = ?2, updated_at = ?3 WHERE id = ?4',
-        [state, error, utcTimestamp(), examId]).changes;
+      const updated = runWithoutChangeLogEcho(conn, 'exam_sheets', () => conn.run(
+        'UPDATE exam_sheets SET mm_index_state = ?1, mm_index_error = ?2 WHERE id = ?3',
+        [state, error, examId]).changes);
       if (updated === 0) throw notFound('ExamSheet', examId);
     });
   }
@@ -1112,23 +1113,25 @@ export class ExamRepo implements ExamRepository {
   applyMultimodalIndexState(conn: SqlExecutor, examId: string, state: string,
     indexedPagesJsonOrError: string | null, embeddingDim: number): void {
     databaseResult(() => {
-      // multimodal_service.rs:1645-1658: exam_sheets also stores
-      // mm_embedding_dim/mm_indexed_at only on the `indexed` branch.
+      // Local-only derived multimodal index state: never bump synced `updated_at`
+      // and suppress unconditional `__change_log` trigger echoes.
       const now = utcTimestamp();
-      if (state === 'indexed') {
-        conn.run(
-          `UPDATE exam_sheets SET mm_index_state = ?1, mm_indexed_pages_json = ?2,
-                  mm_embedding_dim = ?3, mm_indexed_at = ?4, updated_at = ?4 WHERE id = ?5`,
-          [state, indexedPagesJsonOrError, embeddingDim, now, examId]);
-      } else if (state === 'failed') {
-        conn.run(
-          'UPDATE exam_sheets SET mm_index_state = ?1, mm_index_error = ?2, updated_at = ?3 WHERE id = ?4',
-          [state, indexedPagesJsonOrError, now, examId]);
-      } else {
-        conn.run(
-          'UPDATE exam_sheets SET mm_index_state = ?1, updated_at = ?2 WHERE id = ?3',
-          [state, now, examId]);
-      }
+      runWithoutChangeLogEcho(conn, 'exam_sheets', () => {
+        if (state === 'indexed') {
+          conn.run(
+            `UPDATE exam_sheets SET mm_index_state = ?1, mm_indexed_pages_json = ?2,
+                    mm_embedding_dim = ?3, mm_indexed_at = ?4 WHERE id = ?5`,
+            [state, indexedPagesJsonOrError, embeddingDim, now, examId]);
+        } else if (state === 'failed') {
+          conn.run(
+            'UPDATE exam_sheets SET mm_index_state = ?1, mm_index_error = ?2 WHERE id = ?3',
+            [state, indexedPagesJsonOrError, examId]);
+        } else {
+          conn.run(
+            'UPDATE exam_sheets SET mm_index_state = ?1 WHERE id = ?2',
+            [state, examId]);
+        }
+      });
     });
   }
 
@@ -1136,12 +1139,13 @@ export class ExamRepo implements ExamRepository {
     embeddingDim: number, indexingMode: string): void {
     databaseResult(() => {
       const nowMs = Date.now();
-      const nowStr = utcTimestamp();
-      conn.run(`UPDATE exam_sheets
-        SET mm_indexed_pages_json = ?1, mm_embedding_dim = ?2, mm_indexing_mode = ?3,
-            mm_indexed_at = ?4, mm_index_state = 'indexed', updated_at = ?5
-        WHERE id = ?6`,
-      [indexedPagesJson, embeddingDim, indexingMode, nowMs, nowStr, examId]);
+      runWithoutChangeLogEcho(conn, 'exam_sheets', () => {
+        conn.run(`UPDATE exam_sheets
+          SET mm_indexed_pages_json = ?1, mm_embedding_dim = ?2, mm_indexing_mode = ?3,
+              mm_indexed_at = ?4, mm_index_state = 'indexed'
+          WHERE id = ?5`,
+        [indexedPagesJson, embeddingDim, indexingMode, nowMs, examId]);
+      });
     });
   }
 }

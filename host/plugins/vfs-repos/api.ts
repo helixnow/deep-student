@@ -15,6 +15,7 @@ export * from './types/services.ts';
 export * from './types/note-owner-writes.ts';
 export * from './types/study-spaces.ts';
 export { StudySpaceRepo, fnv1a64Hex } from './repository/study-spaces.ts';
+export { runWithoutChangeLogEcho } from './repository/change-log-echo.ts';
 export {
   DEFAULT_PDF_PREVIEW_CONFIG, type PdfPreviewConfig, type PdfPreviewResult,
 } from './repository/pdf-preview.ts';

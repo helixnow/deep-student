@@ -10,6 +10,7 @@ import {
   type VfsEmbeddingDim,
   type VfsIndexProfile,
 } from '../api.ts';
+import { runWithoutChangeLogEcho } from './change-log-echo.ts';
 import { databaseResult } from './errors.ts';
 
 export const MIN_DIMENSION = 64;
@@ -361,10 +362,12 @@ function registerWithModelFingerprintInner(this: EmbeddingDimRepo, conn: SqlExec
     const [resourceState, retryColumn, retryAtColumn, errorColumn] = modality === 'text'
       ? ['index_state', 'index_retry_count', 'index_next_retry_at', 'index_error']
       : ['mm_index_state', 'mm_index_retry_count', 'mm_index_next_retry_at', 'mm_index_error'];
-    conn.run(`UPDATE resources SET ${resourceState} = 'pending', ${retryColumn} = 0,
-        ${retryAtColumn} = 0, ${errorColumn} = NULL
-      WHERE id IN (SELECT resource_id FROM vfs_index_units WHERE ${profileColumn} = ?1)`,
-    [previousProfileId]);
+    runWithoutChangeLogEcho(conn, 'resources', () => {
+      conn.run(`UPDATE resources SET ${resourceState} = 'pending', ${retryColumn} = 0,
+          ${retryAtColumn} = 0, ${errorColumn} = NULL
+        WHERE id IN (SELECT resource_id FROM vfs_index_units WHERE ${profileColumn} = ?1)`,
+      [previousProfileId]);
+    });
   }
 
   const result = this.getByKey(conn, dimension, modality);
