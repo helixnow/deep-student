@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { ApiConfig, ModelAssignments } from '@/types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -98,6 +98,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           getSetting('web_search.timeout_ms').catch(() => '15000') as Promise<string>,
           getSetting('web_search.api_key.google_cse').catch(() => '') as Promise<string>,
           getSetting('web_search.google_cse.cx').catch(() => '') as Promise<string>,
+          getSetting('web_search.google_cse.endpoint').catch(() => '') as Promise<string>,
           getSetting('web_search.api_key.serpapi').catch(() => '') as Promise<string>,
           getSetting('web_search.api_key.tavily').catch(() => '') as Promise<string>,
           getSetting('web_search.api_key.brave').catch(() => '') as Promise<string>,
@@ -148,6 +149,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           webTimeoutMs,
           webGoogleKey,
           webGoogleCx,
+          webGoogleEndpoint,
           webSerpKey,
           webTavilyKey,
           webBraveKey,
@@ -287,6 +289,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           webSearchTimeoutMs: parseInt(webTimeoutMs || '15000', 10),
           webSearchGoogleKey: webGoogleKey || '',
           webSearchGoogleCx: webGoogleCx || '',
+          webSearchGoogleEndpoint: webGoogleEndpoint || '',
           webSearchSerpApiKey: webSerpKey || '',
           webSearchTavilyKey: webTavilyKey || '',
           webSearchBraveKey: webBraveKey || '',
@@ -314,6 +317,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           modelAssignments
         });
         
+        lastGoogleEndpointRef.current = newConfig.webSearchGoogleEndpoint;
         setConfig(newConfig);
         // 🔧 标记 config 已成功加载，允许 auto-save
         if (configLoadedRef) configLoadedRef.current = true;
@@ -341,9 +345,11 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           try {
             const parsed = JSON.parse(savedConfig) as Partial<SystemConfig> & { mcpServers?: unknown };
             const normalized = normalizeMcpToolList(parsed?.mcpTools ?? parsed?.mcpServers);
+            lastGoogleEndpointRef.current = parsed?.webSearchGoogleEndpoint ?? '';
             setConfig(prev => ({
               ...prev,
               ...parsed,
+              webSearchGoogleEndpoint: parsed?.webSearchGoogleEndpoint ?? prev.webSearchGoogleEndpoint ?? '',
               theme: normalizeThemeMode(parsed?.theme),
               themePalette: normalizeThemePalette(parsed?.themePalette),
               mcpTools: normalized,
@@ -362,9 +368,12 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
       setLoading(false);
     }
   };
+  const lastGoogleEndpointRef = useRef<string>(config.webSearchGoogleEndpoint ?? '');
+
   const handleSave = useCallback(async (silent = false) => {
     setSaving(true);
     try {
+      lastGoogleEndpointRef.current = config.webSearchGoogleEndpoint ?? '';
       if (invoke) {
         await saveSettings({
           'auto_save': String(config.autoSave.toString()),
@@ -391,6 +400,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           'web_search.timeout_ms': String(String(config.webSearchTimeoutMs ?? 15000)),
           'web_search.api_key.google_cse': String(config.webSearchGoogleKey ?? ''),
           'web_search.google_cse.cx': String(config.webSearchGoogleCx ?? ''),
+          'web_search.google_cse.endpoint': String(config.webSearchGoogleEndpoint ?? ''),
           'web_search.api_key.serpapi': String(config.webSearchSerpApiKey ?? ''),
           'web_search.api_key.tavily': String(config.webSearchTavilyKey ?? ''),
           'web_search.api_key.brave': String(config.webSearchBraveKey ?? ''),
@@ -447,6 +457,28 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
       setSaving(false);
     }
   }, [config, invoke]);
+
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+
+  // Auto-save custom Google CSE endpoint changes (kept inside useSettingsConfig so Settings.tsx stays decoupled).
+  useEffect(() => {
+    const currentEndpoint = config.webSearchGoogleEndpoint ?? '';
+    if (loading || (configLoadedRef && !configLoadedRef.current)) {
+      lastGoogleEndpointRef.current = currentEndpoint;
+      return;
+    }
+    if (!config.autoSave || currentEndpoint === lastGoogleEndpointRef.current) {
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      if (lastGoogleEndpointRef.current !== currentEndpoint) {
+        lastGoogleEndpointRef.current = currentEndpoint;
+        void handleSaveRef.current(true);
+      }
+    }, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [config.webSearchGoogleEndpoint, config.autoSave, loading, configLoadedRef]);
 
   // 仅更新模型分配的某一个字段：读取后端当前 assignments 合并，再保存，避免空字段覆盖。
   const saveSingleAssignmentField = useCallback(

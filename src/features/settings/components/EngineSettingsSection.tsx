@@ -33,6 +33,7 @@ export interface WebSearchConfig {
   webSearchEngine?: string;
   webSearchGoogleKey?: string;
   webSearchGoogleCx?: string;
+  webSearchGoogleEndpoint?: string;
   webSearchSerpApiKey?: string;
   webSearchTavilyKey?: string;
   webSearchBraveKey?: string;
@@ -203,19 +204,22 @@ export const EngineSettingsSection: React.FC<{
   const renderStrategyEditor = (id: string) => {
     const strategy = getEffectiveStrategy(id);
     return (
-      <div className="mt-6 grid gap-4 text-xs grid-cols-2 md:grid-cols-4 lg:grid-cols-7">
+      <div
+        data-testid={`search-strategy-grid-${id}`}
+        className="mt-6 grid gap-3 text-xs grid-cols-[repeat(auto-fill,minmax(132px,1fr))]"
+      >
         {strategyFields.map(({ field, label, min }) => {
           const inputId = `search-strategy-${id}-${field}`;
           return (
-            <div key={field} className="space-y-1.5">
-              <label htmlFor={inputId} className="block text-xs font-medium text-muted-foreground uppercase tracking-wider">{t(label)}</label>
+            <div key={field} className="min-w-0 space-y-1.5">
+              <label htmlFor={inputId} className="block text-xs font-medium leading-snug text-muted-foreground uppercase tracking-wider">{t(label)}</label>
               <Input
                 id={inputId}
                 type="number"
                 min={min}
                 value={strategy[field] ?? ''}
                 onChange={handleStrategyFieldChange(id, field)}
-                className="h-8 [@media(pointer:coarse)]:!h-11"
+                className="h-8 w-full min-w-0 px-2.5 tabular-nums [@media(pointer:coarse)]:!h-11"
               />
             </div>
           );
@@ -364,6 +368,19 @@ export const EngineSettingsSection: React.FC<{
                     className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors [@media(pointer:coarse)]:!min-h-11"
                   />
                   <p className="text-xs text-muted-foreground/70">{t('settings:external_search.google_cse_cx_desc')}</p>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <div className="text-xs font-medium text-muted-foreground">{t('settings:external_search.google_cse_endpoint_label')}</div>
+                  <Input
+                    type="text"
+                    data-testid="google-cse-endpoint-input"
+                    {...TECHNICAL_INPUT_PROPS}
+                    value={config.webSearchGoogleEndpoint ?? ''}
+                    onChange={(e) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchGoogleEndpoint: e.target.value }))}
+                    placeholder="https://www.googleapis.com/customsearch/v1"
+                    className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
+                  />
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.google_cse_endpoint_desc')}</p>
                 </div>
               </div>
               {renderEngineFooter('google_cse', !!(config.webSearchGoogleKey && config.webSearchGoogleCx))}

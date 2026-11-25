@@ -3,8 +3,8 @@ import type { JsonValue } from '../api.ts';
 import {
   ToolError, arrayOf, htmlUnescape, isClientError, isSuccess, jsonOrNull,
   normalizeCustomDateRange, normalizeUrl, objectOf, pointer, statusDisplay, str,
-  stripHtml, textChars, truncate, xmlUnescape,
-  type ProviderResponse, type SearchItem, type SearchInput, type ToolConfig, type Usage,
+  stripHtml, textChars, truncate, urlHost, xmlUnescape,
+  type ProviderKeys, type ProviderResponse, type SearchItem, type SearchInput, type ToolConfig, type Usage,
 } from './web-search-core.ts';
 import { parseSerdeJsonBytes } from './serde-json.ts';
 
@@ -97,6 +97,275 @@ abstract class HttpProvider {
   }
 }
 
+const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const WIKIPEDIA_USER_AGENT =
+  'DeepStudent/1.0 (+https://github.com/helixnow/deep-student)';
+
+const CJK_RE = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]/u;
+const EN_STOPWORDS = new Set([
+  'a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'can', 'could', 'did', 'do', 'does', 'for',
+  'from', 'had', 'has', 'have', 'how', 'in', 'into', 'is', 'it', 'its', 'may', 'more', 'most',
+  'no', 'not', 'of', 'on', 'or', 'our', 'out', 'over', 'should', 'so', 'some', 'such', 'than',
+  'that', 'the', 'their', 'them', 'then', 'there', 'these', 'they', 'this', 'those', 'to',
+  'under', 'was', 'we', 'were', 'what', 'when', 'where', 'which', 'who', 'why', 'will', 'with',
+  'would', 'you', 'your',
+]);
+const GENERIC_QUERY_MODIFIERS = new Set([
+  'today', 'tonight', 'tomorrow', 'yesterday', 'now', 'latest', 'recent', 'current', 'daily',
+  'live', 'online', 'free', 'best', 'official', 'info',
+]);
+const CJK_PARTICLES = new Set([
+  '的', '了', '呢', '吗', '吧', '啊', '呀', '在', '是', '和', '与', '及', '或', '为', '对',
+  '于', '把', '被', '将', '着', '过', '之', '中', '有',
+]);
+const BOILERPLATE_HOSTS = [
+  'microsoft.com', 'msn.com', 'live.com', 'outlook.com', 'office.com', 'bing.com',
+  'microsoft365.com', 'skype.com', 'xbox.com', 'windows.com', 'azure.com',
+] as const;
+const BOILERPLATE_QUERY_HINTS = [
+  'microsoft', 'msn', 'outlook', 'office', 'bing', 'windows', 'azure', 'xbox', 'skype',
+  'onedrive', 'sharepoint', 'teams', 'copilot', 'edge', 'excel', 'word', 'powerpoint',
+  'hotmail', 'live.com', '微软', '必应',
+] as const;
+
+export function hasCjkText(text: string): boolean {
+  return CJK_RE.test(text);
+}
+
+function acceptLanguageFor(query: string): string {
+  return hasCjkText(query) ? 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7' : 'en-US,en;q=0.9';
+}
+
+function decodeBase64UrlUtf8(encoded: string): string | null {
+  try {
+    let base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = base64.length % 4;
+    if (pad > 0) base64 += '='.repeat(4 - pad);
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+export function decodeSearchRedirectUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim();
+  if (trimmed === '') return trimmed;
+  let candidate = trimmed;
+  if (candidate.startsWith('//')) candidate = `https:${candidate}`;
+  else if (candidate.startsWith('/l/?')) candidate = `https://duckduckgo.com${candidate}`;
+  try {
+    const parsed = new URL(candidate);
+    const host = parsed.hostname.toLowerCase();
+    if (host.endsWith('duckduckgo.com') && parsed.pathname === '/l/') {
+      const uddg = parsed.searchParams.get('uddg');
+      if (uddg && (uddg.startsWith('http://') || uddg.startsWith('https://'))) return uddg;
+    }
+    if (host.endsWith('bing.com') && parsed.pathname.startsWith('/ck/')) {
+      const u = parsed.searchParams.get('u');
+      if (u && u.length > 2 && /^a\d/i.test(u)) {
+        const decoded = decodeBase64UrlUtf8(u.slice(2));
+        if (decoded && (decoded.startsWith('http://') || decoded.startsWith('https://'))) return decoded;
+      }
+    }
+  } catch {
+    return trimmed;
+  }
+  return candidate;
+}
+
+function cleanSnippetText(raw: string): string {
+  return htmlUnescape(stripHtml(raw)).replace(/\s+/g, ' ').trim();
+}
+
+function cjkBigrams(text: string): string[] {
+  const chars = [...text];
+  if (chars.length < 2) return chars.length === 1 ? [chars[0]!] : [];
+  const grams: string[] = [];
+  for (let index = 0; index < chars.length - 1; index += 1) {
+    grams.push(`${chars[index]}${chars[index + 1]}`);
+  }
+  return grams;
+}
+
+export function extractQueryTermGroups(query: string): { groups: string[][]; hasCjk: boolean } {
+  const normalized = query.replace(/["'“”‘’`()（）[\]【】<>《》,，.。!！?？:：;；/\\|]+/gu, ' ').trim();
+  const hasCjk = hasCjkText(normalized);
+  const groups: string[][] = [];
+  const tokenPattern = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]+|[a-z0-9][a-z0-9+#._-]*/giu;
+  const rawTokens: { kind: 'cjk' | 'latin'; value: string }[] = [];
+  for (const match of normalized.matchAll(tokenPattern)) {
+    const value = match[0];
+    if (!value) continue;
+    rawTokens.push({ kind: hasCjkText(value) ? 'cjk' : 'latin', value });
+  }
+  for (let index = 0; index < rawTokens.length; index += 1) {
+    const current = rawTokens[index]!;
+    if (current.kind === 'latin') {
+      const lower = current.value.toLowerCase().replace(/^[._-]+|[._-]+$/g, '');
+      if (lower.length < 2 || EN_STOPWORDS.has(lower)) continue;
+      groups.push([lower]);
+      continue;
+    }
+    let cjk = current.value;
+    const prev = index > 0 ? (rawTokens[index - 1] ?? null) : null;
+    if (prev !== null && prev.kind === 'latin' && /^\d{2,4}$/.test(prev.value) && /^[年月日号期]/.test(cjk)) {
+      cjk = cjk.slice(1);
+    }
+    const subRuns = cjk
+      .split(/[的了呢吗吧啊呀在是和与及或为对于把被将着过之中有]+/u)
+      .filter(part => part !== '');
+    for (const part of subRuns) {
+      const chars = [...part];
+      if (chars.length === 0) continue;
+      if (chars.length === 1) {
+        if (!CJK_PARTICLES.has(chars[0]!) && rawTokens.length === 1) groups.push([chars[0]!]);
+        continue;
+      }
+      const grams = cjkBigrams(part);
+      if (chars.length >= 5 && grams.length >= 4) {
+        const splitAt = Math.floor(grams.length / 2);
+        groups.push(grams.slice(0, splitAt));
+        groups.push(grams.slice(splitAt));
+      } else {
+        groups.push([...new Set([part, ...grams])]);
+      }
+    }
+  }
+  const nonModifierGroups = groups.filter(group =>
+    !(group.length === 1 && GENERIC_QUERY_MODIFIERS.has(group[0]!)),
+  );
+  return { groups: nonModifierGroups.length >= 2 ? nonModifierGroups : groups, hasCjk };
+}
+
+function hostMatchesSuffix(host: string, suffix: string): boolean {
+  return host === suffix || host.endsWith(`.${suffix}`);
+}
+
+export function isZeroKeyBoilerplateUrl(url: string, query: string, site: string | null): boolean {
+  const host = urlHost(url)?.toLowerCase();
+  if (!host) return false;
+  if (!BOILERPLATE_HOSTS.some(suffix => hostMatchesSuffix(host, suffix))) return false;
+  const queryLower = `${query} ${site ?? ''}`.toLowerCase();
+  if (BOILERPLATE_QUERY_HINTS.some(hint => queryLower.includes(hint))) return false;
+  return true;
+}
+
+export function filterBoilerplateItems(items: SearchItem[], query: string, site: string | null): SearchItem[] {
+  return items.filter(item => !isZeroKeyBoilerplateUrl(item.url, query, site));
+}
+
+export type ZeroKeyQualityReason =
+  | 'ok'
+  | 'empty'
+  | 'boilerplate_domain'
+  | 'same_host_spam'
+  | 'first_token_truncation'
+  | 'zero_overlap';
+
+export interface ZeroKeyQualityAssessment {
+  ok: boolean;
+  reason: ZeroKeyQualityReason;
+  matchedGroupCount: number;
+  totalGroupCount: number;
+  matchedLaterGroupCount: number;
+  boilerplateCount: number;
+  score: number;
+}
+
+function itemSearchHaystack(item: SearchItem): string {
+  let decodedUrl = item.url;
+  try { decodedUrl = decodeURIComponent(item.url); } catch { /* keep raw url */ }
+  return `${item.title} ${item.snippet} ${decodedUrl}`.toLowerCase();
+}
+
+export function assessZeroKeySearchQuality(
+  query: string, items: SearchItem[], site: string | null, topK: number,
+): ZeroKeyQualityAssessment {
+  if (items.length === 0) {
+    return {
+      ok: false, reason: 'empty', matchedGroupCount: 0, totalGroupCount: 0,
+      matchedLaterGroupCount: 0, boilerplateCount: 0, score: 0,
+    };
+  }
+  const boilerplateCount = items.filter(item => isZeroKeyBoilerplateUrl(item.url, query, site)).length;
+  const { groups, hasCjk } = extractQueryTermGroups(query);
+  if (boilerplateCount === items.length || (items.length >= 2 && boilerplateCount / items.length >= 0.5)) {
+    return {
+      ok: false, reason: 'boilerplate_domain', matchedGroupCount: 0, totalGroupCount: groups.length,
+      matchedLaterGroupCount: 0, boilerplateCount, score: -10,
+    };
+  }
+  const cleanItems = items.filter(item => !isZeroKeyBoilerplateUrl(item.url, query, site));
+  const inspect = cleanItems.slice(0, Math.min(cleanItems.length, 5));
+  const haystacks = inspect.map(itemSearchHaystack);
+  const matchedIndices = new Set<number>();
+  for (let groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+    const terms = groups[groupIndex]!;
+    if (haystacks.some(text => terms.some(term => text.includes(term)))) {
+      matchedIndices.add(groupIndex);
+    }
+  }
+  const matchedFirst = matchedIndices.has(0);
+  let matchedLaterGroupCount = 0;
+  for (const index of matchedIndices) {
+    if (index > 0) matchedLaterGroupCount += 1;
+  }
+  const score = matchedLaterGroupCount * 20 + matchedIndices.size * 10
+    + Math.min(cleanItems.length, 5) - boilerplateCount * 5;
+
+  const siteTrimmed = site?.trim() ?? '';
+  if (siteTrimmed === '' && cleanItems.length >= 4) {
+    const hostCounts = new Map<string, number>();
+    for (const item of cleanItems) {
+      const bare = (urlHost(item.url) ?? '').toLowerCase().replace(/^www\./, '');
+      if (bare === '') continue;
+      hostCounts.set(bare, (hostCounts.get(bare) ?? 0) + 1);
+    }
+    let dominantHost = '';
+    let dominantCount = 0;
+    for (const [host, count] of hostCounts) {
+      if (count > dominantCount) { dominantHost = host; dominantCount = count; }
+    }
+    const queryLower = query.toLowerCase();
+    const dominantBase = dominantHost.split('.')[0] ?? '';
+    const queryMentionsHost = dominantHost !== ''
+      && (queryLower.includes(dominantHost) || (dominantBase.length >= 3 && queryLower.includes(dominantBase)));
+    if (dominantCount >= Math.ceil(cleanItems.length * 0.8) && !queryMentionsHost
+      && matchedIndices.size < Math.min(groups.length, 2)) {
+      return {
+        ok: false, reason: 'same_host_spam', matchedGroupCount: matchedIndices.size,
+        totalGroupCount: groups.length, matchedLaterGroupCount, boilerplateCount, score: score - 15,
+      };
+    }
+  }
+
+  if (groups.length >= 2 && matchedFirst && matchedLaterGroupCount === 0) {
+    return {
+      ok: false, reason: 'first_token_truncation', matchedGroupCount: matchedIndices.size,
+      totalGroupCount: groups.length, matchedLaterGroupCount: 0, boilerplateCount, score: score - 10,
+    };
+  }
+
+  if (groups.length >= 1 && matchedIndices.size === 0) {
+    const isSingleProbeMock = items.length === 1 && topK <= 1 && !hasCjk && groups.length <= 2;
+    if (!isSingleProbeMock) {
+      return {
+        ok: false, reason: 'zero_overlap', matchedGroupCount: 0,
+        totalGroupCount: groups.length, matchedLaterGroupCount: 0, boilerplateCount, score,
+      };
+    }
+  }
+
+  return {
+    ok: true, reason: 'ok', matchedGroupCount: matchedIndices.size,
+    totalGroupCount: groups.length, matchedLaterGroupCount, boilerplateCount, score,
+  };
+}
+
 class BingRssProvider extends HttpProvider implements Provider {
   name(): string { return 'bing_rss'; }
   async search(
@@ -113,7 +382,8 @@ class BingRssProvider extends HttpProvider implements Provider {
     const response = await this.send(url.toString(), {
       method: 'GET', headers: {
         Accept: 'application/rss+xml, application/xml;q=0.9, text/xml;q=0.8',
-        'User-Agent': 'Mozilla/5.0 (compatible; DeepStudent/1.0; +https://github.com/helixnow/deep-student)',
+        'Accept-Language': acceptLanguageFor(query),
+        'User-Agent': BROWSER_USER_AGENT,
       },
     }, timeoutOf(config), signal);
     const latency = Math.trunc(performance.now() - started);
@@ -182,7 +452,7 @@ export function parseBingRss(xml: string): SearchItem[] {
       if (current !== null && current.link !== '') {
         items.push({
           title: htmlUnescape(stripHtml(current.title)),
-          url: htmlUnescape(current.link),
+          url: decodeSearchRedirectUrl(htmlUnescape(current.link)),
           snippet: htmlUnescape(stripHtml(current.description)),
           rank: items.length + 1, score_hint: null,
         });
@@ -192,6 +462,223 @@ export function parseBingRss(xml: string): SearchItem[] {
     currentTag = '';
   }
   return items;
+}
+
+function extractAnchorHref(tagAttributes: string): string | null {
+  const doubleQuoted = /\bhref\s*=\s*"([^"]+)"/i.exec(tagAttributes);
+  if (doubleQuoted?.[1]) return htmlUnescape(doubleQuoted[1]);
+  const singleQuoted = /\bhref\s*=\s*'([^']+)'/i.exec(tagAttributes);
+  if (singleQuoted?.[1]) return htmlUnescape(singleQuoted[1]);
+  return null;
+}
+
+export function parseDuckDuckGoHtml(html: string): SearchItem[] {
+  const items: SearchItem[] = [];
+  const parseWithClass = (anchorClass: string, snippetClass: string): void => {
+    const anchorRe = new RegExp(
+      `<a\\b([^>]*\\bclass\\s*=\\s*["'][^"']*\\b${anchorClass}\\b[^"']*["'][^>]*)>([\\s\\S]*?)<\\/a>`,
+      'gi',
+    );
+    const snippetRe = new RegExp(
+      `<(?:a|div|span|td)\\b[^>]*\\bclass\\s*=\\s*["'][^"']*\\b${snippetClass}\\b[^"']*["'][^>]*>([\\s\\S]*?)<\\/(?:a|div|span|td)>`,
+      'i',
+    );
+    const matches = [...html.matchAll(anchorRe)];
+    for (let index = 0; index < matches.length; index += 1) {
+      const match = matches[index]!;
+      const attrs = match[1] ?? '';
+      const rawHref = extractAnchorHref(attrs);
+      if (rawHref === null) continue;
+      const decodedUrl = decodeSearchRedirectUrl(rawHref);
+      if (!decodedUrl.startsWith('http://') && !decodedUrl.startsWith('https://')) continue;
+      const lowerUrl = decodedUrl.toLowerCase();
+      if (lowerUrl.includes('duckduckgo.com/y.js') || lowerUrl.includes('ad_provider=')) continue;
+      const title = cleanSnippetText(match[2] ?? '');
+      if (title === '') continue;
+      const startPos = (match.index ?? 0) + match[0].length;
+      const nextPos = index + 1 < matches.length ? (matches[index + 1]!.index ?? html.length) : Math.min(html.length, startPos + 4000);
+      const slice = html.slice(startPos, Math.min(nextPos, startPos + 4000));
+      const snippetMatch = snippetRe.exec(slice);
+      const snippet = snippetMatch?.[1] ? cleanSnippetText(snippetMatch[1]) : '';
+      items.push({ title, url: decodedUrl, snippet, rank: items.length + 1, score_hint: null });
+    }
+  };
+  parseWithClass('result__a', 'result__snippet');
+  if (items.length === 0) parseWithClass('result-link', 'result-snippet');
+  return items;
+}
+
+export function parseBingHtml(html: string): SearchItem[] {
+  const items: SearchItem[] = [];
+  const blockRe = /<li\b[^>]*\bclass\s*=\s*["'][^"']*\bb_algo\b[^"']*["'][^>]*>/gi;
+  const starts: number[] = [];
+  for (const match of html.matchAll(blockRe)) {
+    if (match.index !== undefined) starts.push(match.index);
+  }
+  for (let index = 0; index < starts.length; index += 1) {
+    const start = starts[index]!;
+    const end = index + 1 < starts.length ? starts[index + 1]! : Math.min(html.length, start + 12000);
+    const block = html.slice(start, Math.min(end, start + 12000));
+    const headingMatch = /<h2\b[^>]*>[\s\S]*?<a\b([^>]*)>([\s\S]*?)<\/a>/i.exec(block);
+    if (!headingMatch) continue;
+    const rawHref = extractAnchorHref(headingMatch[1] ?? '');
+    if (rawHref === null) continue;
+    const decodedUrl = decodeSearchRedirectUrl(rawHref);
+    if (!decodedUrl.startsWith('http://') && !decodedUrl.startsWith('https://')) continue;
+    const title = cleanSnippetText(headingMatch[2] ?? '');
+    if (title === '') continue;
+    const captionMatch = /<div\b[^>]*\bclass\s*=\s*["'][^"']*\bb_caption\b[^"']*["'][^>]*>[\s\S]*?<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(block)
+      ?? /<p\b[^>]*\bclass\s*=\s*["'][^"']*\bb_lineclamp[^"']*["'][^>]*>([\s\S]*?)<\/p>/i.exec(block)
+      ?? /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(block);
+    const snippet = captionMatch?.[1] ? cleanSnippetText(captionMatch[1]) : '';
+    items.push({ title, url: decodedUrl, snippet, rank: items.length + 1, score_hint: null });
+  }
+  return items;
+}
+
+export function parseMediaWikiSearch(raw: JsonValue, host = 'en.wikipedia.org'): SearchItem[] {
+  const items: SearchItem[] = [];
+  const queryHits = arrayOf(pointer(raw, 'query/search'));
+  if (queryHits !== null) {
+    queryHits.forEach((entry, index) => {
+      const title = str(pointer(entry, 'title'))?.trim() ?? '';
+      if (title === '') return;
+      const snippet = cleanSnippetText(str(pointer(entry, 'snippet')) ?? '');
+      const url = `https://${host}/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
+      items.push({ title, url, snippet, rank: index + 1, score_hint: null });
+    });
+    return items;
+  }
+  const tuple = arrayOf(raw);
+  if (tuple !== null && tuple.length >= 4) {
+    const titles = arrayOf(tuple[1]) ?? [];
+    const descriptions = arrayOf(tuple[2]) ?? [];
+    const urls = arrayOf(tuple[3]) ?? [];
+    const count = Math.min(titles.length, urls.length);
+    for (let index = 0; index < count; index += 1) {
+      const url = str(urls[index])?.trim() ?? '';
+      const title = str(titles[index])?.trim() ?? '';
+      if (url === '' || (!url.startsWith('http://') && !url.startsWith('https://'))) continue;
+      const snippet = cleanSnippetText(str(descriptions[index]) ?? '');
+      items.push({ title: title || url, url, snippet, rank: items.length + 1, score_hint: null });
+    }
+  }
+  return items;
+}
+
+export type ZeroKeyFallbackBackend = 'ddg_html' | 'bing_html' | 'wikipedia_opensearch';
+export const ZERO_KEY_FALLBACK_ORDER: readonly ZeroKeyFallbackBackend[] = [
+  'ddg_html', 'bing_html', 'wikipedia_opensearch',
+];
+
+export interface ZeroKeyFallbackCandidate {
+  backend: ZeroKeyFallbackBackend;
+  items: SearchItem[];
+  raw: JsonValue;
+  latencyMs: number;
+}
+
+export async function searchZeroKeyFallback(
+  backend: ZeroKeyFallbackBackend,
+  config: ToolConfig,
+  input: SearchInput,
+  fetcher: typeof fetch = globalThis.fetch,
+  _log: (message: string) => void = () => undefined,
+  signal?: AbortSignal,
+): Promise<ZeroKeyFallbackCandidate> {
+  const baseQuery = input.query.trim();
+  const site = input.site?.trim() ?? '';
+  const scopedQuery = site !== '' ? `site:${site} ${baseQuery}` : baseQuery;
+  const fallbackTimeout = Math.min(timeoutOf(config), 8000);
+  const started = performance.now();
+
+  if (backend === 'ddg_html') {
+    const headers = {
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': acceptLanguageFor(scopedQuery),
+      'User-Agent': BROWSER_USER_AGENT,
+    };
+    const endpoints = [
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(scopedQuery)}`,
+      `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(scopedQuery)}`,
+    ];
+    let lastStatus = 0;
+    for (const endpoint of endpoints) {
+      const response = await send(fetcher, endpoint, { method: 'GET', headers }, fallbackTimeout, signal);
+      lastStatus = response.status;
+      if (!isSuccess(response.status)) continue;
+      const body = await responseText(response);
+      const parsed = parseDuckDuckGoHtml(body);
+      if (parsed.length > 0) {
+        return {
+          backend, items: parsed, raw: { format: 'html', fallback_backend: backend, endpoint },
+          latencyMs: Math.trunc(performance.now() - started),
+        };
+      }
+    }
+    return {
+      backend, items: [], raw: { format: 'html', fallback_backend: backend, status: lastStatus },
+      latencyMs: Math.trunc(performance.now() - started),
+    };
+  }
+
+  if (backend === 'bing_html') {
+    const url = new URL('https://www.bing.com/search');
+    url.searchParams.set('q', scopedQuery);
+    url.searchParams.set('first', String(Math.max(input.start ?? 1, 1)));
+    const response = await send(fetcher, url.toString(), {
+      method: 'GET',
+      headers: {
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': acceptLanguageFor(scopedQuery),
+        'User-Agent': BROWSER_USER_AGENT,
+      },
+    }, fallbackTimeout, signal);
+    const body = await responseText(response);
+    if (!isSuccess(response.status)) {
+      throw providerError('bing_html', response.status, textChars(body, 512));
+    }
+    return {
+      backend, items: parseBingHtml(body), raw: { format: 'html', fallback_backend: backend },
+      latencyMs: Math.trunc(performance.now() - started),
+    };
+  }
+
+  if (site !== '' && !site.toLowerCase().includes('wikipedia.org')) {
+    return { backend, items: [], raw: { skipped: 'site_filter' }, latencyMs: 0 };
+  }
+  const wikiHost = hasCjkText(baseQuery) ? 'zh.wikipedia.org' : 'en.wikipedia.org';
+  const wikiUrl = new URL(`https://${wikiHost}/w/api.php`);
+  wikiUrl.searchParams.set('action', 'query');
+  wikiUrl.searchParams.set('list', 'search');
+  wikiUrl.searchParams.set('srsearch', baseQuery);
+  wikiUrl.searchParams.set('srlimit', String(Math.min(Math.max(input.top_k, 1), 10)));
+  wikiUrl.searchParams.set('format', 'json');
+  wikiUrl.searchParams.set('utf8', '1');
+  const response = await send(fetcher, wikiUrl.toString(), {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      'User-Agent': WIKIPEDIA_USER_AGENT,
+    },
+  }, fallbackTimeout, signal);
+  if (!isSuccess(response.status)) {
+    throw providerError('wikipedia_opensearch', response.status, textChars(await responseText(response), 512));
+  }
+  const raw = await responseJson(response);
+  return {
+    backend, items: parseMediaWikiSearch(raw, wikiHost),
+    raw: { format: 'mediawiki', host: wikiHost },
+    latencyMs: Math.trunc(performance.now() - started),
+  };
+}
+
+export const GOOGLE_CSE_DEFAULT_ENDPOINT = 'https://www.googleapis.com/customsearch/v1';
+
+/** Google CSE 请求地址：未配置 `web_search.google_cse.endpoint` 时使用 Google 官方地址。 */
+export function googleCseEndpoint(keys: ProviderKeys): string {
+  const trimmed = keys.google_cse_endpoint?.trim() ?? '';
+  return trimmed !== '' ? trimmed : GOOGLE_CSE_DEFAULT_ENDPOINT;
 }
 
 class GoogleCseProvider extends HttpProvider implements Provider {
@@ -210,7 +697,16 @@ class GoogleCseProvider extends HttpProvider implements Provider {
     let query = input.query;
     const site = input.site?.trim();
     if (site) query = `site:${site} ${query}`;
-    const url = new URL('https://www.googleapis.com/customsearch/v1');
+    const endpoint = googleCseEndpoint(config.keys);
+    let url: URL;
+    try {
+      url = new URL(endpoint);
+    } catch {
+      throw new ToolError('config', `invalid GOOGLE_CSE_ENDPOINT: ${endpoint}`);
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw new ToolError('config', `invalid GOOGLE_CSE_ENDPOINT protocol: ${endpoint}`);
+    }
     url.searchParams.set('key', key);
     url.searchParams.set('cx', cx);
     url.searchParams.set('q', query);
