@@ -59,6 +59,8 @@ import {
 
 /** 笔记工作区应用 typeId（同 apps/notes/register 的 NOTES_APP_TYPE_ID；不引入该注册模块以免拉起整个工作区依赖）。 */
 const NOTES_WORKSPACE_APP_TYPE_ID = 'notes';
+/** 统一文件预览应用 typeId（同 apps/content/typeMap 的 FILE_PREVIEW_APP_TYPE_ID）。 */
+const FILE_PREVIEW_APP_TYPE_ID = 'file-preview';
 
 /** 失败路径：可见 toast + assertive 公告（勿仅 console.warn） */
 function announceBridgeFailure(message: string): void {
@@ -106,8 +108,9 @@ function launchResourceWindow(
   title?: string,
   placement?: LaunchPlacement,
 ): void {
-  const resourceType = preferredType || resourceIdToResourceType(resourceId);
-  const typeId = resourceTypeToAppTypeId(resourceType) ?? 'file';
+  const rawResourceType = preferredType || resourceIdToResourceType(resourceId);
+  const resourceType = rawResourceType === 'attachment' ? 'file' : rawResourceType;
+  const typeId = resourceTypeToAppTypeId(resourceType) ?? FILE_PREVIEW_APP_TYPE_ID;
   const opensInWorkspace = isNotesWorkspaceResourceType(resourceType);
   if (opensInWorkspace) {
     void requestWorkspaceResource({ type: resourceType, id: resourceId });

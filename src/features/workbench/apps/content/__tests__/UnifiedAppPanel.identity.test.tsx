@@ -28,6 +28,16 @@ vi.mock('@/features/learning-hub/apps/views/NoteContentView', () => ({
   default: ({ node }: { node: DstuNode }) => <div data-testid="note-view">{node.name}</div>,
 }));
 
+vi.mock('@/features/learning-hub/apps/views/TextbookContentView', () => ({
+  __esModule: true,
+  default: ({ node }: { node: DstuNode }) => <div data-testid="textbook-view">{node.name}</div>,
+}));
+
+vi.mock('@/features/learning-hub/apps/views/FileContentView', () => ({
+  __esModule: true,
+  default: ({ node }: { node: DstuNode }) => <div data-testid="file-view">{node.name}</div>,
+}));
+
 import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 
 function node(overrides: Partial<DstuNode> = {}): DstuNode {
@@ -115,5 +125,51 @@ describe('UnifiedAppPanel workbench identity', () => {
     expect(await screen.findByText('After move')).toBeTruthy();
     await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(2));
     expect(onTitleChange).toHaveBeenLastCalledWith('After move');
+  });
+
+  it('strictType 允许 type="file" 加载 node.type="textbook" 的 PDF 附件并挂载 TextbookContentView', async () => {
+    mocks.get.mockResolvedValue({
+      ok: true,
+      value: node({
+        id: 'att_pdf1',
+        sourceId: 'att_pdf1',
+        path: '/att_pdf1',
+        name: 'attention.pdf',
+        type: 'textbook',
+        previewType: 'pdf',
+      }),
+    });
+
+    render(
+      <UnifiedAppPanel
+        type="file"
+        resourceId="att_pdf1"
+        dstuPath="/att_pdf1"
+        strictType
+      />,
+    );
+
+    expect(await screen.findByTestId('textbook-view')).toHaveTextContent('attention.pdf');
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByTestId('file-view')).toBeNull();
+  });
+
+  it('strictType 对 type="file" 仍拒绝 note/folder 等非文件兼容类型', async () => {
+    mocks.get.mockResolvedValue({
+      ok: true,
+      value: node({ id: 'note_9', sourceId: 'note_9', type: 'note', name: 'Not a file' }),
+    });
+
+    render(
+      <UnifiedAppPanel
+        type="file"
+        resourceId="note_9"
+        dstuPath="/note_9"
+        strictType
+      />,
+    );
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('资源类型不匹配');
+    expect(screen.queryByTestId('note-view')).toBeNull();
   });
 });
