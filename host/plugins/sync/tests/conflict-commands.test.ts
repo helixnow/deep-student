@@ -365,4 +365,50 @@ suite('conflict commands', () => {
     expect(() => resolveRecordConflict(storageFor(db), 'vfs', 'notes', 'note-link', 'keep_both', null, [delId]))
       .toThrow('仅当本地与云端均存在记录内容时才支持保留两者');
   });
+
+  it('resolve_record_conflict_keep_both_localizes_conflict_copy_title_for_en_US_and_zh_CN', () => {
+    // 1) en-US via explicit options.locale -> "(Conflict copy YYYY-MM-DD)"
+    const enDb = createDb();
+    enDb.run("INSERT INTO notes (id, title, updated_at) VALUES ('note-1', 'Calculus Notes', '2026-01-01T00:00:00Z')");
+    const enLocal = getRecordData(enDb, 'notes', 'note-1', 'id') as Record<string, unknown>;
+    const enIds = seedConflict(
+      enDb,
+      enLocal,
+      { ...enLocal, title: 'Calculus Notes (Cloud)', updated_at: '2026-01-02T00:00:00Z' },
+    );
+    resolveRecordConflict(storageFor(enDb), 'vfs', 'notes', 'note-1', 'keep_both', null, enIds, { locale: 'en-US' });
+    const enNotes = enDb.all<{ id: string; title: string }>('SELECT id, title FROM notes');
+    expect(enNotes).toHaveLength(2);
+    const enClone = enNotes.find((n) => n.id !== 'note-1')!;
+    expect(enClone.title).toMatch(/^Calculus Notes \(Conflict copy \d{4}-\d{2}-\d{2}\)$/);
+    expect(enClone.title).not.toContain('本地冲突副本');
+
+    // 2) en-US via settings table in DB (no options passed) -> "(Conflict copy YYYY-MM-DD)"
+    const settingsDb = createDb();
+    settingsDb.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL)");
+    settingsDb.run("INSERT INTO settings (key, value, updated_at) VALUES ('language', 'en-US', '2026-01-01T00:00:00Z')");
+    settingsDb.run("INSERT INTO notes (id, title, updated_at) VALUES ('note-1', 'Physics Lab', '2026-01-01T00:00:00Z')");
+    const settingsLocal = getRecordData(settingsDb, 'notes', 'note-1', 'id') as Record<string, unknown>;
+    const settingsIds = seedConflict(
+      settingsDb,
+      settingsLocal,
+      { ...settingsLocal, title: 'Physics Lab (Cloud)', updated_at: '2026-01-02T00:00:00Z' },
+    );
+    resolveRecordConflict(storageFor(settingsDb), 'vfs', 'notes', 'note-1', 'keep_both', null, settingsIds);
+    const settingsClone = settingsDb.all<{ id: string; title: string }>('SELECT id, title FROM notes').find((n) => n.id !== 'note-1')!;
+    expect(settingsClone.title).toMatch(/^Physics Lab \(Conflict copy \d{4}-\d{2}-\d{2}\)$/);
+
+    // 3) zh-CN via explicit options.locale -> "(本地冲突副本 YYYY-MM-DD)"
+    const zhDb = createDb();
+    zhDb.run("INSERT INTO notes (id, title, updated_at) VALUES ('note-1', '高等数学', '2026-01-01T00:00:00Z')");
+    const zhLocal = getRecordData(zhDb, 'notes', 'note-1', 'id') as Record<string, unknown>;
+    const zhIds = seedConflict(
+      zhDb,
+      zhLocal,
+      { ...zhLocal, title: '高等数学（云端）', updated_at: '2026-01-02T00:00:00Z' },
+    );
+    resolveRecordConflict(storageFor(zhDb), 'vfs', 'notes', 'note-1', 'keep_both', null, zhIds, { locale: 'zh-CN' });
+    const zhClone = zhDb.all<{ id: string; title: string }>('SELECT id, title FROM notes').find((n) => n.id !== 'note-1')!;
+    expect(zhClone.title).toMatch(/^高等数学 \(本地冲突副本 \d{4}-\d{2}-\d{2}\)$/);
+  });
 });

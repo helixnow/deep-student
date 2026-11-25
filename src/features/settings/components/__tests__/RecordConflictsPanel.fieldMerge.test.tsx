@@ -11,6 +11,7 @@ const mockCountRecordConflicts = vi.hoisted(() => vi.fn());
 const mockResolveRecordConflict = vi.hoisted(() => vi.fn());
 const mockPurgeResolvedConflicts = vi.hoisted(() => vi.fn());
 const mockListSyncSnapshotBatches = vi.hoisted(() => vi.fn());
+const mockLanguage = vi.hoisted(() => ({ current: 'zh-CN' }));
 const mockTranslate = vi.hoisted(() =>
   vi.fn((key: string, opts?: Record<string, unknown>) => {
     if (opts && 'field' in opts) return `${key}:${String(opts.field)}`;
@@ -29,7 +30,7 @@ vi.mock('@/api/dataGovernance', () => ({
 
 vi.mock('react-i18next', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-i18next')>()),
-  useTranslation: () => ({ t: mockTranslate }),
+  useTranslation: () => ({ t: mockTranslate, i18n: { language: mockLanguage.current } }),
 }));
 
 vi.mock('@/components/UnifiedNotification', () => ({
@@ -42,6 +43,7 @@ vi.mock('@/utils/unifiedDialogs', () => ({
 
 import RecordConflictsPanel, {
   buildConflictFieldDiffs,
+  getConflictCopyLabelForLocale,
   parseConflictPlainObject,
 } from '@/features/settings/components/data-governance/RecordConflictsPanel';
 import type { RecordConflictRow } from '@/api/dataGovernance';
@@ -85,6 +87,7 @@ const twoSidedRows: RecordConflictRow[] = [
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockLanguage.current = 'zh-CN';
   mockListRecordConflicts.mockResolvedValue(twoSidedRows);
   mockCountRecordConflicts.mockResolvedValue({
     per_database: { mistakes: { groups: 1, rows: 2 } },
@@ -273,5 +276,65 @@ describe('RecordConflictsPanel 字段级差异对比合并', () => {
     expect(diffs.map((d) => d.key)).toEqual(['changed', 'same']);
     expect(diffs[0].selectedSource).toBe('local');
     expect(diffs[1].selectedSource).toBe('both');
+  });
+
+  it('Keep Both 按当前 UI 语言（en-US / zh-CN）透传本地化冲突副本标签，且操作按钮满足移动端 44px 触控目标', async () => {
+    expect(getConflictCopyLabelForLocale('en-US')).toBe('Conflict copy');
+    expect(getConflictCopyLabelForLocale('en')).toBe('Conflict copy');
+    expect(getConflictCopyLabelForLocale('zh-CN')).toBe('本地冲突副本');
+    expect(getConflictCopyLabelForLocale(undefined)).toBe('本地冲突副本');
+
+    const user = userEvent.setup();
+
+    // en-US 场景
+    mockLanguage.current = 'en-US';
+    const { unmount } = render(<RecordConflictsPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('card-42')).toBeInTheDocument();
+    });
+
+    const actionsContainer = screen.getByTestId('conflict-card-actions');
+    expect(actionsContainer.className).toContain('grid-cols-2');
+    expect(actionsContainer.className).toContain('sm:flex');
+    const actionButtons = within(actionsContainer).getAllByRole('button');
+    expect(actionButtons).toHaveLength(4);
+    for (const btn of actionButtons) {
+      expect(btn.className).toContain('min-h-[44px]');
+      expect(btn.className).toContain('sm:min-h-[36px]');
+    }
+
+    await user.click(screen.getByTestId('conflict-keep-both-button'));
+    await waitFor(() => {
+      expect(mockResolveRecordConflict).toHaveBeenCalledWith(
+        'mistakes',
+        'anki_cards',
+        'card-42',
+        'keep_both',
+        [10, 11],
+        undefined,
+        'Conflict copy',
+      );
+    });
+    unmount();
+
+    // zh-CN 场景
+    mockResolveRecordConflict.mockClear();
+    mockLanguage.current = 'zh-CN';
+    render(<RecordConflictsPanel />);
+    await waitFor(() => {
+      expect(screen.getByText('card-42')).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId('conflict-keep-both-button'));
+    await waitFor(() => {
+      expect(mockResolveRecordConflict).toHaveBeenCalledWith(
+        'mistakes',
+        'anki_cards',
+        'card-42',
+        'keep_both',
+        [10, 11],
+        undefined,
+        '本地冲突副本',
+      );
+    });
   });
 });

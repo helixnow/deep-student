@@ -1435,17 +1435,19 @@ export async function countRecordConflicts(): Promise<RecordConflictCounts> {
  * @param databaseName 数据库标识
  * @param tableName 业务表名
  * @param recordId 记录主键
- * @param resolution "keep_local" | "keep_cloud" | "merged"
+ * @param resolution "keep_local" | "keep_cloud" | "keep_both" | "merged"
  * @param expectedConflictIds 用户实际看到的冲突 generation，后台变化时后端拒绝旧决策
  * @param mergedDataJson 当 resolution = "merged" 时提供的合并后行 JSON
+ * @param conflictCopyLabel 当 resolution = "keep_both" 时可选的本地化冲突副本标签
  */
 export async function resolveRecordConflict(
   databaseName: string,
   tableName: string,
   recordId: string,
-  resolution: "keep_local" | "keep_cloud" | "merged",
+  resolution: "keep_local" | "keep_cloud" | "keep_both" | "merged",
   expectedConflictIds: number[],
   mergedDataJson?: string,
+  conflictCopyLabel?: string,
 ): Promise<void> {
   if (expectedConflictIds.length === 0) {
     throw new Error('expectedConflictIds must not be empty');
@@ -1457,6 +1459,7 @@ export async function resolveRecordConflict(
     resolution,
     mergedDataJson,
     expectedConflictIds,
+    ...(conflictCopyLabel !== undefined ? { conflictCopyLabel } : {}),
   });
 }
 

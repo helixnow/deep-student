@@ -383,12 +383,18 @@ export function formatDetectedAt(detectedAt: string): string {
   });
 }
 
+export function getConflictCopyLabelForLocale(locale?: string | null): string {
+  return typeof locale === 'string' && /^en(?:[-_]|$)/i.test(locale.trim())
+    ? 'Conflict copy'
+    : '本地冲突副本';
+}
+
 export const RecordConflictsPanel: React.FC<{
   refreshSignal?: string | number;
   onCountChange?: (totalGroups: number) => void;
   focusSignal?: number;
 }> = ({ refreshSignal, onCountChange, focusSignal = 0 }) => {
-  const { t } = useTranslation(['data', 'common', 'sync']);
+  const { t, i18n } = useTranslation(['data', 'common', 'sync']);
   const [rows, setRows] = useState<RecordConflictRow[]>([]);
   const [totalGroups, setTotalGroups] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -639,14 +645,26 @@ export const RecordConflictsPanel: React.FC<{
           ...p.locals.map((local) => local.id),
           ...p.clouds.map((cloud) => cloud.id),
         ];
-        await DataGovernanceApi.resolveRecordConflict(
-          p.databaseName,
-          p.tableName,
-          p.recordId,
-          resolution as Parameters<typeof DataGovernanceApi.resolveRecordConflict>[3],
-          expectedConflictIds,
-          merged,
-        );
+        if (resolution === 'keep_both') {
+          await DataGovernanceApi.resolveRecordConflict(
+            p.databaseName,
+            p.tableName,
+            p.recordId,
+            resolution,
+            expectedConflictIds,
+            merged,
+            getConflictCopyLabelForLocale(i18n?.language),
+          );
+        } else {
+          await DataGovernanceApi.resolveRecordConflict(
+            p.databaseName,
+            p.tableName,
+            p.recordId,
+            resolution,
+            expectedConflictIds,
+            merged,
+          );
+        }
         if (resolution === 'keep_both') {
           showGlobalNotification('success', t('data:governance.conflict_resolved_keep_both'));
         } else {
@@ -692,7 +710,7 @@ export const RecordConflictsPanel: React.FC<{
         setResolvingKey(null);
       }
     },
-    [conflictPreviews, pendingKeepLocalKey, refresh, siblingContextMap.notesByResourceId, t],
+    [conflictPreviews, i18n?.language, pendingKeepLocalKey, refresh, siblingContextMap.notesByResourceId, t],
   );
 
   const handleStartMerge = useCallback((p: ConflictPair) => {
@@ -1185,13 +1203,16 @@ export const RecordConflictsPanel: React.FC<{
                     </div>
                   </details>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div
+                  data-testid="conflict-card-actions"
+                  className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap"
+                >
                   <DsButton
                     variant="outline"
                     size="sm"
                     onClick={() => handleResolve(p, 'keep_local')}
                     disabled={isResolving || isEditing}
-                    className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+                    className="h-auto min-h-[44px] sm:min-h-[36px] w-full sm:w-auto justify-center whitespace-normal sm:whitespace-nowrap text-center leading-tight border border-border/60 bg-background/80 px-3 py-1.5 text-xs hover:bg-muted/60"
                     title={!latestLocal ? t('data:governance.conflict_cloud_only_hint') : undefined}
                   >
                     {t('data:governance.keep_local')}
@@ -1201,7 +1222,7 @@ export const RecordConflictsPanel: React.FC<{
                     size="sm"
                     onClick={() => handleResolve(p, 'keep_cloud')}
                     disabled={isResolving || isEditing || !latestCloud}
-                    className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+                    className="h-auto min-h-[44px] sm:min-h-[36px] w-full sm:w-auto justify-center whitespace-normal sm:whitespace-nowrap text-center leading-tight border border-border/60 bg-background/80 px-3 py-1.5 text-xs hover:bg-muted/60"
                     title={
                       p.clouds.length > 1
                         ? t('data:governance.use_cloud_latest', { suffix: useCloudCandidateSuffix })
@@ -1216,7 +1237,7 @@ export const RecordConflictsPanel: React.FC<{
                     data-testid="conflict-keep-both-button"
                     onClick={() => handleResolve(p, 'keep_both')}
                     disabled={isResolving || isEditing || !canKeepBoth}
-                    className="h-7 text-xs"
+                    className="h-auto min-h-[44px] sm:min-h-[36px] w-full sm:w-auto justify-center whitespace-normal sm:whitespace-nowrap text-center leading-tight border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15"
                     title={
                       canKeepBoth
                         ? t('data:governance.keep_both_desc')
@@ -1230,9 +1251,9 @@ export const RecordConflictsPanel: React.FC<{
                     size="sm"
                     onClick={() => handleStartMerge(p)}
                     disabled={isResolving || isEditing}
-                    className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+                    className="h-auto min-h-[44px] sm:min-h-[36px] w-full sm:w-auto justify-center whitespace-normal sm:whitespace-nowrap text-center leading-tight border border-border/60 bg-background/80 px-3 py-1.5 text-xs hover:bg-muted/60"
                   >
-                    <PencilSimple size={12} className="mr-1" />
+                    <PencilSimple size={14} className="mr-1 shrink-0" />
                     {t('data:governance.manual_merge')}
                   </DsButton>
                 </div>
