@@ -32,8 +32,10 @@ vi.mock('mermaid', () => ({
   },
 }));
 
-vi.mock('react-syntax-highlighter/dist/esm/prism', () => ({
-  default: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+vi.mock('@/utils/lazyPrism', () => ({
+  resolvePrismLanguage: () => null,
+  getLoadedPrismGrammar: () => null,
+  loadPrismLanguage: vi.fn(async () => null),
 }));
 
 vi.mock('../lazyKatex', () => ({

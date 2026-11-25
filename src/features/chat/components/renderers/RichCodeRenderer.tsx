@@ -149,10 +149,11 @@ export function RichCodeRenderer({ kind, source }: RichCodeRendererProps) {
           if (disposed) return;
           host.replaceChildren(viz.renderSVGElement(source));
         } else if (kind === 'abc') {
-          const abcModule: any = await import('abcjs');
+          // Direct SVG engraver entrypoint skips abcjs's MIDI/WebAudio synth (~252 KiB raw) & editor.
+          const abcModule: any = await import('abcjs/src/api/abc_tunebook_svg.js');
           if (disposed) return;
-          const abcjs = abcModule.default ?? abcModule;
-          abcjs.renderAbc(host, source, { responsive: 'resize', add_classes: false });
+          const renderAbc = abcModule.default ?? abcModule;
+          renderAbc(host, source, { responsive: 'resize', add_classes: false });
         } else if (kind === 'wavedrom') {
           const waveJson = JSON.parse(source);
           const waveModule: any = await import('wavedrom');
@@ -166,7 +167,7 @@ export function RichCodeRenderer({ kind, source }: RichCodeRendererProps) {
           const molecule = ocl.Molecule.fromMolfile(firstRecord);
           host.innerHTML = sanitizeSvg(molecule.toSVG(460, 280));
         } else if (kind === 'molecule-3d') {
-          const module: any = await import('3dmol');
+          const module: any = await import('3dmol/build/3Dmol-min.js');
           if (disposed) return;
           const mol3d = module.default ?? module;
           const viewer = mol3d.createViewer(host, { backgroundColor: isDark ? '#1c1f26' : 'white' });

@@ -297,4 +297,15 @@ describe('desktop default manualChunks is untouched by the WebUI groups', () => 
     expect(chunks['workbench-core']).toBeUndefined();
     expect(chunks['chat-core']).toBeUndefined();
   });
+
+  it('excludes Vite query-asset KaTeX imports (?raw/?url/?inline) from cold-boot vendor-katex', () => {
+    const emptyMeta = {
+      getModuleIds: () => [][Symbol.iterator](),
+      getModuleInfo: () => null,
+    } as unknown as Rollup.ManualChunkMeta;
+    expect(desktopManualChunks('/app/node_modules/katex/dist/katex.mjs', emptyMeta)).toBe('vendor-katex');
+    expect(desktopManualChunks('/app/node_modules/katex/dist/katex.min.css?raw', emptyMeta)).toBeUndefined();
+    expect(desktopManualChunks('/app/node_modules/katex/dist/fonts/KaTeX_AMS-Regular.woff2?url', emptyMeta)).toBeUndefined();
+    expect(desktopManualChunks('/app/node_modules/katex/dist/fonts/KaTeX_AMS-Regular.woff2?inline', emptyMeta)).toBeUndefined();
+  });
 });

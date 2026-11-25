@@ -100,8 +100,10 @@ function vendorChunkName(id: string): string | undefined {
   if (id.includes('@lobehub/icons') || id.includes('lucide-react')) {
     return 'vendor-lobehub-icons';
   }
-  // KaTeX（chat markdown / mindmap LaTeX 渲染共用，~270KB）
-  if (id.includes('node_modules/katex') || id.includes('rehype-katex')) {
+  // KaTeX（chat markdown / mindmap LaTeX 渲染共用，~160KB）
+  // 排除带 ?raw / ?url / ?inline 查询参数的按需资源（如 Anki 沙箱卡面专用的 katex.min.css?raw
+  // 与字体 URL），避免将其卷入 index.html 预加载的冷启动 vendor-katex chunk。
+  if (!id.includes('?') && (id.includes('node_modules/katex') || id.includes('rehype-katex'))) {
     return 'vendor-katex';
   }
   // Milkdown 编辑器全家桶（仅笔记编辑场景加载）

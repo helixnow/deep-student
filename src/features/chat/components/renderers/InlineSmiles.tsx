@@ -1,62 +1,94 @@
 import React, { useEffect, useRef, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { useTranslation } from 'react-i18next';
 
 interface InlineSmilesProps {
   smiles: string;
 }
 
-function isDarkTheme(): boolean {
-  const root = document.documentElement;
-  return root.classList.contains('dark') || root.getAttribute('data-theme') === 'dark';
-}
+const sanitizeSvg = (svg: string) =>
+  DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    ADD_TAGS: ['style'],
+    FORBID_TAGS: ['script', 'foreignObject', 'iframe', 'embed', 'object'],
+    FORBID_ATTR: ['xlink:href'],
+  });
+
+const readIsDarkTheme = (): boolean =>
+  typeof document !== 'undefined' &&
+  (document.documentElement.classList.contains('dark') ||
+    document.documentElement.getAttribute('data-theme') === 'dark' ||
+    Boolean(document.body?.classList.contains('dark')));
 
 /**
  * 正文内联分子结构。
  *
- * SmilesDrawer 仅在实际遇到 `\\smiles{...}` 时加载；绘制结果直接写入 React
- * 管理的 SVG 元素，不接受任意 SVG/HTML 字符串，也不会引入远程资源。
+ * 复用已有的 OpenChemLib（与块级 molecule-2d 共用同一按需 chunk），仅在遇到 `\\smiles{...}` 时
+ * 动态加载，并将生成的 SVG 经 DOMPurify 净化后写入受控容器，不引入远程资源。
  */
 export const InlineSmiles: React.FC<InlineSmilesProps> = ({ smiles }) => {
   const { t } = useTranslation('chatV2');
-  const svgRef = useRef<SVGSVGElement | null>(null);
+  const hostRef = useRef<HTMLSpanElement | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isDark, setIsDark] = useState<boolean>(readIsDarkTheme);
+
+  useEffect(() => {
+    if (typeof MutationObserver !== 'function' || typeof document === 'undefined') return;
+    const sync = () => setIsDark(readIsDarkTheme());
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'data-theme'],
+    });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    const svg = svgRef.current;
-    if (!svg) return undefined;
+    const host = hostRef.current;
+    if (!host) return undefined;
 
-    svg.replaceChildren();
+    host.replaceChildren();
     setError(null);
 
-    void import('smiles-drawer')
-      .then(({ default: SmilesDrawer }) => {
-        if (cancelled || !svgRef.current) return;
+    const trimmed = smiles.trim();
+    if (!trimmed) {
+      setError(t('renderer.smiles.invalid'));
+      return undefined;
+    }
 
-        const drawer = new SmilesDrawer.SvgDrawer({
-          bondLength: 18,
-          padding: 5,
-          compactDrawing: true,
-          terminalCarbons: false,
-        });
-
-        SmilesDrawer.parse(
-          smiles,
-          (tree) => {
-            if (cancelled || !svgRef.current) return;
-            try {
-              drawer.draw(tree, svgRef.current, isDarkTheme() ? 'dark' : 'light');
-            } catch (drawError) {
-              if (!cancelled) setError(drawError instanceof Error ? drawError.message : t('renderer.smiles.drawFailed'));
-            }
-          },
-          (parseError) => {
-            if (!cancelled) setError(parseError instanceof Error ? parseError.message : t('renderer.smiles.invalid'));
-          },
-        );
+    void import('openchemlib')
+      .then((ocl: any) => {
+        if (cancelled || !hostRef.current) return;
+        let molecule: any;
+        try {
+          molecule = ocl.Molecule.fromSmiles(trimmed);
+        } catch (parseError) {
+          if (!cancelled) {
+            setError(parseError instanceof Error ? parseError.message : t('renderer.smiles.invalid'));
+          }
+          return;
+        }
+        if (!molecule || typeof molecule.getAllAtoms === 'function' && molecule.getAllAtoms() === 0) {
+          if (!cancelled) setError(t('renderer.smiles.invalid'));
+          return;
+        }
+        try {
+          const rawSvg = molecule.toSVG(240, 120, undefined, {
+            autoCrop: true,
+            autoCropMargin: 8,
+          });
+          hostRef.current.innerHTML = sanitizeSvg(rawSvg);
+        } catch (drawError) {
+          if (!cancelled) {
+            setError(drawError instanceof Error ? drawError.message : t('renderer.smiles.drawFailed'));
+          }
+        }
       })
       .catch((loadError) => {
-        if (!cancelled) setError(loadError instanceof Error ? loadError.message : t('renderer.smiles.loadFailed'));
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : t('renderer.smiles.loadFailed'));
+        }
       });
 
     return () => {
@@ -76,8 +108,13 @@ export const InlineSmiles: React.FC<InlineSmilesProps> = ({ smiles }) => {
 
   const structureLabel = t('renderer.smiles.structureLabel', { smiles });
   return (
-    <span className="inline-smiles" title={structureLabel}>
-      <svg ref={svgRef} role="img" aria-label={structureLabel} />
-    </span>
+    <span
+      ref={hostRef}
+      className="inline-smiles"
+      role="img"
+      aria-label={structureLabel}
+      title={structureLabel}
+      style={isDark ? { filter: 'invert(0.88) hue-rotate(180deg)' } : undefined}
+    />
   );
 };

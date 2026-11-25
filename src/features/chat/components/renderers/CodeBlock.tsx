@@ -56,12 +56,30 @@ import type { ContentCodeBlockContribution } from '@/ui-kernel/contracts/content
 import { officialMarkdownEntries } from '@/ui-plugins/official/content/entries';
 // The blocked renderer needs the shared token palette without loading FlowToken.
 import '../../styles/flowtoken-patched.css';
+import {
+  getLoadedPrismGrammar,
+  loadPrismLanguage,
+  resolvePrismLanguage,
+  type PrismTokenStream,
+} from '@/utils/lazyPrism';
 
-// Keep the shared Prism grammar bundle behind a code-only boundary. Plain prose
-// and inline code never evaluate it, and completed blocks retain memoized output.
-const LazySyntaxHighlighter = React.lazy(() => import('react-syntax-highlighter/dist/esm/prism'));
-
-const HighlightContent: React.FC<{ children?: ReactNode }> = ({ children }) => <>{children}</>;
+function renderPrismTokens(tokens: PrismTokenStream, keyPrefix = 'cb'): ReactNode {
+  return tokens.map((token, idx) => {
+    if (typeof token === 'string') return token;
+    const alias = Array.isArray(token.alias) ? token.alias.join(' ') : token.alias || '';
+    const tokenClass = alias ? `token ${token.type} ${alias}` : `token ${token.type}`;
+    const content: ReactNode = Array.isArray(token.content)
+      ? renderPrismTokens(token.content, `${keyPrefix}-${idx}`)
+      : typeof token.content === 'string'
+        ? token.content
+        : renderPrismTokens([token.content], `${keyPrefix}-${idx}`);
+    return (
+      <span key={`${keyPrefix}-${idx}`} className={tokenClass}>
+        {content}
+      </span>
+    );
+  });
+}
 
 registerArtifactRenderer('openui', function OpenUIPinnedArtifactRenderer({ content }) {
   return <OpenUILangRenderer source={content} isStreaming={false} />;
@@ -77,26 +95,36 @@ const HighlightedCode = React.memo(function HighlightedCode({
   isStreaming?: boolean;
 }) {
   const language = className?.replace('language-', '').toLowerCase();
-  const hasLanguage = language && !['text', 'plain', 'plaintext'].includes(language);
+  const resolvedLang = resolvePrismLanguage(language);
+  const [loadedTick, setLoadedTick] = useState(0);
 
-  // The code node belongs to this component, not the lazy fallback, so loading
-  // grammars, appending streamed text and ending the stream do not replace it.
-  // 流式输出期间跳过 Prism 全量词法重解析，避免每个 chunk 阻塞主线程（LongTask）；
-  // 流式结束后立即切换为语法高亮。
+  // 流式输出期间跳过 Prism 词法解析，避免每个 chunk 阻塞主线程（LongTask）；
+  // 流式结束后按需加载对应语言的 prismjs grammar 并高亮，保持同一 <code> 节点不重建。
+  const cachedGrammar = !isStreaming && resolvedLang ? getLoadedPrismGrammar(resolvedLang) : null;
+
+  useEffect(() => {
+    if (isStreaming || !resolvedLang || cachedGrammar) return;
+    let cancelled = false;
+    void loadPrismLanguage(resolvedLang).then((loaded) => {
+      if (!cancelled && loaded) {
+        setLoadedTick((tick) => tick + 1);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isStreaming, resolvedLang, cachedGrammar]);
+
+  const highlighted = useMemo(() => {
+    if (isStreaming || !resolvedLang) return null;
+    const active = getLoadedPrismGrammar(resolvedLang);
+    if (!active) return null;
+    return renderPrismTokens(active.prism.tokenize(children, active.grammar));
+  }, [children, isStreaming, resolvedLang, loadedTick]);
+
   return (
     <code className={className}>
-      {hasLanguage && !isStreaming ? (
-        <React.Suspense fallback={children}>
-          <LazySyntaxHighlighter
-            language={language}
-            useInlineStyles={false}
-            PreTag={HighlightContent}
-            CodeTag="span"
-          >
-            {children}
-          </LazySyntaxHighlighter>
-        </React.Suspense>
-      ) : children}
+      {highlighted ?? children}
     </code>
   );
 });
