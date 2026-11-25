@@ -546,4 +546,43 @@ describe('useSessionLifecycle auto-resume', () => {
     expect(api.currentSessionIdRef.current).toBe('sess_recovered_draft');
     expect(api.setIsInitialLoading).toHaveBeenCalledWith(false);
   });
+
+  it('SOTA01 Bug 3: times out stalled startup draft even when allSessions is empty and selects a local placeholder instead of null', async () => {
+    vi.useFakeTimers();
+    try {
+      mockSessionListIpc([]);
+      let resolveStalledDraft!: (session: ChatSession) => void;
+      createSessionWithDefaultsMock.mockReturnValue(
+        new Promise<ChatSession>((resolve) => {
+          resolveStalledDraft = resolve;
+        }),
+      );
+
+      const api = renderLifecycle();
+      const loadPromise = api.lifecycle.loadSessions();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4_500);
+        await loadPromise;
+      });
+
+      const placeholderId = api.currentSessionIdRef.current;
+      expect(placeholderId).toBeTruthy();
+      expect(placeholderId).toMatch(/^draft_local_/);
+      expect(sessionManager.has(placeholderId!)).toBe(true);
+      expect(api.setIsInitialLoading).toHaveBeenCalledWith(false);
+      // Local placeholder is hidden draft, so it must NOT clobber lastActiveSessionId
+      expect(readLastActiveSessionId()).toBeNull();
+
+      // When the stalled backend draft eventually resolves while untouched, upgrade seamlessly
+      const lateDraft = makeDraftSession('sess_late_draft');
+      await act(async () => {
+        resolveStalledDraft(lateDraft);
+        await Promise.resolve();
+      });
+      expect(api.currentSessionIdRef.current).toBe('sess_late_draft');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

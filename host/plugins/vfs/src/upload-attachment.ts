@@ -141,6 +141,7 @@ async function uploadAttachment(deps: UploadAttachmentDeps, params: VfsUploadAtt
   const uploadId = params.stagedUploadId ?? null;
   const staged = uploadId !== null && uploadId !== '' ? fs.takeStagedUpload(uploadId) : undefined;
   let result: VfsUploadAttachmentResult;
+  let deferredPdfBytes: Uint8Array | undefined;
   try {
     let stagedBytes: Uint8Array | undefined;
     if (staged !== undefined && !isMedia) {
@@ -161,8 +162,13 @@ async function uploadAttachment(deps: UploadAttachmentDeps, params: VfsUploadAtt
       result = await repos.attachments.uploadMediaStreamPersisted(conn, blobsDir, uploadParams, chunks, targetFolderId);
     } else if (stagedBytes !== undefined) {
       result = await repos.attachments.uploadBytesWithFolderConn(conn, blobsDir, uploadParams, stagedBytes, targetFolderId);
+      if (isPdf && result.isNew) deferredPdfBytes = stagedBytes;
     } else {
       result = await repos.attachments.uploadWithFolderConn(conn, blobsDir, uploadParams, targetFolderId);
+      if (isPdf && result.isNew && uploadParams.base64Content.trim() !== '') {
+        try { deferredPdfBytes = repos.attachments.decodeBase64(uploadParams.base64Content); }
+        catch { deferredPdfBytes = undefined; }
+      }
     }
   } finally {
     // StagedFile drop: the temp file is removed on every path.
@@ -216,8 +222,9 @@ async function uploadAttachment(deps: UploadAttachmentDeps, params: VfsUploadAtt
       processingPercent = status.progress.percent;
       readyModes = [...status.progress.readyModes];
     } else if (isPdf) {
-      processingStatus = 'page_compression';
-      processingPercent = 25.0;
+      const hasPreviewOrText = attachment.previewJson !== undefined || textReady();
+      processingStatus = hasPreviewOrText ? 'page_compression' : 'page_rendering';
+      processingPercent = hasPreviewOrText ? 25.0 : 0.0;
       readyModes = textReady() ? ['text'] : [];
       needsProcessing = true;
     } else {
@@ -255,10 +262,69 @@ async function uploadAttachment(deps: UploadAttachmentDeps, params: VfsUploadAtt
     const fileId = result.sourceId;
     const startStage: ProcessingStage = isPdf ? 'ocr_processing' : 'image_compression';
     const isNew = result.isNew;
-    queueMicrotask(() => {
-      log.info('[VFS::handlers] Starting media pipeline for attachment: %s (pdf=%s, image=%s, is_new=%s, resume=%s)',
-        fileId, isPdf, isImage, isNew, !isNew);
-      deps.pdf.startPipeline(fileId, startStage).catch((error: unknown) => {
+    const needsDeferredPdfRender = isPdf && deferredPdfBytes !== undefined
+      && attachment.previewJson === undefined && attachment.extractedText === undefined;
+    const scheduleAsync = (fn: () => void) => {
+      if (needsDeferredPdfRender) {
+        // Yield a full macrotask tick so the IPC upload response flushes before pdfium runs.
+        setTimeout(fn, 0);
+      } else {
+        queueMicrotask(fn);
+      }
+    };
+    scheduleAsync(() => {
+      const runPipeline = async () => {
+        if (needsDeferredPdfRender && deferredPdfBytes !== undefined && repos.attachmentProcessing !== undefined) {
+          try {
+            const bgConn = deps.conn();
+            const bgBlobsDir = deps.blobsDir();
+            const rendered = await repos.attachmentProcessing.renderPdf(bgConn, bgBlobsDir, deferredPdfBytes, {
+              ...vfsReposApi.DEFAULT_PDF_PREVIEW_CONFIG,
+              maxPages: 3,
+              pageTimeoutMs: 10_000,
+              totalRenderBudgetMs: 15_000,
+            });
+            const renderedPreviewJson = rendered.previewJson === null ? null : JSON.stringify(rendered.previewJson);
+            if (renderedPreviewJson !== null) {
+              repos.files.updatePdfPreview(bgConn, fileId, renderedPreviewJson, rendered.pageCount);
+            }
+            if (rendered.extractedText !== null && rendered.extractedText.trim() !== '') {
+              repos.files.updatePdfExtractedText(bgConn, fileId, rendered.extractedText, rendered.pageCount);
+              if (attachment.resourceId !== undefined && attachment.resourceId !== null) {
+                try { repos.resources.saveOcrText(bgConn, attachment.resourceId, rendered.extractedText); }
+                catch (ocrError) { log.warn('[VFS::handlers] Failed to persist deferred PDF text for %s: %s', fileId, message(ocrError)); }
+              }
+            }
+            const hasExtracted = rendered.extractedText !== null && rendered.extractedText.trim() !== '';
+            const nextModes = hasExtracted ? ['text'] : [];
+            const nextProgress = JSON.stringify({ stage: 'page_compression', percent: 25, readyModes: nextModes });
+            repos.files.applyProcessingStatus(bgConn, fileId, 'page_compression', nextProgress, null, Date.now(), null);
+            if (attachment.resourceId !== undefined && attachment.resourceId !== null) {
+              try {
+                deps.unitBuilder.syncResourceUnits({
+                  resourceId: attachment.resourceId,
+                  resourceType: 'attachment',
+                  data: null,
+                  ocrText: null,
+                  ocrPagesJson: null,
+                  blobHash: attachment.blobHash ?? null,
+                  pageCount: rendered.pageCount,
+                  extractedText: rendered.extractedText,
+                  previewJson: renderedPreviewJson,
+                });
+              } catch (unitError) {
+                log.warn('[VFS::handlers] Failed to re-sync units after deferred PDF render %s: %s', fileId, message(unitError));
+              }
+            }
+          } catch (renderError) {
+            log.warn('[VFS::handlers] Deferred PDF preview render failed for %s: %s', fileId, message(renderError));
+          }
+        }
+        log.info('[VFS::handlers] Starting media pipeline for attachment: %s (pdf=%s, image=%s, is_new=%s, resume=%s)',
+          fileId, isPdf, isImage, isNew, !isNew);
+        await deps.pdf.startPipeline(fileId, startStage);
+      };
+      runPipeline().catch((error: unknown) => {
         log.error('[VFS::handlers] Failed to start media pipeline for attachment %s: %s', fileId, message(error));
       });
     });

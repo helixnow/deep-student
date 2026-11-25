@@ -11,7 +11,8 @@ import type { createStorageService } from '../../../platform/storage/service.ts'
 import type { DatabaseHandle } from '../../../platform/storage/api.ts';
 import {
   DEFAULT_PDF_PREVIEW_CONFIG,
-  EAGER_IMPORT_PDF_PREVIEW_MAX_PAGES,
+  EAGER_IMPORT_PDF_PREVIEW_CONFIG,
+  LARGE_PDF_EAGER_PREVIEW_MAX_PAGES,
   renderPdfPreview,
   type PdfImageEncoder,
   type PdfPreviewDependencies,
@@ -210,7 +211,7 @@ describe('pdf_preview.rs async port', { timeout: 120_000 }, () => {
     expect(result.previewJson?.pages[0]?.pageIndex).toBe(0);
   });
 
-  it('caps large PDF upload preview to eager max pages while preserving full pageCount and text', async () => {
+  it('defers new PDF rendering during upload and caps eager preview for >20-page PDFs', async () => {
     const renderedIndices: number[] = [];
     const bigPdfium: NativePdfium = {
       extractText: async () => 'full 48-page text',
@@ -250,25 +251,31 @@ describe('pdf_preview.rs async port', { timeout: 120_000 }, () => {
     });
     try {
       const bigDb = bigStorage.database('vfs');
+      const pdfBytes = Buffer.from('%PDF-1.7\n48-page body');
+      const blobsDir = bigStorage.locations.activeDir + '/vfs_blobs';
+      // 1. New PDF upload must NOT synchronously render pages (Bug 2 / SOTA01 P1-a).
       const result = await bigHost.ctx.vfsRepo.attachments.uploadBytesWithConn(
         bigDb,
-        bigStorage.locations.activeDir + '/vfs_blobs',
+        blobsDir,
         { name: 'textbook-48p.pdf', mimeType: 'application/pdf', base64Content: '' },
-        Buffer.from('%PDF-1.7\n48-page body'),
+        pdfBytes,
       );
-      expect(result.attachment.pageCount).toBe(48);
-      expect(result.attachment.extractedText).toBe('full 48-page text');
-      expect(renderedIndices).toHaveLength(EAGER_IMPORT_PDF_PREVIEW_MAX_PAGES);
-      const preview = JSON.parse(result.attachment.previewJson ?? 'null') as {
-        pages: unknown[];
-        totalPages: number;
-        isTruncated: boolean;
-        maxRenderedPages: number;
-      };
-      expect(preview.pages).toHaveLength(EAGER_IMPORT_PDF_PREVIEW_MAX_PAGES);
-      expect(preview.totalPages).toBe(48);
-      expect(preview.isTruncated).toBe(true);
-      expect(preview.maxRenderedPages).toBe(EAGER_IMPORT_PDF_PREVIEW_MAX_PAGES);
+      expect(result.isNew).toBe(true);
+      expect(result.processingStatus).toBe('page_rendering');
+      expect(renderedIndices).toHaveLength(0);
+
+      // 2. When async render runs with EAGER_IMPORT_PDF_PREVIEW_CONFIG on >20p PDFs,
+      // pages are capped to LARGE_PDF_EAGER_PREVIEW_MAX_PAGES while preserving full pageCount/text.
+      const rendered = await bigHost.ctx.vfsRepo.attachmentProcessing.renderPdf(
+        bigDb, blobsDir, pdfBytes, EAGER_IMPORT_PDF_PREVIEW_CONFIG,
+      );
+      expect(rendered.pageCount).toBe(48);
+      expect(rendered.extractedText).toBe('full 48-page text');
+      expect(renderedIndices).toHaveLength(LARGE_PDF_EAGER_PREVIEW_MAX_PAGES);
+      expect(rendered.previewJson?.pages).toHaveLength(LARGE_PDF_EAGER_PREVIEW_MAX_PAGES);
+      expect(rendered.previewJson?.totalPages).toBe(48);
+      expect(rendered.previewJson?.isTruncated).toBe(true);
+      expect(rendered.previewJson?.maxRenderedPages).toBe(LARGE_PDF_EAGER_PREVIEW_MAX_PAGES);
     } finally {
       await bigHost.dispose();
       bigStorage.dispose();
@@ -357,24 +364,73 @@ describe('NativeAttachmentProcessing production assembly', { timeout: 120_000 },
     if (root) rmSync(root, { recursive: true, force: true });
   }, 120_000);
 
-  it('uploads a PDF through the real plugin and persists preview/text/page_count', async () => {
+  it('uploads a PDF through the real plugin without synchronous rendering and sets page_rendering', async () => {
     const bytes = Buffer.from('%PDF-1.4\nfake body');
     const result = await host.ctx.vfsRepo.attachments.uploadBytesWithConn(
       db, storage.locations.activeDir + '/vfs_blobs',
       { name: 'paper.pdf', mimeType: 'application/pdf', base64Content: '' }, bytes);
     expect(result.isNew).toBe(true);
+    expect(result.processingStatus).toBe('page_rendering');
     const row = db.get<{
       preview_json: string | null; extracted_text: string | null; page_count: number | null;
       processing_status: string | null;
     }>('SELECT preview_json, extracted_text, page_count, processing_status FROM files WHERE id = ?1',
       [result.sourceId]);
-    expect(row?.extracted_text).toBe('pdf body text');
-    expect(row?.page_count).toBe(2);
-    expect(row?.processing_status).toBe('page_compression');
-    const preview = JSON.parse(row?.preview_json ?? 'null') as { pages: Array<{ blobHash: string }> };
-    expect(preview.pages).toHaveLength(2);
-    expect(result.attachment.previewJson).toBeDefined();
-    expect(result.attachment.extractedText).toBe('pdf body text');
+    expect(row?.processing_status).toBe('page_rendering');
+    expect(row?.preview_json).toBeNull();
+    expect(row?.extracted_text).toBeNull();
+    expect(row?.page_count).toBeNull();
+  });
+
+  it('SOTA01 Bug 1: atomic upsert resolves sha256 collision without throwing notFound (including NULL content_hash and concurrent insert race)', async () => {
+    const blobsDir = storage.locations.activeDir + '/vfs_blobs';
+    const bytes = Buffer.from('%PDF-1.4\nattention-paper-bytes');
+    const hash = host.ctx.vfsRepo.attachments.computeHash(bytes);
+
+    // Case A: Pre-existing files row created via files.createFile (sha256 set, content_hash NULL).
+    const preExisting = host.ctx.vfsRepo.files.createFile(
+      db, hash, 'attention.pdf', bytes.length, 'file', 'application/pdf',
+    );
+    const deduped = await host.ctx.vfsRepo.attachments.uploadBytesWithConn(
+      db, blobsDir, { name: 'attention.pdf', mimeType: 'application/pdf', base64Content: '' }, bytes,
+    );
+    expect(deduped.isNew).toBe(false);
+    expect(deduped.sourceId).toBe(preExisting.id);
+    expect(deduped.resourceHash).toBe(hash);
+    expect(db.pluck('SELECT content_hash FROM files WHERE id = ?1', [preExisting.id])).toBe(hash);
+
+    // Case B: Soft-deleted pre-existing row with NULL content_hash is restored on conflict.
+    const deletedBytes = Buffer.from('%PDF-1.4\ndeleted-collision-bytes');
+    const deletedHash = host.ctx.vfsRepo.attachments.computeHash(deletedBytes);
+    const deletedFile = host.ctx.vfsRepo.files.createFile(
+      db, deletedHash, 'old-name.pdf', deletedBytes.length, 'file', 'application/pdf',
+    );
+    host.ctx.vfsRepo.files.deleteFile(db, deletedFile.id);
+    const restored = await host.ctx.vfsRepo.attachments.uploadBytesWithConn(
+      db, blobsDir, { name: 'restored-name.pdf', mimeType: 'application/pdf', base64Content: '' }, deletedBytes,
+    );
+    expect(restored.isNew).toBe(false);
+    expect(restored.sourceId).toBe(deletedFile.id);
+    expect(db.pluck('SELECT deleted_at FROM files WHERE id = ?1', [deletedFile.id])).toBeNull();
+
+    // Case C: Concurrent writer inserts row between initial getByHash (returns null) and INSERT.
+    const raceBytes = Buffer.from('%PDF-1.4\nrace-writer-bytes');
+    const firstUpload = await host.ctx.vfsRepo.attachments.uploadBytesWithConn(
+      db, blobsDir, { name: 'race.pdf', mimeType: 'application/pdf', base64Content: '' }, raceBytes,
+    );
+    expect(firstUpload.isNew).toBe(true);
+    const getByHashSpy = vi.spyOn(host.ctx.vfsRepo.attachments, 'getByHash');
+    // Simulate stale snapshot returning null on prepareUpload + registerPrepared pre-check.
+    getByHashSpy.mockReturnValueOnce(null).mockReturnValueOnce(null);
+    try {
+      const raced = await host.ctx.vfsRepo.attachments.uploadBytesWithConn(
+        db, blobsDir, { name: 'race.pdf', mimeType: 'application/pdf', base64Content: '' }, raceBytes,
+      );
+      expect(raced.isNew).toBe(false);
+      expect(raced.sourceId).toBe(firstUpload.sourceId);
+    } finally {
+      getByHashSpy.mockRestore();
+    }
   });
 
   it('repairs an existing PDF row with page_count=0 and no text', async () => {

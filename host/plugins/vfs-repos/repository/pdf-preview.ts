@@ -36,6 +36,8 @@ export const DEFAULT_PDF_PREVIEW_CONFIG: PdfPreviewConfig = {
 
 /** Synchronous import preview caps: fast cover/first-N rasterization with bounded latency. */
 export const EAGER_IMPORT_PDF_PREVIEW_MAX_PAGES = 3;
+export const LARGE_PDF_PAGE_THRESHOLD = 20;
+export const LARGE_PDF_EAGER_PREVIEW_MAX_PAGES = 2;
 export const DEFAULT_PDF_PAGE_RENDER_TIMEOUT_MS = 10_000;
 export const DEFAULT_PDF_TOTAL_RENDER_BUDGET_MS = 15_000;
 
@@ -208,9 +210,13 @@ async function renderPdfPages(
   const document = await pdfium.open(pdfBytes, null);
   try {
     const totalPages = document.pageCount;
+    // Cap eager preview rendering further for large PDFs (>20 pages) to keep latency bounded.
+    const effectiveMaxPages = config.maxPages <= EAGER_IMPORT_PDF_PREVIEW_MAX_PAGES && totalPages > LARGE_PDF_PAGE_THRESHOLD
+      ? Math.min(config.maxPages, LARGE_PDF_EAGER_PREVIEW_MAX_PAGES)
+      : config.maxPages;
     // Rust clamps to `config.max_pages` and `u16::MAX` (audit M5).
-    const renderPages = Math.min(totalPages, config.maxPages, 0xffff);
-    logInfo(`[PDF-Preview] Rendering PDF: ${totalPages} pages (max: ${config.maxPages})`);
+    const renderPages = Math.min(totalPages, effectiveMaxPages, 0xffff);
+    logInfo(`[PDF-Preview] Rendering PDF: ${totalPages} pages (max: ${effectiveMaxPages})`);
 
     const pageTimeoutMs = config.pageTimeoutMs ?? DEFAULT_PDF_PAGE_RENDER_TIMEOUT_MS;
     const totalBudgetMs = config.totalRenderBudgetMs ?? DEFAULT_PDF_TOTAL_RENDER_BUDGET_MS;
@@ -242,9 +248,9 @@ async function renderPdfPages(
       throw new Error(`PDF 预渲染失败：${renderPages} 页全部渲染失败`);
     }
 
-    const isTruncated = totalPages > config.maxPages || budgetExceeded;
+    const isTruncated = totalPages > effectiveMaxPages || budgetExceeded;
     if (isTruncated) {
-      logWarn(`[PDF-Preview] PDF truncated: total ${totalPages} pages, rendered ${pages.length} pages (max: ${config.maxPages})`);
+      logWarn(`[PDF-Preview] PDF truncated: total ${totalPages} pages, rendered ${pages.length} pages (max: ${effectiveMaxPages})`);
     }
     const preview: PdfPreviewJson = {
       pages,
@@ -252,7 +258,7 @@ async function renderPdfPages(
       totalPages,
       renderedAt: utcNow(),
       isTruncated,
-      maxRenderedPages: config.maxPages,
+      maxRenderedPages: effectiveMaxPages,
     };
     logInfo(`[PDF-Preview] Rendered ${pages.length} pages successfully (truncated: ${isTruncated})`);
     return { preview, totalPages };
