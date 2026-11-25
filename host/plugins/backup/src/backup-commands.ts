@@ -171,22 +171,38 @@ export class BackupCommands {
   async verifyBackupWithAssets(backupId: string): Promise<BackupVerifyWithAssetsResponse> {
     const id = validateBackupId(backupId);
     const root = backupDir(this.ctx.app.dataDir);
-    if (!existsSync(root)) {
+    const legacyRoot = join(this.ctx.app.dataDir, 'backups');
+    const hasModernRoot = existsSync(root);
+    const hasLegacyRoot = existsSync(legacyRoot);
+    if (!hasModernRoot && !hasLegacyRoot) {
       throw new Error('备份目录不存在。请前往「设置 > 数据治理 > 备份」检查备份目录配置');
     }
     const guard = await this.acquireVerifyGuard();
     try {
-      const manifest = findBackup(root, id, '备份不存在', message => this.ctx.logger('backup').warn(message));
-      // Rust commands_asset.rs 使用 app_data_dir/backups 作为边界根（而非 recovery/backups）。
-      const legacyRoot = join(this.ctx.app.dataDir, 'backups');
-      ensureExistingPathWithinBackupDir(join(legacyRoot, manifest.backup_id), legacyRoot, userHomeDir(this.ctx));
-      const result = await verifyWithAssets(this.ctx, root, manifest);
+      const warn = (message: string) => this.ctx.logger('backup').warn(message);
+      let effectiveRoot = root;
+      let manifest = hasModernRoot
+        ? listBackups(root, warn).find(candidate => candidate.backup_id === id)
+        : undefined;
+      if (manifest === undefined && hasLegacyRoot) {
+        effectiveRoot = legacyRoot;
+        manifest = listBackups(legacyRoot, warn).find(candidate => candidate.backup_id === id);
+      }
+      if (manifest === undefined) {
+        throw new Error(`备份不存在: ${id}`);
+      }
+      ensureExistingPathWithinBackupDir(
+        join(effectiveRoot, manifest.backup_id),
+        effectiveRoot,
+        userHomeDir(this.ctx),
+      );
+      const result = await verifyWithAssets(this.ctx, effectiveRoot, manifest);
       return {
-      is_valid: result.isValid,
-      database_errors: result.databaseErrors,
-      asset_errors: result.assetErrors.map(error => ({
-        path: error.path, error_type: error.error_type, message: error.message,
-      })),
+        is_valid: result.isValid,
+        database_errors: result.databaseErrors,
+        asset_errors: result.assetErrors.map(error => ({
+          path: error.path, error_type: error.error_type, message: error.message,
+        })),
         has_assets: manifest.assets !== undefined,
         asset_file_count: manifest.assets?.total_files ?? 0,
       };
