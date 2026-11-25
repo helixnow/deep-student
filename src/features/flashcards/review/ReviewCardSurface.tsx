@@ -222,6 +222,8 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
     scrollElement.scrollBy(0, deltaY * factor);
   }, [scrollElement]);
 
+  const [imageLightboxOpen, setImageLightboxOpen] = React.useState(false);
+
   const swipeState = swipe?.state ?? null;
   const band = swipeState && swipeState.dragging && swipeState.direction
     ? SWIPE_BANDS[swipeState.direction]
@@ -232,12 +234,12 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
       className="wb-fc-card-stage relative"
       data-agent-entity={agentEntityId}
       {...(swipe
-        ? swipeEnabled
+        ? swipeEnabled && !imageLightboxOpen
           ? swipe.handlers
           // 手势关闭时仍保留 click 捕获：吞掉拖动收尾的合成 click，避免误翻面
           : { onClickCapture: swipe.handlers.onClickCapture }
         : {})}
-      style={swipe && swipeEnabled
+      style={swipe && swipeEnabled && !imageLightboxOpen
         ? { touchAction: contentFits ? 'none' : 'pan-y' }
         : undefined}
     >
@@ -253,8 +255,13 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
           aria-busy={templateLoading}
           aria-label={flipAriaLabel}
           aria-keyshortcuts="Space"
-          onClick={disabled ? undefined : (event) => {
-            if (event.target instanceof Element && event.target.closest('.os-scrollbar')) return;
+          onClick={disabled || imageLightboxOpen ? undefined : (event) => {
+            if (
+              event.target instanceof Element
+              && event.target.closest('.os-scrollbar, [data-anki-image-lightbox], [data-anki-zoom-trigger]')
+            ) {
+              return;
+            }
             onFlip();
           }}
           data-side={side}
@@ -298,7 +305,7 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
             >
               {/* 不再对 iframe 设 max-h 上限：iframe 高度随内容自适应，
                   超长卡片由外层 .wb-fc-card 的统一 viewport 滚动。
-                  卡面只在含提示折叠 / 音频 / 链接 / 脚本时接收指针（点空白处仍翻面），
+                  卡面只在含提示折叠 / 音频 / 图片放大 / 链接 / 脚本时接收指针（点空白处仍翻面），
                   其余卡面整块透传，保持点击翻面与滑动评分。 */}
               <AnkiTemplateCardFace
                 card={renderCard}
@@ -309,8 +316,9 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
                 emptyText={flipped ? noBackText : noFrontText}
                 stageHeight={templateMode ? stageHeight : undefined}
                 interactiveFrame
-                onFrameClick={disabled ? undefined : onFlip}
+                onFrameClick={disabled || imageLightboxOpen ? undefined : onFlip}
                 onFrameWheel={handleFrameWheel}
+                onImageLightboxChange={setImageLightboxOpen}
                 className={cn(
                   'flex min-h-0 flex-1',
                   templateMode ? (contentFits ? 'flex-col justify-center' : 'flex-col') : 'flex-col items-center justify-center',

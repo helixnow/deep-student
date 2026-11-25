@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { buildCardFaceCss, CARD_FACE_STAGE_CSS } from '../cardFaceStyles';
+import { buildCardFaceCss, CARD_FACE_DARK_CSS, CARD_FACE_STAGE_CSS } from '../cardFaceStyles';
 
 describe('buildCardFaceCss surfaceColor（移动端 WebView iframe 白底修复）', () => {
   it('传入 surfaceColor 时注入 html/body 显式背景', () => {
@@ -57,5 +59,45 @@ describe('buildCardFaceCss stage（复习舞台：模板卡自然尺寸 + 纵向
     expect(center).toBeGreaterThan(-1);
     expect(safeCenter).toBeGreaterThan(center);
     expect(CARD_FACE_STAGE_CSS).toContain('min-height: 100vh');
+  });
+});
+
+describe('G18: dark-mode Cloze & builtin template contrast', () => {
+  it('injects dark-mode high-contrast overrides for Cloze masks and legacy builtin surfaces', () => {
+    const legacyGlassCss =
+      '.nightMode .glass-panel { background: #ffffff !important; color: #37352f !important; } ' +
+      '.cloze { background: #e9e9e7 !important; color: transparent !important; }';
+    const css = buildCardFaceCss(legacyGlassCss, { darkMode: true });
+    expect(css).toContain('body.card.nightMode .glass-panel');
+    expect(css).toContain('body.card.nightMode .glass-panel .cloze');
+    expect(css).toContain('body.card.nightMode .redact-card .cloze');
+    expect(css).toContain('body.card.nightMode .exam-front .cloze');
+    expect(css).toContain('body.card.nightMode .lab-card');
+    expect(css.indexOf(legacyGlassCss)).toBeLessThan(css.indexOf(CARD_FACE_DARK_CSS));
+  });
+
+  it('keeps builtin Cloze and Lab templates dark and legible under .nightMode (never blinding white or transparent #e9e9e7 masks)', () => {
+    const templates = JSON.parse(
+      readFileSync(resolve(process.cwd(), 'host/plugins/anki/data/builtin-templates.json'), 'utf8'),
+    ) as Array<{ id: string; note_type: string; css_style: string }>;
+
+    const glass = templates.find((t) => t.id === 'design-glass')!;
+    expect(glass.css_style).toContain('.card.nightMode');
+    expect(glass.css_style).not.toMatch(/\.nightMode\s+\.glass-panel[^{]*\{[^}]*#ffffff/i);
+    expect(glass.css_style).not.toContain('background: #e9e9e7');
+    expect(glass.css_style).not.toContain('color: transparent');
+    expect(glass.css_style).toContain('.nightMode .cloze');
+
+    const redaction = templates.find((t) => t.id === 'design-redaction')!;
+    expect(redaction.css_style).toContain('.nightMode .redact-card');
+    expect(redaction.css_style).not.toContain('color: transparent');
+
+    const exam = templates.find((t) => t.id === 'design-exam')!;
+    expect(exam.css_style).not.toMatch(/\.nightMode\s+\.exam-paper[^{]*\{[^}]*#FDFCF8/i);
+    expect(exam.css_style).toContain('.nightMode .exam-front .cloze');
+
+    const lab = templates.find((t) => t.id === 'design-lab')!;
+    expect(lab.css_style).not.toMatch(/\.nightMode\s+\.lab-card[^{]*\{[^}]*#ffffff/i);
+    expect(lab.css_style).toContain('.nightMode .lab-opt');
   });
 });

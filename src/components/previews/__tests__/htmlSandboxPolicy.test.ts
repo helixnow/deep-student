@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CARD_FACE_HELPER_SCRIPT } from '@/components/anki/utils/cardMedia';
-import { getHtmlSandboxPermissions, sanitizeHtmlForPreview } from '../htmlSandboxPolicy';
+import { CARD_FACE_HELPER_SCRIPT, TRANSPARENT_PIXEL_DATA_URL } from '@/components/anki/utils/cardMedia';
+import { buildHtmlSandboxDocument, getHtmlSandboxPermissions, sanitizeHtmlForPreview } from '../htmlSandboxPolicy';
 
 const LAB_BACK = `<div class="lab-opt" data-opt="D" onclick="toggle(this)">D. 以上都是</div>
 <script>document.querySelectorAll('.lab-opt').forEach(function(o){ if (o.dataset.opt === 'D') o.classList.add('correct'); });</script>`;
@@ -55,5 +55,38 @@ describe('htmlSandboxPolicy', () => {
     expect(out).not.toContain('<script');
     expect(out).not.toContain('onclick');
     expect(out).not.toContain('javascript:');
+  });
+
+  it('replaces unresolved relative/http local image and media src values with CSP-safe placeholders', () => {
+    const dirty = '<img src="real_protein_plots.png"><img src="http://127.0.0.1:1422/a.png"><img src="https://safe.test/ok.png"><audio src="local.mp3"></audio>';
+    const out = sanitizeHtmlForPreview(dirty, 'template-safe');
+    expect(out).not.toContain('src="real_protein_plots.png"');
+    expect(out).not.toContain('src="http://127.0.0.1:1422/a.png"');
+    expect(out).toContain(`src="${TRANSPARENT_PIXEL_DATA_URL}"`);
+    expect(out).toContain('data-anki-media-pending="1"');
+    expect(out).toContain('src="https://safe.test/ok.png"');
+    expect(out).not.toContain('src="local.mp3"');
+  });
+
+  it('emits Anki nightMode and night_mode classes on sandbox body when darkMode is enabled', () => {
+    const lightDoc = buildHtmlSandboxDocument({
+      html: '<div>front</div>',
+      css: '',
+      mode: 'template-safe',
+      fidelity: 'anki',
+      darkMode: false,
+    });
+    expect(lightDoc).toContain('<body class="card">');
+    expect(lightDoc).not.toContain('nightMode');
+
+    const darkDoc = buildHtmlSandboxDocument({
+      html: '<div>front</div>',
+      css: '',
+      mode: 'template-safe',
+      fidelity: 'anki',
+      darkMode: true,
+    });
+    expect(darkDoc).toContain('<body class="card nightMode night_mode">');
+    expect(darkDoc).toContain('color-scheme: dark;');
   });
 });

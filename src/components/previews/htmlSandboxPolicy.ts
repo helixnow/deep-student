@@ -1,8 +1,13 @@
 import DOMPurify from 'dompurify';
 
-import { CARD_FACE_HELPER_SCRIPT } from '@/components/anki/utils/cardMedia';
+import {
+  CARD_FACE_HELPER_SCRIPT,
+  TRANSPARENT_PIXEL_DATA_URL,
+} from '@/components/anki/utils/cardMedia';
 
 const CARD_FACE_HELPER_SCRIPT_BODY = CARD_FACE_HELPER_SCRIPT.replace(/^<script>/, '').replace(/<\/script>$/, '');
+const SANDBOX_ALLOWED_IMG_SRC_RE = /^(?:data:image\/|blob:|https:)/i;
+const SANDBOX_ALLOWED_MEDIA_SRC_RE = /^(?:data:|blob:|https:)/i;
 
 export type HtmlSandboxMode = 'chat-safe' | 'template-safe';
 
@@ -13,6 +18,8 @@ interface BuildHtmlSandboxDocumentOptions {
   compact?: boolean;
   height?: number | string;
   fidelity?: 'default' | 'anki';
+  /** 应用暗色主题时输出 Anki 约定类名 `nightMode night_mode` 并同步暗色画布基调 */
+  darkMode?: boolean;
   /**
    * 应用自有样式（如卡面 KaTeX 样式 + data: 字体），不经 sanitizeCssForPreview——
    * 后者会删 @font-face 与非图片 url()。仅限应用打包内容，禁止传入用户/模板 CSS。
@@ -76,6 +83,35 @@ export function sanitizeCssForPreview(css: string, _mode: HtmlSandboxMode): stri
 export function sanitizeHtmlForPreview(html: string, mode: HtmlSandboxMode): string {
   if (!html) return '';
   const isFullDoc = /^\s*(<!doctype|<html[\s>])/i.test(html.trim());
+  // 防御性 CSP 兜底：srcdoc iframe 仅放行 data:/blob:/https: 媒体源，任何残留的
+  // 相对路径或非法协议（如 http://127.0.0.1/foo.png、foo.png）在净化阶段一律替换为
+  // 透明 1×1 data URL 占位，避免浏览器在 srcdoc 挂载瞬间报 img-src / media-src CSP 错。
+  const guardSandboxMediaSrc = (node: Element) => {
+    const tag = node.tagName;
+    if (tag === 'IMG' && node.hasAttribute('src')) {
+      const rawSrc = (node.getAttribute('src') ?? '').trim();
+      if (!SANDBOX_ALLOWED_IMG_SRC_RE.test(rawSrc)) {
+        node.setAttribute('src', TRANSPARENT_PIXEL_DATA_URL);
+        if (mode === 'template-safe') {
+          node.setAttribute('data-anki-media-pending', '1');
+          if (rawSrc && !node.hasAttribute('data-anki-media-ref')) {
+            node.setAttribute('data-anki-media-ref', rawSrc);
+          }
+        }
+      }
+    } else if ((tag === 'AUDIO' || tag === 'VIDEO' || tag === 'SOURCE') && node.hasAttribute('src')) {
+      const rawSrc = (node.getAttribute('src') ?? '').trim();
+      if (!SANDBOX_ALLOWED_MEDIA_SRC_RE.test(rawSrc)) {
+        node.removeAttribute('src');
+        if (mode === 'template-safe') {
+          node.setAttribute('data-anki-media-pending', '1');
+          if (rawSrc && !node.hasAttribute('data-anki-media-ref')) {
+            node.setAttribute('data-anki-media-ref', rawSrc);
+          }
+        }
+      }
+    }
+  };
   if (mode === 'template-safe') {
     // 保留 onclick 与 data-* 属性（复习页辅助脚本据 [onclick] 判断点击不翻面）。
     // 模板自带 <script> 会被父页面 CSP（经 srcdoc 继承）拦截并报错，预览中剥除
@@ -87,6 +123,7 @@ export function sanitizeHtmlForPreview(html: string, mode: HtmlSandboxMode): str
       }
     };
     DOMPurify.addHook('uponSanitizeElement', dropUntrustedScript);
+    DOMPurify.addHook('afterSanitizeAttributes', guardSandboxMediaSrc);
     try {
       return DOMPurify.sanitize(html, {
         WHOLE_DOCUMENT: isFullDoc,
@@ -98,19 +135,25 @@ export function sanitizeHtmlForPreview(html: string, mode: HtmlSandboxMode): str
       });
     } finally {
       DOMPurify.removeHook('uponSanitizeElement', dropUntrustedScript);
+      DOMPurify.removeHook('afterSanitizeAttributes', guardSandboxMediaSrc);
     }
   }
 
   const strippedChatInput = html
     .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
     .replace(/<script\b[\s\S]*$/i, '');
-  return DOMPurify.sanitize(strippedChatInput, {
-    WHOLE_DOCUMENT: isFullDoc,
-    ADD_TAGS: ['style', 'meta'],
-    FORBID_TAGS: ['script', 'iframe', 'embed', 'object', 'form', 'base', 'link'],
-    FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
-    ALLOW_DATA_ATTR: false,
-  });
+  DOMPurify.addHook('afterSanitizeAttributes', guardSandboxMediaSrc);
+  try {
+    return DOMPurify.sanitize(strippedChatInput, {
+      WHOLE_DOCUMENT: isFullDoc,
+      ADD_TAGS: ['style', 'meta'],
+      FORBID_TAGS: ['script', 'iframe', 'embed', 'object', 'form', 'base', 'link'],
+      FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
+      ALLOW_DATA_ATTR: false,
+    });
+  } finally {
+    DOMPurify.removeHook('afterSanitizeAttributes', guardSandboxMediaSrc);
+  }
 }
 
 export function getHtmlSandboxPermissions(mode: HtmlSandboxMode): string {
@@ -155,6 +198,7 @@ export function buildHtmlSandboxDocument({
   mode,
   compact = false,
   fidelity = 'default',
+  darkMode = false,
   trustedCss = '',
 }: BuildHtmlSandboxDocumentOptions): string {
   const isAnkiFidelity = fidelity === 'anki';
@@ -165,6 +209,11 @@ export function buildHtmlSandboxDocument({
 
   const resizeScript = mode === 'template-safe' ? TEMPLATE_RESIZE_SCRIPT : '';
   const csp = getHtmlSandboxCsp(mode);
+  const bodyClasses: string[] = [];
+  if (isAnkiFidelity) bodyClasses.push('card');
+  if (darkMode) bodyClasses.push('nightMode', 'night_mode');
+  const bodyClassAttr = bodyClasses.length > 0 ? ` class="${bodyClasses.join(' ')}"` : '';
+  const defaultSurface = darkMode ? '#14161a' : 'white';
 
   return `<!DOCTYPE html>
 <html>
@@ -174,14 +223,14 @@ export function buildHtmlSandboxDocument({
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 ${trustedCss ? `<style>${trustedCss.replace(/<\s*\/\s*style/gi, '<\\/style')}</style>\n` : ''}<style>
   :root {
-    --preview-scrollbar-thumb: color-mix(in srgb, CanvasText 28%, transparent);
+    ${darkMode ? 'color-scheme: dark;\n    ' : ''}--preview-scrollbar-thumb: color-mix(in srgb, CanvasText 28%, transparent);
     --preview-scrollbar-track: transparent;
   }
   html, body {
     margin: 0;
     padding: 0;
     height: 100%;
-    background: ${compact || isAnkiFidelity ? 'transparent' : 'white'};
+    background: ${compact || isAnkiFidelity ? 'transparent' : defaultSurface};
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -195,7 +244,7 @@ ${trustedCss ? `<style>${trustedCss.replace(/<\s*\/\s*style/gi, '<\\/style')}</s
     -webkit-overflow-scrolling: touch;
   }
   .card-content-container {
-    background: ${compact ? 'transparent' : 'white'};
+    background: ${compact ? 'transparent' : defaultSurface};
     border-radius: ${compact ? '0' : '16px'};
     padding: ${compact ? '4px' : '20px'};
     box-sizing: border-box;
@@ -235,7 +284,7 @@ ${trustedCss ? `<style>${trustedCss.replace(/<\s*\/\s*style/gi, '<\\/style')}</s
 </style>
 ${resizeScript}
 </head>
-<body${isAnkiFidelity ? ' class="card"' : ''}>
+<body${bodyClassAttr}>
 ${bodyContent}
 </body>
 </html>`;

@@ -13,7 +13,12 @@ import { invoke } from '@tauri-apps/api/core';
 const CACHE_LIMIT = 256;
 const cache = new Map<string, Promise<string | null>>();
 
+/** 1x1 透明 GIF 占位图：防止未解析的本地相对 src 进入 iframe srcdoc 触发 img-src CSP 违规。 */
+export const TRANSPARENT_PIXEL_DATA_URL =
+  'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+
 const REMOTE_OR_DATA_SCHEME_RE = /^(?:data:|blob:|https?:|asset:)/i;
+const SANDBOX_SAFE_MEDIA_SRC_RE = /^(?:data:|blob:|https:)/i;
 const AUDIO_MEDIA_EXT_RE = /\.(?:mp3|ogg|oga|opus|wav|m4a|aac|flac|webm)(?:$|[?#])/i;
 const VIDEO_MEDIA_EXT_RE = /\.(?:mp4)(?:$|[?#])/i;
 const SUPPORTED_MEDIA_EXT_RE = /\.(?:png|jpe?g|gif|webp|svg|bmp|avif|mp3|ogg|oga|opus|wav|m4a|aac|flac|webm|mp4)(?:$|[?#])/i;
@@ -120,12 +125,17 @@ export function lookupCardMedia(media: ReadonlyMap<string, string>, rawRef: stri
   return undefined;
 }
 
-/** 文件名 → data URL；支持 card.images 路径与卡面内联文件名经 read_anki_media 解析，读不到的静默跳过。 */
-export function useCardMediaMap(
+export interface CardMediaState {
+  media: Map<string, string>;
+  loading: boolean;
+}
+
+/** 文件名 → data URL + 加载态；支持 card.images 路径与卡面内联文件名经 read_anki_media 解析，读不到的静默跳过。 */
+export function useCardMediaState(
   paths: readonly string[] | undefined,
   inlineNames?: readonly string[],
-): Map<string, string> {
-  const [media, setMedia] = useState<Map<string, string>>(() => new Map());
+  retryNonce = 0,
+): CardMediaState {
   const candidates: string[] = [];
   const seenNames = new Set<string>();
   for (const path of paths ?? []) {
@@ -146,10 +156,20 @@ export function useCardMediaMap(
     candidates.push(base);
   }
   const key = candidates.join('\n');
+  const requestKey = `${retryNonce}\u0000${key}`;
+  const [state, setState] = useState<{ requestKey: string; media: Map<string, string> }>(() => ({
+    requestKey: key ? '' : requestKey,
+    media: new Map(),
+  }));
+
   useEffect(() => {
     const local = key ? key.split('\n') : [];
     if (local.length === 0) {
-      setMedia((current) => (current.size === 0 ? current : new Map()));
+      setState((current) =>
+        current.requestKey === requestKey && current.media.size === 0
+          ? current
+          : { requestKey, media: new Map() },
+      );
       return undefined;
     }
     let cancelled = false;
@@ -161,13 +181,23 @@ export function useCardMediaMap(
       for (const [name, url] of entries) {
         if (url) next.set(name, url);
       }
-      setMedia(next);
+      setState({ requestKey, media: next });
     });
     return () => {
       cancelled = true;
     };
-  }, [key]);
-  return media;
+  }, [key, requestKey]);
+
+  const loading = Boolean(key) && state.requestKey !== requestKey;
+  return { media: state.media, loading };
+}
+
+/** 文件名 → data URL；支持 card.images 路径与卡面内联文件名经 read_anki_media 解析，读不到的静默跳过。 */
+export function useCardMediaMap(
+  paths: readonly string[] | undefined,
+  inlineNames?: readonly string[],
+): Map<string, string> {
+  return useCardMediaState(paths, inlineNames).media;
 }
 
 function escapeAttr(value: string): string {
@@ -194,10 +224,14 @@ export function soundNames(html: string): Set<string> {
 export interface InjectCardMediaOptions {
   /** 不自动播放的音频（背面里属于正面的部分，同 Anki 不重放 {{FrontSide}} 音频） */
   noAutoplay?: Set<string>;
+  /** 本地媒体是否仍在异步加载中（用于展示明确的音频加载态，而非静态文件名徽标） */
+  mediaLoading?: boolean;
 }
 
 /**
- * 替换 `src="name"` / `src=name` 为 data URL；`[sound:name]` 变成 `<audio>`（读不到文件时退回 ♪ 徽标）。
+ * 替换 `src="name"` / `src=name` 为 data URL；未解析的本地相对引用绝不裸出到 srcdoc，
+ * 一律替换为透明 1×1 data URL 占位 + `data-anki-media-pending="1"` 以满足严格 CSP（零控制台报错）。
+ * `[sound:name]` 变成可点击播放按钮 + `<audio>`（加载中/缺失时展示明确的可交互加载/重试按钮）。
  */
 export function injectCardMedia(
   html: string,
@@ -205,14 +239,30 @@ export function injectCardMedia(
   options: InjectCardMediaOptions = {},
 ): string {
   let out = html.replace(
-    /(\ssrc\s*=\s*)(?:(["'])([^"']+)\2|([^\s"'=<>`]+))/gi,
-    (whole, prefix: string, quote: string | undefined, quotedVal: string | undefined, unquotedVal: string | undefined) => {
-      const value = quotedVal ?? unquotedVal ?? '';
-      if (REMOTE_OR_DATA_SCHEME_RE.test(value.trim())) return whole;
-      const url = lookupCardMedia(media, value);
-      if (!url) return whole;
-      const q = quote ?? '"';
-      return `${prefix}${q}${url}${q}`;
+    /<(img|audio|video|source)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi,
+    (tagMatch, rawTag: string, attrs: string) => {
+      const tag = rawTag.toLowerCase();
+      let touched = false;
+      const nextAttrs = attrs.replace(
+        /(\ssrc\s*=\s*)(?:(["'])([^"']*)\2|([^\s"'=<>`]+))/gi,
+        (whole, prefix: string, quote: string | undefined, quotedVal: string | undefined, unquotedVal: string | undefined) => {
+          const value = quotedVal ?? unquotedVal ?? '';
+          const trimmed = value.trim();
+          if (trimmed && SANDBOX_SAFE_MEDIA_SRC_RE.test(trimmed)) return whole;
+          touched = true;
+          const url = trimmed ? lookupCardMedia(media, trimmed) : undefined;
+          const q = quote ?? '"';
+          if (url) {
+            return `${prefix}${q}${url}${q}`;
+          }
+          const refAttr = trimmed ? ` data-anki-media-ref="${escapeAttr(trimmed)}"` : '';
+          if (tag === 'img') {
+            return `${prefix}"${TRANSPARENT_PIXEL_DATA_URL}" data-anki-media-pending="1"${refAttr}`;
+          }
+          return ` data-anki-media-pending="1"${refAttr}`;
+        },
+      );
+      return touched ? `<${rawTag}${nextAttrs}>` : tagMatch;
     },
   );
   out = out.replace(SOUND_TAG, (_whole, raw: string) => {
@@ -220,19 +270,28 @@ export function injectCardMedia(
     const url = lookupCardMedia(media, name);
     const safeName = escapeAttr(name);
     if (!url) {
-      return `<span class="anki-sound" role="img" aria-label="audio" data-sound-file="${safeName}">`
-        + `<span class="anki-sound-icon" aria-hidden="true">&#9834;</span>`
-        + `<span class="anki-sound-name">${safeName}</span></span>`;
+      if (options.mediaLoading) {
+        return `<button type="button" class="anki-sound anki-sound-btn" data-sound-file="${safeName}" data-sound-state="loading" aria-busy="true" aria-label="Loading audio ${safeName}" title="${safeName}" disabled>`
+          + `<span class="anki-sound-icon" aria-hidden="true">&#9654;</span>`
+          + `<span class="anki-sound-label">Loading&#8230;</span></button>`;
+      }
+      return `<button type="button" class="anki-sound anki-sound-btn" data-sound-file="${safeName}" data-sound-state="unavailable" aria-label="Play audio ${safeName}" title="${safeName}">`
+        + `<span class="anki-sound-icon" aria-hidden="true">&#9654;</span>`
+        + `<span class="anki-sound-name">${safeName}</span></button>`;
     }
     const autoplay = options.noAutoplay?.has(name) ? '0' : '1';
-    return `<audio class="anki-audio" controls preload="auto" src="${url}" data-sound-file="${safeName}" data-autoplay="${autoplay}"></audio>`;
+    return `<span class="anki-sound-player" data-sound-file="${safeName}">`
+      + `<button type="button" class="anki-sound-play" data-sound-file="${safeName}" data-sound-state="ready" aria-label="Play audio ${safeName}" title="${safeName}">`
+      + `<span class="anki-sound-icon" aria-hidden="true">&#9654;</span></button>`
+      + `<audio class="anki-audio" controls preload="auto" src="${url}" data-sound-file="${safeName}" data-autoplay="${autoplay}"></audio>`
+      + `</span>`;
   });
   return out;
 }
 
-/** 卡面里有需要点按的元素（提示折叠、音频、链接、模板脚本）时才放开 iframe 指针事件。 */
+/** 卡面里有需要点按的元素（提示折叠、音频、图片放大、链接、模板脚本）时才放开 iframe 指针事件。 */
 export function isInteractiveCardHtml(html: string): boolean {
-  return /<(details|audio|video|a\s|input|select|button|textarea)\b|\sonclick\s*=|<script\b/i.test(html);
+  return /<(details|audio|video|img|a\s|input|select|button|textarea)\b|\sonclick\s*=|<script\b/i.test(html);
 }
 
 /** 字段内容是否是 HTML（外部 Anki 牌组的字段通常带 <b>/<br>/<img> 等标签）。 */
@@ -243,18 +302,33 @@ export function looksLikeHtml(text: string): boolean {
 /**
  * 卡面辅助脚本（沙箱内执行，无同源权限）：
  * - 依次自动播放 data-autoplay="1" 的音频（被浏览器拦截时静默）；
+ * - 支持显式点击 `.anki-sound-play` 按钮播放/暂停音频，以及 `.anki-sound-btn` 重试通知；
  * - 收到 `sdp-replay-audio` 消息时从头重播；
+ * - 点击已加载的 `<img>` 时阻止翻面并通知宿主 `sdp-image-click` 打开全分辨率缩放灯箱；
  * - 点击非交互区域时通知宿主 `sdp-click`（宿主据此翻面）；
  * - 文档自身滚不动时把滚轮转发给宿主 `sdp-wheel`（见下）。
  * 脚本内容的 SHA-256 须与宿主 CSP 白名单同步；cspContract 测试按实际渲染文本校验。
  */
 export const CARD_FACE_HELPER_SCRIPT = `<script>(function(){
   var audios = Array.prototype.slice.call(document.querySelectorAll('audio.anki-audio'));
+  function syncBtn(a, playing){
+    var p = a && a.closest ? a.closest('.anki-sound-player') : null;
+    var btn = p ? p.querySelector('button.anki-sound-play') : null;
+    if (!btn) return;
+    btn.setAttribute('data-playing', playing ? '1' : '0');
+    var icon = btn.querySelector('.anki-sound-icon');
+    if (icon) icon.textContent = playing ? '\\u23F8' : '\\u25B6';
+  }
+  audios.forEach(function(a){
+    a.addEventListener('play', function(){ syncBtn(a, true); });
+    a.addEventListener('pause', function(){ syncBtn(a, false); });
+    a.addEventListener('ended', function(){ syncBtn(a, false); });
+  });
   function stopAll(){ audios.forEach(function(a){ try { a.pause(); } catch (e) {} }); }
   function playFrom(list, i){
     if (i >= list.length) return;
     var a = list[i];
-    a.onended = function(){ playFrom(list, i + 1); };
+    a.onended = function(){ syncBtn(a, false); playFrom(list, i + 1); };
     try { a.currentTime = 0; var p = a.play(); if (p && p.catch) p.catch(function(){}); } catch (e) {}
   }
   var auto = audios.filter(function(a){ return a.getAttribute('data-autoplay') === '1'; });
@@ -264,6 +338,44 @@ export const CARD_FACE_HELPER_SCRIPT = `<script>(function(){
   });
   document.addEventListener('click', function(event){
     var target = event.target;
+    var playBtn = target && target.closest ? target.closest('button.anki-sound-play') : null;
+    if (playBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      var player = playBtn.closest('.anki-sound-player');
+      var audio = player ? player.querySelector('audio.anki-audio') : null;
+      if (audio) {
+        if (!audio.paused && !audio.ended) {
+          try { audio.pause(); } catch (e) {}
+        } else {
+          stopAll();
+          try {
+            if (audio.ended) audio.currentTime = 0;
+            var p = audio.play();
+            if (p && p.catch) p.catch(function(){});
+          } catch (e) {}
+        }
+      }
+      return;
+    }
+    var soundBtn = target && target.closest ? target.closest('button.anki-sound-btn') : null;
+    if (soundBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      try { parent.postMessage({ type: 'sdp-sound-click', soundFile: soundBtn.getAttribute('data-sound-file') || '' }, '*'); } catch (e) {}
+      return;
+    }
+    var img = target && target.closest ? target.closest('img') : null;
+    if (img && (!img.closest || !img.closest('a,button'))) {
+      var pending = img.getAttribute('data-anki-media-pending') === '1';
+      var src = img.currentSrc || img.getAttribute('src') || '';
+      if (!pending && src) {
+        event.preventDefault();
+        event.stopPropagation();
+        try { parent.postMessage({ type: 'sdp-image-click', src: src, alt: img.getAttribute('alt') || '' }, '*'); } catch (e) {}
+        return;
+      }
+    }
     if (target && target.closest && target.closest('a,button,summary,details,audio,video,input,select,textarea,label,[onclick]')) return;
     try { parent.postMessage({ type: 'sdp-click' }, '*'); } catch (e) {}
   });

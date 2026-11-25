@@ -22,7 +22,18 @@ vi.mock('@/components/custom-scroll-area', () => ({
   },
 }));
 vi.mock('@/components/anki/AnkiTemplateCardFace', () => ({
-  AnkiTemplateCardFace: () => <div data-testid="card-face" />,
+  AnkiTemplateCardFace: ({ onImageLightboxChange }: { onImageLightboxChange?: (open: boolean) => void }) => (
+    <div data-testid="card-face">
+      <button
+        type="button"
+        data-anki-zoom-trigger="true"
+        data-testid="mock-zoom-trigger"
+        onClick={() => onImageLightboxChange?.(true)}
+      >
+        zoom
+      </button>
+    </div>
+  ),
 }));
 
 import { ReviewCardSurface } from '../review/ReviewCardSurface';
@@ -115,5 +126,16 @@ describe('ReviewCardSurface scroll gestures', () => {
     expect(flip).not.toHaveBeenCalled();
     fireEvent.click(card);
     expect(flip).toHaveBeenCalledOnce();
+  });
+
+  it('does not flip the card when clicking a zoomable image trigger or while the image lightbox is open', () => {
+    const flip = vi.fn();
+    const { container } = renderSurface(flip);
+    fireEvent.click(screen.getByTestId('mock-zoom-trigger'));
+    expect(flip).not.toHaveBeenCalled();
+
+    const card = container.querySelector('.wb-fc-card')!;
+    fireEvent.click(card);
+    expect(flip).not.toHaveBeenCalled();
   });
 });
