@@ -55,6 +55,140 @@ const GRID_PADDING = 12;         // p-3 = 0.75rem = 12px
 const TYPE_AHEAD_TIMEOUT_MS = 1000;
 
 /**
+ * 增强型拖拽传感器：补齐 @dnd-kit 默认 MouseSensor / TouchSensor 缺失的取消兜底：
+ * - window blur（切窗口 / Alt-Tab / 拖出窗口后失焦）
+ * - dragend / pointercancel / touchcancel（原生拖放结束或手势中断）
+ * - key === 'Escape' || code === 'Escape'（@dnd-kit 仅查 code === 'Escape'，
+ *   会漏掉改键或合成 key='Escape' 事件）
+ * - 鼠标在窗外松开后重新移入（记录到 buttons > 0 后再遇到 buttons === 0 即取消）
+ */
+function attachSensorCancelGuards(
+  sensor: unknown,
+  originEvent: Event,
+  trackMouseButtons: boolean,
+): () => void {
+  const targetNode = originEvent.target instanceof Node ? originEvent.target : null;
+  const doc = targetNode?.ownerDocument ?? document;
+  const win = doc.defaultView ?? window;
+  let sawPressedButtons =
+    trackMouseButtons && originEvent instanceof MouseEvent && originEvent.buttons > 0;
+  let cancelled = false;
+
+  const triggerCancel = () => {
+    if (cancelled) return;
+    cancelled = true;
+    (sensor as { handleCancel?: () => void }).handleCancel?.();
+  };
+
+  const handleKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'Escape' || event.code === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      triggerCancel();
+    }
+  };
+
+  const handleMouseMove = (event: MouseEvent) => {
+    if (!trackMouseButtons) return;
+    if (event.buttons > 0) {
+      sawPressedButtons = true;
+    } else if (sawPressedButtons) {
+      triggerCancel();
+    }
+  };
+
+  const handleMouseLeave = (event: MouseEvent) => {
+    if (trackMouseButtons && sawPressedButtons && event.buttons === 0) {
+      triggerCancel();
+    }
+  };
+
+  const handleVisibilityChange = () => {
+    if (doc.hidden) triggerCancel();
+  };
+
+  win.addEventListener('blur', triggerCancel);
+  win.addEventListener('dragend', triggerCancel, true);
+  win.addEventListener('pointercancel', triggerCancel, true);
+  win.addEventListener('touchcancel', triggerCancel, true);
+  doc.addEventListener('keydown', handleKeyDown, true);
+  doc.addEventListener('visibilitychange', handleVisibilityChange);
+  if (trackMouseButtons) {
+    doc.addEventListener('mousemove', handleMouseMove, true);
+    doc.documentElement?.addEventListener('mouseleave', handleMouseLeave);
+  }
+
+  return () => {
+    cancelled = true;
+    win.removeEventListener('blur', triggerCancel);
+    win.removeEventListener('dragend', triggerCancel, true);
+    win.removeEventListener('pointercancel', triggerCancel, true);
+    win.removeEventListener('touchcancel', triggerCancel, true);
+    doc.removeEventListener('keydown', handleKeyDown, true);
+    doc.removeEventListener('visibilitychange', handleVisibilityChange);
+    if (trackMouseButtons) {
+      doc.removeEventListener('mousemove', handleMouseMove, true);
+      doc.documentElement?.removeEventListener('mouseleave', handleMouseLeave);
+    }
+  };
+}
+
+type FinderMouseSensorProps = ConstructorParameters<typeof MouseSensor>[0];
+type FinderTouchSensorProps = ConstructorParameters<typeof TouchSensor>[0];
+
+class FinderMouseSensor extends MouseSensor {
+  constructor(props: FinderMouseSensorProps) {
+    let cleanupGuards: (() => void) | null = null;
+    const runCleanup = () => {
+      cleanupGuards?.();
+      cleanupGuards = null;
+    };
+    super({
+      ...props,
+      onEnd: () => {
+        runCleanup();
+        props.onEnd();
+      },
+      onCancel: () => {
+        runCleanup();
+        props.onCancel();
+      },
+      onAbort: (id) => {
+        runCleanup();
+        props.onAbort(id);
+      },
+    });
+    cleanupGuards = attachSensorCancelGuards(this, props.event, true);
+  }
+}
+
+class FinderTouchSensor extends TouchSensor {
+  constructor(props: FinderTouchSensorProps) {
+    let cleanupGuards: (() => void) | null = null;
+    const runCleanup = () => {
+      cleanupGuards?.();
+      cleanupGuards = null;
+    };
+    super({
+      ...props,
+      onEnd: () => {
+        runCleanup();
+        props.onEnd();
+      },
+      onCancel: () => {
+        runCleanup();
+        props.onCancel();
+      },
+      onAbort: (id) => {
+        runCleanup();
+        props.onAbort(id);
+      },
+    });
+    cleanupGuards = attachSensorCancelGuards(this, props.event, false);
+  }
+}
+
+/**
  * 选择框覆盖层组件 - 使用 Portal 渲染到 body 下避免父元素 transform 影响
  */
 function SelectionBoxOverlay({ rect }: { rect: SelectionBoxRect }) {
@@ -211,6 +345,8 @@ interface FinderFileRowProps {
   isSelected: boolean;
   isActive: boolean;
   isHighlighted?: boolean;
+  isDragActive?: boolean;
+  isDropTarget?: boolean;
   isSpringLoading?: boolean;
   isEditing: boolean;
   enableDrag: boolean;
@@ -241,6 +377,8 @@ const FinderFileRow = React.memo(function FinderFileRow({
   isSelected,
   isActive,
   isHighlighted,
+  isDragActive = false,
+  isDropTarget = false,
   isSpringLoading = false,
   isEditing,
   enableDrag,
@@ -290,6 +428,8 @@ const FinderFileRow = React.memo(function FinderFileRow({
       isSelected={isSelected}
       isActive={isActive}
       isHighlighted={isHighlighted}
+      isDragActive={isDragActive}
+      isDropTarget={isDropTarget}
       isSpringLoading={isSpringLoading}
       onSelect={handleSelect}
       onOpen={handleOpen}
@@ -583,11 +723,12 @@ export function FinderFileList({
 
   // DnD 传感器配置：禁用 @dnd-kit 默认 KeyboardSensor 对 Space 的劫持，
   // 保留 Space 快捷键给访达 QuickLook 快速预览，列表键盘导航由下方 onKeyDown 负责。
+  // 使用增强型 FinderMouseSensor / FinderTouchSensor 确保 Esc / blur / dragend / 窗外松手立即清理拖拽态。
   const sensors = useSensors(
-    useSensor(MouseSensor, {
+    useSensor(FinderMouseSensor, {
       activationConstraint: { distance: 8 },
     }),
-    useSensor(TouchSensor, {
+    useSensor(FinderTouchSensor, {
       activationConstraint: { delay: TOUCH_DRAG_DELAY_MS, tolerance: TOUCH_DRAG_TOLERANCE_PX },
     }),
   );
@@ -637,6 +778,7 @@ export function FinderFileList({
   const SPRING_LOAD_MS = 800;
   const springLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const springLoadTargetRef = useRef<string | null>(null);
+  const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
   const [springLoadFolderId, setSpringLoadFolderId] = useState<string | null>(null);
 
   const clearSpringLoadTimer = useCallback(() => {
@@ -652,10 +794,68 @@ export function FinderFileList({
   // 本次拖拽实际移动的 ID 集（避免 dragStart 改选区后 end 仍读到旧 selectedIds）
   const dragIdsRef = useRef<string[]>([]);
 
+  // 统一重置所有拖拽高亮 / spring-load / 幽灵覆盖层状态
+  const resetDragState = useCallback(() => {
+    setActiveId(null);
+    setDragOverFolderId(null);
+    setSpringLoadFolderId(null);
+    dragIdsRef.current = [];
+    clearSpringLoadTimer();
+  }, [clearSpringLoadTimer]);
+
+  // 兜底监听：拖拽活跃或存在高亮目标时，Esc / 窗口失焦 / dragend / pointercancel / 切后台
+  // 均立即复位所有拖拽状态，杜绝残留 drop-indicator 边框。
+  const hasAnyDragState =
+    activeId !== null || dragOverFolderId !== null || springLoadFolderId !== null;
+  useEffect(() => {
+    if (!hasAnyDragState) return;
+    const handleGlobalCancel = () => {
+      resetDragState();
+    };
+    const handleGlobalEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' || event.code === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        resetDragState();
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        resetDragState();
+      }
+    };
+    window.addEventListener('blur', handleGlobalCancel);
+    window.addEventListener('dragend', handleGlobalCancel, true);
+    window.addEventListener('pointercancel', handleGlobalCancel, true);
+    window.addEventListener('touchcancel', handleGlobalCancel, true);
+    document.addEventListener('keydown', handleGlobalEscape, true);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('blur', handleGlobalCancel);
+      window.removeEventListener('dragend', handleGlobalCancel, true);
+      window.removeEventListener('pointercancel', handleGlobalCancel, true);
+      window.removeEventListener('touchcancel', handleGlobalCancel, true);
+      document.removeEventListener('keydown', handleGlobalEscape, true);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [hasAnyDragState, resetDragState]);
+
+  // 列表刷新或切目录后，若高亮目标文件夹已不存在，立即清理
+  useEffect(() => {
+    if (dragOverFolderId && !items.some((item) => item.id === dragOverFolderId && item.type === 'folder')) {
+      setDragOverFolderId(null);
+    }
+    if (springLoadFolderId && !items.some((item) => item.id === springLoadFolderId && item.type === 'folder')) {
+      clearSpringLoadTimer();
+      setSpringLoadFolderId(null);
+    }
+  }, [items, dragOverFolderId, springLoadFolderId, clearSpringLoadTimer]);
+
   // 拖拽开始：对齐访达 —— 拖未选中项时改为仅选中该项再拖；拖已选中项则拖整组
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const id = String(event.active.id);
     setActiveId(event.active.id);
+    setDragOverFolderId(null);
     clearSpringLoadTimer();
     setSpringLoadFolderId(null);
 
@@ -695,8 +895,7 @@ export function FinderFileList({
     const idsBeingDragged = dragIdsRef.current.length > 0
       ? dragIdsRef.current
       : [String(active.id)];
-    setActiveId(null);
-    dragIdsRef.current = [];
+    resetDragState();
 
     debugLog.info('[FinderFileList] DragEnd:', {
       activeId: active.id,
@@ -715,10 +914,6 @@ export function FinderFileList({
         }
       }));
     }
-
-    // 清理 spring-load 定时器
-    clearSpringLoadTimer();
-    setSpringLoadFolderId(null);
 
     if (!over || active.id === over.id) {
       debugLog.info('[FinderFileList] DragEnd: No valid drop target');
@@ -799,14 +994,11 @@ export function FinderFileList({
     } else {
       debugLog.info('[FinderFileList] DragEnd: Target is not a folder, type:', { type: targetItem.type });
     }
-  }, [items, onMoveItem, onMoveItems, onSpecialDrop, clearSpringLoadTimer]);
+  }, [items, onMoveItem, onMoveItems, onSpecialDrop, resetDragState]);
 
-  // 拖拽取消：Esc / 无效释放时复位
+  // 拖拽取消：Esc / 窗口失焦 / 无效释放时复位
   const handleDragCancel = useCallback((_event: DragCancelEvent) => {
-    setActiveId(null);
-    dragIdsRef.current = [];
-    clearSpringLoadTimer();
-    setSpringLoadFolderId(null);
+    resetDragState();
     debugLog.info('[FinderFileList] DragCancel');
     if (debugMasterSwitch.isEnabled()) {
       window.dispatchEvent(new CustomEvent('finder-drag-debug', {
@@ -816,15 +1008,16 @@ export function FinderFileList({
         }
       }));
     }
-  }, [clearSpringLoadTimer]);
+  }, [resetDragState]);
 
-  // 拖拽悬停：文件夹 spring-load（悬停高亮 → 超时后进入文件夹）
+  // 拖拽悬停：文件夹 drop-target 高亮 + spring-load（悬停高亮 → 超时后进入文件夹）
   // 进入会结束当前 dnd 会话；进入前把拖拽项写回选区，便于继续操作
   const handleDragOver = useCallback((event: DragOverEvent) => {
     const overId = event.over ? String(event.over.id) : null;
     const overData = event.over?.data?.current as { kind?: string } | undefined;
 
     if (overData?.kind === 'parent-folder' || overData?.kind === 'special-target') {
+      setDragOverFolderId(null);
       if (springLoadTargetRef.current) {
         clearSpringLoadTimer();
         setSpringLoadFolderId(null);
@@ -838,12 +1031,15 @@ export function FinderFileList({
     );
 
     if (!isFolderTarget || !overId) {
+      setDragOverFolderId(null);
       if (springLoadTargetRef.current) {
         clearSpringLoadTimer();
         setSpringLoadFolderId(null);
       }
       return;
     }
+
+    setDragOverFolderId(overId);
 
     if (springLoadTargetRef.current === overId) {
       return;
@@ -860,14 +1056,10 @@ export function FinderFileList({
       if (ids.length > 0 && onSelectionChange) {
         onSelectionChange(new Set(ids));
       }
-      setActiveId(null);
-      dragIdsRef.current = [];
-      springLoadTimerRef.current = null;
-      springLoadTargetRef.current = null;
-      setSpringLoadFolderId(null);
+      resetDragState();
       onOpen(folder);
     }, SPRING_LOAD_MS);
-  }, [items, onOpen, onSelectionChange, clearSpringLoadTimer]);
+  }, [items, onOpen, onSelectionChange, clearSpringLoadTimer, resetDragState]);
 
   // 获取激活的项
   const activeItem = useMemo(() => {
@@ -1171,7 +1363,7 @@ export function FinderFileList({
           <div className="mb-5">
             <MagnifyingGlass size={40} className="text-muted-foreground/40" strokeWidth={1.2} />
           </div>
-          <p className="text-md font-medium text-foreground/80 mb-1">
+          <p className="max-w-full text-center text-md font-medium text-foreground/80 mb-1 break-words [overflow-wrap:anywhere]">
             {t('finder.empty.searchNoResults', { query: searchQuery.trim() })}
           </p>
           <p className="text-ui text-muted-foreground/60 text-center max-w-[260px]">
@@ -1337,7 +1529,9 @@ export function FinderFileList({
                       isActive={activeFileId === item.id}
                       isHighlighted={highlightedIds?.has(item.id)}
                       displayName={getItemDisplayName?.(item)}
-                        isSpringLoading={springLoadFolderId === item.id}
+                      isDragActive={activeId !== null}
+                      isDropTarget={activeId !== null && dragOverFolderId === item.id}
+                      isSpringLoading={activeId !== null && springLoadFolderId === item.id}
                       onSelect={onSelect}
                       onOpen={onOpen}
                       onContextMenu={onContextMenu}
@@ -1486,7 +1680,9 @@ export function FinderFileList({
                         isActive={activeFileId === item.id}
                         isHighlighted={highlightedIds?.has(item.id)}
                         displayName={getItemDisplayName?.(item)}
-                        isSpringLoading={springLoadFolderId === item.id}
+                        isDragActive={activeId !== null}
+                        isDropTarget={activeId !== null && dragOverFolderId === item.id}
+                        isSpringLoading={activeId !== null && springLoadFolderId === item.id}
                         onSelect={onSelect}
                         onOpen={onOpen}
                         onContextMenu={onContextMenu}

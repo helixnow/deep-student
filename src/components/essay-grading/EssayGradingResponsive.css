@@ -1,0 +1,189 @@
+/**
+ * Essay Grading narrow Workbench split-window container queries (440px–560px).
+ *
+ * When Essay Grading is tiled side-by-side inside a 1440px desktop Workbench,
+ * viewport breakpoints (@media max-width: 640px / Tailwind sm:, md:, lg:, xl:)
+ * never fire. Container queries keyed to the Essay Grading window/pane inline
+ * size collapse secondary chrome gracefully and stack multi-column regions so
+ * primary actions never overflow or clip at 440–540px.
+ */
+
+.essay-grading-root {
+  container-type: inline-size;
+  container-name: essay-grading;
+}
+
+.essay-input-pane,
+.essay-result-pane {
+  container-type: inline-size;
+  container-name: essay-pane;
+}
+
+.essay-summary-bar {
+  container-type: inline-size;
+  container-name: essay-summary;
+}
+
+.essay-stream-root {
+  container-type: inline-size;
+  container-name: essay-result;
+}
+
+.essay-settings-pane {
+  container-type: inline-size;
+  container-name: essay-settings;
+}
+
+/* Remove desktop right border when stacked vertically regardless of viewport lg: */
+.essay-grading-root[data-essay-layout='stack'] .essay-input-pane {
+  border-right-width: 0;
+  border-bottom-width: 1px;
+}
+
+/* ── Narrow Essay Input & Settings Panes (<= 560px container) ── */
+@container essay-pane (max-width: 560px) {
+  .essay-input-toolbar {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    column-gap: 4px;
+    padding-inline: 10px;
+  }
+
+  .essay-input-toolbar .essay-mode-select-wrap {
+    max-width: 100%;
+    flex: 1 1 180px;
+  }
+
+  .essay-input-toolbar .essay-rubric-full-label {
+    display: none;
+  }
+
+  .essay-input-toolbar .essay-rubric-short-label {
+    display: inline;
+  }
+
+  .essay-input-toolbar .essay-secondary-label {
+    display: none;
+  }
+
+  .essay-input-footer {
+    flex-wrap: wrap;
+    row-gap: 6px;
+    column-gap: 8px;
+    padding-inline: 12px;
+  }
+
+  .essay-input-footer .essay-footer-model {
+    max-width: 148px;
+  }
+
+  .essay-input-footer .essay-stat-secondary,
+  .essay-input-footer .essay-stat-max-label {
+    display: none;
+  }
+}
+
+@container essay-pane (max-width: 460px) {
+  .essay-input-toolbar {
+    padding-inline: 8px;
+  }
+
+  .essay-input-toolbar .essay-rubric-short-label,
+  .essay-input-toolbar .essay-toolbar-round-dots {
+    display: none;
+  }
+
+  .essay-input-footer {
+    padding-inline: 10px;
+  }
+
+  .essay-input-footer .essay-footer-model {
+    max-width: 120px;
+  }
+
+  .essay-input-footer .essay-stat-limit {
+    display: none;
+  }
+}
+
+/* ── Narrow Input Summary Bar (<= 560px / <= 460px container) ── */
+@container essay-summary (max-width: 560px) {
+  .essay-summary-bar-inner {
+    gap: 8px;
+  }
+
+  .essay-summary-model {
+    display: none;
+  }
+}
+
+@container essay-summary (max-width: 460px) {
+  .essay-summary-bar-inner {
+    gap: 6px;
+  }
+
+  .essay-summary-btn-label {
+    display: none;
+  }
+}
+
+/* ── Narrow Essay Result & Stream Renderer (<= 560px / <= 460px container) ── */
+@container essay-result (max-width: 560px) {
+  .essay-result-header {
+    flex-wrap: wrap;
+  }
+
+  .essay-result-tabs {
+    width: 100%;
+    flex: 0 0 100%;
+  }
+
+  .essay-result-accessory {
+    width: 100%;
+    flex: 0 0 100%;
+    justify-content: space-between;
+    border-top: 1px solid hsl(var(--border) / 0.2);
+    padding: 4px 12px;
+  }
+
+  .essay-result-accessory-inner {
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .essay-result-legend {
+    grid-template-columns: minmax(0, 1fr);
+    padding-inline: 14px;
+  }
+
+  .essay-round-nav-inline {
+    display: inline-flex;
+  }
+
+  .essay-round-label-wide {
+    display: none;
+  }
+
+  .essay-round-label-compact {
+    display: inline;
+  }
+}
+
+@container essay-result (max-width: 460px) {
+  .essay-result-accessory {
+    padding-inline: 10px;
+  }
+
+  .essay-score-header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+}
+
+/* ── Narrow Essay Settings / Custom Rubric Form (<= 560px container) ── */
+@container essay-settings (max-width: 560px) {
+  .essay-rubric-form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -369,13 +369,13 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
       : 'text-muted-foreground/50';
 
   return (
-    <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 transition-all duration-200 border-b lg:border-b-0 lg:border-r border-border/35 bg-background relative group/source">
+    <div className="essay-input-pane flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 transition-all duration-200 border-b lg:border-b-0 lg:border-r border-border/35 bg-background relative group/source">
       {/* Toolbar - 简洁风格简洁布局 */}
       {/* min-h 而非固定高：DsButton 移动端默认 44px，固定 41px 会被撑破溢出 */}
-      <div className="flex min-h-[41px] items-center gap-1 border-b border-border/35 px-2 py-0.5 sm:gap-1.5 sm:px-4">
+      <div className="essay-input-toolbar flex min-h-[41px] items-center gap-1 border-b border-border/35 px-2 py-0.5 sm:gap-1.5 sm:px-4">
         {/* 左侧：模式选择 - 轻量胶囊选择器 + 自定义标准直达入口 */}
         {modes.length > 0 && (
-          <div className="flex min-w-0 max-w-[65%] items-center gap-1 sm:max-w-none sm:shrink-0">
+          <div className="essay-mode-select-wrap flex min-w-0 max-w-[65%] items-center gap-1 sm:max-w-none sm:shrink-0">
             <div className="min-w-0">
               <AppSelect
                 value={modeId}
@@ -439,10 +439,10 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   )}
                 >
                   <Plus size={12} className="shrink-0" />
-                  <span className="sm:hidden whitespace-nowrap">
+                  <span className="essay-rubric-short-label sm:hidden whitespace-nowrap">
                     {t('essay_grading:mode.manage_custom_rubric_short')}
                   </span>
-                  <span className="hidden sm:inline whitespace-nowrap">
+                  <span className="essay-rubric-full-label hidden sm:inline whitespace-nowrap">
                     {t('essay_grading:mode.manage_custom_rubric')}
                   </span>
                 </DsButton>
@@ -459,16 +459,16 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           <CommonTooltip content={t('essay_grading:import_images.hint', { max: ocrMaxFiles })}>
             <DsButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isGrading} aria-label={t('common:aria.upload_image')} className={cn(COARSE_HIT, "flex shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-40 transition-colors duration-150")}>
               <Image size={14} />
-              <span className="text-xs hidden xl:inline">{t('essay_grading:import_images.button')}</span>
+              <span className="essay-secondary-label text-xs hidden xl:inline">{t('essay_grading:import_images.button')}</span>
             </DsButton>
           </CommonTooltip>
 
           {/* 设置按钮（始终显示图标，大屏显示文字） */}
           {onOpenSettings && (
             <CommonTooltip content={t('essay_grading:settings.title')}>
-              <DsButton variant="ghost" size="sm" onClick={onOpenSettings} className={cn(COARSE_HIT, "shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150")}>
+              <DsButton variant="ghost" size="sm" onClick={onOpenSettings} aria-label={t('essay_grading:settings.title')} className={cn(COARSE_HIT, "shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150")}>
                 <PenNib size={14} />
-                <span className="text-xs hidden xl:inline">{t('essay_grading:settings.title')}</span>
+                <span className="essay-secondary-label text-xs hidden xl:inline">{t('essay_grading:settings.title')}</span>
               </DsButton>
             </CommonTooltip>
           )}
@@ -481,7 +481,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           )}
 
           {roundNavigation && roundNavigation.total > 1 && (
-            <div className="hidden md:flex items-center gap-1">
+            <div className="essay-toolbar-round-dots hidden md:flex items-center gap-1">
               <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} aria-label={t('common:aria.previous_round')} className={cn(COARSE_HIT_SM, "!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 transition-colors duration-150")}>
                 <CaretLeft size={14} />
               </DsButton>
@@ -531,7 +531,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   className={cn(COARSE_HIT, "shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150")}
                 >
                   <CaretUp size={14} />
-                  <span className="text-xs hidden lg:inline">{t('essay_grading:input_summary.collapse')}</span>
+                  <span className="essay-secondary-label text-xs hidden lg:inline">{t('essay_grading:input_summary.collapse')}</span>
                 </DsButton>
               </TooltipTrigger>
               <TooltipContent side="bottom">{t('essay_grading:input_summary.collapse')}</TooltipContent>
@@ -867,11 +867,11 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         </UnifiedDragDropZone>
 
         {/* 统一底部状态与操作区：合并字数统计、模型选择与批改操作，消除多层底栏夹击 */}
-        <div className="shrink-0 flex items-center justify-between gap-3 px-4 py-2 border-t border-border/25 bg-background/80">
+        <div className="essay-input-footer shrink-0 flex items-center justify-between gap-3 px-4 py-2 border-t border-border/25 bg-background/80">
           {/* 左侧：桌面端模型选择 + 字数统计 */}
-          <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
             {models.length > 0 && (
-              <div className="hidden md:block min-w-0 shrink-0">
+              <div className="essay-footer-model hidden md:block min-w-0 shrink-0">
                 <UnifiedModelSelector
                   models={models}
                   value={modelId || defaultModel?.id || ''}
@@ -900,20 +900,20 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   <span>{t('essay_grading:stats.english_words')}</span>
                   <span className="font-mono font-medium text-foreground/85">{textStats.englishWords.toLocaleString()}</span>
                 </span>
-                <span className="hidden lg:inline-flex items-baseline gap-1 shrink-0">
+                <span className="essay-stat-secondary hidden lg:inline-flex items-baseline gap-1 shrink-0">
                   <span className="text-border mr-1" aria-hidden="true">·</span>
                   <span>{t('essay_grading:workbench.stats.paragraphs')}</span>
                   <span className="font-mono font-medium text-foreground/80">{textStats.paragraphCount.toLocaleString()}</span>
                 </span>
-                <span className="hidden xl:inline-flex items-baseline gap-1 shrink-0">
+                <span className="essay-stat-secondary hidden xl:inline-flex items-baseline gap-1 shrink-0">
                   <span className="text-border mr-1" aria-hidden="true">·</span>
                   <span>{t('essay_grading:stats.punctuation_total')}</span>
                   <span className="font-mono text-foreground/75">{textStats.punctuationTotal.toLocaleString()}</span>
                 </span>
-                <span className={cn('hidden sm:inline-flex items-baseline gap-1 shrink-0 font-mono transition-colors duration-150 motion-reduce:transition-none', limitTone)}>
+                <span className={cn('essay-stat-limit hidden sm:inline-flex items-baseline gap-1 shrink-0 font-mono transition-colors duration-150 motion-reduce:transition-none', limitTone)}>
                   <span className="text-border mr-1" aria-hidden="true">·</span>
                   <span>{charCount.toLocaleString()} / {ESSAY_MAX_CHARS.toLocaleString()}</span>
-                  <span className="hidden xl:inline font-sans">{t('essay_grading:stats.characters')}</span>
+                  <span className="essay-stat-max-label hidden xl:inline font-sans">{t('essay_grading:stats.characters')}</span>
                 </span>
               </div>
               {hasClearableContent && !isGrading && (

@@ -6,6 +6,8 @@
  * - 窄窗抽屉的开合、Esc 关闭与焦点管理（开→焦点入面板，关→还给把手）。
  */
 import React from 'react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { WorkbenchSidebarLayout, WbSysSkeleton } from '../SystemWindowShared';
@@ -70,5 +72,72 @@ describe('WorkbenchSidebarLayout（compact 抽屉）', () => {
     // 收起在下一帧（setTimeout 0），等一拍再断言
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(drawer.getAttribute('data-open')).toBe('false');
+  });
+
+  it('compact 档把抽屉开关放入正文上方的文档流顶条，绝不以 absolute/fixed 覆盖正文', () => {
+    const { container } = renderCompact();
+    const split = container.querySelector('.wb-sys-split') as HTMLElement;
+    const bar = container.querySelector('[data-wb-sys-compact-bar]') as HTMLElement;
+    const handle = container.querySelector('[data-wb-sys-drawer-handle]') as HTMLButtonElement;
+    const content = container.querySelector('.wb-sys-content') as HTMLElement;
+
+    expect(split.getAttribute('data-wb-sys-drawer-bar')).toBe('true');
+    expect(bar).not.toBeNull();
+    expect(bar.contains(handle)).toBe(true);
+    // 文档流顺序：顶条严格位于正文容器之前
+    expect(bar.compareDocumentPosition(content) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const css = readFileSync(resolve(__dirname, '../SystemWindowShared.css'), 'utf8');
+    const handleRule = css.match(/\.wb-sys-drawer-handle\s*\{[^}]+\}/)?.[0] ?? '';
+    expect(handleRule).toContain('position: relative;');
+    expect(handleRule).not.toContain('position: absolute');
+    expect(handleRule).not.toContain('position: fixed');
+    expect(handleRule).toContain('min-width: 44px;');
+    expect(handleRule).toContain('min-height: 44px;');
+    expect(css).toMatch(/\.wb-sys-split\[data-wb-sys-drawer-bar='true'\]\s*\{[\s\S]*flex-direction:\s*column;/);
+  });
+
+  it('hideDrawerHandle 为 true 时不渲染正文内置把手，Esc 关闭后把焦点还给外部触发按钮', () => {
+    const Harness = () => {
+      const [open, setOpen] = React.useState(false);
+      return (
+        <div>
+          <button
+            type="button"
+            data-testid="external-toggle"
+            onClick={() => setOpen((v) => !v)}
+          >
+            切换边栏
+          </button>
+          <WorkbenchSidebarLayout
+            sizeClass="compact"
+            navLabel="作文导航"
+            drawerOpen={open}
+            onDrawerOpenChange={setOpen}
+            hideDrawerHandle
+            sidebar={<button type="button">列表 A</button>}
+          >
+            <div>主内容</div>
+          </WorkbenchSidebarLayout>
+        </div>
+      );
+    };
+
+    const { container } = render(<Harness />);
+    expect(container.querySelector('[data-wb-sys-compact-bar]')).toBeNull();
+    expect(container.querySelector('[data-wb-sys-drawer-handle]')).toBeNull();
+    expect(container.querySelector('.wb-sys-split')?.getAttribute('data-wb-sys-drawer-bar')).toBe('false');
+
+    const externalToggle = screen.getByTestId('external-toggle');
+    externalToggle.focus();
+    fireEvent.click(externalToggle);
+
+    const drawer = container.querySelector('[data-wb-sys-drawer]') as HTMLDivElement;
+    expect(drawer.getAttribute('data-open')).toBe('true');
+    expect(document.activeElement).toBe(drawer);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(drawer.getAttribute('data-open')).toBe('false');
+    expect(document.activeElement).toBe(externalToggle);
   });
 });

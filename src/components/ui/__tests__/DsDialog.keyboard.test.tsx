@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DsAlertDialog, DsDialog } from '../DsDialog';
+import {
+  DsAlertDialog,
+  DsDialog,
+  DsDialogDescription,
+  DsDialogHeader,
+  DsDialogTitle,
+} from '../DsDialog';
 
 vi.mock('@/hooks/useBreakpoint', () => ({ useIsMobile: () => false }));
 vi.mock('@/hooks/useKeyboardHeight', () => ({ useKeyboardHeight: () => 0, getLayoutViewportObscuredHeight: () => 0 }));
@@ -77,5 +83,60 @@ describe('DsDialog keyboard layers', () => {
     fireEvent.keyDown(first, { key: 'Escape' });
     expect(onOpenChange).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('safely renders and wraps 80-char mixed CJK/Latin/Emoji/HTML special-char titles in DsDialog and DsAlertDialog without script execution', async () => {
+    const adversarialTitle =
+      '量子力学笔记<script>window.__xss=1</script>[2026/05]#重点?a=1&b=2🚀📚🎉_UltraLongNoSpaceSegment_99.md';
+    expect(adversarialTitle.length).toBeGreaterThanOrEqual(80);
+
+    function TitleHarness() {
+      const [dialogOpen, setDialogOpen] = useState(true);
+      const [alertOpen, setAlertOpen] = useState(true);
+      return (
+        <>
+          <DsDialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DsDialogHeader>
+              <DsDialogTitle>{adversarialTitle}</DsDialogTitle>
+              <DsDialogDescription>{`确认重命名：${adversarialTitle}`}</DsDialogDescription>
+            </DsDialogHeader>
+          </DsDialog>
+          <DsAlertDialog
+            open={alertOpen}
+            onOpenChange={setAlertOpen}
+            title={adversarialTitle}
+            description={`确认彻底删除「${adversarialTitle}」？`}
+          />
+        </>
+      );
+    }
+
+    render(<TitleHarness />);
+
+    // Zero <script> elements injected into DOM
+    expect(document.querySelectorAll('script')).toHaveLength(0);
+    expect((window as unknown as { __xss?: number }).__xss).toBeUndefined();
+
+    // DsDialog title & description render literal text and carry safe wrapping classes
+    const dialog = screen.getByRole('dialog');
+    const dialogTitle = within(dialog).getByRole('heading', { level: 3 });
+    expect(dialogTitle).toHaveTextContent(adversarialTitle);
+    expect(dialogTitle.className).toContain('break-words');
+    expect(dialogTitle.className).toContain('[overflow-wrap:anywhere]');
+
+    const dialogDesc = within(dialog).getByText(`确认重命名：${adversarialTitle}`);
+    expect(dialogDesc.className).toContain('break-words');
+    expect(dialogDesc.className).toContain('[overflow-wrap:anywhere]');
+
+    // DsAlertDialog title & description render literal text and carry safe wrapping classes
+    const alertDialog = screen.getByRole('alertdialog');
+    const alertTitle = within(alertDialog).getByRole('heading', { level: 3 });
+    expect(alertTitle).toHaveTextContent(adversarialTitle);
+    expect(alertTitle.className).toContain('break-words');
+    expect(alertTitle.className).toContain('[overflow-wrap:anywhere]');
+
+    const alertDesc = within(alertDialog).getByText(`确认彻底删除「${adversarialTitle}」？`);
+    expect(alertDesc.className).toContain('break-words');
+    expect(alertDesc.className).toContain('[overflow-wrap:anywhere]');
   });
 });

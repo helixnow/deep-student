@@ -210,6 +210,15 @@
   display: none;
 }
 
+/* 窄窗带内置文档流导航条时改为纵向堆叠，正文严格从导航条下方开始，杜绝 360px 叠字 */
+.wb-sys-split[data-wb-sys-drawer-bar='true'] {
+  flex-direction: column;
+}
+
+[data-focus-mode='true'] .wb-sys-compact-bar {
+  display: none;
+}
+
 .wb-sys-content {
   position: relative;
   flex: 1;
@@ -219,59 +228,63 @@
   overflow: hidden;
 }
 
-/* ---- 左缘抽屉把手（窄窗唯一导航入口） ---- */
+/* ---- 窄窗文档流导航条（替代原左缘悬浮把手，360px 零遮挡正文） ---- */
 
-.wb-sys-drawer-handle {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  /* 窗内局部层级锚定 --wb-z-window-content（+5/+6/+7 递进，恒低于标题栏 10） */
-  z-index: calc(var(--wb-z-window-content, 0) + 5);
+.wb-sys-compact-bar {
+  position: relative;
+  z-index: calc(var(--wb-z-window-content, 0) + 1);
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 56px;
-  padding: 0;
-  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
-  border-left: none;
-  border-radius: 0 9px 9px 0;
-  background: var(--wb-glass-bg-strong, hsl(var(--card) / 0.85));
-  /* 走 --wb-glass-blur：拖/缩时窗壳清 token，避免跟手每帧重采样 */
-  -webkit-backdrop-filter: var(--wb-glass-blur, none);
-  backdrop-filter: var(--wb-glass-blur, none);
-  color: hsl(var(--muted-foreground));
-  cursor: pointer;
-  transform: translateY(-50%) translateX(-4px);
-  opacity: 0.72;
-  transition:
-    transform 160ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
-    opacity 160ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+  gap: 6px;
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--wb-sidebar-seam, hsl(var(--border) / 35%));
+  background: var(--wb-window-bg, hsl(var(--card)));
+  color: hsl(var(--foreground));
 }
 
-.wb-sys-drawer-handle:hover,
-.wb-sys-drawer-handle:focus-visible {
-  transform: translateY(-50%) translateX(0);
-  opacity: 1;
+.wb-sys-compact-bar-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-sys-drawer-handle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  transition:
+    background-color 140ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
+    color 140ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
+}
+
+.wb-sys-drawer-handle:hover {
+  background: hsl(var(--foreground) / 6%);
   color: hsl(var(--foreground));
 }
 
 .wb-sys-drawer-handle:focus-visible {
   /* 焦点环统一走 O1 token（minimal 档不降级，属 a11y） */
-  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 0.65));
+  outline: 2px solid var(--wb-focus-ring-color, hsl(var(--primary) / 65%));
   outline-offset: 1px;
-}
-
-/* 触屏基线（原 ResourceAppWorkspace / FilesAppWindow 的重复覆盖上移共享）：
-   hover 展开在 coarse 指针上不可达，把手直接放大到 44px 命中区，
-   取消内缩位移与半透明 */
-@media (pointer: coarse) {
-  .wb-sys-drawer-handle {
-    width: 44px;
-    height: 64px;
-    transform: translateY(-50%);
-    opacity: 1;
-  }
 }
 
 /* ---- 遮罩 ---- */

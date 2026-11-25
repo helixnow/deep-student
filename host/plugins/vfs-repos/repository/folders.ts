@@ -871,41 +871,62 @@ export class FolderRepo implements FolderRepository {
   getFolderTree(conn: SqlExecutor): FolderTreeNode[] {
     return databaseResult(() => {
       const folders = this.listFoldersByParent(conn, null);
-      return this.buildTreeRecursive(conn, folders, null);
-    });
-  }
-
-  private buildTreeRecursive(conn: SqlExecutor, allFolders: readonly VfsFolder[], parentId: string | null): FolderTreeNode[] {
-    const nodes: FolderTreeNode[] = [];
-    for (const folder of allFolders) {
-      if ((folder.parentId ?? null) === parentId) {
-        const children = this.buildTreeRecursive(conn, allFolders, folder.id);
-        const items = this.listItemsByFolder(conn, folder.id);
-        nodes.push({ folder, children, items });
+      if (folders.length === 0) return [];
+      const itemsByFolder = new Map<string, VfsFolderItem[]>();
+      const allItems = this.getItemsByFolders(conn, folders.map(folder => folder.id));
+      for (const item of allItems) {
+        if (item.folderId === undefined) continue;
+        const bucket = itemsByFolder.get(item.folderId);
+        if (bucket === undefined) itemsByFolder.set(item.folderId, [item]);
+        else bucket.push(item);
       }
-    }
-    nodes.sort((a, b) => a.folder.sortOrder - b.folder.sortOrder);
-    return nodes;
+      return this.assembleFolderTree(folders, itemsByFolder, null);
+    });
   }
 
   getFolderTreeAll(conn: SqlExecutor): FolderTreeNode[] {
     return databaseResult(() => {
       const folders = this.listAllFolders(conn);
-      return this.buildTreeRecursiveAll(conn, folders, null);
+      if (folders.length === 0) return [];
+      const itemsByFolder = new Map<string, VfsFolderItem[]>();
+      const rows = conn.all(`SELECT id, item_type, item_id, folder_id, sort_order, cached_path, created_at
+        FROM folder_items WHERE folder_id IS NOT NULL AND deleted_at IS NULL ORDER BY sort_order ASC`);
+      for (const row of rows) {
+        const item = rowToFolderItem(row, 6);
+        if (item.folderId === undefined) continue;
+        const bucket = itemsByFolder.get(item.folderId);
+        if (bucket === undefined) itemsByFolder.set(item.folderId, [item]);
+        else bucket.push(item);
+      }
+      return this.assembleFolderTree(folders, itemsByFolder, null);
     });
   }
 
-  private buildTreeRecursiveAll(conn: SqlExecutor, allFolders: readonly VfsFolder[], parentId: string | null): FolderTreeNode[] {
-    const nodes: FolderTreeNode[] = [];
+  private assembleFolderTree(
+    allFolders: readonly VfsFolder[],
+    itemsByFolder: ReadonlyMap<string, VfsFolderItem[]>,
+    rootParentId: string | null,
+  ): FolderTreeNode[] {
+    // Index folders by parentId once so tree assembly is O(F) instead of O(F^2).
+    const childrenByParent = new Map<string | null, VfsFolder[]>();
     for (const folder of allFolders) {
-      if ((folder.parentId ?? null) === parentId) {
-        const children = this.buildTreeRecursiveAll(conn, allFolders, folder.id);
-        const items = this.getFolderItemsAll(conn, folder.id);
-        nodes.push({ folder, children, items });
-      }
+      const key = folder.parentId ?? null;
+      const bucket = childrenByParent.get(key);
+      if (bucket === undefined) childrenByParent.set(key, [folder]);
+      else bucket.push(folder);
     }
-    nodes.sort((a, b) => a.folder.sortOrder - b.folder.sortOrder);
-    return nodes;
+    const build = (parentId: string | null): FolderTreeNode[] => {
+      const group = childrenByParent.get(parentId);
+      if (group === undefined) return [];
+      const nodes: FolderTreeNode[] = group.map(folder => ({
+        folder,
+        children: build(folder.id),
+        items: itemsByFolder.get(folder.id) ?? [],
+      }));
+      nodes.sort((a, b) => a.folder.sortOrder - b.folder.sortOrder);
+      return nodes;
+    };
+    return build(rootParentId);
   }
 
   getFolderItemsAll(conn: SqlExecutor, folderId: string | null): VfsFolderItem[] {
@@ -987,7 +1008,13 @@ export class FolderRepo implements FolderRepository {
       const folderPath = this.buildFolderPath(conn, folderId);
       const folderIds = includeSubfolders ? this.getFolderIdsRecursive(conn, folderId) : [folderId];
       const items = this.getItemsByFolders(conn, folderIds);
-      const resources = items.map(item => this.buildResourceInfo(conn, item, includeContent));
+      if (items.length === 0) {
+        return {
+          folderId, folderTitle: folder.title, path: folderPath,
+          totalCount: 0, resources: [],
+        };
+      }
+      const resources = this.buildResourceInfosBatch(conn, items, includeContent, new Map([[folderId, folderPath]]));
       return {
         folderId, folderTitle: folder.title, path: folderPath,
         totalCount: resources.length, resources,
@@ -995,64 +1022,172 @@ export class FolderRepo implements FolderRepository {
     });
   }
 
-  private buildResourceInfo(conn: SqlExecutor, item: VfsFolderItem, includeContent: boolean): FolderResourceInfo {
-    const title = this.getItemTitle(conn, item.itemType, item.itemId);
-    const path = this.buildResourcePath(conn, item);
-    const resourceId = this.getItemResourceId(conn, item.itemType, item.itemId);
-    const content = includeContent
-      ? this.getItemContent(conn, item.itemType, item.itemId, resourceId)
-      : null;
-    const info: FolderResourceInfo = { itemType: item.itemType, itemId: item.itemId, title, path };
-    if (resourceId !== null) info.resourceId = resourceId;
-    if (content !== null) info.content = content;
-    return info;
-  }
+  private buildResourceInfosBatch(
+    conn: SqlExecutor,
+    items: readonly VfsFolderItem[],
+    includeContent: boolean,
+    folderPathCache: Map<string, string>,
+  ): FolderResourceInfo[] {
+    const resolveFolderPath = (fid: string): string => {
+      const cached = folderPathCache.get(fid);
+      if (cached !== undefined) return cached;
+      const computed = this.buildFolderPath(conn, fid);
+      folderPathCache.set(fid, computed);
+      return computed;
+    };
 
-  private getItemResourceId(conn: SqlExecutor, itemType: string, itemId: string): string | null {
-    const lookup = (sql: string): string | null => {
-      const row = conn.get<{ value: string | null }>(sql, [itemId]);
-      return row === undefined ? null : typeof row.value === 'string' ? row.value : null;
-    };
-    const lookupSwallowingErrors = (sql: string): string | null => {
-      try { return lookup(sql); }
-      catch (error) { logWarn('[VFS::FolderRepo] Failed to read resource_id:', error); return null; }
-    };
-    switch (itemType) {
-      case 'note': return lookup('SELECT resource_id AS value FROM notes WHERE id = ?1');
-      case 'textbook': return lookupSwallowingErrors('SELECT resource_id AS value FROM files WHERE id = ?1');
-      case 'file': return lookupSwallowingErrors('SELECT resource_id AS value FROM files WHERE id = ?1');
-      case 'exam': return lookupSwallowingErrors('SELECT resource_id AS value FROM exam_sheets WHERE id = ?1');
-      case 'translation': return lookup('SELECT resource_id AS value FROM translations WHERE id = ?1');
-      case 'essay': return lookup('SELECT resource_id AS value FROM essays WHERE id = ?1');
-      case 'mindmap': return lookup('SELECT resource_id AS value FROM mindmaps WHERE id = ?1');
-      default:
-        logWarn(`[VfsFolderRepo] Unknown item_type for resource_id: ${itemType}`);
-        return null;
+    // Group item IDs by itemType to batch-fetch titles, resource_ids, and fallback content
+    // instead of issuing 4-5 SQL queries per item.
+    const idsByType = new Map<string, string[]>();
+    for (const item of items) {
+      const bucket = idsByType.get(item.itemType);
+      if (bucket === undefined) idsByType.set(item.itemType, [item.itemId]);
+      else bucket.push(item.itemId);
     }
-  }
 
-  private getItemContent(conn: SqlExecutor, itemType: string, itemId: string, resourceId: string | null): string | null {
-    if (resourceId !== null) {
-      const row = conn.get<{ data: string | null }>('SELECT data FROM resources WHERE id = ?1', [resourceId]);
-      const content = row === undefined ? null : row.data;
-      if (content !== null && content !== undefined) return content;
-    }
-    const lookup = (sql: string): string | null => {
-      const row = conn.get<{ value: string | null }>(sql, [itemId]);
-      return row === undefined ? null : typeof row.value === 'string' ? row.value : null;
+    const titlesByKey = new Map<string, string>();
+    const resourceIdsByKey = new Map<string, string>();
+    const fallbackContentByKey = new Map<string, string>();
+    const keyOf = (type: string, id: string): string => `${type}\u0000${id}`;
+
+    const fetchChunks = (
+      type: string,
+      ids: readonly string[],
+      sqlTemplate: string,
+      swallowResourceIdError: boolean,
+      onRow: (row: Record<string, SqlValue>) => void,
+    ): void => {
+      const unique = Array.from(new Set(ids));
+      for (let start = 0; start < unique.length; start += MAX_BATCH_SIZE) {
+        const chunk = unique.slice(start, start + MAX_BATCH_SIZE);
+        const sql = sqlTemplate.replace('{}', placeholders(chunk.length, 0));
+        try {
+          for (const row of conn.all<Record<string, SqlValue>>(sql, chunk)) {
+            onRow(row);
+          }
+        } catch (error) {
+          if (swallowResourceIdError) {
+            logWarn('[VFS::FolderRepo] Failed to read resource_id:', error);
+            // Fall back to title-only lookup when resource_id column/table fails
+            const fallbackSql = type === 'exam'
+              ? `SELECT id, COALESCE(exam_name, id) AS title${includeContent ? ', preview_json AS fallback_content' : ''} FROM exam_sheets WHERE id IN (${placeholders(chunk.length, 0)})`
+              : `SELECT id, file_name AS title FROM files WHERE id IN (${placeholders(chunk.length, 0)})`;
+            for (const row of conn.all<Record<string, SqlValue>>(fallbackSql, chunk)) {
+              const id = typeof row.id === 'string' ? row.id : null;
+              if (id === null) continue;
+              if (typeof row.title === 'string') titlesByKey.set(keyOf(type, id), row.title);
+              if (includeContent) {
+                if (type === 'exam' && typeof row.fallback_content === 'string') {
+                  fallbackContentByKey.set(keyOf(type, id), row.fallback_content);
+                } else if (type === 'textbook' && typeof row.title === 'string') {
+                  fallbackContentByKey.set(keyOf(type, id), `${row.title} (PDF)`);
+                } else if (type === 'file' && typeof row.title === 'string') {
+                  fallbackContentByKey.set(keyOf(type, id), `${row.title} (file)`);
+                }
+              }
+            }
+          } else {
+            throw error;
+          }
+        }
+      }
     };
-    switch (itemType) {
-      case 'note': return null;
-      case 'textbook': return lookup("SELECT file_name || ' (PDF)' AS value FROM files WHERE id = ?1");
-      case 'file': return lookup("SELECT file_name || ' (file)' AS value FROM files WHERE id = ?1");
-      case 'exam': return lookup('SELECT preview_json AS value FROM exam_sheets WHERE id = ?1');
-      case 'translation': return null;
-      case 'essay': return null;
-      case 'mindmap': return null;
-      default:
-        logWarn(`[VfsFolderRepo] Unknown item_type for content: ${itemType}`);
-        return null;
+
+    for (const [itemType, ids] of idsByType) {
+      switch (itemType) {
+        case 'note':
+          fetchChunks(itemType, ids, 'SELECT id, title, resource_id FROM notes WHERE id IN ({})', false, (row) => {
+            if (typeof row.id !== 'string') return;
+            if (typeof row.title === 'string') titlesByKey.set(keyOf(itemType, row.id), row.title);
+            if (typeof row.resource_id === 'string') resourceIdsByKey.set(keyOf(itemType, row.id), row.resource_id);
+          });
+          break;
+        case 'textbook':
+        case 'file': {
+          const suffix = itemType === 'textbook' ? ' (PDF)' : ' (file)';
+          fetchChunks(itemType, ids, 'SELECT id, file_name AS title, resource_id FROM files WHERE id IN ({})', true, (row) => {
+            if (typeof row.id !== 'string') return;
+            if (typeof row.title === 'string') {
+              titlesByKey.set(keyOf(itemType, row.id), row.title);
+              if (includeContent) fallbackContentByKey.set(keyOf(itemType, row.id), `${row.title}${suffix}`);
+            }
+            if (typeof row.resource_id === 'string') resourceIdsByKey.set(keyOf(itemType, row.id), row.resource_id);
+          });
+          break;
+        }
+        case 'exam': {
+          const cols = includeContent
+            ? 'id, COALESCE(exam_name, id) AS title, resource_id, preview_json AS fallback_content'
+            : 'id, COALESCE(exam_name, id) AS title, resource_id';
+          fetchChunks(itemType, ids, `SELECT ${cols} FROM exam_sheets WHERE id IN ({})`, true, (row) => {
+            if (typeof row.id !== 'string') return;
+            if (typeof row.title === 'string') titlesByKey.set(keyOf(itemType, row.id), row.title);
+            if (typeof row.resource_id === 'string') resourceIdsByKey.set(keyOf(itemType, row.id), row.resource_id);
+            if (includeContent && typeof row.fallback_content === 'string') {
+              fallbackContentByKey.set(keyOf(itemType, row.id), row.fallback_content);
+            }
+          });
+          break;
+        }
+        case 'translation':
+          fetchChunks(itemType, ids, 'SELECT id, COALESCE(title, id) AS title, resource_id FROM translations WHERE id IN ({})', false, (row) => {
+            if (typeof row.id !== 'string') return;
+            if (typeof row.title === 'string') titlesByKey.set(keyOf(itemType, row.id), row.title);
+            if (typeof row.resource_id === 'string') resourceIdsByKey.set(keyOf(itemType, row.id), row.resource_id);
+          });
+          break;
+        case 'essay':
+          fetchChunks(itemType, ids, 'SELECT id, COALESCE(title, id) AS title, resource_id FROM essays WHERE id IN ({})', false, (row) => {
+            if (typeof row.id !== 'string') return;
+            if (typeof row.title === 'string') titlesByKey.set(keyOf(itemType, row.id), row.title);
+            if (typeof row.resource_id === 'string') resourceIdsByKey.set(keyOf(itemType, row.id), row.resource_id);
+          });
+          break;
+        case 'mindmap':
+          fetchChunks(itemType, ids, 'SELECT id, title, resource_id FROM mindmaps WHERE id IN ({})', false, (row) => {
+            if (typeof row.id !== 'string') return;
+            if (typeof row.title === 'string') titlesByKey.set(keyOf(itemType, row.id), row.title);
+            if (typeof row.resource_id === 'string') resourceIdsByKey.set(keyOf(itemType, row.id), row.resource_id);
+          });
+          break;
+        default:
+          logWarn(`[VfsFolderRepo] Unknown item_type: ${itemType}`);
+          break;
+      }
     }
+
+    const resourceDataById = new Map<string, string>();
+    if (includeContent && resourceIdsByKey.size > 0) {
+      const uniqueResourceIds = Array.from(new Set(resourceIdsByKey.values()));
+      for (let start = 0; start < uniqueResourceIds.length; start += MAX_BATCH_SIZE) {
+        const chunk = uniqueResourceIds.slice(start, start + MAX_BATCH_SIZE);
+        const rows = conn.all<{ id: string; data: string | null }>(
+          `SELECT id, data FROM resources WHERE id IN (${placeholders(chunk.length, 0)})`,
+          chunk,
+        );
+        for (const row of rows) {
+          if (row.data !== null && row.data !== undefined) {
+            resourceDataById.set(row.id, row.data);
+          }
+        }
+      }
+    }
+
+    return items.map((item) => {
+      const key = keyOf(item.itemType, item.itemId);
+      const title = titlesByKey.get(key) ?? item.itemId;
+      const path = item.folderId !== undefined ? `${resolveFolderPath(item.folderId)}/${title}` : title;
+      const resourceId = resourceIdsByKey.get(key) ?? null;
+      const content = includeContent
+        ? (resourceId !== null ? resourceDataById.get(resourceId) : undefined)
+          ?? fallbackContentByKey.get(key)
+          ?? null
+        : null;
+      const info: FolderResourceInfo = { itemType: item.itemType, itemId: item.itemId, title, path };
+      if (resourceId !== null) info.resourceId = resourceId;
+      if (content !== null) info.content = content;
+      return info;
+    });
   }
 
   addItemToFolder(conn: SqlExecutor, item: VfsFolderItem): void {

@@ -126,6 +126,7 @@ function renderLoginGateHtml(errorText = '', shortcut: string | null = null): st
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
+  <meta name="referrer" content="same-origin" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" />
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fdfcfb" />
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#121212" />
@@ -296,7 +297,7 @@ function renderLoginGateHtml(errorText = '', shortcut: string | null = null): st
   </style>
 </head>
 <body>
-  <form id="ds-web-token-form" class="card" method="POST" action="/api/auth/session">
+  <form id="ds-web-token-form" class="card" method="POST" action="/api/auth/session" enctype="application/x-www-form-urlencoded">
     <div class="status-header">
       <span class="status-dot" aria-hidden="true"></span>
       <span>Deep Student WebUI</span>
@@ -319,6 +320,10 @@ function renderLoginGateHtml(errorText = '', shortcut: string | null = null): st
         if (btn.disabled) return;
         btn.disabled = true;
         btn.textContent = '正在验证…';
+      });
+      window.addEventListener('pageshow', function () {
+        btn.disabled = false;
+        btn.textContent = '验证并进入';
       });
     })();
   </script>
@@ -744,7 +749,10 @@ export async function startWebServer(options: StartWebServerOptions = {}): Promi
       // Auth session exchange endpoint (`POST /api/auth/session`)
       if (pathname === '/api/auth/session' && req.method === 'POST') {
         if (!isSameOriginRequest(req, proxyOptions)) {
-          res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.writeHead(403, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'no-store',
+          });
           res.end(JSON.stringify({ error: 'Cross-origin session request rejected' }));
           return;
         }
@@ -758,11 +766,22 @@ export async function startWebServer(options: StartWebServerOptions = {}): Promi
           res.end(JSON.stringify({ error: 'Too many failed authentication attempts', retryAfterSec: blockedStatus.retryAfterSec }));
           return;
         }
-        const rawBody = await readSmallTextBody(req);
-        const contentType = req.headers['content-type'] ?? '';
+        let rawBody = '';
+        try {
+          rawBody = await readSmallTextBody(req);
+        } catch {
+          res.writeHead(413, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'no-store',
+          });
+          res.end(JSON.stringify({ error: 'Request body too large' }));
+          return;
+        }
+        const contentType = (req.headers['content-type'] ?? '').toLowerCase();
+        const isJsonRequest = contentType.includes('application/json');
         let submitted = '';
         let submittedShortcut: string | null = sanitizeShortcutParam(url.searchParams.get('shortcut'));
-        if (contentType.includes('application/json')) {
+        if (isJsonRequest) {
           try {
             const parsed = JSON.parse(rawBody) as { token?: unknown; shortcut?: unknown };
             if (typeof parsed.token === 'string') submitted = parsed.token.trim();
@@ -779,11 +798,17 @@ export async function startWebServer(options: StartWebServerOptions = {}): Promi
         }
         if (auth.token !== null && !constantTimeEquals(submitted, auth.token)) {
           rateLimiter.recordFailure(clientAddress);
-          if (contentType.includes('application/json')) {
-            res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+          if (isJsonRequest) {
+            res.writeHead(401, {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Cache-Control': 'no-store',
+            });
             res.end(JSON.stringify({ error: 'Invalid access token' }));
           } else {
-            res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8' });
+            res.writeHead(401, {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'no-store',
+            });
             res.end(renderLoginGateHtml('访问令牌无效，请核对后重试', submittedShortcut));
           }
           return;
@@ -792,12 +817,19 @@ export async function startWebServer(options: StartWebServerOptions = {}): Promi
         if (auth.token !== null) {
           setSessionCookie(res, auth.token, isSecureRequest(req, trustProxy));
         }
-        if (contentType.includes('application/json')) {
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        if (isJsonRequest) {
+          res.writeHead(200, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'no-store',
+          });
           res.end(JSON.stringify({ ok: true }));
         } else {
           const redirectTarget = submittedShortcut ? `/?shortcut=${submittedShortcut}` : '/';
-          res.writeHead(303, { Location: redirectTarget });
+          res.writeHead(303, {
+            Location: redirectTarget,
+            'Cache-Control': 'no-store',
+            'Content-Length': '0',
+          });
           res.end();
         }
         return;
@@ -826,11 +858,18 @@ export async function startWebServer(options: StartWebServerOptions = {}): Promi
         }
         const acceptsHtml = (req.headers.accept ?? '').includes('text/html') && !pathname.startsWith('/api/');
         if (acceptsHtml) {
-          res.writeHead(401, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+          res.writeHead(401, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-store',
+            Vary: 'Cookie',
+          });
           res.end(renderLoginGateHtml('', sanitizeShortcutParam(url.searchParams.get('shortcut'))));
           return;
         }
-        res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.writeHead(401, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
         res.end(JSON.stringify({ error: 'Unauthorized' }));
         return;
       }
@@ -935,7 +974,17 @@ export async function startWebServer(options: StartWebServerOptions = {}): Promi
         if (pathname === '/' || pathname === '/index.html') {
           const template = await readFile(join(repoRoot, 'web', 'index.html'), 'utf8');
           const html = await viteServer.transformIndexHtml(url.pathname + url.search, template);
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+          const devHtmlHeaders: Record<string, string> = {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control':
+              authCheck.viaQueryToken && auth.token !== null
+                ? 'private, no-store'
+                : auth.token !== null
+                  ? 'private, no-cache'
+                  : 'no-cache',
+          };
+          if (auth.token !== null) devHtmlHeaders.Vary = 'Cookie';
+          res.writeHead(200, devHtmlHeaders);
           res.end(html);
           return;
         }

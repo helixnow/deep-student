@@ -55,20 +55,36 @@ function mergeWithLocalTranslationDraft(
   const draft = readTranslationDraftSnapshot(session.id);
   if (!draft) return session;
   const serverMs = toEpochMs(session.updatedAt);
-  // If local draft is strictly newer than server metadata (or server lacks language/text fields), prefer local draft while keeping session id & metadata.
+  const preferDraft = draft.updatedAt > serverMs;
   if (
-    draft.updatedAt > serverMs ||
+    preferDraft ||
     (!session.srcLang && draft.srcLang) ||
     (!session.tgtLang && draft.tgtLang) ||
-    (!session.sourceText && draft.sourceText)
+    (!session.formality && draft.formality) ||
+    (!session.domain && draft.domain) ||
+    (!session.sourceText && draft.sourceText) ||
+    (!session.lastTranslatedMeta && draft.lastTranslatedMeta)
   ) {
     return {
       ...session,
-      srcLang: draft.srcLang || session.srcLang,
-      tgtLang: draft.tgtLang || session.tgtLang,
-      sourceText: draft.sourceText !== '' ? draft.sourceText : session.sourceText,
-      translatedText: draft.translatedText !== '' ? draft.translatedText : session.translatedText,
-      updatedAt: draft.updatedAt > serverMs ? draft.updatedAt : session.updatedAt,
+      srcLang: preferDraft ? (draft.srcLang || session.srcLang) : (session.srcLang || draft.srcLang),
+      tgtLang: preferDraft ? (draft.tgtLang || session.tgtLang) : (session.tgtLang || draft.tgtLang),
+      formality: preferDraft
+        ? (draft.formality ?? session.formality)
+        : (session.formality ?? draft.formality),
+      domain: preferDraft
+        ? (draft.domain ?? session.domain)
+        : (session.domain ?? draft.domain),
+      sourceText: preferDraft
+        ? (draft.sourceText !== '' ? draft.sourceText : session.sourceText)
+        : (session.sourceText !== '' ? session.sourceText : draft.sourceText),
+      translatedText: preferDraft
+        ? (draft.translatedText !== '' ? draft.translatedText : session.translatedText)
+        : (session.translatedText !== '' ? session.translatedText : draft.translatedText),
+      lastTranslatedMeta: preferDraft
+        ? (draft.lastTranslatedMeta ?? session.lastTranslatedMeta)
+        : (session.lastTranslatedMeta ?? draft.lastTranslatedMeta),
+      updatedAt: preferDraft ? draft.updatedAt : session.updatedAt,
     };
   }
   return session;
@@ -313,7 +329,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
   // 直接就绪，消除不必要的整屏 loading 闪烁
   const [session, setSession] = useState<TranslationSession | null>(() => {
     try {
-      const converted = dstuNodeToTranslationSession(node);
+      const converted = mergeWithLocalTranslationDraft(dstuNodeToTranslationSession(node));
       return converted.sourceText ? converted : null;
     } catch {
       return null;
@@ -358,7 +374,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
     currentNodeIdRef.current = node.id;
     let next: TranslationSession | null = null;
     try {
-      const converted = dstuNodeToTranslationSession(node);
+      const converted = mergeWithLocalTranslationDraft(dstuNodeToTranslationSession(node));
       next = converted.sourceText ? converted : null;
     } catch {
       next = null;
@@ -490,8 +506,11 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
         id: sessionToSave.id,
         srcLang: sessionToSave.srcLang || 'auto',
         tgtLang: sessionToSave.tgtLang || 'zh-CN',
+        formality: sessionToSave.formality,
+        domain: sessionToSave.domain,
         sourceText: sessionToSave.sourceText,
         translatedText: sessionToSave.translatedText,
+        lastTranslatedMeta: sessionToSave.lastTranslatedMeta,
         updatedAt: toEpochMs(sessionToSave.updatedAt) || lastLocalSaveAtRef.current,
       });
       if (isCurrent()) {

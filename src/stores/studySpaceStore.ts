@@ -33,6 +33,11 @@ export const ACTIVE_STUDY_SPACE_STORAGE_KEY = 'ds.studySpace.activeId.v1';
 export type StudySpaceViewFilter = 'all' | 'inbox' | string;
 
 let hydrationGeneration = 0;
+let inFlightHydrationFetch: {
+  signature: string;
+  promise: Promise<[StudySpaceProfile[], StudySpaceMount[]]>;
+} | null = null;
+const inFlightSpaceRefresh = new Map<string, Promise<StudySpace | null>>();
 const removedSpaceIds = new Set<string>();
 const profileSaveGeneration = new Map<string, number>();
 const spaceRefreshGeneration = new Map<string, number>();
@@ -178,50 +183,67 @@ export const useStudySpaceStore = create<StudySpaceStoreState>((set, get) => ({
       get().setActiveSpace(INBOX_SPACE_ID);
     }
 
-    const [fetchedProfiles, fetchedMounts] = await Promise.all([
-      listStudySpaceProfiles(),
-      listSpaceMounts({}),
-    ]);
+    // Coalesce concurrent startup hydration IPC pairs for the same active group snapshot
+    // while allowing a changed group set (e.g., archive/create) to supersede immediately.
+    const groupSignature = activeGroups
+      .map((group) => `${group.id}:${group.updatedAt}`)
+      .sort()
+      .join('|');
+    let fetchPromise = inFlightHydrationFetch?.signature === groupSignature
+      ? inFlightHydrationFetch.promise
+      : null;
+    if (!fetchPromise) {
+      const entry = {
+        signature: groupSignature,
+        promise: Promise.all([
+          listStudySpaceProfiles(),
+          listSpaceMounts({}),
+        ]).finally(() => {
+          if (inFlightHydrationFetch === entry) {
+            inFlightHydrationFetch = null;
+          }
+        }),
+      };
+      inFlightHydrationFetch = entry;
+      fetchPromise = entry.promise;
+    }
+
+    const [fetchedProfiles, fetchedMounts] = await fetchPromise;
     if (generation !== hydrationGeneration) return;
     const current = get();
-    const currentGroups = Object.values(current.groupsById);
     const fetchedBySpaceId = new Map<string, StudySpaceProfile>();
     for (const profile of fetchedProfiles) {
       fetchedBySpaceId.set(profile.spaceId, profile);
     }
 
     const nextProfilesBySpaceId: Record<string, StudySpaceProfile> = {};
-    for (const group of currentGroups) {
-      const existing = current.profilesBySpaceId[group.id] !== profilesAtStart[group.id]
-        ? current.profilesBySpaceId[group.id]
-        : fetchedBySpaceId.get(group.id) ?? current.profilesBySpaceId[group.id];
+    const nextMountsBySpaceId: Record<string, StudySpaceMount[]> = {};
+    for (const id of Object.keys(current.groupsById)) {
+      const group = current.groupsById[id]!;
+      const existing = current.profilesBySpaceId[id] !== profilesAtStart[id]
+        ? current.profilesBySpaceId[id]
+        : fetchedBySpaceId.get(id) ?? current.profilesBySpaceId[id];
       const inferredRoot = inferLegacyRootFolderId(group) ?? '';
       if (!existing) {
-        nextProfilesBySpaceId[group.id] = synthesizeDefaultProfile(group);
+        nextProfilesBySpaceId[id] = synthesizeDefaultProfile(group);
       } else if (!existing.rootFolderId && inferredRoot) {
-        nextProfilesBySpaceId[group.id] = {
+        nextProfilesBySpaceId[id] = {
           ...existing,
           rootFolderId: inferredRoot,
         };
       } else {
-        nextProfilesBySpaceId[group.id] = existing;
+        nextProfilesBySpaceId[id] = existing;
       }
+      nextMountsBySpaceId[id] = current.mountsBySpaceId[id] !== mountsAtStart[id]
+        ? (current.mountsBySpaceId[id] ?? [])
+        : [];
     }
 
-    const nextMountsBySpaceId: Record<string, StudySpaceMount[]> = {};
-    for (const group of currentGroups) {
-      nextMountsBySpaceId[group.id] = [];
-    }
     for (const mount of fetchedMounts) {
-      if (!current.groupsById[mount.spaceId]) continue;
-      const bucket = nextMountsBySpaceId[mount.spaceId] ?? [];
-      bucket.push(mount);
-      nextMountsBySpaceId[mount.spaceId] = bucket;
-    }
-    for (const group of currentGroups) {
-      if (current.mountsBySpaceId[group.id] !== mountsAtStart[group.id]) {
-        nextMountsBySpaceId[group.id] = current.mountsBySpaceId[group.id] ?? [];
-      }
+      const sid = mount.spaceId;
+      if (!current.groupsById[sid]) continue;
+      if (current.mountsBySpaceId[sid] !== mountsAtStart[sid]) continue;
+      nextMountsBySpaceId[sid]!.push(mount);
     }
 
     set({
@@ -246,24 +268,34 @@ export const useStudySpaceStore = create<StudySpaceStoreState>((set, get) => ({
 
   refreshStudySpace: async (spaceId, group) => {
     if (removedSpaceIds.has(spaceId)) return null;
+    if (!get().groupsById[spaceId] && group) get().upsertGroupInState(group);
+    const pending = inFlightSpaceRefresh.get(spaceId);
+    if (pending) return pending;
     const generation = (spaceRefreshGeneration.get(spaceId) ?? 0) + 1;
     spaceRefreshGeneration.set(spaceId, generation);
-    if (!get().groupsById[spaceId] && group) get().upsertGroupInState(group);
     const before = get();
-    const [profile, mounts] = await Promise.all([
-      getStudySpaceProfile(spaceId),
-      listSpaceMounts({ spaceId }),
-    ]);
-    const current = get();
-    if (removedSpaceIds.has(spaceId) || !current.groupsById[spaceId]) return null;
-    if (spaceRefreshGeneration.get(spaceId) !== generation) return current.getStudySpace(spaceId);
-    set({
-      profilesBySpaceId: profile && current.profilesBySpaceId[spaceId] === before.profilesBySpaceId[spaceId]
-        ? { ...current.profilesBySpaceId, [spaceId]: profile } : current.profilesBySpaceId,
-      mountsBySpaceId: current.mountsBySpaceId[spaceId] === before.mountsBySpaceId[spaceId]
-        ? { ...current.mountsBySpaceId, [spaceId]: mounts } : current.mountsBySpaceId,
+    const task = (async (): Promise<StudySpace | null> => {
+      const [profile, mounts] = await Promise.all([
+        getStudySpaceProfile(spaceId),
+        listSpaceMounts({ spaceId }),
+      ]);
+      const current = get();
+      if (removedSpaceIds.has(spaceId) || !current.groupsById[spaceId]) return null;
+      if (spaceRefreshGeneration.get(spaceId) !== generation) return current.getStudySpace(spaceId);
+      set({
+        profilesBySpaceId: profile && current.profilesBySpaceId[spaceId] === before.profilesBySpaceId[spaceId]
+          ? { ...current.profilesBySpaceId, [spaceId]: profile } : current.profilesBySpaceId,
+        mountsBySpaceId: current.mountsBySpaceId[spaceId] === before.mountsBySpaceId[spaceId]
+          ? { ...current.mountsBySpaceId, [spaceId]: mounts } : current.mountsBySpaceId,
+      });
+      return get().getStudySpace(spaceId);
+    })().finally(() => {
+      if (inFlightSpaceRefresh.get(spaceId) === task) {
+        inFlightSpaceRefresh.delete(spaceId);
+      }
     });
-    return get().getStudySpace(spaceId);
+    inFlightSpaceRefresh.set(spaceId, task);
+    return task;
   },
 
   setActiveSpace: (spaceId, _options) => {
@@ -468,6 +500,8 @@ export const useStudySpaceStore = create<StudySpaceStoreState>((set, get) => ({
 
   resetForTests: () => {
     hydrationGeneration += 1;
+    inFlightHydrationFetch = null;
+    inFlightSpaceRefresh.clear();
     removedSpaceIds.clear();
     profileSaveGeneration.clear();
     spaceRefreshGeneration.clear();

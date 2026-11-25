@@ -43,6 +43,7 @@ import { speak as speakTts, stop as stopTts } from '@/utils/tts';
 import { hasValidCloze, insertClozeDeletion, nextClozeIndex } from '../cloze';
 import { findReviewCardMediaSource, type CardMediaSource } from '../library/cardMediaSource';
 import { parseTagsInput } from '../library/libraryView';
+import { consumeLibraryReturnOrigin } from '../library/libraryViewState';
 import { useSwipeRating } from '../hooks/useSwipeRating';
 import { isEditableTarget } from '../isEditableTarget';
 import { isKeyEventFromOtherModal } from '@/utils/modalKeyGuard';
@@ -216,7 +217,14 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   const loadDue = useFsrsReviewStore((state) => state.loadDue);
   const startDueSession = useFsrsReviewStore((state) => state.startDueSession);
   const startAgainCardsSession = useFsrsReviewStore((state) => state.startAgainCardsSession);
-  const exitSession = onExit ?? endSession;
+  const defaultExitSession = React.useCallback(() => {
+    const returnTo = consumeLibraryReturnOrigin();
+    endSession();
+    if (returnTo === 'library') {
+      setScreen?.('library');
+    }
+  }, [endSession, setScreen]);
+  const exitSession = onExit ?? defaultExitSession;
   const handleUndoWithFeedback = React.useCallback(() => {
     void undoLastReview().then((undone) => {
       if (undone !== false) {
@@ -228,6 +236,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
     });
   }, [undoLastReview, t]);
   const openLibraryFromSummary = React.useCallback(() => {
+    consumeLibraryReturnOrigin();
     endSession();
     setScreen?.('library');
   }, [endSession, setScreen]);
@@ -930,7 +939,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           type="button"
           variant="ghost"
           size="sm"
-          onClick={endSession}
+          onClick={exitSession}
           aria-label={t('session.exit')}
           className="wb-fc-session-exit gap-1 border-transparent text-muted-foreground/75 hover:bg-foreground/[0.04] hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
         >
@@ -957,7 +966,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
               <Hourglass size={11} aria-hidden="true" />
               {t('review.learningStep')}
             </span>
-            <DsButton type="button" variant="ghost" size="sm" disabled={ratingBusy} onClick={endSession}>
+            <DsButton type="button" variant="ghost" size="sm" disabled={ratingBusy} onClick={exitSession}>
               <Hourglass size={14} aria-hidden="true" />
               {t('review.returnWhenDue')}
             </DsButton>

@@ -96,7 +96,9 @@
 }
 
 .notes-backlinks-panel-link-row {
+  min-width: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
 }
 
@@ -115,6 +117,7 @@
   line-height: 1.45;
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: anywhere;
   transition: max-height 200ms ease;
 }
 
@@ -167,9 +170,11 @@
 }
 
 .notes-backlinks-panel-unresolved-row {
+  min-width: 0;
   padding: 0;
   display: flex;
   align-items: center;
+  overflow: hidden;
   border-radius: var(--notes-radius-row);
   color: hsl(var(--muted-foreground));
   transition: background-color var(--notes-hover-transition);
@@ -178,11 +183,13 @@
 .notes-backlinks-panel-unresolved-btn,
 .notes-backlinks-panel-unresolved-static {
   width: 100%;
+  min-width: 0;
   min-height: 30px;
   padding: 4px 6px;
   display: flex;
   align-items: center;
   gap: 6px;
+  overflow: hidden;
   border: 0;
   border-radius: var(--notes-radius-row);
   background: transparent;
@@ -368,6 +375,7 @@ div.notes-backlinks-panel-scanned-hint > p {
 /* ===== 未链接提及 ===== */
 
 .notes-backlinks-panel-mention-main {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 4px;

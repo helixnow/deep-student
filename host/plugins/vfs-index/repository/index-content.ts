@@ -431,8 +431,8 @@ export interface PrepareCandidateStamp {
 export function listPrepareCandidates(db: SqlExecutor, limit: number): string[] {
   return db.all<Row>(
     `SELECT r.id FROM resources r
-     WHERE r.deleted_at IS NULL
-       AND COALESCE(r.index_state, 'pending') = 'pending'
+     WHERE +r.deleted_at IS NULL
+       AND (r.index_state = 'pending' OR r.index_state IS NULL)
        AND NOT EXISTS (SELECT 1 FROM vfs_index_units u WHERE u.resource_id = r.id)
      ORDER BY r.updated_at DESC
      LIMIT ?1`,
@@ -445,8 +445,8 @@ export function listPrepareCandidateStamps(db: SqlExecutor, limit: number): Prep
     `SELECT r.id,
             COALESCE(r.hash, '') || ':' || COALESCE(CAST(r.updated_at AS TEXT), '') AS stamp
      FROM resources r
-     WHERE r.deleted_at IS NULL
-       AND COALESCE(r.index_state, 'pending') = 'pending'
+     WHERE +r.deleted_at IS NULL
+       AND (r.index_state = 'pending' OR r.index_state IS NULL)
        AND NOT EXISTS (SELECT 1 FROM vfs_index_units u WHERE u.resource_id = r.id)
      ORDER BY r.updated_at DESC
      LIMIT ?1`,

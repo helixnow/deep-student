@@ -22,6 +22,7 @@ import { cn } from '@/utils/cn';
 import { cardDisplayFront } from '../cardDisplay';
 import { CardMathText, summarizeCardMedia } from '../cardMathPreview';
 import { toReviewContent } from '../library/libraryView';
+import { setLibraryReturnOrigin } from '../library/libraryViewState';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import type { AnkiLibraryDeckCount, AnkiLibraryListResponse, FsrsStats } from '@/types';
 import { useFsrsReviewStore } from '../store/fsrsReviewStore';
@@ -126,6 +127,7 @@ export const TodayScreen: React.FC = () => {
         showGlobalNotification('info', t('today.learnMoreEmpty'));
         return;
       }
+      setLibraryReturnOrigin('today');
       await startBatchSession(
         cards.map((card) => card.id),
         cards.map(toReviewContent),
@@ -234,7 +236,7 @@ export const TodayScreen: React.FC = () => {
   const mobileChrome = useFlashcardsMobileChrome({
     title: t('sidebar:navigation.flashcards', '闪卡'),
     rightActions: <>
-      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('today.startReview')} disabled={loading || dueCards.length === 0} onClick={() => startDueSession()}>
+      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('today.startReview')} disabled={loading || dueCards.length === 0} onClick={() => { setLibraryReturnOrigin('today'); startDueSession(); }}>
         <Play size={20} />
       </DsButton>
     </>,
@@ -355,7 +357,7 @@ export const TodayScreen: React.FC = () => {
                   type="button"
                   variant="primary"
                   disabled={loading || dueCards.length === 0}
-                  onClick={() => startDueSession()}
+                  onClick={() => { setLibraryReturnOrigin('today'); startDueSession(); }}
                   data-testid="fc-today-start-review"
                   className="wb-fcx-cta [@media(pointer:coarse)]:!min-h-11"
                 >
@@ -501,7 +503,7 @@ export const TodayScreen: React.FC = () => {
                       <DsButton
                         type="button"
                         variant="ghost"
-                        onClick={() => startDueSession(card.id)}
+                        onClick={() => { setLibraryReturnOrigin('today'); startDueSession(card.id); }}
                         data-testid={`fc-today-upnext-card-${card.id}`}
                         className="!h-auto min-h-[44px] w-full justify-between gap-2 rounded-none border-0 px-3 py-2.5 text-left font-normal sm:px-3.5"
                       >

@@ -603,6 +603,10 @@ export class NativePdfStageRuntime implements PdfStageRuntime {
   }
 
   private async runBackfill(fileIds: readonly string[], signal: AbortSignal): Promise<void> {
+    if (signal.aborted) return;
+    // Yield past the synchronous startup finalizer turn using a portable microtask hop
+    // (no Node-only globals or setTimeout timers).
+    await Promise.resolve();
     for (const fileId of fileIds) {
       if (signal.aborted) return;
       const file = getPdfRuntimeFileRow(this.deps.db, fileId);

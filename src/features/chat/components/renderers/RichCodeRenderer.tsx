@@ -87,12 +87,30 @@ function geoJsonSvg(source: string): string {
   return `<svg class="geojson-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="GeoJSON map"><rect width="100%" height="100%" rx="8" /><g>${elements.join('')}</g></svg>`;
 }
 
+const readIsDarkTheme = (): boolean =>
+  typeof document !== 'undefined' &&
+  (document.documentElement.classList.contains('dark') ||
+    document.documentElement.getAttribute('data-theme') === 'dark' ||
+    Boolean(document.body?.classList.contains('dark')));
+
 /**
  * 所有模型驱动的块级可视化在用户主动点击“运行”后才懒加载：无外链、无脚本执行。
  */
 export function RichCodeRenderer({ kind, source }: RichCodeRendererProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isDark, setIsDark] = useState<boolean>(readIsDarkTheme);
+
+  useEffect(() => {
+    if (typeof MutationObserver !== 'function' || typeof document === 'undefined') return;
+    const sync = () => setIsDark(readIsDarkTheme());
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'data-theme'],
+    });
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -119,6 +137,7 @@ export function RichCodeRenderer({ kind, source }: RichCodeRendererProps) {
             actions: false,
             renderer: 'svg',
             defaultStyle: false,
+            ...(isDark ? { theme: 'dark' } : {}),
             ast: true,
             expr: expressionInterpreter,
           });
@@ -150,7 +169,7 @@ export function RichCodeRenderer({ kind, source }: RichCodeRendererProps) {
           const module: any = await import('3dmol');
           if (disposed) return;
           const mol3d = module.default ?? module;
-          const viewer = mol3d.createViewer(host, { backgroundColor: 'white' });
+          const viewer = mol3d.createViewer(host, { backgroundColor: isDark ? '#1c1f26' : 'white' });
           viewer.addModel(source, 'pdb');
           viewer.setStyle({}, { stick: {}, cartoon: { opacity: 0.82 } });
           viewer.zoomTo();
@@ -165,7 +184,7 @@ export function RichCodeRenderer({ kind, source }: RichCodeRendererProps) {
     };
     void render();
     return () => { disposed = true; cleanup?.(); };
-  }, [kind, source]);
+  }, [kind, source, isDark]);
 
   return (
     <div className={`rich-code-renderer rich-code-renderer--${kind}`} data-no-screen-swipe>

@@ -294,6 +294,9 @@ let dueReviewsRequestSeq = 0;
 let allPlansRequestSeq = 0;
 let statsRequestSeq = 0;
 let calendarRequestSeq = 0;
+// 并发去重：启动期多个组件同时拉取相同统计/到期队列时共享一次 IPC
+const inFlightStatsRequests = new Map<string, Promise<void>>();
+const inFlightDueReviewsRequests = new Map<string, Promise<void>>();
 // 会话评分提交去重：防止快速连按（键盘 1-4 连击）对同一题重复提交
 let submitInFlight = false;
 /** 单轮复习会话中同一题评 Again 最多重排进队次数（防死循环） */
@@ -347,35 +350,49 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
         allPlansRequestSeq += 1;
         statsRequestSeq += 1;
         calendarRequestSeq += 1;
+        inFlightStatsRequests.clear();
+        inFlightDueReviewsRequests.clear();
         set({ currentExamId: examId });
       },
 
       // 数据获取
       loadDueReviews: async (examId, untilDate) => {
+        const dedupeKey = `${examId || '__all__'}::${untilDate || ''}`;
+        const existing = inFlightDueReviewsRequests.get(dedupeKey);
+        if (existing) return existing;
+
         const requestId = ++dueReviewsRequestSeq;
         set({ isLoading: true, error: null });
 
-        try {
-          const result = await invoke<DueReviewsResult>('review_plan_get_due', {
-            examId: examId || null,
-            untilDate: untilDate || null,
-          });
+        const task = (async () => {
+          try {
+            const result = await invoke<DueReviewsResult>('review_plan_get_due', {
+              examId: examId || null,
+              untilDate: untilDate || null,
+            });
 
-          if (requestId !== dueReviewsRequestSeq) {
-            return;
-          }
+            if (requestId !== dueReviewsRequestSeq) {
+              return;
+            }
 
-          set({
-            dueReviews: result.plans,
-            isLoading: false,
-          });
-        } catch (err: unknown) {
-          if (requestId !== dueReviewsRequestSeq) {
-            return;
+            set({
+              dueReviews: result.plans,
+              isLoading: false,
+            });
+          } catch (err: unknown) {
+            if (requestId !== dueReviewsRequestSeq) {
+              return;
+            }
+            debugLog.error('[ReviewPlanStore] loadDueReviews failed:', err);
+            set({ error: String(err), isLoading: false });
           }
-          debugLog.error('[ReviewPlanStore] loadDueReviews failed:', err);
-          set({ error: String(err), isLoading: false });
-        }
+        })().finally(() => {
+          if (inFlightDueReviewsRequests.get(dedupeKey) === task) {
+            inFlightDueReviewsRequests.delete(dedupeKey);
+          }
+        });
+        inFlightDueReviewsRequests.set(dedupeKey, task);
+        return task;
       },
 
       loadDueReviewsWithFilter: async (filter) => {
@@ -408,22 +425,35 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
       },
 
       loadStats: async (examId) => {
+        const dedupeKey = examId || '__all__';
+        const existing = inFlightStatsRequests.get(dedupeKey);
+        if (existing) return existing;
+
         // ★ 竞态修复：快速切换题目集时，旧请求的统计不允许回写覆盖新请求
         const requestId = ++statsRequestSeq;
-        try {
-          const stats = await invoke<ReviewStats>('review_plan_get_stats', {
-            examId: examId || null,
-          });
-          if (requestId !== statsRequestSeq) return;
-          set({ stats });
-        } catch (err: unknown) {
-          debugLog.error('[ReviewPlanStore] loadStats failed:', err);
-        }
+        const task = (async () => {
+          try {
+            const stats = await invoke<ReviewStats>('review_plan_get_stats', {
+              examId: examId || null,
+            });
+            if (requestId !== statsRequestSeq) return;
+            set({ stats });
+          } catch (err: unknown) {
+            debugLog.error('[ReviewPlanStore] loadStats failed:', err);
+          }
+        })().finally(() => {
+          if (inFlightStatsRequests.get(dedupeKey) === task) {
+            inFlightStatsRequests.delete(dedupeKey);
+          }
+        });
+        inFlightStatsRequests.set(dedupeKey, task);
+        return task;
       },
 
       refreshStats: async (examId) => {
         // 🔒 审计修复: 添加 try-catch（原代码是 store 中唯一缺少错误处理的 API 方法）
         const requestId = ++statsRequestSeq;
+        inFlightStatsRequests.delete(examId || '__all__');
         try {
           const stats = await invoke<ReviewStats>('review_plan_refresh_stats', {
             examId: examId ?? null,
@@ -524,9 +554,11 @@ export const useReviewPlanStore = create<ReviewPlanState>()(
             examId,
           });
 
-          // 刷新所有计划
-          await get().loadAllPlans(examId);
-          await get().refreshStats(examId);
+          // 并行刷新计划列表与统计，避免串行 IPC 瀑布
+          await Promise.all([
+            get().loadAllPlans(examId),
+            get().refreshStats(examId),
+          ]);
 
           set({ isProcessing: false });
           dispatchTodayLearningRefresh();

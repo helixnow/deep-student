@@ -4,7 +4,7 @@
  * 提供 Chat V2 会话的统计数据，用于数据统计页面展示
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { startTransition, useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { t } from '../utils/i18n';
 
@@ -109,6 +109,130 @@ const getWeekdayLabel = (dayIndex: number): string => {
   return t(`weekdays.${days[dayIndex]}`);
 };
 
+/** 本地时区 YYYY-MM-DD（对齐热力图与番茄/复习的本地日历口径，避免 UTC 跨日偏移） */
+export function formatLocalDateYmd(date: Date): string {
+  const year = String(date.getFullYear()).padStart(4, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+interface RawChatV2Payload {
+  activeSessions: ChatSession[];
+  archivedSessions: ChatSession[];
+  messageSummary: MessageSummary | null;
+  fetchedAt: number;
+}
+
+const RAW_CACHE_TTL_MS = 15_000;
+
+/**
+ * 纯函数单趟 O(N + activityDays) 聚合 Chat V2 会话统计：
+ * 替代旧版 O(activityDays × allSessions) 嵌套 filter + 重复 Date/toISOString 分配。
+ */
+export function computeChatV2Stats(
+  activeSessions: readonly ChatSession[],
+  archivedSessions: readonly ChatSession[],
+  messageSummary: MessageSummary | null,
+  activityDays: number,
+  now: Date = new Date(),
+): Omit<ChatV2Stats, 'loading' | 'error'> {
+  const totalSessions = activeSessions.length + archivedSessions.length;
+  const sevenDaysAgoMs = now.getTime() - 7 * 24 * 60 * 60 * 1000;
+
+  let recentSessions = 0;
+  const modeCount: Record<string, number> = {};
+  const sessionsByDate = new Map<string, number>();
+  const hourlyCount: number[] = new Array(24).fill(0);
+
+  const accumulate = (sessions: readonly ChatSession[]) => {
+    for (let idx = 0; idx < sessions.length; idx += 1) {
+      const s = sessions[idx];
+      const mode = s.mode || 'default';
+      modeCount[mode] = (modeCount[mode] || 0) + 1;
+
+      const created = new Date(s.createdAt);
+      const createdMs = created.getTime();
+      if (!Number.isNaN(createdMs)) {
+        if (createdMs > sevenDaysAgoMs) {
+          recentSessions += 1;
+        }
+        const localKey = formatLocalDateYmd(created);
+        sessionsByDate.set(localKey, (sessionsByDate.get(localKey) ?? 0) + 1);
+        hourlyCount[created.getHours()] += 1;
+      }
+    }
+  };
+
+  accumulate(activeSessions);
+  accumulate(archivedSessions);
+
+  const modeDistribution: ModeDistribution[] = Object.entries(modeCount)
+    .map(([mode, count]) => ({
+      mode,
+      count,
+      label: getModeLabel(mode),
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  const weekdayPrefix = t('weekdays.prefix', { defaultValue: '周' });
+  const clampedDays = Math.max(1, Math.floor(activityDays));
+  const dailyActivity: DailyActivity[] = new Array(clampedDays);
+  const baseYear = now.getFullYear();
+  const baseMonth = now.getMonth();
+  const baseDay = now.getDate();
+
+  for (let i = clampedDays - 1; i >= 0; i -= 1) {
+    const date = new Date(baseYear, baseMonth, baseDay - i);
+    const dateStr = formatLocalDateYmd(date);
+    dailyActivity[clampedDays - 1 - i] = {
+      date: dateStr,
+      displayDate: `${weekdayPrefix}${getWeekdayLabel(date.getDay())}`,
+      sessions: sessionsByDate.get(dateStr) ?? 0,
+      messages: 0,
+    };
+  }
+
+  const hourlyDistribution: HourlyDistribution[] = hourlyCount.map((count, hour) => ({
+    hour,
+    count,
+  }));
+
+  let totalMessages = 0;
+  let userMessages = 0;
+  let assistantMessages = 0;
+
+  if (messageSummary) {
+    totalMessages = messageSummary.total_messages;
+    userMessages = messageSummary.user_messages;
+    assistantMessages = messageSummary.assistant_messages;
+  } else {
+    totalMessages = totalSessions * 10;
+    userMessages = Math.floor(totalMessages / 2);
+    assistantMessages = totalMessages - userMessages;
+  }
+
+  const avgMessagesPerSession =
+    totalSessions > 0 ? Math.round((totalMessages / totalSessions) * 10) / 10 : 0;
+  const avgSessionsPerDay = Math.round((recentSessions / 7) * 10) / 10;
+
+  return {
+    totalSessions,
+    activeSessions: activeSessions.length,
+    archivedSessions: archivedSessions.length,
+    totalMessages,
+    userMessages,
+    assistantMessages,
+    recentSessions,
+    recentMessages: Math.floor(totalMessages * 0.3),
+    modeDistribution,
+    dailyActivity,
+    hourlyDistribution,
+    avgMessagesPerSession,
+    avgSessionsPerDay,
+  };
+}
+
 // ============================================================================
 // Hook 实现
 // ============================================================================
@@ -136,119 +260,57 @@ export function useChatV2Stats(autoRefresh = false, refreshInterval = 30000, act
     error: null,
   });
 
-  const loadStats = useCallback(async () => {
+  const rawCacheRef = useRef<RawChatV2Payload | null>(null);
+  const requestSeqRef = useRef(0);
+
+  const loadStats = useCallback(async (forceFetch = false) => {
+    const reqSeq = ++requestSeqRef.current;
     try {
-      // 获取所有会话
-      const [activeSessions, archivedSessions] = await Promise.all([
-        invoke<ChatSession[]>('chat_v2_list_sessions', {
-          status: 'active',
-          limit: 1000,
-        }),
-        invoke<ChatSession[]>('chat_v2_list_sessions', {
-          status: 'archived',
-          limit: 1000,
-        }).catch(() => [] as ChatSession[]),
-      ]);
+      const cached = rawCacheRef.current;
+      let payload: RawChatV2Payload;
 
-      const allSessions = [...activeSessions, ...archivedSessions];
-      const now = new Date();
-      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-      // 计算近期会话
-      const recentSessions = allSessions.filter(
-        (s) => new Date(s.createdAt) > sevenDaysAgo
-      ).length;
-
-      // 计算模式分布
-      const modeCount: Record<string, number> = {};
-      allSessions.forEach((s) => {
-        const mode = s.mode || 'default';
-        modeCount[mode] = (modeCount[mode] || 0) + 1;
-      });
-
-      const modeDistribution: ModeDistribution[] = Object.entries(modeCount)
-        .map(([mode, count]) => ({
-          mode,
-          count,
-          label: getModeLabel(mode),
-        }))
-        .sort((a, b) => b.count - a.count);
-
-      // 计算每日活动（最近 activityDays 天）
-      const dailyActivity: DailyActivity[] = [];
-
-      for (let i = activityDays - 1; i >= 0; i--) {
-        const date = new Date(now);
-        date.setDate(date.getDate() - i);
-        const dateStr = date.toISOString().split('T')[0];
-
-        const sessionsOnDay = allSessions.filter((s) => {
-          const sessionDate = new Date(s.createdAt).toISOString().split('T')[0];
-          return sessionDate === dateStr;
-        }).length;
-
-        dailyActivity.push({
-          date: dateStr,
-          displayDate: `${t('weekdays.prefix', { defaultValue: '周' })}${getWeekdayLabel(date.getDay())}`,
-          sessions: sessionsOnDay,
-          messages: 0, // 消息数需要额外查询
-        });
+      if (!forceFetch && cached && Date.now() - cached.fetchedAt < RAW_CACHE_TTL_MS) {
+        payload = cached;
+      } else {
+        // 三个统计查询并行拉取，避免串行瀑布阻塞首帧
+        const [activeSessions, archivedSessions, messageSummary] = await Promise.all([
+          invoke<ChatSession[]>('chat_v2_list_sessions', {
+            status: 'active',
+            limit: 1000,
+          }),
+          invoke<ChatSession[]>('chat_v2_list_sessions', {
+            status: 'archived',
+            limit: 1000,
+          }).catch(() => [] as ChatSession[]),
+          invoke<MessageSummary>('chat_v2_get_message_summary').catch(() => null),
+        ]);
+        if (reqSeq !== requestSeqRef.current) return;
+        payload = {
+          activeSessions: Array.isArray(activeSessions) ? activeSessions : [],
+          archivedSessions: Array.isArray(archivedSessions) ? archivedSessions : [],
+          messageSummary,
+          fetchedAt: Date.now(),
+        };
+        rawCacheRef.current = payload;
       }
 
-      // 计算小时分布
-      const hourlyCount: number[] = new Array(24).fill(0);
-      allSessions.forEach((s) => {
-        const hour = new Date(s.createdAt).getHours();
-        hourlyCount[hour]++;
-      });
-
-      const hourlyDistribution: HourlyDistribution[] = hourlyCount.map(
-        (count, hour) => ({ hour, count })
+      const computed = computeChatV2Stats(
+        payload.activeSessions,
+        payload.archivedSessions,
+        payload.messageSummary,
+        activityDays,
       );
 
-      // 尝试获取消息统计
-      let totalMessages = 0;
-      let userMessages = 0;
-      let assistantMessages = 0;
-
-      try {
-        const messageSummary = await invoke<MessageSummary>('chat_v2_get_message_summary');
-        totalMessages = messageSummary.total_messages;
-        userMessages = messageSummary.user_messages;
-        assistantMessages = messageSummary.assistant_messages;
-      } catch (e: unknown) {
-        // 消息统计可能不可用，使用估算
-        totalMessages = allSessions.length * 10; // 估算每会话10条消息
-        userMessages = Math.floor(totalMessages / 2);
-        assistantMessages = totalMessages - userMessages;
-      }
-
-      // 计算平均值
-      const avgMessagesPerSession =
-        allSessions.length > 0
-          ? Math.round((totalMessages / allSessions.length) * 10) / 10
-          : 0;
-
-      const avgSessionsPerDay = Math.round((recentSessions / 7) * 10) / 10;
-
-      setStats({
-        totalSessions: allSessions.length,
-        activeSessions: activeSessions.length,
-        archivedSessions: archivedSessions.length,
-        totalMessages,
-        userMessages,
-        assistantMessages,
-        recentSessions,
-        recentMessages: Math.floor(totalMessages * 0.3), // 估算
-        modeDistribution,
-        dailyActivity,
-        hourlyDistribution,
-        avgMessagesPerSession,
-        avgSessionsPerDay,
-        loading: false,
-        error: null,
+      startTransition(() => {
+        if (reqSeq !== requestSeqRef.current) return;
+        setStats({
+          ...computed,
+          loading: false,
+          error: null,
+        });
       });
     } catch (error: unknown) {
+      if (reqSeq !== requestSeqRef.current) return;
       console.error('[useChatV2Stats] Failed to load stats:', error);
       setStats((prev) => ({
         ...prev,
@@ -258,16 +320,18 @@ export function useChatV2Stats(autoRefresh = false, refreshInterval = 30000, act
     }
   }, [activityDays]);
 
-  // 初始加载
+  // 初始加载与 activityDays 切换（命中组件内缓存时仅重算 O(N) 窗口，不重复拉取 2000 条会话）
   useEffect(() => {
-    loadStats();
+    void loadStats(false);
   }, [loadStats]);
 
   // 自动刷新
   useEffect(() => {
     if (!autoRefresh) return;
 
-    const interval = setInterval(loadStats, refreshInterval);
+    const interval = setInterval(() => {
+      void loadStats(true);
+    }, refreshInterval);
     return () => clearInterval(interval);
   }, [autoRefresh, refreshInterval, loadStats]);
 

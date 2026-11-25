@@ -7,6 +7,7 @@ import type { MediaStudyCompanionRenderContext } from '@/features/learning-hub/a
 import type { TranscriptSegment } from '@/features/learning-hub/apps/views/media/mediaTranscriptApi';
 
 const {
+  invokeMock,
   useGenerateHandoutMock,
   openHandoutNoteMock,
   useReferenceToChatMock,
@@ -14,12 +15,17 @@ const {
   startMediaChatMock,
   showGlobalNotificationMock,
 } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
   useGenerateHandoutMock: vi.fn(),
   openHandoutNoteMock: vi.fn(),
   useReferenceToChatMock: vi.fn(),
   relatedNotesMock: vi.fn(),
   startMediaChatMock: vi.fn(),
   showGlobalNotificationMock: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: invokeMock,
 }));
 
 vi.mock('react-i18next', async (importOriginal) => {
@@ -123,6 +129,12 @@ function createMockContext(
 describe('MediaStudyTabs — HandoutReaderView & ContextualMiniChat integration', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'handout_llm_complete') {
+        return '本段的核心结论是：实对称矩阵一定可以正交对角化，且不同特征值对应的特征向量彼此正交 [01:35]。';
+      }
+      return null;
+    });
     useGenerateHandoutMock.mockReturnValue({
       running: false,
       progress: null,
@@ -308,8 +320,9 @@ describe('MediaStudyTabs — HandoutReaderView & ContextualMiniChat integration'
     expect(screen.queryByText('已转存至笔记')).toBeNull();
   });
 
-  it('9. answers immediately in ContextualMiniChat using chapter & nearby transcript segments (and guides clearly when no transcript)', () => {
-    const ctx = createMockContext({ getCurrentTime: () => 110 });
+  it('9. answers questions via real LLM completion with clickable timestamp citations and shows explicit unconfigured notice only when no model is configured', async () => {
+    const seekTo = vi.fn();
+    const ctx = createMockContext({ getCurrentTime: () => 110, seekTo });
     const { unmount } = render(
       <MediaAskTab ctx={ctx} meta={{ name: '线性代数第3讲.mp4', mimeType: 'video/mp4' }} />,
     );
@@ -318,31 +331,48 @@ describe('MediaStudyTabs — HandoutReaderView & ContextualMiniChat integration'
     fireEvent.change(input, { target: { value: '这一段讲的核心结论是什么？' } });
     fireEvent.click(screen.getByRole('button', { name: '发送伴读提问' }));
 
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith(
+        'handout_llm_complete',
+        expect.objectContaining({
+          jsonMode: false,
+          prompt: expect.stringContaining('这一段讲的核心结论是什么？'),
+        }),
+      );
+    });
+
     const msgList = screen.getByTestId('mini-chat-message-list');
-    expect(msgList.textContent).toContain('01:50');
-    expect(msgList.textContent).toContain('实对称矩阵的正交对角化');
-    expect(msgList.textContent).toContain('[01:35] 实对称矩阵必定可以正交对角化');
-    expect(msgList.textContent).toContain('迁入主会话');
+    await waitFor(() => {
+      expect(msgList.textContent).toContain('实对称矩阵一定可以正交对角化');
+    });
+    // Must not tell a configured user to migrate to main chat
+    expect(msgList.textContent).not.toContain('迁入主会话');
+
+    // Clickable ▶ 01:35 citation seeks the player directly to 95s
+    const citationBtn = screen.getByRole('button', { name: '跳转到 01:35' });
+    expect(citationBtn.textContent).toContain('▶');
+    expect(citationBtn.textContent).toContain('01:35');
+    fireEvent.click(citationBtn);
+    expect(seekTo).toHaveBeenCalledWith(95);
 
     unmount();
 
-    // 当尚无字幕时，返回清晰引导而非无响应死胡同
-    const noTranscriptCtx = createMockContext({
-      hasTranscript: false,
-      segments: [],
-      getCurrentTime: () => 40,
+    // When no LLM model / API key is configured, show explicit unconfigured notice + settings button
+    invokeMock.mockImplementation(async (cmd: string) => {
+      if (cmd === 'handout_llm_complete') {
+        throw { error_type: 'Configuration', message: '对话模型未配置', details: null };
+      }
+      return null;
     });
     render(
-      <MediaAskTab
-        ctx={noTranscriptCtx}
-        meta={{ name: '线性代数第3讲.mp4', mimeType: 'video/mp4' }}
-      />,
+      <MediaAskTab ctx={ctx} meta={{ name: '线性代数第3讲.mp4', mimeType: 'video/mp4' }} />,
     );
 
     fireEvent.click(screen.getByRole('button', { name: '解释当前段落' }));
-    const emptyMsgList = screen.getByTestId('mini-chat-message-list');
-    expect(emptyMsgList.textContent).toContain('尚无可用字幕转写');
-    expect(emptyMsgList.textContent).toContain('迁入主会话');
+    const notice = await screen.findByTestId('media-qa-unconfigured-notice');
+    expect(notice.textContent).toContain('未配置 AI 模型，已为您定位相关字幕片段');
+    expect(notice.textContent).not.toContain('迁入主会话');
+    expect(screen.getByTestId('media-qa-open-settings-btn')).toBeInTheDocument();
   });
 
   it('10. refreshes ContextualMiniChat video_timestamp anchor in real time while MediaAskTab is visible', () => {

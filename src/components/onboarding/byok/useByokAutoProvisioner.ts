@@ -14,6 +14,8 @@ import { provisionByokVectorProfile } from './vectorProfileProvisioner';
 
 export interface UseByokAutoProvisionerOptions {
   fetcher?: typeof fetch;
+  /** Display context: 'onboarding' hides raw HTTP status codes from first-time learners */
+  mode?: 'onboarding' | 'settings';
   /** Auto-trigger probing 250ms after pasting a plausible unambiguous key */
   autoProbeOnPaste?: boolean;
   debounceMs?: number;
@@ -42,9 +44,11 @@ const DEFAULT_DEBOUNCE_MS = 250;
 export function useByokAutoProvisioner(
   options: UseByokAutoProvisionerOptions = {},
 ): UseByokAutoProvisionerReturn {
-  const { t } = useTranslation(['settings', 'common']);
+  const { i18n } = useTranslation(['settings', 'common']);
+  const isZh = (i18n.resolvedLanguage ?? i18n.language ?? 'zh-CN').toLowerCase().startsWith('zh');
   const {
     fetcher,
+    mode = 'settings',
     autoProbeOnPaste = false,
     debounceMs = DEFAULT_DEBOUNCE_MS,
     onProvisioned,
@@ -92,9 +96,9 @@ export function useByokAutoProvisioner(
         if (err.code === 'empty_key') {
           return {
             code: 'empty_key',
-            message: t('settings:byok.errors.emptyKey', {
-              defaultValue: 'Please paste a valid API key first',
-            }),
+            message: isZh
+              ? '请先粘贴有效的 API 密钥。'
+              : 'Please paste a valid API key first.',
           };
         }
         if (err.code === 'auth_failed') {
@@ -102,42 +106,42 @@ export function useByokAutoProvisioner(
           return {
             code: 'auth_failed',
             httpStatus: status,
-            message: t('settings:byok.errors.authFailed', {
-              status,
-              defaultValue: `Authentication failed (HTTP ${status}). Check your API key or Base URL.`,
-            }),
+            message:
+              mode === 'onboarding'
+                ? isZh
+                  ? '密钥验证未通过，请确认 API 密钥是否正确、余额是否充足，或检查自定义服务地址。'
+                  : 'Could not verify this API key. Please check that the key is correct, has available credit, or verify the custom server address.'
+                : isZh
+                  ? `密钥校验未通过（HTTP ${status}），请检查 API 密钥或自定义服务地址。`
+                  : `Authentication failed (HTTP ${status}). Check your API key or custom server address.`,
           };
         }
         if (err.code === 'no_models') {
           return {
             code: 'no_models',
-            message: t('settings:byok.errors.noModels', {
-              defaultValue:
-                'Connected, but no chat models were returned. Check account permissions or add models manually.',
-            }),
+            message: isZh
+              ? '连接成功，但当前账号下暂无可用的对话模型，请检查账号权限或在设置中手动添加。'
+              : 'Connected, but no chat models are available on this account. Please check permissions or add a model in Settings.',
           };
         }
         if (err.code === 'network_timeout') {
           return {
             code: 'network_timeout',
-            message: t('settings:byok.errors.networkTimeout', {
-              defaultValue:
-                'Connection timed out. Check your network or specify a custom Base URL.',
-            }),
+            message: isZh
+              ? '连接服务商超时，请检查网络或填写自定义服务地址后重试。'
+              : 'Connection timed out. Please check your network or enter a custom server address and try again.',
           };
         }
       }
 
       return {
         code: 'probe_failed',
-        message: t('settings:byok.errors.probeFailed', {
-          // Transport/IPC errors may contain Authorization headers or payloads.
-          message: t('settings:byok.errors.safeDetail', { defaultValue: 'Check the connection and configuration, then retry.' }),
-          defaultValue: 'Failed to probe or save configuration. Please retry.',
-        }),
+        message: isZh
+          ? '暂时无法连接或保存配置，请检查网络与密钥后重试。'
+          : 'Could not connect or save settings right now. Please check your connection and key, then try again.',
       };
     },
-    [t],
+    [isZh, mode],
   );
 
   const submitProvision = useCallback(

@@ -76,6 +76,29 @@ import { LinkedResourcesSection } from './detail/LinkedResourcesSection';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { addTypedEventListener } from '@/events';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
+
+interface DetailDraft {
+  title: string;
+  description: string;
+  priority: TodoPriority;
+  dueDate: string;
+  dueTime: string;
+  reminder: string;
+  estimatedPomodoros: number;
+}
+
+function isDetailDraftDirty(draft: DetailDraft, committed: DetailDraft): boolean {
+  return (
+    draft.title !== committed.title ||
+    draft.description !== committed.description ||
+    draft.priority !== committed.priority ||
+    draft.dueDate !== committed.dueDate ||
+    draft.dueTime !== committed.dueTime ||
+    draft.reminder !== committed.reminder ||
+    draft.estimatedPomodoros !== committed.estimatedPomodoros
+  );
+}
 
 /** 属性行统一视觉：12px 圆角、悬停 --interactive-hover（对齐设计规范） */
 const PROPERTY_ROW_CLASS =
@@ -120,7 +143,9 @@ export const TodoItemDetail: React.FC<{
   className?: string;
   /** 移动端子屏承载时隐藏右上角关闭按钮（返回统一走顶栏返回箭头/系统返回键） */
   hideCloseButton?: boolean;
-}> = ({ item, onClose, className, hideCloseButton }) => {
+  /** 可选：向宿主暴露带未保存修改守卫的关闭入口（供文档级 Esc / 移动覆盖层返回复用） */
+  requestCloseRef?: React.MutableRefObject<((onConfirmClose: () => void) => boolean) | null>;
+}> = ({ item, onClose, className, hideCloseButton, requestCloseRef }) => {
   const { t, i18n } = useTranslation(['todo', 'common']);
   const items = useTodoStore((s) => s.items);
   const updateItem = useTodoStore((s) => s.updateItem);
@@ -142,7 +167,7 @@ export const TodoItemDetail: React.FC<{
 
   // 同步草稿快照与已提交基准：onChange 同步写入 draftRef，保证未触发重渲染或未触发 blur
   // 即发生任务切换 / 面板卸载 / 页面刷新时，handleSave 也能立即读取最新文本并落库，且不会重复提交。
-  const draftRef = useRef({
+  const draftRef = useRef<DetailDraft>({
     title: item.title,
     description: item.description || '',
     priority: item.priority as TodoPriority,
@@ -151,7 +176,18 @@ export const TodoItemDetail: React.FC<{
     reminder: normalizeReminderValue(item.reminder),
     estimatedPomodoros: item.estimatedPomodoros || 0,
   });
-  const committedRef = useRef({ ...draftRef.current });
+  const committedRef = useRef<DetailDraft>({ ...draftRef.current });
+  const [committedSnapshot, setCommittedSnapshot] = useState<DetailDraft>(() => ({
+    ...draftRef.current,
+  }));
+  const syncCommitted = useCallback((patch: Partial<DetailDraft>) => {
+    committedRef.current = { ...committedRef.current, ...patch };
+    setCommittedSnapshot((prev) => ({ ...prev, ...patch }));
+  }, []);
+  const confirmingUnsavedRef = useRef(false);
+  const lastFocusedFieldRef = useRef<HTMLElement | null>(null);
+  const continueEditingBtnRef = useRef<HTMLButtonElement | null>(null);
+  const deletingRef = useRef(false);
 
   // 面板根节点（Android 返回键的保活可见性守卫用）
   const panelRef = useRef<HTMLElement | null>(null);
@@ -177,52 +213,52 @@ export const TodoItemDetail: React.FC<{
   // 若本地存在尚未提交的草稿差异（draft !== committed）或当前字段正聚焦，不覆盖用户输入。
   useEffect(() => {
     const prevCommitted = committedRef.current.title;
-    committedRef.current.title = item.title;
+    syncCommitted({ title: item.title });
     if (document.activeElement === titleRef.current) return;
     if (draftRef.current.title !== prevCommitted && draftRef.current.title !== item.title) return;
     draftRef.current.title = item.title;
     setTitle(item.title);
-  }, [item.title]);
+  }, [item.title, syncCommitted]);
   useEffect(() => {
     const nextDesc = item.description || '';
     const prevCommitted = committedRef.current.description;
-    committedRef.current.description = nextDesc;
+    syncCommitted({ description: nextDesc });
     if (document.activeElement === descriptionRef.current) return;
     if (draftRef.current.description !== prevCommitted && draftRef.current.description !== nextDesc) return;
     draftRef.current.description = nextDesc;
     setDescription(nextDesc);
-  }, [item.description]);
+  }, [item.description, syncCommitted]);
   useEffect(() => {
     const nextPriority = item.priority as TodoPriority;
-    committedRef.current.priority = nextPriority;
+    syncCommitted({ priority: nextPriority });
     draftRef.current.priority = nextPriority;
     setPriority(nextPriority);
-  }, [item.priority]);
+  }, [item.priority, syncCommitted]);
   useEffect(() => {
     const nextDueDate = item.dueDate || '';
-    committedRef.current.dueDate = nextDueDate;
+    syncCommitted({ dueDate: nextDueDate });
     draftRef.current.dueDate = nextDueDate;
     setDueDate(nextDueDate);
-  }, [item.dueDate]);
+  }, [item.dueDate, syncCommitted]);
   useEffect(() => {
     const nextDueTime = item.dueTime || '';
-    committedRef.current.dueTime = nextDueTime;
+    syncCommitted({ dueTime: nextDueTime });
     draftRef.current.dueTime = nextDueTime;
     setDueTime(nextDueTime);
-  }, [item.dueTime]);
+  }, [item.dueTime, syncCommitted]);
   // 提醒归一到分钟精度（旧数据可能带秒，datetime-local 会显示为空）
   useEffect(() => {
     const nextReminder = normalizeReminderValue(item.reminder);
-    committedRef.current.reminder = nextReminder;
+    syncCommitted({ reminder: nextReminder });
     draftRef.current.reminder = nextReminder;
     setReminder(nextReminder);
-  }, [item.reminder]);
+  }, [item.reminder, syncCommitted]);
   useEffect(() => {
     const nextEst = item.estimatedPomodoros || 0;
-    committedRef.current.estimatedPomodoros = nextEst;
+    syncCommitted({ estimatedPomodoros: nextEst });
     draftRef.current.estimatedPomodoros = nextEst;
     setEstimatedPomodoros(nextEst);
-  }, [item.estimatedPomodoros]);
+  }, [item.estimatedPomodoros, syncCommitted]);
 
   // 标题/备注多行自动增高（overflow-hidden 的固定 rows 会截断长内容；scrollHeight===0 时保留 CSS min-h）
   useEffect(() => {
@@ -390,13 +426,13 @@ export const TodoItemDetail: React.FC<{
           const today = localToday();
           changes.dueDate = today;
           draftRef.current.dueDate = today;
-          committedRef.current.dueDate = today;
+          syncCommitted({ dueDate: today });
           setDueDate(today);
         }
       }
       void updateItem(changes).then(markSaved);
     },
-    [item.id, repeatRule, dueDate, updateItem, markSaved],
+    [item.id, repeatRule, dueDate, updateItem, markSaved, syncCommitted],
   );
 
   /** 自定义间隔（如「每 2 周」）；weekdays 语义固定不支持间隔 */
@@ -438,11 +474,11 @@ export const TodoItemDetail: React.FC<{
   const applyDueDate = useCallback(
     (date: string) => {
       draftRef.current.dueDate = date;
-      committedRef.current.dueDate = date;
+      syncCommitted({ dueDate: date });
       setDueDate(date);
       void updateItem({ id: item.id, dueDate: date }).then(markSaved);
     },
-    [item.id, updateItem, markSaved],
+    [item.id, updateItem, markSaved, syncCommitted],
   );
 
   /** 编辑时间时始终保留原有截止日期（含逾期日期），仅在尚未设置日期且填入非空时间时默认今天 */
@@ -453,12 +489,13 @@ export const TodoItemDetail: React.FC<{
       const resolvedDueDate =
         existingDueDate || (nextTime.trim() ? localToday() : '');
       draftRef.current.dueTime = nextTime;
-      committedRef.current.dueTime = nextTime;
       setDueTime(nextTime);
       if (resolvedDueDate) {
         draftRef.current.dueDate = resolvedDueDate;
-        committedRef.current.dueDate = resolvedDueDate;
         setDueDate(resolvedDueDate);
+        syncCommitted({ dueTime: nextTime, dueDate: resolvedDueDate });
+      } else {
+        syncCommitted({ dueTime: nextTime });
       }
       const payload: UpdateTodoItemInput = {
         id: item.id,
@@ -467,27 +504,26 @@ export const TodoItemDetail: React.FC<{
       };
       void updateItem(payload).then(markSaved);
     },
-    [item.id, item.dueDate, updateItem, markSaved],
+    [item.id, item.dueDate, updateItem, markSaved, syncCommitted],
   );
 
   const clearDueDate = useCallback(() => {
     draftRef.current.dueDate = '';
     draftRef.current.dueTime = '';
-    committedRef.current.dueDate = '';
-    committedRef.current.dueTime = '';
+    syncCommitted({ dueDate: '', dueTime: '' });
     setDueDate('');
     setDueTime('');
     void updateItem({ id: item.id, dueDate: '', dueTime: '' }).then(markSaved);
-  }, [item.id, updateItem, markSaved]);
+  }, [item.id, updateItem, markSaved, syncCommitted]);
 
   const applyReminder = useCallback(
     (value: string) => {
       draftRef.current.reminder = value;
-      committedRef.current.reminder = value;
+      syncCommitted({ reminder: value });
       setReminder(value);
       void updateItem({ id: item.id, reminder: value }).then(markSaved);
     },
-    [item.id, updateItem, markSaved],
+    [item.id, updateItem, markSaved, syncCommitted],
   );
 
   /** 汇总本地草稿（draftRef）与已提交基准（committedRef）的差异并立即发起持久化 */
@@ -548,7 +584,9 @@ export const TodoItemDetail: React.FC<{
     }
 
     if (hasChanges) {
-      committedRef.current = { ...draft };
+      const nextCommitted = { ...draft };
+      committedRef.current = nextCommitted;
+      setCommittedSnapshot(nextCommitted);
       await updateItem(changes);
     }
     return hasChanges;
@@ -577,15 +615,102 @@ export const TodoItemDetail: React.FC<{
     }
   }, []);
 
-  const handleBlur = useCallback(() => {
-    if (blurTimerRef.current !== null) window.clearTimeout(blurTimerRef.current);
-    blurTimerRef.current = window.setTimeout(() => {
-      blurTimerRef.current = null;
-      void saveRef.current().then((changed) => {
-        if (changed) markSaved();
-      });
-    }, 300);
-  }, [markSaved]);
+  const isDirty = isDetailDraftDirty(
+    { title, description, priority, dueDate, dueTime, reminder, estimatedPomodoros },
+    committedSnapshot,
+  );
+
+  const unsavedGuard = useUnsavedChangesGuard({
+    isDirty,
+    getIsDirty: () => isDetailDraftDirty(draftRef.current, committedRef.current),
+    copy: {
+      message: t('todo:detail.unsavedChangesPrompt', { defaultValue: '有未保存修改，确定放弃？' }),
+      continueLabel: t('todo:detail.continueEditing', { defaultValue: '继续编辑' }),
+      discardLabel: t('todo:detail.discardChanges', { defaultValue: '放弃修改' }),
+    },
+    onDiscard: () => {
+      confirmingUnsavedRef.current = false;
+      clearPendingSaveTimers();
+      const base = { ...committedRef.current };
+      draftRef.current = base;
+      setTitle(base.title);
+      setDescription(base.description);
+      setPriority(base.priority);
+      setDueDate(base.dueDate);
+      setDueTime(base.dueTime);
+      setReminder(base.reminder);
+      setEstimatedPomodoros(base.estimatedPomodoros);
+      setIntervalDraft(repeatRule ? String(repeatRule.interval) : '');
+    },
+    onContinueEditing: () => {
+      confirmingUnsavedRef.current = false;
+      const field = lastFocusedFieldRef.current;
+      if (field && field.isConnected) {
+        field.focus();
+      }
+    },
+  });
+  confirmingUnsavedRef.current = unsavedGuard.isConfirming;
+
+  const handleRequestCloseWith = useCallback(
+    (confirmClose: () => void): boolean => {
+      if (isDetailDraftDirty(draftRef.current, committedRef.current)) {
+        clearPendingSaveTimers();
+        confirmingUnsavedRef.current = true;
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && panelRef.current?.contains(active)) {
+          lastFocusedFieldRef.current = active;
+        }
+      }
+      return unsavedGuard.requestClose(confirmClose);
+    },
+    [clearPendingSaveTimers, unsavedGuard],
+  );
+
+  const handleRequestClose = useCallback(() => {
+    handleRequestCloseWith(onClose);
+  }, [handleRequestCloseWith, onClose]);
+
+  useEffect(() => {
+    if (!requestCloseRef) return;
+    requestCloseRef.current = handleRequestCloseWith;
+    return () => {
+      if (requestCloseRef.current === handleRequestCloseWith) {
+        requestCloseRef.current = null;
+      }
+    };
+  }, [requestCloseRef, handleRequestCloseWith]);
+
+  useEffect(() => {
+    if (!unsavedGuard.isConfirming) return;
+    continueEditingBtnRef.current?.focus({ preventScroll: true });
+    return registerBackHandler(() => {
+      const el = panelRef.current;
+      if (!el || !el.isConnected || el.getClientRects().length === 0) return false;
+      if (window.getComputedStyle(el).visibility === 'hidden') return false;
+      unsavedGuard.continueEditing();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [unsavedGuard.isConfirming, unsavedGuard.continueEditing]);
+
+  const handleBlur = useCallback(
+    (e?: React.FocusEvent<HTMLElement>) => {
+      if (confirmingUnsavedRef.current) return;
+      const nextTarget = e?.relatedTarget as HTMLElement | null;
+      if (nextTarget?.closest('[data-testid="unsaved-changes-guard-bar"], [data-todo-detail-close]')) {
+        return;
+      }
+      if (blurTimerRef.current !== null) window.clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = window.setTimeout(() => {
+        blurTimerRef.current = null;
+        if (confirmingUnsavedRef.current) return;
+        void saveRef.current().then((changed) => {
+          if (changed) markSaved();
+        });
+      }, 300);
+    },
+    [markSaved],
+  );
 
   /** ⌘/Ctrl+Enter 或文本字段失焦：跳过防抖立即保存 */
   const flushSaveNow = useCallback(() => {
@@ -595,11 +720,24 @@ export const TodoItemDetail: React.FC<{
     });
   }, [clearPendingSaveTimers, markSaved]);
 
+  const handleTextBlur = useCallback(
+    (e: React.FocusEvent<HTMLTextAreaElement>) => {
+      if (confirmingUnsavedRef.current) return;
+      const nextTarget = e.relatedTarget as HTMLElement | null;
+      if (nextTarget?.closest('[data-testid="unsaved-changes-guard-bar"], [data-todo-detail-close]')) {
+        return;
+      }
+      flushSaveNow();
+    },
+    [flushSaveNow],
+  );
+
   /** 文本输入过程中短防抖自动落库：用户未失焦直接 F5 重载也不会丢失已输入的描述 */
   const scheduleTextAutoSave = useCallback(() => {
     if (textSaveTimerRef.current !== null) window.clearTimeout(textSaveTimerRef.current);
     textSaveTimerRef.current = window.setTimeout(() => {
       textSaveTimerRef.current = null;
+      if (confirmingUnsavedRef.current) return;
       void saveRef.current().then((changed) => {
         if (changed) markSaved();
       });
@@ -630,24 +768,31 @@ export const TodoItemDetail: React.FC<{
     };
   }, [clearPendingSaveTimers]);
 
-  // ===== 面板级键盘：Esc 收起（先收内联日历），⌘/Ctrl+Enter 立即保存 =====
-  // 字段级 Esc（标题/备注还原、标签/子任务草稿清空）在各自 handler 内 stopPropagation
+  // ===== 面板级键盘：Esc 收起（先收确认条/内联日历，有未保存修改时内联确认），⌘/Ctrl+Enter 立即保存 =====
+  // 字段级 Esc（标题/备注、标签/子任务草稿）在各自 handler 内 stopPropagation
   const handlePanelKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === 'Escape') {
         // 面板消费 Esc 后阻断冒泡：TodoMainPanel 的 document 级 Esc
-        // （清多选/关面板）不再与本层级（日历→面板）双重触发
+        // （清多选/关面板）不再与本层级（确认条→日历→面板）双重触发
         e.stopPropagation();
+        if (unsavedGuard.isConfirming) {
+          e.preventDefault();
+          unsavedGuard.continueEditing();
+          return;
+        }
         if (calendarOpen) {
           setCalendarOpen(false);
           return;
         }
-        onClose();
+        handleRequestClose();
         return;
       }
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();
+        unsavedGuard.resetPrompt();
+        confirmingUnsavedRef.current = false;
         // 先失焦让受控字段结束编辑（blur 的防抖随即被 flush 清掉）
         const active = document.activeElement;
         if (active instanceof HTMLElement) active.blur();
@@ -660,7 +805,7 @@ export const TodoItemDetail: React.FC<{
         e.stopPropagation();
       }
     },
-    [calendarOpen, onClose, flushSaveNow],
+    [calendarOpen, handleRequestClose, flushSaveNow, unsavedGuard],
   );
 
   const completedPomodoros = item.completedPomodoros || 0;
@@ -727,7 +872,13 @@ export const TodoItemDetail: React.FC<{
               variant="utility"
               size="icon"
               iconOnly
-              onClick={onClose}
+              data-todo-detail-close=""
+              onMouseDown={(e) => {
+                if (isDetailDraftDirty(draftRef.current, committedRef.current)) {
+                  e.preventDefault();
+                }
+              }}
+              onClick={handleRequestClose}
               aria-label={t('common:actions.close')}
               // 触屏：min-h/min-w 压过 lg: 档的固定尺寸，保住 44px 命中区
               className="!p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
@@ -737,6 +888,49 @@ export const TodoItemDetail: React.FC<{
           )}
         </div>
       </div>
+
+      {unsavedGuard.isConfirming && (
+        <div
+          data-testid="unsaved-changes-guard-bar"
+          role="alert"
+          className="mx-4 mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 rounded-[var(--radius-shell-control)] border border-[color:hsl(var(--warning))]/30 bg-[color:hsl(var(--warning))]/[0.08] px-3 py-2"
+        >
+          <span className="text-xs font-medium text-foreground">
+            {unsavedGuard.copy.message}
+          </span>
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 whitespace-nowrap">
+            <DsButton
+              ref={continueEditingBtnRef}
+              type="button"
+              variant="utility"
+              size="sm"
+              data-testid="unsaved-changes-continue"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                unsavedGuard.continueEditing();
+              }}
+              className="shrink-0 whitespace-nowrap"
+            >
+              {unsavedGuard.copy.continueLabel}
+            </DsButton>
+            <DsButton
+              type="button"
+              variant="danger"
+              size="sm"
+              data-testid="unsaved-changes-discard"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                unsavedGuard.confirmDiscard();
+              }}
+              className="shrink-0 whitespace-nowrap"
+            >
+              {unsavedGuard.copy.discardLabel}
+            </DsButton>
+          </div>
+        </div>
+      )}
 
       <CustomScrollArea className="flex-1 min-h-0" viewportClassName="px-5 py-5 space-y-5">
         <Textarea
@@ -748,10 +942,11 @@ export const TodoItemDetail: React.FC<{
             setTitle(next);
             scheduleTextAutoSave();
           }}
-          onBlur={flushSaveNow}
+          onBlur={handleTextBlur}
           onKeyDown={(e) => {
-            // Enter 提交（失焦触发保存），Shift+Enter 换行；Esc 还原并失焦（不冒泡关面板）
-            // IME 组字中的 Enter/Esc 属于输入法，不提交也不还原
+            // Enter 提交（失焦触发保存），Shift+Enter 换行；
+            // Esc 有未保存修改时触发内联放弃确认，干净态下失焦
+            // IME 组字中的 Enter/Esc 属于输入法，不提交也不关闭
             if (isComposingKeyEvent(e)) return;
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
@@ -761,10 +956,12 @@ export const TodoItemDetail: React.FC<{
             if (e.key === 'Escape') {
               e.preventDefault();
               e.stopPropagation();
-              clearPendingSaveTimers();
-              draftRef.current.title = committedRef.current.title;
-              setTitle(committedRef.current.title);
-              e.currentTarget.blur();
+              if (isDetailDraftDirty(draftRef.current, committedRef.current)) {
+                lastFocusedFieldRef.current = e.currentTarget;
+                handleRequestClose();
+              } else {
+                e.currentTarget.blur();
+              }
             }
           }}
           className={cn(
@@ -790,17 +987,19 @@ export const TodoItemDetail: React.FC<{
               setDescription(next);
               scheduleTextAutoSave();
             }}
-            onBlur={flushSaveNow}
+            onBlur={handleTextBlur}
             onKeyDown={(e) => {
               if (isComposingKeyEvent(e)) return;
-              // Esc 还原备注并失焦（不冒泡关面板）；换行保持原生 Enter
+              // Esc 有未保存修改时触发内联放弃确认而非静默清空；换行保持原生 Enter
               if (e.key === 'Escape') {
                 e.preventDefault();
                 e.stopPropagation();
-                clearPendingSaveTimers();
-                draftRef.current.description = committedRef.current.description;
-                setDescription(committedRef.current.description);
-                e.currentTarget.blur();
+                if (isDetailDraftDirty(draftRef.current, committedRef.current)) {
+                  lastFocusedFieldRef.current = e.currentTarget;
+                  handleRequestClose();
+                } else {
+                  e.currentTarget.blur();
+                }
               }
             }}
             placeholder={t('todo:placeholders.description')}
@@ -832,7 +1031,7 @@ export const TodoItemDetail: React.FC<{
               value={priority}
               onValueChange={(p) => {
                 draftRef.current.priority = p;
-                committedRef.current.priority = p;
+                syncCommitted({ priority: p });
                 setPriority(p);
                 void updateItem({ id: item.id, priority: p }).then(markSaved);
               }}
@@ -1205,7 +1404,13 @@ export const TodoItemDetail: React.FC<{
           cancelLabel={t('common:actions.cancel')}
           onConfirmingChange={setConfirmingDelete}
           onConfirm={() => {
-            void deleteItem(item.id);
+            if (deletingRef.current) return;
+            deletingRef.current = true;
+            clearPendingSaveTimers();
+            draftRef.current = { ...committedRef.current };
+            void Promise.resolve(deleteItem(item.id)).finally(() => {
+              deletingRef.current = false;
+            });
             onClose();
           }}
         />

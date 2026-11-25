@@ -13,6 +13,131 @@ import { useKeyboardHeight, getLayoutViewportObscuredHeight } from '@/hooks/useK
 import { springSheet } from '@/styles/motion-springs';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { useOverlayCoordinator } from '@/components/shared/OverlayCoordinator';
+
+function isVisibleOpenOverlayElement(el: Element): boolean {
+  if (!el.isConnected) return false;
+  if (el.getAttribute('data-state') === 'closed') return false;
+  if (el.closest('[aria-hidden="true"], [inert], [hidden]')) return false;
+  if (typeof window !== 'undefined' && el instanceof HTMLElement) {
+    const style = window.getComputedStyle(el);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+  }
+  return true;
+}
+
+function isInsideOrAfterOverlay(overlayContainer: HTMLElement | null, el: Element): boolean {
+  if (!overlayContainer) return true;
+  if (overlayContainer.contains(el)) return true;
+  return Boolean(overlayContainer.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+}
+
+/**
+ * 探测当前是否存在应优先消费 Escape 的内层打开浮层（Radix popper / Tooltip /
+ * AppMenu / AppSelect / Popover / 上下文菜单 / 弹出 listbox）。
+ *
+ * 返回值区分两类事件流时机：
+ * - `'capture-or-tooltip'`：Radix 浮层（capture 阶段已处理 Escape）或 Tooltip
+ *   （window 阶段监听且不检查 defaultPrevented）——DsDialog 需 preventDefault
+ *   防止窗口级 focus-mode 误退，同时不关闭自身；
+ * - `'bubble'`：挂载在 document 冒泡阶段的内层菜单/浮层/弹出 listbox——DsDialog
+ *   不得 preventDefault，让紧随其后的内层 document 监听先关掉浮层。
+ *
+ * 注意：静态常驻的 `[role="listbox"]`（如背景 FinderFileList 或
+ * FinderMoveFolderDialog 内的平铺列表）不得误命中，否则弹窗按 Esc 无法关闭。
+ */
+function detectOpenInnerOverlay(
+  overlayContainer: HTMLElement | null,
+): 'capture-or-tooltip' | 'bubble' | null {
+  if (typeof document === 'undefined') return null;
+
+  // 1. Radix popper（Select / Popover / DropdownMenu / ContextMenu 等）
+  const radixPoppers = document.querySelectorAll('[data-radix-popper-content-wrapper]');
+  for (let i = 0; i < radixPoppers.length; i++) {
+    const wrapper = radixPoppers[i];
+    if (!isVisibleOpenOverlayElement(wrapper)) continue;
+    const hasOpenState = Boolean(wrapper.querySelector('[data-state="open"]'));
+    const hasClosedState = Boolean(wrapper.querySelector('[data-state="closed"]'));
+    if (hasOpenState || !hasClosedState) {
+      return 'capture-or-tooltip';
+    }
+  }
+
+  // 2. 打开中的 Tooltip（role="tooltip" + data-state="open"）
+  const openTooltips = document.querySelectorAll('[role="tooltip"][data-state="open"]');
+  for (let i = 0; i < openTooltips.length; i++) {
+    if (isVisibleOpenOverlayElement(openTooltips[i])) {
+      return 'capture-or-tooltip';
+    }
+  }
+
+  // 3. 明确带有 data-state="open" 的菜单 / 下拉列表（AppMenu / Radix Menu / Select Listbox）
+  const explicitOpenPopups = document.querySelectorAll(
+    '[data-state="open"][role="menu"], [data-state="open"][role="listbox"]',
+  );
+  for (let i = 0; i < explicitOpenPopups.length; i++) {
+    const el = explicitOpenPopups[i];
+    if (el !== overlayContainer && isVisibleOpenOverlayElement(el)) {
+      return 'bubble';
+    }
+  }
+
+  // 4. 非模态 Popover（shad/Popover：role="dialog" + data-state="open" 且非 aria-modal）
+  const openPopovers = document.querySelectorAll(
+    '[data-state="open"][role="dialog"]:not([aria-modal="true"])',
+  );
+  for (let i = 0; i < openPopovers.length; i++) {
+    const el = openPopovers[i];
+    if (
+      el !== overlayContainer &&
+      isVisibleOpenOverlayElement(el) &&
+      isInsideOrAfterOverlay(overlayContainer, el)
+    ) {
+      return 'bubble';
+    }
+  }
+
+  // 5. 条件挂载的右键菜单 / 下拉菜单（无 data-state="open"，如 DesktopContextMenu / TextContextMenu）
+  const openMenus = document.querySelectorAll('[role="menu"]:not([data-state="closed"])');
+  for (let i = 0; i < openMenus.length; i++) {
+    const el = openMenus[i];
+    if (
+      el !== overlayContainer &&
+      isVisibleOpenOverlayElement(el) &&
+      isInsideOrAfterOverlay(overlayContainer, el)
+    ) {
+      return 'bubble';
+    }
+  }
+
+  // 6. 弹出式 [role="listbox"]（排除对话框自身静态列表与背景 FinderFileList）：
+  //    仅匹配 portal 到对话内容区外/后方的 listbox，或由弹窗内已展开的 combobox/listbox 触发器控制的 listbox。
+  const dialogPanel = overlayContainer?.querySelector('[role="dialog"], [role="alertdialog"]') ?? null;
+  const hasExpandedListboxTrigger = Boolean(
+    overlayContainer?.querySelector(
+      '[role="combobox"][aria-expanded="true"], [aria-haspopup="listbox"][aria-expanded="true"]',
+    ),
+  );
+  const openListboxes = document.querySelectorAll('[role="listbox"]:not([data-state="closed"])');
+  for (let i = 0; i < openListboxes.length; i++) {
+    const el = openListboxes[i];
+    if (!isVisibleOpenOverlayElement(el) || !isInsideOrAfterOverlay(overlayContainer, el)) {
+      continue;
+    }
+    const isPortaledOutsidePanel = dialogPanel ? !dialogPanel.contains(el) : false;
+    const isControlledByExpanded = Boolean(
+      el.id &&
+      typeof CSS !== 'undefined' &&
+      typeof CSS.escape === 'function' &&
+      overlayContainer?.querySelector(`[aria-expanded="true"][aria-controls="${CSS.escape(el.id)}"]`),
+    );
+    if (isPortaledOutsidePanel || isControlledByExpanded || hasExpandedListboxTrigger) {
+      return 'bubble';
+    }
+  }
+
+  return null;
+}
 
 /**
  * Android 系统返回键接入：DsDialog 是 framer-motion 自绘弹窗（非 Radix），
@@ -20,35 +145,66 @@ import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
  * 必须显式注册 overlay 级返回 handler，否则移动端按返回键会穿透到底层导航。
  * 用 ref 保持注册稳定，避免回调变化导致注销重注、破坏多层弹窗的栈语义。
  */
-function useAndroidBackClose(open: boolean, close: () => void) {
+function useAndroidBackClose(
+  open: boolean,
+  close: () => void,
+  overlayContainerRef: React.RefObject<HTMLDivElement | null>,
+) {
   const closeRef = React.useRef(close);
   closeRef.current = close;
   React.useEffect(() => {
     if (!open) return;
     return registerBackHandler(() => {
+      if (detectOpenInnerOverlay(overlayContainerRef.current) === 'capture-or-tooltip') {
+        return false;
+      }
       closeRef.current();
       return true;
     }, BACK_PRIORITY.overlay);
-  }, [open]);
+  }, [open, overlayContainerRef]);
 }
 
 /**
- * ESC 关闭（栈语义，L-7）：每个实例各挂 document keydown 会导致多层弹窗
- * 叠开时一次 Escape 全部关闭。这里维护模块级打开栈，仅栈顶实例响应，
- * 与 Android 返回键的 BACK_PRIORITY 栈行为对齐。
+ * ESC 关闭（栈语义，L-7 + U07 分层防穿透）：每个实例各挂 document keydown 会导致
+ * 多层弹窗或内嵌浮层叠开时一次 Escape 全部关闭。这里同时接入模块级 dialog 栈、
+ * OverlayCoordinator 分层栈与内层 Radix/DOM 浮层探测，确保一次 Escape 只关最顶层。
  */
 const escapeStack: symbol[] = [];
 
-function useEscapeClose(open: boolean, close: () => void) {
+function useEscapeClose(
+  open: boolean,
+  close: () => void,
+  overlayContainerRef: React.RefObject<HTMLDivElement | null>,
+) {
   const closeRef = React.useRef(close);
   closeRef.current = close;
+  const { registerEscapeLayer, hasEscapeLayerAbove } = useOverlayCoordinator();
+  const hasEscapeLayerAboveRef = React.useRef(hasEscapeLayerAbove);
+  hasEscapeLayerAboveRef.current = hasEscapeLayerAbove;
+
   React.useEffect(() => {
     if (!open) return;
     const token = Symbol('card-dialog-esc');
     escapeStack.push(token);
+    const unregisterCoordinatorLayer = registerEscapeLayer({
+      id: token,
+      kind: 'dialog',
+    });
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented || isComposingKeyEvent(e)) return;
       if (escapeStack[escapeStack.length - 1] !== token) return;
+      // 若 OverlayCoordinator 栈中在本弹窗之上存在更新打开的浮层（Popover / AppMenu /
+      // AppSelect / TextContextMenu 等），交由顶层浮层先消费本次 Escape。
+      if (hasEscapeLayerAboveRef.current(token)) return;
+      // 若 DOM 中存在尚未关闭的内层 Radix popper / Tooltip / 菜单 / 弹出 listbox，先让其收起。
+      const innerOverlay = detectOpenInnerOverlay(overlayContainerRef.current);
+      if (innerOverlay === 'capture-or-tooltip') {
+        e.preventDefault();
+        return;
+      }
+      if (innerOverlay === 'bubble') {
+        return;
+      }
       // Window-level hosts use defaultPrevented to keep the same Escape from
       // also leaving focus mode. Inner popovers may consume Escape first.
       e.preventDefault();
@@ -58,9 +214,10 @@ function useEscapeClose(open: boolean, close: () => void) {
     return () => {
       const index = escapeStack.indexOf(token);
       if (index >= 0) escapeStack.splice(index, 1);
+      unregisterCoordinatorLayer();
       document.removeEventListener('keydown', handler);
     };
-  }, [open]);
+  }, [open, registerEscapeLayer, overlayContainerRef]);
 }
 
 // ============================================================================
@@ -109,16 +266,30 @@ const alertContentVariants = {
 // Portal 容器
 // ============================================================================
 
-function ModalPortal({ children, open }: { children: React.ReactNode; open: boolean }) {
+function ModalPortal({
+  children,
+  open,
+  overlayContainerRef,
+}: {
+  children: React.ReactNode;
+  open: boolean;
+  overlayContainerRef?: React.MutableRefObject<HTMLDivElement | null>;
+}) {
   const [ready, setReady] = React.useState(false);
-  const contentRef = React.useRef<HTMLDivElement | null>(null);
+  const internalContentRef = React.useRef<HTMLDivElement | null>(null);
+  const contentRef = overlayContainerRef ?? internalContentRef;
   const openerRef = React.useRef<HTMLElement | null>(null);
   React.useLayoutEffect(() => {
     // Mount the content only after recording the opener: an autoFocus input
     // otherwise steals focus before an effect can record the return target.
-    if (open) openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (open) {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && !contentRef.current?.contains(active)) {
+        openerRef.current = active;
+      }
+    }
     setReady(open);
-  }, [open]);
+  }, [open, contentRef]);
   React.useEffect(() => {
     if (!open) return;
     const opener = openerRef.current;
@@ -126,11 +297,17 @@ function ModalPortal({ children, open }: { children: React.ReactNode; open: bool
       // Restore after React's commit-time focus restoration, not during its
       // layout cleanup (which would be overwritten by the exiting input).
       const active = document.activeElement;
-      if (opener?.isConnected && (active === document.body || contentRef.current?.contains(active))) {
+      const focusLostOrInsideDialog =
+        !active ||
+        active === document.body ||
+        active === document.documentElement ||
+        !active.isConnected ||
+        Boolean(contentRef.current?.contains(active));
+      if (opener?.isConnected && opener !== document.body && focusLostOrInsideDialog) {
         opener.focus({ preventScroll: true });
       }
     };
-  }, [open]);
+  }, [open, contentRef]);
   return createPortal(
     <AnimatePresence mode="wait">{open && ready && <DialogFocusScope contentRef={contentRef}>{children}</DialogFocusScope>}</AnimatePresence>,
     document.body,
@@ -189,12 +366,13 @@ export function DsDialog({
   'aria-labelledby': ariaLabelledBy,
 }: DsDialogProps) {
   const { t } = useTranslation('common');
+  const overlayContainerRef = React.useRef<HTMLDivElement | null>(null);
 
-  // ESC 关闭（栈语义：仅最顶层弹窗响应）
-  useEscapeClose(open, () => onOpenChange(false));
+  // ESC 关闭（栈语义 + 内层浮层探测：仅最顶层弹窗响应）
+  useEscapeClose(open, () => onOpenChange(false), overlayContainerRef);
 
   // Android 返回键 = 关闭弹窗（与 ESC 同语义）
-  useAndroidBackClose(open, () => onOpenChange(false));
+  useAndroidBackClose(open, () => onOpenChange(false), overlayContainerRef);
 
   // 移动端（<768，与 App shell 同源）切换为 bottom sheet 形态，
   // 视觉规格对齐全局移动设置 Sheet（rounded-t-[24px] + 顶部把手 + 贴底全宽）
@@ -213,7 +391,7 @@ export function DsDialog({
   const dragControls = useDragControls();
 
   return (
-    <ModalPortal open={open}>
+    <ModalPortal open={open} overlayContainerRef={overlayContainerRef}>
       <motion.div
         data-overlay-container="true"
         onPointerDown={(e) => e.stopPropagation()}
@@ -324,7 +502,7 @@ export function DsDialog({
 
 export function DsDialogHeader({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-      <div className={cn('flex-shrink-0 px-5 pt-5 pb-3 space-y-1 border-b border-transparent', className)} style={{ borderColor: 'var(--dialog-shell-border)' }} {...props}>
+      <div className={cn('min-w-0 flex-shrink-0 px-5 pt-5 pb-3 pr-10 space-y-1 border-b border-transparent', className)} style={{ borderColor: 'var(--dialog-shell-border)' }} {...props}>
         {children}
       </div>
   );
@@ -332,7 +510,7 @@ export function DsDialogHeader({ className, children, ...props }: React.HTMLAttr
 
 export function DsDialogTitle({ className, children, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
-    <h3 className={cn('text-base font-semibold leading-tight text-foreground', className)} {...props}>
+    <h3 className={cn('min-w-0 text-base font-semibold leading-tight text-foreground break-words [overflow-wrap:anywhere]', className)} {...props}>
       {children}
     </h3>
   );
@@ -340,7 +518,7 @@ export function DsDialogTitle({ className, children, ...props }: React.HTMLAttri
 
 export function DsDialogDescription({ className, children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
-    <p className={cn('text-ui font-normal text-muted-foreground leading-relaxed', className)} {...props}>
+    <p className={cn('min-w-0 text-ui font-normal text-muted-foreground leading-relaxed break-words [overflow-wrap:anywhere]', className)} {...props}>
       {children}
     </p>
   );
@@ -467,16 +645,18 @@ export function DsAlertDialog({
   const titleId = React.useId();
   const descriptionId = React.useId();
 
+  const overlayContainerRef = React.useRef<HTMLDivElement | null>(null);
+
   const handleCancel = React.useCallback(() => {
     onCancel?.();
     onOpenChange(false);
   }, [onCancel, onOpenChange]);
 
-  // ESC 关闭（栈语义：仅最顶层弹窗响应）
-  useEscapeClose(open, handleCancel);
+  // ESC 关闭（栈语义 + 内层浮层探测：仅最顶层弹窗响应）
+  useEscapeClose(open, handleCancel, overlayContainerRef);
 
   // Android 返回键 = 取消（确认框不可遮罩关闭，但返回键应等同"取消"，与 ESC 一致）
-  useAndroidBackClose(open, handleCancel);
+  useAndroidBackClose(open, handleCancel, overlayContainerRef);
 
   // Android 键盘避让：与 DsDialog 同一套 useKeyboardHeight 机制（children 内含输入框时生效）
   const keyboardHeight = useKeyboardHeight();
@@ -484,7 +664,7 @@ export function DsAlertDialog({
   const obscuredHeight = keyboardAvoid ? getLayoutViewportObscuredHeight() : 0;
 
   return (
-    <ModalPortal open={open}>
+    <ModalPortal open={open} overlayContainerRef={overlayContainerRef}>
       <motion.div
         data-overlay-container="true"
         onPointerDown={(e) => e.stopPropagation()}
@@ -532,15 +712,15 @@ export function DsAlertDialog({
           <div className="flex shrink-0 items-start gap-3">
             {icon && <span className="flex-shrink-0 mt-0.5">{icon}</span>}
             <div className="flex-1 min-w-0 space-y-1.5">
-              <h3 id={titleId} className="text-base font-semibold leading-tight text-foreground">{title}</h3>
+              <h3 id={titleId} className="text-base font-semibold leading-tight text-foreground break-words [overflow-wrap:anywhere]">{title}</h3>
               {description && (
-                <p id={descriptionId} className="text-ui font-normal text-muted-foreground leading-relaxed">{description}</p>
+                <p id={descriptionId} className="text-ui font-normal text-muted-foreground leading-relaxed break-words [overflow-wrap:anywhere]">{description}</p>
               )}
             </div>
           </div>
 
           {/* 额外内容 */}
-          {children && <div className="mt-3 min-h-0 overflow-y-auto overscroll-contain">{children}</div>}
+          {children && <div className="mt-3 min-h-0 min-w-0 overflow-y-auto overscroll-contain break-words [overflow-wrap:anywhere]">{children}</div>}
 
           {/* 按钮行 */}
           <div className="mt-5 flex shrink-0 flex-wrap items-center justify-end gap-2">

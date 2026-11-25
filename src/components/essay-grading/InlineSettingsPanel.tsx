@@ -661,7 +661,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
   ) : null;
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="essay-settings-pane h-full flex flex-col bg-background">
       {/* 头部（小屏内联模式不自绘：宿主顶栏已提供 chrome，再画一条会形成双头部；
           关闭走 Android 返回键 / 宿主顶栏设置开关） */}
       {!mobileFullscreen && (
@@ -761,7 +761,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                         {t('essay_grading:actions.cancel')}
                       </button>
                     </div>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_92px]">
+                    <div className="essay-rubric-form-grid grid grid-cols-1 gap-2 sm:grid-cols-[1fr_92px]">
                       <div className="space-y-1">
                         <label className="block text-[11px] text-muted-foreground">
                           {t('essay_grading:settings_panel.custom_rubric_name')}

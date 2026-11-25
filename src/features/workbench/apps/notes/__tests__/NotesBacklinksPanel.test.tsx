@@ -776,4 +776,46 @@ describe('NotesBacklinksPanel', () => {
     fireEvent.click(button!);
     await waitFor(() => expect(onCreateFromUnresolved).toHaveBeenCalledWith('missing'));
   });
+
+  it('safely renders 80-char CJK/Latin/Emoji/<>[]/#?& titles with full title tooltips across backlinks and unresolved links', async () => {
+    const longTitle = '学习笔记🚀Quantum Mechanics & Linear Algebra <α+β>(2026)/#?&最终修订版测试标题超长边界校验XYZ123';
+    const longNode: DstuNode = {
+      id: 'note_long_target',
+      sourceId: 'note_long_target',
+      path: '/math/note_long_target',
+      name: longTitle,
+      type: 'note',
+      createdAt: 10,
+      updatedAt: 10,
+    };
+    const active: DstuNode = {
+      id: 'note_long_active',
+      sourceId: 'note_long_active',
+      path: '/math/note_long_active',
+      name: longTitle,
+      type: 'note',
+      createdAt: 11,
+      updatedAt: 11,
+    };
+    const unresolvedRaw = '[[Missing<Tag>/#?&🚀超长未创建目标]]';
+
+    getContent.mockImplementation(async (path: string) => {
+      if (path === active.path) return { ok: true, value: `[[note_long_target]] ${unresolvedRaw}` };
+      if (path === longNode.path) return { ok: true, value: 'Backlink body' };
+      return { ok: true, value: '' };
+    });
+
+    renderPanel({
+      activeResource: active,
+      notes: [active, longNode],
+    });
+
+    const outgoingSection = await screen.findByRole('region', { name: /出链/ });
+    const linkBtn = within(outgoingSection).getByRole('button', { name: new RegExp(longTitle.slice(0, 12)) });
+    expect(linkBtn).toHaveAttribute('title', longTitle);
+
+    const unresolvedSection = await screen.findByRole('region', { name: /未解析链接/ });
+    const staticUnresolved = within(unresolvedSection).getByText(unresolvedRaw).closest('.notes-backlinks-panel-unresolved-static');
+    expect(staticUnresolved).toHaveAttribute('title', unresolvedRaw);
+  });
 });

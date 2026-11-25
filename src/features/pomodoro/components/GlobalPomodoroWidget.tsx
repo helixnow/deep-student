@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion, useMotionValue, animate } from 'framer-motion';
 import { Pause, Play, Square, Coffee, Brain, ArrowsOut, PictureInPicture, CaretLeft, CaretRight, SkipForward } from '@phosphor-icons/react';
 import { usePomodoroStore, syncPomodoroSettingsFromBackend } from '../stores/usePomodoroStore';
+import { useLocalDateKey } from '../utils/localDate';
 import { useViewStore } from '@/stores/viewStore';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -154,7 +155,12 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
   workbenchActive = false,
 }) => {
   const { t } = useTranslation('todo');
-  const { mode, status, timeLeft, currentTaskTitle, settings, sessionCountUp, sessionDuration, phaseExtraSeconds, pause, resume, stop, skipBreak, tick, syncWallClock, isImmersive, setImmersive } = usePomodoroStore();
+  const { mode, status, timeLeft, currentTaskTitle, settings, sessionCountUp, sessionDuration, phaseExtraSeconds, pause, resume, stop, skipBreak, tick, syncCalendarDay, syncWallClock, isImmersive, setImmersive } = usePomodoroStore();
+  const todayKey = useLocalDateKey();
+
+  useEffect(() => {
+    syncCalendarDay();
+  }, [todayKey, syncCalendarDay]);
   const currentView = useViewStore((s) => s.currentView);
   // Workbench 下 legacy currentView 不再切换，仅靠它判断会与 PomodoroAppWindow /
   // Todo 窗口同时出现三份番茄钟；改为直接问窗口状态机有没有可见宿主。

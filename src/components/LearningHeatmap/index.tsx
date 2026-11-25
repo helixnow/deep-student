@@ -7,7 +7,7 @@
  * - 细腻的 hover 缩放 / 今日光环 / 骨架屏
  */
 
-import React, { useMemo, useState, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
@@ -17,14 +17,16 @@ import { cn } from '../../lib/utils';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
-import { splitDuration, studyHeatLevel } from '@/features/study-time/studyLog';
+import { studyHeatLevel } from '@/features/study-time/studyLog';
 import {
   computeHeatLevel,
   computeStudyTimeStats,
   formatLocalDateKey,
 } from '@/utils/studyTimeTrackerAndHeatmap';
-import type { TFunction } from 'i18next';
+import { formatStudyDuration } from './formatStudyDuration';
 import './LearningHeatmap.css';
+
+export { formatStudyDuration };
 
 // ============================================================================
 // 类型定义
@@ -41,16 +43,6 @@ export interface LearningHeatmapProps {
 
 /** 热力图口径：活动次数 / 学习时长 */
 export type LearningHeatmapMetric = 'activity' | 'duration';
-
-/** 秒 → 「1 小时 05 分」/「38 分钟」/「不到 1 分钟」 */
-export function formatStudyDuration(seconds: number, t: TFunction): string {
-  if (!(seconds > 0)) return t('heatmap.duration.zero');
-  const { hours, minutes } = splitDuration(seconds);
-  if (hours === 0 && minutes === 0) return t('heatmap.duration.lessThanMinute');
-  if (hours === 0) return t('heatmap.duration.minutes', { minutes });
-  if (minutes === 0) return t('heatmap.duration.hours', { hours });
-  return t('heatmap.duration.hoursMinutes', { hours, minutes: String(minutes).padStart(2, '0') });
-}
 
 // ============================================================================
 // 布局常量
@@ -84,15 +76,39 @@ function normalizeDateKey(raw: string): string {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
+const dateFormatterCache = new Map<string, Intl.DateTimeFormat>();
+const formattedDateCache = new Map<string, string>();
+const MAX_FORMATTED_DATE_CACHE = 1024;
+
+function getDateFormatter(locale: string): Intl.DateTimeFormat {
+  const normalizedLocale = locale || 'en-US';
+  let formatter = dateFormatterCache.get(normalizedLocale);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(normalizedLocale, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      weekday: 'short',
+    });
+    dateFormatterCache.set(normalizedLocale, formatter);
+  }
+  return formatter;
+}
+
 function formatDate(dateKey: string, locale: string): string {
+  const normalizedLocale = locale || 'en-US';
+  const cacheKey = `${normalizedLocale}\u0000${dateKey}`;
+  const cached = formattedDateCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
   const date = new Date(`${dateKey}T00:00:00`);
   if (Number.isNaN(date.getTime())) return dateKey;
-  return date.toLocaleDateString(locale || 'en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    weekday: 'short',
-  });
+  const formatted = getDateFormatter(normalizedLocale).format(date);
+  if (formattedDateCache.size >= MAX_FORMATTED_DATE_CACHE) {
+    formattedDateCache.clear();
+  }
+  formattedDateCache.set(cacheKey, formatted);
+  return formatted;
 }
 
 // ============================================================================
@@ -330,8 +346,15 @@ export function LearningHeatmap({
       ),
     [grid],
   );
+  const orderedDateIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (let i = 0; i < orderedDateKeys.length; i += 1) {
+      map.set(orderedDateKeys[i], i);
+    }
+    return map;
+  }, [orderedDateKeys]);
   const [focusedDateKey, setFocusedDateKey] = useState<string>(() => todayKey);
-  const activeFocusDateKey = orderedDateKeys.includes(focusedDateKey) ? focusedDateKey : todayKey;
+  const activeFocusDateKey = orderedDateIndexMap.has(focusedDateKey) ? focusedDateKey : todayKey;
 
   // 日期 → 活动索引
   const byDate = useMemo(() => {
@@ -368,10 +391,19 @@ export function LearningHeatmap({
   // 右侧额外留白，确保末月标签（如「11月」）及今日单元格外光环不被横向滚动容器裁切
   const contentWidth = grid.weeks.length * step - gap + 28;
 
-  // 初始滚动到最新日期
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (el && !loading) el.scrollLeft = el.scrollWidth;
+  // 初始滚动到最新日期：放到 rAF 内执行，避免提交阶段读 scrollWidth 触发同步强制回流
+  useEffect(() => {
+    if (loading) return;
+    const scrollToLatest = () => {
+      const el = scrollRef.current;
+      if (el) el.scrollLeft = el.scrollWidth;
+    };
+    if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+      scrollToLatest();
+      return;
+    }
+    const rafId = window.requestAnimationFrame(scrollToLatest);
+    return () => window.cancelAnimationFrame(rafId);
   }, [loading, contentWidth]);
 
   /** 按单元格定位单例 tooltip（视口坐标 + portal，不受滚动容器裁剪） */
@@ -469,7 +501,7 @@ export function LearningHeatmap({
       };
       const delta = deltaMap[e.key];
       if (delta === undefined || orderedDateKeys.length === 0) return;
-      const curIdx = orderedDateKeys.indexOf(activeFocusDateKey);
+      const curIdx = orderedDateIndexMap.get(activeFocusDateKey) ?? -1;
       const baseIdx = curIdx >= 0 ? curIdx : orderedDateKeys.length - 1;
       const nextIdx = Math.min(orderedDateKeys.length - 1, Math.max(0, baseIdx + delta));
       const nextKey = orderedDateKeys[nextIdx];
@@ -478,7 +510,34 @@ export function LearningHeatmap({
       setFocusedDateKey(nextKey);
       gridRef.current?.querySelector<HTMLElement>(`[data-date="${nextKey}"]`)?.focus();
     },
-    [activeFocusDateKey, clearHover, hover, orderedDateKeys],
+    [activeFocusDateKey, clearHover, hover, orderedDateIndexMap, orderedDateKeys],
+  );
+
+  // 缓存 365+ 单元格节点：hover 移动更新 tooltip 时绝不重绘整张热力图网格
+  const gridCells = useMemo(
+    () =>
+      grid.weeks.map((week) =>
+        week.map((day) => {
+          if (day > grid.today) {
+            return <div key={day.getTime()} className="lh-cell lh-cell-future" />;
+          }
+          const dateKey = toDateKey(day);
+          return (
+            <div
+              key={dateKey}
+              tabIndex={dateKey === activeFocusDateKey ? 0 : -1}
+              aria-label={cellAriaLabel(dateKey)}
+              className={cn(
+                'lh-cell outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 motion-reduce:transition-none',
+                dateKey === todayKey && 'is-today',
+              )}
+              data-level={levelOf(byDate.get(dateKey))}
+              data-date={dateKey}
+            />
+          );
+        }),
+      ),
+    [activeFocusDateKey, byDate, cellAriaLabel, grid, levelOf, todayKey],
   );
 
   // 📱 触屏：点格子显示 tooltip，再点同格或空白处关闭
@@ -684,27 +743,7 @@ export function LearningHeatmap({
                     : t('heatmap.totalActivities', { count: totalActivities })
                 }
               >
-                {grid.weeks.map(week =>
-                  week.map(day => {
-                    if (day > grid.today) {
-                      return <div key={day.getTime()} className="lh-cell lh-cell-future" />;
-                    }
-                    const dateKey = toDateKey(day);
-                    return (
-                      <div
-                        key={dateKey}
-                        tabIndex={dateKey === activeFocusDateKey ? 0 : -1}
-                        aria-label={cellAriaLabel(dateKey)}
-                        className={cn(
-                          'lh-cell outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 motion-reduce:transition-none',
-                          dateKey === todayKey && 'is-today',
-                        )}
-                        data-level={levelOf(byDate.get(dateKey))}
-                        data-date={dateKey}
-                      />
-                    );
-                  })
-                )}
+                {gridCells}
               </div>
 
               {/* 单例 tooltip */}

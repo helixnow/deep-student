@@ -9,7 +9,7 @@
  */
 
 import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AreaChart,
@@ -96,14 +96,21 @@ const formatDuration = (ms: number | undefined): string => {
   return `${(ms / 1000).toFixed(1)}s`;
 };
 
-/** 统一成 YYYY-MM-DD，避免跨年时按「月-日」误合并 */
+const formatLocalDateYmd = (date: Date): string => {
+  const year = String(date.getFullYear()).padStart(4, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/** 统一成 YYYY-MM-DD（本地时区），避免跨年时按「月-日」误合并或 UTC 零点偏移 */
 const normalizeDateLabel = (value: string): string | null => {
   if (!value) return null;
   const trimmed = value.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
   const parsed = new Date(trimmed);
   if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toISOString().slice(0, 10);
+  return formatLocalDateYmd(parsed);
 };
 
 // ============================================================================
@@ -273,7 +280,7 @@ const TrendChart: React.FC<TrendChartProps> = ({
             strokeWidth={1.5}
             fill="url(#dcpTokenGradient)"
             activeDot={{ r: 3.5, strokeWidth: 0, fill: 'hsl(var(--primary))' }}
-            animationDuration={500}
+            isAnimationActive={false}
           />
           <Area
             yAxisId="sessions"
@@ -285,7 +292,7 @@ const TrendChart: React.FC<TrendChartProps> = ({
             fill="url(#dcpSessionGradient)"
             connectNulls={false}
             activeDot={{ r: 3.5, strokeWidth: 0, fill: 'hsl(var(--success))' }}
-            animationDuration={500}
+            isAnimationActive={false}
           />
         </AreaChart>
       </ResponsiveContainer>
@@ -363,18 +370,23 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
   const days = Number(rangeDays);
   const trendDays = Number(trendRange);
 
+  const llmReqSeqRef = useRef(0);
+  const trendReqSeqRef = useRef(0);
+  const hasMountedChartsRef = useRef(false);
+
   // 会话统计 + 与趋势范围等长的每日会话序列
   const chatStats = useChatV2Stats(false, 30000, trendDays);
 
   const loadLlmData = useCallback(async () => {
+    const reqSeq = ++llmReqSeqRef.current;
     try {
       setLoading(true);
       setError(null);
 
-      const today = new Date().toISOString().split('T')[0];
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - days);
-      const start = startDate.toISOString().split('T')[0];
+      const now = new Date();
+      const today = formatLocalDateYmd(now);
+      const startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days);
+      const start = formatLocalDateYmd(startDate);
 
       const [summaryData, modelData, callerData] = await Promise.all([
         LlmUsageApi.getSummary(start, today),
@@ -382,52 +394,71 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
         LlmUsageApi.getByCaller(start, today),
       ]);
 
-      setSummary(summaryData);
-      setByModel(modelData);
-      setByCaller(callerData);
+      if (reqSeq !== llmReqSeqRef.current) return;
+      startTransition(() => {
+        setSummary(summaryData);
+        setByModel(modelData);
+        setByCaller(callerData);
+      });
     } catch (err) {
+      if (reqSeq !== llmReqSeqRef.current) return;
       console.error('[DataChartsPanel] Load error:', err);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      if (reqSeq === llmReqSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [days]);
 
   const loadTrends = useCallback(async () => {
+    const reqSeq = ++trendReqSeqRef.current;
     try {
       setTrendLoading(true);
       const trendsData = await LlmUsageApi.getTrends(trendDays, 'day');
-      setTrends(trendsData);
+      if (reqSeq !== trendReqSeqRef.current) return;
+      startTransition(() => {
+        setTrends(trendsData);
+      });
     } catch (err) {
+      if (reqSeq !== trendReqSeqRef.current) return;
       console.error('[DataChartsPanel] Trend load error:', err);
     } finally {
-      setTrendLoading(false);
+      if (reqSeq === trendReqSeqRef.current) {
+        setTrendLoading(false);
+      }
     }
   }, [trendDays]);
 
   useRefreshOnReturn(() => { void loadLlmData(); void loadTrends(); });
 
   useEffect(() => {
-    loadLlmData();
+    void loadLlmData();
   }, [loadLlmData]);
 
   useEffect(() => {
-    loadTrends();
+    void loadTrends();
   }, [loadTrends]);
 
-  // 延迟一帧再挂载 Recharts / 365 天热力图，避免初次切换到统计页时主线程阻塞
+  // 首帧先绘制指标卡与骨架，延迟一帧在 transition 中挂载 Recharts / 365 天热力图，
+  // 避免初次切换到统计页时主线程阻塞；挂载后切换时间区间不再反复卸载重建热力图。
   useEffect(() => {
+    if (hasMountedChartsRef.current) return;
     if (loading) {
       setChartsReady(false);
       return;
     }
+    const markReady = () => {
+      hasMountedChartsRef.current = true;
+      startTransition(() => {
+        setChartsReady(true);
+      });
+    };
     if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
-      setChartsReady(true);
+      markReady();
       return;
     }
-    const rafId = window.requestAnimationFrame(() => {
-      setChartsReady(true);
-    });
+    const rafId = window.requestAnimationFrame(markReady);
     return () => window.cancelAnimationFrame(rafId);
   }, [loading]);
 
@@ -523,13 +554,63 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
           </DsButton>
         </div>
       ) : initialLoading || chatStats.loading ? (
-        <div className="flex flex-col gap-6">
-          <Skeleton className="h-[88px] rounded-[10px] bg-muted/20" />
+        <div
+          className="flex flex-col gap-4 sm:gap-6"
+          data-testid="stats-initial-skeleton"
+          role="status"
+          aria-busy="true"
+        >
+          {/* 首帧即渲染结构化指标卡框架与标题，杜绝白屏空帧 */}
+          <Group>
+            <div
+              className={cn(
+                'grid grid-cols-2 sm:grid-cols-4',
+                '[&>*]:border-border/50',
+                '[&>*:nth-child(even)]:border-l [&>*:nth-child(n+3)]:border-t',
+                'sm:[&>*]:border-t-0 sm:[&>*+*]:border-l'
+              )}
+            >
+              {[
+                t('common:chat_stats.total_sessions'),
+                t('common:chat_stats.total_messages'),
+                t('llm_usage:summary.totalCalls'),
+                t('llm_usage:summary.totalTokens'),
+              ].map((label) => (
+                <div key={label} className="min-w-0 px-4 py-3.5">
+                  <div className="truncate text-xs font-medium text-muted-foreground">{label}</div>
+                  <Skeleton className="mt-2 h-6 w-20 rounded-md bg-foreground/10" />
+                  <Skeleton className="mt-2 h-3 w-28 rounded bg-foreground/[0.07]" />
+                </div>
+              ))}
+            </div>
+          </Group>
+
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <Skeleton className="h-[220px] rounded-[10px] bg-muted/20" />
-            <Skeleton className="h-[220px] rounded-[10px] bg-muted/20" />
+            {[t('data:charts_panel.sessions_group'), t('data:charts_panel.llm_group')].map((title) => (
+              <Group key={title} title={title}>
+                <div className="divide-y divide-border/40">
+                  {[0, 1, 2, 3].map((idx) => (
+                    <div key={idx} className="flex min-h-[38px] items-center justify-between gap-4 px-4 py-1.5">
+                      <Skeleton className="h-3.5 w-24 rounded bg-foreground/10" />
+                      <Skeleton className="h-3.5 w-16 rounded bg-foreground/[0.08]" />
+                    </div>
+                  ))}
+                </div>
+              </Group>
+            ))}
           </div>
-          <Skeleton className="h-[280px] rounded-[10px] bg-muted/20" />
+
+          <Group title={t('llm_usage:activity_trend')}>
+            <div className="h-[240px] p-4" data-testid="trend-chart-skeleton">
+              <Skeleton className="h-full w-full rounded-md bg-foreground/[0.08]" />
+            </div>
+          </Group>
+
+          <Group title={t('stats:heatmap.title')}>
+            <div className="h-[180px] px-4 pb-3 pt-4" data-testid="heatmap-chart-skeleton">
+              <Skeleton className="h-full w-full rounded-md bg-foreground/[0.08]" />
+            </div>
+          </Group>
         </div>
       ) : (
         <>
@@ -645,7 +726,7 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
           >
             {!chartsReady || (trendLoading && trends.length === 0) ? (
               <div className="h-[240px] p-4" data-testid="trend-chart-skeleton">
-                <Skeleton className="h-full w-full rounded-md bg-muted/20" />
+                <Skeleton className="h-full w-full rounded-md bg-foreground/[0.08]" />
               </div>
             ) : (
               <div className={cn('transition-opacity', trendLoading && 'opacity-50')}>
@@ -677,7 +758,7 @@ export const DataChartsPanel: React.FC<{ className?: string }> = ({ className })
                 <LearningHeatmap months={12} hideTitle showStats={false} showLegend />
               ) : (
                 <div className="h-[180px]" data-testid="heatmap-chart-skeleton">
-                  <Skeleton className="h-full w-full rounded-md bg-muted/20" />
+                  <Skeleton className="h-full w-full rounded-md bg-foreground/[0.08]" />
                 </div>
               )}
             </div>

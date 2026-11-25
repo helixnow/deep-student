@@ -27,6 +27,7 @@ import {
   type GradedRubricMeta,
 } from './rubricResultContext';
 import { cn } from '@/lib/utils';
+import './EssayGradingResponsive.css';
 
 interface GradingMainProps {
   // Input Panel Props
@@ -129,8 +130,8 @@ interface GradingMainProps {
   };
 }
 
-/** 主区窄于该宽度时退回上下分栏（与翻译工作台同阈值） */
-const NARROW_LAYOUT_THRESHOLD = 500;
+/** 主区宽度 ≤ 560px 时退回上下单栏堆叠，避免桌面窄分屏（440–560px）左右挤压正文与评语 */
+const NARROW_LAYOUT_THRESHOLD = 560;
 
 export const GradingMain: React.FC<GradingMainProps> = ({
   inputText,
@@ -228,9 +229,9 @@ export const GradingMain: React.FC<GradingMainProps> = ({
     return () => ro.disconnect();
   }, [isSmallScreen]);
 
-  // 未测得宽度前（首帧）以容器分级兜底，避免闪一帧上下布局
+  // 未测得宽度前（首帧）以容器分级兜底，避免闪一帧上下布局；容器 ≤ 560px 必走单栏堆叠
   const isSplit = !isSmallScreen
-    && (mainAreaWidth > 0 ? mainAreaWidth >= NARROW_LAYOUT_THRESHOLD : true);
+    && (mainAreaWidth > 0 ? mainAreaWidth > NARROW_LAYOUT_THRESHOLD : true);
   // 批改结果区是否"有内容可看"：无内容时折叠为占位条，把高度让给输入区
   const resultActive = isGrading || Boolean(gradingResult) || Boolean(error) || hasGradedRound;
   // 结果优先：有结果后原文收成摘要条，点「编辑原文」才展开；每次开始批改重新收起
@@ -578,7 +579,11 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   // 小屏：设置区块在上（高度过渡）+ 上下分栏；
   // 非小屏：设置打开时整页视图替换主分栏（主分栏保持挂载）。
   return (
-    <div ref={layoutRef} className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background">
+    <div
+      ref={layoutRef}
+      data-essay-layout={isSplit ? 'split' : 'stack'}
+      className="essay-grading-root flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-background"
+    >
       {!useSettingsPage && mobileSettingsSection}
       {useSettingsPage && desktopSettingsPage}
 

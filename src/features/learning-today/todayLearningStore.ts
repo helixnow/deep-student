@@ -37,6 +37,7 @@ const EMPTY: TodayLearning = { cards: 0, mistakes: 0, notes: 0, dueNotes: [] };
 
 let snapshot: TodayLearning = EMPTY;
 let inflight: Promise<void> | null = null;
+let inflightFromStartAt = 0;
 let refreshAgain = false;
 let timer: ReturnType<typeof setInterval> | null = null;
 let disposeVisible: (() => void) | null = null;
@@ -52,6 +53,10 @@ export function getTodayLearningSnapshot(): TodayLearning {
 
 export function refreshTodayLearning(): Promise<void> {
   if (inflight) {
+    // 订阅启动与同帧 useEffect 触发的重复刷新直接复用在途请求，避免冷启动双次全库分页扫描笔记
+    if (inflightFromStartAt > 0 && Date.now() - inflightFromStartAt < 50) {
+      return inflight;
+    }
     refreshAgain = true;
     return inflight;
   }
@@ -72,6 +77,7 @@ export function refreshTodayLearning(): Promise<void> {
     } while (refreshAgain);
   })().finally(() => {
     inflight = null;
+    inflightFromStartAt = 0;
   });
   return inflight;
 }
@@ -115,6 +121,7 @@ function start(): void {
       /* 非 Tauri / 测试环境 */
     }
   }
+  inflightFromStartAt = Date.now();
   void refreshTodayLearning();
 }
 

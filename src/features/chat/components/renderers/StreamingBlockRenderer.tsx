@@ -2,6 +2,7 @@ import React, { useMemo, memo, useRef, useEffect, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Brain } from '@phosphor-icons/react';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { handleMarkdownCopyEvent } from './markdownCopyFidelity';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin, parseChainOfThought } from './rendererUtils';
 import { useSuspendedStreamContent } from './StreamPreferencesContext';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
@@ -221,6 +222,7 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
       data-streaming={isStreaming ? 'true' : 'false'}
       data-has-visible-content={hasVisibleContent ? 'true' : 'false'}
       data-stream-preset="flowtoken-direct"
+      onCopy={handleMarkdownCopyEvent}
     >
       {/* 思维链内容 */}
       {parsedContent?.thinkingContent && (

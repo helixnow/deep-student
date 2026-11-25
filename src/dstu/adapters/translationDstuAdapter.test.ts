@@ -164,4 +164,38 @@ describe('translation v2 正文持久化', () => {
       customPrompt: '保留代码',
     });
   });
+
+  it('构建并解析包含 lastTranslatedMeta（含 sourceHash/语向/正式度）的 v2 正文', () => {
+    const raw = buildTranslationContent({
+      id: 'tr_synced_meta',
+      sourceText: '分布式一致性协议',
+      translatedText: 'Distributed consensus protocols',
+      srcLang: 'zh-CN',
+      tgtLang: 'en',
+      formality: 'formal',
+      domain: 'academic',
+      lastTranslatedMeta: {
+        sourceText: '分布式一致性协议',
+        sourceHash: 'v1:8:abc:def',
+        srcLang: 'zh',
+        tgtLang: 'en',
+        formality: 'formal',
+        domain: 'academic',
+        translatedAt: 1732500000000,
+      },
+      createdAt: 1,
+      updatedAt: 2,
+    });
+
+    const parsed = parseTranslationContent(raw);
+    expect(parsed.meta?.lastTranslatedMeta).toEqual({
+      sourceText: '分布式一致性协议',
+      sourceHash: 'v1:8:abc:def',
+      srcLang: 'zh-CN',
+      tgtLang: 'en',
+      formality: 'formal',
+      domain: 'academic',
+      translatedAt: 1732500000000,
+    });
+  });
 });

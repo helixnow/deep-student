@@ -9,12 +9,28 @@ import {
 
 export type { OwnedOverlayRegistration, OwnedOverlaySpec } from './overlayOwnership';
 
+export type OverlayEscapeLayerKind = 'dialog' | 'interactive' | 'popover' | 'menu' | 'tooltip';
+
+export interface OverlayEscapeLayerRegistration {
+  id: symbol;
+  kind?: OverlayEscapeLayerKind;
+}
+
 export interface OverlayCoordinatorValue {
   activeInteractiveOverlayCount: number;
   tooltipsSuppressed: boolean;
   tooltipDismissVersion: number;
   dismissTooltips: () => void;
   registerInteractiveOverlay: () => () => void;
+  /**
+   * 登记参与 Escape 分层栈的浮层（如 DsDialog、Popover、Menu 等），返回幂等注销函数。
+   * 登记/注销走 ref 栈，不触发 re-render，也不影响 tooltipsSuppressed 计数。
+   */
+  registerEscapeLayer: (registration: OverlayEscapeLayerRegistration) => () => void;
+  /** 查询 id 对应的浮层上方是否存在更新打开的浮层（含 registerInteractiveOverlay）。 */
+  hasEscapeLayerAbove: (id: symbol) => boolean;
+  /** 当前位于 Escape 栈顶的浮层 ID；栈空时返回 null。 */
+  getTopEscapeLayerId: () => symbol | null;
   /**
    * 浮层归属登记（与上面的 tooltip 抑制彼此独立，互不影响）：
    * 面板（owner）登记自己拥有、但 DOM 上 portal 到面板容器之外的浮层
@@ -33,6 +49,7 @@ export interface OverlayCoordinatorValue {
 
 // 无 Provider 时的回退语义（fail-empty，写清）：
 // - tooltip 侧维持原状：不抑制、注册为 noop。
+// - Escape 分层栈侧视为空栈：registerEscapeLayer 为 noop，hasEscapeLayerAbove 恒 false。
 // - 归属侧视为"空登记表"：registerOwnedOverlay 为 noop，
 //   isOwnedOverlayTarget 恒 false，listOwnedOverlayOwnerIds 恒 []。
 //   即无 Provider 时查询不到任何归属，调用方必须保留自己原有的
@@ -43,6 +60,9 @@ const fallbackOverlayCoordinator: OverlayCoordinatorValue = {
   tooltipDismissVersion: 0,
   dismissTooltips: () => {},
   registerInteractiveOverlay: () => () => {},
+  registerEscapeLayer: () => () => {},
+  hasEscapeLayerAbove: () => false,
+  getTopEscapeLayerId: () => null,
   registerOwnedOverlay: () => () => {},
   isOwnedOverlayTarget: () => false,
   listOwnedOverlayOwnerIds: () => [],
@@ -55,6 +75,36 @@ export function OverlayCoordinatorProvider({ children }: { children: React.React
   const [tooltipDismissVersion, setTooltipDismissVersion] = React.useState(0);
   // 归属登记表放 ref：登记/查询都发生在事件时刻，不需要（也不应该）驱动渲染。
   const ownedOverlayStoreRef = React.useRef(createOwnedOverlayStore());
+  // Escape 分层栈放 ref：按打开顺序追踪 dialog 与交互浮层（AppMenu/Popover 等），零重渲染。
+  const escapeLayerStackRef = React.useRef<OverlayEscapeLayerRegistration[]>([]);
+
+  const registerEscapeLayer = React.useCallback((registration: OverlayEscapeLayerRegistration) => {
+    const stack = escapeLayerStackRef.current;
+    const existingIndex = stack.findIndex((entry) => entry.id === registration.id);
+    if (existingIndex >= 0) {
+      stack.splice(existingIndex, 1);
+    }
+    stack.push(registration);
+
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const idx = stack.findIndex((entry) => entry.id === registration.id);
+      if (idx >= 0) stack.splice(idx, 1);
+    };
+  }, []);
+
+  const hasEscapeLayerAbove = React.useCallback((id: symbol) => {
+    const stack = escapeLayerStackRef.current;
+    const index = stack.findIndex((entry) => entry.id === id);
+    return index >= 0 && index < stack.length - 1;
+  }, []);
+
+  const getTopEscapeLayerId = React.useCallback(() => {
+    const stack = escapeLayerStackRef.current;
+    return stack.length > 0 ? stack[stack.length - 1].id : null;
+  }, []);
 
   const dismissTooltips = React.useCallback(() => {
     setTooltipDismissVersion((version) => version + 1);
@@ -62,6 +112,10 @@ export function OverlayCoordinatorProvider({ children }: { children: React.React
 
   const registerInteractiveOverlay = React.useCallback(() => {
     let released = false;
+    const releaseEscapeLayer = registerEscapeLayer({
+      id: Symbol('interactive-overlay'),
+      kind: 'interactive',
+    });
 
     setActiveInteractiveOverlayCount((count) => count + 1);
     setTooltipDismissVersion((version) => version + 1);
@@ -69,9 +123,10 @@ export function OverlayCoordinatorProvider({ children }: { children: React.React
     return () => {
       if (released) return;
       released = true;
+      releaseEscapeLayer();
       setActiveInteractiveOverlayCount((count) => Math.max(0, count - 1));
     };
-  }, []);
+  }, [registerEscapeLayer]);
 
   const registerOwnedOverlay = React.useCallback(
     (registration: OwnedOverlayRegistration) => registerOwnedOverlayEntry(ownedOverlayStoreRef.current, registration),
@@ -94,6 +149,9 @@ export function OverlayCoordinatorProvider({ children }: { children: React.React
     tooltipDismissVersion,
     dismissTooltips,
     registerInteractiveOverlay,
+    registerEscapeLayer,
+    hasEscapeLayerAbove,
+    getTopEscapeLayerId,
     registerOwnedOverlay,
     isOwnedOverlayTarget,
     listOwnedOverlayOwnerIds,
@@ -101,6 +159,9 @@ export function OverlayCoordinatorProvider({ children }: { children: React.React
     activeInteractiveOverlayCount,
     dismissTooltips,
     registerInteractiveOverlay,
+    registerEscapeLayer,
+    hasEscapeLayerAbove,
+    getTopEscapeLayerId,
     registerOwnedOverlay,
     isOwnedOverlayTarget,
     listOwnedOverlayOwnerIds,

@@ -674,9 +674,62 @@ html[data-wb-material='minimal'] .wb-desk-menu.wb-glass-lens {
   }
 }
 
+/* Mobile Dock reveal hotzone / z-index / touch rules (S4-17) */
+.wb-dock-zone {
+  z-index: var(--wb-z-dock, 9000);
+}
+
+.wb-dock-hotzone {
+  pointer-events: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.wb-dock-hotzone[data-collapsed='true'] {
+  z-index: calc(var(--wb-z-dock, 9000) + 1);
+  pointer-events: auto;
+}
+
+@media (max-width: 767px) {
+  .wb-dock-zone {
+    z-index: var(--wb-z-dock, 9000);
+  }
+
+  .wb-dock-hotzone[data-collapsed='true'][data-mobile-handle='true'] {
+    left: 50%;
+    right: auto;
+    bottom: 0;
+    transform: translateX(-50%);
+    width: min(204px, calc(100vw - 112px));
+    min-width: 148px;
+    height: var(--wb-mobile-dock-handle-clearance, 40px);
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    touch-action: manipulation;
+    z-index: calc(var(--wb-z-dock, 9000) + 1);
+  }
+
+  [data-wb-desktop][data-wb-dock-collapsed='true'] > [data-wb-window-layer],
+  :root[data-wb-dock-collapsed='true'] [data-wb-desktop] > [data-wb-window-layer] {
+    bottom: max(
+      var(--wb-mobile-dock-clearance, 0px),
+      var(--wb-mobile-dock-handle-clearance, 40px)
+    ) !important;
+    overflow: clip;
+  }
+
+  [data-wb-desktop][data-wb-dock-collapsed='true'] > [data-wb-window-layer] > .wb-window,
+  :root[data-wb-dock-collapsed='true'] [data-wb-desktop] > [data-wb-window-layer] > .wb-window {
+    max-height: 100%;
+  }
+}
+
 @media (max-width: 640px) {
   [data-wb-desktop] > [data-wb-window-layer] {
-    bottom: 64px;
+    bottom: var(--wb-mobile-dock-clearance, 0px);
   }
 }
 

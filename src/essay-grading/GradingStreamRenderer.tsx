@@ -25,6 +25,7 @@ import { CustomScrollArea } from '../components/custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
 import { prefersReducedMotion } from '@/styles/motion-springs';
+import '../components/essay-grading/EssayGradingResponsive.css';
 
 export type SectionTab = 'overview' | 'details' | 'polish' | 'model_essay';
 
@@ -309,7 +310,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
   ) : null;
 
   return (
-    <div className={`grading-stream-renderer flex min-h-0 flex-col h-full ${className || ''}`}>
+    <div className={`grading-stream-renderer essay-stream-root flex min-h-0 flex-col h-full ${className || ''}`}>
       {/* 顶部流式状态提示 - 简洁风格简洁 */}
       {!hideToolbar && !hideStreamingIndicator && isStreaming && (
         <div className="flex items-center gap-2 px-5 py-2 border-b border-border/20">
@@ -325,13 +326,13 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
         <div
           data-testid="essay-grading-result-header"
           className={cn(
-            'flex shrink-0 flex-wrap items-center border-b sm:flex-nowrap',
+            'essay-result-header flex shrink-0 flex-wrap items-center border-b sm:flex-nowrap',
             toolbarAccessory ? 'min-h-[41px] border-border/30' : 'border-border/20',
           )}
         >
         {tabs.length > 1 ? (
         <CustomScrollArea
-          className="w-full min-w-0 sm:w-auto sm:flex-1"
+          className="essay-result-tabs w-full min-w-0 sm:w-auto sm:flex-1"
           viewportClassName="flex items-center gap-1 px-3 py-1 sm:px-4"
           orientation="horizontal"
           fullHeight={false}
@@ -361,7 +362,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
         {toolbarAccessory && (
           <div
             className={cn(
-              'flex min-w-0 items-center justify-between gap-2 px-3 py-1 sm:w-auto sm:shrink-0 sm:justify-end sm:py-0 sm:pl-2 sm:pr-4',
+              'essay-result-accessory flex min-w-0 items-center justify-between gap-2 px-3 py-1 sm:w-auto sm:shrink-0 sm:justify-end sm:py-0 sm:pl-2 sm:pr-4',
               tabs.length > 1 ? 'w-full border-t border-border/20 sm:border-t-0' : 'shrink-0',
             )}
           >
@@ -409,7 +410,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
         </div>
       )}
       {showLegend && effectiveHasInlineMarkers && activeTab === 'overview' && (
-        <div className="px-5 py-3 border-b border-border/20 bg-muted/10 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
+        <div className="essay-result-legend px-5 py-3 border-b border-border/20 bg-muted/10 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
           <div className="flex items-center gap-2">
             <span className="shrink-0 whitespace-nowrap text-red-500 line-through">{t('essay_grading:legend.example')}</span>
             <span className="text-muted-foreground">{t('essay_grading:legend.del_desc')}</span>

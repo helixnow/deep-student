@@ -86,6 +86,9 @@ export const TodoQuickAdd: React.FC<{
   const [addedFlash, setAddedFlash] = useState(0);
   /** 单次聚焦会话内连续添加条数（失焦或按 Esc 收起时归零） */
   const [streakAddedCount, setStreakAddedCount] = useState(0);
+  /** 弱网防连点：在途提交锁，防止双击「添加」或连按 Enter 创建重复待办 */
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const flashTimerRef = useRef<number | null>(null);
 
   // 自然语言解析（如「明天交作业 !高」），结果以 chip 预览，提交时应用
@@ -139,6 +142,7 @@ export const TodoQuickAdd: React.FC<{
   );
 
   const handleSubmit = useCallback(async () => {
+    if (submittingRef.current) return;
     if (!title.trim() || !targetListId) return;
     // 手动设置的字段优先于自然语言解析结果
     const finalTitle = (parsed.title || title).trim();
@@ -146,6 +150,8 @@ export const TodoQuickAdd: React.FC<{
       dueDate || parsed.dueDate || (suppressDefaultDue ? undefined : defaultDueDate);
     const finalPriority = priority !== 'none' ? priority : (parsed.priority ?? 'none');
     if (!finalTitle) return;
+    submittingRef.current = true;
+    setIsSubmitting(true);
     try {
       const created = await createItem({
         // ~清单/@清单 命中现有清单时直接建到目标清单
@@ -179,6 +185,9 @@ export const TodoQuickAdd: React.FC<{
       }, 400);
     } catch {
       // error handled in store
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
     }
   }, [title, parsed, priority, dueDate, suppressDefaultDue, defaultDueDate, targetListId, resolvedList, createItem, updateItem]);
 
@@ -351,6 +360,7 @@ export const TodoQuickAdd: React.FC<{
           <DsButton
             variant="shell"
             size="sm"
+            disabled={isSubmitting}
             onClick={handleSubmit}
             className="order-3 h-7 flex-shrink-0 text-xs transition-[transform,background-color,border-color,color] duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100 sm:order-none"
           >

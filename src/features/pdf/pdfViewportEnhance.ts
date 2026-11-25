@@ -279,3 +279,81 @@ export function buildProgressBarTicks(input: {
 
   return ticks.sort((a, b) => a.page - b.page);
 }
+
+// ============================================================================
+// 4. 大幅面矢量图（A1/A2 CAD 等）画布安全像素上限与 DPR 约束
+// ============================================================================
+
+/** 大幅面页面面积阈值（pt²）：A4≈501k、A3≈1.0M、A2≈2.0M、A1≈4.0M */
+export const LARGE_FORMAT_PAGE_AREA_PT2 = 1_500_000;
+/** 标准页画布单边像素上限（保障 2x Retina 清晰度，同时防止 300% 缩放 OOM） */
+export const STANDARD_MAX_CANVAS_EDGE_PX = 2400;
+/** 标准页画布总像素预算（~19 MB RGBA 缓冲） */
+export const STANDARD_MAX_CANVAS_PIXELS = 4_800_000;
+/** 大幅面 CAD/工程图纸画布单边像素上限（降低重矢量栅格化耗时，杜绝 OOM） */
+export const LARGE_FORMAT_MAX_CANVAS_EDGE_PX = 1800;
+/** 大幅面 CAD/工程图纸画布总像素预算（~9.6 MB RGBA 缓冲） */
+export const LARGE_FORMAT_MAX_CANVAS_PIXELS = 2_400_000;
+/** 极端超大视口下允许下探的最小安全 DPR */
+export const MIN_SAFE_RENDER_DPR = 0.25;
+
+export function isLargeFormatPdfPage(widthPt?: number, heightPt?: number): boolean {
+  if (
+    typeof widthPt !== 'number' ||
+    typeof heightPt !== 'number' ||
+    !Number.isFinite(widthPt) ||
+    !Number.isFinite(heightPt) ||
+    widthPt <= 0 ||
+    heightPt <= 0
+  ) {
+    return false;
+  }
+  return widthPt * heightPt >= LARGE_FORMAT_PAGE_AREA_PT2;
+}
+
+export interface SafeRenderDprInput {
+  /** 逻辑渲染宽度（CSS px） */
+  renderWidth: number;
+  /** 逻辑渲染高度（CSS px） */
+  renderHeight: number;
+  /** 期望渲染 DPR（通常为 min(devicePixelRatio, maxDevicePixelRatio)） */
+  requestedDpr: number;
+  /** PDF 页面 scale=1 时的固有宽度（pt） */
+  intrinsicWidth?: number;
+  /** PDF 页面 scale=1 时的固有高度（pt） */
+  intrinsicHeight?: number;
+  /** 可选自定义单边像素上限 */
+  maxEdgePx?: number;
+  /** 可选自定义总像素上限 */
+  maxCanvasPixels?: number;
+  /** 可选最小 DPR 下限（默认 0.25） */
+  minDpr?: number;
+}
+
+/**
+ * 计算兼顾清晰度与内存安全的画布渲染 DPR：
+ * 同时约束画布最大单边像素与总像素面积，避免大幅面 A1 CAD 图纸或高倍率缩放触发 OOM / 卡死。
+ */
+export function computeSafeRenderDpr(input: SafeRenderDprInput): number {
+  const safeW = Math.max(1, Number.isFinite(input.renderWidth) ? input.renderWidth : 1);
+  const safeH = Math.max(1, Number.isFinite(input.renderHeight) ? input.renderHeight : 1);
+  const requested = Math.max(
+    MIN_SAFE_RENDER_DPR,
+    Number.isFinite(input.requestedDpr) ? input.requestedDpr : 1,
+  );
+  const largeFormat = isLargeFormatPdfPage(input.intrinsicWidth, input.intrinsicHeight);
+  const maxEdge =
+    input.maxEdgePx ??
+    (largeFormat ? LARGE_FORMAT_MAX_CANVAS_EDGE_PX : STANDARD_MAX_CANVAS_EDGE_PX);
+  const maxPixels =
+    input.maxCanvasPixels ??
+    (largeFormat ? LARGE_FORMAT_MAX_CANVAS_PIXELS : STANDARD_MAX_CANVAS_PIXELS);
+  const minDpr = input.minDpr ?? MIN_SAFE_RENDER_DPR;
+
+  const maxDprForEdge = maxEdge / Math.max(safeW, safeH);
+  const maxDprForPixels = Math.sqrt(maxPixels / (safeW * safeH));
+  const bounded = Math.min(requested, maxDprForEdge, maxDprForPixels);
+  const clamped = Math.max(minDpr, Math.min(requested, bounded));
+  return Math.floor(clamped * 100) / 100;
+}
+

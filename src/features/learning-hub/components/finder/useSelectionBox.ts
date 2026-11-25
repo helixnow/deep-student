@@ -249,11 +249,26 @@ export function useSelectionBox({
       }
     };
 
+    const cancelSelection = () => {
+      if (rafId !== 0) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
+      }
+      pendingPoint = null;
+      if (!startPointRef.current && !hasStartedSelectingRef.current) return;
+      startPointRef.current = null;
+      hasStartedSelectingRef.current = false;
+      baselineRef.current = new Set();
+      setIsSelecting(false);
+      setSelectionRect(null);
+    };
+
     const handleMouseUp = (e: MouseEvent) => {
       if (startPointRef.current) {
         // 冲刷尚未消费的最后一个点，保证最终选中集与松手位置一致
         if (rafId !== 0) {
           cancelAnimationFrame(rafId);
+          rafId = 0;
         }
         processFrame();
 
@@ -276,14 +291,32 @@ export function useSelectionBox({
       }
     };
 
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.key === 'Escape' || e.code === 'Escape') && (startPointRef.current || hasStartedSelectingRef.current)) {
+        cancelSelection();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) cancelSelection();
+    };
+
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', cancelSelection);
+    window.addEventListener('dragend', cancelSelection, true);
 
     return () => {
       if (rafId !== 0) cancelAnimationFrame(rafId);
       pendingPoint = null;
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', cancelSelection);
+      window.removeEventListener('dragend', cancelSelection, true);
     };
   }, [enabled, minDistance]);
 

@@ -304,6 +304,8 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
 
   // 面板根节点：快捷键门禁用它判定承载环境（legacy 页面 vs workbench 窗口）
   const panelRootRef = useRef<HTMLDivElement | null>(null);
+  // 详情面板未保存修改守卫：Esc / 移动端覆盖层返回先经详情守卫确认
+  const detailCloseGuardRef = useRef<((onConfirmClose: () => void) => boolean) | null>(null);
 
   // 键盘导航焦点行（j/k / ↑↓ 移动；Space/x 完成；Enter 详情；Delete 删除）
   const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
@@ -607,7 +609,12 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
         clearChecked();
       } else if (selected) {
         e.preventDefault();
-        select(null);
+        const guard = detailCloseGuardRef.current;
+        if (guard) {
+          guard(() => select(null));
+        } else {
+          select(null);
+        }
       } else if (focusedItemIdRef.current) {
         e.preventDefault();
         setFocusedItemId(null);
@@ -1361,12 +1368,23 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
 
         {/* 移动端详情：全屏覆盖（滑入/滑出 + 系统返回键关闭；顶栏返回箭头由 TodoContentView 联动） */}
         {isSmallScreen && (
-          <MobileDetailOverlay open={!!selectedItem} onClose={() => selectItem(null)}>
+          <MobileDetailOverlay
+            open={!!selectedItem}
+            onClose={() => {
+              const guard = detailCloseGuardRef.current;
+              if (guard) {
+                guard(() => selectItem(null));
+              } else {
+                selectItem(null);
+              }
+            }}
+          >
             {selectedItem && (
               <TodoItemDetail
                 key={selectedItem.id}
                 item={selectedItem}
                 onClose={() => selectItem(null)}
+                requestCloseRef={detailCloseGuardRef}
                 className="w-full"
                 hideCloseButton
               />
@@ -1381,6 +1399,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
           key={selectedItem.id}
           item={selectedItem}
           onClose={() => selectItem(null)}
+          requestCloseRef={detailCloseGuardRef}
           className="w-[min(360px,46%)] min-w-[260px] flex-shrink-0 border-l border-[color:var(--shell-seam)] ui-slide-fade-in [--ui-enter-x:32px]"
         />
       )}

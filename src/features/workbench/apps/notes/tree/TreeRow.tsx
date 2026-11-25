@@ -338,7 +338,7 @@ export function TreeRow({
           )}
         </span>
       ) : (
-        <span className="nwt-row-label">{displayName}</span>
+        <span className="nwt-row-label" title={displayName}>{displayName}</span>
       )}
       {item.favorite ? <Star className="nwt-favorite" size={12} weight="fill" aria-hidden /> : null}
       {!renaming ? (

@@ -1188,7 +1188,7 @@ export class DailySprintService {
     );
     const todayDayNum =
       parseYmdUtcDayNumber(params.logicalTodayKey) ??
-      parseYmdUtcDayNumber(localDateKey()) ??
+      parseYmdUtcDayNumber(localDateKey(new Date(params.nowMs))) ??
       Math.floor(params.nowMs / MS_PER_DAY);
 
     const candidates: MistakeTriageCandidate[] = [];

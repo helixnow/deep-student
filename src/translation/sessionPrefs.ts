@@ -7,7 +7,42 @@
  * 避免签名失配导致误报 dirty 或自动翻译误触发。
  */
 
-export type TranslationFormality = 'formal' | 'casual' | 'auto';
+import {
+  computeTranslationSourceHash,
+  normalizeFormalityValue,
+  sanitizeTranslationSyncedMeta,
+  type TranslationFormality,
+  type TranslationSyncedMeta,
+} from '@/shared/translationSyncedMeta';
+
+export {
+  computeTranslationSourceHash,
+  normalizeFormalityValue,
+  sanitizeTranslationSyncedMeta,
+  type TranslationFormality,
+  type TranslationSyncedMeta,
+};
+
+/** 统一翻译参数签名：用于自动翻译去重与过期检测 */
+export function buildTranslationStateSignature(params: {
+  sourceHash: string;
+  srcLang: string;
+  tgtLang: string;
+  formality: TranslationFormality;
+  domain?: string;
+  glossary?: Array<[string, string]>;
+  customPrompt?: string;
+}): string {
+  return JSON.stringify([
+    params.sourceHash,
+    params.srcLang || 'auto',
+    params.tgtLang || 'zh-CN',
+    params.customPrompt ? params.customPrompt.trim() : '',
+    params.formality || 'auto',
+    params.domain || 'general',
+    params.glossary ?? [],
+  ]);
+}
 
 /** 语向/正式度的持久化偏好片段（工作台 WorkbenchPrefs 的子集） */
 export interface TranslationLangPrefs {
@@ -37,8 +72,11 @@ export interface TranslationDraftSnapshot {
   id: string;
   srcLang: string;
   tgtLang: string;
+  formality?: TranslationFormality;
+  domain?: string;
   sourceText: string;
   translatedText: string;
+  lastTranslatedMeta?: TranslationSyncedMeta;
   updatedAt: number;
 }
 
@@ -64,12 +102,18 @@ export function readTranslationDraftSnapshot(id: string | undefined): Translatio
     const parsed = JSON.parse(raw) as Partial<TranslationDraftSnapshot> | null;
     if (!parsed || typeof parsed !== 'object') return null;
     if (typeof parsed.srcLang !== 'string' || typeof parsed.tgtLang !== 'string') return null;
+    const formality = normalizeFormalityValue(parsed.formality);
+    const domain = typeof parsed.domain === 'string' && parsed.domain ? parsed.domain : undefined;
+    const lastTranslatedMeta = sanitizeTranslationSyncedMeta(parsed.lastTranslatedMeta);
     return {
       id,
       srcLang: parsed.srcLang,
       tgtLang: parsed.tgtLang,
+      ...(formality ? { formality } : {}),
+      ...(domain ? { domain } : {}),
       sourceText: typeof parsed.sourceText === 'string' ? parsed.sourceText : '',
       translatedText: typeof parsed.translatedText === 'string' ? parsed.translatedText : '',
+      ...(lastTranslatedMeta ? { lastTranslatedMeta } : {}),
       updatedAt: typeof parsed.updatedAt === 'number' ? parsed.updatedAt : 0,
     };
   } catch {

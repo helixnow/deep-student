@@ -228,9 +228,24 @@ export class MaintenanceRepo implements MaintenanceRepository {
     if (folderIds.length === 0) return 0;
 
     const items = this.deps.folders.getItemsByFolders(conn, folderIds);
+    if (items.length === 0) return 0;
+
+    // Memoize folder paths and batch-fetch resource titles by ID prefix to eliminate 2N queries.
+    const folderPathCache = new Map<string, string>();
+    const resolveFolderPath = (fid: string): string => {
+      const cached = folderPathCache.get(fid);
+      if (cached !== undefined) return cached;
+      const computed = this.deps.folders.buildFolderPath(conn, fid);
+      folderPathCache.set(fid, computed);
+      return computed;
+    };
+    const titles = this.batchResourceTitles(conn, items.map((item) => item.itemId));
+
     let updated = 0;
     for (const item of items) {
-      const path = this.computePath(conn, item.folderId ?? null, item.itemId);
+      const title = titles.get(item.itemId) ?? item.itemId;
+      const fid = item.folderId ?? null;
+      const path = fid === null ? `/${title}` : `/${resolveFolderPath(fid)}/${title}`;
       if (utf8ByteLength(path) > MAX_PATH_BYTES) {
         logWarn(`[VFS::handlers] Path too long for item ${item.itemId}, skipping cache update`);
         continue;
@@ -243,6 +258,44 @@ export class MaintenanceRepo implements MaintenanceRepository {
       updated += 1;
     }
     return updated;
+  }
+
+  private batchResourceTitles(conn: SqlExecutor, sourceIds: readonly string[]): Map<string, string> {
+    const titles = new Map<string, string>();
+    const byPrefix = new Map<string, string[]>();
+    for (const sourceId of sourceIds) {
+      const prefix = sourceId.split('_')[0] ?? '';
+      if (prefix === 'note' || prefix === 'tb' || prefix === 'exam' || prefix === 'tr' || prefix === 'essay') {
+        const bucket = byPrefix.get(prefix);
+        if (bucket === undefined) byPrefix.set(prefix, [sourceId]);
+        else bucket.push(sourceId);
+      }
+    }
+    const specs: Record<string, { sql: string; label: string }> = {
+      note: { sql: 'SELECT id, title AS value FROM notes WHERE id IN ({})', label: 'note title' },
+      tb: { sql: 'SELECT id, file_name AS value FROM files WHERE id IN ({})', label: 'textbook title' },
+      exam: { sql: 'SELECT id, COALESCE(exam_name, id) AS value FROM exam_sheets WHERE id IN ({})', label: 'exam title' },
+      tr: { sql: 'SELECT id, id AS value FROM translations WHERE id IN ({})', label: 'translation title' },
+      essay: { sql: 'SELECT id, COALESCE(title, id) AS value FROM essays WHERE id IN ({})', label: 'essay title' },
+    };
+    for (const [prefix, ids] of byPrefix) {
+      const spec = specs[prefix]!;
+      const unique = Array.from(new Set(ids));
+      for (let start = 0; start < unique.length; start += 500) {
+        const chunk = unique.slice(start, start + 500);
+        const query = spec.sql.replace('{}', chunk.map((_, idx) => `?${idx + 1}`).join(','));
+        let rows: Array<{ id: string; value: string | null }>;
+        try {
+          rows = conn.all<{ id: string; value: string | null }>(query, chunk);
+        } catch (error) {
+          throw storageError(`Query ${spec.label} failed: ${message(error)}`);
+        }
+        for (const row of rows) {
+          if (typeof row.value === 'string') titles.set(row.id, row.value);
+        }
+      }
+    }
+    return titles;
   }
 
   /** handlers.rs:1235-1248 */

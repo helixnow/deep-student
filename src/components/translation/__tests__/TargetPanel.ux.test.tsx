@@ -139,4 +139,29 @@ describe('TargetPanel 学习者交互体验', () => {
     expect(onSaveAsFlashcard).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('translation-save-flashcard-mobile-btn')).toBeInTheDocument();
   });
+
+  it('过期提示条提供非破坏性选项（另存新版本 / 重新翻译 / 保留当前译文）而非单一覆盖 CTA', () => {
+    const onSaveAsNewVersion = vi.fn();
+    const onRetranslate = vi.fn();
+    const onKeepCurrentTranslation = vi.fn();
+    renderTargetPanel({
+      sourceText: 'Updated source text',
+      translatedText: 'Completed English draft',
+      isOutdated: true,
+      onSaveAsNewVersion,
+      onRetranslate,
+      onKeepCurrentTranslation,
+    });
+
+    expect(screen.getByTestId('translation-outdated-banner')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('translation-outdated-save-new-version-btn'));
+    expect(onSaveAsNewVersion).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByTestId('translation-outdated-retranslate-btn'));
+    expect(onRetranslate).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByTestId('translation-outdated-keep-current-btn'));
+    expect(onKeepCurrentTranslation).toHaveBeenCalledTimes(1);
+  });
 });

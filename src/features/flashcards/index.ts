@@ -20,3 +20,10 @@ export {
   type ImageOcclusionBuilderModalProps,
   type OpenImageOcclusionBuilderDetail,
 } from './occlusion/ImageOcclusionBuilderModal';
+
+export { useFsrsReviewStore } from './store/fsrsReviewStore';
+export { useFlashcardsLibraryStore } from './store/libraryStore';
+export {
+  requestLibraryCardFocus,
+  type PendingLibraryCardFocus,
+} from './library/libraryViewState';

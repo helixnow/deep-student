@@ -49,9 +49,12 @@ import {
   SINGLE_COLUMN_ZOOM_SCALE,
   buildProgressBarTicks,
   computeColumnDoubleClickZoom,
+  computeSafeRenderDpr,
   computeTrimmedPageLayout,
+  isLargeFormatPdfPage,
   type SavedColumnZoomBaseline,
 } from '../pdfViewportEnhance';
+import { renderCancelablePdfCanvas } from './CancelablePdfCanvas';
 import type { PinnedPdfRegion } from './PdfPinnedRegionsOverlay';
 import type { PinRegionPayload } from './PdfRegionCapture';
 import { resourceIdFromDstuPath } from '../pdfAnnotationList';
@@ -2327,18 +2330,32 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     if (!document || highlights.length === 0) return;
     setShowMoreMenu(false);
     try {
-      const [{ createAnnotatedPdf }, { fileManager }] = await Promise.all([
+      const [{ createAnnotatedPdf, isEncryptedPdfExportError }, { fileManager }] = await Promise.all([
         import('../pdfAnnotatedExport'),
         import('@/utils/fileManager'),
       ]);
-      const data = await createAnnotatedPdf(document, highlights);
-      const title = t('pdf:annotations.export_pdf');
-      const result = await fileManager.saveBinaryFile({
-        data, title,
-        defaultFileName: `${fileName?.replace(/\.pdf$/i, '') || 'PDF'}-annotated.pdf`,
-        filters: [{ name: 'PDF', extensions: ['pdf'] }],
-      });
-      if (!result.canceled) showGlobalNotification('success', t('pdf:annotations.export_pdf_success'));
+      try {
+        const data = await createAnnotatedPdf(document, highlights);
+        const title = t('pdf:annotations.export_pdf');
+        const result = await fileManager.saveBinaryFile({
+          data, title,
+          defaultFileName: `${fileName?.replace(/\.pdf$/i, '') || 'PDF'}-annotated.pdf`,
+          filters: [{ name: 'PDF', extensions: ['pdf'] }],
+        });
+        if (!result.canceled) showGlobalNotification('success', t('pdf:annotations.export_pdf_success'));
+      } catch (error) {
+        console.error('[EnhancedPdfViewer] Annotated PDF export failed:', error);
+        if (isEncryptedPdfExportError(error)) {
+          showGlobalNotification(
+            'warning',
+            t('pdf:annotations.export_pdf_encrypted_unsupported', {
+              defaultValue: error.message,
+            }),
+          );
+        } else {
+          showGlobalNotification('error', t('pdf:annotations.export_pdf_failed'));
+        }
+      }
     } catch (error) {
       console.error('[EnhancedPdfViewer] Annotated PDF export failed:', error);
       showGlobalNotification('error', t('pdf:annotations.export_pdf_failed'));
@@ -3715,18 +3732,32 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const annotationToggleAvailable = canPersistAnnotations && enableTextSelection === undefined;
 
   // ========== 从设置读取渲染参数 ==========
-  // DPR 上限来自设置（默认 2，Retina 清晰）；大倍率缩放（如 200%+）时限制单页画布长边上限 2400px，
-  // 杜绝 4200×6000 巨型画布叠加 overscan 导致 CPU 栅格化卡死 30s+
+  // DPR 上限来自设置（默认 2，Retina 清晰）；同时约束单边像素与总像素面积，
+  // 对大幅面 A1/A2 CAD 图纸及高倍率缩放进一步收紧画布像素预算，杜绝 OOM 与 30s+ 卡死
+  const isLargeFormatDocument = useMemo(
+    () => isLargeFormatPdfPage(basePageSize?.width, basePageSize?.height),
+    [basePageSize],
+  );
   const renderDpr = useMemo(() => {
     const deviceDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
-    const maxDprForWidth = Math.max(0.75, Math.round((2400 / Math.max(1, pageWidth)) * 100) / 100);
-    const capped = Math.min(deviceDpr, pdfSettings.maxDevicePixelRatio, maxDprForWidth);
+    const requestedDpr = Math.min(deviceDpr, pdfSettings.maxDevicePixelRatio);
+    const rawRatio = basePageSize ? basePageSize.height / basePageSize.width : FALLBACK_PAGE_RATIO;
+    const displayRatio = rotation % 180 !== 0 ? 1 / rawRatio : rawRatio;
+    const capped = computeSafeRenderDpr({
+      renderWidth: pageWidth,
+      renderHeight: pageWidth * displayRatio,
+      requestedDpr,
+      intrinsicWidth: basePageSize?.width,
+      intrinsicHeight: basePageSize?.height,
+    });
     if (isScrolling && pdfSettings.enableScrollDprDowngrade) {
       return Math.min(pdfSettings.scrollDpr, capped);
     }
     return capped;
   }, [
     pageWidth,
+    basePageSize,
+    rotation,
     pdfSettings.maxDevicePixelRatio,
     pdfSettings.enableScrollDprDowngrade,
     pdfSettings.scrollDpr,
@@ -3902,7 +3933,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         (viewMode === 'dual' ? 24 : 32)
       );
     },
-    overscan: scale >= 1.5 ? 1 : pdfSettings.virtualizerOverscan,
+    overscan: scale >= 1.5 || isLargeFormatDocument ? 1 : pdfSettings.virtualizerOverscan,
     measureElement: (element) => element?.getBoundingClientRect().height ?? estimatedRowHeight,
   });
 
@@ -4305,6 +4336,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         <MemoPage
           pageNumber={pageNum}
           width={trimmedLayout.renderWidth}
+          renderMode="none"
           renderTextLayer={enableTextLayer}
           renderAnnotationLayer={enableAnnotationLayer}
           rotate={rotation}
@@ -4312,7 +4344,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           onLoadSuccess={handlePageLoadSuccess}
           customTextRenderer={hasSearchMarks ? searchTextRenderer : ligatureTextRenderer}
           loading={getPageShimmer(pageNum)}
-        />
+        >
+          {renderCancelablePdfCanvas}
+        </MemoPage>
 
         {/* 高亮覆盖层 — v2 为 0–1 相对坐标（按百分比渲染，尺寸无关）；
             历史数据（无 coordVersion）按旧逻辑乘以当前 scale 兜底 */}

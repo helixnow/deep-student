@@ -114,6 +114,9 @@ export async function loadWeeklyReportData(now = new Date()): Promise<WeeklyRepo
 }
 
 function formatDuration(seconds: number, t: Translate): string {
+  if (seconds > 0 && seconds < 60) {
+    return `${Math.max(1, Math.round(seconds))}s`;
+  }
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return t('weekly_report.minutes', { count: minutes, defaultValue: '{{count}} 分钟' });
   return t('weekly_report.hours', { count: Math.round(minutes / 6) / 10, defaultValue: '{{count}} 小时' });

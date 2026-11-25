@@ -96,7 +96,7 @@ export interface PomodoroState {
   noiseEnabled: boolean;
   /** 连续达成每日目标的天数（持久化，供 UI 展示 streak） */
   streakDays: number;
-  /** 最近一次达成每日目标的本地日期（Date#toDateString 格式，持久化） */
+  /** 最近一次达成每日目标的本地日期（YYYY-MM-DD，兼容旧 Date#toDateString，持久化） */
   lastGoalMetDate: string | null;
   /** 结束前提醒已触发的阶段标识（= phaseEndsAt；非持久化） */
   endReminderFiredPhase: number | null;
@@ -129,6 +129,8 @@ export interface PomodoroState {
   /** 等待由 stop/switch/complete 触发的后端记录落盘；普通 UI 无需调用。 */
   flushPendingRecords: () => Promise<void>;
   tick: () => void;
+  /** 本地日历日跨午夜校准：重置过期今日计数并清理断档 streak */
+  syncCalendarDay: (now?: Date) => void;
   /** 墙钟矫正：rehydrate / visibilitychange / focus 时调用 */
   syncWallClock: () => void;
   completeCurrentSession: (options?: PomodoroCompleteOptions) => void;

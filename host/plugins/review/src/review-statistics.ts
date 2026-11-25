@@ -16,6 +16,7 @@ import {
 import { rustTrim } from '../../../platform/util/portable.ts';
 import { utcNow } from './clock.ts';
 import { appError } from './errors.ts';
+import { addLocalDays } from './local-date.ts';
 import type { ReviewRuntime } from './review-runtime.ts';
 import * as repo from '../repository/fsrs.ts';
 
@@ -30,12 +31,18 @@ const TRUE_RETENTION_PERIODS: readonly (readonly [string, number, number])[] = [
   ['year', 0, 364],
 ];
 
+function localRolloverStartMs(dateKey: string, rolloverHour: number): number {
+  const [year, month, day] = dateKey.split('-').map(Number);
+  return new Date(year!, month! - 1, day!, Math.min(23, Math.max(0, Math.trunc(rolloverHour))), 0, 0, 0).getTime();
+}
+
 export function getReviewStatistics(rt: ReviewRuntime, daysInput: number | null, trialV7 = false): FsrsReviewStatistics {
   const days = Math.min(730, Math.max(7, Math.trunc(daysInput ?? 365)));
   const nowMs = utcNow().ms;
   const config = repo.loadSchedulerConfig(rt.db, DEFAULT_DECK_ID, rt.warn);
   const [dayStartMs, nextDayStartMs] = logicalDayBoundsMs(nowMs, config.dayRolloverHour);
-  const windowStartMs = dayStartMs - (days - 1) * MS_PER_DAY;
+  const todayKey = logicalDayKey(nowMs, config.dayRolloverHour);
+  const windowStartMs = localRolloverStartMs(addLocalDays(todayKey, -(days - 1)), config.dayRolloverHour);
   const counters = repo.dailyCounters(rt.db, dayStartMs, nextDayStartMs);
 
   const daily = new Map<string, FsrsDailyReviewStat>();
@@ -110,14 +117,11 @@ export function getReviewStatistics(rt: ReviewRuntime, daysInput: number | null,
   };
 
   const forecastDays = 15;
-  const horizon = new Date(dayStartMs);
-  horizon.setDate(horizon.getDate() + forecastDays);
-  const todayKey = logicalDayKey(nowMs, config.dayRolloverHour);
-  const calendarDay = Date.parse(`${todayKey}T00:00:00Z`);
+  const horizonMs = localRolloverStartMs(addLocalDays(todayKey, forecastDays), config.dayRolloverHour);
   const forecast = new Map<string, number>(Array.from({ length: forecastDays }, (_, offset) => [
-    new Date(calendarDay + offset * MS_PER_DAY).toISOString().slice(0, 10), 0,
+    addLocalDays(todayKey, offset), 0,
   ]));
-  for (const dueMs of repo.forecastDueRows(rt.db, horizon.getTime())) {
+  for (const dueMs of repo.forecastDueRows(rt.db, horizonMs)) {
     const key = dueMs < nextDayStartMs ? todayKey : logicalDayKey(dueMs, config.dayRolloverHour);
     const count = forecast.get(key);
     if (count !== undefined) forecast.set(key, count + 1);

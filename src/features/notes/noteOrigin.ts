@@ -9,13 +9,14 @@
 import { dstu, updatedAtToVersionToken, type DstuNode } from '@/dstu';
 import { requestChatSessionNavigation } from '@/features/chat/navigation/pendingChatNavigation';
 import { getChatMessageListScrollHandle } from '@/features/chat/components/messageListScrollRegistry';
+import { dispatchPdfCitationNavigation, parsePdfLocatorParams } from './pdfCitationNav';
 
 export const NOTE_ORIGIN_PROP_KEY = '_origin';
 const MAX_TITLE = 80;
 
 export type NoteOrigin =
   | { kind: 'chat'; sessionId: string; messageId?: string; title?: string }
-  | { kind: 'resource'; resourceId: string; page?: number; locator?: string; title?: string; quote?: string };
+  | { kind: 'resource'; resourceId: string; page?: number; highlightId?: string; locator?: string; title?: string; quote?: string };
 
 const clip = (value: string | undefined) => (value && value.length > MAX_TITLE ? `${value.slice(0, MAX_TITLE - 1)}…` : value);
 
@@ -26,6 +27,7 @@ export function serializeNoteOrigin(origin: NoteOrigin): string {
       kind: 'resource',
       resourceId: origin.resourceId,
       page: origin.page,
+      ...(origin.highlightId ? { highlightId: origin.highlightId.slice(0, 128) } : {}),
       ...(origin.locator ? { locator: clip(origin.locator) } : {}),
       title: clip(origin.title),
       quote: origin.quote?.slice(0, 160),
@@ -42,11 +44,15 @@ export function parseNoteOrigin(raw: unknown): NoteOrigin | null {
     }
     if (value.kind === 'resource' && typeof value.resourceId === 'string' && value.resourceId) {
       const page = typeof value.page === 'number' && Number.isInteger(value.page) && value.page > 0 ? value.page : undefined;
+      const highlightId = typeof value.highlightId === 'string' && value.highlightId.trim()
+        ? value.highlightId.trim().slice(0, 128)
+        : undefined;
       const locator = typeof value.locator === 'string' && value.locator.trim() ? value.locator.trim() : undefined;
       return {
         kind: 'resource',
         resourceId: value.resourceId,
         page,
+        ...(highlightId ? { highlightId } : {}),
         ...(locator ? { locator } : {}),
         title,
         quote: typeof value.quote === 'string' ? value.quote.slice(0, 160) : undefined,
@@ -75,8 +81,11 @@ export async function attachNoteOrigin(noteId: string, origin: NoteOrigin): Prom
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** 回到来源：对话 → 切到聊天并滚到那条消息；资料 → 打开并跳到那一页。 */
-export async function navigateToNoteOrigin(origin: NoteOrigin): Promise<void> {
+/** 回到来源：对话 → 切到聊天并滚到那条消息；资料 → 打开并精准定位到页码 / 高亮。 */
+export async function navigateToNoteOrigin(
+  origin: NoteOrigin,
+  options?: { sourceWindowId?: string },
+): Promise<void> {
   if (origin.kind === 'chat') {
     window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'chat-v2' } }));
     requestChatSessionNavigation(origin.sessionId);
@@ -92,18 +101,20 @@ export async function navigateToNoteOrigin(origin: NoteOrigin): Promise<void> {
     }
     return;
   }
-  const dstuPath = `/${origin.resourceId}`;
-  document.dispatchEvent(new CustomEvent('pdf-ref:open', { detail: { sourceId: origin.resourceId, pageNumber: origin.page, quote: origin.quote } }));
-  window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'learning-hub', openResource: dstuPath } }));
-  if (origin.page) {
-    for (const delay of [300, 700, 1400]) {
-      window.setTimeout(() => {
-        document.dispatchEvent(new CustomEvent('pdf-ref:focus', {
-          detail: { sourceId: origin.resourceId, pageNumber: origin.page, path: dstuPath, quote: origin.quote },
-        }));
-      }, delay);
-    }
-  }
+  const locatorParams = parsePdfLocatorParams(origin.locator);
+  dispatchPdfCitationNavigation(
+    {
+      sourceId: origin.resourceId,
+      pageNumber: origin.page ?? locatorParams.pageNumber,
+      highlightId: origin.highlightId ?? locatorParams.highlightId,
+      quote: origin.quote,
+      locator: origin.locator,
+    },
+    {
+      sourceWindowId: options?.sourceWindowId,
+      includeLegacyViewEvent: true,
+    },
+  );
 }
 
 /**

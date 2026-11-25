@@ -12,6 +12,8 @@
   margin-inline: auto;
   width: min(640px, calc(100% - 32px));
   max-height: min(540px, calc(100% - 88px));
+  container-type: inline-size;
+  container-name: notes-search;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -487,6 +489,20 @@
 
   .notes-search-overlay-taghint {
     display: none;
+  }
+}
+
+@container notes-search (max-width: 560px) {
+  .notes-search-overlay-result-type,
+  .notes-search-overlay-taghint {
+    display: none;
+  }
+}
+
+@container notes-search (max-width: 460px) {
+  .notes-search-overlay-modes {
+    flex-wrap: wrap;
+    row-gap: 4px;
   }
 }
 

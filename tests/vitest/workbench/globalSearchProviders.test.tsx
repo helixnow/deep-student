@@ -148,7 +148,15 @@ describe('globalSearchProviders — debounce & abort', () => {
     expect(dstuSearchMock).toHaveBeenCalledWith('alge', {
       limit: expect.any(Number),
     });
-    expect(invokeMock).toHaveBeenCalledTimes(2);
+    expect(invokeMock).toHaveBeenCalledTimes(3);
+    expect(invokeMock).toHaveBeenCalledWith('list_anki_library_cards', {
+      request: {
+        search: 'alge',
+        page: 1,
+        pageSize: expect.any(Number),
+        includeDecks: false,
+      },
+    });
     expect(invokeMock).toHaveBeenCalledWith('chat_v2_search_content', {
       query: 'alge',
       limit: 30,

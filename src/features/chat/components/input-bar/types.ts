@@ -380,6 +380,13 @@ export interface InputBarUIProps {
   /** 当前会话生效的对话模型 ID（model2OverrideId || modelId），用于推断多模态能力 */
   effectiveChatModelId?: string | null;
 
+  // ========== 首次使用缺失 AI 模型 / API 密钥引导（U01） ==========
+
+  /** 当前工作区尚未配置任何可用对话模型或 API 密钥 */
+  missingApiKey?: boolean;
+  /** 点击「配置 AI 模型」直接打开 设置 → 模型服务 (APIs) 的回调 */
+  onOpenApiSettings?: () => void;
+
 }
 
 // ============================================================================

@@ -739,7 +739,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                 else outlineRowRefs.current.delete(heading.id);
                             }}
                             className={cn(
-                                "notes-outline-row flex items-stretch transition-colors duration-150 motion-reduce:transition-none",
+                                "notes-outline-row flex min-w-0 overflow-hidden items-stretch transition-colors duration-150 motion-reduce:transition-none",
                                 isActive
                                     ? "bg-[var(--interactive-hover)] shadow-[inset_2px_0_0_hsl(var(--primary))]"
                                     : "hover:bg-[var(--interactive-hover)]",
@@ -897,7 +897,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                         <Badge
                             key={tag}
                             variant="secondary"
-                            className="notes-context-tag group h-5 gap-1 rounded-sm px-1.5 text-xs font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)]"
+                            className="notes-context-tag group h-5 max-w-full min-w-0 gap-1 rounded-sm px-1.5 text-xs font-normal transition-colors duration-150 hover:bg-[var(--interactive-hover)]"
                         >
                             {canEditTags && editingTag === tag ? (
                                 <span className="flex items-center gap-1">
@@ -950,7 +950,13 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                 </span>
                             ) : (
                                 <>
-                                    <span onDoubleClick={canEditTags ? () => handleStartRenameTag(tag) : undefined}>{tag}</span>
+                                    <span
+                                        className="min-w-0 truncate"
+                                        title={tag}
+                                        onDoubleClick={canEditTags ? () => handleStartRenameTag(tag) : undefined}
+                                    >
+                                        {tag}
+                                    </span>
                                     {canEditTags && (
                                         <>
                                             <DsButton

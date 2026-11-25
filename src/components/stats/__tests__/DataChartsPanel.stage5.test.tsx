@@ -149,4 +149,24 @@ describe('DataChartsPanel Stage 5 regressions', () => {
       cancelSpy.mockRestore();
     }
   });
+
+  it('S4-11: renders an immediate structured non-blank skeleton on initial load before data resolves', () => {
+    // Keep LLM promises unresolved to inspect exact frame-0 paint
+    mockGetSummary.mockImplementation(() => new Promise(() => {}));
+    mockGetTrends.mockImplementation(() => new Promise(() => {}));
+    mockGetByModel.mockImplementation(() => new Promise(() => {}));
+    mockGetByCaller.mockImplementation(() => new Promise(() => {}));
+
+    render(<DataChartsPanel />);
+
+    const skeleton = screen.getByTestId('stats-initial-skeleton');
+    expect(skeleton).toBeInTheDocument();
+    expect(skeleton).toHaveAttribute('aria-busy', 'true');
+    // Structured labels & group headings are visible immediately (zero blank flash)
+    expect(skeleton).toHaveTextContent('common:chat_stats.total_sessions');
+    expect(skeleton).toHaveTextContent('data:charts_panel.sessions_group');
+    expect(skeleton).toHaveTextContent('stats:heatmap.title');
+    expect(screen.getByTestId('trend-chart-skeleton')).toBeInTheDocument();
+    expect(screen.getByTestId('heatmap-chart-skeleton')).toBeInTheDocument();
+  });
 });

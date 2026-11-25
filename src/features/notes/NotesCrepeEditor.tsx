@@ -76,6 +76,14 @@ import { NoteHistoryPanel } from './NoteHistoryPanel';
 import { noteHostCoordinator } from './noteHostCoordinator';
 import { resolveNoteReviewScope, saveReviewAs } from './noteReviewHost';
 import { useNotesChromeSlot } from './notesChromeSlot';
+import {
+  dispatchPdfCitationNavigation,
+  getRememberedNoteScrollPosition,
+  isPdfCitationHref,
+  parsePdfCitationHref,
+  rememberNoteScrollPosition,
+  resolveClosestWorkbenchWindowId,
+} from './pdfCitationNav';
 import { captureTemplateInsertion, templateDocumentHost, type TemplateInsertionBookmark } from './noteTemplateHost';
 import { applyNoteTemplate, fillUnsetTemplateLearningProps, type NoteTemplate, type NoteTemplateLearningPropsHost } from './noteTemplates';
 import { consumeNotesQuoteTarget, findQuoteBlockIndex, NOTES_QUOTE_TARGET_EVENT, type NotesQuoteTarget } from './quoteTarget';
@@ -241,6 +249,13 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   const noteSelection = useTextSelection(selectionContainerRef);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const notesShellRef = useRef<HTMLDivElement>(null);
+  const isActiveRef = useRef(isActive);
+  isActiveRef.current = isActive;
+  const prevIsActiveRef = useRef(isActive);
+  const explicitNavAtRef = useRef(0);
+  const restoreScrollRafsRef = useRef<number[]>([]);
+  const restoringScrollRef = useRef(false);
+  const lastRestoredNoteRef = useRef<string | null>(null);
   const findReplaceContainerRef = useRef<HTMLDivElement | null>(null);
   const templateTriggerRef = useRef<HTMLButtonElement | null>(null);
   const templateInsertionRef = useRef<TemplateInsertionBookmark | null>(null);
@@ -933,6 +948,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   useEffect(() => {
     if (!editorApi || !noteId) return;
     const scroll = async (heading: string) => {
+      explicitNavAtRef.current = Date.now();
       try { await (editorApi as FullDocumentSearchApi).materializeFullDocument(); }
       catch (error) { showGlobalNotification('error', String(error)); return; }
       editorApi.scrollToHeading?.(heading, 0, heading.toLowerCase().trim(), (docHeading) => notesHeadingTargetMatches(docHeading, heading));
@@ -951,6 +967,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
 
   const locateQuote = useCallback(async (quote: string) => {
     if (!editorApi) return;
+    explicitNavAtRef.current = Date.now();
     try { await (editorApi as FullDocumentSearchApi).materializeFullDocument(); }
     catch (error) { showGlobalNotification('error', String(error)); return; }
     try {
@@ -994,7 +1011,10 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       noteId,
       isFocused: () => Boolean(typeof document !== 'undefined' && document.activeElement && notesShellRef.current?.contains(document.activeElement)),
       materializeFullDocument: () => (editorApi as FullDocumentSearchApi).materializeFullDocument?.(),
-      focusBlock: (blockId) => Boolean(editorApi.focusBlock?.(blockId)),
+      focusBlock: (blockId) => {
+        explicitNavAtRef.current = Date.now();
+        return Boolean(editorApi.focusBlock?.(blockId));
+      },
       pulseBlock: (blockId) => {
         try {
           const view = editorApi.getCrepe?.()?.editor.ctx.get(editorViewCtx);
@@ -1010,8 +1030,14 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
           }
         } catch { /* Ignore pulse failure if view unmounts concurrently. */ }
       },
-      scrollToHeading: (heading) => editorApi.scrollToHeading?.(heading, 0, heading.toLowerCase().trim(), (docHeading) => notesHeadingTargetMatches(docHeading, heading)),
-      scrollToTop: () => scrollViewportRef.current?.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' }),
+      scrollToHeading: (heading) => {
+        explicitNavAtRef.current = Date.now();
+        return editorApi.scrollToHeading?.(heading, 0, heading.toLowerCase().trim(), (docHeading) => notesHeadingTargetMatches(docHeading, heading));
+      },
+      scrollToTop: () => {
+        explicitNavAtRef.current = Date.now();
+        scrollViewportRef.current?.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+      },
     });
   }, [editorApi, noteId]);
 
@@ -1441,17 +1467,126 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   }, [showMobileToolbar]);
   useEffect(() => { if (!showMobileToolbar) setMobileToolbarCollapsed(false); }, [showMobileToolbar]);
 
+  const cancelPendingScrollRestore = useCallback(() => {
+    restoringScrollRef.current = false;
+    while (restoreScrollRafsRef.current.length > 0) {
+      const id = restoreScrollRafsRef.current.pop();
+      if (id !== undefined) cancelAnimationFrame(id);
+    }
+  }, []);
+
+  const scheduleRememberedScrollRestore = useCallback((targetNoteId: string | undefined) => {
+    if (!targetNoteId) return;
+    if (Date.now() - explicitNavAtRef.current < 400) return;
+    const savedTop = getRememberedNoteScrollPosition(targetNoteId);
+    if (savedTop === undefined || savedTop <= 0) return;
+
+    cancelPendingScrollRestore();
+    restoringScrollRef.current = true;
+    const apply = () => {
+      if (save.isUnmountedRef.current || save.noteIdRef.current !== targetNoteId) return;
+      if (Date.now() - explicitNavAtRef.current < 400) return;
+      const viewport = scrollViewportRef.current;
+      if (!viewport) return;
+      viewport.scrollTop = savedTop;
+      notesShellRef.current?.toggleAttribute('data-scrolled', savedTop > 4);
+    };
+
+    apply();
+    // Run across two frames so focus-on-active (editor.focus()) cannot snap the viewport back to top/caret.
+    const raf1 = requestAnimationFrame(() => {
+      apply();
+      const raf2 = requestAnimationFrame(() => {
+        apply();
+        restoringScrollRef.current = false;
+      });
+      restoreScrollRafsRef.current.push(raf2);
+    });
+    restoreScrollRafsRef.current.push(raf1);
+  }, [cancelPendingScrollRestore, save.isUnmountedRef, save.noteIdRef]);
+
+  useEffect(() => cancelPendingScrollRestore, [cancelPendingScrollRestore]);
+
+  // Preserve scroll position when losing focus/active state (e.g. clicking PDF citation) and restore on return.
+  useEffect(() => {
+    const wasActive = prevIsActiveRef.current;
+    prevIsActiveRef.current = isActive;
+    if (!noteId) return;
+    if (wasActive && !isActive) {
+      const top = scrollViewportRef.current?.scrollTop ?? 0;
+      if (top > 0) rememberNoteScrollPosition(noteId, top);
+      cancelPendingScrollRestore();
+      return;
+    }
+    if (!wasActive && isActive) {
+      scheduleRememberedScrollRestore(noteId);
+    }
+  }, [isActive, noteId, cancelPendingScrollRestore, scheduleRememberedScrollRestore]);
+
+  // Restore saved scrollTop when a previously viewed note remounts and its editor becomes ready.
+  useEffect(() => {
+    if (!noteId || !editorApi || !isActive) return;
+    if (lastRestoredNoteRef.current === noteId) return;
+    lastRestoredNoteRef.current = noteId;
+    scheduleRememberedScrollRestore(noteId);
+  }, [noteId, editorApi, isActive, scheduleRememberedScrollRestore]);
+
+  useEffect(() => {
+    lastRestoredNoteRef.current = null;
+  }, [noteId]);
+
+  // Capture-phase PDF citation interceptor:
+  // 1) Snapshots note scrollTop before focus shifts to the PDF pane.
+  // 2) For `pdfref://` links, preserves exact `pageNumber`, `highlightId`/`annotationId`, `quote`,
+  //    and `sourceWindowId` via ack-retried dispatch so page/highlight params are never dropped.
+  useEffect(() => {
+    const shell = notesShellRef.current;
+    if (!shell) return;
+    const onCaptureClick = (event: MouseEvent) => {
+      if (event.button !== 0) return;
+      const target = event.target as HTMLElement | null;
+      const anchor = target?.closest<HTMLAnchorElement>('a[href]');
+      if (!anchor) return;
+      const href = anchor.getAttribute('href');
+      if (!isPdfCitationHref(href)) return;
+
+      const currentNoteId = save.noteIdRef.current;
+      const viewport = scrollViewportRef.current;
+      if (currentNoteId && viewport) {
+        rememberNoteScrollPosition(currentNoteId, viewport.scrollTop);
+      }
+
+      const parsed = parsePdfCitationHref(href);
+      if (!parsed) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      const sourceWindowId = acrWindowId ?? resolveClosestWorkbenchWindowId(anchor);
+      dispatchPdfCitationNavigation(parsed, { sourceWindowId });
+    };
+
+    shell.addEventListener('click', onCaptureClick, true);
+    return () => shell.removeEventListener('click', onCaptureClick, true);
+  }, [acrWindowId, save.noteIdRef]);
+
   const handleViewportScroll = useCallback(() => {
     const viewport = scrollViewportRef.current;
-    if (viewport) notesShellRef.current?.toggleAttribute('data-scrolled', viewport.scrollTop > 4);
+    if (viewport) {
+      notesShellRef.current?.toggleAttribute('data-scrolled', viewport.scrollTop > 4);
+      if (isActiveRef.current && !restoringScrollRef.current && save.noteIdRef.current) {
+        rememberNoteScrollPosition(save.noteIdRef.current, viewport.scrollTop);
+      }
+    }
     handleWindowScroll();
     publishActiveHeading();
     handleMobileToolbarScroll();
-  }, [handleWindowScroll, publishActiveHeading, handleMobileToolbarScroll]);
+  }, [handleWindowScroll, publishActiveHeading, handleMobileToolbarScroll, save.noteIdRef]);
 
   useEffect(() => {
     const handleScrollToHeading = async (e: CustomEvent<{ text: string; normalizedText?: string; level: number; occurrence?: number; noteId?: string }>) => {
       if (e.detail.noteId && save.noteIdRef.current && e.detail.noteId !== save.noteIdRef.current) return;
+      explicitNavAtRef.current = Date.now();
+      cancelPendingScrollRestore();
       const viewportMetrics = captureViewportMetrics();
       emitOutlineDebugLog({ category: 'event', action: 'scrollToHeading:received', details: { heading: e.detail, noteId: save.noteIdRef.current || null, hasEditor: !!editorApi, viewportMetrics } });
       emitOutlineDebugSnapshot({
@@ -1469,7 +1604,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     };
     window.addEventListener('notes:scroll-to-heading' as any, handleScrollToHeading as any);
     return () => window.removeEventListener('notes:scroll-to-heading' as any, handleScrollToHeading as any);
-  }, [captureViewportMetrics, editorApi, save.noteIdRef]);
+  }, [cancelPendingScrollRestore, captureViewportMetrics, editorApi, save.noteIdRef]);
 
   // ── 页面级操作栏与菜单 ──
   const readingModeAction = !readOnly && (
@@ -2007,6 +2142,8 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
           hidden={suppressFloatingToc || sourceMode || focus.focusMode || isTouchEditingSurface}
           onNavigateHeading={(target) => {
             if (!editorApi?.scrollToHeading) return;
+            explicitNavAtRef.current = Date.now();
+            cancelPendingScrollRestore();
             void (editorApi as FullDocumentSearchApi).materializeFullDocument?.()
               .then(() => editorApi.scrollToHeading(target.text, target.level, undefined, undefined, target.occurrence))
               .catch(() => editorApi.scrollToHeading(target.text, target.level, undefined, undefined, target.occurrence));

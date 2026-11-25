@@ -17,8 +17,7 @@ import { CircleNotch } from '@phosphor-icons/react';
 import * as InputBarUIModule from './InputBarUI';
 import { useInputBarV2 } from './useInputBarV2';
 
-const { InputBarUI } = InputBarUIModule;
-const globalSessionDraftLru =
+const getGlobalSessionDraftLru = () =>
   'globalSessionDraftLru' in InputBarUIModule
     ? InputBarUIModule.globalSessionDraftLru
     : undefined;
@@ -55,6 +54,9 @@ import {
   normalizeCompactSessionResponse,
 } from '../../utils/compactionFeedback';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
+import { setPendingSettingsTab } from '@/utils/pendingSettingsTab';
+import { isAvailableChatModel, type ChatModelEligibilityInput } from '@/utils/chatModelEligibility';
 import {
   coerceReasoningLevel,
   type ReasoningLevel,
@@ -387,6 +389,52 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       };
     }, []);
 
+    // ★ U01：检测当前是否完全未配置可用对话模型 / API Key，用于输入栏友好引导横幅
+    const [hasNoConfiguredModel, setHasNoConfiguredModel] = useState(false);
+    useEffect(() => {
+      if (availableModels && availableModels.length > 0) {
+        setHasNoConfiguredModel(false);
+        return;
+      }
+      let cancelled = false;
+      const checkConfiguredModels = async () => {
+        try {
+          const configs = await invoke<unknown>('get_api_configurations');
+          if (cancelled || !Array.isArray(configs)) return;
+          const hasEligibleChatModel = configs.some((item) => {
+            if (!item || typeof item !== 'object') return false;
+            const cfg = item as ChatModelEligibilityInput & { isBuiltin?: boolean };
+            if (!isAvailableChatModel(cfg)) return false;
+            if (cfg.isBuiltin && cfg.enabled !== true) return false;
+            return true;
+          });
+          setHasNoConfiguredModel(!hasEligibleChatModel);
+        } catch {
+          // 无法读取配置时不误报缺失
+        }
+      };
+      void checkConfiguredModels();
+      const handleConfigChanged = () => {
+        void checkConfiguredModels();
+      };
+      window.addEventListener('api_configurations_changed', handleConfigChanged);
+      window.addEventListener('model_assignments_changed', handleConfigChanged);
+      return () => {
+        cancelled = true;
+        window.removeEventListener('api_configurations_changed', handleConfigChanged);
+        window.removeEventListener('model_assignments_changed', handleConfigChanged);
+      };
+    }, [availableModels]);
+
+    const missingApiKey =
+      hasNoConfiguredModel && (!availableModels || availableModels.length === 0);
+
+    const handleOpenApiSettings = useCallback(() => {
+      setPendingSettingsTab('apis');
+      dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
+      dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'apis' });
+    }, []);
+
     // 未固定会话的生效模型 config ID：全局默认 > 空
     const effectiveUnpinnedModelId = modelIdPinnedByUser ? modelId : (globalDefaultModelId ?? modelId);
 
@@ -457,7 +505,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       if (draftRestoredKeyRef.current === draftStorageKey) return;
       draftRestoredKeyRef.current = draftStorageKey;
       const state = store.getState();
-      const lruDraft = sessionId ? globalSessionDraftLru?.getDraft(sessionId) ?? null : null;
+      const sessionDraftLru = getGlobalSessionDraftLru();
+      const lruDraft = sessionId ? sessionDraftLru?.getDraft(sessionId) ?? null : null;
       const storageDraft = restoreComposerDraftIfSafe(
         sessionId,
         state.inputValue,
@@ -468,7 +517,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         state.setInputValue(restoredText);
       }
       if (storageDraft && sessionId && !lruDraft) {
-        globalSessionDraftLru?.saveDraft(sessionId, {
+        sessionDraftLru?.saveDraft(sessionId, {
           text: storageDraft,
           attachments: [],
           pastedPills: [],
@@ -484,7 +533,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       const effectiveInput = inputValue || liveInput;
       // 清空必须同步：empty→docked remount 发生在同一轮 commit，等 300ms 会丢竞态
       if (!effectiveInput) {
-        const lruDraft = sessionId ? globalSessionDraftLru?.getDraft(sessionId) ?? null : null;
+        const lruDraft = sessionId ? getGlobalSessionDraftLru()?.getDraft(sessionId) ?? null : null;
         if (!lruDraft?.text && !(lruDraft?.pastedPills?.length)) {
           clearComposerDraft(sessionId);
         }
@@ -1434,6 +1483,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       }
     }, [store, activeSkillIds, activateSkill, steerMessage, abortStream, sendMessage]);
 
+    const ResolvedInputBarUI = InputBarUIModule.InputBarUI;
+
     return (
       <>
         {/* 🆕 排队气泡的横向布局与 InputBarUI 内部容器保持一致：
@@ -1455,7 +1506,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
             )}
           </ThreadContentShell>
         </div>
-        <InputBarUI
+        <ResolvedInputBarUI
         // 状态
         inputValue={inputValue}
         canSend={canSend && !isCompactingContext}
@@ -1558,6 +1609,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         pdfPageRefs={pdfPageRefs}
         onRemovePdfPageRef={removePdfPageRef}
         onClearPdfPageRefs={clearPdfPageRefs}
+        // ★ U01：缺失 AI 模型 / API 密钥一键引导
+        missingApiKey={missingApiKey}
+        onOpenApiSettings={handleOpenApiSettings}
         />
       </>
     );

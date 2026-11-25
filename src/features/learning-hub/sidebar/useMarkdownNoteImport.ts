@@ -168,6 +168,8 @@ export interface ImportMarkdownNoteFromDialogContext {
   openWebMarkdownInput?: (folderId: string | null) => boolean;
 }
 
+const inFlightMarkdownDialogImports = new WeakMap<object, boolean>();
+
 /** 「导入 Markdown 为笔记…」：系统文件对话框选择 .md 后导入到 folderId */
 export async function importMarkdownNoteFromDialog(
   {
@@ -184,6 +186,8 @@ export async function importMarkdownNoteFromDialog(
   folderId: string | null,
 ): Promise<void> {
   if (!ensureCreatableView()) return;
+  if (inFlightMarkdownDialogImports.get(isMountedRef)) return;
+  inFlightMarkdownDialogImports.set(isMountedRef, true);
 
   try {
     let result: Awaited<ReturnType<MarkdownNoteImport['importMarkdownPathNotes']>>;
@@ -219,5 +223,7 @@ export async function importMarkdownNoteFromDialog(
     notifyMarkdownImportResult(importedNodes.length, failedCount, failedFiles, firstError);
   } catch (error) {
     showGlobalNotification('error', error instanceof Error ? error.message : t('finder.markdownImport.failed'));
+  } finally {
+    inFlightMarkdownDialogImports.delete(isMountedRef);
   }
 }

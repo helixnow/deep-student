@@ -515,6 +515,8 @@ html.dark .ft-inline-code {
 .ft-code-container {
   position: relative;
   margin: 0.5rem 0;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .ft-code-header {
@@ -584,7 +586,9 @@ html.dark .ft-copy-icon-default {
 .ft-code-content {
   border: 1px solid #e4e4e7;
   border-radius: 0 0 0.75rem 0.75rem;
-  overflow: visible;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 html.dark .ft-code-content {

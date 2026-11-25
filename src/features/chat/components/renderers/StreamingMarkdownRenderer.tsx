@@ -2,6 +2,7 @@ import React, { useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Brain } from '@phosphor-icons/react';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { handleMarkdownCopyEvent } from './markdownCopyFidelity';
 import { BlockedMarkdownRenderer } from './BlockedMarkdownRenderer';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin, parseChainOfThought } from './rendererUtils';
 import { useSuspendedStreamContent } from './StreamPreferencesContext';
@@ -343,6 +344,7 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
       data-has-visible-content={hasVisibleContent ? 'true' : 'false'}
       data-stream-preset="flowtoken-direct"
       data-stream-mode={effectiveMode}
+      onCopy={handleMarkdownCopyEvent}
     >
       {parsedContent ? (
         <>

@@ -29,5 +29,5 @@ export function NoteRelationTitle({ relation }: { relation: NoteRelation }) {
     void resolve().catch(() => {});
     return () => { active = false; };
   }, [relation.resource_id, relation.locator.type, relation.locator.type === 'whole' ? '' : relation.locator.value]);
-  return <span title={relation.resource_id}>{title || relation.resource_id}</span>;
+  return <span title={title || relation.resource_id}>{title || relation.resource_id}</span>;
 }

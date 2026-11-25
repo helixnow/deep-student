@@ -31,6 +31,7 @@ import type { ContentCodeBlockContribution, MarkdownCodeBlockContribution, Markd
 import type { SlotEntry } from '@/ui-kernel/slots';
 import { CommunityContentBoundary } from '@/ui-plugins/official/content/CommunityContentBoundary';
 import { officialMarkdownEntries } from '@/ui-plugins/official/content/entries';
+import { extractTextFromReactNode, handleMarkdownCopyEvent } from './markdownCopyFidelity';
 
 // 🔧 P18 优化：PDF 页面图片缓存（避免重复请求）
 const pdfPageImageCache = new Map<string, string>();
@@ -722,7 +723,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
       const childArray = React.Children.toArray(children as any);
       const codeElement: any = (childArray as any[]).find((c: any) => c?.type === 'code') ?? childArray[0];
       const className = (codeElement as any)?.props?.className as string | undefined;
-      const codeContent = String((codeElement as any)?.props?.children ?? '').replace(/\n$/, '');
+      const codeContent = extractTextFromReactNode((codeElement as any)?.props?.children).replace(/\n$/, '');
 
       const props: MarkdownCodeBlockProps = { placement: 'pre', codeContent, className, renderMath };
       const contribution = codeBlocks.find((entry): entry is SlotEntry<MarkdownCodeBlockContribution> =>
@@ -746,7 +747,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
     // 自定义 code：区分内联与块级，但块级不再额外包裹一层 pre
     code: function MarkdownCode({ inline, className, children, node: _node, ...props }: any) {
       const { codeBlocks } = React.useContext(MarkdownRendererContext)!;
-      const codeContent = String(children).replace(/\n$/, '');
+      const codeContent = extractTextFromReactNode(children).replace(/\n$/, '');
 
       const rendererProps: MarkdownCodeBlockProps = { placement: 'code', codeContent, className, inline, renderMath };
       const contribution = codeBlocks.find((entry): entry is SlotEntry<MarkdownCodeBlockContribution> =>
@@ -994,7 +995,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
 
   return (
     <MarkdownRendererContext.Provider value={runtime}>
-      <div ref={containerRef} className={`markdown-content ${className}`.trim()} onClick={handleCitationClick}>
+      <div
+        ref={containerRef}
+        className={`markdown-content ${className}`.trim()}
+        onClick={handleCitationClick}
+        onCopy={handleMarkdownCopyEvent}
+      >
         <ReactMarkdown
           remarkPlugins={remarkPlugins}
           rehypePlugins={rehypePlugins}

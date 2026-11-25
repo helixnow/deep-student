@@ -25,26 +25,43 @@ interface MonthlyTrendItem {
   count?: unknown;
 }
 
+const monthlyTrendCache = new WeakMap<
+  DashboardStatistics,
+  Array<{ month: string; count: number }>
+>();
+const topTagsCache = new WeakMap<
+  DashboardStatistics,
+  Array<{ name: string; value: number }>
+>();
+
 function effectiveStatistics(statistics: DashboardStatistics): DashboardStatistics {
   return normalizeDashboardStatistics(statistics, getFallbackDashboardStatistics()) ?? statistics;
 }
 
 function monthlyTrendOf(statistics: DashboardStatistics) {
   const resolved = effectiveStatistics(statistics);
-  return Array.isArray(resolved.monthly_trend)
+  const cached = monthlyTrendCache.get(resolved);
+  if (cached) return cached;
+  const result = Array.isArray(resolved.monthly_trend)
     ? resolved.monthly_trend.map((item: MonthlyTrendItem | null | undefined) => ({
         month: typeof item?.month === 'string' ? item.month : '—',
         count: Number(item?.count ?? 0) || 0,
       }))
     : [];
+  monthlyTrendCache.set(resolved, result);
+  return result;
 }
 
 function topTagsOf(statistics: DashboardStatistics) {
   const resolved = effectiveStatistics(statistics);
-  return Object.entries(resolved.basic_stats?.tag_stats || {})
+  const cached = topTagsCache.get(resolved);
+  if (cached) return cached;
+  const result = Object.entries(resolved.basic_stats?.tag_stats || {})
     .map(([name, value]) => ({ name, value: Number(value) || 0 }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 8);
+  topTagsCache.set(resolved, result);
+  return result;
 }
 
 const DataTrendChart: React.FC<DashboardChartProps> = ({ statistics }) => {

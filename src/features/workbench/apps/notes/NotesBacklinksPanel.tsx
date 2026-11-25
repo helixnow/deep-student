@@ -513,6 +513,7 @@ const LinkedNoteRow: React.FC<{
         disabled={disabled}
         onClick={() => onOpen(resource)}
         aria-label={openLabel(resource.name)}
+        title={showsAlias ? `${displayTitle} (${resource.name})` : displayTitle}
       >
         <FileText size={15} aria-hidden="true" />
         <span className="notes-backlinks-panel-link-copy">
@@ -560,6 +561,7 @@ const UnlinkedMentionRowView: React.FC<{
           disabled={disabled}
           onClick={() => onOpen(row)}
           aria-label={openLabel(row.node.name)}
+          title={row.node.name}
         >
           <FileText size={15} aria-hidden="true" />
           <span className="notes-backlinks-panel-link-copy">
@@ -616,7 +618,7 @@ const UnresolvedLinkRow: React.FC<{
           </span>
         </button>
       ) : (
-        <div className="notes-backlinks-panel-unresolved-static">
+        <div className="notes-backlinks-panel-unresolved-static" title={item.link.raw}>
           <LinkSimple size={15} aria-hidden="true" />
           <code>{item.link.raw}</code>
         </div>
@@ -1361,7 +1363,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
         ) : (
           <div className="notes-backlinks-panel-heading">
             <h2 id={titleId}>{panelTitle}</h2>
-            {activeResource?.type === 'note' && <span>{activeResource.name}</span>}
+            {activeResource?.type === 'note' && <span title={activeResource.name}>{activeResource.name}</span>}
           </div>
         )}
         <div className="notes-backlinks-panel-actions">

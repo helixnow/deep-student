@@ -29,7 +29,7 @@ import type { FilesService } from '../../platform/files/api.ts';
 
 export interface VfsIndexPluginConfig {
   /** Resident index consumer (`start_vfs_index_worker`); tests may disable it or inject the sleep. */
-  indexWorker?: { enabled?: boolean; sleep?: IndexWorkerSleep };
+  indexWorker?: { enabled?: boolean; sleep?: IndexWorkerSleep; initialDelayMs?: number };
 }
 
 /** F2 `startupGate` consumer surface. */
@@ -37,6 +37,8 @@ interface StartupGateReader {
   waitStartupReady(timeout: number): Promise<boolean>;
 }
 const STARTUP_READY_TIMEOUT_MS = 120_000;
+/** Grace window after HostReady before the first background indexing tick runs, preventing event-loop/SQLite contention during WebUI hydration. */
+const STARTUP_INDEX_WORKER_DELAY_MS = 3_000;
 
 /**
  * builtin_retrieval_executor.rs:299-321 drops the search future when the token fires. The
@@ -209,6 +211,8 @@ export default definePlugin<VfsIndexPluginConfig>({
       multimodalConfigured: () => indexing.multimodal.isConfigured(),
       processMultimodalBatch: (batchSize) => indexing.multimodal.processPendingBatch(batchSize),
       maybeOptimizeAll: () => indexLance.maybeOptimizeAll(),
+      initialDelayMs: config?.indexWorker?.initialDelayMs
+        ?? (config?.indexWorker?.sleep === undefined ? STARTUP_INDEX_WORKER_DELAY_MS : 0),
       logger,
       ...(config?.indexWorker?.sleep === undefined ? {} : { sleep: config.indexWorker.sleep }),
     });
