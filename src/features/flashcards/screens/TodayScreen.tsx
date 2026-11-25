@@ -12,8 +12,10 @@ import {
   CheckCircle,
   Fire,
   Image as ImageIcon,
+  ImageSquare,
   Lightning,
   Play,
+  Plus,
   SpeakerHigh,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
@@ -31,6 +33,7 @@ import { subscribeFlashcardsDueRefresh } from '../events';
 import { useReviewActivity, computeCurrentStreak } from '../hooks/useReviewActivity';
 import { useCountUp } from '../hooks/useCountUp';
 import { ProgressRing } from '../components/ProgressRing';
+import { openImageOcclusionBuilder } from '../occlusion/ImageOcclusionBuilderModal';
 import { useFlashcardsMobileChrome } from '../useFlashcardsMobileChrome';
 
 function readCount(row: Record<string, unknown>, camelKey: string, snakeKey: string): number | null {
@@ -84,7 +87,12 @@ const CountValue: React.FC<{ value: number | null }> = ({ value }) => {
   return <>{value == null ? '—' : display}</>;
 };
 
-export const TodayScreen: React.FC = () => {
+export interface TodayScreenProps {
+  /** 从移动顶栏点击「+ 新建卡片」时的回调；缺省切到卡片库 */
+  onQuickNewCard?: () => void;
+}
+
+export const TodayScreen: React.FC<TodayScreenProps> = ({ onQuickNewCard }) => {
   const { t, i18n } = useTranslation('flashcards');
   const { isSmallScreen } = useBreakpoint();
   const dueCards = useFsrsReviewStore((s) => s.dueCards);
@@ -233,14 +241,45 @@ export const TodayScreen: React.FC = () => {
   const libraryEmpty = stats != null && stats.total === 0 && pendingEnqueue === 0;
   const showDoneState = doneToday > 0 && !libraryEmpty;
 
+  const handleMobileNewCard = useCallback(() => {
+    if (onQuickNewCard) {
+      onQuickNewCard();
+      return;
+    }
+    setScreen('library');
+  }, [onQuickNewCard, setScreen]);
+
+  const handleMobileNewOcclusion = useCallback(() => {
+    openImageOcclusionBuilder();
+  }, []);
+
   const mobileChrome = useFlashcardsMobileChrome({
-    title: t('sidebar:navigation.flashcards', '闪卡'),
+    title: t('sidebar:navigation.flashcards', { defaultValue: t('today.title') }),
     rightActions: <>
-      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('today.startReview')} disabled={loading || dueCards.length === 0} onClick={() => { setLibraryReturnOrigin('today'); startDueSession(); }}>
-        <Play size={20} />
+      <DsButton
+        variant="ghost"
+        size="icon"
+        className="min-h-[var(--touch-target-size)] min-w-[var(--touch-target-size)]"
+        data-testid="fc-today-new-card-mobile"
+        aria-label={t('library.create.new')}
+        title={t('library.create.new')}
+        onClick={handleMobileNewCard}
+      >
+        <Plus size={20} />
+      </DsButton>
+      <DsButton
+        variant="ghost"
+        size="icon"
+        className="min-h-[var(--touch-target-size)] min-w-[var(--touch-target-size)]"
+        data-testid="fc-today-new-occlusion-mobile"
+        aria-label={t('occlusion.newCardButton')}
+        title={t('occlusion.newCardButton')}
+        onClick={handleMobileNewOcclusion}
+      >
+        <ImageSquare size={20} />
       </DsButton>
     </>,
-  }, [t, loading, dueCards.length, startDueSession]);
+  }, [t, handleMobileNewCard, handleMobileNewOcclusion]);
 
   return (
     <div className="wb-fc-screen wb-fc-today">

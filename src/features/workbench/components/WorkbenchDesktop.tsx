@@ -108,6 +108,35 @@ import { SafeModeExitDialog, usePluginUiHostStatus } from '@/features/plugin-man
 import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { resetPersistedWorkbenchSnapshots, resetUiLayoutCache } from '@/utils/uiLayoutReset';
 import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
+import { useSetMobileHeaderActiveView } from '@/components/layout/MobileHeaderContext';
+
+const WORKBENCH_MOBILE_HEADER_VIEW_BY_TYPE_ID: Readonly<Record<string, string>> = {
+  chat: 'chat-v2',
+  flashcards: 'flashcards',
+  files: 'learning-hub',
+  notes: 'learning-hub',
+  settings: 'settings',
+  todo: 'todo',
+  skills: 'skills-management',
+  templates: 'template-management',
+  taskDashboard: 'task-dashboard',
+  sandbox: 'sandbox-workbench',
+  media: 'media',
+  textbook: 'learning-hub',
+  exam: 'learning-hub',
+  translation: 'learning-hub',
+  essay: 'learning-hub',
+  image: 'learning-hub',
+  file: 'learning-hub',
+  mindmap: 'learning-hub',
+  'file-preview': 'learning-hub',
+};
+
+/** 将工作台焦点窗口 typeId 映射到 MobileHeaderContext 的视图 ID（供 360px 窄视口顶栏同步） */
+export function workbenchTypeIdToMobileHeaderViewId(typeId: string | null | undefined): string | null {
+  if (!typeId) return null;
+  return WORKBENCH_MOBILE_HEADER_VIEW_BY_TYPE_ID[typeId] ?? null;
+}
 
 const SESSION_ACTIVE_STORAGE_KEY = 'ds.workbench.activeSession';
 
@@ -650,6 +679,23 @@ export const WorkbenchDesktop: React.FC = () => {
     void windowsFingerprint;
     return getSortedWindows(useWindowStore.getState().windows);
   }, [windowsFingerprint]);
+
+  // 窄视口工作台模式：窗口切换不经过经典壳 currentView，需将焦点窗口 typeId 同步给 MobileHeaderContext，
+  // 防止闪卡等应用在 360px 下读到残留的 chat-v2 顶栏标题与按钮。
+  const focusedWindowTypeId = useWindowStore((s) => {
+    for (let i = s.focusStack.length - 1; i >= 0; i -= 1) {
+      const win = s.windows[s.focusStack[i]];
+      if (win && !win.minimized) return win.typeId;
+    }
+    return null;
+  });
+  const setMobileHeaderActiveView = useSetMobileHeaderActiveView();
+  useLayoutEffect(() => {
+    const mappedView = workbenchTypeIdToMobileHeaderViewId(focusedWindowTypeId);
+    if (mappedView) {
+      setMobileHeaderActiveView(mappedView);
+    }
+  }, [focusedWindowTypeId, setMobileHeaderActiveView]);
 
   useEffect(() => {
     if (!hydrated || typeof sessionStorage === 'undefined') return;

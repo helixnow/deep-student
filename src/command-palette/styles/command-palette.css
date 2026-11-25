@@ -227,6 +227,80 @@
   background-color: hsl(var(--primary) / 0.15);
 }
 
+/* ==================== 搜索范围芯片与子串高亮 ==================== */
+
+.command-palette-scopes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-bottom: 1px solid hsl(var(--border) / 70%);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.command-palette-scopes::-webkit-scrollbar {
+  display: none;
+}
+
+.command-palette-scope-chip {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  background-color: transparent;
+  border: 1px solid hsl(var(--border) / 75%);
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.command-palette-scope-chip:hover {
+  color: hsl(var(--foreground));
+  background-color: hsl(var(--muted) / 70%);
+}
+
+.command-palette-scope-chip:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.command-palette-scope-chip-active {
+  color: hsl(var(--primary));
+  background-color: hsl(var(--primary) / 12%);
+  border-color: hsl(var(--primary) / 35%);
+}
+
+.command-palette-scope-chip-active:hover {
+  color: hsl(var(--primary));
+  background-color: hsl(var(--primary) / 18%);
+}
+
+.command-palette-scope-prefix {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.command-palette-highlight {
+  background-color: hsl(var(--primary) / 18%);
+  color: inherit;
+  font-weight: 600;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.dark .command-palette-highlight {
+  background-color: hsl(var(--primary) / 32%);
+  color: hsl(var(--foreground));
+}
+
 /* ==================== 命令列表 ==================== */
 
 .command-palette-scroll-area {
@@ -657,12 +731,25 @@
   .command-palette-back-btn:active {
     background-color: hsl(var(--muted));
   }
+
+  .command-palette-scopes {
+    padding: 6px 12px;
+  }
+
+  .command-palette-scope-chip {
+    min-height: 36px;
+    padding: 0 11px;
+  }
 }
 
 /* ==================== 触屏适配 ==================== */
 
 /* 触屏主指针设备:hover 不可达、触控目标需放大 */
 @media (pointer: coarse) {
+  .command-palette-scope-chip {
+    min-height: 44px;
+    padding: 0 12px;
+  }
   /* 收藏按钮默认依赖 hover 显现,触屏上永远不可见 → 常显 */
   .command-palette-item-favorite {
     opacity: 1;

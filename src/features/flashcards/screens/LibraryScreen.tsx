@@ -12,9 +12,11 @@ import {
   CaretDown,
   CaretLeft,
   CaretRight,
+  CheckCircle,
   DotsThree,
   DownloadSimple,
   FloppyDisk,
+  Funnel,
   ImageSquare,
   MagnifyingGlass,
   Pause,
@@ -39,7 +41,9 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { listAnkiLibraryCards } from '@/utils/chatApi';
 import type { AnkiLibraryCard, AnkiLibraryCardPatch } from '@/types';
+import { summarizeCardMedia } from '../cardMathPreview';
 import { hasValidCloze, insertClozeDeletion, nextClozeIndex } from '../cloze';
 import { FSRS_LIBRARY_REFRESH_EVENT } from '../events';
 import {
@@ -92,6 +96,22 @@ interface PendingCsvImport {
   cardCount: number;
   skippedRows: number;
   deckBuckets: Array<{ csvDeck: string; count: number }>;
+}
+
+interface ApkgImportSummary {
+  deckName: string;
+  deckFilterPath: string | null;
+  importedCards: number;
+  reviewEnqueued: number;
+  reviewWithHistory: number;
+  mediaCount: number;
+  sampledCards: AnkiLibraryCard[];
+}
+
+export interface LibraryScreenProps {
+  /** 从今日屏移动顶栏「+ 新建卡片」跳转过来时自动打开新建表单 */
+  autoOpenComposer?: boolean;
+  onAutoOpenComposerConsumed?: () => void;
 }
 
 interface LibrarySearchBarProps {
@@ -194,7 +214,31 @@ const DECK_FILTER_ALL = '::all';
 
 const MemoizedLibraryCardRow = React.memo(LibraryCardRow);
 
-export const LibraryScreen: React.FC = () => {
+function stripApkgExtension(fileName?: string): string {
+  if (!fileName) return '';
+  return fileName.replace(/\.apkg$/i, '').trim();
+}
+
+function extractCardDeckPath(card: AnkiLibraryCard): string {
+  const fromExtra = card.extra_fields?._deck?.trim();
+  if (fromExtra) return fromExtra;
+  const fromFields = card.fields?._deck?.trim();
+  return fromFields || '';
+}
+
+function countBatchMedia(cards: readonly AnkiLibraryCard[]): number {
+  let total = 0;
+  for (const card of cards) {
+    const summary = summarizeCardMedia(card);
+    total += summary.imageCount + summary.audioCount;
+  }
+  return total;
+}
+
+export const LibraryScreen: React.FC<LibraryScreenProps> = ({
+  autoOpenComposer = false,
+  onAutoOpenComposerConsumed,
+}) => {
   // Hydrate persisted library pagination/filter/scroll snapshot synchronously before
   // selecting store state so returning to the library starts immediately on the saved page.
   const initialHydratedViewRef = useRef<FlashcardsLibraryViewSnapshot | null | undefined>(undefined);
@@ -203,7 +247,7 @@ export const LibraryScreen: React.FC = () => {
   }
   const initialHydratedView = initialHydratedViewRef.current;
 
-  const { t } = useTranslation('flashcards');
+  const { t } = useTranslation(['flashcards', 'common']);
   const { isSmallScreen } = useBreakpoint();
   const translate = t as Translate;
   const startBatchSession = useFsrsReviewStore((s) => s.startBatchSession);
@@ -264,6 +308,8 @@ export const LibraryScreen: React.FC = () => {
   const [importPanelMode, setImportPanelMode] = useState<'apkg' | 'csv' | null>(null);
   const [csvTargetDeck, setCsvTargetDeck] = useState('');
   const [pendingCsvImport, setPendingCsvImport] = useState<PendingCsvImport | null>(null);
+  const [apkgImportSummary, setApkgImportSummary] = useState<ApkgImportSummary | null>(null);
+  const [studyingImportedDeck, setStudyingImportedDeck] = useState(false);
   const [importDragActive, setImportDragActive] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState<boolean>(
     () => initialHydratedView?.filtersOpen ?? false,
@@ -783,6 +829,12 @@ export const LibraryScreen: React.FC = () => {
     setComposerOpen(true);
   }, [deckFilter]);
 
+  useEffect(() => {
+    if (!autoOpenComposer) return;
+    openComposerWithDefaultDeck();
+    onAutoOpenComposerConsumed?.();
+  }, [autoOpenComposer, openComposerWithDefaultDeck, onAutoOpenComposerConsumed]);
+
   const handleInsertDraftCloze = useCallback((el: HTMLTextAreaElement | HTMLInputElement | null) => {
     const { nextValue, nextSelectionStart, nextSelectionEnd } = insertClozeDeletion(
       draftFront,
@@ -826,7 +878,13 @@ export const LibraryScreen: React.FC = () => {
 
   const runImportApkg = useCallback((file?: File) => {
     if (importing) return;
-    void importApkg(file ? { file } : undefined).then((outcome) => {
+    const preStore = useFlashcardsLibraryStore.getState();
+    const prevDeckCounts = new Map<string, number>(
+      (preStore.decks ?? []).map((deck) => [deck.name, deck.all]),
+    );
+    const prevCardIds = new Set(preStore.items.map((item) => item.id));
+
+    void importApkg(file ? { file } : undefined).then(async (outcome) => {
       if (outcome.status === 'imported') {
         const { importedCards: count, reviewEnqueued: queued, reviewWithHistory: history } = outcome;
         const message =
@@ -837,10 +895,132 @@ export const LibraryScreen: React.FC = () => {
               : translate('library.import.successQueued', { count, queued });
         showGlobalNotification('success', message);
         setImportPanelMode(null);
+
+        const postStore = useFlashcardsLibraryStore.getState();
+        const deckDeltas = (postStore.decks ?? [])
+          .map((deck) => ({ name: deck.name, delta: deck.all - (prevDeckCounts.get(deck.name) ?? 0) }))
+          .filter((entry) => entry.delta > 0)
+          .sort((a, b) => {
+            const aNamed = a.name.length > 0 ? 1 : 0;
+            const bNamed = b.name.length > 0 ? 1 : 0;
+            if (aNamed !== bNamed) return bNamed - aNamed;
+            return b.delta - a.delta;
+          });
+
+        const newItems = postStore.items.filter((item) => !prevCardIds.has(item.id));
+        const inferredItemDeck = newItems.map(extractCardDeckPath).find((name) => name.length > 0) ?? '';
+        const topDeck = deckDeltas[0];
+        const deckFilterPath: string | null = topDeck
+          ? topDeck.name
+          : inferredItemDeck
+            ? inferredItemDeck
+            : null;
+        const fallbackDeckName = stripApkgExtension(file?.name)
+          || translate('common:flashcards_import_banner.default_deck', { defaultValue: '新导入的牌组' });
+        const deckName = (deckFilterPath && deckFilterPath.length > 0)
+          ? deckFilterPath
+          : deckFilterPath === ''
+            ? translate('library.deck.ungrouped', { defaultValue: '未分组' })
+            : fallbackDeckName;
+
+        let sampledCards = newItems;
+        if (deckFilterPath !== null && sampledCards.length < count) {
+          try {
+            const fetched = await listAnkiLibraryCards({
+              deck: deckFilterPath,
+              page: 1,
+              page_size: Math.min(Math.max(count, 20), 200),
+              sort: 'created',
+              sort_desc: true,
+            });
+            if (Array.isArray(fetched?.items) && fetched.items.length > 0) {
+              sampledCards = fetched.items;
+            }
+          } catch {
+            // Best-effort media & batch sample fetch; keep summary responsive even if lookup fails.
+          }
+        }
+
+        setApkgImportSummary({
+          deckName,
+          deckFilterPath,
+          importedCards: count,
+          reviewEnqueued: queued,
+          reviewWithHistory: history,
+          mediaCount: countBatchMedia(sampledCards),
+          sampledCards,
+        });
       }
       // canceled 静默；failed 已写入 actionError 由页内错误条呈现
     });
   }, [importing, importApkg, translate]);
+
+  const handleStudyImportedDeck = useCallback(async () => {
+    if (!apkgImportSummary || studyingImportedDeck) return;
+    setStudyingImportedDeck(true);
+    try {
+      let playable: AnkiLibraryCard[] = [];
+      try {
+        const fetched = await listAnkiLibraryCards({
+          ...(apkgImportSummary.deckFilterPath !== null ? { deck: apkgImportSummary.deckFilterPath } : {}),
+          page: 1,
+          page_size: Math.min(Math.max(apkgImportSummary.importedCards, 50), 200),
+          sort: 'created',
+          sort_desc: true,
+        });
+        playable = (fetched?.items ?? []).filter((card) => !card.suspended);
+      } catch {
+        // Fallback to sampled cards below.
+      }
+      if (playable.length === 0) {
+        playable = apkgImportSummary.sampledCards.filter((card) => !card.suspended);
+      }
+      if (playable.length === 0) {
+        showGlobalNotification(
+          'info',
+          translate('common:flashcards_import_banner.study_empty', {
+            defaultValue: '该牌组暂时没有可复习的卡片',
+          }),
+        );
+        return;
+      }
+      saveLibraryViewState({
+        scrollTop: scrollViewportRef.current?.scrollTop ?? savedScrollTopRef.current,
+      });
+      setLibraryReturnOrigin('library');
+      const started = await startBatchSession(
+        playable.map((card) => card.id),
+        playable.map(toReviewContent),
+      );
+      if (started) {
+        setApkgImportSummary(null);
+      }
+    } catch {
+      showGlobalNotification(
+        'error',
+        translate('common:flashcards_import_banner.study_failed', {
+          defaultValue: '无法启动该牌组的复习，请重试',
+        }),
+      );
+    } finally {
+      setStudyingImportedDeck(false);
+    }
+  }, [apkgImportSummary, studyingImportedDeck, startBatchSession, translate]);
+
+  const handleFilterImportedDeck = useCallback(() => {
+    if (!apkgImportSummary || apkgImportSummary.deckFilterPath === null) return;
+    resetScrollPosition();
+    const libStore = useFlashcardsLibraryStore.getState();
+    useFlashcardsLibraryStore.setState({
+      statusFilter: 'all',
+      searchInput: '',
+      query: '',
+      deckFilter: apkgImportSummary.deckFilterPath,
+      page: 1,
+      actionError: null,
+    });
+    void libStore.load('', 1);
+  }, [apkgImportSummary, resetScrollPosition]);
 
   const csvEffectiveFallbackDeck = useMemo(
     () => csvTargetDeck.trim() || (deckFilter && deckFilter !== DECK_FILTER_ALL ? deckFilter : ''),
@@ -1053,7 +1233,7 @@ export const LibraryScreen: React.FC = () => {
         <FloppyDisk size={20} />
       </DsButton>
     ) : <>
-      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('library.create.new')} onClick={openComposerWithDefaultDeck}>
+      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" data-testid="fc-lib-new-card-mobile" aria-label={t('library.create.new')} onClick={openComposerWithDefaultDeck}>
         <Plus size={20} />
       </DsButton>
       <AppMenu>
@@ -1069,7 +1249,7 @@ export const LibraryScreen: React.FC = () => {
         </AppMenuContent>
       </AppMenu>
     </>,
-  }, [t, composerOpen, loading, total, closeComposer, backToToday, draftValid, creating, handleSubmitDraft, handleOpenOcclusionBuilder, importing, handleImportApkg, handleImportCsv, exporting, handleExportApkg, exportLabel]);
+  }, [t, composerOpen, loading, totalLabel, closeComposer, backToToday, draftValid, creating, handleSubmitDraft, openComposerWithDefaultDeck, handleOpenOcclusionBuilder, importing, handleImportApkg, handleImportCsv, exporting, handleExportApkg, handleExportCsv, exportLabel, exportCsvLabel]);
 
   // A phone composer is a subpage of the library: keep its draft/list state here,
   // while the host owns the title, back and save action.
@@ -1531,6 +1711,113 @@ export const LibraryScreen: React.FC = () => {
           </DsButton>
         )}
       </div>
+
+      {apkgImportSummary ? (
+        <section
+          role="status"
+          aria-label={translate('common:flashcards_import_banner.region_label', {
+            defaultValue: 'Anki 牌组导入结果摘要',
+          })}
+          data-testid="fc-lib-apkg-import-summary"
+          className="flex flex-col gap-3 rounded-xl border border-emerald-500/35 bg-emerald-500/10 p-3.5 text-sm shadow-sm sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex min-w-0 items-start gap-2.5">
+            <CheckCircle
+              size={20}
+              weight="duotone"
+              aria-hidden="true"
+              className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400"
+            />
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="font-semibold text-foreground">
+                  {translate('common:flashcards_import_banner.title', { defaultValue: '牌组导入完成' })}
+                </span>
+                <span
+                  data-testid="fc-lib-apkg-summary-deck"
+                  className="max-w-full truncate rounded-md border border-border/60 bg-background/80 px-2 py-0.5 text-xs font-medium text-foreground"
+                >
+                  {apkgImportSummary.deckName}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs tabular-nums text-muted-foreground">
+                <span data-testid="fc-lib-apkg-summary-cards">
+                  {translate('common:flashcards_import_banner.cards_count', {
+                    count: apkgImportSummary.importedCards,
+                    defaultValue: '{{count}} 张卡片',
+                  })}
+                </span>
+                {apkgImportSummary.reviewEnqueued > 0 ? (
+                  <span>
+                    {translate('common:flashcards_import_banner.queued_count', {
+                      count: apkgImportSummary.reviewEnqueued,
+                      defaultValue: '{{count}} 张已加入复习',
+                    })}
+                  </span>
+                ) : null}
+                {apkgImportSummary.mediaCount > 0 ? (
+                  <span data-testid="fc-lib-apkg-summary-media">
+                    {translate('common:flashcards_import_banner.media_count', {
+                      count: apkgImportSummary.mediaCount,
+                      defaultValue: '{{count}} 个媒体文件',
+                    })}
+                  </span>
+                ) : null}
+                {apkgImportSummary.reviewWithHistory > 0 ? (
+                  <span>
+                    {translate('common:flashcards_import_banner.history_count', {
+                      count: apkgImportSummary.reviewWithHistory,
+                      defaultValue: '{{count}} 张保留原复习进度',
+                    })}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <DsButton
+              type="button"
+              variant="primary"
+              size="sm"
+              disabled={studyingImportedDeck}
+              data-testid="fc-lib-apkg-summary-study"
+              onClick={() => void handleStudyImportedDeck()}
+              className="gap-1.5 text-xs"
+            >
+              <Play size={14} weight="fill" aria-hidden="true" />
+              {studyingImportedDeck
+                ? translate('common:flashcards_import_banner.starting_study', { defaultValue: '正在进入复习…' })
+                : translate('common:flashcards_import_banner.start_studying', { defaultValue: '立即开始学习' })}
+            </DsButton>
+            {apkgImportSummary.deckFilterPath !== null ? (
+              <DsButton
+                type="button"
+                variant="default"
+                size="sm"
+                data-testid="fc-lib-apkg-summary-filter"
+                onClick={handleFilterImportedDeck}
+                className="gap-1.5 text-xs"
+              >
+                <Funnel size={14} aria-hidden="true" />
+                {translate('common:flashcards_import_banner.filter_deck', {
+                  defaultValue: '在卡片库中筛选该牌组',
+                })}
+              </DsButton>
+            ) : null}
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="icon"
+              data-testid="fc-lib-apkg-summary-dismiss"
+              aria-label={translate('common:close', { defaultValue: '关闭' })}
+              title={translate('common:close', { defaultValue: '关闭' })}
+              onClick={() => setApkgImportSummary(null)}
+            >
+              <X size={16} aria-hidden="true" />
+            </DsButton>
+          </div>
+        </section>
+      ) : null}
 
       {importPanelMode ? (
         <div
