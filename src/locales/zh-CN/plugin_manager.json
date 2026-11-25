@@ -720,6 +720,10 @@
       "disabled": "当前暂不可向 AI 插件工坊提交需求。"
     },
     "label": "插件工坊",
+    "sessionTitle": {
+      "create": "插件工坊",
+      "modify": "修改插件"
+    },
     "quickBarAriaLabel": "插件工坊快捷栏",
     "creationBadge": "插件工坊作品",
     "phase": {

@@ -30,19 +30,88 @@ const RECIPE_PURPOSE: Record<string, string> = {
   'reference-app': 'an app view with a list, search and built-in data (DsSearchInput, DsCard, DsListItem, DsBadge; formulas with MathText)',
 };
 
+const CJK_CHAR_RE = /[\u4e00-\u9fff]/;
+
+export type WorkshopGenerationLocale = 'en-US' | 'zh-CN';
+
+function normalizeWorkshopLocale(raw: unknown): WorkshopGenerationLocale | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('zh')) return 'zh-CN';
+  if (trimmed.startsWith('en')) return 'en-US';
+  return null;
+}
+
+function readParentSessionLocale(chat: ChatSessionService, parentSessionId: string): WorkshopGenerationLocale | null {
+  if (typeof chat.getSession !== 'function' || !parentSessionId) return null;
+  try {
+    const parent = chat.getSession(parentSessionId);
+    if (!parent) return null;
+    const meta = asObject(parent.metadata);
+    const workshopMeta = asObject(meta?.dstuWorkshop);
+    const explicit = normalizeWorkshopLocale(meta?.locale ?? meta?.language ?? workshopMeta?.locale ?? workshopMeta?.language);
+    if (explicit) return explicit;
+    if (typeof parent.title === 'string' && parent.title.trim()) {
+      return CJK_CHAR_RE.test(parent.title) ? 'zh-CN' : 'en-US';
+    }
+  } catch {
+    // Ignore parent lookup errors on minimal test doubles or deleted parent sessions.
+  }
+  return null;
+}
+
+export function resolveWorkshopGenerationLocale(
+  card: Pick<WorkshopCard, 'sessionId' | 'title' | 'description' | 'changes'>,
+  chat: ChatSessionService,
+  explicitLocale?: string | null,
+): WorkshopGenerationLocale {
+  const fromExplicit = normalizeWorkshopLocale(explicitLocale);
+  if (fromExplicit) return fromExplicit;
+  const fromParent = readParentSessionLocale(chat, card.sessionId);
+  if (fromParent) return fromParent;
+  if (
+    CJK_CHAR_RE.test(card.title)
+    || CJK_CHAR_RE.test(card.description)
+    || card.changes.some(change => CJK_CHAR_RE.test(change))
+  ) {
+    return 'zh-CN';
+  }
+  return 'en-US';
+}
+
+export function formatWorkshopSubsessionTitle(
+  kind: 'generate' | 'verify',
+  cardTitle: string,
+  locale: WorkshopGenerationLocale,
+): string {
+  if (locale === 'zh-CN') {
+    return kind === 'generate' ? `插件工坊：${cardTitle}` : `插件验收：${cardTitle}`;
+  }
+  return kind === 'generate' ? `Plugin Workshop: ${cardTitle}` : `Plugin Verification: ${cardTitle}`;
+}
+
 export class PipelineWorkshopGeneration implements WorkshopGeneration {
   readonly chat: ChatSessionService; readonly pipeline: ChatPipelineService; readonly tools: WorkshopToolExecutor;
   readonly events: WorkshopGenerationEvents | null;
-  constructor(chat: ChatSessionService, pipeline: ChatPipelineService, tools: WorkshopToolExecutor, events: WorkshopGenerationEvents | null = null) {
-    this.chat = chat; this.pipeline = pipeline; this.tools = tools; this.events = events;
+  readonly resolveLocale: (() => string | null | undefined) | null;
+  constructor(
+    chat: ChatSessionService,
+    pipeline: ChatPipelineService,
+    tools: WorkshopToolExecutor,
+    events: WorkshopGenerationEvents | null = null,
+    resolveLocale: (() => string | null | undefined) | null = null,
+  ) {
+    this.chat = chat; this.pipeline = pipeline; this.tools = tools; this.events = events; this.resolveLocale = resolveLocale;
   }
   async generate(card: WorkshopCard, source: string, signal: AbortSignal, progress?: (files: string[]) => void): Promise<void | { tokens?: number; blockedReason?: string }> {
     if ((await sourceFiles(source)).length === 0) await seedTemplate(source, card);
     const templates: Record<string, string> = {};
     for (const file of await sourceFiles(source)) templates[file] = await readFile(join(source, file), 'utf8');
     const recipe = await recipeFiles(recipeFor(card));
+    const locale = resolveWorkshopGenerationLocale(card, this.chat, this.resolveLocale?.());
     const sessionId = `sess_${randomUUID()}`, time = new Date().toISOString();
-    this.chat.createSession({ id: sessionId, mode: 'chat', title: `插件工坊：${card.title}`, titleLocked: true,
+    this.chat.createSession({ id: sessionId, mode: 'chat', title: formatWorkshopSubsessionTitle('generate', card.title, locale), titleLocked: true,
       persistStatus: 'active', createdAt: time, updatedAt: time, metadata: { workshopId: card.id, parentSessionId: card.sessionId, is_subagent: true } });
     const schemas = this.tools.schemaTools().filter(item => ['dstu_plugin_api_list', 'dstu_plugin_api_read'].includes(item.id));
     const skill = await developmentSkill();
@@ -65,7 +134,7 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
           + 'If a concrete missing user value, unavailable capability or external condition prevents progress, return ONLY JSON {"blockedReason":"explain what is missing"}. Repair actionable compiler/runtime errors instead of repeating unchanged code. '
           + 'No markdown fences. All output files are materialized by Host under the assigned source root. You have no filesystem, shell, installation or profile tools. '
           + 'The Host sets the package/module version of a modification and the net:<host> of user addresses itself. '
-          + `Preserve plugin id ${card.pluginId} and exact service name ${pluginServiceName(card.pluginId)} (use ${JSON.stringify(card.title)} for zh-CN title). Goal: ${card.description}\nAcceptance/changes: ${JSON.stringify(card.changes)}`
+          + `Preserve plugin id ${card.pluginId} and exact service name ${pluginServiceName(card.pluginId)} (use ${JSON.stringify(card.title)} for the ${locale} title). Goal: ${card.description}\nAcceptance/changes: ${JSON.stringify(card.changes)}`
           // The recipe covers what the seed template does not show. The current source stays last, as before.
           + `\nRecipe "${recipe.name}" (adapt it only if the goal needs ${RECIPE_PURPOSE[recipe.name] ?? recipe.name}; otherwise ignore it): ${JSON.stringify(recipe.files)}`
           // F20: a modification must still read what the previous version stored.
@@ -140,8 +209,9 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
         + 'Output ONLY the raw JSON verdict object (no markdown fences, either directly as final assistant text OR inside attempt_completion.result if completing with a tool): '
         + '{"status":"passed|failed|blocked","error":"diagnostic if not passed","checks":[{"criterion":0,"observed":"what inventory/runtime showed","toolCallIds":["actual call id"]}]}. '
         + `Candidate source (context, not proof): ${JSON.stringify(files)}`;
+    const locale = resolveWorkshopGenerationLocale(card, this.chat, this.resolveLocale?.());
     const sessionId = `sess_${randomUUID()}`, time = new Date().toISOString();
-    this.chat.createSession({ id: sessionId, mode: 'chat', title: `插件验收：${card.title}`, titleLocked: true,
+    this.chat.createSession({ id: sessionId, mode: 'chat', title: formatWorkshopSubsessionTitle('verify', card.title, locale), titleLocked: true,
       persistStatus: 'active', createdAt: time, updatedAt: time, metadata: { workshopId: card.id, parentSessionId: card.sessionId, is_subagent: true } });
     const messageId = await this.pipeline.execute({ window: 'main', webview: 'main' }, {
       sessionId,

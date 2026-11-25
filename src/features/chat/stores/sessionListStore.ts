@@ -7,12 +7,15 @@ import { getErrorMessage } from '@/utils/errorUtils';
 
 type StateUpdater<T> = T | ((previous: T) => T);
 
+export const SESSION_LIST_LOAD_STATE_EVENT = 'chat-v2:session-list-load-state';
+
 export interface SessionListStoreState {
   sessions: ChatSession[];
   groups: SessionGroup[];
   hasMoreUngrouped: boolean;
   isLoadingMore: boolean;
   isLoaded: boolean;
+  loadError: string | null;
   loadMoreUngrouped: () => Promise<void>;
   refresh: () => Promise<void>;
   /** Share an in-flight request, or reuse a recently loaded list. */
@@ -80,11 +83,20 @@ function orderRows(previous: ChatSession[], incoming: ChatSession[]): ChatSessio
   });
 }
 
-function readList<T>(result: PromiseSettledResult<T[]>, label: string): T[] | null {
-  if (result.status === 'fulfilled' && Array.isArray(result.value)) return result.value;
-  console.warn(`[sessionListStore] Failed to load ${label}:`,
-    result.status === 'rejected' ? getErrorMessage(result.reason) : 'invalid payload');
-  return null;
+function readList<T>(result: PromiseSettledResult<T[]>, label: string): { rows: T[] | null; error: string | null } {
+  if (result.status === 'fulfilled' && Array.isArray(result.value)) {
+    return { rows: result.value, error: null };
+  }
+  const error = result.status === 'rejected' ? getErrorMessage(result.reason) : 'invalid payload';
+  console.warn(`[sessionListStore] Failed to load ${label}:`, error);
+  return { rows: null, error };
+}
+
+function emitLoadState(loadError: string | null, isLoaded: boolean): void {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent(SESSION_LIST_LOAD_STATE_EVENT, {
+    detail: { loadError, isLoaded },
+  }));
 }
 
 async function executeRefresh(): Promise<void> {
@@ -104,9 +116,14 @@ async function executeRefresh(): Promise<void> {
     }),
     invoke<SessionGroup[]>('chat_v2_list_groups', { status: 'active' }),
   ]);
-  const grouped = readList(groupedResult, 'grouped sessions');
-  const ungrouped = readList(ungroupedResult, 'ungrouped sessions');
-  const groups = readList(groupsResult, 'groups');
+  const { rows: grouped, error: groupedError } = readList(groupedResult, 'grouped sessions');
+  const { rows: ungrouped, error: ungroupedError } = readList(ungroupedResult, 'ungrouped sessions');
+  const { rows: groups } = readList(groupsResult, 'groups');
+  const partitionError = ungroupedError ?? groupedError;
+
+  const previousLoadError = useSessionListStore.getState().loadError;
+  let publishedLoadError: string | null = previousLoadError;
+  let publishedIsLoaded = useSessionListStore.getState().isLoaded;
 
   useSessionListStore.setState((state) => {
     const next: Partial<SessionListStoreState> = {};
@@ -123,15 +140,31 @@ async function executeRefresh(): Promise<void> {
         const hasMore = ungrouped.length >= ungroupedLimit;
         if (hasMore !== state.hasMoreUngrouped) next.hasMoreUngrouped = hasMore;
       }
+      const nextLoadError = ungrouped === null && rows.length === 0
+        ? (ungroupedError ?? 'Failed to load the session list')
+        : null;
+      if (nextLoadError !== state.loadError) next.loadError = nextLoadError;
+      publishedLoadError = nextLoadError;
+    } else if (grouped === null && ungrouped === null) {
+      const nextLoadError = partitionError ?? 'Failed to load the session list';
+      if (nextLoadError !== state.loadError) next.loadError = nextLoadError;
+      publishedLoadError = nextLoadError;
     }
     if (groupVersion === groupsRevision && groups !== null) {
       const sharedGroups = shareRows(state.groups, groups);
       if (sharedGroups !== state.groups) next.groups = sharedGroups;
     }
     if (!state.isLoaded && sessionVersion === sessionsRevision
-      && (grouped !== null || ungrouped !== null)) next.isLoaded = true;
+      && (grouped !== null || ungrouped !== null)) {
+      next.isLoaded = true;
+    }
+    publishedIsLoaded = next.isLoaded ?? state.isLoaded;
     return Object.keys(next).length > 0 ? next : state;
   });
+
+  if (publishedLoadError !== previousLoadError || (grouped === null && ungrouped === null)) {
+    emitLoadState(publishedLoadError, publishedIsLoaded);
+  }
   if (grouped === null && ungrouped === null) {
     throw new Error('Failed to load the session list');
   }
@@ -260,19 +293,22 @@ export const useSessionListStore = create<SessionListStoreState>()((set) => ({
   hasMoreUngrouped: false,
   isLoadingMore: false,
   isLoaded: false,
+  loadError: null,
   refresh: refreshSessionList,
   ensureLoaded: ensureSessionListLoaded,
   loadMoreUngrouped,
   setSnapshot: (incoming, hasMoreUngrouped) => {
     sessionsRevision += 1;
     lastRefreshStartedAt = Date.now();
+    const hadError = useSessionListStore.getState().loadError !== null;
     set((state) => {
       const sessions = shareRows(state.sessions, incoming);
       const hasMore = hasMoreUngrouped ?? state.hasMoreUngrouped;
-      return sessions === state.sessions && hasMore === state.hasMoreUngrouped && state.isLoaded
+      return sessions === state.sessions && hasMore === state.hasMoreUngrouped && state.isLoaded && state.loadError === null
         ? state
-        : { sessions, hasMoreUngrouped: hasMore, isLoaded: true };
+        : { sessions, hasMoreUngrouped: hasMore, isLoaded: true, loadError: null };
     });
+    if (hadError) emitLoadState(null, true);
   },
   setSessions: (updater) => {
     set((state) => {
@@ -296,6 +332,13 @@ export const useSessionListStore = create<SessionListStoreState>()((set) => ({
 export function retainSessionListStore(): () => void {
   subscriberCount += 1;
   if (subscriberCount === 1) removeGlobalListeners = installGlobalListeners();
+  const current = useSessionListStore.getState();
+  if (current.loadError !== null) {
+    queueMicrotask(() => {
+      const latest = useSessionListStore.getState();
+      if (latest.loadError !== null) emitLoadState(latest.loadError, latest.isLoaded);
+    });
+  }
   void ensureSessionListLoaded().catch(() => {});
   let released = false;
   return () => {

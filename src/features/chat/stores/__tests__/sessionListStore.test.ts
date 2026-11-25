@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { addTypedEventListener } from '@/events';
 import type { ChatSession } from '../../types/session';
 import type { SessionGroup } from '../../types/group';
 import * as api from '../sessionListStore';
@@ -244,5 +245,43 @@ describe('shared session list', () => {
     expect(api.useSessionListStore.getState().sessions).toEqual([]);
     expect(api.useSessionListStore.getState().groups).toEqual([]);
     expect(sessionCalls()).toHaveLength(4);
+  });
+
+  it('G30: paginates 205 seeded sessions cleanly and exposes/clears loadError across failure and retry', async () => {
+    const loadStates: Array<{ loadError: string | null; isLoaded: boolean }> = [];
+    const unsubscribeLoadState = addTypedEventListener<{ loadError: string | null; isLoaded: boolean }>(
+      api.SESSION_LIST_LOAD_STATE_EVENT,
+      (detail) => {
+        loadStates.push(detail);
+      },
+    );
+    try {
+      invokeMock.mockRejectedValue(new Error('db busy'));
+      await expect(api.useSessionListStore.getState().refresh()).rejects.toThrow('Failed to load');
+      expect(api.useSessionListStore.getState().loadError).toContain('db busy');
+      expect(loadStates.at(-1)).toMatchObject({ isLoaded: false });
+      expect(loadStates.at(-1)?.loadError).toContain('db busy');
+
+      const seeded = Array.from({ length: 205 }, (_, index) =>
+        session(`seed-${String(index).padStart(3, '0')}`, {
+          updatedAt: new Date(Date.UTC(2026, 10, 20, 0, index)).toISOString(),
+        }),
+      );
+      respond(seeded);
+      await api.useSessionListStore.getState().refresh();
+      expect(api.useSessionListStore.getState().loadError).toBeNull();
+      expect(api.useSessionListStore.getState().isLoaded).toBe(true);
+      expect(api.useSessionListStore.getState().sessions).toHaveLength(50);
+      expect(api.useSessionListStore.getState().hasMoreUngrouped).toBe(true);
+      expect(loadStates.at(-1)).toEqual({ loadError: null, isLoaded: true });
+
+      while (api.useSessionListStore.getState().hasMoreUngrouped) {
+        await api.useSessionListStore.getState().loadMoreUngrouped();
+      }
+      expect(api.useSessionListStore.getState().sessions).toHaveLength(205);
+      expect(api.useSessionListStore.getState().hasMoreUngrouped).toBe(false);
+    } finally {
+      unsubscribeLoadState();
+    }
   });
 });

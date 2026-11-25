@@ -1,4 +1,5 @@
 import type { SqlExecutor, SqlParam } from '../../../platform/storage/api.ts';
+import { parseFlexibleTimestamp, parseRfc3339, toRfc3339Opts } from '../../../platform/time/index.ts';
 import { rustTrim, parseJsonDocument, JsonSyntaxError, objectLastWins, jsonNumberToRawJSON,
   type JsonNode } from '../../../platform/util/index.ts';
 import type { ChatSession } from '../api.ts';
@@ -8,14 +9,54 @@ import { databaseNow, databaseTimestamp, utcTimestamp } from '../src/types.ts';
 import { databaseOperation } from './errors.ts';
 
 export const SESSION_COLUMNS = 'id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked';
-export const VISIBLE_SESSION_FILTER = ` AND COALESCE(json_extract(metadata_json, '$.chatV2Draft.hidden'), 0) != 1
+export const ACTIVE_PERSIST_STATUS_SQL = `COALESCE(persist_status, 'active') NOT IN ('archived', 'deleted')`;
+export const VISIBLE_SESSION_FILTER = ` AND (metadata_json IS NULL OR NOT json_valid(metadata_json) OR (
+  COALESCE(json_extract(metadata_json, '$.chatV2Draft.hidden'), 0) != 1
   AND json_extract(metadata_json, '$.superagent') IS NULL
-  AND COALESCE(json_extract(metadata_json, '$.super_agent.hidden'), 0) != 1`;
+  AND COALESCE(json_extract(metadata_json, '$.super_agent.hidden'), 0) != 1
+))`;
 
 export interface SessionRow {
-  id: string; mode: string; title: string | null; description: string | null; summary_hash: string | null;
-  persist_status: string; created_at: string; updated_at: string; metadata_json: string | null;
-  group_id: string | null; tags_hash?: string | null; title_locked?: number;
+  id: string;
+  mode: string | null;
+  title: string | null;
+  description: string | null;
+  summary_hash: string | null;
+  persist_status: string | null;
+  created_at: string | number | bigint | null;
+  updated_at: string | number | bigint | null;
+  metadata_json: string | null;
+  group_id: string | null;
+  tags_hash?: string | null;
+  title_locked?: number;
+}
+
+const EPOCH_ZERO_ISO = toRfc3339Opts(0n, 'AutoSi', true);
+const NS_PER_SEC = 1_000_000_000n;
+
+function coerceTimestampColumn(value: unknown, key: 'created_at' | 'updated_at'): string {
+  if (value === null || value === undefined) return EPOCH_ZERO_ISO;
+  if (typeof value === 'string') {
+    const rfc = parseRfc3339(value);
+    if (rfc !== null) return toRfc3339Opts(rfc.epochNanos, 'AutoSi', true);
+    const trimmed = value.trim();
+    if (!trimmed) return EPOCH_ZERO_ISO;
+    const flexible = parseFlexibleTimestamp(trimmed);
+    if (flexible !== null) return toRfc3339Opts(flexible.epochNanos, 'AutoSi', true);
+    return utcTimestamp(value);
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const truncated = Math.trunc(value);
+    const flexible = parseFlexibleTimestamp(String(truncated));
+    if (flexible !== null) return toRfc3339Opts(flexible.epochNanos, 'AutoSi', true);
+    return toRfc3339Opts(BigInt(truncated) * NS_PER_SEC, 'AutoSi', true);
+  }
+  if (typeof value === 'bigint') {
+    const flexible = parseFlexibleTimestamp(value.toString());
+    if (flexible !== null) return toRfc3339Opts(flexible.epochNanos, 'AutoSi', true);
+    return toRfc3339Opts(value * NS_PER_SEC, 'AutoSi', true);
+  }
+  throw new ChatV2Error('Database', `Invalid column type for ${key}`);
 }
 
 /** Session metadata is serde_json::Value: retain arbitrary numeric tokens on read/modify/write. */
@@ -35,19 +76,37 @@ function metadataValue(node: JsonNode): unknown {
 }
 
 export function rowToSession(row: SessionRow): ChatSession {
-  for (const key of ['id', 'mode', 'persist_status', 'created_at', 'updated_at'] as const) {
-    if (typeof row[key] !== 'string') throw new ChatV2Error('Database', `Invalid column type for ${key}`);
+  if (typeof row.id !== 'string') throw new ChatV2Error('Database', 'Invalid column type for id');
+  let mode: string;
+  if (row.mode === null || row.mode === undefined) {
+    mode = 'chat';
+  } else if (typeof row.mode === 'string') {
+    mode = row.mode.trim() || 'chat';
+  } else {
+    throw new ChatV2Error('Database', 'Invalid column type for mode');
   }
+  let rawPersistStatus: string;
+  if (row.persist_status === null || row.persist_status === undefined) {
+    rawPersistStatus = 'active';
+  } else if (typeof row.persist_status === 'string') {
+    rawPersistStatus = row.persist_status;
+  } else {
+    throw new ChatV2Error('Database', 'Invalid column type for persist_status');
+  }
+  const createdAt = coerceTimestampColumn(row.created_at, 'created_at');
+  const updatedAt = coerceTimestampColumn(row.updated_at, 'updated_at');
   const session: ChatSession = {
-    id: row.id, mode: row.mode,
+    id: row.id,
+    mode,
     titleLocked: typeof row.title_locked === 'number' && row.title_locked !== 0,
-    persistStatus: row.persist_status === 'archived' || row.persist_status === 'deleted' ? row.persist_status : 'active',
-    createdAt: utcTimestamp(row.created_at), updatedAt: utcTimestamp(row.updated_at),
+    persistStatus: rawPersistStatus === 'archived' || rawPersistStatus === 'deleted' ? rawPersistStatus : 'active',
+    createdAt,
+    updatedAt,
   };
   if (row.title !== null) session.title = row.title;
   if (row.description !== null) session.description = row.description;
   if (row.summary_hash !== null) session.summaryHash = row.summary_hash;
-  if (row.group_id !== null) session.groupId = row.group_id;
+  if (typeof row.group_id === 'string' && row.group_id.trim() !== '') session.groupId = row.group_id;
   if (row.tags_hash != null) session.tagsHash = row.tags_hash;
   if (row.metadata_json !== null) {
     try { session.metadata = metadataValue(parseJsonDocument(row.metadata_json)); }
@@ -103,10 +162,15 @@ export function deleteSession(db: SqlExecutor, id: string): void {
 function filters(status: string | null, groupId: string | null): { sql: string; params: SqlParam[] } {
   let sql = VISIBLE_SESSION_FILTER;
   const params: SqlParam[] = [];
-  if (status !== null) { sql += ' AND persist_status = ?'; params.push(status); }
+  if (status === 'active') {
+    sql += ` AND ${ACTIVE_PERSIST_STATUS_SQL}`;
+  } else if (status !== null) {
+    sql += ' AND persist_status = ?';
+    params.push(status);
+  }
   if (groupId !== null) {
-    if (groupId === '') sql += ' AND group_id IS NULL';
-    else if (groupId === '*') sql += ' AND group_id IS NOT NULL';
+    if (groupId === '') sql += " AND (group_id IS NULL OR group_id = '')";
+    else if (groupId === '*') sql += " AND group_id IS NOT NULL AND group_id != ''";
     else { sql += ' AND group_id = ?'; params.push(groupId); }
   }
   return { sql, params };
@@ -115,12 +179,12 @@ function filters(status: string | null, groupId: string | null): { sql: string; 
 export function listSessions(db: SqlExecutor, status: string | null, groupId: string | null, limit: number, offset: number, log?: ChatLogger): ChatSession[] {
   const { sql, params } = filters(status, groupId);
   return databaseOperation(() => sessionRows(db.all<SessionRow>(`SELECT ${SESSION_COLUMNS}
-    FROM chat_v2_sessions WHERE mode != 'agent' ${sql} ORDER BY updated_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset]), log));
+    FROM chat_v2_sessions WHERE COALESCE(mode, 'chat') != 'agent' ${sql} ORDER BY updated_at DESC LIMIT ? OFFSET ?`, [...params, limit, offset]), log));
 }
 
 export function countSessions(db: SqlExecutor, status: string | null, groupId: string | null): number {
   const { sql, params } = filters(status, groupId);
-  return databaseOperation(() => db.pluck<number>(`SELECT COUNT(*) FROM chat_v2_sessions WHERE mode != 'agent' ${sql}`, params)!);
+  return databaseOperation(() => db.pluck<number>(`SELECT COUNT(*) FROM chat_v2_sessions WHERE COALESCE(mode, 'chat') != 'agent' ${sql}`, params)!);
 }
 
 export function setTitleLocked(db: SqlExecutor, id: string, locked: boolean): void {
@@ -132,10 +196,11 @@ export function listAgentSessions(db: SqlExecutor, workspaceId: string | null, l
   return databaseOperation(() => {
     const rows = workspaceId === null
       ? db.all<SessionRow>(`SELECT ${SESSION_COLUMNS} FROM chat_v2_sessions
-          WHERE mode = 'agent' AND persist_status = 'active'
+          WHERE mode = 'agent' AND ${ACTIVE_PERSIST_STATUS_SQL}
           ORDER BY updated_at DESC LIMIT ?1`, [limit])
       : db.all<SessionRow>(`SELECT ${SESSION_COLUMNS} FROM chat_v2_sessions
-          WHERE mode = 'agent' AND persist_status = 'active'
+          WHERE mode = 'agent' AND ${ACTIVE_PERSIST_STATUS_SQL}
+            AND metadata_json IS NOT NULL AND json_valid(metadata_json)
             AND json_extract(metadata_json, '$.workspace_id') = ?1
           ORDER BY updated_at DESC LIMIT ?2`, [workspaceId, limit]);
     return sessionRows(rows, log);
@@ -146,7 +211,8 @@ export function listAgentSessions(db: SqlExecutor, workspaceId: string | null, l
 export function otherActiveSuperSessionExists(db: SqlExecutor, sessionId: string): boolean {
   return databaseOperation(() => Number(db.pluck<number>(`SELECT EXISTS(
     SELECT 1 FROM chat_v2_sessions
-    WHERE id != ?1 AND persist_status = 'active'
+    WHERE id != ?1 AND ${ACTIVE_PERSIST_STATUS_SQL}
+      AND metadata_json IS NOT NULL AND json_valid(metadata_json)
       AND COALESCE(json_extract(metadata_json, '$.super_agent.active'), 0) = 1
   )`, [sessionId])) === 1);
 }
@@ -171,7 +237,11 @@ export function sessionHasRunningAnkiBlocks(db: SqlExecutor, sessionId: string):
 /** `session_has_super_marker`: metadata contains a `super_agent` key (any shape). */
 export function sessionHasSuperMarker(db: SqlExecutor, sessionId: string): boolean {
   return databaseOperation(() => Number(db.pluck<number>(
-    `SELECT COALESCE(json_type(metadata_json, '$.super_agent') IS NOT NULL, 0)
+    `SELECT CASE
+        WHEN metadata_json IS NOT NULL AND json_valid(metadata_json)
+        THEN COALESCE(json_type(metadata_json, '$.super_agent') IS NOT NULL, 0)
+        ELSE 0
+      END
       FROM chat_v2_sessions WHERE id = ?1`, [sessionId])) === 1);
 }
 
@@ -201,7 +271,7 @@ export function listSessionsReferencing(
            WHERE b.citations_json LIKE ?1 ESCAPE '\\' OR b.content LIKE ?2 ESCAPE '\\'
         ) h
         JOIN chat_v2_sessions s ON s.id = h.sid
-        WHERE s.persist_status = 'active'`, [quoted, pdfMarker]);
+        WHERE COALESCE(s.persist_status, 'active') NOT IN ('archived', 'deleted')`, [quoted, pdfMarker]);
       for (const hit of hits) {
         const existing = bySession.get(hit.sid);
         if (existing && existing.lastReferencedAt >= hit.ts) continue;

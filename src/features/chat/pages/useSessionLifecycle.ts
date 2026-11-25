@@ -32,6 +32,28 @@ import {
 import { peekPendingChatNavigation } from '../navigation/pendingChatNavigation';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+const STARTUP_DRAFT_FALLBACK_TIMEOUT_MS = 8_000;
+
+function pickFallbackResumableSessionId(sessions: readonly ChatSession[]): string | null {
+  const resumable = sessions.find((session) => isResumableSession(session));
+  return resumable?.id ?? sessions[0]?.id ?? null;
+}
+
+async function awaitWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`Startup draft timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
+}
 
 const emitSessionListUpdated = () => {
   window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
@@ -386,13 +408,13 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
           if (!draftSessionPromise) {
             draftSessionPromise = getOrCreateHiddenDraftSession();
           }
-          const draftSession = await draftSessionPromise;
+          const draftSession = allSessions.length > 0
+            ? await awaitWithTimeout(draftSessionPromise, STARTUP_DRAFT_FALLBACK_TIMEOUT_MS)
+            : await draftSessionPromise;
           sessionToSelect = draftSession.id;
         } catch (e) {
           console.warn('[ChatV2Page] Failed to create startup draft session:', e);
-          if (allSessions.length > 0) {
-            sessionToSelect = allSessions[0].id;
-          }
+          sessionToSelect = pickFallbackResumableSessionId(allSessions);
         }
       }
 
@@ -405,6 +427,28 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     } catch (error) {
       console.error('[ChatV2Page] Failed to load sessions:', getErrorMessage(error));
       showGlobalNotification('error', t('page.loadSessionsFailed'));
+      // 列表查询失败时绝不把用户留在空白暗色画布：优先复用已缓存会话或已就绪的隐藏 draft
+      if (!hasActiveUserChoice()) {
+        const cachedSessions = useSessionListStore.getState().sessions;
+        const fallbackId = !earlyNewSessionIntentRef.current
+          ? pickFallbackResumableSessionId(cachedSessions)
+          : null;
+        if (fallbackId) {
+          setCurrentSessionId(fallbackId);
+        } else {
+          try {
+            const draft = await awaitWithTimeout(
+              draftSessionPromise ?? getOrCreateHiddenDraftSession(),
+              STARTUP_DRAFT_FALLBACK_TIMEOUT_MS,
+            );
+            if (!hasActiveUserChoice()) {
+              setCurrentSessionId(draft.id);
+            }
+          } catch (draftError) {
+            console.warn('[ChatV2Page] Fallback draft creation after list failure also failed:', draftError);
+          }
+        }
+      }
     } finally {
       setIsInitialLoading(false);
     }

@@ -68,4 +68,74 @@ describe('chat_v2/repo.rs sessions', () => {
     sessions.setTitleLocked(f.db, id, false);
     expect(sessions.getSession(f.db, id)!.titleLocked).toBe(false);
   });
+
+  it('G30: lists and counts 205 seeded sessions with persist_status=saved, numeric timestamps, empty group_id, and malformed metadata_json', () => {
+    const baseEpochMs = Date.parse('2026-11-20T00:00:00.000Z');
+    f.db.transaction(tx => {
+      for (let i = 0; i < 205; i += 1) {
+        const id = `sess_seed_${String(i).padStart(3, '0')}`;
+        const title = `Seeded Session ${i + 1}`;
+        const createdAt = i % 3 === 0
+          ? baseEpochMs + i * 60_000
+          : i % 3 === 1
+            ? Math.floor((baseEpochMs + i * 60_000) / 1000)
+            : `2026-11-20 ${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00`;
+        const groupId = i % 2 === 0 ? '' : null;
+        const metadataJson = i % 5 === 0 ? '' : i % 7 === 0 ? '{bad-json' : null;
+        tx.run(
+          `INSERT INTO chat_v2_sessions
+            (id, mode, title, description, summary_hash, title_locked, persist_status, created_at, updated_at, metadata_json, group_id)
+            VALUES (?1, ?2, ?3, NULL, NULL, 0, ?4, ?5, ?6, ?7, ?8)`,
+          [id, 'chat', title, 'saved', createdAt, createdAt, metadataJson, groupId],
+        );
+      }
+      // Archived, deleted, hidden draft, and agent rows must remain excluded from active listing.
+      tx.run(
+        `INSERT INTO chat_v2_sessions (id, mode, title, title_locked, persist_status, created_at, updated_at, metadata_json, group_id)
+         VALUES ('sess_archived_1', 'chat', 'Archived', 0, 'archived', '2026-11-20T00:00:00Z', '2026-11-20T00:00:00Z', NULL, NULL)`,
+      );
+      tx.run(
+        `INSERT INTO chat_v2_sessions (id, mode, title, title_locked, persist_status, created_at, updated_at, metadata_json, group_id)
+         VALUES ('sess_deleted_1', 'chat', 'Deleted', 0, 'deleted', '2026-11-20T00:00:00Z', '2026-11-20T00:00:00Z', NULL, NULL)`,
+      );
+      tx.run(
+        `INSERT INTO chat_v2_sessions (id, mode, title, title_locked, persist_status, created_at, updated_at, metadata_json, group_id)
+         VALUES ('sess_hidden_draft', 'chat', NULL, 0, 'saved', '2026-11-20T00:00:00Z', '2026-11-20T00:00:00Z', '{"chatV2Draft":{"hidden":true}}', NULL)`,
+      );
+      tx.run(
+        `INSERT INTO chat_v2_sessions (id, mode, title, title_locked, persist_status, created_at, updated_at, metadata_json, group_id)
+         VALUES ('sess_agent_1', 'agent', 'Agent', 0, 'saved', '2026-11-20T00:00:00Z', '2026-11-20T00:00:00Z', NULL, NULL)`,
+      );
+    });
+
+    expect(sessions.countSessions(f.db, 'active', null)).toBe(205);
+    expect(sessions.countSessions(f.db, 'active', '')).toBe(205);
+    expect(sessions.countSessions(f.db, 'active', '*')).toBe(0);
+    expect(sessions.countSessions(f.db, 'archived', null)).toBe(1);
+    expect(sessions.countSessions(f.db, 'deleted', null)).toBe(1);
+
+    const collected: string[] = [];
+    for (let offset = 0; offset < 250; offset += 50) {
+      const page = sessions.listSessions(f.db, 'active', '', 50, offset);
+      collected.push(...page.map(s => s.id));
+      for (const row of page) {
+        expect(row.persistStatus).toBe('active');
+        expect(row.groupId).toBeUndefined();
+        expect(row.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/);
+        expect(row.updatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/);
+      }
+      if (page.length < 50) break;
+    }
+    expect(new Set(collected).size).toBe(205);
+
+    const single = sessions.getSession(f.db, 'sess_seed_000');
+    expect(single).toMatchObject({
+      id: 'sess_seed_000',
+      mode: 'chat',
+      title: 'Seeded Session 1',
+      persistStatus: 'active',
+    });
+    expect(single?.groupId).toBeUndefined();
+    expect(single?.createdAt).toBe('2026-11-20T00:00:00Z');
+  });
 });

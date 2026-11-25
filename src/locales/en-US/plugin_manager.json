@@ -720,6 +720,10 @@
       "disabled": "AI Plugin Workshop input is currently disabled."
     },
     "label": "Plugin Workshop",
+    "sessionTitle": {
+      "create": "Plugin Workshop",
+      "modify": "Modify Plugin"
+    },
     "quickBarAriaLabel": "Plugin Workshop quick bar",
     "creationBadge": "Workshop Creation",
     "phase": {

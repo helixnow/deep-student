@@ -141,7 +141,8 @@
   },
   "badge": {
     "active": "已激活",
-    "deactivate": "取消激活技能"
+    "deactivate": "取消激活技能",
+    "unbindNamed": "解绑技能：{{name}}"
   },
   "loader": {
     "loading": "正在加载技能...",

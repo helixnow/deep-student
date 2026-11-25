@@ -335,3 +335,59 @@ it('S4-18: instructs generator never to call ctx.files.scope and rejects ctx.fil
   expect(verdict.error).toContain('ctx.files.scope');
   expect(execute).not.toHaveBeenCalled();
 });
+
+it('G29: localizes generation and verification subsession titles for en-US without persisting Chinese', async () => {
+  const dataDir = await mkdtemp(join(tmpdir(), 'dstu-generation-locale-'));
+  const ops = new WorkshopOperations({ dataDir, version: '0.20.0', debug: true } as AppInfo);
+  const enCard = await ops.propose({
+    sessionId: 'parent-en',
+    title: 'Formula Sheet',
+    description: 'Show a searchable formula sheet',
+    template: 'learning-tool',
+    changes: ['Add search box'],
+    capabilities: [],
+  });
+  enCard.version = '0.1.0';
+  enCard.validation = { version: '0.1.0', revision: enCard.revision, status: 'pending' };
+  const source = join(ops.store.directory(enCard.id), 'source');
+  await mkdir(source, { recursive: true });
+  await writeFile(join(source, 'index.ts'), 'export default { meta: { id: "workshop.en", version: "0.1.0", platforms: ["desktop"] }, apply() {} };');
+
+  const createSession = vi.fn();
+  const enChat = {
+    createSession,
+    getSession: (id: string) => (id === 'parent-en' ? { id, mode: 'chat', title: 'Plugin Workshop', titleLocked: true, persistStatus: 'active', createdAt: '', updatedAt: '' } : null),
+    getMessageBlocks: () => [{ type: 'content', content: '{"files":[{"path":"index.ts","content":"export const ok = 1;"}]}' }],
+    getMessage: () => ({ _meta: { toolResults: [observed(enCard)] } }),
+  } as unknown as ChatSessionService;
+  const enGen = new PipelineWorkshopGeneration(
+    enChat,
+    { execute: vi.fn(async () => 'msg_en') } as unknown as ChatPipelineService,
+    new WorkshopToolExecutor(ops, new WorkshopCatalog(() => [])),
+  );
+
+  await enGen.generate(enCard, source, new AbortController().signal);
+  expect(createSession).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Plugin Workshop: Formula Sheet' }));
+  expect(String(createSession.mock.calls.at(-1)?.[0]?.title)).not.toMatch(/[\u4e00-\u9fff]/);
+
+  await enGen.verify(enCard, source, new AbortController().signal);
+  expect(createSession).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Plugin Verification: Formula Sheet' }));
+  expect(String(createSession.mock.calls.at(-1)?.[0]?.title)).not.toMatch(/[\u4e00-\u9fff]/);
+
+  const zhChat = {
+    createSession: vi.fn(),
+    getSession: (id: string) => (id === 'parent-zh' ? { id, mode: 'chat', title: '插件工坊', titleLocked: true, persistStatus: 'active', createdAt: '', updatedAt: '' } : null),
+    getMessageBlocks: () => [{ type: 'content', content: '{"files":[{"path":"index.ts","content":"export const ok = 1;"}]}' }],
+    getMessage: () => ({ _meta: { toolResults: [observed(enCard)] } }),
+  } as unknown as ChatSessionService;
+  const zhCard = { ...enCard, sessionId: 'parent-zh', title: '公式表' };
+  const zhGen = new PipelineWorkshopGeneration(
+    zhChat,
+    { execute: vi.fn(async () => 'msg_zh') } as unknown as ChatPipelineService,
+    new WorkshopToolExecutor(ops, new WorkshopCatalog(() => [])),
+  );
+  await zhGen.generate(zhCard, source, new AbortController().signal);
+  expect(zhChat.createSession).toHaveBeenLastCalledWith(expect.objectContaining({ title: '插件工坊：公式表' }));
+  await zhGen.verify(zhCard, source, new AbortController().signal);
+  expect(zhChat.createSession).toHaveBeenLastCalledWith(expect.objectContaining({ title: '插件验收：公式表' }));
+});

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { HostWorkshopAdapter, workshopCapabilities, workshopCardView, workshopInstallation, workshopItem, type WorkshopCard, type WorkshopRemote } from '../host-adapter';
-import { openWorkshopSession } from '../session';
+import { openWorkshopSession, resolveWorkshopSessionTitle } from '../session';
 
 const card: WorkshopCard = {
   kind: 'dstu-plugin-workshop', id: 'work-1', pluginId: 'workshop.one', sessionId: 'chat-1',
@@ -151,6 +151,27 @@ describe('workshop session entry', () => {
     await expect(openWorkshopSession(port, { pluginId: 'workshop.one', workshopId: 'work-1', version: '2', revision: 7 })).rejects.toThrow('WORKSHOP_CONFLICT');
     expect(port.activateSkill).not.toHaveBeenCalled();
     expect(port.navigate).not.toHaveBeenCalled();
+  });
+  it('G29: localizes created workshop session titles for en-US without persisting Chinese', async () => {
+    const previousLng = localStorage.getItem('i18nextLng');
+    try {
+      localStorage.setItem('i18nextLng', 'en-US');
+      const port = { bindSession: vi.fn().mockResolvedValue(undefined), create: vi.fn().mockResolvedValue({ id: 'en-session' }), activateSkill: vi.fn().mockResolvedValue(true), navigate: vi.fn() };
+      await openWorkshopSession(port);
+      expect(port.create).toHaveBeenCalledWith({ mode: 'chat', title: 'Plugin Workshop', metadata: { dstuWorkshop: { kind: 'create' } } });
+
+      const target = { pluginId: 'workshop.one', workshopId: 'work-1', version: '2', revision: 7 };
+      await openWorkshopSession(port, target);
+      expect(port.create).toHaveBeenCalledWith({ mode: 'chat', title: 'Modify Plugin', metadata: { dstuWorkshop: { kind: 'modify', ...target } } });
+
+      expect(resolveWorkshopSessionTitle(undefined, 'en-US')).toBe('Plugin Workshop');
+      expect(resolveWorkshopSessionTitle(target, 'en-US')).toBe('Modify Plugin');
+      expect(resolveWorkshopSessionTitle(undefined, 'zh-CN')).toBe('插件工坊');
+      expect(resolveWorkshopSessionTitle(target, 'zh-CN')).toBe('修改插件');
+    } finally {
+      if (previousLng === null) localStorage.removeItem('i18nextLng');
+      else localStorage.setItem('i18nextLng', previousLng);
+    }
   });
 });
 
