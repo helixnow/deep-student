@@ -82,7 +82,7 @@ export function InstallFeedback({ result, safeMode = false, onDismiss, className
                   <span
                     data-testid="plugin-install-diagnostic-category"
                     data-category={friendly.category}
-                    className="rounded-full bg-destructive/15 px-2 py-0.5 text-[11px] font-medium text-destructive"
+                    className="rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-medium text-destructive"
                   >
                     {t(`install.rejected.categories.${friendly.category}`)}
                   </span>
@@ -106,7 +106,7 @@ export function InstallFeedback({ result, safeMode = false, onDismiss, className
                       ? t('install.rejected.technicalGeneric')
                       : t('install.rejected.technical', { code: effectiveCode })}
                   </summary>
-                  <p className="mt-1 break-words font-mono text-[11px] opacity-85">{friendly.technical}</p>
+                  <p className="mt-1 break-words font-mono text-xs opacity-85">{friendly.technical}</p>
                 </details>
               </>
             );

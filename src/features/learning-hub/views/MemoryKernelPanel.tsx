@@ -62,7 +62,7 @@ function BudgetBar({ label, used, max }: { label: string; used: number; max: num
   const ratio = max > 0 ? Math.min(100, Math.round((used / max) * 100)) : 0;
   const tone = ratio >= 90 ? 'bg-destructive' : ratio >= 70 ? 'bg-amber-500' : 'bg-primary/75';
   return (
-    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
       <span className="shrink-0">{label}</span>
       <div className="h-1.5 w-20 rounded-full bg-muted overflow-hidden">
         <div className={cn('h-full rounded-full transition-all', tone)} style={{ width: `${ratio}%` }} />
@@ -371,13 +371,13 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
           {expanded ? <CaretDown size={13} /> : <CaretRight size={13} />}
           <Sparkle size={14} className="text-primary" weight="fill" />
           <span>{t('settings:memory.kernel.title')}</span>
-          <span className="text-[11px] font-normal text-muted-foreground">
+          <span className="text-xs font-normal text-muted-foreground">
             {t('settings:memory.kernel.subtitle')}
           </span>
         </button>
 
         {view.privacyMode && (
-          <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] bg-amber-500/15 text-amber-600 dark:text-amber-400">
+          <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs bg-amber-500/15 text-amber-600 dark:text-amber-400">
             <WarningCircle size={11} /> {t('settings:memory.kernel.privacyPaused')}
           </span>
         )}
@@ -391,7 +391,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
             data-testid="memory-kernel-reflect-btn"
             disabled={busy}
             onClick={() => void handleToggleReflection()}
-            className="h-6 px-2 text-[11px]"
+            className="h-6 px-2 text-xs"
             title={t('settings:memory.kernel.reflectionTitle')}
           >
             <Sparkle size={12} className="mr-1" />
@@ -401,7 +401,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
             variant="ghost"
             size="sm"
             onClick={() => setShowPreview(prev => !prev)}
-            className="h-6 px-2 text-[11px]"
+            className="h-6 px-2 text-xs"
           >
             <Eye size={12} className="mr-1" />
             {showPreview ? t('settings:memory.kernel.collapsePreview') : t('settings:memory.kernel.previewButton')}
@@ -415,7 +415,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
               setShowHistory(prev => !prev);
             }}
             className={cn(
-              'h-6 px-2 text-[11px]',
+              'h-6 px-2 text-xs',
               historyCount === 0 && 'text-muted-foreground disabled:pointer-events-auto'
             )}
             title={
@@ -442,7 +442,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                 <button
                   type="button"
                   onClick={() => setReflectionReport(null)}
-                  className="text-[11px] text-muted-foreground hover:text-foreground"
+                  className="text-xs text-muted-foreground hover:text-foreground"
                 >
                   {t('common:actions.close')}
                 </button>
@@ -456,7 +456,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                     >
                       <div className="min-w-0">
                         <div className="font-medium text-foreground/90">{p.title}</div>
-                        <div className="text-[11px] text-muted-foreground">{p.rationale}</div>
+                        <div className="text-xs text-muted-foreground">{p.rationale}</div>
                       </div>
                       {p.kind === 'promote_preference_to_rule' && typeof p.suggestedPayload?.instruction === 'string' && (
                         <DsButton
@@ -467,7 +467,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                             String(p.suggestedPayload?.instruction ?? ''),
                             String(p.suggestedPayload?.scope ?? 'global'),
                           )}
-                          className="h-6 shrink-0 px-2 text-[11px] text-primary"
+                          className="h-6 shrink-0 px-2 text-xs text-primary"
                         >
                           {t('settings:memory.kernel.promoteRule')}
                         </DsButton>
@@ -496,7 +496,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                               setBusy(false);
                             }
                           }}
-                          className="h-6 shrink-0 px-2 text-[11px] text-destructive hover:bg-destructive/10"
+                          className="h-6 shrink-0 px-2 text-xs text-destructive hover:bg-destructive/10"
                         >
                           {t('settings:memory.kernel.removeLatterRule')}
                         </DsButton>
@@ -512,7 +512,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                             String(p.suggestedPayload?.subject ?? ''),
                             String(p.suggestedPayload?.knowledge_point ?? ''),
                           )}
-                          className="h-6 shrink-0 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                          className="h-6 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"
                         >
                           {t('settings:memory.kernel.markMastered')}
                         </DsButton>
@@ -530,13 +530,13 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
               <div className="text-xs font-medium text-foreground/85">
                 {t('settings:memory.kernel.hardRulesTitle')}
               </div>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 {t('settings:memory.kernel.rulesCount', { count: rules.length })}
               </span>
             </div>
 
             {rules.length === 0 ? (
-              <div className="text-[11px] text-muted-foreground/75 px-2.5 py-2 rounded border border-dashed border-border/50">
+              <div className="text-xs text-muted-foreground/75 px-2.5 py-2 rounded border border-dashed border-border/50">
                 {t('settings:memory.kernel.noRulesHint')}
               </div>
             ) : (
@@ -549,12 +549,12 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                   >
                     <div className="flex-1 min-w-0 leading-relaxed">
                       {rule.pinned && (
-                        <span className="inline-flex items-center gap-0.5 mr-1.5 rounded bg-primary/10 px-1 py-0.5 text-[10px] font-medium text-primary">
+                        <span className="inline-flex items-center gap-0.5 mr-1.5 rounded bg-primary/10 px-1 py-0.5 text-2xs font-medium text-primary">
                           <PushPin size={10} weight="fill" /> {t('settings:memory.kernel.pinned')}
                         </span>
                       )}
                       {rule.scope !== 'global' && (
-                        <span className="mr-1.5 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                        <span className="mr-1.5 rounded bg-muted px-1 py-0.5 text-2xs text-muted-foreground">
                           {rule.scope}
                         </span>
                       )}
@@ -596,7 +596,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                   disabled={busy}
                   onClick={() => void handleUndoRemoveRule()}
                   data-testid="memory-kernel-undo-rule"
-                  className="h-6 px-2 text-[11px] shrink-0 text-primary hover:text-primary"
+                  className="h-6 px-2 text-xs shrink-0 text-primary hover:text-primary"
                 >
                   <ArrowUUpLeft size={12} className="mr-1" />
                   {t('settings:memory.kernel.undo')}
@@ -625,7 +625,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                 ))}
               </select>
               <label
-                className="inline-flex items-center gap-1 text-[11px] text-muted-foreground px-1 select-none cursor-pointer"
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground px-1 select-none cursor-pointer"
                 title={t('settings:memory.kernel.addRulePinTitle')}
               >
                 <input
@@ -656,7 +656,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                 {t('settings:memory.kernel.weakPointsTitle', { count: profile.weak_points.length })}
               </div>
               {profile.weak_points.length === 0 ? (
-                <div className="text-[11px] text-muted-foreground/70">
+                <div className="text-xs text-muted-foreground/70">
                   {t('settings:memory.kernel.noWeakPoints')}
                 </div>
               ) : (
@@ -664,16 +664,16 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                   {profile.weak_points.slice(0, 12).map(wp => (
                     <div
                       key={`${wp.subject}:${wp.knowledge_point}`}
-                      className="flex items-start gap-1.5 rounded border border-border/35 bg-background/70 px-2 py-1 text-[11px]"
+                      className="flex items-start gap-1.5 rounded border border-border/35 bg-background/70 px-2 py-1 text-xs"
                     >
                       <div className="flex-1 min-w-0">
-                        <span className="mr-1 rounded bg-amber-500/12 px-1 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-300">
+                        <span className="mr-1 rounded bg-amber-500/12 px-1 py-0.5 text-2xs font-medium text-amber-700 dark:text-amber-300">
                           {wp.subject}
                         </span>
                         <span className="font-medium text-foreground">{wp.knowledge_point}</span>
                         <span className="ml-1 text-muted-foreground">×{wp.evidence_count}</span>
                         {wp.error_pattern && (
-                          <div className="text-[10px] text-muted-foreground truncate mt-0.5">{wp.error_pattern}</div>
+                          <div className="text-2xs text-muted-foreground truncate mt-0.5">{wp.error_pattern}</div>
                         )}
                       </div>
                       <DsButton
@@ -701,10 +701,10 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                 {profile.goals.map(g => (
                   <div
                     key={g.goal}
-                    className="flex items-center gap-1.5 rounded border border-border/35 bg-background/70 px-2 py-1 text-[11px]"
+                    className="flex items-center gap-1.5 rounded border border-border/35 bg-background/70 px-2 py-1 text-xs"
                   >
                     <span className="flex-1 truncate text-foreground">{g.goal}</span>
-                    {g.deadline && <span className="text-[10px] text-muted-foreground shrink-0">{g.deadline}</span>}
+                    {g.deadline && <span className="text-2xs text-muted-foreground shrink-0">{g.deadline}</span>}
                     <DsButton
                       variant="ghost"
                       size="sm"
@@ -723,7 +723,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                     onChange={e => setNewGoalText(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void handleAddGoal(); } }}
                     placeholder={t('settings:memory.kernel.addGoalPlaceholder')}
-                    className="h-7 text-[11px] flex-1"
+                    className="h-7 text-xs flex-1"
                     disabled={busy}
                   />
                   <DsButton
@@ -731,7 +731,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                     size="sm"
                     disabled={busy || !newGoalText.trim()}
                     onClick={() => void handleAddGoal()}
-                    className="h-7 px-2 text-[11px]"
+                    className="h-7 px-2 text-xs"
                   >
                     <Plus size={11} />
                   </DsButton>
@@ -743,10 +743,10 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
           {/* 3. 注入内容预览 */}
           {showPreview && (
             <div className="rounded border border-border/45 bg-muted/40 p-2.5 space-y-1">
-              <div className="text-[11px] font-medium text-muted-foreground">
+              <div className="text-xs font-medium text-muted-foreground">
                 {t('settings:memory.kernel.previewHeading')}
               </div>
-              <pre className="text-[11px] text-foreground/90 whitespace-pre-wrap break-words font-mono max-h-48 overflow-y-auto">
+              <pre className="text-xs text-foreground/90 whitespace-pre-wrap break-words font-mono max-h-48 overflow-y-auto">
                 {view.renderedKernelPreview || t('settings:memory.kernel.previewEmpty')}
               </pre>
             </div>
@@ -757,7 +757,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
             <div className="rounded border border-border/45 bg-muted/30 p-2.5 space-y-2.5" data-testid="memory-kernel-history-drawer">
               {auditLogs.length > 0 && (
                 <div className="space-y-1.5">
-                  <div className="text-[11px] font-medium text-muted-foreground">
+                  <div className="text-xs font-medium text-muted-foreground">
                     {t('settings:memory.kernel.auditHeading', { count: auditLogs.length })}
                   </div>
                   <div className="space-y-1 max-h-44 overflow-y-auto">
@@ -771,11 +771,11 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                       return (
                         <div
                           key={entry.id}
-                          className="flex items-start justify-between gap-2 rounded bg-background/80 px-2 py-1 text-[11px]"
+                          className="flex items-start justify-between gap-2 rounded bg-background/80 px-2 py-1 text-xs"
                         >
                           <div className="min-w-0 flex-1 space-y-0.5">
                             <div className="flex items-center gap-1.5">
-                              <span className="rounded bg-primary/10 px-1 py-0.5 text-[10px] font-medium text-primary shrink-0">
+                              <span className="rounded bg-primary/10 px-1 py-0.5 text-2xs font-medium text-primary shrink-0">
                                 {opBadge}
                               </span>
                               <span className="font-medium text-foreground truncate">
@@ -783,13 +783,13 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                               </span>
                             </div>
                             {(entry.contentPreview || entry.reason) && (
-                              <div className="text-[10px] text-muted-foreground truncate">
+                              <div className="text-2xs text-muted-foreground truncate">
                                 {entry.contentPreview || entry.reason}
                               </div>
                             )}
                           </div>
                           {entry.timestamp && (
-                            <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                            <span className="shrink-0 text-2xs text-muted-foreground tabular-nums">
                               {entry.timestamp.slice(0, 16).replace('T', ' ')}
                             </span>
                           )}
@@ -802,14 +802,14 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
 
               {view.profileHistory.length > 0 && (
                 <div className="space-y-1.5">
-                  <div className="text-[11px] font-medium text-muted-foreground">
+                  <div className="text-xs font-medium text-muted-foreground">
                     {t('settings:memory.kernel.historyHeading')}
                   </div>
                   <div className="space-y-1 max-h-40 overflow-y-auto">
                     {view.profileHistory.map(snap => (
                       <div
                         key={snap.version}
-                        className="flex items-center justify-between gap-2 rounded bg-background/80 px-2 py-1 text-[11px]"
+                        className="flex items-center justify-between gap-2 rounded bg-background/80 px-2 py-1 text-xs"
                       >
                         <span className="text-foreground">
                           {t('settings:memory.kernel.snapshotSummary', {
@@ -824,7 +824,7 @@ export const MemoryKernelPanel: React.FC<MemoryKernelPanelProps> = ({ refreshSig
                           size="sm"
                           disabled={busy || snap.version === profile.version}
                           onClick={() => void handleRollback(snap.version)}
-                          className="h-6 px-2 text-[11px]"
+                          className="h-6 px-2 text-xs"
                         >
                           {snap.version === profile.version
                             ? t('settings:memory.kernel.currentVersion')

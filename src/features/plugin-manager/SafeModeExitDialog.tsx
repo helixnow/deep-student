@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, ShieldChevron, WarningCircle } from '@phosphor-icons/react';
 
@@ -65,13 +65,13 @@ export function SafeModeExitDialog({
   const hostStatus = usePluginUiHostStatus(uiStatus);
   const autoUninstalled = usePluginErrorBudget(errorBudget);
   const standaloneAdapterRef = useRef<PluginManagerAdapter | null>(null);
-  const getStandaloneAdapter = () => {
+  const getStandaloneAdapter = useCallback(() => {
     if (injectedAdapter) return injectedAdapter;
     if (!standaloneAdapterRef.current) {
       standaloneAdapterRef.current = createHostPluginManagerAdapter('desktop');
     }
     return standaloneAdapterRef.current;
-  };
+  }, [injectedAdapter]);
 
   const [loadedPlugins, setLoadedPlugins] = useState<readonly ManagedPlugin[]>([]);
   const [loading, setLoading] = useState(false);
@@ -120,7 +120,7 @@ export function SafeModeExitDialog({
     return () => {
       active = false;
     };
-  }, [open, injectedPlugins, injectedAdapter]);
+  }, [open, injectedPlugins, getStandaloneAdapter]);
 
   const communityEntries = useMemo<CommunityPluginEntry[]>(() => {
     const entries = sourcePlugins
@@ -378,7 +378,7 @@ export function SafeModeExitDialog({
                             <span
                               data-testid="safe-mode-exit-plugin-status"
                               className={cn(
-                                'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium',
+                                'shrink-0 rounded-full px-2 py-0.5 text-xs font-medium',
                                 isFaulted
                                   ? 'bg-destructive/15 text-destructive'
                                   : plugin.enabled
@@ -403,7 +403,7 @@ export function SafeModeExitDialog({
                             </p>
                           ) : null}
                           {checked ? (
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="text-xs text-muted-foreground">
                               {t('safeMode.exitDialog.disableHintSelected')}
                             </p>
                           ) : null}
