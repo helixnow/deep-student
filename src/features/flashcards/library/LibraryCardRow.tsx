@@ -29,8 +29,8 @@ import type { AnkiLibraryCard, AnkiLibraryCardPatch } from '@/types';
 import { hasValidCloze, insertClozeDeletion, nextClozeIndex } from '../cloze';
 import { CardMathText, summarizeCardMedia } from '../cardMathPreview';
 import { dispatchOpenMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
-import { cardMediaSourceTexts, findCardMediaSource } from './cardMediaSource';
-import { jumpToChatSession, openCardSourceRef } from '../cardSource';
+import { cardMediaSourceTexts } from './cardMediaSource';
+import { openCardSourceTarget, resolveCardMediaSource, resolveCardSource } from '../cardSource';
 import {
   getReviewCardEditValues,
   isClozeReviewCard,
@@ -208,18 +208,21 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
     [editable, template],
   );
 
-  // 来源优先级：制卡来源笔记 / 资料页 > 生成它的聊天会话 > 旧版 chat_session 来源。
-  // 旧实现只认 sourceType==='chat_session'，而后端从不写该值——「查看来源」从未出现。
+  // 来源优先级：语义锚点 / 带时间戳音视频出处 > 制卡来源笔记 / 资料页 > 生成它的聊天会话 > 旧版 chat_session 来源。
+  // 统一走 resolveCardSource / resolveCardMediaSource，确保「查看出处」与「▶ mm:ss」都不丢失时间戳。
   const sourceRef = card.sourceRef && typeof card.sourceRef.id === 'string' && card.sourceRef.id ? card.sourceRef : null;
   const legacySessionId = card.sourceType === 'chat_session' && typeof card.sourceId === 'string' && card.sourceId.trim()
     ? card.sourceId.trim() : null;
   const sourceSessionId = sourceRef ? null : (card.sourceSessionId?.trim() || legacySessionId);
-  // 音视频转写制成的卡：背面末尾的 [媒体@id:mm:ss] → 「▶ mm:ss」跳到讲到该知识点的时刻
-  const mediaSource = useMemo(() => findCardMediaSource(cardMediaSourceTexts(card)), [card]);
+  const sourceTexts = useMemo(() => cardMediaSourceTexts(card), [card]);
+  const sourceTarget = useMemo(() => resolveCardSource(card, sourceTexts), [card, sourceTexts]);
+  const mediaSource = useMemo(() => resolveCardMediaSource(card, sourceTexts), [card, sourceTexts]);
   const sourceKey = sourceRef
     ? (sourceRef.kind === 'note' ? 'library.source.note' : 'library.source.resource')
-    : sourceSessionId ? 'library.source.chat'
-      : sourceLabelKey(card.sourceType) ?? (mediaSource ? 'library.source.resource' : null);
+    : sourceTarget?.kind === 'anchor'
+      ? (sourceTarget.anchorUri.startsWith('ds-anchor://v1/note/') ? 'library.source.note' : 'library.source.resource')
+      : sourceSessionId ? 'library.source.chat'
+        : sourceLabelKey(card.sourceType) ?? (mediaSource ? 'library.source.resource' : null);
   const relativeDue = card.enqueued && !card.suspended
     ? formatRelativeDue(card.dueMs, locale)
     : null;
@@ -674,26 +677,15 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                   {sourceKey ? (
                     <div>
                       <dt>{translate('library.meta.source')}</dt>
-                      <dd className="flex items-center gap-1.5">
+                      <dd className="flex flex-wrap items-center gap-1.5">
                         {translate(sourceKey)}{sourceRef?.title ? ` · ${sourceRef.title}` : ''}
-                        {sourceRef ? (
+                        {sourceTarget && (sourceRef || sourceSessionId || sourceTarget.kind === 'anchor') ? (
                           <DsButton
                             type="button"
                             variant="ghost"
                             size="sm"
                             className="!h-auto !min-w-0 !border-0 !bg-transparent !px-0 !py-0 gap-0.5 text-xs font-normal text-primary hover:underline [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:-mx-3"
-                            onClick={() => openCardSourceRef(sourceRef)}
-                          >
-                            <ArrowSquareOut size={11} aria-hidden="true" />
-                            {translate('library.viewSource')}
-                          </DsButton>
-                        ) : sourceSessionId ? (
-                          <DsButton
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="!h-auto !min-w-0 !border-0 !bg-transparent !px-0 !py-0 gap-0.5 text-xs font-normal text-primary hover:underline [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:-mx-3"
-                            onClick={() => jumpToChatSession(sourceSessionId)}
+                            onClick={() => void openCardSourceTarget(sourceTarget, 'flashcards-library')}
                           >
                             <ArrowSquareOut size={11} aria-hidden="true" />
                             {translate('library.viewSource')}

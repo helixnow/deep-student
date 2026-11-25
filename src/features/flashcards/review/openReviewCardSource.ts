@@ -21,11 +21,20 @@ export async function openReviewCardSource(card: ReviewCard): Promise<boolean> {
   const libraryCard = card.ankiCardId
     ? await findLibraryCard(card.ankiCardId, lookupHint(card)).catch(() => null)
     : null;
-  const texts = cardMediaSourceTexts(
-    libraryCard ?? { back: card.back, front: card.front, text: card.text, extra_fields: card.extraFields },
-  );
+  const reviewTexts = cardMediaSourceTexts({
+    back: card.back,
+    front: card.front,
+    text: card.text,
+    extra_fields: card.extraFields,
+  });
+  const texts = libraryCard ? [...cardMediaSourceTexts(libraryCard), ...reviewTexts] : reviewTexts;
   const target = resolveCardSource(
-    libraryCard ? { ...libraryCard, extraFields: card.extraFields } : { extraFields: card.extraFields },
+    libraryCard
+      ? {
+          ...libraryCard,
+          extraFields: { ...(libraryCard.extra_fields ?? {}), ...(card.extraFields ?? {}) },
+        }
+      : { extraFields: card.extraFields },
     texts,
   );
   if (!target) return false;

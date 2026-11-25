@@ -157,10 +157,46 @@ function writePauseAtCheckpoints(value: boolean): void {
 
 const toolbarButtonClass =
   'h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11';
+const WEBUI_CUSTOM_MEDIA_PROTOCOL_RE = /^(filestream|bilistream|asset):\/\/(?:localhost\/)?(.*)$/i;
+
+function normalizeWebUiMediaUrl(rawUrl: string | null | undefined): string {
+  if (typeof rawUrl !== 'string') return '';
+  const trimmed = rawUrl.trim();
+  if (!trimmed || !isWebUiShell()) return trimmed;
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('/')
+  ) {
+    return trimmed;
+  }
+  const match = WEBUI_CUSTOM_MEDIA_PROTOCOL_RE.exec(trimmed);
+  if (!match) return trimmed;
+  const scheme = match[1].toLowerCase();
+  const rest = match[2] ?? '';
+  const queryIdx = rest.indexOf('?');
+  const rawPath = queryIdx >= 0 ? rest.slice(0, queryIdx) : rest;
+  const rawQuery = queryIdx >= 0 ? rest.slice(queryIdx) : '';
+  let decodedPath = rawPath;
+  try {
+    decodedPath = decodeURIComponent(rawPath);
+  } catch {
+    decodedPath = rawPath;
+  }
+  const origin =
+    typeof window !== 'undefined' && window.location?.origin && window.location.origin !== 'null'
+      ? window.location.origin
+      : '';
+  return `${origin}/api/protocol/${encodeURIComponent(scheme)}/${encodeURIComponent(decodedPath)}${rawQuery}`;
+}
 
 export interface MediaStudyViewProps {
   kind: 'audio' | 'video';
   src: string;
+  /** FileContentView 传入的媒体源类型（stream 可回退 blob；用于播放守卫抑制中间态误报） */
+  sourceKind?: 'stream' | 'blob';
   /** VFS File 资源 ID（file_*），转写 / 进度命令的 resource_id */
   resourceId: string;
   sourceId?: string;
@@ -195,6 +231,7 @@ function useContainerWidth(ref: React.RefObject<HTMLElement | null>): number {
 export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   kind,
   src,
+  sourceKind,
   resourceId,
   sourceId,
   nodePath,
@@ -228,7 +265,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   /** 外链 iframe 播放：拿不到画面与进度 */
   const embedPlayback = isLink && linkEmbed;
   const bilibiliQuality = useBilibiliQuality(isLink && !androidEmbed ? resourceId : null);
-  const playerSrc = isLink ? (bilibiliQuality.streamUrl ?? src) : src;
+  const playerSrc = normalizeWebUiMediaUrl(isLink ? (bilibiliQuality.streamUrl ?? src) : src);
   /** 讲义 / 伴随分区按此取帧：外链播放器没有可抽帧的画面 */
   const contentKind = embedPlayback ? 'audio' : kind;
   const companion = useMediaStudyCompanion();
@@ -276,14 +313,18 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
         ? { time: lastTimeRef.current, play: lastPlayingRef.current, armed: false }
         : null;
     prevPlayerRef.current = { resourceId, src: playerSrc };
+    if (isReady) setIsReady(false);
+    if (canSeek) setCanSeek(false);
   }
 
   const externalSeekRef = useRef(false);
+  const focusRequestRef = useRef<ReturnType<typeof useMediaFocusListener>[0]>(null);
   const { onStatus: onProgressStatus, resumedFromRef } = useMediaProgressSync({
     resourceId,
     enabled: !embedPlayback,
     handleRef,
-    hasExternalSeek: () => externalSeekRef.current,
+    hasExternalSeek: () =>
+      externalSeekRef.current || Boolean(focusRequestRef.current && !focusRequestRef.current.isStale?.()),
   });
 
   const recomputeActive = useCallback((timeSec: number) => {
@@ -382,6 +423,19 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     handle.play();
   }, []);
 
+  const pulseNonceRef = useRef(0);
+  const [pulsedCue, setPulsedCue] = useState<{ startMs: number; nonce: number } | null>(null);
+  const triggerCuePulse = useCallback((seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return;
+    setPulsedCue({
+      startMs: Math.max(0, Math.round(seconds * 1000)),
+      nonce: ++pulseNonceRef.current,
+    });
+  }, []);
+  useEffect(() => {
+    setPulsedCue(null);
+  }, [resourceId]);
+
   // ---------------------------------------------------------------- 引用跳转（media-ref:focus）
   // 只有可见（活跃）实例响应：学习资源页保活的隐藏标签不能抢走跳转并在后台出声；
   // 派发方带回执重发，目标标签激活后自然命中
@@ -392,6 +446,16 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     nodeSourceId: sourceId,
     nodePath,
   });
+  focusRequestRef.current = focusRequest;
+
+  useEffect(() => {
+    if (!focusRequest || focusRequest.isStale?.()) return;
+    // 元数据尚未就绪时也要先抢占续播/清晰度恢复，并展开字幕分区准备高亮目标句
+    externalSeekRef.current = true;
+    pendingRestoreRef.current = null;
+    setPanelPref(true);
+    companion?.onActiveTabChange(MEDIA_STUDY_TRANSCRIPT_TAB);
+  }, [focusRequest, companion]);
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -402,14 +466,20 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     const handle = handleRef.current;
     if (!handle || !canSeek) return;
     externalSeekRef.current = true;
+    pendingRestoreRef.current = null;
+    setPanelPref(true);
+    companion?.onActiveTabChange(MEDIA_STUDY_TRANSCRIPT_TAB);
     handle.seekTo(focusRequest.seconds);
+    lastTimeRef.current = focusRequest.seconds;
+    recomputeActive(focusRequest.seconds);
+    triggerCuePulse(focusRequest.seconds);
     if (focusRequest.play) handle.play();
     // 回执路径已兑现：丢弃本资源的待兑现意图，避免就绪兜底再 seek 一次
     takePendingMediaFocus((id) =>
       matchesMediaFocusTarget(id, { nodeId: resourceId, nodeSourceId: sourceId, nodePath }),
     );
     handleFocusHandled(focusRequest.requestId, true);
-  }, [focusRequest, canSeek, handleFocusHandled, resourceId, sourceId, nodePath]);
+  }, [focusRequest, canSeek, handleFocusHandled, resourceId, sourceId, nodePath, companion, recomputeActive, triggerCuePulse]);
 
   // 冷启动兜底：引用点击后视图晚于重发 / 回执窗口才就绪时，领取待兑现的跳转意图
   useEffect(() => {
@@ -421,9 +491,15 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     );
     if (seconds === null) return;
     externalSeekRef.current = true;
+    pendingRestoreRef.current = null;
+    setPanelPref(true);
+    companion?.onActiveTabChange(MEDIA_STUDY_TRANSCRIPT_TAB);
     handle.seekTo(seconds);
+    lastTimeRef.current = seconds;
+    recomputeActive(seconds);
+    triggerCuePulse(seconds);
     handle.play();
-  }, [isActive, canSeek, resourceId, sourceId, nodePath]);
+  }, [isActive, canSeek, resourceId, sourceId, nodePath, companion, recomputeActive, triggerCuePulse]);
 
   // ---------------------------------------------------------------- 跨插件互操作（Interop Protocol v1）
   // 「划选即入图」：点选 / 划选字幕即送入当前导图或笔记（会话级，换条目复位）
@@ -438,7 +514,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     [resourceId, sourceId],
   );
   const interopKey = JSON.stringify(interopIds);
-  const pulsedCue = useMediaAnchorReveal({
+  const anchorPulsedCue = useMediaAnchorReveal({
     resourceId,
     resourceIds: interopIds,
     rootRef,
@@ -459,9 +535,19 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       handle.seekTo(seconds);
       lastTimeRef.current = seconds;
       recomputeActive(seconds);
+      takePendingMediaFocus((id) =>
+        matchesMediaFocusTarget(id, { nodeId: resourceId, nodeSourceId: sourceId, nodePath }),
+      );
       return true;
     },
   });
+  useEffect(() => {
+    if (!anchorPulsedCue) return;
+    setPulsedCue({
+      startMs: anchorPulsedCue.startMs,
+      nonce: ++pulseNonceRef.current,
+    });
+  }, [anchorPulsedCue]);
 
   // 字幕段反向链接：查询 + 订阅变更（查询序号防止旧响应覆盖新结果）
   const [mediaEdges, setMediaEdges] = useState<AnchorEdgeRecord[]>([]);
@@ -741,13 +827,14 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   const handleCardsFromSelection = useCallback((selected: TranscriptSegment[]) => {
     void makeMediaCards({
       resourceId,
+      aliasResourceId: sourceId,
       fileName,
       segments: selected,
       extraRequirements: t('learningHub:mediaCards.selectionRequirement'),
       maxCards: Math.min(10, Math.max(3, Math.ceil(selected.length / 3))),
       t,
     });
-  }, [fileName, resourceId, t]);
+  }, [fileName, resourceId, sourceId, t]);
 
   const handleTranslateSelection = useCallback((selected: TranscriptSegment[], selectedText?: string) => {
     const quote = buildTranscriptQuote(resourceId, selected);
@@ -992,8 +1079,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     />
   ) : (
     <AudioPlayer
-      key={src}
-      src={src}
+      key={playerSrc}
+      src={playerSrc}
       fileName={fileName}
       meta={meta}
       compatibilityHint={compatibilityHint}
@@ -1009,7 +1096,11 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   );
 
   return (
-    <div ref={rootRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+    <div
+      ref={rootRef}
+      data-media-source-kind={sourceKind}
+      className="flex h-full min-h-0 flex-col overflow-hidden bg-background"
+    >
       <input
         ref={subtitleInputRef}
         data-testid="media-subtitle-file-input"

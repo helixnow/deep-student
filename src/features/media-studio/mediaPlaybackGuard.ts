@@ -13,6 +13,93 @@ export type MediaTranslateFn = (key: string, options?: Record<string, unknown>) 
 
 const CUSTOM_PROTOCOL_RE = /^(filestream|bilistream|asset):\/\/(?:localhost\/)?(.*)$/i;
 
+export function isCustomProtocolMediaUrl(rawSrc: string | null | undefined): boolean {
+  return typeof rawSrc === 'string' && CUSTOM_PROTOCOL_RE.test(rawSrc.trim());
+}
+
+export function hasMediaElementSource(
+  el: Pick<HTMLMediaElement, 'currentSrc' | 'getAttribute' | 'querySelector'>,
+): boolean {
+  return Boolean(
+    el.currentSrc?.trim() ||
+      el.getAttribute('src')?.trim() ||
+      el.querySelector('source[src]'),
+  );
+}
+
+function urlsLikelyMatch(rawAttr: string, currentSrc: string): boolean {
+  if (rawAttr === currentSrc) return true;
+  if (typeof window !== 'undefined' && window.location?.href) {
+    try {
+      if (new URL(rawAttr, window.location.href).href === currentSrc) return true;
+    } catch {
+      // Ignore malformed URLs and fall through to suffix check.
+    }
+  }
+  return rawAttr.startsWith('/') && currentSrc.endsWith(rawAttr);
+}
+
+export interface MediaElementErrorGuardOptions {
+  isWebUi?: boolean;
+  fallbackPending?: boolean;
+}
+
+/**
+ * Decide whether an HTMLMediaElement error state is a terminal, user-reportable
+ * playback failure vs a transient/stale/non-fatal lifecycle condition:
+ * - detached or unmounting elements (cleanup `removeAttribute('src'); load()`)
+ * - empty `src` placeholders
+ * - stream sources where FileContentView will automatically fall back to `blob:`
+ * - WebUI raw custom-protocol URLs before/during rewrite to `/api/protocol/...`
+ * - stale errors whose `currentSrc` no longer matches the updated `src` attribute
+ * - bare `NETWORK_NO_SOURCE (3)` with `error === null` (standard HTML5 initial load state)
+ * - `MEDIA_ERR_ABORTED (1)` from seeks / source switches / teardown
+ * - already-decoded playable media (`readyState >= 2`) receiving stale `SRC_NOT_SUPPORTED`
+ */
+export function shouldReportMediaElementError(
+  el: Pick<
+    HTMLMediaElement,
+    | 'isConnected'
+    | 'currentSrc'
+    | 'error'
+    | 'networkState'
+    | 'readyState'
+    | 'paused'
+    | 'ended'
+    | 'getAttribute'
+    | 'querySelector'
+  >,
+  options: MediaElementErrorGuardOptions = {},
+): boolean {
+  if (!el.isConnected) return false;
+
+  const rawAttr = el.getAttribute('src')?.trim() ?? '';
+  const currentSrc = el.currentSrc?.trim() ?? '';
+  const hasSourceChild = Boolean(el.querySelector('source[src]'));
+  if (!rawAttr && !currentSrc && !hasSourceChild) return false;
+
+  if (options.fallbackPending) return false;
+
+  if (options.isWebUi) {
+    if (rawAttr && isCustomProtocolMediaUrl(rawAttr)) return false;
+    if (currentSrc && isCustomProtocolMediaUrl(currentSrc)) return false;
+  }
+
+  if (rawAttr && currentSrc && !urlsLikelyMatch(rawAttr, currentSrc)) {
+    return false;
+  }
+
+  const mediaErr = el.error;
+  if (!mediaErr) return false;
+  if (mediaErr.code === 1) return false;
+
+  if (el.readyState >= 2 && (mediaErr.code === 4 || (!el.paused && !el.ended))) {
+    return false;
+  }
+
+  return true;
+}
+
 function resolveText(
   t: MediaTranslateFn | undefined,
   key: string,

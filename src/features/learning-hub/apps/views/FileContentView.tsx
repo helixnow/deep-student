@@ -35,7 +35,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { archiveManifestDisplayText, isArchiveManifestText } from './archiveManifest';
 import { saveFiltersForFileName, saveResourceToDevice } from './saveResourceToDevice';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { isMobilePlatform, supportsStreamProtocol } from '@/utils/platform';
+import { isMobilePlatform, isWebUiShell, supportsStreamProtocol } from '@/utils/platform';
 
 /**
  * 富文档（docx/xlsx/pptx/epub）在 WebView 内整份解析，且预览组件需要 base64：
@@ -81,6 +81,45 @@ import {
 
 /** 加载指示延迟：对齐 UnifiedAppPanel 的 150ms 策略，快速加载不闪 spinner */
 const LOADING_INDICATOR_DELAY_MS = 150;
+const WEBUI_CUSTOM_MEDIA_PROTOCOL_RE = /^(filestream|bilistream|asset):\/\/(?:localhost\/)?(.*)$/i;
+
+/**
+ * WebUI 浏览器外壳里原生协议（filestream:// 等）无法被 <audio>/<video> 直接加载：
+ * 在挂载播放器之前先改写为 HTTP 206 Range 端点 `/api/protocol/<scheme>/<path>`，
+ * 避免播放器首帧用裸协议触发一次假性致命错误。
+ */
+function normalizeWebUiMediaStreamUrl(rawUrl: string | null | undefined): string {
+  if (typeof rawUrl !== 'string') return '';
+  const trimmed = rawUrl.trim();
+  if (!trimmed || !isWebUiShell()) return trimmed;
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('blob:') ||
+    trimmed.startsWith('data:') ||
+    trimmed.startsWith('/')
+  ) {
+    return trimmed;
+  }
+  const match = WEBUI_CUSTOM_MEDIA_PROTOCOL_RE.exec(trimmed);
+  if (!match) return trimmed;
+  const scheme = match[1].toLowerCase();
+  const rest = match[2] ?? '';
+  const queryIdx = rest.indexOf('?');
+  const rawPath = queryIdx >= 0 ? rest.slice(0, queryIdx) : rest;
+  const rawQuery = queryIdx >= 0 ? rest.slice(queryIdx) : '';
+  let decodedPath = rawPath;
+  try {
+    decodedPath = decodeURIComponent(rawPath);
+  } catch {
+    decodedPath = rawPath;
+  }
+  const origin =
+    typeof window !== 'undefined' && window.location?.origin && window.location.origin !== 'null'
+      ? window.location.origin
+      : '';
+  return `${origin}/api/protocol/${encodeURIComponent(scheme)}/${encodeURIComponent(decodedPath)}${rawQuery}`;
+}
 
 /**
  * 媒体源描述
@@ -493,8 +532,9 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
                 const streamBaseUrl = convertFileSrc(blobPath, 'filestream');
                 // 基址可能自带查询串（自定义协议外壳），不能直接再拼一个 `?`
                 const sep = streamBaseUrl.includes('?') ? '&' : '?';
+                const streamUrl = normalizeWebUiMediaStreamUrl(`${streamBaseUrl}${sep}mime=${mimeParam}`);
                 setMediaSource({
-                  url: `${streamBaseUrl}${sep}mime=${mimeParam}`,
+                  url: streamUrl,
                   kind: 'stream',
                 });
                 return;
@@ -889,6 +929,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
           key={node.id}
           kind={isAudio ? 'audio' : 'video'}
           src={mediaSource.url}
+          sourceKind={mediaSource.kind}
           resourceId={node.id}
           sourceId={node.sourceId}
           nodePath={node.path}
