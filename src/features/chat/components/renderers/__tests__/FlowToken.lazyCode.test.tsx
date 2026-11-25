@@ -10,9 +10,15 @@ const { syntaxHighlighterLoaded, writeNativeClipboard } = vi.hoisted(() => ({
   writeNativeClipboard: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('react-syntax-highlighter/dist/esm/prism', async (importOriginal) => {
-  syntaxHighlighterLoaded();
-  return importOriginal();
+vi.mock('@/utils/lazyPrism', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/utils/lazyPrism')>();
+  return {
+    ...actual,
+    loadPrismLanguage: vi.fn(async (...args: Parameters<typeof actual.loadPrismLanguage>) => {
+      syntaxHighlighterLoaded();
+      return actual.loadPrismLanguage(...args);
+    }),
+  };
 });
 
 vi.mock('@tauri-apps/plugin-clipboard-manager', () => ({

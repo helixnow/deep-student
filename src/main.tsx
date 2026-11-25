@@ -239,7 +239,7 @@ async function applyFrontendSentryConsent(enabled: boolean) {
 
   const dsn = (import.meta as any).env?.VITE_SENTRY_DSN;
   if (!dsn || __sentryInit) return;
-  const Sentry: any = await import('@sentry/browser');
+  const Sentry: any = await import('./logging/sentryClient');
   if (revision !== sentryConsentRevision || !sentryDesiredConsent) return;
   const { VERSION_INFO: vi } = await import('./version');
   if (revision !== sentryConsentRevision || !sentryDesiredConsent) return;

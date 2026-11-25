@@ -8,6 +8,7 @@ import tailwindcss from 'tailwindcss';
 import { defineConfig, normalizePath, searchForWorkspaceRoot, type Plugin } from 'vite';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { createManualChunks, failOnCircularChunk } from '../src/platform/chunk-strategy.ts';
+import { bundleDietPlugin } from '../src/platform/bundle-diet-plugin.ts';
 import {
   listOfficialPlugins,
   OFFICIAL_PLUGINS_MODULE,
@@ -204,6 +205,7 @@ export default defineConfig({
   publicDir: path.join(repoRoot, 'public'),
   plugins: [
     excludeMcpDebugProd(),
+    bundleDietPlugin(repoRoot),
     webOfficialPlugins(),
     react(),
     webHtmlAndPwaAssets(),
@@ -231,6 +233,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(repoRoot, './src'),
+      '@codemirror/language-data': path.resolve(repoRoot, './src/components/crepe/codeMirrorLanguages.ts'),
+      '@modelcontextprotocol/sdk/dist/esm/validation/ajv-provider.js': path.resolve(repoRoot, './src/mcp/ajvProviderStub.ts'),
     },
     dedupe: [
       'react',

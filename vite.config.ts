@@ -23,6 +23,7 @@ import {
   targetPlatform,
 } from "./src/platform/official-plugins";
 import { failOnCircularChunk, manualChunks } from "./src/platform/chunk-strategy";
+import { bundleDietPlugin } from "./src/platform/bundle-diet-plugin";
 
 /**
  * OS 模式交互延迟落盘：POST/GET `/__wb_interaction_trace`
@@ -256,6 +257,7 @@ export default defineConfig(({ command, mode }) => ({
         }
       },
     },
+    bundleDietPlugin(fileURLToPath(new URL('.', import.meta.url))),
     officialUiPluginsPlugin(),
     react(),
     workbenchInteractionTracePlugin(),
@@ -296,7 +298,9 @@ export default defineConfig(({ command, mode }) => ({
   },
   resolve: {
     alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url))
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+      "@codemirror/language-data": fileURLToPath(new URL("./src/components/crepe/codeMirrorLanguages.ts", import.meta.url)),
+      "@modelcontextprotocol/sdk/dist/esm/validation/ajv-provider.js": fileURLToPath(new URL("./src/mcp/ajvProviderStub.ts", import.meta.url)),
     },
     dedupe: [
       'prosemirror-model',

@@ -1,20 +1,24 @@
 /**
  * SmilesText 组件 - SMILES 分子结构式渲染
  *
- * 使用 smiles-drawer（本地 npm 依赖）把 SMILES 串渲染为 SVG 骨架式。
+ * 按需加载 OpenChemLib 把 SMILES 串渲染为 SVG 骨架式，经 DOMPurify 净化后挂载。
  * 设计约定（docs/dev/chemistry-formula-rendering-support-2026-09-08.md）：
  * - SMILES 走独立字段（不嵌入题干文本），渲染失败不影响内容展示
  * - 渲染失败降级为「名称 + SMILES 文本」，绝不吞掉内容
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import DOMPurify from 'dompurify';
 import { cn } from '@/lib/utils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 
-// smiles-drawer 是 UMD/mjs 混合包，类型自带（dist/types）。
-// 默认导出为命名空间类 SmilesDrawerNS，其静态成员 SmiDrawer 提供
-// draw(smiles, target, theme, onSuccess, onError) —— 失败经回调而非异常。
-import SmilesDrawer from 'smiles-drawer';
+const sanitizeSvg = (svg: string) =>
+  DOMPurify.sanitize(svg, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    ADD_TAGS: ['style'],
+    FORBID_TAGS: ['script', 'foreignObject', 'iframe', 'embed', 'object'],
+    FORBID_ATTR: ['xlink:href'],
+  });
 
 interface SmilesTextProps {
   smiles: string;
@@ -29,7 +33,7 @@ interface SmilesTextProps {
 
 /**
  * 单条 SMILES → SVG 骨架式渲染。
- * 懒初始化一个 SvgDrawer 实例（复用）；解析失败返回 false 由调用方降级。
+ * 与聊天内联分子式共用按需加载的 OpenChemLib；解析或渲染失败时降级为文本。
  */
 export const SmilesText: React.FC<SmilesTextProps> = ({
   smiles,
@@ -39,37 +43,34 @@ export const SmilesText: React.FC<SmilesTextProps> = ({
   className,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const drawerRef = useRef<any>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !smiles.trim()) return;
+    const trimmed = smiles.trim();
+    if (!container || !trimmed) return;
 
     let cancelled = false;
     setFailed(false);
-    container.innerHTML = '';
+    container.replaceChildren();
 
-    const drawer = new (SmilesDrawer as any).SmiDrawer({
-      width,
-      height,
-      bondThickness: 1.2,
-      bondLength: 28,
-      shortBondLength: 18,
-      padding: 12,
-      terminalCarbons: false,
-    });
-    drawerRef.current = drawer;
-
-    // SmiDrawer.draw：解析/布局失败走 errorCallback 而非抛异常
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', String(width));
-    svg.setAttribute('height', String(height));
-    container.appendChild(svg);
-    drawer.draw(smiles.trim(), svg, 'light', undefined, (error: unknown) => {
-      debugLog.warn('[SmilesText] SMILES 渲染失败，降级为文本:', smiles, error);
-      if (!cancelled) setFailed(true);
-    });
+    void import('openchemlib')
+      .then((ocl: any) => {
+        if (cancelled || !containerRef.current) return;
+        const molecule = ocl.Molecule.fromSmiles(trimmed);
+        if (!molecule || (typeof molecule.getAllAtoms === 'function' && molecule.getAllAtoms() === 0)) {
+          throw new Error('Empty SMILES structure');
+        }
+        const rawSvg = molecule.toSVG(width, height, undefined, {
+          autoCrop: true,
+          autoCropMargin: 10,
+        });
+        containerRef.current.innerHTML = sanitizeSvg(rawSvg);
+      })
+      .catch((error: unknown) => {
+        debugLog.warn('[SmilesText] SMILES 渲染失败，降级为文本:', smiles, error);
+        if (!cancelled) setFailed(true);
+      });
 
     return () => {
       cancelled = true;
@@ -88,7 +89,10 @@ export const SmilesText: React.FC<SmilesTextProps> = ({
 
   return (
     <figure className={cn('inline-flex flex-col items-center gap-1', className)}>
-      <div ref={containerRef} className="flex items-center justify-center" />
+      <div
+        ref={containerRef}
+        className="flex items-center justify-center dark:[&_svg]:[filter:invert(0.88)_hue-rotate(180deg)]"
+      />
       {caption && (
         <figcaption className="text-xs text-muted-foreground">{caption}</figcaption>
       )}

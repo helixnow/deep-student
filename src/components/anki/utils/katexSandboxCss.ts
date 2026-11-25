@@ -15,7 +15,15 @@ export function loadKatexSandboxCss(): Promise<string> {
   if (!loadPromise) {
     loadPromise = import('./katexSandboxCssData')
       .then((mod) => {
-        cachedCss = mod.KATEX_SANDBOX_CSS;
+        if (Object.keys(mod).includes('buildKatexSandboxCss') && typeof mod.buildKatexSandboxCss === 'function') {
+          return mod.buildKatexSandboxCss();
+        }
+        const legacyCss = (mod as { KATEX_SANDBOX_CSS?: string }).KATEX_SANDBOX_CSS;
+        if (typeof legacyCss === 'string') return legacyCss;
+        throw new Error('katexSandboxCssData did not export buildKatexSandboxCss');
+      })
+      .then((css) => {
+        cachedCss = css;
         return cachedCss;
       })
       .catch((error: unknown) => {

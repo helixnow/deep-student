@@ -16,7 +16,11 @@ vi.mock('mermaid', () => {
 });
 vi.mock('@/features/chat/components/renderers/RichCodeRenderer', () => ({ RichCodeRenderer: ({ kind, source }: any) => <div data-rich-kind={kind}>{source}</div> }));
 vi.mock('@/components/previews/ChatHtmlPreview', () => ({ ChatHtmlPreview: ({ html, streaming, expanded }: any) => <div data-html-preview data-streaming={String(streaming)} data-expanded={String(expanded)}>{html}</div> }));
-vi.mock('react-syntax-highlighter/dist/esm/prism', () => ({ default: ({ children }: any) => <span>{children}</span> }));
+vi.mock('@/utils/lazyPrism', () => ({
+  resolvePrismLanguage: () => null,
+  getLoadedPrismGrammar: () => null,
+  loadPrismLanguage: vi.fn(async () => null),
+}));
 
 const languages = ['mermaid', 'MERMAID', 'svg', 'html', 'htm', 'xml', 'vega-lite', 'vega', 'dot', 'abc', 'wavedrom', 'mol', 'molfile', 'sdf', 'pdb', 'geojson', 'mindmap', 'text', 'ts'];
 const capsOff = Object.fromEntries(Object.keys(DEFAULT_RENDERER_CAPABILITIES).map(key => [key, false])) as unknown as RendererCapabilities;
