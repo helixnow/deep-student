@@ -2,7 +2,7 @@
  * 复习会话：模板卡面、Cloze、评分、撤销、编辑、暂停/跳过。
  *
  * 键盘流：Space/Enter 翻面（已翻面时评 Good）、1–4 评分、
- * Z 或 Ctrl/Cmd+Z 撤销、E 编辑、S 跳过、- 埋藏到明天、R 重播音频；
+ * Z 或 Ctrl/Cmd+Z 撤销、E 编辑、S 跳过、- 埋藏到明天、R 重播音频、? 快捷键说明；
  * 编辑中 Esc 取消、Ctrl/Cmd+Enter 保存。
  */
 import React from 'react';
@@ -230,8 +230,13 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
       if (undone !== false) {
         showGlobalNotification(
           'info',
-          t('session.undone', { defaultValue: '已撤销上一次评分' }),
+          t('session.undone', { defaultValue: 'Undid last rating' }),
         );
+      } else {
+        const live = useFsrsReviewStore.getState();
+        if (live.errorKind === 'undo' && live.error) {
+          showGlobalNotification('error', live.error);
+        }
       }
     });
   }, [undoLastReview, t]);
@@ -259,6 +264,36 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
 
   const sessionDone = isReviewSessionDone({ queue, queueIndex, loading });
   const sessionEmpty = isReviewSessionEmpty({ queue, loading });
+  const isSessionEnded = sessionEmpty || !current || sessionDone;
+  const canUndoInSession = Boolean(lastReview) && !isSessionEnded;
+
+  // `?` 键盘快捷键速查弹层
+  const [shortcutsOpen, setShortcutsOpen] = React.useState(false);
+  const shortcutsPopoverId = React.useId();
+  const shortcutsContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const shortcutsTriggerRef = React.useRef<HTMLButtonElement | null>(null);
+  React.useEffect(() => {
+    if (!isActive || editing || isSessionEnded || loading) {
+      setShortcutsOpen(false);
+    }
+  }, [isActive, editing, isSessionEnded, loading]);
+  const handleShortcutsOutsidePointerDown = React.useCallback((rawEvent: Event) => {
+    const root = shortcutsContainerRef.current;
+    if (!root) return;
+    if (rawEvent.target instanceof Node && root.contains(rawEvent.target)) return;
+    setShortcutsOpen(false);
+  }, []);
+  const shortcutCheatSheetItems = React.useMemo(() => [
+    { keys: 'Space', label: t('review.shortcuts.flipOrGood', { defaultValue: 'Flip card / Rate Good' }) },
+    { keys: '1–4', label: t('review.shortcuts.rate', { defaultValue: 'Rate: Again / Hard / Good / Easy' }) },
+    { keys: 'Z', label: t('review.shortcuts.undo', { defaultValue: 'Undo last rating' }) },
+    { keys: 'R', label: t('review.shortcuts.replayAudio', { defaultValue: 'Replay card audio' }) },
+    { keys: 'E', label: t('review.shortcuts.edit', { defaultValue: 'Edit current card' }) },
+    { keys: 'S', label: t('review.shortcuts.skip', { defaultValue: 'Skip card for now' }) },
+    { keys: '-', label: t('review.shortcuts.bury', { defaultValue: 'Bury until tomorrow' }) },
+    { keys: '?', label: t('review.shortcuts.help', { defaultValue: 'Toggle this shortcut sheet' }) },
+  ], [t]);
+
   const draftTargetCard = editing ? editingCard : current;
   const draftIsCloze = editing
     ? draftClozeMode
@@ -292,7 +327,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
       return;
     }
     if (!speechText) {
-      showGlobalNotification('info', t('session.ttsEmpty', { defaultValue: '当前卡面没有可朗读的文字' }));
+      showGlobalNotification('info', t('session.ttsEmpty', { defaultValue: 'No readable text on this card face' }));
       return;
     }
     const seq = ++speakSeqRef.current;
@@ -302,7 +337,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         if (speakSeqRef.current !== seq) return;
         const message = err instanceof Error && err.message
           ? err.message
-          : t('session.ttsFailed', { defaultValue: '朗读不可用' });
+          : t('session.ttsFailed', { defaultValue: 'Text-to-speech is unavailable' });
         showGlobalNotification('warning', message);
       })
       .finally(() => {
@@ -519,7 +554,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
       draftFront,
       textarea?.selectionStart,
       textarea?.selectionEnd,
-      t('library.create.clozePlaceholder', { defaultValue: '挖空内容' }),
+      t('library.create.clozePlaceholder', { defaultValue: 'Cloze text' }),
     );
     setDraftClozeMode(true);
     setDraftFront(nextValue);
@@ -560,12 +595,32 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
     if (isKeyEventFromOtherModal(event)) return;
     if (ratingBusy || editing) return;
 
-    // 撤销：Z 与 Ctrl/Cmd+Z 都支持（完成态也可用）
+    if (shortcutsOpen && event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      setShortcutsOpen(false);
+      shortcutsTriggerRef.current?.focus();
+      return;
+    }
+
+    const isQuestionKey = (event.key === '?' || (event.code === 'Slash' && event.shiftKey))
+      && !event.ctrlKey
+      && !event.metaKey
+      && !event.altKey;
+    if (isQuestionKey && !loading && !isSessionEnded) {
+      event.preventDefault();
+      setShortcutsOpen((open) => !open);
+      return;
+    }
+
+    if (shortcutsOpen) return;
+
+    // 撤销：Z 与 Ctrl/Cmd+Z 仅在复习会话进行中生效（Session Complete 完成态禁用）
     const isUndoKey = event.key.toLowerCase() === 'z' || event.code === 'KeyZ';
     if (isUndoKey && !event.altKey && !event.shiftKey) {
-      if (lastReview) {
+      if (canUndoInSession) {
         event.preventDefault();
-        void undoLastReview();
+        handleUndoWithFeedback();
       }
       return;
     }
@@ -620,22 +675,31 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   }, [
     beginEdit,
     buryCurrent,
+    canUndoInSession,
     current,
     editing,
     flipped,
     handleFlip,
     handleRate,
     handleReplayAudio,
-    lastReview,
+    handleUndoWithFeedback,
+    isSessionEnded,
     loading,
     ratingBusy,
     sessionDone,
+    shortcutsOpen,
     skipCurrent,
-    undoLastReview,
   ]);
   useEventRegistry(
-    isActive ? [{ target: 'window', type: 'keydown', listener: onKeyDown }] : [],
-    [isActive, onKeyDown],
+    isActive
+      ? [
+          { target: 'window', type: 'keydown', listener: onKeyDown },
+          ...(shortcutsOpen
+            ? [{ target: 'window' as const, type: 'pointerdown', listener: handleShortcutsOutsidePointerDown }]
+            : []),
+        ]
+      : [],
+    [isActive, onKeyDown, shortcutsOpen, handleShortcutsOutsidePointerDown],
   );
 
   const onEditKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -657,12 +721,12 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
     else exitSession();
   }, [cancelEdit, editing, ratingBusy, exitSession]);
   const ttsLabel = speaking
-    ? t('session.stopSpeak', { defaultValue: '停止朗读' })
-    : t('session.speakCard', { defaultValue: '朗读卡片' });
-  const replayAudioLabel = t('session.replayAudio', { defaultValue: '重播音频' });
+    ? t('session.stopSpeak', { defaultValue: 'Stop reading' })
+    : t('session.speakCard', { defaultValue: 'Read card aloud' });
+  const replayAudioLabel = t('session.replayAudio', { defaultValue: 'Replay audio' });
   const mobileChrome = useFlashcardsMobileChrome({
     title: t(editing ? 'session.edit' : 'session.title'),
-    subtitle: !editing && current && !sessionDone ? t('review.ratedRemaining', { rated: sessionRatedCount, left: remainingCount, defaultValue: '已评 {{rated}} · 剩 {{left}}' }) : undefined,
+    subtitle: !editing && current && !sessionDone ? t('review.ratedRemaining', { rated: sessionRatedCount, left: remainingCount, defaultValue: '{{rated}} rated · {{left}} left' }) : undefined,
     onBack: handleMobileBack,
     rightActions: editing ? (
       <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('session.saveEdit')} disabled={ratingBusy || !draftIsValid} onClick={() => void saveEdit()}>
@@ -682,7 +746,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           {speaking ? <Stop size={20} /> : <SpeakerHigh size={20} />}
         </DsButton>
       )}
-      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('session.undo')} disabled={!lastReview || ratingBusy} onClick={() => void undoLastReview()}>
+      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('session.undo')} disabled={!canUndoInSession || ratingBusy} onClick={handleUndoWithFeedback}>
         <ArrowCounterClockwise size={20} />
       </DsButton>
       {(current || lastSuspended) && <AppMenu>
@@ -721,7 +785,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         </AppMenuContent>
       </AppMenu>}
     </>,
-  }, [t, editing, current, sessionDone, sessionRatedCount, remainingCount, handleMobileBack, ratingBusy, draftIsValid, saveEdit, ttsLabel, speaking, speechText, handleToggleSpeak, hasCardAudio, handleReplayAudio, replayAudioLabel, lastReview, undoLastReview, lastSuspended, resumeLabel, templateLoading, beginEdit, skipCurrent, suspendCurrent, buryCurrent, resumeLastSuspended, openSource, askAi, cardActionEntries, runContributedCardAction]);
+  }, [t, editing, current, sessionDone, sessionRatedCount, remainingCount, handleMobileBack, ratingBusy, draftIsValid, saveEdit, ttsLabel, speaking, speechText, handleToggleSpeak, hasCardAudio, handleReplayAudio, replayAudioLabel, canUndoInSession, handleUndoWithFeedback, lastSuspended, resumeLabel, templateLoading, beginEdit, skipCurrent, suspendCurrent, buryCurrent, resumeLastSuspended, openSource, askAi, cardActionEntries, runContributedCardAction]);
 
   const errorBanner = error ? (
     <div role="alert" className="wb-fc-session-error flex items-start justify-between gap-3">
@@ -816,9 +880,9 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         elapsedMs={showAsEmpty ? null : sessionElapsedMs}
         remainingDue={remainingDueAfterSession}
         busy={ratingBusy}
-        canUndo={Boolean(lastReview)}
+        canUndo={false}
         canResume={Boolean(lastSuspended)}
-        onUndo={() => void undoLastReview()}
+        onUndo={handleUndoWithFeedback}
         onResume={() => void resumeLastSuspended()}
         onBack={exitSession}
         hideChromeActions={mobileChrome}
@@ -899,7 +963,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
                 className="shrink-0 gap-1 text-xs"
               >
                 <ChatCircleText size={14} aria-hidden="true" />
-                {t('session.askAiDeep', { defaultValue: '问 AI 讲透' })}
+                {t('session.askAiDeep', { defaultValue: 'Ask AI to explain' })}
               </DsButton>
             ) : null}
             {leechCard?.ankiCardId ? (
@@ -1013,8 +1077,8 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           variant="ghost"
           size="sm"
           iconOnly
-          disabled={!lastReview || ratingBusy}
-          onClick={() => void undoLastReview()}
+          disabled={!canUndoInSession || ratingBusy}
+          onClick={handleUndoWithFeedback}
           aria-label={t('session.undo')}
           aria-keyshortcuts="Z Control+Z Meta+Z"
           title={`${t('session.undo')} · Z`}
@@ -1186,7 +1250,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div
               role="group"
-              aria-label={t('library.create.typeLabel', { defaultValue: '卡片类型' })}
+              aria-label={t('library.create.typeLabel', { defaultValue: 'Card type' })}
               className="inline-flex items-center rounded-lg border border-border/50 bg-muted/40 p-0.5"
             >
               <DsButton
@@ -1203,7 +1267,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
                     : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                {t('library.create.typeBasic', { defaultValue: '问答卡 (Basic)' })}
+                {t('library.create.typeBasic', { defaultValue: 'Basic (Q&A)' })}
               </DsButton>
               <DsButton
                 type="button"
@@ -1219,7 +1283,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
                     : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                {t('library.create.typeCloze', { defaultValue: '挖空卡 (Cloze)' })}
+                {t('library.create.typeCloze', { defaultValue: 'Cloze deletion' })}
               </DsButton>
             </div>
             <DsButton
@@ -1232,7 +1296,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             >
               <BracketsCurly size={14} aria-hidden="true" />
               <span>
-                {t('library.create.insertCloze', { defaultValue: '插入挖空' })}
+                {t('library.create.insertCloze', { defaultValue: 'Insert cloze' })}
                 {' '}
                 <code className="font-mono">{`{{c${nextClozeIndex(draftFront)}::...}}`}</code>
               </span>
@@ -1263,11 +1327,11 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             />
           </label>
           <label className="flex flex-col gap-1.5 text-left text-xs font-medium text-muted-foreground">
-            {t('library.editTags', { defaultValue: '标签（逗号分隔）' })}
+            {t('library.editTags', { defaultValue: 'Tags (comma separated)' })}
             <Input
               value={draftTags}
               onChange={(event) => setDraftTags(event.target.value)}
-              placeholder={t('library.create.tagsPlaceholder', { defaultValue: '例：高数, 重点' })}
+              placeholder={t('library.create.tagsPlaceholder', { defaultValue: 'e.g. Calculus, Key concept' })}
               data-testid="fc-edit-tags"
               className="h-9 text-base font-normal sm:text-sm [@media(pointer:coarse)]:!h-11"
             />
@@ -1368,7 +1432,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
                     className="shrink-0 gap-1 text-xs text-primary"
                   >
                     <ChatCircleText size={13} aria-hidden="true" />
-                    {t('session.askAiDeep', { defaultValue: '问 AI 讲透' })}
+                    {t('session.askAiDeep', { defaultValue: 'Ask AI to explain' })}
                   </DsButton>
                   {lastAgainCard.ankiCardId ? (
                     <DsButton
@@ -1401,36 +1465,107 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           />
           {!mobileChrome ? (
             <div
+              ref={shortcutsContainerRef}
               data-testid="fc-review-shortcut-hint"
-              className="wb-fc-shortcut-hint justify-center"
-              aria-hidden="true"
+              className="wb-fc-shortcut-hint relative justify-center"
             >
-              {!flipped ? (
-                <span>
-                  <kbd className="wb-fc-keycap">Space</kbd>
-                  {t('review.shortcutFlip')}
-                </span>
-              ) : (
-                <>
-                  <span>
-                    <kbd className="wb-fc-keycap">1–4</kbd>
-                    {t('review.shortcutRate')}
-                  </span>
-                  <span className="wb-fc-shortcut-sep">·</span>
-                  <span>
+              <span aria-hidden="true" className="inline-flex flex-wrap items-center justify-center gap-1.5">
+                {!flipped ? (
+                  <span className="inline-flex items-center gap-1">
                     <kbd className="wb-fc-keycap">Space</kbd>
-                    {t('review.shortcutGood')}
+                    {t('review.shortcutFlip')}
                   </span>
-                </>
-              )}
-              {lastReview ? (
-                <>
-                  <span className="wb-fc-shortcut-sep">·</span>
-                  <span>
-                    <kbd className="wb-fc-keycap">Z</kbd>
-                    {t('review.shortcutUndo')}
-                  </span>
-                </>
+                ) : (
+                  <>
+                    <span className="inline-flex items-center gap-1">
+                      <kbd className="wb-fc-keycap">1–4</kbd>
+                      {t('review.shortcutRate')}
+                    </span>
+                    <span className="wb-fc-shortcut-sep">·</span>
+                    <span className="inline-flex items-center gap-1">
+                      <kbd className="wb-fc-keycap">Space</kbd>
+                      {t('review.shortcutGood')}
+                    </span>
+                  </>
+                )}
+                {canUndoInSession ? (
+                  <>
+                    <span className="wb-fc-shortcut-sep">·</span>
+                    <span className="inline-flex items-center gap-1">
+                      <kbd className="wb-fc-keycap">Z</kbd>
+                      {t('review.shortcutUndo')}
+                    </span>
+                  </>
+                ) : null}
+                <span className="wb-fc-shortcut-sep">·</span>
+              </span>
+              <DsButton
+                ref={shortcutsTriggerRef}
+                type="button"
+                variant="ghost"
+                size="sm"
+                data-testid="fc-review-shortcuts-trigger"
+                aria-haspopup="dialog"
+                aria-expanded={shortcutsOpen}
+                aria-controls={shortcutsPopoverId}
+                aria-keyshortcuts="?"
+                aria-label={t('review.shortcuts.triggerLabel', { defaultValue: 'Show keyboard shortcuts' })}
+                title={`${t('review.shortcuts.triggerLabel', { defaultValue: 'Show keyboard shortcuts' })} · ?`}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+                }}
+                onClick={() => setShortcutsOpen((open) => !open)}
+                className="h-auto gap-1 rounded px-1.5 py-0.5 text-2xs font-normal text-muted-foreground hover:text-foreground"
+              >
+                <kbd className="wb-fc-keycap" aria-hidden="true">?</kbd>
+                <span>{t('review.shortcuts.triggerShort', { defaultValue: 'Shortcuts' })}</span>
+              </DsButton>
+              {shortcutsOpen ? (
+                <div
+                  id={shortcutsPopoverId}
+                  role="dialog"
+                  aria-modal="false"
+                  aria-label={t('review.shortcuts.title', { defaultValue: 'Keyboard shortcuts' })}
+                  data-testid="fc-review-shortcuts-popover"
+                  className="absolute bottom-full left-1/2 z-30 mb-2 w-72 max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-xl border border-border/70 bg-popover p-3 text-left text-xs text-popover-foreground shadow-lg"
+                >
+                  <div className="mb-2 flex items-center justify-between gap-2 border-b border-border/50 pb-1.5">
+                    <span className="font-medium text-foreground">
+                      {t('review.shortcuts.title', { defaultValue: 'Keyboard shortcuts' })}
+                    </span>
+                    <DsButton
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      data-testid="fc-review-shortcuts-close"
+                      aria-label={t('common:close', { defaultValue: 'Close' })}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+                      }}
+                      onClick={() => {
+                        setShortcutsOpen(false);
+                        shortcutsTriggerRef.current?.focus();
+                      }}
+                      className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                    >
+                      <X size={13} aria-hidden="true" />
+                    </DsButton>
+                  </div>
+                  <dl className="space-y-1.5">
+                    {shortcutCheatSheetItems.map((item) => (
+                      <div key={item.keys} className="flex items-center justify-between gap-3">
+                        <dt className="text-muted-foreground">{item.label}</dt>
+                        <dd className="shrink-0">
+                          <kbd className="wb-fc-keycap">{item.keys}</kbd>
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <div className="mt-2 flex items-center justify-end gap-1 border-t border-border/40 pt-1.5 text-2xs text-muted-foreground">
+                    <kbd className="wb-fc-keycap">Esc</kbd>
+                    <span>{t('review.shortcuts.closeHint', { defaultValue: 'Close' })}</span>
+                  </div>
+                </div>
               ) : null}
             </div>
           ) : null}

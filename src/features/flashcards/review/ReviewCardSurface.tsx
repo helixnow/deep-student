@@ -149,16 +149,37 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
   const side = flipped ? 'back' : 'front';
   // 媒体出处锚点由 backAccessory 的回看按钮承载，卡面不再露出原文
   const displayCard = React.useMemo(() => withoutCardMediaSourceRefs(card), [card]);
-  const isCloze = hasValidCloze(displayCard.text);
+  const clozeSource = hasValidCloze(displayCard.text)
+    ? displayCard.text!
+    : hasValidCloze(displayCard.front)
+      ? displayCard.front
+      : hasValidCloze(displayCard.extraFields?.Text)
+        ? displayCard.extraFields!.Text
+        : null;
+  const isCloze = clozeSource !== null;
+  const revealedClozeText = isCloze ? renderClozeText(clozeSource, flipped) : '';
+  const clozeExtraText = isCloze && flipped
+    ? (displayCard.extraFields?.Extra ?? displayCard.back ?? '').trim()
+    : '';
+  const showClozeExtra = Boolean(
+    clozeExtraText
+    && clozeExtraText !== clozeSource?.trim()
+    && clozeExtraText !== revealedClozeText.trim()
+    && !hasValidCloze(clozeExtraText),
+  );
   const fallbackText = isCloze
-    ? renderClozeText(displayCard.text ?? '', flipped)
+    ? (showClozeExtra ? `${revealedClozeText}\n\n${clozeExtraText}` : revealedClozeText)
     : flipped
       ? displayCard.back || displayCard.text || ''
       : displayCard.front || displayCard.text || '';
   const renderCard = React.useMemo(() => toRenderableReviewCard(displayCard), [displayCard]);
   const accessibleFrontSummary = React.useMemo(
-    () => stripHtmlTagsForAccessibleSummary(displayCard.front || displayCard.text || ''),
-    [displayCard.front, displayCard.text],
+    () => stripHtmlTagsForAccessibleSummary(
+      isCloze
+        ? revealedClozeText
+        : (displayCard.front || displayCard.text || ''),
+    ),
+    [isCloze, revealedClozeText, displayCard.front, displayCard.text],
   );
 
   // 交替使用两个等价动画类以重启 CSS 动画；卡片切换时用入场动画而非翻面动画。
@@ -184,9 +205,8 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
   const [scrollElement, setScrollElement] = React.useState<HTMLDivElement | null>(null);
   const contentRef = React.useRef<HTMLDivElement>(null);
   const [contentFits, setContentFits] = React.useState(true);
-  const hasSwipe = Boolean(swipe);
   React.useEffect(() => {
-    if (!hasSwipe || !scrollElement) return;
+    if (!scrollElement) return;
     const measure = () => {
       setContentFits(scrollElement.scrollHeight <= scrollElement.clientHeight + 1);
     };
@@ -199,7 +219,7 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [hasSwipe, cardKey, side, template, templateLoading, scrollElement]);
+  }, [cardKey, side, template, templateLoading, scrollElement]);
 
   // 舞台高度：模板的 .card 背景铺满整个舞台（与 Anki 复习窗口一致，不再另套卡片框）
   const [stageHeight, setStageHeight] = React.useState(0);
@@ -284,16 +304,16 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
           ) : null}
           <div
             ref={contentRef}
-            className={cn('wb-fc-card-content flex min-h-full flex-col', !templateMode && 'px-6 py-8 sm:px-10 sm:py-10')}
+            className={cn('wb-fc-card-content relative flex min-h-full flex-col', !templateMode && 'px-6 py-8 sm:px-10 sm:py-10')}
             data-template-mode={templateMode ? 'true' : undefined}
           >
-            {/* 正/背面由内容本身表达；仅保留给读屏与 DOM 文本可达性 */}
-            <span className="sr-only">
+            {/* 正/背面由内容本身表达；仅保留给读屏与 DOM 文本可达性，定位在卡面内部避免 -1px 越出顶边 */}
+            <span className="sr-only left-1 top-1 !m-0">
               {flipped ? backLabel : frontLabel}
             </span>
             {flipped && accessibleFrontSummary ? (
               <span
-                className="sr-only select-text"
+                className="sr-only select-text left-1 top-1 !m-0"
                 data-testid="review-card-front-accessible"
               >
                 {`${frontLabel}: ${accessibleFrontSummary}`}
@@ -320,8 +340,9 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
                 onFrameWheel={handleFrameWheel}
                 onImageLightboxChange={setImageLightboxOpen}
                 className={cn(
-                  'flex min-h-0 flex-1',
-                  templateMode ? (contentFits ? 'flex-col justify-center' : 'flex-col') : 'flex-col items-center justify-center',
+                  'flex min-h-0 flex-1 flex-col',
+                  contentFits && 'justify-center',
+                  !templateMode && 'items-center',
                 )}
               />
             </div>
