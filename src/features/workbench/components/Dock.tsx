@@ -1242,8 +1242,20 @@ function DockImpl({
           tabIndex={hidden ? 0 : -1}
           aria-hidden={!hidden || undefined}
           aria-expanded={hidden ? false : undefined}
-          aria-label={hidden ? t('workbench:dock.autohideHint') : undefined}
-          title={hidden ? t('workbench:dock.autohideHint') : undefined}
+          aria-label={
+            hidden
+              ? (isCompactViewport
+                  ? t('workbench:dock.autohideHintTouch')
+                  : t('workbench:dock.autohideHint'))
+              : undefined
+          }
+          title={
+            hidden
+              ? (isCompactViewport
+                  ? t('workbench:dock.autohideHintTouch')
+                  : t('workbench:dock.autohideHint'))
+              : undefined
+          }
           style={{
             zIndex: hidden ? 'calc(var(--wb-z-dock, 9000) + 1)' : 0,
             touchAction: 'manipulation',

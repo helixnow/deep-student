@@ -345,7 +345,8 @@
     "apps": "All Apps",
     "collapse": "Collapse Dock",
     "showAllWindows": "Show All Windows",
-    "autohideHint": "Dock is auto-hidden — move pointer to the bottom edge or click here to reveal"
+    "autohideHint": "Dock is auto-hidden — move pointer to the bottom edge or click here to reveal",
+    "autohideHintTouch": "Navigation bar is hidden — tap here to show"
   },
   "resourceHome": {
     "newExam": "New question set",

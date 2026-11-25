@@ -454,15 +454,15 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                 value={themeMode}
                 onValueChange={(nextMode) => { void handleThemeModeChange(nextMode); }}
                 stretch
-                className="w-full md:w-auto"
-                itemClassName="[@media(pointer:coarse)]:!min-h-11"
+                className="w-full flex-nowrap md:w-auto"
+                itemClassName="px-2 sm:px-3.5 whitespace-nowrap [@media(pointer:coarse)]:!min-h-11"
                 options={themeModeOptions.map(({ mode, label, icon: Icon, title }) => ({
                   value: mode,
                   title,
                   label: (
                     <>
-                      <Icon className="h-[18px] w-[18px]" weight="bold" aria-hidden="true" />
-                      <span>{label}</span>
+                      <Icon className="h-[18px] w-[18px] shrink-0" weight="bold" aria-hidden="true" />
+                      <span className="whitespace-nowrap">{label}</span>
                     </>
                   ),
                 }))}

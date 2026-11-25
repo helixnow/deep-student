@@ -148,7 +148,9 @@ describe('Dock 360px Mobile Reveal Handle (S4-17 Round 6 Retry)', () => {
     expect(hotzone).toHaveAttribute('data-collapsed', 'true');
     expect(hotzone).toHaveAttribute('data-mobile-handle', 'true');
     expect(hotzone).toHaveAttribute('aria-expanded', 'false');
-    expect(hotzone.getAttribute('aria-label')).toContain('程序坞已自动收起');
+    expect(hotzone.getAttribute('aria-label')).toBe('底部导航已收起，轻点此处即可展开');
+    expect(hotzone.getAttribute('title')).toBe('底部导航已收起，轻点此处即可展开');
+    expect(hotzone.getAttribute('aria-label')).not.toContain('指针移至底部边缘');
     expect(hotzone.className).toContain('pointer-events-auto');
     expect(hotzone.className).toContain('min-h-[40px]');
     expect(hotzone.className).toContain('left-1/2');

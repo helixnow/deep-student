@@ -16,7 +16,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Books, ChatCircleText, Cards, Check, CheckCircle } from '@phosphor-icons/react';
+import { Books, ChatCircleText, Cards, CaretDown, Check, CheckCircle } from '@phosphor-icons/react';
 
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
@@ -302,6 +302,15 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
 
   // 模态焦点管理：打开时把焦点移入面板，关闭时还原到触发前的元素
   const panelRef = useRef<HTMLDivElement>(null);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const [hasMoreBelow, setHasMoreBelow] = useState(false);
+
+  const updateScrollCue = useCallback(() => {
+    const el = bodyScrollRef.current;
+    if (!el) return;
+    setHasMoreBelow(el.scrollHeight - el.clientHeight - el.scrollTop > 4);
+  }, []);
+
   useEffect(() => {
     const previouslyFocused = document.activeElement as HTMLElement | null;
     panelRef.current?.focus();
@@ -309,6 +318,24 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
       previouslyFocused?.focus?.();
     };
   }, []);
+
+  useEffect(() => {
+    updateScrollCue();
+    const el = bodyScrollRef.current;
+    const ro =
+      typeof ResizeObserver !== 'undefined' && el
+        ? new ResizeObserver(() => updateScrollCue())
+        : null;
+    if (ro && el) {
+      ro.observe(el);
+      if (el.firstElementChild) {
+        ro.observe(el.firstElementChild);
+      }
+    }
+    return () => {
+      ro?.disconnect();
+    };
+  }, [updateScrollCue]);
 
   // ★ 2026-07-08（移动端审计 D-9）：自绘弹窗无 Radix data-state，
   // androidBackCoordinator 的 Escape 兜底覆盖不到 —— Android 返回键
@@ -433,8 +460,8 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
         zIndex: activeLegalDoc !== null ? Z_INDEX.modal - 10 : Z_INDEX.modal,
         // Portal 到 body：--mobile-safe-area-*（app-shell 作用域）不可见，
         // 必须走 :root 级 --android-safe-area-* 链（对齐 command-palette.css 注释）
-        paddingTop: 'calc(0.75rem + var(--android-safe-area-top, env(safe-area-inset-top, 0px)))',
-        paddingBottom: 'calc(0.75rem + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)))',
+        paddingTop: 'calc(0.5rem + var(--android-safe-area-top, env(safe-area-inset-top, 0px)))',
+        paddingBottom: 'calc(0.5rem + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)))',
         paddingLeft: 'calc(0.75rem + var(--android-safe-area-left, env(safe-area-inset-left, 0px)))',
         paddingRight: 'calc(0.75rem + var(--android-safe-area-right, env(safe-area-inset-right, 0px)))',
       }}
@@ -455,6 +482,8 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           'outline-none',
           'relative flex flex-col overflow-hidden',
           'w-full max-w-[480px]',
+          'max-h-[calc(100dvh_-_1rem_-_var(--android-safe-area-top,env(safe-area-inset-top,0px))_-_var(--android-safe-area-bottom,env(safe-area-inset-bottom,0px)))]',
+          'sm:max-h-[min(85dvh,calc(100dvh_-_1.5rem_-_var(--android-safe-area-top,env(safe-area-inset-top,0px))_-_var(--android-safe-area-bottom,env(safe-area-inset-bottom,0px))))]',
           'bg-background rounded-lg',
           'shadow-[0_0_0_1px_rgba(0,0,0,0.04),0_8px_24px_rgba(0,0,0,0.12),0_2px_8px_rgba(0,0,0,0.08)]',
           'dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06),0_8px_24px_rgba(0,0,0,0.4),0_2px_8px_rgba(0,0,0,0.3)]',
@@ -463,12 +492,9 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
             ? 'opacity-100 scale-100 translate-y-0'
             : 'opacity-0 scale-[0.97] translate-y-2',
         )}
-        style={{
-          maxHeight: 'min(85dvh, calc(100dvh - 1.5rem - var(--android-safe-area-top, env(safe-area-inset-top, 0px)) - var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))))',
-        }}
       >
         {/* 标题区 */}
-        <div className="flex-shrink-0 border-b border-border/35 px-4 pb-4 pt-5 sm:px-6 sm:pt-6">
+        <div className="flex-shrink-0 border-b border-border/35 px-4 pt-3.5 pb-2.5 sm:px-6 sm:pt-6 sm:pb-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h1 id="welcome-onboarding-title" className="text-[20px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
@@ -484,7 +510,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           </div>
 
           {/* 语言切换（即时生效，i18next 自动持久化） */}
-          <div className="mt-4">
+          <div className="mt-2.5 sm:mt-4">
             <SegmentedControl
               ariaLabel={t('welcome_onboarding.language_label')}
               value={currentLanguage}
@@ -507,7 +533,13 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
         </div>
 
         {/* 内容区 */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pt-3 pb-5 scroll-pb-5 scroll-area--native sm:px-6 sm:py-4 space-y-3 sm:space-y-4">
+        <div className="relative flex min-h-0 flex-1 flex-col">
+        <div
+          ref={bodyScrollRef}
+          onScroll={updateScrollCue}
+          data-testid="welcome-onboarding-scroll-body"
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pt-3 pb-5 scroll-pb-5 scroll-area--native sm:px-6 sm:py-4 space-y-3 sm:space-y-4"
+        >
           {/* 已预配置模型时展示简洁的「AI 服务已就绪」卡片；否则展示 10 秒单 Key 自动配置面板 */}
           {isAiReady ? (
             <div
@@ -592,9 +624,19 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
             })}
           </div>
         </div>
+        {hasMoreBelow && (
+          <div
+            aria-hidden="true"
+            data-testid="welcome-onboarding-scroll-cue"
+            className="pointer-events-none absolute inset-x-0 bottom-0 flex h-7 items-end justify-center bg-gradient-to-t from-background via-background/85 to-transparent pb-0.5 text-foreground/45"
+          >
+            <CaretDown size={13} weight="bold" />
+          </div>
+        )}
+        </div>
 
         {/* 底部操作栏 + 非阻塞条款声明 */}
-        <div className="flex-shrink-0 border-t border-border/35 px-4 py-3.5 sm:px-6">
+        <div className="flex-shrink-0 border-t border-border/35 px-4 py-2.5 sm:px-6 sm:py-3.5">
           <div className="flex items-center justify-between gap-2">
             <DsButton
               variant="ghost"
@@ -625,7 +667,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           <p
             data-testid="onboarding-legal-notice"
             data-agreed={legalConsent ? 'true' : 'false'}
-            className="mt-2.5 text-center text-[11px] leading-relaxed text-foreground/50"
+            className="mt-1.5 sm:mt-2.5 text-center text-[11px] leading-relaxed text-foreground/50"
           >
             {legalConsent ? (
               <span
