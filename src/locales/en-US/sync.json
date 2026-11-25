@@ -311,7 +311,24 @@
     "pushSnapshotFailedFallback": "Please check your cloud storage settings, network, or permissions and try again",
     "applyPullFailedStatus": "Configuration applied, but pulling cloud data failed: {{error}}",
     "applyPullFailedFallback": "Click \"Run Bidirectional Sync Now\" below to retry",
-    "codeAppliedAndPulledStatus": "Configuration applied and cloud data pulled. {{summary}}"
+    "codeAppliedAndPulledStatus": "Configuration applied and cloud data pulled. {{summary}}",
+    "codeExpiresHint": "Valid for 15 minutes (expires at {{time}}). Generate a new code if it expires.",
+    "codeExpiredError": "This pairing code has expired (valid for 15 minutes). Generate a fresh pairing code on the source device and try again.",
+    "invalidFormatError": "Unsupported pairing code format. Paste a valid DSPAIR1 pairing code.",
+    "invalidPinOrCorruptedError": "Incorrect 6-digit PIN or corrupted pairing code. Verify the PIN and try again.",
+    "invalidPinLengthError": "Enter a 6-digit numeric PIN.",
+    "unsupportedPayloadError": "Unsupported pairing payload format.",
+    "biSyncRunningBtn": "Running Bidirectional Sync...",
+    "biSyncSuccessStatus": "Bidirectional cloud sync completed.",
+    "biSyncFailedStatus": "Bidirectional cloud sync failed: {{error}}",
+    "biSyncFailedFallback": "Check your cloud storage settings, network, or credentials and try again",
+    "endpointWarningLoopback": "Notice: The configured cloud endpoint ({{host}}) points to this device's loopback address. Other devices cannot reach localhost/127.0.0.1—switch to a LAN IP or domain before pairing.",
+    "endpointWarningPrivateLan": "Notice: The configured cloud endpoint ({{host}}) uses a private LAN address. Keep both devices on the same Wi-Fi/LAN network while syncing.",
+    "endpointWarningHttpUnderHttps": "Notice: You are using HTTPS WebUI while the cloud endpoint uses plaintext HTTP ({{host}}). If the browser blocks mixed-content requests, enable HTTPS on your storage server or use the desktop app."
+  },
+  "firstConnect": {
+    "remoteDatasetNoticeTitle": "Existing cloud data detected before first sync",
+    "remoteDatasetNoticeDesc": "This workspace has {{pending}} unsynced local change(s) while the connected cloud directory already contains data. Review your merge strategy in the Sync tab (Keep Latest, Keep Local, or Use Cloud) or create a local backup first so neither side is overwritten unexpectedly."
   },
   "fileSync": {
     "workspace": "File sync: workspace databases",

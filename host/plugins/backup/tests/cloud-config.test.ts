@@ -111,6 +111,55 @@ describe('cloud_config_commands.rs', () => {
     expect(() => validateConfig(runtime)).not.toThrow();
   });
 
+  it('lan_http_s3_requires_persisted_opt_in_and_loopback_s3_does_not_persist_override', () => {
+    const store = settings();
+    const lanS3 = (allowInsecure: boolean): SafeCloudStorageConfig => ({
+      provider: 's3',
+      s3: {
+        endpoint: 'http://192.168.1.10:9000',
+        bucket: 'study-sync',
+        accessKeyId: 'minioadmin',
+        region: null,
+        pathStyle: true,
+      },
+      root: 'deep-student-sync',
+      allow_insecure: allowInsecure,
+    });
+
+    const denied = (() => {
+      try { saveCloudConfigSsot(store, lanS3(false)); return null; }
+      catch (error) { return error; }
+    })();
+    expect(denied).toBeInstanceOf(CloudConfigSsotError);
+    expect((denied as CloudConfigSsotError).code).toBe('E_CLOUD_CONFIG_INVALID');
+
+    const stored = saveCloudConfigSsot(store, lanS3(true));
+    expect(stored.allow_insecure).toBe(true);
+    expect(loadCloudConfigSsot(store)).toEqual(stored);
+    const runtime = intoRuntimeConfig(stored);
+    expect(runtime[insecureTransportAuthorized]).toBe(true);
+    runtime.s3!.secretAccessKey = 'minio-secret';
+    expect(() => validateConfig(runtime)).not.toThrow();
+
+    const unpersisted = intoRuntimeConfig(lanS3(false));
+    unpersisted.s3!.secretAccessKey = 'minio-secret';
+    expect(() => validateConfig(unpersisted)).toThrow();
+
+    const loopbackStored = saveCloudConfigSsot(store, {
+      provider: 's3',
+      s3: {
+        endpoint: 'http://127.0.0.1:9000',
+        bucket: 'study-sync',
+        accessKeyId: 'minioadmin',
+        region: null,
+        pathStyle: true,
+      },
+      root: null,
+      allow_insecure: true,
+    });
+    expect(loopbackStored.allow_insecure).toBe(false);
+  });
+
   it('ftp_platform_error_has_stable_code_and_shared_diagnostic', () => {
     const error = (() => {
       try { validateAndNormalize(ftp('ftp.example.test', true, false), ANDROID); return null; }

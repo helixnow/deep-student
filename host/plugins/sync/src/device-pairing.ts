@@ -6,12 +6,22 @@ export type PairingSettings = {
     (...args: Parameters<SettingsStore[K]>) => ReturnType<SettingsStore[K]> | Promise<Awaited<ReturnType<SettingsStore[K]>>>;
 };
 
-export interface CreatePairingArgs { pin: string; includeCloudConfig?: boolean; includeLlmKeys?: boolean; includeSyncPrefs?: boolean }
-export interface ApplyPairingArgs { pairingCode: string; pin: string }
+export const DEFAULT_PAIRING_TTL_MS = 15 * 60 * 1000;
+export const PAIRING_CODE_EXPIRED_CODE = 'E_PAIRING_CODE_EXPIRED';
+
+export interface CreatePairingArgs {
+  pin: string;
+  includeCloudConfig?: boolean;
+  includeLlmKeys?: boolean;
+  includeSyncPrefs?: boolean;
+  ttlMs?: number;
+  now?: number;
+}
+export interface ApplyPairingArgs { pairingCode: string; pin: string; now?: number }
 const CLOUD = ['cloud_storage.config.safe_v1', 'cloud_storage_credentials'];
 const LLM = ['llm_providers', 'api_configs', 'vendor_configs', 'model_profiles', 'model_assignments', 'siliconflow.api_key'];
 const PREFS = ['sync.include_skills', 'sync.include_plugins'];
-type Payload = { version: 1; settings: Record<string, string> };
+type Payload = { version: 1; createdAt?: number; expiresAt?: number; settings: Record<string, string> };
 export interface PairingSummary { cloudProvider: string | null; llmProviders: number; includeSkills: boolean | null; includePlugins: boolean | null }
 function summary(payload: Payload): PairingSummary {
   const settings = payload.settings;
@@ -30,6 +40,12 @@ function allowed(name: string): boolean {
   return [...CLOUD, ...LLM, ...PREFS].includes(name) || /^cloud_sync\.[\w.]+$/.test(name) || /^builtin-[\w-]+\.api_key$/.test(name);
 }
 export async function createPairingCode(settings: PairingSettings, args: CreatePairingArgs) {
+  const ttlMs = args.ttlMs ?? DEFAULT_PAIRING_TTL_MS;
+  if (!Number.isFinite(ttlMs) || ttlMs <= 0) {
+    throw new Error('配对码有效期必须大于 0');
+  }
+  const now = args.now ?? Date.now();
+  const expiresAt = now + ttlMs;
   const names = new Set<string>();
   if (args.includeCloudConfig !== false) {
     CLOUD.forEach(name => names.add(name));
@@ -44,7 +60,7 @@ export async function createPairingCode(settings: PairingSettings, args: CreateP
     }
   }
   if (args.includeSyncPrefs !== false) PREFS.forEach(name => names.add(name));
-  const payload: Payload = { version: 1, settings: {} };
+  const payload: Payload = { version: 1, createdAt: now, expiresAt, settings: {} };
   for (const name of names) {
     const value = name === CLOUD[0] ? await settings.get(name) : await settings.getSecret(name);
     if (value !== null) payload.settings[name] = value;
@@ -56,7 +72,7 @@ export async function createPairingCode(settings: PairingSettings, args: CreateP
   const encrypted = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await key(normalizedPin, salt, 'encrypt'), new TextEncoder().encode(JSON.stringify(payload))));
   const bytes = new Uint8Array(28 + encrypted.length); bytes.set(salt); bytes.set(iv, 16); bytes.set(encrypted, 28);
   const pairingCode = `DSPAIR1:${btoa(Array.from(bytes, byte => String.fromCharCode(byte)).join('')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
-  return { pairingCode, summary: included };
+  return { pairingCode, summary: included, expiresAt };
 }
 export async function applyPairingCode(settings: PairingSettings, args: ApplyPairingArgs) {
   const normalizedCode = args.pairingCode.trim();
@@ -75,11 +91,22 @@ export async function applyPairingCode(settings: PairingSettings, args: ApplyPai
     const decoded = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: bytes.slice(16, 28) }, await key(normalizedPin, bytes.slice(0, 16), 'decrypt'), bytes.slice(28));
     payload = JSON.parse(new TextDecoder().decode(decoded));
   } catch { throw new Error('PIN 不正确或配对码已损坏'); }
-  if (payload.version !== 1 || !payload.settings || Array.isArray(payload.settings)) throw new Error('不支持的配对配置');
+  if (payload.version !== 1 || !payload.settings || typeof payload.settings !== 'object' || Array.isArray(payload.settings)) throw new Error('不支持的配对配置');
+  if (payload.expiresAt !== undefined) {
+    if (typeof payload.expiresAt !== 'number' || !Number.isFinite(payload.expiresAt)) {
+      throw new Error('不支持的配对配置');
+    }
+    const now = args.now ?? Date.now();
+    if (now >= payload.expiresAt) {
+      const error = new Error(`[${PAIRING_CODE_EXPIRED_CODE}] 配对码已过期，请在原设备重新生成`) as Error & { code?: string };
+      error.code = PAIRING_CODE_EXPIRED_CODE;
+      throw error;
+    }
+  }
   for (const [name, value] of Object.entries(payload.settings)) if (!allowed(name) || typeof value !== 'string') throw new Error('配对配置包含不支持的设置');
   const restored = summary(payload);
   // Secrets first: never publish usable-looking SSOT before its credentials exist.
   for (const [name, value] of Object.entries(payload.settings)) if (name !== CLOUD[0]) await settings.saveSecret(name, value);
   if (payload.settings[CLOUD[0]!] !== undefined) await settings.save(CLOUD[0]!, payload.settings[CLOUD[0]!]!);
-  return { summary: restored };
+  return { summary: restored, expiresAt: payload.expiresAt };
 }

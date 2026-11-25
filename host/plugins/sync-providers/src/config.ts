@@ -69,11 +69,14 @@ export function validateConfig(config: RuntimeCloudStorageConfig, capabilities: 
       if (!capabilities.s3Supported) throw new CloudStorageConfigError(S3_UNSUPPORTED_IN_THIS_BUILD_MESSAGE, S3_UNSUPPORTED_IN_BUILD_CODE);
       const s3 = config.s3 ?? fail('缺少 S3 配置');
       if (!trim(s3.endpoint)) fail('S3 endpoint 不能为空');
+      const url = URL.parse(trim(s3.endpoint)) ?? fail('S3 endpoint 必须是有效 URL');
+      if (!['http:', 'https:'].includes(url.protocol) || !url.hostname) fail('S3 endpoint 必须使用 HTTP(S) 且包含主机');
+      if (url.username || url.password) fail('S3 endpoint 不得内嵌凭据');
       if (!trim(s3.bucket)) fail('S3 bucket 不能为空');
       if (!trim(s3.accessKeyId)) fail('S3 Access Key ID 不能为空');
       if (!trim(s3.secretAccessKey)) fail('S3 Secret Access Key 不能为空');
-      if (!isLocalEndpoint(s3.endpoint) && !trim(s3.endpoint).toLowerCase().startsWith('https://')) {
-        fail('S3 endpoint 必须使用 HTTPS（仅 localhost 允许 HTTP）');
+      if (url.protocol === 'http:' && !isLoopbackHost(url.hostname) && !config[insecureTransportAuthorized]) {
+        fail('公网 S3 必须使用 HTTPS；HTTP 仅允许 loopback 或已持久化的 allowInsecure 授权');
       }
       return;
     }

@@ -29,6 +29,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { parseCommandErrorEnvelope } from '@/api/tauriClient';
 import { isMobilePlatform } from '@/utils/platform';
 import { useShallow } from 'zustand/react/shallow';
+import { createFailedSyncProgress, useGlobalSyncStore } from '@/stores/syncStatusStore';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import {
   CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS,
@@ -161,17 +162,62 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const onPairingApplied = () => { setPairingRevision(value => value + 1); onConfigChanged?.(); };
   const handlePairingRunSync = useCallback(
     async (direction: 'upload' | 'download' | 'bidirectional'): Promise<boolean> => {
+      let acquiredSyncLock = false;
+      let finalProgress: ReturnType<typeof createFailedSyncProgress> | null = null;
       try {
         const resolved = await cloudApi.resolveCloudStorageConfig();
         if (!resolved) {
           showGlobalNotification('warning', t('cloudStorage:errors.saveBeforeUpload'));
           return false;
         }
+        if (!useGlobalSyncStore.getState().beginSync('cloud-pairing')) {
+          showGlobalNotification(
+            'warning',
+            t('data:governance.sync_already_running', { defaultValue: '已有同步任务正在运行' }),
+          );
+          return false;
+        }
+        acquiredSyncLock = true;
+        if (direction !== 'upload' && typeof DataGovernanceApi?.detectPruneGap === 'function') {
+          const gap = await DataGovernanceApi.detectPruneGap(resolved);
+          if (gap?.has_gap) {
+            throw new Error(
+              gap.gap_details
+                ?? t('data:governance.sync_prune_gap_warning', {
+                  since: gap.since_version,
+                  minAvail: gap.min_available_version ?? 0,
+                }),
+            );
+          }
+        }
         const result = await DataGovernanceApi.runSyncWithProgress(direction, resolved, 'keep_latest');
-        return result.success;
+        if (!result.success) {
+          const rawErr =
+            result.error_message || t('sync:messages.syncFailed', { defaultValue: '同步失败' });
+          const localized = localizeCloudStorageError(rawErr, t, i18n?.language);
+          finalProgress = createFailedSyncProgress(
+            useGlobalSyncStore.getState().progress,
+            localized,
+          );
+          notifyErrorDeduped('error', localized);
+          return false;
+        }
+        window.dispatchEvent(new CustomEvent('data-governance:local-change'));
+        return true;
       } catch (e: unknown) {
-        notifyErrorDeduped('error', localizeCloudStorageError(e, t, i18n?.language));
+        const localized = localizeCloudStorageError(e, t, i18n?.language);
+        if (acquiredSyncLock) {
+          finalProgress = createFailedSyncProgress(
+            useGlobalSyncStore.getState().progress,
+            localized,
+          );
+        }
+        notifyErrorDeduped('error', localized);
         return false;
+      } finally {
+        if (acquiredSyncLock) {
+          useGlobalSyncStore.getState().endSync(finalProgress);
+        }
       }
     },
     [i18n?.language, t],
@@ -267,6 +313,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 同步状态
   const [syncStatus, setSyncStatus] = useState<cloudApi.SyncStatus | null>(null);
   const [fallbackIncrementalSyncAt, setFallbackIncrementalSyncAt] = useState<string | null>(null);
+  const [localSyncOverview, setLocalSyncOverview] = useState<{
+    pendingChanges: number;
+    hasNeverSynced: boolean;
+  } | null>(null);
+  const [remoteSyncObjectsPresent, setRemoteSyncObjectsPresent] = useState(false);
   const [versions, setVersions] = useState<cloudApi.BackupVersion[]>([]);
   const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -347,6 +398,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           }
         }
         setFallbackIncrementalSyncAt(bestStr);
+        const totalPending = Number(status.total_pending_changes ?? 0);
+        const totalSynced = Number(status.total_synced_changes ?? 0);
+        setLocalSyncOverview({
+          pendingChanges: Number.isFinite(totalPending) ? Math.max(0, totalPending) : 0,
+          hasNeverSynced: totalSynced === 0 && !bestStr,
+        });
       } catch {
         // Ignore when getSyncStatus is unavailable in isolated unit tests
       }
@@ -390,8 +447,22 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // 不安全连接警告对话框状态
   const [showInsecureFtpWarning, setShowInsecureFtpWarning] = useState(false);
   const [showInsecureWebdavWarning, setShowInsecureWebdavWarning] = useState(false);
+  const [showInsecureS3Warning, setShowInsecureS3Warning] = useState(false);
   // 记录当前不安全警告的上下文（保存还是测试连接）
   const [insecureWarningAction, setInsecureWarningAction] = useState<'save' | 'test' | null>(null);
+
+  const probeRemoteSyncDataset = useCallback(
+    async (config: cloudApi.CloudStorageConfig): Promise<boolean> => {
+      if (typeof cloudApi.listFiles !== 'function') return false;
+      try {
+        const files = await cloudApi.listFiles(config, 'data_governance/');
+        return Array.isArray(files) && files.length > 0;
+      } catch {
+        return false;
+      }
+    },
+    [],
+  );
   // 短口令确认对话框：8 字符下限只管「新设」口令。v0.9.44 没有长度限制，
   // 换机/重装用户必须能重输存量短口令来解密既有云端备份；用户显式确认
   // 「这是旧口令」后按存量口令保存，新设短口令仍被拒绝。
@@ -424,6 +495,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setConfigPhase('draft');
     setConnectionStatus('unknown');
     setDraftTestError(null);
+    setRemoteSyncObjectsPresent(false);
   }, [provider, webdavConfig, s3Config, ftpConfig, root, encryptionPassword]);
 
   // 监听后端 cloud-sync-progress 事件（字节级传输进度）
@@ -496,12 +568,18 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             if (config.root) setRoot(config.root);
             setAllowInsecure(config.allowInsecure ?? false);
           }
+          void probeRemoteSyncDataset(config).then((hasRemote) => {
+            if (active && !userEditedRef.current) {
+              setRemoteSyncObjectsPresent(hasRemote);
+            }
+          });
         } else if (!config && active && !userEditedRef.current) {
           hydratingFormRef.current = false;
           savedConfigRef.current = null;
           setHasStoredFtpConfig(false);
           setAllowInsecure(false);
           setHasSavedConfig(false);
+          setRemoteSyncObjectsPresent(false);
         }
       } catch (e: unknown) {
         console.error('Failed to resolve backend cloud storage config:', e);
@@ -543,7 +621,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     return () => {
       active = false;
     };
-  }, [localizeCloudError, markSecureStoreIssue, t, pairingRevision]);
+  }, [localizeCloudError, markSecureStoreIssue, probeRemoteSyncDataset, t, pairingRevision]);
 
   // 构建配置对象
   const buildConfig = useCallback((
@@ -642,28 +720,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         return;
       }
 
-      if (Object.values(formCredentials).some((value) => typeof value === 'string' && value.length > 0)) {
-        try {
-          const prevRaw = await invoke<string | null>('get_setting', { key: 'cloud_storage_credentials' });
-          let merged: Record<string, unknown> = {};
-          if (typeof prevRaw === 'string' && prevRaw.trim()) {
-            try {
-              const parsed = JSON.parse(prevRaw);
-              if (parsed && typeof parsed === 'object') merged = { ...parsed };
-            } catch {
-              // ignore malformed previous value
-            }
-          }
-          for (const [k, v] of Object.entries(formCredentials)) {
-            if (typeof v === 'string' && v.length > 0) merged[k] = v;
-          }
-          await invoke('save_setting', {
-            key: 'cloud_storage_credentials',
-            value: JSON.stringify(merged),
-          });
-        } catch {
-          // Best-effort sync to encrypted settings key used by QR pairing
-        }
+      // Authoritative credentials live exclusively in <appDataDir>/.secure/ via publishCloudConfig.
+      // Purge any legacy duplicate in slots/slotA/.secure/ so old/deleted secrets never leak into QR pairing.
+      try {
+        await invoke('delete_setting', { key: 'cloud_storage_credentials' });
+      } catch {
+        // Best-effort cleanup when delete_setting is absent in isolated test mocks
       }
 
       setSecureStoreIssue(null);
@@ -753,11 +815,15 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       } catch (e: unknown) {
         console.warn('Failed to refresh cloud status after publish:', e);
       }
+      const hasRemoteDataset = await probeRemoteSyncDataset(config);
+      if (savedRevision === formRevisionRef.current) {
+        setRemoteSyncObjectsPresent(hasRemoteDataset);
+      }
     } finally {
       savingRef.current = false;
       setSaving(false);
     }
-  }, [buildConfig, buildFormCredentials, encryptionPassword, localizeCloudError, markSecureStoreIssue, t, onConfigChanged]);
+  }, [buildConfig, buildFormCredentials, encryptionPassword, localizeCloudError, markSecureStoreIssue, probeRemoteSyncDataset, t, onConfigChanged]);
 
   const validationErrors = useMemo(() => {
     const errors: string[] = [];
@@ -775,7 +841,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       const endpoint = s3Config.endpoint.trim();
       if (hasEmbeddedUrlCredentials(endpoint)) {
         errors.push(t('cloudStorage:validation.embeddedCredentials'));
-      } else if (endpoint && cloudApi.isPublicHttpEndpoint(endpoint)) {
+      } else if (endpoint && !allowInsecure && cloudApi.isPublicHttpEndpoint(endpoint)) {
         errors.push(t('cloudStorage:validation.insecureHttpUrl'));
       }
     } else {
@@ -825,8 +891,6 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             reasons.push(t('cloudStorage:validation.s3EndpointInvalid'));
           } else if (url.username || url.password) {
             reasons.push(t('cloudStorage:validation.embeddedCredentials'));
-          } else if (cloudApi.isPublicHttpEndpoint(endpoint)) {
-            reasons.push(t('cloudStorage:validation.insecureHttpUrl'));
           }
         } catch {
           reasons.push(t('cloudStorage:validation.s3EndpointInvalid'));
@@ -896,7 +960,6 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         const url = new URL(endpoint);
         if (!['http:', 'https:'].includes(url.protocol)) return false;
         if (url.username || url.password) return false;
-        if (cloudApi.isPublicHttpEndpoint(endpoint)) return false;
       } catch { return false; }
       return true;
     } else {
@@ -946,14 +1009,14 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       return;
     }
 
-    // Public S3 has no insecure override. Loopback HTTP remains allowed.
-    if (config.provider === 's3' && cloudApi.isPublicHttpEndpoint(s3Config.endpoint)) {
-      showGlobalNotification('error', t('cloudStorage:s3.insecureWarning.description'));
+    if (config.provider === 's3' && cloudApi.requiresInsecureTransportOptIn(config)) {
+      setInsecureWarningAction('save');
+      setShowInsecureS3Warning(true);
       return;
     }
 
     await doSaveConfig(false);
-  }, [isConfigValid, buildConfig, credentialStatus, webdavConfig.password, s3Config.secretAccessKey, s3Config.endpoint, ftpConfig, t, doSaveConfig]);
+  }, [isConfigValid, buildConfig, credentialStatus, webdavConfig.password, s3Config.secretAccessKey, ftpConfig, t, doSaveConfig]);
 
   // 当已保存配置在重载后被测试连接，且用户尚未在表单输入新密码、非敏感连接字段也与已发布配置一致时，
   // 通过 checkConnection 走后端安全存储自取凭据试连，避免因 IPC 不回传密码而误报“密码不能为空”。
@@ -1026,6 +1089,10 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         } catch (refreshError: unknown) {
           console.warn('Failed to refresh cloud status after stored connection check:', refreshError);
         }
+        const hasRemote = await probeRemoteSyncDataset(config);
+        if (testedRevision === formRevisionRef.current) {
+          setRemoteSyncObjectsPresent(hasRemote);
+        }
       } else {
         setConnectionStatus('failed');
         const reason = t('cloudStorage:errors.connectionFailed');
@@ -1042,7 +1109,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     } finally {
       setTesting(false);
     }
-  }, [allowInsecure, buildConfig, localizeCloudError, markSecureStoreIssue, t]);
+  }, [allowInsecure, buildConfig, localizeCloudError, markSecureStoreIssue, probeRemoteSyncDataset, t]);
 
   // 实际执行测试连接逻辑：草稿试连。表单配置与凭据只随本次 IPC 一次性传给
   // 后端 cloud_config_test_connection_draft，后端不写安全存储、不改 active
@@ -1128,6 +1195,22 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setInsecureWarningAction(null);
   }, [insecureWarningAction, buildConfig, canTestWithStoredCredentials, doTestWithStoredCredentials, doSaveConfig, doTestConnection]);
 
+  // 确认保存不安全 S3（局域网自建 MinIO/S3 HTTP）配置
+  const handleConfirmInsecureS3Save = useCallback(async () => {
+    setShowInsecureS3Warning(false);
+    if (insecureWarningAction === 'test') {
+      const config = buildConfig(true);
+      if (canTestWithStoredCredentials(config)) {
+        await doTestWithStoredCredentials(true);
+      } else {
+        await doTestConnection(true);
+      }
+    } else {
+      await doSaveConfig(true);
+    }
+    setInsecureWarningAction(null);
+  }, [insecureWarningAction, buildConfig, canTestWithStoredCredentials, doTestWithStoredCredentials, doSaveConfig, doTestConnection]);
+
   // 清除配置
   const clearConfig = useCallback(async () => {
     let clearFailed = false;
@@ -1136,6 +1219,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     } catch (e: unknown) {
       clearFailed = true;
       console.warn('Failed to clear cloud config backend SSOT:', e);
+    }
+    try {
+      await invoke('delete_setting', { key: 'cloud_storage_credentials' });
+    } catch {
+      // Best-effort purge of legacy slot-scoped credentials mirror
     }
     // cloud_config_ssot_clear only succeeds after backend config and its
     // secure-store credential record are both removed.
@@ -1169,6 +1257,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setDraftTestError(null);
     setSyncStatus(null);
     setVersions([]);
+    setRemoteSyncObjectsPresent(false);
     showGlobalNotification(
       clearFailed ? 'error' : 'info',
       t(clearFailed ? 'cloudStorage:messages.configClearPartial' : 'cloudStorage:messages.configCleared'),
@@ -1185,11 +1274,17 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const disableEncryption = useCallback(async () => {
     try {
       const status = await cloudApi.clearEncryptionPassword();
+      try {
+        await invoke('delete_setting', { key: 'cloud_storage_credentials' });
+      } catch {
+        // Best-effort purge of legacy slot-scoped credentials mirror
+      }
       setCredentialStatus(status);
       setEncryptionPassword('');
       setShowEncryptionPwd(false);
       setSecureStoreIssue(null);
       showGlobalNotification('info', t('cloudStorage:encryption.disabledNotice'));
+      window.dispatchEvent(new CustomEvent('data-governance:cloud-config-changed'));
       onConfigChanged?.();
     } catch (e: unknown) {
       console.error('Failed to disable end-to-end encryption:', e);
@@ -1221,8 +1316,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       return;
     }
 
-    if (provider === 's3' && cloudApi.isPublicHttpEndpoint(s3Config.endpoint)) {
-      showGlobalNotification('error', t('cloudStorage:s3.insecureWarning.description'));
+    if (provider === 's3' && cloudApi.requiresInsecureTransportOptIn(config)) {
+      setInsecureWarningAction('test');
+      setShowInsecureS3Warning(true);
       return;
     }
 
@@ -1232,7 +1328,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
 
     await doTestConnection(false);
-  }, [isConfigValid, provider, s3Config.endpoint, buildConfig, canTestWithStoredCredentials, doTestWithStoredCredentials, doTestConnection, t]);
+  }, [isConfigValid, provider, buildConfig, canTestWithStoredCredentials, doTestWithStoredCredentials, doTestConnection]);
 
   // 刷新状态
   const refreshStatus = useCallback(async () => {
@@ -1247,10 +1343,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       }
       const versionList = await cloudApi.listVersions(config);
       setVersions(versionList);
+      setRemoteSyncObjectsPresent(await probeRemoteSyncDataset(config));
     } catch (e: unknown) {
       console.error('Failed to refresh status:', e);
     }
-  }, [buildConfig, configPhase, connectionStatus, hasSavedConfig]);
+  }, [buildConfig, configPhase, connectionStatus, hasSavedConfig, probeRemoteSyncDataset]);
 
   const resolveBackupId = useCallback((job: BackupJobSummary | null): string | null => {
     const stats = job?.result?.stats as Record<string, unknown> | undefined;
@@ -1773,7 +1870,23 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const persistedInsecureRiskMessage =
     provider === 'ftp'
       ? t('cloudStorage:ftp.insecureWarning.description')
-      : t('cloudStorage:webdav.insecureWarning.description');
+      : provider === 's3'
+        ? t('cloudStorage:s3.insecureWarning.description')
+        : t('cloudStorage:webdav.insecureWarning.description');
+
+  const hasExistingRemoteDataset =
+    Boolean(syncStatus && (syncStatus.cloudVersionCount > 0 || syncStatus.latestVersion))
+    || versions.length > 0
+    || remoteSyncObjectsPresent;
+  const showFirstConnectRemoteNotice = Boolean(
+    hasSavedConfig
+    && configPhase === 'published'
+    && hasExistingRemoteDataset
+    && localSyncOverview
+    && localSyncOverview.pendingChanges > 0
+    && localSyncOverview.hasNeverSynced
+    && !effectiveDeviceLastSyncTime,
+  );
 
   // 主要内容
   const content = (
@@ -1797,6 +1910,28 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         >
           <WarningCircle size={18} className="mt-0.5 shrink-0" aria-hidden />
           <p className="leading-relaxed">{persistedInsecureRiskMessage}</p>
+        </div>
+      )}
+      {showFirstConnectRemoteNotice && localSyncOverview && (
+        <div
+          role="status"
+          data-testid="cloud-first-connect-remote-notice"
+          className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning"
+        >
+          <WarningCircle size={18} className="mt-0.5 shrink-0" aria-hidden />
+          <div className="min-w-0">
+            <p className="font-medium">
+              {t('sync:firstConnect.remoteDatasetNoticeTitle', {
+                defaultValue: '检测到云端已有历史数据（本机尚未完成首次同步）',
+              })}
+            </p>
+            <p className="mt-0.5 text-xs leading-relaxed">
+              {t('sync:firstConnect.remoteDatasetNoticeDesc', {
+                pending: localSyncOverview.pendingChanges,
+                defaultValue: `当前工作区有 ${localSyncOverview.pendingChanges} 条本地待同步变更，同时所连接的云端目录已存在历史数据。建议先在「同步」页确认合并策略（保留最新、保留本地或使用云端）或先做一次本地备份，避免首次同步时意外覆盖数据。`,
+              })}
+            </p>
+          </div>
         </div>
       )}
 
@@ -2886,6 +3021,20 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     />
   );
 
+  // 不安全 S3 连接警告对话框（允许局域网自建 MinIO/S3 HTTP 显式确认）
+  const insecureS3WarningDialog = (
+    <DsAlertDialog
+      open={showInsecureS3Warning}
+      onOpenChange={(open) => { if (!open) setShowInsecureS3Warning(false); }}
+      title={t('cloudStorage:s3.insecureWarning.title')}
+      description={t('cloudStorage:s3.insecureWarning.description')}
+      confirmText={t('cloudStorage:s3.insecureWarning.confirm')}
+      cancelText={t('common:actions.cancel')}
+      confirmVariant="warning"
+      onConfirm={handleConfirmInsecureS3Save}
+    />
+  );
+
   // 短口令确认对话框：新设口令要求 8 字符起；确认「这是旧口令」则按存量
   // 口令保存（v0.9.44 无长度限制，解密既有备份不受长度约束）。
   const shortPasswordConfirmDialog = (
@@ -2932,6 +3081,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         {disableEncryptionConfirmDialog}
         {insecureFtpWarningDialog}
         {insecureWebdavWarningDialog}
+        {insecureS3WarningDialog}
         {shortPasswordConfirmDialog}
       </>
     );
@@ -2963,6 +3113,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       {disableEncryptionConfirmDialog}
       {insecureFtpWarningDialog}
       {insecureWebdavWarningDialog}
+      {insecureS3WarningDialog}
       {shortPasswordConfirmDialog}
     </>
   );

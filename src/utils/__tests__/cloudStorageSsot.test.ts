@@ -9,12 +9,14 @@ vi.mock('@tauri-apps/api/core', () => ({
 
 import {
   checkConnection,
+  classifyEndpointNetworkContext,
   CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY,
   CLOUD_STORAGE_LEGACY_STORAGE_KEY,
   CLOUD_STORAGE_SSOT_MIGRATED_STORAGE_KEY,
   fromSafeCloudStorageConfig,
   isPublicHttpEndpoint,
   loadStoredCloudStorageConfigSafe,
+  requiresInsecureTransportOptIn,
   resolveCloudStorageConfig,
   toRuntimeCloudStorageConfig,
   toSafeCloudStorageConfig,
@@ -444,5 +446,63 @@ describe('cloud storage backend SSOT DTO', () => {
     expect(isPublicHttpEndpoint('http://127.42.0.1:9000')).toBe(false);
     expect(isPublicHttpEndpoint('http://[::1]:8080')).toBe(false);
     expect(isPublicHttpEndpoint('https://dav.example.test')).toBe(false);
+  });
+
+  it('BUG-6: round-trips allow_insecure for LAN HTTP S3 and classifies endpoint network context', () => {
+    const lanS3: CloudStorageConfig = {
+      provider: 's3',
+      s3: {
+        endpoint: 'http://192.168.1.10:9000',
+        bucket: 'study-sync',
+        accessKeyId: 'minioadmin',
+        secretAccessKey: 'secret',
+        pathStyle: true,
+      },
+      allowInsecure: true,
+    };
+    expect(requiresInsecureTransportOptIn(lanS3)).toBe(true);
+    expect(
+      requiresInsecureTransportOptIn({
+        ...lanS3,
+        s3: { ...lanS3.s3!, endpoint: 'http://127.0.0.1:9000' },
+      }),
+    ).toBe(false);
+    expect(
+      requiresInsecureTransportOptIn({
+        ...lanS3,
+        s3: { ...lanS3.s3!, endpoint: 'https://s3.example.com' },
+      }),
+    ).toBe(false);
+
+    const safe = toSafeCloudStorageConfig(lanS3);
+    expect(safe.allow_insecure).toBe(true);
+    const roundTripped = fromSafeCloudStorageConfig(safe);
+    expect(roundTripped.allowInsecure).toBe(true);
+    expect(roundTripped.s3?.secretAccessKey).toBe('');
+
+    expect(classifyEndpointNetworkContext('http://192.168.1.10:9000', 'https:')).toMatchObject({
+      host: '192.168.1.10',
+      isLoopback: false,
+      isPrivateLan: true,
+      isHttpUnderHttps: true,
+    });
+    expect(classifyEndpointNetworkContext('http://10.0.0.8:9000', 'http:')).toMatchObject({
+      host: '10.0.0.8',
+      isLoopback: false,
+      isPrivateLan: true,
+      isHttpUnderHttps: false,
+    });
+    expect(classifyEndpointNetworkContext('http://127.0.0.1:9000', 'http:')).toMatchObject({
+      host: '127.0.0.1',
+      isLoopback: true,
+      isPrivateLan: false,
+      isHttpUnderHttps: false,
+    });
+    expect(classifyEndpointNetworkContext('https://s3.example.com', 'https:')).toMatchObject({
+      host: 's3.example.com',
+      isLoopback: false,
+      isPrivateLan: false,
+      isHttpUnderHttps: false,
+    });
   });
 });

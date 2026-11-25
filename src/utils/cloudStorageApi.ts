@@ -234,7 +234,7 @@ export interface CloudStorageConfig {
   /** 根目录路径 */
   root?: string;
   /**
-   * Persisted acknowledgement for public cleartext WebDAV/FTP.
+   * Persisted acknowledgement for public cleartext WebDAV/S3/FTP.
    * Loopback endpoints never require this override.
    */
   allowInsecure?: boolean;
@@ -347,7 +347,7 @@ export function fromSafeCloudStorageConfig(config: SafeCloudStorageConfig): Clou
         provider: 's3',
         s3: { ...config.s3, secretAccessKey: '' },
         root: config.root,
-        allowInsecure: false,
+        allowInsecure: config.allow_insecure ?? false,
       };
     case 'ftp':
       return {
@@ -396,10 +396,71 @@ export function requiresInsecureTransportOptIn(config: CloudStorageConfig): bool
   if (config.provider === 'webdav' && config.webdav) {
     return isPublicHttpEndpoint(config.webdav.endpoint);
   }
+  if (config.provider === 's3' && config.s3) {
+    return isPublicHttpEndpoint(config.s3.endpoint);
+  }
   if (config.provider === 'ftp' && config.ftp) {
     return !config.ftp.useTls && !isLoopbackHost(config.ftp.host);
   }
   return false;
+}
+
+export interface EndpointNetworkContext {
+  endpoint: string;
+  protocol: string;
+  host: string;
+  isLoopback: boolean;
+  isPrivateLan: boolean;
+  isHttpUnderHttps: boolean;
+}
+
+function isPrivateLanHost(hostname: string): boolean {
+  const host = hostname.trim().replace(/^\[|\]$/g, '').toLowerCase();
+  if (!host || isLoopbackHost(host)) return false;
+  if (host.endsWith('.local') || host.endsWith('.lan') || host.endsWith('.internal')) {
+    return true;
+  }
+  const octets = host.split('.');
+  if (octets.length === 4 && octets.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255)) {
+    const [a, b] = octets.map(Number);
+    if (a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+  }
+  if (/^(fc|fd)[0-9a-f]{2}:/i.test(host) || /^fe[89ab][0-9a-f]:/i.test(host)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Inspect a cloud endpoint URL for loopback, private LAN reachability, or HTTP-under-HTTPS
+ * mixed-content warnings (used by device pairing UI). Pure and non-throwing.
+ */
+export function classifyEndpointNetworkContext(
+  endpointValue: string | null | undefined,
+  pageProtocol?: string,
+): EndpointNetworkContext | null {
+  const raw = (endpointValue ?? '').trim();
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    if (!parsed.hostname) return null;
+    const effectivePageProtocol =
+      pageProtocol
+      ?? (typeof window !== 'undefined' && window.location ? window.location.protocol : '');
+    return {
+      endpoint: raw,
+      protocol: parsed.protocol,
+      host: parsed.hostname,
+      isLoopback: isLoopbackHost(parsed.hostname),
+      isPrivateLan: isPrivateLanHost(parsed.hostname),
+      isHttpUnderHttps: parsed.protocol === 'http:' && effectivePageProtocol === 'https:',
+    };
+  } catch {
+    return null;
+  }
 }
 
 // ============== 前端本地配置存储（非敏感信息） ==============

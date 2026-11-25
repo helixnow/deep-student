@@ -17,6 +17,7 @@ import {
   Sparkle,
   Key,
   CloudArrowUp,
+  CircleNotch,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -37,6 +38,8 @@ import {
   type PairingSettings as PairingSettingsStore,
   type PairingSummary as Summary,
 } from '../../../../host/plugins/sync/src/device-pairing';
+
+const PAIRING_CODE_EXPIRED_TOKEN = 'E_PAIRING_CODE_EXPIRED';
 
 import { decodePairingFrame, decodePairingImage } from '../utils/decodePairingQr';
 import * as cloudApi from '@/utils/cloudStorageApi';
@@ -78,41 +81,71 @@ export const ipcPairingSettings: PairingSettingsStore = {
     }
   },
   getSecret: async (key) => {
-    const direct = await invoke<string | null>('get_setting', { key });
-    if (direct !== null && direct !== undefined && direct !== '') {
-      return direct;
-    }
     if (key === 'cloud_storage_credentials') {
       try {
         const creds = await invoke<string | Record<string, unknown> | null>(
           'data_governance_pairing_get_cloud_credentials',
         );
-        if (typeof creds === 'string' && creds.trim()) return creds;
-        if (creds && typeof creds === 'object') return JSON.stringify(creds);
+        if (typeof creds === 'string') {
+          return creds.trim() ? creds : null;
+        }
+        if (creds && typeof creds === 'object' && !Array.isArray(creds)) {
+          return Object.keys(creds).length > 0 ? JSON.stringify(creds) : null;
+        }
+        // Authoritative <appDataDir>/.secure/ explicitly returned null: do not resurrect
+        // stale/deleted passwords from slot-scoped `get_setting('cloud_storage_credentials')`.
+        if (creds === null) {
+          return null;
+        }
       } catch {
-        // Ignore when optional pairing credential helper command is not registered
+        // Fallback only when pairing credential IPC is unavailable (e.g. legacy test mocks)
       }
     }
-    return direct;
+    return invoke<string | null>('get_setting', { key });
   },
   saveSecret: async (key, value) => {
     if (key === 'cloud_storage_credentials') {
+      const parsed = JSON.parse(value) as Record<string, unknown>;
+      const credentials = {
+        ...(typeof parsed.webdavPassword === 'string' && parsed.webdavPassword.trim() ? { webdavPassword: parsed.webdavPassword } : {}),
+        ...(typeof parsed.s3SecretAccessKey === 'string' && parsed.s3SecretAccessKey.trim() ? { s3SecretAccessKey: parsed.s3SecretAccessKey } : {}),
+        ...(typeof parsed.ftpPassword === 'string' && parsed.ftpPassword.trim() ? { ftpPassword: parsed.ftpPassword } : {}),
+        ...(typeof parsed.encryptionPassword === 'string' && parsed.encryptionPassword.trim() ? { encryptionPassword: parsed.encryptionPassword } : {}),
+      };
+      let savedAuthoritatively = false;
       try {
-        const parsed = JSON.parse(value) as Record<string, unknown>;
-        const credentials = {
-          ...(typeof parsed.webdavPassword === 'string' && parsed.webdavPassword ? { webdavPassword: parsed.webdavPassword } : {}),
-          ...(typeof parsed.s3SecretAccessKey === 'string' && parsed.s3SecretAccessKey ? { s3SecretAccessKey: parsed.s3SecretAccessKey } : {}),
-          ...(typeof parsed.ftpPassword === 'string' && parsed.ftpPassword ? { ftpPassword: parsed.ftpPassword } : {}),
-          ...(typeof parsed.encryptionPassword === 'string' && parsed.encryptionPassword ? { encryptionPassword: parsed.encryptionPassword } : {}),
-        };
-        if (Object.keys(credentials).length > 0) {
-          await invoke('secure_save_cloud_credentials', {
-            credentials,
-            encryptionPasswordIsPreexisting: true,
-          });
+        const saved = await invoke<boolean>('data_governance_pairing_save_cloud_credentials', {
+          credentials: Object.keys(credentials).length > 0 ? credentials : null,
+        });
+        if (saved === true) {
+          savedAuthoritatively = true;
         }
       } catch {
-        // Fallback for legacy / unit-test invoke mocks without secure_save_cloud_credentials
+        // Fall through to legacy secure credential command
+      }
+      if (!savedAuthoritatively) {
+        try {
+          if (Object.keys(credentials).length > 0) {
+            const res = await invoke('secure_save_cloud_credentials', {
+              credentials,
+              encryptionPasswordIsPreexisting: true,
+            });
+            if (res !== undefined) savedAuthoritatively = true;
+          } else {
+            const res = await invoke('secure_delete_cloud_credentials');
+            if (res !== undefined) savedAuthoritatively = true;
+          }
+        } catch {
+          // Fallback for isolated unit-test invoke mocks without secure credential commands
+        }
+      }
+      if (savedAuthoritatively) {
+        try {
+          await invoke('delete_setting', { key: 'cloud_storage_credentials' });
+        } catch {
+          // Best-effort cleanup of legacy slot-scoped mirror
+        }
+        return;
       }
     }
     await invoke('save_setting', { key, value });
@@ -156,6 +189,109 @@ function generateRandomSixDigitPin(): string {
     return String(buf[0]! % 1_000_000).padStart(6, '0');
   }
   return String(Math.floor(Math.random() * 1_000_000)).padStart(6, '0');
+}
+
+function extractCloudEndpointFromRecord(raw: unknown): string | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const cfg = raw as {
+    provider?: unknown;
+    webdav?: { endpoint?: unknown };
+    s3?: { endpoint?: unknown };
+    ftp?: { host?: unknown; port?: unknown; useTls?: unknown };
+  };
+  if (cfg.provider === 'webdav' && typeof cfg.webdav?.endpoint === 'string' && cfg.webdav.endpoint.trim()) {
+    return cfg.webdav.endpoint.trim();
+  }
+  if (cfg.provider === 's3' && typeof cfg.s3?.endpoint === 'string' && cfg.s3.endpoint.trim()) {
+    return cfg.s3.endpoint.trim();
+  }
+  if (cfg.provider === 'ftp' && typeof cfg.ftp?.host === 'string' && cfg.ftp.host.trim()) {
+    const scheme = cfg.ftp.useTls ? 'ftps' : 'ftp';
+    const portSuffix = typeof cfg.ftp.port === 'number' && cfg.ftp.port > 0 ? `:${cfg.ftp.port}` : '';
+    return `${scheme}://${cfg.ftp.host.trim()}${portSuffix}`;
+  }
+  return null;
+}
+
+async function probeCloudEndpointContext(
+  allowBackendResolve = true,
+): Promise<cloudApi.EndpointNetworkContext | null> {
+  try {
+    const cached = cloudApi.loadStoredCloudStorageConfigSafe();
+    const cachedEndpoint = extractCloudEndpointFromRecord(cached);
+    if (cachedEndpoint) {
+      return cloudApi.classifyEndpointNetworkContext(cachedEndpoint);
+    }
+  } catch {
+    // Ignore local cache parse failure
+  }
+  try {
+    const rawSetting = await invoke<string | null>('get_setting', {
+      key: 'cloud_storage.config.safe_v1',
+    });
+    if (typeof rawSetting === 'string' && rawSetting.trim()) {
+      const endpoint = extractCloudEndpointFromRecord(JSON.parse(rawSetting));
+      if (endpoint) {
+        return cloudApi.classifyEndpointNetworkContext(endpoint);
+      }
+    }
+  } catch {
+    // Ignore setting probe failure
+  }
+  if (allowBackendResolve) {
+    try {
+      const resolved = await cloudApi.resolveCloudStorageConfig();
+      const resolvedEndpoint = extractCloudEndpointFromRecord(resolved);
+      if (resolvedEndpoint) {
+        return cloudApi.classifyEndpointNetworkContext(resolvedEndpoint);
+      }
+    } catch {
+      // Ignore backend resolution failure
+    }
+  }
+  return null;
+}
+
+function localizePairingError(
+  caughtError: unknown,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  language?: string,
+): string {
+  const code =
+    caughtError && typeof caughtError === 'object' && 'code' in caughtError
+      ? (caughtError as { code?: unknown }).code
+      : undefined;
+  const raw = getErrorMessage(caughtError).trim();
+  if (
+    (typeof code === 'string' && code === PAIRING_CODE_EXPIRED_TOKEN)
+    || raw.includes(PAIRING_CODE_EXPIRED_TOKEN)
+    || raw.includes('配对码已过期')
+  ) {
+    return t('sync:pairing.codeExpiredError', {
+      defaultValue: '该配对码已过期（默认有效期 15 分钟）。请在原设备重新生成新的配对码后再接入。',
+    });
+  }
+  if (raw.includes('不支持的配对码格式')) {
+    return t('sync:pairing.invalidFormatError', {
+      defaultValue: '不支持的配对码格式，请粘贴有效的 DSPAIR1 配对码。',
+    });
+  }
+  if (raw.includes('PIN 不正确或配对码已损坏')) {
+    return t('sync:pairing.invalidPinOrCorruptedError', {
+      defaultValue: '6 位 PIN 不正确或配对码已损坏，请核对后重试。',
+    });
+  }
+  if (raw.includes('请输入 6 位数字 PIN')) {
+    return t('sync:pairing.invalidPinLengthError', {
+      defaultValue: '请输入 6 位数字 PIN。',
+    });
+  }
+  if (raw.includes('不支持的配对配置') || raw.includes('配对配置包含不支持的设置')) {
+    return t('sync:pairing.unsupportedPayloadError', {
+      defaultValue: '不支持的配对配置内容。',
+    });
+  }
+  return localizeBackendErrorText(raw, language);
 }
 
 interface PairingFallbackCopy {
@@ -217,14 +353,27 @@ export function DevicePairingSection({
       return false;
     }
   });
+  const [endpointContext, setEndpointContext] = useState<cloudApi.EndpointNetworkContext | null>(() => {
+    try {
+      const cached = cloudApi.loadStoredCloudStorageConfigSafe();
+      const endpoint = extractCloudEndpointFromRecord(cached);
+      return endpoint ? cloudApi.classifyEndpointNetworkContext(endpoint) : null;
+    } catch {
+      return null;
+    }
+  });
   const cloudProbeSeqRef = useRef(0);
 
   const refreshStoredCloudConfig = useCallback(
     async (allowBackendResolve = true): Promise<boolean> => {
       const seq = ++cloudProbeSeqRef.current;
-      const found = await probeStoredCloudConfigured({ allowBackendResolve });
+      const [found, context] = await Promise.all([
+        probeStoredCloudConfigured({ allowBackendResolve }),
+        probeCloudEndpointContext(allowBackendResolve),
+      ]);
       if (seq === cloudProbeSeqRef.current) {
         setStoredCloudConfigured(found);
+        setEndpointContext(context);
       }
       return found;
     },
@@ -267,6 +416,7 @@ export function DevicePairingSection({
   const [prefs, setPrefs] = useState(true);
   const [code, setCode] = useState('');
   const [generatedPinDisplay, setGeneratedPinDisplay] = useState('');
+  const [generatedExpiresAt, setGeneratedExpiresAt] = useState<number | null>(null);
 
   // 接收端状态
   const [incoming, setIncoming] = useState('');
@@ -274,12 +424,40 @@ export function DevicePairingSection({
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraHint, setCameraHint] = useState<string | null>(null);
   const [appliedSuccess, setAppliedSuccess] = useState(false);
+  const [runningBiSync, setRunningBiSync] = useState(false);
   const [decodingImage, setDecodingImage] = useState(false);
   const [qrImportError, setQrImportError] = useState(false);
   const [highlightPasteBox, setHighlightPasteBox] = useState(false);
 
   const [status, setStatus] = useState('');
   const [error, setError] = useState('');
+
+  const endpointWarnings: string[] = [];
+  if (endpointContext) {
+    if (endpointContext.isLoopback) {
+      endpointWarnings.push(
+        t('sync:pairing.endpointWarningLoopback', {
+          host: endpointContext.host,
+          defaultValue: `提示：当前云存储地址（${endpointContext.host}）指向本机回环地址，其他设备无法访问 localhost/127.0.0.1。跨设备配对前请改为局域网 IP 或公网域名。`,
+        }),
+      );
+    } else if (endpointContext.isPrivateLan) {
+      endpointWarnings.push(
+        t('sync:pairing.endpointWarningPrivateLan', {
+          host: endpointContext.host,
+          defaultValue: `提示：当前云存储地址（${endpointContext.host}）为局域网内网地址，跨设备同步时请确保两台设备处于同一局域网/Wi-Fi 环境。`,
+        }),
+      );
+    }
+    if (endpointContext.isHttpUnderHttps) {
+      endpointWarnings.push(
+        t('sync:pairing.endpointWarningHttpUnderHttps', {
+          host: endpointContext.host,
+          defaultValue: `提示：当前处于 HTTPS 网页端，但云存储地址为明文 HTTP（${endpointContext.host}）。如遇浏览器拦截混合内容请求，请为存储服务启用 HTTPS 或改用桌面客户端。`,
+        }),
+      );
+    }
+  }
 
   const fallbackCopy = getPairingFallbackCopy(i18n?.language);
 
@@ -365,7 +543,7 @@ export function DevicePairingSection({
     try {
       await action();
     } catch (e) {
-      setError(getErrorMessage(e));
+      setError(localizePairingError(e, t, i18n?.language));
     } finally {
       setBusy(false);
     }
@@ -462,6 +640,7 @@ export function DevicePairingSection({
       });
       setCode(result.pairingCode);
       setGeneratedPinDisplay(targetPin);
+      setGeneratedExpiresAt(result.expiresAt ?? null);
       const summary = describeSummary(result.summary, t);
       if (alsoPushSnapshot) {
         const pushedMsg = t('sync:pairing.qrGeneratedAndPushedStatus', {
@@ -681,12 +860,58 @@ export function DevicePairingSection({
           );
           return;
         }
-        setStatus(
-          t('sync:pairing.codeAppliedAndPulledStatus', {
-            summary,
-            defaultValue: `配置已接入并完成云端快照拉取。${summary}`,
-          }),
-        );
+      setStatus(
+        t('sync:pairing.codeAppliedAndPulledStatus', {
+          summary,
+          defaultValue: `配置已接入并已完成云端数据拉取。${summary}`,
+        }),
+      );
+      }
+    });
+
+  const handleRunPostPairingSync = () =>
+    void work(async () => {
+      if (!onRunSync) return;
+      setRunningBiSync(true);
+      try {
+        let synced: void | boolean;
+        try {
+          synced = await onRunSync('bidirectional');
+        } catch (syncErr) {
+          const reason = resolveSyncFailureReason(
+            syncErr,
+            'sync:pairing.biSyncFailedFallback',
+            '请检查云存储配置、网络或凭据后重试',
+          );
+          setError(
+            t('sync:pairing.biSyncFailedStatus', {
+              error: reason,
+              defaultValue: `双向云同步失败：${reason}`,
+            }),
+          );
+          return;
+        }
+        if (synced === false) {
+          const reason = resolveSyncFailureReason(
+            null,
+            'sync:pairing.biSyncFailedFallback',
+            '请检查云存储配置、网络或凭据后重试',
+          );
+          setError(
+            t('sync:pairing.biSyncFailedStatus', {
+              error: reason,
+              defaultValue: `双向云同步失败：${reason}`,
+            }),
+          );
+          return;
+        }
+        const completedMsg = t('sync:pairing.biSyncSuccessStatus', {
+          defaultValue: '双向云同步已完成。',
+        });
+        setStatus(completedMsg);
+        showGlobalNotification('success', completedMsg);
+      } finally {
+        setRunningBiSync(false);
       }
     });
 
@@ -807,6 +1032,20 @@ export function DevicePairingSection({
                             '当前尚未保存云存储配置：勾选此项不会包含任何可用的云存储凭据，请先保存云存储配置后再重新生成配对码。',
                         })}
                       </span>
+                    </div>
+                  )}
+                  {cloud && effectiveCloudConfigured && endpointWarnings.length > 0 && (
+                    <div
+                      role="status"
+                      data-testid="pairing-lan-endpoint-warning"
+                      className="space-y-1 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
+                    >
+                      {endpointWarnings.map((warningText, index) => (
+                        <div key={index} className="flex items-start gap-2">
+                          <WarningCircle size={14} className="mt-0.5 shrink-0" aria-hidden />
+                          <span className="leading-relaxed">{warningText}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
                   <label className="flex items-center gap-2.5 text-sm text-foreground/90 cursor-pointer [@media(pointer:coarse)]:min-h-9">
@@ -940,6 +1179,20 @@ export function DevicePairingSection({
                       </div>
                     </div>
                   )}
+                  {generatedExpiresAt !== null && (
+                    <p
+                      data-testid="device-pairing-expiry-hint"
+                      className="text-center text-2xs text-muted-foreground"
+                    >
+                      {t('sync:pairing.codeExpiresHint', {
+                        time: new Date(generatedExpiresAt).toLocaleTimeString(
+                          isEnglishUiLanguage(i18n?.language) ? 'en-US' : 'zh-CN',
+                          { hour: '2-digit', minute: '2-digit' },
+                        ),
+                        defaultValue: `配对码 15 分钟内有效（将于 ${new Date(generatedExpiresAt).toLocaleTimeString()} 过期），超时请在原设备重新生成。`,
+                      })}
+                    </p>
+                  )}
                   <div className="flex flex-wrap items-center justify-center gap-1.5">
                     <DsButton
                       type="button"
@@ -1001,6 +1254,7 @@ export function DevicePairingSection({
                           setCode('');
                           setPin('');
                           setGeneratedPinDisplay('');
+                          setGeneratedExpiresAt(null);
                         }}
                       >
                         <EyeSlash size={13} className="mr-1" />
@@ -1228,13 +1482,38 @@ export function DevicePairingSection({
                     variant="outline"
                     size="sm"
                     disabled={busy}
-                    onClick={() => onRunSync('bidirectional')}
+                    data-testid="pairing-run-bisync-btn"
+                    onClick={handleRunPostPairingSync}
                   >
-                    <Upload size={14} className="mr-1.5" />
-                    {t('sync:pairing.runBiSyncBtn', { defaultValue: '立即执行双向云同步' })}
+                    {runningBiSync ? (
+                      <>
+                        <CircleNotch size={14} className="mr-1.5 animate-spin" />
+                        {t('sync:pairing.biSyncRunningBtn', { defaultValue: '正在双向同步...' })}
+                      </>
+                    ) : (
+                      <>
+                        <Upload size={14} className="mr-1.5" />
+                        {t('sync:pairing.runBiSyncBtn', { defaultValue: '立即执行双向云同步' })}
+                      </>
+                    )}
                   </DsButton>
                 )}
               </div>
+
+              {appliedSuccess && endpointWarnings.length > 0 && (
+                <div
+                  role="status"
+                  data-testid="pairing-applied-lan-warning"
+                  className="space-y-1 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning"
+                >
+                  {endpointWarnings.map((warningText, index) => (
+                    <div key={index} className="flex items-start gap-2">
+                      <WarningCircle size={14} className="mt-0.5 shrink-0" aria-hidden />
+                      <span className="leading-relaxed">{warningText}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </fieldset>
           )}
 

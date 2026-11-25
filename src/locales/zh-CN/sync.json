@@ -311,7 +311,24 @@
     "pushSnapshotFailedFallback": "请检查云存储配置、网络或权限后重试",
     "applyPullFailedStatus": "配置已接入，但拉取云端数据失败：{{error}}",
     "applyPullFailedFallback": "请点击下方「立即执行双向云同步」重试",
-    "codeAppliedAndPulledStatus": "配置已接入并已完成云端数据拉取。{{summary}}"
+    "codeAppliedAndPulledStatus": "配置已接入并已完成云端数据拉取。{{summary}}",
+    "codeExpiresHint": "配对码 15 分钟内有效（将于 {{time}} 过期），超时请在原设备重新生成。",
+    "codeExpiredError": "该配对码已过期（默认有效期 15 分钟）。请在原设备重新生成新的配对码后再接入。",
+    "invalidFormatError": "不支持的配对码格式，请粘贴有效的 DSPAIR1 配对码。",
+    "invalidPinOrCorruptedError": "6 位 PIN 不正确或配对码已损坏，请核对后重试。",
+    "invalidPinLengthError": "请输入 6 位数字 PIN。",
+    "unsupportedPayloadError": "不支持的配对配置内容。",
+    "biSyncRunningBtn": "正在双向同步...",
+    "biSyncSuccessStatus": "双向云同步已完成。",
+    "biSyncFailedStatus": "双向云同步失败：{{error}}",
+    "biSyncFailedFallback": "请检查云存储配置、网络或凭据后重试",
+    "endpointWarningLoopback": "提示：当前云存储地址（{{host}}）指向本机回环地址，其他设备无法访问 localhost/127.0.0.1。跨设备配对前请改为局域网 IP 或公网域名。",
+    "endpointWarningPrivateLan": "提示：当前云存储地址（{{host}}）为局域网内网地址，跨设备同步时请确保两台设备处于同一局域网/Wi-Fi 环境。",
+    "endpointWarningHttpUnderHttps": "提示：当前处于 HTTPS 网页端，但云存储地址为明文 HTTP（{{host}}）。如遇浏览器拦截混合内容请求，请为存储服务启用 HTTPS 或改用桌面客户端。"
+  },
+  "firstConnect": {
+    "remoteDatasetNoticeTitle": "检测到云端已有历史数据（本机尚未完成首次同步）",
+    "remoteDatasetNoticeDesc": "当前工作区有 {{pending}} 条本地待同步变更，同时所连接的云端目录已存在历史数据。建议先在「同步」页确认合并策略（保留最新、保留本地或使用云端）或先做一次本地备份，避免首次同步时意外覆盖数据。"
   },
   "fileSync": {
     "workspace": "文件级同步：工作区数据库",
