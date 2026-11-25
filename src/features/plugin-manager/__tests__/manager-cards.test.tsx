@@ -230,6 +230,31 @@ describe('detail sheet', () => {
     expect(line).toHaveTextContent('权限变了，需要你重新确认。');
     expect(line).toHaveAttribute('data-consent-reason', 'permissions');
   });
+
+  it('renders declarative .dspack asset summary in detail sheet instead of addsUnknown', async () => {
+    const { user } = setup([
+      managedPlugin({
+        id: 'alice.kaoyan-pack',
+        origin: 'community',
+        source: 'package',
+        kind: 'study-pack',
+        displayName: '考研数学冲刺包',
+        contributes: ['declarative.skills', 'declarative.rubrics', 'declarative.workflows'],
+        declarative: {
+          skills: ['考研数学证明教练'],
+          rubrics: ['考研数学证明题严格批改'],
+          workflows: ['考研数学闭环冲刺'],
+        },
+      }),
+    ]);
+    await user.click(await screen.findByRole('button', { name: '查看 考研数学冲刺包 的详情' }));
+    const sheet = await screen.findByRole('dialog');
+    const decl = within(sheet).getByTestId('plugin-detail-declarative');
+    expect(decl).toHaveTextContent('考研数学证明教练');
+    expect(decl).toHaveTextContent('考研数学证明题严格批改');
+    expect(decl).toHaveTextContent('考研数学闭环冲刺');
+    expect(within(sheet).getByTestId('plugin-detail-adds')).not.toHaveTextContent('运行后，这里会列出它给应用增加的入口');
+  });
 });
 
 describe('empty states and starters', () => {

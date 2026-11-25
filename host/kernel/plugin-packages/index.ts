@@ -19,6 +19,18 @@ export interface PackageRecord {
   enabled: boolean;
   files: Record<string, string>;
 }
+export interface InvalidPackageLockRecord {
+  id: string;
+  reason: string;
+  version?: string;
+  path?: string;
+  enabled?: boolean;
+}
+export interface PackageLockInspection {
+  valid: PackageRecord[];
+  invalid: InvalidPackageLockRecord[];
+  lockError?: string;
+}
 export interface PackagesLock { lockVersion: 1; plugins: Record<string, PackageRecord> }
 export interface InstallResult { record: PackageRecord; previous: PackageRecord | null; manifest: PluginManifest }
 
@@ -91,24 +103,62 @@ export class PluginPackages {
     return run;
   }
 
-  private async lock(): Promise<PackagesLock> {
+  private async rawLock(): Promise<{ lockVersion: 1; plugins: Record<string, unknown> }> {
     let raw: unknown;
     try { raw = JSON.parse(await this.root.readText(LOCK, { maxBytes: 16 * 1024 * 1024 })); }
     catch (error) { if (isFileNotFound(error)) return { lockVersion: 1, plugins: {} }; throw error; }
     if (!object(raw) || raw.lockVersion !== 1 || !object(raw.plugins)) invalid('invalid lock format');
-    for (const [id, value] of Object.entries(raw.plugins)) record(value, id);
-    return raw as unknown as PackagesLock;
+    return { lockVersion: 1, plugins: raw.plugins as Record<string, unknown> };
   }
 
-  private commit(lock: PackagesLock): Promise<void> {
+  private async lock(): Promise<PackagesLock> {
+    const raw = await this.rawLock();
+    const plugins: Record<string, PackageRecord> = {};
+    for (const [id, value] of Object.entries(raw.plugins)) {
+      try {
+        plugins[id] = record(value, id);
+      } catch {
+        // Resilient per-entry parsing: a single corrupted record must not hide healthy packages.
+      }
+    }
+    return { lockVersion: 1, plugins };
+  }
+
+  private commit(lock: { lockVersion: 1; plugins: Record<string, unknown> }): Promise<void> {
     return this.root.writeAtomic(LOCK, `${JSON.stringify(lock, null, 2)}\n`, { createParents: true });
+  }
+
+  async inspect(): Promise<PackageLockInspection> {
+    let raw: { lockVersion: 1; plugins: Record<string, unknown> };
+    try {
+      raw = await this.rawLock();
+    } catch (error) {
+      return { valid: [], invalid: [], lockError: error instanceof Error ? error.message : String(error) };
+    }
+    const valid: PackageRecord[] = [];
+    const invalidRecords: InvalidPackageLockRecord[] = [];
+    for (const [id, value] of Object.entries(raw.plugins)) {
+      try {
+        valid.push(record(value, id));
+      } catch (error) {
+        const obj = object(value) ? value : undefined;
+        invalidRecords.push({
+          id,
+          reason: error instanceof Error ? error.message : String(error),
+          ...(typeof obj?.version === 'string' ? { version: obj.version } : {}),
+          ...(typeof obj?.path === 'string' ? { path: obj.path } : {}),
+          ...(typeof obj?.enabled === 'boolean' ? { enabled: obj.enabled } : {}),
+        });
+      }
+    }
+    return { valid, invalid: invalidRecords };
   }
 
   async list(): Promise<PackageRecord[]> { return Object.values((await this.lock()).plugins); }
 
-  private required(lock: PackagesLock, id: string): PackageRecord {
-    if (!Object.hasOwn(lock.plugins, id)) invalid(`not installed: ${id}`);
-    return lock.plugins[id]!;
+  private requiredRaw(raw: { lockVersion: 1; plugins: Record<string, unknown> }, id: string): PackageRecord {
+    if (!Object.hasOwn(raw.plugins, id)) invalid(`not installed: ${id}`);
+    return record(raw.plugins[id], id);
   }
 
   private async hash(scope: FileScope, name: string): Promise<string> {
@@ -146,7 +196,7 @@ export class PluginPackages {
   }
 
   async verify(id: string): Promise<PackageRecord> {
-    const r = this.required(await this.lock(), id);
+    const r = this.requiredRaw(await this.rawLock(), id);
     await this.verifyRecord(r);
     return r;
   }
@@ -203,8 +253,11 @@ export class PluginPackages {
         const manifest = assertInstallable(pkg, checks);
         for (const entry of zip.entries) if (!entry.isDirectory) files[entry.name] = await this.hash(staged, entry.name);
         entrypoints(pkg, files, manifest);
-        const lock = await this.lock();
-        const previous = Object.hasOwn(lock.plugins, manifest.id) ? lock.plugins[manifest.id]! : null;
+        const lock = await this.rawLock();
+        let previous: PackageRecord | null = null;
+        if (Object.hasOwn(lock.plugins, manifest.id)) {
+          try { previous = record(lock.plugins[manifest.id], manifest.id); } catch { previous = null; }
+        }
         release = `releases/${manifest.id}/${manifest.version}-${randomUUID()}`;
         const r: PackageRecord = { id: manifest.id, version: manifest.version, path: release, enabled: previous?.enabled ?? false, files };
         record(r, manifest.id);
@@ -225,10 +278,11 @@ export class PluginPackages {
 
   setEnabled(id: string, enabled: boolean): Promise<PackageRecord> {
     return this.serialized(async () => {
-      const lock = await this.lock();
-      const r = this.required(lock, id);
+      const lock = await this.rawLock();
+      const r = this.requiredRaw(lock, id);
       if (enabled) await this.verifyRecord(r);
       r.enabled = enabled;
+      lock.plugins[id] = r;
       await this.commit(lock);
       return r;
     });
@@ -236,19 +290,31 @@ export class PluginPackages {
 
   uninstall(id: string): Promise<PackageRecord> {
     return this.serialized(async () => {
-      const lock = await this.lock();
-      const r = this.required(lock, id);
+      const lock = await this.rawLock();
+      const r = this.requiredRaw(lock, id);
       delete lock.plugins[id];
       await this.commit(lock);
       return r;
     });
   }
 
+  /** Removes a lock entry even if its stored shape is corrupted (used when uninstalling a broken plugin). */
+  removeRawEntry(id: string): Promise<boolean> {
+    return this.serialized(async () => {
+      const lock = await this.rawLock();
+      if (!Object.hasOwn(lock.plugins, id)) return false;
+      delete lock.plugins[id];
+      await this.commit(lock);
+      return true;
+    });
+  }
+
   restore(id: string, previous: PackageRecord | null, expectedPath: string): Promise<void> {
     return this.serialized(async () => {
-      const lock = await this.lock();
-      const current = Object.hasOwn(lock.plugins, id) ? lock.plugins[id] : undefined;
-      if ((current?.path ?? '') !== expectedPath) invalid(`rollback conflict: ${id}`);
+      const lock = await this.rawLock();
+      const currentRaw = Object.hasOwn(lock.plugins, id) ? lock.plugins[id] : undefined;
+      const currentPath = object(currentRaw) && typeof currentRaw.path === 'string' ? currentRaw.path : '';
+      if (currentPath !== expectedPath) invalid(`rollback conflict: ${id}`);
       if (previous) {
         record(previous, id);
         await this.verifyRecord(previous);

@@ -147,7 +147,33 @@ describe('PluginManagerController', () => {
     await controller.grantConsent();
 
     expect(controller.getSnapshot().consent).toBeNull();
+    expect(controller.getSnapshot().notice).toBeNull();
     expect(controller.getSnapshot().error).toMatchObject({ code: 'RELOAD_FAILED', detail: 'reload blocked' });
+  });
+
+  it('keeps consent pending and withholds consent-granted notice until reload resolves', async () => {
+    const adapter = new FakePluginManagerAdapter([managedPlugin({ id: 'community.example', origin: 'community', enabled: false, runtime: 'stopped' })]);
+    adapter.setEnabledResult = { ok: false, code: 'CONSENT_REQUIRED', consent };
+    let resolveReload!: () => void;
+    vi.spyOn(adapter, 'reload').mockImplementation(() => new Promise<void>((resolve) => { resolveReload = resolve; }));
+    const controller = new PluginManagerController(adapter);
+    await controller.start();
+
+    await controller.setEnabled('community.example', true);
+    const pending = controller.grantConsent();
+    await vi.waitFor(() => expect(adapter.calls.grantConsent).toHaveLength(1));
+
+    // Reload is still in flight: consent must not be cleared and success notice must not be emitted yet.
+    expect(controller.getSnapshot().consent).toEqual(consent);
+    expect(controller.getSnapshot().notice).toBeNull();
+    expect(controller.getSnapshot().consentBusy).toBe(true);
+
+    resolveReload();
+    await pending;
+
+    expect(controller.getSnapshot().consent).toBeNull();
+    expect(controller.getSnapshot().consentBusy).toBe(false);
+    expect(controller.getSnapshot().notice).toEqual({ kind: 'consent-granted', pluginId: 'community.example' });
   });
 
   it('keeps a revision conflict visible instead of overwriting the Host configuration', async () => {

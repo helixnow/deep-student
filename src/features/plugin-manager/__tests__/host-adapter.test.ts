@@ -173,6 +173,64 @@ describe('HostPluginManagerAdapter', () => {
       rollback: rollback === 'not-needed' ? 'unchanged' : rollback });
   });
 
+  it('maps study-pack kind/declarative summaries and degraded broken plugins without displayName', async () => {
+    const invoke = vi.fn(async () => ({
+      revision: 'r2',
+      safeMode: false,
+      plugins: [
+        {
+          id: 'alice.kaoyan-pack',
+          origin: 'community',
+          version: '1.0.0',
+          platforms: ['desktop', 'mobile'],
+          enabled: true,
+          state: 'running',
+          hasConfig: false,
+          permissions: [],
+          services: [],
+          kind: 'study-pack',
+          tier: 'declarative',
+          contributes: ['declarative.skills', 'declarative.rubrics'],
+          declarative: {
+            skills: ['考研数学证明教练'],
+            rubrics: ['考研数学证明题严格批改'],
+          },
+          consent: { matched: true, code: null, reason: null, grantedPermissions: [] },
+        },
+        {
+          id: 'broken.seeded',
+          origin: 'community',
+          platforms: ['desktop'],
+          enabled: false,
+          state: 'degraded',
+          reason: 'MANIFEST_INVALID: package.json cannot be read as JSON',
+          hasConfig: false,
+          permissions: [],
+          services: [],
+        },
+      ],
+    }));
+    const adapter = new HostPluginManagerAdapter({ platform: 'desktop', invoke: invoke as never, choosePackage: vi.fn() });
+    const [pack, broken] = (await adapter.list()).plugins;
+    expect(pack).toMatchObject({
+      id: 'alice.kaoyan-pack',
+      kind: 'study-pack',
+      contributes: ['declarative.skills', 'declarative.rubrics'],
+      declarative: {
+        skills: ['考研数学证明教练'],
+        rubrics: ['考研数学证明题严格批改'],
+      },
+      runtime: 'running',
+      consent: 'granted',
+    });
+    expect(broken).toMatchObject({
+      id: 'broken.seeded',
+      runtime: 'error',
+      degraded: { reason: 'MANIFEST_INVALID: package.json cannot be read as JSON' },
+      version: '—',
+    });
+  });
+
   it('projects booleans/enums while preserving unsupported and hidden values outside editable fields', () => {
     expect(managerSchema({ fields: [{ path: 'mode', type: 'enum', options: ['fast', 'safe'] },
       { path: 'hidden', type: 'string', hidden: true }, { path: 'object', type: 'object', fields: [] }] }))
