@@ -313,7 +313,7 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
                 onFrameWheel={handleFrameWheel}
                 className={cn(
                   'flex min-h-0 flex-1',
-                  templateMode ? (contentFits ? 'flex-col justify-center' : 'flex-col') : 'items-center justify-center',
+                  templateMode ? (contentFits ? 'flex-col justify-center' : 'flex-col') : 'flex-col items-center justify-center',
                 )}
               />
             </div>

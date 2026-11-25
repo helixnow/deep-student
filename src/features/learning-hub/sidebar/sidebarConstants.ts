@@ -26,7 +26,7 @@ const DOCUMENT_EXTENSIONS = new Set([
   'pdf', 'docx', 'txt', 'md', 'markdown', 'html', 'htm',
   'xlsx', 'xls', 'xlsb', 'ods',
   'pptx', 'epub', 'rtf',
-  'csv', 'json', 'xml',
+  'csv', 'tsv', 'json', 'xml', 'vtt',
   // 源码 / 配置：后端按纯文本导入（计算机类课程资料常见 .py/.c/.sql 等）
   ...ATTACHMENT_CODE_TEXT_EXTENSIONS,
 ]);
@@ -55,9 +55,14 @@ const MODULE_GUIDANCE_EXTENSIONS: Record<string, 'flashcards' | 'mindmap'> = {
   mmap: 'mindmap',
 };
 
-/** 从文件名获取扩展名 */
-const getFileExtension = (name: string): string =>
-  (name.split('.').pop() || '').toLowerCase();
+/** 从文件名获取扩展名（无扩展名时返回空串） */
+const getFileExtension = (name: string): string => {
+  const trimmed = name.trim();
+  const lastSlash = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
+  const base = lastSlash >= 0 ? trimmed.slice(lastSlash + 1) : trimmed;
+  const dot = base.lastIndexOf('.');
+  return dot > 0 && dot < base.length - 1 ? base.slice(dot + 1).toLowerCase() : '';
+};
 
 /** ★ Bug4: canvas 模式下不应显示的特殊视图（仅显示层 fallback，不写回 store） */
 const CANVAS_BLOCKED_VIEW_KINDS = new Set(['indexStatus', 'memory', 'desktop']);

@@ -94,6 +94,21 @@ describe('attachment_repo.rs', { timeout: 120_000 }, () => {
     expect(attachments().inferExtension('image/png', 'test.png')).toBe('png');
     expect(attachments().inferExtension('image/jpeg', 'photo')).toBe('jpg');
     expect(attachments().inferExtension('application/pdf', 'document.pdf')).toBe('pdf');
+    expect(attachments().inferExtension('application/vnd.xmind.workbook', 'workbook')).toBe('xmind');
+    expect(attachments().inferExtension('application/x-xmind', 'workbook')).toBe('xmind');
+    expect(attachments().inferExtension('text/vtt', 'captions')).toBe('vtt');
+  });
+
+  it('accepts .xmind and .vtt uploads by extension and MIME type', () => {
+    expect(attachments().isSupportedUploadType('mindmap-multisheet.xmind', 'application/vnd.xmind.workbook')).toBe(true);
+    expect(attachments().isSupportedUploadType('mindmap-multisheet.xmind', 'application/x-xmind')).toBe(true);
+    expect(attachments().isSupportedUploadType('mindmap-multisheet.xmind', 'application/octet-stream')).toBe(true);
+    expect(attachments().isSupportedUploadType('mindmap-multisheet.xmind', 'application/zip')).toBe(true);
+    expect(attachments().isSupportedUploadType('lecture.vtt', 'text/vtt')).toBe(true);
+    expect(attachments().isSupportedUploadType('lecture.vtt', 'application/octet-stream')).toBe(true);
+    expect(attachments().isSupportedUploadType('captions', 'text/vtt')).toBe(true);
+    expect(attachments().isSupportedUploadType('workbook', 'application/vnd.xmind.workbook')).toBe(true);
+    expect(attachments().isSupportedUploadType('workbook', 'application/x-xmind')).toBe(true);
   });
 
   it('test_is_safe_original_path_allows_textbooks_dir', () => {

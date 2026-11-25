@@ -166,7 +166,7 @@ interface StartupGateLike {
  * `HostFatal` 只携带 `message`/`stack`；F3 `StartupFinalizerError` 的失败名称、已完成列表与原始 cause
  * 需要写入 Host 日志，才能事后诊断启动失败原因（log 插件已装载时落盘到主日志，并输出到 stderr）。
  */
-function logStartupFailure(runtime: HostRuntime, stage: string, error: unknown): void {
+function logStartupFailure(runtime: HostRuntime, stage: string, error: unknown, continuingInSafeMode = false): void {
   const extra = error instanceof Error
     ? error as Error & { finalizer?: unknown; completed?: unknown; cause?: unknown }
     : undefined;
@@ -174,8 +174,11 @@ function logStartupFailure(runtime: HostRuntime, stage: string, error: unknown):
   if (typeof extra?.finalizer === 'string') details.push(`finalizer: ${extra.finalizer}`);
   if (Array.isArray(extra?.completed)) details.push(`completed: ${extra.completed.length ? extra.completed.join(', ') : '(none)'}`);
   if (extra?.cause !== undefined) details.push(`cause:\n${describeError(extra.cause)}`);
+  const consequence = continuingInSafeMode
+    ? 'continuing in safe mode (degraded)'
+    : 'Host will exit without ready';
   runtime.ctx.logger('host').error(
-    `startup finalization failed at ${stage}; Host will exit without ready:\n${describeError(error)}` +
+    `startup finalization failed at ${stage}; ${consequence}:\n${describeError(error)}` +
     (details.length ? `\n${details.join('\n')}` : ''),
   );
 }
@@ -188,7 +191,25 @@ async function finishStartup(runtime: HostRuntime): Promise<void> {
     if (!recovery) {
       stage = 'runStartupFinalizers';
       const storage = runtime.ctx.get('storage') as StartupFinalizerStorage | undefined;
-      if (typeof storage?.runStartupFinalizers === 'function') await storage.runStartupFinalizers();
+      if (typeof storage?.runStartupFinalizers === 'function') {
+        try {
+          await storage.runStartupFinalizers();
+        } catch (error) {
+          if (!runtime.safeMode) throw error;
+          // SPOF-3：安全模式下启动 finalizer 失败不锁死救援通道，记全量错误与降级诊断并放行 gate。
+          logStartupFailure(runtime, stage, error, true);
+          const extra = error instanceof Error ? error as Error & { finalizer?: unknown } : undefined;
+          const finalizer = typeof extra?.finalizer === 'string' && extra.finalizer ? extra.finalizer : null;
+          const summary = error instanceof Error ? error.message : String(error);
+          const reason = finalizer
+            ? `STARTUP_FINALIZER_FAILED: finalizer "${finalizer}" failed in safe mode: ${summary}`
+            : `STARTUP_FINALIZER_FAILED: ${summary}`;
+          runtime.recordDegraded([
+            ...runtime.degradedPlugins(),
+            { id: 'dstu.startup-finalizers', reason },
+          ]);
+        }
+      }
     }
     stage = 'startupGate.markStartupReady';
     const gate = runtime.ctx.get('startupGate') as StartupGateLike | undefined;

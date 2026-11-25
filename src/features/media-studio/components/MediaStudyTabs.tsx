@@ -73,11 +73,17 @@ const sectionClass = 'flex flex-col gap-2 px-3 py-3';
 const sectionTitleClass = 'text-xs font-medium text-muted-foreground';
 const actionButtonClass = 'w-full !justify-start gap-2';
 
-/** 分区滚动容器：手机为单手拇指区留出底部安全区 */
-const TabScroll: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+/** 分区滚动容器：手机为单手拇指区与底部程序坞留出安全避让 */
+const TabScroll: React.FC<{
+  children: React.ReactNode;
+  nativeScrollbars?: boolean;
+  viewportRef?: React.Ref<HTMLDivElement>;
+}> = ({ children, nativeScrollbars, viewportRef }) => (
   <CustomScrollArea
     className="min-h-0 flex-1"
-    viewportClassName="pb-[calc(0.75rem+var(--mobile-safe-area-bottom,0px))]"
+    nativeScrollbars={nativeScrollbars}
+    viewportRef={viewportRef}
+    viewportClassName="pb-[calc(0.75rem+var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px))+var(--wb-mobile-dock-clearance,var(--mobile-dock-height,var(--wb-dock-clearance,0px))))]"
   >
     {children}
   </CustomScrollArea>
@@ -923,10 +929,14 @@ export const MediaAskTab: React.FC<{
   const [playheadSeconds, setPlayheadSeconds] = useState<number>(() =>
     Math.max(0, Math.floor(ctx.getCurrentTime())),
   );
+  const askScrollViewportRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setPlayheadSeconds(Math.max(0, Math.floor(ctx.getCurrentTime())));
     if (!isVisible) return;
+    if (askScrollViewportRef.current) {
+      askScrollViewportRef.current.scrollTop = 0;
+    }
     const timer = window.setInterval(() => {
       const nextSeconds = Math.max(0, Math.floor(ctx.getCurrentTime()));
       setPlayheadSeconds((prev) => (prev === nextSeconds ? prev : nextSeconds));
@@ -966,8 +976,11 @@ export const MediaAskTab: React.FC<{
   );
 
   return (
-    <TabScroll>
-      <div className="flex flex-col gap-2 px-3 py-2 sm:py-3">
+    <TabScroll nativeScrollbars viewportRef={askScrollViewportRef}>
+      <div
+        data-media-ask-composer-host=""
+        className="flex flex-col gap-2 px-3 py-2 sm:py-3"
+      >
         <ContextualMiniChat
           anchor={miniChatAnchor}
           defaultMinimized={false}

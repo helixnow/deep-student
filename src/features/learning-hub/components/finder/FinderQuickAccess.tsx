@@ -12,6 +12,7 @@ import {
   Plus,
   Star,
   Trash,
+  UploadSimple,
   X,
 } from '@phosphor-icons/react';
 import {
@@ -488,6 +489,23 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
             </AppMenu>
           )}
         </div>}
+
+        {!collapsed && !fillContainer && onNewTextbook && !createDisabled && (
+          <div className="shrink-0 px-2 pb-1.5">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={onNewTextbook}
+              data-testid="finder-quickaccess-import"
+              className="w-full justify-center gap-1.5 rounded-lg bg-primary/10 text-xs font-medium text-primary hover:bg-primary/15 [@media(pointer:coarse)]:!min-h-11"
+              title={t('finder.toolbar.newTextbook')}
+              aria-label={t('finder.toolbar.newTextbook')}
+            >
+              <UploadSimple size={14} aria-hidden="true" />
+              <span>{t('finder.toolbar.newTextbook')}</span>
+            </DsButton>
+          </div>
+        )}
 
         <CustomScrollArea className="min-h-0 flex-1" viewportClassName="h-full w-full min-h-0">
           {/* OverlayScrollbars 会清零 viewport padding，边距放在内层 */}

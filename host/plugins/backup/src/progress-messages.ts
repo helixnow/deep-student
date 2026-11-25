@@ -107,6 +107,7 @@ export type BackupProgressMessageKey =
   | 'restore.databases_restored'
   | 'restore.restoring_assets'
   | 'restore.marking_slot_switch'
+  | 'restore.creating_safety_snapshot'
   | 'restore.restoring_auxiliary_domains'
   | 'restore.recording_audit_log'
   | 'restore.completed'
@@ -369,6 +370,8 @@ export function formatBackupProgressMessage(
         : `正在恢复资产文件: ${params.restored ?? 0}/${params.total ?? 0}`;
     case 'restore.marking_slot_switch':
       return en ? 'Staging atomic slot switch...' : '正在标记插槽切换...';
+    case 'restore.creating_safety_snapshot':
+      return en ? 'Creating pre-restore safety snapshot...' : '正在创建恢复前安全快照...';
     case 'restore.restoring_auxiliary_domains':
       return en
         ? 'Restoring auxiliary domains (audit/settings/quarantine)...'
@@ -480,6 +483,8 @@ const EXACT_MESSAGE_KEY_MAP: ReadonlyMap<string, BackupProgressMessageKey> = new
   ['Verifying backup manifest...', 'restore.verifying_manifest'],
   ['正在标记插槽切换...', 'restore.marking_slot_switch'],
   ['Staging atomic slot switch...', 'restore.marking_slot_switch'],
+  ['正在创建恢复前安全快照...', 'restore.creating_safety_snapshot'],
+  ['Creating pre-restore safety snapshot...', 'restore.creating_safety_snapshot'],
   ['正在恢复辅助域（审计/设置/待信任隔离）...', 'restore.restoring_auxiliary_domains'],
   ['Restoring auxiliary domains (audit/settings/quarantine)...', 'restore.restoring_auxiliary_domains'],
   ['正在记录审计日志...', 'restore.recording_audit_log'],

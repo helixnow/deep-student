@@ -547,17 +547,19 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
                 {/* 休息阶段：跳过休息 */}
                 {isBreak && (
                   <button
+                    type="button"
                     onClick={handleSkipBreak}
-                    className={cn(controlButtonClass, 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground')}
+                    className={cn(controlButtonClass, 'text-foreground/85 hover:bg-[var(--interactive-hover)] hover:text-foreground')}
                     title={t('pomodoro.controls.skipBreak')}
                     aria-label={t('pomodoro.controls.skipBreak')}
                   >
-                    <SkipForward size={controlIconSize} />
+                    <SkipForward size={controlIconSize} weight="fill" aria-hidden="true" />
                   </button>
                 )}
                 {/* 停止/放弃：专注进行中需内联二次确认 */}
                 {confirmAbandon ? (
                   <button
+                    type="button"
                     onClick={handleStop}
                     className={cn(
                       'ui-rise-in flex-shrink-0 rounded-full bg-destructive px-2.5 text-xs font-medium text-destructive-foreground transition-colors hover:bg-destructive/90 motion-reduce:transition-none',
@@ -570,12 +572,13 @@ export const GlobalPomodoroWidget: React.FC<GlobalPomodoroWidgetProps> = ({
                   </button>
                 ) : (
                   <button
+                    type="button"
                     onClick={handleStop}
-                    className={cn(controlButtonClass, 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive')}
+                    className={cn(controlButtonClass, 'text-foreground/85 hover:bg-destructive/10 hover:text-destructive')}
                     title={t('pomodoro.controls.stop')}
                     aria-label={t('pomodoro.controls.stop')}
                   >
-                    <Square size={controlIconSize} />
+                    <Square size={controlIconSize} weight="fill" aria-hidden="true" />
                   </button>
                 )}
                 <button

@@ -1,7 +1,7 @@
 import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, startTransition } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
-import { CircleNotch, WarningCircle, ArrowClockwise, Scan, Tag, Clock, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download, Plus, CaretDown, PencilSimple, XCircle, ClockCounterClockwise, Table as TableIcon, Sparkle, DotsSixVertical } from '@phosphor-icons/react';
+import { CircleNotch, CheckCircle, WarningCircle, ArrowClockwise, Scan, Tag, Clock, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download, Plus, CaretDown, PencilSimple, XCircle, ClockCounterClockwise, Table as TableIcon, Sparkle, DotsSixVertical } from '@phosphor-icons/react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogBody } from '@/components/ui/DsDialog';
@@ -35,6 +35,18 @@ import {
   isQbankAgentModifyPayload,
   useQbankAgentDiffStore,
 } from '@/stores/qbankAgentDiffStore';
+import {
+  selectActiveTaskForExam,
+  selectTasksForExam,
+  useQbankGenerationStore,
+} from '@/stores/qbankGenerationStore';
+import {
+  extractAuthoringDraftAttribution,
+  QBANK_OPEN_GENERATION_DRAFT_EVENT,
+  type PendingAuthoringDraftView,
+  type QbankGenerationTask,
+  type QbankOpenGenerationDraftDetail,
+} from '@/types/qbankGeneration';
 import { QBankAgentDiffBar } from '@/components/practice/QBankAgentDiffBar';
 import { getAppKernel } from '@/ui-kernel/bootstrap';
 import { useExamDueReviewCount } from './useExamDueReviewCount';
@@ -405,6 +417,21 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [listCreateRequestKey, setListCreateRequestKey] = useState(0);
   // AI 出题面板开关（MVP：ai-question-generation-feasibility-2026-09-07.md）
   const [showAiGenerationPanel, setShowAiGenerationPanel] = useState(false);
+  const [aiGenerationTarget, setAiGenerationTarget] = useState<{ taskId?: string | null; jobId?: string | null } | null>(null);
+  const [confirmingDraftJobId, setConfirmingDraftJobId] = useState<string | null>(null);
+  const generationTasksMap = useQbankGenerationStore((state) => state.tasks);
+  const activeGenerationTask = useMemo(
+    () => selectActiveTaskForExam(generationTasksMap, sessionId) ?? null,
+    [generationTasksMap, sessionId],
+  );
+  const completedGenerationTaskSignature = useMemo(
+    () =>
+      selectTasksForExam(generationTasksMap, sessionId)
+        .filter((task) => task.status === 'completed')
+        .map((task) => `${task.id}:${task.authoringResult?.job_id ?? ''}`)
+        .join(','),
+    [generationTasksMap, sessionId],
+  );
   const [draftState, setDraftState] = useState({ examId: sessionId, dirty: false });
   const [pendingDraftNavigation, setPendingDraftNavigation] = useState<PendingDraftNavigation | null>(null);
   const activeDraftExamIdRef = useRef(sessionId);
@@ -2021,21 +2048,121 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [resumedImportDraft, setResumedImportDraft] = useState<import('@/components/ExamSheetUploader').ImportDraftResponse | null>(null);
   const [resumeError, setResumeError] = useState<string | null>(null);
   const [showImportAudit, setShowImportAudit] = useState(false);
-  const [pendingAuthoringDrafts, setPendingAuthoringDrafts] = useState<Array<{job_id:string;version:number;question_count:number;status:string}>>([]);
+  const [pendingAuthoringDrafts, setPendingAuthoringDrafts] = useState<PendingAuthoringDraftView[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     const refresh = () => {
-      void invoke<typeof pendingAuthoringDrafts>('qbank_list_authoring_drafts', {examId:sessionId})
-        // 演示/旧后端可能对未知命令返回 null；非数组一律按“没有草稿”处理
-        .then((drafts) => { if (!cancelled) setPendingAuthoringDrafts(Array.isArray(drafts) ? drafts : []); })
-        .catch((error) => { debugLog.warn('[ExamContentView] Pending drafts unavailable:', error); });
+      void Promise.all([
+        invoke<Array<{ job_id: string; version: number; question_count: number; status: string; created_at?: string }>>(
+          'qbank_list_authoring_drafts',
+          { examId: sessionId },
+        ),
+        invoke<QbankGenerationTask[]>('qbank_list_generation_tasks', {
+          examId: sessionId,
+          limit: 10,
+        }).catch(() => null),
+      ])
+        .then(async ([rawDrafts, listedTasks]) => {
+          if (cancelled) return;
+          const tasksList = Array.isArray(listedTasks) ? listedTasks : [];
+          if (tasksList.length > 0) {
+            useQbankGenerationStore.getState().upsertTasks(tasksList);
+          }
+          const storeTasks = selectTasksForExam(useQbankGenerationStore.getState().tasks, sessionId);
+          const taskByJobId = new Map<string, QbankGenerationTask>();
+          for (const task of [...tasksList, ...storeTasks]) {
+            const jid = task.authoringResult?.job_id;
+            if (jid && !taskByJobId.has(jid)) taskByJobId.set(jid, task);
+          }
+
+          // 演示/旧后端可能对未知命令返回 null；非数组一律按“没有草稿”处理
+          const drafts = Array.isArray(rawDrafts) ? rawDrafts : [];
+          if (drafts.length === 0) {
+            if (!cancelled) setPendingAuthoringDrafts([]);
+            return;
+          }
+
+          const enriched = await Promise.all(
+            drafts.map(async (draft, index): Promise<PendingAuthoringDraftView> => {
+              const matchedTask = taskByJobId.get(draft.job_id);
+              if (matchedTask?.authoringResult) {
+                const { origin, sourceLabel } = extractAuthoringDraftAttribution(
+                  matchedTask.authoringResult.model_route,
+                  { defaultOrigin: 'ai_generation' },
+                );
+                const docQuestions = matchedTask.authoringResult.document?.questions;
+                const localIds = Array.isArray(docQuestions)
+                  ? docQuestions.map((q) => q.local_id).filter((id): id is string => typeof id === 'string' && id.length > 0)
+                  : matchedTask.drafts.map((d) => d.local_id).filter((id): id is string => typeof id === 'string' && id.length > 0);
+                return {
+                  ...draft,
+                  origin,
+                  sourceLabel,
+                  taskId: matchedTask.id,
+                  ...(localIds.length > 0 ? { localIds } : {}),
+                };
+              }
+              if (index < 5) {
+                try {
+                  const full = await invoke<{
+                    metadata?: unknown;
+                    document?: { questions?: Array<{ local_id?: string }> };
+                  }>('qbank_get_authoring_draft', { jobId: draft.job_id });
+                  const { origin, sourceLabel } = extractAuthoringDraftAttribution(full?.metadata);
+                  const localIds = Array.isArray(full?.document?.questions)
+                    ? full.document.questions
+                        .map((q) => q.local_id)
+                        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+                    : [];
+                  return {
+                    ...draft,
+                    origin,
+                    sourceLabel,
+                    taskId: null,
+                    ...(localIds.length > 0 ? { localIds } : {}),
+                  };
+                } catch {
+                  // 详情读取失败时保留基础草稿项与默认归属
+                }
+              }
+              const fallback = extractAuthoringDraftAttribution(null);
+              return {
+                ...draft,
+                origin: fallback.origin,
+                sourceLabel: fallback.sourceLabel,
+                taskId: null,
+              };
+            }),
+          );
+          if (!cancelled) setPendingAuthoringDrafts(enriched);
+        })
+        .catch((error) => {
+          debugLog.warn('[ExamContentView] Pending drafts unavailable:', error);
+        });
     };
     setPendingAuthoringDrafts([]);
     refresh();
     window.addEventListener('qbank:refresh', refresh);
-    return () => { cancelled = true; window.removeEventListener('qbank:refresh', refresh); };
-  }, [sessionId, questions.length]);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('qbank:refresh', refresh);
+    };
+  }, [sessionId, questions.length, completedGenerationTaskSignature]);
+
+  useEffect(() => {
+    const onOpenGenerationDraft = (event: Event) => {
+      const detail = (event as CustomEvent<QbankOpenGenerationDraftDetail>).detail;
+      if (!detail || detail.examId !== sessionId) return;
+      setAiGenerationTarget({
+        taskId: detail.taskId ?? null,
+        jobId: detail.jobId ?? null,
+      });
+      setShowAiGenerationPanel(true);
+    };
+    window.addEventListener(QBANK_OPEN_GENERATION_DRAFT_EVENT, onOpenGenerationDraft);
+    return () => window.removeEventListener(QBANK_OPEN_GENERATION_DRAFT_EVENT, onOpenGenerationDraft);
+  }, [sessionId]);
 
   const handleOpenAuthoringDraft = useCallback(async (jobId:string) => {
     try {
@@ -2049,6 +2176,78 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       showGlobalNotification('error', error instanceof Error ? error.message : String(error));
     }
   }, [sessionId, sessionDetail, switchViewMode]);
+
+  const handleReviewPendingDraft = useCallback((draft: PendingAuthoringDraftView) => {
+    if (draft.origin === 'ai_generation') {
+      setAiGenerationTarget({
+        taskId: draft.taskId ?? null,
+        jobId: draft.job_id,
+      });
+      setShowAiGenerationPanel(true);
+      return;
+    }
+    void handleOpenAuthoringDraft(draft.job_id);
+  }, [handleOpenAuthoringDraft]);
+
+  const handleConfirmPendingDraft = useCallback(async (draft: PendingAuthoringDraftView) => {
+    if (confirmingDraftJobId !== null) return;
+    setConfirmingDraftJobId(draft.job_id);
+    try {
+      let localIds = draft.localIds ?? [];
+      let expectedVersion = draft.version;
+      if (localIds.length === 0) {
+        const full = await invoke<{
+          version: number;
+          document?: { questions?: Array<{ local_id?: string }> };
+        }>('qbank_get_authoring_draft', { jobId: draft.job_id });
+        expectedVersion = typeof full?.version === 'number' ? full.version : draft.version;
+        localIds = Array.isArray(full?.document?.questions)
+          ? full.document.questions
+              .map((q) => q.local_id)
+              .filter((id): id is string => typeof id === 'string' && id.length > 0)
+          : [];
+      }
+      if (localIds.length === 0) {
+        handleReviewPendingDraft(draft);
+        return;
+      }
+      const created = await invoke<{ committed: boolean; imported_count: number }>(
+        'qbank_commit_authoring_draft',
+        {
+          jobId: draft.job_id,
+          expectedVersion,
+          selectedLocalIds: localIds,
+        },
+      );
+      if (!created?.committed) {
+        throw new Error(t('exam_sheet:uploader.commit_not_confirmed'));
+      }
+      if (draft.taskId) {
+        useQbankGenerationStore.getState().removeTask(draft.taskId);
+      }
+      setPendingAuthoringDrafts((prev) => prev.filter((item) => item.job_id !== draft.job_id));
+      await refreshQuestionsAndStats();
+      window.dispatchEvent(new CustomEvent('qbank:refresh', { detail: { examId: sessionId } }));
+      showGlobalNotification(
+        'success',
+        t('exam_sheet:aiGeneration.importSuccess', {
+          count: created.imported_count,
+          defaultValue: `已确认并导入 ${created.imported_count} 道题目到题库`,
+        }),
+      );
+    } catch (error) {
+      debugLog.warn('[ExamContentView] Direct confirm pending draft failed, falling back to review:', error);
+      showGlobalNotification(
+        'warning',
+        error instanceof Error
+          ? `${error.message}，已打开审阅面板`
+          : t('exam_sheet:aiGeneration.importFailed'),
+      );
+      handleReviewPendingDraft(draft);
+    } finally {
+      setConfirmingDraftJobId(null);
+    }
+  }, [confirmingDraftJobId, handleReviewPendingDraft, refreshQuestionsAndStats, sessionId, t]);
 
   // 会话切换时清理上一会话的恢复导入状态
   useEffect(() => {
@@ -2218,6 +2417,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
   // 「添加题目」菜单：AI 出题（生成预览 → 确认入库）
   const handleOpenAiGeneration = useCallback(() => {
+    setAiGenerationTarget(null);
     setShowAiGenerationPanel(true);
   }, []);
 
@@ -3219,16 +3419,93 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         </div>
       )}
 
-      {!readOnly && viewMode !== 'upload' && pendingAuthoringDrafts.length > 0 && (
-        <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4" role="status">
-          <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-primary" aria-hidden="true" />
-          <span className="min-w-0 flex-1 text-xs text-foreground/85 tabular-nums">{t('exam_sheet:uploader.pending_drafts', {count:pendingAuthoringDrafts.length,defaultValue:'待确认草稿：{{count}}'})}</span>
-          <DsButton size="sm" variant="ghost" className="h-9 sm:h-7 gap-1.5 px-2.5 text-xs bg-foreground/[0.04] hover:bg-foreground/[0.08] [@media(pointer:coarse)]:!min-h-11" onClick={() => void handleOpenAuthoringDraft(pendingAuthoringDrafts[0].job_id)}>
-            <Scan size={14} />
-            <span className="tabular-nums">{t('exam_sheet:uploader.review_pending_draft', {defaultValue:'复核并导入'})} ({pendingAuthoringDrafts[0].question_count})</span>
+      {!readOnly && viewMode !== 'upload' && (hasQuestions || viewMode !== 'list') && activeGenerationTask && (
+        <div
+          data-testid="exam-active-ai-generation-banner"
+          className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-primary/25 bg-primary/[0.06] px-3 py-2 sm:px-4"
+          role="status"
+        >
+          <CircleNotch size={14} className="shrink-0 animate-spin text-primary" aria-hidden="true" />
+          <span className="min-w-0 flex-1 text-xs text-foreground">
+            {t('exam_sheet:aiGeneration.backgroundRunningBanner', {
+              defaultValue: 'AI 正在后台生成题目，完成后将提示您审阅并确认入库',
+            })}
+          </span>
+          <DsButton
+            size="sm"
+            variant="ghost"
+            className="h-9 sm:h-7 gap-1.5 px-2.5 text-xs bg-foreground/[0.04] hover:bg-foreground/[0.08] [@media(pointer:coarse)]:!min-h-11"
+            onClick={() => {
+              setAiGenerationTarget({ taskId: activeGenerationTask.id, jobId: null });
+              setShowAiGenerationPanel(true);
+            }}
+          >
+            <Sparkle size={14} />
+            <span>{t('exam_sheet:aiGeneration.viewProgress', { defaultValue: '查看进度' })}</span>
           </DsButton>
         </div>
       )}
+
+      {!readOnly && viewMode !== 'upload' && (hasQuestions || viewMode !== 'list') && pendingAuthoringDrafts.length > 0 && (() => {
+        const primaryDraft = pendingAuthoringDrafts[0];
+        const isAiDraft = primaryDraft.origin === 'ai_generation';
+        const isConfirming = confirmingDraftJobId === primaryDraft.job_id;
+        return (
+          <div
+            data-testid="exam-pending-drafts-banner"
+            className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-primary/25 bg-primary/[0.06] px-3 py-2 sm:px-4"
+            role="status"
+          >
+            {isAiDraft ? (
+              <Sparkle size={14} className="shrink-0 text-primary" aria-hidden="true" />
+            ) : (
+              <Scan size={14} className="shrink-0 text-primary" aria-hidden="true" />
+            )}
+            <span className="min-w-0 flex-1 text-xs text-foreground tabular-nums">
+              {isAiDraft
+                ? t('exam_sheet:aiGeneration.pendingDraftAttributed', {
+                    count: primaryDraft.question_count,
+                    source: primaryDraft.sourceLabel,
+                    defaultValue: `有 ${primaryDraft.question_count} 道 AI 生成待确认题目（来源：${primaryDraft.sourceLabel}）`,
+                  })
+                : t('exam_sheet:uploader.pendingDraftAttributed', {
+                    count: primaryDraft.question_count,
+                    source: primaryDraft.sourceLabel,
+                    defaultValue: `有 ${primaryDraft.question_count} 道待确认题目（来源：${primaryDraft.sourceLabel}）`,
+                  })}
+              {pendingAuthoringDrafts.length > 1
+                ? ` · 共 ${pendingAuthoringDrafts.length} 批待确认`
+                : ''}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <DsButton
+                size="sm"
+                variant="primary"
+                disabled={confirmingDraftJobId !== null}
+                className="h-9 sm:h-7 gap-1.5 px-2.5 text-xs [@media(pointer:coarse)]:!min-h-11"
+                onClick={() => void handleConfirmPendingDraft(primaryDraft)}
+              >
+                {isConfirming ? <CircleNotch size={13} className="animate-spin" /> : <CheckCircle size={13} />}
+                <span className="tabular-nums">
+                  {t('exam_sheet:aiGeneration.confirmImportNow', {
+                    count: primaryDraft.question_count,
+                    defaultValue: `确认入库 (${primaryDraft.question_count})`,
+                  })}
+                </span>
+              </DsButton>
+              <DsButton
+                size="sm"
+                variant="ghost"
+                disabled={isConfirming}
+                className="h-9 sm:h-7 gap-1.5 px-2.5 text-xs bg-foreground/[0.04] hover:bg-foreground/[0.08] [@media(pointer:coarse)]:!min-h-11"
+                onClick={() => handleReviewPendingDraft(primaryDraft)}
+              >
+                <span>{t('exam_sheet:uploader.review_pending_draft', { defaultValue: '逐题审阅' })}</span>
+              </DsButton>
+            </div>
+          </div>
+        );
+      })()}
 
       {!readOnly && viewMode !== 'upload' && (
         <QBankAgentDiffBar
@@ -3470,6 +3747,19 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onUploadFiles={readOnly ? undefined : handleLauncherFilesDropped}
               onCsvImport={readOnly ? undefined : handleOpenCsvImport}
               onAiGenerate={readOnly ? undefined : handleOpenAiGeneration}
+              pendingDrafts={readOnly ? undefined : pendingAuthoringDrafts}
+              activeGenerationTask={readOnly ? undefined : activeGenerationTask}
+              confirmingDraftJobId={confirmingDraftJobId}
+              onReviewPendingDraft={readOnly ? undefined : handleReviewPendingDraft}
+              onConfirmPendingDraft={readOnly ? undefined : handleConfirmPendingDraft}
+              onOpenGenerationProgress={
+                readOnly || !activeGenerationTask
+                  ? undefined
+                  : () => {
+                      setAiGenerationTarget({ taskId: activeGenerationTask.id, jobId: null });
+                      setShowAiGenerationPanel(true);
+                    }
+              }
               createRequestKey={listCreateRequestKey}
               onDraftDirtyChange={handleInlineEditorDraftDirtyChange}
               onDraftNavigationRequested={(index) => {
@@ -3495,11 +3785,16 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         <Suspense fallback={null}>
           <AiQuestionGenerationPanel
             open={showAiGenerationPanel}
-            onOpenChange={setShowAiGenerationPanel}
+            onOpenChange={(nextOpen) => {
+              setShowAiGenerationPanel(nextOpen);
+              if (!nextOpen) setAiGenerationTarget(null);
+            }}
             examId={sessionId}
             examName={sessionDetail?.summary?.exam_name || node.name}
             onImportComplete={handleListChanged}
             availableTags={availableTagsForAiGeneration}
+            initialTaskId={aiGenerationTarget?.taskId ?? null}
+            initialDraftJobId={aiGenerationTarget?.jobId ?? null}
           />
         </Suspense>
       )}

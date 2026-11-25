@@ -327,6 +327,8 @@ export interface InputBarUIProps {
   hasLoadedSkills?: boolean;
   /** 切换技能激活状态 */
   onToggleSkill?: (skillId: string) => void;
+  /** 一键解绑单个技能（确定性取消激活，避免与 toggle 状态竞态） */
+  onDeactivateSkill?: (skillId: string) => void;
   /** 一键清除所有激活的技能 */
   onClearAllSkills?: () => void;
 

@@ -46,6 +46,28 @@ function summary(container: HTMLElement) {
   };
 }
 
+async function clickRunAndSettle(container: HTMLElement, run: HTMLButtonElement) {
+  await act(async () => {
+    run.click();
+    await Promise.resolve();
+  });
+  // CodeBlock.handleRunMermaid intentionally yields one animation frame + macrotask
+  // so the browser paints the "…运行中" state before lazy-loading and laying out Mermaid.
+  if (Array.from(container.querySelectorAll('.code-block-header button')).some(button => button.textContent?.includes('运行中'))) {
+    await act(async () => {
+      await new Promise<void>((resolve) => {
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => setTimeout(resolve, 0));
+        } else {
+          setTimeout(resolve, 0);
+        }
+      });
+      await setImmediate();
+      await Promise.resolve();
+    });
+  }
+}
+
 it.each([false, true])('retains original CodeBlock dispatch and run timing (provider=%s)', async (withProvider) => {
   const kernel = new UiKernel();
   if (withProvider) await kernel.install(contentPlugin, { origin: 'builtin' });
@@ -62,7 +84,7 @@ it.each([false, true])('retains original CodeBlock dispatch and run timing (prov
         const before = summary(view.container);
         const run = Array.from(view.container.querySelectorAll('button')).find(button => button.textContent?.startsWith('▶'));
         const canRun = !!run && !run.disabled;
-        if (canRun) await act(async () => { run.click(); await Promise.resolve(); });
+        if (canRun) await clickRunAndSettle(view.container, run);
         cases.push({ mode, language, streaming, before, ran: canRun, after: summary(view.container) });
         view.unmount();
       }
@@ -78,7 +100,7 @@ it.each([false, true])('retains original CodeBlock dispatch and run timing (prov
       const view = renderBlock(<CodeBlock className="language-mermaid" rendererCapabilities={capsOn}>{sourceFor('mermaid')}</CodeBlock>);
       const before = summary(view.container);
       const run = Array.from(view.container.querySelectorAll('button')).find(button => button.textContent?.startsWith('▶'))!;
-      await act(async () => { run.click(); await Promise.resolve(); });
+      await clickRunAndSettle(view.container, run);
       cases.push({ touch, dark, demo, before, after: summary(view.container) });
       view.unmount();
     }

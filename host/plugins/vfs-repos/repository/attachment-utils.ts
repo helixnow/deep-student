@@ -27,7 +27,7 @@ export const SUPPORTED_EXTENSIONS: readonly string[] = [
   'yaml', 'yml', 'toml', 'ini', 'conf', 'cfg', 'env', 'properties', 'log',
   'sql', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd', 'py', 'rs', 'go', 'java',
   'c', 'cpp', 'h', 'hpp', 'ts', 'tsx', 'js', 'jsx', 'css', 'scss', 'less',
-  'epub', 'rtf',
+  'epub', 'rtf', 'xmind', 'vtt',
   'mp3', 'wav', 'ogg', 'oga', 'm4a', 'flac', 'aac', 'wma', 'opus',
   'aiff', 'aif', 'caf', 'weba', 'mka',
   'mp4', 'webm', 'mov', 'avi', 'mkv', 'm4v', 'wmv', 'flv', 'ogv', 'mpg', 'mpeg', '3gp',
@@ -47,6 +47,7 @@ export const SUPPORTED_MIME_TYPES: readonly string[] = [
   'text/plain', 'text/markdown', 'text/x-markdown', 'text/csv', 'text/tab-separated-values',
   'application/json', 'application/jsonc', 'application/xml', 'text/xml', 'text/html',
   'application/epub+zip', 'application/rtf', 'text/rtf',
+  'application/vnd.xmind.workbook', 'application/x-xmind', 'text/vtt',
   'text/javascript', 'application/javascript', 'application/x-javascript',
   'text/typescript', 'application/typescript',
   'application/yaml', 'application/x-yaml', 'text/yaml',
@@ -488,6 +489,9 @@ export function inferExtension(mimeType: string, name: string): string | null {
     case 'application/epub+zip': return 'epub';
     case 'application/rtf':
     case 'text/rtf': return 'rtf';
+    case 'application/vnd.xmind.workbook':
+    case 'application/x-xmind': return 'xmind';
+    case 'text/vtt': return 'vtt';
     case 'audio/mpeg': return 'mp3';
     case 'audio/wav':
     case 'audio/x-wav': return 'wav';

@@ -3,7 +3,7 @@ import { fs } from '../src/local-runtime.ts';
 import type { CoordinatedDatabaseName, StorageService } from '../../../platform/storage/api.ts';
 import { tableExists, tableHasColumn, quoteIdentifier } from '../repository/sqlite-values.ts';
 import { getPendingChanges, markSyncedWithTimestamp } from '../repository/change-log.ts';
-import { enrichChangesWithData } from '../repository/record-data.ts';
+import { enrichChangesWithData, getRecordData } from '../repository/record-data.ts';
 import { buildIdColumnMap } from './conflict-commands.ts';
 import { filterPendingChangesForDatabase, pendingHasChanges } from './change-log.ts';
 import type { ChangeLogEntry } from './change-log.ts';
@@ -77,9 +77,10 @@ export async function collectSyncChanges(local: StorageService, emitter: SyncPro
             return true;
           });
       if (activeEntries.length === 0) continue;
+      const idColumnMap = buildIdColumnMap();
       let enriched: EngineChange[];
       try {
-        enriched = enrichChangesWithData(db, activeEntries, buildIdColumnMap());
+        enriched = enrichChangesWithData(db, activeEntries, idColumnMap);
       } catch (error) { throw new Error(`补全数据库 ${name} 变更数据失败: ${message(error)}`); }
       const pendingDeletes = new Set<string>();
       for (const change of enriched) {
@@ -103,10 +104,27 @@ export async function collectSyncChanges(local: StorageService, emitter: SyncPro
           );
           if (everSynced) {
             pendingDeletes.add(key);
-            changes.push({ ...change, operation: 'Delete', data: null, database_name: name });
+            const hardDelete = tableHasColumn(db, change.table_name, 'deleted_at');
+            changes.push({
+              ...change,
+              operation: 'Delete',
+              data: null,
+              database_name: name,
+              ...(hardDelete ? { hard_delete: true } : {}),
+            });
           } else if (change.change_log_id != null) {
             obsoleteIds.push(change.change_log_id);
           }
+          continue;
+        }
+        if (change.operation === 'Delete' && tableHasColumn(db, change.table_name, 'deleted_at')) {
+          const idCol = idColumnMap.get(change.table_name) ?? 'id';
+          const rowStillPresent = getRecordData(db, change.table_name, change.record_id, idCol) !== null;
+          changes.push({
+            ...change,
+            database_name: name,
+            ...(!rowStillPresent ? { hard_delete: true } : {}),
+          });
           continue;
         }
         changes.push({ ...change, database_name: name });

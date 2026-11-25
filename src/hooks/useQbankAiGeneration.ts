@@ -53,10 +53,22 @@ export interface UseQbankAiGenerationResult {
   selectTask: (taskId: string | null) => void;
 }
 
-export function useQbankAiGeneration(examId: string): UseQbankAiGenerationResult {
+export interface UseQbankAiGenerationOptions {
+  /** 指定要直接展示的任务 ID（例如从待确认草稿或完成通知点入） */
+  initialTaskId?: string | null;
+  /** 指定要通过草稿 jobId 定位的任务 */
+  initialDraftJobId?: string | null;
+}
+
+export function useQbankAiGeneration(
+  examId: string,
+  options?: UseQbankAiGenerationOptions,
+): UseQbankAiGenerationResult {
+  const initialTaskId = options?.initialTaskId ?? null;
+  const initialDraftJobId = options?.initialDraftJobId ?? null;
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [taskId, setTaskId] = useState<string | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(initialTaskId);
 
   const upsertTask = useQbankGenerationStore((state) => state.upsertTask);
   const upsertTasks = useQbankGenerationStore((state) => state.upsertTasks);
@@ -64,25 +76,64 @@ export function useQbankAiGeneration(examId: string): UseQbankAiGenerationResult
     taskId ? state.tasks[taskId] : undefined,
   );
 
-  // 打开面板时恢复该题目集的任务列表（关闭面板/重启后仍能取回结果）
+  useEffect(() => {
+    if (initialTaskId) {
+      setTaskId(initialTaskId);
+    }
+  }, [initialTaskId]);
+
+  // 打开面板时恢复该题目集的任务列表（关闭面板/重启后仍能取回未确认的待入库结果）
   useEffect(() => {
     if (!examId) return;
-    void invoke<QbankGenerationTask[]>('qbank_list_generation_tasks', {
-      examId,
-      limit: 20,
-    })
-      .then((tasks) => {
-        upsertTasks(tasks);
-        // 自动跟踪最新任务，便于面板直接展示最近一次结果
-        const latest = tasks[0];
-        if (latest) {
-          setTaskId((prev) => prev ?? latest.id);
+    let cancelled = false;
+    void Promise.all([
+      invoke<QbankGenerationTask[]>('qbank_list_generation_tasks', {
+        examId,
+        limit: 20,
+      }),
+      invoke<Array<{ job_id: string }>>('qbank_list_authoring_drafts', {
+        examId,
+      }).catch(() => null),
+    ])
+      .then(([tasks, pendingDrafts]) => {
+        if (cancelled) return;
+        const list = Array.isArray(tasks) ? tasks : [];
+        upsertTasks(list);
+        if (initialTaskId) {
+          setTaskId(initialTaskId);
+          return;
+        }
+        if (initialDraftJobId) {
+          const matched = list.find((item) => item.authoringResult?.job_id === initialDraftJobId);
+          if (matched) {
+            setTaskId(matched.id);
+          }
+          return;
+        }
+        const pendingJobIds = Array.isArray(pendingDrafts)
+          ? new Set(pendingDrafts.map((d) => d.job_id))
+          : null;
+        // 优先跟踪活跃任务；其次跟踪仍处于待确认状态的最新已完成任务（避免重新选中已提交入库的旧任务）
+        const active = list.find((item) => item.status === 'queued' || item.status === 'running');
+        const pendingCompleted = list.find(
+          (item) =>
+            item.status === 'completed'
+            && item.drafts.length > 0
+            && (pendingJobIds === null
+              || (item.authoringResult?.job_id != null && pendingJobIds.has(item.authoringResult.job_id))),
+        );
+        const candidate = active ?? pendingCompleted ?? null;
+        if (candidate) {
+          setTaskId((prev) => prev ?? candidate.id);
         }
       })
       .catch((error) => {
         debugLog.warn('[useQbankAiGeneration] 恢复任务列表失败:', error);
       });
-  }, [examId, upsertTasks]);
+    return () => {
+      cancelled = true;
+    };
+  }, [examId, initialDraftJobId, initialTaskId, upsertTasks]);
 
   const startGeneration = useCallback(
     async (

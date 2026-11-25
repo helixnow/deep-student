@@ -6,6 +6,7 @@ import {
   revealDiagnostics,
 } from '../logging/exportDiagnostics';
 import { isAndroid } from '../utils/platform';
+import { resetPersistedWorkbenchSnapshots, resetUiLayoutCache } from '../utils/uiLayoutReset';
 
 const safeT = (key: string, fallback: string, options?: Record<string, unknown>): string => {
   try {
@@ -187,6 +188,26 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
     }
   };
 
+  const handleResetUiLayout = () => {
+    resetUiLayoutCache();
+    if (
+      typeof window !== 'undefined' &&
+      typeof (window as unknown as { __TAURI_INTERNALS__?: { invoke?: unknown } }).__TAURI_INTERNALS__?.invoke === 'function'
+    ) {
+      void resetPersistedWorkbenchSnapshots().finally(() => {
+        window.location.reload();
+      });
+      return;
+    }
+    window.location.reload();
+  };
+
+  const isEnglishFallback = (i18n?.resolvedLanguage ?? i18n?.language ?? '').toLowerCase().startsWith('en');
+  const resetLayoutLabel = safeT(
+    'plugin_manager:safeMode.resetLayoutButton',
+    isEnglishFallback ? 'Reset UI Layout Cache (keeps study data)' : '重置界面布局缓存（不删除学习数据）',
+  );
+
   return (
     <div
       style={{
@@ -253,7 +274,7 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
           '应用发生了无法恢复的错误。请尝试刷新页面，如果问题持续请联系支持。',
         )}
       </p>
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginBottom: 16, padding: '0 16px' }}>
         <button
           onClick={() => window.location.reload()}
           style={{
@@ -269,6 +290,22 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
           }}
         >
           {safeT('common:error_boundary.refresh', '刷新页面')}
+        </button>
+        <button
+          type="button"
+          data-testid="fallback-reset-layout"
+          onClick={handleResetUiLayout}
+          style={{
+            padding: '10px 20px',
+            minHeight: coarseMinHeight,
+            fontSize: 14,
+            fontWeight: 500,
+            ...secondaryButtonStyle,
+            borderRadius: 8,
+            cursor: 'pointer',
+          }}
+        >
+          {resetLayoutLabel}
         </button>
         <button
           onClick={() => setShowDetails((value) => !value)}

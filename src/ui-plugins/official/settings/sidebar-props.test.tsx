@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as icons from '@phosphor-icons/react';
 import type { SettingsSidebarProps } from '@/features/settings/components/SettingsSidebar';
 import { SettingsShellSidebar } from '@/features/settings/components/SettingsShellSidebar';
+import { mergeDataGovernanceSearchEntries } from '@/features/settings/components/useSettingsNavigation';
 import { useSettingsShellStore } from '@/stores/settingsShellStore';
 import { UiKernel } from '@/ui-kernel/kernel';
 import { UiKernelProvider } from '@/ui-kernel/react';
@@ -42,7 +43,13 @@ describe('slot-backed desktop sidebar equals fixed pre-change forwarding evidenc
             sidebarCategories: forwarded.sidebarCategories, settingsSearchIndex: forwarded.settingsSearchIndex },
           (key, value) => key === 'icon' ? iconNames.get(value) : value));
           const originalNavigation = golden.navigation[input.isMobile ? 'mobile' : 'desktop'];
-          for (const key of Object.keys(navigation)) expect(navigation[key]).toEqual(originalNavigation[key]);
+          expect(navigation.sidebarNavItems).toEqual(originalNavigation.sidebarNavItems);
+          expect(navigation.sidebarCategories).toEqual(originalNavigation.sidebarCategories);
+          // SettingsShellSidebar intentionally enriches slot-provided settingsSearchIndex with
+          // Data Governance sub-tab entries & bilingual keywords (commit dde02b90d).
+          expect(navigation.settingsSearchIndex).toEqual(
+            mergeDataGovernanceSearchEntries(originalNavigation.settingsSearchIndex, (key) => key),
+          );
           return {
             isSmallScreen: forwarded.isSmallScreen, globalLeftPanelCollapsed: forwarded.globalLeftPanelCollapsed,
             desktopMode: forwarded.desktopMode, sidebarSearchQuery: forwarded.sidebarSearchQuery,

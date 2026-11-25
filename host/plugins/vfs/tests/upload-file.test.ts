@@ -81,6 +81,44 @@ describe.skipIf(!ownerPublished)('vfs_upload_file / vfs_download_paper (producti
       .rejects.toBe("Invalid argument 'mime_type': UNSUPPORTED_FILE_TYPE: 不支持的文件类型 .exe (文件: a.exe, MIME: application/x-msdownload)");
   });
 
+  it('accepts .xmind and .vtt uploads and stores blobs with their real extensions', async () => {
+    const conn = host.ctx.vfsDatabase.getConnSafe();
+
+    const xmindBytes = Buffer.from('PK\x03\x04minimal-xmind-workbook-bytes', 'latin1');
+    const xmind = await upload({
+      name: 'mindmap-multisheet.xmind',
+      mimeType: 'application/vnd.xmind.workbook',
+      base64Content: xmindBytes.toString('base64'),
+    });
+    expect(xmind.isNew).toBe(true);
+    expect(xmind.file.fileName).toBe('mindmap-multisheet.xmind');
+    expect(xmind.file.fileType).toBe('document');
+    const xmindRel = conn.pluck<string | null>('SELECT relative_path FROM blobs WHERE hash = ?1', [xmind.resourceHash]);
+    expect(xmindRel?.endsWith('.xmind')).toBe(true);
+
+    const xmindOctetBytes = Buffer.from('PK\x03\x04xmind-octet-stream-bytes', 'latin1');
+    const xmindOctet = await upload({
+      name: 'outline.xmind',
+      mimeType: 'application/octet-stream',
+      base64Content: xmindOctetBytes.toString('base64'),
+    });
+    expect(xmindOctet.isNew).toBe(true);
+    expect(xmindOctet.file.fileName).toBe('outline.xmind');
+
+    const vttBody = 'WEBVTT\n\n00:00:01.000 --> 00:00:04.000\nWelcome to deep study.\n';
+    const vtt = await upload({
+      name: 'lecture-subtitles.vtt',
+      mimeType: 'text/vtt',
+      base64Content: Buffer.from(vttBody, 'utf8').toString('base64'),
+    });
+    expect(vtt.isNew).toBe(true);
+    expect(vtt.file.fileName).toBe('lecture-subtitles.vtt');
+    expect(vtt.file.fileType).toBe('document');
+    const vttRel = conn.pluck<string | null>('SELECT relative_path FROM blobs WHERE hash = ?1', [vtt.resourceHash]);
+    expect(vttRel?.endsWith('.vtt')).toBe(true);
+    expect(fs.readFileSync(path.join(host.ctx.vfsDatabase.blobsDir(), vttRel!)).toString('utf8')).toBe(vttBody);
+  });
+
   it('creates a file with index status, then reuses it by sha256 without statuses (handlers.rs:2197-2252)', async () => {
     const base64Content = Buffer.from('vfs upload file body').toString('base64');
     const first = await upload({ name: 'n.txt', mimeType: 'text/plain', base64Content });

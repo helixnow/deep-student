@@ -45,7 +45,7 @@ export interface AttachmentProcessingSources {
 
 const PLAIN_TEXT_EXTENSIONS = new Set([
   'txt', 'md', 'markdown', 'log', 'text', 'ini', 'cfg', 'conf', 'yaml', 'yml',
-  'toml', 'jsonc', 'json5',
+  'toml', 'jsonc', 'json5', 'vtt',
 ]);
 const CODE_EXTENSIONS = new Set([
   'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'rb', 'go', 'rs', 'java', 'kt',

@@ -224,7 +224,7 @@ export const LEGACY_HEADLESS_ALLOWED_TOOLS: readonly string[] = [
   'builtin-index_status',
   'builtin-learning_overview', 'builtin-pomodoro_today_stats', 'builtin-pomodoro_daily_stats',
   'builtin-fsrs_get_scheduler_config',
-  'builtin-memory_read', 'builtin-memory_list',
+  'builtin-memory_read', 'builtin-memory_list', 'builtin-memory_rule_list',
   'builtin-resource_list', 'builtin-resource_read', 'builtin-resource_search',
   'builtin-folder_list', 'builtin-dstu_list_trash',
   'builtin-user_todo_list_lists', 'builtin-user_todo_list_items',

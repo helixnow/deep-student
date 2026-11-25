@@ -88,8 +88,29 @@ export interface LeaseMessages {
   commitUnconfirmed: string;
 }
 
+/** Options controlling lease acquisition behavior. */
+export interface AcquireLeaseOptions {
+  /**
+   * Reclaim residual/stranded leases held by this same device when no active
+   * in-process `LeaseGuard` owns that `operation_id` (e.g. after a 503/network-drop
+   * release failure, abort, or app crash/restart). Callers must already hold their
+   * single-instance local operation permit before enabling this.
+   */
+  reclaimSelfResidual?: boolean;
+}
+
 const MAX_CHRONO_DURATION_MS = Number(9_223_372_036_854_775n);
 const MIN_HEARTBEAT_INTERVAL_MS = 250;
+
+/** Live operation IDs currently held by an unreleased `LeaseGuard` in this process. */
+const activeInProcessOperations = new Set<string>();
+/** Operation IDs whose cleanup/release failed (e.g. 503/offline) and must be reclaimed on retry. */
+const orphanedLocalOperations = new Set<string>();
+
+function isSelfDevice(lease: LeaseRecord | null, localDeviceId: string): boolean {
+  const local = rustTrim(localDeviceId);
+  return local !== '' && lease !== null && rustTrim(lease.holder_device_id) === local;
+}
 
 /** uuid 1.20.0 parser.rs::try_parse: wrappers contain a hyphenated UUID only. */
 export function isUuid(value: string): boolean {
@@ -268,6 +289,7 @@ export async function scanActiveLeases(
   storage: CloudStorage,
   ttlMs: number,
   nowNanos: bigint,
+  reclaimContext?: { holderDeviceId: string; reclaimSelfResidual: boolean },
 ): Promise<ActiveLease[]> {
   if (!Number.isFinite(ttlMs) || ttlMs > MAX_CHRONO_DURATION_MS) {
     throw new CloudStorageError('Validation', spec.messages.ttlOverflow);
@@ -291,10 +313,25 @@ export async function scanActiveLeases(
     const lease = parsed !== null && structurallyValid(spec, parsed) ? parsed : null;
     const fallbackExpiresAt = fallbackExpiry(file, ttlMs, nowNanos);
     const expiresAt = lease === null ? fallbackExpiresAt : leaseExpiresAt(lease) ?? fallbackExpiresAt;
-    if (expiresAt <= nowNanos) {
+    const opId = lease?.operation_id ?? null;
+    const isOrphanedSelf = opId !== null && orphanedLocalOperations.has(opId);
+    const isSelfResidual = reclaimContext !== undefined
+      && reclaimContext.reclaimSelfResidual
+      && isSelfDevice(lease, reclaimContext.holderDeviceId)
+      && opId !== null
+      && !activeInProcessOperations.has(opId);
+    if (expiresAt <= nowNanos || isOrphanedSelf || isSelfResidual) {
+      if (isOrphanedSelf || isSelfResidual) {
+        defaultLogSink().warn(
+          `${spec.logPrefix} 回收本机残留同步租约: key=${file.key}, operation_id=${opId}, holder=${lease?.holder_device_id ?? ''}`,
+        );
+      }
       // Narrow the race with heartbeat renewal: only delete when the object still
       // matches exactly what was read.
-      if (await deleteIfUnchanged(spec, storage, file.key, bytes)) continue;
+      if (await deleteIfUnchanged(spec, storage, file.key, bytes)) {
+        if (opId !== null) orphanedLocalOperations.delete(opId);
+        continue;
+      }
       // Content changed between GET and DELETE (a heartbeat renewal landed, or the
       // local clock is slow). We cannot prove the holder gave up: stay fail-closed.
     }
@@ -472,6 +509,7 @@ export class LeaseGuard {
     this.lease = lease;
     this.key = key;
     this.heartbeat = heartbeat;
+    activeInProcessOperations.add(lease.operation_id);
   }
 
   /** Last heartbeat renewal error, or `null` when renewals succeeded. */
@@ -483,8 +521,27 @@ export class LeaseGuard {
   async release(): Promise<void> {
     if (this.released) return;
     await this.heartbeat.stop();
-    await releaseOwnedCandidate(this.spec, this.storage, this.key, this.lease.operation_id);
-    this.released = true;
+    activeInProcessOperations.delete(this.lease.operation_id);
+    try {
+      await releaseOwnedCandidate(this.spec, this.storage, this.key, this.lease.operation_id);
+      orphanedLocalOperations.delete(this.lease.operation_id);
+      this.released = true;
+    } catch (error) {
+      orphanedLocalOperations.add(this.lease.operation_id);
+      // If read-before-delete failed transiently (e.g. 503 on GET) while DELETE can still
+      // remove our unique UUID-keyed lease object, try direct delete before giving up.
+      if (!(error instanceof CloudStorageError && error.value.error_type === 'Conflict')) {
+        try {
+          await this.storage.delete(this.key);
+          orphanedLocalOperations.delete(this.lease.operation_id);
+          this.released = true;
+          return;
+        } catch {
+          // Still unreachable; keep in orphanedLocalOperations for immediate reclaim on recovery.
+        }
+      }
+      throw error;
+    }
   }
 }
 
@@ -494,54 +551,80 @@ export async function acquireLease(
   storage: CloudStorage,
   holderDeviceId: string,
   ttlMs: number,
+  options?: AcquireLeaseOptions,
 ): Promise<LeaseGuard> {
   validateTtl(spec, ttlMs);
-  let active = await scanActiveLeases(spec, storage, ttlMs, nowEpochNanos());
+  const reclaimContext = {
+    holderDeviceId,
+    reclaimSelfResidual: options?.reclaimSelfResidual === true,
+  };
+  let active = await scanActiveLeases(spec, storage, ttlMs, nowEpochNanos(), reclaimContext);
   const existing = active[0];
   if (existing !== undefined) throw spec.heldError(existing, holderDeviceId);
 
   const lease = createLeaseRecord(spec, holderDeviceId, ttlMs, nowEpochNanos());
   const key = leaseKey(spec, lease.operation_id);
-  await putVerified(spec, storage, key, lease);
+  activeInProcessOperations.add(lease.operation_id);
+  let contenderWriteStarted = false;
+  try {
+    contenderWriteStarted = true;
+    await putVerified(spec, storage, key, lease);
 
-  // Concurrent devices may all see an empty directory on the first scan; after
-  // writing their contenders they elect one winner from the complete listing.
-  active = await scanActiveLeases(spec, storage, ttlMs, nowEpochNanos());
-  const winner = active[0];
-  if (winner === undefined) {
-    throw new CloudStorageError('Network', spec.messages.contenderInvisible);
-  }
-  const winnerIsSelf = winner.lease !== null && winner.lease.operation_id === lease.operation_id;
-  if (!winnerIsSelf) {
-    const held = spec.heldError(winner, holderDeviceId);
-    await releaseOwnedCandidate(spec, storage, key, lease.operation_id).catch(() => undefined);
-    throw held;
-  }
+    // Concurrent devices may all see an empty directory on the first scan; after
+    // writing their contenders they elect one winner from the complete listing.
+    active = await scanActiveLeases(spec, storage, ttlMs, nowEpochNanos(), reclaimContext);
+    const winner = active[0];
+    if (winner === undefined) {
+      throw new CloudStorageError('Network', spec.messages.contenderInvisible);
+    }
+    const winnerIsSelf = winner.lease !== null && winner.lease.operation_id === lease.operation_id;
+    if (!winnerIsSelf) {
+      throw spec.heldError(winner, holderDeviceId);
+    }
 
-  // Two-phase commit: only the deterministic winner may promote pending to committed.
-  lease.activation_committed = true;
-  await putVerified(spec, storage, key, lease);
-  active = await scanActiveLeases(spec, storage, ttlMs, nowEpochNanos());
-  const committed = active[0];
-  const committedIsSelf = committed !== undefined
-    && committed.lease !== null
-    && committed.lease.operation_id === lease.operation_id
-    && committed.lease.activation_committed;
-  if (!committedIsSelf) {
-    const held = committed === undefined
-      ? new CloudStorageError('Conflict', spec.messages.commitUnconfirmed)
-      : spec.heldError(committed, holderDeviceId);
-    await releaseOwnedCandidate(spec, storage, key, lease.operation_id).catch(() => undefined);
-    throw held;
-  }
+    // Two-phase commit: only the deterministic winner may promote pending to committed.
+    lease.activation_committed = true;
+    await putVerified(spec, storage, key, lease);
+    active = await scanActiveLeases(spec, storage, ttlMs, nowEpochNanos(), reclaimContext);
+    const committed = active[0];
+    const committedIsSelf = committed !== undefined
+      && committed.lease !== null
+      && committed.lease.operation_id === lease.operation_id
+      && committed.lease.activation_committed;
+    if (!committedIsSelf) {
+      throw committed === undefined
+        ? new CloudStorageError('Conflict', spec.messages.commitUnconfirmed)
+        : spec.heldError(committed, holderDeviceId);
+    }
 
-  const intervalMs = Math.max(ttlMs / 3, MIN_HEARTBEAT_INTERVAL_MS);
-  const heartbeat = new LeaseHeartbeat(intervalMs, () => renewOwnedCandidate(
-    spec,
-    storage,
-    key,
-    lease.operation_id,
-    ttlMs,
-  ), spec.logPrefix);
-  return new LeaseGuard(spec, storage, lease, key, heartbeat);
+    const intervalMs = Math.max(ttlMs / 3, MIN_HEARTBEAT_INTERVAL_MS);
+    const heartbeat = new LeaseHeartbeat(intervalMs, () => renewOwnedCandidate(
+      spec,
+      storage,
+      key,
+      lease.operation_id,
+      ttlMs,
+    ), spec.logPrefix);
+    return new LeaseGuard(spec, storage, lease, key, heartbeat);
+  } catch (error) {
+    activeInProcessOperations.delete(lease.operation_id);
+    if (contenderWriteStarted) {
+      let cleaned = false;
+      try {
+        await releaseOwnedCandidate(spec, storage, key, lease.operation_id);
+        cleaned = true;
+      } catch {
+        try {
+          await storage.delete(key);
+          cleaned = true;
+        } catch {
+          cleaned = false;
+        }
+      }
+      if (!cleaned) {
+        orphanedLocalOperations.add(lease.operation_id);
+      }
+    }
+    throw error;
+  }
 }

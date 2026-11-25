@@ -795,10 +795,10 @@
 .notes-tab {
   position: relative;
   height: 30px;
-  width: 180px;
-  min-width: 104px;
-  max-width: 200px;
-  flex: 1 1 180px;
+  width: 184px;
+  min-width: 132px;
+  max-width: 220px;
+  flex: 1 1 184px;
   display: flex;
   align-items: center;
   border-right: 0;
@@ -877,7 +877,32 @@
   outline-offset: -2px;
 }
 
-.notes-tab > button span {
+.notes-tab > button > span {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-tab-label[data-disambiguated='true'] {
+  display: inline-flex;
+  align-items: baseline;
+  text-overflow: clip;
+}
+
+.notes-tab-label-prefix {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.72;
+}
+
+.notes-tab-label-suffix {
+  flex: 0 0 auto;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

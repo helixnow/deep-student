@@ -108,12 +108,34 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
   onQuickLookSelected,
   onRenameSelected,
 }: FinderBatchToolbarProps) {
-  const { t } = useTranslation('learningHub');
+  const { t } = useTranslation(['learningHub', 'common']);
 
   const hasSelection = selectedCount > 0;
+  const permanentDeleteLabel = t('common:delete_permanently', { defaultValue: '彻底删除' });
+  const cancelLabel = t('common:cancel', { defaultValue: '取消' });
   const deleteLabel = isTrashView
-    ? t('finder.contextMenu.permanentDelete')
+    ? permanentDeleteLabel
     : t('finder.multiSelect.delete');
+
+  const [confirmingBatchPurge, setConfirmingBatchPurge] = useState(false);
+
+  useEffect(() => {
+    if (!isTrashView || selectedCount === 0) {
+      setConfirmingBatchPurge(false);
+    }
+  }, [isTrashView, selectedCount]);
+
+  useEffect(() => {
+    if (!confirmingBatchPurge) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        setConfirmingBatchPurge(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [confirmingBatchPurge]);
 
   const allSelected = selectedCount === totalCount && totalCount > 0;
 
@@ -357,17 +379,78 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
             )}
 
             {onBatchDelete && (
-            <DsButton
-              variant="ghost"
-              size="icon"
-              onClick={onBatchDelete}
-              disabled={isProcessing}
-              className={cn(actionIconBtnClass, 'text-destructive hover:bg-destructive/10')}
-              title={deleteLabel}
-              aria-label={deleteLabel}
-            >
-              <Trash size={16} />
-            </DsButton>
+              isTrashView ? (
+                confirmingBatchPurge ? (
+                  <div
+                    role="group"
+                    data-testid="finder-batch-permanent-delete-confirm"
+                    aria-label={t('finder.trash.confirmBatchPermanentDelete', { count: selectedCount })}
+                    className="flex items-center gap-1 rounded-md border border-destructive/35 bg-destructive/5 px-1.5 py-0.5"
+                  >
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setConfirmingBatchPurge(false)}
+                      disabled={isProcessing}
+                      data-testid="finder-batch-permanent-delete-cancel"
+                      className={cn(
+                        'h-6 px-2 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]',
+                        isTouchPrimary && '!h-9 px-2.5',
+                      )}
+                    >
+                      {cancelLabel}
+                    </DsButton>
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setConfirmingBatchPurge(false);
+                        onBatchDelete();
+                      }}
+                      disabled={isProcessing}
+                      data-testid="finder-batch-permanent-delete-confirm-action"
+                      className={cn(
+                        'h-6 px-2 gap-1 text-xs font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90',
+                        isTouchPrimary && '!h-9 px-2.5',
+                      )}
+                      title={permanentDeleteLabel}
+                      aria-label={permanentDeleteLabel}
+                    >
+                      <Trash size={13} aria-hidden="true" />
+                      <span>{permanentDeleteLabel}</span>
+                    </DsButton>
+                  </div>
+                ) : (
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setConfirmingBatchPurge(true)}
+                    disabled={isProcessing}
+                    data-testid="finder-batch-permanent-delete"
+                    className={cn(
+                      'h-7 px-2 gap-1 text-xs font-medium text-destructive hover:bg-destructive/10',
+                      isTouchPrimary && '!h-11 px-3',
+                    )}
+                    title={permanentDeleteLabel}
+                    aria-label={permanentDeleteLabel}
+                  >
+                    <Trash size={14} aria-hidden="true" />
+                    <span>{permanentDeleteLabel}</span>
+                  </DsButton>
+                )
+              ) : (
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  onClick={onBatchDelete}
+                  disabled={isProcessing}
+                  className={cn(actionIconBtnClass, 'text-destructive hover:bg-destructive/10')}
+                  title={deleteLabel}
+                  aria-label={deleteLabel}
+                >
+                  <Trash size={16} />
+                </DsButton>
+              )
             )}
 
             {/* 清除选择/关闭按钮 - 放在删除按钮后面，使用明显的样式 */}

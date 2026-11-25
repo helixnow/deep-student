@@ -22,6 +22,7 @@ import type {
   PluginOperationResult,
   PluginPackageResult,
   PluginPlatform,
+  PluginProfileResetResult,
 } from './types';
 
 export type PluginManagerNotice =
@@ -51,6 +52,8 @@ export interface PluginManagerError {
 
 export interface PluginManagerState {
   readonly safeMode: boolean;
+  readonly profileCorrupted: boolean;
+  readonly profileError: string | null;
   readonly status: 'idle' | 'loading' | 'ready' | 'error';
   readonly platform: PluginPlatform | null;
   readonly plugins: readonly ManagedPlugin[];
@@ -71,6 +74,8 @@ export interface PluginManagerState {
 
 const INITIAL_STATE: PluginManagerState = Object.freeze({
   safeMode: false,
+  profileCorrupted: false,
+  profileError: null,
   status: 'idle',
   platform: null,
   plugins: [],
@@ -85,6 +90,7 @@ const INITIAL_STATE: PluginManagerState = Object.freeze({
 
 export const CONSENT_BUSY_KEY = 'consent';
 export const PACKAGE_BUSY_KEY = 'package';
+export const PROFILE_RESET_BUSY_KEY = 'profile-reset';
 export const pluginBusyKey = (id: string) => `plugin:${id}`;
 
 /** 不引入 i18n/通知单例的简单错误描述：Host 拒绝原因就是 Error.message。 */
@@ -137,11 +143,41 @@ export class PluginManagerController {
       if (token !== this._refreshToken) return;
       // 只清掉“清单读取失败”本身；重载/操作错误保留到用户看到为止。
       const error = this._state.error?.code === 'LIST_FAILED' ? null : this._state.error;
-      this.patch({ status: 'ready', safeMode: snapshot.safeMode === true, platform: snapshot.platform, plugins: [...snapshot.plugins], error });
+      this.patch({
+        status: 'ready',
+        safeMode: snapshot.safeMode === true,
+        profileCorrupted: snapshot.profileCorrupted === true,
+        profileError: snapshot.profileError ?? null,
+        platform: snapshot.platform,
+        plugins: [...snapshot.plugins],
+        error,
+      });
     } catch (error) {
       if (token !== this._refreshToken) return;
-      this.patch({ status: 'error', error: { code: 'LIST_FAILED', detail: errorMessage(error) } });
+      const detail = errorMessage(error);
+      const profileFailed = /\bPROFILE_READ_FAILED\b/.test(detail);
+      this.patch({
+        status: 'error',
+        error: { code: 'LIST_FAILED', detail },
+        ...(profileFailed ? { profileCorrupted: true, profileError: detail } : {}),
+      });
     }
+  }
+
+  /** 备份并重置损坏的 `user.profile.json`，然后重新加载插件清单（SPOF-1）。 */
+  async resetProfile(): Promise<PluginProfileResetResult | null> {
+    if (!this._adapter.resetProfile) {
+      this.patch({ error: { code: 'PROFILE_RESET_UNAVAILABLE', detail: 'Profile reset is unavailable' } });
+      return null;
+    }
+    let outcome: PluginProfileResetResult | null = null;
+    await this.withBusy(PROFILE_RESET_BUSY_KEY, async () => {
+      const result = await this._adapter.resetProfile!();
+      outcome = result;
+      this.patch({ profileCorrupted: false, profileError: null, error: null });
+      await this.refresh();
+    });
+    return outcome;
   }
 
   async setEnabled(id: string, enabled: boolean): Promise<void> {

@@ -303,8 +303,8 @@ describe('applyStudyFlowStagePreset', () => {
     }) as typeof dstu.list);
     vi.spyOn(sessionManager, 'getCurrentSessionId').mockReturnValue('sess_study_active');
     vi.spyOn(tauriCore, 'invoke').mockImplementation(async (cmd: string) => {
-      if (cmd === 'get_due_review_items') {
-        return [{ plan: { exam_id: 'exam_midterm_1' } }];
+      if (cmd === 'review_plan_get_due_with_filter') {
+        return { plans: [{ exam_id: 'exam_midterm_1' }], total: 1, has_more: false };
       }
       return [];
     });

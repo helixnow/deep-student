@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { formatDistanceToNow } from 'date-fns';
@@ -138,6 +138,26 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   onPermanentDelete,
 }: FinderFileItemProps) {
   const { t, i18n } = useTranslation(['learningHub', 'common']);
+  const [confirmingPermanentDelete, setConfirmingPermanentDelete] = useState(false);
+
+  useEffect(() => {
+    setConfirmingPermanentDelete(false);
+  }, [item.id, isTrashView, isEditing]);
+
+  useEffect(() => {
+    if (!confirmingPermanentDelete) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        setConfirmingPermanentDelete(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [confirmingPermanentDelete]);
+
+  const permanentDeleteLabel = t('common:delete_permanently', { defaultValue: '彻底删除' });
+  const cancelLabel = t('common:cancel', { defaultValue: '取消' });
   const CustomIcon = TYPE_CUSTOM_ICONS[item.type] || IllustratedGenericFileIcon;
   const isFavorite = Boolean(item.metadata?.isFavorite);
   const snippet = item.metadata?.snippet as string | undefined;
@@ -337,40 +357,93 @@ export const FinderFileItem = React.memo(function FinderFileItem({
                 </span>
               </>
             )}
-            {/* 回收站行内显式操作：恢复 / 永久删除 */}
+            {/* 回收站行内显式操作：恢复 / 彻底删除（含行内二次确认） */}
             {isTrashView && (
               <div className="flex items-center gap-1 shrink-0">
-                {onRestore && (
-                  <DsButton
-                    variant="ghost"
-                    size="sm"
+                {confirmingPermanentDelete && onPermanentDelete ? (
+                  <div
+                    role="group"
+                    data-testid="finder-trash-permanent-delete-confirm"
+                    aria-label={t('learningHub:finder.trash.confirmPermanentDelete')}
                     className={cn(
-                      'h-6 px-2 gap-1 text-xs',
-                      isSelected ? 'text-primary-foreground hover:bg-white/15' : 'text-primary hover:bg-primary/10',
+                      'flex items-center gap-1 rounded-md border px-1.5 py-0.5',
+                      isSelected
+                        ? 'border-destructive-foreground/40 bg-background/95 text-foreground'
+                        : 'border-destructive/35 bg-destructive/5',
                     )}
-                    onClick={(e) => { e.stopPropagation(); onRestore(); }}
-                    aria-label={`${t('learningHub:finder.contextMenu.restore')} ${shownName}`}
-                    title={t('learningHub:finder.contextMenu.restore')}
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => e.stopPropagation()}
                   >
-                    <ArrowCounterClockwise size={13} aria-hidden="true" />
-                    <span>{t('learningHub:finder.contextMenu.restore')}</span>
-                  </DsButton>
-                )}
-                {onPermanentDelete && (
-                  <DsButton
-                    variant="ghost"
-                    size="sm"
-                    className={cn(
-                      'h-6 px-2 gap-1 text-xs',
-                      isSelected ? 'text-primary-foreground hover:bg-white/15' : 'text-destructive hover:bg-destructive/10',
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      data-testid="finder-trash-permanent-delete-cancel"
+                      className="h-5 px-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmingPermanentDelete(false);
+                      }}
+                    >
+                      {cancelLabel}
+                    </DsButton>
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      data-testid="finder-trash-permanent-delete-confirm-action"
+                      className="h-5 px-2 gap-1 text-xs font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmingPermanentDelete(false);
+                        onPermanentDelete();
+                      }}
+                      aria-label={`${permanentDeleteLabel} ${shownName}`}
+                      title={permanentDeleteLabel}
+                    >
+                      <Trash size={12} aria-hidden="true" />
+                      <span>{permanentDeleteLabel}</span>
+                    </DsButton>
+                  </div>
+                ) : (
+                  <>
+                    {onRestore && (
+                      <DsButton
+                        variant="ghost"
+                        size="sm"
+                        className={cn(
+                          'h-6 px-2 gap-1 text-xs',
+                          isSelected ? 'text-primary-foreground hover:bg-white/15' : 'text-primary hover:bg-primary/10',
+                        )}
+                        onClick={(e) => { e.stopPropagation(); onRestore(); }}
+                        aria-label={`${t('learningHub:finder.contextMenu.restore')} ${shownName}`}
+                        title={t('learningHub:finder.contextMenu.restore')}
+                      >
+                        <ArrowCounterClockwise size={13} aria-hidden="true" />
+                        <span>{t('learningHub:finder.contextMenu.restore')}</span>
+                      </DsButton>
                     )}
-                    onClick={(e) => { e.stopPropagation(); onPermanentDelete(); }}
-                    aria-label={`${t('learningHub:finder.contextMenu.permanentDelete')} ${shownName}`}
-                    title={t('learningHub:finder.contextMenu.permanentDelete')}
-                  >
-                    <Trash size={13} aria-hidden="true" />
-                    <span>{t('learningHub:finder.contextMenu.permanentDelete')}</span>
-                  </DsButton>
+                    {onPermanentDelete && (
+                      <DsButton
+                        variant="ghost"
+                        size="sm"
+                        data-testid="finder-trash-permanent-delete"
+                        className={cn(
+                          'h-6 px-2 gap-1 text-xs font-medium',
+                          isSelected
+                            ? 'bg-destructive/90 text-destructive-foreground hover:bg-destructive'
+                            : 'text-destructive hover:bg-destructive/10',
+                        )}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmingPermanentDelete(true);
+                        }}
+                        aria-label={`${permanentDeleteLabel} ${shownName}`}
+                        title={permanentDeleteLabel}
+                      >
+                        <Trash size={13} aria-hidden="true" />
+                        <span>{permanentDeleteLabel}</span>
+                      </DsButton>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -400,8 +473,10 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   return (
     <div
       className={cn(
-        "group relative flex flex-col items-center p-2 cursor-default select-none",
-        "box-border w-full max-w-[108px] md:w-[88px] md:max-w-[88px] h-[104px] shrink-0",
+        "group relative flex flex-col items-center cursor-default select-none",
+        isTrashView
+          ? "p-1.5 box-border w-full max-w-[108px] md:w-[88px] md:max-w-[88px] h-[116px] shrink-0"
+          : "p-2 box-border w-full max-w-[108px] md:w-[88px] md:max-w-[88px] h-[104px] shrink-0",
         // ui-press-coarse：触屏按压缩放反馈（仅 pointer:coarse 生效，桌面不变）
         "ui-press-coarse transition-opacity duration-100 ease-out",
         isDragging && "opacity-40",
@@ -468,7 +543,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       
       {/* 自定义 SVG 图标或程序化封面：固定盒，防止被网格单元横向拉伸 */}
       <div className={cn(
-        'mb-1.5 flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg',
+        'flex shrink-0 items-center justify-center overflow-hidden rounded-lg',
+        isTrashView ? 'mb-1 h-9 w-9' : 'mb-1.5 h-12 w-12',
         isActive && !isSelected && 'bg-[var(--interactive-selected)]'
       )}>
         {item.metadata?.coverMode === 'procedural' && item.type !== 'folder' ? (
@@ -483,7 +559,10 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             draggable={false}
           />
         ) : (
-          <CustomIcon size={48} className="h-12 w-12 max-w-full shrink-0" />
+          <CustomIcon
+            size={isTrashView ? 36 : 48}
+            className={isTrashView ? 'h-9 w-9 max-w-full shrink-0' : 'h-12 w-12 max-w-full shrink-0'}
+          />
         )}
       </div>
       
@@ -505,7 +584,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
           />
         ) : (
           <span className={cn(
-            'mx-auto block w-fit max-w-full rounded px-1 text-xs leading-[1.35] font-normal line-clamp-2 break-words',
+            'mx-auto block w-fit max-w-full rounded px-1 text-xs leading-[1.35] font-normal break-words',
+            isTrashView ? 'line-clamp-1' : 'line-clamp-2',
             isSelected ? 'bg-primary text-primary-foreground' : 'text-foreground/85'
           )}>
             {shownName}
@@ -513,34 +593,78 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         )}
       </div>
       {isTrashView && !isEditing && (onRestore || onPermanentDelete) && (
-        <div className="mt-1 flex items-center justify-center gap-1">
-          {onRestore && (
+        confirmingPermanentDelete && onPermanentDelete ? (
+          <div
+            role="group"
+            data-testid="finder-trash-permanent-delete-confirm"
+            aria-label={t('learningHub:finder.trash.confirmPermanentDelete')}
+            className="absolute inset-x-0.5 bottom-0.5 z-30 flex flex-col items-center gap-1 rounded-md border border-destructive/40 bg-background/95 p-1 shadow-sm backdrop-blur-sm"
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+          >
             <DsButton
               variant="ghost"
-              size="icon"
-              iconOnly
-              className="!h-6 !w-6 !p-1 text-primary hover:bg-primary/10"
-              onClick={(e) => { e.stopPropagation(); onRestore(); }}
-              aria-label={`${t('learningHub:finder.contextMenu.restore')} ${shownName}`}
-              title={t('learningHub:finder.contextMenu.restore')}
+              size="sm"
+              data-testid="finder-trash-permanent-delete-confirm-action"
+              className="h-5 w-full justify-center px-1 gap-0.5 text-[10px] font-medium bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmingPermanentDelete(false);
+                onPermanentDelete();
+              }}
+              aria-label={`${permanentDeleteLabel} ${shownName}`}
+              title={permanentDeleteLabel}
             >
-              <ArrowCounterClockwise size={13} />
+              <Trash size={10} className="shrink-0" aria-hidden="true" />
+              <span className="truncate">{permanentDeleteLabel}</span>
             </DsButton>
-          )}
-          {onPermanentDelete && (
             <DsButton
               variant="ghost"
-              size="icon"
-              iconOnly
-              className="!h-6 !w-6 !p-1 text-destructive hover:bg-destructive/10"
-              onClick={(e) => { e.stopPropagation(); onPermanentDelete(); }}
-              aria-label={`${t('learningHub:finder.contextMenu.permanentDelete')} ${shownName}`}
-              title={t('learningHub:finder.contextMenu.permanentDelete')}
+              size="sm"
+              data-testid="finder-trash-permanent-delete-cancel"
+              className="h-5 w-full justify-center px-1 text-[10px] text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmingPermanentDelete(false);
+              }}
             >
-              <Trash size={13} />
+              {cancelLabel}
             </DsButton>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="mt-1 flex w-full items-center justify-center gap-0.5">
+            {onRestore && (
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                className="!h-5 !w-5 !p-0.5 shrink-0 text-primary hover:bg-primary/10"
+                onClick={(e) => { e.stopPropagation(); onRestore(); }}
+                aria-label={`${t('learningHub:finder.contextMenu.restore')} ${shownName}`}
+                title={t('learningHub:finder.contextMenu.restore')}
+              >
+                <ArrowCounterClockwise size={12} />
+              </DsButton>
+            )}
+            {onPermanentDelete && (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                data-testid="finder-trash-permanent-delete"
+                className="h-5 min-w-0 px-1 gap-0.5 text-[10px] font-medium whitespace-nowrap text-destructive hover:bg-destructive/10"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmingPermanentDelete(true);
+                }}
+                aria-label={`${permanentDeleteLabel} ${shownName}`}
+                title={permanentDeleteLabel}
+              >
+                <Trash size={10} className="shrink-0" aria-hidden="true" />
+                <span>{permanentDeleteLabel}</span>
+              </DsButton>
+            )}
+          </div>
+        )
       )}
     </div>
   );

@@ -24,6 +24,8 @@ export const SAFE_MODE_ENV = 'DS_SAFE_MODE';
 export const STARTUP_STATE_FILE = 'plugin-startup-state.json';
 /** 连续未就绪失败到这个次数才要求用户明确选择。 */
 export const RECOVERY_FAILURE_THRESHOLD = 2;
+/** `app.startupReady` 后的稳定性观察窗口（毫秒）：窗口内崩溃仍计为启动失败。 */
+export const DEFAULT_STABILITY_WINDOW_MS = 15_000;
 
 export function isSafeMode(argv: readonly string[]): boolean {
   return argv.includes(SAFE_MODE_ARG);
@@ -105,6 +107,12 @@ export class PluginStartupState {
     this.save();
   }
 
+  /** 进入就绪后稳定性观察窗口：清除 pending，但保留连续失败计数直到窗口期满。 */
+  enterStabilityWindow(): void {
+    this.state = { failures: this.state.failures, pending: false };
+    this.save();
+  }
+
   /** 正常退出/重启：清 pending，不算失败（否则正常退出会被误计崩溃）。 */
   cleanExit(): void {
     this.state = { failures: 0, pending: false };
@@ -114,6 +122,12 @@ export class PluginStartupState {
   /** Host 未就绪异常退出；只有本次启动仍 pending 时计一次。 */
   failed(): void {
     if (!this.state.pending) return;
+    this.state = { failures: this.state.failures + 1, pending: false };
+    this.save();
+  }
+
+  /** Host 在就绪后稳定性观察窗口内异常退出：计为一次启动失败。 */
+  failedDuringStabilityWindow(): void {
     this.state = { failures: this.state.failures + 1, pending: false };
     this.save();
   }
@@ -164,6 +178,11 @@ export interface StartupRecoveryDeps {
   /** 以给定参数重启，然后结束当前进程。 */
   relaunch(args: string[]): void;
   log(message: string): void;
+  /** `app.startupReady` 后的稳定性观察窗口（毫秒），默认 {@link DEFAULT_STABILITY_WINDOW_MS}。 */
+  stabilityWindowMs?: number;
+  /** 可注入定时器（测试可无等待触发窗口）。 */
+  setTimer?: (callback: () => void, ms: number) => unknown;
+  clearTimer?: (handle: unknown) => void;
 }
 
 export interface StartupRecovery {
@@ -180,7 +199,26 @@ const RECOVERY_BUTTON = 1;
 
 export function createStartupRecovery(deps: StartupRecoveryDeps): StartupRecovery {
   const safeMode = isSafeMode(deps.argv);
+  const stabilityWindowMs = deps.stabilityWindowMs ?? DEFAULT_STABILITY_WINDOW_MS;
+  const scheduleTimer = deps.setTimer ?? ((callback: () => void, ms: number) => {
+    const handle = setTimeout(callback, ms);
+    (handle as { unref?: () => void }).unref?.();
+    return handle;
+  });
+  const cancelTimer = deps.clearTimer ?? ((handle: unknown) => {
+    clearTimeout(handle as ReturnType<typeof setTimeout>);
+  });
   let prompted = false;
+  let stabilizing = false;
+  let stabilityTimer: unknown = null;
+
+  const clearStabilityTimer = (): void => {
+    if (stabilityTimer !== null) {
+      cancelTimer(stabilityTimer);
+      stabilityTimer = null;
+    }
+    stabilizing = false;
+  };
 
   const reportBackupFailure = (error: unknown): void => {
     const detail = error instanceof Error ? error.message : String(error);
@@ -239,14 +277,50 @@ export function createStartupRecovery(deps: StartupRecoveryDeps): StartupRecover
       requestRecovery();
       return false;
     },
-    beginStart: () => deps.state.begin(),
-    ready: () => deps.state.ready(),
-    cleanExit: () => deps.state.cleanExit(),
+    beginStart: () => {
+      clearStabilityTimer();
+      deps.state.begin();
+    },
+    ready: () => {
+      clearStabilityTimer();
+      // 安全模式只有官方插件，成功就绪立即清零台账以便下次普通启动重试用户 profile。
+      if (safeMode || stabilityWindowMs <= 0) {
+        deps.state.ready();
+        return;
+      }
+      // SPOF-4：普通模式就绪后进入稳定性观察窗口，窗口内崩溃仍计为启动失败，避免恶意/故障插件在就绪数秒后崩溃逃逸恢复。
+      deps.state.enterStabilityWindow();
+      stabilizing = true;
+      stabilityTimer = scheduleTimer(() => {
+        stabilityTimer = null;
+        if (!stabilizing) return;
+        stabilizing = false;
+        deps.state.ready();
+        deps.log(`[startup] Host remained stable for ${stabilityWindowMs}ms after ready; failure counter reset`);
+      }, stabilityWindowMs);
+    },
+    cleanExit: () => {
+      clearStabilityTimer();
+      deps.state.cleanExit();
+    },
     unexpectedExit: () => {
-      // 就绪后的崩溃仍按 HostSupervisor 的退避重启；安全模式没有可退回的 profile。
-      // Transport HostReady does not certify startup finalizers. Only app.startupReady clears pending.
-      if (!deps.state.pending || safeMode) return true;
-      deps.state.failed();
+      // 安全模式没有可退回的 profile；超出稳定性观察窗口后的崩溃仍按 HostSupervisor 退避重启。
+      // Transport HostReady does not certify startup finalizers. Only app.startupReady clears pending,
+      // and failures are only cleared after the post-ready stability window elapses without crashing.
+      if (safeMode) {
+        clearStabilityTimer();
+        return true;
+      }
+      if (deps.state.pending) {
+        clearStabilityTimer();
+        deps.state.failed();
+      } else if (stabilizing) {
+        clearStabilityTimer();
+        deps.state.failedDuringStabilityWindow();
+        deps.log('[startup] Host crashed during post-ready stability window; counting as startup failure');
+      } else {
+        return true;
+      }
       if (!deps.state.needsRecovery) return true;
       requestRecovery();
       return false;

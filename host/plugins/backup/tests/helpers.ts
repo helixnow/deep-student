@@ -19,6 +19,7 @@ import { StartupFinalizerRegistry } from '../../../platform/storage/startup-fina
 import { createNodeFiles, type FilesService } from '../../../platform/files/index.ts';
 
 export interface BackupTestHostOptions {
+  dataDir?: string;
   secrets?: boolean;
   shell?: (op: string, args: unknown) => unknown;
   syncProvider?: unknown;
@@ -148,7 +149,10 @@ function fakeSettings(values: Map<string, string>): Record<string, unknown> {
 export async function createBackupHost(
   options: BackupTestHostOptions = {},
 ): Promise<{ host: TestHost; secrets: FakeSecrets | null; settings: Map<string, string> }> {
-  const host = await createTestHost({ ...(options.shell ? { shell: options.shell } : {}) });
+  const host = await createTestHost({
+    ...(options.dataDir ? { app: { dataDir: options.dataDir } } : {}),
+    ...(options.shell ? { shell: options.shell } : {}),
+  });
   const dataDir = host.app.dataDir;
   const activeDir = join(dataDir, 'slots', 'slotA');
   mkdirSync(activeDir, { recursive: true });

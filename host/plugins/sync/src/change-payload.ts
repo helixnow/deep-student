@@ -17,6 +17,8 @@ export interface EngineChange {
   suppress_change_log?: boolean | null;
   source_device_id?: string | null;
   source_seq?: number | bigint | null;
+  /** Explicit physical purge intent for tables that also have a soft-delete `deleted_at` column. */
+  hard_delete?: boolean | null;
 }
 
 export function changeOperationFromStr(value: string): ChangeOperation | null {
@@ -60,6 +62,9 @@ export function serializeSyncChange(change: EngineChange): string {
   if (change.source_seq !== undefined && change.source_seq !== null) {
     parts.push(`"source_seq":${change.source_seq}`);
   }
+  if (change.hard_delete === true) {
+    parts.push('"hard_delete":true');
+  }
   return `{${parts.join(',')}}`;
 }
 
@@ -102,5 +107,6 @@ export function parseSyncChange(text: string): EngineChange {
   if (raw.suppress_change_log !== undefined) change.suppress_change_log = raw.suppress_change_log === true;
   if (raw.source_device_id !== undefined) change.source_device_id = optionalString(raw.source_device_id);
   if (raw.source_seq !== undefined) change.source_seq = optionalInteger(raw.source_seq, 'source_seq', 0n, (1n << 64n) - 1n);
+  if (raw.hard_delete !== undefined) change.hard_delete = raw.hard_delete === true;
   return change;
 }

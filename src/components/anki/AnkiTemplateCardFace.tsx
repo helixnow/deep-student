@@ -15,9 +15,15 @@ import { cardHtmlNeedsKatex, renderCardFaceLatexHtml, renderCardTemplateMath } f
 import { useKatexSandboxCss } from './utils/katexSandboxCss';
 import {
   CARD_FACE_HELPER_SCRIPT,
+  extractInlineMediaNames,
   injectCardMedia,
+  isAnkiMediaRef,
+  isAudioMediaRef,
   isInteractiveCardHtml,
+  isVideoMediaRef,
+  lookupCardMedia,
   looksLikeHtml,
+  mediaBasename,
   soundNames,
   useCardMediaMap,
 } from './utils/cardMedia';
@@ -512,11 +518,14 @@ function resolveClozeOrdinal(
   return ord + 1;
 }
 
-/** 卡面图片地址解析：data:/blob:/http(s) 直接使用；本地绝对路径走 asset protocol。 */
-function resolveCardImageSrc(image: string): string | null {
+/** 卡面图片地址解析：优先用 read_anki_media 解析的 data URL，其次 data:/blob:/http(s)；仅非 anki_media 路径退回 asset protocol。 */
+function resolveCardImageSrc(image: string, media: ReadonlyMap<string, string>): string | null {
   const value = image.trim();
   if (!value) return null;
+  const fromMedia = lookupCardMedia(media, value);
+  if (fromMedia) return fromMedia;
   if (/^(data:|blob:|https?:|asset:)/i.test(value)) return value;
+  if (isAnkiMediaRef(value)) return null;
   try {
     return convertFileSrc(value);
   } catch {
@@ -562,7 +571,6 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
 
   const darkMode = useDocumentDarkMode();
   const surfaceColor = useCardFaceSurfaceColor();
-  const media = useCardMediaMap(occlusionSpec ? undefined : card.images);
 
   const rendered = useMemo<DetailedCardRenderResult | null>(() => {
     if (occlusionSpec || !template) return null;
@@ -578,22 +586,32 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   const issues = faceResult?.issues ?? [];
   const plainText = fallbackText ?? defaultFaceText(card, side);
   const frontHtml = rendered?.front?.html ?? (template ? '' : defaultFaceText(card, 'front'));
-  const faceHtml = useMemo(() => {
+  const backHtml = rendered?.back?.html ?? (template ? '' : defaultFaceText(card, 'back'));
+  const rawFaceHtml = useMemo(() => {
     if (occlusionSpec) return '';
-    let html = '';
-    if (htmlContent) {
-      html = htmlContent;
-    } else if (!template && extractClozeOrdinals(plainText).length > 0) {
-      html = applyClozeMarkup(plainText, { side, ordinal: resolveClozeOrdinal(card) });
-    } else if (!template && looksLikeHtml(plainText)) {
-      // 外部 Anki 牌组的字段是 HTML：按 HTML 渲染，而不是当纯文本转义
-      html = plainText;
+    if (htmlContent) return htmlContent;
+    if (!template && extractClozeOrdinals(plainText).length > 0) {
+      return applyClozeMarkup(plainText, { side, ordinal: resolveClozeOrdinal(card) });
     }
-    if (!html) return '';
+    if (!template && looksLikeHtml(plainText)) {
+      // 外部 Anki 牌组的字段是 HTML：按 HTML 渲染，而不是当纯文本转义
+      return plainText;
+    }
+    return '';
+  }, [occlusionSpec, htmlContent, template, plainText, card, side]);
+
+  const inlineMediaRefs = useMemo(
+    () => (occlusionSpec ? undefined : extractInlineMediaNames(rawFaceHtml)),
+    [occlusionSpec, rawFaceHtml],
+  );
+  const media = useCardMediaMap(occlusionSpec ? undefined : card.images, inlineMediaRefs);
+
+  const faceHtml = useMemo(() => {
+    if (!rawFaceHtml) return '';
     // 背面不自动重放正面的音频（同 Anki：{{FrontSide}} 里的音频不自动播放）
     const noAutoplay = side === 'back' ? soundNames(frontHtml) : undefined;
-    return injectCardMedia(html, media, { noAutoplay });
-  }, [occlusionSpec, htmlContent, template, plainText, card, side, media, frontHtml]);
+    return injectCardMedia(rawFaceHtml, media, { noAutoplay });
+  }, [rawFaceHtml, side, frontHtml, media]);
   // 卡面公式与聊天侧一致由 KaTeX 自带字体排版（htmlAndMathml + iframe 内 data: 字体），
   // 不依赖设备数学字体（#461）。样式首次下载期间先出纯 MathML，就绪后切换。
   const katexCss = useKatexSandboxCss(cardHtmlNeedsKatex(faceHtml));
@@ -607,19 +625,57 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
     () => (previewHtml ? extractAccessibleCardText(previewHtml, plainText) : ''),
     [previewHtml, plainText],
   );
+  // 媒体异步加载完成后重建 ShadowDomPreview，避免预加载阶段 0px 坏图把 iframe 高度锁死。
+  const mediaSignature = useMemo(() => {
+    if (media.size === 0) return 'm:0';
+    return `m:${Array.from(media.keys()).sort().join(',')}`;
+  }, [media]);
 
   // fallback 视图：\( \)、\[ \]、$、$$ 公式经 KaTeX 渲染；无公式时保持纯文本零成本
   const latexHtml = useMemo(
     () => (!occlusionSpec && plainText ? renderCardFaceLatexHtml(plainText) : null),
     [occlusionSpec, plainText],
   );
-  const imageSrcs = useMemo(
-    () => (occlusionSpec ? [] : card.images ?? [])
-      .filter((image) => !/\.(mp3|ogg|oga|opus|wav|m4a|aac|flac|webm|mp4)$/i.test(image.trim()))
-      .map(resolveCardImageSrc)
-      .filter((src): src is string => src != null),
-    [occlusionSpec, card.images],
-  );
+  const referencedInAnyFace = useMemo(() => {
+    const refs = new Set<string>();
+    for (const name of extractInlineMediaNames(frontHtml)) refs.add(name.toLowerCase());
+    for (const name of extractInlineMediaNames(backHtml)) refs.add(name.toLowerCase());
+    for (const name of extractInlineMediaNames(rawFaceHtml)) refs.add(name.toLowerCase());
+    return refs;
+  }, [frontHtml, backHtml, rawFaceHtml]);
+
+  const { imageSrcs, audioAttachments } = useMemo(() => {
+    if (occlusionSpec) return { imageSrcs: [] as string[], audioAttachments: [] as Array<{ name: string; src: string }> };
+    const imgs: string[] = [];
+    const audios: Array<{ name: string; src: string }> = [];
+    const seenImgs = new Set<string>();
+    const seenAudios = new Set<string>();
+    for (const raw of card.images ?? []) {
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const base = mediaBasename(trimmed);
+      // HTML 模式下跳过已被正反面内联引用的附件，避免重复展示或在正面剧透背面图片
+      if (previewHtml && base && referencedInAnyFace.has(base.toLowerCase())) continue;
+      if (isAudioMediaRef(trimmed)) {
+        const src = resolveCardImageSrc(trimmed, media);
+        if (src && !seenAudios.has(src)) {
+          seenAudios.add(src);
+          audios.push({ name: base || trimmed, src });
+        }
+        continue;
+      }
+      if (isVideoMediaRef(trimmed)) continue;
+      const src = resolveCardImageSrc(trimmed, media);
+      if (src && !seenImgs.has(src)) {
+        seenImgs.add(src);
+        imgs.push(src);
+      }
+    }
+    return { imageSrcs: imgs, audioAttachments: audios };
+  }, [occlusionSpec, card.images, media, previewHtml, referencedInAnyFace]);
+
+  const hasInteractiveAttachments = audioAttachments.length > 0;
+  const hasInteractiveContent = frameInteractive || hasInteractiveAttachments;
 
   const stageMode = stageHeight != null && stageHeight > 0;
   const cssContent = useMemo(
@@ -661,14 +717,15 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
 
   return (
     <div
-      className={cn(className, interactiveFrame && !frameInteractive && 'pointer-events-none')}
+      className={cn(className, interactiveFrame && !hasInteractiveContent && 'pointer-events-none')}
       data-anki-card-face={side}
       data-render-mode={htmlContent ? 'template' : previewHtml ? 'html' : 'plain'}
-      data-interactive={frameInteractive ? 'true' : undefined}
+      data-interactive={hasInteractiveContent ? 'true' : undefined}
     >
       {previewHtml ? (
         <>
           <ShadowDomPreview
+            key={mediaSignature}
             htmlContent={frameHtml}
             cssContent={cssContent}
             compact={compact}
@@ -685,6 +742,35 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
               className="sr-only select-text whitespace-pre-wrap"
             >
               {accessibleFaceText}
+            </div>
+          ) : null}
+          {imageSrcs.length > 0 || audioAttachments.length > 0 ? (
+            <div className="mt-3 flex w-full flex-col items-center gap-2">
+              {imageSrcs.map((src) => (
+                <img
+                  key={src}
+                  src={src}
+                  alt=""
+                  loading="lazy"
+                  className="max-h-64 max-w-full rounded object-contain"
+                />
+              ))}
+              {audioAttachments.map((item) => (
+                <div
+                  key={item.src}
+                  className="flex w-full max-w-[320px] justify-center"
+                  onClick={(event) => event.stopPropagation()}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  <audio
+                    className="anki-audio w-full"
+                    controls
+                    preload="metadata"
+                    src={item.src}
+                    data-sound-file={item.name}
+                  />
+                </div>
+              ))}
             </div>
           ) : null}
         </>
@@ -717,6 +803,22 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
               loading="lazy"
               className="max-h-64 max-w-full rounded object-contain"
             />
+          ))}
+          {audioAttachments.map((item) => (
+            <div
+              key={item.src}
+              className="flex w-full max-w-[320px] justify-center"
+              onClick={(event) => event.stopPropagation()}
+              onPointerDown={(event) => event.stopPropagation()}
+            >
+              <audio
+                className="anki-audio w-full"
+                controls
+                preload="metadata"
+                src={item.src}
+                data-sound-file={item.name}
+              />
+            </div>
           ))}
         </div>
       )}

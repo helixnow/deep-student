@@ -47,8 +47,16 @@ import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
 import { hasWorkbenchAppIcon, WorkbenchAppIcon } from './WorkbenchAppIcon';
 import './AppsPanel.css';
 import { resolveBrowserLaunchability } from '@/features/browser/gates';
-import { BROWSER_APP_TYPE_ID } from '@/features/workbench/apps/browser/register';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+
+/** 避免静态依赖 apps/browser/register（该模块仅在 Workbench 装配期懒加载）。 */
+const BROWSER_APP_TYPE_ID = 'browser';
+
+/**
+ * 虽在冻结的应用清单中标记 showInLauncher: false、但具备独立工作台入口且无需外部
+ * 资源上下文的内置工具应用（例如 S3-08 沙箱工作台），使其在「全部应用」中可见可检索。
+ */
+const STANDALONE_COMPANION_APP_TYPE_IDS = new Set(['sandbox']);
 
 /** 退场动画保留挂载时长（与 CSS --wb-apps-duration 对齐） */
 export const APPS_PANEL_EXIT_MS = 200;
@@ -160,7 +168,7 @@ export interface AppsPanelProps {
 const SECTION_ORDER: GlobalSearchKind[] = ['app', 'command', 'dstu', 'chat'];
 
 const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const open = useAppsPanelOpen();
   const registryVersion = useRegistryVersion();
   const commandPalette = useCommandPaletteSafe();
@@ -224,9 +232,21 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     });
   }, [registryVersion, browserLaunchable]);
 
+  const companionApps = useMemo(() => {
+    void registryVersion;
+    return appRegistry.list().filter(
+      (app) => app.showInLauncher === false && STANDALONE_COMPANION_APP_TYPE_IDS.has(app.typeId),
+    );
+  }, [registryVersion]);
+
+  const searchableApps = useMemo(
+    () => (companionApps.length > 0 ? [...launchableApps, ...companionApps] : launchableApps),
+    [launchableApps, companionApps],
+  );
+
   const host = useMemo<WorkbenchSearchHost>(
     () => ({
-      listLaunchableApps: () => launchableApps,
+      listLaunchableApps: () => searchableApps,
       appName: (app) => t(app.nameKey, app.typeId),
       searchCommands: (q) => {
         if (!commandPalette) return [];
@@ -258,7 +278,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
       },
       untitledSessionTitle: t('workbench:appsPanel.untitledChat', '未命名会话'),
     }),
-    [launchableApps, commandPalette, t],
+    [searchableApps, commandPalette, t],
   );
 
   const dstuProvider = useMemo(() => createDstuProvider(host), [host]);
@@ -287,8 +307,13 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   );
 
   const apps = useMemo(
-    () => filterApps(launchableApps, query, t),
-    [launchableApps, query, t],
+    () => filterApps(searching ? searchableApps : launchableApps, query, t),
+    [launchableApps, searchableApps, query, searching, t],
+  );
+
+  const sortedCompanionApps = useMemo(
+    () => (searching ? [] : filterApps(companionApps, '', t)),
+    [companionApps, searching, t],
   );
 
   const commands = useMemo<Command[]>(() => {
@@ -313,6 +338,18 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
         open: () => host.openApp(app.typeId),
       })),
     [apps, host, searching, t],
+  );
+
+  const companionAppItems = useMemo<GlobalSearchItem[]>(
+    () =>
+      sortedCompanionApps.map((app) => ({
+        id: `app:${app.typeId}`,
+        kind: 'app' as const,
+        title: t(app.nameKey, app.typeId),
+        score: 1,
+        open: () => host.openApp(app.typeId),
+      })),
+    [sortedCompanionApps, host, t],
   );
 
   const commandItems = useMemo<GlobalSearchItem[]>(
@@ -342,14 +379,16 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   );
 
   const items = useMemo<GlobalSearchItem[]>(() => {
-    if (!searching) return appItems;
+    if (!searching) {
+      return companionAppItems.length > 0 ? [...appItems, ...companionAppItems] : appItems;
+    }
     return [
       ...itemsByKind.app,
       ...itemsByKind.command,
       ...itemsByKind.dstu,
       ...itemsByKind.chat,
     ];
-  }, [appItems, itemsByKind, searching]);
+  }, [appItems, companionAppItems, itemsByKind, searching]);
 
   const loading = dstuState.loading || chatState.loading;
   const loadingByKind = {
@@ -834,14 +873,36 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
               </div>
             </div>
           ) : !searching ? (
-            <ul
-              id="wb-apps-listbox"
-              className={listClass}
-              role="listbox"
-              aria-label={t('workbench:appsPanel.title')}
-            >
-              {items.map((item, index) => renderResultRow(item, index))}
-            </ul>
+            <>
+              <ul
+                id="wb-apps-listbox"
+                className={listClass}
+                role="listbox"
+                aria-label={t('workbench:appsPanel.title')}
+              >
+                {appItems.map((item, index) => renderResultRow(item, index))}
+              </ul>
+              {companionAppItems.length > 0 && (
+                <div className="wb-apps-tools-section" data-testid="wb-apps-tools-section">
+                  <div className="wb-apps-section" role="presentation">
+                    {t(
+                      'workbench:appsPanel.sectionTools',
+                      i18n.language?.toLowerCase().startsWith('en') ? 'Workspace Tools' : '工作台工具',
+                    )}
+                  </div>
+                  <ul
+                    className={listClass}
+                    role="listbox"
+                    aria-label={t(
+                      'workbench:appsPanel.sectionTools',
+                      i18n.language?.toLowerCase().startsWith('en') ? 'Workspace Tools' : '工作台工具',
+                    )}
+                  >
+                    {companionAppItems.map((item, i) => renderResultRow(item, appItems.length + i))}
+                  </ul>
+                </div>
+              )}
+            </>
           ) : (
             <div
               id="wb-apps-listbox"

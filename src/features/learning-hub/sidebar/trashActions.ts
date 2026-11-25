@@ -424,6 +424,62 @@ export async function emptyTrashBin({
   }
 }
 
+export interface BatchPermanentDeleteTrashContext {
+  items: DstuNode[];
+  isMountedRef: IsMountedRef;
+  t: SidebarT;
+  clearSelection: () => void;
+  handleRefresh: () => Promise<void>;
+}
+
+/** 批量永久删除回收站内选中的项目（卡片/批量工具栏行内二次确认后或确认框确认后调用） */
+export async function permanentlyDeleteTrashBatch(
+  { items, isMountedRef, t, clearSelection, handleRefresh }: BatchPermanentDeleteTrashContext,
+  batchIds: ReadonlySet<string>,
+): Promise<void> {
+  const idsArray = Array.from(batchIds);
+  if (idsArray.length === 0) return;
+  let succeeded = 0;
+  let failed = 0;
+  const succeededIds: string[] = [];
+  for (const id of idsArray) {
+    const item = items.find(i => i.id === id);
+    if (!item) { failed++; continue; }
+    const result = await trashApi.permanentlyDelete(id, item.type);
+    if (result.ok) { succeeded++; succeededIds.push(id); } else { failed++; }
+  }
+  // ★ 悬挂引用清理：批量永久删除后移除对应桌面快捷方式
+  if (succeededIds.length > 0) {
+    useDesktopStore.getState().pruneShortcutsForTargets(succeededIds);
+  }
+  if (failed === 0) {
+    showGlobalNotification(
+      'success',
+      t('finder.trash.batchDeleteSuccess', {
+        count: succeeded,
+        defaultValue: `已永久删除 ${succeeded} 个项目`,
+      }),
+    );
+  } else if (succeeded > 0) {
+    showGlobalNotification(
+      'warning',
+      t('finder.trash.batchDeletePartial', {
+        succeeded,
+        failed,
+        defaultValue: `已删除 ${succeeded} 个，失败 ${failed} 个`,
+      }),
+    );
+  } else {
+    showGlobalNotification(
+      'error',
+      t('finder.trash.batchDeleteFailed', { defaultValue: '永久删除失败' }),
+    );
+  }
+  if (!isMountedRef.current) return;
+  clearSelection();
+  await handleRefresh();
+}
+
 export interface ConfirmPendingDeleteContext {
   deleteTarget: DeleteConfirmTarget | null;
   setIsDeleting: React.Dispatch<React.SetStateAction<boolean>>;
@@ -460,46 +516,10 @@ export async function confirmPendingDelete({
       case 'batch':
         // 仅回收站批永久删走确认框
         if (deleteTarget.batchIds) {
-          const idsArray = Array.from(deleteTarget.batchIds);
-          let succeeded = 0;
-          let failed = 0;
-          const succeededIds: string[] = [];
-          for (const id of idsArray) {
-            const item = items.find(i => i.id === id);
-            if (!item) { failed++; continue; }
-            const result = await trashApi.permanentlyDelete(id, item.type);
-            if (result.ok) { succeeded++; succeededIds.push(id); } else { failed++; }
-          }
-          // ★ 悬挂引用清理：批量永久删除后移除对应桌面快捷方式
-          if (succeededIds.length > 0) {
-            useDesktopStore.getState().pruneShortcutsForTargets(succeededIds);
-          }
-          if (failed === 0) {
-            showGlobalNotification(
-              'success',
-              t('finder.trash.batchDeleteSuccess', {
-                count: succeeded,
-                defaultValue: `已永久删除 ${succeeded} 个项目`,
-              }),
-            );
-          } else if (succeeded > 0) {
-            showGlobalNotification(
-              'warning',
-              t('finder.trash.batchDeletePartial', {
-                succeeded,
-                failed,
-                defaultValue: `已删除 ${succeeded} 个，失败 ${failed} 个`,
-              }),
-            );
-          } else {
-            showGlobalNotification(
-              'error',
-              t('finder.trash.batchDeleteFailed', { defaultValue: '永久删除失败' }),
-            );
-          }
-          if (!isMountedRef.current) break;
-          clearSelection();
-          await handleRefresh();
+          await permanentlyDeleteTrashBatch(
+            { items, isMountedRef, t, clearSelection, handleRefresh },
+            deleteTarget.batchIds,
+          );
         }
         break;
       case 'permanent':

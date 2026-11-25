@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { NoteGlyph } from '@/features/notes/components/NoteGlyph';
+import { disambiguateTabTitles } from '@/features/notes/tabTitleDisambiguation';
 import type {
   ResourceType,
   SaveState,
@@ -184,6 +185,7 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
 
   const hasActiveTab = tabs.some((tab) => tab.key === activeKey);
   const isSplitMode = Boolean(rightTabKey);
+  const disambiguatedLabels = useMemo(() => disambiguateTabTitles(tabs), [tabs]);
 
   return (
     <div className="notes-titlebar-tabs" style={{ '--notes-titlebar-sidebar-width': sidebarWidth } as React.CSSProperties}>
@@ -264,6 +266,8 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
               <button
                 type="button"
                 role="tab"
+                title={tab.title}
+                aria-label={tab.title || undefined}
                 aria-selected={tab.key === activeKey}
                 aria-haspopup="menu"
                 aria-expanded={contextMenuKey === tab.key}
@@ -276,7 +280,22 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
                 onKeyDown={(event) => handleKeyDown(event, index, tab.key)}
               >
                 <ResourceGlyph type={tab.type} id={tab.id} size={14} />
-                <span>{tab.title}</span>
+                {(() => {
+                  const label = disambiguatedLabels.get(tab.key);
+                  if (label?.disambiguated) {
+                    return (
+                      <span className="notes-tab-label" data-notes-tab-label data-disambiguated="true">
+                        {label.prefixHint ? <span className="notes-tab-label-prefix">{label.prefixHint}</span> : null}
+                        <span className="notes-tab-label-suffix">{label.distinguishing}</span>
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="notes-tab-label" data-notes-tab-label data-disambiguated="false">
+                      {tab.title}
+                    </span>
+                  );
+                })()}
                 {tab.pinned && (
                   <PushPin
                     className="notes-tab-pin"
@@ -342,6 +361,7 @@ export const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
                     type="button"
                     role="menuitem"
                     key={tab.key}
+                    title={tab.title}
                     data-active={tab.key === activeKey ? 'true' : 'false'}
                     data-main-split={isMainSplitTab ? 'true' : 'false'}
                     data-right-split={isRightSplitTab ? 'true' : 'false'}

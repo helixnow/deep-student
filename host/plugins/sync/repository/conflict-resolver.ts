@@ -159,9 +159,20 @@ export function resolveOne(
 ): ConflictOutcome | null {
   const { policy } = options;
   if (change.operation === 'Delete') {
+    if (change.table_name === 'note_document_revisions') return null;
     if (!localHasUnsyncedChange(db, change.table_name, change.record_id)) return null;
     const localData = getRecordData(db, change.table_name, change.record_id, idColumn);
     if (localData === null) return null;
+    // If local already soft-deleted the row into Trash and cloud sends an explicit hard-purge,
+    // allow the purge to proceed cleanly without raising a false conflict.
+    if (
+      change.hard_delete === true
+      && isJsonObject(localData)
+      && localData.deleted_at !== undefined
+      && localData.deleted_at !== null
+    ) {
+      return null;
+    }
     // Orphaned note resources whose parent note was already purged/replaced must not raise
     // a conflict solely because local background indexing touched index_state/indexed_at.
     if (

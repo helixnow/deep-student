@@ -11,6 +11,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import {
   backupUserProfile,
   createStartupRecovery,
+  DEFAULT_STABILITY_WINDOW_MS,
   isSafeMode,
   PluginStartupState,
   RECOVERY_FAILURE_THRESHOLD,
@@ -47,6 +48,8 @@ interface RecoveryHarness {
   relaunches: string[][];
   logs: string[];
   recovery: ReturnType<typeof createStartupRecovery>;
+  advanceTime(ms: number): void;
+  activeTimerCount(): number;
 }
 
 function harness(options: {
@@ -56,6 +59,7 @@ function harness(options: {
   answer?: (message: string) => number;
   dialogError?: unknown;
   appDataDir?: string;
+  stabilityWindowMs?: number;
 } = {}): RecoveryHarness {
   const dir = tempDir();
   const appDataDir = options.appDataDir ?? join(dir, 'appdata');
@@ -66,6 +70,9 @@ function harness(options: {
   const relaunches: string[][] = [];
   const logs: string[] = [];
   const answer = options.answer ?? (() => 0);
+  let now = 0;
+  let nextTimerId = 1;
+  const timers = new Map<number, { due: number; callback: () => void }>();
   const recovery = createStartupRecovery({
     state,
     appDataDir,
@@ -77,8 +84,26 @@ function harness(options: {
     },
     relaunch: (args) => relaunches.push(args),
     log: (message) => logs.push(message),
+    ...(options.stabilityWindowMs !== undefined ? { stabilityWindowMs: options.stabilityWindowMs } : {}),
+    setTimer: (callback, ms) => {
+      const id = nextTimerId++;
+      timers.set(id, { due: now + ms, callback });
+      return id;
+    },
+    clearTimer: (handle) => {
+      timers.delete(handle as number);
+    },
   });
-  return { state, appDataDir, dialogs, relaunches, logs, recovery };
+  const advanceTime = (ms: number): void => {
+    now += ms;
+    for (const [id, entry] of [...timers.entries()]) {
+      if (entry.due <= now) {
+        timers.delete(id);
+        entry.callback();
+      }
+    }
+  };
+  return { state, appDataDir, dialogs, relaunches, logs, recovery, advanceTime, activeTimerCount: () => timers.size };
 }
 
 /** The recovery dialog resolves asynchronously; let its then/catch handlers run. */
@@ -237,15 +262,86 @@ describe('createStartupRecovery', () => {
     expect(at.dialogs).toHaveLength(1);
   });
 
-  it('does not count a Host that had become ready and lets the supervisor retry it', async () => {
+  it('does not count a Host that had become ready and stabilized, letting the supervisor retry it', async () => {
     const h = harness();
     h.recovery.beginStart();
     h.recovery.ready();
+    h.advanceTime(DEFAULT_STABILITY_WINDOW_MS);
     expect(h.recovery.unexpectedExit(false)).toBe(true);
     expect(h.state.failures).toBe(0);
     expect(h.state.pending).toBe(false);
     await settle();
     expect(h.dialogs).toEqual([]);
+  });
+
+  it('SPOF-4: a delayed crash 2s after ready() counts toward RECOVERY_FAILURE_THRESHOLD and opens the Safe Mode recovery dialog', async () => {
+    const h = harness();
+    expect(DEFAULT_STABILITY_WINDOW_MS).toBe(15_000);
+
+    // First launch: ready(), then rogue community plugin crashes Host 2s later (within 15s window).
+    h.recovery.beginStart();
+    h.recovery.ready();
+    expect(h.state.pending).toBe(false);
+    expect(h.state.failures).toBe(0);
+    expect(h.activeTimerCount()).toBe(1);
+
+    h.advanceTime(2_000);
+    expect(h.recovery.unexpectedExit(false)).toBe(true);
+    expect(h.state.failures).toBe(1);
+    expect(h.state.needsRecovery).toBe(false);
+    expect(h.activeTimerCount()).toBe(0);
+    await settle();
+    expect(h.dialogs).toEqual([]);
+
+    // Second launch: ready() must NOT immediately clear failures; crash 2s later hits threshold and opens recovery dialog.
+    h.recovery.beginStart();
+    h.recovery.ready();
+    expect(h.state.failures).toBe(1);
+    expect(h.state.pending).toBe(false);
+    expect(h.activeTimerCount()).toBe(1);
+
+    h.advanceTime(2_000);
+    expect(h.recovery.unexpectedExit(false)).toBe(false);
+    expect(h.state.failures).toBe(RECOVERY_FAILURE_THRESHOLD);
+    expect(h.state.needsRecovery).toBe(true);
+    expect(h.activeTimerCount()).toBe(0);
+    await settle();
+    expect(h.dialogs).toHaveLength(1);
+    expect(h.dialogs[0]!.buttons).toEqual(['保留配置并停止恢复', '备份配置并以安全模式重启']);
+  });
+
+  it('SPOF-4: a crash after the stability window elapses resets failures and does not open recovery', async () => {
+    const h = harness({ failures: 1 });
+    h.recovery.beginStart();
+    h.recovery.ready();
+    // Still stabilizing at 14.9s: previous failure count is preserved until the window completes.
+    h.advanceTime(DEFAULT_STABILITY_WINDOW_MS - 100);
+    expect(h.state.failures).toBe(1);
+
+    // At 15.0s: stability window completes and clears failures to 0.
+    h.advanceTime(100);
+    expect(h.state.failures).toBe(0);
+    expect(h.activeTimerCount()).toBe(0);
+
+    // Subsequent crash after stabilization is treated as an ordinary runtime crash, not a startup failure.
+    expect(h.recovery.unexpectedExit(false)).toBe(true);
+    expect(h.state.failures).toBe(0);
+    await settle();
+    expect(h.dialogs).toEqual([]);
+  });
+
+  it('SPOF-4: cleanExit() during the stability window cancels the timer and resets failures cleanly', async () => {
+    const h = harness({ failures: 1 });
+    h.recovery.beginStart();
+    h.recovery.ready();
+    expect(h.activeTimerCount()).toBe(1);
+    expect(h.state.failures).toBe(1);
+
+    h.advanceTime(2_000);
+    h.recovery.cleanExit();
+    expect(h.activeTimerCount()).toBe(0);
+    expect(h.state.failures).toBe(0);
+    expect(h.state.pending).toBe(false);
   });
 
   it('RF-W06-startup-recovery: asks only after two consecutive pre-ready exits, and keeping the profile neither backs up nor restarts', async () => {

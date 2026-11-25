@@ -177,6 +177,11 @@ describe('dstu_list and dstu_list_deleted', { timeout: 30_000 }, () => {
       .map(node => node.id)).toEqual(['img_1', 'file_1', 'tb_1']);
     expect((await invoke<DstuNode[]>('dstu_list', { path: '/', options: { typeFilter: 'file' } }))
       .map(node => node.id)).toEqual(['file_1', 'tb_1']);
+    seedFile('file_created_via_dstu', 'report.docx', { type: 'file', updatedAt: '2026-01-03T12:00:00.000Z' });
+    expect((await invoke<DstuNode[]>('dstu_list', { path: '/', options: { typeFilter: 'file' } }))
+      .map(node => node.id)).toEqual(['file_created_via_dstu', 'file_1', 'tb_1']);
+    expect((await invoke<DstuNode[]>('dstu_list', { path: '/', options: { typeFilter: 'file', limit: 2, offset: 1 } }))
+      .map(node => node.id)).toEqual(['file_1', 'tb_1']);
     expect((await invoke<DstuNode[]>('dstu_list', { path: '/', options: { typeFilter: 'image' } }))
       .map(node => node.id)).toEqual(['img_1']);
     expect((await invoke<DstuNode[]>('dstu_list', {

@@ -767,32 +767,33 @@ export function applySingleChange(
               '',
             ) > 0) {
               const alreadyTombstoned = localData.deleted_at !== undefined && localData.deleted_at !== null;
-              if (!alreadyTombstoned) {
-                saveConflictRecord(db, {
-                  table_name: change.table_name,
-                  record_id: change.record_id,
-                  side: 'Cloud',
-                  data: null,
-                  winning_device_id: null,
-                  losing_device_id: change.source_device_id ?? null,
-                });
+              if (alreadyTombstoned && change.hard_delete === true) {
+                // Local row is already in Trash; explicit remote hard-purge supersedes Trash cleanly.
+              } else {
+                if (!alreadyTombstoned) {
+                  saveConflictRecord(db, {
+                    table_name: change.table_name,
+                    record_id: change.record_id,
+                    side: 'Cloud',
+                    data: null,
+                    winning_device_id: null,
+                    losing_device_id: change.source_device_id ?? null,
+                  });
+                }
+                return false;
               }
-              return false;
             }
           }
         }
       }
     }
 
-    // VFS trashable tables (`notes`, `resources`, `folder_items`) propagate soft-delete via
-    // UPDATE(deleted_at != null); an explicit DELETE operation always represents hard purge
-    // and must physically delete the row so it leaves Trash and never resurrects.
-    const isVfsHardPurgeTable =
-      change.table_name === 'notes'
-      || change.table_name === 'resources'
-      || change.table_name === 'folder_items';
+    // Legacy / generic `Delete` changes on tombstone-capable tables soft-delete via `deleted_at`
+    // (preserving FK-safe tombstones). Explicit physical purges emitted from SQL `DELETE` triggers
+    // carry `hard_delete: true` and physically delete the row so it leaves Trash and never resurrects.
+    const isHardPurge = change.hard_delete === true;
 
-    if (change.table_name === 'resources' && tableExists(db, 'notes')) {
+    if (isHardPurge && change.table_name === 'resources' && tableExists(db, 'notes')) {
       const stillReferenced = Boolean(
         db.pluck('SELECT EXISTS(SELECT 1 FROM notes WHERE resource_id = ?1)', [change.record_id]),
       );
@@ -801,7 +802,7 @@ export function applySingleChange(
       }
     }
 
-    if (hasTombstone && !isVfsHardPurgeTable) {
+    if (hasTombstone && !isHardPurge) {
       const declared = columnDeclaredType(db, change.table_name, 'deleted_at') ?? 'TEXT';
       const sql = `UPDATE ${tableIdent} SET "deleted_at" = ?1 WHERE ${pkPredicateAfter} AND "deleted_at" IS NULL`;
       let tombstoneValue: SqlParam;

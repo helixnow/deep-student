@@ -37,6 +37,22 @@ export type DatabaseSyncStatusResponse = {
   synced_changes: number;
   last_sync_at: string | null;
 };
+/** PendingBreakdownResponse */
+export type PendingBreakdownResponse = {
+  total_pending_changes: number;
+  databases: PendingDatabaseBreakdown[];
+};
+/** PendingDatabaseBreakdown */
+export type PendingDatabaseBreakdown = {
+  id: string;
+  pending_changes: number;
+  tables: PendingTableBreakdown[];
+};
+/** PendingTableBreakdown */
+export type PendingTableBreakdown = {
+  table_name: string;
+  count: number;
+};
 /** deep_student_lib::data_governance::commands_sync::PruneGapResponse */
 export type PruneGapResponse = {
   has_gap: boolean;
@@ -272,6 +288,12 @@ export interface Commands {
     result: SyncExportResponse;
     error: string;
   };
+  /** host/plugins/sync/src/status.ts */
+  data_governance_get_pending_breakdown: {
+    args: Record<string, never>;
+    result: PendingBreakdownResponse;
+    error: string;
+  };
   /** src/data_governance/commands_sync.rs:1025 `data_governance_get_sync_status` */
   data_governance_get_sync_status: {
     args: Record<string, never>;
@@ -340,6 +362,12 @@ export interface Commands {
       cloudConfig: Shared.CloudStorageConfig;
     };
     result: null;
+    error: string;
+  };
+  /** host/plugins/sync/src/plugin.ts */
+  data_governance_pairing_get_cloud_credentials: {
+    args: Record<string, never>;
+    result: string | Record<string, unknown> | null;
     error: string;
   };
   /** src/data_governance/commands_sync.rs:5010 `data_governance_purge_resolved_conflicts` */
@@ -445,6 +473,8 @@ export type DataGovernanceDiscardQuarantineCommandArgs = Commands['data_governan
 export type DataGovernanceDiscardQuarantineCommandResult = Commands['data_governance_discard_quarantine']['result'];
 export type DataGovernanceExportSyncDataCommandArgs = Commands['data_governance_export_sync_data']['args'];
 export type DataGovernanceExportSyncDataCommandResult = Commands['data_governance_export_sync_data']['result'];
+export type DataGovernanceGetPendingBreakdownCommandArgs = Commands['data_governance_get_pending_breakdown']['args'];
+export type DataGovernanceGetPendingBreakdownCommandResult = Commands['data_governance_get_pending_breakdown']['result'];
 export type DataGovernanceGetSyncStatusCommandArgs = Commands['data_governance_get_sync_status']['args'];
 export type DataGovernanceGetSyncStatusCommandResult = Commands['data_governance_get_sync_status']['result'];
 export type DataGovernanceImportSyncDataCommandArgs = Commands['data_governance_import_sync_data']['args'];
@@ -461,6 +491,8 @@ export type DataGovernanceMarkAssetDeletedCommandArgs = Commands['data_governanc
 export type DataGovernanceMarkAssetDeletedCommandResult = Commands['data_governance_mark_asset_deleted']['result'];
 export type DataGovernanceMarkBlobDeletedCommandArgs = Commands['data_governance_mark_blob_deleted']['args'];
 export type DataGovernanceMarkBlobDeletedCommandResult = Commands['data_governance_mark_blob_deleted']['result'];
+export type DataGovernancePairingGetCloudCredentialsCommandArgs = Commands['data_governance_pairing_get_cloud_credentials']['args'];
+export type DataGovernancePairingGetCloudCredentialsCommandResult = Commands['data_governance_pairing_get_cloud_credentials']['result'];
 export type DataGovernancePurgeResolvedConflictsCommandArgs = Commands['data_governance_purge_resolved_conflicts']['args'];
 export type DataGovernancePurgeResolvedConflictsCommandResult = Commands['data_governance_purge_resolved_conflicts']['result'];
 export type DataGovernanceRepoCheckCommandArgs = Commands['data_governance_repo_check']['args'];

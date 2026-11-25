@@ -1,7 +1,7 @@
 // RUST-FIX(RF-P6-manager-cards): 「我的插件」用卡片呈现——身份、它增加了什么、状态、就近的开关与一个顺手的主操作。
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowCounterClockwise, ArrowSquareOut, ChatCircleText, DotsThree, Export, Info, NotePencil, Play, Power, ShieldCheck, Sparkle, Trash,
+  ArrowCounterClockwise, ArrowSquareOut, ChatCircleText, DotsThree, Export, Info, NotePencil, Play, Power, ShieldCheck, Sparkle, Trash, WarningCircle,
 } from '@phosphor-icons/react';
 
 import { AppMenu, AppMenuContent, AppMenuItem, AppMenuSeparator, AppMenuTrigger } from '@/components/ui/app-menu/AppMenu';
@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/shad/Switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { cn } from '@/lib/utils';
 
-import type { PluginAutoUninstallReason } from './reasons';
+import { describePluginFault, type PluginAutoUninstallReason } from './reasons';
 import type { ManagedPlugin, PluginPlatform } from './types';
 import type { PluginUiStatusSnapshot } from './ui-status';
 import {
@@ -154,28 +154,38 @@ export function PluginCard({
   const supported = plugin.platforms.length === 0 || plugin.platforms.includes(platform);
   const blockedBySafeMode = safeMode && plugin.origin === 'community';
   const consentRequired = uiStatus?.consentRequired === true || plugin.consent === 'required';
+  const fault = describePluginFault(t, {
+    degradedReason: plugin.degraded?.reason,
+    uiDegraded: uiStatus?.degraded,
+    runtime: plugin.runtime,
+    runtimeDetail: plugin.runtimeDetail,
+    autoUninstalled,
+  });
   const statusKey = !supported ? unsupportedPlatformKey(plugin, platform) : autoUninstalled ? 'manager.problemStatus' : pluginStatusKey(plugin, uiStatus, safeMode);
   // 还没被允许的插件实际上不在运行：开关如实显示为关，由「允许并启用」打开。
   const switchChecked = pendingEnabled ?? (plugin.enabled && !consentRequired);
-  const switchDisabled = busy || !supported || blockedBySafeMode;
+  // 安全模式下禁止启用社区插件，但允许停用已启用的社区插件以隔离排查故障。
+  const switchDisabled = busy || !supported || (blockedBySafeMode && !switchChecked);
   const additions = pluginAdditions(plugin, livePoints);
   const running = plugin.enabled && plugin.runtime === 'running';
   const headingId = `plugin-card-${plugin.id.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
 
   // 一个顺手的主操作：要允许就「允许并启用」；按它增加了什么去用它（打开应用 / 去笔记里试试 / 试一句）；
-  // 已启用但没跑起来就「启动」。没有明显的就不放。
+  // 已启用但没跑起来就「启动」（安全模式下不展示不可点的「启动」，改为直接给排查动作）。没有明显的就不放。
   const phrase = plugin.agentTools?.[0]?.title;
-  const primary: CardPrimary | null = consentRequired && onReviewConsent
-    ? { key: 'consent', label: t('card.allowAndEnable'), a11y: t('row.reviewConsentA11y', { id: name }), icon: ShieldCheck, run: onReviewConsent, disabled: busy || blockedBySafeMode }
-    : running && canOpen && onOpen
-      ? { key: 'open', label: t('card.openNamed', { name }), a11y: t('card.openA11y', { id: name }), icon: ArrowSquareOut, run: onOpen, disabled: false }
-      : running && additions.includes('selectionButton') && onTryNotes
-        ? { key: 'try-notes', label: t('card.tryNotes'), a11y: t('card.tryNotes'), icon: NotePencil, run: onTryNotes, disabled: false }
-        : running && phrase && onTrySay
-          ? { key: 'try-say', label: t('card.trySay', { phrase }), a11y: t('card.trySay', { phrase }), icon: ChatCircleText, run: () => onTrySay(phrase), disabled: false }
-          : plugin.enabled && plugin.runtime !== 'running' && !consentRequired
-            ? { key: 'start', label: t('manager.start'), a11y: t('card.startA11y', { id: name }), icon: Play, run: () => onToggle(true), disabled: switchDisabled }
-            : null;
+  const primary: CardPrimary | null = blockedBySafeMode
+    ? null
+    : consentRequired && onReviewConsent
+      ? { key: 'consent', label: t('card.allowAndEnable'), a11y: t('row.reviewConsentA11y', { id: name }), icon: ShieldCheck, run: onReviewConsent, disabled: busy }
+      : running && canOpen && onOpen
+        ? { key: 'open', label: t('card.openNamed', { name }), a11y: t('card.openA11y', { id: name }), icon: ArrowSquareOut, run: onOpen, disabled: false }
+        : running && additions.includes('selectionButton') && onTryNotes
+          ? { key: 'try-notes', label: t('card.tryNotes'), a11y: t('card.tryNotes'), icon: NotePencil, run: onTryNotes, disabled: false }
+          : running && phrase && onTrySay
+            ? { key: 'try-say', label: t('card.trySay', { phrase }), a11y: t('card.trySay', { phrase }), icon: ChatCircleText, run: () => onTrySay(phrase), disabled: false }
+            : plugin.enabled && plugin.runtime !== 'running' && !consentRequired
+              ? { key: 'start', label: t('manager.start'), a11y: t('card.startA11y', { id: name }), icon: Play, run: () => onToggle(true), disabled: switchDisabled }
+              : null;
 
   return (
     <div role="listitem" aria-labelledby={headingId}
@@ -208,12 +218,64 @@ export function PluginCard({
         {description || t('card.noDescription')}
       </p>
 
+      {fault ? (
+        <div
+          data-testid="plugin-card-diagnostic"
+          data-fault="true"
+          data-code={fault.code ?? undefined}
+          className="flex items-start gap-1.5 rounded-lg border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-xs leading-relaxed text-destructive"
+        >
+          <WarningCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 break-words">
+            {fault.label}
+            {fault.detail ? `：${fault.detail}` : ''}
+          </span>
+        </div>
+      ) : blockedBySafeMode ? (
+        <p
+          data-testid="plugin-card-diagnostic"
+          data-fault="false"
+          className="rounded-lg border border-warning/25 bg-warning/10 px-2.5 py-1.5 text-xs leading-relaxed text-muted-foreground"
+        >
+          {t(plugin.enabled ? 'safeMode.cardPausedHint' : 'safeMode.cardQuarantinedHint')}
+        </p>
+      ) : null}
+
       {/* 标签与底栏一起贴底：同一行的卡片等高，说明长短不同也不会让标签和按钮上下错位。 */}
       <div className="mt-auto flex min-w-0 flex-col gap-2.5 pt-0.5">
       <PluginAdditionChips kinds={additions} />
 
-      <div className="flex min-h-8 min-w-0 items-center gap-2">
-        {primary ? (
+      <div className="flex min-h-8 min-w-0 flex-wrap items-center gap-2">
+        {blockedBySafeMode ? (
+          <div data-testid="plugin-card-safe-mode-actions" className="flex shrink-0 items-center gap-1.5">
+            {plugin.enabled ? (
+              <DsButton
+                variant="outline"
+                size="sm"
+                data-testid="plugin-card-disable"
+                aria-label={t('row.disable', { id: name })}
+                className={cn('!h-8 shrink-0 gap-1 !rounded-lg !px-2.5', COARSE_TOUCH)}
+                disabled={busy}
+                onClick={() => onToggle(false)}
+              >
+                <Power className="size-3.5" aria-hidden="true" />
+                {t('card.disable')}
+              </DsButton>
+            ) : null}
+            <DsButton
+              variant="outline"
+              size="sm"
+              data-testid="plugin-card-uninstall"
+              aria-label={t('row.uninstallA11y', { id: name })}
+              className={cn('!h-8 shrink-0 gap-1 !rounded-lg !px-2.5 !text-destructive', COARSE_TOUCH)}
+              disabled={busy}
+              onClick={onUninstall}
+            >
+              <Trash className="size-3.5" aria-hidden="true" />
+              {t('row.uninstall')}
+            </DsButton>
+          </div>
+        ) : primary ? (
           <DsButton variant="outline" size="sm" data-testid={`plugin-card-${primary.key}`} aria-label={primary.a11y}
             // 卡片网格里不放实色按钮（D1：一个视图一个实色主按钮；详情页才用实色）。
             className={cn('!h-8 shrink-0 gap-1.5 !rounded-lg !px-2.5', COARSE_TOUCH)}
@@ -242,7 +304,7 @@ export function PluginCard({
           <AppMenuContent align="end" width={208}>
             {canModify && onModify ? <AppMenuItem icon={<Sparkle size={16} />} onClick={onModify}>{t('manager.modify')}</AppMenuItem> : null}
             <AppMenuItem icon={<Info size={16} />} onClick={onSelect}>{t('card.details')}</AppMenuItem>
-            {plugin.enabled && !consentRequired ? <AppMenuItem icon={<Power size={16} />} disabled={switchDisabled} onClick={() => onToggle(false)}>{t('card.disable')}</AppMenuItem> : null}
+            {plugin.enabled && !consentRequired ? <AppMenuItem icon={<Power size={16} />} disabled={busy || !supported} onClick={() => onToggle(false)}>{t('card.disable')}</AppMenuItem> : null}
             {canExport && onExport ? <AppMenuItem icon={<Export size={16} />} disabled={busy} onClick={onExport}>{t('card.export')}</AppMenuItem> : null}
             {previousVersion && onRestorePrevious ? (
               <AppMenuItem icon={<ArrowCounterClockwise size={16} />} disabled={busy || blockedBySafeMode} onClick={onRestorePrevious}>

@@ -86,6 +86,7 @@ export interface SidebarContentAreaProps {
   handleContextMenu: (e: React.MouseEvent, item: DstuNode) => void;
   handleContainerContextMenu: (e: React.MouseEvent) => void;
   handleEmptyStateCreate: (e: React.MouseEvent) => void;
+  handleImportFiles?: () => void;
   handleMoveItem: (itemId: string, targetFolderId: string | null) => Promise<void>;
   handleMoveItems: (itemIds: string[], targetFolderId: string | null) => Promise<void>;
   handleInlineEditConfirm: (itemId: string, newName: string) => Promise<void>;
@@ -150,6 +151,7 @@ export function SidebarContentArea({
   handleContextMenu,
   handleContainerContextMenu,
   handleEmptyStateCreate,
+  handleImportFiles,
   handleMoveItem,
   handleMoveItems,
   handleInlineEditConfirm,
@@ -329,6 +331,7 @@ export function SidebarContentArea({
           onContainerClick={mode === 'canvas' ? (isMultiSelectMode ? clearSelection : undefined) : clearSelection}
           onContainerContextMenu={mode === 'canvas' ? undefined : handleContainerContextMenu}
           onEmptyCreate={mode === 'canvas' ? undefined : handleEmptyStateCreate}
+          onImportFiles={mode === 'canvas' || !canCreateInCurrentView ? undefined : handleImportFiles}
           onMoveItem={mode === 'canvas' ? undefined : handleMoveItem}
           onMoveItems={mode === 'canvas' ? undefined : handleMoveItems}
           isLoading={isLoading}

@@ -63,6 +63,17 @@ import { pluginExecution } from './plugin-execution.ts';
 import { fetchRemotePackArchive } from '../plugins/plugin-workshop/src/remote-pack-fetch.ts';
 
 export const PLUGIN_MANAGER_INSTALL_URL_COMMAND = 'plugin:manager|install-url';
+export const PLUGIN_MANAGER_RESET_PROFILE_COMMAND = 'plugin:manager|reset-profile';
+
+export interface PluginManagerResetProfileResult {
+  backedUpTo: string | null;
+  revision: string;
+}
+
+export interface PluginManagerInventoryWithStatus extends PluginManagerInventory {
+  profileCorrupted?: boolean;
+  profileError?: string;
+}
 
 export interface ManagedPluginInstallRequest {
   id: string;
@@ -356,6 +367,7 @@ export class PluginAdmin {
     commands._registerKernel(PLUGIN_MANAGER_INSTALL_COMMAND, (args, call) => mutation(() => this.installPackage(args, call)));
     commands._registerKernel(PLUGIN_MANAGER_INSTALL_URL_COMMAND, (args, call) => mutation(() => this.installPackageFromUrl(args, call)));
     commands._registerKernel(PLUGIN_MANAGER_SET_TRUST_COMMAND, (args, call) => mutation(() => this.setTrust(args, call)));
+    commands._registerKernel(PLUGIN_MANAGER_RESET_PROFILE_COMMAND, (args, call) => mutation(() => this.resetProfile(args, call)));
   }
 
   // ---------------------------------------------------------------- 读
@@ -380,48 +392,112 @@ export class PluginAdmin {
     return result;
   }
 
-  private async list(args: unknown, call: CallContext): Promise<PluginManagerInventory> {
+  private async list(args: unknown, call: CallContext): Promise<PluginManagerInventoryWithStatus> {
     assertTrustedManagerSource(call.source, PLUGIN_MANAGER_LIST_COMMAND);
     const document = argsObject(args, PLUGIN_MANAGER_LIST_COMMAND);
     if (Object.keys(document).length) validation(`${PLUGIN_MANAGER_LIST_COMMAND}: takes no arguments`);
 
-    let profile: ProfileDocument;
+    let profile: ProfileDocument | null = null;
+    let profileCorrupted = false;
+    let profileError: string | undefined;
     try {
       profile = await this.store.read();
     } catch (error) {
-      throw new CommandError(AppError.configuration(`PROFILE_READ_FAILED: ${errorText(error)}`));
+      profileCorrupted = true;
+      profileError = errorText(error);
+      this.runtime.ctx.logger('host').warn(`[plugin-manager] user profile ${this.store.path} is corrupted or unreadable: ${profileError}`);
     }
-    const disabled = disabledIds(profile.file);
+    const disabled = profile ? disabledIds(profile.file) : new Set<string>();
     let effective: ResolvedEntry[] = [];
-    if (profile.exists) {
+    if (profile?.exists) {
       try {
         effective = await resolveProfile(this.store.path, { official: this.official, user: true });
       } catch (error) {
         this.runtime.ctx.logger('host').warn(`[plugin-manager] cannot resolve ${this.store.path}: ${errorText(error)}`);
       }
     }
+    let officialEntries: ResolvedEntry[] = [];
+    if (profileCorrupted) {
+      try {
+        officialEntries = await resolveProfile(this.official);
+      } catch (error) {
+        this.runtime.ctx.logger('host').warn(`[plugin-manager] cannot resolve official profile ${this.official}: ${errorText(error)}`);
+      }
+    }
 
+    const releases = await this.releases();
     const ids = new Set<string>();
     for (const entry of effective) ids.add(entry.id);
     for (const entry of this.runtime.plugins()) ids.add(entry.id);
     for (const entry of this.runtime.degradedPlugins()) ids.add(entry.id);
     for (const id of disabled) ids.add(id);
+    if (profileCorrupted) {
+      for (const release of releases) ids.add(release.id);
+    }
 
-    const releases = await this.releases();
     // 依赖关系一次算完：谁的服务正被别的已安装插件注入（停用它会被 PLUGIN_UNLOAD_BLOCKED 拒绝）。
     const dependents = this.runtime.dependents();
     const plugins: PluginManagerEntry[] = [];
     for (const id of [...ids].sort()) {
+      const release = releases.find((entry) => entry.id === id);
+      const effectiveEntry = effective.find((entry) => entry.id === id)
+        ?? (profileCorrupted
+          ? (await this.releaseEntry(release) ?? officialEntries.find((entry) => entry.id === id))
+          : await this.declaredEntry(id).catch(() => undefined));
       plugins.push(await this.describe(id, {
         requiredBy: dependents.get(id) ?? [],
-        release: releases.find((entry) => entry.id === id),
+        release,
         installed: this.runtime.get(id),
-        effective: effective.find((entry) => entry.id === id) ?? await this.declaredEntry(id),
-        disabled: disabled.has(id),
+        effective: effectiveEntry,
+        disabled: disabled.has(id) || (profileCorrupted && release?.enabled === false),
         reason: this.runtime.degradedPlugins().find((entry) => entry.id === id)?.reason,
       }));
     }
-    return { safeMode: this.runtime.safeMode, revision: profile.revision, plugins };
+    return {
+      safeMode: this.runtime.safeMode,
+      revision: profileCorrupted ? 'corrupt' : profile!.revision,
+      plugins,
+      ...(profileCorrupted ? { profileCorrupted: true, profileError } : {}),
+    };
+  }
+
+  private async resetProfile(args: unknown, call: CallContext): Promise<PluginManagerResetProfileResult> {
+    assertTrustedManagerSource(call.source, PLUGIN_MANAGER_RESET_PROFILE_COMMAND);
+    const document = argsObject(args, PLUGIN_MANAGER_RESET_PROFILE_COMMAND);
+    if (Object.keys(document).length) validation(`${PLUGIN_MANAGER_RESET_PROFILE_COMMAND}: takes no arguments`);
+    // 救援命令：允许在安全模式与正常模式下执行，先保留备份再写入干净默认 profile。
+    try {
+      const result = await this.store.resetWithBackup();
+      this.runtime.ctx.logger('host').warn(
+        result.backedUpTo
+          ? `[plugin-manager] reset user profile ${this.store.path} (backed up to ${result.backedUpTo})`
+          : `[plugin-manager] reset user profile ${this.store.path} (no existing profile file)`,
+      );
+      return result;
+    } catch (error) {
+      throw new CommandError(AppError.file_system(`PROFILE_RESET_FAILED: ${errorText(error)}`));
+    }
+  }
+
+  private async releaseEntry(release: PackageRecord | undefined): Promise<ResolvedEntry | undefined> {
+    if (!release) return undefined;
+    try {
+      const releaseDir = join(this.runtime.app.dataDir, 'plugins', release.path);
+      const pkg = JSON.parse(await readFile(join(releaseDir, 'package.json'), 'utf8')) as {
+        deepStudent?: { host?: unknown };
+      };
+      const entryFile = typeof pkg.deepStudent?.host === 'string' && pkg.deepStudent.host
+        ? pkg.deepStudent.host
+        : 'package.json';
+      return {
+        id: release.id,
+        config: undefined,
+        declaredIn: this.store.path,
+        specifier: pathToFileURL(resolve(releaseDir, entryFile)).href,
+      };
+    } catch {
+      return undefined;
+    }
   }
 
   private async describe(id: string, state: {
@@ -465,7 +541,7 @@ export class PluginAdmin {
         ...(meta?.descriptionKey ? { descriptionKey: meta.descriptionKey } : !meta?.description ? { descriptionKey: `builtinDescriptions.${id}` } : {}),
       } : communityFields),
       platforms: [...(meta?.platforms ?? manifest?.platforms ?? ['desktop'])],
-      ...(manifest !== undefined ? { version: manifest.version } : meta?.version !== undefined ? { version: meta.version } : {}),
+      ...(manifest !== undefined ? { version: manifest.version } : meta?.version !== undefined ? { version: meta.version } : release !== undefined ? { version: release.version } : {}),
       enabled: !disabled,
       state: installed ? 'running' : disabled ? 'disabled' : reason !== undefined ? 'degraded' : 'not-installed',
       ...(reason !== undefined && !installed ? { reason } : {}),

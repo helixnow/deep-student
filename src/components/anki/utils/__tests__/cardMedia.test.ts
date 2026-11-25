@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  extractInlineMediaNames,
   injectCardMedia,
+  isAnkiMediaRef,
   isInteractiveCardHtml,
   looksLikeHtml,
+  lookupCardMedia,
   mediaBasename,
   soundNames,
 } from '../cardMedia';
@@ -18,6 +21,25 @@ describe('card media injection', () => {
     expect(injectCardMedia(html, media)).toBe(
       '<img src="data:image/png;base64,AAAA"> <img src=\'https://x.test/a.png\'> <img src="missing.png">',
     );
+  });
+
+  it('rewrites unquoted src, anki-media:// refs, and case-insensitive filenames', () => {
+    const html = '<img src=MAP.PNG> <img src="anki-media://map.png"> [sound:CLIP.MP3]';
+    const out = injectCardMedia(html, media);
+    expect(out).toContain('<img src="data:image/png;base64,AAAA">');
+    expect(out).not.toContain('anki-media://');
+    expect(out).toContain('<audio class="anki-audio" controls preload="auto" src="data:audio/mpeg;base64,BBBB"');
+  });
+
+  it('extracts inline local media filenames and classifies anki media references', () => {
+    expect(
+      extractInlineMediaNames('<img src="qa_img_01.png"><img src=qa_img_02.jpg><img src="https://x/a.png">[sound:qa_audio_01.mp3]'),
+    ).toEqual(['qa_img_01.png', 'qa_img_02.jpg', 'qa_audio_01.mp3']);
+    expect(isAnkiMediaRef('/custom/data/anki_media/qa_img_01.png')).toBe(true);
+    expect(isAnkiMediaRef('anki-media://qa_img_01.png')).toBe(true);
+    expect(isAnkiMediaRef('qa_img_01.png')).toBe(true);
+    expect(isAnkiMediaRef('https://example.com/a.png')).toBe(false);
+    expect(lookupCardMedia(media, 'anki-media://MAP.PNG')).toBe('data:image/png;base64,AAAA');
   });
 
   it('turns sound tags into playable audio and falls back to a badge without the file', () => {

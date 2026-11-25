@@ -126,6 +126,7 @@ export const TodoItemDetail: React.FC<{
   const updateItem = useTodoStore((s) => s.updateItem);
   const toggleItem = useTodoStore((s) => s.toggleItem);
   const deleteItem = useTodoStore((s) => s.deleteItem);
+  const ensureSubtasksLoaded = useTodoStore((s) => s.ensureSubtasksLoaded);
 
   const [title, setTitle] = useState(item.title);
   const [description, setDescription] = useState(item.description || '');
@@ -137,6 +138,7 @@ export const TodoItemDetail: React.FC<{
   const [intervalDraft, setIntervalDraft] = useState('');
   const [pomodoroHistory, setPomodoroHistory] = useState<PomodoroRecord[]>([]);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // 同步草稿快照与已提交基准：onChange 同步写入 draftRef，保证未触发重渲染或未触发 blur
   // 即发生任务切换 / 面板卸载 / 页面刷新时，handleSave 也能立即读取最新文本并落库，且不会重复提交。
@@ -310,6 +312,13 @@ export const TodoItemDetail: React.FC<{
   const isSubtask = Boolean(item.parentId);
   const isCompleted = item.status === 'completed';
 
+  // 从矩阵 / 已完成 / 搜索等视图打开父任务详情时，兜底拉取其直接子任务，
+  // 保证详情面板始终能渲染每条子任务的独立勾选框与完成状态。
+  useEffect(() => {
+    if (isSubtask || typeof ensureSubtasksLoaded !== 'function') return;
+    void ensureSubtasksLoaded(item.id, item.todoListId);
+  }, [isSubtask, item.id, item.todoListId, ensureSubtasksLoaded]);
+
   // ===== 顶栏勾选：与列表一致的弹性勾选动效 =====
   const [checkPop, setCheckPop] = useState(false);
   const checkPopTimerRef = useRef<number | null>(null);
@@ -436,6 +445,31 @@ export const TodoItemDetail: React.FC<{
     [item.id, updateItem, markSaved],
   );
 
+  /** 编辑时间时始终保留原有截止日期（含逾期日期），仅在尚未设置日期且填入非空时间时默认今天 */
+  const applyDueTime = useCallback(
+    (nextTime: string) => {
+      const existingDueDate =
+        draftRef.current.dueDate || committedRef.current.dueDate || item.dueDate || '';
+      const resolvedDueDate =
+        existingDueDate || (nextTime.trim() ? localToday() : '');
+      draftRef.current.dueTime = nextTime;
+      committedRef.current.dueTime = nextTime;
+      setDueTime(nextTime);
+      if (resolvedDueDate) {
+        draftRef.current.dueDate = resolvedDueDate;
+        committedRef.current.dueDate = resolvedDueDate;
+        setDueDate(resolvedDueDate);
+      }
+      const payload: UpdateTodoItemInput = {
+        id: item.id,
+        dueTime: nextTime,
+        ...(resolvedDueDate ? { dueDate: resolvedDueDate } : {}),
+      };
+      void updateItem(payload).then(markSaved);
+    },
+    [item.id, item.dueDate, updateItem, markSaved],
+  );
+
   const clearDueDate = useCallback(() => {
     draftRef.current.dueDate = '';
     draftRef.current.dueTime = '';
@@ -492,6 +526,16 @@ export const TodoItemDetail: React.FC<{
     }
     if (draft.dueTime !== base.dueTime) {
       changes.dueTime = draft.dueTime;
+      if (changes.dueDate === undefined) {
+        const preservedDueDate = draft.dueDate || base.dueDate || item.dueDate || '';
+        const resolvedDueDate =
+          preservedDueDate || (draft.dueTime.trim() ? localToday() : '');
+        if (resolvedDueDate) {
+          draft.dueDate = resolvedDueDate;
+          setDueDate(resolvedDueDate);
+          changes.dueDate = resolvedDueDate;
+        }
+      }
       hasChanges = true;
     }
     if (draft.reminder !== base.reminder) {
@@ -510,6 +554,7 @@ export const TodoItemDetail: React.FC<{
     return hasChanges;
   }, [
     item.id,
+    item.dueDate,
     repeatRule,
     triggerRepeatAnchorHint,
     updateItem,
@@ -769,6 +814,13 @@ export const TodoItemDetail: React.FC<{
           )}
         </div>
 
+        {/* 子任务区（仅顶层任务；紧随描述置于首屏可见区，提供逐条勾选框、删除线与实时进度） */}
+        {!isSubtask && (
+          <div className={SECTION_CLASS}>
+            <SubtaskSection item={item} subtasks={subtasks} />
+          </div>
+        )}
+
         {/* 属性面板 — 扁平属性行，统一圆角/悬停语言 */}
         <div className="space-y-0.5">
           <div className={PROPERTY_ROW_CLASS}>
@@ -883,24 +935,22 @@ export const TodoItemDetail: React.FC<{
             </div>
           </InlineReveal>
 
-          <InlineReveal open={Boolean(dueDate)}>
-            <div className={PROPERTY_ROW_CLASS}>
-              <span className="w-[4.75rem] flex-shrink-0 text-xs text-muted-foreground">
-                {t('todo:fields.dueTime')}
-              </span>
-              <Input
-                type="time"
-                value={dueTime}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  draftRef.current.dueTime = next;
-                  setDueTime(next);
-                }}
-                onBlur={handleBlur}
-                className="flex-1"
-              />
-            </div>
-          </InlineReveal>
+          <div className={PROPERTY_ROW_CLASS}>
+            <span className="w-[4.75rem] flex-shrink-0 text-xs text-muted-foreground">
+              {t('todo:fields.dueTime')}
+            </span>
+            <Input
+              type="time"
+              data-testid="todo-detail-due-time"
+              aria-label={t('todo:fields.dueTime')}
+              value={dueTime}
+              onChange={(e) => {
+                applyDueTime(e.target.value);
+              }}
+              onBlur={handleBlur}
+              className="flex-1"
+            />
+          </div>
 
           <div className={PROPERTY_ROW_CLASS}>
             <span className="flex w-[4.75rem] flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -1119,13 +1169,6 @@ export const TodoItemDetail: React.FC<{
           )}
         </div>
 
-        {/* 子任务区（仅顶层任务） */}
-        {!isSubtask && (
-          <div className={SECTION_CLASS}>
-            <SubtaskSection item={item} subtasks={subtasks} />
-          </div>
-        )}
-
         <div className={SECTION_CLASS}>
           <LinkedResourcesSection item={item} onSaved={markSaved} />
         </div>
@@ -1143,18 +1186,24 @@ export const TodoItemDetail: React.FC<{
 
       {/* 底部安全区由 MobileDetailOverlay 容器统一兜底，此处不再重复叠加 */}
       <div className="flex items-center justify-between gap-3 border-t border-border/35 px-4 py-3">
-        <span className="min-w-0 flex-shrink truncate text-xs text-muted-foreground">
-          {item.updatedAt
-            ? t('todo:detail.updatedAt', {
-                date: new Date(item.updatedAt).toLocaleDateString(),
-              })
-            : ''}
-        </span>
+        {!confirmingDelete && (
+          <span
+            data-testid="todo-detail-updated-at"
+            className="min-w-0 flex-shrink truncate text-xs text-muted-foreground"
+          >
+            {item.updatedAt
+              ? t('todo:detail.updatedAt', {
+                  date: new Date(item.updatedAt).toLocaleDateString(),
+                })
+              : ''}
+          </span>
+        )}
         <InlineConfirmDelete
           label={t('common:actions.delete')}
           question={t('todo:detail.deleteConfirm')}
           confirmLabel={t('common:actions.delete')}
           cancelLabel={t('common:actions.cancel')}
+          onConfirmingChange={setConfirmingDelete}
           onConfirm={() => {
             void deleteItem(item.id);
             onClose();

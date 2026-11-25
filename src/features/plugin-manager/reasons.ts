@@ -103,18 +103,34 @@ export function errorBudgetOf(
   return { errors: budget.count(pluginId), budget: threshold };
 }
 
+export type ManagerErrorCategory =
+  | 'path'
+  | 'archive'
+  | 'manifest'
+  | 'compatibility'
+  | 'permission'
+  | 'network'
+  | 'runtime'
+  | 'general';
+
 export interface FriendlyManagerError {
   readonly explanation: string;
   readonly technical: string;
+  readonly category: ManagerErrorCategory;
 }
 
 const MANAGER_ERROR_KEYS: Readonly<Record<string, string>> = {
   MANIFEST_INVALID: 'error.reasons.manifestInvalid',
-  MANIFEST_MISSING: 'error.reasons.packageInvalid',
-  MANIFEST_VERSION_UNSUPPORTED: 'error.reasons.engineIncompatible',
+  MANIFEST_MISSING: 'error.reasons.manifestMissing',
+  MANIFEST_VERSION_UNSUPPORTED: 'error.reasons.manifestVersionUnsupported',
   ENGINE_INCOMPATIBLE: 'error.reasons.engineIncompatible',
   ID_RESERVED: 'error.reasons.idReserved',
+  ID_MISMATCH: 'error.reasons.idMismatch',
+  VERSION_MISMATCH: 'error.reasons.versionMismatch',
+  HOST_ENTRY_MISMATCH: 'error.reasons.hostEntryMismatch',
+  PERMISSION_UNKNOWN_KIND: 'error.reasons.permissionUnknown',
   PERMISSION_UNDECLARED: 'error.reasons.permissionUndeclared',
+  PLUGIN_INSTALL_UNAVAILABLE: 'error.reasons.installUnavailable',
   SAFE_MODE_ACTIVE: 'error.reasons.safeMode',
   CONSENT_REQUIRED: 'error.reasons.consentRequired',
   CONSENT_STALE: 'error.reasons.consentStale',
@@ -134,17 +150,65 @@ const MANAGER_ERROR_KEYS: Readonly<Record<string, string>> = {
   STAGE_UPLOAD_FAILED: 'error.reasons.stageUploadFailed',
 };
 
+const MANAGER_ERROR_CATEGORIES: Readonly<Record<string, ManagerErrorCategory>> = {
+  MANIFEST_INVALID: 'manifest',
+  MANIFEST_MISSING: 'manifest',
+  ID_RESERVED: 'manifest',
+  ID_MISMATCH: 'manifest',
+  VERSION_MISMATCH: 'manifest',
+  HOST_ENTRY_MISMATCH: 'manifest',
+  MANIFEST_VERSION_UNSUPPORTED: 'compatibility',
+  ENGINE_INCOMPATIBLE: 'compatibility',
+  UNSUPPORTED_ON_PLATFORM: 'compatibility',
+  PERMISSION_UNKNOWN_KIND: 'permission',
+  PERMISSION_UNDECLARED: 'permission',
+  CONSENT_REQUIRED: 'permission',
+  CONSENT_STALE: 'permission',
+  REMOTE_PACK_INVALID_URL: 'network',
+  REMOTE_PACK_HTTPS_REQUIRED: 'network',
+  REMOTE_PACK_HOST_BLOCKED: 'network',
+  REMOTE_PACK_REDIRECT_BLOCKED: 'network',
+  REMOTE_PACK_BAD_EXTENSION: 'archive',
+  REMOTE_PACK_TOO_LARGE: 'archive',
+  REMOTE_PACK_CREDENTIALS_FORBIDDEN: 'network',
+  REMOTE_PACK_HTTP_ERROR: 'network',
+  STAGE_UPLOAD_FAILED: 'network',
+  SAFE_MODE_ACTIVE: 'runtime',
+  PLUGIN_UNLOAD_BLOCKED: 'runtime',
+  PLUGIN_ENABLE_FAILED: 'runtime',
+  PLUGIN_INSTALL_UNAVAILABLE: 'runtime',
+};
+
+function stripLeadingCode(detail: string, ...codes: string[]): string {
+  let text = detail.trim();
+  for (const code of codes) {
+    if (!code) continue;
+    const prefix = new RegExp(`^${code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:\\s*`, 'i');
+    text = text.replace(prefix, '').trim();
+  }
+  return text;
+}
+
 export function resolveManagerErrorCode(code: string, detail?: string): string {
-  if (code === 'PLUGIN_INSTALL_FAILED' && detail) {
+  if ((code === 'PLUGIN_INSTALL_FAILED' || code === 'OPERATION_FAILED') && detail) {
     const prefixed = /^([A-Z][A-Z0-9_]+):/.exec(detail.trim())?.[1];
-    if (prefixed && prefixed !== 'PLUGIN_INSTALL_FAILED') return prefixed;
-    if (/invalid path|escapes|traversal|\.\.|zip slip|symlink|foreign root/i.test(detail)) {
+    if (prefixed && prefixed !== 'PLUGIN_INSTALL_FAILED' && prefixed !== 'OPERATION_FAILED') return prefixed;
+    if (/invalid path|escapes|traversal|\.\.|zip slip|symlink|non-regular zip|foreign root|duplicate zip path/i.test(detail)) {
       return 'PLUGIN_PACKAGE_INVALID';
     }
-    if (/json|package\.json|zip|central directory|archive|corrupt|checksum/i.test(detail)) {
+    if (/manifestVersion\s+\d+|newer than this app supports/i.test(detail)) {
+      return 'MANIFEST_VERSION_UNSUPPORTED';
+    }
+    if (/requires app version|requires plugin API|engine_incompatible/i.test(detail)) {
+      return 'ENGINE_INCOMPATIBLE';
+    }
+    if (/no "deepStudent" manifest/i.test(detail)) {
+      return 'MANIFEST_MISSING';
+    }
+    if (/json|package\.json|zip|central directory|archive|corrupt|checksum|sha256|missing (host|ui) entrypoint|missing declarative\.|expected \.dstuplugin|0 bytes|empty/i.test(detail)) {
       return 'PLUGIN_PACKAGE_INVALID';
     }
-    if (/manifest|engines\.deepStudent|\/deepStudent/i.test(detail)) {
+    if (/manifest|engines\.deepStudent|\/deepStudent|schema/i.test(detail)) {
       return 'MANIFEST_INVALID';
     }
   }
@@ -158,31 +222,153 @@ export function describeManagerError(
   detail?: string,
 ): FriendlyManagerError {
   const effectiveCode = resolveManagerErrorCode(code, detail);
-  const cleanedDetail = detail?.replace(/^PLUGIN_INSTALL_FAILED:\s*/i, '').trim();
+  const cleanedDetail = detail?.replace(/^(?:PLUGIN_INSTALL_FAILED|OPERATION_FAILED):\s*/i, '').trim();
   const technical = cleanedDetail
     ? (cleanedDetail.startsWith(`${effectiveCode}:`) ? cleanedDetail : `${effectiveCode}: ${cleanedDetail}`)
     : effectiveCode;
+
   if (effectiveCode === 'PLUGIN_PACKAGE_INVALID' || effectiveCode === 'PLUGIN_WORKSHOP_PATH_INVALID') {
-    const raw = cleanedDetail ?? '';
-    const key = /invalid path|escapes|traversal|\.\.|zip slip|symlink|foreign root/i.test(raw)
-      ? 'error.reasons.packageTraversal'
-      : /json|package\.json/i.test(raw)
-        ? 'error.reasons.packageInvalidJson'
-        : /zip|central directory|archive/i.test(raw)
-          ? 'error.reasons.packageInvalidZip'
-          : 'error.reasons.packageInvalid';
-    return { explanation: t(key), technical };
-  }
-  if (effectiveCode === 'MANIFEST_INVALID' && cleanedDetail) {
-    const cleanManifestDetail = cleanedDetail.replace(/^MANIFEST_INVALID:\s*/i, '').trim();
+    const raw = stripLeadingCode(cleanedDetail ?? '', effectiveCode, 'PLUGIN_PACKAGE_INVALID', 'PLUGIN_WORKSHOP_PATH_INVALID');
+    if (/invalid path|escapes|traversal|\.\.|zip slip|symlink|non-regular zip|foreign root|duplicate zip path/i.test(raw)) {
+      return {
+        category: 'path',
+        explanation: raw ? t('error.reasons.packageTraversalWithDetail', { detail: raw }) : t('error.reasons.packageTraversal'),
+        technical,
+      };
+    }
+    if (/package\.json.*missing|missing.*package\.json|missing package manifest/i.test(raw)) {
+      return { category: 'manifest', explanation: t('error.reasons.packageMissingManifest'), technical };
+    }
+    if (/missing (?:host|ui) entrypoint|missing declarative\.|invalid (?:host|ui) entrypoint|invalid declarative\./i.test(raw)) {
+      return { category: 'manifest', explanation: t('error.reasons.packageMissingEntry', { detail: raw }), technical };
+    }
+    if (/not valid json|invalid json|syntaxerror|unexpected token|json/i.test(raw)) {
+      return { category: 'manifest', explanation: t('error.reasons.packageInvalidJson'), technical };
+    }
+    if (/sha256|checksum|tamper/i.test(raw)) {
+      return { category: 'archive', explanation: t('error.reasons.packageChecksumMismatch', { detail: raw }), technical };
+    }
+    if (/exceeds.*mib|too many|too large/i.test(raw)) {
+      return { category: 'archive', explanation: t('error.reasons.packageTooLarge'), technical };
+    }
+    if (/expected \.dstuplugin|expected \.dspack|unsupported.*extension/i.test(raw)) {
+      return { category: 'archive', explanation: t('error.reasons.packageBadExtension'), technical };
+    }
+    if (/0 bytes|empty/i.test(raw)) {
+      return { category: 'archive', explanation: t('error.reasons.packageEmpty'), technical };
+    }
+    if (/zip|central directory|archive|corrupt|eof|signature|deflate/i.test(raw)) {
+      return { category: 'archive', explanation: t('error.reasons.packageInvalidZip'), technical };
+    }
     return {
-      explanation: t('error.reasons.manifestInvalidWithDetail', { detail: cleanManifestDetail }),
+      category: 'archive',
+      explanation: raw ? t('error.reasons.packageInvalidWithDetail', { detail: raw }) : t('error.reasons.packageInvalid'),
       technical,
     };
   }
+
+  if (effectiveCode === 'MANIFEST_INVALID' && cleanedDetail) {
+    const cleanManifestDetail = stripLeadingCode(cleanedDetail, 'MANIFEST_INVALID');
+    return {
+      category: 'manifest',
+      explanation: cleanManifestDetail
+        ? t('error.reasons.manifestInvalidWithDetail', { detail: cleanManifestDetail })
+        : t('error.reasons.manifestInvalid'),
+      technical,
+    };
+  }
+
+  if (effectiveCode === 'ENGINE_INCOMPATIBLE' && cleanedDetail) {
+    const cleanDetail = stripLeadingCode(cleanedDetail, 'ENGINE_INCOMPATIBLE');
+    return {
+      category: 'compatibility',
+      explanation: cleanDetail
+        ? t('error.reasons.engineIncompatibleWithDetail', { detail: cleanDetail })
+        : t('error.reasons.engineIncompatible'),
+      technical,
+    };
+  }
+
+  if (effectiveCode === 'MANIFEST_VERSION_UNSUPPORTED' && cleanedDetail) {
+    const cleanDetail = stripLeadingCode(cleanedDetail, 'MANIFEST_VERSION_UNSUPPORTED');
+    return {
+      category: 'compatibility',
+      explanation: cleanDetail
+        ? t('error.reasons.manifestVersionUnsupportedWithDetail', { detail: cleanDetail })
+        : t('error.reasons.manifestVersionUnsupported'),
+      technical,
+    };
+  }
+
   const key = MANAGER_ERROR_KEYS[effectiveCode] ?? 'error.reasons.generic';
+  const category = MANAGER_ERROR_CATEGORIES[effectiveCode] ?? 'general';
   return {
+    category,
     explanation: t(key),
     technical: effectiveCode === 'PLUGIN_INSTALL_FAILED' ? cleanedDetail || t('error.reasons.installFailed') : technical,
   };
+}
+
+/**
+ * Determines whether a degraded reason represents a real plugin fault/failure,
+ * as opposed to normal Safe Mode pausing (`SAFE_MODE_ACTIVE`) or pending consent (`CONSENT_REQUIRED`).
+ */
+export function isFaultDegradedReason(reason?: string, uiDegraded?: { readonly code?: string; readonly consentRequired?: boolean }): boolean {
+  if (uiDegraded) {
+    if (uiDegraded.consentRequired) return false;
+    if (uiDegraded.code === 'SAFE_MODE_ACTIVE' || uiDegraded.code === 'CONSENT_REQUIRED') return false;
+    return true;
+  }
+  if (!reason) return false;
+  const parsed = parsePluginReason(reason);
+  if (parsed.code === 'SAFE_MODE_ACTIVE' || parsed.code === 'CONSENT_REQUIRED') return false;
+  return true;
+}
+
+/**
+ * Formats a concise, localized fault/isolation explanation for a degraded or crashed plugin.
+ * Returns `null` if the plugin has no active fault.
+ */
+export function describePluginFault(
+  t: (key: string, options?: Record<string, unknown>) => string,
+  options: {
+    readonly degradedReason?: string;
+    readonly uiDegraded?: { readonly code?: PluginUiDegradedCode; readonly detail: string; readonly consentRequired: boolean };
+    readonly runtime?: string;
+    readonly runtimeDetail?: string;
+    readonly autoUninstalled?: PluginAutoUninstallReason | null;
+  },
+): { readonly label: string; readonly detail?: string; readonly code?: PluginUiDegradedCode } | null {
+  if (options.autoUninstalled) {
+    return {
+      label: t('errorBudget.row', {
+        errors: options.autoUninstalled.errors,
+        budget: options.autoUninstalled.budget,
+      }),
+    };
+  }
+  if (options.uiDegraded && isFaultDegradedReason(undefined, options.uiDegraded)) {
+    const label = degradeCodeLabel(t, options.uiDegraded.code) ?? t('degraded.title');
+    return {
+      code: options.uiDegraded.code,
+      label,
+      detail: options.uiDegraded.detail || undefined,
+    };
+  }
+  if (options.degradedReason && isFaultDegradedReason(options.degradedReason)) {
+    const parsed = parsePluginReason(options.degradedReason);
+    const label = degradeCodeLabel(t, parsed.code) ?? t('degraded.title');
+    return {
+      code: parsed.code,
+      label,
+      detail: parsed.detail || undefined,
+    };
+  }
+  if (options.runtime === 'error') {
+    return {
+      label: t('runtime.error'),
+      detail: options.runtimeDetail || undefined,
+    };
+  }
+  return null;
 }

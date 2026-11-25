@@ -322,6 +322,7 @@ export interface Commands {
       includeAssets?: boolean | null;
       assetTypes?: string[] | null;
       encryptionPassword?: string | null;
+      excludeTrash?: boolean | null;
     };
     result: BackupJobStartResponse;
     error: string;
@@ -388,6 +389,7 @@ export interface Commands {
       includeChecksums?: boolean | null;
       encryptionPassword?: string | null;
       useStoredCloudEncryptionPassword?: boolean | null;
+      excludeTrash?: boolean | null;
     };
     result: BackupJobStartResponse;
     error: string;

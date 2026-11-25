@@ -158,7 +158,7 @@ describe('Todo mobile anti-accidental-delete, MatrixBoard, and Today hierarchy',
     );
   });
 
-  it('preserves subtask visual hierarchy and progress badge in Today view', () => {
+  it('filters subtasks out of top-level Today list rows while showing live progress badge on parent', () => {
     const today = new Date();
     const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     const parent = makeTodo({ id: 'p-1', title: '父任务：准备期末', dueDate: ymd });
@@ -171,12 +171,12 @@ describe('Todo mobile anti-accidental-delete, MatrixBoard, and Today hierarchy',
     });
 
     const { container } = render(<TodoMainPanel />);
-    // Parent shows 1/2 subtask progress
-    expect(screen.getByText('1/2')).toBeInTheDocument();
-    // Child row is indented via inline paddingLeft (16 + 1 * 28 = 44px)
-    const childRow = container.querySelector('[data-agent-entity="todo:c-1"]') as HTMLElement | null;
-    expect(childRow).not.toBeNull();
-    expect(childRow?.style.paddingLeft).toBe('44px');
+    // Parent renders once with 1/2 subtask progress badge
+    expect(container.querySelector('[data-agent-entity="todo:p-1"]')).not.toBeNull();
+    expect(screen.getByTestId('todo-row-subtasks-p-1')).toHaveTextContent('1/2');
+    // Subtasks must NOT be flattened into independent rows in the top-level list
+    expect(container.querySelector('[data-agent-entity="todo:c-1"]')).toBeNull();
+    expect(container.querySelector('[data-agent-entity="todo:c-2"]')).toBeNull();
   });
 
   it('S4-09: excludes subtasks from top-level Overdue / Matrix / empty Inbox views even when parent is absent', () => {

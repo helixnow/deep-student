@@ -146,6 +146,9 @@ export function extensionForMime(name: string, mimeType: string): string | null 
     case 'text/xml': return 'xml';
     case 'application/rtf':
     case 'text/rtf': return 'rtf';
+    case 'application/vnd.xmind.workbook':
+    case 'application/x-xmind': return 'xmind';
+    case 'text/vtt': return 'vtt';
     case 'application/zip':
     case 'application/x-zip-compressed': return 'zip';
     case 'application/x-rar-compressed':
@@ -178,7 +181,7 @@ export async function uploadFileCommand(deps: FileUploadDeps, params: VfsUploadF
 }
 
 const SUPPORTED_EXTENSIONS = ['docx', 'xlsx', 'xls', 'xlsb', 'ods', 'pptx', 'epub', 'rtf', 'txt', 'md',
-  'markdown', 'html', 'htm', 'csv', 'json', 'xml'];
+  'markdown', 'html', 'htm', 'csv', 'json', 'xml', 'vtt'];
 
 async function uploadFile(deps: FileUploadDeps, params: VfsUploadFileParams): Promise<VfsUploadFileResult> {
   const { log, repos } = deps;

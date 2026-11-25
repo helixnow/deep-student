@@ -566,6 +566,7 @@ export const DesktopShortcutsLayer: React.FC<DesktopShortcutsLayerProps> = ({ de
   const reorderSessionRef = useRef<ReorderSession | null>(null);
   const pointerDownOnIconRef = useRef(false);
   const suppressNextClickRef = useRef(false);
+  const lastOpenedRef = useRef<{ id: string; at: number } | null>(null);
 
   // 快捷方式集合变化时剔除失效选中 id
   useEffect(() => {
@@ -622,6 +623,12 @@ export const DesktopShortcutsLayer: React.FC<DesktopShortcutsLayerProps> = ({ de
 
   const handleOpen = useCallback(
     (shortcut: DesktopShortcut) => {
+      const now = Date.now();
+      const last = lastOpenedRef.current;
+      if (last && last.id === shortcut.id && now - last.at < 350) {
+        return;
+      }
+      lastOpenedRef.current = { id: shortcut.id, at: now };
       openDesktopShortcut(shortcut, t);
     },
     [t],
@@ -651,9 +658,17 @@ export const DesktopShortcutsLayer: React.FC<DesktopShortcutsLayerProps> = ({ de
       });
       return;
     }
+    const wasSolelySelected =
+      selectedIdsRef.current.size === 1 && selectedIdsRef.current.has(shortcut.id);
     setSelectedIds(new Set([shortcut.id]));
     setPrimarySelectedId(shortcut.id);
-  }, []);
+    // 应用入口（笔记 / 题目集 / 作文批改 / 翻译 / 思维导图）单击即打开或恢复窗口，
+    // 避免单击只高亮不弹窗；资源/文件夹首击保持选中（兼容空格 Quick Look 与多选），
+    // 再次单击已单独选中的图标亦可直接打开。
+    if (shortcut.type === 'app' || wasSolelySelected) {
+      handleOpen(shortcut);
+    }
+  }, [handleOpen]);
 
   const handleKeyboardFocus = useCallback((shortcut: DesktopShortcut) => {
     if (pointerDownOnIconRef.current) return;

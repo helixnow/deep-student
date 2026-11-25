@@ -22,12 +22,17 @@ export type LibraryCardStatus =
 
 /** 卡片库条目 → 批次复习的预置正文（startBatchSession 的 cards） */
 export function toReviewContent(card: AnkiLibraryCard) {
+  const extraFields = { ...(card.fields ?? {}), ...(card.extra_fields ?? {}) };
   return {
     id: card.stateId || card.id,
     ankiCardId: card.id,
     front: card.front || card.fields?.Front || '',
     back: card.back || card.fields?.Back || card.text || '',
+    ...(card.text ? { text: card.text } : {}),
     tags: card.tags,
+    ...(Array.isArray(card.images) && card.images.length > 0 ? { images: card.images } : {}),
+    ...(card.template_id !== undefined ? { templateId: card.template_id } : {}),
+    ...(Object.keys(extraFields).length > 0 ? { extraFields } : {}),
   };
 }
 

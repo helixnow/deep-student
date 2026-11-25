@@ -5,7 +5,7 @@ import { BUILTIN_DESCRIPTORS, lookupToolDescriptor, isHeadlessReadonly, isPtcAll
 const readonlyNames = [
   'unified_search', 'rag_search', 'web_search', 'web_fetch', 'settings_get', 'model_assignments_get',
   'llm_usage_query', 'backup_status', 'backup_job_status', 'sync_status', 'index_status', 'learning_overview',
-  'pomodoro_today_stats', 'pomodoro_daily_stats', 'fsrs_get_scheduler_config', 'memory_read', 'memory_list',
+  'pomodoro_today_stats', 'pomodoro_daily_stats', 'fsrs_get_scheduler_config', 'memory_read', 'memory_list', 'memory_rule_list',
   'resource_list', 'resource_read', 'resource_search', 'folder_list', 'dstu_list_trash',
   'user_todo_list_lists', 'user_todo_list_items', 'user_todo_get_summary', 'user_todo_search', 'user_todo_list_trash',
   'qbank_list', 'qbank_list_questions', 'qbank_get_question', 'qbank_get_stats', 'qbank_get_next_question',

@@ -16,6 +16,7 @@ import { parseRfc3339, toRfc3339 } from '../../../platform/time/index.ts';
 import { rustTrim } from '../../../platform/util/portable.ts';
 import { CloudStorageError } from './errors.ts';
 import {
+  type AcquireLeaseOptions,
   type ActiveLease,
   type LeaseMessages,
   type LeaseRecord,
@@ -129,12 +130,15 @@ export const SYNC_LEASE_SPEC: LeaseSpec = {
 
 export type SyncTargetLeaseGuard = LeaseGuard;
 
+export type { AcquireLeaseOptions };
+
 /** Acquires the sync target lease with the default 10-minute TTL. */
 export async function acquireSyncTargetLease(
   storage: CloudStorage,
   holderDeviceId: string,
+  options?: AcquireLeaseOptions,
 ): Promise<SyncTargetLeaseGuard> {
-  return acquireSyncTargetLeaseWithTtl(storage, holderDeviceId, DEFAULT_SYNC_LEASE_TTL_MS);
+  return acquireSyncTargetLeaseWithTtl(storage, holderDeviceId, DEFAULT_SYNC_LEASE_TTL_MS, options);
 }
 
 /** Acquires the lease with an explicit TTL (short TTLs are for protocol tests). */
@@ -142,6 +146,7 @@ export async function acquireSyncTargetLeaseWithTtl(
   storage: CloudStorage,
   holderDeviceId: string,
   ttlMs: number,
+  options?: AcquireLeaseOptions,
 ): Promise<SyncTargetLeaseGuard> {
-  return acquireLease(SYNC_LEASE_SPEC, storage, holderDeviceId, ttlMs);
+  return acquireLease(SYNC_LEASE_SPEC, storage, holderDeviceId, ttlMs, options);
 }

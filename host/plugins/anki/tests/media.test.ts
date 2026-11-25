@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, writeFile, symlink, open, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { ANKI_MEDIA_MAX_BYTES, isInsideRoot, readAnkiMediaIn, validateApkgPath } from '../src/files.ts';
+import { collectCardMediaPaths, extractMediaFilenames } from '../src/apkg-import-media.ts';
 import { createAnkiTestEnv, type AnkiTestEnv } from './env.ts';
 
 let dir: string, root: string, env: AnkiTestEnv;
@@ -87,6 +88,36 @@ describe('cmd/apkg_import.rs::anki_media_tests', () => {
     const big = path.join(root, 'big.mp3'), handle = await open(big, 'w');
     try { await handle.truncate(ANKI_MEDIA_MAX_BYTES + 1); } finally { await handle.close(); }
     await expect(readAnkiMediaIn(root, big)).rejects.toMatchObject({ details: { errorCode: 'apkg_invalid_input' } });
+  });
+
+  it('resolves safe bare filenames and anki-media:// refs inside mediaRoot while still rejecting traversal', async () => {
+    const img = path.join(root, 'qa_img_01.png');
+    const aud = path.join(root, 'qa_audio_01.mp3');
+    await writeFile(img, 'png');
+    await writeFile(aud, 'mp3');
+    expect(await readAnkiMediaIn(root, 'qa_img_01.png')).toBe('data:image/png;base64,cG5n');
+    expect(await readAnkiMediaIn(root, 'anki-media://qa_audio_01.mp3')).toBe('data:audio/mpeg;base64,bXAz');
+    const outside = path.join(dir, 'secret.png');
+    await writeFile(outside, 'x');
+    await expect(readAnkiMediaIn(root, '../secret.png')).rejects.toMatchObject({ error_type: 'Validation' });
+    await expect(readAnkiMediaIn(root, 'anki-media://../secret.png')).rejects.toMatchObject({ error_type: 'Validation' });
+  });
+
+  it('extractMediaFilenames and collectCardMediaPaths handle unquoted src, whitespace, and case-insensitive matches', () => {
+    const names = extractMediaFilenames('<img src=qa_img_01.png><img src = "QA_IMG_02.PNG">[sound:qa_audio_01.mp3]');
+    expect(names).toEqual(['qa_img_01.png', 'QA_IMG_02.PNG', 'qa_audio_01.mp3']);
+    const mediaPaths = new Map([
+      ['qa_img_01.png', '/data/anki_media/qa_img_01.png'],
+      ['qa_img_02.png', '/data/anki_media/qa_img_02.png'],
+      ['qa_audio_01.mp3', '/data/anki_media/qa_audio_01.mp3'],
+    ]);
+    expect(
+      collectCardMediaPaths(['<img src=qa_img_01.png><img src="QA_IMG_02.PNG">[sound:qa_audio_01.mp3]'], mediaPaths),
+    ).toEqual([
+      '/data/anki_media/qa_img_01.png',
+      '/data/anki_media/qa_img_02.png',
+      '/data/anki_media/qa_audio_01.mp3',
+    ]);
   });
 });
 

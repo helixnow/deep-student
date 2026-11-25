@@ -441,7 +441,12 @@ function mergeReviewContent(mapped: ReviewCard, content: ReviewCard | undefined)
   if (typeof row.back === 'string' && row.back.trim()) next.back = row.back;
   if (typeof row.text === 'string') next.text = row.text;
   if (Array.isArray(row.tags)) next.tags = parseStringArray(row.tags);
-  if (Array.isArray(row.images)) next.images = parseStringArray(row.images);
+  if (Array.isArray(row.images)) {
+    const mergedImages = parseStringArray(row.images);
+    if (mergedImages.length > 0 || !next.images || next.images.length === 0) {
+      next.images = mergedImages;
+    }
+  }
 
   const rawTemplateId = readAliasedValue(row, 'templateId', 'template_id');
   if (typeof rawTemplateId === 'string' || rawTemplateId === null) {

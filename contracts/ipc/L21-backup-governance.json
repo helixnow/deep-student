@@ -219,6 +219,22 @@
             "x-option": "null"
           },
           "optional": true
+        },
+        {
+          "key": "excludeTrash",
+          "rustName": "exclude_trash",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
         }
       ],
       "injected": [
@@ -664,6 +680,22 @@
         {
           "key": "useStoredCloudEncryptionPassword",
           "rustName": "use_stored_cloud_encryption_password",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
+        },
+        {
+          "key": "excludeTrash",
+          "rustName": "exclude_trash",
           "schema": {
             "anyOf": [
               {

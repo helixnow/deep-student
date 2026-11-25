@@ -109,7 +109,7 @@ export {
   acquireSyncTargetLease,
   acquireSyncTargetLeaseWithTtl,
 } from './src/sync_lease.ts';
-export type { SyncTargetLease, SyncTargetLeaseGuard } from './src/sync_lease.ts';
+export type { AcquireLeaseOptions, SyncTargetLease, SyncTargetLeaseGuard } from './src/sync_lease.ts';
 export {
   BACKUP_V2_FORMAT,
   DELTA_FORMAT_VERSION,

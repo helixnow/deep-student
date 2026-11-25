@@ -5,6 +5,7 @@ import { createStore } from 'zustand/vanilla';
 import {
   MemoryKernelAttributionPill,
   invalidateMemoryKernelAttributionCache,
+  clearPersistedMessageMemorySnapshots,
 } from '../MemoryKernelAttributionPill';
 import { MessageItem } from '../../MessageItem';
 import type { ChatStore, Block, Message } from '@/features/chat/core/types';
@@ -58,6 +59,7 @@ describe('MemoryKernelAttributionPill & Turn-1 MessageItem attribution (S4-04)',
   beforeEach(() => {
     vi.restoreAllMocks();
     invalidateMemoryKernelAttributionCache(null);
+    clearPersistedMessageMemorySnapshots();
   });
 
   it('shows active rules & weak points, truthful per-turn snapshot copy, and allows one-click rule removal', async () => {
@@ -286,5 +288,226 @@ describe('MemoryKernelAttributionPill & Turn-1 MessageItem attribution (S4-04)',
     expect(pill.getAttribute('title')).toContain('查看本轮已注入');
     expect(pill.textContent).toContain('1 规则');
     expect(inspectSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('S4-04: preserves per-message attribution snapshots when live global rules are later replaced or edited in place', async () => {
+    const turn1And2View = buildView({
+      hardRules: {
+        version: 1,
+        updated_at: '2026-11-25T08:00:00Z',
+        rules: [
+          {
+            id: 'rule-style',
+            instruction: '每段开头加一个提示符号',
+            scope: 'global',
+            origin: 'user_explicit',
+            pinned: true,
+            createdAt: '2026-11-25T08:00:00Z',
+            updatedAt: '2026-11-25T08:00:00Z',
+          },
+        ],
+      },
+      learnerProfile: {
+        version: 1,
+        updated_at: '2026-11-25T08:00:00Z',
+        weak_points: [],
+        preferences: { others: [] },
+        goals: [],
+      },
+    });
+
+    const turn3ReplacedView = buildView({
+      hardRules: {
+        version: 2,
+        updated_at: '2026-11-25T08:05:00Z',
+        rules: [
+          {
+            // Same rule id edited in place + an additional new rule
+            id: 'rule-style',
+            instruction: '全部使用三点清单作答',
+            scope: 'global',
+            origin: 'user_explicit',
+            pinned: true,
+            createdAt: '2026-11-25T08:00:00Z',
+            updatedAt: '2026-11-25T08:05:00Z',
+          },
+          {
+            id: 'rule-lang',
+            instruction: '关键术语附英文',
+            scope: 'global',
+            origin: 'user_explicit',
+            pinned: false,
+            createdAt: '2026-11-25T08:05:00Z',
+            updatedAt: '2026-11-25T08:05:00Z',
+          },
+        ],
+      },
+      learnerProfile: {
+        version: 1,
+        updated_at: '2026-11-25T08:00:00Z',
+        weak_points: [],
+        preferences: { others: [] },
+        goals: [],
+      },
+    });
+
+    vi.spyOn(memoryApi, 'inspectMemoryKernel').mockResolvedValue(turn1And2View);
+
+    const { rerender } = render(
+      <div>
+        <div data-testid="turn-2-slot">
+          <MemoryKernelAttributionPill
+            sessionId="sess-immutable-1"
+            messageId="msg-a2"
+            isFirstAssistantTurn={false}
+          />
+        </div>
+      </div>,
+    );
+
+    // Turn 2 settles and captures 1 rule ("每段开头加一个提示符号")
+    const turn2Pill = await screen.findByTestId('memory-kernel-attribution-pill');
+    expect(turn2Pill.textContent).toContain('1 规则');
+    fireEvent.click(turn2Pill);
+    expect(await screen.findByText('每段开头加一个提示符号')).toBeTruthy();
+    fireEvent.click(turn2Pill); // close popover
+
+    // Later in Turn 3, live global rules are edited in place & expanded to 2 rules
+    act(() => {
+      invalidateMemoryKernelAttributionCache(turn3ReplacedView);
+    });
+
+    // Mount Turn 3 alongside historical Turn 2 (and remount Turn 2 to also verify persistence)
+    rerender(
+      <div>
+        <div data-testid="turn-2-slot">
+          <MemoryKernelAttributionPill
+            key="remounted-msg-a2"
+            sessionId="sess-immutable-1"
+            messageId="msg-a2"
+            isFirstAssistantTurn={false}
+          />
+        </div>
+        <div data-testid="turn-3-slot">
+          <MemoryKernelAttributionPill
+            sessionId="sess-immutable-1"
+            messageId="msg-a3"
+            isFirstAssistantTurn={false}
+          />
+        </div>
+      </div>,
+    );
+
+    const pills = await screen.findAllByTestId('memory-kernel-attribution-pill');
+    expect(pills).toHaveLength(2);
+    // Turn 2 MUST remain 1 rule (immutable), while Turn 3 reflects the new 2 rules
+    expect(pills[0].textContent).toContain('1 规则');
+    expect(pills[1].textContent).toContain('2 规则');
+
+    // Open historical Turn 2 popover: MUST still show the original rule text, NOT the edited rule!
+    fireEvent.click(pills[0]);
+    expect(await screen.findByText('每段开头加一个提示符号')).toBeTruthy();
+    expect(screen.queryByText('全部使用三点清单作答')).toBeNull();
+    expect(screen.queryByText('关键术语附英文')).toBeNull();
+    // In-place replaced rule must not offer delete button that would delete the NEW live rule
+    expect(screen.queryByTitle('忘掉这条规则')).toBeNull();
+    expect(screen.getByTestId('memory-kernel-frozen-drift-hint')).toBeTruthy();
+
+    fireEvent.click(pills[0]); // close Turn 2 popover
+
+    // Open Turn 3 popover: shows the newly active rules
+    fireEvent.click(pills[1]);
+    expect(await screen.findByText('全部使用三点清单作答')).toBeTruthy();
+    expect(screen.getByText('关键术语附英文')).toBeTruthy();
+  });
+
+  it('S4-04: preserves Turn-1 frozen rule instruction even when the same rule ID is updated in place in live rules', async () => {
+    const updatedLiveView = buildView({
+      hardRules: {
+        version: 2,
+        updated_at: '2026-11-25T09:00:00Z',
+        rules: [
+          {
+            id: 'rule-same-id',
+            instruction: '更新后的新规则文案',
+            scope: 'global',
+            origin: 'user_explicit',
+            pinned: true,
+            createdAt: '2026-11-25T08:00:00Z',
+            updatedAt: '2026-11-25T09:00:00Z',
+          },
+        ],
+      },
+      learnerProfile: {
+        version: 1,
+        updated_at: '2026-11-25T08:00:00Z',
+        weak_points: [],
+        preferences: { others: [] },
+        goals: [],
+      },
+    });
+    vi.spyOn(memoryApi, 'inspectMemoryKernel').mockResolvedValue(updatedLiveView);
+
+    render(
+      <MemoryKernelAttributionPill
+        sessionId="sess-inplace"
+        messageId="msg-a1"
+        isFirstAssistantTurn={true}
+        sessionMetadata={{
+          memoryKernelSnapshot: {
+            renderedKernel: '<memory_kernel>v1</memory_kernel>',
+            rulesVersion: 1,
+            profileVersion: 1,
+            includedRuleIds: ['rule-same-id'],
+            includedRules: [
+              { id: 'rule-same-id', instruction: '原始第一轮规则文案', scope: 'global' },
+            ],
+            includedWeakPointKeys: [],
+            includedLegacyNoteIds: [],
+          },
+        }}
+      />,
+    );
+
+    const pill = await screen.findByTestId('memory-kernel-attribution-pill');
+    fireEvent.click(pill);
+    expect(await screen.findByText('原始第一轮规则文案')).toBeTruthy();
+    expect(screen.queryByText('更新后的新规则文案')).toBeNull();
+  });
+
+  it('S4-04: does not retroactively attach newly added rules to an earlier turn that had zero rules', async () => {
+    const emptyView = buildView({
+      hardRules: { version: 0, updated_at: '2026-11-25T08:00:00Z', rules: [] },
+      learnerProfile: {
+        version: 0,
+        updated_at: '2026-11-25T08:00:00Z',
+        weak_points: [],
+        preferences: { others: [] },
+        goals: [],
+      },
+      renderedKernelPreview: '',
+    });
+    vi.spyOn(memoryApi, 'inspectMemoryKernel').mockResolvedValue(emptyView);
+
+    render(
+      <MemoryKernelAttributionPill
+        sessionId="sess-empty-hist"
+        messageId="msg-a1-empty"
+        isFirstAssistantTurn={true}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(memoryApi.inspectMemoryKernel).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByTestId('memory-kernel-attribution-pill')).toBeNull();
+
+    // Later turn adds a global rule
+    act(() => {
+      invalidateMemoryKernelAttributionCache(buildView());
+    });
+
+    // Historical msg-a1-empty MUST remain without an attribution badge
+    expect(screen.queryByTestId('memory-kernel-attribution-pill')).toBeNull();
   });
 });

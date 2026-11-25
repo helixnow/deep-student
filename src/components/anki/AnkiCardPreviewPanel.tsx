@@ -6,13 +6,12 @@
  * - 去掉 UnifiedModal 壳、overlay 点击关闭等模态逻辑与从未接线的 JSON 编辑死代码；
  * - 可直接嵌入任意布局（页面、展开行、侧栏），移动端不再弹模态框。
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Eye } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
-import { TemplateRenderService } from '@/services/templateRenderService';
-import { IframePreview } from '@/components/SharedPreview';
+import { AnkiTemplateCardFace } from './AnkiTemplateCardFace';
 import { cn } from '@/utils/cn';
 
 export interface AnkiCardPreviewPanelProps {
@@ -33,18 +32,6 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
   useEffect(() => {
     setShowFront(true);
   }, [cardIdentity]);
-
-  const renderedContent = useMemo(() => {
-    if (!card) return { front: '', back: '' };
-    if (template) {
-      const rendered = TemplateRenderService.renderCard(card, template);
-      const backWithFront = rendered.back.includes('{{FrontSide}}')
-        ? rendered.back.replace('{{FrontSide}}', `${rendered.front}<hr id="answer">`)
-        : rendered.back;
-      return { front: rendered.front, back: backWithFront };
-    }
-    return { front: card.front || '', back: card.back || '' };
-  }, [card, template]);
 
   if (!card) return null;
 
@@ -78,12 +65,15 @@ export const AnkiCardPreviewPanel: React.FC<AnkiCardPreviewPanelProps> = ({
         </DsButton>
       </div>
 
-      {/* 卡面渲染：单层扁平容器，消除重复的内层标题行与厚重悬浮阴影 */}
+      {/* 卡面渲染：复用 AnkiTemplateCardFace，统一走 read_anki_media 图片/音频解析与安全沙箱 */}
       <div className="min-w-0 rounded-lg border border-border/35 bg-muted/15 p-3">
-        <IframePreview
+        <AnkiTemplateCardFace
           key={`${cardIdentity}-${showFront ? 'front' : 'back'}`}
-          htmlContent={showFront ? renderedContent.front : renderedContent.back}
-          cssContent={template?.css_style || ''}
+          card={card}
+          template={template}
+          side={showFront ? 'front' : 'back'}
+          compact
+          interactiveFrame
         />
       </div>
 

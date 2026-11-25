@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { CaretLeft, CaretRight, Terminal, Warning } from '@phosphor-icons/react';
@@ -20,7 +20,6 @@ import {
   MobileHeaderActiveViewSync,
   MobileAppNavigationProvider,
 } from '@/components/layout';
-import { CommandPalette } from '@/command-palette/CommandPalette';
 import { CommandPaletteProvider, useCommandPalette } from '@/command-palette/CommandPaletteProvider';
 import { TextContextMenuProvider } from '@/components/context-menu/TextContextMenu';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
@@ -62,8 +61,25 @@ import { LazyAgentBridge, LazyWorkbenchDesktop } from '@/app/workbench/lazyDeskt
 const CloudStorageSection = React.lazy(() =>
   import('@/features/settings/components/CloudStorageSection').then(m => ({ default: m.CloudStorageSection }))
 );
+const LazyCommandPalette = React.lazy(() =>
+  import('@/command-palette/CommandPalette').then(m => ({ default: m.CommandPalette }))
+);
 const LazyGlobalDebugPanel = React.lazy(() => import('@/components/dev/GlobalDebugPanel'));
 const LazyDevMobileRecoveryFab = React.lazy(() => import('@/dev/DevMobileRecoveryFab'));
+
+function CommandPaletteOutlet() {
+  const { isOpen } = useCommandPalette();
+  const [hasOpened, setHasOpened] = useState(Boolean(isOpen));
+  useEffect(() => {
+    if (isOpen) setHasOpened(true);
+  }, [isOpen]);
+  if (!hasOpened && !isOpen) return null;
+  return (
+    <Suspense fallback={null}>
+      <LazyCommandPalette />
+    </Suspense>
+  );
+}
 
 export interface AppShellChromeProps {
   t: TFunction;
@@ -571,8 +587,8 @@ export function AppShellChrome(props: AppShellChromeProps) {
         </Suspense>
       )}
 
-      {/* 命令面板 */}
-      <CommandPalette />
+      {/* 命令面板（首次打开时按需懒加载，避免把搜索依赖链拖入首屏启动闭包） */}
+      <CommandPaletteOutlet />
 
       {/* Global Pomodoro Timer（workbench 激活时药丸让位给菜单栏/番茄窗投射） */}
       <GlobalPomodoroWidget workbenchActive={workbenchActive} />

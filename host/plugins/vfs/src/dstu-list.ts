@@ -249,7 +249,22 @@ export function listResourcesByTypeWithFolderPath(
       return results;
     }
     case 'file': {
-      for (const file of listFilesByTypeWithConn(conn, 'document', limit, offset)) {
+      // Include both 'document' (vfs_upload_file) and 'file' (dstu_create) rows so
+      // Office/document imports created via either path are consistently listed.
+      const seen = new Set<string>();
+      const windowSize = limit + offset;
+      const merged = [
+        ...listFilesByTypeWithConn(conn, 'document', windowSize, 0),
+        ...listFilesByTypeWithConn(conn, 'file', windowSize, 0),
+      ]
+        .filter(file => {
+          if (seen.has(file.id)) return false;
+          seen.add(file.id);
+          return true;
+        })
+        .sort((left, right) => compareRustStrings(right.updatedAt, left.updatedAt));
+      const page = offset > 0 ? merged.slice(offset, offset + limit) : merged.slice(0, limit);
+      for (const file of page) {
         withPath(fileToDstuNode(file), file.id);
       }
       return results;

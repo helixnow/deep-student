@@ -63,10 +63,16 @@ export {
   autoUninstalled,
   degradeCodeLabel,
   degradedCodeKey,
+  describeManagerError,
+  describePluginFault,
   errorBudgetOf,
+  isFaultDegradedReason,
   parsePluginReason,
+  resolveManagerErrorCode,
 } from './reasons';
 export type {
+  FriendlyManagerError,
+  ManagerErrorCategory,
   ParsedPluginReason,
   PluginAutoUninstallReason,
   PluginErrorBudgetView,
@@ -89,6 +95,8 @@ export type {
 export { usePluginUiHostStatus } from './use-ui-status';
 export { getChannelPluginDisplay } from './channelDisplay';
 export { exitSafeModeAndRestart, enterSafeModeAndRestart } from './safeMode';
+export { SafeModeExitDialog } from './SafeModeExitDialog';
+export type { SafeModeExitDialogProps } from './SafeModeExitDialog';
 
 export type {
   ManagedPlugin,

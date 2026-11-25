@@ -108,11 +108,18 @@ function mergeItemInput(item: TodoItem, input: UpdateTodoItemInput): TodoItem {
   if (input.description !== undefined) merged.description = input.description;
   if (input.status !== undefined) merged.status = input.status;
   if (input.priority !== undefined) merged.priority = input.priority;
-  if (input.dueDate !== undefined) merged.dueDate = input.dueDate;
-  if (input.dueTime !== undefined) merged.dueTime = input.dueTime;
+  if (input.dueDate !== undefined) {
+    merged.dueDate = input.dueDate.trim() ? input.dueDate : undefined;
+    if (!merged.dueDate && input.dueTime === undefined) {
+      merged.dueTime = undefined;
+    }
+  }
+  if (input.dueTime !== undefined) {
+    merged.dueTime = input.dueTime.trim() ? input.dueTime : undefined;
+  }
   if (input.reminder !== undefined) merged.reminder = input.reminder;
   if (input.tags !== undefined) merged.tagsJson = JSON.stringify(input.tags);
-  if (input.parentId !== undefined) merged.parentId = input.parentId;
+  if (input.parentId !== undefined) merged.parentId = input.parentId.trim() ? input.parentId : undefined;
   if (input.attachments !== undefined) merged.attachmentsJson = JSON.stringify(input.attachments);
   if (input.repeatJson !== undefined) merged.repeatJson = input.repeatJson;
   if (input.estimatedPomodoros !== undefined) merged.estimatedPomodoros = input.estimatedPomodoros;
@@ -121,6 +128,60 @@ function mergeItemInput(item: TodoItem, input: UpdateTodoItemInput): TodoItem {
     merged.completedAt = input.status === 'completed' ? new Date().toISOString() : undefined;
   }
   return merged;
+}
+
+/** 仅统计顶层未完成任务（子任务不计入顶层列表徽标/计数） */
+function countTopLevelPending(items: TodoItem[]): number {
+  return items.filter((item) => !item.parentId && item.status === 'pending').length;
+}
+
+/** 仅统计顶层已逾期未完成任务 */
+function countTopLevelOverdue(items: TodoItem[], today: string = localToday()): number {
+  return items.filter(
+    (item) =>
+      !item.parentId &&
+      item.status === 'pending' &&
+      Boolean(item.dueDate) &&
+      (item.dueDate as string) < today,
+  ).length;
+}
+
+/** 将已加载视图的顶层未完成计数回写到 counts/overdueCount，保证侧栏徽标与主列表同口径 */
+function reconcileCountsPatch(
+  state: Pick<TodoState, 'counts' | 'lists'>,
+  view: TodoViewFilter,
+  listId: string | null,
+  loadedItems: TodoItem[],
+): Partial<Pick<TodoState, 'counts' | 'overdueCount'>> {
+  const topPending = countTopLevelPending(loadedItems);
+  const patch: Partial<Pick<TodoState, 'counts' | 'overdueCount'>> = {};
+  if (view === 'today') {
+    patch.overdueCount = countTopLevelOverdue(loadedItems);
+    if (state.counts) {
+      patch.counts = { ...state.counts, todayCount: topPending };
+    }
+  } else if (view === 'overdue') {
+    patch.overdueCount = topPending;
+  } else if (view === 'upcoming') {
+    if (state.counts) {
+      patch.counts = { ...state.counts, upcomingCount: topPending };
+    }
+  } else if (view === 'all' && listId && state.counts) {
+    const defaultListId = (state.lists.find((l) => l.isDefault) || state.lists[0])?.id ?? null;
+    const prevPerList = Array.isArray(state.counts.perList) ? state.counts.perList : [];
+    const hasEntry = prevPerList.some((entry) => entry.listId === listId);
+    const nextPerList = hasEntry
+      ? prevPerList.map((entry) =>
+          entry.listId === listId ? { ...entry, pendingCount: topPending } : entry,
+        )
+      : [...prevPerList, { listId, pendingCount: topPending }];
+    patch.counts = {
+      ...state.counts,
+      perList: nextPerList,
+      ...(listId === defaultListId ? { inboxCount: topPending } : {}),
+    };
+  }
+  return patch;
 }
 
 /** 批量入参清洗：去空白、去重（保持首现顺序），与后端 sanitize 口径一致 */
@@ -360,6 +421,8 @@ interface TodoState {
   loadCompletedItems: () => Promise<void>;
   searchItems: (query: string) => Promise<void>;
   reloadCurrentView: () => Promise<void>;
+  /** 详情面板兜底加载某父任务的全部直接子任务（用于矩阵/已完成/搜索等不含子任务的视图） */
+  ensureSubtasksLoaded: (parentId: string, todoListId: string) => Promise<void>;
 
   // 过滤操作
   setViewFilter: (view: TodoViewFilter) => void;
@@ -416,6 +479,8 @@ interface TodoState {
 }
 
 export const useTodoStore = create<TodoState>((set, get) => {
+  // 并发 initialize 去重（防止 React StrictMode 双挂载/多宿主同时挂载竞态打断今日视图加载）
+  let activeInitializePromise: Promise<void> | null = null;
   // 静默校准的世代号：两次静默校准并发时，旧响应不得覆盖新响应。
   // 独立于 itemsRequestVersion（那是显式加载的语义，不混用）。
   let silentReloadSeq = 0;
@@ -626,16 +691,29 @@ export const useTodoStore = create<TodoState>((set, get) => {
       }
       const selectedItemId = get().selectedItemId;
       const isTodayView = state.filter.view === 'today';
-      set({
+      const activeListId =
+        state.filter.view === 'all'
+          ? state.activeListId ??
+            (state.lists.find((l) => l.isDefault) || state.lists[0])?.id ??
+            null
+          : null;
+      set((s) => ({
         items,
+        ...(!state.filter.search.trim()
+          ? reconcileCountsPatch(s, state.filter.view, activeListId, items)
+          : {}),
         ...(isTodayView && state.filter.showCompleted
-          ? { todayCompletedCount: items.filter((item) => item.status === 'completed').length }
+          ? {
+              todayCompletedCount: items.filter(
+                (item) => !item.parentId && item.status === 'completed',
+              ).length,
+            }
           : {}),
         selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
           ? selectedItemId
           : null,
-      });
-      if (isTodayView && !state.filter.showCompleted && items.length === 0) {
+      }));
+      if (isTodayView && !state.filter.showCompleted && countTopLevelPending(items) === 0) {
         void syncTodayCompletedFromOverview();
       }
       scheduleCountsRefresh();
@@ -823,15 +901,16 @@ export const useTodoStore = create<TodoState>((set, get) => {
     try {
       const rawItems = await fetchListItemsRetainingActiveSubtasks(listId, includeCompleted);
       if (get().itemsRequestVersion !== requestVersion) return;
-      const items = applyInFlightPatches(rawItems);
+      const items = applyInFlightPatches(Array.isArray(rawItems) ? rawItems : []);
       const selectedItemId = get().selectedItemId;
-      set({
+      set((s) => ({
         items,
+        ...reconcileCountsPatch(s, 'all', listId, items),
         isLoadingItems: false,
         selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
           ? selectedItemId
           : null,
-      });
+      }));
     } catch (e) {
       if (get().itemsRequestVersion !== requestVersion) return;
       set({ error: notifyError(e), isLoadingItems: false });
@@ -865,29 +944,48 @@ export const useTodoStore = create<TodoState>((set, get) => {
     // 定向快照：只记录本条 item 的修改前状态。失败时定向回滚该条，
     // 不做全表快照回滚——否则会覆盖并发请求对其他条目的成功结果
     const prevItem = get().items.find((i) => i.id === input.id);
+    // 仅编辑时间（dueTime）时，若未显式改日期则保留原 dueDate（含逾期日期），仅在无日期且设非空时间时默认今天
+    const effectiveInput: UpdateTodoItemInput = { ...input };
+    if (effectiveInput.dueTime !== undefined && effectiveInput.dueDate === undefined) {
+      const existingDate = prevItem?.dueDate?.trim();
+      if (existingDate) {
+        effectiveInput.dueDate = existingDate;
+      } else if (effectiveInput.dueTime.trim()) {
+        effectiveInput.dueDate = localToday();
+      }
+    }
     // 领取本条目的最新写序号：同一条目快速连续保存时，
     // 旧请求的迟到响应（成功或失败）都不得覆盖新请求的乐观状态
-    const opSeq = acquireItemOp(input.id);
-    const existingPatch = inFlightItemInputs.get(input.id);
-    inFlightItemInputs.set(input.id, existingPatch ? { ...existingPatch, ...input } : { ...input });
+    const opSeq = acquireItemOp(effectiveInput.id);
+    const existingPatch = inFlightItemInputs.get(effectiveInput.id);
+    inFlightItemInputs.set(
+      effectiveInput.id,
+      existingPatch ? { ...existingPatch, ...effectiveInput } : { ...effectiveInput },
+    );
     if (prevItem) {
       set((s) => ({
-        items: s.items.map((i) => (i.id === input.id ? mergeItemInput(i, input) : i)),
+        items: s.items.map((i) => (i.id === effectiveInput.id ? mergeItemInput(i, effectiveInput) : i)),
         error: null,
       }));
     }
     beginWrite();
     try {
-      const updated = await api.updateTodoItem(input);
-      if (isLatestItemOp(input.id, opSeq)) {
-        inFlightItemInputs.delete(input.id);
+      const updated = await api.updateTodoItem(effectiveInput);
+      if (isLatestItemOp(effectiveInput.id, opSeq)) {
+        inFlightItemInputs.delete(effectiveInput.id);
         set((s) => {
           if (!s.items.some((i) => i.id === updated.id)) return s;
           const { view, showCompleted } = s.filter;
+          const isSubtaskOfActiveParent = Boolean(
+            updated.parentId &&
+              s.items.some(
+                (candidate) => candidate.id === updated.parentId && candidate.status !== 'completed',
+              ),
+          );
           const stillVisible =
             view === 'completed'
               ? updated.status === 'completed'
-              : updated.status !== 'completed' || showCompleted;
+              : updated.status !== 'completed' || showCompleted || isSubtaskOfActiveParent;
           return {
             items: stillVisible
               ? s.items.map((i) => (i.id === updated.id ? updated : i))
@@ -901,19 +999,19 @@ export const useTodoStore = create<TodoState>((set, get) => {
       scheduleCountsRefresh();
       pokeReminderScheduler();
     } catch (e) {
-      if (isLatestItemOp(input.id, opSeq)) {
-        inFlightItemInputs.delete(input.id);
+      if (isLatestItemOp(effectiveInput.id, opSeq)) {
+        inFlightItemInputs.delete(effectiveInput.id);
       }
       set((s) => ({
         // 旧请求失败但已有更新的写在途时不回滚（新写的乐观状态优先）；
         // item 已被其他并发操作移除时也不强行塞回
-        items: prevItem && isLatestItemOp(input.id, opSeq)
-          ? s.items.map((i) => (i.id === input.id ? prevItem : i))
+        items: prevItem && isLatestItemOp(effectiveInput.id, opSeq)
+          ? s.items.map((i) => (i.id === effectiveInput.id ? prevItem : i))
           : s.items,
         error: notifyError(e),
       }));
     } finally {
-      releaseItemOp(input.id, opSeq);
+      releaseItemOp(effectiveInput.id, opSeq);
       endWrite();
     }
   },
@@ -945,7 +1043,8 @@ export const useTodoStore = create<TodoState>((set, get) => {
 
     const completing = target.status !== 'completed';
     const affectsTodayCompleted =
-      get().filter.view === 'today' || (Boolean(target.dueDate) && (target.dueDate as string) <= localToday());
+      !target.parentId &&
+      (get().filter.view === 'today' || (Boolean(target.dueDate) && (target.dueDate as string) <= localToday()));
     // 与 updateItem 共用同一条目写序号：快速连翻/翻转+保存交错时旧响应不覆盖新状态
     const opSeq = acquireItemOp(itemId);
     set((s) => ({
@@ -1241,15 +1340,17 @@ export const useTodoStore = create<TodoState>((set, get) => {
     set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
       const showCompleted = get().filter.showCompleted;
+      const fetchedToday = await api.listTodayItems(showCompleted);
       const rawItems = await appendSubtasksOfParents(
-        await api.listTodayItems(showCompleted),
+        Array.isArray(fetchedToday) ? fetchedToday : [],
         showCompleted,
       );
       if (get().itemsRequestVersion !== requestVersion) return;
       const items = applyInFlightPatches(rawItems);
       const selectedItemId = get().selectedItemId;
-      set({
+      set((s) => ({
         items,
+        ...reconcileCountsPatch(s, 'today', null, items),
         ...(showCompleted
           ? { todayCompletedCount: items.filter((item) => !item.parentId && item.status === 'completed').length }
           : {}),
@@ -1257,8 +1358,8 @@ export const useTodoStore = create<TodoState>((set, get) => {
         selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
           ? selectedItemId
           : null,
-      });
-      if (!showCompleted && items.length === 0) {
+      }));
+      if (!showCompleted && countTopLevelPending(items) === 0) {
         void syncTodayCompletedFromOverview();
       }
     } catch (e) {
@@ -1272,20 +1373,22 @@ export const useTodoStore = create<TodoState>((set, get) => {
     set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
       const showCompleted = get().filter.showCompleted;
+      const fetchedOverdue = await api.listOverdueItems(showCompleted);
       const rawItems = await appendSubtasksOfParents(
-        await api.listOverdueItems(showCompleted),
+        Array.isArray(fetchedOverdue) ? fetchedOverdue : [],
         showCompleted,
       );
       if (get().itemsRequestVersion !== requestVersion) return;
       const items = applyInFlightPatches(rawItems);
       const selectedItemId = get().selectedItemId;
-      set({
+      set((s) => ({
         items,
+        ...reconcileCountsPatch(s, 'overdue', null, items),
         isLoadingItems: false,
         selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
           ? selectedItemId
           : null,
-      });
+      }));
     } catch (e) {
       if (get().itemsRequestVersion !== requestVersion) return;
       set({ error: notifyError(e), isLoadingItems: false });
@@ -1297,20 +1400,22 @@ export const useTodoStore = create<TodoState>((set, get) => {
     set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
     try {
       const showCompleted = get().filter.showCompleted;
+      const fetchedUpcoming = await api.listUpcomingItems(days, showCompleted);
       const rawItems = await appendSubtasksOfParents(
-        await api.listUpcomingItems(days, showCompleted),
+        Array.isArray(fetchedUpcoming) ? fetchedUpcoming : [],
         showCompleted,
       );
       if (get().itemsRequestVersion !== requestVersion) return;
       const items = applyInFlightPatches(rawItems);
       const selectedItemId = get().selectedItemId;
-      set({
+      set((s) => ({
         items,
+        ...reconcileCountsPatch(s, 'upcoming', null, items),
         isLoadingItems: false,
         selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
           ? selectedItemId
           : null,
-      });
+      }));
     } catch (e) {
       if (get().itemsRequestVersion !== requestVersion) return;
       set({ error: notifyError(e), isLoadingItems: false });
@@ -1420,6 +1525,33 @@ export const useTodoStore = create<TodoState>((set, get) => {
     }
   },
 
+  ensureSubtasksLoaded: async (parentId, todoListId) => {
+    if (!parentId || !todoListId || typeof api.listTodoItems !== 'function') return;
+    try {
+      const listItems = await api.listTodoItems(todoListId, true);
+      if (!Array.isArray(listItems)) return;
+      const children = listItems.filter((candidate) => candidate.parentId === parentId);
+      if (children.length === 0) return;
+      set((s) => {
+        if (!s.items.some((candidate) => candidate.id === parentId)) return s;
+        const byId = new Map(children.map((child) => [child.id, child]));
+        const nextItems = s.items.map((existing) => byId.get(existing.id) ?? existing);
+        const knownIds = new Set(nextItems.map((existing) => existing.id));
+        let added = false;
+        for (const child of children) {
+          if (!knownIds.has(child.id)) {
+            nextItems.push(child);
+            knownIds.add(child.id);
+            added = true;
+          }
+        }
+        return added ? { items: nextItems } : s;
+      });
+    } catch {
+      // 兜底拉取子任务失败静默降级，不打断详情面板展示
+    }
+  },
+
   // ========================================================================
   // 过滤操作
   // ========================================================================
@@ -1517,7 +1649,28 @@ export const useTodoStore = create<TodoState>((set, get) => {
     try {
       if (typeof api.getTodoCountsSnapshot !== 'function') return;
       const counts = await api.getTodoCountsSnapshot();
-      if (counts) set({ counts });
+      if (!counts) return;
+      set((s) => {
+        // 当前活跃视图已完成加载且无搜索/优先级过滤时，保留当前视图顶层未完成口径，
+        // 避免后端含子任务的快照反向覆盖侧栏「今日」等计数造成徽标与主列表矛盾。
+        if (!s.isLoadingItems && !s.filter.search.trim() && !s.filter.priorityFilter) {
+          const listId =
+            s.filter.view === 'all'
+              ? s.activeListId ?? (s.lists.find((l) => l.isDefault) || s.lists[0])?.id ?? null
+              : null;
+          const reconciled = reconcileCountsPatch(
+            { counts, lists: s.lists },
+            s.filter.view,
+            listId,
+            s.items,
+          );
+          return {
+            counts: reconciled.counts ?? counts,
+            ...(reconciled.overdueCount !== undefined ? { overdueCount: reconciled.overdueCount } : {}),
+          };
+        }
+        return { counts };
+      });
     } catch {
       // 后端 todo_counts_snapshot 可能尚未落地/查询失败：静默容错，保留旧快照
     }
@@ -1538,6 +1691,7 @@ export const useTodoStore = create<TodoState>((set, get) => {
     const today = localToday();
     const newlyCompletedTodayCount = prevItems.filter(
       (i) =>
+        !i.parentId &&
         affected.has(i.id) &&
         i.status !== 'completed' &&
         (view === 'today' || (Boolean(i.dueDate) && (i.dueDate as string) <= today)),
@@ -1588,7 +1742,8 @@ export const useTodoStore = create<TodoState>((set, get) => {
     if (ids.length === 0) return { items: [], skippedIds: [] };
     const prevItems = get().items;
     const affected = new Set(ids);
-    const clearsDate = dueDate === undefined || dueDate === null || dueDate === '';
+    const clearsDate =
+      dueDate === null || dueDate === '' || (dueDate === undefined && dueTime === undefined);
     set((s) => ({
       items: s.items.map((i) => {
         if (!affected.has(i.id)) return i;
@@ -1597,7 +1752,9 @@ export const useTodoStore = create<TodoState>((set, get) => {
           next.dueDate = undefined;
           next.dueTime = undefined;
         } else {
-          next.dueDate = dueDate as string;
+          if (typeof dueDate === 'string' && dueDate.trim()) {
+            next.dueDate = dueDate;
+          }
           if (dueTime === '') next.dueTime = undefined;
           else if (dueTime !== undefined && dueTime !== null) next.dueTime = dueTime;
         }
@@ -1917,6 +2074,10 @@ export const useTodoStore = create<TodoState>((set, get) => {
   // ========================================================================
 
   initialize: async (options) => {
+    if (activeInitializePromise) {
+      return activeInitializePromise;
+    }
+    const run = (async () => {
     try {
       const hadPriorUserSelection = Boolean(get().hasUserSelectedView && get().lists.length > 0);
       // 传入本地化标题，避免新库默认建出英文 "Inbox"
@@ -2011,6 +2172,15 @@ export const useTodoStore = create<TodoState>((set, get) => {
       }
     } catch (e) {
       set({ error: notifyError(e) });
+    }
+    })();
+    activeInitializePromise = run;
+    try {
+      await run;
+    } finally {
+      if (activeInitializePromise === run) {
+        activeInitializePromise = null;
+      }
     }
   },
   };

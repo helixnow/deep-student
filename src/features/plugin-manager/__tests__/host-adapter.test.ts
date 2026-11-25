@@ -22,6 +22,7 @@ function setup() {
       case MANAGER_COMMANDS.install:
       case MANAGER_COMMANDS.installUrl: revision = 'profile-2'; return { id: 'example.web-search', version: '2.0.0', enabled: false, revision,
         consentRequired: { code: 'CONSENT_REQUIRED', id: 'example.web-search', version: '2.0.0', permissions: [] }, rollback: 'not-needed' };
+      case MANAGER_COMMANDS.resetProfile: revision = 'profile-clean-1'; return { backedUpTo: '/data/plugins/user.profile.json.corrupt.bak', revision };
       default: throw new Error(`Unexpected command: ${command}`);
     }
   });
@@ -65,6 +66,7 @@ describe('HostPluginManagerAdapter', () => {
     await adapter.uninstall('example.web-search');
     expect(await adapter.importPackage()).toMatchObject({ status: 'installed' });
     expect(await adapter.installPackageFromUrl('https://example.com/pack.dspack')).toMatchObject({ status: 'installed' });
+    expect(await adapter.resetProfile()).toEqual({ backedUpTo: '/data/plugins/user.profile.json.corrupt.bak', revision: 'profile-clean-1' });
     expect(open).toHaveBeenCalledWith({ multiple: false, directory: false, filters: [{ name: 'Deep Student Plugin', extensions: ['dstuplugin', 'dspack'] }] });
     expect(new Set(fake.invoke.mock.calls.map(([command]) => command))).toEqual(new Set(Object.values(MANAGER_COMMANDS)));
   });
@@ -91,9 +93,47 @@ describe('HostPluginManagerAdapter', () => {
     expect(await adapter.importPackage()).toMatchObject({ status: 'installed', enabled: false, consentRequired: { version: '2.0.0' } });
     expect(await adapter.installPackagePath('/staged/sample.dspack')).toMatchObject({ status: 'installed' });
     expect(await adapter.installPackageFromUrl('https://example.com/sample.dspack')).toMatchObject({ status: 'installed' });
+    expect(await adapter.resetProfile()).toEqual({ backedUpTo: '/data/plugins/user.profile.json.corrupt.bak', revision: 'profile-clean-1' });
     expect(new Set(invoke.mock.calls.map(([command]) => command))).toEqual(new Set(Object.values(MANAGER_COMMANDS)));
     expect(invoke).toHaveBeenCalledWith(MANAGER_COMMANDS.install, { path: '/chosen/sample.dstuplugin', revision: 'profile-2' });
     expect(invoke).toHaveBeenCalledWith(MANAGER_COMMANDS.installUrl, { url: 'https://example.com/sample.dspack', revision: 'profile-2' });
+    expect(invoke).toHaveBeenCalledWith(MANAGER_COMMANDS.resetProfile, {});
+  });
+
+  it('propagates profileCorrupted and profileError from plugin:manager|list and resets profile via static command', async () => {
+    let corrupted = true;
+    const invoke = vi.fn(async (command: string) => {
+      if (command === MANAGER_COMMANDS.list) {
+        return {
+          revision: corrupted ? '' : 'profile-reset-2',
+          safeMode: true,
+          profileCorrupted: corrupted,
+          profileError: corrupted ? 'PROFILE_READ_FAILED: Unexpected token } in JSON at position 12' : undefined,
+          plugins: [],
+        };
+      }
+      if (command === MANAGER_COMMANDS.resetProfile) {
+        corrupted = false;
+        return { backedUpTo: '/data/plugins/user.profile.json.corrupt-123.bak', revision: 'profile-reset-2' };
+      }
+      throw new Error(`Unexpected command: ${command}`);
+    });
+    const adapter = new HostPluginManagerAdapter({ platform: 'desktop', invoke: invoke as never, choosePackage: vi.fn() });
+
+    const before = await adapter.list();
+    expect(before.profileCorrupted).toBe(true);
+    expect(before.profileError).toContain('Unexpected token');
+
+    const reset = await adapter.resetProfile();
+    expect(reset).toEqual({
+      backedUpTo: '/data/plugins/user.profile.json.corrupt-123.bak',
+      revision: 'profile-reset-2',
+    });
+    expect(invoke).toHaveBeenCalledWith('plugin:manager|reset-profile', {});
+
+    const after = await adapter.list();
+    expect(after.profileCorrupted).toBeUndefined();
+    expect(after.profileError).toBeUndefined();
   });
 
   it('treats picker cancellation as no operation', async () => {

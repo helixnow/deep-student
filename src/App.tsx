@@ -71,11 +71,8 @@ import { installAndroidBackBridge, registerBackHandler, BACK_PRIORITY } from './
 import { useDesktopTitlebarInteractions } from './app/hooks/useDesktopTitlebarInteractions';
 import type { CurrentView as NavigationCurrentView } from './types/navigation';
 import { usePreventScroll } from './hooks/usePreventScroll';
-// ★ 刻意深路径导入：经 command-palette/index.ts barrel 会把 ShortcutSettings
-//   → @/features/settings barrel → 全部设置页签（含 recharts 等重组件）拖进主 bundle；
-//   ShortcutSettings 在 Settings.tsx 中本就是 React.lazy 加载（设计 §9.3 同法）。
-import { CommandPaletteProvider, useCommandPalette } from './command-palette/CommandPaletteProvider';
-import { CommandPalette } from './command-palette/CommandPalette';
+// ★ 命令面板的渲染与 Provider 挂载均在 AppShellChrome 内（CommandPalette 按需懒加载，
+//   避免经 useResourceSearch → globalSearchProviders 把 chat/workbench 重模块拖进首屏闭包）。
 import { useAppBackgroundServices } from './app/hooks/useAppBackgroundServices';
 import { TextContextMenuProvider } from './components/context-menu/TextContextMenu';
 import { useMenuEventBridge } from './menu/menuEventBridge';

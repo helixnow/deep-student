@@ -255,14 +255,21 @@ function spawnDockPoof(dockRoot: HTMLElement, clientX: number, clientY: number):
 function bindWindowDragSession(
   onMove: (ev: PointerEvent) => void,
   onEnd: (ev: PointerEvent) => void,
+  onBlurCancel?: () => void,
 ): () => void {
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onEnd);
   window.addEventListener('pointercancel', onEnd);
+  if (onBlurCancel) {
+    window.addEventListener('blur', onBlurCancel);
+  }
   return () => {
     window.removeEventListener('pointermove', onMove);
     window.removeEventListener('pointerup', onEnd);
     window.removeEventListener('pointercancel', onEnd);
+    if (onBlurCancel) {
+      window.removeEventListener('blur', onBlurCancel);
+    }
   };
 }
 
@@ -414,6 +421,14 @@ export function useDockPinnedDragReorder(typeId: string): DockPinnedDragBind | R
       const rect = wrap.getBoundingClientRect();
       const slotStride = measureSlotStride(wraps, rect.width || 44);
       const startY = typeof event.clientY === 'number' ? event.clientY : 0;
+
+      if (dragRef.current) {
+        dragRef.current.unbind?.();
+        if (dragRef.current.rafId != null) {
+          window.cancelAnimationFrame(dragRef.current.rafId);
+        }
+        dragRef.current = null;
+      }
 
       dragRef.current = {
         pointerId: event.pointerId,
@@ -592,9 +607,31 @@ export function useDockPinnedDragReorder(typeId: string): DockPinnedDragBind | R
         }
       };
 
-      dragRef.current.unbind = bindWindowDragSession(onMove, finish);
+      dragRef.current.unbind = bindWindowDragSession(onMove, finish, () => {
+        const drag = dragRef.current;
+        if (!drag) return;
+        finish({
+          type: 'pointercancel',
+          pointerId: drag.pointerId,
+          clientX: drag.latestClientX,
+          clientY: drag.latestClientY,
+        } as PointerEvent);
+      });
     },
     [isPinned, typeId],
+  );
+
+  React.useEffect(
+    () => () => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      drag.unbind?.();
+      if (drag.rafId != null) {
+        window.cancelAnimationFrame(drag.rafId);
+      }
+      dragRef.current = null;
+    },
+    [],
   );
 
   const setRefOnDown = React.useCallback(
@@ -672,6 +709,14 @@ export function useDockRunningDragToPin(typeId: string): DockRunningDragBind | R
           ? pinnedWraps[pinnedWraps.length - 1].getBoundingClientRect().right + 12
           : wrapRect.left - stride * 0.5;
       const startY = typeof event.clientY === 'number' ? event.clientY : 0;
+
+      if (dragRef.current) {
+        dragRef.current.unbind?.();
+        if (dragRef.current.rafId != null) {
+          window.cancelAnimationFrame(dragRef.current.rafId);
+        }
+        dragRef.current = null;
+      }
 
       dragRef.current = {
         pointerId: event.pointerId,
@@ -824,9 +869,31 @@ export function useDockRunningDragToPin(typeId: string): DockRunningDragBind | R
         }
       };
 
-      dragRef.current.unbind = bindWindowDragSession(onMove, finish);
+      dragRef.current.unbind = bindWindowDragSession(onMove, finish, () => {
+        const drag = dragRef.current;
+        if (!drag) return;
+        finish({
+          type: 'pointercancel',
+          pointerId: drag.pointerId,
+          clientX: drag.latestClientX,
+          clientY: drag.latestClientY,
+        } as PointerEvent);
+      });
     },
     [isPinned, typeId],
+  );
+
+  React.useEffect(
+    () => () => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      drag.unbind?.();
+      if (drag.rafId != null) {
+        window.cancelAnimationFrame(drag.rafId);
+      }
+      dragRef.current = null;
+    },
+    [],
   );
 
   if (isPinned) return {};

@@ -23,7 +23,6 @@ import {
   ArrowLineUp,
   CaretRight,
   Check,
-  CheckCircle,
   CircleNotch,
   DotsSixVertical,
   Plus,
@@ -62,6 +61,7 @@ const SubtaskRow: React.FC<{
 }> = ({ sub, popId, reducedMotion, onToggle, onOpen, onPromote, onDelete, onDragStart, onDragEnd }) => {
   const { t } = useTranslation(['todo']);
   const dragControls = useDragControls();
+  const isCompleted = sub.status === 'completed';
 
   return (
     <Reorder.Item
@@ -72,9 +72,9 @@ const SubtaskRow: React.FC<{
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       layout={reducedMotion ? undefined : 'position'}
-      initial={reducedMotion ? false : { opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
-      exit={reducedMotion ? undefined : { opacity: 0, height: 0 }}
+      initial={reducedMotion ? false : { opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={reducedMotion ? undefined : { opacity: 0 }}
       transition={reducedMotion ? { duration: 0 } : { ...springSoft, opacity: tweenFast }}
       whileDrag={{
         scale: reducedMotion ? 1 : 1.02,
@@ -84,20 +84,11 @@ const SubtaskRow: React.FC<{
       className="relative overflow-visible rounded-[var(--radius-shell-control)] bg-transparent"
     >
       <div
-        role="button"
-        tabIndex={0}
-        onClick={() => onOpen(sub.id)}
-        onKeyDown={(e) => {
-          // role="button" 约定：Enter 与 Space 都应激活（Space 不再滚动页面）
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            onOpen(sub.id);
-          }
-        }}
-        title={t('todo:subtasks.openDetail')}
-        className="group/subtask flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-shell-control)] px-1 py-1 [@media(pointer:coarse)]:min-h-11 transition-colors duration-150 hover:bg-[color:var(--interactive-hover)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[color:hsl(var(--primary))]/50"
+        data-testid={`subtask-row-${sub.id}`}
+        data-completed={isCompleted ? 'true' : 'false'}
+        className="group/subtask flex items-center gap-2 rounded-[var(--radius-shell-control)] px-1.5 py-1.5 [@media(pointer:coarse)]:min-h-11 transition-colors duration-150 hover:bg-[color:var(--interactive-hover)]"
       >
-        {/* 拖拽把手：hover 常显、触屏淡显；不与行点击冲突 */}
+        {/* 拖拽把手：hover 常显、触屏淡显；不与勾选冲突 */}
         <span
           onPointerDown={(e) => {
             e.preventDefault();
@@ -112,61 +103,81 @@ const SubtaskRow: React.FC<{
           <DotsSixVertical size={13} weight="bold" />
         </span>
 
+        {/* 独立可交互复选框：清晰勾选态 / 未勾选边框对比度 / role=checkbox */}
         <button
+          type="button"
+          role="checkbox"
+          aria-checked={isCompleted}
+          data-state={isCompleted ? 'checked' : 'unchecked'}
+          data-testid={`subtask-checkbox-${sub.id}`}
           onClick={(e) => {
             e.stopPropagation();
             onToggle(sub);
           }}
-          // 触屏：内容仅 16px，p-3.5（14×2）才够 44px 命中；负 margin 保持布局不变
-          className="flex-shrink-0 rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] [@media(pointer:coarse)]:p-3.5 [@media(pointer:coarse)]:-m-3.5"
+          className={cn(
+            'relative flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-[4px] border-[1.5px] transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3.5 [@media(pointer:coarse)]:after:content-[""]',
+            isCompleted
+              ? 'border-[color:hsl(var(--success))] bg-[color:hsl(var(--success))] text-[color:hsl(var(--success-foreground,0_0%_100%))]'
+              : 'border-muted-foreground/65 bg-background hover:border-[color:hsl(var(--primary))] hover:bg-[color:hsl(var(--primary))]/10',
+            popId === sub.id && 'todo-check-pop',
+          )}
           aria-label={
-            sub.status === 'completed'
-              ? t('todo:actions.markPending')
-              : t('todo:actions.markCompleted')
+            isCompleted
+              ? `${t('todo:actions.markPending')}: ${sub.title}`
+              : `${t('todo:actions.markCompleted')}: ${sub.title}`
           }
         >
-          {sub.status === 'completed' ? (
-            <CheckCircle
-              size={16}
-              weight="fill"
-              className={cn(
-                'text-[color:hsl(var(--success))]',
-                popId === sub.id && 'todo-check-pop',
-              )}
-            />
-          ) : (
-            <span className="group/subcheck flex h-4 w-4 items-center justify-center rounded-full border-[1.5px] border-[color:var(--border-default)] transition-colors duration-150 hover:border-[color:hsl(var(--primary))]">
-              <Check
-                size={10}
-                className="text-[color:hsl(var(--primary))] opacity-0 transition-opacity duration-150 group-hover/subcheck:opacity-40"
-              />
-            </span>
-          )}
+          {isCompleted && <Check size={11} weight="bold" aria-hidden="true" />}
         </button>
-        <span
-          className={cn(
-            'min-w-0 flex-1 truncate text-ui transition-colors duration-150',
-            sub.status === 'completed' && 'text-muted-foreground line-through',
-          )}
-        >
-          {sub.title}
-        </span>
-        <CaretRight
-          size={12}
-          className="flex-shrink-0 text-muted-foreground/0 transition-colors group-hover/subtask:text-muted-foreground/60"
-        />
+
+        {/* 点击子任务标题直接切换勾选状态，不跳离父任务详情；已完成项清晰呈现删除线 */}
         <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle(sub);
+          }}
+          className="min-w-0 flex-1 bg-transparent p-0 text-left focus:outline-none focus-visible:underline"
+        >
+          <span
+            data-testid={`subtask-title-${sub.id}`}
+            className={cn(
+              'block truncate text-ui transition-colors duration-150',
+              isCompleted
+                ? 'text-muted-foreground line-through'
+                : 'text-foreground',
+            )}
+          >
+            {sub.title}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen(sub.id);
+          }}
+          aria-label={t('todo:subtasks.openDetail')}
+          title={t('todo:subtasks.openDetail')}
+          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-muted-foreground/60 opacity-0 transition-opacity hover:text-foreground group-hover/subtask:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-70 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-my-3"
+        >
+          <CaretRight size={12} />
+        </button>
+        <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onPromote(sub.id);
           }}
           aria-label={t('todo:subtasks.promote')}
           title={t('todo:subtasks.promote')}
-          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover/subtask:opacity-100 [@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-my-3"
+          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover/subtask:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-my-3"
         >
           <ArrowLineUp size={12} />
         </button>
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onDelete(sub.id);
@@ -174,7 +185,7 @@ const SubtaskRow: React.FC<{
           aria-label={t('todo:actions.deleteItem')}
           title={t('todo:actions.deleteItem')}
           // 触屏无 hover：常显淡色并扩大命中（否则子任务删除不可发现/难点中）
-          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-[color:hsl(var(--destructive))] group-hover/subtask:opacity-100 [@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-my-3 [@media(pointer:coarse)]:-mr-3"
+          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:text-[color:hsl(var(--destructive))] group-hover/subtask:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-60 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:-my-3 [@media(pointer:coarse)]:-mr-3"
         >
           <X size={12} />
         </button>
@@ -273,6 +284,7 @@ export const SubtaskSection: React.FC<{
 
   const doneCount = orderedSubtasks.filter((s) => s.status === 'completed').length;
   const totalCount = orderedSubtasks.length;
+  const progressPercent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
 
   // ===== 级联进度反馈：完成数上升时圆环 + 计数弹跳 =====
   const prevDoneRef = useRef(doneCount);
@@ -336,7 +348,7 @@ export const SubtaskSection: React.FC<{
   }, [aiBreaking, item.id, reloadCurrentView, showInlineError]);
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1.5" data-testid="todo-subtasks-section">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {totalCount > 0 && (
@@ -356,12 +368,21 @@ export const SubtaskSection: React.FC<{
           )}
           {t('todo:subtasks.title')}
           {totalCount > 0 && (
-            <span
-              className="font-normal normal-case tabular-nums text-muted-foreground/70"
-              aria-label={t('todo:detail.subtaskProgress', { done: doneCount, total: totalCount })}
-            >
-              {doneCount}/{totalCount}
-            </span>
+            <>
+              <span
+                data-testid="subtask-progress-count"
+                className="font-mono font-normal normal-case tabular-nums text-muted-foreground/80"
+                aria-label={t('todo:detail.subtaskProgress', { done: doneCount, total: totalCount })}
+              >
+                {doneCount}/{totalCount}
+              </span>
+              <span
+                data-testid="subtask-progress-percent"
+                className="font-mono text-2xs font-normal normal-case tabular-nums text-muted-foreground/65"
+              >
+                ({progressPercent}%)
+              </span>
+            </>
           )}
         </span>
         <DsButton

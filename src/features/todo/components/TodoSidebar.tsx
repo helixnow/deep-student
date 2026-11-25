@@ -80,7 +80,7 @@ import { useMobileUnifiedDrawer } from '@/components/layout/MobileDrawerContext'
 import { useTodoStore } from '../stores/useTodoStore';
 import { useTodoTrashView } from './TodoTrashDialog';
 import { useTodoViewHotkeys, todoHotkeyHint, TODO_SMART_VIEW_ORDER } from './todoShellNav';
-import type { TodoList, TodoViewFilter } from '../types';
+import { localToday, type TodoList, type TodoViewFilter } from '../types';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 interface SmartView {
@@ -557,6 +557,8 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
     lists,
     activeListId,
     filter,
+    items,
+    isLoadingItems,
     overdueCount,
     workspaceView,
     setWorkspaceView,
@@ -865,9 +867,52 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
     [favoriteLists, regularLists, defaultList, reorderLists, toggleListFavorite],
   );
 
+  // 当前激活视图/列表已加载且未加搜索/优先级过滤时，直接以当前视图的顶层未完成条目数校准徽标，
+  // 杜绝侧栏「今日 3」与主列表空态/子任务数口径矛盾。
+  const canUseLiveViewCounts =
+    workspaceView === 'todos' &&
+    !isLoadingItems &&
+    !filter.search.trim() &&
+    !filter.priorityFilter;
+
+  const liveTopLevelPendingCount = useMemo(
+    () => items.filter((item) => !item.parentId && item.status === 'pending').length,
+    [items],
+  );
+
+  const liveOverduePendingCount = useMemo(() => {
+    const today = localToday();
+    return items.filter(
+      (item) =>
+        !item.parentId &&
+        item.status === 'pending' &&
+        Boolean(item.dueDate) &&
+        (item.dueDate as string) < today,
+    ).length;
+  }, [items]);
+
+  const effectiveOverdueCount = useMemo(() => {
+    if (!canUseLiveViewCounts) return overdueCount;
+    if (filter.view === 'overdue') return liveTopLevelPendingCount;
+    if (filter.view === 'today') return liveOverduePendingCount;
+    return overdueCount;
+  }, [canUseLiveViewCounts, filter.view, liveTopLevelPendingCount, liveOverduePendingCount, overdueCount]);
+
   /** 智能视图中性计数（overdue 用红色徽标另行渲染；matrix/completed 不显） */
   const smartViewCount = useCallback(
     (id: TodoViewFilter): number | null => {
+      if (canUseLiveViewCounts) {
+        if (id === 'today' && filter.view === 'today') return liveTopLevelPendingCount;
+        if (id === 'upcoming' && filter.view === 'upcoming') return liveTopLevelPendingCount;
+        if (
+          id === 'all' &&
+          filter.view === 'all' &&
+          defaultList !== null &&
+          activeListId === defaultList.id
+        ) {
+          return liveTopLevelPendingCount;
+        }
+      }
       if (!counts) return null;
       switch (id) {
         case 'all':
@@ -880,7 +925,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
           return null;
       }
     },
-    [counts],
+    [canUseLiveViewCounts, filter.view, defaultList, activeListId, liveTopLevelPendingCount, counts],
   );
 
   // ===== 单条清单行 =====
@@ -938,7 +983,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
                 );
               }}
               className={cn(
-                'shrink-0 rounded-md px-1.5 py-0.5 text-sm font-medium',
+                'shrink-0 whitespace-nowrap rounded-md px-1.5 py-0.5 text-sm font-medium',
                 'text-[color:hsl(var(--destructive))] transition-colors duration-150',
                 'hover:bg-[color:var(--button-danger-surface,var(--interactive-hover))]',
                 '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5',
@@ -950,7 +995,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
               type="button"
               onClick={() => setPendingDeleteListId(null)}
               className={cn(
-                'shrink-0 rounded-md px-1.5 py-0.5 text-sm',
+                'shrink-0 whitespace-nowrap rounded-md px-1.5 py-0.5 text-sm',
                 'text-[color:var(--shell-navigation-muted)] transition-colors duration-150',
                 'hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]',
                 '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-2.5',
@@ -963,6 +1008,11 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
       );
     }
 
+    const listPendingCount =
+      canUseLiveViewCounts && filter.view === 'all' && activeListId === list.id
+        ? liveTopLevelPendingCount
+        : (perListCounts?.get(list.id) ?? null);
+
     return (
       <TodoListRow
         key={list.id}
@@ -970,7 +1020,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
         isActive={isActive}
         dragEnabled={dragEnabled}
         rowDragListeners={coarsePointer}
-        pendingCount={perListCounts?.get(list.id) ?? null}
+        pendingCount={listPendingCount}
         menuOpen={menuListId === list.id}
         onMenuOpenChange={(open) => setMenuListId(open ? list.id : null)}
         onSelect={() => handleListClick(list)}
@@ -1126,11 +1176,12 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
                 !trashActive &&
                 filter.view === id &&
                 (id !== 'all' || (defaultList !== null && activeListId === defaultList.id));
-              const showOverdueBadge = id === 'overdue' && overdueCount > 0;
+              const showOverdueBadge = id === 'overdue' && effectiveOverdueCount > 0;
               const neutralCount = smartViewCount(id);
               return (
                 <NavRow
                   key={id}
+                  data-testid={`todo-sidebar-smart-${id}`}
                   isActive={isActive}
                   onClick={() => handleSmartViewClick(id)}
                   title={`${t(labelKey)} ${todoHotkeyHint(viewIndex + 1)}`}
@@ -1138,10 +1189,11 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
                   rightSlot={
                     showOverdueBadge ? (
                       <span
-                        aria-label={t('todo:overdue.badgeAria', { count: overdueCount })}
+                        data-testid="todo-sidebar-overdue-badge"
+                        aria-label={t('todo:overdue.badgeAria', { count: effectiveOverdueCount })}
                         className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[color:hsl(var(--destructive))] px-1 text-2xs font-semibold leading-none tabular-nums text-white"
                       >
-                        {overdueCount > 99 ? '99+' : overdueCount}
+                        {effectiveOverdueCount > 99 ? '99+' : effectiveOverdueCount}
                       </span>
                     ) : neutralCount !== null && neutralCount > 0 ? (
                       <PendingCountBadge

@@ -369,6 +369,7 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
       const duePayload = { screen: 'session', mode: 'due' } as const;
       const isSingletonWorkspace =
         def?.instanceMode === 'single'
+        || typeId === 'notes'
         || typeId === 'essay'
         || typeId === 'exam'
         || typeId === 'translation';
@@ -392,6 +393,7 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
           typeId,
           reason: 'dock',
         });
+        recomputeLifecycles();
         return;
       }
       if (current.length === 1 || isSingletonWorkspace) {
@@ -419,12 +421,15 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
             })[0]
           : current[0];
         const phase = state.transientPhases?.[win.id];
+        const lifecycle = state.lifecycles[win.id];
         const topId = state.focusStack[state.focusStack.length - 1];
         if (
           topId === win.id &&
           !win.minimized &&
           phase !== 'closing' &&
           phase !== 'minimizing' &&
+          lifecycle !== 'frozen' &&
+          lifecycle !== 'background' &&
           !appsOpen &&
           !wasExposeOpen
         ) {
@@ -645,7 +650,7 @@ export const DockItem = React.forwardRef<HTMLDivElement, DockItemProps>(
           <span
             aria-hidden
             data-testid={`wb-dock-indicator-${typeId}`}
-            className="wb-dock-indicator wb-dock-ind"
+            className="wb-dock-indicator wb-dock-ind pointer-events-none"
           />
         )}
         <span

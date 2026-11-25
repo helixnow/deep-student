@@ -1111,3 +1111,111 @@ describe('autohide', () => {
     expect(onMobileClearanceChange).toHaveBeenLastCalledWith({ revealed: false, clearancePx: 0 });
   });
 });
+
+describe('S1-14 / S3-02: Dock 图标点击通用可靠性（打开 / 聚焦 / 恢复 / 唤醒）', () => {
+  it('点击任意已固定 Dock 应用图标（含 notes、essay、sandbox）都能完整经过指针按抬点击并打开/聚焦/恢复窗口', () => {
+    appRegistry.register(makeApp('notes', { instanceMode: 'single' }));
+    appRegistry.register(makeApp('essay', { instanceMode: 'single' }));
+    appRegistry.register(makeApp('sandbox', { instanceMode: 'single', showInLauncher: false }));
+    setDockPinned(['notes', 'essay', 'sandbox', 'files']);
+
+    render(<Dock />);
+
+    const clickWithPointer = (typeId: string, pointerId: number) => {
+      const btn = dockButton(typeId);
+      const down = new MouseEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 120,
+        clientY: 860,
+      });
+      Object.defineProperty(down, 'pointerId', { value: pointerId });
+      Object.defineProperty(down, 'pointerType', { value: 'mouse' });
+      fireEvent(btn, down);
+
+      const up = new MouseEvent('pointerup', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX: 120,
+        clientY: 860,
+      });
+      Object.defineProperty(up, 'pointerId', { value: pointerId });
+      Object.defineProperty(up, 'pointerType', { value: 'mouse' });
+      fireEvent(btn, up);
+
+      fireEvent.click(btn);
+    };
+
+    // 1) 冷启动：每个固定应用点击后均应创建并聚焦窗口，且生命周期即时置为 focused
+    for (const [idx, typeId] of (['notes', 'essay', 'sandbox', 'files'] as const).entries()) {
+      clickWithPointer(typeId, idx + 1);
+      const wins = windowsOf(typeId);
+      expect(wins).toHaveLength(1);
+      const state = useWindowStore.getState();
+      expect(state.windows[wins[0].id].minimized).toBe(false);
+      expect(state.focusStack[state.focusStack.length - 1]).toBe(wins[0].id);
+      expect(state.lifecycles[wins[0].id]).toBe('focused');
+    }
+
+    // 2) 最小化 + 卡在 closing/minimizing/frozen 状态时，点击 Dock 图标始终恢复并聚焦
+    const notesWin = windowsOf('notes')[0];
+    const essayWin = windowsOf('essay')[0];
+    act(() => {
+      useWindowStore.getState().minimizeWindow(notesWin.id, true);
+      useWindowStore.getState().setWindowTransient?.(notesWin.id, 'minimizing');
+      useWindowStore.getState().setLifecycles({
+        ...useWindowStore.getState().lifecycles,
+        [essayWin.id]: 'frozen',
+      });
+    });
+
+    clickWithPointer('notes', 20);
+    let state = useWindowStore.getState();
+    expect(state.windows[notesWin.id].minimized).toBe(false);
+    expect(state.focusStack[state.focusStack.length - 1]).toBe(notesWin.id);
+    expect(state.lifecycles[notesWin.id]).toBe('focused');
+
+    // 将 essay 设为栈顶但处于 frozen 生命周期时，点击 Dock 图标应唤醒而非最小化
+    act(() => {
+      useWindowStore.getState().focusWindow(essayWin.id);
+      useWindowStore.getState().setLifecycles({
+        ...useWindowStore.getState().lifecycles,
+        [essayWin.id]: 'frozen',
+      });
+    });
+    clickWithPointer('essay', 21);
+    state = useWindowStore.getState();
+    expect(state.windows[essayWin.id].minimized).toBe(false);
+    expect(state.focusStack[state.focusStack.length - 1]).toBe(essayWin.id);
+    expect(state.lifecycles[essayWin.id]).toBe('focused');
+  });
+
+  it('意外失焦中断旧指针拖拽会话后，后续点击 Dock 图标仍可正常打开窗口', () => {
+    appRegistry.register(makeApp('notes', { instanceMode: 'single' }));
+    setDockPinned(['notes', 'files']);
+    render(<Dock />);
+
+    const notesBtn = dockButton('notes');
+    const staleDown = new MouseEvent('pointerdown', {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+      clientX: 100,
+      clientY: 860,
+    });
+    Object.defineProperty(staleDown, 'pointerId', { value: 99 });
+    Object.defineProperty(staleDown, 'pointerType', { value: 'mouse' });
+    fireEvent(notesBtn, staleDown);
+
+    // 模拟窗口失焦中断指针序列（无 pointerup）
+    fireEvent(window, new Event('blur'));
+
+    // 再次点击应顺利打开窗口
+    fireEvent.click(notesBtn);
+    expect(windowsOf('notes')).toHaveLength(1);
+    const state = useWindowStore.getState();
+    expect(state.focusStack[state.focusStack.length - 1]).toBe(windowsOf('notes')[0].id);
+  });
+});
