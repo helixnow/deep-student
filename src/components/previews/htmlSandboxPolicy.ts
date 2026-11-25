@@ -44,14 +44,33 @@ const TEMPLATE_RESIZE_SCRIPT = `<script>
     de.style.height = deh; b.style.height = bh; b.style.minHeight = bm;
     return h;
   }
-  new ResizeObserver(function() {
+  function sdpNotify() {
     var h = sdpMeasure();
     if (h > 0) window.parent.postMessage({ type: 'sdp-resize', height: h }, '*');
-  }).observe(document.documentElement);
-  window.addEventListener('load', function() {
-    var h = sdpMeasure();
-    if (h > 0) window.parent.postMessage({ type: 'sdp-resize', height: h }, '*');
-  });
+  }
+  var sdpRo = new ResizeObserver(sdpNotify);
+  sdpRo.observe(document.documentElement);
+  function sdpWatchBody() {
+    if (document.body) sdpRo.observe(document.body);
+    var imgs = document.querySelectorAll('img');
+    for (var i = 0; i < imgs.length; i++) {
+      var img = imgs[i];
+      if (!img.complete) {
+        img.addEventListener('load', sdpNotify, { once: true });
+        img.addEventListener('error', sdpNotify, { once: true });
+      }
+      if (typeof img.decode === 'function') {
+        img.decode().then(sdpNotify, sdpNotify);
+      }
+    }
+    sdpNotify();
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', sdpWatchBody, { once: true });
+  } else {
+    sdpWatchBody();
+  }
+  window.addEventListener('load', sdpNotify);
 </script>`;
 
 function stripCssComments(css: string): string {

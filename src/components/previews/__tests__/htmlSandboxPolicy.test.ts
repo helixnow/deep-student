@@ -89,4 +89,17 @@ describe('htmlSandboxPolicy', () => {
     expect(darkDoc).toContain('<body class="card nightMode night_mode">');
     expect(darkDoc).toContain('color-scheme: dark;');
   });
+
+  it('observes document.body and hooks img load/decode in template resize script', () => {
+    const doc = buildHtmlSandboxDocument({
+      html: '<div><img src="data:image/png;base64,AAAA"></div>',
+      css: '',
+      mode: 'template-safe',
+      fidelity: 'anki',
+    });
+    expect(doc).toContain('sdpRo.observe(document.documentElement)');
+    expect(doc).toContain('sdpRo.observe(document.body)');
+    expect(doc).toContain("querySelectorAll('img')");
+    expect(doc).toContain('img.decode()');
+  });
 });

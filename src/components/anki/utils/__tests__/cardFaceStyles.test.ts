@@ -100,4 +100,11 @@ describe('G18: dark-mode Cloze & builtin template contrast', () => {
     expect(lab.css_style).not.toMatch(/\.nightMode\s+\.lab-card[^{]*\{[^}]*#ffffff/i);
     expect(lab.css_style).toContain('.nightMode .lab-opt');
   });
+
+  it('gives pending card images non-collapsing placeholder dimensions and skeleton styling', () => {
+    const css = buildCardFaceCss('');
+    expect(css).toContain('img[data-anki-media-pending="1"]');
+    expect(css).toContain('min-width: 160px');
+    expect(css).toContain('min-height: 120px');
+  });
 });
