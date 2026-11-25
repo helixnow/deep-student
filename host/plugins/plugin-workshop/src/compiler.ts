@@ -502,6 +502,7 @@ export async function checkWorkshopLifecycle(result: WorkshopBuild, app: AppInfo
       // Node 24 require(ESM) loads the actual built file, not Vite's development module graph.
       ? createRequire(import.meta.url)(managedRelative(directory, manifest.host)).default as HostPlugin
       : {
+          name: manifest.id,
           meta: {
             id: manifest.id,
             version: manifest.version,

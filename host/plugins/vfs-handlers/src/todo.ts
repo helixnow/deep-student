@@ -750,7 +750,7 @@ export async function aiBreakdown(deps: TodoDeps, itemId: string): Promise<TodoI
   }
   let output: string;
   try {
-    const result = await deps.llm.callModel2RawPrompt(prompt.join(''), null, { Other: 'todo_breakdown' });
+    const result = await deps.llm.callModel2RawPrompt(prompt.join(''), null, { other: 'todo_breakdown' });
     output = result.assistant_message;
   } catch (error) {
     return failCustom(deps, 'todo_ai_breakdown', 'INTERNAL_ERROR', error instanceof Error ? error.message : String(error));

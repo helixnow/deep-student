@@ -5,6 +5,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import {
   BackendEventsSink, ChatV2Emitter, ChatV2Error,
   freezeMemoryKernelSnapshotWithConn, getMemoryKernelSnapshotWithConn,
+  getSessionWithConn,
   type SessionState,
 } from '../../chat/api.ts';
 import { emitStudyEvent } from '../../plugin-services/api.ts';
@@ -388,6 +389,13 @@ export function composeExecution(input: ExecutionCompositionInput): ExecutionDep
   }
   const model2 = withRequestManifest(streaming, log, manifestHasherOf(ctx));
   const chatDb = () => ctx.chatSession.database.getConnSafe();
+  const sessionMode = (sessionId: string): string | null => {
+    try {
+      return getSessionWithConn(chatDb(), sessionId)?.mode ?? null;
+    } catch {
+      return null;
+    }
+  };
   const readSetting = (key: string) => ctx.settings.get(key);
   const post: PipelinePostCommitEffects = {
     async incrementResourceRefs(ids) {
@@ -536,7 +544,7 @@ export function composeExecution(input: ExecutionCompositionInput): ExecutionDep
           const req = {
             sessionId: execution.sessionId,
             memoryEnabled: execution.options.memoryEnabled,
-            mode: execution.options.chatMode ?? null,
+            mode: sessionMode(execution.sessionId),
           };
           const existing = getMemoryKernelSnapshotWithConn(conn, execution.sessionId);
           if (existing === null) {
@@ -565,7 +573,7 @@ export function composeExecution(input: ExecutionCompositionInput): ExecutionDep
         if (hooks) {
           const hooked = await hooks.runAugmentSystemPrompt({
             sessionId: execution.sessionId,
-            mode: execution.options.chatMode ?? null,
+            mode: sessionMode(execution.sessionId),
             userContent: execution.userContent,
           });
           if (hooked) parts.push(hooked);

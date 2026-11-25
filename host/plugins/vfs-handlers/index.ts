@@ -222,7 +222,7 @@ export default definePlugin({
       scoped.effect(() => () => { optionalLlm = undefined; });
     });
     ctx.inject(['llmRawPrompt'], scoped => {
-      optionalRawPrompt = scoped.llmRawPrompt as RawPromptLlm | undefined;
+      optionalRawPrompt = scoped.llmRawPrompt;
       scoped.effect(() => () => { optionalRawPrompt = undefined; });
     });
     const repos = ctx.vfsRepo;

@@ -53,11 +53,12 @@ interface ListSessionsArgs { offset?: number | null; limit?: number | null; quer
 
 export function registerEssayGradingCommands(ctx: Context): void {
   ctx.commands.register<{ request: Wire.GradingRequest }>('essay_grading_stream', async ({ request }, call) => {
-    const result = gradingScoreToWire(await essayGradingService(ctx).stream(request, streamEmitter(ctx), call.signal));
-    if (result) {
+    const rawResult = await essayGradingService(ctx).stream(request, streamEmitter(ctx), call.signal);
+    const result = gradingScoreToWire(rawResult);
+    if (rawResult) {
       let dimensions: Array<{ name: string; score: number; maxScore: number; comment?: string }> = [];
       try {
-        const parsed = result.dimension_scores_json ? JSON.parse(result.dimension_scores_json) as {
+        const parsed = rawResult.dimension_scores_json ? JSON.parse(rawResult.dimension_scores_json) as {
           dimensions?: Array<{ name?: string; score?: number; max_score?: number; comment?: string }>;
         } : null;
         if (Array.isArray(parsed?.dimensions)) {
@@ -67,15 +68,15 @@ export function registerEssayGradingCommands(ctx: Context): void {
         }
       } catch { /* ignore malformed dimension_scores_json */ }
 
-      const examType = request.modeId ?? 'essay';
+      const examType = request.mode_id ?? 'essay';
       emitStudyEvent(ctx, 'study/essay-graded', {
-        essayId: result.round_id,
-        sessionId: result.session_id,
-        roundNumber: result.round_number,
+        essayId: rawResult.round_id,
+        sessionId: rawResult.session_id,
+        roundNumber: rawResult.round_number,
         examType,
-        overallScore: result.overall_score ?? null,
+        overallScore: rawResult.overall_score ?? null,
         dimensions,
-        createdAt: result.created_at,
+        createdAt: rawResult.created_at,
       });
 
       const memoryProvider = ctx.get('memoryProvider');
@@ -84,8 +85,8 @@ export function registerEssayGradingCommands(ctx: Context): void {
           memoryProvider.ingestSignal({
             kind: 'essay_graded',
             examType,
-            essayId: result.round_id,
-            locale: request.responseLanguage ?? null,
+            essayId: rawResult.round_id,
+            locale: request.response_language ?? null,
             rubricDimensions: dimensions.map(d => ({
               name: d.name,
               score: d.score,

@@ -224,6 +224,49 @@ describe('execution-runtime against the official desktop profile', () => {
     expect(turn2.delta).toContain('先给思路提示，不直接给完整解答');
   });
 
+  it('memoryKernel and pluginExtensions resolve real session mode via chat_v2_sessions and safely fall back to null', async () => {
+    const socraticId = 'prod-mode-socratic';
+    host!.ctx.chatSession.createSession({
+      id: socraticId, mode: 'socratic', titleLocked: false, persistStatus: 'active',
+      createdAt: '2026-11-07T00:00:00Z', updatedAt: '2026-11-07T00:00:00Z',
+    });
+    const chatId = session('prod-mode-chat');
+    host!.ctx.memoryProvider.mutateFromUser({
+      kind: 'upsert_rule',
+      input: { instruction: '苏格拉底模式下只提反问不直接给结论', scope: 'mode:socratic', pinned: true },
+    });
+
+    const socraticKernel = await deps.prompt.memoryKernel!(execution(socraticId, '请讲微积分'));
+    const chatKernel = await deps.prompt.memoryKernel!(execution(chatId, '请讲微积分'));
+    expect(socraticKernel.handled).toBe(true);
+    expect(socraticKernel.kernel).toContain('苏格拉底模式下只提反问不直接给结论');
+    expect(chatKernel.handled).toBe(true);
+    expect(chatKernel.kernel ?? '').not.toContain('苏格拉底模式下只提反问不直接给结论');
+
+    const seenModes: Array<{ sessionId: string; mode: string | null }> = [];
+    const hooks = host!.ctx.get('chatPipelineHooks');
+    expect(hooks).toBeDefined();
+    const disposeHook = hooks!.register('test.mode-probe', {
+      name: 'mode-probe',
+      augmentSystemPrompt(input) {
+        seenModes.push({ sessionId: input.sessionId, mode: input.mode });
+        return `mode=${input.mode ?? 'null'}`;
+      },
+    });
+    try {
+      const socraticExt = await deps.prompt.pluginExtensions!(execution(socraticId, 'hello'));
+      const missingExt = await deps.prompt.pluginExtensions!(execution('prod-mode-missing', 'hello'));
+      expect(socraticExt).toContain('mode=socratic');
+      expect(missingExt).toContain('mode=null');
+      expect(seenModes).toEqual([
+        { sessionId: socraticId, mode: 'socratic' },
+        { sessionId: 'prod-mode-missing', mode: null },
+      ]);
+    } finally {
+      disposeHook();
+    }
+  });
+
   it('no memory owner capability is reported missing after exercising every memory prompt/effect path', () => {
     expect(warn.mock.calls.map(([message]) => String(message))
       .filter(message => message.includes('owner capability unavailable: memory'))).toEqual([]);

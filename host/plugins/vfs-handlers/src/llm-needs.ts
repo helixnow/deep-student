@@ -5,9 +5,9 @@
  */
 import type {} from '@deepseek-ai/cordis';
 
-/** `llm_usage::CallerType::Other` 的线上形状（serde 外部标签）。 */
+/** `llm_usage::CallerType::Other` 的线上形状（`LlmCallerType`）。 */
 export interface RawPromptCaller {
-  Other: string;
+  other: string;
 }
 
 export interface RawPromptOutput {
