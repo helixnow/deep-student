@@ -26,13 +26,149 @@ import {
   Brain,
   Image as ImageIcon,
   ArrowSquareOut,
+  ArrowRight,
+  Play,
   Lightbulb,
 } from '@phosphor-icons/react';
-import type { RetrievalSource, RetrievalSourceType } from './types';
+import type { MediaTimeRange, RetrievalSource, RetrievalSourceType } from './types';
 import { openUrl } from '@/utils/urlOpener';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { CitationSourceContext } from '../../../utils/citationSourceContext';
 import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
+import {
+  findFirstMediaRef,
+  formatMediaRefTimestamp,
+} from '@/features/learning-hub/apps/views/media/mediaRefTime';
+
+// ============================================================================
+// 精确引用定位解析（S1：P.N / mm:ss / 笔记 / 导图 / 本地文档）
+// ============================================================================
+
+export type CitationLocatorKind =
+  | 'media'
+  | 'page'
+  | 'note'
+  | 'mindmap'
+  | 'markdown'
+  | 'local'
+  | 'web'
+  | 'none';
+
+export interface CitationLocatorInfo {
+  kind: CitationLocatorKind;
+  /** 1-based PDF 页码 */
+  pageNumber: number | null;
+  /** 音视频起播秒数 */
+  mediaSeconds: number | null;
+  /** 格式化后的 `mm:ss` / `h:mm:ss` */
+  mediaTimestamp: string | null;
+  sourceId: string | null;
+  resourceType: string | null;
+}
+
+function isHttpLikeUrl(value?: string): boolean {
+  return Boolean(value && (value.startsWith('http://') || value.startsWith('https://')));
+}
+
+function isValidTimeRange(value: unknown): value is MediaTimeRange {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.startMs === 'number' &&
+    Number.isFinite(candidate.startMs) &&
+    candidate.startMs >= 0
+  );
+}
+
+/**
+ * 从 RetrievalSource（含 metadata 或透传字段）解析精确来源定位信息。
+ * 纯函数，便于单测验证。
+ */
+export function extractCitationLocator(source: RetrievalSource): CitationLocatorInfo {
+  const meta = (source.metadata ?? {}) as Record<string, unknown>;
+  const raw = source as RetrievalSource & Record<string, unknown>;
+
+  const rawPageIndex =
+    typeof meta.pageIndex === 'number'
+      ? meta.pageIndex
+      : typeof raw.pageIndex === 'number'
+        ? raw.pageIndex
+        : undefined;
+  const pageNumber =
+    typeof rawPageIndex === 'number' && Number.isFinite(rawPageIndex) && rawPageIndex >= 0
+      ? Math.floor(rawPageIndex) + 1
+      : null;
+
+  const rawTimeRange = isValidTimeRange(meta.timeRange)
+    ? meta.timeRange
+    : isValidTimeRange(raw.timeRange)
+      ? raw.timeRange
+      : undefined;
+  const rawMediaCitation =
+    typeof meta.mediaCitation === 'string'
+      ? meta.mediaCitation
+      : typeof raw.mediaCitation === 'string'
+        ? raw.mediaCitation
+        : undefined;
+
+  const parsedMediaRef = rawMediaCitation ? findFirstMediaRef([rawMediaCitation]) : null;
+  const mediaSeconds = rawTimeRange
+    ? Math.max(0, Math.floor(rawTimeRange.startMs / 1000))
+    : parsedMediaRef
+      ? parsedMediaRef.seconds
+      : null;
+  const mediaTimestamp = mediaSeconds !== null ? formatMediaRefTimestamp(mediaSeconds) : null;
+
+  const sourceIdCandidate =
+    (typeof meta.sourceId === 'string' && meta.sourceId) ||
+    (typeof meta.source_id === 'string' && meta.source_id) ||
+    (typeof raw.sourceId === 'string' && raw.sourceId) ||
+    parsedMediaRef?.resourceId ||
+    null;
+  const resourceIdCandidate =
+    (typeof meta.resourceId === 'string' && meta.resourceId) ||
+    (typeof raw.resourceId === 'string' && raw.resourceId) ||
+    null;
+  const resourceType =
+    (typeof meta.resourceType === 'string' && meta.resourceType) ||
+    (typeof meta.resource_type === 'string' && meta.resource_type) ||
+    (typeof raw.resourceType === 'string' && raw.resourceType) ||
+    null;
+  const pathCandidate =
+    (typeof meta.path === 'string' && meta.path) ||
+    (typeof raw.path === 'string' && raw.path) ||
+    null;
+
+  let kind: CitationLocatorKind = 'none';
+  if (mediaSeconds !== null) {
+    kind = 'media';
+  } else if (pageNumber !== null) {
+    kind = 'page';
+  } else if (sourceIdCandidate?.startsWith('mm_') || resourceType === 'mindmap') {
+    kind = 'mindmap';
+  } else if (sourceIdCandidate?.startsWith('note_') || resourceType === 'note') {
+    kind = 'note';
+  } else if (
+    (sourceIdCandidate || resourceIdCandidate || pathCandidate) &&
+    !isHttpLikeUrl(source.url) &&
+    (resourceType === 'markdown' || /\.(md|markdown)$/i.test(pathCandidate || source.title || ''))
+  ) {
+    kind = 'markdown';
+  } else if ((sourceIdCandidate || resourceIdCandidate || pathCandidate) && !isHttpLikeUrl(source.url)) {
+    kind = 'local';
+  } else if (isHttpLikeUrl(source.url)) {
+    kind = 'web';
+  }
+
+  return {
+    kind,
+    pageNumber,
+    mediaSeconds,
+    mediaTimestamp,
+    sourceId: sourceIdCandidate,
+    resourceType,
+  };
+}
 
 // ============================================================================
 // 图标映射
@@ -98,6 +234,38 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
 
   const Icon = sourceTypeIcons[source.type] || FileText;
   const hasUrl = !!source.url;
+  const locator = extractCitationLocator(source);
+  const hasLocalLocator =
+    locator.kind === 'media' ||
+    locator.kind === 'page' ||
+    locator.kind === 'note' ||
+    locator.kind === 'mindmap' ||
+    locator.kind === 'markdown' ||
+    locator.kind === 'local';
+  const showJumpCta = Boolean(onLocate) && (hasLocalLocator || !hasUrl);
+  const hasFooter = showJumpCta || hasUrl;
+
+  const jumpCtaLabel = (() => {
+    switch (locator.kind) {
+      case 'media':
+        return t('blocks.retrieval.seekToTimestamp', {
+          time: locator.mediaTimestamp ?? '00:00',
+          defaultValue: '跳转到 {{time}}',
+        });
+      case 'page':
+        return t('blocks.retrieval.jumpToPage', {
+          page: locator.pageNumber ?? 1,
+          defaultValue: '跳转到第 {{page}} 页',
+        });
+      case 'note':
+      case 'markdown':
+        return t('blocks.retrieval.openNote', { defaultValue: '打开笔记' });
+      case 'mindmap':
+        return t('blocks.retrieval.openMindmap', { defaultValue: '定位导图' });
+      default:
+        return t('blocks.retrieval.locateSource', { defaultValue: '定位来源' });
+    }
+  })();
 
   const handleOpenUrl = useCallback(
     (e: React.MouseEvent) => {
@@ -107,6 +275,14 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
       }
     },
     [source.url],
+  );
+
+  const handleJumpClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      onLocate?.();
+    },
+    [onLocate],
   );
 
   // 锚定定位：优先在锚点下方展开，放不下时翻到上方；水平居中并钳制在视口内
@@ -217,7 +393,7 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
         tabIndex={0}
         className={cn(
           'block w-full text-left cursor-pointer rounded-t-lg',
-          !hasUrl && 'rounded-b-lg',
+          !hasFooter && 'rounded-b-lg',
           'transition-colors duration-150 motion-reduce:transition-none',
           'hover:bg-muted/40 focus-visible:outline-none focus-visible:bg-muted/40',
         )}
@@ -238,10 +414,27 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
             <h4 className="font-medium text-sm text-foreground line-clamp-2">
               {source.title}
             </h4>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex flex-wrap items-center gap-1.5 mt-1">
               <span className="text-xs text-muted-foreground">
                 {t(`citation.${source.type}`)}
               </span>
+              {locator.kind === 'page' && locator.pageNumber !== null && (
+                <span
+                  data-citation-locator="page"
+                  className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium tabular-nums bg-primary/10 text-primary"
+                >
+                  P.{locator.pageNumber}
+                </span>
+              )}
+              {locator.kind === 'media' && locator.mediaTimestamp !== null && (
+                <span
+                  data-citation-locator="media"
+                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-xs font-medium tabular-nums bg-primary/10 text-primary"
+                >
+                  <Play size={10} weight="fill" aria-hidden="true" />
+                  <span>{locator.mediaTimestamp}</span>
+                </span>
+              )}
               {source.score !== undefined && (
                 <span className="px-1.5 py-0.5 rounded text-xs bg-primary/10 text-primary">
                   {Math.round(source.score * 100)}%
@@ -259,13 +452,38 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
         </div>
       </div>
 
-      {/* 底部操作：有 url 时提供外链打开 */}
-      {hasUrl && (
-        <div className="p-2 border-t border-border/50">
-          <DsButton variant="ghost" size="sm" onClick={handleOpenUrl} className="w-full [@media(pointer:coarse)]:!min-h-11">
-            <ArrowSquareOut size={14} />
-            <span className="truncate">{t('blocks.retrieval.openSource')}</span>
-          </DsButton>
+      {/* 底部操作：显式跳页/寻址/打开笔记 CTA 或外链打开 */}
+      {hasFooter && (
+        <div className="flex items-center gap-1.5 p-2 border-t border-border/50">
+          {showJumpCta && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              data-citation-jump-cta="true"
+              onClick={handleJumpClick}
+              className="flex-1 justify-center gap-1.5 text-primary hover:text-primary"
+            >
+              {locator.kind === 'media' ? (
+                <Play size={13} weight="fill" aria-hidden="true" />
+              ) : (
+                <ArrowRight size={14} aria-hidden="true" />
+              )}
+              <span className="truncate">{jumpCtaLabel}</span>
+            </DsButton>
+          )}
+          {hasUrl && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={handleOpenUrl}
+              className={cn(showJumpCta ? 'shrink-0 px-2' : 'w-full')}
+              title={showJumpCta ? t('blocks.retrieval.openSource') : undefined}
+              aria-label={showJumpCta ? t('blocks.retrieval.openSource') : undefined}
+            >
+              <ArrowSquareOut size={14} />
+              {!showJumpCta && <span className="truncate">{t('blocks.retrieval.openSource')}</span>}
+            </DsButton>
+          )}
         </div>
       )}
     </div>,

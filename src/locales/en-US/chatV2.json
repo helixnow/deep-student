@@ -634,6 +634,11 @@
       "showMore": "Show more ({{count}})",
       "showLess": "Show less",
       "openSource": "Open source",
+      "jumpToPage": "Jump to P.{{page}}",
+      "seekToTimestamp": "Seek to {{time}}",
+      "openNote": "Open note",
+      "openMindmap": "Jump to mindmap",
+      "locateSource": "Locate source",
       "noSnippet": "No content preview available",
       "defaultSourceTitle": "Source {{index}}",
       "sourceTypes": {

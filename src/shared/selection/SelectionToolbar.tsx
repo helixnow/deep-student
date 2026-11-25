@@ -31,6 +31,13 @@ import type { SelectionRect } from './useTextSelection';
 // 类型
 // ============================================================================
 
+export interface SelectionToolbarContainerBounds {
+  left: number;
+  right: number;
+  top?: number;
+  bottom?: number;
+}
+
 export interface SelectionToolbarPositionOptions {
   /** 是否为粗指针（触屏）设备 */
   isCoarsePointer?: boolean;
@@ -42,6 +49,8 @@ export interface SelectionToolbarPositionOptions {
   placement?: 'auto' | 'below';
   /** 视口底部额外避让像素（如移动端底栏/安全区） */
   viewportBottomInset?: number;
+  /** 可选宿主容器视口边界：容器窄于视口（如 460px 分屏）时钳位在容器边界内 */
+  containerBounds?: SelectionToolbarContainerBounds;
 }
 
 export interface SelectionToolbarPositionInput extends SelectionToolbarPositionOptions {
@@ -197,9 +206,31 @@ export function computeSelectionToolbarPosition(
   const isCoarsePointer = Boolean(opts.isCoarsePointer);
   const placement = opts.placement ?? 'auto';
   const viewportBottomInset = opts.viewportBottomInset ?? 0;
+  const bounds = opts.containerBounds;
+
+  const hasHorizontalBounds =
+    bounds != null &&
+    Number.isFinite(bounds.left) &&
+    Number.isFinite(bounds.right) &&
+    bounds.right > bounds.left;
+  const boundLeft = hasHorizontalBounds ? Math.max(0, bounds.left) : 0;
+  const boundRight = hasHorizontalBounds ? Math.min(innerWidth, bounds.right) : innerWidth;
+  const effectiveLeft = boundRight > boundLeft ? boundLeft : 0;
+  const effectiveRight = boundRight > boundLeft ? boundRight : innerWidth;
+  const effectiveWidth = Math.max(0, effectiveRight - effectiveLeft);
+
+  const hasVerticalBounds =
+    bounds != null &&
+    typeof bounds.top === 'number' &&
+    typeof bounds.bottom === 'number' &&
+    Number.isFinite(bounds.top) &&
+    Number.isFinite(bounds.bottom) &&
+    bounds.bottom > bounds.top;
+  const effectiveTop = hasVerticalBounds ? Math.max(0, bounds.top!) : 0;
+  const rawBottomLimit = hasVerticalBounds ? Math.min(innerHeight, bounds.bottom!) : innerHeight;
 
   const preferBelow = isCoarsePointer || placement === 'below';
-  const effectiveBottom = innerHeight - viewportBottomInset;
+  const effectiveBottom = rawBottomLimit - viewportBottomInset;
 
   let resolvedPlacement: 'above' | 'below';
   let rawTop: number;
@@ -219,11 +250,12 @@ export function computeSelectionToolbarPosition(
   }
 
   const rawCenterX = rect.left + rect.width / 2;
-  const minX = Math.min(HORIZONTAL_EDGE_CLAMP_PX, innerWidth / 2);
-  const maxX = Math.max(innerWidth - HORIZONTAL_EDGE_CLAMP_PX, minX);
+  const edgeClamp = Math.min(HORIZONTAL_EDGE_CLAMP_PX, effectiveWidth / 2);
+  const minX = effectiveLeft + edgeClamp;
+  const maxX = Math.max(effectiveRight - edgeClamp, minX);
   const left = Math.min(Math.max(rawCenterX, minX), maxX);
 
-  const minY = VERTICAL_TOP_CLAMP_PX;
+  const minY = effectiveTop + VERTICAL_TOP_CLAMP_PX;
   const maxY = Math.max(minY, effectiveBottom - VERTICAL_BOTTOM_CLAMP_PX);
   const top = Math.min(Math.max(rawTop, minY), maxY);
 
@@ -283,29 +315,51 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
     if (!container) return;
 
     const containerRect = container.getBoundingClientRect();
+    const hasContainerWidth = containerRect.width > 0;
+    const hasContainerHeight = containerRect.height > 0;
+    const containerBounds = hasContainerWidth
+      ? {
+          left: containerRect.left,
+          right: containerRect.right,
+          ...(hasContainerHeight
+            ? { top: containerRect.top, bottom: containerRect.bottom }
+            : {}),
+        }
+      : undefined;
+
     const viewportPos = computeSelectionToolbarPosition(selectionRect, {
       isCoarsePointer: isTouchPrimary,
       innerWidth: window.innerWidth,
       innerHeight: window.visualViewport?.height ?? window.innerHeight,
       placement,
       viewportBottomInset,
+      containerBounds,
     });
 
-    const localTop = viewportPos.top - containerRect.top;
+    let localTop = viewportPos.top - containerRect.top;
 
-    // 真实浏览器下有布局宽度时居中于夹逼锚点并钳制在宿主容器内；
-    // jsdom 等零宽高环境下直接使用 computeSelectionToolbarPosition 计算出的水平坐标
-    if (containerRect.width > 0) {
+    // 真实浏览器下有布局宽度时居中于夹逼锚点并严格钳制在宿主容器内（460px 分屏零溢出）；
+    // jsdom 等零宽高环境下直接使用 computeSelectionToolbarPosition 计算出的坐标
+    if (hasContainerWidth) {
       const availableWidth = Math.max(0, containerRect.width - CONTAINER_PADDING * 2);
       setMaxWidth(availableWidth);
-      const measuredToolbarWidth = toolbarRef.current?.offsetWidth || 200;
+      const measuredToolbarWidth = toolbarRef.current?.offsetWidth || Math.min(200, availableWidth);
+      const effectiveToolbarWidth = Math.min(measuredToolbarWidth, availableWidth);
       const localCenterX = viewportPos.left - containerRect.left;
-      let localLeft = localCenterX - measuredToolbarWidth / 2;
-      if (measuredToolbarWidth >= availableWidth) {
+      let localLeft = localCenterX - effectiveToolbarWidth / 2;
+      if (effectiveToolbarWidth >= availableWidth) {
         localLeft = CONTAINER_PADDING;
       } else {
-        const maxLeft = containerRect.width - measuredToolbarWidth - CONTAINER_PADDING;
+        const maxLeft = containerRect.width - effectiveToolbarWidth - CONTAINER_PADDING;
         localLeft = Math.max(CONTAINER_PADDING, Math.min(localLeft, maxLeft));
+      }
+      if (hasContainerHeight) {
+        const measuredToolbarHeight = toolbarRef.current?.offsetHeight || 36;
+        const maxLocalTop = Math.max(
+          CONTAINER_PADDING,
+          containerRect.height - measuredToolbarHeight - CONTAINER_PADDING,
+        );
+        localTop = Math.max(CONTAINER_PADDING, Math.min(localTop, maxLocalTop));
       }
       setPosition({ top: localTop, left: localLeft, placement: viewportPos.placement });
     } else {
@@ -320,7 +374,23 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
 
   useLayoutEffect(() => {
     updateToolbarPosition();
-  }, [updateToolbarPosition]);
+  }, [updateToolbarPosition, maxWidth]);
+
+  // 窄分屏容器或工具栏因 maxWidth 换行导致尺寸变化时，重新钳位防止溢出容器边界
+  useEffect(() => {
+    if (!isVisible || typeof ResizeObserver === 'undefined') return;
+    const container = containerRef.current ?? toolbarRef.current?.parentElement ?? null;
+    const toolbar = toolbarRef.current;
+    const observer = new ResizeObserver(() => updateToolbarPosition());
+    if (container) observer.observe(container);
+    if (toolbar) observer.observe(toolbar);
+    if (typeof document !== 'undefined' && document.documentElement) {
+      observer.observe(document.documentElement);
+    }
+    return () => {
+      observer.disconnect();
+    };
+  }, [isVisible, containerRef, updateToolbarPosition]);
 
   // 全局视图切换离开宿主视图时，强制关闭工具栏
   const currentView = useViewStore((s) => s.currentView);

@@ -3149,6 +3149,93 @@
   }
 }
 
+/* S3: LiquidText 460px 分屏容器（<=540px）：侧栏改为浮层覆盖不挤压画布，工具栏紧凑零裁切 */
+@container (max-width: 540px) {
+  .ds-pdf__sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 45;
+    width: 0;
+    max-width: min(260px, calc(100cqi - 32px));
+    border-right: 1px solid transparent;
+    background: hsl(var(--popover) / 0.97);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: none;
+    pointer-events: none;
+  }
+
+  .ds-pdf__sidebar--open {
+    width: min(240px, calc(100cqi - 32px));
+    border-right-color: hsl(var(--border) / 0.6);
+    box-shadow: 8px 0 24px hsl(var(--ring) / 0.16);
+    pointer-events: auto;
+  }
+
+  .ds-pdf__sidebar--open .ds-pdf__sidebar-inner {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ds-pdf__toolbar {
+    max-width: 100%;
+    box-sizing: border-box;
+    padding-inline: 4px;
+    gap: 1px;
+  }
+
+  .ds-pdf__toolbar--top {
+    justify-content: space-between;
+    padding-inline: 4px;
+    gap: 2px;
+  }
+
+  .ds-pdf__toolbar-left,
+  .ds-pdf__toolbar-center,
+  .ds-pdf__toolbar-right {
+    min-width: 0;
+    gap: 1px;
+  }
+
+  .ds-pdf__toolbar .ds-btn {
+    min-width: 24px;
+    height: 24px;
+    padding: 2px;
+  }
+
+  .ds-pdf__toolbar .ds-toolbar-divider {
+    display: none;
+  }
+
+  .ds-pdf__toolbar .ds-zoom-readout {
+    min-width: 2.35rem;
+    padding-inline: 2px;
+    font-size: 11px;
+  }
+
+  .ds-pdf__toolbar .ds-input {
+    width: 38px;
+    font-size: 11.5px;
+  }
+
+  .ds-pdf__toolbar .ds-page-total {
+    font-size: 11.5px;
+  }
+
+  .ds-highlight-menu--action {
+    max-width: min(320px, calc(100cqi - 16px));
+  }
+
+  .ds-pdf__selection-panel {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: calc(100cqi - 16px);
+  }
+}
+
 @container (max-width: 440px) {
   .ds-pdf__toolbar--top {
     padding-inline: 4px;
