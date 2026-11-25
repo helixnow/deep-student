@@ -425,6 +425,56 @@ export interface ManualGradeOutcome {
   advanceReviewPlan: boolean;
 }
 
+const MANUAL_OVERRIDE_TAG_RE = /<manual_override\b([^>]*)\/>/gi;
+
+function parseManualOverrideAttr(attrs: string, name: string): string | null {
+  const match = new RegExp(`(?:^|\\s)${name}\\s*=\\s*"([^"]*)"`, 'i').exec(attrs);
+  return match?.[1] ?? null;
+}
+
+function applyManualOverrideFeedbackTag(
+  existingFeedback: string | null,
+  nextScore: number,
+  nextStatus: PracticeResult['status'],
+  prevScore: number | null,
+  prevStatus: PracticeResult['status'],
+): string {
+  const raw = existingFeedback ?? '';
+  let preservedOriginalScore: number | null = null;
+  let preservedOriginalStatus: string | null = null;
+  let hadOverrideTag = false;
+
+  MANUAL_OVERRIDE_TAG_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = MANUAL_OVERRIDE_TAG_RE.exec(raw)) !== null) {
+    hadOverrideTag = true;
+    const attrs = match[1] ?? '';
+    const parsedOrigScore = parseManualOverrideAttr(attrs, 'original_score');
+    if (parsedOrigScore !== null && /^-?\d+$/.test(parsedOrigScore)) {
+      preservedOriginalScore = Number.parseInt(parsedOrigScore, 10);
+    }
+    const parsedOrigStatus = parseManualOverrideAttr(attrs, 'original_status');
+    if (parsedOrigStatus) {
+      preservedOriginalStatus = parsedOrigStatus;
+    }
+  }
+
+  if (!hadOverrideTag && prevStatus !== 'pending' && prevStatus !== 'failed') {
+    preservedOriginalScore = prevScore;
+    preservedOriginalStatus = prevStatus;
+  }
+
+  const baseBody = raw.replace(MANUAL_OVERRIDE_TAG_RE, '').trimEnd();
+  const attrParts = [
+    `score="${nextScore}"`,
+    `status="${nextStatus}"`,
+    ...(preservedOriginalScore !== null ? [`original_score="${preservedOriginalScore}"`] : []),
+    ...(preservedOriginalStatus ? [`original_status="${preservedOriginalStatus}"`] : []),
+  ];
+  const tag = `<manual_override ${attrParts.join(' ')}/>`;
+  return baseBody ? `${baseBody}\n${tag}` : tag;
+}
+
 /** qbank_practice.rs:1060-1122 */
 export function gradePracticeManually(host: PracticeServiceHost, id: string, questionId: string,
   correct: boolean, score?: number | null): ManualGradeOutcome {
@@ -441,7 +491,7 @@ export function gradePracticeManually(host: PracticeServiceHost, id: string, que
       if (roundedScore === 0) {
         resolvedStatus = 'incorrect';
         resolvedCorrect = false;
-      } else if (roundedScore >= 80 || (roundedScore > 0 && correct && roundedScore === 100)) {
+      } else if (roundedScore >= 80) {
         resolvedStatus = 'correct';
         resolvedCorrect = true;
       } else {
@@ -469,9 +519,18 @@ export function gradePracticeManually(host: PracticeServiceHost, id: string, que
           else if (verdict.shouldAdvanceReviewPlan) advanceReviewPlan = true;
         }
       }
+      const prevScore = target.score;
+      const prevStatus = target.status;
       target.is_correct = resolvedCorrect;
       target.score = resolvedScore;
       target.status = resolvedStatus;
+      target.feedback = applyManualOverrideFeedbackTag(
+        target.feedback,
+        resolvedScore,
+        resolvedStatus,
+        prevScore,
+        prevStatus,
+      );
       target.error = null;
       repo.finishJob(tx, id, questionId, now());
       refreshStatus(attempt);

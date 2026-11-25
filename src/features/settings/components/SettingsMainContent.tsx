@@ -14,6 +14,7 @@ import type { SettingsSection, SettingsSectionPlacement, SettingsSectionPropsFac
 import { SectionContent } from '@/ui-plugins/official/settings/SectionContent';
 import type { SettingsSidebarCategory } from './useSettingsNavigation';
 import { SettingsCategoryHeader } from './SettingsCategoryHeader';
+import { QuickSyncNowButton } from './QuickSyncNowButton';
 import { SettingsMcpPreviewBody } from './SettingsMcpPreviewBody';
 import { SettingsMcpPolicyDialog } from './SettingsMcpPolicyDialog';
 import type { McpPolicyModalState, McpPreviewState } from './mcp-editor/types';
@@ -139,6 +140,7 @@ export function SettingsMainContent({
                 onTabChange={setActiveTab}
                 idPrefix={settingsNavigationId}
                 compact={mobilePageMode}
+                actions={activeCategory.value === 'data' ? <QuickSyncNowButton /> : undefined}
               />
             </div>
           </div>

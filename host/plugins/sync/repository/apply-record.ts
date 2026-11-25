@@ -170,9 +170,23 @@ export function upsertBlockedByDeleteVersion(
   idColumn: string,
   defaultDeviceId: string,
 ): boolean {
-  const deleteVersion = currentDeleteVersion(db, change.table_name, change.record_id, idColumn, defaultDeviceId);
+  const stored = storedDeleteVersion(db, change.table_name, change.record_id);
+  const deleteVersion = stored ?? currentDeleteVersion(db, change.table_name, change.record_id, idColumn, defaultDeviceId);
   if (deleteVersion === null) return false;
-  return compareOperationVersions(deleteVersion, changeVersion(change, defaultDeviceId)) >= 0;
+  const incoming = changeVersion(change, defaultDeviceId);
+  const isExplicitTrashRestore = stored === null
+    && isJsonObject(change.data)
+    && Object.hasOwn(change.data, 'deleted_at')
+    && change.data.deleted_at === null;
+  if (isExplicitTrashRestore) {
+    const delMs = lwwTimestampMillis(deleteVersion.changedAt);
+    const incMs = lwwTimestampMillis(incoming.changedAt);
+    if (delMs !== null && incMs !== null) {
+      return delMs > incMs;
+    }
+    return compareOperationVersions(deleteVersion, incoming) > 0;
+  }
+  return compareOperationVersions(deleteVersion, incoming) >= 0;
 }
 
 function recordDeleteVersion(db: SqlExecutor, change: EngineChange, defaultDeviceId: string): void {
@@ -680,6 +694,7 @@ export function applySingleChange(
   skipLww: boolean,
   allowFieldMerge: boolean,
   context: ApplyContext,
+  forceMetadataRefresh = false,
 ): boolean {
   if (change.table_name === 'note_document_revisions') {
     if (change.operation === 'Delete') return false;
@@ -818,7 +833,14 @@ export function applySingleChange(
   }
 
   const localData = getRecordData(db, change.table_name, change.record_id, idColumn);
-  if (localData !== null && recordsSemanticallyEqualForSync(localData, change.data)) return false;
+  if (localData !== null && recordsSemanticallyEqualForSync(localData, change.data)) {
+    const updatedAtChanged = forceMetadataRefresh
+      && isJsonObject(localData)
+      && isJsonObject(change.data)
+      && Object.hasOwn(change.data, 'updated_at')
+      && localData.updated_at !== change.data.updated_at;
+    if (!updatedAtChanged) return false;
+  }
 
   applySingleRecord(db, change.table_name, change.record_id, change.data, allowFieldMerge, context, change.database_name);
   clearDeleteVersion(db, change.table_name, change.record_id);

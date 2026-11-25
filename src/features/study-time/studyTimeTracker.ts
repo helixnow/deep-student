@@ -14,6 +14,8 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { addTypedEventListener } from '@/events';
+import { useViewStore } from '@/stores/viewStore';
+import type { CurrentView } from '@/types/navigation';
 
 import {
   STUDY_TICK_MS,
@@ -33,6 +35,123 @@ const FLUSH_EVERY_TICKS = 4;
 // study_time_add 的单次上限；失败积压恢复后也必须遵守。
 const MAX_REPORT_SECONDS = 3600;
 const ACTIVITY_EVENTS = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'] as const;
+
+/**
+ * 传统壳 / 移动端下属于真实学习活动的视图白名单（S4-11）：
+ * 排除 settings / dashboard / data-management / task-dashboard / template-management /
+ * skills-management / todo / ui-lab 等配置、统计与管理界面，防止仅浏览设置或切换预设时虚增学习时长。
+ */
+const LEGACY_STUDY_VIEWS: ReadonlySet<CurrentView> = new Set<CurrentView>([
+  'chat-v2',
+  'flashcards',
+  'pdf-reader',
+  'learning-hub',
+  'media',
+  'sandbox-workbench',
+]);
+
+const NON_STUDY_WB_WINDOW_SELECTOR = [
+  '[data-wb-sys-app="settings"]',
+  '[data-wb-sys-app="aiDashboard"]',
+  '[data-wb-sys-app="taskDashboard"]',
+  '[data-wb-sys-app="skills"]',
+  '[data-wb-sys-app="templates"]',
+  '[data-wb-sys-app="todo"]',
+  '[data-wb-sys-app="pomodoro"]',
+  '[data-wb-sys-app="pluginWorkshop"]',
+  '[data-testid="workshop-app"]',
+  '[data-wb-files-host]',
+  '[data-wb-frozen-placeholder]',
+  '[data-wb-loading]',
+].join(',');
+
+const STUDY_WB_WINDOW_SELECTOR = [
+  '[data-wb-sys-app="flashcards"]',
+  '[data-wb-sys-app="media"]',
+  '[data-wb-notes-workspace]',
+  '[data-wb-mindmap-host]',
+  '[data-file-preview-root]',
+  '[data-wb-content-host]',
+  '[data-wb-sandbox-app]',
+  '[data-wb-chat-app]',
+].join(',');
+
+function isWorkbenchStudyWindow(winEl: Element): boolean {
+  if (winEl.querySelector(NON_STUDY_WB_WINDOW_SELECTOR)) return false;
+  if (winEl.querySelector('[data-wb-notes-workspace]')) {
+    // 笔记窗口切到纯文件浏览子屏时不计学习时长
+    return !winEl.querySelector('[data-notes-files-subscreen]');
+  }
+  if (winEl.querySelector('.wb-resource-workspace')) {
+    // 试卷 / 作文 / 翻译工作区：仅在已打开具体资源（非空态占位）时计入学习时长
+    return !winEl.querySelector('.wb-resource-workspace-empty');
+  }
+  if (winEl.querySelector('[data-wb-browser-app]')) {
+    return !winEl.querySelector('[data-wb-browser-empty]');
+  }
+  return Boolean(winEl.querySelector(STUDY_WB_WINDOW_SELECTOR));
+}
+
+/**
+ * 判定当前界面（及可选输入事件目标）是否处于真实学习交互表面（S4-11）。
+ * - 显式连续学习信号（番茄工作计时 / 音视频播放）在调用方单独豁免；
+ * - 学习桌面（Workbench）：必须存在聚焦且未最小化的学习窗口，空桌面、Dock、顶栏、应用启动器、
+ *   以及设置 / 仪表盘 / 待办 / 技能 / 模板 / 文件浏览等管理窗口一律返回 false；
+ * - 传统壳 / 移动端：按 useViewStore.currentView 白名单门控，排除 settings 等非学习页。
+ */
+export function isStudySurfaceActive(eventTarget?: EventTarget | null): boolean {
+  if (typeof document === 'undefined') return true;
+
+  // 全屏冲刺复习 / 桌面空格快速预览阅读属于明确的学习行为
+  if (
+    document.querySelector(
+      '[data-testid="unified-daily-sprint-player"], [data-wb-quick-look]',
+    )
+  ) {
+    return true;
+  }
+
+  // 全局启动器 / Exposé / 窗口切换器打开期间属于系统导航，不计学习
+  if (
+    document.querySelector(
+      '[data-wb-apps-open="true"], [data-wb-expose-root], [data-wb-switcher-root]',
+    )
+  ) {
+    return false;
+  }
+
+  const targetEl = eventTarget instanceof Element ? eventTarget : null;
+  if (
+    targetEl?.closest(
+      `${NON_STUDY_WB_WINDOW_SELECTOR}, [data-testid="wb-dock"], [data-wb-menubar], [data-wb-desk-menu]`,
+    )
+  ) {
+    return false;
+  }
+
+  const wbRoot = document.querySelector('[data-wb-workbench-root]');
+  if (wbRoot) {
+    const focusedWin = document.querySelector<HTMLElement>(
+      '[data-wb-window][data-focused]:not([data-minimized="true"])',
+    );
+    if (!focusedWin) return false;
+    if (
+      targetEl &&
+      !focusedWin.contains(targetEl) &&
+      !targetEl.closest('[data-radix-popper-content-wrapper], [role="listbox"], [role="menu"]')
+    ) {
+      return false;
+    }
+    return isWorkbenchStudyWindow(focusedWin);
+  }
+
+  // 传统壳内若打开了显式设置容器也不计入学习时长
+  if (document.querySelector('[data-wb-sys-app="settings"]')) {
+    return false;
+  }
+
+  return LEGACY_STUDY_VIEWS.has(useViewStore.getState().currentView);
+}
 
 /** 上报完成后派发（热力图等可据此刷新） */
 export const STUDY_TIME_FLUSHED_EVENT = 'study-time:flushed';
@@ -109,18 +228,22 @@ export function studyTimeTick(now: number = Date.now()): void {
 }
 
 function recordStudyTimeTick(now: number, visible: boolean): void {
-  const present = isPresent({
-    visible,
-    mediaPlaying: isMediaPlaying() || explicitFocusActive,
-    now,
-    lastActiveAt,
-  });
+  const continuousStudy = isMediaPlaying() || explicitFocusActive;
+  const engaged = continuousStudy || isStudySurfaceActive();
+  const present =
+    engaged &&
+    isPresent({
+      visible,
+      mediaPlaying: continuousStudy,
+      now,
+      lastActiveAt,
+    });
   const slices = tickSlices(lastTick, now, present);
   if (slices.length > 0) {
     mergeSeconds(pending, slices);
     if (++ticksSinceFlush >= FLUSH_EVERY_TICKS) void flushStudyTime();
   }
-  // 无论计不计时都推进：否则空闲回来会把整段空闲补记进去
+  // 无论计不计时都推进：否则空闲或处于设置页回来会把非学习段补记进去
   lastTick = now;
 }
 
@@ -132,7 +255,7 @@ function onVisibilityChange(): void {
     void flushStudyTime();
   } else {
     lastTick = Date.now();
-    markActive();
+    if (isStudySurfaceActive()) markActive();
   }
   wasVisible = visible;
 }
@@ -171,15 +294,23 @@ export function startStudyTracking(options: { reporter?: Reporter } = {}): () =>
   started = true;
   reporter = options.reporter ?? defaultReporter;
   lastTick = Date.now();
-  lastActiveAt = Date.now();
+  // S4-11：冷启动不预置活跃态，必须等待真实学习界面交互或番茄专注/媒体播放才开始累计
+  lastActiveAt = 0;
   wasVisible = isVisible();
   ticksSinceFlush = 0;
   explicitFocusActive =
     typeof globalThis !== 'undefined' &&
     Boolean((globalThis as Record<string, unknown>).__dstuStudyFocusActive);
+  if (explicitFocusActive) markActive();
   studyTrackingCleanups = [
     ...ACTIVITY_EVENTS.map((ev) =>
-      addTypedEventListener(ev, () => markActive(), { passive: true, capture: true }),
+      addTypedEventListener(
+        ev,
+        (_d, event) => {
+          if (isStudySurfaceActive(event?.target)) markActive();
+        },
+        { passive: true, capture: true },
+      ),
     ),
     addTypedEventListener(STUDY_FOCUS_ACTIVE_EVENT, (_d, event) => onStudyFocusChange(event)),
     // media 事件不冒泡，但可在捕获阶段于 document 上收到

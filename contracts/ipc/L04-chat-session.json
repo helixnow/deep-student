@@ -2862,7 +2862,27 @@
           "schema": {
             "anyOf": [
               {
-                "$ref": "_shared.json#/$defs/SendOptions"
+                "allOf": [
+                  {
+                    "$ref": "_shared.json#/$defs/SendOptions"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "preserveVariant": {
+                        "anyOf": [
+                          {
+                            "type": "boolean"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ],
+                        "x-option": "null"
+                      }
+                    }
+                  }
+                ]
               },
               {
                 "type": "null"
@@ -9252,6 +9272,17 @@
             }
           ],
           "x-option": "omit"
+        },
+        "stoppedByUser": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
         }
       },
       "additionalProperties": false,
@@ -11766,6 +11797,17 @@
           "anyOf": [
             {
               "$ref": "#/$defs/ToolFacePrefixSnapshot"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-option": "omit"
+        },
+        "versioned": {
+          "anyOf": [
+            {
+              "type": "boolean"
             },
             {
               "type": "null"

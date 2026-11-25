@@ -5,6 +5,7 @@ import type { NativeCompression } from '../../../platform/native/api.ts';
 import type { ApplyToDatabasesResult } from '../repository/apply-databases.ts';
 import { keyOf } from '../repository/apply-shared.ts';
 import { markUploadedChanges, rollbackMarkedChanges, archiveSyncedChangeLogs } from '../repository/sync-pass.ts';
+import { isJsonObject } from '../../../platform/util/lossless-json.ts';
 import type { EngineChange } from './change-payload.ts';
 import type { SyncManifest, MergeStrategy } from './merge.ts';
 import { collectLocalManifest } from './transfer-commands.ts';
@@ -38,6 +39,39 @@ export async function enforcePruneGapCheck(storage: CloudStorage, options: SyncP
 }
 export function ensureDownloadApplyIsDurable(result: ApplyToDatabasesResult): void {
   if (result.db_errors.length > 0) throw new Error(`下载变更未能持久处理，已保留远端游标等待重试：${result.db_errors.map(([db, error]) => `${db}: ${error}`).join('；')}`);
+}
+export function filterUploadCandidatesAfterDownload(
+  enriched: readonly EngineChange[],
+  appliedKeys: ReadonlySet<string>,
+  deferredConflictKeys: ReadonlySet<string>,
+  downloadedChanges: readonly EngineChange[] = [],
+): EngineChange[] {
+  const deferredNoteIds = new Set<string>();
+  const deferredResourceIds = new Set<string>();
+  for (const key of deferredConflictKeys) {
+    if (key.startsWith('notes\u001f')) deferredNoteIds.add(key.slice('notes\u001f'.length));
+    else if (key.startsWith('resources\u001f')) deferredResourceIds.add(key.slice('resources\u001f'.length));
+  }
+  if (deferredNoteIds.size > 0) {
+    for (const change of [...enriched, ...downloadedChanges]) {
+      if (change.table_name === 'notes' && deferredNoteIds.has(change.record_id) && isJsonObject(change.data) && typeof change.data.resource_id === 'string') {
+        deferredResourceIds.add(change.data.resource_id);
+      }
+    }
+  }
+  return enriched.filter(change => {
+    const key = keyOf(change.table_name, change.record_id);
+    if (appliedKeys.has(key) || deferredConflictKeys.has(key)) return false;
+    if (change.table_name === 'resources' && deferredResourceIds.has(change.record_id)) return false;
+    if (change.table_name === 'note_document_formats' && deferredNoteIds.has(change.record_id)) return false;
+    if ((change.table_name === 'note_document_revisions' || change.table_name === 'note_learning_relations')
+      && isJsonObject(change.data)
+      && typeof change.data.note_id === 'string'
+      && deferredNoteIds.has(change.data.note_id)) {
+      return false;
+    }
+    return true;
+  });
 }
 export function markApplyFailuresVisible(result: SyncExecutionResult, applied: ApplyToDatabasesResult): void {
   if (applied.total_failed === 0) return;
@@ -102,10 +136,7 @@ export async function executeBidirectionalWithProgress(
   }
   await commitDownloadProgressIfNeeded(storage, downloaded, options);
   const deferredConflictKeys = options.application.consumeDeferredConflictKeys?.() ?? new Set<string>();
-  const filtered = enriched.filter(change => {
-    const key = keyOf(change.table_name, change.record_id);
-    return !appliedKeys.has(key) && !deferredConflictKeys.has(key);
-  });
+  const filtered = filterUploadCandidatesAfterDownload(enriched, appliedKeys, deferredConflictKeys, downloaded.changes);
   if (filtered.length < enriched.length) options.logger.info(`[data_governance] 双向同步: 已从上传列表中剔除 ${enriched.length - filtered.length} 条被下载覆盖或存在未决冲突的记录`);
   result.changes_uploaded = filtered.length;
   const active = options.localStorage.locations.activeDir;

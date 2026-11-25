@@ -240,6 +240,60 @@ function hasUnresolvedConflictForRecord(db: SqlExecutor, tableName: string, reco
   }
 }
 
+function toTimestampMillis(value: DbJson | undefined): bigint | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const intVal = BigInt(Math.trunc(value));
+    return intVal >= 100_000_000_000n ? intVal : intVal >= 1_000_000_000n ? intVal * 1000n : null;
+  }
+  if (typeof value === 'bigint') {
+    return value >= 100_000_000_000n ? value : value >= 1_000_000_000n ? value * 1000n : null;
+  }
+  const lww = timestampValueToLwwString(value);
+  return lww === null ? null : lwwTimestampMillis(lww);
+}
+
+function resourceHasDivergentLocalEditForNote(
+  tx: SqlExecutor,
+  noteId: string,
+  localNote: DbJson,
+  localResId: string,
+  incomingResourcesById: ReadonlyMap<string, EngineChange>,
+): boolean {
+  if (hasUnresolvedConflictForRecord(tx, 'resources', localResId)) return true;
+  if (!localHasPendingForRecord(tx, 'resources', localResId)) return false;
+
+  const localRes = getRecordData(tx, 'resources', localResId, 'id');
+  if (localRes === null || !isJsonObject(localRes)) return false;
+
+  const incomingRes = incomingResourcesById.get(localResId);
+  if (incomingRes && incomingRes.data !== null) {
+    return !recordsSemanticallyEqualForSync(localRes, incomingRes.data);
+  }
+
+  if (tableHasColumn(tx, 'note_document_revisions', 'version_id')) {
+    try {
+      const latestRevBody = tx.pluck<string | null>(
+        'SELECT content_md FROM note_document_revisions WHERE note_id = ?1 ORDER BY seq DESC LIMIT 1',
+        [noteId],
+      );
+      if (typeof latestRevBody === 'string') {
+        const currentBody = extractNoteBodyText(localRes.data ?? localRes);
+        if (currentBody !== null && currentBody !== latestRevBody) return true;
+        if (currentBody === latestRevBody) return false;
+      }
+    } catch {
+      // fallback to timestamp comparison below
+    }
+  }
+
+  const resUpdatedMs = toTimestampMillis(localRes.updated_at);
+  const noteUpdatedMs = isJsonObject(localNote) ? toTimestampMillis(localNote.updated_at) : null;
+  if (resUpdatedMs !== null && noteUpdatedMs !== null) {
+    return resUpdatedMs > noteUpdatedMs;
+  }
+  return localHasPendingForRecord(tx, 'notes', noteId);
+}
+
 /** `apply_downloaded_changes_with_conflict_guard`（mod.rs:7760）。 */
 export function applyDownloadedChangesWithConflictGuard(
   db: DatabaseHandle,
@@ -343,9 +397,20 @@ export function applyDownloadedChangesWithConflictGuard(
             }
           } else if (remapped.table_name === 'notes') {
             const localNote = getRecordData(tx, 'notes', remapped.record_id, idColumn);
+            const localAlreadyTrashed = isJsonObject(localNote)
+              && localNote.deleted_at !== undefined
+              && localNote.deleted_at !== null;
+            const cloudSoftDeleted = isJsonObject(remapped.data)
+              && remapped.data.deleted_at !== undefined
+              && remapped.data.deleted_at !== null;
             const localResId = isJsonObject(localNote) && typeof localNote.resource_id === 'string' ? localNote.resource_id : null;
             const cloudResId = isJsonObject(remapped.data) && typeof remapped.data.resource_id === 'string' ? remapped.data.resource_id : null;
-            if (localNote !== null && localResId && (localHasPendingForRecord(tx, 'resources', localResId) || hasUnresolvedConflictForRecord(tx, 'resources', localResId))) {
+            if (
+              localNote !== null
+              && !(localAlreadyTrashed && cloudSoftDeleted)
+              && localResId
+              && resourceHasDivergentLocalEditForNote(tx, remapped.record_id, localNote, localResId, incomingResourcesById)
+            ) {
               if (cloudResId) deferredResourceIds.add(cloudResId);
               deferredResourceIds.add(localResId);
               outcome = {
@@ -362,7 +427,11 @@ export function applyDownloadedChangesWithConflictGuard(
           const suppress = remapped.suppress_change_log === true;
           const preLogMax = suppress ? changeLogMaxId(tx) : null;
           const allowFieldMerge = pendingLocalKeys.has(keyOf(remapped.table_name, remapped.record_id));
-          const applied = applySingleChange(tx, remapped, idColumn, false, allowFieldMerge, context);
+          const pairedResourceApplied = remapped.table_name === 'notes'
+            && isJsonObject(remapped.data)
+            && typeof remapped.data.resource_id === 'string'
+            && applyResult.applied_keys.has(keyOf('resources', remapped.data.resource_id));
+          const applied = applySingleChange(tx, remapped, idColumn, false, allowFieldMerge, context, pairedResourceApplied);
           if (applied) {
             applyResult.success_count += 1;
             applyResult.applied_keys.add(keyOf(remapped.table_name, remapped.record_id));
@@ -371,7 +440,7 @@ export function applyDownloadedChangesWithConflictGuard(
             if (isIncompleteUpsert(remapped)) applyResult.skipped_incomplete_count += 1;
           }
           if (preLogMax !== null) {
-            suppressEchoChangeLog(tx, Math.floor(Date.now() / 1000), preLogMax, remapped.table_name, remapped.record_id);
+            suppressEchoChangeLog(tx, Math.floor(Date.now() / 1000), preLogMax);
           }
         } else {
           const winningDevice = outcome.winner === 'Cloud' ? options.cloudDeviceId ?? null : options.localDeviceId ?? null;
@@ -432,14 +501,15 @@ export function applyDownloadedChangesWithConflictGuard(
                 tx,
                 Math.floor(Date.now() / 1000),
                 preLogMax,
-                cloudChange.table_name,
-                cloudChange.record_id,
               );
             }
           } else {
             foldSafeFieldMergeIntoLocal(tx, remapped, options.policy);
             conflictResult.rejected += 1;
             applyResult.skipped_count += 1;
+            if (options.deferConflictingOverwrite) {
+              options.onDeferredConflict?.(keyOf(remapped.table_name, remapped.record_id));
+            }
           }
         }
 

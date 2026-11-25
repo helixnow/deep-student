@@ -130,6 +130,8 @@ interface CloudStorageSectionProps {
   isDialog?: boolean;
   /** 配置保存/清除后的回调（用于外层刷新摘要状态） */
   onConfigChanged?: () => void;
+  /** 外层已获取的最近一次记录级/文件级增量云同步时间（避免与整包备份时间产生矛盾展示） */
+  latestIncrementalSyncAt?: string | null;
 }
 
 function hasRootPathTraversal(rootPath: string): boolean {
@@ -152,8 +154,9 @@ function hasEmbeddedUrlCredentials(endpointValue: string): boolean {
 export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   isDialog = false,
   onConfigChanged,
+  latestIncrementalSyncAt = null,
 }) => {
-  const { t, i18n } = useTranslation(['cloudStorage', 'common']);
+  const { t, i18n } = useTranslation(['cloudStorage', 'common', 'data', 'sync']);
   const [pairingRevision, setPairingRevision] = useState(0);
   const onPairingApplied = () => { setPairingRevision(value => value + 1); onConfigChanged?.(); };
   const handlePairingRunSync = useCallback(
@@ -263,10 +266,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   
   // 同步状态
   const [syncStatus, setSyncStatus] = useState<cloudApi.SyncStatus | null>(null);
+  const [fallbackIncrementalSyncAt, setFallbackIncrementalSyncAt] = useState<string | null>(null);
   const [versions, setVersions] = useState<cloudApi.BackupVersion[]>([]);
   const [currentDeviceId, setCurrentDeviceId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadConfirmOpen, setUploadConfirmOpen] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [restoreVersionId, setRestoreVersionId] = useState<string | null>(null);
   const [hasStoredFtpConfig, setHasStoredFtpConfig] = useState(false);
@@ -317,6 +322,70 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadIncrementalSyncTimestamp = async () => {
+      try {
+        if (typeof DataGovernanceApi?.getSyncStatus !== 'function') return;
+        const status = await DataGovernanceApi.getSyncStatus();
+        if (!active || !status) return;
+        const candidates = [
+          status.last_sync_at,
+          ...(status.databases ?? []).map((db) => db.last_sync_at),
+        ];
+        let bestStr: string | null = null;
+        let bestMs = -Infinity;
+        for (const raw of candidates) {
+          if (!raw) continue;
+          const sqliteUtc = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/.exec(raw.trim());
+          const normalized = sqliteUtc ? `${sqliteUtc[1]}T${sqliteUtc[2]}Z` : raw.trim();
+          const ms = Date.parse(normalized);
+          if (!Number.isNaN(ms) && ms > bestMs) {
+            bestMs = ms;
+            bestStr = sqliteUtc ? normalized : raw;
+          }
+        }
+        setFallbackIncrementalSyncAt(bestStr);
+      } catch {
+        // Ignore when getSyncStatus is unavailable in isolated unit tests
+      }
+    };
+    void loadIncrementalSyncTimestamp();
+    const onLocalChange = () => {
+      void loadIncrementalSyncTimestamp();
+    };
+    window.addEventListener('data-governance:local-change', onLocalChange);
+    return () => {
+      active = false;
+      window.removeEventListener('data-governance:local-change', onLocalChange);
+    };
+  }, []);
+
+  const effectiveDeviceLastSyncTime = useMemo(() => {
+    const candidates = [
+      syncStatus?.lastSyncTime,
+      latestIncrementalSyncAt,
+      fallbackIncrementalSyncAt,
+    ];
+    let bestStr: string | null = null;
+    let bestMs = -Infinity;
+    for (const raw of candidates) {
+      if (!raw) continue;
+      const sqliteUtc = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}(?:\.\d+)?)$/.exec(raw.trim());
+      const normalized = sqliteUtc ? `${sqliteUtc[1]}T${sqliteUtc[2]}Z` : raw.trim();
+      const ms = Date.parse(normalized);
+      if (!Number.isNaN(ms)) {
+        if (ms > bestMs) {
+          bestMs = ms;
+          bestStr = sqliteUtc ? normalized : raw;
+        }
+      } else if (!bestStr) {
+        bestStr = raw;
+      }
+    }
+    return bestStr;
+  }, [fallbackIncrementalSyncAt, latestIncrementalSyncAt, syncStatus?.lastSyncTime]);
 
   // 不安全连接警告对话框状态
   const [showInsecureFtpWarning, setShowInsecureFtpWarning] = useState(false);
@@ -393,38 +462,40 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       // only after an explicit `configured: false`, then performs one migration.
       try {
         const config = await cloudApi.resolveCloudStorageConfig();
-        if (config && active && !userEditedRef.current) {
-          // 后端已发布配置回填表单：这不是用户编辑，跳过一次草稿标记，
-          // 并把前端认知置为「已发布」。
-          const willChangeHydratedFields =
-            Boolean(config.webdav || config.s3 || config.ftp || config.provider !== provider || (config.root && config.root !== root));
-          hydratingFormRef.current = willChangeHydratedFields;
+        if (config && active) {
           savedConfigRef.current = {
             ...config,
             webdav: config.webdav ? { ...config.webdav, password: '' } : undefined,
             s3: config.s3 ? { ...config.s3, secretAccessKey: '' } : undefined,
             ftp: config.ftp ? { ...config.ftp, password: '' } : undefined,
           };
-          setConfigPhase('published');
           setHasSavedConfig(true);
-          setDraftTestError(null);
-          setProvider(config.provider);
-          loadedFtpConfig = config.provider === 'ftp' || Boolean(config.ftp);
-          setHasStoredFtpConfig(loadedFtpConfig);
-          if (config.webdav) {
-            setWebdavConfig(prev => ({ ...prev, ...config.webdav, password: '' }));
+          if (!userEditedRef.current) {
+            // 后端已发布配置回填表单：这不是用户编辑，跳过一次草稿标记，
+            // 并把前端认知置为「已发布」。
+            const willChangeHydratedFields =
+              Boolean(config.webdav || config.s3 || config.ftp || config.provider !== provider || (config.root && config.root !== root));
+            hydratingFormRef.current = willChangeHydratedFields;
+            setConfigPhase('published');
+            setDraftTestError(null);
+            setProvider(config.provider);
+            loadedFtpConfig = config.provider === 'ftp' || Boolean(config.ftp);
+            setHasStoredFtpConfig(loadedFtpConfig);
+            if (config.webdav) {
+              setWebdavConfig(prev => ({ ...prev, ...config.webdav, password: '' }));
+            }
+            if (config.s3) {
+              setS3Config(prev => ({ ...prev, ...config.s3, secretAccessKey: '' }));
+            }
+            if (config.ftp) {
+              const scheme = config.ftp.useTls ? 'ftps' : 'ftp';
+              const hostPort = config.ftp.port ? `:${config.ftp.port}` : '';
+              const endpoint = `${scheme}://${config.ftp.host}${hostPort}`;
+              setFtpConfig(prev => ({ ...prev, ...config.ftp, password: '', endpoint }));
+            }
+            if (config.root) setRoot(config.root);
+            setAllowInsecure(config.allowInsecure ?? false);
           }
-          if (config.s3) {
-            setS3Config(prev => ({ ...prev, ...config.s3, secretAccessKey: '' }));
-          }
-          if (config.ftp) {
-            const scheme = config.ftp.useTls ? 'ftps' : 'ftp';
-            const hostPort = config.ftp.port ? `:${config.ftp.port}` : '';
-            const endpoint = `${scheme}://${config.ftp.host}${hostPort}`;
-            setFtpConfig(prev => ({ ...prev, ...config.ftp, password: '', endpoint }));
-          }
-          if (config.root) setRoot(config.root);
-          setAllowInsecure(config.allowInsecure ?? false);
         } else if (!config && active && !userEditedRef.current) {
           hydratingFormRef.current = false;
           savedConfigRef.current = null;
@@ -1287,6 +1358,26 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     }
     return {};
   }, [credentialStatus.encryptionPasswordConfigured, encryptionPassword]);
+
+  // 点击「立即备份到云端」时先做前置校验并弹出显式确认框，避免 1 次点击直接锁库上传
+  const requestBackupAndUpload = useCallback(() => {
+    if (!hasSavedConfig || configPhase !== 'published') {
+      showGlobalNotification('warning', t('cloudStorage:errors.saveBeforeUpload'));
+      return;
+    }
+    if (connectionStatus === 'failed') {
+      showGlobalNotification('warning', t('cloudStorage:errors.connectionFailed'));
+      return;
+    }
+    if (isExplicitCloudEncryptionPasswordTooShort(encryptionPassword)) {
+      showGlobalNotification(
+        'error',
+        t('cloudStorage:encryption.tooShort', { min: CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS }),
+      );
+      return;
+    }
+    setUploadConfirmOpen(true);
+  }, [configPhase, connectionStatus, encryptionPassword, hasSavedConfig, t]);
 
   // 备份并上传到云端
   const handleBackupAndUpload = useCallback(async () => {
@@ -2163,12 +2254,28 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 <span className="text-muted-foreground">{t('cloudStorage:status.cloudVersions')}:</span>
                 <span className="ml-2 font-medium">{syncStatus.cloudVersionCount}</span>
               </div>
-              <div>
+              <div data-testid="cloud-device-last-sync">
                 <span className="text-muted-foreground">{t('cloudStorage:status.lastSync')}:</span>
                 <span className="ml-2 font-medium">
-                  {syncStatus.lastSyncTime 
-                    ? cloudApi.formatTimestamp(syncStatus.lastSyncTime)
+                  {effectiveDeviceLastSyncTime
+                    ? cloudApi.formatTimestamp(effectiveDeviceLastSyncTime)
                     : t('cloudStorage:status.never')}
+                </span>
+              </div>
+              <div data-testid="cloud-last-archive-backup">
+                <span className="text-muted-foreground">
+                  {t('data:governance.last_cloud_archive_backup', {
+                    defaultValue: '最近整包云备份',
+                  })}:
+                </span>
+                <span className="ml-2 font-medium">
+                  {syncStatus.latestVersion?.timestamp
+                    ? cloudApi.formatTimestamp(syncStatus.latestVersion.timestamp)
+                    : syncStatus.lastSyncTime
+                      ? cloudApi.formatTimestamp(syncStatus.lastSyncTime)
+                      : t('data:governance.no_cloud_archive_yet', {
+                          defaultValue: '暂无整包备份',
+                        })}
                 </span>
               </div>
               {syncStatus.latestVersion && (
@@ -2219,7 +2326,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
 
             {/* 进度面板：上传/下载时显示 */}
             {opProgress && (
-              <div className={`rounded-lg border p-3 space-y-2 text-sm ${
+              <div
+                data-testid="cloud-op-progress-panel"
+                className={`rounded-lg border p-3 space-y-2 text-sm ${
                 opProgress.error
                   ? 'border-destructive/50 bg-destructive/5'
                   : 'border-border bg-muted/30'
@@ -2301,8 +2410,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 size="sm"
                 variant="outline"
                 className="[@media(pointer:coarse)]:!min-h-11"
-                onClick={handleBackupAndUpload}
+                onClick={requestBackupAndUpload}
                 disabled={uploading || downloading}
+                data-testid="cloud-backup-upload-now-btn"
               >
                 {uploading ? (
                   <>
@@ -2590,6 +2700,31 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     syncStatus?.latestVersion,
   );
 
+  // 整包云端备份上传确认对话框（进入维护模式并上传全库前必须显式二次确认）
+  const uploadConfirmDialog = (
+    <DsAlertDialog
+      open={uploadConfirmOpen}
+      onOpenChange={setUploadConfirmOpen}
+      title={t('data:governance.cloud_backup_confirm_title', {
+        defaultValue: '确认执行整包云端备份并上传？',
+      })}
+      description={t('data:governance.cloud_backup_confirm_desc', {
+        defaultValue:
+          '整包备份期间应用将短暂进入维护模式（暂停数据库写入），并将全部受治理数据库与资产打包上传至云存储。日常多设备学习合并建议使用「立即同步」。',
+      })}
+      confirmText={t('data:governance.cloud_backup_confirm_action', {
+        defaultValue: '确认备份并上传',
+      })}
+      cancelText={t('common:actions.cancel', { defaultValue: '取消' })}
+      confirmVariant="warning"
+      disabled={uploading}
+      onConfirm={() => {
+        setUploadConfirmOpen(false);
+        void handleBackupAndUpload();
+      }}
+    />
+  );
+
   // 恢复确认对话框
   const restoreConfirmDialog = (
     <DsAlertDialog
@@ -2759,6 +2894,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           />
           {content}
         </div>
+        {uploadConfirmDialog}
         {restoreConfirmDialog}
         {deleteConfirmDialog}
         {clearConfirmDialog}
@@ -2789,6 +2925,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           onRunSync={handlePairingRunSync}
         />
       </div>
+      {uploadConfirmDialog}
       {restoreConfirmDialog}
       {deleteConfirmDialog}
       {clearConfirmDialog}

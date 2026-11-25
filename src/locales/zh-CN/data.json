@@ -1335,6 +1335,19 @@
     "recovery_quick_desc": "可直接导入加密备份 (.zip) 或选择本机完整快照一键恢复。",
     "recovery_import_encrypted_zip": "导入加密备份 (.zip)",
     "recovery_manage_backups": "前往备份管理",
-    "recovery_restore_local_snapshot": "从本地快照恢复"
+    "recovery_restore_local_snapshot": "从本地快照恢复",
+    "confirm_restore_title": "确认从本地快照恢复数据？",
+    "confirm_restore_desc": "即将使用所选快照替换当前活动数据槽中的学习数据。恢复开始前系统会自动创建一份恢复前安全快照，恢复完成后需重启或重新加载应用以生效。",
+    "confirm_restore_snapshot_info": "目标快照：{{name}}（{{time}}）",
+    "confirm_restore_covered_dbs": "覆盖数据库：{{databases}}",
+    "confirm_restore_safety_backup_notice": "安全兜底：恢复执行前会自动保存一份「恢复前安全快照」，原数据不会静默丢失。",
+    "confirm_restore_reload_notice": "重载提示：恢复完成后应用将重启或重新加载，以完整切换至恢复后的数据槽。",
+    "cloud_backup_confirm_title": "确认执行整包云端备份并上传？",
+    "cloud_backup_confirm_desc": "整包备份期间应用将短暂进入维护模式（暂停数据库写入），并将全部受治理数据库与资产打包上传至云存储。日常多设备学习合并建议使用「立即同步」。",
+    "cloud_backup_confirm_action": "确认备份并上传",
+    "last_cloud_archive_backup": "最近整包云备份",
+    "no_cloud_archive_yet": "暂无整包备份",
+    "maintenance_banner_active": "维护模式进行中",
+    "maintenance_view_details": "查看详情"
   }
 }

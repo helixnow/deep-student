@@ -48,6 +48,8 @@ export interface ContextualMiniChatProps {
   anchor?: MiniChatContextAnchor | null;
   initialMessages?: MiniChatMessage[];
   defaultMinimized?: boolean;
+  /** 外部激活信号变化时确保展开为可见输入面板（如移动端切换至「问答」标签） */
+  expandSignal?: string | number | boolean;
   unreadCount?: number;
   presets?: MiniChatPresetAction[];
   onSendMessage?: (payload: {
@@ -120,6 +122,7 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
   anchor = null,
   initialMessages = [],
   defaultMinimized = false,
+  expandSignal,
   unreadCount = 0,
   presets = DEFAULT_MINI_CHAT_PRESETS,
   onSendMessage,
@@ -145,6 +148,19 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
   useEffect(() => {
     setBoundAnchor(anchor);
   }, [anchor]);
+
+  // defaultMinimized 外部受控变化时同步展开态（用户手动折叠/展开后保持用户选择）
+  useEffect(() => {
+    if (!userToggledRef.current) {
+      setIsMinimized(defaultMinimized);
+    }
+  }, [defaultMinimized]);
+
+  useEffect(() => {
+    if (expandSignal) {
+      setIsMinimized(false);
+    }
+  }, [expandSignal]);
 
   // 胶囊 ↔ 展开面板切换后，将焦点平滑移交至输入框或胶囊按钮（首屏被动挂载不抢焦点）
   useEffect(() => {
@@ -373,12 +389,12 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
       data-testid="contextual-mini-chat"
       onKeyDown={handlePanelKeyDown}
       className={cn(
-        'w-full max-w-sm rounded-xl border border-border/35 bg-card text-card-foreground shadow-lg flex flex-col overflow-hidden motion-safe:animate-chat-rise-in motion-reduce:animate-none transition-shadow duration-200 ease-standard motion-reduce:transition-none',
+        'w-full max-w-sm shrink-0 rounded-xl border border-border/35 bg-card text-card-foreground shadow-lg flex flex-col overflow-hidden motion-safe:animate-chat-rise-in motion-reduce:animate-none transition-shadow duration-200 ease-standard motion-reduce:transition-none',
         className,
       )}
     >
       {/* 顶部标题栏与迁入主会话操作 */}
-      <header className="flex items-center justify-between gap-2 px-3.5 py-2.5 border-b border-border/35 bg-muted/20">
+      <header className="flex shrink-0 items-center justify-between gap-2 px-3 py-2 sm:px-3.5 sm:py-2.5 border-b border-border/35 bg-muted/20">
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-1.5 h-1.5 rounded-full bg-success shrink-0" />
           <span className="text-xs font-semibold text-foreground truncate">
@@ -422,11 +438,14 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
         role="log"
         aria-live="polite"
         aria-relevant="additions"
-        className="flex-1 min-h-[160px] max-h-[260px] overflow-y-auto p-3 flex flex-col gap-2.5"
+        className={cn(
+          'flex-1 max-h-[260px] overflow-y-auto px-3 py-2 sm:p-3 flex flex-col gap-2.5',
+          messages.length === 0 ? 'min-h-[44px] sm:min-h-[140px]' : 'min-h-[110px] sm:min-h-[160px]',
+        )}
       >
         {messages.length === 0 ? (
-          <div className="my-auto text-center py-6 px-3 flex flex-col items-center gap-1.5">
-            <Sparkle className="w-4 h-4 text-muted-foreground" />
+          <div className="my-auto text-center py-1 sm:py-6 px-2 flex flex-col items-center gap-1">
+            <Sparkle className="w-4 h-4 text-muted-foreground max-sm:hidden" />
             <p className="text-xs text-muted-foreground">
               {t('miniChat.emptyHint', {
                 defaultValue: '已就绪，点击下方快捷指令或直接提问当前阅读内容',
@@ -461,8 +480,8 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
         )}
       </div>
 
-      {/* 快捷指令预设栏 */}
-      <div className="px-3 py-2 border-t border-border/35 bg-muted/10 flex flex-wrap items-center gap-1.5">
+      {/* 快捷指令预设栏（窄屏单行横向滚动，避免折行挤压底部输入框出视口） */}
+      <div className="shrink-0 px-3 py-1.5 sm:py-2 border-t border-border/35 bg-muted/10 flex flex-nowrap sm:flex-wrap overflow-x-auto items-center gap-1.5">
         {presets.map((preset) => {
           const presetLabel = usesDefaultPresets
             ? t(`miniChat.presets.${preset.id}.label`, { defaultValue: preset.label })
@@ -475,7 +494,7 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
               size="sm"
               disabled={isSending}
               onClick={() => handlePresetClick(preset)}
-              className="h-auto lg:h-auto [@media(pointer:coarse)]:min-h-11 px-2.5 py-1 text-xs rounded-md border-border/35 bg-background hover:bg-muted/60 text-foreground active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
+              className="h-auto lg:h-auto shrink-0 whitespace-nowrap [@media(pointer:coarse)]:min-h-11 px-2.5 py-1 text-xs rounded-md border-border/35 bg-background hover:bg-muted/60 text-foreground active:scale-[0.98] transition-[background-color,border-color,color,transform] duration-150 ease-standard motion-reduce:transition-none motion-reduce:active:scale-100"
             >
               {presetLabel}
             </DsButton>
@@ -484,7 +503,7 @@ export const ContextualMiniChat: React.FC<ContextualMiniChatProps> = ({
       </div>
 
       {/* 迷你输入框上方的上下文锚点胶囊 + 输入表单 */}
-      <div className="p-3 border-t border-border/35 bg-background flex flex-col gap-2">
+      <div className="shrink-0 p-2.5 sm:p-3 border-t border-border/35 bg-background flex flex-col gap-2">
         {boundAnchor ? (
           <div
             data-testid="mini-chat-anchor-pill"

@@ -31,7 +31,10 @@
     "empty": "No pending changes",
     "loading": "Loading pending changes breakdown...",
     "tableCount": "{{count}}",
-    "refreshNow": "Refresh"
+    "refreshNow": "Refresh",
+    "expandTable": "Expand table details",
+    "collapseTable": "Collapse table details",
+    "dbTableSummary": "{{tables}} table(s), {{count}} pending change(s)"
   },
   "autoSync": {
     "label": "Auto Sync",
@@ -187,6 +190,13 @@
     "counterpart": "Conflicts with: {{key}}",
     "scopeBlob": "Attachment",
     "scopeAsset": "Asset",
+    "tableDetailHint": "Click a table badge to inspect pending change breakdown and record details",
+    "tablePendingSummary": "Table {{table}} ({{database}}) has {{count}} pending local change(s)",
+    "tableOperationHint": "Queued operations: Local inserts, updates, and deletes recorded in the change log will merge to the cloud on the next sync.",
+    "tableOpInsert": "Insert {{count}}",
+    "tableOpUpdate": "Update {{count}}",
+    "tableOpDelete": "Delete {{count}}",
+    "tableRecordsPreview": "Pending record IDs: {{ids}}",
     "kind": {
       "downloadPending": {
         "label": "Not downloaded yet",

@@ -163,4 +163,63 @@ describe('S1-01(a) docx / xlsx import fallback & visible notifications', () => {
     expect(notifyMock).toHaveBeenCalledWith('success', expect.any(String));
     expect(handleRefresh).toHaveBeenCalledTimes(1);
   });
+
+  it('persists browser File objects (.pdf, .txt, .csv) without OS .path, falls back PDF when textbook staging fails, awaits refresh, and emits toast even if unmounted mid-flight', async () => {
+    addTextbooksMock.mockResolvedValueOnce({
+      ok: false,
+      error: { toUserMessage: () => 'browser runtime cannot parse textbook directly' },
+    });
+    createMock
+      .mockResolvedValueOnce({ ok: true, value: makeFileNode('file_pdf', 'lecture.pdf') })
+      .mockResolvedValueOnce({ ok: true, value: makeFileNode('file_txt', 'notes.txt') })
+      .mockResolvedValueOnce({ ok: true, value: makeFileNode('file_csv', 'grades.csv') });
+
+    let refreshSettled = false;
+    const handleRefresh = vi.fn(async () => {
+      await Promise.resolve();
+      refreshSettled = true;
+    });
+    const isMountedRef = { current: true };
+
+    const validPdfBytes = new TextEncoder().encode('%PDF-1.7\n' + '0'.repeat(120));
+    const pdf = new File([validPdfBytes], 'lecture.pdf', { type: '' });
+    const txt = new File(['plain study notes'], 'notes.txt', { type: '' });
+    const csv = new File(['name,score\nAlice,98\n'], 'grades.csv', { type: '' });
+
+    // Simulate view remount during async VFS persistence: toast + Finder refresh must NOT be swallowed
+    createMock.mockImplementationOnce(async () => {
+      isMountedRef.current = false;
+      return { ok: true, value: makeFileNode('file_pdf', 'lecture.pdf') };
+    });
+
+    await importDroppedFiles({
+      pathsDropHandledRef: { current: false },
+      currentPath: { viewKind: 'folder', folderId: 'fld_course', breadcrumbs: [], typeFilter: null } as never,
+      t,
+      importMarkdownFileObjects: vi.fn(),
+      currentCreatableFolderId: 'fld_course',
+      isMountedRef,
+      setAttachImportProgress: vi.fn(),
+      handleRefresh,
+      openImportedMarkdownNote: vi.fn(),
+      onOpenApp: vi.fn(),
+    }, [pdf, txt, csv], true);
+
+    expect(createMock).toHaveBeenCalledTimes(3);
+    expect(createMock).toHaveBeenNthCalledWith(1, pdf, 'file', {
+      folderId: 'fld_course',
+      mimeType: 'application/pdf',
+    });
+    expect(createMock).toHaveBeenNthCalledWith(2, txt, 'file', {
+      folderId: 'fld_course',
+      mimeType: 'text/plain',
+    });
+    expect(createMock).toHaveBeenNthCalledWith(3, csv, 'file', {
+      folderId: 'fld_course',
+      mimeType: 'text/csv',
+    });
+    expect(refreshSettled).toBe(true);
+    expect(handleRefresh).toHaveBeenCalledTimes(1);
+    expect(notifyMock).toHaveBeenCalledWith('success', 'finder.dragDrop.importSuccess:3');
+  });
 });

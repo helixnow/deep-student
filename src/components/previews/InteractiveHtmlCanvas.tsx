@@ -438,14 +438,24 @@ export function applyHtmlSearchReplacePatch(
       if (typeof search !== 'string' || !search || typeof replace !== 'string') {
         throw new Error('补丁缺少有效的 search 或 replace 字段');
       }
-      const start = source.indexOf(search);
+      let start = source.indexOf(search);
+      let effectiveSearch = search;
+      if (start < 0 && source.includes('\r\n') !== search.includes('\r\n')) {
+        const normalizedSearch = source.includes('\r\n')
+          ? search.replace(/\r?\n/g, '\r\n')
+          : search.replace(/\r\n/g, '\n');
+        start = source.indexOf(normalizedSearch);
+        if (start >= 0) {
+          effectiveSearch = normalizedSearch;
+        }
+      }
       if (start < 0) {
         throw new Error('未在当前源码中找到匹配的 search 片段');
       }
-      if (source.indexOf(search, start + 1) >= 0) {
+      if (source.indexOf(effectiveSearch, start + 1) >= 0) {
         throw new Error('search 片段在源码中出现多次，请提供更精确的上下文');
       }
-      return { start, end: start + search.length, replace };
+      return { start, end: start + effectiveSearch.length, replace };
     })
     .sort((a, b) => b.start - a.start);
 
@@ -509,24 +519,16 @@ export function buildInteractiveHtmlCanvasDocument({
   theme = captureHostThemeSnapshot(),
 }: BuildInteractiveCanvasDocOptions): string {
   const themeVarsCss = Object.entries(theme)
-    .map(([k, v]) => `  ${k}: ${v};`)
-    .join('\n');
+    .map(([k, v]) => `${k}: ${String(v).replace(/[\r\n]+/g, ' ')};`)
+    .join(' ');
+  const presetCssSingleLine = INTERACTIVE_CANVAS_PRESET_CSS.replace(/\s*[\r\n]+\s*/g, ' ').trim();
 
   const safeCanvasId = JSON.stringify(canvasId);
   const safeAnswer = serializeForScript(answer);
   const safeWidgetState = serializeForScript(widgetState);
   const safeAnswerInput = serializeForScript(answerInput);
 
-  const injectedHead = `<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style id="ds-canvas-theme">
-:root {
-${themeVarsCss}
-}
-${INTERACTIVE_CANVAS_PRESET_CSS}
-</style>
-<script id="ds-canvas-bridge">
-(function() {
+  const bridgeScriptSingleLine = `(function() {
   var CANVAS_ID = ${safeCanvasId};
   var INITIAL_ANSWER = ${safeAnswer};
   var currentWidgetState = ${safeWidgetState};
@@ -618,6 +620,78 @@ ${INTERACTIVE_CANVAS_PRESET_CSS}
   window.openchamber = bridge;
   window.__wbw = bridge;
 
+  var lastReportedHeight = 0;
+  function measureIntrinsicHeight() {
+    var docEl = document.documentElement;
+    var body = document.body;
+    if (!docEl) return 0;
+    if (!body) return Math.ceil(docEl.scrollHeight || docEl.offsetHeight || 0);
+    var savedRootHeight = docEl.style.height;
+    var savedRootMinHeight = docEl.style.minHeight;
+    var savedRootDisplay = docEl.style.display;
+    var savedBodyHeight = body.style.height;
+    var savedBodyMinHeight = body.style.minHeight;
+    var measured = 0;
+    try {
+      docEl.style.height = 'auto';
+      docEl.style.minHeight = '0';
+      docEl.style.display = 'flow-root';
+      body.style.height = 'auto';
+      body.style.minHeight = '0';
+      var rootRectH = typeof docEl.getBoundingClientRect === 'function'
+        ? docEl.getBoundingClientRect().height
+        : 0;
+      var bodyRectH = typeof body.getBoundingClientRect === 'function'
+        ? body.getBoundingClientRect().height
+        : 0;
+      if (rootRectH > 0 || bodyRectH > 0) {
+        measured = Math.max(rootRectH, bodyRectH, body.scrollHeight || 0, body.offsetHeight || 0);
+      } else {
+        measured = Math.max(
+          body.scrollHeight || 0,
+          body.offsetHeight || 0,
+          docEl.scrollHeight || 0,
+          docEl.offsetHeight || 0
+        );
+      }
+    } finally {
+      docEl.style.height = savedRootHeight;
+      docEl.style.minHeight = savedRootMinHeight;
+      docEl.style.display = savedRootDisplay;
+      body.style.height = savedBodyHeight;
+      body.style.minHeight = savedBodyMinHeight;
+    }
+    return Math.ceil(measured);
+  }
+
+  function resetFrameScroll() {
+    try {
+      if (typeof window.scrollTo === 'function') window.scrollTo(0, 0);
+      if (document.documentElement) {
+        document.documentElement.scrollTop = 0;
+        document.documentElement.scrollLeft = 0;
+      }
+      if (document.body) {
+        document.body.scrollTop = 0;
+        document.body.scrollLeft = 0;
+      }
+    } catch (err) {}
+  }
+
+  function reportHeight(force) {
+    try {
+      var h = measureIntrinsicHeight();
+      if (h > 0 && (force || Math.abs(h - lastReportedHeight) > 1)) {
+        lastReportedHeight = h;
+        window.parent.postMessage({
+          type: 'ds-canvas-resize',
+          canvasId: CANVAS_ID,
+          height: h
+        }, '*');
+      }
+    } catch (err) {}
+  }
+
   window.addEventListener('message', function(event) {
     var data = event.data;
     if (!data || typeof data !== 'object' || data.canvasId !== CANVAS_ID) return;
@@ -659,34 +733,21 @@ ${INTERACTIVE_CANVAS_PRESET_CSS}
       window.dispatchEvent(new CustomEvent('wbw:answerchange', {
         detail: cloneValue(currentAnswerInput)
       }));
+    } else if (data.type === 'ds-canvas-remeasure') {
+      resetFrameScroll();
+      lastReportedHeight = 0;
+      reportHeight(true);
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(function() {
+          resetFrameScroll();
+          reportHeight(true);
+        });
+      }
     }
   });
 
-  var lastReportedHeight = 0;
-  function reportHeight() {
-    try {
-      var docEl = document.documentElement;
-      var body = document.body;
-      if (!docEl) return;
-      var h = Math.ceil(Math.max(
-        body ? body.scrollHeight : 0,
-        body ? body.offsetHeight : 0,
-        docEl.scrollHeight || 0,
-        docEl.offsetHeight || 0
-      ));
-      if (h > 0 && Math.abs(h - lastReportedHeight) > 1) {
-        lastReportedHeight = h;
-        window.parent.postMessage({
-          type: 'ds-canvas-resize',
-          canvasId: CANVAS_ID,
-          height: h
-        }, '*');
-      }
-    } catch (err) {}
-  }
-
   function notifyReady() {
-    reportHeight();
+    reportHeight(false);
     try {
       window.parent.postMessage({
         type: 'ds-canvas-ready',
@@ -696,7 +757,7 @@ ${INTERACTIVE_CANVAS_PRESET_CSS}
   }
 
   if (typeof ResizeObserver === 'function') {
-    var ro = new ResizeObserver(function() { reportHeight(); });
+    var ro = new ResizeObserver(function() { reportHeight(false); });
     window.addEventListener('DOMContentLoaded', function() {
       if (document.documentElement) ro.observe(document.documentElement);
       if (document.body) ro.observe(document.body);
@@ -705,27 +766,29 @@ ${INTERACTIVE_CANVAS_PRESET_CSS}
   } else {
     window.addEventListener('DOMContentLoaded', notifyReady);
   }
+  window.addEventListener('resize', function() { reportHeight(false); });
   window.addEventListener('load', notifyReady);
-})();
-</script>`;
+})();`.replace(/\s*[\r\n]+\s*/g, ' ').trim();
 
+  /* Keep injected head on a single line so runtime script error line numbers match user HTML 1:1. */
+  const injectedHead = `<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style id="ds-canvas-theme">:root { ${themeVarsCss} } ${presetCssSingleLine}</style><script id="ds-canvas-bridge">${bridgeScriptSingleLine}</script>`;
+
+  const leadingWhitespaceMatch = /^\s*/.exec(html);
+  const leadingNewlines = leadingWhitespaceMatch
+    ? leadingWhitespaceMatch[0].replace(/[^\n]/g, '')
+    : '';
   const trimmed = html.trim();
-  if (/^<!doctype\s+html/i.test(trimmed) || /^<html[\s>]/i.test(trimmed)) {
+  if (/^(?:<!--[\s\S]*?-->\s*)*(?:<!doctype\s+html|<html[\s>])/i.test(trimmed)) {
     if (/<head[\s>]/i.test(trimmed)) {
-      return trimmed.replace(/<head(\s[^>]*)?>/i, (match) => `${match}\n${injectedHead}`);
+      return `${leadingNewlines}${trimmed.replace(/<head(\s[^>]*)?>/i, (match) => `${match}${injectedHead}`)}`;
     }
-    return trimmed.replace(/<html(\s[^>]*)?>/i, (match) => `${match}\n<head>${injectedHead}</head>`);
+    if (/<html[\s>]/i.test(trimmed)) {
+      return `${leadingNewlines}${trimmed.replace(/<html(\s[^>]*)?>/i, (match) => `${match}<head>${injectedHead}</head>`)}`;
+    }
+    return `${leadingNewlines}${trimmed.replace(/<!doctype\s+html[^>]*>/i, (match) => `${match}<head>${injectedHead}</head>`)}`;
   }
 
-  return `<!DOCTYPE html>
-<html>
-<head>
-${injectedHead}
-</head>
-<body>
-${trimmed}
-</body>
-</html>`;
+  return `<!DOCTYPE html><html><head>${injectedHead}</head><body>${leadingNewlines}${trimmed}</body></html>`;
 }
 
 export interface InteractiveHtmlCanvasAnswerInput extends InteractiveCanvasAnswerInputState {
@@ -767,7 +830,85 @@ export interface InteractiveHtmlCanvasProps {
   onPinToCanvas?: (payload: { html: string; title: string; widgetId: string }) => void;
   /** 存入当前学习空间动作回调 */
   onSaveToSpace?: (payload: { html: string; title: string; widgetId: string }) => void;
+  /** 外部容器尺寸/视口变化信号：触发 iframe 重新测量高度并重置滚动 */
+  remeasureKey?: string | number;
   className?: string;
+}
+
+type ParsedPatchDirective =
+  | { kind: 'patches'; patches: HtmlSearchReplacePatch | HtmlSearchReplacePatch[] }
+  | { kind: 'source'; source: string }
+  | { kind: 'invalid_json'; error: Error }
+  | { kind: 'none' };
+
+function unescapeQuotedLiteral(quote: string, inner: string): string {
+  if (quote === '"') {
+    try {
+      return JSON.parse(`"${inner}"`) as string;
+    } catch {
+      // fall through
+    }
+  }
+  return inner
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t')
+    .replace(/\\'/g, "'")
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\');
+}
+
+function tryParseStructuredPatchInput(raw: string): ParsedPatchDirective {
+  const unfenced = raw
+    .trim()
+    .replace(/^```(?:json|js|javascript)?\s*\r?\n([\s\S]*?)\r?\n```$/i, '$1')
+    .trim();
+  if (!unfenced.startsWith('{') && !unfenced.startsWith('[')) {
+    return { kind: 'none' };
+  }
+
+  try {
+    const parsed = JSON.parse(unfenced) as unknown;
+    if (Array.isArray(parsed)) {
+      return { kind: 'patches', patches: parsed as HtmlSearchReplacePatch[] };
+    }
+    if (parsed && typeof parsed === 'object') {
+      const obj = parsed as {
+        search?: unknown;
+        replace?: unknown;
+        edits?: unknown;
+        source?: unknown;
+      };
+      if (Array.isArray(obj.edits)) {
+        return { kind: 'patches', patches: obj.edits as HtmlSearchReplacePatch[] };
+      }
+      if (typeof obj.source === 'string' && !('search' in obj)) {
+        return { kind: 'source', source: obj.source };
+      }
+      return { kind: 'patches', patches: obj as HtmlSearchReplacePatch };
+    }
+  } catch (jsonErr) {
+    // 兼容占位符提示的宽松对象字面量语法：{ search: "...", replace: "..." }
+    const relaxedMatch =
+      /^\{\s*['"]?search['"]?\s*:\s*(['"])((?:\\.|(?!\1)[\s\S])*)\1\s*,\s*['"]?replace['"]?\s*:\s*(['"])((?:\\.|(?!\3)[\s\S])*)\3\s*,?\s*\}$/.exec(
+        unfenced,
+      );
+    if (relaxedMatch) {
+      return {
+        kind: 'patches',
+        patches: {
+          search: unescapeQuotedLiteral(relaxedMatch[1], relaxedMatch[2]),
+          replace: unescapeQuotedLiteral(relaxedMatch[3], relaxedMatch[4]),
+        },
+      };
+    }
+    return {
+      kind: 'invalid_json',
+      error: jsonErr instanceof Error ? jsonErr : new Error('补丁 JSON 格式不正确'),
+    };
+  }
+
+  return { kind: 'invalid_json', error: new Error('补丁 JSON 格式不正确') };
 }
 
 const DEFAULT_INTERNAL_TITLES = new Set([
@@ -795,6 +936,7 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
   externalVersion,
   onPinToCanvas,
   onSaveToSpace,
+  remeasureKey,
   className,
 }) => {
   const { t } = useTranslation('generativeUi');
@@ -804,6 +946,7 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
     [reactId],
   );
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
 
   const [localHtml, setLocalHtml] = useState(html);
   const [undoStack, setUndoStack] = useState<string[]>([]);
@@ -1197,6 +1340,46 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
     onOverflowChangeRef.current?.(overflowing);
   }, [overflowing]);
 
+  const requestIframeRemeasure = useCallback(() => {
+    if (stageRef.current) {
+      stageRef.current.scrollTop = 0;
+      stageRef.current.scrollLeft = 0;
+    }
+    postToIframe({ type: 'ds-canvas-remeasure' });
+  }, [postToIframe]);
+
+  useEffect(() => {
+    const stageEl = stageRef.current;
+    if (!stageEl || typeof ResizeObserver !== 'function') return;
+    let lastWidth = stageEl.clientWidth;
+    const observer = new ResizeObserver((entries) => {
+      const nextWidth = entries[0]?.contentRect.width ?? stageEl.clientWidth;
+      if (Math.abs(nextWidth - lastWidth) > 1) {
+        lastWidth = nextWidth;
+        requestIframeRemeasure();
+      }
+    });
+    observer.observe(stageEl);
+    return () => observer.disconnect();
+  }, [requestIframeRemeasure]);
+
+  useEffect(() => {
+    requestIframeRemeasure();
+    const raf =
+      typeof requestAnimationFrame === 'function'
+        ? requestAnimationFrame(() => requestIframeRemeasure())
+        : null;
+    const settleTimer = window.setTimeout(() => {
+      requestIframeRemeasure();
+    }, 80);
+    return () => {
+      if (raf !== null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(raf);
+      }
+      window.clearTimeout(settleTimer);
+    };
+  }, [remeasureKey, isExpandedView, expanded, editOpen, sourceOpen, requestIframeRemeasure]);
+
   const stageHeight =
     contentHeight === null
       ? INITIAL_CANVAS_HEIGHT
@@ -1227,7 +1410,7 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
     setEditError('');
 
     try {
-      if (patchSearch.trim().length > 0) {
+      if (patchSearch.length > 0) {
         const nextHtml = applyHtmlSearchReplacePatch(localHtml, {
           search: patchSearch,
           replace: patchReplace,
@@ -1238,29 +1421,44 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
 
       const trimmedInstruction = editInstruction.trim();
       if (!trimmedInstruction) {
-        setEditError('请输入修改要求或填写查找与替换片段');
+        if (patchReplace.length > 0) {
+          setEditError(
+            t('generativeUi:canvas.patchSearchRequired', {
+              defaultValue: '请填写「查找原片段 (search)」后再应用替换',
+            }),
+          );
+          return;
+        }
+        setEditError(
+          onRequestPatch
+            ? t('generativeUi:canvas.editRequiredWithAi', {
+                defaultValue: '请输入修改要求，或填写下方查找与替换片段',
+              })
+            : t('generativeUi:canvas.editRequiredNoAi', {
+                defaultValue: '请填写下方查找原片段与替换片段，或粘贴 { "search", "replace" } JSON 补丁',
+              }),
+        );
         return;
       }
 
-      if (trimmedInstruction.startsWith('{') || trimmedInstruction.startsWith('[')) {
-        try {
-          const parsed = JSON.parse(trimmedInstruction) as
-            | HtmlSearchReplacePatch
-            | HtmlSearchReplacePatch[]
-            | { edits?: HtmlSearchReplacePatch[] };
-          const patches = Array.isArray(parsed)
-            ? parsed
-            : 'edits' in parsed && Array.isArray(parsed.edits)
-              ? parsed.edits
-              : (parsed as HtmlSearchReplacePatch);
-          const nextHtml = applyHtmlSearchReplacePatch(localHtml, patches);
-          commitNewSource(nextHtml);
-          return;
-        } catch (jsonErr) {
-          if (!onRequestPatch) {
-            throw jsonErr instanceof Error ? jsonErr : new Error('补丁 JSON 格式不正确');
-          }
+      const directive = tryParseStructuredPatchInput(trimmedInstruction);
+      if (directive.kind === 'patches') {
+        const nextHtml = applyHtmlSearchReplacePatch(localHtml, directive.patches);
+        commitNewSource(nextHtml);
+        return;
+      }
+      if (directive.kind === 'source') {
+        if (!directive.source.trim()) {
+          throw new Error('修改后的 HTML 源码不能为空');
         }
+        if (directive.source === localHtml) {
+          throw new Error('补丁未产生任何实质修改');
+        }
+        commitNewSource(directive.source);
+        return;
+      }
+      if (directive.kind === 'invalid_json') {
+        throw directive.error;
       }
 
       if (onRequestPatch) {
@@ -1277,7 +1475,12 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
         return;
       }
 
-      setEditError('请填写查找与替换片段以应用局部修改');
+      setEditError(
+        t('generativeUi:canvas.naturalLanguageUnavailable', {
+          defaultValue:
+            '当前为精确片段替换模式（未接入自动 AI 改写）：请改用下方「查找原片段 / 替换为新片段」，或粘贴 { "search": "...", "replace": "..." } JSON 补丁。',
+        }),
+      );
     } catch (err) {
       setEditError(err instanceof Error ? err.message : '局部修改应用失败');
     } finally {
@@ -1308,19 +1511,19 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
   return (
     <div
       className={cn(
-        'interactive-html-canvas-root flex w-full flex-col rounded-lg border border-border/35 bg-card/30',
+        'interactive-html-canvas-root flex w-full min-w-0 flex-col rounded-lg border border-border/35 bg-card/30',
         isExpandedView &&
           'fixed inset-0 z-50 h-full w-full overflow-auto rounded-none border-0 bg-background p-4',
       )}
       data-testid={isExpandedView ? 'canvas-expanded-view' : 'interactive-html-canvas-root'}
       data-expanded={isExpandedView ? 'true' : 'false'}
     >
-      {/* 作品模式顶栏 */}
+      {/* 作品模式顶栏（位于裁切舞台之外，且随视口换行永不被右侧/顶部裁切） */}
       <div
-        className="flex items-center justify-between gap-2 border-b border-border/35 px-3 py-1.5 text-xs"
+        className="sticky top-0 z-10 flex w-full min-w-0 flex-wrap items-center justify-between gap-2 rounded-t-lg border-b border-border/35 bg-card/95 px-3 py-1.5 text-xs backdrop-blur-sm"
         data-testid="canvas-toolbar"
       >
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           {isExpandedView && (
             <button
               type="button"
@@ -1403,7 +1606,7 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
           )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           {!streaming && onPinToCanvas && (
             <button
               type="button"
@@ -1490,47 +1693,130 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
         </div>
       </div>
 
-      {/* 画板舞台 */}
-      <div
-        className={cn('interactive-html-canvas-stage relative w-full overflow-hidden', className)}
-        data-interactive-html-canvas=""
-        data-canvas-id={canvasId}
-        style={{ height: stageHeight }}
-      >
-        {showStreamFirstFrame && (
-          <WidgetStreamFrame
-            html={source}
-            theme={themeSnapshot}
-            height={stageHeight}
-            title={`${title}-stream-preview`}
-            className="absolute inset-0 z-10"
-            testId="widget-stream-frame"
-          />
-        )}
-        <iframe
-          ref={iframeRef}
-          className="interactive-html-canvas-frame h-full w-full border-0 bg-transparent"
-          sandbox={INTERACTIVE_HTML_CANVAS_SANDBOX}
-          srcDoc={srcDoc}
-          title={title}
-          onLoad={() => {
-            if (!streaming) {
-              setExecutableReady(true);
-            }
-          }}
-        />
-      </div>
+      {/* 就地局部修改内联栏（置顶紧邻工具栏，输入区可滚、底部收起/应用按钮独立固定绝不被裁切） */}
+      {editOpen && (
+        <div
+          ref={localEditBarRef}
+          className="flex max-h-[min(50dvh,340px)] w-full min-w-0 shrink-0 flex-col border-b border-border/35 bg-card/95 text-xs"
+          data-testid="canvas-local-edit-bar"
+        >
+          <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-3 pb-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
+              <span>
+                {onRequestPatch
+                  ? t('generativeUi:canvas.localEditHeader', '就地局部修改（仅作用于当前画板）')
+                  : t('generativeUi:canvas.localEditExactHeader', '就地局部修改（精确片段替换 / JSON 补丁）')}
+              </span>
+              <span className="font-mono tabular-nums">{editInstruction.length}/2000</span>
+            </div>
+            {!onRequestPatch && (
+              <p
+                className="m-0 text-[11px] leading-relaxed text-muted-foreground"
+                data-testid="canvas-local-edit-mode-hint"
+              >
+                {t('generativeUi:canvas.localEditExactHint', {
+                  defaultValue:
+                    '当前为精确片段替换模式：请填写下方「查找原片段」与「替换为新片段」，或粘贴 { "search": "...", "replace": "..." } JSON 补丁。',
+                })}
+              </p>
+            )}
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <input
+                type="text"
+                value={patchSearch}
+                disabled={editBusy}
+                onChange={(e) => setPatchSearch(e.target.value)}
+                placeholder={t(
+                  'generativeUi:canvas.patchSearchPlaceholder',
+                  '查找原片段 (search)',
+                )}
+                aria-label={t('generativeUi:canvas.patchSearchAria', '查找片段')}
+                data-testid="canvas-patch-search"
+                className="w-full rounded border border-border/35 bg-background px-2.5 py-1.5 font-mono text-xs text-foreground outline-none focus:border-primary"
+              />
+              <input
+                type="text"
+                value={patchReplace}
+                disabled={editBusy}
+                onChange={(e) => setPatchReplace(e.target.value)}
+                placeholder={t(
+                  'generativeUi:canvas.patchReplacePlaceholder',
+                  '替换为新片段 (replace)',
+                )}
+                aria-label={t('generativeUi:canvas.patchReplaceAria', '替换片段')}
+                data-testid="canvas-patch-replace"
+                className="w-full rounded border border-border/35 bg-background px-2.5 py-1.5 font-mono text-xs text-foreground outline-none focus:border-primary"
+              />
+            </div>
+            <input
+              type="text"
+              value={editInstruction}
+              maxLength={2000}
+              disabled={editBusy}
+              onChange={(e) => setEditInstruction(e.target.value)}
+              placeholder={
+                onRequestPatch
+                  ? t(
+                      'generativeUi:canvas.editInstructionPlaceholder',
+                      '输入修改要求，或粘贴 { search, replace } JSON 补丁',
+                    )
+                  : t(
+                      'generativeUi:canvas.editJsonPatchPlaceholder',
+                      '可选：粘贴 { "search": "...", "replace": "..." } JSON 补丁',
+                    )
+              }
+              aria-label={
+                onRequestPatch
+                  ? t('generativeUi:canvas.editInstructionAria', '修改要求')
+                  : t('generativeUi:canvas.editJsonPatchAria', 'JSON 补丁')
+              }
+              data-testid="canvas-edit-instruction"
+              className="w-full rounded border border-border/35 bg-background px-2.5 py-1.5 font-mono text-xs text-foreground outline-none focus:border-primary"
+            />
+            {editError && (
+              <p className="m-0 text-xs text-destructive" role="alert" data-testid="canvas-edit-error">
+                {editError}
+              </p>
+            )}
+          </div>
+          <div
+            className="flex shrink-0 items-center justify-end gap-2 border-t border-border/25 bg-card/95 px-3 py-2"
+            data-testid="canvas-local-edit-actions"
+          >
+            <button
+              type="button"
+              onClick={() => setEditOpen(false)}
+              disabled={editBusy}
+              data-testid="canvas-collapse-edit"
+              className="rounded px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted [@media(pointer:coarse)]:min-h-11"
+            >
+              {t('generativeUi:canvas.collapse', '收起')}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleApplyEdit()}
+              disabled={editBusy}
+              data-testid="canvas-apply-patch"
+              className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
+            >
+              {editBusy
+                ? t('generativeUi:canvas.applying', '正在应用…')
+                : t('generativeUi:canvas.applyEdit', '应用修改')}
+            </button>
+          </div>
+        </div>
+      )}
 
-      {/* 源码视图（支持直接编辑并重新运行 / 下载 HTML） */}
+      {/* 源码视图（紧邻工具栏，支持直接编辑并重新运行 / 下载 HTML） */}
       {sourceOpen && (
         <div
           ref={sourcePanelRef}
-          className="border-t border-border/35 bg-muted/30 p-3"
+          className="shrink-0 border-b border-border/35 bg-muted/30 p-3"
           data-testid="canvas-source-view"
         >
           <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>{t('generativeUi:canvas.htmlSource', 'HTML 源码')}</span>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono tabular-nums">
                 {t('generativeUi:canvas.charCount', {
                   count: sourceDraft.length,
@@ -1585,87 +1871,42 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
         </div>
       )}
 
-      {/* 就地局部修改内联栏（不弹遮挡模态框） */}
-      {editOpen && (
-        <div
-          ref={localEditBarRef}
-          className="flex flex-col gap-2.5 border-t border-border/35 bg-card/50 p-3 text-xs"
-          data-testid="canvas-local-edit-bar"
-        >
-          <div className="flex items-center justify-between text-muted-foreground">
-            <span>{t('generativeUi:canvas.localEditHeader', '就地局部修改（仅作用于当前画板）')}</span>
-            <span className="font-mono tabular-nums">{editInstruction.length}/2000</span>
-          </div>
-          <input
-            type="text"
-            value={editInstruction}
-            maxLength={2000}
-            disabled={editBusy}
-            onChange={(e) => setEditInstruction(e.target.value)}
-            placeholder={t(
-              'generativeUi:canvas.editInstructionPlaceholder',
-              '输入修改要求，或粘贴 { search, replace } JSON 补丁',
-            )}
-            aria-label={t('generativeUi:canvas.editInstructionAria', '修改要求')}
-            data-testid="canvas-edit-instruction"
-            className="w-full rounded border border-border/35 bg-background px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-primary"
+      {/* 画板舞台 */}
+      <div
+        ref={stageRef}
+        className={cn(
+          'interactive-html-canvas-stage relative w-full rounded-b-lg',
+          effectiveExpanded ? 'overflow-x-hidden overflow-y-auto' : 'overflow-hidden',
+          className,
+        )}
+        data-interactive-html-canvas=""
+        data-canvas-id={canvasId}
+        style={{ height: stageHeight }}
+      >
+        {showStreamFirstFrame && (
+          <WidgetStreamFrame
+            html={source}
+            theme={themeSnapshot}
+            height={stageHeight}
+            title={`${title}-stream-preview`}
+            className="absolute inset-0 z-10"
+            testId="widget-stream-frame"
           />
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <input
-              type="text"
-              value={patchSearch}
-              disabled={editBusy}
-              onChange={(e) => setPatchSearch(e.target.value)}
-              placeholder={t(
-                'generativeUi:canvas.patchSearchPlaceholder',
-                '查找原片段 (search)',
-              )}
-              aria-label={t('generativeUi:canvas.patchSearchAria', '查找片段')}
-              data-testid="canvas-patch-search"
-              className="w-full rounded border border-border/35 bg-background px-2.5 py-1.5 font-mono text-xs text-foreground outline-none focus:border-primary"
-            />
-            <input
-              type="text"
-              value={patchReplace}
-              disabled={editBusy}
-              onChange={(e) => setPatchReplace(e.target.value)}
-              placeholder={t(
-                'generativeUi:canvas.patchReplacePlaceholder',
-                '替换为新片段 (replace)',
-              )}
-              aria-label={t('generativeUi:canvas.patchReplaceAria', '替换片段')}
-              data-testid="canvas-patch-replace"
-              className="w-full rounded border border-border/35 bg-background px-2.5 py-1.5 font-mono text-xs text-foreground outline-none focus:border-primary"
-            />
-          </div>
-          {editError && (
-            <p className="m-0 text-xs text-destructive" role="alert" data-testid="canvas-edit-error">
-              {editError}
-            </p>
-          )}
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => setEditOpen(false)}
-              disabled={editBusy}
-              className="rounded px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted"
-            >
-              {t('generativeUi:canvas.collapse', '收起')}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleApplyEdit()}
-              disabled={editBusy}
-              data-testid="canvas-apply-patch"
-              className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
-            >
-              {editBusy
-                ? t('generativeUi:canvas.applying', '正在应用…')
-                : t('generativeUi:canvas.applyEdit', '应用修改')}
-            </button>
-          </div>
-        </div>
-      )}
+        )}
+        <iframe
+          ref={iframeRef}
+          className="interactive-html-canvas-frame h-full w-full border-0 bg-transparent"
+          sandbox={INTERACTIVE_HTML_CANVAS_SANDBOX}
+          srcDoc={srcDoc}
+          title={title}
+          onLoad={() => {
+            if (!streaming) {
+              setExecutableReady(true);
+            }
+            requestIframeRemeasure();
+          }}
+        />
+      </div>
     </div>
   );
 };

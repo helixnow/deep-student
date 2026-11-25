@@ -13,10 +13,12 @@ import type { DstuNode } from '@/dstu/types';
 import { openResource, getOpenResourceHandler } from '@/dstu/openResource';
 import { launchWorkbenchApp } from '@/shared/workbenchHost';
 import {
+  CHAT_SEARCH_MIN_CHARS,
   CONTENT_SEARCH_MIN_CHARS,
   GLOBAL_SEARCH_DEBOUNCE_MS,
   fetchChatSearchResults,
   fetchDstuSearchResults,
+  openChatInWorkbench,
   stripSnippetMarkers,
   useAbortableDebouncedQuery,
   type SessionSearchItem,
@@ -57,7 +59,7 @@ export function useResourceSearch(query: string, enabled: boolean): ResourceSear
     fetchChatSearchResults,
     {
       debounceMs: GLOBAL_SEARCH_DEBOUNCE_MS,
-      minChars: CONTENT_SEARCH_MIN_CHARS,
+      minChars: CHAT_SEARCH_MIN_CHARS,
       empty: EMPTY_SESSIONS,
     },
   );
@@ -123,6 +125,10 @@ export async function openFileFromPalette(deps: DependencyResolver, node: DstuNo
  * 因此延迟重发两次（setCurrentSessionId 幂等，重复无副作用）。
  */
 export function openSessionFromPalette(deps: DependencyResolver, sessionId: string): void {
+  if (deps.getCurrentView() === 'workbench') {
+    openChatInWorkbench(sessionId);
+    return;
+  }
   deps.navigate('chat-v2');
   const fire = () => {
     window.dispatchEvent(new CustomEvent('navigate-to-session', { detail: { sessionId } }));

@@ -88,7 +88,10 @@ import {
   INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE,
   formatBytes,
   formatTimestamp,
+  getDatabaseDisplayName,
 } from '@/types/dataGovernance';
+import { APP_EVENTS, useAppEvent } from '@/events';
+import { QuickSyncNowButton, probeStoredCloudConfigured } from './QuickSyncNowButton';
 import {
   BackupImportDialog,
   buildSnapshotAriaLabelMap,
@@ -678,6 +681,7 @@ export interface DataGovernanceTabTarget {
 interface DataGovernanceDashboardProps {
   embedded?: boolean;
   tabTarget?: DataGovernanceTabTarget | null;
+  hideHeaderQuickSync?: boolean;
 }
 
 
@@ -713,8 +717,9 @@ function writeBackupVerificationStatuses(map: Record<string, BackupVerificationS
 export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = ({
   embedded = false,
   tabTarget = null,
+  hideHeaderQuickSync = false,
 }) => {
-  const { t, i18n } = useTranslation(['data', 'common']);
+  const { t, i18n } = useTranslation(['data', 'common', 'sync']);
   /**
    * `t` 的身份不保证跨渲染稳定。
    *
@@ -725,8 +730,18 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
    */
   const tRef = useRef(t);
   tRef.current = t;
-  const { enterMaintenanceMode, requireMaintenanceRestart, exitMaintenanceMode } = useSystemStatusStore(
+  const {
+    maintenanceMode,
+    maintenanceReason,
+    maintenanceRequiresRestart,
+    enterMaintenanceMode,
+    requireMaintenanceRestart,
+    exitMaintenanceMode,
+  } = useSystemStatusStore(
     useShallow((state) => ({
+      maintenanceMode: state.maintenanceMode,
+      maintenanceReason: state.maintenanceReason,
+      maintenanceRequiresRestart: state.maintenanceRequiresRestart,
       enterMaintenanceMode: state.enterMaintenanceMode,
       requireMaintenanceRestart: state.requireMaintenanceRestart,
       exitMaintenanceMode: state.exitMaintenanceMode,
@@ -735,11 +750,24 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
   const [syncTabVisited, setSyncTabVisited] = useState(false);
   const debugTabEnabled = isDebugTabEnabled();
+  const lastAppliedTabRequestIdRef = useRef<number | null>(null);
+
+  const handleSelectTab = useCallback((next: DashboardTab) => {
+    if (next === 'sync') {
+      setSyncTabVisited(true);
+    }
+    setActiveTab(next);
+  }, []);
 
   useEffect(() => {
     if (!tabTarget) return;
+    if (lastAppliedTabRequestIdRef.current === tabTarget.requestId) return;
+    lastAppliedTabRequestIdRef.current = tabTarget.requestId;
     // 生产构建没有 debug 页签，外部深链不能把面板切到一个不存在的页签
     if (tabTarget.tab === 'debug' && !debugTabEnabled) return;
+    if (tabTarget.tab === 'sync') {
+      setSyncTabVisited(true);
+    }
     setActiveTab(tabTarget.tab);
   }, [tabTarget, debugTabEnabled]);
 
@@ -887,8 +915,15 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
             : undefined;
         setCloudSyncSummary({ provider: config.provider, root });
       } else if (resolved === null) {
-        setCloudSyncConfigured(false);
-        setCloudSyncSummary(null);
+        const fallbackConfigured = await probeStoredCloudConfigured();
+        if (fallbackConfigured) {
+          setCloudSyncConfigured(true);
+          const cached = readCloudSyncSummary();
+          if (cached) setCloudSyncSummary(cached);
+        } else {
+          setCloudSyncConfigured(false);
+          setCloudSyncSummary(null);
+        }
       } else {
         const cached = readCloudSyncSummary();
         setCloudSyncConfigured(Boolean(cached));
@@ -2191,17 +2226,110 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     };
   }, []); // 仅在挂载时执行一次
 
+  const revealActiveMaintenanceDetail = useCallback(() => {
+    const reasonText = maintenanceReason ?? '';
+    let nextTab: DashboardTab = activeTab;
+    if (isSyncRunning || globalSyncing || /同步|sync/i.test(reasonText)) {
+      nextTab = 'sync';
+      setSyncTabVisited(true);
+    } else if (isBackupRunning) {
+      nextTab = 'backup';
+    } else if (maintenanceRequiresRestart) {
+      nextTab = 'recovery';
+    } else if (/云|cloud/i.test(reasonText)) {
+      nextTab = 'sync';
+      setSyncTabVisited(true);
+      setShowCloudSettingsEditor(true);
+    } else if (/恢复|restore/i.test(reasonText)) {
+      nextTab = 'recovery';
+    } else if (maintenanceMode) {
+      nextTab = cloudSyncConfigured ? 'sync' : 'backup';
+      if (nextTab === 'sync') {
+        setSyncTabVisited(true);
+        setShowCloudSettingsEditor(true);
+      }
+    }
+    setActiveTab(nextTab);
+    const scrollDetailPanel = () => {
+      if (typeof document === 'undefined') return;
+      const target = document.querySelector<HTMLElement>(
+        '[data-testid="active-sync-progress-panel"], [data-testid="cloud-op-progress-panel"], [data-testid="active-backup-progress-panel"], [data-testid="sync-status-overview-card"], [data-testid="recovery-quick-actions"]',
+      );
+      target?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    };
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => scrollDetailPanel());
+    } else {
+      scrollDetailPanel();
+    }
+  }, [
+    activeTab,
+    cloudSyncConfigured,
+    globalSyncing,
+    isBackupRunning,
+    isSyncRunning,
+    maintenanceMode,
+    maintenanceReason,
+    maintenanceRequiresRestart,
+  ]);
+
+  useAppEvent(
+    APP_EVENTS.SETTINGS_NAVIGATE_TAB,
+    (detail) => {
+      if (
+        (detail.tab === 'data-governance' || (detail.tab as string) === 'data') &&
+        !detail.dataGovernanceTab &&
+        (maintenanceMode || isSyncRunning || globalSyncing || isBackupRunning)
+      ) {
+        revealActiveMaintenanceDetail();
+      }
+    },
+    [revealActiveMaintenanceDetail, maintenanceMode, isSyncRunning, globalSyncing, isBackupRunning],
+  );
+
   const tabTriggerClassName =
-    'inline-flex shrink-0 min-h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-border/45 bg-muted/40 px-3 text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start [@media(pointer:coarse)]:!min-h-11';
+    'inline-flex shrink-0 max-w-full cursor-pointer min-h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-border/45 bg-muted/40 !px-2.5 sm:!px-3 !py-1.5 !text-xs text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start [@media(pointer:coarse)]:!min-h-10';
   const isNativeMobile = !isWebUiShell() && readShellPlatform()?.kind === 'mobile';
 
   const content = (
-    <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as DashboardTab)}>
-      {/* 移动端（如 360px）使用 flex-wrap 自动换行，确保包括「缓存」「全局版本」在内的所有页签始终完整可见、可直接点击。 */}
-      <div className="mb-4">
+    <Tabs value={activeTab} onValueChange={(v) => handleSelectTab(v as DashboardTab)}>
+      {maintenanceMode && (
+        <div
+          role="status"
+          data-testid="governance-maintenance-banner"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/40 bg-warning/10 px-3.5 py-2 text-xs text-foreground"
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <CircleNotch className="h-3.5 w-3.5 shrink-0 animate-spin text-warning" />
+            <span className="font-medium text-warning">
+              {t('data:governance.maintenance_banner_active')}
+            </span>
+            {maintenanceReason && (
+              <span className="truncate text-muted-foreground">
+                · {maintenanceReason}
+              </span>
+            )}
+          </div>
+          <DsButton
+            type="button"
+            variant="outline"
+            size="sm"
+            data-testid="governance-maintenance-view-details"
+            onClick={revealActiveMaintenanceDetail}
+            className="h-7 px-2.5 text-xs"
+          >
+            {t('data:governance.maintenance_view_details', {
+              defaultValue: i18n?.language?.startsWith('en') ? 'View Details' : '查看详情',
+            })}
+          </DsButton>
+        </div>
+      )}
+      {/* 移动端（如 360px）使用 !flex !h-auto flex-wrap 自动换行，防止固定 h-10 截断与死点。 */}
+      <div className="relative z-10 mb-4 min-w-0 max-w-full" data-testid="governance-tabs-strip">
         <TabsList
           aria-label={t('data:governance.tabs_nav_label')}
-          className="flex h-auto w-full flex-wrap items-center justify-start gap-1.5 rounded-none border-b border-border/40 bg-transparent px-0 pb-3"
+          style={{ height: 'auto' }}
+          className="!flex !h-auto !min-h-0 !w-full min-w-0 max-w-full flex-wrap items-center justify-start !gap-1.5 rounded-none border-b border-border/40 bg-transparent !p-0 !pb-3"
         >
           <TabsTrigger value="overview" aria-label={t('data:governance.tab_overview')} className={tabTriggerClassName}>
             <Gauge className="h-3.5 w-3.5 shrink-0" />
@@ -2240,6 +2368,15 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
             </TabsTrigger>
           )}
         </TabsList>
+        {!hideHeaderQuickSync && cloudSyncConfigured && activeTab !== 'sync' && (
+          <div className="mt-2 flex justify-end">
+            <QuickSyncNowButton
+              dataTestId="governance-quick-sync-now-btn"
+              cloudConfiguredOverride={cloudSyncConfigured}
+              onSyncTrigger={() => runCloudSync('bidirectional', syncStrategy)}
+            />
+          </div>
+        )}
       </div>
 
       <TabsContent value="overview">
@@ -2253,8 +2390,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           lastAutoVerifyResult={lastAutoVerifyResult}
           isVerifying={isAutoVerifying}
           onVerifyLatestBackup={verifyLatestBackup}
-          onOpenArchive={() => setActiveTab('archive')}
-          onOpenSync={() => setActiveTab('sync')}
+          onOpenArchive={() => handleSelectTab('archive')}
+          onOpenSync={() => handleSelectTab('sync')}
         />
       </TabsContent>
 
@@ -2384,29 +2521,65 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           onOpenChange={setShowRecoveryImportDialog}
           onImportZip={importZip}
         />
-        <DsAlertDialog
-          open={pendingRecoveryRestoreId !== null}
-          onOpenChange={(open) => {
-            if (!open) setPendingRecoveryRestoreId(null);
-          }}
-          title={t('data:governance.confirm_restore_title')}
-          description={
-            <div className="space-y-2">
-              <p>{t('data:governance.confirm_restore_desc')}</p>
-              <p className="text-warning font-medium">
-                {t('data:governance.restore_save_work_warning')}
-              </p>
-            </div>
-          }
-          confirmText={t('data:governance.restore')}
-          cancelText={t('common:actions.cancel')}
-          confirmVariant="warning"
-          onConfirm={() => {
-            const targetId = pendingRecoveryRestoreId;
-            setPendingRecoveryRestoreId(null);
-            if (targetId) void restoreBackup(targetId);
-          }}
-        />
+        {(() => {
+          const pendingBackup = pendingRecoveryRestoreId
+            ? backups.find((b) => b.path === pendingRecoveryRestoreId) ?? null
+            : null;
+          const snapshotName = pendingRecoveryRestoreId
+            ? pendingRecoveryRestoreId.split(/[/\\]/).filter(Boolean).pop() ||
+              pendingRecoveryRestoreId
+            : '-';
+          const snapshotTime = pendingBackup
+            ? formatTimestamp(pendingBackup.created_at)
+            : '-';
+          const listSep = i18n?.language?.startsWith('zh') ? '、' : ', ';
+          const coveredDbsText =
+            pendingBackup && pendingBackup.databases.length > 0
+              ? pendingBackup.databases
+                  .map((dbId) => getDatabaseDisplayName(dbId, t))
+                  .join(listSep)
+              : t('data:governance.full');
+          return (
+            <DsAlertDialog
+              open={pendingRecoveryRestoreId !== null}
+              onOpenChange={(open) => {
+                if (!open) setPendingRecoveryRestoreId(null);
+              }}
+              title={t('data:governance.confirm_restore_title')}
+              description={t('data:governance.confirm_restore_desc')}
+              confirmText={t('data:governance.restore')}
+              cancelText={t('common:actions.cancel')}
+              confirmVariant="warning"
+              onConfirm={() => {
+                const targetId = pendingRecoveryRestoreId;
+                setPendingRecoveryRestoreId(null);
+                if (targetId) void restoreBackup(targetId);
+              }}
+            >
+              <div
+                data-testid="recovery-restore-confirm-details"
+                className="space-y-1.5 text-xs text-muted-foreground"
+              >
+                <p className="font-medium text-foreground">
+                  {t('data:governance.confirm_restore_snapshot_info', {
+                    name: snapshotName,
+                    time: snapshotTime,
+                  })}
+                </p>
+                <p>
+                  {t('data:governance.confirm_restore_covered_dbs', {
+                    databases: coveredDbsText,
+                  })}
+                </p>
+                <p>{t('data:governance.confirm_restore_safety_backup_notice')}</p>
+                <p>{t('data:governance.confirm_restore_reload_notice')}</p>
+                <p className="text-warning font-medium">
+                  {t('data:governance.restore_save_work_warning')}
+                </p>
+              </div>
+            </DsAlertDialog>
+          );
+        })()}
         <DsAlertDialog
           open={showRestorePromptDialog}
           onOpenChange={(open) => {

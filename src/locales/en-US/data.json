@@ -1335,6 +1335,19 @@
     "recovery_quick_desc": "Import an encrypted backup (.zip) directly or restore from a local full snapshot.",
     "recovery_import_encrypted_zip": "Import Encrypted Backup (.zip)",
     "recovery_manage_backups": "Manage Backups",
-    "recovery_restore_local_snapshot": "Restore from Local Snapshot"
+    "recovery_restore_local_snapshot": "Restore from Local Snapshot",
+    "confirm_restore_title": "Confirm Data Restore from Snapshot?",
+    "confirm_restore_desc": "This will replace your active study data slot with the selected snapshot. A pre-restore safety snapshot is created automatically beforehand, and the app will restart or reload once restore completes.",
+    "confirm_restore_snapshot_info": "Target snapshot: {{name}} ({{time}})",
+    "confirm_restore_covered_dbs": "Covered databases: {{databases}}",
+    "confirm_restore_safety_backup_notice": "Safety backup: A pre-restore safety snapshot will be saved automatically before overwriting any data.",
+    "confirm_restore_reload_notice": "App reload notice: After restore completes, the app will restart or reload to activate the restored data slot.",
+    "cloud_backup_confirm_title": "Confirm full cloud backup upload?",
+    "cloud_backup_confirm_desc": "During a full cloud backup, the app enters Maintenance Mode (pausing database writes) while packaging and uploading all governed databases and assets. For everyday multi-device study, use Sync Now instead.",
+    "cloud_backup_confirm_action": "Confirm & Upload",
+    "last_cloud_archive_backup": "Last full cloud backup",
+    "no_cloud_archive_yet": "No full archive yet",
+    "maintenance_banner_active": "Maintenance mode active",
+    "maintenance_view_details": "View Details"
   }
 }

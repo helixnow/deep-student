@@ -18,8 +18,16 @@ import { DsButton } from '@/components/ui/DsButton';
 import { showGlobalNotification } from '../UnifiedNotification';
 import type { SkillDefinition, SkillPackageFile, SkillPackageSource, SkillTrustStatus } from '@/features/chat/skills/types';
 import { getSkillEmbeddedToolLabels, getSkillPermissionSummary } from '@/features/chat/skills/packageMetadata';
-import { resolveEffectiveTrustStatus, setSkillTrustOverride } from '@/features/chat/skills/skillTrustStorage';
-import { isSkillDisabled, SKILL_ENABLED_CHANGED_EVENT } from '@/features/chat/skills/skillEnableStorage';
+import {
+  resolveEffectiveTrustStatus,
+  setSkillTrustOverride,
+  SKILL_TRUST_CHANGED_EVENT,
+} from '@/features/chat/skills/skillTrustStorage';
+import {
+  isSkillDisabled,
+  setSkillDisabled,
+  SKILL_ENABLED_CHANGED_EVENT,
+} from '@/features/chat/skills/skillEnableStorage';
 
 interface SkillPackageSummaryProps {
   skill: SkillDefinition;
@@ -108,10 +116,16 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
 }) => {
   const { t } = useTranslation(['skills']);
   const [, setTrustTick] = useState(0);
+  const [isTrustUpdating, setIsTrustUpdating] = useState(false);
+  const trustBusyRef = React.useRef(false);
   useEffect(() => {
-    const onEnabledChanged = () => setTrustTick((v) => v + 1);
-    window.addEventListener(SKILL_ENABLED_CHANGED_EVENT, onEnabledChanged);
-    return () => window.removeEventListener(SKILL_ENABLED_CHANGED_EVENT, onEnabledChanged);
+    const onOverrideChanged = () => setTrustTick((v) => v + 1);
+    window.addEventListener(SKILL_ENABLED_CHANGED_EVENT, onOverrideChanged);
+    window.addEventListener(SKILL_TRUST_CHANGED_EVENT, onOverrideChanged);
+    return () => {
+      window.removeEventListener(SKILL_ENABLED_CHANGED_EVENT, onOverrideChanged);
+      window.removeEventListener(SKILL_TRUST_CHANGED_EVENT, onOverrideChanged);
+    };
   }, []);
 
   const summary = getSkillPermissionSummary(skill);
@@ -132,6 +146,9 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
   const hasRequires = requiresBins.length > 0 || requiresEnv.length > 0;
 
   const handleTrustToggle = useCallback(async () => {
+    if (trustBusyRef.current) return;
+    trustBusyRef.current = true;
+    setIsTrustUpdating(true);
     const nextTrust = trust === 'untrusted' ? 'trusted' : 'untrusted';
     try {
       await setSkillTrustOverride(
@@ -139,6 +156,9 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
         nextTrust,
         skill,
       );
+      if (nextTrust === 'trusted' && isSkillDisabled(skill.id)) {
+        setSkillDisabled(skill.id, false);
+      }
       setTrustTick((v) => v + 1);
       onTrustChanged?.();
       showGlobalNotification(
@@ -153,6 +173,9 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
         'error',
         t('skills:package.trust_failed', { error: getErrorMessage(error) }),
       );
+    } finally {
+      trustBusyRef.current = false;
+      setIsTrustUpdating(false);
     }
   }, [skill, trust, onTrustChanged, t]);
 
@@ -176,6 +199,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
                 type="button"
                 variant="outline"
                 size="sm"
+                disabled={isTrustUpdating}
                 data-testid={`skill-card-trust-${skill.id}`}
                 onClick={(event) => {
                   event.stopPropagation();
@@ -194,6 +218,7 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
             type="button"
             variant="ghost"
             size="sm"
+            disabled={isTrustUpdating}
             data-testid={`skill-card-revoke-trust-${skill.id}`}
             onClick={(event) => {
               event.stopPropagation();
@@ -255,8 +280,10 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
         </Chip>
         {canToggleTrust && trust === 'untrusted' && (
           <DsButton
+            type="button"
             variant="primary"
             size="sm"
+            disabled={isTrustUpdating}
             onClick={handleTrustToggle}
             title={t('skills:package.trust_effect_trusted')}
             className="!h-auto !rounded-full border-primary/40 bg-primary/12 !px-2.5 !py-1 max-lg:!h-8 max-lg:!px-3 [@media(pointer:coarse)]:!min-h-11 text-xs font-medium text-primary hover:bg-primary/20"
@@ -266,8 +293,10 @@ export const SkillPackageSummary: React.FC<SkillPackageSummaryProps> = ({
         )}
         {canToggleTrust && trust === 'trusted' && source === 'external' && (
           <DsButton
+            type="button"
             variant="outline"
             size="sm"
+            disabled={isTrustUpdating}
             onClick={handleTrustToggle}
             title={t('skills:package.trust_effect_untrusted')}
             className="!h-auto !rounded-full border-border/60 bg-background/50 !px-2.5 !py-1 max-lg:!h-8 max-lg:!px-3 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground"

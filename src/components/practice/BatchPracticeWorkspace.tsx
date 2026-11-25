@@ -25,6 +25,7 @@ import {
   type CreatePracticeRequest,
   type PracticeDraft,
   type PracticeAttempt,
+  type PracticeResult,
 } from '@/api/practiceApi';
 import { convertToApiQuestion } from '@/hooks/useQuestionBankSession';
 import { isSubjectiveQuestionType, parseImageAnswerEnvelope } from '@/api/questionBankApi';
@@ -49,6 +50,10 @@ import { cn } from '@/lib/utils';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { setPracticeRuntime } from './practiceRuntime';
 import { practiceAnswerText } from './practiceAnswerText';
+import {
+  normalizePracticeFeedbackMarkdown,
+  parsePracticeManualOverride,
+} from './practiceFeedbackMarkdown';
 import { paperAnswer } from './paperDocument';
 import { GradingDiagnosticsView } from './GradingDiagnosticsView';
 import { QuestionExplanation } from './QuestionExplanation';
@@ -65,6 +70,16 @@ function hasAnswer(raw: string | undefined): boolean {
   const envelope = parseImageAnswerEnvelope(raw);
   return envelope ? envelope.images.length > 0 || isAnswered(envelope.text) : true;
 }
+
+interface LocalOverrideMeta {
+  score: number;
+  status: PracticeResult['status'];
+  originalScore: number | null;
+  originalStatus: PracticeResult['status'] | null;
+}
+
+const FEEDBACK_TABLE_CLASSES =
+  '[&_table]:w-full [&_table]:table-auto [&_table]:border-collapse [&_table]:text-xs [&_th]:whitespace-nowrap [&_th]:border [&_th]:border-border/60 [&_th]:bg-muted/40 [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-semibold [&_td]:border [&_td]:border-border/50 [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:align-top [&_td]:break-words [&_td:first-child]:min-w-[5.5rem] [&_tr:nth-child(even)_td]:bg-muted/15';
 
 export interface BatchPracticeWorkspaceProps {
   request?: CreatePracticeRequest;
@@ -116,6 +131,11 @@ export default function BatchPracticeWorkspace({
   const [liveSourceAvailable, setLiveSourceAvailable] = useState<Record<string, boolean>>({});
   const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideScoreInput, setOverrideScoreInput] = useState('100');
+  const [localOverrideMeta, setLocalOverrideMeta] = useState<Record<string, LocalOverrideMeta>>({});
+  const [gradingCompleteBanner, setGradingCompleteBanner] = useState<{
+    attemptId: string;
+    message: string;
+  } | null>(null);
   const runtimeKey = useRef(newPracticeId());
   const [images, setImages] = useState<Record<string, string>>({});
   const dirtyRef = useRef(false);
@@ -124,6 +144,14 @@ export default function BatchPracticeWorkspace({
   const submitRef = useRef(false);
   const busyRef = useRef(false);
   busyRef.current = busy;
+  const attemptMutationVersionRef = useRef(0);
+  const suppressCompletionToastRef = useRef(false);
+  const prevGradingSnapshotRef = useRef<{
+    attemptId: string;
+    pendingCount: number;
+    initialPendingScore: number;
+    lastScore: number;
+  } | null>(null);
   const mounted = useRef(true);
   const callbackRef = useRef(onChanged);
   callbackRef.current = onChanged;
@@ -255,9 +283,10 @@ export default function BatchPracticeWorkspace({
     let stopped = false;
     const subscription = listen<string>('qbank-practice-updated', async (event) => {
       if (event.payload !== attempt.id) return;
+      const requestVersion = attemptMutationVersionRef.current;
       try {
         const updated = await practiceApi.getAttempt(attempt.id);
-        if (!stopped) {
+        if (!stopped && requestVersion === attemptMutationVersionRef.current) {
           setAttempt(updated);
           callbackRef.current?.();
         }
@@ -267,9 +296,12 @@ export default function BatchPracticeWorkspace({
     });
     // Reconcile after subscribing: a fast objective/AI result may have arrived
     // between the submit response and the listener registration.
+    const reconcileVersion = attemptMutationVersionRef.current;
     void subscription.then(async () => {
       const updated = await practiceApi.getAttempt(attempt.id);
-      if (!stopped) setAttempt(updated);
+      if (!stopped && reconcileVersion === attemptMutationVersionRef.current) {
+        setAttempt(updated);
+      }
     }).catch(() => {});
     return () => {
       stopped = true;
@@ -465,6 +497,7 @@ export default function BatchPracticeWorkspace({
         && r.is_correct === false),
   ).length;
   const unansweredResultCount = results.filter((r) => r.status === 'unanswered').length;
+  const aiGradingCount = results.filter((r) => r.status === 'pending').length;
   const pendingCount = results.filter((r) => r.status === 'pending' || r.status === 'failed').length;
   const hasPartialScores = partialCount > 0 || results.some(
     (r) => typeof r.score === 'number' && r.score > 0 && r.score < 100,
@@ -488,6 +521,86 @@ export default function BatchPracticeWorkspace({
       : 0;
   const fullCorrectRatePercent =
     results.length > 0 ? Math.round((correctCount / results.length) * 100) : 0;
+
+  useEffect(() => {
+    if (!attempt) {
+      prevGradingSnapshotRef.current = null;
+      suppressCompletionToastRef.current = false;
+      setGradingCompleteBanner(null);
+      return;
+    }
+    const prev = prevGradingSnapshotRef.current;
+    if (!prev || prev.attemptId !== attempt.id) {
+      prevGradingSnapshotRef.current = {
+        attemptId: attempt.id,
+        pendingCount,
+        initialPendingScore: totalEarnedScorePercent,
+        lastScore: totalEarnedScorePercent,
+      };
+      setGradingCompleteBanner((curr) => (curr?.attemptId === attempt.id ? curr : null));
+      return;
+    }
+    if (prev.pendingCount > 0 && pendingCount === 0) {
+      if (!suppressCompletionToastRef.current) {
+        const message = t('batch.subjectiveGradingComplete', {
+          from: prev.initialPendingScore,
+          to: totalEarnedScorePercent,
+        });
+        showGlobalNotification('success', message);
+        setGradingCompleteBanner({ attemptId: attempt.id, message });
+      }
+      suppressCompletionToastRef.current = false;
+      prevGradingSnapshotRef.current = {
+        attemptId: attempt.id,
+        pendingCount: 0,
+        initialPendingScore: totalEarnedScorePercent,
+        lastScore: totalEarnedScorePercent,
+      };
+      return;
+    }
+    suppressCompletionToastRef.current = false;
+    if (pendingCount > 0) {
+      if (aiGradingCount > 0) {
+        setGradingCompleteBanner(null);
+      }
+      prevGradingSnapshotRef.current = {
+        attemptId: attempt.id,
+        pendingCount,
+        initialPendingScore: prev.pendingCount === 0 ? prev.lastScore : prev.initialPendingScore,
+        lastScore: totalEarnedScorePercent,
+      };
+    } else {
+      prevGradingSnapshotRef.current = {
+        attemptId: attempt.id,
+        pendingCount: 0,
+        initialPendingScore: totalEarnedScorePercent,
+        lastScore: totalEarnedScorePercent,
+      };
+    }
+  }, [attempt, pendingCount, aiGradingCount, totalEarnedScorePercent, t]);
+
+  useEffect(() => {
+    if (!attempt || aiGradingCount === 0) return;
+    let stopped = false;
+    const pollId = setInterval(() => {
+      const requestVersion = attemptMutationVersionRef.current;
+      void practiceApi.getAttempt(attempt.id).then((updated) => {
+        if (stopped || requestVersion !== attemptMutationVersionRef.current) return;
+        setAttempt((prev) => {
+          if (!prev || prev.id !== updated.id) return prev;
+          if (prev.status === updated.status && JSON.stringify(prev.results) === JSON.stringify(updated.results)) {
+            return prev;
+          }
+          callbackRef.current?.();
+          return updated;
+        });
+      }).catch(() => {});
+    }, 1500);
+    return () => {
+      stopped = true;
+      clearInterval(pollId);
+    };
+  }, [attempt?.id, aiGradingCount]);
   const filteredIndices = questions.flatMap((q, i) => {
     const r = results.find((r) => r.question_id === q.id);
     return filter === 'all' ||
@@ -930,6 +1043,45 @@ export default function BatchPracticeWorkspace({
           )}
         </div>
       )}
+      {attempt && aiGradingCount > 0 && (
+        <div
+          data-testid="practice-ai-grading-banner"
+          role="status"
+          aria-live="polite"
+          className="flex flex-wrap items-center gap-2 border-b border-warning/30 bg-warning/[0.08] px-4 py-2 text-xs text-foreground"
+        >
+          <CircleNotch size={14} className="shrink-0 animate-spin text-warning motion-reduce:animate-none" aria-hidden="true" />
+          <span className="font-medium">
+            {t('batch.aiGradingInProgress', { count: aiGradingCount })}
+          </span>
+        </div>
+      )}
+      {attempt &&
+        aiGradingCount === 0 &&
+        gradingCompleteBanner?.attemptId === attempt.id && (
+          <div
+            data-testid="practice-ai-grading-complete-banner"
+            role="status"
+            aria-live="polite"
+            className="flex items-center justify-between gap-2 border-b border-success/30 bg-success/[0.08] px-4 py-2 text-xs text-foreground"
+          >
+            <div className="flex items-center gap-2">
+              <Check size={14} weight="bold" className="shrink-0 text-success" aria-hidden="true" />
+              <span className="font-medium">{gradingCompleteBanner.message}</span>
+            </div>
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="icon"
+              iconOnly
+              aria-label={t('common:close')}
+              onClick={() => setGradingCompleteBanner(null)}
+              className="!h-6 !w-6 text-muted-foreground hover:text-foreground"
+            >
+              <X size={13} />
+            </DsButton>
+          </div>
+        )}
       <div className="flex min-h-0 flex-1">
         <CustomScrollArea className="min-w-0 flex-1" viewportClassName="px-4 py-6 sm:px-8 sm:py-8">
           <div className="mx-auto max-w-3xl space-y-6">
@@ -1096,30 +1248,43 @@ export default function BatchPracticeWorkspace({
               </>
             ) : (
               <div className="ui-rise-in motion-reduce:animate-none space-y-4 border-t border-border/45 pt-4">
-                <div
-                  className={cn(
-                    'flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm font-medium',
-                    result?.is_correct === true
-                      ? 'border-success/35 bg-success/[0.07] text-success'
-                      : result?.is_correct === false
-                        ? 'border-destructive/30 bg-destructive/[0.05] text-destructive'
-                        : result?.status === 'unanswered'
-                          ? 'border-border/50 bg-muted/40 text-muted-foreground'
-                          : 'border-warning/35 bg-warning/[0.07] text-warning',
-                  )}
-                >
-                  {result?.is_correct === true ? (
-                    <Check size={16} weight="bold" className="shrink-0" aria-hidden="true" />
-                  ) : result?.is_correct === false ? (
-                    <X size={16} weight="bold" className="shrink-0" aria-hidden="true" />
-                  ) : result?.status === 'pending' ? (
-                    <CircleNotch size={15} className="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                  ) : null}
-                  <span>
-                    {t(`batch.result.${result?.status ?? 'pending'}`)}
-                    {result?.score != null && ` · ${result.score}/100`}
-                  </span>
-                </div>
+                {(() => {
+                  const persistedOverride = parsePracticeManualOverride(result?.feedback);
+                  const localOverride = attempt && current ? localOverrideMeta[`${attempt.id}:${current.id}`] : undefined;
+                  const isQuestionManualOverride = Boolean(persistedOverride || localOverride);
+                  return (
+                    <div
+                      data-testid="practice-question-verdict-bar"
+                      className={cn(
+                        'flex flex-wrap items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm font-medium',
+                        result?.is_correct === true
+                          ? 'border-success/35 bg-success/[0.07] text-success'
+                          : result?.is_correct === false
+                            ? 'border-destructive/30 bg-destructive/[0.05] text-destructive'
+                            : result?.status === 'unanswered'
+                              ? 'border-border/50 bg-muted/40 text-muted-foreground'
+                              : 'border-warning/35 bg-warning/[0.07] text-warning',
+                      )}
+                    >
+                      {result?.is_correct === true ? (
+                        <Check size={16} weight="bold" className="shrink-0" aria-hidden="true" />
+                      ) : result?.is_correct === false ? (
+                        <X size={16} weight="bold" className="shrink-0" aria-hidden="true" />
+                      ) : result?.status === 'pending' ? (
+                        <CircleNotch size={15} className="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                      ) : null}
+                      <span>
+                        {t(`batch.result.${result?.status ?? 'pending'}`)}
+                        {result?.score != null && ` · ${result.score}/100`}
+                      </span>
+                      {isQuestionManualOverride && (
+                        <span className="ml-auto rounded-full border border-current/25 bg-background/70 px-2 py-0.5 text-xs font-medium text-foreground">
+                          {t('batch.manualOverrideShort', { score: result?.score ?? 0 })}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
                 {result && (!result.source_available || liveSourceAvailable[question.id] === false) && (
                   <p className="text-xs text-muted-foreground">{t('batch.sourceUnavailable')}</p>
                 )}
@@ -1151,10 +1316,12 @@ export default function BatchPracticeWorkspace({
                   onRefreshQuestion={canAnalyze ? refreshExplanation : undefined}
                 />
                 {(() => {
-                  const cleanedFeedback = (result?.feedback ?? '')
-                    .replace(/<verdict\s*>\s*(?:correct|partial|incorrect)\s*<\/verdict\s*>/gi, '')
-                    .replace(/<score\s+value\s*=\s*["']\d+["']\s*\/?\s*>/gi, '')
-                    .trim();
+                  const cleanedFeedback = normalizePracticeFeedbackMarkdown(result?.feedback ?? '');
+                  const persistedOverride = parsePracticeManualOverride(result?.feedback);
+                  const localOverride = attempt && current ? localOverrideMeta[`${attempt.id}:${current.id}`] : undefined;
+                  const isManualOverride = Boolean(persistedOverride || localOverride);
+                  const originalAiScore =
+                    persistedOverride?.originalScore ?? localOverride?.originalScore ?? null;
                   const isGradedResult = result && (
                     result.status === 'correct'
                     || result.status === 'partial'
@@ -1163,41 +1330,40 @@ export default function BatchPracticeWorkspace({
                   const needsFallbackRationale = Boolean(
                     isGradedResult
                     && !cleanedFeedback
+                    && !isManualOverride
                     && (
                       isSubjectiveQuestionType(question.questionType)
                       || result.status === 'partial'
                       || (typeof result.score === 'number' && result.score > 0 && result.score < 100)
                     ),
                   );
-                  if (!cleanedFeedback && !needsFallbackRationale) return null;
+                  if (!cleanedFeedback && !needsFallbackRationale && !isManualOverride) return null;
                   const refText = paperAnswer(current).trim();
                   const fallbackRationale = refText
                     ? t('batch.aiGradingRationaleFallbackWithRef', {
-                        defaultValue: '已按评分标准给出 {{score}} 分（{{status}}）。请重点对照参考答案「{{reference}}」核对关键要点与推导过程。',
                         score: result?.score ?? (result?.status === 'correct' ? 100 : 0),
                         status: t(`batch.result.${result?.status ?? 'partial'}`),
                         reference: refText,
                       })
                     : t('batch.aiGradingRationaleFallback', {
-                        defaultValue: '已按主观题评分标准给出 {{score}} 分（{{status}}），请结合核心知识点核对作答完整性与表述准确性。',
                         score: result?.score ?? (result?.status === 'correct' ? 100 : 0),
                         status: t(`batch.result.${result?.status ?? 'partial'}`),
                       });
                   return (
                     <section
                       data-testid="practice-ai-grading-rationale"
-                      aria-label={t('batch.aiGradingRationaleTitle', { defaultValue: 'AI 评分依据与批改评语' })}
+                      aria-label={t('batch.aiGradingRationaleTitle')}
                       className="space-y-2 rounded-xl border border-primary/20 bg-primary/[0.04] p-3.5"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <h4 className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground">
                           <Sparkle size={14} className="text-primary" aria-hidden="true" />
-                          {t('batch.aiGradingRationaleTitle', { defaultValue: 'AI 评分依据与批改评语' })}
+                          {t('batch.aiGradingRationaleTitle')}
                         </h4>
                         <div className="flex items-center gap-2 font-mono text-xs tabular-nums">
                           {result?.score != null && (
                             <span className="rounded-md border border-border/50 bg-background/80 px-2 py-0.5 font-semibold text-foreground">
-                              {t('batch.scorePoints', { defaultValue: '{{score}} / 100 分', score: result.score })}
+                              {t('batch.scorePoints', { score: result.score })}
                             </span>
                           )}
                           <span className="text-muted-foreground">
@@ -1205,9 +1371,39 @@ export default function BatchPracticeWorkspace({
                           </span>
                         </div>
                       </div>
-                      <div className="text-sm text-foreground">
-                        <MarkdownRenderer content={cleanedFeedback || fallbackRationale} />
-                      </div>
+                      {isManualOverride && (
+                        <div
+                          data-testid="practice-manual-override-banner"
+                          className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground"
+                        >
+                          <div className="font-medium">
+                            {originalAiScore != null
+                              ? t('batch.manualOverrideBadge', {
+                                  score: result?.score ?? 0,
+                                  originalScore: originalAiScore,
+                                })
+                              : t('batch.manualOverrideBadgeNoOriginal', {
+                                  score: result?.score ?? 0,
+                                })}
+                          </div>
+                          {cleanedFeedback && (
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              {t('batch.manualOverrideSupersededHint')}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {(cleanedFeedback || needsFallbackRationale) && (
+                        <div
+                          className={cn(
+                            'text-sm text-foreground',
+                            FEEDBACK_TABLE_CLASSES,
+                            isManualOverride && 'rounded-md border-l-2 border-border/70 pl-3 text-muted-foreground opacity-80',
+                          )}
+                        >
+                          <MarkdownRenderer content={cleanedFeedback || fallbackRationale} />
+                        </div>
+                      )}
                     </section>
                   );
                 })()}
@@ -1215,7 +1411,11 @@ export default function BatchPracticeWorkspace({
                   <details key={`${saved.created_at}-${draftIndex}`} className="border-t pt-3 text-sm" open={draftIndex === drafts.length - 1 && result.status === 'failed'}>
                     <summary className="cursor-pointer font-medium text-warning">{t('batch.feedbackDraft')} · {new Date(saved.created_at).toLocaleString()}</summary>
                     <div className="mt-2 space-y-2">
-                      {saved.feedback && <MarkdownRenderer content={saved.feedback} />}
+                      {saved.feedback && (
+                        <div className={FEEDBACK_TABLE_CLASSES}>
+                          <MarkdownRenderer content={normalizePracticeFeedbackMarkdown(saved.feedback)} />
+                        </div>
+                      )}
                       <p className="break-words text-destructive">{saved.error}</p>
                       <GradingDiagnosticsView diagnostics={saved.diagnostics} />
                     </div>
@@ -1232,10 +1432,15 @@ export default function BatchPracticeWorkspace({
                     variant="outline"
                     disabled={busy}
                     onClick={async () => {
+                      attemptMutationVersionRef.current += 1;
+                      suppressCompletionToastRef.current = true;
                       setBusy(true);
                       try {
-                        setAttempt(await practiceApi.retry(attempt.id, question.id));
+                        const updated = await practiceApi.retry(attempt.id, question.id);
+                        attemptMutationVersionRef.current += 1;
+                        setAttempt(updated);
                       } catch (error) {
+                        suppressCompletionToastRef.current = false;
                         setError(getErrorMessage(error));
                       } finally {
                         setBusy(false);
@@ -1254,11 +1459,29 @@ export default function BatchPracticeWorkspace({
                         variant="outline"
                         disabled={busy}
                         onClick={async () => {
+                          const prevScore = result?.score ?? null;
+                          const prevStatus = result?.status ?? null;
+                          attemptMutationVersionRef.current += 1;
+                          suppressCompletionToastRef.current = true;
                           setBusy(true);
                           try {
-                            setAttempt(await practiceApi.grade(attempt.id, question.id, correct));
+                            const updated = await practiceApi.grade(attempt.id, question.id, correct);
+                            attemptMutationVersionRef.current += 1;
+                            const key = `${attempt.id}:${question.id}`;
+                            const updatedResult = updated.results.find((r) => r.question_id === question.id);
+                            setLocalOverrideMeta((prev) => ({
+                              ...prev,
+                              [key]: {
+                                score: updatedResult?.score ?? (correct ? 100 : 0),
+                                status: updatedResult?.status ?? (correct ? 'correct' : 'incorrect'),
+                                originalScore: prev[key]?.originalScore ?? (prevStatus !== 'pending' && prevStatus !== 'failed' ? prevScore : null),
+                                originalStatus: prev[key]?.originalStatus ?? prevStatus,
+                              },
+                            }));
+                            setAttempt(updated);
                             callbackRef.current?.();
                           } catch (error) {
+                            suppressCompletionToastRef.current = false;
                             setError(getErrorMessage(error));
                           } finally {
                             setBusy(false);
@@ -1296,7 +1519,7 @@ export default function BatchPracticeWorkspace({
                         className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-muted/20 p-3 text-xs"
                       >
                         <span className="font-medium text-foreground">
-                          {t('batch.manualOverrideTitle', { defaultValue: '手动改判与分数微调' })}
+                          {t('batch.manualOverrideTitle')}
                         </span>
                         <input
                           type="number"
@@ -1304,38 +1527,44 @@ export default function BatchPracticeWorkspace({
                           max={100}
                           step={1}
                           data-testid="practice-manual-override-score-input"
-                          aria-label={t('batch.manualScoreInput', { defaultValue: '手动调整得分 (0-100)' })}
+                          aria-label={t('batch.manualScoreInput')}
                           value={overrideScoreInput}
                           onChange={(event) => setOverrideScoreInput(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              (
+                                event.currentTarget.parentElement?.querySelector(
+                                  '[data-testid="practice-manual-override-save"]',
+                                ) as HTMLButtonElement | null
+                              )?.click();
+                            }
+                          }}
                           className="h-8 w-20 rounded-md border border-border bg-background px-2 font-mono tabular-nums text-foreground focus:outline-none focus:ring-2 focus:ring-primary/40"
                         />
-                        <DsButton
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => setOverrideScoreInput('100')}
-                        >
-                          {t('batch.presetFull', { defaultValue: '满分 100' })}
-                        </DsButton>
-                        <DsButton
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => setOverrideScoreInput('50')}
-                        >
-                          {t('batch.presetHalf', { defaultValue: '半对 50' })}
-                        </DsButton>
-                        <DsButton
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          disabled={busy}
-                          onClick={() => setOverrideScoreInput('0')}
-                        >
-                          {t('batch.presetZero', { defaultValue: '0 分' })}
-                        </DsButton>
+                        {(
+                          [
+                            { value: '100', labelKey: 'batch.presetFull' },
+                            { value: '50', labelKey: 'batch.presetHalf' },
+                            { value: '0', labelKey: 'batch.presetZero' },
+                          ] as const
+                        ).map((preset) => (
+                          <DsButton
+                            key={preset.value}
+                            type="button"
+                            variant={overrideScoreInput.trim() === preset.value ? 'outline' : 'ghost'}
+                            size="sm"
+                            disabled={busy}
+                            aria-pressed={overrideScoreInput.trim() === preset.value}
+                            onClick={() => setOverrideScoreInput(preset.value)}
+                            className={cn(
+                              overrideScoreInput.trim() === preset.value &&
+                                'border-primary/50 bg-primary/10 text-primary',
+                            )}
+                          >
+                            {t(preset.labelKey)}
+                          </DsButton>
+                        ))}
                         <DsButton
                           type="button"
                           variant="primary"
@@ -1343,27 +1572,51 @@ export default function BatchPracticeWorkspace({
                           disabled={busy}
                           data-testid="practice-manual-override-save"
                           onClick={async () => {
-                            const parsed = Number(overrideScoreInput);
+                            const trimmedInput = overrideScoreInput.trim();
+                            const parsed = trimmedInput === '' ? 0 : Number(trimmedInput);
                             const clampedScore = Number.isFinite(parsed)
                               ? Math.max(0, Math.min(100, Math.round(parsed)))
                               : 0;
+                            const prevScore = result?.score ?? null;
+                            const prevStatus = result?.status ?? null;
+                            const existingPersisted = parsePracticeManualOverride(result?.feedback);
+                            attemptMutationVersionRef.current += 1;
+                            suppressCompletionToastRef.current = true;
                             setBusy(true);
                             try {
-                              setAttempt(
-                                await practiceApi.grade(
-                                  attempt.id,
-                                  question.id,
-                                  clampedScore >= 80,
-                                  clampedScore,
-                                ),
+                              const updated = await practiceApi.grade(
+                                attempt.id,
+                                question.id,
+                                clampedScore >= 80,
+                                clampedScore,
                               );
+                              attemptMutationVersionRef.current += 1;
+                              const key = `${attempt.id}:${question.id}`;
+                              const updatedResult = updated.results.find((r) => r.question_id === question.id);
+                              setLocalOverrideMeta((prev) => ({
+                                ...prev,
+                                [key]: {
+                                  score: updatedResult?.score ?? clampedScore,
+                                  status: updatedResult?.status ?? (clampedScore === 0 ? 'incorrect' : clampedScore >= 80 ? 'correct' : 'partial'),
+                                  originalScore:
+                                    existingPersisted?.originalScore
+                                    ?? prev[key]?.originalScore
+                                    ?? (prevStatus !== 'pending' && prevStatus !== 'failed' ? prevScore : null),
+                                  originalStatus:
+                                    existingPersisted?.originalStatus
+                                    ?? prev[key]?.originalStatus
+                                    ?? prevStatus,
+                                },
+                              }));
+                              setAttempt(updated);
                               setOverrideOpen(false);
                               showGlobalNotification(
                                 'success',
-                                t('batch.manualScoreSaved', { defaultValue: '已更新本题判分与成绩' }),
+                                t('batch.manualScoreSaved'),
                               );
                               callbackRef.current?.();
                             } catch (error) {
+                              suppressCompletionToastRef.current = false;
                               setError(getErrorMessage(error));
                             } finally {
                               setBusy(false);
@@ -1371,7 +1624,7 @@ export default function BatchPracticeWorkspace({
                           }}
                         >
                           <Check size={14} />
-                          {t('batch.saveManualOverride', { defaultValue: '保存改判' })}
+                          {t('batch.saveManualOverride')}
                         </DsButton>
                         <DsButton
                           type="button"
@@ -1380,7 +1633,7 @@ export default function BatchPracticeWorkspace({
                           disabled={busy}
                           onClick={() => setOverrideOpen(false)}
                         >
-                          {t('common:cancel', { defaultValue: '取消' })}
+                          {t('common:cancel')}
                         </DsButton>
                       </div>
                     )}

@@ -10,7 +10,7 @@ import { pluginServiceName } from '../../../kernel/plugin-id.ts';
 import { writeHostStderr } from '../../../kernel/kernel.ts';
 import type { WorkshopGeneration } from './operations.ts';
 import { developmentSkill, developmentSkillId, recipeFiles, recipeFor, seedTemplate } from './resources.ts';
-import { sourceFiles } from './compiler.ts';
+import { forbiddenCommunityApiProblems, sourceFiles } from './compiler.ts';
 import { writeSourceFiles, type SourceFile } from './source.ts';
 import type { WorkshopToolExecutor } from './tools.ts';
 
@@ -73,6 +73,8 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
           + '(e.g. { v: 1, ... }); when reading, accept records without it or with an older v and migrate them in code (never throw on or drop them); '
           + 'in a modification never rename or delete existing storage keys, only add new ones.'
           + '\nCredentials: never copy API keys or tokens into source or ordinary configuration. Use the user-provided secret setting and ctx.pluginSecrets.get(key), or the declared plugin model service.'
+          + '\nForbidden kernel/context APIs (KERNEL_API_FORBIDDEN in community plugin API v1): NEVER call or access `ctx.files.scope` (or `.scope` / `.root` / `.store` / `.registry` / `.runtime` / `.fiber` on `ctx` or any `ctx.<service>`). '
+          + 'For plugin state and persistence, use allowed plugin storage APIs instead: `usePluginStorage` / `usePluginStore` (`ctx.ui.storage`) or `window.localStorage` on the UI side, or `ctx.storage` / `ctx.settings` (with declared `"service:storage"` / `"service:settings"`) on the Host side; for user-chosen local files use `pluginFiles` from `@deepstudent/ui`.'
           + '\nPlugin v2 capabilities (live in Host — pick the lightest tier that fits the goal): '
           + 'Tier 1 pure declarative packages use manifestVersion: 2 and deepStudent.declarative: { rubrics, skills, cardTemplates, workflows } with zero JS/TS needed for custom rubrics, skills, card templates, or workflows; '
           + 'Tier 2 UI-only plugins omit boilerplate Host files when calling brokered services (studyData, pluginModel, pluginNotify) via ctx.ui.host with declared "service:<name>" permissions; '
@@ -100,7 +102,16 @@ export class PipelineWorkshopGeneration implements WorkshopGeneration {
   /** Read-only runtime verification. Interactions and business writes need a separate scoped authorization. */
   async verify(card: WorkshopCard, source: string, signal: AbortSignal): Promise<WorkshopVerificationResult> {
     const files: Record<string, string> = {};
-    for (const file of await sourceFiles(source)) files[file] = await readFile(join(source, file), 'utf8');
+    for (const file of await sourceFiles(source)) {
+      const content = await readFile(join(source, file), 'utf8');
+      files[file] = content;
+      if (/\.(?:[cm]?[jt]sx?)$/i.test(file)) {
+        const forbidden = forbiddenCommunityApiProblems(content);
+        if (forbidden.length) {
+          return { status: 'failed', evidence: [], error: forbidden.join('\n') };
+        }
+      }
+    }
     const criteria = verificationCriteria(card);
     const appCandidate = isAppViewCandidate(card);
     const verifyTools = appCandidate ? [...VERIFICATION_TOOLS] : ['dstu_plugin_inventory'];

@@ -23,7 +23,13 @@ import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Z_INDEX } from '@/config/zIndex';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
-import { OnboardingLegalDialog } from './OnboardingLegalDialog';
+import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+import {
+  readLegalConsentRecord,
+  type LegalConsentRecord,
+} from '@/components/legal/UserAgreementDialog';
+import { OnboardingLegalDialog, type OnboardingLegalTab } from './OnboardingLegalDialog';
 import { QuickByokProvisionerCard } from './byok';
 import type { ApiConfig } from '@/types';
 
@@ -179,6 +185,61 @@ interface WelcomeOnboardingDialogProps {
 export type OnboardingStarterFocus = 'hub' | 'chat' | 'anki';
 const STARTER_FOCUS_KEY = 'onboarding_starter_focus';
 
+/**
+ * 完成欢迎引导后真正打开/聚焦用户选中的工作台应用，避免落回空白桌面壁纸。
+ * - chat: 打开/激活 Chat 窗口（focusInput）并展示底部起步提问胶囊
+ * - hub: 打开/激活 Notes 资料与笔记工作区（经典壳回退 learning-hub）
+ * - anki: 打开/激活 Flashcards 闪卡复习工作区（经典壳回退 flashcards）
+ */
+export function launchOnboardingStarterApp(focus: OnboardingStarterFocus): void {
+  try {
+    localStorage.setItem(STARTER_FOCUS_KEY, focus);
+    localStorage.removeItem('onboarding_starter_cue_dismissed');
+    window.dispatchEvent(new CustomEvent('deepstudent:onboarding-starter-updated'));
+  } catch {
+    // Ignore storage errors.
+  }
+
+  if (focus === 'chat') {
+    if (workbenchBus.isEnabled()) {
+      void workbenchBus.activate({
+        typeId: 'chat',
+        instanceKey: '',
+        action: 'focusInput',
+        fallbackLaunch: { typeId: 'chat', reason: 'api' },
+      });
+    } else {
+      dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'chat-v2' });
+    }
+    return;
+  }
+
+  if (focus === 'hub') {
+    if (workbenchBus.isEnabled()) {
+      void workbenchBus.activate({
+        typeId: 'notes',
+        instanceKey: '',
+        action: 'openWorkspace',
+        fallbackLaunch: { typeId: 'notes', reason: 'api' },
+      });
+    } else {
+      dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'learning-hub' });
+    }
+    return;
+  }
+
+  if (workbenchBus.isEnabled()) {
+    void workbenchBus.activate({
+      typeId: 'flashcards',
+      instanceKey: '',
+      action: 'open',
+      fallbackLaunch: { typeId: 'flashcards', reason: 'api' },
+    });
+  } else {
+    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'flashcards' });
+  }
+}
+
 interface FeatureRow {
   id: OnboardingStarterFocus;
   icon: React.ReactNode;
@@ -205,7 +266,10 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
   const isAiReady = resolvedPreconfigured !== null;
   const readyModelLabel = resolvedPreconfigured?.modelLabel ?? null;
 
-  const [activeLegalDoc, setActiveLegalDoc] = useState<'terms' | 'privacy' | null>(null);
+  const [activeLegalDoc, setActiveLegalDoc] = useState<OnboardingLegalTab | null>(null);
+  const [legalConsent, setLegalConsent] = useState<LegalConsentRecord | null>(() =>
+    readLegalConsentRecord(),
+  );
   const [selectedFeature, setSelectedFeature] = useState<OnboardingStarterFocus>(() => {
     try {
       const saved = localStorage.getItem(STARTER_FOCUS_KEY);
@@ -215,7 +279,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
     }
     return 'chat';
   });
-  const activeLegalDocRef = useRef<'terms' | 'privacy' | null>(null);
+  const activeLegalDocRef = useRef<OnboardingLegalTab | null>(null);
   activeLegalDocRef.current = activeLegalDoc;
 
   // 入场动画
@@ -341,12 +405,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
   }, []);
 
   const handleCompleteOnboarding = useCallback(() => {
-    try {
-      localStorage.setItem(STARTER_FOCUS_KEY, selectedFeature);
-      window.dispatchEvent(new CustomEvent('deepstudent:onboarding-starter-updated'));
-    } catch {
-      // Ignore storage errors.
-    }
+    launchOnboardingStarterApp(selectedFeature);
     onSkip();
   }, [onSkip, selectedFeature]);
 
@@ -469,7 +528,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           ) : (
             <QuickByokProvisionerCard
               mode="onboarding"
-              onCompleted={() => onSkip()}
+              onCompleted={handleCompleteOnboarding}
               onOpenFullSettings={onConfigure}
             />
           )}
@@ -552,11 +611,21 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           </div>
           <p
             data-testid="onboarding-legal-notice"
+            data-agreed={legalConsent ? 'true' : 'false'}
             className="mt-2.5 text-center text-[11px] leading-relaxed text-foreground/50"
           >
+            {legalConsent ? (
+              <span
+                data-testid="onboarding-legal-agreed-badge"
+                className="mr-1 inline-flex items-center gap-0.5 font-medium text-emerald-600 dark:text-emerald-400"
+              >
+                <Check size={11} weight="bold" aria-hidden="true" />
+                <span>{t('legal.userAgreement.agreedBadge')}</span>
+              </span>
+            ) : null}
             {isZh ? (
               <>
-                {'继续使用即表示同意'}
+                {legalConsent ? null : '继续使用即表示同意'}
                 <button
                   type="button"
                   data-testid="onboarding-terms-link"
@@ -565,7 +634,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
                 >
                   {`《${t('legal.userAgreement.agreementTitle', { defaultValue: '用户协议' })}》`}
                 </button>
-                {'与'}
+                {legalConsent ? '' : '与'}
                 <button
                   type="button"
                   data-testid="onboarding-privacy-link"
@@ -574,10 +643,23 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
                 >
                   {`《${t('legal.privacyPolicy.title', { defaultValue: '隐私政策' })}》`}
                 </button>
+                {legalConsent ? (
+                  <>
+                    {'与'}
+                    <button
+                      type="button"
+                      data-testid="onboarding-safety-link"
+                      onClick={() => setActiveLegalDoc('safety')}
+                      className="mx-0.5 cursor-pointer rounded-sm text-foreground/75 underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      {`《${t('legal.userAgreement.contentSafetyTitle', { defaultValue: '内容使用规范' })}》`}
+                    </button>
+                  </>
+                ) : null}
               </>
             ) : (
               <>
-                {'By continuing, you agree to the '}
+                {legalConsent ? ' ' : 'By continuing, you agree to the '}
                 <button
                   type="button"
                   data-testid="onboarding-terms-link"
@@ -586,7 +668,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
                 >
                   {t('legal.userAgreement.agreementTitle', { defaultValue: 'User Agreement' })}
                 </button>
-                {' and '}
+                {legalConsent ? ', ' : ' and '}
                 <button
                   type="button"
                   data-testid="onboarding-privacy-link"
@@ -595,6 +677,21 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
                 >
                   {t('legal.privacyPolicy.title', { defaultValue: 'Privacy Policy' })}
                 </button>
+                {legalConsent ? (
+                  <>
+                    {', and '}
+                    <button
+                      type="button"
+                      data-testid="onboarding-safety-link"
+                      onClick={() => setActiveLegalDoc('safety')}
+                      className="cursor-pointer rounded-sm text-foreground/75 underline underline-offset-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      {t('legal.userAgreement.contentSafetyTitle', {
+                        defaultValue: 'Content Usage Guidelines',
+                      })}
+                    </button>
+                  </>
+                ) : null}
                 {'.'}
               </>
             )}
@@ -612,6 +709,7 @@ export const WelcomeOnboardingDialog: React.FC<WelcomeOnboardingDialogProps> = (
           open
           initialTab={activeLegalDoc}
           onClose={() => setActiveLegalDoc(null)}
+          onAccept={(record) => setLegalConsent(record)}
         />
       )}
     </>

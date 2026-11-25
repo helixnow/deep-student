@@ -53,10 +53,19 @@ export interface ShortcutConflict {
 class ShortcutManager {
   private customShortcuts: Map<string, string> = new Map(); // commandId -> shortcut
   private listeners: Set<() => void> = new Set();
+  private recordingActive = false;
   
   constructor() {
     this.load();
     this.hydrateFromSettings();
+  }
+
+  setRecording(active: boolean): void {
+    this.recordingActive = active;
+  }
+
+  isRecording(): boolean {
+    return this.recordingActive;
   }
   
   /**

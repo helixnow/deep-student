@@ -1,20 +1,23 @@
 import { fs } from '../src/local-runtime.ts';
 import { rustTrim } from '../../../platform/util/index.ts';
-import { toRfc3339 } from '../../../platform/time/index.ts';
+import { toRfc3339Opts } from '../../../platform/time/index.ts';
 import { dirname } from '../../../platform/util/path.ts';
 import { CommandError } from '../../../kernel/api.ts';
-import type { CoordinatedDatabaseName, DatabaseHandle, SqlExecutor, StorageService } from '../../../platform/storage/api.ts';
+import { createHasherSync } from '../../../platform/crypto/sync.ts';
+import type { CoordinatedDatabaseName, DatabaseHandle, SqlExecutor, SqlParam, StorageService } from '../../../platform/storage/api.ts';
 import type { EngineChange } from '../src/change-payload.ts';
 import { syncClassificationRegistry } from '../src/classification.ts';
 import { SyncError } from '../src/errors.ts';
+import { MAX_DRIFT_MS } from '../src/hlc.ts';
+import { lwwTimestampMillis, timestampValueToLwwString } from '../src/lww.ts';
 import { newBatchId, REASON_CONFLICT_RESOLVE } from '../src/history.ts';
 import type { DbJson } from '../../../platform/util/lossless-json.ts';
-import { dbJsonEquals, isJsonObject, parseJsonLossless, stringifyJsonLossless } from '../../../platform/util/lossless-json.ts';
+import { dbJsonEquals, isJsonObject, parseJsonLossless } from '../../../platform/util/lossless-json.ts';
 import { getRecordData, recordsSemanticallyEqualForSync } from '../repository/record-data.ts';
-import { applyDownloadedChangesForceExactWithHooks } from '../repository/apply.ts';
+import { applyDownloadedChangesForceExactWithHooks, getDefaultNoteHistory } from '../repository/apply.ts';
 import { rollbackBatch, snapshotRecordWithData } from '../repository/history.ts';
 import { latestConflictSideData, listUnresolvedConflictIds, markConflictResolved } from '../repository/conflicts.ts';
-import { quoteIdentifier, tableExists, tableHasColumn } from '../repository/sqlite-values.ts';
+import { columnDeclaredType, quoteIdentifier, tableExists, tableHasColumn, tableInfo } from '../repository/sqlite-values.ts';
 
 const databases: readonly CoordinatedDatabaseName[] = ['vfs', 'llm_usage', 'chat_v2', 'mistakes'];
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
@@ -124,11 +127,82 @@ function ensurePendingChangeLog(
   }
 }
 
+function extractEpochMillis(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value >= 100_000_000_000 ? Math.trunc(value) : value >= 1_000_000_000 ? Math.trunc(value * 1000) : null;
+  }
+  if (typeof value === 'bigint') {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return null;
+    return n >= 100_000_000_000 ? Math.trunc(n) : n >= 1_000_000_000 ? Math.trunc(n * 1000) : null;
+  }
+  const str = timestampValueToLwwString(value);
+  if (str === null) return null;
+  const parsed = lwwTimestampMillis(str);
+  return parsed === null ? null : Number(parsed);
+}
+
+function computeResolvedClock(
+  db: SqlExecutor,
+  tableName: string,
+  recordId: string,
+  snapshots: ReadonlyArray<DbJson | null | undefined>,
+): { now: string; epochMs: number } {
+  const wallMs = Date.now();
+  let maxObserved = wallMs - 1;
+  const observe = (val: unknown): void => {
+    const ms = extractEpochMillis(val);
+    if (ms !== null && ms > maxObserved) maxObserved = ms;
+  };
+  for (const snap of snapshots) {
+    if (isJsonObject(snap)) {
+      observe(snap.updated_at);
+      observe(snap.deleted_at);
+      if (tableName === 'notes' && typeof snap.resource_id === 'string' && tableExists(db, 'resources') && tableHasColumn(db, 'resources', 'updated_at')) {
+        try {
+          const resRow = db.get<{ updated_at: unknown }>('SELECT updated_at FROM resources WHERE id = ?1', [snap.resource_id]);
+          if (resRow) observe(resRow.updated_at);
+        } catch {
+          // ignore optional lookup errors
+        }
+      }
+    }
+  }
+  if (tableName === 'notes' && tableExists(db, 'notes') && tableHasColumn(db, 'notes', 'updated_at')) {
+    try {
+      const noteRow = db.get<{ updated_at: unknown }>('SELECT updated_at FROM notes WHERE id = ?1', [recordId]);
+      if (noteRow) observe(noteRow.updated_at);
+    } catch {
+      // ignore optional lookup errors
+    }
+  }
+  const epochMs = Math.min(Math.max(wallMs, maxObserved + 1), wallMs + Math.floor(MAX_DRIFT_MS / 2));
+  const now = toRfc3339Opts(BigInt(epochMs) * 1_000_000n, 'Millis', true);
+  return { now, epochMs };
+}
+
+function timestampForColumn(
+  tx: SqlExecutor,
+  tableName: string,
+  columnName: string,
+  rfc3339Now: string,
+  epochMs: number,
+  sampleValue?: unknown,
+): string | number {
+  const declared = columnDeclaredType(tx, tableName, columnName);
+  if (declared !== null && declared.toUpperCase().includes('INT')) return epochMs;
+  if ((declared === null || declared.trim() === '') && (typeof sampleValue === 'number' || typeof sampleValue === 'bigint')) {
+    return epochMs;
+  }
+  return rfc3339Now;
+}
+
 function bumpUpdatedAtAndLog(
   tx: SqlExecutor,
   tableName: string,
   recordId: string,
   now: string,
+  epochMs = Date.now(),
 ): void {
   if (!tableExists(tx, tableName)) return;
   if (tableHasColumn(tx, tableName, 'updated_at')) {
@@ -138,9 +212,7 @@ function bumpUpdatedAtAndLog(
         [recordId],
       );
       if (sample !== undefined) {
-        const nextVal = typeof sample.updated_at === 'number' || typeof sample.updated_at === 'bigint'
-          ? Date.now()
-          : now;
+        const nextVal = timestampForColumn(tx, tableName, 'updated_at', now, epochMs, sample.updated_at);
         tx.run(
           `UPDATE ${quoteIdentifier(tableName)} SET updated_at = ?1 WHERE id = ?2`,
           [nextVal, recordId],
@@ -223,6 +295,7 @@ function synchronizePairedNoteAndResource(
   recordId: string,
   resolution: string,
   now: string,
+  epochMs: number,
   virtualContentMd: string | null,
   localSnapshot: DbJson | null,
   cloudSnapshot: DbJson | null,
@@ -240,10 +313,14 @@ function synchronizePairedNoteAndResource(
 
     if (targetResId) {
       let bodyToWrite = virtualContentMd;
-      if (bodyToWrite === null && resolution === 'keep_cloud') {
-        for (const candidateId of [cloudResId, targetResId, localResId]) {
+      if (bodyToWrite === null && (resolution === 'keep_cloud' || resolution === 'keep_local')) {
+        const side = resolution === 'keep_cloud' ? 'cloud' : 'local';
+        const candidates = resolution === 'keep_cloud'
+          ? [cloudResId, targetResId, localResId]
+          : [localResId, targetResId, cloudResId];
+        for (const candidateId of candidates) {
           if (!candidateId) continue;
-          const rawRes = latestConflictSideData(tx, 'resources', candidateId, 'cloud');
+          const rawRes = latestConflictSideData(tx, 'resources', candidateId, side);
           if (rawRes !== null) {
             try {
               bodyToWrite = extractNoteContentFromResource(parseJsonLossless(rawRes));
@@ -256,27 +333,58 @@ function synchronizePairedNoteAndResource(
       }
       const existingRes = tx.get<{ id: string; data: unknown }>('SELECT id, data FROM resources WHERE id = ?1', [targetResId]);
       if (bodyToWrite !== null) {
+        const nextHash = createHasherSync('SHA-256').update(`${recordId}\0${bodyToWrite}`).digestHex();
         if (existingRes) {
           const nextData = encodeResourceDataPreservingShape(existingRes.data, bodyToWrite);
-          const nextUpdated = tableHasColumn(tx, 'resources', 'updated_at') ? now : null;
-          if (nextUpdated !== null) {
-            tx.run('UPDATE resources SET data = ?1, updated_at = ?2 WHERE id = ?3', [nextData, nextUpdated, targetResId]);
-          } else {
-            tx.run('UPDATE resources SET data = ?1 WHERE id = ?2', [nextData, targetResId]);
+          const assignments: string[] = ['data = ?1'];
+          const params: SqlParam[] = [nextData];
+          if (tableHasColumn(tx, 'resources', 'hash')) {
+            params.push(nextHash);
+            assignments.push(`hash = ?${params.length}`);
           }
+          if (tableHasColumn(tx, 'resources', 'updated_at')) {
+            params.push(timestampForColumn(tx, 'resources', 'updated_at', now, epochMs));
+            assignments.push(`updated_at = ?${params.length}`);
+          }
+          if (tableHasColumn(tx, 'resources', 'deleted_at')) {
+            assignments.push('deleted_at = NULL');
+          }
+          params.push(targetResId);
+          tx.run(`UPDATE resources SET ${assignments.join(', ')} WHERE id = ?${params.length}`, params);
           ensurePendingChangeLog(tx, 'resources', targetResId, 'UPDATE', now);
         } else {
-          const hasUpdated = tableHasColumn(tx, 'resources', 'updated_at');
-          const hasType = tableHasColumn(tx, 'resources', 'type');
-          if (hasUpdated && hasType) {
-            tx.run("INSERT OR IGNORE INTO resources (id, type, data, updated_at) VALUES (?1, 'note', ?2, ?3)", [targetResId, bodyToWrite, now]);
-          } else if (hasType) {
-            tx.run("INSERT OR IGNORE INTO resources (id, type, data) VALUES (?1, 'note', ?2)", [targetResId, bodyToWrite]);
-          }
+          const resCols = new Set(tableInfo(tx, 'resources').map(c => c.name));
+          const insertCols: string[] = ['id'];
+          const insertVals: SqlParam[] = [targetResId];
+          const pushCol = (col: string, val: SqlParam): void => {
+            if (!resCols.has(col)) return;
+            insertCols.push(quoteIdentifier(col));
+            insertVals.push(val);
+          };
+          pushCol('hash', nextHash);
+          pushCol('type', 'note');
+          pushCol('source_id', recordId);
+          pushCol('source_table', 'notes');
+          pushCol('data', bodyToWrite);
+          pushCol('created_at', timestampForColumn(tx, 'resources', 'created_at', now, epochMs));
+          pushCol('updated_at', timestampForColumn(tx, 'resources', 'updated_at', now, epochMs));
+          const placeholders = insertVals.map((_, idx) => `?${idx + 1}`).join(', ');
+          tx.run(`INSERT INTO resources (${insertCols.join(', ')}) VALUES (${placeholders})`, insertVals);
           ensurePendingChangeLog(tx, 'resources', targetResId, 'INSERT', now);
         }
+        if (tableHasColumn(tx, 'note_document_revisions', 'version_id')) {
+          try {
+            getDefaultNoteHistory()?.snapshotNotes?.(tx, [recordId], 'remote_sync');
+            if (tableExists(tx, 'note_document_formats')) {
+              const fmtExists = Boolean(tx.pluck('SELECT EXISTS(SELECT 1 FROM note_document_formats WHERE note_id = ?1)', [recordId]));
+              if (fmtExists) ensurePendingChangeLog(tx, 'note_document_formats', recordId, 'UPDATE', now);
+            }
+          } catch {
+            // optional note history sync hook
+          }
+        }
       } else if (existingRes) {
-        bumpUpdatedAtAndLog(tx, 'resources', targetResId, now);
+        bumpUpdatedAtAndLog(tx, 'resources', targetResId, now, epochMs);
       }
     }
 
@@ -291,8 +399,8 @@ function synchronizePairedNoteAndResource(
     const linkedNotes = tx.all<{ id: string }>('SELECT id FROM notes WHERE resource_id = ?1', [recordId]);
     for (const note of linkedNotes) {
       if (!note?.id) continue;
-      bumpUpdatedAtAndLog(tx, 'notes', note.id, now);
-      if (resolution === 'keep_local' || resolution === 'keep_cloud') {
+      bumpUpdatedAtAndLog(tx, 'notes', note.id, now, epochMs);
+      if (resolution === 'keep_local' || resolution === 'keep_cloud' || resolution === 'merged') {
         const noteConflictIds = listUnresolvedConflictIds(tx, 'notes', note.id);
         for (const id of noteConflictIds) {
           markConflictResolved(tx, id, 'notes', note.id, now, resolution);
@@ -385,7 +493,12 @@ function resolveOnDatabase(
       throw new CommandError(`未知 resolution: ${resolution}`);
   }
 
-  const now = toRfc3339();
+  const { now, epochMs } = computeResolvedClock(db, tableName, recordId, [
+    currentLocalSnapshot,
+    recordedLocalSnapshot,
+    recordedCloudSnapshot,
+    data,
+  ]);
   const desiredState = (current: DbJson | null): boolean => {
     if (operation === 'Delete') return current === null;
     if (data === null) return false;
@@ -403,6 +516,7 @@ function resolveOnDatabase(
       operation,
       data,
       now,
+      epochMs,
       virtualContentMd,
       recordedLocalSnapshot,
       recordedCloudSnapshot,
@@ -412,9 +526,7 @@ function resolveOnDatabase(
 
   if (data !== null && isJsonObject(data) && tableHasColumn(db, tableName, 'updated_at')) {
     const current = data.updated_at;
-    data.updated_at = typeof current === 'number' || typeof current === 'bigint'
-      ? Date.now()
-      : now;
+    data.updated_at = timestampForColumn(db, tableName, 'updated_at', now, epochMs, current);
   }
 
   const change: EngineChange = {
@@ -462,6 +574,7 @@ function resolveOnDatabase(
             recordId,
             resolution,
             now,
+            epochMs,
             virtualContentMd,
             recordedLocalSnapshot,
             recordedCloudSnapshot,
@@ -501,6 +614,7 @@ function markResolvedWithoutWrite(
   operation: EngineChange['operation'],
   data: DbJson | null,
   now: string,
+  epochMs: number,
   virtualContentMd: string | null,
   localSnapshot: DbJson | null,
   cloudSnapshot: DbJson | null,
@@ -521,7 +635,7 @@ function markResolvedWithoutWrite(
       const tempTokens = acquireTemporaryNoteWriteGrants(tx, tableName, recordId);
       try {
         if (operation !== 'Delete') {
-          bumpUpdatedAtAndLog(tx, tableName, recordId, now);
+          bumpUpdatedAtAndLog(tx, tableName, recordId, now, epochMs);
         } else {
           ensurePendingChangeLog(tx, tableName, recordId, 'DELETE', now);
         }
@@ -531,6 +645,7 @@ function markResolvedWithoutWrite(
           recordId,
           resolution,
           now,
+          epochMs,
           virtualContentMd,
           localSnapshot,
           cloudSnapshot,

@@ -308,3 +308,30 @@ it('runs a 1-shot structured-JSON recovery turn when inventory succeeded but tur
   expect(blocked.error).toContain('WORKSHOP_VERIFICATION_INVALID');
   expect(failingExecute).toHaveBeenCalledTimes(2);
 });
+
+it('S4-18: instructs generator never to call ctx.files.scope and rejects ctx.files.scope in verify() before certifying passed', async () => {
+  const { ops, card, source } = await verificationFixture();
+  const execute = vi.fn(async () => 'msg_gen');
+  const chat = {
+    createSession: vi.fn(),
+    getMessageBlocks: () => [{ type: 'content', content: '{"files":[{"path":"index.ts","content":"export default { meta: { id: \\"workshop.x\\", version: \\"0.1.0\\", platforms: [\\"desktop\\"] }, apply() {} };"}]}' }],
+    getMessage: () => ({ _meta: { toolResults: [observed(card)] } }),
+  } as unknown as ChatSessionService;
+  const generation = new PipelineWorkshopGeneration(chat, { execute } as unknown as ChatPipelineService,
+    new WorkshopToolExecutor(ops, new WorkshopCatalog(() => [])));
+
+  await generation.generate(card, source, new AbortController().signal);
+  const promptText = String((execute.mock.calls[0] as unknown as [unknown, { content: string }])[1].content);
+  expect(promptText).toContain('ctx.files.scope');
+  expect(promptText).toContain('KERNEL_API_FORBIDDEN');
+  expect(promptText).toContain('ctx.storage');
+  expect(promptText).toContain('window.localStorage');
+
+  await writeFile(join(source, 'index.ts'), 'export function bad(ctx: any) { return ctx.files.scope("/tmp"); }');
+  execute.mockClear();
+  const verdict = await generation.verify(card, source, new AbortController().signal);
+  expect(verdict.status).toBe('failed');
+  expect(verdict.error).toContain('KERNEL_API_FORBIDDEN');
+  expect(verdict.error).toContain('ctx.files.scope');
+  expect(execute).not.toHaveBeenCalled();
+});

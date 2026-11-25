@@ -83,6 +83,9 @@
     "back": "返回音视频列表",
     "notFound": "找不到这个音视频，可能已被删除",
     "loadFailed": "无法打开这个音视频",
+    "mutedAutoplay": "浏览器限制非静音自动播放，已切换为静音播放",
+    "unmute": "取消静音",
+    "playbackFailed": "播放失败：{{message}}",
     "tabsAria": "学习面板",
     "tab": {
       "handout": "讲义",

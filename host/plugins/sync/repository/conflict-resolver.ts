@@ -204,6 +204,25 @@ export function resolveOne(
   if (localData === null) return null;
   if (!differsSemantically(localData, cloudData)) return null;
 
+  const isRemoteSoftDelete = isJsonObject(cloudData)
+    && cloudData.deleted_at !== undefined
+    && cloudData.deleted_at !== null;
+  if (isRemoteSoftDelete && isJsonObject(localData)) {
+    if (localData.deleted_at !== undefined && localData.deleted_at !== null) {
+      return null;
+    }
+    const localMatchingDeletedAt: DbJson = { ...localData, deleted_at: cloudData.deleted_at };
+    if (!differsSemantically(localMatchingDeletedAt, cloudData)) {
+      const localTs = extractUpdatedAt(localData);
+      const cloudTs = extractUpdatedAt(cloudData) ?? change.changed_at;
+      if (localTs === null || cloudTs === null) return null;
+      const [localDev, cloudDev] = lwwDevicePair(localData, cloudData, change.source_device_id ?? null);
+      if (compareLwwTimestamps(localTs, localDev, '', cloudTs, cloudDev, '') <= 0) {
+        return null;
+      }
+    }
+  }
+
   let winner: ConflictSide;
   let loser: ConflictSide;
   if (policy === 'KeepCloud') {

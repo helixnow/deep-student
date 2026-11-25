@@ -6,6 +6,7 @@ import {
   FolderOpen, 
   ArrowSquareOut,
   Eye,
+  PencilSimple,
   Chat, 
   X, 
   CheckSquare,
@@ -64,9 +65,10 @@ interface FinderBatchToolbarProps {
   onToggleMultiSelectMode?: () => void;
   /** 回收站视图：删除按钮文案改为永久删除 */
   isTrashView?: boolean;
-  /** 单选打开与快速预览入口 */
+  /** 单选打开、快速预览与重命名入口 */
   onOpenSelected?: () => void;
   onQuickLookSelected?: () => void;
+  onRenameSelected?: () => void;
 }
 
 const SORT_OPTIONS: { value: SortBy; labelKey: string }[] = [
@@ -104,6 +106,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
   isTrashView = false,
   onOpenSelected,
   onQuickLookSelected,
+  onRenameSelected,
 }: FinderBatchToolbarProps) {
   const { t } = useTranslation('learningHub');
 
@@ -287,6 +290,24 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
                 aria-label={t('finder.quickLook.title')}
               >
                 <Eye size={16} />
+              </DsButton>
+            )}
+            {!isTrashView && selectedCount === 1 && onRenameSelected && (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={onRenameSelected}
+                disabled={isProcessing}
+                data-testid="finder-toolbar-rename"
+                className={cn(
+                  'h-7 px-2 gap-1 text-xs text-accent-foreground hover:bg-[var(--interactive-hover)]',
+                  isTouchPrimary && '!h-11 px-3',
+                )}
+                title={t('contextMenu.rename')}
+                aria-label={t('contextMenu.rename')}
+              >
+                <PencilSimple size={14} aria-hidden="true" />
+                <span>{t('contextMenu.rename')}</span>
               </DsButton>
             )}
             {onBatchAddToChat && (

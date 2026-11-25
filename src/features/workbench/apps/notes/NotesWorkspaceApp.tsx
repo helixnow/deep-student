@@ -225,6 +225,11 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const rightTabKeyRef = useRef<string | null>(rightTabKey);
   const focusedPaneRef = useRef<WorkspacePaneId>(focusedPane);
   const resourcesRef = useRef<DstuNode[]>([]);
+  const pendingStageHydrationRef = useRef<{
+    preferredType: ResourceType;
+    rootFolderId: string | null;
+    preferCorrectionNotes?: boolean;
+  } | null>(null);
   const hasLoadedResourcesRef = useRef(false);
   const truncationNotifiedRef = useRef(false);
   const loadSequenceRef = useRef(0);
@@ -401,6 +406,34 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       setLoadError(null);
       setStatus(t('notesWorkspace.status.fileCount', { defaultValue: '{{count}} files', count: nextResources.length }));
       if (blocking || requiresInitialLoad) setLoading(false);
+      if (
+        pendingStageHydrationRef.current &&
+        tabsRef.current.length === 0 &&
+        !initialRef.current &&
+        nextResources.length > 0
+      ) {
+        const req = pendingStageHydrationRef.current;
+        pendingStageHydrationRef.current = null;
+        const sorted = [...nextResources].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+        const inFolder = req.rootFolderId
+          ? sorted.filter((n) => {
+              const fid = nextResourceFolderIds.get(treeResourceKey(resourceType(n.type) ?? 'note', n.id));
+              return fid === req.rootFolderId;
+            })
+          : [];
+        const pool = inFolder.length > 0 ? inFolder : sorted;
+        const correctionRegex = /错题|订正|复盘|mistake|review|error/i;
+        const candidate =
+          (req.preferCorrectionNotes
+            ? pool.find((n) => resourceType(n.type) === 'note' && correctionRegex.test(n.name))
+            : undefined) ??
+          pool.find((n) => resourceType(n.type) === req.preferredType) ??
+          pool[0];
+        const cType = candidate ? resourceType(candidate.type) : null;
+        if (candidate && cType) {
+          void openResourceRef.current({ type: cType, id: candidate.id }, candidate.name);
+        }
+      }
     } catch (error) {
       if (requestSequence !== loadSequenceRef.current) return;
       const message = error instanceof Error && error.message.trim()
@@ -1183,6 +1216,71 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       : [],
     [isActive, onWorkspaceCommand],
   );
+
+  // S4-11：响应学习流阶段预设（精读导图 / 笔记共创 / 刷题订正）的空面板材料注入，绝不抢占已有活动标签
+  useEffect(() => {
+    const hydrateFromStage = (
+      preferredType: ResourceType,
+      rootFolderId: string | null,
+      preferCorrectionNotes = false,
+    ) => {
+      if (tabsRef.current.length > 0) return;
+      if (!hasLoadedResourcesRef.current) {
+        pendingStageHydrationRef.current = {
+          preferredType,
+          rootFolderId,
+          preferCorrectionNotes,
+        };
+        return;
+      }
+      if (resourcesRef.current.length === 0) return;
+      const sorted = [...resourcesRef.current].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+      const inFolder = rootFolderId
+        ? sorted.filter((n) => {
+            const fid = resourceFolderIds.get(treeResourceKey(resourceType(n.type) ?? 'note', n.id));
+            return fid === rootFolderId;
+          })
+        : [];
+      const pool = inFolder.length > 0 ? inFolder : sorted;
+      const correctionRegex = /错题|订正|复盘|mistake|review|error/i;
+      const candidate =
+        (preferCorrectionNotes
+          ? pool.find((n) => resourceType(n.type) === 'note' && correctionRegex.test(n.name))
+          : undefined) ??
+        pool.find((n) => resourceType(n.type) === preferredType) ??
+        pool[0];
+      const cType = candidate ? resourceType(candidate.type) : null;
+      if (candidate && cType) {
+        void openResourceRef.current({ type: cType, id: candidate.id }, candidate.name);
+      }
+    };
+
+    const onPreferMindmap = (event: Event) => {
+      const detail = (event as CustomEvent<{ rootFolderId?: string | null }>).detail;
+      hydrateFromStage('mindmap', detail?.rootFolderId ?? null, false);
+    };
+    const onHydrateNotesStage = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          preferredType?: ResourceType;
+          rootFolderId?: string | null;
+          preferCorrectionNotes?: boolean;
+        }>
+      ).detail;
+      hydrateFromStage(
+        detail?.preferredType === 'mindmap' ? 'mindmap' : 'note',
+        detail?.rootFolderId ?? null,
+        Boolean(detail?.preferCorrectionNotes),
+      );
+    };
+
+    window.addEventListener('workbench:prefer-mindmap-tab', onPreferMindmap);
+    window.addEventListener('workbench:hydrate-notes-stage', onHydrateNotesStage);
+    return () => {
+      window.removeEventListener('workbench:prefer-mindmap-tab', onPreferMindmap);
+      window.removeEventListener('workbench:hydrate-notes-stage', onHydrateNotesStage);
+    };
+  }, [resourceFolderIds]);
 
   const toggleTreeExpand = useCallback((id: string) => {
     const item = findItemById(treeItems, id);

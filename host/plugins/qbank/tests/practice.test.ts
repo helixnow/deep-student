@@ -7,6 +7,7 @@ import { createPaths } from '../../../platform/paths/index.ts';
 import qbank from '../index.ts';
 import vfsRepos from '../../vfs-repos/index.ts';
 import * as practiceService from '../src/practice-service.ts';
+import { runGradingQueue } from '../src/practice-grading-queue.ts';
 import { loadAttempt, persistAttempt } from '../repository/practice.ts';
 // boundary-allow cross-plugin-impl: 测试用 L11 真实 QuestionRepo 注入 qbank 的写入端口
 import { QuestionRepo } from '../../vfs-repos/repository/questions.ts';
@@ -417,6 +418,88 @@ describe('qbank_practice.rs', () => {
 
       expect(() => practiceService.gradePracticeManually(serviceHost, attempt.id, essay.id, true, 120))
         .toThrowError('Score must be between 0 and 100');
+
+      // Contract-validated IPC manual regrade on pending-started subjective question
+      const regraded50 = await f.host.invoke('qbank_grade_practice_manually', {
+        id: attempt.id,
+        questionId: essay.id,
+        correct: false,
+        score: 50,
+      }) as PracticeAttempt;
+      expect(regraded50.results[0]).toMatchObject({
+        status: 'partial',
+        is_correct: false,
+        score: 50,
+        error: null,
+      });
+      expect(regraded50.results[0]!.feedback).toContain(
+        '<manual_override score="50" status="partial"/>',
+      );
+
+      // Simulate AI-graded 100/100 subjective question overridden 100 -> 50 -> 0 and reloaded (S2-05)
+      const draftAi = await createPractice(f.host, [essay.id, choice.id], { id: 'practice_ai_regrade' });
+      await f.host.invoke('qbank_save_practice', {
+        request: {
+          id: draftAi.id,
+          revision: draftAi.revision,
+          answers: { [essay.id]: '完整作答', [choice.id]: 'A' },
+          marked_ids: [],
+          current_index: 0,
+          elapsed_seconds: 5,
+        },
+      });
+      const attemptAi = await f.host.invoke('qbank_submit_practice', { id: draftAi.id, revision: 2 }) as PracticeAttempt;
+      await runGradingQueue(
+        {
+          ...serviceHost,
+          emitPracticeUpdated: () => undefined,
+        },
+        {
+          grade: async () => ({
+            verdict: 'correct',
+            score: 100,
+            feedback: '本题满分作答。<verdict>correct</verdict><score value="100"/>',
+            diagnostics: null,
+          }),
+        },
+      );
+      const afterAi = await f.host.invoke('qbank_get_practice', { id: attemptAi.id, submitted: true }) as PracticeAttempt;
+      expect(afterAi.results[0]).toMatchObject({ status: 'correct', is_correct: true, score: 100 });
+
+      const aiTo50 = await f.host.invoke('qbank_grade_practice_manually', {
+        id: attemptAi.id,
+        questionId: essay.id,
+        correct: false,
+        score: 50,
+      }) as PracticeAttempt;
+      expect(aiTo50.results[0]).toMatchObject({ status: 'partial', is_correct: false, score: 50 });
+      expect(aiTo50.results[0]!.feedback).toContain(
+        '<manual_override score="50" status="partial" original_score="100" original_status="correct"/>',
+      );
+
+      const aiToZero = await f.host.invoke('qbank_grade_practice_manually', {
+        id: attemptAi.id,
+        questionId: essay.id,
+        correct: false,
+        score: 0,
+      }) as PracticeAttempt;
+      expect(aiToZero.results[0]).toMatchObject({ status: 'incorrect', is_correct: false, score: 0 });
+      expect(aiToZero.results[0]!.feedback).toContain(
+        '<manual_override score="0" status="incorrect" original_score="100" original_status="correct"/>',
+      );
+
+      const reloaded = await f.host.invoke('qbank_get_practice', {
+        id: attemptAi.id,
+        submitted: true,
+      }) as PracticeAttempt;
+      expect(reloaded.results[0]).toMatchObject({
+        status: 'incorrect',
+        is_correct: false,
+        score: 0,
+      });
+      expect(reloaded.results[0]!.feedback).toContain(
+        '<manual_override score="0" status="incorrect" original_score="100" original_status="correct"/>',
+      );
     } finally { await f.dispose(); }
   });
 

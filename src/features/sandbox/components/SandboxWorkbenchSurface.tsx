@@ -30,6 +30,10 @@ import {
   launchSandboxWorkbench,
 } from '../launchSandboxWorkbench';
 import {
+  adjustSandboxRuntimeErrorLine,
+  requestSandboxHtmlPatch,
+} from '../requestSandboxHtmlPatch';
+import {
   readPersistedSandboxDraft,
   selectSandboxWorkbenchOwnerState,
   useSandboxWorkbenchStore,
@@ -308,12 +312,46 @@ export function SandboxWorkbenchSurface({
   }, [isSmallScreen, inspectorOpen, hasActiveSession, ownerKey, setInspectorOpen]);
 
   const canvasRef = useRef<HTMLDivElement | null>(null);
+  const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const prevViewportRef = useRef<string | null>(null);
   const prevSessionStampRef = useRef<{ id: string; updatedAt: number } | null>(null);
+  const [layoutRemeasureTick, setLayoutRemeasureTick] = useState(0);
+  const effectiveContentRef = useRef(effectiveContent);
+  effectiveContentRef.current = effectiveContent;
+
+  const handleRequestPatch = useCallback(
+    (instruction: string, currentHtml: string) =>
+      requestSandboxHtmlPatch(instruction, currentHtml, { isEnglish }),
+    [isEnglish],
+  );
 
   useEffect(() => {
     setRuntimeError(null);
   }, [activeSession?.id, activeVersion]);
+
+  const resetPreviewScroll = useCallback(() => {
+    if (scrollViewportRef.current) {
+      scrollViewportRef.current.scrollTop = 0;
+      scrollViewportRef.current.scrollLeft = 0;
+    }
+    if (canvasRef.current) {
+      canvasRef.current.scrollTop = 0;
+      canvasRef.current.scrollLeft = 0;
+    }
+  }, []);
+
+  useEffect(() => {
+    resetPreviewScroll();
+    const raf =
+      typeof requestAnimationFrame === 'function'
+        ? requestAnimationFrame(resetPreviewScroll)
+        : null;
+    return () => {
+      if (raf !== null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(raf);
+      }
+    };
+  }, [viewportPreset, inspectorOpen, activeSession?.id, activeVersion, resetPreviewScroll]);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -333,13 +371,20 @@ export function SandboxWorkbenchSurface({
       ) {
         return;
       }
+      const rawLineno =
+        typeof payload.lineno === 'number' && Number.isFinite(payload.lineno)
+          ? payload.lineno
+          : 0;
+      const adjustedLineno = adjustSandboxRuntimeErrorLine(
+        rawLineno,
+        effectiveContentRef.current,
+        frame instanceof HTMLIFrameElement ? frame.getAttribute('srcdoc') : null,
+      );
       setRuntimeError({
         message: typeof payload.message === 'string' && payload.message.trim()
           ? payload.message
           : (isEnglish ? 'Unknown script runtime error' : '未知脚本运行错误'),
-        lineno: typeof payload.lineno === 'number' && Number.isFinite(payload.lineno)
-          ? payload.lineno
-          : 0,
+        lineno: adjustedLineno,
         colno: typeof payload.colno === 'number' && Number.isFinite(payload.colno)
           ? payload.colno
           : 0,
@@ -794,6 +839,7 @@ export function SandboxWorkbenchSurface({
 
       <CustomScrollArea
         className="min-h-0 flex-1"
+        viewportRef={scrollViewportRef}
         viewportClassName="bg-[radial-gradient(circle_at_top,_hsl(var(--card)/0.55),_transparent_58%)] p-4"
         orientation="both"
       >
@@ -801,7 +847,8 @@ export function SandboxWorkbenchSurface({
           ref={canvasRef}
           data-testid="sandbox-runtime-canvas"
           className={cn(
-            'relative z-[1] mx-auto min-h-[360px] overflow-hidden rounded-2xl border border-border/35 bg-background shadow-[var(--shadow-shell-soft)] md:min-h-[520px] [&_[data-expanded="true"]]:!relative [&_[data-expanded="true"]]:!inset-auto [&_[data-expanded="true"]]:!z-[1] [&_[data-expanded="true"]]:!h-auto [&_[data-expanded="true"]]:!min-h-[480px] [&_[data-expanded="true"]]:!w-full',
+            'relative z-[1] mx-auto w-full min-w-0 min-h-[360px] rounded-2xl border border-border/35 bg-background shadow-[var(--shadow-shell-soft)] md:min-h-[520px] [&_[data-expanded="true"]]:!relative [&_[data-expanded="true"]]:!inset-auto [&_[data-expanded="true"]]:!z-[1] [&_[data-expanded="true"]]:!h-auto [&_[data-expanded="true"]]:!min-h-[480px] [&_[data-expanded="true"]]:!w-full',
+            useInteractiveHtmlCanvas ? 'overflow-visible' : 'overflow-hidden',
             !useInteractiveHtmlCanvas &&
               effectiveKind !== 'openui' &&
               effectiveKind !== 'generative-ui' &&
@@ -818,6 +865,8 @@ export function SandboxWorkbenchSurface({
               title={effectiveTitle}
               expanded
               externalVersion={activeVersion}
+              remeasureKey={`${viewportPreset}:${inspectorOpen ? '1' : '0'}:${activeVersion}:${layoutRemeasureTick}`}
+              onRequestPatch={handleRequestPatch}
               onHtmlChange={(nextHtml) => {
                 setRuntimeError(null);
                 setResetConfirmOpen(false);
@@ -1002,8 +1051,21 @@ export function SandboxWorkbenchSurface({
             {inspectorOpen ? inspectorShell : null}
           </div>
         ) : (
-          <PanelGroup direction="horizontal" className="h-full">
-            <Panel defaultSize={inspectorOpen ? 74 : 82} minSize={58} className="h-full">
+          <PanelGroup
+            direction="horizontal"
+            className="h-full"
+            onLayout={() => {
+              resetPreviewScroll();
+              setLayoutRemeasureTick((v) => v + 1);
+            }}
+          >
+            <Panel
+              id="sandbox-preview-panel"
+              order={1}
+              defaultSize={inspectorOpen ? 74 : 82}
+              minSize={58}
+              className="h-full min-w-0"
+            >
               {previewShell}
             </Panel>
 
@@ -1013,12 +1075,26 @@ export function SandboxWorkbenchSurface({
                   hitAreaMargins={{ coarse: 19, fine: 5 }}
                   className="w-px bg-border/35 transition-colors hover:bg-primary/30 active:bg-primary/50"
                 />
-                <Panel defaultSize={26} minSize={20} maxSize={36}>
+                <Panel
+                  id="sandbox-inspector-panel"
+                  order={2}
+                  defaultSize={26}
+                  minSize={20}
+                  maxSize={36}
+                  className="min-w-0"
+                >
                   {inspectorShell}
                 </Panel>
               </>
             ) : (
-              <Panel defaultSize={18} minSize={14} maxSize={22}>
+              <Panel
+                id="sandbox-status-rail-panel"
+                order={2}
+                defaultSize={18}
+                minSize={14}
+                maxSize={22}
+                className="min-w-0"
+              >
                 <SandboxStatusRail onOpenInspector={handleToggleInspector} />
               </Panel>
             )}

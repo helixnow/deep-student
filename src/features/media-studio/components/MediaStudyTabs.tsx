@@ -176,8 +176,10 @@ export function parseHandoutMarkdownToDocument(
     if (line.startsWith('## ')) {
       flushList();
       if (current) sections.push(current);
+      const rawHeading = line.slice(3).trim();
+      const dedupedHeading = rawHeading.replace(/^(?:[一二三四五六七八九十百]+[、.．:：]\s*)+/, '').trim();
       current = {
-        heading: line.slice(3).trim() || courseName,
+        heading: dedupedHeading || rawHeading || courseName,
         blocks: [],
       };
       continue;
@@ -965,6 +967,24 @@ export const MediaAskTab: React.FC<{
 
   return (
     <TabScroll>
+      <div className="flex flex-col gap-2 px-3 py-2 sm:py-3">
+        <ContextualMiniChat
+          anchor={miniChatAnchor}
+          defaultMinimized={false}
+          expandSignal={isVisible}
+          className="max-w-none"
+          onSendMessage={handleMiniChatAsk}
+          onPromoteToMainChat={({ messages, anchor }) => {
+            const lastUserMsg =
+              [...messages].reverse().find((m) => m.role === 'user') ?? messages[messages.length - 1];
+            const effectiveRef = anchor?.referenceId ?? miniChatAnchor.referenceId;
+            const promptOrLastQuestion = lastUserMsg
+              ? `${effectiveRef} ${lastUserMsg.content}`
+              : buildRecentMomentPrompt(ctx, name, t);
+            void start('mini-chat-promote', promptOrLastQuestion);
+          }}
+        />
+      </div>
       <div className={sectionClass}>
         <p className="text-xs leading-relaxed text-muted-foreground">{t('mediaStudio:ask.intro')}</p>
         <DsButton
@@ -1018,23 +1038,6 @@ export const MediaAskTab: React.FC<{
           </DsButton>
         ))}
         {/* 「时间引用可点击跳转」已在顶部 ask.intro 说明，这里不再重复一遍 */}
-      </div>
-      <div className={sectionClass}>
-        <ContextualMiniChat
-          anchor={miniChatAnchor}
-          defaultMinimized={false}
-          className="max-w-none"
-          onSendMessage={handleMiniChatAsk}
-          onPromoteToMainChat={({ messages, anchor }) => {
-            const lastUserMsg =
-              [...messages].reverse().find((m) => m.role === 'user') ?? messages[messages.length - 1];
-            const effectiveRef = anchor?.referenceId ?? miniChatAnchor.referenceId;
-            const promptOrLastQuestion = lastUserMsg
-              ? `${effectiveRef} ${lastUserMsg.content}`
-              : buildRecentMomentPrompt(ctx, name, t);
-            void start('mini-chat-promote', promptOrLastQuestion);
-          }}
-        />
       </div>
     </TabScroll>
   );

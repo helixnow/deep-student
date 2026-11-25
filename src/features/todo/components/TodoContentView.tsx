@@ -148,10 +148,21 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
   }, [closeDesktopTrash, setViewFilter, setWorkspaceView]);
 
   useEffect(() => {
-    void Promise.resolve(initialize()).finally(() => {
+    const hasPendingToday = (() => {
+      try {
+        return localStorage.getItem(TODO_PENDING_SMART_VIEW_KEY) === 'today';
+      } catch {
+        return false;
+      }
+    })();
+    void Promise.resolve(
+      initialize({
+        skipAutoToday: Boolean(todoListId || initialView === 'automations' || hasPendingToday),
+      }),
+    ).finally(() => {
       consumePendingSmartView();
     });
-  }, [initialize, consumePendingSmartView]);
+  }, [initialize, consumePendingSmartView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     return addAppEventListener(APP_EVENTS.NAVIGATE_TO_VIEW, (detail) => {

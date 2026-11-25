@@ -101,7 +101,10 @@ export class PipelinePersistence {
       isVariantOrSkipUpdate && typeof this.store.getMessageWithConn === 'function'
         ? (() => {
             try { return this.store.getMessageWithConn!(conn, execution.assistantMessageId); }
-            catch { return null; }
+            catch (error) {
+              this.logger.warn(`[ChatV2::pipeline] Failed to read existing assistant message during intermediate save (id=${execution.assistantMessageId}): ${debugError(error)}`);
+              return null;
+            }
           })()
         : null;
     const siblingVariantBlockIds = new Set(
@@ -119,12 +122,53 @@ export class PipelinePersistence {
     indexed.sort(([a], [b]) => a - b);
     const blockIds = [...new Set(indexed.map(([, id]) => id))];
     if (existingMessage && typeof this.store.updateMessageWithConn === 'function') {
-      const targetVariants = targetVariantId !== null && existingMessage.variants?.some(v => v.id === targetVariantId)
-        ? existingMessage.variants.map(variant => (variant.id !== targetVariantId ? variant : {
+      let targetVariants = existingMessage.variants;
+      if (targetVariantId !== null) {
+        if (existingMessage.variants?.some(v => v.id === targetVariantId)) {
+          targetVariants = existingMessage.variants.map(variant => (variant.id !== targetVariantId ? variant : {
             ...variant,
             blockIds: [...blockIds],
-          }))
-        : existingMessage.variants;
+            meta: { ...(variant.meta ?? {}), versioned: true },
+          }));
+        } else if (existingMessage.variants && existingMessage.variants.length > 0) {
+          targetVariants = [
+            ...existingMessage.variants.map(variant => ({
+              ...variant,
+              meta: { ...(variant.meta ?? {}), versioned: true },
+            })),
+            {
+              id: targetVariantId,
+              modelId: existingMessage.variants.at(-1)?.modelId ?? existingMessage._meta?.modelId ?? 'default',
+              blockIds: [...blockIds],
+              status: 'streaming',
+              createdAt: timestamp,
+              meta: { versioned: true },
+            },
+          ];
+        } else {
+          const priorV1Blocks = existingMessage.blockIds.filter(id => !blockIds.includes(id));
+          const synthesizedV1 = priorV1Blocks.length > 0 ? [{
+            id: `var_v1_${execution.assistantMessageId}`,
+            modelId: existingMessage._meta?.modelId ?? 'default',
+            blockIds: priorV1Blocks,
+            status: (existingMessage._meta?.stoppedByUser ? 'cancelled' : 'success') as NonNullable<typeof existingMessage.variants>[number]['status'],
+            ...(existingMessage._meta?.usage ? { usage: structuredClone(existingMessage._meta.usage) } : {}),
+            createdAt: existingMessage.timestamp,
+            meta: { versioned: true },
+          }] : [];
+          targetVariants = [
+            ...synthesizedV1,
+            {
+              id: targetVariantId,
+              modelId: existingMessage._meta?.modelId ?? 'default',
+              blockIds: [...blockIds],
+              status: 'streaming',
+              createdAt: timestamp,
+              meta: { versioned: true },
+            },
+          ];
+        }
+      }
       this.store.updateMessageWithConn(conn, {
         ...existingMessage,
         blockIds,

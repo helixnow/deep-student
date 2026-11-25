@@ -191,6 +191,7 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
   useEffect(() => {
     if (!editing?.listening) return;
 
+    shortcutManager.setRecording(true);
     const handleKeyDown = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
@@ -215,7 +216,10 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
-    return () => window.removeEventListener('keydown', handleKeyDown, true);
+    return () => {
+      shortcutManager.setRecording(false);
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
   }, [editing]);
 
   const categories: Array<{ value: CommandCategory | 'all'; label: string }> = [

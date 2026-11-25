@@ -40,7 +40,7 @@ import { pluginUiStatus, type PluginUiHostStatus } from './ui-status';
 import { usePluginUiHostStatus } from './use-ui-status';
 import { usePluginErrorBudget } from './use-error-budget';
 import {
-  PLUGIN_FILTERS, categoryIconName, officialPluginGroups, pluginDescription, pluginIsEssential, pluginName, pluginNeedsAttention,
+  PLUGIN_FILTERS, categoryIconName, officialPluginGroups, pluginDescription, pluginFiltersForMode, pluginIsEssential, pluginName, pluginNeedsAttention,
   type PluginFilter,
 } from './presentation';
 import { usePluginManagerWorkshop, type PluginManagerWork, type PluginManagerWorkshop } from './workshop';
@@ -195,12 +195,23 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
     return () => { live = false; clearInterval(timer); };
   }, [workshop, mineSignature]);
 
+  useEffect(() => {
+    if (!safeMode && filter === 'safeModePaused') {
+      setFilter('all');
+    }
+  }, [safeMode, filter]);
+
+  const totalCommunityCount = useMemo(
+    () => state.plugins.filter((plugin) => plugin.origin === 'community').length,
+    [state.plugins],
+  );
   const needle = query.trim().toLocaleLowerCase();
   const problemOf = (plugin: ManagedPlugin) =>
     pluginNeedsAttention(plugin, pluginUiStatus(hostStatus, plugin.id)) || autoUninstalled.some((entry) => entry.pluginId === plugin.id);
   const filtered = state.plugins.filter((plugin) => {
     const matchesQuery = !needle || [pluginName(plugin, t), plugin.id, plugin.author, pluginDescription(plugin, t)].join(' ').toLocaleLowerCase().includes(needle);
     return matchesQuery && (filter === 'all'
+      || filter === 'safeModePaused' && plugin.origin === 'community'
       || filter === 'mine' && plugin.origin === 'community'
       || filter === 'builtin' && plugin.origin === 'builtin'
       || filter === 'disabled' && !plugin.enabled
@@ -299,10 +310,10 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
   const noPlugins = !listLoading && state.plugins.length === 0;
   useRefreshOnReturn(() => controller.refresh(), !listLoading);
 
-  const narrowing = needle !== '' || filter === 'disabled' || filter === 'problem';
-  const showMine = filter !== 'builtin' && (!narrowing || community.length > 0);
+  const narrowing = needle !== '' || filter === 'disabled' || filter === 'problem' || filter === 'safeModePaused';
+  const showMine = filter !== 'builtin' && (!narrowing || filter === 'safeModePaused' || community.length > 0);
   const showStarters = !narrowing && filter !== 'builtin';
-  const showOfficial = filter !== 'mine' && !noPlugins && (!narrowing || official.length > 0);
+  const showOfficial = filter !== 'mine' && filter !== 'safeModePaused' && !noPlugins && (!narrowing || official.length > 0);
   // 清单读完再出现：首帧只有一条「正在读取」，渠道那一行不先占位再跳动。
   const showChannel = channelEnabled && filter === 'all' && !needle && !listLoading;
   const nothingMatches = !listLoading && !noPlugins && filtered.length === 0 && (narrowing || filter === 'builtin');
@@ -410,7 +421,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
           data-testid="plugin-import"
           className={cn('gap-1.5', COARSE_TOUCH)}
           onClick={handleImportClick}
-          disabled={packageBusy || safeMode}
+          disabled={packageBusy}
           aria-describedby={safeMode ? 'plugin-import-disabled-reason' : undefined}
         >
           <DownloadSimple className="size-4" aria-hidden="true" />
@@ -446,7 +457,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
       </div>
       {safeMode ? (
         <p id="plugin-import-disabled-reason" data-testid="plugin-import-disabled-reason" className="text-xs text-muted-foreground">
-          {t('safeMode.importDisabled')}
+          {t('safeMode.importSafeModeHint')}
         </p>
       ) : null}
     </div>
@@ -518,7 +529,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
         })() : null}
 
         {state.notice?.kind === 'package' ? (
-          <InstallFeedback result={state.notice.result} onDismiss={() => controller.dismissNotice()} />
+          <InstallFeedback result={state.notice.result} safeMode={safeMode} onDismiss={() => controller.dismissNotice()} />
         ) : null}
 
         <WorkshopComposer workshop={workshop} disabled={safeMode} />
@@ -531,7 +542,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
               placeholder={t('manager.search')} className="!pl-9" />
           </div>
           <SegmentedControl<PluginFilter> ariaLabel={t('manager.filterLabel')} value={filter} onValueChange={setFilter} size="compact" className="max-w-full flex-wrap"
-            options={PLUGIN_FILTERS.map((value) => ({ value, label: t(`manager.filters.${value}`) }))} />
+            options={pluginFiltersForMode(safeMode).map((value) => ({ value, label: t(`manager.filters.${value}`) }))} />
         </div>
 
         {listLoading ? <p role="status" className={LIST_EMPTY_CLASS}>{t('list.loading')}</p> : null}
@@ -541,6 +552,38 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
           <section data-testid="plugin-section-mine" className="min-w-0">
             <GroupTitle description={t('mine.description')}
               title={<>{t('mine.title')}<SectionCount testId="plugin-count-community" count={community.length} /></>} />
+            {safeMode ? (
+              <div
+                role="region"
+                aria-label={t('safeMode.pausedSectionTitle')}
+                data-testid="plugin-safe-mode-paused-section"
+                className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3.5 py-2.5 text-xs"
+              >
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="flex items-center gap-1.5 font-medium text-warning">
+                    <ShieldChevron className="size-3.5 shrink-0" aria-hidden="true" />
+                    <span>{t('safeMode.pausedSectionTitle')}</span>
+                    <span className="rounded-full bg-warning/15 px-1.5 py-0.5 tabular-nums text-2xs">
+                      {totalCommunityCount}
+                    </span>
+                  </div>
+                  <p className="leading-relaxed text-muted-foreground">
+                    {t('safeMode.pausedSectionDescription', { count: totalCommunityCount })}
+                  </p>
+                </div>
+                <DsButton
+                  variant="outline"
+                  size="sm"
+                  data-testid="plugin-safe-mode-import-shortcut"
+                  className={cn('shrink-0 gap-1.5', COARSE_TOUCH)}
+                  disabled={packageBusy}
+                  onClick={handleImportClick}
+                >
+                  <DownloadSimple className="size-3.5" aria-hidden="true" />
+                  {packageBusy ? t('install.running') : t('actions.install')}
+                </DsButton>
+              </div>
+            ) : null}
             {community.length ? (
               <div role="list" aria-label={t('mine.title')} data-testid="plugin-mine-grid"
                 className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] gap-3">
@@ -675,7 +718,7 @@ export function PluginManagerPanel({ controller, errorBudget, uiStatus, models, 
       />
 
       <ConsentDialog
-        subject={state.consent}
+        subject={safeMode ? null : state.consent}
         agentTools={state.plugins.find((plugin) => plugin.id === state.consent?.id)?.agentTools}
         name={(() => { const target = state.plugins.find((plugin) => plugin.id === state.consent?.id); return target ? pluginName(target, t) : undefined; })()}
         busy={state.consentBusy}

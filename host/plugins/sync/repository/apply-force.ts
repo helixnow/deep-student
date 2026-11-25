@@ -87,7 +87,7 @@ export function applyDownloadedChangesForceExactWithHooks(
           const preLogMax = remapped.suppress_change_log === true ? changeLogMaxId(tx) : null;
           const applied = applySingleChange(tx, remapped, idColumn, true, false, context);
           if (preLogMax !== null) {
-            suppressEchoChangeLog(tx, Math.floor(Date.now() / 1000), preLogMax, remapped.table_name, remapped.record_id);
+            suppressEchoChangeLog(tx, Math.floor(Date.now() / 1000), preLogMax);
           }
           validateNoNewFkViolations(tx, fkBaseline, fkTables);
           releaseApplySavepoint(tx, savepoint);

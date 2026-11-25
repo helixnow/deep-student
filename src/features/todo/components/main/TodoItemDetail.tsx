@@ -74,6 +74,7 @@ import { SubtaskSection } from './detail/SubtaskSection';
 import { FocusHistorySection } from './detail/FocusHistorySection';
 import { LinkedResourcesSection } from './detail/LinkedResourcesSection';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { addTypedEventListener } from '@/events';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 /** 属性行统一视觉：12px 圆角、悬停 --interactive-hover（对齐设计规范） */
@@ -137,6 +138,19 @@ export const TodoItemDetail: React.FC<{
   const [pomodoroHistory, setPomodoroHistory] = useState<PomodoroRecord[]>([]);
   const [calendarOpen, setCalendarOpen] = useState(false);
 
+  // 同步草稿快照与已提交基准：onChange 同步写入 draftRef，保证未触发重渲染或未触发 blur
+  // 即发生任务切换 / 面板卸载 / 页面刷新时，handleSave 也能立即读取最新文本并落库，且不会重复提交。
+  const draftRef = useRef({
+    title: item.title,
+    description: item.description || '',
+    priority: item.priority as TodoPriority,
+    dueDate: item.dueDate || '',
+    dueTime: item.dueTime || '',
+    reminder: normalizeReminderValue(item.reminder),
+    estimatedPomodoros: item.estimatedPomodoros || 0,
+  });
+  const committedRef = useRef({ ...draftRef.current });
+
   // 面板根节点（Android 返回键的保活可见性守卫用）
   const panelRef = useRef<HTMLElement | null>(null);
 
@@ -158,34 +172,72 @@ export const TodoItemDetail: React.FC<{
 
   // 外部更新（行内改期/改名、拖拽换象限等）跟随 prop 刷新本地编辑态。
   // 面板按 item.id 挂 key，重挂载覆盖新任务；这里处理同一任务字段被外部改写的情况。
-  // 用户编辑中：字段保存后 item 值与本地一致，effect 不会打断输入。
+  // 若本地存在尚未提交的草稿差异（draft !== committed）或当前字段正聚焦，不覆盖用户输入。
   useEffect(() => {
+    const prevCommitted = committedRef.current.title;
+    committedRef.current.title = item.title;
     if (document.activeElement === titleRef.current) return;
+    if (draftRef.current.title !== prevCommitted && draftRef.current.title !== item.title) return;
+    draftRef.current.title = item.title;
     setTitle(item.title);
   }, [item.title]);
   useEffect(() => {
+    const nextDesc = item.description || '';
+    const prevCommitted = committedRef.current.description;
+    committedRef.current.description = nextDesc;
     if (document.activeElement === descriptionRef.current) return;
-    setDescription(item.description || '');
+    if (draftRef.current.description !== prevCommitted && draftRef.current.description !== nextDesc) return;
+    draftRef.current.description = nextDesc;
+    setDescription(nextDesc);
   }, [item.description]);
-  useEffect(() => setPriority(item.priority as TodoPriority), [item.priority]);
-  useEffect(() => setDueDate(item.dueDate || ''), [item.dueDate]);
-  useEffect(() => setDueTime(item.dueTime || ''), [item.dueTime]);
+  useEffect(() => {
+    const nextPriority = item.priority as TodoPriority;
+    committedRef.current.priority = nextPriority;
+    draftRef.current.priority = nextPriority;
+    setPriority(nextPriority);
+  }, [item.priority]);
+  useEffect(() => {
+    const nextDueDate = item.dueDate || '';
+    committedRef.current.dueDate = nextDueDate;
+    draftRef.current.dueDate = nextDueDate;
+    setDueDate(nextDueDate);
+  }, [item.dueDate]);
+  useEffect(() => {
+    const nextDueTime = item.dueTime || '';
+    committedRef.current.dueTime = nextDueTime;
+    draftRef.current.dueTime = nextDueTime;
+    setDueTime(nextDueTime);
+  }, [item.dueTime]);
   // 提醒归一到分钟精度（旧数据可能带秒，datetime-local 会显示为空）
-  useEffect(() => setReminder(normalizeReminderValue(item.reminder)), [item.reminder]);
-  useEffect(() => setEstimatedPomodoros(item.estimatedPomodoros || 0), [item.estimatedPomodoros]);
+  useEffect(() => {
+    const nextReminder = normalizeReminderValue(item.reminder);
+    committedRef.current.reminder = nextReminder;
+    draftRef.current.reminder = nextReminder;
+    setReminder(nextReminder);
+  }, [item.reminder]);
+  useEffect(() => {
+    const nextEst = item.estimatedPomodoros || 0;
+    committedRef.current.estimatedPomodoros = nextEst;
+    draftRef.current.estimatedPomodoros = nextEst;
+    setEstimatedPomodoros(nextEst);
+  }, [item.estimatedPomodoros]);
 
-  // 标题/备注多行自动增高（overflow-hidden 的固定 rows 会截断长内容）
+  // 标题/备注多行自动增高（overflow-hidden 的固定 rows 会截断长内容；scrollHeight===0 时保留 CSS min-h）
   useEffect(() => {
     const el = titleRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
+    if (el.scrollHeight > 0) {
+      el.style.height = `${el.scrollHeight}px`;
+    }
   }, [title]);
   useEffect(() => {
     const el = descriptionRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight}px`;
+    if (el.scrollHeight > 0) {
+      el.style.height = `${el.scrollHeight}px`;
+    }
   }, [description]);
 
   // 任务的专注历史（completedPomodoros 变化时刷新——新完成番茄后同步）
@@ -328,6 +380,8 @@ export const TodoItemDetail: React.FC<{
         if (!dueDate) {
           const today = localToday();
           changes.dueDate = today;
+          draftRef.current.dueDate = today;
+          committedRef.current.dueDate = today;
           setDueDate(today);
         }
       }
@@ -374,6 +428,8 @@ export const TodoItemDetail: React.FC<{
 
   const applyDueDate = useCallback(
     (date: string) => {
+      draftRef.current.dueDate = date;
+      committedRef.current.dueDate = date;
       setDueDate(date);
       void updateItem({ id: item.id, dueDate: date }).then(markSaved);
     },
@@ -381,6 +437,10 @@ export const TodoItemDetail: React.FC<{
   );
 
   const clearDueDate = useCallback(() => {
+    draftRef.current.dueDate = '';
+    draftRef.current.dueTime = '';
+    committedRef.current.dueDate = '';
+    committedRef.current.dueTime = '';
     setDueDate('');
     setDueTime('');
     void updateItem({ id: item.id, dueDate: '', dueTime: '' }).then(markSaved);
@@ -388,79 +448,90 @@ export const TodoItemDetail: React.FC<{
 
   const applyReminder = useCallback(
     (value: string) => {
+      draftRef.current.reminder = value;
+      committedRef.current.reminder = value;
       setReminder(value);
       void updateItem({ id: item.id, reminder: value }).then(markSaved);
     },
     [item.id, updateItem, markSaved],
   );
 
-  /** 汇总本地编辑态与 item 的差异并保存；返回是否有变更（供保存反馈） */
+  /** 汇总本地草稿（draftRef）与已提交基准（committedRef）的差异并立即发起持久化 */
   const handleSave = useCallback(async (): Promise<boolean> => {
+    const draft = draftRef.current;
+    const base = committedRef.current;
     const changes: UpdateTodoItemInput = { id: item.id };
     let hasChanges = false;
-    if (title !== item.title) {
-      changes.title = title;
+    if (draft.title !== base.title) {
+      changes.title = draft.title;
       hasChanges = true;
     }
-    if (description !== (item.description || '')) {
-      changes.description = description;
+    if (draft.description !== base.description) {
+      changes.description = draft.description;
       hasChanges = true;
     }
-    if (priority !== item.priority) {
-      changes.priority = priority;
+    if (draft.priority !== base.priority) {
+      changes.priority = draft.priority;
       hasChanges = true;
     }
-    if (dueDate !== (item.dueDate || '')) {
-      if (!dueDate && repeatRule) {
+    if (draft.dueDate !== base.dueDate) {
+      if (!draft.dueDate && repeatRule) {
         // 重复任务必须有锚定日期：清空时自动回填今天并给出内联提示
         const today = localToday();
+        draft.dueDate = today;
         setDueDate(today);
         triggerRepeatAnchorHint();
-        if (today !== (item.dueDate || '')) {
+        if (today !== base.dueDate) {
           changes.dueDate = today;
           hasChanges = true;
         }
       } else {
-        changes.dueDate = dueDate;
+        changes.dueDate = draft.dueDate;
         hasChanges = true;
       }
     }
-    if (dueTime !== (item.dueTime || '')) {
-      changes.dueTime = dueTime;
+    if (draft.dueTime !== base.dueTime) {
+      changes.dueTime = draft.dueTime;
       hasChanges = true;
     }
-    if (reminder !== normalizeReminderValue(item.reminder)) {
-      changes.reminder = reminder;
+    if (draft.reminder !== base.reminder) {
+      changes.reminder = draft.reminder;
       hasChanges = true;
     }
-    if (estimatedPomodoros !== (item.estimatedPomodoros || 0)) {
-      changes.estimatedPomodoros = estimatedPomodoros;
+    if (draft.estimatedPomodoros !== base.estimatedPomodoros) {
+      changes.estimatedPomodoros = draft.estimatedPomodoros;
       hasChanges = true;
     }
 
     if (hasChanges) {
+      committedRef.current = { ...draft };
       await updateItem(changes);
     }
     return hasChanges;
   }, [
-    item,
-    title,
-    description,
-    priority,
-    dueDate,
-    dueTime,
-    reminder,
-    estimatedPomodoros,
+    item.id,
     repeatRule,
     triggerRepeatAnchorHint,
     updateItem,
   ]);
 
-  // blur 保存 300ms 防抖：Tab 在多个字段间移动 / 点击面板空白处时不再逐次触发保存；
-  // handleSave 本身只在值变化时才发请求（hasChanges 守卫），双保险
+  // blur 保存 300ms 防抖（针对 time / number 等输入控件）；
+  // 标题与描述另有 200ms 输入自动落库 + blur/unmount 零延迟冲刷，防止未失焦即切任务或重载丢数据。
   const saveRef = useRef(handleSave);
   saveRef.current = handleSave;
   const blurTimerRef = useRef<number | null>(null);
+  const textSaveTimerRef = useRef<number | null>(null);
+  const clearPendingSaveTimers = useCallback(() => {
+    if (blurTimerRef.current !== null) {
+      window.clearTimeout(blurTimerRef.current);
+      blurTimerRef.current = null;
+    }
+    if (textSaveTimerRef.current !== null) {
+      window.clearTimeout(textSaveTimerRef.current);
+      textSaveTimerRef.current = null;
+    }
+  }, []);
+
   const handleBlur = useCallback(() => {
     if (blurTimerRef.current !== null) window.clearTimeout(blurTimerRef.current);
     blurTimerRef.current = window.setTimeout(() => {
@@ -473,32 +544,46 @@ export const TodoItemDetail: React.FC<{
 
   /** ⌘/Ctrl+Enter 或文本字段失焦：跳过防抖立即保存 */
   const flushSaveNow = useCallback(() => {
-    if (blurTimerRef.current !== null) {
-      window.clearTimeout(blurTimerRef.current);
-      blurTimerRef.current = null;
-    }
+    clearPendingSaveTimers();
     void saveRef.current().then((changed) => {
       if (changed) markSaved();
     });
+  }, [clearPendingSaveTimers, markSaved]);
+
+  /** 文本输入过程中短防抖自动落库：用户未失焦直接 F5 重载也不会丢失已输入的描述 */
+  const scheduleTextAutoSave = useCallback(() => {
+    if (textSaveTimerRef.current !== null) window.clearTimeout(textSaveTimerRef.current);
+    textSaveTimerRef.current = window.setTimeout(() => {
+      textSaveTimerRef.current = null;
+      void saveRef.current().then((changed) => {
+        if (changed) markSaved();
+      });
+    }, 200);
   }, [markSaved]);
 
-  // 卸载（关面板/切任务）及页面刷新/隐藏前无条件冲刷：handleSave 有 hasChanges 守卫，重复调用无副作用。
+  // 卸载（关面板/切任务）及页面隐藏/刷新前无条件同步冲刷：handleSave 以 committedRef 去重，重复调用零副作用。
   useEffect(() => {
     const flushBeforePageExit = () => {
-      if (blurTimerRef.current !== null) {
-        window.clearTimeout(blurTimerRef.current);
-        blurTimerRef.current = null;
-      }
+      clearPendingSaveTimers();
       void saveRef.current();
     };
-    window.addEventListener('pagehide', flushBeforePageExit);
-    window.addEventListener('beforeunload', flushBeforePageExit);
+    const disposePageHide = addTypedEventListener('pagehide', () => flushBeforePageExit());
+    const disposeBeforeUnload = addTypedEventListener('beforeunload', () => flushBeforePageExit());
+    const disposeVisibility = addTypedEventListener(
+      'visibilitychange',
+      () => {
+        if (document.visibilityState === 'hidden') flushBeforePageExit();
+      },
+      undefined,
+      'document',
+    );
     return () => {
-      window.removeEventListener('pagehide', flushBeforePageExit);
-      window.removeEventListener('beforeunload', flushBeforePageExit);
+      disposePageHide();
+      disposeBeforeUnload();
+      disposeVisibility();
       flushBeforePageExit();
     };
-  }, []);
+  }, [clearPendingSaveTimers]);
 
   // ===== 面板级键盘：Esc 收起（先收内联日历），⌘/Ctrl+Enter 立即保存 =====
   // 字段级 Esc（标题/备注还原、标签/子任务草稿清空）在各自 handler 内 stopPropagation
@@ -612,7 +697,12 @@ export const TodoItemDetail: React.FC<{
         <Textarea
           ref={titleRef}
           value={title}
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => {
+            const next = e.target.value;
+            draftRef.current.title = next;
+            setTitle(next);
+            scheduleTextAutoSave();
+          }}
           onBlur={flushSaveNow}
           onKeyDown={(e) => {
             // Enter 提交（失焦触发保存），Shift+Enter 换行；Esc 还原并失焦（不冒泡关面板）
@@ -626,7 +716,9 @@ export const TodoItemDetail: React.FC<{
             if (e.key === 'Escape') {
               e.preventDefault();
               e.stopPropagation();
-              setTitle(item.title);
+              clearPendingSaveTimers();
+              draftRef.current.title = committedRef.current.title;
+              setTitle(committedRef.current.title);
               e.currentTarget.blur();
             }
           }}
@@ -638,6 +730,45 @@ export const TodoItemDetail: React.FC<{
           placeholder={t('todo:placeholders.title')}
         />
 
+        {/* S4-09：描述/备注紧跟标题置于首屏可见区（不再沉底被滚动视口裁剪到「描述 / 更新于 / 删除」之间） */}
+        <div className="space-y-1.5" data-testid="todo-detail-description-section">
+          <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {t('todo:fields.description')}
+          </span>
+          <Textarea
+            ref={descriptionRef}
+            data-testid="todo-detail-description"
+            value={description}
+            onChange={(e) => {
+              const next = e.target.value;
+              draftRef.current.description = next;
+              setDescription(next);
+              scheduleTextAutoSave();
+            }}
+            onBlur={flushSaveNow}
+            onKeyDown={(e) => {
+              if (isComposingKeyEvent(e)) return;
+              // Esc 还原备注并失焦（不冒泡关面板）；换行保持原生 Enter
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                clearPendingSaveTimers();
+                draftRef.current.description = committedRef.current.description;
+                setDescription(committedRef.current.description);
+                e.currentTarget.blur();
+              }
+            }}
+            placeholder={t('todo:placeholders.description')}
+            rows={3}
+            className="w-full resize-none overflow-hidden leading-relaxed min-h-[4.75rem]"
+          />
+          {description.trim().length > 0 && (
+            <span className="sr-only" data-testid="todo-detail-description-text">
+              {description}
+            </span>
+          )}
+        </div>
+
         {/* 属性面板 — 扁平属性行，统一圆角/悬停语言 */}
         <div className="space-y-0.5">
           <div className={PROPERTY_ROW_CLASS}>
@@ -648,6 +779,8 @@ export const TodoItemDetail: React.FC<{
               ariaLabel={t('todo:fields.priority')}
               value={priority}
               onValueChange={(p) => {
+                draftRef.current.priority = p;
+                committedRef.current.priority = p;
                 setPriority(p);
                 void updateItem({ id: item.id, priority: p }).then(markSaved);
               }}
@@ -758,7 +891,11 @@ export const TodoItemDetail: React.FC<{
               <Input
                 type="time"
                 value={dueTime}
-                onChange={(e) => setDueTime(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  draftRef.current.dueTime = next;
+                  setDueTime(next);
+                }}
                 onBlur={handleBlur}
                 className="flex-1"
               />
@@ -774,7 +911,11 @@ export const TodoItemDetail: React.FC<{
               <Input
                 type="datetime-local"
                 value={reminder}
-                onChange={(e) => setReminder(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  draftRef.current.reminder = next;
+                  setReminder(next);
+                }}
                 onBlur={handleBlur}
                 className="flex-1"
               />
@@ -941,7 +1082,11 @@ export const TodoItemDetail: React.FC<{
                 min={0}
                 max={99}
                 value={estimatedPomodoros || ''}
-                onChange={(e) => setEstimatedPomodoros(Number(e.target.value) || 0)}
+                onChange={(e) => {
+                  const next = Number(e.target.value) || 0;
+                  draftRef.current.estimatedPomodoros = next;
+                  setEstimatedPomodoros(next);
+                }}
                 onBlur={handleBlur}
                 placeholder="0"
                 className="w-20 tabular-nums"
@@ -983,30 +1128,6 @@ export const TodoItemDetail: React.FC<{
 
         <div className={SECTION_CLASS}>
           <LinkedResourcesSection item={item} onSaved={markSaved} />
-        </div>
-
-        <div className={cn(SECTION_CLASS, 'space-y-2')}>
-          <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {t('todo:fields.description')}
-          </span>
-          <Textarea
-            ref={descriptionRef}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            onBlur={flushSaveNow}
-            onKeyDown={(e) => {
-              // Esc 还原备注并失焦（不冒泡关面板）；换行保持原生 Enter
-              if (e.key === 'Escape') {
-                e.preventDefault();
-                e.stopPropagation();
-                setDescription(item.description || '');
-                e.currentTarget.blur();
-              }
-            }}
-            placeholder={t('todo:placeholders.description')}
-            rows={4}
-            className="w-full resize-none overflow-hidden leading-relaxed min-h-[6.5rem]"
-          />
         </div>
 
         {/* 专注历史（有记录才显示） */}

@@ -177,7 +177,8 @@ export async function runSyncV5(
     return { success: true, direction: parsed.toLowerCase(), device_id: deviceId, changes_uploaded: uploaded, changes_downloaded: downloaded,
       conflicts_detected: 0, duration_ms: duration, error_message: null, skipped_changes: skipped };
   } catch (error) {
-    ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target, outcome: { kind: 'failed', error: message(error) }, details: { device_id: deviceId, protocol: 'v5' } });
+    const duration = Math.max(0, Math.floor(performance.now() - start));
+    ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target, outcome: { kind: 'failed', error: message(error), durationMs: duration }, details: { device_id: deviceId, protocol: 'v5' } });
     throw error instanceof CommandError ? error : new CommandError(message(error));
   } finally {
     signal?.removeEventListener('abort', cancel);
@@ -213,14 +214,22 @@ export async function runSync(
   assertNotInMaintenance(ctx);
   const ports = assembleSyncCommandPorts(ctx, localPorts);
   const start = performance.now();
-  let parsed: FileSyncDirection, merge: MergeStrategy, config: RuntimeCloudStorageConfig;
+  let parsed: FileSyncDirection, merge: MergeStrategy, config: RuntimeCloudStorageConfig, deviceId = '';
   try {
     parsed = parseSyncDirection(direction); merge = parseSyncStrategy(strategy);
+  } catch (error) { throw new CommandError(message(error)); }
+  try {
     const loaded = cloudConfig ?? await ports.loadHydratedCloudConfig();
     if (loaded === null) throw new Error(notConfigured); config = loaded;
-  } catch (error) { throw new CommandError(message(error)); }
-  await syncGovernance(ctx).hydrateCloudConfig(config);
-  const deviceId = await ctx.paths.deviceId();
+    await syncGovernance(ctx).hydrateCloudConfig(config);
+    deviceId = await ctx.paths.deviceId();
+  } catch (error) {
+    const detail = message(error);
+    ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`,
+      outcome: { kind: 'failed', error: detail, durationMs: Math.max(0, Math.floor(performance.now() - start)) },
+      details: { device_id: deviceId || null, direction: parsed.toLowerCase(), strategy: strategy ?? 'keep_latest' } });
+    throw error instanceof CommandError ? error : new CommandError(detail);
+  }
   ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`, outcome: { kind: 'started' }, details: {
     device_id: deviceId, direction, strategy: strategy ?? 'keep_latest', provider: { webdav: 'WebDav', s3: 'S3', ftp: 'Ftp' }[providerKey(config.provider ?? 'webdav')], root: config.root ?? null,
   } });
@@ -317,7 +326,7 @@ export async function runSyncWithProgress(
   const start = performance.now();
   const emitter = new SyncProgressEmitter(ctx.backendEvents, text => logger.error(text));
   let cancelTokenInstalled = false;
-  let auditStarted = false;
+  let auditRecorded = false;
   let auditParsed: FileSyncDirection | null = null;
   let auditDeviceId: string | null = null;
   const auditStrategy = strategy ?? 'keep_latest';
@@ -325,8 +334,9 @@ export async function runSyncWithProgress(
     const cancelled = cancelTokenInstalled && ctx.syncProvider.isSyncCancelled();
     const detail = cancelled ? '同步已取消' : message(error);
     await emitter.emitFailed(detail);
-    if (auditStarted && auditParsed !== null) {
-      const durationMs = Math.floor(performance.now() - start);
+    if (!auditRecorded && auditParsed !== null) {
+      auditRecorded = true;
+      const durationMs = Math.max(0, Math.floor(performance.now() - start));
       ports.saveSyncAudit({
         direction: auditParsed,
         recordsAffected: 0,
@@ -335,20 +345,19 @@ export async function runSyncWithProgress(
         details: { device_id: auditDeviceId, direction: auditParsed.toLowerCase(), strategy: auditStrategy, with_progress: true, cancelled },
       });
     }
-    throw new CommandError(detail);
+    throw error instanceof CommandError ? error : new CommandError(detail);
   };
-  let parsed: FileSyncDirection, merge: MergeStrategy, config: RuntimeCloudStorageConfig;
+  let parsed: FileSyncDirection, merge: MergeStrategy, config: RuntimeCloudStorageConfig, deviceId: string;
   try {
     parsed = parseSyncDirection(direction); merge = parseSyncStrategy(strategy);
+    auditParsed = parsed;
     const loaded = cloudConfig ?? await ports.loadHydratedCloudConfig();
     if (loaded === null) throw new Error(notConfigured);
     config = loaded;
+    await syncGovernance(ctx).hydrateCloudConfig(config);
+    deviceId = await ctx.paths.deviceId();
+    auditDeviceId = deviceId;
   } catch (error) { return fail(error); }
-  await syncGovernance(ctx).hydrateCloudConfig(config);
-  const deviceId = await ctx.paths.deviceId();
-  auditParsed = parsed;
-  auditDeviceId = deviceId;
-  auditStarted = true;
   ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`, outcome: { kind: 'started' }, details: {
     device_id: deviceId, direction, strategy: auditStrategy,
     provider: { webdav: 'WebDav', s3: 'S3', ftp: 'Ftp' }[providerKey(config.provider ?? 'webdav')], root: config.root ?? null, with_progress: true,
@@ -420,8 +429,9 @@ export async function runSyncWithProgress(
     } catch (error) {
       const cancelled = ctx.syncProvider.isSyncCancelled();
       const detail = cancelled ? '同步已取消' : message(error);
-      const durationMs = Math.floor(performance.now() - start);
+      const durationMs = Math.max(0, Math.floor(performance.now() - start));
       await emitter.emitFailed(detail); logger.error(`[data_governance] 带进度同步失败: ${detail}`);
+      auditRecorded = true;
       ports.saveSyncAudit({ direction: parsed, recordsAffected: 0, target: `cloud_sync/${parsed.toLowerCase()}`,
         outcome: cancelled ? { kind: 'cancelled', error: detail, durationMs } : { kind: 'failed', error: detail, durationMs },
         details: { device_id: deviceId, direction: parsed.toLowerCase(), strategy: auditStrategy, with_progress: true, cancelled } });
@@ -438,12 +448,16 @@ export async function runSyncWithProgress(
       await emitter.emitPartial(result.error_message ?? '同步未完全成功：部分步骤失败或有变更被跳过，请检查同步详情。');
     }
     logger.info(`[data_governance] 带进度同步完成: direction=${result.direction.toLowerCase()}, uploaded=${result.changes_uploaded}, downloaded=${result.changes_downloaded}, conflicts=${result.conflicts_detected}, skipped=${skipped}, duration=${result.duration_ms}ms`);
+    auditRecorded = true;
     ports.saveSyncAudit({ direction: result.direction, recordsAffected: result.changes_uploaded + result.changes_downloaded,
       target: `cloud_sync/${result.direction.toLowerCase()}`,
       outcome: result.success ? { kind: 'complete', durationMs: result.duration_ms } : { kind: 'failed', error: result.error_message ?? 'sync failed', durationMs: result.duration_ms },
       details: { device_id: deviceId, direction: result.direction.toLowerCase(), strategy: auditStrategy, changes_uploaded: result.changes_uploaded,
         changes_downloaded: result.changes_downloaded, conflicts_detected: result.conflicts_detected, skipped_changes: skipped, quarantined: unresolvedQuarantine, with_progress: true } });
     return { ...result, direction: result.direction.toLowerCase(), device_id: deviceId, skipped_changes: skipped };
+  } catch (error) {
+    if (auditRecorded) throw error;
+    return await fail(error);
   } finally {
     signal?.removeEventListener('abort', cancel);
     if (hooks) { ctx.syncProvider.clearStatusHook(); ctx.syncProvider.clearCancelToken(); clearStatusSink(); clearSyncCancelSlot(controller); }

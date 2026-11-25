@@ -3,6 +3,7 @@
     "filterLabel": "筛选范围",
     "filters": {
       "all": "全部",
+      "safeModePaused": "安全模式已暂停",
       "mine": "我的",
       "builtin": "内置",
       "disabled": "已停用",
@@ -418,7 +419,16 @@
     "rowHint": "安全模式下社区插件不可启用",
     "exitButton": "退出安全模式并恢复正常启动",
     "enterButton": "安全模式排查",
-    "importDisabled": "安全模式下已停用导入和安装插件，请退出安全模式并正常启动后再试。"
+    "importDisabled": "安全模式下已停用导入和安装插件，请退出安全模式并正常启动后再试。",
+    "pausedSectionTitle": "安全模式已暂停社区插件",
+    "pausedSectionDescription": "共 {{count}} 个社区插件在安全模式下暂停加载，你的设置与已存数据保持不变；仍可在此停用、卸载故障插件或从本地文件导入 .dstuplugin 包。",
+    "pausedStatus": "安全模式已暂停",
+    "quarantinedStatus": "已隔离 · 安全模式暂停",
+    "importSafeModeHint": "安全模式下仍可从本地文件导入 .dstuplugin 插件包（导入后自动处于隔离暂停状态，不会执行代码）；远程链接安装已暂停。",
+    "switchingEnter": "正在切换至安全模式排查，正在隔离社区插件…",
+    "switchingEnterDetail": "即将以纯净官方环境重启，您的笔记与学习资料不会丢失，请稍候…",
+    "switchingExit": "正在退出安全模式并恢复正常启动…",
+    "switchingExitDetail": "正在重新加载已启用的插件，请稍候…"
   },
   "row": {
     "version": "版本",
@@ -515,7 +525,8 @@
       "title": "已安装 {{id}} v{{version}}",
       "upgrade": "已从 v{{previous}} 升级",
       "fresh": "新安装",
-      "diskOnly": "安装只写入磁盘；启用前仍需要权限同意，安装不等于正在运行。"
+      "diskOnly": "安装只写入磁盘；启用前仍需要权限同意，安装不等于正在运行。",
+      "safeModeQuarantined": "已安装并隔离（安全模式已暂停运行）：插件包已安全写入磁盘但不会加载执行，退出安全模式并正常启动后即可启用。"
     },
     "rolledBack": {
       "title": "安装失败，已回滚",
@@ -633,6 +644,8 @@
       "sending": "正在发送…"
     },
     "label": "插件工坊",
+    "quickBarAriaLabel": "插件工坊快捷栏",
+    "creationBadge": "插件工坊作品",
     "phase": {
       "blocked": "等待条件",
       "proposed": "等你确认",
@@ -666,6 +679,7 @@
       }
     },
     "actions": {
+      "refineWithAi": "✦ 让 AI 优化",
       "resumeVerification": "继续验收",
       "start": "开始做",
       "install": "安装",

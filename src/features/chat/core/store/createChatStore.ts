@@ -264,14 +264,20 @@ export function createBlockInternal(
         // 消息底部——分段渲染忠实按 blockIds 顺序，误排会导致工具块/思维链
         // 出现在正文之后（安装版 0.9.50 已复现该数据形态）。
         insertBlockOrdered(draft.blockIds);
-        if (draft.activeVariantId && draft.variants) {
-          const activeVariant = draft.variants.find((v) => v.id === draft.activeVariantId);
-          if (
+        if (draft.variants) {
+          const activeVariant = draft.activeVariantId
+            ? draft.variants.find((v) => v.id === draft.activeVariantId)
+            : undefined;
+          const targetVersionedVariant =
             activeVariant
             && activeVariant.meta?.versioned === true
             && (activeVariant.status === 'streaming' || activeVariant.status === 'pending')
-          ) {
-            insertBlockOrdered(activeVariant.blockIds);
+              ? activeVariant
+              : draft.variants.find(
+                  (v) => v.meta?.versioned === true && (v.status === 'streaming' || v.status === 'pending'),
+                );
+          if (targetVersionedVariant) {
+            insertBlockOrdered(targetVersionedVariant.blockIds);
           }
         }
       })(s);

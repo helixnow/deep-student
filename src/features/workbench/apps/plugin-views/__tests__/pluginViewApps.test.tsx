@@ -276,6 +276,68 @@ describe('plugin view apps (learning desktop)', () => {
       unregister();
     }
   });
+
+  it('S4-18: localizes the workshop refine button in en-US and zh-CN with symmetric plugin_manager locale keys', async () => {
+    const i18next = (await import('i18next')).default;
+    const { i18n: mockReactI18n } = await import('react-i18next');
+    const zhPluginManager = (await import('@/locales/zh-CN/plugin_manager.json')).default;
+    const enPluginManager = (await import('@/locales/en-US/plugin_manager.json')).default;
+
+    const collectKeys = (obj: Record<string, unknown>, prefix = ''): string[] =>
+      Object.keys(obj)
+        .sort()
+        .flatMap((key) => {
+          const full = prefix ? `${prefix}.${key}` : key;
+          const val = obj[key];
+          return val && typeof val === 'object' && !Array.isArray(val)
+            ? collectKeys(val as Record<string, unknown>, full)
+            : [full];
+        });
+    expect(collectKeys(zhPluginManager)).toEqual(collectKeys(enPluginManager));
+
+    const realI18n = i18next.createInstance();
+    await realI18n.init({
+      lng: 'en-US',
+      fallbackLng: 'zh-CN',
+      resources: {
+        'zh-CN': { plugin_manager: zhPluginManager },
+        'en-US': { plugin_manager: enPluginManager },
+      },
+      interpolation: { escapeValue: false },
+    });
+    expect(realI18n.t('plugin_manager:workshop.actions.refineWithAi', { lng: 'en-US' })).toBe('✦ Refine with AI');
+    expect(realI18n.t('plugin_manager:workshop.actions.refineWithAi', { lng: 'zh-CN' })).toBe('✦ 让 AI 优化');
+    expect(realI18n.t('plugin_manager:workshop.quickBarAriaLabel', { lng: 'en-US' })).toBe('Plugin Workshop quick bar');
+    expect(realI18n.t('plugin_manager:workshop.quickBarAriaLabel', { lng: 'zh-CN' })).toBe('插件工坊快捷栏');
+
+    const prevLang = mockReactI18n.language;
+    const unregister = registerPluginManagerWorkshop({
+      onCreate: vi.fn(),
+      onModify: vi.fn(),
+      creations: null,
+    });
+    try {
+      await kernel.install(recallPlugin);
+      mockReactI18n.language = 'en-US';
+      const { rerender } = render(
+        <UiKernelProvider kernel={kernel}>
+          <PluginViewAppWindow {...windowProps} viewKey={VIEW_KEY} kernel={kernel} />
+        </UiKernelProvider>,
+      );
+      expect(await screen.findByTestId('workshop-refine-with-ai')).toHaveTextContent('✦ Refine with AI');
+
+      mockReactI18n.language = 'zh-CN';
+      rerender(
+        <UiKernelProvider kernel={kernel}>
+          <PluginViewAppWindow {...windowProps} viewKey={VIEW_KEY} kernel={kernel} />
+        </UiKernelProvider>,
+      );
+      expect(await screen.findByTestId('workshop-refine-with-ai')).toHaveTextContent('✦ 让 AI 优化');
+    } finally {
+      mockReactI18n.language = prevLang || 'zh-CN';
+      unregister();
+    }
+  });
 });
 
 describe('OPEN_NOTES in the learning desktop', () => {

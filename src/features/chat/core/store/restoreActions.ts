@@ -454,6 +454,9 @@ function mergeExistingMessageReferences(
       mergedVariantById.set(backendVariant.id, {
         ...backendVariant,
         ...currentVariant,
+        ...(backendVariant.meta || currentVariant.meta
+          ? { meta: { ...backendVariant.meta, ...currentVariant.meta } }
+          : {}),
         blockIds: mergeAnchoredReferenceOrder(currentVariant.blockIds, filteredBackendBlockIds),
       });
     } else {
@@ -471,6 +474,7 @@ function mergeExistingMessageReferences(
   const variants = variantOrder
     .map((id) => mergedVariantById.get(id))
     .filter((variant): variant is NonNullable<(typeof currentVariants)[number]> => !!variant);
+  const activeVariantId = currentMessage.activeVariantId ?? backendMessage.activeVariantId;
 
   const variantsUnchanged =
     variants.length === currentVariants.length
@@ -482,10 +486,15 @@ function mergeExistingMessageReferences(
           && hasSameIdOrder(currentVariant.blockIds, variant.blockIds)
           && currentVariant.status === variant.status
           && currentVariant.error === variant.error
+          && Boolean(currentVariant.meta?.versioned) === Boolean(variant.meta?.versioned)
         );
     });
 
-  if (hasSameIdOrder(blockIds, currentMessage.blockIds) && variantsUnchanged) {
+  if (
+    hasSameIdOrder(blockIds, currentMessage.blockIds)
+    && variantsUnchanged
+    && activeVariantId === currentMessage.activeVariantId
+  ) {
     return currentMessage;
   }
 
@@ -493,6 +502,7 @@ function mergeExistingMessageReferences(
     ...currentMessage,
     blockIds,
     variants,
+    ...(activeVariantId !== undefined ? { activeVariantId } : {}),
   };
 }
 

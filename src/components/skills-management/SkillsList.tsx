@@ -26,6 +26,10 @@ import {
   setSkillDisabled,
   SKILL_ENABLED_CHANGED_EVENT,
 } from '@/features/chat/skills/skillEnableStorage';
+import {
+  resolveEffectiveTrustStatus,
+  SKILL_TRUST_CHANGED_EVENT,
+} from '@/features/chat/skills/skillTrustStorage';
 import { SkillPackageSummary } from './SkillPackageSummary';
 
 // ============================================================================
@@ -100,12 +104,16 @@ export const SkillsList: React.FC<SkillsListProps> = ({
   // 触屏无 hover:收藏星标/「启用」标签需常显
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
 
-  // 停用覆盖存在 localStorage，变更后靠 tick 强制重算 isSkillDisabled（仿 trustTick 模式）
+  // 停用/信任覆盖存在 localStorage，变更后靠 tick 强制重算 isSkillDisabled / resolveEffectiveTrustStatus
   const [, setEnableTick] = React.useState(0);
   React.useEffect(() => {
-    const handleEnabledChanged = () => setEnableTick((v) => v + 1);
-    window.addEventListener(SKILL_ENABLED_CHANGED_EVENT, handleEnabledChanged);
-    return () => window.removeEventListener(SKILL_ENABLED_CHANGED_EVENT, handleEnabledChanged);
+    const handleOverrideChanged = () => setEnableTick((v) => v + 1);
+    window.addEventListener(SKILL_ENABLED_CHANGED_EVENT, handleOverrideChanged);
+    window.addEventListener(SKILL_TRUST_CHANGED_EVENT, handleOverrideChanged);
+    return () => {
+      window.removeEventListener(SKILL_ENABLED_CHANGED_EVENT, handleOverrideChanged);
+      window.removeEventListener(SKILL_TRUST_CHANGED_EVENT, handleOverrideChanged);
+    };
   }, []);
 
   // 选中卡片时自动滚动到可视区域
@@ -164,9 +172,11 @@ export const SkillsList: React.FC<SkillsListProps> = ({
       {skills.map((skill) => {
         const isDefaultEnabled = defaultSkillIds.includes(skill.id);
         const isSelected = selectedSkillId === skill.id;
-        const isBuiltin = skill.isBuiltin === true;
+        const isBuiltin = skill.isBuiltin === true || skill.location === 'builtin';
         const isCustomized = skill.isCustomized === true;
         const isDisabledSkill = isSkillDisabled(skill.id);
+        const trustStatus = resolveEffectiveTrustStatus(skill);
+        const isUntrustedExternal = !isBuiltin && trustStatus === 'untrusted';
 
         // 当前卡片是否正在编辑（用于隐藏）
         const isEditing = editingSkillId === skill.id;
@@ -198,8 +208,8 @@ export const SkillsList: React.FC<SkillsListProps> = ({
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 onSelectSkill?.(skill);
-              } else if (e.key === 'e' || e.key === 'E') {
-                // 启用/停用快捷键：与卡片右下角开关同一存储写入（即时生效）
+              } else if ((e.key === 'e' || e.key === 'E') && !isUntrustedExternal) {
+                // 启用/停用快捷键：仅已信任或内置技能可直接切换启停
                 e.preventDefault();
                 setSkillDisabled(skill.id, !isDisabledSkill);
               } else if ((e.key === 'Delete' || e.key === 'Backspace') && !isBuiltin && !disabled) {
@@ -306,39 +316,42 @@ export const SkillsList: React.FC<SkillsListProps> = ({
 
               {/* 右下角操作按钮 */}
               <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                {/* 停用/启用开关（即时生效，无确认框） */}
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    '!h-auto !rounded-lg !px-2.5 !py-1 max-lg:!h-9 max-lg:!px-2.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5 text-xs font-medium',
-                    isDisabledSkill
-                      ? 'border-primary/35 bg-primary/10 text-primary hover:bg-primary/20'
-                      : 'border-border/60 bg-background/40 text-muted-foreground hover:text-foreground',
-                  )}
-                  onClick={() => setSkillDisabled(skill.id, !isDisabledSkill)}
-                  title={
-                    isDisabledSkill
+                {/* 停用/启用开关（仅已信任/内置技能显示；未信任外部技能统一由左侧「信任此技能」主按钮接管，避免同时出现「待信任（未注入）」与「停用」的矛盾双态） */}
+                {!isUntrustedExternal && (
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    data-testid={`skill-card-toggle-${skill.id}`}
+                    className={cn(
+                      '!h-auto !rounded-lg !px-2.5 !py-1 max-lg:!h-9 max-lg:!px-2.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!px-2.5 text-xs font-medium',
+                      isDisabledSkill
+                        ? 'border-primary/35 bg-primary/10 text-primary hover:bg-primary/20'
+                        : 'border-border/60 bg-background/40 text-muted-foreground hover:text-foreground',
+                    )}
+                    onClick={() => setSkillDisabled(skill.id, !isDisabledSkill)}
+                    title={
+                      isDisabledSkill
+                        ? t('skills:package.enable')
+                        : t('skills:package.disable')
+                    }
+                    aria-label={
+                      isDisabledSkill
+                        ? t('skills:package.enable')
+                        : t('skills:package.disable')
+                    }
+                  >
+                    {isDisabledSkill
                       ? t('skills:package.enable')
-                      : t('skills:package.disable')
-                  }
-                  aria-label={
-                    isDisabledSkill
-                      ? t('skills:package.enable')
-                      : t('skills:package.disable')
-                  }
-                >
-                  {isDisabledSkill
-                    ? t('skills:package.enable')
-                    : t('skills:package.disable')}
-                </DsButton>
+                      : t('skills:package.disable')}
+                  </DsButton>
+                )}
                 <DsButton variant="ghost" size="icon" iconOnly className="!h-9 !w-9 !p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground/70 hover:text-foreground" onClick={() => { const cardEl = cardRefs.current[skill.id]; const rect = cardEl?.getBoundingClientRect(); onEdit(skill, rect); }} title={t('common:actions.edit')} aria-label={t('common:actions.edit')}>
                   <Pencil size={15} />
                 </DsButton>
 
                 <AppMenu>
                   <AppMenuTrigger asChild>
-                    <DsButton variant="ghost" size="icon" iconOnly className="!h-9 !w-9 !p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground/70 hover:text-foreground" aria-label={t('common:more')}>
+                    <DsButton variant="ghost" size="icon" iconOnly data-testid={`skill-card-more-${skill.id}`} className="!h-9 !w-9 !p-1.5 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11 text-muted-foreground/70 hover:text-foreground" title={t('common:more')} aria-label={t('common:more')}>
                       <DotsThree size={16} />
                     </DsButton>
                   </AppMenuTrigger>
@@ -391,6 +404,8 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                         <AppMenuItem
                           icon={<Trash size={16} />}
                           destructive
+                          disabled={disabled}
+                          data-testid={`skill-card-delete-${skill.id}`}
                           onClick={() => onDelete(skill)}
                         >
                           {t('common:actions.delete')}

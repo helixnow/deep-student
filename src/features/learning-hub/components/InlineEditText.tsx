@@ -163,12 +163,12 @@ export const InlineEditText = React.memo(function InlineEditText({
     }
   }, [handleConfirm, handleCancel]);
 
-  // 失焦时确认（模拟点击外部确认；忽略菜单关闭瞬间抢焦点引发的早期空失焦）
+  // 失焦时确认（模拟点击外部确认；忽略右键菜单/工具栏按钮关闭瞬间抢焦点引发的早期未修改失焦）
   const handleBlur = useCallback(() => {
     requestAnimationFrame(() => {
       if (hasHandledRef.current) return;
       const elapsed = Date.now() - editStartedAtRef.current;
-      if (elapsed < 220 && editValue.trim() === '' && value === '') {
+      if (elapsed < 250 && editValue === value) {
         inputRef.current?.focus({ preventScroll: true });
         return;
       }

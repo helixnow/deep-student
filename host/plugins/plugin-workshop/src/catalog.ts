@@ -9,6 +9,10 @@ import { ServiceDocs } from './service-docs.ts';
 
 /** Kernel-owned services and the workshop itself: not something a plugin can use (see checkPluginModule). */
 const HIDDEN_SERVICES = new Set([...KERNEL_ONLY_SERVICES, 'pluginWorkshop']);
+/** Property names blocked on every `ctx.<service>` proxy in community plugin API v1 (`community-context.ts` INTERNALS). */
+const FORBIDDEN_COMMUNITY_SERVICE_MEMBERS = new Set([
+  'root', 'registry', 'fiber', 'runtime', 'scope', 'parent', 'ctx', 'store', 'props', '_getImpl', '_kernel', 'plugin', 'inject',
+]);
 
 export type ApiCategory = 'sdk' | 'services' | 'slots' | 'config' | 'theme' | 'examples' | 'resources';
 export interface ApiEntry { id: string; category: ApiCategory; summary: string; }
@@ -80,8 +84,26 @@ export class WorkshopCatalog {
       const name = id.slice('service:'.length);
       const provider = (await this.services()).get(name);
       const doc = provider ? await this.docs.read(name) : null;
-      if (provider && doc) return { id, content: { ...doc, provider,
-        use: { inject: [name], permission: `service:${name}`, call: `ctx.${name}.<member>(…)`, note: 'Signatures are read from the app api.ts types; validation never calls live methods.' } } };
+      if (provider && doc) {
+        const members = doc.members.filter(member => !FORBIDDEN_COMMUNITY_SERVICE_MEMBERS.has(member.name));
+        const filesWarning = name === 'files'
+          ? ' NEVER call ctx.files.scope (forbidden by community plugin API v1 with KERNEL_API_FORBIDDEN); for plugin state/storage use ctx.storage / ctx.settings on Host or usePluginStorage / window.localStorage on UI.'
+          : '';
+        return {
+          id,
+          content: {
+            ...doc,
+            members,
+            provider,
+            use: {
+              inject: [name],
+              permission: `service:${name}`,
+              call: `ctx.${name}.<member>(…)`,
+              note: `Signatures are read from the app api.ts types; validation never calls live methods.${filesWarning}`,
+            },
+          },
+        };
+      }
     }
     const plugin = this.plugins().find(item => id === `services:${item.meta.id}` || id === `config:${item.meta.id}`);
     if (plugin) {

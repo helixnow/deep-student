@@ -31,13 +31,14 @@ const Notice: React.FC<{ testId: string; children: React.ReactNode }> = ({ testI
 );
 
 const PluginViewBody: React.FC<{ viewKey: string }> = ({ viewKey }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation(['workbench', 'plugin_manager']);
   const entry = useSlotEntry('views', viewKey);
   const workshop = usePluginManagerWorkshop();
   if (!entry || entry.origin === 'builtin') {
     return <Notice testId="wb-plugin-view-missing">{t('workbench:pluginViewApp.unavailable')}</Notice>;
   }
   const canRefine = Boolean(entry.owner?.startsWith('workshop.plugin-') && workshop?.onModify);
+  const isEn = (i18n?.resolvedLanguage ?? i18n?.language ?? '').toLowerCase().startsWith('en');
   return (
     <div
       className="relative h-full w-full min-h-0 overflow-auto"
@@ -48,7 +49,9 @@ const PluginViewBody: React.FC<{ viewKey: string }> = ({ viewKey }) => {
     >
       {canRefine ? (
         <div
-          aria-label="插件工坊快捷栏"
+          aria-label={t('plugin_manager:workshop.quickBarAriaLabel', {
+            defaultValue: isEn ? 'Plugin Workshop quick bar' : '插件工坊快捷栏',
+          })}
           className="pointer-events-none sticky top-2 z-10 flex justify-end px-3"
         >
           <button
@@ -57,7 +60,9 @@ const PluginViewBody: React.FC<{ viewKey: string }> = ({ viewKey }) => {
             onClick={() => workshop?.onModify(entry.owner!)}
             className="pointer-events-auto inline-flex items-center gap-1 rounded-full border border-border/60 bg-background/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur-sm transition-colors hover:bg-muted"
           >
-            ✦ 让 AI 优化
+            {t('plugin_manager:workshop.actions.refineWithAi', {
+              defaultValue: isEn ? '✦ Refine with AI' : '✦ 让 AI 优化',
+            })}
           </button>
         </div>
       ) : null}

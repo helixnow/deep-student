@@ -17,6 +17,9 @@ import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ArrowClockwise,
+  ArrowsLeftRight,
+  CaretDown,
+  CaretRight,
   CheckCircle,
   CircleNotch,
   Warning,
@@ -34,6 +37,12 @@ import { getErrorMessage } from "@/utils/errorUtils";
 interface PendingTableBreakdown {
   table_name: string;
   count: number;
+  operations?: {
+    insert?: number;
+    update?: number;
+    delete?: number;
+  };
+  sample_record_ids?: string[];
 }
 
 interface PendingDatabaseBreakdown {
@@ -118,16 +127,25 @@ async function fetchUnsyncedItems(): Promise<UnsyncedItemsReport | null> {
 
 export const UnsyncedItemsPanel: React.FC<{
   refreshSignal?: string | number;
-}> = ({ refreshSignal }) => {
+  onRunSync?: () => void | boolean | Promise<void | boolean>;
+}> = ({ refreshSignal, onRunSync }) => {
   const { t } = useTranslation(["sync", "common", "data"]);
   const [report, setReport] = useState<UnsyncedItemsReport | null>(null);
   const [pendingBreakdown, setPendingBreakdown] =
     useState<PendingBreakdownResponse | null>(null);
+  const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>(
+    {},
+  );
   const [configMissing, setConfigMissing] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 并发防抖：只采纳最后一次请求的结果
   const requestSeq = useRef(0);
+
+  const toggleTableExpanded = useCallback((dbId: string, tableName: string) => {
+    const key = `${dbId}::${tableName}`;
+    setExpandedTables((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   const refresh = useCallback(async () => {
     const seq = ++requestSeq.current;
@@ -203,13 +221,18 @@ export const UnsyncedItemsPanel: React.FC<{
             data-testid="pending-upload-queue"
             className="rounded-xl border border-border/50 bg-background/60 p-3 space-y-2"
           >
-            <div className="flex items-center justify-between gap-2 text-sm font-medium text-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-medium text-foreground">
               <span className="tabular-nums">
                 {t("sync:unsynced.pendingUploadTitle", {
                   count: pendingTotal,
                   defaultValue: "待上传变更 ({{count}})",
                 })}
               </span>
+              {pendingTotal > 0 && (
+                <span className="text-[11px] font-normal text-muted-foreground">
+                  {t("sync:unsynced.tableDetailHint")}
+                </span>
+              )}
             </div>
             {pendingTotal === 0 ? (
               <div className="text-xs text-muted-foreground">
@@ -218,28 +241,129 @@ export const UnsyncedItemsPanel: React.FC<{
                 })}
               </div>
             ) : (
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 {pendingBreakdown.databases
                   .filter((db) => db.pending_changes > 0)
-                  .map((db) => (
-                    <div
-                      key={db.id}
-                      className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground"
-                    >
-                      <span className="font-medium text-foreground">
-                        {getDatabaseDisplayName(db.id, t)}:
-                      </span>
-                      <span className="tabular-nums">{db.pending_changes}</span>
-                      {db.tables.map((tbl) => (
-                        <span
-                          key={tbl.table_name}
-                          className="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]"
-                        >
-                          {tbl.table_name} ({tbl.count})
-                        </span>
-                      ))}
-                    </div>
-                  ))}
+                  .map((db) => {
+                    const dbDisplayName = getDatabaseDisplayName(db.id, t);
+                    const expandedList = db.tables.filter(
+                      (tbl) => expandedTables[`${db.id}::${tbl.table_name}`],
+                    );
+                    return (
+                      <div key={db.id} className="space-y-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground">
+                            {dbDisplayName}:
+                          </span>
+                          <span className="tabular-nums">{db.pending_changes}</span>
+                          {db.tables.map((tbl) => {
+                            const isExpanded = Boolean(
+                              expandedTables[`${db.id}::${tbl.table_name}`],
+                            );
+                            return (
+                              <button
+                                key={tbl.table_name}
+                                type="button"
+                                data-testid={`pending-table-toggle-${db.id}-${tbl.table_name}`}
+                                aria-expanded={isExpanded}
+                                onClick={() =>
+                                  toggleTableExpanded(db.id, tbl.table_name)
+                                }
+                                className="inline-flex cursor-pointer items-center gap-1 rounded border border-border/50 bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground transition-colors hover:border-primary/40 hover:bg-primary/10"
+                              >
+                                <span>
+                                  {tbl.table_name} ({tbl.count})
+                                </span>
+                                {isExpanded ? (
+                                  <CaretDown size={10} aria-hidden="true" />
+                                ) : (
+                                  <CaretRight size={10} aria-hidden="true" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {expandedList.map((tbl) => {
+                          const ops = tbl.operations;
+                          const hasOps = Boolean(
+                            ops &&
+                              (typeof ops.insert === "number" ||
+                                typeof ops.update === "number" ||
+                                typeof ops.delete === "number"),
+                          );
+                          return (
+                            <div
+                              key={`${db.id}::${tbl.table_name}::detail`}
+                              data-testid={`pending-table-detail-${db.id}-${tbl.table_name}`}
+                              className="rounded-lg border border-border/50 bg-muted/40 px-2.5 py-2 text-xs space-y-1.5"
+                            >
+                              <div className="font-medium text-foreground">
+                                {t("sync:unsynced.tablePendingSummary", {
+                                  table: tbl.table_name,
+                                  database: dbDisplayName,
+                                  count: tbl.count,
+                                })}
+                              </div>
+                              {hasOps && ops && (
+                                <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+                                  {typeof ops.insert === "number" && (
+                                    <span className="rounded bg-background/80 px-1.5 py-0.5">
+                                      {t("sync:unsynced.tableOpInsert", {
+                                        count: ops.insert,
+                                      })}
+                                    </span>
+                                  )}
+                                  {typeof ops.update === "number" && (
+                                    <span className="rounded bg-background/80 px-1.5 py-0.5">
+                                      {t("sync:unsynced.tableOpUpdate", {
+                                        count: ops.update,
+                                      })}
+                                    </span>
+                                  )}
+                                  {typeof ops.delete === "number" && (
+                                    <span className="rounded bg-background/80 px-1.5 py-0.5">
+                                      {t("sync:unsynced.tableOpDelete", {
+                                        count: ops.delete,
+                                      })}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              <p className="text-[11px] text-muted-foreground">
+                                {t("sync:unsynced.tableOperationHint")}
+                              </p>
+                              {tbl.sample_record_ids &&
+                                tbl.sample_record_ids.length > 0 && (
+                                  <div className="font-mono text-[11px] text-muted-foreground break-all">
+                                    {t("sync:unsynced.tableRecordsPreview", {
+                                      ids: tbl.sample_record_ids.join(", "),
+                                    })}
+                                  </div>
+                                )}
+                              {onRunSync && (
+                                <div className="pt-0.5">
+                                  <DsButton
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    data-testid={`pending-table-sync-now-${db.id}-${tbl.table_name}`}
+                                    onClick={() => void onRunSync()}
+                                    className="h-7 px-2.5 text-xs"
+                                  >
+                                    <ArrowsLeftRight
+                                      size={12}
+                                      className="mr-1"
+                                    />
+                                    {t("sync:syncNow")}
+                                  </DsButton>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
               </div>
             )}
           </div>

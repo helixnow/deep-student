@@ -17,6 +17,7 @@ import { generateId, showOperationLockNotification, OPERATION_LOCK_TIMEOUT_MS, I
 import { revokeAttachmentBlobUrls } from './attachmentBlobUtils';
 import { isStoreSubagentSession } from '../subagentSession';
 import { resetTransientRuntimes } from './transientRuntimeRegistry';
+import { debouncedSwitchVariantBackend } from './variantActions';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -1160,7 +1161,14 @@ export function createMessageActions(
                           status: (originalMessage._meta?.stoppedByUser ? 'cancelled' : 'success') as VariantStatus,
                           ...(originalMessage._meta?.usage ? { usage: originalMessage._meta.usage } : {}),
                           createdAt: originalMessage.timestamp,
-                          meta: { versioned: true },
+                          meta: {
+                            ...(originalMessage._meta?.executionSnapshot ? { executionSnapshot: originalMessage._meta.executionSnapshot } : {}),
+                            ...(originalMessage._meta?.skillSnapshotBefore ? { skillSnapshotBefore: originalMessage._meta.skillSnapshotBefore } : {}),
+                            ...(originalMessage._meta?.skillSnapshotAfter ? { skillSnapshotAfter: originalMessage._meta.skillSnapshotAfter } : {}),
+                            ...(originalMessage._meta?.skillRuntimeBefore ? { skillRuntimeBefore: originalMessage._meta.skillRuntimeBefore } : {}),
+                            ...(originalMessage._meta?.skillRuntimeAfter ? { skillRuntimeAfter: originalMessage._meta.skillRuntimeAfter } : {}),
+                            versioned: true,
+                          },
                         },
                       ];
                   const nextVariant = {
@@ -1207,6 +1215,7 @@ export function createMessageActions(
             const returnedMessageId = result.messageId;
 
             if (preserveVersion && optimisticPendingVariantId) {
+              let deferredSwitchVariantId: string | undefined;
               set((s) => {
                 const msg = s.messageMap.get(messageId);
                 if (!msg?.variants) return {};
@@ -1216,19 +1225,33 @@ export function createMessageActions(
                 newStreamingVariantIds.delete(optimisticPendingVariantId);
 
                 if (result.newVariantId) {
-                  newStreamingVariantIds.add(result.newVariantId);
+                  const pendingVariant = msg.variants.find((v) => v.id === optimisticPendingVariantId);
+                  const isStillStreaming =
+                    s.sessionStatus === 'streaming'
+                    && (!pendingVariant || pendingVariant.status === 'streaming' || pendingVariant.status === 'pending');
+                  if (isStillStreaming) {
+                    newStreamingVariantIds.add(result.newVariantId);
+                  }
                   const swappedVariants = msg.variants.map((v) =>
                     v.id === optimisticPendingVariantId
                       ? { ...v, id: result.newVariantId! }
                       : v,
                   );
+                  const nextActiveVariantId =
+                    msg.activeVariantId === optimisticPendingVariantId
+                      ? result.newVariantId
+                      : msg.activeVariantId;
+                  if (
+                    nextActiveVariantId
+                    && nextActiveVariantId !== result.newVariantId
+                    && !nextActiveVariantId.startsWith('var_pending_')
+                  ) {
+                    deferredSwitchVariantId = nextActiveVariantId;
+                  }
                   newMessageMap.set(messageId, {
                     ...msg,
                     variants: swappedVariants,
-                    activeVariantId:
-                      msg.activeVariantId === optimisticPendingVariantId
-                        ? result.newVariantId
-                        : msg.activeVariantId,
+                    activeVariantId: nextActiveVariantId,
                   });
                 } else if (!hadExistingVariants) {
                   // Legacy test/mock callback without newVariantId: clean destructive fallback
@@ -1248,6 +1271,24 @@ export function createMessageActions(
                   streamingVariantIds: newStreamingVariantIds,
                 };
               });
+
+              if (deferredSwitchVariantId) {
+                const latestAfterRetry = getState();
+                const switchCallback = (latestAfterRetry as ChatStoreState & ChatStore & {
+                  _switchVariantCallback?: ((messageId: string, variantId: string) => Promise<void>) | null
+                })._switchVariantCallback;
+                if (switchCallback) {
+                  const targetVarId = deferredSwitchVariantId;
+                  debouncedSwitchVariantBackend(
+                    latestAfterRetry.sessionId,
+                    messageId,
+                    targetVarId,
+                    async () => {
+                      await switchCallback(messageId, targetVarId);
+                    },
+                  );
+                }
+              }
             }
             
             // 验证返回的 ID 与原消息 ID 一致

@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as tauriCore from '@tauri-apps/api/core';
+import { dstu, type DstuNode } from '@/dstu';
+import { sessionManager } from '@/features/chat';
 import {
   applyStudyFlowStagePreset,
   getStagePresetState,
@@ -244,5 +247,110 @@ describe('applyStudyFlowStagePreset', () => {
     expect(restored.windows[chatId].frame).toEqual(chatFrame);
     expect(restored.windows[chatId].restoreFrame).toBeNull();
     expect(getStagePresetState().activeStagePreset).toBe('freeform-desktop');
+  });
+
+  it('S4-11: hydrates recent reader/mindmap, note/chat session, and exam/mistake-note/chat across the 3 study presets when materials exist', async () => {
+    const textbookNode: DstuNode = {
+      id: 'tb_linear_1',
+      sourceId: 'tb_linear_1',
+      path: '/tb_linear_1',
+      name: '线性代数教材.pdf',
+      type: 'textbook',
+      createdAt: 100,
+      updatedAt: 500,
+    };
+    const mindmapNode: DstuNode = {
+      id: 'mm_linear_1',
+      sourceId: 'mm_linear_1',
+      path: '/mm_linear_1',
+      name: '特征值知识导图',
+      type: 'mindmap',
+      createdAt: 100,
+      updatedAt: 600,
+    };
+    const mistakeNoteNode: DstuNode = {
+      id: 'note_mistake_1',
+      sourceId: 'note_mistake_1',
+      path: '/note_mistake_1',
+      name: '高数错题订正总结',
+      type: 'note',
+      createdAt: 100,
+      updatedAt: 550,
+    };
+    const examNode: DstuNode = {
+      id: 'exam_midterm_1',
+      sourceId: 'exam_midterm_1',
+      path: '/exam_midterm_1',
+      name: '期中模拟卷',
+      type: 'exam',
+      createdAt: 100,
+      updatedAt: 700,
+    };
+
+    vi.spyOn(dstu, 'list').mockImplementation((async (_path, opts) => {
+      switch (opts?.typeFilter) {
+        case 'textbook':
+          return { ok: true, value: [textbookNode] };
+        case 'mindmap':
+          return { ok: true, value: [mindmapNode] };
+        case 'note':
+          return { ok: true, value: [mistakeNoteNode] };
+        case 'exam':
+          return { ok: true, value: [examNode] };
+        default:
+          return { ok: true, value: [] };
+      }
+    }) as typeof dstu.list);
+    vi.spyOn(sessionManager, 'getCurrentSessionId').mockReturnValue('sess_study_active');
+    vi.spyOn(tauriCore, 'invoke').mockImplementation(async (cmd: string) => {
+      if (cmd === 'get_due_review_items') {
+        return [{ plan: { exam_id: 'exam_midterm_1' } }];
+      }
+      return [];
+    });
+
+    // 1. 精读导图 -> binds recent textbook reader + recent mindmap
+    const readRes = await applyStudyFlowStagePreset('deep-reading-map');
+    let state = useWindowStore.getState();
+    expect(state.windows[readRes.leftWindowId!].typeId).toBe('file-preview');
+    expect(state.windows[readRes.leftWindowId!].instanceKey).toBe('tb_linear_1');
+    expect(state.windows[readRes.rightWindowId!].typeId).toBe('notes');
+    expect(state.launchPayloads[readRes.rightWindowId!]).toEqual({
+      resourceType: 'mindmap',
+      resourceId: 'mm_linear_1',
+      title: '特征值知识导图',
+    });
+
+    // 2. 笔记共创 (clean desktop) -> binds recent note + recent active chat session
+    resetWindowStoreForTests({ w: 1600, h: 900 });
+    const cocreateRes = await applyStudyFlowStagePreset('note-cocreation');
+    state = useWindowStore.getState();
+    expect(state.windows[cocreateRes.leftWindowId!].typeId).toBe('notes');
+    expect(state.launchPayloads[cocreateRes.leftWindowId!]).toEqual({
+      resourceType: 'note',
+      resourceId: 'note_mistake_1',
+      title: '高数错题订正总结',
+    });
+    expect(state.windows[cocreateRes.rightWindowId!].typeId).toBe('chat');
+    expect(state.windows[cocreateRes.rightWindowId!].instanceKey).toBe('sess_study_active');
+
+    // 3. 刷题订正 (clean desktop) -> binds recent exam (review_first) + mistake note + active chat
+    resetWindowStoreForTests({ w: 1600, h: 900 });
+    const practiceRes = await applyStudyFlowStagePreset('practice-correction');
+    state = useWindowStore.getState();
+    expect(state.windows[practiceRes.leftWindowId!].typeId).toBe('exam');
+    expect(state.launchPayloads[practiceRes.leftWindowId!]).toEqual({
+      resourceId: 'exam_midterm_1',
+      practiceMode: 'review_first',
+      title: '期中模拟卷',
+    });
+    expect(state.windows[practiceRes.rightWindowId!].typeId).toBe('notes');
+    expect(state.launchPayloads[practiceRes.rightWindowId!]).toEqual({
+      resourceType: 'note',
+      resourceId: 'note_mistake_1',
+      title: '高数错题订正总结',
+    });
+    expect(state.windows[practiceRes.sidecarWindowId!].typeId).toBe('chat');
+    expect(state.windows[practiceRes.sidecarWindowId!].instanceKey).toBe('sess_study_active');
   });
 });

@@ -57,7 +57,17 @@ import { announceWorkbench } from './useWorkbenchA11y';
 import { toggleShowDesktop } from './showDesktop';
 import { computeTiledFrame, DEFAULT_TILE_MARGIN } from '../core/tiling';
 import type { DisplayMode, Frame } from '../core/types';
-import { closeAppsPanel } from '../components/appsPanelStore';
+import {
+  closeAppsPanel,
+  openAppsPanel,
+  toggleAppsPanel,
+} from '../components/appsPanelStore';
+import {
+  shortcutManager,
+  WORKBENCH_OPEN_APPS_PANEL_EVENT,
+  WORKBENCH_TOGGLE_APPS_PANEL_EVENT,
+  type GlobalPaletteHandledKeyboardEvent,
+} from '@/command-palette';
 
 export interface UseWorkbenchShortcutsOptions {
   /** workbench 桌面是否激活；false 时不监听任何按键 */
@@ -474,6 +484,32 @@ export function useWorkbenchShortcuts(options?: UseWorkbenchShortcutsOptions): v
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
+      const paletteEvent = e as GlobalPaletteHandledKeyboardEvent;
+      if (
+        !e.defaultPrevented &&
+        !paletteEvent.__dsCommandPaletteHandled &&
+        !shortcutManager.isRecording() &&
+        (e.metaKey || e.ctrlKey) &&
+        !e.altKey &&
+        !e.shiftKey &&
+        (e.key.toLowerCase() === 'k' || e.code === 'KeyK') &&
+        !shortcutManager.hasCustomShortcut('global.command-palette')
+      ) {
+        const target = e.target;
+        const isInRichEditor =
+          target instanceof Element &&
+          Boolean(
+            target.closest('.milkdown, .ProseMirror, .crepe-editor-wrapper, [data-rich-editor]'),
+          );
+        if (!isInRichEditor) {
+          cancelHold();
+          paletteEvent.__dsCommandPaletteHandled = true;
+          e.preventDefault();
+          toggleAppsPanel();
+          return;
+        }
+      }
+
       const isModifierKey =
         e.key === 'Control' || e.key === 'Alt' || (isMac && e.key === 'Meta');
 
@@ -580,15 +616,22 @@ export function useWorkbenchShortcuts(options?: UseWorkbenchShortcutsOptions): v
       );
     };
 
+    const onOpenAppsPanel = () => openAppsPanel();
+    const onToggleAppsPanel = () => toggleAppsPanel();
+
     window.addEventListener('keydown', onKeyDown, true);
     window.addEventListener('keyup', onKeyUp, true);
     window.addEventListener('blur', onBlur);
     window.addEventListener(MENU_CLOSE_WINDOW_EVENT, onMenuCloseWindow);
+    window.addEventListener(WORKBENCH_OPEN_APPS_PANEL_EVENT, onOpenAppsPanel);
+    window.addEventListener(WORKBENCH_TOGGLE_APPS_PANEL_EVENT, onToggleAppsPanel);
     return () => {
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('keyup', onKeyUp, true);
       window.removeEventListener('blur', onBlur);
       window.removeEventListener(MENU_CLOSE_WINDOW_EVENT, onMenuCloseWindow);
+      window.removeEventListener(WORKBENCH_OPEN_APPS_PANEL_EVENT, onOpenAppsPanel);
+      window.removeEventListener(WORKBENCH_TOGGLE_APPS_PANEL_EVENT, onToggleAppsPanel);
       cancelHold();
       useWorkbenchOverlay.getState().closeSwitcher();
       useWorkbenchOverlay.getState().closeCheatsheet();

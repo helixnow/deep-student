@@ -344,15 +344,61 @@ describe('PluginManagerPanel', () => {
     await userEvent.click(officialButton.closest('details')!.querySelector('summary')!);
     expect(screen.getByRole('switch', { name: '停用 dstu.ui.chat' })).toBeEnabled();
     expect(screen.getByTestId('plugin-exit-safe-mode')).toHaveTextContent('退出安全模式并恢复正常启动');
-    expect(screen.getByTestId('plugin-import')).toBeDisabled();
+    expect(screen.getByTestId('plugin-safe-mode-paused-section')).toHaveTextContent('安全模式已暂停社区插件');
+    expect(screen.getByTestId('plugin-import')).toBeEnabled();
     expect(screen.getByTestId('plugin-import-url')).toBeDisabled();
-    expect(screen.getByTestId('plugin-import-disabled-reason')).toBeInTheDocument();
+    expect(screen.getByTestId('plugin-import-disabled-reason')).toHaveTextContent('.dstuplugin');
     const dialog = await openDetails('community.exporter');
     const community = within(dialog).getByTestId('plugin-detail');
     expect(within(community).getByTestId('plugin-safe-mode-hint')).toBeInTheDocument();
     expect(within(community).getAllByTestId('plugin-summary-state')).toHaveLength(1);
-    expect(within(community).getByTestId('plugin-summary-state')).toHaveTextContent('已停用');
+    expect(within(community).getByTestId('plugin-summary-state')).toHaveTextContent('已隔离 · 安全模式暂停');
     expect(within(dialog).queryByText('已停用 · 未运行')).toBeNull();
+  });
+
+  it('S4-08 & S4-16: supports filtering paused community plugins and importing .dstuplugin packages in Safe Mode with quarantined status', async () => {
+    const uiStatus = new FakePluginUiHostStatus(['dstu.ui.chat']);
+    uiStatus.setSafeMode(true);
+    const { adapter, user } = setup(
+      [
+        managedPlugin({ id: 'dstu.ui.chat', origin: 'builtin' }),
+        managedPlugin({ id: 'community.active-before', origin: 'community', enabled: true, runtime: 'stopped' }),
+      ],
+      { uiStatus },
+    );
+
+    const activeCard = (await screen.findByText('community.active-before')).closest('[data-testid="plugin-card"]') as HTMLElement;
+    expect(within(activeCard).getByTestId('plugin-summary-state')).toHaveTextContent('安全模式已暂停');
+
+    await user.click(screen.getByRole('radio', { name: '安全模式已暂停' }));
+    expect(screen.getByTestId('plugin-section-mine')).toBeInTheDocument();
+    expect(screen.queryByTestId('plugin-section-builtin')).toBeNull();
+
+    adapter.packageResult = {
+      status: 'installed',
+      id: 'community.imported-in-safe-mode',
+      version: '1.2.0',
+      consentRequired: {
+        id: 'community.imported-in-safe-mode',
+        version: '1.2.0',
+        permissions: [],
+      },
+    };
+    adapter.plugins = [
+      managedPlugin({ id: 'dstu.ui.chat', origin: 'builtin' }),
+      managedPlugin({ id: 'community.active-before', origin: 'community', enabled: true, runtime: 'stopped' }),
+      managedPlugin({ id: 'community.imported-in-safe-mode', origin: 'community', version: '1.2.0', enabled: false, runtime: 'stopped' }),
+    ];
+
+    await user.click(screen.getByTestId('plugin-safe-mode-import-shortcut'));
+
+    const feedback = await screen.findByTestId('plugin-install-feedback');
+    expect(feedback).toHaveAttribute('data-status', 'installed');
+    expect(within(feedback).getByTestId('plugin-install-safe-mode-quarantined')).toHaveTextContent('安全模式已暂停运行');
+    expect(screen.queryByTestId('plugin-consent-id')).toBeNull();
+
+    const importedCard = (await screen.findByText('community.imported-in-safe-mode')).closest('[data-testid="plugin-card"]') as HTMLElement;
+    expect(within(importedCard).getByTestId('plugin-summary-state')).toHaveTextContent('已隔离 · 安全模式暂停');
   });
 
   it('follows safe-mode changes pushed by the UI kernel', async () => {

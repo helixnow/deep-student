@@ -101,6 +101,215 @@ export interface WorkshopBuild {
 export const sealedHostGlobals = ['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource', 'process', 'require', 'module',
   'globalThis', 'global', 'eval', 'Function', 'WebAssembly', 'Worker', 'Deno', 'Bun'] as const;
 const SEALED_MARK = '__dstu_sealed_global_';
+function stripComments(code: string): string {
+  let out = '';
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i]!;
+    const next = code[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < code.length && code[i] !== '\n') {
+        out += ' ';
+        i++;
+      }
+      if (i < code.length) out += '\n';
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      out += '  ';
+      i += 2;
+      while (i < code.length && !(code[i] === '*' && code[i + 1] === '/')) {
+        out += code[i] === '\n' ? '\n' : ' ';
+        i++;
+      }
+      if (i < code.length) {
+        out += '  ';
+        i++;
+      }
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      const quote = ch;
+      out += quote;
+      i++;
+      while (i < code.length && code[i] !== quote) {
+        if (code[i] === '\\') {
+          out += '  ';
+          i += 2;
+          continue;
+        }
+        out += code[i] === '\n' ? '\n' : code[i]!;
+        i++;
+      }
+      if (i < code.length) out += quote;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+function stripCommentsAndStrings(code: string): string {
+  let out = '';
+  const walkTemplateExpr = (start: number): number => {
+    let depth = 1;
+    let i = start;
+    while (i < code.length && depth > 0) {
+      const ch = code[i]!;
+      const next = code[i + 1];
+      if (ch === '/' && next === '/') {
+        while (i < code.length && code[i] !== '\n') { out += ' '; i++; }
+        if (i < code.length) { out += '\n'; i++; }
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        out += '  '; i += 2;
+        while (i < code.length && !(code[i] === '*' && code[i + 1] === '/')) {
+          out += code[i] === '\n' ? '\n' : ' ';
+          i++;
+        }
+        if (i < code.length) { out += '  '; i += 2; }
+        continue;
+      }
+      if (ch === "'" || ch === '"') {
+        const quote = ch; out += '""'; i++;
+        while (i < code.length && code[i] !== quote) {
+          if (code[i] === '\\') { i += 2; continue; }
+          if (code[i] === '\n') out += '\n';
+          i++;
+        }
+        if (i < code.length) i++;
+        continue;
+      }
+      if (ch === '`') {
+        i = walkTemplate(i + 1);
+        continue;
+      }
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) { out += ' '; return i + 1; }
+      }
+      out += ch;
+      i++;
+    }
+    return i;
+  };
+  const walkTemplate = (start: number): number => {
+    out += '""';
+    let i = start;
+    while (i < code.length) {
+      if (code[i] === '\\') { i += 2; continue; }
+      if (code[i] === '`') return i + 1;
+      if (code[i] === '$' && code[i + 1] === '{') {
+        out += ';';
+        i = walkTemplateExpr(i + 2);
+        continue;
+      }
+      if (code[i] === '\n') out += '\n';
+      i++;
+    }
+    return i;
+  };
+
+  let i = 0;
+  while (i < code.length) {
+    const ch = code[i]!;
+    const next = code[i + 1];
+    if (ch === '/' && next === '/') {
+      while (i < code.length && code[i] !== '\n') { out += ' '; i++; }
+      if (i < code.length) { out += '\n'; i++; }
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      out += '  '; i += 2;
+      while (i < code.length && !(code[i] === '*' && code[i + 1] === '/')) {
+        out += code[i] === '\n' ? '\n' : ' ';
+        i++;
+      }
+      if (i < code.length) { out += '  '; i += 2; }
+      continue;
+    }
+    if (ch === "'" || ch === '"') {
+      const quote = ch; out += '""'; i++;
+      while (i < code.length && code[i] !== quote) {
+        if (code[i] === '\\') { i += 2; continue; }
+        if (code[i] === '\n') out += '\n';
+        i++;
+      }
+      if (i < code.length) i++;
+      continue;
+    }
+    if (ch === '`') {
+      i = walkTemplate(i + 1);
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
+}
+
+const DOT_CHAIN = '(?:\\?\\s*\\.|\\.)';
+const CTX_FILES_SCOPE_RE = new RegExp(`\\bctx\\s*${DOT_CHAIN}\\s*files\\s*${DOT_CHAIN}\\s*scope\\b`);
+const CTX_GET_FILES_SCOPE_RE = new RegExp(
+  `\\bctx(?:\\s*${DOT_CHAIN}\\s*reflect)?\\s*${DOT_CHAIN}\\s*get\\s*\\(\\s*['"\`]files['"\`]\\s*(?:,[^)]*)?\\)\\s*${DOT_CHAIN}\\s*scope\\b`,
+);
+const CTX_SCOPE_RE = new RegExp(`\\bctx\\s*${DOT_CHAIN}\\s*scope\\b`);
+
+/**
+ * Static check for community plugin API v1 forbidden context/service properties (such as `ctx.files.scope`)
+ * that would otherwise hide inside lazy tool/remote handlers and only throw `KERNEL_API_FORBIDDEN` after installation.
+ */
+export function forbiddenCommunityApiProblems(code: string): string[] {
+  const withoutComments = stripComments(code);
+  const stripped = stripCommentsAndStrings(code);
+  const problems = new Set<string>();
+
+  let usesFilesScope =
+    CTX_FILES_SCOPE_RE.test(stripped) || CTX_GET_FILES_SCOPE_RE.test(withoutComments);
+
+  if (!usesFilesScope) {
+    const filesAliases = new Set<string>();
+    for (const match of stripped.matchAll(
+      new RegExp(`\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*ctx\\s*${DOT_CHAIN}\\s*files\\b`, 'g'),
+    )) {
+      if (match[1]) filesAliases.add(match[1]);
+    }
+    for (const match of withoutComments.matchAll(
+      new RegExp(
+        `\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*ctx(?:\\s*${DOT_CHAIN}\\s*reflect)?\\s*${DOT_CHAIN}\\s*get\\s*\\(\\s*['"\`]files['"\`]`,
+        'g',
+      ),
+    )) {
+      if (match[1]) filesAliases.add(match[1]);
+    }
+    for (const match of stripped.matchAll(/\b(?:const|let|var)\s*\{([^}]*)\}\s*=\s*ctx\b/g)) {
+      const bindings = match[1] ?? '';
+      const aliased = /\bfiles\s*:\s*([A-Za-z_$][\w$]*)/.exec(bindings);
+      if (aliased?.[1]) filesAliases.add(aliased[1]);
+      else if (/\bfiles\b/.test(bindings)) filesAliases.add('files');
+    }
+    for (const alias of filesAliases) {
+      const escaped = alias.replace(/[$]/g, '\\$');
+      if (new RegExp(`\\b${escaped}\\s*${DOT_CHAIN}\\s*scope\\b`).test(stripped)) {
+        usesFilesScope = true;
+        break;
+      }
+    }
+  }
+
+  if (usesFilesScope) {
+    problems.add(
+      'KERNEL_API_FORBIDDEN: ctx.files.scope is not available to community plugins in plugin API v1; ' +
+      'use allowed plugin storage APIs instead (ctx.storage / ctx.settings on Host, or usePluginStorage / usePluginStore / window.localStorage on UI)',
+    );
+  }
+  if (CTX_SCOPE_RE.test(stripped)) {
+    problems.add('KERNEL_API_FORBIDDEN: ctx.scope is not available to community plugins in plugin API v1');
+  }
+  return [...problems];
+}
+
 function sealedGlobalProblems(code: string): string[] {
   const used = new Set<string>();
   for (const match of code.matchAll(new RegExp(`${SEALED_MARK}([A-Za-z]+)`, 'g'))) used.add(match[1]!);
@@ -134,6 +343,11 @@ export async function compileWorkshop(
     const files = await sourceFiles(source);
     // The built-in compiler owns its configuration; never discover/extend model-supplied tsconfig files.
     if (files.some(file => /^tsconfig(?:\..*)?\.json$/.test(file))) throw new Error('WORKSHOP_INVALID: custom tsconfig files are not supported by the built-in compiler');
+    for (const rel of files) {
+      if (!/\.(?:[cm]?[jt]sx?)$/i.test(rel)) continue;
+      const sourceProblems = forbiddenCommunityApiProblems(await readFile(managedRelative(source, rel), 'utf8'));
+      if (sourceProblems.length) throw new Error(sourceProblems.join('\n'));
+    }
     const pkg = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'));
     if (pkg && typeof pkg === 'object' && !Array.isArray(pkg) && pkg.deepStudent && typeof pkg.deepStudent === 'object' && !Array.isArray(pkg.deepStudent)) {
       if ((typeof pkg.deepStudent.displayName !== 'string' || !pkg.deepStudent.displayName.trim()) && defaults?.displayName?.trim()) {
@@ -161,8 +375,11 @@ export async function compileWorkshop(
         bundle: true, format: 'esm', platform: 'node', target: 'node24', packages: 'external', logLevel: 'silent',
         ...(sealed ? { define: Object.fromEntries(sealedHostGlobals.map(name => [name, `${SEALED_MARK}${name}`])) } : {}),
         tsconfigRaw: {}, plugins: [await sourceBoundary(source, false, sealed)] });
+      const builtHostCode = await readFile(join(directory, 'dist/host.js'), 'utf8');
+      const hostApiProblems = forbiddenCommunityApiProblems(builtHostCode);
+      if (hostApiProblems.length) throw new Error(hostApiProblems.join('\n'));
       if (sealed) {
-        const problems = sealedGlobalProblems(await readFile(join(directory, 'dist/host.js'), 'utf8'));
+        const problems = sealedGlobalProblems(builtHostCode);
         if (problems.length) throw new Error(problems.join('\n'));
       }
       pkg.deepStudent.host = './dist/host.js';
@@ -172,6 +389,9 @@ export async function compileWorkshop(
         bundle: true, format: 'esm', platform: 'browser', target: 'es2022', external: [...uiExternals],
         jsx: 'transform', jsxFactory: 'React.createElement', jsxFragment: 'React.Fragment', logLevel: 'silent',
         tsconfigRaw: {}, plugins: [await sourceBoundary(source, true)] });
+      const builtUiCode = await readFile(join(directory, 'dist/ui.js'), 'utf8');
+      const uiApiProblems = forbiddenCommunityApiProblems(builtUiCode);
+      if (uiApiProblems.length) throw new Error(uiApiProblems.join('\n'));
       pkg.deepStudent.ui = './dist/ui.js';
     }
     if (manifest.declarative) {
@@ -318,6 +538,11 @@ export async function checkWorkshopLifecycle(result: WorkshopBuild, app: AppInfo
     if (manifest.ui) { try { uiBundle = await readFile(managedRelative(directory, manifest.ui), 'utf8'); } catch { uiBundle = undefined; } }
     // The card's lines: the manifest and inject list, plus what the built code itself uses (information only).
     const hostBundle = manifest.host ? await readFile(managedRelative(directory, manifest.host), 'utf8') : undefined;
+    for (const bundle of [hostBundle, uiBundle]) {
+      if (!bundle) continue;
+      const apiProblems = forbiddenCommunityApiProblems(bundle);
+      if (apiProblems.length) throw new Error(apiProblems.join('\n'));
+    }
     result.declared = declaredCapabilities(manifest, names, detectUse({ host: hostBundle, ui: uiBundle }, names));
     result.places = detectPlaces(manifest, uiBundle);
     check.lifecycle = 'passed';

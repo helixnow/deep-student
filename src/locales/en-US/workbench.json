@@ -343,6 +343,7 @@
     "noWindows": "No windows",
     "running": "Running",
     "apps": "All Apps",
+    "collapse": "Collapse Dock",
     "showAllWindows": "Show All Windows",
     "autohideHint": "Dock is auto-hidden — move pointer to the bottom edge or click here to reveal"
   },
@@ -407,6 +408,7 @@
     "sectionCommands": "Commands",
     "sectionResources": "Resources",
     "sectionChat": "Chats",
+    "untitledChat": "Untitled Session",
     "searching": "Searching…",
     "resultCount": "{{count}} results",
     "resultCount_one": "{{count}} result",

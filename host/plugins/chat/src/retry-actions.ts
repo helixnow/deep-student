@@ -153,7 +153,7 @@ function cancelDispatchedWorkers(deps: RetryCommandDeps, sessionId: string, ids:
 
 /** `chat_v2_retry_message` (send_message.rs:919-1240). */
 export async function retryMessageAction(deps: RetryCommandDeps, sessionId: string, messageId: string,
-  options: SendOptions | null, window: WindowRef): Promise<RetryMessageResult> {
+  options: (SendOptions & { preserveVariant?: boolean | null }) | null, window: WindowRef): Promise<RetryMessageResult> {
   const { database, state, log } = deps;
   log.info(`[ChatV2::handlers] chat_v2_retry_message: session_id=${sessionId}, message_id=${messageId}`);
   ensureSessionWritable(databaseOperation(() => database.getConnSafe()), sessionId);

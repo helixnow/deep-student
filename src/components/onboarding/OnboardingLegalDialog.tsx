@@ -4,14 +4,22 @@
  * 使用标签页（《用户协议》《隐私政策》《内容使用规范》）在固定可滚动视图中直接渲染完整正文，
  * 避免折叠区块在点击标题时收起正文导致空白。
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { Z_INDEX } from '@/config/zIndex';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
+import {
+  USER_AGREEMENT_ACCEPTED_KEY,
+  USER_AGREEMENT_VERSION,
+  persistLegalConsentRecord,
+  readLegalConsentRecord,
+  type LegalConsentRecord,
+} from '@/components/legal/UserAgreementDialog';
 
 export type OnboardingLegalTab = 'terms' | 'privacy' | 'safety';
 
@@ -19,20 +27,24 @@ export interface OnboardingLegalDialogProps {
   open: boolean;
   initialTab: OnboardingLegalTab;
   onClose: () => void;
+  onAccept?: (record: LegalConsentRecord) => void;
 }
 
 export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
   open,
   initialTab,
   onClose,
+  onAccept,
 }) => {
   const { t } = useTranslation('common');
   const [activeTab, setActiveTab] = useState<OnboardingLegalTab>(initialTab);
+  const [consentChecked, setConsentChecked] = useState<boolean>(() => readLegalConsentRecord() !== null);
   const panelRef = useFocusTrap<HTMLDivElement>(open);
 
   useEffect(() => {
     if (open) {
       setActiveTab(initialTab);
+      setConsentChecked(readLegalConsentRecord() !== null);
     }
   }, [initialTab, open]);
 
@@ -263,17 +275,50 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
           )}
         </div>
 
-        {/* 底部关闭栏 */}
-        <div className="flex-shrink-0 border-t border-border/40 px-4 py-3.5 sm:px-6">
-          <DsButton
-            variant="default"
-            size="lg"
-            data-testid="onboarding-legal-close"
-            className="w-full justify-center text-[13px] font-medium [@media(pointer:coarse)]:!min-h-11"
-            onClick={onClose}
-          >
-            {closeLabel}
-          </DsButton>
+        {/* 底部显式同意勾选 + 操作栏 */}
+        <div className="flex-shrink-0 space-y-3 border-t border-border/40 px-4 py-3.5 sm:px-6">
+          <label className="flex cursor-pointer items-start gap-2.5 select-none text-[12px] leading-relaxed text-foreground/80">
+            <input
+              type="checkbox"
+              data-testid="onboarding-legal-consent-checkbox"
+              checked={consentChecked}
+              onChange={(event) => setConsentChecked(event.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-border accent-primary"
+            />
+            <span>{t('legal.userAgreement.explicitConsentLabel')}</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <DsButton
+              variant="default"
+              size="lg"
+              data-testid="onboarding-legal-close"
+              className="flex-1 justify-center text-[13px] font-medium [@media(pointer:coarse)]:!min-h-11"
+              onClick={onClose}
+            >
+              {closeLabel}
+            </DsButton>
+            <DsButton
+              variant="primary"
+              size="lg"
+              data-testid="onboarding-legal-agree-continue"
+              disabled={!consentChecked}
+              className="flex-1 justify-center !border-primary !bg-primary !text-primary-foreground hover:!bg-primary/90 hover:!text-primary-foreground disabled:!opacity-50 text-[13px] font-medium [@media(pointer:coarse)]:!min-h-11"
+              onClick={() => {
+                if (!consentChecked) return;
+                const record = persistLegalConsentRecord();
+                void Promise.resolve(
+                  invoke('save_setting', {
+                    key: USER_AGREEMENT_ACCEPTED_KEY,
+                    value: USER_AGREEMENT_VERSION,
+                  }),
+                ).catch(() => {});
+                onAccept?.(record);
+                onClose();
+              }}
+            >
+              {t('legal.userAgreement.agreeAndContinueCta')}
+            </DsButton>
+          </div>
         </div>
       </div>
     </div>

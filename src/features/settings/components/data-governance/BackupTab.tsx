@@ -591,7 +591,10 @@ export const BackupTab: React.FC<BackupTabProps> = ({
 
       {/* 备份进度显示 */}
       {isBackupRunning && backupProgress && (
-        <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+        <div
+          data-testid="active-backup-progress-panel"
+          className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3"
+        >
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <CircleNotch size={16} className="animate-spin text-primary" />
@@ -1270,50 +1273,94 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       </section>
 
       {/* 确认对话框 */}
-      <DsAlertDialog
-        open={selectedBackup !== null && actionType !== null}
-        onOpenChange={() => {
-          setSelectedBackup(null);
-          setActionType(null);
-        }}
-        title={
-          actionType === 'delete'
-            ? t('data:governance.confirm_delete')
-            : actionType === 'export'
-            ? t('data:governance.confirm_export')
-            : t('data:governance.confirm_restore')
-        }
-        description={
-          actionType === 'delete'
-            ? t('data:governance.delete_warning')
-            : actionType === 'export'
-            ? encryptionPassword
-              ? t('data:governance.export_warning_encrypted', { level: compressionLevel })
-              : t('data:governance.export_warning', { level: compressionLevel })
-            : t('data:governance.restore_warning')
-        }
-        confirmText={
-          actionType === 'delete'
-            ? t('common:actions.delete')
-            : actionType === 'export'
-            ? t('data:governance.export')
-            : t('data:governance.restore')
-        }
-        cancelText={t('common:actions.cancel')}
-        // [R10-ux] 恢复会用备份覆盖当前数据槽（重启后切换），与云端恢复
-        // （CloudStorageSection warning）、库级冲突覆盖（SyncTab warning/danger）
-        // 同级，不能用 primary；导出不改动数据保持 primary。
-        confirmVariant={
-          actionType === 'delete'
-            ? 'danger'
-            : actionType === 'restore'
-            ? 'warning'
-            : 'primary'
-        }
-        onConfirm={handleAction}
-        loading={isActionRunning}
-        disabled={isActionRunning}
-      />
+      {(() => {
+        const selectedBackupInfo = selectedBackup
+          ? backups.find((b) => b.path === selectedBackup) ?? null
+          : null;
+        const snapshotName = selectedBackup
+          ? selectedBackup.split(/[/\\]/).filter(Boolean).pop() || selectedBackup
+          : '-';
+        const snapshotTime = selectedBackupInfo
+          ? formatTimestamp(selectedBackupInfo.created_at)
+          : '-';
+        const listSep = i18n?.language?.startsWith('zh') ? '、' : ', ';
+        const coveredDbsText =
+          selectedBackupInfo && selectedBackupInfo.databases.length > 0
+            ? selectedBackupInfo.databases
+                .map((dbId) => getDatabaseDisplayName(dbId, t))
+                .join(listSep)
+            : t('data:governance.full');
+        return (
+          <DsAlertDialog
+            open={selectedBackup !== null && actionType !== null}
+            onOpenChange={() => {
+              setSelectedBackup(null);
+              setActionType(null);
+            }}
+            title={
+              actionType === 'delete'
+                ? t('data:governance.confirm_delete')
+                : actionType === 'export'
+                ? t('data:governance.confirm_export')
+                : t('data:governance.confirm_restore_title')
+            }
+            description={
+              actionType === 'delete'
+                ? t('data:governance.delete_warning')
+                : actionType === 'export'
+                ? encryptionPassword
+                  ? t('data:governance.export_warning_encrypted', { level: compressionLevel })
+                  : t('data:governance.export_warning', { level: compressionLevel })
+                : t('data:governance.confirm_restore_desc')
+            }
+            confirmText={
+              actionType === 'delete'
+                ? t('common:actions.delete')
+                : actionType === 'export'
+                ? t('data:governance.export')
+                : t('data:governance.restore')
+            }
+            cancelText={t('common:actions.cancel')}
+            // [R10-ux] 恢复会用备份覆盖当前数据槽（重启后切换），与云端恢复
+            // （CloudStorageSection warning）、库级冲突覆盖（SyncTab warning/danger）
+            // 同级，不能用 primary；导出不改动数据保持 primary。
+            confirmVariant={
+              actionType === 'delete'
+                ? 'danger'
+                : actionType === 'restore'
+                ? 'warning'
+                : 'primary'
+            }
+            onConfirm={handleAction}
+            loading={isActionRunning}
+            disabled={isActionRunning}
+          >
+            {actionType === 'restore' && (
+              <div
+                data-testid="backup-restore-confirm-details"
+                className="space-y-1.5 text-xs text-muted-foreground"
+              >
+                <p className="font-medium text-foreground">
+                  {t('data:governance.confirm_restore_snapshot_info', {
+                    name: snapshotName,
+                    time: snapshotTime,
+                  })}
+                </p>
+                <p>
+                  {t('data:governance.confirm_restore_covered_dbs', {
+                    databases: coveredDbsText,
+                  })}
+                </p>
+                <p>{t('data:governance.confirm_restore_safety_backup_notice')}</p>
+                <p>{t('data:governance.confirm_restore_reload_notice')}</p>
+                <p className="text-warning font-medium">
+                  {t('data:governance.restore_save_work_warning')}
+                </p>
+              </div>
+            )}
+          </DsAlertDialog>
+        );
+      })()}
 
       {/* 导入 ZIP：新导入可留空；密封敏感材料包的续传必须重新输入密码 */}
       <BackupImportDialog

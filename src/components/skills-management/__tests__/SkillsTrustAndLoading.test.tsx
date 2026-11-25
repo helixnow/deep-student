@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const setSkillTrustOverrideMock = vi.fn();
 const resolveEffectiveTrustStatusMock = vi.fn();
 const isSkillDisabledMock = vi.fn();
+const setSkillDisabledMock = vi.fn();
 
 vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock('react-i18next', async (importOriginal) => {
 });
 
 vi.mock('@/features/chat/skills/skillTrustStorage', () => ({
+  SKILL_TRUST_CHANGED_EVENT: 'SKILL_TRUST_CHANGED',
   resolveEffectiveTrustStatus: (...args: unknown[]) => resolveEffectiveTrustStatusMock(...args),
   setSkillTrustOverride: (...args: unknown[]) => setSkillTrustOverrideMock(...args),
 }));
@@ -36,6 +38,7 @@ vi.mock('@/features/chat/skills/skillTrustStorage', () => ({
 vi.mock('@/features/chat/skills/skillEnableStorage', () => ({
   SKILL_ENABLED_CHANGED_EVENT: 'skill-enabled-changed',
   isSkillDisabled: (...args: unknown[]) => isSkillDisabledMock(...args),
+  setSkillDisabled: (...args: unknown[]) => setSkillDisabledMock(...args),
   isSkillUserEnabled: vi.fn(() => false),
   getSkillEnableState: vi.fn(() => 'default'),
 }));
@@ -48,6 +51,8 @@ vi.mock('@/features/chat/skills/packageMetadata', () => ({
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { SkillPackageSummary } from '../SkillPackageSummary';
 import { SkillsList } from '../SkillsList';
+import { SkillFullscreenEditor } from '../SkillFullscreenEditor';
+import { SkillEditorModal } from '../SkillEditorModal';
 import type { SkillDefinition } from '@/features/chat/skills/types';
 
 function makeCustomSkill(overrides: Partial<SkillDefinition> = {}): SkillDefinition {
@@ -151,5 +156,124 @@ describe('S4-06 skills trust status, notifications, and loading state', () => {
     expect(enSkills.selector?.loading?.trim().length).toBeGreaterThan(0);
     expect(zhSkills.selector?.loading).not.toBe('selector.loading');
     expect(enSkills.selector?.loading).not.toBe('selector.loading');
+  });
+
+  it('S4-06: hides contradictory disable toggle while untrusted, and shows enable/disable once trusted', () => {
+    const skill = makeCustomSkill({ isBuiltin: false, location: 'global' });
+    resolveEffectiveTrustStatusMock.mockReturnValue('untrusted');
+    const { rerender } = render(
+      <SkillsList
+        skills={[skill]}
+        isLoading={false}
+        selectedSkillId={null}
+        onSelectSkill={vi.fn()}
+        defaultSkillIds={[]}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onToggleDefault={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId(`skill-card-trust-${skill.id}`)).toBeTruthy();
+    expect(screen.queryByTestId(`skill-card-toggle-${skill.id}`)).toBeNull();
+
+    resolveEffectiveTrustStatusMock.mockReturnValue('trusted');
+    rerender(
+      <SkillsList
+        skills={[{ ...skill }]}
+        isLoading={false}
+        selectedSkillId={null}
+        onSelectSkill={vi.fn()}
+        defaultSkillIds={[]}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+        onToggleDefault={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId(`skill-card-toggle-${skill.id}`)).toHaveTextContent('skills:package.disable');
+  });
+
+  it('S4-06: guards rapid double-click on trust button against firing two simultaneous toasts and auto-enables disabled skill', async () => {
+    let resolveTrust!: () => void;
+    setSkillTrustOverrideMock.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { resolveTrust = resolve; }),
+    );
+    isSkillDisabledMock.mockReturnValue(true);
+
+    const skill = makeCustomSkill({ isBuiltin: false, location: 'global' });
+    render(<SkillPackageSummary skill={skill} variant="card" />);
+    const trustBtn = screen.getByTestId(`skill-card-trust-${skill.id}`);
+
+    fireEvent.click(trustBtn);
+    fireEvent.click(trustBtn);
+
+    expect(setSkillTrustOverrideMock).toHaveBeenCalledTimes(1);
+    resolveTrust();
+
+    await waitFor(() => {
+      expect(setSkillDisabledMock).toHaveBeenCalledWith(skill.id, false);
+      expect(showGlobalNotification).toHaveBeenCalledTimes(1);
+      expect(showGlobalNotification).toHaveBeenCalledWith('success', 'skills:package.trust_success');
+    });
+  });
+
+  it('S4-06: exposes visible Delete action in Custom Skill card More menu and in SkillFullscreenEditor / SkillEditorModal', async () => {
+    const onDelete = vi.fn();
+    const customSkill = makeCustomSkill({ isBuiltin: false, location: 'global' });
+    resolveEffectiveTrustStatusMock.mockReturnValue('trusted');
+
+    const { unmount } = render(
+      <SkillsList
+        skills={[customSkill]}
+        isLoading={false}
+        selectedSkillId={null}
+        onSelectSkill={vi.fn()}
+        defaultSkillIds={[]}
+        onEdit={vi.fn()}
+        onDelete={onDelete}
+        onToggleDefault={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId(`skill-card-more-${customSkill.id}`));
+    const deleteMenuItem = await screen.findByTestId(`skill-card-delete-${customSkill.id}`);
+    expect(deleteMenuItem).toHaveTextContent('common:actions.delete');
+    fireEvent.click(deleteMenuItem);
+    expect(onDelete).toHaveBeenCalledWith(customSkill);
+    unmount();
+
+    const onEditorDelete = vi.fn();
+    const { unmount: unmountFullscreen } = render(
+      <SkillFullscreenEditor
+        open={true}
+        onClose={vi.fn()}
+        skill={customSkill}
+        location="global"
+        onSave={vi.fn(async () => undefined)}
+        onDelete={onEditorDelete}
+      />,
+    );
+    const editorDeleteBtn = screen.getByTestId('skill-editor-delete');
+    expect(editorDeleteBtn).toHaveTextContent('skills:management.delete');
+    fireEvent.click(editorDeleteBtn);
+    expect(onEditorDelete).toHaveBeenCalledWith(customSkill);
+    unmountFullscreen();
+
+    const onModalDelete = vi.fn();
+    render(
+      <SkillEditorModal
+        open={true}
+        onOpenChange={vi.fn()}
+        skill={customSkill}
+        location="global"
+        onSave={vi.fn(async () => undefined)}
+        onDelete={onModalDelete}
+        embeddedMode={true}
+      />,
+    );
+    const modalDeleteBtn = screen.getByTestId('skill-editor-delete');
+    fireEvent.click(modalDeleteBtn);
+    expect(onModalDelete).toHaveBeenCalledWith(customSkill);
   });
 });

@@ -284,8 +284,14 @@ export class PluginManagerController {
     await this.withBusy(PACKAGE_BUSY_KEY, async () => {
       const result = await run();
       if (!result) return; // System file picker cancelled; no failure or success notification.
-      this.patch({ notice: { kind: 'package', result }, error: null,
-        ...(result.status === 'installed' && result.consentRequired ? { consent: result.consentRequired } : {}) });
+      const suppressConsentInSafeMode = this._state.safeMode === true;
+      this.patch({
+        notice: { kind: 'package', result },
+        error: null,
+        ...(result.status === 'installed' && result.consentRequired && !suppressConsentInSafeMode
+          ? { consent: result.consentRequired }
+          : {}),
+      });
       await this.refresh();
     });
   }

@@ -215,4 +215,49 @@ describe('persistence.rs:860–1549 final save production orchestration', () => 
       meta: { versioned: true },
     });
   });
+
+  it('S4-02 synthesizes var_v1 and preserves variants even when existingMessage lacked variants array', async () => {
+    const { ctx, save, db } = setup();
+    const v1Block = block(ctx.assistantMessageId, `${ctx.sessionId}_legacy_v1_blk`, 'content', 'v1 before retry');
+    host.ctx.chatSession.createMessage({
+      id: ctx.assistantMessageId,
+      sessionId: ctx.sessionId,
+      role: 'assistant',
+      timestamp: 54321,
+      blockIds: [v1Block.id],
+      _meta: { modelId: 'Model-V1' },
+    });
+    store.createBlockWithConn(db, v1Block);
+
+    ctx.options.skipUserMessageSave = true;
+    ctx.options.skipAssistantMessageSave = true;
+    ctx.options.targetVariantId = 'var_v2_recovered';
+    ctx.modelDisplayName = 'Model-V2';
+    ctx.finalContent = 'v2 recovered answer';
+    ctx.streamingContentBlockId = `${ctx.sessionId}_recovered_v2_blk`;
+    vi.mocked(store.updateMessageWithConn).mockClear();
+
+    await save.saveResults(ctx);
+
+    const updatedCall = vi.mocked(store.updateMessageWithConn).mock.calls[0]?.[1];
+    expect(updatedCall).toBeDefined();
+    expect(updatedCall!.timestamp).toBe(54321);
+    expect(updatedCall!.blockIds).toEqual([`${ctx.sessionId}_recovered_v2_blk`]);
+    expect(updatedCall!.activeVariantId).toBe('var_v2_recovered');
+    expect(updatedCall!.variants).toHaveLength(2);
+    expect(updatedCall!.variants![0]).toMatchObject({
+      id: `var_v1_${ctx.assistantMessageId}`,
+      modelId: 'Model-V1',
+      blockIds: [v1Block.id],
+      status: 'success',
+      meta: { versioned: true },
+    });
+    expect(updatedCall!.variants![1]).toMatchObject({
+      id: 'var_v2_recovered',
+      modelId: 'Model-V2',
+      blockIds: [`${ctx.sessionId}_recovered_v2_blk`],
+      status: 'success',
+      meta: { versioned: true },
+    });
+  });
 });

@@ -206,8 +206,6 @@ export async function importPathsIntoLibrary(
     if (markdownNotePaths.length > 0) {
       const markdownResult = await importMarkdownPathNotes(markdownNotePaths, dropTargetFolderId);
 
-      if (!isMountedRef.current) return;
-
       totalSuccess += markdownResult.importedNodes.length;
       totalFailed += markdownResult.failedCount;
       firstImportedNode = markdownResult.importedNodes[0] ?? firstImportedNode;
@@ -250,8 +248,6 @@ export async function importPathsIntoLibrary(
 
       if (unlisten) { unlisten(); unlisten = null; }
 
-      if (!isMountedRef.current) return;
-
       if (docResult.ok) {
         const existing = docResult.value.filter((node) => node.createdAt < importStartedAt - 5_000);
         duplicateNames.push(...existing.map((node) => node.name));
@@ -286,7 +282,9 @@ export async function importPathsIntoLibrary(
         }
       }
 
-      setImportProgress(prev => ({ ...prev, isImporting: false }));
+      if (isMountedRef.current) {
+        setImportProgress(prev => ({ ...prev, isImporting: false }));
+      }
     }
 
     // 2. 图片类/其他文件（含被教材管道跳过的 Office/文本兜底）：通过 attachmentDstuAdapter 创建
@@ -355,8 +353,9 @@ export async function importPathsIntoLibrary(
         )
       );
 
-      if (!isMountedRef.current) return;
-      setAttachImportProgress(null);
+      if (isMountedRef.current) {
+        setAttachImportProgress(null);
+      }
 
       for (const r of attachResults) {
         if (r.ok) totalSuccess++;
@@ -407,8 +406,8 @@ export async function importPathsIntoLibrary(
 
     // 4. 刷新文件列表（全是已有文件时也打开它，让用户看到在哪）
     if (totalSuccess > 0 || duplicateNames.length > 0) {
-      handleRefresh();
-      if (firstImportedNode) {
+      await handleRefresh();
+      if (isMountedRef.current && firstImportedNode) {
         if (firstImportedNode.type === 'note') {
           openImportedMarkdownNote(firstImportedNode);
         } else if (onOpenApp) {
@@ -422,8 +421,10 @@ export async function importPathsIntoLibrary(
   } catch (error) {
     if (unlisten) unlisten();
     debugLog.error('[LearningHub] 导入异常:', error);
-    setImportProgress(prev => ({ ...prev, isImporting: false }));
-    setAttachImportProgress(null);
+    if (isMountedRef.current) {
+      setImportProgress(prev => ({ ...prev, isImporting: false }));
+      setAttachImportProgress(null);
+    }
     showGlobalNotification('error', t('finder.dragDrop.importFailed'));
   }
 }
@@ -568,7 +569,6 @@ export async function importDroppedFiles(
   if (markdownFiles.length > 0) {
     try {
       const markdownResult = await importMarkdownFileObjects(markdownFiles, currentCreatableFolderId);
-      if (!isMountedRef.current) return;
 
       totalSuccess += markdownResult.importedNodes.length;
       totalFailed += markdownResult.failedCount;
@@ -586,7 +586,6 @@ export async function importDroppedFiles(
         });
       }
     } catch (e) {
-      if (!isMountedRef.current) return;
       totalFailed += markdownFiles.length;
       const reason = e instanceof Error ? e.message : String(e);
       for (const mdFile of markdownFiles) {
@@ -595,7 +594,7 @@ export async function importDroppedFiles(
     }
   }
 
-  if (attachmentFiles.length > 0) {
+  if (attachmentFiles.length > 0 && isMountedRef.current) {
     setAttachImportProgress({ done: 0, total: attachmentFiles.length });
   }
 
@@ -614,21 +613,22 @@ export async function importDroppedFiles(
             return { ok: false as const, name: file.name, reason: invalidReason };
           }
           let textbookFailureReason: string | undefined;
-          // 仅 PDF/EPUB 从「导入资料…」走教材解析链路；DOCX/XLSX/TXT 等办公与纯文本文件
-          // 直接入 VFS files，确保 WebUI / 移动壳稳定落盘到 files 表而非在教材解析中丢失或卡死。
+          // 仅 PDF/EPUB 从「导入资料…」优先尝试教材解析；若浏览器/WebUI 环境未解析出教材条目，
+          // 统一兜底写入 VFS files 表（前置已拦截 0 字节与损坏 PDF），绝不静默丢弃。
           const shouldTryTextbookImport =
             fromPicker && !preferVfsFilesView && (ext === 'pdf' || ext === 'epub') && canParseAsMobileTextbook(ext);
           if (shouldTryTextbookImport) {
-            const result = await withStagedTextbookFile(file, (source) =>
-              textbookDstuAdapter.addTextbooks([source], currentCreatableFolderId));
-            if (result.ok && result.value[0]) {
-              return { ok: true as const, name: file.name, node: result.value[0], isMedia: false };
-            }
-            textbookFailureReason = result.ok
-              ? t('finder.dragDrop.importFailed')
-              : result.error.toUserMessage();
-            if (!canFallbackToVfsFile(ext)) {
-              return { ok: false as const, name: file.name, reason: textbookFailureReason };
+            try {
+              const result = await withStagedTextbookFile(file, (source) =>
+                textbookDstuAdapter.addTextbooks([source], currentCreatableFolderId));
+              if (result.ok && result.value[0]) {
+                return { ok: true as const, name: file.name, node: result.value[0], isMedia: false };
+              }
+              textbookFailureReason = result.ok
+                ? t('finder.dragDrop.importFailed')
+                : result.error.toUserMessage();
+            } catch (stageErr) {
+              textbookFailureReason = stageErr instanceof Error ? stageErr.message : String(stageErr);
             }
           }
           // ★ 2026-06-12（审阅问题 FE-M1）：传递当前文件夹 ID，并补齐扩展名对应的 MIME（避免浏览器空 type 落盘失败）
@@ -662,8 +662,9 @@ export async function importDroppedFiles(
     )
   );
 
-  if (!isMountedRef.current) return;
-  setAttachImportProgress(null);
+  if (isMountedRef.current) {
+    setAttachImportProgress(null);
+  }
 
   for (const r of results) {
     if (r.ok) totalSuccess++;
@@ -699,12 +700,14 @@ export async function importDroppedFiles(
   }
 
   if (totalSuccess > 0) {
-    handleRefresh();
-    if (firstImportedNode) openImportedMarkdownNote(firstImportedNode);
-    else if (fromPicker && onOpenApp) {
-      const firstPreview = results.find((entry) => entry.ok && (entry.node.type === 'textbook' || entry.isMedia));
-      if (firstPreview?.ok) {
-        onOpenApp(dstuNodeToResourceListItem(firstPreview.node, firstPreview.node.type === 'textbook' ? 'textbook' : 'file'));
+    await handleRefresh();
+    if (isMountedRef.current) {
+      if (firstImportedNode) openImportedMarkdownNote(firstImportedNode);
+      else if (fromPicker && onOpenApp) {
+        const firstPreview = results.find((entry) => entry.ok && (entry.node.type === 'textbook' || entry.isMedia));
+        if (firstPreview?.ok) {
+          onOpenApp(dstuNodeToResourceListItem(firstPreview.node, firstPreview.node.type === 'textbook' ? 'textbook' : 'file'));
+        }
       }
     }
   }

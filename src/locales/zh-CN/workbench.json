@@ -343,6 +343,7 @@
     "noWindows": "暂无窗口",
     "running": "运行中",
     "apps": "全部应用",
+    "collapse": "收起程序坞",
     "showAllWindows": "显示全部窗口",
     "autohideHint": "程序坞已自动收起，指针移至底部边缘或点击此处即可唤出"
   },
@@ -407,6 +408,7 @@
     "sectionCommands": "命令",
     "sectionResources": "资源",
     "sectionChat": "聊天",
+    "untitledChat": "未命名会话",
     "searching": "正在搜索…",
     "resultCount": "{{count}} 个结果",
     "resultCount_one": "{{count}} 个结果",
