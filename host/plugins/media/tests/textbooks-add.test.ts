@@ -21,7 +21,11 @@ import { BlobRepo } from '../../vfs-repos/repository/blobs.ts';
 import { FolderRepo } from '../../vfs-repos/repository/folders.ts';
 import media from '../index.ts';
 import { unusedStorage } from './helpers/storage-double.ts';
-import { renderProgressPercent } from '../src/textbooks-add.ts';
+import {
+  TEXTBOOK_EAGER_PREVIEW_MAX_PAGES,
+  renderProgressPercent,
+  textbooksAdd,
+} from '../src/textbooks-add.ts';
 import { beginIn as beginStagedUpload, append as appendStagedUpload, STAGED_UPLOAD_MAX_BYTES } from '../../../platform/storage/staged-upload.ts';
 
 type RenderImpl = (conn: SqlExecutor, blobsDir: string, bytes: Uint8Array, config: unknown,
@@ -495,4 +499,80 @@ it('imports WebUI dstu-staged:<uploadId> PDF and TXT files via staged upload and
   expect(result[1]!.original_path).toBeUndefined();
   expect(fs.existsSync(path.join(stagingDir, `${pdfId}.part`))).toBe(false);
   expect(fs.existsSync(path.join(stagingDir, `${txtId}.part`))).toBe(false);
+});
+
+it('caps eager synchronous PDF preview to cover/first pages during textbooks_add import (G13/G14)', async () => {
+  let receivedConfig: { maxPages?: number } | undefined;
+  renderImpl = async (_c, _dir, _bytes, config, progress) => {
+    receivedConfig = config as { maxPages?: number } | undefined;
+    const cap = receivedConfig?.maxPages ?? 50;
+    for (let i = 1; i <= cap; i += 1) {
+      progress?.(i, cap);
+    }
+    return {
+      previewJson: {
+        pages: Array.from({ length: cap }, (_, pageIndex) => ({ pageIndex })),
+        totalPages: 48,
+        isTruncated: true,
+        maxRenderedPages: cap,
+      },
+      extractedText: '48 pages extracted',
+      pageCount: 48,
+    };
+  };
+
+  const src = write('large-48p-textbook.pdf', '%PDF-1.7\nlarge body\n%%EOF\n');
+  const result = await host.invoke('textbooks_add', { sources: [src] }) as Array<Record<string, unknown>>;
+
+  expect(result).toHaveLength(1);
+  expect(receivedConfig?.maxPages).toBe(TEXTBOOK_EAGER_PREVIEW_MAX_PAGES);
+  expect(result[0]!.page_count).toBe(48);
+  const id = result[0]!.id as string;
+  const row = conn.get<Record<string, unknown>>(
+    'SELECT preview_json, extracted_text, page_count FROM files WHERE id = ?1',
+    [id],
+  )!;
+  expect(row.page_count).toBe(48);
+  expect(row.extracted_text).toBe('48 pages extracted');
+  expect(JSON.parse(row.preview_json as string).pages).toHaveLength(TEXTBOOK_EAGER_PREVIEW_MAX_PAGES);
+});
+
+it('does not hang at Importing 0/1 when PDF preview stalls past timeout', async () => {
+  const src = write('stalled-preview.pdf', '%PDF-1.7\nstalled body\n%%EOF\n');
+  const events: Array<{ event: string; payload: unknown }> = [];
+  const result = await textbooksAdd(
+    {
+      database: () => database,
+      repos: () => ({
+        textbooks,
+        blobs: new BlobRepo(),
+        folders,
+        attachmentProcessing: {
+          renderPdf: () => new Promise(() => {}),
+        } as unknown as VfsReposService['attachmentProcessing'],
+      }),
+      docs: {
+        checkPdfEncryptionBytes() {},
+        extractPagedTextFromBytes: async () => null,
+        extractTextFromBytes: async () => '',
+        isPlainTextCodeExtension: () => false,
+      },
+      renderPdfPreview: () => new Promise(() => {}),
+      pdfPreviewTimeoutMs: 40,
+      pdfProcessing: () => undefined,
+      emit: (event, payload) => { events.push({ event, payload }); },
+      emitWatchEvent: () => {},
+      log: { info: () => {}, warn: () => {} },
+    },
+    { sources: [src] },
+  );
+
+  expect(result).toHaveLength(1);
+  const row = conn.get<{ processing_status: string | null; processing_error: string | null }>(
+    'SELECT processing_status, processing_error FROM files WHERE id = ?1',
+    [result[0]!.id],
+  );
+  expect(row?.processing_status).toBe('error');
+  expect(row?.processing_error).toContain('timed out');
+  expect(events.some((e) => (e.payload as { stage?: string })?.stage === 'done')).toBe(true);
 });

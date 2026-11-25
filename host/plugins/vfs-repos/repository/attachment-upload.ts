@@ -38,7 +38,7 @@ import type { BlobRepo } from './blobs.ts';
 import { databaseResult } from './errors.ts';
 import type { FolderRepo } from './folders.ts';
 import { serializeOcrPages } from './ocr-utils.ts';
-import { DEFAULT_PDF_PREVIEW_CONFIG } from './pdf-preview.ts';
+import { EAGER_IMPORT_PDF_PREVIEW_CONFIG } from './pdf-preview.ts';
 import type { ResourceRepo } from './resources.ts';
 import { utcTimestamp } from './timestamps.ts';
 
@@ -134,7 +134,7 @@ export class AttachmentUploadPipeline {
       }
       logInfo(`[VFS::AttachmentRepo] PDF detected, triggering preview render: ${params.name}`);
       try {
-        const result = await this.host.processing.renderPdf(conn, blobsDir, data, DEFAULT_PDF_PREVIEW_CONFIG);
+        const result = await this.host.processing.renderPdf(conn, blobsDir, data, EAGER_IMPORT_PDF_PREVIEW_CONFIG);
         previewJson = result.previewJson === null ? null : JSON.stringify(result.previewJson);
         extractedText = result.extractedText;
         pageCount = result.pageCount;
@@ -405,7 +405,7 @@ export class AttachmentUploadPipeline {
     if (this.host.processing === null) return;
     logInfo(`[VFS::AttachmentRepo] Repairing stale PDF data for ${existing.id}: page_count=0, re-extracting`);
     try {
-      const result = await this.host.processing.renderPdf(conn, blobsDir, data, DEFAULT_PDF_PREVIEW_CONFIG);
+      const result = await this.host.processing.renderPdf(conn, blobsDir, data, EAGER_IMPORT_PDF_PREVIEW_CONFIG);
       const repairedPreview = result.previewJson === null ? null : JSON.stringify(result.previewJson);
       const repairedText = result.extractedText;
       const repairedPages = result.pageCount;

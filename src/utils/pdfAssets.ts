@@ -93,13 +93,16 @@ export function getPdfAssetRemoteBase(): string {
 // 三级加载
 // ---------------------------------------------------------------------------
 
-function isTauriRuntime(): boolean {
+export function isTauriRuntime(): boolean {
   return (
     typeof window !== 'undefined' &&
     ((window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !== undefined ||
       (window as { __TAURI_IPC__?: unknown }).__TAURI_IPC__ !== undefined)
   );
 }
+
+/** 并发同资源请求去重：避免多页并行渲染时对同一 cmap/字体重复发起主线程 fetch */
+const inFlightAssets = new Map<string, Promise<Uint8Array>>();
 
 /** fetch 一个二进制资源；404/网络错误/SPA fallback 命中 HTML 均视为未命中 */
 async function fetchBytes(url: string): Promise<Uint8Array | null> {
@@ -151,34 +154,52 @@ export async function loadPdfAsset(
   if (!SAFE_FILE_NAME.test(fileName)) {
     throw new Error(`[pdfAssets] 非法资源文件名: ${JSON.stringify(fileName)}`);
   }
-  const attemptedSources: string[] = [];
 
-  if (localBaseUrl) {
-    const localUrl = `${localBaseUrl}${fileName}`;
-    attemptedSources.push(`local:${localUrl}`);
-    const local = await fetchBytes(localUrl);
-    if (local) return local;
+  const inflightKey = `${kind}:${localBaseUrl ?? ''}:${fileName}`;
+  const existing = inFlightAssets.get(inflightKey);
+  if (existing) {
+    return existing;
   }
 
-  attemptedSources.push(`appData:${CACHE_ROOT}/${KIND_DIRS[kind]}/${fileName}`);
-  const cached = await readCachedAsset(kind, fileName);
-  if (cached) return cached;
+  const task = (async (): Promise<Uint8Array> => {
+    const attemptedSources: string[] = [];
 
-  const remoteBase = getPdfAssetRemoteBase();
-  if (remoteBase) {
-    const remoteUrl = `${remoteBase}${KIND_DIRS[kind]}/${fileName}`;
-    attemptedSources.push(`remote:${remoteUrl}`);
-    const remote = await fetchBytes(remoteUrl);
-    if (remote) {
-      void writeCachedAsset(kind, fileName, remote);
-      return remote;
+    if (localBaseUrl) {
+      const localUrl = `${localBaseUrl}${fileName}`;
+      attemptedSources.push(`local:${localUrl}`);
+      const local = await fetchBytes(localUrl);
+      if (local) return local;
     }
-  } else {
-    attemptedSources.push('remote:<未配置>');
-  }
 
-  recordMissingAsset(kind, fileName, attemptedSources);
-  throw new Error(`[pdfAssets] ${kind} "${fileName}" 三级 fallback 均未命中`);
+    attemptedSources.push(`appData:${CACHE_ROOT}/${KIND_DIRS[kind]}/${fileName}`);
+    const cached = await readCachedAsset(kind, fileName);
+    if (cached) return cached;
+
+    const remoteBase = getPdfAssetRemoteBase();
+    if (remoteBase) {
+      const remoteUrl = `${remoteBase}${KIND_DIRS[kind]}/${fileName}`;
+      attemptedSources.push(`remote:${remoteUrl}`);
+      const remote = await fetchBytes(remoteUrl);
+      if (remote) {
+        void writeCachedAsset(kind, fileName, remote);
+        return remote;
+      }
+    } else {
+      attemptedSources.push('remote:<未配置>');
+    }
+
+    recordMissingAsset(kind, fileName, attemptedSources);
+    throw new Error(`[pdfAssets] ${kind} "${fileName}" 三级 fallback 均未命中`);
+  })();
+
+  inFlightAssets.set(inflightKey, task);
+  try {
+    return await task;
+  } finally {
+    if (inFlightAssets.get(inflightKey) === task) {
+      inFlightAssets.delete(inflightKey);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

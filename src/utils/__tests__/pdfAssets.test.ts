@@ -23,6 +23,7 @@ import {
   getMissingPdfAssetLog,
   loadPdfAsset,
 } from '../pdfAssets';
+import { PDF_OPTIONS, createPdfDocumentOptions } from '../pdfConfig';
 
 const BYTES = new Uint8Array([1, 2, 3, 4]);
 
@@ -178,5 +179,41 @@ describe('pdf.js factory 接口', () => {
     await expect(cmapFactory.fetch({ name: '' })).rejects.toThrow('CMap name must be specified.');
     const fontFactory = new FallbackStandardFontDataFactory({ baseUrl: '/standard_fonts/' });
     await expect(fontFactory.fetch({ filename: '' })).rejects.toThrow('Font filename must be specified.');
+  });
+
+  it('并发加载同一资源时去重，仅发起一次 fetch', async () => {
+    let resolveFetch!: (value: ReturnType<typeof okResponse>) => void;
+    const fetchMock = vi.fn(
+      () => new Promise<ReturnType<typeof okResponse>>((resolve) => { resolveFetch = resolve; }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const p1 = loadPdfAsset('cmap', 'UniGB-UCS2-H.bcmap', '/cmaps/');
+    const p2 = loadPdfAsset('cmap', 'UniGB-UCS2-H.bcmap', '/cmaps/');
+    resolveFetch(okResponse());
+
+    const [r1, r2] = await Promise.all([p1, p2]);
+    expect(r1).toEqual(BYTES);
+    expect(r2).toEqual(BYTES);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('PDF_OPTIONS 与 createPdfDocumentOptions（G14 disableFontFace + worker-fetch）', () => {
+  it('始终启用 disableFontFace 防止多字体 CJK PDF 阻塞 document.fonts', () => {
+    expect(PDF_OPTIONS.disableFontFace).toBe(true);
+    expect(createPdfDocumentOptions({ preferWorkerFetch: true }).disableFontFace).toBe(true);
+    expect(createPdfDocumentOptions({ preferWorkerFetch: false }).disableFontFace).toBe(true);
+  });
+
+  it('支持 worker-fetch 时省略主线程工厂以启用 useWorkerFetch，否则保留三级 fallback 工厂', () => {
+    const workerOpts = createPdfDocumentOptions({ preferWorkerFetch: true });
+    expect(workerOpts.useWorkerFetch).toBe(true);
+    expect(workerOpts.CMapReaderFactory).toBeUndefined();
+    expect(workerOpts.StandardFontDataFactory).toBeUndefined();
+
+    const fallbackOpts = createPdfDocumentOptions({ preferWorkerFetch: false });
+    expect(fallbackOpts.CMapReaderFactory).toBe(FallbackCMapReaderFactory);
+    expect(fallbackOpts.StandardFontDataFactory).toBe(FallbackStandardFontDataFactory);
   });
 });

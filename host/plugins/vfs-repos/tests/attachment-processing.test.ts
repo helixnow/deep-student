@@ -11,6 +11,7 @@ import type { createStorageService } from '../../../platform/storage/service.ts'
 import type { DatabaseHandle } from '../../../platform/storage/api.ts';
 import {
   DEFAULT_PDF_PREVIEW_CONFIG,
+  EAGER_IMPORT_PDF_PREVIEW_MAX_PAGES,
   renderPdfPreview,
   type PdfImageEncoder,
   type PdfPreviewDependencies,
@@ -172,6 +173,107 @@ describe('pdf_preview.rs async port', { timeout: 120_000 }, () => {
     const dependencies = deps();
     await expect(renderPdfPreview(conn, '/blobs', Buffer.from('not a pdf'), DEFAULT_PDF_PREVIEW_CONFIG, dependencies))
       .rejects.toThrow('不是有效的 PDF 文档（缺少 PDF 文件头）');
+  });
+
+  it('enforces per-page timeout so a stalled page never hangs synchronous import', async () => {
+    const stalledPdfium: NativePdfium = {
+      extractText: async () => 'page 1 text\fpage 2 text',
+      open: async () => ({
+        pageCount: 2,
+        async page(index: number) {
+          return {
+            width: 600,
+            height: 800,
+            async text() { return ''; },
+            async render(renderOptions: { width: number; height: number }) {
+              if (index === 1) {
+                await new Promise(() => {}); // Never resolves
+              }
+              return { width: renderOptions.width, height: renderOptions.height, rgba: new Uint8Array(1) };
+            },
+          };
+        },
+        async close() {},
+      }),
+    };
+    const dependencies = deps({ pdfium: () => stalledPdfium });
+    const result = await renderPdfPreview(
+      conn,
+      '/blobs',
+      Buffer.from('%PDF-1.4\nbody'),
+      { ...DEFAULT_PDF_PREVIEW_CONFIG, maxPages: 2, pageTimeoutMs: 40, totalRenderBudgetMs: 500 },
+      dependencies,
+    );
+    expect(result.pageCount).toBe(2);
+    expect(result.extractedText).toBe('page 1 text\fpage 2 text');
+    expect(result.previewJson?.pages).toHaveLength(1);
+    expect(result.previewJson?.pages[0]?.pageIndex).toBe(0);
+  });
+
+  it('caps large PDF upload preview to eager max pages while preserving full pageCount and text', async () => {
+    const renderedIndices: number[] = [];
+    const bigPdfium: NativePdfium = {
+      extractText: async () => 'full 48-page text',
+      open: async () => ({
+        pageCount: 48,
+        async page(index: number) {
+          renderedIndices.push(index);
+          return {
+            width: 600,
+            height: 800,
+            async text() { return ''; },
+            async render(renderOptions: { width: number; height: number }) {
+              return { width: renderOptions.width, height: renderOptions.height, rgba: new Uint8Array(1) };
+            },
+          };
+        },
+        async close() {},
+      }),
+    };
+    const image = fakeImage();
+    const { root: bigRoot, storage: bigStorage } = await createVfsTestStorage('l11-big-pdf-');
+    const bigHost = await createTestHost({
+      plugins: [plugin],
+      provide: {
+        storage: bigStorage,
+        paths: pathsServiceDouble(),
+        notes: notesServiceDouble(() => bigStorage.database('vfs')),
+        nativePdfium: bigPdfium,
+        nativeImage: image,
+        nativeOfficeText: officeText,
+        docs: {
+          checkPdfEncryptionBytes() {},
+          async extractTextFromBytes() { return ''; },
+          async extractEpubPagesFromBytes() { return []; },
+        },
+      },
+    });
+    try {
+      const bigDb = bigStorage.database('vfs');
+      const result = await bigHost.ctx.vfsRepo.attachments.uploadBytesWithConn(
+        bigDb,
+        bigStorage.locations.activeDir + '/vfs_blobs',
+        { name: 'textbook-48p.pdf', mimeType: 'application/pdf', base64Content: '' },
+        Buffer.from('%PDF-1.7\n48-page body'),
+      );
+      expect(result.attachment.pageCount).toBe(48);
+      expect(result.attachment.extractedText).toBe('full 48-page text');
+      expect(renderedIndices).toHaveLength(EAGER_IMPORT_PDF_PREVIEW_MAX_PAGES);
+      const preview = JSON.parse(result.attachment.previewJson ?? 'null') as {
+        pages: unknown[];
+        totalPages: number;
+        isTruncated: boolean;
+        maxRenderedPages: number;
+      };
+      expect(preview.pages).toHaveLength(EAGER_IMPORT_PDF_PREVIEW_MAX_PAGES);
+      expect(preview.totalPages).toBe(48);
+      expect(preview.isTruncated).toBe(true);
+      expect(preview.maxRenderedPages).toBe(EAGER_IMPORT_PDF_PREVIEW_MAX_PAGES);
+    } finally {
+      await bigHost.dispose();
+      bigStorage.dispose();
+      rmSync(bigRoot, { recursive: true, force: true });
+    }
   });
 });
 

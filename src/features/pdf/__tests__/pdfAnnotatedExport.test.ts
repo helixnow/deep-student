@@ -212,6 +212,100 @@ describe('createAnnotatedPdf', () => {
     },
   );
 
+  it.each([0, 90, 180, 270] as const)(
+    'exports accurately with mixed non-zero MediaBox and shifted CropBox on %i° rotated pages',
+    async (rotation) => {
+      const src = await PDFDocument.create();
+      const page = src.addPage([620, 800]);
+      // Non-zero MediaBox origin [40, 50, 660, 850] intersected with shifted CropBox [100, 120, 480, 640]
+      page.setMediaBox(40, 50, 620, 800);
+      page.setCropBox(100, 120, 480, 640);
+      page.setRotation(degrees(rotation));
+      const srcBytes = await src.save();
+
+      const doc = await loadPdfJs(srcBytes);
+      try {
+        const rects = [
+          { x: 0.12, y: 0.18, width: 0.42, height: 0.06 },
+          { x: 0.12, y: 0.25, width: 0.28, height: 0.06 },
+        ];
+        const exported = await createAnnotatedPdf(doc, [
+          makeHighlight({
+            id: `hl-mixed-box-${rotation}`,
+            pageIndex: 1,
+            rects,
+          }),
+        ]);
+
+        const outPdf = await PDFDocument.load(exported);
+        const [annot] = extractHighlightAnnots(outPdf, 0);
+        expect(annot).toBeDefined();
+        expect(annot!.quadPoints).toHaveLength(16);
+
+        // Rect must stay strictly within intersected CropBox [100, 120, 580, 760]
+        expect(annot!.rect[0]).toBeGreaterThanOrEqual(100 - 1e-3);
+        expect(annot!.rect[1]).toBeGreaterThanOrEqual(120 - 1e-3);
+        expect(annot!.rect[2]).toBeLessThanOrEqual(580 + 1e-3);
+        expect(annot!.rect[3]).toBeLessThanOrEqual(760 + 1e-3);
+
+        const pdfJsPage = await doc.getPage(1);
+        const viewport = pdfJsPage.getViewport({ scale: 1 });
+        expect(viewport.rotation).toBe(rotation);
+
+        rects.forEach((normRect, rectIdx) => {
+          const expectedCorners: Array<[number, number]> = [
+            [normRect.x * viewport.width, normRect.y * viewport.height],
+            [(normRect.x + normRect.width) * viewport.width, normRect.y * viewport.height],
+            [normRect.x * viewport.width, (normRect.y + normRect.height) * viewport.height],
+            [(normRect.x + normRect.width) * viewport.width, (normRect.y + normRect.height) * viewport.height],
+          ];
+          for (let i = 0; i < 4; i += 1) {
+            const base = rectIdx * 8 + i * 2;
+            const [vx, vy] = viewport.convertToViewportPoint(
+              annot!.quadPoints[base]!,
+              annot!.quadPoints[base + 1]!,
+            );
+            expect(vx).toBeCloseTo(expectedCorners[i]![0], 3);
+            expect(vy).toBeCloseTo(expectedCorners[i]![1], 3);
+          }
+        });
+      } finally {
+        await doc.destroy();
+      }
+    },
+  );
+
+  it('clamps sub-pixel out-of-bounds v2 rects inside negative-origin MediaBox + CropBox', async () => {
+    const src = await PDFDocument.create();
+    const page = src.addPage([600, 800]);
+    page.setMediaBox(-50, -40, 600, 800);
+    page.setCropBox(-20, -10, 500, 700);
+    page.setRotation(degrees(90));
+    const srcBytes = await src.save();
+
+    const doc = await loadPdfJs(srcBytes);
+    try {
+      const exported = await createAnnotatedPdf(doc, [
+        makeHighlight({
+          id: 'hl-clamp-oob',
+          pageIndex: 1,
+          rects: [{ x: -0.02, y: -0.01, width: 1.05, height: 0.12 }],
+        }),
+      ]);
+
+      const outPdf = await PDFDocument.load(exported);
+      const [annot] = extractHighlightAnnots(outPdf, 0);
+      expect(annot).toBeDefined();
+      // CropBox bounds are [-20, -10, 480, 690]
+      expect(annot!.rect[0]).toBeGreaterThanOrEqual(-20 - 1e-3);
+      expect(annot!.rect[1]).toBeGreaterThanOrEqual(-10 - 1e-3);
+      expect(annot!.rect[2]).toBeLessThanOrEqual(480 + 1e-3);
+      expect(annot!.rect[3]).toBeLessThanOrEqual(690 + 1e-3);
+    } finally {
+      await doc.destroy();
+    }
+  });
+
   it('loads and exports owner-password-restricted (encrypted) PDFs without crashing', async () => {
     // Build a valid PDF with an /Encrypt dictionary in its trailer (simulating an
     // owner-password-restricted PDF where pdf-lib rejects load() unless ignoreEncryption: true)
