@@ -7,7 +7,8 @@ import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { getSystemNotificationPolicy } from '@/utils/systemNotification';
 import type { AutomationRunCompletedPayload } from '@/features/settings/components/automationSettingsApi';
 
-const TERMINAL_STATUSES = ['success', 'error', 'timeout', 'spawn_error'];
+const TERMINAL_FAILURE_STATUSES = ['error', 'timeout', 'spawn_error'];
+const NOTIFIABLE_STATUSES = ['success', ...TERMINAL_FAILURE_STATUSES, 'retrying'];
 
 /**
  * 事件去重（模块级：组件重挂载/事件重复投递均不重复弹）。
@@ -81,8 +82,12 @@ export function useAutomationRunNotifications(): void {
     void listen<AutomationRunCompletedPayload>(
       'chat_v2_automation_run_completed',
       ({ payload }) => {
-        // heartbeat 探活静默；非终态不提示
-        if (payload.heartbeat || !TERMINAL_STATUSES.includes(payload.status ?? '')) {
+        const status = payload.status ?? '';
+        // heartbeat_ok 探活与取消/跳过静默；周期性心跳重试不打扰，但终态失败/有结果通知照常展示
+        if (!NOTIFIABLE_STATUSES.includes(status)) {
+          return;
+        }
+        if (payload.heartbeat && status === 'retrying') {
           return;
         }
         // 同一 run（attempt 可用时精确到 runId:attempt）只弹一次
@@ -92,13 +97,16 @@ export function useAutomationRunNotifications(): void {
           if (disposed) return;
           const translate = tRef.current;
           const sessionId = payload.sessionId;
-          const successful = payload.status === 'success';
+          const successful = status === 'success';
+          const retrying = status === 'retrying';
           const summary = payload.summary?.trim();
-          const title = translate(
-            successful ? 'automation.runCompletedTitle' : 'automation.runFailedTitle',
-            { name: payload.automationName?.trim() || translate('automation.title') },
-          );
-          // 失败通知带失败原因摘要（后端 summary 已截断为通知长度）
+          const displayName = payload.automationName?.trim() || translate('automation.title');
+          const title = successful
+            ? translate('automation.runCompletedTitle', { name: displayName })
+            : retrying
+              ? `${displayName} · ${translate('automation.status.retrying', { defaultValue: 'Waiting to retry' })}`
+              : translate('automation.runFailedTitle', { name: displayName });
+          // 失败与重试通知均附带具体失败原因摘要（避免 Run Now 失败后静默切到等待重试）
           const body = successful
             ? (summary || translate('automation.runCompletedFallback'))
             : (summary
@@ -107,7 +115,7 @@ export function useAutomationRunNotifications(): void {
 
           // notify 类成功没有 sessionId 也给轻量 toast；有会话时附"查看会话"动作
           showGlobalNotification(
-            successful ? 'success' : 'error',
+            successful ? 'success' : retrying ? 'warning' : 'error',
             body,
             title,
             sessionId

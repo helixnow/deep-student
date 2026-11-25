@@ -8,6 +8,7 @@
  */
 import type { DatabaseHandle } from '../../../platform/storage/api.ts';
 import { AppError } from '../../../platform/errors/api.ts';
+import { ChatV2Error } from '../../chat/api.ts';
 import { errorMessage } from './automation-errors.ts';
 import {
   ActiveAutomationRunGuard, AgentAutomationRunGuard, cancelAllAutomationRunTokens,
@@ -309,28 +310,61 @@ async function handleSpawnError(
 ): Promise<void> {
   const automation = claimed.automation;
   deps.log.warn(`[AutomationScheduler] agent_turn automation '${automation.name}' failed to start: ${error}`);
+  const permanent = isPermanentHeadlessFailure(error, undefined, 'spawn_error');
   let outcome: RunFinalizeOutcome = 'finished';
   try {
-    outcome = retryOrFinishRun(deps.db, claimed.run_id, claimed.attempt, automation,
-      'spawn_error', null, error, !automation.heartbeat);
+    if (permanent) {
+      const deliveries = !automation.heartbeat ? ['notification_pending'] : [];
+      outcome = completeRun(deps.db, claimed.run_id, claimed.attempt, 'spawn_error',
+        deliveries, null, null, error) ? 'finished' : 'superseded';
+    } else {
+      outcome = retryOrFinishRun(deps.db, claimed.run_id, claimed.attempt, automation,
+        'spawn_error', null, error, !automation.heartbeat);
+    }
   } catch (persistError) {
     deps.log.error(`[AutomationScheduler] failed to persist spawn_error for run '${claimed.run_id}': ${errorMessage(persistError)}`);
     outcome = 'finished';
   }
-  if (outcome !== 'finished' || automation.heartbeat) return;
-  finalizeOnce(deps, automation);
-  // spawn_error 终态不经过 run_completed 事件（无前端 toast），OS 通知是唯一告知渠道，
-  // 不做窗口活跃抑制（automations.rs:3395–3420）。
-  try {
-    const lang = deps.dispatch.notificationLanguage();
-    await deps.dispatch.sendRunNotification({
-      runId: claimed.run_id, attempt: claimed.attempt, status: 'spawn_error',
-      title: notificationTitleFailed(lang, automation.name),
-      body: truncateForNotification(error, 120), suppressIfWindowActive: false,
-    });
-  } catch (notifyError) {
-    deps.log.warn(`[AutomationScheduler] failed to deliver spawn_error notification for '${claimed.run_id}': ${errorMessage(notifyError)}`);
+  if (outcome === 'superseded') {
+    deps.dispatch.emitChanged('run_superseded', automation.id);
+    return;
   }
+  const summary = truncateForNotification(error, 160);
+  if (outcome !== 'finished') {
+    deps.dispatch.emitChanged('run_completed', automation.id);
+    return;
+  }
+  finalizeOnce(deps, automation);
+  let osNotificationDelivered = false;
+  if (!automation.heartbeat) {
+    // spawn_error 终态：通知用户失败原因，不做窗口活跃抑制（automations.rs:3395–3420）。
+    try {
+      const lang = deps.dispatch.notificationLanguage();
+      osNotificationDelivered = (await deps.dispatch.sendRunNotification({
+        runId: claimed.run_id, attempt: claimed.attempt, status: 'spawn_error',
+        title: notificationTitleFailed(lang, automation.name),
+        body: truncateForNotification(error, 120), suppressIfWindowActive: false,
+      })).deliveredOs;
+    } catch (notifyError) {
+      deps.log.warn(`[AutomationScheduler] failed to deliver spawn_error notification for '${claimed.run_id}': ${errorMessage(notifyError)}`);
+    }
+  }
+  try {
+    deps.dispatch.emitRunCompleted({
+      automationId: automation.id,
+      automationName: automation.name,
+      sessionId: null,
+      runId: claimed.run_id,
+      attempt: claimed.attempt,
+      status: 'spawn_error',
+      summary,
+      heartbeat: automation.heartbeat,
+      osNotificationDelivered,
+    });
+  } catch (emitError) {
+    deps.log.warn(`[AutomationScheduler] failed to emit run_completed for spawn_error '${claimed.run_id}': ${errorMessage(emitError)}`);
+  }
+  deps.dispatch.emitChanged('run_completed', automation.id);
 }
 
 async function dispatchNotify(deps: AutomationRuntimeDeps, claimed: ClaimedAutomationRun, nowMs: number): Promise<void> {
@@ -466,6 +500,7 @@ async function executeAgentTurnAutomation(
 
   let status: string;
   let summary: string;
+  let rawError: string | null = null;
   let sessionId: string | null;
   if (result !== null) {
     sessionId = result.sessionId;
@@ -479,15 +514,17 @@ async function executeAgentTurnAutomation(
         summary = truncateForNotification(result.summary, 120);
       }
     } else {
+      rawError = result.error ?? 'headless turn failed';
       status = result.status;
-      summary = truncateForNotification(result.error ?? 'headless turn failed', 160);
+      summary = truncateForNotification(rawError, 160);
       deps.log.warn(`[AutomationScheduler] agent_turn automation '${automation.name}' ended with status=${result.status}: ${result.error ?? ''}`);
     }
   } else {
     sessionId = null;
+    rawError = errorMessage(thrown);
     status = isCancellationError(thrown) ? 'cancelled' : 'error';
-    summary = truncateForNotification(errorMessage(thrown), 160);
-    deps.log.warn(`[AutomationScheduler] agent_turn automation '${automation.name}' failed: ${errorMessage(thrown)}`);
+    summary = truncateForNotification(rawError, 160);
+    deps.log.warn(`[AutomationScheduler] agent_turn automation '${automation.name}' failed: ${rawError}`);
   }
 
   if (status === 'cancelled' && deps.scheduler.isExiting()) {
@@ -496,6 +533,11 @@ async function executeAgentTurnAutomation(
   }
 
   const successful = status === 'success' || status === 'heartbeat_ok';
+  const permanentFailure = !successful && status !== 'cancelled' && status !== 'timeout'
+    && isPermanentHeadlessFailure(rawError ?? summary, thrown, result?.status);
+  if (permanentFailure) {
+    status = 'spawn_error';
+  }
   const completionDeliveries = status === 'success' && !automation.heartbeat
     ? ['notification_pending'] : [];
   let outcome: RunFinalizeOutcome;
@@ -513,6 +555,19 @@ async function executeAgentTurnAutomation(
         [], sessionId, summary, summary) ? 'finished' : 'superseded';
     } catch (error) {
       deps.log.warn(`[AutomationScheduler] failed to persist cancellation: ${errorMessage(error)}`);
+      outcome = 'superseded';
+    }
+  } else if (permanentFailure) {
+    // Permanent config/infrastructure failures (missing runner, unconfigured model,
+    // invalid credentials, validation errors) will never recover on automatic backoff;
+    // finalize immediately as terminal spawn_error so the UI surfaces the real error
+    // instead of silently spinning in "Waiting to retry" with 0 AI turns.
+    const terminalDeliveries = !automation.heartbeat ? ['notification_pending'] : [];
+    try {
+      outcome = completeRun(deps.db, claimed.run_id, claimed.attempt, 'spawn_error',
+        terminalDeliveries, sessionId, null, summary) ? 'finished' : 'superseded';
+    } catch (error) {
+      deps.log.warn(`[AutomationScheduler] failed to persist permanent spawn_error: ${errorMessage(error)}`);
       outcome = 'superseded';
     }
   } else {
@@ -602,7 +657,52 @@ function finalizeHeartbeatIdleSkip(
 }
 
 function isCancellationError(error: unknown): boolean {
+  if (error instanceof ChatV2Error && error.kind === 'Cancelled') return true;
   return error instanceof Error && (error.name === 'AbortError' || error.name === 'CancelledError');
+}
+
+const PERMANENT_FAILURE_PATTERNS: readonly RegExp[] = [
+  /requires the headless pipeline/i,
+  /headless pipeline.*not published/i,
+  /headless.*runner is not available/i,
+  /runtime is not installed/i,
+  /not published/i,
+  /没有可用的文本或多模态生成模型/,
+  /能力规划未解析到可执行模型/,
+  /no enabled.*(?:model|api config)/i,
+  /no (?:active|default|configured).*(?:model|api config)/i,
+  /explicit persona model .* cannot serve/i,
+  /requested model .* (?:not found|unavailable|does not exist)/i,
+  /invalid session_mode/i,
+  /prompt cannot be empty/i,
+  /missing.*api[\s_-]?key/i,
+  /invalid[\s_-]?api[\s_-]?key/i,
+  /\b(?:401|403)\b.*\b(?:unauthorized|forbidden|invalid|key|auth)/i,
+  /\b(?:unauthorized|forbidden)\b.*(?:api[\s_-]?key|token|credential)/i,
+];
+
+/**
+ * Distinguishes permanent configuration/infrastructure failures (missing runner,
+ * unconfigured model, invalid credentials, validation errors) from transient runtime
+ * failures so permanent failures finalize immediately as terminal `spawn_error`
+ * instead of silently spinning in `retrying`.
+ */
+export function isPermanentHeadlessFailure(
+  errorText: string,
+  thrown?: unknown,
+  resultStatus?: string,
+): boolean {
+  if (resultStatus === 'spawn_error') {
+    // Single-flight contention is transient and safe to retry; all other spawn_errors are permanent.
+    if (/already running \(single-flight\)/i.test(errorText)) return false;
+    return true;
+  }
+  if (thrown instanceof ChatV2Error && thrown.kind === 'Validation') return true;
+  if (typeof thrown === 'object' && thrown !== null && 'error_type' in thrown) {
+    const errorType = (thrown as { error_type?: unknown }).error_type;
+    if (errorType === 'Validation' || errorType === 'Configuration') return true;
+  }
+  return PERMANENT_FAILURE_PATTERNS.some((pattern) => pattern.test(errorText));
 }
 
 // ------------------------------------------------------------------ run_now

@@ -38,6 +38,13 @@ import {
 import { getTodoList } from './todo-store.ts';
 import type { TodoList } from './todo.ts';
 import { setHeadlessPolicyLogger } from './headless.ts';
+import {
+  createHeadlessRunner,
+  type HeadlessRunner,
+  type HeadlessRunnerChatPipeline,
+  type HeadlessRunnerChatSession,
+  type HeadlessRunnerChatState,
+} from './headless-runner.ts';
 import { setSessionToolsLogger } from '../repository/session-tools.ts';
 import { automationCommandError, errorMessage } from './automation-errors.ts';
 import { createFieldsFromRequest, updateFieldsFromRequest } from './automation-request.ts';
@@ -94,16 +101,6 @@ function isAppError(error: unknown): error is AppError {
   return typeof error === 'object' && error !== null && 'error_type' in error && 'message' in error;
 }
 
-/**
- * L04 发布 headless 管线后可被本 lane 消费的最小接口（`headless.rs:1275/1381`）。
- * 生产装配在 `chatSession` / `chatPipeline` 上探测这两个方法；没有 provider
- * 时不发布 `agentSubagent` 的对应能力（见 ACCEPTANCE O1 的协调结论）。
- */
-interface HeadlessRunner {
-  runHeadlessTurn(request: HeadlessTurnRequest): Promise<HeadlessTurnResult>;
-  runHeadlessAgentTurn(request: HeadlessSessionTurn): Promise<HeadlessTurnOutcome>;
-}
-
 /** F2 `startupGate` 的最小消费面；F3 的 finalizer 全部成功后才由组合根标记 ready。 */
 interface StartupGateReader {
   isStartupReady(): boolean;
@@ -122,6 +119,37 @@ function asHeadlessRunner(value: unknown): HeadlessRunner | null {
   if (typeof candidate.runHeadlessTurn !== 'function') return null;
   if (typeof candidate.runHeadlessAgentTurn !== 'function') return null;
   return candidate as HeadlessRunner;
+}
+
+function asHeadlessChatSession(value: unknown): HeadlessRunnerChatSession | null {
+  if (value === null || typeof value !== 'object') return null;
+  const candidate = value as Partial<HeadlessRunnerChatSession>;
+  if (typeof candidate.getSession !== 'function'
+    || typeof candidate.createSession !== 'function'
+    || typeof candidate.getMessageBlocks !== 'function') {
+    return null;
+  }
+  return candidate as HeadlessRunnerChatSession;
+}
+
+function asHeadlessChatPipeline(value: unknown): HeadlessRunnerChatPipeline | null {
+  if (value === null || typeof value !== 'object') return null;
+  const candidate = value as Partial<HeadlessRunnerChatPipeline>;
+  if (typeof candidate.executeWithEmitter !== 'function') return null;
+  return candidate as HeadlessRunnerChatPipeline;
+}
+
+function asHeadlessChatState(value: unknown): HeadlessRunnerChatState | null {
+  if (value === null || typeof value !== 'object') return null;
+  const candidate = value as Partial<HeadlessRunnerChatState>;
+  if (candidate.killSwitch === null || typeof candidate.killSwitch !== 'object'
+    || typeof candidate.killSwitch.ensureAllowed !== 'function'
+    || typeof candidate.killSwitch.isTripped !== 'function'
+    || typeof candidate.tryRegisterStreamOwned !== 'function'
+    || typeof candidate.removeStreamIfGeneration !== 'function') {
+    return null;
+  }
+  return candidate as HeadlessRunnerChatState;
 }
 
 /** 平台差异部分：桌面入口注入 `node:fs` / `node:os` 实现，移动端入口不注入（人设文件降级）。 */
@@ -200,13 +228,34 @@ export function createAgentOrchestrationPlugin(options: AgentOrchestrationPlugin
       emitChanged: (action: string, automationId: string) => emitChanged(action, automationId),
     });
     const resolveHeadlessRunner = (): HeadlessRunner | null => {
-      // L04 把 headless.rs 的入口发布到 chatSession；L03 若把执行入口放在
-      // chatPipeline 上同样可消费。运行期探测，避免插件安装顺序造成假缺失。
+      // 1. Honor any explicit HeadlessRunner published directly on chatSession / chatPipeline
+      //    (keeps test overrides and custom providers working unchanged).
       for (const candidate of [ctx.get('chatSession') as unknown, ctx.get('chatPipeline') as unknown]) {
         const runner = asHeadlessRunner(candidate);
         if (runner !== null) return runner;
       }
-      return null;
+      // 2. Production B2 composition: compose the L06 headless runner from published L04
+      //    (chatSession + chatState) and L03 (chatPipeline.executeWithEmitter).
+      const chatSession = asHeadlessChatSession(ctx.get('chatSession'));
+      const chatPipeline = asHeadlessChatPipeline(ctx.get('chatPipeline'));
+      const chatState = asHeadlessChatState(ctx.get('chatState'));
+      if (chatSession === null || chatPipeline === null || chatState === null) {
+        return null;
+      }
+      return createHeadlessRunner({
+        chatSession,
+        chatPipeline,
+        chatState,
+        ensureRuntimeRoots: (sessionId) => {
+          agentOrchestrationWorkspaceRuntime().sessionRoot(ctx.app.dataDir, sessionId, 'artifact', true);
+          agentOrchestrationWorkspaceRuntime().sessionRoot(ctx.app.dataDir, sessionId, 'temp', true);
+        },
+        log: {
+          info: (message) => ctx.logger.info(message),
+          warn: (message) => ctx.logger.warn(message),
+          error: (message) => ctx.logger.error(message),
+        },
+      });
     };
     const systemNotification = (): SystemNotificationPort | undefined => {
       let candidate: unknown;
