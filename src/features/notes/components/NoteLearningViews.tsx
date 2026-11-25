@@ -49,11 +49,12 @@ function ReviewDoneMenu({ noteId }: { noteId: string }) {
 }
 
 /** The host owns loading, filtering and DSTU subscriptions. This component never copies note data. */
-export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onOpen, onMoveToTrash, activeId, now = new Date() }: {
+export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onOpen, onMoveToTrash, onRestored, activeId, now = new Date() }: {
   notes: readonly T[];
   view: NoteLearningView;
   onOpen: (note: T) => void;
   onMoveToTrash?: (note: T) => void | Promise<void>;
+  onRestored?: (note: T) => void | Promise<void>;
   activeId?: string | null;
   now?: Date;
 }) {
@@ -76,7 +77,11 @@ export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onO
       if (onMoveToTrash) {
         await onMoveToTrash(note);
       } else {
-        await moveNoteToTrash({ noteId: note.id, noteTitle: note.name });
+        await moveNoteToTrash({
+          noteId: note.id,
+          noteTitle: note.name,
+          afterRestore: onRestored ? () => onRestored(note) : undefined,
+        });
       }
     } finally {
       setDeletingId((current) => (current === note.id ? null : current));

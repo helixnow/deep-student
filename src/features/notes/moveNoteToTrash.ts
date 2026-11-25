@@ -1,6 +1,15 @@
 import i18n from '@/i18n';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
+const MAX_TOAST_TITLE_LENGTH = 36;
+
+function formatToastNoteTitle(noteTitle: string): string {
+  const trimmed = noteTitle.trim();
+  if (!trimmed) return '';
+  if (trimmed.length <= MAX_TOAST_TITLE_LENGTH) return trimmed;
+  return `${trimmed.slice(0, MAX_TOAST_TITLE_LENGTH - 1)}…`;
+}
+
 export interface MoveNoteToTrashOptions {
   noteId: string;
   noteTitle?: string;
@@ -10,6 +19,8 @@ export interface MoveNoteToTrashOptions {
   onDeleteFailed?: () => void | Promise<void>;
   /** Runs after dstu.delete succeeds and the note workspace resource has been closed. */
   afterDelete?: () => void | Promise<void>;
+  /** Runs after the Undo action restores the note from Trash. */
+  afterRestore?: () => void | Promise<void>;
 }
 
 /**
@@ -22,6 +33,7 @@ export async function moveNoteToTrash({
   beforeDelete,
   onDeleteFailed,
   afterDelete,
+  afterRestore,
 }: MoveNoteToTrashOptions): Promise<boolean> {
   if (!noteId) return false;
 
@@ -29,7 +41,7 @@ export async function moveNoteToTrash({
     await beforeDelete?.();
 
     const [
-      { dstu, trashApi },
+      { dstu, trashApi, emitDstuFolderChange },
       { finderUndoStack },
       { closeWorkspaceResource },
     ] = await Promise.all([
@@ -53,30 +65,47 @@ export async function moveNoteToTrash({
     await closeWorkspaceResource({ type: 'note', id: noteId }).catch(() => false);
     await afterDelete?.();
 
+    const displayTitle = formatToastNoteTitle(noteTitle);
+    const baseMovedMessage = i18n.t('notes:actions.moved_to_trash', { defaultValue: '笔记已移至回收站' });
+    const movedMessage = displayTitle ? `${baseMovedMessage} · ${displayTitle}` : baseMovedMessage;
+
     let undoConsumed = false;
+    let undoInFlight = false;
     showGlobalNotification(
       'success',
-      i18n.t('notes:actions.moved_to_trash', { defaultValue: '笔记已移至回收站' }),
+      movedMessage,
       undefined,
       {
         action: {
           label: i18n.t('notes:actions.undo', { defaultValue: '撤销' }),
-          onClick: () => {
-            if (undoConsumed) return;
-            undoConsumed = true;
-            void trashApi
-              .restoreItem(noteId, 'note')
-              .then((res) => {
-                if (res.ok) {
-                  showGlobalNotification(
-                    'success',
-                    i18n.t('notes:actions.restored_from_trash', { defaultValue: '已从回收站恢复笔记' }),
-                  );
-                } else {
-                  showGlobalNotification('error', res.error.toUserMessage());
-                }
-              })
-              .catch((err) => showGlobalNotification('error', err instanceof Error ? err.message : String(err)));
+          onClick: async () => {
+            if (undoConsumed || undoInFlight) return;
+            undoInFlight = true;
+            try {
+              const res = await trashApi.restoreItem(noteId, 'note');
+              if (!res.ok) {
+                showGlobalNotification('error', res.error.toUserMessage());
+                return;
+              }
+              undoConsumed = true;
+              emitDstuFolderChange?.({
+                kind: 'item-added',
+                itemId: noteId,
+                itemType: 'note',
+              });
+              await afterRestore?.();
+              const baseRestoredMessage = i18n.t('notes:actions.restored_from_trash', {
+                defaultValue: '已从回收站恢复笔记',
+              });
+              showGlobalNotification(
+                'success',
+                displayTitle ? `${baseRestoredMessage} · ${displayTitle}` : baseRestoredMessage,
+              );
+            } catch (err) {
+              showGlobalNotification('error', err instanceof Error ? err.message : String(err));
+            } finally {
+              undoInFlight = false;
+            }
           },
         },
       },

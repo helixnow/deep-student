@@ -90,6 +90,8 @@ vi.mock('@/debug-panel/debugMasterSwitch', () => ({
 }));
 
 import i18n from '@/i18n';
+import { DSTU_FOLDER_CHANGE_EVENT } from '@/dstu';
+import { moveNoteToTrash } from '../moveNoteToTrash';
 import { NotesPageActionsMenu, type NotesPageActionsMenuProps } from '../components/NotesPageActionsMenu';
 import { NoteLearningViews } from '../components/NoteLearningViews';
 import { NotesEditorHeader } from '../components/NotesEditorHeader';
@@ -227,18 +229,20 @@ describe('NotesPageActionsMenu Move to Trash', () => {
     });
     expect(mocks.showGlobalNotification).toHaveBeenCalledWith(
       'success',
-      zhNotes.actions.moved_to_trash,
+      `${zhNotes.actions.moved_to_trash} · Calc`,
       undefined,
       expect.objectContaining({
         action: expect.objectContaining({ label: zhNotes.actions.undo }),
       }),
     );
 
-    const toastOpts = mocks.showGlobalNotification.mock.calls[0][3] as { action: { onClick: () => void } };
-    toastOpts.action.onClick();
-    await waitFor(() => {
-      expect(mocks.trashRestoreItem).toHaveBeenCalledWith('note-9', 'note');
-    });
+    const toastOpts = mocks.showGlobalNotification.mock.calls[0][3] as { action: { onClick: () => Promise<void> } };
+    await toastOpts.action.onClick();
+    expect(mocks.trashRestoreItem).toHaveBeenCalledWith('note-9', 'note');
+    expect(mocks.showGlobalNotification).toHaveBeenLastCalledWith(
+      'success',
+      `${zhNotes.actions.restored_from_trash} · Calc`,
+    );
   });
 });
 
@@ -300,6 +304,89 @@ describe('NoteLearningViews inline Move to Trash and Delete key', () => {
     fireEvent.keyDown(rowBtn, { key: 'Backspace', metaKey: true });
     await waitFor(() => expect(onMoveToTrash).toHaveBeenCalledTimes(2));
     expect(onMoveToTrash).toHaveBeenLastCalledWith(sampleNote);
+  });
+
+  it('awaits Undo restore, refreshes notes list via DSTU folder event + onRestored, and includes truncated noteTitle (U07)', async () => {
+    const longTitle = 'Linear Algebra Chapter 04 Eigenvalues and Eigenvectors Deep Dive';
+    const longNote = { ...sampleNote, id: 'n-undo', name: longTitle } as unknown as DstuNode;
+    const onRestored = vi.fn();
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+    try {
+      render(<NoteLearningViews notes={[longNote]} view="list" onOpen={vi.fn()} onRestored={onRestored} />);
+
+      fireEvent.click(screen.getByRole('button', { name: zhNotes.actions.move_to_trash }));
+
+      await waitFor(() => {
+        expect(mocks.dstuDelete).toHaveBeenCalledWith('/n-undo');
+        expect(mocks.showGlobalNotification).toHaveBeenCalledTimes(1);
+      });
+
+      const movedMsg = mocks.showGlobalNotification.mock.calls[0][1] as string;
+      expect(movedMsg).toContain(zhNotes.actions.moved_to_trash);
+      expect(movedMsg).toContain('…');
+      expect(movedMsg.length).toBeLessThan(zhNotes.actions.moved_to_trash.length + longTitle.length);
+
+      const toastOpts = mocks.showGlobalNotification.mock.calls[0][3] as {
+        action: { label: string; onClick: () => Promise<void> };
+      };
+      expect(toastOpts.action.label).toBe(zhNotes.actions.undo);
+
+      await toastOpts.action.onClick();
+
+      expect(mocks.trashRestoreItem).toHaveBeenCalledTimes(1);
+      expect(mocks.trashRestoreItem).toHaveBeenCalledWith('n-undo', 'note');
+      expect(onRestored).toHaveBeenCalledTimes(1);
+      expect(onRestored).toHaveBeenCalledWith(longNote);
+      const folderEvents = dispatchSpy.mock.calls
+        .map(([ev]) => ev)
+        .filter((ev): ev is CustomEvent => ev instanceof CustomEvent && ev.type === DSTU_FOLDER_CHANGE_EVENT);
+      expect(folderEvents).toHaveLength(1);
+      expect(folderEvents[0].detail).toEqual({
+        kind: 'item-added',
+        itemId: 'n-undo',
+        itemType: 'note',
+      });
+      expect(mocks.showGlobalNotification).toHaveBeenLastCalledWith(
+        'success',
+        expect.stringContaining(zhNotes.actions.restored_from_trash),
+      );
+    } finally {
+      dispatchSpy.mockRestore();
+    }
+  });
+
+  it('surfaces restore errors in moveNoteToTrash without triggering false refresh callbacks (U07)', async () => {
+    const afterRestore = vi.fn();
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+    mocks.trashRestoreItem.mockResolvedValueOnce({
+      ok: false,
+      error: { code: 'IO_ERROR', toUserMessage: () => '恢复失败：数据库只读' },
+    });
+
+    try {
+      const ok = await moveNoteToTrash({
+        noteId: 'n-fail',
+        noteTitle: 'Fail Note',
+        afterRestore,
+      });
+      expect(ok).toBe(true);
+
+      const toastOpts = mocks.showGlobalNotification.mock.calls[0][3] as {
+        action: { onClick: () => Promise<void> };
+      };
+      await toastOpts.action.onClick();
+
+      expect(mocks.trashRestoreItem).toHaveBeenCalledWith('n-fail', 'note');
+      expect(afterRestore).not.toHaveBeenCalled();
+      const folderEvents = dispatchSpy.mock.calls
+        .map(([ev]) => ev)
+        .filter((ev): ev is CustomEvent => ev instanceof CustomEvent && ev.type === DSTU_FOLDER_CHANGE_EVENT);
+      expect(folderEvents).toHaveLength(0);
+      expect(mocks.showGlobalNotification).toHaveBeenLastCalledWith('error', '恢复失败：数据库只读');
+    } finally {
+      dispatchSpy.mockRestore();
+    }
   });
 });
 
@@ -559,7 +646,7 @@ describe('NotesCrepeEditor keyboard navigation, source mode focus, and Move to T
     });
     expect(mocks.showGlobalNotification).toHaveBeenCalledWith(
       'success',
-      zhNotes.actions.moved_to_trash,
+      `${zhNotes.actions.moved_to_trash} · 未命名`,
       undefined,
       expect.objectContaining({
         action: expect.objectContaining({ label: zhNotes.actions.undo }),
