@@ -179,7 +179,9 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
           <p className="text-xs font-medium text-foreground">
             {t('review.againRescueTitle', {
               count: againCount,
-              defaultValue: '本轮有 {{count}} 张遗忘卡，趁热打铁巩固一下？',
+              defaultValue: againCount === 1
+                ? '{{count}} missed card this round — review it while it is fresh?'
+                : '{{count}} missed cards this round — review them while they are fresh?',
             })}
           </p>
           <div className="flex flex-wrap items-center gap-2">
@@ -196,7 +198,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
                 <ArrowClockwise size={15} />
                 {t('review.retryAgainCards', {
                   count: againCount,
-                  defaultValue: '再刷一遍遗忘卡（{{count}}）',
+                  defaultValue: 'Review missed cards ({{count}})',
                 })}
               </DsButton>
             ) : null}
@@ -212,7 +214,7 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
               >
                 <ChatCircleText size={15} />
                 {t('review.askAiAgainCards', {
-                  defaultValue: '让 AI 梳理本轮难点',
+                  defaultValue: 'Ask AI about missed cards',
                 })}
               </DsButton>
             ) : null}

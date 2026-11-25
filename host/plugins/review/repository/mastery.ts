@@ -95,7 +95,7 @@ export function recomputeStateWithConn(
       subject = COALESCE(excluded.subject, mastery_states.subject),
       error_tag = COALESCE(excluded.error_tag, mastery_states.error_tag),
       status = excluded.status,
-      mastered_at = COALESCE(excluded.mastered_at, mastery_states.mastered_at),
+      mastered_at = CASE WHEN excluded.status = 'mastered' THEN COALESCE(excluded.mastered_at, mastery_states.mastered_at) ELSE NULL END,
       relapse_count = excluded.relapse_count`,
     [conceptKey, state.score, state.streak, state.total, state.wrongCount, state.lastSignalAt,
       subject, errorTag, status, masteredAt, relapseCount]);
@@ -179,9 +179,10 @@ export function listEvents(db: SqlExecutor, concept: string, limit: number): Mas
     source: ['qbank', 'fsrs', 'insight'].includes(row.source) ? row.source : 'qbank', ...(signal === null ? {} : { signal }) }));
 }
 export function eventConcept(db: SqlExecutor, id: string): string | null { return db.pluck<string>('SELECT concept_key FROM mastery_events WHERE id = ?1', [id]) ?? null; }
+export function activeEventConcept(db: SqlExecutor, id: string): string | null { return db.pluck<string>('SELECT concept_key FROM mastery_events WHERE id = ?1 AND deleted_at IS NULL', [id]) ?? null; }
 export function tombstone(db: SqlExecutor, id: string, now: string): void {
   db.run(`UPDATE mastery_events SET deleted_at = COALESCE(deleted_at, ?2), updated_at = ?2,
-    local_version = COALESCE(local_version, 0) + CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END WHERE id = ?1`, [id, now]);
+    local_version = COALESCE(local_version, 0) + CASE WHEN deleted_at IS NULL THEN 1 ELSE 0 END WHERE id = ?1 AND deleted_at IS NULL`, [id, now]);
 }
 export interface ChainEvent { revision: number; id: string; concept_key: string; outcome: string; deleted_at: string | null }
 export function correctionChain(db: SqlExecutor, baseId: string): ChainEvent[] {

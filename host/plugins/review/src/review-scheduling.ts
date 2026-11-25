@@ -110,14 +110,60 @@ export function applyMasteryBiasToOutcome(
 ): void {
   if (masteryScore === null || masteryScore === undefined) return;
   const fsrsDue = outcome.dueMs;
-  const biasedDue = applyMasteryDueBias(masteryScore, nowMs, fsrsDue);
-  if (biasedDue === fsrsDue) return;
+  let biasedDue = applyMasteryDueBias(masteryScore, nowMs, fsrsDue);
+  if (outcome.state === 2) {
+    // Graduated Review outcomes must retain at least a 1-day interval (never collapse to 0d).
+    const minReviewDue = nowMs + MS_PER_DAY;
+    if (biasedDue < minReviewDue) biasedDue = minReviewDue;
+  }
+  if (biasedDue === fsrsDue) {
+    if (outcome.state === 2 && outcome.scheduledDays < 1) {
+      outcome.scheduledDays = Math.max(1, (outcome.dueMs - nowMs) / MS_PER_DAY);
+    }
+    return;
+  }
   const oldInterval = fsrsDue - nowMs;
   const newInterval = biasedDue - nowMs;
   if (oldInterval > 0 && outcome.scheduledDays > 0) {
-    outcome.scheduledDays = outcome.scheduledDays * newInterval / oldInterval;
+    const scaled = outcome.scheduledDays * newInterval / oldInterval;
+    outcome.scheduledDays = outcome.state === 2 ? Math.max(1, scaled) : scaled;
+  } else if (outcome.state === 2) {
+    outcome.scheduledDays = Math.max(1, newInterval / MS_PER_DAY);
   }
   outcome.dueMs = biasedDue;
+}
+
+/**
+ * Applies mastery bias across all 4 rating outcomes `[again, hard, good, easy]`
+ * while preserving the `>= 1d` floor on graduated Review outcomes (`state === 2`)
+ * and `Again <= Hard <= Good < Easy` monotonicity whenever unbiased FSRS ordered them.
+ */
+export function applyMasteryBiasToOutcomes(
+  outcomes: readonly ScheduleOutcome[], masteryScore: number | null | undefined, nowMs: number,
+): void {
+  if (masteryScore === null || masteryScore === undefined) return;
+  const originalDues = outcomes.map(outcome => outcome.dueMs);
+  for (const outcome of outcomes) {
+    applyMasteryBiasToOutcome(outcome, masteryScore, nowMs);
+  }
+  for (let index = 1; index < outcomes.length; index++) {
+    const prev = outcomes[index - 1]!;
+    const curr = outcomes[index]!;
+    const origPrev = originalDues[index - 1]!;
+    const origCurr = originalDues[index]!;
+    if (origCurr < origPrev) continue;
+    const needsDaySeparation = curr.state === 2 && prev.state === 2 && origCurr > origPrev;
+    const minDue = needsDaySeparation ? prev.dueMs + MS_PER_DAY : prev.dueMs;
+    if (curr.dueMs < minDue) {
+      const targetDue = masteryScore < 0.5 && origCurr > prev.dueMs
+        ? Math.min(origCurr, minDue)
+        : minDue;
+      curr.dueMs = Math.max(curr.state === 2 ? nowMs + MS_PER_DAY : nowMs, targetDue);
+      if (curr.state === 2) {
+        curr.scheduledDays = Math.max(1, (curr.dueMs - nowMs) / MS_PER_DAY);
+      }
+    }
+  }
 }
 
 export function interleaveNewCards(review: FsrsDueCard[], fresh: FsrsDueCard[]): FsrsDueCard[] {

@@ -223,8 +223,8 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
   const relativeDue = card.enqueued && !card.suspended
     ? formatRelativeDue(card.dueMs, locale)
     : null;
-  const absoluteDue = formatAbsoluteTime(card.dueMs);
-  const createdAt = formatCreatedAt(card);
+  const absoluteDue = formatAbsoluteTime(card.dueMs, locale);
+  const createdAt = formatCreatedAt(card, locale);
   const canUndo = Boolean(card.latestReview?.undoable && card.stateId);
   const ratingKey = typeof card.latestReview?.rating === 'number'
     ? RATING_LABEL_KEY[card.latestReview.rating]
@@ -236,7 +236,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
       draftFront,
       textarea?.selectionStart,
       textarea?.selectionEnd,
-      translate('library.create.clozePlaceholder', { defaultValue: '挖空内容' }),
+      translate('library.create.clozePlaceholder', { defaultValue: 'Cloze text' }),
     );
     setDraftFront(nextValue);
     requestAnimationFrame(() => {
@@ -363,8 +363,14 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
               <span
                 className="wb-fc-tag inline-flex items-center gap-0.5 tabular-nums"
                 data-testid={`fc-lib-media-images-${card.id}`}
-                aria-label={translate('library.media.images', { count: cardMedia.imageCount, defaultValue: `${cardMedia.imageCount} 张图片` })}
-                title={translate('library.media.images', { count: cardMedia.imageCount, defaultValue: `${cardMedia.imageCount} 张图片` })}
+                aria-label={translate('library.media.images', {
+                  count: cardMedia.imageCount,
+                  defaultValue: cardMedia.imageCount === 1 ? '{{count}} image' : '{{count}} images',
+                })}
+                title={translate('library.media.images', {
+                  count: cardMedia.imageCount,
+                  defaultValue: cardMedia.imageCount === 1 ? '{{count}} image' : '{{count}} images',
+                })}
               >
                 <ImageIcon size={11} aria-hidden="true" />
                 <span>{cardMedia.imageCount}</span>
@@ -374,8 +380,14 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
               <span
                 className="wb-fc-tag inline-flex items-center gap-0.5 tabular-nums"
                 data-testid={`fc-lib-media-audio-${card.id}`}
-                aria-label={translate('library.media.audio', { count: cardMedia.audioCount, defaultValue: `${cardMedia.audioCount} 段音频` })}
-                title={translate('library.media.audio', { count: cardMedia.audioCount, defaultValue: `${cardMedia.audioCount} 段音频` })}
+                aria-label={translate('library.media.audio', {
+                  count: cardMedia.audioCount,
+                  defaultValue: cardMedia.audioCount === 1 ? '{{count}} audio clip' : '{{count}} audio clips',
+                })}
+                title={translate('library.media.audio', {
+                  count: cardMedia.audioCount,
+                  defaultValue: cardMedia.audioCount === 1 ? '{{count}} audio clip' : '{{count}} audio clips',
+                })}
               >
                 <SpeakerHigh size={11} aria-hidden="true" />
                 <span>{cardMedia.audioCount}</span>
@@ -523,7 +535,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                     >
                       <BracketsCurly size={13} aria-hidden="true" />
                       <span>
-                        {translate('library.create.insertCloze', { defaultValue: '插入挖空' })}
+                        {translate('library.create.insertCloze', { defaultValue: 'Insert cloze' })}
                         {' '}
                         <code className="font-mono">{`{{c${nextClozeIndex(draftFront)}::...}}`}</code>
                       </span>

@@ -61,29 +61,29 @@ export function formatCardForAiPrompt(card: AskAiCardInput, t: TFunction): strin
   const lines: string[] = [];
   if (occlusion) {
     const occlusionTag = t('session.askAiOcclusionHint', {
-      defaultValue: '[图片遮挡卡]',
+      defaultValue: '[Image Occlusion Card]',
     });
     const labels = (occlusionSpec?.boxes ?? [])
       .map((box) => `#${box.clozeIndex} ${box.label}`.trim())
       .filter(Boolean);
     const frontSummary = [occlusionTag, front].filter(Boolean).join(' ');
-    lines.push(`${t('session.front')}：${frontSummary}`);
+    lines.push(`${t('session.front')}: ${frontSummary}`);
     if (labels.length > 0) {
       lines.push(
         t('session.askAiOcclusionRegions', {
-          regions: labels.join('、'),
-          defaultValue: '遮挡考点：{{regions}}',
+          regions: labels.join(', '),
+          defaultValue: 'Masked regions: {{regions}}',
         }),
       );
     }
     if (back) {
-      lines.push(`${t('session.back')}：${back}`);
+      lines.push(`${t('session.back')}: ${back}`);
     }
     return lines.join('\n');
   }
 
-  lines.push(`${t('session.front')}：${front}`);
-  if (back) lines.push(`${t('session.back')}：${back}`);
+  lines.push(`${t('session.front')}: ${front}`);
+  if (back) lines.push(`${t('session.back')}: ${back}`);
   return lines.join('\n');
 }
 
@@ -93,7 +93,7 @@ export function askAiAboutCard(card: AskAiCardInput, t: TFunction): void {
   dispatchAppEvent(APP_EVENTS.PREFILL_CHAT_INPUT, {
     content: t('session.askAiPrompt', {
       card: formatted,
-      defaultValue: '我复习闪卡时没记住这张卡，请帮我讲明白：先说清楚它考的是什么、为什么是这个答案，再给一个好记的办法，最后出 1 道小题检验我。\n\n{{card}}',
+      defaultValue: "I couldn't recall this flashcard during review. Please explain it: what it is testing and why this is the answer, then give me a way to remember it, and finally one short question to check me.\n\n{{card}}",
     }),
     autoSend: false,
     newSession: true,
@@ -111,7 +111,7 @@ export function askAiAboutCards(cards: readonly AskAiCardInput[], t: TFunction):
     content: t('review.askAiSummaryPrompt', {
       count: cards.length,
       cards: body,
-      defaultValue: '我刚完成一轮闪卡复习，以下 {{count}} 张卡标记了「重来」（没记住）。请帮我梳理这些难点的共性、容易混淆的地方、记忆技巧，最后出 2 道综合小题帮我巩固：\n\n{{cards}}',
+      defaultValue: 'I just finished a flashcard review session and marked {{count}} card(s) as Again. Please help me review common gaps, confusing points, and memory hooks, then give me 2 short practice questions:\n\n{{cards}}',
     }),
     autoSend: false,
     newSession: true,

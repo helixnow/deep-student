@@ -106,6 +106,8 @@ export interface ReviewReceipt {
   queueIndex: number;
   /** 评分前队列快照，供 Again 回插后 undo 还原顺序 */
   queueSnapshot?: ReviewCard[];
+  /** 本次评分顺带埋藏的同笔记兄弟卡 stateId，undo 时同步解埋 */
+  buriedSiblingIds?: string[];
   rating?: FsrsRating;
   previousStreak?: number;
   previousBestStreak?: number;
@@ -222,6 +224,8 @@ interface FsrsReviewState {
   recentLocalLogIds: string[];
   /** ratingBusy 期间暂存的外部已评卡，rate 结束后再 reconcile */
   pendingExternalRateIds: string[];
+  /** 与 pendingExternalRateIds 配套保留的 logId 配对，避免延迟 flush 丢失回声识别 */
+  pendingExternalRatePairs: Array<{ cardStateId: string; logId: string }>;
   /**
    * F11：一次用户评分尝试的稳定 clientOpId。评分失败重试时复用同一 ID，使后端
    * 幂等去重生效，避免「主事务已提交但补偿报错」时重试产生二次评分。评分成功或
@@ -315,18 +319,18 @@ export function isReviewSessionEmpty(state: Pick<FsrsReviewState, 'queue' | 'loa
 /** 将间隔毫秒格式化为短文案：`<1m` / `10m` / `3d` / `1.2mo` */
 export function formatInterval(intervalMs: number): string {
   if (!Number.isFinite(intervalMs) || intervalMs < 60_000) return '<1m';
-  const minutes = intervalMs / 60_000;
-  if (minutes < 60) return `${Math.round(minutes)}m`;
-  const hours = minutes / 60;
-  if (hours < 24) return `${Math.round(hours)}h`;
-  const days = hours / 24;
-  if (days < 30) return `${Math.round(days)}d`;
-  const months = days / 30;
+  const minutes = Math.round(intervalMs / 60_000);
+  if (minutes < 60) return `${Math.max(1, minutes)}m`;
+  const hours = Math.round(intervalMs / 3_600_000);
+  if (hours < 24) return `${Math.max(1, hours)}h`;
+  const days = Math.round(intervalMs / 86_400_000);
+  if (days < 30) return `${Math.max(1, days)}d`;
+  const months = intervalMs / (30 * 86_400_000);
   if (months < 10) {
     const rounded = Math.round(months * 10) / 10;
     return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}mo`;
   }
-  return `${Math.round(months)}mo`;
+  return `${Math.max(1, Math.round(months))}mo`;
 }
 
 function parseLaunchPayload(payload: unknown): FlashcardsLaunchPayload | null {
@@ -856,6 +860,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   lastSchedule: null,
   recentLocalLogIds: [],
   pendingExternalRateIds: [],
+  pendingExternalRatePairs: [],
   pendingRateOp: null,
   statsFetchGen: 0,
   sessionGeneration: 0,
@@ -1038,6 +1043,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         ratingPreviews: null,
         lastSchedule: null,
         pendingExternalRateIds: [],
+        pendingExternalRatePairs: [],
         pendingRateOp: null,
         error: null,
         errorKind: null,
@@ -1076,6 +1082,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       ratingPreviews: null,
       lastSchedule: null,
       pendingExternalRateIds: [],
+      pendingExternalRatePairs: [],
       pendingRateOp: null,
       screen: 'session',
       error: null,
@@ -1124,6 +1131,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       ratingPreviews: null,
       lastSchedule: null,
       pendingExternalRateIds: [],
+      pendingExternalRatePairs: [],
       pendingRateOp: null,
       retryBatchRequest: request,
     });
@@ -1235,6 +1243,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       ratingPreviews: null,
       lastSchedule: null,
       pendingExternalRateIds: [],
+      pendingExternalRatePairs: [],
       pendingRateOp: null,
       error: null,
       errorKind: null,
@@ -1405,18 +1414,29 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
     if (idSet.size === 0) return;
 
     const localLogIds = new Set(get().recentLocalLogIds);
-    // 本窗 log 回声：按 logId↔card 配对忽略（含 lastReview 已切换后的延迟回声）。
+    const pendingOp = get().pendingRateOp;
+    if (pendingOp?.opId) localLogIds.add(pendingOp.opId);
+    const pairByCard = new Map<string, string>();
+    // 本窗 log 回声：按 logId↔card 配对忽略（含 in-flight rate 与 lastReview 已切换后的延迟回声）。
     for (const pair of options?.cardLogPairs ?? []) {
-      if (
-        typeof pair?.cardStateId === 'string'
-        && typeof pair?.logId === 'string'
-        && localLogIds.has(pair.logId)
-      ) {
-        idSet.delete(pair.cardStateId.trim());
+      if (typeof pair?.cardStateId !== 'string' || typeof pair?.logId !== 'string') continue;
+      const cardId = pair.cardStateId.trim();
+      const logId = pair.logId.trim();
+      if (!cardId || !logId) continue;
+      if (localLogIds.has(logId)) {
+        idSet.delete(cardId);
+      } else {
+        pairByCard.set(cardId, logId);
       }
     }
+    const providedLogIds = (options?.logIds ?? [])
+      .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+      .map((id) => id.trim());
+    if (providedLogIds.length > 0 && providedLogIds.every((id) => localLogIds.has(id))) {
+      idSet.clear();
+    }
     const last = get().lastReview;
-    if (!options?.cardLogPairs?.length && !options?.logIds?.length
+    if (!options?.cardLogPairs?.length && !providedLogIds.length
       && last && idSet.has(last.cardStateId) && localLogIds.has(last.logId)) {
       idSet.delete(last.cardStateId);
     }
@@ -1426,18 +1446,30 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
     if (busy) {
       const current = get().queue[get().queueIndex];
       const deferred: string[] = [];
+      const deferredPairs: Array<{ cardStateId: string; logId: string }> = [];
       for (const id of idSet) {
-        if (current && id === current.id) {
+        if ((current && id === current.id) || (pendingOp && id === pendingOp.cardStateId)) {
           deferred.push(id);
+          const pairLogId = pairByCard.get(id);
+          if (pairLogId) deferredPairs.push({ cardStateId: id, logId: pairLogId });
           idSet.delete(id);
         }
       }
       if (deferred.length > 0) {
-        set((state) => ({
-          pendingExternalRateIds: Array.from(
-            new Set([...state.pendingExternalRateIds, ...deferred]),
-          ),
-        }));
+        set((state) => {
+          const mergedPairs = new Map(
+            state.pendingExternalRatePairs.map((pair) => [`${pair.cardStateId}:${pair.logId}`, pair] as const),
+          );
+          for (const pair of deferredPairs) {
+            mergedPairs.set(`${pair.cardStateId}:${pair.logId}`, pair);
+          }
+          return {
+            pendingExternalRateIds: Array.from(
+              new Set([...state.pendingExternalRateIds, ...deferred]),
+            ),
+            pendingExternalRatePairs: Array.from(mergedPairs.values()),
+          };
+        });
       }
       if (idSet.size === 0) return;
     }
@@ -1577,13 +1609,16 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       enforceExpectedLastReview: current.lastReviewMs !== undefined,
       expectedLastReviewMs: current.lastReviewMs ?? null,
     };
-    set({
+    set((state) => ({
       ratingBusy: true,
       lastRated: rating,
       error: null,
       errorKind: null,
       pendingRateOp: operation,
-    });
+      // Pre-register operation.opId (which becomes backend logId) BEFORE invoking fsrs_rate
+      // so an early fsrs://changed self-echo arriving while invoke is in-flight is ignored immediately.
+      recentLocalLogIds: pushRecentLocalLogId(state.recentLocalLogIds, operation.opId),
+    }));
 
     try {
       const result = await invoke<unknown>('fsrs_rate', {
@@ -1753,6 +1788,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           cardStateId: current.id,
           queueIndex: baseIndex,
           queueSnapshot,
+          ...(buriedSiblingIds.size > 0 ? { buriedSiblingIds: Array.from(buriedSiblingIds) } : {}),
           rating,
           previousStreak: state.sessionStreak,
           previousBestStreak: state.sessionBestStreak,
@@ -1792,14 +1828,21 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       // Domain echo deferred while ratingBusy must not empty the queue after
       // the last card — that wiped SessionSummary (empty=true, no stats).
       const pending = get().pendingExternalRateIds;
-      if (pending.length > 0) {
+      const pendingPairs = get().pendingExternalRatePairs;
+      if (pending.length > 0 || pendingPairs.length > 0) {
+        const localLogs = new Set(get().recentLocalLogIds);
         const justRatedId = get().lastReview?.cardStateId;
-        const remaining = justRatedId
-          ? pending.filter((id) => id !== justRatedId)
-          : pending;
-        set({ pendingExternalRateIds: [] });
+        const survivingPairs = pendingPairs.filter((pair) => !localLogs.has(pair.logId));
+        const foreignPairCardIds = new Set(survivingPairs.map((pair) => pair.cardStateId));
+        const remaining = pending.filter((id) => (
+          id !== justRatedId || foreignPairCardIds.has(id)
+        ));
+        set({ pendingExternalRateIds: [], pendingExternalRatePairs: [] });
         if (remaining.length > 0) {
-          get().reconcileExternalRate(remaining);
+          get().reconcileExternalRate(
+            remaining,
+            survivingPairs.length > 0 ? { cardLogPairs: survivingPairs } : undefined,
+          );
         }
       }
 
@@ -1833,9 +1876,15 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         errorKind: 'rate',
       });
       const pending = get().pendingExternalRateIds;
-      if (pending.length > 0) {
-        set({ pendingExternalRateIds: [] });
-        get().reconcileExternalRate(pending);
+      const pendingPairs = get().pendingExternalRatePairs;
+      if (pending.length > 0 || pendingPairs.length > 0) {
+        set({ pendingExternalRateIds: [], pendingExternalRatePairs: [] });
+        if (pending.length > 0) {
+          get().reconcileExternalRate(
+            pending,
+            pendingPairs.length > 0 ? { cardLogPairs: pendingPairs } : undefined,
+          );
+        }
       }
     }
   },
@@ -1882,6 +1931,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
             return undefined;
           })()
         : undefined;
+      const restoredSuspended = restoredState && typeof restoredState.suspended === 'boolean'
+        ? restoredState.suspended
+        : undefined;
+      const buriedSiblingSet = new Set(lastReview.buriedSiblingIds ?? []);
       set((s) => {
         const liveCards = new Map(s.queue.map((card) => [card.id, card]));
         const savedQueue = lastReview.queueSnapshot ?? s.queue;
@@ -1889,14 +1942,22 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         const snapshot = [
           ...savedQueue.flatMap((card) => {
             const live = liveCards.get(card.id);
-            if (!live) return [];
-            return [{
-              ...live,
-              ...(card.id === lastReview.cardStateId ? {
+            if (card.id === lastReview.cardStateId) {
+              // Always restore the undone card even if an external reconcile/echo removed it from live queue.
+              const base = live ?? card;
+              return [{
+                ...base,
+                suspended: restoredSuspended !== undefined ? restoredSuspended : card.suspended,
+                buried: card.buried,
                 learningDueMs: card.learningDueMs,
-                ...(restoredLastReviewMs !== undefined ? { lastReviewMs: restoredLastReviewMs } : {}),
-              } : {}),
-            }];
+                lastReviewMs: restoredLastReviewMs !== undefined ? restoredLastReviewMs : card.lastReviewMs,
+              }];
+            }
+            if (!live) return [];
+            if (buriedSiblingSet.has(card.id)) {
+              return [{ ...live, buried: card.buried }];
+            }
+            return [live];
           }),
           ...s.queue.filter((card) => !savedIds.has(card.id)),
         ];
@@ -1936,6 +1997,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           lastSchedule: null,
           remainingDueAfterSession: null,
           ratingPreviews: null,
+          pendingRateOp: null,
           sessionRatedCount: Math.max(0, s.sessionRatedCount - 1),
           sessionAgainCount:
             lastReview.rating === 1
@@ -1951,6 +2013,14 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
         };
       });
       emitDueRefresh();
+      const gen = get().statsFetchGen + 1;
+      set({ statsFetchGen: gen });
+      void fetchDueTotalFromStats().then((total) => {
+        if (total == null) return;
+        const live = get();
+        if (live.sessionGeneration !== sessionGeneration || live.statsFetchGen !== gen) return;
+        set({ dueTotal: total });
+      });
       return true;
     } catch (error) {
       if (get().sessionGeneration !== sessionGeneration) return false;
@@ -2161,6 +2231,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       sessionGeneration: get().sessionGeneration + 1,
       statsFetchGen: get().statsFetchGen + 1,
       pendingExternalRateIds: [],
+      pendingExternalRatePairs: [],
       pendingRateOp: null,
       screen: 'today',
       sessionMode: null,
@@ -2224,9 +2295,15 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
 
 function flushPendingExternalRates(): void {
   const state = useFsrsReviewStore.getState();
-  if (state.ratingBusy || state.pendingExternalRateIds.length === 0) return;
-  useFsrsReviewStore.setState({ pendingExternalRateIds: [] });
-  state.reconcileExternalRate(state.pendingExternalRateIds);
+  if (state.ratingBusy || (state.pendingExternalRateIds.length === 0 && state.pendingExternalRatePairs.length === 0)) {
+    return;
+  }
+  const ids = state.pendingExternalRateIds;
+  const pairs = state.pendingExternalRatePairs;
+  useFsrsReviewStore.setState({ pendingExternalRateIds: [], pendingExternalRatePairs: [] });
+  if (ids.length > 0) {
+    state.reconcileExternalRate(ids, pairs.length > 0 ? { cardLogPairs: pairs } : undefined);
+  }
 }
 provideStudySpaceReview(async (cardIds) => {
   const store = useFsrsReviewStore.getState();

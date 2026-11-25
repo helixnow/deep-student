@@ -179,9 +179,9 @@ export const FsrsParamsPanel: React.FC = () => {
   const difficultyBuckets = useMemo<Bucket[]>(() => {
     // FSRS difficulty 定义域 [1,10]；按低/中/高三段聚合
     const buckets: Array<{ key: string; label: string; test: (v: number) => boolean }> = [
-      { key: 'low', label: t('stats.fsrsParams.difficultyLow', { defaultValue: '低（<4）' }), test: (v) => v < 4 },
-      { key: 'mid', label: t('stats.fsrsParams.difficultyMid', { defaultValue: '中（4–7）' }), test: (v) => v >= 4 && v < 7 },
-      { key: 'high', label: t('stats.fsrsParams.difficultyHigh', { defaultValue: '高（≥7）' }), test: (v) => v >= 7 },
+      { key: 'low', label: t('stats.fsrsParams.difficultyLow', { defaultValue: 'Easier (difficulty <4)' }), test: (v) => v < 4 },
+      { key: 'mid', label: t('stats.fsrsParams.difficultyMid', { defaultValue: 'Moderate (difficulty 4–7)' }), test: (v) => v >= 4 && v < 7 },
+      { key: 'high', label: t('stats.fsrsParams.difficultyHigh', { defaultValue: 'Harder (difficulty ≥7)' }), test: (v) => v >= 7 },
     ];
     return buckets.map((bucket) => ({
       key: bucket.key,
@@ -196,21 +196,21 @@ export const FsrsParamsPanel: React.FC = () => {
   const stabilityMax = Math.max(1, ...stabilityBuckets.map((bucket) => bucket.count));
 
   const localNote = t('stats.fsrsParams.localNote', {
-    defaultValue: '仅本地读取到期队列聚合，不上传任何数据',
+    defaultValue: 'Summarized locally from your due queue; nothing is uploaded',
   });
 
   let body: React.ReactNode;
   if (status === 'loading') {
     body = (
       <p className="wb-fcx-note">
-        {t('stats.fsrsParams.loading', { defaultValue: '正在读取到期队列…' })}
+        {t('stats.fsrsParams.loading', { defaultValue: 'Reading the due queue…' })}
       </p>
     );
   } else if (status === 'unavailable') {
     body = (
       <p className="wb-fcx-note">
         {t('stats.fsrsParams.unavailable', {
-          defaultValue: '记忆参数暂不可用（需要支持 FSRS 调度的后端）',
+          defaultValue: 'Memory profile unavailable (requires a backend with FSRS scheduling)',
         })}
       </p>
     );
@@ -218,7 +218,7 @@ export const FsrsParamsPanel: React.FC = () => {
     body = (
       <p className="wb-fcx-note">
         {t('stats.fsrsParams.emptyQueue', {
-          defaultValue: '当前没有到期卡片，暂无可聚合的记忆参数',
+          defaultValue: 'No cards are due right now, so there is no memory stability or difficulty to summarize',
         })}
       </p>
     );
@@ -226,7 +226,9 @@ export const FsrsParamsPanel: React.FC = () => {
     body = (
       <p className="wb-fcx-note">
         {t('stats.fsrsParams.allNew', {
-          defaultValue: '到期队列共 {{count}} 张，均为未复习过的新卡，尚未产生 Stability / Difficulty',
+          defaultValue: sampled === 1
+            ? 'The due queue has {{count}} new card with no reviews yet, so memory stability (Stability) and item difficulty (Difficulty) have not been estimated'
+            : 'The due queue has {{count}} new cards with no reviews yet, so memory stability (Stability) and item difficulty (Difficulty) have not been estimated',
           count: sampled,
         })}
       </p>
@@ -235,32 +237,32 @@ export const FsrsParamsPanel: React.FC = () => {
     const metrics = [
       {
         key: 'stabilityMedian',
-        label: t('stats.fsrsParams.stabilityMedian', { defaultValue: 'Stability 中位' }),
+        label: t('stats.fsrsParams.stabilityMedian', { defaultValue: 'Memory stability median (Stability)' }),
         value: formatStabilityDays(stability.median),
       },
       {
         key: 'stabilityMean',
-        label: t('stats.fsrsParams.stabilityMean', { defaultValue: 'Stability 均值' }),
+        label: t('stats.fsrsParams.stabilityMean', { defaultValue: 'Memory stability mean (Stability)' }),
         value: formatStabilityDays(stability.mean),
       },
       {
         key: 'stabilityRange',
-        label: t('stats.fsrsParams.stabilityRange', { defaultValue: 'Stability 区间' }),
+        label: t('stats.fsrsParams.stabilityRange', { defaultValue: 'Stability range (days retained)' }),
         value: `${formatStabilityDays(stability.min)} ~ ${formatStabilityDays(stability.max)}`,
       },
       {
         key: 'difficultyMedian',
-        label: t('stats.fsrsParams.difficultyMedian', { defaultValue: 'Difficulty 中位' }),
+        label: t('stats.fsrsParams.difficultyMedian', { defaultValue: 'Item difficulty median (Difficulty)' }),
         value: formatDifficulty(difficulty.median),
       },
       {
         key: 'difficultyMean',
-        label: t('stats.fsrsParams.difficultyMean', { defaultValue: 'Difficulty 均值' }),
+        label: t('stats.fsrsParams.difficultyMean', { defaultValue: 'Item difficulty mean (Difficulty)' }),
         value: formatDifficulty(difficulty.mean),
       },
       {
         key: 'withParams',
-        label: t('stats.fsrsParams.withParams', { defaultValue: '有参数卡片' }),
+        label: t('stats.fsrsParams.withParams', { defaultValue: 'Cards with memory profile' }),
         value: `${withParams} / ${sampled}`,
       },
     ];
@@ -276,7 +278,7 @@ export const FsrsParamsPanel: React.FC = () => {
           ))}
         </dl>
 
-        <div className="wb-fcx-bars" aria-label={t('stats.fsrsParams.stabilityHistogram', { defaultValue: 'Stability 分布' })}>
+        <div className="wb-fcx-bars" aria-label={t('stats.fsrsParams.stabilityHistogram', { defaultValue: 'Memory stability (Stability) distribution' })}>
           {stabilityBuckets.map((bucket) => (
             <div
               key={bucket.key}
@@ -310,7 +312,9 @@ export const FsrsParamsPanel: React.FC = () => {
         {withoutParams > 0 ? (
           <p className="wb-fcx-footnote">
             {t('stats.fsrsParams.newExcluded', {
-              defaultValue: '另有 {{count}} 张未复习过的新卡尚无参数，未计入聚合',
+              defaultValue: withoutParams === 1
+                ? '{{count}} more unseen new card has no memory profile yet and is excluded'
+                : '{{count}} more unseen new cards have no memory profile yet and are excluded',
               count: withoutParams,
             })}
           </p>
@@ -318,7 +322,7 @@ export const FsrsParamsPanel: React.FC = () => {
         {sampled >= DUE_SAMPLE_LIMIT ? (
           <p className="wb-fcx-footnote">
             {t('stats.fsrsParams.sampleCapped', {
-              defaultValue: '到期队列超过 {{limit}} 张，仅统计队列前 {{limit}} 张',
+              defaultValue: 'The due queue has over {{limit}} cards; summarizing the first {{limit}}',
               limit: DUE_SAMPLE_LIMIT,
             })}
           </p>
@@ -337,11 +341,11 @@ export const FsrsParamsPanel: React.FC = () => {
       <div className="wb-fcx-panel-head">
         <h3 className="wb-fcx-panel-title">
           <Brain size={14} weight="duotone" />
-          {t('stats.fsrsParams.title', { defaultValue: '记忆状态分布（到期样本）' })}
+          {t('stats.fsrsParams.title', { defaultValue: 'Memory Stability & Difficulty (Due Sample)' })}
         </h3>
         <p className="wb-fcx-panel-sub">
           {t('stats.fsrsParams.subtitle', {
-            defaultValue: '到期样本的 S / D 分布，非模型权重；样本受额度与队列策略影响',
+            defaultValue: 'Distribution of memory stability (S) and item difficulty (D) in the due sample (not model weights)',
           })}
           {' · '}
           {localNote}
@@ -354,8 +358,8 @@ export const FsrsParamsPanel: React.FC = () => {
             <div className="flex min-w-0 items-center gap-2">
               <span className="shrink-0 text-muted-foreground">
                 {customWeights.length === 21
-                  ? t('stats.fsrsParams.weightsCustom', { defaultValue: 'FSRS-6 个性化权重' })
-                  : t('stats.fsrsParams.weightsDefault', { defaultValue: 'FSRS-6 默认权重' })}
+                  ? t('stats.fsrsParams.weightsCustom', { defaultValue: 'FSRS-6 personalized parameters' })
+                  : t('stats.fsrsParams.weightsDefault', { defaultValue: 'FSRS-6 default parameters' })}
               </span>
               <code className="truncate font-mono text-xs tabular-nums text-foreground/80">
                 {vectorPreview}
@@ -371,8 +375,8 @@ export const FsrsParamsPanel: React.FC = () => {
             >
               <span>
                 {weightsExpanded
-                  ? t('stats.fsrsParams.collapseWeights', { defaultValue: '收起 21 维权重明细' })
-                  : t('stats.fsrsParams.expandWeights', { defaultValue: '展开 21 维权重明细' })}
+                  ? t('stats.fsrsParams.collapseWeights', { defaultValue: 'Hide 21-parameter details' })
+                  : t('stats.fsrsParams.expandWeights', { defaultValue: 'Show 21-parameter details' })}
               </span>
               {weightsExpanded ? <CaretUp size={12} /> : <CaretDown size={12} />}
             </DsButton>
