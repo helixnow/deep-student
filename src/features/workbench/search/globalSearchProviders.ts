@@ -10,6 +10,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { search as dstuSearch } from '@/dstu/api';
 import type { DstuNode } from '@/dstu/types';
 import type { Command } from '@/command-palette/registry/types';
+import { sessionManager } from '@/features/chat';
 import type { AppDefinition } from '../core/types';
 import { workbenchBus } from '../core/workbenchBus';
 import { resourceTypeToAppTypeId } from '../apps/content/typeMap';
@@ -17,6 +18,7 @@ import { openChatSession } from '../apps/chat/newSession';
 
 export const GLOBAL_SEARCH_DEBOUNCE_MS = 250;
 export const CONTENT_SEARCH_MIN_CHARS = 2;
+export const CHAT_SEARCH_MIN_CHARS = 1;
 export const DSTU_RESULT_LIMIT = 6;
 export const CHAT_RESULT_LIMIT = 5;
 
@@ -102,19 +104,60 @@ export async function fetchDstuSearchResults(
   return settled.value.filter((node) => node.type !== 'folder').slice(0, limit);
 }
 
+interface ListedChatSessionRow {
+  id: string;
+  title?: string | null;
+  description?: string | null;
+  mode?: string | null;
+  updatedAt?: string | null;
+}
+
+const UNTITLED_SESSION_ALIASES = [
+  '未命名会话',
+  '未命名',
+  '新对话',
+  '新建对话',
+  'untitled session',
+  'untitled',
+  'new chat',
+] as const;
+
+const GENERIC_CHAT_SESSION_ALIASES = [
+  '会话',
+  '对话',
+  '聊天',
+  'chat',
+  'session',
+  'conversation',
+] as const;
+
+function matchesAliasList(queryLower: string, aliases: readonly string[]): boolean {
+  if (!queryLower) return false;
+  return aliases.some((alias) => alias.includes(queryLower) || queryLower.includes(alias));
+}
+
+function queryMatchesChatSessionFallback(queryLower: string): boolean {
+  return (
+    matchesAliasList(queryLower, UNTITLED_SESSION_ALIASES) ||
+    matchesAliasList(queryLower, GENERIC_CHAT_SESSION_ALIASES)
+  );
+}
+
 export async function fetchChatSearchResults(
   query: string,
   signal: AbortSignal,
   limit = CHAT_RESULT_LIMIT,
 ): Promise<SessionSearchItem[]> {
   if (signal.aborted) return [];
+  const trimmedQuery = query.trim();
+  const queryLower = trimmedQuery.toLowerCase();
   const [contentResult, sessionResult] = await Promise.allSettled([
     invoke<ContentSearchHit[]>('chat_v2_search_content', {
-      query,
+      query: trimmedQuery,
       limit: 30,
     }),
     invoke<Array<{ id: string; title?: string | null; description?: string | null }>>('chat_v2_search_sessions', {
-      query,
+      query: trimmedQuery,
       limit,
       includeArchived: false,
     }),
@@ -131,7 +174,7 @@ export async function fetchChatSearchResults(
   const sessionResults: SessionSearchItem[] = [];
   const seen = new Set<string>();
   for (const item of hits) {
-    if (seen.has(item.sessionId)) continue;
+    if (!item?.sessionId || seen.has(item.sessionId)) continue;
     seen.add(item.sessionId);
     sessionResults.push({
       sessionId: item.sessionId,
@@ -150,6 +193,91 @@ export async function fetchChatSearchResults(
       snippet: session.description ? stripSnippetMarkers(session.description) : '',
     });
   }
+
+  // 补充已有活跃会话（覆盖 title 为空/NULL 的「未命名会话」、单字查询如「会」及分组/未分组会话列表）
+  if (
+    sessionResults.length < limit &&
+    (sessionResults.length === 0 || queryMatchesChatSessionFallback(queryLower))
+  ) {
+    const listLimit = Math.max(limit * 6, 30);
+    const [ungroupedSettled, groupedSettled] = await Promise.allSettled([
+      invoke<ListedChatSessionRow[]>('chat_v2_list_sessions', {
+        status: 'active',
+        groupId: '',
+        limit: listLimit,
+        offset: 0,
+      }),
+      invoke<ListedChatSessionRow[]>('chat_v2_list_sessions', {
+        status: 'active',
+        groupId: '*',
+        limit: listLimit,
+        offset: 0,
+      }),
+    ]);
+    if (signal.aborted) return [];
+
+    const listedRows: ListedChatSessionRow[] = [];
+    const seenListed = new Set<string>();
+    const pushRows = (rows: unknown) => {
+      if (!Array.isArray(rows)) return;
+      for (const row of rows) {
+        if (!row || typeof row !== 'object') continue;
+        const candidate = row as ListedChatSessionRow;
+        if (!candidate.id || candidate.mode === 'agent' || seenListed.has(candidate.id)) continue;
+        seenListed.add(candidate.id);
+        listedRows.push(candidate);
+      }
+    };
+    if (ungroupedSettled.status === 'fulfilled') pushRows(ungroupedSettled.value);
+    if (groupedSettled.status === 'fulfilled') pushRows(groupedSettled.value);
+
+    // 内存态兜底：若当前窗口已创建但列表查询为空，从 sessionManager 读取活动会话
+    try {
+      const currentId = sessionManager?.getCurrentSessionId?.();
+      if (currentId && !seenListed.has(currentId)) {
+        seenListed.add(currentId);
+        listedRows.push({ id: currentId, title: null, description: null });
+      }
+    } catch {
+      // ignore sessionManager read errors in isolated environments
+    }
+
+    listedRows.sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
+
+    const matchedCandidates: Array<{ rank: number; item: SessionSearchItem }> = [];
+    const matchesUntitled = matchesAliasList(queryLower, UNTITLED_SESSION_ALIASES);
+    const matchesGeneric = matchesAliasList(queryLower, GENERIC_CHAT_SESSION_ALIASES);
+
+    for (const row of listedRows) {
+      if (seen.has(row.id)) continue;
+      const trimmedTitle = (row.title ?? '').trim();
+      const trimmedDesc = (row.description ?? '').trim();
+      const customMatch =
+        (trimmedTitle.length > 0 && trimmedTitle.toLowerCase().includes(queryLower)) ||
+        (trimmedDesc.length > 0 && trimmedDesc.toLowerCase().includes(queryLower));
+      const untitledMatch = trimmedTitle.length === 0 && matchesUntitled;
+      if (!customMatch && !untitledMatch && !matchesGeneric) continue;
+
+      const rank = customMatch ? 0 : untitledMatch ? 1 : 2;
+      matchedCandidates.push({
+        rank,
+        item: {
+          sessionId: row.id,
+          title: trimmedTitle,
+          snippet: trimmedDesc ? stripSnippetMarkers(trimmedDesc) : '',
+        },
+      });
+    }
+
+    matchedCandidates.sort((a, b) => a.rank - b.rank);
+    for (const entry of matchedCandidates) {
+      if (sessionResults.length >= limit) break;
+      if (seen.has(entry.item.sessionId)) continue;
+      seen.add(entry.item.sessionId);
+      sessionResults.push(entry.item);
+    }
+  }
+
   return sessionResults;
 }
 
@@ -270,19 +398,23 @@ export function createChatProvider(host: WorkbenchSearchHost): GlobalSearchProvi
     id: 'chat',
     kind: 'chat',
     debounceMs: GLOBAL_SEARCH_DEBOUNCE_MS,
-    minChars: CONTENT_SEARCH_MIN_CHARS,
+    minChars: CHAT_SEARCH_MIN_CHARS,
     search: async (query, signal) => {
-      const sessions = await fetchChatSearchResults(query.trim(), signal);
+      const q = query.trim();
+      const sessions = await fetchChatSearchResults(q, signal);
       if (signal.aborted) return [];
-      const untitled = host.untitledSessionTitle ?? '';
-      return sessions.map((item, index) => ({
-        id: `chat:${item.sessionId}`,
-        kind: 'chat' as const,
-        title: item.title || untitled,
-        subtitle: item.snippet,
-        score: scoreByRank(index) * 0.8,
-        open: () => host.openChat(item.sessionId),
-      }));
+      const untitled = host.untitledSessionTitle ?? '未命名会话';
+      return sessions.map((item, index) => {
+        const displayTitle = item.title || untitled;
+        return {
+          id: `chat:${item.sessionId}`,
+          kind: 'chat' as const,
+          title: displayTitle,
+          subtitle: item.snippet,
+          score: Math.max(scoreByRank(index) * 0.8, matchScore(displayTitle, q) * 0.82),
+          open: () => host.openChat(item.sessionId),
+        };
+      });
     },
   };
 }

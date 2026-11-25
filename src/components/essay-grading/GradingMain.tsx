@@ -217,6 +217,11 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   const resultActive = isGrading || Boolean(gradingResult) || Boolean(error) || hasGradedRound;
   // 结果优先：有结果后原文收成摘要条，点「编辑原文」才展开；每次开始批改重新收起
   const [inputExpanded, setInputExpanded] = React.useState(false);
+  const [customRubricRequestNonce, setCustomRubricRequestNonce] = React.useState(0);
+  const handleOpenCustomRubric = React.useCallback(() => {
+    setCustomRubricRequestNonce((n) => n + 1);
+    setShowPromptEditor(true);
+  }, [setShowPromptEditor]);
   useEffect(() => {
     if (isGrading) setInputExpanded(false);
   }, [isGrading]);
@@ -286,6 +291,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       // 保留会形成重复次级入口。仅看视口不看容器 compact——桌面窄容器
       // （分屏/浮窗）没有移动顶栏，页内按钮仍是唯一入口
       onOpenSettings={settingsAsPage || viewportIsSmallScreen ? undefined : () => setShowPromptEditor(!showPromptEditor)}
+      onOpenCustomRubric={handleOpenCustomRubric}
       uploadedImages={uploadedImages}
       onRemoveImage={onRemoveImage}
       onRetryImageOcr={onRetryImageOcr}
@@ -308,6 +314,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       onExpand={expandInput}
       onGrade={onGrade}
       onCancelGrading={onCancelGrading}
+      onOpenCustomRubric={handleOpenCustomRubric}
     />
   );
 
@@ -365,6 +372,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       setEssayType={setEssayType}
       gradeLevel={gradeLevel}
       setGradeLevel={setGradeLevel}
+      customRubricRequestNonce={customRubricRequestNonce}
     />
   );
 

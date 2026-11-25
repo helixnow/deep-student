@@ -7,17 +7,24 @@ const platformMock = vi.hoisted(() => ({
 vi.mock('@/utils/platform', () => platformMock);
 vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: vi.fn(async () => undefined) }));
 
-import { enterSafeModeAndRestart, exitSafeModeAndRestart } from '../safeMode';
+import i18n from 'i18next';
+import {
+  dismissSafeModeTransitionOverlay,
+  enterSafeModeAndRestart,
+  exitSafeModeAndRestart,
+} from '../safeMode';
 
-describe('safeMode WebUI & URL lifecycle (S4-16)', () => {
+describe('safeMode WebUI & URL lifecycle (S4-08 & S4-16)', () => {
   const originalLocation = window.location;
 
   beforeEach(() => {
+    dismissSafeModeTransitionOverlay();
     platformMock.isWebUiShell.mockReturnValue(true);
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })));
   });
 
   afterEach(() => {
+    dismissSafeModeTransitionOverlay();
     Object.defineProperty(window, 'location', { configurable: true, writable: true, value: originalLocation });
     vi.unstubAllGlobals();
     vi.clearAllMocks();
@@ -58,5 +65,46 @@ describe('safeMode WebUI & URL lifecycle (S4-16)', () => {
       credentials: 'same-origin',
     });
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('S4-08: renders an immediate full-screen Safe Mode transition overlay before fetch/reload completes', async () => {
+    let resolveEnter!: (res: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>((resolve) => { resolveEnter = resolve; })),
+    );
+    const reload = vi.fn();
+    document.documentElement.lang = 'zh-CN';
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { href: 'http://127.0.0.1:4100/', search: '', reload, assign: vi.fn() },
+    });
+
+    const pending = enterSafeModeAndRestart();
+
+    const overlay = document.querySelector('[data-testid="safe-mode-transition-overlay"]');
+    expect(overlay).not.toBeNull();
+    expect(overlay?.getAttribute('data-mode')).toBe('enter');
+    expect(overlay?.textContent).toContain('正在切换至安全模式排查，正在隔离社区插件…');
+    expect(reload).not.toHaveBeenCalled();
+
+    resolveEnter(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    await pending;
+    expect(reload).toHaveBeenCalledTimes(1);
+
+    dismissSafeModeTransitionOverlay();
+    document.documentElement.lang = 'en-US';
+    const prevLang = i18n.language;
+    i18n.language = 'en-US';
+    try {
+      vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })));
+      await enterSafeModeAndRestart();
+      const enOverlay = document.querySelector('[data-testid="safe-mode-transition-overlay"]');
+      expect(enOverlay?.textContent).toContain('Switching to Safe Mode');
+    } finally {
+      i18n.language = prevLang;
+      document.documentElement.lang = '';
+    }
   });
 });

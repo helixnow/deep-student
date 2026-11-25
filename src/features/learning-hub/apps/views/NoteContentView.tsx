@@ -809,13 +809,12 @@ const NoteContentView: React.FC<ContentViewProps> = ({
     // ★ R4：await 期间可能已切换笔记，禁止把旧笔记标题回写进当前视图
     if (loadingNoteIdRef.current !== savedNoteId) return;
     setTitle(newTitle);
-    // C13：元数据写回也会推进 updated_at，刷新 OCC 基线避免后续正文保存误判冲突
+    // C13：元数据写回也会推进 updated_at，立即刷新 OCC 基线避免自身 watch 事件误判外部更新或后续正文保存冲突
     if (!retried) {
-      void dstu.get(node.path).then((refreshed) => {
-        if (refreshed.ok && loadingNoteIdRef.current === savedNoteId) {
-          updateKnownBaseline(refreshed.value.updatedAt ?? null);
-        }
-      });
+      const refreshed = await dstu.get(node.path);
+      if (refreshed.ok && loadingNoteIdRef.current === savedNoteId) {
+        updateKnownBaseline(refreshed.value.updatedAt ?? null);
+      }
     }
     // 通知父级面板标题已更新
     onTitleChange?.(newTitle);
@@ -1208,6 +1207,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             // 📱 移动子屏打开时隐藏 body 级底部编辑工具条，避免遮挡子屏且误改正文（沿用历史 NotesHome——已下线——的用法）；
             // tab 不活跃时同样抑制（P0 泄漏修复的同步兜底，编辑器内部另有壳层可见性观察器异步兜底）
             suppressMobileToolbar={propertiesReplaceEditor || !isActive}
+            isActive={isActive}
             headerActions={propertiesPanelDisabled ? undefined : (
               <CommonTooltip content={t('notes:contextPanel.title')} position="bottom">
                 <DsButton

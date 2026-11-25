@@ -873,4 +873,100 @@ describe('autohide', () => {
     expect(state.focusStack[state.focusStack.length - 1]).toBe(essayId);
     expect(state.transientPhases?.[essayId]).not.toBe('closing');
   });
+
+  it('S4-17: 360px 窄屏唤出程序坞后支持「收起程序坞」按钮、Escape、外部点击与聚焦输入框立即收起，不遮挡底部操作栏', () => {
+    const origMatchMedia = window.matchMedia;
+    const origInnerWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      writable: true,
+      value: 360,
+    });
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: query.includes('max-width: 767px') || query.includes('max-width: 640px'),
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
+
+    try {
+      useWindowStore.setState({ desktopSize: { w: 360, h: 740 } });
+      setDockPinned(['chat', 'files']);
+      openWin('chat', 'mobile-chat', '对话');
+
+      render(
+        <div>
+          <div data-testid="chat-bottom-toolbar">
+            <button type="button" aria-label="添加与会话选项">附件</button>
+            <button type="button" aria-label="语音输入">语音</button>
+            <button type="button" aria-label="发送消息">发送</button>
+            <textarea data-testid="chat-composer" aria-label="输入消息" />
+          </div>
+          <Dock />
+        </div>,
+      );
+
+      const dock = screen.getByTestId('wb-dock');
+      const hotzone = screen.getByTestId('wb-dock-hotzone');
+      expect(dock).toHaveAttribute('data-hidden', 'true');
+
+      // 1) 点击热区唤出后，显式提供「收起程序坞」关闭按钮，按 Escape 立即收起
+      fireEvent.click(hotzone);
+      expect(dock).not.toHaveAttribute('data-hidden');
+      const collapseBtn = screen.getByTestId('wb-dock-collapse-button');
+      expect(collapseBtn).toHaveAttribute('aria-label', '收起程序坞');
+
+      fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' });
+      expect(dock).toHaveAttribute('data-hidden', 'true');
+      expect(dock).toHaveAttribute('inert');
+
+      // 2) 再次唤出后点击显式「收起程序坞」按钮 → 立即收起
+      fireEvent.click(hotzone);
+      expect(dock).not.toHaveAttribute('data-hidden');
+      fireEvent.click(screen.getByTestId('wb-dock-collapse-button'));
+      expect(dock).toHaveAttribute('data-hidden', 'true');
+
+      // 3) 再次唤出后在外部执行纯 click（无 pointerdown）→ 立即收起
+      fireEvent.click(hotzone);
+      expect(dock).not.toHaveAttribute('data-hidden');
+      fireEvent.click(screen.getByRole('button', { name: '发送消息' }));
+      expect(dock).toHaveAttribute('data-hidden', 'true');
+
+      // 4) 再次唤出后聚焦聊天输入框 → 立即收起，释放底部操作行
+      fireEvent.click(hotzone);
+      expect(dock).not.toHaveAttribute('data-hidden');
+      act(() => {
+        screen.getByTestId('chat-composer').focus();
+      });
+      expect(dock).toHaveAttribute('data-hidden', 'true');
+    } finally {
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        writable: true,
+        value: origInnerWidth,
+      });
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        writable: true,
+        value: origMatchMedia,
+      });
+    }
+  });
+
+  it('S4-17: < 768px 小屏（如 720px）有打开窗口时程序坞同样自动隐藏', () => {
+    useWindowStore.setState({ desktopSize: { w: 720, h: 820 } });
+    setDockPinned(['chat']);
+    openWin('chat', 'small-tablet', '对话');
+
+    render(<Dock />);
+    expect(screen.getByTestId('wb-dock')).toHaveAttribute('data-hidden', 'true');
+  });
 });

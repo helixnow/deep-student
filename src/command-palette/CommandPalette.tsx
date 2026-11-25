@@ -207,8 +207,8 @@ export function CommandPalette() {
     return searchCommands(query);
   }, [searchCommands, query, viewMode, recentCommands, favoriteCommands]);
 
-  // 资源直达搜索（文件 + 会话），仅在搜索模式且输入 ≥2 字符时启用
-  const resourceSearchEnabled = isOpen && viewMode === 'search' && query.trim().length >= 2;
+  // 资源直达搜索（文件 ≥2 字符、会话 ≥1 字符，由 useResourceSearch 内部按各自 minChars 门控）
+  const resourceSearchEnabled = isOpen && viewMode === 'search' && query.trim().length >= 1;
   const { fileResults, sessionResults, loading: resourceLoading } = useResourceSearch(
     query,
     resourceSearchEnabled,
@@ -232,7 +232,7 @@ export function CommandPalette() {
     if (!resourceSearchEnabled) return [];
     return sessionResults.map((item) => ({
       id: `${RESOURCE_COMMAND_PREFIX}session.${item.sessionId}`,
-      name: item.title || t('command_palette:untitled'),
+      name: item.title || t('workbench:appsPanel.untitledChat', t('command_palette:untitled', '未命名会话')),
       description: item.snippet,
       category: 'chat',
       icon: ChatCenteredText,

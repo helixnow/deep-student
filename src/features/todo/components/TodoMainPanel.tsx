@@ -291,10 +291,12 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
   const setSortBy = useTodoStore((s) => s.setSortBy);
   const setViewFilter = useTodoStore((s) => s.setViewFilter);
   const counts = useTodoStore((s) => s.counts);
+  const overdueCount = useTodoStore((s) => s.overdueCount);
   const todayCompletedCount = useTodoStore((s) => s.todayCompletedCount);
 
   const activeList = lists.find((l) => l.id === activeListId);
   const selectedItem = items.find((i) => i.id === selectedItemId);
+  const activeTodayOrOverdueCount = Math.max(counts?.todayCount ?? 0, overdueCount);
 
   // 虚拟化滚动容器（CustomScrollArea 的 viewport）
   const [scrollViewport, setScrollViewport] = useState<HTMLDivElement | null>(null);
@@ -822,13 +824,25 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
           hint: t('todo:empty.completedEmptyHint'),
           celebratory: false,
         };
-      default:
+      default: {
+        if (activeTodayOrOverdueCount > 0) {
+          const isInboxView = !activeList || activeList.isDefault;
+          return {
+            icon: Calendar,
+            title: isInboxView
+              ? t('todo:empty.inboxClearWithToday', { count: activeTodayOrOverdueCount })
+              : t('todo:empty.listEmptyWithToday', { list: viewTitle, count: activeTodayOrOverdueCount }),
+            hint: t('todo:empty.inboxClearWithTodayHint'),
+            celebratory: false,
+          };
+        }
         return {
           icon: ListChecks,
           title: t('todo:empty.noItems'),
           hint: t('todo:empty.hint'),
           celebratory: false,
         };
+      }
     }
   })();
 
@@ -1100,7 +1114,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
               <TodayStudySummaryCard
                 inTodayTodoView={filter.view === 'today'}
                 inEmptyListView={filter.view === 'all' && topLevelItems.length === 0}
-                todoDueCount={filter.view === 'today' ? pendingCount : counts?.todayCount ?? 0}
+                todoDueCount={filter.view === 'today' ? pendingCount : activeTodayOrOverdueCount}
                 onOpenTodos={() => {
                   if (filter.view !== 'today') {
                     setViewFilter('today');
@@ -1171,7 +1185,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 )}
                 {showQuickAdd && !isTodayAllDone && !filter.search.trim() && (
                   <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                    {filter.view === 'all' && (counts?.todayCount ?? 0) > 0 && (
+                    {filter.view === 'all' && activeTodayOrOverdueCount > 0 && (
                       <DsButton
                         variant="primary"
                         size="sm"
@@ -1180,7 +1194,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                         className="gap-1.5 text-xs transition-[transform,background-color,border-color,color] duration-150 active:scale-95 motion-reduce:transition-none motion-reduce:active:scale-100"
                       >
                         <Calendar size={14} />
-                        {t('todo:empty.viewTodayWithCount', { count: counts?.todayCount ?? 0 })}
+                        {t('todo:empty.viewTodayWithCount', { count: activeTodayOrOverdueCount })}
                       </DsButton>
                     )}
                     <DsButton

@@ -414,6 +414,21 @@ describe('RF-W01-trusted-plugin-admin: plugin manager commands', () => {
       const uninstalled = await safeRuntime.commands._dispatch({ id: '4', cmd: PLUGIN_MANAGER_UNINSTALL_COMMAND, args: { id: demo.id, revision: rev2 }, source: { window: 'main', webview: 'main' } });
       expect(uninstalled.kind).toBe('ok');
       expect((await packages.list()).some(p => p.id === demo.id)).toBe(false);
+
+      // S4-08 / S4-16: local .dstuplugin package import works in Safe Mode and keeps the imported plugin quarantined (disabled)
+      const rev3 = (await store.read()).revision;
+      const reimportedPath = join(root, 'faulty-rescue.dstuplugin');
+      const importedInSafeMode = await safeRuntime.commands._dispatch({
+        id: '5',
+        cmd: PLUGIN_MANAGER_INSTALL_COMMAND,
+        args: { path: reimportedPath, revision: rev3 },
+        source: { window: 'main', webview: 'main' },
+      });
+      expect(importedInSafeMode).toMatchObject({
+        kind: 'ok',
+        value: { id: demo.id, enabled: false },
+      });
+      expect(safeRuntime.get(demo.id)).toBeUndefined();
     } finally { await safeRuntime.dispose(); }
   });
 

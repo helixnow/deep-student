@@ -19,7 +19,7 @@ import { Textarea } from '../ui/shad/Textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/shad/Tabs';
 import TagInput from '../ui/shad/TagInput';
 import { CustomScrollArea } from '../custom-scroll-area';
-import { X } from '@phosphor-icons/react';
+import { Trash, X } from '@phosphor-icons/react';
 import { HorizontalResizable } from '../shared/Resizable';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/lib/utils';
@@ -63,6 +63,8 @@ export interface SkillFullscreenEditorProps {
   location: SkillLocation;
   /** 保存回调 */
   onSave: (data: SkillFormData) => Promise<void>;
+  /** 删除技能回调（仅非内置已有技能） */
+  onDelete?: (skill: SkillDefinition) => void;
   /** 卡片原始位置（用于动画） */
   originRect?: DOMRect | null;
   /** 主题模式 */
@@ -150,6 +152,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
   skill,
   location,
   onSave,
+  onDelete,
   originRect,
   theme = 'dark',
 }) => {
@@ -579,6 +582,20 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
 
                 {/* 左侧底部：操作按钮 */}
                 <div className="flex-none px-5 py-4 border-t border-border/20 flex items-center gap-2.5 bg-background relative z-10 sm:px-6 lg:px-7">
+                  {isEdit && skill && !isBuiltinSkill && onDelete && (
+                    <DsButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      data-testid="skill-editor-delete"
+                      onClick={() => onDelete(skill)}
+                      disabled={isSaving}
+                      className="gap-1.5 rounded-xl px-3 text-destructive hover:bg-destructive/10 hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
+                    >
+                      <Trash size={15} />
+                      <span>{t('skills:management.delete')}</span>
+                    </DsButton>
+                  )}
                   <DsButton
                     type="button"
                     variant="outline"

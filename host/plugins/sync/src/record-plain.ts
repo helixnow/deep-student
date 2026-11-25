@@ -4,7 +4,7 @@ import type { WorkspaceCoordinator } from '../../agent-workspace/api.ts';
 import type { EngineChange } from './change-payload.ts';
 import type { SyncManifest, MergeStrategy } from './merge.ts';
 import { executeDownload, executeBidirectional, type SyncExecutionResult } from './execute-download.ts';
-import { enforcePruneGapCheck, markApplyFailuresVisible, ensureDownloadApplyIsDurable, commitDownloadProgressIfNeeded, type SyncPassOptions } from './record-progress.ts';
+import { enforcePruneGapCheck, filterUploadCandidatesAfterDownload, markApplyFailuresVisible, ensureDownloadApplyIsDurable, commitDownloadProgressIfNeeded, type SyncPassOptions } from './record-progress.ts';
 import { runFileLevelSync } from './file-level-sync.ts';
 import type { FileSyncDirection } from './workspace-sync.ts';
 import { uploadEnrichedChanges } from './upload-changes.ts';
@@ -58,10 +58,7 @@ export async function executePlainSync(
     await commitDownloadProgressIfNeeded(storage, downloaded, options);
     if (direction === 'Bidirectional') {
       const deferredConflictKeys = options.application.consumeDeferredConflictKeys?.() ?? new Set<string>();
-      const filtered = enriched.filter(change => {
-        const key = keyOf(change.table_name, change.record_id);
-        return !appliedKeys.has(key) && !deferredConflictKeys.has(key);
-      });
+      const filtered = filterUploadCandidatesAfterDownload(enriched, appliedKeys, deferredConflictKeys, downloaded.changes);
       if (filtered.length < enriched.length) options.logger.info(`[data_governance] 双向同步: 已从上传列表中剔除 ${enriched.length - filtered.length} 条被下载覆盖或存在未决冲突的记录`);
       result.changes_uploaded = filtered.length;
       const files = await runFileLevelSync(storage, active, 'Upload', options, coordinator);

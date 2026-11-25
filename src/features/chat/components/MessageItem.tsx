@@ -278,6 +278,21 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   // 判断是否是用户消息
   const isUser = message?.role === 'user';
+  const isFirstAssistantTurnSelector = useCallback(
+    (s: ChatStore) => {
+      if (isUser) return false;
+      const order = Array.isArray(s.messageOrder) ? s.messageOrder : [];
+      for (const id of order) {
+        const msg = s.messageMap?.get(id);
+        if (msg && msg.role !== 'user') {
+          return id === messageId;
+        }
+      }
+      return true;
+    },
+    [isUser, messageId],
+  );
+  const isFirstAssistantTurn = useStore(store, isFirstAssistantTurnSelector);
   const streamReconnectState = isUser ? undefined : message?._meta?.streamReconnect;
   const reconnectInlineText = streamReconnectState
     ? t('messageItem.reconnect.inline', {
@@ -1666,6 +1681,15 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             </div>
           )}
 
+          {/* 首轮流式期间提前挂载无视觉预取器，确保流结束切回 idle 首帧即有记忆归因快照并触发流后强制刷新 */}
+          {showActions && !isUser && !isReadOnlySession && (isWaitingForContent || shouldHideLatestAssistantFooter || isLocked) && (
+            <MemoryKernelAttributionPill
+              prefetchOnly
+              sessionMetadata={storeSessionMetadata}
+              isFirstAssistantTurn={isFirstAssistantTurn}
+            />
+          )}
+
           {/* Token 统计 + 操作按钮（等待状态时隐藏） */}
           {/* 🔧 统一：多变体也在底部显示汇总 Token 统计 */}
           {showActions && !isInlineEditing && !isWaitingForContent && !hasZeroOutputFailure && !shouldHideLatestAssistantFooter && (
@@ -1683,6 +1707,13 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 {/* 📱 移动端左侧：弱化元信息，只保留必要状态 */}
                 {isSmallScreen && !isUser && (
                   <div className="flex items-center gap-1 flex-shrink-0">
+                    {!isReadOnlySession && !isLocked && (
+                      <MemoryKernelAttributionPill
+                        className="mr-1"
+                        sessionMetadata={storeSessionMetadata}
+                        isFirstAssistantTurn={isFirstAssistantTurn}
+                      />
+                    )}
                     {message.timestamp && (
                       <span
                         className="text-caption leading-none text-muted-foreground/45 flex items-center whitespace-nowrap"
@@ -1726,10 +1757,11 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         </span>
                       )
                     )}
-                    {!isUser && !isLocked && (
+                    {!isUser && !isReadOnlySession && !isLocked && (
                       <MemoryKernelAttributionPill
                         className="mr-1.5"
                         sessionMetadata={storeSessionMetadata}
+                        isFirstAssistantTurn={isFirstAssistantTurn}
                       />
                     )}
                     {!isUser && !isMultiVariant && isVersioned && (

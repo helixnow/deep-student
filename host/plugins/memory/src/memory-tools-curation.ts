@@ -487,7 +487,7 @@ const PROFILE_LIMIT_PREFIX = "Invalid argument 'profile': ";
 
 /** memory_executor.rs:1913 `execute_learner_profile_update`. */
 export async function learnerProfileUpdate(args: Args, service: MemoryServiceImpl,
-  ctx: ExecutionContext): Promise<unknown> {
+  ctx: ExecutionContext, env?: CurationEnv): Promise<unknown> {
   const update = parseProfileUpdate(args);
   if (update === null) {
     throw new Error('Invalid learner_profile_update arguments: invalid type for a LearnerProfileUpdate field');
@@ -528,6 +528,9 @@ export async function learnerProfileUpdate(args: Args, service: MemoryServiceImp
       : `\n\n当前画像全文（用于决定合并/移除对象）：\n${currentProfile}`;
     return { success: false, error: text, rendered_chars: renderedChars, max_chars: LEARNER_PROFILE_MAX_CHARS,
       current_profile: currentProfile };
+  }
+  if (outcome.changed && env) {
+    env.emit(MEMORY_CHANGED_EVENT, { source: 'agent', action: 'learner_profile_update', entityIds: [] });
   }
   return { success: true, changed: outcome.changed, version: outcome.profile.version,
     rendered_chars: renderedCharCount(outcome.profile),

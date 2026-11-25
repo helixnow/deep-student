@@ -1,6 +1,14 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+
+const { invokeMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: invokeMock,
+}));
 
 vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: vi.fn(),
@@ -16,6 +24,10 @@ import {
   normalizeWorkspaceArtifactPath,
 } from '../../launchSandboxWorkbench';
 import {
+  adjustSandboxRuntimeErrorLine,
+  applySmartLocalHtmlPatch,
+} from '../../requestSandboxHtmlPatch';
+import {
   LEGACY_SANDBOX_OWNER_KEY,
   useSandboxWorkbenchStore,
 } from '../../store/useSandboxWorkbenchStore';
@@ -24,6 +36,7 @@ import { SandboxWorkbenchSurface } from '../SandboxWorkbenchSurface';
 describe('Sandbox starter HTML canvas, path normalization, and sandbox-run upgrade (S3-08)', () => {
   beforeEach(() => {
     cleanup();
+    invokeMock.mockReset();
     window.localStorage.clear();
     useSandboxWorkbenchStore.setState({
       activeSession: null,
@@ -183,5 +196,104 @@ describe('Sandbox starter HTML canvas, path normalization, and sandbox-run upgra
     expect(screen.getByTestId('sandbox-restore-draft-button')).toHaveTextContent('恢复上次草稿');
     fireEvent.click(screen.getByTestId('sandbox-restore-draft-button'));
     expect(screen.getByTestId('sandbox-runtime-status-badge')).toHaveTextContent('已运行 · v1');
+  });
+
+  it('keeps canvas toolbar & range sliders unclipped across Inspector toggles and viewport switches, supports natural-language local edits, and adjusts runtime error line offsets (S3-08)', async () => {
+    render(<SandboxWorkbenchSurface />);
+    fireEvent.click(screen.getByTestId('sandbox-create-starter-button'));
+
+    // Verify starter canvas contains interactive <input type="range"> controls and visible toolbar
+    const iframe = document.querySelector('iframe.interactive-html-canvas-frame') as HTMLIFrameElement;
+    expect(iframe).not.toBeNull();
+    expect(iframe.getAttribute('srcdoc')).toContain('type="range"');
+    expect(screen.getByTestId('canvas-toolbar')).toBeInTheDocument();
+    expect(screen.getByTestId('canvas-toggle-edit')).toBeVisible();
+    expect(screen.getByTestId('canvas-toggle-source')).toBeVisible();
+    expect(screen.getByTestId('canvas-expand-button')).toBeVisible();
+
+    const postMessageSpy = vi.fn();
+    Object.defineProperty(iframe, 'contentWindow', {
+      value: { postMessage: postMessageSpy },
+      configurable: true,
+    });
+
+    // Switch desktop -> mobile -> tablet -> desktop and toggle Inspector open/close
+    fireEvent.click(screen.getByRole('button', { name: /手机|手|mobile/i }));
+    expect(screen.getByTestId('sandbox-runtime-canvas').className).toContain('max-w-[390px]');
+    expect(screen.getByTestId('canvas-toolbar')).toBeVisible();
+
+    const openInspectorBtn =
+      screen.queryByTestId('sandbox-status-rail') ??
+      screen.getAllByRole('button', { name: /检查器|属性面板|展开|inspector/i })[0];
+    fireEvent.click(openInspectorBtn);
+    expect(screen.getByTestId('sandbox-inspector-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('canvas-toolbar')).toBeVisible();
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'ds-canvas-remeasure' }),
+      '*',
+    );
+
+    // Close Inspector and switch back to desktop
+    const closeInspectorBtns = screen.getAllByRole('button', { name: /收起|关闭属性|collapse|close/i });
+    fireEvent.click(closeInspectorBtns[0]);
+    fireEvent.click(screen.getByRole('button', { name: /桌面|桌|desktop/i }));
+    expect(screen.getByTestId('sandbox-runtime-canvas').className).toContain('max-w-none');
+    expect(screen.getByTestId('canvas-toolbar')).toBeVisible();
+
+    // Open inline local edit: SandboxWorkbenchSurface wires onRequestPatch (no exact-only dead end!)
+    fireEvent.click(screen.getByTestId('canvas-toggle-edit'));
+    expect(screen.queryByTestId('canvas-local-edit-mode-hint')).toBeNull();
+
+    // Case A: LLM-backed natural-language edit via handout_llm_complete
+    invokeMock.mockResolvedValueOnce(
+      JSON.stringify({
+        edits: [{ search: "ctx.strokeStyle = '#3b82f6';", replace: "ctx.strokeStyle = '#10b981';" }],
+      }),
+    );
+    fireEvent.change(screen.getByTestId('canvas-edit-instruction'), {
+      target: { value: '把波浪曲线改成翠绿色' },
+    });
+    fireEvent.click(screen.getByTestId('canvas-apply-patch'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('sandbox-runtime-status-badge')).toHaveTextContent('已运行 · v2');
+    });
+    expect(
+      document.querySelector('iframe.interactive-html-canvas-frame')?.getAttribute('srcdoc'),
+    ).toContain("ctx.strokeStyle = '#10b981';");
+
+    // Case B: Offline/unconfigured LLM smart local patch fallback
+    invokeMock.mockRejectedValueOnce(new Error('LLM model not configured'));
+    fireEvent.change(screen.getByTestId('canvas-edit-instruction'), {
+      target: { value: '把波形颜色改成红色' },
+    });
+    fireEvent.click(screen.getByTestId('canvas-apply-patch'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('sandbox-runtime-status-badge')).toHaveTextContent('已运行 · v3');
+    });
+    expect(
+      document.querySelector('iframe.interactive-html-canvas-frame')?.getAttribute('srcdoc'),
+    ).toContain('#ef4444');
+
+    // Verify smart local title & reset button helpers and runtime error line-offset adjustment
+    const sampleUserHtml = ['<div>Demo</div>', '<script>', '  undefinedCall();', '</script>'].join('\n');
+    const shiftedSrcDoc = [
+      '<!DOCTYPE html>',
+      '<html>',
+      '<head>',
+      '<script>/* injected 4 extra lines */</script>',
+      '</head>',
+      '<body>',
+      '<div>Demo</div>',
+      '<script>',
+      '  undefinedCall();',
+      '</script>',
+      '</body>',
+      '</html>',
+    ].join('\n');
+    // undefinedCall() is line 3 in user HTML, line 9 in shiftedSrcDoc -> offset = 6 -> 9 - 6 = 3
+    expect(adjustSandboxRuntimeErrorLine(9, sampleUserHtml, shiftedSrcDoc)).toBe(3);
+    expect(applySmartLocalHtmlPatch('添加一个重置按钮', sampleUserHtml)).toContain('ds-local-reset-btn');
   });
 });

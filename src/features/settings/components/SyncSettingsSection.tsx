@@ -51,6 +51,8 @@ import {
   loadStoredCloudStorageConfigSafe,
   loadStoredCloudStorageConfigWithCredentials,
 } from '@/utils/cloudStorageApi';
+import { resolveLatestSyncTimestamp } from './data-governance/SyncTab';
+import { probeStoredCloudConfigured } from './QuickSyncNowButton';
 import {
   useGlobalSyncStore,
   useAutoSyncStore,
@@ -110,12 +112,8 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
   );
 
   const refreshCloudConfigured = useCallback(async () => {
-    try {
-      const cfg = await loadStoredCloudStorageConfigWithCredentials();
-      setCloudConfigured(Boolean(cfg));
-    } catch {
-      setCloudConfigured(Boolean(loadStoredCloudStorageConfigSafe()));
-    }
+    const found = await probeStoredCloudConfigured();
+    setCloudConfigured(found);
   }, []);
 
   useEffect(() => {
@@ -465,11 +463,14 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           {/* 最后同步时间 */}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <ClockCounterClockwise className="h-3 w-3" />
-            <span>
+            <span data-testid="sync-settings-last-sync-at">
               {t('data:sync_settings.last_sync')}:{' '}
-              {syncStatus?.last_sync_at
-                ? new Date(syncStatus.last_sync_at).toLocaleString()
-                : t('cloudStorage:status.never', { defaultValue: '从未同步' })}
+              {(() => {
+                const resolved = resolveLatestSyncTimestamp(syncStatus);
+                return resolved
+                  ? new Date(resolved).toLocaleString()
+                  : t('cloudStorage:status.never', { defaultValue: '从未同步' });
+              })()}
             </span>
           </div>
         </div>

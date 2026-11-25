@@ -225,18 +225,21 @@ export const NotesPageActionsMenu: React.FC<NotesPageActionsMenuProps> = ({
           variant="ghost"
           size="sm"
           role={menuItemRole}
-          disabled={!editorReady || !noteId}
+          disabled={!noteId || hostBusy}
           onClick={() => {
             if (noteId) {
-              void import('@/features/learning-hub/utils/exportResource').then(
-                ({ exportResourceById }) =>
+              void import('@/features/learning-hub/utils/exportResource')
+                .then(({ exportResourceById }) =>
                   exportResourceById(
                     noteId,
                     i18n.getFixedT(null, 'learningHub'),
                     acrWindowId,
                     layout,
                   ),
-              );
+                )
+                .catch((error) => {
+                  showGlobalNotification('error', error instanceof Error ? error.message : String(error));
+                });
             }
           }}
         >
@@ -250,12 +253,16 @@ export const NotesPageActionsMenu: React.FC<NotesPageActionsMenuProps> = ({
           variant="ghost"
           size="sm"
           role={menuItemRole}
-          disabled={!editorReady || !noteId}
+          disabled={!noteId || hostBusy}
           onClick={() => {
             if (noteId) {
-              void import('../noteDocxExport').then(({ exportNoteAsDocx }) =>
-                exportNoteAsDocx(noteId, template, acrWindowId),
-              );
+              void import('../noteDocxExport')
+                .then(({ exportNoteAsDocx }) =>
+                  exportNoteAsDocx(noteId, template, acrWindowId),
+                )
+                .catch((error) => {
+                  showGlobalNotification('error', error instanceof Error ? error.message : String(error));
+                });
             }
           }}
         >
@@ -277,11 +284,11 @@ export const NotesPageActionsMenu: React.FC<NotesPageActionsMenuProps> = ({
             variant="ghost"
             size="sm"
             role={menuItemRole}
-            disabled={!noteId || effectiveReadOnly || hostBusy || isMovingToTrash}
+            disabled={!noteId || readOnly || hostBusy || isMovingToTrash}
             className="text-destructive hover:text-destructive"
             data-no-focus-return="true"
             onClick={() => {
-              if (!noteId || effectiveReadOnly || isMovingToTrash) return;
+              if (!noteId || readOnly || hostBusy || isMovingToTrash) return;
               if (onMoveToTrash) {
                 void onMoveToTrash();
                 return;

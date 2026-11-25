@@ -572,12 +572,13 @@ export function useLearningHubSidebarController(props: LearningHubSidebarProps) 
     if (files.length === 0) return;
     const folderId = pendingMarkdownFolderRef.current ?? currentCreatableFolderId;
     const { importedNodes, failedCount, firstError, failedFiles } = await importMarkdownFileObjects(files, folderId);
-    if (!isMountedRef.current) return;
-    if (importedNodes.length > 0) {
-      void handleRefresh();
-      openImportedMarkdownNote(importedNodes[0] ?? null);
-    }
     notifyMarkdownImportResult(importedNodes.length, failedCount, failedFiles, firstError);
+    if (importedNodes.length > 0) {
+      await handleRefresh();
+      if (isMountedRef.current) {
+        openImportedMarkdownNote(importedNodes[0] ?? null);
+      }
+    }
   }, [currentCreatableFolderId, handleRefresh, importMarkdownFileObjects, notifyMarkdownImportResult, openImportedMarkdownNote]);
 
   const handleQuickAccessNavigate = useQuickAccessNavigation({ enterFolder, quickAccessNavigate, t, mode, sessionActive });
@@ -770,16 +771,21 @@ export function useLearningHubSidebarController(props: LearningHubSidebarProps) 
 
   // 右键菜单 - 开始文件夹内联编辑
   const handleOpenRenameDialog = useCallback((folderId: string) => {
-    const folder = items.find(i => i.id === folderId);
-    if (folder) {
-      startInlineEdit(folderId, 'folder', folder.name);
+    const folderName = items.find(i => i.id === folderId)?.name
+      ?? (contextMenuTarget.type === 'folder' && contextMenuTarget.folder.folder.id === folderId
+        ? contextMenuTarget.folder.folder.title
+        : undefined);
+    if (folderName !== undefined) {
+      setSelectedIds(new Set([folderId]));
+      startInlineEdit(folderId, 'folder', folderName);
     }
-  }, [items, startInlineEdit]);
+  }, [contextMenuTarget, items, setSelectedIds, startInlineEdit]);
 
   // 右键菜单 - 开始资源内联编辑
   const handleOpenRenameResourceDialog = useCallback((resource: ResourceListItem) => {
+    setSelectedIds(new Set([resource.id]));
     startInlineEdit(resource.id, 'resource', resource.title);
-  }, [startInlineEdit]);
+  }, [setSelectedIds, startInlineEdit]);
 
   // 内联编辑确认处理
   const handleInlineEditConfirm = useCallback((itemId: string, newName: string) => confirmInlineEdit({

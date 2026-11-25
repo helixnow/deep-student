@@ -183,10 +183,17 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
   );
 
 
+  const trustBusyRef = React.useRef(false);
+
   const handleTrustOverride = useCallback(async (skillId: string, trust: 'trusted' | 'untrusted') => {
+    if (trustBusyRef.current) return;
+    trustBusyRef.current = true;
     try {
       // setTrust 内部广播 SKILL_TRUST_CHANGED，hook 订阅方自动刷新
       await setTrust(skillId, trust);
+      if (trust === 'trusted' && isSkillDisabledNow(skillId)) {
+        setSkillDisabledNow(skillId, false);
+      }
       showGlobalNotification(
         'success',
         trust === 'trusted'
@@ -199,8 +206,10 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
         'error',
         t('skills:package.trust_failed', { error: getErrorMessage(error) }),
       );
+    } finally {
+      trustBusyRef.current = false;
     }
-  }, [setTrust, t]);
+  }, [setTrust, isSkillDisabledNow, setSkillDisabledNow, t]);
 
   const handleEnableSkill = useCallback((skillId: string) => {
     setSkillDisabledNow(skillId, false);

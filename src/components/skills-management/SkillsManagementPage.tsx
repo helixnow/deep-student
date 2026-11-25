@@ -65,7 +65,9 @@ import {
   parseSkillFile,
   useSkillDefaults,
   extractCustomizationFromSkill,
+  getSkillPackageRoot,
 } from '@/features/chat/skills';
+import { setSkillTrustOverride } from '@/features/chat/skills/skillTrustStorage';
 import {
   checkSkillUpdates,
   updateSkillFromSource,
@@ -526,6 +528,14 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     setDeleteConfirmOpen(true);
   }, []);
 
+  // 从技能编辑器内请求删除：先收回全区/嵌入编辑器，再在列表顶部展示行内删除确认横幅
+  const handleDeleteFromEditor = useCallback((skill: SkillDefinition) => {
+    setEditorOpen(false);
+    setRightPanelOpen(false);
+    setScreenPosition('center');
+    handleDelete(skill);
+  }, [handleDelete]);
+
   // 选择技能
   const handleSelectSkill = useCallback((skillId: string | null) => {
     if (skillId) {
@@ -543,10 +553,37 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     const isEdit = Boolean(editingSkill);
     const isBuiltinSkill = editingSkill?.isBuiltin === true;
 
+    if (isEdit && editingSkill && isBuiltinSkill) {
+      // 内置技能：保存自定义到数据库
+      const customization = {
+        name: data.name,
+        description: data.description,
+        version: data.version || undefined,
+        author: data.author || undefined,
+        priority: data.priority,
+        disableAutoInvoke: data.disableAutoInvoke,
+        allowedTools: data.allowedTools,
+        skillType: data.skillType,
+        relatedSkills: data.relatedSkills,
+        dependencies: data.dependencies,
+        content: data.content,
+        embeddedTools: data.embeddedTools,
+      };
+      await saveBuiltinSkillCustomization(editingSkill.id, customization);
+      await reloadSkills();
+      showGlobalNotification(
+        'success',
+        t('skills:management.builtin_save_success')
+      );
+      return;
+    }
+
+    let writtenPath: string | undefined;
+    let savedSkillId: string;
     if (isEdit && editingSkill) {
-      if (isBuiltinSkill) {
-        // 内置技能：保存自定义到数据库
-        const customization = {
+      // 用户技能：更新文件系统
+      const content = serializeSkillToMarkdown(
+        {
           name: data.name,
           description: data.description,
           version: data.version || undefined,
@@ -557,42 +594,17 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
           skillType: data.skillType,
           relatedSkills: data.relatedSkills,
           dependencies: data.dependencies,
-          content: data.content,
           embeddedTools: data.embeddedTools,
-        };
-        await saveBuiltinSkillCustomization(editingSkill.id, customization);
-        showGlobalNotification(
-          'success',
-          t('skills:management.builtin_save_success')
-        );
-      } else {
-        // 用户技能：更新文件系统
-        const content = serializeSkillToMarkdown(
-          {
-            name: data.name,
-            description: data.description,
-            version: data.version || undefined,
-            author: data.author || undefined,
-            priority: data.priority,
-            disableAutoInvoke: data.disableAutoInvoke,
-            allowedTools: data.allowedTools,
-            skillType: data.skillType,
-            relatedSkills: data.relatedSkills,
-            dependencies: data.dependencies,
-            embeddedTools: data.embeddedTools,
-            // 表单无 artifact 编辑器——保留解析出的原值，避免保存后静默丢失
-            artifact: editingSkill.artifact,
-            preservedFrontmatter: editingSkill.preservedFrontmatter,
-          },
-          data.content
-        );
-        const skillFilePath = editingSkill.sourcePath;
-        await updateSkill({ path: skillFilePath, content });
-        showGlobalNotification(
-          'success',
-          t('skills:management.save_success')
-        );
-      }
+          // 表单无 artifact 编辑器——保留解析出的原值，避免保存后静默丢失
+          artifact: editingSkill.artifact,
+          preservedFrontmatter: editingSkill.preservedFrontmatter,
+        },
+        data.content
+      );
+      const skillFilePath = editingSkill.sourcePath;
+      const updated = await updateSkill({ path: skillFilePath, content });
+      writtenPath = updated?.path || skillFilePath;
+      savedSkillId = editingSkill.id;
     } else {
       // 创建新技能（只能创建用户技能）
       const content = serializeSkillToMarkdown(
@@ -611,19 +623,39 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
         },
         data.content
       );
-      await createSkill({
+      const created = await createSkill({
         basePath: GLOBAL_SKILLS_PATH,
         skillId: data.id,
         content,
       });
-      showGlobalNotification(
-        'success',
-        t('skills:management.create_success')
-      );
+      writtenPath = created?.path || `${GLOBAL_SKILLS_PATH}/${data.id}/SKILL.md`;
+      savedSkillId = data.id;
     }
 
-    // 刷新列表
+    // 刷新列表并使本地用户自建/保存的自定义技能「保存即生效」（同时处于启用 + 已信任状态）
     await reloadSkills();
+    setSkillDisabled(savedSkillId, false);
+    const loadedSkill = skillRegistry.get(savedSkillId);
+    const trustTarget: SkillDefinition = loadedSkill ?? {
+      id: savedSkillId,
+      name: data.name,
+      description: data.description,
+      content: data.content,
+      location: editingSkill?.location ?? 'global',
+      sourcePath: writtenPath,
+      packageRoot: editingSkill?.packageRoot ?? getSkillPackageRoot(writtenPath),
+      isBuiltin: false,
+    };
+    try {
+      await setSkillTrustOverride(savedSkillId, 'trusted', trustTarget);
+    } catch (trustError) {
+      console.warn('[SkillsManagement] Auto-trust after local save failed:', trustError);
+    }
+
+    showGlobalNotification(
+      'success',
+      t(isEdit ? 'skills:management.save_success' : 'skills:management.create_success')
+    );
   }, [editingSkill, t]);
 
   // 请求恢复内置技能默认值（风险操作：先经列表顶部行内确认横幅，再真正执行）
@@ -677,8 +709,11 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       return;
     }
 
-    // 获取技能目录路径（从 sourcePath 中提取）
-    const dirPath = skillToDelete.sourcePath.replace(/\/SKILL\.md$/i, '');
+    // 获取技能目录路径（优先使用 packageRoot，否则从 sourcePath 兼容 / 与 \ 提取）
+    const dirPath =
+      skillToDelete.packageRoot && !skillToDelete.packageRoot.startsWith('builtin://')
+        ? skillToDelete.packageRoot
+        : skillToDelete.sourcePath.replace(/[\\/]SKILL\.md$/i, '');
     await deleteSkill(dirPath);
 
     showGlobalNotification(
@@ -1170,7 +1205,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     deleteConfirmOpen || importOverwriteOpen || zipOverwriteOpen;
   useEffect(() => {
     if (!anyInlinePanelOpen) return;
-    listViewportRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    listViewportRef.current?.scrollTo?.({ top: 0, behavior: 'smooth' });
   }, [anyInlinePanelOpen]);
 
   // ========== 移动端统一顶栏配置 ==========
@@ -1688,6 +1723,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           skill={editingSkill ?? undefined}
           location={editorLocation}
           onSave={handleSave}
+          onDelete={handleDeleteFromEditor}
           embeddedMode={true}
           requestCloseRef={editorRequestCloseRef}
 />
@@ -2171,6 +2207,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           skill={editingSkill ?? undefined}
           location={editorLocation}
           onSave={handleSave}
+          onDelete={handleDeleteFromEditor}
           originRect={editOriginRect}
           theme={isDarkMode ? 'dark' : 'light'}
 />

@@ -707,9 +707,46 @@ div.wb-dock[data-wb-dock-shimmer='true']::after {
 }
 
 /* ==========================================================================
- * 窄屏（<= 640px，如 360px 手机端）：限制 Dock 宽度在视口内并启用横向滚动，
- * 避免多应用打开时首尾图标被裁出视口
+ * 窄屏（< 768px 移动端 / 小屏，及 <= 640px 360px 手机端）：限制 Dock 宽度在视口内
+ * 并启用横向滚动，避免多应用打开时首尾图标被裁出视口或永久遮挡前景窗底部工具栏
  * ========================================================================== */
+
+@media (max-width: 767px) {
+  div.wb-dock {
+    bottom: 4px;
+    padding:
+      calc(4px * var(--wb-dock-scale))
+      calc(8px * var(--wb-dock-scale))
+      calc(8px * var(--wb-dock-scale));
+    box-sizing: border-box;
+    max-width: calc(100vw - 16px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    justify-content: flex-start;
+  }
+
+  div.wb-dock::-webkit-scrollbar {
+    display: none;
+  }
+
+  .wb-dock .wb-dock-item-wrap,
+  .wb-dock .wb-dock-separator {
+    flex-shrink: 0;
+  }
+
+  .wb-dock-zone div.wb-dock[data-hidden],
+  .wb-dock-zone[data-immersive='true'] div.wb-dock[data-hidden],
+  .wb-dock-zone[data-compact-typing='true'] div.wb-dock[data-hidden],
+  .wb-dock-zone[data-compact-window='true'] div.wb-dock[data-hidden],
+  .wb-dock-zone[data-compact-collapsed='true'] div.wb-dock[data-hidden] {
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+    transform: translate(-50%, calc(100% + 18px));
+  }
+}
 
 @media (max-width: 640px) {
   div.wb-dock {

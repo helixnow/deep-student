@@ -5,6 +5,7 @@ import type { PracticeDraft, PracticeAttempt, PracticeResult } from '@/api/pract
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
+  notify: vi.fn(),
   listeners: new Map<string, (event: { payload: unknown }) => void | Promise<void>>(),
 }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
@@ -23,7 +24,7 @@ vi.mock('@/features/chat/components/renderers', () => ({
   MarkdownRenderer: ({ content }: { content: string }) => <div>{content}</div>,
   StreamingMarkdownRenderer: ({ content }: { content: string }) => <div>{content}</div>,
 }));
-vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: vi.fn() }));
+vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: mocks.notify }));
 
 import BatchPracticeWorkspace from '../BatchPracticeWorkspace';
 import i18n from '@/i18n';
@@ -816,4 +817,145 @@ it('shows concrete fallback rationale instead of bare numeric score when tags-on
   expect(rationale).toHaveTextContent('68 / 100 分');
   expect(rationale).toHaveTextContent('关键要点A与要点B');
   expect(rationale.textContent).not.toContain('<verdict>');
+});
+
+it('shows AI grading status banner during pending_count > 0, announces 40 -> 60 completion transition, and persists manual 100 -> 0 / 50 regrade across reload with intact rubric table (S2-05)', async () => {
+  const base = draft();
+  const fiveQuestions = [
+    { ...base.questions[0], id: 'q1', content: 'Obj Q1' },
+    { ...base.questions[0], id: 'q2', content: 'Obj Q2' },
+    { ...base.questions[0], id: 'q3', content: 'Obj Q3' },
+    { ...base.questions[0], id: 'q4', content: 'Obj Q4' },
+    {
+      ...base.questions[0],
+      id: 'q5',
+      content: 'Subjective Q5',
+      question_type: 'short_answer' as const,
+      options: [],
+      answer: '标准推导步骤',
+    },
+  ];
+
+  let attempt: PracticeAttempt = submittedAttempt('pending', {
+    status: 'grading',
+    questions: fiveQuestions,
+    answers: { q1: 'A', q2: 'A', q3: 'B', q4: 'B', q5: '学生主观题作答' },
+    results: [
+      { question_id: 'q1', status: 'correct', is_correct: true, score: 100, feedback: null, error: null, source_available: true, submission_id: 's1' },
+      { question_id: 'q2', status: 'correct', is_correct: true, score: 100, feedback: null, error: null, source_available: true, submission_id: 's2' },
+      { question_id: 'q3', status: 'incorrect', is_correct: false, score: 0, feedback: null, error: null, source_available: true, submission_id: 's3' },
+      { question_id: 'q4', status: 'incorrect', is_correct: false, score: 0, feedback: null, error: null, source_available: true, submission_id: 's4' },
+      { question_id: 'q5', status: 'pending', is_correct: null, score: null, feedback: null, error: null, source_available: true, submission_id: 's5' },
+    ],
+  });
+
+  mocks.invoke.mockImplementation(async (command, args) => {
+    if (command === 'qbank_get_practice') return attempt;
+    if (command === 'qbank_get_question') return { ...fiveQuestions[0], is_favorite: false };
+    if (command === 'qbank_get_history') return [];
+    if (command === 'qbank_resume_practice_grading') return;
+    if (command === 'qbank_grade_practice_manually') {
+      const nextScore = typeof args.score === 'number' ? args.score : args.correct ? 100 : 0;
+      const nextStatus: PracticeResult['status'] =
+        nextScore === 0 ? 'incorrect' : nextScore >= 80 ? 'correct' : 'partial';
+      attempt = {
+        ...attempt,
+        results: attempt.results.map((r) =>
+          r.question_id === args.questionId
+            ? {
+                ...r,
+                score: nextScore,
+                status: nextStatus,
+                is_correct: nextScore >= 80,
+                feedback: `${(r.feedback ?? '').replace(/<manual_override\b[^>]*\/>/gi, '').trim()}\n<manual_override score="${nextScore}" status="${nextStatus}" original_score="100" original_status="correct"/>`,
+              }
+            : r,
+        ),
+      };
+      return attempt;
+    }
+    return undefined;
+  });
+
+  const { unmount } = render(<BatchPracticeWorkspace practiceId="draft1" submitted onBack={vi.fn()} />);
+  await screen.findByText('Obj Q1');
+
+  // 1. Initial pending state: 40 pts and visible role="status" AI grading banner
+  expect(screen.getByTestId('batch-total-score-summary')).toHaveTextContent('得分 40分 · 准确率 40%');
+  const gradingBanner = screen.getByTestId('practice-ai-grading-banner');
+  expect(gradingBanner).toHaveAttribute('role', 'status');
+  expect(gradingBanner).toHaveTextContent('AI 正在批改 1 道主观题...');
+
+  // 2. Subjective grading finishes -> transitions pending_count 1 -> 0, score 40 -> 60
+  attempt = {
+    ...attempt,
+    status: 'completed',
+    results: attempt.results.map((r) =>
+      r.question_id === 'q5'
+        ? {
+            ...r,
+            status: 'correct',
+            is_correct: true,
+            score: 100,
+            feedback:
+              '本题满分作答。\n| 评分项 | 满分 | 得分 | 说明 | | --- | --- | --- | --- | | 核心公式 | 50 | 50 | 推导正确 | | 结论完整 | 50 | 50 | 表述清晰 |\n<verdict>correct</verdict><score value="100"/>',
+          }
+        : r,
+    ),
+  };
+
+  const onPracticeUpdated = mocks.listeners.get('qbank-practice-updated');
+  expect(onPracticeUpdated).toBeDefined();
+  await act(async () => {
+    await onPracticeUpdated?.({ payload: 'draft1' });
+  });
+
+  await waitFor(() => {
+    expect(screen.queryByTestId('practice-ai-grading-banner')).toBeNull();
+    expect(screen.getByTestId('batch-total-score-summary')).toHaveTextContent('得分 60分 · 准确率 60%');
+  });
+  expect(mocks.notify).toHaveBeenCalledWith('success', '主观题批改完成：总分 40 → 60');
+  const completeBanner = screen.getByTestId('practice-ai-grading-complete-banner');
+  expect(completeBanner).toHaveAttribute('role', 'status');
+  expect(completeBanner).toHaveTextContent('主观题批改完成：总分 40 → 60');
+
+  // 3. Navigate to Q5 and inspect rendered rubric markdown table
+  fireEvent.click(screen.getAllByRole('button', { name: '答题卡' })[0]!);
+  fireEvent.click(screen.getAllByRole('button', { name: /第\s*5\s*题/ })[0]!);
+  await screen.findByText('Subjective Q5');
+
+  const rationale = screen.getByTestId('practice-ai-grading-rationale');
+  expect(rationale.textContent).toContain('| 评分项 | 满分 | 得分 | 说明 |');
+  expect(rationale.textContent).toContain('| 核心公式 | 50 | 50 | 推导正确 |');
+  expect(rationale.textContent).toContain('| 结论完整 | 50 | 50 | 表述清晰 |');
+  expect(rationale.textContent).not.toContain('<verdict>');
+  expect(rationale.textContent).not.toContain('<score');
+
+  // 4. Manual override 100 -> 0 updates header (60 -> 40), verdict bar, and override badge immediately
+  fireEvent.click(screen.getByTestId('practice-manual-override-toggle'));
+  fireEvent.click(screen.getByRole('button', { name: '0 分' }));
+  fireEvent.click(screen.getByTestId('practice-manual-override-save'));
+
+  await waitFor(() => {
+    expect(screen.getByTestId('batch-total-score-summary')).toHaveTextContent('得分 40分 · 准确率 40%');
+    expect(screen.getByTestId('practice-question-verdict-bar')).toHaveTextContent('回答错误 · 0/100');
+    expect(screen.getByTestId('practice-question-verdict-bar')).toHaveTextContent('已人工改判为 0/100');
+    expect(screen.getByTestId('practice-manual-override-banner')).toHaveTextContent(
+      '已人工改判为 0/100（原 AI 评分：100/100）',
+    );
+  });
+
+  // 5. Simulate full page reload (unmount + fresh mount reading persisted attempt)
+  unmount();
+  render(<BatchPracticeWorkspace practiceId="draft1" submitted onBack={vi.fn()} />);
+  await screen.findByText('Obj Q1');
+  expect(screen.getByTestId('batch-total-score-summary')).toHaveTextContent('得分 40分 · 准确率 40%');
+
+  fireEvent.click(screen.getAllByRole('button', { name: '答题卡' })[0]!);
+  fireEvent.click(screen.getAllByRole('button', { name: /第\s*5\s*题/ })[0]!);
+  await screen.findByText('Subjective Q5');
+  expect(screen.getByTestId('practice-question-verdict-bar')).toHaveTextContent('回答错误 · 0/100');
+  expect(screen.getByTestId('practice-manual-override-banner')).toHaveTextContent(
+    '已人工改判为 0/100（原 AI 评分：100/100）',
+  );
 });

@@ -118,6 +118,7 @@
     "cancel": "取消",
     "cancel_grading": "取消批改",
     "clear": "清空",
+    "delete": "删除",
     "view_history": "查看历史轮次",
     "retry": "重试",
     "cancel_confirm_title": "取消批改",
@@ -239,7 +240,9 @@
     "dimensions": "评分维度",
     "create": "新建",
     "edit": "编辑模式",
-    "quick_switch": "快速切换"
+    "quick_switch": "快速切换",
+    "manage_custom_rubric": "新建 / 管理自定义标准",
+    "manage_custom_rubric_short": "自定义标准"
   },
   "model": {
     "select": "选择模型",
@@ -485,6 +488,8 @@
     "custom_rubric_badge": "自定义",
     "custom_rubric_name_required": "请输入标准名称",
     "custom_rubric_prompt_required": "请输入评分细则或要求",
+    "saved_custom_rubrics": "已保存的自定义标准",
+    "use_rubric": "使用",
     "validation": {
       "dimension_invalid": "请修正标红的维度：名称不能为空，分值需大于 0",
       "total_positive": "总分需大于 0",

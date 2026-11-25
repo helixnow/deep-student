@@ -76,6 +76,7 @@ import {
   MediaHandoutTab,
   MediaAskTab,
   buildMediaHandoutDocument,
+  parseHandoutMarkdownToDocument,
 } from '../components/MediaStudyTabs';
 
 const sampleSegments: TranscriptSegment[] = [
@@ -377,5 +378,62 @@ describe('MediaStudyTabs — HandoutReaderView & ContextualMiniChat integration'
     expect(code).toContain("from '@/features/chat'");
     expect(code).not.toContain('@/features/learning-hub/components/HandoutReaderView');
     expect(code).not.toContain('@/features/chat/components/ContextualMiniChat');
+  });
+
+  it('12. [S3-11 & S3-17] strips duplicate chapter prefixes in parseHandoutMarkdownToDocument and places ContextualMiniChat first in MediaAskTab with visible input & re-expand on tab activation', () => {
+    const parsedDoc = parseHandoutMarkdownToDocument(
+      [
+        '# 线性代数精讲',
+        '## 一、一、特征值导引',
+        '[媒体@file_lec_03:01:30] 特征方程求解要点',
+        '## 二、二、实对称矩阵正交对角化',
+        '- 不同特征值的特征向量正交',
+      ].join('\n'),
+      '线性代数第3讲',
+    );
+    expect(parsedDoc).not.toBeNull();
+    expect(parsedDoc?.sections[0].heading).toBe('特征值导引');
+    expect(parsedDoc?.sections[1].heading).toBe('实对称矩阵正交对角化');
+
+    const ctx = createMockContext({ getCurrentTime: () => 110 });
+    const { container, rerender } = render(
+      <MediaAskTab
+        ctx={ctx}
+        meta={{ name: '线性代数第3讲.mp4', mimeType: 'video/mp4' }}
+        visible={true}
+      />,
+    );
+
+    const miniChat = screen.getByTestId('contextual-mini-chat');
+    expect(miniChat).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '伴读提问输入框' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '发送伴读提问' })).toBeVisible();
+
+    // Ensure ContextualMiniChat sits in the very first section above quick-ask cards so 360px mobile sees the input immediately
+    const askMarker = container.querySelector('[data-media-ask]') as HTMLElement;
+    expect(
+      Boolean(miniChat.compareDocumentPosition(askMarker) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+
+    // Minimizing then switching tab away and back re-expands ContextualMiniChat so input is never hidden
+    fireEvent.click(screen.getByRole('button', { name: '最小化伴读小窗' }));
+    expect(screen.getByTestId('contextual-mini-chat-pill')).toBeInTheDocument();
+
+    rerender(
+      <MediaAskTab
+        ctx={ctx}
+        meta={{ name: '线性代数第3讲.mp4', mimeType: 'video/mp4' }}
+        visible={false}
+      />,
+    );
+    rerender(
+      <MediaAskTab
+        ctx={ctx}
+        meta={{ name: '线性代数第3讲.mp4', mimeType: 'video/mp4' }}
+        visible={true}
+      />,
+    );
+    expect(screen.getByTestId('contextual-mini-chat')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: '伴读提问输入框' })).toBeVisible();
   });
 });

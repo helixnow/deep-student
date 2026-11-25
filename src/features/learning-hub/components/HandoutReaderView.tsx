@@ -4,14 +4,21 @@ import DOMPurify from 'dompurify';
 import {
   BookOpen,
   Check,
+  Copy,
   FileArrowDown,
   FilePlus,
   Play,
   Printer,
   Sparkle,
+  Translate,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/utils/cn';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { translationDstuAdapter } from '@/dstu/adapters/translationDstuAdapter';
+import { saveTranslationDraftSnapshot } from '@/translation';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import {
   CALLOUT_KIND_LABELS,
   DIFFICULTY_META,
@@ -62,9 +69,78 @@ export interface HandoutReaderViewProps {
   ) => boolean | void | Promise<boolean | void>;
   onPrintView?: (document: HandoutDocument) => void;
   onBindMiniChatAnchor?: (anchor: HandoutSectionAnchorPayload) => void;
+  /** 复制整份讲义回调 */
+  onCopyHandout?: (markdown: string, document: HandoutDocument) => void | Promise<void>;
+  /** 复制单个章节回调 */
+  onCopySection?: (
+    text: string,
+    section: HandoutSection,
+    document: HandoutDocument,
+  ) => void | Promise<void>;
+  /** 发送到翻译工作台回调（缺省时自动创建翻译草稿并打开翻译工作台） */
+  onSendToTranslate?: (payload: {
+    text: string;
+    title: string;
+    sectionId?: string;
+    document: HandoutDocument;
+  }) => void | Promise<void>;
   /** 网课音视频伴读回调：点击章节或配图时间锚点跳转至视频对应秒数 */
   onSeekTimestamp?: (seconds: number) => void;
   className?: string;
+}
+
+const LEADING_CN_CHAPTER_PREFIX_RE =
+  /^(?:(?:第[一二三四五六七八九十百零〇\d]+[章节部分篇]\s*[:：、.．]?\s*)|(?:[一二三四五六七八九十百零〇]+[、.．:：]\s*)|(?:\d+[、.．]\s+(?=[一二三四五六七八九十百零〇]+[、.．:：])))+/;
+const LEADING_CN_SUBHEADING_PREFIX_RE = /^(?:[（(][一二三四五六七八九十百零〇\d]+[)）]\s*)+/;
+
+/** 去除章节标题前重复的中文序号前缀（如 `一、一、特征值` -> `特征值`） */
+export function stripDuplicateHandoutChapterPrefix(heading: string): string {
+  const trimmed = heading.trim();
+  const stripped = trimmed.replace(LEADING_CN_CHAPTER_PREFIX_RE, '').trim();
+  return stripped || trimmed;
+}
+
+/** 去除小节标题前重复的中文括号序号前缀（如 `（一）（一）定义` -> `定义`） */
+export function stripDuplicateHandoutSubheadingPrefix(heading: string): string {
+  const trimmed = heading.trim();
+  const stripped = trimmed.replace(LEADING_CN_SUBHEADING_PREFIX_RE, '').trim();
+  return stripped || trimmed;
+}
+
+/** 规范化展示用章节标题：`一、特征值...`（绝不出现 `一、一、`） */
+export function formatHandoutSectionHeading(index: number, heading: string): string {
+  const clean = stripDuplicateHandoutChapterPrefix(heading);
+  const prefix = `${h1Num(index)}、`;
+  return clean.startsWith(prefix) ? clean : `${prefix}${clean}`;
+}
+
+/** 将单个章节序列化为可复制/可翻译的纯文本/Markdown */
+export function handoutSectionToText(section: HandoutSection, index: number): string {
+  const sectionDoc: HandoutDocument = {
+    title: formatHandoutSectionHeading(index, section.heading),
+    summary: '',
+    sections: [
+      {
+        ...section,
+        heading: stripDuplicateHandoutChapterPrefix(section.heading),
+      },
+    ],
+  };
+  const lines: string[] = [`## ${formatHandoutSectionHeading(index, section.heading)}`];
+  const fullMd = handoutIrToMarkdown(sectionDoc);
+  const firstSectionIdx = fullMd.indexOf('\n## ');
+  if (firstSectionIdx >= 0) {
+    const afterHeadingIdx = fullMd.indexOf('\n', firstSectionIdx + 1);
+    if (afterHeadingIdx >= 0) {
+      const body = fullMd.slice(afterHeadingIdx + 1).trim();
+      if (body) lines.push('', body);
+    }
+  }
+  return lines.join('\n').trim() + '\n';
+}
+
+function inferTranslateTargetLang(text: string): string {
+  return /[\u4e00-\u9fff]/.test(text) ? 'en' : 'zh-CN';
 }
 
 // ============================================================================
@@ -121,6 +197,9 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
   onSaveToNote,
   onPrintView,
   onBindMiniChatAnchor,
+  onCopyHandout,
+  onCopySection,
+  onSendToTranslate,
   onSeekTimestamp,
   className,
 }) => {
@@ -135,12 +214,14 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, number>>({});
   const [isPrintPreview, setIsPrintPreview] = useState(false);
   const [savedToNote, setSavedToNote] = useState(false);
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const [justSeekedKey, setJustSeekedKey] = useState<string | null>(null);
 
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const seekTimerRef = useRef<number | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     setSavedToNote(false);
@@ -149,6 +230,7 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
   useEffect(() => () => {
     if (seekTimerRef.current !== null) window.clearTimeout(seekTimerRef.current);
     if (feedbackTimerRef.current !== null) window.clearTimeout(feedbackTimerRef.current);
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
   }, []);
 
   const showActionFeedback = useCallback((message: string | null) => {
@@ -327,17 +409,169 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
     [],
   );
 
+  const normalizedDoc = useMemo<HandoutDocument>(
+    () => ({
+      ...doc,
+      sections: doc.sections.map((section) => ({
+        ...section,
+        heading: stripDuplicateHandoutChapterPrefix(section.heading),
+        blocks: section.blocks.map((block) =>
+          block.type === 'h2'
+            ? { ...block, text: stripDuplicateHandoutSubheadingPrefix(block.text) }
+            : block,
+        ),
+      })),
+    }),
+    [doc],
+  );
+
+  const markCopiedKey = useCallback((key: string) => {
+    setCopiedKey(key);
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+    copyTimerRef.current = window.setTimeout(() => {
+      setCopiedKey((prev) => (prev === key ? null : prev));
+      copyTimerRef.current = null;
+    }, 2000);
+  }, []);
+
   const handleExportMarkdown = useCallback(() => {
-    const md = handoutIrToMarkdown(doc);
+    const md = handoutIrToMarkdown(normalizedDoc);
     onExportMarkdown?.(md, doc);
     showActionFeedback(
       t('learningHub:handoutReader.exportedMarkdown', { defaultValue: '已导出 Markdown' }),
     );
-  }, [doc, onExportMarkdown, showActionFeedback, t]);
+  }, [doc, normalizedDoc, onExportMarkdown, showActionFeedback, t]);
+
+  const handleCopyHandout = useCallback(async () => {
+    const md = handoutIrToMarkdown(normalizedDoc);
+    try {
+      if (onCopyHandout) {
+        await onCopyHandout(md, doc);
+      } else {
+        await copyTextToClipboard(md);
+      }
+      markCopiedKey('handout');
+      showActionFeedback(
+        t('learningHub:handoutReader.copiedHandout', { defaultValue: '已复制讲义' }),
+      );
+    } catch {
+      showActionFeedback(
+        t('learningHub:handoutReader.copyFailed', { defaultValue: '复制失败，请手动选中复制' }),
+      );
+    }
+  }, [doc, markCopiedKey, normalizedDoc, onCopyHandout, showActionFeedback, t]);
+
+  const handleCopySection = useCallback(
+    async (section: HandoutSection, index: number, sectionId: string) => {
+      const text = handoutSectionToText(section, index);
+      try {
+        if (onCopySection) {
+          await onCopySection(text, section, doc);
+        } else {
+          await copyTextToClipboard(text);
+        }
+        markCopiedKey(`section:${sectionId}`);
+        showActionFeedback(
+          t('learningHub:handoutReader.copiedSection', { defaultValue: '已复制本章' }),
+        );
+      } catch {
+        showActionFeedback(
+          t('learningHub:handoutReader.copyFailed', { defaultValue: '复制失败，请手动选中复制' }),
+        );
+      }
+    },
+    [doc, markCopiedKey, onCopySection, showActionFeedback, t],
+  );
+
+  const handleSendToTranslate = useCallback(
+    async (text: string, title: string, sectionId?: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      if (onSendToTranslate) {
+        await onSendToTranslate({ text: trimmed, title, sectionId, document: doc });
+        showActionFeedback(
+          t('learningHub:handoutReader.sentToTranslate', { defaultValue: '已发送至翻译工作台' }),
+        );
+        return;
+      }
+
+      const tgtLang = inferTranslateTargetLang(trimmed);
+      const now = Date.now();
+      let createdId: string | null = null;
+      try {
+        const res = await translationDstuAdapter.createTranslation({
+          id: '',
+          sourceText: trimmed,
+          translatedText: '',
+          srcLang: 'auto',
+          tgtLang,
+          createdAt: now,
+          updatedAt: now,
+        });
+        if (res.ok && res.value?.id) {
+          createdId = res.value.id;
+          saveTranslationDraftSnapshot({
+            id: createdId,
+            srcLang: 'auto',
+            tgtLang,
+            sourceText: trimmed,
+            translatedText: '',
+            updatedAt: now,
+          });
+        }
+      } catch {
+        createdId = null;
+      }
+
+      if (createdId) {
+        const payload = { resourceId: createdId, sourceText: trimmed, title };
+        workbenchBus.launch({
+          typeId: 'translation',
+          instanceKey: createdId,
+          reason: 'api',
+          payload,
+        });
+        if (!workbenchBus.isEnabled()) {
+          dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TRANSLATION, {
+            translationId: createdId,
+            title,
+          });
+        }
+        showActionFeedback(
+          t('learningHub:handoutReader.sentToTranslate', { defaultValue: '已发送至翻译工作台' }),
+        );
+        return;
+      }
+
+      saveTranslationDraftSnapshot({
+        id: null,
+        srcLang: 'auto',
+        tgtLang,
+        sourceText: trimmed,
+        translatedText: '',
+        updatedAt: now,
+      });
+      await copyTextToClipboard(trimmed).catch(() => false);
+      workbenchBus.launch({
+        typeId: 'translation',
+        reason: 'api',
+        payload: { sourceText: trimmed, title },
+      });
+      if (!workbenchBus.isEnabled()) {
+        dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'learning-hub' });
+      }
+      showActionFeedback(
+        t('learningHub:handoutReader.sentToTranslateCopiedFallback', {
+          defaultValue: '已打开翻译工作台（文本已复制备用）',
+        }),
+      );
+    },
+    [doc, onSendToTranslate, showActionFeedback, t],
+  );
 
   const handleSaveToNote = useCallback(async () => {
     if (!onSaveToNote) return;
-    const md = handoutIrToMarkdown(doc);
+    const md = handoutIrToMarkdown(normalizedDoc);
     try {
       const saveResult = await onSaveToNote(doc, md);
       if (saveResult !== false) {
@@ -455,7 +689,39 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
           </div>
 
           {/* 顶栏操作按钮 */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => void handleCopyHandout()}
+              data-testid="handout-copy-all-button"
+              className="!h-auto gap-1.5 !px-2.5 !py-1.5 text-xs font-medium rounded-md border border-border/35 bg-background text-foreground hover:bg-muted/60 active:scale-[0.98] motion-reduce:transition-none motion-reduce:transform-none"
+            >
+              {copiedKey === 'handout' ? (
+                <Check className="w-3.5 h-3.5 text-success" aria-hidden="true" />
+              ) : (
+                <Copy className="w-3.5 h-3.5" aria-hidden="true" />
+              )}
+              <span>
+                {copiedKey === 'handout'
+                  ? t('learningHub:handoutReader.copied', { defaultValue: '已复制' })
+                  : t('learningHub:handoutReader.copyHandout', { defaultValue: '复制讲义' })}
+              </span>
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                void handleSendToTranslate(handoutIrToMarkdown(normalizedDoc), doc.title)
+              }
+              data-testid="handout-translate-all-button"
+              className="!h-auto gap-1.5 !px-2.5 !py-1.5 text-xs font-medium rounded-md border border-border/35 bg-background text-foreground hover:bg-muted/60 active:scale-[0.98] motion-reduce:transition-none motion-reduce:transform-none"
+            >
+              <Translate className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>
+                {t('learningHub:handoutReader.sendToTranslate', { defaultValue: '发送到翻译' })}
+              </span>
+            </DsButton>
             <DsButton
               variant="ghost"
               size="sm"
@@ -653,7 +919,7 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
                         )}
                       />
                       <span className="truncate font-medium">
-                        {h1Num(index)}、{section.heading}
+                        {formatHandoutSectionHeading(index, section.heading)}
                       </span>
                     </DsButton>
                     <span className="text-2xs px-1.5 py-0.5 rounded bg-muted/60 text-muted-foreground shrink-0">
@@ -716,7 +982,7 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
                       )}
                     />
                     <h2 className="text-lg font-semibold text-foreground">
-                      {h1Num(index)}、{section.heading}
+                      {formatHandoutSectionHeading(index, section.heading)}
                     </h2>
                     <span
                       className={cn(
@@ -770,7 +1036,43 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
                       )}
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void handleCopySection(section, index, id)}
+                      data-testid={`handout-copy-section-${id}`}
+                      className="!h-auto gap-1 !px-2 !py-1 text-xs rounded border border-border/35 text-muted-foreground hover:text-foreground hover:bg-muted/50 active:scale-[0.98] motion-reduce:transition-none motion-reduce:transform-none"
+                    >
+                      {copiedKey === `section:${id}` ? (
+                        <Check className="w-3 h-3 text-success" aria-hidden="true" />
+                      ) : (
+                        <Copy className="w-3 h-3" aria-hidden="true" />
+                      )}
+                      <span>
+                        {copiedKey === `section:${id}`
+                          ? t('learningHub:handoutReader.copied', { defaultValue: '已复制' })
+                          : t('learningHub:handoutReader.copySection', { defaultValue: '复制本章' })}
+                      </span>
+                    </DsButton>
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        void handleSendToTranslate(
+                          handoutSectionToText(section, index),
+                          formatHandoutSectionHeading(index, section.heading),
+                          id,
+                        )
+                      }
+                      data-testid={`handout-translate-section-${id}`}
+                      className="!h-auto gap-1 !px-2 !py-1 text-xs rounded border border-border/35 text-muted-foreground hover:text-foreground hover:bg-muted/50 active:scale-[0.98] motion-reduce:transition-none motion-reduce:transform-none"
+                    >
+                      <Translate className="w-3 h-3" aria-hidden="true" />
+                      <span>
+                        {t('learningHub:handoutReader.sendToTranslate', { defaultValue: '发送到翻译' })}
+                      </span>
+                    </DsButton>
                     {onBindMiniChatAnchor && (
                       <DsButton
                         variant="ghost"
@@ -778,7 +1080,7 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
                         onClick={() =>
                           onBindMiniChatAnchor({
                             kind: 'handout_section',
-                            label: `${h1Num(index)}、${section.heading}`,
+                            label: formatHandoutSectionHeading(index, section.heading),
                             referenceId: id,
                           })
                         }
@@ -867,7 +1169,7 @@ export const HandoutReaderView: React.FC<HandoutReaderViewProps> = ({
                             className="text-base font-semibold text-foreground mt-2"
                           >
                             {numLabel}
-                            {block.text}
+                            {stripDuplicateHandoutSubheadingPrefix(block.text)}
                           </h3>
                         );
                       }

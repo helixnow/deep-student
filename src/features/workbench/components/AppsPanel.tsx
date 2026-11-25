@@ -179,13 +179,15 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   const skipFocusReturnRef = useRef(false);
   const isKeyboardNavRef = useRef(false);
 
+  const visibleOrExiting = open || rendered;
+
   // 液态玻璃透镜：入场 320ms 真折射读出透镜感，之后自动降级静态毛玻璃
   // （Chromium + full 档；其余环境由 wb-glass-lens 的 CSS 回退普通玻璃）。
   // 挂载期（含退场动画）保持附着；非常驻大面折射，不触碰性能纪律。
-  useLiquidGlassLens(dialogRef, rendered);
+  useLiquidGlassLens(dialogRef, visibleOrExiting);
 
   const searching = query.trim().length > 0;
-  const contentSearchReady = query.trim().length >= CONTENT_SEARCH_MIN_CHARS;
+  const contentSearchReady = query.trim().length >= 1;
 
   const [browserLaunchable, setBrowserLaunchable] = useState(false);
   useEffect(() => {
@@ -254,7 +256,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
         closeAppsPanel();
         openChatInWorkbench(sessionId);
       },
-      untitledSessionTitle: t('command_palette:untitled', 'Untitled'),
+      untitledSessionTitle: t('workbench:appsPanel.untitledChat', '未命名会话'),
     }),
     [launchableApps, commandPalette, t],
   );
@@ -279,7 +281,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     (q, signal) => chatProvider.search(q, signal),
     {
       debounceMs: GLOBAL_SEARCH_DEBOUNCE_MS,
-      minChars: CONTENT_SEARCH_MIN_CHARS,
+      minChars: chatProvider.minChars,
       empty: [] as GlobalSearchItem[],
     },
   );
@@ -399,7 +401,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   }, [open]);
 
   useEffect(() => {
-    if (!open || !rendered) return undefined;
+    if (!open || !visibleOrExiting) return undefined;
     const focusSearch = () => {
       const input = searchRef.current;
       if (!input) return;
@@ -425,7 +427,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
         window.cancelAnimationFrame(rafId);
       }
     };
-  }, [open, rendered]);
+  }, [open, visibleOrExiting]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -591,7 +593,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     }
   };
 
-  if (!rendered) return null;
+  if (!visibleOrExiting) return null;
 
   const listClass = viewMode === 'grid' ? 'wb-apps-grid' : 'wb-apps-list';
   const activeItem = items[activeIndex];
@@ -704,7 +706,7 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
         aria-label={t('workbench:appsPanel.title')}
         tabIndex={-1}
       >
-        <WallpaperReplica hostRef={dialogRef} enabled={rendered} />
+        <WallpaperReplica hostRef={dialogRef} enabled={visibleOrExiting} />
         <div className="wb-apps-header">
           <h2 className="wb-apps-title">{t('workbench:appsPanel.title')}</h2>
           {/* 搜索态结果固定为分区列表，网格/列表切换不适用 → 隐藏死控件 */}

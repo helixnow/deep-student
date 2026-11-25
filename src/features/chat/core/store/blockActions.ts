@@ -204,9 +204,15 @@ export function createBlockActions(
             const newMessageMap = new Map(s.messageMap);
             const message = newMessageMap.get(block.messageId);
             if (message) {
+              const newVariants = message.variants?.map((v) =>
+                v.blockIds.includes(blockId)
+                  ? { ...v, blockIds: v.blockIds.filter((id) => id !== blockId) }
+                  : v,
+              );
               newMessageMap.set(block.messageId, {
                 ...message,
                 blockIds: message.blockIds.filter((id) => id !== blockId),
+                ...(newVariants ? { variants: newVariants } : {}),
               });
             }
 

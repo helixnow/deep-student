@@ -875,8 +875,10 @@ export class PluginAdmin {
 
   private async installPackage(args: unknown, call: CallContext, managed?: ManagedPluginInstallRequest): Promise<PluginManagerInstallResult> {
     // RUST-FIX(RF-W01-package-manager-wiring): W34 离线事务接入可信命令；profile 失败按指针 CAS restore。
+    // 离线本地 .dstuplugin/.dspack 导入仅写入磁盘并将插件设为 disabled: true（不执行任何社区代码），
+    // 允许在安全模式下导入并保持隔离暂停；工坊自动安装（managed）与远程 URL 安装仍受安全模式拦截。
     assertTrustedManagerSource(call.source, PLUGIN_MANAGER_INSTALL_COMMAND);
-    this.assertWritable(PLUGIN_MANAGER_INSTALL_COMMAND);
+    if (managed) this.assertWritable(PLUGIN_MANAGER_INSTALL_COMMAND);
     const document = argsObject(args, PLUGIN_MANAGER_INSTALL_COMMAND);
     const path = stringArg(document, PLUGIN_MANAGER_INSTALL_COMMAND, 'path');
     const revision = this.revisionArg(document, PLUGIN_MANAGER_INSTALL_COMMAND);

@@ -179,6 +179,8 @@ export interface NotesCrepeEditorProps {
   onBreadcrumbClick?: (item: NoteBreadcrumbItem) => void;
   /** 右侧常驻大纲面板已打开时抑制画布右侧悬浮目录 */
   suppressFloatingToc?: boolean;
+  /** 宿主标签页是否处于当前可见激活态（非激活标签不向共享标题栏 slot portal 操作菜单） */
+  isActive?: boolean;
 }
 
 export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = (props) => (
@@ -212,6 +214,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   breadcrumbs,
   onBreadcrumbClick,
   suppressFloatingToc = false,
+  isActive = true,
 }) => {
   const { t, i18n } = useTranslation(['notes', 'common', 'chatV2']);
   const hostInstanceId = useId();
@@ -1481,7 +1484,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   );
 
   const handleMoveToTrash = useCallback(async () => {
-    if (!noteId || effectiveReadOnly || hostBusy || movingToTrash) return;
+    if (!noteId || readOnly || hostBusy || movingToTrash) return;
     setMovingToTrash(true);
     try {
       const { moveNoteToTrash } = await import('./moveNoteToTrash');
@@ -1500,7 +1503,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
         setMovingToTrash(false);
       }
     }
-  }, [effectiveReadOnly, hostBusy, initialTitle, movingToTrash, noteId, save]);
+  }, [hostBusy, initialTitle, movingToTrash, noteId, readOnly, save]);
 
   const pageActions = (
     <NotesPageActionsMenu
@@ -1551,7 +1554,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     />
   );
 
-  const hasPortalChromeHost = Boolean(notesChromeSlot) && shellInViewport && !hasMobileResourceMenu;
+  const hasPortalChromeHost = isActive && Boolean(notesChromeSlot) && shellInViewport && !hasMobileResourceMenu;
   const portalChrome = hasPortalChromeHost && !focus.focusMode;
   const chromeActions = (
     <>

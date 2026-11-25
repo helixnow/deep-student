@@ -60,43 +60,130 @@ const GRADE_BAR_CLASS: Record<GradeCode, string> = {
 const prefersReducedMotion = (): boolean =>
   typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-/** 分数数字滚动（rAF 缓动，尊重 prefers-reduced-motion） */
-function useCountUp(target: number, duration = 700): number {
-  const valueRef = useRef(0);
-  const [value, setValue] = useState(0);
-
-  useEffect(() => {
-    if (!Number.isFinite(target)) {
-      valueRef.current = 0;
-      setValue(0);
-      return;
-    }
-    if (prefersReducedMotion()) {
-      valueRef.current = target;
-      setValue(target);
-      return;
-    }
-    const from = valueRef.current;
-    const start = performance.now();
-    let raf = 0;
-    const tick = (now: number) => {
-      const progress = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const next = from + (target - from) * eased;
-      valueRef.current = next;
-      setValue(next);
-      if (progress < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
-
-  return value;
+function roundScoreTenth(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round((value + Number.EPSILON) * 10) / 10;
 }
 
-/** 目标为整数时取整显示，否则保留一位小数 */
-const formatScore = (animated: number, target: number): string =>
-  Number.isInteger(target) ? String(Math.round(animated)) : animated.toFixed(1);
+/** 统一分值舍入与展示口径：保留至多 1 位小数（若为 .25/.75 等精确分制上限则保留 2 位），避免 IEEE-754 浮点误差或双重舍入漂移 */
+export function formatEssayScore(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  const rounded2 = Math.round((value + Number.EPSILON) * 100) / 100;
+  const rounded1 = roundScoreTenth(value);
+  if (Math.abs(rounded2 * 4 - Math.round(rounded2 * 4)) < 1e-6 && Math.abs(rounded2 - rounded1) >= 0.04) {
+    return Number.isInteger(rounded2) ? String(rounded2) : String(rounded2);
+  }
+  return Number.isInteger(rounded1) ? String(rounded1) : rounded1.toFixed(1);
+}
+
+const IELTS_MODE_IDS = new Set([
+  'ielts',
+  'ielts_task1',
+  'ielts_task_1',
+  'ielts_task2',
+  'ielts_writing',
+]);
+
+/** 判定是否为雅思 9 分制 Band 评分模式 */
+export function isIeltsNineBandMode(gradingModeId?: string | null, maxTotal?: number): boolean {
+  const trimmed = gradingModeId?.trim() ?? '';
+  if (IELTS_MODE_IDS.has(trimmed)) return true;
+  if (!trimmed && typeof maxTotal === 'number' && Number.isFinite(maxTotal) && Math.abs(maxTotal - 9) < 0.01) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 统一总分与分项维度的舍入口径（消除 18.5 vs 18.4 双重舍入或 0.1 算术漂移）：
+ * - 对求和制分制（各维满分之和 == maxTotal）：以分项实得总和（四舍五入至 0.1）为准，并用最大余数法保证展示的各维 0.1 分值相加严格等于展示总分。
+ * - 非求和制（如雅思 9 分制各维满分均为 9）：保持总分与各维各自精确到 0.1。
+ */
+export function reconcileEssayScore(score: ParsedScore, isIeltsBand: boolean): ParsedScore {
+  const maxTotal = Number.isFinite(score.maxTotal) && score.maxTotal > 0 ? score.maxTotal : 0;
+  const rawTotal = Number.isFinite(score.total) ? Math.max(0, Math.min(score.total, maxTotal || score.total)) : 0;
+  if (isIeltsBand || score.dimensions.length < 2 || maxTotal <= 0) {
+    const roundedTotal = roundScoreTenth(rawTotal);
+    const pct = safePercentage(roundedTotal, maxTotal);
+    return {
+      ...score,
+      total: roundedTotal,
+      grade: maxTotal > 0 ? getGradeCodeFromPercentage(pct) : score.grade,
+      dimensions: score.dimensions.map((d) => ({
+        ...d,
+        score: roundScoreTenth(Math.max(0, Math.min(d.score, d.maxScore))),
+      })),
+    };
+  }
+
+  const dimsMaxSum = score.dimensions.reduce((sum, dim) => sum + (Number.isFinite(dim.maxScore) ? dim.maxScore : 0), 0);
+  const isAdditiveRubric = Math.abs(dimsMaxSum - maxTotal) < 0.05;
+  const clampedRawDims = score.dimensions.map((d) => ({
+    ...d,
+    rawScore: Number.isFinite(d.score) ? Math.max(0, Math.min(d.score, d.maxScore)) : 0,
+  }));
+
+  if (!isAdditiveRubric) {
+    const roundedTotal = roundScoreTenth(rawTotal);
+    const pct = safePercentage(roundedTotal, maxTotal);
+    return {
+      ...score,
+      total: roundedTotal,
+      grade: getGradeCodeFromPercentage(pct),
+      dimensions: clampedRawDims.map(({ rawScore, ...rest }) => ({
+        ...rest,
+        score: roundScoreTenth(rawScore),
+      })),
+    };
+  }
+
+  const rawDimSum = clampedRawDims.reduce((sum, d) => sum + d.rawScore, 0);
+  const authoritativeTenths = Math.max(
+    0,
+    Math.min(Math.round((maxTotal + Number.EPSILON) * 10), Math.round((rawDimSum + Number.EPSILON) * 10)),
+  );
+  const dimTenths = clampedRawDims.map((d) => Math.round((d.rawScore + Number.EPSILON) * 10));
+  let diffTenths = authoritativeTenths - dimTenths.reduce((sum, v) => sum + v, 0);
+
+  if (diffTenths !== 0) {
+    const remainders = clampedRawDims.map((d, idx) => ({
+      idx,
+      remainder: d.rawScore * 10 - dimTenths[idx]!,
+      maxTenths: Math.round((d.maxScore + Number.EPSILON) * 10),
+    }));
+    if (diffTenths > 0) {
+      remainders.sort((a, b) => b.remainder - a.remainder || a.idx - b.idx);
+      for (const item of remainders) {
+        if (diffTenths <= 0) break;
+        if (dimTenths[item.idx]! < item.maxTenths) {
+          dimTenths[item.idx]! += 1;
+          diffTenths -= 1;
+        }
+      }
+    } else {
+      remainders.sort((a, b) => a.remainder - b.remainder || a.idx - b.idx);
+      for (const item of remainders) {
+        if (diffTenths >= 0) break;
+        if (dimTenths[item.idx]! > 0) {
+          dimTenths[item.idx]! -= 1;
+          diffTenths += 1;
+        }
+      }
+    }
+  }
+
+  const finalTotal = authoritativeTenths / 10;
+  const pct = safePercentage(finalTotal, maxTotal);
+  return {
+    ...score,
+    total: finalTotal,
+    grade: getGradeCodeFromPercentage(pct),
+    dimensions: clampedRawDims.map(({ rawScore: _rawScore, ...rest }, idx) => ({
+      ...rest,
+      score: dimTenths[idx]! / 10,
+    })),
+  };
+}
 
 const RING_RADIUS = 28;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
@@ -214,13 +301,19 @@ const RadarChart: React.FC<{ dimensions: DimensionScore[]; mounted: boolean }> =
 
 export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingModeId }) => {
   const { t } = useTranslation('essay_grading');
+  const isIeltsBand = isIeltsNineBandMode(gradingModeId, score.maxTotal);
+  const normalizedScore = useMemo(
+    () => reconcileEssayScore(score, isIeltsBand),
+    [score, isIeltsBand],
+  );
   const dimensions = useMemo(
-    () => score.dimensions.map((dim) => ({ ...dim, name: getDimensionDisplayName(gradingModeId, dim.name, t) })),
-    [score.dimensions, gradingModeId, t]
+    () => normalizedScore.dimensions.map((dim) => ({ ...dim, name: getDimensionDisplayName(gradingModeId, dim.name, t) })),
+    [normalizedScore.dimensions, gradingModeId, t]
   );
 
-  const percentage = safePercentage(score.total, score.maxTotal);
-  const gradeText = GRADE_TEXT_CLASS[score.grade] ?? GRADE_TEXT_CLASS.fail;
+  const percentage = safePercentage(normalizedScore.total, normalizedScore.maxTotal);
+  const gradeText = isIeltsBand ? 'text-primary' : (GRADE_TEXT_CLASS[normalizedScore.grade] ?? GRADE_TEXT_CLASS.fail);
+  const progressBarClass = isIeltsBand ? 'bg-primary' : (GRADE_BAR_CLASS[normalizedScore.grade] ?? GRADE_BAR_CLASS.fail);
 
   // 挂载后触发进入动画（圆环、进度条、雷达）
   const [mounted, setMounted] = useState(false);
@@ -229,13 +322,13 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  const safeTotal = Number.isFinite(score.total) ? score.total : 0;
-  const animatedTotal = useCountUp(safeTotal);
-  const displayTotal = formatScore(animatedTotal, safeTotal);
+  const safeTotal = Number.isFinite(normalizedScore.total) ? normalizedScore.total : 0;
+  const displayTotal = formatEssayScore(safeTotal);
   // maxTotal 非法时显示占位符而不是 NaN
-  const displayMaxTotal = Number.isFinite(score.maxTotal) && score.maxTotal > 0 ? score.maxTotal : '—';
+  const displayMaxTotal =
+    Number.isFinite(normalizedScore.maxTotal) && normalizedScore.maxTotal > 0 ? formatEssayScore(normalizedScore.maxTotal) : '—';
 
-  const canShowRadar = score.dimensions.length >= 3;
+  const canShowRadar = normalizedScore.dimensions.length >= 3;
   const [chartMode, setChartMode] = useState<'bars' | 'radar'>('radar');
   const showRadar = canShowRadar && chartMode === 'radar';
 
@@ -298,23 +391,25 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
           </div>
         </div>
 
-        {/* 等级徽章 + 得分率胶囊 */}
-        <div className="flex flex-col items-end gap-1.5">
-          <div className={cn(
-            'px-2.5 py-1 rounded-full text-xs font-medium tracking-wide',
-            GRADE_BADGE_CLASS[score.grade] ?? GRADE_BADGE_CLASS.fail
-          )}>
-            {t(`score.grade.${score.grade}`)}
+        {/* 等级徽章 + 得分率胶囊（雅思 9 分制 Band 评分隐藏及格/得分率，避免误导） */}
+        {!isIeltsBand && (
+          <div className="flex flex-col items-end gap-1.5">
+            <div className={cn(
+              'px-2.5 py-1 rounded-full text-xs font-medium tracking-wide',
+              GRADE_BADGE_CLASS[normalizedScore.grade] ?? GRADE_BADGE_CLASS.fail
+            )}>
+              {t(`score.grade.${normalizedScore.grade}`)}
+            </div>
+            {Number.isFinite(normalizedScore.maxTotal) && normalizedScore.maxTotal > 0 && (
+              <span
+                data-testid="score-card-rate"
+                className="text-2xs font-mono tabular-nums text-muted-foreground/80"
+              >
+                {t('score.rate_label')} {Math.round(percentage)}%
+              </span>
+            )}
           </div>
-          {Number.isFinite(score.maxTotal) && score.maxTotal > 0 && (
-            <span
-              data-testid="score-card-rate"
-              className="text-2xs font-mono tabular-nums text-muted-foreground/80"
-            >
-              {t('score.rate_label')} {Math.round(percentage)}%
-            </span>
-          )}
-        </div>
+        )}
       </div>
 
       {/* 总进度条：颜色与等级徽章/圆环同源（score.grade），避免两处口径漂移 */}
@@ -322,7 +417,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
         <div
           className={cn(
             'h-full rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none',
-            GRADE_BAR_CLASS[score.grade] ?? GRADE_BAR_CLASS.fail
+            progressBarClass
           )}
           style={{ width: mounted ? `${percentage}%` : '0%' }}
         />
@@ -385,8 +480,10 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
                     <div key={index} className="text-xs leading-relaxed">
                       <span className="text-foreground/80">{dim.name}</span>{' '}
                       <span className="font-mono tabular-nums ml-1.5">
-                        <span className={cn('font-medium', GRADE_TEXT_CLASS[dimGrade])}>{dim.score}</span>
-                        <span className="text-muted-foreground/50">/{dim.maxScore}</span>
+                        <span className={cn('font-medium', isIeltsBand ? 'text-primary' : GRADE_TEXT_CLASS[dimGrade])}>
+                          {formatEssayScore(dim.score)}
+                        </span>
+                        <span className="text-muted-foreground/50">/{formatEssayScore(dim.maxScore)}</span>
                       </span>
                       {dim.comment && (
                         <span className="text-muted-foreground/60 ml-2">{dim.comment}</span>
@@ -406,18 +503,18 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingM
                     <div className="flex items-center justify-between mb-1.5">
                       <span className="text-sm text-foreground/80">{dim.name}</span>{' '}
                       <span className="text-sm font-mono tabular-nums">
-                        <span className={cn('font-medium', GRADE_TEXT_CLASS[dimGrade])}>
-                          {dim.score}
+                        <span className={cn('font-medium', isIeltsBand ? 'text-primary' : GRADE_TEXT_CLASS[dimGrade])}>
+                          {formatEssayScore(dim.score)}
                         </span>
                         <span className="text-muted-foreground/50 mx-0.5">/</span>
-                        <span className="text-muted-foreground/50">{dim.maxScore}</span>
+                        <span className="text-muted-foreground/50">{formatEssayScore(dim.maxScore)}</span>
                       </span>
                     </div>
                     <div className="h-[3px] bg-foreground/[0.06] rounded-full overflow-hidden">
                       <div
                         className={cn(
                           'h-full rounded-full transition-[width] duration-500 ease-out motion-reduce:transition-none',
-                          GRADE_BAR_CLASS[dimGrade]
+                          isIeltsBand ? 'bg-primary' : GRADE_BAR_CLASS[dimGrade]
                         )}
                         style={{ width: mounted ? `${dimPct}%` : '0%', transitionDelay: `${index * 60}ms` }}
                       />

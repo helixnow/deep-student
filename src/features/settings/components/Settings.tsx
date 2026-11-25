@@ -25,6 +25,9 @@ import { settingsNavigation } from '@/ui-plugins/official/settings/navigation';
 import { mergeDataGovernanceSearchEntries } from './useSettingsNavigation';
 import { SettingsMobileNavigation } from './SettingsMobileNavigation';
 import { useSettingsShellStore } from '@/stores/settingsShellStore';
+import { useSystemStatusStore } from '@/stores/systemStatusStore';
+import { useGlobalSyncStore } from '@/stores/syncStatusStore';
+import type { DashboardTab } from '@/types/dataGovernance';
 import { APP_EVENTS, useAppEvent } from '@/events';
 import { convertProfileToApiConfig } from './modelConverters';
 import type { SystemConfig, SettingsProps } from './types';
@@ -72,6 +75,19 @@ declare global {
 // 检查是否在Tauri环境中
 const isTauri = typeof window !== 'undefined' && window.__TAURI_INTERNALS__;
 const invoke = isTauri ? tauriInvoke : null;
+
+function resolveMaintenanceGovernanceTab(): DashboardTab | undefined {
+  const { maintenanceMode, maintenanceReason, maintenanceRequiresRestart } =
+    useSystemStatusStore.getState();
+  const { isSyncing } = useGlobalSyncStore.getState();
+  const reason = maintenanceReason ?? '';
+  if (isSyncing || /同步|sync/i.test(reason)) return 'sync';
+  if (maintenanceRequiresRestart) return 'recovery';
+  if (!maintenanceMode) return undefined;
+  if (/云|cloud/i.test(reason)) return 'sync';
+  if (/恢复|restore/i.test(reason)) return 'recovery';
+  return 'backup';
+}
 
 export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) => {
   const { t } = useTranslation(['settings', 'common']);
@@ -231,7 +247,15 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   useEffect(() => {
     const pending = consumePendingSettingsRoute();
     if (pending) {
-      applySettingsRoute(pending);
+      const inferredSubTab =
+        (pending.tab === 'data-governance' || (pending.tab as string) === 'data') &&
+        !pending.dataGovernanceTab
+          ? resolveMaintenanceGovernanceTab()
+          : pending.dataGovernanceTab;
+      applySettingsRoute({
+        ...pending,
+        dataGovernanceTab: inferredSubTab,
+      });
       // 程序化直达某分区：移动端跳过分区列表，直接进入内容态
       setMobileNavView('content');
     }
@@ -245,9 +269,14 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       if (tab) {
         // 事件已直达：同时清掉配套写入的 pending route，免得下次挂载/切回时重复跳转
         consumePendingSettingsRoute();
+        const inferredSubTab =
+          (tab === 'data-governance' || (tab as string) === 'data') &&
+          !detail.dataGovernanceTab
+            ? resolveMaintenanceGovernanceTab()
+            : detail.dataGovernanceTab;
         applySettingsRoute({
           tab,
-          dataGovernanceTab: detail.dataGovernanceTab,
+          dataGovernanceTab: inferredSubTab,
         });
         // 程序化直达某分区：移动端跳过分区列表，直接进入内容态
         setMobileNavView('content');
@@ -423,7 +452,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     }),
     statistics: () => ({ embedded: true, mode: 'stats' }),
     automation: () => ({ invoke, listen: isTauri ? tauriListen as unknown as AutomationListen : null }),
-    'data-governance': () => ({ tabTarget: dataGovernanceTabTarget }),
+    'data-governance': () => ({ tabTarget: dataGovernanceTabTarget, hideHeaderQuickSync: true }),
     general: () => ({
       topbarTopMargin, topbarTopMarginLoaded, setTopbarTopMargin, logTypeForOpen, setLogTypeForOpen,
       showRawRequest: showRawRequest ?? false,

@@ -176,6 +176,13 @@ describe('plugin manager UI with a real Host', () => {
       expect(await packages.list()).toEqual([]);
       expect((await store.read()).file.plugins).toEqual([]);
       expect(host.runtime.get(ID)).toBeUndefined();
+
+      await user.click(screen.getByTestId('plugin-import-url'));
+      const urlInput = await screen.findByTestId('plugin-url-install-input');
+      await user.type(urlInput, 'https://127.0.0.1/blocked.dspack');
+      await user.click(screen.getByTestId('plugin-url-install-submit'));
+      await waitFor(() => expect(calls).toContain(MANAGER_COMMANDS.installUrl));
+
       expect(new Set(calls)).toEqual(new Set(Object.values(MANAGER_COMMANDS)));
     } finally {
       view?.unmount();

@@ -525,6 +525,7 @@ export type MessageMeta = {
   skillInjectionAnchors?: SkillInjectionAnchors | null;
   openai_responses_web_search_items?: unknown[] | null;
   inboundOrigin?: unknown | null;
+  stoppedByUser?: boolean | null;
 };
 /** dstu_agent::chat_v2::types::MessageRole */
 export type MessageRole = "user" | "assistant";
@@ -905,6 +906,7 @@ export type VariantMeta = {
   skillRuntimeBefore?: ReplaySkillPayloadSnapshot | null;
   skillRuntimeAfter?: ReplaySkillPayloadSnapshot | null;
   toolFacePrefix?: ToolFacePrefixSnapshot | null;
+  versioned?: boolean | null;
 };
 /** dstu_agent::chat_v2::handlers::workspace_handlers::WorkspaceInfo */
 export type WorkspaceInfo = {
@@ -1439,7 +1441,9 @@ export interface Commands {
     args: {
       sessionId: string;
       messageId: string;
-      options?: Shared.SendOptions | null;
+      options?: (Shared.SendOptions & {
+        preserveVariant?: boolean | null;
+      }) | null;
     };
     result: RetryMessageResult;
     error: string;

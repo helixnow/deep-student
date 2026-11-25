@@ -31,7 +31,10 @@
     "empty": "暂无待同步变更",
     "loading": "正在统计待同步明细...",
     "tableCount": "{{count}} 条",
-    "refreshNow": "刷新"
+    "refreshNow": "刷新",
+    "expandTable": "展开表明细",
+    "collapseTable": "收起表明细",
+    "dbTableSummary": "共 {{tables}} 张表，{{count}} 条待上传变更"
   },
   "autoSync": {
     "label": "自动同步",
@@ -187,6 +190,13 @@
     "counterpart": "冲突对方：{{key}}",
     "scopeBlob": "附件",
     "scopeAsset": "资产",
+    "tableDetailHint": "点击表名可展开查看待同步变更说明与记录明细",
+    "tablePendingSummary": "表 {{table}}（所属库：{{database}}）共有 {{count}} 条本地待上传变更",
+    "tableOperationHint": "待同步操作：本地新增、修改或删除的记录已记入变更日志，将在下次上传或双向同步时合并至云端。",
+    "tableOpInsert": "新增 {{count}}",
+    "tableOpUpdate": "修改 {{count}}",
+    "tableOpDelete": "删除 {{count}}",
+    "tableRecordsPreview": "待同步记录 ID：{{ids}}",
     "kind": {
       "downloadPending": {
         "label": "尚未下载成功",

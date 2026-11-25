@@ -118,6 +118,7 @@
     "cancel": "Cancel",
     "cancel_grading": "Cancel grading",
     "clear": "Clear",
+    "delete": "Delete",
     "view_history": "View History",
     "retry": "Retry",
     "cancel_confirm_title": "Cancel Grading",
@@ -239,7 +240,9 @@
     "dimensions": "Score Dimensions",
     "create": "Create",
     "edit": "Edit Mode",
-    "quick_switch": "Quick Switch"
+    "quick_switch": "Quick Switch",
+    "manage_custom_rubric": "New / Manage Custom Rubric",
+    "manage_custom_rubric_short": "Custom Rubric"
   },
   "model": {
     "select": "Select Model",
@@ -485,6 +488,8 @@
     "custom_rubric_badge": "Custom",
     "custom_rubric_name_required": "Please enter a rubric name",
     "custom_rubric_prompt_required": "Please enter grading criteria or prompt",
+    "saved_custom_rubrics": "Saved Custom Rubrics",
+    "use_rubric": "Use",
     "validation": {
       "dimension_invalid": "Fix the highlighted dimensions: names cannot be empty and scores must be greater than 0",
       "total_positive": "Total score must be greater than 0",

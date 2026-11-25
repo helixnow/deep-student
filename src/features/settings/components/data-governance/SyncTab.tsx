@@ -7,10 +7,13 @@
 
 import React from "react";
 import { useTranslation } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
 import {
   Cloud,
   HardDrive,
   ArrowClockwise,
+  CaretDown,
+  CaretRight,
   CheckCircle,
   XCircle,
   Warning,
@@ -264,6 +267,42 @@ export const SyncTab: React.FC<SyncTabProps> = ({
     React.useState<MergeStrategy | null>(null);
   const [deviceIdCopied, setDeviceIdCopied] = React.useState(false);
   const [showPendingBreakdown, setShowPendingBreakdown] = React.useState(false);
+  const [expandedBreakdownDbs, setExpandedBreakdownDbs] = React.useState<
+    Record<string, boolean>
+  >({});
+  const [detailedPendingTables, setDetailedPendingTables] = React.useState<
+    Record<string, Array<{ table_name: string; count: number }>>
+  >({});
+
+  React.useEffect(() => {
+    if (!showPendingBreakdown) return;
+    let active = true;
+    invoke<{
+      total_pending_changes: number;
+      databases: Array<{
+        id: string;
+        pending_changes: number;
+        tables: Array<{ table_name: string; count: number }>;
+      }>;
+    }>("data_governance_get_pending_breakdown")
+      .then((res) => {
+        if (!active || !res || !Array.isArray(res.databases)) return;
+        const nextMap: Record<
+          string,
+          Array<{ table_name: string; count: number }>
+        > = {};
+        for (const db of res.databases) {
+          nextMap[db.id] = Array.isArray(db.tables) ? db.tables : [];
+        }
+        setDetailedPendingTables(nextMap);
+      })
+      .catch(() => {
+        // Optional table-level breakdown IPC; keep DB-level summary intact on error
+      });
+    return () => {
+      active = false;
+    };
+  }, [showPendingBreakdown, syncStatus]);
   // 自动同步开关（默认关闭；调度与安全防线在 syncStatusStore 内实现）
   const autoSyncEnabled = useAutoSyncStore((s) => s.enabled);
   const setAutoSyncEnabled = useAutoSyncStore((s) => s.setEnabled);
@@ -348,7 +387,10 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   return (
     <div className="space-y-8">
       {/* 同步状态概览 */}
-      <div className="space-y-3 rounded-2xl bg-muted px-4 py-4">
+      <div
+        data-testid="sync-status-overview-card"
+        className="space-y-3 rounded-2xl bg-muted px-4 py-4"
+      >
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -458,17 +500,70 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             }
             return (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {pendingDbs.map((db) => (
-                  <div key={db.id} className="rounded-lg border border-border/40 bg-muted/40 p-2 space-y-1">
-                    <div className="flex items-center justify-between font-medium text-foreground">
-                      <span>{getDatabaseDisplayName(db.id, t)}</span>
-                      <span>{t("sync:pendingBreakdown.tableCount", { count: db.pending_changes })}</span>
+                {pendingDbs.map((db) => {
+                  const isDbExpanded = Boolean(expandedBreakdownDbs[db.id]);
+                  const dbTables = detailedPendingTables[db.id] ?? [];
+                  return (
+                    <div
+                      key={db.id}
+                      className="rounded-lg border border-border/40 bg-muted/40 p-2 space-y-1"
+                    >
+                      <button
+                        type="button"
+                        data-testid={`sync-db-breakdown-toggle-${db.id}`}
+                        aria-expanded={isDbExpanded}
+                        onClick={() =>
+                          setExpandedBreakdownDbs((prev) => ({
+                            ...prev,
+                            [db.id]: !prev[db.id],
+                          }))
+                        }
+                        className="flex w-full cursor-pointer items-center justify-between gap-2 text-left font-medium text-foreground hover:text-primary"
+                      >
+                        <span>{getDatabaseDisplayName(db.id, t)}</span>
+                        <span className="inline-flex items-center gap-1 tabular-nums">
+                          {t("sync:pendingBreakdown.tableCount", {
+                            count: db.pending_changes,
+                          })}
+                          {isDbExpanded ? (
+                            <CaretDown size={12} aria-hidden="true" />
+                          ) : (
+                            <CaretRight size={12} aria-hidden="true" />
+                          )}
+                        </span>
+                      </button>
+                      <div className="text-2xs text-muted-foreground">
+                        {t("data:governance.synced_changes")}: {db.synced_changes}
+                      </div>
+                      {isDbExpanded && (
+                        <div
+                          data-testid={`sync-db-breakdown-detail-${db.id}`}
+                          className="mt-1.5 space-y-1 border-t border-border/40 pt-1.5"
+                        >
+                          {dbTables.length > 0 ? (
+                            dbTables.map((tbl) => (
+                              <div
+                                key={tbl.table_name}
+                                className="flex items-center justify-between font-mono text-[11px] text-muted-foreground"
+                              >
+                                <span>{tbl.table_name}</span>
+                                <span className="tabular-nums">
+                                  {t("sync:pendingBreakdown.tableCount", {
+                                    count: tbl.count,
+                                  })}
+                                </span>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-[11px] text-muted-foreground">
+                              {t("sync:unsynced.tableOperationHint")}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                    <div className="text-2xs text-muted-foreground">
-                      {t("data:governance.synced_changes")}: {db.synced_changes}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             );
           })()}
@@ -837,7 +932,10 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
             {/* 同步进度 */}
             {showSyncProgress && syncProgress && (
-              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+              <div
+                data-testid="active-sync-progress-panel"
+                className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3"
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {syncRunning ? (
@@ -969,6 +1067,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               <CloudStorageSection
                 isDialog
                 onConfigChanged={onCloudConfigChanged}
+                latestIncrementalSyncAt={latestSyncAt}
               />
             </div>
           )}
@@ -1078,7 +1177,14 @@ export const SyncTab: React.FC<SyncTabProps> = ({
       <RecordConflictsPanel refreshSignal={conflictRefreshSignal} />
       <SyncQuarantinePanel refreshSignal={conflictRefreshSignal} />
       {/* [R11-unsynced-ui] 未同步文件清单常驻面板（仅挂载行） */}
-      <UnsyncedItemsPanel refreshSignal={conflictRefreshSignal} />
+      <UnsyncedItemsPanel
+        refreshSignal={conflictRefreshSignal}
+        onRunSync={
+          cloudSyncConfigured
+            ? () => onRunSync("bidirectional", syncStrategy)
+            : undefined
+        }
+      />
     </div>
   );
 };

@@ -59,6 +59,7 @@ const STRIP_KEYS = new Set([
   'remote_id',
   'sync_status',
   'content_hash',
+  'ref_count',
 ]);
 
 /** `canonicalize_sync_value_for_compare`（mod.rs:9045）。 */

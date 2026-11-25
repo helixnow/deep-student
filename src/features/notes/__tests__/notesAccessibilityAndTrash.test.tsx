@@ -196,11 +196,15 @@ describe('NotesPageActionsMenu Move to Trash', () => {
     expect(onMoveToTrash).toHaveBeenCalledTimes(1);
   });
 
-  it('disables Move to Trash when noteId is absent or effectiveReadOnly is true, and hides when readOnly', () => {
+  it('keeps Move to Trash enabled on newly created notes even when effectiveReadOnly is true, disables on missing noteId or hostBusy, and hides when readOnly', () => {
     const { rerender } = render(<NotesPageActionsMenu {...makePageMenuProps({ noteId: undefined })} />);
     expect(screen.getByRole('button', { name: i18n.t('notes:actions.move_to_trash', '移至回收站') })).toBeDisabled();
 
-    rerender(<NotesPageActionsMenu {...makePageMenuProps({ effectiveReadOnly: true })} />);
+    // Newly created notes in reading mode or awaiting format/lease refresh (effectiveReadOnly=true, readOnly=false) MUST still allow Move to Trash
+    rerender(<NotesPageActionsMenu {...makePageMenuProps({ noteId: 'note_new_1', noteTitle: '未命名', effectiveReadOnly: true, editorReady: false })} />);
+    expect(screen.getByRole('button', { name: i18n.t('notes:actions.move_to_trash', '移至回收站') })).toBeEnabled();
+
+    rerender(<NotesPageActionsMenu {...makePageMenuProps({ hostBusy: true })} />);
     expect(screen.getByRole('button', { name: i18n.t('notes:actions.move_to_trash', '移至回收站') })).toBeDisabled();
 
     rerender(<NotesPageActionsMenu {...makePageMenuProps({ readOnly: true, effectiveReadOnly: true })} />);
@@ -486,5 +490,59 @@ describe('NotesCrepeEditor keyboard navigation, source mode focus, and Move to T
     });
     unmount();
     expect(onSave).not.toHaveBeenCalled();
+  }, 15000);
+
+  it('enables Move to Trash immediately on a newly created empty note even when lease registration triggers hostRefreshError or another tab is inactive', async () => {
+    // Simulate lease registration failing on a brand-new note so hostRefreshError -> effectiveReadOnly=true
+    mocks.tauriInvoke.mockImplementation(async (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === 'notes_get_format') {
+        return {
+          note_id: String(args?.noteId ?? ''),
+          content_format: 'markdown-legacy',
+          format_version: 1,
+          serializer_version: 'markdown-v1',
+          required_capabilities: [],
+          updated_at: '2026-01-01T00:00:00Z',
+        };
+      }
+      if (cmd === 'notes_editor_register') {
+        throw new Error('transient lease registration race');
+      }
+      if (cmd === 'notes_state_list') {
+        return [];
+      }
+      return null;
+    });
+
+    render(
+      <NotesCrepeEditor
+        noteId="note_brand_new"
+        initialTitle="未命名"
+        initialContent=""
+        onSave={vi.fn()}
+        onTitleChange={vi.fn()}
+        isActive
+      />,
+    );
+
+    const pageActionsBtn = await screen.findByRole('button', { name: /更多笔记操作|More note actions/ });
+    fireEvent.click(pageActionsBtn);
+
+    const moveToTrashBtn = await screen.findByRole('button', { name: zhNotes.actions.move_to_trash });
+    expect(moveToTrashBtn).toBeEnabled();
+
+    fireEvent.click(moveToTrashBtn);
+    await waitFor(() => {
+      expect(mocks.dstuDelete).toHaveBeenCalledWith('/note_brand_new');
+      expect(mocks.closeWorkspaceResource).toHaveBeenCalledWith({ type: 'note', id: 'note_brand_new' });
+    });
+    expect(mocks.showGlobalNotification).toHaveBeenCalledWith(
+      'success',
+      zhNotes.actions.moved_to_trash,
+      undefined,
+      expect.objectContaining({
+        action: expect.objectContaining({ label: zhNotes.actions.undo }),
+      }),
+    );
   }, 15000);
 });

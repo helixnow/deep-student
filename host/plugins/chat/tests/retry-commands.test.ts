@@ -7,6 +7,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createTestHost } from '../../../kernel/testing.ts';
 import plugin from '../index.ts';
+import pipeline from '../../chat-pipeline/index.ts';
 import { databaseFixture } from './database-fixture.ts';
 import { createSession } from '../repository/sessions.ts';
 import { createMessage, getMessage, getSessionMessages } from '../repository/messages.ts';
@@ -514,5 +515,163 @@ describe('send_message.rs retry / edit_and_resend production commands', () => {
       targetVariantId: res.new_variant_id,
     });
     expect(getSessionMessages(f.db, SESSION).map(m => m.id)).toEqual(['msg_u1', 'msg_a1']);
+  });
+
+  it('S4-02 E2E over argsJson IPC: send v1 -> retry_message -> intermediate & final saves -> switch_variant to var_v1 -> load_session & load_messages_page', async () => {
+    const assistantId = 'msg_mwvfrh4p_p4776u_1';
+    const userId = 'msg_mwvfrh4p_p4776u_0';
+    const postEffects = {
+      incrementResourceRefs: async () => undefined,
+      triggerAutoMemoryExtraction: () => undefined,
+      onTurnCommitted: () => undefined,
+    };
+
+    const fPipeHost = await createTestHost({
+      plugins: [pipeline],
+      provide: {
+        storage: f.storage,
+        vfs: { version: 1, database: { getConnSafe: () => f.db } },
+        chatSession: host.ctx.chatSession,
+        chatState: host.ctx.chatState,
+        settings: {},
+        nativeTokenizer: {},
+        vfsRepo: {},
+        agentVfsResolver: {},
+      },
+    });
+
+    try {
+      const realSessions = host.ctx.chatSession;
+      const realPipe = fPipeHost.ctx.chatPipeline;
+      const realIncremental = realPipe.createPersistence(realSessions);
+      const realFinal = realPipe.createFinalPersistence(realSessions, postEffects);
+
+      const initCtx = realPipe.createPipelineContext({
+        sessionId: SESSION,
+        content: 'Explain multi-variant persistence',
+        userMessageId: userId,
+        assistantMessageId: assistantId,
+        options: { modelId: 'cfg_vision' },
+      });
+      initCtx.modelDisplayName = 'DeepSeek-V3';
+      initCtx.finalReasoning = 'v1 reasoning';
+      initCtx.finalContent = 'v1 original answer';
+      initCtx.streamingThinkingBlockId = 'blk_v1_think';
+      initCtx.streamingContentBlockId = 'blk_v1_content';
+      initCtx.aborted = true; // Also verifies stoppedByUser in MessageMeta passes strict checkResult!
+      await realFinal.saveResults(initCtx, { skipAutoMemoryExtraction: true });
+
+      execute = async (req) => {
+        const regenCtx = realPipe.createPipelineContext(req);
+        regenCtx.modelDisplayName = 'DeepSeek-V3';
+        // Simulate intermediate tool-round save followed by final save
+        regenCtx.addInterleavedBlock({
+          id: 'blk_v2_think',
+          messageId: regenCtx.assistantMessageId,
+          type: 'thinking',
+          status: 'success',
+          content: 'v2 reasoning',
+          blockIndex: 0,
+        });
+        await realIncremental.saveIntermediateResults(regenCtx);
+
+        regenCtx.addInterleavedBlock({
+          id: 'blk_v2_content',
+          messageId: regenCtx.assistantMessageId,
+          type: 'content',
+          status: 'success',
+          content: 'v2 regenerated answer',
+          blockIndex: 1,
+        });
+        regenCtx.finalContent = 'v2 regenerated answer';
+        regenCtx.tokenUsage = { promptTokens: 12, completionTokens: 28, totalTokens: 40, source: 'api' };
+        await realFinal.saveResults(regenCtx);
+        return regenCtx.assistantMessageId;
+      };
+
+      // 2. Invoke chat_v2_retry_message over production argsJson IPC path (validates preserveVariant in schema!)
+      const retryOutcome = await host.runtime.dispatchInvoke({
+        id: 's402-retry-1',
+        cmd: 'chat_v2_retry_message',
+        args: {},
+        argsJson: JSON.stringify({
+          sessionId: SESSION,
+          messageId: assistantId,
+          options: { preserveVariant: true, modelId: 'cfg_vision' },
+        }),
+        source: { window: 'main', webview: 'main' },
+      });
+      expect(retryOutcome.kind).toBe('ok');
+      const retryRes = (retryOutcome as { kind: 'ok'; value: { message_id: string; new_variant_id?: string } }).value;
+      expect(retryRes.message_id).toBe(assistantId);
+      expect(retryRes.new_variant_id).toMatch(/^var_/);
+      await drain();
+
+      // 3. Switch back to v1 (`var_v1_msg_mwvfrh4p_p4776u_1`) — MUST NOT fail with Variant not found!
+      const switchOutcome = await host.runtime.dispatchInvoke({
+        id: 's402-switch-1',
+        cmd: 'chat_v2_switch_variant',
+        args: {},
+        argsJson: JSON.stringify({
+          sessionId: SESSION,
+          messageId: assistantId,
+          variantId: `var_v1_${assistantId}`,
+        }),
+        source: { window: 'main', webview: 'main' },
+      });
+      expect(switchOutcome).toEqual({ kind: 'ok', value: null });
+
+      // 4. Reload session via chat_v2_load_session AND chat_v2_load_messages_page (strict ContractSet.checkResult!)
+      const loadOutcome = await host.runtime.dispatchInvoke({
+        id: 's402-load-1',
+        cmd: 'chat_v2_load_session',
+        args: {},
+        argsJson: JSON.stringify({ sessionId: SESSION, tailLimit: 50 }),
+        source: { window: 'main', webview: 'main' },
+      });
+      expect(loadOutcome.kind).toBe('ok');
+      const loaded = (loadOutcome as {
+        kind: 'ok';
+        value: {
+          messages: ChatMessage[];
+          blocks: Array<{ id: string; content?: string }>;
+        };
+      }).value;
+
+      const reloadedAssistant = loaded.messages.find(m => m.id === assistantId)!;
+      expect(reloadedAssistant).toBeDefined();
+      expect(reloadedAssistant.activeVariantId).toBe(`var_v1_${assistantId}`);
+      expect(reloadedAssistant.variants).toHaveLength(2);
+      expect(reloadedAssistant.variants![0]).toMatchObject({
+        id: `var_v1_${assistantId}`,
+        blockIds: ['blk_v1_think', 'blk_v1_content'],
+        status: 'cancelled',
+        meta: { versioned: true },
+      });
+      expect(reloadedAssistant.variants![1]).toMatchObject({
+        id: retryRes.new_variant_id,
+        blockIds: ['blk_v2_think', 'blk_v2_content'],
+        status: 'success',
+        meta: { versioned: true },
+      });
+
+      // Both v1 and v2 blocks must be returned on session reload so < 1 / 2 > and < 2 / 2 > render immediately!
+      const loadedBlockIds = new Set(loaded.blocks.map(b => b.id));
+      expect(loadedBlockIds.has('blk_v1_think')).toBe(true);
+      expect(loadedBlockIds.has('blk_v1_content')).toBe(true);
+      expect(loadedBlockIds.has('blk_v2_think')).toBe(true);
+      expect(loadedBlockIds.has('blk_v2_content')).toBe(true);
+
+      const pageOutcome = await host.runtime.dispatchInvoke({
+        id: 's402-page-1',
+        cmd: 'chat_v2_load_messages_page',
+        args: {},
+        argsJson: JSON.stringify({ sessionId: SESSION, offset: 0, limit: 50 }),
+        source: { window: 'main', webview: 'main' },
+      });
+      expect(pageOutcome.kind).toBe('ok');
+    } finally {
+      await fPipeHost.dispose();
+    }
   });
 });

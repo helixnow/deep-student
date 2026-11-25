@@ -149,28 +149,32 @@ export function LearningHubSidebar(props: LearningHubSidebarProps) {
       )}
       tabIndex={-1}
     >
-      {/* WebUI / 移动壳挂载的常驻隐藏文件选择器：确保「导入资料…」「导入 Markdown」在任意时机可稳定触发 */}
-      <input
-        ref={finderFileInputRef}
-        type="file"
-        multiple
-        className="sr-only"
-        tabIndex={-1}
-        aria-hidden="true"
-        data-testid="finder-import-files-input"
-        onChange={handleWebFileInputChange}
-      />
-      <input
-        ref={finderMarkdownInputRef}
-        type="file"
-        multiple
-        accept=".md,.markdown,text/markdown,text/plain"
-        className="sr-only"
-        tabIndex={-1}
-        aria-hidden="true"
-        data-testid="finder-import-markdown-input"
-        onChange={handleWebMarkdownInputChange}
-      />
+      {/* WebUI / 移动壳挂载的常驻隐藏文件选择器：仅非 canvas 访达视图挂载，避免隐藏画布侧栏抢占 DOM 选择器 */}
+      {mode !== 'canvas' && (
+        <>
+          <input
+            ref={finderFileInputRef}
+            type="file"
+            multiple
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden="true"
+            data-testid="finder-import-files-input"
+            onChange={handleWebFileInputChange}
+          />
+          <input
+            ref={finderMarkdownInputRef}
+            type="file"
+            multiple
+            accept=".md,.markdown,text/markdown,text/plain"
+            className="sr-only"
+            tabIndex={-1}
+            aria-hidden="true"
+            data-testid="finder-import-markdown-input"
+            onChange={handleWebMarkdownInputChange}
+          />
+        </>
+      )}
       {/* 左侧快速导航；移动端由 LearningHubPage portal 到统一抽屉。 */}
       {quickAccessPortalTarget && quickAccessNode
         ? createPortal(quickAccessNode, quickAccessPortalTarget)
@@ -371,6 +375,15 @@ export function LearningHubSidebar(props: LearningHubSidebarProps) {
             onClearSelection={handleClearSelection}
             onOpenSelected={selectedSingleItem && !isTrashView ? () => handleOpen(selectedSingleItem) : undefined}
             onQuickLookSelected={selectedSingleItem && !isTrashView && !isPendingFolderId(selectedSingleItem.id) ? () => setQuickLookItem(selectedSingleItem) : undefined}
+            onRenameSelected={
+              selectedSingleItem && !isTrashView && !isPendingFolderId(selectedSingleItem.id)
+                ? () => startInlineEdit(
+                    selectedSingleItem.id,
+                    selectedSingleItem.type === 'folder' ? 'folder' : 'resource',
+                    selectedSingleItem.name,
+                  )
+                : undefined
+            }
             onBatchDelete={canDeleteInCurrentView ? handleBatchDelete : undefined}
             onBatchRestore={isTrashView ? () => void handleBatchRestore() : undefined}
             onBatchMove={canMoveInCurrentView ? handleBatchMove : undefined}

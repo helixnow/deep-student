@@ -137,19 +137,25 @@ export class PipelineFinalPersistence {
     }
     const options = ctx.options;
     const targetVariantId = options.targetVariantId ?? null;
-    const existingMessage = (targetVariantId !== null || (options.skipAssistantMessageSave ?? false))
+    const isVariantOrSkipUpdate = targetVariantId !== null || (options.skipAssistantMessageSave ?? false);
+    const existingMessage = isVariantOrSkipUpdate
       ? (() => {
           try { return this.store.getMessageWithConn(conn, ctx.assistantMessageId); }
-          catch { return null; }
+          catch (error) {
+            this.log.warn(`[ChatV2::pipeline] Failed to read existing assistant message during final save (id=${ctx.assistantMessageId}): ${debugError(error)}`);
+            return null;
+          }
         })()
       : null;
-    const siblingVariantBlockIds = new Set(
-      targetVariantId !== null && existingMessage?.variants
-        ? existingMessage.variants.filter(v => v.id !== targetVariantId).flatMap(v => v.blockIds)
-        : [],
-    );
     const blocks = this.collectBlocks(ctx);
     const ids = blocks.map(b => b.id);
+    const siblingVariantBlockIds = new Set(
+      targetVariantId !== null && existingMessage
+        ? (existingMessage.variants && existingMessage.variants.length > 0
+            ? existingMessage.variants.filter(v => v.id !== targetVariantId).flatMap(v => v.blockIds)
+            : existingMessage.blockIds.filter(id => !ids.includes(id)))
+        : [],
+    );
     const preserved = this.store.getMessageBlocksWithConn(conn, ctx.assistantMessageId)
       .filter(b => b.type === 'anki_cards' && !siblingVariantBlockIds.has(b.id));
     const preservedIds = new Set(preserved.map(b => b.id));
@@ -187,31 +193,84 @@ export class PipelineFinalPersistence {
       ...(ctx.responseWebSearchItems.length ? { openai_responses_web_search_items: structuredClone(ctx.responseWebSearchItems) } : {}),
       ...(ctx.aborted ? { stoppedByUser: true } : {}),
     } as MessageMeta;
-    const targetVariants = targetVariantId !== null && existingMessage?.variants?.some(v => v.id === targetVariantId)
-      ? existingMessage.variants.map(variant => (variant.id !== targetVariantId ? variant : {
-          ...variant,
-          blockIds: [...ids],
-          status: (ctx.aborted ? 'cancelled' : ctx.failed ? 'error' : 'success') as NonNullable<ChatMessage['variants']>[number]['status'],
-          ...(model == null ? {} : { modelId: model }),
-          usage: structuredClone(ctx.tokenUsage),
-          meta: {
-            ...variant.meta,
-            ...(ctx.executionSnapshot === null ? {} : { executionSnapshot: structuredClone(ctx.executionSnapshot) }),
-            ...(skillSnapshot === null ? {} : { skillRuntimeBefore: structuredClone(skillSnapshot), skillRuntimeAfter: structuredClone(skillSnapshot) }),
-            versioned: true,
-          },
-        }))
+    const resolvedVariantStatus = (ctx.aborted ? 'cancelled' : ctx.failed ? 'error' : 'success') as NonNullable<ChatMessage['variants']>[number]['status'];
+    const buildUpdatedTargetVariant = (
+      base?: NonNullable<ChatMessage['variants']>[number],
+    ): NonNullable<ChatMessage['variants']>[number] => ({
+      ...(base ?? {
+        id: targetVariantId!,
+        modelId: model ?? existingMessage?.variants?.at(-1)?.modelId ?? existingMessage?._meta?.modelId ?? 'default',
+        createdAt: Date.now(),
+      }),
+      blockIds: [...ids],
+      status: resolvedVariantStatus,
+      ...(model == null ? {} : { modelId: model }),
+      usage: structuredClone(ctx.tokenUsage),
+      meta: {
+        ...(base?.meta ?? {}),
+        ...(ctx.executionSnapshot === null ? {} : { executionSnapshot: structuredClone(ctx.executionSnapshot) }),
+        ...(skillSnapshot === null ? {} : { skillRuntimeBefore: structuredClone(skillSnapshot), skillRuntimeAfter: structuredClone(skillSnapshot) }),
+        versioned: true,
+      },
+    });
+    const targetVariants = targetVariantId !== null
+      ? (existingMessage?.variants?.some(v => v.id === targetVariantId)
+          ? existingMessage.variants.map(variant => (variant.id !== targetVariantId
+              ? { ...variant, meta: { ...(variant.meta ?? {}), versioned: true } }
+              : buildUpdatedTargetVariant(variant)))
+          : existingMessage?.variants && existingMessage.variants.length > 0
+            ? [
+                ...existingMessage.variants.map(variant => ({
+                  ...variant,
+                  meta: { ...(variant.meta ?? {}), versioned: true },
+                })),
+                buildUpdatedTargetVariant(),
+              ]
+            : [
+                ...(existingMessage
+                  ? (() => {
+                      const priorV1Blocks = existingMessage.blockIds.filter(id => !ids.includes(id));
+                      return priorV1Blocks.length > 0
+                        ? [{
+                            id: `var_v1_${ctx.assistantMessageId}`,
+                            modelId: existingMessage._meta?.modelId ?? 'default',
+                            blockIds: priorV1Blocks,
+                            status: (existingMessage._meta?.stoppedByUser ? 'cancelled' : 'success') as NonNullable<ChatMessage['variants']>[number]['status'],
+                            ...(existingMessage._meta?.usage ? { usage: structuredClone(existingMessage._meta.usage) } : {}),
+                            createdAt: existingMessage.timestamp,
+                            meta: {
+                              ...(existingMessage._meta?.executionSnapshot ? { executionSnapshot: structuredClone(existingMessage._meta.executionSnapshot) } : {}),
+                              ...(existingMessage._meta?.skillSnapshotBefore ? { skillSnapshotBefore: structuredClone(existingMessage._meta.skillSnapshotBefore) } : {}),
+                              ...(existingMessage._meta?.skillSnapshotAfter ? { skillSnapshotAfter: structuredClone(existingMessage._meta.skillSnapshotAfter) } : {}),
+                              ...(existingMessage._meta?.skillRuntimeBefore ? { skillRuntimeBefore: structuredClone(existingMessage._meta.skillRuntimeBefore) } : {}),
+                              ...(existingMessage._meta?.skillRuntimeAfter ? { skillRuntimeAfter: structuredClone(existingMessage._meta.skillRuntimeAfter) } : {}),
+                              versioned: true,
+                            },
+                          }]
+                        : [];
+                    })()
+                  : []),
+                buildUpdatedTargetVariant(),
+              ])
       : null;
+    const preservedVariants = targetVariants ?? existingMessage?.variants;
+    const preservedActiveVariantId = targetVariantId ?? existingMessage?.activeVariantId;
     const message: ChatMessage = {
+      ...(existingMessage?.persistentStableId !== undefined ? { persistentStableId: existingMessage.persistentStableId } : {}),
+      ...(existingMessage?.parentId !== undefined ? { parentId: existingMessage.parentId } : {}),
+      ...(existingMessage?.supersedes !== undefined ? { supersedes: existingMessage.supersedes } : {}),
+      ...(existingMessage?.attachments !== undefined ? { attachments: existingMessage.attachments } : {}),
+      ...(existingMessage?.sharedContext !== undefined ? { sharedContext: existingMessage.sharedContext } : {}),
       id: ctx.assistantMessageId,
       sessionId: ctx.sessionId,
       role: 'assistant' as const,
       blockIds: ids,
-      timestamp: targetVariants && existingMessage ? existingMessage.timestamp : Date.now(),
+      timestamp: existingMessage ? existingMessage.timestamp : Date.now(),
       _meta: meta,
-      ...(targetVariants ? { activeVariantId: targetVariantId!, variants: targetVariants } : {}),
+      ...(preservedActiveVariantId !== undefined ? { activeVariantId: preservedActiveVariantId } : {}),
+      ...(preservedVariants !== undefined ? { variants: preservedVariants } : {}),
     };
-    if ((options.skipAssistantMessageSave ?? false) || targetVariants !== null) {
+    if ((options.skipAssistantMessageSave ?? false) || (targetVariants !== null && existingMessage !== null)) {
       this.log.debug(`[ChatV2::pipeline] Updating existing assistant message for retry: id=${ctx.assistantMessageId}`);
       this.store.updateMessageWithConn(conn, message);
     } else this.store.createMessageWithConn(conn, message);

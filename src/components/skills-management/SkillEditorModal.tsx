@@ -16,7 +16,7 @@ import { Textarea } from '../ui/shad/Textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/shad/Tabs';
 import TagInput from '../ui/shad/TagInput';
 import { CustomScrollArea } from '../custom-scroll-area';
-import { FileText, Gear, X, Wrench } from '@phosphor-icons/react';
+import { FileText, Gear, Trash, X, Wrench } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import { showGlobalNotification } from '../UnifiedNotification';
@@ -41,6 +41,8 @@ export interface SkillEditorModalProps {
   location: SkillLocation;
   /** 保存回调 */
   onSave: (data: SkillFormData) => Promise<void>;
+  /** 删除技能回调（仅非内置已有技能） */
+  onDelete?: (skill: SkillDefinition) => void;
   /** 嵌入模式：不使用 Dialog 包裹（用于移动端） */
   embeddedMode?: boolean;
   /**
@@ -165,6 +167,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
   skill,
   location,
   onSave,
+  onDelete,
   embeddedMode = false,
   requestCloseRef,
 }) => {
@@ -685,31 +688,49 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
       {/* 底部按钮 */}
       <div
         data-wb-blur-surface
-        className="flex-none px-4 pt-3 border-t border-border/40 flex items-center justify-end gap-2 bg-gradient-to-t from-background via-background/95 to-background/80 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md"
+        className="flex-none px-4 pt-3 border-t border-border/40 flex items-center justify-between gap-2 bg-gradient-to-t from-background via-background/95 to-background/80 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md"
         style={{
           paddingBottom: embeddedMode
             ? 'calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 16px)'
             : '14px',
         }}
       >
-        <DsButton
-          type="button"
-          variant="ghost"
-          onClick={handleCancel}
-          disabled={isSaving}
-          className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
-        >
-          {t('common:actions.cancel')}
-        </DsButton>
-        <DsButton
-          type="submit"
-          disabled={isSaving}
-          className="min-w-[100px] shadow-md hover:shadow-lg transition-colors [@media(pointer:coarse)]:!min-h-11"
-        >
-          {isSaving
-            ? t('common:actions.saving')
-            : t('common:actions.save')}
-        </DsButton>
+        <div>
+          {isEdit && skill && !isBuiltinSkill && onDelete && (
+            <DsButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              data-testid="skill-editor-delete"
+              onClick={() => onDelete(skill)}
+              disabled={isSaving}
+              className="gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive [@media(pointer:coarse)]:!min-h-11"
+            >
+              <Trash size={15} />
+              <span>{t('skills:management.delete')}</span>
+            </DsButton>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <DsButton
+            type="button"
+            variant="ghost"
+            onClick={handleCancel}
+            disabled={isSaving}
+            className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
+          >
+            {t('common:actions.cancel')}
+          </DsButton>
+          <DsButton
+            type="submit"
+            disabled={isSaving}
+            className="min-w-[100px] shadow-md hover:shadow-lg transition-colors [@media(pointer:coarse)]:!min-h-11"
+          >
+            {isSaving
+              ? t('common:actions.saving')
+              : t('common:actions.save')}
+          </DsButton>
+        </div>
       </div>
     </form>
   );

@@ -129,6 +129,10 @@ export default definePlugin<MemoryPluginConfig | undefined>({
         ctx.backendEvents.emit('memory://changed', { source: 'user', action: mutation.kind, entityIds: [] });
         return view;
       },
+      ingestSignal: (signal: Parameters<typeof rawMemoryProvider.ingestSignal>[0]) => {
+        LocalMemoryProvider.prototype.ingestSignal.call(rawMemoryProvider, signal);
+        ctx.backendEvents.emit('memory://changed', { source: 'signal', action: signal.kind, entityIds: [] });
+      },
     });
     ctx.provide('memoryProvider', memoryProvider);
     const toolMetadata = createMemoryToolMetadata();

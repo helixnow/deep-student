@@ -21,6 +21,7 @@ import {
   ClipboardText,
   UploadSimple,
   Sparkle,
+  Plus,
 } from '@phosphor-icons/react';
 import UnifiedDragDropZone, { FILE_TYPES } from '../shared/UnifiedDragDropZone';
 import { UnifiedModelSelector } from '../shared/UnifiedModelSelector';
@@ -88,6 +89,7 @@ interface InputPanelProps {
   // 多轮相关
   currentRound: number;
   onOpenSettings?: () => void;
+  onOpenCustomRubric?: () => void;
   roundNavigation?: {
     currentIndex: number;
     total: number;
@@ -185,6 +187,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   textStats,
   currentRound,
   onOpenSettings,
+  onOpenCustomRubric,
   roundNavigation,
   uploadedImages,
   onRemoveImage,
@@ -370,25 +373,81 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
       {/* Toolbar - 简洁风格简洁布局 */}
       {/* min-h 而非固定高：DsButton 移动端默认 44px，固定 41px 会被撑破溢出 */}
       <div className="flex min-h-[41px] items-center gap-1 border-b border-border/35 px-2 py-0.5 sm:gap-1.5 sm:px-4">
-        {/* 左侧：模式选择 - 轻量胶囊选择器 */}
+        {/* 左侧：模式选择 - 轻量胶囊选择器 + 自定义标准直达入口 */}
         {modes.length > 0 && (
-          <div className="min-w-0 max-w-[50%] sm:max-w-none sm:shrink-0">
-            <AppSelect
-              value={modeId}
-              onValueChange={setModeId}
-              width={248}
-              variant="ghost"
-              size="sm"
-              disabled={isGrading}
-              triggerIcon={<GraduationCap size={14} className="shrink-0 text-muted-foreground" />}
-              className="max-w-full rounded-full bg-foreground/[0.03] px-2.5 text-sm text-foreground/85 hover:text-foreground hover:bg-foreground/[0.06] transition-colors duration-150"
-              placeholder={t('essay_grading:mode.select')}
-              options={modes.map((mode) => ({
-                value: mode.id,
-                label: getModeDisplayName(mode, t),
-                description: t('essay_grading:mode.max_score', { score: mode.total_max_score }),
-              }))}
-            />
+          <div className="flex min-w-0 max-w-[65%] items-center gap-1 sm:max-w-none sm:shrink-0">
+            <div className="min-w-0">
+              <AppSelect
+                value={modeId}
+                onValueChange={(nextValue) => {
+                  if (nextValue === '__manage_custom_rubric__') {
+                    onOpenCustomRubric?.();
+                    return;
+                  }
+                  setModeId(nextValue);
+                }}
+                width={248}
+                variant="ghost"
+                size="sm"
+                disabled={isGrading}
+                triggerIcon={<GraduationCap size={14} className="shrink-0 text-muted-foreground" />}
+                className="max-w-full rounded-full bg-foreground/[0.03] px-2.5 text-sm text-foreground/85 hover:text-foreground hover:bg-foreground/[0.06] transition-colors duration-150"
+                placeholder={t('essay_grading:mode.select')}
+                {...(onOpenCustomRubric
+                  ? {
+                      groups: [
+                        {
+                          options: modes.map((mode) => ({
+                            value: mode.id,
+                            label: getModeDisplayName(mode, t),
+                            description: t('essay_grading:mode.max_score', { score: mode.total_max_score }),
+                          })),
+                        },
+                        {
+                          options: [
+                            {
+                              value: '__manage_custom_rubric__',
+                              label: t('essay_grading:mode.manage_custom_rubric'),
+                              icon: <Plus size={14} className="text-primary" />,
+                            },
+                          ],
+                        },
+                      ],
+                    }
+                  : {
+                      options: modes.map((mode) => ({
+                        value: mode.id,
+                        label: getModeDisplayName(mode, t),
+                        description: t('essay_grading:mode.max_score', { score: mode.total_max_score }),
+                      })),
+                    })}
+              />
+            </div>
+            {onOpenCustomRubric && (
+              <CommonTooltip content={t('essay_grading:mode.manage_custom_rubric')}>
+                <DsButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  data-testid="essay-manage-custom-rubric-button"
+                  onClick={onOpenCustomRubric}
+                  disabled={isGrading}
+                  aria-label={t('essay_grading:mode.manage_custom_rubric')}
+                  className={cn(
+                    COARSE_HIT,
+                    'shrink-0 h-7 rounded-full border border-border/50 bg-foreground/[0.02] px-2 text-xs text-foreground/80 hover:border-primary/40 hover:bg-primary/10 hover:text-primary transition-colors duration-150',
+                  )}
+                >
+                  <Plus size={12} className="shrink-0" />
+                  <span className="sm:hidden whitespace-nowrap">
+                    {t('essay_grading:mode.manage_custom_rubric_short')}
+                  </span>
+                  <span className="hidden sm:inline whitespace-nowrap">
+                    {t('essay_grading:mode.manage_custom_rubric')}
+                  </span>
+                </DsButton>
+              </CommonTooltip>
+            )}
           </div>
         )}
 

@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowClockwise, CircleNotch, GraduationCap, PencilSimple, Robot } from '@phosphor-icons/react';
+import { ArrowClockwise, CircleNotch, GraduationCap, PencilSimple, Plus, Robot } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import type { EssayTextStats } from '@/essay-grading/textStats';
 import { useInlineConfirm } from './useInlineConfirm';
@@ -14,6 +14,7 @@ interface InputSummaryBarProps {
   onExpand: () => void;
   onGrade: () => void;
   onCancelGrading: () => void;
+  onOpenCustomRubric?: () => void;
 }
 
 /** 结果优先布局：开始批改后原文收成一行摘要，高度让给批改结果 */
@@ -26,6 +27,7 @@ export const InputSummaryBar: React.FC<InputSummaryBarProps> = ({
   onExpand,
   onGrade,
   onCancelGrading,
+  onOpenCustomRubric,
 }) => {
   const { t } = useTranslation(['essay_grading', 'common']);
   const cancelConfirm = useInlineConfirm(onCancelGrading);
@@ -49,6 +51,20 @@ export const InputSummaryBar: React.FC<InputSummaryBarProps> = ({
             <GraduationCap size={14} className="shrink-0 text-muted-foreground" />
             <span className="truncate">{modeName}</span>
           </span>
+        )}
+        {onOpenCustomRubric && !isGrading && (
+          <DsButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-testid="essay-summary-custom-rubric-button"
+            onClick={onOpenCustomRubric}
+            aria-label={t('essay_grading:mode.manage_custom_rubric')}
+            className="h-6 shrink-0 rounded-full border border-border/45 px-2 text-[11px] text-muted-foreground hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+          >
+            <Plus size={11} className="shrink-0" />
+            <span className="hidden sm:inline">{t('essay_grading:mode.manage_custom_rubric_short')}</span>
+          </DsButton>
         )}
         {modelName && (
           <span className="hidden min-w-0 items-center gap-1.5 sm:inline-flex">

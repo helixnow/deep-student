@@ -24,10 +24,52 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 // ============================================================================
-// 常量
+// 常量与本地同意记录存取
 // ============================================================================
 export const USER_AGREEMENT_ACCEPTED_KEY = 'user_agreement_accepted';
 export const USER_AGREEMENT_VERSION = '1.0.0';
+export const LEGAL_CONSENT_STORAGE_KEY = 'deepstudent_legal_consent';
+
+export interface LegalConsentRecord {
+  version: string;
+  acceptedAt: string;
+}
+
+export function readLegalConsentRecord(): LegalConsentRecord | null {
+  try {
+    const raw = localStorage.getItem(LEGAL_CONSENT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<LegalConsentRecord> | null;
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      parsed.version === USER_AGREEMENT_VERSION &&
+      typeof parsed.acceptedAt === 'string' &&
+      !Number.isNaN(Date.parse(parsed.acceptedAt))
+    ) {
+      return {
+        version: parsed.version,
+        acceptedAt: parsed.acceptedAt,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function persistLegalConsentRecord(now: Date = new Date()): LegalConsentRecord {
+  const record: LegalConsentRecord = {
+    version: USER_AGREEMENT_VERSION,
+    acceptedAt: now.toISOString(),
+  };
+  try {
+    localStorage.setItem(LEGAL_CONSENT_STORAGE_KEY, JSON.stringify(record));
+  } catch {
+    // Ignore storage write errors in restricted WebViews.
+  }
+  return record;
+}
 
 // ============================================================================
 // Hook: useUserAgreement
@@ -80,6 +122,7 @@ export function useUserAgreement() {
   }, []);
 
   const acceptAgreement = useCallback(async () => {
+    persistLegalConsentRecord();
     try {
       await invoke('save_setting', {
         key: USER_AGREEMENT_ACCEPTED_KEY,
@@ -170,6 +213,7 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
   onClose,
 }) => {
   const { t } = useTranslation('common');
+  const [consentChecked, setConsentChecked] = useState<boolean>(() => readLegalConsentRecord() !== null);
 
   const isVisible = preview ? (open ?? false) : true;
 
@@ -410,14 +454,32 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
               {t('common:close')}
             </DsButton>
           ) : (
-            <DsButton
-              variant="primary"
-              size="lg"
-              className="w-full justify-center !border-primary !bg-primary !text-primary-foreground hover:!bg-primary/90 hover:!text-primary-foreground text-[13px] font-medium [@media(pointer:coarse)]:!min-h-11"
-              onClick={onAccept}
-            >
-              {t('legal.userAgreement.agreeAndContinue')}
-            </DsButton>
+            <div className="space-y-3">
+              <label className="flex cursor-pointer items-start gap-2.5 select-none text-[12px] leading-relaxed text-foreground/80">
+                <input
+                  type="checkbox"
+                  data-testid="user-agreement-consent-checkbox"
+                  checked={consentChecked}
+                  onChange={(e) => setConsentChecked(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-border accent-primary cursor-pointer"
+                />
+                <span>{t('legal.userAgreement.explicitConsentLabel')}</span>
+              </label>
+              <DsButton
+                variant="primary"
+                size="lg"
+                data-testid="user-agreement-agree-continue"
+                disabled={!consentChecked}
+                className="w-full justify-center !border-primary !bg-primary !text-primary-foreground hover:!bg-primary/90 hover:!text-primary-foreground disabled:!opacity-50 text-[13px] font-medium [@media(pointer:coarse)]:!min-h-11"
+                onClick={() => {
+                  if (!consentChecked) return;
+                  persistLegalConsentRecord();
+                  onAccept();
+                }}
+              >
+                {t('legal.userAgreement.agreeAndContinueCta')}
+              </DsButton>
+            </div>
           )}
         </div>
       </div>

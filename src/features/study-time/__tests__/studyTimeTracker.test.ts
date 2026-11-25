@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   __studyTimeTestHooks,
   flushStudyTime,
+  isStudySurfaceActive,
   setStudyFocusActive,
   setStudyMediaPlaying,
   startStudyTracking,
@@ -11,6 +12,7 @@ import {
 } from '../studyTimeTracker';
 import { STUDY_IDLE_MS } from '../studyLog';
 import { usePomodoroStore } from '@/features/pomodoro/stores/usePomodoroStore';
+import { useViewStore } from '@/stores/viewStore';
 
 function setVisibility(state: DocumentVisibilityState) {
   Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
@@ -22,6 +24,7 @@ describe('study time tracker', () => {
 
   beforeEach(() => {
     reported = [];
+    useViewStore.setState({ currentView: 'chat-v2', previousView: null });
     setVisibility('visible');
     startStudyTracking({
       reporter: async (day) => {
@@ -33,6 +36,7 @@ describe('study time tracker', () => {
 
   afterEach(async () => {
     usePomodoroStore.getState().stop(false);
+    useViewStore.setState({ currentView: 'chat-v2', previousView: null });
     stopStudyTracking();
     await flushStudyTime();
     __studyTimeTestHooks.reset(base);
@@ -215,5 +219,71 @@ describe('study time tracker', () => {
     __studyTimeTestHooks.markActive(base);
     studyTimeTick(idleNow + 60_000);
     expect(__studyTimeTestHooks.pending().get('2026-10-04')).toBe(30);
+  });
+
+  it('never inflates study time while browsing Settings, empty desktop, or non-study windows (S4-11)', async () => {
+    // 1. Legacy shell in Settings / Dashboard / Todo must NOT accumulate study time
+    useViewStore.setState({ currentView: 'settings', previousView: 'chat-v2' });
+    expect(isStudySurfaceActive()).toBe(false);
+    studyTimeTick(base + 15_000);
+    studyTimeTick(base + 60_000);
+    expect(__studyTimeTestHooks.pending().size).toBe(0);
+
+    useViewStore.setState({ currentView: 'todo', previousView: 'settings' });
+    studyTimeTick(base + 75_000);
+    expect(__studyTimeTestHooks.pending().size).toBe(0);
+
+    // 2. Workbench Desktop mode: empty desktop -> 0 study time
+    useViewStore.setState({ currentView: 'chat-v2', previousView: null });
+    document.body.innerHTML = '<div data-wb-workbench-root><div data-wb-desktop></div></div>';
+    expect(isStudySurfaceActive()).toBe(false);
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    studyTimeTick(base + 90_000);
+    expect(__studyTimeTestHooks.pending().size).toBe(0);
+
+    // 3. Workbench Settings window focused (switching presets / browsing settings for 2 minutes) -> 0 study time
+    document.body.innerHTML = `
+      <div data-wb-workbench-root>
+        <section data-wb-window data-focused="true">
+          <div data-wb-sys-app="settings"><button id="preset-btn">Preset</button></div>
+        </section>
+      </div>
+    `;
+    const presetBtn = document.getElementById('preset-btn')!;
+    presetBtn.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    studyTimeTick(base + 105_000);
+    studyTimeTick(base + 120_000);
+    await flushStudyTime();
+    expect(reported).toEqual([]);
+    expect(__studyTimeTestHooks.pending().size).toBe(0);
+
+    // 4. Switching to a focused Notes study window DOES accumulate only from that point forward
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(base + 125_000);
+    try {
+      document.body.innerHTML = `
+        <div data-wb-workbench-root>
+          <section data-wb-window data-focused="true">
+            <div data-wb-notes-workspace><div id="note-editor">Notes</div></div>
+          </section>
+        </div>
+      `;
+      document.getElementById('note-editor')!.dispatchEvent(new Event('keydown', { bubbles: true }));
+      studyTimeTick(base + 135_000);
+      expect(__studyTimeTestHooks.pending().get('2026-10-04')).toBe(15);
+
+      // Active Pomodoro work still counts even if user peeks at Settings while timer runs
+      document.body.innerHTML = `
+        <div data-wb-workbench-root>
+          <section data-wb-window data-focused="true">
+            <div data-wb-sys-app="settings"></div>
+          </section>
+        </div>
+      `;
+      usePomodoroStore.getState().start();
+      studyTimeTick(base + 150_000);
+      expect(__studyTimeTestHooks.pending().get('2026-10-04')).toBe(30);
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 });

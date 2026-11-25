@@ -4,6 +4,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { SettingsAboutFooter } from './SettingsAboutFooter';
+import { QuickSyncNowButton } from './QuickSyncNowButton';
 import { revealSettingsSection } from './settingsSearchReveal';
 import type { SettingsSearchIndexItem, SettingsSidebarCategory, SettingsSidebarNavItem } from './useSettingsNavigation';
 import { useSettingsShellStore } from '@/stores/settingsShellStore';
@@ -83,7 +84,12 @@ export function SettingsMobileNavigation({ categories, items, searchIndex, query
             })}
           </div>
         ) : (
-          <nav aria-label={t('settings:title')} data-settings-category-list className="overflow-hidden rounded-[22px] border border-border/30 bg-[color:var(--surface-elevated)] shadow-[var(--shadow-shell-soft)]">
+          <>
+            <QuickSyncNowButton
+              dataTestId="settings-mobile-quick-sync-now-btn"
+              className="w-full justify-center"
+            />
+            <nav aria-label={t('settings:title')} data-settings-category-list className="overflow-hidden rounded-[22px] border border-border/30 bg-[color:var(--surface-elevated)] shadow-[var(--shadow-shell-soft)]">
             {categories.map((category) => {
               const Icon = category.icon;
               return (
@@ -106,7 +112,8 @@ export function SettingsMobileNavigation({ categories, items, searchIndex, query
                 </DsButton>
               );
             })}
-          </nav>
+            </nav>
+          </>
         )}
         <SettingsAboutFooter onOpen={() => onOpenTab('about')} />
       </div>

@@ -3,6 +3,7 @@
     "filterLabel": "Filter",
     "filters": {
       "all": "All",
+      "safeModePaused": "Paused by Safe Mode",
       "mine": "Mine",
       "builtin": "Built-in",
       "disabled": "Off",
@@ -418,7 +419,16 @@
     "rowHint": "Community plugins cannot be enabled in safe mode",
     "exitButton": "Exit Safe Mode & Restart",
     "enterButton": "Restart in Safe Mode",
-    "importDisabled": "Importing and installing plugins are disabled in safe mode. Exit safe mode and restart first."
+    "importDisabled": "Importing and installing plugins are disabled in safe mode. Exit safe mode and restart first.",
+    "pausedSectionTitle": "Paused by Safe Mode",
+    "pausedSectionDescription": "{{count}} community plugin(s) are paused in Safe Mode while keeping their settings and stored data intact; you can still disable, uninstall, or import local .dstuplugin packages here.",
+    "pausedStatus": "Paused by Safe Mode",
+    "quarantinedStatus": "Quarantined · Paused by Safe Mode",
+    "importSafeModeHint": "Local .dstuplugin packages can still be imported in Safe Mode (saved in a quarantined, paused state without executing code); URL installation is paused.",
+    "switchingEnter": "Switching to Safe Mode, isolating community plugins…",
+    "switchingEnterDetail": "Restarting with official capabilities only. Your notes and study materials remain safe…",
+    "switchingExit": "Exiting Safe Mode and restarting normally…",
+    "switchingExitDetail": "Reloading your enabled plugins, please wait…"
   },
   "row": {
     "version": "Version",
@@ -515,7 +525,8 @@
       "title": "Installed {{id}} v{{version}}",
       "upgrade": "Upgraded from v{{previous}}",
       "fresh": "Fresh install",
-      "diskOnly": "Installation only writes to disk; permissions consent is still required before it runs."
+      "diskOnly": "Installation only writes to disk; permissions consent is still required before it runs.",
+      "safeModeQuarantined": "Installed & quarantined (paused by Safe Mode): written safely to disk without executing; exit Safe Mode and restart normally to enable."
     },
     "rolledBack": {
       "title": "Installation failed and was rolled back",
@@ -633,6 +644,8 @@
       "sending": "Sending…"
     },
     "label": "Plugin Workshop",
+    "quickBarAriaLabel": "Plugin Workshop quick bar",
+    "creationBadge": "Workshop Creation",
     "phase": {
       "blocked": "Needs attention",
       "proposed": "Waiting for you",
@@ -666,6 +679,7 @@
       }
     },
     "actions": {
+      "refineWithAi": "✦ Refine with AI",
       "resumeVerification": "Resume verification",
       "start": "Start building",
       "install": "Install",

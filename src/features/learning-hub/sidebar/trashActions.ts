@@ -366,20 +366,20 @@ export async function permanentlyDeleteTrashItem(
 ): Promise<void> {
   const result = await trashApi.permanentlyDelete(id, itemType);
 
-  // ★ 悬挂引用清理：永久删除后移除对应桌面快捷方式（不可恢复，无需快照）
   if (result.ok) {
+    // ★ 悬挂引用清理：永久删除后移除对应桌面快捷方式（不可恢复，无需快照）
     useDesktopStore.getState().pruneShortcutsForTargets([id]);
-  }
-
-  // ★ MEDIUM-005: 检查组件是否已卸载
-  if (!isMountedRef.current) return;
-
-  if (result.ok) {
-    showGlobalNotification('success', t('finder.trash.deleteSuccess'));
-    handleRefresh();
+    showGlobalNotification('success', t('finder.trash.deleteSuccess', { defaultValue: '已永久删除' }));
   } else {
     reportError(result.error, 'permanent delete');
     showGlobalNotification('error', result.error.toUserMessage());
+  }
+
+  // ★ MEDIUM-005: 检查组件是否已卸载（全局回执已发出，仅刷新受挂载态保护）
+  if (!isMountedRef.current) return;
+
+  if (result.ok) {
+    await handleRefresh();
   }
 }
 
@@ -400,9 +400,6 @@ export async function emptyTrashBin({
 }: EmptyTrashContext): Promise<void> {
   const result = await trashApi.emptyTrash();
 
-  // ★ MEDIUM-005: 检查组件是否已卸载
-  if (!isMountedRef.current) return;
-
   if (result.ok) {
     softDeleteUndoGenRef.current += 1;
     // ★ 悬挂引用清理：清空回收站后按当前回收站列表移除桌面快捷方式
@@ -410,11 +407,20 @@ export async function emptyTrashBin({
     if (isTrashView && items.length > 0) {
       useDesktopStore.getState().pruneShortcutsForTargets(items.map((item) => item.id));
     }
-    showGlobalNotification('success', t('finder.trash.emptySuccess') + ` (${result.value})`);
-    handleRefresh();
+    showGlobalNotification(
+      'success',
+      t('finder.trash.emptySuccess', { defaultValue: '回收站已清空' }) + ` (${result.value})`,
+    );
   } else {
     reportError(result.error, 'empty trash');
     showGlobalNotification('error', result.error.toUserMessage());
+  }
+
+  // ★ MEDIUM-005: 检查组件是否已卸载
+  if (!isMountedRef.current) return;
+
+  if (result.ok) {
+    await handleRefresh();
   }
 }
 
@@ -468,16 +474,32 @@ export async function confirmPendingDelete({
           if (succeededIds.length > 0) {
             useDesktopStore.getState().pruneShortcutsForTargets(succeededIds);
           }
-          if (!isMountedRef.current) break;
           if (failed === 0) {
-            showGlobalNotification('success', t('finder.trash.batchDeleteSuccess', { count: succeeded }));
+            showGlobalNotification(
+              'success',
+              t('finder.trash.batchDeleteSuccess', {
+                count: succeeded,
+                defaultValue: `已永久删除 ${succeeded} 个项目`,
+              }),
+            );
           } else if (succeeded > 0) {
-            showGlobalNotification('warning', t('finder.trash.batchDeletePartial', { succeeded, failed }));
+            showGlobalNotification(
+              'warning',
+              t('finder.trash.batchDeletePartial', {
+                succeeded,
+                failed,
+                defaultValue: `已删除 ${succeeded} 个，失败 ${failed} 个`,
+              }),
+            );
           } else {
-            showGlobalNotification('error', t('finder.trash.batchDeleteFailed'));
+            showGlobalNotification(
+              'error',
+              t('finder.trash.batchDeleteFailed', { defaultValue: '永久删除失败' }),
+            );
           }
+          if (!isMountedRef.current) break;
           clearSelection();
-          handleRefresh();
+          await handleRefresh();
         }
         break;
       case 'permanent':

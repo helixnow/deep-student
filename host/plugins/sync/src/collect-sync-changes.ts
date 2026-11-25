@@ -2,7 +2,7 @@
 import { fs } from '../src/local-runtime.ts';
 import type { CoordinatedDatabaseName, StorageService } from '../../../platform/storage/api.ts';
 import { tableExists, tableHasColumn, quoteIdentifier } from '../repository/sqlite-values.ts';
-import { getPendingChanges } from '../repository/change-log.ts';
+import { getPendingChanges, markSyncedWithTimestamp } from '../repository/change-log.ts';
 import { enrichChangesWithData } from '../repository/record-data.ts';
 import { buildIdColumnMap } from './conflict-commands.ts';
 import { filterPendingChangesForDatabase, pendingHasChanges } from './change-log.ts';
@@ -34,9 +34,87 @@ export async function collectSyncChanges(local: StorageService, emitter: SyncPro
         throw new Error(`获取数据库 ${name} 待同步变更失败: ${message(error)}`);
       }
       if (!pendingHasChanges(pending)) continue;
+      const unresolvedKeys = new Set<string>();
+      const unresolvedResourceIds = new Set<string>();
+      if (tableExists(db, '__sync_conflicts')) {
+        try {
+          const conflictRows = db.all<{ table_name: string; record_id: string; data_json: string }>(
+            'SELECT table_name, record_id, data_json FROM __sync_conflicts WHERE resolved_at IS NULL',
+          );
+          for (const row of conflictRows) {
+            unresolvedKeys.add(`${row.table_name}\u001f${row.record_id}`);
+            if (row.table_name === 'resources') {
+              unresolvedResourceIds.add(row.record_id);
+            } else if (row.table_name === 'notes') {
+              try {
+                const parsed = JSON.parse(row.data_json) as Record<string, unknown> | null;
+                if (parsed && typeof parsed.resource_id === 'string') {
+                  unresolvedResourceIds.add(parsed.resource_id);
+                }
+              } catch { /* ignore */ }
+              if (tableExists(db, 'notes')) {
+                const resId = db.pluck<string | null>('SELECT resource_id FROM notes WHERE id = ?1', [row.record_id]);
+                if (resId) unresolvedResourceIds.add(resId);
+              }
+            }
+          }
+        } catch {
+          // ignore optional conflict table query errors
+        }
+      }
+      const activeEntries = unresolvedKeys.size === 0
+        ? pending.entries
+        : pending.entries.filter(entry => {
+            if (unresolvedKeys.has(`${entry.table_name}\u001f${entry.record_id}`)) return false;
+            if (entry.table_name === 'resources' && unresolvedResourceIds.has(entry.record_id)) return false;
+            if (entry.table_name === 'note_document_formats' && unresolvedKeys.has(`notes\u001f${entry.record_id}`)) return false;
+            if (entry.table_name === 'note_document_revisions' && tableExists(db, 'note_document_revisions')) {
+              try {
+                const parentNoteId = db.pluck<string | null>('SELECT note_id FROM note_document_revisions WHERE version_id = ?1', [entry.record_id]);
+                if (parentNoteId && unresolvedKeys.has(`notes\u001f${parentNoteId}`)) return false;
+              } catch { /* ignore */ }
+            }
+            return true;
+          });
+      if (activeEntries.length === 0) continue;
+      let enriched: EngineChange[];
       try {
-        for (const change of enrichChangesWithData(db, pending.entries, buildIdColumnMap())) changes.push({ ...change, database_name: name });
+        enriched = enrichChangesWithData(db, activeEntries, buildIdColumnMap());
       } catch (error) { throw new Error(`补全数据库 ${name} 变更数据失败: ${message(error)}`); }
+      const pendingDeletes = new Set<string>();
+      for (const change of enriched) {
+        if (change.operation === 'Delete') {
+          pendingDeletes.add(`${change.table_name}\u001f${change.record_id}`);
+        }
+      }
+      const obsoleteIds: (number | bigint)[] = [];
+      for (const change of enriched) {
+        if ((change.operation === 'Insert' || change.operation === 'Update') && change.data === null) {
+          const key = `${change.table_name}\u001f${change.record_id}`;
+          if (pendingDeletes.has(key) || change.table_name === 'note_document_revisions') {
+            if (change.change_log_id != null) obsoleteIds.push(change.change_log_id);
+            continue;
+          }
+          const everSynced = Boolean(
+            db.pluck(
+              'SELECT EXISTS(SELECT 1 FROM __change_log WHERE table_name = ?1 AND record_id = ?2 AND sync_version > 0)',
+              [change.table_name, change.record_id],
+            ),
+          );
+          if (everSynced) {
+            pendingDeletes.add(key);
+            changes.push({ ...change, operation: 'Delete', data: null, database_name: name });
+          } else if (change.change_log_id != null) {
+            obsoleteIds.push(change.change_log_id);
+          }
+          continue;
+        }
+        changes.push({ ...change, database_name: name });
+      }
+      if (obsoleteIds.length > 0) {
+        try { markSyncedWithTimestamp(db, [...new Set(obsoleteIds)]); }
+        catch { /* non-fatal cleanup of superseded local log rows */ }
+      }
     } finally { local.close(db); }
   }
   if (!found) throw new Error('未找到可用的数据库。请先初始化数据库。');
@@ -108,6 +186,9 @@ export async function collectFullSnapshotChanges(local: StorageService, emitter:
       if (syntheticEntries.length > 0) {
         const enrichedSnapshot = enrichChangesWithData(db, syntheticEntries, idColumnMap);
         for (const change of enrichedSnapshot) {
+          if ((change.operation === 'Insert' || change.operation === 'Update') && change.data === null) {
+            continue;
+          }
           const key = `${change.table_name}\u001f${change.record_id}`;
           if (change.table_name.startsWith('note_') && pending.some(p => p.database_name === name && `${p.table_name}\u001f${p.record_id}` === key)) {
             continue;

@@ -349,10 +349,12 @@ export function useViewLayer(options: ViewLayerOptions): React.ReactNode[] {
         content={value.contentKey ? viewContents[value.contentKey] : undefined}
         footerOverlay={owner?.startsWith('workshop.plugin-') ? (
           <div
-            aria-label="插件工坊快捷栏"
+            aria-label={t('plugin_manager:workshop.quickBarAriaLabel', 'Plugin Workshop quick bar')}
             className="fixed bottom-5 right-6 z-30 flex items-center gap-2 rounded-full border border-border/70 bg-background/95 px-3 py-1.5 text-xs shadow-sm backdrop-blur"
           >
-            <span className="text-muted-foreground">插件工坊作品</span>
+            <span className="text-muted-foreground">
+              {t('plugin_manager:workshop.creationBadge', 'Workshop Creation')}
+            </span>
             <button
               type="button"
               data-testid="workshop-refine-with-ai"
@@ -365,7 +367,7 @@ export function useViewLayer(options: ViewLayerOptions): React.ReactNode[] {
               }}
               className="rounded-full bg-primary px-2.5 py-1 font-medium text-primary-foreground transition-opacity hover:opacity-90"
             >
-              ✦ 让 AI 优化
+              {t('plugin_manager:workshop.actions.refineWithAi', '✦ Refine with AI')}
             </button>
           </div>
         ) : undefined}

@@ -85,6 +85,9 @@
     "back": "Back to media",
     "notFound": "This media file can't be found. It may have been deleted.",
     "loadFailed": "Couldn't open this media file",
+    "mutedAutoplay": "Autoplay with audio was blocked by browser policy; playing muted",
+    "unmute": "Unmute",
+    "playbackFailed": "Playback failed: {{message}}",
     "tabsAria": "Study panel",
     "tab": {
       "handout": "Handout",

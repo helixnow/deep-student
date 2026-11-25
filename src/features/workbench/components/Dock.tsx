@@ -16,7 +16,7 @@
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { SquaresFour } from '@phosphor-icons/react';
+import { CaretDown, SquaresFour } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '../../../lib/utils';
@@ -87,6 +87,7 @@ export const DOCK_TOOLTIP_SESSION_GRACE_MS = 140;
 export const DOCK_MAX_MINIMIZED_SLOTS = 3;
 
 const MINIMIZED_OVERFLOW_DOCK_ID = '__minimized_overflow__';
+const DOCK_COLLAPSE_ID = '__dock_collapse__';
 
 function useRegistryVersion(): void {
   const [, setVersion] = React.useState(0);
@@ -160,24 +161,37 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
   const immersiveWindowId = useImmersiveWindowId();
   const composerDockHeight = useComposerDockHeight();
   const desktopWidth = useWindowStore((s) => s.desktopSize.w);
-  const [mqlCompactViewport, setMqlCompactViewport] = React.useState(() =>
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? Boolean(window.matchMedia('(max-width: 640px)')?.matches)
-      : false,
-  );
-  React.useEffect(() => {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-    const mql = window.matchMedia('(max-width: 640px)');
-    if (!mql) return undefined;
-    const syncViewport = () => setMqlCompactViewport(Boolean(mql.matches));
-    syncViewport();
-    if (typeof mql.addEventListener === 'function') {
-      mql.addEventListener('change', syncViewport);
-      return () => mql.removeEventListener('change', syncViewport);
+  const readCompactViewport = React.useCallback((): boolean => {
+    if (typeof window === 'undefined') return false;
+    if (typeof window.matchMedia === 'function') {
+      if (
+        window.matchMedia('(max-width: 767px)')?.matches ||
+        window.matchMedia('(max-width: 640px)')?.matches
+      ) {
+        return true;
+      }
     }
-    return undefined;
+    return window.innerWidth > 0 && window.innerWidth <= 767;
   }, []);
-  const isCompactViewport = mqlCompactViewport || (desktopWidth > 0 && desktopWidth <= 640);
+  const [mqlCompactViewport, setMqlCompactViewport] = React.useState(readCompactViewport);
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const syncViewport = () => setMqlCompactViewport(readCompactViewport());
+    syncViewport();
+    const mqlMobile =
+      typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 767px)') : null;
+    const mqlNarrow =
+      typeof window.matchMedia === 'function' ? window.matchMedia('(max-width: 640px)') : null;
+    mqlMobile?.addEventListener?.('change', syncViewport);
+    mqlNarrow?.addEventListener?.('change', syncViewport);
+    window.addEventListener('resize', syncViewport);
+    return () => {
+      mqlMobile?.removeEventListener?.('change', syncViewport);
+      mqlNarrow?.removeEventListener?.('change', syncViewport);
+      window.removeEventListener('resize', syncViewport);
+    };
+  }, [readCompactViewport]);
+  const isCompactViewport = mqlCompactViewport || (desktopWidth > 0 && desktopWidth <= 767);
 
   const [isTypingInComposer, setIsTypingInComposer] = React.useState(false);
   const composerBlurTimerRef = React.useRef(0);
@@ -338,6 +352,7 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     ...minimizedSlotIds,
     APPS_DOCK_TYPE_ID,
     AGENT_CONTROL_DOCK_ID,
+    ...(effectiveAutohide ? [DOCK_COLLAPSE_ID] : []),
   ];
   const orderedKey = orderedIds.join('|');
   const normalizedSize = Number.isFinite(size) ? size : 100;
@@ -489,12 +504,24 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     }, 180);
   }, [revealDock]);
 
+  const concealDockImmediate = React.useCallback(() => {
+    setOverflowOpen(false);
+    clickRevealedRef.current = false;
+    clearAutohideTimers();
+    setRevealing(false);
+    updateRevealed(false);
+    if (isCompactViewport) {
+      setCompactCollapsedPersisted(true);
+      writePersistedCompactDockCollapse(true);
+    }
+  }, [clearAutohideTimers, isCompactViewport, updateRevealed]);
+
   const scheduleConceal = React.useCallback(() => {
     if (revealTimerRef.current) {
       window.clearTimeout(revealTimerRef.current);
       revealTimerRef.current = 0;
     }
-    if (concealTimerRef.current) return;
+    if (!revealedRef.current || concealTimerRef.current) return;
     concealTimerRef.current = window.setTimeout(() => {
       concealTimerRef.current = 0;
       clickRevealedRef.current = false;
@@ -515,41 +542,95 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
     return () => clearAutohideTimers();
   }, [effectiveAutohide, clearAutohideTimers, updateRevealed]);
 
-  // 窄屏（<= 640px）切换/新开前台窗后立即收起 Dock，避免遮挡目标窗底部 CTA
+  // 窄屏（< 768px）切换/新开前台窗后立即收起 Dock，避免遮挡目标窗底部 CTA
   const topFocusId = useWindowStore((s) => s.focusStack[s.focusStack.length - 1] ?? null);
   const prevTopFocusRef = React.useRef<string | null>(topFocusId);
   React.useEffect(() => {
     const prev = prevTopFocusRef.current;
     prevTopFocusRef.current = topFocusId;
     if (!isCompactViewport || !hasOpenWindow || prev === topFocusId) return;
-    clickRevealedRef.current = false;
-    clearAutohideTimers();
-    setRevealing(false);
-    updateRevealed(false);
-  }, [topFocusId, isCompactViewport, hasOpenWindow, clearAutohideTimers, updateRevealed]);
+    concealDockImmediate();
+  }, [topFocusId, isCompactViewport, hasOpenWindow, concealDockImmediate]);
   const hidden = effectiveAutohide && !revealed;
 
   const dockRef = React.useRef<HTMLDivElement | null>(null);
-  const onAutohideOutsidePointerDown = React.useCallback(
+  const onAutohideOutsideDismiss = React.useCallback(
     (event: Event) => {
       const target = event.target as Node | null;
       if (dockRef.current?.contains(target) || hotzoneRef.current?.contains(target)) return;
-      clickRevealedRef.current = false;
-      clearAutohideTimers();
-      setRevealing(false);
-      updateRevealed(false);
-      if (isCompactViewport) {
-        setCompactCollapsedPersisted(true);
-        writePersistedCompactDockCollapse(true);
-      }
+      concealDockImmediate();
     },
-    [clearAutohideTimers, isCompactViewport, updateRevealed],
+    [concealDockImmediate],
+  );
+  const onAutohideOutsideFocusIn = React.useCallback(
+    (event: Event) => {
+      const target = event.target as Node | null;
+      if (
+        !target ||
+        target === document ||
+        target === document.body ||
+        target === document.documentElement
+      ) {
+        return;
+      }
+      if (dockRef.current?.contains(target) || hotzoneRef.current?.contains(target)) return;
+      concealDockImmediate();
+    },
+    [concealDockImmediate],
+  );
+  const onAutohideKeyDown = React.useCallback(
+    (event: Event) => {
+      const ke = event as KeyboardEvent;
+      if (ke.key !== 'Escape' || ke.isComposing || ke.keyCode === 229) return;
+      if (!isAppsPanelOpen()) {
+        ke.preventDefault();
+        ke.stopPropagation();
+      }
+      if (
+        dockRef.current?.contains(document.activeElement) &&
+        document.activeElement instanceof HTMLElement
+      ) {
+        document.activeElement.blur();
+      }
+      concealDockImmediate();
+    },
+    [concealDockImmediate],
   );
   useEventRegistry(
     effectiveAutohide && revealed
-      ? [{ target: 'document', type: 'pointerdown', listener: onAutohideOutsidePointerDown }]
+      ? [
+          {
+            target: 'document',
+            type: 'pointerdown',
+            listener: onAutohideOutsideDismiss,
+            options: true,
+          },
+          {
+            target: 'document',
+            type: 'click',
+            listener: onAutohideOutsideDismiss,
+            options: true,
+          },
+          {
+            target: 'document',
+            type: 'focusin',
+            listener: onAutohideOutsideFocusIn,
+          },
+          {
+            target: 'window',
+            type: 'keydown',
+            listener: onAutohideKeyDown,
+            options: true,
+          },
+        ]
       : [],
-    [effectiveAutohide, revealed, onAutohideOutsidePointerDown],
+    [
+      effectiveAutohide,
+      revealed,
+      onAutohideOutsideDismiss,
+      onAutohideOutsideFocusIn,
+      onAutohideKeyDown,
+    ],
   );
   React.useLayoutEffect(() => {
     if (dockRef.current) {
@@ -912,6 +993,24 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
           hidden ? 'pointer-events-none' : 'pointer-events-auto',
         )}
         onKeyDown={handleToolbarKeyDown}
+        onClick={(event) => {
+          if (!isCompactViewport || !effectiveAutohide || !revealedRef.current) return;
+          const target = event.target as HTMLElement | null;
+          if (!target) return;
+          if (
+            target.closest(
+              '[data-testid="wb-dock-minimized-overflow"], [data-testid="wb-dock-window-list"], [data-testid="wb-dock-collapse-button"]',
+            )
+          ) {
+            return;
+          }
+          const itemBtn = target.closest<HTMLElement>('[data-type-id]');
+          if (!itemBtn) return;
+          window.requestAnimationFrame(() => {
+            if (dockRef.current?.querySelector('[data-testid="wb-dock-window-list"]')) return;
+            concealDockImmediate();
+          });
+        }}
         onPointerEnter={handleDockPointerEnter}
         onPointerMove={handleDockPointerMove}
         onPointerLeave={handleDockPointerLeave}
@@ -1129,6 +1228,9 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
                 onClick={() => {
                   clearAutohideTimers();
                   toggleAppsPanel();
+                  if (isCompactViewport && effectiveAutohide) {
+                    concealDockImmediate();
+                  }
                 }}
                 onFocus={() => focusDockItem(APPS_DOCK_TYPE_ID)}
               >
@@ -1156,6 +1258,50 @@ function DockImpl({ autohide = false, size = 100, className }: DockProps) {
           onTipPointerLeave={handleTipItemLeave}
           onFocus={() => focusDockItem(AGENT_CONTROL_DOCK_ID)}
         />
+        {effectiveAutohide && (
+          <div
+            data-testid={`wb-dock-item-${DOCK_COLLAPSE_ID}`}
+            data-wb-dock-item-wrap=""
+            data-tip-managed="true"
+            data-tip-active={hoveredTipId === DOCK_COLLAPSE_ID ? 'true' : undefined}
+            className="wb-dock-item-wrap relative flex flex-col items-center"
+            onPointerEnter={() => handleTipItemEnter(DOCK_COLLAPSE_ID)}
+            onPointerLeave={handleTipItemLeave}
+            onPointerCancel={handleTipItemLeave}
+          >
+            <div className="wb-dock-mag" data-wb-dock-mag-item={DOCK_COLLAPSE_ID}>
+              <div className="wb-dock-bounce">
+                <button
+                  ref={registerButtonRef(DOCK_COLLAPSE_ID)}
+                  type="button"
+                  data-type-id={DOCK_COLLAPSE_ID}
+                  data-testid="wb-dock-collapse-button"
+                  className="wb-dock-item group relative flex h-11 w-11 items-center justify-center rounded-xl outline-none"
+                  aria-label={t('workbench:dock.collapse')}
+                  title={t('workbench:dock.collapse')}
+                  tabIndex={effectiveActiveId === DOCK_COLLAPSE_ID ? 0 : -1}
+                  onClick={(event) => {
+                    event.currentTarget.blur();
+                    concealDockImmediate();
+                  }}
+                  onFocus={() => focusDockItem(DOCK_COLLAPSE_ID)}
+                >
+                  <span
+                    aria-hidden
+                    className="wb-dock-item-icon pointer-events-none flex h-full w-full items-center justify-center"
+                  >
+                    <span className="wb-dock-utility-tile wb-dock-utility-tile-collapse">
+                      <CaretDown size={18} weight="bold" />
+                    </span>
+                  </span>
+                </button>
+              </div>
+            </div>
+            <span aria-hidden data-testid={`wb-dock-tip-${DOCK_COLLAPSE_ID}`} className="wb-dock-tip">
+              {t('workbench:dock.collapse')}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

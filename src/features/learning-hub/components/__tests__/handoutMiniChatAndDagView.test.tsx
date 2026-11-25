@@ -3,10 +3,17 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { describe, expect, it, vi } from 'vitest';
 import {
   HandoutReaderView,
+  formatHandoutSectionHeading,
   handoutIrToMarkdown,
+  stripDuplicateHandoutChapterPrefix,
   validateHandoutIr,
   type HandoutDocument,
 } from '../HandoutReaderView';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { translationDstuAdapter } from '@/dstu/adapters/translationDstuAdapter';
+import { readTranslationDraftSnapshot } from '@/translation';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+import { APP_EVENTS } from '@/events';
 import {
   ContextualMiniChat,
   type MiniChatContextAnchor,
@@ -405,6 +412,112 @@ describe('Lane 3 三大高价值新视图组件集成测试', () => {
         'data-active',
         'true',
       );
+    });
+
+    it('1.9 [S3-11] 剥离章节与小节重复序号前缀（如「一、一、」），并提供「复制讲义 / 复制本章 / 发送到翻译」闭环直达翻译工作台', async () => {
+      const copySpy = vi.spyOn(
+        await import('@/utils/clipboardUtils'),
+        'copyTextToClipboard',
+      ).mockResolvedValue(true);
+      const createTransSpy = vi
+        .spyOn(translationDstuAdapter, 'createTranslation')
+        .mockResolvedValue({
+          ok: true,
+          value: {
+            id: 'tr_handout_s3_11',
+            sourceText: 'mock',
+            translatedText: '',
+            srcLang: 'auto',
+            tgtLang: 'en',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+        });
+      const launchSpy = vi.spyOn(workbenchBus, 'launch').mockReturnValue('win_tr_1');
+      const navEvents: CustomEvent[] = [];
+      const onNavTranslate = (e: Event) => navEvents.push(e as CustomEvent);
+      window.addEventListener(APP_EVENTS.NAVIGATE_TO_TRANSLATION, onNavTranslate);
+
+      try {
+        expect(stripDuplicateHandoutChapterPrefix('一、一、特征值与特征向量')).toBe('特征值与特征向量');
+        expect(stripDuplicateHandoutChapterPrefix('第一章 一、矩阵对角化')).toBe('矩阵对角化');
+        expect(formatHandoutSectionHeading(0, '一、一、一般函数的性质')).toBe('一、一般函数的性质');
+
+        const dupDoc: HandoutDocument = {
+          title: '线性代数精读讲义',
+          summary: '梳理特征值核心性质。',
+          sections: [
+            {
+              id: 'sec-dup-1',
+              heading: '一、一、特征值与特征向量',
+              blocks: [
+                { type: 'h2', text: '（一）（一）特征多项式定义' },
+                { type: 'para', text: '设 A 为 n 阶方阵，若存在非零列向量 α 使得 Aα = λα。' },
+              ],
+            },
+          ],
+        };
+
+        render(<HandoutReaderView document={dupDoc} />);
+
+        // 章节与小节标题均绝不出现重复序号前缀
+        const sectionEl = screen.getByTestId('handout-section-sec-dup-1');
+        expect(within(sectionEl).getByRole('heading', { level: 2 })).toHaveTextContent(
+          '一、特征值与特征向量',
+        );
+        expect(within(sectionEl).getByRole('heading', { level: 2 }).textContent).not.toContain(
+          '一、一、',
+        );
+        expect(within(sectionEl).getByRole('heading', { level: 3 })).toHaveTextContent(
+          '（一）特征多项式定义',
+        );
+        expect(within(sectionEl).getByRole('heading', { level: 3 }).textContent).not.toContain(
+          '（一）（一）',
+        );
+
+        // 点击顶栏「复制讲义」
+        fireEvent.click(screen.getByTestId('handout-copy-all-button'));
+        await waitFor(() => {
+          expect(copySpy).toHaveBeenCalledTimes(1);
+        });
+        expect(copySpy.mock.calls[0][0]).toContain('## 一、特征值与特征向量');
+        expect(copySpy.mock.calls[0][0]).not.toContain('一、一、');
+
+        // 点击章节「复制本章」
+        fireEvent.click(screen.getByTestId('handout-copy-section-sec-dup-1'));
+        await waitFor(() => {
+          expect(copySpy).toHaveBeenCalledTimes(2);
+        });
+        expect(copySpy.mock.calls[1][0]).toContain('设 A 为 n 阶方阵');
+
+        // 点击章节「发送到翻译」-> 创建翻译会话 + 保存草稿快照 + 打开翻译工作台
+        fireEvent.click(screen.getByTestId('handout-translate-section-sec-dup-1'));
+        await waitFor(() => {
+          expect(createTransSpy).toHaveBeenCalledTimes(1);
+        });
+        expect(createTransSpy.mock.calls[0][0].sourceText).toContain('设 A 为 n 阶方阵');
+        expect(readTranslationDraftSnapshot('tr_handout_s3_11')?.sourceText).toContain(
+          '设 A 为 n 阶方阵',
+        );
+        expect(launchSpy).toHaveBeenCalledWith(
+          expect.objectContaining({
+            typeId: 'translation',
+            instanceKey: 'tr_handout_s3_11',
+          }),
+        );
+        if (!workbenchBus.isEnabled()) {
+          expect(navEvents.length).toBeGreaterThanOrEqual(1);
+          expect(navEvents[0].detail).toMatchObject({
+            translationId: 'tr_handout_s3_11',
+          });
+        }
+      } finally {
+        window.removeEventListener(APP_EVENTS.NAVIGATE_TO_TRANSLATION, onNavTranslate);
+        copySpy.mockRestore();
+        createTransSpy.mockRestore();
+        launchSpy.mockRestore();
+        void copyTextToClipboard;
+      }
     });
   });
 

@@ -29,9 +29,13 @@ export function isExportUnsupportedPlatform(): boolean {
   return isIOS();
 }
 
-/** Android 保存得到的是 content:// URI，提示里展示建议文件名而非不透明 URI */
-function displaySavedPath(path: string, suggestedFilename: string): string {
-  return /^(content|ph|asset):\/\//i.test(path.trim()) ? suggestedFilename : path;
+/** Android 保存得到的是 content:// URI，WebUI 临时导出目录为 web-exports，提示里统一展示建议文件名 */
+function displaySavedPath(path: string | undefined, suggestedFilename: string): string {
+  const trimmed = path?.trim();
+  if (!trimmed) return suggestedFilename;
+  if (/^(content|ph|asset):\/\//i.test(trimmed)) return suggestedFilename;
+  if (/[/\\]web-exports[/\\]/i.test(trimmed)) return suggestedFilename;
+  return trimmed;
 }
 
 /**
@@ -90,7 +94,7 @@ export async function exportResourceById(resourceId: string, t: TFunction, windo
 
     const formats = formatsResult.value;
     if (formats.length === 0) {
-      showGlobalNotification('warning', t('contextMenu.exportNoFormats'));
+      showGlobalNotification('warning', t('contextMenu.exportNoFormats', { defaultValue: '该资源暂无可导出的格式' }));
       return false;
     }
 
@@ -106,7 +110,7 @@ export async function exportResourceById(resourceId: string, t: TFunction, windo
           : formats[0]
     ) as 'markdown' | 'original' | 'zip';
 
-    showGlobalNotification('info', t('contextMenu.exporting'));
+    showGlobalNotification('info', t('contextMenu.exporting', { defaultValue: '正在导出...' }));
     const exportResult = await dstu.exportResource(resourcePath, format);
     if (!exportResult.ok) {
       showGlobalNotification('error', exportResult.error.toUserMessage());
@@ -118,15 +122,19 @@ export async function exportResourceById(resourceId: string, t: TFunction, windo
     if (payload.payloadType === 'text' && typeof payload.content === 'string') {
       const result = await fileManager.saveTextFile({
         content: format === 'markdown' ? await readExportContent(payload.content) : payload.content,
-        title: t('contextMenu.exportSaveTitle'),
+        title: t('contextMenu.exportSaveTitle', { defaultValue: '导出资源' }),
         defaultFileName: payload.suggestedFilename,
         filters: [{
           name: payload.suggestedFilename.endsWith('.json') ? 'JSON' : 'Markdown',
           extensions: [payload.suggestedFilename.split('.').pop() || 'md'],
         }],
       });
-      if (!result.canceled && result.path) {
-        showGlobalNotification('success', t('contextMenu.exportSuccess', { path: displaySavedPath(result.path, payload.suggestedFilename) }));
+      if (!result.canceled) {
+        const shownPath = displaySavedPath(result.path, payload.suggestedFilename);
+        showGlobalNotification(
+          'success',
+          t('contextMenu.exportSuccess', { path: shownPath, defaultValue: `已导出到: ${shownPath}` }),
+        );
         return true;
       }
       return false;
@@ -141,12 +149,16 @@ export async function exportResourceById(resourceId: string, t: TFunction, windo
       const ext = payload.suggestedFilename.split('.').pop() || 'bin';
       const result = await fileManager.saveBinaryFile({
         data: bytes,
-        title: t('contextMenu.exportSaveTitle'),
+        title: t('contextMenu.exportSaveTitle', { defaultValue: '导出资源' }),
         defaultFileName: payload.suggestedFilename,
         filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
       });
-      if (!result.canceled && result.path) {
-        showGlobalNotification('success', t('contextMenu.exportSuccess', { path: displaySavedPath(result.path, payload.suggestedFilename) }));
+      if (!result.canceled) {
+        const shownPath = displaySavedPath(result.path, payload.suggestedFilename);
+        showGlobalNotification(
+          'success',
+          t('contextMenu.exportSuccess', { path: shownPath, defaultValue: `已导出到: ${shownPath}` }),
+        );
         return true;
       }
       return false;
@@ -155,11 +167,15 @@ export async function exportResourceById(resourceId: string, t: TFunction, windo
     if (payload.payloadType === 'file' && payload.tempPath) {
       const result = await fileManager.saveFromSource({
         sourcePath: payload.tempPath,
-        title: t('contextMenu.exportSaveTitle'),
+        title: t('contextMenu.exportSaveTitle', { defaultValue: '导出资源' }),
         defaultFileName: payload.suggestedFilename,
       });
-      if (!result.canceled && result.path) {
-        showGlobalNotification('success', t('contextMenu.exportSuccess', { path: displaySavedPath(result.path, payload.suggestedFilename) }));
+      if (!result.canceled) {
+        const shownPath = displaySavedPath(result.path, payload.suggestedFilename);
+        showGlobalNotification(
+          'success',
+          t('contextMenu.exportSuccess', { path: shownPath, defaultValue: `已导出到: ${shownPath}` }),
+        );
         return true;
       }
       return false;
@@ -168,7 +184,7 @@ export async function exportResourceById(resourceId: string, t: TFunction, windo
     return false;
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
-    showGlobalNotification('error', t('contextMenu.exportFailed') + ': ' + msg);
+    showGlobalNotification('error', `${t('contextMenu.exportFailed', { defaultValue: '导出失败' })}: ${msg}`);
     return false;
   }
 }

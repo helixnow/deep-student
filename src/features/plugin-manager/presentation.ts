@@ -94,7 +94,9 @@ export function pluginNeedsAttention(plugin: ManagedPlugin, uiStatus?: PluginUiS
 
 /** A single summary never equates a profile enable flag with a running runtime. */
 export function pluginStatusKey(plugin: ManagedPlugin, uiStatus?: PluginUiStatusSnapshot, safeMode = false): string {
-  if (safeMode && plugin.origin === 'community') return 'manager.disabled';
+  if (safeMode && plugin.origin === 'community') {
+    return plugin.enabled ? 'safeMode.pausedStatus' : 'safeMode.quarantinedStatus';
+  }
   if (plugin.consent === 'required' || uiStatus?.consentRequired) return 'row.consentRequired';
   if (pluginNeedsAttention(plugin, uiStatus)) return 'manager.problemStatus';
   if (plugin.runtime === 'running') return 'runtime.running';
@@ -202,14 +204,28 @@ export function pluginIsEssential(plugin: ManagedPlugin): boolean {
   return plugin.origin === 'builtin' && plugin.enabled && (plugin.requiredBy?.length ?? 0) > 0;
 }
 
-export type PluginFilter = 'all' | 'mine' | 'builtin' | 'disabled' | 'problem';
+export type PluginFilter = 'all' | 'safeModePaused' | 'mine' | 'builtin' | 'disabled' | 'problem';
 export const PLUGIN_FILTERS: readonly PluginFilter[] = ['all', 'mine', 'builtin', 'disabled', 'problem'];
+export const SAFE_MODE_PLUGIN_FILTERS: readonly PluginFilter[] = ['all', 'safeModePaused', 'mine', 'builtin', 'disabled', 'problem'];
+
+export function pluginFiltersForMode(safeMode: boolean): readonly PluginFilter[] {
+  return safeMode ? SAFE_MODE_PLUGIN_FILTERS : PLUGIN_FILTERS;
+}
 
 /** Tone of the quiet status dot next to a plugin's state label. */
 export function pluginStatusTone(statusKey: string): 'ok' | 'off' | 'warn' | 'bad' {
   if (statusKey === 'runtime.running') return 'ok';
   if (statusKey === 'manager.problemStatus') return 'bad';
-  if (statusKey === 'row.consentRequired' || statusKey === 'manager.waiting' || statusKey === 'row.unsupportedPlatform' || statusKey === 'row.desktopOnly') return 'warn';
+  if (
+    statusKey === 'row.consentRequired' ||
+    statusKey === 'manager.waiting' ||
+    statusKey === 'row.unsupportedPlatform' ||
+    statusKey === 'row.desktopOnly' ||
+    statusKey === 'safeMode.pausedStatus' ||
+    statusKey === 'safeMode.quarantinedStatus'
+  ) {
+    return 'warn';
+  }
   return 'off';
 }
 

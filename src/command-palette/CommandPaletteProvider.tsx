@@ -34,7 +34,12 @@ import { shortcutManager } from './registry/shortcutManager';
 import { normalizeShortcut, buildShortcutString } from './registry/shortcutUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
-// ==================== Context 类型 ====================
+export const WORKBENCH_OPEN_APPS_PANEL_EVENT = 'workbench:open-apps-panel';
+export const WORKBENCH_TOGGLE_APPS_PANEL_EVENT = 'workbench:toggle-apps-panel';
+
+export type GlobalPaletteHandledKeyboardEvent = KeyboardEvent & {
+  __dsCommandPaletteHandled?: boolean;
+};
 
 interface CommandPaletteContextValue {
   /** 是否打开 */
@@ -107,16 +112,24 @@ export function CommandPaletteProvider({
   // （⌘K、顶栏搜索钮、命令内 openCommandPalette）统一改道到全部应用面板
   // （Spotlight：应用 / 命令 / 学习资源 / 聊天）。legacy 壳行为不变。
   const open = useCallback(() => {
-    if (workbenchActive && getWorkbenchHostBridge()) {
-      openWorkbenchAppsPanel();
+    if (workbenchActive) {
+      if (getWorkbenchHostBridge()) {
+        openWorkbenchAppsPanel();
+      } else {
+        window.dispatchEvent(new CustomEvent(WORKBENCH_OPEN_APPS_PANEL_EVENT));
+      }
       return;
     }
     setSessionSearchOnly(false);
     setIsOpen(true);
   }, [workbenchActive]);
   const openSessionSearch = useCallback(() => {
-    if (workbenchActive && getWorkbenchHostBridge()) {
-      openWorkbenchAppsPanel();
+    if (workbenchActive) {
+      if (getWorkbenchHostBridge()) {
+        openWorkbenchAppsPanel();
+      } else {
+        window.dispatchEvent(new CustomEvent(WORKBENCH_OPEN_APPS_PANEL_EVENT));
+      }
       return;
     }
     setSessionSearchOnly(true);
@@ -124,8 +137,12 @@ export function CommandPaletteProvider({
   }, [workbenchActive]);
   const close = useCallback(() => setIsOpen(false), []);
   const toggle = useCallback(() => {
-    if (workbenchActive && getWorkbenchHostBridge()) {
-      toggleWorkbenchAppsPanel();
+    if (workbenchActive) {
+      if (getWorkbenchHostBridge()) {
+        toggleWorkbenchAppsPanel();
+      } else {
+        window.dispatchEvent(new CustomEvent(WORKBENCH_TOGGLE_APPS_PANEL_EVENT));
+      }
       return;
     }
     setIsOpen((prev) => !prev);
@@ -311,10 +328,36 @@ export function CommandPaletteProvider({
     [effectiveShortcutIndex],
   );
 
-  // ==================== 全局快捷键监听（window 层，最终处理层）====================
+  // ==================== 全局快捷键监听（window capture 层，稳定注册一次）====================
+
+  const keydownStateRef = useRef({
+    isOpen,
+    toggle,
+    commandView,
+    deps,
+    resolveEffectiveShortcut,
+  });
+  keydownStateRef.current = {
+    isOpen,
+    toggle,
+    commandView,
+    deps,
+    resolveEffectiveShortcut,
+  };
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
+    const handleKeyDown = (rawEvent: KeyboardEvent) => {
+      const e = rawEvent as GlobalPaletteHandledKeyboardEvent;
+      if (e.__dsCommandPaletteHandled || shortcutManager.isRecording()) return;
+
+      const {
+        isOpen: currentOpen,
+        toggle: currentToggle,
+        commandView: activeCommandView,
+        deps: activeDeps,
+        resolveEffectiveShortcut: resolveShortcut,
+      } = keydownStateRef.current;
+
       const target = e.target;
       const isInput =
         target instanceof HTMLInputElement ||
@@ -337,13 +380,14 @@ export function CommandPaletteProvider({
         !shortcutManager.hasCustomShortcut('global.command-palette')
       ) {
         if (isInRichEditor) return;
+        e.__dsCommandPaletteHandled = true;
         e.preventDefault();
-        toggle();
+        currentToggle();
         return;
       }
 
       // 命令面板打开时由 CommandPalette 组件自行处理
-      if (isOpen) return;
+      if (currentOpen) return;
 
       // ── 输入框中：仅放行带 Cmd/Ctrl 修饰键的快捷键或功能键 ──
       // 纯字符在输入框中不应触发命令
@@ -359,18 +403,23 @@ export function CommandPaletteProvider({
       const shortcut = buildShortcutString(e);
       if (shortcut) {
         const normalized = normalizeShortcut(shortcut);
-        const matchedCommand = resolveEffectiveShortcut(normalized, commandView, deps);
+        const matchedCommand = resolveShortcut(normalized, activeCommandView, activeDeps);
 
         if (matchedCommand) {
           e.preventDefault();
-          commandRegistry.execute(matchedCommand.id, deps).catch(console.error);
+          if (matchedCommand.id === 'global.command-palette') {
+            e.__dsCommandPaletteHandled = true;
+            currentToggle();
+            return;
+          }
+          commandRegistry.execute(matchedCommand.id, activeDeps).catch(console.error);
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [isOpen, toggle, commandView, deps, resolveEffectiveShortcut]);
+  }, []);
   
   // 🚀 getCurrentView getter 替代直接暴露 currentView，使 contextValue 不随视图切换重建
   const getCurrentView = useCallback(() => currentViewRef.current, []);

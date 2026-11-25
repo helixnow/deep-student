@@ -1,0 +1,38 @@
+/* Scoped to MediaStudyPage:
+ * 1) Keep central Play button hit-target above bottom controls/scrubber on 360px mobile
+ *    while passing non-circle clicks through to scrubber, controls, and <video>.
+ * 2) Prevent bottom gradient padding from intercepting taps aimed at the video center.
+ * 3) Allow taps on pre-metadata disabled Play buttons to bubble to MediaStudyPage's fallback play trigger. */
+[data-media-study] button.absolute.inset-0.z-10 {
+  z-index: 30;
+  pointer-events: none;
+}
+
+[data-media-study] button.absolute.inset-0.z-10 > span {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+[data-media-study] div.z-20.bottom-0.opacity-100 {
+  pointer-events: none;
+}
+
+[data-media-study] div.z-20.bottom-0.opacity-100 > * {
+  pointer-events: auto;
+}
+
+[data-media-study] button[disabled][aria-label*="播放"],
+[data-media-study] button[disabled][aria-label*="Play"] {
+  pointer-events: auto;
+}
+
+@media (max-width: 520px) {
+  [data-media-study] div.z-20.bottom-0 {
+    padding-top: 0.5rem;
+    padding-bottom: calc(0.375rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  [data-media-study] div.z-20.bottom-0 [role="slider"] {
+    min-height: 1.75rem;
+  }
+}

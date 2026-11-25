@@ -61,6 +61,16 @@ export default function PracticeRecords({ scopeId, onOpen, paperId, readOnly }: 
           {submitted &&
             ` · ${t('batch.correctCount', { count: record.correct_count })} · ${t('batch.pendingCount', { count: record.pending_count })}`}
         </p>
+        {submitted && record.pending_count > 0 && (
+          <span
+            data-testid="practice-record-pending-pill"
+            className="mt-1 inline-flex items-center gap-1 rounded-full border border-warning/35 bg-warning/[0.08] px-2 py-0.5 text-[11px] font-medium text-warning"
+          >
+            {record.status === 'grading'
+              ? t('batch.aiGradingInProgress', { count: record.pending_count })
+              : t('batch.pendingCount', { count: record.pending_count })}
+          </span>
+        )}
       </div>
       <DsButton variant="outline" size="sm" className="!h-7 !px-2.5 text-xs" onClick={() => onOpen(record.id, submitted)}>
         {submitted ? <ListChecks size={14} /> : <Play size={14} />}

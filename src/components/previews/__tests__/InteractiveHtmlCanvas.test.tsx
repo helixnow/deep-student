@@ -339,6 +339,109 @@ describe('InteractiveHtmlCanvas', () => {
     expect(screen.queryByTestId('canvas-undo-button')).toBeNull();
     expect(screen.getByTestId('canvas-source-view')).toHaveTextContent('Step 2');
   });
+
+  it('applies patchSearch/patchReplace cleanly even when editInstruction has text, validates JSON {search, replace} errors even with onRequestPatch, and keeps action buttons unclipped (S3-08)', async () => {
+    const onRequestPatch = vi.fn().mockResolvedValue('<div class="ds-box">AI Rewritten</div>');
+    render(
+      <InteractiveHtmlCanvas
+        widgetId="widget-s3-08-patch"
+        workTitle="局部修改校验"
+        html='<div class="ds-box">Alpha Value</div>'
+        onRequestPatch={onRequestPatch}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('canvas-toggle-edit'));
+    const editBar = screen.getByTestId('canvas-local-edit-bar');
+    const actionsFooter = screen.getByTestId('canvas-local-edit-actions');
+    expect(editBar).toContainElement(actionsFooter);
+    expect(actionsFooter.className).toContain('shrink-0');
+    expect(screen.getByTestId('canvas-collapse-edit')).toBeInTheDocument();
+    expect(screen.getByTestId('canvas-apply-patch')).toBeInTheDocument();
+
+    // 1) Filling BOTH patchSearch/patchReplace AND natural-language editInstruction applies exact patch cleanly without calling LLM
+    fireEvent.change(screen.getByTestId('canvas-edit-instruction'), {
+      target: { value: '顺便写的自然语言备注' },
+    });
+    fireEvent.change(screen.getByTestId('canvas-patch-search'), {
+      target: { value: 'Alpha Value' },
+    });
+    fireEvent.change(screen.getByTestId('canvas-patch-replace'), {
+      target: { value: 'Beta Value' },
+    });
+    fireEvent.click(screen.getByTestId('canvas-apply-patch'));
+
+    expect(onRequestPatch).not.toHaveBeenCalled();
+    expect(screen.getByTestId('canvas-version-badge')).toHaveTextContent('v2');
+
+    // 2) Relaxed { search: "...", replace: "..." } object syntax in editInstruction works directly
+    fireEvent.change(screen.getByTestId('canvas-edit-instruction'), {
+      target: { value: '{ search: "Beta Value", replace: "Gamma Value" }' },
+    });
+    fireEvent.click(screen.getByTestId('canvas-apply-patch'));
+    expect(onRequestPatch).not.toHaveBeenCalled();
+    expect(screen.getByTestId('canvas-version-badge')).toHaveTextContent('v3');
+
+    // 3) Invalid search target in JSON { "search", "replace" } surfaces validation error instead of being swallowed by onRequestPatch
+    fireEvent.change(screen.getByTestId('canvas-edit-instruction'), {
+      target: { value: '{"search":"NON_EXISTENT_SNIPPET","replace":"Delta"}' },
+    });
+    fireEvent.click(screen.getByTestId('canvas-apply-patch'));
+    expect(onRequestPatch).not.toHaveBeenCalled();
+    expect(screen.getByTestId('canvas-edit-error')).toHaveTextContent('未在当前源码中找到匹配的 search 片段');
+
+    // 4) Natural-language instruction delegates to onRequestPatch cleanly
+    fireEvent.change(screen.getByTestId('canvas-edit-instruction'), {
+      target: { value: '把内容改写为 AI 版本' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('canvas-apply-patch'));
+    });
+    expect(onRequestPatch).toHaveBeenCalledWith(
+      '把内容改写为 AI 版本',
+      '<div class="ds-box">Gamma Value</div>',
+    );
+    expect(screen.getByTestId('canvas-version-badge')).toHaveTextContent('v4');
+  });
+
+  it('re-triggers iframe height remeasure and resets stage scrollTop when remeasureKey changes (S3-08)', () => {
+    const postMessageSpy = vi.fn();
+    const { container, rerender } = render(
+      <InteractiveHtmlCanvas
+        html='<div><input type="range" min="1" max="10" value="5" /></div>'
+        expanded
+        remeasureKey="desktop:0:1"
+      />,
+    );
+
+    const stage = container.querySelector('[data-interactive-html-canvas]') as HTMLElement;
+    const iframe = container.querySelector('iframe.interactive-html-canvas-frame') as HTMLIFrameElement;
+    Object.defineProperty(iframe, 'contentWindow', {
+      value: { postMessage: postMessageSpy },
+      configurable: true,
+    });
+
+    stage.scrollTop = 140;
+    postMessageSpy.mockClear();
+
+    rerender(
+      <InteractiveHtmlCanvas
+        html='<div><input type="range" min="1" max="10" value="5" /></div>'
+        expanded
+        remeasureKey="mobile:1:1"
+      />,
+    );
+
+    expect(stage.scrollTop).toBe(0);
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'ds-canvas-remeasure' }),
+      '*',
+    );
+    expect(screen.getByTestId('canvas-toolbar')).toBeInTheDocument();
+    expect(screen.getByTestId('canvas-toggle-edit')).toBeInTheDocument();
+    expect(screen.getByTestId('canvas-toggle-source')).toBeInTheDocument();
+    expect(screen.getByTestId('canvas-expand-button')).toBeInTheDocument();
+  });
 });
 
 describe('widgetLocalState', () => {

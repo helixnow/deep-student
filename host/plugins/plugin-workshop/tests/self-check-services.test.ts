@@ -3,6 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { WorkshopOperations } from '../src/operations.ts';
+import { forbiddenCommunityApiProblems } from '../src/compiler.ts';
+import { WorkshopCatalog } from '../src/catalog.ts';
 import { seedTemplate } from '../src/resources.ts';
 import { HostRuntime } from '../../../kernel/runtime.ts';
 import { ContractSet } from '../../../kernel/contract-set.ts';
@@ -55,4 +57,49 @@ it('B7 unsupported app service is reported not-run rather than a generated-code 
   const checked = await ops.validate(card.id);
   expect(checked.lifecycle).toBe('not-run'); expect(checked.ok).toBe(false);
   expect(checked.errors.join('\n')).toContain('WORKSHOP_SELF_CHECK_UNAVAILABLE');
+});
+
+it('S4-18: catches forbidden ctx.files.scope in static compile/validate (even inside lazy handlers) and hides .scope from WorkshopCatalog', async () => {
+  expect(forbiddenCommunityApiProblems('// Never call ctx.files.scope("x") in comments\nconst msg = "ctx.files.scope";')).toEqual([]);
+  expect(forbiddenCommunityApiProblems('export async function save(ctx) { return ctx.files.scope("/tmp"); }')[0]).toContain('KERNEL_API_FORBIDDEN');
+  expect(forbiddenCommunityApiProblems('export function save(ctx) { const { files } = ctx; return files.scope("/tmp"); }')[0]).toContain('KERNEL_API_FORBIDDEN');
+
+  const catalog = new WorkshopCatalog(() => [], undefined, (service) => service === 'files');
+  const filesDoc = await catalog.read('service:files', '0.20.0');
+  const content = filesDoc.content as { members: Array<{ name: string }>; use: { note: string } };
+  expect(content.members.some((m) => m.name === 'scope' || m.name === 'root')).toBe(false);
+  expect(content.use.note).toContain('NEVER call ctx.files.scope');
+
+  const dataDir = await mkdtemp(join(tmpdir(), 'dstu-selfcheck-files-scope-'));
+  const ops = new WorkshopOperations({ dataDir, version: '0.20.0', platform: 'darwin', debug: true });
+  const card = await ops.propose({ sessionId: 'test', title: 'Test', description: 'Test', template: 'host-tool', changes: [], capabilities: [] });
+  const source = join(ops.store.directory(card.id), 'source');
+  await seedTemplate(source, card);
+  const pkg = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'));
+  pkg.deepStudent.permissions = ['service:files'];
+  await writeFile(join(source, 'package.json'), JSON.stringify(pkg));
+  const host = await readFile(join(source, 'index.ts'), 'utf8');
+  // Put ctx.files.scope inside a lazy method that apply(ctx) does NOT invoke synchronously!
+  await writeFile(
+    join(source, 'index.ts'),
+    host
+      .replace('  name:', "  inject: ['files'],\n  name:")
+      .replace('ctx.provide(', 'const lazySave = () => ctx.files.scope("/tmp"); void lazySave; ctx.provide('),
+  );
+  const runtime = new HostRuntime({ app: ops.app, contracts: new ContractSet([]) });
+  runtime.ctx.provide('files', { readText: async () => '' });
+  const official = join(dataDir, 'official.json');
+  await writeFile(official, '{"plugins":[]}');
+  const consent = new CommunityConsentLedger(dataDir);
+  new PluginAdmin({ runtime, store: new UserProfileStore(join(dataDir, 'user.profile.json'), official), official, consent }).register();
+  ops.bindAdmin(await injectedInstaller(runtime));
+  try {
+    const checked = await ops.validate(card.id);
+    expect(checked.ok).toBe(false);
+    expect(checked.errors.join('\n')).toContain('KERNEL_API_FORBIDDEN');
+    expect(checked.errors.join('\n')).toContain('ctx.files.scope');
+  } finally {
+    ops.dispose();
+    await runtime.dispose();
+  }
 });

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useEffect, useRef } from 'react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/shad/Tabs';
 import type { SettingsSidebarCategory } from './useSettingsNavigation';
@@ -8,6 +9,7 @@ type SettingsCategoryHeaderProps = {
   onTabChange: (tab: string) => void;
   idPrefix: string;
   compact?: boolean;
+  actions?: ReactNode;
 };
 
 /** Navigation only: the settings shell keeps rendering just the active section. */
@@ -17,6 +19,7 @@ export function SettingsCategoryHeader({
   onTabChange,
   idPrefix,
   compact = false,
+  actions,
 }: SettingsCategoryHeaderProps) {
   const tabListRef = useRef<HTMLDivElement>(null);
 
@@ -29,8 +32,17 @@ export function SettingsCategoryHeader({
 
   return (
     <header className={compact ? 'mb-4 min-w-0' : 'mb-6 min-w-0 space-y-3'}>
-      {!compact && (
-        <h1 className="text-xl font-semibold text-foreground">{category.label}</h1>
+      {!compact &&
+        (actions ? (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="text-xl font-semibold text-foreground">{category.label}</h1>
+            <div className="flex shrink-0 items-center gap-2">{actions}</div>
+          </div>
+        ) : (
+          <h1 className="text-xl font-semibold text-foreground">{category.label}</h1>
+        ))}
+      {compact && actions && (
+        <div className="mb-2 flex items-center justify-end gap-2">{actions}</div>
       )}
       <Tabs value={activeTab} onValueChange={onTabChange}>
         <TabsList

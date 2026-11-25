@@ -37,6 +37,14 @@ import { WorkbenchSidebarSurface, WorkbenchSidebarRow, WorkbenchSidebarRowLabel 
 import { WorkbenchSidebarLayout } from '../system/SystemWindowShared';
 import { classifyWbSysWidth, type WbSysSizeClass } from '../system/useWbSysSize';
 
+export const WORKBENCH_HYDRATE_RECENT_RESOURCE_EVENT = 'workbench:hydrate-recent-resource';
+
+export interface WorkbenchHydrateRecentResourceDetail {
+  type: ResourceWorkspaceType;
+  resourceId?: string | null;
+  practiceMode?: 'review_first' | 'normal';
+}
+
 type LibraryView = 'all' | 'recent';
 
 type SidebarPreference = 'open' | 'collapsed';
@@ -112,6 +120,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const selectedIdRef = useRef(selectedId);
   selectedIdRef.current = selectedId;
+  const pendingHydrateRecentRef = useRef<{ resourceId?: string | null } | null>(null);
 
   const isExam = type === 'exam';
   // 作文/翻译：设置由 OS 应用侧边栏进入，并替换主区成为完整内容页
@@ -171,6 +180,17 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
         }
       } else {
         setItems(result.value);
+        if (pendingHydrateRecentRef.current && !selectedIdRef.current && result.value.length > 0) {
+          const requestedId = pendingHydrateRecentRef.current.resourceId;
+          pendingHydrateRecentRef.current = null;
+          const target =
+            (requestedId ? result.value.find((item) => item.id === requestedId) : null) ??
+            result.value[0];
+          if (target) {
+            selectedIdRef.current = target.id;
+            setSelectedId(target.id);
+          }
+        }
       }
     } else {
       setError(result.error.toUserMessage());
@@ -249,6 +269,23 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
       if (selectResource(resourceId)) void loadItems();
     });
   }, [loadItems, selectResource, type]);
+
+  useEffect(() => {
+    const onHydrateRecent = (evt: Event) => {
+      const detail = (evt as CustomEvent<WorkbenchHydrateRecentResourceDetail>).detail;
+      if (!detail || detail.type !== type || selectedIdRef.current) return;
+      const target =
+        (detail.resourceId ? items.find((item) => item.id === detail.resourceId) : null) ??
+        items[0];
+      if (target) {
+        selectResource(target.id);
+      } else {
+        pendingHydrateRecentRef.current = { resourceId: detail.resourceId ?? null };
+      }
+    };
+    window.addEventListener(WORKBENCH_HYDRATE_RECENT_RESOURCE_EVENT, onHydrateRecent);
+    return () => window.removeEventListener(WORKBENCH_HYDRATE_RECENT_RESOURCE_EVENT, onHydrateRecent);
+  }, [items, selectResource, type]);
 
   useEffect(() => {
     setResourceWorkspaceActive(type, selectedId);

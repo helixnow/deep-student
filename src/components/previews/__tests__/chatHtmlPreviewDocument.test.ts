@@ -13,6 +13,7 @@ import {
   wrapSandboxRunHtmlWithRuntimeGuard,
   type HtmlPreviewBufferState,
 } from '../chatHtmlPreviewDocument';
+import { buildInteractiveHtmlCanvasDocument } from '../InteractiveHtmlCanvas';
 
 const PAGE = `<!DOCTYPE html>
 <html lang="zh">
@@ -190,5 +191,49 @@ describe('wrapSandboxRunHtmlWithRuntimeGuard & stripSandboxRunRuntimeGuard', () 
     const wrappedFrag = wrapSandboxRunHtmlWithRuntimeGuard(fragment);
     expect(wrappedFrag.startsWith('<script data-ds-sandbox-runtime-guard="1">')).toBe(true);
     expect(stripSandboxRunRuntimeGuard(wrappedFrag)).toBe(fragment);
+  });
+
+  it('preserves 1:1 user script line numbers when combined with buildInteractiveHtmlCanvasDocument (S3-08)', () => {
+    const lineOf = (text: string, needle: string) => {
+      const idx = text.indexOf(needle);
+      expect(idx).toBeGreaterThanOrEqual(0);
+      return text.slice(0, idx).split('\n').length;
+    };
+
+    const fullDoc = [
+      '<!DOCTYPE html>',
+      '<html lang="zh-CN">',
+      '<head>',
+      '  <meta charset="utf-8" />',
+      '</head>',
+      '<body>',
+      '  <input id="slider" type="range" min="1" max="10" value="5" />',
+      '  <script>',
+      '    const v = 1;',
+      '    boomOnLineTen();',
+      '  </script>',
+      '</body>',
+      '</html>',
+    ].join('\n');
+
+    const fullSrcDoc = buildInteractiveHtmlCanvasDocument({
+      html: wrapSandboxRunHtmlWithRuntimeGuard(fullDoc),
+      canvasId: 'line-test-full',
+    });
+    expect(lineOf(fullDoc, 'boomOnLineTen()')).toBe(10);
+    expect(lineOf(fullSrcDoc, 'boomOnLineTen()')).toBe(10);
+
+    const fragmentDoc = [
+      '<div>Header</div>',
+      '<script>',
+      '  boomOnLineThree();',
+      '</script>',
+    ].join('\n');
+    const fragSrcDoc = buildInteractiveHtmlCanvasDocument({
+      html: wrapSandboxRunHtmlWithRuntimeGuard(fragmentDoc),
+      canvasId: 'line-test-frag',
+    });
+    expect(lineOf(fragmentDoc, 'boomOnLineThree()')).toBe(3);
+    expect(lineOf(fragSrcDoc, 'boomOnLineThree()')).toBe(3);
   });
 });

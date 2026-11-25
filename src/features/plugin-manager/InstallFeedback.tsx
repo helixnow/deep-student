@@ -10,6 +10,7 @@ import type { PluginPackageResult } from './types';
 
 export interface InstallFeedbackProps {
   result: PluginPackageResult;
+  safeMode?: boolean;
   onDismiss?: () => void;
   className?: string;
 }
@@ -21,7 +22,7 @@ const tone = {
 } as const;
 
 /** 离线 `.dsplugin` 安装反馈：成功、已回滚、被拒绝三种结果分开表述，回滚状态原样展示。 */
-export function InstallFeedback({ result, onDismiss, className }: InstallFeedbackProps) {
+export function InstallFeedback({ result, safeMode = false, onDismiss, className }: InstallFeedbackProps) {
   const { t } = useTranslation('plugin_manager');
   const Icon = result.status === 'installed' ? CheckCircle : result.status === 'rolled-back' ? ArrowCounterClockwise : XCircle;
 
@@ -31,7 +32,12 @@ export function InstallFeedback({ result, onDismiss, className }: InstallFeedbac
       aria-live="polite"
       data-testid="plugin-install-feedback"
       data-status={result.status}
-      className={cn('rounded-lg border p-3 text-sm', tone[result.status], className)}
+      data-safe-mode={safeMode ? 'true' : undefined}
+      className={cn(
+        'rounded-lg border p-3 text-sm',
+        result.status === 'installed' && safeMode ? tone['rolled-back'] : tone[result.status],
+        className,
+      )}
     >
       <div className="flex items-start gap-2">
         <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -44,7 +50,13 @@ export function InstallFeedback({ result, onDismiss, className }: InstallFeedbac
                   ? t('install.installed.upgrade', { previous: result.previousVersion })
                   : t('install.installed.fresh')}
               </div>
-              <p className="text-xs leading-relaxed text-muted-foreground">{t('install.installed.diskOnly')}</p>
+              {safeMode ? (
+                <p data-testid="plugin-install-safe-mode-quarantined" className="text-xs font-medium leading-relaxed text-foreground/90">
+                  {t('install.installed.safeModeQuarantined')}
+                </p>
+              ) : (
+                <p className="text-xs leading-relaxed text-muted-foreground">{t('install.installed.diskOnly')}</p>
+              )}
             </>
           ) : null}
           {result.status === 'rolled-back' ? (

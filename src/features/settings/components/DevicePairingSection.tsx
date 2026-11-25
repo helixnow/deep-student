@@ -38,9 +38,29 @@ import {
 } from '../../../../host/plugins/sync/src/device-pairing';
 
 import { decodePairingFrame, decodePairingImage } from '../utils/decodePairingQr';
+import * as cloudApi from '@/utils/cloudStorageApi';
+import { probeStoredCloudConfigured } from './QuickSyncNowButton';
 
 export const ipcPairingSettings: PairingSettingsStore = {
-  get: (key) => invoke<string | null>('get_setting', { key }),
+  get: async (key) => {
+    const direct = await invoke<string | null>('get_setting', { key });
+    if (direct !== null && direct !== undefined && direct !== '') {
+      return direct;
+    }
+    if (key === 'cloud_storage.config.safe_v1') {
+      try {
+        const resolved =
+          (await cloudApi.resolveCloudStorageConfig()) ??
+          cloudApi.loadStoredCloudStorageConfigSafe();
+        if (resolved) {
+          return JSON.stringify(cloudApi.toSafeCloudStorageConfig(resolved));
+        }
+      } catch {
+        // Ignore fallback failure in isolated unit-test environments
+      }
+    }
+    return direct;
+  },
   save: async (key, value) => {
     await invoke('save_setting', { key, value });
     if (key === 'cloud_storage.config.safe_v1') {
@@ -51,7 +71,24 @@ export const ipcPairingSettings: PairingSettingsStore = {
       }
     }
   },
-  getSecret: async (key) => invoke<string | null>('get_setting', { key }),
+  getSecret: async (key) => {
+    const direct = await invoke<string | null>('get_setting', { key });
+    if (direct !== null && direct !== undefined && direct !== '') {
+      return direct;
+    }
+    if (key === 'cloud_storage_credentials') {
+      try {
+        const creds = await invoke<string | Record<string, unknown> | null>(
+          'data_governance_pairing_get_cloud_credentials',
+        );
+        if (typeof creds === 'string' && creds.trim()) return creds;
+        if (creds && typeof creds === 'object') return JSON.stringify(creds);
+      } catch {
+        // Ignore when optional pairing credential helper command is not registered
+      }
+    }
+    return direct;
+  },
   saveSecret: async (key, value) => {
     if (key === 'cloud_storage_credentials') {
       try {
@@ -126,7 +163,7 @@ export interface DevicePairingSectionProps {
 export function DevicePairingSection({
   onApplied,
   onRunSync,
-  cloudConfigured = false,
+  cloudConfigured,
 }: DevicePairingSectionProps) {
   const { t } = useTranslation(['sync', 'cloudStorage', 'common']);
   const [skills, setSkills] = useState(true);
@@ -136,6 +173,48 @@ export function DevicePairingSection({
 
   // 模式切换：send（本机生成二维码） vs receive（扫码/导入接入）
   const [activeMode, setActiveMode] = useState<'send' | 'receive'>('send');
+  const [storedCloudConfigured, setStoredCloudConfigured] = useState<boolean>(() => {
+    try {
+      return Boolean(cloudApi.loadStoredCloudStorageConfigSafe());
+    } catch {
+      return false;
+    }
+  });
+  const cloudProbeSeqRef = useRef(0);
+
+  const refreshStoredCloudConfig = useCallback(
+    async (allowBackendResolve = true): Promise<boolean> => {
+      const seq = ++cloudProbeSeqRef.current;
+      const found = await probeStoredCloudConfigured({ allowBackendResolve });
+      if (seq === cloudProbeSeqRef.current) {
+        setStoredCloudConfigured(found);
+      }
+      return found;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    // When parent passes cloudConfigured (e.g. CloudStorageSection), avoid
+    // racing parent's initial resolveCloudStorageConfig() call on mount.
+    void refreshStoredCloudConfig(cloudConfigured === undefined);
+  }, [cloudConfigured, activeMode, refreshStoredCloudConfig]);
+
+  useEffect(() => {
+    const onCloudConfigChanged = () => {
+      void refreshStoredCloudConfig(true);
+    };
+    window.addEventListener('data-governance:cloud-config-changed', onCloudConfigChanged);
+    window.addEventListener('storage', onCloudConfigChanged);
+    window.addEventListener('focus', onCloudConfigChanged);
+    return () => {
+      window.removeEventListener('data-governance:cloud-config-changed', onCloudConfigChanged);
+      window.removeEventListener('storage', onCloudConfigChanged);
+      window.removeEventListener('focus', onCloudConfigChanged);
+    };
+  }, [refreshStoredCloudConfig]);
+
+  const effectiveCloudConfigured = Boolean(cloudConfigured || storedCloudConfigured);
 
   // 发送端状态
   const [pin, setPin] = useState('');
@@ -221,6 +300,7 @@ export function DevicePairingSection({
 
   const handleGenerateQr = (alsoPushSnapshot = false, forceRandomPin = false) =>
     void work(async () => {
+      await refreshStoredCloudConfig();
       const targetPin =
         !forceRandomPin && /^\d{6}$/.test(pin) ? pin : generateRandomSixDigitPin();
       if (targetPin !== pin) {
@@ -430,6 +510,7 @@ export function DevicePairingSection({
         pin: applyPin.trim(),
       });
       await load();
+      await refreshStoredCloudConfig();
       window.dispatchEvent(new CustomEvent('data-governance:cloud-config-changed'));
       onApplied?.();
       setIncoming('');
@@ -559,7 +640,7 @@ export function DevicePairingSection({
                       })}
                     </span>
                   </label>
-                  {cloud && !cloudConfigured && (
+                  {cloud && !effectiveCloudConfigured && (
                     <div
                       role="status"
                       data-testid="pairing-cloud-not-configured-warning"
@@ -667,7 +748,7 @@ export function DevicePairingSection({
                     })}
                   </DsButton>
 
-                  {onRunSync && cloudConfigured && (
+                  {onRunSync && effectiveCloudConfigured && (
                     <DsButton
                       variant="outline"
                       size="sm"

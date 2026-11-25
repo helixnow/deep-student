@@ -4,7 +4,14 @@
 
 // 组件
 export { CommandPalette } from './CommandPalette';
-export { CommandPaletteProvider, useCommandPalette, useCommandPaletteSafe } from './CommandPaletteProvider';
+export {
+  CommandPaletteProvider,
+  useCommandPalette,
+  useCommandPaletteSafe,
+  WORKBENCH_OPEN_APPS_PANEL_EVENT,
+  WORKBENCH_TOGGLE_APPS_PANEL_EVENT,
+  type GlobalPaletteHandledKeyboardEvent,
+} from './CommandPaletteProvider';
 export { ShortcutSettings } from './components/ShortcutSettings';
 
 // Registry
@@ -25,6 +32,7 @@ export { shortcutManager } from './registry/shortcutManager';
 
 // Hooks
 export { useCommandEvents, createCommandEventDispatcher, COMMAND_EVENTS } from './hooks/useCommandEvents';
+export { useResourceSearch } from './hooks/useResourceSearch';
 export type { CommandEventName } from './hooks/useCommandEvents';
 
 // 类型

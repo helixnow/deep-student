@@ -62,13 +62,21 @@ export function createVariantStoreActions(
 
           console.log('[ChatStore] switchVariant (optimistic):', messageId, '->', variantId);
 
-          // 防抖同步到后端
-          const switchCallback = (getState() as ChatStoreState & ChatStore & {
+          // 防抖同步到后端（若该消息正在发起重新生成或切往本地乐观占位变体，等 retryCallback 返回真实 variantId 后再同步，避免先于后端事务提交触发 Variant not found）
+          const latestState = getState();
+          const isRetryInFlightForMessage =
+            latestState.messageOperationLock?.messageId === messageId
+            && latestState.messageOperationLock?.operation === 'retry';
+          if (variantId.startsWith('var_pending_') || isRetryInFlightForMessage) {
+            return;
+          }
+
+          const switchCallback = (latestState as ChatStoreState & ChatStore & {
             _switchVariantCallback?: ((messageId: string, variantId: string) => Promise<void>) | null
           })._switchVariantCallback;
 
           if (switchCallback) {
-            const { sessionId } = getState();
+            const { sessionId } = latestState;
             debouncedSwitchVariantBackend(sessionId, messageId, variantId, async () => {
               await switchCallback(messageId, variantId);
               console.log('[ChatStore] switchVariant (backend synced):', messageId, '->', variantId);
