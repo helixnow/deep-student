@@ -10,7 +10,7 @@
 
 **What you want to do**: Keep reliable offline copies of your study library — and restore an older backup without worrying about accidentally overwriting today's notes.
 
-1. **Choose a backup tier**: Open **Settings → Data & Backup** and pick how much to include when running a backup or clicking **Export Backup** (ZIP):
+1. **Choose a backup tier**: Open **Settings → Data & Sync** and pick how much to include when running a backup or clicking **Export Backup** (ZIP):
    - **Core Data (Essential)** — chat history, study file catalog, flashcards, mistakes, and settings.
    - **Important Data (Recommended)** — Core Data plus AI usage statistics and note attachments.
    - **Rebuildable Data (Optional)** — adds local knowledge-search indexes (these can always be regenerated).
@@ -39,7 +39,7 @@
 
 ### Configure Cloud Storage Safely (Credential Masking & E2EE)
 
-1. Open **Settings → Data & Backup → Cloud Storage** and enter your **WebDAV** details (**App-specific password** recommended) or **S3** details (**Endpoint URL**, **Bucket**, **Access Key ID**, **Secret Access Key**, and **Use Path Style** for self-hosted services like MinIO).
+1. Open **Settings → Data & Sync → Cloud Storage** and enter your **WebDAV** details (**App-specific password** recommended) or **S3** details (**Endpoint URL**, **Bucket**, **Access Key ID**, **Secret Access Key**, and **Use Path Style** for self-hosted services like MinIO).
    - **Credential masking & leave-blank-to-keep**: Once saved, passwords and secret keys are **never echoed back in plain text**. If you later edit your endpoint URL or bucket name, simply leave the password field blank to keep your saved password unchanged.
 2. **Enable End-to-End Encryption (E2EE)**: Set one encryption password and use that exact same password on every device linked to the same cloud folder. Your study data is encrypted on your device before upload — the cloud provider never sees readable notes or cards.
 3. **Turn on Auto Sync (optional)**: Under Sync settings, enable **Auto Sync** (**Every 15 minutes**, **Every hour**, or **Every 6 hours**). If conflicts ever occur between two offline devices, pick **Keep Local**, **Use Cloud**, **Keep Newer**, or **Smart Merge**.
@@ -65,7 +65,7 @@ When E2EE is enabled, DeepStudent derives encryption keys locally on your device
 
 ### On Your Existing Device
 
-1. Open **Settings → Data & Backup → QR Sync & Cross-Device One-Tap Pairing** and stay on **Generate QR on this device**.
+1. Open **Settings → Data & Sync → QR Sync & Cross-Device One-Tap Pairing** and stay on **Generate QR on this device**.
 2. Check what you want to transfer: **Cloud sync config & secrets**, **AI vendor configs & API keys**, and **Skill / plugin sync preferences**. *(If cloud storage hasn't been saved yet, DeepStudent warns you clearly so you don't generate an incomplete pairing code.)*
 3. Enter a 6-digit PIN — or click **Quick Random PIN & QR** — then click **Generate Sync QR Code** (or **Generate & Push Latest Snapshot** to upload fresh data at the same time). Your secrets stay encrypted with that 6-digit PIN.
 

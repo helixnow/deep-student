@@ -66,7 +66,7 @@ Even with verification, a third-party plugin or broken layout can occasionally f
 
 - **Your study data is 100% safe**: Notes, PDFs, flashcards, review streaks, Question Sets, and backups are untouched, and every official built-in app works normally.
 - **Community plugins are isolated**: Third-party plugins appear under **Paused by Safe Mode** (their settings and saved data stay intact, and you can inspect faults, disable, or uninstall them).
-- **Custom MCP auto-connect pauses automatically**: External custom MCP servers do not auto-connect in Safe Mode so a hanging external tool cannot block startup — you can still inspect or manually test them in **Settings → Skills & MCP**.
+- **Custom MCP auto-connect pauses automatically**: External custom MCP servers do not auto-connect in Safe Mode so a hanging external tool cannot block startup — you can still inspect or manually test them in **Settings → MCP Tools**.
 - **Safe local import only**: You can still import a local `.dstuplugin` or `.dspack` file in Safe Mode (it is stored safely in a **Quarantined · Paused by Safe Mode** state without executing any code); remote **Install from link** downloads are paused.
 
 ### Three One-Click Rescue Tools
