@@ -5,6 +5,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { NotesAPI } from '@/utils/notesApi';
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { isWebUiShell } from '@/utils/platform';
+import { abortStagedUpload, stageBlobUpload } from '@/utils/stagedUpload';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { flushAllDirtyContent } from '../content/contentDirtyRegistry';
 import {
@@ -22,6 +23,22 @@ interface WorkbenchNotesLibraryDialogProps {
 }
 
 const isMarkdownFilename = (name: string): boolean => /\.(md|markdown|txt)$/i.test(name.trim());
+const isZipFilename = (name: string): boolean => /\.zip$/i.test(name.trim());
+
+function extractErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === 'string' && error.trim()) return error;
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof (error as { message?: unknown }).message === 'string' &&
+    (error as { message: string }).message.trim()
+  ) {
+    return (error as { message: string }).message;
+  }
+  return fallback;
+}
 
 export function WorkbenchNotesLibraryDialog({
   open: dialogOpen,
@@ -99,7 +116,7 @@ export function WorkbenchNotesLibraryDialog({
       }));
       onOpenChange(false);
     } catch (error) {
-      showGlobalNotification('error', error instanceof Error ? error.message : t('export.failed'));
+      showGlobalNotification('error', extractErrorMessage(error, t('export.failed')));
     } finally {
       setExporting(false);
     }
@@ -149,11 +166,37 @@ export function WorkbenchNotesLibraryDialog({
     setImportProgress(null);
     try {
       if (webImportFiles.length > 0) {
+        const zipFiles = webImportFiles.filter((file) => isZipFilename(file.name));
         const mdFiles = webImportFiles.filter((file) => isMarkdownFilename(file.name));
-        if (mdFiles.length === 0) {
-          throw new Error(t('import.failed'));
+        if (zipFiles.length === 0 && mdFiles.length === 0) {
+          throw new Error(t('import.unsupported_format', { defaultValue: '不支持的文件格式' }));
         }
         let importedCount = 0;
+        let subjectCount = 0;
+        let skippedCount = 0;
+        let overwrittenCount = 0;
+
+        for (const zipFile of zipFiles) {
+          let stagedUploadId: string | null = null;
+          try {
+            stagedUploadId = await stageBlobUpload(zipFile, { name: zipFile.name });
+            const result = await NotesAPI.importNotes({
+              filePath: `dstu-staged:${stagedUploadId}`,
+              conflictStrategy: importConflictStrategy,
+            });
+            stagedUploadId = null;
+            importedCount += result.note_count;
+            subjectCount += (result as { subject_count?: number }).subject_count || 0;
+            skippedCount += result.skipped_count || 0;
+            overwrittenCount += result.overwritten_count || 0;
+          } catch (error) {
+            if (stagedUploadId) {
+              void abortStagedUpload(stagedUploadId);
+            }
+            throw error;
+          }
+        }
+
         for (const file of mdFiles) {
           const content = await file.text();
           await notesDstuAdapter.importMarkdownContent(file.name, content);
@@ -161,10 +204,12 @@ export function WorkbenchNotesLibraryDialog({
         }
         showGlobalNotification('success', t('import.success_with_overwrite', {
           note_count: importedCount,
-          skipped: 0,
-          overwritten: 0,
+          subject_count: subjectCount,
+          skipped: skippedCount,
+          overwritten: overwrittenCount,
         }));
         setWebImportFiles([]);
+        setNativeImportPaths([]);
         setImportFilePath('');
         await onImported();
         onOpenChange(false);
@@ -173,41 +218,46 @@ export function WorkbenchNotesLibraryDialog({
 
       const paths = nativeImportPaths.length > 0 ? nativeImportPaths : [importFilePath];
       const mdPaths = paths.filter((p) => isMarkdownFilename(p));
-      if (mdPaths.length > 0 && mdPaths.length === paths.length) {
+      const archivePaths = paths.filter((p) => !isMarkdownFilename(p));
+
+      let importedCount = 0;
+      let subjectCount = 0;
+      let skippedCount = 0;
+      let overwrittenCount = 0;
+
+      if (mdPaths.length > 0) {
         const { readTextFile } = await import('@tauri-apps/plugin-fs');
-        let importedCount = 0;
         for (const p of mdPaths) {
           const content = await readTextFile(p);
           const baseName = p.split(/[/\\]/).pop() || 'note.md';
           await notesDstuAdapter.importMarkdownContent(baseName, content);
           importedCount += 1;
         }
-        showGlobalNotification('success', t('import.success_with_overwrite', {
-          note_count: importedCount,
-          skipped: 0,
-          overwritten: 0,
-        }));
-        setNativeImportPaths([]);
-        setImportFilePath('');
-        await onImported();
-        onOpenChange(false);
-        return;
       }
 
-      const result = await NotesAPI.importNotes({
-        filePath: paths[0] ?? importFilePath,
-        conflictStrategy: importConflictStrategy,
-      });
+      for (const archivePath of archivePaths) {
+        const result = await NotesAPI.importNotes({
+          filePath: archivePath,
+          conflictStrategy: importConflictStrategy,
+        });
+        importedCount += result.note_count;
+        subjectCount += (result as { subject_count?: number }).subject_count || 0;
+        skippedCount += result.skipped_count || 0;
+        overwrittenCount += result.overwritten_count || 0;
+      }
+
       showGlobalNotification('success', t('import.success_with_overwrite', {
-        note_count: result.note_count,
-        skipped: result.skipped_count || 0,
-        overwritten: result.overwritten_count || 0,
+        note_count: importedCount,
+        subject_count: subjectCount,
+        skipped: skippedCount,
+        overwritten: overwrittenCount,
       }));
       setNativeImportPaths([]);
+      setImportFilePath('');
       await onImported();
       onOpenChange(false);
     } catch (error) {
-      showGlobalNotification('error', error instanceof Error ? error.message : t('import.failed'));
+      showGlobalNotification('error', extractErrorMessage(error, t('import.failed')));
     } finally {
       setImporting(false);
       setImportProgress(null);

@@ -47,6 +47,11 @@ describe('getWindowA11yProps', () => {
   it('最小化窗口对 AT 隐藏', () => {
     expect(getWindowA11yProps({ title: 'x', minimized: true })['aria-hidden']).toBe(true);
   });
+
+  it('被更高层最大化窗口遮挡时对 AT 隐藏，未遮挡时保持可见', () => {
+    expect(getWindowA11yProps({ title: 'x', occluded: true })['aria-hidden']).toBe(true);
+    expect(getWindowA11yProps({ title: 'x', occluded: false })['aria-hidden']).toBeUndefined();
+  });
 });
 
 // ============================================================================

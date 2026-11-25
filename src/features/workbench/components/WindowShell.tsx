@@ -381,6 +381,23 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
   const focused = useWindowStore(
     (s) => s.focusStack[s.focusStack.length - 1] === windowId,
   );
+  // 后台窗口被更高层级的最大化窗口完全覆盖时，从无障碍树与键盘 Tab 链摘除（平铺/浮动多窗不受影响）。
+  const occluded = useWindowStore((s) => {
+    const self = s.windows[windowId];
+    if (!self || self.minimized) return false;
+    for (const other of Object.values(s.windows)) {
+      if (
+        other.id !== windowId &&
+        !other.minimized &&
+        other.displayMode === 'maximized' &&
+        other.zIndex > self.zIndex
+      ) {
+        return true;
+      }
+    }
+    return false;
+  });
+  const isInert = Boolean(win?.minimized || occluded);
   /** ACR R1-10：presence 驱动光环 / AgentStrip / 内容区输入探测（无 presence 时零开销） */
   const presence = useWindowPresence(windowId);
 
@@ -427,12 +444,19 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
   }
 
   useLayoutEffect(() => {
-    if (rootRef.current) {
-      rootRef.current.inert = Boolean(win?.minimized);
+    const el = rootRef.current;
+    if (el) {
+      if (isInert) {
+        const active = document.activeElement;
+        if (active instanceof HTMLElement && el.contains(active)) {
+          active.blur();
+        }
+      }
+      el.inert = isInert;
     }
     if (!useWindowStore.getState().windows[windowId] || gestureRef.current) return;
     syncNativeSurface(windowId);
-  }, [frame.h, frame.w, frame.x, frame.y, win?.displayMode, win?.minimized, windowId]);
+  }, [frame.h, frame.w, frame.x, frame.y, isInert, win?.displayMode, win?.minimized, windowId]);
 
   // ---- 手势壳层：classList / 光标锁 / 内容层 pointer-events（均不进 state）----
   /**
@@ -1178,6 +1202,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
     appName,
     focused,
     minimized: win.minimized,
+    occluded,
     // useTranslation('workbench') 已绑定 namespace，解析为 workbench:a11y.windowRole（locale 已落盘）
     roleDescription: t('a11y.windowRole'),
   });
@@ -1230,10 +1255,11 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       data-display-mode={win.displayMode}
       data-focused={focused || undefined}
       data-minimized={win.minimized ? 'true' : undefined}
+      data-occluded={occluded ? 'true' : undefined}
       data-agent-active={presence?.status === 'acting' ? '' : undefined}
       data-agent-paused={presence?.status === 'pausedByUser' ? '' : undefined}
       data-agent-reviewing={presence?.status === 'reviewing' ? '' : undefined}
-      {...(win.minimized ? ({ inert: '' } as React.HTMLAttributes<HTMLElement>) : {})}
+      {...(isInert ? ({ inert: '' } as React.HTMLAttributes<HTMLElement>) : {})}
       {...a11y}
       onPointerDownCapture={focusSelf}
       onFocusCapture={handleFocusCapture}

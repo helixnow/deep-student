@@ -11,7 +11,7 @@
 import type { MilkdownPlugin } from '@milkdown/kit/ctx';
 
 import { createWikilinkAutocompletePlugin } from './autocomplete';
-import { wikilinkInputRule } from './inputRule';
+import { wikilinkInputRule, wikilinkNormalizePlugin } from './inputRule';
 import { remarkWikilinkPlugin } from './remark';
 import { wikilinkSchema } from './schema';
 import type { WikilinkPluginConfig } from './types';
@@ -62,11 +62,16 @@ export {
 } from './createConfirm';
 export { wikilinkSchema, WIKILINK_NODE_NAME } from './schema';
 export { remarkWikilinkPlugin } from './remark';
-export { wikilinkInputRule } from './inputRule';
+export {
+  wikilinkInputRule,
+  wikilinkNormalizePlugin,
+  wikilinkNormalizeKey,
+  promotePlainTextWikilinks,
+} from './inputRule';
 export { defaultWikilinkGetNotes } from './defaultGetNotes';
 
 /**
- * 统一入口：返回可 `editor.use(...)` 的插件列表（含 schema / remark / inputRule / view / autocomplete）。
+ * 统一入口：返回可 `editor.use(...)` 的插件列表（含 schema / remark / inputRule / normalize / view / autocomplete）。
  * 不自行注册到 Crepe。
  */
 export function wikilinkPlugin(config: WikilinkPluginConfig = {}): MilkdownPlugin[] {
@@ -74,6 +79,7 @@ export function wikilinkPlugin(config: WikilinkPluginConfig = {}): MilkdownPlugi
     remarkWikilinkPlugin,
     wikilinkSchema,
     wikilinkInputRule,
+    wikilinkNormalizePlugin,
     createWikilinkViewPlugin(config),
     createWikilinkAutocompletePlugin(config),
   ].flat();

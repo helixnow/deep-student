@@ -207,10 +207,39 @@ export const TodoItemDetail: React.FC<{
   }, [calendarOpen]);
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const dueTimeRef = useRef<HTMLInputElement>(null);
+  const reminderRef = useRef<HTMLInputElement>(null);
+  const inFlightFieldCountsRef = useRef<Partial<Record<keyof DetailDraft, number>>>({});
+  const [fieldSyncVersion, setFieldSyncVersion] = useState(0);
+
+  const trackFieldWrite = useCallback(
+    (fields: Array<keyof DetailDraft>, promise: Promise<void>): Promise<void> => {
+      for (const field of fields) {
+        inFlightFieldCountsRef.current[field] = (inFlightFieldCountsRef.current[field] ?? 0) + 1;
+      }
+      return promise.finally(() => {
+        let settledAny = false;
+        for (const field of fields) {
+          const nextCount = Math.max(0, (inFlightFieldCountsRef.current[field] ?? 1) - 1);
+          if (nextCount === 0) {
+            delete inFlightFieldCountsRef.current[field];
+            settledAny = true;
+          } else {
+            inFlightFieldCountsRef.current[field] = nextCount;
+          }
+        }
+        if (settledAny) {
+          setFieldSyncVersion((v) => v + 1);
+        }
+      });
+    },
+    [],
+  );
 
   // 外部更新（行内改期/改名、拖拽换象限等）跟随 prop 刷新本地编辑态。
   // 面板按 item.id 挂 key，重挂载覆盖新任务；这里处理同一任务字段被外部改写的情况。
-  // 若本地存在尚未提交的草稿差异（draft !== committed）或当前字段正聚焦，不覆盖用户输入。
+  // 若本地存在尚未提交的草稿差异（draft !== committed）、当前字段正聚焦，或该字段仍有在途写请求，
+  // 不以旧快照覆盖用户输入；写请求收敛后经 fieldSyncVersion 再按权威 prop 校准（含失败回滚）。
   useEffect(() => {
     const prevCommitted = committedRef.current.title;
     syncCommitted({ title: item.title });
@@ -230,35 +259,70 @@ export const TodoItemDetail: React.FC<{
   }, [item.description, syncCommitted]);
   useEffect(() => {
     const nextPriority = item.priority as TodoPriority;
+    if ((inFlightFieldCountsRef.current.priority ?? 0) > 0 && nextPriority !== draftRef.current.priority) {
+      return;
+    }
+    const prevCommitted = committedRef.current.priority;
     syncCommitted({ priority: nextPriority });
+    if (draftRef.current.priority !== prevCommitted && draftRef.current.priority !== nextPriority) return;
     draftRef.current.priority = nextPriority;
     setPriority(nextPriority);
-  }, [item.priority, syncCommitted]);
+  }, [item.priority, fieldSyncVersion, syncCommitted]);
   useEffect(() => {
     const nextDueDate = item.dueDate || '';
+    if ((inFlightFieldCountsRef.current.dueDate ?? 0) > 0 && nextDueDate !== draftRef.current.dueDate) {
+      return;
+    }
+    const prevCommitted = committedRef.current.dueDate;
     syncCommitted({ dueDate: nextDueDate });
+    if (draftRef.current.dueDate !== prevCommitted && draftRef.current.dueDate !== nextDueDate) return;
     draftRef.current.dueDate = nextDueDate;
     setDueDate(nextDueDate);
-  }, [item.dueDate, syncCommitted]);
+  }, [item.dueDate, fieldSyncVersion, syncCommitted]);
   useEffect(() => {
     const nextDueTime = item.dueTime || '';
+    if ((inFlightFieldCountsRef.current.dueTime ?? 0) > 0 && nextDueTime !== draftRef.current.dueTime) {
+      return;
+    }
+    const prevCommitted = committedRef.current.dueTime;
     syncCommitted({ dueTime: nextDueTime });
+    if (document.activeElement === dueTimeRef.current && draftRef.current.dueTime !== nextDueTime) return;
+    if (draftRef.current.dueTime !== prevCommitted && draftRef.current.dueTime !== nextDueTime) return;
     draftRef.current.dueTime = nextDueTime;
     setDueTime(nextDueTime);
-  }, [item.dueTime, syncCommitted]);
+  }, [item.dueTime, fieldSyncVersion, syncCommitted]);
   // 提醒归一到分钟精度（旧数据可能带秒，datetime-local 会显示为空）
   useEffect(() => {
     const nextReminder = normalizeReminderValue(item.reminder);
+    if ((inFlightFieldCountsRef.current.reminder ?? 0) > 0 && nextReminder !== draftRef.current.reminder) {
+      return;
+    }
+    const prevCommitted = committedRef.current.reminder;
     syncCommitted({ reminder: nextReminder });
+    if (document.activeElement === reminderRef.current && draftRef.current.reminder !== nextReminder) return;
+    if (draftRef.current.reminder !== prevCommitted && draftRef.current.reminder !== nextReminder) return;
     draftRef.current.reminder = nextReminder;
     setReminder(nextReminder);
-  }, [item.reminder, syncCommitted]);
+  }, [item.reminder, fieldSyncVersion, syncCommitted]);
   useEffect(() => {
     const nextEst = item.estimatedPomodoros || 0;
+    if (
+      (inFlightFieldCountsRef.current.estimatedPomodoros ?? 0) > 0 &&
+      nextEst !== draftRef.current.estimatedPomodoros
+    ) {
+      return;
+    }
+    const prevCommitted = committedRef.current.estimatedPomodoros;
     syncCommitted({ estimatedPomodoros: nextEst });
+    if (
+      draftRef.current.estimatedPomodoros !== prevCommitted &&
+      draftRef.current.estimatedPomodoros !== nextEst
+    ) {
+      return;
+    }
     draftRef.current.estimatedPomodoros = nextEst;
     setEstimatedPomodoros(nextEst);
-  }, [item.estimatedPomodoros, syncCommitted]);
+  }, [item.estimatedPomodoros, fieldSyncVersion, syncCommitted]);
 
   // 标题/备注多行自动增高（overflow-hidden 的固定 rows 会截断长内容；scrollHeight===0 时保留 CSS min-h）
   useEffect(() => {
@@ -430,9 +494,13 @@ export const TodoItemDetail: React.FC<{
           setDueDate(today);
         }
       }
-      void updateItem(changes).then(markSaved);
+      if (changes.dueDate !== undefined) {
+        void trackFieldWrite(['dueDate'], updateItem(changes)).then(markSaved);
+      } else {
+        void updateItem(changes).then(markSaved);
+      }
     },
-    [item.id, repeatRule, dueDate, updateItem, markSaved, syncCommitted],
+    [item.id, repeatRule, dueDate, updateItem, markSaved, syncCommitted, trackFieldWrite],
   );
 
   /** 自定义间隔（如「每 2 周」）；weekdays 语义固定不支持间隔 */
@@ -476,9 +544,9 @@ export const TodoItemDetail: React.FC<{
       draftRef.current.dueDate = date;
       syncCommitted({ dueDate: date });
       setDueDate(date);
-      void updateItem({ id: item.id, dueDate: date }).then(markSaved);
+      void trackFieldWrite(['dueDate'], updateItem({ id: item.id, dueDate: date })).then(markSaved);
     },
-    [item.id, updateItem, markSaved, syncCommitted],
+    [item.id, updateItem, markSaved, syncCommitted, trackFieldWrite],
   );
 
   /** 编辑时间时始终保留原有截止日期（含逾期日期），仅在尚未设置日期且填入非空时间时默认今天 */
@@ -490,10 +558,12 @@ export const TodoItemDetail: React.FC<{
         existingDueDate || (nextTime.trim() ? localToday() : '');
       draftRef.current.dueTime = nextTime;
       setDueTime(nextTime);
+      const trackedFields: Array<keyof DetailDraft> = ['dueTime'];
       if (resolvedDueDate) {
         draftRef.current.dueDate = resolvedDueDate;
         setDueDate(resolvedDueDate);
         syncCommitted({ dueTime: nextTime, dueDate: resolvedDueDate });
+        trackedFields.push('dueDate');
       } else {
         syncCommitted({ dueTime: nextTime });
       }
@@ -502,9 +572,9 @@ export const TodoItemDetail: React.FC<{
         dueTime: nextTime,
         ...(resolvedDueDate ? { dueDate: resolvedDueDate } : {}),
       };
-      void updateItem(payload).then(markSaved);
+      void trackFieldWrite(trackedFields, updateItem(payload)).then(markSaved);
     },
-    [item.id, item.dueDate, updateItem, markSaved, syncCommitted],
+    [item.id, item.dueDate, updateItem, markSaved, syncCommitted, trackFieldWrite],
   );
 
   const clearDueDate = useCallback(() => {
@@ -513,17 +583,20 @@ export const TodoItemDetail: React.FC<{
     syncCommitted({ dueDate: '', dueTime: '' });
     setDueDate('');
     setDueTime('');
-    void updateItem({ id: item.id, dueDate: '', dueTime: '' }).then(markSaved);
-  }, [item.id, updateItem, markSaved, syncCommitted]);
+    void trackFieldWrite(
+      ['dueDate', 'dueTime'],
+      updateItem({ id: item.id, dueDate: '', dueTime: '' }),
+    ).then(markSaved);
+  }, [item.id, updateItem, markSaved, syncCommitted, trackFieldWrite]);
 
   const applyReminder = useCallback(
     (value: string) => {
       draftRef.current.reminder = value;
       syncCommitted({ reminder: value });
       setReminder(value);
-      void updateItem({ id: item.id, reminder: value }).then(markSaved);
+      void trackFieldWrite(['reminder'], updateItem({ id: item.id, reminder: value })).then(markSaved);
     },
-    [item.id, updateItem, markSaved, syncCommitted],
+    [item.id, updateItem, markSaved, syncCommitted, trackFieldWrite],
   );
 
   /** 汇总本地草稿（draftRef）与已提交基准（committedRef）的差异并立即发起持久化 */
@@ -584,10 +657,18 @@ export const TodoItemDetail: React.FC<{
     }
 
     if (hasChanges) {
+      const changedFields: Array<keyof DetailDraft> = [];
+      if (changes.title !== undefined) changedFields.push('title');
+      if (changes.description !== undefined) changedFields.push('description');
+      if (changes.priority !== undefined) changedFields.push('priority');
+      if (changes.dueDate !== undefined) changedFields.push('dueDate');
+      if (changes.dueTime !== undefined) changedFields.push('dueTime');
+      if (changes.reminder !== undefined) changedFields.push('reminder');
+      if (changes.estimatedPomodoros !== undefined) changedFields.push('estimatedPomodoros');
       const nextCommitted = { ...draft };
       committedRef.current = nextCommitted;
       setCommittedSnapshot(nextCommitted);
-      await updateItem(changes);
+      await trackFieldWrite(changedFields, updateItem(changes));
     }
     return hasChanges;
   }, [
@@ -595,6 +676,7 @@ export const TodoItemDetail: React.FC<{
     item.dueDate,
     repeatRule,
     triggerRepeatAnchorHint,
+    trackFieldWrite,
     updateItem,
   ]);
 
@@ -1033,7 +1115,7 @@ export const TodoItemDetail: React.FC<{
                 draftRef.current.priority = p;
                 syncCommitted({ priority: p });
                 setPriority(p);
-                void updateItem({ id: item.id, priority: p }).then(markSaved);
+                void trackFieldWrite(['priority'], updateItem({ id: item.id, priority: p })).then(markSaved);
               }}
               size="compact"
               className="flex-wrap"
@@ -1061,6 +1143,7 @@ export const TodoItemDetail: React.FC<{
             <div className="flex flex-1 items-center gap-1.5">
               <button
                 type="button"
+                data-testid="todo-detail-due-date"
                 onClick={() => setCalendarOpen((v) => !v)}
                 aria-expanded={calendarOpen}
                 title={dueDate || undefined}
@@ -1139,6 +1222,7 @@ export const TodoItemDetail: React.FC<{
               {t('todo:fields.dueTime')}
             </span>
             <Input
+              ref={dueTimeRef}
               type="time"
               data-testid="todo-detail-due-time"
               aria-label={t('todo:fields.dueTime')}
@@ -1158,12 +1242,18 @@ export const TodoItemDetail: React.FC<{
             </span>
             <div className="flex flex-1 items-center gap-1.5">
               <Input
+                ref={reminderRef}
                 type="datetime-local"
+                data-testid="todo-detail-reminder"
+                aria-label={t('todo:fields.reminder')}
                 value={reminder}
                 onChange={(e) => {
                   const next = e.target.value;
                   draftRef.current.reminder = next;
                   setReminder(next);
+                  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(next)) {
+                    applyReminder(next);
+                  }
                 }}
                 onBlur={handleBlur}
                 className="flex-1"

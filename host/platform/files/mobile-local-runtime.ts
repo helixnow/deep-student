@@ -850,6 +850,7 @@ export class MobileLocalRuntime {
         if (isVirtualUri(source)) unavailable(`copy ${source}`);
         tree.copyFile(source, target);
       },
+      takeStagedUpload: uploadId => takeMobileStagedUpload(uploadId, tree),
     };
 
     const qbank: QbankLocalRuntime = {
