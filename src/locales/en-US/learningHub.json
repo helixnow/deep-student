@@ -541,6 +541,7 @@
     "noSheets": "This workbook contains no previewable sheets",
     "encryptedOrLegacy": "This file is encrypted (password-protected) or uses a legacy binary format (.doc/.xls/.ppt) and cannot be previewed. Download it and open with Office",
     "invalidFormat": "This file is not a valid Office document and may be corrupted",
+    "corruptedOrTruncated": "This file appears truncated or corrupted and cannot be previewed",
     "rowsTruncatedInfo": "Previewing first {{shown}} of {{total}} rows",
     "colsTruncatedInfo": "Showing first {{shown}} of {{total}} columns",
     "emptySheet": "This sheet has no displayable cell content (it may be blank or contain only charts)",
@@ -889,6 +890,7 @@
       "importFailedFiles": "Failed files: {{names}}",
       "emptyFileReason": "Empty file (0 bytes)",
       "corruptPdfReason": "Corrupted or invalid PDF file",
+      "invalidMindmapReason": "Invalid or corrupted mind map file",
       "readFileFailed": "Failed to read file",
       "guidanceFlashcards": "{{names}}: import Anki deck packages in the Flashcards module",
       "guidanceMindmap": "{{names}}: import mind map files in the Mind Map module"

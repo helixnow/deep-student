@@ -508,6 +508,11 @@ describe('MindMapContentView shell modules', () => {
       expect(screen.getByTestId('mm-mobile-staging-badge').textContent).toBe('2');
       fireEvent.click(screen.getByTestId('mm-mobile-staging-tray-toggle'));
       expect(store.getState().stagingTrayOpen).toBe(true);
+
+      // 顶栏直接暴露「导入思维导图」入口，点击无需翻找溢出菜单
+      const importBtn = screen.getByTestId('mm-import-toggle');
+      fireEvent.click(importBtn);
+      expect(baseProps.onImport).toHaveBeenCalledTimes(1);
     });
   });
 

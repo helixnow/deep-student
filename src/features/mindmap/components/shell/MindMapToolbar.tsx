@@ -623,6 +623,23 @@ export const MindMapToolbar: React.FC<MindMapToolbarProps> = React.memo(
             </TooltipContent>
           </Tooltip>
 
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DsButton
+                variant="ghost"
+                className="mm-toolbar-button shrink-0 hidden md:flex motion-reduce:transition-none"
+                onClick={onImport}
+                aria-label={t('mindmap:import.dialogTitle')}
+                data-testid="mm-import-toggle"
+              >
+                <Upload size={16} />
+              </DsButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t('mindmap:import.dialogTitle')}
+            </TooltipContent>
+          </Tooltip>
+
           <div className="w-px h-4 bg-[var(--mm-border)] mx-1 hidden md:block shrink-0" />
 
           {/* Desktop: More Menu（次要项归拢，不重复工具栏已有开关） */}

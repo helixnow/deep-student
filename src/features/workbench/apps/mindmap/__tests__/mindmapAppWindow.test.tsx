@@ -2,16 +2,38 @@
  * O17 — MindmapAppWindow 骨架 / 空态集成测试
  */
 import React from 'react';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import JSZip from 'jszip';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mindmapProps: Array<Record<string, unknown>> = [];
+const { mindmapProps, createEmptyMock, dstuCreateMock, notifyMock } = vi.hoisted(() => ({
+  mindmapProps: [] as Array<Record<string, unknown>>,
+  createEmptyMock: vi.fn(),
+  dstuCreateMock: vi.fn(),
+  notifyMock: vi.fn(),
+}));
 
 vi.mock('@/features/mindmap/MindMapContentView', () => ({
   MindMapContentView: (props: Record<string, unknown>) => {
     mindmapProps.push(props);
-    return <div data-testid="mindmap-content-view" />;
+    return <div data-testid="mindmap-content-view" data-resource-id={String(props.resourceId ?? '')} />;
   },
+}));
+
+vi.mock('@/dstu', () => ({
+  createEmpty: (...args: unknown[]) => createEmptyMock(...args),
+  dstu: {
+    create: (...args: unknown[]) => dstuCreateMock(...args),
+  },
+}));
+
+vi.mock('@/components/UnifiedNotification', () => ({
+  showGlobalNotification: (...args: unknown[]) => notifyMock(...args),
+}));
+
+vi.mock('@/utils/platform', () => ({
+  isAndroidMobileShell: () => false,
+  isWebUiShell: () => true,
 }));
 
 import MindmapAppWindow from '../MindmapAppWindow';
@@ -33,17 +55,78 @@ function makeWindowProps(overrides: Partial<AppWindowProps> = {}): AppWindowProp
 describe('MindmapAppWindow O17', () => {
   beforeEach(() => {
     mindmapProps.length = 0;
+    createEmptyMock.mockReset();
+    dstuCreateMock.mockReset();
+    notifyMock.mockReset();
   });
 
   afterEach(() => {
     cleanup();
   });
 
-  it('renders ContentEmptyState when instanceKey is missing', () => {
+  it('renders ContentEmptyState with New and Import actions when instanceKey is missing', () => {
     render(<MindmapAppWindow {...makeWindowProps({ instanceKey: null })} />);
     expect(mindmapProps).toHaveLength(0);
     expect(document.querySelector('.wb-content-empty')).not.toBeNull();
     expect(screen.getByText(/缺少资源标识/)).toBeTruthy();
+    expect(screen.getByTestId('mm-empty-create-btn')).toBeTruthy();
+    expect(screen.getByTestId('mm-empty-import-btn')).toBeTruthy();
+  });
+
+  it('creates a new mind map from empty state and opens it in-place', async () => {
+    createEmptyMock.mockResolvedValueOnce({
+      ok: true,
+      value: { id: 'mm_created_1', name: '未命名导图' },
+    });
+    const onTitleChange = vi.fn();
+    render(<MindmapAppWindow {...makeWindowProps({ instanceKey: null, onTitleChange })} />);
+
+    fireEvent.click(screen.getByTestId('mm-empty-create-btn'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mindmap-content-view')).toHaveAttribute('data-resource-id', 'mm_created_1');
+    });
+    expect(createEmptyMock).toHaveBeenCalledWith({ type: 'mindmap' });
+    expect(onTitleChange).toHaveBeenCalledWith('未命名导图');
+  });
+
+  it('imports a .xmind file directly from empty state and opens the created mind map', async () => {
+    const zip = new JSZip();
+    zip.file('content.json', JSON.stringify([
+      {
+        rootTopic: {
+          id: 'root_1',
+          title: 'Neuroscience',
+          children: { attached: [{ id: 'synapse', title: 'Synaptic Plasticity' }] },
+        },
+      },
+    ]));
+    const xmindBytes = await zip.generateAsync({ type: 'uint8array' });
+    const file = new File([xmindBytes as BlobPart], 'neuro.xmind', { type: '' });
+
+    dstuCreateMock.mockResolvedValueOnce({
+      ok: true,
+      value: { id: 'mm_xmind_1', name: 'Neuroscience' },
+    });
+
+    const onTitleChange = vi.fn();
+    render(<MindmapAppWindow {...makeWindowProps({ instanceKey: null, onTitleChange })} />);
+
+    const input = screen.getByTestId('mm-empty-import-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('mindmap-content-view')).toHaveAttribute('data-resource-id', 'mm_xmind_1');
+    });
+    expect(dstuCreateMock).toHaveBeenCalledWith(
+      '/',
+      expect.objectContaining({
+        type: 'mindmap',
+        name: 'Neuroscience',
+        metadata: { defaultView: 'mindmap' },
+      }),
+    );
+    expect(onTitleChange).toHaveBeenCalledWith('Neuroscience');
   });
 
   it('renderThrottleMs>0 pauses host animations without flipping MindMap isActive', () => {
