@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeSubtitleFileForImport } from '../subtitleUploadParser';
+import {
+  isSupportedSubtitleFileName,
+  normalizeSubtitleFileForImport,
+  UNSUPPORTED_SUBTITLE_FORMAT_ERROR,
+} from '../subtitleUploadParser';
 
 function readText(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -66,5 +70,34 @@ describe('subtitleUploadParser (S3-11)', () => {
   it('throws on empty subtitle files', async () => {
     const empty = new File(['   \n'], 'empty.txt', { type: 'text/plain' });
     await expect(normalizeSubtitleFileForImport(empty)).rejects.toThrow();
+  });
+
+  it('rejects non-subtitle extensions (audio/video/binary) with a clear error', async () => {
+    const unsupported = [
+      'track.mp3',
+      'lecture.MP4',
+      'clip.wav',
+      'voice.m4a',
+      'audio.ogg',
+      'video.webm',
+      'movie.avi',
+      'movie.mkv',
+      'lossless.flac',
+      'stream.aac',
+      'slides.pdf',
+      'noextension',
+    ];
+    for (const name of unsupported) {
+      expect(isSupportedSubtitleFileName(name)).toBe(false);
+      const file = new File([new Uint8Array([0, 1, 2, 3])], name, { type: 'application/octet-stream' });
+      await expect(normalizeSubtitleFileForImport(file)).rejects.toThrow(
+        UNSUPPORTED_SUBTITLE_FORMAT_ERROR,
+      );
+    }
+    expect(isSupportedSubtitleFileName('captions.SRT')).toBe(true);
+    expect(isSupportedSubtitleFileName('captions.vtt')).toBe(true);
+    expect(isSupportedSubtitleFileName('captions.ass')).toBe(true);
+    expect(isSupportedSubtitleFileName('captions.txt')).toBe(true);
+    expect(isSupportedSubtitleFileName('captions.json')).toBe(true);
   });
 });

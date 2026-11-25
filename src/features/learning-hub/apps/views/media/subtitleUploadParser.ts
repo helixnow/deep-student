@@ -162,10 +162,27 @@ async function readBlobText(blob: Blob): Promise<string> {
   return new Response(blob).text();
 }
 
+export const UNSUPPORTED_SUBTITLE_FORMAT_ERROR =
+  'This file type is not a recognized subtitle format. Supported formats: .srt, .vtt, .ass, .txt, .json';
+
+const PASSTHROUGH_SUBTITLE_EXTENSIONS = ['.srt', '.vtt', '.json', '.bcc'] as const;
+const CONVERTIBLE_SUBTITLE_EXTENSIONS = ['.ass', '.ssa', '.txt'] as const;
+
+export function isSupportedSubtitleFileName(fileName: string): boolean {
+  const lower = fileName.trim().toLowerCase();
+  return (
+    PASSTHROUGH_SUBTITLE_EXTENSIONS.some((ext) => lower.endsWith(ext)) ||
+    CONVERTIBLE_SUBTITLE_EXTENSIONS.some((ext) => lower.endsWith(ext))
+  );
+}
+
 export async function normalizeSubtitleFileForImport(file: File): Promise<File> {
-  const lower = file.name.toLowerCase();
-  if (lower.endsWith('.srt') || lower.endsWith('.vtt') || lower.endsWith('.json') || lower.endsWith('.bcc')) {
+  const lower = file.name.trim().toLowerCase();
+  if (PASSTHROUGH_SUBTITLE_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
     return file;
+  }
+  if (!CONVERTIBLE_SUBTITLE_EXTENSIONS.some((ext) => lower.endsWith(ext))) {
+    throw new Error(UNSUPPORTED_SUBTITLE_FORMAT_ERROR);
   }
   const raw = await readBlobText(file);
   const trimmed = raw.trim();
@@ -180,15 +197,12 @@ export async function normalizeSubtitleFileForImport(file: File): Promise<File> 
     }
     return new File([converted], `${baseName}.srt`, { type: 'text/plain;charset=utf-8' });
   }
-  if (lower.endsWith('.txt')) {
-    if (/^WEBVTT/i.test(trimmed)) {
-      return new File([raw], `${baseName}.vtt`, { type: 'text/vtt;charset=utf-8' });
-    }
-    const converted = convertTxtToSrt(raw);
-    if (!converted) {
-      throw new Error('Subtitle file is empty');
-    }
-    return new File([converted], `${baseName}.srt`, { type: 'text/plain;charset=utf-8' });
+  if (/^WEBVTT/i.test(trimmed)) {
+    return new File([raw], `${baseName}.vtt`, { type: 'text/vtt;charset=utf-8' });
   }
-  return file;
+  const converted = convertTxtToSrt(raw);
+  if (!converted) {
+    throw new Error('Subtitle file is empty');
+  }
+  return new File([converted], `${baseName}.srt`, { type: 'text/plain;charset=utf-8' });
 }

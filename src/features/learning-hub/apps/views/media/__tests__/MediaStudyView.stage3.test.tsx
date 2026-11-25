@@ -257,4 +257,76 @@ describe('MediaStudyView S3-11 subtitle import & ASR settings link', () => {
       window.removeEventListener(APP_EVENTS.SETTINGS_NAVIGATE_TAB, onTab);
     }
   });
+
+  it('rejects non-subtitle files (e.g. .mp3) immediately without opening overwrite confirmation or importing', async () => {
+    mocks.transcript = {
+      status: 'done',
+      progress: null,
+      segments: [
+        { id: 1, segmentIndex: 0, startMs: 0, endMs: 2500, text: '第一句字幕', status: 'done', source: 'imported' },
+        { id: 2, segmentIndex: 1, startMs: 2500, endMs: 5000, text: '第二句字幕', status: 'done', source: 'imported' },
+      ],
+    };
+
+    render(
+      <MediaStudyView
+        filePath="/media/lecture.mp4"
+        fileName="lecture.mp4"
+        fileType="mp4"
+        mediaResourceId="res-media-4"
+      />,
+    );
+
+    const fileInput = screen.getByTestId('media-subtitle-file-input') as HTMLInputElement;
+    const mp3File = new File([new Uint8Array([0xff, 0xfb, 0x90, 0x00])], 'audio.mp3', { type: 'audio/mpeg' });
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [mp3File] } });
+    });
+
+    expect(screen.queryByText('Replace existing subtitles?')).toBeNull();
+    expect(mocks.stageBlobUpload).not.toHaveBeenCalled();
+    expect(mocks.importFromPath).not.toHaveBeenCalled();
+  });
+
+  it('requires confirmation before overwriting existing subtitle cues on valid .vtt upload', async () => {
+    mocks.transcript = {
+      status: 'done',
+      progress: null,
+      segments: [
+        { id: 1, segmentIndex: 0, startMs: 0, endMs: 2500, text: '第一句字幕', status: 'done', source: 'imported' },
+        { id: 2, segmentIndex: 1, startMs: 2500, endMs: 5000, text: '第二句字幕', status: 'done', source: 'imported' },
+      ],
+    };
+
+    render(
+      <MediaStudyView
+        filePath="/media/lecture.mp4"
+        fileName="lecture.mp4"
+        fileType="mp4"
+        mediaResourceId="res-media-5"
+      />,
+    );
+
+    const fileInput = screen.getByTestId('media-subtitle-file-input') as HTMLInputElement;
+    const vttFile = new File(
+      ['WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nEnglish cue\n'],
+      'captions.vtt',
+      { type: 'text/vtt' },
+    );
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [vttFile] } });
+    });
+
+    // Confirmation dialog opens; nothing staged or imported yet
+    expect(await screen.findByText('Replace existing subtitles?')).toBeInTheDocument();
+    expect(mocks.stageBlobUpload).not.toHaveBeenCalled();
+    expect(mocks.importFromPath).not.toHaveBeenCalled();
+
+    // Confirm replacement
+    fireEvent.click(screen.getByRole('button', { name: 'Replace' }));
+    await waitFor(() => {
+      expect(mocks.stageBlobUpload).toHaveBeenCalledTimes(1);
+      expect(mocks.importFromPath).toHaveBeenCalledWith('dstu-staged:upload-1');
+    });
+  });
 });

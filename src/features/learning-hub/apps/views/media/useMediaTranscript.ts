@@ -20,6 +20,10 @@ import {
   type TranscriptProgress,
 } from './mediaTranscriptApi';
 import { getErrorMessage } from '@/utils/errorUtils';
+import {
+  isSupportedSubtitleFileName,
+  UNSUPPORTED_SUBTITLE_FORMAT_ERROR,
+} from './subtitleUploadParser';
 
 /** 进度事件后回拉段列表的最小间隔 */
 export const TRANSCRIPT_REFETCH_THROTTLE_MS = 1500;
@@ -246,16 +250,27 @@ export function useMediaTranscript({
   }, [fetchTranscript]);
 
   const importFromPath = useCallback(async (path: string) => {
+    const trimmedPath = path.trim();
+    if (!trimmedPath) {
+      throw new Error('Subtitle import path is required');
+    }
+    if (!trimmedPath.startsWith('dstu-staged:') && !isSupportedSubtitleFileName(trimmedPath)) {
+      throw new Error(UNSUPPORTED_SUBTITLE_FORMAT_ERROR);
+    }
     const id = resourceIdRef.current;
     const generation = generationRef.current;
-    let next = await mediaTranscriptApi.importFile(id, path);
+    let next = await mediaTranscriptApi.importFile(id, trimmedPath);
     // 后端可能只回计数 / 空对象：以 get 的完整段列表为准
     if (next.segments.length === 0) next = await mediaTranscriptApi.get(id);
+    const doneCount = next.segments.filter((seg) => seg.status === 'done').length;
+    if (doneCount === 0) {
+      throw new Error('No subtitle cues were found in the imported file.');
+    }
     if (generation === generationRef.current) {
       setTranscript(next);
       setError(null);
     }
-    return next.segments.filter((seg) => seg.status === 'done').length;
+    return doneCount;
   }, []);
 
   const exportToPath = useCallback(async (format: TranscriptExportFormat, dest: string) => {
