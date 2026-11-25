@@ -340,6 +340,7 @@ describe('W3B-2 BUG-4: Keep Both, persistent reminders, resources note titles, e
         'keep_both',
         [101, 102, 103],
         undefined,
+        'Conflict copy',
       );
     });
 
