@@ -16,6 +16,7 @@ import {
   type VfsFolderItem,
 } from '../api.ts';
 import { parseNaiveDateTime, parseRfc3339 } from '../../../platform/time/index.ts';
+import { runWithoutChangeLogEcho } from './change-log-echo.ts';
 import { databaseResult } from './errors.ts';
 import { getBreadcrumbs } from './folder-breadcrumbs.ts';
 import { PathCacheRepo } from './path-cache.ts';
@@ -959,25 +960,26 @@ export class FolderRepo implements FolderRepository {
   }
 
   private markItemIndexesPending(conn: SqlExecutor, itemId: string): void {
-    conn.run(`UPDATE resources SET
-        index_state = CASE WHEN index_state = 'disabled' THEN 'disabled' ELSE 'pending' END,
-        index_hash = CASE WHEN index_state = 'disabled' THEN index_hash ELSE NULL END,
-        index_error = CASE WHEN index_state = 'disabled' THEN index_error ELSE NULL END,
-        indexed_at = CASE WHEN index_state = 'disabled' THEN indexed_at ELSE NULL END,
-        index_retry_count = CASE WHEN index_state = 'disabled' THEN index_retry_count ELSE 0 END,
-        index_next_retry_at = CASE WHEN index_state = 'disabled' THEN index_next_retry_at ELSE 0 END,
-        mm_index_state = CASE WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
-          THEN mm_index_state ELSE 'pending' END,
-        mm_index_error = CASE WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
-          THEN mm_index_error ELSE NULL END,
-        mm_indexed_at = CASE WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
-          THEN mm_indexed_at ELSE NULL END,
-        mm_index_retry_count = CASE WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
-          THEN mm_index_retry_count ELSE 0 END,
-        mm_index_next_retry_at = CASE WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
-          THEN mm_index_next_retry_at ELSE 0 END,
-        updated_at = ?2
-      WHERE id = ?1 OR source_id = ?1`, [itemId, Date.now()]);
+    runWithoutChangeLogEcho(conn, 'resources', () => {
+      conn.run(`UPDATE resources SET
+          index_state = CASE WHEN index_state = 'disabled' THEN 'disabled' ELSE 'pending' END,
+          index_hash = CASE WHEN index_state = 'disabled' THEN index_hash ELSE NULL END,
+          index_error = CASE WHEN index_state = 'disabled' THEN index_error ELSE NULL END,
+          indexed_at = CASE WHEN index_state = 'disabled' THEN indexed_at ELSE NULL END,
+          index_retry_count = CASE WHEN index_state = 'disabled' THEN index_retry_count ELSE 0 END,
+          index_next_retry_at = CASE WHEN index_state = 'disabled' THEN index_next_retry_at ELSE 0 END,
+          mm_index_state = CASE WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
+            THEN mm_index_state ELSE 'pending' END,
+          mm_index_error = CASE WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
+            THEN mm_index_error ELSE NULL END,
+          mm_indexed_at = CASE WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
+            THEN mm_indexed_at ELSE NULL END,
+          mm_index_retry_count = CASE WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
+            THEN mm_index_retry_count ELSE 0 END,
+          mm_index_next_retry_at = CASE WHEN mm_index_state IS NULL OR mm_index_state = 'disabled'
+            THEN mm_index_next_retry_at ELSE 0 END
+        WHERE id = ?1 OR source_id = ?1`, [itemId]);
+    });
   }
 
   reorderFolders(conn: SqlExecutor, folderIds: readonly string[]): void {

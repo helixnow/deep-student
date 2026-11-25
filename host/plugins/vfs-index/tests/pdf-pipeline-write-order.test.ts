@@ -81,11 +81,10 @@ it('corrupt PDF textbook import follows the Rust pipeline writes and events', as
 
   const rows = conn.all<ChangeRow>('SELECT id, table_name, record_id, operation FROM __change_log ORDER BY id')
     .slice(before).map(r => [r.table_name, r.operation]);
+  // Local-derived `files.processing_*` and `resources.index_state` transitions suppress
+  // phantom `__change_log` UPDATE echoes so only the real synced INSERT rows are logged.
   expect(rows).toEqual([
     ['blobs', 'INSERT'], ['resources', 'INSERT'], ['files', 'INSERT'],
-    ['files', 'UPDATE'], ['files', 'UPDATE'], ['files', 'UPDATE'], ['files', 'UPDATE'],
-    ['resources', 'UPDATE'], ['resources', 'UPDATE'], ['resources', 'UPDATE'],
-    ['files', 'UPDATE'], ['files', 'UPDATE'],
   ]);
 
   const pipelineEvents = h.events.slice(eventsBefore)

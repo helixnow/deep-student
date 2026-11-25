@@ -1,5 +1,6 @@
 /** Port of dstu-vfs attachment_repo.rs. All DB functions take the caller's connection. */
 import { logError, logWarn } from './logger.ts';
+import { runWithoutChangeLogEcho } from './change-log-echo.ts';
 import { fromBase64, toBase64 } from '../../../platform/crypto/encoding.ts';
 import { sha256HexSync } from '../../../platform/crypto/sync.ts';
 import { posix, win32 } from '../../../platform/util/path.ts';
@@ -737,17 +738,19 @@ export class AttachmentRepo implements AttachmentRepository {
 
   setMmIndexState(conn: SqlExecutor, attachmentId: string, state: string, error: string | null): void {
     databaseResult(() => {
-      const updated = conn.run(
-        'UPDATE files SET mm_index_state = ?1, mm_index_error = ?2, updated_at = ?3 WHERE id = ?4',
-        [state, error, utcTimestamp(), attachmentId]).changes;
+      const updated = runWithoutChangeLogEcho(conn, 'files', () => conn.run(
+        'UPDATE files SET mm_index_state = ?1, mm_index_error = ?2 WHERE id = ?3',
+        [state, error, attachmentId]).changes);
       if (updated === 0) throw notFound('attachment', attachmentId);
     });
   }
 
   saveMmIndexedPages(conn: SqlExecutor, attachmentId: string, indexedPagesJson: string): void {
     databaseResult(() => {
-      conn.run('UPDATE files SET mm_indexed_pages_json = ?1, updated_at = ?2 WHERE id = ?3',
-        [indexedPagesJson, utcTimestamp(), attachmentId]);
+      runWithoutChangeLogEcho(conn, 'files', () => {
+        conn.run('UPDATE files SET mm_indexed_pages_json = ?1 WHERE id = ?2',
+          [indexedPagesJson, attachmentId]);
+      });
     });
   }
 

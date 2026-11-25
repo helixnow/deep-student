@@ -200,8 +200,10 @@ describe('PDF/media table-owner writes', { timeout: 120_000 }, () => {
     expect(resources().saveOcrTextForFile(db, 'file_missing', 'ignored')).toBe(0);
   });
 
-  it('writes file multimodal state with the Rust branch semantics', () => {
+  it('writes file multimodal state without bumping business updated_at', () => {
     const file = newFile('pdf-owner-mm-file');
+    resetUpdatedAt(file.id);
+    const before = fileRow(file.id).updated_at;
     db.run(`UPDATE files SET mm_index_state = 'pending', mm_index_error = 'old',
             mm_indexed_pages_json = NULL WHERE id = ?1`, [file.id]);
 
@@ -210,28 +212,29 @@ describe('PDF/media table-owner writes', { timeout: 120_000 }, () => {
     expect(row.mm_index_state).toBe('indexed');
     expect(row.mm_indexed_pages_json).toBe('[{"page_index":0}]');
     expect(row.mm_index_error).toBe('old');
-    expect(row.updated_at).toMatch(RUST_NOW);
+    expect(row.updated_at).toBe(before);
 
     files().applyMultimodalIndexState(db, file.id, 'failed', 'ocr unavailable');
     row = fileRow(file.id);
     expect(row.mm_index_state).toBe('failed');
     expect(row.mm_index_error).toBe('ocr unavailable');
     expect(row.mm_indexed_pages_json).toBe('[{"page_index":0}]');
-    expect(row.updated_at).toMatch(RUST_NOW);
+    expect(row.updated_at).toBe(before);
 
     files().applyMultimodalIndexState(db, file.id, 'pending', null);
     row = fileRow(file.id);
     expect(row.mm_index_state).toBe('pending');
     expect(row.mm_index_error).toBe('ocr unavailable');
-    expect(row.updated_at).toMatch(RUST_NOW);
+    expect(row.updated_at).toBe(before);
   });
 
-  it('writes exam-sheet multimodal state with embedding metadata', () => {
+  it('writes exam-sheet multimodal state with embedding metadata without bumping updated_at', () => {
     const examId = 'exam-pdf-owner-mm';
+    const initialUpdatedAt = '2026-01-01T00:00:00.000Z';
     db.run(`INSERT INTO exam_sheets(id, exam_name, status, temp_id, metadata_json, preview_json,
               created_at, updated_at)
             VALUES (?1, 'pdf owner exam', 'completed', 'temp-pdf-owner', '{}', '{}',
-                    '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`, [examId]);
+                    ?2, ?2)`, [examId, initialUpdatedAt]);
 
     exams().applyMultimodalIndexState(db, examId, 'indexed', '[{"page_index":1}]', 1024);
     let row = db.get<Record<string, unknown>>('SELECT * FROM exam_sheets WHERE id = ?1', [examId])!;
@@ -239,18 +242,18 @@ describe('PDF/media table-owner writes', { timeout: 120_000 }, () => {
     expect(row.mm_indexed_pages_json).toBe('[{"page_index":1}]');
     expect(row.mm_embedding_dim).toBe(1024);
     expect(row.mm_indexed_at).toMatch(RUST_NOW);
-    expect(row.updated_at).toBe(row.mm_indexed_at);
+    expect(row.updated_at).toBe(initialUpdatedAt);
 
     exams().applyMultimodalIndexState(db, examId, 'failed', 'dimension mismatch', 1024);
     row = db.get<Record<string, unknown>>('SELECT * FROM exam_sheets WHERE id = ?1', [examId])!;
     expect(row.mm_index_state).toBe('failed');
     expect(row.mm_index_error).toBe('dimension mismatch');
-    expect(row.updated_at).toMatch(RUST_NOW);
+    expect(row.updated_at).toBe(initialUpdatedAt);
 
     exams().applyMultimodalIndexState(db, examId, 'indexing', null, 1024);
     row = db.get<Record<string, unknown>>('SELECT * FROM exam_sheets WHERE id = ?1', [examId])!;
     expect(row.mm_index_state).toBe('indexing');
     expect(row.mm_index_error).toBe('dimension mismatch');
-    expect(row.updated_at).toMatch(RUST_NOW);
+    expect(row.updated_at).toBe(initialUpdatedAt);
   });
 });

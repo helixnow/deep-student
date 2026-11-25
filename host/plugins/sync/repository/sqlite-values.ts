@@ -168,7 +168,15 @@ export function isLocalDerivedSyncColumn(tableName: string, column: string): boo
       'mm_indexed_at', 'mm_index_generation',
     ].includes(column);
   }
-  if (tableName === 'files' || tableName === 'exam_sheets') {
+  if (tableName === 'files') {
+    return [
+      'mm_index_state', 'mm_index_error', 'mm_indexed_pages_json', 'mm_embedding_dim',
+      'mm_indexing_mode', 'mm_indexed_at',
+      'processing_status', 'processing_progress', 'processing_started_at',
+      'processing_completed_at', 'processing_error',
+    ].includes(column);
+  }
+  if (tableName === 'exam_sheets') {
     return [
       'mm_index_state', 'mm_index_error', 'mm_indexed_pages_json', 'mm_embedding_dim',
       'mm_indexing_mode', 'mm_indexed_at',

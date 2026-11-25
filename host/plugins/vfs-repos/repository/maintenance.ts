@@ -26,6 +26,7 @@ import {
   type TodoRepository,
   type VfsIndexResetCounts,
 } from '../api.ts';
+import { runWithoutChangeLogEcho } from './change-log-echo.ts';
 import { databaseResult } from './errors.ts';
 import { logDebug, logError, logInfo, logWarn } from './logger.ts';
 import { utcTimestamp } from './timestamps.ts';
@@ -128,7 +129,7 @@ export class MaintenanceRepo implements MaintenanceRepository {
 
     let resources = 0;
     try {
-      resources = conn.run(`UPDATE resources
+      resources = runWithoutChangeLogEcho(conn, 'resources', () => conn.run(`UPDATE resources
         SET index_state = CASE WHEN index_state = 'indexing' THEN 'pending' ELSE index_state END,
             index_error = CASE WHEN index_state = 'indexing'
               THEN 'recovered: interrupted by crash' ELSE index_error END,
@@ -139,7 +140,7 @@ export class MaintenanceRepo implements MaintenanceRepository {
               THEN 'recovered: interrupted by crash' ELSE mm_index_error END,
             mm_index_retry_count = CASE WHEN mm_index_state = 'indexing' THEN 0 ELSE mm_index_retry_count END,
             mm_index_next_retry_at = CASE WHEN mm_index_state = 'indexing' THEN 0 ELSE mm_index_next_retry_at END
-        WHERE index_state = 'indexing' OR mm_index_state = 'indexing'`).changes;
+        WHERE index_state = 'indexing' OR mm_index_state = 'indexing'`).changes);
     } catch (error) {
       logWarn(`[VfsFullIndexingService] Failed to recover stuck state: ${message(error)}`);
     }
@@ -363,18 +364,18 @@ export class MaintenanceRepo implements MaintenanceRepository {
 
   /** handlers.rs:5855-5880 */
   resetDisabledToPending(conn: SqlExecutor): number {
-    const updated = databaseResult(() => conn.run(
+    const updated = databaseResult(() => runWithoutChangeLogEcho(conn, 'resources', () => conn.run(
       `UPDATE resources SET index_state = 'pending', index_error = NULL,
          index_retry_count = 0, index_next_retry_at = 0
        WHERE index_state = 'disabled'`,
-    ).changes);
+    ).changes));
     logInfo(`[VFS::handlers] Reset ${updated} disabled resources to pending`);
     return updated;
   }
 
   /** handlers.rs:5885-5917 */
   resetIndexedWithoutEmbeddings(conn: SqlExecutor): number {
-    const updated = databaseResult(() => conn.run(
+    const updated = databaseResult(() => runWithoutChangeLogEcho(conn, 'resources', () => conn.run(
       `UPDATE resources
          SET index_state = 'pending', index_error = NULL,
              index_retry_count = 0, index_next_retry_at = 0
@@ -384,7 +385,7 @@ export class MaintenanceRepo implements MaintenanceRepository {
            JOIN vfs_index_segments s ON s.unit_id = u.id
            WHERE u.resource_id = resources.id
          )`,
-    ).changes);
+    ).changes));
     logInfo(`[VFS::handlers] Reset ${updated} indexed-without-segments resources to pending`);
     return updated;
   }
@@ -399,7 +400,7 @@ export class MaintenanceRepo implements MaintenanceRepository {
 
     databaseResult(() => conn.run('UPDATE vfs_embedding_dims SET record_count = 0'));
 
-    const updatedResources = databaseResult(() => conn.run(
+    const updatedResources = databaseResult(() => runWithoutChangeLogEcho(conn, 'resources', () => conn.run(
       `UPDATE resources
          SET index_state = 'pending',
              index_hash = NULL,
@@ -413,25 +414,23 @@ export class MaintenanceRepo implements MaintenanceRepository {
              mm_embedding_dim = NULL,
              mm_indexing_mode = NULL,
              mm_indexed_at = NULL`,
-    ).changes);
+    ).changes));
 
-    const updatedFiles = databaseResult(() => conn.run(
+    const updatedFiles = databaseResult(() => runWithoutChangeLogEcho(conn, 'files', () => conn.run(
       `UPDATE files
          SET mm_index_state = 'pending',
              mm_index_error = NULL,
-             mm_indexed_pages_json = NULL,
-             updated_at = datetime('now')`,
-    ).changes);
+             mm_indexed_pages_json = NULL`,
+    ).changes));
 
-    const updatedExams = databaseResult(() => conn.run(
+    const updatedExams = databaseResult(() => runWithoutChangeLogEcho(conn, 'exam_sheets', () => conn.run(
       `UPDATE exam_sheets
          SET mm_index_state = 'pending',
              mm_index_error = NULL,
              mm_indexed_pages_json = NULL,
              mm_embedding_dim = NULL,
-             mm_indexed_at = NULL,
-             updated_at = datetime('now')`,
-    ).changes);
+             mm_indexed_at = NULL`,
+    ).changes));
 
     logInfo(`[VFS::handlers] 重置 ${updatedResources} 个资源为 pending 状态（files=${updatedFiles}, exam_sheets=${updatedExams})`);
     return { deletedSegments, deletedUnits, updatedResources, updatedFiles, updatedExams };
@@ -551,7 +550,9 @@ export class MaintenanceRepo implements MaintenanceRepository {
         if (resourceColumns.has(column)) resourceResets.push(`${column} = ${value}`);
       }
       if (resourceResets.length > 0) {
-        conn.run(`UPDATE resources SET ${resourceResets.join(', ')}`);
+        runWithoutChangeLogEcho(conn, 'resources', () => {
+          conn.run(`UPDATE resources SET ${resourceResets.join(', ')}`);
+        });
       }
 
       for (const [tableName, columns] of [
@@ -574,7 +575,11 @@ export class MaintenanceRepo implements MaintenanceRepository {
         ]) {
           if (columns.has(column)) resets.push(`${column} = NULL`);
         }
-        if (resets.length > 0) conn.run(`UPDATE ${tableName} SET ${resets.join(', ')}`);
+        if (resets.length > 0) {
+          runWithoutChangeLogEcho(conn, tableName, () => {
+            conn.run(`UPDATE ${tableName} SET ${resets.join(', ')}`);
+          });
+        }
       }
 
       if (orphanColumns.size > 0) conn.run('DELETE FROM __lance_orphan_queue');
@@ -705,16 +710,16 @@ export class MaintenanceRepo implements MaintenanceRepository {
               !(params.clearPdfPreview && mode === 'image') && !(params.clearOcrText && mode === 'ocr'));
           }
         }
-        databaseResult(() => conn.run(
+        databaseResult(() => runWithoutChangeLogEcho(conn, 'files', () => conn.run(
           `UPDATE files SET processing_status = 'pending', processing_progress = ?1,
              processing_error = NULL, processing_started_at = NULL, processing_completed_at = NULL
-           WHERE id = ?2`, [JSON.stringify(progress), row.id]));
+           WHERE id = ?2`, [JSON.stringify(progress), row.id])));
       }
-      databaseResult(() => conn.run(
+      databaseResult(() => runWithoutChangeLogEcho(conn, 'files', () => conn.run(
         `UPDATE files SET processing_status = 'pending', processing_error = NULL,
            processing_started_at = NULL, processing_completed_at = NULL
          WHERE processing_progress IS NULL
-           AND (mime_type LIKE 'application/pdf' OR mime_type LIKE 'image/%')`));
+           AND (mime_type LIKE 'application/pdf' OR mime_type LIKE 'image/%')`)));
     }
 
     logInfo(`[VFS::handlers] vfs_clear_media_cache: Complete! freed ${result.totalBytesFreed} bytes, reset ${result.filesReset} files`);

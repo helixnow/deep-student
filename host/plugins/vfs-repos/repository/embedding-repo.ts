@@ -10,6 +10,7 @@ import {
   type VfsEmbeddingDimension,
 } from '../api.ts';
 import { EmbeddingDimRepo } from './embedding-dims.ts';
+import { runWithoutChangeLogEcho } from './change-log-echo.ts';
 import { databaseResult } from './errors.ts';
 
 export const INDEX_STATE_PENDING = 'pending';
@@ -269,11 +270,13 @@ export class IndexStateRepo implements IndexStateRepository {
     hash: string | null, error: string | null): void {
     databaseResult(() => {
       const indexedAt = state === INDEX_STATE_INDEXED ? nowMs() : null;
-      conn.run(`UPDATE resources
-        SET index_state = ?1, index_hash = ?2, index_error = ?3, indexed_at = ?4,
-            index_retry_count = CASE WHEN ?1 IN ('pending', 'indexed', 'disabled') THEN 0 ELSE index_retry_count END,
-            index_next_retry_at = CASE WHEN ?1 IN ('pending', 'indexed', 'disabled') THEN 0 ELSE index_next_retry_at END
-        WHERE id = ?5`, [state, hash, error, indexedAt, resourceId]);
+      runWithoutChangeLogEcho(conn, 'resources', () => {
+        conn.run(`UPDATE resources
+          SET index_state = ?1, index_hash = ?2, index_error = ?3, indexed_at = ?4,
+              index_retry_count = CASE WHEN ?1 IN ('pending', 'indexed', 'disabled') THEN 0 ELSE index_retry_count END,
+              index_next_retry_at = CASE WHEN ?1 IN ('pending', 'indexed', 'disabled') THEN 0 ELSE index_next_retry_at END
+          WHERE id = ?5`, [state, hash, error, indexedAt, resourceId]);
+      });
     });
   }
 
@@ -295,11 +298,13 @@ export class IndexStateRepo implements IndexStateRepository {
         'SELECT COALESCE(index_retry_count, 0) FROM resources WHERE id = ?1', [resourceId]) ?? 0);
       const delaySecs = Math.min(5 * (2 ** Math.min(Math.max(retryCount, 0), 10)), 3600);
       const nextRetryAt = nowMs() + delaySecs * 1000;
-      conn.run(`UPDATE resources
-        SET index_state = ?1, index_error = ?2,
-            index_retry_count = COALESCE(index_retry_count, 0) + 1,
-            index_next_retry_at = ?3
-        WHERE id = ?4`, [INDEX_STATE_FAILED, error, nextRetryAt, resourceId]);
+      runWithoutChangeLogEcho(conn, 'resources', () => {
+        conn.run(`UPDATE resources
+          SET index_state = ?1, index_error = ?2,
+              index_retry_count = COALESCE(index_retry_count, 0) + 1,
+              index_next_retry_at = ?3
+          WHERE id = ?4`, [INDEX_STATE_FAILED, error, nextRetryAt, resourceId]);
+      });
     });
   }
 
@@ -311,10 +316,10 @@ export class IndexStateRepo implements IndexStateRepository {
           WHERE text_state = 'failed'
             AND resource_id IN (SELECT id FROM resources WHERE index_state = ?1 AND (${CONFIG_BLOCKED_ERROR_SQL}))`,
         [INDEX_STATE_FAILED]);
-        const revived = conn.run(`UPDATE resources
+        const revived = runWithoutChangeLogEcho(conn, 'resources', () => conn.run(`UPDATE resources
           SET index_state = ?1, index_error = NULL, index_retry_count = 0, index_next_retry_at = 0
           WHERE index_state = ?2 AND (${CONFIG_BLOCKED_ERROR_SQL})`,
-        [INDEX_STATE_PENDING, INDEX_STATE_FAILED]).changes;
+        [INDEX_STATE_PENDING, INDEX_STATE_FAILED]).changes);
         conn.exec('COMMIT');
         return revived;
       } catch (error) {
@@ -338,17 +343,20 @@ export class IndexStateRepo implements IndexStateRepository {
            WHERE deleted_at IS NULL AND COALESCE(page_count, 0) > 1
              AND resource_id IS NOT NULL`,
         ).map((row) => row.resource_id);
-        let requeued = 0;
-        for (let start = 0; start < pagedResourceIds.length; start += 500) {
-          const chunk = pagedResourceIds.slice(start, start + 500);
-          const placeholders = chunk.map((_, idx) => `?${idx + 2}`).join(',');
-          requeued += conn.run(`UPDATE resources
-            SET index_state = ?1, index_error = NULL, index_retry_count = 0, index_next_retry_at = 0
-            WHERE id IN (${placeholders})
-              AND deleted_at IS NULL
-              AND COALESCE(index_state, 'pending') IN ('indexed', 'failed')`,
-          [INDEX_STATE_PENDING, ...chunk]).changes;
-        }
+        const requeued = runWithoutChangeLogEcho(conn, 'resources', () => {
+          let total = 0;
+          for (let start = 0; start < pagedResourceIds.length; start += 500) {
+            const chunk = pagedResourceIds.slice(start, start + 500);
+            const placeholders = chunk.map((_, idx) => `?${idx + 2}`).join(',');
+            total += conn.run(`UPDATE resources
+              SET index_state = ?1, index_error = NULL, index_retry_count = 0, index_next_retry_at = 0
+              WHERE id IN (${placeholders})
+                AND deleted_at IS NULL
+                AND COALESCE(index_state, 'pending') IN ('indexed', 'failed')`,
+            [INDEX_STATE_PENDING, ...chunk]).changes;
+          }
+          return total;
+        });
         conn.run(`INSERT OR REPLACE INTO vfs_indexing_config (key, value, updated_at)
           VALUES (?1, 'done', ?2)`, [key, nowMs()]);
         conn.exec('COMMIT');
@@ -384,11 +392,15 @@ export class IndexStateRepo implements IndexStateRepository {
       conn.exec('BEGIN IMMEDIATE');
       try {
         const ids = this.getPendingResources(conn, limit, maxRetries);
-        for (let start = 0; start < ids.length; start += 500) {
-          const chunk = ids.slice(start, start + 500);
-          const placeholders = chunk.map((_, idx) => `?${idx + 2}`).join(',');
-          conn.run(`UPDATE resources SET index_state = ?1, index_error = NULL WHERE id IN (${placeholders})`,
-            [INDEX_STATE_INDEXING, ...chunk]);
+        if (ids.length > 0) {
+          runWithoutChangeLogEcho(conn, 'resources', () => {
+            for (let start = 0; start < ids.length; start += 500) {
+              const chunk = ids.slice(start, start + 500);
+              const placeholders = chunk.map((_, idx) => `?${idx + 2}`).join(',');
+              conn.run(`UPDATE resources SET index_state = ?1, index_error = NULL WHERE id IN (${placeholders})`,
+                [INDEX_STATE_INDEXING, ...chunk]);
+            }
+          });
         }
         conn.exec('COMMIT');
         return ids;
@@ -433,12 +445,14 @@ export class IndexStateRepo implements IndexStateRepository {
   setMmIndexState(conn: SqlExecutor, resourceId: string, state: string, error: string | null): void {
     databaseResult(() => {
       const indexedAt = state === INDEX_STATE_INDEXED ? nowMs() : null;
-      conn.run(`UPDATE resources
-        SET mm_index_state = ?1, mm_index_error = ?2,
-            mm_indexed_at = COALESCE(?3, mm_indexed_at),
-            mm_index_retry_count = CASE WHEN ?1 IN ('pending', 'indexed', 'disabled') THEN 0 ELSE mm_index_retry_count END,
-            mm_index_next_retry_at = CASE WHEN ?1 IN ('pending', 'indexed', 'disabled') THEN 0 ELSE mm_index_next_retry_at END
-        WHERE id = ?4`, [state, error, indexedAt, resourceId]);
+      runWithoutChangeLogEcho(conn, 'resources', () => {
+        conn.run(`UPDATE resources
+          SET mm_index_state = ?1, mm_index_error = ?2,
+              mm_indexed_at = COALESCE(?3, mm_indexed_at),
+              mm_index_retry_count = CASE WHEN ?1 IN ('pending', 'indexed', 'disabled') THEN 0 ELSE mm_index_retry_count END,
+              mm_index_next_retry_at = CASE WHEN ?1 IN ('pending', 'indexed', 'disabled') THEN 0 ELSE mm_index_next_retry_at END
+          WHERE id = ?4`, [state, error, indexedAt, resourceId]);
+      });
     });
   }
 
@@ -460,11 +474,13 @@ export class IndexStateRepo implements IndexStateRepository {
         'SELECT COALESCE(mm_index_retry_count, 0) FROM resources WHERE id = ?1', [resourceId]) ?? 0);
       const delaySecs = Math.min(5 * (2 ** Math.min(Math.max(retryCount, 0), 10)), 3600);
       const nextRetryAt = nowMs() + delaySecs * 1000;
-      conn.run(`UPDATE resources
-        SET mm_index_state = ?1, mm_index_error = ?2,
-            mm_index_retry_count = COALESCE(mm_index_retry_count, 0) + 1,
-            mm_index_next_retry_at = ?3
-        WHERE id = ?4`, [INDEX_STATE_FAILED, error, nextRetryAt, resourceId]);
+      runWithoutChangeLogEcho(conn, 'resources', () => {
+        conn.run(`UPDATE resources
+          SET mm_index_state = ?1, mm_index_error = ?2,
+              mm_index_retry_count = COALESCE(mm_index_retry_count, 0) + 1,
+              mm_index_next_retry_at = ?3
+          WHERE id = ?4`, [INDEX_STATE_FAILED, error, nextRetryAt, resourceId]);
+      });
     });
   }
 
@@ -488,18 +504,21 @@ export class IndexStateRepo implements IndexStateRepository {
       conn.exec('BEGIN IMMEDIATE');
       try {
         const now = nowMs();
-        const claimed: string[] = [];
-        for (const resourceId of resourceIds) {
-          const updated = conn.run(`UPDATE resources
-            SET mm_index_state = 'indexing', mm_index_error = NULL
-            WHERE id = ?1
-              AND COALESCE(mm_index_state, 'pending') <> 'indexing'
-              AND (COALESCE(mm_index_state, 'pending') <> 'failed'
-                   OR (COALESCE(mm_index_next_retry_at, 0) <= ?2
-                       AND COALESCE(mm_index_retry_count, 0) < ?3))`,
-          [resourceId, now, maxRetries]).changes;
-          if (updated > 0) claimed.push(resourceId);
-        }
+        const claimed = runWithoutChangeLogEcho(conn, 'resources', () => {
+          const out: string[] = [];
+          for (const resourceId of resourceIds) {
+            const updated = conn.run(`UPDATE resources
+              SET mm_index_state = 'indexing', mm_index_error = NULL
+              WHERE id = ?1
+                AND COALESCE(mm_index_state, 'pending') <> 'indexing'
+                AND (COALESCE(mm_index_state, 'pending') <> 'failed'
+                     OR (COALESCE(mm_index_next_retry_at, 0) <= ?2
+                         AND COALESCE(mm_index_retry_count, 0) < ?3))`,
+            [resourceId, now, maxRetries]).changes;
+            if (updated > 0) out.push(resourceId);
+          }
+          return out;
+        });
         conn.exec('COMMIT');
         return claimed;
       } catch (error) {
