@@ -389,7 +389,22 @@
     "cancel": "取消",
     "reviewExitTitle": "结束复习会话？",
     "reviewExitDescription": "已提交的评分会保留，剩余题目可稍后重新开始复习。",
-    "reviewExitConfirm": "结束复习"
+    "reviewExitConfirm": "结束复习",
+    "moreActions": "更多操作",
+    "itemActions": "{{name}} 的更多操作",
+    "rename": "重命名",
+    "renameInputAria": "重命名 {{name}}",
+    "delete": "删除",
+    "deleteTitle": "移到回收站",
+    "deleteDescription": "将「{{name}}」移到回收站？可稍后在回收站中恢复。",
+    "deleteConfirm": "删除",
+    "deleteUnsavedTitle": "删除有未保存更改的项目？",
+    "deleteUnsavedDescription": "「{{name}}」有未保存的修改。移到回收站将丢弃这些未保存的更改。",
+    "deleteUnsavedConfirm": "丢弃并删除",
+    "deleteReviewTitle": "结束复习并删除？",
+    "deleteReviewDescription": "「{{name}}」当前有进行中的复习会话。删除将结束本次复习（已提交的评分会保留）并将该项目移到回收站。",
+    "deleteReviewConfirm": "结束复习并删除",
+    "deletedToast": "已将「{{name}}」移到回收站"
   },
   "appsPanel": {
     "title": "全部应用",
