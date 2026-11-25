@@ -78,6 +78,7 @@ import { forwardBrowserContentEvents, nativeBrowserContentEvent } from './shell/
 import { getAppVersion, runtimeBuildInfo } from './build-info.ts';
 import { imagePlugin } from './shell/images.ts';
 import { installAppUserModelId } from './shell/app-user-model-id.ts';
+import { formatChromiumSwitch, installLinuxWaylandSwitches } from './shell/linux-wayland.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 const tauriDir = join(repoRoot, 'resources/app');
@@ -94,6 +95,10 @@ const logElectronError = (operation: string, error: unknown) => {
 installProcessErrorLogging(process, message => logElectronError('electron.process', message));
 const ignoredEnv = dropDevOnlyEnv(process.env, app.isPackaged);
 if (ignoredEnv.length > 0) log(`[launch] packaged build: ignored development environment variables ${ignoredEnv.join(', ')}`);
+
+// Linux Wayland 下启用原生 Ozone 与 fcitx5/IBus IME（Issue #481），必须在应用就绪前追加。
+const waylandSwitches = installLinuxWaylandSwitches(app, { platform, env: process.env, argv: process.argv });
+if (waylandSwitches.length > 0) log(`[wayland] enabled IME switches: ${waylandSwitches.map(formatChromiumSwitch).join(' ')}`);
 
 const config = loadTauriConfig(tauriDir, platform, debug ? process.env.DS_ELECTRON_DEV_CONFIG : undefined);
 /**
