@@ -1,17 +1,24 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  ArrowCounterClockwise,
   CaretDown,
+  ChatCircleDots,
+  Check,
   CircleNotch,
+  Clock,
+  Copy,
   PencilSimple,
   Play,
   Plus,
   Robot,
   Trash,
   WarningCircle,
+  X,
 } from '@phosphor-icons/react';
 
 import { DsButton } from '@/components/ui/DsButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { GroupTitle } from './settingsTabPrimitives';
 import { Switch } from '@/components/ui/shad/Switch';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -24,13 +31,19 @@ import {
 } from '@/features/todo/stores/useAutomationStore';
 import { requestAutomationCreate } from '@/features/todo/automationCreateRequest';
 import { AutomationScheduleEditor } from '@/features/todo/components/automation/AutomationScheduleEditor';
-import { formatRelativeTime } from '@/features/todo/components/automation/automationFormat';
+import {
+  formatAbsoluteTime,
+  formatDurationMs,
+  formatRelativeTime,
+  formatRunTime,
+} from '@/features/todo/components/automation/automationFormat';
 import {
   getAutomationDisplayName,
   getAutomationDisplayPrompt,
 } from '@/utils/automationDisplay';
 import { formatWeekdayList } from '@/features/todo/components/automation/scheduleMath';
 import { AutomationStatusPill } from '@/features/todo/components/automation/AutomationStatusPill';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import {
   isAutomationVersionConflictError,
   parseAutomationCommandError,
@@ -40,6 +53,7 @@ import {
   type AutomationCatchUpPolicy,
   type AutomationCreateInput,
   type AutomationListItem,
+  type AutomationRun,
   type AutomationSchedule,
   type AutomationSessionMode,
   type AutomationUpdateInput,
@@ -412,6 +426,513 @@ const AutomationForm: React.FC<AutomationFormProps> = ({
   );
 };
 
+type RunStatusFilter = 'all' | 'success' | 'failed' | 'active';
+
+const RUN_SUCCESS_STATUSES = new Set(['success', 'heartbeat_ok']);
+const RUN_FAILED_STATUSES = new Set(['error', 'timeout', 'spawn_error']);
+const RUN_ACTIVE_STATUSES = new Set(['queued', 'running', 'retrying']);
+const RUN_RETRYABLE_STATUSES = new Set(['error', 'timeout', 'spawn_error', 'cancelled']);
+const RUN_VISIBLE_TRIGGERS = new Set(['manual', 'retry', 'recovery']);
+
+const matchesRunStatusFilter = (status: string, filter: RunStatusFilter): boolean => {
+  if (filter === 'all') return true;
+  if (filter === 'success') return RUN_SUCCESS_STATUSES.has(status);
+  if (filter === 'failed') return RUN_FAILED_STATUSES.has(status);
+  return RUN_ACTIVE_STATUSES.has(status);
+};
+
+const computeRunDurationMs = (run: AutomationRun): number | null => {
+  if (typeof run.durationMs === 'number' && Number.isFinite(run.durationMs) && run.durationMs >= 0) {
+    return run.durationMs;
+  }
+  const startTs = run.startedAt ? Date.parse(run.startedAt) : Number.NaN;
+  const endTs = run.finishedAt ? Date.parse(run.finishedAt) : Number.NaN;
+  if (!Number.isNaN(startTs) && !Number.isNaN(endTs)) {
+    return Math.max(0, endTs - startTs);
+  }
+  return null;
+};
+
+interface SettingsRunHistoryPanelProps {
+  runs: AutomationRun[];
+  automationNames: Record<string, string>;
+  locale: string;
+  loading: boolean;
+  busyKey: string | null;
+  onRetryRun?: (runId: string) => Promise<void>;
+  onCancelRun?: (runId: string) => Promise<void>;
+}
+
+const SettingsRunHistoryPanel: React.FC<SettingsRunHistoryPanelProps> = ({
+  runs,
+  automationNames,
+  locale,
+  loading,
+  busyKey,
+  onRetryRun,
+  onCancelRun,
+}) => {
+  const { t } = useTranslation(['todo', 'settings', 'common']);
+  const [open, setOpen] = useState(true);
+  const [taskFilter, setTaskFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<RunStatusFilter>('all');
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [runActionError, setRunActionError] = useState<{ runId: string; message: string } | null>(null);
+  const [copiedRunId, setCopiedRunId] = useState<string | null>(null);
+  const copyTimerRef = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+  }, []);
+
+  const taskOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const run of runs) {
+      if (!seen.has(run.automationId)) {
+        seen.set(run.automationId, automationNames[run.automationId] ?? run.automationId);
+      }
+    }
+    return Array.from(seen.entries()).map(([id, name]) => ({ id, name }));
+  }, [runs, automationNames]);
+
+  useEffect(() => {
+    if (taskFilter !== 'all' && !taskOptions.some((option) => option.id === taskFilter)) {
+      setTaskFilter('all');
+    }
+  }, [taskFilter, taskOptions]);
+
+  const filteredRuns = useMemo(
+    () => runs.filter((run) => (
+      (taskFilter === 'all' || run.automationId === taskFilter)
+      && matchesRunStatusFilter(run.status, statusFilter)
+    )),
+    [runs, taskFilter, statusFilter],
+  );
+
+  const busyRunId = useMemo(() => {
+    if (!busyKey) return null;
+    if (busyKey.startsWith('retry:')) return busyKey.slice('retry:'.length);
+    if (busyKey.startsWith('cancel:')) return busyKey.slice('cancel:'.length);
+    return null;
+  }, [busyKey]);
+
+  const formatRunTimestamp = useCallback((iso?: string) => {
+    if (!iso) return '';
+    if (typeof formatRunTime === 'function') {
+      return formatRunTime(iso, locale);
+    }
+    return formatRelativeTime(iso, locale);
+  }, [locale]);
+
+  const formatAbsoluteTimestamp = useCallback((iso?: string) => {
+    if (!iso) return '';
+    if (typeof formatAbsoluteTime === 'function') {
+      return formatAbsoluteTime(iso, locale);
+    }
+    const parsed = new Date(iso);
+    if (Number.isNaN(parsed.getTime())) return iso;
+    return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(parsed);
+  }, [locale]);
+
+  const formatDurationLabel = useCallback((run: AutomationRun) => {
+    const ms = computeRunDurationMs(run);
+    if (ms === null) return '';
+    if (typeof formatDurationMs === 'function') {
+      return formatDurationMs(ms, locale);
+    }
+    return `${Math.round(ms / 1000)}s`;
+  }, [locale]);
+
+  const handleCopyError = (runId: string, text: string) => {
+    const markCopied = () => {
+      setCopiedRunId(runId);
+      if (copyTimerRef.current !== null) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopiedRunId(null), 1800);
+    };
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(text).then(markCopied, () => undefined);
+    }
+  };
+
+  const handleRetry = async (runId: string) => {
+    if (!onRetryRun) return;
+    setRunActionError(null);
+    try {
+      await onRetryRun(runId);
+    } catch (cause) {
+      setRunActionError({ runId, message: automationErrorText(cause) });
+    }
+  };
+
+  const handleCancel = async (runId: string) => {
+    if (!onCancelRun) return;
+    setRunActionError(null);
+    try {
+      await onCancelRun(runId);
+    } catch (cause) {
+      setRunActionError({ runId, message: automationErrorText(cause) });
+    }
+  };
+
+  const handleOpenSession = (sessionId: string) => {
+    workbenchBus.launch({
+      typeId: 'chat',
+      instanceKey: sessionId,
+      reason: 'api',
+    });
+  };
+
+  const statusFilters: Array<{ value: RunStatusFilter; label: string }> = [
+    { value: 'all', label: t('todo:automation.history.filterAll', { defaultValue: 'All' }) },
+    { value: 'success', label: t('todo:automation.history.filterSuccess', { defaultValue: 'Succeeded' }) },
+    { value: 'failed', label: t('todo:automation.history.filterFailed', { defaultValue: 'Failed' }) },
+    { value: 'active', label: t('todo:automation.history.filterActive', { defaultValue: 'In progress' }) },
+  ];
+
+  return (
+    <div
+      className="space-y-3 rounded-2xl bg-muted px-3 py-3 sm:px-4"
+      data-testid="automation-settings-run-history"
+    >
+      <div className="flex items-center justify-between gap-2 px-1">
+        <h3 className="text-sm font-medium text-foreground">
+          {t('todo:automation.history.title', { defaultValue: 'Run history' })}
+        </h3>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          aria-expanded={open}
+          aria-label={t('todo:automation.history.toggleAria', {
+            count: runs.length,
+            defaultValue: `Run history (${runs.length})`,
+          })}
+          onClick={() => setOpen((current) => !current)}
+          className="h-7 gap-1.5 px-2 text-xs tabular-nums text-muted-foreground hover:text-foreground"
+        >
+          <span>{runs.length}</span>
+          <CaretDown
+            className={cn('h-3.5 w-3.5 transition-transform duration-150', open && 'rotate-180')}
+            aria-hidden="true"
+          />
+        </DsButton>
+      </div>
+
+      {open && (
+        <div className="space-y-2.5">
+          {runs.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 px-1">
+              {taskOptions.length > 1 && (
+                <select
+                  value={taskFilter}
+                  onChange={(event) => setTaskFilter(event.target.value)}
+                  aria-label={t('todo:automation.history.filterByTask', { defaultValue: 'Filter by task' })}
+                  className="h-7 max-w-52 truncate rounded-md border border-[color:var(--border-soft,hsl(var(--border)))] bg-background/60 px-2 text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <option value="all">
+                    {t('todo:automation.history.allTasks', { defaultValue: 'All tasks' })}
+                  </option>
+                  {taskOptions.map((option) => (
+                    <option key={option.id} value={option.id}>{option.name}</option>
+                  ))}
+                </select>
+              )}
+
+              <div
+                role="group"
+                aria-label={t('todo:automation.history.filterByStatus', { defaultValue: 'Filter by status' })}
+                className="flex flex-wrap items-center gap-1"
+              >
+                {statusFilters.map((filter) => (
+                  <DsButton
+                    key={filter.value}
+                    variant={statusFilter === filter.value ? 'secondary' : 'ghost'}
+                    size="sm"
+                    aria-pressed={statusFilter === filter.value}
+                    onClick={() => setStatusFilter(filter.value)}
+                    className={cn(
+                      'h-7 px-2 text-xs',
+                      statusFilter === filter.value
+                        ? 'bg-background font-medium text-foreground shadow-xs'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {filter.label}
+                  </DsButton>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {loading && runs.length === 0 ? (
+            <p className="px-2 py-4 text-xs text-muted-foreground">
+              {t('todo:automation.history.loading', { defaultValue: 'Loading run history' })}
+            </p>
+          ) : runs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-1 px-4 py-6 text-center">
+              <Clock className="h-6 w-6 text-muted-foreground/60" aria-hidden="true" />
+              <p className="text-sm text-muted-foreground">
+                {t('todo:automation.history.empty', { defaultValue: 'No runs yet' })}
+              </p>
+              <p className="text-xs text-muted-foreground/70">
+                {t('todo:automation.history.emptyHint', {
+                  defaultValue: 'Runs will show up here once tasks execute',
+                })}
+              </p>
+            </div>
+          ) : filteredRuns.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-1.5 px-4 py-6 text-center">
+              <Clock className="h-6 w-6 text-muted-foreground/60" aria-hidden="true" />
+              <p className="text-sm text-muted-foreground">
+                {t('todo:automation.history.filteredEmpty', {
+                  defaultValue: 'No runs match the current filters',
+                })}
+              </p>
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setTaskFilter('all');
+                  setStatusFilter('all');
+                }}
+              >
+                {t('todo:automation.history.clearFilters', { defaultValue: 'Clear filters' })}
+              </DsButton>
+            </div>
+          ) : (
+            <ul role="list" className="divide-y divide-[color:var(--border-soft,hsl(var(--border)))]">
+              {filteredRuns.map((run) => {
+                const name = automationNames[run.automationId] ?? run.automationId;
+                const isExpanded = expandedRunId === run.id;
+                const isBusy = busyRunId === run.id;
+                const isActive = RUN_ACTIVE_STATUSES.has(run.status);
+                const isRetryable = RUN_RETRYABLE_STATUSES.has(run.status);
+                const displayTime = run.startedAt || run.scheduledFor;
+                const relative = formatRunTimestamp(displayTime);
+                const absolute = formatAbsoluteTimestamp(displayTime);
+                const duration = formatDurationLabel(run);
+                const previewText = run.error ?? run.summary;
+                const previewIsError = Boolean(run.error);
+                const detailId = `settings-automation-run-detail-${run.id}`;
+
+                return (
+                  <li key={run.id} className="min-w-0">
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      aria-expanded={isExpanded}
+                      aria-controls={detailId}
+                      data-testid={`automation-history-row-${run.id}`}
+                      onClick={() => setExpandedRunId(isExpanded ? null : run.id)}
+                      className="h-auto w-full min-w-0 flex-col items-stretch justify-start gap-1 rounded-[var(--radius-shell-row,0.5rem)] px-2.5 py-2 text-left font-normal hover:bg-background/50"
+                    >
+                      <div className="flex w-full min-w-0 items-center gap-2">
+                        <AutomationStatusPill status={run.status} size="sm" />
+                        <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground" title={name}>
+                          {name}
+                        </span>
+                        {RUN_VISIBLE_TRIGGERS.has(run.triggerType) && (
+                          <span className="shrink-0 rounded border border-[color:var(--border-soft,hsl(var(--border)))] px-1.5 py-px text-2xs uppercase tracking-wide text-muted-foreground">
+                            {t(`todo:automation.trigger.${run.triggerType}`, { defaultValue: run.triggerType })}
+                          </span>
+                        )}
+                        {run.attempt > 1 && (
+                          <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                            {t('todo:automation.history.attempt', {
+                              attempt: run.attempt,
+                              max: run.maxAttempts,
+                              defaultValue: `${run.attempt}/${run.maxAttempts}`,
+                            })}
+                          </span>
+                        )}
+                        {duration && (
+                          <span className="hidden shrink-0 text-xs tabular-nums text-muted-foreground sm:inline">
+                            {duration}
+                          </span>
+                        )}
+                        {relative && (
+                          <span className="shrink-0 text-xs tabular-nums text-muted-foreground" title={absolute}>
+                            {relative}
+                          </span>
+                        )}
+                      </div>
+                      {!isExpanded && previewText && (
+                        <p
+                          className={cn(
+                            'truncate text-xs leading-snug',
+                            previewIsError
+                              ? (run.status === 'retrying' ? 'text-warning' : 'text-destructive')
+                              : 'text-muted-foreground',
+                          )}
+                        >
+                          {previewText}
+                        </p>
+                      )}
+                    </DsButton>
+
+                    {isExpanded && (
+                      <div
+                        id={detailId}
+                        role="region"
+                        aria-label={t('todo:automation.history.detailRegion', { name, defaultValue: name })}
+                        data-testid={`automation-history-detail-${run.id}`}
+                        className="space-y-3 rounded-b-[var(--radius-shell-row,0.5rem)] bg-background/40 px-3 pb-3 pt-2"
+                      >
+                        {run.summary && (
+                          <div className="min-w-0">
+                            <div className="mb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                              {t('todo:automation.history.summary', { defaultValue: 'Summary' })}
+                            </div>
+                            <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground/85">
+                              {run.summary}
+                            </p>
+                          </div>
+                        )}
+
+                        {run.error && (
+                          <div className="min-w-0">
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                              <span className="text-2xs font-medium uppercase tracking-wide text-destructive">
+                                {t('todo:automation.history.error', { defaultValue: 'Error' })}
+                              </span>
+                              <DsButton
+                                variant="ghost"
+                                size="icon"
+                                iconOnly
+                                aria-label={copiedRunId === run.id
+                                  ? t('todo:automation.history.copied', { defaultValue: 'Copied' })
+                                  : t('todo:automation.history.copyError', { defaultValue: 'Copy error' })}
+                                onClick={() => handleCopyError(run.id, run.error ?? '')}
+                              >
+                                {copiedRunId === run.id
+                                  ? <Check className="h-3.5 w-3.5 text-success" aria-hidden="true" />
+                                  : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+                              </DsButton>
+                            </div>
+                            <CustomScrollArea
+                              className="max-h-40 min-h-0 rounded-md bg-destructive/5"
+                              fullHeight={false}
+                            >
+                              <pre className="whitespace-pre-wrap break-words p-2 font-mono text-xs leading-relaxed text-destructive">
+                                {run.error}
+                              </pre>
+                            </CustomScrollArea>
+                          </div>
+                        )}
+
+                        <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-3">
+                          {run.scheduledFor && (
+                            <div className="min-w-0">
+                              <dt className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                                {t('todo:automation.history.scheduledFor', { defaultValue: 'Scheduled for' })}
+                              </dt>
+                              <dd className="truncate text-foreground/85 tabular-nums">
+                                {formatAbsoluteTimestamp(run.scheduledFor)}
+                              </dd>
+                            </div>
+                          )}
+                          {run.startedAt && (
+                            <div className="min-w-0">
+                              <dt className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                                {t('todo:automation.history.startedAt', { defaultValue: 'Started at' })}
+                              </dt>
+                              <dd className="truncate text-foreground/85 tabular-nums">
+                                {formatAbsoluteTimestamp(run.startedAt)}
+                              </dd>
+                            </div>
+                          )}
+                          {run.finishedAt && (
+                            <div className="min-w-0">
+                              <dt className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                                {t('todo:automation.history.finishedAt', { defaultValue: 'Finished at' })}
+                              </dt>
+                              <dd className="truncate text-foreground/85 tabular-nums">
+                                {formatAbsoluteTimestamp(run.finishedAt)}
+                              </dd>
+                            </div>
+                          )}
+                          {duration && (
+                            <div className="min-w-0">
+                              <dt className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                                {t('todo:automation.history.duration', { defaultValue: 'Duration' })}
+                              </dt>
+                              <dd className="truncate text-foreground/85 tabular-nums">{duration}</dd>
+                            </div>
+                          )}
+                          {run.status === 'retrying' && run.nextAttemptAt && (
+                            <div className="min-w-0">
+                              <dt className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                                {t('todo:automation.history.nextAttemptAt', { defaultValue: 'Next retry' })}
+                              </dt>
+                              <dd className="truncate text-foreground/85 tabular-nums">
+                                {formatAbsoluteTimestamp(run.nextAttemptAt)}
+                              </dd>
+                            </div>
+                          )}
+                        </dl>
+
+                        {runActionError?.runId === run.id && (
+                          <p role="alert" className="flex items-start gap-1 text-xs text-destructive">
+                            <WarningCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            <span className="min-w-0 break-words">
+                              {t('todo:automation.history.actionFailed', {
+                                message: runActionError.message,
+                                defaultValue: runActionError.message,
+                              })}
+                            </span>
+                          </p>
+                        )}
+
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {isRetryable && onRetryRun && (
+                            <DsButton
+                              variant="ghost"
+                              size="sm"
+                              disabled={isBusy}
+                              onClick={() => void handleRetry(run.id)}
+                            >
+                              {isBusy
+                                ? <CircleNotch className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                : <ArrowCounterClockwise className="h-3.5 w-3.5" aria-hidden="true" />}
+                              {t('todo:automation.history.retry', { defaultValue: 'Retry' })}
+                            </DsButton>
+                          )}
+                          {isActive && onCancelRun && (
+                            <DsButton
+                              variant="ghost"
+                              size="sm"
+                              disabled={isBusy}
+                              onClick={() => void handleCancel(run.id)}
+                            >
+                              {isBusy
+                                ? <CircleNotch className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                : <X className="h-3.5 w-3.5" aria-hidden="true" />}
+                              {t('todo:automation.history.cancel', { defaultValue: 'Cancel' })}
+                            </DsButton>
+                          )}
+                          {run.sessionId && (
+                            <DsButton
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenSession(run.sessionId as string)}
+                            >
+                              <ChatCircleDots className="h-3.5 w-3.5" aria-hidden="true" />
+                              {t('todo:automation.history.viewSession', { defaultValue: 'View conversation' })}
+                            </DsButton>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps> = ({
   invoke,
   embedded = false,
@@ -432,15 +953,17 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
     update,
     remove,
     runNow,
+    retryRun,
+    cancelRun,
     create,
     setBackgroundEnabled,
   } = useAutomationStore();
 
-  /** 每个任务最近一次运行的状态（runs 由 store 按时间倒序返回，取首个匹配项）。 */
-  const lastRunStatusById = useMemo(() => {
-    const map = new Map<string, string>();
+  /** 每个任务最近一次运行记录（runs 由 store 按时间倒序返回，取首个匹配项）。 */
+  const latestRunById = useMemo(() => {
+    const map = new Map<string, AutomationRun>();
     for (const run of runs ?? []) {
-      if (!map.has(run.automationId)) map.set(run.automationId, run.status);
+      if (!map.has(run.automationId)) map.set(run.automationId, run);
     }
     return map;
   }, [runs]);
@@ -727,6 +1250,14 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
 
   const rows = automations as AutomationRowItem[];
 
+  const automationNames = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const item of rows) {
+      map[item.id] = resolveDisplayName(item);
+    }
+    return map;
+  }, [rows, resolveDisplayName]);
+
   // 空态收敛：嵌入宿主自带空状态（工作区空状态优先），列表为空时整块隐藏，
   // 避免同屏出现两个空状态。错误也由宿主的顶部错误条呈现（同一 store.error）。
   if (embedded && hideEmptyState && !loading && rows.length === 0) {
@@ -742,7 +1273,12 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
     const updateBusy = busyKey === `update:${automation.id}`;
     const expanded = expandedId === automation.id;
     const confirmingDelete = confirmingDeleteId === automation.id;
-    const lastRunStatus = lastRunStatusById.get(automation.id);
+    const latestRun = latestRunById.get(automation.id);
+    const lastRunStatus = latestRun?.status;
+    const lastRunError = latestRun?.error?.trim()
+      && (RUN_FAILED_STATUSES.has(latestRun.status) || latestRun.status === 'retrying')
+      ? latestRun.error.trim()
+      : null;
     // 目标时刻已过但后端事件尚未送达（或调度暂停）时显示「即将开始」，
     // 避免"下次运行：3 分钟前"的矛盾文案
     const nextTriggerTs = automation.nextTriggerAt ? Date.parse(automation.nextTriggerAt) : Number.NaN;
@@ -752,8 +1288,9 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
         ? t('settings:automation.starting_soon')
         : formatRelativeTime(automation.nextTriggerAt, locale))
       : null;
-    const lastRunRelative = automation.lastRunAt
-      ? formatRelativeTime(automation.lastRunAt, locale)
+    const lastRunAt = automation.lastRunAt ?? latestRun?.startedAt;
+    const lastRunRelative = lastRunAt
+      ? formatRelativeTime(lastRunAt, locale)
       : null;
 
     return (
@@ -831,12 +1368,32 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
               {lastRunRelative && (
                 <span
                   className="shrink-0 tabular-nums"
-                  title={formatAbsolute(automation.lastRunAt)}
+                  title={formatAbsolute(lastRunAt)}
                 >
                   {t('settings:automation.last_run_relative', { time: lastRunRelative })}
                 </span>
               )}
             </div>
+            {lastRunError && (
+              <p
+                className={cn(
+                  'flex min-w-0 items-start gap-1.5 text-xs leading-snug',
+                  latestRun?.status === 'retrying' ? 'text-warning' : 'text-destructive',
+                )}
+                data-testid={`automation-row-error-${automation.id}`}
+                title={lastRunError}
+              >
+                <WarningCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span className="line-clamp-2 min-w-0 break-words">
+                  {lastRunError}
+                  {latestRun?.status === 'retrying' && latestRun.nextAttemptAt && (
+                    <span className="ml-1.5 text-muted-foreground tabular-nums">
+                      ({t('todo:automation.history.nextAttemptAt', { defaultValue: 'Next retry' })}: {formatAbsolute(latestRun.nextAttemptAt)})
+                    </span>
+                  )}
+                </span>
+              </p>
+            )}
           </div>
 
           <div
@@ -1174,6 +1731,18 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
             </p>
           )}
         </div>
+      )}
+
+      {!embedded && !desktopUnavailable && (
+        <SettingsRunHistoryPanel
+          runs={runs ?? []}
+          automationNames={automationNames}
+          locale={locale}
+          loading={loading}
+          busyKey={busyKey}
+          onRetryRun={retryRun}
+          onCancelRun={cancelRun}
+        />
       )}
     </section>
   );

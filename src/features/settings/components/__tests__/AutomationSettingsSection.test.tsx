@@ -1,8 +1,14 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AutomationInvoke } from '../automationSettingsApi';
+import type { AutomationInvoke, AutomationRun } from '../automationSettingsApi';
+
+const { workbenchLaunchMock } = vi.hoisted(() => ({ workbenchLaunchMock: vi.fn() }));
+
+vi.mock('@/features/workbench/core/workbenchBus', () => ({
+  workbenchBus: { launch: workbenchLaunchMock },
+}));
 
 vi.mock('react-i18next', () => {
   const translate = (key: string, options?: Record<string, unknown>) => {
@@ -83,6 +89,35 @@ vi.mock('react-i18next', () => {
       'settings:automation.errors.prompt_required': 'Task instructions cannot be empty.',
       'settings:automation.errors.name_required': 'Name cannot be empty.',
       'todo:automation.builtin.heartbeatName': 'Study Heartbeat Check',
+      'todo:automation.history.title': 'Run history',
+      'todo:automation.history.toggleAria': `Run history (${String(options?.count ?? '')})`,
+      'todo:automation.history.filterByTask': 'Filter by task',
+      'todo:automation.history.filterByStatus': 'Filter by status',
+      'todo:automation.history.allTasks': 'All tasks',
+      'todo:automation.history.filterAll': 'All',
+      'todo:automation.history.filterSuccess': 'Succeeded',
+      'todo:automation.history.filterFailed': 'Failed',
+      'todo:automation.history.filterActive': 'In progress',
+      'todo:automation.history.attempt': `Attempt ${String(options?.attempt ?? '')}/${String(options?.max ?? '')}`,
+      'todo:automation.history.summary': 'Summary',
+      'todo:automation.history.error': 'Error',
+      'todo:automation.history.copyError': 'Copy error',
+      'todo:automation.history.copied': 'Copied',
+      'todo:automation.history.duration': 'Duration',
+      'todo:automation.history.scheduledFor': 'Scheduled for',
+      'todo:automation.history.startedAt': 'Started at',
+      'todo:automation.history.finishedAt': 'Finished at',
+      'todo:automation.history.nextAttemptAt': 'Next retry',
+      'todo:automation.history.retry': 'Retry',
+      'todo:automation.history.cancel': 'Cancel',
+      'todo:automation.history.viewSession': 'View conversation',
+      'todo:automation.history.empty': 'No runs yet',
+      'todo:automation.history.emptyHint': 'Runs will show up here once tasks execute',
+      'todo:automation.history.filteredEmpty': 'No runs match the current filters',
+      'todo:automation.history.clearFilters': 'Clear filters',
+      'todo:automation.history.loading': 'Loading run history',
+      'todo:automation.history.detailRegion': `Run details for "${name}"`,
+      'todo:automation.trigger.manual': 'Manual',
       'common:cancel': 'Cancel',
       'common:save': 'Save',
     };
@@ -118,7 +153,7 @@ const automationItem = {
   nextTriggerAt: '2099-07-14T08:00:00+08:00',
 };
 
-const latestRun = {
+const latestRun: AutomationRun = {
   id: 'run_1',
   automationId: 'auto_morning',
   status: 'success',
@@ -142,7 +177,7 @@ type StoreState = {
   count: number;
   max: number;
   summary: SummaryState | null;
-  runs: Array<typeof latestRun>;
+  runs: AutomationRun[];
   loading: boolean;
   error: string | null;
   busyKey: string | null;
@@ -151,6 +186,8 @@ type StoreState = {
   update: ReturnType<typeof vi.fn>;
   remove: ReturnType<typeof vi.fn>;
   runNow: ReturnType<typeof vi.fn>;
+  retryRun: ReturnType<typeof vi.fn>;
+  cancelRun: ReturnType<typeof vi.fn>;
   create: ReturnType<typeof vi.fn>;
   setBackgroundEnabled: ReturnType<typeof vi.fn>;
 };
@@ -191,6 +228,9 @@ vi.mock('@/features/todo/components/automation/AutomationScheduleEditor', () => 
 
 vi.mock('@/features/todo/components/automation/automationFormat', () => ({
   formatRelativeTime: (iso: string) => `rel(${iso})`,
+  formatRunTime: (iso: string) => `run(${iso})`,
+  formatAbsoluteTime: (iso: string) => `abs(${iso})`,
+  formatDurationMs: (ms: number) => `${Math.round(ms / 1000)}s`,
 }));
 
 vi.mock('@/features/todo/components/automation/AutomationStatusPill', () => ({
@@ -223,6 +263,8 @@ const buildStoreState = (): StoreState => ({
   update: vi.fn(async () => undefined),
   remove: vi.fn(async () => undefined),
   runNow: vi.fn(async () => undefined),
+  retryRun: vi.fn(async () => undefined),
+  cancelRun: vi.fn(async () => undefined),
   create: vi.fn(async () => undefined),
   setBackgroundEnabled: vi.fn(async () => undefined),
 });
@@ -236,6 +278,7 @@ describe('AutomationSettingsSection', () => {
   beforeEach(() => {
     storeState = buildStoreState();
     invokeMock.mockReset();
+    workbenchLaunchMock.mockReset();
     startAutomationSyncMock.mockClear();
     stopSyncMock.mockClear();
   });
@@ -257,9 +300,10 @@ describe('AutomationSettingsSection', () => {
 
   it('renders rows with relative next-run time and the last-run status pill', () => {
     renderSection();
-    expect(screen.getByText('Morning review')).toBeInTheDocument();
-    expect(screen.getByText('Next run rel(2099-07-14T08:00:00+08:00)')).toBeInTheDocument();
-    expect(screen.getByTestId('status-pill')).toHaveTextContent('success');
+    const row = screen.getByTestId('automation-row-auto_morning');
+    expect(within(row).getByText('Morning review')).toBeInTheDocument();
+    expect(within(row).getByText('Next run rel(2099-07-14T08:00:00+08:00)')).toBeInTheDocument();
+    expect(within(row).getByTestId('status-pill')).toHaveTextContent('success');
   });
 
   it('shows "starting soon" instead of a past-tense relative time for an overdue next run', () => {
@@ -596,5 +640,80 @@ describe('AutomationSettingsSection', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(storeState.refresh).toHaveBeenCalledTimes(1); // retry（挂载不再显式 refresh）
+  });
+
+  it('displays inline failure details on the row and mounts interactive run history in settings mode', async () => {
+    storeState.runs = [
+      {
+        id: 'run_fail_1',
+        automationId: 'auto_morning',
+        status: 'spawn_error',
+        triggerType: 'manual',
+        scheduledFor: '2026-07-13T08:00:00+08:00',
+        startedAt: '2026-07-13T08:00:01+08:00',
+        finishedAt: '2026-07-13T08:00:02+08:00',
+        attempt: 1,
+        maxAttempts: 3,
+        delivered: [],
+        error: 'No configured chat model available',
+        sessionId: 'sess_failed_1',
+      },
+    ];
+    renderSection();
+
+    // Row itself surfaces the latest failure reason inline.
+    expect(screen.getByTestId('automation-row-error-auto_morning')).toHaveTextContent(
+      'No configured chat model available',
+    );
+
+    // Run history panel is mounted in Settings mode and expands to show full error + actions.
+    const history = screen.getByTestId('automation-settings-run-history');
+    expect(within(history).getByText('Run history')).toBeInTheDocument();
+
+    fireEvent.click(within(history).getByTestId('automation-history-row-run_fail_1'));
+    const detail = within(history).getByTestId('automation-history-detail-run_fail_1');
+    expect(within(detail).getByText('No configured chat model available')).toBeInTheDocument();
+
+    fireEvent.click(within(detail).getByRole('button', { name: 'Retry' }));
+    await waitFor(() => {
+      expect(storeState.retryRun).toHaveBeenCalledWith('run_fail_1');
+    });
+
+    fireEvent.click(within(detail).getByRole('button', { name: 'View conversation' }));
+    expect(workbenchLaunchMock).toHaveBeenCalledWith({
+      typeId: 'chat',
+      instanceKey: 'sess_failed_1',
+      reason: 'api',
+    });
+  });
+
+  it('allows cancelling an active/retrying run from Settings run history and hides settings history when embedded', async () => {
+    storeState.runs = [
+      {
+        id: 'run_active_1',
+        automationId: 'auto_morning',
+        status: 'retrying',
+        triggerType: 'manual',
+        scheduledFor: '2026-07-13T08:00:00+08:00',
+        nextAttemptAt: '2026-07-13T08:02:00+08:00',
+        attempt: 1,
+        maxAttempts: 3,
+        delivered: [],
+        error: 'Temporary upstream 503',
+      },
+    ];
+    const { rerender } = renderSection();
+    expect(screen.getByTestId('automation-row-error-auto_morning')).toHaveTextContent('Temporary upstream 503');
+
+    const history = screen.getByTestId('automation-settings-run-history');
+    fireEvent.click(within(history).getByTestId('automation-history-row-run_active_1'));
+    fireEvent.click(within(history).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => {
+      expect(storeState.cancelRun).toHaveBeenCalledWith('run_active_1');
+    });
+
+    // Embedded mode (TodoAutomationWorkspace) owns its own AutomationRunHistory section.
+    rerender(<AutomationSettingsSection invoke={invokeMock as AutomationInvoke} embedded />);
+    expect(screen.queryByTestId('automation-settings-run-history')).not.toBeInTheDocument();
   });
 });
