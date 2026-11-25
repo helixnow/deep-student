@@ -114,8 +114,8 @@ Full learner guides for every workflow: [**English User Guide (`docs/user-guide/
 - **Cloud & LAN sync (Sync V5).**
   - **Desktop & Desktop WebUI:** WebDAV, S3-compatible storage, and experimental FTP.
   - **Mobile WebUI:** WebDAV and S3-compatible storage (FTP hidden in mobile WebUI).
-  - **Android native:** WebDAV only.
-  - Saved cloud passwords are masked and never echoed in plaintext (leave blank to keep existing credentials). Sync V5 guards weak networks with lease heartbeats and automatic self-residual reclaim. Cross-device QR pairing uses **`DSPAIR1`** in the current UI (6-digit PIN QR, full-screenshot auto-decode, and paste-code fallback), while **`DSPAIR2`** is backend-ready. Default cloud whole-package archives remain **portable archives (not direct slot-restore)**, and encrypted export requires a cloud end-to-end encryption password.
+  - **Android native:** Android is WebDAV only.
+  - Saved cloud passwords are masked and never echoed in plaintext (leave blank to keep existing credentials). Sync V5 guards weak networks with lease heartbeats and automatic self-residual reclaim. Cross-device QR pairing uses **`DSPAIR1`** in the current UI (6-digit PIN QR, full-screenshot auto-decode, and paste-code fallback), while **`DSPAIR2`** is backend-ready. Without a cloud end-to-end encryption password, a default cloud whole-package backup is a **portable archive and cannot slot-restore**; when encryption is enabled but the local password cannot be read, export is refused rather than silently downgrading to plaintext.
 - **Open source, verifiable.** AGPL-3.0-or-later. Everything privacy-related is in this repository.
 
 ---
