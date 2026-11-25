@@ -462,10 +462,30 @@ export async function continueMessage(host: TauriAdapterHost, messageId: string,
   } catch (error) {
     host.clearStreamExpectation(messageId);
     const errorMsg = getErrorMessage(error);
-    console.error(LOG_PREFIX, 'Continue message failed:', errorMsg);
     const isTodoFallback = errorMsg.includes('No incomplete TODO list found');
-    // 清除流式状态；无 TODO 列表时直接交由 store.continueMessage fallback 到 sendMessage，避免把原消息标红为错误
-    host.store.completeStream(isTodoFallback ? 'success' : 'error', isTodoFallback ? undefined : normalizeStreamTerminalError(error));
+    if (isTodoFallback) {
+      // 无可续跑的 TODO 列表时仅记录 debug 日志，交由 store.continueMessage 决定兜底策略，不触发 console.error
+      console.debug(LOG_PREFIX, 'Continue message fallback (no incomplete TODO list):', errorMsg);
+      host.store.completeStream('success');
+    } else {
+      console.error(LOG_PREFIX, 'Continue message failed:', errorMsg);
+      host.store.completeStream('error', normalizeStreamTerminalError(error));
+      reportAdapterError({
+        code: 'stream_error',
+        level: 'user',
+        sessionId: host.sessionId,
+        message: formatUserFacingErrorWithThinkingBudgetHint(
+          error,
+          'chatV2:messageItem.actions.continueFailed',
+          'Continue failed',
+        ),
+        title: i18n.t('chatV2:messageItem.actions.continueFailed'),
+        cause: error,
+        retryable: true,
+        notify: false,
+        storeApi: host.getErrorStoreApi?.(),
+      });
+    }
     host.store.setCurrentStreamingMessage(null);
     throw error;
   }
