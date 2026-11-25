@@ -1,20 +1,43 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createTestHost } from '../../../kernel/testing.ts';
+import { Connection } from '../../../platform/storage/connection.ts';
+import { MigrationCoordinator } from '../../../platform/storage/migration/coordinator.ts';
+import { DEFAULT_MIGRATIONS_DIR } from '../../../platform/storage/migration/definitions/index.ts';
+import { loadSqlMigrations, Runner } from '../../../platform/storage/migration/refinery.ts';
+import { createStorageService } from '../../../platform/storage/service.ts';
+import { PROFILES } from '../../../platform/storage/profiles.ts';
 import review from '../index.ts';
+import { getMasteryMeta, insertEvent, listMasteredConcepts, recomputeStateWithConn } from '../repository/mastery.ts';
 import { applyMasteryDueBias, masteryDueBiasDeltaMs, MAX_ADVANCE_MS } from '../src/bias.ts';
 import { storageFixture } from './storage.ts';
 
+const MASTERY_MIGRATIONS = [
+  'V20260718__add_mastery_tables.sql',
+  'V20260719__mastery_events_signal.sql',
+  'V20260720__mastery_events_sync.sql',
+  'V20260909__mastery_events_insight_source.sql',
+  'V20261125__mastery_states_lifecycle.sql',
+] as const;
+
 const fixtures: ReturnType<typeof storageFixture>[] = [];
 const hosts: Awaited<ReturnType<typeof createTestHost>>[] = [];
+const tempDirs: string[] = [];
 async function setup() {
   const f = storageFixture(); fixtures.push(f);
   f.db.exec('CREATE TABLE __change_log (table_name TEXT, record_id TEXT, operation TEXT, changed_at TEXT)');
-  for (const name of ['V20260718__add_mastery_tables.sql', 'V20260719__mastery_events_signal.sql', 'V20260720__mastery_events_sync.sql', 'V20260909__mastery_events_insight_source.sql']) f.db.exec(readFileSync(`resources/app/migrations/vfs/${name}`, 'utf8'));
+  for (const name of MASTERY_MIGRATIONS) f.db.exec(readFileSync(`resources/app/migrations/vfs/${name}`, 'utf8'));
   const host = await createTestHost({ plugins: [review], provide: { storage: f.storage } }); hosts.push(host);
   return { ...f, svc: host.ctx.mastery, host };
 }
-afterEach(async () => { vi.useRealTimers(); for (const h of hosts.splice(0)) await h.dispose(); for (const f of fixtures.splice(0)) f.dispose(); });
+afterEach(async () => {
+  vi.useRealTimers();
+  for (const h of hosts.splice(0)) await h.dispose();
+  for (const f of fixtures.splice(0)) f.dispose();
+  for (const d of tempDirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
 const time = (ms: number) => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(ms); };
 it('anti_farm_same_item_rapid_corrects_gain_less_than_independent', async () => {
   const { db, svc } = await setup(); const base = Date.now();
@@ -32,7 +55,7 @@ it('anti_farm_same_item_rapid_corrects_gain_less_than_independent', async () => 
 it('remote_tombstones_rebuild_zero_state_and_remove_weak_point', async () => {
   const f = storageFixture(); fixtures.push(f);
   f.db.exec('CREATE TABLE __change_log (table_name TEXT, record_id TEXT, operation TEXT, changed_at TEXT)');
-  for (const name of ['V20260718__add_mastery_tables.sql', 'V20260719__mastery_events_signal.sql', 'V20260720__mastery_events_sync.sql', 'V20260909__mastery_events_insight_source.sql']) f.db.exec(readFileSync(`resources/app/migrations/vfs/${name}`, 'utf8'));
+  for (const name of MASTERY_MIGRATIONS) f.db.exec(readFileSync(`resources/app/migrations/vfs/${name}`, 'utf8'));
   const upserts: string[] = [], removals: string[] = [];
   const host = await createTestHost({ plugins: [review], provide: { storage: f.storage, masteryProfileSink: {
     upsertWeakPointFromMastery: (_db: unknown, concept: string) => { upserts.push(concept); },
@@ -151,7 +174,7 @@ it('l17_insight_recall_verdict_with_conn_matches_rust_record_recall_verdict_to_m
 it('x6_lp_0245_profile_reflux_failures_warn_with_rust_mastery_text_and_ids', async () => {
   const f = storageFixture(); fixtures.push(f);
   f.db.exec('CREATE TABLE __change_log (table_name TEXT, record_id TEXT, operation TEXT, changed_at TEXT)');
-  for (const name of ['V20260718__add_mastery_tables.sql', 'V20260719__mastery_events_signal.sql', 'V20260720__mastery_events_sync.sql', 'V20260909__mastery_events_insight_source.sql']) f.db.exec(readFileSync(`resources/app/migrations/vfs/${name}`, 'utf8'));
+  for (const name of MASTERY_MIGRATIONS) f.db.exec(readFileSync(`resources/app/migrations/vfs/${name}`, 'utf8'));
   let down = false;
   const failing = () => { if (down) throw new Error('profile sink down'); };
   const host = await createTestHost({ plugins: [review], provide: { storage: f.storage, masteryProfileSink: {
@@ -175,4 +198,102 @@ it('x6_lp_0245_profile_reflux_failures_warn_with_rust_mastery_text_and_ids', asy
     ['[Mastery] FSRS event committed but profile reflux failed for log %s: %s', 'log-reflux', expect.stringContaining('profile sink down')],
     ['[Mastery] qbank correction committed but profile reflux failed for submission %s: %s', 'sub-reflux', expect.stringContaining('profile sink down')],
   ]);
+});
+
+it('restart_after_mastery_recompute_has_zero_fingerprint_drift', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ds-mastery-restart-'));
+  tempDirs.push(dir);
+  const logs: string[] = [];
+  const log = (level: string, msg: string) => {
+    if (level === 'error' || level === 'warn') logs.push(`${level}: ${msg}`);
+  };
+
+  // First boot: migrate all databases cleanly to HEAD (including V20261125__mastery_states_lifecycle.sql).
+  const boot1 = await new MigrationCoordinator({ appDataDir: dir, auditDbPath: null, log }).runAll();
+  expect(boot1.error, logs.join('\n')).toBeNull();
+  expect(boot1.success).toBe(true);
+  expect(boot1.databases.find(d => d.id === 'vfs')?.toVersion).toBe(20261125);
+
+  // Simulate user activity: flashcard / qbank mastery event + recomputeStateWithConn touching all lifecycle columns.
+  const storage = createStorageService({ baseDir: dir, dataLocalDir: dir });
+  try {
+    const vfsConn = storage.openFile(join(dir, 'databases', 'vfs.db'), { label: 'vfs', mustExist: true });
+    for (let i = 0; i < 4; i++) {
+      insertEvent(
+        vfsConn,
+        `me_restart_${i}`,
+        `2026-11-25T10:0${i}:00Z`,
+        `2026-11-25T09:5${i}:00Z`,
+        'fsrs',
+        'eigenvalues',
+        `card_${i}`,
+        { rating: 4 },
+      );
+      recomputeStateWithConn(vfsConn, 'eigenvalues', { subject: 'Linear Algebra', errorTag: 'sign' });
+    }
+    expect(getMasteryMeta(vfsConn, 'eigenvalues')).toMatchObject({
+      conceptKey: 'eigenvalues',
+      subject: 'Linear Algebra',
+      errorTag: 'sign',
+      status: 'mastered',
+      relapseCount: 0,
+    });
+    expect(listMasteredConcepts(vfsConn, 10).map(r => r.conceptKey)).toContain('eigenvalues');
+  } finally {
+    storage.dispose();
+  }
+
+  // Second boot (app restart): zero schema fingerprint drift across vfs, llm_usage, chat_v2, and mistakes.
+  const boot2 = await new MigrationCoordinator({ appDataDir: dir, auditDbPath: null, log }).runAll();
+  expect(boot2.error, logs.join('\n')).toBeNull();
+  expect(boot2.success).toBe(true);
+  expect(boot2.databases.every(d => d.success && d.appliedCount === 0)).toBe(true);
+  expect(boot2.componentHealth.issues()).toEqual([]);
+  expect(boot2.componentHealth.requiresCoreRecovery()).toBe(false);
+  for (const id of ['vfs', 'llm_usage', 'chat_v2', 'mistakes'] as const) {
+    expect(boot2.componentHealth.isBlocked(id), `${id} should be healthy`).toBe(false);
+  }
+});
+
+it('upgrade_from_legacy_runtime_ddl_v20261116_heals_cleanly_across_restart', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ds-mastery-upgrade-'));
+  tempDirs.push(dir);
+  const vfsPath = join(dir, 'databases', 'vfs.db');
+  mkdirSync(join(dir, 'databases'), { recursive: true });
+
+  // Build a v20261116 vfs.db and simulate the legacy rogue runtime ALTER TABLE columns.
+  const conn = new Connection(vfsPath, { label: 'vfs', profile: PROFILES.plain });
+  try {
+    const migrations = loadSqlMigrations(join(DEFAULT_MIGRATIONS_DIR, 'vfs'));
+    new Runner(migrations, { target: { kind: 'Version', version: 20261116 } }).run(conn);
+    conn.run('ALTER TABLE mastery_states ADD COLUMN subject TEXT');
+    conn.run('ALTER TABLE mastery_states ADD COLUMN error_tag TEXT');
+    conn.run("ALTER TABLE mastery_states ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+    conn.run('ALTER TABLE mastery_states ADD COLUMN mastered_at TEXT');
+    conn.run('ALTER TABLE mastery_states ADD COLUMN relapse_count INTEGER NOT NULL DEFAULT 0');
+  } finally {
+    conn.close();
+  }
+
+  // Upgrade boot must adopt the existing columns cleanly without duplicate-column error.
+  const boot1 = await new MigrationCoordinator({ appDataDir: dir, auditDbPath: null }).runAll();
+  expect(boot1.error).toBeNull();
+  expect(boot1.success).toBe(true);
+  expect(boot1.databases.find(d => d.id === 'vfs')?.toVersion).toBe(20261125);
+
+  // Subsequent mastery recompute + restart must pass with zero drift.
+  const storage = createStorageService({ baseDir: dir, dataLocalDir: dir });
+  try {
+    const vfsConn = storage.openFile(vfsPath, { label: 'vfs', mustExist: true });
+    insertEvent(vfsConn, 'me_upg_1', '2026-11-25T12:00:00Z', '2026-11-25T11:59:00Z', 'qbank', 'calculus', 'q1', 'correct');
+    recomputeStateWithConn(vfsConn, 'calculus', { subject: 'Math' });
+  } finally {
+    storage.dispose();
+  }
+
+  const boot2 = await new MigrationCoordinator({ appDataDir: dir, auditDbPath: null }).runAll();
+  expect(boot2.error).toBeNull();
+  expect(boot2.success).toBe(true);
+  expect(boot2.databases.every(d => d.success && d.appliedCount === 0)).toBe(true);
+  expect(boot2.componentHealth.issues()).toEqual([]);
 });

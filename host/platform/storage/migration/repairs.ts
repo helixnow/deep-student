@@ -222,6 +222,7 @@ export function preRepairVfsSchema(ctx: RepairContext): void {
   preRepairVfsV20260209(h, runner);
   preRepairVfsV20260210(h, runner);
   preRepairVfsV20260824NoteProps(h, runner);
+  preRepairVfsV20261125MasteryStatesLifecycle(h, runner);
 }
 
 /** `pre_repair_vfs_v20260824_note_props`。 */
@@ -235,6 +236,32 @@ export function preRepairVfsV20260824NoteProps(h: RepairHelpers, runner: Runner)
     h.addColumnIfMissing('notes', 'props', 'TEXT');
   } else if (!recorded && hasProps) {
     h.log('warn', `🔧 [PreRepair] VFS: notes.props 已存在但 V${VERSION} 未记录，补齐迁移记录`);
+    h.ensureRefineryHistoryTable();
+    h.markMigrationComplete(runner, VERSION);
+  }
+}
+
+/** `pre_repair_vfs_v20261125_mastery_states_lifecycle`：吸收早期运行期 DDL 已添加的部分/全部列。 */
+export function preRepairVfsV20261125MasteryStatesLifecycle(h: RepairHelpers, runner: Runner): void {
+  const VERSION = 20261125;
+  if (!h.tableExists('mastery_states')) return;
+  const columns: ReadonlyArray<readonly [string, string]> = [
+    ['subject', 'TEXT'],
+    ['error_tag', 'TEXT'],
+    ['status', "TEXT NOT NULL DEFAULT 'active'"],
+    ['mastered_at', 'TEXT'],
+    ['relapse_count', 'INTEGER NOT NULL DEFAULT 0'],
+  ];
+  const recorded = h.isMigrationRecorded(VERSION);
+  const present = columns.map(([col]) => h.columnExists('mastery_states', col));
+  const anyPresent = present.some(Boolean);
+  const allPresent = present.every(Boolean);
+  if (recorded && !allPresent) {
+    h.log('warn', `🔧 [PreRepair] VFS: V${VERSION} 已记录但 mastery_states 生命周期列缺失，补齐列`);
+    for (const [col, def] of columns) h.addColumnIfMissing('mastery_states', col, def);
+  } else if (!recorded && anyPresent) {
+    h.log('warn', `🔧 [PreRepair] VFS: mastery_states 生命周期列已存在但 V${VERSION} 未记录，补齐缺失列并标记迁移完成`);
+    for (const [col, def] of columns) h.addColumnIfMissing('mastery_states', col, def);
     h.ensureRefineryHistoryTable();
     h.markMigrationComplete(runner, VERSION);
   }

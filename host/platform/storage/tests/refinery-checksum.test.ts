@@ -83,7 +83,7 @@ describe('refinery migration names (util.rs parse_migration_name)', () => {
     expect(() => parseMigrationName('V20260130.1__x')).toThrowError('migration version must be a valid integer');
     expect(() => parseMigrationName('V2147483648__x')).toThrowError('migration version must be a valid integer');
   });
-  it('loads all 136 repository migration files sorted by version', () => {
+  it('loads all 137 repository migration files sorted by version', () => {
     let total = 0;
     for (const db of ['vfs', 'chat_v2', 'mistakes', 'llm_usage', 'browser']) {
       const list = loadSqlMigrations(path.join(MIGRATIONS, db));
@@ -91,6 +91,6 @@ describe('refinery migration names (util.rs parse_migration_name)', () => {
       expect([...versions].sort((a, b) => a - b)).toEqual(versions);
       total += list.length;
     }
-    expect(total).toBe(136);
+    expect(total).toBe(137);
   });
 });

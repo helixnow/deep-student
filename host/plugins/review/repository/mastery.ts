@@ -7,23 +7,14 @@ export const MIN_TOTAL_FOR_WEAK = 3;
 export const RECOVER_SCORE_THRESHOLD = 0.75;
 const clamp = (n: number) => Math.min(1, Math.max(0, n));
 
-const extendedColumnsChecked = new WeakSet<object>();
-
-/** Idempotently extends `mastery_states` with RFC-001 M2 lifecycle columns (`subject`, `error_tag`, `status`, `mastered_at`, `relapse_count`). */
-export function ensureMasteryExtendedColumns(db: SqlExecutor): void {
-  if (extendedColumnsChecked.has(db as object)) return;
-  try {
-    const cols = new Set(db.all<{ name: string }>('PRAGMA table_info(mastery_states)').map(c => c.name));
-    if (cols.size === 0) return;
-    if (!cols.has('subject')) db.run('ALTER TABLE mastery_states ADD COLUMN subject TEXT');
-    if (!cols.has('error_tag')) db.run('ALTER TABLE mastery_states ADD COLUMN error_tag TEXT');
-    if (!cols.has('status')) db.run("ALTER TABLE mastery_states ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
-    if (!cols.has('mastered_at')) db.run('ALTER TABLE mastery_states ADD COLUMN mastered_at TEXT');
-    if (!cols.has('relapse_count')) db.run('ALTER TABLE mastery_states ADD COLUMN relapse_count INTEGER NOT NULL DEFAULT 0');
-    extendedColumnsChecked.add(db as object);
-  } catch {
-    // Non-fatal: older read-only/mock SqlExecutor instances keep working on core columns.
-  }
+/**
+ * Lifecycle columns (`subject`, `error_tag`, `status`, `mastered_at`, `relapse_count`) on
+ * `mastery_states` are owned exclusively by `resources/app/migrations/vfs/V20261125__mastery_states_lifecycle.sql`.
+ * Never execute runtime DDL (`ALTER TABLE`) on migration-managed fingerprinted tables: mutating
+ * `mastery_states` outside migrations causes schema fingerprint drift on the next restart.
+ */
+export function ensureMasteryExtendedColumns(_db: SqlExecutor): void {
+  // Intentionally a no-op; schema is managed strictly via V20261125__mastery_states_lifecycle.sql.
 }
 export function targetSignal(outcome: MasteryOutcome): number {
   if (outcome === 'correct') return 1;
@@ -55,7 +46,6 @@ export function recomputeStateWithConn(
   conceptKey: string,
   meta?: { subject?: string | null; errorTag?: string | null },
 ): MasteryState {
-  ensureMasteryExtendedColumns(db);
   const rows = db.all<{ outcome: string; weight: number; created_at: string; signal: number | null }>(`SELECT outcome, weight, created_at, signal FROM mastery_events
     WHERE concept_key = ?1 AND deleted_at IS NULL ORDER BY created_at ASC, id ASC`, [conceptKey]);
   const state: MasteryState = { conceptKey, score: 0.5, streak: 0, total: 0, wrongCount: 0, lastSignalAt: null };
@@ -112,7 +102,6 @@ export function recomputeStateWithConn(
 }
 
 export function getMasteryMeta(db: SqlExecutor, conceptKey: string): MasteryLifecycleMeta | null {
-  ensureMasteryExtendedColumns(db);
   try {
     const row = db.get<{
       conceptKey: string; subject: string | null; errorTag: string | null;
@@ -134,7 +123,6 @@ export function getMasteryMeta(db: SqlExecutor, conceptKey: string): MasteryLife
 }
 
 export function listMasteredConcepts(db: SqlExecutor, limit: number): Array<MasteryState & MasteryLifecycleMeta> {
-  ensureMasteryExtendedColumns(db);
   try {
     return db.all<MasteryState & {
       subject: string | null; errorTag: string | null; status: string | null;

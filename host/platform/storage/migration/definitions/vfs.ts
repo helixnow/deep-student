@@ -771,6 +771,19 @@ export const V20261116_REVIEW_PLAN_FSRS_REVISION: MigrationDefSpec = {
   expectedColumns: [['review_plans', 'fsrs_plan_revision']],
 };
 
+export const V20261125_MASTERY_STATES_LIFECYCLE: MigrationDefSpec = {
+  refineryVersion: 20261125,
+  name: 'mastery_states_lifecycle',
+  file: 'vfs/V20261125__mastery_states_lifecycle.sql',
+  expectedColumns: [
+    ['mastery_states', 'subject'],
+    ['mastery_states', 'error_tag'],
+    ['mastery_states', 'status'],
+    ['mastery_states', 'mastered_at'],
+    ['mastery_states', 'relapse_count'],
+  ],
+};
+
 export const VFS_MIGRATIONS: readonly MigrationDefSpec[] = [
   V20260130_INIT,
   V20260131_CHANGE_LOG,
@@ -846,6 +859,7 @@ export const VFS_MIGRATIONS: readonly MigrationDefSpec[] = [
   V20261111_STUDY_SPACE_PROFILES_AND_MOUNTS,
   V20261115_REVIEW_PLANS_FSRS,
   V20261116_REVIEW_PLAN_FSRS_REVISION,
+  V20261125_MASTERY_STATES_LIFECYCLE,
 ];
 
 export const VFS_SCHEMA_VERSION: number = VFS_MIGRATIONS[VFS_MIGRATIONS.length - 1]!.refineryVersion;
