@@ -2,7 +2,7 @@ import React from 'react';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-const { launch, activate, isEnabled, getApp, getCurrentSessionId, openChatSessionMock, launchNewChatSessionMock } = vi.hoisted(() => ({
+const { launch, activate, isEnabled, getApp, getCurrentSessionId, openChatSessionMock, launchNewChatSessionMock, resourceTypeToAppTypeIdMock } = vi.hoisted(() => ({
   launch: vi.fn(),
   activate: vi.fn(async () => true),
   isEnabled: vi.fn(() => true),
@@ -12,6 +12,7 @@ const { launch, activate, isEnabled, getApp, getCurrentSessionId, openChatSessio
   getCurrentSessionId: vi.fn<() => string | null>(() => null),
   openChatSessionMock: vi.fn(),
   launchNewChatSessionMock: vi.fn(async () => ({ sessionId: 'sess_new', windowId: 'win-chat-new' })),
+  resourceTypeToAppTypeIdMock: vi.fn<(type: string) => string | null>((type: string) => type),
 }));
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
@@ -23,7 +24,7 @@ vi.mock('../../core/windowStore', () => ({
 vi.mock('../../apps/notes/workspaceRegistry', () => ({ requestWorkspaceResource: vi.fn(async () => 'w') }));
 vi.mock('../../apps/content/typeMap', () => ({
   isNotesWorkspaceResourceType: (type: string) => type === 'note' || type === 'mindmap',
-  resourceTypeToAppTypeId: (type: string) => type,
+  resourceTypeToAppTypeId: resourceTypeToAppTypeIdMock,
 }));
 vi.mock('../../apps/chat/newSession', () => ({
   launchNewChatSession: launchNewChatSessionMock,
@@ -50,6 +51,7 @@ afterEach(() => {
   getCurrentSessionId.mockReset().mockReturnValue(null);
   openChatSessionMock.mockReset();
   launchNewChatSessionMock.mockReset().mockResolvedValue({ sessionId: 'sess_new', windowId: 'win-chat-new' });
+  resourceTypeToAppTypeIdMock.mockReset().mockImplementation((type: string) => type);
   window.history.replaceState(null, '', '/');
 });
 
@@ -166,5 +168,43 @@ describe('WorkbenchEventBridge pdf-ref:open (sole handler for known resource ids
     });
     // 对话页从会话附件里解析这类引用；桌面这边不另开一扇（打不开的）'file' 窗
     expect(launch).not.toHaveBeenCalled();
+  });
+
+  it('launches file-preview (not legacy file) with beside placement for att_* PDF citations', () => {
+    vi.useFakeTimers();
+    try {
+      resourceTypeToAppTypeIdMock.mockImplementation((type: string) =>
+        type === 'file' || type === 'textbook' || type === 'image' ? 'file-preview' : null,
+      );
+      render(<WorkbenchEventBridge />);
+
+      act(() => {
+        document.dispatchEvent(new CustomEvent('pdf-ref:open', {
+          detail: { sourceId: 'att_pdf1', pageNumber: 5, sourceWindowId: 'win_chat' },
+        }));
+      });
+
+      expect(resourceTypeToAppTypeIdMock).toHaveBeenCalledWith('file');
+      expect(launch).toHaveBeenCalledTimes(1);
+      expect(launch).toHaveBeenCalledWith(expect.objectContaining({
+        typeId: 'file-preview',
+        instanceKey: 'att_pdf1',
+        placement: { mode: 'beside', anchorWindowId: 'win_chat' },
+      }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('falls back to file-preview when resourceTypeToAppTypeId returns null', () => {
+    resourceTypeToAppTypeIdMock.mockReturnValue(null);
+    render(<WorkbenchEventBridge />);
+
+    fire('CHAT_OPEN_ATTACHMENT_PREVIEW', { id: 'att_unknown', type: 'attachment', title: 'Doc.pdf' });
+
+    expect(launch).toHaveBeenCalledWith(expect.objectContaining({
+      typeId: 'file-preview',
+      instanceKey: 'att_unknown',
+    }));
   });
 });

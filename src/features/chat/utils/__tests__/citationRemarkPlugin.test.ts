@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import i18n from 'i18next';
 
-import { makeCitationRemarkPlugin } from '../citationRemarkPlugin';
+import { formatPdfPageLabel, makeCitationRemarkPlugin } from '../citationRemarkPlugin';
 
 function runPlugin(text: string) {
   const tree: any = {
@@ -93,5 +94,45 @@ describe('citationRemarkPlugin qbank citations', () => {
     expect(htmlNodes).toHaveLength(1);
     expect(htmlNodes[0]?.value).toContain('data-citation-index="1"');
     expect(htmlNodes[0]?.value).toContain('data-citation-bare="true"');
+  });
+});
+
+describe('citationRemarkPlugin pdf page label localization', () => {
+  const withLang = (lang: string | undefined, fn: () => void) => {
+    const prevLang = i18n.language;
+    const prevResolved = i18n.resolvedLanguage;
+    Object.defineProperty(i18n, 'language', { value: lang, configurable: true, writable: true });
+    Object.defineProperty(i18n, 'resolvedLanguage', { value: lang, configurable: true, writable: true });
+    try {
+      fn();
+    } finally {
+      Object.defineProperty(i18n, 'language', { value: prevLang, configurable: true, writable: true });
+      Object.defineProperty(i18n, 'resolvedLanguage', { value: prevResolved, configurable: true, writable: true });
+    }
+  };
+
+  it('formats PDF page badges in English when locale is en-US', () => {
+    withLang('en-US', () => {
+      expect(formatPdfPageLabel('3')).toBe('p. 3');
+      expect(formatPdfPageLabel('2-3')).toBe('p. 2-3');
+      const children = runPlugin('See [PDF@att_1:5] for details');
+      const htmlNode = children.find((node: any) => node.type === 'html');
+      expect(htmlNode?.value).toContain('data-pdf-source="att_1"');
+      expect(htmlNode?.value).toContain('data-pdf-page="5"');
+      expect(htmlNode?.value).toContain('>p. 5</span>');
+      expect(htmlNode?.value).not.toContain('第5页');
+    });
+  });
+
+  it('defaults to Chinese PDF page labels for zh-CN or uninitialized locale', () => {
+    withLang('zh-CN', () => {
+      expect(formatPdfPageLabel('3')).toBe('第3页');
+      const children = runPlugin('见 [PDF@att_1:3]');
+      const htmlNode = children.find((node: any) => node.type === 'html');
+      expect(htmlNode?.value).toContain('>第3页</span>');
+    });
+    withLang(undefined, () => {
+      expect(formatPdfPageLabel('3')).toBe('第3页');
+    });
   });
 });

@@ -72,8 +72,53 @@ it('numbered_sources_use_type_local_citation_indexes', () => withLedger(ledger =
   expect(rows[3]).toMatchObject({ citationTag: '[记忆-1]', note_id: 'note_mem_1', noteId: 'note_mem_1', index: 4 });
 }));
 it('numbered_sources_expose_multimodal_fields_for_frontend_adapter', () => withLedger(ledger => {
-  expect(buildNumberedSources([mm('Page 1')], ledger)[0]).toMatchObject({ source_type: 'multimodal_search', blob_hash: 'hash123', pageIndex: 0 });
+  expect(buildNumberedSources([mm('Page 1')], ledger)[0]).toMatchObject({ source_type: 'multimodal_search', blob_hash: 'hash123', pageIndex: 0, pageNumber: 1 });
 }));
+it('numbered_sources_emit_1_based_pageNumber_alongside_0_based_pageIndex', () => withLedger(ledger => {
+  const page5: SourceInfo = {
+    title: 'attention.pdf',
+    snippet: 'h=8, d_k=64',
+    score: Math.fround(0.9),
+    metadata: { sourceType: 'text_search', resourceType: 'file', resourceId: 'res_att1', sourceId: 'att_pdf1', pageIndex: 4 },
+  };
+  const page9: SourceInfo = {
+    title: 'attention.pdf',
+    snippet: 'Table 3',
+    score: Math.fround(0.85),
+    metadata: { sourceType: 'text_search', resourceType: 'file', resourceId: 'res_att1', sourceId: 'att_pdf1', pageIndex: 8 },
+  };
+  const noPage: SourceInfo = {
+    title: 'note.md',
+    snippet: 'plain note',
+    score: Math.fround(0.7),
+    metadata: { sourceType: 'text_search', resourceType: 'note', resourceId: 'res_note1', sourceId: 'note_1', pageIndex: null },
+  };
+  const invalidPage: SourceInfo = {
+    title: 'bad.pdf',
+    snippet: 'invalid',
+    score: Math.fround(0.6),
+    metadata: { sourceType: 'text_search', resourceType: 'file', resourceId: 'res_bad', sourceId: 'att_bad', pageIndex: -1 },
+  };
+  const rows = buildNumberedSources([page5, page9, noPage, invalidPage], ledger);
+  expect(rows[0]).toMatchObject({ pageIndex: 4, pageNumber: 5 });
+  expect(rows[1]).toMatchObject({ pageIndex: 8, pageNumber: 9 });
+  expect(rows[2]).toMatchObject({ pageIndex: null, pageNumber: null });
+  expect(rows[3]).toMatchObject({ pageIndex: -1, pageNumber: null });
+}));
+it('planned_search_citation_guide_instructs_1_based_pageNumber_over_0_based_pageIndex', async () => {
+  await withHost(async h => {
+    const out = await h.executor.execute(
+      { id: 'c_guide', name: 'builtin-unified_search', arguments: { query: 'attention', enable_reranking: false } },
+      { ...h.context(), memory_enabled: false },
+    );
+    expect(out.success).toBe(true);
+    const guide = String((out.output as Record<string, unknown>).citationGuide ?? '');
+    expect(guide).toContain('[PDF@sourceId:pageNumber]');
+    expect(guide).toContain('1-based');
+    expect(guide).toContain('pageNumber');
+    expect(guide).toContain('pageIndex');
+  });
+});
 it('numbered_sources_carry_media_time_fields_only_for_media_hits', () => withLedger(ledger => {
   const media = kb('lecture'); media.metadata = { ...media.metadata as object, timeRange: { startMs: 90_000, endMs: 180_000 }, mediaCitation: '[媒体@file_lecture:01:30]' };
   const rows = buildNumberedSources([media, kb('plain')], ledger);

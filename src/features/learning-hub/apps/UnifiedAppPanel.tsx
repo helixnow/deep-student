@@ -132,6 +132,9 @@ const SUPPORTED_TYPES: readonly ResourceType[] = [
   'note', 'textbook', 'exam', 'translation', 'essay', 'image', 'file', 'mindmap',
 ];
 
+/** files 表资源（含 PDF/图片附件 att_*、file_*）在不同入口可能以 file/image/textbook 互转。 */
+const FILE_COMPATIBLE_TYPES: ReadonlySet<ResourceType> = new Set(['file', 'image', 'textbook']);
+
 /** 资源类型 → 内容视图；mindmap 需要额外 props，单独渲染。 */
 const CONTENT_VIEWS: Partial<Record<ResourceType, React.ComponentType<ContentViewProps>>> = {
   note: NoteContentView,
@@ -294,15 +297,18 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
     onSaveStateChangeRef.current?.(state);
   }, []);
 
-  const shouldPreferExplicitType = !preferNodeType && (type === 'image' || type === 'file');
   const rawNodeType = node?.type;
   const nodeType = node && SUPPORTED_TYPES.includes(node.type as ResourceType)
     ? (node.type as ResourceType)
     : null;
+  const shouldPreferExplicitType =
+    !preferNodeType &&
+    (type === 'image' || type === 'file') &&
+    nodeType !== 'textbook';
   const fileTypesAreCompatible =
     nodeType != null &&
-    (type === 'image' || type === 'file') &&
-    (nodeType === 'image' || nodeType === 'file');
+    FILE_COMPATIBLE_TYPES.has(type) &&
+    FILE_COMPATIBLE_TYPES.has(nodeType);
   const typeMismatch =
     strictType && node != null && (nodeType == null || (nodeType !== type && !fileTypesAreCompatible))
       ? t('error.resourceTypeMismatch', {

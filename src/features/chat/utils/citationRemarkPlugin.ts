@@ -5,6 +5,7 @@
  * 转换为特殊的 HTML 节点，以便 React 渲染时替换为对应的交互组件
  */
 
+import i18n from 'i18next';
 import {
   CITATION_TYPE_ALIASES,
   createCitationPattern,
@@ -67,12 +68,15 @@ const QBANK_CITATION_PATTERN = /\[(题目集|题库|练习册|QuestionBank|quest
 // ============================================================================
 
 /**
- * 将页码字符串转换为中文显示标签
- * - "3"     → "第3页"
- * - "2-3"   → "第2-3页"
- * - "1,3,5" → "第1,3,5页"
+ * 将页码字符串转换为按当前语言本地化的显示标签
+ * - zh* / default: "3" → "第3页", "2-3" → "第2-3页", "1,3,5" → "第1,3,5页"
+ * - en*:           "3" → "p. 3",   "2-3" → "p. 2-3", "1,3,5" → "p. 1,3,5"
  */
-function formatPdfPageLabel(pageStr: string): string {
+export function formatPdfPageLabel(pageStr: string): string {
+  const lang = (i18n.resolvedLanguage || i18n.language || '').toLowerCase();
+  if (lang.startsWith('en')) {
+    return `p. ${pageStr}`;
+  }
   return `第${pageStr}页`;
 }
 

@@ -79,10 +79,14 @@ export function buildNumberedSources(sources: readonly SourceInfo[], ledger: Pic
       snippet = text; budget = Math.max(0, budget - used);
     }
     const resourceId = stringOf(meta.resourceId), sourceId = stringOf(meta.sourceId), noteId = meta.noteId ?? null;
+    const pageIndex = meta.pageIndex ?? null;
+    const pageNumber = typeof meta.pageIndex === 'number' && Number.isInteger(meta.pageIndex) && meta.pageIndex >= 0
+      ? meta.pageIndex + 1
+      : null;
     const result: Record<string, unknown> = {
       index: index + 1, citationTag: `[${citationPrefix(sourceType)}-${citationIndex}]`, typeIndex: citationIndex,
       title: source.title ?? null, url: source.url ?? null, snippet, score: source.score ?? null,
-      imageUrl: meta.imageUrl ?? null, imageCitation: meta.imageCitation ?? null, pageIndex: meta.pageIndex ?? null,
+      imageUrl: meta.imageUrl ?? null, imageCitation: meta.imageCitation ?? null, pageIndex, pageNumber,
       chunkIndex: meta.chunkIndex ?? null, resourceId, resourceType: meta.resourceType ?? null, sourceId,
       readResourceId: preferredReadResourceId(resourceId, sourceId), source_type: sourceType,
       blob_hash: meta.blobHash ?? null, retrievalProvenance: meta.retrievalProvenance ?? null,

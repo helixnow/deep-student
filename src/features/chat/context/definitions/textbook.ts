@@ -88,14 +88,14 @@ function formatPdfPageText(
   return `<pdf_page name="${escapeXmlAttr(name)}" source_id="${escapeXmlAttr(sourceId)}" page="${pageNumber}">${label}\n${content}</pdf_page>`;
 }
 
-function formatPdfTextWithPageMarkers(name: string, sourceId: string, text: string): string {
+export function formatPdfTextWithPageMarkers(name: string, sourceId: string, text: string): string {
   const parts = text
     .split('\u000C')
-    .map(part => part.trim())
-    .filter(Boolean);
-  const pages = parts.length > 0 ? parts : [text.trim()];
+    .map((part, idx) => ({ pageNumber: idx + 1, text: part.trim() }))
+    .filter(page => page.text.length > 0);
+  const pages = parts.length > 0 ? parts : [{ pageNumber: 1, text: text.trim() }];
   return pages
-    .map((pageText, index) => formatPdfPageText(name, sourceId, index + 1, pageText, true))
+    .map(page => formatPdfPageText(name, sourceId, page.pageNumber, page.text, true))
     .join('\n\n');
 }
 

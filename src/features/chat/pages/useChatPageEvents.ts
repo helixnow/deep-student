@@ -506,6 +506,13 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       console.log('[ChatV2Page] pdf-ref:open received:', customEvent.detail);
       if (!Number.isFinite(pageNumber) || pageNumber <= 0) return;
 
+      // 工作台模式下带已知资源 ID 前缀的 PDF 引用由 WorkbenchEventBridge 独占打开
+      // （在来源窗旁打开一扇 FilePreviewAppWindow 并带回执跳页），避免再派发
+      // CHAT_OPEN_ATTACHMENT_PREVIEW 重复弹出第二扇浮动预览窗。
+      if (workbenchBus.isEnabled() && rawSourceId && isKnownResourceId(rawSourceId)) {
+        return;
+      }
+
       // 用户在学习资源页（笔记来源行「摘自《…》第 N 页」等）：聊天页此时保活隐藏，
       // 开进聊天右侧面板等于没反应——就地以标签打开资料并跳页（与工作台同一套重发节奏）
       if (

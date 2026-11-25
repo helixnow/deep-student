@@ -11,6 +11,8 @@ import {
   useChatPageEvents,
   type UseChatPageEventsDeps,
 } from '../useChatPageEvents';
+import { addTypedEventListener } from '@/events';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 
 const { invokeMock, notifyMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -131,5 +133,50 @@ describe('useChatPageEvents navigation handshake', () => {
       resolveFirst({ id: 'sess_first', title: 'A' });
     });
     expect(setCurrentSessionId).toHaveBeenCalledTimes(1);
+  });
+
+  it('defers known-resource pdf-ref:open to WorkbenchEventBridge in workbench mode without spawning duplicate preview', async () => {
+    const isEnabledSpy = vi.spyOn(workbenchBus, 'isEnabled').mockReturnValue(true);
+    const previewDetails: Array<{ id?: string; type?: string }> = [];
+    const offPreview = addTypedEventListener<{ id?: string; type?: string }>(
+      'CHAT_OPEN_ATTACHMENT_PREVIEW',
+      (detail) => { previewDetails.push(detail); },
+    );
+    try {
+      render(<Harness deps={makeDeps({ isInitialLoading: false })} />);
+      await act(async () => {
+        document.dispatchEvent(new CustomEvent('pdf-ref:open', {
+          detail: { sourceId: 'att_pdf1', pageNumber: 3 },
+        }));
+      });
+      expect(previewDetails).toHaveLength(0);
+    } finally {
+      offPreview();
+      isEnabledSpy.mockRestore();
+    }
+  });
+
+  it('still opens attachment preview on pdf-ref:open in classic shell mode', async () => {
+    const isEnabledSpy = vi.spyOn(workbenchBus, 'isEnabled').mockReturnValue(false);
+    const previewDetails: Array<{ id?: string; type?: string }> = [];
+    const offPreview = addTypedEventListener<{ id?: string; type?: string }>(
+      'CHAT_OPEN_ATTACHMENT_PREVIEW',
+      (detail) => { previewDetails.push(detail); },
+    );
+    try {
+      render(<Harness deps={makeDeps({ isInitialLoading: false })} />);
+      await act(async () => {
+        document.dispatchEvent(new CustomEvent('pdf-ref:open', {
+          detail: { sourceId: 'att_pdf1', pageNumber: 3 },
+        }));
+      });
+      await waitFor(() => {
+        expect(previewDetails).toHaveLength(1);
+      });
+      expect(previewDetails[0]).toMatchObject({ id: 'att_pdf1', type: 'file' });
+    } finally {
+      offPreview();
+      isEnabledSpy.mockRestore();
+    }
   });
 });
