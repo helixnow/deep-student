@@ -141,7 +141,8 @@
   },
   "badge": {
     "active": "Active",
-    "deactivate": "Deactivate skill"
+    "deactivate": "Deactivate skill",
+    "unbindNamed": "Unbind skill: {{name}}"
   },
   "loader": {
     "loading": "Loading skills...",

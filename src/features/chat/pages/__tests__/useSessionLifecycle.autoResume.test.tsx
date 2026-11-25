@@ -512,4 +512,38 @@ describe('useSessionLifecycle auto-resume', () => {
     expect(readLastActiveSessionId()).toBe('sess_older_active');
     expect(api.sessionsRef.current.some((s) => s.id === 'sess_older_active')).toBe(true);
   });
+
+  it('G30: recovers to an active resumable session when draft creation fails instead of stalling on a blank canvas', async () => {
+    const subagent = makeSession({ id: 'sess_sub', metadata: { is_subagent: true } });
+    const resumable = makeSession({ id: 'sess_seed_001', title: 'Seeded 1' });
+    mockSessionListIpc([subagent, resumable]);
+    createSessionWithDefaultsMock.mockRejectedValue(new Error('draft create failed'));
+
+    const api = renderLifecycle();
+    await act(async () => {
+      await api.lifecycle.loadSessions();
+    });
+
+    expect(api.currentSessionIdRef.current).toBe('sess_seed_001');
+    expect(api.setIsInitialLoading).toHaveBeenCalledWith(false);
+  });
+
+  it('G30: recovers to a draft session when initial session list loading fails', async () => {
+    const fallbackDraft = makeDraftSession('sess_recovered_draft');
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'chat_v2_list_sessions') throw new Error('sqlite busy');
+      if (command === 'chat_v2_list_groups') return [];
+      return 0;
+    });
+    createSessionWithDefaultsMock.mockResolvedValue(fallbackDraft);
+
+    const api = renderLifecycle();
+    await act(async () => {
+      await api.lifecycle.loadSessions();
+    });
+
+    expect(notifyMock).toHaveBeenCalledWith('error', 'page.loadSessionsFailed');
+    expect(api.currentSessionIdRef.current).toBe('sess_recovered_draft');
+    expect(api.setIsInitialLoading).toHaveBeenCalledWith(false);
+  });
 });

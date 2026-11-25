@@ -2,6 +2,10 @@ import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
+import i18next from 'i18next';
+import enCommon from '@/locales/en-US/common.json';
+import enSkills from '@/locales/en-US/skills.json';
+import zhSkills from '@/locales/zh-CN/skills.json';
 import { BoundSkillChipsBar } from '../../../skills/components/BoundSkillChipsBar';
 import {
   SkillAttributionPill,
@@ -74,6 +78,44 @@ describe('S4-06 Chat-side bound skill chips, one-click unbind, and per-message s
     // Clear-all unbinds all active skills
     fireEvent.click(screen.getByTestId('unbind-all-skills'));
     expect(onClearAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('G29: localizes BoundSkillChipsBar unbind aria-label cleanly in en-US with zero CJK leaks', async () => {
+    const enI18n = i18next.createInstance();
+    await enI18n.init({
+      lng: 'en-US',
+      resources: {
+        'en-US': { skills: enSkills, common: enCommon },
+        'zh-CN': { skills: zhSkills },
+      },
+      interpolation: { escapeValue: false },
+    });
+    expect(enI18n.t('skills:badge.unbindNamed', { name: 'Plugin Workshop' })).toBe('Unbind skill: Plugin Workshop');
+    expect(enI18n.t('skills:badge.unbindNamed', { name: 'Plugin Workshop' })).not.toMatch(/[\u4e00-\u9fff]/);
+    expect(enI18n.t('skills:active')).toBe('Skill activated');
+    expect(enI18n.t('skills:deactivate')).toBe('Deactivate');
+    expect(enI18n.t('common:actions.clear_all')).toBe('Clear All');
+    expect(enI18n.t('skills:badge.unbindNamed', { lng: 'zh-CN', name: '插件工坊' })).toBe('解绑技能：插件工坊');
+
+    registerDemoSkill('dstu-plugin-development', 'Plugin Workshop');
+    registerDemoSkill('web-fetch', 'Web Fetch');
+
+    render(
+      <BoundSkillChipsBar
+        skillIds={['dstu-plugin-development', 'web-fetch']}
+        onUnbindSkill={vi.fn()}
+        onClearAll={vi.fn()}
+      />,
+    );
+
+    const bar = screen.getByTestId('bound-skill-chips-bar');
+    expect(bar.getAttribute('aria-label')).toBe('Skill activated');
+    expect(bar.getAttribute('aria-label')).not.toMatch(/[\u4e00-\u9fff]/);
+
+    const unbindBtn = screen.getByTestId('unbind-skill-dstu-plugin-development');
+    expect(unbindBtn.getAttribute('aria-label')).toBe('Unbind skill: Plugin Workshop');
+    expect(unbindBtn.getAttribute('aria-label')).not.toMatch(/[\u4e00-\u9fff]/);
+    expect(unbindBtn.getAttribute('title')).toBe('Deactivate');
   });
 
   it('captures per-message skill attribution on assistant messages and keeps historical badges immutable after later unbind/switch', async () => {

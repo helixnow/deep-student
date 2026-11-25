@@ -68,7 +68,7 @@ export const BoundSkillChipsBar: React.FC<BoundSkillChipsBarProps> = ({
     <div
       data-testid="bound-skill-chips-bar"
       role="region"
-      aria-label={t('skills:active', { defaultValue: '已绑定技能' })}
+      aria-label={t('skills:active', { defaultValue: 'Skill activated' })}
       className={cn('flex flex-wrap items-center gap-1.5', className)}
     >
       {items.map((item) => (
@@ -112,10 +112,10 @@ export const BoundSkillChipsBar: React.FC<BoundSkillChipsBarProps> = ({
               onUnbindSkill(item.id);
             }}
             aria-label={t('skills:badge.unbindNamed', {
-              defaultValue: '解绑技能：{{name}}',
+              defaultValue: 'Unbind skill: {{name}}',
               name: item.name,
             })}
-            title={t('skills:deactivate', { defaultValue: '取消激活' })}
+            title={t('skills:deactivate', { defaultValue: 'Deactivate' })}
             className={cn(
               '!h-4 !w-4 !rounded-full !p-0 text-primary/75 hover:bg-primary/15 hover:text-primary relative',
               coarseHitClassForBadge16,
@@ -133,9 +133,9 @@ export const BoundSkillChipsBar: React.FC<BoundSkillChipsBarProps> = ({
           data-testid="unbind-all-skills"
           onClick={onClearAll}
           className="!h-6 !px-2 text-[11px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
-          title={t('common:actions.clear_all', { defaultValue: '清空全部' })}
+          title={t('common:actions.clear_all', { defaultValue: 'Clear All' })}
         >
-          {t('common:actions.clear_all', { defaultValue: '清空全部' })}
+          {t('common:actions.clear_all', { defaultValue: 'Clear All' })}
         </DsButton>
       )}
     </div>

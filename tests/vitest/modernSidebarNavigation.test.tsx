@@ -1627,4 +1627,75 @@ describe('ModernSidebar shell navigation', () => {
     expect(input).toHaveValue('');
     expect(input).toHaveAttribute('placeholder', '未命名会话');
   });
+
+  it('G30: renders an accessible load-error banner with Retry when session loading fails and recovers on click', async () => {
+    const user = userEvent.setup();
+    let shouldFail = true;
+    invokeMock.mockImplementation((command: string, args?: { groupId?: string }) => {
+      if (command === 'chat_v2_list_sessions') {
+        if (shouldFail) return Promise.reject(new Error('sqlite busy'));
+        if (args?.groupId === '*') return Promise.resolve([]);
+        return Promise.resolve([
+          { id: 'sess-recovered-1', title: '已恢复会话', updatedAt: '2026-11-25T10:00:00Z', createdAt: '2026-11-25T10:00:00Z', mode: 'chat' },
+        ]);
+      }
+      if (command === 'chat_v2_list_groups') return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    expect(await screen.findByTestId('sidebar-sessions-load-error')).toBeInTheDocument();
+    const retryButton = screen.getByTestId('sidebar-sessions-retry');
+    shouldFail = false;
+    await user.click(retryButton);
+
+    expect(await screen.findByRole('button', { name: '已恢复会话' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByTestId('sidebar-sessions-load-error')).not.toBeInTheDocument();
+    });
+  });
+
+  it('G30: renders paginated rows for 205 seeded sessions and allows expanding & loading more', async () => {
+    const user = userEvent.setup();
+    const allSeeded = Array.from({ length: 205 }, (_, index) => ({
+      id: `sess-seed-${index + 1}`,
+      title: `Seeded Chat ${index + 1}`,
+      updatedAt: new Date(Date.UTC(2026, 10, 20, 0, index)).toISOString(),
+      createdAt: new Date(Date.UTC(2026, 10, 20, 0, index)).toISOString(),
+      mode: 'chat',
+      persistStatus: 'active',
+    })).reverse();
+
+    invokeMock.mockImplementation((command: string, args?: { groupId?: string; limit?: number; offset?: number }) => {
+      if (command === 'chat_v2_list_groups') return Promise.resolve([]);
+      if (command === 'chat_v2_list_sessions') {
+        if (args?.groupId === '*') return Promise.resolve([]);
+        const offset = args?.offset ?? 0;
+        const limit = args?.limit ?? 50;
+        return Promise.resolve(allSeeded.slice(offset, offset + limit));
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    expect(await screen.findByRole('button', { name: 'Seeded Chat 205' })).toBeInTheDocument();
+    expect(screen.getByTestId('sidebar-inbox-count')).toHaveTextContent('50');
+    const conversationsNav = screen.getByRole('navigation', { name: '对话' });
+    await user.click(within(conversationsNav).getByRole('button', { name: '展开显示' }));
+    expect(await within(conversationsNav).findByRole('button', { name: 'Seeded Chat 156' })).toBeInTheDocument();
+    await user.click(within(conversationsNav).getByRole('button', { name: '加载更多' }));
+    expect(await within(conversationsNav).findByRole('button', { name: 'Seeded Chat 106' })).toBeInTheDocument();
+  });
 });

@@ -64,6 +64,7 @@ import {
 import { SidebarFilterMenu } from '@/features/chat/components/SidebarFilterMenu';
 import { SessionGroupActions } from '@/features/chat/pages/SessionGroupActions';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { addTypedEventListener } from '@/events';
 import type { AppUpdaterController } from '@/hooks/useAppUpdater';
 import type { CurrentView } from '@/types/navigation';
 import { useCommandPalette } from '@/command-palette/CommandPaletteProvider';
@@ -336,6 +337,8 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
   const [editingRecentSessionTitle, setEditingRecentSessionTitle] = useState('');
   const [renamingRecentSessionId, setRenamingRecentSessionId] = useState<string | null>(null);
   const [recentRenameError, setRecentRenameError] = useState<string | null>(null);
+  const [sessionListLoadError, setSessionListLoadError] = useState<string | null>(null);
+  const [isRetryingSessionList, setIsRetryingSessionList] = useState(false);
   const [workbenchModeEnabled, setWorkbenchModeEnabled] = useState(true);
   const draggedRecentGroupIdRef = useRef<string | null>(null);
   const draggedSessionIdRef = useRef<string | null>(null);
@@ -424,6 +427,29 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       if (!saved) setWorkbenchModeEnabled(!nextEnabled);
     });
   }, [workbenchModeEnabled]);
+
+  useEffect(() => {
+    return addTypedEventListener<{ loadError?: string | null }>(
+      'chat-v2:session-list-load-state',
+      (detail) => {
+        setSessionListLoadError(typeof detail?.loadError === 'string' && detail.loadError ? detail.loadError : null);
+        setIsRetryingSessionList(false);
+      },
+    );
+  }, []);
+
+  useEffect(() => {
+    if (rawRecentSessions.length > 0 && sessionListLoadError !== null) {
+      setSessionListLoadError(null);
+    }
+  }, [rawRecentSessions.length, sessionListLoadError]);
+
+  const handleRetrySessionList = useCallback(() => {
+    setIsRetryingSessionList(true);
+    void refreshSidebarData().finally(() => {
+      setIsRetryingSessionList(false);
+    });
+  }, [refreshSidebarData]);
 
   useEffect(() => {
     if (currentView === 'chat-v2') {
@@ -1512,6 +1538,30 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
             {!isConversationsSectionCollapsed ? (
               <nav aria-label={t('sidebar:aria.conversation_sessions')}>
                 <div className="space-y-0.5" role="list">
+                  {sessionListLoadError && visibleConversationSessions.length === 0 && !sidebarCollapsed ? (
+                    <div
+                      role="alert"
+                      data-testid="sidebar-sessions-load-error"
+                      className="mx-1 my-1 rounded-lg border border-destructive/25 bg-destructive/5 px-2.5 py-2 text-xs text-muted-foreground"
+                    >
+                      <p className="leading-snug text-foreground/85">
+                        {t('chatV2:page.loadSessionsFailed', { defaultValue: 'Failed to load sessions. Refresh and try again.' })}
+                      </p>
+                      <DsButton
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={isRetryingSessionList}
+                        data-testid="sidebar-sessions-retry"
+                        onClick={handleRetrySessionList}
+                        className="mt-1.5 !h-7 px-2 text-xs font-medium text-primary hover:bg-primary/10"
+                      >
+                        {isRetryingSessionList
+                          ? t('chatV2:page.loading', { defaultValue: 'Loading...' })
+                          : t('common:retry', { defaultValue: 'Retry' })}
+                      </DsButton>
+                    </div>
+                  ) : null}
                   <AnimatePresence initial={false}>
                     {visibleConversationSessions.map((session) => renderRecentSessionRow(session))}
                   </AnimatePresence>
@@ -1525,8 +1575,8 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
                       }}
                     />
                   ) : null}
-                  {/* 展开后如未分组会话仍有分页余量，可继续加载（与移动侧栏同一策略） */}
-                  {conversationSessionsExpanded && hasMoreUngroupedSessions ? (
+                  {/* 展开后（或当前页可见会话不足预览上限时）如未分组会话仍有分页余量，可继续加载 */}
+                  {(conversationSessionsExpanded || !hasConversationSessionOverflow) && hasMoreUngroupedSessions ? (
                     <SidebarSessionOverflowToggle
                       label={isLoadingMoreSessions ? t('chatV2:page.loading') : t('chatV2:page.loadMore')}
                       onClick={(event) => {
@@ -1546,7 +1596,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
                       data-testid="sidebar-archived-sessions-entry"
                     >
                       <Archive size={14} className="shrink-0 opacity-75" />
-                      <span className="truncate">{t('chatV2:page.archivedSessionsEntry', { defaultValue: '已归档会话' })}</span>
+                      <span className="truncate">{t('chatV2:page.archivedSessionsEntry', { defaultValue: 'Archived Sessions' })}</span>
                     </DsButton>
                   ) : null}
                 </div>

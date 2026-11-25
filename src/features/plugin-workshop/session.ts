@@ -1,3 +1,5 @@
+import i18n from 'i18next';
+
 export interface WorkshopSessionTarget { pluginId: string; version: string; workshopId: string; revision: number }
 
 /** Root/chat assembly supplies existing session APIs; no global Agent setters or send API are exposed. */
@@ -18,9 +20,51 @@ export interface WorkshopSessionPort {
   setEditing?(sessionId: string, label: string | null): void;
 }
 
+function readActiveUiLocale(explicitLocale?: string): string {
+  const candidates: Array<string | null | undefined> = [
+    explicitLocale,
+    i18n.isInitialized ? (i18n.resolvedLanguage || i18n.language) : undefined,
+  ];
+  try {
+    candidates.push(globalThis.localStorage?.getItem?.('i18nextLng'));
+  } catch {
+    // Ignore storage access errors in restricted environments.
+  }
+  if (typeof document !== 'undefined') {
+    candidates.push(document.documentElement?.lang);
+  }
+  if (typeof navigator !== 'undefined') {
+    candidates.push(navigator.language);
+  }
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return 'en-US';
+}
+
+export function resolveWorkshopSessionTitle(target?: WorkshopSessionTarget, explicitLocale?: string): string {
+  const activeLocale = readActiveUiLocale(explicitLocale);
+  const isZh = activeLocale.toLowerCase().startsWith('zh');
+  const normalizedLocale = isZh ? 'zh-CN' : 'en-US';
+  const key = target ? 'workshop.sessionTitle.modify' : 'workshop.sessionTitle.create';
+  const fallback = target
+    ? (isZh ? '修改插件' : 'Modify Plugin')
+    : (isZh ? '插件工坊' : 'Plugin Workshop');
+
+  if (i18n.isInitialized && i18n.hasResourceBundle(normalizedLocale, 'plugin_manager')) {
+    const translated = i18n.t(`plugin_manager:${key}`, { lng: normalizedLocale, defaultValue: '' });
+    if (translated && translated !== key && translated !== `plugin_manager:${key}`) {
+      return translated;
+    }
+  }
+  return fallback;
+}
+
 export async function openWorkshopSession(port: WorkshopSessionPort, target?: WorkshopSessionTarget, prompt?: string): Promise<string> {
   const session = await port.create({
-    mode: 'chat', title: target ? '修改插件' : '插件工坊',
+    mode: 'chat', title: resolveWorkshopSessionTitle(target),
     metadata: { dstuWorkshop: { kind: target ? 'modify' : 'create', ...target } },
   });
   if (target) await port.bindSession(target.workshopId, target.revision, session.id);
