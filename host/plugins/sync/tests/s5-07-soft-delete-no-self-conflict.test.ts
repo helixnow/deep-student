@@ -14,7 +14,8 @@ import syncSupport from '../../sync-support/index.ts';
 import sync from '../index.ts';
 import { MemoryStorage } from '../../sync-providers/tests/memory_storage.ts'; // boundary-allow cross-plugin-impl: test harness shares MemoryStorage fake
 import { configureNotesRepository } from '../../notes/repository/notes.ts';
-import type { CloudStorage, SyncAuditRequest } from '../../backup/api.ts';
+import type { SyncAuditRequest } from '../../backup/api.ts';
+import type { CloudStorage } from '../../sync-providers/api.ts';
 
 interface DeviceSpec {
   deviceId: string;

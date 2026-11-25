@@ -75,7 +75,7 @@ describe('RFC-002 P1: UI-only community plugin lifecycle', () => {
     });
 
     const store = new UserProfileStore(join(dataDir, 'plugins/user.profile.json'), officialProfile);
-    const files = createNodeFiles({ roots: [{ name: 'appData', path: dataDir }, { name: 'work', path: workDir }] });
+    const files = createNodeFiles({ roots: [{ name: 'appData', path: dataDir }, { name: 'temp', path: workDir }] });
     const packages = new PluginPackages(files.scope(join(dataDir, 'plugins')));
     const consent = new CommunityConsentLedger(dataDir);
 

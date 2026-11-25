@@ -124,15 +124,17 @@ describe('persistence.rs::incremental_save_tests through production L03 orchestr
 
     const v1Variant = {
       id: 'var_v1_orig',
+      modelId: 'test-model',
       blockIds: ['blk_v1_orig'],
-      timestamp: 1_700_000_000_001,
+      createdAt: 1_700_000_000_001,
       status: 'success' as const,
       meta: { versioned: true },
     };
     const v2Variant = {
       id: 'var_v2_regen',
+      modelId: 'test-model',
       blockIds: [] as string[],
-      timestamp: 1_700_000_000_002,
+      createdAt: 1_700_000_000_002,
       status: 'streaming' as const,
       meta: { versioned: true },
     };
