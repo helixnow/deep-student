@@ -81,4 +81,31 @@ describe('useMediaTranscript', () => {
     expect(result.current.transcript?.status).toBe('queued');
     expect(result.current.estimate).toBeNull();
   });
+
+  it('rejects empty or non-subtitle paths in importFromPath before invoking backend', async () => {
+    invokeMock.mockResolvedValueOnce({ status: 'done', segments: [segment(0, 1)] });
+    const { result } = renderHook(() => useMediaTranscript({ resourceId: 'file_3' }));
+    await waitFor(() => expect(result.current.transcript?.segments).toHaveLength(1));
+
+    await expect(result.current.importFromPath('   ')).rejects.toThrow('Subtitle import path is required');
+    await expect(result.current.importFromPath('/tmp/audio.mp3')).rejects.toThrow(
+      'not a recognized subtitle format',
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith('media_transcript_import', expect.anything());
+    // Existing cues remain untouched
+    expect(result.current.transcript?.segments).toHaveLength(1);
+  });
+
+  it('guards against silent data loss when backend import returns zero done segments', async () => {
+    invokeMock.mockResolvedValueOnce({ status: 'done', segments: [segment(0, 1)] });
+    const { result } = renderHook(() => useMediaTranscript({ resourceId: 'file_4' }));
+    await waitFor(() => expect(result.current.transcript?.segments).toHaveLength(1));
+
+    invokeMock.mockResolvedValueOnce({ status: 'none', segments: [] });
+    invokeMock.mockResolvedValueOnce({ status: 'none', segments: [] });
+    await expect(result.current.importFromPath('dstu-staged:upload-empty')).rejects.toThrow(
+      'No subtitle cues were found',
+    );
+    expect(result.current.transcript?.segments).toHaveLength(1);
+  });
 });

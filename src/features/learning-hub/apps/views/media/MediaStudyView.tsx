@@ -45,7 +45,11 @@ import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { isWebUiShell } from '@/utils/platform';
 import { isTauriEnvironment } from '@/utils/urlOpener';
-import { normalizeSubtitleFileForImport } from './subtitleUploadParser';
+import {
+  isSupportedSubtitleFileName,
+  normalizeSubtitleFileForImport,
+  UNSUPPORTED_SUBTITLE_FORMAT_ERROR,
+} from './subtitleUploadParser';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -615,6 +619,11 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     return () => window.clearTimeout(timer);
   }, [isReady, resumedFromRef, t]);
 
+  // ---------------------------------------------------------------- 字幕导入覆盖确认
+  const [importOverwriteOpen, setImportOverwriteOpen] = useState(false);
+  const pendingImportFileRef = useRef<File | null>(null);
+  const pendingImportPathRef = useRef<string | null>(null);
+
   // ---------------------------------------------------------------- 转写动作
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -650,11 +659,9 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   }, [transcriptState]);
 
   const subtitleInputRef = useRef<HTMLInputElement>(null);
-  const importSubtitleFile = useCallback(async (file: File) => {
+  const stageAndImportSubtitleFile = useCallback(async (uploadFile: File) => {
     let uploadId: string | undefined;
     try {
-      if (file.size > 20 * 1024 * 1024) throw new Error(t('learningHub:mediaTranscript.importTooLarge', { defaultValue: 'Subtitle files must be 20 MB or smaller.' }));
-      const uploadFile = await normalizeSubtitleFileForImport(file);
       uploadId = await stageBlobUpload(uploadFile, { name: uploadFile.name });
       const count = await transcriptState.importFromPath(`dstu-staged:${uploadId}`);
       uploadId = undefined;
@@ -663,6 +670,36 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     } catch (error: unknown) {
       showGlobalNotification('error', getErrorMessage(error), t('learningHub:mediaTranscript.importFailed'));
     } finally { if (uploadId) await abortStagedUpload(uploadId); }
+  }, [transcriptState, t]);
+
+  const importSubtitleFile = useCallback(async (file: File) => {
+    let uploadFile: File;
+    try {
+      if (file.size > 20 * 1024 * 1024) {
+        throw new Error(t('learningHub:mediaTranscript.importTooLarge', { defaultValue: 'Subtitle files must be 20 MB or smaller.' }));
+      }
+      uploadFile = await normalizeSubtitleFileForImport(file);
+    } catch (error: unknown) {
+      showGlobalNotification('error', getErrorMessage(error), t('learningHub:mediaTranscript.importFailed'));
+      return;
+    }
+    if (displaySegments.length > 0) {
+      pendingImportFileRef.current = uploadFile;
+      pendingImportPathRef.current = null;
+      setImportOverwriteOpen(true);
+      return;
+    }
+    await stageAndImportSubtitleFile(uploadFile);
+  }, [displaySegments.length, stageAndImportSubtitleFile, t]);
+
+  const doImportFromNativePath = useCallback(async (path: string) => {
+    try {
+      const count = await transcriptState.importFromPath(path);
+      setPanelPref(true);
+      showGlobalNotification('success', t('learningHub:mediaTranscript.importSuccess', { count }));
+    } catch (err: unknown) {
+      showGlobalNotification('error', getErrorMessage(err), t('learningHub:mediaTranscript.importFailed'));
+    }
   }, [transcriptState, t]);
 
   const handleImport = useCallback(async () => {
@@ -680,13 +717,20 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
         ],
       });
       if (!path) return;
-      const count = await transcriptState.importFromPath(path);
-      setPanelPref(true);
-      showGlobalNotification('success', t('learningHub:mediaTranscript.importSuccess', { count }));
+      if (!isSupportedSubtitleFileName(path)) {
+        throw new Error(UNSUPPORTED_SUBTITLE_FORMAT_ERROR);
+      }
+      if (displaySegments.length > 0) {
+        pendingImportFileRef.current = null;
+        pendingImportPathRef.current = path;
+        setImportOverwriteOpen(true);
+        return;
+      }
+      await doImportFromNativePath(path);
     } catch (err: unknown) {
       showGlobalNotification('error', getErrorMessage(err), t('learningHub:mediaTranscript.importFailed'));
     }
-  }, [transcriptState, t]);
+  }, [t, displaySegments.length, doImportFromNativePath]);
 
   const handleOpenAsrSettings = useCallback(() => {
     setConfirmOpen(false);
@@ -1665,6 +1709,34 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
           </div>
         )}
       </DsAlertDialog>
+
+      {/* 字幕导入覆盖确认 */}
+      <DsAlertDialog
+        open={importOverwriteOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            pendingImportFileRef.current = null;
+            pendingImportPathRef.current = null;
+          }
+          setImportOverwriteOpen(open);
+        }}
+        title={t('learningHub:mediaTranscript.importOverwriteTitle', { defaultValue: 'Replace existing subtitles?' })}
+        description={t('learningHub:mediaTranscript.importOverwriteDesc', {
+          count: displaySegments.length,
+          defaultValue: 'Importing will replace the existing {{count}} subtitle cues. This cannot be undone. Continue?',
+        })}
+        confirmText={t('learningHub:mediaTranscript.importOverwriteConfirm', { defaultValue: 'Replace' })}
+        confirmVariant="primary"
+        onConfirm={() => {
+          setImportOverwriteOpen(false);
+          const file = pendingImportFileRef.current;
+          const path = pendingImportPathRef.current;
+          pendingImportFileRef.current = null;
+          pendingImportPathRef.current = null;
+          if (file) void stageAndImportSubtitleFile(file);
+          else if (path) void doImportFromNativePath(path);
+        }}
+      />
     </div>
   );
 };
