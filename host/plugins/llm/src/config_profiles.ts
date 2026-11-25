@@ -44,8 +44,10 @@ export function stringifyProfileArray(profiles: readonly ModelProfile[]): string
 }
 
 /**
- * Drop profiles with blank/whitespace-only model IDs and deduplicate by `id` and `(vendorId, model)`
- * (case-insensitive on model ID) so blank rows and duplicate favorites cannot be persisted or returned.
+ * Drop profiles with blank/whitespace-only model IDs, normalize blank labels, deduplicate by exact
+ * `id` (and collapse malformed id-less duplicates), and ensure at most one favorite per
+ * `(vendorId, model)` (case-insensitive) without deleting distinct-`id` profiles that intentionally
+ * share `(vendorId, model)` (e.g. dedicated translation vs chat presets).
  */
 export function sanitizeAndDedupeModelProfiles(
   profiles: readonly ModelProfile[],
@@ -53,11 +55,12 @@ export function sanitizeAndDedupeModelProfiles(
 ): ModelProfile[] {
   const result: ModelProfile[] = [];
   const indexById = new Map<string, number>();
-  const indexByVendorModel = new Map<string, number>();
+  const indexByAnonymousVendorModel = new Map<string, number>();
 
   const isCanonicalBuiltin = (profile: ModelProfile): boolean =>
     profile.isBuiltin || (builtinIds?.has(profile.id) ?? false);
 
+  // Pass 1: filter blank models, normalize blank labels, and deduplicate exact IDs (or id-less ghosts).
   for (const profile of profiles) {
     const trimmedModel = rustTrim(profile.model);
     if (trimmedModel === '') continue;
@@ -70,43 +73,53 @@ export function sanitizeAndDedupeModelProfiles(
     };
 
     const idKey = rustTrim(normalized.id);
-    const vendorModelKey = `${rustTrim(normalized.vendorId)}\u0000${trimmedModel.toLowerCase()}`;
-
-    const existingIdIndex = idKey !== '' ? indexById.get(idKey) : undefined;
-    if (existingIdIndex !== undefined) {
-      const previous = result[existingIdIndex]!;
-      const previousVendorModelKey = `${rustTrim(previous.vendorId)}\u0000${rustTrim(previous.model).toLowerCase()}`;
-      if (previousVendorModelKey !== vendorModelKey && indexByVendorModel.get(previousVendorModelKey) === existingIdIndex) {
-        indexByVendorModel.delete(previousVendorModelKey);
+    if (idKey !== '') {
+      const existingIdIndex = indexById.get(idKey);
+      if (existingIdIndex !== undefined) {
+        result[existingIdIndex] = normalized;
+        continue;
       }
-      result[existingIdIndex] = normalized;
-      if (!indexByVendorModel.has(vendorModelKey)) {
-        indexByVendorModel.set(vendorModelKey, existingIdIndex);
-      }
+      const nextIndex = result.length;
+      result.push(normalized);
+      indexById.set(idKey, nextIndex);
       continue;
     }
 
-    const existingVendorModelIndex = indexByVendorModel.get(vendorModelKey);
-    if (existingVendorModelIndex !== undefined) {
-      const existing = result[existingVendorModelIndex]!;
-      if (!isCanonicalBuiltin(existing) && isCanonicalBuiltin(normalized)) {
-        const prevIdKey = rustTrim(existing.id);
-        if (prevIdKey !== '') indexById.delete(prevIdKey);
-        result[existingVendorModelIndex] = {
-          ...normalized,
-          isFavorite: normalized.isFavorite || existing.isFavorite,
-        };
-        if (idKey !== '') indexById.set(idKey, existingVendorModelIndex);
-      } else if (normalized.isFavorite && !existing.isFavorite) {
-        result[existingVendorModelIndex] = { ...existing, isFavorite: true };
+    const vendorModelKey = `${rustTrim(normalized.vendorId)}\u0000${trimmedModel.toLowerCase()}`;
+    const existingAnonIndex = indexByAnonymousVendorModel.get(vendorModelKey);
+    if (existingAnonIndex !== undefined) {
+      const existing = result[existingAnonIndex]!;
+      if (normalized.isFavorite && !existing.isFavorite) {
+        result[existingAnonIndex] = { ...existing, isFavorite: true };
       }
       continue;
     }
 
     const nextIndex = result.length;
     result.push(normalized);
-    if (idKey !== '') indexById.set(idKey, nextIndex);
-    indexByVendorModel.set(vendorModelKey, nextIndex);
+    indexByAnonymousVendorModel.set(vendorModelKey, nextIndex);
+  }
+
+  // Pass 2: deduplicate favorite flags per (vendorId, model) while preserving all distinct-id profiles.
+  const favoriteIndexByVendorModel = new Map<string, number>();
+  for (let i = 0; i < result.length; i += 1) {
+    const profile = result[i]!;
+    if (!profile.isFavorite) continue;
+
+    const vendorModelKey = `${rustTrim(profile.vendorId)}\u0000${profile.model.toLowerCase()}`;
+    const existingFavIndex = favoriteIndexByVendorModel.get(vendorModelKey);
+    if (existingFavIndex === undefined) {
+      favoriteIndexByVendorModel.set(vendorModelKey, i);
+      continue;
+    }
+
+    const existing = result[existingFavIndex]!;
+    if (!isCanonicalBuiltin(existing) && isCanonicalBuiltin(profile)) {
+      result[existingFavIndex] = { ...existing, isFavorite: false };
+      favoriteIndexByVendorModel.set(vendorModelKey, i);
+    } else {
+      result[i] = { ...profile, isFavorite: false };
+    }
   }
 
   return result;

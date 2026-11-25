@@ -700,17 +700,25 @@ describe('llm_manager/mod.rs configuration', () => {
     ).toBe('deepseek');
   });
 
-  it('saveModelProfiles strips blank model IDs and deduplicates by id and (vendorId, model) (G22)', async () => {
+  it('saveModelProfiles strips blank model IDs, deduplicates exact ids, and preserves distinct-id presets with single favorite per (vendorId, model) (G22)', async () => {
     const { store } = makeStore();
     const blank = { ...profileFixture('blank-1', 'Untitled', '   ', false, false), vendorId: 'vendor-custom' };
     const first = {
       ...profileFixture('custom-1', '  ', 'gpt-4o', true, false),
       vendorId: 'vendor-custom',
-      isFavorite: false,
+      temperature: 0.2,
+      isFavorite: true,
     };
-    const dupCase = {
-      ...profileFixture('custom-2', 'GPT 4o Duplicate', ' GPT-4O ', true, false),
+    const exactDupId = {
+      ...profileFixture('custom-1', '  ', 'gpt-4o', true, false),
       vendorId: 'vendor-custom',
+      temperature: 0.3,
+      isFavorite: true,
+    };
+    const distinctPreset = {
+      ...profileFixture('custom-2', 'GPT 4o Chat', ' GPT-4O ', true, false),
+      vendorId: 'vendor-custom',
+      temperature: 0.9,
       isFavorite: true,
     };
     const otherVendorSameModel = {
@@ -719,7 +727,7 @@ describe('llm_manager/mod.rs configuration', () => {
       isFavorite: true,
     };
 
-    await store.saveModelProfiles([blank, first, dupCase, otherVendorSameModel]);
+    await store.saveModelProfiles([blank, first, exactDupId, distinctPreset, otherVendorSameModel]);
     const persisted = await store.readUserModelProfiles();
 
     expect(persisted.map((profile) => ({
@@ -727,14 +735,16 @@ describe('llm_manager/mod.rs configuration', () => {
       vendorId: profile.vendorId,
       model: profile.model,
       label: profile.label,
+      temperature: profile.temperature,
       isFavorite: profile.isFavorite,
     }))).toEqual([
-      { id: 'custom-1', vendorId: 'vendor-custom', model: 'gpt-4o', label: 'gpt-4o', isFavorite: true },
-      { id: 'other-1', vendorId: 'vendor-proxy', model: 'gpt-4o', label: 'Proxy GPT-4o', isFavorite: true },
+      { id: 'custom-1', vendorId: 'vendor-custom', model: 'gpt-4o', label: 'gpt-4o', temperature: 0.3, isFavorite: true },
+      { id: 'custom-2', vendorId: 'vendor-custom', model: 'GPT-4O', label: 'GPT 4o Chat', temperature: 0.9, isFavorite: false },
+      { id: 'other-1', vendorId: 'vendor-proxy', model: 'gpt-4o', label: 'Proxy GPT-4o', temperature: 0.7, isFavorite: true },
     ]);
   });
 
-  it('getModelProfiles defensively cleans legacy blank rows and duplicate (vendorId, model) entries (G22)', async () => {
+  it('getModelProfiles defensively cleans legacy blank rows, preserves distinct-id presets, and clears duplicate favorite flags per (vendorId, model) (G22)', async () => {
     const { store, settings } = makeStore();
     const legacyBlank = { ...profileFixture('legacy-blank', '', '   ', false, false), vendorId: 'vendor-a' };
     const dup1 = { ...profileFixture('dup-1', 'Model A', 'model-a', true, false), vendorId: 'vendor-a', isFavorite: true };
@@ -744,7 +754,39 @@ describe('llm_manager/mod.rs configuration', () => {
     const profiles = await store.getModelProfiles();
     expect(profiles.some((profile) => profile.id === 'legacy-blank')).toBe(false);
     const vendorA = profiles.filter((profile) => profile.vendorId === 'vendor-a');
-    expect(vendorA.map((profile) => profile.id)).toEqual(['dup-1']);
-    expect(vendorA[0]?.isFavorite).toBe(true);
+    expect(vendorA.map((profile) => ({ id: profile.id, isFavorite: profile.isFavorite }))).toEqual([
+      { id: 'dup-1', isFavorite: true },
+      { id: 'dup-2', isFavorite: false },
+    ]);
+  });
+
+  it('preserves distinct-id profiles sharing (vendorId, model) such as dedicated translation vs chat presets', async () => {
+    const { store, settings } = makeStore();
+    seedConfigs(settings, [], []);
+    const dedicated = {
+      ...profileFixture('dedicated', 'Dedicated Translate', 'test-model', false, false),
+      vendorId: 'vendor-shared',
+      temperature: 0.1,
+      isFavorite: false,
+    };
+    const chat = {
+      ...profileFixture('chat', 'General Chat', 'test-model', true, false),
+      vendorId: 'vendor-shared',
+      temperature: 0.7,
+      isFavorite: true,
+    };
+
+    await store.saveModelProfiles([dedicated, chat]);
+    const loaded = (await store.getModelProfiles()).filter((profile) => profile.vendorId === 'vendor-shared');
+
+    expect(loaded.map((profile) => ({
+      id: profile.id,
+      label: profile.label,
+      temperature: profile.temperature,
+      isFavorite: profile.isFavorite,
+    }))).toEqual([
+      { id: 'dedicated', label: 'Dedicated Translate', temperature: 0.1, isFavorite: false },
+      { id: 'chat', label: 'General Chat', temperature: 0.7, isFavorite: true },
+    ]);
   });
 });
