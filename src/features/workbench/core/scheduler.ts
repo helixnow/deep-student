@@ -668,8 +668,36 @@ function armTransientTimer(nowMs: number): void {
  * O10：额外武装瞬态定时器，冻结宽限 / 预取豁免 / 失焦过渡 / 活动衰减到期后
  * 自动补一轮重算，无需外部事件驱动。
  */
-/** 连续 desktopSize 变化时遮挡重算防抖（与 Desktop 160ms settle 对齐） */
-const DESKTOP_SIZE_RECOMPUTE_DEBOUNCE_MS = 160;
+/** 连续 desktopSize / displayMode 变化时遮挡重算防抖（与 Desktop 160ms settle 对齐） */
+export const DESKTOP_SIZE_RECOMPUTE_DEBOUNCE_MS = 160;
+
+/**
+ * 判断 `windows` 变化是否仅由既有窗口的 `displayMode` 过渡引起（无新建、关闭、最小化变化）。
+ * 用于在平铺/最大化等过渡期间走 160ms 防抖路径批量重算生命周期，
+ * 而不影响窗口创建、关闭或焦点切换的单帧立即调度。
+ */
+export function isDisplayModeOnlyTransition(
+  prevWindows: Record<string, WorkbenchWindow>,
+  nextWindows: Record<string, WorkbenchWindow>,
+): boolean {
+  const prevKeys = Object.keys(prevWindows);
+  const nextKeys = Object.keys(nextWindows);
+  if (prevKeys.length !== nextKeys.length) return false;
+  let sawDisplayModeChange = false;
+  for (const id of nextKeys) {
+    const prevWin = prevWindows[id];
+    const nextWin = nextWindows[id];
+    if (!prevWin) return false;
+    if (prevWin === nextWin) continue;
+    if (prevWin.minimized !== nextWin.minimized) return false;
+    if (prevWin.displayMode !== nextWin.displayMode) {
+      sawDisplayModeChange = true;
+    } else {
+      return false;
+    }
+  }
+  return sawDisplayModeChange;
+}
 
 export function startScheduler(): () => void {
   let disposed = false;
@@ -684,6 +712,14 @@ export function startScheduler(): () => void {
       scheduled = false;
       if (!disposed) recomputeLifecycles();
     });
+  };
+
+  const scheduleDebounced = () => {
+    if (desktopSizeDebounce != null) clearTimeout(desktopSizeDebounce);
+    desktopSizeDebounce = setTimeout(() => {
+      desktopSizeDebounce = null;
+      schedule();
+    }, DESKTOP_SIZE_RECOMPUTE_DEBOUNCE_MS);
   };
 
   const loop = {
@@ -705,6 +741,16 @@ export function startScheduler(): () => void {
 
   const unsubscribe = useWindowStore.subscribe((state, prev) => {
     if (
+      state.focusStack === prev.focusStack &&
+      state.windows !== prev.windows &&
+      isDisplayModeOnlyTransition(prev.windows, state.windows)
+    ) {
+      // 平铺/最大化等 displayMode 过渡期间使用 160ms 防抖批合生命周期重算，
+      // 避免 CSS 过渡期间与内容区重排版叠加重算。窗口创建/关闭/焦点切换仍走立即路径。
+      scheduleDebounced();
+      return;
+    }
+    if (
       state.windows !== prev.windows ||
       state.focusStack !== prev.focusStack ||
       state.tilingRatios !== prev.tilingRatios
@@ -719,11 +765,7 @@ export function startScheduler(): () => void {
     if (state.desktopSize !== prev.desktopSize) {
       // 交互式 resize：几何由 WindowShell 的 desktopSize selector 跟手；
       // 全量遮挡/生命周期重算防抖，避免每帧 O(N²) occlusion。
-      if (desktopSizeDebounce != null) clearTimeout(desktopSizeDebounce);
-      desktopSizeDebounce = setTimeout(() => {
-        desktopSizeDebounce = null;
-        schedule();
-      }, DESKTOP_SIZE_RECOMPUTE_DEBOUNCE_MS);
+      scheduleDebounced();
     }
   });
 

@@ -502,6 +502,51 @@ export function shouldShowPdfStudyShortcuts(options: {
   );
 }
 
+/**
+ * Debounce delay (ms) for PDF container ResizeObserver updates.
+ * Batches rapid intermediate sizes fired during CSS tiling/split transitions so
+ * only the final settled geometry triggers a full page re-render cascade.
+ */
+export const PDF_RESIZE_DEBOUNCE_MS = 120;
+
+/**
+ * Observes `element` via `ResizeObserver` with a trailing debounce (`debounceMs`).
+ * Intermediate resize callbacks during rapid CSS transitions reset the timer and
+ * are not delivered; only the final settled size invokes `onResize` once.
+ */
+export function observeDebouncedResize(
+  element: Element,
+  onResize: (entries: ResizeObserverEntry[]) => void,
+  debounceMs: number = PDF_RESIZE_DEBOUNCE_MS,
+): () => void {
+  if (typeof ResizeObserver === 'undefined') {
+    return () => {};
+  }
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let latestEntries: ResizeObserverEntry[] = [];
+  const observer = new ResizeObserver((entries) => {
+    latestEntries = entries;
+    if (timer !== null) {
+      clearTimeout(timer);
+    }
+    timer = setTimeout(() => {
+      timer = null;
+      const settled = latestEntries;
+      latestEntries = [];
+      onResize(settled);
+    }, debounceMs);
+  });
+  observer.observe(element);
+  return () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    latestEntries = [];
+    observer.disconnect();
+  };
+}
+
 const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   data,
   url,
@@ -897,14 +942,20 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   }, [cancelIdle, cancelOutlineResolution, releaseProgrammaticJumpLock]);
 
   // Observe the reader itself; a split panel can be narrow even on a wide desktop.
+  // Debounced so CSS tiling/split transitions do not trigger per-frame viewer re-renders.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(([entry]) => {
-      if (entry) setToolbarWidth(entry.contentRect.width);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
+    if (el.clientWidth > 0) {
+      setToolbarWidth(el.clientWidth);
+    }
+    return observeDebouncedResize(
+      el,
+      ([entry]) => {
+        if (entry) setToolbarWidth(entry.contentRect.width);
+      },
+      PDF_RESIZE_DEBOUNCE_MS,
+    );
   }, [data, url]);
 
   // 点击外部关闭"更多"菜单 / "AI 论文导读"菜单
@@ -1152,6 +1203,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 监听容器尺寸
   // ★ 移动端审计：不再写死 -48/-32（视口 padding 在 ≤640 收窄为 8px，
   // 固定扣减在 360px 屏浪费 32px 正文宽度），改读 computed padding。
+  //
+  // ★ SOTA03 P0 fix：平铺切换期间 ResizeObserver 在 CSS 过渡中同步连射，
+  // 139 页 PDF 触发多轮全量重渲染，导致工作台冻结 ≥3.5 分钟。
+  // 修复：ResizeObserver 回调经 PDF_RESIZE_DEBOUNCE_MS（120ms）防抖后才更新
+  // containerWidth，仅最终稳定尺寸触发一次页面重渲染级联。
+  // 初始挂载的 updateSize() 仍直接调用（冷启动时容器不在 CSS 过渡中）。
   useEffect(() => {
     const container = pageContainerRef.current;
     if (!container) return;
@@ -1176,10 +1233,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       }
     };
 
+    // 初始尺寸同步计算（此时不存在 CSS 过渡，不需防抖）
     updateSize();
-    const observer = new ResizeObserver(updateSize);
-    observer.observe(container);
-    return () => observer.disconnect();
+
+    // ResizeObserver 回调防抖：批合 CSS 过渡期间的连续触发，
+    // 仅在尺寸稳定后调用 updateSize()，避免多轮全量页面重渲染。
+    return observeDebouncedResize(container, () => updateSize(), PDF_RESIZE_DEBOUNCE_MS);
   }, []);
 
   // 点击外部关闭缩放菜单
@@ -6367,6 +6426,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                 handleDocumentLoadSuccessWithDoc(doc as unknown as PDFDocumentProxy);
               }}
               onLoadError={handleDocumentLoadError}
+              onSourceError={handleDocumentLoadError}
               onLoadProgress={({ loaded, total }: { loaded: number; total: number }) => {
                 if (total > 0) {
                   setLoadProgress(Math.min(100, Math.round((loaded / total) * 100)));
