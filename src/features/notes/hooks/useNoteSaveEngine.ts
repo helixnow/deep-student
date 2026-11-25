@@ -5,6 +5,8 @@ import type { EditorView } from '@milkdown/prose/view';
 import type { CrepeEditorApi } from '@/components/crepe';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { dstu } from '@/dstu';
+import { addTypedEventListener } from '@/events';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { registerContentDirtyChecker, type ContentSaveState } from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { mergeExpandedMarkdown } from '../markdownWindow';
@@ -628,49 +630,11 @@ export function useNoteSaveEngine({
 
   // 监听 canvas:content-changed 事件
   useEffect(() => {
-    const handleCanvasContentChanged = (event: Event) => {
-      const { noteId: updatedNoteId, newContent } = (event as CustomEvent<{ noteId: string; newContent?: string }>).detail;
-      const currentNoteId = noteIdRef.current;
-      if (updatedNoteId !== currentNoteId || newContent === undefined || !editorApi || !currentNoteId) return;
-      const draft = draftByNoteRef.current.get(currentNoteId);
-      const lastSavedSnapshot = lastSavedMapRef.current.get(currentNoteId) ?? '';
-      const dirty =
-        unsavedDocChangeRef.current ||
-        (typeof draft === 'string' && draft !== lastSavedSnapshot) ||
-        pendingSaveQueueRef.current.some((p) => p.noteId === currentNoteId) ||
-        inFlightSaveRef.current !== null;
-      if (dirty) {
-        showGlobalNotification('warning', t('notes:host.ai_update_deferred', 'AI 的更新未应用：这篇笔记有尚未保存的修改。保存后若出现冲突提示，可在其中对比并选择版本。'));
-        return;
-      }
-      const inSourceMode = Boolean(sourceModeRef?.current);
-      const previousContent = inSourceMode
-        ? (draftByNoteRef.current.get(currentNoteId) ?? contentRef.current)
-        : editorApi.getMarkdown();
-      editorApi.setMarkdown(newContent);
-      if (!inSourceMode) {
-        try { editorApi.agentFlashChange?.(previousContent, newContent); } catch { /* 演出失败不影响同步 */ }
-      }
-      contentRef.current = newContent;
-      draftByNoteRef.current.set(currentNoteId, newContent);
-      lastSavedMapRef.current.set(currentNoteId, newContent);
-      onCharCountChange(countNoteChars(newContent));
-      onExternalContentSyncRef.current?.(newContent);
-    };
-    window.addEventListener('canvas:content-changed', handleCanvasContentChanged);
-    return () => window.removeEventListener('canvas:content-changed', handleCanvasContentChanged);
-  }, [editorApi, t, sourceModeRef, onCharCountChange]);
-
-  // ★ R3 修复：监听外部更新事件，原位刷新编辑器内容
-  useEffect(() => {
-    const handleExternalUpdated = (event: Event) => {
-      const { noteId: targetNoteId, content: newContent, force, windowId: targetWindowId } =
-        (event as CustomEvent<{ noteId: string; content: string; force?: boolean; windowId?: string }>).detail;
-      const currentNoteId = noteIdRef.current;
-      if (!currentNoteId || targetNoteId !== currentNoteId) return;
-      if (force && targetWindowId && acrWindowId && targetWindowId !== acrWindowId) return;
-
-      if (!force) {
+    return addTypedEventListener<{ noteId: string; newContent?: string }>(
+      'canvas:content-changed',
+      ({ noteId: updatedNoteId, newContent }) => {
+        const currentNoteId = noteIdRef.current;
+        if (updatedNoteId !== currentNoteId || newContent === undefined || !editorApi || !currentNoteId) return;
         const draft = draftByNoteRef.current.get(currentNoteId);
         const lastSavedSnapshot = lastSavedMapRef.current.get(currentNoteId) ?? '';
         const dirty =
@@ -678,89 +642,136 @@ export function useNoteSaveEngine({
           (typeof draft === 'string' && draft !== lastSavedSnapshot) ||
           pendingSaveQueueRef.current.some((p) => p.noteId === currentNoteId) ||
           inFlightSaveRef.current !== null;
-        if (dirty) return;
-      } else {
-        cancelDebounce();
-        pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter((p) => p.noteId !== currentNoteId);
-      }
-
-      contentRef.current = newContent;
-      bumpDocumentRevision();
-      fullViewMaterializedRef.current = false;
-      draftByNoteRef.current.set(currentNoteId, newContent);
-      lastSavedMapRef.current.set(currentNoteId, newContent);
-
-      const inSourceMode = Boolean(sourceModeRef?.current);
-      if (editorApi) {
-        if (inSourceMode) {
-          try { editorApi.setMarkdown(newContent); } catch { /* ignore hidden editor sync errors */ }
-        } else if (editorApi.getMarkdown() !== newContent) {
-          const previousContent = editorApi.getMarkdown();
-          editorApi.setMarkdown(newContent);
+        if (dirty) {
+          showGlobalNotification('warning', t('notes:host.ai_update_deferred', 'AI 的更新未应用：这篇笔记有尚未保存的修改。保存后若出现冲突提示，可在其中对比并选择版本。'));
+          return;
+        }
+        const inSourceMode = Boolean(sourceModeRef?.current);
+        const previousContent = inSourceMode
+          ? (draftByNoteRef.current.get(currentNoteId) ?? contentRef.current)
+          : editorApi.getMarkdown();
+        editorApi.setMarkdown(newContent);
+        if (!inSourceMode) {
           try { editorApi.agentFlashChange?.(previousContent, newContent); } catch { /* 演出失败不影响同步 */ }
         }
-      }
-      unsavedDocChangeRef.current = false;
-      const fullMarkdown = fullMarkdownForReporting(editorApi, newContent, inSourceMode);
-      onCharCountChange(fullMarkdown === undefined ? undefined : countNoteChars(fullMarkdown));
-      onExternalContentSyncRef.current?.(fullMarkdown ?? newContent);
-      if (fullMarkdown !== undefined) {
-        window.dispatchEvent(new CustomEvent('notes:content-changed', { detail: { noteId: currentNoteId, content: fullMarkdown } }));
-      }
-      setLastSaved(new Date());
-      if (!isUnmountedRef.current) { setSaveError(null); setIsDirty(false); }
-    };
-    window.addEventListener('notes:external-updated', handleExternalUpdated);
-    return () => window.removeEventListener('notes:external-updated', handleExternalUpdated);
+        contentRef.current = newContent;
+        draftByNoteRef.current.set(currentNoteId, newContent);
+        lastSavedMapRef.current.set(currentNoteId, newContent);
+        onCharCountChange(countNoteChars(newContent));
+        onExternalContentSyncRef.current?.(newContent);
+      },
+    );
+  }, [editorApi, t, sourceModeRef, onCharCountChange]);
+
+  // ★ R3 修复：监听外部更新事件，原位刷新编辑器内容
+  useEffect(() => {
+    return addTypedEventListener<{ noteId: string; content: string; force?: boolean; windowId?: string }>(
+      'notes:external-updated',
+      ({ noteId: targetNoteId, content: newContent, force, windowId: targetWindowId }) => {
+        const currentNoteId = noteIdRef.current;
+        if (!currentNoteId || targetNoteId !== currentNoteId) return;
+        if (force && targetWindowId && acrWindowId && targetWindowId !== acrWindowId) return;
+
+        if (!force) {
+          const draft = draftByNoteRef.current.get(currentNoteId);
+          const lastSavedSnapshot = lastSavedMapRef.current.get(currentNoteId) ?? '';
+          const dirty =
+            unsavedDocChangeRef.current ||
+            (typeof draft === 'string' && draft !== lastSavedSnapshot) ||
+            pendingSaveQueueRef.current.some((p) => p.noteId === currentNoteId) ||
+            inFlightSaveRef.current !== null;
+          if (dirty) return;
+        } else {
+          cancelDebounce();
+          pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter((p) => p.noteId !== currentNoteId);
+        }
+
+        contentRef.current = newContent;
+        bumpDocumentRevision();
+        fullViewMaterializedRef.current = false;
+        draftByNoteRef.current.set(currentNoteId, newContent);
+        lastSavedMapRef.current.set(currentNoteId, newContent);
+
+        const inSourceMode = Boolean(sourceModeRef?.current);
+        if (editorApi) {
+          if (inSourceMode) {
+            try { editorApi.setMarkdown(newContent); } catch { /* ignore hidden editor sync errors */ }
+          } else if (editorApi.getMarkdown() !== newContent) {
+            const previousContent = editorApi.getMarkdown();
+            editorApi.setMarkdown(newContent);
+            try { editorApi.agentFlashChange?.(previousContent, newContent); } catch { /* 演出失败不影响同步 */ }
+          }
+        }
+        unsavedDocChangeRef.current = false;
+        const fullMarkdown = fullMarkdownForReporting(editorApi, newContent, inSourceMode);
+        onCharCountChange(fullMarkdown === undefined ? undefined : countNoteChars(fullMarkdown));
+        onExternalContentSyncRef.current?.(fullMarkdown ?? newContent);
+        if (fullMarkdown !== undefined) {
+          window.dispatchEvent(new CustomEvent('notes:content-changed', { detail: { noteId: currentNoteId, content: fullMarkdown } }));
+        }
+        setLastSaved(new Date());
+        if (!isUnmountedRef.current) { setSaveError(null); setIsDirty(false); }
+      },
+    );
   }, [editorApi, acrWindowId, cancelDebounce, bumpDocumentRevision, onCharCountChange, sourceModeRef]);
 
   // ★ F1 修复：显式保存请求（冲突恢复"恢复我的版本"等场景）
   useEffect(() => {
-    const handleRequestSave = (event: Event) => {
-      const { noteId: targetNoteId, content, windowId: targetWindowId } =
-        (event as CustomEvent<{ noteId: string; content: string; windowId?: string }>).detail;
-      if (!targetNoteId || targetNoteId !== noteIdRef.current) return;
-      if (targetWindowId && acrWindowId && targetWindowId !== acrWindowId) return;
-      contentRef.current = content;
-      draftByNoteRef.current.set(targetNoteId, content);
-      pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter((p) => p.noteId !== targetNoteId);
-      pendingSaveQueueRef.current.push({ noteId: targetNoteId, content });
-      runPendingSave().catch(() => {});
-    };
-    window.addEventListener('notes:request-save', handleRequestSave);
-    return () => window.removeEventListener('notes:request-save', handleRequestSave);
+    return addTypedEventListener<{ noteId: string; content: string; windowId?: string }>(
+      'notes:request-save',
+      ({ noteId: targetNoteId, content, windowId: targetWindowId }) => {
+        if (!targetNoteId || targetNoteId !== noteIdRef.current) return;
+        if (targetWindowId && acrWindowId && targetWindowId !== acrWindowId) return;
+        contentRef.current = content;
+        draftByNoteRef.current.set(targetNoteId, content);
+        pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter((p) => p.noteId !== targetNoteId);
+        pendingSaveQueueRef.current.push({ noteId: targetNoteId, content });
+        runPendingSave().catch(() => {});
+      },
+    );
   }, [runPendingSave, acrWindowId]);
 
   // 窗口隐藏时立即冲刷待保存草稿
-  useEffect(() => {
-    const flushOnHide = () => {
-      if (document.visibilityState !== 'hidden') return;
-      cancelDebounce();
-      flushNoteDraftRef.current()?.catch(() => {});
-    };
-    document.addEventListener('visibilitychange', flushOnHide);
-    return () => document.removeEventListener('visibilitychange', flushOnHide);
-  }, [cancelDebounce]);
+  useEventRegistry(
+    [
+      {
+        target: 'document',
+        type: 'visibilitychange',
+        listener: () => {
+          if (document.visibilityState !== 'hidden') return;
+          cancelDebounce();
+          flushNoteDraftRef.current()?.catch(() => {});
+        },
+      },
+    ],
+    [cancelDebounce],
+  );
 
   // beforeunload：检查所有笔记的草稿/保存队列
-  useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      let hasPending = pendingSaveQueueRef.current.length > 0 || inFlightSaveRef.current !== null;
-      const liveApi = lifecycleApiRef.current;
-      const liveNoteId = editorNoteIdRef.current;
-      if (!hasPending && !sourceModeRef?.current && liveNoteId && liveApi?.getCrepe()) {
-        hasPending = liveApi.getMarkdown() !== (lastSavedMapRef.current.get(liveNoteId) ?? '');
-      }
-      if (!hasPending) {
-        for (const [id, draft] of draftByNoteRef.current) {
-          if (draft !== (lastSavedMapRef.current.get(id) ?? '')) { hasPending = true; break; }
-        }
-      }
-      if (hasPending) { event.preventDefault(); event.returnValue = ''; }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [lifecycleApiRef, editorNoteIdRef, sourceModeRef]);
+  useEventRegistry(
+    [
+      {
+        target: 'window',
+        type: 'beforeunload',
+        listener: (rawEvent) => {
+          const event = rawEvent as BeforeUnloadEvent;
+          let hasPending = pendingSaveQueueRef.current.length > 0 || inFlightSaveRef.current !== null;
+          const liveApi = lifecycleApiRef.current;
+          const liveNoteId = editorNoteIdRef.current;
+          if (!hasPending && !sourceModeRef?.current && liveNoteId && liveApi?.getCrepe()) {
+            hasPending = liveApi.getMarkdown() !== (lastSavedMapRef.current.get(liveNoteId) ?? '');
+          }
+          if (!hasPending) {
+            for (const [id, draft] of draftByNoteRef.current) {
+              if (draft !== (lastSavedMapRef.current.get(id) ?? '')) { hasPending = true; break; }
+            }
+          }
+          if (hasPending) { event.preventDefault(); event.returnValue = ''; }
+        },
+      },
+    ],
+    [lifecycleApiRef, editorNoteIdRef, sourceModeRef],
+  );
 
   const isCurrentNoteDirty = useCallback(() => {
     const currentNoteId = noteIdRef.current;
@@ -776,10 +787,12 @@ export function useNoteSaveEngine({
   }, []);
 
   // ACR R1-13：把真实 isDirty 接入 contentDirtyRegistry
+  const dirtyTypeId = dirtyRegistryKey?.typeId;
+  const dirtyInstanceKey = dirtyRegistryKey?.instanceKey;
   useEffect(() => {
-    if (!dirtyRegistryKey) return;
-    return registerContentDirtyChecker(dirtyRegistryKey.typeId, dirtyRegistryKey.instanceKey, isCurrentNoteDirty);
-  }, [dirtyRegistryKey?.typeId, dirtyRegistryKey?.instanceKey, isCurrentNoteDirty]);
+    if (!dirtyTypeId || !dirtyInstanceKey) return;
+    return registerContentDirtyChecker(dirtyTypeId, dirtyInstanceKey, isCurrentNoteDirty);
+  }, [dirtyTypeId, dirtyInstanceKey, isCurrentNoteDirty]);
 
   const copyRecoveryDraft = useCallback(async (previous = false) => {
     if (!recoveryDraft) return;

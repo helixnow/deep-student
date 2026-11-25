@@ -10,6 +10,7 @@ import {
   Trash,
 } from '@phosphor-icons/react';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
@@ -58,6 +59,7 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
   }, []);
 
   const allCommands = useMemo(() => {
+    void version;
     return commandRegistry.getAll();
   }, [version]);
 
@@ -190,37 +192,47 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
 
   useEffect(() => {
     if (!editing?.listening) return;
-
     shortcutManager.setRecording(true);
-    const handleKeyDown = (e: KeyboardEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      // Escape 键取消录入（修复：录入模式可通过键盘退出）
-      if (e.key === 'Escape') {
-        setEditing(null);
-        return;
-      }
-
-      const shortcut = buildShortcutString(e);
-      if (!shortcut) return;
-
-      const conflict = shortcutManager.checkConflict(shortcut, editing.commandId);
-
-      setEditing({
-        ...editing,
-        listening: false,
-        newShortcut: shortcut,
-        conflict,
-      });
-    };
-
-    window.addEventListener('keydown', handleKeyDown, true);
     return () => {
       shortcutManager.setRecording(false);
-      window.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [editing]);
+  }, [editing?.listening]);
+
+  useEventRegistry(
+    editing?.listening
+      ? [
+          {
+            target: 'window',
+            type: 'keydown',
+            options: true,
+            listener: (event) => {
+              const e = event as KeyboardEvent;
+              e.preventDefault();
+              e.stopPropagation();
+
+              // Escape 键取消录入（修复：录入模式可通过键盘退出）
+              if (e.key === 'Escape') {
+                setEditing(null);
+                return;
+              }
+
+              const shortcut = buildShortcutString(e);
+              if (!shortcut) return;
+
+              const conflict = shortcutManager.checkConflict(shortcut, editing.commandId);
+
+              setEditing({
+                ...editing,
+                listening: false,
+                newShortcut: shortcut,
+                conflict,
+              });
+            },
+          },
+        ]
+      : [],
+    [editing],
+  );
 
   const categories: Array<{ value: CommandCategory | 'all'; label: string }> = [
     { value: 'all', label: t('command_palette:all_categories') },
@@ -303,7 +315,7 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
                           {t(`command_palette:commands.${command.id}`, command.name)}
                         </span>
                         {hasCustom && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] bg-primary/10 text-primary font-medium flex-shrink-0">
+                          <span className="px-1.5 py-0.5 rounded text-2xs bg-primary/10 text-primary font-medium flex-shrink-0">
                             {t('command_palette:custom')}
                           </span>
                         )}
@@ -323,7 +335,7 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
                                   {editing.newShortcut ? formatShortcut(editing.newShortcut) : '—'}
                                 </span>
                                 {editing.conflict && (
-                                  <div className="flex items-center gap-1 text-[11px] text-amber-500 bg-amber-500/10 px-2 py-1 rounded">
+                                  <div className="flex items-center gap-1 text-xs text-amber-500 bg-amber-500/10 px-2 py-1 rounded">
                                     <Warning size={11} />
                                     <span>{editing.conflict.commands.join(', ')}</span>
                                   </div>

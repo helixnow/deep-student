@@ -4,6 +4,7 @@ import { Key, Package, ArrowSquareOut, Check, Shield } from '@phosphor-icons/rea
 import { cn } from '@/lib/utils';
 import { isMobilePlatform } from '@/utils/platform';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { DsButton } from '@/components/ui/DsButton';
 import { UiPresence } from '@/components/ui/UiPresence';
@@ -91,19 +92,30 @@ export function PresetServerSelector({
       (first ?? panel)?.focus({ preventScroll: true });
     };
     const raf = window.requestAnimationFrame(focusFirst);
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        closeSelector();
-      }
-    };
-    window.addEventListener('keydown', onKeyDown, true);
     return () => {
       window.cancelAnimationFrame(raf);
-      window.removeEventListener('keydown', onKeyDown, true);
     };
-  }, [isOpen, closeSelector]);
+  }, [isOpen]);
+
+  useEventRegistry(
+    isOpen
+      ? [
+          {
+            target: 'window',
+            type: 'keydown',
+            options: true,
+            listener: (e) => {
+              if ((e as KeyboardEvent).key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                closeSelector();
+              }
+            },
+          },
+        ]
+      : [],
+    [isOpen, closeSelector],
+  );
 
   // 📱 Android 返回键：选择器为自绘浮层（桌面 fixed 遮罩 / 移动内联展开），
   // 无 data-state="open"，Radix 兜底探测不到；打开期间显式注册 overlay 档

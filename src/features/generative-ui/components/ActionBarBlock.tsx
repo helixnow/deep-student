@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { ActionBarProps } from '../schema';
 import type { GenerativeActionDefinition, GenerativeUIAction, RiskLevel } from '../types';
 import { lookupGenerativeActionHandler, resolveEffectiveRiskLevel } from '../actions';
@@ -252,16 +253,22 @@ export function ActionBarBlock({
     };
   }, [dialogActionId]);
 
-  useEffect(() => {
-    if (pendingMediumId == null && dialogActionId == null) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      cancelPendingConfirmation();
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, [cancelPendingConfirmation, dialogActionId, pendingMediumId]);
+  useEventRegistry(
+    pendingMediumId != null || dialogActionId != null
+      ? [
+          {
+            target: 'document',
+            type: 'keydown',
+            listener: (event) => {
+              if ((event as KeyboardEvent).key !== 'Escape') return;
+              event.preventDefault();
+              cancelPendingConfirmation();
+            },
+          },
+        ]
+      : [],
+    [cancelPendingConfirmation, dialogActionId, pendingMediumId],
+  );
 
   return (
     <>

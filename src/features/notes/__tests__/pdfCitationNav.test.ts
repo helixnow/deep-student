@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { addTypedEventListener } from '@/events';
 import {
   clearRememberedNoteScrollPosition,
   dispatchPdfCitationNavigation,
@@ -81,19 +82,24 @@ describe('pdfCitationNav precision parsing and dispatch', () => {
   it('dispatches pdf-ref:open and retries pdf-ref:focus until acknowledged', () => {
     const openEvents: Array<Record<string, unknown>> = [];
     const focusEvents: Array<Record<string, unknown>> = [];
-    const onOpen = (e: Event) => openEvents.push((e as CustomEvent).detail);
-    const onFocus = (e: Event) => {
-      const detail = (e as CustomEvent).detail as Record<string, unknown> & {
-        acknowledge?: (ok: boolean) => void;
-      };
-      focusEvents.push(detail);
-      if (focusEvents.length === 2) {
-        detail.acknowledge?.(true);
-      }
-    };
 
-    document.addEventListener('pdf-ref:open', onOpen);
-    document.addEventListener('pdf-ref:focus', onFocus);
+    const offOpen = addTypedEventListener<Record<string, unknown>>(
+      'pdf-ref:open',
+      (detail) => openEvents.push(detail),
+      undefined,
+      'document',
+    );
+    const offFocus = addTypedEventListener<Record<string, unknown> & { acknowledge?: (ok: boolean) => void }>(
+      'pdf-ref:focus',
+      (detail) => {
+        focusEvents.push(detail);
+        if (focusEvents.length === 2) {
+          detail.acknowledge?.(true);
+        }
+      },
+      undefined,
+      'document',
+    );
 
     const cancel = dispatchPdfCitationNavigation(
       { sourceId: 'pdf_1', pageNumber: 12, highlightId: 'hl_12', quote: 'important lemma' },
@@ -127,16 +133,20 @@ describe('pdfCitationNav precision parsing and dispatch', () => {
     expect(focusEvents).toHaveLength(2);
 
     cancel();
-    document.removeEventListener('pdf-ref:open', onOpen);
-    document.removeEventListener('pdf-ref:focus', onFocus);
+    offOpen();
+    offFocus();
   });
 
   it('marks superseded focus requests stale when a newer citation click arrives', () => {
     const received: Array<{ pageNumber?: number; isStale?: () => boolean }> = [];
-    const onFocus = (e: Event) => {
-      received.push((e as CustomEvent).detail);
-    };
-    document.addEventListener('pdf-ref:focus', onFocus);
+    const offFocus = addTypedEventListener<{ pageNumber?: number; isStale?: () => boolean }>(
+      'pdf-ref:focus',
+      (detail) => {
+        received.push(detail);
+      },
+      undefined,
+      'document',
+    );
 
     dispatchPdfCitationNavigation(
       { sourceId: 'pdf_2', pageNumber: 5 },
@@ -156,7 +166,7 @@ describe('pdfCitationNav precision parsing and dispatch', () => {
     // Only the newer citation retries; the superseded page 5 timer was cancelled.
     expect(received.map((item) => item.pageNumber)).toEqual([5, 19, 19]);
 
-    document.removeEventListener('pdf-ref:focus', onFocus);
+    offFocus();
   });
 
   it('round-trips highlightId in NoteOrigin and preserves locator page/highlight during navigateToNoteOrigin', async () => {
@@ -173,14 +183,21 @@ describe('pdfCitationNav precision parsing and dispatch', () => {
 
     const openEvents: Array<Record<string, unknown>> = [];
     const focusEvents: Array<Record<string, unknown>> = [];
-    const onOpen = (e: Event) => openEvents.push((e as CustomEvent).detail);
-    const onFocus = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      focusEvents.push(detail);
-      detail.acknowledge?.(true);
-    };
-    document.addEventListener('pdf-ref:open', onOpen);
-    document.addEventListener('pdf-ref:focus', onFocus);
+    const offOpen = addTypedEventListener<Record<string, unknown>>(
+      'pdf-ref:open',
+      (detail) => openEvents.push(detail),
+      undefined,
+      'document',
+    );
+    const offFocus = addTypedEventListener<Record<string, unknown> & { acknowledge?: (ok: boolean) => void }>(
+      'pdf-ref:focus',
+      (detail) => {
+        focusEvents.push(detail);
+        detail.acknowledge?.(true);
+      },
+      undefined,
+      'document',
+    );
 
     // Even when `page` is omitted and encoded only inside `locator`, it must resolve exact page & highlightId.
     await navigateToNoteOrigin(
@@ -201,8 +218,8 @@ describe('pdfCitationNav precision parsing and dispatch', () => {
       highlightId: 'hl_14',
     });
 
-    document.removeEventListener('pdf-ref:open', onOpen);
-    document.removeEventListener('pdf-ref:focus', onFocus);
+    offOpen();
+    offFocus();
   });
 
   it('stores and retrieves per-note scroll positions safely', () => {

@@ -3,6 +3,7 @@ import { DownloadSimple, FolderSimplePlus, Play, PushPinSimple } from '@phosphor
 import { fileManager } from '@/utils/fileManager';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import { DsButton } from '@/components/ui/DsButton';
 import { getCollapsedMaxHeight, HTML_PREVIEW_STREAM_INTERVAL_MS } from './ChatHtmlPreview';
 import { repairPartialHtml, wrapSandboxRunHtmlWithRuntimeGuard } from './chatHtmlPreviewDocument';
 import { WidgetStreamFrame } from './WidgetStreamFrame';
@@ -1525,10 +1526,11 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
       >
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {isExpandedView && (
-            <button
-              type="button"
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={() => setIsExpandedView(false)}
-              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-foreground hover:bg-muted"
+              className="!h-auto inline-flex items-center gap-1 rounded !px-1.5 !py-0.5 text-xs font-medium text-foreground hover:bg-muted"
               data-testid="canvas-expanded-back"
               aria-label={t('generativeUi:canvas.back', '返回')}
             >
@@ -1549,7 +1551,7 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
                 />
               </svg>
               <span>{t('generativeUi:canvas.back', '返回')}</span>
-            </button>
+            </DsButton>
           )}
           <span
             className={cn(
@@ -1608,8 +1610,9 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
 
         <div className="flex flex-wrap items-center gap-1">
           {!streaming && onPinToCanvas && (
-            <button
-              type="button"
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={() =>
                 onPinToCanvas({
                   html: localHtml,
@@ -1617,16 +1620,17 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
                   widgetId: ownerKey,
                 })
               }
-              className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="!h-auto inline-flex items-center gap-1 rounded !px-2 !py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               data-testid="canvas-pin-button"
             >
               <PushPinSimple size={13} className="shrink-0" />
               <span>{t('generativeUi:canvas.pinToCanvas', '固定到画布')}</span>
-            </button>
+            </DsButton>
           )}
           {!streaming && onSaveToSpace && (
-            <button
-              type="button"
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={() =>
                 onSaveToSpace({
                   html: localHtml,
@@ -1634,61 +1638,65 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
                   widgetId: ownerKey,
                 })
               }
-              className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="!h-auto inline-flex items-center gap-1 rounded !px-2 !py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               data-testid="canvas-save-space-button"
             >
               <FolderSimplePlus size={13} className="shrink-0" />
               <span>{t('generativeUi:canvas.saveToSpace', '存入空间')}</span>
-            </button>
+            </DsButton>
           )}
           {undoStack.length > 0 && (
-            <button
-              type="button"
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={handleUndoEdit}
               disabled={editBusy}
-              className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+              className="!h-auto inline-flex items-center gap-1 rounded !px-2 !py-0.5 text-xs text-foreground transition-colors hover:bg-muted disabled:opacity-50"
               data-testid="canvas-undo-button"
             >
               <span>{t('generativeUi:canvas.undoEdit', '撤销修改')}</span>
               <span className="font-mono tabular-nums" data-testid="canvas-undo-count">
                 ({undoStack.length})
               </span>
-            </button>
+            </DsButton>
           )}
-          <button
-            type="button"
+          <DsButton
+            variant="ghost"
+            size="sm"
             onClick={() => setEditOpen((prev) => !prev)}
             aria-expanded={editOpen}
             className={cn(
-              ' rounded px-2 py-0.5 text-xs transition-colors hover:bg-muted',
+              '!h-auto rounded !px-2 !py-0.5 text-xs transition-colors hover:bg-muted',
               editOpen ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground',
             )}
             data-testid="canvas-toggle-edit"
           >
             {t('generativeUi:canvas.localEdit', '局部修改')}
-          </button>
-          <button
-            type="button"
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            size="sm"
             onClick={() => setSourceOpen((prev) => !prev)}
             aria-expanded={sourceOpen}
             className={cn(
-              'rounded px-2 py-0.5 text-xs transition-colors hover:bg-muted',
+              '!h-auto rounded !px-2 !py-0.5 text-xs transition-colors hover:bg-muted',
               sourceOpen ? 'bg-muted font-medium text-foreground' : 'text-muted-foreground',
             )}
             data-testid="canvas-toggle-source"
           >
             {t('generativeUi:canvas.source', '源码')}
-          </button>
+          </DsButton>
           {!isExpandedView && (
-            <button
-              type="button"
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={() => setIsExpandedView(true)}
-              className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="!h-auto inline-flex items-center gap-1 rounded !px-2 !py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               data-testid="canvas-expand-button"
               aria-label={t('generativeUi:canvas.expand', '展开')}
             >
               <span>{t('generativeUi:canvas.expand', '展开')}</span>
-            </button>
+            </DsButton>
           )}
         </div>
       </div>
@@ -1711,7 +1719,7 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
             </div>
             {!onRequestPatch && (
               <p
-                className="m-0 text-[11px] leading-relaxed text-muted-foreground"
+                className="m-0 text-xs leading-relaxed text-muted-foreground"
                 data-testid="canvas-local-edit-mode-hint"
               >
                 {t('generativeUi:canvas.localEditExactHint', {
@@ -1783,26 +1791,28 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
             className="flex shrink-0 items-center justify-end gap-2 border-t border-border/25 bg-card/95 px-3 py-2"
             data-testid="canvas-local-edit-actions"
           >
-            <button
-              type="button"
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={() => setEditOpen(false)}
               disabled={editBusy}
               data-testid="canvas-collapse-edit"
-              className="rounded px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted [@media(pointer:coarse)]:min-h-11"
+              className="!h-auto rounded !px-2.5 !py-1 text-xs text-muted-foreground hover:bg-muted"
             >
               {t('generativeUi:canvas.collapse', '收起')}
-            </button>
-            <button
-              type="button"
+            </DsButton>
+            <DsButton
+              variant="primary"
+              size="sm"
               onClick={() => void handleApplyEdit()}
               disabled={editBusy}
               data-testid="canvas-apply-patch"
-              className="rounded bg-primary px-3 py-1 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
+              className="!h-auto rounded bg-primary !px-3 !py-1 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
             >
               {editBusy
                 ? t('generativeUi:canvas.applying', '正在应用…')
                 : t('generativeUi:canvas.applyEdit', '应用修改')}
-            </button>
+            </DsButton>
           </div>
         </div>
       )}
@@ -1825,18 +1835,20 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
               </span>
               {!streaming && (
                 <>
-                  <button
-                    type="button"
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
                     onClick={() => commitNewSource(sourceDraft)}
                     disabled={sourceDraft === localHtml || !sourceDraft.trim()}
-                    className="inline-flex items-center gap-1 rounded bg-primary/15 px-2 py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/25 disabled:opacity-40"
+                    className="!h-auto inline-flex items-center gap-1 rounded bg-primary/15 !px-2 !py-0.5 text-xs font-medium text-primary transition-colors hover:bg-primary/25 hover:text-primary disabled:opacity-40"
                     data-testid="canvas-run-source-button"
                   >
                     <Play size={12} className="shrink-0" />
                     <span>{t('generativeUi:canvas.runSource', '应用并运行')}</span>
-                  </button>
-                  <button
-                    type="button"
+                  </DsButton>
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       const fileBase = (displayTitle || workTitle?.trim() || title || 'canvas').replace(/[\\/:*?"<>|]+/g, '_');
                       const fileName = `${fileBase}.html`;
@@ -1847,12 +1859,12 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
                         filters: [{ name: 'HTML', extensions: ['html', 'htm'] }],
                       });
                     }}
-                    className="inline-flex items-center gap-1 rounded border border-border/40 bg-background/70 px-2 py-0.5 text-xs text-foreground transition-colors hover:bg-muted"
+                    className="!h-auto inline-flex items-center gap-1 rounded border border-border/40 bg-background/70 !px-2 !py-0.5 text-xs text-foreground transition-colors hover:bg-muted"
                     data-testid="canvas-download-html-button"
                   >
                     <DownloadSimple size={12} className="shrink-0" />
                     <span>{t('generativeUi:canvas.downloadHtml', '下载 HTML')}</span>
-                  </button>
+                  </DsButton>
                 </>
               )}
             </div>

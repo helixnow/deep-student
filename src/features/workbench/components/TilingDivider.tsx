@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { DsButton } from '@/components/ui/DsButton';
 import { useWindowStore } from '../core/windowStore';
 import { recomputeLifecycles } from '../core/scheduler';
 import {
@@ -103,23 +104,26 @@ export const TilingDivider: React.FC<{ leftId: string; rightId: string; margin: 
         className="pointer-events-none flex flex-col items-center gap-1"
       >
         <span className="h-7 w-1 rounded-full bg-border/80 shadow-xs transition-colors" />
-        <span className="rounded bg-background/85 px-1 py-0.5 text-[10px] font-medium tabular-nums text-muted-foreground shadow-xs backdrop-blur-xs">
+        <span className="rounded bg-background/85 px-1 py-0.5 text-2xs font-medium tabular-nums text-muted-foreground shadow-xs backdrop-blur-xs">
           {valueNow}%
         </span>
       </div>
-      <button
+      <DsButton
         type="button"
+        variant="ghost"
+        size="icon"
+        iconOnly
         data-testid="wb-tiling-restore-button"
         tabIndex={occluded ? -1 : 0}
         aria-label={t('a11y.restoreFloating')}
         title={t('a11y.restoreFloating')}
         onPointerDown={(e) => e.stopPropagation()}
         onClick={handleRestoreFloating}
-        className="mt-1.5 flex h-6 w-6 items-center justify-center rounded-full border border-border/60 bg-background/90 text-[11px] text-muted-foreground shadow-sm backdrop-blur-xs transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="mt-1.5 !h-6 !w-6 !p-0 rounded-full border border-border/60 bg-background/90 text-xs text-muted-foreground shadow-sm backdrop-blur-xs transition-colors hover:bg-accent hover:text-foreground"
         style={{ pointerEvents: occluded ? 'none' : 'auto' }}
       >
         <span aria-hidden="true">◫</span>
-      </button>
+      </DsButton>
     </div>
   );
 };

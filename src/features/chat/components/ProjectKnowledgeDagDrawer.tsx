@@ -11,6 +11,7 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
+import { DsButton } from '@/components/ui/DsButton';
 import {
   KnowledgeError,
   ProjectKnowledgeStore,
@@ -377,14 +378,16 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
             {dagSummary.effectiveDone}/{dagSummary.effectiveTotal} ({dagSummary.completionPercent}%)
           </span>
           {onClose && (
-            <button
-              type="button"
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
               onClick={onClose}
               aria-label="关闭计划抽屉"
-              className="p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground"
+              className="!h-auto !w-auto !p-1 rounded hover:bg-muted/60 text-muted-foreground hover:text-foreground"
             >
               <X size={16} />
-            </button>
+            </DsButton>
           )}
         </div>
       </header>
@@ -394,19 +397,20 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
         {plans.length > 1 && (
           <div className="flex flex-wrap items-center gap-1.5">
             {plans.map((plan) => (
-              <button
+              <DsButton
                 key={plan.id}
-                type="button"
+                variant="ghost"
+                size="sm"
                 onClick={() => setSelectedPlanId(plan.id)}
                 className={cn(
-                  'px-2.5 py-1 text-xs rounded-md border border-border/35 transition-colors',
+                  '!h-auto !px-2.5 !py-1 text-xs rounded-md border border-border/35 transition-colors',
                   selectedPlanId === plan.id
-                    ? 'bg-primary text-primary-foreground border-primary font-medium'
+                    ? 'bg-primary text-primary-foreground border-primary font-medium hover:bg-primary/90 hover:text-primary-foreground'
                     : 'bg-background text-muted-foreground hover:text-foreground',
                 )}
               >
                 {extractPlanHeading(plan.body, plan.id)}
-              </button>
+              </DsButton>
             ))}
           </div>
         )}
@@ -432,7 +436,7 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
             </div>
 
             {/* 拓扑状态概览计数器 */}
-            <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-0.5">
+            <div className="flex items-center justify-between text-xs text-muted-foreground pt-0.5">
               <span className="inline-flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-success" />
                 <span>现在可做</span>
@@ -466,7 +470,7 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
             </div>
 
             {currentPlan.warning && (
-              <div className="text-[11px] text-warning bg-warning/10 px-2.5 py-1.5 rounded border border-warning/25">
+              <div className="text-xs text-warning bg-warning/10 px-2.5 py-1.5 rounded border border-warning/25">
                 {currentPlan.warning}
               </div>
             )}
@@ -482,7 +486,7 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
           <h3 className="text-xs font-semibold text-foreground">
             学习步骤顺序
           </h3>
-          <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
+          <span className="text-xs font-mono tabular-nums text-muted-foreground">
             共 {enrichedTodos.length} 项
           </span>
         </div>
@@ -511,15 +515,17 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
                 <div className="flex items-start justify-between gap-2.5">
                   <div className="flex items-start gap-2.5 min-w-0 flex-1">
                     {/* 一键勾选完成按钮 */}
-                    <button
-                      type="button"
+                    <DsButton
+                      variant="ghost"
+                      size="icon"
+                      iconOnly
                       disabled={isBlocked}
                       aria-label={`勾选任务：${todo.body}`}
                       onClick={() => handleCompleteOrToggleTodo(todo)}
                       className={cn(
-                        'mt-0.5 w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors',
+                        'mt-0.5 !w-4 !h-4 !p-0 rounded border flex items-center justify-center shrink-0 transition-colors',
                         isCompleted &&
-                          'bg-success border-success text-primary-foreground',
+                          'bg-success border-success text-primary-foreground hover:bg-success/90 hover:text-primary-foreground',
                         isReady &&
                           'border-success/60 bg-background hover:bg-success/15',
                         isBlocked &&
@@ -528,7 +534,7 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
                     >
                       {isCompleted && <Check size={12} weight="bold" />}
                       {isBlocked && <Lock size={10} />}
-                    </button>
+                    </DsButton>
 
                     <div className="flex flex-col gap-1 min-w-0 flex-1">
                       <div className="flex items-center gap-2">
@@ -555,20 +561,20 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
                       {/* 状态徽标：就绪可执行 / 等待前置：<前置任务名> */}
                       <div className="flex flex-wrap items-center gap-1.5">
                         {isReady && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium rounded bg-success/15 text-success">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs font-medium rounded bg-success/15 text-success">
                             就绪可执行
                           </span>
                         )}
                         {isBlocked && (
                           <span
                             data-testid={`dag-blocked-badge-${todo.id}`}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded bg-warning/15 text-warning border border-warning/25"
+                            className="inline-flex items-center gap-1 px-2 py-0.5 text-2xs font-medium rounded bg-warning/15 text-warning border border-warning/25"
                           >
                             等待前置：{todo.unfinishedDependencyTitles.join('、')}
                           </span>
                         )}
                         {isCompleted && (
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-muted text-muted-foreground">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-2xs rounded bg-muted text-muted-foreground">
                             已完成
                           </span>
                         )}
@@ -578,14 +584,15 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
 
                   {/* Ready 项可一键派发 */}
                   {isReady && onDispatchTodo && (
-                    <button
-                      type="button"
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
                       onClick={() => handleDispatchReadyTodo(todo)}
-                      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border border-success/30 bg-success/10 text-success hover:bg-success/20 shrink-0"
+                      className="!h-auto inline-flex items-center gap-1 !px-2 !py-1 text-xs font-medium rounded border border-success/30 bg-success/10 text-success hover:bg-success/20 hover:text-success shrink-0"
                     >
                       <Play size={12} />
                       <span>派发</span>
-                    </button>
+                    </DsButton>
                   )}
                 </div>
               </div>
@@ -600,7 +607,7 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
           <h3 className="text-xs font-semibold text-foreground">
             关联课堂笔记
           </h3>
-          <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
+          <span className="text-xs font-mono tabular-nums text-muted-foreground">
             {notes.length} 条
           </span>
         </div>
@@ -628,18 +635,19 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
                   className="rounded-lg border border-border/35 bg-background p-3 flex flex-col gap-2"
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-mono tabular-nums text-muted-foreground">
+                    <span className="text-xs font-mono tabular-nums text-muted-foreground">
                       笔记 #{note.id}
                     </span>
                     {!isEditing && (
-                      <button
-                        type="button"
+                      <DsButton
+                        variant="ghost"
+                        size="sm"
                         onClick={() => handleStartEditNote(note)}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] rounded border border-border/35 hover:bg-muted/60 text-foreground"
+                        className="!h-auto inline-flex items-center gap-1 !px-2 !py-0.5 text-xs rounded border border-border/35 hover:bg-muted/60 text-foreground"
                       >
                         <PencilSimple size={12} />
                         <span>编辑笔记</span>
-                      </button>
+                      </DsButton>
                     )}
                   </div>
 
@@ -663,33 +671,36 @@ export const ProjectKnowledgeDagDrawer: React.FC<ProjectKnowledgeDagDrawerProps>
                             <WarningCircle size={14} className="shrink-0" />
                             <span>版本冲突：{noteConflictError}</span>
                           </div>
-                          <button
-                            type="button"
+                          <DsButton
+                            variant="ghost"
+                            size="sm"
                             onClick={handleRefreshConflictedNote}
-                            className="inline-flex items-center gap-1 self-start px-2 py-1 text-[11px] rounded border border-destructive/40 bg-background text-foreground hover:bg-muted/50"
+                            className="!h-auto inline-flex items-center gap-1 self-start !px-2 !py-1 text-xs rounded border border-destructive/40 bg-background text-foreground hover:bg-muted/50"
                           >
                             <ArrowsClockwise size={12} />
                             <span>重新读取最新内容</span>
-                          </button>
+                          </DsButton>
                         </div>
                       )}
 
                       <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          type="button"
+                        <DsButton
+                          variant="ghost"
+                          size="sm"
                           onClick={handleCancelEditNote}
-                          className="px-2.5 py-1 text-xs rounded border border-border/35 bg-background hover:bg-muted/60"
+                          className="!h-auto !px-2.5 !py-1 text-xs rounded border border-border/35 bg-background hover:bg-muted/60"
                         >
                           取消
-                        </button>
-                        <button
-                          type="button"
+                        </DsButton>
+                        <DsButton
+                          variant="primary"
+                          size="sm"
                           onClick={handleSaveEditedNote}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded bg-primary text-primary-foreground"
+                          className="!h-auto inline-flex items-center gap-1 !px-2.5 !py-1 text-xs font-medium rounded bg-primary text-primary-foreground"
                         >
                           <FloppyDisk size={12} />
                           <span>保存修改</span>
-                        </button>
+                        </DsButton>
                       </div>
                     </div>
                   ) : (

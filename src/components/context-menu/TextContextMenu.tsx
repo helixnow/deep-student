@@ -20,6 +20,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { Copy, Scissors, ClipboardText, ListChecks } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { Z_INDEX } from '@/config/zIndex';
 import { useOverlayCoordinator } from '@/components/shared/OverlayCoordinator';
 import { copyTextToClipboard, readTextFromClipboard } from '@/utils/clipboardUtils';
@@ -194,27 +195,38 @@ function TextContextMenu({ position, onClose }: TextContextMenuProps) {
   }, [position]);
 
   // Close on outside click / escape
-  React.useEffect(() => {
-    const handleMouseDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
-      }
-    };
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    const handleScroll = () => onClose();
-    document.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('keydown', handleKey);
-    window.addEventListener('scroll', handleScroll, true);
-    window.addEventListener('blur', onClose);
-    return () => {
-      document.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('keydown', handleKey);
-      window.removeEventListener('scroll', handleScroll, true);
-      window.removeEventListener('blur', onClose);
-    };
-  }, [onClose]);
+  useEventRegistry(
+    [
+      {
+        target: 'document',
+        type: 'mousedown',
+        listener: (e) => {
+          if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+            onClose();
+          }
+        },
+      },
+      {
+        target: 'document',
+        type: 'keydown',
+        listener: (e) => {
+          if ((e as KeyboardEvent).key === 'Escape') onClose();
+        },
+      },
+      {
+        target: 'window',
+        type: 'scroll',
+        options: true,
+        listener: () => onClose(),
+      },
+      {
+        target: 'window',
+        type: 'blur',
+        listener: () => onClose(),
+      },
+    ],
+    [onClose],
+  );
 
   // Action handlers
   const refocus = () => {
@@ -363,52 +375,57 @@ export function TextContextMenuProvider({ children }: { children: React.ReactNod
   const close = React.useCallback(() => setPosition(null), []);
   const value = React.useMemo<TextContextMenuContextValue>(() => ({ open, close }), [open, close]);
 
-  React.useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      // If a descendant already handled it (preventDefault), stay out of the way.
-      if (e.defaultPrevented) return;
+  useEventRegistry(
+    [
+      {
+        target: 'window',
+        type: 'contextmenu',
+        listener: (rawEvent) => {
+          const e = rawEvent as MouseEvent;
+          // If a descendant already handled it (preventDefault), stay out of the way.
+          if (e.defaultPrevented) return;
 
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
+          const target = e.target as HTMLElement | null;
+          if (!target) return;
 
-      const editable = target.closest(
-        'input, textarea, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]'
-      ) as HTMLElement | null;
+          const editable = target.closest(
+            'input, textarea, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"]'
+          ) as HTMLElement | null;
 
-      const sel = window.getSelection();
-      const hasSelection = !!(sel && sel.toString().length > 0);
+          const sel = window.getSelection();
+          const hasSelection = !!(sel && sel.toString().length > 0);
 
-      // 触屏（M-7）：iOS WKWebView 长按根本不派发 contextmenu（本菜单不可达），
-      // Android 长按派发但 preventDefault 会压掉原生选择菜单。触屏上文本域 /
-      // 选区交给系统原生长按菜单（带选择手柄），自定义菜单只服务精确指针。
-      // 需要长按呼出自定义菜单的场景请用 src/hooks/mobile/useLongPress.ts。
-      const isTouch =
-        (e as PointerEvent).pointerType === 'touch' ||
-        (typeof window.matchMedia === 'function' &&
-          window.matchMedia('(hover: none) and (pointer: coarse)').matches);
-      if (isTouch && (editable || hasSelection)) return;
+          // 触屏（M-7）：iOS WKWebView 长按根本不派发 contextmenu（本菜单不可达），
+          // Android 长按派发但 preventDefault 会压掉原生选择菜单。触屏上文本域 /
+          // 选区交给系统原生长按菜单（带选择手柄），自定义菜单只服务精确指针。
+          // 需要长按呼出自定义菜单的场景请用 src/hooks/mobile/useLongPress.ts。
+          const isTouch =
+            (e as PointerEvent).pointerType === 'touch' ||
+            (typeof window.matchMedia === 'function' &&
+              window.matchMedia('(hover: none) and (pointer: coarse)').matches);
+          if (isTouch && (editable || hasSelection)) return;
 
-      if (editable || hasSelection) {
-        e.preventDefault();
-        const host = (editable ?? target) as HTMLElement;
-        open({
-          x: e.clientX,
-          y: e.clientY,
-          target: host,
-          hasSelection,
-          isTextField: !!editable && isEditableTarget(editable),
-          isReadOnly: editable ? isReadOnlyTarget(editable) : true,
-        });
-        return;
-      }
+          if (editable || hasSelection) {
+            e.preventDefault();
+            const host = (editable ?? target) as HTMLElement;
+            open({
+              x: e.clientX,
+              y: e.clientY,
+              target: host,
+              hasSelection,
+              isTextField: !!editable && isEditableTarget(editable),
+              isReadOnly: editable ? isReadOnlyTarget(editable) : true,
+            });
+            return;
+          }
 
-      // Plain chrome — silently swallow so the WebView default menu never shows.
-      e.preventDefault();
-    };
-
-    window.addEventListener('contextmenu', handler);
-    return () => window.removeEventListener('contextmenu', handler);
-  }, [open]);
+          // Plain chrome — silently swallow so the WebView default menu never shows.
+          e.preventDefault();
+        },
+      },
+    ],
+    [open],
+  );
 
   return (
     <TextContextMenuContext.Provider value={value}>

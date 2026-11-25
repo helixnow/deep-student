@@ -30,7 +30,7 @@ function escapeBareMathAsterisks(markdown: string): string {
   return segments
     .map((seg, index) => {
       if (index % 2 === 1) return seg;
-      return seg.replace(/(?<=[0-9a-zA-Z)\]])\*(?=\s*[0-9a-zA-Z(\[])/g, '\\*');
+      return seg.replace(/(?<=[0-9a-zA-Z)\]])\*(?=\s*[0-9a-zA-Z([])/g, '\\*');
     })
     .join('');
 }

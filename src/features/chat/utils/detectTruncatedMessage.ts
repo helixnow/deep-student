@@ -8,7 +8,7 @@ export interface DetectTruncatedMessageInput {
 
 const LENGTH_FINISH_REASONS = new Set(['length', 'max_tokens', 'max_output_tokens']);
 
-const DANGLING_SUFFIX_RE = /(?:[：:，,、(\[（【+\-×÷=→⇒]|于是|因此|例如|包括|如下|建议写成|也就是说|换言之)$/;
+const DANGLING_SUFFIX_RE = /(?:[：:，,、([（【+\-×÷=→⇒]|于是|因此|例如|包括|如下|建议写成|也就是说|换言之)$/;
 
 function countFenceLines(text: string): number {
   const matches = text.match(/^[ \t]*```/gm);

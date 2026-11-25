@@ -19,6 +19,7 @@ import {
   CloudArrowUp,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { Input } from '@/components/ui/shad/Input';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -236,19 +237,26 @@ export function DevicePairingSection({
     void refreshStoredCloudConfig(cloudConfigured === undefined);
   }, [cloudConfigured, activeMode, refreshStoredCloudConfig]);
 
-  useEffect(() => {
-    const onCloudConfigChanged = () => {
-      void refreshStoredCloudConfig(true);
-    };
-    window.addEventListener('data-governance:cloud-config-changed', onCloudConfigChanged);
-    window.addEventListener('storage', onCloudConfigChanged);
-    window.addEventListener('focus', onCloudConfigChanged);
-    return () => {
-      window.removeEventListener('data-governance:cloud-config-changed', onCloudConfigChanged);
-      window.removeEventListener('storage', onCloudConfigChanged);
-      window.removeEventListener('focus', onCloudConfigChanged);
-    };
-  }, [refreshStoredCloudConfig]);
+  useEventRegistry(
+    [
+      {
+        target: 'window',
+        type: 'data-governance:cloud-config-changed',
+        listener: () => { void refreshStoredCloudConfig(true); },
+      },
+      {
+        target: 'window',
+        type: 'storage',
+        listener: () => { void refreshStoredCloudConfig(true); },
+      },
+      {
+        target: 'window',
+        type: 'focus',
+        listener: () => { void refreshStoredCloudConfig(true); },
+      },
+    ],
+    [refreshStoredCloudConfig],
+  );
 
   const effectiveCloudConfigured = Boolean(cloudConfigured || storedCloudConfigured);
 
@@ -724,8 +732,10 @@ export function DevicePairingSection({
             role="tablist"
             aria-label={t('sync:pairing.modeSwitchAria', { defaultValue: '配对模式切换' })}
           >
-            <button
+            <DsButton
               type="button"
+              variant="ghost"
+              size="sm"
               role="tab"
               aria-selected={activeMode === 'send'}
               onClick={() => {
@@ -735,7 +745,7 @@ export function DevicePairingSection({
                 setActiveMode('send');
               }}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors [@media(pointer:coarse)]:min-h-9',
+                '!h-auto gap-1.5 rounded-md !border-0 px-2.5 py-1 text-xs font-medium transition-colors',
                 activeMode === 'send'
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
@@ -743,14 +753,16 @@ export function DevicePairingSection({
             >
               <QrCode size={14} />
               {t('sync:pairing.tabSend', { defaultValue: '本机生成二维码' })}
-            </button>
-            <button
+            </DsButton>
+            <DsButton
               type="button"
+              variant="ghost"
+              size="sm"
               role="tab"
               aria-selected={activeMode === 'receive'}
               onClick={() => setActiveMode('receive')}
               className={cn(
-                'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors [@media(pointer:coarse)]:min-h-9',
+                '!h-auto gap-1.5 rounded-md !border-0 px-2.5 py-1 text-xs font-medium transition-colors',
                 activeMode === 'receive'
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground',
@@ -758,7 +770,7 @@ export function DevicePairingSection({
             >
               <Camera size={14} />
               {t('sync:pairing.tabReceive', { defaultValue: '新设备扫码 / 接入' })}
-            </button>
+            </DsButton>
           </div>
         }
       >

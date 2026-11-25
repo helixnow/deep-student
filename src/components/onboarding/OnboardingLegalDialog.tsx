@@ -12,6 +12,7 @@ import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { Z_INDEX } from '@/config/zIndex';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { useFocusTrap } from '@/hooks/useFocusTrap';
 import {
   USER_AGREEMENT_ACCEPTED_KEY,
@@ -56,20 +57,26 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
     }, BACK_PRIORITY.overlay + 1);
   }, [onClose, open]);
 
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        event.stopPropagation();
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown, true);
-    };
-  }, [onClose, open]);
+  useEventRegistry(
+    open
+      ? [
+          {
+            target: 'document',
+            type: 'keydown',
+            options: true,
+            listener: (rawEvent) => {
+              const event = rawEvent as KeyboardEvent;
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                event.stopPropagation();
+                onClose();
+              }
+            },
+          },
+        ]
+      : [],
+    [onClose, open],
+  );
 
   if (!open || typeof document === 'undefined') return null;
 
@@ -122,11 +129,11 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
         <div className="flex-shrink-0 border-b border-border/40 px-4 pb-3 pt-5 sm:px-6 sm:pt-6">
           <h1
             id={isPrivacyInitial ? 'privacy-policy-title' : 'user-agreement-title'}
-            className="text-[18px] font-semibold leading-tight text-foreground"
+            className="text-xl font-semibold leading-tight text-foreground"
           >
             {headingText}
           </h1>
-          <p className="mt-1 text-[12px] leading-relaxed text-foreground/60">
+          <p className="mt-1 text-sm leading-relaxed text-foreground/60">
             {isPrivacyInitial
               ? t('legal.privacyPolicy.subtitle')
               : t('legal.userAgreement.welcomeDesc')}
@@ -141,22 +148,24 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
             {tabs.map((tab) => {
               const selected = activeTab === tab.id;
               return (
-                <button
+                <DsButton
                   key={tab.id}
                   type="button"
+                  variant="ghost"
+                  size="sm"
                   role="tab"
                   aria-selected={selected}
                   data-testid={`onboarding-legal-tab-${tab.id}`}
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
-                    'rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors [@media(pointer:coarse)]:min-h-11',
+                    '!h-auto rounded-md border px-2.5 py-1.5 text-xs font-medium transition-colors',
                     selected
                       ? 'border-primary/40 bg-primary/10 text-primary'
                       : 'border-border/50 bg-transparent text-foreground/70 hover:bg-muted/60 hover:text-foreground',
                   )}
                 >
                   {tab.label}
-                </button>
+                </DsButton>
               );
             })}
           </div>
@@ -166,7 +175,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
         <div
           role="tabpanel"
           data-testid="onboarding-legal-body"
-          className="min-h-[220px] flex-1 overflow-y-auto overscroll-contain px-4 py-4 text-[13px] leading-relaxed text-foreground/80 scroll-area--native sm:px-6"
+          className="min-h-[220px] flex-1 overflow-y-auto overscroll-contain px-4 py-4 text-ui leading-relaxed text-foreground/80 scroll-area--native sm:px-6"
           onWheel={(e) => e.stopPropagation()}
         >
           {activeTab === 'terms' && (
@@ -174,7 +183,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
               <p>{t('legal.userAgreement.agreementContent.intro')}</p>
               <div className="space-y-2.5">
                 <section>
-                  <h2 className="text-[13px] font-semibold text-foreground">
+                  <h2 className="text-ui font-semibold text-foreground">
                     {t('legal.userAgreement.agreementContent.aiFeatures')}
                   </h2>
                   <p className="mt-0.5 text-foreground/65">
@@ -182,7 +191,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
                   </p>
                 </section>
                 <section>
-                  <h2 className="text-[13px] font-semibold text-foreground">
+                  <h2 className="text-ui font-semibold text-foreground">
                     {t('legal.userAgreement.agreementContent.dataProcessing')}
                   </h2>
                   <p className="mt-0.5 text-foreground/65">
@@ -190,7 +199,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
                   </p>
                 </section>
                 <section>
-                  <h2 className="text-[13px] font-semibold text-foreground">
+                  <h2 className="text-ui font-semibold text-foreground">
                     {t('legal.userAgreement.agreementContent.userRights')}
                   </h2>
                   <p className="mt-0.5 text-foreground/65">
@@ -198,7 +207,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
                   </p>
                 </section>
                 <section>
-                  <h2 className="text-[13px] font-semibold text-foreground">
+                  <h2 className="text-ui font-semibold text-foreground">
                     {t('legal.userAgreement.agreementContent.intellectualProperty')}
                   </h2>
                   <p className="mt-0.5 text-foreground/65">
@@ -206,7 +215,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
                   </p>
                 </section>
                 <section>
-                  <h2 className="text-[13px] font-semibold text-foreground">
+                  <h2 className="text-ui font-semibold text-foreground">
                     {t('legal.userAgreement.agreementContent.crossBorderData')}
                   </h2>
                   <p className="mt-0.5 text-foreground/65">
@@ -222,7 +231,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
               <p>{t('legal.privacyPolicy.sections.overview.content')}</p>
               <div className="space-y-2.5">
                 <section>
-                  <h2 className="text-[13px] font-semibold text-foreground">
+                  <h2 className="text-ui font-semibold text-foreground">
                     {t('legal.privacyPolicy.sections.localStorage.title')}
                   </h2>
                   <p className="mt-0.5 text-foreground/65">
@@ -230,7 +239,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
                   </p>
                 </section>
                 <section>
-                  <h2 className="text-[13px] font-semibold text-foreground">
+                  <h2 className="text-ui font-semibold text-foreground">
                     {t('legal.privacyPolicy.sections.llmApi.title')}
                   </h2>
                   <p className="mt-0.5 text-foreground/65">
@@ -238,7 +247,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
                   </p>
                 </section>
                 <section>
-                  <h2 className="text-[13px] font-semibold text-foreground">
+                  <h2 className="text-ui font-semibold text-foreground">
                     {t('legal.privacyPolicy.sections.errorReporting.title')}
                   </h2>
                   <p className="mt-0.5 text-foreground/65">
@@ -246,7 +255,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
                   </p>
                 </section>
                 <section>
-                  <h2 className="text-[13px] font-semibold text-foreground">
+                  <h2 className="text-ui font-semibold text-foreground">
                     {t('legal.privacyPolicy.sections.noTracking.title')}
                   </h2>
                   <p className="mt-0.5 text-foreground/65">
@@ -268,7 +277,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
                   </li>
                 ))}
               </ul>
-              <p className="rounded-md border border-orange-500/25 bg-orange-500/[0.06] px-3 py-2 text-[12px] font-medium text-orange-600/90 dark:text-orange-400/90">
+              <p className="rounded-md border border-orange-500/25 bg-orange-500/[0.06] px-3 py-2 text-sm font-medium text-orange-600/90 dark:text-orange-400/90">
                 {t('legal.userAgreement.contentSafety.note')}
               </p>
             </div>
@@ -277,7 +286,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
 
         {/* 底部显式同意勾选 + 操作栏 */}
         <div className="flex-shrink-0 space-y-3 border-t border-border/40 px-4 py-3.5 sm:px-6">
-          <label className="flex cursor-pointer items-start gap-2.5 select-none text-[12px] leading-relaxed text-foreground/80">
+          <label className="flex cursor-pointer items-start gap-2.5 select-none text-sm leading-relaxed text-foreground/80">
             <input
               type="checkbox"
               data-testid="onboarding-legal-consent-checkbox"
@@ -292,7 +301,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
               variant="default"
               size="lg"
               data-testid="onboarding-legal-close"
-              className="flex-1 justify-center text-[13px] font-medium [@media(pointer:coarse)]:!min-h-11"
+              className="flex-1 justify-center text-ui font-medium"
               onClick={onClose}
             >
               {closeLabel}
@@ -302,7 +311,7 @@ export const OnboardingLegalDialog: React.FC<OnboardingLegalDialogProps> = ({
               size="lg"
               data-testid="onboarding-legal-agree-continue"
               disabled={!consentChecked}
-              className="flex-1 justify-center !border-primary !bg-primary !text-primary-foreground hover:!bg-primary/90 hover:!text-primary-foreground disabled:!opacity-50 text-[13px] font-medium [@media(pointer:coarse)]:!min-h-11"
+              className="flex-1 justify-center !border-primary !bg-primary !text-primary-foreground hover:!bg-primary/90 hover:!text-primary-foreground disabled:!opacity-50 text-ui font-medium"
               onClick={() => {
                 if (!consentChecked) return;
                 const record = persistLegalConsentRecord();

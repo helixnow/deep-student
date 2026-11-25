@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -59,6 +60,19 @@ export function useSettingsTabIndicator({ loading, activeTab }: { loading: boole
     });
   }, []);
 
+  useEventRegistry(
+    !loading && activeTab
+      ? [
+          {
+            target: 'window',
+            type: 'resize',
+            listener: debounce(() => updateIndicatorRaf(activeTab), 100),
+          },
+        ]
+      : [],
+    [loading, activeTab, updateIndicatorRaf],
+  );
+
   // 初始化和窗口大小变化时更新指示器（使用 rAF 代替 setTimeout 延迟）
   useEffect(() => {
     if (!loading && activeTab) {
@@ -68,16 +82,12 @@ export function useSettingsTabIndicator({ loading, activeTab }: { loading: boole
         raf2 = requestAnimationFrame(() => updateIndicatorRaf(activeTab));
       });
 
-      const handleResize = debounce(() => updateIndicatorRaf(activeTab), 100);
-      window.addEventListener('resize', handleResize);
-
       // 横向滚动时保持指示器与选中标签对齐
       const buttonsEl = tabButtonsContainerRef.current;
       const handleScroll = () => updateIndicatorRaf(activeTab);
       if (buttonsEl) buttonsEl.addEventListener('scroll', handleScroll, { passive: true });
 
       return () => {
-        window.removeEventListener('resize', handleResize);
         if (buttonsEl) buttonsEl.removeEventListener('scroll', handleScroll);
         if (raf1) cancelAnimationFrame(raf1);
         if (raf2) cancelAnimationFrame(raf2);

@@ -404,7 +404,7 @@ const TodoListRow: React.FC<TodoListRowProps> = ({
       </NavRow>
       <div
         className={cn(
-          'pointer-events-none absolute inset-y-0 right-1.5 z-[1] flex items-center gap-0.5 opacity-0 transition-opacity duration-150',
+          'pointer-events-none absolute inset-y-0 right-1.5 z-10 flex items-center gap-0.5 opacity-0 transition-opacity duration-150',
           'group-hover/list-item:pointer-events-auto group-hover/list-item:opacity-100',
           'focus-within:pointer-events-auto focus-within:opacity-100',
           // 触屏无 hover：⋯ 菜单常显，否则重命名/收藏/删除等操作不可达

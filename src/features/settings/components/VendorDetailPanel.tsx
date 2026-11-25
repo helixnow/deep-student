@@ -42,6 +42,7 @@ import { groupByModelFamily } from './modelFamily';
 import type { ApiProtocol, VendorConfig } from '@/types';
 import { isOpenAICodexOAuthVendor } from '@/utils/vendorAuth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { SettingsVirtualList, type SettingsVirtualItem } from './SettingsVirtualList';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
@@ -165,16 +166,12 @@ const ResponsiveInlineEditorHost: React.FC<{
   // floating 态是自绘 role="dialog"（非 Radix，无 data-state="open"），
   // androidBackCoordinator 的 Radix Escape 兜底匹配不到——必须显式注册
   // overlay 级返回 handler + Escape，否则中屏按返回键会穿透到底层导航。
+  const floatingEscapeTokenRef = useRef<symbol | null>(null);
   useEffect(() => {
     if (!floating) return;
     const token = Symbol('responsive-inline-editor-esc');
+    floatingEscapeTokenRef.current = token;
     floatingEditorEscapeStack.push(token);
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
-      if (floatingEditorEscapeStack[floatingEditorEscapeStack.length - 1] !== token) return;
-      onDismissRef.current?.();
-    };
-    document.addEventListener('keydown', onKeyDown);
     const unregisterBack = registerBackHandler(() => {
       onDismissRef.current?.();
       return true;
@@ -182,10 +179,29 @@ const ResponsiveInlineEditorHost: React.FC<{
     return () => {
       const index = floatingEditorEscapeStack.indexOf(token);
       if (index >= 0) floatingEditorEscapeStack.splice(index, 1);
-      document.removeEventListener('keydown', onKeyDown);
+      if (floatingEscapeTokenRef.current === token) floatingEscapeTokenRef.current = null;
       unregisterBack();
     };
   }, [floating]);
+
+  useEventRegistry(
+    floating
+      ? [
+          {
+            target: 'document',
+            type: 'keydown',
+            listener: (rawEvent) => {
+              const e = rawEvent as KeyboardEvent;
+              if (e.key !== 'Escape' || e.defaultPrevented) return;
+              const token = floatingEscapeTokenRef.current;
+              if (!token || floatingEditorEscapeStack[floatingEditorEscapeStack.length - 1] !== token) return;
+              onDismissRef.current?.();
+            },
+          },
+        ]
+      : [],
+    [floating],
+  );
 
   const content = (
     <div
@@ -660,9 +676,11 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
           key: `family:${group.family.id}`,
           estimateSize: 56,
           render: () => (
-            <button
+            <DsButton
               key={`family:${group.family.id}`}
               type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setCollapsedFamilies((prev) => {
                   const next = new Set(prev);
@@ -672,8 +690,8 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                 });
               }}
               className={cn(
-                'mt-3 flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30',
-                isCollapsed ? 'rounded-2xl bg-muted' : 'rounded-t-2xl bg-muted',
+                'mt-3 !h-auto w-full justify-between gap-3 !border-0 px-4 py-3 text-left font-normal transition-colors hover:bg-muted/30',
+                isCollapsed ? 'rounded-2xl bg-muted' : 'rounded-none rounded-t-2xl bg-muted',
               )}
               aria-expanded={!isCollapsed}
               aria-controls={groupId}
@@ -685,7 +703,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
               <span className="shrink-0 text-muted-foreground" aria-hidden="true">
                 {isCollapsed ? <CaretDown className="h-4 w-4" /> : <CaretUp className="h-4 w-4" />}
               </span>
-            </button>
+            </DsButton>
           ),
         });
 
@@ -1163,8 +1181,10 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                         key={group.family.id}
                         className="rounded-2xl bg-muted overflow-hidden"
                       >
-                        <button
+                        <DsButton
                           type="button"
+                          variant="ghost"
+                          size="sm"
                           onClick={() => {
                             setCollapsedFamilies((prev) => {
                               const next = new Set(prev);
@@ -1173,7 +1193,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                               return next;
                             });
                           }}
-                          className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors"
+                          className="!h-auto w-full justify-between gap-3 rounded-none !border-0 px-4 py-3 text-left font-normal hover:bg-muted/30 transition-colors"
                           aria-expanded={!isCollapsed}
                           aria-controls={groupId}
                         >
@@ -1184,7 +1204,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                           <span className="text-muted-foreground shrink-0" aria-hidden="true">
                             {isCollapsed ? <CaretDown className="h-4 w-4" /> : <CaretUp className="h-4 w-4" />}
                           </span>
-                        </button>
+                        </DsButton>
                         <div
                           id={groupId}
                           className={cn(

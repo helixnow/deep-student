@@ -11,6 +11,7 @@ vi.mock('@tauri-apps/api/event', () => ({
   emit: vi.fn(async () => undefined),
 }));
 
+import { addTypedEventListener } from '@/events';
 import { McpService, bootstrapMcpFromSettings, isMcpPausedForSafeMode } from '../mcpService';
 
 const SAMPLE_MCP_SERVERS = JSON.stringify([
@@ -59,15 +60,14 @@ describe('SPOF-5A MCP bootstrap Safe Mode pause', () => {
 
     const connectAllSpy = vi.spyOn(McpService, 'connectAll').mockResolvedValue(undefined);
     const readyEvents: Array<Record<string, unknown>> = [];
-    const onReady = (ev: Event) => {
-      readyEvents.push((ev as CustomEvent<Record<string, unknown>>).detail);
-    };
-    window.addEventListener('mcp-bootstrap-ready', onReady);
+    const disposeReady = addTypedEventListener<Record<string, unknown>>('mcp-bootstrap-ready', (detail) => {
+      readyEvents.push(detail);
+    });
 
     try {
       await bootstrapMcpFromSettings({ force: true, preheat: true });
     } finally {
-      window.removeEventListener('mcp-bootstrap-ready', onReady);
+      disposeReady();
     }
 
     expect(invokeMock).toHaveBeenCalledWith('plugin:ui|manifest', { version: 2 });

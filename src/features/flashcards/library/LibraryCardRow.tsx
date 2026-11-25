@@ -336,7 +336,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
           <div className="wb-fc-row-back">
             {back ? <CardMathText text={back} inline allowBasicHtml /> : t('card.noBack')}
           </div>
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
             <span
               className="fc-lib-badge"
               data-status={status}
@@ -484,7 +484,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
             size="sm"
             disabled={deleting}
             onClick={onCancelDelete}
-            className="text-xs [@media(pointer:coarse)]:!min-h-11"
+            className="text-xs"
           >
             {t('common:cancel')}
           </DsButton>
@@ -494,7 +494,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
             size="sm"
             disabled={deleting}
             onClick={onConfirmDelete}
-            className="text-xs [@media(pointer:coarse)]:!min-h-11"
+            className="text-xs"
           >
             <Trash size={13} />
             {t('library.delete')}
@@ -519,7 +519,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                       size="sm"
                       disabled={saving}
                       onClick={handleInsertCloze}
-                      className="min-h-[32px] gap-1 text-xs [@media(pointer:coarse)]:!min-h-11"
+                      className="min-h-[32px] gap-1 text-xs"
                     >
                       <BracketsCurly size={13} aria-hidden="true" />
                       <span>
@@ -561,7 +561,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                     value={draftTags}
                     disabled={saving}
                     onChange={(event) => setDraftTags(event.target.value)}
-                    className="h-9 text-base sm:h-8 sm:text-sm [@media(pointer:coarse)]:!h-11"
+                    className="h-9 text-base sm:h-8 sm:text-sm [@media(pointer:coarse)]:min-h-[var(--touch-target-size)]"
                   />
                 </div>
                 {editError ? (
@@ -574,7 +574,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                     size="sm"
                     disabled={saving || busy}
                     onClick={() => void handleSave()}
-                    className="text-xs [@media(pointer:coarse)]:!min-h-11"
+                    className="text-xs"
                   >
                     {translate('library.save')}
                   </DsButton>
@@ -587,7 +587,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                       setEditing(false);
                       setEditError(null);
                     }}
-                    className="text-xs [@media(pointer:coarse)]:!min-h-11"
+                    className="text-xs"
                   >
                     {translate('library.cancel')}
                   </DsButton>
@@ -665,35 +665,41 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                       <dd className="flex items-center gap-1.5">
                         {translate(sourceKey)}{sourceRef?.title ? ` · ${sourceRef.title}` : ''}
                         {sourceRef ? (
-                          <button
+                          <DsButton
                             type="button"
-                            className="inline-flex items-center gap-0.5 text-primary hover:underline [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:-mx-3"
+                            variant="ghost"
+                            size="sm"
+                            className="!h-auto !min-w-0 !border-0 !bg-transparent !px-0 !py-0 gap-0.5 text-xs font-normal text-primary hover:underline [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:-mx-3"
                             onClick={() => openCardSourceRef(sourceRef)}
                           >
                             <ArrowSquareOut size={11} aria-hidden="true" />
                             {translate('library.viewSource')}
-                          </button>
+                          </DsButton>
                         ) : sourceSessionId ? (
-                          <button
+                          <DsButton
                             type="button"
-                            className="inline-flex items-center gap-0.5 text-primary hover:underline [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:-mx-3"
+                            variant="ghost"
+                            size="sm"
+                            className="!h-auto !min-w-0 !border-0 !bg-transparent !px-0 !py-0 gap-0.5 text-xs font-normal text-primary hover:underline [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:-mx-3"
                             onClick={() => jumpToChatSession(sourceSessionId)}
                           >
                             <ArrowSquareOut size={11} aria-hidden="true" />
                             {translate('library.viewSource')}
-                          </button>
+                          </DsButton>
                         ) : null}
                         {mediaSource ? (
-                          <button
+                          <DsButton
                             type="button"
-                            className="inline-flex items-center gap-0.5 text-primary hover:underline tabular-nums [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:-mx-3"
+                            variant="ghost"
+                            size="sm"
+                            className="!h-auto !min-w-0 !border-0 !bg-transparent !px-0 !py-0 gap-0.5 text-xs font-normal text-primary hover:underline tabular-nums [@media(pointer:coarse)]:!px-3 [@media(pointer:coarse)]:-mx-3"
                             aria-label={translate('library.playMediaSource', { time: mediaSource.label })}
                             title={translate('library.playMediaSource', { time: mediaSource.label })}
                             onClick={() => dispatchOpenMediaRef(mediaSource.resourceId, mediaSource.seconds)}
                           >
                             <Play size={11} weight="fill" aria-hidden="true" />
                             {mediaSource.label}
-                          </button>
+                          </DsButton>
                         ) : null}
                       </dd>
                     </div>
@@ -713,7 +719,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                     size="sm"
                     disabled={busy}
                     onClick={beginEdit}
-                    className="text-xs [@media(pointer:coarse)]:!min-h-11"
+                    className="text-xs"
                   >
                     <PencilSimple size={13} />
                     {translate('library.edit')}
@@ -725,7 +731,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                       size="sm"
                       disabled={busy}
                       onClick={() => onUndoReview(card.id)}
-                      className="text-xs [@media(pointer:coarse)]:!min-h-11"
+                      className="text-xs"
                     >
                       <ArrowCounterClockwise size={13} />
                       {translate('library.undoReview')}
@@ -745,7 +751,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                         setResetArmed(false);
                         onResetProgress(card.id);
                       }}
-                      className="text-xs [@media(pointer:coarse)]:!min-h-11"
+                      className="text-xs"
                     >
                       <Eraser size={13} />
                       {resetArmed

@@ -19,6 +19,7 @@
  */
 
 import { useEffect, useRef } from 'react';
+import { addTypedEventListener } from '@/events';
 import { LEARNING_EVENTS } from '@/command-palette/modules/learning.commands';
 import {
   LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE_EVENT,
@@ -121,61 +122,36 @@ export function useLearningHubEvents(handlers: LearningHubEventHandlers): void {
   });
 
   useEffect(() => {
-    // ========== learningHubOpenExam ==========
-    const handleOpenExam = (evt: Event) => {
-      const detail = (evt as CustomEvent<OpenExamEventDetail>).detail;
-      handlersRef.current.onOpenExam?.(detail);
-    };
-
-    // ========== learningHubOpenTranslation ==========
-    const handleOpenTranslation = (evt: Event) => {
-      const detail = (evt as CustomEvent<OpenTranslationEventDetail>).detail;
-      handlersRef.current.onOpenTranslation?.(detail);
-    };
-
-    // ========== learningHubOpenEssay ==========
-    const handleOpenEssay = (evt: Event) => {
-      const detail = (evt as CustomEvent<OpenEssayEventDetail>).detail;
-      handlersRef.current.onOpenEssay?.(detail);
-    };
-
-    // ========== learningHubOpenNote ==========
-    const handleOpenNote = (evt: Event) => {
-      const detail = (evt as CustomEvent<OpenNoteEventDetail>).detail;
-      handlersRef.current.onOpenNote?.(detail);
-    };
-
-    // ========== learningHubOpenResource ==========
-    const handleOpenResource = (evt: Event) => {
-      const detail = (evt as CustomEvent<OpenResourceEventDetail>).detail;
-      handlersRef.current.onOpenResource?.(detail);
-    };
-
-    // ========== LEARNING_OPEN_TRANSLATE ==========
-    const handleCommandOpenTranslate = () => {
-      handlersRef.current.onCommandOpenTranslate?.();
-    };
-
-    // ========== LEARNING_OPEN_ESSAY_GRADING ==========
-    const handleCommandOpenEssayGrading = () => {
-      handlersRef.current.onCommandOpenEssayGrading?.();
-    };
-
-    // ========== Learning Hub 知识库导航 ==========
-    const handleNavigateToKnowledge = (evt: Event) => {
-      const detail = (evt as CustomEvent<NavigateToKnowledgeEventDetail>).detail;
-      handlersRef.current.onNavigateToKnowledge?.(detail);
-    };
-
     // 统一注册所有事件监听器
-    window.addEventListener('learningHubOpenExam', handleOpenExam);
-    window.addEventListener('learningHubOpenTranslation', handleOpenTranslation);
-    window.addEventListener('learningHubOpenEssay', handleOpenEssay);
-    window.addEventListener('learningHubOpenNote', handleOpenNote);
-    window.addEventListener('learningHubOpenResource', handleOpenResource);
-    window.addEventListener(LEARNING_EVENTS.OPEN_TRANSLATE, handleCommandOpenTranslate);
-    window.addEventListener(LEARNING_EVENTS.OPEN_ESSAY_GRADING, handleCommandOpenEssayGrading);
-    window.addEventListener(LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE_EVENT, handleNavigateToKnowledge);
+    const cleanups = [
+      addTypedEventListener<OpenExamEventDetail>('learningHubOpenExam', (detail) => {
+        handlersRef.current.onOpenExam?.(detail);
+      }),
+      addTypedEventListener<OpenTranslationEventDetail>('learningHubOpenTranslation', (detail) => {
+        handlersRef.current.onOpenTranslation?.(detail);
+      }),
+      addTypedEventListener<OpenEssayEventDetail>('learningHubOpenEssay', (detail) => {
+        handlersRef.current.onOpenEssay?.(detail);
+      }),
+      addTypedEventListener<OpenNoteEventDetail>('learningHubOpenNote', (detail) => {
+        handlersRef.current.onOpenNote?.(detail);
+      }),
+      addTypedEventListener<OpenResourceEventDetail>('learningHubOpenResource', (detail) => {
+        handlersRef.current.onOpenResource?.(detail);
+      }),
+      addTypedEventListener(LEARNING_EVENTS.OPEN_TRANSLATE, () => {
+        handlersRef.current.onCommandOpenTranslate?.();
+      }),
+      addTypedEventListener(LEARNING_EVENTS.OPEN_ESSAY_GRADING, () => {
+        handlersRef.current.onCommandOpenEssayGrading?.();
+      }),
+      addTypedEventListener<NavigateToKnowledgeEventDetail>(
+        LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE_EVENT,
+        (detail) => {
+          handlersRef.current.onNavigateToKnowledge?.(detail);
+        },
+      ),
+    ];
 
     // 监听器就位：进入就绪态并重放挂载前挂起的打开意图
     const releaseReady = markLearningHubReady();
@@ -183,14 +159,7 @@ export function useLearningHubEvents(handlers: LearningHubEventHandlers): void {
     // 统一清理所有事件监听器
     return () => {
       releaseReady();
-      window.removeEventListener('learningHubOpenExam', handleOpenExam);
-      window.removeEventListener('learningHubOpenTranslation', handleOpenTranslation);
-      window.removeEventListener('learningHubOpenEssay', handleOpenEssay);
-      window.removeEventListener('learningHubOpenNote', handleOpenNote);
-      window.removeEventListener('learningHubOpenResource', handleOpenResource);
-      window.removeEventListener(LEARNING_EVENTS.OPEN_TRANSLATE, handleCommandOpenTranslate);
-      window.removeEventListener(LEARNING_EVENTS.OPEN_ESSAY_GRADING, handleCommandOpenEssayGrading);
-      window.removeEventListener(LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE_EVENT, handleNavigateToKnowledge);
+      for (const cleanup of cleanups) cleanup();
     };
   }, []); // 空依赖数组 - 只在挂载时注册，卸载时清理
 }

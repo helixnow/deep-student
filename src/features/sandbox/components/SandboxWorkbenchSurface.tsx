@@ -23,6 +23,7 @@ import { usePinnedArtifactStore } from '@/stores/pinnedArtifactStore';
 import { cn } from '@/utils/cn';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 import {
@@ -354,46 +355,52 @@ export function SandboxWorkbenchSurface({
     };
   }, [viewportPreset, inspectorOpen, activeSession?.id, activeVersion, resetPreviewScroll]);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const payload = event.data as
-        | { source?: unknown; type?: unknown; message?: unknown; lineno?: unknown; colno?: unknown }
-        | null
-        | undefined;
-      if (!payload || payload.source !== 'ds-sandbox-runtime' || payload.type !== 'runtime-error') {
-        return;
-      }
-      const frame = canvasRef.current?.querySelector('iframe.interactive-html-canvas-frame');
-      if (
-        frame instanceof HTMLIFrameElement &&
-        frame.contentWindow &&
-        event.source &&
-        event.source !== frame.contentWindow
-      ) {
-        return;
-      }
-      const rawLineno =
-        typeof payload.lineno === 'number' && Number.isFinite(payload.lineno)
-          ? payload.lineno
-          : 0;
-      const adjustedLineno = adjustSandboxRuntimeErrorLine(
-        rawLineno,
-        effectiveContentRef.current,
-        frame instanceof HTMLIFrameElement ? frame.getAttribute('srcdoc') : null,
-      );
-      setRuntimeError({
-        message: typeof payload.message === 'string' && payload.message.trim()
-          ? payload.message
-          : (isEnglish ? 'Unknown script runtime error' : '未知脚本运行错误'),
-        lineno: adjustedLineno,
-        colno: typeof payload.colno === 'number' && Number.isFinite(payload.colno)
-          ? payload.colno
-          : 0,
-      });
-    };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [isEnglish]);
+  useEventRegistry(
+    [
+      {
+        target: 'window',
+        type: 'message',
+        listener: (rawEvent) => {
+          const event = rawEvent as MessageEvent;
+          const payload = event.data as
+            | { source?: unknown; type?: unknown; message?: unknown; lineno?: unknown; colno?: unknown }
+            | null
+            | undefined;
+          if (!payload || payload.source !== 'ds-sandbox-runtime' || payload.type !== 'runtime-error') {
+            return;
+          }
+          const frame = canvasRef.current?.querySelector('iframe.interactive-html-canvas-frame');
+          if (
+            frame instanceof HTMLIFrameElement &&
+            frame.contentWindow &&
+            event.source &&
+            event.source !== frame.contentWindow
+          ) {
+            return;
+          }
+          const rawLineno =
+            typeof payload.lineno === 'number' && Number.isFinite(payload.lineno)
+              ? payload.lineno
+              : 0;
+          const adjustedLineno = adjustSandboxRuntimeErrorLine(
+            rawLineno,
+            effectiveContentRef.current,
+            frame instanceof HTMLIFrameElement ? frame.getAttribute('srcdoc') : null,
+          );
+          setRuntimeError({
+            message: typeof payload.message === 'string' && payload.message.trim()
+              ? payload.message
+              : (isEnglish ? 'Unknown script runtime error' : '未知脚本运行错误'),
+            lineno: adjustedLineno,
+            colno: typeof payload.colno === 'number' && Number.isFinite(payload.colno)
+              ? payload.colno
+              : 0,
+          });
+        },
+      },
+    ],
+    [isEnglish],
+  );
 
   useEffect(() => {
     const prev = prevViewportRef.current;
@@ -569,13 +576,14 @@ export function SandboxWorkbenchSurface({
             >
               <SidebarSimple size={18} />
             </DsButton>
-            <button
-              type="button"
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={handleClear}
-              className="rounded-full border border-border/35 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-foreground/5 [@media(pointer:coarse)]:!min-h-11"
+              className="!h-auto rounded-full border border-border/35 px-3 py-1.5 text-sm font-normal text-muted-foreground transition-colors hover:bg-foreground/5"
             >
               {t('sandbox.clearSession')}
-            </button>
+            </DsButton>
           </div>
         </div>
       </section>
@@ -613,7 +621,7 @@ export function SandboxWorkbenchSurface({
             <span
               data-testid="sandbox-runtime-status-badge"
               className={cn(
-                'rounded-full border px-2 py-0.5 text-[11px] font-medium tabular-nums',
+                'rounded-full border px-2 py-0.5 text-xs font-medium tabular-nums',
                 runtimeError
                   ? 'border-destructive/45 bg-destructive/10 text-destructive'
                   : 'border-[hsl(var(--success)/0.35)] bg-[hsl(var(--success)/0.1)] text-foreground',
@@ -626,7 +634,7 @@ export function SandboxWorkbenchSurface({
           )}
           {hasSyncedWidgetState && (
             <span
-              className="rounded-full border border-border/35 bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground"
+              className="rounded-full border border-border/35 bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground"
               data-testid="sandbox-state-synced-badge"
             >
               {t('sandbox.stateSynced')}
@@ -641,9 +649,10 @@ export function SandboxWorkbenchSurface({
             {revisions.map((rev) => {
               const isCurrent = rev.version === activeVersion;
               return (
-                <button
+                <DsButton
                   key={rev.version}
-                  type="button"
+                  variant="ghost"
+                  size="sm"
                   data-testid={`sandbox-version-pill-v${rev.version}`}
                   aria-pressed={isCurrent}
                   onClick={() => {
@@ -655,14 +664,14 @@ export function SandboxWorkbenchSurface({
                     }
                   }}
                   className={cn(
-                    'rounded-full border px-2 py-0.5 font-mono text-xs tabular-nums transition-colors',
+                    '!h-auto rounded-full border px-2 py-0.5 font-mono text-xs font-normal tabular-nums transition-colors',
                     isCurrent
                       ? 'border-primary/40 bg-primary/10 text-foreground'
                       : 'border-border/35 bg-transparent text-muted-foreground hover:text-foreground',
                   )}
                 >
                   v{rev.version}
-                </button>
+                </DsButton>
               );
             })}
           </div>
@@ -670,22 +679,24 @@ export function SandboxWorkbenchSurface({
 
         <div className="flex flex-wrap items-center gap-1.5">
           {useInteractiveHtmlCanvas && !pinnedRecord && (
-            <button
-              type="button"
+            <DsButton
+              variant="ghost"
+              size="sm"
               disabled={!canResetDraft}
               onClick={() => {
                 setResetConfirmOpen((prev) => !prev);
               }}
               aria-expanded={resetConfirmOpen}
               data-testid="sandbox-reset-button"
-              className="inline-flex items-center gap-1 rounded-full border border-border/35 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-45 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-3.5"
+              className="!h-auto gap-1 rounded-full border border-border/35 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-45 [@media(pointer:coarse)]:px-3.5"
             >
               <span>{isEnglish ? 'Reset' : '重置'}</span>
-            </button>
+            </DsButton>
           )}
           {useInteractiveHtmlCanvas && !pinnedRecord && preResetSnapshot && !resetConfirmOpen && (
-            <button
-              type="button"
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 setRuntimeError(null);
                 restoreSessionSnapshot(preResetSnapshot, ownerKey);
@@ -693,29 +704,31 @@ export function SandboxWorkbenchSurface({
                 setCanvasSyncKey((v) => v + 1);
               }}
               data-testid="sandbox-undo-reset-button"
-              className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-3.5"
+              className="!h-auto gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20 [@media(pointer:coarse)]:px-3.5"
             >
               <span>{isEnglish ? 'Reset to v1 · Undo' : '已重置为 v1 · 撤销重置'}</span>
-            </button>
+            </DsButton>
           )}
-          <button
-            type="button"
+          <DsButton
+            variant="ghost"
+            size="sm"
             disabled={savingToSpace}
             onClick={() => void handleSaveToSpace()}
             data-testid="sandbox-save-to-space-button"
-            className="inline-flex items-center gap-1 rounded-full border border-border/35 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-3.5"
+            className="!h-auto gap-1 rounded-full border border-border/35 px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted disabled:opacity-50 [@media(pointer:coarse)]:px-3.5"
           >
             <FolderSimplePlus size={13} className="shrink-0" />
             <span>{savingToSpace ? t('sandbox.savingToSpace') : t('sandbox.saveToSpace')}</span>
-          </button>
+          </DsButton>
 
           {(['desktop', 'tablet', 'mobile'] as const).map((preset) => (
-            <button
+            <DsButton
               key={preset}
-              type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => setViewportPreset(preset, ownerKey)}
               className={cn(
-                'rounded-full border px-2.5 py-1 text-xs font-medium transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-4',
+                '!h-auto rounded-full border px-2.5 py-1 text-xs font-medium transition-colors [@media(pointer:coarse)]:px-4',
                 viewportPreset === preset
                   ? 'border-primary/40 bg-primary/10 text-foreground'
                   : 'border-border/35 bg-transparent text-muted-foreground hover:text-foreground',
@@ -740,7 +753,7 @@ export function SandboxWorkbenchSurface({
                 : preset === 'tablet'
                   ? t('sandbox.tabletShort', '平')
                   : t('sandbox.mobileShort', '手')}
-            </button>
+            </DsButton>
           ))}
         </div>
       </div>
@@ -758,8 +771,9 @@ export function SandboxWorkbenchSurface({
               : '确定重置回初始版本 v1 吗？当前历史版本将被收起，可随时撤销。'}
           </span>
           <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 const snapshotRevState: SandboxSessionRevisionState = sessionRevisionState
                   ? {
@@ -782,18 +796,19 @@ export function SandboxWorkbenchSurface({
                 setCanvasSyncKey((v) => v + 1);
               }}
               data-testid="sandbox-reset-confirm-button"
-              className="rounded-md border border-warning/50 bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-warning/15 [@media(pointer:coarse)]:!min-h-11"
+              className="!h-auto rounded-md border border-warning/50 bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-warning/15"
             >
               {isEnglish ? 'Confirm Reset' : '确认重置'}
-            </button>
-            <button
-              type="button"
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={() => setResetConfirmOpen(false)}
               data-testid="sandbox-reset-cancel-button"
-              className="rounded-md border border-border/35 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted [@media(pointer:coarse)]:!min-h-11"
+              className="!h-auto rounded-md border border-border/35 px-2.5 py-1 text-xs font-normal text-muted-foreground transition-colors hover:bg-muted"
             >
               {isEnglish ? 'Cancel' : '取消'}
-            </button>
+            </DsButton>
           </div>
         </div>
       )}
@@ -826,14 +841,15 @@ export function SandboxWorkbenchSurface({
                   : `运行控制台 · v${activeVersion} · 运行正常`)}
           </span>
           {runtimeError && (
-            <button
-              type="button"
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={() => setRuntimeError(null)}
               data-testid="sandbox-runtime-clear-error"
-              className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium hover:bg-destructive/15"
+              className="!h-auto shrink-0 rounded px-1.5 py-0.5 text-xs font-medium hover:bg-destructive/15"
             >
               {isEnglish ? 'Clear' : '清除'}
-            </button>
+            </DsButton>
           )}
         </div>
       )}
@@ -848,7 +864,7 @@ export function SandboxWorkbenchSurface({
           ref={canvasRef}
           data-testid="sandbox-runtime-canvas"
           className={cn(
-            'relative z-[1] mx-auto w-full min-w-0 min-h-[360px] rounded-2xl border border-border/35 bg-background shadow-[var(--shadow-shell-soft)] md:min-h-[520px] [&_[data-expanded="true"]]:!relative [&_[data-expanded="true"]]:!inset-auto [&_[data-expanded="true"]]:!z-[1] [&_[data-expanded="true"]]:!h-auto [&_[data-expanded="true"]]:!min-h-[480px] [&_[data-expanded="true"]]:!w-full',
+            'relative z-10 mx-auto w-full min-w-0 min-h-[360px] rounded-2xl border border-border/35 bg-background shadow-[var(--shadow-shell-soft)] md:min-h-[520px] [&_[data-expanded="true"]]:!relative [&_[data-expanded="true"]]:!inset-auto [&_[data-expanded="true"]]:!z-10 [&_[data-expanded="true"]]:!h-auto [&_[data-expanded="true"]]:!min-h-[480px] [&_[data-expanded="true"]]:!w-full',
             useInteractiveHtmlCanvas ? 'overflow-visible' : 'overflow-hidden',
             !useInteractiveHtmlCanvas &&
               effectiveKind !== 'openui' &&
@@ -942,7 +958,7 @@ export function SandboxWorkbenchSurface({
             onClick={() => setInspectorOpen(false, ownerKey)}
             title={t('sandbox.collapse')}
             aria-label={t('sandbox.collapse')}
-            className="!h-7 !w-7 !p-0 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:-my-2"
+            className="!h-7 !w-7 !p-0 [@media(pointer:coarse)]:-my-2"
           >
             <X size={14} />
           </DsButton>
@@ -954,7 +970,7 @@ export function SandboxWorkbenchSurface({
       >
         <div className="space-y-4">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.source')}</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.source')}</p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <span className="rounded-full border border-border bg-background px-2 py-0.5 text-xs text-foreground">
                 {inspectorSourceTypeLabel}
@@ -967,14 +983,15 @@ export function SandboxWorkbenchSurface({
           </div>
 
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.view')}</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.view')}</p>
             <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
               {(['desktop', 'tablet', 'mobile'] as const).map((preset) => (
-                <button
+                <DsButton
                   key={preset}
-                  type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => setViewportPreset(preset, ownerKey)}
-                  className={`rounded-lg border px-2 py-2 text-left transition-colors [@media(pointer:coarse)]:!min-h-11 ${
+                  className={`!h-auto justify-start rounded-lg border px-2 py-2 text-left text-xs font-normal transition-colors ${
                     viewportPreset === preset
                       ? 'border-foreground/30 bg-foreground/5 text-foreground'
                       : 'border-border bg-transparent'
@@ -987,13 +1004,13 @@ export function SandboxWorkbenchSurface({
                     : preset === 'tablet'
                       ? t('sandbox.tabletShort', '平')
                       : t('sandbox.mobileShort', '手')}
-                </button>
+                </DsButton>
               ))}
             </div>
           </div>
 
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.stats')}</p>
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('sandbox.stats')}</p>
             <dl className="mt-2 space-y-2 text-xs">
               <div className="flex items-center justify-between gap-4">
                 <dt>{t('sandbox.language')}</dt>

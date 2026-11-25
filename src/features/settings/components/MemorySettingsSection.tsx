@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Check, CircleNotch, WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { addTypedEventListener } from '@/events';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Input } from '@/components/ui/shad/Input';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -90,11 +91,9 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
 
   useEffect(() => {
     loadData();
-    const onConfigChanged = () => {
+    return addTypedEventListener('memory-config-changed', () => {
       void loadData();
-    };
-    window.addEventListener('memory-config-changed', onConfigChanged);
-    return () => window.removeEventListener('memory-config-changed', onConfigChanged);
+    });
   }, [loadData]);
 
   const handleSelectFolder = useCallback(
