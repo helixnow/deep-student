@@ -89,6 +89,7 @@ interface ValidationErrors {
   id?: string;
   name?: string;
   description?: string;
+  content?: string;
 }
 
 function normalizeSkillIdList(ids?: string[]): string[] {
@@ -123,6 +124,7 @@ function validateForm(
   const trimmedId = data.id.trim();
   const trimmedName = data.name.trim();
   const trimmedDesc = data.description.trim();
+  const trimmedContent = data.content.trim();
 
   // ID 验证（仅创建模式，与后端目录/元数据要求保持一致）
   if (!isEdit) {
@@ -152,6 +154,11 @@ function validateForm(
     errors.description = t('skills:validation.description_required');
   } else if (trimmedDesc.length > 1024) {
     errors.description = t('skills:validation.description_too_long');
+  }
+
+  // 指令正文验证（不允许空白正文导致保存后空技能）
+  if (!trimmedContent) {
+    errors.content = t('skills:validation.content_required');
   }
 
   return errors;
@@ -270,9 +277,11 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
     const validationErrors = validateForm(formData, isEdit, isBuiltinSkill, t as any);
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
-      // 如果基本信息有错误，切换到基本信息标签
+      // 如果基本信息有错误，切换到基本信息标签；仅指令正文缺失时切换到内容标签
       if (validationErrors.id || validationErrors.name || validationErrors.description) {
         setActiveTab('basic');
+      } else if (validationErrors.content) {
+        setActiveTab('content');
       }
       return;
     }
@@ -653,21 +662,29 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
             <TabsContent value="content" className="mt-0 focus-visible:outline-none h-full flex flex-col">
               <div className="space-y-2 flex-1 flex flex-col min-h-0">
                 <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider flex-none">
-                  {t('skills:editor.content')}
+                  {t('skills:editor.content')} *
                 </Label>
                 <Textarea
                   ref={contentRef}
+                  data-testid="skill-content-textarea"
                   value={formData.content}
                   onChange={(e) => {
                     updateField('content', (e.target as HTMLTextAreaElement).value);
                     if (embeddedMode) autoGrow(e.target as HTMLTextAreaElement);
                   }}
                   placeholder={t('skills:editor.content_placeholder')}
+                  aria-invalid={Boolean(errors.content)}
                   className={cn(
                     'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors font-mono text-sm',
-                    embeddedMode ? 'overflow-hidden resize-none min-h-[200px]' : 'resize-none flex-1 min-h-[300px]'
+                    embeddedMode ? 'overflow-hidden resize-none min-h-[200px]' : 'resize-none flex-1 min-h-[300px]',
+                    errors.content && 'border-destructive'
                   )}
 />
+                {errors.content && (
+                  <p role="alert" data-testid="skill-content-error" className="text-xs text-destructive flex-none">
+                    {errors.content}
+                  </p>
+                )}
                 <p className="text-2xs text-muted-foreground/60 flex-none">
                   {t('skills:editor.content_hint')}
                 </p>

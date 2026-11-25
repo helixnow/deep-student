@@ -3302,7 +3302,8 @@
     "close": "Close",
     "edit": "Edit",
     "delete": "Delete",
-    "save": "Save"
+    "save": "Save",
+    "back_to_settings": "Back to settings"
   },
   "feature_flags": {
     "title": "Feature flags",

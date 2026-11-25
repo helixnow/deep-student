@@ -65,7 +65,6 @@ import {
   parseSkillFile,
   useSkillDefaults,
   extractCustomizationFromSkill,
-  getSkillPackageRoot,
 } from '@/features/chat/skills';
 import { setSkillTrustOverride } from '@/features/chat/skills/skillTrustStorage';
 import {
@@ -119,6 +118,11 @@ interface SkillsManagementPageProps {
 
 /** 全局技能目录路径 */
 const GLOBAL_SKILLS_PATH = '~/.deep-student/skills';
+
+/** 声明式插件（.dspack）提供的技能仅可只读查看，不可本地编辑或删除 */
+function isPluginProvidedSkill(skill: SkillDefinition | null | undefined): boolean {
+  return Boolean(skill?.sourcePath?.startsWith('plugin://'));
+}
 
 // 纯 ".md" 会让 wry Android 选择器在不认识 md 的系统上崩溃（validTypes 为空）；
 // MIME 在前，Android 再放宽到 octet-stream，导入时按扩展名把关
@@ -514,6 +518,10 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
 
   // 打开编辑器
   const handleEdit = useCallback((skill: SkillDefinition, cardRect?: DOMRect) => {
+    if (isPluginProvidedSkill(skill)) {
+      showGlobalNotification('info', t('skills:management.plugin_readonly'));
+      return;
+    }
     setPreviewSkillId(null);
     setEditingSkill(skill);
     setEditorLocation(skill.location);
@@ -537,14 +545,18 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       setRightPanelOpen(true);
       setScreenPosition('right');
     }
-  }, [isSmallScreen]);
+  }, [isSmallScreen, t]);
 
   // 打开删除确认
   const handleDelete = useCallback((skill: SkillDefinition) => {
+    if (isPluginProvidedSkill(skill)) {
+      showGlobalNotification('error', t('skills:management.plugin_readonly'));
+      return;
+    }
     setPreviewSkillId((current) => (current === skill.id ? null : current));
     setSkillToDelete(skill);
     setDeleteConfirmOpen(true);
-  }, []);
+  }, [t]);
 
   // 从技能编辑器内请求删除：先收回全区/嵌入编辑器，再在列表顶部展示行内删除确认横幅
   const handleDeleteFromEditor = useCallback((skill: SkillDefinition) => {
@@ -571,6 +583,10 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
     const isEdit = Boolean(editingSkill);
     const isBuiltinSkill = editingSkill?.isBuiltin === true;
 
+    if (isEdit && editingSkill && isPluginProvidedSkill(editingSkill)) {
+      throw new Error(t('skills:management.plugin_readonly'));
+    }
+
     if (isEdit && editingSkill && isBuiltinSkill) {
       // 内置技能：保存自定义到数据库
       const customization = {
@@ -589,6 +605,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       };
       await saveBuiltinSkillCustomization(editingSkill.id, customization);
       await reloadSkills();
+      setRegistryVersion((v) => v + 1);
       showGlobalNotification(
         'success',
         t('skills:management.builtin_save_success')
@@ -596,7 +613,6 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
       return;
     }
 
-    let writtenPath: string | undefined;
     let savedSkillId: string;
     if (isEdit && editingSkill) {
       // 用户技能：更新文件系统
@@ -620,8 +636,7 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
         data.content
       );
       const skillFilePath = editingSkill.sourcePath;
-      const updated = await updateSkill({ path: skillFilePath, content });
-      writtenPath = updated?.path || skillFilePath;
+      await updateSkill({ path: skillFilePath, content });
       savedSkillId = editingSkill.id;
     } else {
       // 创建新技能（只能创建用户技能）
@@ -641,31 +656,26 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
         },
         data.content
       );
-      const created = await createSkill({
+      await createSkill({
         basePath: GLOBAL_SKILLS_PATH,
         skillId: data.id,
         content,
       });
-      writtenPath = created?.path || `${GLOBAL_SKILLS_PATH}/${data.id}/SKILL.md`;
       savedSkillId = data.id;
     }
 
-    // 刷新列表并使本地用户自建/保存的自定义技能「保存即生效」（同时处于启用 + 已信任状态）
+    // 刷新列表并校验技能确实已持久化且可被重新加载，避免写出损坏/空技能仍弹出假成功提示
     await reloadSkills();
-    setSkillDisabled(savedSkillId, false);
+    setRegistryVersion((v) => v + 1);
     const loadedSkill = skillRegistry.get(savedSkillId);
-    const trustTarget: SkillDefinition = loadedSkill ?? {
-      id: savedSkillId,
-      name: data.name,
-      description: data.description,
-      content: data.content,
-      location: editingSkill?.location ?? 'global',
-      sourcePath: writtenPath,
-      packageRoot: editingSkill?.packageRoot ?? getSkillPackageRoot(writtenPath),
-      isBuiltin: false,
-    };
+    if (!loadedSkill) {
+      throw new Error(t('skills:management.save_verify_missing', { id: savedSkillId }));
+    }
+
+    // 使本地用户自建/保存的自定义技能「保存即生效」（同时处于启用 + 已信任状态）
+    setSkillDisabled(savedSkillId, false);
     try {
-      await setSkillTrustOverride(savedSkillId, 'trusted', trustTarget);
+      await setSkillTrustOverride(savedSkillId, 'trusted', loadedSkill);
     } catch (trustError) {
       console.warn('[SkillsManagement] Auto-trust after local save failed:', trustError);
     }
@@ -717,12 +727,20 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   const handleConfirmDelete = useCallback(async () => {
     if (!skillToDelete) return;
 
-    // ★ 防御性检查：内置技能不可删除
+    // ★ 防御性检查：内置技能与插件声明式技能不可删除
     if (skillToDelete.isBuiltin) {
       console.warn('[SkillsManagement] 尝试删除内置技能，已阻止:', skillToDelete.id);
       showGlobalNotification(
         'error',
         t('skills:management.builtin_no_delete')
+      );
+      return;
+    }
+    if (isPluginProvidedSkill(skillToDelete)) {
+      console.warn('[SkillsManagement] 尝试删除插件只读技能，已阻止:', skillToDelete.id);
+      showGlobalNotification(
+        'error',
+        t('skills:management.plugin_readonly')
       );
       return;
     }

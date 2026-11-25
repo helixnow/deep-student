@@ -313,6 +313,8 @@ export interface GlobalNotificationPayload {
   borderTone?: GlobalNotificationBorderTone;
   icon?: GlobalNotificationIconMode;
   progress?: GlobalNotificationProgressMode;
+  /** Optional key to atomically replace any active notification sharing the same key. */
+  replaceKey?: string;
 }
 
 export const showGlobalNotification = (
@@ -324,6 +326,7 @@ export const showGlobalNotification = (
     borderTone?: GlobalNotificationBorderTone;
     icon?: GlobalNotificationIconMode;
     progress?: GlobalNotificationProgressMode;
+    replaceKey?: string;
   }
 ): void => {
   const normalized = normalizeNotificationMessage(message);
@@ -338,6 +341,7 @@ export const showGlobalNotification = (
         borderTone: options?.borderTone,
         icon: options?.icon,
         progress: options?.progress,
+        replaceKey: options?.replaceKey,
       },
     }));
   } catch {

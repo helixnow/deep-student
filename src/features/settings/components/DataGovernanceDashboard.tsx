@@ -117,6 +117,16 @@ import {
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
+/** 备份/恢复/导出/导入任务生命周期通知复用键：新状态原子替换在途 info，避免「已完成」与「进行中」同屏叠放 */
+const BACKUP_JOB_NOTIFICATION_KEY = 'data-governance:backup-job';
+
+const notifyBackupJobError = (message: string) => {
+  if (!shouldNotifyDeduped('error', message)) return;
+  showGlobalNotification('error', message, undefined, {
+    replaceKey: BACKUP_JOB_NOTIFICATION_KEY,
+  });
+};
+
 /**
  * Debug 页签是否可见。
  *
@@ -1094,12 +1104,16 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       if (op === 'zip_export') {
         showGlobalNotification(
           resultSuccess ? 'success' : 'warning',
-          resultSuccess ? t('data:governance.export_success_simple') : t('data:governance.backup_completed_with_issues')
+          resultSuccess ? t('data:governance.export_success_simple') : t('data:governance.backup_completed_with_issues'),
+          undefined,
+          { replaceKey: BACKUP_JOB_NOTIFICATION_KEY },
         );
       } else if (op === 'zip_import') {
         showGlobalNotification(
           resultSuccess ? 'success' : 'warning',
-          resultSuccess ? t('data:governance.import_success_simple') : t('data:governance.backup_completed_with_issues')
+          resultSuccess ? t('data:governance.import_success_simple') : t('data:governance.backup_completed_with_issues'),
+          undefined,
+          { replaceKey: BACKUP_JOB_NOTIFICATION_KEY },
         );
         void loadBackups();
         // 导入完成后提示用户是否立即恢复
@@ -1119,21 +1133,27 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       } else if (op === 'restore') {
         showGlobalNotification(
           resultSuccess ? 'success' : 'warning',
-          resultSuccess ? t('data:governance.restore_success_simple') : t('data:governance.backup_completed_with_issues')
+          resultSuccess ? t('data:governance.restore_success_simple') : t('data:governance.backup_completed_with_issues'),
+          undefined,
+          { replaceKey: BACKUP_JOB_NOTIFICATION_KEY },
         );
         void loadBackups();
         void loadOverviewData(); // 恢复后刷新概览数据
       } else if (op === 'tiered_backup') {
         showGlobalNotification(
           resultSuccess ? 'success' : 'warning',
-          resultSuccess ? t('data:governance.tiered_backup_success') : t('data:governance.backup_completed_with_issues')
+          resultSuccess ? t('data:governance.tiered_backup_success') : t('data:governance.backup_completed_with_issues'),
+          undefined,
+          { replaceKey: BACKUP_JOB_NOTIFICATION_KEY },
         );
         void loadBackups();
       } else {
         // 普通备份完成
         showGlobalNotification(
           resultSuccess ? 'success' : 'warning',
-          resultSuccess ? t('data:governance.backup_success') : t('data:governance.backup_completed_with_issues')
+          resultSuccess ? t('data:governance.backup_success') : t('data:governance.backup_completed_with_issues'),
+          undefined,
+          { replaceKey: BACKUP_JOB_NOTIFICATION_KEY },
         );
         void loadBackups();
       }
@@ -1168,7 +1188,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         localizeCloudStorageError(event.result?.error || event.message, t, i18n?.language),
         t,
       );
-      notifyErrorDeduped('error', localizedError);
+      notifyBackupJobError(localizedError);
       resolveJobOutcome(event.job_id, {
         success: false,
         error: localizedError,
@@ -1180,7 +1200,9 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       setBackupJobId(null);
       setJobOperation(null);
       void reconcileMaintenanceMode();
-      showGlobalNotification('info', t('data:governance.backup_cancelled'));
+      showGlobalNotification('info', t('data:governance.backup_cancelled'), undefined, {
+        replaceKey: BACKUP_JOB_NOTIFICATION_KEY,
+      });
       resolveJobOutcome(event?.job_id, {
         success: false,
         cancelled: true,
@@ -1219,7 +1241,9 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     try {
       const response = await DataGovernanceApi.resumeBackupJob(jobId, password);
       setBackupJobId(response.job_id);
-      showGlobalNotification('info', t('data:governance.job_resumed'));
+      showGlobalNotification('info', t('data:governance.job_resumed'), undefined, {
+        replaceKey: BACKUP_JOB_NOTIFICATION_KEY,
+      });
       
       // 使用统一的监听 Hook
       const outcomePromise = waitForBackupJobOutcome(response.job_id);
@@ -1230,7 +1254,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         localizeCloudStorageError(error, t, i18n?.language),
         t,
       );
-      notifyErrorDeduped('error', msg);
+      notifyBackupJobError(msg);
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
@@ -1396,11 +1420,13 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     try {
       const response = await DataGovernanceApi.runBackup('full', true);
       setBackupJobId(response.job_id);
-      showGlobalNotification('info', t('data:governance.create_restore_point_started'));
+      showGlobalNotification('info', t('data:governance.create_restore_point_started'), undefined, {
+        replaceKey: BACKUP_JOB_NOTIFICATION_KEY,
+      });
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('创建本地恢复点失败:', error);
-      notifyErrorDeduped('error', localizeCloudStorageError(error, t));
+      notifyBackupJobError(localizeCloudStorageError(error, t));
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
@@ -1473,11 +1499,13 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
             );
 
       setBackupJobId(response.job_id);
-      showGlobalNotification('info', t('data:governance.backup_and_export_started'));
+      showGlobalNotification('info', t('data:governance.backup_and_export_started'), undefined, {
+        replaceKey: BACKUP_JOB_NOTIFICATION_KEY,
+      });
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('备份并导出 ZIP 失败:', error);
-      notifyErrorDeduped('error', localizeCloudStorageError(error, t));
+      notifyBackupJobError(localizeCloudStorageError(error, t));
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
@@ -1494,13 +1522,19 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     try {
       const cancelled = await DataGovernanceApi.cancelBackup(backupJobId);
       if (cancelled) {
-        showGlobalNotification('info', t('data:governance.backup_cancel_requested'));
+        showGlobalNotification('info', t('data:governance.backup_cancel_requested'), undefined, {
+          replaceKey: BACKUP_JOB_NOTIFICATION_KEY,
+        });
       } else {
-        showGlobalNotification('warning', t('data:governance.backup_cancel_failed'));
+        showGlobalNotification('warning', t('data:governance.backup_cancel_failed'), undefined, {
+          replaceKey: BACKUP_JOB_NOTIFICATION_KEY,
+        });
       }
     } catch (error: unknown) {
       console.error('取消备份失败:', error);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', getErrorMessage(error), undefined, {
+        replaceKey: BACKUP_JOB_NOTIFICATION_KEY,
+      });
     }
   }, [backupJobId, t]);
 
@@ -1556,13 +1590,15 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
             );
       setBackupJobId(response.job_id);
 
-      showGlobalNotification('info', t('data:governance.export_started'));
+      showGlobalNotification('info', t('data:governance.export_started'), undefined, {
+        replaceKey: BACKUP_JOB_NOTIFICATION_KEY,
+      });
 
       // 使用统一的监听 Hook
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('ZIP 导出失败:', error);
-      notifyErrorDeduped('error', localizeCloudStorageError(error, t));
+      notifyBackupJobError(localizeCloudStorageError(error, t));
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
@@ -1623,7 +1659,9 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       const response = await DataGovernanceApi.importZip(zipPath, undefined, password);
       setBackupJobId(response.job_id);
 
-      showGlobalNotification('info', t('data:governance.import_started'));
+      showGlobalNotification('info', t('data:governance.import_started'), undefined, {
+        replaceKey: BACKUP_JOB_NOTIFICATION_KEY,
+      });
 
       // 使用统一的监听 Hook 并等待任务终态（供口令错弹窗保留错误反馈）
       const outcomePromise = waitForBackupJobOutcome(response.job_id);
@@ -1635,7 +1673,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         localizeCloudStorageError(error, t),
         t,
       );
-      notifyErrorDeduped('error', msg);
+      notifyBackupJobError(msg);
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);
@@ -1729,13 +1767,17 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       const response = await DataGovernanceApi.restoreBackup(backupId);
       setBackupJobId(response.job_id);
 
-      showGlobalNotification('info', t('data:governance.restore_started'));
+      showGlobalNotification('info', t('data:governance.restore_started'), undefined, {
+        replaceKey: BACKUP_JOB_NOTIFICATION_KEY,
+      });
 
       // 使用统一的监听 Hook
       await startListening(response.job_id);
     } catch (error: unknown) {
       console.error('恢复备份失败:', error);
-      showGlobalNotification('error', getErrorMessage(error));
+      showGlobalNotification('error', getErrorMessage(error), undefined, {
+        replaceKey: BACKUP_JOB_NOTIFICATION_KEY,
+      });
       setIsBackupRunning(false);
       void reconcileMaintenanceMode();
       setJobOperation(null);

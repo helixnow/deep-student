@@ -278,8 +278,7 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
           <DsButton
             ref={handleRef}
             variant="ghost"
-            size="icon"
-            iconOnly
+            size="sm"
             className="wb-sys-drawer-handle"
             onClick={() => setDrawerOpen(true)}
             aria-label={openLabel}
@@ -287,9 +286,9 @@ export const WorkbenchSidebarLayout: React.FC<WorkbenchSidebarLayoutProps> = ({
             title={openLabel}
             data-wb-sys-drawer-handle
           >
-            <SidebarSimple size={16} weight="regular" aria-hidden />
+            <SidebarSimple size={16} weight="regular" className="shrink-0" aria-hidden />
+            <span className="wb-sys-compact-bar-label">{navLabel}</span>
           </DsButton>
-          <span className="wb-sys-compact-bar-label">{navLabel}</span>
         </div>
       )}
 

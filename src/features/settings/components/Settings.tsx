@@ -89,14 +89,26 @@ function resolveMaintenanceGovernanceTab(): DashboardTab | undefined {
   return 'backup';
 }
 
-export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) => {
+export interface SettingsComponentProps extends SettingsProps {
+  /** Hosted inside WorkbenchSidebarLayout, which already owns the sidebar/compact drawer shell. */
+  embeddedInWorkbench?: boolean;
+}
+
+export const Settings: React.FC<SettingsComponentProps> = ({
+  onBack,
+  isActive = true,
+  embeddedInWorkbench = false,
+}) => {
   const { t } = useTranslation(['settings', 'common']);
   const { t: navigationT } = useTranslation(['settings', 'common', 'data', 'workbench', 'sync', 'cloudStorage']);
   const sectionEntries = useSlot<SettingsSection>('settings.sections');
   const { isSmallScreen } = useBreakpoint();
   const isMobile = isMobilePlatform() || (isWebUiShell() && isSmallScreen);
-  // 移动端设置以全屏 sheet 承载；桌面端继续使用独立工作区页面。
-  const effectiveMobilePanelMode = isSmallScreen;
+  // 宿主已提供 WorkbenchSidebarLayout（含 compact 抽屉）时不再重复套嵌 MobileSlidingLayout，
+  // 直接渲染当前分区内容，避免 360px 桌面 WebUI 首次打开出现空白页或双层导航冲突。
+  const useStandaloneMobileShell = isSmallScreen && !embeddedInWorkbench;
+  // 移动端设置以全屏 sheet 承载；桌面端及 Workbench 窗口宿主使用直接工作区内容视图。
+  const effectiveMobilePanelMode = useStandaloneMobileShell;
   const isTauriEnvironment = typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__);
 
   // 移动端 Sheet header 标题（面包屑）所需状态
@@ -177,7 +189,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
 
   const { handleSaveChatStreamTimeout, handleToggleChatStreamAutoCancel } = useSettingsParamsSection({ extra, setExtra, invoke, t });
 
-  const shell = useSettingsMobileShell({ isSmallScreen, isActive, activeTab, handleSave, loading, configLoadedRef, onBack });
+  const shell = useSettingsMobileShell({ isSmallScreen: useStandaloneMobileShell, isActive, activeTab, handleSave, loading, configLoadedRef, onBack });
   const {
     screenPosition, rightPanelType, setRightPanelType,
     mobileNavView, setMobileNavView, mobileSearchQuery, setMobileSearchQuery,
@@ -204,7 +216,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   useRefreshOnReturn(() => refreshSnapshots({ reload: true }), isActive && activeTab === 'mcp');
 
   // P0-4：移动端 MCP 工具/资源预览改走三屏右滑面板（替代 DsDialog）
-  useSettingsMcpPreviewPanel({ isSmallScreen, mcpPreviewOpen: mcpPreview.open, rightPanelType, setRightPanelType, setScreenPosition: shell.setScreenPosition, closeRightPanel });
+  useSettingsMcpPreviewPanel({ isSmallScreen: useStandaloneMobileShell, mcpPreviewOpen: mcpPreview.open, rightPanelType, setRightPanelType, setScreenPosition: shell.setScreenPosition, closeRightPanel });
 
   // MCP 分区数据引导（仅在 activeTab === 'mcp' 时工作）
   useSettingsMcpBootstrap({ activeTab, mcpTools: config.mcpTools, refreshSnapshots, setMcpStatusInfo });
@@ -231,13 +243,13 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   });
 
   useMobileHeader('settings', {
-    // 移动端设置按普通页面承载，统一顶栏即页面顶栏（标题面包屑 + 返回 + 右侧动作）。
-    hidden: !isActive,
+    // 移动端设置按普通页面承载，统一顶栏即页面顶栏（标题面包屑 + 返回 + 右侧动作）；Workbench 嵌入时不接管全局移动顶栏。
+    hidden: !isActive || embeddedInWorkbench,
     titleNode: settingsTitleNode,
     onMenuClick: settingsHeaderBack,
     showBackArrow: true,
     rightActions: settingsHeaderRightActions,
-  }, [settingsTitleNode, settingsHeaderRightActions, settingsHeaderBack, isActive]);
+  }, [settingsTitleNode, settingsHeaderRightActions, settingsHeaderBack, isActive, embeddedInWorkbench]);
 
   // 挂载时、以及（经典壳保活）设置视图重新成为当前视图时消费 pending settings route。
   // 很多入口只写 pending route 再切视图、不派发 SETTINGS_NAVIGATE_TAB（迁移横幅、
@@ -366,7 +378,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     }
   }, [isSmallScreen, settingsScrollElement, activeTab, mobileNavView]);
 
-  if (loading && !isSmallScreen) {
+  if (loading && !useStandaloneMobileShell) {
     return (
       <div className="settings absolute inset-0 flex flex-col overflow-hidden bg-[color:var(--shell-workspace-panel)]">
         <div className="flex-1 flex items-center justify-center">
@@ -457,7 +469,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       onClearCache: handleClearCaches,
       onOpenPolicy: handleOpenMcpPolicy,
       onCreateServer: handleCreateMcpTool,
-      onEditServer: isSmallScreen ? (server) => handleEditMcpTool(server as McpToolConfig, mcpServers.findIndex((s) => s.id === server.id)) : undefined,
+      onEditServer: useStandaloneMobileShell ? (server) => handleEditMcpTool(server as McpToolConfig, mcpServers.findIndex((s) => s.id === server.id)) : undefined,
       scrollElement: settingsScrollElement,
     }),
     statistics: () => ({ embedded: true, mode: 'stats' }),
@@ -527,12 +539,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
             variant="ghost"
             size="md"
             data-testid="settings-mobile-right-back"
-            aria-label={t('settings:a11y.back_to_settings', { defaultValue: '返回设置' })}
+            aria-label={t('settings:a11y.back_to_settings', { defaultValue: 'Back to settings' })}
             onClick={handleHeaderBack}
             className="!h-11 !min-h-[44px] !min-w-[44px] shrink-0 gap-1 px-2 text-foreground"
           >
             <CaretLeft size={20} weight="regular" aria-hidden="true" />
-            <span className="text-sm font-medium">{t('common:back', { defaultValue: '返回' })}</span>
+            <span className="text-sm font-medium">{t('common:back', { defaultValue: 'Back' })}</span>
           </DsButton>
           {settingsTitleText ? (
             <h2 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">
@@ -586,7 +598,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     </DsDialog>
   );
 
-  if (isSmallScreen) {
+  if (useStandaloneMobileShell) {
     // 移动端设置按普通页面承载（2026-09 起不再使用底部 Sheet）：
     // 统一顶栏由上方 useMobileHeader('settings') 注册（标题面包屑 + 返回箭头 + 右侧动作），
     // 返回链 handleMobileHeaderBack：分区列表态退出设置，内容态逐级回退。
@@ -695,6 +707,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       className="settings absolute inset-0 flex flex-col overflow-hidden bg-[color:var(--shell-workspace-panel)]"
       data-wb-settings-content-ready
       data-wb-settings-active-tab={activeTab}
+      data-wb-settings-embedded={embeddedInWorkbench ? 'true' : undefined}
     >
       <UnifiedErrorHandler errors={mcpErrors} onDismiss={dismissMcpError} onClearAll={clearMcpErrors} />
 

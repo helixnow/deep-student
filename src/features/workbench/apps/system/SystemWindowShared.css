@@ -252,20 +252,21 @@
   font-size: 13px;
   font-weight: 500;
   line-height: 1.25;
-  color: hsl(var(--muted-foreground));
+  color: inherit;
 }
 
 .wb-sys-drawer-handle {
   position: relative;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 8px;
   flex-shrink: 0;
-  width: 44px;
+  max-width: 100%;
   height: 44px;
   min-width: 44px;
   min-height: 44px;
-  padding: 0;
+  padding: 0 10px;
   border: none;
   border-radius: 8px;
   background: transparent;
