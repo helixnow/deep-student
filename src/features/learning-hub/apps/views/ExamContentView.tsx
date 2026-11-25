@@ -1,82 +1,64 @@
-import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, startTransition } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useCallback, useRef, useMemo, startTransition } from 'react';
 import { useTranslation } from 'react-i18next';
-import i18n from '@/i18n';
-import { CircleNotch, CheckCircle, WarningCircle, ArrowClockwise, Scan, Tag, Clock, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download, Plus, CaretDown, PencilSimple, XCircle, ClockCounterClockwise, Table as TableIcon, Sparkle, DotsSixVertical } from '@phosphor-icons/react';
+import {
+  WarningCircle,
+  ArrowClockwise,
+  Tag,
+  GearSix,
+  ChartBar,
+  Star,
+  XCircle,
+  ClockCounterClockwise,
+  DotsSixVertical,
+} from '@phosphor-icons/react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogBody } from '@/components/ui/DsDialog';
-import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { percentOf, ratioToPercent } from '@/components/stats';
 import type { ContentViewProps } from '../UnifiedAppPanel';
-import { 
+import {
   getNextQuestionIndex,
   getPracticeStartIndex,
   type Question,
   type PracticeMode,
   type QuestionType,
-  type QuestionStatus,
   type Difficulty,
-  type QuestionBankStats,
 } from '@/api/questionBankApi';
 import { invoke } from '@tauri-apps/api/core';
 import { convertToApiQuestion, useQuestionBankSession, type StoreQuestion } from '@/hooks/useQuestionBankSession';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
-import {
-  useQuestionBankStore,
-  validateQbankPracticeHandoff,
-  getPracticeSessionKey,
-  type PracticeHandoffHydrationResult,
-} from '@/stores/questionBankStore';
-import { useReviewPlanStore } from '@/stores/reviewPlanStore';
+import { useQuestionBankStore } from '@/stores/questionBankStore';
 import {
   buildSelectiveQuestionRevertParams,
   QuestionRevertError,
-  isQbankAgentModifyPayload,
   useQbankAgentDiffStore,
 } from '@/stores/qbankAgentDiffStore';
-import {
-  selectActiveTaskForExam,
-  selectTasksForExam,
-  useQbankGenerationStore,
-} from '@/stores/qbankGenerationStore';
-import {
-  extractAuthoringDraftAttribution,
-  QBANK_OPEN_GENERATION_DRAFT_EVENT,
-  type PendingAuthoringDraftView,
-  type QbankGenerationTask,
-  type QbankOpenGenerationDraftDetail,
-} from '@/types/qbankGeneration';
-import { QBankAgentDiffBar } from '@/components/practice/QBankAgentDiffBar';
-import { getAppKernel } from '@/ui-kernel/bootstrap';
 import { useExamDueReviewCount } from './useExamDueReviewCount';
 import {
   DS_EXCERPT_MIME,
-  createQuestionRevealSequencer,
   deriveQuestionExcerptMeta,
-  extractQuestionIdFromAnchor,
   startQuestionExcerptDrag,
 } from './examQuestionInterop';
-import { cn } from '@/utils/cn';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { AppSelect, AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem, AppMenuSeparator } from '@/components/ui/app-menu';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
-import { formatTime } from '@/utils/formatUtils';
 import { emitExamSheetDebug } from '@/shared/debug/channels/examSheetProcessing';
-import {
-  QBANK_FOCUS_EVENT,
-  type QbankFocusEventDetail,
-  QBANK_CONTROL_EVENT,
-  type QbankControlEventDetail,
-  type QbankControlResult,
-  QBANK_REFRESH_EVENT,
-  isQbankInlineEditorActive,
-} from '@/features/workbench/agent/drivers/qbankDriver';
-import { collectDomainEntityIds } from '@/features/workbench/agent/domainEvents';
-import { agentFlash, agentFlashMany } from '@/features/workbench/agent/visuals/agentFlash';
-import type { DomainChangePayload } from '@/features/workbench/agent/types';
-import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { newPracticeId, type CreatePracticeRequest, type GradingMode } from '@/api/practiceApi';
+
+import {
+  LAUNCHER_REQUIRED_MODES,
+  MODE_LABEL_KEYS,
+  Sm2ReviewPanel,
+  ViewSkeleton,
+  type LauncherRequestedMode,
+  type ManageFilters,
+  type ViewMode,
+} from './exam/ExamViewPrimitives';
+import { useExamPracticeTimers } from './exam/useExamPracticeTimers';
+import { useExamDraftGuard } from './exam/useExamDraftGuard';
+import { useExamQbankControlBridge } from './exam/useExamQbankControlBridge';
+import { useExamAuthoringDrafts } from './exam/useExamAuthoringDrafts';
+import { useExamDomainRefreshAndAnchors } from './exam/useExamDomainRefreshAndAnchors';
+import { ExamHeaderAndTabs } from './exam/ExamHeaderAndTabs';
 
 const ExamSheetUploader = lazy(() => import('@/components/ExamSheetUploader'));
 const QuestionImportAuditPanel = lazy(() => import('@/components/QuestionImportAuditPanel'));
@@ -98,204 +80,6 @@ const BatchPracticeWorkspace = lazy(() => import('@/components/practice/BatchPra
 const PaperLibrary = lazy(() => import('@/components/practice/PaperLibrary'));
 const CsvImportPanel = lazy(() => import('@/components/CsvImportDialog').then((module) => ({ default: module.CsvImportPanel })));
 const QuestionBankExportDialog = lazy(() => import('@/components/QuestionBankExportDialog'));
-
-type ViewMode = 'list' | 'browse' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload' | 'review' | 'sm2' | 'tags' | 'launcher' | 'csvImport' | 'papers';
-type LauncherRequestedMode = 'by_tag' | 'timed' | 'mock_exam' | 'daily' | 'paper';
-type DraftSource = 'practice' | 'inlineEditor';
-
-interface PendingViewNavigation {
-  examId: string;
-  view: ViewMode;
-  afterViewChange?: () => void;
-}
-
-interface PendingDraftNavigation {
-  examId: string;
-  proceed: () => void;
-}
-
-const LAUNCHER_REQUIRED_MODES = new Set<LauncherRequestedMode>([
-  'by_tag',
-  'timed',
-  'mock_exam',
-  'daily',
-  'paper',
-]);
-
-/**
- * I1 修复：SM-2 间隔复习面板
- *
- * 有活跃复习会话时渲染 ReviewSession（答题打分），否则渲染 ReviewPlanView
- * （今日到期/复习队列/开始复习）。会话由 reviewPlanStore 全局管理。
- */
-const Sm2ReviewPanel: React.FC<{ examId: string; isActive?: boolean }> = ({ examId, isActive }) => {
-  const session = useReviewPlanStore((s) => s.session);
-  const startSession = useReviewPlanStore((s) => s.startSession);
-  const [showCalendar, setShowCalendar] = useState(false);
-  const isSessionActive = session.isActive && session.examId === examId;
-
-  return (
-    <CustomScrollArea className="min-h-0 flex-1">
-      <Suspense fallback={null}>
-        {showCalendar ? (
-          <ReviewCalendarView
-            examId={examId}
-            className="p-4"
-            onClose={() => setShowCalendar(false)}
-            isActive={isActive}
-          />
-        ) : isSessionActive ? (
-          <ReviewSession examId={examId} isActive={isActive} />
-        ) : (
-          <ReviewPlanView
-            examId={examId}
-            onViewCalendar={() => setShowCalendar(true)}
-            onStartReview={(items) => startSession(items, examId)}
-            onReviewItemClick={(item) => startSession([item], examId)}
-          />
-        )}
-      </Suspense>
-    </CustomScrollArea>
-  );
-};
-
-interface ManageFilters {
-  search?: string;
-  status?: QuestionStatus[];
-  difficulty?: Difficulty[];
-  questionType?: QuestionType[];
-  tags?: string[];
-  isFavorite?: boolean;
-}
-
-function controlStringArray(value: unknown): string[] | undefined {
-  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) return undefined;
-  return value.filter((item) => item.trim().length > 0);
-}
-
-function parseManageFilters(payload: unknown): ManageFilters | null {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
-  const outer = payload as Record<string, unknown>;
-  const raw = outer.filters && typeof outer.filters === 'object' && !Array.isArray(outer.filters)
-    ? outer.filters as Record<string, unknown>
-    : outer;
-  const search = typeof raw.search === 'string' ? raw.search : undefined;
-  const isFavorite = typeof (raw.is_favorite ?? raw.isFavorite) === 'boolean'
-    ? (raw.is_favorite ?? raw.isFavorite) as boolean
-    : undefined;
-
-  return {
-    search,
-    status: controlStringArray(raw.status) as QuestionStatus[] | undefined,
-    difficulty: controlStringArray(raw.difficulty) as Difficulty[] | undefined,
-    questionType: controlStringArray(raw.question_type ?? raw.questionType) as QuestionType[] | undefined,
-    tags: controlStringArray(raw.tags),
-    isFavorite,
-  };
-}
-
-function matchesPracticeTag(question: Question, tag: string): boolean {
-  if (tag === '__untagged__') return !question.tags || question.tags.length === 0;
-  return question.tags?.includes(tag) ?? false;
-}
-
-const MODE_LABEL_KEYS: Record<PracticeMode, string> = {
-  sequential: 'learningHub:exam.mode.sequential',
-  random: 'learningHub:exam.mode.random',
-  review_first: 'learningHub:exam.mode.reviewFirst',
-  review_only: 'learningHub:exam.mode.reviewOnly',
-  by_tag: 'learningHub:exam.mode.byTag',
-  daily: 'learningHub:exam.mode.daily',
-  paper: 'learningHub:exam.mode.paper',
-  timed: 'learningHub:exam.mode.timed',
-  mock_exam: 'learningHub:exam.mode.mockExam',
-};
-
-/** 数字滚动动效：以 rAF 缓动逼近目标值，reduced-motion 时直接跳变 */
-function useAnimatedNumber(target: number, duration = 600): number {
-  const [value, setValue] = useState(target);
-  const valueRef = useRef(target);
-
-  useEffect(() => {
-    const from = valueRef.current;
-    if (from === target) return;
-    if (typeof window.matchMedia === 'function'
-      && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      valueRef.current = target;
-      setValue(target);
-      return;
-    }
-    let raf = 0;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const progress = Math.min(1, (now - start) / duration);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      const next = from + (target - from) * eased;
-      valueRef.current = next;
-      setValue(next);
-      if (progress < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
-
-  return value;
-}
-
-/** 顶栏统计摘要：极简纯文本微指标（掌握率 · 正确率），数字滚动 */
-const StatsSummary: React.FC<{ stats: QuestionBankStats }> = ({ stats }) => {
-  const { t } = useTranslation('learningHub');
-  const masteryPercent = Math.round(useAnimatedNumber(percentOf(stats.mastered, stats.total)));
-  const correctPercent = Math.round(useAnimatedNumber(ratioToPercent(stats.correctRate)));
-
-  return (
-    <div
-      className="hidden md:flex items-center gap-2.5 pr-1 text-xs text-muted-foreground select-none"
-      role="group"
-      aria-label={t('exam.shell.statsSummary')}
-    >
-      <span className="inline-flex items-center gap-1 leading-none" title={`${t('exam.shell.mastery')} ${stats.mastered}/${stats.total}`}>
-        <span className="h-1.5 w-1.5 rounded-full bg-success" aria-hidden="true" />
-        <span>{t('exam.shell.mastery')}</span>
-        <span className="font-mono font-medium tabular-nums text-foreground">{masteryPercent}%</span>
-      </span>
-      <span className="text-border" aria-hidden="true">·</span>
-      <span className="inline-flex items-center gap-1 leading-none" title={t('exam.shell.correctRate')}>
-        <span>{t('exam.shell.correctRate')}</span>
-        <span className="font-mono font-medium tabular-nums text-foreground">{correctPercent}%</span>
-      </span>
-    </div>
-  );
-};
-
-/** Suspense 骨架屏：模拟工具行 + 列表行，替代空白/转圈 */
-const ViewSkeleton: React.FC = () => {
-  const { t } = useTranslation('learningHub');
-  return (
-    <div className="h-full overflow-hidden px-4 py-4" role="status" aria-label={t('exam.shell.viewLoading')}>
-      <div className="animate-pulse space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="h-7 w-36 rounded-md bg-muted/70" />
-          <div className="flex items-center gap-2">
-            <div className="h-7 w-20 rounded-md bg-muted/50" />
-            <div className="h-7 w-14 rounded-md bg-muted/50" />
-          </div>
-        </div>
-        <div className="space-y-2.5">
-          {[0, 1, 2, 3, 4, 5].map((row) => (
-            <div key={row} className="rounded-lg border border-border/40 px-3 py-3">
-              <div className="h-4 rounded bg-muted/60" style={{ width: `${[72, 58, 84, 64, 76, 52][row]}%` }} />
-              <div className="mt-2.5 flex items-center gap-2">
-                <div className="h-3 w-12 rounded bg-muted/40" />
-                <div className="h-3 w-16 rounded bg-muted/40" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const ExamContentView: React.FC<ContentViewProps> = ({
   node,
@@ -345,7 +129,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [batchRecord, setBatchRecord] = useState<{ id: string; submitted: boolean } | null>(null);
   const batchFlushRef = useRef<(() => Promise<void>) | null>(null);
   const batchNavigateRef = useRef<((target: number | string) => Promise<void>) | null>(null);
-  const setBatchNavigate = useCallback((navigate: ((target: number | string) => Promise<void>) | null) => { batchNavigateRef.current = navigate; }, []);
+  const setBatchNavigate = useCallback((fn: ((target: number | string) => Promise<void>) | null) => { batchNavigateRef.current = fn; }, []);
   const setBatchFlush = useCallback((flush: (() => Promise<void>) | null) => { batchFlushRef.current = flush; }, []);
   const sm2DueCount = useExamDueReviewCount(sessionId);
 
@@ -365,8 +149,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const setMockExamSession = useQuestionBankStore(state => state.setMockExamSession);
   const setTimedSession = useQuestionBankStore(state => state.setTimedSession);
   const submitMockExam = useQuestionBankStore(state => state.submitMockExam);
-  const reviewSession = useReviewPlanStore(state => state.session);
-  const endReviewSession = useReviewPlanStore(state => state.endSession);
 
   // 高级练习模式会话数据（全局 store）
   const mockExamSession = useQuestionBankStore(state => state.mockExamSession);
@@ -405,9 +187,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   const [historyQuestionId, setHistoryQuestionId] = useState<string | null>(null);
   const [manageFilters, setManageFilters] = useState<ManageFilters>({});
-  const [pendingReviewExitView, setPendingReviewExitView] = useState<PendingViewNavigation | null>(null);
-  /** 离开进行中的练习/考试前的确认目标视图（与复习退出同款内联条） */
-  const [pendingPracticeExitView, setPendingPracticeExitView] = useState<PendingViewNavigation | null>(null);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [pendingSettingsOpen, setPendingSettingsOpen] = useState(false);
   const [launcherRequestedMode, setLauncherRequestedMode] = useState<LauncherRequestedMode | null>(null);
@@ -415,164 +194,24 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [pendingUploadFiles, setPendingUploadFiles] = useState<File[] | null>(null);
   // 从「添加题目」菜单请求列表视图打开内联创建编辑器的信号（递增触发）
   const [listCreateRequestKey, setListCreateRequestKey] = useState(0);
-  // AI 出题面板开关（MVP：ai-question-generation-feasibility-2026-09-07.md）
-  const [showAiGenerationPanel, setShowAiGenerationPanel] = useState(false);
-  const [aiGenerationTarget, setAiGenerationTarget] = useState<{ taskId?: string | null; jobId?: string | null } | null>(null);
-  const [confirmingDraftJobId, setConfirmingDraftJobId] = useState<string | null>(null);
-  const generationTasksMap = useQbankGenerationStore((state) => state.tasks);
-  const activeGenerationTask = useMemo(
-    () => selectActiveTaskForExam(generationTasksMap, sessionId) ?? null,
-    [generationTasksMap, sessionId],
-  );
-  const completedGenerationTaskSignature = useMemo(
-    () =>
-      selectTasksForExam(generationTasksMap, sessionId)
-        .filter((task) => task.status === 'completed')
-        .map((task) => `${task.id}:${task.authoringResult?.job_id ?? ''}`)
-        .join(','),
-    [generationTasksMap, sessionId],
-  );
-  const [draftState, setDraftState] = useState({ examId: sessionId, dirty: false });
-  const [pendingDraftNavigation, setPendingDraftNavigation] = useState<PendingDraftNavigation | null>(null);
-  const activeDraftExamIdRef = useRef(sessionId);
-  const draftSourcesRef = useRef<Record<DraftSource, boolean>>({
-    practice: false,
-    inlineEditor: false,
-  });
-  const draftStateRef = useRef({ examId: sessionId, dirty: false });
-  // A domain refresh may arrive while an inline editor has focus elsewhere.
-  // Keep the latest request until the editor reports that its draft is clean.
-  const pendingQbankRefreshRef = useRef<DomainChangePayload | undefined>(undefined);
-  const hasPendingQbankRefreshRef = useRef(false);
-  const flushPendingQbankRefreshRef = useRef<(() => void) | null>(null);
-  // 域刷新去抖队列：批量变更会连发多个 qbank:refresh，合并为一次刷新。
-  // 放 ref 而非 effect 局部变量：监听 effect 依赖频繁变化会重建，队列必须存活
-  const qbankRefreshDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const queuedRefreshEntityIdsRef = useRef<string[]>([]);
-  const queuedRefreshPayloadRef = useRef<DomainChangePayload | undefined>(undefined);
-  const queuedRefreshAgentModifyRef = useRef(false);
-  const queuedRefreshRunIdRef = useRef<string | undefined>(undefined);
+
   const questionsRef = useRef<Question[]>(questions);
   questionsRef.current = questions;
-  const pendingAgentReconcileRef = useRef(false);
-  const [agentRefreshTick, setAgentRefreshTick] = useState(0);
-  const revealSequencerRef = useRef(createQuestionRevealSequencer());
-  const pendingAnchorRevealRef = useRef<{
-    questionId: string;
-    pulse: boolean;
-    token: number;
-  } | null>(null);
-  // 行内编辑聚焦时的 800ms 延迟重试 timer：同样必须跨 effect 重建存活，
-  // 否则 deps（questions 等）一变就取消，被延迟的刷新会静默丢失
-  const qbankDeferredEditorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushPendingQbankRefreshRef = useRef<(() => void) | null>(null);
   // CSV 内嵌导入的进行中标记（导入中阻止切换到其他视图）
   const csvImportingRef = useRef(false);
-  activeDraftExamIdRef.current = sessionId;
+  // ACR 演出优化轮：flash 限定在本视图 DOM 内（qbank 可多窗，全局查找会闪错窗口）
+  const agentFlashRootRef = useRef<HTMLDivElement | null>(null);
 
-  const isCurrentExamDraftDirty = draftState.examId === sessionId && draftState.dirty;
-
-  const updateDraftSource = useCallback((source: DraftSource, dirty: boolean) => {
-    if (activeDraftExamIdRef.current !== sessionId) return;
-    draftSourcesRef.current[source] = dirty;
-    const nextDirty = Object.values(draftSourcesRef.current).some(Boolean);
-    draftStateRef.current = { examId: sessionId, dirty: nextDirty };
-    setDraftState((current) => (
-      current.examId === sessionId && current.dirty === nextDirty
-        ? current
-        : { examId: sessionId, dirty: nextDirty }
-    ));
-  }, [sessionId]);
-
-  const clearCurrentExamDraft = useCallback(() => {
-    if (activeDraftExamIdRef.current !== sessionId) return;
-    draftSourcesRef.current = { practice: false, inlineEditor: false };
-    draftStateRef.current = { examId: sessionId, dirty: false };
-    setDraftState((current) => (
-      current.examId === sessionId && !current.dirty
-        ? current
-        : { examId: sessionId, dirty: false }
-    ));
-  }, [sessionId]);
-
-  const requestDraftNavigation = useCallback((proceed: () => void): boolean => {
-    const currentDraft = draftStateRef.current;
-    if (currentDraft.examId !== sessionId || !currentDraft.dirty) {
-      proceed();
-      return true;
-    }
-    setPendingDraftNavigation({ examId: sessionId, proceed });
-    return false;
-  }, [sessionId]);
-
-  const handlePracticeDraftDirtyChange = useCallback(
-    (dirty: boolean) => updateDraftSource('practice', dirty),
-    [updateDraftSource],
-  );
-  const handleInlineEditorDraftDirtyChange = useCallback(
-    (dirty: boolean) => updateDraftSource('inlineEditor', dirty),
-    [updateDraftSource],
-  );
-
+  // 会话切换：记录最新 sessionId（异步回调的过期守卫）
+  const latestSessionIdRef = useRef(sessionId);
+  const sessionScope = useMemo(() => ({ sessionId }), [sessionId]);
+  const latestSessionScopeRef = useRef<typeof sessionScope | null>(sessionScope);
+  latestSessionScopeRef.current = sessionScope;
   useEffect(() => {
-    draftSourcesRef.current = { practice: false, inlineEditor: false };
-    draftStateRef.current = { examId: sessionId, dirty: false };
-    pendingQbankRefreshRef.current = undefined;
-    hasPendingQbankRefreshRef.current = false;
-    flushPendingQbankRefreshRef.current = null;
-    // 会话切换：清空上一会话排队中的域刷新（entityIds 属于旧会话，不能串台）
-    if (qbankRefreshDebounceTimerRef.current) {
-      clearTimeout(qbankRefreshDebounceTimerRef.current);
-      qbankRefreshDebounceTimerRef.current = null;
-    }
-    if (qbankDeferredEditorTimerRef.current) {
-      clearTimeout(qbankDeferredEditorTimerRef.current);
-      qbankDeferredEditorTimerRef.current = null;
-    }
-    queuedRefreshEntityIdsRef.current = [];
-    queuedRefreshPayloadRef.current = undefined;
-    queuedRefreshAgentModifyRef.current = false;
-    queuedRefreshRunIdRef.current = undefined;
-    pendingAgentReconcileRef.current = false;
-    pendingAnchorRevealRef.current = null;
-    revealSequencerRef.current.cancel();
-    setDraftState({ examId: sessionId, dirty: false });
-    setPendingDraftNavigation(null);
-  }, [sessionId]);
-
-  // 卸载时清理仍在排队的域刷新 timer（防止卸载后触发无意义的刷新）
-  useEffect(() => () => {
-    revealSequencerRef.current.cancel();
-    pendingAnchorRevealRef.current = null;
-    if (qbankRefreshDebounceTimerRef.current) {
-      clearTimeout(qbankRefreshDebounceTimerRef.current);
-      qbankRefreshDebounceTimerRef.current = null;
-    }
-    if (qbankDeferredEditorTimerRef.current) {
-      clearTimeout(qbankDeferredEditorTimerRef.current);
-      qbankDeferredEditorTimerRef.current = null;
-    }
-  }, []);
-
-  // 视图壳只消费判分侧已有的 dirty 信号；判分侧尚未提供窗口级保存 API，
-  // 故不注册 save handler（不自造保存），关窗确认只提供「放弃/取消」。
-  useEffect(() => registerContentDirtyChecker(
-    'exam',
-    sessionId,
-    () => {
-      const currentDraft = draftStateRef.current;
-      return currentDraft.examId === sessionId && currentDraft.dirty;
-    },
-  ), [sessionId]);
-
-  useEffect(() => {
-    onSaveStateChange?.(isCurrentExamDraftDirty ? 'dirty' : 'saved');
-  }, [isCurrentExamDraftDirty, onSaveStateChange]);
-
-  useEffect(() => {
-    if (!isCurrentExamDraftDirty) {
-      flushPendingQbankRefreshRef.current?.();
-    }
-  }, [isCurrentExamDraftDirty]);
+    latestSessionScopeRef.current = sessionScope;
+    return () => { latestSessionScopeRef.current = null; };
+  }, [sessionScope]);
 
   // 视图切换走 transition：懒加载 chunk 未就绪时保持当前视图渲染，
   // 避免整个内容区退化为 Suspense fallback 的闪烁
@@ -582,240 +221,79 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     });
   }, []);
 
-  // Tab navigation is an explicit exit point for an in-progress SM-2 queue.
-  // Keep submitted ratings, but ask before discarding the remaining local queue.
-  const hasInProgressPracticeSession = useCallback((): boolean => {
-    if (viewMode !== 'practice') return false;
-    if (gradingMode === 'on_submit') return false;
-    if (
-      practiceMode === 'timed'
-      && activeTimedSession
-      && !activeTimedSession.is_submitted
-      && !activeTimedSession.is_timeout
-    ) {
-      return true;
-    }
-    if (
-      practiceMode === 'mock_exam'
-      && activeMockExamSession
-      && !activeMockExamSession.is_submitted
-    ) {
-      return true;
-    }
-    if (
-      practiceMode === 'daily'
-      && activeDailyPractice
-      && !activeDailyPractice.is_completed
-      && (activeDailyPractice.completed_count ?? 0) > 0
-    ) {
-      return true;
-    }
-    // 普通顺序/随机练习：已作答但未答完
-    const ownerKey = practiceSessionOwner
-      ? getPracticeSessionKey(practiceSessionOwner)
-      : null;
-    const progress = ownerKey
-      ? useQuestionBankStore.getState().practiceSessions[ownerKey]
-      : undefined;
-    if (
-      progress
-      && progress.answeredIds.length > 0
-      && progress.answeredIds.length < progress.questionIds.length
-    ) {
-      return true;
-    }
-    return false;
-  }, [
+  const handleClearBatchState = useCallback(() => {
+    setBatchRequest(null);
+    setBatchRecord(null);
+  }, []);
+
+  const handleResetPendingSettings = useCallback(() => {
+    setPendingSettingsOpen(false);
+  }, []);
+
+  const handleResetToBatchImmediateDefaults = useCallback(() => {
+    setGradingMode('on_submit');
+    setBatchRequest(null);
+    setBatchRecord(null);
+  }, []);
+
+  const {
+    elapsedTime,
+    setElapsedTime,
+    isTimerRunning,
+    setIsTimerRunning,
+    toggleTimer,
+    activeAdvancedTimerDuration,
+    isAdvancedRuntimeTimer,
+    advancedTimerRemaining,
+  } = useExamPracticeTimers({
+    sessionId,
+    sessionScope,
+    latestSessionScopeRef,
     viewMode,
     practiceMode,
+    gradingMode,
+    isActive,
     activeTimedSession,
     activeMockExamSession,
     activeDailyPractice,
-    practiceSessionOwner,
-    gradingMode,
-  ]);
-
-  const applyViewMode = useCallback((mode: ViewMode, afterViewChange?: () => void, changesPractice = false): boolean => {
-    if (mode === viewMode && !changesPractice) return true;
-
-    // CSV 内嵌导入中：阻止切换视图（与模态框导入中阻止关闭的行为一致）。
-    // 用全局 i18n 而非组件 t：避免 t 的引用变化打进依赖数组导致 applyViewMode 每渲染换向
-    if (viewMode === 'csvImport' && mode !== 'csvImport' && csvImportingRef.current) {
-      showGlobalNotification('warning', i18n.t('exam_sheet:csv.import_in_progress_close_blocked'));
-      return false;
-    }
-
-    const ownsReviewSession = reviewSession.isActive && reviewSession.examId === sessionId;
-    if (viewMode === 'sm2' && mode !== 'sm2' && ownsReviewSession) {
-      const hasRemainingItems = reviewSession.currentIndex < reviewSession.queue.length;
-      if (hasRemainingItems) {
-        setPendingReviewExitView({ examId: sessionId, view: mode, afterViewChange });
-        return false;
-      }
-      endReviewSession();
-    }
-
-    // 离开进行中的练习/考试：内联确认，避免误触丢进度
-    if (viewMode === 'practice' && (mode !== 'practice' || changesPractice) && hasInProgressPracticeSession()) {
-      setPendingPracticeExitView({ examId: sessionId, view: mode, afterViewChange });
-      return false;
-    }
-
-    switchViewMode(mode);
-    return true;
-  }, [
-    endReviewSession,
-    reviewSession,
-    sessionId,
+    setTimedSession,
+    submitMockExam,
     switchViewMode,
+  });
+
+  const {
+    draftStateRef,
+    pendingReviewExitView,
+    pendingPracticeExitView,
+    pendingDraftNavigation,
+    requestDraftNavigation,
+    handlePracticeDraftDirtyChange,
+    handleInlineEditorDraftDirtyChange,
+    requestViewMode,
+    confirmReviewExit,
+    cancelReviewExit,
+    confirmPracticeExit,
+    cancelPracticeExit,
+    confirmDiscardDraft,
+    cancelDiscardDraft,
+  } = useExamDraftGuard({
+    sessionId,
     viewMode,
-    hasInProgressPracticeSession,
-  ]);
-
-  const requestViewMode = useCallback((mode: ViewMode, afterViewChange?: () => void, changesPractice = false): boolean => {
-    setPendingDraftNavigation(null);
-    setPendingReviewExitView(null);
-    setPendingPracticeExitView(null);
-    setPendingSettingsOpen(false);
-    const requiresNavigation = mode !== viewMode || Boolean(afterViewChange) || changesPractice;
-    if (!requiresNavigation) return true;
-    const proceed = () => {
-      const handled = applyViewMode(mode, afterViewChange, changesPractice);
-      if (handled) afterViewChange?.();
-    };
-    if (viewMode === 'practice' && gradingMode === 'on_submit' && batchFlushRef.current) {
-      void batchFlushRef.current().then(() => {
-        if (changesPractice) { setBatchRequest(null); setBatchRecord(null); }
-        proceed();
-      }).catch(error => showGlobalNotification('error', String(error)));
-      return false;
-    }
-    const currentDraft = draftStateRef.current;
-    if (currentDraft.examId === sessionId && currentDraft.dirty) {
-      setPendingDraftNavigation({
-        examId: sessionId,
-        proceed,
-      });
-      return false;
-    }
-    const handled = applyViewMode(mode, afterViewChange, changesPractice);
-    if (handled) afterViewChange?.();
-    return handled;
-  }, [applyViewMode, sessionId, viewMode, gradingMode]);
-
-  // Settings are owned by this resource view, not the global question-bank store.
-  // A workbench action can only succeed once this view can enter the practice surface.
-  useEffect(() => {
-    type SettingsRequest = {
-      targetResourceId?: string;
-      open?: boolean;
-      acknowledge?: (result: {
-        handled: boolean;
-        code?: string;
-        hint?: string;
-        /** ACR 4.0（A7）：诚实回执——面板状态是否真的变化 */
-        changed?: boolean;
-        /** ACR 4.0（A7）：供 agent undo 的前值 */
-        previousOpen?: boolean;
-      }) => void;
-    };
-    const handleSettingsChange = (event: Event) => {
-      const detail = (event as CustomEvent<SettingsRequest>).detail;
-      if (detail?.targetResourceId && detail.targetResourceId !== sessionId) return;
-
-      // 顶栏「更多→设置」不带 open（toggle 语义），而设置面板只在练习视图渲染：
-      // 非 practice 时直接翻转 settingsPanelOpen 既无可见反馈，还会让之后进入
-      // 练习时面板意外弹出。toggle 仅在 practice 有效；非 practice 统一按「打开」
-      // 处理，复用 open === true 的进练习守卫。
-      const open = detail?.open ?? (viewMode === 'practice' ? undefined : true);
-      if (open === true && !hasQuestions) {
-        detail?.acknowledge?.({
-          handled: false,
-          code: 'QUESTION_NOT_FOUND',
-          hint: t('learningHub:exam.controlHints.noQuestionsForSettings'),
-        });
-        return;
-      }
-      if (open === true && !requestViewMode('practice')) {
-        // CSV 导入中被硬性阻断（无确认面板可解），不留待开请求；
-        // 复习/草稿确认路径才记 pending，用户确认后由 effect 兑现
-        const blockedByCsvImport = viewMode === 'csvImport' && csvImportingRef.current;
-        if (!blockedByCsvImport) setPendingSettingsOpen(true);
-        detail?.acknowledge?.({
-          handled: false,
-          code: 'CONFIRMATION_REQUIRED',
-          hint: t('learningHub:exam.controlHints.confirmEndReviewForSettings'),
-        });
-        return;
-      }
-
-      if (open === false) setPendingSettingsOpen(false);
-      const next = typeof open === 'boolean' ? open : !settingsPanelOpen;
-      setSettingsPanelOpen(next);
-      detail?.acknowledge?.({
-        handled: true,
-        changed: next !== settingsPanelOpen,
-        previousOpen: settingsPanelOpen,
-      });
-    };
-    window.addEventListener('exam:openSettings', handleSettingsChange);
-    return () => window.removeEventListener('exam:openSettings', handleSettingsChange);
-  }, [hasQuestions, requestViewMode, sessionId, settingsPanelOpen, t, viewMode]);
-
-  // ACR 4.0（A7）：setFocusMode 的表面 ACK。专注视图只在练习面存在意义，
-  // 与 settings 同款守卫：开启前必须能进入练习视图，回执诚实报告 changed。
-  useEffect(() => {
-    type FocusModeRequest = {
-      targetResourceId?: string;
-      enabled?: boolean;
-      acknowledge?: (result: {
-        handled: boolean;
-        code?: string;
-        hint?: string;
-        changed?: boolean;
-        previousEnabled?: boolean;
-      }) => void;
-    };
-    const handleFocusModeChange = (event: Event) => {
-      const detail = (event as CustomEvent<FocusModeRequest>).detail;
-      if (detail?.targetResourceId && detail.targetResourceId !== sessionId) return;
-
-      const enabled = detail?.enabled;
-      if (typeof enabled !== 'boolean') {
-        detail?.acknowledge?.({
-          handled: false,
-          code: 'INVALID_ARGS',
-          hint: 'setFocusMode 需要 enabled',
-        });
-        return;
-      }
-      if (enabled && !hasQuestions) {
-        detail?.acknowledge?.({
-          handled: false,
-          code: 'QUESTION_NOT_FOUND',
-          hint: t('learningHub:exam.controlHints.noQuestionsForFocusMode'),
-        });
-        return;
-      }
-      const previous = useQuestionBankStore.getState().focusMode;
-      if (enabled && viewMode !== 'practice' && !requestViewMode('practice', () => setFocusMode(true))) {
-        detail?.acknowledge?.({
-          handled: false,
-          code: 'CONFIRMATION_REQUIRED',
-          hint: t('learningHub:exam.controlHints.confirmEndReviewForFocusMode'),
-        });
-        return;
-      }
-      if (!enabled || viewMode === 'practice') setFocusMode(enabled);
-      detail?.acknowledge?.({
-        handled: true,
-        changed: previous !== enabled,
-        previousEnabled: previous,
-      });
-    };
-    window.addEventListener('exam:setFocusMode', handleFocusModeChange);
-    return () => window.removeEventListener('exam:setFocusMode', handleFocusModeChange);
-  }, [hasQuestions, requestViewMode, sessionId, setFocusMode, t, viewMode]);
+    switchViewMode,
+    gradingMode,
+    practiceMode,
+    practiceSessionOwner,
+    activeTimedSession,
+    activeMockExamSession,
+    activeDailyPractice,
+    batchFlushRef,
+    csvImportingRef,
+    flushPendingQbankRefreshRef,
+    onClearBatchState: handleClearBatchState,
+    onResetPendingSettings: handleResetPendingSettings,
+    onSetTimerRunning: setIsTimerRunning,
+    onSaveStateChange,
+  });
 
   // 待开的练习设置：进入练习视图后统一兑现。settings 请求可能被「退出复习」
   // 或「丢弃草稿」两条确认路径拦下，此前只有复习路径在确认后会补开设置面板，
@@ -833,36 +311,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       setManageFilters(filters);
     });
   }, []);
-  
-  // 计时器状态
-  const [elapsedTime, setElapsedTime] = useState(0);
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const mockExamTimeoutHandledRef = useRef<string | null>(null);
-  const timedTimeoutHandledRef = useRef<string | null>(null);
-  
-  // 进入做题模式时自动开始计时
-  useEffect(() => {
-    if (viewMode === 'practice') {
-      setIsTimerRunning(true);
-    } else {
-      setIsTimerRunning(false);
-    }
-  }, [viewMode]);
 
-  // 会话切换：记录最新 sessionId（异步回调的过期守卫），并重置上一会话的 UI 状态，
-  //   防止旧会话的详情/错误/弹窗/筛选串到新会话（快速切换场景）
-  const latestSessionIdRef = useRef(sessionId);
-  const sessionScope = useMemo(() => ({ sessionId }), [sessionId]);
-  const latestSessionScopeRef = useRef<typeof sessionScope | null>(sessionScope);
-  latestSessionScopeRef.current = sessionScope;
-  useEffect(() => {
-    latestSessionScopeRef.current = sessionScope;
-    return () => { latestSessionScopeRef.current = null; };
-  }, [sessionScope]);
+  // 会话切换：重置上一会话的 UI 状态，防止旧会话的详情/错误/弹窗/筛选串到新会话（快速切换场景）
   useEffect(() => {
     latestSessionIdRef.current = sessionId;
-    setElapsedTime(0);
     setSessionDetail(null);
     setSessionDetailError(null);
     setViewMode('list');
@@ -877,241 +329,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     setSettingsPanelOpen(false);
     setPendingSettingsOpen(false);
     setPendingUploadFiles(null);
-    // 上一会话残留的「退出复习确认」与「启动台预选模式」不得带入新会话
-    setPendingReviewExitView(null);
-    setPendingPracticeExitView(null);
     setLauncherRequestedMode(null);
     // CSV 导入进行中标记随面板卸载失效，防止残留 true 阻塞新会话的视图切换
     csvImportingRef.current = false;
   }, [sessionId]);
-  
-  const toggleTimer = useCallback(() => {
-    setIsTimerRunning(prev => !prev);
-  }, []);
-
-  const activeAdvancedTimerDuration = useMemo(() => {
-    if (gradingMode === 'on_submit') return null;
-    if (
-      practiceMode === 'timed' &&
-      activeTimedSession &&
-      !activeTimedSession.is_submitted &&
-      !activeTimedSession.is_timeout
-    ) {
-      return activeTimedSession.duration_minutes * 60;
-    }
-    if (
-      practiceMode === 'mock_exam' &&
-      activeMockExamSession &&
-      !activeMockExamSession.is_submitted
-    ) {
-      return activeMockExamSession.config.duration_minutes * 60;
-    }
-    return null;
-  }, [practiceMode, activeTimedSession, activeMockExamSession, gradingMode]);
-
-  const activeAdvancedStartedAt = useMemo(() => {
-    if (practiceMode === 'timed') return activeTimedSession?.started_at || null;
-    if (practiceMode === 'mock_exam') return activeMockExamSession?.started_at || null;
-    return null;
-  }, [practiceMode, activeTimedSession, activeMockExamSession]);
-
-  // 限时练习的暂停补偿：TimedPracticeMode 恢复会话按 started_at + duration
-  // + paused_seconds 计算倒计时终点，这里的 elapsed 必须同口径扣除
-  // paused_seconds，否则暂停过的用户会被超时 effect 提前强制交卷。
-  // 模拟考无暂停机制，恒为 0。
-  const activeAdvancedPausedSeconds = useMemo(() => {
-    if (practiceMode !== 'timed') return 0;
-    const paused = activeTimedSession?.paused_seconds;
-    return typeof paused === 'number' && Number.isFinite(paused) ? Math.max(0, paused) : 0;
-  }, [practiceMode, activeTimedSession]);
-
-  // 会话完成（限时交卷/超时、模拟考交卷、每日目标达成）后停掉顶栏计时，
-  // 避免「已完成」庆祝卡下倒计时/秒表继续走。卸载时由下方 interval cleanup 清表。
-  useEffect(() => {
-    const timedDone = Boolean(
-      practiceMode === 'timed'
-      && activeTimedSession
-      && (activeTimedSession.is_submitted || activeTimedSession.is_timeout),
-    );
-    const mockDone = Boolean(
-      practiceMode === 'mock_exam'
-      && activeMockExamSession?.is_submitted,
-    );
-    const dailyDone = Boolean(
-      practiceMode === 'daily'
-      && activeDailyPractice?.is_completed,
-    );
-    if (timedDone || mockDone || dailyDone) {
-      setIsTimerRunning(false);
-    }
-  }, [
-    viewMode,
-    practiceMode,
-    activeTimedSession,
-    activeMockExamSession,
-    activeDailyPractice,
-  ]);
-
-  // 计时器逻辑
-  // 标签页：普通练习的秒表在 isActive === false 时暂停，避免后台计时不精确；
-  //   限时/模拟考（advanced runtime）必须按墙钟走：后台切换、休眠恢复都不能"暂停"考试，
-  //   否则与后端 time_spent（ended_at - started_at）和启动页的绝对时间倒计时不一致。
-  useEffect(() => {
-    if (gradingMode === 'on_submit') return;
-    const advancedRuntime = activeAdvancedTimerDuration != null;
-    if (viewMode === 'practice' && isTimerRunning && (isActive !== false || advancedRuntime)) {
-      timerRef.current = setInterval(() => {
-        if (advancedRuntime && activeAdvancedStartedAt) {
-          const startedMs = Date.parse(activeAdvancedStartedAt);
-          if (Number.isFinite(startedMs)) {
-            // 墙钟推算，免疫 setInterval 漂移与系统休眠；扣除累计暂停时长，
-            // 与 TimedPracticeMode 的倒计时终点口径一致
-            setElapsedTime(Math.max(
-              0,
-              Math.floor((Date.now() - startedMs) / 1000) - activeAdvancedPausedSeconds,
-            ));
-            return;
-          }
-        }
-        setElapsedTime(prev => prev + 1);
-      }, 1000);
-    }
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, [viewMode, isTimerRunning, isActive, activeAdvancedTimerDuration, activeAdvancedStartedAt, activeAdvancedPausedSeconds, gradingMode]);
-
-  const isAdvancedRuntimeTimer = activeAdvancedTimerDuration != null;
-  const advancedTimerRemaining = useMemo(() => {
-    if (activeAdvancedTimerDuration == null) return null;
-    return Math.max(activeAdvancedTimerDuration - elapsedTime, 0);
-  }, [activeAdvancedTimerDuration, elapsedTime]);
-
-  useEffect(() => {
-    if (viewMode !== 'practice' || !activeAdvancedStartedAt || activeAdvancedTimerDuration == null) {
-      return;
-    }
-    const startedMs = Date.parse(activeAdvancedStartedAt);
-    if (!Number.isFinite(startedMs)) return;
-    // 恢复时同样扣除累计暂停时长，保持与 tick 推算、启动页倒计时同口径
-    const restoredElapsed = Math.min(
-      activeAdvancedTimerDuration,
-      Math.max(0, Math.floor((Date.now() - startedMs) / 1000) - activeAdvancedPausedSeconds),
-    );
-    setElapsedTime(restoredElapsed);
-    setIsTimerRunning(true);
-  }, [viewMode, activeAdvancedStartedAt, activeAdvancedTimerDuration, activeAdvancedPausedSeconds]);
-
-  useEffect(() => {
-    if (!activeTimedSession || activeTimedSession.is_submitted || activeTimedSession.is_timeout) {
-      timedTimeoutHandledRef.current = null;
-      return;
-    }
-    if (
-      viewMode !== 'practice' ||
-      practiceMode !== 'timed' ||
-      activeAdvancedTimerDuration == null ||
-      Date.now() < Date.parse(activeTimedSession.started_at) + (activeAdvancedTimerDuration + activeAdvancedPausedSeconds) * 1000 ||
-      elapsedTime < activeAdvancedTimerDuration
-    ) {
-      return;
-    }
-    if (timedTimeoutHandledRef.current === activeTimedSession.id) {
-      return;
-    }
-    timedTimeoutHandledRef.current = activeTimedSession.id;
-    setIsTimerRunning(false);
-    // 时间到是系统强制结束，不是可取消的导航。若改成普通草稿确认，用户
-    // 取消后会留下已停止但仍标记为 active 的计时会话，无法再次触发结算。
-    setElapsedTime(0);
-    setTimedSession({
-      ...activeTimedSession,
-      ended_at: new Date().toISOString(),
-      is_timeout: true,
-      is_submitted: true,
-    });
-    switchViewMode('launcher');
-    showGlobalNotification(
-      'info',
-      t('learningHub:exam.timedPracticeTimeout'),
-      t('learningHub:exam.timerEnded'),
-    );
-  }, [
-    activeTimedSession,
-    activeAdvancedTimerDuration,
-    activeAdvancedPausedSeconds,
-    elapsedTime,
-    practiceMode,
-    setTimedSession,
-    switchViewMode,
-    t,
-    viewMode,
-  ]);
-
-  useEffect(() => {
-    if (!activeMockExamSession || activeMockExamSession.is_submitted) {
-      mockExamTimeoutHandledRef.current = null;
-      return;
-    }
-    if (
-      viewMode !== 'practice' ||
-      practiceMode !== 'mock_exam' ||
-      activeAdvancedTimerDuration == null ||
-      Date.now() < Date.parse(activeMockExamSession.started_at) + activeAdvancedTimerDuration * 1000 ||
-      elapsedTime < activeAdvancedTimerDuration
-    ) {
-      return;
-    }
-    if (mockExamTimeoutHandledRef.current === activeMockExamSession.id) {
-      return;
-    }
-    mockExamTimeoutHandledRef.current = activeMockExamSession.id;
-    setIsTimerRunning(false);
-    const isCurrentSubmission = () => (
-      latestSessionScopeRef.current === sessionScope
-      && useQuestionBankStore.getState().mockExamSession?.id === activeMockExamSession.id
-      && useQuestionBankStore.getState().mockExamSession?.exam_id === activeMockExamSession.exam_id
-    );
-
-    const submitSession = {
-      ...activeMockExamSession,
-      ended_at: new Date().toISOString(),
-      is_submitted: true,
-    };
-
-    void submitMockExam(submitSession)
-      .then((scoreCard) => {
-        if (!isCurrentSubmission() || useQuestionBankStore.getState().mockExamScoreCard !== scoreCard) return;
-        setElapsedTime(0);
-        switchViewMode('launcher');
-        showGlobalNotification(
-          'info',
-          t('learningHub:exam.mockExamAutoSubmitted'),
-          t('learningHub:exam.timerEnded'),
-        );
-      })
-      .catch((err: unknown) => {
-        debugLog.error('[ExamContentView] auto submit mock exam failed:', err);
-        if (!isCurrentSubmission()) return;
-        showGlobalNotification(
-          'error',
-          t('learningHub:exam.mockExamAutoSubmitFailed'),
-        );
-      });
-  }, [
-    activeMockExamSession,
-    activeAdvancedTimerDuration,
-    elapsedTime,
-    practiceMode,
-    sessionScope,
-    submitMockExam,
-    switchViewMode,
-    t,
-    viewMode,
-  ]);
 
   // 加载 sessionDetail（仅用于 ExamSheetUploader 等需要原始 preview 的组件）
   const loadSessionDetail = useCallback(async () => {
@@ -1150,25 +371,19 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   }, [loadQuestions, sessionId]);
 
   // 使用 Hook 的 submitAnswer（已改名避免冲突）
-  const handleSubmitAnswer = useCallback(async (questionId: string, answer: string, questionType?: QuestionType) => {
+  const handleSubmitAnswer = useCallback(async (questionId: string, answer: string, _questionType?: QuestionType) => {
     if (!sessionId) throw new Error('No session');
     const result = await submitAnswer(questionId, answer);
 
-    // 限时/每日练习进度回写（2026-08 修复）：这两个全局会话对象此前没有
-    // 任何真实路径的写入方，面板进度与正确率恒为 0。action 内部按会话题目
-    // 成员资格 + 首答幂等自行门禁，非会话题目是空操作。
+    // 限时/每日练习进度回写（2026-08 修复）：action 内部按会话题目成员资格 + 首答幂等自行门禁
     useQuestionBankStore.getState().recordPracticeAnswer(sessionId, questionId, result.isCorrect);
 
-    // 权威优先（R6 补齐）：后端提交响应回带当日 daily 快照时覆盖上面的
-    // 本地乐观增量。顺序必须是先乐观（维护 answered_results 差量基线）、
-    // 后权威覆盖计数；旧后端无此字段时为 undefined，行为不变。timed 不受影响。
+    // 权威优先（R6 补齐）：后端提交响应回带当日 daily 快照时覆盖本地乐观增量
     if (result.dailyProgress) {
       useQuestionBankStore.getState().applyAuthoritativeDailyProgress(sessionId, result.dailyProgress);
     }
 
     // mock_exam 依赖 session.answers/results 做进度与成绩计算，提交后同步回写。
-    // 提交是异步的：回写时从 store 读取最新会话（而非闭包快照），
-    //   避免连续快速提交时后写覆盖先写、丢失已答记录
     if (practiceMode === 'mock_exam') {
       const latestSession = useQuestionBankStore.getState().mockExamSession;
       if (
@@ -1200,16 +415,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     if (!sessionId) return;
     const result = await markCorrect(questionId, isCorrect);
 
-    // 与 handleSubmitAnswer 对齐：改判成功后同样回写限时/每日练习进度。
-    // action 内部按「会话题目成员资格 + 首答幂等 + 已答题差量修正」门禁（R4 起）：
-    // 已答且有判定基线的题按旧判定 → 新判定 差量更新 correct（可减）；
-    // 「跳过自动判分、直接自评」的主观题由这里首次计入进度；
-    // 已答但无基线（旧会话残留 / 权威覆盖引入）保持首答锁，由下方权威快照收敛。
     useQuestionBankStore.getState().recordPracticeAnswer(sessionId, questionId, isCorrect);
 
-    // mock_exam 对称回写：成绩依赖 results，改判后同步更新判定；
-    // answers 保持不变（改判不改作答内容），且仅对本会话内已作答的题目生效，
-    // 避免制造"有判定无作答"的不一致记录。
     if (practiceMode === 'mock_exam') {
       const latestSession = useQuestionBankStore.getState().mockExamSession;
       if (
@@ -1226,21 +433,14 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       }
     }
 
-    // 权威优先（R6 补齐，闭环 wave2-E-r4-05 的遗留项）：hook 已透出改判响应
-    // 里的当日 daily 快照，用它覆盖本地乐观增量——这是首答锁 fail-closed
-    // 分支（已答但无判定基线）唯一的即时收敛路径；旧后端无此字段时不动。
     if (result.dailyProgress) {
       useQuestionBankStore.getState().applyAuthoritativeDailyProgress(sessionId, result.dailyProgress);
     }
   }, [sessionId, markCorrect, practiceMode, setMockExamSession]);
 
-  // AI 评判完成（主观题/填空题 verdict 已在后端落库）后的回写。此前只有
-  // 自评改判（handleMarkCorrect）会回写：模拟考成绩单把 AI 已判对的主观题
-  // 按「错」统计（submit_mock_exam 对无 results 的题 unwrap_or(false)），
-  // 练习进度里首答按 null 记的基线也永不修正。
+  // AI 评判完成（主观题/填空题 verdict 已在后端落库）后的回写
   const handleGradingResolved = useCallback((questionId: string, isCorrect: boolean) => {
     if (!sessionId) return;
-    // 与 handleMarkCorrect 同口径：action 内部做成员资格/首答幂等/差量修正门禁
     useQuestionBankStore.getState().recordPracticeAnswer(sessionId, questionId, isCorrect);
 
     if (practiceMode === 'mock_exam') {
@@ -1254,7 +454,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       ) {
         setMockExamSession({
           ...latestSession,
-          // 只回写判定，不改作答内容（改判不改答）
           results: { ...latestSession.results, [questionId]: isCorrect },
         });
       }
@@ -1469,8 +668,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     if (!selected.length) return;
     const timed = practiceMode === 'timed' ? activeTimedSession : null;
     const mock = practiceMode === 'mock_exam' ? activeMockExamSession : null;
-    setBatchRequest({ id: newPracticeId(), scope_id: sessionId, title: activeGeneratedPaper && practiceMode === 'paper' ? activeGeneratedPaper.title : t(MODE_LABEL_KEYS[practiceMode]), mode: groupPracticeIds ? 'group' : practiceMode,
-      question_ids: selected.map(q => q.id), paper_id: practiceMode === 'paper' ? activeGeneratedPaper?.id : undefined,
+    setBatchRequest({
+      id: newPracticeId(),
+      scope_id: sessionId,
+      title: activeGeneratedPaper && practiceMode === 'paper' ? activeGeneratedPaper.title : t(MODE_LABEL_KEYS[practiceMode]),
+      mode: groupPracticeIds ? 'group' : practiceMode,
+      question_ids: selected.map(q => q.id),
+      paper_id: practiceMode === 'paper' ? activeGeneratedPaper?.id : undefined,
       start_question_id: practiceMode === 'sequential' ? questions[currentIndex]?.id : undefined,
       duration_seconds: timed ? timed.duration_minutes * 60 : mock ? mock.config.duration_minutes * 60 : undefined,
       started_at: timed?.started_at ?? mock?.started_at,
@@ -1487,9 +691,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     await refreshQuestion(questionId);
   }, [refreshQuestion]);
 
-  // 答题卡状态以本地会话（useQuestionBankSession）为准：做题导航走本地
-  // currentIndex，全局 store.currentQuestionId 与之不同步；收藏集同理来自
-  // 本地会话题目，全局 store.questions map 在此流程通常未加载
+  // 答题卡状态以本地会话（useQuestionBankSession）为准
   const sessionCurrentQuestionId = questions[currentIndex]?.id ?? null;
   const favoriteQuestionIds = useMemo(() => {
     const ids = new Set<string>();
@@ -1502,7 +704,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // 高级模式下 currentIndex 需要映射到过滤后的子集
   const practiceCurrentIndex = useMemo(() => {
     if (practiceQuestions === questions) return currentIndex;
-    // 找到当前题目在过滤子集中的位置
     const currentQ = questions[currentIndex];
     if (!currentQ) return 0;
     const idx = practiceQuestions.findIndex(q => q.id === currentQ.id);
@@ -1517,7 +718,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         const realIdx = questions.findIndex(q => q.id === targetQ.id);
         if (realIdx >= 0) handleNavigate(realIdx);
       }
-      // 子集索引越界时不回退到全量索引，避免跳到错误题目
       return;
     }
     handleNavigate(index);
@@ -1543,216 +743,30 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     if (index >= 0) handleQuestionClick(index);
   }, [handleQuestionClick, questions]);
 
-  // Workbench activations must mutate this resource's local session. The
-  // global question-bank store is only mirrored after this handler confirms it.
-  useEffect(() => {
-    const acknowledge = (
-      detail: QbankControlEventDetail | undefined,
-      result: QbankControlResult,
-    ) => detail?.acknowledge?.(result);
-
-    const onControl = (event: Event) => {
-      const detail = (event as CustomEvent<QbankControlEventDetail>).detail;
-      if (!detail || (detail.targetResourceId && detail.targetResourceId !== sessionId)) return;
-
-      const scope = viewMode === 'practice' ? practiceQuestions : questions;
-      const currentQuestionId = questions[currentIndex]?.id;
-      const scopedIndex = scope.findIndex((question) => question.id === currentQuestionId);
-
-      if (detail.action === 'nextQuestion' || detail.action === 'previousQuestion') {
-        if (viewMode === 'practice' && gradingMode === 'on_submit' && batchNavigateRef.current) {
-          void batchNavigateRef.current(detail.action === 'nextQuestion' ? 1 : -1).then(() => acknowledge(detail, { handled: true })).catch(error => acknowledge(detail, { handled: false, code: 'SAVE_FAILED', hint: String(error) }));
-          return;
-        }
-        if (scope.length === 0) {
-          acknowledge(detail, {
-            handled: false,
-            code: 'QUESTION_NOT_FOUND',
-            hint: t('learningHub:exam.controlHints.noNavigableQuestions'),
-          });
-          return;
-        }
-        const delta = detail.action === 'nextQuestion' ? 1 : -1;
-        const baseIndex = scopedIndex >= 0 ? scopedIndex : delta > 0 ? -1 : 0;
-        const nextScopedIndex = Math.min(
-          Math.max(baseIndex + delta, 0),
-          Math.max(0, scope.length - 1),
-        );
-        const target = scope[nextScopedIndex];
-        const fullIndex = target ? questions.findIndex((question) => question.id === target.id) : -1;
-        if (fullIndex < 0 || !target) {
-          acknowledge(detail, {
-            handled: false,
-            code: 'QUESTION_NOT_FOUND',
-            hint: t('learningHub:exam.controlHints.questionNotFound'),
-          });
-          return;
-        }
-        if (!requestViewMode('practice', () => navigate(fullIndex))) {
-          acknowledge(detail, {
-            handled: false,
-            code: 'CONFIRMATION_REQUIRED',
-            hint: t('learningHub:exam.controlHints.confirmDiscardToSwitchQuestion'),
-          });
-          return;
-        }
-        agentFlash('exam', target.id, { scope: agentFlashRootRef.current });
-        acknowledge(detail, { handled: true, currentQuestionId: target.id });
-        return;
-      }
-
-      if (detail.action === 'setFilters' || detail.action === 'resetFilters') {
-        const filters = detail.action === 'resetFilters'
-          ? {}
-          : parseManageFilters(detail.payload);
-        if (!filters) {
-          acknowledge(detail, {
-            handled: false,
-            code: 'INVALID_ARGS',
-            hint: t('learningHub:exam.controlHints.setFiltersNeedsFilters'),
-          });
-          return;
-        }
-        if (!requestViewMode('manage')) {
-          acknowledge(detail, {
-            handled: false,
-            code: 'CONFIRMATION_REQUIRED',
-            hint: t('learningHub:exam.controlHints.confirmEndReviewForFilters'),
-          });
-          return;
-        }
-        setManageFilters(filters);
-        acknowledge(detail, { handled: true });
-        return;
-      }
-
-      if (detail.action === 'hydratePracticeSession') {
-        const payload = detail.payload && typeof detail.payload === 'object'
-          ? detail.payload as Record<string, unknown>
-          : {};
-        const rawHandoff = payload.handoff ?? detail.payload;
-        const validated = validateQbankPracticeHandoff(rawHandoff, sessionId);
-        if ('ok' in validated) {
-          acknowledge(detail, {
-            handled: false,
-            code: validated.code,
-            hint: validated.hint,
-          });
-          return;
-        }
-
-        const outcome: { current: PracticeHandoffHydrationResult | null } = { current: null };
-        const accepted = requestViewMode('practice', () => {
-          const hydration = useQuestionBankStore
-            .getState()
-            .hydratePracticeHandoff(validated, sessionId);
-          outcome.current = hydration;
-          if (hydration.ok === false) return;
-          setGradingMode('on_submit'); setBatchRequest(null); setBatchRecord(null);
-          setElapsedTime(0);
-          setStorePracticeMode(hydration.mode);
-          const firstIndex = questions.findIndex(
-            (question) => question.id === hydration!.firstQuestionId,
-          );
-          if (firstIndex >= 0) navigate(firstIndex);
-          useQuestionBankStore.getState().setCurrentQuestion(hydration.firstQuestionId);
-        });
-        const hydration = outcome.current;
-        if (!accepted || !hydration || hydration.ok === false) {
-          const failure = hydration?.ok === false ? hydration : null;
-          acknowledge(detail, {
-            handled: false,
-            code: failure?.code ?? 'CONFIRMATION_REQUIRED',
-            hint: failure?.hint ?? t('learningHub:exam.controlHints.confirmDiscardToHydratePractice'),
-          });
-          return;
-        }
-        acknowledge(detail, {
-          handled: true,
-          acknowledged: true,
-          currentQuestionId: hydration.firstQuestionId,
-          hydratedSessionId: hydration.handoffId,
-          practiceMode: hydration.mode,
-        });
-        return;
-      }
-
-      if (detail.action === 'setPracticeMode') {
-        const payload = detail.payload && typeof detail.payload === 'object'
-          ? detail.payload as Record<string, unknown>
-          : {};
-        const mode = payload.mode as PracticeMode | undefined;
-        const tag = typeof payload.tag === 'string' ? payload.tag : undefined;
-        if (!mode) {
-          acknowledge(detail, {
-            handled: false,
-            code: 'INVALID_ARGS',
-            hint: t('learningHub:exam.controlHints.setPracticeModeNeedsMode'),
-          });
-          return;
-        }
-        if (LAUNCHER_REQUIRED_MODES.has(mode as LauncherRequestedMode) && mode !== 'by_tag') {
-          acknowledge(detail, {
-            handled: false,
-            code: 'CONFIGURATION_REQUIRED',
-            hint: t('learningHub:exam.controlHints.modeNeedsLauncherConfig'),
-          });
-          return;
-        }
-        if (mode === 'by_tag' && (!tag || !questions.some((question) => matchesPracticeTag(question, tag)))) {
-          acknowledge(detail, {
-            handled: false,
-            code: 'INVALID_ARGS',
-            hint: t('learningHub:exam.controlHints.byTagNeedsValidTag'),
-          });
-          return;
-        }
-        const nextIndex = getPracticeStartIndex(questions, currentIndex, mode, tag);
-        const target = questions[nextIndex];
-        if (!requestViewMode('practice', () => {
-          setElapsedTime(0);
-          setStorePracticeMode(mode);
-          if (tag) setSelectedTag(tag);
-          navigate(nextIndex);
-        })) {
-          acknowledge(detail, {
-            handled: false,
-            code: 'CONFIRMATION_REQUIRED',
-            hint: t('learningHub:exam.controlHints.confirmDiscardToSwitchMode'),
-          });
-          return;
-        }
-        acknowledge(detail, {
-          handled: true,
-          currentQuestionId: target?.id ?? null,
-        });
-        return;
-      }
-
-      // 未知 action 兜底回执：driver 侧新增动作而本视图尚未支持时，
-      // 明确报告 unhandled，而不是静默无响应（会被误判为视图未挂载）
-      acknowledge(detail, {
-        handled: false,
-        code: 'UNSUPPORTED_ACTION',
-        hint: t('learningHub:exam.controlHints.unsupportedAction'),
-      });
-    };
-
-    window.addEventListener(QBANK_CONTROL_EVENT, onControl);
-    return () => window.removeEventListener(QBANK_CONTROL_EVENT, onControl);
-  }, [
-    currentIndex,
-    navigate,
-    practiceQuestions,
-    practiceMode,
-    questions,
-    requestViewMode,
+  useExamQbankControlBridge({
     sessionId,
-    setStorePracticeMode,
-    t,
     viewMode,
     gradingMode,
-  ]);
+    hasQuestions,
+    questions,
+    practiceQuestions,
+    currentIndex,
+    practiceMode,
+    settingsPanelOpen,
+    setSettingsPanelOpen,
+    setPendingSettingsOpen,
+    setFocusMode,
+    setManageFilters,
+    setElapsedTime,
+    setStorePracticeMode,
+    setSelectedTag,
+    onResetToBatchImmediateDefaults: handleResetToBatchImmediateDefaults,
+    navigate,
+    requestViewMode,
+    csvImportingRef,
+    batchNavigateRef,
+    agentFlashRootRef,
+  });
 
   // PracticeLauncher 的 onStartPractice 回调
   const handleStartPractice = useCallback((mode: PracticeMode, tag?: string) => {
@@ -1762,16 +776,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     setLauncherRequestedMode(null);
     setStorePracticeMode(mode);
     if (tag) setSelectedTag(tag);
-    // 对于高级模式，navigate 到过滤子集的第一题
     if (['mock_exam', 'timed', 'daily', 'paper'].includes(mode)) {
-      // 高级模式的 question_ids 已经在全局 store 中设置好了
-      // 找到第一个匹配的题目在全量 questions 中的索引
       let sessionQuestionIds: string[] = [];
       if (mode === 'mock_exam') sessionQuestionIds = activeMockExamSession?.question_ids || [];
       else if (mode === 'timed') sessionQuestionIds = activeTimedSession?.question_ids || [];
       else if (mode === 'daily') sessionQuestionIds = activeDailyPractice?.question_ids || [];
       else if (mode === 'paper') sessionQuestionIds = activeGeneratedPaper?.questions?.map(q => q.id) || [];
-      
+
       if (sessionQuestionIds.length > 0) {
         const firstId = sessionQuestionIds[0];
         const idx = questions.findIndex(q => q.id === firstId);
@@ -1782,7 +793,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       navigate(nextIdx);
     }
     switchViewMode('practice');
-  }, [questions, currentIndex, navigate, setStorePracticeMode, switchViewMode, activeMockExamSession, activeTimedSession, activeDailyPractice, activeGeneratedPaper]);
+  }, [questions, currentIndex, navigate, setElapsedTime, setStorePracticeMode, switchViewMode, activeMockExamSession, activeTimedSession, activeDailyPractice, activeGeneratedPaper]);
 
   const refreshQuestionsAndStats = useCallback(async () => {
     await Promise.all([loadQuestions(), refreshStats()]);
@@ -1833,9 +844,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         debugLog.warn('[ExamContentView] mutation refresh failed:', refreshErr);
         showGlobalNotification(
           'warning',
-          t(
-            'learningHub:exam.mutationRefreshFailed'
-          )
+          t('learningHub:exam.mutationRefreshFailed')
         );
       }
     },
@@ -1905,16 +914,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     [executeMutation, t]
   );
 
-  // ========== 批量管理 / 标签重命名（2026-07 store 新增 action 的中枢接线） ==========
-  // 通知责任在子视图（ManageView/TagNavigationView 自带成功/失败通知），
-  // 此处只调 store action（出错 rethrow 给子视图呈现）+ 刷新本地会话数据。
-  // 直连 qbank_batch_update_questions 不派发 qbank://changed（仅 agent 工具链会），
-  // 因此这里的显式刷新与域刷新去抖链不会双重触发。
   const refreshAfterExternalMutation = useCallback(async () => {
     try {
       await refreshQuestionsAndStats();
     } catch (refreshErr: unknown) {
-      // 变更已成功，刷新失败不能伪装成变更失败（否则子视图会误报操作失败）
       debugLog.warn('[ExamContentView] refresh after batch mutation failed:', refreshErr);
       showGlobalNotification('warning', t('learningHub:exam.mutationRefreshFailed'));
     }
@@ -1929,7 +932,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     questionIds: string[],
     op: { add?: string[]; remove?: string[] },
   ) => {
-    // ManageView 的 op 字段可选，store 契约要求两个数组齐备
     await useQuestionBankStore.getState().batchUpdateTags(questionIds, {
       add: op.add ?? [],
       remove: op.remove ?? [],
@@ -1938,7 +940,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   }, [refreshAfterExternalMutation]);
 
   const handleRenameTag = useCallback(async (oldTag: string, newTag: string) => {
-    // TagNavigationView 签名是 (oldTag, newTag)，store 是 (examId, oldTag, newTag)：examId 由中枢闭包补齐
     await useQuestionBankStore.getState().renameTag(sessionId, oldTag, newTag);
     await refreshAfterExternalMutation();
   }, [refreshAfterExternalMutation, sessionId]);
@@ -2042,267 +1043,42 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     requestViewMode('launcher');
   }, [requestViewMode]);
 
-  // 断点续导：检测 importing 状态
-  const isImportingSession = sessionDetail?.summary.status === 'importing';
-  const [isResuming, setIsResuming] = useState(false);
-  const [resumedImportDraft, setResumedImportDraft] = useState<import('@/components/ExamSheetUploader').ImportDraftResponse | null>(null);
-  const [resumeError, setResumeError] = useState<string | null>(null);
-  const [showImportAudit, setShowImportAudit] = useState(false);
-  const [pendingAuthoringDrafts, setPendingAuthoringDrafts] = useState<PendingAuthoringDraftView[]>([]);
+  const {
+    isImportingSession,
+    isResuming,
+    resumedImportDraft,
+    setResumedImportDraft,
+    resumeError,
+    showImportAudit,
+    setShowImportAudit,
+    showAiGenerationPanel,
+    setShowAiGenerationPanel,
+    aiGenerationTarget,
+    setAiGenerationTarget,
+    confirmingDraftJobId,
+    activeGenerationTask,
+    pendingAuthoringDrafts,
+    handleReviewPendingDraft,
+    handleConfirmPendingDraft,
+    handleResumeImport,
+    handleOpenAiGeneration,
+    handleOpenGenerationProgress,
+  } = useExamAuthoringDrafts({
+    sessionId,
+    sessionDetail,
+    setSessionDetail,
+    latestSessionIdRef,
+    questionsLength: questions.length,
+    loadQuestions,
+    refreshQuestionsAndStats,
+    switchViewMode,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
-    const refresh = () => {
-      void Promise.all([
-        invoke<Array<{ job_id: string; version: number; question_count: number; status: string; created_at?: string }>>(
-          'qbank_list_authoring_drafts',
-          { examId: sessionId },
-        ),
-        invoke<QbankGenerationTask[]>('qbank_list_generation_tasks', {
-          examId: sessionId,
-          limit: 10,
-        }).catch(() => null),
-      ])
-        .then(async ([rawDrafts, listedTasks]) => {
-          if (cancelled) return;
-          const tasksList = Array.isArray(listedTasks) ? listedTasks : [];
-          if (tasksList.length > 0) {
-            useQbankGenerationStore.getState().upsertTasks(tasksList);
-          }
-          const storeTasks = selectTasksForExam(useQbankGenerationStore.getState().tasks, sessionId);
-          const taskByJobId = new Map<string, QbankGenerationTask>();
-          for (const task of [...tasksList, ...storeTasks]) {
-            const jid = task.authoringResult?.job_id;
-            if (jid && !taskByJobId.has(jid)) taskByJobId.set(jid, task);
-          }
-
-          // 演示/旧后端可能对未知命令返回 null；非数组一律按“没有草稿”处理
-          const drafts = Array.isArray(rawDrafts) ? rawDrafts : [];
-          if (drafts.length === 0) {
-            if (!cancelled) setPendingAuthoringDrafts([]);
-            return;
-          }
-
-          const enriched = await Promise.all(
-            drafts.map(async (draft, index): Promise<PendingAuthoringDraftView> => {
-              const matchedTask = taskByJobId.get(draft.job_id);
-              if (matchedTask?.authoringResult) {
-                const { origin, sourceLabel } = extractAuthoringDraftAttribution(
-                  matchedTask.authoringResult.model_route,
-                  { defaultOrigin: 'ai_generation' },
-                );
-                const docQuestions = matchedTask.authoringResult.document?.questions;
-                const localIds = Array.isArray(docQuestions)
-                  ? docQuestions.map((q) => q.local_id).filter((id): id is string => typeof id === 'string' && id.length > 0)
-                  : matchedTask.drafts.map((d) => d.local_id).filter((id): id is string => typeof id === 'string' && id.length > 0);
-                return {
-                  ...draft,
-                  origin,
-                  sourceLabel,
-                  taskId: matchedTask.id,
-                  ...(localIds.length > 0 ? { localIds } : {}),
-                };
-              }
-              if (index < 5) {
-                try {
-                  const full = await invoke<{
-                    metadata?: unknown;
-                    document?: { questions?: Array<{ local_id?: string }> };
-                  }>('qbank_get_authoring_draft', { jobId: draft.job_id });
-                  const { origin, sourceLabel } = extractAuthoringDraftAttribution(full?.metadata);
-                  const localIds = Array.isArray(full?.document?.questions)
-                    ? full.document.questions
-                        .map((q) => q.local_id)
-                        .filter((id): id is string => typeof id === 'string' && id.length > 0)
-                    : [];
-                  return {
-                    ...draft,
-                    origin,
-                    sourceLabel,
-                    taskId: null,
-                    ...(localIds.length > 0 ? { localIds } : {}),
-                  };
-                } catch {
-                  // 详情读取失败时保留基础草稿项与默认归属
-                }
-              }
-              const fallback = extractAuthoringDraftAttribution(null);
-              return {
-                ...draft,
-                origin: fallback.origin,
-                sourceLabel: fallback.sourceLabel,
-                taskId: null,
-              };
-            }),
-          );
-          if (!cancelled) setPendingAuthoringDrafts(enriched);
-        })
-        .catch((error) => {
-          debugLog.warn('[ExamContentView] Pending drafts unavailable:', error);
-        });
-    };
-    setPendingAuthoringDrafts([]);
-    refresh();
-    window.addEventListener('qbank:refresh', refresh);
-    return () => {
-      cancelled = true;
-      window.removeEventListener('qbank:refresh', refresh);
-    };
-  }, [sessionId, questions.length, completedGenerationTaskSignature]);
-
-  useEffect(() => {
-    const onOpenGenerationDraft = (event: Event) => {
-      const detail = (event as CustomEvent<QbankOpenGenerationDraftDetail>).detail;
-      if (!detail || detail.examId !== sessionId) return;
-      setAiGenerationTarget({
-        taskId: detail.taskId ?? null,
-        jobId: detail.jobId ?? null,
-      });
-      setShowAiGenerationPanel(true);
-    };
-    window.addEventListener(QBANK_OPEN_GENERATION_DRAFT_EVENT, onOpenGenerationDraft);
-    return () => window.removeEventListener(QBANK_OPEN_GENERATION_DRAFT_EVENT, onOpenGenerationDraft);
-  }, [sessionId]);
-
-  const handleOpenAuthoringDraft = useCallback(async (jobId:string) => {
-    try {
-      const draft = await invoke<{job_id:string;version:number;metadata:import('@/components/ExamSheetUploader').ImportDraftResponse['model_route'];document:NonNullable<import('@/components/ExamSheetUploader').ImportDraftResponse['draft_document']>}>('qbank_get_authoring_draft', {jobId});
-      if (latestSessionIdRef.current !== sessionId) return;
-      const detail = sessionDetail ?? await TauriAPI.getExamSheetSessionDetail(sessionId);
-      if (latestSessionIdRef.current !== sessionId) return;
-      setResumedImportDraft({...detail,draft_job_id:draft.job_id,draft_version:draft.version,draft_document:draft.document,model_route:draft.metadata,committed:false});
-      switchViewMode('upload');
-    } catch (error) {
-      showGlobalNotification('error', error instanceof Error ? error.message : String(error));
-    }
-  }, [sessionId, sessionDetail, switchViewMode]);
-
-  const handleReviewPendingDraft = useCallback((draft: PendingAuthoringDraftView) => {
-    if (draft.origin === 'ai_generation') {
-      setAiGenerationTarget({
-        taskId: draft.taskId ?? null,
-        jobId: draft.job_id,
-      });
-      setShowAiGenerationPanel(true);
-      return;
-    }
-    void handleOpenAuthoringDraft(draft.job_id);
-  }, [handleOpenAuthoringDraft]);
-
-  const handleConfirmPendingDraft = useCallback(async (draft: PendingAuthoringDraftView) => {
-    if (confirmingDraftJobId !== null) return;
-    setConfirmingDraftJobId(draft.job_id);
-    try {
-      let localIds = draft.localIds ?? [];
-      let expectedVersion = draft.version;
-      if (localIds.length === 0) {
-        const full = await invoke<{
-          version: number;
-          document?: { questions?: Array<{ local_id?: string }> };
-        }>('qbank_get_authoring_draft', { jobId: draft.job_id });
-        expectedVersion = typeof full?.version === 'number' ? full.version : draft.version;
-        localIds = Array.isArray(full?.document?.questions)
-          ? full.document.questions
-              .map((q) => q.local_id)
-              .filter((id): id is string => typeof id === 'string' && id.length > 0)
-          : [];
-      }
-      if (localIds.length === 0) {
-        handleReviewPendingDraft(draft);
-        return;
-      }
-      const created = await invoke<{ committed: boolean; imported_count: number }>(
-        'qbank_commit_authoring_draft',
-        {
-          jobId: draft.job_id,
-          expectedVersion,
-          selectedLocalIds: localIds,
-        },
-      );
-      if (!created?.committed) {
-        throw new Error(t('exam_sheet:uploader.commit_not_confirmed'));
-      }
-      if (draft.taskId) {
-        useQbankGenerationStore.getState().removeTask(draft.taskId);
-      }
-      setPendingAuthoringDrafts((prev) => prev.filter((item) => item.job_id !== draft.job_id));
-      await refreshQuestionsAndStats();
-      window.dispatchEvent(new CustomEvent('qbank:refresh', { detail: { examId: sessionId } }));
-      showGlobalNotification(
-        'success',
-        t('exam_sheet:aiGeneration.importSuccess', {
-          count: created.imported_count,
-          defaultValue: `已确认并导入 ${created.imported_count} 道题目到题库`,
-        }),
-      );
-    } catch (error) {
-      debugLog.warn('[ExamContentView] Direct confirm pending draft failed, falling back to review:', error);
-      showGlobalNotification(
-        'warning',
-        error instanceof Error
-          ? `${error.message}，已打开审阅面板`
-          : t('exam_sheet:aiGeneration.importFailed'),
-      );
-      handleReviewPendingDraft(draft);
-    } finally {
-      setConfirmingDraftJobId(null);
-    }
-  }, [confirmingDraftJobId, handleReviewPendingDraft, refreshQuestionsAndStats, sessionId, t]);
-
-  // 会话切换时清理上一会话的恢复导入状态
-  useEffect(() => {
-    setIsResuming(false);
-    setResumeError(null);
-    setResumedImportDraft(null);
-  }, [sessionId]);
-
-  const handleResumeImport = useCallback(async () => {
-    if (!sessionId || isResuming) return;
-    setIsResuming(true);
-    setResumeError(null);
-    try {
-      const detail = await TauriAPI.resumeQuestionImport(sessionId);
-      if (latestSessionIdRef.current !== sessionId) return;
-      if ((detail as import('@/components/ExamSheetUploader').ImportDraftResponse).draft_job_id) {
-        setResumedImportDraft(detail as import('@/components/ExamSheetUploader').ImportDraftResponse);
-        switchViewMode('upload');
-        return;
-      }
-      setSessionDetail(detail);
-      await loadQuestions();
-      showGlobalNotification('success', t('exam_sheet:uploader.resume_success'));
-    } catch (err: unknown) {
-      if (latestSessionIdRef.current !== sessionId) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      setResumeError(msg);
-      debugLog.error('[ExamContentView] resume import failed:', err);
-    } finally {
-      if (latestSessionIdRef.current === sessionId) {
-        setIsResuming(false);
-      }
-    }
-  }, [sessionId, isResuming, loadQuestions, switchViewMode, t]);
-
-  const isEmptySession = sessionDetail?.summary.status === 'empty' && 
+  const isEmptySession = sessionDetail?.summary.status === 'empty' &&
     (!sessionDetail?.preview.pages || sessionDetail.preview.pages.length === 0);
-
   const sessionStatus = sessionDetail?.summary?.status ?? null;
 
-  // 当前是否处于「更多」菜单中的二级视图（用于菜单触发器的高亮与文案）
-  const activeSecondaryTab = secondaryTabs.find((tab) => tab.mode === viewMode);
-
-  // ACR 演出优化轮：flash 限定在本视图 DOM 内（qbank 可多窗，全局查找会闪错窗口）
-  const agentFlashRootRef = useRef<HTMLDivElement | null>(null);
-
-  // 硬件返回键（移动端）：viewMode 处于非根态（非 list/launcher）时，
-  // 返回键先执行页内返回（practice 回启动台，二级视图回题库列表），
-  // 而不是让 MobileSlidingLayout 直接把整个右屏收回中屏。
-  //
-  // 必须注册 overlay 档：右屏收回的 handler 也注册在 overlay 档（见
-  // MobileSlidingLayout 的 A-5 注释），view 档在右屏打开时永远轮不到。
-  // 本 handler 仅在进入非根态时才注册（必然晚于布局 mount 时的注册），
-  // 同优先级后注册者先执行，因此能先拿到事件；之后打开的浮层（Dialog/
-  // AppMenu 等）注册更晚仍优先于本 handler，「先关浮层」语义不受影响。
+  // 硬件返回键（移动端）：viewMode 处于非根态（非 list/launcher）时，先执行页内返回
   const hardwareBackRef = useRef({ viewMode, isActive, requestViewMode });
   hardwareBackRef.current = { viewMode, isActive, requestViewMode };
   const isNonRootViewMode = viewMode !== 'list' && viewMode !== 'launcher';
@@ -2311,87 +1087,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     return registerBackHandler(() => {
       const { viewMode: mode, isActive: active, requestViewMode: request } = hardwareBackRef.current;
       if (active === false || mode === 'list' || mode === 'launcher') return false;
-      // 右屏离屏时（MobileSlidingLayout 给非可见屏加 inert）让行给布局/导航层
       if (agentFlashRootRef.current?.closest('[inert]')) return false;
-      // requestViewMode 内部的草稿/复习/CSV 导入守卫可能弹确认面板或阻断；
-      // 无论结果如何都消费本次返回，避免确认面板刚弹出整个右屏就被收走
       request(mode === 'practice' ? 'launcher' : 'list');
       return true;
     }, BACK_PRIORITY.overlay);
   }, [isSmallScreen, isNonRootViewMode]);
-
-  // ========== Tab 栏滑动选中指示器 + 方向键可达 ==========
-  const tabListRef = useRef<HTMLDivElement | null>(null);
-  const [tabIndicator, setTabIndicator] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
-
-  // 顶部三个一级入口的激活归属：题库 / 做题(含启动台) / 更多(二级视图)
-  const activeTopTab: 'list' | 'practice' | 'papers' | 'more' | null =
-    (viewMode === 'list' || viewMode === 'browse') ? 'list'
-      : (viewMode === 'practice' || viewMode === 'launcher') ? 'practice'
-        : viewMode === 'papers' ? 'papers' : activeSecondaryTab ? 'more'
-          : null;
-
-  // 指示器几何测量：布局阶段同步测量避免首帧闪跳；
-  // 标签文案（语言/二级视图标题）与容器尺寸变化时重测
-  useLayoutEffect(() => {
-    const list = tabListRef.current;
-    if (!list) return;
-
-    const measure = () => {
-      const active = list.querySelector<HTMLElement>('[data-exam-tab][data-active="true"]');
-      if (!active) {
-        setTabIndicator(null);
-        return;
-      }
-      // 用 rect 差值而非 offsetLeft：「更多」按钮嵌在 AppMenu 的 relative 包裹层里，
-      // offsetLeft 相对的是包裹层而不是 Tab 列表
-      const listRect = list.getBoundingClientRect();
-      const activeRect = active.getBoundingClientRect();
-      const next = {
-        left: Math.round(activeRect.left - listRect.left + list.scrollLeft),
-        top: Math.round(activeRect.top - listRect.top + list.scrollTop),
-        width: Math.round(activeRect.width),
-        height: Math.round(activeRect.height),
-      };
-      setTabIndicator((prev) => (
-        prev && prev.left === next.left && prev.top === next.top
-          && prev.width === next.width && prev.height === next.height
-          ? prev
-          : next
-      ));
-    };
-
-    measure();
-    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
-    observer?.observe(list);
-    window.addEventListener('resize', measure);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', measure);
-    };
-    // sessionDetail / isLoading / isResuming 参与早退分支：Tab 栏从「加载中」早退恢复挂载时必须重测
-  }, [activeTopTab, activeSecondaryTab?.label, hasQuestions, t, sessionDetail, isLoading, isResuming]);
-
-  // 方向键在一级 Tab 之间移动焦点（Home/End 跳到首尾）
-  const handleTabListKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-    const list = tabListRef.current;
-    if (!list) return;
-    const tabs = Array.from(list.querySelectorAll<HTMLElement>('[data-exam-tab]'))
-      .filter((el) => !el.hasAttribute('disabled'));
-    if (tabs.length === 0) return;
-    const current = document.activeElement instanceof HTMLElement
-      ? tabs.indexOf(document.activeElement)
-      : -1;
-    if (current < 0) return;
-    event.preventDefault();
-    let next = current;
-    if (event.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length;
-    else if (event.key === 'ArrowRight') next = (current + 1) % tabs.length;
-    else if (event.key === 'Home') next = 0;
-    else next = tabs.length - 1;
-    tabs[next]?.focus();
-  }, []);
 
   useEffect(() => {
     emitExamSheetDebug('debug', 'frontend:hook-state',
@@ -2407,38 +1107,26 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     if (latestSessionIdRef.current !== sessionId) return;
     emitExamSheetDebug('info', 'frontend:navigate', `[ExamContentView] onUploadSuccess 完成 → setViewMode('list')`, { sessionId });
     switchViewMode('list');
-  }, [handleSessionUpdate, sessionId, switchViewMode]);
+  }, [handleSessionUpdate, sessionId, setResumedImportDraft, switchViewMode]);
 
-  // 上传页返回：回到题库列表。空集时列表展示「新建/导入」启动台，
-  // 不再直接关闭整个面板（避免误关刚创建的题目集）
   const handleUploaderBack = useCallback(() => {
     switchViewMode('list');
   }, [switchViewMode]);
 
-  // 「添加题目」菜单：AI 出题（生成预览 → 确认入库）
-  const handleOpenAiGeneration = useCallback(() => {
-    setAiGenerationTarget(null);
-    setShowAiGenerationPanel(true);
-  }, []);
-
-  // 「添加题目」菜单：手动新建 → 切到题库列表并请求打开内联创建编辑器
   const handleCreateQuestionEntry = useCallback(() => {
     requestViewMode('list', () => setListCreateRequestKey((key) => key + 1));
   }, [requestViewMode]);
 
-  // 「添加题目」菜单：识别导入（清空可能残留的拖入文件）
   const handleOpenUploadEntry = useCallback(() => {
     setPendingUploadFiles(null);
     requestViewMode('upload');
   }, [requestViewMode]);
 
-  // 题库启动台拖入文件：携带文件进入识别导入
   const handleLauncherFilesDropped = useCallback((files: File[]) => {
     if (files.length === 0) return;
     requestViewMode('upload', () => setPendingUploadFiles(files));
   }, [requestViewMode]);
 
-  // 加载失败重试：会话详情与题目一起重试；rejection 已由 hook 的 error 状态呈现
   const handleRetryLoad = useCallback(() => {
     void loadSessionDetail();
     if (error) {
@@ -2448,10 +1136,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
   }, [loadSessionDetail, error, loadQuestions]);
 
-  // 空会话停留在题库列表：列表的空状态就是「新建/导入」启动台
-
-  // 题目清空（如在管理/练习视图删光题目）后，依赖题目的视图已无内容支撑，
-  // 回退到题库列表，保持 Tab 高亮与实际内容一致（上传/CSV 导入不依赖题目，不在此列）
+  // 题目清空（如在管理/练习视图删光题目）后，依赖题目的视图回退到题库列表
   useEffect(() => {
     const hasSavedSurface = viewMode === 'papers' || (viewMode === 'practice' && (batchRequest || batchRecord));
     if (!hasQuestions && !isLoading && !hasSavedSurface && viewMode !== 'list' && viewMode !== 'upload' && viewMode !== 'csvImport') {
@@ -2459,203 +1144,31 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     }
   }, [hasQuestions, isLoading, viewMode, switchViewMode, batchRequest, batchRecord]);
 
-  /**
-   * ACR R1-15：消费 qbankDriver 派发的域刷新 / 聚焦事件。
-   * - 刷新：未保存草稿时保留最后一次刷新，避免新的 question 对象重置行内表单
-   * - 聚焦：打开对应题目并 flash
-   */
-  useEffect(() => {
-    const flashIds = (entityIds: string[] | undefined, payload?: DomainChangePayload) => {
-      // 刷新是异步的：视图可能已卸载（ref 置空）——此时目标行不在本视图，
-      // 不能回退全局查找（会闪到别的窗口），直接跳过
-      const scope = agentFlashRootRef.current;
-      if (!scope) return;
-      const ids =
-        (entityIds?.length ? entityIds : null) ??
-        (payload ? collectDomainEntityIds(payload) : []);
-      // 演出优化轮：批量走 agentFlashMany（只滚一次、整批一次重排），
-      // 此前逐条 agentFlash 每条都 scrollIntoView + 强制重排，批量刷新连环跳视口
-      agentFlashMany('exam', ids, { scope });
-    };
-
-    const runLocalRefresh = (payload?: DomainChangePayload, mergedEntityIds?: string[]) => {
-      const currentDraft = draftStateRef.current;
-      if (currentDraft.examId === sessionId && currentDraft.dirty) {
-        // Multiple mutations can arrive while a form is dirty. Refreshing only
-        // the newest state after the form is saved/discarded is sufficient.
-        pendingQbankRefreshRef.current = payload;
-        hasPendingQbankRefreshRef.current = true;
-        return;
-      }
-
-      // Keep the short focus debounce for an editor that has just received a
-      // keystroke. It is supplementary only; dirty state above is the durable
-      // guard once focus leaves the form.
-      // timer 存组件级 ref：此前存 effect 局部变量，effect 因 deps
-      //   （questions/currentIndex）频繁重建时 cleanup 会取消延迟刷新，
-      //   编辑器聚焦期间到达的域变更会被静默丢弃
-      if (isQbankInlineEditorActive()) {
-        if (qbankDeferredEditorTimerRef.current) {
-          clearTimeout(qbankDeferredEditorTimerRef.current);
-        }
-        qbankDeferredEditorTimerRef.current = setTimeout(() => {
-          qbankDeferredEditorTimerRef.current = null;
-          runLocalRefresh(payload, mergedEntityIds);
-        }, 800);
-        return;
-      }
-
-      const isAgentModify = isQbankAgentModifyPayload(payload);
-      if (isAgentModify) {
-        useQbankAgentDiffStore
-          .getState()
-          .stageBeforeRefresh(
-            sessionId,
-            questionsRef.current,
-            mergedEntityIds?.length ? mergedEntityIds : payload?.entityIds,
-            payload?.runId,
-          );
-      }
-
-      void refreshQuestionsAndStats()
-        .then(() => {
-          if (isAgentModify) {
-            pendingAgentReconcileRef.current = true;
-            setAgentRefreshTick((tick) => tick + 1);
-          }
-          flashIds(mergedEntityIds?.length ? mergedEntityIds : payload?.entityIds, payload);
-        })
-        .catch((err: unknown) => {
-          debugLog.warn('[ExamContentView] qbank://changed refresh failed:', err);
-        });
-    };
-
-    const flushPendingRefresh = () => {
-      const currentDraft = draftStateRef.current;
-      if (
-        !hasPendingQbankRefreshRef.current
-        || (currentDraft.examId === sessionId && currentDraft.dirty)
-      ) {
-        return;
-      }
-      const payload = pendingQbankRefreshRef.current;
-      pendingQbankRefreshRef.current = undefined;
-      hasPendingQbankRefreshRef.current = false;
-      runLocalRefresh(payload);
-    };
-    flushPendingQbankRefreshRef.current = flushPendingRefresh;
-
-    // 域刷新去抖：批量变更（agent 连续写入）会在短时间内派发多个 qbank:refresh，
-    // 此前每个事件都触发一次全量重载。合并为一次刷新，entityIds 取并集保证
-    // flash 不丢批量中的任何一条。队列存放在组件级 ref 上：本 effect 因依赖
-    // （questions/currentIndex 等）频繁重建，effect 局部队列会被重建丢弃。
-    const onRefresh = (ev: Event) => {
-      const detail = (ev as CustomEvent<DomainChangePayload>).detail;
-      if (detail) {
-        const incomingIds = collectDomainEntityIds(detail);
-        queuedRefreshEntityIdsRef.current.push(...incomingIds);
-        if (isQbankAgentModifyPayload(detail)) {
-          queuedRefreshAgentModifyRef.current = true;
-          if (typeof detail.runId === 'string' && detail.runId) {
-            queuedRefreshRunIdRef.current = detail.runId;
-          }
-          useQbankAgentDiffStore
-            .getState()
-            .stageBeforeRefresh(
-              sessionId,
-              questionsRef.current,
-              incomingIds.length > 0 ? incomingIds : detail.entityIds,
-              detail.runId,
-            );
-        }
-        queuedRefreshPayloadRef.current = detail;
-      }
-      if (qbankRefreshDebounceTimerRef.current) {
-        clearTimeout(qbankRefreshDebounceTimerRef.current);
-      }
-      qbankRefreshDebounceTimerRef.current = setTimeout(() => {
-        qbankRefreshDebounceTimerRef.current = null;
-        const mergedIds = Array.from(new Set(queuedRefreshEntityIdsRef.current));
-        const rawPayload = queuedRefreshPayloadRef.current;
-        const wasAgentModify = queuedRefreshAgentModifyRef.current;
-        const latchedRunId = queuedRefreshRunIdRef.current;
-        queuedRefreshEntityIdsRef.current = [];
-        queuedRefreshPayloadRef.current = undefined;
-        queuedRefreshAgentModifyRef.current = false;
-        queuedRefreshRunIdRef.current = undefined;
-
-        const effectivePayload =
-          wasAgentModify && rawPayload
-            ? {
-                ...rawPayload,
-                source: 'agent' as const,
-                action:
-                  isQbankAgentModifyPayload(rawPayload) && rawPayload.action
-                    ? rawPayload.action
-                    : 'changed',
-                entityIds: mergedIds,
-                ...(latchedRunId ? { runId: latchedRunId } : {}),
-              }
-            : rawPayload;
-
-        runLocalRefresh(effectivePayload, mergedIds);
-      }, 200);
-    };
-
-    const onFocus = (ev: Event) => {
-      const detail = (ev as CustomEvent<QbankFocusEventDetail & { groupId?: string }>).detail;
-      if (detail?.targetScopeId && detail.targetScopeId !== focusScopeId) return;
-      if (detail?.targetResourceId && detail.targetResourceId !== sessionId) return;
-      const questionId = detail?.questionId;
-      if (questionId && viewMode === 'practice' && gradingMode === 'on_submit' && batchNavigateRef.current) {
-        void batchNavigateRef.current(questionId).then(() => detail.acknowledge?.({ handled: true, previousQuestionId: questions[currentIndex]?.id ?? null })).catch(() => detail.acknowledge?.({ handled: false, previousQuestionId: null }));
-        return;
-      }
-      // issue 491：题组深链定位到组内第一题（组内顺序由后端 group_position 保证）
-      const groupId = detail?.groupId;
-      if (!questionId && !groupId) return;
-      const index = questionId
-        ? questions.findIndex((question) => question.id === questionId)
-        : questions.findIndex((question) => question.groupId === groupId);
-      const handled = index >= 0 && requestViewMode('practice', () => navigate(index));
-      const previousQuestionId = questions[currentIndex]?.id ?? null;
-      const resolvedQuestionId = index >= 0 ? questions[index].id : questionId;
-      if (handled && resolvedQuestionId) {
-        agentFlash('exam', resolvedQuestionId, { scope: agentFlashRootRef.current });
-      }
-      detail.acknowledge?.({ handled, previousQuestionId });
-    };
-
-    window.addEventListener(QBANK_REFRESH_EVENT, onRefresh);
-    window.addEventListener(QBANK_FOCUS_EVENT, onFocus);
-    return () => {
-      window.removeEventListener(QBANK_REFRESH_EVENT, onRefresh);
-      window.removeEventListener(QBANK_FOCUS_EVENT, onFocus);
-      // 去抖/延迟 timer 不在这里清：本 effect 依赖变化频繁，重建时清掉会吞掉
-      // 已排队的刷新；跨闭包只经由 ref/稳定回调，旧闭包触发也安全。
-      // 卸载与会话切换时的清理由专门的 effect 负责。
-      if (flushPendingQbankRefreshRef.current === flushPendingRefresh) {
-        flushPendingQbankRefreshRef.current = null;
-      }
-    };
-  }, [refreshQuestionsAndStats, requestViewMode, questions, currentIndex, navigate, sessionId, focusScopeId, viewMode, gradingMode]);
-
-  // Reconcile staged Agent snapshots after React commits the refreshed `questions` array.
-  useEffect(() => {
-    if (!pendingAgentReconcileRef.current) return;
-    pendingAgentReconcileRef.current = false;
-    useQbankAgentDiffStore.getState().reconcileAfterRefresh(sessionId, questions);
-  }, [agentRefreshTick, questions, sessionId]);
+  const { handleFocusQuestionById } = useExamDomainRefreshAndAnchors({
+    sessionId,
+    nodePath: node.path,
+    isActive,
+    focusScopeId,
+    viewMode,
+    gradingMode,
+    questions,
+    questionsRef,
+    practiceQuestions,
+    currentIndex,
+    navigate,
+    requestViewMode,
+    setBrowseQuestionId,
+    setGroupPracticeIds,
+    setStorePracticeMode,
+    refreshQuestionsAndStats,
+    handleOpenQuestion,
+    draftStateRef,
+    flushPendingQbankRefreshRef,
+    batchNavigateRef,
+    agentFlashRootRef,
+  });
 
   const examTitle = sessionDetail?.summary?.exam_name || node.name;
-
-  const interopIds = useMemo(() => {
-    const raw = [sessionId, node.path].filter(
-      (val): val is string => typeof val === 'string' && val.trim().length > 0,
-    );
-    return Array.from(new Set(raw));
-  }, [sessionId, node.path]);
-  const interopKey = interopIds.join('\u0000');
 
   const activeQuestionId = useMemo(() => {
     if (viewMode === 'browse') {
@@ -2687,172 +1200,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     () => questions.filter((q) => q.status === 'review'),
     [questions],
   );
-
-  const findQuestionEntityElement = useCallback((questionId: string): HTMLElement | null => {
-    const scope = agentFlashRootRef.current;
-    if (!scope || !questionId) return null;
-    const targetAttr = `exam:${questionId}`;
-    const candidates = scope.querySelectorAll<HTMLElement>('[data-agent-entity]');
-    for (const el of candidates) {
-      if (el.getAttribute('data-agent-entity') === targetAttr) {
-        return el;
-      }
-    }
-    return null;
-  }, []);
-
-  const revealQuestionInView = useCallback(
-    (questionId: string | null, pulse: boolean, token: number): boolean => {
-      if (!revealSequencerRef.current.isCurrent(token)) return false;
-      if (!questionId) return true;
-
-      const list = questionsRef.current;
-      const index = list.findIndex((q) => q.id === questionId);
-      if (index < 0) {
-        return false;
-      }
-
-      const targetQuestion = list[index]!;
-      const existingRow = findQuestionEntityElement(questionId);
-
-      if (viewMode === 'list' || (viewMode === 'review' && targetQuestion.status === 'review')) {
-        navigate(index);
-        if (existingRow) {
-          existingRow.scrollIntoView?.({ block: 'center', behavior: 'auto' });
-        }
-      } else if (viewMode === 'browse') {
-        setBrowseQuestionId(questionId);
-        navigate(index);
-      } else if (viewMode === 'practice') {
-        if (gradingMode === 'on_submit' && batchNavigateRef.current) {
-          void batchNavigateRef.current(questionId).catch(() => undefined);
-        } else {
-          if (!practiceQuestions.some((q) => q.id === questionId)) {
-            setGroupPracticeIds(null);
-            setStorePracticeMode('sequential');
-          }
-          navigate(index);
-        }
-      } else {
-        requestViewMode('browse', () => {
-          if (!revealSequencerRef.current.isCurrent(token)) return;
-          setBrowseQuestionId(questionId);
-          navigate(index);
-        });
-      }
-
-      if (pulse) {
-        agentFlash('exam', questionId, { scope: agentFlashRootRef.current });
-        if (!existingRow && typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-          window.requestAnimationFrame(() => {
-            if (!revealSequencerRef.current.isCurrent(token)) return;
-            const mountedRow = findQuestionEntityElement(questionId);
-            if (mountedRow) {
-              mountedRow.scrollIntoView?.({ block: 'center', behavior: 'auto' });
-            }
-            agentFlash('exam', questionId, { scope: agentFlashRootRef.current });
-          });
-        }
-      }
-
-      return true;
-    },
-    [
-      findQuestionEntityElement,
-      gradingMode,
-      navigate,
-      practiceQuestions,
-      requestViewMode,
-      setStorePracticeMode,
-      viewMode,
-    ],
-  );
-
-  const handleFocusQuestionById = useCallback(
-    (questionId: string) => {
-      const token = revealSequencerRef.current.next();
-      if (!revealQuestionInView(questionId, true, token)) {
-        handleOpenQuestion(questionId);
-      }
-    },
-    [handleOpenQuestion, revealQuestionInView],
-  );
-
-  useEffect(() => {
-    if (interopIds.length === 0) return;
-    const idSet = new Set(interopIds);
-    const kernel = getAppKernel();
-
-    const computeMatchQuality = (resourceId: string, aliasResourceId?: string) => {
-      const matches =
-        idSet.has(resourceId) ||
-        (aliasResourceId !== undefined && idSet.has(aliasResourceId));
-      if (!matches) return false as const;
-      const active = typeof document !== 'undefined' ? document.activeElement : null;
-      if ((active && agentFlashRootRef.current?.contains(active)) || isActive === true) {
-        return 'exact-focused' as const;
-      }
-      return 'exact-mounted' as const;
-    };
-
-    const handleAnchorReveal = (questionId: string | null, pulse: boolean) => {
-      const token = revealSequencerRef.current.next();
-      if (revealQuestionInView(questionId, pulse, token)) {
-        pendingAnchorRevealRef.current = null;
-        return true;
-      }
-      if (questionId && questionsRef.current.length === 0) {
-        pendingAnchorRevealRef.current = { questionId, pulse, token };
-        return true;
-      }
-      return false;
-    };
-
-    const disposeQbank = kernel.anchors.registerAnchorRevealHandler('qbank', {
-      canHandle: (anchor) => computeMatchQuality(anchor.resourceId, anchor.aliasResourceId),
-      reveal: (anchor, ctx) => handleAnchorReveal(extractQuestionIdFromAnchor(anchor), ctx.pulse),
-    });
-
-    const disposeCustom = kernel.anchors.registerAnchorRevealHandler('custom', {
-      canHandle: (anchor) => {
-        if (anchor.namespace !== 'exam' && anchor.namespace !== 'qbank') return false;
-        return computeMatchQuality(anchor.resourceId, anchor.aliasResourceId);
-      },
-      reveal: (anchor, ctx) => handleAnchorReveal(extractQuestionIdFromAnchor(anchor), ctx.pulse),
-    });
-
-    return () => {
-      disposeQbank();
-      disposeCustom();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- interopKey summarizes interopIds stably
-  }, [interopKey, isActive, revealQuestionInView]);
-
-  useEffect(() => {
-    const pending = pendingAnchorRevealRef.current;
-    if (!pending || questions.length === 0) return;
-    pendingAnchorRevealRef.current = null;
-    revealQuestionInView(pending.questionId, pending.pulse, pending.token);
-  }, [questions, revealQuestionInView]);
-
-  useEffect(() => {
-    if (interopIds.length === 0) return;
-    const idSet = new Set(interopIds);
-    const onHostFocusQbank = (ev: Event) => {
-      const detail = (
-        ev as CustomEvent<{ bankId?: string; questionId?: string; splitIfClosed?: boolean }>
-      ).detail;
-      if (!detail?.bankId || !idSet.has(detail.bankId)) return;
-      const token = revealSequencerRef.current.next();
-      const targetId = detail.questionId?.trim() || null;
-      if (!revealQuestionInView(targetId, true, token) && targetId && questionsRef.current.length === 0) {
-        pendingAnchorRevealRef.current = { questionId: targetId, pulse: true, token };
-      }
-    };
-    window.addEventListener('DSTU_FOCUS_QBANK', onHostFocusQbank);
-    return () => window.removeEventListener('DSTU_FOCUS_QBANK', onHostFocusQbank);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- interopKey summarizes interopIds stably
-  }, [interopKey, revealQuestionInView]);
 
   const handleQuestionDragStart = useCallback(
     (event: React.DragEvent, question: Question, questionIndex?: number) => {
@@ -2910,7 +1257,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   );
 
   // ========== 条件返回（早期退出） ==========
-  
+
   if (!sessionId) {
     return (
       <div className="ui-rise-in flex flex-col items-center justify-center h-full gap-3 px-6">
@@ -2935,7 +1282,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           <span className="text-sm font-medium text-foreground">{t('exam_sheet:errors.loadFailed')}</span>
           <span className="text-xs text-muted-foreground break-words">{loadErrorMessage}</span>
         </div>
-        <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-2 [@media(pointer:coarse)]:!min-h-11">
+        <DsButton variant="ghost" size="sm" onClick={handleRetryLoad} className="gap-2">
           <ArrowClockwise size={16} />
           {t('common:actions.retry')}
         </DsButton>
@@ -2943,8 +1290,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     );
   }
 
-  // 会话详情未就绪，或题目仍在首次加载（已有题目时的后台刷新不再整页转圈；
-  // 恢复导入期间保持横幅与 Tab 栏挂载，按钮自带"恢复中"反馈）
+  // 会话详情未就绪，或题目仍在首次加载
   if (!sessionDetail || (isLoading && !hasQuestions && !isResuming)) {
     return (
       <div className="h-full ui-fade-in-slow">
@@ -2953,44 +1299,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     );
   }
 
-  // 退出复习 / 丢弃草稿确认的共享动作（行内确认条全端复用）
-  const confirmReviewExit = () => {
-    const nextView = pendingReviewExitView;
-    setPendingReviewExitView(null);
-    if (!nextView || nextView.examId !== sessionId) return;
-    endReviewSession();
-    switchViewMode(nextView.view);
-    nextView.afterViewChange?.();
-  };
-  const cancelReviewExit = () => {
-    setPendingReviewExitView(null);
-    setPendingSettingsOpen(false);
-  };
-  const confirmPracticeExit = () => {
-    const nextView = pendingPracticeExitView;
-    setPendingPracticeExitView(null);
-    if (!nextView || nextView.examId !== sessionId) return;
-    setIsTimerRunning(nextView.view === 'practice');
-    switchViewMode(nextView.view);
-    nextView.afterViewChange?.();
-  };
-  const cancelPracticeExit = () => {
-    setPendingPracticeExitView(null);
-    setPendingSettingsOpen(false);
-  };
-  const confirmDiscardDraft = () => {
-    const pending = pendingDraftNavigation;
-    setPendingDraftNavigation(null);
-    if (!pending || pending.examId !== sessionId) return;
-    clearCurrentExamDraft();
-    pending.proceed();
-  };
-  const cancelDiscardDraft = () => {
-    setPendingDraftNavigation(null);
-    // 用户取消导航即取消整个链条：残留的待开设置请求不能在之后手动进入练习时突然弹面板
-    setPendingSettingsOpen(false);
-  };
-
   return (
     <div
       ref={agentFlashRootRef}
@@ -2998,783 +1306,382 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       onDragStart={handleRootDragStart}
       className="relative flex h-full min-h-0 flex-col overflow-hidden bg-background"
     >
-      {/* 断点续导：importing 状态横幅 */}
-      {isImportingSession && (
-        <div className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4">
-          {/* flex-wrap：375px 下右侧「恢复导入」按钮组换行到第二行，避免把提示文案挤到不可读 */}
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warning" aria-hidden="true" />
-              <span className="truncate text-xs text-foreground/85">
-                {t('exam_sheet:uploader.import_interrupted', { count: questions.length })}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
-              {resumeError && (
-                <span className="text-xs text-destructive max-w-[200px] truncate" title={resumeError}>
-                  {resumeError}
-                </span>
-              )}
-              <DsButton
-                variant="ghost"
-                size="sm"
-                onClick={handleResumeImport}
-                disabled={isResuming}
-                className="h-7 gap-1.5 px-2.5 text-xs text-foreground hover:bg-foreground/[0.05] [@media(pointer:coarse)]:!min-h-11"
-              >
-                {isResuming ? (
-                  <CircleNotch size={13} className="animate-spin" />
-                ) : (
-                  <RotateCw size={13} />
-                )}
-                {isResuming
-                  ? t('exam_sheet:uploader.resuming')
-                  : t('exam_sheet:uploader.resume_import')
-                }
-              </DsButton>
-            </div>
-          </div>
-        </div>
-      )}
+      <ExamHeaderAndTabs
+        sessionId={sessionId}
+        readOnly={readOnly}
+        isSmallScreen={isSmallScreen}
+        isLoading={isLoading}
+        hasQuestions={hasQuestions}
+        questionsCount={questions.length}
+        stats={stats}
+        viewMode={viewMode}
+        gradingMode={gradingMode}
+        practiceMode={practiceMode}
+        modeOptions={MODE_OPTIONS}
+        secondaryTabs={secondaryTabs}
+        sm2DueCount={sm2DueCount}
+        isImportingSession={isImportingSession}
+        isResuming={isResuming}
+        resumeError={resumeError}
+        error={error}
+        isAdvancedRuntimeTimer={isAdvancedRuntimeTimer}
+        advancedTimerRemaining={advancedTimerRemaining}
+        elapsedTime={elapsedTime}
+        isTimerRunning={isTimerRunning}
+        onToggleTimer={toggleTimer}
+        activeQuestionId={activeQuestionId}
+        activeDragQuestion={activeDragQuestion}
+        activeDragQuestionIndex={activeDragQuestionIndex}
+        activeDragQuestionMeta={activeDragQuestionMeta}
+        onQuestionDragStart={handleQuestionDragStart}
+        onRequestViewMode={requestViewMode}
+        onSelectMode={handleSelectMode}
+        onResumeImport={() => { void handleResumeImport(); }}
+        onRetryQuestions={handleRetryQuestions}
+        onOpenExport={handleOpenExport}
+        onCreateQuestionEntry={handleCreateQuestionEntry}
+        onOpenAiGeneration={handleOpenAiGeneration}
+        onOpenUploadEntry={handleOpenUploadEntry}
+        onOpenCsvImport={handleOpenCsvImport}
+        onOpenImportAudit={() => setShowImportAudit(true)}
+        pendingReviewExitView={pendingReviewExitView}
+        onCancelReviewExit={cancelReviewExit}
+        onConfirmReviewExit={confirmReviewExit}
+        pendingPracticeExitView={pendingPracticeExitView}
+        onCancelPracticeExit={cancelPracticeExit}
+        onConfirmPracticeExit={confirmPracticeExit}
+        pendingDraftNavigation={pendingDraftNavigation}
+        onCancelDiscardDraft={cancelDiscardDraft}
+        onConfirmDiscardDraft={confirmDiscardDraft}
+        activeGenerationTask={activeGenerationTask}
+        onOpenGenerationProgress={handleOpenGenerationProgress}
+        pendingAuthoringDrafts={pendingAuthoringDrafts}
+        confirmingDraftJobId={confirmingDraftJobId}
+        onConfirmPendingDraft={(draft) => { void handleConfirmPendingDraft(draft); }}
+        onReviewPendingDraft={handleReviewPendingDraft}
+        onRevertQuestions={handleRevertQuestions}
+        onFocusQuestionById={handleFocusQuestionById}
+      />
 
-      {error && (
-        <div className="flex-shrink-0 px-3 sm:px-4 py-2 border-b border-border/40 bg-muted/50" role="alert">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-destructive" aria-hidden="true" />
-              <span className="text-xs text-foreground/85 truncate" title={error}>
-                {t('exam_sheet:errors.loadQuestionsFailed')}: {error}
-              </span>
-            </div>
-            <DsButton variant="ghost" size="sm" onClick={handleRetryQuestions} className="h-7 gap-1.5 px-2.5 text-xs [@media(pointer:coarse)]:!min-h-11">
-              <ArrowClockwise size={13} />
-              {t('common:actions.retry')}
-            </DsButton>
-          </div>
-        </div>
-      )}
-
-      {/* Tab 栏：收敛为干净的 min-h-11 单行导航；整卷练习（BatchPracticeWorkspace）激活时隐藏右侧管理/导出噪点 */}
-      <div className="flex-shrink-0 min-h-11 px-3 py-1 sm:py-0 sm:h-11 sm:px-4 border-b border-border/35 bg-background/95 backdrop-blur-sm flex items-center">
-        <div className="flex w-full items-center justify-between gap-2">
-          {/* 左侧 Tab - 允许横向滚动；移动端右缘渐隐提示还有更多；方向键在一级入口间移动焦点 */}
-          <div
-            ref={tabListRef}
-            role="toolbar"
-            aria-label={t('learningHub:exam.shell.primaryNav')}
-            aria-orientation="horizontal"
-            onKeyDown={handleTabListKeyDown}
-            className="relative flex items-center gap-1 min-w-0 overflow-x-auto overscroll-x-contain scrollbar-none max-sm:[mask-image:linear-gradient(to_right,black_calc(100%-20px),transparent)]"
-          >
-            {/* 滑动选中指示器（在按钮下层随激活项平移/变宽） */}
-            {tabIndicator && (
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute z-0 rounded-lg bg-foreground/[0.06] transition-[left,top,width,height] duration-200 ease-out motion-reduce:transition-none"
-                style={{
-                  left: tabIndicator.left,
-                  top: tabIndicator.top,
-                  width: tabIndicator.width,
-                  height: tabIndicator.height,
-                }}
-              />
-            )}
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => requestViewMode('list')}
-              data-exam-tab=""
-              data-active={activeTopTab === 'list' || undefined}
-              aria-pressed={activeTopTab === 'list'}
-              className={cn(
-                'relative z-[1] min-h-9 sm:min-h-0 px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
-                activeTopTab === 'list'
-                  ? 'text-foreground font-medium hover:bg-transparent'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]'
-              )}
-            >
-              {t('learningHub:exam.tab.questionBank')}
-            </DsButton>
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => requestViewMode('papers')}
-              data-exam-tab=""
-              data-active={viewMode === 'papers' || undefined}
-              aria-pressed={viewMode === 'papers'}
-              className={cn(
-                'relative z-[1] min-h-9 sm:min-h-0 px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
-                viewMode === 'papers'
-                  ? 'text-foreground font-medium hover:bg-transparent'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]'
-              )}
-            >
-              {t('practice:batch.papers')}
-            </DsButton>
-            <DsButton
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                if (viewMode !== 'practice' && viewMode !== 'launcher') {
-                  requestViewMode('launcher');
-                }
-              }}
-              disabled={!hasQuestions}
-              data-exam-tab=""
-              data-active={activeTopTab === 'practice' || undefined}
-              aria-pressed={activeTopTab === 'practice'}
-              className={cn(
-                'relative z-[1] min-h-9 sm:min-h-0 px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 ui-press [@media(pointer:coarse)]:!min-h-11',
-                activeTopTab === 'practice'
-                  ? 'text-foreground font-medium hover:bg-transparent'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]',
-                !hasQuestions && 'opacity-50 cursor-not-allowed'
-              )}
-            >
-              {t('learningHub:exam.tab.practice')}
-            </DsButton>
-            {/* 二级视图收纳进「更多」菜单：错题 / 复习 / 收藏 / 知识点 / 统计 / 管理 */}
-            {hasQuestions && (
-              <AppMenu>
-                <AppMenuTrigger asChild>
-                  <DsButton
-                    variant="ghost"
-                    size="sm"
-                    data-exam-tab=""
-                    data-active={activeTopTab === 'more' || undefined}
-                    aria-pressed={activeTopTab === 'more'}
-                    aria-label={t('learningHub:exam.tab.more')}
-                    className={cn(
-                      'group relative z-[1] min-h-9 sm:min-h-0 px-2.5 sm:px-3 py-1.5 text-sm rounded-lg transition-colors whitespace-nowrap flex-shrink-0 gap-1 ui-press [@media(pointer:coarse)]:!min-h-11',
-                      activeTopTab === 'more'
-                        ? 'text-foreground font-medium hover:bg-transparent'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.035]'
-                    )}
-                  >
-                    {activeSecondaryTab?.label ?? t('learningHub:exam.tab.more')}
-                    {sm2DueCount > 0 && viewMode !== 'sm2' && (
-                      <span
-                        className="min-w-[18px] rounded-full bg-foreground/[0.06] px-1.5 py-px text-center font-mono text-2xs font-medium tabular-nums text-warning"
-                        aria-hidden="true"
-                      >
-                        {sm2DueCount > 99 ? '99+' : sm2DueCount}
-                      </span>
-                    )}
-                    <CaretDown
-                      size={12}
-                      className="opacity-60 transition-transform duration-200 ease-out motion-reduce:transition-none group-aria-expanded:rotate-180"
-                    />
-                  </DsButton>
-                </AppMenuTrigger>
-                <AppMenuContent align="start" width={180}>
-                  {secondaryTabs.map(({ mode, label, icon: Icon, badge }) => (
-                    <AppMenuItem
-                      key={mode}
-                      onClick={() => requestViewMode(mode)}
-                      icon={<Icon size={16} />}
-                      checked={viewMode === mode}
-                      suffix={badge > 0 ? (
-                        <span className="min-w-[18px] rounded-full bg-foreground/[0.06] px-1.5 py-px text-center font-mono text-2xs font-medium tabular-nums text-warning">
-                          {badge > 99 ? '99+' : badge}
-                        </span>
-                      ) : undefined}
-                    >
-                      {label}
-                    </AppMenuItem>
-                  ))}
-                </AppMenuContent>
-              </AppMenu>
-            )}
-
-            {(viewMode === 'practice') && gradingMode === 'immediate' && hasQuestions && (
-              <>
-                <div className="w-px h-3.5 bg-border/45 mx-1 sm:mx-1.5 flex-shrink-0" />
-                <AppSelect value={practiceMode} onValueChange={handleSelectMode}
-                  options={MODE_OPTIONS}
-                  size="sm"
-                  variant="ghost"
-                  className="h-9 sm:h-7 flex-shrink-0 border-0 bg-foreground/[0.04] px-2 text-xs hover:bg-foreground/[0.07] [@media(pointer:coarse)]:!h-11"
-                />
-                
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={isAdvancedRuntimeTimer ? undefined : toggleTimer}
-                  aria-disabled={isAdvancedRuntimeTimer || undefined}
-                  aria-label={
-                    isAdvancedRuntimeTimer
-                      ? t('learningHub:exam.timer.remaining')
-                      : isTimerRunning
-                        ? t('learningHub:exam.timer.pause')
-                        : t('learningHub:exam.timer.resume')
-                  }
-                  className={cn(
-                    'flex min-h-9 sm:min-h-0 items-center gap-1.5 px-2.5 py-1 rounded-full bg-foreground/[0.04] transition-colors font-mono tabular-nums text-xs flex-shrink-0 [@media(pointer:coarse)]:!min-h-11',
-                    isAdvancedRuntimeTimer && advancedTimerRemaining != null && advancedTimerRemaining <= 60
-                      ? 'bg-destructive/[0.08] text-destructive hover:bg-destructive/[0.12]'
-                      : isAdvancedRuntimeTimer && advancedTimerRemaining != null && advancedTimerRemaining < 300
-                        ? 'bg-warning/[0.08] text-warning hover:bg-warning/[0.12]'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.07]'
-                  )}
-                  title={
-                    isAdvancedRuntimeTimer
-                      ? t('learningHub:exam.timer.remaining')
-                      : isTimerRunning
-                        ? t('learningHub:exam.timer.pause')
-                        : t('learningHub:exam.timer.resume')
-                  }
-                >
-                  {isAdvancedRuntimeTimer ? (
-                    <Clock size={13} />
-                  ) : isTimerRunning ? (
-                    <Pause size={13} />
-                  ) : (
-                    <Play size={13} />
-                  )}
-                  <span className={cn('font-mono tabular-nums text-xs', !isAdvancedRuntimeTimer && !isTimerRunning && 'opacity-65')}>
-                    {formatTime(advancedTimerRemaining ?? elapsedTime)}
-                  </span>
-                </DsButton>
-              </>
-            )}
-          </div>
-          
-          {/* 右侧：统计摘要 + 导出 + 添加题目菜单（整卷练习激活时隐藏右侧二级操作噪点） */}
-          {!(viewMode === 'practice' && gradingMode === 'on_submit') && (
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              {hasQuestions && stats && <StatsSummary stats={stats} />}
-              {!isSmallScreen &&
-                (viewMode === 'practice' || viewMode === 'browse') &&
-                activeDragQuestion &&
-                activeDragQuestionMeta && (
-                  <button
-                    type="button"
-                    draggable
-                    data-testid="exam-active-question-drag-pill"
-                    onDragStart={(e) =>
-                      handleQuestionDragStart(e, activeDragQuestion, activeDragQuestionIndex)
-                    }
-                    title={t('exam_sheet:interop.dragQuestionHint', {
-                      defaultValue: '将当前题目或错题拖入思维导图知识卡片',
-                    })}
-                    aria-label={t('exam_sheet:interop.dragQuestionHint', {
-                      defaultValue: '将当前题目或错题拖入思维导图知识卡片',
-                    })}
-                    className="hidden md:inline-flex h-7 cursor-grab items-center gap-1 rounded-lg border border-border/35 bg-card/60 px-2 text-xs text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground active:cursor-grabbing"
-                  >
-                    <DotsSixVertical size={13} aria-hidden="true" />
-                    <span className="hidden md:inline">
-                      {t('exam_sheet:interop.dragQuestion', { defaultValue: '拖入导图' })}
-                    </span>
-                    <span className="font-mono text-[11px] tabular-nums text-foreground/85">
-                      {activeDragQuestionMeta.questionLabel}
-                    </span>
-                  </button>
-                )}
-              {hasQuestions && (
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleOpenExport}
-                  aria-label={t('learningHub:exam.tab.export')}
-                  title={t('learningHub:exam.tab.export')}
-                  className="h-9 sm:h-7 gap-1.5 px-2.5 sm:px-3 text-xs text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04] ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11"
-                >
-                  <Download size={14} />
-                  <span className="hidden sm:inline">{t('learningHub:exam.tab.export')}</span>
-                </DsButton>
-              )}
-              {!readOnly && (
-                <AppMenu>
-                  <AppMenuTrigger asChild>
-                    <DsButton
-                      variant={viewMode === 'upload' ? 'default' : 'ghost'}
-                      size="sm"
-                      aria-label={t('learningHub:exam.tab.addQuestion')}
-                      title={t('learningHub:exam.tab.addQuestion')}
-                      className={cn(
-                        'h-9 sm:h-7 gap-1.5 px-2.5 sm:px-3 text-xs ui-press [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11',
-                        viewMode !== 'upload' && 'bg-foreground/[0.04] text-foreground hover:bg-foreground/[0.08]'
-                      )}
-                    >
-                      <Plus size={14} />
-                      <span className="hidden sm:inline">{t('learningHub:exam.tab.addQuestion')}</span>
-                      <CaretDown size={11} className="opacity-60" />
-                    </DsButton>
-                  </AppMenuTrigger>
-                  <AppMenuContent align="end" width={200}>
-                    <AppMenuItem
-                      onClick={handleCreateQuestionEntry}
-                      icon={<PencilSimple size={16} />}
-                    >
-                      {t('exam_sheet:questionBank.create.title')}
-                    </AppMenuItem>
-                    <AppMenuItem
-                      onClick={handleOpenAiGeneration}
-                      icon={<Sparkle size={16} />}
-                    >
-                      {t('exam_sheet:aiGeneration.title')}
-                    </AppMenuItem>
-                    <AppMenuSeparator />
-                    <AppMenuItem
-                      onClick={handleOpenUploadEntry}
-                      icon={<Scan size={16} />}
-                    >
-                      {t('learningHub:exam.tab.add')}
-                    </AppMenuItem>
-                    <AppMenuItem
-                      onClick={handleOpenCsvImport}
-                      icon={<TableIcon size={16} />}
-                    >
-                      {t('learningHub:exam.tab.importCsv')}
-                    </AppMenuItem>
-                    <AppMenuItem onClick={() => setShowImportAudit(true)} icon={<Scan size={16} />}>
-                      {t('exam_sheet:uploader.audit_imports', {defaultValue:'导入记录与重解析复核'})}
-                    </AppMenuItem>
-                  </AppMenuContent>
-                </AppMenu>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* 行内确认条：退出复习 / 丢弃草稿（全端统一为 Tab 栏下方的轻量内联确认条，不再使用高饱和告警框） */}
-      {pendingReviewExitView !== null && (
-        <div
-          className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4 ui-drop-in"
-          role="alert"
-          aria-label={t('review:session.exitTitle')}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warning" aria-hidden="true" />
-              <div className="min-w-0 flex-1">
-                <span className="text-xs font-medium text-foreground">{t('review:session.exitTitle')}</span>
-                <span className="mx-1.5 text-muted-foreground/40">·</span>
-                <span className="text-xs text-muted-foreground">{t('review:session.exitDescription')}</span>
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-1.5 ml-auto">
-              <DsButton variant="ghost" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelReviewExit}>
-                {t('common:cancel')}
-              </DsButton>
-              <DsButton variant="warning" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmReviewExit}>
-                {t('review:session.exitConfirm')}
-              </DsButton>
-            </div>
-          </div>
-        </div>
-      )}
-      {pendingPracticeExitView !== null && (
-        <div
-          className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4 ui-drop-in"
-          role="alert"
-          aria-label={t('practice:session.exitTitle')}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-warning" aria-hidden="true" />
-              <div className="min-w-0 flex-1">
-                <span className="text-xs font-medium text-foreground">{t('practice:session.exitTitle')}</span>
-                <span className="mx-1.5 text-muted-foreground/40">·</span>
-                <span className="text-xs text-muted-foreground">{t('practice:session.exitDescription')}</span>
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-1.5 ml-auto">
-              <DsButton variant="ghost" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelPracticeExit}>
-                {t('common:cancel')}
-              </DsButton>
-              <DsButton variant="warning" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmPracticeExit}>
-                {t('practice:session.exitConfirm')}
-              </DsButton>
-            </div>
-          </div>
-        </div>
-      )}
-      {pendingDraftNavigation !== null && (
-        <div
-          className="flex-shrink-0 border-b border-border/40 bg-muted/50 px-3 py-2 sm:px-4 ui-drop-in"
-          role="alert"
-          aria-label={t('editor.discardDraftTitle')}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-destructive" aria-hidden="true" />
-              <div className="min-w-0 flex-1">
-                <span className="text-xs font-medium text-foreground">{t('editor.discardDraftTitle')}</span>
-                <span className="mx-1.5 text-muted-foreground/40">·</span>
-                <span className="text-xs text-muted-foreground">{t('editor.discardDraftDescription')}</span>
-              </div>
-            </div>
-            <div className="flex items-center justify-end gap-1.5 ml-auto">
-              <DsButton variant="ghost" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11" onClick={cancelDiscardDraft}>
-                {t('common:cancel')}
-              </DsButton>
-              <DsButton variant="danger" size="sm" className="!h-7 px-2.5 text-xs [@media(pointer:coarse)]:!h-11" onClick={confirmDiscardDraft}>
-                {t('common:actions.discard')}
-              </DsButton>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!readOnly && viewMode !== 'upload' && (hasQuestions || viewMode !== 'list') && activeGenerationTask && (
-        <div
-          data-testid="exam-active-ai-generation-banner"
-          className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-primary/25 bg-primary/[0.06] px-3 py-2 sm:px-4"
-          role="status"
-        >
-          <CircleNotch size={14} className="shrink-0 animate-spin text-primary" aria-hidden="true" />
-          <span className="min-w-0 flex-1 text-xs text-foreground">
-            {t('exam_sheet:aiGeneration.backgroundRunningBanner', {
-              defaultValue: 'AI 正在后台生成题目，完成后将提示您审阅并确认入库',
-            })}
-          </span>
-          <DsButton
-            size="sm"
-            variant="ghost"
-            className="h-9 sm:h-7 gap-1.5 px-2.5 text-xs bg-foreground/[0.04] hover:bg-foreground/[0.08] [@media(pointer:coarse)]:!min-h-11"
-            onClick={() => {
-              setAiGenerationTarget({ taskId: activeGenerationTask.id, jobId: null });
-              setShowAiGenerationPanel(true);
-            }}
-          >
-            <Sparkle size={14} />
-            <span>{t('exam_sheet:aiGeneration.viewProgress', { defaultValue: '查看进度' })}</span>
-          </DsButton>
-        </div>
-      )}
-
-      {!readOnly && viewMode !== 'upload' && (hasQuestions || viewMode !== 'list') && pendingAuthoringDrafts.length > 0 && (() => {
-        const primaryDraft = pendingAuthoringDrafts[0];
-        const isAiDraft = primaryDraft.origin === 'ai_generation';
-        const isConfirming = confirmingDraftJobId === primaryDraft.job_id;
-        return (
-          <div
-            data-testid="exam-pending-drafts-banner"
-            className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-primary/25 bg-primary/[0.06] px-3 py-2 sm:px-4"
-            role="status"
-          >
-            {isAiDraft ? (
-              <Sparkle size={14} className="shrink-0 text-primary" aria-hidden="true" />
-            ) : (
-              <Scan size={14} className="shrink-0 text-primary" aria-hidden="true" />
-            )}
-            <span className="min-w-0 flex-1 text-xs text-foreground tabular-nums">
-              {isAiDraft
-                ? t('exam_sheet:aiGeneration.pendingDraftAttributed', {
-                    count: primaryDraft.question_count,
-                    source: primaryDraft.sourceLabel,
-                    defaultValue: `有 ${primaryDraft.question_count} 道 AI 生成待确认题目（来源：${primaryDraft.sourceLabel}）`,
-                  })
-                : t('exam_sheet:uploader.pendingDraftAttributed', {
-                    count: primaryDraft.question_count,
-                    source: primaryDraft.sourceLabel,
-                    defaultValue: `有 ${primaryDraft.question_count} 道待确认题目（来源：${primaryDraft.sourceLabel}）`,
-                  })}
-              {pendingAuthoringDrafts.length > 1
-                ? ` · 共 ${pendingAuthoringDrafts.length} 批待确认`
-                : ''}
-            </span>
-            <div className="flex items-center gap-1.5">
-              <DsButton
-                size="sm"
-                variant="primary"
-                disabled={confirmingDraftJobId !== null}
-                className="h-9 sm:h-7 gap-1.5 px-2.5 text-xs [@media(pointer:coarse)]:!min-h-11"
-                onClick={() => void handleConfirmPendingDraft(primaryDraft)}
-              >
-                {isConfirming ? <CircleNotch size={13} className="animate-spin" /> : <CheckCircle size={13} />}
-                <span className="tabular-nums">
-                  {t('exam_sheet:aiGeneration.confirmImportNow', {
-                    count: primaryDraft.question_count,
-                    defaultValue: `确认入库 (${primaryDraft.question_count})`,
-                  })}
-                </span>
-              </DsButton>
-              <DsButton
-                size="sm"
-                variant="ghost"
-                disabled={isConfirming}
-                className="h-9 sm:h-7 gap-1.5 px-2.5 text-xs bg-foreground/[0.04] hover:bg-foreground/[0.08] [@media(pointer:coarse)]:!min-h-11"
-                onClick={() => handleReviewPendingDraft(primaryDraft)}
-              >
-                <span>{t('exam_sheet:uploader.review_pending_draft', { defaultValue: '逐题审阅' })}</span>
-              </DsButton>
-            </div>
-          </div>
-        );
-      })()}
-
-      {!readOnly && viewMode !== 'upload' && (
-        <QBankAgentDiffBar
-          examId={sessionId}
-          activeQuestionId={activeQuestionId}
-          onRevertQuestions={handleRevertQuestions}
-          onFocusQuestion={handleFocusQuestionById}
-        />
-      )}
-
-      {/* 内容区：viewMode 变化时以淡入 + 轻微上移过渡（懒加载 chunk 未就绪时
-          startTransition 保持旧视图；首次挂载由骨架屏兜底，避免空白/转圈闪切） */}
+      {/* 内容区：viewMode 变化时以淡入 + 轻微上移过渡 */}
       <div className="flex-1 min-h-0 overflow-hidden">
         <Suspense fallback={<ViewSkeleton />}>
           <div key={viewMode} className="h-full min-h-0 ui-rise-in">
-          {viewMode === 'papers' ? (
-            <PaperLibrary examId={sessionId} readOnly={readOnly} onOpenPractice={(id, submitted) => { setGradingMode('on_submit'); setBatchRequest(null); setBatchRecord({ id, submitted }); switchViewMode('practice'); }} onStartPaper={paper => { setGradingMode('on_submit'); setBatchRecord(null); setBatchRequest({ id: newPracticeId(), scope_id: sessionId, title: paper.title, mode: 'paper', paper_id: paper.id, question_ids: [] }); switchViewMode('practice'); }} />
-          ) : viewMode === 'practice' && gradingMode === 'on_submit' && (!readOnly || batchRecord?.submitted) ? (
-            batchRequest || batchRecord ? <BatchPracticeWorkspace key={batchRequest?.id ?? batchRecord?.id} readOnly={readOnly} request={batchRequest ?? undefined} practiceId={batchRecord?.id} submitted={batchRecord?.submitted} onBack={() => { setBatchRequest(null); setBatchRecord(null); switchViewMode('launcher'); }} onFlushReady={setBatchFlush} onNavigateReady={setBatchNavigate} onDirtyChange={handlePracticeDraftDirtyChange} onChanged={() => { void loadQuestions(); }} isActive={isActive} /> : <div className="space-y-3 p-4"><p className="text-sm text-muted-foreground">{t('practice:batch.noQuestions')}</p><DsButton variant="outline" onClick={() => switchViewMode('launcher')}>{t('common:back')}</DsButton></div>
-          ) : viewMode === 'launcher' && hasQuestions ? (
-            /* 练习启动页 — 选择练习模式 */
-            <PracticeLauncher
-              examId={sessionId}
-              stats={stats}
-              questions={questions}
-              onStartPractice={handleStartPractice}
-              onStartDrill={(mode, tag) => { setGradingMode('immediate'); setBatchRequest(null); setBatchRecord(null); setStorePracticeMode(mode); if (tag) setSelectedTag(tag); navigate(getPracticeStartIndex(questions, currentIndex, mode, tag)); switchViewMode('practice'); }}
-              onOpenPractice={(id, submitted) => { setGradingMode('on_submit'); setBatchRequest(null); setBatchRecord({ id, submitted }); switchViewMode('practice'); }}
-              requestedMode={launcherRequestedMode}
-              onRequestedModeHandled={() => setLauncherRequestedMode(null)}
-              currentQuestionId={sessionCurrentQuestionId}
-              markedQuestionIds={favoriteQuestionIds}
-              isActive={isActive}
-            />
-          ) : viewMode === 'manage' && hasQuestions ? (
-            <QuestionBankManageView
-              questions={manageQuestions}
-              isLoading={isLoading}
-              filters={manageFilters}
-              onDelete={readOnly ? undefined : handleDeleteQuestions}
-              onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
-              onResetProgress={readOnly ? undefined : handleResetProgress}
-              onBatchUpdateDifficulty={readOnly ? undefined : handleBatchUpdateDifficulty}
-              onBatchUpdateTags={readOnly ? undefined : handleBatchUpdateTags}
-              onViewDetail={handleViewQuestionDetail}
-              onViewHistory={handleOpenHistory}
-              onFilterChange={handleFilterChange}
-              onCsvImport={readOnly ? undefined : handleOpenCsvImport}
-              onCsvExport={handleOpenExport}
-              showCsvActions={!readOnly}
-            />
-          ) : viewMode === 'stats' && hasQuestions ? (
-            <QuestionBankStatsView
-              stats={stats}
-              examId={sessionId}
-            />
-          ) : viewMode === 'favorites' && hasQuestions ? (
-            <QuestionFavoritesView
-              examId={sessionId}
-              onSelectQuestion={(question) => handleOpenQuestion(question.id)}
-              onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
-              onViewHistory={handleOpenHistory}
-              onBrowseQuestions={() => switchViewMode('list')}
-            />
-          ) : viewMode === 'tags' && hasQuestions ? (
-            /* 知识点导航视图 */
-            <TagNavigationView
-              questions={questions}
-              onQuestionClick={handleQuestionClick}
-              onStartPracticeByTag={handleStartPracticeByTag}
-              onRenameTag={readOnly ? undefined : handleRenameTag}
-            />
-          ) : viewMode === 'sm2' && hasQuestions ? (
-            /* I1 修复：SM-2 间隔复习视图（计划面板 + 复习会话） */
-            <Sm2ReviewPanel examId={sessionId} isActive={isActive} />
-          ) : viewMode === 'review' && hasQuestions ? (
-            /* 错题本视图（顶部提供轻量错题摘录拖拽胶囊条，直连思维导图考点卡） */
-            <div className="flex h-full min-h-0 flex-col">
-              {!isSmallScreen && mistakeQuestions.length > 0 && (
-                <div
-                  data-testid="exam-mistake-excerpt-strip"
-                  className="hidden md:flex flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-border/35 bg-card/45 px-3 py-1.5 scrollbar-none sm:px-4"
-                >
-                  <span
-                    className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--destructive))]"
-                    aria-hidden="true"
-                  />
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {t('exam_sheet:interop.dragMistakeStripTitle', {
-                      defaultValue: '拖入导图考点卡',
-                    })}
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {mistakeQuestions.map((mistake) => {
-                      const fullIdx = questions.findIndex((q) => q.id === mistake.id);
-                      const meta = deriveQuestionExcerptMeta({
-                        resourceId: sessionId,
-                        question: mistake,
-                        questionIndex: fullIdx >= 0 ? fullIdx : undefined,
-                      });
-                      return (
-                        <button
-                          key={mistake.id}
-                          type="button"
-                          draggable
-                          data-testid={`exam-mistake-drag-pill-${mistake.id}`}
-                          data-agent-entity={`exam:${mistake.id}`}
-                          onClick={() => handleOpenQuestion(mistake.id)}
-                          onDragStart={(e) => {
-                            e.stopPropagation();
-                            handleQuestionDragStart(
-                              e,
-                              mistake,
-                              fullIdx >= 0 ? fullIdx : undefined,
-                            );
-                          }}
-                          title={t('exam_sheet:interop.dragQuestionHint', {
-                            defaultValue: '将当前题目或错题拖入思维导图知识卡片',
-                          })}
-                          className="inline-flex shrink-0 cursor-grab items-center gap-1 rounded-md border border-border/35 bg-background/75 px-2 py-0.5 text-xs transition-colors hover:bg-foreground/[0.04] active:cursor-grabbing"
-                        >
-                          <DotsSixVertical
-                            size={12}
-                            className="shrink-0 text-muted-foreground/70"
-                            aria-hidden="true"
-                          />
-                          <span className="font-mono text-xs font-medium tabular-nums text-foreground">
-                            {meta.questionLabel}
-                          </span>
-                          <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
-                            {meta.accuracyText}
-                          </span>
-                          {meta.errorCauseLabels[0] && (
-                            <span className="rounded bg-[hsl(var(--destructive)/0.10)] px-1 py-px text-[10px] text-[hsl(var(--destructive))]">
-                              {meta.errorCauseLabels[0]}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              <div className="min-h-0 flex-1 overflow-hidden">
-                <ReviewQuestionsView
-                  questions={questions}
-                  stats={stats}
-                  onQuestionClick={handleQuestionClick}
-                  onStartReview={handleStartReview}
-                  onResetProgress={readOnly ? undefined : handleResetProgress}
-                  onDelete={readOnly ? undefined : handleDeleteQuestions}
+            {viewMode === 'papers' ? (
+              <PaperLibrary
+                examId={sessionId}
+                readOnly={readOnly}
+                onOpenPractice={(id, submitted) => {
+                  setGradingMode('on_submit');
+                  setBatchRequest(null);
+                  setBatchRecord({ id, submitted });
+                  switchViewMode('practice');
+                }}
+                onStartPaper={paper => {
+                  setGradingMode('on_submit');
+                  setBatchRecord(null);
+                  setBatchRequest({
+                    id: newPracticeId(),
+                    scope_id: sessionId,
+                    title: paper.title,
+                    mode: 'paper',
+                    paper_id: paper.id,
+                    question_ids: [],
+                  });
+                  switchViewMode('practice');
+                }}
+              />
+            ) : viewMode === 'practice' && gradingMode === 'on_submit' && (!readOnly || batchRecord?.submitted) ? (
+              batchRequest || batchRecord ? (
+                <BatchPracticeWorkspace
+                  key={batchRequest?.id ?? batchRecord?.id}
+                  readOnly={readOnly}
+                  request={batchRequest ?? undefined}
+                  practiceId={batchRecord?.id}
+                  submitted={batchRecord?.submitted}
+                  onBack={() => {
+                    setBatchRequest(null);
+                    setBatchRecord(null);
+                    switchViewMode('launcher');
+                  }}
+                  onFlushReady={setBatchFlush}
+                  onNavigateReady={setBatchNavigate}
+                  onDirtyChange={handlePracticeDraftDirtyChange}
+                  onChanged={() => { void loadQuestions(); }}
+                  isActive={isActive}
                 />
+              ) : (
+                <div className="space-y-3 p-4">
+                  <p className="text-sm text-muted-foreground">{t('practice:batch.noQuestions')}</p>
+                  <DsButton variant="outline" onClick={() => switchViewMode('launcher')}>{t('common:back')}</DsButton>
+                </div>
+              )
+            ) : viewMode === 'launcher' && hasQuestions ? (
+              /* 练习启动页 — 选择练习模式 */
+              <PracticeLauncher
+                examId={sessionId}
+                stats={stats}
+                questions={questions}
+                onStartPractice={handleStartPractice}
+                onStartDrill={(mode, tag) => {
+                  setGradingMode('immediate');
+                  setBatchRequest(null);
+                  setBatchRecord(null);
+                  setStorePracticeMode(mode);
+                  if (tag) setSelectedTag(tag);
+                  navigate(getPracticeStartIndex(questions, currentIndex, mode, tag));
+                  switchViewMode('practice');
+                }}
+                onOpenPractice={(id, submitted) => {
+                  setGradingMode('on_submit');
+                  setBatchRequest(null);
+                  setBatchRecord({ id, submitted });
+                  switchViewMode('practice');
+                }}
+                requestedMode={launcherRequestedMode}
+                onRequestedModeHandled={() => setLauncherRequestedMode(null)}
+                currentQuestionId={sessionCurrentQuestionId}
+                markedQuestionIds={favoriteQuestionIds}
+                isActive={isActive}
+              />
+            ) : viewMode === 'manage' && hasQuestions ? (
+              <QuestionBankManageView
+                questions={manageQuestions}
+                isLoading={isLoading}
+                filters={manageFilters}
+                onDelete={readOnly ? undefined : handleDeleteQuestions}
+                onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
+                onResetProgress={readOnly ? undefined : handleResetProgress}
+                onBatchUpdateDifficulty={readOnly ? undefined : handleBatchUpdateDifficulty}
+                onBatchUpdateTags={readOnly ? undefined : handleBatchUpdateTags}
+                onViewDetail={handleViewQuestionDetail}
+                onViewHistory={handleOpenHistory}
+                onFilterChange={handleFilterChange}
+                onCsvImport={readOnly ? undefined : handleOpenCsvImport}
+                onCsvExport={handleOpenExport}
+                showCsvActions={!readOnly}
+              />
+            ) : viewMode === 'stats' && hasQuestions ? (
+              <QuestionBankStatsView
+                stats={stats}
+                examId={sessionId}
+              />
+            ) : viewMode === 'favorites' && hasQuestions ? (
+              <QuestionFavoritesView
+                examId={sessionId}
+                onSelectQuestion={(question) => handleOpenQuestion(question.id)}
+                onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
+                onViewHistory={handleOpenHistory}
+                onBrowseQuestions={() => switchViewMode('list')}
+              />
+            ) : viewMode === 'tags' && hasQuestions ? (
+              /* 知识点导航视图 */
+              <TagNavigationView
+                questions={questions}
+                onQuestionClick={handleQuestionClick}
+                onStartPracticeByTag={handleStartPracticeByTag}
+                onRenameTag={readOnly ? undefined : handleRenameTag}
+              />
+            ) : viewMode === 'sm2' && hasQuestions ? (
+              /* I1 修复：SM-2 间隔复习视图（计划面板 + 复习会话） */
+              <Sm2ReviewPanel
+                examId={sessionId}
+                isActive={isActive}
+                ReviewCalendarView={ReviewCalendarView}
+                ReviewSession={ReviewSession}
+                ReviewPlanView={ReviewPlanView}
+              />
+            ) : viewMode === 'review' && hasQuestions ? (
+              /* 错题本视图（顶部提供轻量错题摘录拖拽胶囊条，直连思维导图考点卡） */
+              <div className="flex h-full min-h-0 flex-col">
+                {!isSmallScreen && mistakeQuestions.length > 0 && (
+                  <div
+                    data-testid="exam-mistake-excerpt-strip"
+                    className="hidden md:flex flex-shrink-0 items-center gap-2 overflow-x-auto border-b border-border/35 bg-card/45 px-3 py-1.5 scrollbar-none sm:px-4"
+                  >
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--destructive))]"
+                      aria-hidden="true"
+                    />
+                    <span className="shrink-0 text-xs text-muted-foreground">
+                      {t('exam_sheet:interop.dragMistakeStripTitle', {
+                        defaultValue: '拖入导图考点卡',
+                      })}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      {mistakeQuestions.map((mistake) => {
+                        const fullIdx = questions.findIndex((q) => q.id === mistake.id);
+                        const meta = deriveQuestionExcerptMeta({
+                          resourceId: sessionId,
+                          question: mistake,
+                          questionIndex: fullIdx >= 0 ? fullIdx : undefined,
+                        });
+                        return (
+                          <button
+                            key={mistake.id}
+                            type="button"
+                            draggable
+                            data-testid={`exam-mistake-drag-pill-${mistake.id}`}
+                            data-agent-entity={`exam:${mistake.id}`}
+                            onClick={() => handleOpenQuestion(mistake.id)}
+                            onDragStart={(e) => {
+                              e.stopPropagation();
+                              handleQuestionDragStart(
+                                e,
+                                mistake,
+                                fullIdx >= 0 ? fullIdx : undefined,
+                              );
+                            }}
+                            title={t('exam_sheet:interop.dragQuestionHint', {
+                              defaultValue: '将当前题目或错题拖入思维导图知识卡片',
+                            })}
+                            className="inline-flex shrink-0 cursor-grab items-center gap-1 rounded-md border border-border/35 bg-background/75 px-2 py-0.5 text-xs transition-colors hover:bg-foreground/[0.04] active:cursor-grabbing"
+                          >
+                            <DotsSixVertical
+                              size={12}
+                              className="shrink-0 text-muted-foreground/70"
+                              aria-hidden="true"
+                            />
+                            <span className="font-mono text-xs font-medium tabular-nums text-foreground">
+                              {meta.questionLabel}
+                            </span>
+                            <span className="font-mono text-xs tabular-nums text-muted-foreground">
+                              {meta.accuracyText}
+                            </span>
+                            {meta.errorCauseLabels[0] && (
+                              <span className="rounded bg-[hsl(var(--destructive)/0.10)] px-1 py-px text-2xs text-[hsl(var(--destructive))]">
+                                {meta.errorCauseLabels[0]}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  <ReviewQuestionsView
+                    questions={questions}
+                    stats={stats}
+                    onQuestionClick={handleQuestionClick}
+                    onStartReview={handleStartReview}
+                    onResetProgress={readOnly ? undefined : handleResetProgress}
+                    onDelete={readOnly ? undefined : handleDeleteQuestions}
+                  />
+                </div>
               </div>
-            </div>
-          ) : viewMode === 'csvImport' && !readOnly ? (
-            /* CSV 导入 — 内嵌整页流程（非模态） */
-            <CsvImportPanel
-              examId={sessionId}
-              examName={sessionDetail?.summary?.exam_name || node.name}
-              onClose={() => switchViewMode('list')}
-              onImportComplete={handleImportComplete}
-              onImportingChange={(importing) => { csvImportingRef.current = importing; }}
-            />
-          ) : viewMode === 'upload' && !readOnly ? (
-            <ExamSheetUploader
-              sessionId={sessionId}
-              sessionName={sessionDetail?.summary?.exam_name || node.name}
-              initialFiles={pendingUploadFiles}
-              initialDraft={resumedImportDraft}
-              onInitialFilesConsumed={() => setPendingUploadFiles(null)}
-              onUploadSuccess={handleUploadSuccess}
-              onBack={handleUploaderBack}
-              onManualCreate={handleCreateQuestionEntry}
-            />
-          ) : viewMode === 'browse' && hasQuestions && practiceSessionOwner ? (
-            /* 只读浏览：答案 / 解析 / AI 解析（#466 / #467） */
-            <QuestionBankEditor
-              sessionId={sessionId}
-              practiceSessionOwner={practiceSessionOwner}
-              questions={questions}
-              currentIndex={browseIndex}
-              browseMode
-              showTimer={false}
-              isActive={isActive}
-              onNavigate={handleBrowseNavigate}
-              onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
-              onRefreshQuestion={readOnly ? undefined : handleRefreshQuestion}
-              onPracticeQuestion={handlePracticeFromBrowse}
-              onBack={() => requestViewMode('list')}
-            />
-          ) : viewMode === 'practice' && hasQuestions && practiceSessionOwner ? (
-            <QuestionBankEditor
-              sessionId={sessionId}
-              practiceSessionOwner={practiceSessionOwner}
-              questions={practiceQuestions}
-              stats={stats}
-              currentIndex={practiceCurrentIndex}
-              practiceMode={practiceMode}
-              showTimer={true}
-              timerDuration={activeAdvancedTimerDuration ?? undefined}
-              timerElapsedSeconds={elapsedTime}
-              timerRunning={isTimerRunning}
-              onTimerRunningChange={setIsTimerRunning}
-              allowTimerControl={!isAdvancedRuntimeTimer}
-              selectedTag={selectedTag}
-              focusMode={focusMode}
-              onFocusModeChange={setFocusMode}
-              settingsPanelOpen={settingsPanelOpen}
-              onSettingsPanelOpenChange={setSettingsPanelOpen}
-              isActive={isActive}
-              onSubmitAnswer={readOnly ? undefined : handleSubmitAnswer}
-              onNavigate={handlePracticeNavigate}
-              onModeChange={handleModeChange}
-              onMarkCorrect={readOnly ? undefined : handleMarkCorrect}
-              onGradingResolved={readOnly ? undefined : handleGradingResolved}
-              onRefreshQuestion={readOnly ? undefined : handleRefreshQuestion}
-              onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
-              onUpdateUserNote={readOnly ? undefined : handleUpdateUserNote}
-              onDeleteQuestion={readOnly ? undefined : handleDeleteQuestion}
-              onBack={handleBackToLauncher}
-              onDraftDirtyChange={handlePracticeDraftDirtyChange}
-              onDraftNavigationRequested={requestPracticeNavigate}
-            />
-          ) : (
-            /* 列表视图 - 内联编辑 */
-            <QuestionBankListView
-              questions={questions}
-              stats={stats}
-              examId={sessionId}
-              onQuestionClick={handleQuestionClick}
-              onViewAnswer={handleViewAnswer}
-              onDelete={readOnly ? undefined : handleDeleteQuestions}
-              onResetProgress={readOnly ? undefined : handleResetProgress}
-              onToggleFavorite={readOnly ? undefined : toggleFavoriteInSession}
-              onStartGroupPractice={handleStartGroupPractice}
-              onUpdateQuestion={readOnly ? undefined : handleListChanged}
-              onCreateQuestion={readOnly ? undefined : handleListChanged}
-              onUploadQuestions={readOnly ? undefined : handleOpenUploadEntry}
-              onUploadFiles={readOnly ? undefined : handleLauncherFilesDropped}
-              onCsvImport={readOnly ? undefined : handleOpenCsvImport}
-              onAiGenerate={readOnly ? undefined : handleOpenAiGeneration}
-              pendingDrafts={readOnly ? undefined : pendingAuthoringDrafts}
-              activeGenerationTask={readOnly ? undefined : activeGenerationTask}
-              confirmingDraftJobId={confirmingDraftJobId}
-              onReviewPendingDraft={readOnly ? undefined : handleReviewPendingDraft}
-              onConfirmPendingDraft={readOnly ? undefined : handleConfirmPendingDraft}
-              onOpenGenerationProgress={
-                readOnly || !activeGenerationTask
-                  ? undefined
-                  : () => {
-                      setAiGenerationTarget({ taskId: activeGenerationTask.id, jobId: null });
-                      setShowAiGenerationPanel(true);
-                    }
-              }
-              createRequestKey={listCreateRequestKey}
-              onDraftDirtyChange={handleInlineEditorDraftDirtyChange}
-              onDraftNavigationRequested={(index) => {
-                requestQuestionNavigation(() => handleQuestionClick(index));
-              }}
-            />
-          )}
+            ) : viewMode === 'csvImport' && !readOnly ? (
+              /* CSV 导入 — 内嵌整页流程（非模态） */
+              <CsvImportPanel
+                examId={sessionId}
+                examName={sessionDetail?.summary?.exam_name || node.name}
+                onClose={() => switchViewMode('list')}
+                onImportComplete={handleImportComplete}
+                onImportingChange={(importing) => { csvImportingRef.current = importing; }}
+              />
+            ) : viewMode === 'upload' && !readOnly ? (
+              <ExamSheetUploader
+                sessionId={sessionId}
+                sessionName={sessionDetail?.summary?.exam_name || node.name}
+                initialFiles={pendingUploadFiles}
+                initialDraft={resumedImportDraft}
+                onInitialFilesConsumed={() => setPendingUploadFiles(null)}
+                onUploadSuccess={handleUploadSuccess}
+                onBack={handleUploaderBack}
+                onManualCreate={handleCreateQuestionEntry}
+              />
+            ) : viewMode === 'browse' && hasQuestions && practiceSessionOwner ? (
+              /* 只读浏览：答案 / 解析 / AI 解析（#466 / #467） */
+              <QuestionBankEditor
+                sessionId={sessionId}
+                practiceSessionOwner={practiceSessionOwner}
+                questions={questions}
+                currentIndex={browseIndex}
+                browseMode
+                showTimer={false}
+                isActive={isActive}
+                onNavigate={handleBrowseNavigate}
+                onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
+                onRefreshQuestion={readOnly ? undefined : handleRefreshQuestion}
+                onPracticeQuestion={handlePracticeFromBrowse}
+                onBack={() => requestViewMode('list')}
+              />
+            ) : viewMode === 'practice' && hasQuestions && practiceSessionOwner ? (
+              <QuestionBankEditor
+                sessionId={sessionId}
+                practiceSessionOwner={practiceSessionOwner}
+                questions={practiceQuestions}
+                stats={stats}
+                currentIndex={practiceCurrentIndex}
+                practiceMode={practiceMode}
+                showTimer={true}
+                timerDuration={activeAdvancedTimerDuration ?? undefined}
+                timerElapsedSeconds={elapsedTime}
+                timerRunning={isTimerRunning}
+                onTimerRunningChange={setIsTimerRunning}
+                allowTimerControl={!isAdvancedRuntimeTimer}
+                selectedTag={selectedTag}
+                focusMode={focusMode}
+                onFocusModeChange={setFocusMode}
+                settingsPanelOpen={settingsPanelOpen}
+                onSettingsPanelOpenChange={setSettingsPanelOpen}
+                isActive={isActive}
+                onSubmitAnswer={readOnly ? undefined : handleSubmitAnswer}
+                onNavigate={handlePracticeNavigate}
+                onModeChange={handleModeChange}
+                onMarkCorrect={readOnly ? undefined : handleMarkCorrect}
+                onGradingResolved={readOnly ? undefined : handleGradingResolved}
+                onRefreshQuestion={readOnly ? undefined : handleRefreshQuestion}
+                onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
+                onUpdateUserNote={readOnly ? undefined : handleUpdateUserNote}
+                onDeleteQuestion={readOnly ? undefined : handleDeleteQuestion}
+                onBack={handleBackToLauncher}
+                onDraftDirtyChange={handlePracticeDraftDirtyChange}
+                onDraftNavigationRequested={requestPracticeNavigate}
+              />
+            ) : (
+              /* 列表视图 - 内联编辑 */
+              <QuestionBankListView
+                questions={questions}
+                stats={stats}
+                examId={sessionId}
+                onQuestionClick={handleQuestionClick}
+                onViewAnswer={handleViewAnswer}
+                onDelete={readOnly ? undefined : handleDeleteQuestions}
+                onResetProgress={readOnly ? undefined : handleResetProgress}
+                onToggleFavorite={readOnly ? undefined : toggleFavoriteInSession}
+                onStartGroupPractice={handleStartGroupPractice}
+                onUpdateQuestion={readOnly ? undefined : handleListChanged}
+                onCreateQuestion={readOnly ? undefined : handleListChanged}
+                onUploadQuestions={readOnly ? undefined : handleOpenUploadEntry}
+                onUploadFiles={readOnly ? undefined : handleLauncherFilesDropped}
+                onCsvImport={readOnly ? undefined : handleOpenCsvImport}
+                onAiGenerate={readOnly ? undefined : handleOpenAiGeneration}
+                pendingDrafts={readOnly ? undefined : pendingAuthoringDrafts}
+                activeGenerationTask={readOnly ? undefined : activeGenerationTask}
+                confirmingDraftJobId={confirmingDraftJobId}
+                onReviewPendingDraft={readOnly ? undefined : handleReviewPendingDraft}
+                onConfirmPendingDraft={readOnly ? undefined : handleConfirmPendingDraft}
+                onOpenGenerationProgress={
+                  readOnly || !activeGenerationTask
+                    ? undefined
+                    : handleOpenGenerationProgress
+                }
+                createRequestKey={listCreateRequestKey}
+                onDraftDirtyChange={handleInlineEditorDraftDirtyChange}
+                onDraftNavigationRequested={(index) => {
+                  requestQuestionNavigation(() => handleQuestionClick(index));
+                }}
+              />
+            )}
           </div>
         </Suspense>
       </div>
 
-      {/* AI 出题面板（MVP：生成预览 → 确认入库 source_type=ai_generated） */}
+      {/* 导入审计对话框 */}
       <DsDialog open={showImportAudit} onOpenChange={setShowImportAudit}>
         <DsDialogHeader>
-          <DsDialogTitle>{t('exam_sheet:uploader.audit_imports', {defaultValue:'导入记录与重解析复核'})}</DsDialogTitle>
+          <DsDialogTitle>{t('exam_sheet:uploader.audit_imports', { defaultValue: '导入记录与重解析复核' })}</DsDialogTitle>
         </DsDialogHeader>
         <DsDialogBody className="overflow-y-auto">
           {showImportAudit && <Suspense fallback={<ViewSkeleton />}><QuestionImportAuditPanel examId={sessionId} onChanged={handleListChanged} /></Suspense>}
@@ -3810,9 +1717,6 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           inline
           isActive={isActive}
         />
-        {/* onJumpToQuestion 直连宿主导航而不走 QBANK_FOCUS_EVENT 回退：
-            该事件不带 targetResourceId，同一题目集多窗（标签页保活）时会让
-            所有挂载实例同时导航；直连还能在题目已删除时给出提示 */}
         <QuestionHistoryView
           questionId={historyQuestionId}
           open={showHistoryDialog}
