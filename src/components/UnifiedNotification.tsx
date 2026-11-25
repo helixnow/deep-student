@@ -38,7 +38,7 @@ export interface NotificationProps {
 
 export interface GlobalNotificationAction {
   label: string;
-  onClick: () => void;
+  onClick: () => unknown;
 }
 
 export type GlobalNotificationIconMode = boolean | 'auto';
@@ -60,6 +60,7 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
   const baseDuration = Math.min(6000 + (notification.message?.length ?? 0) * 20, 15000);
   const DURATION = notification.action ? Math.max(12000, baseDuration) : baseDuration;
   const [isClosing, setIsClosing] = useState(false);
+  const [isActionPending, setIsActionPending] = useState(false);
   const [isHoverExpanded, setIsHoverExpanded] = useState(false);
   const [isTimerPaused, setIsTimerPaused] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -67,6 +68,8 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
   const startRef = useRef(0);
   const remainingRef = useRef(DURATION);
   const isClosingRef = useRef(false);
+  const actionPendingRef = useRef(false);
+  const isMountedRef = useRef(true);
   const hoverRef = useRef(false);
   const focusRef = useRef(false);
   const onCloseRef = useRef(onClose);
@@ -116,9 +119,55 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
   }, [clear, handleClose]);
 
   const maybeResume = useCallback(() => {
-    if (isClosingRef.current || hoverRef.current || focusRef.current) return;
+    if (isClosingRef.current || hoverRef.current || focusRef.current || actionPendingRef.current) return;
     startTimer(remainingRef.current);
   }, [startTimer]);
+
+  const handleActionClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (actionPendingRef.current || isClosingRef.current) return;
+    const actionFn = notification.action?.onClick;
+    if (!actionFn) {
+      handleClose();
+      return;
+    }
+
+    actionPendingRef.current = true;
+    pauseTimer();
+
+    let result: unknown;
+    try {
+      result = actionFn();
+    } catch (error) {
+      actionPendingRef.current = false;
+      console.error('[UnifiedNotification] Action handler threw:', error);
+      handleClose();
+      return;
+    }
+
+    if (
+      result != null
+      && (typeof result === 'object' || typeof result === 'function')
+      && typeof (result as PromiseLike<unknown>).then === 'function'
+    ) {
+      setIsActionPending(true);
+      void Promise.resolve(result)
+        .catch((error) => {
+          console.error('[UnifiedNotification] Async action handler failed:', error);
+        })
+        .finally(() => {
+          actionPendingRef.current = false;
+          if (isMountedRef.current) {
+            setIsActionPending(false);
+            handleClose();
+          }
+        });
+      return;
+    }
+
+    actionPendingRef.current = false;
+    handleClose();
+  }, [handleClose, notification.action, pauseTimer]);
 
   // Auto-dismiss timer
   useEffect(() => {
@@ -139,14 +188,20 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
   // Reset on content change
   useEffect(() => {
     setIsHoverExpanded(false);
+    actionPendingRef.current = false;
+    setIsActionPending(false);
     if (expandRef.current) { clearTimeout(expandRef.current); expandRef.current = null; }
     if (collapseRef.current) { clearTimeout(collapseRef.current); collapseRef.current = null; }
   }, [notification.message, notification.title, notification.type, notification.updatedAt]);
 
   // Cleanup on unmount
-  useEffect(() => () => {
-    if (expandRef.current) clearTimeout(expandRef.current);
-    if (collapseRef.current) clearTimeout(collapseRef.current);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (expandRef.current) clearTimeout(expandRef.current);
+      if (collapseRef.current) clearTimeout(collapseRef.current);
+    };
   }, []);
 
   const handleMouseEnter = () => {
@@ -266,13 +321,10 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
           <DsButton
             variant="ghost"
             size="sm"
+            disabled={isActionPending || isClosing}
+            aria-busy={isActionPending || undefined}
             className="unified-notification-action [@media(pointer:coarse)]:!min-h-11"
-            onClick={(e) => {
-              e.stopPropagation();
-              const actionFn = notification.action?.onClick;
-              actionFn?.();
-              handleClose();
-            }}
+            onClick={handleActionClick}
           >
             {notification.action.label}
           </DsButton>
