@@ -58,6 +58,63 @@ function parseSnapshot(raw: string, label: string): DbJson | null {
   return value === null ? null : value;
 }
 
+export interface ResolveRecordConflictOptions {
+  conflictCopyLabel?: string | null;
+  locale?: string | null;
+}
+
+const DEFAULT_CONFLICT_COPY_LABEL_ZH = '本地冲突副本';
+const DEFAULT_CONFLICT_COPY_LABEL_EN = 'Conflict copy';
+
+function isEnglishLocale(locale: string | null | undefined): boolean {
+  return typeof locale === 'string' && /^en(?:[-_]|$)/i.test(locale.trim());
+}
+
+function readLanguageSettingFromDb(db: SqlExecutor): string | null {
+  try {
+    if (!tableExists(db, 'settings')) return null;
+    const value = db.pluck<unknown>("SELECT value FROM settings WHERE key = 'language'");
+    return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveConflictCopyLabel(
+  storage: StorageService,
+  db: DatabaseHandle,
+  databaseName: CoordinatedDatabaseName,
+  options?: ResolveRecordConflictOptions,
+): string {
+  const explicit = typeof options?.conflictCopyLabel === 'string'
+    ? options.conflictCopyLabel.trim()
+    : '';
+  if (explicit.length > 0) return explicit;
+
+  let locale = typeof options?.locale === 'string' && options.locale.trim().length > 0
+    ? options.locale.trim()
+    : null;
+  if (!locale) {
+    locale = readLanguageSettingFromDb(db);
+  }
+  if (!locale && databaseName !== 'mistakes') {
+    try {
+      const mistakesPath = storage.pathOf('mistakes');
+      if (fs.existsSync(mistakesPath)) {
+        const mistakesDb = storage.openFile(mistakesPath, { profile: 'plain' });
+        try {
+          locale = readLanguageSettingFromDb(mistakesDb);
+        } finally {
+          storage.close(mistakesDb);
+        }
+      }
+    } catch {
+      // Best-effort lookup; fall back to default label when settings DB is absent.
+    }
+  }
+  return isEnglishLocale(locale) ? DEFAULT_CONFLICT_COPY_LABEL_EN : DEFAULT_CONFLICT_COPY_LABEL_ZH;
+}
+
 /** commands_sync.rs:4611-5009 `data_governance_resolve_record_conflict`。 */
 export function resolveRecordConflict(
   storage: StorageService,
@@ -67,6 +124,7 @@ export function resolveRecordConflict(
   resolution: string,
   mergedDataJson: string | null,
   expectedConflictIds: readonly number[],
+  options?: ResolveRecordConflictOptions,
 ): void {
   if (expectedConflictIds.length === 0) {
     throw new CommandError('缺少冲突版本标识，请刷新冲突列表后重试');
@@ -81,7 +139,10 @@ export function resolveRecordConflict(
     throw new CommandError(`打开数据库 ${databaseName} 失败: ${message(error)}`);
   }
   try {
-    resolveOnDatabase(db, name, tableName, recordId, resolution, mergedDataJson, expectedIds);
+    const conflictCopyLabel = resolution === 'keep_both'
+      ? resolveConflictCopyLabel(storage, db, name, options)
+      : DEFAULT_CONFLICT_COPY_LABEL_ZH;
+    resolveOnDatabase(db, name, tableName, recordId, resolution, mergedDataJson, expectedIds, conflictCopyLabel);
   } finally {
     storage.close(db);
   }
@@ -294,10 +355,16 @@ function formatConflictCopyDate(epochMs: number): string {
   return iso.slice(0, 10);
 }
 
-function appendConflictCopyLabel(base: string, dateStr: string, disambiguator: string): string {
-  const tag = `(本地冲突副本 ${dateStr})`;
+function appendConflictCopyLabel(
+  base: string,
+  dateStr: string,
+  disambiguator: string,
+  copyLabel = DEFAULT_CONFLICT_COPY_LABEL_ZH,
+): string {
+  const label = copyLabel.trim() || DEFAULT_CONFLICT_COPY_LABEL_ZH;
+  const tag = `(${label} ${dateStr})`;
   const trimmed = base.trim();
-  if (!trimmed) return `本地冲突副本 ${dateStr} (${disambiguator})`;
+  if (!trimmed) return `${label} ${dateStr} (${disambiguator})`;
   if (trimmed.includes(tag)) return `${trimmed} (${disambiguator})`;
   return `${trimmed} ${tag}`;
 }
@@ -474,6 +541,7 @@ function createLocalConflictCopy(
   recordedLocalSnapshot: Record<string, DbJson>,
   capturedLocalNoteBody: { body: string | null; isRawResourceData: boolean },
   capturedLocalLinkedNote: Record<string, DbJson> | null,
+  conflictCopyLabel = DEFAULT_CONFLICT_COPY_LABEL_ZH,
 ): void {
   const dateStr = formatConflictCopyDate(epochMs);
   const cloneId = globalThis.crypto.randomUUID();
@@ -485,6 +553,7 @@ function createLocalConflictCopy(
       typeof recordedLocalSnapshot.title === 'string' ? recordedLocalSnapshot.title : '',
       dateStr,
       shortTag,
+      conflictCopyLabel,
     );
     if (tableExists(tx, 'resources') && tableHasColumn(tx, 'notes', 'resource_id')) {
       const cloneResId = globalThis.crypto.randomUUID();
@@ -552,6 +621,7 @@ function createLocalConflictCopy(
         typeof baseNote.title === 'string' ? baseNote.title : '',
         dateStr,
         shortTag,
+        conflictCopyLabel,
       );
       insertClonedTableRow(tx, 'notes', baseNote, 'id', cloneNoteId, now, epochMs);
       cloneNoteAuxiliaryRows(tx, linkedNote.id, cloneNoteId, now, epochMs);
@@ -571,14 +641,14 @@ function createLocalConflictCopy(
   const copy: Record<string, DbJson> = { ...recordedLocalSnapshot };
   if (tableName === 'anki_cards') {
     if (typeof copy.text === 'string' && copy.text.trim().length > 0) {
-      copy.text = appendConflictCopyLabel(copy.text, dateStr, shortTag);
+      copy.text = appendConflictCopyLabel(copy.text, dateStr, shortTag, conflictCopyLabel);
       if (typeof copy.front === 'string' && copy.front.trim().length > 0) {
-        copy.front = appendConflictCopyLabel(copy.front, dateStr, shortTag);
+        copy.front = appendConflictCopyLabel(copy.front, dateStr, shortTag, conflictCopyLabel);
       }
     } else if (typeof copy.front === 'string') {
-      copy.front = appendConflictCopyLabel(copy.front, dateStr, shortTag);
+      copy.front = appendConflictCopyLabel(copy.front, dateStr, shortTag, conflictCopyLabel);
     } else if (typeof copy.back === 'string') {
-      copy.back = appendConflictCopyLabel(copy.back, dateStr, shortTag);
+      copy.back = appendConflictCopyLabel(copy.back, dateStr, shortTag, conflictCopyLabel);
     }
     insertClonedTableRow(tx, 'anki_cards', copy, idColumn, cloneId, now, epochMs);
     return;
@@ -587,11 +657,11 @@ function createLocalConflictCopy(
   if (tableName === 'questions') {
     if (Object.hasOwn(copy, 'source_key')) copy.source_key = null;
     if (typeof copy.question_label === 'string' && copy.question_label.trim().length > 0) {
-      copy.question_label = appendConflictCopyLabel(copy.question_label, dateStr, shortTag);
+      copy.question_label = appendConflictCopyLabel(copy.question_label, dateStr, shortTag, conflictCopyLabel);
     } else if (typeof copy.content === 'string') {
-      copy.content = appendConflictCopyLabel(copy.content, dateStr, shortTag);
+      copy.content = appendConflictCopyLabel(copy.content, dateStr, shortTag, conflictCopyLabel);
     } else if (typeof copy.title === 'string') {
-      copy.title = appendConflictCopyLabel(copy.title, dateStr, shortTag);
+      copy.title = appendConflictCopyLabel(copy.title, dateStr, shortTag, conflictCopyLabel);
     }
     insertClonedTableRow(tx, 'questions', copy, idColumn, cloneId, now, epochMs);
     return;
@@ -600,11 +670,11 @@ function createLocalConflictCopy(
   if (tableName === 'mistakes') {
     if (Object.hasOwn(copy, 'irec_card_id')) copy.irec_card_id = null;
     if (typeof copy.mistake_summary === 'string' && copy.mistake_summary.trim().length > 0) {
-      copy.mistake_summary = appendConflictCopyLabel(copy.mistake_summary, dateStr, shortTag);
+      copy.mistake_summary = appendConflictCopyLabel(copy.mistake_summary, dateStr, shortTag, conflictCopyLabel);
     } else if (typeof copy.user_question === 'string') {
-      copy.user_question = appendConflictCopyLabel(copy.user_question, dateStr, shortTag);
+      copy.user_question = appendConflictCopyLabel(copy.user_question, dateStr, shortTag, conflictCopyLabel);
     } else if (typeof copy.title === 'string') {
-      copy.title = appendConflictCopyLabel(copy.title, dateStr, shortTag);
+      copy.title = appendConflictCopyLabel(copy.title, dateStr, shortTag, conflictCopyLabel);
     }
     insertClonedTableRow(tx, 'mistakes', copy, idColumn, cloneId, now, epochMs);
     return;
@@ -613,7 +683,7 @@ function createLocalConflictCopy(
   const labelColumns = ['title', 'name', 'file_name', 'front', 'text', 'user_question', 'content', 'question_label', 'label'];
   for (const col of labelColumns) {
     if (typeof copy[col] === 'string' && (copy[col] as string).trim().length > 0) {
-      copy[col] = appendConflictCopyLabel(copy[col] as string, dateStr, shortTag);
+      copy[col] = appendConflictCopyLabel(copy[col] as string, dateStr, shortTag, conflictCopyLabel);
       break;
     }
   }
@@ -753,6 +823,7 @@ function resolveOnDatabase(
   resolution: string,
   mergedDataJson: string | null,
   expectedIds: readonly bigint[],
+  conflictCopyLabel = DEFAULT_CONFLICT_COPY_LABEL_ZH,
 ): void {
   const currentIds = unresolvedConflictIds(db, tableName, recordId);
   if (currentIds.length !== expectedIds.length || currentIds.some((id, index) => id !== expectedIds[index])) {
@@ -868,6 +939,7 @@ function resolveOnDatabase(
       localStripped.virtualContentMd,
       recordedLocalSnapshot,
       recordedCloudSnapshot,
+      conflictCopyLabel,
     );
     return;
   }
@@ -996,6 +1068,7 @@ function resolveOnDatabase(
               recordedLocalSnapshot,
               capturedLocalNoteBody,
               capturedLocalLinkedNote,
+              conflictCopyLabel,
             );
           }
           releaseTemporaryNoteWriteGrants(tx, tempWriteGrantTokens);
@@ -1038,6 +1111,7 @@ function markResolvedWithoutWrite(
   localVirtualContentMd: string | null,
   localSnapshot: DbJson | null,
   cloudSnapshot: DbJson | null,
+  conflictCopyLabel = DEFAULT_CONFLICT_COPY_LABEL_ZH,
 ): void {
   try {
     db.transaction(tx => {
@@ -1097,6 +1171,7 @@ function markResolvedWithoutWrite(
             localSnapshot,
             capturedLocalNoteBody,
             capturedLocalLinkedNote,
+            conflictCopyLabel,
           );
         }
       } finally {

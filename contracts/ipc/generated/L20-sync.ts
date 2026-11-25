@@ -428,6 +428,7 @@ export interface Commands {
       resolution: string;
       mergedDataJson?: string | null;
       expectedConflictIds: number[];
+      conflictCopyLabel?: string | null;
     };
     result: null;
     error: string;

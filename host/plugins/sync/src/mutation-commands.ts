@@ -30,11 +30,30 @@ export async function importSyncDataCommand(ctx: SyncContext, inputPath: string,
 export interface ResolveConflictArgs {
   databaseName: string; tableName: string; recordId: string; resolution: string;
   mergedDataJson: string | null; expectedConflictIds: readonly number[];
+  conflictCopyLabel?: string | null;
 }
 export function resolveRecordConflictCommand(ctx: SyncContext, args: ResolveConflictArgs): void {
   assertNotInMaintenance(ctx);
   const permit = tryPermit(ctx, '其他备份、恢复或同步操作正在进行，请刷新冲突后重试');
-  try { resolveRecordConflict(ctx.storage, args.databaseName, args.tableName, args.recordId, args.resolution, args.mergedDataJson, args.expectedConflictIds); }
+  let locale: string | null = null;
+  try {
+    const settings = ctx.reflect?.get?.('settings') as { get?: (key: string) => string | null } | undefined;
+    locale = settings?.get?.('language') ?? null;
+  } catch {
+    locale = null;
+  }
+  try {
+    resolveRecordConflict(
+      ctx.storage,
+      args.databaseName,
+      args.tableName,
+      args.recordId,
+      args.resolution,
+      args.mergedDataJson,
+      args.expectedConflictIds,
+      { conflictCopyLabel: args.conflictCopyLabel ?? null, locale },
+    );
+  }
   finally { permit.release(); }
 }
 export function rollbackSyncSnapshotCommand(ctx: SyncContext, databaseName: string, batchId: string) {

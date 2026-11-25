@@ -988,6 +988,22 @@
             }
           },
           "optional": false
+        },
+        {
+          "key": "conflictCopyLabel",
+          "rustName": "conflict_copy_label",
+          "schema": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "x-option": "null"
+          },
+          "optional": true
         }
       ],
       "injected": [
