@@ -21,6 +21,7 @@ import { setLocalRuntime } from '../src/local-runtime.ts';
 import { nodeLocalRuntime } from '../src/local-runtime.node.ts';
 import { partitionUploadCandidatesAfterDownload } from '../src/record-progress.ts';
 import { getPendingBreakdown } from '../src/status.ts';
+import { recordsSemanticallyEqualForSync } from '../repository/record-data.ts';
 import type { EngineChange } from '../src/change-payload.ts';
 
 interface DeviceSpec {
@@ -428,6 +429,82 @@ describe('G30 download-superseded and non-RowSync pending count convergence to 0
       const noteB = await host.invoke<{ title: string; content_md: string }>('notes_get', { id: noteId });
       expect(noteB.title).toBe('A_CLOUD_TITLE');
       expect(noteB.content_md).toBe('A_CLOUD_NEW');
+    });
+  }, 120000);
+
+  it('BUG-T4A: ignores memory_state_version inside anki_decks.config_json so freshly paired devices converge with 0 conflicts and pending = 0', async () => {
+    // 1) Semantic comparison strips memory_state_version recursively while preserving real edits
+    const baseDeck = {
+      id: 'deck_default',
+      name: 'Default',
+      config_json: '{"desired_retention":0.9}',
+      updated_at: '2026-11-24T03:00:41Z',
+    };
+    const stampedDeck = {
+      id: 'deck_default',
+      name: 'Default',
+      config_json: '{"desired_retention":0.9,"memory_state_version":"fsrs-rs-6.6"}',
+      updated_at: '2026-11-25T21:01:25Z',
+    };
+    const editedRetentionDeck = {
+      id: 'deck_default',
+      name: 'Default',
+      config_json: '{"desired_retention":0.85,"memory_state_version":"fsrs-rs-6.6"}',
+      updated_at: '2026-11-25T21:01:25Z',
+    };
+    const editedParamsDeck = {
+      id: 'deck_default',
+      name: 'Default',
+      config_json: '{"desired_retention":0.9,"fsrs_params":[0.4,0.6],"memory_state_version":"fsrs-rs-6.6"}',
+      updated_at: '2026-11-25T21:01:25Z',
+    };
+    const renamedDeck = {
+      ...stampedDeck,
+      name: 'My Custom Deck',
+    };
+
+    expect(recordsSemanticallyEqualForSync(stampedDeck, baseDeck)).toBe(true);
+    expect(recordsSemanticallyEqualForSync(baseDeck, stampedDeck)).toBe(true);
+    expect(recordsSemanticallyEqualForSync(editedRetentionDeck, baseDeck)).toBe(false);
+    expect(recordsSemanticallyEqualForSync(editedParamsDeck, baseDeck)).toBe(false);
+    expect(recordsSemanticallyEqualForSync(renamedDeck, baseDeck)).toBe(false);
+
+    // 2) Full 2-device sync repro: Device A uploads fresh deck_default without memory_state_version;
+    // freshly paired Device B already has memory_state_version stamped into config_json -> 0 conflicts, pending = 0!
+    const cloud = new MemoryStorage('webdav');
+    const devA = await initDevice('dev-a-t4a-deck', cloud);
+    const devB = await initDevice('dev-b-t4a-deck', cloud);
+
+    await onDevice(devA, async ({ host, storage }) => {
+      const mistakesA = storage.database('mistakes');
+      mistakesA.run(
+        `UPDATE anki_decks SET config_json = '{"desired_retention":0.9}', updated_at = '2026-11-24T03:00:41.000Z'
+         WHERE id = 'deck_default'`,
+      );
+      const pushA = await host.invoke<SyncResponse>('data_governance_run_sync_with_progress', {
+        direction: 'bidirectional',
+        strategy: 'keep_latest',
+      });
+      expect(pushA).toMatchObject({ success: true, conflicts_detected: 0, error_message: null });
+    });
+
+    await onDevice(devB, async ({ host, storage }) => {
+      const mistakesB = storage.database('mistakes');
+      // Simulate ensureMemoryStatesCurrent stamping memory_state_version before first sync (leaves INSERT + UPDATE pending)
+      mistakesB.run(
+        `UPDATE anki_decks SET config_json = '{"desired_retention":0.9,"memory_state_version":"fsrs-rs-6.6"}',
+         updated_at = '2026-11-25T21:01:25.000Z' WHERE id = 'deck_default'`,
+      );
+      const syncB = await host.invoke<SyncResponse>('data_governance_run_sync_with_progress', {
+        direction: 'bidirectional',
+        strategy: 'keep_latest',
+      });
+      expect(syncB).toMatchObject({ success: true, conflicts_detected: 0, error_message: null });
+
+      const statusB = await host.invoke<{ total_pending_changes: number }>('data_governance_get_sync_status', {});
+      expect(statusB.total_pending_changes).toBe(0);
+      expect(mistakesB.pluck<number>('SELECT COUNT(*) FROM __sync_conflicts WHERE resolved_at IS NULL')).toBe(0);
+      expect(mistakesB.pluck<number>('SELECT COUNT(*) FROM __change_log WHERE sync_version = 0')).toBe(0);
     });
   }, 120000);
 });

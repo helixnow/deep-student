@@ -13,8 +13,8 @@ import { lwwTimestampMillis, timestampValueToLwwString } from '../src/lww.ts';
 import { newBatchId, REASON_CONFLICT_RESOLVE } from '../src/history.ts';
 import type { DbJson } from '../../../platform/util/lossless-json.ts';
 import { dbJsonEquals, isJsonObject, parseJsonLossless } from '../../../platform/util/lossless-json.ts';
-import { getRecordData, recordsSemanticallyEqualForSync } from '../repository/record-data.ts';
-import { applyDownloadedChangesForceExactWithHooks, getDefaultNoteHistory } from '../repository/apply.ts';
+import { canonicalizeSyncValueForCompare, getRecordData, recordsSemanticallyEqualForSync } from '../repository/record-data.ts';
+import { applyDownloadedChangesForceExactWithHooks, applySingleChange, getDefaultNoteHistory } from '../repository/apply.ts';
 import { rollbackBatch, snapshotRecordWithData } from '../repository/history.ts';
 import { latestConflictSideData, listUnresolvedConflictIds, markConflictResolved } from '../repository/conflicts.ts';
 import { columnDeclaredType, jsonValueToSqlParam, quoteIdentifier, tableExists, tableHasColumn, tableInfo } from '../repository/sqlite-values.ts';
@@ -690,6 +690,90 @@ function createLocalConflictCopy(
   insertClonedTableRow(tx, tableName, copy, idColumn, cloneId, now, epochMs);
 }
 
+const PAIRED_NOTE_METADATA_FIELDS = ['title', 'deleted_at', 'folder_id', 'tags', 'props'] as const;
+
+function noteMetadataSemanticallyEqual(localNote: DbJson | null, cloudNote: DbJson | null): boolean {
+  if (!isJsonObject(localNote) || !isJsonObject(cloudNote)) return false;
+  for (const field of PAIRED_NOTE_METADATA_FIELDS) {
+    const localVal = Object.hasOwn(localNote, field) ? (localNote[field] ?? null) : null;
+    const cloudVal = Object.hasOwn(cloudNote, field) ? (cloudNote[field] ?? null) : null;
+    if (!dbJsonEquals(canonicalizeSyncValueForCompare(localVal), canonicalizeSyncValueForCompare(cloudVal))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function ensureLinkedResourceExistsForCloudNote(
+  tx: SqlExecutor,
+  noteId: string,
+  cloudResId: string,
+  resolvedResourceId: string,
+  cloudNoteDeleted: boolean,
+  virtualContentMd: string | null,
+  now: string,
+  epochMs: number,
+): void {
+  const existing = tx.get<{ id: string; deleted_at?: unknown }>(
+    tableHasColumn(tx, 'resources', 'deleted_at')
+      ? 'SELECT id, deleted_at FROM resources WHERE id = ?1'
+      : 'SELECT id FROM resources WHERE id = ?1',
+    [cloudResId],
+  );
+  if (existing) {
+    if (
+      !cloudNoteDeleted
+      && cloudResId !== resolvedResourceId
+      && tableHasColumn(tx, 'resources', 'deleted_at')
+      && existing.deleted_at !== null
+      && existing.deleted_at !== undefined
+    ) {
+      const assignments: string[] = ['deleted_at = NULL'];
+      const params: SqlParam[] = [];
+      if (tableHasColumn(tx, 'resources', 'updated_at')) {
+        params.push(timestampForColumn(tx, 'resources', 'updated_at', now, epochMs));
+        assignments.push(`updated_at = ?${params.length}`);
+      }
+      params.push(cloudResId);
+      tx.run(`UPDATE resources SET ${assignments.join(', ')} WHERE id = ?${params.length}`, params);
+      ensurePendingChangeLog(tx, 'resources', cloudResId, 'UPDATE', now);
+    }
+    return;
+  }
+
+  let body = virtualContentMd;
+  if (body === null) {
+    const rawRes = latestConflictSideData(tx, 'resources', cloudResId, 'cloud');
+    if (rawRes !== null) {
+      try {
+        body = extractNoteContentFromResource(parseJsonLossless(rawRes));
+      } catch {
+        // ignore unparseable conflict snapshot
+      }
+    }
+  }
+  const initialBody = body ?? '';
+  const nextHash = createHasherSync('SHA-256').update(`${noteId}\0${initialBody}`).digestHex();
+  const resCols = new Set(tableInfo(tx, 'resources').map(c => c.name));
+  const insertCols: string[] = ['id'];
+  const insertVals: SqlParam[] = [cloudResId];
+  const pushCol = (col: string, val: SqlParam): void => {
+    if (!resCols.has(col)) return;
+    insertCols.push(quoteIdentifier(col));
+    insertVals.push(val);
+  };
+  pushCol('hash', nextHash);
+  pushCol('type', 'note');
+  pushCol('source_id', noteId);
+  pushCol('source_table', 'notes');
+  pushCol('data', initialBody);
+  pushCol('created_at', timestampForColumn(tx, 'resources', 'created_at', now, epochMs));
+  pushCol('updated_at', timestampForColumn(tx, 'resources', 'updated_at', now, epochMs));
+  const placeholders = insertVals.map((_, idx) => `?${idx + 1}`).join(', ');
+  tx.run(`INSERT INTO resources (${insertCols.join(', ')}) VALUES (${placeholders})`, insertVals);
+  ensurePendingChangeLog(tx, 'resources', cloudResId, 'INSERT', now);
+}
+
 function synchronizePairedNoteAndResource(
   tx: SqlExecutor,
   tableName: string,
@@ -804,11 +888,144 @@ function synchronizePairedNoteAndResource(
     const linkedNotes = tx.all<{ id: string }>('SELECT id FROM notes WHERE resource_id = ?1', [recordId]);
     for (const note of linkedNotes) {
       if (!note?.id) continue;
-      bumpUpdatedAtAndLog(tx, 'notes', note.id, now, epochMs);
-      if (resolution === 'keep_local' || resolution === 'keep_cloud' || resolution === 'merged' || resolution === 'keep_both') {
-        const noteConflictIds = listUnresolvedConflictIds(tx, 'notes', note.id);
+      const noteConflictIds = listUnresolvedConflictIds(tx, 'notes', note.id);
+      if (noteConflictIds.length === 0) {
+        bumpUpdatedAtAndLog(tx, 'notes', note.id, now, epochMs);
+        continue;
+      }
+
+      if (resolution === 'keep_local') {
+        bumpUpdatedAtAndLog(tx, 'notes', note.id, now, epochMs);
         for (const id of noteConflictIds) {
           markConflictResolved(tx, id, 'notes', note.id, now, resolution);
+        }
+        continue;
+      }
+
+      if (resolution === 'keep_cloud' || resolution === 'keep_both') {
+        const rawCloudNote = latestConflictSideData(tx, 'notes', note.id, 'cloud');
+        if (rawCloudNote === null) continue;
+        let parsedCloudNote: DbJson | null;
+        try {
+          parsedCloudNote = parseJsonLossless(rawCloudNote);
+        } catch {
+          continue;
+        }
+        const currentLocalNote = getRecordData(tx, 'notes', note.id, 'id') as DbJson | null;
+        const noteClock = computeResolvedClock(tx, 'notes', note.id, [currentLocalNote, parsedCloudNote]);
+        const noteEpochMs = Math.max(epochMs, noteClock.epochMs);
+        const noteNow = noteEpochMs === epochMs ? now : toRfc3339Opts(BigInt(noteEpochMs) * 1_000_000n, 'Millis', true);
+
+        if (parsedCloudNote === null) {
+          if (resolution !== 'keep_cloud') continue;
+          applySingleChange(
+            tx,
+            {
+              table_name: 'notes',
+              record_id: note.id,
+              operation: 'Delete',
+              data: null,
+              changed_at: noteNow,
+              change_log_id: null,
+              database_name: 'vfs',
+              suppress_change_log: false,
+              source_device_id: null,
+              source_seq: null,
+            },
+            'id',
+            true,
+            false,
+            { deviceId: '' },
+          );
+          ensurePendingChangeLog(tx, 'notes', note.id, 'DELETE', noteNow);
+          for (const id of noteConflictIds) {
+            markConflictResolved(tx, id, 'notes', note.id, noteNow, resolution);
+          }
+          continue;
+        }
+
+        const stripped = stripVirtualNoteContent(tx, 'notes', parsedCloudNote);
+        if (!isJsonObject(stripped.data)) continue;
+        const cloudNoteData: { [key: string]: DbJson } = { ...stripped.data };
+        if (tableHasColumn(tx, 'notes', 'deleted_at') && !Object.hasOwn(cloudNoteData, 'deleted_at')) {
+          cloudNoteData.deleted_at = null;
+        }
+        const cloudNoteDeleted = cloudNoteData.deleted_at !== null && cloudNoteData.deleted_at !== undefined;
+        if (typeof cloudNoteData.resource_id === 'string' && cloudNoteData.resource_id.length > 0) {
+          ensureLinkedResourceExistsForCloudNote(
+            tx,
+            note.id,
+            cloudNoteData.resource_id,
+            recordId,
+            cloudNoteDeleted,
+            stripped.virtualContentMd,
+            noteNow,
+            noteEpochMs,
+          );
+        }
+        if (tableHasColumn(tx, 'notes', 'updated_at')) {
+          cloudNoteData.updated_at = timestampForColumn(
+            tx,
+            'notes',
+            'updated_at',
+            noteNow,
+            noteEpochMs,
+            cloudNoteData.updated_at,
+          );
+        }
+        if (tableExists(tx, '__sync_delete_versions')) {
+          tx.run('DELETE FROM __sync_delete_versions WHERE table_name = ?1 AND record_id = ?2', ['notes', note.id]);
+        }
+        applySingleChange(
+          tx,
+          {
+            table_name: 'notes',
+            record_id: note.id,
+            operation: 'Update',
+            data: cloudNoteData,
+            changed_at: noteNow,
+            change_log_id: null,
+            database_name: 'vfs',
+            suppress_change_log: false,
+            source_device_id: null,
+            source_seq: null,
+          },
+          'id',
+          true,
+          false,
+          { deviceId: '' },
+          true,
+        );
+        ensurePendingChangeLog(tx, 'notes', note.id, 'UPDATE', noteNow);
+        if (tableExists(tx, 'note_document_formats')) {
+          const fmtExists = Boolean(tx.pluck('SELECT EXISTS(SELECT 1 FROM note_document_formats WHERE note_id = ?1)', [note.id]));
+          if (fmtExists) ensurePendingChangeLog(tx, 'note_document_formats', note.id, 'UPDATE', noteNow);
+        }
+        for (const id of noteConflictIds) {
+          markConflictResolved(tx, id, 'notes', note.id, noteNow, resolution);
+        }
+        continue;
+      }
+
+      if (resolution === 'merged') {
+        const rawLocalNote = latestConflictSideData(tx, 'notes', note.id, 'local');
+        const rawCloudNote = latestConflictSideData(tx, 'notes', note.id, 'cloud');
+        if (rawCloudNote === null) continue;
+        let localNote: DbJson | null = null;
+        let cloudNote: DbJson | null = null;
+        try {
+          localNote = rawLocalNote === null
+            ? (getRecordData(tx, 'notes', note.id, 'id') as DbJson | null)
+            : stripVirtualNoteContent(tx, 'notes', parseJsonLossless(rawLocalNote)).data;
+          cloudNote = stripVirtualNoteContent(tx, 'notes', parseJsonLossless(rawCloudNote)).data;
+        } catch {
+          continue;
+        }
+        if (noteMetadataSemanticallyEqual(localNote, cloudNote)) {
+          bumpUpdatedAtAndLog(tx, 'notes', note.id, now, epochMs);
+          for (const id of noteConflictIds) {
+            markConflictResolved(tx, id, 'notes', note.id, now, resolution);
+          }
         }
       }
     }
@@ -853,8 +1070,8 @@ function resolveOnDatabase(
   const recordedCloudSnapshot = cloudStripped.data;
 
   if (resolution !== 'keep_local') {
-    const matches = jsonEquals(currentLocalSnapshot, recordedLocalSnapshot)
-      || jsonEquals(currentLocalSnapshot, recordedCloudSnapshot);
+    const matches = snapshotMatchesForConflictCheck(currentLocalSnapshot, recordedLocalSnapshot)
+      || snapshotMatchesForConflictCheck(currentLocalSnapshot, recordedCloudSnapshot);
     if (!matches) {
       throw new CommandError('本地记录在冲突生成后已再次变化，拒绝用旧冲突覆盖；请重新同步或手动合并');
     }
@@ -1046,6 +1263,20 @@ function resolveOnDatabase(
           if (operation !== 'Delete') {
             ensurePendingChangeLog(tx, tableName, recordId, 'UPDATE', now);
           }
+          if (resolution === 'keep_both' && tableName === 'resources' && isJsonObject(recordedLocalSnapshot)) {
+            createLocalConflictCopy(
+              tx,
+              tableName,
+              recordId,
+              idColumn,
+              now,
+              epochMs,
+              recordedLocalSnapshot,
+              capturedLocalNoteBody,
+              capturedLocalLinkedNote,
+              conflictCopyLabel,
+            );
+          }
           synchronizePairedNoteAndResource(
             tx,
             tableName,
@@ -1057,7 +1288,7 @@ function resolveOnDatabase(
             recordedLocalSnapshot,
             recordedCloudSnapshot,
           );
-          if (resolution === 'keep_both' && isJsonObject(recordedLocalSnapshot)) {
+          if (resolution === 'keep_both' && tableName !== 'resources' && isJsonObject(recordedLocalSnapshot)) {
             createLocalConflictCopy(
               tx,
               tableName,
@@ -1149,6 +1380,20 @@ function markResolvedWithoutWrite(
         } else {
           ensurePendingChangeLog(tx, tableName, recordId, 'DELETE', now);
         }
+        if (resolution === 'keep_both' && tableName === 'resources' && isJsonObject(localSnapshot)) {
+          createLocalConflictCopy(
+            tx,
+            tableName,
+            recordId,
+            idColumn,
+            now,
+            epochMs,
+            localSnapshot,
+            capturedLocalNoteBody,
+            capturedLocalLinkedNote,
+            conflictCopyLabel,
+          );
+        }
         synchronizePairedNoteAndResource(
           tx,
           tableName,
@@ -1160,7 +1405,7 @@ function markResolvedWithoutWrite(
           localSnapshot,
           cloudSnapshot,
         );
-        if (resolution === 'keep_both' && isJsonObject(localSnapshot)) {
+        if (resolution === 'keep_both' && tableName !== 'resources' && isJsonObject(localSnapshot)) {
           createLocalConflictCopy(
             tx,
             tableName,
@@ -1195,6 +1440,13 @@ function markResolvedWithoutWrite(
 
 function jsonEquals(left: DbJson | null | undefined, right: DbJson | null | undefined): boolean {
   return dbJsonEquals(left, right);
+}
+
+function snapshotMatchesForConflictCheck(current: DbJson | null, recorded: DbJson | null): boolean {
+  if (jsonEquals(current, recorded)) return true;
+  if (current === null || recorded === null) return false;
+  return recordsSemanticallyEqualForSync(current, recorded)
+    && recordsSemanticallyEqualForSync(recorded, current);
 }
 
 /** commands_sync.rs:5245-5295 `data_governance_rollback_sync_snapshot_batch`。 */

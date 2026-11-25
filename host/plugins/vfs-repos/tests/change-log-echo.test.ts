@@ -244,6 +244,37 @@ describe('__change_log echo suppression for local-derived updates (Finding B)', 
     expect(db.pluck<number>('SELECT updated_at FROM resources WHERE id = ?1', [exam.resourceId!])).toBe(2000);
   });
 
+  it('BUG-T4B: suppresses phantom __change_log UPDATE rows for background OCR cache writes', () => {
+    const { resources } = host.ctx.vfsRepo;
+    const res = resources.createOrReuse(db, 'file', 'pdf-bytes', null, null, null);
+    const fixedUpdatedAt = 1795640429797;
+    db.run('UPDATE resources SET ocr_text = NULL, updated_at = ?1 WHERE id = ?2', [fixedUpdatedAt, res.resourceId]);
+    markAllSynced();
+    expect(pendingRows()).toEqual([]);
+
+    // 1) saveOcrTextIfEmptyWithConn populates ocr_text without bumping updated_at or emitting sync_version = 0 rows
+    resources.saveOcrTextIfEmptyWithConn(db, res.resourceId, 'background extracted page 1');
+    expect(resources.getOcrText(db, res.resourceId)).toBe('background extracted page 1');
+    expect(db.pluck<number>('SELECT updated_at FROM resources WHERE id = ?1', [res.resourceId])).toBe(fixedUpdatedAt);
+    expect(pendingRows('resources')).toEqual([]);
+
+    // 2) saveOcrTextWithoutTimestampWithConn overwrites ocr_text without bumping updated_at or emitting sync_version = 0 rows
+    resources.saveOcrTextWithoutTimestampWithConn(db, res.resourceId, 'background extracted pages 1-2');
+    expect(resources.getOcrText(db, res.resourceId)).toBe('background extracted pages 1-2');
+    expect(db.pluck<number>('SELECT updated_at FROM resources WHERE id = ?1', [res.resourceId])).toBe(fixedUpdatedAt);
+    expect(pendingRows('resources')).toEqual([]);
+
+    // 3) Inside a transaction (SAVEPOINT path), preserves pre-existing pending rows while suppressing OCR cache echoes
+    resources.updateResourceData(db, res.resourceId, 'real edited resource data');
+    const before = pendingRows('resources');
+    expect(before).toHaveLength(1);
+    db.transaction(tx => {
+      resources.saveOcrTextWithoutTimestampWithConn(tx, res.resourceId, 'nested tx ocr cache');
+    });
+    expect(resources.getOcrText(db, res.resourceId)).toBe('nested tx ocr cache');
+    expect(pendingRows('resources')).toEqual(before);
+  });
+
   it('works safely when __change_log table does not exist (minimal unit-test schema)', () => {
     const minimal = storage.openFile(':memory:', { label: 'minimal-no-changelog' });
     try {
