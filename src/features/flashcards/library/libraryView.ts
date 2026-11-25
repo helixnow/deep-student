@@ -169,27 +169,37 @@ export function formatRelativeDue(
   return formatter.format(Math.round(diff / (365 * 24 * 60 * 60 * 1000)), 'year');
 }
 
-export function formatAbsoluteTime(ms: number | null | undefined): string | null {
+export function formatAbsoluteTime(ms: number | null | undefined, locale?: string): string | null {
   if (typeof ms !== 'number' || !Number.isFinite(ms)) return null;
   const date = new Date(ms);
   if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat(undefined, {
+  const options: Intl.DateTimeFormatOptions = {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-  }).format(date);
+  };
+  try {
+    return new Intl.DateTimeFormat(locale, options).format(date);
+  } catch {
+    return new Intl.DateTimeFormat(undefined, options).format(date);
+  }
 }
 
-export function formatCreatedAt(card: AnkiLibraryCard): string | null {
+export function formatCreatedAt(card: AnkiLibraryCard, locale?: string): string | null {
   const ms = createdAtMs(card);
   if (!ms) return null;
-  return new Intl.DateTimeFormat(undefined, {
+  const options: Intl.DateTimeFormatOptions = {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
-  }).format(new Date(ms));
+  };
+  try {
+    return new Intl.DateTimeFormat(locale, options).format(new Date(ms));
+  } catch {
+    return new Intl.DateTimeFormat(undefined, options).format(new Date(ms));
+  }
 }
 
 /** 逗号 / 中文逗号 / 分号分隔的标签输入解析（去空白、去重、保序）。 */

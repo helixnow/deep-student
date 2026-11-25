@@ -36,7 +36,13 @@ function localRolloverStartMs(dateKey: string, rolloverHour: number): number {
   return new Date(year!, month! - 1, day!, Math.min(23, Math.max(0, Math.trunc(rolloverHour))), 0, 0, 0).getTime();
 }
 
-export function getReviewStatistics(rt: ReviewRuntime, daysInput: number | null, trialV7 = false): FsrsReviewStatistics {
+export type FsrsReviewStatisticsWithLearning = FsrsReviewStatistics & {
+  learningReviewsToday: number;
+};
+
+export function getReviewStatistics(
+  rt: ReviewRuntime, daysInput: number | null, trialV7 = false,
+): FsrsReviewStatisticsWithLearning {
   const days = Math.min(730, Math.max(7, Math.trunc(daysInput ?? 365)));
   const nowMs = utcNow().ms;
   const config = repo.loadSchedulerConfig(rt.db, DEFAULT_DECK_ID, rt.warn);
@@ -55,9 +61,13 @@ export function getReviewStatistics(rt: ReviewRuntime, daysInput: number | null,
     period, youngReviews: 0, youngPassed: 0, matureReviews: 0, maturePassed: 0,
   }));
   const retentionSeen = new Set<string>();
+  let learningReviewsToday = 0;
   for (const row of repo.reviewLogsForStats(rt.db, windowStartMs, trialV7)) {
     if (row.rating < 1 || row.rating > 4) continue;
     const date = logicalDayKey(row.reviewMs, config.dayRolloverHour);
+    if (date === todayKey && row.stateBefore !== 2) {
+      learningReviewsToday += 1;
+    }
     let entry = daily.get(date);
     if (entry === undefined) {
       entry = { date, total: 0, again: 0, hard: 0, good: 0, easy: 0, newIntroduced: 0, studyMs: 0 };
@@ -169,6 +179,7 @@ export function getReviewStatistics(rt: ReviewRuntime, daysInput: number | null,
     scheduledForecast,
     trueRetention,
     memoryDistributions,
+    learningReviewsToday,
   };
 }
 

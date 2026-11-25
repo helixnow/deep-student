@@ -219,6 +219,7 @@ async function compensateMasteryOutboxAfterRate(
       }
       continue;
     }
+    if (!svc.isReviewLogActive(pending.logId)) continue;
     let tags: string[];
     if (pending.logId === resultLogId && preTags.length > 0) {
       tags = [...preTags];
@@ -241,6 +242,11 @@ async function compensateMasteryOutboxAfterRate(
     }
     let lastError: unknown = null;
     for (let attempt = 0; attempt < 3; attempt++) {
+      // Never write mastery evidence for a review log that was already undone during a retry window.
+      if (!svc.isReviewLogActive(pending.logId)) {
+        lastError = null;
+        break;
+      }
       try {
         ctx.mastery.recordFsrsRatingForLog(pending.logId, pending.ankiCardId, tags, pending.rating);
         confirmMasterySynced(ctx, svc, pending.logId, '[fsrs_rate] failed to confirm mastery row %s: %s');
@@ -337,6 +343,7 @@ export function registerFsrsCommands(ctx: Context, trialV7 = false): void {
       args.enforceExpectedLastReview ?? false,
       args.expectedLastReviewMs ?? null,
     );
+    await compensateMasteryOutboxAfterRate(ctx, svc, result.logId, tags);
     emitChanged(ctx, buildFsrsChangedPayloadAfterWrite(
       true,
       'user',
@@ -345,7 +352,6 @@ export function registerFsrsCommands(ctx: Context, trialV7 = false): void {
       [],
       [result.logId],
     ));
-    await compensateMasteryOutboxAfterRate(ctx, svc, result.logId, tags);
     emitStudyEvent(ctx, 'study/card-reviewed', {
       cardStateId: result.cardState.id,
       cardId: result.cardState.ankiCardId ?? null,
@@ -357,9 +363,14 @@ export function registerFsrsCommands(ctx: Context, trialV7 = false): void {
 
   ctx.commands.register<UndoArgs>('fsrs_undo_last_review', ({ expectedLogId, cardStateId }) => {
     const svc = reviewService();
+    const wasMasterySynced = svc.isReviewLogMasterySynced(expectedLogId);
     const result = svc.undoLastReview(expectedLogId, cardStateId);
     try {
       if (ctx.mastery.revertFsrsRatingForLog(expectedLogId) !== null) {
+        confirmMasterySynced(ctx, svc, expectedLogId, '[fsrs_undo] failed to confirm mastery revert for %s: %s');
+      } else if (!wasMasterySynced || svc.getCardConceptTags(result.state.ankiCardId).length === 0) {
+        // Mastery event was never written (either card had no concept tags or rate compensation hadn't written it).
+        // Because the review log is now soft-deleted, future compensation will skip it; clear revert-pending directly.
         confirmMasterySynced(ctx, svc, expectedLogId, '[fsrs_undo] failed to confirm mastery revert for %s: %s');
       } else {
         logger(ctx).debug('[fsrs_undo] mastery revert remains pending until event %s is observed', expectedLogId);

@@ -32,6 +32,10 @@ export interface RetentionInsights {
   distributions: MemoryDistributions;
   studyMsToday: number;
   studyMsWeekAverage: number;
+  /** Non-graduated (New / Learning / Relearning) review actions completed today. */
+  learningReviewsToday: number;
+  /** Total review actions across all states in the fetched statistics window. */
+  totalReviewsInWindow: number;
 }
 
 const PERIODS = ['today', 'yesterday', 'week', 'month', 'year'] as const;
@@ -72,7 +76,24 @@ export function parseRetentionInsights(raw: unknown, todayKey: string): Retentio
     ? (row.dailyReviews ?? row.daily_reviews) as Array<Record<string, unknown>>
     : [];
   const studyByDate = new Map(daily.map((day) => [String(day.date ?? ''), count(day, 'studyMs', 'study_ms')]));
+  const totalByDate = new Map(daily.map((day) => [String(day.date ?? ''), count(day, 'total', 'total')]));
   const recent = [...studyByDate.entries()].sort(([a], [b]) => (a < b ? 1 : -1)).slice(0, 7);
+  const rawLimits = row.dailyLimits ?? row.daily_limits;
+  const limits = rawLimits && typeof rawLimits === 'object' && !Array.isArray(rawLimits)
+    ? rawLimits as Record<string, unknown>
+    : null;
+  const reviewsDoneToday = limits ? count(limits, 'reviewsDoneToday', 'reviews_done_today') : 0;
+  const explicitLearningToday = row.learningReviewsToday ?? row.learning_reviews_today;
+  const learningReviewsToday = typeof explicitLearningToday === 'number' && Number.isFinite(explicitLearningToday)
+    ? Math.max(0, Math.trunc(explicitLearningToday))
+    : Math.max(0, (totalByDate.get(todayKey) ?? 0) - reviewsDoneToday);
+  const rawRatings = row.ratingDistribution ?? row.rating_distribution;
+  const ratingDist = rawRatings && typeof rawRatings === 'object' && !Array.isArray(rawRatings)
+    ? rawRatings as Record<string, unknown>
+    : null;
+  const totalReviewsInWindow = ratingDist
+    ? count(ratingDist, 'total', 'total')
+    : [...totalByDate.values()].reduce((sum, n) => sum + n, 0);
   return {
     ...(row.model === 'fsrs-7' && { model: 'fsrs-7' as const }),
     trueRetention,
@@ -84,6 +105,8 @@ export function parseRetentionInsights(raw: unknown, todayKey: string): Retentio
     },
     studyMsToday: studyByDate.get(todayKey) ?? 0,
     studyMsWeekAverage: recent.length > 0 ? recent.reduce((sum, [, ms]) => sum + ms, 0) / 7 : 0,
+    learningReviewsToday,
+    totalReviewsInWindow,
   };
 }
 
@@ -166,6 +189,14 @@ export const RetentionInsightsPanel: React.FC = () => {
   const v7 = insights.model === 'fsrs-7';
   const rows = PERIODS.map((period) => insights.trueRetention.find((row) => row.period === period))
     .filter((row): row is TrueRetentionRow => Boolean(row));
+  const todayRow = rows.find((row) => row.period === 'today');
+  const todayFormalReviews = todayRow ? todayRow.youngReviews + todayRow.matureReviews : 0;
+  const yearRow = rows.find((row) => row.period === 'year');
+  const totalFormalReviews = yearRow
+    ? yearRow.youngReviews + yearRow.matureReviews
+    : rows.reduce((sum, row) => sum + row.youngReviews + row.matureReviews, 0);
+  const showLearningTodayNote = todayFormalReviews === 0 && insights.learningReviewsToday > 0;
+  const showLearningWindowNote = !showLearningTodayNote && totalFormalReviews === 0 && insights.totalReviewsInWindow > 0;
 
   return (
     <section className="wb-fcx-panel wb-fcx-span-2" data-testid="fsrs-retention-insights">
@@ -182,6 +213,25 @@ export const RetentionInsightsPanel: React.FC = () => {
         </p>
       </div>
       <div className="wb-fcx-panel-body flex flex-col gap-4">
+        {showLearningTodayNote ? (
+          <p className="wb-fcx-note" data-testid="fsrs-retention-learning-note">
+            {t('stats.insights.learningOnlyToday', {
+              count: insights.learningReviewsToday,
+              defaultValue: insights.learningReviewsToday === 1
+                ? '{{count}} new/learning review completed today. True retention only counts graduated Review cards.'
+                : '{{count}} new/learning reviews completed today. True retention only counts graduated Review cards.',
+            })}
+          </p>
+        ) : showLearningWindowNote ? (
+          <p className="wb-fcx-note" data-testid="fsrs-retention-learning-note">
+            {t('stats.insights.learningOnlyWindow', {
+              count: insights.totalReviewsInWindow,
+              defaultValue: insights.totalReviewsInWindow === 1
+                ? '{{count}} new/learning review recorded. True retention only counts graduated Review cards.'
+                : '{{count}} new/learning reviews recorded. True retention only counts graduated Review cards.',
+            })}
+          </p>
+        ) : null}
         <table className="w-full text-xs tabular-nums">
           <thead className="text-muted-foreground">
             <tr>

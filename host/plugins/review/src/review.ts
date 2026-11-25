@@ -16,7 +16,7 @@ import { appError } from './errors.ts';
 import { masteryDueBiasDeltaMs, queueSortKey, MIN_BIASABLE_INTERVAL_MS } from './bias.ts';
 import { logicalDayBoundsMs } from './fsrs-scheduler.ts';
 import {
-  DEFAULT_DECK_ID, MS_PER_DAY, decodeStateBeforeSnapshot, encodeStateBeforeSnapshot, stateBeforeSnapshot, validateSnapshotFor,
+  DEFAULT_DECK_ID, FSRS_PARAMS_VERSION, MS_PER_DAY, decodeStateBeforeSnapshot, encodeStateBeforeSnapshot, stateBeforeSnapshot, validateSnapshotFor,
   type FsrsAgentReviewMutationOutcome, type FsrsAgentReviewStateSnapshot,
   type FsrsBuryResult, type FsrsCardMemoryHistory, type FsrsCardState,
   type FsrsDueCard, type FsrsEnqueuedCard, type FsrsEnqueueResult,
@@ -29,7 +29,7 @@ import {
 } from './fsrs-types.ts';
 import { rfcNanosAfter, utcNow } from './clock.ts';
 import {
-  applyMasteryBiasToOutcome, diagnosticError, interleaveNewCards, scheduleAllRatings, type RatingScheduler,
+  applyMasteryBiasToOutcome, applyMasteryBiasToOutcomes, diagnosticError, interleaveNewCards, scheduleAllRatings, type RatingScheduler,
 } from './review-scheduling.ts';
 import { validateSchedulerConfigUpdate } from './review-config.ts';
 import {
@@ -49,9 +49,27 @@ import { f64Json, readConfigObjectExact, swapRemove } from './config-json.ts';
 import * as repo from '../repository/fsrs.ts';
 
 export {
-  applyMasteryBiasToOutcome, scheduleReviewOutcome,
+  applyMasteryBiasToOutcome, applyMasteryBiasToOutcomes, scheduleReviewOutcome,
   type ScheduleOutcome,
 } from './review-scheduling.ts';
+
+const GENERIC_CONCEPT_CONTAINER_NAMES = new Set([
+  'default',
+  'uncategorized',
+  'unclassified',
+  'ungrouped',
+  '未分类',
+  '未分组',
+  '默认',
+  'chat cards',
+  'manual cards',
+  '手动制卡',
+]);
+
+function isGenericConceptContainerName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return GENERIC_CONCEPT_CONTAINER_NAMES.has(lower) || lower.startsWith('chat cards');
+}
 
 export type FsrsAgentMutationScope =
   | { kind: 'session'; sessionId: string }
@@ -188,7 +206,7 @@ export class FsrsReviewService {
     if (tags.some(tag => rustTrim(tag).length > 0)) return tags;
     const name = repo.cardDocumentName(this.db, ankiCardId);
     const trimmed = name === null ? '' : rustTrim(name);
-    return trimmed.length > 0 && trimmed.toLowerCase() !== 'default' ? [trimmed] : [];
+    return trimmed.length > 0 && !isGenericConceptContainerName(trimmed) ? [trimmed] : [];
   }
 
   getCardTags(ankiCardId: string): string[] {
@@ -275,8 +293,8 @@ export class FsrsReviewService {
       if (sprint !== undefined) config.desiredRetention = sprint.desiredRetention;
       const stateBeforeJson = encodeStateBeforeSnapshot(stateBeforeSnapshot(before));
       const outcomes = this.scheduleRatings(tx, before, nowMs, config);
+      applyMasteryBiasToOutcomes(outcomes, masteryScore, nowMs);
       const outcome = outcomes[rating - 1]!;
-      applyMasteryBiasToOutcome(outcome, masteryScore, nowMs);
       if (sprint !== undefined && outcome.state === 2 && outcome.scheduledDays > 1 && outcome.stability !== null) {
         const compressed = sprint.compressInterval(outcome.scheduledDays, outcome.stability, config.fsrsParams);
         if (compressed < outcome.scheduledDays) {
@@ -293,9 +311,10 @@ export class FsrsReviewService {
         && (outcome.lapses - threshold) % halfThreshold === 0;
       const leechFlag = before.leech || leechTriggered;
       const autoSuspend = leechTriggered && config.leechAction === 'suspend';
+      const rateRfc = now.rfc === before.updatedAt ? rfcNanosAfter(now, 1n) : now.rfc;
 
       const updated = repo.updateStateAfterRate(
-        tx, cardStateId, outcome, nowMs, now.rfc, config.desiredRetention,
+        tx, cardStateId, outcome, nowMs, rateRfc, config.desiredRetention,
         leechFlag, autoSuspend,
         enforceExpectedLastReview ? { expectedLastReviewMs } : null,
       );
@@ -308,13 +327,13 @@ export class FsrsReviewService {
 
       repo.insertReviewLog(
         tx, logId, cardStateId, before.ankiCardId, rating, before, outcome,
-        nowMs, now.rfc, durationMs, stateBeforeJson,
+        nowMs, rateRfc, durationMs, stateBeforeJson,
       );
       const cardState = repo.loadStateById(tx, cardStateId);
       if (cardState === null) throw appError('Database', 'state missing after update');
       const buriedSiblings = repo.burySiblings(
         tx, cardState, config.buryNewSiblings, config.buryReviewSiblings,
-        nowMs, logicalDayBoundsMs(nowMs, config.dayRolloverHour)[1], now.rfc,
+        nowMs, logicalDayBoundsMs(nowMs, config.dayRolloverHour)[1], rateRfc,
       );
       return {
         cardState,
@@ -341,16 +360,14 @@ export class FsrsReviewService {
     if (before.suspended) throw appError('Validation', 'card is suspended');
     const config = repo.loadSchedulerConfig(this.db, before.deckId ?? DEFAULT_DECK_ID, this.warn);
     const outcomes = this.scheduleRatings(this.db, before, nowMs, config);
+    applyMasteryBiasToOutcomes(outcomes, masteryScore, nowMs);
     return {
-      intervals: outcomes.map((outcome, index) => {
-        applyMasteryBiasToOutcome(outcome, masteryScore, nowMs);
-        return {
-          rating: index + 1,
-          scheduledDays: outcome.scheduledDays,
-          dueMs: outcome.dueMs,
-          intervalMs: outcome.dueMs - nowMs,
-        };
-      }),
+      intervals: outcomes.map((outcome, index) => ({
+        rating: index + 1,
+        scheduledDays: outcome.scheduledDays,
+        dueMs: outcome.dueMs,
+        intervalMs: outcome.dueMs - nowMs,
+      })),
     };
   }
 
@@ -401,7 +418,7 @@ export class FsrsReviewService {
     if (rustTrim(expectedLogId).length === 0 || rustTrim(cardStateId).length === 0) {
       throw appError('Validation', 'expectedLogId and cardStateId are required');
     }
-    const now = utcNow().rfc;
+    const nowInstant = utcNow();
     return this.tx('immediate', tx => {
       const current = repo.loadStateById(tx, cardStateId);
       if (current === null) throw appError('NotFound', `fsrs card state not found: ${cardStateId}`);
@@ -427,6 +444,7 @@ export class FsrsReviewService {
         throw appError('Validation', 'review log contains a damaged FSRS snapshot');
       }
       const expectedUpdatedAt = current.updatedAt;
+      const now = nowInstant.rfc === expectedUpdatedAt ? rfcNanosAfter(nowInstant, 1n) : nowInstant.rfc;
       const restored = repo.restoreStateFromSnapshot(
         tx, cardStateId, snapshot, log.reviewMs, expectedUpdatedAt, now,
       );
@@ -669,6 +687,59 @@ export class FsrsReviewService {
     repo.markMasterySynced(this.db, logId, utcNow().rfc);
   }
 
+  isReviewLogActive(logId: string): boolean {
+    const row = this.db.get<{ deletedAt: string | null; revertPending: number }>(
+      'SELECT deleted_at AS deletedAt, mastery_revert_pending AS revertPending FROM fsrs_review_logs WHERE id = ?1',
+      [logId],
+    );
+    return row !== undefined && row.deletedAt === null && Number(row.revertPending) === 0;
+  }
+
+  isReviewLogMasterySynced(logId: string): boolean {
+    const row = this.db.get<{ syncedAt: string | null }>(
+      'SELECT mastery_synced_at AS syncedAt FROM fsrs_review_logs WHERE id = ?1',
+      [logId],
+    );
+    return row !== undefined && row.syncedAt !== null;
+  }
+
+  private captureUndoableLatestLogs(tx: SqlExecutor): Map<string, { logId: string; lastReviewMs: number }> {
+    const rows = tx.all<{ stateId: string; logId: string; lastReviewMs: number }>(`
+      SELECT s.id AS stateId, l.id AS logId, s.last_review_ms AS lastReviewMs
+      FROM fsrs_card_states s
+      INNER JOIN fsrs_review_logs l ON l.card_state_id = s.id AND l.deleted_at IS NULL
+      WHERE s.deleted_at IS NULL
+        AND s.last_review_ms IS NOT NULL
+        AND l.review_ms = s.last_review_ms
+        AND l.updated_at = s.updated_at
+    `);
+    const preserved = new Map<string, { logId: string; lastReviewMs: number }>();
+    for (const row of rows) {
+      preserved.set(String(row.stateId), {
+        logId: String(row.logId),
+        lastReviewMs: Number(row.lastReviewMs),
+      });
+    }
+    return preserved;
+  }
+
+  private reanchorPreservedUndoLogs(
+    tx: SqlExecutor,
+    preserved: ReadonlyMap<string, { logId: string; lastReviewMs: number }>,
+  ): void {
+    for (const [stateId, entry] of preserved) {
+      const current = repo.loadStateById(tx, stateId);
+      if (current === null || current.lastReviewMs !== entry.lastReviewMs) continue;
+      const latestLogId = repo.latestActiveLogId(tx, stateId, this.trialV7);
+      if (latestLogId !== entry.logId) continue;
+      tx.run(
+        `UPDATE fsrs_review_logs SET updated_at = ?1, local_version = COALESCE(local_version, 0) + 1
+         WHERE id = ?2 AND deleted_at IS NULL AND updated_at != ?1`,
+        [current.updatedAt, entry.logId],
+      );
+    }
+  }
+
   // ---------------------------------------------------------------- L16 同事务接口
 
   /** 在调用方事务内删除卡片 FSRS 行；L16 删除 `anki_cards` 前先调用。 */
@@ -758,7 +829,11 @@ export class FsrsReviewService {
       repo.writeConfigJson(tx, DEFAULT_DECK_ID, value, now);
       const config = repo.loadSchedulerConfig(tx, DEFAULT_DECK_ID, this.warn);
       if (JSON.stringify(config.fsrsParams) !== JSON.stringify(before.fsrsParams)) {
-        recomputeMemoryStates(this.rt, tx, config, now);
+        const preserved = this.captureUndoableLatestLogs(tx);
+        const recomputed = recomputeMemoryStates(this.rt, tx, config, now);
+        if (recomputed > 0 && preserved.size > 0) {
+          this.reanchorPreservedUndoLogs(tx, preserved);
+        }
       }
       return config;
     });
@@ -819,12 +894,27 @@ export class FsrsReviewService {
   }
 
   ensureMemoryStatesCurrent(): number {
-    return ensureMemoryStatesCurrent(this.rt);
+    if (repo.memoryStateVersion(this.db) === FSRS_PARAMS_VERSION) return 0;
+    const preserved = this.captureUndoableLatestLogs(this.db);
+    const updated = ensureMemoryStatesCurrent(this.rt);
+    if (updated > 0 && preserved.size > 0) {
+      this.tx('immediate', tx => {
+        this.reanchorPreservedUndoLogs(tx, preserved);
+      });
+    }
+    return updated;
   }
 
   /** Rust `optimize_parameters`；训练/评估由 F7 fsrs 6.6.2 训练器提供。 */
-  optimizeParameters(trainer: FsrsTrainer): Promise<FsrsOptimizeResult> {
-    return optimizeParameters(this.rt, trainer);
+  async optimizeParameters(trainer: FsrsTrainer): Promise<FsrsOptimizeResult> {
+    const preserved = this.captureUndoableLatestLogs(this.db);
+    const result = await optimizeParameters(this.rt, trainer);
+    if (result.recomputedCards > 0 && preserved.size > 0) {
+      this.tx('immediate', tx => {
+        this.reanchorPreservedUndoLogs(tx, preserved);
+      });
+    }
+    return result;
   }
 }
 

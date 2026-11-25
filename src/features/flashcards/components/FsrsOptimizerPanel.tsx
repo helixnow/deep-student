@@ -122,8 +122,8 @@ export const FsrsOptimizerPanel: React.FC<FsrsOptimizerPanelProps> = ({
         >
           <span>
             {weightsExpanded
-              ? t('settings.optimizer.collapseWeights', { defaultValue: '收起 21 维权重明细' })
-              : t('settings.optimizer.expandWeights', { defaultValue: '展开 21 维权重明细' })}
+              ? t('settings.optimizer.collapseWeights', { defaultValue: 'Hide 21-parameter details' })
+              : t('settings.optimizer.expandWeights', { defaultValue: 'Show 21-parameter details' })}
           </span>
           {weightsExpanded ? <CaretUp size={12} /> : <CaretDown size={12} />}
         </button>

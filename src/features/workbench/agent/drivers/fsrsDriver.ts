@@ -478,6 +478,10 @@ export function handleFsrsDomainChange(payload: DomainChangePayload): void {
       const fromPayload = Array.isArray(payload.cardStateIds)
         ? payload.cardStateIds.filter((id): id is string => typeof id === 'string')
         : [];
+      const rawLogIds = (payload as { logIds?: unknown }).logIds;
+      const topLevelLogIds = Array.isArray(rawLogIds)
+        ? rawLogIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+        : [];
       const cardLogPairs: Array<{ cardStateId: string; logId: string }> = [];
       const fromCards = Array.isArray(payload.cards)
         ? payload.cards
@@ -498,9 +502,15 @@ export function handleFsrsDomainChange(payload: DomainChangePayload): void {
             })
             .filter((id): id is string => !!id)
         : [];
+      const options = cardLogPairs.length > 0 || topLevelLogIds.length > 0
+        ? {
+            ...(cardLogPairs.length > 0 ? { cardLogPairs } : {}),
+            ...(topLevelLogIds.length > 0 ? { logIds: topLevelLogIds } : {}),
+          }
+        : undefined;
       useFsrsReviewStore.getState().reconcileExternalRate(
         [...fromPayload, ...fromCards],
-        cardLogPairs.length > 0 ? { cardLogPairs } : undefined,
+        options,
       );
       flashEntityIds(collectDomainEntityIds(payload));
       return;
