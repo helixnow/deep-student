@@ -172,3 +172,68 @@ export function createSearchProgressThrottle(
     },
   };
 }
+
+/**
+ * 单步循环步进搜索命中序号（delta = +1 下一个 / -1 上一个）。
+ * 总数为 0 时返回 0，避免越界或一次点击跳步。
+ */
+export function stepSearchMatchIndex(
+  currentIndex: number,
+  totalMatches: number,
+  delta: 1 | -1,
+): number {
+  if (totalMatches <= 0) return 0;
+  const safeCurrent =
+    Number.isInteger(currentIndex) && currentIndex >= 0 && currentIndex < totalMatches
+      ? currentIndex
+      : 0;
+  return (safeCurrent + delta + totalMatches) % totalMatches;
+}
+
+/**
+ * 渲染单条文本项内的搜索高亮 `<mark>`：
+ * 不把「当前命中」状态烤进 HTML（仅输出 `data-match-page` 与 `data-match-ordinal`），
+ * 使 `customTextRenderer` 脱离 `currentSearchMatch` 依赖——点击「上一个 / 下一个」
+ * 零 TextLayer 重建，仅通过 DOM classList 切换 `.ds-search-mark--current`。
+ */
+export function renderSearchHighlightedText(
+  rawStr: string,
+  pageNumber: number,
+  ranges: readonly SearchItemRange[] | undefined,
+  escapeHtml: (text: string) => string,
+): string {
+  const str = normalizePdfLigatures(rawStr);
+  if (!ranges || ranges.length === 0) return escapeHtml(str);
+  let html = '';
+  let cursor = 0;
+  for (const range of ranges) {
+    // 重叠命中（如 "aa" 在 "aaa" 中）只渲染未覆盖部分
+    const start = Math.max(range.start, cursor);
+    if (range.end <= cursor) continue;
+    if (start > cursor) html += escapeHtml(str.slice(cursor, start));
+    html += `<mark class="ds-search-mark" data-match-page="${pageNumber}" data-match-ordinal="${range.matchOrdinal}">${escapeHtml(str.slice(start, range.end))}</mark>`;
+    cursor = range.end;
+  }
+  html += escapeHtml(str.slice(cursor));
+  return html;
+}
+
+/**
+ * 在视口内命令式切换当前命中高亮样式 `.ds-search-mark--current`（支持跨多个 text item 的同一命中）。
+ * 返回命中的首个 `<mark>` 元素，供平滑居中定位使用；未挂载则返回 null。
+ */
+export function applyActiveSearchMarkInViewport(
+  viewport: ParentNode,
+  match: { pageIndex: number; matchIndex: number } | undefined,
+): Element | null {
+  viewport.querySelectorAll('mark.ds-search-mark--current').forEach((el) => {
+    el.classList.remove('ds-search-mark--current');
+  });
+  if (!match) return null;
+  const selector = `mark.ds-search-mark[data-match-page="${match.pageIndex}"][data-match-ordinal="${match.matchIndex}"]`;
+  const matchedNodes = viewport.querySelectorAll(selector);
+  matchedNodes.forEach((el) => {
+    el.classList.add('ds-search-mark--current');
+  });
+  return matchedNodes[0] ?? null;
+}

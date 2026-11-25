@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PDFPageProxy, RenderTask } from 'pdfjs-dist';
 import {
   CancelablePdfCanvas,
+  PdfViewportPriorityContext,
+  computeCanvasRenderPriorityDelayMs,
   type CancelablePdfCanvasPageContext,
 } from '../CancelablePdfCanvas';
 import {
@@ -245,6 +247,88 @@ describe('CancelablePdfCanvas heavy vector / CAD lifecycle', () => {
     expect(canvas.width).toBeLessThanOrEqual(LARGE_FORMAT_MAX_CANVAS_EDGE_PX);
     expect(canvas.height).toBeLessThanOrEqual(LARGE_FORMAT_MAX_CANVAS_EDGE_PX);
     expect(canvas.width * canvas.height).toBeLessThanOrEqual(LARGE_FORMAT_MAX_CANVAS_PIXELS);
+  });
+
+  it('prioritizes visible viewport page ahead of overscan pages and never hides canvas indefinitely', async () => {
+    expect(computeCanvasRenderPriorityDelayMs(65, 65)).toBe(0);
+    expect(computeCanvasRenderPriorityDelayMs(64, 65)).toBeGreaterThan(0);
+    expect(computeCanvasRenderPriorityDelayMs(63, 65)).toBeGreaterThan(
+      computeCanvasRenderPriorityDelayMs(64, 65),
+    );
+    expect(computeCanvasRenderPriorityDelayMs(10, null)).toBe(0);
+
+    const visibleMock = createMockPage(600, 800);
+    const overscanMock = createMockPage(600, 800);
+    render(
+      <PdfViewportPriorityContext.Provider value={65}>
+        <CancelablePdfCanvas pageContext={makePageContext(overscanMock.page, { pageNumber: 63 })} />
+        <CancelablePdfCanvas pageContext={makePageContext(visibleMock.page, { pageNumber: 65 })} />
+      </PdfViewportPriorityContext.Provider>,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Visible page 65 claims the render queue immediately while overscan page 63 defers briefly
+    expect(visibleMock.tasks).toHaveLength(1);
+    expect(overscanMock.tasks).toHaveLength(0);
+
+    const canvases = document.querySelectorAll('canvas.react-pdf__Page__canvas');
+    expect((canvases[1] as HTMLCanvasElement).style.visibility).not.toBe('hidden');
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+      await Promise.resolve();
+    });
+    expect(overscanMock.tasks).toHaveLength(1);
+  });
+
+  it('preserves previous painted frame via double-buffered swap on zoom re-render', async () => {
+    const drawImage = vi.fn();
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => ({
+      fillRect: vi.fn(),
+      clearRect: vi.fn(),
+      drawImage,
+    })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+
+    const mock = createMockPage(600, 800);
+    const { rerender } = render(
+      <CancelablePdfCanvas pageContext={makePageContext(mock.page, { scale: 1, pageNumber: 12 })} />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      mock.tasks[0]!.resolve();
+      await Promise.resolve();
+    });
+
+    const stage = document.querySelector('.ds-pdf__canvas-stage') as HTMLElement;
+    const canvas = document.querySelector('canvas.react-pdf__Page__canvas') as HTMLCanvasElement;
+    expect(stage.dataset.hasFrame).toBe('true');
+    expect(canvas.style.visibility).toBe('');
+
+    // Zoom to 1.5x -> previous frame stays visible (revalidating overlay, not hidden white frame)
+    rerender(
+      <CancelablePdfCanvas pageContext={makePageContext(mock.page, { scale: 1.5, pageNumber: 12 })} />,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(canvas.style.visibility).toBe('');
+    expect(document.querySelector('.ds-pdf__page-rendering-overlay--revalidating')).not.toBeNull();
+    expect(mock.tasks).toHaveLength(2);
+    // Staging canvas is rendered off-DOM, not directly clobbering visible canvas before resolve
+    expect(mock.tasks[1]!.params.canvas).not.toBe(canvas);
+
+    await act(async () => {
+      mock.tasks[1]!.resolve();
+      await Promise.resolve();
+    });
+    expect(drawImage).toHaveBeenCalledTimes(1);
   });
 });
 

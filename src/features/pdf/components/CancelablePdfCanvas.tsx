@@ -1,7 +1,28 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { PDFPageProxy, RenderTask } from 'pdfjs-dist';
 import { computeSafeRenderDpr } from '../pdfViewportEnhance';
+
+/**
+ * 可见视口优先页上下文：
+ * 供虚拟化多页同时挂载（尤其是深页跳转）时，让当前可见页零延迟先入 PDF.js 渲染队列，
+ * overscan 预渲染页短暂让行，避免被前后预加载页挤占导致目标页长时间空白。
+ * 默认 null（独立挂载或单元测试下保持 0 延迟立即渲染）。
+ */
+export const PdfViewportPriorityContext = createContext<number | null>(null);
+
+const OVERSCAN_PRIORITY_STEP_DELAY_MS = 24;
+const MAX_OVERSCAN_PRIORITY_STEPS = 3;
+
+export function computeCanvasRenderPriorityDelayMs(
+  pageNumber: number,
+  priorityPage: number | null,
+): number {
+  if (priorityPage === null) return 0;
+  const distance = Math.abs(pageNumber - priorityPage);
+  if (distance <= 0) return 0;
+  return Math.min(distance, MAX_OVERSCAN_PRIORITY_STEPS) * OVERSCAN_PRIORITY_STEP_DELAY_MS;
+}
 
 /**
  * Minimal page context shape matching react-pdf's PageRenderProps.
@@ -110,7 +131,12 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
     scale,
   } = pageContext;
 
+  const priorityPage = useContext(PdfViewportPriorityContext);
+  const priorityPageRef = useRef(priorityPage);
+  priorityPageRef.current = priorityPage;
+
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const paintedPageRef = useRef<PDFPageProxy | null>(null);
   const activeTaskRef = useRef<{
     task: RenderTask;
     settled: Promise<void>;
@@ -123,6 +149,7 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
   onRenderErrorRef.current = onRenderError;
 
   const [renderState, setRenderState] = useState<'rendering' | 'ready' | 'error'>('rendering');
+  const [hasPaintedFrame, setHasPaintedFrame] = useState(false);
   const [isSlowRender, setIsSlowRender] = useState(false);
 
   const intrinsicViewport = useMemo(
@@ -167,6 +194,12 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
 
     const gen = ++renderGenRef.current;
     let disposed = false;
+    let priorityTimer: number | null = null;
+    const preservePreviousFrame = paintedPageRef.current === page;
+    if (!preservePreviousFrame) {
+      paintedPageRef.current = null;
+      setHasPaintedFrame(false);
+    }
     setRenderState('rendering');
     setIsSlowRender(false);
 
@@ -198,6 +231,17 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
       }
       if (disposed || renderGenRef.current !== gen) return;
 
+      const delayMs = computeCanvasRenderPriorityDelayMs(pageNumber, priorityPageRef.current);
+      if (delayMs > 0) {
+        await new Promise<void>((resolve) => {
+          priorityTimer = window.setTimeout(() => {
+            priorityTimer = null;
+            resolve();
+          }, delayMs);
+        });
+        if (disposed || renderGenRef.current !== gen) return;
+      }
+
       const currentCanvas = canvasRef.current;
       if (!currentCanvas) return;
 
@@ -213,16 +257,52 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
 
       const pixelWidth = Math.max(1, Math.floor(renderViewport.width));
       const pixelHeight = Math.max(1, Math.floor(renderViewport.height));
-      currentCanvas.width = pixelWidth;
-      currentCanvas.height = pixelHeight;
       currentCanvas.style.width = `${cssWidth}px`;
       currentCanvas.style.height = `${cssHeight}px`;
-      currentCanvas.style.visibility = 'hidden';
+
+      // 当同一页已有已绘制帧（例如缩放 / DPR 切换）且支持 drawImage 时，使用离屏双缓冲画布渲染，
+      // 期间保留上一帧可见画面（CSS 缩放到新尺寸），完成后原子换帧，避免重绘白闪。
+      let stagingCanvas: HTMLCanvasElement | null = null;
+      let targetCanvas: HTMLCanvasElement = currentCanvas;
+      let targetCtx: CanvasRenderingContext2D = ctx;
+      const canDoubleBuffer =
+        preservePreviousFrame &&
+        currentCanvas.width > 0 &&
+        currentCanvas.height > 0 &&
+        typeof ctx.drawImage === 'function' &&
+        typeof document !== 'undefined';
+
+      if (canDoubleBuffer) {
+        const offscreen = document.createElement('canvas');
+        offscreen.width = pixelWidth;
+        offscreen.height = pixelHeight;
+        const offCtx = offscreen.getContext('2d', { alpha: false });
+        if (offCtx) {
+          stagingCanvas = offscreen;
+          targetCanvas = offscreen;
+          targetCtx = offCtx;
+        }
+      }
+
+      if (!stagingCanvas) {
+        currentCanvas.width = pixelWidth;
+        currentCanvas.height = pixelHeight;
+      }
+      // 绝不把 canvas 设为 visibility: hidden 后长期悬空；未首帧绘完前由可见 shimmer 遮罩覆盖
+      currentCanvas.style.visibility = '';
+
+      const releaseStaging = () => {
+        if (stagingCanvas) {
+          stagingCanvas.width = 0;
+          stagingCanvas.height = 0;
+          stagingCanvas = null;
+        }
+      };
 
       const renderContext: Parameters<PDFPageProxy['render']>[0] = {
         annotationMode: renderForms ? ANNOTATION_MODE_ENABLE_FORMS : ANNOTATION_MODE_ENABLE,
-        canvas: currentCanvas,
-        canvasContext: ctx,
+        canvas: targetCanvas,
+        canvasContext: targetCtx,
         viewport: renderViewport,
         ...(canvasBackground ? { background: canvasBackground } : {}),
         ...(pageColors ? { pageColors } : {}),
@@ -232,6 +312,7 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
       try {
         task = page.render(renderContext);
       } catch (err) {
+        releaseStaging();
         window.clearTimeout(slowTimer);
         if (!disposed && renderGenRef.current === gen) {
           setIsSlowRender(false);
@@ -256,12 +337,24 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
         if (activeTaskRef.current === entry) {
           activeTaskRef.current = null;
         }
-        if (disposed || renderGenRef.current !== gen) return;
+        if (disposed || renderGenRef.current !== gen) {
+          releaseStaging();
+          return;
+        }
+        if (stagingCanvas) {
+          currentCanvas.width = pixelWidth;
+          currentCanvas.height = pixelHeight;
+          ctx.drawImage(stagingCanvas, 0, 0);
+          releaseStaging();
+        }
+        paintedPageRef.current = page;
         currentCanvas.style.visibility = '';
+        setHasPaintedFrame(true);
         setIsSlowRender(false);
         setRenderState('ready');
         onRenderSuccessRef.current?.(makePageCallback(page, scale));
       } catch (err) {
+        releaseStaging();
         window.clearTimeout(slowTimer);
         if (activeTaskRef.current === entry) {
           activeTaskRef.current = null;
@@ -281,6 +374,9 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
       disposed = true;
       renderGenRef.current += 1;
       window.clearTimeout(slowTimer);
+      if (priorityTimer !== null) {
+        window.clearTimeout(priorityTimer);
+      }
       cancelEntry(activeTaskRef.current);
     };
   }, [
@@ -289,6 +385,7 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
     cssWidth,
     page,
     pageColors,
+    pageNumber,
     renderForms,
     renderViewport,
     scale,
@@ -310,6 +407,7 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
     <div
       className="ds-pdf__canvas-stage"
       data-render-state={renderState}
+      data-has-frame={hasPaintedFrame ? 'true' : 'false'}
       style={{ width: `${cssWidth}px`, height: `${cssHeight}px` }}
     >
       <canvas
@@ -325,7 +423,7 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
       />
       {renderState === 'rendering' && (
         <div
-          className={`ds-pdf__page-rendering-overlay${isSlowRender ? ' ds-pdf__page-rendering-overlay--slow' : ''}`}
+          className={`ds-pdf__page-rendering-overlay${hasPaintedFrame ? ' ds-pdf__page-rendering-overlay--revalidating' : ''}${isSlowRender ? ' ds-pdf__page-rendering-overlay--slow' : ''}`}
           aria-hidden={!isSlowRender}
         >
           {isSlowRender && (

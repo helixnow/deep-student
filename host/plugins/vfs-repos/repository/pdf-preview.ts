@@ -13,6 +13,10 @@ export interface PdfPreviewConfig {
   maxHeight: number;
   jpegQuality: number;
   compressionEnabled: boolean;
+  /** Per-page rasterization + encode timeout in ms (prevents pathological pages from hanging import). */
+  pageTimeoutMs?: number;
+  /** Total synchronous preview rendering time budget in ms before truncating remaining pages. */
+  totalRenderBudgetMs?: number;
 }
 
 export interface PdfPreviewResult {
@@ -28,6 +32,18 @@ export const DEFAULT_PDF_PREVIEW_CONFIG: PdfPreviewConfig = {
   maxHeight: 1600,
   jpegQuality: 75,
   compressionEnabled: true,
+};
+
+/** Synchronous import preview caps: fast cover/first-N rasterization with bounded latency. */
+export const EAGER_IMPORT_PDF_PREVIEW_MAX_PAGES = 3;
+export const DEFAULT_PDF_PAGE_RENDER_TIMEOUT_MS = 10_000;
+export const DEFAULT_PDF_TOTAL_RENDER_BUDGET_MS = 15_000;
+
+export const EAGER_IMPORT_PDF_PREVIEW_CONFIG: PdfPreviewConfig = {
+  ...DEFAULT_PDF_PREVIEW_CONFIG,
+  maxPages: EAGER_IMPORT_PDF_PREVIEW_MAX_PAGES,
+  pageTimeoutMs: DEFAULT_PDF_PAGE_RENDER_TIMEOUT_MS,
+  totalRenderBudgetMs: DEFAULT_PDF_TOTAL_RENDER_BUDGET_MS,
 };
 
 /**
@@ -85,14 +101,38 @@ function trimPreservingFormFeed(text: string): string {
   return text.slice(start, end);
 }
 
-async function extractPdfText(bytes: Uint8Array, deps: PdfPreviewDependencies): Promise<string | null> {
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return promise;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+async function extractPdfText(
+  bytes: Uint8Array,
+  deps: PdfPreviewDependencies,
+  timeoutMs: number,
+): Promise<string | null> {
   const pdfium = deps.pdfium();
   if (pdfium === null) {
     logWarn('[PDF-Preview] Failed to load pdfium for text extraction: nativePdfium is not available');
     return null;
   }
   try {
-    const text = trimPreservingFormFeed(await pdfium.extractText(bytes));
+    const rawText = await withTimeout(pdfium.extractText(bytes), timeoutMs, 'PDF text extraction');
+    const text = trimPreservingFormFeed(rawText);
     if (text === '') {
       logDebug('[PDF-Preview] Extracted empty text from PDF');
       return null;
@@ -172,11 +212,28 @@ async function renderPdfPages(
     const renderPages = Math.min(totalPages, config.maxPages, 0xffff);
     logInfo(`[PDF-Preview] Rendering PDF: ${totalPages} pages (max: ${config.maxPages})`);
 
+    const pageTimeoutMs = config.pageTimeoutMs ?? DEFAULT_PDF_PAGE_RENDER_TIMEOUT_MS;
+    const totalBudgetMs = config.totalRenderBudgetMs ?? DEFAULT_PDF_TOTAL_RENDER_BUDGET_MS;
+    const startedAt = Date.now();
+    let budgetExceeded = false;
+
     const pages: PdfPagePreview[] = [];
     for (let pageIndex = 0; pageIndex < renderPages; pageIndex += 1) {
+      if (pageIndex > 0 && Number.isFinite(totalBudgetMs) && totalBudgetMs > 0
+        && Date.now() - startedAt >= totalBudgetMs) {
+        budgetExceeded = true;
+        logWarn(`[PDF-Preview] Total render budget (${totalBudgetMs}ms) reached after ${pages.length} pages; deferring remaining pages`);
+        break;
+      }
       progress?.(pageIndex + 1, renderPages);
       try {
-        pages.push(await renderSinglePage(conn, blobsDir, document, pageIndex, config, deps));
+        pages.push(
+          await withTimeout(
+            renderSinglePage(conn, blobsDir, document, pageIndex, config, deps),
+            pageTimeoutMs,
+            `PDF preview page ${pageIndex}`,
+          ),
+        );
       } catch (error) {
         logWarn(`[PDF-Preview] Failed to render page ${pageIndex}:`, error);
       }
@@ -185,9 +242,9 @@ async function renderPdfPages(
       throw new Error(`PDF 预渲染失败：${renderPages} 页全部渲染失败`);
     }
 
-    const isTruncated = totalPages > config.maxPages;
+    const isTruncated = totalPages > config.maxPages || budgetExceeded;
     if (isTruncated) {
-      logWarn(`[PDF-Preview] PDF truncated: total ${totalPages} pages, only rendered first ${config.maxPages} pages`);
+      logWarn(`[PDF-Preview] PDF truncated: total ${totalPages} pages, rendered ${pages.length} pages (max: ${config.maxPages})`);
     }
     const preview: PdfPreviewJson = {
       pages,
@@ -227,7 +284,8 @@ export async function renderPdfPreview(
     }
   }
 
-  const extractedText = await extractPdfText(pdfBytes, deps);
+  const extractTimeoutMs = config.totalRenderBudgetMs ?? DEFAULT_PDF_TOTAL_RENDER_BUDGET_MS;
+  const extractedText = await extractPdfText(pdfBytes, deps, extractTimeoutMs);
   let previewJson: PdfPreviewJson | null = null;
   let pageCount = 0;
   try {

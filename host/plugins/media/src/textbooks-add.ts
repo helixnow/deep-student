@@ -25,14 +25,32 @@ import {
 import type { Textbook, TextbookImportProgress } from '../../../../contracts/ipc/generated/L18-media-docs.ts';
 import type { VfsDatabase } from '../../vfs/api.ts';
 import type { PdfProcessingService } from '../../vfs-index/api.ts';
-import type {
-  PdfPreviewResult, PdfRenderProgress, VfsFolderItem, VfsReposService, VfsTextbook,
+import {
+  DEFAULT_PDF_PREVIEW_CONFIG,
+  type PdfPreviewConfig,
+  type PdfPreviewResult,
+  type PdfRenderProgress,
+  type VfsFolderItem,
+  type VfsReposService,
+  type VfsTextbook,
 } from '../../vfs-repos/api.ts';
 import type { DocsService } from '../api.ts';
 import { MAX_TEXTBOOK_IMPORT_BYTES, toTextbook } from './textbooks.ts';
 import { utf8ByteLength } from '../../../platform/util/portable.ts';
 
 export const TEXTBOOK_IMPORT_PROGRESS_EVENT = 'textbook-import-progress';
+
+/**
+ * 同步导入阶段仅预渲染封面及前几页缩略图，保留完整页数与全文文本抽取，
+ * 避免 48p+ / 大体积 PDF 在 `textbooks_add` 同步 RPC 内长时间卡在 `Importing 0 / 1`。
+ */
+export const TEXTBOOK_EAGER_PREVIEW_MAX_PAGES = 3;
+export const TEXTBOOK_EAGER_PREVIEW_TIMEOUT_MS = 25_000;
+
+export const TEXTBOOK_EAGER_PDF_PREVIEW_CONFIG: PdfPreviewConfig = {
+  ...DEFAULT_PDF_PREVIEW_CONFIG,
+  maxPages: TEXTBOOK_EAGER_PREVIEW_MAX_PAGES,
+};
 
 /** `textbooks_add` 白名单（:206-209，PDF 单独分支）。 */
 const SUPPORTED_EXTENSIONS: readonly string[] = [
@@ -44,12 +62,15 @@ export interface TextbooksAddDeps {
   /** `state.vfs_db`；undefined = `AppError::configuration("VFS database not configured")`。 */
   database(): VfsDatabase | undefined;
   /** L11 仓储；index.ts 的 `vfsRepo()` 缺失时抛 configuration CommandError。 */
-  repos(): Pick<VfsReposService, 'textbooks' | 'blobs' | 'folders'>;
+  repos(): Pick<VfsReposService, 'textbooks' | 'blobs' | 'folders'> &
+    Partial<Pick<VfsReposService, 'attachmentProcessing'>>;
   docs: Pick<DocsService,
     'checkPdfEncryptionBytes' | 'extractPagedTextFromBytes' | 'extractTextFromBytes' | 'isPlainTextCodeExtension'>;
   /** `render_pdf_preview_with_progress(conn, blobs_dir, bytes, &PdfPreviewConfig::default(), cb)`。 */
   renderPdfPreview(conn: SqlExecutor, blobsDir: string, bytes: Uint8Array,
     progress: PdfRenderProgress): Promise<PdfPreviewResult>;
+  /** 同步导入 PDF 预览总超时（ms，默认 TEXTBOOK_EAGER_PREVIEW_TIMEOUT_MS；测试可覆盖）。 */
+  pdfPreviewTimeoutMs?: number;
   /** `State<Arc<PdfProcessingService>>`（L12 `vfsIndex.pdf`）。 */
   pdfProcessing(): PdfProcessingService | undefined;
   /** `window.emit(event, payload)`：Tauri 2 全局广播（`backendEvents.emit`）。 */
@@ -453,11 +474,30 @@ export async function textbooksAdd(deps: TextbooksAddDeps, args: TextbooksAddArg
   return out;
 }
 
+async function withRenderTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return promise;
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`PDF preview timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /** `spawn_blocking` 闭包（:396-584）：读取 → PDF 校验 → blob → 渲染/解析。 */
 async function runHeavy(
   deps: TextbooksAddDeps,
   database: VfsDatabase,
-  repos: Pick<VfsReposService, 'blobs'>,
+  repos: Pick<VfsReposService, 'blobs'> & Partial<Pick<VfsReposService, 'attachmentProcessing'>>,
   src: string,
   fileName: string,
   extension: string,
@@ -509,7 +549,19 @@ async function runHeavy(
       }
     };
     try {
-      const result = await deps.renderPdfPreview(conn, blobsDir, fileBytes, progressCallback);
+      const renderPromise = repos.attachmentProcessing
+        ? repos.attachmentProcessing.renderPdf(
+          conn,
+          blobsDir,
+          fileBytes,
+          TEXTBOOK_EAGER_PDF_PREVIEW_CONFIG,
+          progressCallback,
+        )
+        : deps.renderPdfPreview(conn, blobsDir, fileBytes, progressCallback);
+      const result = await withRenderTimeout(
+        renderPromise,
+        deps.pdfPreviewTimeoutMs ?? TEXTBOOK_EAGER_PREVIEW_TIMEOUT_MS,
+      );
       const previewStr = result.previewJson === null ? null : JSON.stringify(result.previewJson);
       log.info(`[Textbooks] PDF preview rendered: ${result.pageCount} pages, text_len=${
         result.extractedText === null ? 0 : utf8Len(result.extractedText)}, has_preview=${previewStr !== null}`);

@@ -333,6 +333,88 @@ function computeExportRasterScale(
   return Math.max(0.25, Math.min(TARGET_RASTER_SCALE, edgeCap, areaCap));
 }
 
+function clampUnit(value: number): number {
+  return Math.max(0, Math.min(1, value));
+}
+
+function clampToRange(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+export interface PdfViewportGeometryLike {
+  width: number;
+  height: number;
+  viewBox?: readonly number[];
+  convertToPdfPoint(x: number, y: number): number[];
+}
+
+/**
+ * 将单个高亮矩形映射到 PDF 用户空间 QuadPoints（视觉顺序 [TL, TR, BL, BR]）：
+ * - `coordVersion === 2` 的归一化坐标先夹逼到 [0, 1]，防止选区子像素溢出导致批注越出 CropBox/MediaBox；
+ * - 通过 `viewport.convertToPdfPoint` 精确还原 `/Rotate 0/90/180/270` 与非零 `/CropBox`/`/MediaBox` 偏移；
+ * - 若 viewport 提供 `viewBox`，将转换后的 PDF 坐标钳位在有效可视页面盒内，杜绝越界漂移。
+ */
+export function mapHighlightRectToPdfQuad(
+  rect: { x: number; y: number; width: number; height: number },
+  viewport: PdfViewportGeometryLike,
+  coordVersion?: number,
+): Array<[number, number]> | null {
+  const { x, y, width, height } = rect;
+  if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+    return null;
+  }
+
+  let vx0: number;
+  let vx1: number;
+  let vy0: number;
+  let vy1: number;
+  if (coordVersion === 2) {
+    const nx0 = clampUnit(x);
+    const nx1 = clampUnit(x + width);
+    const ny0 = clampUnit(y);
+    const ny1 = clampUnit(y + height);
+    if (nx1 <= nx0 || ny1 <= ny0) return null;
+    vx0 = nx0 * viewport.width;
+    vx1 = nx1 * viewport.width;
+    vy0 = ny0 * viewport.height;
+    vy1 = ny1 * viewport.height;
+  } else {
+    vx0 = x;
+    vx1 = x + width;
+    vy0 = y;
+    vy1 = y + height;
+  }
+
+  const rawPoints: Array<[number, number]> = [
+    viewport.convertToPdfPoint(vx0, vy0) as [number, number],
+    viewport.convertToPdfPoint(vx1, vy0) as [number, number],
+    viewport.convertToPdfPoint(vx0, vy1) as [number, number],
+    viewport.convertToPdfPoint(vx1, vy1) as [number, number],
+  ];
+
+  if (
+    rawPoints.some(
+      (pt) => !Array.isArray(pt) || pt.length < 2 || !Number.isFinite(pt[0]) || !Number.isFinite(pt[1]),
+    )
+  ) {
+    return null;
+  }
+
+  const viewBox = viewport.viewBox;
+  if (Array.isArray(viewBox) && viewBox.length === 4 && viewBox.every(Number.isFinite)) {
+    const minBoxX = Math.min(viewBox[0]!, viewBox[2]!);
+    const maxBoxX = Math.max(viewBox[0]!, viewBox[2]!);
+    const minBoxY = Math.min(viewBox[1]!, viewBox[3]!);
+    const maxBoxY = Math.max(viewBox[1]!, viewBox[3]!);
+    return rawPoints.map(([px, py]) => [
+      clampToRange(px, minBoxX, maxBoxX),
+      clampToRange(py, minBoxY, maxBoxY),
+    ]);
+  }
+
+  return rawPoints;
+}
+
 function addHighlightAnnotation(
   pdf: PDFDocument,
   pageIndexZeroBased: number,
@@ -455,12 +537,17 @@ async function rebuildEncryptedPdfWithAnnotations(
     // Pages in cleanPdf are upright [0, 0, pageW, pageH] matching baseViewport orientation
     const corners = highlight.rects.flatMap(({ x, y, width, height }) => {
       if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return [];
-      const w = highlight.coordVersion === 2 ? size.width : 1;
-      const h = highlight.coordVersion === 2 ? size.height : 1;
-      const x1 = x * w;
-      const x2 = (x + width) * w;
-      const yTop = size.height - y * h;
-      const yBottom = size.height - (y + height) * h;
+      const x1 = highlight.coordVersion === 2 ? clampUnit(x) * size.width : x;
+      const x2 = highlight.coordVersion === 2 ? clampUnit(x + width) * size.width : x + width;
+      const yTop =
+        highlight.coordVersion === 2
+          ? size.height - clampUnit(y) * size.height
+          : size.height - y;
+      const yBottom =
+        highlight.coordVersion === 2
+          ? size.height - clampUnit(y + height) * size.height
+          : size.height - (y + height);
+      if (x2 <= x1 || yTop <= yBottom) return [];
       const quad: Array<[number, number]> = [
         [x1, yTop],
         [x2, yTop],
@@ -520,17 +607,9 @@ export async function createAnnotatedPdf(
       viewports.set(n, source);
     }
     const viewport = source.getViewport({ scale: 1 });
-    const corners = highlight.rects.flatMap(({ x, y, width, height }) => {
-      if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return [];
-      const w = highlight.coordVersion === 2 ? viewport.width : 1;
-      const h = highlight.coordVersion === 2 ? viewport.height : 1;
-      const points: Array<[number, number]> = [
-        viewport.convertToPdfPoint(x * w, y * h) as [number, number],
-        viewport.convertToPdfPoint((x + width) * w, y * h) as [number, number],
-        viewport.convertToPdfPoint(x * w, (y + height) * h) as [number, number],
-        viewport.convertToPdfPoint((x + width) * w, (y + height) * h) as [number, number],
-      ];
-      return [points];
+    const corners = highlight.rects.flatMap((rect) => {
+      const quad = mapHighlightRectToPdfQuad(rect, viewport, highlight.coordVersion);
+      return quad ? [quad] : [];
     });
     if (!corners.length) continue;
     addHighlightAnnotation(pdf, n - 1, highlight, corners.flat());

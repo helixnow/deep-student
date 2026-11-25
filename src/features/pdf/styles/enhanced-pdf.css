@@ -506,6 +506,50 @@
   color: hsl(var(--foreground));
 }
 
+.ds-pdf__scanned-banner-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.ds-pdf__highlight-mode-bar {
+  position: relative;
+  z-index: 27;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 12px;
+  font-size: 12px;
+  background: color-mix(in srgb, hsl(var(--primary)) 8%, hsl(var(--background)) 92%);
+  border-bottom: 1px solid hsl(var(--primary) / 0.28);
+  color: hsl(var(--foreground));
+}
+
+.ds-pdf__highlight-mode-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: hsl(var(--primary));
+  font-weight: 500;
+}
+
+.ds-pdf__highlight-mode-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.ds-pdf__highlight-mode-swatches {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 /* ============================================================================
    侧边栏
    ============================================================================ */
@@ -3000,12 +3044,18 @@
   background:
     linear-gradient(
       100deg,
-      hsl(var(--muted) / 22%) 40%,
-      hsl(var(--muted) / 48%) 50%,
-      hsl(var(--muted) / 22%) 60%
+      hsl(var(--muted) / 68%) 38%,
+      hsl(var(--muted) / 92%) 50%,
+      hsl(var(--muted) / 68%) 62%
     );
   background-size: 200% 100%;
   animation: ds-pdf-shimmer 1.4s ease-in-out infinite;
+}
+
+/* 同一页已有上一帧画面时的重绘态：仅展示慢页徽章，不盖白遮罩，保持旧帧可见 */
+.ds-pdf__page-rendering-overlay--revalidating {
+  background: transparent;
+  animation: none;
 }
 
 .ds-pdf__content.dark-reading .ds-pdf__page-rendering-overlay {
@@ -3017,6 +3067,11 @@
       hsl(220deg 13% 16%) 60%
     );
   background-size: 200% 100%;
+}
+
+.ds-pdf__content.dark-reading .ds-pdf__page-rendering-overlay--revalidating {
+  background: transparent;
+  animation: none;
 }
 
 .ds-pdf__page-rendering-badge {
@@ -3133,7 +3188,8 @@
     padding: 10px;
   }
 
-  .ds-pdf__scanned-banner {
+  .ds-pdf__scanned-banner,
+  .ds-pdf__highlight-mode-bar {
     padding: 5px 8px;
     gap: 6px;
     font-size: 11.5px;

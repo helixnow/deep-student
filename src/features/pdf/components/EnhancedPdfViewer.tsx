@@ -13,7 +13,15 @@ import {
   getPrevNavigationPage,
   resolvePageScrollKeyAction,
 } from '../pdfPageNavigation';
-import { collectPageSearchMatches, normalizePdfLigatures, type SearchItemRange } from '../pdfSearch';
+import {
+  applyActiveSearchMarkInViewport,
+  collectPageSearchMatches,
+  createSearchProgressThrottle,
+  normalizePdfLigatures,
+  renderSearchHighlightedText,
+  stepSearchMatchIndex,
+  type SearchItemRange,
+} from '../pdfSearch';
 import { loadPdfViewState, savePdfViewState, type PdfViewState } from '../pdfViewState';
 import {
   resolveSelectionMenuFrame,
@@ -54,7 +62,7 @@ import {
   isLargeFormatPdfPage,
   type SavedColumnZoomBaseline,
 } from '../pdfViewportEnhance';
-import { renderCancelablePdfCanvas } from './CancelablePdfCanvas';
+import { PdfViewportPriorityContext, renderCancelablePdfCanvas } from './CancelablePdfCanvas';
 import type { PinnedPdfRegion } from './PdfPinnedRegionsOverlay';
 import type { PinRegionPayload } from './PdfRegionCapture';
 import { resourceIdFromDstuPath } from '../pdfAnnotationList';
@@ -99,6 +107,7 @@ import {
   BookOpenText,
   Copy,
   Crop,
+  DownloadSimple,
   NotePencil,
   Quotes,
   Sparkle,
@@ -112,7 +121,7 @@ import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import '../styles/enhanced-pdf.css';
 import '../styles/pdf-viewer.css';
-import { PDF_OPTIONS } from '@/utils/pdfConfig';
+import { createPdfDocumentOptions } from '@/utils/pdfConfig';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { classifyPdfLoadError } from '@/features/learning-hub/apps/views/pdfLoadErrors';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -273,6 +282,71 @@ const escapeHtml = (text: string) =>
 /** 默认文本层渲染：只做私有区连字还原（fi / fl），保证划词、复制、引用拿到正确文字 */
 const ligatureTextRenderer = (props: { str: string }) =>
   escapeHtml(normalizePdfLigatures(props.str));
+
+type PageTextRenderer = (props: { pageNumber: number; itemIndex: number; str: string }) => string;
+
+/**
+ * 按页内命中映射缓存 customTextRenderer：
+ * - 每页仅在自己所属分块内构造一次 Map，后续扫描其他页或点击 Next/Prev
+ *   都不改变已挂载页的函数引用 -> 零 PDF.js TextLayer 重建；
+ * - 当前命中高亮 .ds-search-mark--current 由 useEffect 命令式切换。
+ */
+const pageSearchRendererCache = new WeakMap<Map<number, SearchItemRange[]>, PageTextRenderer>();
+
+export function getPageSearchTextRenderer(
+  pageRanges: Map<number, SearchItemRange[]>,
+): PageTextRenderer {
+  let renderer = pageSearchRendererCache.get(pageRanges);
+  if (!renderer) {
+    renderer = (props) =>
+      renderSearchHighlightedText(
+        props.str,
+        props.pageNumber,
+        pageRanges.get(props.itemIndex),
+        escapeHtml,
+      );
+    pageSearchRendererCache.set(pageRanges, renderer);
+  }
+  return renderer;
+}
+
+/** 跨页程序化跳转稳定锁：防止深页跳页期间虚拟列表测高回弹把 currentPage 覆写漂移 */
+export interface ProgrammaticJumpLock {
+  token: number;
+  targetPage: number;
+  targetRow: number;
+  expiresAt: number;
+  lastAlignedScrollTop: number | null;
+  stableFrames: number;
+  attempts: number;
+}
+
+export const PROGRAMMATIC_JUMP_LOCK_TTL_MS = 900;
+
+export function createProgrammaticJumpLock(
+  token: number,
+  targetPage: number,
+  targetRow: number,
+  now: number,
+  ttlMs: number = PROGRAMMATIC_JUMP_LOCK_TTL_MS,
+): ProgrammaticJumpLock {
+  return {
+    token,
+    targetPage,
+    targetRow,
+    expiresAt: now + ttlMs,
+    lastAlignedScrollTop: null,
+    stableFrames: 0,
+    attempts: 0,
+  };
+}
+
+export function shouldSuppressScrollPageSync(
+  lock: ProgrammaticJumpLock | null,
+  now: number,
+): boolean {
+  return lock !== null && now < lock.expiresAt;
+}
 
 /** 快捷键提示使用平台习惯的修饰键符号 */
 const MOD_KEY_LABEL =
@@ -461,10 +535,14 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 批注模式运行时开关（会话级，不持久化）：移动端进入批注模式时临时开启文本层
   const annotationMode = usePdfSettingsStore((s) => s.annotationMode);
   const setAnnotationMode = usePdfSettingsStore((s) => s.setAnnotationMode);
+  // 显式高亮模式（More -> Highlight）：保持文本层开启并展示颜色工具条，划词即一键高亮
+  const [highlightToolActive, setHighlightToolActive] = useState<boolean>(false);
+  const [highlightToolColor, setHighlightToolColor] = useState<string>(HIGHLIGHT_COLORS.yellow);
 
-  // 合并 props 与设置：props 优先（外部覆盖）→ 运行时批注模式 → 持久化默认值
+  // 合并 props 与设置：显式高亮模式强制保持可选 → props 优先 → 运行时批注模式 → 持久化默认值
   const resolvedEnableTextSelection =
-    enableTextSelection ?? annotationMode ?? pdfSettings.enableTextLayerByDefault;
+    highlightToolActive ||
+    (enableTextSelection ?? annotationMode ?? pdfSettings.enableTextLayerByDefault);
   const resolvedViewMode = pdfSettings.defaultViewMode;
 
   // 高亮批注是否有落盘/回调通道。独立阅读页（PdfReader）打开的是任意磁盘文件，
@@ -516,7 +594,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const [numPages, setNumPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(resolvedInitialPageZeroBased + 1);
   const [isScannedNoTextPdf, setIsScannedNoTextPdf] = useState<boolean>(false);
+  const [scannedBannerDismissed, setScannedBannerDismissed] = useState<boolean>(false);
   const [ocrInlineState, setOcrInlineState] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const pdfDocumentOptions = useMemo(() => createPdfDocumentOptions(), []);
 
   // ========== 缩放模式解析 ==========
   // 优先级：每文档持久化视图状态（localStorage，按 resourcePath）→ props.defaultScale
@@ -568,8 +648,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const zoomCommitTimerRef = useRef<number | null>(null);
   // 首页在 scale=1 下的 viewport 尺寸（PDF pt ≈ CSS px），fit 模式计算基准
   const [basePageSize, setBasePageSize] = useState<{ width: number; height: number } | null>(null);
-  // 每页真实宽高比缓存（pageNumber -> height/width，未旋转），供虚拟行高估算
+  // 每页真实宽高比缓存（pageNumber -> height/width，含页面固有旋转方向），供虚拟行高估算
   const pageRatiosRef = useRef<Map<number, number>>(new Map());
+  // 每页 PDF 固有旋转角度（page.rotate: 0/90/180/270），与用户手动旋转叠加时使用
+  const pageRotationsRef = useRef<Map<number, number>>(new Map());
   const [pageInputValue, setPageInputValue] = useState<string>('');
   const [containerWidth, setContainerWidth] = useState<number>(600);
   const [containerHeight, setContainerHeight] = useState<number>(800);
@@ -723,13 +805,24 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const captureResizeAnchorRef = useRef<(() => void) | null>(null);
   const zoomMenuRef = useRef<HTMLDivElement>(null);
   const pdfDocRef = useRef<PDFDocumentProxy | null>(null);
+  const docLoadSeqRef = useRef(0);
+  const outlineIdleHandleRef = useRef<number | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const scrollToPageRef = useRef<(pageNum: number) => void>(() => {});
+  const programmaticJumpRef = useRef<ProgrammaticJumpLock | null>(null);
+  const programmaticJumpTokenRef = useRef(0);
+  const jumpSettleRafRef = useRef<number | null>(null);
+  const jumpSettleTimerRef = useRef<number | null>(null);
   const scrollIdleTimerRef = useRef<number | null>(null);
   const isScrollingRef = useRef(false);
   const searchTaskRef = useRef<{ id: number; cancelled: boolean } | null>(null);
   const searchIdleHandleRef = useRef<number | null>(null);
   const searchDebounceRef = useRef<number | null>(null);
+  const searchResultsRef = useRef<SearchMatch[]>(searchResults);
+  searchResultsRef.current = searchResults;
+  const currentSearchIndexRef = useRef<number>(currentSearchIndex);
+  currentSearchIndexRef.current = currentSearchIndex;
+  const lastCommittedSearchQueryRef = useRef<string>('');
   
   // 高亮持久化相关 refs
   const annotationSession = useMemo(() => ({
@@ -749,15 +842,59 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   } = annotationSession;
   annotationSession.currentHighlights = JSON.stringify(highlights);
 
-  // Cleanup PDFDocumentProxy on unmount to avoid memory leak
+  const scheduleIdle = useCallback((cb: () => void) => {
+    if (typeof (window as any).requestIdleCallback === 'function') {
+      return (window as any).requestIdleCallback(cb, { timeout: 200 });
+    }
+    return window.setTimeout(cb, 16);
+  }, []);
+
+  const cancelIdle = useCallback((id: number) => {
+    if (typeof (window as any).cancelIdleCallback === 'function') {
+      (window as any).cancelIdleCallback(id);
+    } else {
+      window.clearTimeout(id);
+    }
+  }, []);
+
+  const cancelOutlineResolution = useCallback(() => {
+    if (outlineIdleHandleRef.current !== null) {
+      cancelIdle(outlineIdleHandleRef.current);
+      outlineIdleHandleRef.current = null;
+    }
+  }, [cancelIdle]);
+
+  const releaseProgrammaticJumpLock = useCallback(() => {
+    programmaticJumpRef.current = null;
+    if (jumpSettleRafRef.current !== null) {
+      cancelAnimationFrame(jumpSettleRafRef.current);
+      jumpSettleRafRef.current = null;
+    }
+    if (jumpSettleTimerRef.current !== null) {
+      window.clearTimeout(jumpSettleTimerRef.current);
+      jumpSettleTimerRef.current = null;
+    }
+  }, []);
+
+  // Cleanup PDFDocumentProxy and pending idle/jump handles on unmount
   useEffect(() => {
     return () => {
+      docLoadSeqRef.current += 1;
+      cancelOutlineResolution();
+      releaseProgrammaticJumpLock();
+      if (searchTaskRef.current) {
+        searchTaskRef.current.cancelled = true;
+      }
+      if (searchIdleHandleRef.current !== null) {
+        cancelIdle(searchIdleHandleRef.current);
+        searchIdleHandleRef.current = null;
+      }
       if (pdfDocRef.current) {
         pdfDocRef.current.destroy();
         pdfDocRef.current = null;
       }
     };
-  }, []);
+  }, [cancelIdle, cancelOutlineResolution, releaseProgrammaticJumpLock]);
 
   // Observe the reader itself; a split panel can be narrow even on a wide desktop.
   useEffect(() => {
@@ -815,6 +952,43 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const fileSourceKey = file;
   const resizeAnchorRef = useRef<{ source: typeof fileSourceKey; index: number; fraction: number } | null>(null);
   const prevFileSourceKeyRef = useRef(fileSourceKey);
+  // 切换文档源或 resourcePath 时立即清理扫描件状态条、搜索任务、高亮模式与跳转锁，
+  // 防止前一篇扫描 PDF 的提示条 / OCR 状态 / 搜索进度泄漏到新文档。
+  // 用 useLayoutEffect 且跳过首次挂载，确保总在子组件 <Document> 的新文档加载 effect 之前执行，
+  // 不会误杀首帧同步完成的 onLoadSuccess 探测。
+  const prevDocResetKeyRef = useRef<{ fileSourceKey: typeof fileSourceKey; resourcePath: string | undefined }>({
+    fileSourceKey,
+    resourcePath,
+  });
+  useLayoutEffect(() => {
+    const prev = prevDocResetKeyRef.current;
+    if (prev.fileSourceKey === fileSourceKey && prev.resourcePath === resourcePath) {
+      return;
+    }
+    prevDocResetKeyRef.current = { fileSourceKey, resourcePath };
+    docLoadSeqRef.current += 1;
+    cancelOutlineResolution();
+    releaseProgrammaticJumpLock();
+    setIsScannedNoTextPdf(false);
+    setScannedBannerDismissed(false);
+    setOcrInlineState('idle');
+    setHighlightToolActive(false);
+    if (searchTaskRef.current) {
+      searchTaskRef.current.cancelled = true;
+    }
+    if (searchIdleHandleRef.current !== null) {
+      cancelIdle(searchIdleHandleRef.current);
+      searchIdleHandleRef.current = null;
+    }
+    lastCommittedSearchQueryRef.current = '';
+    setSearchResults([]);
+    setSearchRangesByPage(new Map());
+    currentSearchIndexRef.current = 0;
+    setCurrentSearchIndex(0);
+    setIsSearching(false);
+    setSearchProgress(null);
+  }, [fileSourceKey, resourcePath, cancelIdle, cancelOutlineResolution, releaseProgrammaticJumpLock]);
+
   useEffect(() => {
     if (prevFileSourceKeyRef.current === fileSourceKey) return;
     prevFileSourceKeyRef.current = fileSourceKey;
@@ -825,8 +999,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setLoadProgress(null);
     setLoadError(null);
     setLoadErrorHint(null);
-    // 新文档：重置尺寸缓存 / 大纲 / 搜索高亮 / 密码状态
+    // 新文档：重置尺寸/旋转缓存 / 大纲 / 搜索高亮 / 密码状态
     pageRatiosRef.current.clear();
+    pageRotationsRef.current.clear();
     setBasePageSize(null);
     setOutline(null);
     setOutlinePages(new Map());
@@ -1034,8 +1209,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 获取 PDF 文档对象用于目录和搜索
   const handleDocumentLoadSuccessWithDoc = useCallback((pdf: PDFDocumentProxy) => {
     pdfDocRef.current = pdf;
+    const loadSeq = ++docLoadSeqRef.current;
+    cancelOutlineResolution();
     setIsScannedNoTextPdf(false);
+    setScannedBannerDismissed(false);
     setOcrInlineState('idle');
+
+    const isStaleDoc = () => pdfDocRef.current !== pdf || docLoadSeqRef.current !== loadSeq;
 
     // 抽样探测前 3 页是否存在原生文字层，及时向用户暴露「扫描件 / 无文字层」真实状态
     const sampleCount = Math.min(pdf.numPages, 3);
@@ -1043,8 +1223,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       try {
         let charCount = 0;
         for (let p = 1; p <= sampleCount; p++) {
-          if (pdfDocRef.current !== pdf) return;
+          if (isStaleDoc()) return;
           const page = await pdf.getPage(p);
+          if (isStaleDoc()) return;
           const content = await page.getTextContent();
           const items = content.items as Array<{ str?: string }>;
           for (const item of items) {
@@ -1053,7 +1234,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           }
           if (charCount >= 8) break;
         }
-        if (pdfDocRef.current === pdf) {
+        if (!isStaleDoc()) {
           setIsScannedNoTextPdf(sampleCount > 0 && charCount === 0);
         }
       } catch {
@@ -1061,9 +1242,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       }
     })();
 
-    // 首页基准尺寸（scale=1 的 viewport），供 fit 模式与行高估算使用
+    // 首页基准尺寸（scale=1 的 viewport，含页面固有旋转），供 fit 模式与行高估算使用
     pdf.getPage(1).then((page) => {
-      if (pdfDocRef.current !== pdf) return;
+      if (isStaleDoc()) return;
+      if (typeof page.rotate === 'number') {
+        pageRotationsRef.current.set(1, ((page.rotate % 360) + 360) % 360);
+      }
       const viewport = page.getViewport({ scale: 1 });
       if (viewport.width > 0 && viewport.height > 0) {
         pageRatiosRef.current.set(1, viewport.height / viewport.width);
@@ -1073,41 +1257,74 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       // 忽略：fit 模式回退到 A4 估算
     });
 
-    // 加载目录，并异步解析每个条目的目标页码（供当前章节高亮/快速跳转）
-    pdf.getOutline().then(async (outlineItems) => {
-      if (!outlineItems || outlineItems.length === 0 || pdfDocRef.current !== pdf) return;
+    // 加载目录，但把海量条目的 destination/pageIndex 解析延后并按空闲分块让出，
+    // 避免 100+ 节点目录在首屏加载或深页跳转时阻塞 PDF.js worker 渲染队列。
+    // （点击目录项时 handleOutlineClick 本就支持按需即时解析 item.dest）
+    pdf.getOutline().then((outlineItems) => {
+      if (!outlineItems || outlineItems.length === 0 || isStaleDoc()) return;
       setOutline(outlineItems as OutlineItem[]);
 
-      const pageMap = new Map<string, number>();
-      const walk = async (items: OutlineItem[], prefix: string) => {
+      const flatEntries: Array<{ path: string; dest: OutlineItem['dest'] }> = [];
+      const collect = (items: OutlineItem[], prefix: string) => {
         for (let i = 0; i < items.length; i++) {
           const item = items[i];
           const path = prefix ? `${prefix}.${i}` : `${i}`;
-          try {
-            let dest: any = item.dest;
-            if (typeof dest === 'string') {
-              dest = await pdf.getDestination(dest);
-            }
-            if (Array.isArray(dest) && dest[0]) {
-              const pageIndex = await pdf.getPageIndex(dest[0]);
-              pageMap.set(path, pageIndex + 1);
-            }
-          } catch {
-            // 单个条目解析失败不影响其余条目
+          if (item.dest) {
+            flatEntries.push({ path, dest: item.dest });
           }
           if (item.items && item.items.length > 0) {
-            await walk(item.items, path);
+            collect(item.items, path);
           }
         }
       };
-      await walk(outlineItems as OutlineItem[], '');
-      if (pdfDocRef.current === pdf) {
-        setOutlinePages(pageMap);
-      }
+      collect(outlineItems as OutlineItem[], '');
+      if (flatEntries.length === 0) return;
+
+      const pageMap = new Map<string, number>();
+      let cursor = 0;
+      const CHUNK_SIZE = 8;
+
+      const resolveNextChunk = () => {
+        outlineIdleHandleRef.current = null;
+        if (isStaleDoc()) return;
+        // 若正处于深页跳转稳定期，把 worker 通道让给可见页渲染
+        if (shouldSuppressScrollPageSync(programmaticJumpRef.current, performance.now())) {
+          outlineIdleHandleRef.current = scheduleIdle(resolveNextChunk);
+          return;
+        }
+        void (async () => {
+          const end = Math.min(cursor + CHUNK_SIZE, flatEntries.length);
+          for (; cursor < end; cursor++) {
+            if (isStaleDoc()) return;
+            const entry = flatEntries[cursor];
+            try {
+              let dest: unknown = entry.dest;
+              if (typeof dest === 'string') {
+                dest = await pdf.getDestination(dest);
+              }
+              if (isStaleDoc()) return;
+              if (Array.isArray(dest) && dest[0]) {
+                const pageIndex = await pdf.getPageIndex(dest[0]);
+                pageMap.set(entry.path, pageIndex + 1);
+              }
+            } catch {
+              // 单个条目解析失败不影响其余条目
+            }
+          }
+          if (isStaleDoc()) return;
+          if (cursor < flatEntries.length) {
+            outlineIdleHandleRef.current = scheduleIdle(resolveNextChunk);
+          } else {
+            setOutlinePages(new Map(pageMap));
+          }
+        })();
+      };
+
+      outlineIdleHandleRef.current = scheduleIdle(resolveNextChunk);
     }).catch(() => {
       // 忽略目录加载错误
     });
-  }, []);
+  }, [cancelOutlineResolution, scheduleIdle]);
 
   // 旋转页面（顺时针 / 逆时针）
   const handleRotate = useCallback(() => {
@@ -1252,21 +1469,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     return best;
   }, [outlinePages, currentPage]);
 
-  const scheduleIdle = useCallback((cb: () => void) => {
-    if (typeof (window as any).requestIdleCallback === 'function') {
-      return (window as any).requestIdleCallback(cb, { timeout: 200 });
-    }
-    return window.setTimeout(cb, 16);
-  }, []);
-
-  const cancelIdle = useCallback((id: number) => {
-    if (typeof (window as any).cancelIdleCallback === 'function') {
-      (window as any).cancelIdleCallback(id);
-    } else {
-      window.clearTimeout(id);
-    }
-  }, []);
-
   // 滚动降级渲染（可选设置）：滚动中把 isScrolling 接入 renderDpr，
   // 停止 250ms 后恢复高清渲染。未开启该设置时滚动中不触发任何重渲染。
   const scrollDprDowngradeEnabled = pdfSettings.enableScrollDprDowngrade;
@@ -1329,8 +1531,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       setOcrInlineState('error');
     } else if (ocrStage === 'ocr_processing') {
       setOcrInlineState('running');
+    } else if (!startingOcr) {
+      setOcrInlineState('idle');
     }
-  }, [ocrError, ocrPages, ocrStage]);
+  }, [ocrError, ocrPages, ocrStage, startingOcr]);
 
   const abortSearchTask = useCallback(() => {
     if (searchTaskRef.current) {
@@ -1344,14 +1548,15 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
   // 搜索功能（增量展示）
   // ★ 页内匹配逻辑抽到 ../pdfSearch（保留 item 边界拼接语义，见该模块注释）。
-  // ★ 增量发布：每扫完一个分块就把已有命中发布出去——首个命中立即跳转、
-  // 计数实时增长，大文档不再"只转圈到全部扫完才出结果"。
-  // rangesByPage 外层 Map 浅克隆即可发布：每页只在自己所属分块内被写入一次，
-  // 已发布页的内层 Map 之后不会再被修改。
+  // ★ 增量发布：每扫完一个分块（chunkSize=8）即发布已有命中；进度经 createSearchProgressThrottle
+  //   节流，且按页缓存 customTextRenderer（WeakMap），已挂载页不会因后续分块或 Next/Prev 重建 TextLayer。
   const handleSearch = useCallback(() => {
     const query = searchQuery.trim().toLowerCase();
     abortSearchTask();
-    if (!pdfDocRef.current || !query) {
+    const doc = pdfDocRef.current;
+    const totalPages = doc?.numPages || numPages;
+    if (!doc || !query || totalPages <= 0) {
+      lastCommittedSearchQueryRef.current = '';
       setSearchResults([]);
       setSearchRangesByPage(new Map());
       setCurrentSearchIndex(0);
@@ -1362,27 +1567,46 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
     const task = { id: Date.now(), cancelled: false };
     searchTaskRef.current = task;
+    lastCommittedSearchQueryRef.current = query;
     setIsSearching(true);
     setSearchResults([]);
     setSearchRangesByPage(new Map());
+    currentSearchIndexRef.current = 0;
     setCurrentSearchIndex(0);
-    setSearchProgress({ scanned: 0, total: numPages });
+    setSearchProgress({ scanned: 0, total: totalPages });
+
     const results: SearchMatch[] = [];
     const rangesByPage: SearchRangesByPage = new Map();
     let pageIndex = 1;
     let publishedCount = 0;
     let jumpedToFirst = false;
-    const chunkSize = 2;
+    const chunkSize = 8;
+    const progressThrottle = createSearchProgressThrottle((progress) => {
+      if (!task.cancelled && searchTaskRef.current === task) {
+        setSearchProgress(progress);
+      }
+    }, 2);
 
-    const publishPartial = () => {
-      setSearchProgress({ scanned: Math.min(pageIndex - 1, numPages), total: numPages });
+    const finishSearch = () => {
+      if (searchTaskRef.current === task) {
+        setIsSearching(false);
+        setSearchProgress(null);
+      }
+    };
+
+    const publishPartial = (reportProgress: boolean) => {
+      if (reportProgress) {
+        progressThrottle.report({ scanned: Math.min(pageIndex - 1, totalPages), total: totalPages });
+      }
       if (results.length === publishedCount) return;
       publishedCount = results.length;
-      setSearchResults(results.slice());
+      const snapshot = results.slice();
+      searchResultsRef.current = snapshot;
+      setSearchResults(snapshot);
       setSearchRangesByPage(new Map(rangesByPage));
-      if (!jumpedToFirst && results.length > 0) {
+      if (!jumpedToFirst && snapshot.length > 0) {
         jumpedToFirst = true;
-        const firstResult = results[0];
+        const firstResult = snapshot[0];
         if (firstResult.pageIndex !== currentPageRef.current) {
           setJumpHistory((prev) => {
             const next = recordReadingJump(prev, currentPageRef.current, firstResult.pageIndex, {
@@ -1400,54 +1624,69 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     };
 
     const runChunk = async () => {
-      if (!pdfDocRef.current || task.cancelled) return;
-      const end = Math.min(pageIndex + chunkSize - 1, numPages);
+      if (task.cancelled || pdfDocRef.current !== doc) {
+        finishSearch();
+        return;
+      }
+      const end = Math.min(pageIndex + chunkSize - 1, totalPages);
 
       try {
         for (; pageIndex <= end; pageIndex++) {
-          if (task.cancelled || !pdfDocRef.current) return;
-          const page = await pdfDocRef.current.getPage(pageIndex);
-          const textContent = await page.getTextContent();
-          const items = textContent.items as Array<{ str?: string; hasEOL?: boolean }>;
-          const cachedOcr = ocrPages?.get(pageIndex);
-          const useOcr = Boolean(cachedOcr) && !items.some(item => item.str?.trim());
-          const { matchCount, itemRanges } = collectPageSearchMatches(
-            useOcr ? [{ str: cachedOcr }] : items, query,
-          );
-          if (matchCount > 0) {
-            if (!useOcr) {
-              // 单页命中过多（如搜索单字母 "a"）时限制 DOM <mark> 上限，避免高倍缩放下成千上万节点卡死主线程
-              if (matchCount <= 120) {
+          if (task.cancelled || pdfDocRef.current !== doc) {
+            finishSearch();
+            return;
+          }
+          try {
+            const page = await doc.getPage(pageIndex);
+            if (task.cancelled || pdfDocRef.current !== doc) {
+              finishSearch();
+              return;
+            }
+            const textContent = await page.getTextContent();
+            const items = textContent.items as Array<{ str?: string; hasEOL?: boolean }>;
+            const cachedOcr = ocrPages?.get(pageIndex);
+            const useOcr = Boolean(cachedOcr) && !items.some(item => item.str?.trim());
+            const { matchCount, itemRanges } = collectPageSearchMatches(
+              useOcr ? [{ str: cachedOcr }] : items, query,
+            );
+            if (matchCount > 0) {
+              if (!useOcr && matchCount <= 120) {
+                // 单页命中过多（如搜索单字母 "a"）时限制 DOM <mark> 上限，避免高倍缩放下成千上万节点卡死主线程
                 rangesByPage.set(pageIndex, itemRanges);
               }
+              for (let ordinal = 0; ordinal < matchCount; ordinal++) {
+                results.push({ pageIndex, matchIndex: ordinal });
+              }
             }
-            for (let ordinal = 0; ordinal < matchCount; ordinal++) {
-              results.push({ pageIndex, matchIndex: ordinal });
-            }
+          } catch (pageErr) {
+            // 单页取字失败跳过该页，不阻塞整本 PDF 扫描收尾
+            console.warn(`[EnhancedPdfViewer] Search skipped page ${pageIndex}:`, pageErr);
           }
         }
       } catch (err) {
         if (!task.cancelled) {
           console.error('Search failed:', err);
-          setIsSearching(false);
-          setSearchProgress(null);
+          progressThrottle.flush();
+          finishSearch();
         }
         return;
       }
 
-      if (task.cancelled) return;
+      if (task.cancelled || pdfDocRef.current !== doc) {
+        finishSearch();
+        return;
+      }
 
-      if (pageIndex <= numPages) {
-        publishPartial();
+      if (pageIndex <= totalPages) {
+        publishPartial(true);
         searchIdleHandleRef.current = scheduleIdle(() => {
           void runChunk();
         });
         return;
       }
 
-      publishPartial();
-      setIsSearching(false);
-      setSearchProgress(null);
+      publishPartial(false);
+      finishSearch();
     };
 
     void runChunk();
@@ -1461,8 +1700,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     const trimmedQuery = searchQuery.trim();
     if (!trimmedQuery) {
       abortSearchTask();
+      lastCommittedSearchQueryRef.current = '';
       setSearchResults([]);
       setSearchRangesByPage(new Map());
+      currentSearchIndexRef.current = 0;
       setCurrentSearchIndex(0);
       setIsSearching(false);
       setSearchProgress(null);
@@ -1480,12 +1721,15 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     };
   }, [abortSearchTask, handleSearch, searchQuery, showSearch]);
 
-  // 搜索导航
-  const handlePrevSearchResult = useCallback(() => {
-    if (searchResults.length === 0) return;
-    const newIndex = currentSearchIndex > 0 ? currentSearchIndex - 1 : searchResults.length - 1;
+  // 搜索导航（单步原子推进，防连点/陈旧闭包跳步）
+  const stepSearchResult = useCallback((delta: 1 | -1) => {
+    const results = searchResultsRef.current;
+    if (results.length === 0) return;
+    const newIndex = stepSearchMatchIndex(currentSearchIndexRef.current, results.length, delta);
+    currentSearchIndexRef.current = newIndex;
     setCurrentSearchIndex(newIndex);
-    const result = searchResults[newIndex];
+    const result = results[newIndex];
+    if (!result) return;
     if (result.pageIndex !== currentPageRef.current) {
       setJumpHistory((prev) => {
         const next = recordReadingJump(prev, currentPageRef.current, result.pageIndex, {
@@ -1499,88 +1743,93 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setCurrentPage(result.pageIndex);
     onPageChange?.(result.pageIndex - 1);
     scrollToPageRef.current?.(result.pageIndex);
-  }, [searchResults, currentSearchIndex, onPageChange]);
+  }, [onPageChange]);
+
+  const handlePrevSearchResult = useCallback(() => {
+    stepSearchResult(-1);
+  }, [stepSearchResult]);
 
   const handleNextSearchResult = useCallback(() => {
-    if (searchResults.length === 0) return;
-    const newIndex = currentSearchIndex < searchResults.length - 1 ? currentSearchIndex + 1 : 0;
-    setCurrentSearchIndex(newIndex);
-    const result = searchResults[newIndex];
-    if (result.pageIndex !== currentPageRef.current) {
-      setJumpHistory((prev) => {
-        const next = recordReadingJump(prev, currentPageRef.current, result.pageIndex, {
-          force: true,
-        });
-        jumpHistoryRef.current = next;
-        return next;
-      });
-    }
-    currentPageRef.current = result.pageIndex;
-    setCurrentPage(result.pageIndex);
-    onPageChange?.(result.pageIndex - 1);
-    scrollToPageRef.current?.(result.pageIndex);
-  }, [searchResults, currentSearchIndex, onPageChange]);
+    stepSearchResult(1);
+  }, [stepSearchResult]);
 
   // 关闭搜索
   const handleCloseSearch = useCallback(() => {
     abortSearchTask();
+    lastCommittedSearchQueryRef.current = '';
     setShowSearch(false);
     setSearchQuery('');
     setSearchResults([]);
     setSearchRangesByPage(new Map());
+    currentSearchIndexRef.current = 0;
     setCurrentSearchIndex(0);
     setIsSearching(false);
     setSearchProgress(null);
   }, [abortSearchTask]);
 
-  // 页内搜索高亮：把命中子区间包成 <mark>，当前命中加强调样式。
-  // 返回值作为文本层 innerHTML 注入，原文必须转义。
+  // 页内搜索高亮：各页通过 WeakMap 缓存的 getPageSearchTextRenderer 稳定输出带 data-match-page/ordinal 的 <mark>，
+  // 此处仅命令式切换 .ds-search-mark--current 并把当前命中居中到视口，点击 Next/Prev 零 TextLayer 重建。
   const searchHighlightActive = showSearch && searchRangesByPage.size > 0;
   const currentSearchMatch = searchResults[currentSearchIndex];
-  const searchTextRenderer = useCallback(
-    (props: { pageNumber: number; itemIndex: number; str: string }) => {
-      // 与 collectPageSearchMatches 同一份还原后的字符串，命中偏移才对得上
-      const str = normalizePdfLigatures(props.str);
-      const ranges = searchRangesByPage.get(props.pageNumber)?.get(props.itemIndex);
-      if (!ranges || ranges.length === 0) return escapeHtml(str);
-      let html = '';
-      let cursor = 0;
-      for (const range of ranges) {
-        // 重叠命中（如 "aa" 在 "aaa" 中）只渲染未覆盖部分
-        const start = Math.max(range.start, cursor);
-        if (range.end <= cursor) continue;
-        if (start > cursor) html += escapeHtml(str.slice(cursor, start));
-        const isCurrent =
-          currentSearchMatch !== undefined &&
-          currentSearchMatch.pageIndex === props.pageNumber &&
-          currentSearchMatch.matchIndex === range.matchOrdinal;
-        html += `<mark class="ds-search-mark${isCurrent ? ' ds-search-mark--current' : ''}">${escapeHtml(str.slice(start, range.end))}</mark>`;
-        cursor = range.end;
-      }
-      html += escapeHtml(str.slice(cursor));
-      return html;
-    },
-    [searchRangesByPage, currentSearchMatch]
-  );
 
-  // 命中导航后把当前 <mark> 精确滚到视口中部（页级 scrollToIndex 只到页首）。
-  // 仅滚动阅读器视口自身，不用 scrollIntoView 以免联动外层滚动容器。
   useEffect(() => {
-    if (!showSearch || currentSearchMatch === undefined) return;
-    const timer = window.setTimeout(() => {
-      const viewport = pageContainerRef.current;
-      if (!viewport) return;
-      const el = viewport.querySelector('.ds-search-mark--current');
-      if (!el) return;
+    const viewport = pageContainerRef.current;
+    if (!viewport) return;
+
+    if (!showSearch || currentSearchMatch === undefined) {
+      applyActiveSearchMarkInViewport(viewport, undefined);
+      return;
+    }
+
+    const centerMark = (el: Element) => {
       const elRect = el.getBoundingClientRect();
       const vpRect = viewport.getBoundingClientRect();
+      if (vpRect.height <= 0) return;
       const offset = elRect.top - vpRect.top - vpRect.height / 2 + elRect.height / 2;
       if (Math.abs(offset) < vpRect.height * 0.35) return; // 已大致可见则不打断
       const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
       viewport.scrollBy({ top: offset, behavior: reduceMotion ? 'auto' : 'smooth' });
-    }, 450);
-    return () => window.clearTimeout(timer);
-  }, [showSearch, currentSearchMatch, currentSearchIndex]);
+    };
+
+    let centered = false;
+    const syncMark = () => {
+      const activeEl = applyActiveSearchMarkInViewport(viewport, currentSearchMatch);
+      if (activeEl && !centered) {
+        centered = true;
+        centerMark(activeEl);
+        return true;
+      }
+      return Boolean(activeEl);
+    };
+
+    if (syncMark()) {
+      return;
+    }
+
+    // 目标页尚未完成虚拟化挂载/TextLayer 渲染时，监听 DOM 出现后立即高亮并居中（1.5s 自动止损）
+    let observer: MutationObserver | null = null;
+    if (typeof MutationObserver !== 'undefined') {
+      observer = new MutationObserver(() => {
+        if (syncMark() && observer) {
+          observer.disconnect();
+          observer = null;
+        }
+      });
+      observer.observe(viewport, { childList: true, subtree: true });
+    }
+    const fallbackTimer = window.setTimeout(() => {
+      syncMark();
+      if (observer) {
+        observer.disconnect();
+        observer = null;
+      }
+    }, 1500);
+
+    return () => {
+      window.clearTimeout(fallbackTimer);
+      observer?.disconnect();
+    };
+  }, [showSearch, currentSearchMatch, currentSearchIndex, searchRangesByPage]);
 
   // ★ 2026-07-08（移动端审计 D-4）：Android 系统返回键先关闭查看器内的浮层
   // （高亮菜单/更多菜单/缩放菜单/侧栏[目录·缩略图·书签·批注]/搜索栏），
@@ -1590,7 +1839,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     const hasOverlay =
       showHighlightMenu || activeHighlightId !== null || refPreviewCard !== null ||
       showPaperGuideMenu || showMoreMenu || showZoomMenu ||
-      sidebarMode !== 'none' || showSearch;
+      sidebarMode !== 'none' || showSearch || highlightToolActive;
     if (!hasOverlay) return;
     return registerVisibilityGuardedBackHandler(containerRef, () => {
       if (selectionTranslation) {
@@ -1630,6 +1879,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         handleCloseSearch();
         return true;
       }
+      if (highlightToolActive) {
+        setHighlightToolActive(false);
+        return true;
+      }
       return false;
     }, BACK_PRIORITY.overlay);
   }, [
@@ -1641,6 +1894,8 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     showZoomMenu,
     sidebarMode,
     showSearch,
+    highlightToolActive,
+    selectionTranslation,
     handleCloseSearch,
   ]);
 
@@ -1698,10 +1953,33 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     
     const snapshot = { text, pageIndex, rects };
     lastSelectionSnapshotRef.current = snapshot;
+
+    // 处于显式高亮模式（More -> Highlight）时，划选文字立即按当前选中颜色落成高亮
+    if (highlightToolActive && canPersistAnnotations) {
+      if (rotation !== 0) {
+        showGlobalNotification('warning', t('pdf:toolbar.highlight_rotation_disabled'));
+      } else if (rects.length > 0) {
+        const newHighlight: Highlight = {
+          id: `hl-${crypto.randomUUID()}`,
+          pageIndex,
+          text,
+          color: highlightToolColor,
+          rects,
+          createdAt: Date.now(),
+          coordVersion: 2,
+        };
+        setHighlights((prev) => [...prev, newHighlight]);
+        setShowHighlightMenu(false);
+        setPendingHighlight(null);
+        window.getSelection()?.removeAllRanges();
+        return;
+      }
+    }
+
     setPendingHighlight(snapshot);
     setHighlightMenuPos({ x: rect.left + rect.width / 2, top: rect.top, bottom: rect.bottom });
     setShowHighlightMenu(true);
-  }, [currentPage, rotation]);
+  }, [canPersistAnnotations, currentPage, highlightToolActive, highlightToolColor, rotation, setHighlights, t]);
 
   // 翻译/出题/制卡等学习动作不在此处：统一由共享层 SelectionToolbar
   // （PdfSelectionActions）承载，避免与 viewer 内建划词菜单双入口重复。
@@ -2327,19 +2605,35 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
   const exportAnnotatedCopy = useCallback(async () => {
     const document = pdfDocRef.current;
-    if (!document || highlights.length === 0) return;
+    if (!document) return;
     setShowMoreMenu(false);
+    const baseName = fileName?.replace(/\.pdf$/i, '') || 'PDF';
     try {
       const [{ createAnnotatedPdf, isEncryptedPdfExportError }, { fileManager }] = await Promise.all([
         import('../pdfAnnotatedExport'),
         import('@/utils/fileManager'),
       ]);
       try {
+        if (highlights.length === 0) {
+          const raw = await document.getData();
+          const data = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
+          const result = await fileManager.saveBinaryFile({
+            data,
+            title: t('pdf:annotations.export_pdf_copy'),
+            defaultFileName: `${baseName}.pdf`,
+            filters: [{ name: 'PDF', extensions: ['pdf'] }],
+          });
+          if (!result.canceled) {
+            showGlobalNotification('success', t('pdf:annotations.export_pdf_copy_success'));
+          }
+          return;
+        }
+
         const data = await createAnnotatedPdf(document, highlights);
         const title = t('pdf:annotations.export_pdf');
         const result = await fileManager.saveBinaryFile({
           data, title,
-          defaultFileName: `${fileName?.replace(/\.pdf$/i, '') || 'PDF'}-annotated.pdf`,
+          defaultFileName: `${baseName}-annotated.pdf`,
           filters: [{ name: 'PDF', extensions: ['pdf'] }],
         });
         if (!result.canceled) showGlobalNotification('success', t('pdf:annotations.export_pdf_success'));
@@ -2867,7 +3161,14 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
   // 文档加载失败
   const handleDocumentLoadError = useCallback((error: Error) => {
+    docLoadSeqRef.current += 1;
+    cancelOutlineResolution();
+    releaseProgrammaticJumpLock();
     setIsLoading(false);
+    setIsScannedNoTextPdf(false);
+    setScannedBannerDismissed(false);
+    setOcrInlineState('idle');
+    setHighlightToolActive(false);
     const classified = classifyPdfLoadError(error);
     if (classified.kind === 'invalid' || classified.kind === 'password') {
       console.warn('PDF load error:', error);
@@ -2902,7 +3203,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         setLoadErrorHint(diagnostic || classified.rawMessage || null);
         break;
     }
-  }, [t]);
+  }, [cancelOutlineResolution, releaseProgrammaticJumpLock, t]);
 
   const handleRetryLoad = useCallback(() => {
     setLoadError(null);
@@ -3447,15 +3748,18 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         if (showSearch) {
           // P2 fix: 确保取消搜索任务并重置 isSearching 状态
           abortSearchTask();
+          lastCommittedSearchQueryRef.current = '';
           setShowSearch(false);
           setSearchQuery('');
           setSearchResults([]);
           setSearchRangesByPage(new Map());
+          currentSearchIndexRef.current = 0;
           setCurrentSearchIndex(0);
           setIsSearching(false);
           setSearchProgress(null);
         }
         if (showHighlightMenu) setShowHighlightMenu(false);
+        if (highlightToolActive) setHighlightToolActive(false);
         return;
       }
       
@@ -3640,6 +3944,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   }, [
     showSearch,
     showHighlightMenu,
+    highlightToolActive,
     showPaperGuideMenu,
     refPreviewCard,
     isLocatingRef,
@@ -3880,10 +4185,21 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     return rotation % 180 !== 0 ? 1 / ratio : ratio;
   }, [rotation]);
 
-  // 页面渲染成功时记录真实宽高比（originalWidth/Height 为 scale=1 未旋转尺寸）
-  const handlePageLoadSuccess = useCallback((page: { pageNumber: number; originalWidth: number; originalHeight: number }) => {
+  // 页面渲染成功时记录真实宽高比（originalWidth/Height 为 scale=1 含页面固有旋转尺寸）与固有旋转角
+  const handlePageLoadSuccess = useCallback((page: { pageNumber: number; originalWidth: number; originalHeight: number; rotate?: number }) => {
+    if (typeof page.rotate === 'number') {
+      pageRotationsRef.current.set(page.pageNumber, ((page.rotate % 360) + 360) % 360);
+    }
     if (page.originalWidth > 0 && page.originalHeight > 0) {
       pageRatiosRef.current.set(page.pageNumber, page.originalHeight / page.originalWidth);
+    }
+    const activeLock = programmaticJumpRef.current;
+    if (
+      activeLock &&
+      shouldSuppressScrollPageSync(activeLock, performance.now()) &&
+      Math.abs(page.pageNumber - activeLock.targetPage) <= 2
+    ) {
+      scrollToPageRef.current(activeLock.targetPage);
     }
   }, []);
 
@@ -3983,24 +4299,116 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   }, [pageRowCount, pageVirtualizer, pageWidth, viewMode, rotation, basePageSize, coverOffset, trimMargins, fileSourceKey]);
 
   useEffect(() => {
-    let alignmentRaf: number | null = null;
+    const scheduleSettleStep = (lock: ProgrammaticJumpLock) => {
+      if (jumpSettleRafRef.current !== null) {
+        cancelAnimationFrame(jumpSettleRafRef.current);
+      }
+      jumpSettleRafRef.current = requestAnimationFrame(() => {
+        jumpSettleRafRef.current = null;
+        if (programmaticJumpRef.current !== lock) return;
+        const container = pageContainerRef.current;
+        if (!container || pageRowCount === 0) {
+          releaseProgrammaticJumpLock();
+          return;
+        }
+        const now = performance.now();
+        if (!shouldSuppressScrollPageSync(lock, now) || lock.attempts >= 12) {
+          releaseProgrammaticJumpLock();
+          return;
+        }
+        lock.attempts += 1;
+
+        const targetEl = container.querySelector(`[data-page-number="${lock.targetPage}"]`);
+        let needsRealign = true;
+        if (targetEl) {
+          const vpTop = container.getBoundingClientRect().top;
+          const elTop = targetEl.getBoundingClientRect().top;
+          const delta = Math.abs(elTop - vpTop);
+          // 顶部误差 ≤ 24px（含视口 padding）且连续两帧 scrollTop 稳定即视为已落位
+          const scrollStable =
+            lock.lastAlignedScrollTop !== null &&
+            Math.abs(container.scrollTop - lock.lastAlignedScrollTop) <= 2;
+          if (delta <= 24 && scrollStable) {
+            lock.stableFrames += 1;
+            needsRealign = false;
+            if (lock.stableFrames >= 2) {
+              releaseProgrammaticJumpLock();
+              return;
+            }
+          } else {
+            lock.stableFrames = 0;
+          }
+        } else {
+          lock.stableFrames = 0;
+        }
+
+        if (needsRealign) {
+          pageVirtualizer.scrollToIndex(lock.targetRow, { align: 'start' });
+        }
+        lock.lastAlignedScrollTop = container.scrollTop;
+
+        if (jumpSettleTimerRef.current !== null) {
+          window.clearTimeout(jumpSettleTimerRef.current);
+        }
+        jumpSettleTimerRef.current = window.setTimeout(() => {
+          jumpSettleTimerRef.current = null;
+          if (programmaticJumpRef.current === lock) {
+            scheduleSettleStep(lock);
+          }
+        }, 50);
+      });
+    };
+
     scrollToPageRef.current = (pageNum: number) => {
-      if (alignmentRaf !== null) cancelAnimationFrame(alignmentRaf);
       if (!pageContainerRef.current || pageRowCount === 0) return;
       resizeAnchorRef.current = null;
       const targetRow = getRowIndexForPage(pageNum);
-      // 统一采用瞬时定位 + 下一帧按真实测量高度二次对齐，防止连续点击「下一页」或跨页跳转时 smooth 动画取消导致页码领先视口 1-2 页
-      pageVirtualizer.scrollToIndex(targetRow, { align: 'start' });
-      alignmentRaf = requestAnimationFrame(() => {
-        alignmentRaf = null;
+      const existing = programmaticJumpRef.current;
+      // 同一目标页在锁期内因行高测准触发的二次对齐：沿用当前锁并刷新位置
+      if (existing && existing.targetPage === pageNum && existing.targetRow === targetRow) {
         pageVirtualizer.scrollToIndex(targetRow, { align: 'start' });
-      });
+        existing.lastAlignedScrollTop = pageContainerRef.current.scrollTop;
+        existing.stableFrames = 0;
+        scheduleSettleStep(existing);
+        return;
+      }
+      releaseProgrammaticJumpLock();
+      const lock = createProgrammaticJumpLock(
+        ++programmaticJumpTokenRef.current,
+        pageNum,
+        targetRow,
+        performance.now(),
+      );
+      programmaticJumpRef.current = lock;
+      // 瞬时定位 + 多帧稳定对齐：防止深页跳转时未测量行高估算变化引发 scrollTop 回弹与 currentPage 漂移
+      pageVirtualizer.scrollToIndex(targetRow, { align: 'start' });
+      lock.lastAlignedScrollTop = pageContainerRef.current.scrollTop;
+      scheduleSettleStep(lock);
     };
     return () => {
-      if (alignmentRaf !== null) cancelAnimationFrame(alignmentRaf);
+      releaseProgrammaticJumpLock();
       scrollToPageRef.current = () => {};
     };
-  }, [pageRowCount, pageVirtualizer, getRowIndexForPage, fileSourceKey]);
+  }, [pageRowCount, pageVirtualizer, getRowIndexForPage, fileSourceKey, releaseProgrammaticJumpLock]);
+
+  // 用户手动滚动/触控立即解除程序化跳页锁，确保绝不与用户抢滚动权
+  useEffect(() => {
+    const container = pageContainerRef.current;
+    if (!container) return;
+    const cancelLockOnUserScroll = () => {
+      if (programmaticJumpRef.current) {
+        releaseProgrammaticJumpLock();
+      }
+    };
+    container.addEventListener('wheel', cancelLockOnUserScroll, { passive: true });
+    container.addEventListener('touchstart', cancelLockOnUserScroll, { passive: true });
+    container.addEventListener('pointerdown', cancelLockOnUserScroll, { passive: true });
+    return () => {
+      container.removeEventListener('wheel', cancelLockOnUserScroll);
+      container.removeEventListener('touchstart', cancelLockOnUserScroll);
+      container.removeEventListener('pointerdown', cancelLockOnUserScroll);
+    };
+  }, [fileSourceKey, numPages, releaseProgrammaticJumpLock]);
 
   // ========== 跨插件互操作：语义锚点定位 + 页边反向链接（Interop Protocol v1） ==========
   // 本阅读器可被识别的资源 id：DSTU sourceId、路径末段与 VFS resourceId（异步解析）
@@ -4100,21 +4508,16 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         : Math.max(0, (persistedViewStateRef.current?.page ?? 1) - 1);
     if (effectiveTargetZeroBased > 0) {
       const targetPage = Math.min(effectiveTargetZeroBased + 1, numPages);
+      currentPageRef.current = targetPage;
       setCurrentPage(targetPage);
-      const rowIndex = getRowIndexForPage(targetPage);
-      let raf2 = 0;
       const raf1 = requestAnimationFrame(() => {
-        pageVirtualizer.scrollToIndex(rowIndex, { align: 'start' });
-        raf2 = requestAnimationFrame(() => {
-          pageVirtualizer.scrollToIndex(rowIndex, { align: 'start' });
-        });
+        scrollToPageRef.current(targetPage);
       });
       return () => {
         cancelAnimationFrame(raf1);
-        if (raf2) cancelAnimationFrame(raf2);
       };
     }
-  }, [numPages, pageRowCount, initialPage, getRowIndexForPage, pageVirtualizer]);
+  }, [numPages, pageRowCount, initialPage]);
 
   // 滚动监听：使用虚拟列表数据更新当前页码，避免频繁 DOM 查询。
   // 在 document 上捕获滚动、事件发生时再比对当前页面容器：滚动视口由 CustomScrollArea
@@ -4128,6 +4531,17 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     const handleScroll = (event: Event) => {
       const container = pageContainerRef.current;
       if (!container || event.target !== container) return;
+
+      // 程序化跳页稳定期内，虚拟列表测高触发的 scroll 回弹不得覆写 currentPage，
+      // 也不触发滚动 DPR 降级重绘；交由跳页稳定器把目标行对齐到视口顶。
+      const activeLock = programmaticJumpRef.current;
+      if (activeLock) {
+        if (shouldSuppressScrollPageSync(activeLock, performance.now())) {
+          return;
+        }
+        releaseProgrammaticJumpLock();
+      }
+
       if (scrollIdleTimerRef.current !== null) {
         window.clearTimeout(scrollIdleTimerRef.current);
       }
@@ -4139,6 +4553,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
       cancelAnimationFrame(rafId);
       rafId = requestAnimationFrame(() => {
+        if (shouldSuppressScrollPageSync(programmaticJumpRef.current, performance.now())) {
+          return;
+        }
         const items = pageVirtualizer.getVirtualItems();
         if (items.length === 0) return;
 
@@ -4158,6 +4575,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         // 双页模式取行首页作为当前页（与页码输入/书签/大纲高亮语义一致）
         const visiblePage = rowPages[0];
         if (visiblePage && visiblePage !== currentPageRef.current) {
+          currentPageRef.current = visiblePage;
           setCurrentPage(visiblePage);
           onPageChangeRef.current?.(visiblePage - 1);
         }
@@ -4174,7 +4592,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       }
       setScrollingState(false);
     };
-  }, [getRowPages, numPages, pageVirtualizer, setScrollingState, scrollDprDowngradeEnabled]);
+  }, [getRowPages, numPages, pageVirtualizer, releaseProgrammaticJumpLock, setScrollingState, scrollDprDowngradeEnabled]);
 
   // 缩略图宽度与 DPR 从设置读取
   const thumbnailWidth = pdfSettings.thumbnailWidth;
@@ -4279,7 +4697,16 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     const enableAnnotationLayer =
       pdfSettings.enableAnnotationLayerByDefault &&
       Math.abs(pageNum - currentPage) <= annotationLayerRange;
-    const hasSearchMarks = searchHighlightActive && searchRangesByPage.has(pageNum);
+    const pageSearchRanges = searchHighlightActive ? searchRangesByPage.get(pageNum) : undefined;
+    const customTextRenderer = pageSearchRanges
+      ? getPageSearchTextRenderer(pageSearchRanges)
+      : ligatureTextRenderer;
+    // 用户未手动旋转（rotation === 0）时传 undefined 让 react-pdf 沿用页面固有 /Rotate；
+    // 用户手动旋转时在固有 /Rotate 基础上叠加，避免 /Rotate 90 页面被强制打回 0° 引发高亮导出漂移。
+    const effectivePageRotate =
+      rotation === 0
+        ? undefined
+        : ((pageRotationsRef.current.get(pageNum) ?? 0) + rotation) % 360;
     const pageBacklinksCandidate = edgesByPage.get(pageNum);
     const pageBacklinks = pageBacklinksCandidate && pageBacklinksCandidate.total > 0 ? pageBacklinksCandidate : null;
     const trimmedLayout = computeTrimmedPageLayout(
@@ -4339,10 +4766,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           renderMode="none"
           renderTextLayer={enableTextLayer}
           renderAnnotationLayer={enableAnnotationLayer}
-          rotate={rotation}
+          rotate={effectivePageRotate}
           devicePixelRatio={renderDpr}
           onLoadSuccess={handlePageLoadSuccess}
-          customTextRenderer={hasSearchMarks ? searchTextRenderer : ligatureTextRenderer}
+          customTextRenderer={customTextRenderer}
           loading={getPageShimmer(pageNum)}
         >
           {renderCancelablePdfCanvas}
@@ -4478,7 +4905,6 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     scale,
     searchHighlightActive,
     searchRangesByPage,
-    searchTextRenderer,
     selectedPages,
     t,
     textLayerRange,
@@ -4636,6 +5062,50 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       />
     </React.Suspense>
   );
+
+    const showScannedBanner =
+      !loadError &&
+      numPages > 0 &&
+      isScannedNoTextPdf &&
+      (!ocrPages || ocrPages.size === 0) &&
+      !scannedBannerDismissed;
+
+    const handleToggleHighlightTool = () => {
+      const next = !highlightToolActive;
+      setHighlightToolActive(next);
+      if (next) {
+        if (!resolvedEnableTextSelection && enableTextSelection === undefined) {
+          setAnnotationMode(true);
+        }
+        if (rotation !== 0) {
+          showGlobalNotification('warning', t('pdf:toolbar.highlight_rotation_disabled'));
+        }
+      }
+      setShowMoreMenu(false);
+    };
+
+    const handleSearchInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key !== 'Enter' || isComposingKeyEvent(e)) return;
+      e.preventDefault();
+      if (searchDebounceRef.current) {
+        window.clearTimeout(searchDebounceRef.current);
+        searchDebounceRef.current = null;
+      }
+      const normalized = searchQuery.trim().toLowerCase();
+      if (
+        normalized &&
+        normalized === lastCommittedSearchQueryRef.current &&
+        searchResultsRef.current.length > 0
+      ) {
+        if (e.shiftKey) {
+          handlePrevSearchResult();
+        } else {
+          handleNextSearchResult();
+        }
+        return;
+      }
+      handleSearch();
+    };
 
   if (!file) {
     return (
@@ -4832,12 +5302,25 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     <span>{t('pdf:toolbar.run_ocr')}</span>
                   </DsButton>
                 )}
-                {highlights.length > 0 && (
-                  <DsButton variant="ghost" size="sm" className="ds-more-item" onClick={() => void exportAnnotatedCopy()}>
-                    <Highlighter size={16} />
-                    <span>{t('pdf:annotations.export_pdf')}</span>
-                  </DsButton>
-                )}
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  className="ds-more-item"
+                  disabled={numPages === 0}
+                  title={
+                    highlights.length > 0
+                      ? t('pdf:annotations.export_pdf')
+                      : t('pdf:annotations.export_pdf_copy_hint')
+                  }
+                  onClick={() => void exportAnnotatedCopy()}
+                >
+                  <DownloadSimple size={15} />
+                  <span>
+                    {highlights.length > 0
+                      ? t('pdf:annotations.export_pdf')
+                      : t('pdf:annotations.export_pdf_copy')}
+                  </span>
+                </DsButton>
                 <div className="ds-more-divider" />
                 <DsButton variant="ghost" size="sm" className={`ds-more-item ${currentPageBookmark ? 'active' : ''}`} onClick={() => { addBookmark(); setShowMoreMenu(false); }}>
                   {currentPageBookmark ? <BookmarkCheck size={14} /> : <BookmarkSimple size={14} />}
@@ -4845,8 +5328,15 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     ? t('pdf:bookmark.editBookmark')
                     : t('pdf:bookmark.addBookmark')}</span>
                 </DsButton>
-                {annotationToggleAvailable && (
-                  <DsButton variant="ghost" size="sm" className={`ds-more-item ${resolvedEnableTextSelection ? 'active' : ''}`} onClick={() => { setAnnotationMode(!resolvedEnableTextSelection); setShowMoreMenu(false); }}>
+                {(canPersistAnnotations || annotationToggleAvailable) && (
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    className={`ds-more-item ${highlightToolActive ? 'active' : ''}`}
+                    disabled={numPages === 0}
+                    aria-pressed={highlightToolActive}
+                    onClick={handleToggleHighlightTool}
+                  >
                     <Highlighter size={14} />
                     <span>{t('pdf:toolbar.highlight')}</span>
                   </DsButton>
@@ -4932,29 +5422,91 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       </div>
 
       {/* 扫描件 / 无原生文字层持久状态条 + 一键 OCR 入口与实时进度反馈 */}
-      {isScannedNoTextPdf && (!ocrPages || ocrPages.size === 0) && (
-        <div className="ds-pdf__scanned-banner" role="status">
+      {showScannedBanner && (
+        <div className="ds-pdf__scanned-banner" role="status" data-testid="pdf-scanned-banner">
           <span>
             {ocrInlineState === 'running' || ocrStage === 'ocr_processing'
-              ? t('pdf:toolbar.ocr_processing_banner', { defaultValue: '正在识别扫描页文字（OCR）… 完成后可直接搜索与划词' })
+              ? t('pdf:toolbar.ocr_processing_banner')
               : ocrInlineState === 'error'
-                ? t('pdf:toolbar.ocr_failed_banner', { defaultValue: '当前 PDF 为无文字层扫描件；OCR 暂未完成（请检查设置中的 OCR 引擎配置后重试）' })
-                : t('pdf:toolbar.scanned_no_text_banner', { defaultValue: '检测到当前 PDF 为扫描件 / 无原生文字层，直接搜索无法匹配正文' })}
+                ? t('pdf:toolbar.ocr_failed_banner')
+                : t('pdf:toolbar.scanned_no_text_banner')}
           </span>
-          <DsButton
-            variant="primary"
-            size="sm"
-            className="!h-7 px-2.5 text-xs"
-            disabled={startingOcr || ocrStage === 'ocr_processing'}
-            onClick={() => void runDocumentOcr()}
-          >
-            <MagnifyingGlass size={14} />
+          <div className="ds-pdf__scanned-banner-actions">
+            <DsButton
+              variant="primary"
+              size="sm"
+              className="!h-7 px-2.5 text-xs"
+              disabled={startingOcr || ocrStage === 'ocr_processing'}
+              onClick={() => void runDocumentOcr()}
+            >
+              <MagnifyingGlass size={14} />
+              <span>
+                {startingOcr || ocrStage === 'ocr_processing'
+                  ? t('pdf:toolbar.ocr_started')
+                  : t('pdf:toolbar.run_ocr')}
+              </span>
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className="ds-btn ds-btn-sm"
+              onClick={() => setScannedBannerDismissed(true)}
+              title={t('pdf:toolbar.dismiss_banner')}
+              aria-label={t('pdf:toolbar.dismiss_banner')}
+            >
+              <X size={14} />
+            </DsButton>
+          </div>
+        </div>
+      )}
+
+      {/* 显式高亮模式激活条（More -> Highlight）：展示激活状态、5 色语义色板与退出按钮 */}
+      {highlightToolActive && numPages > 0 && (
+        <div
+          className="ds-pdf__highlight-mode-bar"
+          role="toolbar"
+          aria-label={t('pdf:toolbar.highlight')}
+          data-testid="pdf-highlight-mode-bar"
+        >
+          <span className="ds-pdf__highlight-mode-status">
+            <Highlighter size={14} />
             <span>
-              {startingOcr || ocrStage === 'ocr_processing'
-                ? t('pdf:toolbar.ocr_started')
-                : t('pdf:toolbar.run_ocr')}
+              {rotation !== 0
+                ? t('pdf:toolbar.highlight_rotation_disabled')
+                : t('pdf:toolbar.highlight_mode_active')}
             </span>
-          </DsButton>
+          </span>
+          <div className="ds-pdf__highlight-mode-controls">
+            <div className="ds-pdf__highlight-mode-swatches">
+              {(Object.entries(HIGHLIGHT_COLORS) as [keyof typeof HIGHLIGHT_COLORS, string][]).map(
+                ([name, color]) => (
+                  <DsButton
+                    key={name}
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    className={`ds-highlight-color ${highlightToolColor === color ? 'ds-highlight-color--current' : ''}`}
+                    style={{ background: color }}
+                    onClick={() => setHighlightToolColor(color)}
+                    title={t(`pdf:toolbar.highlight_semantic_${name}`)}
+                    aria-label={t(`pdf:toolbar.highlight_semantic_${name}`)}
+                    aria-pressed={highlightToolColor === color}
+                  />
+                ),
+              )}
+            </div>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="!h-6 px-2 text-xs gap-1"
+              onClick={() => setHighlightToolActive(false)}
+              aria-label={t('pdf:toolbar.highlight_mode_exit')}
+            >
+              <X size={12} />
+              <span>{t('pdf:toolbar.highlight_mode_exit')}</span>
+            </DsButton>
+          </div>
         </div>
       )}
 
@@ -4970,7 +5522,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             aria-label={t('pdf:toolbar.search_placeholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !isComposingKeyEvent(e) && handleSearch()}
+            onKeyDown={handleSearchInputKeyDown}
           />
           {searchResults.length > 0 ? (
             <span className="ds-search-info" role="status">
@@ -4996,9 +5548,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             </span>
           )}
           {searchQuery && searchResults.length === 0 && !isSearching && (
-            isScannedNoTextPdf && (!ocrPages || ocrPages.size === 0) ? (
+            isScannedNoTextPdf && (!ocrPages || ocrPages.size === 0) && !showScannedBanner ? (
               <span className="ds-search-info ds-search-no-results" role="status">
-                {t('pdf:toolbar.scanned_search_hint', { defaultValue: '无文字层（扫描件），请先运行 OCR' })}
+                {t('pdf:toolbar.scanned_search_hint')}
               </span>
             ) : (
               <span className="ds-search-info ds-search-no-results" role="status">
@@ -5006,10 +5558,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               </span>
             )
           )}
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handlePrevSearchResult} aria-disabled={searchResults.length === 0 || undefined} title={t('pdf:toolbar.prev_match')} aria-label={t('pdf:toolbar.prev_match')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handlePrevSearchResult} disabled={searchResults.length === 0} title={t('pdf:toolbar.prev_match')} aria-label={t('pdf:toolbar.prev_match')}>
             <CaretUp size={16} />
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleNextSearchResult} aria-disabled={searchResults.length === 0 || undefined} title={t('pdf:toolbar.next_match')} aria-label={t('pdf:toolbar.next_match')}>
+          <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleNextSearchResult} disabled={searchResults.length === 0} title={t('pdf:toolbar.next_match')} aria-label={t('pdf:toolbar.next_match')}>
             <CaretDown size={16} />
           </DsButton>
           <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCloseSearch} title={t('pdf:toolbar.close_search')} aria-label={t('pdf:toolbar.close_search')}>
@@ -5804,7 +6356,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             <Document
               key={documentRetryKey}
               file={file}
-              options={PDF_OPTIONS}
+              options={pdfDocumentOptions}
               onItemClick={handlePdfInternalLinkClick}
               externalLinkTarget="_blank"
               externalLinkRel="noopener noreferrer"
@@ -5874,41 +6426,43 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               }
             >
               {numPages > 0 && (
-                <div
-                  ref={pagesTransformRef}
-                  className={`ds-pdf__pages-container ${viewMode === 'dual' ? 'dual' : 'single'}`}
-                  onDoubleClick={handlePageDoubleClick}
-                >
+                <PdfViewportPriorityContext.Provider value={currentPage}>
                   <div
-                    className="ds-pdf__pages-virtualizer"
-                    style={{
-                      height: `${pageVirtualizer.getTotalSize()}px`,
-                      width: '100%',
-                      position: 'relative',
-                    }}
+                    ref={pagesTransformRef}
+                    className={`ds-pdf__pages-container ${viewMode === 'dual' ? 'dual' : 'single'}`}
+                    onDoubleClick={handlePageDoubleClick}
                   >
-                    {pageVirtualItems.map((virtualRow) => {
-                      const rowPages = getRowPages(virtualRow.index);
-                      return (
-                        <div
-                          key={virtualRow.key}
-                          data-index={virtualRow.index}
-                          ref={pageVirtualizer.measureElement}
-                          className={`ds-pdf__page-row ${viewMode === 'dual' ? 'dual' : 'single'}`}
-                          style={{
-                            position: 'absolute',
-                            top: 0,
-                            left: 0,
-                            width: '100%',
-                            transform: `translateY(${virtualRow.start}px)`,
-                          }}
-                        >
-                          {rowPages.map((pageNum) => renderPage(pageNum))}
-                        </div>
-                      );
-                    })}
+                    <div
+                      className="ds-pdf__pages-virtualizer"
+                      style={{
+                        height: `${pageVirtualizer.getTotalSize()}px`,
+                        width: '100%',
+                        position: 'relative',
+                      }}
+                    >
+                      {pageVirtualItems.map((virtualRow) => {
+                        const rowPages = getRowPages(virtualRow.index);
+                        return (
+                          <div
+                            key={virtualRow.key}
+                            data-index={virtualRow.index}
+                            ref={pageVirtualizer.measureElement}
+                            className={`ds-pdf__page-row ${viewMode === 'dual' ? 'dual' : 'single'}`}
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              width: '100%',
+                              transform: `translateY(${virtualRow.start}px)`,
+                            }}
+                          >
+                            {rowPages.map((pageNum) => renderPage(pageNum))}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                </PdfViewportPriorityContext.Provider>
               )}
             </Document>
           )}
