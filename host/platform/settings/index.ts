@@ -13,6 +13,14 @@ import { deleteSettingRow, deleteSettingRowsByPrefix, getSettingRow, listSetting
 export type * from './api.ts';
 export { SettingsError } from './api.ts';
 
+/**
+ * 由专属 SSOT 命令直接通过 `store.save/get/delete` 管辖的明文 settings 键。
+ * 这些键不含凭据，虽命中 `isSensitiveKey` 的宽前缀（如 `cloud_storage`），但绝不能在
+ * `getSecret` 时触发"旧明文迁入 `.secure/` 并删除 SQLite 行"，也不能经由通用 `saveSecret`/`deleteSecret`
+ * 绕过 SSOT 校验写入或删除。
+ */
+const SSOT_MANAGED_PLAINTEXT_KEYS = new Set<string>(['cloud_storage.config.safe_v1']);
+
 function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -80,11 +88,15 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     },
 
     async saveSecret(key, value) {
+      if (SSOT_MANAGED_PLAINTEXT_KEYS.has(key)) {
+        throw new SettingsError(`该设置键由专用 SSOT 命令管理，拒绝通过通用设置接口写入: ${key}`);
+      }
       if (!options.isSensitiveKey(key)) return store.save(key, value);
       return locked(() => saveSensitiveLocked(key, value));
     },
 
     async getSecret(key) {
+      if (SSOT_MANAGED_PLAINTEXT_KEYS.has(key)) return store.get(key);
       if (!options.isSensitiveKey(key)) return store.get(key);
       return locked(async () => {
         const secure = options.secureStore();
@@ -109,6 +121,9 @@ export function createSettingsStore(options: SettingsStoreOptions): SettingsStor
     },
 
     async deleteSecret(key) {
+      if (SSOT_MANAGED_PLAINTEXT_KEYS.has(key)) {
+        throw new SettingsError(`该设置键由专用 SSOT 命令管理，拒绝通过通用设置接口删除: ${key}`);
+      }
       if (!options.isSensitiveKey(key)) return store.delete(key);
       return locked(async () => {
         const secure = options.secureStore();

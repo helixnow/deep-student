@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { invoke } from '@tauri-apps/api/core';
 import { ArrowsLeftRight, CircleNotch, Warning } from '@phosphor-icons/react';
 import { useShallow } from 'zustand/react/shallow';
 import { DsButton } from '@/components/ui/DsButton';
@@ -19,18 +18,6 @@ import {
 } from './data-governance/localizeCloudError';
 import { cn } from '@/lib/utils';
 
-function isValidSafeCloudConfigJson(raw: string | null | undefined): boolean {
-  if (!raw || typeof raw !== 'string') return false;
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
-    const provider = (parsed as { provider?: unknown }).provider;
-    return provider === 'webdav' || provider === 's3' || provider === 'ftp';
-  } catch {
-    return false;
-  }
-}
-
 export async function probeStoredCloudConfigured(options?: {
   allowBackendResolve?: boolean;
 }): Promise<boolean> {
@@ -40,23 +27,22 @@ export async function probeStoredCloudConfigured(options?: {
   } catch {
     // Ignore storage read failure
   }
-  try {
-    const rawSetting = await invoke<string | null>('get_setting', {
-      key: 'cloud_storage.config.safe_v1',
-    });
-    if (isValidSafeCloudConfigJson(rawSetting)) return true;
-  } catch {
-    // Ignore when Tauri IPC is unavailable in isolated unit tests
-  }
   if (options?.allowBackendResolve !== false) {
     try {
       const resolved = await cloudApi.resolveCloudStorageConfig();
       if (resolved && typeof resolved === 'object') return true;
     } catch {
-      // Fall back to safe local cache / settings probe
+      // Ignore backend resolution failure
     }
+    return false;
   }
-  return false;
+  try {
+    const ssot = await cloudApi.getCloudConfigSsot();
+    return Boolean(ssot?.configured && ssot.config);
+  } catch {
+    // Ignore when Tauri IPC is unavailable in isolated unit tests
+    return false;
+  }
 }
 
 export interface QuickSyncNowButtonProps {

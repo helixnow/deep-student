@@ -52,33 +52,29 @@ import { probeStoredCloudConfigured } from './QuickSyncNowButton';
 
 export const ipcPairingSettings: PairingSettingsStore = {
   get: async (key) => {
-    const direct = await invoke<string | null>('get_setting', { key });
-    if (direct !== null && direct !== undefined && direct !== '') {
-      return direct;
-    }
     if (key === 'cloud_storage.config.safe_v1') {
+      let resolved: cloudApi.CloudStorageConfig | null = null;
       try {
-        const resolved =
-          (await cloudApi.resolveCloudStorageConfig()) ??
-          cloudApi.loadStoredCloudStorageConfigSafe();
-        if (resolved) {
-          return JSON.stringify(cloudApi.toSafeCloudStorageConfig(resolved));
-        }
+        resolved = await cloudApi.resolveCloudStorageConfig();
       } catch {
-        // Ignore fallback failure in isolated unit-test environments
+        // Fallback only when IPC is unavailable in isolated unit tests;
+        // never resurrect localStorage cache when backend explicitly returns null.
+        try {
+          resolved = cloudApi.loadStoredCloudStorageConfigSafe();
+        } catch {
+          resolved = null;
+        }
       }
+      return resolved ? JSON.stringify(cloudApi.toSafeCloudStorageConfig(resolved)) : null;
     }
-    return direct;
+    return invoke<string | null>('get_setting', { key });
   },
   save: async (key, value) => {
-    await invoke('save_setting', { key, value });
     if (key === 'cloud_storage.config.safe_v1') {
-      try {
-        await invoke('cloud_config_ssot_save', { config: JSON.parse(value) });
-      } catch {
-        // Fallback for unit-test invoke mocks without cloud_config_ssot_save
-      }
+      await invoke('cloud_config_ssot_save', { config: JSON.parse(value) });
+      return;
     }
+    await invoke('save_setting', { key, value });
   },
   getSecret: async (key) => {
     if (key === 'cloud_storage_credentials') {
@@ -226,28 +222,15 @@ async function probeCloudEndpointContext(
     // Ignore local cache parse failure
   }
   try {
-    const rawSetting = await invoke<string | null>('get_setting', {
-      key: 'cloud_storage.config.safe_v1',
-    });
-    if (typeof rawSetting === 'string' && rawSetting.trim()) {
-      const endpoint = extractCloudEndpointFromRecord(JSON.parse(rawSetting));
-      if (endpoint) {
-        return cloudApi.classifyEndpointNetworkContext(endpoint);
-      }
+    const remoteConfig = allowBackendResolve
+      ? await cloudApi.resolveCloudStorageConfig()
+      : await cloudApi.getCloudConfigSsot().then((ssot) => (ssot?.configured ? ssot.config : null));
+    const remoteEndpoint = extractCloudEndpointFromRecord(remoteConfig);
+    if (remoteEndpoint) {
+      return cloudApi.classifyEndpointNetworkContext(remoteEndpoint);
     }
   } catch {
-    // Ignore setting probe failure
-  }
-  if (allowBackendResolve) {
-    try {
-      const resolved = await cloudApi.resolveCloudStorageConfig();
-      const resolvedEndpoint = extractCloudEndpointFromRecord(resolved);
-      if (resolvedEndpoint) {
-        return cloudApi.classifyEndpointNetworkContext(resolvedEndpoint);
-      }
-    } catch {
-      // Ignore backend resolution failure
-    }
+    // Ignore backend resolution failure
   }
   return null;
 }

@@ -13,7 +13,7 @@ import { resolveOsDirs } from '../paths/index.ts';
 import { createSecretsService } from '../secrets/index.ts';
 import type { SecureStore } from '../secrets/api.ts';
 import type { SqlExecutor } from '../storage/api.ts';
-import { createSettingsStore } from './index.ts';
+import { createSettingsStore, SettingsError } from './index.ts';
 
 type BetterSqlite = new (path: string) => {
   prepare(sql: string): { get(...p: unknown[]): any; all(...p: unknown[]): any[]; run(...p: unknown[]): { changes: number; lastInsertRowid: number | bigint }; pluck(): { get(...p: unknown[]): any } };
@@ -115,6 +115,63 @@ describe('settings', () => {
     await expect(store.getSecret('x.api_key')).rejects.toThrow('安全存储不可用，拒绝读取数据库中的敏感设置: x.api_key');
     expect(store.get('x.api_key')).toBeNull();
     expect(await store.deleteSecret('x.api_key')).toBe(false);
+  });
+  it('BUG-T3: SSOT 管辖的 cloud_storage.config.safe_v1 读取绝不迁移删除 SQLite 行，通用写入/删除抛 SettingsError，真实云凭据仍正常加密迁移', async () => {
+    const { store, db, dir, secure } = setup();
+    const ssotKey = 'cloud_storage.config.safe_v1';
+    const ssotJson = JSON.stringify({
+      provider: 'webdav',
+      root: 'deep-student-sync',
+      webdav: { endpoint: 'https://dav.example.test', username: 'alice' },
+    });
+
+    // 模拟 cloud_config_ssot_save / cloud_config_publish 直接写 SQLite SSOT
+    store.save(ssotKey, ssotJson);
+    expect(store.get(ssotKey)).toBe(ssotJson);
+
+    // 多次经由 getSecret 读取必须纯只读：不删除 SQLite 行、不写入 .secure/*.enc
+    expect(await store.getSecret(ssotKey)).toBe(ssotJson);
+    expect(await store.getSecret(ssotKey)).toBe(ssotJson);
+    expect(store.get(ssotKey)).toBe(ssotJson);
+    expect(db.prepare('SELECT value FROM settings WHERE key = ?').pluck().get(ssotKey)).toBe(ssotJson);
+    expect(existsSync(join(dir, '.secure', `${ssotKey}.enc`))).toBe(false);
+
+    // 即使 .secure 中遗留了旧幽灵文件，getSecret 也只读 SQLite SSOT，不复活幽灵配置
+    await secure!.saveSecret(ssotKey, JSON.stringify({ provider: 's3', s3: { endpoint: 'https://stale.test', bucket: 'stale', accessKeyId: 'x' } }));
+    expect(await store.getSecret(ssotKey)).toBe(ssotJson);
+
+    // 通用 saveSecret / deleteSecret 必须拒绝越权写删，且不改动 SQLite 行
+    await expect(store.saveSecret(ssotKey, '{"provider":"ftp"}')).rejects.toBeInstanceOf(SettingsError);
+    await expect(store.deleteSecret(ssotKey)).rejects.toBeInstanceOf(SettingsError);
+    expect(store.get(ssotKey)).toBe(ssotJson);
+
+    // 专用 SSOT 清理（store.delete）后，getSecret 返回 null，绝不回读 .secure 幽灵副本
+    expect(store.delete(ssotKey)).toBe(true);
+    expect(await store.getSecret(ssotKey)).toBeNull();
+
+    // 真实敏感键（同 cloud_storage 前缀的 cloud_storage_credentials 与 builtin-openai.api_key）仍受加密与迁移保护
+    store.save('cloud_storage_credentials', '{"webdavPassword":"secret"}');
+    expect(await store.getSecret('cloud_storage_credentials')).toBe('{"webdavPassword":"secret"}');
+    expect(store.get('cloud_storage_credentials')).toBeNull();
+    expect(existsSync(join(dir, '.secure', 'cloud_storage_credentials.enc'))).toBe(true);
+
+    store.save('builtin-openai.api_key', 'sk-legacy-123');
+    expect(await store.getSecret('builtin-openai.api_key')).toBe('sk-legacy-123');
+    expect(store.get('builtin-openai.api_key')).toBeNull();
+    expect(existsSync(join(dir, '.secure', 'builtin-openai.api_key.enc'))).toBe(true);
+  });
+  it('BUG-T3: 无安全存储时 cloud_storage.config.safe_v1 仍可只读访问，且 saveSecret/deleteSecret 拒绝', async () => {
+    const { store } = setup(false);
+    const ssotKey = 'cloud_storage.config.safe_v1';
+    const ssotJson = JSON.stringify({
+      provider: 'webdav',
+      webdav: { endpoint: 'https://dav.example.test', username: 'alice' },
+    });
+    store.save(ssotKey, ssotJson);
+    expect(await store.getSecret(ssotKey)).toBe(ssotJson);
+    await expect(store.saveSecret(ssotKey, '{}')).rejects.toBeInstanceOf(SettingsError);
+    await expect(store.deleteSecret(ssotKey)).rejects.toBeInstanceOf(SettingsError);
+    expect(store.get(ssotKey)).toBe(ssotJson);
   });
   // decisions.md D1：*WithConn 必须只使用调用方传入的 SqlExecutor。
   it('D1 *WithConn uses the caller transaction connection only', () => {

@@ -129,6 +129,7 @@ vi.mock('@/components/ui/DsDialog', () => ({
 
 import { CloudStorageSection } from '../CloudStorageSection';
 import { DevicePairingSection, ipcPairingSettings } from '../DevicePairingSection';
+import { probeStoredCloudConfigured } from '../QuickSyncNowButton';
 import * as cloudApi from '@/utils/cloudStorageApi';
 import { useGlobalSyncStore } from '@/stores/syncStatusStore';
 import { createPairingCode } from '../../../../../host/plugins/sync/src/device-pairing';
@@ -488,5 +489,148 @@ describe('W3B-1 regressions (BUG-2, BUG-5, BUG-6)', () => {
     expect(notice.textContent).toContain(enSync.firstConnect.remoteDatasetNoticeTitle);
     expect(notice.textContent).toContain('7');
     expect(notice.textContent).not.toMatch(/[\u4e00-\u9fff]/);
+  });
+
+  it('BUG-T3: probeStoredCloudConfigured never invokes get_setting(cloud_storage.config.safe_v1) and uses SSOT IPCs on cold cache', async () => {
+    // 1. allowBackendResolve: true -> uses resolveCloudStorageConfig, never get_setting
+    vi.mocked(cloudApi.resolveCloudStorageConfig).mockResolvedValueOnce({
+      provider: 'webdav',
+      webdav: { endpoint: 'https://dav.example.test', username: 'alice', password: '' },
+      root: 'deep-student-sync',
+      allowInsecure: false,
+    });
+    expect(await probeStoredCloudConfigured({ allowBackendResolve: true })).toBe(true);
+    expect(cloudApi.resolveCloudStorageConfig).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).not.toHaveBeenCalledWith('get_setting', {
+      key: 'cloud_storage.config.safe_v1',
+    });
+
+    // 2. allowBackendResolve: false -> uses read-only cloud_config_ssot_get, never get_setting
+    mockInvoke.mockClear();
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'cloud_config_ssot_get') {
+        return {
+          configured: true,
+          provider: 'webdav',
+          config: {
+            provider: 'webdav',
+            webdav: { endpoint: 'https://dav.example.test', username: 'alice' },
+            root: 'deep-student-sync',
+          },
+        };
+      }
+      return null;
+    });
+    expect(await probeStoredCloudConfigured({ allowBackendResolve: false })).toBe(true);
+    expect(mockInvoke).toHaveBeenCalledWith('cloud_config_ssot_get');
+    expect(mockInvoke).not.toHaveBeenCalledWith('get_setting', {
+      key: 'cloud_storage.config.safe_v1',
+    });
+
+    // 3. When SSOT reports configured: false, returns false without calling get_setting
+    mockInvoke.mockClear();
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'cloud_config_ssot_get') return { configured: false };
+      return null;
+    });
+    expect(await probeStoredCloudConfigured({ allowBackendResolve: false })).toBe(false);
+    expect(mockInvoke).toHaveBeenCalledWith('cloud_config_ssot_get');
+    expect(mockInvoke).not.toHaveBeenCalledWith('get_setting', {
+      key: 'cloud_storage.config.safe_v1',
+    });
+  });
+
+  it('BUG-T3: ipcPairingSettings.get/save for cloud_storage.config.safe_v1 use SSOT commands only and never call get_setting/save_setting', async () => {
+    const safeWebdav = {
+      provider: 'webdav' as const,
+      webdav: { endpoint: 'https://dav.example.test', username: 'alice' },
+      root: 'deep-student-sync',
+    };
+
+    // get -> resolves via resolveCloudStorageConfig, never calls get_setting
+    vi.mocked(cloudApi.resolveCloudStorageConfig).mockResolvedValueOnce({
+      ...safeWebdav,
+      webdav: { ...safeWebdav.webdav, password: '' },
+      allowInsecure: false,
+    });
+    const raw = await ipcPairingSettings.get('cloud_storage.config.safe_v1');
+    expect(JSON.parse(raw!)).toEqual(safeWebdav);
+    expect(mockInvoke).not.toHaveBeenCalledWith('get_setting', {
+      key: 'cloud_storage.config.safe_v1',
+    });
+
+    // get when backend explicitly returns null -> must NOT resurrect stale localStorage cache
+    localStorage.setItem(
+      cloudApi.CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY,
+      JSON.stringify(safeWebdav),
+    );
+    vi.mocked(cloudApi.resolveCloudStorageConfig).mockResolvedValueOnce(null);
+    expect(await ipcPairingSettings.get('cloud_storage.config.safe_v1')).toBeNull();
+    expect(mockInvoke).not.toHaveBeenCalledWith('get_setting', {
+      key: 'cloud_storage.config.safe_v1',
+    });
+
+    // get when IPC throws in isolated unit test -> falls back to localStorage safe cache
+    vi.mocked(cloudApi.resolveCloudStorageConfig).mockRejectedValueOnce(new Error('IPC unavailable'));
+    const fallbackRaw = await ipcPairingSettings.get('cloud_storage.config.safe_v1');
+    expect(JSON.parse(fallbackRaw!)).toEqual(safeWebdav);
+    expect(mockInvoke).not.toHaveBeenCalledWith('get_setting', {
+      key: 'cloud_storage.config.safe_v1',
+    });
+
+    // save -> invokes cloud_config_ssot_save ONLY, never save_setting
+    mockInvoke.mockClear();
+    await ipcPairingSettings.save('cloud_storage.config.safe_v1', JSON.stringify(safeWebdav));
+    expect(mockInvoke).toHaveBeenCalledWith('cloud_config_ssot_save', { config: safeWebdav });
+    expect(mockInvoke).not.toHaveBeenCalledWith(
+      'save_setting',
+      expect.objectContaining({ key: 'cloud_storage.config.safe_v1' }),
+    );
+  });
+
+  it('BUG-T3: DevicePairingSection cold-cache mount and QR generation never invoke get_setting/save_setting for cloud_storage.config.safe_v1', async () => {
+    const lanSafeConfig = {
+      provider: 'webdav' as const,
+      webdav: { endpoint: 'http://192.168.1.42:8080/dav', username: 'alice' },
+      root: 'deep-student-sync',
+      allow_insecure: true,
+    };
+    mockInvoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'cloud_config_ssot_get') {
+        return { configured: true, provider: 'webdav', config: lanSafeConfig };
+      }
+      if (cmd === 'get_setting') return null;
+      if (cmd === 'get_settings_by_prefix') return [];
+      if (cmd === 'data_governance_pairing_get_cloud_credentials') return null;
+      return null;
+    });
+    vi.mocked(cloudApi.resolveCloudStorageConfig).mockResolvedValue({
+      provider: 'webdav',
+      webdav: { endpoint: 'http://192.168.1.42:8080/dav', username: 'alice', password: '' },
+      root: 'deep-student-sync',
+      allowInsecure: true,
+    });
+
+    // Mount with cold localStorage and explicit cloudConfigured prop (exercises allowBackendResolve=false -> cloud_config_ssot_get)
+    render(<DevicePairingSection cloudConfigured />);
+
+    const lanWarning = await screen.findByTestId('pairing-lan-endpoint-warning');
+    expect(lanWarning.textContent).toContain('192.168.1.42');
+
+    // Generate pairing QR code -> reads cloud_storage.config.safe_v1 through ipcPairingSettings.get
+    fireEvent.change(screen.getByPlaceholderText(enSync.pairing.pinPlaceholder), {
+      target: { value: '123456' },
+    });
+    fireEvent.click(screen.getByTestId('generate-pairing-qr-btn'));
+    expect(await screen.findByTestId('device-pairing-qr-panel')).toBeInTheDocument();
+
+    expect(mockInvoke).toHaveBeenCalledWith('cloud_config_ssot_get');
+    expect(mockInvoke).not.toHaveBeenCalledWith('get_setting', {
+      key: 'cloud_storage.config.safe_v1',
+    });
+    expect(mockInvoke).not.toHaveBeenCalledWith(
+      'save_setting',
+      expect.objectContaining({ key: 'cloud_storage.config.safe_v1' }),
+    );
   });
 });
