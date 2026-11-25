@@ -4,7 +4,7 @@ import { fileManager } from '@/utils/fileManager';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { getCollapsedMaxHeight, HTML_PREVIEW_STREAM_INTERVAL_MS } from './ChatHtmlPreview';
-import { repairPartialHtml } from './chatHtmlPreviewDocument';
+import { repairPartialHtml, wrapSandboxRunHtmlWithRuntimeGuard } from './chatHtmlPreviewDocument';
 import { WidgetStreamFrame } from './WidgetStreamFrame';
 import {
   MAX_WIDGET_STATE_BYTES,
@@ -970,7 +970,7 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
   const srcDoc = useMemo(
     () =>
       buildInteractiveHtmlCanvasDocument({
-        html: source,
+        html: wrapSandboxRunHtmlWithRuntimeGuard(source),
         canvasId,
         answer,
         widgetState: initialDocStateRef.current,
@@ -1166,9 +1166,21 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
   const [sourceOpen, setSourceOpen] = useState(false);
   const [sourceDraft, setSourceDraft] = useState(() => localHtml);
   const [editOpen, setEditOpen] = useState(false);
+  const sourcePanelRef = useRef<HTMLDivElement>(null);
+  const localEditBarRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     setSourceDraft(localHtml);
   }, [localHtml]);
+  useEffect(() => {
+    if (sourceOpen) {
+      sourcePanelRef.current?.scrollIntoView?.({ block: 'nearest' });
+    }
+  }, [sourceOpen]);
+  useEffect(() => {
+    if (editOpen) {
+      localEditBarRef.current?.scrollIntoView?.({ block: 'nearest' });
+    }
+  }, [editOpen]);
   const [editInstruction, setEditInstruction] = useState('');
   const [patchSearch, setPatchSearch] = useState('');
   const [patchReplace, setPatchReplace] = useState('');
@@ -1512,6 +1524,7 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
       {/* 源码视图（支持直接编辑并重新运行 / 下载 HTML） */}
       {sourceOpen && (
         <div
+          ref={sourcePanelRef}
           className="border-t border-border/35 bg-muted/30 p-3"
           data-testid="canvas-source-view"
         >
@@ -1575,6 +1588,7 @@ export const InteractiveHtmlCanvas: React.FC<InteractiveHtmlCanvasProps> = ({
       {/* 就地局部修改内联栏（不弹遮挡模态框） */}
       {editOpen && (
         <div
+          ref={localEditBarRef}
           className="flex flex-col gap-2.5 border-t border-border/35 bg-card/50 p-3 text-xs"
           data-testid="canvas-local-edit-bar"
         >

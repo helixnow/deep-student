@@ -373,6 +373,7 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
   const [totalGroups, setTotalGroups] = useState(0);
   const [loading, setLoading] = useState(false);
   const [resolvingKey, setResolvingKey] = useState<string | null>(null);
+  const [pendingKeepLocalKey, setPendingKeepLocalKey] = useState<string | null>(null);
   const [mergeEditing, setMergeEditing] = useState<string | null>(null);
   const [mergeText, setMergeText] = useState('');
   const [rawJsonOpen, setRawJsonOpen] = useState(false);
@@ -509,20 +510,27 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
     `${p.databaseName}|${p.tableName}|${p.recordId}`;
 
   const handleResolve = useCallback(
-    async (p: ConflictPair, resolution: 'keep_local' | 'keep_cloud' | 'merged', merged?: string) => {
+    async (
+      p: ConflictPair,
+      resolution: 'keep_local' | 'keep_cloud' | 'merged',
+      merged?: string,
+      options?: { confirmedCloudOnlyKeepLocal?: boolean },
+    ) => {
       const key = pairKey(p);
       // cloud-only 组（无 local 快照，典型为 LWW 门败方 DELETE/覆盖）的「保留本地」
       // 语义 = 驳回云端败方变更、保留本地当前业务表行（后端缺 local 侧时自动回退）。
-      // 危险语义不静默执行，走两击确认。
-      if (resolution === 'keep_local' && p.locals.length === 0) {
-        const confirmed = unifiedConfirm(
-          t('data:governance.conflict_keep_local_cloud_only_confirm', {
-            table: p.tableName,
-            record: p.recordId,
-          }),
-          { key: `record-conflict-keep-local-cloud-only-${key}` },
-        );
-        if (!confirmed) return;
+      // 使用持久内联二次确认栏替代短暂 toast 确认窗口，避免慢速操作超过 8s 后反复重置确认。
+      if (
+        resolution === 'keep_local' &&
+        p.locals.length === 0 &&
+        !options?.confirmedCloudOnlyKeepLocal &&
+        pendingKeepLocalKey !== key
+      ) {
+        setPendingKeepLocalKey(key);
+        return;
+      }
+      if (pendingKeepLocalKey === key) {
+        setPendingKeepLocalKey(null);
       }
       setResolvingKey(key);
       try {
@@ -1068,6 +1076,43 @@ export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }>
                   </DsButton>
                 </div>
               </div>
+              {pendingKeepLocalKey === key && !latestLocal && (
+                <div
+                  data-testid="conflict-keep-local-confirm-bar"
+                  role="alertdialog"
+                  aria-label={t('data:governance.keep_local')}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-foreground"
+                >
+                  <span className="min-w-0 flex-1 break-words">
+                    {t('data:governance.conflict_keep_local_cloud_only_confirm', {
+                      table: p.tableName,
+                      record: p.recordId,
+                    })}
+                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <DsButton
+                      variant="outline"
+                      size="sm"
+                      disabled={isResolving}
+                      onClick={() => void handleResolve(p, 'keep_local', undefined, { confirmedCloudOnlyKeepLocal: true })}
+                      data-testid="conflict-keep-local-confirm-button"
+                      className="h-7 border-warning/50 bg-background text-xs font-medium max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+                    >
+                      {t('data:governance.keep_local')} · {t('common:confirm')}
+                    </DsButton>
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      disabled={isResolving}
+                      onClick={() => setPendingKeepLocalKey(null)}
+                      data-testid="conflict-keep-local-cancel-button"
+                      className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
+                    >
+                      {t('common:cancel')}
+                    </DsButton>
+                  </div>
+                </div>
+              )}
               {showTrashConflictHint && (
                 <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-2.5 py-1.5 text-xs">
                   <span className="font-medium text-foreground">

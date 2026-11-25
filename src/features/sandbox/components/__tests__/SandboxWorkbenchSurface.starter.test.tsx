@@ -150,10 +150,30 @@ describe('Sandbox starter HTML canvas, path normalization, and sandbox-run upgra
     render(<SandboxWorkbenchSurface />);
     expect(screen.getByTestId('sandbox-runtime-status-badge')).toHaveTextContent('已运行 · v2');
     const restoredFrame = document.querySelector('iframe');
-    expect(restoredFrame?.getAttribute('srcdoc')).toContain('Updated v2 HTML');
+    const restoredSrcDoc = restoredFrame?.getAttribute('srcdoc') ?? '';
+    expect(restoredSrcDoc).toContain('Updated v2 HTML');
+    expect(restoredSrcDoc).toContain('data-ds-sandbox-runtime-guard="1"');
 
-    // Reset returns to clean v1
+    // Source editor displays clean user HTML without leaking runtime guard script
+    fireEvent.click(screen.getByTestId('canvas-toggle-source'));
+    const sourceEditor = screen.getByTestId('canvas-source-editor') as HTMLTextAreaElement;
+    expect(sourceEditor.value).toContain('Updated v2 HTML');
+    expect(sourceEditor.value).not.toContain('data-ds-sandbox-runtime-guard');
+
+    // Reset requires two-step confirmation and allows non-destructive undo back to v2
     fireEvent.click(screen.getByTestId('sandbox-reset-button'));
+    expect(screen.getByTestId('sandbox-reset-confirm-bar')).toBeInTheDocument();
+    expect(screen.getByTestId('sandbox-runtime-status-badge')).toHaveTextContent('已运行 · v2');
+    fireEvent.click(screen.getByTestId('sandbox-reset-confirm-button'));
+    expect(screen.getByTestId('sandbox-runtime-status-badge')).toHaveTextContent('已运行 · v1');
+
+    // Undo reset brings v2 back
+    fireEvent.click(screen.getByTestId('sandbox-undo-reset-button'));
+    expect(screen.getByTestId('sandbox-runtime-status-badge')).toHaveTextContent('已运行 · v2');
+
+    // Confirm reset again before closing session to test persisted v1 restore
+    fireEvent.click(screen.getByTestId('sandbox-reset-button'));
+    fireEvent.click(screen.getByTestId('sandbox-reset-confirm-button'));
     expect(screen.getByTestId('sandbox-runtime-status-badge')).toHaveTextContent('已运行 · v1');
 
     // Close session -> empty state offers "恢复上次草稿"
