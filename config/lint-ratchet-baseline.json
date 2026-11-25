@@ -1,7 +1,7 @@
 {
   "$comment": "由 `node scripts/check-lint-ratchet.mjs --update` 生成：受棘轮约束规则的存量告警，按 (规则, 模块) 只减不增。totals 仅供阅读。",
   "totals": {
-    "ds-components/coarse-touch-target": 1518,
+    "ds-components/coarse-touch-target": 1515,
     "ds-components/no-arbitrary-font-size": 820,
     "ds-components/no-arbitrary-z-index": 28,
     "ds-components/no-hardcoded-color": 22,
@@ -28,7 +28,7 @@
       "features/pdf": 20,
       "features/pomodoro": 10,
       "features/sandbox": 1,
-      "features/settings": 319,
+      "features/settings": 316,
       "features/todo": 61,
       "features/workbench": 18
     },
