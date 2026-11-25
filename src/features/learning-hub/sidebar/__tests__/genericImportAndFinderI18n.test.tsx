@@ -265,6 +265,8 @@ describe('Wave-2C OOD fix: unified generic import, locale-clean errors, and Find
     });
     expect(mocks.notify).toHaveBeenCalledWith('success', 'Imported 5 files');
     expect(handleRefresh).toHaveBeenCalledTimes(1);
+    expect(enLearningHub.finder.dragDrop.importSuccess_one).toBe('Imported {{count}} file');
+    expect(enLearningHub.finder.dragDrop.importSuccess_other).toBe('Imported {{count}} files');
   });
 
   it('triggers unified web file input synchronously from New -> Import files… menu item without silently dropping selected .pdf/.csv files', async () => {

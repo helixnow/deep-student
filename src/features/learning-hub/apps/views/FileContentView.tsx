@@ -34,6 +34,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { archiveManifestDisplayText, isArchiveManifestText } from './archiveManifest';
 import { saveFiltersForFileName, saveResourceToDevice } from './saveResourceToDevice';
+import { canOpenFilesExternally, openFileExternally } from '@/utils/systemFileOpener';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { isMobilePlatform, isWebUiShell, supportsStreamProtocol } from '@/utils/platform';
 
@@ -219,7 +220,24 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   const archiveExt = (node.name.split('.').pop() || '').toLowerCase();
   const isArchive = previewMode === 'none' && ['zip', 'rar', '7z'].includes(archiveExt);
 
-  // 使用统一的 PDF 加载 Hook（支持缓存、去重、大文件检测）
+  const pdfProcessingStatus = typeof metadata?.processingStatus === 'string'
+    ? metadata.processingStatus
+    : undefined;
+  const pdfProcessingError = typeof metadata?.processingError === 'string'
+    ? metadata.processingError.trim()
+    : '';
+  const isPdfProcessingError = isPdf && pdfProcessingStatus === 'error';
+  const [activatedPdfNodeId, setActivatedPdfNodeId] = useState<string | null>(
+    isActive ? node.id : null,
+  );
+  useEffect(() => {
+    if (isActive && activatedPdfNodeId !== node.id) {
+      setActivatedPdfNodeId(node.id);
+    }
+  }, [isActive, activatedPdfNodeId, node.id]);
+  const isPdfActivated = isActive || activatedPdfNodeId === node.id;
+
+  // 使用统一的 PDF 加载 Hook（支持缓存、去重、大文件检测；后台未曾激活窗口与后端处理失败节点不提前拉起 PDF.js）
   const {
     file: pdfFile,
     filePath: pdfFilePath,
@@ -231,7 +249,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     nodeId: node.id,
     fileName: node.name,
     cacheKey: `${node.id}:${node.updatedAt || ''}`,
-    enabled: isPdf,
+    enabled: isPdf && !isPdfProcessingError && isPdfActivated,
   });
   
   // PDF 页面选择状态
@@ -790,6 +808,62 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
 
     // PDF 预览
     if (isPdf) {
+      const handleOpenPdfExternal = async () => {
+        try {
+          const targetPath = pdfFilePath || await invoke<string | null>('vfs_get_file_blob_path', { id: node.id });
+          if (targetPath && canOpenFilesExternally()) {
+            await openFileExternally(targetPath);
+            return;
+          }
+          await handleSaveFile();
+        } catch (err: unknown) {
+          showGlobalNotification('error', getErrorMessage(err));
+        }
+      };
+
+      const buildPdfRecoveryActions = (onRetry: () => void) => [
+        {
+          id: 'retry',
+          label: t('common:retry'),
+          onClick: onRetry,
+          variant: 'ghost' as const,
+        },
+        {
+          id: 'save',
+          label: t('learningHub:file.saveToDevice'),
+          onClick: () => { void handleSaveFile(); },
+          variant: canOpenFilesExternally() ? ('default' as const) : ('primary' as const),
+          loading: isSaving,
+        },
+        ...(canOpenFilesExternally()
+          ? [{
+              id: 'open-external',
+              label: t('common:openExternal'),
+              onClick: () => { void handleOpenPdfExternal(); },
+              variant: 'primary' as const,
+            }]
+          : []),
+      ];
+
+      if (isPdfProcessingError) {
+        return (
+          <PreviewStatus
+            tone="error"
+            title={t('learningHub:finder.dragDrop.corruptPdfReason', {
+              defaultValue: 'Corrupted or invalid PDF file',
+            })}
+            description={pdfProcessingError || t('learningHub:file.loadFailed')}
+            meta={`${node.name}${typeof node.size === 'number' && node.size > 0 ? ` · ${formatFileSize(node.size)}` : ''}`}
+            actions={buildPdfRecoveryActions(() => {
+              retryPdfLoad();
+              handleRetry();
+            })}
+          />
+        );
+      }
+      if (!isPdfActivated) {
+        return <div className="h-full w-full" data-testid="pdf-background-deferred" />;
+      }
       if (pdfLoading) {
         return (
           <PreviewStatus
@@ -805,14 +879,8 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
           <PreviewStatus
             tone="error"
             title={pdfError}
-            actions={[
-              {
-                id: 'retry',
-                label: t('common:retry'),
-                onClick: retryPdfLoad,
-                variant: 'ghost',
-              },
-            ]}
+            meta={`${node.name}${typeof node.size === 'number' && node.size > 0 ? ` · ${formatFileSize(node.size)}` : ''}`}
+            actions={buildPdfRecoveryActions(retryPdfLoad)}
           />
         );
       }
@@ -836,6 +904,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             onQuoteToChat={handleQuoteToChat}
             selectionSourceId={node.sourceId || node.id}
             toolbarVariant={pdfToolbarVariant}
+            isActive={isActive}
           />
         );
       }

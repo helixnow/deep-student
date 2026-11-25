@@ -35,22 +35,86 @@ import { canParseAsMobileTextbook, withStagedTextbookFile } from '../textbookFil
 
 type AttachImportProgress = { done: number; total: number } | null;
 
-// U03 弱网连点幂等锁：按侧栏实例（isMountedRef）隔离，跨重渲染稳定且卸载自动 GC
-const inFlightImportLocks = new WeakMap<object, Set<string>>();
-
-function getImportLocks(instanceKey: object): Set<string> {
-  let locks = inFlightImportLocks.get(instanceKey);
-  if (!locks) {
-    locks = new Set<string>();
-    inFlightImportLocks.set(instanceKey, locks);
-  }
-  return locks;
+interface ImportQueueState {
+  tail: Promise<void>;
+  pendingCount: number;
+  activeFingerprints: Set<string>;
+  lastAutoOpenedPdfAt: number;
 }
 
-/** 当前侧栏实例是否存在在途导入（供工具栏「导入资料」防连点复用） */
+const AUTO_OPEN_PDF_COOLDOWN_MS = 10_000;
+
+// U03 弱网连点幂等 + 串行队列：按侧栏实例（isMountedRef）隔离，跨重渲染稳定且卸载自动 GC；
+// 相同文件指纹（name+size+lastModified / path）在途去重，不同文件按 FIFO 排队绝不静默丢弃。
+const importQueueByInstance = new WeakMap<object, ImportQueueState>();
+
+function getImportQueueState(instanceKey: object): ImportQueueState {
+  let state = importQueueByInstance.get(instanceKey);
+  if (!state) {
+    state = {
+      tail: Promise.resolve(),
+      pendingCount: 0,
+      activeFingerprints: new Set<string>(),
+      lastAutoOpenedPdfAt: 0,
+    };
+    importQueueByInstance.set(instanceKey, state);
+  }
+  return state;
+}
+
+function getFileImportFingerprint(file: File): string {
+  return `file::${file.name}::${file.size}::${file.lastModified}`;
+}
+
+function getPathImportFingerprint(filePath: string): string {
+  return `path::${filePath}`;
+}
+
+async function enqueueImportBatch<T>(
+  instanceKey: object,
+  items: T[],
+  getFingerprint: (item: T) => string,
+  run: (queuedItems: T[], queueState: ImportQueueState) => Promise<void>,
+): Promise<void> {
+  const state = getImportQueueState(instanceKey);
+  const queuedItems: T[] = [];
+  const addedFingerprints: string[] = [];
+
+  for (const item of items) {
+    const fp = getFingerprint(item);
+    if (state.activeFingerprints.has(fp)) continue;
+    state.activeFingerprints.add(fp);
+    addedFingerprints.push(fp);
+    queuedItems.push(item);
+  }
+
+  if (queuedItems.length === 0) return;
+
+  const prev = state.pendingCount > 0 ? state.tail : null;
+  state.pendingCount += 1;
+  let releaseTail!: () => void;
+  state.tail = new Promise<void>((resolve) => {
+    releaseTail = resolve;
+  });
+
+  try {
+    if (prev) {
+      await prev;
+    }
+    await run(queuedItems, state);
+  } finally {
+    for (const fp of addedFingerprints) {
+      state.activeFingerprints.delete(fp);
+    }
+    state.pendingCount = Math.max(0, state.pendingCount - 1);
+    releaseTail();
+  }
+}
+
+/** 当前侧栏实例是否存在在途或排队中的导入（供工具栏「导入资料」防连点复用） */
 export function isImportActionInFlight(isMountedRef: object): boolean {
-  const locks = inFlightImportLocks.get(isMountedRef);
-  return Boolean(locks && locks.size > 0);
+  const state = importQueueByInstance.get(isMountedRef);
+  return Boolean(state && state.pendingCount > 0);
 }
 
 const UPLOAD_MIME_FALLBACKS: Record<string, string> = {
@@ -932,7 +996,7 @@ export interface ImportPathsContext {
  */
 export async function importPathsIntoLibrary(
   {
-    importProgress,
+    importProgress: _importProgress,
     currentPath,
     t,
     currentCreatableFolderId,
@@ -946,53 +1010,29 @@ export async function importPathsIntoLibrary(
   }: ImportPathsContext,
   paths: string[],
 ): Promise<void> {
+  void _importProgress;
   if (paths.length === 0) return;
-  const locks = getImportLocks(isMountedRef);
-  if (importProgress.isImporting || locks.has('importPaths')) return;
 
   debugLog.log('[LearningHub] 导入文件:', paths.length, '个文件');
-
-  // Markdown 本身就是笔记：任何位置拖入都导入为笔记（用笔记应用打开、可编辑），
-  // 不再只在「笔记」视图才这样——在「全部文件」拖入会变成只读预览的资料
-  const shouldImportMarkdownAsNotes = true;
-  const preferVfsFilesView = currentPath?.typeFilter === 'file';
-
-  // 按类型分组
-  const docPaths: string[] = [];
-  const imagePaths: string[] = [];
-  const mindmapPaths: string[] = [];
-  const otherPaths: string[] = [];
 
   const guidanceNames: Record<'flashcards' | 'mindmap', string[]> = {
     flashcards: [],
     mindmap: [],
   };
+  const importablePaths: string[] = [];
 
   for (const p of paths) {
     const name = extractFileName(p);
     const ext = getFileExtension(name);
-    if (MINDMAP_IMPORT_EXTENSIONS.has(ext)) {
-      mindmapPaths.push(p);
-      continue;
-    }
-    const guidance = MODULE_GUIDANCE_EXTENSIONS[ext];
-    if (guidance) {
-      // ★ P3 引导：apkg/colpkg 等不进资源库，提示到对应模块导入
-      guidanceNames[guidance].push(name);
-      continue;
-    }
-    const isMarkdown = ext === 'md' || ext === 'markdown';
-    if (DOCUMENT_EXTENSIONS.has(ext)) {
-      if (!isMarkdown && (preferVfsFilesView || !canParseAsMobileTextbook(ext))) {
-        otherPaths.push(p);
-      } else {
-        docPaths.push(p);
+    if (!MINDMAP_IMPORT_EXTENSIONS.has(ext)) {
+      const guidance = MODULE_GUIDANCE_EXTENSIONS[ext];
+      if (guidance) {
+        // ★ P3 引导：apkg/colpkg 等不进资源库，提示到对应模块导入
+        guidanceNames[guidance].push(name);
+        continue;
       }
-    } else if (IMAGE_EXTENSIONS.has(ext)) {
-      imagePaths.push(p);
-    } else {
-      otherPaths.push(p);
     }
+    importablePaths.push(p);
   }
 
   const format = resolveImportFormatOptions(t, i18n.language);
@@ -1007,38 +1047,74 @@ export async function importPathsIntoLibrary(
       names: guidanceNames.mindmap.join(format.listSeparator),
     }));
   }
-  if (docPaths.length === 0 && imagePaths.length === 0 && mindmapPaths.length === 0 && otherPaths.length === 0) {
+  if (importablePaths.length === 0) {
     return;
   }
 
-  debugLog.log('[LearningHub] 文件分类:', {
-    documents: docPaths.length,
-    images: imagePaths.length,
-    mindmaps: mindmapPaths.length,
-    others: otherPaths.length,
-    markdownAsNotes: shouldImportMarkdownAsNotes,
-  });
+  await enqueueImportBatch(
+    isMountedRef,
+    importablePaths,
+    getPathImportFingerprint,
+    async (queuedPaths) => {
+      // Markdown 本身就是笔记：任何位置拖入都导入为笔记（用笔记应用打开、可编辑），
+      // 不再只在「笔记」视图才这样——在「全部文件」拖入会变成只读预览的资料
+      const shouldImportMarkdownAsNotes = true;
+      const preferVfsFilesView = currentPath?.typeFilter === 'file';
 
-  const { markdownItems: markdownNotePaths, otherItems: textbookPaths } = partitionMarkdownNoteImports(
-    docPaths,
-    (path) => extractFileName(path),
-    shouldImportMarkdownAsNotes,
-  );
+      // 按类型分组
+      const docPaths: string[] = [];
+      const imagePaths: string[] = [];
+      const mindmapPaths: string[] = [];
+      const otherPaths: string[] = [];
 
-  let totalSuccess = 0;
-  let totalFailed = 0;
-  let unlisten: UnlistenFn | null = null;
-  let firstImportedNode: DstuNode | null = null;
-  // ★ 2026-07-20：失败文件明细（文件名 + 具体原因），toast 不再只报笼统"导入失败"
-  const failedDetails: { name: string; reason?: string }[] = [];
-  // 后端按内容哈希去重：拖入已有的同一份文件会返回旧条目，不能报「已导入」
-  const duplicateNames: string[] = [];
-  const importStartedAt = Date.now();
-  let textbookProgressStarted = false;
-  let attachProgressStarted = false;
-  locks.add('importPaths');
+      for (const p of queuedPaths) {
+        const name = extractFileName(p);
+        const ext = getFileExtension(name);
+        if (MINDMAP_IMPORT_EXTENSIONS.has(ext)) {
+          mindmapPaths.push(p);
+          continue;
+        }
+        const isMarkdown = ext === 'md' || ext === 'markdown';
+        if (DOCUMENT_EXTENSIONS.has(ext)) {
+          if (!isMarkdown && (preferVfsFilesView || !canParseAsMobileTextbook(ext))) {
+            otherPaths.push(p);
+          } else {
+            docPaths.push(p);
+          }
+        } else if (IMAGE_EXTENSIONS.has(ext)) {
+          imagePaths.push(p);
+        } else {
+          otherPaths.push(p);
+        }
+      }
 
-  try {
+      debugLog.log('[LearningHub] 文件分类:', {
+        documents: docPaths.length,
+        images: imagePaths.length,
+        mindmaps: mindmapPaths.length,
+        others: otherPaths.length,
+        markdownAsNotes: shouldImportMarkdownAsNotes,
+      });
+
+      const { markdownItems: markdownNotePaths, otherItems: textbookPaths } = partitionMarkdownNoteImports(
+        docPaths,
+        (path) => extractFileName(path),
+        shouldImportMarkdownAsNotes,
+      );
+
+      let totalSuccess = 0;
+      let totalFailed = 0;
+      let unlisten: UnlistenFn | null = null;
+      let firstImportedNode: DstuNode | null = null;
+      // ★ 2026-07-20：失败文件明细（文件名 + 具体原因），toast 不再只报笼统"导入失败"
+      const failedDetails: { name: string; reason?: string }[] = [];
+      // 后端按内容哈希去重：拖入已有的同一份文件会返回旧条目，不能报「已导入」
+      const duplicateNames: string[] = [];
+      const importStartedAt = Date.now();
+      let textbookProgressStarted = false;
+      let attachProgressStarted = false;
+
+      try {
     const dropTargetFolderId = currentCreatableFolderId;
 
     if (markdownNotePaths.length > 0) {
@@ -1298,22 +1374,23 @@ export async function importPathsIntoLibrary(
         }
       }
     }
-  } catch (error) {
-    debugLog.error('[LearningHub] 导入异常:', error);
-    showGlobalNotification('error', t('finder.dragDrop.importFailed'));
-  } finally {
-    locks.delete('importPaths');
-    if (unlisten) {
-      unlisten();
-      unlisten = null;
-    }
-    if (textbookProgressStarted && isMountedRef.current) {
-      setImportProgress(prev => ({ ...prev, isImporting: false }));
-    }
-    if (attachProgressStarted && isMountedRef.current) {
-      setAttachImportProgress(null);
-    }
-  }
+      } catch (error) {
+        debugLog.error('[LearningHub] 导入异常:', error);
+        showGlobalNotification('error', t('finder.dragDrop.importFailed'));
+      } finally {
+        if (unlisten) {
+          unlisten();
+          unlisten = null;
+        }
+        if (textbookProgressStarted && isMountedRef.current) {
+          setImportProgress(prev => ({ ...prev, isImporting: false }));
+        }
+        if (attachProgressStarted && isMountedRef.current) {
+          setAttachImportProgress(null);
+        }
+      }
+    },
+  );
 }
 
 export interface ImportDroppedFilesContext {
@@ -1363,15 +1440,28 @@ export async function validateImportFileObject(
       return t('finder.dragDrop.corruptPdfReason', { defaultValue: 'PDF 文件已损坏或内容不完整' });
     }
     try {
-      const slice = typeof file.slice === 'function' ? file.slice(0, 1024) : file;
-      const bytes = await readBlobHeadBytes(slice);
-      if (bytes) {
+      const headSlice = typeof file.slice === 'function' ? file.slice(0, 1024) : file;
+      const headBytes = await readBlobHeadBytes(headSlice);
+      if (headBytes) {
         let header = '';
-        for (let i = 0; i < bytes.length; i += 1) {
-          header += String.fromCharCode(bytes[i]);
+        for (let i = 0; i < headBytes.length; i += 1) {
+          header += String.fromCharCode(headBytes[i]);
         }
         if (!header.includes('%PDF-')) {
           return t('finder.dragDrop.corruptPdfReason', { defaultValue: 'PDF 文件已损坏或格式无效' });
+        }
+      }
+      // 校验尾部 4096 字节是否包含 %%EOF 或 startxref，前置拦截截断损坏的 PDF
+      const tailStart = Math.max(0, file.size - 4096);
+      const tailSlice = typeof file.slice === 'function' ? file.slice(tailStart, file.size) : file;
+      const tailBytes = await readBlobHeadBytes(tailSlice);
+      if (tailBytes && tailBytes.length > 0) {
+        let tail = '';
+        for (let i = 0; i < tailBytes.length; i += 1) {
+          tail += String.fromCharCode(tailBytes[i]);
+        }
+        if (!tail.includes('%%EOF') && !tail.includes('startxref')) {
+          return t('finder.dragDrop.corruptPdfReason', { defaultValue: 'PDF 文件已损坏或内容不完整' });
         }
       }
     } catch {
@@ -1443,20 +1533,22 @@ export async function importDroppedFiles(
   }
   if (importableFiles.length === 0) return;
 
-  const locks = getImportLocks(isMountedRef);
-  if (locks.has('importDroppedFiles')) return;
-  locks.add('importDroppedFiles');
-  let attachProgressStarted = false;
+  await enqueueImportBatch(
+    isMountedRef,
+    importableFiles,
+    getFileImportFingerprint,
+    async (queuedFiles, queueState) => {
+      let attachProgressStarted = false;
 
-  try {
-    // Markdown 本身就是笔记：任何位置拖入都导入为笔记（用笔记应用打开、可编辑），
-    // 不再只在「笔记」视图才这样——在「全部文件」拖入会变成只读预览的资料
-    const shouldImportMarkdownAsNotes = true;
-    const { markdownItems: markdownFiles, otherItems: nonMarkdownFiles } = partitionMarkdownNoteImports(
-      importableFiles,
-      (file) => file.name,
-      shouldImportMarkdownAsNotes,
-    );
+      try {
+        // Markdown 本身就是笔记：任何位置拖入都导入为笔记（用笔记应用打开、可编辑），
+        // 不再只在「笔记」视图才这样——在「全部文件」拖入会变成只读预览的资料
+        const shouldImportMarkdownAsNotes = true;
+        const { markdownItems: markdownFiles, otherItems: nonMarkdownFiles } = partitionMarkdownNoteImports(
+          queuedFiles,
+          (file) => file.name,
+          shouldImportMarkdownAsNotes,
+        );
     const mindmapFiles: File[] = [];
     const attachmentFiles: File[] = [];
     for (const file of nonMarkdownFiles) {
@@ -1643,15 +1735,39 @@ export async function importDroppedFiles(
         } else if (fromPicker && onOpenApp) {
           const firstPreview = results.find((entry) => entry.ok && (entry.node.type === 'textbook' || entry.isMedia));
           if (firstPreview?.ok) {
-            onOpenApp(dstuNodeToResourceListItem(firstPreview.node, firstPreview.node.type === 'textbook' ? 'textbook' : 'file'));
+            const nodeMetadata = firstPreview.node.metadata as Record<string, unknown> | undefined;
+            const hasProcessingError = nodeMetadata?.processingStatus === 'error';
+            const isPdfPreview =
+              firstPreview.node.type === 'textbook' || getFileExtension(firstPreview.name) === 'pdf';
+            const successfulPdfCount = results.filter(
+              (entry) =>
+                entry.ok
+                && (entry.node.type === 'textbook' || getFileExtension(entry.name) === 'pdf'),
+            ).length;
+            const now = Date.now();
+            const suppressStackedPdfSpawn =
+              isPdfPreview
+              && (
+                hasProcessingError
+                || successfulPdfCount > 1
+                || queueState.pendingCount > 1
+                || now - queueState.lastAutoOpenedPdfAt < AUTO_OPEN_PDF_COOLDOWN_MS
+              );
+            if (!suppressStackedPdfSpawn) {
+              if (isPdfPreview) {
+                queueState.lastAutoOpenedPdfAt = now;
+              }
+              onOpenApp(dstuNodeToResourceListItem(firstPreview.node, firstPreview.node.type === 'textbook' ? 'textbook' : 'file'));
+            }
           }
         }
       }
     }
   } finally {
-    locks.delete('importDroppedFiles');
     if (attachProgressStarted && isMountedRef.current) {
       setAttachImportProgress(null);
     }
   }
+    },
+  );
 }

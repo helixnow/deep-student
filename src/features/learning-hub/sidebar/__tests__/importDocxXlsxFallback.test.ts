@@ -181,7 +181,7 @@ describe('S1-01(a) docx / xlsx import fallback & visible notifications', () => {
     });
     const isMountedRef = { current: true };
 
-    const validPdfBytes = new TextEncoder().encode('%PDF-1.7\n' + '0'.repeat(120));
+    const validPdfBytes = new TextEncoder().encode(`%PDF-1.7\n${'0'.repeat(120)}\n%%EOF`);
     const pdf = new File([validPdfBytes], 'lecture.pdf', { type: '' });
     const txt = new File(['plain study notes'], 'notes.txt', { type: '' });
     const csv = new File(['name,score\nAlice,98\n'], 'grades.csv', { type: '' });

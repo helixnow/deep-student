@@ -11,6 +11,14 @@ import { computeSafeRenderDpr } from '../pdfViewportEnhance';
  */
 export const PdfViewportPriorityContext = createContext<number | null>(null);
 
+/**
+ * 窗口活跃态上下文：
+ * 当多窗口堆叠时，非活跃后台 PDF 窗口暂停未绘制画布的 PDF.js 渲染任务并取消在途任务，
+ * 避免后台重型 CAD/矢量 PDF 抢占主线程与 PDF.js worker；窗口重新激活时按需恢复渲染。
+ * 默认 true（独立挂载或单元测试下保持立即可渲染）。
+ */
+export const PdfWindowActiveContext = createContext<boolean>(true);
+
 const OVERSCAN_PRIORITY_STEP_DELAY_MS = 24;
 const MAX_OVERSCAN_PRIORITY_STEPS = 3;
 
@@ -134,9 +142,11 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
   const priorityPage = useContext(PdfViewportPriorityContext);
   const priorityPageRef = useRef(priorityPage);
   priorityPageRef.current = priorityPage;
+  const isWindowActive = useContext(PdfWindowActiveContext);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const paintedPageRef = useRef<PDFPageProxy | null>(null);
+  const lastCompletedRenderKeyRef = useRef<string | null>(null);
   const activeTaskRef = useRef<{
     task: RenderTask;
     settled: Promise<void>;
@@ -192,12 +202,39 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
     const canvas = canvasRef.current;
     if (!canvas) return;
 
+    const cancelEntry = (entry: { task: RenderTask; cancelled: boolean } | null) => {
+      if (!entry || entry.cancelled) return;
+      entry.cancelled = true;
+      try {
+        entry.task.cancel();
+      } catch {
+        // Ignore cancel errors from already-settled tasks
+      }
+    };
+
+    const renderKey = `${pageNumber}:${scale}:${rotate}:${Math.floor(renderViewport.width)}x${Math.floor(renderViewport.height)}:${renderForms ? 1 : 0}:${canvasBackground ?? ''}:${pageColors?.background ?? ''}:${pageColors?.foreground ?? ''}`;
+
+    // 非活跃后台窗口：立即取消在途渲染并暂缓未绘帧，避免多窗堆叠时后台重型 CAD/PDF 挤占 worker。
+    if (!isWindowActive) {
+      renderGenRef.current += 1;
+      cancelEntry(activeTaskRef.current);
+      setIsSlowRender(false);
+      return;
+    }
+
+    const preservePreviousFrame = paintedPageRef.current === page;
+    if (preservePreviousFrame && lastCompletedRenderKeyRef.current === renderKey) {
+      setIsSlowRender(false);
+      setRenderState('ready');
+      return;
+    }
+
     const gen = ++renderGenRef.current;
     let disposed = false;
     let priorityTimer: number | null = null;
-    const preservePreviousFrame = paintedPageRef.current === page;
     if (!preservePreviousFrame) {
       paintedPageRef.current = null;
+      lastCompletedRenderKeyRef.current = null;
       setHasPaintedFrame(false);
     }
     setRenderState('rendering');
@@ -208,16 +245,6 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
         setIsSlowRender(true);
       }
     }, slowRenderDelayMs);
-
-    const cancelEntry = (entry: { task: RenderTask; cancelled: boolean } | null) => {
-      if (!entry || entry.cancelled) return;
-      entry.cancelled = true;
-      try {
-        entry.task.cancel();
-      } catch {
-        // Ignore cancel errors from already-settled tasks
-      }
-    };
 
     // Immediately cancel any in-flight render task for this canvas (strictly once per task).
     const previous = activeTaskRef.current;
@@ -348,6 +375,7 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
           releaseStaging();
         }
         paintedPageRef.current = page;
+        lastCompletedRenderKeyRef.current = renderKey;
         currentCanvas.style.visibility = '';
         setHasPaintedFrame(true);
         setIsSlowRender(false);
@@ -383,11 +411,13 @@ export const CancelablePdfCanvas: React.FC<CancelablePdfCanvasProps> = ({
     canvasBackground,
     cssHeight,
     cssWidth,
+    isWindowActive,
     page,
     pageColors,
     pageNumber,
     renderForms,
     renderViewport,
+    rotate,
     scale,
     slowRenderDelayMs,
   ]);

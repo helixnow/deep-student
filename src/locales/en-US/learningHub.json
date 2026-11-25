@@ -881,6 +881,8 @@
       "overlayTextInFolder": "Drop to import into \"{{folder}}\"",
       "barHint": "Drop to",
       "importSuccess": "Imported {{count}} files",
+      "importSuccess_one": "Imported {{count}} file",
+      "importSuccess_other": "Imported {{count}} files",
       "importPartial": "{{success}} imported, {{failed}} failed",
       "importFailed": "File import failed",
       "notAllowedHere": "Cannot drop files in this view",
