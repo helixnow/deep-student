@@ -345,7 +345,8 @@
     "apps": "全部应用",
     "collapse": "收起程序坞",
     "showAllWindows": "显示全部窗口",
-    "autohideHint": "程序坞已自动收起，指针移至底部边缘或点击此处即可唤出"
+    "autohideHint": "程序坞已自动收起，指针移至底部边缘或点击此处即可唤出",
+    "autohideHintTouch": "底部导航已收起，轻点此处即可展开"
   },
   "resourceHome": {
     "newExam": "新建题目集",

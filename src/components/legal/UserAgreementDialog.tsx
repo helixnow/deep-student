@@ -221,6 +221,33 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
   // 强制首次同意模式必须首帧可见；只有可关闭的预览模式需要延迟挂载。
   const [shouldRender, setShouldRender] = useState(isVisible);
   const panelRef = useFocusTrap<HTMLDivElement>(shouldRender);
+  const bodyScrollRef = useRef<HTMLDivElement>(null);
+  const [hasMoreBelow, setHasMoreBelow] = useState(false);
+
+  const updateScrollCue = useCallback(() => {
+    const el = bodyScrollRef.current;
+    if (!el) return;
+    setHasMoreBelow(el.scrollHeight - el.clientHeight - el.scrollTop > 4);
+  }, []);
+
+  useEffect(() => {
+    if (!shouldRender) return;
+    updateScrollCue();
+    const el = bodyScrollRef.current;
+    const ro =
+      typeof ResizeObserver !== 'undefined' && el
+        ? new ResizeObserver(() => updateScrollCue())
+        : null;
+    if (ro && el) {
+      ro.observe(el);
+      if (el.firstElementChild) {
+        ro.observe(el.firstElementChild);
+      }
+    }
+    return () => {
+      ro?.disconnect();
+    };
+  }, [shouldRender, updateScrollCue]);
 
   // 动画状态
   const [mounted, setMounted] = useState(isVisible && !preview);
@@ -299,8 +326,8 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
         zIndex: Z_INDEX.modal,
         // Portal 到 body：--mobile-safe-area-*（app-shell 作用域）不可见，
         // 必须走 :root 级 --android-safe-area-* 链（对齐 command-palette.css 注释）
-        paddingTop: 'calc(0.75rem + var(--android-safe-area-top, env(safe-area-inset-top, 0px)))',
-        paddingBottom: 'calc(0.75rem + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)))',
+        paddingTop: 'calc(0.5rem + var(--android-safe-area-top, env(safe-area-inset-top, 0px)))',
+        paddingBottom: 'calc(0.5rem + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)))',
         paddingLeft: 'calc(0.75rem + var(--android-safe-area-left, env(safe-area-inset-left, 0px)))',
         paddingRight: 'calc(0.75rem + var(--android-safe-area-right, env(safe-area-inset-right, 0px)))',
       }}
@@ -324,6 +351,8 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
         tabIndex={-1}
         className={cn(
           'relative flex w-full max-w-[520px] flex-col overflow-hidden outline-none',
+          'max-h-[calc(100dvh_-_1rem_-_var(--android-safe-area-top,env(safe-area-inset-top,0px))_-_var(--android-safe-area-bottom,env(safe-area-inset-bottom,0px)))]',
+          'sm:max-h-[min(80dvh,calc(100dvh_-_1.5rem_-_var(--android-safe-area-top,env(safe-area-inset-top,0px))_-_var(--android-safe-area-bottom,env(safe-area-inset-bottom,0px))))]',
           'bg-background',
           // 简洁风格：极其干净的阴影，几乎无边框
           'rounded-lg',
@@ -335,12 +364,9 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
             ? 'opacity-100 scale-100 translate-y-0'
             : 'opacity-0 scale-[0.97] translate-y-2',
         )}
-        style={{
-          maxHeight: 'min(80dvh, calc(100dvh - 1.5rem - var(--android-safe-area-top, env(safe-area-inset-top, 0px)) - var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))))',
-        }}
       >
         {/* 标题区 */}
-        <div className="flex-shrink-0 px-4 pb-3 pt-5 sm:px-6 sm:pt-6">
+        <div className="flex-shrink-0 px-4 pt-3.5 pb-2.5 sm:px-6 sm:pt-6 sm:pb-4">
           <h1 id="user-agreement-title" className="text-[20px] font-semibold text-foreground leading-tight tracking-[-0.01em]">
             {t('legal.userAgreement.welcomeTitle')}
           </h1>
@@ -353,8 +379,12 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
         <div className="mx-4 h-px bg-foreground/[0.06] sm:mx-6" />
 
         {/* 内容区 */}
+        <div className="relative flex min-h-0 flex-1 flex-col">
         <div
-          className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 scroll-area--native sm:px-6"
+          ref={bodyScrollRef}
+          onScroll={updateScrollCue}
+          data-testid="user-agreement-scroll-body"
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 sm:py-4 scroll-area--native sm:px-6"
           onWheel={(e) => e.stopPropagation()}
         >
           <div className="space-y-0.5">
@@ -438,12 +468,22 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
             </ToggleBlock>
           </div>
         </div>
+        {hasMoreBelow && (
+          <div
+            aria-hidden="true"
+            data-testid="user-agreement-scroll-cue"
+            className="pointer-events-none absolute inset-x-0 bottom-0 flex h-7 items-end justify-center bg-gradient-to-t from-background via-background/85 to-transparent pb-0.5 text-foreground/45"
+          >
+            <CaretRight size={13} weight="bold" className="rotate-90" />
+          </div>
+        )}
+        </div>
 
         {/* 分隔线 */}
         <div className="mx-4 h-px bg-foreground/[0.06] sm:mx-6" />
 
         {/* 底部操作栏 */}
-        <div className="flex-shrink-0 px-4 py-4 sm:px-6">
+        <div className="flex-shrink-0 px-4 py-2.5 sm:px-6 sm:py-3.5">
           {preview ? (
             <DsButton
               variant="default"
@@ -454,7 +494,7 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
               {t('common:close')}
             </DsButton>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               <label className="flex cursor-pointer items-start gap-2.5 select-none text-[12px] leading-relaxed text-foreground/80">
                 <input
                   type="checkbox"

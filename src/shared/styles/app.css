@@ -819,6 +819,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
 }
 
 .study-shell-segmented-button:focus-visible {
