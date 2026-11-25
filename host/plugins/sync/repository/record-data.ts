@@ -70,6 +70,7 @@ const STRIP_KEYS = new Set([
   'sync_status',
   'content_hash',
   'ref_count',
+  'memory_state_version',
 ]);
 
 /** SQLite `datetime('now')` lacks sub-second precision; expand DELETE timestamps to end-of-second so same-second millisecond `updated_at` rows do not falsely outrank a hard purge. */

@@ -14,6 +14,7 @@ import {
 } from '../api.ts';
 import { parseRfc3339 } from '../../../platform/time/index.ts';
 import { databaseResult } from './errors.ts';
+import { runWithoutChangeLogEcho } from './change-log-echo.ts';
 
 const RESOURCE_COLUMNS = `id, hash, type, source_id, source_table, storage_mode, data,
   external_hash, metadata_json, ref_count, created_at, updated_at`;
@@ -420,13 +421,17 @@ export class ResourceRepo implements ResourceRepository {
 
   /** indexing.rs:1082/3485; the caller owns the best-effort cache warning. */
   saveOcrTextIfEmptyWithConn(conn: SqlExecutor, resourceId: string, ocrText: string): void {
-    conn.run(`UPDATE resources SET ocr_text = ?1 WHERE id = ?2 AND (ocr_text IS NULL OR ocr_text = '')`,
-      [ocrText, resourceId]);
+    runWithoutChangeLogEcho(conn, 'resources', () => {
+      conn.run(`UPDATE resources SET ocr_text = ?1 WHERE id = ?2 AND (ocr_text IS NULL OR ocr_text = '')`,
+        [ocrText, resourceId]);
+    });
   }
 
   /** indexing.rs:3354/3949; unlike saveOcrText, this does not change updated_at. */
   saveOcrTextWithoutTimestampWithConn(conn: SqlExecutor, resourceId: string, ocrText: string): void {
-    conn.run('UPDATE resources SET ocr_text = ?1 WHERE id = ?2', [ocrText, resourceId]);
+    runWithoutChangeLogEcho(conn, 'resources', () => {
+      conn.run('UPDATE resources SET ocr_text = ?1 WHERE id = ?2', [ocrText, resourceId]);
+    });
   }
 
   /** indexing.rs:3777-3785; the caller owns the best-effort cache warning. */
