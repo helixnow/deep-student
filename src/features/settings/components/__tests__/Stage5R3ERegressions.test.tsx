@@ -488,4 +488,47 @@ describe('Stage 5 R3-E UI Regressions', () => {
       .map((btn) => btn.getAttribute('aria-label'));
     expect(new Set(restoreBtns).size).toBeGreaterThanOrEqual(2);
   });
+
+  it('S5-05: RecordConflictsPanel uses persistent inline confirm bar for cloud-only keep_local instead of ephemeral 8s window', async () => {
+    mockListRecordConflicts.mockResolvedValue([
+      {
+        id: 'conf-cloud-only-1',
+        database_name: 'vfs',
+        table_name: 'resources',
+        record_id: 'res_cloud_only_1',
+        side: 'cloud',
+        version: 2,
+        data_json: JSON.stringify({ id: 'res_cloud_only_1', title: 'Cloud Only Item', updated_at: 200 }),
+        detected_at: '2026-11-25 06:00:00',
+        resolved: 0,
+        resolution: null,
+        resolved_at: null,
+      },
+    ]);
+    mockCountRecordConflicts.mockResolvedValue({ total: 1, unresolved: 1 });
+    mockResolveRecordConflict.mockResolvedValue(true);
+
+    render(<RecordConflictsPanel />);
+
+    const keepLocalBtn = await screen.findByRole('button', { name: '保留本地' });
+    fireEvent.click(keepLocalBtn);
+
+    expect(mockResolveRecordConflict).not.toHaveBeenCalled();
+    const confirmBar = await screen.findByTestId('conflict-keep-local-confirm-bar');
+    expect(confirmBar).toBeInTheDocument();
+
+    const confirmBtn = within(confirmBar).getByTestId('conflict-keep-local-confirm-button');
+    fireEvent.click(confirmBtn);
+
+    await waitFor(() => {
+      expect(mockResolveRecordConflict).toHaveBeenCalledWith(
+        'vfs',
+        'resources',
+        'res_cloud_only_1',
+        'keep_local',
+        ['conf-cloud-only-1'],
+        undefined,
+      );
+    });
+  });
 });

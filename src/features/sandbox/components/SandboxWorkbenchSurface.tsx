@@ -9,10 +9,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { HtmlSandboxPreview } from '@/components/previews/HtmlSandboxPreview';
 import { InteractiveHtmlCanvas } from '@/components/previews/InteractiveHtmlCanvas';
-import {
-  stripSandboxRunRuntimeGuard,
-  wrapSandboxRunHtmlWithRuntimeGuard,
-} from '@/components/previews/chatHtmlPreviewDocument';
+import { stripSandboxRunRuntimeGuard } from '@/components/previews/chatHtmlPreviewDocument';
 import {
   getArtifactRenderer,
   subscribeArtifactRendererRegistry,
@@ -36,6 +33,7 @@ import {
   readPersistedSandboxDraft,
   selectSandboxWorkbenchOwnerState,
   useSandboxWorkbenchStore,
+  type SandboxSessionRevisionState,
 } from '../store/useSandboxWorkbenchStore';
 import { SandboxStatusRail } from './SandboxStatusRail';
 import { SandboxToolbar } from './SandboxToolbar';
@@ -95,6 +93,7 @@ export function SandboxWorkbenchSurface({
   const commitSessionRevision = useSandboxWorkbenchStore((state) => state.commitSessionRevision);
   const selectSessionRevision = useSandboxWorkbenchStore((state) => state.selectSessionRevision);
   const resetSessionDraft = useSandboxWorkbenchStore((state) => state.resetSessionDraft);
+  const restoreSessionSnapshot = useSandboxWorkbenchStore((state) => state.restoreSessionSnapshot);
   const restorePersistedDraft = useSandboxWorkbenchStore((state) => state.restorePersistedDraft);
   const setInspectorOpen = useSandboxWorkbenchStore((state) => state.setInspectorOpen);
   const setViewportPreset = useSandboxWorkbenchStore((state) => state.setViewportPreset);
@@ -107,7 +106,17 @@ export function SandboxWorkbenchSurface({
     colno: number;
   } | null>(null);
   const [canvasSyncKey, setCanvasSyncKey] = useState(0);
+  const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
+  const [preResetSnapshot, setPreResetSnapshot] = useState<{
+    revState: SandboxSessionRevisionState;
+    content: string;
+  } | null>(null);
   const didAttemptAutoRestoreRef = useRef(false);
+
+  useEffect(() => {
+    setResetConfirmOpen(false);
+    setPreResetSnapshot(null);
+  }, [activeSession?.id]);
 
   useEffect(() => {
     if (didAttemptAutoRestoreRef.current) return;
@@ -197,10 +206,6 @@ export function SandboxWorkbenchSurface({
         activeSession.mode === 'sandbox-run',
     );
   const scriptsEnabled = useInteractiveHtmlCanvas || activeSession?.mode === 'sandbox-run';
-  const guardedHtmlContent = useMemo(
-    () => (useInteractiveHtmlCanvas ? wrapSandboxRunHtmlWithRuntimeGuard(effectiveContent) : effectiveContent),
-    [effectiveContent, useInteractiveHtmlCanvas],
-  );
   const effectiveWidgetId =
     pinnedRecord?.widgetId ??
     activeSession?.widgetId ??
@@ -623,14 +628,28 @@ export function SandboxWorkbenchSurface({
               type="button"
               disabled={!canResetDraft}
               onClick={() => {
-                setRuntimeError(null);
-                resetSessionDraft(ownerKey);
-                setCanvasSyncKey((v) => v + 1);
+                setResetConfirmOpen((prev) => !prev);
               }}
+              aria-expanded={resetConfirmOpen}
               data-testid="sandbox-reset-button"
               className="inline-flex items-center gap-1 rounded-full border border-border/35 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-45 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-3.5"
             >
               <span>{isEnglish ? 'Reset' : '重置'}</span>
+            </button>
+          )}
+          {useInteractiveHtmlCanvas && !pinnedRecord && preResetSnapshot && !resetConfirmOpen && (
+            <button
+              type="button"
+              onClick={() => {
+                setRuntimeError(null);
+                restoreSessionSnapshot(preResetSnapshot, ownerKey);
+                setPreResetSnapshot(null);
+                setCanvasSyncKey((v) => v + 1);
+              }}
+              data-testid="sandbox-undo-reset-button"
+              className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/20 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:px-3.5"
+            >
+              <span>{isEnglish ? 'Reset to v1 · Undo' : '已重置为 v1 · 撤销重置'}</span>
             </button>
           )}
           <button
@@ -679,6 +698,59 @@ export function SandboxWorkbenchSurface({
           ))}
         </div>
       </div>
+
+      {useInteractiveHtmlCanvas && !pinnedRecord && resetConfirmOpen && (
+        <div
+          data-testid="sandbox-reset-confirm-bar"
+          role="alertdialog"
+          aria-label={isEnglish ? 'Confirm reset' : '确认重置'}
+          className="relative z-20 flex flex-wrap items-center justify-between gap-2 border-b border-warning/35 bg-warning/10 px-4 py-2 text-xs text-foreground"
+        >
+          <span>
+            {isEnglish
+              ? 'Reset to initial v1? Existing versions will be collapsed and can be undone.'
+              : '确定重置回初始版本 v1 吗？当前历史版本将被收起，可随时撤销。'}
+          </span>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const snapshotRevState: SandboxSessionRevisionState = sessionRevisionState
+                  ? {
+                      initialContent: sessionRevisionState.initialContent,
+                      activeVersion: sessionRevisionState.activeVersion,
+                      revisions: sessionRevisionState.revisions.map((item) => ({ ...item })),
+                    }
+                  : {
+                      initialContent: initialDraftContent,
+                      activeVersion,
+                      revisions: revisions.map((item) => ({ ...item })),
+                    };
+                setPreResetSnapshot({
+                  revState: snapshotRevState,
+                  content: effectiveContent,
+                });
+                setRuntimeError(null);
+                resetSessionDraft(ownerKey);
+                setResetConfirmOpen(false);
+                setCanvasSyncKey((v) => v + 1);
+              }}
+              data-testid="sandbox-reset-confirm-button"
+              className="rounded-md border border-warning/50 bg-background px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-warning/15 [@media(pointer:coarse)]:!min-h-11"
+            >
+              {isEnglish ? 'Confirm Reset' : '确认重置'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setResetConfirmOpen(false)}
+              data-testid="sandbox-reset-cancel-button"
+              className="rounded-md border border-border/35 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted [@media(pointer:coarse)]:!min-h-11"
+            >
+              {isEnglish ? 'Cancel' : '取消'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {useInteractiveHtmlCanvas && (
         <div
@@ -740,7 +812,7 @@ export function SandboxWorkbenchSurface({
           {useInteractiveHtmlCanvas ? (
             <InteractiveHtmlCanvas
               key={`${activeSession.id}:${canvasSyncKey}`}
-              html={guardedHtmlContent}
+              html={effectiveContent}
               widgetId={effectiveWidgetId || undefined}
               workTitle={effectiveTitle}
               title={effectiveTitle}
@@ -748,13 +820,15 @@ export function SandboxWorkbenchSurface({
               externalVersion={activeVersion}
               onHtmlChange={(nextHtml) => {
                 setRuntimeError(null);
+                setResetConfirmOpen(false);
+                setPreResetSnapshot(null);
                 const cleanHtml = stripSandboxRunRuntimeGuard(nextHtml);
                 if (pinnedRecord) {
                   applyPatchToArtifact(pinnedRecord.artifactId, { content: cleanHtml });
                 } else {
                   commitSessionRevision(cleanHtml, ownerKey);
                 }
-                if (cleanHtml === effectiveContent && nextHtml !== guardedHtmlContent) {
+                if (cleanHtml !== nextHtml) {
                   setCanvasSyncKey((v) => v + 1);
                 }
               }}

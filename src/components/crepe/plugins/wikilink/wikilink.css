@@ -283,6 +283,7 @@
 .crepe-wikilink-preview {
   position: fixed;
   z-index: var(--z-popover);
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   width: min(23rem, calc(100vw - 24px));

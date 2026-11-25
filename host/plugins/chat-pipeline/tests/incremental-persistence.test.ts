@@ -116,4 +116,55 @@ describe('persistence.rs::incremental_save_tests through production L03 orchestr
     expect(error).toHaveBeenCalledWith(expect.stringContaining('continuing without persistence — generated blocks may be lost on refresh until the next save point'));
     warn.mockRestore(); info.mockRestore(); error.mockRestore();
   });
+
+  it('save_intermediate_results_preserves_variants_and_active_variant_during_regeneration', async () => {
+    const ctx = context();
+    const save = persistence();
+    await save.saveUserMessageImmediately(ctx);
+
+    const v1Variant = {
+      id: 'var_v1_orig',
+      blockIds: ['blk_v1_orig'],
+      timestamp: 1_700_000_000_001,
+      status: 'success' as const,
+      meta: { versioned: true },
+    };
+    const v2Variant = {
+      id: 'var_v2_regen',
+      blockIds: [] as string[],
+      timestamp: 1_700_000_000_002,
+      status: 'streaming' as const,
+      meta: { versioned: true },
+    };
+    const db = host.ctx.chatSession.database.getConnSafe();
+    store.createMessageWithConn(db, {
+      id: ctx.assistantMessageId,
+      sessionId: ctx.sessionId,
+      role: 'assistant',
+      blockIds: [],
+      timestamp: 1_700_000_000_000,
+    });
+    store.createBlockWithConn(db, block(ctx.assistantMessageId, 'blk_v1_orig', 'original v1 reply', 0));
+    store.updateMessageWithConn!(db, {
+      id: ctx.assistantMessageId,
+      sessionId: ctx.sessionId,
+      role: 'assistant',
+      blockIds: [],
+      timestamp: 1_700_000_000_000,
+      activeVariantId: v2Variant.id,
+      variants: [v1Variant, v2Variant],
+    });
+
+    ctx.options.skipUserMessageSave = true;
+    ctx.options.targetVariantId = v2Variant.id;
+    ctx.addInterleavedBlock(block(ctx.assistantMessageId, 'blk_v2_stream_0', 'streaming v2 reply', 0));
+
+    await save.saveIntermediateResults(ctx);
+
+    const saved = host.ctx.chatSession.getMessage(ctx.assistantMessageId)!;
+    expect(saved.activeVariantId).toBe(v2Variant.id);
+    expect(saved.variants).toHaveLength(2);
+    expect(saved.variants?.find(v => v.id === v1Variant.id)?.blockIds).toEqual(['blk_v1_orig']);
+    expect(saved.variants?.find(v => v.id === v2Variant.id)?.blockIds).toEqual(['blk_v2_stream_0']);
+  });
 });

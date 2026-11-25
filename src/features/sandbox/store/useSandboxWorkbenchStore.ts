@@ -165,6 +165,10 @@ export interface SandboxWorkbenchStore extends SandboxWorkbenchOwnerState {
   ) => number;
   selectSessionRevision: (version: number, ownerKey?: SandboxOwnerKey) => void;
   resetSessionDraft: (ownerKey?: SandboxOwnerKey) => void;
+  restoreSessionSnapshot: (
+    snapshot: { revState: SandboxSessionRevisionState; content: string },
+    ownerKey?: SandboxOwnerKey,
+  ) => void;
   restorePersistedDraft: (ownerKey?: SandboxOwnerKey) => boolean;
   setViewportPreset: (preset: SandboxViewportPreset, ownerKey?: SandboxOwnerKey) => void;
   setInspectorOpen: (open: boolean, ownerKey?: SandboxOwnerKey) => void;
@@ -581,6 +585,63 @@ export const useSandboxWorkbenchStore = create<SandboxWorkbenchStore>((set, get)
         initialContent,
         revisions: nextRevState.revisions,
         activeVersion: 1,
+        updatedAt: now,
+        dismissed: false,
+      });
+    }
+  },
+
+  restoreSessionSnapshot: (snapshot, ownerKey) => {
+    const state = get();
+    const resolvedOwnerKey = resolveOwnerKey(state, ownerKey);
+    const current = selectSandboxWorkbenchOwnerState(state, resolvedOwnerKey);
+    if (!current.activeSession) return;
+
+    const now = Date.now();
+    const cleanContent =
+      current.activeSession.artifactKind === 'html'
+        ? stripSandboxRunRuntimeGuard(snapshot.content)
+        : snapshot.content;
+    const nextRevState: SandboxSessionRevisionState = {
+      initialContent: stripSandboxRunRuntimeGuard(snapshot.revState.initialContent),
+      activeVersion: snapshot.revState.activeVersion,
+      revisions: snapshot.revState.revisions.map((item) => ({
+        ...item,
+        content:
+          current.activeSession?.artifactKind === 'html'
+            ? stripSandboxRunRuntimeGuard(item.content)
+            : item.content,
+      })),
+    };
+    const nextSession: SandboxSession = {
+      ...current.activeSession,
+      content: cleanContent,
+      updatedAt: now,
+    };
+    const ownerState: SandboxWorkbenchOwnerState = {
+      ...current,
+      activeSession: nextSession,
+    };
+
+    set((prev) => ({
+      ownerStates: { ...prev.ownerStates, [resolvedOwnerKey]: ownerState },
+      sessionRevisionsByOwner: {
+        ...prev.sessionRevisionsByOwner,
+        [resolvedOwnerKey]: nextRevState,
+      },
+      ...(prev.activeOwnerKey === resolvedOwnerKey ? ownerState : {}),
+    }));
+
+    if (isStandaloneDraftSession(nextSession)) {
+      writePersistedSandboxDraft({
+        title: nextSession.title,
+        language: nextSession.language,
+        artifactKind: nextSession.artifactKind,
+        mode: nextSession.mode,
+        content: cleanContent,
+        initialContent: nextRevState.initialContent,
+        revisions: nextRevState.revisions,
+        activeVersion: nextRevState.activeVersion,
         updatedAt: now,
         dismissed: false,
       });

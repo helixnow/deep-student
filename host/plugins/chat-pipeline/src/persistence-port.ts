@@ -23,6 +23,8 @@ export interface PipelinePersistenceStore extends ReplaySidecarWriter {
   getMessageBlocksWithConn(conn: SqlExecutor, messageId: string): PersistenceBlock[];
   /** Requested L04 IDs-only query; no old tool/Anki payloads may be hydrated or rewritten. */
   listBlockPositionsWithConn(conn: SqlExecutor, messageId: string, type: string): [number, string][];
+  getMessageWithConn?(conn: SqlExecutor, messageId: string): ChatMessage | null;
+  updateMessageWithConn?(conn: SqlExecutor, message: ChatMessage): void;
 }
 
 /** Additional owner reads/updates used by persistence.rs::save_results_inner. */

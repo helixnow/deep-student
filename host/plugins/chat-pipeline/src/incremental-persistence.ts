@@ -94,15 +94,48 @@ export class PipelinePersistence {
       userBlockId = existingUserContentBlockId(conn,
         (connection, id) => this.store.getMessageBlocksWithConn(connection, id), execution.userMessageId);
     }
+    const targetVariantId = execution.options.targetVariantId ?? null;
+    const isVariantOrSkipUpdate =
+      targetVariantId !== null || (execution.options.skipAssistantMessageSave ?? false);
+    const existingMessage =
+      isVariantOrSkipUpdate && typeof this.store.getMessageWithConn === 'function'
+        ? (() => {
+            try { return this.store.getMessageWithConn!(conn, execution.assistantMessageId); }
+            catch { return null; }
+          })()
+        : null;
+    const siblingVariantBlockIds = new Set(
+      targetVariantId !== null && existingMessage?.variants
+        ? existingMessage.variants.filter(v => v.id !== targetVariantId).flatMap(v => v.blockIds)
+        : [],
+    );
     const anki = this.store.listBlockPositionsWithConn(conn, execution.assistantMessageId, 'anki_cards');
     const ids = new Set(execution.interleavedBlocks.map(block => block.id));
-    const inserts = anki.filter(([, id]) => !ids.has(id)).sort(([a], [b]) => a - b);
+    const inserts = anki
+      .filter(([, id]) => !ids.has(id) && !siblingVariantBlockIds.has(id))
+      .sort(([a], [b]) => a - b);
     const indexed: [number, string][] = execution.interleavedBlocks.map((block, index) => [index, block.id]);
     indexed.push(...inserts);
     indexed.sort(([a], [b]) => a - b);
     const blockIds = [...new Set(indexed.map(([, id]) => id))];
-    this.store.createMessageWithConn(conn, { id: execution.assistantMessageId, sessionId: execution.sessionId,
-      role: 'assistant', blockIds, timestamp });
+    if (existingMessage && typeof this.store.updateMessageWithConn === 'function') {
+      const targetVariants = targetVariantId !== null && existingMessage.variants?.some(v => v.id === targetVariantId)
+        ? existingMessage.variants.map(variant => (variant.id !== targetVariantId ? variant : {
+            ...variant,
+            blockIds: [...blockIds],
+          }))
+        : existingMessage.variants;
+      this.store.updateMessageWithConn(conn, {
+        ...existingMessage,
+        blockIds,
+        ...(targetVariantId !== null && targetVariants
+          ? { activeVariantId: targetVariantId, variants: targetVariants }
+          : {}),
+      });
+    } else {
+      this.store.createMessageWithConn(conn, { id: execution.assistantMessageId, sessionId: execution.sessionId,
+        role: 'assistant', blockIds, timestamp });
+    }
     execution.interleavedBlocks.forEach((block, index) => {
       if (execution.intermediateSaveCommitted && !execution.dirtyInterleavedBlockIds.has(block.id)) return;
       this.store.createBlockWithConn(conn, { ...cloneAgentJson(block), blockIndex: index });

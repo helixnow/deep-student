@@ -45,5 +45,46 @@ export function persistenceStorePort(): PipelinePersistenceStore {
       conn.run('UPDATE chat_v2_blocks SET llm_content = ?, tool_call_id = ?, round_text = ? WHERE id = ?',
         [replay.llmContent, replay.toolCallId, replay.roundText, blockId]);
     })),
+    getMessageWithConn: vi.fn<NonNullable<PipelinePersistenceStore['getMessageWithConn']>>((conn, messageId) => {
+      const row = conn.get<{
+        id: string;
+        session_id: string;
+        role: 'user' | 'assistant';
+        block_ids_json: string;
+        timestamp: number;
+        meta_json: string | null;
+        active_variant_id: string | null;
+        variants_json: string | null;
+      }>(
+        `SELECT id, session_id, role, block_ids_json, timestamp, meta_json, active_variant_id, variants_json
+         FROM chat_v2_messages WHERE id = ?`,
+        [messageId],
+      );
+      if (!row) return null;
+      return {
+        id: row.id,
+        sessionId: row.session_id,
+        role: row.role,
+        blockIds: JSON.parse(row.block_ids_json),
+        timestamp: row.timestamp,
+        ...(row.meta_json ? { _meta: JSON.parse(row.meta_json) } : {}),
+        ...(row.active_variant_id ? { activeVariantId: row.active_variant_id } : {}),
+        ...(row.variants_json ? { variants: JSON.parse(row.variants_json) } : {}),
+      };
+    }),
+    updateMessageWithConn: vi.fn<NonNullable<PipelinePersistenceStore['updateMessageWithConn']>>((conn, message) => ownerWrite(() => {
+      conn.run(
+        `UPDATE chat_v2_messages
+         SET block_ids_json = ?, meta_json = ?, active_variant_id = ?, variants_json = ?
+         WHERE id = ?`,
+        [
+          JSON.stringify(message.blockIds),
+          message._meta == null ? null : JSON.stringify(message._meta),
+          message.activeVariantId ?? null,
+          message.variants == null ? null : JSON.stringify(message.variants),
+          message.id,
+        ],
+      );
+    })),
   };
 }
