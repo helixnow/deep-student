@@ -243,7 +243,6 @@ export class PluginManagerController {
         this.applyOperationFailure(result, { keepConsent: true });
         return;
       }
-      this.patch({ consent: null, notice: { kind: 'consent-granted', pluginId: subject.id }, error: null });
       let reloadFailure: string | null = null;
       try {
         await this._adapter.reload();
@@ -251,7 +250,19 @@ export class PluginManagerController {
         reloadFailure = errorMessage(error);
       }
       await this.refresh();
-      if (reloadFailure) this.patch({ error: { code: 'RELOAD_FAILED', detail: reloadFailure } });
+      if (reloadFailure) {
+        this.patch({
+          consent: null,
+          notice: null,
+          error: { code: 'RELOAD_FAILED', detail: reloadFailure },
+        });
+      } else {
+        this.patch({
+          consent: null,
+          notice: { kind: 'consent-granted', pluginId: subject.id },
+          error: null,
+        });
+      }
     } catch (error) {
       this.patch({ error: { code: 'CONSENT_FAILED', detail: errorMessage(error) } });
     } finally {

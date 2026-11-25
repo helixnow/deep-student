@@ -10,17 +10,20 @@ import { SPSS_PROJECT_SKILL_FIXTURES } from './spssProjectSkillFixtures';
 const { invokeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(async (command: string, args: { path: string }) => {
     const normalizedPath = path.normalize(args.path);
-    if (command === 'skill_list_directories' && normalizedPath === PROJECT_SKILLS_ROOT) {
-      return [
-        {
-          name: 'spss-paper-analysis',
-          path: path.join(PROJECT_SKILLS_ROOT, 'spss-paper-analysis'),
-        },
-        {
-          name: 'statistics-tools',
-          path: path.join(PROJECT_SKILLS_ROOT, 'statistics-tools'),
-        },
-      ];
+    if (command === 'skill_list_directories') {
+      if (normalizedPath === PROJECT_SKILLS_ROOT) {
+        return [
+          {
+            name: 'spss-paper-analysis',
+            path: path.join(PROJECT_SKILLS_ROOT, 'spss-paper-analysis'),
+          },
+          {
+            name: 'statistics-tools',
+            path: path.join(PROJECT_SKILLS_ROOT, 'statistics-tools'),
+          },
+        ];
+      }
+      return [];
     }
 
     if (command === 'skill_read_file') {

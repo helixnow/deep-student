@@ -14,14 +14,19 @@
  * 安装包（W34）：`packages` 未接入时不注册导入命令；卸载在接入时先移除指针、失败用 `restore` 回滚。
  */
 import type { CallContext, HostPlugin } from './core.ts';
-import { join, basename, resolve, dirname } from 'node:path';
-import { mkdir, readFile, realpath, writeFile, unlink } from 'node:fs/promises';
+import { join, basename, resolve, dirname, relative, isAbsolute } from 'node:path';
+import { lstat, mkdir, readdir, readFile, realpath, rm, writeFile, unlink } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { MemoryZipSink, ZipWriter } from '../platform/zip/core/index.ts';
 import { nodeZipCodec } from '../platform/zip/node/file.ts';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { FilesService } from '../platform/files/api.ts';
-import { PluginPackages, type PackageRecord } from './plugin-packages/index.ts';
+import {
+  PluginPackages,
+  type InvalidPackageLockRecord,
+  type PackageLockInspection,
+  type PackageRecord,
+} from './plugin-packages/index.ts';
 // RUST-FIX(RF-W01-trusted-plugin-admin): 新增主窗口本地来源的 revision-aware 管理命令；不是物理隔离。
 import {
   PLUGIN_MANAGER_CONFIG_COMMAND,
@@ -54,7 +59,8 @@ import { resolvePluginConfig } from './plugin-config.ts';
 import {
   disabledIds, entryIndex, removeEntries, writeEntry, ProfileConflictError, type ProfileDocument, type UserProfileStore,
 } from './profile-store.ts';
-import { prepareProfile, resolveProfile, screenProfileEntry, type ProfileFile, type ResolvedEntry } from './profile.ts';
+import { prepareProfile, resolveProfile, resolveProfileTolerant, screenProfileEntry, type ProfileFile, type ResolvedEntry } from './profile.ts';
+import type { DeclarativeSkillAsset } from './declarative-registry.ts';
 import type { HostRuntime, InstalledPlugin, PluginInstall } from './runtime.ts';
 import { KERNEL_ONLY_SERVICES } from './kernel.ts';
 import { assertInstallable, parseVersion, type PluginManifest } from './manifest.ts';
@@ -64,15 +70,53 @@ import { fetchRemotePackArchive } from '../plugins/plugin-workshop/src/remote-pa
 
 export const PLUGIN_MANAGER_INSTALL_URL_COMMAND = 'plugin:manager|install-url';
 export const PLUGIN_MANAGER_RESET_PROFILE_COMMAND = 'plugin:manager|reset-profile';
+export const PLUGIN_MANAGER_DECLARATIVE_SKILLS_COMMAND = 'plugin:manager|declarative-skills';
 
 export interface PluginManagerResetProfileResult {
   backedUpTo: string | null;
   revision: string;
 }
 
-export interface PluginManagerInventoryWithStatus extends PluginManagerInventory {
+export interface PluginManagerDeclarativeSummary {
+  rubrics?: readonly string[];
+  skills?: readonly string[];
+  cardTemplates?: readonly string[];
+  workflows?: readonly string[];
+}
+
+export interface PluginManagerEntryV2 extends PluginManagerEntry {
+  kind?: PluginManifest['kind'];
+  tier?: PluginManifest['tier'];
+  declarative?: PluginManagerDeclarativeSummary;
+}
+
+export interface PluginManagerInventoryWithStatus extends Omit<PluginManagerInventory, 'plugins'> {
+  plugins: PluginManagerEntryV2[];
   profileCorrupted?: boolean;
   profileError?: string;
+}
+
+const RESERVED_PLUGINS_SUBDIRS = new Set(['releases', 'packages', '.staging']);
+
+async function canonicalPath(filePath: string): Promise<string> {
+  const abs = resolve(filePath);
+  try {
+    return await realpath(abs);
+  } catch {
+    return abs;
+  }
+}
+
+function isStrictChildPath(rootDir: string, candidatePath: string): boolean {
+  const rel = relative(rootDir, candidatePath);
+  return Boolean(rel) && rel !== '.' && rel !== '..' && !rel.startsWith('..') && !isAbsolute(rel);
+}
+
+interface ScannedBrokenPlugin {
+  id: string;
+  dir: string;
+  entry?: ResolvedEntry;
+  reason: string;
 }
 
 export interface ManagedPluginInstallRequest {
@@ -368,6 +412,14 @@ export class PluginAdmin {
     commands._registerKernel(PLUGIN_MANAGER_INSTALL_URL_COMMAND, (args, call) => mutation(() => this.installPackageFromUrl(args, call)));
     commands._registerKernel(PLUGIN_MANAGER_SET_TRUST_COMMAND, (args, call) => mutation(() => this.setTrust(args, call)));
     commands._registerKernel(PLUGIN_MANAGER_RESET_PROFILE_COMMAND, (args, call) => mutation(() => this.resetProfile(args, call)));
+    commands._registerKernel(PLUGIN_MANAGER_DECLARATIVE_SKILLS_COMMAND, (args, call) => this.declarativeSkills(args, call));
+  }
+
+  private async declarativeSkills(args: unknown, call: CallContext): Promise<DeclarativeSkillAsset[]> {
+    assertTrustedManagerSource(call.source, PLUGIN_MANAGER_DECLARATIVE_SKILLS_COMMAND);
+    const document = argsObject(args, PLUGIN_MANAGER_DECLARATIVE_SKILLS_COMMAND);
+    if (Object.keys(document).length) validation(`${PLUGIN_MANAGER_DECLARATIVE_SKILLS_COMMAND}: takes no arguments`);
+    return this.runtime.declarativeAssets.listSkills();
   }
 
   // ---------------------------------------------------------------- 读
@@ -409,15 +461,26 @@ export class PluginAdmin {
     }
     const disabled = profile ? disabledIds(profile.file) : new Set<string>();
     let effective: ResolvedEntry[] = [];
+    const profileEntryErrors = new Map<string, string>();
     if (profile?.exists) {
       try {
         effective = await resolveProfile(this.store.path, { official: this.official, user: true });
       } catch (error) {
-        this.runtime.ctx.logger('host').warn(`[plugin-manager] cannot resolve ${this.store.path}: ${errorText(error)}`);
+        const message = errorText(error);
+        this.runtime.ctx.logger('host').warn(`[plugin-manager] cannot resolve ${this.store.path}: ${message}`);
+        const tolerant = await resolveProfileTolerant(this.store.path, { official: this.official, user: true });
+        effective = tolerant.entries;
+        for (const invalid of tolerant.invalidEntries) {
+          if (invalid.id) profileEntryErrors.set(invalid.id, invalid.reason);
+        }
+        if (tolerant.fileError || tolerant.invalidEntries.length === 0) {
+          profileCorrupted = true;
+          profileError = profileError ?? tolerant.fileError ?? message;
+        }
       }
     }
     let officialEntries: ResolvedEntry[] = [];
-    if (profileCorrupted) {
+    if (profileCorrupted || (!profile?.exists && effective.length === 0)) {
       try {
         officialEntries = await resolveProfile(this.official);
       } catch (error) {
@@ -425,32 +488,55 @@ export class PluginAdmin {
       }
     }
 
-    const releases = await this.releases();
+    const lockInspection = await this.inspectPackages();
+    const releases = lockInspection.valid;
+    const invalidLockById = new Map<string, InvalidPackageLockRecord>(
+      lockInspection.invalid.map((entry) => [entry.id, entry]),
+    );
     const ids = new Set<string>();
     for (const entry of effective) ids.add(entry.id);
+    for (const entry of officialEntries) if (!disabled.has(entry.id) && profileCorrupted) ids.add(entry.id);
+    if (profile) {
+      for (const entry of profile.file.plugins) ids.add(entry.id);
+    }
     for (const entry of this.runtime.plugins()) ids.add(entry.id);
     for (const entry of this.runtime.degradedPlugins()) ids.add(entry.id);
     for (const id of disabled) ids.add(id);
-    if (profileCorrupted) {
-      for (const release of releases) ids.add(release.id);
+    for (const release of releases) ids.add(release.id);
+    for (const invalid of lockInspection.invalid) ids.add(invalid.id);
+
+    // 扫描 <dataDir>/plugins/ 与 <dataDir>/plugins/releases/ 中孤立/损坏的插件目录。
+    const scannedBroken = await this.scanBrokenPluginDirs(ids);
+    const scannedById = new Map<string, ScannedBrokenPlugin>();
+    for (const broken of scannedBroken) {
+      scannedById.set(broken.id, broken);
+      ids.add(broken.id);
     }
 
     // 依赖关系一次算完：谁的服务正被别的已安装插件注入（停用它会被 PLUGIN_UNLOAD_BLOCKED 拒绝）。
     const dependents = this.runtime.dependents();
-    const plugins: PluginManagerEntry[] = [];
+    const plugins: PluginManagerEntryV2[] = [];
     for (const id of [...ids].sort()) {
       const release = releases.find((entry) => entry.id === id);
+      const invalidLock = invalidLockById.get(id);
+      const scanned = scannedById.get(id);
       const effectiveEntry = effective.find((entry) => entry.id === id)
+        ?? (scanned?.entry)
         ?? (profileCorrupted
           ? (await this.releaseEntry(release) ?? officialEntries.find((entry) => entry.id === id))
-          : await this.declaredEntry(id).catch(() => undefined));
+          : await this.declaredEntry(id, release).catch(() => undefined));
+      const runtimeReason = this.runtime.degradedPlugins().find((entry) => entry.id === id)?.reason;
+      const lockReason = invalidLock ? `MANIFEST_INVALID: ${invalidLock.reason}` : undefined;
+      const reason = runtimeReason ?? profileEntryErrors.get(id) ?? lockReason ?? scanned?.reason;
       plugins.push(await this.describe(id, {
         requiredBy: dependents.get(id) ?? [],
         release,
+        invalidLock,
         installed: this.runtime.get(id),
         effective: effectiveEntry,
         disabled: disabled.has(id) || (profileCorrupted && release?.enabled === false),
-        reason: this.runtime.degradedPlugins().find((entry) => entry.id === id)?.reason,
+        reason,
+        orphanedBroken: Boolean(scanned || invalidLock),
       }));
     }
     return {
@@ -481,23 +567,54 @@ export class PluginAdmin {
 
   private async releaseEntry(release: PackageRecord | undefined): Promise<ResolvedEntry | undefined> {
     if (!release) return undefined;
+    const releaseDir = await canonicalPath(join(this.runtime.app.dataDir, 'plugins', release.path));
+    let entryFile = 'package.json';
     try {
-      const releaseDir = join(this.runtime.app.dataDir, 'plugins', release.path);
       const pkg = JSON.parse(await readFile(join(releaseDir, 'package.json'), 'utf8')) as {
         deepStudent?: { host?: unknown };
       };
-      const entryFile = typeof pkg.deepStudent?.host === 'string' && pkg.deepStudent.host
-        ? pkg.deepStudent.host
-        : 'package.json';
-      return {
-        id: release.id,
-        config: undefined,
-        declaredIn: this.store.path,
-        specifier: pathToFileURL(resolve(releaseDir, entryFile)).href,
-      };
+      if (typeof pkg.deepStudent?.host === 'string' && pkg.deepStudent.host) {
+        entryFile = pkg.deepStudent.host;
+      }
     } catch {
-      return undefined;
+      // Keep package.json target so inspectManifest surfaces the real MANIFEST_MISSING / MANIFEST_INVALID error.
     }
+    return {
+      id: release.id,
+      config: undefined,
+      declaredIn: this.store.path,
+      specifier: pathToFileURL(await canonicalPath(resolve(releaseDir, entryFile))).href,
+    };
+  }
+
+  private declarativeSummary(id: string, manifest: PluginManifest | undefined): PluginManagerDeclarativeSummary | undefined {
+    const mountedSkills = this.runtime.declarativeAssets.listSkills()
+      .filter((asset) => asset.pluginId === id)
+      .map((asset) => asset.name || asset.skillId);
+    const mountedCardTemplates = this.runtime.declarativeAssets.listCardTemplates()
+      .filter((asset) => asset.pluginId === id)
+      .map((asset) => asset.name || asset.id);
+    const mountedWorkflows = this.runtime.declarativeAssets.listWorkflows()
+      .filter((asset) => asset.pluginId === id)
+      .map((asset) => asset.name || asset.id);
+    const gradingRubrics = this.runtime.ctx.reflect.get('gradingRubrics', false) as {
+      get?: (modeId: string) => { name?: string } | null;
+    } | undefined;
+    const mountedRubrics = this.runtime.declarativeAssets.listRubricIdsByPlugin(id)
+      .map((modeId) => gradingRubrics?.get?.(modeId)?.name || modeId.replace(/^[^:]+:/, ''));
+
+    const skills = mountedSkills.length > 0 ? mountedSkills : manifest?.declarative?.skills ? [...manifest.declarative.skills] : [];
+    const rubrics = mountedRubrics.length > 0 ? mountedRubrics : manifest?.declarative?.rubrics ? [...manifest.declarative.rubrics] : [];
+    const cardTemplates = mountedCardTemplates.length > 0 ? mountedCardTemplates : manifest?.declarative?.cardTemplates ? [...manifest.declarative.cardTemplates] : [];
+    const workflows = mountedWorkflows.length > 0 ? mountedWorkflows : manifest?.declarative?.workflows ? [...manifest.declarative.workflows] : [];
+
+    if (!skills.length && !rubrics.length && !cardTemplates.length && !workflows.length) return undefined;
+    return {
+      ...(skills.length ? { skills } : {}),
+      ...(rubrics.length ? { rubrics } : {}),
+      ...(cardTemplates.length ? { cardTemplates } : {}),
+      ...(workflows.length ? { workflows } : {}),
+    };
   }
 
   private async describe(id: string, state: {
@@ -506,10 +623,16 @@ export class PluginAdmin {
     disabled: boolean;
     reason: string | undefined;
     release?: PackageRecord | undefined;
+    invalidLock?: InvalidPackageLockRecord | undefined;
     requiredBy?: readonly string[];
-  }): Promise<PluginManagerEntry> {
-    const { installed, effective, disabled, reason, release } = state;
-    const manifest = installed?.manifest ?? await this.manifestOf(id, effective);
+    orphanedBroken?: boolean;
+  }): Promise<PluginManagerEntryV2> {
+    const { installed, effective, disabled, reason, release, invalidLock, orphanedBroken } = state;
+    const inspected = installed?.manifest
+      ? { manifest: installed.manifest }
+      : await this.inspectManifest(effective);
+    const manifest = inspected.manifest;
+    const effectiveReason = reason ?? inspected.error?.message;
     const meta = installed?.plugin.meta;
     const origin = installed
       ? (installed.manifest ? 'community' : moduleOrigin(installed.source ?? null))
@@ -525,6 +648,21 @@ export class PluginAdmin {
       ...(manifest?.displayName === undefined && workshopFallback?.displayName ? { displayName: workshopFallback.displayName } : {}),
       ...(manifest?.description === undefined && workshopFallback?.description ? { description: workshopFallback.description } : {}),
     };
+    const declarative = this.declarativeSummary(id, manifest);
+    const contributes: string[] = [];
+    if (manifest?.agentTools?.length) contributes.push('agent.tools');
+    if (declarative?.skills?.length) contributes.push('declarative.skills');
+    if (declarative?.rubrics?.length) contributes.push('declarative.rubrics');
+    if (declarative?.cardTemplates?.length) contributes.push('declarative.cardTemplates');
+    if (declarative?.workflows?.length) contributes.push('declarative.workflows');
+    const isDegraded = !installed && effectiveReason !== undefined && (!disabled || orphanedBroken === true);
+    const entryState = installed
+      ? 'running'
+      : isDegraded
+        ? 'degraded'
+        : disabled
+          ? 'disabled'
+          : 'not-installed';
     return {
       id,
       origin,
@@ -541,28 +679,41 @@ export class PluginAdmin {
         ...(meta?.descriptionKey ? { descriptionKey: meta.descriptionKey } : !meta?.description ? { descriptionKey: `builtinDescriptions.${id}` } : {}),
       } : communityFields),
       platforms: [...(meta?.platforms ?? manifest?.platforms ?? ['desktop'])],
-      ...(manifest !== undefined ? { version: manifest.version } : meta?.version !== undefined ? { version: meta.version } : release !== undefined ? { version: release.version } : {}),
-      enabled: !disabled,
-      state: installed ? 'running' : disabled ? 'disabled' : reason !== undefined ? 'degraded' : 'not-installed',
-      ...(reason !== undefined && !installed ? { reason } : {}),
+      ...(manifest !== undefined
+        ? { version: manifest.version }
+        : meta?.version !== undefined
+          ? { version: meta.version }
+          : release !== undefined
+            ? { version: release.version }
+            : invalidLock?.version !== undefined
+              ? { version: invalidLock.version }
+              : {}),
+      enabled: !disabled && !orphanedBroken,
+      state: entryState,
+      ...(effectiveReason !== undefined && !installed && (isDegraded || !disabled) ? { reason: effectiveReason } : {}),
       permissions: [...(manifest?.permissions ?? [])],
       services: [...(meta?.provides ?? [])],
       // 管理页的呈现依据：依赖者（锁定基础服务）、清单静态可知的贡献（"它增加了什么"）。
       requiredBy: [...(state.requiredBy ?? [])].sort(),
-      contributes: manifest?.agentTools?.length ? ['agent.tools'] : [],
+      contributes,
       agentTools: (manifest?.agentTools ?? []).map((tool) => ({ name: tool.name, title: tool.title })),
+      ...(manifest?.kind ? { kind: manifest.kind } : {}),
+      ...(manifest?.tier ? { tier: manifest.tier } : {}),
+      ...(declarative ? { declarative } : {}),
       hasUi: manifest?.ui !== undefined,
       hasConfig: installed?.plugin.Config !== undefined,
       ...(consent ? { consent: { matched: consent.matched, code: consent.code, reason: consent.reason, grantedPermissions: [...consent.grantedPermissions] } } : {}),
     };
   }
 
-  private async manifestOf(id: string, effective: ResolvedEntry | undefined): Promise<PluginManifest | undefined> {
-    if (!effective) return undefined;
+  private async inspectManifest(effective: ResolvedEntry | undefined): Promise<{ manifest?: PluginManifest; error?: PluginLoadError }> {
+    if (!effective) return {};
     try {
-      return (await screenProfileEntry(effective, this.runtime.app.version))?.manifest;
-    } catch {
-      return undefined;
+      const screened = await screenProfileEntry(effective, this.runtime.app.version);
+      return screened ? { manifest: screened.manifest } : {};
+    } catch (error) {
+      if (error instanceof PluginLoadError) return { error };
+      return { error: new PluginLoadError('IMPORT_FAILED', effective.id, errorText(error), { cause: error }) };
     }
   }
 
@@ -653,9 +804,9 @@ export class PluginAdmin {
     const document = argsObject(args, PLUGIN_MANAGER_SET_ENABLED_COMMAND);
     const id = stringArg(document, PLUGIN_MANAGER_SET_ENABLED_COMMAND, 'id');
     const enabled = booleanArg(document, PLUGIN_MANAGER_SET_ENABLED_COMMAND, 'enabled');
-    const isCommunity = parsePluginId(id)?.official === false;
-    // 安全模式允许停用社区插件以止损，但不允许启用插件或修改官方内置插件。
-    if (enabled || !isCommunity) {
+    const isOfficial = parsePluginId(id)?.official === true;
+    // 安全模式允许停用社区/故障插件以止损，但不允许启用插件或修改官方内置插件。
+    if (enabled || isOfficial) {
       this.assertWritable(PLUGIN_MANAGER_SET_ENABLED_COMMAND);
     }
     const revision = this.revisionArg(document, PLUGIN_MANAGER_SET_ENABLED_COMMAND);
@@ -664,9 +815,9 @@ export class PluginAdmin {
 
     const effective = await this.effectiveEntry(id);
     const installed = this.runtime.get(id);
-    const packageRecord = (await this.packages?.list())?.find((entry) => entry.id === id);
+    const packageRecord = (await this.releases()).find((entry) => entry.id === id);
     if (!enabled) {
-      if (!installed && !current.file.plugins.some((entry) => entry.id === id)) {
+      if (!installed && !current.file.plugins.some((entry) => entry.id === id) && !packageRecord) {
         throw new CommandError(AppError.not_found(`PLUGIN_NOT_FOUND: plugin "${id}" is not installed or declared`));
       }
       // 先卸载（有依赖者时抛错，不写 profile），再写停用标记。
@@ -674,10 +825,11 @@ export class PluginAdmin {
       let written;
       try {
       if (packageRecord) await this.packages!.setEnabled(id, false);
+      const fallbackModule = effective?.specifier ?? (await this.releaseEntry(packageRecord))?.specifier ?? id;
       written = await this.store.mutate(revision, (file) => {
         const existing = file.plugins.find((entry) => entry.id === id);
         writeEntry(file, {
-          ...(existing ?? { id, module: effective?.specifier ?? id }),
+          ...(existing ?? { id, module: fallbackModule }),
           ...(existing?.config !== undefined ? { config: existing.config } : {}),
           disabled: true,
         });
@@ -692,10 +844,18 @@ export class PluginAdmin {
     }
 
     // 先核对同意，未同意不改 profile/revision、不执行社区代码。
-    const declared = await this.declaredEntry(id);
+    const declared = await this.declaredEntry(id, packageRecord);
     if (!declared) throw new CommandError(AppError.not_found(`PLUGIN_NOT_FOUND: plugin "${id}" is not declared by the profile`));
     if (packageRecord) await this.packages!.verify(id);
-    const screened = await screenProfileEntry(declared, this.runtime.app.version, 'desktop');
+    let screened: Awaited<ReturnType<typeof screenProfileEntry>>;
+    try {
+      screened = await screenProfileEntry(declared, this.runtime.app.version, 'desktop');
+    } catch (error) {
+      if (error instanceof PluginLoadError) {
+        throw new CommandError(AppError.with_details('Configuration', error.message, { code: error.code }));
+      }
+      throw error;
+    }
     if (screened) {
       // 同一份已同意的内容（ID/版本/权限/内容摘要都没变）直接放行；任何一项变了都回到确认。
       const decision = await evaluateConsent(this.consent, screened.manifest, packageRecord);
@@ -703,16 +863,35 @@ export class PluginAdmin {
         `CONSENT_REQUIRED: plugin "${id}" ${screened.manifest.version} needs consent`,
         { code: 'CONSENT_REQUIRED', id, version: screened.manifest.version, permissions: [...screened.manifest.permissions] }));
     }
-    // 启用：写 profile（去掉 disabled 标记），再装载；失败按修订号回滚。
+    // 启用：写 profile（去掉 disabled 标记，或在缺失条目时补全社区/安装包条目），再装载；失败按修订号回滚。
     const previous = current.file;
     const written = await this.store.mutate(revision, (file) => {
       const index = entryIndex(file, id);
-      if (index < 0) return;
+      if (index < 0) {
+        if (packageRecord || moduleOrigin(declared.specifier) === 'community') {
+          writeEntry(file, {
+            id,
+            module: declared.specifier,
+            ...(declared.config !== undefined ? { config: declared.config } : {}),
+          });
+        }
+        return;
+      }
       const entry = file.plugins[index]!;
       if (entry.disabled) delete entry.disabled;
+      if (!entry.module && declared.specifier) entry.module = declared.specifier;
     });
-    const target = await this.effectiveEntry(id);
-    if (!target) throw new CommandError(AppError.not_found(`PLUGIN_NOT_FOUND: plugin "${id}" is not declared by the profile`));
+    let target: ResolvedEntry | undefined;
+    try {
+      target = await this.effectiveEntry(id);
+    } catch (error) {
+      await this.restoreProfile(written.revision, previous);
+      throw error;
+    }
+    if (!target) {
+      await this.restoreProfile(written.revision, previous);
+      throw new CommandError(AppError.not_found(`PLUGIN_NOT_FOUND: plugin "${id}" is not declared by the profile`));
+    }
     if (this.runtime.safeMode && moduleOrigin(target.specifier) === 'community') {
       await this.restoreProfile(written.revision, previous);
       throw new CommandError(AppError.configuration(`SAFE_MODE_ACTIVE: plugin "${id}" is a community plugin; safe mode loads official plugins only`));
@@ -771,9 +950,9 @@ export class PluginAdmin {
     assertTrustedManagerSource(call.source, PLUGIN_MANAGER_UNINSTALL_COMMAND);
     const document = argsObject(args, PLUGIN_MANAGER_UNINSTALL_COMMAND);
     const id = stringArg(document, PLUGIN_MANAGER_UNINSTALL_COMMAND, 'id');
-    const isCommunity = parsePluginId(id)?.official === false;
-    // 安全模式是移除故障/恶意社区插件的救援通道，仅禁止卸载官方内置插件。
-    if (!isCommunity) {
+    const isOfficial = parsePluginId(id)?.official === true;
+    // 安全模式是移除故障/恶意社区与孤立插件的救援通道，仅禁止卸载官方内置插件。
+    if (isOfficial) {
       this.assertWritable(PLUGIN_MANAGER_UNINSTALL_COMMAND);
     }
     const revision = this.revisionArg(document, PLUGIN_MANAGER_UNINSTALL_COMMAND);
@@ -782,17 +961,31 @@ export class PluginAdmin {
     const installed = this.runtime.get(id);
     if (installed) await this.unloadOrConflict(id);
 
+    const lockInspection = await this.inspectPackages();
     let removedPackage: PackageRecord | undefined;
-    if ((await this.packages?.list())?.some((entry) => entry.id === id)) {
+    let removedInvalidLock = false;
+    if (lockInspection.valid.some((entry) => entry.id === id)) {
       try { removedPackage = await this.packages!.uninstall(id); } catch (error) {
         if (installed) await this.runtime.installEntry(installed);
         throw new CommandError(AppError.file_system(`PLUGIN_PACKAGE_UNINSTALL_FAILED: ${errorText(error)}`));
       }
+    } else if (lockInspection.invalid.some((entry) => entry.id === id)) {
+      try { removedInvalidLock = await this.packages!.removeRawEntry(id); } catch (error) {
+        if (installed) await this.runtime.installEntry(installed);
+        throw new CommandError(AppError.file_system(`PLUGIN_PACKAGE_UNINSTALL_FAILED: ${errorText(error)}`));
+      }
     }
+    const brokenDirsToRemove = !removedPackage
+      ? await this.collectBrokenDirsForUninstall(id, current.file)
+      : [];
     try {
       const written = await this.store.mutate(revision, (file) => { removeEntries(file, id); });
       this.managedReplacements.delete(id);
       this.runtime.recordDegraded(this.runtime.degradedPlugins().filter((entry) => entry.id !== id));
+      for (const dir of brokenDirsToRemove) {
+        await this.removeBrokenPluginDir(dir);
+      }
+      void removedInvalidLock;
       return { id, removed: true, revision: written.revision };
     } catch (error) {
       // uninstall removed the lock pointer, so the rollback expects it to still be absent ('').
@@ -834,8 +1027,16 @@ export class PluginAdmin {
     }
     if (!this.consent) throw new CommandError(AppError.configuration(`CONSENT_UNAVAILABLE: this Host has no consent ledger`));
     // 校验过的安装包记录：同意写给这份内容，而不只是写给 ID/版本/权限。
-    const release = (await this.packages?.list())?.some((entry) => entry.id === id) ? await this.packages!.verify(id) : undefined;
-    const manifest = await this.manifestOf(id, await this.declaredEntry(id));
+    const release = (await this.releases()).some((entry) => entry.id === id) ? await this.packages!.verify(id) : undefined;
+    const declared = await this.declaredEntry(id, release);
+    if (!declared) {
+      throw new CommandError(AppError.not_found(`PLUGIN_NOT_FOUND: plugin "${id}" is not a community package declared by the profile`));
+    }
+    const inspected = await this.inspectManifest(declared);
+    if (inspected.error) {
+      throw new CommandError(AppError.with_details('Configuration', inspected.error.message, { code: inspected.error.code }));
+    }
+    const manifest = inspected.manifest;
     if (!manifest) throw new CommandError(AppError.not_found(`PLUGIN_NOT_FOUND: plugin "${id}" is not a community package declared by the profile`));
     if (manifest.version !== version || !samePermissions(manifest.permissions, permissions as string[])) {
       throw new CommandError(AppError.conflict(
@@ -856,16 +1057,44 @@ export class PluginAdmin {
 
   // ---------------------------------------------------------------- 工具
 
-  private async declaredEntry(id: string): Promise<ResolvedEntry | undefined> {
-    const effective = await this.effectiveEntry(id);
-    if (effective) return effective;
-    const profile = await this.store.read();
-    const entry = profile.file.plugins.find((item) => item.id === id);
-    if (entry?.module) return {
-      id, config: entry.config, declaredIn: this.store.path,
-      specifier: entry.module.startsWith('file:') ? entry.module : pathToFileURL(resolve(dirname(this.store.path), entry.module)).href,
-    };
-    return (await resolveProfile(this.official)).find((item) => item.id === id);
+  private async declaredEntry(id: string, releaseHint?: PackageRecord): Promise<ResolvedEntry | undefined> {
+    try {
+      const effective = await this.effectiveEntry(id);
+      if (effective) return effective;
+    } catch {
+      // Fall through to raw profile entries and active package releases.
+    }
+    try {
+      const profile = await this.store.read();
+      const entry = profile.file.plugins.find((item) => item.id === id);
+      if (entry?.module) {
+        let specifier: string;
+        if (entry.module.startsWith('file:')) {
+          try {
+            specifier = pathToFileURL(await canonicalPath(fileURLToPath(entry.module))).href;
+          } catch {
+            specifier = entry.module;
+          }
+        } else if (entry.module.startsWith('./') || entry.module.startsWith('../') || isAbsolute(entry.module)) {
+          specifier = pathToFileURL(await canonicalPath(resolve(dirname(this.store.path), entry.module))).href;
+        } else {
+          specifier = entry.module;
+        }
+        return { id, config: entry.config, declaredIn: this.store.path, specifier };
+      }
+    } catch {
+      // Ignore unreadable/corrupt user profile and fall back to lock/official entries.
+    }
+    const release = releaseHint ?? (await this.releases()).find((entry) => entry.id === id);
+    if (release) {
+      const fromRelease = await this.releaseEntry(release);
+      if (fromRelease) return fromRelease;
+    }
+    try {
+      return (await resolveProfile(this.official)).find((item) => item.id === id);
+    } catch {
+      return undefined;
+    }
   }
 
   installManagedDirectory(request: ManagedPluginInstallRequest): Promise<PluginManagerInstallResult> {
@@ -998,9 +1227,10 @@ export class PluginAdmin {
       }
       consentChanged = managed !== undefined || previousConsent !== undefined;
       const entryFile = manifest.host ?? 'package.json';
+      const entryModuleHref = pathToFileURL(await canonicalPath(join(this.runtime.app.dataDir, 'plugins', record.path, entryFile))).href;
       const written = await this.store.mutate(revision, (file) => {
         const existing = file.plugins.find((entry) => entry.id === record.id);
-        writeEntry(file, { id: record.id, module: pathToFileURL(join(this.runtime.app.dataDir, 'plugins', record.path, entryFile)).href,
+        writeEntry(file, { id: record.id, module: entryModuleHref,
           ...(existing?.config !== undefined ? { config: existing.config } : {}), disabled: true });
       });
       if (managed && result.previous) {
@@ -1029,13 +1259,204 @@ export class PluginAdmin {
     } finally { grant.revoke(); }
   }
 
-  /** 当前安装包记录；锁文件读不出来时按“没有可识别的内容”处理（绑定了内容的同意因此不成立，fail closed）。 */
-  private async releases(): Promise<readonly PackageRecord[]> {
+  private async inspectPackages(): Promise<PackageLockInspection> {
+    if (!this.packages) return { valid: [], invalid: [] };
     try {
-      return (await this.packages?.list()) ?? [];
+      const inspected = await this.packages.inspect();
+      if (inspected.lockError) {
+        this.runtime.ctx.logger('host').warn(`[plugin-manager] cannot read the package lock: ${inspected.lockError}`);
+      }
+      return inspected;
     } catch (error) {
       this.runtime.ctx.logger('host').warn(`[plugin-manager] cannot read the package lock: ${errorText(error)}`);
-      return [];
+      return { valid: [], invalid: [], lockError: errorText(error) };
+    }
+  }
+
+  /** 当前安装包记录；锁文件单条损坏不隐藏其它合法包，整文件不可读时按空列表处理（fail closed）。 */
+  private async releases(): Promise<readonly PackageRecord[]> {
+    return (await this.inspectPackages()).valid;
+  }
+
+  private async probeDirectoryPackage(dir: string, fallbackId: string): Promise<{
+    id: string;
+    entry: ResolvedEntry;
+    error?: PluginLoadError;
+  }> {
+    const canonicalDir = await canonicalPath(dir);
+    let candidateId = fallbackId;
+    let entryFile = 'package.json';
+    try {
+      const pkg = JSON.parse(await readFile(join(canonicalDir, 'package.json'), 'utf8')) as {
+        deepStudent?: { id?: unknown; host?: unknown };
+      };
+      if (typeof pkg.deepStudent?.id === 'string' && pkg.deepStudent.id.trim()) {
+        candidateId = pkg.deepStudent.id.trim();
+      }
+      if (typeof pkg.deepStudent?.host === 'string' && pkg.deepStudent.host) {
+        entryFile = pkg.deepStudent.host;
+      }
+    } catch {
+      // Keep package.json target so screenProfileEntry produces the structured MANIFEST_MISSING/MANIFEST_INVALID error.
+    }
+    const entry: ResolvedEntry = {
+      id: candidateId,
+      config: undefined,
+      declaredIn: this.store.path,
+      specifier: pathToFileURL(await canonicalPath(resolve(canonicalDir, entryFile))).href,
+    };
+    try {
+      await screenProfileEntry(entry, this.runtime.app.version);
+      return { id: candidateId, entry };
+    } catch (error) {
+      const loadError = error instanceof PluginLoadError
+        ? error
+        : new PluginLoadError('IMPORT_FAILED', candidateId, errorText(error), { cause: error });
+      return { id: candidateId, entry, error: loadError };
+    }
+  }
+
+  private async scanBrokenPluginDirs(knownIds: ReadonlySet<string>): Promise<ScannedBrokenPlugin[]> {
+    const pluginsRoot = join(this.runtime.app.dataDir, 'plugins');
+    const found: ScannedBrokenPlugin[] = [];
+    const seen = new Set<string>(knownIds);
+
+    const topEntries = await readdir(pluginsRoot, { withFileTypes: true }).catch(() => []);
+    for (const dirent of topEntries) {
+      if (dirent.name.startsWith('.') || RESERVED_PLUGINS_SUBDIRS.has(dirent.name) || !dirent.isDirectory()) continue;
+      const dir = join(pluginsRoot, dirent.name);
+      const children = await readdir(dir, { withFileTypes: true }).catch(() => []);
+      const hasPackageJson = children.some((child) => child.isFile() && child.name === 'package.json');
+      const hasPluginMarker = hasPackageJson || children.some((child) =>
+        child.isFile() && (child.name === 'manifest.json' || /\.(?:[cm]?js|ts)$/.test(child.name)),
+      );
+      // Skip plugin data/storage directories (e.g. workshop.alpha/prefs.json) that hold no plugin manifest or entry files.
+      if (!hasPluginMarker) continue;
+      if (!hasPackageJson) {
+        if (seen.has(dirent.name)) continue;
+        seen.add(dirent.name);
+        found.push({
+          id: dirent.name,
+          dir,
+          reason: `MANIFEST_MISSING: no package.json found for ${dir}`,
+        });
+        continue;
+      }
+      const probed = await this.probeDirectoryPackage(dir, dirent.name);
+      if (seen.has(probed.id) || seen.has(dirent.name)) continue;
+      if (probed.error) {
+        seen.add(probed.id);
+        found.push({ id: probed.id, dir, entry: probed.entry, reason: probed.error.message });
+      }
+    }
+
+    const releasesRoot = join(pluginsRoot, 'releases');
+    const releaseIdEntries = await readdir(releasesRoot, { withFileTypes: true }).catch(() => []);
+    for (const dirent of releaseIdEntries) {
+      if (dirent.name.startsWith('.') || !dirent.isDirectory()) continue;
+      const pluginId = dirent.name;
+      if (seen.has(pluginId)) continue;
+      const pluginReleasesDir = join(releasesRoot, pluginId);
+      const children = await readdir(pluginReleasesDir, { withFileTypes: true }).catch(() => []);
+      if (children.length === 0) continue;
+
+      const directPackageJson = children.some((child) => child.isFile() && child.name === 'package.json');
+      if (directPackageJson) {
+        const probed = await this.probeDirectoryPackage(pluginReleasesDir, pluginId);
+        if (probed.error) {
+          seen.add(pluginId);
+          found.push({ id: pluginId, dir: pluginReleasesDir, entry: probed.entry, reason: probed.error.message });
+        }
+        continue;
+      }
+
+      const subdirs = children.filter((child) => child.isDirectory() && !child.name.startsWith('.'));
+      if (subdirs.length === 0) {
+        const hasPluginMarker = children.some((child) =>
+          child.isFile() && (child.name === 'manifest.json' || /\.(?:[cm]?js|ts)$/.test(child.name)),
+        );
+        if (hasPluginMarker) {
+          seen.add(pluginId);
+          found.push({
+            id: pluginId,
+            dir: pluginReleasesDir,
+            reason: `MANIFEST_MISSING: no package.json found for ${pluginReleasesDir}`,
+          });
+        }
+        continue;
+      }
+
+      // Cleanly uninstalled valid packages retain valid release subdirs for rollback; only surface if every subdir is broken.
+      let hasValidRelease = false;
+      let firstBroken: { entry: ResolvedEntry; error: PluginLoadError } | undefined;
+      for (const sub of subdirs) {
+        const probed = await this.probeDirectoryPackage(join(pluginReleasesDir, sub.name), pluginId);
+        if (!probed.error) {
+          hasValidRelease = true;
+          break;
+        }
+        firstBroken ??= { entry: probed.entry, error: probed.error };
+      }
+      if (!hasValidRelease && firstBroken) {
+        seen.add(pluginId);
+        found.push({
+          id: pluginId,
+          dir: pluginReleasesDir,
+          entry: firstBroken.entry,
+          reason: firstBroken.error.message,
+        });
+      }
+    }
+
+    return found;
+  }
+
+  private async collectBrokenDirsForUninstall(id: string, profileFile: ProfileFile): Promise<string[]> {
+    const pluginsRoot = await canonicalPath(join(this.runtime.app.dataDir, 'plugins'));
+    const targets = new Set<string>();
+    const scanned = await this.scanBrokenPluginDirs(new Set());
+    for (const item of scanned) {
+      if (item.id === id) targets.add(item.dir);
+    }
+    // Also clean up a broken plugin directory directly inside <dataDir>/plugins/<dir> referenced by user.profile.json.
+    const profileEntry = profileFile.plugins.find((entry) => entry.id === id);
+    if (profileEntry?.module) {
+      try {
+        const modulePath = profileEntry.module.startsWith('file:')
+          ? fileURLToPath(profileEntry.module)
+          : resolve(dirname(this.store.path), profileEntry.module);
+        const canonicalModule = await canonicalPath(modulePath);
+        if (isStrictChildPath(pluginsRoot, canonicalModule)) {
+          const relParts = relative(pluginsRoot, canonicalModule).split(/[\\/]/).filter(Boolean);
+          const firstSegment = relParts[0];
+          if (firstSegment && !firstSegment.startsWith('.') && !RESERVED_PLUGINS_SUBDIRS.has(firstSegment)) {
+            targets.add(join(pluginsRoot, firstSegment));
+          } else if (firstSegment === 'releases' && relParts[1]) {
+            const releaseIdDir = join(pluginsRoot, 'releases', relParts[1]);
+            if (scanned.some((item) => resolve(item.dir) === resolve(releaseIdDir))) {
+              targets.add(releaseIdDir);
+            }
+          }
+        }
+      } catch {
+        // Ignore unparseable module paths.
+      }
+    }
+    return [...targets];
+  }
+
+  private async removeBrokenPluginDir(dir: string): Promise<void> {
+    try {
+      const pluginsRoot = await canonicalPath(join(this.runtime.app.dataDir, 'plugins'));
+      const info = await lstat(dir).catch(() => null);
+      if (!info || info.isSymbolicLink() || !info.isDirectory()) return;
+      const realDir = await realpath(dir);
+      if (!isStrictChildPath(pluginsRoot, realDir)) return;
+      const rel = relative(pluginsRoot, realDir);
+      if (rel === 'releases' || rel === 'packages' || rel === '.staging') return;
+      await rm(realDir, { recursive: true, force: true });
+    } catch (error) {
+      this.runtime.ctx.logger('host').warn(`[plugin-manager] failed to remove broken plugin dir ${dir}: ${errorText(error)}`);
     }
   }
 
@@ -1050,8 +1471,13 @@ export class PluginAdmin {
   private async effectiveEntry(id: string): Promise<ResolvedEntry | undefined> {
     const profile = await this.store.read();
     if (!profile.exists) return (await resolveProfile(this.official)).find((entry) => entry.id === id);
-    const entries = await resolveProfile(this.store.path, { official: this.official, user: true });
-    return entries.find((entry) => entry.id === id);
+    try {
+      const entries = await resolveProfile(this.store.path, { official: this.official, user: true });
+      return entries.find((entry) => entry.id === id);
+    } catch {
+      const tolerant = await resolveProfileTolerant(this.store.path, { official: this.official, user: true });
+      return tolerant.entries.find((entry) => entry.id === id);
+    }
   }
 
   /** 把用户 profile 恢复成写操作前的快照（保留当前文件的注释键）。 */

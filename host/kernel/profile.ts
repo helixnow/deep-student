@@ -6,7 +6,7 @@
  * （config/entry.ts:223-229），与"官方模块导入失败即致命"冲突；它会对配置中的 `!!js` 表达式求值（config/utils.ts），
  * 不适合用户可编辑的 profile；条目以 loader entry id 标识，而覆盖语义需要按插件 `meta.id` 合并。
  */
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { HostPlugin, PluginPlatform } from './api.ts';
@@ -90,6 +90,26 @@ export interface ResolvedEntry {
   config: unknown;
   /** 最终生效的条目来自哪个 profile 文件。 */
   declaredIn: string;
+}
+
+export interface InvalidProfileEntry {
+  id?: string;
+  reason: string;
+}
+
+export interface TolerantProfileResult {
+  entries: ResolvedEntry[];
+  invalidEntries: InvalidProfileEntry[];
+  fileError?: string;
+}
+
+async function canonicalPath(filePath: string): Promise<string> {
+  const abs = resolve(filePath);
+  try {
+    return await realpath(abs);
+  } catch {
+    return abs;
+  }
 }
 
 
@@ -191,6 +211,125 @@ export async function resolveProfile(path: string, options: ProfileResolveOption
 }
 
 /**
+ * 容错解析 profile（用于管理器列表与多社区插件隔离恢复）：
+ * 文件级 JSON/顶层结构错误记录在 `fileError`；单条无效条目只跳过该条目并记入 `invalidEntries`，
+ * 避免一条坏记录拖垮同一用户 profile 里其余有效的社区插件 / `.dspack`。
+ */
+export async function resolveProfileTolerant(path: string, options: ProfileResolveOptions = {}): Promise<TolerantProfileResult> {
+  const official = options.official ?? OFFICIAL_PROFILE_PATH;
+  const ordered: (ResolvedEntry | null)[] = [];
+  const index = new Map<string, number>();
+  const invalidEntries: InvalidProfileEntry[] = [];
+  let fileError: string | undefined;
+
+  const visit = async (file: string, stack: string[], user: boolean, isRoot: boolean): Promise<void> => {
+    const abs = resolve(file);
+    if (stack.includes(abs)) {
+      const msg = `profile extends cycle: ${[...stack, abs].join(' -> ')}`;
+      if (isRoot) fileError = msg;
+      else fileError ??= msg;
+      return;
+    }
+    let text: string;
+    try {
+      text = await readFile(abs, 'utf8');
+    } catch (error) {
+      const msg = `cannot read profile ${abs}: ${(error as Error).message}`;
+      if (isRoot) fileError = msg;
+      else fileError ??= msg;
+      return;
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch (error) {
+      const msg = `profile ${abs} is not valid JSON: ${(error as Error).message}`;
+      if (isRoot) fileError = msg;
+      else fileError ??= msg;
+      return;
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      fileError ??= `${abs}: profile must be a JSON object`;
+      return;
+    }
+    const raw = parsed as Record<string, unknown>;
+    for (const key of Object.keys(raw)) {
+      if (key !== 'extends' && key !== 'plugins' && key !== '$schema' && key !== '$comment') {
+        fileError ??= `${abs}: unknown profile key "${key}"`;
+        return;
+      }
+    }
+    const ext = raw.extends;
+    if (ext !== undefined && typeof ext !== 'string' && !(Array.isArray(ext) && ext.every((e) => typeof e === 'string'))) {
+      fileError ??= `${abs}: "extends" must be a string or an array of strings`;
+      return;
+    }
+    if (!Array.isArray(raw.plugins)) {
+      fileError ??= `${abs}: "plugins" must be an array`;
+      return;
+    }
+    const bases = ext === undefined ? [] : Array.isArray(ext) ? ext : [ext];
+    for (const base of bases) {
+      if (base === 'official') await visit(resolve(official), [...stack, abs], false, false);
+      else await visit(resolve(dirname(abs), base), [...stack, abs], user, false);
+    }
+    raw.plugins.forEach((entry, idx) => {
+      const where = `${abs}: plugins[${idx}]`;
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+        invalidEntries.push({ reason: `MANIFEST_INVALID: ${where} must be an object` });
+        return;
+      }
+      const e = entry as Record<string, unknown>;
+      const id = typeof e.id === 'string' && e.id ? e.id : undefined;
+      for (const key of Object.keys(e)) {
+        if (!['id', 'module', 'config', 'disabled', '$comment'].includes(key)) {
+          invalidEntries.push({ ...(id ? { id } : {}), reason: `MANIFEST_INVALID: ${where}: unknown key "${key}"` });
+          return;
+        }
+      }
+      if (!id) {
+        invalidEntries.push({ reason: `MANIFEST_INVALID: ${where}: "id" must be a non-empty string` });
+        return;
+      }
+      if (e.disabled !== undefined && typeof e.disabled !== 'boolean') {
+        invalidEntries.push({ id, reason: `MANIFEST_INVALID: ${where}: "disabled" must be a boolean` });
+        return;
+      }
+      const at = index.get(id);
+      if (e.disabled === true) {
+        if (at !== undefined) ordered[at] = null;
+        index.delete(id);
+        return;
+      }
+      if (typeof e.module !== 'string' || !e.module) {
+        invalidEntries.push({ id, reason: `MANIFEST_INVALID: ${where}: "module" must be a non-empty string` });
+        return;
+      }
+      if (user && !isFileModule(e.module)) {
+        invalidEntries.push({
+          id,
+          reason: `MANIFEST_INVALID: ${abs}: plugin "${id}": module "${e.module}" is not a file path; a user profile only loads ./ or ../ relative paths, absolute paths or file: URLs`,
+        });
+        return;
+      }
+      const resolved: ResolvedEntry = { id, specifier: resolveSpecifier(e.module, abs), config: e.config, declaredIn: abs };
+      if (at !== undefined) ordered[at] = resolved;
+      else {
+        index.set(id, ordered.length);
+        ordered.push(resolved);
+      }
+    });
+  };
+
+  await visit(path, [], options.user === true, true);
+  return {
+    entries: ordered.filter((e): e is ResolvedEntry => e !== null),
+    invalidEntries,
+    ...(fileError ? { fileError } : {}),
+  };
+}
+
+/**
  * 导入全部条目的模块（先全部导入成功再开始安装），并核对 `meta.id`。
  * `checkedLater` 中的条目（已过清单检查的社区插件）不在这里核对 id：不一致由 {@link prepareProfile} 降级为 `ID_MISMATCH`。
  */
@@ -232,8 +371,12 @@ export function applyConfigOverrides(entries: readonly ResolvedEntry[], override
 
 /** 条目模块对应的文件；包名经 `import.meta.resolve` 解析，解析不到文件时为 null（交给导入阶段报错）。 */
 function moduleFileOf(specifier: string): string | null {
+  if (specifier.startsWith('file:')) {
+    // 非法 file: URL 直接抛错，由 screenProfileEntry 转为社区插件 IMPORT_FAILED，避免被误判为官方模块。
+    return fileURLToPath(specifier);
+  }
   try {
-    const href = specifier.startsWith('file:') ? specifier : import.meta.resolve(specifier);
+    const href = import.meta.resolve(specifier);
     return href.startsWith('file:') ? fileURLToPath(href) : null;
   } catch {
     // 包名解析失败：导入阶段会给出带上下文的 ProfileError。
@@ -262,28 +405,34 @@ export async function screenProfileEntry(entry: ResolvedEntry, appVersion: strin
   } catch (error) {
     throw new PluginLoadError('IMPORT_FAILED', entry.id, describeError(error), { cause: error });
   }
-  if (file === null || isAppModuleUrl(pathToFileURL(file).href)) return null;
-  if (!(await isFile(file))) throw new PluginLoadError('IMPORT_FAILED', entry.id, `plugin module is missing: ${file}`);
-  const packageJson = await findPackageJson(dirname(file));
-  if (packageJson === null) throw new PluginLoadError('MANIFEST_MISSING', entry.id, `no package.json found for ${file}`);
+  if (file === null) return null;
+  const resolvedFile = resolve(file);
+  if (isAppModuleUrl(pathToFileURL(resolvedFile).href)) return null;
+  if (!(await isFile(resolvedFile))) throw new PluginLoadError('IMPORT_FAILED', entry.id, `plugin module is missing: ${resolvedFile}`);
+  const canonicalFile = await canonicalPath(resolvedFile);
+  if (isAppModuleUrl(pathToFileURL(canonicalFile).href)) return null;
+  const packageJson = await findPackageJson(dirname(canonicalFile)) ?? await findPackageJson(dirname(resolvedFile));
+  if (packageJson === null) throw new PluginLoadError('MANIFEST_MISSING', entry.id, `no package.json found for ${resolvedFile}`);
+  const canonicalPackageJson = await canonicalPath(packageJson);
+  const packageRoot = dirname(canonicalPackageJson);
   let pkg: unknown;
   try {
-    pkg = JSON.parse(await readFile(packageJson, 'utf8'));
+    pkg = JSON.parse(await readFile(canonicalPackageJson, 'utf8'));
   } catch (error) {
-    throw new PluginLoadError('MANIFEST_INVALID', entry.id, `${packageJson} cannot be read as JSON: ${(error as Error).message}`, { cause: error });
+    throw new PluginLoadError('MANIFEST_INVALID', entry.id, `${canonicalPackageJson} cannot be read as JSON: ${(error as Error).message}`, { cause: error });
   }
   const result = checkManifest(pkg, { appVersion, context: 'community-startup', expectedId: entry.id, ...(platform ? { platform } : {}) }, entry.id);
   if (!result.ok) throw result.error;
   const { manifest } = result;
   if (manifest.host === undefined) {
-    if ((manifest.ui !== undefined || manifest.declarative !== undefined) && file === packageJson) {
-      return { manifest, packageRoot: dirname(packageJson), uiOnly: true };
+    if ((manifest.ui !== undefined || manifest.declarative !== undefined) && canonicalFile === canonicalPackageJson) {
+      return { manifest, packageRoot, uiOnly: true };
     }
-    throw new PluginLoadError('HOST_ENTRY_MISMATCH', entry.id, `${packageJson} declares no "host" entry; a profile can only load a plugin's Host half`);
+    throw new PluginLoadError('HOST_ENTRY_MISMATCH', entry.id, `${canonicalPackageJson} declares no "host" entry; a profile can only load a plugin's Host half`);
   }
-  const hostFile = resolve(dirname(packageJson), manifest.host);
-  if (hostFile !== file) throw new PluginLoadError('HOST_ENTRY_MISMATCH', entry.id, `profile module ${file} is not the package's host entry ${hostFile}`);
-  return { manifest, packageRoot: dirname(packageJson), uiOnly: false };
+  const hostFile = await canonicalPath(resolve(packageRoot, manifest.host));
+  if (hostFile !== canonicalFile) throw new PluginLoadError('HOST_ENTRY_MISMATCH', entry.id, `profile module ${canonicalFile} is not the package's host entry ${hostFile}`);
+  return { manifest, packageRoot, uiOnly: false };
 }
 
 
@@ -336,6 +485,7 @@ export async function prepareProfile(runtime: HostRuntime, entries: readonly Res
     const community = screened !== undefined;
     if (screened?.uiOnly) {
       const uiOnlyPlugin: HostPlugin = {
+        name: screened.manifest.id,
         meta: {
           id: screened.manifest.id,
           version: screened.manifest.version,
@@ -470,10 +620,31 @@ export async function loadStartupProfile(runtime: HostRuntime, options: StartupP
     runtime.startup.mark('profile resolved');
     prepared = await prepareProfile(runtime, entries, shared);
   } catch (error) {
-    // 用户 profile 文件本身无效：先记日志，再通知前端，最后回到官方 profile。
+    // 用户 profile 解析失败：先记日志并通知前端。
     const reason = error instanceof Error ? error.message : String(error);
     runtime.ctx.logger('host').error(`plugin profile ${userProfile} failed to load; falling back to the official profile:\n${describeError(error)}`);
     runtime.backendEvents.emit(PROFILE_FAILED_EVENT, { profile: userProfile, error: reason });
+    // 若仅是单条用户条目格式无效且存在其它有效用户条目，隔离坏条目而不是丢失全部社区插件。
+    if (error instanceof ProfileError) {
+      const tolerant = await resolveProfileTolerant(userProfile, { official, user: true });
+      const resolvedUserPath = resolve(userProfile);
+      const hasValidUserEntries = !tolerant.fileError
+        && tolerant.entries.some((entry) => resolve(entry.declaredIn) === resolvedUserPath);
+      if (hasValidUserEntries) {
+        try {
+          const salvaged = await prepareProfile(runtime, tolerant.entries, shared);
+          const invalidRejected: RejectedEntry[] = tolerant.invalidEntries
+            .filter((item): item is { id: string; reason: string } => typeof item.id === 'string' && item.id.length > 0)
+            .map((item) => ({
+              id: item.id,
+              reason: item.reason,
+            }));
+          return finishProfile(runtime, salvaged.installs, { ...shared, requireCoreServices: true }, [...salvaged.rejected, ...invalidRejected]);
+        } catch {
+          // 挽救失败则彻底回退到官方 profile。
+        }
+      }
+    }
     return loadProfile(runtime, official, { ...shared, requireCoreServices: true });
   }
   return finishProfile(runtime, prepared.installs, { ...shared, requireCoreServices: true }, prepared.rejected);

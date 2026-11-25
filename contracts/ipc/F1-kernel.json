@@ -771,6 +771,19 @@
         }
       },
       {
+        "name": "plugin:manager|declarative-skills",
+        "x-host-native": true,
+        "host": {
+          "file": "host/kernel/plugin-admin.ts",
+          "const": "PLUGIN_MANAGER_DECLARATIVE_SKILLS_COMMAND",
+          "handler": "host/kernel/plugin-admin.ts"
+        },
+        "args": [],
+        "result": {
+          "description": "DeclarativeSkillAsset[]; mounted Tier 1 declarative skills from enabled study packs and plugins"
+        }
+      },
+      {
         "name": "plugin:ui|manifest",
         "x-host-native": true,
         "host": {

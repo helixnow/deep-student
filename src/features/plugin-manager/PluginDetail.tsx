@@ -82,11 +82,12 @@ export function PluginDetail({
   const additions = pluginAdditions(plugin, livePoints);
   const declarativeGroups: Array<{ labelKey: string; items: string[] }> = [];
   if (plugin.declarative) {
-    const prompts = [...(plugin.declarative.prompts ?? []), ...(plugin.declarative.skills ?? [])];
-    const templates = [...(plugin.declarative.templates ?? []), ...(plugin.declarative.cardTemplates ?? [])];
-    const decks = [...(plugin.declarative.decks ?? [])];
-    const rules = [...(plugin.declarative.rules ?? []), ...(plugin.declarative.rubrics ?? [])];
-    const widgets = [...(plugin.declarative.widgets ?? []), ...(plugin.declarative.workflows ?? [])];
+    const dedupe = (items: readonly string[]) => [...new Set(items.filter(Boolean))];
+    const prompts = dedupe([...(plugin.declarative.prompts ?? []), ...(plugin.declarative.skills ?? [])]);
+    const templates = dedupe([...(plugin.declarative.templates ?? []), ...(plugin.declarative.cardTemplates ?? [])]);
+    const decks = dedupe([...(plugin.declarative.decks ?? [])]);
+    const rules = dedupe([...(plugin.declarative.rules ?? []), ...(plugin.declarative.rubrics ?? [])]);
+    const widgets = dedupe([...(plugin.declarative.widgets ?? []), ...(plugin.declarative.workflows ?? [])]);
     if (prompts.length) declarativeGroups.push({ labelKey: 'detail.studyPackPrompts', items: prompts });
     if (templates.length) declarativeGroups.push({ labelKey: 'detail.studyPackTemplates', items: templates });
     if (decks.length) declarativeGroups.push({ labelKey: 'detail.studyPackDecks', items: decks });

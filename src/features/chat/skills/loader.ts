@@ -129,6 +129,134 @@ interface SkillPackageFileEntry {
   size: number;
 }
 
+interface DeclarativeSkillAsset {
+  pluginId: string;
+  skillId: string;
+  name: string;
+  description: string;
+  markdown: string;
+  sourcePath: string;
+}
+
+export interface SkillLoadStats {
+  total: number;
+  builtin: number;
+  global: number;
+  project: number;
+  errors: number;
+}
+
+function extractErrorInfo(error: unknown): { code?: string; message: string } {
+  if (typeof error === 'string') {
+    try {
+      const parsed = JSON.parse(error) as { code?: unknown; message?: unknown };
+      if (parsed && typeof parsed === 'object') {
+        return {
+          code: typeof parsed.code === 'string' ? parsed.code : undefined,
+          message: typeof parsed.message === 'string' ? parsed.message : error,
+        };
+      }
+    } catch {
+      // Plain text error.
+    }
+    return { message: error };
+  }
+  if (error && typeof error === 'object') {
+    const obj = error as { code?: unknown; message?: unknown };
+    return {
+      code: typeof obj.code === 'string' ? obj.code : undefined,
+      message: typeof obj.message === 'string' ? obj.message : String(error),
+    };
+  }
+  return { message: String(error) };
+}
+
+function isMissingSkillFileError(error: unknown): boolean {
+  const { code, message } = extractErrorInfo(error);
+  if (code === 'RESOURCE_NOT_FOUND' || code === 'ENOENT') return true;
+  return /\b(?:RESOURCE_NOT_FOUND|ENOENT)\b|file not found|no such file/i.test(message);
+}
+
+function isMissingDirectoryError(error: unknown): boolean {
+  const { code, message } = extractErrorInfo(error);
+  if (code === 'RESOURCE_NOT_FOUND' || code === 'ENOENT') return true;
+  return /\b(?:RESOURCE_NOT_FOUND|ENOENT)\b|directory not found|no such file or directory/i.test(message);
+}
+
+let loadGeneration = 0;
+let activeLoadPromise: Promise<SkillLoadStats> | null = null;
+let lastCommittedStats: SkillLoadStats | null = null;
+let manifestRefreshListenerPromise: Promise<void> | null = null;
+
+function ensurePluginManifestRefreshListener(): void {
+  if (manifestRefreshListenerPromise || !isTauriRuntime()) return;
+  manifestRefreshListenerPromise = import('@tauri-apps/api/event')
+    .then(({ listen }) =>
+      listen('host://ui-manifest-v2', () => {
+        void reloadSkills().catch((error: unknown) => {
+          console.warn(LOG_PREFIX, 'Failed to reload skills after host://ui-manifest-v2:', error);
+        });
+      }),
+    )
+    .then(() => undefined)
+    .catch((error: unknown) => {
+      manifestRefreshListenerPromise = null;
+      console.debug(LOG_PREFIX, 'Unable to attach host://ui-manifest-v2 listener:', error);
+    });
+}
+
+async function loadDeclarativePluginSkills(): Promise<SkillDefinition[]> {
+  let assets: DeclarativeSkillAsset[];
+  try {
+    const result = await invoke<DeclarativeSkillAsset[]>('plugin:manager|declarative-skills', {});
+    assets = Array.isArray(result) ? result : [];
+  } catch (error: unknown) {
+    // Non-Host / demo / unit-test environments may not expose this kernel command.
+    console.debug(LOG_PREFIX, 'Declarative plugin skills unavailable:', error);
+    return [];
+  }
+
+  const skills: SkillDefinition[] = [];
+  for (const asset of assets) {
+    if (
+      !asset
+      || typeof asset.pluginId !== 'string'
+      || typeof asset.skillId !== 'string'
+      || typeof asset.markdown !== 'string'
+    ) {
+      continue;
+    }
+    const cleanRelPath = (asset.sourcePath || `${asset.skillId}.md`).replace(/^\.\//, '');
+    const virtualSourcePath = `plugin://${asset.pluginId}/${cleanRelPath}`;
+    const parsed = parseSkillFile(asset.markdown, virtualSourcePath, asset.skillId, 'global');
+    const baseSkill: SkillDefinition = parsed.success && parsed.skill
+      ? {
+          ...parsed.skill,
+          name: parsed.skill.name || asset.name || asset.skillId,
+          description: parsed.skill.description || asset.description || '',
+          sourcePath: virtualSourcePath,
+          packageRoot: `plugin://${asset.pluginId}`,
+          packageSource: 'external',
+          trustStatus: 'trusted',
+          isBuiltin: false,
+        }
+      : {
+          id: asset.skillId,
+          name: asset.name || asset.skillId,
+          description: asset.description || '',
+          content: asset.markdown.trim(),
+          location: 'global',
+          sourcePath: virtualSourcePath,
+          packageRoot: `plugin://${asset.pluginId}`,
+          packageSource: 'external',
+          trustStatus: 'trusted',
+          isBuiltin: false,
+        };
+    skills.push(applyEnableOverride(applyTrustOverride(enrichSkillPackageMetadata(baseSkill))));
+  }
+  return skills;
+}
+
 async function loadPackageFiles(packageRoot: string): Promise<SkillPackageFile[] | undefined> {
   if (!packageRoot || packageRoot.startsWith('builtin://')) {
     return undefined;
@@ -229,13 +357,20 @@ async function loadSkillsFromDirectory(
           failed: false,
         };
       } catch (readError: unknown) {
-        // SKILL.md 不存在，跳过此目录
-        // 这是正常情况，不需要记录错误
-        console.debug(
+        if (isMissingSkillFileError(readError)) {
+          // SKILL.md 不存在，跳过此目录（正常情况，不计入错误）
+          console.debug(
+            LOG_PREFIX,
+            `目录 ${entry.name} 无 SKILL.md，跳过`
+          );
+          return { name: entry.name, skill: null, warnings: null, failed: false };
+        }
+        console.warn(
           LOG_PREFIX,
-          `目录 ${entry.name} 无 SKILL.md，跳过`
+          `读取 skill 失败: ${entry.name}`,
+          readError
         );
-        return { name: entry.name, skill: null, warnings: null, failed: false };
+        return { name: entry.name, skill: null, warnings: null, failed: true };
       }
     }));
 
@@ -254,12 +389,201 @@ async function loadSkillsFromDirectory(
 
     return { skills, errors };
   } catch (error: unknown) {
+    if (isMissingDirectoryError(error)) {
+      console.debug(LOG_PREFIX, `目录不存在，跳过 ${dirPath}`);
+      return { skills: [], errors: 0 };
+    }
     console.warn(
       LOG_PREFIX,
       `无法访问目录 ${dirPath}:`,
       error
     );
-    return { skills: [], errors: 0 };
+    return { skills: [], errors: 1 };
+  }
+}
+
+async function runSkillLoad(
+  config: SkillLoadConfig,
+  replace: boolean,
+): Promise<SkillLoadStats> {
+  const generation = ++loadGeneration;
+  ensurePluginManifestRefreshListener();
+
+  const currentPromise = (async (): Promise<SkillLoadStats> => {
+    const mergedConfig = { ...DEFAULT_SKILL_LOAD_CONFIG, ...config };
+    const stats: SkillLoadStats = { total: 0, builtin: 0, global: 0, project: 0, errors: 0 };
+
+    console.log(LOG_PREFIX, replace ? 'Reloading skills...' : 'Loading skills...');
+
+    // 0. 把 localStorage 里的四个技能 UI 状态与主库 settings 对齐（后端有值优先，后端为空时上送本地值）。
+    //    失败只告警：localStorage 仍是渲染期的同步读源。
+    try {
+      await hydrateSkillUiSettings();
+      skillFavorites.reload();
+    } catch (error: unknown) {
+      console.warn(LOG_PREFIX, 'Failed to hydrate skill UI settings from backend:', error);
+    }
+
+    // 1. 暂存内置 skills（最低优先级，不中途清空/修改 registry）
+    const stagedBuiltin: SkillDefinition[] = [];
+    if (mergedConfig.loadBuiltin !== false) {
+      try {
+        const builtinSkills = getBuiltinSkills();
+        const builtinIds = builtinSkills.map((s) => s.id);
+
+        // 加载用户对内置 skills 的自定义数据
+        const customizations = await getAllBuiltinSkillCustomizations(builtinIds);
+        const customizedCount = customizations.size;
+
+        for (const skill of builtinSkills) {
+          const customization = customizations.get(skill.id) ?? null;
+          const finalSkill = applyEnableOverride(applyTrustOverride(
+            enrichSkillPackageMetadata(applyCustomizationToSkill(skill, customization)),
+          ));
+          stagedBuiltin.push(finalSkill);
+          stats.builtin++;
+        }
+
+        // 加载内置工具组 Skills（渐进披露架构）
+        const builtinToolSkills = getBuiltinToolSkills();
+        for (const skill of builtinToolSkills) {
+          stagedBuiltin.push(applyEnableOverride(applyTrustOverride(enrichSkillPackageMetadata(skill))));
+          stats.builtin++;
+        }
+
+        console.log(
+          LOG_PREFIX,
+          `已加载 ${stats.builtin} 个内置 skills（${customizedCount} 个已自定义，${builtinToolSkills.length} 个工具组）`
+        );
+      } catch (error: unknown) {
+        console.error(LOG_PREFIX, 'Failed to load builtin skills:', error);
+        stats.errors++;
+      }
+    } else {
+      console.log(LOG_PREFIX, 'loadBuiltin=false, skipping builtin skills load');
+    }
+
+    // 2. 并行加载声明式插件 skills、全局 skills 与项目 skills
+    const declarativeLoadPromise = loadDeclarativePluginSkills();
+
+    const globalLoadPromise = (async () => {
+      if (!mergedConfig.globalPath) return null;
+      try {
+        return await loadSkillsFromDirectory(mergedConfig.globalPath, 'global');
+      } catch (error: unknown) {
+        console.error(LOG_PREFIX, 'Failed to load global skills:', error);
+        return 'failed' as const;
+      }
+    })();
+
+    const projectLoadPromise = (async () => {
+      const defaultProjectRootDir = !mergedConfig.projectRootDir
+        ? await resolveDefaultProjectRootDir()
+        : null;
+      const effectiveProjectRootDir = mergedConfig.projectRootDir ?? defaultProjectRootDir;
+      if (effectiveProjectRootDir === undefined) return [];
+
+      const dirsToScan: string[] = [...PROJECT_SKILL_DIRS];
+      if (mergedConfig.projectPath && !dirsToScan.includes(mergedConfig.projectPath)) {
+        dirsToScan.push(mergedConfig.projectPath);
+      }
+
+      const projectPaths = dirsToScan.map((relDir) => (
+        effectiveProjectRootDir
+        && !relDir.startsWith('/')
+        && !relDir.startsWith('~')
+          ? `${effectiveProjectRootDir}/${relDir}`
+          : relDir
+      ));
+      return Promise.all(projectPaths.map((path) => loadSkillsFromDirectory(path, 'project')));
+    })().catch((error: unknown) => {
+      console.error(LOG_PREFIX, 'Failed to load project skills:', error);
+      return 'failed' as const;
+    });
+
+    const [declarativeSkills, globalResult, projectResults] = await Promise.all([
+      declarativeLoadPromise,
+      globalLoadPromise,
+      projectLoadPromise,
+    ]);
+
+    // 代际门控：若有更新的重载已经发起，丢弃本次过时快照，等待最新重载完成再返回，绝不回写旧状态。
+    if (generation !== loadGeneration) {
+      if (activeLoadPromise && activeLoadPromise !== currentPromise) {
+        return activeLoadPromise;
+      }
+      return lastCommittedStats ?? stats;
+    }
+
+    const staged: SkillDefinition[] = [...stagedBuiltin, ...declarativeSkills];
+
+    if (globalResult === 'failed') {
+      stats.errors++;
+    } else if (globalResult) {
+      stats.errors += globalResult.errors;
+      for (const skill of globalResult.skills) {
+        staged.push(applyEnableOverride(applyTrustOverride(skill)));
+        stats.global++;
+      }
+    }
+
+    if (projectResults === 'failed') {
+      stats.errors++;
+    } else {
+      for (const projectResult of projectResults) {
+        stats.errors += projectResult.errors;
+        for (const skill of projectResult.skills) {
+          staged.push(skill);
+          stats.project++;
+        }
+      }
+    }
+
+    // 原子同步提交：整个 registry 切换在同一个微任务内完成，不出现异步空窗期。
+    if (replace) {
+      const prevIds = skillRegistry.getAll().map((skill) => skill.id);
+      const stagedIds = new Set(staged.map((skill) => skill.id));
+      if (staged.length > 0) {
+        skillRegistry.registerMany(staged);
+      }
+      for (const existingId of prevIds) {
+        if (!stagedIds.has(existingId)) {
+          skillRegistry.unregister(existingId);
+        }
+      }
+    } else if (staged.length > 0) {
+      skillRegistry.registerMany(staged);
+    }
+    restoreHostSkillSummaries();
+
+    stats.total = skillRegistry.size;
+    lastCommittedStats = { ...stats };
+
+    console.log(
+      LOG_PREFIX,
+      `加载完成: 内置=${stats.builtin}, 插件=${declarativeSkills.length}, 全局=${stats.global}, 项目=${stats.project}, 总计=${stats.total}`
+    );
+
+    // 加载期 requires 门控：重新探测带 requires 声明技能的本机满足情况，
+    // 不满足的技能不进入 <available_skills> 推荐（探测失败 fail-open）
+    if (generation === loadGeneration) {
+      try {
+        await refreshRequiresGates(skillRegistry.getAll());
+      } catch (error: unknown) {
+        console.warn(LOG_PREFIX, 'requires gating probe failed:', error);
+      }
+    }
+
+    return stats;
+  })();
+
+  activeLoadPromise = currentPromise;
+  try {
+    return await currentPromise;
+  } finally {
+    if (activeLoadPromise === currentPromise) {
+      activeLoadPromise = null;
+    }
   }
 }
 
@@ -268,8 +592,9 @@ async function loadSkillsFromDirectory(
  *
  * 按顺序加载（优先级从低到高）：
  * 1. 内置 skills（builtin）- 最低优先级
- * 2. 全局 skills（~/.deep-student/skills）
- * 3. 项目 skills（.skills）- 最高优先级
+ * 2. 已启用声明式插件（.dspack）skills
+ * 3. 全局 skills（~/.deep-student/skills）
+ * 4. 项目 skills（.skills）- 最高优先级
  *
  * 后加载的 skills 会覆盖同 ID 的先加载 skills
  *
@@ -278,180 +603,22 @@ async function loadSkillsFromDirectory(
  */
 export async function loadSkillsFromFileSystem(
   config: SkillLoadConfig = {}
-): Promise<{
-  total: number;
-  builtin: number;
-  global: number;
-  project: number;
-  errors: number;
-}> {
-  const mergedConfig = { ...DEFAULT_SKILL_LOAD_CONFIG, ...config };
-  const stats = { total: 0, builtin: 0, global: 0, project: 0, errors: 0 };
-
-  console.log(LOG_PREFIX, 'Loading skills...');
-
-  // 0. 把 localStorage 里的四个技能 UI 状态与主库 settings 对齐（后端有值优先，后端为空时上送本地值）。
-  //    失败只告警：localStorage 仍是渲染期的同步读源。
-  try {
-    await hydrateSkillUiSettings();
-    skillFavorites.reload();
-  } catch (error: unknown) {
-    console.warn(LOG_PREFIX, 'Failed to hydrate skill UI settings from backend:', error);
-  }
-
-  // 1. 加载内置 skills（最低优先级）
-  // ★ P0-07 修复：检查 loadBuiltin 配置
-  // ★ 2026-01-15：支持用户自定义内置 skills
-  // ★ 2026-01-20：加载内置工具组 Skills（渐进披露架构）
-  if (mergedConfig.loadBuiltin !== false) {
-    try {
-      const builtinSkills = getBuiltinSkills();
-      const builtinIds = builtinSkills.map((s) => s.id);
-
-      // 加载用户对内置 skills 的自定义数据
-      const customizations = await getAllBuiltinSkillCustomizations(builtinIds);
-      const customizedCount = customizations.size;
-
-      // 应用自定义数据并注册
-      for (const skill of builtinSkills) {
-        const customization = customizations.get(skill.id) ?? null;
-        const finalSkill = applyEnableOverride(applyTrustOverride(
-          enrichSkillPackageMetadata(applyCustomizationToSkill(skill, customization)),
-        ));
-        skillRegistry.register(finalSkill);
-        stats.builtin++;
-      }
-
-      // 🆕 加载内置工具组 Skills（渐进披露架构）
-      const builtinToolSkills = getBuiltinToolSkills();
-      for (const skill of builtinToolSkills) {
-        skillRegistry.register(applyEnableOverride(applyTrustOverride(enrichSkillPackageMetadata(skill))));
-        stats.builtin++;
-      }
-
-      console.log(
-        LOG_PREFIX,
-        `已加载 ${stats.builtin} 个内置 skills（${customizedCount} 个已自定义，${builtinToolSkills.length} 个工具组）`
-      );
-    } catch (error: unknown) {
-      console.error(LOG_PREFIX, 'Failed to load builtin skills:', error);
-      stats.errors++;
-    }
-  } else {
-    console.log(LOG_PREFIX, 'loadBuiltin=false, skipping builtin skills load');
-  }
-
-  restoreHostSkillSummaries();
-
-  // 2. 加载全局 skills 与 3. 项目 skills（最高优先级）并行发起：
-  //    两者只通过 skillRegistry 的注册顺序体现优先级（先全局后项目），
-  //    IPC 本身互不依赖，串行时公网下要多付一整段往返。
-  const globalLoadPromise = (async () => {
-    if (!mergedConfig.globalPath) return null;
-    try {
-      return await loadSkillsFromDirectory(mergedConfig.globalPath, 'global');
-    } catch (error: unknown) {
-      console.error(LOG_PREFIX, 'Failed to load global skills:', error);
-      return 'failed' as const;
-    }
-  })();
-
-  const projectLoadPromise = (async () => {
-    const defaultProjectRootDir = !mergedConfig.projectRootDir
-      ? await resolveDefaultProjectRootDir()
-      : null;
-    const effectiveProjectRootDir = mergedConfig.projectRootDir ?? defaultProjectRootDir;
-    if (effectiveProjectRootDir === undefined) return [];
-
-    const dirsToScan: string[] = [...PROJECT_SKILL_DIRS];
-    if (mergedConfig.projectPath && !dirsToScan.includes(mergedConfig.projectPath)) {
-      dirsToScan.push(mergedConfig.projectPath);
-    }
-
-    const projectPaths = dirsToScan.map((relDir) => (
-      effectiveProjectRootDir
-      && !relDir.startsWith('/')
-      && !relDir.startsWith('~')
-        ? `${effectiveProjectRootDir}/${relDir}`
-        : relDir
-    ));
-    // 目录扫描并发：每个目录一次 list + 每个 skill 两次往返，串行会线性叠加。
-    // 结果仍按 dirsToScan 顺序注册，保持「后者覆盖前者」的优先级语义。
-    return Promise.all(projectPaths.map((path) => loadSkillsFromDirectory(path, 'project')));
-  })().catch((error: unknown) => {
-    console.error(LOG_PREFIX, 'Failed to load project skills:', error);
-    return 'failed' as const;
-  });
-
-  const [globalResult, projectResults] = await Promise.all([
-    globalLoadPromise,
-    projectLoadPromise,
-  ]);
-
-  if (globalResult === 'failed') {
-    stats.errors++;
-  } else if (globalResult) {
-    stats.errors += globalResult.errors;
-    for (const skill of globalResult.skills) {
-      skillRegistry.register(applyEnableOverride(applyTrustOverride(skill)));
-      stats.global++;
-    }
-  }
-
-  if (projectResults === 'failed') {
-    stats.errors++;
-  } else {
-    for (const projectResult of projectResults) {
-      stats.errors += projectResult.errors;
-      for (const skill of projectResult.skills) {
-        skillRegistry.register(skill);
-        stats.project++;
-      }
-    }
-  }
-
-  stats.total = skillRegistry.size;
-
-  console.log(
-    LOG_PREFIX,
-    `加载完成: 内置=${stats.builtin}, 全局=${stats.global}, 项目=${stats.project}, 总计=${stats.total}`
-  );
-
-  // 加载期 requires 门控：重新探测带 requires 声明技能的本机满足情况，
-  // 不满足的技能不进入 <available_skills> 推荐（探测失败 fail-open）
-  try {
-    await refreshRequiresGates(skillRegistry.getAll());
-  } catch (error: unknown) {
-    console.warn(LOG_PREFIX, 'requires gating probe failed:', error);
-  }
-
-  return stats;
+): Promise<SkillLoadStats> {
+  return runSkillLoad(config, false);
 }
 
 /**
  * 重新加载所有 skills
  *
- * 清空现有 skills 并重新加载（包括内置 skills）
+ * 采用单飞代际门控与原子替换（不中途清空 registry），避免并发重载互相抹掉刚保存的技能。
  *
  * @param config 加载配置
  * @returns 加载结果统计
  */
 export async function reloadSkills(
   config?: SkillLoadConfig
-): Promise<{
-  total: number;
-  builtin: number;
-  global: number;
-  project: number;
-  errors: number;
-}> {
-  console.log(LOG_PREFIX, 'Reloading skills...');
-
-  // 清空现有 skills
-  skillRegistry.clear();
-
-  // 重新加载
-  return loadSkillsFromFileSystem(config);
+): Promise<SkillLoadStats> {
+  return runSkillLoad(config ?? {}, true);
 }
 
 /**
