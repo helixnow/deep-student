@@ -79,8 +79,8 @@ const SettingsAppWindow: React.FC<AppWindowProps> = ({
                 <SettingsShellSidebar isSmallScreen={false} globalLeftPanelCollapsed={false} />
               }
             >
-              <div className="relative h-full min-h-0 min-w-0">
-                <Settings onBack={requestClose} />
+              <div className="absolute inset-0 min-h-0 min-w-0">
+                <Settings onBack={requestClose} embeddedInWorkbench />
               </div>
             </WorkbenchSidebarLayout>
           </WbSysFade>

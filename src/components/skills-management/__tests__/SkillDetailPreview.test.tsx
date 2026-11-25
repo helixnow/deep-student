@@ -155,4 +155,23 @@ describe('S4-06 SkillsManagementPage read-only SkillDetailPreview', () => {
     fireEvent.click(screen.getByTestId('skill-detail-close-button'));
     expect(screen.queryByTestId('skill-detail-preview')).toBeNull();
   });
+
+  it('hides the Edit button in SkillDetailPreview for read-only plugin:// declarative skills', async () => {
+    mockState.items = [
+      {
+        ...sampleSkill,
+        id: 'dspack-study-rubric',
+        name: 'Declarative Pack Skill',
+        sourcePath: 'plugin://demo.pack/skills/rubric/SKILL.md',
+        packageRoot: 'plugin://demo.pack/skills/rubric',
+      },
+    ];
+
+    render(<SkillsManagementPage />);
+    await waitFor(() => expect(screen.getByText('Declarative Pack Skill')).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Declarative Pack Skill' }));
+    expect(await screen.findByTestId('skill-detail-preview')).toBeInTheDocument();
+    expect(screen.queryByTestId('skill-detail-edit-button')).toBeNull();
+  });
 });

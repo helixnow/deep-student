@@ -183,6 +183,7 @@
     "delete_confirm": "确定要删除技能「{{name}}」吗？此操作不可恢复。",
     "delete_failed": "技能删除失败",
     "save_failed": "技能保存失败",
+    "save_verify_missing": "技能“{{id}}”已保存，但重新加载时未找到。请检查技能格式后重试。",
     "save_success": "技能保存成功",
     "create_success": "技能创建成功",
     "delete_success": "技能已删除",
@@ -190,6 +191,7 @@
     "refresh_success": "技能列表已刷新",
     "refresh_failed": "刷新失败",
     "builtin_readonly": "内置技能不可修改",
+    "plugin_readonly": "插件提供的技能为只读，不可编辑或删除",
     "builtin_no_delete": "内置技能不可删除",
     "builtin_save_success": "内置技能自定义已保存",
     "customized": "已修改",
@@ -583,7 +585,8 @@
     "name_reserved": "名称不能包含 deep-student 等保留字",
     "description_required": "请输入技能描述",
     "description_too_long": "描述不能超过 1024 个字符",
-    "description_too_short": "建议描述至少 50 字符，以便 LLM 更好地理解何时使用此技能"
+    "description_too_short": "建议描述至少 50 字符，以便 LLM 更好地理解何时使用此技能",
+    "content_required": "请输入技能指令内容"
   },
   "storage": {
     "save_requires_tauri": "非 Tauri 环境，无法保存自定义",

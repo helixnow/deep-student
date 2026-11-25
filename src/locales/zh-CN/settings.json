@@ -3302,7 +3302,8 @@
     "close": "关闭",
     "edit": "编辑",
     "delete": "删除",
-    "save": "保存"
+    "save": "保存",
+    "back_to_settings": "返回设置"
   },
   "feature_flags": {
     "title": "功能开关",

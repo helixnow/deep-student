@@ -1,9 +1,10 @@
 import React from 'react';
-import { fireEvent, render, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UiKernel } from '@/ui-kernel/kernel';
 import { UiKernelProvider } from '@/ui-kernel/react';
 import settingsPlugin from '@/ui-plugins/official/settings';
+import { useSettingsShellStore } from '@/stores/settingsShellStore';
 import { Settings } from '../Settings';
 
 /**
@@ -13,7 +14,78 @@ import { Settings } from '../Settings';
  * 分区 hook、懒加载分区与右滑面板都不再有直接渲染 Settings 的回归测试；
  * 这里只验证外壳两种承载方式能挂载、分区内容区存在且不抛错。
  */
-const state = vi.hoisted(() => ({ mobile: false, small: false }));
+const state = vi.hoisted(() => ({
+  mobile: false,
+  small: false,
+  lang: 'zh-CN' as 'en-US' | 'zh-CN',
+}));
+
+vi.mock('react-i18next', async () => {
+  const [enSettings, zhSettings, enCommon, zhCommon] = await Promise.all([
+    import('@/locales/en-US/settings.json'),
+    import('@/locales/zh-CN/settings.json'),
+    import('@/locales/en-US/common.json'),
+    import('@/locales/zh-CN/common.json'),
+  ]);
+  const bundles: Record<'en-US' | 'zh-CN', Record<string, Record<string, unknown>>> = {
+    'en-US': {
+      settings: enSettings.default as Record<string, unknown>,
+      common: enCommon.default as Record<string, unknown>,
+    },
+    'zh-CN': {
+      settings: zhSettings.default as Record<string, unknown>,
+      common: zhCommon.default as Record<string, unknown>,
+    },
+  };
+  const lookup = (root: Record<string, unknown>, path: string): string | undefined => {
+    if (typeof root[path] === 'string') return root[path] as string;
+    let cur: unknown = root;
+    for (const part of path.split('.')) {
+      if (cur == null || typeof cur !== 'object') return undefined;
+      cur = (cur as Record<string, unknown>)[part];
+    }
+    return typeof cur === 'string' ? cur : undefined;
+  };
+  const cache = new Map<
+    string,
+    {
+      t: (key: string, opts?: unknown) => string;
+      i18n: { language: string; changeLanguage: () => Promise<void> };
+    }
+  >();
+  return {
+    initReactI18next: { type: '3rdParty', init: () => {} },
+    Trans: ({ i18nKey, children }: { i18nKey?: string; children?: React.ReactNode }) => (
+      <>{i18nKey ?? children}</>
+    ),
+    useTranslation: (ns?: string | string[]) => {
+      const lang = state.lang;
+      const defaultNs = Array.isArray(ns) ? ns[0] : (ns ?? 'common');
+      const cacheKey = `${lang}:${defaultNs}`;
+      let entry = cache.get(cacheKey);
+      if (!entry) {
+        const t = (key: string, opts?: unknown): string => {
+          if (typeof opts === 'string') return opts;
+          let resolvedKey = key;
+          let targetNs = defaultNs;
+          if (key.includes(':')) {
+            const [prefix, rest] = key.split(':', 2);
+            targetNs = prefix;
+            resolvedKey = rest;
+          }
+          const bundle = bundles[lang]?.[targetNs];
+          const hit = bundle ? lookup(bundle, resolvedKey) : undefined;
+          if (hit !== undefined) return hit;
+          const fallback = (opts as { defaultValue?: string } | undefined)?.defaultValue;
+          return typeof fallback === 'string' ? fallback : key;
+        };
+        entry = { t, i18n: { language: lang, changeLanguage: () => Promise.resolve() } };
+        cache.set(cacheKey, entry);
+      }
+      return entry;
+    },
+  };
+});
 
 vi.mock('@/utils/platform', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/utils/platform')>()),
@@ -36,10 +108,18 @@ vi.mock('@/hooks/useVendorModels', () => {
   return { useVendorModels: () => stable };
 });
 
-async function renderSettings() {
+afterEach(() => {
+  state.lang = 'zh-CN';
+});
+
+async function renderSettings(props: Partial<React.ComponentProps<typeof Settings>> = {}) {
   const kernel = new UiKernel();
   await kernel.install(settingsPlugin, { origin: 'builtin' });
-  const view = render(<UiKernelProvider kernel={kernel}><Settings onBack={() => {}} isActive /></UiKernelProvider>);
+  const view = render(
+    <UiKernelProvider kernel={kernel}>
+      <Settings onBack={() => {}} isActive {...props} />
+    </UiKernelProvider>,
+  );
   return { view, kernel };
 }
 
@@ -54,7 +134,40 @@ describe('Settings shell renders', () => {
     await kernel.dispose();
   });
 
-  it('mounts the mobile section list and opens a section content page', async () => {
+  it('G11a: renders visible section content immediately on 360px when embeddedInWorkbench is true without a duplicate mobile shell', async () => {
+    state.mobile = false;
+    state.small = true;
+    useSettingsShellStore.setState({ activeTab: 'general' });
+
+    const { view, kernel } = await renderSettings({ embeddedInWorkbench: true });
+
+    await waitFor(() => {
+      expect(view.container.querySelector('[data-wb-settings-content-ready]')).not.toBeNull();
+      expect(view.container.querySelector('#settings-main-content')).not.toBeNull();
+    });
+    expect(view.container.querySelector('[data-wb-settings-embedded="true"]')).not.toBeNull();
+    // Must NOT mount the conflicting standalone mobile sections shell
+    expect(view.container.querySelector('[data-settings-mobile-level="sections"]')).toBeNull();
+    expect(view.container.querySelector('[data-settings-mobile-sheet-level]')).toBeNull();
+
+    // Switching tabs from Workbench sidebar updates active content directly
+    act(() => {
+      useSettingsShellStore.getState().setActiveTab('about');
+    });
+    await waitFor(() => {
+      expect(view.container.querySelector('[data-wb-settings-active-tab="about"]')).not.toBeNull();
+      expect(view.container.querySelector('#settings-main-content')).not.toBeNull();
+    });
+
+    view.unmount();
+    await kernel.dispose();
+  });
+
+  it.each([
+    { lng: 'en-US' as const, expectedAriaLabel: 'Back to settings' },
+    { lng: 'zh-CN' as const, expectedAriaLabel: '返回设置' },
+  ])('G11b: mounts the mobile section list and exposes localized Back aria-label in $lng', async ({ lng, expectedAriaLabel }) => {
+    state.lang = lng;
     state.mobile = true;
     state.small = true;
     const { view, kernel } = await renderSettings();
@@ -67,7 +180,7 @@ describe('Settings shell renders', () => {
     expect(view.container.querySelector('#settings-main-content')).not.toBeNull();
 
     const backBtn = view.getByTestId('settings-mobile-back');
-    expect(backBtn).toHaveAttribute('aria-label', '返回设置');
+    expect(backBtn).toHaveAttribute('aria-label', expectedAriaLabel);
     expect(backBtn.className).toContain('!min-h-[44px]');
     expect(backBtn.className).toContain('!min-w-[44px]');
 
@@ -78,7 +191,8 @@ describe('Settings shell renders', () => {
     await kernel.dispose();
   });
 
-  it('shows a visible mobile back button on the About subpage and returns to the category list', async () => {
+  it('shows a visible mobile back button on the About subpage in en-US and returns to the category list', async () => {
+    state.lang = 'en-US';
     state.mobile = true;
     state.small = true;
     const { view, kernel } = await renderSettings();
@@ -90,7 +204,7 @@ describe('Settings shell renders', () => {
     await waitFor(() => expect(view.container.querySelector('[data-settings-mobile-level="content"]')).not.toBeNull());
 
     const backBtn = view.getByTestId('settings-mobile-back');
-    expect(backBtn).toHaveAttribute('aria-label', '返回设置');
+    expect(backBtn).toHaveAttribute('aria-label', 'Back to settings');
     fireEvent.click(backBtn);
     await waitFor(() => expect(view.container.querySelector('[data-settings-mobile-level="sections"]')).not.toBeNull());
 

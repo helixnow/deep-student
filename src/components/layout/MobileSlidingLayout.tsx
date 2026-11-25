@@ -994,7 +994,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
             className="flex min-h-0 flex-1 flex-col overflow-hidden"
           >
             {isMobileLayout && isActiveViewLayer && !isMainContentInert ? <MobileInFlowHeader /> : null}
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               {children}
             </div>
           </div>
@@ -1009,7 +1009,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
             style={{ width: containerWidth || '100vw', height: '100%' }}
           >
             {isMobileLayout && isActiveViewLayer && !isRightPanelInert ? <MobileInFlowHeader /> : null}
-            <div className="min-h-0 flex-1 overflow-hidden">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
               {rightPanel}
             </div>
           </div>

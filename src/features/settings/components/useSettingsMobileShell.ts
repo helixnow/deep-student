@@ -39,10 +39,18 @@ export function useSettingsMobileShell({
   const [mobileVendorDetailOpen, setMobileVendorDetailOpen] = useState(false);
 
   // P0-1：移动端分区导航改为分组列表（chip rail 已移除）。
-  // 切换分区时收起 API 配置页的供应商详情，保证再次进入时回到列表态。
+  // 切换分区时收起 API 配置页的供应商详情，保证再次进入时回到列表态；
+  // 若外部侧栏/存储同步切走 activeTab，也同步切入内容态以免滞留空白/列表态。
+  const prevActiveTabRef = useRef(activeTab);
   useEffect(() => {
     setMobileVendorDetailOpen(false);
-  }, [activeTab]);
+    if (prevActiveTabRef.current !== activeTab) {
+      prevActiveTabRef.current = activeTab;
+      if (isSmallScreen && !loading) {
+        setMobileNavView('content');
+      }
+    }
+  }, [activeTab, isSmallScreen, loading]);
 
   const closeRightPanel = useCallback(() => {
     setRightPanelType('none');

@@ -75,6 +75,7 @@ interface ValidationErrors {
   id?: string;
   name?: string;
   description?: string;
+  content?: string;
 }
 
 // ============================================================================
@@ -112,6 +113,7 @@ function validateForm(
   const trimmedId = data.id.trim();
   const trimmedName = data.name.trim();
   const trimmedDesc = data.description.trim();
+  const trimmedContent = data.content.trim();
 
   if (!isEdit) {
     if (!trimmedId) {
@@ -139,6 +141,10 @@ function validateForm(
     errors.description = t('skills:validation.description_too_long');
   }
 
+  if (!trimmedContent) {
+    errors.content = t('skills:validation.content_required');
+  }
+
   return errors;
 }
 
@@ -161,6 +167,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const cmContainerRef = useRef<HTMLDivElement>(null);
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
+  const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   // 表单状态
   const [formData, setFormData] = useState<SkillFormData>(() => ({
@@ -269,6 +276,9 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
       setErrors(validationErrors);
       if (validationErrors.id || validationErrors.name || validationErrors.description) {
         setActiveTab('basic');
+      } else if (validationErrors.content) {
+        setActiveTab('content');
+        contentTextareaRef.current?.focus();
       }
       return;
     }
@@ -630,7 +640,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                     htmlFor="skill-fullscreen-content-textarea"
                     className="text-xs font-medium text-muted-foreground uppercase tracking-wider"
                   >
-                    {t('skills:editor.content')}
+                    {t('skills:editor.content')} *
                   </Label>
                   <DsButton
                     type="button"
@@ -643,6 +653,15 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                     {useHighlightEditor ? t('skills:editor.source_mode') : t('skills:editor.highlight_mode')}
                   </DsButton>
                 </div>
+                {errors.content && (
+                  <p
+                    role="alert"
+                    data-testid="skill-content-error"
+                    className="flex-none border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive"
+                  >
+                    {errors.content}
+                  </p>
+                )}
                 <div ref={cmContainerRef} className="flex-1 min-h-0 overflow-hidden relative flex flex-col">
                   {useHighlightEditor ? (
                     isAnimationComplete ? (
@@ -682,13 +701,18 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                     )
                   ) : (
                     <Textarea
+                      ref={contentTextareaRef}
                       id="skill-fullscreen-content-textarea"
                       data-testid="skill-content-textarea"
                       value={formData.content}
                       onChange={(e) => updateField('content', (e.target as HTMLTextAreaElement).value)}
                       placeholder={t('skills:editor.content_placeholder')}
                       aria-label={t('skills:editor.content')}
-                      className="h-full flex-1 resize-none rounded-none border-0 bg-transparent px-5 py-4 font-mono text-sm leading-relaxed focus-visible:ring-0"
+                      aria-invalid={Boolean(errors.content)}
+                      className={cn(
+                        'h-full flex-1 resize-none rounded-none border-0 bg-transparent px-5 py-4 font-mono text-sm leading-relaxed focus-visible:ring-0',
+                        errors.content && 'ring-1 ring-inset ring-destructive/60',
+                      )}
                     />
                   )}
                 </div>

@@ -21,6 +21,7 @@ export interface UnifiedNotificationItem {
   count: number;
   updatedAt: number;
   dedupeKey: string;
+  replaceKey?: string;
 }
 
 /**
@@ -52,7 +53,7 @@ const createNotificationDedupeKey = (
 export const useUnifiedNotification = () => {
   const [notifications, setNotifications] = useState<UnifiedNotificationItem[]>([]);
 
-  // 显示通知 → 新增到队列
+  // 显示通知 → 新增到队列（带 replaceKey 时原子替换同键的在途/旧状态通知）
   const showNotification = useCallback((
     type: GlobalNotificationType,
     message: string,
@@ -60,12 +61,55 @@ export const useUnifiedNotification = () => {
     action?: GlobalNotificationAction,
     borderTone?: GlobalNotificationBorderTone,
     icon?: GlobalNotificationIconMode,
-    progress?: GlobalNotificationProgressMode
+    progress?: GlobalNotificationProgressMode,
+    replaceKey?: string
   ) => {
     const updatedAt = Date.now();
     const dedupeKey = createNotificationDedupeKey(type, message, title, action, borderTone, icon, progress);
+    const normalizedReplaceKey = replaceKey?.trim() || undefined;
     const id = `un-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
     setNotifications(prev => {
+      if (normalizedReplaceKey) {
+        const existingByKey = prev.find(n => n.replaceKey === normalizedReplaceKey);
+        if (existingByKey && existingByKey.dedupeKey === dedupeKey) {
+          return prev.map(n => n.id === existingByKey.id
+            ? {
+                ...n,
+                action,
+                borderTone,
+                icon,
+                progress,
+                count: n.count + 1,
+                updatedAt,
+              }
+            : n);
+        }
+
+        const remaining = prev.filter(
+          n => n.replaceKey !== normalizedReplaceKey && n.dedupeKey !== dedupeKey
+        );
+        const next: UnifiedNotificationItem[] = [
+          {
+            id,
+            type,
+            message,
+            title,
+            action,
+            borderTone,
+            icon,
+            progress,
+            count: 1,
+            updatedAt,
+            dedupeKey,
+            replaceKey: normalizedReplaceKey,
+          },
+          ...remaining,
+        ];
+        return next.length > MAX_STACKED_NOTIFICATIONS
+          ? next.slice(0, MAX_STACKED_NOTIFICATIONS)
+          : next;
+      }
+
       const existing = prev.find(n => n.dedupeKey === dedupeKey);
       if (existing) {
         return prev.map(n => n.dedupeKey === dedupeKey
@@ -116,8 +160,8 @@ export const useUnifiedNotification = () => {
   useEffect(() => {
     const handleGlobalNotification = (event: CustomEvent<GlobalNotificationPayload>) => {
       if (!event.detail) return;
-      const { type, message, title, action, borderTone, icon, progress } = event.detail;
-      showNotification(type, message, title, action, borderTone, icon, progress);
+      const { type, message, title, action, borderTone, icon, progress, replaceKey } = event.detail;
+      showNotification(type, message, title, action, borderTone, icon, progress, replaceKey);
     };
 
     window.addEventListener('showGlobalNotification', handleGlobalNotification as EventListener);

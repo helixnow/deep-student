@@ -112,12 +112,12 @@ export function SettingsMainContent({
               variant="ghost"
               size="md"
               data-testid="settings-mobile-back"
-              aria-label={t('settings:a11y.back_to_settings', { defaultValue: '返回设置' })}
+              aria-label={t('settings:a11y.back_to_settings', { defaultValue: 'Back to settings' })}
               onClick={onMobileBack}
               className="!h-11 !min-h-[44px] !min-w-[44px] shrink-0 gap-1 px-2 text-foreground"
             >
               <CaretLeft size={20} weight="regular" aria-hidden="true" />
-              <span className="text-sm font-medium">{t('common:back', { defaultValue: '返回' })}</span>
+              <span className="text-sm font-medium">{t('common:back', { defaultValue: 'Back' })}</span>
             </DsButton>
             {mobileTitle ? (
               <h1 className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">
@@ -132,14 +132,14 @@ export function SettingsMainContent({
           </div>
         )}
         {activeCategory && !(mobilePageMode && mobileVendorDetailOpen) && (
-          <div className="shrink-0 px-5 pt-4 lg:px-8">
+          <div className="shrink-0 px-4 pt-3 sm:px-5 sm:pt-4 lg:px-8">
             <div className="mx-auto w-full max-w-[72rem]">
               <SettingsCategoryHeader
                 category={activeCategory}
                 activeTab={activeTab}
                 onTabChange={setActiveTab}
                 idPrefix={settingsNavigationId}
-                compact={mobilePageMode}
+                compact={mobilePageMode || isSmallScreen}
                 actions={activeCategory.value === 'data' ? <QuickSyncNowButton /> : undefined}
               />
             </div>
@@ -165,7 +165,7 @@ export function SettingsMainContent({
             className={cn(
               mobilePageMode
                 ? 'px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4'
-                : 'px-5 pb-6 pt-4 md:px-5 md:pb-7 md:pt-5 lg:px-8',
+                : 'px-4 pb-6 pt-3 sm:px-5 sm:pt-4 md:px-5 md:pb-7 md:pt-5 lg:px-8',
               effectiveMobilePanelMode && !mobilePageMode && 'px-4 py-3 pb-[calc(1rem+var(--mobile-safe-area-bottom,env(safe-area-inset-bottom,0px)))]',
             )}
           >
@@ -182,8 +182,8 @@ export function SettingsMainContent({
         {/* API配置管理 */}
         {renderActiveSection('before-preview')}
 
-        {/* MCP 预览：桌面用 DsDialog；移动端由三屏右滑面板承载（见 SettingsMobileRightPanel） */}
-        {!isSmallScreen && (
+        {/* MCP 预览：桌面及 Workbench 嵌入态用 DsDialog；独立移动端由三屏右滑面板承载（见 SettingsMobileRightPanel） */}
+        {!effectiveMobilePanelMode && (
           <DsDialog open={mcpPreview.open} onOpenChange={(open) => { if (!open) handleClosePreview(); }} maxWidth="max-w-3xl">
             <DsDialogHeader>
               <DsDialogTitle>{mcpPreview.serverName || t('settings:mcp.preview.default_title')}</DsDialogTitle>
@@ -204,10 +204,10 @@ export function SettingsMainContent({
         {renderActiveSection('main')}
         {/* MCP 工具编辑模态 */}
         {renderMcpToolEditor()}
-        {/* MCP 全局安全策略模态 - 移动端通过右侧滑动面板渲染 */}
+        {/* MCP 全局安全策略模态 - 独立移动端通过右侧滑动面板渲染 */}
         <SettingsMcpPolicyDialog
           open={mcpPolicyModal.open}
-          isSmallScreen={isSmallScreen}
+          isSmallScreen={effectiveMobilePanelMode}
           policy={mcpPolicyModal}
           setPolicy={setMcpPolicyModal}
           invoke={invoke}

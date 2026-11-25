@@ -320,7 +320,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
       </div>
 
       {/* 中：语向选择 + 互换（保证 1440px 与分屏下目标语言始终独立可见） */}
-      <div className="relative z-10 flex items-center justify-center gap-1 sm:gap-2 min-w-0 shrink-0 max-w-full">
+      <div className="relative z-10 flex w-full md:w-auto items-center justify-center gap-1 sm:gap-2 min-w-0 shrink-0 max-w-full">
         <LanguageSelect
           value={srcLang}
           onChange={setSrcLang}
@@ -330,7 +330,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           disabled={isTranslating}
           ariaLabel={t('translation:languages.source_lang')}
           dataTestId="translation-source-lang-select"
-          className={cn('min-w-0 max-w-[9rem]', !isToolbarCompact && 'sm:max-w-none')}
+          className={cn('min-w-0 flex-1 max-w-[9rem] md:flex-none', !isToolbarCompact && 'sm:max-w-none')}
         />
         <CommonTooltip
           content={`${t('translation:actions.swap_languages')} · ${t('translation:shortcuts.swap')}`}
@@ -358,12 +358,12 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           disabled={isTranslating}
           ariaLabel={t('translation:languages.target_lang')}
           dataTestId="translation-target-lang-select"
-          className={cn('min-w-0 max-w-[9rem]', !isToolbarCompact && 'sm:max-w-none')}
+          className={cn('min-w-0 flex-1 max-w-[9rem] md:flex-none', !isToolbarCompact && 'sm:max-w-none')}
         />
       </div>
 
       {/* 右：翻译中指示 + 常用开关 + 设置开合（自动换行不侵入语言组） */}
-      <div className="flex flex-wrap items-center justify-end gap-1 sm:gap-2 min-w-0">
+      <div className="flex w-full md:w-auto flex-wrap items-center justify-between md:justify-end gap-1 sm:gap-2 min-w-0 max-w-full">
         {isTranslating && (
           <span className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground whitespace-nowrap">
             <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" />
@@ -371,13 +371,21 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           </span>
         )}
 
-        {/* 语气（正式度）快捷切换 + 开关 */}
-        <div className="hidden md:flex items-center">
+        {/* 语气（正式度）快捷切换：全视口主视图直接可见；<768px 独立紧凑条，≥44px 触屏命中区、360px 零横向溢出 */}
+        <div
+          data-testid="translation-formality-bar"
+          className="flex w-full md:w-auto items-center justify-between md:justify-start gap-2 min-w-0 max-w-full pt-1 md:pt-0 border-t border-border/25 md:border-t-0"
+        >
+          <span className="md:hidden shrink-0 text-xs font-medium text-muted-foreground">
+            {t('translation:prompt_editor.formality')}
+          </span>
           <SegmentedControl
             ariaLabel={t('translation:prompt_editor.formality')}
             value={formality}
             onValueChange={setFormality}
             size="compact"
+            className="min-w-0 max-w-full flex-1 md:flex-none"
+            itemClassName="flex-1 md:flex-none justify-center min-w-0 truncate px-2 sm:px-2.5 [@media(pointer:coarse)]:!min-h-11"
             options={[
               { value: 'auto', label: t('translation:prompt_editor.formality_auto') },
               { value: 'formal', label: t('translation:prompt_editor.formality_formal') },

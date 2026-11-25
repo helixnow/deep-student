@@ -66,6 +66,7 @@ export const SkillDetailPreview: React.FC<SkillDetailPreviewProps> = ({
   const localizedName = getLocalizedSkillName(skill.id, skill.name, t);
   const localizedDescription = getLocalizedSkillDescription(skill.id, skill.description, t);
   const isDisabledSkill = isSkillDisabled(skill.id);
+  const isPluginReadOnly = skill.sourcePath.startsWith('plugin://');
   const slashTrigger =
     skill.userInvocable === false
       ? null
@@ -156,16 +157,18 @@ export const SkillDetailPreview: React.FC<SkillDetailPreviewProps> = ({
                   : t('skills:management.set_default', { defaultValue: '设为默认' })}
               </DsButton>
             )}
-            <DsButton
-              variant="primary"
-              size="sm"
-              data-testid="skill-detail-edit-button"
-              onClick={() => onEdit(skill)}
-              className="!h-8 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
-            >
-              <Pencil size={13} className="mr-1" aria-hidden="true" />
-              {t('common:actions.edit', { defaultValue: '编辑' })}
-            </DsButton>
+            {!isPluginReadOnly && (
+              <DsButton
+                variant="primary"
+                size="sm"
+                data-testid="skill-detail-edit-button"
+                onClick={() => onEdit(skill)}
+                className="!h-8 px-3 text-xs [@media(pointer:coarse)]:!min-h-11"
+              >
+                <Pencil size={13} className="mr-1" aria-hidden="true" />
+                {t('common:actions.edit', { defaultValue: '编辑' })}
+              </DsButton>
+            )}
             <DsButton
               variant="ghost"
               size="icon"
