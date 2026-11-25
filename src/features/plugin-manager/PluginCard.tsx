@@ -149,9 +149,10 @@ export function PluginCard({
   onToggle, onSelect, onOpen, onModify, onExport, onRestorePrevious, onUninstall, onReviewConsent, onTryNotes, onTrySay,
 }: PluginCardProps) {
   const { t } = useTranslation('plugin_manager');
-  const name = pluginName(plugin, t);
+  const name = pluginName(plugin, t).trim() || plugin.id;
   const description = pluginDescription(plugin, t);
-  const supported = plugin.platforms.length === 0 || plugin.platforms.includes(platform);
+  const platforms = plugin.platforms ?? [];
+  const supported = platforms.length === 0 || platforms.includes(platform);
   const blockedBySafeMode = safeMode && plugin.origin === 'community';
   const consentRequired = uiStatus?.consentRequired === true || plugin.consent === 'required';
   const fault = describePluginFault(t, {
@@ -161,7 +162,11 @@ export function PluginCard({
     runtimeDetail: plugin.runtimeDetail,
     autoUninstalled,
   });
-  const statusKey = !supported ? unsupportedPlatformKey(plugin, platform) : autoUninstalled ? 'manager.problemStatus' : pluginStatusKey(plugin, uiStatus, safeMode);
+  const statusKey = !supported
+    ? unsupportedPlatformKey({ platforms }, platform)
+    : autoUninstalled || fault
+      ? 'manager.problemStatus'
+      : pluginStatusKey(plugin, uiStatus, safeMode);
   // 还没被允许的插件实际上不在运行：开关如实显示为关，由「允许并启用」打开。
   const switchChecked = pendingEnabled ?? (plugin.enabled && !consentRequired);
   // 安全模式下禁止启用社区插件，但允许停用已启用的社区插件以隔离排查故障。
@@ -169,11 +174,12 @@ export function PluginCard({
   const additions = pluginAdditions(plugin, livePoints);
   const running = plugin.enabled && plugin.runtime === 'running';
   const headingId = `plugin-card-${plugin.id.replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  const showDirectRecoveryActions = blockedBySafeMode || (fault !== null && plugin.origin === 'community');
 
   // 一个顺手的主操作：要允许就「允许并启用」；按它增加了什么去用它（打开应用 / 去笔记里试试 / 试一句）；
-  // 已启用但没跑起来就「启动」（安全模式下不展示不可点的「启动」，改为直接给排查动作）。没有明显的就不放。
+  // 已启用但没跑起来就「启动」（安全模式或存在故障时不展示「启动」，改为直接给停用/卸载排查动作）。没有明显的就不放。
   const phrase = plugin.agentTools?.[0]?.title;
-  const primary: CardPrimary | null = blockedBySafeMode
+  const primary: CardPrimary | null = showDirectRecoveryActions
     ? null
     : consentRequired && onReviewConsent
       ? { key: 'consent', label: t('card.allowAndEnable'), a11y: t('row.reviewConsentA11y', { id: name }), icon: ShieldCheck, run: onReviewConsent, disabled: busy }
@@ -190,9 +196,11 @@ export function PluginCard({
   return (
     <div role="listitem" aria-labelledby={headingId}
       data-testid="plugin-card" data-plugin-id={plugin.id} data-origin={plugin.origin} data-source={plugin.source}
-      data-enabled={String(plugin.enabled)} data-runtime={plugin.runtime} data-auto-uninstalled={autoUninstalled ? 'true' : undefined}
+      data-enabled={String(plugin.enabled)} data-runtime={plugin.runtime} data-fault={fault ? 'true' : undefined}
+      data-auto-uninstalled={autoUninstalled ? 'true' : undefined}
       className={cn('group flex min-w-0 flex-col gap-2.5 rounded-2xl bg-muted p-4 transition-colors motion-reduce:transition-none',
         'hover:bg-[color:var(--sidebar-quiet-hover,hsl(var(--muted)))] focus-within:ring-1 focus-within:ring-border',
+        fault && 'border border-destructive/30',
         !supported && 'opacity-70')}>
       <div className="flex min-w-0 items-start gap-3">
         <PluginTile plugin={plugin} name={name} />
@@ -215,7 +223,7 @@ export function PluginCard({
 
       <p data-testid="plugin-card-description"
         className="line-clamp-2 min-w-0 text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">
-        {description || t('card.noDescription')}
+        {description || t(fault ? 'card.brokenDescription' : 'card.noDescription')}
       </p>
 
       {fault ? (
@@ -228,7 +236,7 @@ export function PluginCard({
           <WarningCircle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           <span className="min-w-0 break-words">
             {fault.label}
-            {fault.detail ? `：${fault.detail}` : ''}
+            {fault.detail ? t('error.detailSuffix', { detail: fault.detail }) : ''}
           </span>
         </div>
       ) : blockedBySafeMode ? (
@@ -246,8 +254,11 @@ export function PluginCard({
       <PluginAdditionChips kinds={additions} />
 
       <div className="flex min-h-8 min-w-0 flex-wrap items-center gap-2">
-        {blockedBySafeMode ? (
-          <div data-testid="plugin-card-safe-mode-actions" className="flex shrink-0 items-center gap-1.5">
+        {showDirectRecoveryActions ? (
+          <div
+            data-testid={blockedBySafeMode ? 'plugin-card-safe-mode-actions' : 'plugin-card-fault-actions'}
+            className="flex shrink-0 items-center gap-1.5"
+          >
             {plugin.enabled ? (
               <DsButton
                 variant="outline"
