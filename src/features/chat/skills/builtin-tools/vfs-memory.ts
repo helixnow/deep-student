@@ -21,9 +21,14 @@ export const vfsMemorySkill: SkillDefinition = {
   disableAutoInvoke: false,
   skillType: 'standalone',
   dependencies: ['knowledge-retrieval'],
-  content: `# VFS 记忆管理技能
+  content: `# VFS 记忆管理技能 / VFS Memory Management
 
 你拥有持久记忆能力，可以跨对话记住用户信息。**主动使用记忆**是提供优质个性化服务的关键。
+
+## 语言一致与跨层优先级原则 / Language Preservation & Precedence
+1. **Language Preservation (语言一致)**：所有写入记忆的文本——包括 \`builtin-memory_rule_upsert\` 的 \`instruction\` 与 \`scope\` 后缀（保持 \`subject:\` / \`mode:\` 英文前缀，后缀使用用户当前语言，如英文用 \`subject:biology\`、日文用 \`subject:生物学\`、法文用 \`subject:biologie\`、中文用 \`subject:生物\`）、\`builtin-learner_profile_update\` 的所有字段、以及 \`builtin-memory_write\` / \`builtin-memory_write_smart\` / \`builtin-memory_write_batch\` / \`builtin-memory_log_activity\` 的 \`title\`、\`content\`、\`folder\` 与 \`activity\`——**必须使用用户当前消息/对话的语言**，严禁将英文或其他语言的输入擅自翻译成中文（或反向翻译），除非用户明确要求翻译。
+2. **Cross-Layer Precedence (跨层覆盖与和解)**：L1 硬规则（\`memory_rule_upsert\`）的优先级严格高于 L2 画像偏好（\`learner_profile\`）与历史记忆笔记。当用户用新规则推翻先前的格式/风格/篇幅/语言偏好时，调用 \`builtin-memory_rule_upsert\` 会自动清理与之矛盾的 L2 偏好并返回剩余活跃偏好，无需保留过时冲突项。
+3. **Completeness First (作答完整性优先)**：记忆规则仅规范每部分的格式、语气与结构；回答多部分/多子问题请求时，必须完整回答所有子问题，严禁因篇幅或格式规则省略或截断任何子问题。
 
 ## 三种记忆类型
 
@@ -211,29 +216,29 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_write',
-      description: '创建或更新 fact 记忆（≤50 字用户原子事实，禁止学科知识）。study/note 用 memory_write_smart。',
+      description: 'Create or update an atomic user fact memory (no generic knowledge); preserve the user conversation language in title/content/folder. 创建或更新 fact 记忆（禁止学科知识，写入语言须跟随用户对话语言）。study/note 用 memory_write_smart。',
       inputSchema: {
         type: 'object',
         properties: {
           note_id: {
             type: 'string',
-            description: '可选：指定 note_id 则按 ID 更新/追加该记忆',
+            description: '可选：指定 note_id 则按 ID 更新/追加该记忆 / Optional note_id to update or append in place',
           },
           folder: {
             type: 'string',
-            description: '分类文件夹路径（见技能说明「记忆分类」）；留空存根目录',
+            description: 'Category folder path in the user conversation language (or leave empty for root) / 分类文件夹路径（与用户语言一致；留空存根目录）',
           },
           title: {
             type: 'string',
-            description: '记忆标题（事实关键词概括）',
+            description: 'Concise fact keyword title in the user conversation language / 记忆标题（跟随用户语言）',
           },
           content: {
             type: 'string',
-            description: '用户简短陈述句（≤50字）；禁止学科知识',
+            description: 'Concise single-sentence user fact in the user conversation language (no generic subject knowledge) / 用户简短陈述句（跟随用户语言，禁止学科知识）',
           },
           mode: {
             type: 'string',
-            description: '写入模式：create=新建, update=替换同名, append=追加',
+            description: 'Write mode: create, update (replace same title), or append / 写入模式：create=新建, update=替换同名, append=追加',
             enum: ['create', 'update', 'append'],
           },
         },
@@ -242,18 +247,18 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_update_by_id',
-      description: '按 note_id 精确更新记忆（先查出 ID，严禁盲更新）。用于纠正信息、偏好变化、补充记忆。',
+      description: 'Update a memory accurately by note_id (look up ID first; preserve the user conversation language). 按 note_id 精确更新记忆（先查出 ID，严禁盲更新；沿用用户语言）。',
       inputSchema: {
         type: 'object',
         properties: {
           note_id: {
             type: 'string',
-            description: '记忆笔记 ID',
+            description: '记忆笔记 ID / Memory note ID',
           },
-          title: { type: 'string', description: '新的记忆标题' },
+          title: { type: 'string', description: 'New memory title in the user conversation language / 新的记忆标题（跟随用户语言）' },
           content: {
             type: 'string',
-            description: '新的记忆内容（Markdown）',
+            description: 'New memory content (Markdown) in the user conversation language / 新的记忆内容（Markdown，跟随用户语言）',
           },
         },
         required: ['note_id'],
@@ -276,21 +281,21 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_write_smart',
-      description: '智能写入记忆（推荐首选），自动判断新增/更新/追加。fact 默认自动去重；study/note 仅用户明确要求时用（见技能说明）。',
+      description: 'Smart memory write (preferred): auto-decides ADD/UPDATE/APPEND/DELETE; preserve the user conversation language in title/content/folder. 智能写入记忆（推荐首选，写入语言须跟随用户对话语言）。fact 默认去重；study/note 仅用户明确要求时用。',
       inputSchema: {
         type: 'object',
         properties: {
           folder: {
             type: 'string',
-            description: '分类文件夹路径（见技能说明「记忆分类」）；留空存根目录',
+            description: 'Category folder path matching the user conversation language (empty for root) / 分类文件夹路径（与用户语言一致；留空存根目录）',
           },
           title: {
             type: 'string',
-            description: '记忆标题',
+            description: 'Memory title in the user conversation language / 记忆标题（跟随用户语言）',
           },
           content: {
             type: 'string',
-            description: '记忆内容',
+            description: 'Memory content in the user conversation language / 记忆内容（跟随用户语言）',
           },
           memory_type: {
             type: 'string',
@@ -312,13 +317,13 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_write_batch',
-      description: '批量写入记忆。适合用户明确要求一次性保存多条词汇/知识点/要点，默认 memory_type=study。',
+      description: 'Batch write memories (default memory_type=study); preserve the user conversation language for every item. 批量写入记忆（沿用用户语言）。',
       inputSchema: {
         type: 'object',
         properties: {
           folder: {
             type: 'string',
-            description: '默认文件夹路径，item 未指定时使用',
+            description: 'Default folder path in the user conversation language / 默认文件夹路径',
           },
           memory_type: {
             type: 'string',
@@ -333,7 +338,7 @@ export const vfsMemorySkill: SkillDefinition = {
           },
           items: {
             type: 'array',
-            description: '要保存的记忆项列表',
+            description: 'Memory items to save (write title/content/folder in the user conversation language) / 要保存的记忆项列表（沿用用户语言）',
             items: {
               type: 'object',
               properties: {
@@ -510,7 +515,7 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_log_activity',
-      description: '记一条学习活动到每日学习日志（Medium）。按天聚合供画像蒸馏，同日重复自动跳过。',
+      description: 'Log one study activity to the daily log in the user conversation language (Medium; deduped per day). 记一条学习活动到每日学习日志（沿用用户语言，同日重复自动跳过）。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -518,7 +523,7 @@ export const vfsMemorySkill: SkillDefinition = {
             type: 'string',
             minLength: 1,
             maxLength: 80,
-            description: '一句话学习活动（≤80 字）',
+            description: 'One-sentence activity in the user conversation language (<=80 chars) / 一句话学习活动（≤80 字，沿用用户语言）',
           },
         },
         required: ['activity'],
@@ -558,33 +563,33 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-learner_profile_update',
-      description: '结构化增量更新画像（merge 语义）。仅反复错误模式或明确偏好/目标变化时用；总量上限 4000 字符。',
+      description: 'Incrementally merge updates into the L2 learner profile (max 4000 chars). Write ALL text fields in the user conversation language — never translate into another language. 结构化增量更新画像（merge 语义，所有字段须沿用用户当前语言；总量上限 4000 字符）。',
       inputSchema: {
         type: 'object',
         properties: {
           weak_points_add: {
             type: 'array',
-            description: '新增/强化薄弱知识点（按 科目+知识点 upsert，证据计数累加）',
+            description: 'Add/reinforce weak points (in the user conversation language) / 新增或强化薄弱知识点（沿用用户语言）',
             items: {
               type: 'object',
               properties: {
-                subject: { type: 'string', description: '科目' },
+                subject: { type: 'string', description: 'Subject name in the user conversation language / 科目（沿用用户语言）' },
                 knowledge_point: {
                   type: 'string',
-                  description: '知识点',
+                  description: 'Topic or concept in the user conversation language / 知识点（沿用用户语言）',
                 },
                 error_pattern: {
                   type: 'string',
-                  description: '错误模式一句话概括',
+                  description: 'One-sentence error pattern in the user conversation language / 错误模式一句话概括（沿用用户语言）',
                 },
                 evidence_count: {
                   type: 'integer',
-                  description: '本次证据次数（默认 1）',
+                  description: 'Evidence count for this update (default 1) / 本次证据次数（默认 1）',
                   minimum: 1,
                 },
                 last_seen: {
                   type: 'string',
-                  description: '最近观察日期 YYYY-MM-DD',
+                  description: 'Last observed date YYYY-MM-DD / 最近观察日期 YYYY-MM-DD',
                 },
               },
               required: ['subject', 'knowledge_point', 'error_pattern'],
@@ -592,7 +597,7 @@ export const vfsMemorySkill: SkillDefinition = {
           },
           weak_points_remove: {
             type: 'array',
-            description: '移除已克服的薄弱知识点（按 科目+知识点 匹配）',
+            description: 'Remove mastered weak points by subject + knowledge_point / 移除已克服的薄弱知识点',
             items: {
               type: 'object',
               properties: {
@@ -604,39 +609,39 @@ export const vfsMemorySkill: SkillDefinition = {
           },
           preferences: {
             type: 'object',
-            description: '学习偏好字段级补丁（仅覆盖提供的字段）',
+            description: 'Field-level learning preference patch in the user conversation language (remove obsolete preferences via others_remove) / 学习偏好字段级补丁（沿用用户语言）',
             properties: {
               explanation_style: {
                 type: 'string',
-                description: '讲解风格',
+                description: 'Explanation/formatting style in the user conversation language / 讲解风格（沿用用户语言）',
               },
-              language: { type: 'string', description: '语言偏好' },
-              pace: { type: 'string', description: '学习节奏' },
+              language: { type: 'string', description: 'Language preference in the user conversation language / 语言偏好（沿用用户语言）' },
+              pace: { type: 'string', description: 'Learning pace in the user conversation language / 学习节奏（沿用用户语言）' },
               others_add: {
                 type: 'array',
                 items: { type: 'string' },
-                description: '追加的其他偏好（去重）',
+                description: 'Additional preferences to append (in the user conversation language) / 追加的其他偏好（沿用用户语言）',
               },
               others_remove: {
                 type: 'array',
                 items: { type: 'string' },
-                description: '移除的其他偏好（精确匹配）',
+                description: 'Exact preferences to remove / 移除的其他偏好（精确匹配）',
               },
             },
           },
           goals_add: {
             type: 'array',
-            description: '新增学习目标（按目标文本去重）',
+            description: 'Add learning goals in the user conversation language / 新增学习目标（沿用用户语言）',
             items: {
               type: 'object',
               properties: {
                 goal: {
                   type: 'string',
-                  description: '目标描述',
+                  description: 'Goal description in the user conversation language / 目标描述（沿用用户语言）',
                 },
                 deadline: {
                   type: 'string',
-                  description: '期限 YYYY-MM-DD',
+                  description: 'Deadline YYYY-MM-DD / 期限 YYYY-MM-DD',
                 },
               },
               required: ['goal'],
@@ -645,18 +650,18 @@ export const vfsMemorySkill: SkillDefinition = {
           goals_remove: {
             type: 'array',
             items: { type: 'string' },
-            description: '移除学习目标（按目标文本匹配）',
+            description: 'Remove learning goals by exact text / 移除学习目标',
           },
           recent_status: {
             type: 'string',
-            description: '覆盖近期状态摘要（1-2 句话）',
+            description: '1-2 sentence recent status summary in the user conversation language / 近期状态摘要（1-2 句话，沿用用户语言）',
           },
         },
       },
     },
     {
       name: 'builtin-memory_rule_list',
-      description: '读取学习者的常驻互动硬规则（L1 HardRules，已自动冻结注入每轮对话）及当前字符预算占用。',
+      description: 'List active L1 HardRules (frozen into every session) and current character budget usage. 读取学习者的常驻互动硬规则及当前字符预算占用。',
       inputSchema: {
         type: 'object',
         properties: {},
@@ -664,25 +669,25 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_rule_upsert',
-      description: '写入或更新一条常驻互动硬规则（如「每次回答结尾加 1 道自测题」「先提示思路不直接给答案」）。从下个新会话首轮起 100% 强制生效，本会话立即通过增量生效；超出字符预算会拒绝写入，需先精简/删除旧规则。',
+      description: 'Create or update a standing L1 HardRule (effective immediately via session delta and from Turn 1 of new sessions). MUST write `instruction` and any `subject:<...>`/`mode:<...>` scope suffix in the user\'s conversation language — NEVER translate into another language. Automatically reconciles/prunes contradicting L2 profile preferences and returns active L2 preferences. Rejects on budget overflow so you can condense/remove obsolete rules. 写入或更新常驻 L1 硬规则（必须沿用用户当前语言编写规则与作用域后缀，自动清理与之矛盾的 L2 画像偏好）。',
       inputSchema: {
         type: 'object',
         properties: {
           id: {
             type: 'string',
-            description: '更新既有规则时传入规则 id；新增时省略',
+            description: 'Existing rule id when updating; omit when creating a new rule / 更新既有规则时传入规则 id；新增时省略',
           },
           instruction: {
             type: 'string',
-            description: '明确、可执行的单条互动规则（≤260 字符）',
+            description: 'Concrete, actionable single rule (<=260 chars) written in the user\'s conversation language (never translate) / 明确可执行的单条互动规则（≤260 字符），必须使用用户当前对话语言编写',
           },
           scope: {
             type: 'string',
-            description: "作用域：'global'（默认全局）、'subject:<学科>' 或 'mode:<模式>'",
+            description: "Scope: 'global' (default), 'subject:<topic in user language>', or 'mode:<mode in user language>' (keep ASCII prefix 'subject:'/'mode:', write suffix in the user's language) / 作用域：'global'、'subject:<用户语言的学科名>' 或 'mode:<用户语言的模式名>'",
           },
           pinned: {
             type: 'boolean',
-            description: '是否置顶必遵（用户明确要求时为 true）',
+            description: 'Pin as required (true when explicitly requested by the user) / 是否置顶必遵（用户明确要求时为 true）',
           },
         },
         required: ['instruction'],
@@ -690,17 +695,17 @@ export const vfsMemorySkill: SkillDefinition = {
     },
     {
       name: 'builtin-memory_rule_remove',
-      description: '移除一条已过时或被替代的常驻互动硬规则（按 id 或精确规则文本匹配）。',
+      description: 'Remove an obsolete or superseded L1 HardRule by id or exact instruction text. 移除一条已过时或被替代的常驻互动硬规则（按 id 或精确规则文本匹配）。',
       inputSchema: {
         type: 'object',
         properties: {
           id: {
             type: 'string',
-            description: '要删除的规则 id',
+            description: 'Rule id to remove / 要删除的规则 id',
           },
           instruction: {
             type: 'string',
-            description: '若无 id，可传精确规则文本匹配删除',
+            description: 'Exact rule text if id is unavailable / 若无 id，可传精确规则文本匹配删除',
           },
         },
       },

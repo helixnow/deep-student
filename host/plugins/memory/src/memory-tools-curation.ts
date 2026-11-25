@@ -14,8 +14,9 @@ import {
   renderedCharCount, type LearnerProfileUpdate, type WeakPoint,
 } from './learner-profile.ts';
 import {
-  renderHardRules, renderedHardRulesCharCount, type HardRuleOrigin,
+  isChineseDominantText, renderHardRules, renderedHardRulesCharCount, type HardRuleOrigin,
 } from './hard-rules.ts';
+import type { HardRuleProfileReconciliation } from './profile-store.ts';
 import { exportPage, exportPagination, parseBatchMoveArgs, parseTags, truncateExportContent } from './memory-executor.ts';
 import { CONTENT_LIMITS, codepointLength, isTransientScheduleText } from './memory-utils.ts';
 import { cryptoOf } from './crypto.ts';
@@ -553,6 +554,12 @@ export async function memoryRuleList(service: MemoryServiceImpl): Promise<unknow
   };
 }
 
+function extractReconciledProfile(outcome: object): HardRuleProfileReconciliation | undefined {
+  if (!('reconciledProfile' in outcome)) return undefined;
+  const candidate = (outcome as { reconciledProfile?: HardRuleProfileReconciliation }).reconciledProfile;
+  return candidate && typeof candidate === 'object' ? candidate : undefined;
+}
+
 /** Upserts an L1 HardRule with Hermes-style hard-limit rejection forcing in-turn condensation. */
 export async function memoryRuleUpsert(
   args: Args,
@@ -561,8 +568,14 @@ export async function memoryRuleUpsert(
   env: CurationEnv,
 ): Promise<unknown> {
   const instruction = requiredString(args, 'instruction');
+  const chinese = isChineseDominantText(instruction);
   if (containsSensitivePattern(instruction)) {
-    return { success: false, error: '规则包含敏感信息（手机号/身份证/银行卡/邮箱/密码），已拦截。' };
+    return {
+      success: false,
+      error: chinese
+        ? '规则包含敏感信息（手机号/身份证/银行卡/邮箱/密码），已拦截。'
+        : 'Rule contains sensitive personal data (phone/ID/bank card/email/password) and was blocked.',
+    };
   }
   const id = asStr(args['id'])?.trim() || null;
   const scope = asStr(args['scope'])?.trim() || 'global';
@@ -577,13 +590,26 @@ export async function memoryRuleUpsert(
       {
         source: 'tool_call',
         sessionId: ctx.session_id,
-        reason: 'memory_rule_upsert 工具写入 L1 互动硬规则',
+        reason: chinese
+          ? 'memory_rule_upsert 工具写入 L1 互动硬规则'
+          : 'memory_rule_upsert tool updated L1 hard rule',
         limitPolicy: 'reject',
       },
     );
+    const reconciled = extractReconciledProfile(outcome);
     if (outcome.changed) {
       env.emit(MEMORY_CHANGED_EVENT, { source: 'agent', action: 'hard_rule_upsert', entityIds: [outcome.rule.id] });
     }
+    if (reconciled?.changed) {
+      env.emit(MEMORY_CHANGED_EVENT, { source: 'agent', action: 'learner_profile_update', entityIds: [] });
+    }
+    const activeProfile = service.loadProfile();
+    const activeProfilePreferences = activeProfile === null ? null : {
+      explanation_style: activeProfile.preferences.explanation_style ?? null,
+      language: activeProfile.preferences.language ?? null,
+      pace: activeProfile.preferences.pace ?? null,
+      others: [...activeProfile.preferences.others],
+    };
     return {
       success: true,
       changed: outcome.changed,
@@ -591,6 +617,10 @@ export async function memoryRuleUpsert(
       version: outcome.doc.version,
       rendered_chars: renderedHardRulesCharCount(outcome.doc),
       max_chars: service.getHardRulesMaxChars(),
+      superseded_profile_preferences: reconciled?.superseded ?? [],
+      profile_reconciled: reconciled?.changed ?? false,
+      profile_version: activeProfile?.version ?? 0,
+      active_profile_preferences: activeProfilePreferences,
     };
   } catch (error) {
     const message = errorText(error);
@@ -598,9 +628,12 @@ export async function memoryRuleUpsert(
     const doc = service.loadHardRules();
     const maxChars = service.getHardRulesMaxChars();
     const rendered = renderHardRules(doc.rules);
+    const errChinese = chinese || isChineseDominantText(rendered);
     return {
       success: false,
-      error: `${message.slice(HARD_RULES_LIMIT_PREFIX.length)} 请先调用 memory_rule_remove 删除过时规则，或合并语义重复规则后再重试。\n\n当前互动硬规则全文：\n${rendered}`,
+      error: errChinese
+        ? `${message.slice(HARD_RULES_LIMIT_PREFIX.length)} 请先调用 memory_rule_remove 删除过时规则，或合并语义重复规则后再重试。\n\n当前互动硬规则全文：\n${rendered}`
+        : `${message.slice(HARD_RULES_LIMIT_PREFIX.length)} Call memory_rule_remove to prune obsolete rules or consolidate overlapping rules, then retry.\n\nCurrent Hard Rules:\n${rendered}`,
       rendered_chars: renderedHardRulesCharCount(doc),
       max_chars: maxChars,
       current_rules: doc.rules,

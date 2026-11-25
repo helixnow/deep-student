@@ -94,6 +94,46 @@ describe('memory evolution', () => {
   it('test_build_promotion_prompt_empty_profile_placeholder', () => {
     const prompt = buildPromotionPrompt(sampleLogs(), emptyProfile());
     expect(prompt).toContain('（当前画像为空）');
+    expect(prompt).toContain('语言一致');
+  });
+
+  it('test_build_promotion_prompt_and_render_profile_stay_language_neutral_for_non_chinese_inputs', () => {
+    const enLogs: DailyLogRecord[] = [
+      { date: '2026-11-24', noteId: 'n1', content: '- [10:00] Practiced 5 organic chemistry mechanism questions, missed stereochemistry twice' },
+      { date: '2026-11-25', noteId: 'n2', content: '- [15:00] Asked to switch from tables to concise bullet points' },
+    ];
+    const enProfile = emptyProfile();
+    enProfile.version = 2;
+    enProfile.updated_at = '2026-11-25';
+    enProfile.weak_points.push({
+      subject: 'Organic Chemistry',
+      knowledge_point: 'SN2 Stereochemistry',
+      error_pattern: 'Forgot Walden inversion at chiral center',
+      evidence_count: 2,
+      last_seen: '2026-11-24',
+    });
+    enProfile.preferences.explanation_style = 'Concise bullet points';
+    enProfile.preferences.language = 'English';
+    enProfile.goals.push({ goal: 'Score 90%+ on midterm', deadline: '2026-12-10' });
+    enProfile.recent_status = 'Reviewing reaction mechanisms';
+
+    const rendered = renderLearnerProfile(enProfile);
+    expect(rendered).toContain('# Learner Profile (v2, updated 2026-11-25)');
+    expect(rendered).toContain('## Weak Points');
+    expect(rendered).toContain('## Learning Preferences');
+    expect(rendered).toContain('- Explanation style: Concise bullet points');
+    expect(rendered).toContain('## Learning Goals');
+    expect(rendered).toContain('## Recent Status');
+    expect(rendered).not.toMatch(/[\u4e00-\u9fff]/);
+
+    const prompt = buildPromotionPrompt(enLogs, enProfile);
+    expect(prompt).toContain('Language preservation');
+    expect(prompt).toContain('Organic Chemistry');
+    expect(prompt).not.toMatch(/[\u4e00-\u9fff]/);
+
+    const emptyEnPrompt = buildPromotionPrompt(enLogs, emptyProfile());
+    expect(emptyEnPrompt).toContain('(Profile is currently empty)');
+    expect(emptyEnPrompt).not.toMatch(/[\u4e00-\u9fff]/);
   });
 
   it('test_parse_promotion_response_full_proposal', () => {
