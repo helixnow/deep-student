@@ -44,7 +44,35 @@ import { showGlobalNotification } from './UnifiedNotification';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import CsvFieldMapper, { FieldMapping } from './CsvFieldMapper';
 import { UnifiedDragDropZone, type FileTypeDefinition } from './shared/UnifiedDragDropZone';
-import { inferCsvFieldFromHeader } from '@/utils/csvHeaderAliases';
+import { inferCsvFieldFromHeader, suggestCsvFieldFromHeader } from '@/utils/csvHeaderAliases';
+
+/**
+ * Auto-infer initial CSV column -> question field mapping without ever assigning
+ * the same target field twice (exact aliases take priority over fuzzy matches).
+ */
+function buildAutoFieldMapping(headers: string[]): FieldMapping {
+  const autoMapping: FieldMapping = {};
+  const usedTargets = new Set<string>();
+
+  for (const header of headers) {
+    const exact = suggestCsvFieldFromHeader(header);
+    if (exact && !usedTargets.has(exact)) {
+      autoMapping[header] = exact;
+      usedTargets.add(exact);
+    }
+  }
+
+  for (const header of headers) {
+    if (autoMapping[header]) continue;
+    const inferred = inferCsvFieldFromHeader(header);
+    if (inferred && !usedTargets.has(inferred)) {
+      autoMapping[header] = inferred;
+      usedTargets.add(inferred);
+    }
+  }
+
+  return autoMapping;
+}
 
 // CSV 专用文件类型定义
 const CSV_FILE_TYPE: FileTypeDefinition = {
@@ -295,6 +323,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [webParsedRows, setWebParsedRows] = useState<string[][] | null>(null);
   const webFileInputRef = useRef<HTMLInputElement | null>(null);
+  const bodyViewportRef = useRef<HTMLDivElement | null>(null);
 
   // CSV 预览状态
   const [preview, setPreview] = useState<CsvPreviewResult | null>(null);
@@ -352,6 +381,11 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
     onImportingChange?.(isImporting);
   }, [isImporting, onImportingChange]);
 
+  // 切换步骤时将可滚动内容区回顶，避免下一步落到上一屏的滚动偏移处
+  useEffect(() => {
+    bodyViewportRef.current?.scrollTo?.({ top: 0 });
+  }, [currentStep]);
+
   // 处理文件选择
   const handleFileSelect = useCallback(async (filePath: string) => {
     setSelectedFile(filePath);
@@ -367,13 +401,8 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
       
       setPreview(result);
 
-      // 自动推断字段映射（别名表见 csvHeaderAliases，含中英常见列名）
-      const autoMapping: FieldMapping = {};
-      result.headers.forEach((header) => {
-        const inferred = inferCsvFieldFromHeader(header);
-        if (inferred) autoMapping[header] = inferred;
-      });
-      setFieldMapping(autoMapping);
+      // 自动推断字段映射（精确别名优先，且自动去重避免重复目标字段锁死「下一步」）
+      setFieldMapping(buildAutoFieldMapping(result.headers));
 
       // 自动跳转到映射步骤
       setCurrentStep('mapping');
@@ -400,7 +429,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
       const content = await file.text();
       const parsed = parseCsvTextToGrid(content);
       if (parsed.headers.length === 0 || parsed.rows.length === 0) {
-        throw new Error(t('exam_sheet:csv.empty_file', { defaultValue: 'CSV 文件内容为空或未包含有效数据行' }));
+        throw new Error(t('exam_sheet:csv.empty_file', { defaultValue: 'CSV file is empty or contains no valid data rows' }));
       }
       setWebParsedRows(parsed.rows);
       const previewResult: CsvPreviewResult = {
@@ -410,12 +439,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
         encoding: 'UTF-8',
       };
       setPreview(previewResult);
-      const autoMapping: FieldMapping = {};
-      parsed.headers.forEach((header) => {
-        const inferred = inferCsvFieldFromHeader(header);
-        if (inferred) autoMapping[header] = inferred;
-      });
-      setFieldMapping(autoMapping);
+      setFieldMapping(buildAutoFieldMapping(parsed.headers));
       setCurrentStep('mapping');
     } catch (error: unknown) {
       console.error('[CsvImport] web preview failed:', error);
@@ -553,7 +577,10 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
           const content = cell(row, 'content');
           if (!content) {
             failedCount += 1;
-            errors.push({ row: i + 2, message: '题干为空' });
+            errors.push({
+              row: i + 2,
+              message: t('exam_sheet:csv.error_empty_content', { defaultValue: 'Question content is empty' }),
+            });
             continue;
           }
           const rawType = cell(row, 'question_type');
@@ -695,7 +722,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
         }
       }
     }
-  }, [selectedFile, preview, isMappingValid, fieldMapping, duplicateStrategy, examId, examName, folderId, onImportComplete, t]);
+  }, [selectedFile, preview, isMappingValid, fieldMapping, duplicateStrategy, examId, examName, folderId, onImportComplete, t, webParsedRows]);
 
   // 请求后端取消。后端会在当前行完成后停止后续写入，并通过原 invoke 返回部分结果。
   const handleCancelImport = useCallback(async () => {
@@ -785,7 +812,7 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
 
   // 渲染步骤指示器
   const renderStepIndicator = () => (
-    <div className="flex items-center justify-center gap-2 mb-6">
+    <div className="mt-3 flex items-center justify-center gap-2">
       {STEPS.map((step, index) => {
         const isActive = index === stepIndex;
         const isCompleted = index < stepIndex;
@@ -1259,16 +1286,21 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
       </>
     );
 
-    // 项目禁用模态框：inline 与 overlay 统一使用页内页脚样式
+    // 钉底页脚（shrink-0，位于滚动区外），确保长字段映射步骤下「上一步/下一步/开始导入」始终在视口内可见且可点
     return (
-      <div className="mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-border/40 pt-4">
-        {footerContent}
+      <div
+        data-testid="csv-import-footer"
+        className="shrink-0 border-t border-border/40 bg-background px-4 py-3"
+      >
+        <div className="mx-auto flex w-full max-w-2xl flex-wrap items-center justify-end gap-2">
+          {footerContent}
+        </div>
       </div>
     );
   };
 
   const header = (
-    <div className="mb-6 space-y-1.5 text-center">
+    <div className="space-y-1 text-center">
       <h2 className="flex items-center justify-center gap-2 text-lg font-semibold">
         <Table size={20} />
         {t('exam_sheet:csv.import_title')}
@@ -1277,23 +1309,37 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
     </div>
   );
 
-  const body = (
-    <>
-      {/* 步骤指示器 */}
-      {renderStepIndicator()}
-
-      {/* 步骤内容：key 触发步骤切换的滑动过渡动画 */}
-      <div key={currentStep} className="ui-slide-fade-in [--ui-enter-x:24px]">
-        {renderStepContent()}
-      </div>
-    </>
-  );
-
-  // 整页内容（外层面板提供滚动与居中）
+  // 严格三段式 Flex 列布局：顶部固定标题+步骤条（shrink-0）+ 中部可滚动内容区（min-h-0 flex-1）+ 底部钉底页脚（shrink-0）
   return (
-    <div className="w-full">
-      {header}
-      {body}
+    <div
+      data-testid="csv-import-flow"
+      className="flex h-full min-h-0 max-h-full flex-1 flex-col overflow-hidden"
+    >
+      <div
+        data-testid="csv-import-header"
+        className="shrink-0 border-b border-border/40 bg-background px-4 pt-4 pb-3"
+      >
+        <div className="mx-auto w-full max-w-2xl">
+          {header}
+          {renderStepIndicator()}
+        </div>
+      </div>
+
+      <CustomScrollArea
+        data-testid="csv-import-body"
+        className="min-h-0 flex-1"
+        viewportRef={bodyViewportRef}
+        viewportClassName="p-4"
+        nativeScrollbars
+      >
+        <div className="mx-auto w-full max-w-2xl">
+          {/* 步骤内容：key 触发步骤切换的滑动过渡动画 */}
+          <div key={currentStep} className="ui-slide-fade-in [--ui-enter-x:24px]">
+            {renderStepContent()}
+          </div>
+        </div>
+      </CustomScrollArea>
+
       {renderFooter()}
     </div>
   );
@@ -1301,12 +1347,11 @@ const CsvImportFlow: React.FC<CsvImportFlowProps> = ({
 
 /** CSV 导入内嵌面板：在题目集内容区直接渲染完整导入流程（非模态） */
 export const CsvImportPanel: React.FC<CsvImportPanelProps> = ({ onImportingChange, ...rest }) => (
-  <div className="flex h-full flex-col bg-background">
-    <CustomScrollArea className="min-h-0 flex-1" viewportClassName="flex flex-col p-4">
-      <div className="my-auto w-full max-w-2xl mx-auto py-4">
-        <CsvImportFlow {...rest} layout="inline" onImportingChange={onImportingChange} />
-      </div>
-    </CustomScrollArea>
+  <div
+    data-testid="csv-import-panel"
+    className="flex h-full min-h-0 max-h-full flex-col overflow-hidden bg-background"
+  >
+    <CsvImportFlow {...rest} layout="inline" onImportingChange={onImportingChange} />
   </div>
 );
 
@@ -1351,23 +1396,20 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
 
   return (
     <div
-      className="absolute inset-0 z-30 flex flex-col bg-background ui-rise-in"
+      data-testid="csv-import-dialog"
+      className="absolute inset-0 z-30 flex h-full min-h-0 max-h-full flex-col overflow-hidden bg-background ui-rise-in"
       role="region"
       aria-label={t('exam_sheet:csv.import_title')}
     >
-      <CustomScrollArea className="min-h-0 flex-1" viewportClassName="flex flex-col p-4">
-        <div className="my-auto w-full max-w-2xl mx-auto py-4">
-          <CsvImportFlow
-            examId={examId}
-            examName={examName}
-            folderId={folderId}
-            onImportComplete={onImportComplete}
-            onClose={handleClose}
-            layout="overlay"
-            onImportingChange={setIsImporting}
-          />
-        </div>
-      </CustomScrollArea>
+      <CsvImportFlow
+        examId={examId}
+        examName={examName}
+        folderId={folderId}
+        onImportComplete={onImportComplete}
+        onClose={handleClose}
+        layout="overlay"
+        onImportingChange={setIsImporting}
+      />
     </div>
   );
 };

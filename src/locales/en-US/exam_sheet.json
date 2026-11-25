@@ -390,14 +390,17 @@
       },
       "discardDescription": "Discard Description",
       "optionsAnswerHint": "Click a letter to set as answer",
-      "moreOptional": "Explanation & note (optional)"
+      "moreOptional": "Explanation & note (optional)",
+      "removeOption": "Remove option {{key}}",
+      "confirmRemoveOption": "Click again to remove option {{key}}"
     },
     "create": {
       "title": "Create Question",
       "desc": "Manually add a new question to the question bank",
       "submit": "Create Question",
       "missingExamId": "Missing exam ID",
-      "contentRequired": "Question content is required"
+      "contentRequired": "Question content is required",
+      "markAsMistake": "Mark as mistake and add to FSRS review"
     },
     "actionUnavailable": "Action Unavailable",
     "confirmDelete": "Confirm Delete",
@@ -465,7 +468,9 @@
       "previousRef": "Previous source",
       "previousRefShort": "Prev",
       "nextRef": "Next source",
-      "nextRefShort": "Next"
+      "nextRefShort": "Next",
+      "open": "View original source",
+      "openShort": "Source"
     }
   },
   "materials": {
@@ -547,7 +552,9 @@
     "result_failed": "Failed",
     "error_details_count": "Error details ({{count}} total)",
     "error_row_label": "Row {{row}}",
-    "error_more": "{{count}} more errors not shown"
+    "error_more": "{{count}} more errors not shown",
+    "empty_file": "CSV file is empty or contains no valid data rows",
+    "error_empty_content": "Question content is empty"
   },
   "image": {
     "alt_card": "Question card",
@@ -651,6 +658,7 @@
     "topicHintLabel": "Topic scope (optional)",
     "topicHintPlaceholder": "e.g. Quadratic functions: graphs & properties, vertex form conversion…",
     "basedOnExisting": "Generate variants based on existing questions",
+    "basedOnExistingEmptyHint": "(No existing questions in this set to reference)",
     "tooManyQuestions": "Total questions cannot exceed 100",
     "start": "Generate",
     "generating": "AI is generating questions…",
@@ -698,7 +706,22 @@
     },
     "blockTitle": "AI generation result ({{count}} draft(s) to review)",
     "blockCancelled": "This AI generation was cancelled",
-    "blockImported": "{{count}} question(s) imported"
+    "blockImported": "{{count}} question(s) imported",
+    "taskCompletedAttributed": "AI question generation finished: {{count}} draft question(s) ready to review (Source: {{source}})",
+    "taskCompletedReady": "AI question generation finished: {{count}} draft question(s) ready to review and import",
+    "openReviewAction": "Review & Import",
+    "draftReadyAttribution": "Generated {{count}} draft question(s) ready to review (Source: {{source}})",
+    "skippedReferenceItem": "{{name}}: {{reason}}",
+    "skippedReferenceItemWithDetail": "{{name}}: {{reason}} ({{detail}})",
+    "attributionTopic": "Topic: {{value}}",
+    "attributionSources": "Sources: {{names}}",
+    "attributionSourcesMore": "Sources: {{names}} ({{count}} total)",
+    "attributionKnowledgePoints": "Knowledge points: {{points}}",
+    "attributionBasedOnExisting": "Variants based on existing questions",
+    "attributionOriginAi": "AI Question Generation",
+    "attributionOriginChat": "Chat Import",
+    "attributionOriginFile": "Document / Exam Import",
+    "attributionListSeparator": ", "
   },
   "editor": {
     "discardDraftDescription": "Discard Draft Description",

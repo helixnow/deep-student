@@ -390,14 +390,17 @@
       },
       "discardDescription": "放弃后无法恢复本次编辑内容。",
       "optionsAnswerHint": "点击字母设为答案",
-      "moreOptional": "解析与笔记（选填）"
+      "moreOptional": "解析与笔记（选填）",
+      "removeOption": "删除选项 {{key}}",
+      "confirmRemoveOption": "再次点击删除选项 {{key}}"
     },
     "create": {
       "title": "新建题目",
       "desc": "手动添加一道新题目到题目集",
       "submit": "创建题目",
       "missingExamId": "缺少题目集 ID",
-      "contentRequired": "题目内容不能为空"
+      "contentRequired": "题目内容不能为空",
+      "markAsMistake": "直接标为错题并加入 FSRS 复习"
     },
     "actionUnavailable": "当前操作不可用",
     "confirmDelete": "确认删除",
@@ -465,7 +468,9 @@
       "previousRef": "上一条来源",
       "previousRefShort": "上一处",
       "nextRef": "下一条来源",
-      "nextRefShort": "下一处"
+      "nextRefShort": "下一处",
+      "open": "查看原题来源",
+      "openShort": "原题来源"
     }
   },
   "materials": {
@@ -547,7 +552,9 @@
     "result_failed": "失败",
     "error_details_count": "错误详情（共 {{count}} 条）",
     "error_row_label": "行 {{row}}",
-    "error_more": "还有 {{count}} 条错误未显示"
+    "error_more": "还有 {{count}} 条错误未显示",
+    "empty_file": "CSV 文件内容为空或未包含有效数据行",
+    "error_empty_content": "题干为空"
   },
   "image": {
     "alt_card": "题目卡片",
@@ -651,6 +658,7 @@
     "topicHintLabel": "知识点范围（可选）",
     "topicHintPlaceholder": "例如：二次函数的图像与性质、顶点式与一般式的互化…",
     "basedOnExisting": "参考题目集现有题目出变式题",
+    "basedOnExistingEmptyHint": "（当前题目集暂无题目可参考）",
     "tooManyQuestions": "总题量不能超过 100 题",
     "start": "开始生成",
     "generating": "AI 正在出题…",
@@ -698,7 +706,22 @@
     },
     "blockTitle": "AI 出题结果（{{count}} 道待确认）",
     "blockCancelled": "本次 AI 出题已取消",
-    "blockImported": "已入库 {{count}} 题"
+    "blockImported": "已入库 {{count}} 题",
+    "taskCompletedAttributed": "AI 出题已完成：生成 {{count}} 道待确认题目（来源：{{source}}）",
+    "taskCompletedReady": "AI 出题已完成：生成 {{count}} 道待确认题目，请审阅并导入题库",
+    "openReviewAction": "审阅并导入",
+    "draftReadyAttribution": "已生成 {{count}} 道待确认题目（来源：{{source}}）",
+    "skippedReferenceItem": "{{name}}：{{reason}}",
+    "skippedReferenceItemWithDetail": "{{name}}：{{reason}}（{{detail}}）",
+    "attributionTopic": "主题：{{value}}",
+    "attributionSources": "资料：{{names}}",
+    "attributionSourcesMore": "资料：{{names}} 等 {{count}} 份资料",
+    "attributionKnowledgePoints": "知识点：{{points}}",
+    "attributionBasedOnExisting": "基于现有题库变式",
+    "attributionOriginAi": "AI 智能出题",
+    "attributionOriginChat": "对话导入",
+    "attributionOriginFile": "文档/试卷识别导入",
+    "attributionListSeparator": "、"
   },
   "editor": {
     "discardDraftDescription": "离开当前视图会清除尚未提交或保存的内容。",

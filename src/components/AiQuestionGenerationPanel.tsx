@@ -27,8 +27,8 @@ import {
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { LatexText } from '@/components/LatexText';
 import { useQbankAiGeneration, type GeneratedQuestionDraft } from '@/hooks/useQbankAiGeneration';
+import { formatLocalizedAuthoringAttribution } from '@/hooks/useQbankGenerationTasks';
 import { useQbankGenerationStore } from '@/stores/qbankGenerationStore';
-import { extractAuthoringDraftAttribution } from '@/types/qbankGeneration';
 import SmilesText from '@/components/SmilesText';
 import {
   UnifiedModelSelector,
@@ -252,11 +252,12 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
     : (task?.authoringResult?.document.materials ?? []);
   const activeAttribution = useMemo(
     () =>
-      extractAuthoringDraftAttribution(
+      formatLocalizedAuthoringAttribution(
         usingLoadedDraft ? loadedDraft?.metadata : task?.authoringResult?.model_route,
+        (key, opts) => t(key, opts),
         { defaultOrigin: 'ai_generation' },
       ),
-    [usingLoadedDraft, loadedDraft?.metadata, task?.authoringResult?.model_route],
+    [usingLoadedDraft, loadedDraft?.metadata, task?.authoringResult?.model_route, t],
   );
   const hasDrafts = drafts.length > 0;
   const taskFailed = task?.status === 'failed';
@@ -900,7 +901,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
                 {!canUseExistingQuestions && (
                   <span className="ml-1.5 text-xs text-muted-foreground">
                     {t('exam_sheet:aiGeneration.basedOnExistingEmptyHint', {
-                      defaultValue: '（当前题目集暂无题目可参考）',
+                      defaultValue: '(No existing questions in this set to reference)',
                     })}
                   </span>
                 )}
@@ -950,7 +951,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
                   {t('exam_sheet:aiGeneration.draftReadyAttribution', {
                     count: drafts.length,
                     source: activeAttribution.sourceLabel,
-                    defaultValue: `已生成 ${drafts.length} 道待确认题目（来源：${activeAttribution.sourceLabel}）`,
+                    defaultValue: 'Generated {{count}} draft question(s) ready to review (Source: {{source}})',
                   })}
                 </span>
               </span>
@@ -977,13 +978,25 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
                     count: task.skippedReferences.length,
                   })}
                   <ul className="mt-1 space-y-0.5 list-disc list-inside">
-                    {task.skippedReferences.map((ref, index) => (
-                      <li key={index}>
-                        {ref.name}：
-                        {t(`exam_sheet:aiGeneration.skipReason.${ref.reason}`, ref.reason)}
-                        {ref.detail ? `（${ref.detail}）` : ''}
-                      </li>
-                    ))}
+                    {task.skippedReferences.map((ref, index) => {
+                      const reasonLabel = t(`exam_sheet:aiGeneration.skipReason.${ref.reason}`, ref.reason);
+                      return (
+                        <li key={index}>
+                          {ref.detail
+                            ? t('exam_sheet:aiGeneration.skippedReferenceItemWithDetail', {
+                                name: ref.name,
+                                reason: reasonLabel,
+                                detail: ref.detail,
+                                defaultValue: '{{name}}: {{reason}} ({{detail}})',
+                              })
+                            : t('exam_sheet:aiGeneration.skippedReferenceItem', {
+                                name: ref.name,
+                                reason: reasonLabel,
+                                defaultValue: '{{name}}: {{reason}}',
+                              })}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               </div>
