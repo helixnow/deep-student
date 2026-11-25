@@ -17,7 +17,7 @@ import { getRecordData, recordsSemanticallyEqualForSync } from '../repository/re
 import { applyDownloadedChangesForceExactWithHooks, getDefaultNoteHistory } from '../repository/apply.ts';
 import { rollbackBatch, snapshotRecordWithData } from '../repository/history.ts';
 import { latestConflictSideData, listUnresolvedConflictIds, markConflictResolved } from '../repository/conflicts.ts';
-import { columnDeclaredType, quoteIdentifier, tableExists, tableHasColumn, tableInfo } from '../repository/sqlite-values.ts';
+import { columnDeclaredType, jsonValueToSqlParam, quoteIdentifier, tableExists, tableHasColumn, tableInfo } from '../repository/sqlite-values.ts';
 
 const databases: readonly CoordinatedDatabaseName[] = ['vfs', 'llm_usage', 'chat_v2', 'mistakes'];
 const message = (error: unknown): string => (error instanceof Error ? error.message : String(error));
@@ -289,6 +289,337 @@ function releaseTemporaryNoteWriteGrants(tx: SqlExecutor, tokens: readonly strin
   }
 }
 
+function formatConflictCopyDate(epochMs: number): string {
+  const iso = new Date(epochMs).toISOString();
+  return iso.slice(0, 10);
+}
+
+function appendConflictCopyLabel(base: string, dateStr: string, disambiguator: string): string {
+  const tag = `(本地冲突副本 ${dateStr})`;
+  const trimmed = base.trim();
+  if (!trimmed) return `本地冲突副本 ${dateStr} (${disambiguator})`;
+  if (trimmed.includes(tag)) return `${trimmed} (${disambiguator})`;
+  return `${trimmed} ${tag}`;
+}
+
+function isCompositePrimaryKeyTable(tableName: string): boolean {
+  for (const entry of syncClassificationRegistry()) {
+    if (entry.table_name === tableName) {
+      const pk = rustTrim(entry.primary_key);
+      return pk === '' || pk === '(virtual)' || pk.includes(',');
+    }
+  }
+  return false;
+}
+
+function insertClonedTableRow(
+  tx: SqlExecutor,
+  tableName: string,
+  rowObj: Record<string, DbJson>,
+  idColumn: string,
+  cloneId: string,
+  now: string,
+  epochMs: number,
+): void {
+  const cols = tableInfo(tx, tableName);
+  const insertCols: string[] = [];
+  const insertVals: SqlParam[] = [];
+  for (const col of cols) {
+    const colName = col.name;
+    let rawVal: DbJson | undefined;
+    if (colName === idColumn) {
+      rawVal = cloneId;
+    } else if (colName === 'created_at') {
+      rawVal = timestampForColumn(tx, tableName, 'created_at', now, epochMs, rowObj.created_at);
+    } else if (colName === 'updated_at') {
+      rawVal = timestampForColumn(tx, tableName, 'updated_at', now, epochMs, rowObj.updated_at);
+    } else if (colName === 'deleted_at') {
+      rawVal = null;
+    } else if (Object.hasOwn(rowObj, colName)) {
+      rawVal = rowObj[colName];
+    } else {
+      continue;
+    }
+    insertCols.push(quoteIdentifier(colName));
+    insertVals.push(jsonValueToSqlParam(rawVal ?? null) ?? null);
+  }
+  if (insertCols.length === 0) {
+    throw new SyncError(`Database error: 无法克隆表 ${tableName} 的记录（无可用列）`);
+  }
+  const placeholders = insertVals.map((_, idx) => `?${idx + 1}`).join(', ');
+  tx.run(
+    `INSERT INTO ${quoteIdentifier(tableName)} (${insertCols.join(', ')}) VALUES (${placeholders})`,
+    insertVals,
+  );
+  ensurePendingChangeLog(tx, tableName, cloneId, 'INSERT', now);
+}
+
+function cloneNoteAuxiliaryRows(
+  tx: SqlExecutor,
+  sourceNoteId: string,
+  cloneNoteId: string,
+  now: string,
+  epochMs: number,
+): void {
+  if (tableExists(tx, 'folder_items')) {
+    const hasDeletedAt = tableHasColumn(tx, 'folder_items', 'deleted_at');
+    const whereClause = hasDeletedAt
+      ? "WHERE item_type = 'note' AND item_id = ?1 AND deleted_at IS NULL"
+      : "WHERE item_type = 'note' AND item_id = ?1";
+    const mounts = tx.all<Record<string, unknown>>(
+      `SELECT * FROM folder_items ${whereClause}`,
+      [sourceNoteId],
+    );
+    for (const mount of mounts) {
+      const mountObj: Record<string, DbJson> = {};
+      for (const [k, v] of Object.entries(mount)) {
+        mountObj[k] = (v ?? null) as DbJson;
+      }
+      mountObj.item_id = cloneNoteId;
+      const cloneMountId = globalThis.crypto.randomUUID();
+      insertClonedTableRow(tx, 'folder_items', mountObj, 'id', cloneMountId, now, epochMs);
+    }
+  }
+  if (tableExists(tx, 'note_document_formats')) {
+    const fmt = tx.get<Record<string, unknown>>(
+      'SELECT * FROM note_document_formats WHERE note_id = ?1',
+      [sourceNoteId],
+    );
+    if (fmt) {
+      const fmtObj: Record<string, DbJson> = {};
+      for (const [k, v] of Object.entries(fmt)) {
+        fmtObj[k] = (v ?? null) as DbJson;
+      }
+      insertClonedTableRow(tx, 'note_document_formats', fmtObj, 'note_id', cloneNoteId, now, epochMs);
+    }
+  }
+  if (tableHasColumn(tx, 'note_document_revisions', 'version_id')) {
+    try {
+      getDefaultNoteHistory()?.snapshotNotes?.(tx, [cloneNoteId], 'remote_sync');
+    } catch {
+      // optional note history hook
+    }
+  }
+}
+
+function captureLocalNoteBodyBeforeOverwrite(
+  tx: SqlExecutor,
+  tableName: string,
+  recordId: string,
+  localVirtualContentMd: string | null,
+  localSnapshot: DbJson | null,
+  cloudSnapshot: DbJson | null,
+): { body: string | null; isRawResourceData: boolean } {
+  if (tableName !== 'notes') return { body: null, isRawResourceData: false };
+  if (localVirtualContentMd !== null) {
+    return { body: localVirtualContentMd, isRawResourceData: false };
+  }
+  if (!tableExists(tx, 'resources')) return { body: null, isRawResourceData: false };
+  const localResId = isJsonObject(localSnapshot) && typeof localSnapshot.resource_id === 'string'
+    ? localSnapshot.resource_id
+    : null;
+  const cloudResId = isJsonObject(cloudSnapshot) && typeof cloudSnapshot.resource_id === 'string'
+    ? cloudSnapshot.resource_id
+    : null;
+  const currentNote = tx.get<{ resource_id: string | null }>('SELECT resource_id FROM notes WHERE id = ?1', [recordId]);
+  const targetResId = typeof currentNote?.resource_id === 'string' ? currentNote.resource_id : null;
+  const candidates = [...new Set([localResId, targetResId, cloudResId].filter((id): id is string => Boolean(id)))];
+  for (const candidateId of candidates) {
+    const rawRes = latestConflictSideData(tx, 'resources', candidateId, 'local');
+    if (rawRes !== null) {
+      try {
+        const extracted = extractNoteContentFromResource(parseJsonLossless(rawRes));
+        if (extracted !== null) return { body: extracted, isRawResourceData: true };
+      } catch {
+        // ignore unparseable conflict snapshot
+      }
+    }
+  }
+  const fallbackResId = localResId ?? targetResId;
+  if (fallbackResId) {
+    const resRow = tx.get<{ data: unknown }>('SELECT data FROM resources WHERE id = ?1', [fallbackResId]);
+    if (typeof resRow?.data === 'string') {
+      return { body: resRow.data, isRawResourceData: true };
+    }
+  }
+  return { body: null, isRawResourceData: false };
+}
+
+function captureLocalLinkedNoteConflictBeforeOverwrite(
+  tx: SqlExecutor,
+  tableName: string,
+  recordId: string,
+): Record<string, DbJson> | null {
+  if (tableName !== 'resources' || !tableExists(tx, 'notes')) return null;
+  const linkedNote = tx.get<{ id: string }>('SELECT id FROM notes WHERE resource_id = ?1', [recordId]);
+  if (!linkedNote?.id) return null;
+  const rawLocalNote = latestConflictSideData(tx, 'notes', linkedNote.id, 'local');
+  if (!rawLocalNote) return null;
+  try {
+    const parsed = parseJsonLossless(rawLocalNote);
+    if (isJsonObject(parsed)) return parsed;
+  } catch {
+    // ignore unparseable conflict snapshot
+  }
+  return null;
+}
+
+function createLocalConflictCopy(
+  tx: SqlExecutor,
+  tableName: string,
+  recordId: string,
+  idColumn: string,
+  now: string,
+  epochMs: number,
+  recordedLocalSnapshot: Record<string, DbJson>,
+  capturedLocalNoteBody: { body: string | null; isRawResourceData: boolean },
+  capturedLocalLinkedNote: Record<string, DbJson> | null,
+): void {
+  const dateStr = formatConflictCopyDate(epochMs);
+  const cloneId = globalThis.crypto.randomUUID();
+  const shortTag = cloneId.slice(0, 4);
+
+  if (tableName === 'notes') {
+    const clonedNote: Record<string, DbJson> = { ...recordedLocalSnapshot };
+    clonedNote.title = appendConflictCopyLabel(
+      typeof recordedLocalSnapshot.title === 'string' ? recordedLocalSnapshot.title : '',
+      dateStr,
+      shortTag,
+    );
+    if (tableExists(tx, 'resources') && tableHasColumn(tx, 'notes', 'resource_id')) {
+      const cloneResId = globalThis.crypto.randomUUID();
+      const origResId = typeof recordedLocalSnapshot.resource_id === 'string'
+        ? recordedLocalSnapshot.resource_id
+        : null;
+      const origResRow = origResId
+        ? tx.get<Record<string, unknown>>('SELECT * FROM resources WHERE id = ?1', [origResId])
+        : undefined;
+      const rawBody = capturedLocalNoteBody.body ?? '';
+      const finalResData = capturedLocalNoteBody.isRawResourceData
+        ? rawBody
+        : encodeResourceDataPreservingShape(origResRow?.data, rawBody);
+      const nextHash = createHasherSync('SHA-256').update(`${cloneId}\0${finalResData}`).digestHex();
+      const clonedRes: Record<string, DbJson> = {};
+      if (origResRow) {
+        for (const [k, v] of Object.entries(origResRow)) {
+          clonedRes[k] = (v ?? null) as DbJson;
+        }
+      }
+      clonedRes.id = cloneResId;
+      clonedRes.hash = nextHash;
+      clonedRes.type = typeof clonedRes.type === 'string' && clonedRes.type ? clonedRes.type : 'note';
+      clonedRes.source_id = cloneId;
+      clonedRes.source_table = 'notes';
+      clonedRes.data = finalResData;
+      insertClonedTableRow(tx, 'resources', clonedRes, 'id', cloneResId, now, epochMs);
+      clonedNote.resource_id = cloneResId;
+    }
+    insertClonedTableRow(tx, 'notes', clonedNote, idColumn, cloneId, now, epochMs);
+    cloneNoteAuxiliaryRows(tx, recordId, cloneId, now, epochMs);
+    return;
+  }
+
+  if (tableName === 'resources') {
+    const linkedNote = tableExists(tx, 'notes')
+      ? tx.get<Record<string, unknown>>('SELECT * FROM notes WHERE resource_id = ?1', [recordId])
+      : undefined;
+    const localDataStr = typeof recordedLocalSnapshot.data === 'string' ? recordedLocalSnapshot.data : '';
+    if (linkedNote && typeof linkedNote.id === 'string') {
+      const cloneNoteId = globalThis.crypto.randomUUID();
+      const cloneResId = cloneId;
+      const nextHash = createHasherSync('SHA-256').update(`${cloneNoteId}\0${localDataStr}`).digestHex();
+      const clonedRes: Record<string, DbJson> = {
+        ...recordedLocalSnapshot,
+        id: cloneResId,
+        hash: nextHash,
+        source_id: cloneNoteId,
+        source_table: 'notes',
+      };
+      insertClonedTableRow(tx, 'resources', clonedRes, 'id', cloneResId, now, epochMs);
+
+      const baseNote: Record<string, DbJson> = {};
+      for (const [k, v] of Object.entries(linkedNote)) {
+        baseNote[k] = (v ?? null) as DbJson;
+      }
+      if (capturedLocalLinkedNote) {
+        for (const [k, v] of Object.entries(capturedLocalLinkedNote)) {
+          if (k !== 'content_md') baseNote[k] = v;
+        }
+      }
+      baseNote.id = cloneNoteId;
+      baseNote.resource_id = cloneResId;
+      baseNote.title = appendConflictCopyLabel(
+        typeof baseNote.title === 'string' ? baseNote.title : '',
+        dateStr,
+        shortTag,
+      );
+      insertClonedTableRow(tx, 'notes', baseNote, 'id', cloneNoteId, now, epochMs);
+      cloneNoteAuxiliaryRows(tx, linkedNote.id, cloneNoteId, now, epochMs);
+      return;
+    }
+
+    const nextHash = createHasherSync('SHA-256').update(`${cloneId}\0${localDataStr}`).digestHex();
+    const clonedRes: Record<string, DbJson> = {
+      ...recordedLocalSnapshot,
+      id: cloneId,
+      hash: nextHash,
+    };
+    insertClonedTableRow(tx, 'resources', clonedRes, idColumn, cloneId, now, epochMs);
+    return;
+  }
+
+  const copy: Record<string, DbJson> = { ...recordedLocalSnapshot };
+  if (tableName === 'anki_cards') {
+    if (typeof copy.text === 'string' && copy.text.trim().length > 0) {
+      copy.text = appendConflictCopyLabel(copy.text, dateStr, shortTag);
+      if (typeof copy.front === 'string' && copy.front.trim().length > 0) {
+        copy.front = appendConflictCopyLabel(copy.front, dateStr, shortTag);
+      }
+    } else if (typeof copy.front === 'string') {
+      copy.front = appendConflictCopyLabel(copy.front, dateStr, shortTag);
+    } else if (typeof copy.back === 'string') {
+      copy.back = appendConflictCopyLabel(copy.back, dateStr, shortTag);
+    }
+    insertClonedTableRow(tx, 'anki_cards', copy, idColumn, cloneId, now, epochMs);
+    return;
+  }
+
+  if (tableName === 'questions') {
+    if (Object.hasOwn(copy, 'source_key')) copy.source_key = null;
+    if (typeof copy.question_label === 'string' && copy.question_label.trim().length > 0) {
+      copy.question_label = appendConflictCopyLabel(copy.question_label, dateStr, shortTag);
+    } else if (typeof copy.content === 'string') {
+      copy.content = appendConflictCopyLabel(copy.content, dateStr, shortTag);
+    } else if (typeof copy.title === 'string') {
+      copy.title = appendConflictCopyLabel(copy.title, dateStr, shortTag);
+    }
+    insertClonedTableRow(tx, 'questions', copy, idColumn, cloneId, now, epochMs);
+    return;
+  }
+
+  if (tableName === 'mistakes') {
+    if (Object.hasOwn(copy, 'irec_card_id')) copy.irec_card_id = null;
+    if (typeof copy.mistake_summary === 'string' && copy.mistake_summary.trim().length > 0) {
+      copy.mistake_summary = appendConflictCopyLabel(copy.mistake_summary, dateStr, shortTag);
+    } else if (typeof copy.user_question === 'string') {
+      copy.user_question = appendConflictCopyLabel(copy.user_question, dateStr, shortTag);
+    } else if (typeof copy.title === 'string') {
+      copy.title = appendConflictCopyLabel(copy.title, dateStr, shortTag);
+    }
+    insertClonedTableRow(tx, 'mistakes', copy, idColumn, cloneId, now, epochMs);
+    return;
+  }
+
+  const labelColumns = ['title', 'name', 'file_name', 'front', 'text', 'user_question', 'content', 'question_label', 'label'];
+  for (const col of labelColumns) {
+    if (typeof copy[col] === 'string' && (copy[col] as string).trim().length > 0) {
+      copy[col] = appendConflictCopyLabel(copy[col] as string, dateStr, shortTag);
+      break;
+    }
+  }
+  insertClonedTableRow(tx, tableName, copy, idColumn, cloneId, now, epochMs);
+}
+
 function synchronizePairedNoteAndResource(
   tx: SqlExecutor,
   tableName: string,
@@ -313,11 +644,11 @@ function synchronizePairedNoteAndResource(
 
     if (targetResId) {
       let bodyToWrite = virtualContentMd;
-      if (bodyToWrite === null && (resolution === 'keep_cloud' || resolution === 'keep_local')) {
-        const side = resolution === 'keep_cloud' ? 'cloud' : 'local';
-        const candidates = resolution === 'keep_cloud'
-          ? [cloudResId, targetResId, localResId]
-          : [localResId, targetResId, cloudResId];
+      if (bodyToWrite === null && (resolution === 'keep_cloud' || resolution === 'keep_local' || resolution === 'keep_both')) {
+        const side = resolution === 'keep_local' ? 'local' : 'cloud';
+        const candidates = resolution === 'keep_local'
+          ? [localResId, targetResId, cloudResId]
+          : [cloudResId, targetResId, localResId];
         for (const candidateId of candidates) {
           if (!candidateId) continue;
           const rawRes = latestConflictSideData(tx, 'resources', candidateId, side);
@@ -404,7 +735,7 @@ function synchronizePairedNoteAndResource(
     for (const note of linkedNotes) {
       if (!note?.id) continue;
       bumpUpdatedAtAndLog(tx, 'notes', note.id, now, epochMs);
-      if (resolution === 'keep_local' || resolution === 'keep_cloud' || resolution === 'merged') {
+      if (resolution === 'keep_local' || resolution === 'keep_cloud' || resolution === 'merged' || resolution === 'keep_both') {
         const noteConflictIds = listUnresolvedConflictIds(tx, 'notes', note.id);
         for (const id of noteConflictIds) {
           markConflictResolved(tx, id, 'notes', note.id, now, resolution);
@@ -477,6 +808,18 @@ function resolveOnDatabase(
       data = recordedCloudSnapshot;
       virtualContentMd = cloudStripped.virtualContentMd;
       break;
+    case 'keep_both': {
+      if (!isJsonObject(recordedLocalSnapshot) || !isJsonObject(recordedCloudSnapshot)) {
+        throw new CommandError('仅当本地与云端均存在记录内容时才支持保留两者');
+      }
+      if (isCompositePrimaryKeyTable(tableName)) {
+        throw new CommandError('当前记录类型不支持保留两者，请选择保留本地、采用云端或手动合并');
+      }
+      operation = 'Update';
+      data = recordedCloudSnapshot;
+      virtualContentMd = cloudStripped.virtualContentMd;
+      break;
+    }
     case 'merged': {
       if (mergedDataJson === null) {
         throw new CommandError("resolution='merged' 时必须提供 merged_data_json");
@@ -522,6 +865,7 @@ function resolveOnDatabase(
       now,
       epochMs,
       virtualContentMd,
+      localStripped.virtualContentMd,
       recordedLocalSnapshot,
       recordedCloudSnapshot,
     );
@@ -549,6 +893,8 @@ function resolveOnDatabase(
   const historyBatchId = newBatchId();
   const preflightSnapshot = currentLocalSnapshot;
   let tempWriteGrantTokens: string[] = [];
+  let capturedLocalNoteBody: { body: string | null; isRawResourceData: boolean } = { body: null, isRawResourceData: false };
+  let capturedLocalLinkedNote: Record<string, DbJson> | null = null;
   let applyResult;
   try {
     applyResult = applyDownloadedChangesForceExactWithHooks(
@@ -560,6 +906,17 @@ function resolveOnDatabase(
           const latest = getRecordData(tx, tableName, recordId, idColumn) as DbJson | null;
           if (!jsonEquals(latest, preflightSnapshot)) {
             throw new SyncError('Database error: 本地记录在提交冲突决策前发生变化');
+          }
+          if (resolution === 'keep_both') {
+            capturedLocalNoteBody = captureLocalNoteBodyBeforeOverwrite(
+              tx,
+              tableName,
+              recordId,
+              localStripped.virtualContentMd,
+              recordedLocalSnapshot,
+              recordedCloudSnapshot,
+            );
+            capturedLocalLinkedNote = captureLocalLinkedNoteConflictBeforeOverwrite(tx, tableName, recordId);
           }
           snapshotRecordWithData(tx, historyBatchId, REASON_CONFLICT_RESOLVE, tableName, recordId, latest as never);
           tempWriteGrantTokens = acquireTemporaryNoteWriteGrants(tx, tableName, recordId);
@@ -628,6 +985,19 @@ function resolveOnDatabase(
             recordedLocalSnapshot,
             recordedCloudSnapshot,
           );
+          if (resolution === 'keep_both' && isJsonObject(recordedLocalSnapshot)) {
+            createLocalConflictCopy(
+              tx,
+              tableName,
+              recordId,
+              idColumn,
+              now,
+              epochMs,
+              recordedLocalSnapshot,
+              capturedLocalNoteBody,
+              capturedLocalLinkedNote,
+            );
+          }
           releaseTemporaryNoteWriteGrants(tx, tempWriteGrantTokens);
           const latestIds = unresolvedConflictIds(tx, tableName, recordId);
           if (latestIds.length !== expectedIds.length || latestIds.some((id, index) => id !== expectedIds[index])) {
@@ -665,6 +1035,7 @@ function markResolvedWithoutWrite(
   now: string,
   epochMs: number,
   virtualContentMd: string | null,
+  localVirtualContentMd: string | null,
   localSnapshot: DbJson | null,
   cloudSnapshot: DbJson | null,
 ): void {
@@ -680,6 +1051,22 @@ function markResolvedWithoutWrite(
         : data !== null && latest !== null && recordsSemanticallyEqualForSync(latest, data);
       if (!stillDesired) {
         throw new CommandError('本地记录在冲突确认期间已变化，请刷新后重新确认');
+      }
+      const capturedLocalNoteBody = resolution === 'keep_both'
+        ? captureLocalNoteBodyBeforeOverwrite(
+            tx,
+            tableName,
+            recordId,
+            localVirtualContentMd,
+            localSnapshot,
+            cloudSnapshot,
+          )
+        : { body: null, isRawResourceData: false };
+      const capturedLocalLinkedNote = resolution === 'keep_both'
+        ? captureLocalLinkedNoteConflictBeforeOverwrite(tx, tableName, recordId)
+        : null;
+      if (resolution === 'keep_both') {
+        snapshotRecordWithData(tx, newBatchId(), REASON_CONFLICT_RESOLVE, tableName, recordId, latest as never);
       }
       const tempTokens = acquireTemporaryNoteWriteGrants(tx, tableName, recordId);
       try {
@@ -699,6 +1086,19 @@ function markResolvedWithoutWrite(
           localSnapshot,
           cloudSnapshot,
         );
+        if (resolution === 'keep_both' && isJsonObject(localSnapshot)) {
+          createLocalConflictCopy(
+            tx,
+            tableName,
+            recordId,
+            idColumn,
+            now,
+            epochMs,
+            localSnapshot,
+            capturedLocalNoteBody,
+            capturedLocalLinkedNote,
+          );
+        }
       } finally {
         releaseTemporaryNoteWriteGrants(tx, tempTokens);
       }

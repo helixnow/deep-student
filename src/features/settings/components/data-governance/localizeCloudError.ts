@@ -277,11 +277,65 @@ export function localizeBackendErrorText(raw: string, language?: string): string
   return text;
 }
 
-function extractLeaseExpiryDate(raw: string): Date | null {
-  const match = /预计\s*(\S+?)\s*到期/.exec(raw);
+export function extractLeaseExpiryDate(raw: string): Date | null {
+  const match = /预计\s*(\S+?)\s*到期/.exec(raw)
+    ?? /expires?\s+(?:at\s+)?(\d{4}-\d{2}-\d{2}T\S+?)(?:[)\s.,;]|$)/i.exec(raw);
   if (!match) return null;
   const expiry = new Date(match[1].replace(/(\.\d{3})\d+/, '$1'));
   return Number.isNaN(expiry.getTime()) ? null : expiry;
+}
+
+export function extractLeaseHolderDevice(raw: string): string | null {
+  const foreignMatch = /被其他设备持有\s*[:：]\s*([^\s（(）)）;；，,]+)/.exec(raw);
+  if (foreignMatch?.[1]) return foreignMatch[1].trim();
+  const selfMatch = /本机[（(]([^）)]+)[）)]/.exec(raw);
+  if (selfMatch?.[1]) return selfMatch[1].trim();
+  const enMatch = /held by\s+(?:device\s+)?([^\s(,;)）]+)/i.exec(raw);
+  if (enMatch?.[1]) return enMatch[1].trim();
+  return null;
+}
+
+export function formatRemainingLeaseDuration(
+  expiry: Date,
+  language?: string,
+  nowMs: number = Date.now(),
+): { expired: boolean; remainingMs: number; label: string } {
+  const english = isEnglishUiLanguage(language);
+  const remainingMs = Math.max(0, expiry.getTime() - nowMs);
+  if (remainingMs <= 0) {
+    return {
+      expired: true,
+      remainingMs: 0,
+      label: english ? '0s' : '0 秒',
+    };
+  }
+  const totalSeconds = Math.ceil(remainingMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return {
+      expired: false,
+      remainingMs,
+      label: english
+        ? (minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`)
+        : (minutes > 0 ? `${hours} 小时 ${minutes} 分钟` : `${hours} 小时`),
+    };
+  }
+  if (minutes > 0) {
+    return {
+      expired: false,
+      remainingMs,
+      label: english
+        ? (seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`)
+        : (seconds > 0 ? `${minutes} 分 ${seconds} 秒` : `${minutes} 分钟`),
+    };
+  }
+  return {
+    expired: false,
+    remainingMs,
+    label: english ? `${seconds}s` : `${seconds} 秒`,
+  };
 }
 
 /**
@@ -326,6 +380,21 @@ export function formatFriendlySyncError(
   }
 
   if (cleaned.includes('E_SYNC_LEASE_HELD')) {
+    const expiry = extractLeaseExpiryDate(cleaned);
+    if (expiry) {
+      const expiresAt = expiry.toLocaleString();
+      const rawHolder = extractLeaseHolderDevice(cleaned);
+      const holder = rawHolder
+        ? (rawHolder.length > 12 ? `${rawHolder.slice(0, 8)}...` : rawHolder)
+        : (english ? 'another device' : '另一台设备');
+      return t('data:governance.lease_held_foreign_guidance', {
+        holder,
+        expiresAt,
+        defaultValue: english
+          ? `Another device (${holder}) holds the cloud sync lock (expected to expire at ${expiresAt}). Wait for that device to finish or retry once the lock expires—do not overwrite cloud files manually.`
+          : `另一台设备（${holder}）当前持有同步保护锁（预计 ${expiresAt} 过期）。请等待对方完成同步或倒计时结束后再重试，切勿手动覆盖云端文件。`,
+      });
+    }
     return t('sync:errors.leaseHeld', {
       defaultValue: english
         ? 'Another device is currently syncing to this cloud folder. Please wait and try again.'

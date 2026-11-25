@@ -546,8 +546,12 @@ describe('DataGovernanceDashboard SyncTab conflict resolution', () => {
     useSystemStatusStore.getState().exitMaintenanceMode();
   });
 
-  /** 检测冲突并点击 SyncTab 冲突解决区域的策略按钮（打开确认弹窗） */
-  async function detectAndClickStrategy(strategyKey: string) {
+  it('BUG-3: never exposes dead-end batch-resolve strategy buttons and routes conflicts to RecordConflictsPanel', async () => {
+    mockDataGovernanceApi.detectConflicts.mockResolvedValue(sampleConflictDetection);
+
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToSyncTab();
+
     const detectBtn = screen.getByRole('button', {
       name: /检测冲突|data:governance\.detect_conflicts/i,
     });
@@ -556,155 +560,28 @@ describe('DataGovernanceDashboard SyncTab conflict resolution', () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText(/检测到冲突|data:governance\.conflicts_detected/i),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId('sync-conflict-summary-card')).toBeInTheDocument();
     });
 
-    // 精确匹配 i18n key，避免误点 RecordConflictsPanel 的「全部保留本地」
-    const strategyBtn = screen.getByRole('button', {
-      name: new RegExp(`^data:governance\\.${strategyKey}$`, 'i'),
-    });
+    // Dead-end batch strategy buttons inside summary card are completely removed
+    const summaryCard = screen.getByTestId('sync-conflict-summary-card');
+    expect(within(summaryCard).queryByRole('button', { name: /^data:governance\.keep_local$/i })).not.toBeInTheDocument();
+    expect(within(summaryCard).queryByRole('button', { name: /^data:governance\.use_cloud$/i })).not.toBeInTheDocument();
+    expect(within(summaryCard).queryByRole('button', { name: /^data:governance\.keep_latest$/i })).not.toBeInTheDocument();
+    expect(within(summaryCard).queryByRole('button', { name: /^data:governance\.manual$/i })).not.toBeInTheDocument();
+
+    // Primary CTA jumps to record-level conflict resolution panel without calling disabled resolveConflicts
+    const openRecordPanelBtn = within(summaryCard).getByTestId('sync-conflict-open-record-panel-btn');
+    expect(openRecordPanelBtn).toBeEnabled();
     await act(async () => {
-      fireEvent.click(strategyBtn);
-    });
-  }
-
-  it('clicking resolve strategy button opens confirmation and does NOT call resolveConflicts before confirm', async () => {
-    mockDataGovernanceApi.detectConflicts.mockResolvedValue(sampleConflictDetection);
-
-    render(<DataGovernanceDashboard embedded />);
-    await navigateToSyncTab();
-
-    await detectAndClickStrategy('keep_local');
-
-    // 确认弹窗应出现
-    await waitFor(() => {
-      expect(
-        screen.getByText(/确认解决冲突|sync:confirmConflictResolveTitle/i),
-      ).toBeInTheDocument();
+      fireEvent.click(openRecordPanelBtn);
     });
 
-    // 描述应存在（覆盖另一版本 + 建议先备份的文案 key）
-    expect(
-      screen.getByText(/sync:confirmConflictResolveDescription|建议先创建本地备份/i),
-    ).toBeInTheDocument();
-
-    // 未确认前不应调用 resolveConflicts
     expect(mockDataGovernanceApi.resolveConflicts).not.toHaveBeenCalled();
+    expect(screen.getByTestId('record-conflicts-panel')).toBeInTheDocument();
   });
 
-  it('cancelling the confirmation dialog does not call resolveConflicts', async () => {
-    mockDataGovernanceApi.detectConflicts.mockResolvedValue(sampleConflictDetection);
-
-    render(<DataGovernanceDashboard embedded />);
-    await navigateToSyncTab();
-
-    await detectAndClickStrategy('use_cloud');
-
-    const dialog = await screen.findByRole('alertdialog');
-    const cancelBtn = within(dialog).getByRole('button', {
-      name: /^取消$|^common:actions\.cancel$/i,
-    });
-    await act(async () => {
-      fireEvent.click(cancelBtn);
-    });
-
-    // 取消后弹窗关闭且不调用 resolveConflicts
-    await waitFor(() => {
-      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
-    });
-    expect(mockDataGovernanceApi.resolveConflicts).not.toHaveBeenCalled();
-  });
-
-  it('confirming the dialog calls resolveConflicts with selected strategy', async () => {
-    mockDataGovernanceApi.detectConflicts.mockResolvedValue(sampleConflictDetection);
-    mockDataGovernanceApi.resolveConflicts.mockResolvedValue({
-      success: true,
-      strategy: 'keep_local',
-      synced_databases: 2,
-      resolved_conflicts: 1,
-      pending_manual_conflicts: 0,
-      records_to_push: [],
-      records_to_pull: [],
-      duration_ms: 3000,
-      error_message: null,
-    });
-
-    render(<DataGovernanceDashboard embedded />);
-    await navigateToSyncTab();
-
-    await detectAndClickStrategy('keep_local');
-
-    // 在确认弹窗中点击确认
-    const dialog = await screen.findByRole('alertdialog');
-    const confirmBtn = within(dialog).getByRole('button', {
-      name: /^确认$|^common:actions\.confirm$/i,
-    });
-    await act(async () => {
-      fireEvent.click(confirmBtn);
-    });
-
-    // 验证调用了 resolveConflicts(strategy, cloudManifestJson)
-    await waitFor(() => {
-      expect(mockDataGovernanceApi.resolveConflicts).toHaveBeenCalled();
-    });
-
-    const call = mockDataGovernanceApi.resolveConflicts.mock.calls[0];
-    // 第一个参数: strategy = 'keep_local'
-    expect(call[0]).toBe('keep_local');
-    // 第二个参数: cloudManifestJson
-    expect(call[1]).toBe('{}');
-  });
-
-  it('prevents duplicate resolve requests on rapid double click of confirm button', async () => {
-    mockDataGovernanceApi.detectConflicts.mockResolvedValue(sampleConflictDetection);
-    let resolveRequest: ((value: unknown) => void) | undefined;
-    mockDataGovernanceApi.resolveConflicts.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          resolveRequest = resolve;
-        }),
-    );
-
-    render(<DataGovernanceDashboard embedded />);
-    await navigateToSyncTab();
-
-    await detectAndClickStrategy('keep_local');
-
-    const dialog = await screen.findByRole('alertdialog');
-    const confirmBtn = within(dialog).getByRole('button', {
-      name: /^确认$|^common:actions\.confirm$/i,
-    });
-
-    // 快速双击确认按钮：第一次点击后弹窗关闭，第二次点击不应重复触发
-    await act(async () => {
-      fireEvent.click(confirmBtn);
-      fireEvent.click(confirmBtn);
-    });
-
-    await waitFor(() => {
-      expect(mockDataGovernanceApi.resolveConflicts).toHaveBeenCalledTimes(1);
-    });
-
-    if (resolveRequest) {
-      await act(async () => {
-        resolveRequest!({
-          success: true,
-          strategy: 'keep_local',
-          synced_databases: 1,
-          resolved_conflicts: 1,
-          pending_manual_conflicts: 0,
-          records_to_push: [],
-          records_to_pull: [],
-          duration_ms: 100,
-          error_message: null,
-        });
-      });
-    }
-  });
-
-  it('disables resolve buttons when needs_migration is true', async () => {
+  it('disables record-panel CTA and shows migration notice when needs_migration is true', async () => {
     mockDataGovernanceApi.detectConflicts.mockResolvedValue({
       ...sampleConflictDetection,
       needs_migration: true,
@@ -720,10 +597,10 @@ describe('DataGovernanceDashboard SyncTab conflict resolution', () => {
       fireEvent.click(detectBtn);
     });
 
-    const conflictKeepLocalBtn = screen.getByRole('button', {
-      name: /^data:governance\.keep_local$/i,
+    await waitFor(() => {
+      expect(screen.getByTestId('sync-conflict-open-record-panel-btn')).toBeDisabled();
     });
-    expect(conflictKeepLocalBtn).toBeDisabled();
+    expect(mockDataGovernanceApi.resolveConflicts).not.toHaveBeenCalled();
   });
 });
 

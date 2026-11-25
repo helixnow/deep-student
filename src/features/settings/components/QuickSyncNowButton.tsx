@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { ArrowsLeftRight, CircleNotch } from '@phosphor-icons/react';
+import { ArrowsLeftRight, CircleNotch, Warning } from '@phosphor-icons/react';
 import { useShallow } from 'zustand/react/shallow';
 import { DsButton } from '@/components/ui/DsButton';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -10,6 +10,8 @@ import { DataGovernanceApi, runSyncWithProgress } from '@/api/dataGovernance';
 import * as cloudApi from '@/utils/cloudStorageApi';
 import { useGlobalSyncStore } from '@/stores/syncStatusStore';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
+import { useSettingsShellStore } from '@/stores/settingsShellStore';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
   localizeCloudStorageError,
@@ -75,6 +77,7 @@ export const QuickSyncNowButton: React.FC<QuickSyncNowButtonProps> = ({
 }) => {
   const { t, i18n } = useTranslation(['sync', 'data', 'common']);
   const isSyncing = useGlobalSyncStore((state) => state.isSyncing);
+  const unresolvedConflictCount = useGlobalSyncStore((state) => state.unresolvedConflictCount ?? 0);
   const { enterMaintenanceMode, exitMaintenanceMode } = useSystemStatusStore(
     useShallow((state) => ({
       enterMaintenanceMode: state.enterMaintenanceMode,
@@ -100,33 +103,66 @@ export const QuickSyncNowButton: React.FC<QuickSyncNowButtonProps> = ({
     }
   }, []);
 
+  const refreshConflictCount = useCallback(() => {
+    const refreshFn = useGlobalSyncStore?.getState?.()?.refreshUnresolvedConflictCount;
+    if (typeof refreshFn === 'function') {
+      void refreshFn();
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshConflictCount();
+  }, [refreshConflictCount]);
+
   useEffect(() => {
     if (cloudConfiguredOverride !== undefined) return;
     void refreshConfigured();
   }, [cloudConfiguredOverride, refreshConfigured]);
 
   useEventRegistry(
-    cloudConfiguredOverride === undefined
-      ? [
-          {
-            target: 'window',
-            type: 'data-governance:cloud-config-changed',
-            listener: () => { void refreshConfigured(); },
-          },
-          {
-            target: 'window',
-            type: 'storage',
-            listener: () => { void refreshConfigured(); },
-          },
-          {
-            target: 'window',
-            type: 'focus',
-            listener: () => { void refreshConfigured(); },
-          },
-        ]
-      : [],
-    [cloudConfiguredOverride, refreshConfigured],
+    [
+      {
+        target: 'window',
+        type: 'data-governance:local-change',
+        listener: () => { refreshConflictCount(); },
+      },
+      ...(cloudConfiguredOverride === undefined
+        ? [
+            {
+              target: 'window' as const,
+              type: 'data-governance:cloud-config-changed',
+              listener: () => { void refreshConfigured(); },
+            },
+            {
+              target: 'window' as const,
+              type: 'storage',
+              listener: () => { void refreshConfigured(); },
+            },
+            {
+              target: 'window' as const,
+              type: 'focus',
+              listener: () => {
+                void refreshConfigured();
+                refreshConflictCount();
+              },
+            },
+          ]
+        : []),
+    ],
+    [cloudConfiguredOverride, refreshConfigured, refreshConflictCount],
   );
+
+  const handleOpenConflicts = useCallback(() => {
+    useSettingsShellStore.getState().applySettingsRoute({
+      tab: 'data-governance',
+      dataGovernanceTab: 'sync',
+    });
+    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, {
+      tab: 'data-governance',
+      dataGovernanceTab: 'sync',
+    });
+    window.dispatchEvent(new CustomEvent('data-governance:jump-to-conflicts'));
+  }, []);
 
   const effectiveConfigured =
     cloudConfiguredOverride !== undefined
@@ -181,6 +217,19 @@ export const QuickSyncNowButton: React.FC<QuickSyncNowButtonProps> = ({
         } catch {
           // Ignore optional quarantine query error
         }
+        let liveConflictCount = 0;
+        try {
+          const refreshFn = useGlobalSyncStore?.getState?.()?.refreshUnresolvedConflictCount;
+          if (typeof refreshFn === 'function') {
+            liveConflictCount = await refreshFn();
+          }
+        } catch {
+          // Ignore optional conflict query error
+        }
+        const effectiveConflictCount = Math.max(liveConflictCount, result.conflicts_detected ?? 0);
+        if (effectiveConflictCount > liveConflictCount) {
+          useGlobalSyncStore?.getState?.()?.setUnresolvedConflictCount?.(effectiveConflictCount);
+        }
 
         window.dispatchEvent(new CustomEvent('data-governance:local-change'));
 
@@ -190,7 +239,16 @@ export const QuickSyncNowButton: React.FC<QuickSyncNowButtonProps> = ({
           (result.skipped_changes ?? 0) === 0 &&
           quarantineCount === 0
         ) {
-          showGlobalNotification('success', t('data:sync_settings.sync_success'));
+          if (effectiveConflictCount > 0) {
+            showGlobalNotification(
+              'warning',
+              t('data:governance.sync_completed_with_conflicts', {
+                count: effectiveConflictCount,
+              }),
+            );
+          } else {
+            showGlobalNotification('success', t('data:sync_settings.sync_success'));
+          }
           return;
         }
 
@@ -240,34 +298,58 @@ export const QuickSyncNowButton: React.FC<QuickSyncNowButtonProps> = ({
     }
   }, [enterMaintenanceMode, exitMaintenanceMode, i18n?.language, isSyncing, localRunning, onSyncTrigger, t]);
 
-  if (!effectiveConfigured) {
+  if (!effectiveConfigured && unresolvedConflictCount === 0) {
     return null;
   }
 
   const busy = isSyncing || localRunning;
 
   return (
-    <DsButton
-      type="button"
-      variant="outline"
-      size="sm"
-      disabled={busy}
-      data-testid={dataTestId}
-      onClick={() => {
-        void handleQuickSync();
-      }}
-      className={cn(
-        'shrink-0 rounded-xl border-primary/40 bg-primary/12 px-3 font-medium text-primary hover:bg-primary/20',
-        className,
+    <div className="inline-flex flex-wrap items-center gap-2">
+      {unresolvedConflictCount > 0 && (
+        <DsButton
+          type="button"
+          variant="warning"
+          size="sm"
+          data-testid="quick-sync-conflict-badge"
+          onClick={handleOpenConflicts}
+          aria-label={t('data:governance.unresolved_conflicts_banner_title', {
+            count: unresolvedConflictCount,
+          })}
+          className="shrink-0 rounded-xl border-warning/45 bg-warning/15 px-2.5 text-xs font-medium text-warning hover:bg-warning/25"
+        >
+          <Warning size={14} className="mr-1 shrink-0" aria-hidden="true" />
+          <span className="tabular-nums">
+            {t('data:governance.unresolved_conflicts_badge', {
+              count: unresolvedConflictCount,
+            })}
+          </span>
+        </DsButton>
       )}
-    >
-      {busy ? (
-        <CircleNotch size={14} className="mr-1.5 animate-spin shrink-0" />
-      ) : (
-        <ArrowsLeftRight size={14} className="mr-1.5 shrink-0" />
+      {effectiveConfigured && (
+        <DsButton
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          data-testid={dataTestId}
+          onClick={() => {
+            void handleQuickSync();
+          }}
+          className={cn(
+            'shrink-0 rounded-xl border-primary/40 bg-primary/12 px-3 font-medium text-primary hover:bg-primary/20',
+            className,
+          )}
+        >
+          {busy ? (
+            <CircleNotch size={14} className="mr-1.5 animate-spin shrink-0" />
+          ) : (
+            <ArrowsLeftRight size={14} className="mr-1.5 shrink-0" />
+          )}
+          <span>{t('sync:syncNow', { defaultValue: '立即同步' })}</span>
+        </DsButton>
       )}
-      <span>{t('sync:syncNow', { defaultValue: '立即同步' })}</span>
-    </DsButton>
+    </div>
   );
 };
 

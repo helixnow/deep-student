@@ -633,4 +633,132 @@ describe('S5-05, S5-02, S5-07, S5-08 two-device sync regressions', () => {
       durationMs: expect.any(Number),
     });
   }, 120000);
+
+  it('BUG-4: 3-node convergence (Device A, B, C) after keep_both conflict resolution with 0 pending, 0 conflicts, 0 ping-pong', async () => {
+    const cloud = new MemoryStorage('webdav');
+    const devA = await initDevice('dev-a-keepboth', cloud);
+    const devB = await initDevice('dev-b-keepboth', cloud);
+    const devC = await initDevice('dev-c-keepboth', cloud);
+
+    // 1. Device A creates baseline note and syncs; B and C pull baseline
+    const noteId = await onDevice(devA, async ({ host }) => {
+      const created = await host.invoke<{ id: string }>('notes_create', {
+        note: { title: '3-Node Physics Note', content_md: 'Baseline equations' },
+      });
+      const push = await host.invoke<{ success: boolean; skipped_changes?: number; error_message?: string | null }>('data_governance_run_sync_with_progress', {
+        direction: 'bidirectional',
+        strategy: 'keep_latest',
+      });
+      expect(push).toMatchObject({ success: true, skipped_changes: 0, error_message: null });
+      return created.id;
+    });
+
+    for (const dev of [devB, devC]) {
+      await onDevice(dev, async ({ host }) => {
+        const pull = await host.invoke<{ success: boolean; skipped_changes?: number; error_message?: string | null }>('data_governance_run_sync_with_progress', {
+          direction: 'bidirectional',
+          strategy: 'keep_latest',
+        });
+        expect(pull).toMatchObject({ success: true, skipped_changes: 0, error_message: null });
+      });
+    }
+
+    // 2. Device A edits offline and pushes; Device B edits same note offline and syncs -> conflict
+    await onDevice(devA, async ({ host }) => {
+      await host.invoke('notes_update', {
+        note: { id: noteId, content_md: 'Device A cloud revision' },
+      });
+      const pushA = await host.invoke<{ success: boolean; skipped_changes?: number; error_message?: string | null }>('data_governance_run_sync_with_progress', {
+        direction: 'bidirectional',
+        strategy: 'keep_latest',
+      });
+      expect(pushA).toMatchObject({ success: true, skipped_changes: 0, error_message: null });
+    });
+
+    let copyNoteId = '';
+    await onDevice(devB, async ({ host, storage }) => {
+      await host.invoke('notes_update', {
+        note: { id: noteId, content_md: 'Device B local revision' },
+      });
+      const syncB1 = await host.invoke<{ success: boolean; conflicts_detected: number; skipped_changes?: number }>('data_governance_run_sync_with_progress', {
+        direction: 'bidirectional',
+        strategy: 'keep_latest',
+      });
+      expect(syncB1.success).toBe(true);
+      expect(syncB1.skipped_changes).toBe(0);
+      expect(syncB1.conflicts_detected).toBeGreaterThanOrEqual(1);
+
+      const conflicts = await host.invoke<Array<{ id: number; table_name: string; record_id: string }>>('data_governance_list_record_conflicts', {});
+      const noteConflicts = conflicts.filter(c => c.table_name === 'notes' && c.record_id === noteId);
+      expect(noteConflicts.length).toBeGreaterThanOrEqual(2);
+
+      // Device B resolves with keep_both
+      await host.invoke('data_governance_resolve_record_conflict', {
+        databaseName: 'vfs',
+        tableName: 'notes',
+        recordId: noteId,
+        resolution: 'keep_both',
+        mergedDataJson: null,
+        expectedConflictIds: noteConflicts.map(c => c.id),
+      });
+
+      const vfs = storage.database('vfs');
+      const allResTypes = vfs.all<{ t: string }>('SELECT typeof(updated_at) as t FROM resources').map(r => r.t);
+      expect(allResTypes.every(t => t === 'integer')).toBe(true);
+
+      const notesOnB = await host.invoke<Array<{ id: string; title: string }>>('notes_list', {});
+      expect(notesOnB).toHaveLength(2);
+      const copyOnB = notesOnB.find(n => n.id !== noteId)!;
+      expect(copyOnB.title).toContain('本地冲突副本');
+      copyNoteId = copyOnB.id;
+
+      const origB = await host.invoke<{ content_md: string }>('notes_get', { id: noteId });
+      const copyB = await host.invoke<{ content_md: string }>('notes_get', { id: copyNoteId });
+      expect(origB.content_md).toBe('Device A cloud revision');
+      expect(copyB.content_md).toBe('Device B local revision');
+
+      const syncB2 = await host.invoke<{ success: boolean; conflicts_detected: number; skipped_changes?: number; error_message?: string | null }>('data_governance_run_sync_with_progress', {
+        direction: 'bidirectional',
+        strategy: 'keep_latest',
+      });
+      expect(syncB2).toMatchObject({ success: true, conflicts_detected: 0, skipped_changes: 0, error_message: null });
+    });
+
+    // 3. Device A, C, and B all sync twice -> all 3 nodes must converge identically with 0 conflicts & 0 ping-pong!
+    for (const round of [1, 2]) {
+      for (const dev of [devA, devC, devB]) {
+        await onDevice(dev, async ({ host }) => {
+          const res = await host.invoke<{ success: boolean; conflicts_detected: number; skipped_changes?: number; error_message?: string | null }>('data_governance_run_sync_with_progress', {
+            direction: 'bidirectional',
+            strategy: 'keep_latest',
+          });
+          expect(res, `round=${round} dev=${dev.deviceId}`).toMatchObject({
+            success: true,
+            conflicts_detected: 0,
+            skipped_changes: 0,
+            error_message: null,
+          });
+        });
+      }
+    }
+
+    for (const dev of [devA, devB, devC]) {
+      await onDevice(dev, async ({ host }) => {
+        const status = await host.invoke<{ total_pending_changes: number }>('data_governance_get_sync_status', {});
+        const conflicts = await host.invoke<unknown[]>('data_governance_list_record_conflicts', {});
+        const quarantine = await host.invoke<unknown[]>('data_governance_list_quarantine', {});
+        const activeNotes = await host.invoke<Array<{ id: string; title: string }>>('notes_list', {});
+        const orig = await host.invoke<{ content_md: string }>('notes_get', { id: noteId });
+        const copy = await host.invoke<{ title: string; content_md: string }>('notes_get', { id: copyNoteId });
+
+        expect(status.total_pending_changes).toBe(0);
+        expect(conflicts).toEqual([]);
+        expect(quarantine).toEqual([]);
+        expect(activeNotes).toHaveLength(2);
+        expect(orig.content_md).toBe('Device A cloud revision');
+        expect(copy.title).toContain('本地冲突副本');
+        expect(copy.content_md).toBe('Device B local revision');
+      });
+    }
+  }, 120000);
 });

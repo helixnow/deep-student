@@ -34,6 +34,7 @@ import { Progress } from '@/components/ui/shad/Progress';
 import { SettingSection } from './SettingsCommon';
 import { GroupTitle } from './settingsTabPrimitives';
 import { DevicePairingSection } from './DevicePairingSection';
+import { RecordConflictsPanel } from './data-governance/RecordConflictsPanel';
 import { ConflictResolutionDialog, MergeStrategy } from '@/components/ConflictResolutionDialog';
 import { useConflictResolution } from '@/hooks/useConflictResolution';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -95,19 +96,18 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
     isResolving,
     conflicts,
     syncStatus,
-    cloudManifestJson,
     error,
     lastResult,
     getSyncStatus,
     detectConflicts,
-    resolveConflicts,
     detectConflictsMock,
-    resolveConflictsMock,
     clearError,
   } = useConflictResolution();
 
   // UI 状态
   const [showConflictDialog, setShowConflictDialog] = useState(false);
+  const [conflictRefreshNonce, setConflictRefreshNonce] = useState(0);
+  const [conflictFocusNonce, setConflictFocusNonce] = useState(0);
   const [cloudConfigured, setCloudConfigured] = useState<boolean>(() =>
     Boolean(loadStoredCloudStorageConfigSafe()),
   );
@@ -124,12 +124,11 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
     });
   }, [refreshCloudConfigured]);
 
-  // 同步进度 / 取消 / 正在同步：全部来自全局 store（#447）。进度由应用级
-  // 事件监听写入，本组件被设置页切栏目卸载后重挂载仍能立即显示；与数据
-  // 治理面板等其他入口共享，任一入口同步时本入口按钮禁用。
+  // 同步进度 / 取消 / 正在同步 / 持久化未解决冲突数：全部来自全局 store（#447）。
   const syncProgress = useGlobalSyncStore((s) => s.progress);
   const cancelRequested = useGlobalSyncStore((s) => s.cancelRequested);
   const isSyncing = useGlobalSyncStore((s) => s.isSyncing);
+  const unresolvedConflictCount = useGlobalSyncStore((s) => s.unresolvedConflictCount ?? 0);
   // 自动同步开关（默认关闭；调度与安全防线在 syncStatusStore 内实现）
   const autoSyncEnabled = useAutoSyncStore((s) => s.enabled);
   const setAutoSyncEnabled = useAutoSyncStore((s) => s.setEnabled);
@@ -145,6 +144,10 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
     // 兼容性双保险：主启动点已上移到 App.tsx（hydration 完成后启动），
     // 此处调用仍幂等，仅兜底 App 挂载链路之外的极端渲染场景
     ensureAutoSyncSchedulerStarted();
+    const refreshCount = useGlobalSyncStore?.getState?.()?.refreshUnresolvedConflictCount;
+    if (typeof refreshCount === 'function') {
+      void refreshCount();
+    }
   }, []);
 
   // 各结果的人话文案（静态映射以兼容类型化 i18n）
@@ -183,6 +186,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
       } else {
         await detectConflicts();
       }
+      setConflictRefreshNonce((n) => n + 1);
       setShowConflictDialog(true);
     } catch (err: unknown) {
       notifyErrorDeduped(
@@ -192,49 +196,16 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
     }
   }, [detectConflicts, detectConflictsMock, i18n?.language, t, useMock]);
 
-  // 解决冲突
-  const handleResolveConflicts = useCallback(
-    async (strategy: MergeStrategy) => {
-      try {
-        let result;
-        if (useMock) {
-          result = await resolveConflictsMock(strategy);
-        } else {
-          if (!cloudManifestJson) {
-            throw new Error('cloud manifest missing (configure cloud storage and detect conflicts first)');
-          }
-          result = await resolveConflicts(strategy, cloudManifestJson);
-        }
-
-        if (result.success) {
-          showGlobalNotification(
-            'success',
-            t('data:sync_settings.resolve_success', {
-              count: result.resolved_conflicts,
-            })
-          );
-          setShowConflictDialog(false);
-        } else {
-          showGlobalNotification(
-            'warning',
-            result.error_message
-              ? localizeCloudStorageError(result.error_message, t, i18n?.language)
-              : t('data:sync_settings.resolve_partial')
-          );
-        }
-      } catch (err: unknown) {
-        notifyErrorDeduped(
-          'error',
-          `${t('data:sync_settings.resolve_failed')}: ${localizeCloudStorageError(err, t, i18n?.language)}`
-        );
-      }
-    },
-    [cloudManifestJson, i18n?.language, resolveConflicts, resolveConflictsMock, t, useMock]
-  );
+  const handleJumpToInlineConflicts = useCallback(() => {
+    setConflictFocusNonce((n) => n + 1);
+    const el = document.getElementById('record-conflicts-panel');
+    el?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   // 关闭冲突对话框
   const handleCloseConflictDialog = useCallback(() => {
     setShowConflictDialog(false);
+    setConflictRefreshNonce((n) => n + 1);
   }, []);
 
   // 请求取消当前同步（协作式：等待/退避立即中断，文件传输在下一检查点停止）
@@ -290,11 +261,35 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           }
         }
 
+        let liveConflictCount = 0;
+        try {
+          const refreshFn = useGlobalSyncStore?.getState?.()?.refreshUnresolvedConflictCount;
+          if (typeof refreshFn === 'function') {
+            liveConflictCount = await refreshFn();
+          }
+        } catch {
+          // Ignore optional conflict count query error
+        }
+        const effectiveConflictCount = Math.max(liveConflictCount, result.conflicts_detected ?? 0);
+        if (effectiveConflictCount > liveConflictCount) {
+          useGlobalSyncStore?.getState?.()?.setUnresolvedConflictCount?.(effectiveConflictCount);
+        }
+        setConflictRefreshNonce((n) => n + 1);
+
         if (result.success && !result.error_message && (result.skipped_changes ?? 0) === 0 && quarantineCount === 0) {
-          showGlobalNotification(
-            'success',
-            t('data:sync_settings.sync_success')
-          );
+          if (effectiveConflictCount > 0) {
+            showGlobalNotification(
+              'warning',
+              t('data:governance.sync_completed_with_conflicts', {
+                count: effectiveConflictCount,
+              }),
+            );
+          } else {
+            showGlobalNotification(
+              'success',
+              t('data:sync_settings.sync_success')
+            );
+          }
           await getSyncStatus().catch(console.error);
           return true;
         }
@@ -366,6 +361,39 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
   const content = (
     <div className="space-y-8">
+      {/* 持久化未解决冲突提醒条（跨 toast 消失与刷新持续保留） */}
+      {unresolvedConflictCount > 0 && (
+        <div
+          role="alert"
+          data-testid="sync-settings-unresolved-conflicts-banner"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-warning/45 bg-warning/10 p-4"
+        >
+          <div className="flex min-w-0 flex-1 items-start gap-2.5">
+            <Warning className="mt-0.5 h-5 w-5 shrink-0 text-warning" aria-hidden="true" />
+            <div className="min-w-0 space-y-1">
+              <div className="text-sm font-semibold text-foreground">
+                {t('data:governance.unresolved_conflicts_banner_title', {
+                  count: unresolvedConflictCount,
+                })}
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t('data:governance.unresolved_conflicts_banner_desc')}
+              </p>
+            </div>
+          </div>
+          <DsButton
+            type="button"
+            variant="warning"
+            size="sm"
+            data-testid="sync-settings-jump-conflicts-btn"
+            onClick={handleJumpToInlineConflicts}
+            className="shrink-0"
+          >
+            {t('data:governance.unresolved_conflicts_go_resolve')}
+          </DsButton>
+        </div>
+      )}
+
       {/* 同步状态概览 */}
       <section className="min-w-0">
         <GroupTitle
@@ -713,11 +741,12 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           {conflicts?.has_conflicts ? (
             <Alert variant="warning">
               <Warning className="h-4 w-4" />
-              <AlertDescription className="flex items-center justify-between">
+              <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
                 <span>
                   {t('data:sync_settings.conflicts_found', {
                     count:
-                      conflicts.database_conflicts.length + conflicts.record_conflicts.length,
+                      conflicts.database_conflicts.length +
+                      Math.max(conflicts.record_conflicts.length, conflicts.record_conflict_count ?? 0, unresolvedConflictCount),
                   })}
                 </span>
                 <DsButton
@@ -730,7 +759,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                 </DsButton>
               </AlertDescription>
             </Alert>
-          ) : lastResult?.success ? (
+          ) : lastResult?.success && unresolvedConflictCount === 0 ? (
             <Alert>
               <CheckCircle className="h-4 w-4" />
               <AlertDescription>
@@ -753,7 +782,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           )}
 
           {/* 操作按钮 */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <DsButton
               variant="outline"
               onClick={handleDetectConflicts}
@@ -772,15 +801,15 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                 </>
               )}
             </DsButton>
-            {conflicts?.has_conflicts && (
+            {(conflicts?.has_conflicts || unresolvedConflictCount > 0) && (
               <DsButton
                 variant="outline"
-                onClick={() => setShowConflictDialog(true)}
+                onClick={conflicts?.has_conflicts ? () => setShowConflictDialog(true) : handleJumpToInlineConflicts}
                 disabled={isResolving}
                 className="flex-1 [@media(pointer:coarse)]:!min-h-11"
               >
                 <Lightning className="h-4 w-4 mr-2" />
-                {t('data:sync_settings.resolve_conflicts')}
+                {t('data:governance.open_record_conflicts_panel')}
               </DsButton>
             )}
           </div>
@@ -818,6 +847,12 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               </div>
             </div>
           )}
+
+          {/* 记录级冲突直达面板（支持保留本地 / 采用云端 / 保留两者 / 手动合并） */}
+          <RecordConflictsPanel
+            refreshSignal={conflictRefreshNonce}
+            focusSignal={conflictFocusNonce}
+          />
         </div>
       </section>
 
@@ -831,13 +866,15 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
         onRunSync={(direction) => handleSync(direction)}
       />
 
-      {/* 冲突解决对话框 */}
+      {/* 冲突详情与记录级解决对话框（不再调用已停用的批量清单级覆盖接口） */}
       {conflicts && (
         <ConflictResolutionDialog
           open={showConflictDialog}
           onClose={handleCloseConflictDialog}
           conflicts={conflicts}
-          onResolve={handleResolveConflicts}
+          recordConflictsContent={
+            <RecordConflictsPanel refreshSignal={conflictRefreshNonce} />
+          }
           isResolving={isResolving}
         />
       )}
