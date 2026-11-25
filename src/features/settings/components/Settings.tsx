@@ -368,15 +368,14 @@ export const Settings: React.FC<SettingsComponentProps> = ({
     config.webSearchDeepseekNeedContent,
   ]);
 
-  // Ensure the mobile settings scroll viewport remains vertically scrollable across dynamic tab mounts (e.g. SyncTab on 360px)
+  // Ensure the settings scroll viewport remains vertically scrollable across all viewports
+  // (desktop 1440px, tablet 768px/125%, mobile 360px) and dynamic lazy/async tab mounts.
   useEffect(() => {
-    if (!isSmallScreen || !settingsScrollElement) return;
+    if (!settingsScrollElement) return;
     settingsScrollElement.style.touchAction = 'pan-y';
     settingsScrollElement.style.overscrollBehaviorY = 'contain';
-    if (window.getComputedStyle(settingsScrollElement).overflowY === 'hidden') {
-      settingsScrollElement.style.overflowY = 'auto';
-    }
-  }, [isSmallScreen, settingsScrollElement, activeTab, mobileNavView]);
+    settingsScrollElement.style.overflowY = 'auto';
+  }, [settingsScrollElement, activeTab, mobileNavView]);
 
   if (loading && !useStandaloneMobileShell) {
     return (

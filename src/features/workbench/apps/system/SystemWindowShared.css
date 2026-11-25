@@ -193,6 +193,12 @@
   width: var(--wb-sidebar-width-medium, 240px);
 }
 
+/* 设置中窗（如 768×1024 平板）：限制侧栏占比，为外观/表单内容留足水平空间 */
+[data-wb-sys-app='settings'][data-wb-sys-size='medium'] .wb-sys-aside,
+[data-wb-sys-app='settings'][data-wb-sys-size='medium'] .wb-sys-skel-aside {
+  width: min(var(--wb-sidebar-width-medium, 240px), 28%);
+}
+
 /* 窗口内的 legacy Shell 侧栏组件（SettingsSidebar / TodoShellSidebar 等）
  * 自带 study-shell-sidebar-frame 的不透明面 + seam 边框 + 投影——那是给
  * legacy 全屏壳用的。窗口内统一对齐对话标准：透明面（透出 --wb-window-bg），

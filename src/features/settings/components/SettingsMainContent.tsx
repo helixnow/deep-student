@@ -88,6 +88,75 @@ export function SettingsMainContent({
   mobileTitle?: string;
   mobileRightActions?: React.ReactNode;
 }) {
+  const localViewportRef = React.useRef<HTMLDivElement | null>(null);
+  const contentWrapRef = React.useRef<HTMLDivElement | null>(null);
+  const handleViewportRef = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      localViewportRef.current = el;
+      setSettingsScrollElement(el);
+    },
+    [setSettingsScrollElement],
+  );
+
+  // 搜索跳转命中后，若目标分区异步加载完才撑开高度（如 DocumentProcessingTab -> OcrSettingsSection），
+  // 首次 scrollIntoView 可能被夹在旧内容底部。监听内容包装器尺寸增长，在用户未手动滚走前把
+  // 当前 .settings-search-hit 重新滚入视口中央。
+  React.useEffect(() => {
+    const contentWrap = contentWrapRef.current;
+    const viewport = localViewportRef.current;
+    if (!contentWrap || !viewport || typeof ResizeObserver === 'undefined') return;
+
+    let userInteracted = false;
+    let lastHit: HTMLElement | null = null;
+    let lastHeight = contentWrap.getBoundingClientRect().height;
+
+    const markUserInteracted = () => {
+      userInteracted = true;
+    };
+    viewport.addEventListener('wheel', markUserInteracted, { passive: true });
+    viewport.addEventListener('touchstart', markUserInteracted, { passive: true });
+    viewport.addEventListener('pointerdown', markUserInteracted, { passive: true });
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      const box = entry?.borderBoxSize?.[0] ?? entry?.contentBoxSize?.[0];
+      const nextHeight = box ? box.blockSize : (entry?.contentRect.height ?? contentWrap.getBoundingClientRect().height);
+      const grew = nextHeight > lastHeight + 1;
+      lastHeight = nextHeight;
+
+      const hit = contentWrap.querySelector<HTMLElement>('.settings-search-hit');
+      if (!hit) {
+        lastHit = null;
+        return;
+      }
+      if (hit !== lastHit) {
+        lastHit = hit;
+        userInteracted = false;
+      }
+      if (userInteracted || !grew) return;
+
+      viewport.style.overflowY = 'auto';
+      const vpRect = viewport.getBoundingClientRect();
+      const hitRect = hit.getBoundingClientRect();
+      if (
+        vpRect.height > 0 &&
+        (hitRect.top < vpRect.top ||
+          hitRect.bottom > vpRect.bottom ||
+          hitRect.top > vpRect.top + vpRect.height * 0.65)
+      ) {
+        hit.scrollIntoView({ block: 'center', behavior: 'auto' });
+      }
+    });
+
+    observer.observe(contentWrap);
+    return () => {
+      observer.disconnect();
+      viewport.removeEventListener('wheel', markUserInteracted);
+      viewport.removeEventListener('touchstart', markUserInteracted);
+      viewport.removeEventListener('pointerdown', markUserInteracted);
+    };
+  }, [activeTab, mobilePageMode]);
+
   const renderActiveSection = (placement: SettingsSectionPlacement) => {
     if (!activeSectionEntry || (activeSectionEntry.value.placement ?? 'main') !== placement) return null;
     return <SectionContent entry={activeSectionEntry} getProps={sectionProps} isMobile={isMobile} t={t} />;
@@ -97,7 +166,7 @@ export function SettingsMainContent({
     <div
       id="settings-main-content"
       className={cn(
-        'flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full relative bg-[color:var(--shell-workspace-panel)]',
+        'flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full relative bg-[color:var(--shell-workspace-panel)] [container-type:inline-size]',
         mobilePageMode && 'settings-mobile-sheet-body text-foreground'
       )}
       data-slot={mobilePageMode ? 'mobile-settings-page-content' : undefined}
@@ -154,14 +223,18 @@ export function SettingsMainContent({
           className={cn('min-h-0 flex-1 w-full max-w-full', mobilePageMode && 'scrollbar-none')}
           // OverlayScrollbars 会把 viewport 的 padding 强制写成 0，水平内边距必须放在内层。
           // viewportRef：虚拟化列表（SettingsVirtualList / ShortcutSettings）需要真实滚动元素。
-          viewportRef={setSettingsScrollElement}
+          viewportRef={handleViewportRef}
           trackOffsetTop={16}
           trackOffsetBottom={16}
           trackOffsetRight={0}
-          viewportClassName={mobilePageMode ? 'settings-mobile-sheet-scroll-viewport' : undefined}
+          viewportClassName={cn('settings-scroll-viewport outline-none', mobilePageMode && 'settings-mobile-sheet-scroll-viewport')}
+          viewportProps={{
+            tabIndex: 0,
+          }}
           style={{ textAlign: 'left' }}
         >
           <div
+            ref={contentWrapRef}
             className={cn(
               mobilePageMode
                 ? 'px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4'
@@ -170,7 +243,7 @@ export function SettingsMainContent({
             )}
           >
           {/* 分区切换：左右对称进出，替代原先只有入场的整树重挂载 */}
-          <ShellViewSwitch viewKey={activeTab} className="mx-auto w-full max-w-[72rem]">
+          <ShellViewSwitch viewKey={activeTab} fullHeight={false} className="mx-auto w-full max-w-[72rem]">
             <React.Suspense fallback={<SettingsTabFallback />}>
             <div
               className="space-y-6"

@@ -31,4 +31,29 @@ describe('shared settings primitives', () => {
       ...shared.settingsQuietInteractiveRowClassName.split(' '),
     );
   });
+
+  it('G29: uses container-query row stacking without overflow-hidden hard clipping', () => {
+    const { container } = render(
+      <shared.SettingsGroup title="Appearance">
+        <shared.SettingRow title="Theme" className="items-stretch md:!items-center">
+          <button type="button">System Default</button>
+        </shared.SettingRow>
+        <shared.SettingRow title="Width" controlClassName="md:w-[200px]">
+          <shared.SettingsSlider value={80} min={50} max={100} step={5} onChange={() => {}} suffix="%" />
+        </shared.SettingRow>
+      </shared.SettingsGroup>,
+    );
+
+    const card = container.querySelector('section > .rounded-2xl') as HTMLElement;
+    expect(card.className).toContain('[container-type:inline-size]');
+
+    const themeRow = screen.getByText('Theme').closest('.group') as HTMLElement;
+    expect(themeRow.className).not.toContain('overflow-hidden');
+    expect(themeRow.className).toContain('[@container_(min-width:600px)]:flex-row');
+    expect(themeRow.className).not.toContain('md:flex-row');
+
+    const sliderWrap = container.querySelector('input[type="range"]')?.parentElement as HTMLElement;
+    expect(sliderWrap.className).toContain('w-full');
+    expect(sliderWrap.className).toContain('min-w-0');
+  });
 });
