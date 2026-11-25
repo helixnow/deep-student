@@ -25,6 +25,18 @@ import {
 } from './injectModeUtils';
 import { keepsTurnsWithoutChatModel, resolveChatReadiness, triggerOpenSettingsModels } from '@/features/chat/readiness/readinessGate';
 import { clearComposerDraft } from './composerDraftStorage';
+
+let sessionDraftLruClearer: ((sessionId: string) => void) | null = null;
+
+/**
+ * Registers the UI-layer LRU draft clearer without coupling this hook module
+ * to InputBarUI's full component tree.
+ */
+export function registerSessionDraftLruClearer(
+  clearer: ((sessionId: string) => void) | null,
+): void {
+  sessionDraftLruClearer = clearer;
+}
 // ============================================================================
 // InputBar 选项
 // ============================================================================
@@ -47,6 +59,8 @@ export interface UseInputBarV2Options {
   } | null;
   /** ★ 清除 PDF 页码选择（发送成功后调用） */
   clearPdfPageRefs?: () => void;
+  /** 发送提交时同步清理会话级 LRU 草稿 */
+  onClearDraft?: (sessionId: string | null | undefined) => void;
   /** 队列是否启用（来自设置开关）。默认 false（关闭则保持原冻结行为）。 */
   queueEnabled?: boolean;
 }
@@ -195,11 +209,15 @@ export function useInputBarV2(
       showGlobalNotification('info', readiness.message);
     }
 
-    const currentAttachments = state.attachments;
+    const latestState = store.getState();
+    const currentAttachments = latestState.attachments;
     const effectiveAttachments = currentAttachments;
+    const pendingContextRefs = Array.isArray(latestState.pendingContextRefs)
+      ? latestState.pendingContextRefs
+      : null;
     
     // ========== 多变体支持（chips 模式） ==========
-    const content = rawContent; // 输入内容已是纯文本（不含 @模型）
+    const content = latestState.inputValue.trim() || rawContent; // 输入内容已是纯文本（不含 @模型）
     const opts = optionsRef.current;
     
     // 🔧 Feature Flag：检查多模型选择是否启用
@@ -293,12 +311,21 @@ export function useInputBarV2(
     // 源附件的注入选择不随 TM/MM 切换而改写。Rust context compiler 会为每个
     // 目标模型分别选择原图直读、辅助 MM 观察、OCR 或无视觉文本降级。
 
-    // 检查是否有附件正在上传
+    // 检查是否有附件正在上传，或尚未完成 ContextRef 关联（防止后端落盘时缺失 userContextRefs 导致刷新后图片附件丢失）
+    const pendingContextRefIds = pendingContextRefs
+      ? new Set(pendingContextRefs.map((ref) => ref.resourceId))
+      : null;
+    const hasUnlinkedContextRefAttachment = pendingContextRefIds !== null && effectiveAttachments.some((attachment) => {
+      if (attachment.status !== 'ready' && attachment.status !== 'processing') {
+        return false;
+      }
+      return !attachment.resourceId || !pendingContextRefIds.has(attachment.resourceId);
+    });
     const hasUploadingAttachments = effectiveAttachments.some(
       a => a.status === 'uploading' || a.status === 'pending'
-    );
+    ) || hasUnlinkedContextRefAttachment;
     if (hasUploadingAttachments) {
-      console.warn('[useInputBarV2] Cannot send: attachments still uploading');
+      console.warn('[useInputBarV2] Cannot send: attachments still uploading or awaiting context ref');
       showGlobalNotification(
         'warning',
         i18n.t('chatV2:inputBar.attachmentsUploading')
@@ -386,13 +413,17 @@ export function useInputBarV2(
       return;
     }
 
-    // 正文已拷贝到 finalContent。先清草稿 + 乐观清空输入框：
+    // 正文已拷贝到 finalContent。先清草稿（sessionStorage + 内存 LRU）+ 乐观清空输入框：
     // 1) 避免异步 prep 期间 debounce 又把正文写回 sessionStorage
-    // 2) 首条消息 empty→docked remount 时不会把已发送内容恢复进输入框
+    // 2) 首条消息 empty→docked remount 或页面刷新时不会把已发送内容恢复进输入框
     // sendMessageWithIds 仍会再清一次（attachments / sticky refs），此处只提前清文本。
-    const previousInput = state.inputValue;
-    clearComposerDraft(state.sessionId);
-    state.setInputValue('');
+    const previousInput = latestState.inputValue;
+    clearComposerDraft(latestState.sessionId);
+    opts?.onClearDraft?.(latestState.sessionId);
+    if (latestState.sessionId) {
+      sessionDraftLruClearer?.(latestState.sessionId);
+    }
+    latestState.setInputValue('');
 
     try {
       if (selectedPagesSnapshot?.text) {

@@ -251,6 +251,30 @@ function getManualPinnedSkillIds(
   return [];
 }
 
+function getLatestPersistedUserMessageText(state: {
+  messageOrder?: readonly string[];
+  messageMap?: ReadonlyMap<string, { role?: string; blockIds?: readonly string[] }>;
+  blocks?: ReadonlyMap<string, { type?: string; content?: string }>;
+}): string | null {
+  const messageOrder = Array.isArray(state.messageOrder) ? state.messageOrder : [];
+  if (messageOrder.length === 0 || !(state.messageMap instanceof Map) || !(state.blocks instanceof Map)) {
+    return null;
+  }
+  const scanFloor = Math.max(0, messageOrder.length - 30);
+  for (let i = messageOrder.length - 1; i >= scanFloor; i -= 1) {
+    const message = state.messageMap.get(messageOrder[i]);
+    if (message?.role !== 'user') continue;
+    const text = (message.blockIds ?? [])
+      .map((blockId) => state.blocks?.get(blockId))
+      .filter((block) => block?.type === 'content' && typeof block.content === 'string')
+      .map((block) => block!.content!)
+      .join('\n')
+      .trim();
+    return text || null;
+  }
+  return null;
+}
+
 export const InputBarV2: React.FC<InputBarV2Props> = memo(
   ({ store, placeholder, sendShortcut, leftAccessory, extraButtonsRight, inputToolSlot, composerInlinePanel, className, autoFocus, onFilesUpload, textbookOpen, onTextbookToggle, availableModels }) => {
     const { t } = useTranslation(['chatV2']);
@@ -258,6 +282,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     // 🔧 订阅合并：使用单个聚合选择器 + shallow 比较，避免多次重渲染
     const {
       sessionId,
+      isDataLoaded,
+      latestPersistedUserText,
       mode,
       inputValue,
       enableThinking,
@@ -297,6 +323,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         const featureFlags = resolveSessionFeatureFlags(s);
         return {
           sessionId: s.sessionId,
+          isDataLoaded: s.isDataLoaded,
+          latestPersistedUserText:
+            s.isDataLoaded === false ? null : getLatestPersistedUserMessageText(s),
           mode: s.mode,
           inputValue: s.inputValue,
           enableThinking: s.chatParams.enableThinking,
@@ -502,10 +531,18 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
 
     useEffect(() => {
       if (!draftStorageKey) return;
+      // 刷新/首次加载期间等待后端会话历史落位再恢复本地草稿，
+      // 防止抢跑写入 inputValueDirty 并把已发送的 RAG 提问复活到输入框
+      if (isDataLoaded === false) return;
       if (draftRestoredKeyRef.current === draftStorageKey) return;
       draftRestoredKeyRef.current = draftStorageKey;
       const state = store.getState();
       const sessionDraftLru = getGlobalSessionDraftLru();
+      if (state.sessionStatus !== 'idle') {
+        clearComposerDraft(sessionId);
+        if (sessionId) sessionDraftLru?.deleteDraft(sessionId);
+        return;
+      }
       const lruDraft = sessionId ? sessionDraftLru?.getDraft(sessionId) ?? null : null;
       const storageDraft = restoreComposerDraftIfSafe(
         sessionId,
@@ -513,6 +550,12 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         state.sessionStatus,
       );
       const restoredText = lruDraft?.text || storageDraft;
+      const latestSentUserText = getLatestPersistedUserMessageText(state);
+      if (restoredText && latestSentUserText && restoredText.trim() === latestSentUserText) {
+        clearComposerDraft(sessionId);
+        if (sessionId) sessionDraftLru?.deleteDraft(sessionId);
+        return;
+      }
       if (restoredText && state.inputValue === '' && state.sessionStatus === 'idle') {
         state.setInputValue(restoredText);
       }
@@ -523,7 +566,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
           pastedPills: [],
         });
       }
-    }, [draftStorageKey, sessionId, store]);
+    }, [draftStorageKey, isDataLoaded, sessionId, store]);
 
     useEffect(() => {
       if (!draftStorageKey) return;
@@ -540,7 +583,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         return;
       }
       const timer = window.setTimeout(() => {
-        writeComposerDraft(sessionId, effectiveInput);
+        const latest = store.getState();
+        if (latest.sessionId !== sessionId) return;
+        if (!latest.inputValue || latest.sessionStatus !== 'idle') {
+          clearComposerDraft(sessionId);
+          return;
+        }
+        writeComposerDraft(sessionId, latest.inputValue);
       }, 300);
       return () => window.clearTimeout(timer);
     }, [draftStorageKey, inputValue, sessionId, store]);
@@ -1061,6 +1110,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       opts.buildPdfRefTags = buildPdfRefTags;
       opts.getSelectedPagesContext = getSelectedPagesContext;
       opts.clearPdfPageRefs = clearPdfPageRefs;
+      opts.onClearDraft = (sid) => {
+        if (sid) getGlobalSessionDraftLru()?.deleteDraft(sid);
+      };
       // 🆕 队列模式启用开关（控制 useInputBarV2 内部 submit 路由）
       opts.queueEnabled = queueSettings.queueEnabled;
       return opts;
@@ -1612,6 +1664,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // ★ U01：缺失 AI 模型 / API 密钥一键引导
         missingApiKey={missingApiKey}
         onOpenApiSettings={handleOpenApiSettings}
+        suppressDraftRestore={isDataLoaded === false}
+        latestPersistedUserText={latestPersistedUserText}
         />
       </>
     );

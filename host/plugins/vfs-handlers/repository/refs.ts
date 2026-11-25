@@ -320,6 +320,64 @@ export function getResourceTitle(conn: SqlExecutor, sourceId: string): string | 
   return row ?? null;
 }
 
+function isLikelyImagePayload(raw: string): boolean {
+  const trimmed = rustTrim(raw);
+  if (trimmed === '') return false;
+  let candidate = trimmed;
+  if (trimmed.toLowerCase().startsWith('data:')) {
+    const marker = ';base64,';
+    const markerIndex = trimmed.toLowerCase().indexOf(marker);
+    if (markerIndex < 0) return false;
+    const mime = trimmed.slice(5, markerIndex).trim().toLowerCase();
+    if (mime !== '' && !mime.startsWith('image/')) return false;
+    candidate = trimmed.slice(markerIndex + marker.length);
+  }
+  const normalized = candidate.replace(/[\r\n]+/g, '');
+  if (normalized.length < 4 || normalized.length % 4 === 1) return false;
+  if (normalized.length <= 1024) {
+    return /^[A-Za-z0-9+/]+={0,2}$/.test(normalized);
+  }
+  return /^[A-Za-z0-9+/]+$/.test(normalized.slice(0, 512))
+    && /^[A-Za-z0-9+/]+={0,2}$/.test(normalized.slice(-512));
+}
+
+function isResourceDataLookupSql(query: unknown): boolean {
+  const sql = typeof query === 'string'
+    ? query
+    : (query !== null && typeof query === 'object' && 'sql' in query && typeof (query as { sql?: unknown }).sql === 'string')
+      ? (query as { sql: string }).sql
+      : '';
+  return sql.trim().replace(/\s+/g, ' ').toLowerCase() === 'select data from resources where id = ?1';
+}
+
+/**
+ * Read-only SqlExecutor view that suppresses `resources.data` lookups so
+ * `FileRepository.getContent` skips non-image metadata in `resources.data`
+ * and falls through to `file.blobHash` / `file.originalPath`.
+ */
+function createResourceDataBypassConn(conn: SqlExecutor): SqlExecutor {
+  return {
+    get inTransaction() { return conn.inTransaction; },
+    get(query: unknown, ...args: unknown[]) {
+      if (isResourceDataLookupSql(query)) {
+        return { data: null } as never;
+      }
+      return (conn.get as (...callArgs: unknown[]) => unknown)(query, ...args) as never;
+    },
+    one: ((query: unknown, ...args: unknown[]) =>
+      (conn.one as (...callArgs: unknown[]) => unknown)(query, ...args)) as SqlExecutor['one'],
+    pluck: ((query: unknown, params?: unknown) =>
+      (conn.pluck as (q: unknown, p?: unknown) => unknown)(query, params)) as SqlExecutor['pluck'],
+    all: ((query: unknown, ...args: unknown[]) =>
+      (conn.all as (...callArgs: unknown[]) => unknown)(query, ...args)) as SqlExecutor['all'],
+    iterate: ((query: unknown, ...args: unknown[]) =>
+      (conn.iterate as (...callArgs: unknown[]) => unknown)(query, ...args)) as SqlExecutor['iterate'],
+    run: ((query: unknown, params?: unknown) =>
+      (conn.run as (q: unknown, p?: unknown) => unknown)(query, params)) as SqlExecutor['run'],
+    exec: (sql: string) => conn.exec(sql),
+  };
+}
+
 /** ref_handlers.rs:1042-1170 `get_resource_content_with_conn`. */
 export function getRawResourceContent(
   conn: SqlExecutor,
@@ -339,6 +397,33 @@ export function getRawResourceContent(
   }
   log.info('[PDF_DEBUG] get_source_id_type: source_id=%s, inferred_type=%s, table_name=%s', sourceId, info.type, info.table);
 
+  if (type === 'image') {
+    log.info('[PDF_DEBUG] Image branch: reading binary/base64 via VfsFileRepo::get_content_with_conn first');
+    try {
+      const content = files.getContent(conn, blobsDir, sourceId);
+      if (content !== null && isLikelyImagePayload(content)) {
+        log.info('[PDF_DEBUG] VfsFileRepo returned valid image content, len=%d', utf8ByteLength(content));
+        return content;
+      }
+      if (content !== null) {
+        log.warn('[PDF_DEBUG] VfsFileRepo returned non-image payload for image source_id=%s, retrying with blob/file fallback', sourceId);
+        const fallbackContent = files.getContent(createResourceDataBypassConn(conn), blobsDir, sourceId);
+        if (fallbackContent !== null && isLikelyImagePayload(fallbackContent)) {
+          log.info('[PDF_DEBUG] VfsFileRepo blob/file fallback returned valid image content, len=%d', utf8ByteLength(fallbackContent));
+          return fallbackContent;
+        }
+      }
+    } catch (error) { log.info('[PDF_DEBUG] VfsFileRepo returned error: %s', error); throw error; }
+
+    const resourceId = conn.get<{ resource_id: string | null }>(
+      tableSql(resourceIdBySourceQuery, info.table), [sourceId])?.resource_id ?? null;
+    if (resourceId !== null) {
+      const data = conn.get(resourceDataQuery, [resourceId])?.data ?? null;
+      if (data !== null && isLikelyImagePayload(data)) return data;
+    }
+    return null;
+  }
+
   const resourceId = conn.get<{ resource_id: string | null }>(
     tableSql(resourceIdBySourceQuery, info.table), [sourceId])?.resource_id ?? null;
   log.info('[PDF_DEBUG] resource_id query: source_id=%s, resource_id=%s', sourceId, resourceId);
@@ -357,7 +442,7 @@ export function getRawResourceContent(
     log.info('[PDF_DEBUG] Exam preview_json len=%d', utf8ByteLength(preview ?? ''));
     return preview;
   }
-  if (type === 'image' || type === 'file' || type === 'textbook') {
+  if (type === 'file' || type === 'textbook') {
     log.info('[PDF_DEBUG] Image/File/Textbook branch: calling VfsFileRepo::get_content_with_conn');
     try {
       const content = files.getContent(conn, blobsDir, sourceId);

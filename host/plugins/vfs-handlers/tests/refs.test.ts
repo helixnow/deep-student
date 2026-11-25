@@ -247,4 +247,88 @@ describe('reference command integration', { timeout: 120_000 }, () => {
     expect(await extractFileText(deps, 'file_parser', 'test.pdf', 'AAAA')).toBe('中'.repeat(334));
     expect(calls).toHaveLength(1);
   });
+
+  it('resolves image refs from blob bytes instead of short-circuiting on non-image JSON in resources.data (G20)', async () => {
+    const conn = vfs.storage.database('vfs');
+    const repos = vfs.host.ctx.vfsRepo;
+    const blobsDir = vfs.host.ctx.vfsDatabase.blobsDir();
+    const pngBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x01, 0x02, 0x03]);
+    const expectedBase64 = pngBytes.toString('base64');
+    const storedBlob = repos.blobs.storeBlob(conn, blobsDir, pngBytes, 'image/png', 'png');
+    const metaResource = repos.resources.createOrReuse(
+      conn,
+      'image',
+      JSON.stringify({ refs: [{ sourceId: 'att_img_json_meta', type: 'image', name: 'turn1.png' }], totalCount: 1, truncated: false }),
+      'att_img_json_meta',
+      'files',
+      { name: 'turn1.png', mimeType: 'image/png', size: pngBytes.length },
+    );
+    const now = new Date().toISOString();
+    conn.run(
+      `INSERT INTO files (id, resource_id, blob_hash, type, name, mime_type, size, content_hash, sha256, file_name, status, created_at, updated_at)
+       VALUES (?1, ?2, ?3, 'image', 'turn1.png', 'image/png', ?4, ?5, ?5, 'turn1.png', 'active', ?6, ?6)`,
+      ['att_img_json_meta', metaResource.resourceId, storedBlob.hash, pngBytes.length, storedBlob.hash, now],
+    );
+
+    const raw = repo.getRawResourceContent(conn, blobsDir, repos.files, 'att_img_json_meta', 'image', vfs.host.ctx.logger);
+    expect(raw).toBe(expectedBase64);
+
+    const [resolved] = await invoke<ResolvedResource[]>('vfs_resolve_resource_refs', {
+      refs: [{
+        sourceId: 'att_img_json_meta',
+        resourceHash: storedBlob.hash,
+        type: 'image',
+        name: 'turn1.png',
+        injectModes: { image: ['image'] },
+      }],
+    });
+    expect(resolved).toMatchObject({
+      sourceId: 'att_img_json_meta',
+      found: true,
+      content: expectedBase64,
+    });
+  });
+
+  it('prefers compressed image blob and preserves valid inline base64 while rejecting non-image metadata without blob', () => {
+    const conn = vfs.storage.database('vfs');
+    const repos = vfs.host.ctx.vfsRepo;
+    const blobsDir = vfs.host.ctx.vfsDatabase.blobsDir();
+    const compressedBytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+    const compressedBlob = repos.blobs.storeBlob(conn, blobsDir, compressedBytes, 'image/jpeg', 'jpg');
+    const jsonResource = repos.resources.createOrReuse(
+      conn,
+      'image',
+      '{"refs":[{"sourceId":"att_img_compressed","type":"image"}]}',
+      'att_img_compressed',
+      'files',
+      { name: 'compressed.png', mimeType: 'image/png' },
+    );
+    const now = new Date().toISOString();
+    conn.run(
+      `INSERT INTO files (id, resource_id, compressed_blob_hash, type, name, mime_type, size, content_hash, sha256, file_name, status, created_at, updated_at)
+       VALUES (?1, ?2, ?3, 'image', 'compressed.png', 'image/png', ?4, ?5, ?5, 'compressed.png', 'active', ?6, ?6)`,
+      ['att_img_compressed', jsonResource.resourceId, compressedBlob.hash, compressedBytes.length, compressedBlob.hash, now],
+    );
+    expect(repo.getRawResourceContent(conn, blobsDir, repos.files, 'att_img_compressed', 'image', vfs.host.ctx.logger))
+      .toBe(compressedBytes.toString('base64'));
+
+    const inlineBase64 = Buffer.from('tiny-inline-png-bytes').toString('base64');
+    const inlineResource = repos.resources.createOrReuse(conn, 'image', inlineBase64, 'att_img_inline', 'files', null);
+    conn.run(
+      `INSERT INTO files (id, resource_id, type, name, mime_type, size, content_hash, sha256, file_name, status, created_at, updated_at)
+       VALUES (?1, ?2, 'image', 'inline.png', 'image/png', 21, 'hash_inline', 'hash_inline', 'inline.png', 'active', ?3, ?3)`,
+      ['att_img_inline', inlineResource.resourceId, now],
+    );
+    expect(repo.getRawResourceContent(conn, blobsDir, repos.files, 'att_img_inline', 'image', vfs.host.ctx.logger))
+      .toBe(inlineBase64);
+
+    const orphanJsonRes = repos.resources.createOrReuse(conn, 'image', '{"refs":[]}', 'att_img_bad_meta', 'files', null);
+    conn.run(
+      `INSERT INTO files (id, resource_id, type, name, mime_type, size, content_hash, sha256, file_name, status, created_at, updated_at)
+       VALUES (?1, ?2, 'image', 'broken.png', 'image/png', 10, 'hash_broken', 'hash_broken', 'broken.png', 'active', ?3, ?3)`,
+      ['att_img_bad_meta', orphanJsonRes.resourceId, now],
+    );
+    expect(repo.getRawResourceContent(conn, blobsDir, repos.files, 'att_img_bad_meta', 'image', vfs.host.ctx.logger))
+      .toBeNull();
+  });
 });

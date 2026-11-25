@@ -55,6 +55,19 @@ export interface ComposerTextareaProps {
   modelMentionActions?: ModelMentionActions;
 }
 
+/**
+ * compositionend 之后的 Enter 抑制窗口（毫秒）：
+ * 覆盖 Safari/WebKit、Linux IBus/Fcitx 及 CDP/Playwright 场景下，
+ * 确认候选词的 Enter keydown 在 compositionend 之后的下一帧/宏任务到达且 isComposing=false 的时序。
+ */
+const IME_COMPOSITION_END_GRACE_MS = 150;
+
+function getMonotonicNowMs(): number {
+  return typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+}
+
 export const ComposerTextarea: React.FC<ComposerTextareaProps> = ({
   textareaRef,
   ghostRef,
@@ -82,33 +95,65 @@ export const ComposerTextarea: React.FC<ComposerTextareaProps> = ({
 }) => {
   // 🔧 IME 合成态追踪：防止 WKWebView 中文输入法重复追加文本
   const isComposingRef = useRef(false);
-  // 🔧 Safari/WebKit 时序修复：compositionend 先于确认 Enter 的 keydown 触发，
-  // 该 keydown 的 isComposing 已为 false，会把「确认候选词」误判为「发送」。
-  // 标记 compositionend 后的同一轮事件循环，期间的 Enter 一律视为 IME 确认键。
+  // 🔧 跨端 IME 时序修复：Safari/WebKit、Linux IBus/Fcitx、Playwright/CDP 中
+  // compositionend 可能先于确认候选词的 Enter keydown 触发，且该 keydown 的 isComposing 已为 false。
+  // 记录 compositionend 时间戳，在短窗口内拦截紧随其后的确认 Enter（遇非 Enter 按键或新文本改动立即解除）。
   const compositionJustEndedRef = useRef(false);
+  const compositionEndedAtRef = useRef<number | null>(null);
+  const lastComposedValueRef = useRef<string | null>(null);
   const compositionEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    return () => {
-      if (compositionEndTimerRef.current !== null) {
-        clearTimeout(compositionEndTimerRef.current);
-      }
-    };
+
+  const clearCompositionEndGrace = useCallback(() => {
+    compositionJustEndedRef.current = false;
+    compositionEndedAtRef.current = null;
+    lastComposedValueRef.current = null;
+    if (compositionEndTimerRef.current !== null) {
+      clearTimeout(compositionEndTimerRef.current);
+      compositionEndTimerRef.current = null;
+    }
   }, []);
 
-  // IME 合成态检测
-  // 覆盖三类场景：1) 标准 isComposing；2) Windows/旧 WebView 的 keyCode 229；
-  // 3) Safari/WebKit 在 compositionend 之后才派发确认 Enter 的 keydown（isComposing 已为 false）
-  const isImeComposing = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    const anyNative = e.nativeEvent as any;
+  useEffect(() => clearCompositionEndGrace, [clearCompositionEndGrace]);
+
+  // 实时 IME 合成态检测：标准 isComposing / key==='Process' / keyCode 229 / 合成期间 ref
+  const isLiveImeComposing = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const nativeEvent = e.nativeEvent as KeyboardEvent & { keyCode?: number; which?: number };
+    const eventWithLegacyFields = e as React.KeyboardEvent<HTMLTextAreaElement> & {
+      isComposing?: boolean;
+      keyCode?: number;
+      which?: number;
+    };
+    const keyCode = nativeEvent?.keyCode ?? eventWithLegacyFields.keyCode;
+    const which = eventWithLegacyFields.which ?? nativeEvent?.which;
     return Boolean(
-      (e as any).isComposing ||
-      (anyNative && anyNative.isComposing) ||
-      (e as any).which === 229 ||
-      (anyNative && anyNative.keyCode === 229) ||
-      isComposingRef.current ||
-      compositionJustEndedRef.current
+      eventWithLegacyFields.isComposing ||
+      nativeEvent?.isComposing ||
+      e.key === 'Process' ||
+      nativeEvent?.key === 'Process' ||
+      which === 229 ||
+      keyCode === 229 ||
+      isComposingRef.current
     );
   }, []);
+
+  const isInCompositionEndGrace = useCallback(() => {
+    if (compositionEndedAtRef.current !== null) {
+      const elapsed = getMonotonicNowMs() - compositionEndedAtRef.current;
+      if (elapsed >= 0 && elapsed < IME_COMPOSITION_END_GRACE_MS) {
+        return true;
+      }
+      clearCompositionEndGrace();
+      return false;
+    }
+    return compositionJustEndedRef.current;
+  }, [clearCompositionEndGrace]);
+
+  // IME 合成态检测（含实时合成态与 compositionend 后短时间窗）
+  const isImeComposing = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) =>
+      isLiveImeComposing(e) || isInCompositionEndGrace(),
+    [isLiveImeComposing, isInCompositionEndGrace]
+  );
 
   // 判断是否应该发送
   const shouldSendOnEnter = useCallback(
@@ -144,21 +189,27 @@ export const ComposerTextarea: React.FC<ComposerTextareaProps> = ({
           value={inputValue}
           onCompositionStart={() => {
             isComposingRef.current = true;
+            clearCompositionEndGrace();
+          }}
+          onCompositionUpdate={() => {
+            isComposingRef.current = true;
+            clearCompositionEndGrace();
           }}
           onCompositionEnd={(e) => {
             isComposingRef.current = false;
-            // Safari/WebKit：确认 Enter 的 keydown 会在 compositionend 之后同步派发，
-            // 用微小的时间窗标记它属于 IME 确认，避免误触发送
+            const composedTarget = e.target as HTMLTextAreaElement;
+            // Safari/WebKit/Linux IME/CDP：确认 Enter 的 keydown 可能晚于 compositionend 到达，
+            // 用 150ms 窗口拦截该确认 Enter，避免误触发送或插入多余换行
             compositionJustEndedRef.current = true;
+            compositionEndedAtRef.current = getMonotonicNowMs();
+            lastComposedValueRef.current = composedTarget.value;
             if (compositionEndTimerRef.current !== null) {
               clearTimeout(compositionEndTimerRef.current);
             }
             compositionEndTimerRef.current = setTimeout(() => {
-              compositionJustEndedRef.current = false;
-              compositionEndTimerRef.current = null;
-            }, 0);
+              clearCompositionEndGrace();
+            }, IME_COMPOSITION_END_GRACE_MS);
             // 合成结束时用最终值同步 store，确保不丢字
-            const composedTarget = e.target as HTMLTextAreaElement;
             onInputChange(composedTarget.value);
             onCaretPosChange(composedTarget.selectionStart);
             setTimeout(() => {
@@ -167,6 +218,14 @@ export const ComposerTextarea: React.FC<ComposerTextareaProps> = ({
             }, 0);
           }}
           onChange={(e) => {
+            // compositionend 之后若用户产生了新的文本变更（与刚提交的候选词不同），立即解除宽限期
+            if (
+              !isComposingRef.current &&
+              compositionEndedAtRef.current !== null &&
+              e.target.value !== lastComposedValueRef.current
+            ) {
+              clearCompositionEndGrace();
+            }
             // Gboard updates the composing word on each key. Keep the controlled value in sync.
             if (!isComposingRef.current || !isMobile || isAndroid()) {
               onInputChange(e.target.value);
@@ -183,6 +242,24 @@ export const ComposerTextarea: React.FC<ComposerTextareaProps> = ({
           }}
           placeholder={placeholder}
           onKeyDown={(e) => {
+            const liveComposing = isLiveImeComposing(e);
+            if (liveComposing) {
+              return;
+            }
+
+            if (isInCompositionEndGrace()) {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                if (!e.repeat) {
+                  clearCompositionEndGrace();
+                }
+                return;
+              }
+              if (e.key !== 'Unidentified') {
+                clearCompositionEndGrace();
+              }
+            }
+
             // ★ Linux/GTK WebView: Ctrl/Cmd+A must select composer text and MUST NOT
             // open the OS file picker (hidden <input type="file"> / native accelerator).
             if (
