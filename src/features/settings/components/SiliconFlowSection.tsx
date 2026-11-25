@@ -9,6 +9,7 @@ import { Brain, Check, Clock, Cpu, DownloadSimple, FloppyDisk, GearSix, Image, L
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'; // 使用Tauri v2 http插件
 import { invoke } from '@tauri-apps/api/core';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { SiliconFlowLogo } from '@/components/ui/SiliconFlowLogo';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/shad/Card';
 import { DsButton } from '@/components/ui/DsButton';
@@ -17,11 +18,13 @@ import { Label } from '@/components/ui/shad/Label';
 import { Badge } from '@/components/ui/shad/Badge';
 import { CollapsibleModelSelector, type CollapsibleModelOption } from '@/components/ui/shad/CollapsibleModelSelector';
 import { TauriAPI } from '@/utils/tauriApi';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { inferCapabilities, getModelDefaultParameters, applyProviderSpecificAdjustments } from '@/utils/modelCapabilities';
 import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 import { cn } from '@/lib/utils';
 import { vfsUnifiedIndexApi } from '@/api/vfsUnifiedIndexApi';
 import { ApiKeyField } from './ApiKeyField';
+import { formatVendorModelFetchError } from './vendorModelService';
 import { normalizePastedApiKey } from '../utils/apiKeyValidation';
 
 interface SiliconFlowModel {
@@ -542,6 +545,8 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       if (data?.data && Array.isArray(data.data)) {
         // 修改：获取所有可用模型，不再过滤嵌入和重排序模型
         const allModels = data.data.filter((model: SiliconFlowModel) =>
+          typeof model?.id === 'string' &&
+          model.id.trim().length > 0 &&
           // 排除音频/视频模型
           !model.id.includes('tts') &&
           !model.id.includes('whisper') &&
@@ -573,9 +578,11 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       } else {
         throw new Error(t('common:siliconflow.invalid_response_format'));
       }
-    } catch (error: unknown) {
-      console.error(t('common:siliconflow.fetch_models_error'), error);
-      showGlobalNotification('error', t('common:siliconflow.fetch_models_failed_message', { error: error instanceof Error ? error.message : 'Unknown error' }));
+    } catch (err: unknown) {
+      const detail = formatVendorModelFetchError(err, t);
+      debugLog.warn('[SiliconFlowSection] Failed to fetch models:', detail, err);
+      setError(detail);
+      showGlobalNotification('error', t('common:siliconflow.fetch_models_failed_message', { error: detail }));
       // 失败时保留已有数据（来自缓存或上次成功获取），避免一次失败导致用户看到空列表。
     } finally {
       setLoading(false);
@@ -700,8 +707,8 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       // setApiKey('');
       // setModels([]);
       // setIsExpanded(false);
-    } catch (error: unknown) {
-      showGlobalNotification('error', t('common:siliconflow.config_create_failed', { error: error instanceof Error ? error.message : 'Unknown error' }));
+    } catch (err: unknown) {
+      showGlobalNotification('error', t('common:siliconflow.config_create_failed', { error: getErrorMessage(err) }));
     }
   };
 
@@ -1017,8 +1024,8 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       } else {
         showGlobalNotification('error', t('common:siliconflow.one_click_failed'));
       }
-    } catch (error: unknown) {
-      showGlobalNotification('error', t('common:siliconflow.one_click_error', { error: error instanceof Error ? error.message : 'Unknown error' }));
+    } catch (err: unknown) {
+      showGlobalNotification('error', t('common:siliconflow.one_click_error', { error: getErrorMessage(err) }));
     } finally {
       setLoading(false);
     }

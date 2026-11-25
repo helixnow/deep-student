@@ -174,8 +174,71 @@ describe('commands.rs::fetch_vendor_models', () => {
       }),
     })).rejects.toMatchObject({
       error_type: 'Network',
-      message: `获取供应商模型失败: 401 Unauthorized - ${'x'.repeat(2048)}`,
+      message: `401 Unauthorized - ${'x'.repeat(2048)}`,
     });
+  });
+
+  it('surfaces actionable network/HTTP/JSON errors without hardcoded Chinese prefixes (G22)', async () => {
+    const connRefused = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:19999'), { code: 'ECONNREFUSED' });
+    const fetchErr = new TypeError('fetch failed', { cause: connRefused });
+    await expect(fetchVendorModels(vendor({ baseUrl: 'http://127.0.0.1:19999/v1' }), {
+      fetch: async () => { throw fetchErr; },
+    })).rejects.toMatchObject({
+      error_type: 'Network',
+      message: 'fetch failed: connect ECONNREFUSED 127.0.0.1:19999',
+    });
+
+    const dualStack = new TypeError('fetch failed', {
+      cause: new AggregateError([
+        new Error('connect ECONNREFUSED ::1:19999'),
+        new Error('connect ECONNREFUSED 127.0.0.1:19999'),
+      ], ''),
+    });
+    await expect(fetchVendorModels(vendor({ baseUrl: 'http://localhost:19999/v1' }), {
+      fetch: async () => { throw dualStack; },
+    })).rejects.toMatchObject({
+      error_type: 'Network',
+      message: 'fetch failed: connect ECONNREFUSED ::1:19999; connect ECONNREFUSED 127.0.0.1:19999',
+    });
+
+    await expect(fetchVendorModels(vendor({}), {
+      fetch: async () => ({
+        status: 502, statusText: 'Bad Gateway', json: async () => ({}), text: async () => '   ',
+      }),
+    })).rejects.toMatchObject({
+      error_type: 'Network',
+      message: '502 Bad Gateway',
+    });
+
+    await expect(fetchVendorModels(vendor({}), {
+      fetch: async () => ({
+        status: 200, statusText: 'OK',
+        json: async () => { throw new SyntaxError('Unexpected token < in JSON'); },
+        text: async () => '<html>',
+      }),
+    })).rejects.toMatchObject({
+      error_type: 'Network',
+      message: 'Invalid JSON response: Unexpected token < in JSON',
+    });
+  });
+
+  it('skips blank/whitespace-only model IDs when parsing vendor responses', () => {
+    const parsedOpenAi = parseVendorModelsPage({
+      data: [{ id: '' }, { id: '   ' }, { id: ' gpt-4o ', display_name: '   ' }],
+    }, 'openai');
+    expect([...parsedOpenAi.models.values()]).toEqual([
+      { id: 'gpt-4o', label: 'gpt-4o', contextWindow: null, maxOutputTokens: null },
+    ]);
+
+    const parsedGemini = parseVendorModelsPage({
+      models: [
+        { name: 'models/   ', supportedGenerationMethods: ['generateContent'] },
+        { name: 'models/gemini-2.5-pro', displayName: '  ', supportedGenerationMethods: ['generateContent'] },
+      ],
+    }, 'gemini');
+    expect([...parsedGemini.models.values()]).toEqual([
+      { id: 'gemini-2.5-pro', label: 'gemini-2.5-pro', contextWindow: null, maxOutputTokens: null },
+    ]);
   });
 
   it('is registered and returns the builtin catalog through the command boundary', async () => {

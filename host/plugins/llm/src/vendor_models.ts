@@ -222,8 +222,11 @@ export function parseVendorModelsPage(
       if (!methods.some((method) => method === 'generateContent')) continue;
       if (typeof obj.name !== 'string') continue;
       const rawId = obj.name;
-      const id = rawId.startsWith('models/') ? rawId.slice('models/'.length) : rawId;
-      const label = typeof obj.displayName === 'string' ? obj.displayName : id;
+      const id = (rawId.startsWith('models/') ? rawId.slice('models/'.length) : rawId).trim();
+      if (!id) continue;
+      const label = typeof obj.displayName === 'string' && obj.displayName.trim() !== ''
+        ? obj.displayName.trim()
+        : id;
       models.set(id, {
         id,
         label,
@@ -239,11 +242,14 @@ export function parseVendorModelsPage(
   for (const item of items) {
     const obj = objectOf(item);
     if (!obj || typeof obj.id !== 'string') continue;
-    const id = obj.id;
+    const id = obj.id.trim();
+    if (!id) continue;
     if (kind === 'anthropic' && typeof obj.type === 'string' && obj.type !== 'model') continue;
     const lower = id.toLowerCase();
     if (kind === 'openai' && OPENAI_EXCLUDED_MODEL_NEEDLES.some((needle) => lower.includes(needle))) continue;
-    const label = typeof obj.display_name === 'string' ? obj.display_name : id;
+    const label = typeof obj.display_name === 'string' && obj.display_name.trim() !== ''
+      ? obj.display_name.trim()
+      : id;
     models.set(id, {
       id,
       label,
@@ -279,6 +285,43 @@ function withQuery(url: URL, kind: VendorModelsKind, cursor: string | null): str
 
 function statusText(response: FetchLikeResponse): string {
   return response.statusText ? `${response.status} ${response.statusText}` : String(response.status);
+}
+
+/** Extract actionable, locale-neutral network/parse error detail (unwrapping undici `cause` & `AggregateError`). */
+function describeFetchError(error: unknown, depth = 0): string {
+  if (depth > 4 || error === null || error === undefined) return '';
+  if (typeof error === 'string') return error.trim();
+  if (typeof error !== 'object') return String(error).trim();
+  const record = error as {
+    name?: unknown;
+    message?: unknown;
+    code?: unknown;
+    cause?: unknown;
+    errors?: unknown;
+  };
+  const baseMessage = typeof record.message === 'string' ? record.message.trim() : '';
+  const code = typeof record.code === 'string' && record.code.trim() !== '' ? record.code.trim() : '';
+  const parts: string[] = [];
+  if (baseMessage !== '') parts.push(baseMessage);
+  if (code !== '' && !baseMessage.includes(code)) parts.push(code);
+
+  if (Array.isArray(record.errors) && record.errors.length > 0) {
+    const subMessages = [...new Set(
+      record.errors
+        .map((entry) => describeFetchError(entry, depth + 1))
+        .filter((text) => text !== ''),
+    )];
+    if (subMessages.length > 0) parts.push(subMessages.join('; '));
+  }
+  if (record.cause !== undefined && record.cause !== error) {
+    const causeText = describeFetchError(record.cause, depth + 1);
+    if (causeText !== '' && !parts.some((part) => part.includes(causeText))) {
+      parts.push(causeText);
+    }
+  }
+  if (parts.length > 0) return parts.join(': ');
+  if (typeof record.name === 'string' && record.name.trim() !== '') return record.name.trim();
+  return String(error).trim();
 }
 
 export interface VendorModelsRuntime {
@@ -320,17 +363,19 @@ export async function fetchVendorModels(
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
-      throw AppError.network(`获取供应商模型失败: ${error instanceof Error ? error.message : String(error)}`);
+      const detail = describeFetchError(error) || 'Network request failed';
+      throw AppError.network(detail);
     }
     if (response.status < 200 || response.status >= 300) {
-      const detail = Array.from(await response.text().catch(() => '')).slice(0, ERROR_BODY_LIMIT).join('');
-      throw AppError.network(`获取供应商模型失败: ${statusText(response)} - ${detail}`);
+      const detail = Array.from(await response.text().catch(() => '')).slice(0, ERROR_BODY_LIMIT).join('').trim();
+      throw AppError.network(detail ? `${statusText(response)} - ${detail}` : statusText(response));
     }
     let body: unknown;
     try {
       body = await response.json();
     } catch (error) {
-      throw AppError.network(`解析供应商模型响应失败: ${error instanceof Error ? error.message : String(error)}`);
+      const detail = describeFetchError(error) || 'Invalid JSON';
+      throw AppError.network(`Invalid JSON response: ${detail}`);
     }
     const parsed = parseVendorModelsPage(body, kind);
     for (const [id, model] of parsed.models) models.set(id, model);

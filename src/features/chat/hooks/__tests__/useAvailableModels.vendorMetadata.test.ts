@@ -40,4 +40,21 @@ describe('useAvailableModels vendor metadata', () => {
       supportsReasoning: true,
     });
   });
+
+  it('filters blank model rows and deduplicates by id and (vendorId, model) while keeping distinct vendors (G22)', async () => {
+    invokeMock.mockResolvedValueOnce([
+      { id: 'blank-1', name: 'Untitled', model: '   ', vendorId: 'v-a', vendorName: 'Vendor A', enabled: true },
+      { id: 'm-1', name: '  ', model: 'gpt-4o', vendorId: 'v-a', vendorName: 'Vendor A', enabled: true },
+      { id: 'm-1', name: 'Dup Same Id', model: 'gpt-4o', vendorId: 'v-a', vendorName: 'Vendor A', enabled: true },
+      { id: 'm-2', name: 'Dup Same Vendor Model', model: ' GPT-4O ', vendorId: 'v-a', vendorName: 'Vendor A', enabled: true },
+      { id: 'm-3', name: 'Other Vendor GPT-4o', model: 'gpt-4o', vendorId: 'v-b', vendorName: 'Vendor B', enabled: true },
+    ]);
+
+    const models = await ensureModelsCacheLoaded(true);
+
+    expect(models.map((m) => ({ id: m.id, name: m.name, model: m.model, vendorId: m.vendorId }))).toEqual([
+      { id: 'm-1', name: 'gpt-4o', model: 'gpt-4o', vendorId: 'v-a' },
+      { id: 'm-3', name: 'Other Vendor GPT-4o', model: 'gpt-4o', vendorId: 'v-b' },
+    ]);
+  });
 });

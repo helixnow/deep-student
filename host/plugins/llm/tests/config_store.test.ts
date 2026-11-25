@@ -699,4 +699,52 @@ describe('llm_manager/mod.rs configuration', () => {
       }),
     ).toBe('deepseek');
   });
+
+  it('saveModelProfiles strips blank model IDs and deduplicates by id and (vendorId, model) (G22)', async () => {
+    const { store } = makeStore();
+    const blank = { ...profileFixture('blank-1', 'Untitled', '   ', false, false), vendorId: 'vendor-custom' };
+    const first = {
+      ...profileFixture('custom-1', '  ', 'gpt-4o', true, false),
+      vendorId: 'vendor-custom',
+      isFavorite: false,
+    };
+    const dupCase = {
+      ...profileFixture('custom-2', 'GPT 4o Duplicate', ' GPT-4O ', true, false),
+      vendorId: 'vendor-custom',
+      isFavorite: true,
+    };
+    const otherVendorSameModel = {
+      ...profileFixture('other-1', 'Proxy GPT-4o', 'gpt-4o', true, false),
+      vendorId: 'vendor-proxy',
+      isFavorite: true,
+    };
+
+    await store.saveModelProfiles([blank, first, dupCase, otherVendorSameModel]);
+    const persisted = await store.readUserModelProfiles();
+
+    expect(persisted.map((profile) => ({
+      id: profile.id,
+      vendorId: profile.vendorId,
+      model: profile.model,
+      label: profile.label,
+      isFavorite: profile.isFavorite,
+    }))).toEqual([
+      { id: 'custom-1', vendorId: 'vendor-custom', model: 'gpt-4o', label: 'gpt-4o', isFavorite: true },
+      { id: 'other-1', vendorId: 'vendor-proxy', model: 'gpt-4o', label: 'Proxy GPT-4o', isFavorite: true },
+    ]);
+  });
+
+  it('getModelProfiles defensively cleans legacy blank rows and duplicate (vendorId, model) entries (G22)', async () => {
+    const { store, settings } = makeStore();
+    const legacyBlank = { ...profileFixture('legacy-blank', '', '   ', false, false), vendorId: 'vendor-a' };
+    const dup1 = { ...profileFixture('dup-1', 'Model A', 'model-a', true, false), vendorId: 'vendor-a', isFavorite: true };
+    const dup2 = { ...profileFixture('dup-2', 'Model A copy', 'MODEL-A', true, false), vendorId: 'vendor-a', isFavorite: true };
+    seedConfigs(settings, [], [legacyBlank, dup1, dup2]);
+
+    const profiles = await store.getModelProfiles();
+    expect(profiles.some((profile) => profile.id === 'legacy-blank')).toBe(false);
+    const vendorA = profiles.filter((profile) => profile.vendorId === 'vendor-a');
+    expect(vendorA.map((profile) => profile.id)).toEqual(['dup-1']);
+    expect(vendorA[0]?.isFavorite).toBe(true);
+  });
 });

@@ -384,7 +384,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   runtimeModelProviderLabel,
   runtimeModelIconId,
   runtimeCurrentModelId,
-  runtimeModelOptions,
+  runtimeModelOptions: rawRuntimeModelOptions,
   onSelectRuntimeModel,
   runtimeModelMultiSelect,
   hasModelPanel,
@@ -450,6 +450,10 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
     thinkingDepthOptions.length > 0
   );
   const hasThinkingUnsupportedMenu = !!(compactThinkingStateLabel && thinkingUnsupported);
+  const runtimeModelOptions = useMemo(
+    () => rawRuntimeModelOptions.filter((option) => (option.id ?? '').trim() !== '' && (option.label ?? '').trim() !== ''),
+    [rawRuntimeModelOptions]
+  );
   const hasRuntimeModelMenu = runtimeModelOptions.length > 0 || hasModelPanel;
   const hasThinkingRuntimeMenu = hasThinkingDepthMenu || hasThinkingUnsupportedMenu || hasRuntimeModelMenu;
   const hasThinkingToggleMenu = !!(!thinkingUnsupported && compactThinkingStateLabel && (onSetThinkingDepth || onToggleThinking));
@@ -753,7 +757,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                               chooseRuntimeModelLabel
                             )}
                           </AppMenuSubTrigger>
-                          <AppMenuSubContent className="w-[min(264px,calc(100vw-24px))] max-w-[min(264px,calc(100vw-24px))] p-1">
+                          <AppMenuSubContent className="flex max-h-[calc(var(--app-menu-available-height,100dvh)-16px)] w-[min(264px,calc(100vw-24px))] max-w-[min(264px,calc(100vw-24px))] flex-col overflow-hidden p-1">
                             <RuntimeModelSubmenuBody
                               options={runtimeModelOptions}
                               currentModelId={runtimeCurrentModelId}

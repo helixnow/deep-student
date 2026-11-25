@@ -240,13 +240,57 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   );
 
   const normalizedModels = useMemo<NormalizedModel[]>(() => {
-    return models.map((m) => ({
-      ...m,
-      vendorName: m.vendorName ?? (m.vendorId ? vendorNameMap.get(m.vendorId) : undefined),
-      searchable: `${m.name ?? ''} ${m.model ?? ''} ${m.vendorName ?? ''} ${m.vendorId ? (vendorNameMap.get(m.vendorId) ?? '') : ''}`.toLowerCase(),
-      isFavorite: favoriteIds.has(m.id),
-    }));
-  }, [favoriteIds, models, vendorNameMap]);
+    const result: NormalizedModel[] = [];
+    const indexById = new Map<string, number>();
+    const indexByVendorModel = new Map<string, number>();
+
+    for (const m of models) {
+      const id = (m.id ?? '').trim();
+      const model = (m.model ?? '').trim();
+      const name = (m.name ?? '').trim() || model;
+      if (!id || !model || !name) continue;
+      if (indexById.has(id)) continue;
+
+      const resolvedVendorName = m.vendorName ?? (m.vendorId ? vendorNameMap.get(m.vendorId) : undefined);
+      const candidate: NormalizedModel = {
+        ...m,
+        id,
+        model,
+        name,
+        vendorName: resolvedVendorName,
+        searchable: `${name} ${model} ${resolvedVendorName ?? ''}`.toLowerCase(),
+        isFavorite: favoriteIds.has(id),
+      };
+
+      const vendorScope = (m.vendorId ?? resolvedVendorName ?? m.baseUrl ?? '').trim().toLowerCase();
+      const dedupeKey = `${vendorScope}\u0000${model.toLowerCase()}`;
+      const existingIndex = indexByVendorModel.get(dedupeKey);
+      if (existingIndex !== undefined) {
+        const previous = result[existingIndex];
+        const prevPriority =
+          (previous.id === singleSelectedId ? 4 : 0)
+          + (compareSelectedIds.has(previous.id) ? 2 : 0)
+          + (previous.isFavorite ? 1 : 0);
+        const nextPriority =
+          (candidate.id === singleSelectedId ? 4 : 0)
+          + (compareSelectedIds.has(candidate.id) ? 2 : 0)
+          + (candidate.isFavorite ? 1 : 0);
+        if (nextPriority > prevPriority) {
+          indexById.delete(previous.id);
+          result[existingIndex] = candidate;
+          indexById.set(id, existingIndex);
+        }
+        continue;
+      }
+
+      const nextIndex = result.length;
+      result.push(candidate);
+      indexById.set(id, nextIndex);
+      indexByVendorModel.set(dedupeKey, nextIndex);
+    }
+
+    return result;
+  }, [compareSelectedIds, favoriteIds, models, singleSelectedId, vendorNameMap]);
 
   const sortedAndFiltered = useMemo<NormalizedModel[]>(() => {
     const keyword = searchTerm.trim().toLowerCase();
