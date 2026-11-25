@@ -19,9 +19,6 @@ updates:
       interval: "monthly"
     commit-message:
       prefix: "chore(ci)"
-    labels:
-      - "ci"
-      - "dependencies"
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
