@@ -706,6 +706,7 @@
    ============================================================================ */
 .chat-v2 .markdown-content .code-block-wrapper,
 .chat-v2 .markdown-content .table-wrapper,
+.chat-v2 .markdown-content .math-scroll-wrapper,
 .chat-v2 .markdown-content .chain-of-thought {
   display: block;
   box-sizing: border-box;
@@ -720,6 +721,7 @@
    ============================================================================ */
 
 .chat-v2 .table-wrapper {
+  position: relative;
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
@@ -752,8 +754,8 @@
   margin-top: calc((var(--chat-md-paragraph-gap) + 0.3rem) * 0.5);
 }
 
-/* ScrollArea wrapper for tables — ensures full-width horizontal scroll container
-   with native overflow-x fallback so wide 10+ column tables never blow out bubbles */
+/* Native horizontal scroll container for tables — keeps a visible thin scrollbar
+   when overflowing and avoids OverlayScrollbars theme re-init overhead */
 .chat-v2 .markdown-content .table-scroll-area {
   display: block;
   width: 100%;
@@ -761,7 +763,85 @@
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
+  padding-bottom: 4px;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* Always-visible thin horizontal scrollbar thumb when wide tables or display KaTeX overflow,
+   overriding global transparent-until-hover so users never mistake overflow for hard clipping. */
+.chat-v2 .markdown-content .table-scroll-area::-webkit-scrollbar,
+.chat-v2 .markdown-content .math-scroll-area::-webkit-scrollbar {
+  height: 8px;
+}
+
+.chat-v2 .markdown-content .table-scroll-area::-webkit-scrollbar-track,
+.chat-v2 .markdown-content .math-scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-v2 .markdown-content .table-scroll-area::-webkit-scrollbar-thumb,
+.chat-v2 .markdown-content .math-scroll-area::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.chat-v2 .markdown-content .table-scroll-area::-webkit-scrollbar-thumb:hover,
+.chat-v2 .markdown-content .math-scroll-area::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+.chat-v2 .markdown-content .table-scroll-area::-webkit-scrollbar-thumb:active,
+.chat-v2 .markdown-content .math-scroll-area::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-active);
+  background-clip: padding-box;
+}
+
+/* Subtle horizontal edge fade cues when wide tables or display math can scroll further */
+.chat-v2 .table-wrapper::before,
+.chat-v2 .table-wrapper::after,
+.chat-v2 .markdown-content .math-scroll-wrapper::before,
+.chat-v2 .markdown-content .math-scroll-wrapper::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 10px;
+  width: 28px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  z-index: 1;
+}
+
+.chat-v2 .table-wrapper::before,
+.chat-v2 .markdown-content .math-scroll-wrapper::before {
+  left: 0;
+  background: linear-gradient(
+    to right,
+    hsl(var(--background) / 92%),
+    hsl(var(--background) / 0%)
+  );
+}
+
+.chat-v2 .table-wrapper::after,
+.chat-v2 .markdown-content .math-scroll-wrapper::after {
+  right: 0;
+  background: linear-gradient(
+    to left,
+    hsl(var(--background) / 92%),
+    hsl(var(--background) / 0%)
+  );
+}
+
+.chat-v2 .table-wrapper[data-scroll-overflow-left='true']::before,
+.chat-v2 .markdown-content .math-scroll-wrapper[data-scroll-overflow-left='true']::before,
+.chat-v2 .table-wrapper[data-scroll-overflow-right='true']::after,
+.chat-v2 .markdown-content .math-scroll-wrapper[data-scroll-overflow-right='true']::after {
+  opacity: 1;
 }
 
 /* Override chat.css generic table max-width:100% inside the dedicated horizontal
@@ -1477,9 +1557,17 @@
   flex-shrink: 0;
 }
 
-/* KaTeX 块级公式由 MarkdownRenderer 的横向 ScrollArea 统一承载。
-   显式 width/max-width/min-width 与 overflow-x 兜底防止宽矩阵撑破气泡，
-   上下留白避免高分式/多行矩阵与相邻正文碰撞或被横向滚动裁切。 */
+/* KaTeX 块级公式由 MarkdownRenderer 的原生横向滚动容器统一承载。
+   外层 .math-scroll-wrapper 提供边缘滚动渐隐提示，内层 .math-scroll-area
+   负责轻量原生横向滚动并保留可见细滚动条，避免宽矩阵看似被硬裁切或触发布局/主题重初始化风暴。 */
+.chat-v2 .markdown-content .math-scroll-wrapper {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
 .chat-v2 .markdown-content .math-scroll-area {
   display: block;
   width: 100%;
@@ -1490,6 +1578,8 @@
   -webkit-overflow-scrolling: touch;
   padding-top: 0.35em;
   padding-bottom: 0.45em;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 /* 行内长公式防撑破：限制最大宽度为容器 100% 并允许横向滚动，避免窄屏溢出视口；
@@ -1528,7 +1618,13 @@
   padding-bottom: 0.35em;
 }
 
+/* Inside .math-scroll-area, let the outer container own horizontal scrolling and
+   expand .katex-display to max-content (min 100%) so wide formulas stay left-accessible
+   and never create nested scrollbars or right-edge clipping. */
 .chat-v2 .markdown-content .math-scroll-area .katex-display {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
   overflow: visible;
   margin: 0.25em 0;
   padding-top: 0.25em;

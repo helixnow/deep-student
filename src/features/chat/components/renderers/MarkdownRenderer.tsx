@@ -8,8 +8,7 @@ import ReactMarkdown, { type Components } from 'react-markdown';
 import type { KatexOptions } from 'katex';
 import { getLoadedKatex, ensureKatexLoaded, scheduleKatexIdlePrefetch } from './lazyKatex';
 import { CodeBlock } from './CodeBlock';
-import { TableBlockShell } from '../ui/TableBlockShell';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { TableBlockShell, useHorizontalScrollCue } from '../ui/TableBlockShell';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
 import { sanitizeDanglingMarkdown } from './sanitizeDanglingMarkdown';
 import { openUrl } from '@/utils/urlOpener';
@@ -491,13 +490,29 @@ function setCachedKatex(latex: string, displayMode: boolean, html: string): void
 const MathScrollShell: React.FC<{ displayMode: boolean; children: React.ReactNode }> = ({
   displayMode,
   children,
-}) => displayMode ? (
-  <ScrollArea orientation="horizontal" className="math-scroll-area">
-    {children}
-  </ScrollArea>
-) : (
-  <span className="math-inline-scroll">{children}</span>
-);
+}) => {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+
+  useHorizontalScrollCue(wrapperRef, scrollerRef, displayMode);
+
+  if (!displayMode) {
+    return <span className="math-inline-scroll">{children}</span>;
+  }
+
+  return (
+    <div ref={wrapperRef} data-slot="math-scroll" className="math-scroll-wrapper">
+      <div
+        ref={scrollerRef}
+        data-orientation="horizontal"
+        data-native-scrollbars="true"
+        className="math-scroll-area scroll-area--native min-w-0 max-w-full overflow-x-auto overflow-y-hidden"
+      >
+        {children}
+      </div>
+    </div>
+  );
+};
 
 const LazyMath: React.FC<{
   latex: string;

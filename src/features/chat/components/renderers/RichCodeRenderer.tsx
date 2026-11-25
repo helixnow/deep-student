@@ -93,24 +93,104 @@ const readIsDarkTheme = (): boolean =>
     document.documentElement.getAttribute('data-theme') === 'dark' ||
     Boolean(document.body?.classList.contains('dark')));
 
+type DarkThemeListener = (isDark: boolean) => void;
+
+const darkThemeListeners = new Set<DarkThemeListener>();
+let sharedThemeObserver: MutationObserver | null = null;
+let sharedLastIsDark = false;
+
+/**
+ * Shared single document-level theme subscriber (`class` / `data-theme` on `<html>`).
+ * Prevents N per-diagram `MutationObserver` instances from firing synchronously on
+ * theme toggle and only notifies listeners when dark/light mode actually flips.
+ */
+export function subscribeDocumentDarkMode(listener: DarkThemeListener): () => void {
+  if (typeof MutationObserver !== 'function' || typeof document === 'undefined') {
+    return () => {};
+  }
+
+  if (darkThemeListeners.size === 0) {
+    sharedLastIsDark = readIsDarkTheme();
+    sharedThemeObserver = new MutationObserver(() => {
+      const nextIsDark = readIsDarkTheme();
+      if (nextIsDark === sharedLastIsDark) return;
+      sharedLastIsDark = nextIsDark;
+      for (const cb of Array.from(darkThemeListeners)) {
+        cb(nextIsDark);
+      }
+    });
+    sharedThemeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class', 'data-theme'],
+    });
+  }
+
+  darkThemeListeners.add(listener);
+
+  return () => {
+    darkThemeListeners.delete(listener);
+    if (darkThemeListeners.size === 0 && sharedThemeObserver) {
+      sharedThemeObserver.disconnect();
+      sharedThemeObserver = null;
+    }
+  };
+}
+
+const THEME_SENSITIVE_RICH_KINDS = new Set<RichCodeRendererKind>(['vega-lite', 'molecule-3d']);
+
 /**
  * 所有模型驱动的块级可视化在用户主动点击“运行”后才懒加载：无外链、无脚本执行。
  */
 export function RichCodeRenderer({ kind, source }: RichCodeRendererProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const themeSensitive = THEME_SENSITIVE_RICH_KINDS.has(kind);
   const [isDark, setIsDark] = useState<boolean>(readIsDarkTheme);
+  const isVisibleRef = useRef<boolean>(true);
+  const appliedDarkRef = useRef<boolean>(isDark);
+  appliedDarkRef.current = isDark;
 
   useEffect(() => {
-    if (typeof MutationObserver !== 'function' || typeof document === 'undefined') return;
-    const sync = () => setIsDark(readIsDarkTheme());
-    const observer = new MutationObserver(sync);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ['class', 'data-theme'],
+    if (!themeSensitive) return;
+    isVisibleRef.current = true;
+
+    const syncThemeIfVisible = () => {
+      if (!isVisibleRef.current) return;
+      const nextIsDark = readIsDarkTheme();
+      if (nextIsDark !== appliedDarkRef.current) {
+        setIsDark(nextIsDark);
+      }
+    };
+
+    const unsubscribeTheme = subscribeDocumentDarkMode(() => {
+      syncThemeIfVisible();
     });
-    return () => observer.disconnect();
-  }, []);
+
+    const container = containerRef.current;
+    let observer: IntersectionObserver | null = null;
+    if (container && typeof IntersectionObserver === 'function') {
+      observer = new IntersectionObserver(
+        (entries) => {
+          const latest = entries[entries.length - 1];
+          if (!latest) return;
+          isVisibleRef.current = latest.isIntersecting;
+          if (latest.isIntersecting) {
+            syncThemeIfVisible();
+          }
+        },
+        { rootMargin: '100px 0px' },
+      );
+      observer.observe(container);
+    }
+
+    return () => {
+      unsubscribeTheme();
+      observer?.disconnect();
+    };
+  }, [themeSensitive]);
+
+  const effectiveIsDark = themeSensitive ? isDark : false;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -137,7 +217,7 @@ export function RichCodeRenderer({ kind, source }: RichCodeRendererProps) {
             actions: false,
             renderer: 'svg',
             defaultStyle: false,
-            ...(isDark ? { theme: 'dark' } : {}),
+            ...(effectiveIsDark ? { theme: 'dark' } : {}),
             ast: true,
             expr: expressionInterpreter,
           });
@@ -170,7 +250,7 @@ export function RichCodeRenderer({ kind, source }: RichCodeRendererProps) {
           const module: any = await import('3dmol/build/3Dmol-min.js');
           if (disposed) return;
           const mol3d = module.default ?? module;
-          const viewer = mol3d.createViewer(host, { backgroundColor: isDark ? '#1c1f26' : 'white' });
+          const viewer = mol3d.createViewer(host, { backgroundColor: effectiveIsDark ? '#1c1f26' : 'white' });
           viewer.addModel(source, 'pdb');
           viewer.setStyle({}, { stick: {}, cartoon: { opacity: 0.82 } });
           viewer.zoomTo();
@@ -185,10 +265,10 @@ export function RichCodeRenderer({ kind, source }: RichCodeRendererProps) {
     };
     void render();
     return () => { disposed = true; cleanup?.(); };
-  }, [kind, source, isDark]);
+  }, [kind, source, effectiveIsDark]);
 
   return (
-    <div className={`rich-code-renderer rich-code-renderer--${kind}`} data-no-screen-swipe>
+    <div ref={containerRef} className={`rich-code-renderer rich-code-renderer--${kind}`} data-no-screen-swipe>
       {error ? <div className="rich-code-renderer-error">{error}</div> : <div ref={hostRef} className="rich-code-renderer-host" />}
     </div>
   );
