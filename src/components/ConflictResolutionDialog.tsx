@@ -16,32 +16,22 @@ import { Badge } from '@/components/ui/shad/Badge';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Label } from '@/components/ui/shad/Label';
 import { Separator } from '@/components/ui/shad/Separator';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
+import { Card, CardContent } from '@/components/ui/shad/Card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/shad/Tabs';
 import { Alert, AlertDescription } from '@/components/ui/shad/Alert';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { getDatabaseDisplayName } from '@/types/dataGovernance';
 import {
   WarningCircle,
   Warning,
   Database,
   Cloud,
   HardDrive,
-  GitBranch,
-  GitMerge,
   Check,
-  X,
   Clock,
   CaretRight,
   CaretDown,
-  ArrowClockwise,
-  CircleNotch,
   FileX,
-  ArrowCircleUp,
-  ArrowCircleDown,
-  GearSix,
-  Lightning,
-  Eye,
-  PencilSimple,
 } from '@phosphor-icons/react';
 
 // ============================================================================
@@ -103,7 +93,13 @@ export interface ConflictResolutionDialogProps {
   open: boolean;
   onClose: () => void;
   conflicts: ConflictDetectionResult;
-  onResolve: (strategy: MergeStrategy) => Promise<void>;
+  /** 可选：嵌入完整的记录级冲突处理面板（由 settings 特征层注入，避免跨层循环依赖） */
+  recordConflictsContent?: React.ReactNode;
+  /** 可选：在未注入面板时，单条记录级冲突的直接处理回调 */
+  onResolveRecord?: (
+    conflict: RecordConflict,
+    resolution: 'keep_local' | 'keep_cloud' | 'keep_both',
+  ) => Promise<void>;
   isResolving?: boolean;
 }
 
@@ -187,44 +183,6 @@ function getConflictTypeInfo(
         color: 'bg-gray-500',
         icon: <WarningCircle size={16} />,
         severity: 'medium',
-      };
-  }
-}
-
-/** 获取策略信息 */
-function getStrategyInfo(
-  strategy: MergeStrategy,
-
-  t: (...args: any[]) => any
-): {
-  label: string;
-  description: string;
-  icon: React.ReactNode;
-} {
-  switch (strategy) {
-    case 'keep_local':
-      return {
-        label: t('strategy_info.keep_local'),
-        description: t('strategy_info.keep_local_desc'),
-        icon: <HardDrive size={16} />,
-      };
-    case 'use_cloud':
-      return {
-        label: t('strategy_info.use_cloud'),
-        description: t('strategy_info.use_cloud_desc'),
-        icon: <Cloud size={16} />,
-      };
-    case 'keep_latest':
-      return {
-        label: t('strategy_info.keep_latest'),
-        description: t('strategy_info.keep_latest_desc'),
-        icon: <Clock size={16} />,
-      };
-    case 'manual':
-      return {
-        label: t('strategy_info.manual'),
-        description: t('strategy_info.manual_desc'),
-        icon: <PencilSimple size={16} />,
       };
   }
 }
@@ -350,12 +308,13 @@ function DatabaseConflictCard({
   isExpanded,
   onToggleExpand,
 }: DatabaseConflictCardProps) {
-  const { t } = useTranslation('sync');
+  const { t } = useTranslation(['sync', 'data']);
   const typeInfo = getConflictTypeInfo(conflict.conflict_type, t);
   const newerSide = compareTime(
     conflict.local_state?.last_updated_at,
     conflict.cloud_state?.last_updated_at
   );
+  const displayDbName = getDatabaseDisplayName(conflict.database_name, t);
 
   return (
     <Card className="overflow-hidden">
@@ -373,8 +332,8 @@ function DatabaseConflictCard({
         <Database size={20} className="text-muted-foreground" />
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium">{conflict.database_name}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium" title={conflict.database_name}>{displayDbName}</span>
             <Badge variant="outline" className={`${typeInfo.color} text-white text-xs`}>
               {typeInfo.icon}
               <span className="ml-1">{typeInfo.label}</span>
@@ -624,20 +583,30 @@ interface RecordConflictCardProps {
   conflict: RecordConflict;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  onResolveRecord?: (
+    conflict: RecordConflict,
+    resolution: 'keep_local' | 'keep_cloud' | 'keep_both',
+  ) => Promise<void>;
+  isResolving?: boolean;
 }
 
 function RecordConflictCard({
   conflict,
   isExpanded,
   onToggleExpand,
+  onResolveRecord,
+  isResolving = false,
 }: RecordConflictCardProps) {
-  const { t } = useTranslation('sync');
+  const { t } = useTranslation(['sync', 'data']);
   const newerSide = compareTime(conflict.local_updated_at, conflict.cloud_updated_at);
+  const friendlyTable = t(`data:governance.conflict_table_names.${conflict.table_name}`, {
+    defaultValue: conflict.table_name,
+  });
 
   return (
     <Card className="overflow-hidden">
       <div
-        className="flex items-center gap-3 p-4 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
+        className="flex flex-wrap items-center gap-3 p-4 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={onToggleExpand}
       >
         {isExpanded ? (
@@ -649,10 +618,10 @@ function RecordConflictCard({
         <FileX size={20} className="text-amber-500" />
 
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-sm">{conflict.table_name}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-medium text-sm">{friendlyTable}</span>
             <span className="text-xs text-muted-foreground">
-              ID: <code className="bg-muted px-1 rounded">{conflict.record_id}</code>
+              {getDatabaseDisplayName(conflict.database_name, t)}
             </span>
           </div>
           <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
@@ -701,90 +670,45 @@ function RecordConflictCard({
               </div>
             </div>
 
+            {onResolveRecord && (
+              <div className="flex flex-wrap gap-2">
+                <DsButton
+                  variant="outline"
+                  size="sm"
+                  disabled={isResolving}
+                  onClick={() => void onResolveRecord(conflict, 'keep_local')}
+                >
+                  {t('data:governance.keep_local')}
+                </DsButton>
+                <DsButton
+                  variant="outline"
+                  size="sm"
+                  disabled={isResolving}
+                  onClick={() => void onResolveRecord(conflict, 'keep_cloud')}
+                >
+                  {t('data:governance.use_cloud')}
+                </DsButton>
+                <DsButton
+                  variant="primary"
+                  size="sm"
+                  disabled={isResolving}
+                  onClick={() => void onResolveRecord(conflict, 'keep_both')}
+                >
+                  {t('data:governance.keep_both')}
+                </DsButton>
+              </div>
+            )}
+
             {/* JSON 差异对比 */}
             <JsonDiffViewer
               localData={conflict.local_data}
               cloudData={conflict.cloud_data}
               title={t('data_diff')}
-/>
+            />
           </div>
         </CardContent>
       )}
     </Card>
-  );
-}
-
-// ============================================================================
-// 策略选择组件
-// ============================================================================
-
-interface StrategySelectionProps {
-  selectedStrategy: MergeStrategy;
-  onStrategyChange: (strategy: MergeStrategy) => void;
-  needsMigration: boolean;
-  disabled?: boolean;
-}
-
-function StrategySelection({
-  selectedStrategy,
-  onStrategyChange,
-  needsMigration,
-  disabled,
-}: StrategySelectionProps) {
-  const { t } = useTranslation('sync');
-  const strategies: MergeStrategy[] = ['keep_local', 'use_cloud', 'keep_latest', 'manual'];
-
-  return (
-    <div className="space-y-3">
-      <Label className="text-sm font-medium">{t('select_strategy')}</Label>
-
-      {needsMigration && (
-        <Alert variant="warning">
-          <Warning size={16} />
-          <AlertDescription>
-            {t('migration_required')}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {strategies.map((strategy) => {
-          const info = getStrategyInfo(strategy, t);
-          const isSelected = selectedStrategy === strategy;
-
-          return (
-            <Card
-              key={strategy}
-              className={`cursor-pointer transition-all ${
-                isSelected
-                  ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
-                  : 'hover:border-muted-foreground/50'
-              } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-              onClick={() => !disabled && onStrategyChange(strategy)}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <div
-                    className={`p-2 rounded-lg ${
-                      isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted'
-                    }`}
-                  >
-                    {info.icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-sm">{info.label}</span>
-                      {isSelected && <Check size={16} className="text-primary" />}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">{info.description}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -796,14 +720,17 @@ export function ConflictResolutionDialog({
   open,
   onClose,
   conflicts,
-  onResolve,
+  recordConflictsContent,
+  onResolveRecord,
   isResolving = false,
 }: ConflictResolutionDialogProps) {
-  const { t } = useTranslation('sync');
-  const [selectedStrategy, setSelectedStrategy] = useState<MergeStrategy>('keep_latest');
+  const { t } = useTranslation(['sync', 'data', 'common']);
   const [expandedDbIds, setExpandedDbIds] = useState<Set<string>>(new Set());
   const [expandedRecordIds, setExpandedRecordIds] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<string>('database');
+  const recordConflictDisplayCount = conflicts.record_conflicts.length || conflicts.record_conflict_count || 0;
+  const [activeTab, setActiveTab] = useState<string>(
+    recordConflictDisplayCount > 0 || Boolean(recordConflictsContent) ? 'record' : 'database',
+  );
 
   // 切换数据库冲突展开状态
   const toggleDbExpand = useCallback((dbName: string) => {
@@ -831,19 +758,13 @@ export function ConflictResolutionDialog({
     });
   }, []);
 
-  // 处理解决冲突
-  const handleResolve = useCallback(async () => {
-    await onResolve(selectedStrategy);
-  }, [onResolve, selectedStrategy]);
-
   // 检查是否有冲突
   const hasConflicts = conflicts.has_conflicts;
-  const recordConflictDisplayCount = conflicts.record_conflicts.length || conflicts.record_conflict_count || 0;
   const totalConflicts =
     conflicts.database_conflicts.length + recordConflictDisplayCount;
 
   return (
-    <DsDialog open={open} onOpenChange={(open) => !open && onClose()} maxWidth="max-w-4xl">
+    <DsDialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()} maxWidth="max-w-4xl">
         <DsDialogHeader>
           <DsDialogTitle className="flex items-center gap-2">
             <WarningCircle size={20} className="text-amber-500" />
@@ -867,18 +788,25 @@ export function ConflictResolutionDialog({
             {/* 冲突摘要 */}
             <ConflictSummaryHeader conflicts={conflicts} />
 
-            {/* 冲突详情 Tab */}
+            {conflicts.needs_migration && (
+              <Alert variant="warning">
+                <Warning size={16} />
+                <AlertDescription>
+                  {t('migration_required')}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            <Alert>
+              <WarningCircle size={16} />
+              <AlertDescription className="text-xs">
+                {t('data:governance.conflict_dialog_record_level_notice')}
+              </AlertDescription>
+            </Alert>
+
+            {/* 冲突详情 Tab（不再暴露已停用的批量清单级覆盖策略） */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
               <TabsList>
-                <TabsTrigger value="database" className="flex items-center gap-2">
-                  <Database size={16} />
-                  {t('database_level')}
-                  {conflicts.database_conflicts.length > 0 && (
-                    <Badge variant="secondary" className="ml-1 h-5 px-1.5">
-                      {conflicts.database_conflicts.length}
-                    </Badge>
-                  )}
-                </TabsTrigger>
                 <TabsTrigger value="record" className="flex items-center gap-2">
                   <FileX size={16} />
                   {t('record_level')}
@@ -888,41 +816,23 @@ export function ConflictResolutionDialog({
                     </Badge>
                   )}
                 </TabsTrigger>
-                <TabsTrigger value="strategy" className="flex items-center gap-2">
-                  <GearSix size={16} />
-                  {t('strategy')}
+                <TabsTrigger value="database" className="flex items-center gap-2">
+                  <Database size={16} />
+                  {t('database_level')}
+                  {conflicts.database_conflicts.length > 0 && (
+                    <Badge variant="secondary" className="ml-1 h-5 px-1.5">
+                      {conflicts.database_conflicts.length}
+                    </Badge>
+                  )}
                 </TabsTrigger>
               </TabsList>
 
-              {/* 数据库级冲突列表 */}
-              <TabsContent value="database" className="flex-1 min-h-0 mt-4">
-                <CustomScrollArea className="max-h-[340px]" fullHeight={false}>
-                  {conflicts.database_conflicts.length > 0 ? (
-                    <div className="space-y-3 pr-4">
-                      {conflicts.database_conflicts.map((conflict) => (
-                        <DatabaseConflictCard
-                          key={conflict.database_name}
-                          conflict={conflict}
-                          isExpanded={expandedDbIds.has(conflict.database_name)}
-                          onToggleExpand={() => toggleDbExpand(conflict.database_name)}
-/>
-                      ))}
-                    </div>
-                  ) : (
-                    <Alert>
-                      <Check size={16} />
-                      <AlertDescription>
-                        {t('no_database_conflicts')}
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                </CustomScrollArea>
-              </TabsContent>
-
               {/* 记录级冲突列表 */}
               <TabsContent value="record" className="flex-1 min-h-0 mt-4">
-                <CustomScrollArea className="max-h-[340px]" fullHeight={false}>
-                  {conflicts.record_conflicts.length > 0 ? (
+                <CustomScrollArea className="max-h-[420px]" fullHeight={false}>
+                  {recordConflictsContent ? (
+                    <div className="pr-2">{recordConflictsContent}</div>
+                  ) : conflicts.record_conflicts.length > 0 ? (
                     <div className="space-y-3 pr-4">
                       {conflicts.record_conflicts.map((conflict) => {
                         const recordKey = `${conflict.database_name}-${conflict.table_name}-${conflict.record_id}`;
@@ -932,7 +842,9 @@ export function ConflictResolutionDialog({
                             conflict={conflict}
                             isExpanded={expandedRecordIds.has(recordKey)}
                             onToggleExpand={() => toggleRecordExpand(recordKey)}
-/>
+                            onResolveRecord={onResolveRecord}
+                            isResolving={isResolving}
+                          />
                         );
                       })}
                     </div>
@@ -956,17 +868,28 @@ export function ConflictResolutionDialog({
                 </CustomScrollArea>
               </TabsContent>
 
-              {/* 策略选择 */}
-              <TabsContent value="strategy" className="flex-1 min-h-0 mt-4">
+              {/* 数据库级冲突列表 */}
+              <TabsContent value="database" className="flex-1 min-h-0 mt-4">
                 <CustomScrollArea className="max-h-[340px]" fullHeight={false}>
-                  <div className="pr-4">
-                    <StrategySelection
-                      selectedStrategy={selectedStrategy}
-                      onStrategyChange={setSelectedStrategy}
-                      needsMigration={conflicts.needs_migration}
-                      disabled={isResolving}
-/>
-                  </div>
+                  {conflicts.database_conflicts.length > 0 ? (
+                    <div className="space-y-3 pr-4">
+                      {conflicts.database_conflicts.map((conflict) => (
+                        <DatabaseConflictCard
+                          key={conflict.database_name}
+                          conflict={conflict}
+                          isExpanded={expandedDbIds.has(conflict.database_name)}
+                          onToggleExpand={() => toggleDbExpand(conflict.database_name)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <Alert>
+                      <Check size={16} />
+                      <AlertDescription>
+                        {t('no_database_conflicts')}
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </CustomScrollArea>
               </TabsContent>
             </Tabs>
@@ -981,38 +904,10 @@ export function ConflictResolutionDialog({
         )}
 
         </DsDialogBody>
-        <DsDialogFooter className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            {hasConflicts && (
-              <>
-                <span>{t('selected_strategy')}:</span>
-                <Badge variant="outline" className="font-normal">
-                  {getStrategyInfo(selectedStrategy, t).icon}
-                  <span className="ml-1">{getStrategyInfo(selectedStrategy, t).label}</span>
-                </Badge>
-              </>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <DsButton variant="ghost" onClick={onClose} disabled={isResolving} className="[@media(pointer:coarse)]:!min-h-11">
-              {t('cancel')}
-            </DsButton>
-            {hasConflicts && (
-              <DsButton onClick={handleResolve} disabled={isResolving} className="[@media(pointer:coarse)]:!min-h-11">
-                {isResolving ? (
-                  <>
-                    <CircleNotch size={16} className="animate-spin mr-2" />
-                    {t('resolving')}
-                  </>
-                ) : (
-                  <>
-                    <Lightning size={16} className="mr-2" />
-                    {t('apply_strategy')}
-                  </>
-                )}
-              </DsButton>
-            )}
-          </div>
+        <DsDialogFooter className="flex items-center justify-end">
+          <DsButton variant="outline" onClick={onClose} disabled={isResolving} className="[@media(pointer:coarse)]:!min-h-11">
+            {t('common:actions.close', { defaultValue: t('cancel') })}
+          </DsButton>
         </DsDialogFooter>
     </DsDialog>
   );

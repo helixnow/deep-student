@@ -16,6 +16,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Warning, CheckCircle } from '@phosphor-icons/react';
 import * as DataGovernanceApi from '@/api/dataGovernance';
+import { useGlobalSyncStore } from '@/stores/syncStatusStore';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -44,7 +45,12 @@ export const SyncIndicator: React.FC<{
         const result = await DataGovernanceApi.countRecordConflicts();
         if (!cancelled) {
           setCounts(result);
-          onCountChangeRef.current?.(result?.total_groups ?? 0);
+          const totalGroups = result?.total_groups ?? 0;
+          onCountChangeRef.current?.(totalGroups);
+          useGlobalSyncStore?.getState?.()?.setUnresolvedConflictCount?.(
+            totalGroups,
+            result?.per_database,
+          );
         }
       } catch {
         // 静默：后端命令缺失或数据库未就绪时不骚扰用户

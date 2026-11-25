@@ -22,13 +22,29 @@ import * as DataGovernanceApi from '@/api/dataGovernance';
 import type { RecordConflictRow, SyncSnapshotBatchRow } from '@/api/dataGovernance';
 import { getDatabaseDisplayName } from '@/types/dataGovernance';
 import { DsButton } from '@/components/ui/DsButton';
+import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { GroupTitle } from '../settingsTabPrimitives';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { unifiedConfirm } from '@/utils/unifiedDialogs';
+import { useGlobalSyncStore } from '@/stores/syncStatusStore';
+import { isWebUiShell } from '@/utils/platform';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
+
+type TranslateFn = (key: string, opts?: Record<string, unknown>) => string;
+
+export function getConflictTableDisplayName(tableName: string, t: TranslateFn): string {
+  const key = `data:governance.conflict_table_names.${tableName}`;
+  const translated = t(key, { defaultValue: tableName });
+  return translated === key ? tableName : translated;
+}
+
+export function getConflictFieldDisplayName(fieldKey: string, t: TranslateFn): string {
+  const key = `data:governance.conflict_field_labels.${fieldKey}`;
+  const translated = t(key, { defaultValue: fieldKey });
+  return translated === key ? fieldKey : translated;
+}
 
 function formatConflictError(
   error: unknown,
@@ -386,6 +402,8 @@ export const RecordConflictsPanel: React.FC<{
   // [R11-history] 自动快照批次（批量解决/库级策略覆盖前系统自动创建，可单批回退）
   const [snapshotBatches, setSnapshotBatches] = useState<SyncSnapshotBatchRow[]>([]);
   const [rollingBackBatch, setRollingBackBatch] = useState<string | null>(null);
+  const [pendingBulkResolution, setPendingBulkResolution] = useState<'keep_local' | 'keep_cloud' | null>(null);
+  const [pendingRollbackBatch, setPendingRollbackBatch] = useState<SyncSnapshotBatchRow | null>(null);
   const [conflictPreviews, setConflictPreviews] = useState<Record<string, ConflictPreviewContext>>({});
   const requestGeneration = useRef(0);
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -440,48 +458,111 @@ export const RecordConflictsPanel: React.FC<{
       if (requestGeneration.current === generation) {
         setRows(list);
         // count API 的 total_groups 与本面板的 (table, record) 分组分页口径一致
-        setTotalGroups(counts.total_groups);
-        onCountChangeRef.current?.(counts.total_groups);
-        if (list.length > 0 && typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+        const nextTotalGroups = counts.total_groups ?? 0;
+        setTotalGroups(nextTotalGroups);
+        onCountChangeRef.current?.(nextTotalGroups);
+        useGlobalSyncStore?.getState?.()?.setUnresolvedConflictCount?.(
+          nextTotalGroups,
+          counts.per_database,
+        );
+        const canInvokeVfs =
+          typeof window !== 'undefined' &&
+          ('__TAURI_INTERNALS__' in window ||
+            isWebUiShell() ||
+            typeof (invoke as unknown as { mock?: unknown })?.mock === 'object');
+        if (list.length > 0 && canInvokeVfs) {
           const noteIdsToFetch = new Set<string>();
+          const resourceToNoteId = new Map<string, string>();
+          const resourcesNeedingNoteLookup = new Set<string>();
           for (const row of list) {
-            if (row.database_name === 'vfs' && row.table_name === 'notes') {
+            if (row.database_name !== 'vfs') continue;
+            if (row.table_name === 'notes') {
               noteIdsToFetch.add(row.record_id);
+            } else if (row.table_name === 'resources') {
+              const parsed = parseConflictPlainObject(row.data_json);
+              const srcId = extractStringField(parsed, ['source_id']);
+              const srcTable = extractStringField(parsed, ['source_table']);
+              const resType = extractStringField(parsed, ['type']);
+              if (srcId && (srcTable === 'notes' || resType === 'note' || !srcTable)) {
+                noteIdsToFetch.add(srcId);
+                resourceToNoteId.set(row.record_id, srcId);
+              } else if (!resourceToNoteId.has(row.record_id)) {
+                resourcesNeedingNoteLookup.add(row.record_id);
+              }
             }
           }
-          if (noteIdsToFetch.size > 0) {
-            void Promise.all(
-              Array.from(noteIdsToFetch).map(async (noteId) => {
+          if (noteIdsToFetch.size > 0 || resourcesNeedingNoteLookup.size > 0) {
+            void (async () => {
+              const previews: Record<string, ConflictPreviewContext> = {};
+              if (resourcesNeedingNoteLookup.size > 0) {
                 try {
-                  const [noteMeta, noteContent] = await Promise.all([
-                    invoke<{ title?: string; resourceId?: string; resource_id?: string } | null>('vfs_get_note', { id: noteId }),
-                    invoke<string | null>('vfs_get_note_content', { id: noteId }),
-                  ]);
-                  const entry: ConflictPreviewContext = {
-                    noteId,
-                    ...(typeof noteMeta?.title === 'string' && noteMeta.title ? { title: noteMeta.title } : {}),
-                    ...(typeof noteContent === 'string' ? { content: noteContent } : {}),
-                    ...(typeof (noteMeta?.resourceId ?? noteMeta?.resource_id) === 'string'
-                      ? { resourceId: (noteMeta?.resourceId ?? noteMeta?.resource_id) as string }
-                      : {}),
-                  };
-                  return [`vfs|notes|${noteId}`, entry] as const;
+                  const allNotes = await invoke<
+                    Array<{ id: string; title?: string; resourceId?: string; resource_id?: string }>
+                  >('vfs_list_notes', {});
+                  if (Array.isArray(allNotes)) {
+                    for (const note of allNotes) {
+                      const resId = note.resourceId ?? note.resource_id;
+                      if (resId && resourcesNeedingNoteLookup.has(resId)) {
+                        resourceToNoteId.set(resId, note.id);
+                        previews[`vfs|resources|${resId}`] = {
+                          noteId: note.id,
+                          resourceId: resId,
+                          ...(typeof note.title === 'string' && note.title ? { title: note.title } : {}),
+                        };
+                        if (!note.title) {
+                          noteIdsToFetch.add(note.id);
+                        }
+                      }
+                    }
+                  }
                 } catch {
-                  return null;
+                  // Best-effort fallback when vfs_list_notes is unavailable
                 }
-              }),
-            )
-              .then((entries) => {
-                if (requestGeneration.current !== generation) return;
-                const previews: Record<string, ConflictPreviewContext> = {};
-                for (const item of entries) {
-                  if (item) previews[item[0]] = item[1];
+              }
+              const fetchedByNoteId = new Map<string, ConflictPreviewContext>();
+              await Promise.all(
+                Array.from(noteIdsToFetch).map(async (noteId) => {
+                  try {
+                    const [noteMeta, noteContent] = await Promise.all([
+                      invoke<{ title?: string; resourceId?: string; resource_id?: string } | null>('vfs_get_note', { id: noteId }),
+                      invoke<string | null>('vfs_get_note_content', { id: noteId }),
+                    ]);
+                    const resId = noteMeta?.resourceId ?? noteMeta?.resource_id;
+                    const entry: ConflictPreviewContext = {
+                      noteId,
+                      ...(typeof noteMeta?.title === 'string' && noteMeta.title ? { title: noteMeta.title } : {}),
+                      ...(typeof noteContent === 'string' ? { content: noteContent } : {}),
+                      ...(typeof resId === 'string' ? { resourceId: resId } : {}),
+                    };
+                    fetchedByNoteId.set(noteId, entry);
+                    previews[`vfs|notes|${noteId}`] = entry;
+                    if (typeof resId === 'string' && resId) {
+                      previews[`vfs|resources|${resId}`] = {
+                        ...previews[`vfs|resources|${resId}`],
+                        ...entry,
+                      };
+                    }
+                  } catch {
+                    // Best-effort per-note lookup
+                  }
+                }),
+              );
+              for (const [resId, noteId] of resourceToNoteId.entries()) {
+                const entry = fetchedByNoteId.get(noteId);
+                if (entry) {
+                  previews[`vfs|resources|${resId}`] = {
+                    ...previews[`vfs|resources|${resId}`],
+                    ...entry,
+                    resourceId: resId,
+                  };
                 }
+              }
+              if (requestGeneration.current === generation) {
                 setConflictPreviews(previews);
-              })
-              .catch(() => {
-                // Preview enrichment is best-effort
-              });
+              }
+            })().catch(() => {
+              // Preview enrichment is best-effort
+            });
           } else {
             setConflictPreviews({});
           }
@@ -532,7 +613,7 @@ export const RecordConflictsPanel: React.FC<{
   const handleResolve = useCallback(
     async (
       p: ConflictPair,
-      resolution: 'keep_local' | 'keep_cloud' | 'merged',
+      resolution: 'keep_local' | 'keep_cloud' | 'keep_both' | 'merged',
       merged?: string,
       options?: { confirmedCloudOnlyKeepLocal?: boolean },
     ) => {
@@ -562,11 +643,18 @@ export const RecordConflictsPanel: React.FC<{
           p.databaseName,
           p.tableName,
           p.recordId,
-          resolution,
+          resolution as Parameters<typeof DataGovernanceApi.resolveRecordConflict>[3],
           expectedConflictIds,
           merged,
         );
-        showGlobalNotification('success', t('data:governance.conflict_resolved', { table: p.tableName, record: p.recordId }));
+        if (resolution === 'keep_both') {
+          showGlobalNotification('success', t('data:governance.conflict_resolved_keep_both'));
+        } else {
+          showGlobalNotification('success', t('data:governance.conflict_resolved', {
+            table: getConflictTableDisplayName(p.tableName, t),
+            record: conflictPreviews[key]?.title ?? p.recordId,
+          }));
+        }
         setMergeEditing(null);
         setMergeText('');
         setRawJsonOpen(false);
@@ -580,7 +668,7 @@ export const RecordConflictsPanel: React.FC<{
             ? parseConflictPlainObject(p.clouds[p.clouds.length - 1].data_json)
             : null;
           const mergedObj = merged ? parseConflictPlainObject(merged) : null;
-          const winningObj = resolution === 'keep_cloud'
+          const winningObj = resolution === 'keep_cloud' || resolution === 'keep_both'
             ? latestCloudObj
             : resolution === 'merged'
               ? mergedObj
@@ -604,7 +692,7 @@ export const RecordConflictsPanel: React.FC<{
         setResolvingKey(null);
       }
     },
-    [refresh, t],
+    [conflictPreviews, pendingKeepLocalKey, refresh, siblingContextMap.notesByResourceId, t],
   );
 
   const handleStartMerge = useCallback((p: ConflictPair) => {
@@ -633,27 +721,27 @@ export const RecordConflictsPanel: React.FC<{
     setRawJsonOpen(false);
   }, [conflictPreviews, siblingContextMap.resourcesById]);
 
-  const handleBulkResolve = useCallback(async (
+  const getBulkTargets = useCallback(
+    (resolution: 'keep_local' | 'keep_cloud') =>
+      resolution === 'keep_local'
+        ? pairs
+        : pairs.filter((pair) => pair.clouds.length > 0),
+    [pairs],
+  );
+
+  const requestBulkResolve = useCallback(
+    (resolution: 'keep_local' | 'keep_cloud') => {
+      if (getBulkTargets(resolution).length === 0) return;
+      setPendingBulkResolution(resolution);
+    },
+    [getBulkTargets],
+  );
+
+  const executeBulkResolve = useCallback(async (
     resolution: 'keep_local' | 'keep_cloud',
   ) => {
-    // keep_local 对 cloud-only 组同样有效：后端缺 local 快照时回退保留当前业务表行，
-    // 语义 = 驳回云端败方 DELETE/覆盖。keep_cloud 仍需有 cloud 候选才有可采用的值。
-    const targets = resolution === 'keep_local'
-      ? pairs
-      : pairs.filter((pair) => pair.clouds.length > 0);
+    const targets = getBulkTargets(resolution);
     if (targets.length === 0) return;
-    // Tauri WebView（尤其 Android）不保证实现阻塞式 window.confirm（可能直接返回 false
-    // 静默失效），统一走两击确认通知。
-    const confirmed = unifiedConfirm(
-      t('data:governance.conflict_bulk_confirm', {
-        count: targets.length,
-        action: resolution === 'keep_local'
-          ? t('data:governance.keep_local')
-          : t('data:governance.use_cloud'),
-      }),
-      { key: `record-conflicts-bulk-${resolution}` },
-    );
-    if (!confirmed) return;
 
     setLoading(true);
     setResolvingKey('bulk');
@@ -677,7 +765,7 @@ export const RecordConflictsPanel: React.FC<{
           );
           resolved += 1;
         } catch (error) {
-          failures.push(`${pair.tableName}/${pair.recordId}: ${formatConflictError(error, t)}`);
+          failures.push(`${getConflictTableDisplayName(pair.tableName, t)}/${pair.recordId}: ${formatConflictError(error, t)}`);
         }
       }
       if (failures.length > 0) {
@@ -697,7 +785,7 @@ export const RecordConflictsPanel: React.FC<{
       setResolvingKey(null);
       setLoading(false);
     }
-  }, [pairs, refresh, t]);
+  }, [getBulkTargets, refresh, t]);
 
   // [R11-history] 撤销入口：加载最近的自动快照批次（只读）
   const refreshSnapshots = useCallback(async () => {
@@ -715,13 +803,8 @@ export const RecordConflictsPanel: React.FC<{
     void refreshSnapshots();
   }, [refreshSnapshots, refreshSignal]);
 
-  // [R11-history] 单批回退：两击确认后按批次恢复记录到快照时的状态
-  const handleRollbackBatch = useCallback(async (batch: SyncSnapshotBatchRow) => {
-    const confirmed = unifiedConfirm(
-      t('data:governance.snapshot_rollback_confirm', { count: batch.record_count }),
-      { key: `snapshot-rollback-${batch.database_name}-${batch.batch_id}` },
-    );
-    if (!confirmed) return;
+  // [R11-history] 单批回退：使用显式确认弹窗后按批次恢复记录到快照时的状态
+  const executeRollbackBatch = useCallback(async (batch: SyncSnapshotBatchRow) => {
     setRollingBackBatch(batch.batch_id);
     try {
       const outcome = await DataGovernanceApi.rollbackSyncSnapshotBatch(
@@ -811,7 +894,9 @@ export const RecordConflictsPanel: React.FC<{
           isDiff ? 'bg-amber-500/12 text-foreground ring-1 ring-amber-500/25' : 'text-foreground/85',
         )}
       >
-        <dt className="font-mono text-2xs text-muted-foreground">{fieldKey}</dt>
+        <dt className="text-2xs font-medium text-muted-foreground" title={fieldKey}>
+          {getConflictFieldDisplayName(fieldKey, t)}
+        </dt>
         <dd className="whitespace-pre-wrap break-words">
           {formatConflictFieldValue(true, val, absentFieldLabel, emptyFieldLabel)}
         </dd>
@@ -908,7 +993,7 @@ export const RecordConflictsPanel: React.FC<{
             <DsButton
               variant="outline"
               size="sm"
-              onClick={() => void handleBulkResolve('keep_local')}
+              onClick={() => requestBulkResolve('keep_local')}
               disabled={loading || pairs.length === 0}
               className="max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
             >
@@ -917,7 +1002,7 @@ export const RecordConflictsPanel: React.FC<{
             <DsButton
               variant="outline"
               size="sm"
-              onClick={() => void handleBulkResolve('keep_cloud')}
+              onClick={() => requestBulkResolve('keep_cloud')}
               disabled={loading || pairs.length === 0}
               className="max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
             >
@@ -992,12 +1077,14 @@ export const RecordConflictsPanel: React.FC<{
             p.databaseName === 'vfs' && p.tableName === 'resources'
               ? siblingContextMap.notesByResourceId.get(p.recordId)
               : undefined;
+          const friendlyTableName = getConflictTableDisplayName(p.tableName, t);
           const readableTitle =
             p.tableName === 'note_document_revisions'
               ? t('data:governance.conflict_table_note_revision', { defaultValue: '笔记历史版本' })
-              : summarizeReadableTitle(
-                  rawLocalParsed ?? siblingNote?.local,
-                  rawCloudParsed ?? siblingNote?.cloud,
+              : previewCtx?.title ??
+                summarizeReadableTitle(
+                  siblingNote?.local ?? rawLocalParsed,
+                  siblingNote?.cloud ?? rawCloudParsed,
                   previewCtx,
                 );
           const localBodyPreview =
@@ -1044,33 +1131,59 @@ export const RecordConflictsPanel: React.FC<{
             rawLocalParsed !== null &&
             (rawLocalParsed === undefined || rawLocalParsed.deleted_at === undefined || rawLocalParsed.deleted_at === null);
           const showTrashConflictHint = cloudTrashedOrDeleted && localActiveWithEdits;
+          const canKeepBoth = Boolean(
+            latestLocal &&
+            latestCloud &&
+            rawLocalParsed !== null &&
+            rawLocalParsed !== undefined &&
+            rawCloudParsed !== null &&
+            rawCloudParsed !== undefined,
+          );
           const bodyEditKey = mergedParsed
             ? (['content_md', 'content', 'data', 'body'] as const).find((k) => k in mergedParsed) ??
               (p.tableName === 'notes' ? 'content_md' : null)
             : null;
+          const useCloudCandidateSuffix = t('data:governance.use_cloud_latest_candidate_suffix');
+          const useCloudCountSuffix =
+            p.clouds.length > 1
+              ? t('data:governance.use_cloud_latest_count_suffix', { count: p.clouds.length })
+              : '';
 
           return (
             <div
               key={key}
-              className="rounded-lg border border-border/50 p-3 space-y-2"
+              data-testid={`conflict-card-${p.recordId}`}
+              className="min-w-0 rounded-lg border border-border/50 bg-background/40 p-3 space-y-2.5"
             >
-              {/* 窄屏：标识行 + 三个操作按钮允许换行，避免 400px 横向溢出 */}
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0 space-y-0.5">
-                  {readableTitle && (
-                    <div className="text-sm font-semibold text-foreground break-words">
-                      {readableTitle}
-                    </div>
-                  )}
-                  <div className="text-xs font-mono break-all text-muted-foreground">
+              {/* 窄屏：标题行 + 操作按钮自动换行，避免 360px 横向溢出 */}
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <div className="text-sm font-semibold text-foreground break-words">
+                    {readableTitle ?? friendlyTableName}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                     <span title={p.databaseName}>
                       {getDatabaseDisplayName(p.databaseName, t)}
                     </span>
-                    <span className="mx-1">·</span>
-                    <span>{p.tableName}</span>
-                    <span className="mx-1">·</span>
-                    <span className="font-semibold text-foreground/90">{p.recordId}</span>
+                    <span aria-hidden="true">·</span>
+                    <span title={p.tableName}>{friendlyTableName}</span>
+                    {latestCloud?.detected_at && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span>{formatDetectedAt(latestCloud.detected_at)}</span>
+                      </>
+                    )}
                   </div>
+                  <details className="pt-0.5 text-2xs text-muted-foreground/80">
+                    <summary className="cursor-pointer select-none hover:text-foreground">
+                      {t('data:governance.conflict_technical_id_label')}
+                    </summary>
+                    <div className="mt-0.5 font-mono break-all">
+                      <span>{p.tableName}</span>
+                      <span className="mx-1">·</span>
+                      <span>{p.recordId}</span>
+                    </div>
+                  </details>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <DsButton
@@ -1089,9 +1202,28 @@ export const RecordConflictsPanel: React.FC<{
                     onClick={() => handleResolve(p, 'keep_cloud')}
                     disabled={isResolving || isEditing || !latestCloud}
                     className="h-7 text-xs max-md:min-h-11 [@media(pointer:coarse)]:!min-h-11"
-                    title={p.clouds.length > 1 ? t('data:governance.use_cloud_latest', { suffix: '（最新候选）' }) : undefined}
+                    title={
+                      p.clouds.length > 1
+                        ? t('data:governance.use_cloud_latest', { suffix: useCloudCandidateSuffix })
+                        : undefined
+                    }
                   >
-                    {t('data:governance.use_cloud_latest', { suffix: p.clouds.length > 1 ? `（最新/${p.clouds.length}）` : '' })}
+                    {t('data:governance.use_cloud_latest', { suffix: useCloudCountSuffix })}
+                  </DsButton>
+                  <DsButton
+                    variant="primary"
+                    size="sm"
+                    data-testid="conflict-keep-both-button"
+                    onClick={() => handleResolve(p, 'keep_both')}
+                    disabled={isResolving || isEditing || !canKeepBoth}
+                    className="h-7 text-xs"
+                    title={
+                      canKeepBoth
+                        ? t('data:governance.keep_both_desc')
+                        : t('data:governance.keep_both_unavailable_hint')
+                    }
+                  >
+                    {t('data:governance.keep_both')}
                   </DsButton>
                   <DsButton
                     variant="outline"
@@ -1162,7 +1294,7 @@ export const RecordConflictsPanel: React.FC<{
                     {t('data:governance.conflict_content_diff')}
                   </div>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    <div className="rounded border border-border/30 bg-background/70 p-2">
+                    <div className="min-w-0 rounded border border-border/30 bg-background/70 p-2">
                       <div className="mb-1 text-2xs font-medium text-muted-foreground">
                         {t('data:governance.local')}
                       </div>
@@ -1170,7 +1302,7 @@ export const RecordConflictsPanel: React.FC<{
                         {localBodyPreview ?? emptyFieldLabel}
                       </pre>
                     </div>
-                    <div className="rounded border border-border/30 bg-background/70 p-2">
+                    <div className="min-w-0 rounded border border-border/30 bg-background/70 p-2">
                       <div className="mb-1 text-2xs font-medium text-muted-foreground">
                         {t('data:governance.cloud')}
                       </div>
@@ -1181,12 +1313,21 @@ export const RecordConflictsPanel: React.FC<{
                   </div>
                 </div>
               )}
-              {/* local/cloud 对比：<sm 上下堆叠（400px 双列每列仅 ~160px，JSON 不可读） */}
+              {/* local/cloud 对比：<sm 上下堆叠，360px 下零横向溢出 */}
               <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
-                <div className="rounded border border-border/30 bg-muted/20 p-2">
-                  <div className="text-muted-foreground mb-1">
-                    {t('data:governance.local')} {latestLocal?.winning_device_id && <span>（{latestLocal.winning_device_id.slice(0, 8)}...）</span>}
-                    {latestLocal?.detected_at && <span className="ml-1">{formatDetectedAt(latestLocal.detected_at)}</span>}
+                <div className="min-w-0 rounded border border-border/30 bg-muted/20 p-2">
+                  <div className="mb-1 flex flex-wrap items-center gap-1.5 text-muted-foreground">
+                    <span className="font-medium text-foreground">{t('data:governance.local')}</span>
+                    <span aria-hidden="true">·</span>
+                    <span title={latestLocal?.winning_device_id ?? undefined}>
+                      {t('data:governance.conflict_device_local')}
+                    </span>
+                    {latestLocal?.detected_at && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span>{formatDetectedAt(latestLocal.detected_at)}</span>
+                      </>
+                    )}
                   </div>
                   <CustomScrollArea fullHeight={false} className="md:max-h-72">
                     {latestLocal ? (
@@ -1207,21 +1348,37 @@ export const RecordConflictsPanel: React.FC<{
                     </div>
                   )}
                 </div>
-                <div className="space-y-2">
+                <div className="min-w-0 space-y-2">
                   {p.clouds.length === 0 && (
                     <div className="rounded border border-border/30 bg-muted/20 p-2">
-                      <div className="text-muted-foreground mb-1">{t('data:governance.cloud')}</div>
+                      <div className="text-muted-foreground mb-1 font-medium">{t('data:governance.cloud')}</div>
                       <pre className="whitespace-pre-wrap break-words">{t('data:governance.none')}</pre>
                     </div>
                   )}
                   {p.clouds.map((cloud, index) => (
-                    <div key={cloud.id} className="rounded border border-border/30 bg-muted/20 p-2">
-                      <div className="text-muted-foreground mb-1">
-                        {t('data:governance.cloud')}{p.clouds.length > 1 ? ` ${index + 1}/${p.clouds.length}` : ''}
-                        {cloud.winning_device_id && <span>（{cloud.winning_device_id.slice(0, 8)}...）</span>}
-                        {cloud.detected_at && <span className="ml-1">{formatDetectedAt(cloud.detected_at)}</span>}
+                    <div key={cloud.id} className="min-w-0 rounded border border-border/30 bg-muted/20 p-2">
+                      <div className="mb-1 flex flex-wrap items-center gap-1.5 text-muted-foreground">
+                        <span className="font-medium text-foreground">
+                          {t('data:governance.cloud')}{p.clouds.length > 1 ? ` ${index + 1}/${p.clouds.length}` : ''}
+                        </span>
+                        {cloud.winning_device_id && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span title={cloud.winning_device_id}>
+                              {t('data:governance.conflict_device_remote', { id: cloud.winning_device_id.slice(0, 6) })}
+                            </span>
+                          </>
+                        )}
+                        {cloud.detected_at && (
+                          <>
+                            <span aria-hidden="true">·</span>
+                            <span>{formatDetectedAt(cloud.detected_at)}</span>
+                          </>
+                        )}
                         {cloud.id === latestCloud?.id && p.clouds.length > 1 && (
-                          <span className="ml-1">{t('data:governance.latest')}</span>
+                          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-2xs font-medium text-primary">
+                            {t('data:governance.latest')}
+                          </span>
                         )}
                       </div>
                       <CustomScrollArea fullHeight={false} className="md:max-h-72">
@@ -1243,12 +1400,12 @@ export const RecordConflictsPanel: React.FC<{
 
                   {canUseStructuredDiff && mergedParsed ? (
                     <div
-                      className="rounded-lg border border-border/40 bg-background/60 p-3 space-y-2.5"
+                      className="min-w-0 rounded-lg border border-border/40 bg-background/60 p-3 space-y-2.5"
                       data-testid="conflict-field-diff-table"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="space-y-0.5">
-                          <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+                          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-foreground">
                             <span>{t('data:governance.merge_diff_title')}</span>
                             <span
                               className={cn(
@@ -1297,128 +1454,127 @@ export const RecordConflictsPanel: React.FC<{
                         </div>
                       </div>
 
-                      <div className="overflow-x-auto rounded-md border border-border/30">
-                        <table className="w-full border-collapse text-xs">
-                          <thead>
-                            <tr className="border-b border-border/30 bg-muted/40 text-left text-2xs text-muted-foreground">
-                              <th className="py-1.5 px-2.5 font-medium w-1/4">
-                                {t('data:governance.merge_field_col')}
-                              </th>
-                              <th className="py-1.5 px-2.5 font-medium w-[37.5%]">
-                                {t('data:governance.merge_local_col')}
-                              </th>
-                              <th className="py-1.5 px-2.5 font-medium w-[37.5%]">
-                                {t('data:governance.merge_cloud_col')}
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-border/20">
-                            {fieldDiffRows.map((fieldRow) => (
-                              <tr
-                                key={fieldRow.key}
-                                data-testid={`conflict-diff-row-${fieldRow.key}`}
-                                data-has-diff={fieldRow.hasDiff ? 'true' : 'false'}
-                                className={cn(
-                                  fieldRow.hasDiff
-                                    ? 'bg-amber-500/[0.06]'
-                                    : 'bg-transparent opacity-80',
-                                )}
-                              >
-                                <td className="py-2 px-2.5 align-top">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="font-mono font-medium text-foreground break-all">
-                                      {fieldRow.key}
-                                    </span>
-                                    <span
-                                      className={cn(
-                                        'rounded px-1.5 py-0.5 text-2xs font-medium',
-                                        fieldRow.selectedSource === 'custom'
-                                          ? 'bg-primary/15 text-primary'
-                                          : fieldRow.hasDiff
-                                            ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                                            : 'bg-muted text-muted-foreground',
-                                      )}
-                                    >
-                                      {fieldRow.selectedSource === 'custom'
-                                        ? t('data:governance.merge_custom_badge')
-                                        : fieldRow.hasDiff
-                                          ? t('data:governance.merge_diff_badge')
-                                          : t('data:governance.merge_same_badge')}
-                                    </span>
+                      {/* 响应式字段差异卡片（360px 竖向堆叠，sm+ 双列对比，彻底消除 3 列表格横向溢出） */}
+                      <div className="space-y-2" data-testid="conflict-field-diff-cards">
+                        {fieldDiffRows.map((fieldRow) => {
+                          const friendlyFieldLabel = getConflictFieldDisplayName(fieldRow.key, t);
+                          return (
+                            <div
+                              key={fieldRow.key}
+                              data-testid={`conflict-diff-row-${fieldRow.key}`}
+                              data-has-diff={fieldRow.hasDiff ? 'true' : 'false'}
+                              className={cn(
+                                'min-w-0 rounded-md border p-2.5 text-xs space-y-2',
+                                fieldRow.hasDiff
+                                  ? 'border-amber-500/35 bg-amber-500/[0.06]'
+                                  : 'border-border/30 bg-background/40 opacity-85',
+                              )}
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                                <span
+                                  className="font-medium text-foreground break-words"
+                                  title={fieldRow.key}
+                                >
+                                  {friendlyFieldLabel}
+                                </span>
+                                <span
+                                  className={cn(
+                                    'rounded px-1.5 py-0.5 text-2xs font-medium',
+                                    fieldRow.selectedSource === 'custom'
+                                      ? 'bg-primary/15 text-primary'
+                                      : fieldRow.hasDiff
+                                        ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                        : 'bg-muted text-muted-foreground',
+                                  )}
+                                >
+                                  {fieldRow.selectedSource === 'custom'
+                                    ? t('data:governance.merge_custom_badge')
+                                    : fieldRow.hasDiff
+                                      ? t('data:governance.merge_diff_badge')
+                                      : t('data:governance.merge_same_badge')}
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 min-w-0">
+                                <DsButton
+                                  type="button"
+                                  variant="ghost"
+                                  disabled={!localParsed}
+                                  aria-label={t('data:governance.merge_use_local_field', { field: friendlyFieldLabel })}
+                                  aria-pressed={fieldRow.matchesLocal}
+                                  onClick={() => {
+                                    if (!localParsed) return;
+                                    const next = applyFieldChoiceToMergedObject(
+                                      mergedParsed,
+                                      localParsed,
+                                      fieldRow.key,
+                                    );
+                                    setMergeText(JSON.stringify(next, null, 2));
+                                  }}
+                                  className={cn(
+                                    '!h-auto min-w-0 w-full flex-col items-start justify-start gap-1 whitespace-normal rounded-md border px-2.5 py-2 text-left font-normal transition-colors',
+                                    !localParsed && 'cursor-not-allowed opacity-50',
+                                    fieldRow.matchesLocal
+                                      ? 'border-primary/60 bg-primary/10 text-foreground'
+                                      : 'border-border/30 bg-background/40 text-muted-foreground hover:border-border/60 hover:text-foreground',
+                                  )}
+                                >
+                                  <div className="flex w-full items-center justify-between gap-2 text-2xs font-medium text-muted-foreground">
+                                    <span>{t('data:governance.merge_local_col')}</span>
+                                    {fieldRow.matchesLocal && (
+                                      <span className="text-primary">{t('data:governance.merge_selected_badge')}</span>
+                                    )}
                                   </div>
-                                </td>
-                                <td className="py-1.5 px-2 align-top">
-                                  <DsButton
-                                    type="button"
-                                    variant="ghost"
-                                    disabled={!localParsed}
-                                    aria-label={t('data:governance.merge_use_local_field', { field: fieldRow.key })}
-                                    aria-pressed={fieldRow.matchesLocal}
-                                    onClick={() => {
-                                      if (!localParsed) return;
-                                      const next = applyFieldChoiceToMergedObject(
-                                        mergedParsed,
-                                        localParsed,
-                                        fieldRow.key,
-                                      );
-                                      setMergeText(JSON.stringify(next, null, 2));
-                                    }}
-                                    className={cn(
-                                      '!h-auto w-full justify-start whitespace-normal rounded-md border px-2.5 py-1.5 text-left font-normal transition-colors',
-                                      !localParsed && 'cursor-not-allowed opacity-50',
-                                      fieldRow.matchesLocal
-                                        ? 'border-primary/60 bg-primary/10 text-foreground'
-                                        : 'border-border/30 bg-background/40 text-muted-foreground hover:border-border/60 hover:text-foreground',
+                                  <div className="w-full whitespace-pre-wrap break-words text-xs">
+                                    {formatConflictFieldValue(
+                                      fieldRow.localPresent,
+                                      fieldRow.localValue,
+                                      absentFieldLabel,
+                                      emptyFieldLabel,
                                     )}
-                                  >
-                                    <div className="whitespace-pre-wrap break-words">
-                                      {formatConflictFieldValue(
-                                        fieldRow.localPresent,
-                                        fieldRow.localValue,
-                                        absentFieldLabel,
-                                        emptyFieldLabel,
-                                      )}
-                                    </div>
-                                  </DsButton>
-                                </td>
-                                <td className="py-1.5 px-2 align-top">
-                                  <DsButton
-                                    type="button"
-                                    variant="ghost"
-                                    disabled={!cloudParsed}
-                                    aria-label={t('data:governance.merge_use_cloud_field', { field: fieldRow.key })}
-                                    aria-pressed={fieldRow.matchesCloud}
-                                    onClick={() => {
-                                      if (!cloudParsed) return;
-                                      const next = applyFieldChoiceToMergedObject(
-                                        mergedParsed,
-                                        cloudParsed,
-                                        fieldRow.key,
-                                      );
-                                      setMergeText(JSON.stringify(next, null, 2));
-                                    }}
-                                    className={cn(
-                                      '!h-auto w-full justify-start whitespace-normal rounded-md border px-2.5 py-1.5 text-left font-normal transition-colors',
-                                      !cloudParsed && 'cursor-not-allowed opacity-50',
-                                      fieldRow.matchesCloud
-                                        ? 'border-primary/60 bg-primary/10 text-foreground'
-                                        : 'border-border/30 bg-background/40 text-muted-foreground hover:border-border/60 hover:text-foreground',
+                                  </div>
+                                </DsButton>
+                                <DsButton
+                                  type="button"
+                                  variant="ghost"
+                                  disabled={!cloudParsed}
+                                  aria-label={t('data:governance.merge_use_cloud_field', { field: friendlyFieldLabel })}
+                                  aria-pressed={fieldRow.matchesCloud}
+                                  onClick={() => {
+                                    if (!cloudParsed) return;
+                                    const next = applyFieldChoiceToMergedObject(
+                                      mergedParsed,
+                                      cloudParsed,
+                                      fieldRow.key,
+                                    );
+                                    setMergeText(JSON.stringify(next, null, 2));
+                                  }}
+                                  className={cn(
+                                    '!h-auto min-w-0 w-full flex-col items-start justify-start gap-1 whitespace-normal rounded-md border px-2.5 py-2 text-left font-normal transition-colors',
+                                    !cloudParsed && 'cursor-not-allowed opacity-50',
+                                    fieldRow.matchesCloud
+                                      ? 'border-primary/60 bg-primary/10 text-foreground'
+                                      : 'border-border/30 bg-background/40 text-muted-foreground hover:border-border/60 hover:text-foreground',
+                                  )}
+                                >
+                                  <div className="flex w-full items-center justify-between gap-2 text-2xs font-medium text-muted-foreground">
+                                    <span>{t('data:governance.merge_cloud_col')}</span>
+                                    {fieldRow.matchesCloud && (
+                                      <span className="text-primary">{t('data:governance.merge_selected_badge')}</span>
                                     )}
-                                  >
-                                    <div className="whitespace-pre-wrap break-words">
-                                      {formatConflictFieldValue(
-                                        fieldRow.cloudPresent,
-                                        fieldRow.cloudValue,
-                                        absentFieldLabel,
-                                        emptyFieldLabel,
-                                      )}
-                                    </div>
-                                  </DsButton>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                                  </div>
+                                  <div className="w-full whitespace-pre-wrap break-words text-xs">
+                                    {formatConflictFieldValue(
+                                      fieldRow.cloudPresent,
+                                      fieldRow.cloudValue,
+                                      absentFieldLabel,
+                                      emptyFieldLabel,
+                                    )}
+                                  </div>
+                                </DsButton>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   ) : (
@@ -1433,7 +1589,7 @@ export const RecordConflictsPanel: React.FC<{
                   {isEditing && mergedParsed && bodyEditKey && (
                     <div className="space-y-1.5 rounded-lg border border-border/40 bg-background/60 p-3">
                       <label className="text-xs font-medium text-foreground">
-                        {t('data:governance.conflict_note_body')} ({bodyEditKey})
+                        {t('data:governance.conflict_note_body')}
                       </label>
                       <Textarea
                         data-testid="conflict-manual-body-editor"
@@ -1553,7 +1709,7 @@ export const RecordConflictsPanel: React.FC<{
                 <DsButton
                   variant="ghost"
                   size="sm"
-                  onClick={() => void handleRollbackBatch(batch)}
+                  onClick={() => setPendingRollbackBatch(batch)}
                   disabled={rolledBack || rollingBackBatch !== null || loading}
                   className="h-7 text-xs"
                   title={t('data:governance.snapshot_rollback_confirm', { count: batch.record_count })}
@@ -1566,6 +1722,60 @@ export const RecordConflictsPanel: React.FC<{
           })}
         </div>
       </div>
+
+      {/* 显式批量冲突处理确认弹窗（替代短暂 toast 确认） */}
+      <DsAlertDialog
+        open={pendingBulkResolution !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingBulkResolution(null);
+        }}
+        title={t('data:governance.conflict_bulk_confirm_title')}
+        description={
+          pendingBulkResolution
+            ? t('data:governance.conflict_bulk_confirm', {
+                count: getBulkTargets(pendingBulkResolution).length,
+                action:
+                  pendingBulkResolution === 'keep_local'
+                    ? t('data:governance.keep_local')
+                    : t('data:governance.use_cloud'),
+              })
+            : undefined
+        }
+        confirmText={t('data:governance.conflict_bulk_confirm_action')}
+        cancelText={t('common:actions.cancel')}
+        confirmVariant={pendingBulkResolution === 'keep_cloud' ? 'danger' : 'warning'}
+        onConfirm={() => {
+          const action = pendingBulkResolution;
+          setPendingBulkResolution(null);
+          if (action) void executeBulkResolve(action);
+        }}
+        disabled={loading}
+      />
+
+      {/* 显式快照批次回退确认弹窗 */}
+      <DsAlertDialog
+        open={pendingRollbackBatch !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingRollbackBatch(null);
+        }}
+        title={t('data:governance.snapshot_rollback_confirm_title')}
+        description={
+          pendingRollbackBatch
+            ? t('data:governance.snapshot_rollback_confirm', {
+                count: pendingRollbackBatch.record_count,
+              })
+            : undefined
+        }
+        confirmText={t('data:governance.snapshot_rollback_confirm_action')}
+        cancelText={t('common:actions.cancel')}
+        confirmVariant="warning"
+        onConfirm={() => {
+          const target = pendingRollbackBatch;
+          setPendingRollbackBatch(null);
+          if (target) void executeRollbackBatch(target);
+        }}
+        disabled={rollingBackBatch !== null || loading}
+      />
     </section>
   );
 };

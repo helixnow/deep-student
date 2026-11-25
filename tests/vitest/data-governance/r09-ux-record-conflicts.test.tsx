@@ -10,7 +10,7 @@
  */
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 // ============================================================================
 // Mocks
@@ -141,8 +141,7 @@ describe('RecordConflictsPanel total_groups 计数', () => {
 // ============================================================================
 
 describe('RecordConflictsPanel 批量解决确认', () => {
-  it('unifiedConfirm 拒绝时不执行任何解决', async () => {
-    mockUnifiedConfirm.mockReturnValue(false);
+  it('显式确认弹窗取消时不执行任何解决', async () => {
     render(<RecordConflictsPanel />);
 
     const bulkButton = await screen.findByRole('button', {
@@ -151,13 +150,18 @@ describe('RecordConflictsPanel 批量解决确认', () => {
     await waitFor(() => expect(bulkButton).toBeEnabled());
     fireEvent.click(bulkButton);
 
-    expect(mockUnifiedConfirm).toHaveBeenCalledTimes(1);
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toBeInTheDocument();
+    expect(mockResolveRecordConflict).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'common:actions.cancel' }));
     await waitFor(() => {
-      expect(mockResolveRecordConflict).not.toHaveBeenCalled();
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     });
+    expect(mockResolveRecordConflict).not.toHaveBeenCalled();
   });
 
-  it('确认后逐组执行并携带该组全部冲突行 id（乐观并发保护）', async () => {
+  it('显式确认弹窗确认后逐组执行并携带该组全部冲突行 id（乐观并发保护）', async () => {
     render(<RecordConflictsPanel />);
 
     const bulkButton = await screen.findByRole('button', {
@@ -165,6 +169,9 @@ describe('RecordConflictsPanel 批量解决确认', () => {
     });
     await waitFor(() => expect(bulkButton).toBeEnabled());
     fireEvent.click(bulkButton);
+
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'data:governance.conflict_bulk_confirm_action' }));
 
     await waitFor(() => {
       expect(mockResolveRecordConflict).toHaveBeenCalledTimes(1);

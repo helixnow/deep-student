@@ -20,7 +20,7 @@
  */
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // ============================================================================
@@ -252,8 +252,13 @@ describe('cloud-only DELETE 冲突组的批量解决', () => {
       }),
     );
 
-    // 批量仍走一次确认对话框
-    expect(mockUnifiedConfirm).toHaveBeenCalledTimes(1);
+    // 批量走显式 DsAlertDialog 确认弹窗
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: 'data:governance.conflict_bulk_confirm_action',
+      }),
+    );
     await waitFor(() => {
       expect(mockResolveRecordConflict).toHaveBeenCalledTimes(2);
     });
@@ -276,7 +281,6 @@ describe('cloud-only DELETE 冲突组的批量解决', () => {
   });
 
   it('批量「保留本地」确认被拒绝时绝不执行', async () => {
-    mockUnifiedConfirm.mockReturnValue(false);
     const user = userEvent.setup();
     render(<RecordConflictsPanel />);
     await waitFor(() => {
@@ -289,8 +293,12 @@ describe('cloud-only DELETE 冲突组的批量解决', () => {
       }),
     );
 
-    expect(mockUnifiedConfirm).toHaveBeenCalledTimes(1);
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'common:actions.cancel' }),
+    );
     await waitFor(() => {
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
       expect(mockResolveRecordConflict).not.toHaveBeenCalled();
     });
   });
@@ -305,6 +313,13 @@ describe('cloud-only DELETE 冲突组的批量解决', () => {
     await user.click(
       screen.getByRole('button', {
         name: 'data:governance.conflict_bulk_use_cloud',
+      }),
+    );
+
+    const dialog = await screen.findByRole('alertdialog');
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: 'data:governance.conflict_bulk_confirm_action',
       }),
     );
 

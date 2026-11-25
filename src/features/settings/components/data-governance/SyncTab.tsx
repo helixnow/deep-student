@@ -30,9 +30,8 @@ import {
 import { copyTextToClipboard } from "@/utils/clipboardUtils";
 import { showGlobalNotification } from "@/components/UnifiedNotification";
 
-import { DsButton, type DsButtonVariant } from "@/components/ui/DsButton";
+import { DsButton } from "@/components/ui/DsButton";
 import { CustomScrollArea } from "@/components/custom-scroll-area";
-import { DsAlertDialog } from "@/components/ui/DsDialog";
 import { Badge } from "@/components/ui/shad/Badge";
 import { Switch } from "@/components/ui/shad/Switch";
 import {
@@ -55,7 +54,9 @@ import {
   SYNC_E2EE_ERROR_I18N_KEYS,
 } from "./syncE2eeErrorMapping";
 import {
+  extractLeaseHolderDevice,
   formatFriendlySyncError,
+  formatRemainingLeaseDuration,
   localizeBackendErrorText,
 } from "./localizeCloudError";
 import { RecordConflictsPanel } from "./RecordConflictsPanel";
@@ -81,26 +82,6 @@ import {
   formatTimestamp,
 } from "@/types/dataGovernance";
 import type { StorageProvider } from "@/utils/cloudStorageApi";
-
-/** 冲突解决确认弹窗里策略名称的 i18n key（静态映射以兼容类型化 i18n） */
-const strategyLabelKeys = {
-  keep_local: "sync:strategy_info.keep_local",
-  use_cloud: "sync:strategy_info.use_cloud",
-  keep_latest: "sync:strategy_info.keep_latest",
-  manual: "sync:strategy_info.manual",
-} as const;
-
-/**
- * 确认按钮变体：use_cloud 会用云端覆盖本地（最危险）用 danger；
- * keep_local 覆盖云端、keep_latest 按时间覆盖较旧一方，用 warning；
- * manual 不立即覆盖数据，用 default。
- */
-const strategyConfirmVariants: Record<MergeStrategy, DsButtonVariant> = {
-  keep_local: "warning",
-  use_cloud: "danger",
-  keep_latest: "warning",
-  manual: "default",
-};
 
 /** [R09-ux] 已知引擎错误类别 → 人话 i18n key（静态映射以兼容类型化 i18n） */
 const syncErrorHumanKeys = {
@@ -193,7 +174,12 @@ export interface SyncTabProps {
   loading: boolean;
   onRefresh: () => void;
   onDetectConflicts: () => void;
-  onResolveConflicts: (strategy: MergeStrategy) => void;
+  /** @deprecated 批量清单级覆盖接口已停用；冲突处理统一走记录级面板 */
+  onResolveConflicts?: (strategy: MergeStrategy) => void;
+  /** 持久化全局未解决冲突组数（由 DataGovernanceDashboard 从 syncStatusStore 传入） */
+  unresolvedConflictCount?: number;
+  /** 外部请求聚焦到记录级冲突面板的信号计数 */
+  externalConflictFocusSignal?: number;
   cloudSyncConfigured: boolean;
   cloudSyncSummary: { provider: StorageProvider; root?: string } | null;
   syncRunning: boolean;
@@ -222,7 +208,8 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   loading,
   onRefresh,
   onDetectConflicts,
-  onResolveConflicts,
+  unresolvedConflictCount = 0,
+  externalConflictFocusSignal = 0,
   cloudSyncConfigured,
   cloudSyncSummary,
   syncRunning,
@@ -253,6 +240,16 @@ export const SyncTab: React.FC<SyncTabProps> = ({
     }
   }, []);
 
+  React.useEffect(() => {
+    if (!externalConflictFocusSignal) return;
+    handleJumpToConflicts();
+  }, [externalConflictFocusSignal, handleJumpToConflicts]);
+
+  const effectiveUnresolvedConflictCount = Math.max(
+    unresolvedConflictCount,
+    liveRecordConflictGroups,
+  );
+
   const refreshQuarantineCount = React.useCallback(async () => {
     try {
       const items = await DataGovernanceApi.listQuarantine(500, 0);
@@ -276,10 +273,8 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   React.useEffect(() => {
     if (showCloudSettingsEditor) setCloudEditorMounted(true);
   }, [showCloudSettingsEditor]);
-  // 待确认的数据库级冲突解决策略：点击策略按钮先弹确认，确认后才执行
-  const [pendingResolveStrategy, setPendingResolveStrategy] =
-    React.useState<MergeStrategy | null>(null);
   const [deviceIdCopied, setDeviceIdCopied] = React.useState(false);
+  const [leaseNowMs, setLeaseNowMs] = React.useState(() => Date.now());
   const [showPendingBreakdown, setShowPendingBreakdown] = React.useState(false);
   const [expandedBreakdownDbs, setExpandedBreakdownDbs] = React.useState<
     Record<string, boolean>
@@ -370,6 +365,39 @@ export const SyncTab: React.FC<SyncTabProps> = ({
     ? classifySyncError(rawSyncError) ??
       (sanitizedSyncError ? classifySyncError(sanitizedSyncError) : null)
     : null;
+  const leaseExpiry = React.useMemo(() => {
+    if (syncErrorKind !== "lease_held" && syncErrorKind !== "lease_held_self") return null;
+    return (
+      (rawSyncError ? extractSyncLeaseExpiry(rawSyncError) : null) ??
+      (sanitizedSyncError ? extractSyncLeaseExpiry(sanitizedSyncError) : null)
+    );
+  }, [rawSyncError, sanitizedSyncError, syncErrorKind]);
+  const leaseHolderDevice = React.useMemo(() => {
+    if (syncErrorKind !== "lease_held") return null;
+    const rawHolder =
+      (rawSyncError ? extractLeaseHolderDevice(rawSyncError) : null) ??
+      (sanitizedSyncError ? extractLeaseHolderDevice(sanitizedSyncError) : null);
+    if (!rawHolder) return null;
+    return rawHolder.length > 12 ? `${rawHolder.slice(0, 8)}...` : rawHolder;
+  }, [rawSyncError, sanitizedSyncError, syncErrorKind]);
+  const leaseCountdown = leaseExpiry
+    ? formatRemainingLeaseDuration(leaseExpiry, i18n?.language, leaseNowMs)
+    : null;
+
+  React.useEffect(() => {
+    if (!leaseExpiry) return;
+    setLeaseNowMs(Date.now());
+    if (leaseExpiry.getTime() <= Date.now()) return;
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setLeaseNowMs(now);
+      if (now >= leaseExpiry.getTime()) {
+        window.clearInterval(timer);
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [leaseExpiry]);
+
   const conflictRefreshSignal = `${syncStatus?.total_pending_changes ?? 0}:${syncStatus?.total_synced_changes ?? 0}`;
   const syncProgressCounter =
     syncProgress &&
@@ -380,13 +408,6 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         : syncProgress
         ? `${syncProgress.current} / ${syncProgress.total} ${t("data:governance.items")}`
         : "";
-
-  const handleConfirmResolve = () => {
-    if (pendingResolveStrategy) {
-      onResolveConflicts(pendingResolveStrategy);
-    }
-    setPendingResolveStrategy(null);
-  };
 
   const handleCopyDeviceId = async () => {
     if (!syncStatus?.device_id) return;
@@ -403,6 +424,39 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
   return (
     <div className="min-w-0 space-y-8 pb-6" data-testid="sync-tab-content">
+      {/* 持久化未解决冲突提醒条 */}
+      {effectiveUnresolvedConflictCount > 0 && (
+        <div
+          role="alert"
+          data-testid="sync-tab-unresolved-conflicts-banner"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-warning/45 bg-warning/10 p-4"
+        >
+          <div className="flex min-w-0 flex-1 items-start gap-2.5">
+            <Warning size={18} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+            <div className="min-w-0 space-y-1">
+              <div className="text-sm font-semibold text-foreground">
+                {t("data:governance.unresolved_conflicts_banner_title", {
+                  count: effectiveUnresolvedConflictCount,
+                })}
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t("data:governance.unresolved_conflicts_banner_desc")}
+              </p>
+            </div>
+          </div>
+          <DsButton
+            type="button"
+            variant="warning"
+            size="sm"
+            data-testid="sync-tab-jump-conflicts-btn"
+            onClick={handleJumpToConflicts}
+            className="shrink-0"
+          >
+            {t("data:governance.unresolved_conflicts_go_resolve")}
+          </DsButton>
+        </div>
+      )}
+
       {/* 同步状态概览 */}
       <div
         data-testid="sync-status-overview-card"
@@ -592,17 +646,66 @@ export const SyncTab: React.FC<SyncTabProps> = ({
       )}
       </div>
 
-      {/* 同步 vs 云端整包备份心智区分提示 */}
-      <div className="rounded-xl border border-border/50 bg-muted/40 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
-        <div className="font-medium text-foreground mb-1">
-          {t("sync:syncVsBackupTitle", { defaultValue: "多端同步 vs 云端整包备份" })}
+      {/* 同步 vs 云端整包备份心智区分提示 + 多数据集同步前摘要 */}
+      <div className="space-y-3">
+        <div className="rounded-xl border border-border/50 bg-muted/40 px-4 py-3 text-xs leading-relaxed text-muted-foreground">
+          <div className="font-medium text-foreground mb-1">
+            {t("sync:syncVsBackupTitle", { defaultValue: "多端同步 vs 云端整包备份" })}
+          </div>
+          <p>
+            {t("sync:syncVsBackupDesc", {
+              defaultValue:
+                "日常跨设备学习请使用下方「同步」（双向合并笔记、闪卡与复习记录）；换新设备或留存完整历史快照时，再使用「云存储设置」里的整包备份与恢复。",
+            })}
+          </p>
         </div>
-        <p>
-          {t("sync:syncVsBackupDesc", {
-            defaultValue:
-              "日常跨设备学习请使用下方「同步」（双向合并笔记、闪卡与复习记录）；换新设备或留存完整历史快照时，再使用「云存储设置」里的整包备份与恢复。",
-          })}
-        </p>
+
+        {/* BUG-7: 多数据集同步前摘要与首次多端合并说明 */}
+        <div
+          data-testid="sync-presync-summary"
+          className="rounded-xl border border-border/50 bg-muted/30 px-4 py-3 text-xs leading-relaxed text-muted-foreground space-y-2"
+        >
+          <div className="font-medium text-foreground">
+            {t("data:governance.presync_summary_title")}
+          </div>
+          <p>
+            {t("data:governance.presync_summary_desc", {
+              databases: syncDatabases.length || 4,
+              pending: syncStatus?.total_pending_changes ?? 0,
+              synced: syncStatus?.total_synced_changes ?? 0,
+            })}
+          </p>
+          {syncDatabases.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {syncDatabases.map((db) => (
+                <span
+                  key={db.id}
+                  className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-background/70 px-2 py-0.5 text-2xs text-foreground"
+                >
+                  <span>{getDatabaseDisplayName(db.id, t)}</span>
+                  {db.pending_changes > 0 ? (
+                    <span className="rounded bg-warning/15 px-1 font-medium tabular-nums text-warning">
+                      +{db.pending_changes}
+                    </span>
+                  ) : (
+                    <CheckCircle size={11} className="text-success/80" aria-hidden="true" />
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
+          {cloudSyncConfigured && latestSyncAt === null && (
+            <div
+              data-testid="sync-first-connect-merge-notice"
+              className="rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-foreground"
+            >
+              {t("data:governance.presync_first_sync_notice")}
+            </div>
+          )}
+          <p className="text-2xs text-muted-foreground/85">
+            {t("data:governance.presync_local_only_note")}
+          </p>
+        </div>
       </div>
 
       {/* 数据库同步状态 */}
@@ -1038,6 +1141,35 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                               : friendlySyncError ?? sanitizedSyncError}
                         </span>
                       </div>
+                      {(syncErrorKind === "lease_held" || syncErrorKind === "lease_held_self") &&
+                        (leaseCountdown || leaseHolderDevice) && (
+                          <div
+                            data-testid="sync-lease-countdown-panel"
+                            className={
+                              leaseCountdown?.expired
+                                ? "ml-[18px] rounded-md border border-success/40 bg-success/10 px-2.5 py-1.5 text-xs text-foreground space-y-0.5"
+                                : "ml-[18px] rounded-md border border-warning/35 bg-warning/10 px-2.5 py-1.5 text-xs text-foreground space-y-0.5"
+                            }
+                          >
+                            {leaseHolderDevice && syncErrorKind === "lease_held" && (
+                              <div className="font-medium">
+                                {t("data:governance.lease_holder_label", {
+                                  holder: leaseHolderDevice,
+                                })}
+                              </div>
+                            )}
+                            {leaseCountdown && (
+                              <div className="tabular-nums text-muted-foreground">
+                                {leaseCountdown.expired
+                                  ? t("data:governance.lease_expired_ready_to_retry")
+                                  : t("data:governance.lease_countdown_remaining", {
+                                      remaining: leaseCountdown.label,
+                                      expiresAt: leaseExpiry?.toLocaleString() ?? "",
+                                    })}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       {(syncErrorE2eeKind || syncErrorKind) && (
                         <details className="pl-[18px] text-2xs text-muted-foreground">
                           <summary className="cursor-pointer select-none hover:text-foreground">
@@ -1046,16 +1178,19 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                           <p className="mt-1 break-all">{sanitizedSyncError}</p>
                         </details>
                       )}
-                      <div className="flex items-center gap-2 pl-[18px]">
+                      <div className="flex flex-wrap items-center gap-2 pl-[18px]">
                         {onRetrySync && (
                           <DsButton
-                            variant="outline"
+                            variant={leaseCountdown?.expired ? "primary" : "outline"}
                             size="sm"
                             onClick={onRetrySync}
                             disabled={syncRunning}
+                            data-testid="sync-terminal-retry-btn"
                           >
                             <ArrowClockwise size={12} className="mr-1" />
-                            {t("common:actions.retry")}
+                            {leaseCountdown?.expired
+                              ? t("data:governance.lease_retry_now")
+                              : t("common:actions.retry")}
                           </DsButton>
                         )}
                         {onViewAuditLog && (
@@ -1103,9 +1238,12 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         onRunSync={(direction) => onRunSync(direction, syncStrategy)}
       />
 
-      {/* 冲突信息 */}
+      {/* 冲突信息（引导至下方记录级冲突面板逐条处理；不再暴露已停用的批量清单级覆盖按钮） */}
       {conflicts && conflicts.has_conflicts && (
-        <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-4">
+        <div
+          data-testid="sync-conflict-summary-card"
+          className="rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-3"
+        >
           <div className="flex items-center gap-2 text-warning font-medium">
             <Warning size={16} />
             {t("data:governance.conflicts_detected")}
@@ -1124,73 +1262,23 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             </p>
           )}
 
-          {/* 冲突影响说明 */}
-          <p className="text-xs text-muted-foreground/80">
-            {t("data:governance.conflict_impact_hint")}
+          <p className="text-xs text-muted-foreground/90">
+            {t("data:governance.conflict_review_record_level_hint")}
           </p>
 
-          {/* 冲突解决策略（点击后先弹确认，确认后才执行） */}
-          <div className="flex flex-wrap gap-2 pt-2">
+          <div className="flex flex-wrap gap-2 pt-1">
             <DsButton
-              variant="outline"
+              variant="warning"
               size="sm"
-              onClick={() => setPendingResolveStrategy("keep_local")}
+              data-testid="sync-conflict-open-record-panel-btn"
+              onClick={handleJumpToConflicts}
               disabled={loading || conflicts.needs_migration}
             >
-              {t("data:governance.keep_local")}
-            </DsButton>
-            <DsButton
-              variant="outline"
-              size="sm"
-              onClick={() => setPendingResolveStrategy("use_cloud")}
-              disabled={loading || conflicts.needs_migration}
-            >
-              {t("data:governance.use_cloud")}
-            </DsButton>
-            <DsButton
-              variant="outline"
-              size="sm"
-              onClick={() => setPendingResolveStrategy("keep_latest")}
-              disabled={loading || conflicts.needs_migration}
-            >
-              {t("data:governance.keep_latest")}
-            </DsButton>
-            <DsButton
-              variant="outline"
-              size="sm"
-              onClick={() => setPendingResolveStrategy("manual")}
-              disabled={loading || conflicts.needs_migration}
-            >
-              {t("data:governance.manual")}
+              {t("data:governance.open_record_conflicts_panel")}
             </DsButton>
           </div>
         </div>
       )}
-
-      {/* 数据库级冲突解决确认弹窗：描述写明会覆盖另一版本且建议先本地备份 */}
-      <DsAlertDialog
-        open={pendingResolveStrategy !== null}
-        onOpenChange={(open) => {
-          if (!open) setPendingResolveStrategy(null);
-        }}
-        title={t("sync:confirmConflictResolveTitle")}
-        description={
-          pendingResolveStrategy
-            ? t("sync:confirmConflictResolveDescription", {
-                strategy: t(strategyLabelKeys[pendingResolveStrategy]),
-              })
-            : undefined
-        }
-        confirmText={t("common:actions.confirm")}
-        cancelText={t("common:actions.cancel")}
-        confirmVariant={
-          pendingResolveStrategy
-            ? strategyConfirmVariants[pendingResolveStrategy]
-            : "default"
-        }
-        onConfirm={handleConfirmResolve}
-        disabled={loading}
-      />
 
       {/* 记录级冲突面板（__sync_conflicts 表） */}
       <RecordConflictsPanel

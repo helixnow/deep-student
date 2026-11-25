@@ -109,12 +109,13 @@ describe('RecordConflictsPanel 字段级差异对比合并', () => {
 
     const diffTable = screen.getByTestId('conflict-field-diff-table');
     expect(diffTable).toBeInTheDocument();
+    expect(diffTable.querySelector('table')).toBeNull();
     expect(
       within(diffTable).getByText('data:governance.merge_diff_count:4'),
     ).toBeInTheDocument();
 
-    // 差异行标记 data-has-diff="true"，相同字段（deck）排在差异字段之后且 data-has-diff="false"
-    const allRows = within(diffTable).getAllByRole('row').slice(1);
+    // 差异卡片标记 data-has-diff="true"，相同字段（deck）排在差异字段之后且 data-has-diff="false"
+    const allRows = Array.from(diffTable.querySelectorAll('[data-testid^="conflict-diff-row-"]'));
     expect(allRows).toHaveLength(5);
     expect(allRows[0]).toHaveAttribute('data-has-diff', 'true');
     expect(allRows[allRows.length - 1]).toHaveAttribute('data-testid', 'conflict-diff-row-deck');

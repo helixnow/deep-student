@@ -11,7 +11,7 @@ const suite = describe;
 
 function storageFor(db: TestDatabase): StorageService {
   return {
-    pathOf: (name: CoordinatedDatabaseName) => (name === 'vfs' ? '/tmp' : `/nonexistent/${name}.db`),
+    pathOf: (name: CoordinatedDatabaseName) => (name === 'vfs' || name === 'mistakes' ? '/tmp' : `/nonexistent/${name}.db`),
     openFile: () => db,
     close: () => undefined,
   } as unknown as StorageService;
@@ -200,5 +200,169 @@ suite('conflict commands', () => {
     const db = createDb();
     expect(() => rollbackSyncSnapshotBatch(storageFor(db), 'nope', 'batch-1')).toThrow(CommandError);
     expect(() => rollbackSyncSnapshotBatch(storageFor(db), 'nope', 'batch-1')).toThrow('未知数据库: nope');
+  });
+
+  it('resolve_record_conflict_keep_both_applies_cloud_and_creates_labeled_local_copy_with_changelog', () => {
+    const db = createDb();
+    db.exec(`
+      CREATE TABLE resources (
+        id TEXT PRIMARY KEY,
+        hash TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL DEFAULT 'note',
+        source_id TEXT,
+        source_table TEXT,
+        storage_mode TEXT DEFAULT 'inline',
+        data TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER
+      );
+      CREATE TABLE folder_items (
+        id TEXT PRIMARY KEY,
+        folder_id TEXT NOT NULL,
+        item_type TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        created_at TEXT,
+        updated_at TEXT,
+        deleted_at TEXT
+      );
+      ALTER TABLE notes ADD COLUMN resource_id TEXT;
+      ALTER TABLE notes ADD COLUMN created_at TEXT;
+      ALTER TABLE notes ADD COLUMN deleted_at TEXT;
+    `);
+    db.run(
+      "INSERT INTO resources (id, hash, type, source_id, source_table, data, created_at, updated_at) VALUES ('res-1', 'h-local', 'note', 'note-1', 'notes', 'Local Body', 1700000000000, 1700000000000)",
+    );
+    db.run(
+      "INSERT INTO notes (id, resource_id, title, created_at, updated_at) VALUES ('note-1', 'res-1', 'Linear Algebra', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+    );
+    db.run(
+      "INSERT INTO folder_items (id, folder_id, item_type, item_id, created_at, updated_at) VALUES ('fi-1', 'folder-math', 'note', 'note-1', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+    );
+    const localNote = {
+      ...(getRecordData(db, 'notes', 'note-1', 'id') as Record<string, unknown>),
+      content_md: 'Local Body',
+    };
+    const cloudNote = {
+      ...(getRecordData(db, 'notes', 'note-1', 'id') as Record<string, unknown>),
+      title: 'Linear Algebra (Cloud)',
+      updated_at: '2026-01-02T00:00:00Z',
+      content_md: 'Cloud Body',
+    };
+    const ids = seedConflict(db, localNote, cloudNote);
+
+    resolveRecordConflict(storageFor(db), 'vfs', 'notes', 'note-1', 'keep_both', null, ids);
+
+    // Original note receives cloud title & cloud body
+    expect(db.pluck<string>('SELECT title FROM notes WHERE id = ?1', ['note-1'])).toBe('Linear Algebra (Cloud)');
+    expect(db.pluck<string>('SELECT data FROM resources WHERE id = ?1', ['res-1'])).toBe('Cloud Body');
+    expect(db.pluck<string>('SELECT typeof(updated_at) FROM resources WHERE id = ?1', ['res-1'])).toBe('integer');
+
+    // Local copy is created with labeled title, fresh resource, folder mount, and pending INSERT changelog
+    const allNotes = db.all<{ id: string; title: string; resource_id: string }>('SELECT id, title, resource_id FROM notes ORDER BY id');
+    expect(allNotes).toHaveLength(2);
+    const clone = allNotes.find((n) => n.id !== 'note-1')!;
+    expect(clone.title).toMatch(/^Linear Algebra \(本地冲突副本 \d{4}-\d{2}-\d{2}\)$/);
+    expect(clone.resource_id).not.toBe('res-1');
+    expect(db.pluck<string>('SELECT data FROM resources WHERE id = ?1', [clone.resource_id])).toBe('Local Body');
+    expect(db.pluck<string>('SELECT typeof(updated_at) FROM resources WHERE id = ?1', [clone.resource_id])).toBe('integer');
+
+    // Folder mount cloned so conflict copy is visible in the same folder
+    const clonedMount = db.get<{ folder_id: string }>('SELECT folder_id FROM folder_items WHERE item_id = ?1', [clone.id]);
+    expect(clonedMount?.folder_id).toBe('folder-math');
+
+    // Pending __change_log entries created for both original UPDATE and cloned INSERTs
+    const pendingInserts = db.all<{ table_name: string; record_id: string }>(
+      "SELECT table_name, record_id FROM __change_log WHERE operation = 'INSERT' AND sync_version = 0",
+    );
+    expect(pendingInserts.some((r) => r.table_name === 'notes' && r.record_id === clone.id)).toBe(true);
+    expect(pendingInserts.some((r) => r.table_name === 'resources' && r.record_id === clone.resource_id)).toBe(true);
+    expect(Number(db.pluck<number>('SELECT COUNT(*) FROM __sync_conflicts WHERE resolved_at IS NULL'))).toBe(0);
+    expect(db.pluck<string>('SELECT resolution FROM __sync_conflicts LIMIT 1')).toBe('keep_both');
+  });
+
+  it('resolve_record_conflict_keep_both_handles_resources_anki_cards_questions_mistakes_and_rejects_null', () => {
+    const db = createDb();
+    db.exec(`
+      CREATE TABLE resources (
+        id TEXT PRIMARY KEY,
+        hash TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL DEFAULT 'note',
+        source_id TEXT,
+        source_table TEXT,
+        data TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER
+      );
+      ALTER TABLE notes ADD COLUMN resource_id TEXT;
+      CREATE TABLE anki_cards (
+        id TEXT PRIMARY KEY,
+        source_type TEXT NOT NULL DEFAULT 'manual',
+        source_id TEXT NOT NULL DEFAULT '',
+        front TEXT NOT NULL DEFAULT '',
+        back TEXT NOT NULL DEFAULT '',
+        text TEXT,
+        is_error_card INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT,
+        updated_at TEXT,
+        deleted_at TEXT
+      );
+      CREATE UNIQUE INDEX idx_anki_cards_dedup_unique ON anki_cards(
+        source_type,
+        source_id,
+        CASE WHEN source_type='apkg_import' THEN id
+             WHEN text IS NOT NULL AND length(text)>0 THEN text
+             ELSE printf('%d:%s|%s', length(front), front, back) END
+      ) WHERE is_error_card=0 AND deleted_at IS NULL;
+      CREATE TABLE questions (
+        id TEXT PRIMARY KEY,
+        exam_id TEXT NOT NULL,
+        source_key TEXT,
+        question_label TEXT,
+        content TEXT NOT NULL,
+        created_at TEXT,
+        updated_at TEXT,
+        deleted_at TEXT
+      );
+      CREATE UNIQUE INDEX idx_questions_source_slot ON questions(exam_id, source_key) WHERE source_key IS NOT NULL;
+    `);
+
+    // 1) resources conflict linked to note (cloud already on disk -> desiredState path!)
+    db.run("INSERT INTO resources (id, hash, type, source_id, source_table, data, created_at, updated_at) VALUES ('res-link', 'h-cloud', 'note', 'note-link', 'notes', 'Cloud Resource Body', 1700000000000, 1700000002000)");
+    db.run("INSERT INTO notes (id, resource_id, title, updated_at) VALUES ('note-link', 'res-link', 'Body Only Conflict Note', '2026-01-02T00:00:00Z')");
+    const cloudRes = getRecordData(db, 'resources', 'res-link', 'id');
+    const localRes = { ...(cloudRes as Record<string, unknown>), hash: 'h-local', data: 'Local Resource Body', updated_at: 1700000001000 };
+    const rLocalId = Number(db.run("INSERT INTO __sync_conflicts (table_name, record_id, side, data_json) VALUES ('resources', 'res-link', 'local', ?1)", [JSON.stringify(localRes)]).lastInsertRowid);
+    const rCloudId = Number(db.run("INSERT INTO __sync_conflicts (table_name, record_id, side, data_json) VALUES ('resources', 'res-link', 'cloud', ?1)", [JSON.stringify(cloudRes)]).lastInsertRowid);
+    resolveRecordConflict(storageFor(db), 'vfs', 'resources', 'res-link', 'keep_both', null, [rLocalId, rCloudId]);
+    expect(Number(db.pluck<number>('SELECT COUNT(*) FROM notes'))).toBe(2);
+    expect(Number(db.pluck<number>('SELECT COUNT(*) FROM resources'))).toBe(2);
+
+    // 2) anki_cards conflict in mistakes DB (must satisfy idx_anki_cards_dedup_unique)
+    db.run("INSERT INTO anki_cards (id, source_type, source_id, front, back, updated_at) VALUES ('card-1', 'manual', 'deck-1', 'What is ATP?', 'Energy currency', '2026-01-01T00:00:00Z')");
+    const localCard = getRecordData(db, 'anki_cards', 'card-1', 'id');
+    const cloudCard = { ...(localCard as Record<string, unknown>), back: 'Cloud Answer', updated_at: '2026-01-02T00:00:00Z' };
+    const cLocalId = Number(db.run("INSERT INTO __sync_conflicts (table_name, record_id, side, data_json) VALUES ('anki_cards', 'card-1', 'local', ?1)", [JSON.stringify(localCard)]).lastInsertRowid);
+    const cCloudId = Number(db.run("INSERT INTO __sync_conflicts (table_name, record_id, side, data_json) VALUES ('anki_cards', 'card-1', 'cloud', ?1)", [JSON.stringify(cloudCard)]).lastInsertRowid);
+    resolveRecordConflict(storageFor(db), 'mistakes', 'anki_cards', 'card-1', 'keep_both', null, [cLocalId, cCloudId]);
+    const cards = db.all<{ id: string; front: string; back: string }>('SELECT id, front, back FROM anki_cards');
+    expect(cards).toHaveLength(2);
+    expect(cards.find((c) => c.id === 'card-1')?.back).toBe('Cloud Answer');
+    expect(cards.find((c) => c.id !== 'card-1')?.front).toContain('本地冲突副本');
+
+    // 3) questions conflict (must clear source_key to satisfy idx_questions_source_slot)
+    db.run("INSERT INTO questions (id, exam_id, source_key, question_label, content, updated_at) VALUES ('q-1', 'exam-1', 'slot-1', 'Q1', 'Local Q', '2026-01-01T00:00:00Z')");
+    const localQ = getRecordData(db, 'questions', 'q-1', 'id');
+    const cloudQ = { ...(localQ as Record<string, unknown>), content: 'Cloud Q', updated_at: '2026-01-02T00:00:00Z' };
+    const qLocalId = Number(db.run("INSERT INTO __sync_conflicts (table_name, record_id, side, data_json) VALUES ('questions', 'q-1', 'local', ?1)", [JSON.stringify(localQ)]).lastInsertRowid);
+    const qCloudId = Number(db.run("INSERT INTO __sync_conflicts (table_name, record_id, side, data_json) VALUES ('questions', 'q-1', 'cloud', ?1)", [JSON.stringify(cloudQ)]).lastInsertRowid);
+    resolveRecordConflict(storageFor(db), 'vfs', 'questions', 'q-1', 'keep_both', null, [qLocalId, qCloudId]);
+    expect(Number(db.pluck<number>('SELECT COUNT(*) FROM questions'))).toBe(2);
+
+    // 4) cloud-only null delete conflict rejects keep_both cleanly
+    const delId = Number(db.run("INSERT INTO __sync_conflicts (table_name, record_id, side, data_json) VALUES ('notes', 'note-link', 'cloud', 'null')").lastInsertRowid);
+    expect(() => resolveRecordConflict(storageFor(db), 'vfs', 'notes', 'note-link', 'keep_both', null, [delId]))
+      .toThrow('仅当本地与云端均存在记录内容时才支持保留两者');
   });
 });

@@ -20,6 +20,36 @@ import {
   type SyncProgress,
 } from '@/types/dataGovernance';
 
+const UNRESOLVED_CONFLICTS_STORAGE_KEY = 'dstu-unresolved-conflicts-v1';
+
+function readPersistedUnresolvedConflictCount(): number {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return 0;
+    const raw = window.localStorage.getItem(UNRESOLVED_CONFLICTS_STORAGE_KEY);
+    if (!raw) return 0;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writePersistedUnresolvedConflictCount(count: number): void {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const safe = Number.isFinite(count) && count > 0 ? Math.trunc(count) : 0;
+    if (safe === 0) {
+      window.localStorage.removeItem(UNRESOLVED_CONFLICTS_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(UNRESOLVED_CONFLICTS_STORAGE_KEY, String(safe));
+    }
+  } catch {
+    // Best effort persistence across reload
+  }
+}
+
+export type UnresolvedConflictPerDb = Record<string, { groups: number; rows: number }>;
+
 interface GlobalSyncState {
   /** 是否有同步正在进行（任意入口触发的都算） */
   isSyncing: boolean;
@@ -37,6 +67,10 @@ interface GlobalSyncState {
   progress: SyncProgress | null;
   /** 已发出取消请求、等待后端协作式停止（新同步开始时复位） */
   cancelRequested: boolean;
+  /** 未解决记录级冲突组数（跨 toast 消失与页面刷新持久化，供全局入口持续提醒） */
+  unresolvedConflictCount: number;
+  /** 各数据库未解决冲突分布 */
+  unresolvedConflictPerDb: UnresolvedConflictPerDb;
   /**
    * 尝试开始一次同步。成功占用时把进度置为「准备中」并复位取消标记。
    * @returns true 表示成功占用；false 表示已有同步在进行，调用方应放弃本次触发
@@ -55,6 +89,10 @@ interface GlobalSyncState {
   applyProgress: (progress: SyncProgress) => void;
   /** 请求取消当前同步（协作式：后端在下一检查点停止） */
   requestCancel: () => Promise<void>;
+  /** 更新未解决冲突计数并同步持久化缓存 */
+  setUnresolvedConflictCount: (count: number, perDb?: UnresolvedConflictPerDb) => void;
+  /** 从后端实时刷新未解决记录级冲突计数 */
+  refreshUnresolvedConflictCount: () => Promise<number>;
 }
 
 /** 同步开始时的初始进度 */
@@ -88,6 +126,8 @@ export const useGlobalSyncStore = create<GlobalSyncState>((set, get) => ({
   source: null,
   progress: null,
   cancelRequested: false,
+  unresolvedConflictCount: readPersistedUnresolvedConflictCount(),
+  unresolvedConflictPerDb: {},
   beginSync: (source) => {
     if (get().isSyncing) {
       return false;
@@ -128,6 +168,50 @@ export const useGlobalSyncStore = create<GlobalSyncState>((set, get) => ({
       set({ cancelRequested: false });
     }
   },
+  setUnresolvedConflictCount: (count, perDb) => {
+    const safeCount = Number.isFinite(count) && count > 0 ? Math.trunc(count) : 0;
+    writePersistedUnresolvedConflictCount(safeCount);
+    set((state) => ({
+      unresolvedConflictCount: safeCount,
+      unresolvedConflictPerDb: perDb ?? (safeCount === 0 ? {} : state.unresolvedConflictPerDb),
+    }));
+  },
+  refreshUnresolvedConflictCount: async () => {
+    try {
+      const api = await import('@/api/dataGovernance');
+      let countFn: (() => Promise<{ total_groups?: number; per_database?: UnresolvedConflictPerDb }>) | undefined;
+      try {
+        if (typeof api.DataGovernanceApi?.countRecordConflicts === 'function') {
+          countFn = api.DataGovernanceApi.countRecordConflicts;
+        }
+      } catch {
+        // ignore partial mock
+      }
+      if (!countFn) {
+        try {
+          if (typeof api.countRecordConflicts === 'function') {
+            countFn = api.countRecordConflicts;
+          }
+        } catch {
+          // ignore partial mock
+        }
+      }
+      if (typeof countFn !== 'function') {
+        return get().unresolvedConflictCount;
+      }
+      const result = await countFn();
+      const total = typeof result?.total_groups === 'number' && Number.isFinite(result.total_groups)
+        ? Math.max(0, Math.trunc(result.total_groups))
+        : 0;
+      const perDb = result?.per_database && typeof result.per_database === 'object'
+        ? result.per_database
+        : {};
+      get().setUnresolvedConflictCount(total, perDb);
+      return total;
+    } catch {
+      return get().unresolvedConflictCount;
+    }
+  },
 }));
 
 // ==================== 应用级同步进度监听（#447） ====================
@@ -148,6 +232,7 @@ export function ensureSyncProgressListener(): Promise<void> {
       await listen<SyncProgress>(SYNC_PROGRESS_EVENT, (event) => {
         useGlobalSyncStore.getState().applyProgress(event.payload);
       });
+      void useGlobalSyncStore.getState().refreshUnresolvedConflictCount();
     })().catch((error: unknown) => {
       progressListenerPromise = null;
       console.warn('[SyncStatus] failed to listen for sync progress:', error);
@@ -438,6 +523,26 @@ export async function performAutoSyncOnce(): Promise<AutoSyncOutcome> {
       config,
       'keep_latest',
     );
+    // 同步结束后刷新持久化冲突计数，确保自动同步产生的冲突不会静默消失
+    let refreshedFromBackend = false;
+    try {
+      const countFn = api.DataGovernanceApi?.countRecordConflicts;
+      if (typeof countFn === 'function') {
+        const counts = await countFn();
+        useGlobalSyncStore.getState().setUnresolvedConflictCount(
+          counts?.total_groups ?? 0,
+          counts?.per_database,
+        );
+        refreshedFromBackend = true;
+      }
+    } catch {
+      // Optional in isolated unit tests that only mock detectPruneGap/runSyncWithProgress
+    }
+    if (!refreshedFromBackend && typeof result.conflicts_detected === 'number' && result.conflicts_detected > 0) {
+      useGlobalSyncStore.getState().setUnresolvedConflictCount(
+        Math.max(useGlobalSyncStore.getState().unresolvedConflictCount, result.conflicts_detected),
+      );
+    }
     if (result.success) return 'success';
     // 引擎在结果里报租约被占/互斥忙/半配置时同样静默跳过，不计失败
     return classifyAutoSyncSkip(result.error_message ?? '') ?? 'failure';

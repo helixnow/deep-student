@@ -11,6 +11,7 @@
  */
 
 import { useRefreshOnReturn } from '@/hooks/useRefreshOnReturn';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -824,6 +825,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   const [isSyncRunning, setIsSyncRunning] = useState(false);
   const globalSyncing = useGlobalSyncStore((s) => s.isSyncing);
   const syncCancelRequested = useGlobalSyncStore((s) => s.cancelRequested);
+  const unresolvedConflictCount = useGlobalSyncStore((s) => s.unresolvedConflictCount ?? 0);
   const handleCancelSync = useCallback(() => {
     void useGlobalSyncStore.getState().requestCancel();
   }, []);
@@ -835,7 +837,6 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   }>({ direction: 'bidirectional', strategy: 'keep_latest' });
   const syncInFlightRef = useRef(false);
   const detectInFlightRef = useRef(false);
-  const resolveInFlightRef = useRef(false);
 
   // 后台备份任务状态
   const [backupJobId, setBackupJobId] = useState<string | null>(null);
@@ -1866,6 +1867,16 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         } catch {
           // ignore quarantine count check failure
         }
+        let liveConflictCount = 0;
+        try {
+          liveConflictCount = await useGlobalSyncStore.getState().refreshUnresolvedConflictCount();
+        } catch {
+          // ignore optional conflict count failure
+        }
+        const effectiveConflictCount = Math.max(liveConflictCount, result.conflicts_detected ?? 0);
+        if (effectiveConflictCount > liveConflictCount) {
+          useGlobalSyncStore.getState().setUnresolvedConflictCount(effectiveConflictCount);
+        }
         window.dispatchEvent(new CustomEvent('data-governance:local-change'));
         if (result.error_message || (result.skipped_changes ?? 0) > 0 || unresolvedQuarantine > 0) {
           const skipped = result.skipped_changes ?? 0;
@@ -1881,6 +1892,13 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
                   skipped,
                 });
           showGlobalNotification('warning', msg);
+        } else if (effectiveConflictCount > 0) {
+          showGlobalNotification(
+            'warning',
+            t('data:governance.sync_completed_with_conflicts', {
+              count: effectiveConflictCount,
+            }),
+          );
         } else {
           showGlobalNotification('success', t('data:governance.sync_success'));
         }
@@ -1970,6 +1988,12 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           : Promise.resolve(null),
       ]);
       const unresolvedRecordGroups = recordCounts?.total_groups ?? 0;
+      if (recordCounts) {
+        useGlobalSyncStore.getState().setUnresolvedConflictCount(
+          unresolvedRecordGroups,
+          recordCounts.per_database,
+        );
+      }
       const mergedResult: ConflictDetectionResponse = {
         ...result,
         record_conflict_count: Math.max(result.record_conflict_count ?? 0, unresolvedRecordGroups),
@@ -1993,64 +2017,24 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }
   }, [isSyncRunning, loadCloudSyncConfig, startTabLoading, stopTabLoading, i18n?.language, t]);
 
-  // 解决冲突
-  const resolveConflicts = useCallback(async (strategy: MergeStrategy) => {
-    if (resolveInFlightRef.current) {
-      showGlobalNotification(
-        'warning',
-        t('data:governance.resolve_conflicts_running')
-      );
-      return;
+  const [externalConflictJumpSignal, setExternalConflictJumpSignal] = useState(0);
+
+  // 跳转到记录级冲突面板（旧版批量清单级覆盖接口 data_governance_resolve_conflicts 已停用）
+  const jumpToRecordConflicts = useCallback(() => {
+    setSyncTabVisited(true);
+    setActiveTab('sync');
+    setExternalConflictJumpSignal((n) => n + 1);
+    const scrollToPanel = () => {
+      if (typeof document === 'undefined') return;
+      const el = document.getElementById('record-conflicts-panel');
+      el?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    };
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => scrollToPanel());
+    } else {
+      scrollToPanel();
     }
-    if (conflicts?.needs_migration) {
-      showGlobalNotification(
-        'warning',
-        t('data:governance.schema_mismatch_needs_migration')
-      );
-      return;
-    }
-    const cloudManifestJson = conflicts?.cloud_manifest_json;
-    if (!cloudManifestJson) {
-      showGlobalNotification('warning', t('data:governance.sync_conflict_manifest_missing'));
-      return;
-    }
-    resolveInFlightRef.current = true;
-    startTabLoading('sync');
-    try {
-      const result = await DataGovernanceApi.resolveConflicts(strategy, cloudManifestJson);
-      if (result.success) {
-        if (strategy === 'manual' && result.pending_manual_conflicts > 0) {
-          const cloudConfig = await loadCloudSyncConfig();
-          if (cloudConfig) {
-            const refreshedConflicts = await DataGovernanceApi.detectConflicts(undefined, cloudConfig);
-            setConflicts(refreshedConflicts);
-          }
-          showGlobalNotification(
-            'warning',
-            t('data:governance.conflicts_pending_manual', {
-              count: result.pending_manual_conflicts,
-            })
-          );
-        } else {
-          showGlobalNotification('success', t('data:governance.conflicts_resolved'));
-          setConflicts(null);
-        }
-        await loadSyncStatus();
-      } else {
-        showGlobalNotification(
-          'error',
-          result.error_message
-            ? sanitizeAclErrorMessage(result.error_message, t)
-            : t('data:governance.sync_failed'),
-        );
-      }
-    } catch (error: unknown) {
-      showGlobalNotification('error', formatGovernanceError(error, t));
-    } finally {
-      stopTabLoading('sync');
-      resolveInFlightRef.current = false;
-    }
-  }, [conflicts, loadCloudSyncConfig, loadSyncStatus, startTabLoading, stopTabLoading, t]);
+  }, []);
 
   // 预取审计日志：提升切换体验（并与单测期望对齐）
   useEffect(() => {
@@ -2338,12 +2322,71 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     [revealActiveMaintenanceDetail, maintenanceMode, isSyncRunning, globalSyncing, isBackupRunning],
   );
 
+  // 启动/挂载即刷新持久化未解决冲突计数，并监听外部跳转冲突事件
+  const refreshUnresolvedConflicts = useCallback(() => {
+    const fn = useGlobalSyncStore?.getState?.()?.refreshUnresolvedConflictCount;
+    if (typeof fn === 'function') {
+      void fn();
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshUnresolvedConflicts();
+  }, [refreshUnresolvedConflicts]);
+
+  useEventRegistry(
+    [
+      {
+        target: 'window',
+        type: 'data-governance:local-change',
+        listener: () => { refreshUnresolvedConflicts(); },
+      },
+      {
+        target: 'window',
+        type: 'data-governance:jump-to-conflicts',
+        listener: () => { jumpToRecordConflicts(); },
+      },
+    ],
+    [jumpToRecordConflicts, refreshUnresolvedConflicts],
+  );
+
   const tabTriggerClassName =
     'inline-flex shrink-0 max-w-full cursor-pointer min-h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-border/45 bg-muted/40 !px-2.5 sm:!px-3 !py-1.5 !text-xs text-muted-foreground data-[state=active]:border-primary/40 data-[state=active]:bg-primary/12 data-[state=active]:text-primary data-[state=active]:shadow-none sm:justify-start [@media(pointer:coarse)]:!min-h-11';
   const isNativeMobile = !isWebUiShell() && readShellPlatform()?.kind === 'mobile';
 
   const content = (
     <Tabs value={activeTab} onValueChange={(v) => handleSelectTab(v as DashboardTab)} className="min-w-0">
+      {unresolvedConflictCount > 0 && (
+        <div
+          role="alert"
+          data-testid="governance-unresolved-conflicts-banner"
+          className="mb-3 flex flex-wrap items-center justify-between gap-2.5 rounded-xl border border-warning/45 bg-warning/10 px-3.5 py-2.5 text-xs text-foreground"
+        >
+          <div className="flex min-w-0 flex-1 items-start gap-2">
+            <Warning className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+            <div className="min-w-0 space-y-0.5">
+              <div className="font-semibold text-foreground">
+                {t('data:governance.unresolved_conflicts_banner_title', {
+                  count: unresolvedConflictCount,
+                })}
+              </div>
+              <p className="text-muted-foreground leading-relaxed">
+                {t('data:governance.unresolved_conflicts_banner_desc')}
+              </p>
+            </div>
+          </div>
+          <DsButton
+            type="button"
+            variant="warning"
+            size="sm"
+            data-testid="governance-unresolved-conflicts-jump-btn"
+            onClick={jumpToRecordConflicts}
+            className="h-7 shrink-0 px-2.5 text-xs"
+          >
+            {t('data:governance.unresolved_conflicts_go_resolve')}
+          </DsButton>
+        </div>
+      )}
       {maintenanceMode && (
         <div
           role="status"
@@ -2401,6 +2444,14 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           <TabsTrigger value="sync" aria-label={t('data:governance.tab_sync')} className={tabTriggerClassName}>
             <Cloud className="h-3.5 w-3.5 shrink-0" />
             <span className="whitespace-nowrap text-xs">{t('data:governance.tab_sync')}</span>
+            {unresolvedConflictCount > 0 && (
+              <span
+                data-testid="governance-sync-tab-conflict-badge"
+                className="ml-0.5 inline-flex min-w-4 items-center justify-center rounded-full bg-warning/20 px-1.5 text-2xs font-semibold tabular-nums text-warning ring-1 ring-inset ring-warning/40"
+              >
+                {unresolvedConflictCount}
+              </span>
+            )}
           </TabsTrigger>
           <TabsTrigger value="audit" aria-label={t('data:governance.tab_audit')} className={tabTriggerClassName}>
             <FileText className="h-3.5 w-3.5 shrink-0" />
@@ -2752,7 +2803,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
             loading={syncLoading}
             onRefresh={loadSyncStatus}
             onDetectConflicts={detectConflicts}
-            onResolveConflicts={resolveConflicts}
+            unresolvedConflictCount={unresolvedConflictCount}
+            externalConflictFocusSignal={externalConflictJumpSignal}
             cloudSyncConfigured={cloudSyncConfigured}
             cloudSyncSummary={cloudSyncSummary}
             syncRunning={isSyncRunning || globalSyncing}

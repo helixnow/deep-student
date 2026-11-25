@@ -1,22 +1,28 @@
 /**
  * 数据同步冲突解决 Hook
  *
- * 提供与后端数据治理系统的冲突检测和解决交互。
+ * 提供与后端数据治理系统的冲突检测和记录级解决交互。
+ * 注意：旧版清单级批量覆盖接口 `data_governance_resolve_conflicts` 已停用，
+ * 所有冲突解决统一走记录级 `data_governance_resolve_record_conflict`。
  */
 
 import { useState, useCallback } from 'react';
 import {
   getSyncStatus as apiGetSyncStatus,
   detectConflicts as apiDetectConflicts,
-  resolveConflicts as apiResolveConflicts,
+  countRecordConflicts as apiCountRecordConflicts,
+  listRecordConflicts as apiListRecordConflicts,
+  resolveRecordConflict as apiResolveRecordConflict,
 } from '@/api/dataGovernance';
 import { loadStoredCloudStorageConfigWithCredentials } from '@/utils/cloudStorageApi';
+import { useGlobalSyncStore } from '@/stores/syncStatusStore';
 import type {
   ConflictDetectionResult,
-  MergeStrategy,
   DatabaseConflict,
   RecordConflict,
 } from '@/components/ConflictResolutionDialog';
+
+export type RecordResolutionAction = 'keep_local' | 'keep_cloud' | 'keep_both' | 'merged';
 
 // ============================================================================
 // 后端响应类型
@@ -149,14 +155,32 @@ export function useConflictResolution() {
           ? await loadStoredCloudStorageConfigWithCredentials()
           : null;
 
-      const response = (await apiDetectConflicts(
-        cloudManifestJson,
-        cloudConfig ?? undefined
-      )) as unknown as ConflictDetectionResponse;
+      const [response, recordCounts] = await Promise.all([
+        apiDetectConflicts(
+          cloudManifestJson,
+          cloudConfig ?? undefined
+        ) as unknown as Promise<ConflictDetectionResponse>,
+        typeof apiCountRecordConflicts === 'function'
+          ? apiCountRecordConflicts().catch(() => null)
+          : Promise.resolve(null),
+      ]);
+
+      const unresolvedRecordGroups = recordCounts?.total_groups ?? 0;
+      if (recordCounts) {
+        useGlobalSyncStore.getState().setUnresolvedConflictCount(
+          unresolvedRecordGroups,
+          recordCounts.per_database,
+        );
+      }
+
+      const effectiveRecordCount = Math.max(
+        response.record_conflict_count ?? 0,
+        unresolvedRecordGroups,
+      );
 
       // 转换后端响应为前端格式
       const conflicts: ConflictDetectionResult = {
-        has_conflicts: response.has_conflicts,
+        has_conflicts: Boolean(response.has_conflicts || effectiveRecordCount > 0),
         needs_migration: response.needs_migration,
         database_conflicts: response.database_conflicts.map((c) => ({
           database_name: c.database_name,
@@ -178,8 +202,8 @@ export function useConflictResolution() {
               }
             : undefined,
         })),
-        record_conflicts: [], // 记录级冲突详情需要额外查询
-        record_conflict_count: response.record_conflict_count,
+        record_conflicts: [], // 记录级冲突详情由 RecordConflictsPanel 或 listRecordConflicts 按需加载
+        record_conflict_count: effectiveRecordCount,
       };
 
       setState((prev) => ({
@@ -204,13 +228,19 @@ export function useConflictResolution() {
   }, []);
 
   /**
-   * 解决冲突
-   *
-   * @param strategy - 合并策略
-   * @param cloudManifestJson - 云端同步清单的 JSON 字符串
+   * 解决单条记录级冲突（支持 keep_local / keep_cloud / keep_both / merged）。
+   * 绝不调用已停用的批量清单级覆盖接口 `data_governance_resolve_conflicts`。
    */
-  const resolveConflicts = useCallback(
-    async (strategy: MergeStrategy, cloudManifestJson: string) => {
+  const resolveRecordConflict = useCallback(
+    async (
+      databaseName: string,
+      tableName: string,
+      recordId: string,
+      resolution: RecordResolutionAction,
+      expectedConflictIds: number[],
+      mergedDataJson?: string,
+    ) => {
+      const startedAt = Date.now();
       setState((prev) => ({
         ...prev,
         isResolving: true,
@@ -218,25 +248,40 @@ export function useConflictResolution() {
       }));
 
       try {
-        if (!cloudManifestJson || cloudManifestJson.trim().length === 0) {
-          throw new Error('cloudManifestJson is required');
-        }
-
-        const response = (await apiResolveConflicts(
-          strategy,
-          cloudManifestJson
-        )) as unknown as SyncResultResponse;
-
+        await apiResolveRecordConflict(
+          databaseName,
+          tableName,
+          recordId,
+          resolution as Parameters<typeof apiResolveRecordConflict>[3],
+          expectedConflictIds,
+          mergedDataJson,
+        );
+        const remaining = await useGlobalSyncStore.getState().refreshUnresolvedConflictCount();
+        const result: SyncResultResponse = {
+          success: true,
+          strategy: resolution,
+          synced_databases: 1,
+          resolved_conflicts: 1,
+          pending_manual_conflicts: remaining,
+          records_to_push: [],
+          records_to_pull: [],
+          duration_ms: Date.now() - startedAt,
+          error_message: null,
+        };
         setState((prev) => ({
           ...prev,
           isResolving: false,
-          lastResult: response,
-          // 解决后清除冲突
-          conflicts: response.success ? null : prev.conflicts,
-          error: response.error_message ?? null,
+          lastResult: result,
+          conflicts: prev.conflicts
+            ? {
+                ...prev.conflicts,
+                has_conflicts: remaining > 0 || prev.conflicts.database_conflicts.length > 0,
+                record_conflict_count: remaining,
+              }
+            : null,
+          error: null,
         }));
-
-        return response;
+        return result;
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         setState((prev) => ({
@@ -249,6 +294,15 @@ export function useConflictResolution() {
     },
     []
   );
+
+  /**
+   * 刷新当前未解决记录级冲突列表（供独立调用方使用）
+   */
+  const loadRecordConflicts = useCallback(async (limit = 200, offset = 0) => {
+    const rows = await apiListRecordConflicts(limit, offset);
+    await useGlobalSyncStore.getState().refreshUnresolvedConflictCount();
+    return rows;
+  }, []);
 
   /**
    * 模拟检测冲突（用于测试）
@@ -319,6 +373,7 @@ export function useConflictResolution() {
           },
         },
       ],
+      record_conflict_count: 1,
     };
 
     setState((prev) => ({
@@ -330,42 +385,6 @@ export function useConflictResolution() {
     }));
 
     return mockConflicts;
-  }, []);
-
-  /**
-   * 模拟解决冲突（用于测试）
-   */
-  const resolveConflictsMock = useCallback(async (strategy: MergeStrategy) => {
-    setState((prev) => ({
-      ...prev,
-      isResolving: true,
-      error: null,
-    }));
-
-    // 模拟网络延迟
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    const mockResult: SyncResultResponse = {
-      success: true,
-      strategy,
-      synced_databases: 2,
-      resolved_conflicts: 3,
-      pending_manual_conflicts: strategy === 'manual' ? 1 : 0,
-      records_to_push: strategy === 'keep_local' ? ['msg-uuid-12345'] : [],
-      records_to_pull: strategy === 'use_cloud' ? ['msg-uuid-12345'] : [],
-      duration_ms: 1500,
-      error_message: null,
-    };
-
-    setState((prev) => ({
-      ...prev,
-      isResolving: false,
-      lastResult: mockResult,
-      conflicts: mockResult.success ? null : prev.conflicts,
-      error: null,
-    }));
-
-    return mockResult;
   }, []);
 
   /**
@@ -398,9 +417,9 @@ export function useConflictResolution() {
     ...state,
     getSyncStatus,
     detectConflicts,
-    resolveConflicts,
+    resolveRecordConflict,
+    loadRecordConflicts,
     detectConflictsMock,
-    resolveConflictsMock,
     clearError,
     reset,
   };

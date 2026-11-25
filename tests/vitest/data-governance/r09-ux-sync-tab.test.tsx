@@ -252,46 +252,30 @@ describe('SyncTab 自动同步开关', () => {
 // 库级冲突解决危险确认
 // ============================================================================
 
-describe('SyncTab 库级冲突解决确认', () => {
-  it('点击策略只打开确认框，确认后才执行且只执行一次', () => {
+describe('SyncTab 冲突引导至记录级解决（BUG-3 停用批量覆盖）', () => {
+  it('不再渲染已停用的 4 个批量覆盖按钮，改为引导前往记录级冲突面板且绝不调用 onResolveConflicts', () => {
     const props = makeProps({ conflicts: conflictsWithData });
     render(<SyncTab {...props} />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'data:governance.use_cloud' }),
-    );
+    const summaryCard = screen.getByTestId('sync-conflict-summary-card');
+    expect(within(summaryCard).queryByRole('button', { name: 'data:governance.use_cloud' })).not.toBeInTheDocument();
+    expect(within(summaryCard).queryByRole('button', { name: 'data:governance.keep_local' })).not.toBeInTheDocument();
+    expect(within(summaryCard).queryByRole('button', { name: 'data:governance.keep_latest' })).not.toBeInTheDocument();
+    expect(within(summaryCard).queryByRole('button', { name: 'data:governance.manual' })).not.toBeInTheDocument();
+
+    const jumpBtn = within(summaryCard).getByTestId('sync-conflict-open-record-panel-btn');
+    fireEvent.click(jumpBtn);
     expect(props.onResolveConflicts).not.toHaveBeenCalled();
-
-    const dialog = screen.getByRole('alertdialog');
-    expect(dialog).toHaveTextContent('sync:confirmConflictResolveTitle');
-    expect(dialog).toHaveTextContent('sync:confirmConflictResolveDescription');
-    // use_cloud 用云端覆盖本地，是最危险的策略 → danger 变体
-    expect(dialog).toHaveAttribute('data-confirm-variant', 'danger');
-
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'common:actions.confirm' }),
-    );
-    expect(props.onResolveConflicts).toHaveBeenCalledTimes(1);
-    expect(props.onResolveConflicts).toHaveBeenCalledWith('use_cloud');
-    // 确认后弹窗关闭
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
-  it('keep_local 用 warning 变体；取消关闭弹窗且不回调', () => {
-    const props = makeProps({ conflicts: conflictsWithData });
+  it('needs_migration 为 true 时禁用冲突处理入口并展示迁移提示', () => {
+    const props = makeProps({
+      conflicts: { ...conflictsWithData, needs_migration: true },
+    });
     render(<SyncTab {...props} />);
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'data:governance.keep_local' }),
-    );
-    const dialog = screen.getByRole('alertdialog');
-    expect(dialog).toHaveAttribute('data-confirm-variant', 'warning');
-
-    fireEvent.click(
-      within(dialog).getByRole('button', { name: 'common:actions.cancel' }),
-    );
-    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
-    expect(props.onResolveConflicts).not.toHaveBeenCalled();
+    expect(screen.getByTestId('sync-conflict-open-record-panel-btn')).toBeDisabled();
+    expect(screen.getByText('data:governance.schema_mismatch_needs_migration')).toBeInTheDocument();
   });
 });
 
