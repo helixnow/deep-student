@@ -58,7 +58,7 @@ export function shouldRetry(strategy: ProviderStrategy, attempt: number, statusC
 
 export function defaultProviderKeys(): ProviderKeys {
   return {
-    google_cse: null, google_cse_cx: null, serpapi: null, tavily: null, brave: null,
+    google_cse: null, google_cse_cx: null, google_cse_endpoint: null, serpapi: null, tavily: null, brave: null,
     searxng_endpoint: null, searxng: null, zhipu: null, bocha: null, deepseek: null,
   };
 }
@@ -231,6 +231,7 @@ export function applyDbOverrides(
 
   const keys: [string, keyof ProviderKeys][] = [
     ['web_search.api_key.google_cse', 'google_cse'], ['web_search.google_cse.cx', 'google_cse_cx'],
+    ['web_search.google_cse.endpoint', 'google_cse_endpoint'],
     ['web_search.api_key.serpapi', 'serpapi'], ['web_search.api_key.tavily', 'tavily'],
     ['web_search.api_key.brave', 'brave'], ['web_search.searxng.endpoint', 'searxng_endpoint'],
     ['web_search.searxng.api_key', 'searxng'], ['web_search.api_key.zhipu', 'zhipu'],
@@ -303,7 +304,8 @@ export function applyDbOverrides(
 }
 
 const ENV_KEYS: [keyof ProviderKeys, string][] = [
-  ['google_cse', 'GOOGLE_API_KEY'], ['google_cse_cx', 'GOOGLE_CSE_CX'], ['serpapi', 'SERPAPI_KEY'],
+  ['google_cse', 'GOOGLE_API_KEY'], ['google_cse_cx', 'GOOGLE_CSE_CX'],
+  ['google_cse_endpoint', 'GOOGLE_CSE_ENDPOINT'], ['serpapi', 'SERPAPI_KEY'],
   ['tavily', 'TAVILY_API_KEY'], ['brave', 'BRAVE_API_KEY'], ['searxng_endpoint', 'SEARXNG_ENDPOINT'],
   ['searxng', 'SEARXNG_API_KEY'], ['zhipu', 'ZHIPU_API_KEY'], ['bocha', 'BOCHA_API_KEY'],
   ['deepseek', 'DEEPSEEK_SEARCH_API_KEY'],
@@ -325,8 +327,9 @@ export async function loadToolConfig(
   const secrets = new Map<string, string | null>();
   for (const [key] of ENV_KEYS) {
     const settingKey = key === 'google_cse_cx' ? 'web_search.google_cse.cx'
-      : key === 'searxng_endpoint' ? 'web_search.searxng.endpoint'
-        : key === 'searxng' ? 'web_search.searxng.api_key' : `web_search.api_key.${key}`;
+      : key === 'google_cse_endpoint' ? 'web_search.google_cse.endpoint'
+        : key === 'searxng_endpoint' ? 'web_search.searxng.endpoint'
+          : key === 'searxng' ? 'web_search.searxng.api_key' : `web_search.api_key.${key}`;
     try { secrets.set(settingKey, await settings.getSecret(settingKey)); }
     catch { secrets.set(settingKey, null); }
   }

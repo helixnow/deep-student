@@ -1,5 +1,6 @@
 import { CommandError, definePlugin } from '../../kernel/api.ts';
 import { AppError } from '../../platform/errors/api.ts';
+import type { HttpRequestInit, HttpService } from '../../platform/http/api.ts';
 import type { SettingsStore } from '../../platform/settings/api.ts';
 import { createFeatureFlagCommands } from '../../platform/settings/feature-flag-commands.ts';
 import type {} from '../../platform/storage/api.ts';
@@ -63,14 +64,34 @@ export default definePlugin({
     const searchLog = (message: string): void => {
       ctx.log?.logger?.('dstu_mcp::tools::web_search')?.warn?.(message);
     };
+    // Optional `http` service routes web search through Host proxy & network policy when present,
+    // while keeping minimal/test hosts without `http` working over `globalThis.fetch`.
+    let optionalHttp: HttpService | undefined = ctx.get('http') as HttpService | undefined;
+    ctx.inject(['http'], scoped => {
+      optionalHttp = scoped.http;
+      scoped.effect(() => () => { optionalHttp = undefined; });
+    });
+    const httpFetch: typeof fetch = (input, init) => {
+      const http = optionalHttp ?? (ctx.get('http') as HttpService | undefined);
+      if (http !== undefined && typeof http.fetch === 'function') {
+        return http.fetch(input instanceof Request ? input.url : input, {
+          method: init?.method,
+          headers: init?.headers,
+          body: init?.body as HttpRequestInit['body'],
+          signal: init?.signal ?? undefined,
+          redirect: init?.redirect,
+        });
+      }
+      return globalThis.fetch(input, init);
+    };
     // L13 loads config before emitting its start event, then searches with the run signal.
     const webSearchDoSearch = async (
       first: SearchInput | ToolConfig, input?: SearchInput | AbortSignal, signal?: AbortSignal,
     ): Promise<SearchResult> => {
       if (input === undefined || 'aborted' in input) {
-        return doSearch(await loadToolConfig(ctx.settings, searchLog), first as SearchInput, searchLog, input);
+        return doSearch(await loadToolConfig(ctx.settings, searchLog), first as SearchInput, searchLog, input, httpFetch);
       }
-      return doSearch(first as ToolConfig, input, searchLog, signal);
+      return doSearch(first as ToolConfig, input, searchLog, signal, httpFetch);
     };
     ctx.provide('webSearch', {
       loadConfig: async (settings: SettingsStore | null): Promise<ToolConfig> =>
@@ -83,6 +104,7 @@ export default definePlugin({
       emit: (event, payload) => { ctx.backendEvents.emit(event, payload); },
       log: (level, message) => { ctx.log?.logger?.('dstu_mcp::tools')?.[level]?.(message); },
       searchLog,
+      fetchImpl: httpFetch,
     }));
     const flagCommands = createFeatureFlagCommands({
       featureFlags: ctx.featureFlags, settings: ctx.settings, appVersion: ctx.app.version, debug: ctx.app.debug,
@@ -397,7 +419,7 @@ export default definePlugin({
       const result = await doSearch(config, {
         query: 'connectivity test', top_k: 1, engine: null, site: null,
         time_range: null, start: null, force_engine: null,
-      }, searchLog);
+      }, searchLog, undefined, httpFetch);
       return result.ok ? { success: true, usage: result.usage ?? null } : { success: false, detail: result };
     });
 
@@ -422,7 +444,7 @@ export default definePlugin({
         const result = await doSearch(config, {
           query: 'test connectivity', top_k: 1, engine: engineId, site: null,
           time_range: null, start: null, force_engine: null,
-        }, searchLog);
+        }, searchLog, undefined, httpFetch);
         const elapsed = Math.trunc(performance.now() - started);
         if (result.ok) {
           results[engineId] = {

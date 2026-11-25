@@ -160,6 +160,7 @@ export interface ProviderStrategies {
 export interface ProviderKeys {
   google_cse: string | null;
   google_cse_cx: string | null;
+  google_cse_endpoint: string | null;
   serpapi: string | null;
   tavily: string | null;
   brave: string | null;

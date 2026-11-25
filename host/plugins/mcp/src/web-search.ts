@@ -7,7 +7,9 @@ import {
 } from './web-search-core.ts';
 import { defaultProviderStrategy, getStrategy, hostAllowed } from './web-search-config.ts';
 import {
-  createProvider, isRetryable, type Provider, type ProviderResult,
+  ZERO_KEY_FALLBACK_ORDER, assessZeroKeySearchQuality, createProvider, filterBoilerplateItems,
+  isRetryable, searchZeroKeyFallback, type Provider, type ProviderResult, type ZeroKeyQualityAssessment,
+  type ZeroKeyQualityReason,
 } from './web-search-providers.ts';
 
 // =============================
@@ -184,6 +186,10 @@ export function buildCacheKey(input: SearchInput, engine: string, config: ToolCo
     `timeout=${config.timeout_ms ?? 15000}`,
     `retry=${config.retry?.max_attempts ?? 2}::${config.retry?.initial_delay_ms ?? 200}`,
   ];
+  if (engine.toLowerCase() === 'google_cse') {
+    const endpoint = config.keys.google_cse_endpoint?.trim() ?? '';
+    if (endpoint !== '') segments.push(`google_endpoint=${endpoint}`);
+  }
   if (config.site_whitelist !== null) segments.push(`white=${normalizeList(config.site_whitelist)}`);
   if (config.site_blacklist !== null) segments.push(`black=${normalizeList(config.site_blacklist)}`);
   if (config.cn_whitelist !== null) {
@@ -286,7 +292,8 @@ export async function doSearch(
     const retry = effective.retry ?? { max_attempts: 2, initial_delay_ms: 200 };
     const started = performance.now();
     let attempt = 0;
-    let result: ProviderResult;
+    let result: ProviderResult | null = null;
+    let primaryError: ToolError | null = null;
     for (;;) {
       throwIfAborted(signal);
       try { result = await provider.search(effective, input, log, signal); break; }
@@ -299,23 +306,198 @@ export async function doSearch(
           await sleep(delay, signal);
           continue;
         }
+        if (engine === 'bing_rss') {
+          primaryError = toolError;
+          break;
+        }
         return toolErrorResult(input, toolError, Math.trunc(performance.now() - started));
       }
     }
     throwIfAborted(signal);
+    if (engine === 'bing_rss') {
+      const primaryRawItems = result?.response.items ?? [];
+      const primaryAllowed = primaryRawItems.filter(item => hostAllowed(config, item.url));
+      const primaryQuality: ZeroKeyQualityAssessment = result === null
+        ? {
+          ok: false, reason: 'empty', matchedGroupCount: 0, totalGroupCount: 0,
+          matchedLaterGroupCount: 0, boilerplateCount: 0, score: -20,
+        }
+        : assessZeroKeySearchQuality(input.query, primaryAllowed, input.site, input.top_k);
+      if (result !== null && primaryQuality.ok) {
+        const cleaned = filterBoilerplateItems(primaryAllowed, input.query, input.site);
+        const items = standardize(cleaned.length > 0 ? cleaned : primaryAllowed, input.top_k);
+        const citations: RagSourceInfo[] = items.map(citationOf);
+        const injectText = buildInjectText(config, { items, raw: result.response.raw, provider: result.response.provider });
+        const elapsed = Math.trunc(performance.now() - started);
+        const searchResult: SearchResult = {
+          name: TOOL_NAME, ok: true, args: input,
+          result: { raw: result.response.raw, provider: result.response.provider },
+          citations,
+          usage: {
+            elapsed_ms: elapsed,
+            provider_latency_ms: result.usage.provider_latency_ms ?? 0,
+            provider: result.usage.provider ?? engine,
+          },
+          inject_text: injectText,
+        };
+        runtimeState.storeCache(cacheKey, searchResult);
+        return searchResult;
+      }
+
+      const primaryReason: ZeroKeyQualityReason | 'provider_error' = primaryError !== null ? 'provider_error' : primaryQuality.reason;
+      log(`[web_search][bing_rss] primary result degraded (${primaryReason}), trying zero-key fallbacks`);
+      const attempted: string[] = [];
+      let totalFallbackLatency = result?.usage.provider_latency_ms ?? 0;
+      let anyFallbackResponded = result !== null;
+      let bestCandidate: {
+        backend: string;
+        items: SearchItem[];
+        raw: import('../api.ts').JsonValue;
+        quality: ZeroKeyQualityAssessment;
+      } | null = null;
+      const seenFallbackUrls = new Set<string>();
+
+      for (const backend of ZERO_KEY_FALLBACK_ORDER) {
+        throwIfAborted(signal);
+        attempted.push(backend);
+        try {
+          const candidate = await searchZeroKeyFallback(backend, effective, input, fetcher, log, signal);
+          anyFallbackResponded = true;
+          totalFallbackLatency += candidate.latencyMs;
+          const allowed = candidate.items.filter(item => hostAllowed(config, item.url));
+          const deduped: SearchItem[] = [];
+          for (const item of allowed) {
+            const normalized = normalizeUrl(item.url);
+            if (seenFallbackUrls.has(normalized)) continue;
+            seenFallbackUrls.add(normalized);
+            deduped.push({ ...item, url: normalized, rank: deduped.length + 1 });
+          }
+          const quality = assessZeroKeySearchQuality(input.query, deduped, input.site, input.top_k);
+          if (quality.ok && deduped.length > 0) {
+            const cleaned = filterBoilerplateItems(deduped, input.query, input.site);
+            const items = standardize(cleaned.length > 0 ? cleaned : deduped, input.top_k);
+            const citations: RagSourceInfo[] = items.map(citationOf);
+            const injectText = buildInjectText(config, { items, raw: candidate.raw, provider: 'bing_rss' });
+            const elapsed = Math.trunc(performance.now() - started);
+            const searchResult: SearchResult = {
+              name: TOOL_NAME, ok: true, args: input,
+              result: {
+                raw: candidate.raw,
+                provider: 'bing_rss',
+                fallback_provider: backend,
+                fallback_reason: primaryReason,
+              },
+              citations,
+              usage: {
+                elapsed_ms: elapsed,
+                provider_latency_ms: totalFallbackLatency,
+                provider: 'bing_rss',
+                fallback_provider: backend,
+              },
+              inject_text: injectText,
+            };
+            runtimeState.storeCache(cacheKey, searchResult);
+            return searchResult;
+          }
+          const nonBoilerplate = filterBoilerplateItems(deduped, input.query, input.site);
+          if (nonBoilerplate.length > 0 && quality.reason !== 'boilerplate_domain' && quality.reason !== 'same_host_spam'
+            && quality.reason !== 'first_token_truncation'
+            && (bestCandidate === null || quality.score > bestCandidate.quality.score)) {
+            bestCandidate = { backend, items: nonBoilerplate, raw: candidate.raw, quality };
+          }
+        } catch (error) {
+          throwIfAborted(signal);
+          log(`[web_search][bing_rss] fallback ${backend} failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+
+      const elapsed = Math.trunc(performance.now() - started);
+      if (bestCandidate !== null && bestCandidate.quality.matchedGroupCount > 0) {
+        const items = standardize(bestCandidate.items, input.top_k);
+        const citations: RagSourceInfo[] = items.map(citationOf);
+        const injectText = buildInjectText(config, { items, raw: bestCandidate.raw, provider: 'bing_rss' });
+        const searchResult: SearchResult = {
+          name: TOOL_NAME, ok: true, args: input,
+          result: {
+            raw: bestCandidate.raw,
+            provider: 'bing_rss',
+            fallback_provider: bestCandidate.backend,
+            fallback_reason: primaryReason,
+          },
+          citations,
+          usage: {
+            elapsed_ms: elapsed,
+            provider_latency_ms: totalFallbackLatency,
+            provider: 'bing_rss',
+            fallback_provider: bestCandidate.backend,
+          },
+          inject_text: injectText,
+        };
+        runtimeState.storeCache(cacheKey, searchResult);
+        return searchResult;
+      }
+
+      // Preserve non-boilerplate semantic/synonym primary hits when fallbacks cannot improve on them.
+      if (result !== null && primaryQuality.reason === 'zero_overlap' && primaryAllowed.length > 0) {
+        const cleaned = filterBoilerplateItems(primaryAllowed, input.query, input.site);
+        if (cleaned.length > 0) {
+          const items = standardize(cleaned, input.top_k);
+          const citations: RagSourceInfo[] = items.map(citationOf);
+          const injectText = buildInjectText(config, { items, raw: result.response.raw, provider: result.response.provider });
+          const searchResult: SearchResult = {
+            name: TOOL_NAME, ok: true, args: input,
+            result: { raw: result.response.raw, provider: result.response.provider },
+            citations,
+            usage: {
+              elapsed_ms: elapsed,
+              provider_latency_ms: totalFallbackLatency,
+              provider: result.usage.provider ?? engine,
+            },
+            inject_text: injectText,
+          };
+          runtimeState.storeCache(cacheKey, searchResult);
+          return searchResult;
+        }
+      }
+
+      if (primaryError !== null && !anyFallbackResponded) {
+        return toolErrorResult(input, primaryError, elapsed);
+      }
+
+      const warning = `Free default search (bing_rss + zero-key fallbacks) returned degraded or blocked results for "${input.query.trim()}" (${primaryReason}). Do not repeat the exact same query; configure a dedicated search API key (Tavily, Brave, DeepSeek, Google CSE, or SearXNG) in Settings or narrow the search terms. / 免费默认搜索源（含零密钥回退）当前未返回与「${input.query.trim()}」直接相关的有效结果（原因：${primaryReason}），请勿重复提交相同搜索词；建议在设置中配置独立搜索 API 或改写关键词。`;
+      return {
+        name: TOOL_NAME, ok: true, args: input,
+        result: {
+          raw: { format: 'degraded', reason: primaryReason, attempted_fallbacks: attempted },
+          provider: 'bing_rss',
+          degraded: true,
+          degraded_reason: primaryReason,
+          warning,
+        },
+        citations: [],
+        usage: {
+          elapsed_ms: elapsed,
+          provider_latency_ms: totalFallbackLatency,
+          provider: 'bing_rss',
+          degraded: true,
+        },
+        inject_text: `【外部搜索降级提示】\n${warning}\n`,
+      };
+    }
+
     const elapsed = Math.trunc(performance.now() - started);
-    const preFiltered = result.response.items.filter(item => hostAllowed(config, item.url));
+    const preFiltered = result!.response.items.filter(item => hostAllowed(config, item.url));
     const items = standardize(preFiltered, input.top_k);
     const citations: RagSourceInfo[] = items.map(citationOf);
-    const injectText = buildInjectText(config, { items, raw: result.response.raw, provider: result.response.provider });
+    const injectText = buildInjectText(config, { items, raw: result!.response.raw, provider: result!.response.provider });
     const searchResult: SearchResult = {
       name: TOOL_NAME, ok: true, args: input,
-      result: { raw: result.response.raw, provider: result.response.provider },
+      result: { raw: result!.response.raw, provider: result!.response.provider },
       citations,
       usage: {
         elapsed_ms: elapsed,
-        provider_latency_ms: result.usage.provider_latency_ms ?? 0,
-        provider: result.usage.provider ?? engine,
+        provider_latency_ms: result!.usage.provider_latency_ms ?? 0,
+        provider: result!.usage.provider ?? engine,
       },
       inject_text: injectText,
     };
@@ -348,10 +530,17 @@ export {
 } from './web-search-config.ts';
 export type { DbOverrideSources } from './web-search-config.ts';
 export {
-  buildDeepseekQuery, createProvider, deepseekSiteClause, deepseekTimeClause, isRetryable,
-  mapDeepseekError, parseBingRss, parseDeepseekResults,
+  GOOGLE_CSE_DEFAULT_ENDPOINT, ZERO_KEY_FALLBACK_ORDER, assessZeroKeySearchQuality,
+  buildDeepseekQuery, createProvider, decodeSearchRedirectUrl, deepseekSiteClause,
+  deepseekTimeClause, extractQueryTermGroups, filterBoilerplateItems, googleCseEndpoint,
+  hasCjkText, isRetryable, isZeroKeyBoilerplateUrl, mapDeepseekError, parseBingHtml,
+  parseBingRss, parseDeepseekResults, parseDuckDuckGoHtml, parseMediaWikiSearch,
+  searchZeroKeyFallback,
 } from './web-search-providers.ts';
-export type { Provider, ProviderResult } from './web-search-providers.ts';
+export type {
+  Provider, ProviderResult, ZeroKeyFallbackBackend, ZeroKeyFallbackCandidate,
+  ZeroKeyQualityAssessment, ZeroKeyQualityReason,
+} from './web-search-providers.ts';
 export {
   DEFAULT_TOP_K, TOOL_NAME, ToolError, buildInjectText, citationOf, classifyError, errorResult,
   f32ScoreJson, hostAsFileName, htmlUnescape, normalizeCustomDateRange, normalizeScore, normalizeUrl,
