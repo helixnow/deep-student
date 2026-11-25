@@ -96,31 +96,33 @@ const HighlightedCode = React.memo(function HighlightedCode({
 }) {
   const language = className?.replace('language-', '').toLowerCase();
   const resolvedLang = resolvePrismLanguage(language);
-  const [loadedTick, setLoadedTick] = useState(0);
+  const [loadedGrammar, setLoadedGrammar] = useState<ReturnType<typeof getLoadedPrismGrammar>>(null);
 
   // 流式输出期间跳过 Prism 词法解析，避免每个 chunk 阻塞主线程（LongTask）；
   // 流式结束后按需加载对应语言的 prismjs grammar 并高亮，保持同一 <code> 节点不重建。
-  const cachedGrammar = !isStreaming && resolvedLang ? getLoadedPrismGrammar(resolvedLang) : null;
+  const activeGrammar =
+    !isStreaming && resolvedLang
+      ? (getLoadedPrismGrammar(resolvedLang) ??
+          (loadedGrammar?.language === resolvedLang ? loadedGrammar : null))
+      : null;
 
   useEffect(() => {
-    if (isStreaming || !resolvedLang || cachedGrammar) return;
+    if (isStreaming || !resolvedLang || activeGrammar) return;
     let cancelled = false;
     void loadPrismLanguage(resolvedLang).then((loaded) => {
       if (!cancelled && loaded) {
-        setLoadedTick((tick) => tick + 1);
+        setLoadedGrammar(loaded);
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [isStreaming, resolvedLang, cachedGrammar]);
+  }, [isStreaming, resolvedLang, activeGrammar]);
 
   const highlighted = useMemo(() => {
-    if (isStreaming || !resolvedLang) return null;
-    const active = getLoadedPrismGrammar(resolvedLang);
-    if (!active) return null;
-    return renderPrismTokens(active.prism.tokenize(children, active.grammar));
-  }, [children, isStreaming, resolvedLang, loadedTick]);
+    if (!activeGrammar) return null;
+    return renderPrismTokens(activeGrammar.prism.tokenize(children, activeGrammar.grammar));
+  }, [children, activeGrammar]);
 
   return (
     <code className={className}>
