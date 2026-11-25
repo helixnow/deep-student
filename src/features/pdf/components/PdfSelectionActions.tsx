@@ -26,8 +26,17 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DotsSixVertical } from '@phosphor-icons/react';
+import {
+  ArrowCounterClockwise,
+  ArrowSquareOut,
+  Check,
+  DotsSixVertical,
+  FilePlus,
+  Lightning,
+  X,
+} from '@phosphor-icons/react';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { DsButton } from '@/components/ui/DsButton';
 import { getAppKernel } from '@/ui-kernel/bootstrap';
 import { useOptionalSlot, useOptionalUiKernel } from '@/ui-kernel/react';
 import { SlotEntryScope, runSlotCallback } from '@/ui-kernel/outlet';
@@ -42,9 +51,16 @@ import { SaveAsNoteFolderPicker, truncateNoteTitle, useSaveAsNoteFlow } from '@/
 import { normalizePdfAcademicText } from '../pdfAcademicText';
 import { buildSelectionNoteContent, type PdfSelectionPayload } from '../pdfSelectionActions';
 import { buildAnnotationSourceLine } from '../pdfAnnotationList';
-// 静态导入安全：selectionStudyActions 只依赖 @/events 与 UnifiedNotification
-// （均在主 chunk），不会把聊天/cardforge 拉进本组件的懒加载 chunk
-import { sendSelectionToChatInput } from '../selectionStudyActions';
+// 静态导入安全：selectionStudyActions 仅静态依赖轻量协议与纯函数，
+// workbench/notes/anki 均为触发时按需动态 import，不拖入 PDF chunk 或启动闭包
+import {
+  appendSelectionToActiveNote,
+  buildQuickCardDraft,
+  createQuickLocalCard,
+  sendSelectionToChatInput,
+  wrapSelectionWithCloze,
+  type UndoAppendResult,
+} from '../selectionStudyActions';
 import {
   buildExcerptDragLabel,
   buildPdfExcerptPayload,
@@ -128,6 +144,28 @@ interface SelectionExcerptSnapshot {
   rect?: { x: number; y: number; w: number; h: number };
 }
 
+interface QuickCardPanelState {
+  sourceText: string;
+  page?: number;
+  mode: 'basic' | 'cloze';
+  front: string;
+  back: string;
+  clozeText: string;
+  clozeExtra: string;
+  submitting: boolean;
+  error: string | null;
+}
+
+interface AppendFeedbackState {
+  noteId: string;
+  title: string;
+  openNote: () => void;
+  undo: () => Promise<UndoAppendResult>;
+  undoing: boolean;
+}
+
+const APPEND_FEEDBACK_DURATION_MS = 8000;
+
 /** 拖拽胶囊宽度估计（夹在容器内） */
 const DRAG_CHIP_WIDTH_PX = 96;
 
@@ -168,21 +206,41 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
     contextAfter: string;
     page?: number;
   } | null>(null);
+  const [quickCardState, setQuickCardState] = useState<QuickCardPanelState | null>(null);
+  const [appendFeedback, setAppendFeedback] = useState<AppendFeedbackState | null>(null);
+  const appendFeedbackTimerRef = useRef<number | null>(null);
+  const clozeTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const saveAsNoteFlow = useSaveAsNoteFlow({ openSource: 'pdf-selection' });
   const startSaveAsNote = saveAsNoteFlow.start;
 
-  const panelOpen = explainState !== null || translateState !== null;
-  // 面板打开后原选区仍在，工具条让位；但读者接着选了另一段时要能直接再解释 / 翻译，
+  const panelOpen = explainState !== null || translateState !== null || quickCardState !== null;
+  // 面板打开后原选区仍在，工具条让位；但读者接着选了另一段时要能直接再解释 / 翻译 / 制卡，
   // 不必先手动关面板（新动作会替换面板内容）
-  const panelSourceText = explainState?.text ?? translateState?.text ?? null;
+  const panelSourceText =
+    explainState?.text ?? translateState?.text ?? quickCardState?.sourceText ?? null;
   const normalizedSelectedText = selection.selectedText ? normalizeText(selection.selectedText) : '';
   const toolbarVisible =
     selection.isVisible && (!panelOpen || normalizedSelectedText !== panelSourceText);
   const closePanel = useCallback(() => {
     setExplainState(null);
     setTranslateState(null);
+    setQuickCardState(null);
   }, []);
+
+  const clearAppendFeedbackTimer = useCallback(() => {
+    if (appendFeedbackTimerRef.current !== null) {
+      window.clearTimeout(appendFeedbackTimerRef.current);
+      appendFeedbackTimerRef.current = null;
+    }
+  }, []);
+
+  const dismissAppendFeedback = useCallback(() => {
+    clearAppendFeedbackTimer();
+    setAppendFeedback(null);
+  }, [clearAppendFeedbackTimer]);
+
+  useEffect(() => clearAppendFeedbackTimer, [clearAppendFeedbackTimer]);
 
   // Android 返回键：先关结果面板，不要直接退出阅读器。
   // 用共享可见性守卫注册：保活但不可见的 PDF 实例（ViewLayerRenderer
@@ -220,6 +278,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
       if (!clean) return;
       const page = resolveSelectionPage();
       setTranslateState(null);
+      setQuickCardState(null);
       setExplainState({
         text: clean,
         contextBefore: selection.contextBefore,
@@ -236,6 +295,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
       if (!clean) return;
       const page = resolveSelectionPage();
       setExplainState(null);
+      setQuickCardState(null);
       setTranslateState({
         text: clean,
         contextBefore: selection.contextBefore,
@@ -351,6 +411,140 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
       ({ generateCardsFromSelection }) => generateCardsFromSelection(input)
     );
   }, [normalizeText, selection.contextBefore, selection.contextAfter, t, resolveSelectionPage, selectionSourceId, documentTitle]);
+
+  // Gap S2-A：1-Click 追加到当前活跃笔记（> quote + pdfref:// 回链 + View/Undo），无打开笔记时回退目录选择器
+  const handleAppendToActiveNote = useCallback(
+    (rawText: string) => {
+      const text = normalizeText(rawText);
+      if (!text) return;
+      const page = resolveSelectionPage();
+      const fallbackLocator = resolveFallbackLocator?.()?.trim() || undefined;
+      void appendSelectionToActiveNote(
+        {
+          text,
+          sourceId: selectionSourceId,
+          aliasResourceId: interopAliasResourceId,
+          documentTitle,
+          page,
+          fallbackLocator,
+        },
+        t,
+      ).then((result) => {
+        if (result.ok === true) {
+          clearAppendFeedbackTimer();
+          setAppendFeedback({
+            noteId: result.noteId,
+            title: result.title,
+            openNote: result.openNote,
+            undo: result.undo,
+            undoing: false,
+          });
+          appendFeedbackTimerRef.current = window.setTimeout(() => {
+            appendFeedbackTimerRef.current = null;
+            setAppendFeedback(null);
+          }, APPEND_FEEDBACK_DURATION_MS);
+        } else if (result.ok === false && result.reason === 'no_active_note') {
+          handleSaveAsNote(rawText);
+        }
+      });
+    },
+    [
+      normalizeText,
+      resolveSelectionPage,
+      resolveFallbackLocator,
+      selectionSourceId,
+      interopAliasResourceId,
+      documentTitle,
+      t,
+      clearAppendFeedbackTimer,
+      handleSaveAsNote,
+    ],
+  );
+
+  const handleUndoAppendFeedback = useCallback(() => {
+    if (!appendFeedback || appendFeedback.undoing) return;
+    clearAppendFeedbackTimer();
+    const current = appendFeedback;
+    setAppendFeedback((prev) => (prev ? { ...prev, undoing: true } : null));
+    void current.undo().finally(() => {
+      setAppendFeedback((prev) => (prev?.noteId === current.noteId ? null : prev));
+    });
+  }, [appendFeedback, clearAppendFeedbackTimer]);
+
+  // Gap S2-B：1-Click 本地快速闪卡内联面板（Basic / Cloze，0 LLM 等待，带 pdfref:// 来源）
+  const handleOpenQuickCard = useCallback(
+    (rawText: string) => {
+      const text = normalizeText(rawText);
+      if (!text) return;
+      const page = resolveSelectionPage();
+      const draft = buildQuickCardDraft({ text, documentTitle, page });
+      setExplainState(null);
+      setTranslateState(null);
+      setQuickCardState({
+        sourceText: text,
+        page,
+        mode: 'basic',
+        front: draft.front,
+        back: draft.back,
+        clozeText: draft.clozeText,
+        clozeExtra: draft.clozeExtra,
+        submitting: false,
+        error: null,
+      });
+    },
+    [normalizeText, resolveSelectionPage, documentTitle],
+  );
+
+  const handleWrapCloze = useCallback(() => {
+    setQuickCardState((prev) => {
+      if (!prev) return null;
+      const el = clozeTextareaRef.current;
+      const start = el?.selectionStart ?? 0;
+      const end = el?.selectionEnd ?? 0;
+      const wrapped = wrapSelectionWithCloze(prev.clozeText, start, end);
+      window.requestAnimationFrame(() => {
+        if (clozeTextareaRef.current) {
+          clozeTextareaRef.current.focus();
+          clozeTextareaRef.current.setSelectionRange(wrapped.nextCaret, wrapped.nextCaret);
+        }
+      });
+      return { ...prev, clozeText: wrapped.text, error: null };
+    });
+  }, []);
+
+  const handleSubmitQuickCard = useCallback(async () => {
+    if (!quickCardState || quickCardState.submitting) return;
+    setQuickCardState((prev) => (prev ? { ...prev, submitting: true, error: null } : null));
+    const result = await createQuickLocalCard(
+      {
+        mode: quickCardState.mode,
+        front: quickCardState.mode === 'cloze' ? quickCardState.clozeText : quickCardState.front,
+        back: quickCardState.mode === 'cloze' ? quickCardState.clozeExtra : quickCardState.back,
+        sourceText: quickCardState.sourceText,
+        sourceId: selectionSourceId,
+        aliasResourceId: interopAliasResourceId,
+        documentTitle,
+        page: quickCardState.page,
+      },
+      t,
+    );
+    if (result.ok === true) {
+      setQuickCardState(null);
+      return;
+    }
+    const failureMessage =
+      (result.ok === false ? result.error : undefined) ??
+      t('pdf:selection.quick_card_failed', { defaultValue: '创建快速闪卡失败' });
+    setQuickCardState((prev) =>
+      prev
+        ? {
+            ...prev,
+            submitting: false,
+            error: failureMessage,
+          }
+        : null,
+    );
+  }, [quickCardState, selectionSourceId, interopAliasResourceId, documentTitle, t]);
 
 
   // P0 选区即上下文：选区快照 + page locator → 结构化 contextRef。
@@ -590,7 +784,37 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
     };
   });
 
+  const builtinExtraActions: SelectionToolbarExtraAction[] = [
+    {
+      key: 'pdf:append-active-note',
+      label: t('pdf:selection.append_to_active_note', { defaultValue: '追加到当前笔记' }),
+      hideLabelOnTouch: true,
+      icon: ({ touchTarget }) => <FilePlus size={touchTarget ? 16 : 14} />,
+      run: handleAppendToActiveNote,
+    },
+    {
+      key: 'pdf:quick-local-card',
+      label: t('pdf:selection.quick_card', { defaultValue: '快速闪卡' }),
+      hideLabelOnTouch: true,
+      icon: ({ touchTarget }) => <Lightning size={touchTarget ? 16 : 14} />,
+      run: handleOpenQuickCard,
+    },
+  ];
+  const allExtraActions: SelectionToolbarExtraAction[] = [
+    ...builtinExtraActions,
+    ...contributedExtraActions,
+  ];
+
   if (!enabled) return null;
+
+  const quickCardOriginText = quickCardState
+    ? [
+        documentTitle,
+        typeof quickCardState.page === 'number' ? `P.${quickCardState.page}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : '';
 
   return (
     <>
@@ -606,13 +830,13 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
         onMakeCards={handleMakeCards}
         onAddToChat={handleAddToChat}
         onAddAsContext={undefined}
-        extraActions={contributedExtraActions}
+        extraActions={allExtraActions}
         hideUnavailableActions
         placement="below"
         viewportBottomInset={isMobileLike ? MOBILE_BOTTOM_INSET_PX : 0}
         dismissOnLeaveView={null}
         ariaLabel={t('chatV2:selectionToolbar.ariaLabel')}
-               className="z-30"
+        className="z-30"
       />
 
       {interopEnabled && toolbarVisible && dragChipPos && (
@@ -694,8 +918,295 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
                   showModelName={false}
                 />
               )}
+              {quickCardState !== null && (
+                <div
+                  data-testid="pdf-quick-card-popover"
+                  className="flex flex-col gap-2.5 p-3 text-xs text-foreground"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      closePanel();
+                    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      void handleSubmitQuickCard();
+                    }
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-2 border-b border-border/40 pb-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Lightning size={14} className="shrink-0 text-primary" aria-hidden="true" />
+                      <span className="font-semibold text-sm truncate">
+                        {t('pdf:selection.quick_card_title', { defaultValue: '快速闪卡（本地）' })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <div
+                        className="inline-flex rounded-md border border-border/50 bg-muted/40 p-0.5"
+                        role="group"
+                        aria-label={t('pdf:selection.quick_card', { defaultValue: '快速闪卡' })}
+                      >
+                        <DsButton
+                          variant="ghost"
+                          size="sm"
+                          data-testid="pdf-quick-card-mode-basic"
+                          aria-pressed={quickCardState.mode === 'basic'}
+                          onClick={() =>
+                            setQuickCardState((prev) =>
+                              prev ? { ...prev, mode: 'basic', error: null } : null,
+                            )
+                          }
+                          className={cn(
+                            '!h-6 !px-2 text-xs font-medium',
+                            quickCardState.mode === 'basic'
+                              ? 'bg-background text-foreground shadow-xs'
+                              : 'text-muted-foreground hover:text-foreground',
+                          )}
+                        >
+                          {t('pdf:selection.quick_card_basic', { defaultValue: '问答卡' })}
+                        </DsButton>
+                        <DsButton
+                          variant="ghost"
+                          size="sm"
+                          data-testid="pdf-quick-card-mode-cloze"
+                          aria-pressed={quickCardState.mode === 'cloze'}
+                          onClick={() =>
+                            setQuickCardState((prev) =>
+                              prev ? { ...prev, mode: 'cloze', error: null } : null,
+                            )
+                          }
+                          className={cn(
+                            '!h-6 !px-2 text-xs font-medium',
+                            quickCardState.mode === 'cloze'
+                              ? 'bg-background text-foreground shadow-xs'
+                              : 'text-muted-foreground hover:text-foreground',
+                          )}
+                        >
+                          {t('pdf:selection.quick_card_cloze', { defaultValue: '填空卡' })}
+                        </DsButton>
+                      </div>
+                      <DsButton
+                        variant="ghost"
+                        size="icon"
+                        iconOnly
+                        className="!h-6 !w-6"
+                        onClick={closePanel}
+                        aria-label={t('pdf:a11y.close')}
+                      >
+                        <X size={14} />
+                      </DsButton>
+                    </div>
+                  </div>
+
+                  {quickCardState.mode === 'basic' ? (
+                    <>
+                      <label className="flex flex-col gap-1">
+                        <span className="text-2xs font-medium text-muted-foreground">
+                          {t('pdf:selection.quick_card_front_label', { defaultValue: '正面（问题）' })}
+                        </span>
+                        <textarea
+                          data-testid="pdf-quick-card-front"
+                          rows={2}
+                          value={quickCardState.front}
+                          onChange={(e) =>
+                            setQuickCardState((prev) =>
+                              prev ? { ...prev, front: e.target.value, error: null } : null,
+                            )
+                          }
+                          placeholder={t('pdf:selection.quick_card_front_placeholder', {
+                            defaultValue: '输入提问或关键词…',
+                          })}
+                          className="w-full resize-none rounded-md border border-border/50 bg-background/80 px-2.5 py-1.5 text-xs leading-relaxed text-foreground outline-none focus:border-primary"
+                          autoFocus
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1">
+                        <span className="text-2xs font-medium text-muted-foreground">
+                          {t('pdf:selection.quick_card_back_label', { defaultValue: '背面（答案 / 摘录）' })}
+                        </span>
+                        <textarea
+                          data-testid="pdf-quick-card-back"
+                          rows={3}
+                          value={quickCardState.back}
+                          onChange={(e) =>
+                            setQuickCardState((prev) =>
+                              prev ? { ...prev, back: e.target.value, error: null } : null,
+                            )
+                          }
+                          placeholder={t('pdf:selection.quick_card_back_placeholder', {
+                            defaultValue: '输入答案或原文摘录…',
+                          })}
+                          className="w-full resize-none rounded-md border border-border/50 bg-background/80 px-2.5 py-1.5 text-xs leading-relaxed text-foreground outline-none focus:border-primary"
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-2xs font-medium text-muted-foreground">
+                            {t('pdf:selection.quick_card_cloze_label', {
+                              defaultValue: '填空文本（使用 {{c1::...}} 标记挖空）',
+                            })}
+                          </span>
+                          <DsButton
+                            variant="ghost"
+                            size="sm"
+                            data-testid="pdf-quick-card-wrap-cloze"
+                            onClick={handleWrapCloze}
+                            className="!h-6 !px-2 text-2xs text-primary"
+                          >
+                            {t('pdf:selection.quick_card_wrap_cloze', { defaultValue: '设为填空' })}
+                          </DsButton>
+                        </div>
+                        <textarea
+                          ref={clozeTextareaRef}
+                          data-testid="pdf-quick-card-cloze"
+                          rows={3}
+                          value={quickCardState.clozeText}
+                          onChange={(e) =>
+                            setQuickCardState((prev) =>
+                              prev ? { ...prev, clozeText: e.target.value, error: null } : null,
+                            )
+                          }
+                          placeholder={t('pdf:selection.quick_card_cloze_placeholder', {
+                            defaultValue: '选中文字后点击「设为填空」…',
+                          })}
+                          className="w-full resize-none rounded-md border border-border/50 bg-background/80 px-2.5 py-1.5 text-xs leading-relaxed text-foreground outline-none focus:border-primary"
+                          autoFocus
+                        />
+                      </div>
+                      <label className="flex flex-col gap-1">
+                        <span className="text-2xs font-medium text-muted-foreground">
+                          {t('pdf:selection.quick_card_extra_label', { defaultValue: '补充说明（可选）' })}
+                        </span>
+                        <input
+                          type="text"
+                          data-testid="pdf-quick-card-extra"
+                          value={quickCardState.clozeExtra}
+                          onChange={(e) =>
+                            setQuickCardState((prev) =>
+                              prev ? { ...prev, clozeExtra: e.target.value, error: null } : null,
+                            )
+                          }
+                          placeholder={t('pdf:selection.quick_card_extra_placeholder', {
+                            defaultValue: '补充理解或例子（来源回链会自动附带）…',
+                          })}
+                          className="w-full rounded-md border border-border/50 bg-background/80 px-2.5 py-1.5 text-xs text-foreground outline-none focus:border-primary"
+                        />
+                      </label>
+                    </>
+                  )}
+
+                  {quickCardOriginText && (
+                    <div
+                      data-testid="pdf-quick-card-origin"
+                      className="truncate text-2xs text-muted-foreground"
+                    >
+                      {t('pdf:selection.quick_card_origin_badge', {
+                        origin: quickCardOriginText,
+                        defaultValue: '来源回链：{{origin}}',
+                      })}
+                    </div>
+                  )}
+
+                  {quickCardState.error && (
+                    <div
+                      role="alert"
+                      data-testid="pdf-quick-card-error"
+                      className="rounded-md bg-destructive/10 px-2.5 py-1.5 text-2xs text-destructive"
+                    >
+                      {quickCardState.error}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-1.5 border-t border-border/40 pt-2">
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={closePanel}
+                      disabled={quickCardState.submitting}
+                    >
+                      {t('pdf:selection.quick_card_cancel', { defaultValue: '取消' })}
+                    </DsButton>
+                    <DsButton
+                      variant="primary"
+                      size="sm"
+                      data-testid="pdf-quick-card-submit"
+                      disabled={quickCardState.submitting}
+                      onClick={() => void handleSubmitQuickCard()}
+                      className="gap-1"
+                    >
+                      <Check size={13} aria-hidden="true" />
+                      <span>
+                        {quickCardState.submitting
+                          ? t('pdf:selection.quick_card_creating', { defaultValue: '创建中…' })
+                          : t('pdf:selection.quick_card_create', { defaultValue: '创建闪卡' })}
+                      </span>
+                    </DsButton>
+                  </div>
+                </div>
+              )}
             </React.Suspense>
           </CustomScrollArea>
+        </div>
+      )}
+
+      {appendFeedback && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="pdf-append-note-feedback"
+          className={cn(
+            'absolute right-3 z-40 flex max-w-[calc(100%-24px)] items-center gap-1.5',
+            'rounded-lg border border-border/50 bg-popover/95 px-2.5 py-1.5 text-xs text-popover-foreground shadow-md backdrop-blur-md',
+          )}
+          style={{
+            bottom:
+              'calc(var(--ds-pdf-toolbar-h, 40px) + var(--ds-pdf-progress-h, 3px) + var(--ds-pdf-safe-bottom, 0px) + 10px)',
+          }}
+        >
+          <span className="truncate">
+            {t('pdf:selection.appended_to_active_note', {
+              title: appendFeedback.title,
+              defaultValue: '已追加到当前笔记「{{title}}」',
+            })}
+          </span>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            data-testid="pdf-append-note-view"
+            className="!h-6 shrink-0 gap-1 !px-2 text-xs text-primary"
+            onClick={() => {
+              appendFeedback.openNote();
+              dismissAppendFeedback();
+            }}
+          >
+            <ArrowSquareOut size={12} aria-hidden="true" />
+            <span>{t('pdf:selection.view_note', { defaultValue: '查看笔记' })}</span>
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            data-testid="pdf-append-note-undo"
+            disabled={appendFeedback.undoing}
+            className="!h-6 shrink-0 gap-1 !px-2 text-xs text-muted-foreground hover:text-foreground"
+            onClick={handleUndoAppendFeedback}
+          >
+            <ArrowCounterClockwise size={12} aria-hidden="true" />
+            <span>{t('pdf:selection.undo_append', { defaultValue: '撤销' })}</span>
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className="!h-5 !w-5 shrink-0"
+            onClick={dismissAppendFeedback}
+            aria-label={t('pdf:a11y.close')}
+          >
+            <X size={12} />
+          </DsButton>
         </div>
       )}
 

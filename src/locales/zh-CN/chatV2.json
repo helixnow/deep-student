@@ -634,6 +634,11 @@
       "showMore": "查看更多 ({{count}} 条)",
       "showLess": "收起",
       "openSource": "打开来源",
+      "jumpToPage": "跳转到第 {{page}} 页",
+      "seekToTimestamp": "跳转到 {{time}}",
+      "openNote": "打开笔记",
+      "openMindmap": "定位导图",
+      "locateSource": "查看来源",
       "noSnippet": "暂无内容预览",
       "defaultSourceTitle": "来源 {{index}}",
       "sourceTypes": {

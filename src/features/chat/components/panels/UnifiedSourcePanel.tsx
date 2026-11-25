@@ -16,10 +16,12 @@ import {
   ArrowsIn,
   WarningCircle,
   Lightbulb,
+  Play,
 } from '@phosphor-icons/react';
 import type { UnifiedSourceBundle, UnifiedSourceGroup, UnifiedSourceItem } from './sourceTypes';
 import { cn } from '@/utils/cn';
 import { openUrl } from '@/utils/urlOpener';
+import { resolveSourceWindowId } from '@/utils/sourceWindowId';
 import { citationEvents, type CitationHighlightEvent } from '../../utils/citationEvents';
 import { useIsMobile } from '@/hooks/useBreakpoint';
 import { DsButton } from '@/components/ui/DsButton';
@@ -29,6 +31,11 @@ import { TextShimmer } from '../ui/TextShimmer';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 import { publishMindmapNodeTarget } from '@/features/mindmap/nodeTargetBridge';
 import { publishNotesQuoteTarget } from '@/features/notes/quoteTarget';
+import { dispatchOpenMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
+import {
+  findFirstMediaRef,
+  formatMediaRefTimestamp,
+} from '@/features/learning-hub/apps/views/media/mediaRefTime';
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
 import { MultimodalSourceCard, resolveMultimodalImageSrc } from './MultimodalSourceCard';
 import {
@@ -111,6 +118,81 @@ function extractDomain(link?: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+export interface MediaJumpTarget {
+  resourceId: string;
+  seconds: number;
+}
+
+/**
+ * 解析音视频时间戳来源（`timeRange` / `mediaCitation`）的精准跳转目标。
+ * 纯函数，供点击 `[N]` 徽章、来源卡按钮与单测共用。
+ */
+export function resolveMediaJumpTarget(item: UnifiedSourceItem): MediaJumpTarget | null {
+  const parsedCitation = item.mediaCitation ? findFirstMediaRef([item.mediaCitation]) : null;
+  if (
+    item.timeRange &&
+    typeof item.timeRange.startMs === 'number' &&
+    Number.isFinite(item.timeRange.startMs) &&
+    item.timeRange.startMs >= 0
+  ) {
+    const resourceId =
+      item.sourceId ||
+      item.raw?.source_id ||
+      parsedCitation?.resourceId ||
+      item.resourceId;
+    if (resourceId) {
+      return {
+        resourceId,
+        seconds: Math.max(0, Math.floor(item.timeRange.startMs / 1000)),
+      };
+    }
+  }
+  if (parsedCitation) {
+    return {
+      resourceId: parsedCitation.resourceId,
+      seconds: parsedCitation.seconds,
+    };
+  }
+  return null;
+}
+
+/**
+ * 判断来源是否为非 `note_` 前缀的本地 Markdown 文档（如导入的 `file_xxx` / `tb_xxx` `.md` 文件），
+ * 支持留在聊天页直接打开右侧预览而不跳离对话。
+ */
+export function isLocalMarkdownSource(
+  item: UnifiedSourceItem,
+  locator?: ResourceLocator,
+): boolean {
+  const id = locator?.sourceId || item.sourceId || item.raw?.source_id || locator?.resourceId || item.resourceId;
+  if (!id || id.startsWith('note_') || id.startsWith('mm_') || isHttpUrl(id)) {
+    return false;
+  }
+  const resType = (locator?.resourceType || item.resourceType || item.raw?.source_type || '').toLowerCase();
+  if (resType === 'markdown' || resType === 'md') {
+    return true;
+  }
+  const title = locator?.title || item.raw?.file_name || item.title || '';
+  const path = locator?.path || item.path || '';
+  return /\.(md|markdown)$/i.test(title) || /\.(md|markdown)$/i.test(path);
+}
+
+/** 点击正文 `[N]` 引用徽章时，是否自动一步到位打开右侧原文/媒体/导图/笔记/本地 MD */
+export function canAutoJumpCitationItem(
+  item: UnifiedSourceItem,
+  locator: ResourceLocator,
+): boolean {
+  if (resolveMediaJumpTarget(item)) return true;
+  const sourceId = locator.sourceId ?? item.sourceId ?? item.raw?.source_id ?? '';
+  const isPagedDoc =
+    /^(tb_|file_|att_)/.test(sourceId) &&
+    typeof item.pageIndex === 'number' &&
+    item.pageIndex >= 0;
+  if (isPagedDoc) return true;
+  if (/^(mm_|note_)/.test(sourceId) || locator.resourceType === 'note') return true;
+  return isLocalMarkdownSource(item, locator);
 }
 
 /** 入场 stagger 延迟档位（超过后统一用最大延迟，避免长列表尾部等太久） */
@@ -345,8 +427,11 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   const citationLookup = useMemo(() => {
     const map = new Map<string, UnifiedSourceItem>();
     // 同一页的文本命中与页图命中可能共用一个编号（如两条都是 [图片-4]）：
-    // 优先保留能打开原文的那条（有 file_/tb_/att_ 源 ID），否则先到先得
-    const openable = (item: UnifiedSourceItem) => /^(tb_|file_|att_|mm_|note_)/.test(item.sourceId ?? '');
+    // 优先保留能打开原文的那条（有 file_/tb_/att_/mm_/note_ 源 ID、媒体时间窗或本地 MD），否则先到先得
+    const openable = (item: UnifiedSourceItem) =>
+      /^(tb_|file_|att_|mm_|note_)/.test(item.sourceId ?? '') ||
+      Boolean(resolveMediaJumpTarget(item)) ||
+      isLocalMarkdownSource(item);
     for (const item of allSources) {
       if (item.citationType && item.typeIndex != null) {
         const key = `${item.citationType}:${item.typeIndex}`;
@@ -404,11 +489,16 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       setOpen(true);
       setLocalHighlightId(target.id);
 
-      // 从回答回到原文一步到位：带页码的 PDF / 教材、导图与笔记来源直接在右侧打开并定位
-      //（此前只高亮下方来源卡，还要再点一次）。网页等外部来源不自动打开。
-      const sourceId = target.sourceId ?? target.raw?.source_id ?? '';
-      const isPagedDoc = /^(tb_|file_|att_)/.test(sourceId) && typeof target.pageIndex === 'number' && target.pageIndex >= 0;
-      if (isPagedDoc || /^(mm_|note_)/.test(sourceId)) {
+      // 从回答回到原文一步到位：带页码的 PDF / 教材、音视频时间戳、导图、笔记及本地 Markdown 来源
+      // 直接在右侧打开并定位（网页等外部来源不自动打开）。
+      const targetLocator = buildResourceLocator({
+        sourceId: target.sourceId || target.raw?.source_id || undefined,
+        resourceId: target.resourceId,
+        resourceType: target.resourceType,
+        title: target.raw?.file_name || target.title,
+        path: target.path,
+      });
+      if (canAutoJumpCitationItem(target, targetLocator)) {
         locateResourceRef.current?.(target);
       }
 
@@ -651,8 +741,15 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     }
   }, [getItemResourceLocator]);
 
-  // 跳转到知识库文档并高亮（rag / multimodal 共用）
+  // 跳转到知识库文档并高亮（rag / multimodal / media 共用）
   const handleLocateResource = useCallback((item: UnifiedSourceItem) => {
+    const sourceWindowId = resolveSourceWindowId(panelRef.current);
+    // 音视频转写命中：优先派发 media-ref:open 精准 seek 到对应时间戳
+    const mediaTarget = resolveMediaJumpTarget(item);
+    if (mediaTarget) {
+      dispatchOpenMediaRef(mediaTarget.resourceId, mediaTarget.seconds, sourceWindowId);
+      return;
+    }
     const locator = getItemResourceLocator(item);
     if (!canLocateResource(locator)) return;
     // 有页码的 PDF / 教材来源：留在聊天页，右侧面板打开原文跳到该页并高亮命中片段
@@ -660,7 +757,12 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     const pdfLikeId = locator.sourceId && /^(tb_|file_|att_)/.test(locator.sourceId) ? locator.sourceId : null;
     if (pdfLikeId && typeof item.pageIndex === 'number' && item.pageIndex >= 0) {
       document.dispatchEvent(new CustomEvent('pdf-ref:open', {
-        detail: { sourceId: pdfLikeId, pageNumber: item.pageIndex + 1, quote: item.snippet || undefined },
+        detail: {
+          sourceId: pdfLikeId,
+          pageNumber: item.pageIndex + 1,
+          quote: item.snippet || undefined,
+          ...(sourceWindowId ? { sourceWindowId } : {}),
+        },
       }));
       return;
     }
@@ -675,12 +777,31 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       return;
     }
     // 笔记来源：同样留在聊天页右侧打开，并按命中片段滚到所在的块（旧行为是跳去学习中心、停在笔记开头）
-    const noteId = locator.sourceId?.startsWith('note_') ? locator.sourceId : null;
+    const noteId =
+      locator.sourceId?.startsWith('note_')
+        ? locator.sourceId
+        : locator.resourceType === 'note'
+          ? (locator.sourceId || locator.resourceId || null)
+          : null;
     if (noteId) {
       const chunkText = item.raw?.chunk_text || item.snippet || '';
       if (chunkText) publishNotesQuoteTarget({ noteId, quote: chunkText });
       window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
         detail: { id: noteId, type: 'note', title: locator.title || item.title || noteId },
+      }));
+      return;
+    }
+    // 非 note_ 前缀的本地 Markdown 文档（如导入的 file_xxx.md / tb_xxx.md）：留在聊天页右侧直接预览
+    const markdownId = locator.sourceId || locator.resourceId || null;
+    if (markdownId && isLocalMarkdownSource(item, locator)) {
+      const chunkText = item.raw?.chunk_text || item.snippet || '';
+      if (chunkText) publishNotesQuoteTarget({ noteId: markdownId, quote: chunkText });
+      window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
+        detail: {
+          id: markdownId,
+          type: markdownId.startsWith('tb_') ? 'textbook' : 'file',
+          title: locator.title || item.title || markdownId,
+        },
       }));
       return;
     }
@@ -703,6 +824,16 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       ? 'text-primary !h-6 [@media(pointer:coarse)]:!min-h-11 text-xs'
       : 'text-primary [@media(pointer:coarse)]:!min-h-11';
     const iconSize = compact ? 12 : 14;
+    const mediaTarget = resolveMediaJumpTarget(item);
+    if (mediaTarget) {
+      const timestamp = formatMediaRefTimestamp(mediaTarget.seconds);
+      return (
+        <DsButton variant="ghost" size="sm" onClick={() => handleLocateResource(item)} className={cn(btnClass, 'tabular-nums')}>
+          <Play size={iconSize} weight="fill" />
+          {timestamp}
+        </DsButton>
+      );
+    }
     if (item.origin === 'graph') {
       return (
         <DsButton variant="ghost" size="sm" onClick={() => handleLocateGraph(item)} className={btnClass}>

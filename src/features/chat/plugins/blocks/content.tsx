@@ -233,11 +233,40 @@ const ContentBlockWithStore: React.FC<BlockComponentProps> = ({ block, isStreami
     };
   }, [findSourceItem]);
 
-  // 🆕 P0-2：正文徽章 hover 即时预览所需的来源数据（标题/snippet/score/url），
+  // 🆕 P0-2 / S1：正文徽章 hover 即时预览所需的来源数据（标题/snippet/score/url + 精确页码/时间戳/本地资源定位），
   // 经 CitationSourceContext 跨过中间渲染层直达 CitationBadgeWithPopover
   const resolveCitationSource = useCallback((type: RetrievalSourceType, index: number): RetrievalSource | null => {
     const item = findSourceItem(type, index);
     if (!item) return null;
+    const pageIndex = item.pageIndex ?? item.multimodal?.pageIndex;
+    const sourceId = item.sourceId || item.raw?.source_id || item.multimodal?.sourceId;
+    const metadata: Record<string, unknown> = {};
+    if (typeof pageIndex === 'number' && Number.isFinite(pageIndex) && pageIndex >= 0) {
+      metadata.pageIndex = pageIndex;
+    }
+    if (
+      item.timeRange &&
+      typeof item.timeRange.startMs === 'number' &&
+      Number.isFinite(item.timeRange.startMs) &&
+      item.timeRange.startMs >= 0
+    ) {
+      metadata.timeRange = item.timeRange;
+    }
+    if (item.mediaCitation) {
+      metadata.mediaCitation = item.mediaCitation;
+    }
+    if (sourceId) {
+      metadata.sourceId = sourceId;
+    }
+    if (item.resourceType) {
+      metadata.resourceType = item.resourceType;
+    }
+    if (item.resourceId) {
+      metadata.resourceId = item.resourceId;
+    }
+    if (item.path) {
+      metadata.path = item.path;
+    }
     return {
       id: item.id,
       type,
@@ -245,6 +274,7 @@ const ContentBlockWithStore: React.FC<BlockComponentProps> = ({ block, isStreami
       snippet: item.snippet || item.raw?.chunk_text || '',
       url: item.link || item.raw?.url,
       score: item.score,
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
     };
   }, [findSourceItem]);
 
