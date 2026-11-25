@@ -24,6 +24,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { useImeSafeControlledValue } from '@/components/ui/shad/useImeSafeControlledValue';
 import { cn } from '../../../lib/utils';
 import { appRegistry } from '../core/appRegistry';
+import { useWindowStore } from '../core/windowStore';
 import { workbenchBus } from '../core/workbenchBus';
 import type { AppDefinition } from '../core/types';
 import { useCommandPaletteSafe } from '@/command-palette/CommandPaletteProvider';
@@ -472,6 +473,12 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     if (!open) return undefined;
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !isComposingKeyEvent(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeAppsPanel();
+        return;
+      }
       if (e.key !== 'Tab') return;
       const dialog = dialogRef.current;
       if (!dialog) return;
@@ -500,6 +507,31 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true);
     };
+  }, [open]);
+
+  // 面板打开期间若外部打开新窗口或切换焦点窗口（例如从菜单栏启动设置/复习），
+  // 自动收起面板并跳过焦点归还，避免透明 backdrop 滞留在新窗口之上或抢回焦点。
+  useEffect(() => {
+    if (!open) return undefined;
+    const initial = useWindowStore.getState();
+    let prevTop = initial.focusStack[initial.focusStack.length - 1] ?? null;
+    let prevWindowIds = new Set(Object.keys(initial.windows));
+
+    return useWindowStore.subscribe((state) => {
+      const nextTop = state.focusStack[state.focusStack.length - 1] ?? null;
+      const nextWindowIds = Object.keys(state.windows);
+      const hasNewWindow = nextWindowIds.some((id) => !prevWindowIds.has(id));
+      const focusChanged = nextTop !== null && nextTop !== prevTop;
+
+      if (hasNewWindow || focusChanged) {
+        skipFocusReturnRef.current = true;
+        closeAppsPanel();
+        return;
+      }
+
+      prevTop = nextTop;
+      prevWindowIds = new Set(nextWindowIds);
+    });
   }, [open]);
 
   useEffect(() => {

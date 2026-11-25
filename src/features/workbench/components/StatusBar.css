@@ -487,11 +487,12 @@
 
 /* ==== 控制中心 + 今日节律弹层 ======================================== */
 
-/* 单一共享外部点击关闭层：位于 .wb-menubar（9050）之下，不阻挡菜单触发器横滑 pointerenter */
+/* 单一共享外部点击关闭层：位于 .wb-dock（9000）与 .wb-menubar（9050）之下，
+   既不阻挡菜单触发器横滑 pointerenter，也不拦截 Dock 按钮点击（由全局 pointerdown 同步关闭） */
 .wb-menubar-dismiss-backdrop {
   position: fixed;
   inset: 0;
-  z-index: calc(var(--wb-z-menubar, 9050) - 1);
+  z-index: calc(var(--wb-z-dock, 9000) - 1);
   background: transparent;
   pointer-events: auto;
 }

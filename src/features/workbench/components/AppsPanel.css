@@ -269,7 +269,7 @@
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 4px 12px calc(20px + var(--wb-dock-clearance, 0px));
+  padding: 4px 12px calc(36px + var(--wb-dock-clearance, 0px));
 }
 
 .wb-apps-grid {
@@ -646,6 +646,6 @@
   .wb-apps-body-viewport,
   .wb-apps-body .wb-apps-body-viewport[data-overlayscrollbars-viewport] {
     overflow-y: auto;
-    padding-bottom: calc(20px + var(--wb-dock-clearance, 0px));
+    padding-bottom: calc(36px + var(--wb-dock-clearance, 0px));
   }
 }
