@@ -113,7 +113,9 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const tocRef = useRef<HTMLDivElement>(null);
   const iframeCleanupRef = useRef<(() => void) | null>(null);
-  const objectUrlsRef = useRef<string[]>([]);
+  const frameGenerationRef = useRef(0);
+  const activeObjectUrlsRef = useRef<{ generation: number; urls: string[] }>({ generation: 0, urls: [] });
+  const pendingRevokeBatchesRef = useRef<Array<{ retireOnGeneration: number; urls: string[] }>>([]);
   const pendingFragmentRef = useRef<string | null>(null);
   const pendingSearchRef = useRef<{ query: string; matchIndex: number } | null>(null);
   const restoreProgressRef = useRef(initialState.chapterProgress);
@@ -200,12 +202,42 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
     return () => observer.disconnect();
   }, []);
 
+  const revokeUrls = useCallback((urls: string[]) => {
+    for (const url of urls) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // Ignore already-revoked or invalid blob URLs.
+      }
+    }
+  }, []);
+
+  const revokeAllObjectUrls = useCallback(() => {
+    if (pendingRevokeBatchesRef.current.length > 0) {
+      const batches = pendingRevokeBatchesRef.current.splice(0);
+      for (const batch of batches) {
+        revokeUrls(batch.urls);
+      }
+    }
+    if (activeObjectUrlsRef.current.urls.length > 0) {
+      revokeUrls(activeObjectUrlsRef.current.urls);
+      activeObjectUrlsRef.current = { generation: frameGenerationRef.current, urls: [] };
+    }
+  }, [revokeUrls]);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
     setBook(null);
     setSrcDoc('');
+    if (activeObjectUrlsRef.current.urls.length > 0) {
+      pendingRevokeBatchesRef.current.push({
+        retireOnGeneration: frameGenerationRef.current + 1,
+        urls: activeObjectUrlsRef.current.urls,
+      });
+      activeObjectUrlsRef.current = { generation: frameGenerationRef.current, urls: [] };
+    }
     setChapterIndex(initialState.chapterIndex);
     setChapterProgress(initialState.chapterProgress);
     setTheme(initialState.theme);
@@ -225,13 +257,16 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
         setChapterIndex(Math.min(initialState.chapterIndex, loadedBook.chapters.length - 1));
       })
       .catch((reason: unknown) => {
-        if (!cancelled) setError(getErrorMessage(reason));
+        if (!cancelled) {
+          revokeAllObjectUrls();
+          setError(getErrorMessage(reason));
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [base64Content, initialState, reloadGeneration]);
+  }, [base64Content, initialState, reloadGeneration, revokeAllObjectUrls]);
 
   useEffect(() => {
     if (!book) return;
@@ -252,27 +287,43 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
     })
       .then((rendered) => {
         if (cancelled) {
-          rendered.objectUrls.forEach(URL.revokeObjectURL);
+          revokeUrls(rendered.objectUrls);
           return;
         }
-        objectUrlsRef.current.forEach(URL.revokeObjectURL);
-        objectUrlsRef.current = rendered.objectUrls;
+        // Defer revoking the previous chapter's blob URLs until the replacement
+        // iframe commits and fires onLoad, preventing net::ERR_FILE_NOT_FOUND
+        // races while the outgoing iframe is still mounted/fetching subresources.
+        const nextGeneration = frameGenerationRef.current + 1;
+        frameGenerationRef.current = nextGeneration;
+        if (activeObjectUrlsRef.current.urls.length > 0) {
+          pendingRevokeBatchesRef.current.push({
+            retireOnGeneration: nextGeneration,
+            urls: activeObjectUrlsRef.current.urls,
+          });
+        }
+        activeObjectUrlsRef.current = {
+          generation: nextGeneration,
+          urls: rendered.objectUrls,
+        };
         setSrcDoc(rendered.srcDoc);
-        setFrameGeneration((generation) => generation + 1);
+        setFrameGeneration(nextGeneration);
       })
       .catch((reason: unknown) => {
-        if (!cancelled) setError(getErrorMessage(reason));
+        if (!cancelled) {
+          revokeAllObjectUrls();
+          setError(getErrorMessage(reason));
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, [book, chapterIndex, resolvedTheme, fontScale, fontFamily, lineHeight, pageMargin]);
+  }, [book, chapterIndex, resolvedTheme, fontScale, fontFamily, lineHeight, pageMargin, revokeAllObjectUrls, revokeUrls]);
 
   useEffect(() => () => {
     iframeCleanupRef.current?.();
-    objectUrlsRef.current.forEach(URL.revokeObjectURL);
-  }, []);
+    revokeAllObjectUrls();
+  }, [revokeAllObjectUrls]);
 
   // Debounced persistence: scroll progress updates at rAF frequency, so the
   // localStorage write is delayed and flushed on unmount / window unload.
@@ -520,6 +571,18 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
   const handleFrameLoad = useCallback(() => {
     iframeCleanupRef.current?.();
     const frame = iframeRef.current;
+    const loadedGeneration = Number(frame?.dataset.frameGeneration ?? frameGeneration);
+    if (pendingRevokeBatchesRef.current.length > 0 && Number.isFinite(loadedGeneration)) {
+      const remaining: Array<{ retireOnGeneration: number; urls: string[] }> = [];
+      for (const batch of pendingRevokeBatchesRef.current) {
+        if (batch.retireOnGeneration <= loadedGeneration) {
+          revokeUrls(batch.urls);
+        } else {
+          remaining.push(batch);
+        }
+      }
+      pendingRevokeBatchesRef.current = remaining;
+    }
     const frameWindow = frame?.contentWindow;
     const document = frame?.contentDocument;
     if (!frameWindow || !document) return;
@@ -667,7 +730,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
       if (restoreFrame) frameWindow.cancelAnimationFrame(restoreFrame);
       if (restoreTimer) frameWindow.clearTimeout(restoreTimer);
     };
-  }, [book, chapterIndex, highlightFrameText, navigateToChapter, pageBy]);
+  }, [book, chapterIndex, frameGeneration, highlightFrameText, navigateToChapter, pageBy, revokeUrls]);
 
   const handleRootKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.ctrlKey || event.metaKey || event.altKey) return;
@@ -1005,6 +1068,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
           <iframe
             key={frameGeneration}
             ref={setIframeElement}
+            data-frame-generation={frameGeneration}
             className="epub-preview-frame ui-fade-in"
             title={`${fileName}: ${book.chapters[chapterIndex]?.title ?? ''}`}
             // allow-scripts：WebKit 在不含 allow-scripts 的沙箱 iframe 里不调用任何事件监听器——

@@ -1,9 +1,11 @@
 import type React from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { nanoid } from 'nanoid';
 import { textbookDstuAdapter } from '@/dstu/adapters/textbookDstuAdapter';
 import { attachmentDstuAdapter } from '@/dstu/adapters/attachmentDstuAdapter';
-import { extractFileName, extractDisplayFileName } from '@/utils/fileManager';
-import type { DstuNode } from '@/dstu';
+import { extractFileName, extractDisplayFileName, fileManager } from '@/utils/fileManager';
+import { TauriAPI } from '@/utils/tauriApi';
+import { dstu, type DstuNode } from '@/dstu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { pLimit } from '@/utils/concurrency';
@@ -127,6 +129,767 @@ function stripFileExtension(name: string): string {
   return idx > 0 ? name.slice(0, idx) : name;
 }
 
+const MINDMAP_IMPORT_EXTENSIONS = new Set(['xmind', 'mmap', 'opml', 'mm']);
+const MAX_MINDMAP_ARCHIVE_BYTES = 16 * 1024 * 1024;
+const MAX_MINDMAP_CONTENT_BYTES = 32 * 1024 * 1024;
+const MAX_MINDMAP_IMPORT_DEPTH = 100;
+const MAX_MINDMAP_IMPORT_NODES = 10_000;
+const ZIP_EOCD_MIN_BYTES = 22;
+const ZIP_MAX_COMMENT_BYTES = 65_535;
+
+interface ImportedMindMapNode {
+  id: string;
+  text: string;
+  note?: string;
+  priority?: 1 | 2 | 3 | 4 | 5 | 6;
+  completed?: boolean;
+  style?: { bgColor?: string };
+  children: ImportedMindMapNode[];
+}
+
+interface ImportedMindMapAssociation {
+  id: string;
+  source: string;
+  target: string;
+  label?: string;
+}
+
+interface ImportedMindMapSummary {
+  id: string;
+  parentId: string;
+  startChildId: string;
+  endChildId: string;
+  label: string;
+}
+
+interface ImportedMindMapDocument {
+  version: '1.0';
+  root: ImportedMindMapNode;
+  associations?: ImportedMindMapAssociation[];
+  summaries?: ImportedMindMapSummary[];
+  meta: {
+    createdAt: string;
+    sheets?: Array<{ id: string; title: string; rootNodeId: string }>;
+  };
+}
+
+interface XmindTopicJson {
+  id?: string;
+  title?: string;
+  notes?: { plain?: { content?: string } } | string;
+  labels?: string[];
+  markers?: Array<{ markerId?: string }>;
+  style?: { properties?: Record<string, string> };
+  children?: {
+    attached?: XmindTopicJson[];
+    summary?: XmindTopicJson[];
+  };
+  summaries?: Array<{ id?: string; range?: string; topicId?: string }>;
+}
+
+function hasCompleteZipArchive(bytes: Uint8Array): boolean {
+  if (bytes.length < ZIP_EOCD_MIN_BYTES) return false;
+  if (bytes[0] !== 0x50 || bytes[1] !== 0x4b || bytes[2] !== 0x03 || bytes[3] !== 0x04) {
+    return false;
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const minOffset = Math.max(0, bytes.length - (ZIP_EOCD_MIN_BYTES + ZIP_MAX_COMMENT_BYTES));
+  for (let offset = bytes.length - ZIP_EOCD_MIN_BYTES; offset >= minOffset; offset -= 1) {
+    if (
+      bytes[offset] === 0x50 &&
+      bytes[offset + 1] === 0x4b &&
+      bytes[offset + 2] === 0x05 &&
+      bytes[offset + 3] === 0x06
+    ) {
+      const commentLen = view.getUint16(offset + 20, true);
+      if (offset + ZIP_EOCD_MIN_BYTES + commentLen !== bytes.length) continue;
+      const cdSize = view.getUint32(offset + 12, true);
+      const cdOffset = view.getUint32(offset + 16, true);
+      if (cdSize === 0xffffffff || cdOffset === 0xffffffff) return true;
+      return cdOffset + cdSize <= offset;
+    }
+  }
+  return false;
+}
+
+function allocateMindmapNodeId(
+  preferred: string | undefined,
+  usedIds: Set<string>,
+  forceRoot = false,
+): string {
+  if (forceRoot) {
+    usedIds.add('root');
+    return 'root';
+  }
+  const candidate = preferred?.trim();
+  if (candidate && candidate !== 'root' && !usedIds.has(candidate)) {
+    usedIds.add(candidate);
+    return candidate;
+  }
+  let generated = nanoid(10);
+  while (usedIds.has(generated) || generated === 'root') {
+    generated = nanoid(10);
+  }
+  usedIds.add(generated);
+  return generated;
+}
+
+function claimMindmapNode(stats: { nodeCount: number }, depth: number, format: string): void {
+  if (depth > MAX_MINDMAP_IMPORT_DEPTH) {
+    throw new Error(`${format} depth exceeds maximum limit (${MAX_MINDMAP_IMPORT_DEPTH})`);
+  }
+  stats.nodeCount += 1;
+  if (stats.nodeCount > MAX_MINDMAP_IMPORT_NODES) {
+    throw new Error(`${format} node count exceeds maximum limit (${MAX_MINDMAP_IMPORT_NODES})`);
+  }
+}
+
+function directChildrenByLocalName(parent: Element, localName: string): Element[] {
+  const target = localName.toLowerCase();
+  return Array.from(parent.children).filter(
+    (child) => child.localName.toLowerCase() === target,
+  );
+}
+
+function parseMarkerSemantics(markerIds: string[]): {
+  completed?: boolean;
+  priority?: 1 | 2 | 3 | 4 | 5 | 6;
+  otherMarkers: string[];
+} {
+  let completed: boolean | undefined;
+  let priority: 1 | 2 | 3 | 4 | 5 | 6 | undefined;
+  const otherMarkers: string[] = [];
+
+  for (const rawId of markerIds) {
+    const id = rawId.trim();
+    if (!id) continue;
+    if (id === 'task-done') {
+      completed = true;
+      continue;
+    }
+    if (id.startsWith('task-')) {
+      completed ??= false;
+      continue;
+    }
+    const priorityMatch = /^priority-([1-6])$/.exec(id);
+    if (priorityMatch) {
+      priority ??= Number(priorityMatch[1]) as 1 | 2 | 3 | 4 | 5 | 6;
+      continue;
+    }
+    otherMarkers.push(id);
+  }
+  return { completed, priority, otherMarkers };
+}
+
+function buildMindmapNote(baseNote: string | undefined, labels: string[], markers: string[]): string | undefined {
+  const lines: string[] = [];
+  const trimmedBase = baseNote?.trim();
+  if (trimmedBase) lines.push(trimmedBase);
+  const cleanLabels = labels.map((l) => l.trim()).filter(Boolean);
+  if (cleanLabels.length > 0) {
+    lines.push(i18n.t('mindmap:import.labelsNote', {
+      labels: cleanLabels.join(', '),
+      defaultValue: `Labels: ${cleanLabels.join(', ')}`,
+    }));
+  }
+  if (markers.length > 0) {
+    lines.push(i18n.t('mindmap:import.markersNote', {
+      markers: markers.join(', '),
+      defaultValue: `.xmind markers: ${markers.join(', ')}`,
+    }));
+  }
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
+function remapMindmapAssociations(
+  raw: Array<{ end1?: string; end2?: string; label?: string }>,
+  idMap: Map<string, string>,
+): ImportedMindMapAssociation[] {
+  const seen = new Set<string>();
+  const out: ImportedMindMapAssociation[] = [];
+  for (const rel of raw) {
+    if (!rel.end1 || !rel.end2) continue;
+    const source = idMap.get(rel.end1);
+    const target = idMap.get(rel.end2);
+    if (!source || !target || source === target) continue;
+    const pairKey = source < target ? `${source}:${target}` : `${target}:${source}`;
+    if (seen.has(pairKey)) continue;
+    seen.add(pairKey);
+    const label = rel.label?.trim().slice(0, 240);
+    out.push({
+      id: `assoc_${nanoid(8)}`,
+      source,
+      target,
+      ...(label ? { label } : {}),
+    });
+  }
+  return out;
+}
+
+function parseSummaryRange(range: string | undefined, childCount: number): [number, number] | null {
+  if (!range) return null;
+  const match = /^\(\s*(\d+)\s*,\s*(\d+)\s*\)$/.exec(range.trim());
+  if (!match) return null;
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end >= childCount || end <= start) {
+    return null;
+  }
+  return [start, end];
+}
+
+function xmindJsonTopicToNode(
+  topic: XmindTopicJson,
+  depth: number,
+  stats: { nodeCount: number },
+  usedIds: Set<string>,
+  idMap: Map<string, string>,
+  summaries: ImportedMindMapSummary[],
+  forceRoot = false,
+): ImportedMindMapNode {
+  claimMindmapNode(stats, depth, '.xmind');
+  const assignedId = allocateMindmapNodeId(topic.id, usedIds, forceRoot);
+  if (topic.id) idMap.set(topic.id, assignedId);
+
+  const rawNote = typeof topic.notes === 'string'
+    ? topic.notes
+    : topic.notes?.plain?.content;
+  const markerIds = (Array.isArray(topic.markers) ? topic.markers : [])
+    .map((m) => m?.markerId ?? '')
+    .filter(Boolean);
+  const { completed, priority, otherMarkers } = parseMarkerSemantics(markerIds);
+  const labels = Array.isArray(topic.labels)
+    ? topic.labels.filter((l): l is string => typeof l === 'string')
+    : [];
+  const note = buildMindmapNote(rawNote, labels, otherMarkers);
+  const attached = Array.isArray(topic.children?.attached) ? topic.children.attached : [];
+  const children = attached.map((child) =>
+    xmindJsonTopicToNode(child, depth + 1, stats, usedIds, idMap, summaries, false));
+
+  if (Array.isArray(topic.summaries) && Array.isArray(topic.children?.summary)) {
+    const summaryTitles = new Map<string, string>();
+    for (const sTopic of topic.children.summary) {
+      if (sTopic?.id) summaryTitles.set(sTopic.id, sTopic.title?.trim() ?? '');
+    }
+    for (const sum of topic.summaries) {
+      const bounds = parseSummaryRange(sum?.range, children.length);
+      if (!bounds) continue;
+      const startChild = children[bounds[0]];
+      const endChild = children[bounds[1]];
+      if (!startChild || !endChild) continue;
+      summaries.push({
+        id: sum.id?.trim() || `sum_${nanoid(8)}`,
+        parentId: assignedId,
+        startChildId: startChild.id,
+        endChildId: endChild.id,
+        label: (sum.topicId ? summaryTitles.get(sum.topicId) : '') || '',
+      });
+    }
+  }
+
+  const bgColor = topic.style?.properties?.['svg:fill']?.trim();
+  const safeBgColor = bgColor && (/^#[0-9a-f]{3,8}$/i.test(bgColor) || /^rgba?\([^;{}]+\)$/i.test(bgColor))
+    ? bgColor
+    : undefined;
+
+  return {
+    id: assignedId,
+    text: topic.title?.trim() || i18n.t('mindmap:import.unnamedTopic', { defaultValue: 'Untitled topic' }),
+    ...(note ? { note } : {}),
+    ...(priority !== undefined ? { priority } : {}),
+    ...(completed !== undefined ? { completed } : {}),
+    ...(safeBgColor ? { style: { bgColor: safeBgColor } } : {}),
+    children,
+  };
+}
+
+function xmindXmlTopicToNode(
+  topic: Element,
+  depth: number,
+  stats: { nodeCount: number },
+  usedIds: Set<string>,
+  idMap: Map<string, string>,
+  forceRoot = false,
+): ImportedMindMapNode {
+  claimMindmapNode(stats, depth, '.xmind');
+  const rawId = topic.getAttribute('id') ?? undefined;
+  const assignedId = allocateMindmapNodeId(rawId, usedIds, forceRoot);
+  if (rawId) idMap.set(rawId, assignedId);
+
+  const title = directChildrenByLocalName(topic, 'title')[0]?.textContent?.trim();
+  const notesEl = directChildrenByLocalName(topic, 'notes')[0];
+  const plainNote = notesEl
+    ? directChildrenByLocalName(notesEl, 'plain')[0]?.textContent ?? notesEl.textContent ?? undefined
+    : undefined;
+  const labels = directChildrenByLocalName(topic, 'labels')
+    .flatMap((el) => directChildrenByLocalName(el, 'label'))
+    .map((el) => el.textContent ?? '');
+  const markerIds = directChildrenByLocalName(topic, 'marker-refs')
+    .flatMap((el) => directChildrenByLocalName(el, 'marker-ref'))
+    .map((el) => el.getAttribute('marker-id') ?? '')
+    .filter(Boolean);
+  const { completed, priority, otherMarkers } = parseMarkerSemantics(markerIds);
+  const note = buildMindmapNote(plainNote, labels, otherMarkers);
+
+  const attachedTopics = directChildrenByLocalName(topic, 'children')
+    .flatMap((container) => directChildrenByLocalName(container, 'topics'))
+    .filter((topicsEl) => (topicsEl.getAttribute('type') || 'attached') === 'attached')
+    .flatMap((topicsEl) => directChildrenByLocalName(topicsEl, 'topic'));
+
+  return {
+    id: assignedId,
+    text: title || i18n.t('mindmap:import.unnamedTopic', { defaultValue: 'Untitled topic' }),
+    ...(note ? { note } : {}),
+    ...(priority !== undefined ? { priority } : {}),
+    ...(completed !== undefined ? { completed } : {}),
+    children: attachedTopics.map((child) =>
+      xmindXmlTopicToNode(child, depth + 1, stats, usedIds, idMap, false)),
+  };
+}
+
+async function parseXmindBytesToDocument(bytes: Uint8Array, fallbackTitle: string): Promise<ImportedMindMapDocument> {
+  if (bytes.byteLength > MAX_MINDMAP_ARCHIVE_BYTES) {
+    throw new Error(`.xmind archive exceeds maximum size (${MAX_MINDMAP_ARCHIVE_BYTES} bytes)`);
+  }
+  if (!hasCompleteZipArchive(bytes)) {
+    throw new Error('Invalid or truncated .xmind archive');
+  }
+  const { default: JSZip } = await import('jszip');
+  const zip = await JSZip.loadAsync(bytes);
+
+  const jsonEntry = zip.file('content.json');
+  if (jsonEntry) {
+    const rawText = await jsonEntry.async('string');
+    if (rawText.length > MAX_MINDMAP_CONTENT_BYTES) {
+      throw new Error('.xmind content exceeds maximum size');
+    }
+    const parsed = JSON.parse(rawText) as unknown;
+    const candidates = Array.isArray(parsed) ? parsed : [parsed];
+    const sheets = candidates.filter((c): c is {
+      title?: string;
+      rootTopic: XmindTopicJson;
+      relationships?: Array<{ end1Id?: string; end2Id?: string; title?: string }>;
+    } => Boolean(c && typeof c === 'object' && 'rootTopic' in c && (c as { rootTopic?: unknown }).rootTopic && typeof (c as { rootTopic?: unknown }).rootTopic === 'object'));
+    if (sheets.length === 0) throw new Error('Invalid .xmind archive: missing root topic');
+
+    const stats = { nodeCount: 0 };
+    const usedIds = new Set<string>();
+    const idMap = new Map<string, string>();
+    const summaries: ImportedMindMapSummary[] = [];
+    const rawRelationships = sheets.flatMap((s) =>
+      (Array.isArray(s.relationships) ? s.relationships : []).map((rel) => ({
+        end1: rel?.end1Id,
+        end2: rel?.end2Id,
+        label: rel?.title,
+      })));
+
+    if (sheets.length === 1) {
+      const root = xmindJsonTopicToNode(sheets[0].rootTopic, 0, stats, usedIds, idMap, summaries, true);
+      const associations = remapMindmapAssociations(rawRelationships, idMap);
+      return {
+        version: '1.0',
+        root,
+        ...(associations.length > 0 ? { associations } : {}),
+        ...(summaries.length > 0 ? { summaries } : {}),
+        meta: { createdAt: new Date().toISOString() },
+      };
+    }
+
+    claimMindmapNode(stats, 0, '.xmind');
+    usedIds.add('root');
+    const children = sheets.map((s) =>
+      xmindJsonTopicToNode(s.rootTopic, 1, stats, usedIds, idMap, summaries, false));
+    const sheetMeta = children.map((child, idx) => ({
+      id: `sheet_${idx + 1}`,
+      title: sheets[idx].title?.trim() || child.text,
+      rootNodeId: child.id,
+    }));
+    const associations = remapMindmapAssociations(rawRelationships, idMap);
+    return {
+      version: '1.0',
+      root: {
+        id: 'root',
+        text: fallbackTitle || i18n.t('mindmap:import.importedMap', { defaultValue: 'Imported Mind Map' }),
+        children,
+      },
+      ...(associations.length > 0 ? { associations } : {}),
+      ...(summaries.length > 0 ? { summaries } : {}),
+      meta: { createdAt: new Date().toISOString(), sheets: sheetMeta },
+    };
+  }
+
+  const xmlEntry = zip.file('content.xml');
+  if (xmlEntry) {
+    const rawXml = await xmlEntry.async('string');
+    if (rawXml.length > MAX_MINDMAP_CONTENT_BYTES) {
+      throw new Error('.xmind content exceeds maximum size');
+    }
+    const xml = new DOMParser().parseFromString(rawXml, 'text/xml');
+    if (xml.querySelector('parsererror')) {
+      throw new Error('Invalid .xmind XML');
+    }
+    const sheetElements = Array.from(xml.getElementsByTagName('*'))
+      .filter((el) => el.localName.toLowerCase() === 'sheet');
+    const rootTopics = sheetElements
+      .map((sheet) => directChildrenByLocalName(sheet, 'topic')[0])
+      .filter((topic): topic is Element => Boolean(topic));
+    if (rootTopics.length === 0) throw new Error('Invalid .xmind archive: missing root topic');
+
+    const stats = { nodeCount: 0 };
+    const usedIds = new Set<string>();
+    const idMap = new Map<string, string>();
+    const rawRelationships = sheetElements
+      .flatMap((sheet) => directChildrenByLocalName(sheet, 'relationships'))
+      .flatMap((container) => directChildrenByLocalName(container, 'relationship'))
+      .map((rel) => ({
+        end1: rel.getAttribute('end1') ?? undefined,
+        end2: rel.getAttribute('end2') ?? undefined,
+        label: directChildrenByLocalName(rel, 'title')[0]?.textContent ?? undefined,
+      }));
+
+    if (rootTopics.length === 1) {
+      const root = xmindXmlTopicToNode(rootTopics[0], 0, stats, usedIds, idMap, true);
+      const associations = remapMindmapAssociations(rawRelationships, idMap);
+      return {
+        version: '1.0',
+        root,
+        ...(associations.length > 0 ? { associations } : {}),
+        meta: { createdAt: new Date().toISOString() },
+      };
+    }
+
+    claimMindmapNode(stats, 0, '.xmind');
+    usedIds.add('root');
+    const children = rootTopics.map((topic) =>
+      xmindXmlTopicToNode(topic, 1, stats, usedIds, idMap, false));
+    const sheetMeta = children.map((child, idx) => ({
+      id: `sheet_${idx + 1}`,
+      title: directChildrenByLocalName(sheetElements[idx], 'title')[0]?.textContent?.trim() || child.text,
+      rootNodeId: child.id,
+    }));
+    const associations = remapMindmapAssociations(rawRelationships, idMap);
+    return {
+      version: '1.0',
+      root: {
+        id: 'root',
+        text: fallbackTitle || i18n.t('mindmap:import.importedMap', { defaultValue: 'Imported Mind Map' }),
+        children,
+      },
+      ...(associations.length > 0 ? { associations } : {}),
+      meta: { createdAt: new Date().toISOString(), sheets: sheetMeta },
+    };
+  }
+
+  throw new Error('Invalid .xmind archive: content.json or content.xml not found');
+}
+
+async function parseMmapBytesToDocument(bytes: Uint8Array): Promise<ImportedMindMapDocument> {
+  if (bytes.byteLength > MAX_MINDMAP_ARCHIVE_BYTES) {
+    throw new Error(`.mmap archive exceeds maximum size (${MAX_MINDMAP_ARCHIVE_BYTES} bytes)`);
+  }
+  if (!hasCompleteZipArchive(bytes)) {
+    throw new Error('Invalid or truncated .mmap archive');
+  }
+  const { default: JSZip } = await import('jszip');
+  const zip = await JSZip.loadAsync(bytes);
+  const entry = zip.file('Document.xml');
+  if (!entry) throw new Error('Invalid .mmap archive: Document.xml not found');
+
+  const rawXml = await entry.async('string');
+  const xml = new DOMParser().parseFromString(rawXml, 'text/xml');
+  if (xml.querySelector('parsererror')) throw new Error('Invalid .mmap Document.xml');
+
+  const oneTopic = Array.from(xml.getElementsByTagName('*')).find(
+    (el) => el.localName.toLowerCase() === 'onetopic',
+  );
+  const rootTopic = oneTopic ? directChildrenByLocalName(oneTopic, 'Topic')[0] : undefined;
+  if (!rootTopic) throw new Error('Invalid .mmap archive: missing root topic');
+
+  const stats = { nodeCount: 0 };
+  const usedIds = new Set<string>();
+  const walk = (topic: Element, depth: number, forceRoot = false): ImportedMindMapNode => {
+    claimMindmapNode(stats, depth, '.mmap');
+    const text = directChildrenByLocalName(topic, 'Text')[0]?.getAttribute('PlainText')?.trim();
+    const children = directChildrenByLocalName(topic, 'SubTopics')
+      .flatMap((c) => directChildrenByLocalName(c, 'Topic'))
+      .map((child) => walk(child, depth + 1, false));
+    return {
+      id: allocateMindmapNodeId(topic.getAttribute('OId') ?? undefined, usedIds, forceRoot),
+      text: text || i18n.t('mindmap:import.unnamedTopic', { defaultValue: 'Untitled topic' }),
+      children,
+    };
+  };
+  return {
+    version: '1.0',
+    root: walk(rootTopic, 0, true),
+    meta: { createdAt: new Date().toISOString() },
+  };
+}
+
+function parseOpmlTextToDocument(opmlContent: string, fallbackTitle: string): ImportedMindMapDocument {
+  const xml = new DOMParser().parseFromString(opmlContent, 'text/xml');
+  if (xml.querySelector('parsererror')) throw new Error('Invalid OPML');
+  const body = xml.querySelector('body');
+  if (!body) throw new Error('Invalid OPML: missing body element');
+  const outlines = Array.from(body.children).filter(
+    (el) => el.localName.toLowerCase() === 'outline',
+  );
+  if (outlines.length === 0) throw new Error('Invalid OPML: no outline elements found');
+
+  const stats = { nodeCount: 0 };
+  const usedIds = new Set<string>();
+  const walk = (el: Element, depth: number, forceRoot = false): ImportedMindMapNode => {
+    claimMindmapNode(stats, depth, 'OPML');
+    const text = el.getAttribute('text') || el.getAttribute('title') || '';
+    const note = el.getAttribute('_note') || el.getAttribute('note') || undefined;
+    const completeAttr = el.getAttribute('_complete');
+    const statusAttr = el.getAttribute('_status');
+    const completed =
+      completeAttr === 'true' || statusAttr === 'checked'
+        ? true
+        : completeAttr === 'false' || statusAttr === 'unchecked'
+          ? false
+          : undefined;
+    const children = Array.from(el.children)
+      .filter((c) => c.localName.toLowerCase() === 'outline')
+      .map((c) => walk(c, depth + 1, false));
+    return {
+      id: allocateMindmapNodeId(undefined, usedIds, forceRoot),
+      text: text.trim() || i18n.t('mindmap:import.unnamedTopic', { defaultValue: 'Untitled topic' }),
+      ...(note ? { note } : {}),
+      ...(completed !== undefined ? { completed } : {}),
+      children,
+    };
+  };
+
+  let root: ImportedMindMapNode;
+  if (outlines.length === 1) {
+    root = walk(outlines[0], 0, true);
+  } else {
+    usedIds.add('root');
+    const headTitle = xml.querySelector('head > title')?.textContent?.trim();
+    root = {
+      id: 'root',
+      text: headTitle || fallbackTitle || i18n.t('mindmap:import.importedMap', { defaultValue: 'Imported Mind Map' }),
+      children: outlines.map((el) => walk(el, 1, false)),
+    };
+  }
+  return { version: '1.0', root, meta: { createdAt: new Date().toISOString() } };
+}
+
+function parseMmTextToDocument(mmContent: string, fallbackTitle: string): ImportedMindMapDocument {
+  const xml = new DOMParser().parseFromString(mmContent, 'text/xml');
+  if (xml.querySelector('parsererror')) throw new Error('Invalid .mm XML');
+  const mapEl = xml.documentElement?.localName?.toLowerCase() === 'map' ? xml.documentElement : null;
+  if (!mapEl) throw new Error('Invalid .mm: missing map element');
+  const rootEls = directChildrenByLocalName(mapEl, 'node');
+  if (rootEls.length === 0) throw new Error('Invalid .mm: no node elements found');
+
+  const stats = { nodeCount: 0 };
+  const usedIds = new Set<string>();
+  const idMap = new Map<string, string>();
+  const arrows: Array<{ end1?: string; end2?: string; label?: string }> = [];
+
+  const readRichContent = (el: Element, type: 'NODE' | 'NOTE'): string | undefined => {
+    const rich = directChildrenByLocalName(el, 'richcontent').find(
+      (rc) => (rc.getAttribute('TYPE') || rc.getAttribute('type') || '').toUpperCase() === type,
+    );
+    const raw = rich?.textContent?.replace(/\u00a0/g, ' ');
+    if (!raw) return undefined;
+    if (type === 'NODE') return raw.replace(/\s+/g, ' ').trim() || undefined;
+    const lines = raw.split('\n').map((l) => l.trim()).filter(Boolean);
+    return lines.length > 0 ? lines.join('\n') : undefined;
+  };
+
+  const walk = (el: Element, depth: number, forceRoot = false): ImportedMindMapNode => {
+    claimMindmapNode(stats, depth, '.mm');
+    const rawId = el.getAttribute('ID') || el.getAttribute('id') || undefined;
+    const assignedId = allocateMindmapNodeId(rawId, usedIds, forceRoot);
+    const mapKey = rawId ?? assignedId;
+    if (!idMap.has(mapKey)) idMap.set(mapKey, assignedId);
+
+    const text =
+      (el.getAttribute('TEXT') ?? el.getAttribute('text'))?.trim()
+      || readRichContent(el, 'NODE')
+      || i18n.t('mindmap:import.unnamedTopic', { defaultValue: 'Untitled topic' });
+    const note = readRichContent(el, 'NOTE');
+    const icons = directChildrenByLocalName(el, 'icon')
+      .map((icon) => icon.getAttribute('BUILTIN') ?? '')
+      .filter(Boolean);
+    const completed = icons.includes('button_ok')
+      ? true
+      : icons.includes('button_cancel')
+        ? false
+        : undefined;
+    for (const arrow of directChildrenByLocalName(el, 'arrowlink')) {
+      const dest = arrow.getAttribute('DESTINATION') || arrow.getAttribute('destination');
+      if (dest) {
+        arrows.push({ end1: mapKey, end2: dest, label: arrow.getAttribute('MIDDLE_LABEL') ?? undefined });
+      }
+    }
+    return {
+      id: assignedId,
+      text,
+      ...(note ? { note } : {}),
+      ...(completed !== undefined ? { completed } : {}),
+      children: directChildrenByLocalName(el, 'node').map((c) => walk(c, depth + 1, false)),
+    };
+  };
+
+  const root: ImportedMindMapNode = rootEls.length === 1
+    ? walk(rootEls[0], 0, true)
+    : (() => {
+        usedIds.add('root');
+        return {
+          id: 'root',
+          text: fallbackTitle || i18n.t('mindmap:import.importedMap', { defaultValue: 'Imported Mind Map' }),
+          children: rootEls.map((el) => walk(el, 1, false)),
+        };
+      })();
+  const associations = remapMindmapAssociations(arrows, idMap);
+  return {
+    version: '1.0',
+    root,
+    ...(associations.length > 0 ? { associations } : {}),
+    meta: { createdAt: new Date().toISOString() },
+  };
+}
+
+async function readBlobAsText(blob: Blob): Promise<string> {
+  if (typeof blob.text === 'function') {
+    return blob.text();
+  }
+  const bytes = await readBlobHeadBytes(blob);
+  if (bytes) {
+    return new TextDecoder('utf-8').decode(bytes);
+  }
+  throw new Error('Failed to read file text');
+}
+
+async function importMindmapFromFileObject(
+  file: File,
+  folderId: string | null,
+  t: SidebarT,
+): Promise<{ ok: true; node: DstuNode } | { ok: false; reason: string }> {
+  if (file.size === 0) {
+    return {
+      ok: false,
+      reason: t('finder.dragDrop.emptyFileReason', { defaultValue: 'Empty file (0 bytes)' }),
+    };
+  }
+  const ext = getFileExtension(file.name);
+  const fallbackTitle = stripFileExtension(file.name);
+  try {
+    let doc: ImportedMindMapDocument;
+    if (ext === 'xmind') {
+      const bytes = await readBlobHeadBytes(file);
+      if (!bytes) throw new Error('Failed to read .xmind bytes');
+      doc = await parseXmindBytesToDocument(bytes, fallbackTitle);
+    } else if (ext === 'mmap') {
+      const bytes = await readBlobHeadBytes(file);
+      if (!bytes) throw new Error('Failed to read .mmap bytes');
+      doc = await parseMmapBytesToDocument(bytes);
+    } else if (ext === 'opml') {
+      doc = parseOpmlTextToDocument(await readBlobAsText(file), fallbackTitle);
+    } else if (ext === 'mm') {
+      doc = parseMmTextToDocument(await readBlobAsText(file), fallbackTitle);
+    } else {
+      return {
+        ok: false,
+        reason: t('finder.dragDrop.invalidMindmapReason', { defaultValue: 'Invalid or corrupted mind map file' }),
+      };
+    }
+
+    const title = doc.root.text.trim() || fallbackTitle || file.name;
+    const createResult = await dstu.create('/', {
+      type: 'mindmap',
+      name: title,
+      content: JSON.stringify(doc),
+      metadata: {
+        ...(folderId ? { folderId } : {}),
+        defaultView: 'mindmap',
+      },
+    });
+    if (!createResult.ok) {
+      return { ok: false, reason: createResult.error.toUserMessage() };
+    }
+    return { ok: true, node: createResult.value };
+  } catch (err: unknown) {
+    debugLog.warn('[LearningHub] Mind map file import failed:', file.name, err);
+    return {
+      ok: false,
+      reason: t('finder.dragDrop.invalidMindmapReason', { defaultValue: 'Invalid or corrupted mind map file' }),
+    };
+  }
+}
+
+async function importMindmapFromPath(
+  filePath: string,
+  folderId: string | null,
+  t: SidebarT,
+): Promise<{ ok: true; node: DstuNode } | { ok: false; name: string; reason: string }> {
+  const name = extractDisplayFileName(filePath);
+  const ext = getFileExtension(name);
+  const fallbackTitle = stripFileExtension(name);
+  try {
+    let doc: ImportedMindMapDocument;
+    if (ext === 'xmind' || ext === 'mmap') {
+      const rawBytes = await TauriAPI.readFileAsBytes(filePath);
+      const bytes = rawBytes instanceof Uint8Array ? rawBytes : new Uint8Array(rawBytes);
+      if (bytes.byteLength === 0) {
+        return {
+          ok: false,
+          name,
+          reason: t('finder.dragDrop.emptyFileReason', { defaultValue: 'Empty file (0 bytes)' }),
+        };
+      }
+      doc = ext === 'xmind'
+        ? await parseXmindBytesToDocument(bytes, fallbackTitle)
+        : await parseMmapBytesToDocument(bytes);
+    } else if (ext === 'opml' || ext === 'mm') {
+      const text = await fileManager.readTextFile(filePath);
+      if (!text.trim()) {
+        return {
+          ok: false,
+          name,
+          reason: t('finder.dragDrop.emptyFileReason', { defaultValue: 'Empty file (0 bytes)' }),
+        };
+      }
+      doc = ext === 'opml'
+        ? parseOpmlTextToDocument(text, fallbackTitle)
+        : parseMmTextToDocument(text, fallbackTitle);
+    } else {
+      return {
+        ok: false,
+        name,
+        reason: t('finder.dragDrop.invalidMindmapReason', { defaultValue: 'Invalid or corrupted mind map file' }),
+      };
+    }
+
+    const title = doc.root.text.trim() || fallbackTitle || name;
+    const createResult = await dstu.create('/', {
+      type: 'mindmap',
+      name: title,
+      content: JSON.stringify(doc),
+      metadata: {
+        ...(folderId ? { folderId } : {}),
+        defaultView: 'mindmap',
+      },
+    });
+    if (!createResult.ok) {
+      return { ok: false, name, reason: createResult.error.toUserMessage() };
+    }
+    return { ok: true, node: createResult.value };
+  } catch (err: unknown) {
+    debugLog.warn('[LearningHub] Mind map path import failed:', name, err);
+    return {
+      ok: false,
+      name,
+      reason: t('finder.dragDrop.invalidMindmapReason', { defaultValue: 'Invalid or corrupted mind map file' }),
+    };
+  }
+}
+
 /** Match returned textbook nodes back to requested paths so skipped items never vanish silently. */
 function findUnmatchedTextbookPaths(paths: string[], nodes: DstuNode[]): string[] {
   if (nodes.length === 0) return [...paths];
@@ -197,6 +960,7 @@ export async function importPathsIntoLibrary(
   // 按类型分组
   const docPaths: string[] = [];
   const imagePaths: string[] = [];
+  const mindmapPaths: string[] = [];
   const otherPaths: string[] = [];
 
   const guidanceNames: Record<'flashcards' | 'mindmap', string[]> = {
@@ -207,9 +971,13 @@ export async function importPathsIntoLibrary(
   for (const p of paths) {
     const name = extractFileName(p);
     const ext = getFileExtension(name);
+    if (MINDMAP_IMPORT_EXTENSIONS.has(ext)) {
+      mindmapPaths.push(p);
+      continue;
+    }
     const guidance = MODULE_GUIDANCE_EXTENSIONS[ext];
     if (guidance) {
-      // ★ P3 引导：apkg/xmind 等不进资源库，提示到对应模块导入
+      // ★ P3 引导：apkg/colpkg 等不进资源库，提示到对应模块导入
       guidanceNames[guidance].push(name);
       continue;
     }
@@ -239,13 +1007,14 @@ export async function importPathsIntoLibrary(
       names: guidanceNames.mindmap.join(format.listSeparator),
     }));
   }
-  if (docPaths.length === 0 && imagePaths.length === 0 && otherPaths.length === 0) {
+  if (docPaths.length === 0 && imagePaths.length === 0 && mindmapPaths.length === 0 && otherPaths.length === 0) {
     return;
   }
 
   debugLog.log('[LearningHub] 文件分类:', {
     documents: docPaths.length,
     images: imagePaths.length,
+    mindmaps: mindmapPaths.length,
     others: otherPaths.length,
     markdownAsNotes: shouldImportMarkdownAsNotes,
   });
@@ -293,6 +1062,23 @@ export async function importPathsIntoLibrary(
 
       if (markdownResult.importedNodes.length === 0 && markdownResult.failedCount > 0) {
         debugLog.error('[LearningHub] Markdown 笔记导入失败:', markdownResult.firstError);
+      }
+    }
+
+    if (mindmapPaths.length > 0) {
+      const limit = pLimit(3);
+      const mindmapResults = await Promise.all(
+        mindmapPaths.map((filePath) =>
+          limit(() => importMindmapFromPath(filePath, dropTargetFolderId, t))),
+      );
+      for (const r of mindmapResults) {
+        if ('node' in r) {
+          totalSuccess += 1;
+          firstImportedNode ??= r.node;
+        } else {
+          totalFailed += 1;
+          failedDetails.push({ name: r.name, reason: r.reason });
+        }
       }
     }
 
@@ -502,10 +1288,13 @@ export async function importPathsIntoLibrary(
         if (firstImportedNode.type === 'note') {
           openImportedMarkdownNote(firstImportedNode);
         } else if (onOpenApp) {
-          onOpenApp(dstuNodeToResourceListItem(
-            firstImportedNode,
-            firstImportedNode.type === 'file' ? 'file' : 'textbook',
-          ));
+          const itemType =
+            firstImportedNode.type === 'mindmap'
+              ? 'mindmap'
+              : firstImportedNode.type === 'file'
+                ? 'file'
+                : 'textbook';
+          onOpenApp(dstuNodeToResourceListItem(firstImportedNode, itemType));
         }
       }
     }
@@ -623,13 +1412,17 @@ export async function importDroppedFiles(
 
   debugLog.log('[LearningHub] 浏览器拖拽导入:', files.length, '个文件');
 
-  // ★ P3 引导：apkg/xmind 等不进资源库，提示到对应模块导入
+  // ★ P3 引导：apkg/colpkg 等不进资源库，提示到对应模块导入；.xmind/.mmap/.opml/.mm 直接导入为思维导图
   const guidanceNames: Record<'flashcards' | 'mindmap', string[]> = {
     flashcards: [],
     mindmap: [],
   };
   const importableFiles = files.filter((file) => {
-    const guidance = MODULE_GUIDANCE_EXTENSIONS[getFileExtension(file.name)];
+    const ext = getFileExtension(file.name);
+    if (MINDMAP_IMPORT_EXTENSIONS.has(ext)) {
+      return true;
+    }
+    const guidance = MODULE_GUIDANCE_EXTENSIONS[ext];
     if (guidance) {
       guidanceNames[guidance].push(file.name);
       return false;
@@ -659,17 +1452,27 @@ export async function importDroppedFiles(
     // Markdown 本身就是笔记：任何位置拖入都导入为笔记（用笔记应用打开、可编辑），
     // 不再只在「笔记」视图才这样——在「全部文件」拖入会变成只读预览的资料
     const shouldImportMarkdownAsNotes = true;
-    const { markdownItems: markdownFiles, otherItems: attachmentFiles } = partitionMarkdownNoteImports(
+    const { markdownItems: markdownFiles, otherItems: nonMarkdownFiles } = partitionMarkdownNoteImports(
       importableFiles,
       (file) => file.name,
       shouldImportMarkdownAsNotes,
     );
+    const mindmapFiles: File[] = [];
+    const attachmentFiles: File[] = [];
+    for (const file of nonMarkdownFiles) {
+      if (MINDMAP_IMPORT_EXTENSIONS.has(getFileExtension(file.name))) {
+        mindmapFiles.push(file);
+      } else {
+        attachmentFiles.push(file);
+      }
+    }
 
     let totalSuccess = 0;
     let totalFailed = 0;
     // On mobile each staged document is fully parsed in the Host, so consume one at a time.
     const limit = pLimit(fromPicker ? 1 : 3);
     let firstImportedNode: DstuNode | null = null;
+    let firstImportedMindmap: DstuNode | null = null;
     const failedDetails: { name: string; reason?: string }[] = [];
 
     if (markdownFiles.length > 0) {
@@ -696,6 +1499,25 @@ export async function importDroppedFiles(
         const reason = e instanceof Error ? e.message : String(e);
         for (const mdFile of markdownFiles) {
           failedDetails.push({ name: mdFile.name, reason });
+        }
+      }
+    }
+
+    if (mindmapFiles.length > 0) {
+      const mindmapResults = await Promise.all(
+        mindmapFiles.map((file) =>
+          limit(async () => ({
+            name: file.name,
+            result: await importMindmapFromFileObject(file, currentCreatableFolderId, t),
+          }))),
+      );
+      for (const entry of mindmapResults) {
+        if ('node' in entry.result) {
+          totalSuccess += 1;
+          firstImportedMindmap ??= entry.result.node;
+        } else {
+          totalFailed += 1;
+          failedDetails.push({ name: entry.name, reason: entry.result.reason });
         }
       }
     }
@@ -816,7 +1638,9 @@ export async function importDroppedFiles(
       await handleRefresh();
       if (isMountedRef.current) {
         if (firstImportedNode) openImportedMarkdownNote(firstImportedNode);
-        else if (fromPicker && onOpenApp) {
+        else if (firstImportedMindmap && onOpenApp) {
+          onOpenApp(dstuNodeToResourceListItem(firstImportedMindmap, 'mindmap'));
+        } else if (fromPicker && onOpenApp) {
           const firstPreview = results.find((entry) => entry.ok && (entry.node.type === 'textbook' || entry.isMedia));
           if (firstPreview?.ok) {
             onOpenApp(dstuNodeToResourceListItem(firstPreview.node, firstPreview.node.type === 'textbook' ? 'textbook' : 'file'));

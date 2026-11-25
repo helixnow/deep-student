@@ -541,6 +541,7 @@
     "noSheets": "该工作簿不包含可预览的工作表",
     "encryptedOrLegacy": "文件已加密（受密码保护）或为旧版二进制格式（.doc/.xls/.ppt），无法在线预览，可下载后用 Office 打开",
     "invalidFormat": "文件不是有效的 Office 文档，可能已损坏",
+    "corruptedOrTruncated": "文件似乎不完整或已损坏，无法预览",
     "rowsTruncatedInfo": "已展示前 {{shown}} 行预览 / 共 {{total}} 行",
     "colsTruncatedInfo": "已显示前 {{shown}} 列 / 共 {{total}} 列",
     "emptySheet": "此工作表没有可显示的单元格内容（可能为空白或仅包含图表）",
@@ -889,6 +890,7 @@
       "importFailedFiles": "失败文件：{{names}}",
       "emptyFileReason": "文件为空（0 字节）",
       "corruptPdfReason": "PDF 文件已损坏或格式无效",
+      "invalidMindmapReason": "思维导图文件无效或已损坏",
       "readFileFailed": "读取文件失败",
       "guidanceFlashcards": "{{names}}：Anki 牌组包请在「闪卡」模块中导入",
       "guidanceMindmap": "{{names}}：导图文件请在「思维导图」模块中导入"
